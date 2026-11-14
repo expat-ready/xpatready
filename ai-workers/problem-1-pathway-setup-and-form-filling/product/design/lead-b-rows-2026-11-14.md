@@ -529,3 +529,8 @@ Source: `product/design/case-side-contract-v0.1-2026-11-14.md` on `lead/2026-11-
 **Rev 16.5 ruling (Lead 49, 14 Nov 20:28 IST; BACKLOG 03b87cc7b):**
 * PF-24w's one-line edits to `start.sh`, `deploy/compose.test.yml` and the test helpers are OK'd as shared files.
 * Any line under `.github/` still needs the release holder's own diff read before the label (P-423). The PR body lists those lines.
+
+**Lesson (14 Nov 21:51 IST):**
+* **What happened:** Lead B's own suggestion on #1742 (a pg_proc test allowing only FO-1a's and FO-1b's `fo_` names) made `main`'s `check_fo1a_sales_schema.ts` reject later areas' correctly prefixed functions, and FO-13 #1755 was dequeued for it.
+* **Fix:** FO-5 #1761 (`2b087d7ad`).
+* **Rule:** an area's own checks only look at its own prefix (`fo_sales_` for FO-1a). They never list other areas, and new areas need no edit to old tests.
