@@ -19,6 +19,8 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime F
   * `check_s7_reset` and `check_d1_reset_to_six` stay green;
   * platform audit lines are never deleted (P-571).
 
+  The same step also runs PF-25's `catchUpFirmAddresses` after the two seeds, so the reset has **one shared platform step** for all three (rows rev 16.6).
+
   List them under "Shared-file lines".
 * **New firms:** FO-1a's `seedCreatedFirms` (catch-up over `module_event` by `seq`, idempotent) runs once at start. If PF-14 is on `main`, it is also a `JobPort` recurring job (Sample: every minute); if not, PF-14's first user moves it onto `JobPort`.
 * Match `EVENT.FIRM_CREATED` from `ports/events.ts`, never a string.

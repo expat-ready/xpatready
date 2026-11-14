@@ -548,3 +548,12 @@ Source: `product/design/case-side-contract-v0.1-2026-11-14.md` on `lead/2026-11-
   * the migration backfills existing firms;
   * PF-5's sign-up sets the chosen address itself.
 * **Tests:** one address per new firm; a re-run adds nothing; a collision takes the next suggestion and creation never fails.
+
+## Rev 16.6 (14 Nov 22:59 IST, Lead B (3)): slot-line convention; one reset step for the seeds
+
+* **Slot lines:**
+  * PF-0p's `// back-relation slot: …` comments **stay**, as markers; an area's back-relation lines go directly under its own slot;
+  * `check_pf0p_ports.ts` keeps requiring all six comments;
+  * the briefs are updated (they said "replace").
+* **One demo-reset step** (FO-2 adds it, under the release holder's rev 15.1 conditions): PF-3's sample seed, then FO-1a's `seedSampleFirmsFrontOffice`, then PF-25's `catchUpFirmAddresses`. PF-25 adds no reset hook of its own.
+* **PF-25 #1763:** the trigger is gone (c4d3f5a8e), replaced by a `firm.created` consumer with catch-up and a backfill, and a re-review is running.
