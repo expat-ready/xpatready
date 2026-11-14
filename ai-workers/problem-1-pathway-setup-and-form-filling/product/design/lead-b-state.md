@@ -2,6 +2,62 @@
 
 **Lead B (3) (session `local_59938793…`, worktree `lead-b-front-office-238861`) took over 14 Nov 09:44 IST from Lead B (2) (`local_0dd43ee4…`, stopped at ~45% context, P-565; idle and clean when checked).** Lead B (2) ran from 14 Nov 07:56 IST. Hand-over written 14 Nov 07:53 IST by Lead B (1) (session `local_9bced770…`) at ~52% context, per P-565. A fresh Lead B starts here, on branch `lead-b-front-office` (GitHub), in its own worktree. Do not run `/lead` (the release holder's skill).
 
+## START HERE: hand-over Lead B (3) → Lead B (4), written 14 Nov 23:03 IST at ~46% context (P-565)
+
+**Lead B (3)** is session `local_59938793…`, worktree `lead-b-front-office-238861`, branch `lead-b-front-office` (push with `git push origin HEAD:refs/heads/lead-b-front-office`; `.git/config` can't be written from the sandbox). The sections below this one are earlier hand-overs, kept as records (P-188).
+
+**Release holder now:** **Lead 49** (`local_93551126…`), unless `tools/current-lead.sh` names a later one. **P-602:** only the founder's typed turn starts sessions. Lead 49 hands next rows to the warm cloud lanes through their prompt boxes.
+
+**The rows:**
+* `design/lead-b-rows-2026-11-14.md`, all revs **through 16.6**. Everything through 16.5 is copied into BACKLOG (16.5 at 03b87cc7b); **16.6 was sent to Lead 49 and is not yet confirmed copied**.
+* Key rulings since rev 14:
+  * **P-599:** Release 1 (production grade) by 24 Nov.
+  * **P-600:** any number of schema rows at once, under five conditions: own file and migration folder; add only to own tables, with a shared model changed only directly under its own PF-0p slot comment (rev 16.6); area-prefixed functions; the stamp later than `main`'s newest, so the later PR re-stamps; the release holder reads each migration.
+  * **P-601:** complaint keys.
+  * **P-603:** trust money leaves only by withdrawal to an issued invoice or a refund to the client; a correction names only a withdrawal or a deposit.
+  * **Rev 16.4:** a row merges as "part 1 of 2", and its staff routes follow in `<row>w`.
+  * **Rev 16.5:** `PLATFORM_ENVIRONMENT` fails closed (PF-24w).
+
+**Briefs:** `design/lead-b-briefs/` has 30-plus paste-ready briefs. Every brief carries:
+* the `ports/` rule;
+* `ports/events.ts` names;
+* area-prefixed functions;
+* run the red suites before the label;
+* the P-600 re-stamp step (schema briefs).
+
+The newest are PF-0p, PF-21, PF-23, PF-23r, PF-23m, PF-24, PF-25, **ROW-w.md** (PF-21w, FO-3sr, PF-25w) and PF-4t.
+
+**PRs at hand-over** (read fresh from the GitHub API; `gh` can't reach GitHub from the sandbox, so use curl with `gh auth token`):
+
+| PR | Row | State | Next |
+|---|---|---|---|
+| merged | PF-3, FO-1b, FO-1a, PF-L, PF-0p, PF-24 | on `main` | — |
+| #1744 | PF-4 | labelled, queued | on merge, Lead 49 gives PF-4t to the PF-4 lane; PF-21w, FO-3sr and FO-5 part 2 go to their lanes once part 1 is in |
+| #1759 | PF-23 | labelled, queued | Lead 48 applies its CI step after merge; then PF-23r and PF-23m (briefs ready; PF-23m has the release holder's conditions) |
+| #1761 | FO-5 part 1 | ready, carries the FO-1a stray-function fix | merges before FO-13 |
+| #1755 | FO-13 | draft | after #1761: merge main, re-stamp after 20261114210000, re-review (lane confirmed) |
+| #1763 | PF-25 | trigger removed per Lead B; reviewer approved rounds 4-5 | Lead 49's migration read, then the label |
+| #1758 | FO-7a | draft, round 4 (the last) on B-12 | another Major → the row splits (Lead 48) |
+| #1760 | FO-3 | draft, round 3 | a new Major goes to the release holder first |
+| #1757 | PF-14 | open | — |
+| #1754 | PF-19a | draft | moves its lines under its slot; FO-1k collects its web-form key if missing |
+| #1753 | PF-21 part 1 | draft | routes in PF-21w after PF-4 |
+
+**Watching:** builders' row questions arrive as PR comments ("Question for the tech lead" or "Lead B"). Lead B (3) ran `$TMPDIR/lbw/scan.sh SINCE` (curl and python, paged, skipping our own comments) in a background until-loop; it lives in the session's temp folder, so rebuild it. **Lesson:** Python's urllib reads fail through the proxy; use curl with `--retry 3`, and print errors rather than swallowing them.
+
+**Lessons from today:**
+* Never suggest a test that lists other areas' names (the FO-13 dequeue); an area's checks look only at its own prefix.
+* No trigger on another area's table (PF-25).
+* Cloud lanes are one-way: post the answer on the PR, then send a message.
+* Row-shape questions are Lead B's; review rounds, labels and migration reads are the release holder's.
+
+**Open for Lead B (4):**
+1. Confirm rev 16.6 is in BACKLOG.
+2. Answer row questions on the PRs above.
+3. Keep briefs two ahead: next are FO-1k (written; it collects every key the start-now rows left), FO-7b after FO-7a, PF-12 after FO-7a, FO-2 after PF-4 and PF-19a, PF-4b, PF-4s (PF-25w needs it), PF-5, PF-18a.
+4. Concepts still to make: FO-9s, FO-12s, FO-13s, FO-7s, PF-19s, PF-20s, PF-21s/rs, PF-17, PF-18s, FO-3w, FO-3st. The founder's look at FO-4, PF-6, FO-5s and PF-5s is still due.
+5. Open item 16: the Zoom app review and the College's licence-number format (step 0 in FO-3v and PF-4c). The College's site is unreachable from cloud lanes, so the Lead reads it from the Mac.
+
 ## Who is who
 * **Lead B** owns the new platform (firm sign-up, plans, subscriptions, staff sign-in and roles, walking skeleton) and front-office (enquiry → lead → prospect → booking → retainer → e-signature → payment) modules, all fenced (P-550, P-558). Writes rows and briefs on this branch; never edits `STATE.md`, `RULES.md`, `DECISIONS.md`, `BACKLOG.md`.
 * **Release holder:** the current Lead (`tools/current-lead.sh`; Lead 39 `local_84c512dc…` until ~08:00 IST 14 Nov, then Lead 40 `local_7a6756d1…`, Lead 41 `local_eb5559e3…`, Lead 42 `local_110605c6…` (09:50 IST), Lead 43 `local_b5840dd3…` (by 11:22 IST), Lead 44 `local_dbdab60d…` (by 12:37 IST), Lead 45 `local_24e909a3…` (13:5x IST), Lead 46 `local_3cc8e2ba…` (by 15:46 IST), Lead 47 `local_a358e18f…` (by 17:07 IST), Lead 48 `local_1aede380…` (by 18:52 IST), now **Lead 49 `local_93551126…`** (by 20:24 IST)). Copies Lead B's rows into BACKLOG (section "Full MVP: platform (PF) and front office (FO)" on `lead/2026-11-07-lead31`), starts builder lanes at the founder's typed turns, asks the founder questions, holds AUD-1 (audit), the case side, firm walls and the identity join. Earlier holders: Lead 37, Lead 38 (their rulings stand).
@@ -196,3 +252,4 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
 * 14 Nov 22:21 IST: PF-4 #1744 is labelled and queued (Lead 49). Brief **ROW-w.md** is written for PF-21w and FO-3sr (start when PF-4 is on main), and PF-25w (after PF-4s). FO-5's part 2 is its own API PR. PF-4t's brief is ready.
 * 14 Nov 22:52 IST: PF-25 #1763's round 3 approved. As row owner, Lead B asked it to drop its AFTER INSERT trigger on platform_firm in favour of a firm.created consumer (6881377523). Lead 49 was asked to hold the label. The watch now runs as a one-shot background wait (3 min polls) instead of 30-min monitors.
 * 14 Nov 22:59 IST: PF-25 dropped its platform_firm trigger (c4d3f5a8e). Its reset-hook question was answered: FO-2's shared reset step now includes PF-25's catch-up. FO-13 keeps the slot comment with its lines under it. Rows rev 16.6; FO-2 and the slot wording updated across the briefs.
+* 14 Nov 23:03 IST: **hand-over written** (START HERE section at the top), at ~46% context, for Lead B (4) (P-565).
