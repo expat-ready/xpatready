@@ -365,7 +365,7 @@ export class Retainers {
     return {
       id: r.id, kind: r.kind, status: r.status, prospectId: r.prospectId, prospect: ph ? { id: ph.id, number: ph.number, type: ph.type, stage: ph.stage.label, stageKind: ph.stage.kind } : null, subject: r.subject, companyId: r.companyId, signerPersonId: r.signerPersonId,
       representativeStaffId: r.representativeStaffId, template: { id: r.templateId, name: tpl?.name ?? null, version: r.templateVersion },
-      version: { n: cur.n, sha256: cur.originalSha256, sentAt: cur.sentAt, values: { ...values, "representative.licence_number": undefined },
+      version: { n: cur.n, sha256: cur.originalSha256, sentAt: cur.sentAt, values: { ...values, "representative.licence_number": undefined } as Record<string, unknown>,
         fees: cur.fees.map((f) => ({ position: f.position, label: f.label, amountMinor: f.amountMinor === null ? null : f.amountMinor.toString(), currency: f.currency, when: f.when, dueOn: f.dueOn?.toISOString().slice(0, 10) ?? null })) },
       canSend: r.status === "DRAFT" && !Object.keys(c.blockers).length, blockers: c.blockers, missing: c.missing,
       withdrawn: r.withdrawnAt ? { at: r.withdrawnAt, reason: r.withdrawnReason } : null, signedOffline: r.offlineAt ? { at: r.offlineAt, reason: r.offlineReason, filed: "Signed on paper" } : null,
