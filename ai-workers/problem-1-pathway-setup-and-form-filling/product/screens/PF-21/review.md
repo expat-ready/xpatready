@@ -275,3 +275,11 @@ Verdict: Approve (for 8961aa76f8564787219387a4cf92738de4fabe26)
 * **Re-run:** `check_pf21_complaints` gives **107/107**. `check_pf25_web_address` gives **68/68**, run with `--tsconfig api/tsconfig.json` as `run-suites.sh` does.
 
 Verdict: Approve (for 5f9772c423dc6c380c62198d5de2fd8fb4ce65f3)
+
+### Merge 1e5a41b (FO-3, PF-4t)
+* **`ports/events.ts`:** `git show --cc` shows a union. FO-3's five `BOOKING_*` names and `BookingEvent` come first, then PF-21's two `COMPLAINT_*` names and shapes. Nothing is removed or edited on either side; the resolution adds only one blank line. `git diff origin/main 1e5a41b` on the file shows only PF-21's own lines.
+* **PF-21's files:** `git diff 9efaccc..1e5a41b` on the complaints folder, `20261114234500_pf21_complaints`, `platform-register.prisma` and `check_pf21_complaints.ts` is empty.
+* **Stamp:** `20261114234500` is still later than main's newest, `20261114230000_pf25_web_address`, and main is in the merge.
+* **Re-run:** `api/tsconfig.json` now includes `src/platform/**`, and the tsc grep for `complaints|pf21|ports/events` printed 0 lines. `check_pf21_complaints` gives 107/107.
+
+Verdict: Approve (for 1e5a41b0a98b44d6238014065a22f0ae66febd86)
