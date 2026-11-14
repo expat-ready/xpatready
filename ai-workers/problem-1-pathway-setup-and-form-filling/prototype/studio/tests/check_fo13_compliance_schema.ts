@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261114190000_fo13_compliance_tables", PF3 = "20261114015002_pf3_platform_tables";
+const NEW = "20261114223000_fo13_compliance_tables", PF3 = "20261114015002_pf3_platform_tables";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const EMPTY = `xr_studio_fo13_empty_${process.pid}`, DEMO = `xr_studio_fo13_demo_${process.pid}`, BARE = `xr_studio_fo13_bare_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;

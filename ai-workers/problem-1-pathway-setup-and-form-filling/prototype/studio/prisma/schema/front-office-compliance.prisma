@@ -12,7 +12,7 @@
 // update, to platform_staff (firm_id, id); the firm to platform_firm (the back-relation lines on platform.prisma).
 // person_id, company_id and prospect_id name FO-1a's fo_person, fo_company and fo_prospect, which are not on main yet:
 // they are uuids with no foreign key here, and FO-1k adds those keys after FO-1a (rows rev 16).
-// Rules Prisma cannot say are in the migration 20261114190000_fo13_compliance_tables: the result and disclosure rules,
+// Rules Prisma cannot say are in the migration 20261114223000_fo13_compliance_tables: the result and disclosure rules,
 // the hidden-matches confirmation, the matches' shape, the last-4-characters-only document number, what may change
 // after a check is written (a conflict check: once, the confirmation and the consent; an identity check: nothing),
 // and that neither is ever deleted. Every list marked Sample is Sample until the immigration expert or the founder sets it.
