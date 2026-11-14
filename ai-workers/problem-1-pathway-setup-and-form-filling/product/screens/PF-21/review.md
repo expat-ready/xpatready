@@ -242,3 +242,11 @@ Reviewer (did not build it), 14 Nov 2026. Commit **4688525582d219e8194714b4917c6
 For commit 4688525582d219e8194714b4917c63f81be41855: no Blocker or Major is open. R3-m1 is optional and does not hold the label.
 
 Verdict: Approve
+
+**Merge db7f992: conflict resolution checked.** I checked merge `db7f9927170b60f8ffe9648358b17667f39ca3b2` (parents `fab1031a8` and main `b91ab10ad`) in two ways:
+* **`ports/events.ts`:** `git show --cc` shows a pure union. No line was removed or edited from either side, and no new line came from the resolution. The added lines are PF-4's `STAFF_ROLES_CHANGED`, `STAFF_DEACTIVATED` and `StaffEventPayload`/`StaffRolesChanged`/`StaffDeactivated` (main's, first) and PF-21's `COMPLAINT_RECEIVED`/`COMPLAINT_CLOSED`, `ComplaintReceived` and `ComplaintClosed`, unchanged.
+* **PF-21's own files:** `git diff 4688525..db7f992` on the complaints folder, the migration, `platform-register.prisma` and `check_pf21_complaints.ts` is empty. The approved code is unchanged.
+
+Re-run on db7f992: `check_pf21_complaints` 107/107, `check_pf0p_ports` 71/71, and the tsc grep for `complaints|pf21|ports/` printed 0 lines.
+
+Verdict: Approve (for db7f9927170b60f8ffe9648358b17667f39ca3b2)
