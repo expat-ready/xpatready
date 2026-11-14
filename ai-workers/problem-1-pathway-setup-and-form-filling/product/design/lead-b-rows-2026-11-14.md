@@ -534,3 +534,9 @@ Source: `product/design/case-side-contract-v0.1-2026-11-14.md` on `lead/2026-11-
 * **What happened:** Lead B's own suggestion on #1742 (a pg_proc test allowing only FO-1a's and FO-1b's `fo_` names) made `main`'s `check_fo1a_sales_schema.ts` reject later areas' correctly prefixed functions, and FO-13 #1755 was dequeued for it.
 * **Fix:** FO-5 #1761 (`2b087d7ad`).
 * **Rule:** an area's own checks only look at its own prefix (`fo_sales_` for FO-1a). They never list other areas, and new areas need no edit to old tests.
+
+**Rev 16.4 follow-up (14 Nov 22:21 IST):**
+* FO-3's staff routes row is named **FO-3sr**, not "FO-3w-staff", so it isn't confused with FO-3w, the public booking screens.
+* **PF-25w waits on PF-4s**, not PF-4: the address change is our own staff's `system/*` key.
+* **FO-5** needs no `w` row: its part 2 is its own API PR.
+* One brief covers PF-21w, FO-3sr and PF-25w: `lead-b-briefs/ROW-w.md`.
