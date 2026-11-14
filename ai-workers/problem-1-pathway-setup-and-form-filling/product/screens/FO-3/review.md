@@ -134,3 +134,42 @@ Read: `git diff cdb70253..4843bc16` (service.ts, ports/arrival.ts, the test). Th
 
 **Verdict: Approve.** No open Blocker or Major at 4843bc16; the Minors m3, m4, m7 and m8 go to Lead B as the PR lists.
 Reviewer: Approve 4843bc16b73beae3d15d80bc0dcf4a314b0c865a
+
+## Round 3 (diff only, last agreed round): 4843bc16..9f221f74, FO-3's files only
+Read: `git diff 4843bc16 9f221f74 --` (service.ts, ports/events.ts, the test; `ports/arrival.ts` and the feature file are unchanged).
+
+**What I ran**
+* **Suite** on the branch itself (HEAD 9f221f74): **105 passed, 0 failed**.
+* **`ports/events.ts` against `origin/main`:** only the five `BOOKING_*` names and `BookingEvent` are added; main is in the head.
+* **Live** at :4431 (fresh copy of 9f221f74), kept light while CI ran: page 200; a booking 201 whose keys are endsAt, label, manageToken, mode, startsAt, status and timeZone only; a never-offered time 409; a Persian name with U+200C 400.
+
+**The changes**
+* **B-3: correct.**
+  * The firm's booking limit is checked before the write (`service.ts:183`, `count = false`) and counted only after a booking is made (`service.ts:192`), so junk and never-offered forms cannot close a firm's page.
+  * Tested both ways: 20 addresses leave it free; real bookings fill it, then 429.
+  * Check-then-count lets bookings already in flight pass the limit by a few; harmless for a soft limit.
+* **R2-1: accepted.**
+  * The per-firm read limit is removed, so a group of addresses can no longer close a page. Tested: 30 addresses at their own limit, and a new visitor still gets 200.
+  * This reverses my round-1 m2 for reads and departs from contracts §0.6 ("per IP and per firm"). The reason is sound, but the PR should say so for Lead B (Minor, recorded).
+* **Merge: clean for FO-3.**
+  * `fakeMail({ clock })` is PF-0p's final shape.
+  * The audit entity `fo_booking` is in `AREA_ENTITY` (the builder reports the case feed at 39/39).
+  * Job keys carry the booking uuid.
+* **B-9: one regression, Minor, fix soon.**
+  * `Name` (`service.ts:80`) now refuses U+200C and U+200D, the zero-width non-joiner and joiner. Persian spelling needs U+200C in common names, and so do some Indic scripts.
+  * Live: "علی‌رضا" (Alireza) gives 400 "no line breaks, control or invisible characters". The person sees no such character.
+  * It is not Major: the "a name with letters" rule already refuses invisible-only names; the answer is a field error, not a 500 or data loss; and a Latin spelling, which IRCC forms need anyway, books fine.
+  * Fix: drop `‌‍` from the class (or allow them only between letters), plus one passing test with a Persian name.
+
+Open Minors carried to Lead B:
+* m3: no retry for after-commit mail.
+* m4: the port's breadth.
+* m7: the token in the path and in answers.
+* m8: prospect logic tested on the fake.
+* The §0.6 read-limit deviation.
+* m10: ZWNJ/ZWJ in names (the B-9 regression above).
+
+Journey score: **8.75 / 10** (7 of 8 applicable; plain words falls to ½ for m10's message); see the journey report.
+
+**Verdict: Approve.** No open Blocker or Major at 9f221f74. m10 is a one-line follow-up worth taking before the page (FO-3 web) ships.
+Reviewer: Approve 9f221f74eb6c2cf4f8ff0708d30b767f87cb1fa2

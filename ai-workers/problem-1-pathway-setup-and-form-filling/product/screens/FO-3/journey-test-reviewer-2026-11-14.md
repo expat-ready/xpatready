@@ -68,3 +68,15 @@ I re-walked journeys 1, 3, 4, 6 and 7 live, and ran the suite: 101/101.
 | Trust and sources | ½ | 1 | Public answers carry no ids |
 
 The other criteria are unchanged (task 1, next step 1, speed 1; three N/A). **Round 2: 7.5 of 8 applicable = 9.4 / 10. Pass.**
+
+## Round 3 (9f221f74, fresh :4431)
+The suite gives 105/105, and I ran a short live walk while CI was running.
+* **Book:** 201 with no ids.
+* **Never-offered time:** 409 with fresh times.
+* **New:** a person typing their Persian name as Persian keyboards write it, "علی‌رضا" with U+200C, gets 400 "no line breaks, control or invisible characters". They cannot see such a character, so the way out is unclear: they must retype without the joiner, or in Latin letters (review m10).
+
+| Criterion | Round 2 | Round 3 | Evidence |
+|---|---|---|---|
+| Plain words | 1 | ½ | m10's message names a character the person cannot see |
+
+The others are as in round 2 (error recovery ½ for m3). **Round 3: 7 of 8 applicable = 8.75 / 10. Pass, no criterion at 0.**
