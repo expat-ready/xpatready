@@ -337,7 +337,7 @@ export class Retainers {
     await this.tx(async (tx) => {
       await tx.foRetainer.create({ data: { id, firmId: ctx.firmId, kind, prospectId: p.id, subject: p.type === "CORPORATE" ? "COMPANY" : "PERSON", companyId: p.type === "CORPORATE" ? p.subjectCompanyId : null, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId!, templateId: t.id, templateVersion: t.version, templateFileKey: t.fileKey, createdBy: `staff:${ctx.staffId}` } });
       await this.writeVersion(tx, ctx, id, 1, values, file, fees);
-      await this.audit.record(tx, this.line(ctx, "retainer.drafted", id, `${kind === "RETAINER" ? "Retainer" : "Consultation agreement"} drafted (version 1)`, { retainerId: id, prospectId: p.id, templateId: t.id, templateVersion: t.version, sha256: file.sha256 }));
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.drafted", id, `${kind === "RETAINER" ? "Retainer" : "Consultation agreement"} drafted (version 1)`, { retainerId: id, prospectId: p.id, templateId: t.id, templateVersion: t.version, sha256: file.sha256 }), entity: "fo_retainer" });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_DRAFTED, { retainerId: id, kind, prospectId: p.id, version: 1 });
     }, { fo_retainer_one_live_per_prospect: open });
     return { ...(await this.read(ctx, id)), warnings: s.warnings, signerOptions: s.options };
@@ -413,7 +413,7 @@ export class Retainers {
       if (cur.sentAt && !cur.endedAt) await tx.foRetainerVersion.update({ where: { id: cur.id }, data: { endedAt: new Date(this.clock.now()), endReason: "UPDATED" } });
       await tx.foRetainer.update({ where: { id: r.id }, data: { status: "DRAFT", currentVersion: n, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId, templateId: t.id, templateVersion: t.version, templateFileKey: t.fileKey } });
       await this.writeVersion(tx, ctx, r.id, n, values, file, fees);
-      await this.audit.record(tx, this.line(ctx, "retainer.edited", r.id, `Edited: version ${n}${cur.sentAt && !cur.endedAt ? " (the earlier request ended)" : ""}`, { retainerId: r.id, version: n, endedVersion: cur.sentAt && !cur.endedAt ? cur.n : null, sha256: file.sha256 }));
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.edited", r.id, `Edited: version ${n}${cur.sentAt && !cur.endedAt ? " (the earlier request ended)" : ""}`, { retainerId: r.id, version: n, endedVersion: cur.sentAt && !cur.endedAt ? cur.n : null, sha256: file.sha256 }), entity: "fo_retainer" });
     }, { fo_retainer_one_live_per_prospect: open });
     return { ...(await this.read(ctx, r.id)), warnings: s.warnings, signerOptions: s.options };
   }
@@ -437,7 +437,7 @@ export class Retainers {
       const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: "DRAFT", currentVersion: r.currentVersion }, data: { status: "SENT" } });
       if (n.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
       await tx.foRetainerVersion.updateMany({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion }, data: { sentAt: now } });
-      await this.audit.record(tx, this.line(ctx, "retainer.sent", r.id, `Sent (version ${r.currentVersion})`, { retainerId: r.id, version: r.currentVersion }));
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.sent", r.id, `Sent (version ${r.currentVersion})`, { retainerId: r.id, version: r.currentVersion }), entity: "fo_retainer" });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_SENT, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: r.currentVersion });
     });
     return this.read(ctx, id);
@@ -453,7 +453,7 @@ export class Retainers {
       const v = await tx.foRetainerVersion.updateMany({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion, endedAt: null }, data: { endedAt: now, endReason: "WITHDRAWN" } });
       const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: r.status, currentVersion: r.currentVersion }, data: { status: "WITHDRAWN", withdrawnAt: now, withdrawnBy: `staff:${ctx.staffId}`, withdrawnReason: reason } });
       if (n.count !== 1 || v.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
-      await this.audit.record(tx, this.line(ctx, "retainer.withdrawn", r.id, "Withdrawn with a reason", { retainerId: r.id, version: r.currentVersion }));
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.withdrawn", r.id, "Withdrawn with a reason", { retainerId: r.id, version: r.currentVersion }), entity: "fo_retainer" });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_WITHDRAWN, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: r.currentVersion });
     });
     return this.read(ctx, id);
@@ -482,7 +482,7 @@ export class Retainers {
       const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: r.status, currentVersion: r.currentVersion }, data: { status: "SIGNED_OFFLINE", offlineAt: now, offlineBy: `staff:${ctx.staffId}`, offlineReason: reason, offlineFileKey: offlineKey, offlineFileSha256: stored.sha256 } });
       if (n.count !== 1 || v.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
       if (r.kind === "RETAINER" && r.prospectId) prospectWon = await this.winProspect(tx, ctx, r.prospectId, now);
-      await this.audit.record(tx, this.line(ctx, "retainer.signed_offline", r.id, `Signed on paper${prospectWon ? "; the prospect is won" : ""}`, { retainerId: r.id, version: r.currentVersion, sha256: stored.sha256, prospectWon }));
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.signed_offline", r.id, `Signed on paper${prospectWon ? "; the prospect is won" : ""}`, { retainerId: r.id, version: r.currentVersion, sha256: stored.sha256, prospectWon }), entity: "fo_retainer" });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_SIGNED_OFFLINE, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: r.currentVersion, prospectWon });
     });
     return { ...(await this.read(ctx, id)), prospectWon };
