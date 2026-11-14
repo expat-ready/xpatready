@@ -173,3 +173,9 @@ Journey score: **8.75 / 10** (7 of 8 applicable; plain words falls to ½ for m10
 
 **Verdict: Approve.** No open Blocker or Major at 9f221f74. m10 is a one-line follow-up worth taking before the page (FO-3 web) ships.
 Reviewer: Approve 9f221f74eb6c2cf4f8ff0708d30b767f87cb1fa2
+
+Conflict merge at a135a96c verified:
+* Over 5123b496..a135a96c, the only change to FO-3's files is `ports/events.ts`, which gains PF-4's `STAFF_ROLES_CHANGED`, `STAFF_DEACTIVATED`, `StaffEventPayload`, `StaffRolesChanged` and `StaffDeactivated`.
+* Against main (b91ab10a, contained in the head), the file differs only by FO-3's five `BOOKING_*` names and `BookingEvent`. Both sides are kept, with no edits and no duplicate names.
+* I did not re-run the suites; the builder reports fo3 105/105, registry 27/27, case feed 39/39 and pf4 113/113.
+Reviewer: Approve a135a96cf23e0a2d81c678d2b668c4b328d18c6e
