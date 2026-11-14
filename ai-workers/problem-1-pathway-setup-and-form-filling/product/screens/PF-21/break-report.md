@@ -145,3 +145,53 @@ Breaker, 14 Nov 2026. Scope: permissions and schema (the tech lead's ask), and w
   * Every table's row md5 was unchanged except `platform_role_permission`, which went from 774 to 779.
   * Reset to the six ran green again, keeping a closed complaint, its outbox rows and its audit lines.
   * `migrate diff` on both databases shows only the 5 lines already there before PF-21, nothing for `plat_`.
+
+## Round 3 (4688525)
+
+Breaker, 14 Nov 2026. Diff-only: `540ebf88c..4688525`, the new parts the coordinator listed.
+* **Method:** scratch databases `xr_studio_pf21brk3_{a,demo}` on :54329, both dropped. Service driven through PF-0p's fakes on two `PrismaClient`s; triggers tested on two `pg` connections at each isolation level. Every code point U+0001-U+10FFFF run through both text rules.
+
+**Blockers: none. Majors: none.**
+
+**R3-m1 (Minor): a slow mail repeats the reminder on every run and never records it.** Condition: the mails take more than 5 s in total.
+* Why: the mail is sent inside the transaction (C:384), which has Prisma's default 5 s timeout (C:188).
+* Did: a fake mail taking 5.5 s, run twice. Each run sent, then failed with P2028 ("commit … on an expired transaction"): 2 mails, 0 `REMINDER_SENT`. A forced commit failure after the send gives the same (3 runs, 3 mails, 0 recorded).
+* A failure on the 2nd Owner/Admin address re-sends to the 1st on the retry. The run holds the complaint's lock while the mail is sent.
+* C:361-366 states an at-least-once rule for a rare commit failure; the timeout makes this case predictable (slow SMTP, or several addresses one after another).
+* Severity: Minor at a typical provider's latency; Major if PF-L's real mail adapter can take more than 5 s for one recipient list. The tech lead should rule.
+
+**R3-m2 (Minor): text that the service accepts and the database refuses gives a 500.**
+* Node's regex runs on Unicode 17.0; the database's `pg_c_utf8` is Unicode 16.0 (`unicode_version()`).
+* 4 751 characters are text only in Unicode 17 (e.g. U+20C1, the Saudi riyal sign; the 4 298 ideographs of CJK Extension J, U+323B0…). A summary or name made only of them passes C:57-58, then fails the database check (M:114-115) with a 500. Mixed with any older letter, the text passes both.
+* The other way, 1 328 combining marks pass the database but get a 422 from the service: no 500. The rule can only be "the same" while Node and PostgreSQL share a Unicode version.
+
+**R3-m3 (Minor, SQL-only): the timeline can still be forged.**
+* (a) A stray `HANDLER_CHANGED` to T, followed in the same transaction by one back to the current handler, commits: the timeline names a handler who never held the complaint (M:273 lets any HC through when a later one exists). A no-op HC to the current handler also commits.
+* (b) The seq is taken before the lock (M:231). A NOTE that waited behind another transaction's close got seq 162 < CLOSED 164, so `get` shows it before the close. The service locks first, so this is SQL-only.
+* (c) Dates of 3000-01-01 are still accepted on events and `acknowledged_at` (M:134-146; the rest of R2-m6).
+
+**R3-m4 (Minor):** a `JobPort.schedule` that throws synchronously, not as a rejected promise, still gives a 500 after the commit (the `.then` at C:214 only catches a rejection). An `async` adapter is safe.
+
+**R3-m5 (note):** the Sample solo firm's `contact_email` is the Owner's own address. So the firm-contact fallback for a deactivated sole Owner goes to that person's mailbox, Reply-To included.
+
+### What held (round 3)
+* **The reminder:**
+  * A failed mail rolls back; the retry sends 1 mail with 1 `REMINDER_SENT`; a third run is skipped. **R2-M1 is closed.**
+  * Two workers, ×5: always one `sent` and one `skipped`, 1 mail each time.
+  * The firm-contact fallback sends 1 mail, recorded `sentTo: firm_contact`.
+* **A failing queue:** `schedule` and `cancel` rejecting → record gives `reminderScheduled: false`, no 500; acknowledge and close work.
+* **`plat_complaint_event_once`:** ack against ack and REMINDER_SENT against REMINDER_SENT. The second is always refused (23514 under READ COMMITTED; 40001 or 23505 under REPEATABLE READ; 40001 under SERIALIZABLE).
+* **`plat_complaint_event_applied`:**
+  * a stray CLOSED, a stray ACKNOWLEDGED, or an HC with no `to` → refused at commit;
+  * a savepoint that rolls back the row change → refused;
+  * an HC pair in one transaction with its rows → ok;
+  * `SET CONSTRAINTS ALL IMMEDIATE` only makes it stricter.
+* **Seq:** a forced seq is replaced by the database's own. A STEP waiting behind a close is refused.
+* **Names:** RLO, FSI, LRI and PDI in a name or contact → 422 and refused by the database. RLM and ALM (needed for real right-to-left names) still pass.
+* **Ids and year floor:** ids are zod-equal (nil, max and upper case pass; a version-0 id → 422); `2000-01-01T00:30+05:00` → 422.
+* **Cursors:** number, object, array, more than 200 characters, or a non-RFC id → 422.
+* **Migration:** ASCII-only code. On a demo-shaped copy, every row md5 is unchanged except role permissions 774 → 779. `migrate diff` shows only the 5 lines already there before PF-21. PostgreSQL 18.3 is pinned (deploy/compose.test.yml), so `pg_c_utf8` exists.
+* **Round 2 Minors:**
+  * closed: m1, m2, m3, m4, m5, m6's seq, m8, m9;
+  * m7 closed except R3-m2;
+  * still open: m6's year-3000 dates (R3-m3c).
