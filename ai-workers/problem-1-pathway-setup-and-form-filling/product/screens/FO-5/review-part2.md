@@ -174,3 +174,8 @@ Verdict: Approve 0b5518de93ffb1f73dae9d2932838ca259295338
 * No new findings. r3-m1 and r3-m2 stand as written in round 3.
 
 Verdict: Approve 19a36dd3c33547d5b645310bdde51fc900a1ed0c
+
+## Round 3c (type-only)
+Round 3c (type-only): `git diff 19a36dd3c..1d42f813f` is this review record plus one line in `service.ts` `read()`. It adds `as Record<string, unknown>` to `version.values`, a type assertion only, so the output does not change: the licence number is still set to `undefined` and so left out of the JSON. `node product/tools/typecheck.mjs` reports "no new type errors" (15 known, 0 fixed). No new findings.
+
+Verdict: Approve 1d42f813f2a4160f6f503faa74e379c4dbdd3aa3
