@@ -8,6 +8,10 @@ import { z } from "zod";
 export const EVENT = {
   /** A firm was created (platform, contracts §1.1). Front office seeds the firm's pipelines on it (FO-1a). */
   FIRM_CREATED: "firm.created",
+  /** A staff member's roles changed (platform, PF-4; contracts §1.2 events out). */
+  STAFF_ROLES_CHANGED: "staff.roles_changed",
+  /** A staff member was deactivated: their sessions ended at once (platform, PF-4; contracts §1.2 events out). */
+  STAFF_DEACTIVATED: "staff.deactivated",
   /** A consultation was booked (front office, FO-3; AG-4-47). Keys: bookingId and bookingId:sequence. */
   BOOKING_SCHEDULED: "booking.scheduled",
   /** A booking moved to a new time or host (FO-3). */
@@ -24,6 +28,16 @@ export type EventName = (typeof EVENT)[keyof typeof EVENT];
 /** What a `firm.created` consumer needs: the outbox row's type and firm (module_event's envelope, contracts §0.5). */
 export const FirmCreated = z.object({ type: z.literal(EVENT.FIRM_CREATED), firmId: z.string().uuid() });
 export type FirmCreated = z.infer<typeof FirmCreated>;
+
+/** The payload PF-4 writes for `staff.roles_changed` and `staff.deactivated`: ids only (no name, email, role words or
+ *  licence; a consumer reads the person's current roles from the platform). The firm is the outbox row's firm_id. */
+export const StaffEventPayload = z.object({ staffId: z.string().uuid() }).strict();
+export type StaffEventPayload = z.infer<typeof StaffEventPayload>;
+/** What a consumer of either staff event needs: the outbox row's type and firm, and the payload's staff id. */
+export const StaffRolesChanged = z.object({ type: z.literal(EVENT.STAFF_ROLES_CHANGED), firmId: z.string().uuid(), payload: StaffEventPayload });
+export type StaffRolesChanged = z.infer<typeof StaffRolesChanged>;
+export const StaffDeactivated = z.object({ type: z.literal(EVENT.STAFF_DEACTIVATED), firmId: z.string().uuid(), payload: StaffEventPayload });
+export type StaffDeactivated = z.infer<typeof StaffDeactivated>;
 
 /** What a booking event carries (module_event.payload, FO-3): ids and facts, never the person's details. */
 export const BookingEvent = z.object({
