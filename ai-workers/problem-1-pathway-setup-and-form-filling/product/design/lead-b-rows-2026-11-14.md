@@ -557,3 +557,9 @@ Source: `product/design/case-side-contract-v0.1-2026-11-14.md` on `lead/2026-11-
   * the briefs are updated (they said "replace").
 * **One demo-reset step** (FO-2 adds it, under the release holder's rev 15.1 conditions): PF-3's sample seed, then FO-1a's `seedSampleFirmsFrontOffice`, then PF-25's `catchUpFirmAddresses`. PF-25 adds no reset hook of its own.
 * **PF-25 #1763:** the trigger is gone (c4d3f5a8e), replaced by a `firm.created` consumer with catch-up and a backfill, and a re-review is running.
+
+**FO-5 part 2 answers (Lead B, 15 Nov 01:21 IST, #1777):**
+* Send → SENT now; FO-6 adds the `SigningPort` call in the same transaction, and moves the "Retainer sent" stage once.
+* **FO-8 amended:** when it lands, it writes `prospect.won` once for every prospect already WON without one (catch-up by id, idempotent).
+* Size limits are set as product limits, not Sample: template ≤ 5 MB, signed paper PDF ≤ 10 MB, checked before `FilesPort.put`.
+* No withdrawing a draft (BR-10).
