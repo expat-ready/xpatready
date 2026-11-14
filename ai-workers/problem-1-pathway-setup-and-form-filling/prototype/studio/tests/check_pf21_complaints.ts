@@ -26,7 +26,7 @@ import { ComplaintClosed, ComplaintReceived, EVENT } from "../ports/events.ts";
 import { fakeStaff, type StaffContext } from "../ports/staff.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261114214500_pf21_complaints";
+const NEW = "20261114234500_pf21_complaints";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const EMPTY = `xr_studio_pf21_empty_${process.pid}`, DEMO = `xr_studio_pf21_demo_${process.pid}`, BARE = `xr_studio_pf21_bare_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
@@ -95,10 +95,13 @@ try {
   await pre.$disconnect();
   const demoRows = `select (select count(*) from runtime_case) || ':' || (select count(*) from audit_event) || ':' || (select count(*) from platform_firm) || ':' || (select string_agg(id::text, ',' order by id) from platform_staff)`;
   const before = sql(DEMO, demoRows), fnBefore = new Set(functionsOf(DEMO));
-  for (const d of all.filter((x) => x >= NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
-  ok("PF-21 pass: the migration applies to a demo-data copy (cases, audit, the Sample firms and staff) and leaves its rows as they were", sql(DEMO, demoRows) === before, before);
-  ok("PF-21 pass: migrate diff after it on the demo-data copy names no plat_ table or type", platDiff(DEMO).length === 0, platDiff(DEMO));
-  const added = functionsOf(DEMO).filter((f) => !fnBefore.has(f));
+  // PF-21's own migration alone first, measured right after it (CI #1753, shard 1: later rows' migrations on main follow
+  // this one and add their own functions and rows, which are not PF-21's), then every later one.
+  psql(DEMO, ["-f", join(MIG, NEW, "migration.sql")]);
+  const rowsAfterOwn = sql(DEMO, demoRows), added = functionsOf(DEMO).filter((f) => !fnBefore.has(f));
+  for (const d of all.filter((x) => x > NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
+  ok("PF-21 pass: the migration applies to a demo-data copy (cases, audit, the Sample firms and staff) and leaves its rows as they were", rowsAfterOwn === before, { before, rowsAfterOwn });
+  ok("PF-21 pass: migrate diff after it (and every later migration) on the demo-data copy names no plat_ table or type", platDiff(DEMO).length === 0, platDiff(DEMO));
   ok("PF-21 (P-600 (3), rev 15.2): every database function the migration adds carries the plat_ prefix, and it adds some", added.length >= 4 && added.every((f) => f.startsWith("plat_")), added);
   ok("PF-21 fail→pass: firm_id is first in every index of both tables (the primary keys aside)", indexesNotFirmFirst(DEMO) === "", indexesNotFirmFirst(DEMO));
   ok("PF-21: no plat_ column stores a time without its zone",

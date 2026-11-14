@@ -7,7 +7,7 @@
 // by-laws and complaint guidance are not yet read (its site is outside the cloud lane's network, 14 Nov), so every field,
 // list and period here is Sample until they are. Platform rows carry no workspace_id: the demo reset leaves them.
 // Rules Prisma cannot say (insert-only events, no delete for anyone, a closed complaint never changes, fixed facts, the
-// complainant's shape) are plat_ triggers and checks in the migration 20261114214500_pf21_complaints. The complainant is
+// complainant's shape) are plat_ triggers and checks in the migration 20261114234500_pf21_complaints. The complainant is
 // named by kind + id, never a foreign key into another module (front office or case side): the id is the other module's.
 // No audit table: every change writes the one trail through AuditPort (contracts §7).
 
