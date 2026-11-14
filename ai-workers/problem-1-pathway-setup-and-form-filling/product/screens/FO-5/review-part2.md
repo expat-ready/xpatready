@@ -209,3 +209,16 @@ Verdict: Approve 06f0861773d3657801f7262008656afdf3233514
 * No new findings.
 
 Verdict: Approve 6bad0f6c418e299850383d53453460d5a51bd1a6
+
+## Round 3f (CI guards)
+* **Commit reviewed:** `2a36d6952b8ba60098b5641b840fb09309159bf6`. Only `git diff 6bad0f6c4..2a36d6952` was read: this record, `service.ts` (5 lines) and `tests/check_b164_no_engine_keys.ts` (1 line plus a comment).
+* **Runs:** `check_case_feed.ts` **39/39**; `check_b164_no_engine_keys.ts` **63 passed, 0 failed**; `check_fo5_retainers.ts` **159 passed, 0 failed**. Typecheck: not re-run here (the coordinator reports no new type errors).
+
+| Change | Judgement |
+|---|---|
+| 1. Five `this.audit.record(tx, this.line(…))` calls become `{ ...this.line(…), entity: "fo_retainer" }` (draft, edit, send, withdraw, Signed offline) | Same data at runtime: `line()` already sets `entity: "fo_retainer"`, and the spread then overwrites it with the same value. Action, entity key, summary and detail are unchanged, so the earlier checks still hold: no name, email or licence number; audit in the transaction; outbox row last. It only makes the entity a literal that `check_case_feed`'s sweep can read, like the template and `prospect.won` writes already were. **Fine.** |
+| 2. `NOT_KEYS` in `check_b164_no_engine_keys.ts` gains `firm` and `fees` | **An acceptable narrowing, not a loosening of the guard.** `keyLike()` checks known keys and the heads of every known combination key *before* `NOT_KEYS` (`:141-145`). So a real program code can never be hidden by this list: it is caught as a known prefix first. `NOT_KEYS` only switches off the last fallback, the guess that an unknown two-to-five-letter head before one dot is a *new* program. Program codes are two or three letters taken from the data ("vv", "sp", "pnp"), and no program is "firm" or "fees". The ALLOW list (shrink-only) is untouched, the program-name, form-number, slice-word and regex checks are untouched, and the line names its reason, as the list's other heads (`exempt`, `cited`, `uci`) do. The one thing it stops flagging is a string such as `"fees.sp"`, a fee table keyed by a program code in the *second* part. The old heuristic caught that only by accident, because it reads the head as the program, and a later row would need a proper check for it anyway. Recorded as a nit, not a finding. |
+
+* No new findings. r3-m1 and r3-m2 stand.
+
+Verdict: Approve 2a36d6952b8ba60098b5641b840fb09309159bf6
