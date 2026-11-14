@@ -83,9 +83,9 @@ model PlatformFirm {
   receipts      WebhookReceipt[]
   events        ModuleEvent[]
   foConsultationTypes FoConsultationType[] // FO-1b back-relation (front-office-booking.prisma), Lead B's OK on #1741
-  messages            MsgFirm? // PF-19a back-relation (platform-messages.prisma), the messages slot
 
   // back-relation slot: messages (PF-19a)
+  messages MsgFirm? // platform-messages.prisma (the slot's comment stays: check_pf0p_ports keeps every slot line)
 
   // back-relation slot: money (FO-7a)
 
