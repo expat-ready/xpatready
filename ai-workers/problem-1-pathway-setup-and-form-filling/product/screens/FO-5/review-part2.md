@@ -195,3 +195,17 @@ Verdict: Approve 1d42f813f2a4160f6f503faa74e379c4dbdd3aa3
 * No new findings. r3-m1 and r3-m2 stand.
 
 Verdict: Approve 06f0861773d3657801f7262008656afdf3233514
+
+## Round 3e (CI: PF-25 stamp check)
+* **Commit reviewed:** `6bad0f6c418e299850383d53453460d5a51bd1a6`. That is `08b0dc88b` (code approved at `06f086177`; `06f086177..08b0dc88b` adds only records), plus the merge of `origin/main` (`dc6d03be7`), plus one test change.
+* **The merge did not touch FO-5:**
+  * `git diff 08b0dc88b..dc6d03be7` over FO-5's own files is empty: `api/src/front-office/`, `api/src/features/front-office-retainers.ts`, both FO-5 migrations, `front-office-retainers.prisma`, `samples/fo5-starter-retainer.txt` and `tests/check_fo5_retainers.ts`.
+  * The `api/` folder as a whole does change, but only with main's own files (PF-25's `platform/web-address/*` and its feature file, plus main's `answer-keys.ts`, `fill*.ts` and checkpoint edits). `platform.prisma` gains only PF-25's two lines under its own slot.
+  * Seen from main (`git diff dc6d03be7^2 dc6d03be7`), the merge carries exactly FO-5's files and records, nothing else.
+  * Migration order: `20261114210000_fo5_retainer_tables` < `20261114230000_pf25_web_address` < `20261115010000_fo5_retainer_file_keys`, so FO-5's new stamp is still later than main's newest (P-600 (4)).
+* **The test change** (`git diff dc6d03be7..6bad0f6c4`, `tests/check_pf25_web_address.ts:89-93`): "PF-25's migration is the newest of all" becomes "later than every one before it, and its 14-digit stamp unique". This is correct. The old form fails every later schema row that P-600 requires to merge after it, which is CI shard 1's failure at `7a11b144f`. Its uniqueness clause still catches a stamp clash.
+  * **nit:** `newestBefore < NEW` is true by construction (it is taken from `d < NEW`). What remains checked is that the migration exists and its stamp is unique. That is all a test can check once later rows exist; the order at merge time stays P-600's step for the release holder.
+* **Runs:** `check_pf25_web_address.ts` **68 passed, 0 failed** (the stamp line passes: "newest before it: 20261114210000_fo5_retainer_tables"). `check_fo5_retainers.ts` **159 passed, 0 failed**. Typecheck: not re-run here. The coordinator reports no new type errors, and this round's only change is a test file.
+* No new findings.
+
+Verdict: Approve 6bad0f6c418e299850383d53453460d5a51bd1a6
