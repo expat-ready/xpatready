@@ -56,7 +56,7 @@ The newest are PF-0p, PF-21, PF-23, PF-23r, PF-23m, PF-24, PF-25, **ROW-w.md** (
 2. Answer row questions on the PRs above.
 3. Keep briefs two ahead: next are FO-1k (written; it collects every key the start-now rows left), FO-7b after FO-7a, PF-12 after FO-7a, FO-2 after PF-4 and PF-19a, PF-4b, PF-4s (PF-25w needs it), PF-5, PF-18a.
 4. Concepts still to make: FO-9s, FO-12s, FO-13s, FO-7s, PF-19s, PF-20s, PF-21s/rs, PF-17, PF-18s, FO-3w, FO-3st. The founder's look at FO-4, PF-6, FO-5s and PF-5s is still due.
-5. **Follow-up minors to shape as rows:** FO-3 #1760's open Minors (listed in its PR body for Lead B), and any later PR's "Minors for Lead B" list.
+5. **Follow-up minors to shape as rows:** FO-3 #1760's open Minors (listed in its PR body for Lead B), PF-4t #1775 round 2's m1 (the sign-in door rule `status < 400` also passes a 404 or 5xx) and m2 (assert the doors are exactly `["POST /api/platform/session/local"]`), both in `check_forms_qa53.ts` (a case-side file: the release holder's OK); and any later PR's "Minors for Lead B" list.
 6. Open item 16: the Zoom app review and the College's licence-number format (step 0 in FO-3v and PF-4c). The College's site is unreachable from cloud lanes, so the Lead reads it from the Mac.
 
 ## Who is who
@@ -259,3 +259,4 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
 * 14 Nov 23:22 IST: the current Lead and release holder is now **Lead 50** (`local_1ee10674…`).
 * 15 Nov 00:28 IST: FO-3 #1760 round 3 approved (B-3 and R2-1 fixed, no Major); it goes ready and labels on green. Its open Minors are listed in the PR body for Lead B (4) to shape (added to the hand-over list).
 * 15 Nov 01:08 IST: PF-4t #1775 went red because check_forms_qa53.ts now sees PF-4's routes. Lead B proposed a PLATFORM_PATH pattern (not a list) checked as 401 / no data (comment 6883123596). Lead 50 OK'd it (6883128053), adding a guard that asserts PLATFORM_PATH's source exactly, so widening it fails, and nudged the lane.
+* 15 Nov 01:14 IST: PF-4t #1775 was approved round 2 at d66b3a00 (check_forms_qa53 34/34). Its lane is near its context limit and wrote a hand-over in the PR. Minors m1 and m2 are added to Lead B (4)'s list.
