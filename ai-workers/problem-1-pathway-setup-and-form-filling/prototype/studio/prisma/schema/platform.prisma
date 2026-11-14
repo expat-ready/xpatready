@@ -85,6 +85,18 @@ model PlatformFirm {
   foConsultationTypes FoConsultationType[] // FO-1b back-relation (front-office-booking.prisma), Lead B's OK on #1741
   platComplaints PlatComplaint[] // back-relation: register (PF-21), platform-register.prisma
 
+  // back-relation slot: messages (PF-19a)
+
+  // back-relation slot: money (FO-7a)
+
+  // back-relation slot: compliance (FO-13)
+
+  // back-relation slot: register (PF-21)
+
+  // back-relation slot: retainers (FO-5)
+
+  // back-relation slot: web address (PF-25)
+
   @@map("platform_firm")
 }
 
@@ -208,6 +220,18 @@ model PlatformStaff {
   foTimeOff      FoTimeOff[]
   foBookings     FoBooking[]
   platComplaintsHandled PlatComplaint[] // back-relation: register (PF-21), platform-register.prisma
+
+  // back-relation slot: messages (PF-19a)
+
+  // back-relation slot: money (FO-7a)
+
+  // back-relation slot: compliance (FO-13)
+
+  // back-relation slot: register (PF-21)
+
+  // back-relation slot: retainers (FO-5)
+
+  // back-relation slot: web address (PF-25)
 
   @@unique([firmId, email])
   /// The target of the (firm_id, staff_id) keys below: a row of firm A can never point at firm B's staff (break B-2).
