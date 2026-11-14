@@ -91,3 +91,18 @@ Still additive and on own tables only. The two new functions carry `fo_retainer_
 Still not applicable: no screen, no route. Score it in part 2 and FO-5s.
 
 Verdict: Approve e4a001e70eec1248180edc2f7dce2cccd5727b32
+
+## Round 3 (re-stamp, diff-only)
+
+* **Head reviewed:** `2b087d7adef8299062c251acdda8972d2e79a4a9`. Two commits since the records-only head `c5e4d64a8`: a merge of `origin/main` (FO-1a #1742, PF-L #1751) and one test change. `origin/main` is an ancestor of the head.
+* **FO-5's files are unchanged by the merge:** `git diff e4a001e70 2b087d7ad` on `front-office-retainers.prisma`, the migration folder `20261114210000_fo5_retainer_tables`, `platform.prisma` and `check_fo5_retainers.ts` is empty. The only changes under `prisma/` since my Approve are FO-1a's own schema file and migration, from main. Against main, `platform.prisma` still differs by FO-5's three back-relation lines only.
+* **Stamp (P-600 (4)):** main's newest is now `20261114153000_fo1a_front_office_sales`. FO-5's `20261114210000` is still later, so no rename was needed; the test's stamp check names the new predecessor.
+* **The test change** (`tests/check_fo1a_sales_schema.ts:441-445`): the stray-function query now also skips `^fo_(booking|compliance|signing|retainer)_`, the area prefixes of rows rev 15.2, and leaves those functions to their own areas' checks. It is a narrow, correct fix: FO-5's `fo_retainer_*` functions are no longer counted as FO-1a strays, and the fail case still holds. A generic `fo_next_number` is still caught (`FO-1a fail: a generic fo_ function … is named by the same check`: PASS). Listing `fo_booking_` is redundant with `FO1B_FUNCTIONS`, but harmless.
+* **Runs at `2b087d7ad`** (Postgres on :54329):
+  * `check_fo1a_sales_schema.ts`: **124 passed, 0 failed**.
+  * `check_fo5_retainers.ts`: **60 passed, 0 failed**.
+  * Also `check_fo1b_booking_schema.ts` 80/0 and `check_prisma_schema.ts` 8/0, with FO-1a's migration in the chain.
+* **Findings:** none new. Round 2's Minors and nits (r2-n1 … r2-n4) stand as written, for part 2.
+* The release holder still reads the migration diff before the label (P-600 (5)).
+
+Verdict: Approve 2b087d7adef8299062c251acdda8972d2e79a4a9
