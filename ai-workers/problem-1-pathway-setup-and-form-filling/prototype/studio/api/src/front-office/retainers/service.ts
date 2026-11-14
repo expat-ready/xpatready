@@ -444,7 +444,9 @@ export class Retainers {
     const won = await tx.foStage.findFirst({ where: { firmId: ctx.firmId, pipeline: p.type as never, kind: "WON" } });
     if (!won) return false;
     await tx.foProspect.update({ where: { id: prospectId }, data: { stageId: won.id, wonVia: "SIGNED_OFFLINE", wonAt: now, lostReasonId: null, lostReasonKind: null, lostNote: null } });
-    await tx.foStageMove.create({ data: { firmId: ctx.firmId, prospectId, fromStageId: p.stage_id, toStageId: won.id, cause: "SIGNED_OFFLINE", byActor: `staff:${ctx.staffId}` } });
+    // The chain of moves (FO-1a): a move starts where the last one ended, the first starts nowhere.
+    const last = await tx.foStageMove.findFirst({ where: { firmId: ctx.firmId, prospectId }, orderBy: { seq: "desc" }, select: { toStageId: true } });
+    await tx.foStageMove.create({ data: { firmId: ctx.firmId, prospectId, fromStageId: last?.toStageId ?? null, toStageId: won.id, cause: "SIGNED_OFFLINE", byActor: `staff:${ctx.staffId}` } });
     await this.audit.record(tx, { ...this.line(ctx, "prospect.won", prospectId, "Won: retainer signed on paper", { prospectId, wonVia: "SIGNED_OFFLINE" }), entity: "fo_prospect" });
     return true;
   }

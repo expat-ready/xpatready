@@ -1,6 +1,7 @@
 // FO-5 (P-558, P-559, P-576, P-600; BACKLOG row FO-5 rows rev 6.2, 9, 10 part 2; contracts §2.3, §7; concept
 // fo-5s-retainer-signing r2 BR-1..BR-11; AG-5-3, -9, -34, -39, -47, -50, -64, -65): retainer agreements. Part 1, the
-// schema step: the four tables and every database rule of the migration, each with a passing and a failing case. Two
+// schema step: the four tables and every database rule of the migration, each with a passing and a failing case; part 2:
+// the service and routes (the row's whole "Done when"), on a third database. Two
 // scratch databases: "empty" gets every migration; "demo" gets every migration before FO-5's, then demo-shaped rows (a
 // Sample case, an audit line, the Sample firms and staff), then FO-5's migration and any later one. No server, no
 // browser, no model call (US$0). Both are dropped at the end.
@@ -10,12 +11,25 @@ import { PrismaClient } from "@prisma/client";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import PizZip from "pizzip";
+import { fakeAudit } from "../ports/audit.ts";
+import { EVENT } from "../ports/events.ts";
+import { FileKeyTaken, sha256Hex } from "../ports/files.ts";
+import { FileLinks, LocalFiles } from "../api/src/front-office/files.ts";
+import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
+import { DOCX, buildDocx, placeholdersOf } from "../api/src/front-office/retainers/docx.ts";
+import { checkPlaceholders } from "../api/src/front-office/retainers/placeholders.ts";
+import { RetainersController } from "../api/src/front-office/retainers/routes.ts";
+import { OFFLINE_PDF_MAX_BYTES, Retainers } from "../api/src/front-office/retainers/service.ts";
+import { PLATFORM_ACCESS, type StaffContext } from "../api/src/platform/identity/keys.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
+import { EVERYONE_SEES_ALL, writeSetting } from "../api/src/platform/settings.ts";
+import { platformAuditWorkspaceId } from "../api/src/platform/audit/audit-event.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
 const NEW = "20261114210000_fo5_retainer_tables";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
-const EMPTY = `xr_studio_fo5_empty_${process.pid}`, DEMO = `xr_studio_fo5_demo_${process.pid}`;
+const EMPTY = `xr_studio_fo5_empty_${process.pid}`, DEMO = `xr_studio_fo5_demo_${process.pid}`, API = `xr_studio_fo5_api_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
 const WORK = join(STUDIO, "var", `fo5-check-${process.pid}`);
 const TABLES = ["fo_retainer_template", "fo_retainer", "fo_retainer_version", "fo_retainer_fee_row"];
@@ -44,7 +58,7 @@ const indexesNotFirmFirst = (db: string) => sql(db, `select coalesce(string_agg(
   where c.relnamespace = 'public'::regnamespace and c.relname = any('{${TABLES.join(",")}}') and not i.indisprimary and coalesce(a.attname, '') <> 'firm_id'`);
 
 const all = readdirSync(MIG).filter((d) => /^\d{14}_/.test(d)).sort();
-for (const db of [EMPTY, DEMO]) { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", db]); execFileSync(join(BIN, "createdb"), [...PG, db]); }
+for (const db of [EMPTY, DEMO, API]) { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", db]); execFileSync(join(BIN, "createdb"), [...PG, db]); }
 try {
   // ------------------------------------------------------------------------------------------- the migration (P-600)
   const newest = all.filter((d) => d < NEW).at(-1) ?? "";
@@ -280,12 +294,221 @@ try {
     && refused(DEMO, `update fo_retainer_version set ended_at = now(), end_reason = 'DECLINED' where id = '${u(514)}'`, /the request of a SIGNED retainer does not change/));
   ok("FO-5 fail: a fee row names firm B's version → refused (composite key)", refused(DEMO, `${ret(u(401), { prospect: P2 })}; ${ver(u(506), u(401), 1)}; ${fee(u(606), u(506), 1).replace(`'${firmA}'`, `'${firmB}'`)}`, /fo_retainer_fee_row_firm_id_version_id_fkey/));
   ok("FO-5 fail: firm_id of a retainer never changes", refused(DEMO, `update fo_retainer set firm_id = '${firmB}' where id = '${R4}'`, /firm_id and id never change/));
+
+  // ===================================================================================== part 2: the service and routes
+  // A third database ("api"): every migration, the Sample firms and staff (PF-3's seed: user-R Owner + Case Manager with a
+  // licence, user-T Case Manager with a licence, user-O Case Officer without one; firm B's user-S) and their front office
+  // (FO-1a's seed). The real FilesPort (a scratch folder) and DocumentRenderPort (docxtemplater); the clock is the test's.
+  for (const d of all) psql(API, ["-f", join(MIG, d, "migration.sql")]);
+  const db = client(API);
+  await seedSampleFirms(db);
+  await seedSampleFirmsFrontOffice(db);
+  const A = sql(API, `select id from platform_firm where key='sample-firm'`), B = sql(API, `select id from platform_firm where key='sample-solo'`);
+  const sid = (actor: string) => sql(API, `select id from platform_staff where actor_id='${actor}'`);
+  const ctxOf = (actor: string, firmId: string, firmKey: string): StaffContext => ({ staffId: sid(actor), firmId, firmKey, roles: [], keys: [], duties: [], authTime: 0, via: "local" });
+  const R = ctxOf("user-R", A, "sample-firm"), T = ctxOf("user-T", A, "sample-firm"), O = ctxOf("user-O", A, "sample-firm"), S = ctxOf("user-S", B, "sample-solo");
+  let nowMs = Date.parse("2026-11-24T14:00:00Z");
+  const clock = { now: () => nowMs };
+  const store = new LocalFiles(join(WORK, "files")), links = new FileLinks("test-link-key-0123456789abcdef");
+  const svc = new Retainers(db, store, clock);
+  const fails = async (f: () => Promise<unknown>, status: number, re: RegExp = /./) => {
+    try { await f(); return false; } catch (e) {
+      const r = (e as { getResponse?: () => Record<string, unknown>; getStatus?: () => number });
+      const body = JSON.stringify(r.getResponse?.() ?? String(e));
+      const okay = r.getStatus?.() === status && re.test(body);
+      if (!okay) console.log(`      (refused ${r.getStatus?.()}: ${body.slice(0, 300)})`);
+      return okay;
+    }
+  };
+  const docx = (lines: string[]) => ({ bytes: buildDocx(lines), size: 1000 });
+  const pdf = (s = "signed") => { const b = Buffer.from(`%PDF-1.4\n% ${s}\n%%EOF\n`); return { bytes: new Uint8Array(b), size: b.length }; };
+  const audits = (key: string) => Number(sql(API, `select count(*) from audit_event where entity_key = '${key}'`));
+  const events = (type: string, key: string) => Number(sql(API, `select count(*) from module_event where type = '${type}' and subject_id = '${key}'`));
+
+  // Templates (BR-1).
+  const GOOD = ["# Retainer", "Client: {client.name} ({client.email})", "Representative: {representative.name}", "{#fees}", "{label}: {amount} ({when}{due_on})", "{/fees}", "Total {fees.total}"];
+  ok("FO-5 pass: the known placeholder list names client.name and fees as must-fill", (() => { const p = svc.placeholders().placeholders; return p.find((x) => x.name === "client.name")?.mustFill && p.find((x) => x.name === "fees")?.mustFill && p.length >= 15; })());
+  const tplA = await svc.uploadTemplate(R, { name: "Standard retainer" }, docx(GOOD));
+  ok("FO-5 pass: a template with known placeholders is accepted with no warning, version 1 (BR-1)", tplA.version === 1 && tplA.warnings.length === 0 && tplA.placeholders.includes("fees.amount"), tplA);
+  ok("FO-5 fail: a template with an unknown placeholder is refused with its name (BR-1)", await fails(() => svc.uploadTemplate(R, { name: "Bad" }, docx(["{client.passport} {client.name}"])), 422, /\{client\.passport\} is not a placeholder we know/));
+  const noFee = await svc.uploadTemplate(R, { name: "No fee" }, docx(["Client {client.name}"]));
+  ok("FO-5 pass: a template without a fee placeholder is accepted with a warning (BR-1)", noFee.warnings.some((w) => /never prints the fee/.test(w)), noFee);
+  ok("FO-5 fail: an unreadable file is refused with \"We could not read this file.\"", await fails(() => svc.uploadTemplate(R, { name: "Junk" }, { bytes: new Uint8Array([80, 75, 3, 4, 1, 2]), size: 6 }), 422, /We could not read this file\./));
+  ok("FO-5 fail: a broken placeholder ({client.name with no close) is also unreadable", await fails(() => svc.uploadTemplate(R, { name: "Broken" }, docx(["{client.name"])), 422, /UNREADABLE_FILE/));
+  ok("FO-5 fail: the same name twice in the firm is refused", await fails(() => svc.uploadTemplate(R, { name: "standard RETAINER" }, docx(GOOD)), 409, /NAME_TAKEN/));
+  await svc.changeTemplate(R, noFee.id, { active: false });
+  const st = await svc.starter();
+  const starterPh = placeholdersOf(st.bytes);
+  ok("FO-5 pass: the starter is a .docx built at run time from the committed text, Sample, with the fee loop and only known placeholders (M5)",
+    st.contentType === DOCX && /Unconfirmed: no counsel/.test(st.note) && starterPh.includes("fees.label") && starterPh.includes("client.name") && checkPlaceholders(starterPh).unknown.length === 0 && checkPlaceholders(starterPh).warnings.length === 0, starterPh);
+
+  // People and prospects (FO-1a's tables).
+  const person = (id: string, given: string | null, email: string | null) => sql(API, `insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values ('${id}', '${A}', ${given ? `'${given}'` : "null"}, ${given ? "'Sample'" : "null"}, ${email ? `'${email}'` : "null"}, 'test', now())`);
+  const stage = (pipe: string, key: string, f = A) => sql(API, `select id from fo_stage where firm_id = '${f}' and pipeline = '${pipe}' and key = '${key}'`);
+  let n = 900;
+  const prospect = (p: string, owner: string | null, corp?: { company: string; contact: string }, f = A) => {
+    const L = u(n++), id = u(n++);
+    sql(API, `insert into fo_lead (id, firm_id, person_id, door, source, created_by, updated_at) values ('${L}', '${f}', '${corp?.contact ?? p}', 'MANUAL', 'WEBSITE', 'test', now()); update fo_lead set state = 'ENGAGED', engaged_at = now(), engaged_by = 'test' where id = '${L}'`);
+    sql(API, corp
+      ? `insert into fo_prospect (id, firm_id, lead_id, type, stage_id, subject_company_id, primary_contact_person_id, owner_staff_id, created_by, updated_at) values ('${id}', '${f}', '${L}', 'CORPORATE', '${stage("CORPORATE", "ENGAGED", f)}', '${corp.company}', '${corp.contact}', ${owner ? `'${owner}'` : "null"}, 'test', now())`
+      : `insert into fo_prospect (id, firm_id, lead_id, type, stage_id, subject_person_id, primary_contact_person_id, owner_staff_id, created_by, updated_at) values ('${id}', '${f}', '${L}', 'INDIVIDUAL', '${stage("INDIVIDUAL", "ENGAGED", f)}', '${p}', '${p}', ${owner ? `'${owner}'` : "null"}, 'test', now())`);
+    sql(API, `insert into fo_stage_move (firm_id, prospect_id, to_stage_id, cause, by_actor) select firm_id, id, stage_id, 'PERSON', 'test' from fo_prospect where id = '${id}'`);   // Engage's first move
+    return id;
+  };
+  const PA = u(800), PNONAME = u(801);
+  person(PA, "Client A", "client.a@example.com"); person(PNONAME, null, "no.name@example.com");
+  const PROS = prospect(PA, R.staffId), PROS2 = prospect(PNONAME, R.staffId);
+
+  // AG-5-49: no active licensed person → no draft.
+  sql(API, `update platform_staff set status = 'DEACTIVATED' where firm_id = '${A}' and actor_id in ('user-R', 'user-T')`);
+  ok("FO-5 fail: with no active licensed person there is no draft: \"No active licensed consultant\" (AG-5-49)", await fails(() => svc.draft(O, PROS, { templateId: tplA.id }), 409, /No active licensed consultant/));
+  sql(API, `update platform_staff set status = 'ACTIVE' where firm_id = '${A}' and actor_id in ('user-R', 'user-T')`);
+  ok("FO-5 pass: the representatives are the active people with a licence and the case-manager keys (user-R, user-T; not user-O)",
+    JSON.stringify((await svc.representatives(A)).map((x) => x.staffId).sort()) === JSON.stringify([R.staffId, T.staffId].sort()));
+  ok("FO-5 fail: a case officer without a licence is not a representative", await fails(() => svc.draft(R, PROS, { templateId: tplA.id, representativeStaffId: O.staffId }), 422, /Not eligible to represent/));
+  ok("FO-5 fail: a switched-off template is not offered for a draft (BR-1)", await fails(() => svc.draft(R, PROS, { templateId: noFee.id }), 422, /Switched off/));
+
+  // Draft (preparer R is eligible: pre-selected, BR-3), the default fee row (BR-5), audit line and event.
+  const d1 = await svc.draft(R, PROS, { templateId: tplA.id });
+  const RA1 = d1.id;
+  ok("FO-5 pass: a draft from a prospect: DRAFT, version 1, the preparer as representative, one \"Deposit on signing\" row with no amount (BR-2, BR-3, BR-5)",
+    d1.status === "DRAFT" && d1.version.n === 1 && d1.representativeStaffId === R.staffId && d1.version.fees.length === 1 && d1.version.fees[0].label === "Deposit on signing" && d1.version.fees[0].amountMinor === null && d1.template.version === 1, d1);
+  ok("FO-5 pass: the draft wrote one audit line and the retainer.drafted event", audits(RA1) === 1 && events(EVENT.RETAINER_DRAFTED, RA1) === 1);
+
+  // AG-5-9: only the client name and the fee block Send; everything else shows "missing".
+  ok("FO-5 pass: the draft lists the fee as blocking and the phone only as missing (BR-6)", d1.blockers.fees === "Fee is missing. Add a fee row." && !d1.blockers["client.name"] && d1.canSend === false && Array.isArray(d1.missing), d1);
+  ok("FO-5 fail: Send with the fee empty is refused at the field (AG-5-9)", await fails(() => svc.send(R, RA1), 422, /"fees":"Fee is missing\. Add a fee row\."/));
+  const dNo = await svc.draft(R, PROS2, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 100000, when: "ON_SIGNING" }] });
+  ok("FO-5 fail: Send with the client name empty is refused at the field (AG-5-9)", await fails(() => svc.send(R, dNo.id), 422, /"client\.name":"Client name is missing\."/));
+
+  // Fee rows (BR-5, money): cents, CAD, dates only for ON_DATE.
+  ok("FO-5 fail: a negative fee, a fee over CAD 100 million, a fraction of a cent, or a date on an \"On signing\" row is refused",
+    await fails(() => svc.edit(R, RA1, { fees: [{ label: "x", amountMinor: -1 }] }), 422, /cents/)
+    && await fails(() => svc.edit(R, RA1, { fees: [{ label: "x", amountMinor: "10000000001" }] }), 422, /cents/)
+    && await fails(() => svc.edit(R, RA1, { fees: [{ label: "x", amountMinor: 10.5 }] }), 422, /cents/)
+    && await fails(() => svc.edit(R, RA1, { fees: [{ label: "x", amountMinor: 1, when: "ON_SIGNING", dueOn: "2027-01-01" }] }), 422, /On a date/));
+  const e2 = await svc.edit(R, RA1, { fees: [{ label: "Professional fee", amountMinor: 250000, when: "ON_SIGNING" }, { label: "Balance", amountMinor: 125050, when: "ON_DATE", dueOn: "2027-01-15" }] });
+  ok("FO-5 pass: an edit of a draft makes version 2 with its fee rows in cents, CAD, and the total (BR-5)",
+    e2.version.n === 2 && e2.version.fees.map((f) => `${f.amountMinor}:${f.currency}:${f.when}:${f.dueOn}`).join(",") === "250000:CAD:ON_SIGNING:null,125050:CAD:ON_DATE:2027-01-15" && e2.version.values["fees.total"] === "CAD 3,750.50" && e2.canSend, e2);
+
+  // AG-5-3: values are copied into the version; a later change to the person never alters it.
+  sql(API, `update fo_person set given_names = 'Renamed' where id = '${PA}'`);
+  const again = await svc.read(R, RA1);
+  ok("FO-5 pass: a later change to the person leaves version 2's values as they were (AG-5-3)", again.version.values["client.name"] === "Client A Sample", again.version.values);
+  ok("FO-5 fail: the new name is not in version 2 (it comes only with a new version)", again.version.values["client.name"] !== "Renamed Sample");
+
+  // original_sha256 matches the stored file.
+  const v2 = await db.foRetainerVersion.findFirstOrThrow({ where: { retainerId: RA1, n: 2 } });
+  const f2 = await store.get(A, v2.fileKey);
+  ok("FO-5 pass: original_sha256 matches the stored file's bytes", !!f2 && (await sha256Hex(f2.bytes)) === v2.originalSha256 && /Client A Sample/.test(textOf(f2.bytes)) && /CAD 2,500\.00/.test(textOf(f2.bytes)));
+  ok("FO-5 fail: other bytes under the same key are refused (a stored document never changes)", await (async () => { try { await store.put(A, v2.fileKey, new Uint8Array([1, 2, 3]), DOCX); return false; } catch (e) { return e instanceof FileKeyTaken; } })());
+  ok("FO-5 fail: firm B cannot read firm A's file under the same key", (await store.get(B, v2.fileKey)) === null);
+
+  // Send, then an edit before any signature: version 3, version 2's request ends (BR-9).
+  const sent = await svc.send(R, RA1);
+  ok("FO-5 pass: Send with the client name and a fee: SENT, the request open, one audit line and retainer.sent", sent.status === "SENT" && !!sent.version.sentAt && events(EVENT.RETAINER_SENT, RA1) === 1);
+  ok("FO-5 fail: Send of a sent retainer is refused (only a draft is sent)", await fails(() => svc.send(R, RA1), 409, /NOT_DRAFT/));
+  const e3 = await svc.edit(R, RA1, { signerPersonId: PA });
+  const ended = e3.versions.find((v) => v.n === 2)!;
+  ok("FO-5 pass: an edit before any signature makes version 3 and ends version 2's request (UPDATED), back to DRAFT (BR-9)", e3.version.n === 3 && e3.status === "DRAFT" && !!ended.endedAt && ended.endReason === "UPDATED", e3.versions);
+  ok("FO-5 pass: the new version takes the person's current name", e3.version.values["client.name"] === "Renamed Sample");
+
+  // AG-5-65: once the client signed, edit is refused; withdraw needs a reason; signed → no withdraw.
+  await svc.send(R, RA1);
+  sql(API, `update fo_retainer set status = 'CLIENT_SIGNED' where id = '${RA1}'`);   // FO-6's signing hook
+  ok("FO-5 fail: an edit after the client signed is refused (AG-5-65)", await fails(() => svc.edit(R, RA1, { fees: [{ label: "x", amountMinor: 1 }] }), 409, /can no longer be edited/));
+  ok("FO-5 fail: withdraw without a reason, or with only spaces, is refused (AG-5-34)", await fails(() => svc.withdraw(R, RA1, {}), 422, /reason/) && await fails(() => svc.withdraw(R, RA1, { reason: "   " }), 422, /reason/));
+
+  // Signed offline (BR-11): needs a PDF and a reason; makes the prospect WON once; cannot be undone.
+  ok("FO-5 fail: Signed offline without a file, without a reason, or with a file that is not a PDF is refused (AG-5-39, AG-5-47)",
+    await fails(() => svc.signedOffline(R, RA1, { reason: "Signed at the office" }, undefined), 422, /signed PDF/)
+    && await fails(() => svc.signedOffline(R, RA1, {}, pdf()), 422, /reason/)
+    && await fails(() => svc.signedOffline(R, RA1, { reason: "x" }, { bytes: new Uint8Array(Buffer.from("not a pdf")), size: 9 }), 422, /A PDF only/)
+    && await fails(() => svc.signedOffline(R, RA1, { reason: "x" }, { bytes: pdf().bytes, size: OFFLINE_PDF_MAX_BYTES + 1 }), 422, /At most 10 MB/));
+  const off = await svc.signedOffline(R, RA1, { reason: "Signed at the office" }, pdf());
+  ok("FO-5 pass: Signed offline from Client signed: SIGNED_OFFLINE, filed \"Signed on paper\", the prospect WON via SIGNED_OFFLINE with one stage move",
+    off.status === "SIGNED_OFFLINE" && off.signedOffline?.filed === "Signed on paper" && off.prospectWon === true
+    && sql(API, `select s.kind || ':' || p.won_via from fo_prospect p join fo_stage s on s.id = p.stage_id where p.id = '${PROS}'`) === "WON:SIGNED_OFFLINE"
+    && sql(API, `select count(*) from fo_stage_move where prospect_id = '${PROS}' and cause = 'SIGNED_OFFLINE'`) === "1", off);
+  ok("FO-5 fail: Signed offline again, or withdraw after it, is refused (cannot be undone), and the prospect is won once",
+    await fails(() => svc.signedOffline(R, RA1, { reason: "again" }, pdf("again")), 409, /already signed/)
+    && await fails(() => svc.withdraw(R, RA1, { reason: "changed mind" }), 409, /A signed agreement cannot be withdrawn/)
+    && sql(API, `select count(*) from fo_stage_move where prospect_id = '${PROS}' and cause = 'SIGNED_OFFLINE'`) === "1");
+  ok("FO-5 fail: a won prospect takes no new retainer", await fails(() => svc.draft(R, PROS, { templateId: tplA.id }), 409, /PROSPECT_CLOSED/));
+
+  // Withdraw (BR-10) from Sent with a reason; a draft is not withdrawn; Edit and resend from Declined (AG-5-65 r1).
+  const PB = u(802); person(PB, "Client B", "client.b@example.com");
+  const PROSB = prospect(PB, R.staffId);
+  const w = await svc.draft(R, PROSB, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 50000 }] });
+  ok("FO-5 fail: a draft is not withdrawn (BR-10)", await fails(() => svc.withdraw(R, w.id, { reason: "x" }), 409, /draft has not been sent/));
+  await svc.send(R, w.id);
+  const wd = await svc.withdraw(R, w.id, { reason: "Client changed plans" });
+  ok("FO-5 pass: withdraw from Sent with a reason ends the request; retainer.withdrawn written", wd.status === "WITHDRAWN" && wd.versions[0].endReason === "WITHDRAWN" && wd.withdrawn?.reason === "Client changed plans" && events(EVENT.RETAINER_WITHDRAWN, w.id) === 1);
+  const w2 = await svc.draft(R, PROSB, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 50000 }] });
+  ok("FO-5 pass: after Withdrawn, Prepare retainer is offered again for the prospect (BR-10)", w2.status === "DRAFT");
+  await svc.send(R, w2.id);
+  sql(API, `begin; update fo_retainer_version set ended_at = now(), end_reason = 'DECLINED' where retainer_id = '${w2.id}' and n = 1; update fo_retainer set status = 'DECLINED' where id = '${w2.id}'; commit;`);   // FO-6's decline
+  const rs = await svc.edit(R, w2.id, { fees: [{ label: "Fee", amountMinor: 45000 }] });
+  ok("FO-5 pass: Edit and resend from Declined makes version 2 as a draft (AG-5-65 r1)", rs.status === "DRAFT" && rs.version.n === 2);
+
+  // Corporate (BR-4, AG-5-50): no SIGNATORY → a warning and a pick, never a block; the client name is the company's.
+  const COA = u(803), CP = u(804), CS = u(805);
+  person(CP, "Primary Person", "primary@example.com"); person(CS, "Signing Person", "signer@example.com");
+  sql(API, `insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values ('${COA}', '${A}', 'Sample Bakery Ltd', 'sample bakery', 'test', now()); insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${A}', '${COA}', '${CP}', 'PRIMARY', 'test'), ('${A}', '${COA}', '${CS}', 'OTHER', 'test')`);
+  const PC = prospect(CP, R.staffId, { company: COA, contact: CP });
+  const c1 = await svc.draft(R, PC, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 1 }] });
+  ok("FO-5 pass: a Corporate prospect with no signatory contact still gets a draft, with a warning and the company's contacts to pick from (AG-5-50)",
+    c1.status === "DRAFT" && c1.signerPersonId === null && c1.warnings.some((x) => /no signatory/.test(x)) && c1.signerOptions.length === 2 && c1.version.values["client.name"] === "Sample Bakery Ltd", c1);
+  ok("FO-5 fail: it cannot be sent until someone who signs is chosen", await fails(() => svc.send(R, c1.id), 422, /Choose who signs/));
+  ok("FO-5 fail: a signer who is not one of the company's contacts is refused", await fails(() => svc.edit(R, c1.id, { signerPersonId: PA }), 422, /company's contacts/));
+  const c2 = await svc.edit(R, c1.id, { signerPersonId: CS });
+  ok("FO-5 pass: picking a contact as signer makes the retainer sendable; the client name stays the company's (BR-4)", c2.signerPersonId === CS && c2.canSend && c2.version.values["signer.name"] === "Signing Person Sample", c2.blockers);
+  sql(API, `insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${A}', '${COA}', '${CS}', 'SIGNATORY', 'test')`);
+  const PC2 = prospect(CP, R.staffId, { company: COA, contact: CP });
+  const c3 = await svc.draft(R, PC2, { templateId: tplA.id });
+  ok("FO-5 pass: with a SIGNATORY contact the signer is chosen for the person (BR-4)", c3.signerPersonId === CS && c3.warnings.length === 0);
+
+  // Visibility: "everyone sees all" off → the owner and the retainer's representative read it; another case officer does not.
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  const PV = u(806); person(PV, "Private Client", "p@example.com");
+  const PROSV = prospect(PV, R.staffId);
+  const v = await svc.draft(R, PROSV, { templateId: tplA.id, representativeStaffId: T.staffId });
+  ok("FO-5 pass: with everyone-sees-all off, the retainer's representative (user-T, not the owner) reads it and the prospect's header (BR-3)", (await svc.read(T, v.id)).prospect?.id === PROSV);
+  ok("FO-5 fail: with everyone-sees-all off, a case officer who does not own the prospect gets 404", await fails(() => svc.read(O, v.id), 404));
+  ok("FO-5 pass: the prospect's owner reads it too", (await svc.read(R, v.id)).id === v.id);
+
+  // Firm walls and download links (BR-15).
+  ok("FO-5 fail: firm B reading firm A's retainer → 404 (and editing, sending, withdrawing it)",
+    await fails(() => svc.read(S, RA1), 404) && await fails(() => svc.edit(S, v.id, {}), 404) && await fails(() => svc.send(S, v.id), 404) && await fails(() => svc.withdraw(S, w.id, { reason: "x" }), 404));
+  ok("FO-5 fail: firm B drafting on firm A's prospect → 404", await fails(() => svc.draft(S, PROSB, {}), 404));
+  const key = await svc.fileKey(R, RA1, {}), signed = await svc.fileKey(R, RA1, { file: "signed-offline" });
+  const l = links.sign(A, key, nowMs);
+  ok("FO-5 pass: a download link names the version's file for its firm", "key" in links.check(l.token, A, nowMs) && (links.check(l.token, A, nowMs) as { key: string }).key === key && signed.endsWith("signed-offline.pdf"));
+  ok("FO-5 fail: the link is refused for another firm, and altered", (links.check(l.token, B, nowMs) as { refused?: string }).refused === "invalid" && (links.check(l.token.slice(0, -2) + "AA", A, nowMs) as { refused?: string }).refused === "invalid");
+  ok("FO-5 fail: the link expires (Sample 5 minutes)", (links.check(l.token, A, nowMs + 5 * 60_000) as { refused?: string }).refused === "expired");
+
+  // Audit through AuditPort, in the change's transaction: a failed line rolls the change back.
+  const failing = new Retainers(db, store, clock, fakeAudit({ failOn: (e) => e.action === "retainer.drafted" }) as never);
+  const PF = u(807); person(PF, "Audit Client", "a@example.com");
+  const PROSF = prospect(PF, R.staffId);
+  ok("FO-5 fail: a forced audit failure rolls the draft back (no retainer, no event)", await (async () => { try { await failing.draft(R, PROSF, { templateId: tplA.id }); return false; } catch { return sql(API, `select count(*) from fo_retainer where prospect_id = '${PROSF}'`) === "0"; } })());
+  ok("FO-5 pass: every change wrote one audit line (RA1: the draft, two edits, two sends, Signed offline = 6 lines; refused changes none)", audits(RA1) === 6, audits(RA1));
+
+  // Routes (PF-4's guard): every route declares its agent/retainer:* key.
+  const keysOf = (m: string) => (Reflect.getMetadata(PLATFORM_ACCESS, (RetainersController.prototype as unknown as Record<string, object>)[m]) as { keys?: string[] } | undefined)?.keys?.join(",");
+  const want: Record<string, string> = { placeholders: "agent/retainer:list", starter: "agent/retainer:configure-template", templates: "agent/retainer:list", upload: "agent/retainer:configure-template", newVersion: "agent/retainer:configure-template", changeTemplate: "agent/retainer:configure-template", representatives: "agent/retainer:draft", draft: "agent/retainer:draft", read: "agent/retainer:show", edit: "agent/retainer:draft", send: "agent/retainer:send", withdraw: "agent/retainer:void", signedOffline: "agent/retainer:offline-sign", link: "agent/retainer:download", download: "agent/retainer:download" };
+  ok("FO-5 pass: every route declares its AG-05 C5 key (default deny)", Object.entries(want).every(([m, k]) => keysOf(m) === k), Object.keys(want).map((m) => `${m}=${keysOf(m)}`));
+  ok("FO-5 pass: each declared key is one PF-3 seeded for a role", Object.values(want).every((k) => Number(sql(API, `select count(*) from platform_role_permission where permission_key = '${k}'`)) > 0));
+  ok("FO-5 fail: a Case Officer's roles do not hold configure-template, offline-sign or void (SA-06's seed)", ["agent/retainer:configure-template", "agent/retainer:offline-sign", "agent/retainer:void"].every((k) => sql(API, `select count(*) from platform_role_permission where role = 'CASE_OFFICER' and permission_key = '${k}'`) === "0"));
+  await db.$disconnect();
 } catch (e) {
   fail++;
   console.log(`FAIL  FO-5: the check stopped — ${String((e as { stderr?: string }).stderr ?? "").trim().slice(0, 600)} ${String((e as Error).stack ?? e).slice(0, 400)}`);
 } finally {
-  for (const db of [EMPTY, DEMO]) { try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", db]); } catch { /* reported by the next run's createdb */ } }
+  for (const db of [EMPTY, DEMO, API]) { try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", db]); } catch { /* reported by the next run's createdb */ } }
   rmSync(WORK, { recursive: true, force: true });
 }
 console.log(`\nFO-5 retainers: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
+
+function textOf(docx: Uint8Array): string { return new PizZip(docx).file("word/document.xml")!.asText().replace(/<[^>]+>/g, " ").replace(/\s+/g, " "); }
