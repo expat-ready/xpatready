@@ -2,7 +2,7 @@
 # Lead B watch: new PF/FO PR comments that ask Lead B or the tech lead. Keeps seen ids next to the script (seen.txt; do not commit it).
 # Run it in a background until-loop, e.g.: while true; do out=$(./scan-pr-questions.sh $SINCE | grep -E "^#|WATCH-ERROR"); [[ -n $out ]] && { echo $out; exit; }; sleep 180; done
 # usage: scan.sh SINCE  — prints new PF/FO question comments, records seen ids
-T=$(gh auth token 2>/dev/null); R=$(git -C ${0:h} remote get-url origin | sed -E "s#.*github.com[:/]##; s#\.git$##"); W=${0:h}; SEEN=$W/seen.txt; touch $SEEN
+T=$(gh auth token 2>/dev/null); R=$(git -C ${0:h} remote get-url origin); R=${R#*github.com[:/]}; R=${R%.git}; W=${0:h}; SEEN=$W/seen.txt; touch $SEEN
 for p in 1 2 3 4 5 6; do
   curl -s --retry 3 -H "Authorization: Bearer $T" "https://api.github.com/repos/$R/issues/comments?since=$1&sort=created&direction=asc&per_page=100&page=$p" -o $W/page.json || { echo "WATCH-ERROR curl page $p"; break; }
   n=$(python3 -c "import json;d=json.load(open('$W/page.json'));print(len(d) if isinstance(d,list) else -1)" 2>/dev/null || echo -1)
