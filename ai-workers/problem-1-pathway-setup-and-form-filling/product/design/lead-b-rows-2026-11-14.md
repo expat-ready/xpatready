@@ -540,3 +540,11 @@ Source: `product/design/case-side-contract-v0.1-2026-11-14.md` on `lead/2026-11-
 * **PF-25w waits on PF-4s**, not PF-4: the address change is our own staff's `system/*` key.
 * **FO-5** needs no `w` row: its part 2 is its own API PR.
 * One brief covers PF-21w, FO-3sr and PF-25w: `lead-b-briefs/ROW-w.md`.
+
+**PF-25 amended (Lead B, 14 Nov 22:52 IST, #1763 comment 6881377523):**
+* The address is its own table, not a `platform_firm` column: agreed.
+* **No trigger on `platform_firm`** (P-600 (2): PF-3 owns it, and address generation must never fail a firm's creation). Instead:
+  * a `firm.created` consumer with a catch-up over `module_event`, idempotent, run at start and by the demo reset;
+  * the migration backfills existing firms;
+  * PF-5's sign-up sets the chosen address itself.
+* **Tests:** one address per new firm; a re-run adds nothing; a collision takes the next suggestion and creation never fails.
