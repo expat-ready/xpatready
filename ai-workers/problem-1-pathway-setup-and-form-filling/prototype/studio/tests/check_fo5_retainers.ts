@@ -561,6 +561,53 @@ try {
     && await (async () => { try { await store.put(A, "t/x.bin.meta", new Uint8Array([1]), "text/plain"); return false; } catch (e) { return /\.meta/.test(String(e)); } })());
   ok("FO-5 pass (B-7): the file store lives under the copy's own STUDIO_VAR", (() => { const had = process.env.STUDIO_VAR; process.env.STUDIO_VAR = "/tmp/fo5-var-check"; try { return new LocalFiles().root === "/tmp/fo5-var-check/front-office-files"; } finally { if (had === undefined) delete process.env.STUDIO_VAR; else process.env.STUDIO_VAR = had; } })());
 
+  // ----------------------------------------------------------------- review round 2 (r2-M1, r2-m1, r2-m2) and break round 2 (B-16..B-19)
+  // B-17, r2-M1: a part whose declared size lies is inflated here under a hard cap, so it costs no more than the limit.
+  const liar = (() => {
+    const z = new PizZip(buildDocx(["{client.name}"])); z.file("word/media/pad.xml", " ".repeat(64 * 1024 * 1024));
+    const b = Buffer.from(z.generate({ type: "uint8array", compression: "DEFLATE" })), big = 64 * 1024 * 1024;
+    for (let i = 0; i + 4 <= b.length; i++) {
+      if (b.readUInt32LE(i) === 0x04034b50 && b.readUInt32LE(i + 22) === big) b.writeUInt32LE(1000, i + 22);
+      if (b.readUInt32LE(i) === 0x02014b50 && b.readUInt32LE(i + 24) === big) b.writeUInt32LE(1000, i + 24);
+    }
+    return new Uint8Array(b);
+  })();
+  const t0 = Date.now();
+  ok("FO-5 fail (B-17, r2-M1): a .docx whose part lies about its size (64 MB declared as 1000 bytes) is refused within the limit's cost",
+    await fails(() => svc.uploadTemplate(R, { name: "Liar" }, { bytes: liar, size: liar.length }), 422, /UNREADABLE_FILE/) && Date.now() - t0 < 5000, Date.now() - t0);
+  // B-18: Word's own field codes, citation data and tracked deletions are not text and do not count as placeholders.
+  const wordish = new PizZip(buildDocx(["{client.name}", "{#fees}{label}{/fees}"]));
+  const doc = wordish.file("word/document.xml")!.asText().replace("<w:sectPr/>", `<w:p><w:r><w:instrText xml:space="preserve"> ADDIN ZOTERO_ITEM CSL_CITATION {"citationID":"x"} </w:instrText></w:r><w:del><w:r><w:delText>{old.tag}</w:delText></w:r></w:del></w:p><w:sectPr/>`);
+  wordish.file("word/document.xml", doc); wordish.file("customXml/item1.xml", `<b:Sources xmlns:b="x"><b:Source><b:Guid>{3F2504E0-4F89-11D3-9A0C-0305E82C3301}</b:Guid></b:Source></b:Sources>`);
+  ok("FO-5 pass (B-18): a template with a citation field code, a bibliography GUID and a tracked deletion is accepted",
+    (await svc.uploadTemplate(R, { name: "Word fields" }, { bytes: new Uint8Array(wordish.generate({ type: "uint8array" })), size: 3000 })).placeholders.join(",") === "client.name,fees,fees.label");
+  // B-3 rest: a Word part declared under any name is read.
+  const hidden = new PizZip(buildDocx(["{client.name}"]));
+  hidden.file("[Content_Types].xml", hidden.file("[Content_Types].xml")!.asText().replace("</Types>", `<Override PartName="/word/hdr1.bin" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>`));
+  hidden.file("word/hdr1.bin", `<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>{client.passport}</w:t></w:r></w:p></w:hdr>`);
+  ok("FO-5 fail (B-3): an unknown placeholder in a header declared under a non-.xml name is refused", await fails(() => svc.uploadTemplate(R, { name: "Hidden header" }, { bytes: new Uint8Array(hidden.generate({ type: "uint8array" })), size: 2000 }), 422, /client\.passport/));
+  // B-19: a bounded number of placeholders, and a short refusal.
+  ok("FO-5 fail (B-19): a template with more than 2000 placeholders is refused as unreadable", await fails(() => svc.uploadTemplate(R, { name: "Many" }, docx([Array.from({ length: 2100 }, (_, i) => `{x${i}}`).join(" ")])), 422, /UNREADABLE_FILE/));
+  ok("FO-5 fail (B-19): fifteen unknown placeholders are named ten at a time, \"and 5 more\"", await fails(() => svc.uploadTemplate(R, { name: "Fifteen" }, docx([Array.from({ length: 15 }, (_, i) => `{y${i}}`).join(" ")])), 422, /and 5 more/));
+  // B-16, r2-m1: text the database refuses is refused at the field (422), never "someone else saved it".
+  ok("FO-5 fail (B-16): a fee label with a tab, or a reason with a control character, is refused at the field (422)",
+    await fails(() => svc.edit(R, x0.id, { fees: [{ label: "Fee\tpasted", amountMinor: 100 }] }), 422, /One line, no tabs/)
+    && await fails(() => svc.edit(R, x0.id, { fees: [{ label: "Fee x", amountMinor: 100 }] }), 422, /One line, no tabs/));
+  const PW = u(810); person(PW, "Reason Client", "rc@example.com");
+  const PROSW = prospect(PW, R.staffId);
+  const rw = await svc.draft(R, PROSW, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 100 }] });
+  await svc.send(R, rw.id);
+  ok("FO-5 fail (B-16): a withdraw reason with a control character → 422; one with a line break is accepted",
+    await fails(() => svc.withdraw(R, rw.id, { reason: "bad\u0007bell" }), 422, /control characters/) && (await svc.withdraw(R, rw.id, { reason: "Line one\nline two" })).status === "WITHDRAWN");
+  // r2-m2: Edit and resend of an Expired retainer after a new one took the prospect → RETAINER_OPEN, before rendering.
+  const PE = u(811); person(PE, "Expiry Client", "ex@example.com");
+  const PROSE = prospect(PE, R.staffId);
+  const ex = await svc.draft(R, PROSE, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 100 }] });
+  await svc.send(R, ex.id);
+  sql(API, `begin; update fo_retainer_version set ended_at = now(), end_reason = 'EXPIRED' where retainer_id = '${ex.id}' and n = 1; update fo_retainer set status = 'EXPIRED' where id = '${ex.id}'; commit;`);
+  await svc.draft(R, PROSE, { templateId: tplA.id });
+  ok("FO-5 fail (r2-m2): Edit and resend of an Expired retainer after a new one took the prospect → 409 RETAINER_OPEN", await fails(() => svc.edit(R, ex.id, { fees: [{ label: "Fee", amountMinor: 200 }] }), 409, /RETAINER_OPEN/));
+
   // Routes (PF-4's guard): every route declares its agent/retainer:* key.
   const keysOf = (m: string) => (Reflect.getMetadata(PLATFORM_ACCESS, (RetainersController.prototype as unknown as Record<string, object>)[m]) as { keys?: string[] } | undefined)?.keys?.join(",");
   const want: Record<string, string> = { placeholders: "agent/retainer:list", starter: "agent/retainer:configure-template", templates: "agent/retainer:list", upload: "agent/retainer:configure-template", newVersion: "agent/retainer:configure-template", changeTemplate: "agent/retainer:configure-template", representatives: "agent/retainer:draft", draft: "agent/retainer:draft", read: "agent/retainer:show", edit: "agent/retainer:draft", send: "agent/retainer:send", withdraw: "agent/retainer:void", signedOffline: "agent/retainer:offline-sign", link: "agent/retainer:download", download: "agent/retainer:download" };

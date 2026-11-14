@@ -43,12 +43,14 @@ export type FeeIn = { label: string; amountMinor: bigint | null; when: FoRetaine
 export type Upload = { bytes: Uint8Array; size: number; contentType?: string };
 type Clock = { now(): number };
 
-const str = (v: unknown, max: number, what: string, field: string, required = true): string | null => {
+const str = (v: unknown, max: number, what: string, field: string, required = true, multiline = false): string | null => {
   if (v === undefined || v === null || (typeof v === "string" && !v.trim())) { if (required) unprocessable(`${what} is required.`, { [field]: `${what} is required.` }); return null; }
   if (typeof v !== "string") return unprocessable(`${what} must be text.`, { [field]: `${what} must be text.` });
   const t = v.trim();
   if (t.length > max) unprocessable(`${what} is at most ${max} characters.`, { [field]: `At most ${max} characters.` });
-  if (!/[^\s ​-‏⁠﻿]/.test(t)) unprocessable(`${what} is required.`, { [field]: `${what} is required.` });
+  if (!/[^\s\u00a0\u1680\u2000-\u200f\u2028\u2029\u202f\u205f\u2060\u3000\ufeff]/.test(t)) unprocessable(`${what} is required.`, { [field]: `${what} is required.` });
+  // The database's own text rule (fo_retainer_text_ok; break B-16): one line unless a reason; no other control character.
+  if (multiline ? /[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(t) : /[\u0001-\u001f\u007f\u2028\u2029]/.test(t)) unprocessable(`${what} has a tab, line break or control character.`, { [field]: multiline ? "Remove control characters." : "One line, no tabs." });
   return t;
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -104,7 +106,11 @@ export class Retainers {
       if (e instanceof HttpException) throw e;
       const m = String((e as Error)?.message ?? e) + JSON.stringify((e as { meta?: unknown })?.meta ?? "");
       for (const [k, f] of Object.entries(unique)) if (m.includes(k)) f();
-      if (/fo_retainer|fo_prospect|fo_stage_move|P2002|P2034|Unique constraint|could not serialize|deadlock/i.test(m)) conflict("This changed at the same time (someone else saved it). Open it again.", "CHANGED");
+      // Only what a race produces (review r2-m1): a unique key, a serialization or deadlock, or part 1's state triggers
+      // refusing a move another transaction made first. Anything else is a fault: logged and answered 500, never hidden.
+      if (/P2002|P2034|Unique constraint|could not serialize|deadlock|status cannot move|does not change|only the current version|a request ends once|sent_at is set once|current_version moves|written only as the current version|must end before version|comes back to DRAFT only|change only by an edit/i.test(m))
+        conflict("This changed at the same time (someone else saved it). Open it again.", "CHANGED");
+      console.error(`[fo-retainers] unexpected database refusal: ${m.slice(0, 600)}`);
       throw e;
     }
   }
@@ -176,7 +182,8 @@ export class Retainers {
       throw e;
     }
     const c = checkPlaceholders(found);
-    if (c.unknown.length) unprocessable(c.unknown.map((n) => `{${n}} is not a placeholder we know`).join("; ") + ".", { file: `Unknown: ${c.unknown.map((n) => `{${n}}`).join(", ")}` }, { code: "UNKNOWN_PLACEHOLDER", unknown: c.unknown });
+    const shown = c.unknown.slice(0, 10), more = c.unknown.length - shown.length;   // a short answer (break B-19)
+    if (c.unknown.length) unprocessable(shown.map((n) => `{${n}} is not a placeholder we know`).join("; ") + (more ? `; and ${more} more` : "") + ".", { file: `Unknown: ${shown.map((n) => `{${n}}`).join(", ")}${more ? ` and ${more} more` : ""}` }, { code: "UNKNOWN_PLACEHOLDER", unknown: shown });
     return c;
   }
 
@@ -373,6 +380,8 @@ export class Retainers {
     if (!["templateId", "signerPersonId", "representativeStaffId", "fees"].some((k) => body[k] !== undefined)) unprocessable("Nothing to change.", {});   // B-12: no new version for nothing
     if (!EDITABLE.includes(r.status)) conflict(r.status === "CLIENT_SIGNED" || r.status === "SIGNED" || r.status === "SIGNED_OFFLINE" ? "The client has signed this agreement: it can no longer be edited." : "This agreement is withdrawn: prepare a new one.", "NOT_EDITABLE");
     const p = await this.prospectFor(ctx, r.prospectId ?? notFound("prospect"), true);
+    const open = () => conflict("This prospect already has an open retainer. Open it instead.", "RETAINER_OPEN");
+    if (r.kind === "RETAINER" && r.status === "EXPIRED" && await this.db.foRetainer.findFirst({ where: { firmId: ctx.firmId, prospectId: p.id, kind: "RETAINER", id: { not: r.id }, status: { notIn: ["WITHDRAWN", "EXPIRED"] } }, select: { id: true } })) open();   // review r2-m2, before rendering
     const cur = await this.db.foRetainerVersion.findFirstOrThrow({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion }, include: { fees: { orderBy: { position: "asc" } } } });
     const t = body.templateId !== undefined ? await this.templateFor(ctx.firmId, uuidOf(body.templateId, "templateId"), r.kind) : await this.currentTemplateFile(ctx.firmId, r);
     let repId = r.representativeStaffId;
@@ -391,7 +400,7 @@ export class Retainers {
       await tx.foRetainer.update({ where: { id: r.id }, data: { status: "DRAFT", currentVersion: n, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId, templateId: t.id, templateVersion: t.version, templateFileKey: t.fileKey } });
       await this.writeVersion(tx, ctx, r.id, n, values, file, fees);
       await this.audit.record(tx, this.line(ctx, "retainer.edited", r.id, `Edited: version ${n}${cur.sentAt && !cur.endedAt ? " (the earlier request ended)" : ""}`, { retainerId: r.id, version: n, endedVersion: cur.sentAt && !cur.endedAt ? cur.n : null, sha256: file.sha256 }));
-    });
+    }, { fo_retainer_one_live_per_prospect: open });
     return { ...(await this.read(ctx, r.id)), warnings: s.warnings, signerOptions: s.options };
   }
 
@@ -421,7 +430,7 @@ export class Retainers {
   /** Withdraw (BR-10; AG-5-34): a reason 1-200, from Sent, Viewed or Client signed; the request ends. */
   async withdraw(ctx: StaffContext, id: string, body: Record<string, unknown>) {
     const r = await this.visible(ctx, id, true);
-    const reason = str(body.reason, 200, "A reason", "reason")!;
+    const reason = str(body.reason, 200, "A reason", "reason", true, true)!;
     if (!WITHDRAWABLE.includes(r.status)) conflict(r.status === "SIGNED" || r.status === "SIGNED_OFFLINE" ? "A signed agreement cannot be withdrawn." : r.status === "DRAFT" ? "A draft has not been sent: edit it or leave it." : `A ${r.status.toLowerCase()} agreement cannot be withdrawn.`, "NOT_WITHDRAWABLE");
     await this.tx(async (tx) => {
       const now = new Date(this.clock.now());
@@ -439,7 +448,7 @@ export class Retainers {
    *  makes a client (contracts §7 §2.3-§2.4). */
   async signedOffline(ctx: StaffContext, id: string, body: Record<string, unknown>, file: Upload | undefined) {
     const r = await this.visible(ctx, id, true);
-    const reason = str(body.reason, 200, "A reason", "reason")!;
+    const reason = str(body.reason, 200, "A reason", "reason", true, true)!;
     if (!file?.bytes?.length) unprocessable("Upload the signed PDF.", { file: "Upload the signed PDF." });
     if (file!.size > OFFLINE_PDF_MAX_BYTES) unprocessable("The signed copy is at most 10 MB.", { file: "At most 10 MB." });
     const head = Buffer.from(file!.bytes.subarray(0, 5)).toString("latin1"), tail = Buffer.from(file!.bytes.subarray(-1024)).toString("latin1");
