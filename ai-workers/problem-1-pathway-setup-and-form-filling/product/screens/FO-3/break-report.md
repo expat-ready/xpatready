@@ -117,3 +117,18 @@ Paths are relative to `prototype/studio/`; `svc:N` means line N of `api/src/fron
 Round 2 state: sample-solo went through PAYMENT_HOLD, SECURITY_LOCK, DELETED, PROVISIONING and TRIAL and is back to ACTIVE.
 - sample-solo's booking and slots counts are full from about 14:05 UTC; they clear 10 minutes later or on restart.
 - About 12 more `*@example.com` bookings were added.
+
+## Round 3 (head `9f221f74e`, a fresh :4431 and database; only B-3 and R2-1)
+Set-up: type `b0000000-…0001` `sample-solo/solo-consult` (VIDEO, host 37c139cf). Run lightly, with at most 7 requests in flight, because CI was running on the machine.
+`svc3:N` means a line of `service.ts` at `9f221f74e`.
+
+| Item | Outcome | What I sent and saw |
+|---|---|---|
+| B-3 | **Held** | One stamp and a 3 s wait, then 21 IPs × 10 well-formed forms that fail after the firm check: a time never offered, a wrong wording id, a mode not offered. Result: 147×409 and 63×400 in 1.7 s. A real booking from a new IP then got 201. |
+| R2-1 | **Held** | 27 IPs × 120 `GET …/sample-solo/book/solo-consult/slots` (3,240 reads, 72 s) all got 200. A new IP then got 200, and the 121st read from one IP got 429. The server stayed responsive; load average was under 3. |
+
+Left as they are, both Minor:
+- The firm's limit is checked at svc3:183 and counted at svc3:192, after the booking's transaction. Bookings in flight at the moment the count is at 199 can each pass the check, so the 200 cap can be overshot by about that many. Each still needs a real free slot. Code reading only; I did not flood 200 real bookings.
+- The per-IP booking limit (svc3:177) still counts refused forms: the 11th refused form from one IP got 429. That is the per-IP note from Round 1 B-3, unchanged by design.
+
+Round 3 state: 1 booking was added (`legit-r3@example.com`), and sample-solo's slots counts for 127.0.90.x are full until about 17:46 UTC.
