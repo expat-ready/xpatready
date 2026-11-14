@@ -257,3 +257,21 @@ Verdict: Approve (for db7f9927170b60f8ffe9648358b17667f39ca3b2)
 * **Re-run:** `check_pf21_complaints` gives **107/107**. The P-600 (4) check names `20261114210000_fo5_retainer_tables` as the newest before PF-21, and `migrate diff` names no plat_ table or type on both the empty and the demo-data copies.
 
 Verdict: Approve (for 8961aa76f8564787219387a4cf92738de4fabe26)
+
+### CI fix, re-stamp and PF-25 line (5f9772c)
+* **Diff since ac89de4, read against `origin/main`:**
+  * The migration moved `20261114214500` → `20261114234500` with identical contents.
+  * `NEW` and the schema comment follow it, one line each.
+  * The other change in `check_pf21` is lines 98-105.
+  * `check_pf25_web_address.ts` differs from main only at :89-90.
+  * Nothing else in PF-21's files changed. The stamp is later than main's newest, `20261114230000_pf25_web_address`.
+* **The new measurement is sound:**
+  * `fnBefore` and `before` are read before PF-21's migration. `added` and `rowsAfterOwn` are read right after it, before any later migration.
+  * A non-plat_ function in PF-21's own migration still fails the line, and the rows check compares only before and after its own migration.
+  * `migrate diff` and the index checks still run after every migration.
+* **PF-25 line (Minor, not holding the label):** the rule is kept as rows rev 16.7 states it.
+  * `(all.filter(d => d < NEW).at(-1) ?? "") < NEW` is true by construction, so the line can now fail only on a missing or repeated stamp. PF-21's own line adds a floor (`>= …fo1a…`).
+  * Fix (optional): add `>= "20261114210000_fo5_retainer_tables"`, the newest when PF-25 was stamped, so the line keeps a real check.
+* **Re-run:** `check_pf21_complaints` gives **107/107**. `check_pf25_web_address` gives **68/68**, run with `--tsconfig api/tsconfig.json` as `run-suites.sh` does.
+
+Verdict: Approve (for 5f9772c423dc6c380c62198d5de2fd8fb4ce65f3)
