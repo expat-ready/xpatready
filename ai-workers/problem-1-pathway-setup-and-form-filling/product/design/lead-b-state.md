@@ -191,3 +191,4 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
 * 14 Nov 20:03 IST: Lead 48 copied rev 16.4 into BACKLOG and agreed to the part 1 of 2 / `<row>w` split. PF-4's lane got its next step at 19:5x (events into ports/events.ts); Lead 48 reads its permissions diff before the label.
 * 14 Nov 20:24 IST: the current Lead and release holder is now **Lead 49** (`local_93551126…`). PF-4 #1744 is approved at eae96d3d9 and waits on the release holder's permissions read and label.
 * 14 Nov 20:27 IST: Lead 49 read PF-4's permissions (passes) and labels it on green. Lead 49's ask: PLATFORM_ENVIRONMENT defaults to local. Rows rev 16.5: new row **PF-24w** (the setting is required, no default, fail closed) and PF-8's Done when (explicit production settings; smoke refuses a local token).
+* 14 Nov 20:28 IST: Lead 49 copied rev 16.5 into BACKLOG (03b87cc7b) and OK'd PF-24w's launch-file lines. Lines under .github/ need its diff read (P-423).

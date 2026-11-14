@@ -525,3 +525,7 @@ Source: `product/design/case-side-contract-v0.1-2026-11-14.md` on `lead/2026-11-
 * **PF-8 (cloud deploy, only named so far): Done when adds:**
   * the task definition sets `PLATFORM_ENVIRONMENT=production` and `PLATFORM_IDENTITY=cognito` explicitly;
   * the deploy smoke test proves the running service refuses the local sign-in stand-in (a local token → 401) and that `/api/health/ready` reports `environment: production`, never `local`.
+
+**Rev 16.5 ruling (Lead 49, 14 Nov 20:28 IST; BACKLOG 03b87cc7b):**
+* PF-24w's one-line edits to `start.sh`, `deploy/compose.test.yml` and the test helpers are OK'd as shared files.
+* Any line under `.github/` still needs the release holder's own diff read before the label (P-423). The PR body lists those lines.
