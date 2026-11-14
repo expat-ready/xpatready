@@ -9,8 +9,6 @@
 // key stops the start-up, and the guard reads only a person's agent/* keys.
 // core.ts's ConfigReadGuard leaves these paths to this guard (its one line, Lead 43's OK on #1744); the staff session
 // travels as `Authorization: Bearer <token>`.
-// Nest's decorators are applied as calls in this folder, not with @ syntax: api/tsconfig.json compiles decorators only for
-// src/*.ts and src/features/** (adding src/platform/** is a later row for Lead B, Lead 43 on #1744).
 import { HttpException, HttpStatus, SetMetadata } from "@nestjs/common";
 
 export const PLATFORM_ACCESS = "platform:access";
@@ -56,12 +54,3 @@ export function problem(status: number, title: string, detail: string, extra: Re
 }
 export function unauthorized(detail: string, code = "NOT_SIGNED_IN"): never { return problem(401, "Sign in again", detail, { code }); }
 export function forbidden(detail: string, code = "NOT_ALLOWED"): never { return problem(403, "Not allowed", detail, { code }); }
-
-/** Applies method decorators to one method of a class, and parameter decorators to its parameters in order (the calls the
- *  @ syntax would make). */
-export function decorate<C extends { prototype: object }>(cls: C, method: string, methodDecorators: MethodDecorator[], paramDecorators: ParameterDecorator[] = []) {
-  const proto = cls.prototype, d = Object.getOwnPropertyDescriptor(proto, method);
-  if (!d) throw new Error(`decorate: ${String((cls as { name?: string }).name)} has no method ${method}`);
-  for (const m of [...methodDecorators].reverse()) { const r = m(proto, method, d); if (r) Object.defineProperty(proto, method, r); }
-  paramDecorators.forEach((p, i) => p(proto, method, i));
-}
