@@ -563,3 +563,10 @@ Source: `product/design/case-side-contract-v0.1-2026-11-14.md` on `lead/2026-11-
 * **FO-8 amended:** when it lands, it writes `prospect.won` once for every prospect already WON without one (catch-up by id, idempotent).
 * Size limits are set as product limits, not Sample: template ≤ 5 MB, signed paper PDF ≤ 10 MB, checked before `FilesPort.put`.
 * No withdrawing a draft (BR-10).
+
+## Rev 16.7 (15 Nov 02:11 IST, Lead B (3)): migration tests in a parallel world
+
+* **Rule:** a row's migration test measures **right after its own migration** (apply up to and including it, check, then apply the rest), and never assumes its migration is the newest of all.
+* **The stamp check:** "later than every migration before it, and unique", not `all.at(-1)`.
+* **Applied:** PF-21 #1753 fixed its own test, and fixes PF-25's `check_pf25_web_address.ts:89-90` (merged) in the same PR (Lead B's OK, #1753 comment). Until that lands, later schema PRs are red on PF-25's suite.
+* **Lead B (4):** add this sentence to every schema brief beside the P-600 re-stamp step.

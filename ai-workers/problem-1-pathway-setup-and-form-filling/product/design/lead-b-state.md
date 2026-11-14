@@ -262,3 +262,4 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
 * 15 Nov 01:14 IST: PF-4t #1775 was approved round 2 at d66b3a00 (check_forms_qa53 34/34). Its lane is near its context limit and wrote a hand-over in the PR. Minors m1 and m2 are added to Lead B (4)'s list.
 * 15 Nov 01:21 IST: FO-5 part 2 #1777: five row questions answered on the PR. FO-8 gets a won-event catch-up, and the size limits are set at 5 and 10 MB.
 * 15 Nov 01:46 IST: FO-3 #1760 hit B164: FO-1b's `visitorTimeZone` field read as a program word. Lead B OK'd the rename to `bookerTimeZone` (@map keeps the column). Lead B (4): when writing FO-3a's brief, add "field names avoid program words (B164)".
+* 15 Nov 02:11 IST: PF-21 #1753 found that migration tests assumed 'newest of all' (its own, and PF-25's on main), which turns later schema PRs red. Lead B OK'd fixing PF-25's line in PF-21's PR. Rule recorded as rows rev 16.7; Lead B (4) adds it to the schema briefs.
