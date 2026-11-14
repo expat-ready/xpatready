@@ -6,7 +6,7 @@
 
 **Lead B (3)** is session `local_59938793…`, worktree `lead-b-front-office-238861`, branch `lead-b-front-office` (push with `git push origin HEAD:refs/heads/lead-b-front-office`; `.git/config` can't be written from the sandbox). The sections below this one are earlier hand-overs, kept as records (P-188).
 
-**Release holder now:** **Lead 49** (`local_93551126…`), unless `tools/current-lead.sh` names a later one. **P-602:** only the founder's typed turn starts sessions. Lead 49 hands next rows to the warm cloud lanes through their prompt boxes.
+**Release holder now:** **Lead 50** (`local_1ee10674…`), unless `tools/current-lead.sh` names a later one. **P-602:** only the founder's typed turn starts sessions. Lead 49 hands next rows to the warm cloud lanes through their prompt boxes.
 
 **The rows:**
 * `design/lead-b-rows-2026-11-14.md`, all revs **through 16.6**. Everything through 16.5 is copied into BACKLOG (16.5 at 03b87cc7b); **16.6 is copied too (e5c681a94)**.
@@ -60,7 +60,7 @@ The newest are PF-0p, PF-21, PF-23, PF-23r, PF-23m, PF-24, PF-25, **ROW-w.md** (
 
 ## Who is who
 * **Lead B** owns the new platform (firm sign-up, plans, subscriptions, staff sign-in and roles, walking skeleton) and front-office (enquiry → lead → prospect → booking → retainer → e-signature → payment) modules, all fenced (P-550, P-558). Writes rows and briefs on this branch; never edits `STATE.md`, `RULES.md`, `DECISIONS.md`, `BACKLOG.md`.
-* **Release holder:** the current Lead (`tools/current-lead.sh`; Lead 39 `local_84c512dc…` until ~08:00 IST 14 Nov, then Lead 40 `local_7a6756d1…`, Lead 41 `local_eb5559e3…`, Lead 42 `local_110605c6…` (09:50 IST), Lead 43 `local_b5840dd3…` (by 11:22 IST), Lead 44 `local_dbdab60d…` (by 12:37 IST), Lead 45 `local_24e909a3…` (13:5x IST), Lead 46 `local_3cc8e2ba…` (by 15:46 IST), Lead 47 `local_a358e18f…` (by 17:07 IST), Lead 48 `local_1aede380…` (by 18:52 IST), now **Lead 49 `local_93551126…`** (by 20:24 IST)). Copies Lead B's rows into BACKLOG (section "Full MVP: platform (PF) and front office (FO)" on `lead/2026-11-07-lead31`), starts builder lanes at the founder's typed turns, asks the founder questions, holds AUD-1 (audit), the case side, firm walls and the identity join. Earlier holders: Lead 37, Lead 38 (their rulings stand).
+* **Release holder:** the current Lead (`tools/current-lead.sh`; Lead 39 `local_84c512dc…` until ~08:00 IST 14 Nov, then Lead 40 `local_7a6756d1…`, Lead 41 `local_eb5559e3…`, Lead 42 `local_110605c6…` (09:50 IST), Lead 43 `local_b5840dd3…` (by 11:22 IST), Lead 44 `local_dbdab60d…` (by 12:37 IST), Lead 45 `local_24e909a3…` (13:5x IST), Lead 46 `local_3cc8e2ba…` (by 15:46 IST), Lead 47 `local_a358e18f…` (by 17:07 IST), Lead 48 `local_1aede380…` (by 18:52 IST), Lead 49 `local_93551126…` (by 20:24 IST), now **Lead 50 `local_1ee10674…`** (by 23:22 IST)). Copies Lead B's rows into BACKLOG (section "Full MVP: platform (PF) and front office (FO)" on `lead/2026-11-07-lead31`), starts builder lanes at the founder's typed turns, asks the founder questions, holds AUD-1 (audit), the case side, firm walls and the identity join. Earlier holders: Lead 37, Lead 38 (their rulings stand).
 
 ## The files (all under `ai-workers/problem-1-pathway-setup-and-form-filling/product/`)
 * `design/platform-and-front-office-contracts-2026-11-14.md` — contracts, draft 4; **§7 is binding** and overrides earlier lines; §0.8 sizing (P-562).
@@ -255,3 +255,4 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
 * 14 Nov 23:03 IST: **hand-over written** (START HERE section at the top), at ~46% context, for Lead B (4) (P-565).
 * 14 Nov 23:04 IST: Lead 49 copied rev 16.6 into BACKLOG (e5c681a94). Lead B (4) starts at the founder's morning typed turn. Until then Lead B (3) answers row questions only, in short turns, with no new work past ~50%.
 * 14 Nov 23:15 IST: Lead 49 ruled round 3 for PF-21 #1753: same reviewer, diff 540ebf88c..4688525, and the breaker re-runs (the migration changed). A new Major splits the row, and Lead B shapes the split.
+* 14 Nov 23:22 IST: the current Lead and release holder is now **Lead 50** (`local_1ee10674…`).
