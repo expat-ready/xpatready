@@ -46,7 +46,7 @@ export const DEFAULT_RETRY: RetryPolicy = { retryLimit: 3, retryDelay: 30, retry
 const FIRM = z.string().refine((f) => { try { firmScope(f); return true; } catch { return false; } }, "not a firm id");
 /** What pg-boss stores as a job's data: our envelope around the caller's payload. A recurring schedule's envelope has
  *  no firm and `recurring: true`; each of its runs gets the key `<name>@<minute, ISO>` (as PF-0p's fake gives). */
-const ENVELOPE = z.object({ key: z.string().min(1).max(200), firmId: FIRM.nullable(), payload: JobPayload, recurring: z.literal(true).optional() });
+const ENVELOPE = z.object({ key: z.string().min(1).max(200), firmId: FIRM.nullable(), payload: JobPayload, recurring: z.literal(true).optional(), due: z.iso.datetime().optional() });
 type Envelope = z.infer<typeof ENVELOPE>;
 
 /** A job that refused to run or failed after its last retry. */
@@ -85,10 +85,14 @@ export class PgBossJobs implements JobPort {
   #ready = deferred();
   #poll: number;
   #startWait: number;
+  /** The time pg-boss runs on (its TestClock in tests), for a job's due time. */
+  #now: () => number;
 
   constructor(o: PgBossJobsOptions) {
     this.retry = { ...DEFAULT_RETRY, ...o.retry };
     this.#startWait = o.startWaitMs ?? START_WAIT_MS;
+    const clock = o.boss?.clock;
+    this.#now = clock ? () => clock.now() : () => Date.now();
     this.#poll = o.pollingIntervalSeconds ?? 2;
     this.boss = new PgBoss({ connectionString: o.connectionString, schema: o.schema ?? JOBS_SCHEMA, max: 3, application_name: "xr-studio-jobs", ...o.boss });
     // pg-boss emits "error" for background failures (maintenance, a lost connection); an EventEmitter "error" with no
@@ -105,8 +109,10 @@ export class PgBossJobs implements JobPort {
     if (this.#state === "stopping") await this.#stopping;
     if (this.#state === "stopped") { this.#ready = deferred(); this.#queues.clear(); }
     this.#state = "starting";
+    let bossUp = false;
     try {
       await this.boss.start();
+      bossUp = true;
       // The list keeps a failed job for a year (Sample) instead of pg-boss's 14 days for a job nobody fetches.
       await this.boss.createQueue(DEAD_LETTER, { retentionSeconds: 365 * 24 * 3600 });
       await this.boss.updateQueue(DEAD_LETTER, { retentionSeconds: 365 * 24 * 3600 });
@@ -116,6 +122,11 @@ export class PgBossJobs implements JobPort {
       this.#state = "started";
       this.#ready.resolve();
     } catch (e) {
+      // A start that fails after pg-boss is up stops it again (pool, maintenance timers, any worker already added) and
+      // forgets what it registered, so the next start registers every queue and worker afresh (bot review, 14 Nov).
+      if (bossUp) await this.#stopBoss({ graceful: false, timeout: 1_000 }).catch(() => {});
+      this.#queues.clear();
+      this.#working.clear();
       this.#state = "new";
       this.#ready.reject(e);
       this.#ready = deferred();
@@ -127,13 +138,13 @@ export class PgBossJobs implements JobPort {
    *  A handler still running then is failed by pg-boss: it is retried while it has retries left, and otherwise lands
    *  on the dead-letter list (a handler must be idempotent, as for a crash). */
   stop(timeoutMs = STOP_LIMIT_MS): Promise<void> {
+    // Called while start() runs: wait for it, then stop what it started (a failed start has stopped itself).
+    if (this.#state === "starting") return this.#ready.promise.then(() => this.stop(timeoutMs), () => {});
     if (this.#state !== "started") return this.#stopping ?? Promise.resolve();
     this.#state = "stopping";
     this.#stopping = (async () => {
       try {
-        const done = new Promise<void>((r) => this.boss.once("stopped", () => r()));
-        await this.boss.stop({ graceful: true, close: true, timeout: timeoutMs });
-        await done;
+        await this.#stopBoss({ graceful: true, timeout: timeoutMs });
       } finally {
         this.#state = "stopped";
         this.#working.clear();
@@ -143,12 +154,21 @@ export class PgBossJobs implements JobPort {
     return this.#stopping;
   }
 
-  /** The worker of queue `name` (one per name). Registered before start: it starts with the runner. */
+  /** The worker of queue `name` (one per name). Registered before start: it starts with the runner. A registration
+   *  that fails (its queue could not be made) is undone, so it can be made again. */
   async handle(name: string, handler: JobHandler): Promise<void> {
     JobName.parse(name);
     if (this.#handlers.has(name)) throw new JobRefused(`jobs: "${name}" already has a handler`);
     this.#handlers.set(name, handler);
-    if (this.#state === "started") await this.#work(name);
+    if (this.#state === "started") {
+      try { await this.#work(name); } catch (e) { this.#handlers.delete(name); throw e; }
+    }
+  }
+
+  async #stopBoss(o: { graceful: boolean; timeout: number }) {
+    const done = new Promise<void>((r) => this.boss.once("stopped", () => r()));
+    await this.boss.stop({ graceful: o.graceful, close: true, timeout: o.timeout });
+    await done;
   }
 
   async enqueue(name: string, payload: JobPayload, opts: JobOptions): Promise<{ queued: boolean }> {
@@ -215,7 +235,8 @@ export class PgBossJobs implements JobPort {
     if (!p.success) throw new JobRefused(`jobs: ${name}: the payload is a JSON object of ids and facts`);
     await this.#whenStarted();
     await this.#queue(name);
-    const data: Envelope = { key: o.data.key, firmId: firmScope(o.data.firmId).firmId, payload: p.data };
+    const due = (at ?? new Date(this.#now())).toISOString();
+    const data: Envelope = { key: o.data.key, firmId: firmScope(o.data.firmId).firmId, payload: p.data, due };
     const id = await this.boss.send(name, data, { id: jobIdOf(o.data.key), ...(at ? { startAfter: at } : {}) });
     return { queued: id !== null };
   }
@@ -234,11 +255,16 @@ export class PgBossJobs implements JobPort {
   async #work(name: string) {
     if (this.#working.has(name)) return;
     this.#working.add(name);
-    await this.#queue(name);
-    const handler = this.#handlers.get(name)!;
-    await this.boss.work(name, { pollingIntervalSeconds: this.#poll, batchSize: 1, includeMetadata: true }, async (jobs: JobWithMetadata<Record<string, unknown>>[]) => {
-      for (const job of jobs) await this.#run(name, handler, job);
-    });
+    try {
+      await this.#queue(name);
+      const handler = this.#handlers.get(name)!;
+      await this.boss.work(name, { pollingIntervalSeconds: this.#poll, batchSize: 1, includeMetadata: true }, async (jobs: JobWithMetadata<Record<string, unknown>>[]) => {
+        for (const job of jobs) await this.#run(name, handler, job);
+      });
+    } catch (e) {
+      this.#working.delete(name); // never a worker marked registered that is not (bot review, 14 Nov)
+      throw e;
+    }
   }
 
   async #run(name: string, handler: JobHandler, job: JobWithMetadata<Record<string, unknown>>) {
@@ -248,10 +274,12 @@ export class PgBossJobs implements JobPort {
     if (!env.success) throw new JobRefused(`jobs: ${name}: the job's data is not a PF-14 envelope (${env.error.issues[0]?.path.join(".")})`);
     const firmId = env.data.firmId === null ? null : firmScope(env.data.firmId).firmId;
     if (firmId === null && !env.data.recurring) throw new JobRefused(`jobs: ${name}: a job without a firm`);
-    // A recurring run's instant is the minute pg-boss sent it in (its cron pass runs a moment into the cron minute;
-    // pg-boss's default `missed: skip` sends nothing for minutes the app was down); its key names that minute.
-    const runAt = env.data.recurring ? new Date(Math.floor(new Date(job.startAfter).getTime() / 60_000) * 60_000) : new Date(job.startAfter);
-    const key = env.data.recurring ? `${name}@${runAt.toISOString()}` : env.data.key;
+    // runAt never changes between attempts (a retry rewrites pg-boss's start_after): a job's due time is in its
+    // envelope; a recurring run's instant is the minute pg-boss created it in (its cron pass runs a moment into the
+    // cron minute; pg-boss's default `missed: skip` sends nothing for minutes the app was down), and its key names
+    // that minute, the same on every retry (bot review, 14 Nov).
+    const runAt = env.data.recurring ? recurringMinute(job.createdOn) : new Date(env.data.due ?? job.startAfter);
+    const key = env.data.recurring ? recurringKey(name, runAt) : env.data.key;
     const attempt = job.retryCount + 1;
     try {
       await firmOfJob.run({ firmId, name }, () => handler({ name, payload: env.data.payload, key, firmId, runAt, attempt }));
@@ -298,12 +326,17 @@ function messageOf(out: unknown, depth = 0): string | null {
   return null;
 }
 
+const recurringMinute = (createdOn: Date | string) => new Date(Math.floor(new Date(createdOn).getTime() / 60_000) * 60_000);
+const recurringKey = (name: string, minute: Date) => `${name}@${minute.toISOString()}`;
+
 function toDeadLetter(j: JobWithMetadata<Record<string, unknown>>): DeadLetter {
   const env = ENVELOPE.safeParse(j.data);
+  const source = j as JobWithMetadata<Record<string, unknown>> & { sourceCreatedOn?: Date | string | null };
   const out = j.sourceOutput;
   return {
     name: String(j.sourceName ?? "?"),
-    key: env.success ? env.data.key : "?",
+    // a recurring run's key, as its handler saw it: the minute its failed job was created in
+    key: !env.success ? "?" : env.data.recurring && j.sourceName && source.sourceCreatedOn ? recurringKey(j.sourceName, recurringMinute(source.sourceCreatedOn)) : env.data.key,
     firmId: env.success ? env.data.firmId : null,
     error: (messageOf(out) ?? JSON.stringify(out ?? null)).slice(0, ERROR_CHARS),
     failedAt: j.createdOn,

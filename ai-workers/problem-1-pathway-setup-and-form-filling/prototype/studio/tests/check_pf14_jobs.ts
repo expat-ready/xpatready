@@ -161,6 +161,23 @@ try {
     await jobs.boss.unschedule("pf14.morning");
   }
 
+  // ------------------------- a recurring run keeps its key and runAt on every retry; its dead letter names that key
+  {
+    await jobs.handle("pf14.sweep", async (job) => { record("pf14.sweep", job); throw new Error(`sweep failed for ${job.key}`); });
+    await clock.setTime("2026-11-02T13:58:00Z");
+    await jobs.recurring("pf14.sweep", "0 9 * * *", "America/Toronto");
+    // one retry, 90 s later: it runs in the next minute (pg-boss rewrites start_after for it)
+    await jobs.boss.updateQueue("pf14.sweep", { retryLimit: 1, retryDelay: 90, retryBackoff: false });
+    await tickUntil(async () => seen("pf14.sweep").length >= 2 && (await jobs.deadLetters()).some((d) => d.name === "pf14.sweep"), 15_000, 60);
+    await jobs.boss.unschedule("pf14.sweep");
+    const runs = seen("pf14.sweep");
+    const retried = (await jobs.boss.findJobs("pf14.sweep")).find((j) => j.retryCount === 1);
+    ok("PF-14 pass: a recurring run's retry, in a later minute, has the same key and runAt as its first try (09:00 Toronto, 2 Nov)", runs.length === 2 && runs[0]!.key === "pf14.sweep@2026-11-02T14:00:00.000Z" && runs[1]!.key === runs[0]!.key && runs[1]!.runAt === runs[0]!.runAt && Math.floor(runs[1]!.at / 60_000) > Math.floor(runs[0]!.at / 60_000), runs);
+    ok("PF-14 fail: the retry's own start time is in a later minute (a key read from it would differ)", !!retried && Math.floor(new Date(retried.startAfter).getTime() / 60_000) * 60_000 !== Date.parse("2026-11-02T14:00:00Z"), retried?.startAfter);
+    const dl = (await jobs.deadLetters()).find((d) => d.name === "pf14.sweep");
+    ok("PF-14 pass: the run's dead-letter entry names the run's key, not just the job name", dl?.key === runs[0]?.key && /sweep failed for pf14\.sweep@2026-11-02T14:00/.test(dl?.error ?? ""), dl);
+  }
+
   // ------------------------------------------------- a job nobody fetches is kept, so its key stays used (m2)
   {
     await jobs.schedule("pf14.unworked", new Date(clock.now()), {}, { key: "unworked:1", firmId: A });
@@ -194,6 +211,7 @@ try {
     await tickUntil(async () => (await state("pf14.broken", "broken:1")) === "failed" && (await state("pf14.flaky", "flaky:1")) === "completed", 250, 200);
     const tries = seen("pf14.broken");
     const gaps = tries.slice(1).map((t, i) => (t.at - tries[i]!.at) / 1000);
+    ok("PF-14 pass: every retry of a job sees the same runAt (its due time, not the retry's start)", tries.length === 3 && tries.every((t) => t.runAt === tries[0]!.runAt), tries.map((t) => t.runAt));
     ok("PF-14 pass: a failing job is tried 1 + retryLimit times, the waits growing (back-off: ≥1 s, then ≥2 s)", tries.length === 3 && tries.map((t) => t.attempt).join() === "1,2,3" && gaps[0]! >= 1 && gaps[1]! >= 2 && gaps[1]! >= gaps[0]! * 0.99, { attempts: tries.map((t) => t.attempt), gaps });
     const dead = await jobs.deadLetters();
     const mine = dead.find((d) => d.key === "broken:1");
@@ -294,6 +312,29 @@ try {
     await real.stop();
     const open2 = await q<{ n: string }>("select count(*)::text n from pg_stat_activity where application_name = 'xr-pf14-stop' and datname = $1", [MAIN]);
     ok("PF-14 pass: a stopped runner starts again, runs a job, and its second stop stops it too (no runner left running)", again.queued && ranAgain === "completed" && !real.started && open2[0]!.n === "0", { again, ranAgain, open2 });
+    // A start that fails after pg-boss is up (here: its queue store refuses one queue once) stops pg-boss again and
+    // forgets what it registered; the next start registers that worker afresh (bot review, 14 Nov).
+    const conns = async (app: string) => { for (let i = 0; i < 30; i++) { const n = (await q<{ n: string }>("select count(*)::text n from pg_stat_activity where application_name = $1 and datname = $2", [app, MAIN]))[0]!.n; if (n === "0") return 0; await realPause(100); } return -1; };
+    const shaky = new PgBossJobs({ connectionString: urlOf(MAIN), pollingIntervalSeconds: 0.5, boss: { application_name: "xr-pf14-shaky" }, onError: () => {} });
+    let ranShaky = false;
+    await shaky.handle("pf14.shaky", async () => { ranShaky = true; });
+    const createQueue = shaky.boss.createQueue.bind(shaky.boss);
+    let failOnce = true;
+    (shaky.boss as unknown as { createQueue: typeof createQueue }).createQueue = async (name, o) => { if (name === "pf14.shaky" && failOnce) { failOnce = false; throw new Error("queue store unavailable"); } return createQueue(name, o); };
+    const startFailed = await throwsLike(() => shaky.start(), (e) => /queue store unavailable/.test(String(e)));
+    const leftAfterFail = await conns("xr-pf14-shaky");
+    ok("PF-14 fail: a start that fails after pg-boss is up rejects, and leaves no pg-boss connection open", startFailed && !shaky.started && leftAfterFail === 0, { startFailed, leftAfterFail });
+    await shaky.start();
+    await shaky.enqueue("pf14.shaky", {}, { key: "shaky:1", firmId: A });
+    for (let i = 0; i < 100 && !ranShaky; i++) await realPause(100);
+    await shaky.stop();
+    ok("PF-14 pass: the next start registers the worker whose queue failed before, and its job runs", ranShaky);
+    const racing = new PgBossJobs({ connectionString: urlOf(MAIN), boss: { application_name: "xr-pf14-race" }, onError: () => {} });
+    const racingStart = racing.start();
+    await racing.stop();
+    await racingStart;
+    ok("PF-14 pass: stop() called while start() runs waits for it, then stops the runner (no connection left)", !racing.started && (await conns("xr-pf14-race")) === 0);
+    ok("PF-14 fail: …and that runner refuses new work", await throwsLike(() => racing.enqueue("pf14.shaky", {}, { key: "shaky:2", firmId: A }), (e) => e instanceof JobRefused));
     // the failing side: a handler that overruns stop's limit is not completed by the stop; pg-boss hands its job back
     // for a retry, so it is never lost and reruns on the next start (an idempotent handler, as in the crash case).
     const late = new PgBossJobs({ connectionString: urlOf(MAIN), pollingIntervalSeconds: 0.5, onError: () => {} });
