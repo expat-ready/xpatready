@@ -4,10 +4,11 @@
 // than a platform_firm column, so platform_firm's columns stay as they are: a client generated with a new platform_firm
 // column could no longer read platform_firm on a copy migrated only up to an earlier row (every check that seeds the
 // Sample firms there). Rules Prisma cannot say (shape and reserved names, a change only with its redirect record, a held
-// address never taken by another firm, never removed, insert-only history, the Sample firms' address from their key) are
+// address never taken by another firm, never removed, insert-only history, the existing firms' address from their key) are
 // in the migration 20261114230000_pf25_web_address. Read and written only through api/src/platform/web-address/.
 
-/// A firm's web address (SA-2-27): one per firm, unique. Set at sign-up (PF-5) or, for a Sample firm, from its key;
+/// A firm's web address (SA-2-27): one per firm, unique. Set at sign-up (PF-5), from the firm.created event, or from
+/// the key for a firm that existed before PF-25;
 /// afterwards changed only by ExpatReady staff, each change with its redirect record. Never removed.
 model PlatformFirmWebAddress {
   firmId    String   @id @map("firm_id") @db.Uuid

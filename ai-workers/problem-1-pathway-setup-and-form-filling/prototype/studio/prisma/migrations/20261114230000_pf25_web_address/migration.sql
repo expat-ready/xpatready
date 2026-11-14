@@ -1,7 +1,7 @@
 -- PF-25 (rows rev 15, rev 16; P-599, P-600; SA-2-27, SA2-D8, AG-4-16, AG-4-17, AG01-1): each firm's own web address
 -- `<address>.expatready.com`. Schema: prisma/schema/platform-web-address.prisma, and platform_firm's two back-relations on
--- PF-25's own slot line in platform.prisma (no platform_firm column). Additive only: two new tables and their rules, and
--- one AFTER INSERT trigger on platform_firm for the Sample firms; no existing table, column or row changes.
+-- PF-25's own slot line in platform.prisma (no platform_firm column). Additive only: two new tables and their rules; no
+-- existing table, column, trigger or row changes.
 --   * platform_firm_web_address: a firm's address, one per firm, unique: one DNS label (lower-case letters, digits,
 --     hyphens; 3-63 characters; no hyphen at either end; not xn--), not one of ExpatReady's reserved names (Sample: www,
 --     api, app, admin, mail, status, help, book, portal). A firm has none until sign-up (PF-5) gives it. Never removed.
@@ -15,13 +15,11 @@
 --     never removed; a reason is 3-500 characters with no control or direction character; one advisory lock per
 --     address, so two transactions never both take or hold one address (writes under READ COMMITTED only, so the checks
 --     see each other's commits).
---   * data: a Sample firm (key `sample-…`) gets its key as its address, now and whenever one is inserted later
---     (api/src/platform/seed-sample-firms.ts runs after migrations on an empty copy), when the key is an allowed address
---     that is free: the one trigger on platform_firm (AFTER INSERT; Lead B's table, for the release holder). No other
---     firm gets one from its key, and no person may choose an address starting with sample- (service rule).
+--   * data: every firm that exists now (not DELETED or ABANDONED) gets its key as its address when the key is an allowed
+--     address that is free (Lead B on #1763). A firm made later gets one from the firm.created event (firm-created.ts);
+--     no trigger on platform_firm (P-600 (2)). No person may choose an address starting with sample- (service rule).
 -- Every function carries the platform_ prefix (rows rev 15.2).
--- Rollback: DROP TRIGGER "platform_firm_web_address_sample" ON "platform_firm"; DROP TABLE
---   "platform_firm_address_history", "platform_firm_web_address"; DROP FUNCTION platform_firm_web_address_sample(),
+-- Rollback: DROP TABLE "platform_firm_address_history", "platform_firm_web_address"; DROP FUNCTION
 --   platform_firm_web_address_rules(), platform_firm_web_address_kept(), platform_firm_address_history_insert_only(),
 --   platform_firm_address_history_names_current(), platform_firm_address_history_followed(),
 --   platform_web_address_reason_ok(text), platform_web_address_free_for(text, uuid),
@@ -190,22 +188,11 @@ BEGIN
 END $$;
 CREATE CONSTRAINT TRIGGER "platform_firm_address_history_followed" AFTER INSERT ON "platform_firm_address_history" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION platform_firm_address_history_followed();
 
--- The Sample firms' address from their key: now, and for a Sample firm inserted later. Only when the key is free, so the
--- Sample seed never fails on it. The one PF-25 trigger on platform_firm (Lead B's table; listed for the release holder).
--- The service never lets a person choose an address starting with sample- (rules.ts checkAddressChoice; break m10).
-CREATE FUNCTION platform_firm_web_address_sample() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  IF NEW."key" LIKE 'sample-%' AND platform_web_address_allowed(NEW."key") THEN
-    PERFORM platform_web_address_lock(NEW."key");
-    IF platform_web_address_free_for(NEW."key", NEW."id") THEN
-      INSERT INTO "platform_firm_web_address" ("firm_id", "address", "set_by", "updated_at") VALUES (NEW."id", NEW."key", 'seed:PF-25', now());
-    END IF;
-  END IF;
-  RETURN NULL;
-END $$;
-CREATE TRIGGER "platform_firm_web_address_sample" AFTER INSERT ON "platform_firm" FOR EACH ROW EXECUTE FUNCTION platform_firm_web_address_sample();
-
+-- Backfill (Lead B on #1763): every firm that exists now gets its key as its address when the key is an allowed address
+-- that is free. A firm made later gets its address from the firm.created event (api/src/platform/web-address/
+-- firm-created.ts; PF-5's sign-up sets the chosen one itself): no trigger on platform_firm (P-600 (2)), so address
+-- generation never fails a firm's creation.
 INSERT INTO "platform_firm_web_address" ("firm_id", "address", "set_by", "updated_at")
 SELECT f."id", f."key", 'seed:PF-25', now() FROM "platform_firm" f
-WHERE f."key" LIKE 'sample-%' AND platform_web_address_free_for(f."key", f."id")
+WHERE f."status"::text NOT IN ('DELETED', 'ABANDONED') AND platform_web_address_free_for(f."key", f."id")
 ORDER BY f."key";

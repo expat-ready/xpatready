@@ -9,6 +9,7 @@ import { systemClock } from "../../../../ports/clock.ts";
 import { Db, OpenRead } from "../../core.ts";
 import { auditEvent } from "../audit/audit-event.ts";
 import { publicFirmOf, sendPublicNotFound, webAddressHost } from "./host.ts";
+import { catchUpFirmAddresses, type CatchUpResult } from "./firm-created.ts";
 import { WebAddresses } from "./service.ts";
 
 /** The service as the app uses it: the app's database, the interim audit adapter (PF-0p; AUD-1 swaps it), the real clock. */
@@ -22,6 +23,20 @@ export class WebAddressHostRouting {
     const server = host.httpAdapter?.getInstance?.() as { use?: (fn: unknown) => unknown } | undefined;
     if (typeof server?.use !== "function") throw new Error("PF-25: the HTTP server is not ready, so firm web addresses cannot be routed");
     server.use(webAddressHost(addresses));
+  }
+}
+
+/** At app start, every firm created while no one listened (a `firm.created` event with no address yet, and the Sample
+ *  firms) gets its address (firm-created.ts). In the background: it never delays or stops the start, and a firm that
+ *  fails is logged by id. `done` lets a test wait for it. */
+export class WebAddressCatchUp {
+  done: Promise<CatchUpResult | null> = Promise.resolve(null);
+  constructor(private readonly db: Db) {}
+  onApplicationBootstrap() {
+    this.done = catchUpFirmAddresses(this.db, auditEvent).then((r) => {
+      if (r.failed.length) console.warn(`PF-25: ${r.failed.length} firm(s) got no web address at start: ${r.failed.map((f) => f.firmId).join(", ")}`);
+      return r;
+    }, (e) => { console.warn(`PF-25: the web-address catch-up did not run: ${String(e).slice(0, 200)}`); return null; });
   }
 }
 
@@ -57,6 +72,8 @@ export class WebAddressController {
 
 // Decorators as calls (this folder is outside api/tsconfig.json's decorator files, as PF-4's identity/guard.ts).
 Injectable()(WebAddressHostRouting);
+Injectable()(WebAddressCatchUp);
+Inject(Db)(WebAddressCatchUp, undefined, 0);
 [HttpAdapterHost, WebAddresses].forEach((token, i) => Inject(token)(WebAddressHostRouting, undefined, i));
 Controller("api/public")(WebAddressController);
 [WebAddresses, Db].forEach((token, i) => Inject(token)(WebAddressController, undefined, i));

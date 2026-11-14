@@ -26,7 +26,9 @@ import { ConfigReadGuard, Db, OpenRead } from "../api/src/core.ts";
 import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { PUBLIC_NOT_FOUND_HTML, PUBLIC_NOT_FOUND_JSON, publicFirmOf, registerPublicPath, sendPublicNotFound } from "../api/src/platform/web-address/host.ts";
-import { WebAddressController, WebAddressHostRouting } from "../api/src/platform/web-address/routes.ts";
+import { WebAddressCatchUp, WebAddressController, WebAddressHostRouting } from "../api/src/platform/web-address/routes.ts";
+import { catchUpFirmAddresses, FIRM_CREATED_ACTOR, onFirmCreated } from "../api/src/platform/web-address/firm-created.ts";
+import { EVENT } from "../ports/events.ts";
 import { checkAddressShape, readHost } from "../api/src/platform/web-address/rules.ts";
 import { ADDRESS_CHANGE_KEY, WebAddresses } from "../api/src/platform/web-address/service.ts";
 
@@ -44,6 +46,7 @@ let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 400)}` : ""}`); };
 const psql = (db: string, args: string[]) => execFileSync(join(BIN, "psql"), [urlOf(db), "-v", "ON_ERROR_STOP=1", "-q", ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 const sql = (db: string, q: string) => psql(db, ["-Atc", q]);
+const addressOfDb = (db: string, firmId: string) => sql(db, `select coalesce((select address from platform_firm_web_address where firm_id = '${firmId}'), '-')`);
 const refused = (db: string, q: string, re: RegExp) => { try { sql(db, q); return false; } catch (e) { return re.test(String((e as { stderr?: string }).stderr ?? e)); } };
 const client = (db: string) => new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(db), options: "-c TimeZone=UTC" }) });
 /** The HTTP problem a service call throws: its status and body. */
@@ -95,10 +98,46 @@ try {
   ok("PF-25 fail: the migration does not apply twice", (() => { try { psql(EMPTY, ["-f", join(MIG, NEW, "migration.sql")]); return false; } catch (e) { return /already exists/.test(String((e as { stderr?: string }).stderr ?? e)); } })());
   const db = client(EMPTY); dbs.push(db);
   await seedSampleFirms(db);
-  ok("PF-25 pass: on the empty copy the Sample firms seeded after the migration get their key as their address (sample-firm, sample-solo)",
-    sql(EMPTY, ADDRESSES) === "sample-firm=sample-firm,sample-solo=sample-solo");
+  ok("PF-25 fail (Lead B, P-600 (2)): no PF-25 trigger on platform_firm: the Sample firms seeded after the migration have no address until the catch-up",
+    sql(EMPTY, ADDRESSES) === "sample-firm=-,sample-solo=-" && sql(EMPTY, `select count(*) from pg_trigger where tgrelid = 'platform_firm'::regclass and not tgisinternal and tgname like '%web_address%'`) === "0");
+  const caught0 = await catchUpFirmAddresses(db, auditEvent);
+  ok("PF-25 pass: the catch-up gives the Sample firms (PF-3's seed raises no event) their key as their address, audited",
+    sql(EMPTY, ADDRESSES) === "sample-firm=sample-firm,sample-solo=sample-solo" && caught0.results.length === 2 && caught0.failed.length === 0
+    && sql(EMPTY, `select count(*) from audit_event where action = 'firm.web_address.set' and actor = '${FIRM_CREATED_ACTOR}'`) === "2", caught0);
   const firmX = sql(EMPTY, `insert into platform_firm (id, key, operating_name, country_code, status, contact_email, updated_at) values (gen_random_uuid(), 'firm-x', 'X', 'CA', 'ACTIVE', 'x@firm-x.example.com', now()) returning id`);
-  ok("PF-25 fail: a firm that is not a Sample firm gets no address from its key (its address comes from sign-up)", sql(EMPTY, `select count(*) from platform_firm_web_address where firm_id='${firmX}'`) === "0");
+  await catchUpFirmAddresses(db, auditEvent);
+  ok("PF-25 fail: a firm with no firm.created event that is not a Sample firm gets no address from the catch-up (nor from its key)", sql(EMPTY, `select count(*) from platform_firm_web_address where firm_id='${firmX}'`) === "0");
+
+  // ------------------------------------------------------------------------- the firm.created consumer (Lead B, #1763)
+  const mkFirm = (key: string, name: string, status = "ACTIVE") => sql(EMPTY, `insert into platform_firm (id, key, operating_name, country_code, status, contact_email, updated_at) values (gen_random_uuid(), '${key}', '${name}', 'CA', '${status}', '${key}@${key}.example.com', now()) returning id`);
+  const created = (firmId: string) => sql(EMPTY, `insert into module_event (id, firm_id, type, subject_id, payload) values (gen_random_uuid(), '${firmId}', '${EVENT.FIRM_CREATED}', '${firmId}', '{}') returning seq`);
+  const addressRows = () => sql(EMPTY, `select count(*) from platform_firm_web_address`);
+  const firmM = mkFirm("firm-m", "Maple Immigration Inc."), firmN = mkFirm("firm-n", "Maple Immigration");
+  created(firmM); created(firmN);
+  const caught1 = await catchUpFirmAddresses(db, auditEvent);
+  ok("PF-25 pass: a new firm gets one address from its operating name on firm.created; the second firm's suggestion collides and takes the next (maple-immigration, maple-immigration-2)",
+    addressOfDb(EMPTY, firmM) === "maple-immigration" && addressOfDb(EMPTY, firmN) === "maple-immigration-2" && caught1.results.length === 2 && caught1.failed.length === 0, caught1);
+  const rowsBefore = addressRows();
+  const caught2 = await catchUpFirmAddresses(db, auditEvent);
+  const again = await onFirmCreated(db, auditEvent, { type: EVENT.FIRM_CREATED, firmId: firmM });
+  ok("PF-25 fail: a second run adds nothing (the catch-up finds no firm; a repeated event leaves the address as it is)",
+    caught2.results.length === 0 && caught2.failed.length === 0 && again?.assigned === false && again.address === "maple-immigration" && addressRows() === rowsBefore, [caught2, again]);
+  const firmC = mkFirm("maple-immigration", "Maple Immigration");
+  created(firmC);
+  const caught3 = await catchUpFirmAddresses(db, auditEvent);
+  ok("PF-25 fail: a firm whose key and name collide with taken addresses is still created, and gets the next free suggestion (maple-immigration-3)",
+    /^[0-9a-f-]{36}$/.test(firmC) && addressOfDb(EMPTY, firmC) === "maple-immigration-3" && caught3.failed.length === 0, caught3);
+  const firmS = mkFirm("firm-s", "Signed Up Law");
+  await db.$transaction((tx) => new WebAddresses({ db, audit: auditEvent, clock: new FakeClock(new Date()) }).claimAtSignUp(tx, firmS, "chosen-law", "system:sign-up"));
+  created(firmS);
+  const afterSignUp = await onFirmCreated(db, auditEvent, { type: EVENT.FIRM_CREATED, firmId: firmS });
+  ok("PF-25 pass: a firm whose sign-up set its chosen address keeps it when firm.created arrives",
+    afterSignUp?.assigned === false && addressOfDb(EMPTY, firmS) === "chosen-law", afterSignUp);
+  const firmD = mkFirm("firm-d", "Departed Law", "DELETED");
+  created(firmD);
+  await catchUpFirmAddresses(db, auditEvent);
+  ok("PF-25 fail: another event type is ignored, and a DELETED firm gets no address",
+    (await onFirmCreated(db, auditEvent, { type: "firm.updated", firmId: firmX })) === null && addressOfDb(EMPTY, firmX) === "-" && addressOfDb(EMPTY, firmD) === "-");
 
   for (const d of all.filter((x) => x < NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
   const W = "00000000-0000-4000-8000-000000000001", CMB = "00000000-0000-4000-8000-000000000002";
@@ -107,11 +146,14 @@ try {
     insert into audit_event (id, workspace_id, actor, action, entity, summary) values (gen_random_uuid(), '${W}', 'user-R', 'case.open', 'runtime_case', 'Sample');`);
   const pre = client(DEMO); dbs.push(pre);
   await seedSampleFirms(pre);
+  sql(DEMO, `insert into platform_firm (id, key, operating_name, country_code, status, contact_email, updated_at) values (gen_random_uuid(), 'demo-law', 'Demo Law', 'CA', 'ACTIVE', 'd@demo-law.example.com', now()), (gen_random_uuid(), 'gone-law', 'Gone Law', 'CA', 'DELETED', 'g@gone-law.example.com', now())`);
   const demoRows = `select (select count(*) from runtime_case) || ':' || (select count(*) from audit_event) || ':' || (select count(*) from platform_firm) || ':' || (select count(*) from platform_staff)`;
   const before = sql(DEMO, demoRows);
   for (const d of all.filter((x) => x >= NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
   ok("PF-25 pass: on a demo-data copy the migration gives the Sample firms their key as their address and leaves every other row as it was",
     sql(DEMO, demoRows) === before && sql(DEMO, ADDRESSES) === "sample-firm=sample-firm,sample-solo=sample-solo", [before, sql(DEMO, demoRows), sql(DEMO, ADDRESSES)]);
+  ok("PF-25 pass (Lead B): the migration backfills every firm that exists from its key (demo-law too); a DELETED firm gets none",
+    addressOfDb(DEMO, sql(DEMO, `select id from platform_firm where key = 'demo-law'`)) === "demo-law" && addressOfDb(DEMO, sql(DEMO, `select id from platform_firm where key = 'gone-law'`)) === "-");
   ok("PF-25 pass: migrate diff after it on the demo-data copy names no PF-25 column or table", pf25Diff(DEMO).length === 0, pf25Diff(DEMO));
 
   // ------------------------------------------------------------------------------------------- the database's own rules
@@ -271,12 +313,17 @@ try {
   OpenRead("a visitor on a firm's public page")(StandInPages.prototype, "page", pageDescriptor);
   Param("slug")(StandInPages.prototype, "page", 0); Req()(StandInPages.prototype, "page", 1); Res()(StandInPages.prototype, "page", 2);
   class TestModule {}
-  Module({ controllers: [WebAddressController, StandInPages], providers: [{ provide: Db, useValue: db }, { provide: WebAddresses, useValue: svc }, WebAddressHostRouting, { provide: APP_GUARD, useClass: ConfigReadGuard }] })(TestModule);
+  Module({ controllers: [WebAddressController, StandInPages], providers: [{ provide: Db, useValue: db }, { provide: WebAddresses, useValue: svc }, WebAddressHostRouting, WebAddressCatchUp, { provide: APP_GUARD, useClass: ConfigReadGuard }] })(TestModule);
+  const firmK = mkFirm("firm-k", "Kestrel Visa Law");
+  created(firmK);
   app = await NestFactory.create<NestExpressApplication>(TestModule, { logger: ["error"] });
   // The single-page app's catch-all, added after the app is built as main.ts adds it: host routing must still come first.
   app.getHttpAdapter().getInstance().get(/^\/(?!api\/).*/, (_req: unknown, res: { end(b: string): unknown }) => res.end("studio single-page app"));
   await app.listen(0, "127.0.0.1");
   const port = (app.getHttpServer().address() as { port: number }).port;
+  const atStart = await app.get(WebAddressCatchUp).done;
+  ok("PF-25 pass: the catch-up runs at app start: a firm created while no one listened has its address once the app is up (kestrel-visa-law)",
+    addressOfDb(EMPTY, firmK) === "kestrel-visa-law" && atStart?.failed.length === 0, atStart);
 
   const unknownHost = await http(port, `no-such-firm.localhost:${port}`, "/api/public/booking-types/free-consultation");
   const unknownSlug = await http(port, `law-firm-a.localhost:${port}`, "/api/public/booking-types/no-such-type");
