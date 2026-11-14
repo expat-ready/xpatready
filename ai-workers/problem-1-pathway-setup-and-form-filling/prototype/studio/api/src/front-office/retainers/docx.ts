@@ -18,9 +18,23 @@ export class UnreadableDocx extends Error {
   constructor(readonly why: string) { super(`We could not read this file. (${why})`); this.name = "UnreadableDocx"; }
 }
 
-function open(bytes: Uint8Array): Docxtemplater {
+/** Sample limits on what a .docx may expand to (break B-2: a 400 KB file expanding to 400 MB stalled the server). Checked
+ *  on the sizes the zip declares, before anything is decompressed. */
+export const DOCX_MAX_UNCOMPRESSED = 30 * 1024 * 1024;
+export const DOCX_MAX_ENTRIES = 1000;
+
+function load(bytes: Uint8Array): PizZip {
   let zip: PizZip;
   try { zip = new PizZip(bytes); } catch (e) { throw new UnreadableDocx(`not a zip: ${(e as Error).message}`.slice(0, 200)); }
+  const entries = Object.values((zip as unknown as { files: Record<string, { dir?: boolean; _data?: { uncompressedSize?: number } }> }).files);
+  if (entries.length > DOCX_MAX_ENTRIES) throw new UnreadableDocx(`more than ${DOCX_MAX_ENTRIES} parts`);
+  const total = entries.reduce((a, f) => a + (f.dir ? 0 : Math.max(0, f._data?.uncompressedSize ?? Number.POSITIVE_INFINITY)), 0);
+  if (!(total <= DOCX_MAX_UNCOMPRESSED)) throw new UnreadableDocx("it expands to more than 30 MB");
+  return zip;
+}
+
+function open(bytes: Uint8Array): Docxtemplater {
+  const zip = load(bytes);
   if (!zip.file("word/document.xml")) throw new UnreadableDocx("no word/document.xml");
   try {
     return new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true, errorLogging: false, nullGetter: () => "" });
@@ -31,19 +45,25 @@ function open(bytes: Uint8Array): Docxtemplater {
 }
 
 /** The placeholders a .docx uses, flattened: `client.name`, and for a loop its name and `<loop>.<field>` (`fees`,
- *  `fees.label`). Sorted, each once. Read from the body, headers and footers after docxtemplater has parsed the template
- *  (so a malformed tag is already refused); docxtemplater's own inspect helper needs a library we have not approved. */
+ *  `fees.label`); inside a loop `{fees.label}` names the same field as `{label}` (review m4). Sorted, each once. Read from
+ *  the text of every XML part of the package, not only the body (break B-3: footnotes, comments, document properties
+ *  and headers under any name are rendered too), after docxtemplater has parsed the template, so a malformed tag is
+ *  already refused. docxtemplater's own inspect helper needs a library we have not approved. */
 export function placeholdersOf(bytes: Uint8Array): string[] {
-  const doc = open(bytes), zip = doc.getZip();
-  const parts = Object.keys(zip.files).filter((f) => /^word\/(document|header\d*|footer\d*)\.xml$/.test(f));
+  const zip = open(bytes).getZip();
   const out = new Set<string>();
-  for (const part of parts) {
-    const text = doc.getFullText(part), stack: string[] = [];
+  for (const name of Object.keys(zip.files).filter((f) => /\.xml$/i.test(f) && !/(^|\/)\[Content_Types\]\.xml$|\.rels$/i.test(f))) {
+    const file = zip.file(name);
+    if (!file) continue;
+    const text = file.asText().replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+    const stack: string[] = [];
     for (const m of text.matchAll(/\{([^{}]*)\}/g)) {
       const t = m[1].trim(), sigil = t[0];
-      if (sigil === "#" || sigil === "^") { const n = t.slice(1).trim(); out.add([...stack, n].join(".")); stack.push(n); }
+      const field = (n: string) => (stack.length && n.startsWith(`${stack.join(".")}.`) ? n : [...stack, n].join("."));
+      if (sigil === "#" || sigil === "^") { const n = t.slice(1).trim(); out.add(field(n)); stack.push(n); }
       else if (sigil === "/") stack.pop();
-      else if (t) out.add([...stack, t].join("."));
+      else if (t && !stack.length && /^fees\.(label|amount|when|due_on)$/.test(t)) out.add(`${t}-outside-the-fee-loop`);   // prints nothing there (m4)
+      else if (t) out.add(field(t));
     }
   }
   return [...out].sort();

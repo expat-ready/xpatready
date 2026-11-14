@@ -482,10 +482,10 @@ try {
     await fails(() => svc.read(S, RA1), 404) && await fails(() => svc.edit(S, v.id, {}), 404) && await fails(() => svc.send(S, v.id), 404) && await fails(() => svc.withdraw(S, w.id, { reason: "x" }), 404));
   ok("FO-5 fail: firm B drafting on firm A's prospect → 404", await fails(() => svc.draft(S, PROSB, {}), 404));
   const key = await svc.fileKey(R, RA1, {}), signed = await svc.fileKey(R, RA1, { file: "signed-offline" });
-  const l = links.sign(A, key, nowMs);
-  ok("FO-5 pass: a download link names the version's file for its firm", "key" in links.check(l.token, A, nowMs) && (links.check(l.token, A, nowMs) as { key: string }).key === key && signed.endsWith("signed-offline.pdf"));
-  ok("FO-5 fail: the link is refused for another firm, and altered", (links.check(l.token, B, nowMs) as { refused?: string }).refused === "invalid" && (links.check(l.token.slice(0, -2) + "AA", A, nowMs) as { refused?: string }).refused === "invalid");
-  ok("FO-5 fail: the link expires (Sample 5 minutes)", (links.check(l.token, A, nowMs + 5 * 60_000) as { refused?: string }).refused === "expired");
+  const l = links.sign(A, R.staffId, key, nowMs);
+  ok("FO-5 pass: a download link names the version's file for its firm", "key" in links.check(l.token, A, R.staffId, nowMs) && (links.check(l.token, A, R.staffId, nowMs) as { key: string }).key === key && /signed-offline-[0-9a-f]{12}\.pdf$/.test(signed));
+  ok("FO-5 fail: the link is refused for another firm, another person (m7) and altered", (links.check(l.token, B, R.staffId, nowMs) as { refused?: string }).refused === "invalid" && (links.check(l.token, A, O.staffId, nowMs) as { refused?: string }).refused === "invalid" && (links.check(l.token.slice(0, -2) + "AA", A, R.staffId, nowMs) as { refused?: string }).refused === "invalid");
+  ok("FO-5 fail: the link expires (Sample 5 minutes)", (links.check(l.token, A, R.staffId, nowMs + 5 * 60_000) as { refused?: string }).refused === "expired");
 
   // Audit through AuditPort, in the change's transaction: a failed line rolls the change back.
   const failing = new Retainers(db, store, clock, fakeAudit({ failOn: (e) => e.action === "retainer.drafted" }) as never);
@@ -493,6 +493,73 @@ try {
   const PROSF = prospect(PF, R.staffId);
   ok("FO-5 fail: a forced audit failure rolls the draft back (no retainer, no event)", await (async () => { try { await failing.draft(R, PROSF, { templateId: tplA.id }); return false; } catch { return sql(API, `select count(*) from fo_retainer where prospect_id = '${PROSF}'`) === "0"; } })());
   ok("FO-5 pass: every change wrote one audit line (RA1: the draft, two edits, two sends, Signed offline = 6 lines; refused changes none)", audits(RA1) === 6, audits(RA1));
+
+  // ----------------------------------------------------------------- review round 1 (M1, m3-m9) and break round 1 (B-1..B-15)
+  // M1, B-1: a change rolled back after its file was stored never blocks the next attempt (keys carry an attempt suffix).
+  const PM = u(808); person(PM, "Rollback Client", "rb@example.com");
+  const PROSM = prospect(PM, R.staffId);
+  const m0 = await svc.draft(R, PROSM, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 1000 }] });
+  const failEdit = new Retainers(db, store, clock, fakeAudit({ failOn: (e) => e.action === "retainer.edited" }) as never);
+  ok("FO-5 fail (M1, B-1): an edit rolled back after its file was stored leaves the retainer at version 1",
+    await (async () => { try { await failEdit.edit(R, m0.id, { fees: [{ label: "Fee", amountMinor: 2000 }] }); return false; } catch { return (await svc.read(R, m0.id)).version.n === 1; } })());
+  const m1 = await svc.edit(R, m0.id, { fees: [{ label: "Fee", amountMinor: 3000 }] });
+  ok("FO-5 pass (M1, B-1): the next edit succeeds with version 2 (no \"key taken\" from the lost attempt)", m1.version.n === 2 && m1.version.fees[0].amountMinor === "3000");
+  await svc.send(R, m0.id);
+  const failOff = new Retainers(db, store, clock, fakeAudit({ failOn: (e) => e.action === "retainer.signed_offline" }) as never);
+  ok("FO-5 fail (B-1): Signed offline rolled back after its PDF was stored leaves the retainer SENT",
+    await (async () => { try { await failOff.signedOffline(R, m0.id, { reason: "Paper" }, pdf("first scan")); return false; } catch { return (await svc.read(R, m0.id)).status === "SENT"; } })());
+  ok("FO-5 pass (B-1): Signed offline with another scan then succeeds", (await svc.signedOffline(R, m0.id, { reason: "Paper" }, pdf("second scan"))).status === "SIGNED_OFFLINE");
+  // B-5: a lost race answers 409, never 500.
+  const PX = u(809); person(PX, "Race Client", "race@example.com");
+  const PROSX = prospect(PX, R.staffId);
+  const x0 = await svc.draft(R, PROSX, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 1000 }] });
+  const race = await Promise.allSettled([svc.edit(R, x0.id, { fees: [{ label: "A", amountMinor: 1 }] }), svc.edit(R, x0.id, { fees: [{ label: "B", amountMinor: 2 }] })]);
+  const lost = race.filter((x) => x.status === "rejected").map((x) => (x as PromiseRejectedResult).reason as { getStatus?: () => number });
+  ok("FO-5 pass (B-5): of two edits at once one wins (version 2) and a loser, if any, gets 409", (await svc.read(R, x0.id)).version.n >= 2 && lost.every((e) => e.getStatus?.() === 409), lost.map((e) => e.getStatus?.() ?? String(e)));
+  // B-2: a zip bomb is refused before it is decompressed.
+  const bomb = new PizZip(buildDocx(["{client.name}"])); bomb.file("word/media/pad.xml", " ".repeat(31 * 1024 * 1024));
+  ok("FO-5 fail (B-2): a .docx expanding to more than 30 MB is refused as unreadable", await fails(() => svc.uploadTemplate(R, { name: "Bomb" }, { bytes: new Uint8Array(bomb.generate({ type: "uint8array", compression: "DEFLATE" })), size: 40000 }), 422, /UNREADABLE_FILE/));
+  // B-3: unknown placeholders anywhere in the package are refused.
+  const fn = new PizZip(buildDocx(["{client.name}"])); fn.file("word/footnotes.xml", `<?xml version="1.0"?><w:footnotes xmlns:w="x"><w:footnote><w:p><w:r><w:t>{client.passport}</w:t></w:r></w:p></w:footnote></w:footnotes>`);
+  ok("FO-5 fail (B-3): an unknown placeholder in a footnote is refused with its name", await fails(() => svc.uploadTemplate(R, { name: "Footnote" }, { bytes: new Uint8Array(fn.generate({ type: "uint8array" })), size: 2000 }), 422, /client\.passport/));
+  // m4: {fees.label} inside the loop names the same field; outside the loop it is refused.
+  const loopT = await svc.uploadTemplate(R, { name: "Prefixed loop" }, docx(["{client.name}", "{#fees}", "{fees.label} = {fees.amount}", "{/fees}"]));
+  ok("FO-5 pass (m4): {fees.label} inside the fee loop is accepted", loopT.placeholders.includes("fees.label") && !loopT.placeholders.some((x) => x.includes("fees.fees")));
+  ok("FO-5 fail (m4): {fees.label} outside the fee loop is refused (it would print nothing)", await fails(() => svc.uploadTemplate(R, { name: "Outside" }, docx(["{client.name} {fees.label}"])), 422, /outside-the-fee-loop/));
+  // B-6, B-10, B-12: fee rows and edits.
+  ok("FO-5 fail (B-6): an \"On a date\" fee without its date blocks Send", (await svc.edit(R, x0.id, { fees: [{ label: "Later", amountMinor: 500, when: "ON_DATE" }] })).blockers.fees === "A fee due on a date needs its date.");
+  ok("FO-5 fail (B-10): an amount given as a list is refused", await fails(() => svc.edit(R, x0.id, { fees: [{ label: "x", amountMinor: [100] }] }), 422, /cents/));
+  ok("FO-5 fail (B-12): an edit with nothing to change is refused (no new version)", await fails(() => svc.edit(R, x0.id, {}), 422, /Nothing to change/));
+  // B-9: a second Prepare on a prospect with an open retainer: a plain 409, before any rendering.
+  ok("FO-5 fail (B-9): a second retainer on a prospect with an open one → 409 RETAINER_OPEN", await fails(() => svc.draft(R, PROSX, { templateId: tplA.id }), 409, /RETAINER_OPEN/));
+  // B-11, m3: the representative reads, but does not change, a retainer they cannot otherwise see.
+  ok("FO-5 fail (B-11): with everyone-sees-all off the representative (not the owner) cannot edit, send or withdraw → 404",
+    await fails(() => svc.edit(T, v.id, { fees: [{ label: "x", amountMinor: 1 }] }), 404) && await fails(() => svc.send(T, v.id), 404) && await fails(() => svc.withdraw(T, v.id, { reason: "x" }), 404));
+  // B-4, m9: Send re-checks the representative.
+  sql(API, `update platform_role_grant set ended_at = now(), ended_by = 'test', end_reason = 'test' where staff_id = '${T.staffId}' and role = 'CASE_MANAGER' and ended_at is null`);
+  const vT = await svc.edit(R, v.id, { fees: [{ label: "Fee", amountMinor: 900 }] }).catch(() => null);
+  ok("FO-5 fail (B-4): once the representative lost the case-manager role, the retainer shows it and Send is refused",
+    !!vT && /no longer active/.test(vT.blockers.representativeStaffId ?? "") && await fails(() => svc.send(R, v.id), 422, /representativeStaffId/));
+  sql(API, `insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${A}', '${T.staffId}', 'CASE_MANAGER', 'test')`);
+  // B-13, B-14: names and ids.
+  ok("FO-5 fail (B-13): a template name with a hidden character, or the same name in another Unicode form, is refused",
+    await fails(() => svc.uploadTemplate(R, { name: "Std​retainer" }, docx(GOOD)), 422, /hidden characters/)
+    && (await svc.uploadTemplate(R, { name: "Café retainer" }, docx(GOOD)), await fails(() => svc.uploadTemplate(R, { name: "Café retainer" }, docx(GOOD)), 409, /NAME_TAKEN/)));
+  ok("FO-5 fail (B-14): a malformed template id → 404 NOT_FOUND (no database error)", await fails(() => svc.changeTemplate(R, "not-a-uuid", { active: false }), 404, /NOT_FOUND/) && await fails(() => svc.read(R, "------------------------------------"), 404, /NOT_FOUND/));
+  // B-15: a PDF needs its trailer too.
+  ok("FO-5 fail (B-15): a file that only starts like a PDF is refused", await fails(() => svc.signedOffline(R, x0.id, { reason: "x" }, { bytes: new Uint8Array(Buffer.from("%PDF-1.4 but nothing else")), size: 25 }), 422, /A PDF only/));
+  // Migration 20261115010000: a key may carry one attempt suffix of 12 lower-case hex characters, nothing else.
+  const TS = u(110);
+  ok("FO-5 pass (migration 20261115010000): a template key with an attempt suffix is accepted, the part 1 form too",
+    sql(API, `insert into fo_retainer_template (id, firm_id, name, file_key, file_sha256, placeholders, created_by, updated_by, updated_at) values ('${TS}', '${A}', 'Suffix check', 'retainer-templates/${TS}/v1-0123456789ab.docx', '${hex(1)}', '{}', 'seed:FO-5', 'seed:FO-5', now()) returning version`) === "1");
+  ok("FO-5 fail (migration 20261115010000): a suffix that is not 12 lower-case hex characters, or another template's key, is refused",
+    ["v1-XYZ.docx", "v1-0123456789AB.docx", "v1-0123456789ab-0123456789ab.docx", "v1-0123456789a.docx"].every((k) => refused(API, `update fo_retainer_template set version = 2, file_key = 'retainer-templates/${TS}/${k.replace("v1", "v2")}' where id = '${TS}'`, /fo_retainer_template_file_key_check/))
+    && refused(API, `update fo_retainer_template set version = 2, file_key = 'retainer-templates/${tplA.id}/v2-0123456789ab.docx' where id = '${TS}'`, /fo_retainer_template_file_key_check/));
+  // m6, B-7: the file store.
+  ok("FO-5 fail (m6): the same key with another content type, or a key ending .meta, is refused",
+    await (async () => { try { await store.put(A, "t/x.bin", new Uint8Array([1]), "text/plain"); await store.put(A, "t/x.bin", new Uint8Array([1]), "application/pdf"); return false; } catch (e) { return e instanceof FileKeyTaken; } })()
+    && await (async () => { try { await store.put(A, "t/x.bin.meta", new Uint8Array([1]), "text/plain"); return false; } catch (e) { return /\.meta/.test(String(e)); } })());
+  ok("FO-5 pass (B-7): the file store lives under the copy's own STUDIO_VAR", (() => { const had = process.env.STUDIO_VAR; process.env.STUDIO_VAR = "/tmp/fo5-var-check"; try { return new LocalFiles().root === "/tmp/fo5-var-check/front-office-files"; } finally { if (had === undefined) delete process.env.STUDIO_VAR; else process.env.STUDIO_VAR = had; } })());
 
   // Routes (PF-4's guard): every route declares its agent/retainer:* key.
   const keysOf = (m: string) => (Reflect.getMetadata(PLATFORM_ACCESS, (RetainersController.prototype as unknown as Record<string, object>)[m]) as { keys?: string[] } | undefined)?.keys?.join(",");

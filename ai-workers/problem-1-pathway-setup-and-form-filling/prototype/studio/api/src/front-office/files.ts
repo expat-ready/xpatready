@@ -5,7 +5,7 @@
 // and is linked into place, so a crash never leaves half a file and two writers of one key cannot both win. In the test
 // environment and production the adapter is S3 in Canada (PF-8); this port stays.
 // A download link is a token naming the firm, the key and an expiry, signed with HMAC-SHA256: a link expires (Sample 5
-// minutes), is refused for another firm (404, so it leaks nothing) and cannot be altered. The signing key is
+// minutes), is refused for another firm or another person (404, so it leaks nothing) and cannot be altered. The signing key is
 // FO_FILES_LINK_KEY, or a random one per process (links then end when the server restarts, which a 5-minute link tolerates).
 // Nest's decorators are applied as calls (identity/keys.ts says why).
 import { Injectable } from "@nestjs/common";
@@ -24,10 +24,13 @@ type Meta = { contentType: string; sha256: string };
 /** The local-folder adapter. `root` defaults to FO_FILES_DIR or studio/var/front-office-files. */
 export class LocalFiles implements FilesPort {
   readonly root: string;
-  constructor(root = process.env.FO_FILES_DIR ?? join(STUDIO, "var", "front-office-files")) { this.root = resolve(root); }
+  /** FO_FILES_DIR, else the copy's own var folder (STUDIO_VAR, set by tools/isolated.sh; break B-7), else studio/var. */
+  constructor(root = process.env.FO_FILES_DIR ?? join(process.env.STUDIO_VAR ?? join(STUDIO, "var"), "front-office-files")) { this.root = resolve(root); }
 
   /** The file's path under its firm's folder; the key is checked first, so it can never leave that folder. */
   private pathOf(firmId: string, key: string): string {
+    // The adapter keeps a `.meta` beside each file and writes through `.tmp` files: a key may not end so (review m6).
+    if (/\.(meta|tmp)$/.test(key)) throw new Error("file key may not end in .meta or .tmp");
     const p = join(this.root, FirmId.parse(firmId).toLowerCase(), FileKey.parse(key));
     if (!p.startsWith(join(this.root, firmId.toLowerCase()) + "/")) throw new Error("file key leaves its firm's folder");
     return p;
@@ -37,7 +40,7 @@ export class LocalFiles implements FilesPort {
     const f = FilePut.parse({ firmId, key, bytes, contentType });
     const sha256 = await sha256Hex(f.bytes), path = this.pathOf(f.firmId, f.key);
     const had = this.meta(path);
-    if (had && had.sha256 !== sha256) throw new FileKeyTaken(f.key);
+    if (had && (had.sha256 !== sha256 || had.contentType !== f.contentType)) throw new FileKeyTaken(f.key);   // the port's rule (m6)
     if (had && existsSync(path)) return { key: f.key, sha256 };   // the same bytes again: a retry
     mkdirSync(dirname(path), { recursive: true });
     const tmp = `${path}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
@@ -49,7 +52,7 @@ export class LocalFiles implements FilesPort {
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
       const now = this.meta(path);
-      if (!now || now.sha256 !== sha256) throw new FileKeyTaken(f.key);
+      if (!now || now.sha256 !== sha256 || now.contentType !== f.contentType) throw new FileKeyTaken(f.key);
       if (!existsSync(path)) linkSync(tmp, path);
     } finally { for (const t of [tmp, `${tmp}.meta`]) try { unlinkSync(t); } catch { /* already gone */ } }
     return { key: f.key, sha256 };
@@ -74,22 +77,23 @@ export class FileLinks {
   private readonly macKey: Buffer;
   constructor(keyText = process.env.FO_FILES_LINK_KEY) { this.macKey = keyText ? Buffer.from(keyText, "utf8") : randomBytes(32); }
 
-  /** A token for the firm's key, valid until now + seconds. */
-  sign(firmId: string, key: string, nowMs: number, seconds = LINK_SECONDS): { token: string; expiresAt: string } {
+  /** A token for the firm's key, for the person who asked for it (review m7), valid until now + seconds. */
+  sign(firmId: string, staffId: string, key: string, nowMs: number, seconds = LINK_SECONDS): { token: string; expiresAt: string } {
     const exp = Math.floor(nowMs / 1000) + seconds;
-    const body = Buffer.from(JSON.stringify({ f: FirmId.parse(firmId).toLowerCase(), k: FileKey.parse(key), e: exp })).toString("base64url");
+    const body = Buffer.from(JSON.stringify({ f: FirmId.parse(firmId).toLowerCase(), s: staffId.toLowerCase(), k: FileKey.parse(key), e: exp })).toString("base64url");
     return { token: `${body}.${this.mac(body)}`, expiresAt: new Date(exp * 1000).toISOString() };
   }
 
-  /** The key a token names, or why it is refused: "invalid" (altered, malformed or another firm's) or "expired". */
-  check(token: string, firmId: string, nowMs: number): { key: string } | { refused: "invalid" | "expired" } {
+  /** The key a token names, or why it is refused: "invalid" (altered, malformed, another firm's or another person's) or
+   *  "expired". */
+  check(token: string, firmId: string, staffId: string, nowMs: number): { key: string } | { refused: "invalid" | "expired" } {
     const m = /^([A-Za-z0-9_-]{1,800})\.([A-Za-z0-9_-]{43})$/.exec(token ?? "");
     if (!m) return { refused: "invalid" };
     const want = Buffer.from(this.mac(m[1])), got = Buffer.from(m[2]);
     if (want.length !== got.length || !timingSafeEqual(want, got)) return { refused: "invalid" };
-    let p: { f?: unknown; k?: unknown; e?: unknown };
+    let p: { f?: unknown; s?: unknown; k?: unknown; e?: unknown };
     try { p = JSON.parse(Buffer.from(m[1], "base64url").toString("utf8")); } catch { return { refused: "invalid" }; }
-    if (typeof p.f !== "string" || typeof p.k !== "string" || typeof p.e !== "number" || p.f !== firmId.toLowerCase()) return { refused: "invalid" };
+    if (typeof p.f !== "string" || typeof p.k !== "string" || typeof p.e !== "number" || p.f !== firmId.toLowerCase() || p.s !== staffId.toLowerCase()) return { refused: "invalid" };
     if (Math.floor(nowMs / 1000) >= p.e) return { refused: "expired" };
     return { key: p.k };
   }

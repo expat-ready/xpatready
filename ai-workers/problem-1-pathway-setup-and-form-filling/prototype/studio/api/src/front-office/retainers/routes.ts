@@ -37,23 +37,24 @@ export class RetainersController {
   /** A short-lived link to one of the retainer's files (BR-15). */
   async link(r: R, id: string, b: B) {
     const ctx = staffOf(r), key = await this.svc.fileKey(ctx, id, b ?? {});
-    const l = this.links.sign(ctx.firmId, key, this.clock.now());
+    const l = this.links.sign(ctx.firmId, ctx.staffId, key, this.clock.now());
     return { url: `/api/front-office/files/${l.token}`, expiresAt: l.expiresAt };
   }
   /** The file a link names: another firm's or an altered link is 404, an expired one 410. */
   async download(r: R, token: string, res: Response) {
-    const ctx = staffOf(r), c = this.links.check(token, ctx.firmId, this.clock.now());
+    const ctx = staffOf(r), c = this.links.check(token, ctx.firmId, ctx.staffId, this.clock.now());
     if ("refused" in c) return c.refused === "expired" ? problem(410, "Link expired", "This download link has expired. Open the agreement again.", { code: "LINK_EXPIRED" }) : problem(404, "Not found", "No such file in your firm.", { code: "NOT_FOUND" });
     const f = await this.files.get(ctx.firmId, c.key);
     if (!f) return problem(404, "Not found", "No such file in your firm.", { code: "NOT_FOUND" });
-    res.setHeader("Content-Disposition", `attachment; filename="${c.key.split("/").pop()}"`).setHeader("Cache-Control", "no-store").type(f.contentType).send(Buffer.from(f.bytes));
+    res.setHeader("Content-Disposition", `attachment; filename="${c.key.split("/").pop()}"`).setHeader("Cache-Control", "no-store").setHeader("X-Content-Type-Options", "nosniff").type(f.contentType).send(Buffer.from(f.bytes));
   }
 }
 
 const C = RetainersController;
 Controller("api/front-office")(C);
 [Retainers, LocalFiles, FileLinks, PlatformClock].forEach((t, i) => Inject(t)(C, undefined, i));
-const file = (max: number) => UseInterceptors(FileInterceptor("file", { limits: { fileSize: max + 1, files: 1 } }));
+// The upload layer stops at twice the limit (memory); the service answers the limit itself in plain words up to there (B-8).
+const file = (max: number) => UseInterceptors(FileInterceptor("file", { limits: { fileSize: 2 * max, files: 1 } }));
 decorate(C, "placeholders", [Get("retainer-templates/placeholders"), PermissionKeys("agent/retainer:list")]);
 decorate(C, "starter", [Get("retainer-templates/starter"), PermissionKeys("agent/retainer:configure-template")], [Res()]);
 decorate(C, "templates", [Get("retainer-templates"), PermissionKeys("agent/retainer:list")], [Req()]);
