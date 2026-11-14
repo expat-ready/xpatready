@@ -219,3 +219,50 @@ Nothing in the diff weakens an earlier "holds" item:
 * writes are still refused without the caller's transaction.
 
 Verdict: Approve (head 92f8982ccdfb510920df6f4013414236c4b70fac)
+
+## Round 4 (diff since the Approve at 92f8982cc)
+
+Head `34aeabbe94057a390eea2b6534c5d9ed13e40eb6`. I read only the PR's own files: `git diff 92f8982cc 34aeabbe9 -- $(git diff --name-only origin/main...34aeabbe9)`. The merge base is `origin/main` at `40dde3502`. The diff holds:
+* `cee7ecd9d`: the doc line, the test and review.md;
+* the merge `de7330a6e`;
+* `34aeabbe9`: the slot line.
+
+Against main, the PR's only change to `platform.prisma` is the one line `messages MsgFirm?`.
+
+**Runs on `34aeabbe9` (mine):**
+* check_pf19a: 76/0;
+* check_pf0p_ports: 71/0;
+* check_case_feed: 39/39;
+* check_prisma_schema: 8/0;
+* pf3: 75/0;
+* fo1b: 80/0;
+* `tsc --noEmit` (api): no error in any PR file or port. The errors it reports are older, in `check_vv_checklist` and `check_x2b`.
+
+I did not repeat fo1a, pf24, g1 or the isolated start; the builder's runs stand for those. Journey test: N/A, no score, as in round 1 (no screen, route or user step).
+
+### What the diff answers
+* **R3-m1: closed.** `ports/consent.ts:175-178` now says the reply path "skips only the opt-in, and still checks the suppression list (AG-10-41: the reply passes the consent gate)". That matches the card.
+* **R3-m2: closed, and the test bites.**
+  * **The test:** `tests/check_pf19a_messages_schema.ts:266-273` adds the raced source row by SQL, live, with a later STOP withdrawal row for its person. It then copies the row to T9.
+  * **What it expects:** the copy is stored `withdrawn_via = STOP`, and T9's marketing mail is `WITHDRAWN`.
+  * **Mutation, in a scratch worktree:** I replaced the lookup on the copied row's person (`consent-store.ts:59`, `from ? await firstOut(from.subjectKind, from.subjectId) : null`) with `null`. Exactly this check failed, 75/1.
+
+### The slot line (`prisma/schema/platform.prisma:87-88`): agree with keeping the comment
+* **The brief's wording:** it said our line "replaces" the slot.
+* **What the merged test requires:** PF-0p's merged `check_pf0p_ports` (`slotProblems`) requires each `// back-relation slot: <area>` line exactly once in `PlatformFirm` and `PlatformStaff`.
+* **Mutation, in scratch:** I replaced the comment with our line. The test failed: "PlatformFirm: slot messages (PF-19a)".
+* **So:** a literal "replace" contradicts the merged test. Keeping the comment and putting the field directly under it is the only reading that passes, and it keeps the slot findable.
+* **No schema change:** the field is the same `MsgFirm?` back-relation as at the Approve.
+* **Merge safety:** the blank line under it is kept, so the next slot is still separated. I ran a 3-way `git merge-file` of our head against a sibling branch from main that fills `money (FO-7a)`, and one that fills `compliance (FO-13)`. Both merged clean.
+* **`PlatformStaff`:** its messages slot stays empty. That is correct: no `msg_` model points at staff by key.
+
+### Fit with PF-0p's ports as merged on main
+* **Imports now resolve on main's files.** At `92f8982cc`, `ports/audit.ts` and `ports/clock.ts` were not in the tree (round 3 ran with PF-0p's untracked copies). Now they come from main, and `tsc` and the suites pass against them, so that dependency is closed.
+* **Audit entities:** all four `AuditPort.record` calls (`consent-store.ts:73-74`, `100-101`, `120-121`, `154-155`) use literal `msg_` entities. These are `msg_consent`, `msg_consent_withdrawal`, `msg_suppression` and `msg_consent_wording`, and all four match `AREA_ENTITY` (`ports/audit.ts:28`).
+  * **The entry fields:** each entry carries exactly the fields of `AuditEntry`'s strict object. The summaries are under 600 characters and never name a case. The details are ids and enum words.
+* **The sweep reads them:** `check_case_feed` reads these calls. Mutation in scratch: `entity: "suppression"` failed it at `consent-store.ts:120`.
+
+### New in this diff
+None: no Blocker, Major or Minor. The merge brought no change to the PR's migration, its other schema file or the store. `20261114190000_pf19a_platform_messages` is still the last migration. The known items from round 3 stand as listed there.
+
+Verdict: Approve (head 34aeabbe94057a390eea2b6534c5d9ed13e40eb6)
