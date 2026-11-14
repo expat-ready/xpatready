@@ -50,11 +50,10 @@ const short = (p: string) => p.replace(/^xfa\[0\]\.form\[0\]\./, "").replace(/^[
 // now PASSes; any open box not listed FAILs. Keyed "<form>|<role>|<box from the page on>".
 // BK-25 (P-533, P-449): F2 (consent), F3 (the spouse's employment row 1), F5 (background 2c and 6) by data, and F4 (IMM 5707's
 // "physically present at the marriage ceremony") through the own-question door, are written now and no longer allowed open
-// (samples/own-yes-no.json "sp.outside", samples/sample-student-answers.json): any of them open FAILs. Only F1 stays named.
-const F1 = "follow-up F1: the study's city is a list that depends on the province (IMM 1294's own CityList, 4,516 cities); the filler writes no dependent list yet (p5/transforms.ts: code; its own row BK-26, tech lead on #1747)";
-const OPEN: Record<string, string> = {
-  "IMM 1294|principal|Page3[0].DetailsOfStudy[0].PurposeRow1[0].CityTown[0].CityTown[0]": F1,
-};
+// (samples/own-yes-no.json "sp.outside", samples/sample-student-answers.json): any of them open FAILs.
+// BK-26 (#1749): F1, IMM 1294's question 1 d (the study's city), is written from the form's own list for the province
+// (p5/transforms.ts dependentChoices, <form>.lists.json), so it is no longer allowed open either: no box is named now.
+const OPEN: Record<string, string> = {};
 const gaps: string[] = [];
 
 // The walk's family on this copy: made by BK-13's replay when the copy has none yet.
