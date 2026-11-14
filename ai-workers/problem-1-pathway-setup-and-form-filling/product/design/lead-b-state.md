@@ -254,3 +254,4 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
 * 14 Nov 22:59 IST: PF-25 dropped its platform_firm trigger (c4d3f5a8e). Its reset-hook question was answered: FO-2's shared reset step now includes PF-25's catch-up. FO-13 keeps the slot comment with its lines under it. Rows rev 16.6; FO-2 and the slot wording updated across the briefs.
 * 14 Nov 23:03 IST: **hand-over written** (START HERE section at the top), at ~46% context, for Lead B (4) (P-565).
 * 14 Nov 23:04 IST: Lead 49 copied rev 16.6 into BACKLOG (e5c681a94). Lead B (4) starts at the founder's morning typed turn. Until then Lead B (3) answers row questions only, in short turns, with no new work past ~50%.
+* 14 Nov 23:15 IST: Lead 49 ruled round 3 for PF-21 #1753: same reviewer, diff 540ebf88c..4688525, and the breaker re-runs (the migration changed). A new Major splits the row, and Lead B shapes the split.
