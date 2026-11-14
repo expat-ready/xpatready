@@ -12,6 +12,14 @@ export const EVENT = {
   STAFF_ROLES_CHANGED: "staff.roles_changed",
   /** A staff member was deactivated: their sessions ended at once (platform, PF-4; contracts §1.2 events out). */
   STAFF_DEACTIVATED: "staff.deactivated",
+  /** A retainer or consultation agreement was drafted from a template (front office, FO-5; contracts §2.3). */
+  RETAINER_DRAFTED: "retainer.drafted",
+  /** A retainer passed its send check and was sent (front office, FO-5; FO-6 adds the signing request; contracts §2.3). */
+  RETAINER_SENT: "retainer.sent",
+  /** A sent retainer was withdrawn with a reason (front office, FO-5; AG-5-34). */
+  RETAINER_WITHDRAWN: "retainer.withdrawn",
+  /** A retainer was recorded as signed on paper (front office, FO-5; AG-5-39; contracts §7 §2.3-§2.4). */
+  RETAINER_SIGNED_OFFLINE: "retainer.signed_offline",
 } as const;
 export type EventName = (typeof EVENT)[keyof typeof EVENT];
 
@@ -28,3 +36,15 @@ export const StaffRolesChanged = z.object({ type: z.literal(EVENT.STAFF_ROLES_CH
 export type StaffRolesChanged = z.infer<typeof StaffRolesChanged>;
 export const StaffDeactivated = z.object({ type: z.literal(EVENT.STAFF_DEACTIVATED), firmId: z.string().uuid(), payload: StaffEventPayload });
 export type StaffDeactivated = z.infer<typeof StaffDeactivated>;
+
+/** The payload FO-5 writes for every retainer.* event: ids and facts only (no name, email or licence; a consumer reads the
+ *  retainer itself). The firm is the outbox row's firm_id. */
+export const RetainerEventPayload = z.object({
+  retainerId: z.string().uuid(),
+  kind: z.enum(["RETAINER", "CONSULTATION"]),
+  prospectId: z.string().uuid().nullable(),
+  version: z.number().int().min(1),
+  /** Signed offline only: whether this made the prospect WON (false when it already was, or for a consultation agreement). */
+  prospectWon: z.boolean().optional(),
+}).strict();
+export type RetainerEventPayload = z.infer<typeof RetainerEventPayload>;
