@@ -127,3 +127,36 @@ Verdict: Block
 Block on **r2-M1**: the zip-size limit must hold against a zip that lies about its sizes, with a test. Everything else from round 1 holds. r2-m1, r2-m2 and the nit are for the builder to fix or record.
 
 Verdict: Block
+
+## Round 3 (diff-only)
+* **Commit reviewed:** `0b5518de93ffb1f73dae9d2932838ca259295338`. Only `git diff a79fa9e48..0b5518de9` was read (Lead 50's ruling, P-293). The code is in `0b5518de9`; `8cc4d7576` and `d9aeb0339` are records (this review and the breaker's report).
+* **Run:** `node_modules/.bin/tsx --tsconfig api/tsconfig.json tests/check_fo5_retainers.ts`: **146 passed, 0 failed**.
+* **Probes:** scratch scripts, nothing in the repository. I ran `placeholdersOf` and `renderDocx` on hand-made files. On a throwaway database, dropped afterwards, I checked what a Prisma check-violation error carries.
+
+### Round 2 findings
+| Finding | Answer in the diff | Holds? |
+|---|---|---|
+| **r2-M1** (B-17) | `load()` inflates every deflated part with `inflateRawSync(…, { maxOutputLength: remaining budget + 1 })` before pizzip sees it; a stored part counts its own length; an unknown method is refused. Every loaded entry has `getCompressedContent`, so the `continue` covers only folders. | **yes.** My round 2 files are now refused at once. The 1.8 MB file that really expands to 1.88 GB (declared as 1000 bytes): refused in 28 ms at 119 MB RSS, against 6.3 s and 3.8 GB before. The 300 KB one: 32 ms. The starter still reads |
+| r2-m1 (B-16) | `tx()` maps only race signals and part 1's state-trigger messages to 409; anything else is logged and rethrown (500) | yes (r3-m2 is about what the log line holds) |
+| r2-m2 | Edit and resend of an Expired retainer checks the live slot before rendering, and maps the unique index → `RETAINER_OPEN` | yes, tested |
+| B-18, B-3 rest, B-19 | text only from `<w:t>` and docProps; parts declared in `[Content_Types]` under any name; at most 2000 tags; ten names per refusal | yes (r3-m1 is a gap in B-18's reading) |
+| earlier nit | the hidden-character and blank-text classes in `str()` are `\u` escapes | yes |
+
+### New in this diff
+No Blocker and no Major, so the row is not split.
+
+**Minor**
+* **r3-m1. `placeholdersOf` reads only `<w:t>`, but docxtemplater also renders `<a:t>` (DrawingML shapes) and `<m:t>` (equations)** (`docx.ts` `placeholdersOf`; docxtemplater's `file-type-config.js:17` `tagsXmlTextArray`). I made a body with `{client.passport}` in an equation and `{client.dob}` in an `a:t` run. `placeholdersOf` found only `client.name`, so the upload is accepted. When rendered, both tags are filled from the data or print empty.
+  * BR-1's "an unknown placeholder refuses the upload" is skipped for those two places.
+  * No value outside the known list can print, because the data holds only the known merge values. So the harm is a silent blank, not a leak.
+  * Fix: read the same element list docxtemplater renders (`w:t`, `a:t`, `m:t`, and the docProps tags), and add a test with each.
+* **r3-m2. The new "unexpected database refusal" log line can carry the failing row's values** (`service.ts` `tx()`: `console.error(… ${m.slice(0, 600)})`, where `m` includes `JSON.stringify(e.meta)`).
+  * Shown on a throwaway table: for a check violation, `meta.driverAdapterError.cause.detail` is PostgreSQL's "Failing row contains (…)" with every column. That text lands in the first 600 characters.
+  * For `fo_retainer_version`, the row includes `merge_values`: the representative's licence number and the client's and signer's emails. Contracts §1.2 and AG-1-30/-31 say a licence number never appears in a log.
+  * No path the code can reach today fails a check on that table: `merge_values` stays well under 64 KB, and the keys and hashes are generated. So this is latent.
+  * Fix: log the SQLSTATE and the constraint or trigger message, never `detail` or `meta`.
+
+### Verdict (round 3)
+Approve. r2-M1 is fixed and verified against a zip that lies about its sizes. Every round 1 and round 2 finding holds or is recorded as a question for Lead B (m1, m2, m10, m11). r3-m1 and r3-m2 are Minors for the builder to fix or record, in this PR or a follow-up.
+
+Verdict: Approve 0b5518de93ffb1f73dae9d2932838ca259295338
