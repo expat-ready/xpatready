@@ -9,7 +9,7 @@
 **Release holder now:** **Lead 49** (`local_93551126…`), unless `tools/current-lead.sh` names a later one. **P-602:** only the founder's typed turn starts sessions. Lead 49 hands next rows to the warm cloud lanes through their prompt boxes.
 
 **The rows:**
-* `design/lead-b-rows-2026-11-14.md`, all revs **through 16.6**. Everything through 16.5 is copied into BACKLOG (16.5 at 03b87cc7b); **16.6 was sent to Lead 49 and is not yet confirmed copied**.
+* `design/lead-b-rows-2026-11-14.md`, all revs **through 16.6**. Everything through 16.5 is copied into BACKLOG (16.5 at 03b87cc7b); **16.6 is copied too (e5c681a94)**.
 * Key rulings since rev 14:
   * **P-599:** Release 1 (production grade) by 24 Nov.
   * **P-600:** any number of schema rows at once, under five conditions: own file and migration folder; add only to own tables, with a shared model changed only directly under its own PF-0p slot comment (rev 16.6); area-prefixed functions; the stamp later than `main`'s newest, so the later PR re-stamps; the release holder reads each migration.
@@ -52,7 +52,7 @@ The newest are PF-0p, PF-21, PF-23, PF-23r, PF-23m, PF-24, PF-25, **ROW-w.md** (
 * Row-shape questions are Lead B's; review rounds, labels and migration reads are the release holder's.
 
 **Open for Lead B (4):**
-1. Confirm rev 16.6 is in BACKLOG.
+1. (Done: rev 16.6 is in BACKLOG at e5c681a94.)
 2. Answer row questions on the PRs above.
 3. Keep briefs two ahead: next are FO-1k (written; it collects every key the start-now rows left), FO-7b after FO-7a, PF-12 after FO-7a, FO-2 after PF-4 and PF-19a, PF-4b, PF-4s (PF-25w needs it), PF-5, PF-18a.
 4. Concepts still to make: FO-9s, FO-12s, FO-13s, FO-7s, PF-19s, PF-20s, PF-21s/rs, PF-17, PF-18s, FO-3w, FO-3st. The founder's look at FO-4, PF-6, FO-5s and PF-5s is still due.
@@ -253,3 +253,4 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
 * 14 Nov 22:52 IST: PF-25 #1763's round 3 approved. As row owner, Lead B asked it to drop its AFTER INSERT trigger on platform_firm in favour of a firm.created consumer (6881377523). Lead 49 was asked to hold the label. The watch now runs as a one-shot background wait (3 min polls) instead of 30-min monitors.
 * 14 Nov 22:59 IST: PF-25 dropped its platform_firm trigger (c4d3f5a8e). Its reset-hook question was answered: FO-2's shared reset step now includes PF-25's catch-up. FO-13 keeps the slot comment with its lines under it. Rows rev 16.6; FO-2 and the slot wording updated across the briefs.
 * 14 Nov 23:03 IST: **hand-over written** (START HERE section at the top), at ~46% context, for Lead B (4) (P-565).
+* 14 Nov 23:04 IST: Lead 49 copied rev 16.6 into BACKLOG (e5c681a94). Lead B (4) starts at the founder's morning typed turn. Until then Lead B (3) answers row questions only, in short turns, with no new work past ~50%.
