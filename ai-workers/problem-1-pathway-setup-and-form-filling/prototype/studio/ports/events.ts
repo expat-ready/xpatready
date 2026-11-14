@@ -12,6 +12,16 @@ export const EVENT = {
   STAFF_ROLES_CHANGED: "staff.roles_changed",
   /** A staff member was deactivated: their sessions ended at once (platform, PF-4; contracts §1.2 events out). */
   STAFF_DEACTIVATED: "staff.deactivated",
+  /** A consultation was booked (front office, FO-3; AG-4-47). Keys: bookingId and bookingId:sequence. */
+  BOOKING_SCHEDULED: "booking.scheduled",
+  /** A booking moved to a new time or host (FO-3). */
+  BOOKING_RESCHEDULED: "booking.rescheduled",
+  /** A booking was cancelled (FO-3). */
+  BOOKING_CANCELLED: "booking.cancelled",
+  /** The host answered "Attended" (FO-3; AG-4-39). */
+  BOOKING_COMPLETED: "booking.completed",
+  /** The host answered "No-show" (FO-3; AG-4-39). Never written by a job. */
+  BOOKING_NO_SHOW: "booking.no_show",
 
   /** A complaint was recorded (platform register, PF-21; FO-13k rev 12). */
   COMPLAINT_RECEIVED: "complaint.received",
@@ -33,6 +43,16 @@ export const StaffRolesChanged = z.object({ type: z.literal(EVENT.STAFF_ROLES_CH
 export type StaffRolesChanged = z.infer<typeof StaffRolesChanged>;
 export const StaffDeactivated = z.object({ type: z.literal(EVENT.STAFF_DEACTIVATED), firmId: z.string().uuid(), payload: StaffEventPayload });
 export type StaffDeactivated = z.infer<typeof StaffDeactivated>;
+
+/** What a booking event carries (module_event.payload, FO-3): ids and facts, never the person's details. */
+export const BookingEvent = z.object({
+  key: z.string(), bookingId: z.string().uuid(), sequence: z.number().int().min(0),
+  status: z.enum(["SCHEDULED", "RESCHEDULED", "CANCELLED", "COMPLETED", "NO_SHOW"]),
+  typeId: z.string().uuid(), staffId: z.string().uuid(), personId: z.string().uuid().nullable(), prospectId: z.string().uuid().nullable(),
+  mode: z.enum(["VIDEO", "PHONE", "IN_PERSON"]), startsAt: z.string(), endsAt: z.string(), bookerTimeZone: z.string(),
+});
+export type BookingEvent = z.infer<typeof BookingEvent>;
+
 // PF-21 (FO-13k rev 12; Lead 47's answer 2 on #1753): the complaints register's two events, ids and facts only (never the
 // complainant's name, contact or the summary). module_event.subject_id is the complaint's id.
 const Uuid = z.string().uuid();
