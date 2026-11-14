@@ -4,7 +4,7 @@
 // (audit.ts; a failed line rolls the change back) and writes its module_event row last (PF-3 review m8). Invitation
 // lifetimes and expiry are measured with the database's clock (`now()`), never a writer-set time (PF-3 review m6). A
 // licence number never appears in an audit line, an event payload or an answer other than the person's own record.
-import { Inject, Injectable, type OnModuleInit } from "@nestjs/common";   // applied as calls below the class (keys.ts says why)
+import { Inject, Injectable, type OnModuleInit } from "@nestjs/common";
 import { PlatformRole, type Prisma } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import { Db } from "../../core.ts";
@@ -73,8 +73,9 @@ const textOf = (v: unknown, what: string) => {
 };
 
 // ---------------------------------------------------------------------------------------------------------- the service
+@Injectable()
 export class PlatformIdentity implements OnModuleInit {
-  constructor(private readonly db: Db, readonly port: IdentityPort, private readonly clock: PlatformClock) {}
+  constructor(@Inject(Db) private readonly db: Db, @Inject(IDENTITY_PORT) readonly port: IdentityPort, @Inject(PlatformClock) private readonly clock: PlatformClock) {}
 
   async onModuleInit() {
     // Keys warmed at start (tech gate entry 2). A pool that cannot be reached now is fetched on the first request instead.
@@ -355,5 +356,3 @@ export class PlatformIdentity implements OnModuleInit {
     });
   }
 }
-Injectable()(PlatformIdentity);
-[Db, IDENTITY_PORT, PlatformClock].forEach((token, i) => Inject(token)(PlatformIdentity, undefined, i));
