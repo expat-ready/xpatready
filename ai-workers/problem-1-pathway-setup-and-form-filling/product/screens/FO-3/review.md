@@ -179,3 +179,11 @@ Conflict merge at a135a96c verified:
 * Against main (b91ab10a, contained in the head), the file differs only by FO-3's five `BOOKING_*` names and `BookingEvent`. Both sides are kept, with no edits and no duplicate names.
 * I did not re-run the suites; the builder reports fo3 105/105, registry 27/27, case feed 39/39 and pf4 113/113.
 Reviewer: Approve a135a96cf23e0a2d81c678d2b668c4b328d18c6e
+
+CI fix at 4657fe91 verified:
+* Over 50b633fc..4657fe91, `visitorTimeZone` is renamed `bookerTimeZone` in 4 files, line for line: 13 lines in service.ts, the `BookingEvent` key in `ports/events.ts`, one schema line and one test line.
+* The column is unchanged: `@map("visitor_time_zone")` is kept, so there is no database change.
+* No `visitorTimeZone` is left in the studio, and there is no other change.
+* The `BookingEvent` payload key change is safe because nothing consumes that event yet.
+* The schema line is in Lead B's file and needs Lead B's OK on the PR.
+Reviewer: Approve 4657fe91921d6a527849b4e57ba4187a8efed8d7
