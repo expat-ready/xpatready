@@ -86,4 +86,4 @@ const route = (method: "availability" | "suggestion" | "site", path: string, why
 };
 route("availability", "web-address/availability", SIGN_UP, [Query("address"), Req(), Res()]);
 route("suggestion", "web-address/suggestion", SIGN_UP, [Query("name"), Req(), Res()]);
-route("site", "site", "a visitor on a firm's public page, who has no account", [Req(), Res()]);
+route("site", "site", "someone on a firm's public page, who has no account", [Req(), Res()]);
