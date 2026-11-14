@@ -127,7 +127,7 @@ model FoBooking {
   mode            FoMeetingMode
   startsAt        DateTime                  @map("starts_at") @db.Timestamptz
   endsAt          DateTime                  @map("ends_at") @db.Timestamptz
-  visitorTimeZone String                    @map("visitor_time_zone")
+  bookerTimeZone  String                    @map("visitor_time_zone")
   blockRange      Unsupported("tstzrange")? @map("block_range")
   createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime                  @updatedAt @map("updated_at") @db.Timestamptz
