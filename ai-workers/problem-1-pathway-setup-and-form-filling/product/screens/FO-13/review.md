@@ -146,3 +146,50 @@ No Blocker or Major is open at 110ace57662b5efe1ed5cae9e4d8b46c37411cc7.
 Round 2 verdict (110ace57): Approve.
 
 **Verdict: Approve** (110ace57662b5efe1ed5cae9e4d8b46c37411cc7)
+
+## Round 3 (diff-only, re-stamp): head c841df3f
+
+Reviewer (did not build it), 14 Nov 2026. Commit **c841df3f466f34040b92a7ccbbb64ae5720940dc**. Scope: only what FO-13 changed relative to main since the round-2 Approve at 110ace57 (P-277). That is the platform.prisma conflict resolution in merge 136b87f9 and the re-stamp in c841df3f (P-600). The clean merge 0e0a087b1 brings only main's changes, which are not reviewed here. Schema only: no screen, so walks, 1024 px / 200 % and BIC remain N/A, as in rounds 1-2.
+
+**What I checked**
+* **Diff from the round-2 record (88b5c8dc → c841df3f) on FO-13's paths.**
+  * The migration is a pure rename (`R100`): `20261114190000_fo13_compliance_tables` → `20261114223000_fo13_compliance_tables`.
+  * Two one-line edits follow the rename: the `NEW` constant in `tests/check_fo13_compliance_schema.ts` and the migration name in the header comment of `front-office-compliance.prisma`.
+  * The `A` entries for `20261114153000_fo1a_front_office_sales` and `20261114210000_fo5_retainer_tables` are main's. They match origin/main byte for byte (`git diff origin/main c841df3f` on both folders is empty).
+* **(a) migration.sql is identical to the approved one.** `git diff 110ace57 c841df3f -M` lists the folder as `R100`. Both blobs are `1193f19fe3841a541c8329fccce779763d52c4b3`.
+* **(b) Stamp order.**
+  * `20261114223000` is later than origin/main's newest, `20261114210000_fo5_retainer_tables`.
+  * It is also later than PF-21's `20261114214500_pf21_complaints` (#1753, open, head ac89de49).
+  * The re-stamp also removes an earlier prefix clash with PF-19a's `20261114190000_pf19a_platform_messages` (#1754, open).
+  * Of the other open PRs, only PF-25 (`20261114230000`, #1763/#1776) is later. Ordering it is PF-25's job, not FO-13's.
+* **(c) platform.prisma.** `git diff origin/main c841df3f` adds exactly the five lines, directly under `// back-relation slot: compliance (FO-13)`, and the slot comment stays.
+  * PlatformFirm: `foConflictChecks`, `foIdentityChecks`.
+  * PlatformStaff: `foConflictChecksChecked` (`FoConflictCheckedBy`), `foConflictChecksConfirmed` (`FoConflictConfirmedBy`), `foIdentityChecksChecked` (`FoIdentityCheckedBy`).
+  * The relation names match `front-office-compliance.prisma`.
+  * This follows Lead B's ruling on the PR (comment 6881464023, 14 Nov 17:29Z, rows rev 16.6).
+  * `npx prisma validate` in the export: "The schemas at prisma/schema are valid".
+* **`git diff --stat origin/main c841df3f`.** Six files, +1016/-0, all FO-13's:
+  * break-report.md and review.md;
+  * the migration;
+  * front-office-compliance.prisma;
+  * platform.prisma (+5);
+  * the test.
+* **(d) Suites,** run from a `git archive` export of c841df3f with its own copy of node_modules and `npx prisma generate`, against 127.0.0.1:54329. Each suite made and dropped its own databases: no `xr_studio_*` database of mine is left, and the others were not touched. :4400 was not used. All exit 0:
+
+| Suite | Result |
+|---|---|
+| `check_fo13_compliance_schema.ts` | 76 passed, 0 failed |
+| `check_fo1a_sales_schema.ts` | 124 passed, 0 failed (the fo_ function-name check that dequeued the PR now passes, via #1761) |
+| `check_pf0p_ports.ts` | 71 passed, 0 failed (six slot lines per model; migrate diff names nothing in the platform tables) |
+| `check_fo5_retainers.ts` | 60 passed, 0 failed |
+| `check_fo1b_booking_schema.ts` | 80 passed, 0 failed |
+
+**Findings:** no Blocker, no Major, no new Minor.
+* Info only: `screens/FO-13/break-report.md` line 6 still names `20261114190000_fo13_compliance_tables`. That is correct as a record of the run at that time (P-188: records keep their facts), so no change is asked.
+* n1-n3 from round 2 stay carried to FO-13c / FO-13i as before.
+
+**Journey score:** unchanged at **10 / 10**. The SQL is byte-identical and the back-relations are unchanged, so the round-2 journey (FO-13c's and FO-13i's code, by psql and the Prisma client) still holds. The FO-13 suite that covers it passes 76/76 at this head.
+
+No Blocker or Major is open at c841df3f466f34040b92a7ccbbb64ae5720940dc.
+
+**Verdict: Approve** (c841df3f466f34040b92a7ccbbb64ae5720940dc)
