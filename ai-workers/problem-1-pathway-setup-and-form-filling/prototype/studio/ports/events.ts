@@ -44,6 +44,6 @@ export const BookingEvent = z.object({
   key: z.string(), bookingId: z.string().uuid(), sequence: z.number().int().min(0),
   status: z.enum(["SCHEDULED", "RESCHEDULED", "CANCELLED", "COMPLETED", "NO_SHOW"]),
   typeId: z.string().uuid(), staffId: z.string().uuid(), personId: z.string().uuid().nullable(), prospectId: z.string().uuid().nullable(),
-  mode: z.enum(["VIDEO", "PHONE", "IN_PERSON"]), startsAt: z.string(), endsAt: z.string(), visitorTimeZone: z.string(),
+  mode: z.enum(["VIDEO", "PHONE", "IN_PERSON"]), startsAt: z.string(), endsAt: z.string(), bookerTimeZone: z.string(),
 });
 export type BookingEvent = z.infer<typeof BookingEvent>;

@@ -161,7 +161,7 @@ try {
   ok("FO-3 form fail: a line break in a name → 400 (never 500)", await ref({ ...good, givenNames: "Ana\r\nBcc: x@y.example" }) === 400);
   const phoneOk = await full(await S.publicBook(A.key, "free", { ...good, mode: "PHONE", phone: "+1 416 555 0100" }, "ip"));
   const caps = await full(await S.publicBook(A.key, "free", { ...(await form(S, "free", "2026-10-29 11:00", "caps")), timeZone: "America/TORONTO" }, "ip"));
-  ok("FO-3 form pass: America/TORONTO is kept in IANA's spelling, America/Toronto (break B-10)", (await db.foBooking.findUniqueOrThrow({ where: { id: caps.id } })).visitorTimeZone === TZ);
+  ok("FO-3 form pass: America/TORONTO is kept in IANA's spelling, America/Toronto (break B-10)", (await db.foBooking.findUniqueOrThrow({ where: { id: caps.id } })).bookerTimeZone === TZ);
   const lim3 = make({ limits: { bookPerFirm: 3 } });
   const realForm = await form(lim3.svc, "free", "2026-10-29 10:00", "notblocked");
   for (let i = 0; i < 10; i++) await thrown(() => lim3.svc.publicBook(A.key, "free", {}, `198.51.100.${i}`));

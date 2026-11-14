@@ -200,7 +200,7 @@ export class BookingService {
     const open = this.selfServiceOpen(booking, type);
     return {
       status: booking.status, typeName: type.name, mode: booking.mode, startsAt: booking.startsAt.toISOString(), endsAt: booking.endsAt.toISOString(),
-      timeZone: booking.visitorTimeZone, label: wallLabel(booking.startsAt, booking.visitorTimeZone),
+      timeZone: booking.bookerTimeZone, label: wallLabel(booking.startsAt, booking.bookerTimeZone),
       canChange: open, message: open ? null : "Your meeting starts soon, so it can no longer be changed here. Please reply to your confirmation email or call the firm.",
     };
   }
@@ -213,7 +213,7 @@ export class BookingService {
     const q = parse(SlotsQuery, query);
     const now = this.ports.clock.now(), from = q.from ?? now, to = q.to ?? new Date(from.getTime() + 14 * DAY);
     if (!(from < to) || to.getTime() - from.getTime() > 62 * DAY) throw refused("Ask for at most 62 days of times, from before to.");
-    const tz = q.tz ?? booking.visitorTimeZone;
+    const tz = q.tz ?? booking.bookerTimeZone;
     return { timeZone: tz, slots: (await this.slotsFor(this.db, booking.firmId, type, from, to, booking.id)).map((s) => this.publicSlot(s, tz)) };
   }
 
@@ -311,7 +311,7 @@ export class BookingService {
       try {
         const done = await this.db.$transaction(async (tx) => {
           const slot = await this.freeSlot(tx, firmId, type, at.startsAt);
-          const row = await tx.foBooking.create({ data: { id: bookingId, firmId, typeId: type.id, staffId: slot.staffIds[0], mode: at.mode, startsAt: slot.startsAt, endsAt: slot.endsAt, visitorTimeZone: at.timeZone } });
+          const row = await tx.foBooking.create({ data: { id: bookingId, firmId, typeId: type.id, staffId: slot.staffIds[0], mode: at.mode, startsAt: slot.startsAt, endsAt: slot.endsAt, bookerTimeZone: at.timeZone } });
           const who = await arrive(tx, bookingId);
           const booking = await tx.foBooking.update({ where: { id: row.id }, data: { personId: who.personId, prospectId: who.prospectId ?? null } });
           const token = await issueToken(tx, firmId, booking.id, booking.endsAt);
@@ -348,14 +348,14 @@ export class BookingService {
           // The same time is no move: nothing is written, no event, the links and reminders stay (only a new zone for
           // the messages is kept, with its audit line).
           if (startsAt.getTime() === b.startsAt.getTime()) {
-            if (!zone || zone === b.visitorTimeZone) return { booking: b, type, token: undefined, oldSequence: undefined };
-            const z2 = await tx.foBooking.update({ where: { id: b.id }, data: { visitorTimeZone: zone } });
+            if (!zone || zone === b.bookerTimeZone) return { booking: b, type, token: undefined, oldSequence: undefined };
+            const z2 = await tx.foBooking.update({ where: { id: b.id }, data: { bookerTimeZone: zone } });
             await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.zone_changed", entity: "fo_booking", entityKey: b.id, summary: "The time zone for this booking's messages changed.", detail: { bookingId: b.id, sequence: z2.sequence } });
             return { booking: z2, type, token: undefined, oldSequence: undefined };
           }
           const slot = await this.freeSlot(tx, firmId, type, startsAt, b.id);
           const staffId = slot.staffIds.includes(b.staffId) ? b.staffId : slot.staffIds[0];
-          const after = await tx.foBooking.update({ where: { id: b.id }, data: { startsAt: slot.startsAt, endsAt: slot.endsAt, staffId, status: "RESCHEDULED", ...(zone ? { visitorTimeZone: zone } : {}) } });
+          const after = await tx.foBooking.update({ where: { id: b.id }, data: { startsAt: slot.startsAt, endsAt: slot.endsAt, staffId, status: "RESCHEDULED", ...(zone ? { bookerTimeZone: zone } : {}) } });
           const newToken = await issueToken(tx, firmId, after.id, after.endsAt);
           await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.rescheduled", entity: "fo_booking", entityKey: b.id,
             summary: "Consultation moved to a new time.", detail: { bookingId: b.id, fromStartsAt: b.startsAt.toISOString(), toStartsAt: after.startsAt.toISOString(), fromStaffId: b.staffId, toStaffId: staffId, sequence: after.sequence } });
@@ -370,7 +370,7 @@ export class BookingService {
         if (e instanceof NoSlot || attempt++ >= 4) {
           const b = await this.db.foBooking.findFirstOrThrow({ where: firmScope(firmId, { id: bookingId }) });
           const type = await this.db.foConsultationType.findFirstOrThrow({ where: firmScope(firmId, { id: b.typeId }) });
-          throw slotTaken(await this.nextSlots(firmId, type, { startsAt, timeZone: zone ?? b.visitorTimeZone }, bookingId));
+          throw slotTaken(await this.nextSlots(firmId, type, { startsAt, timeZone: zone ?? b.bookerTimeZone }, bookingId));
         }
         await new Promise((r) => setTimeout(r, 5 + Math.floor(Math.random() * 20)));
       }
@@ -397,7 +397,7 @@ export class BookingService {
   private async outbox(tx: Tx, b: BookingRow, type: string) {
     const payload = BookingEvent.parse({
       key: `${b.id}:${b.sequence}`, bookingId: b.id, sequence: b.sequence, status: b.status, typeId: b.typeId, staffId: b.staffId, personId: b.personId, prospectId: b.prospectId,
-      mode: b.mode, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), visitorTimeZone: b.visitorTimeZone,
+      mode: b.mode, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), bookerTimeZone: b.bookerTimeZone,
     });
     await tx.moduleEvent.create({ data: { firmId: b.firmId, type, subjectId: b.id, occurredAt: this.ports.clock.now(), payload } });
   }
@@ -423,7 +423,7 @@ export class BookingService {
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: b.firmId }, select: { key: true, operatingName: true, contactEmail: true } });
     const host = await this.db.platformStaff.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.staffId }), select: { email: true, displayName: true } });
     const person = b.personId ? await this.ports.arrival.contactOf(this.db, b.firmId, b.personId) : null;
-    const zone = b.visitorTimeZone, when = wallLabel(b.startsAt, zone), how = MODE_WORDS[b.mode as Mode];
+    const zone = b.bookerTimeZone, when = wallLabel(b.startsAt, zone), how = MODE_WORDS[b.mode as Mode];
     const where = b.mode === "VIDEO" ? (type.meetingLink ?? "Your join link will follow.") : b.mode === "PHONE" ? "The firm will call you." : "At the firm's office.";
     const invite = (attendee: { name: string; email: string }) => ({ filename: "invite.ics", contentType: `text/calendar; charset=utf-8; method=${a.method}`, bytes: new TextEncoder().encode(bookingIcs({
       bookingId: b.id, sequence: b.sequence, method: a.method, startsAt: b.startsAt, endsAt: b.endsAt, stamp: this.ports.clock.now(),
@@ -453,7 +453,7 @@ export class BookingService {
     const person = await this.ports.arrival.contactOf(this.db, b.firmId, b.personId);
     if (!person) return;
     await this.ports.mail.send({ firmId: b.firmId, to: person.email, replyTo: firm.contactEmail, class: "SERVICE", templateKey: `booking.reminder_${p.kind}`,
-      subject: `Reminder: your ${type.name} ${p.kind === "24h" ? "tomorrow" : "in one hour"}`, text: `Hello ${person.givenNames},\n\nThis is a reminder of your ${type.name} with ${firm.operatingName}: ${wallLabel(b.startsAt, b.visitorTimeZone)}. ${MODE_WORDS[b.mode as Mode]}.\n\nReplies to this email reach the firm.` });
+      subject: `Reminder: your ${type.name} ${p.kind === "24h" ? "tomorrow" : "in one hour"}`, text: `Hello ${person.givenNames},\n\nThis is a reminder of your ${type.name} with ${firm.operatingName}: ${wallLabel(b.startsAt, b.bookerTimeZone)}. ${MODE_WORDS[b.mode as Mode]}.\n\nReplies to this email reach the firm.` });
   }
 
   /** The attendance question: the host is asked; nothing is recorded until a person answers (AG-4-39 rules 1-4). */
@@ -465,7 +465,7 @@ export class BookingService {
     const host = await this.db.platformStaff.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.staffId }), select: { email: true } });
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: b.firmId }, select: { contactEmail: true } });
     await this.ports.mail.send({ firmId: b.firmId, to: host.email, replyTo: firm.contactEmail, class: "SERVICE", templateKey: "booking.attendance_ask",
-      subject: "Did they attend?", text: `Your consultation of ${wallLabel(b.startsAt, b.visitorTimeZone)} has ended. Please record whether the person attended (Attended or No-show).` });
+      subject: "Did they attend?", text: `Your consultation of ${wallLabel(b.startsAt, b.bookerTimeZone)} has ended. Please record whether the person attended (Attended or No-show).` });
   }
 
   // ========================================================================================================= helpers
@@ -550,12 +550,12 @@ export class BookingService {
 
   /** What the public door answers about a booking: no host, person, prospect or type id (contracts §0.6). */
   private publicView(b: BookingRow) {
-    return { status: b.status as Status, mode: b.mode, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), timeZone: b.visitorTimeZone, label: wallLabel(b.startsAt, b.visitorTimeZone) };
+    return { status: b.status as Status, mode: b.mode, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), timeZone: b.bookerTimeZone, label: wallLabel(b.startsAt, b.bookerTimeZone) };
   }
 
   private view(b: BookingRow) {
     return { id: b.id, status: b.status as Status, sequence: b.sequence, typeId: b.typeId, staffId: b.staffId, personId: b.personId, prospectId: b.prospectId, mode: b.mode,
-      startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), timeZone: b.visitorTimeZone };
+      startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), timeZone: b.bookerTimeZone };
   }
 
   private manageLink(firmKey: string, token: string) { return `${this.ports.publicBaseUrl.replace(/\/+$/, "")}/book/${encodeURIComponent(firmKey)}/manage#${token}`; }
