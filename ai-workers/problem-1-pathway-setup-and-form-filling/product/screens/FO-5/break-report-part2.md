@@ -79,3 +79,43 @@ This run's files, including the four zip bombs, are in `studio/var/front-office-
 13. Inputs: a signed PDF of exactly 10 MiB is accepted. Refused at the field: an empty or 201-character reason; a missing file; a leading space before `%PDF-`; a ZIP named .pdf; zero-width, NBSP or ideographic-space-only labels; 121-character labels; 2026-02-29 and 1999-12-31; more than 50 rows. 2028-02-29 is accepted.
 
 Note: this run's files, including the zip bombs, stay in `studio/var/front-office-files/b77235c0-…` and `…/9dceb5bc-…` (B-7: `stop` does not remove them).
+
+## Round 2 — head `a79fa9e48` (copy `brk_fo5b` on :4436, stopped; its files went with it)
+
+**Result: 9 fixed and 6 partly fixed of B-1..B-15; new: 1 Major (B-17), 2 Minor (B-16, B-18), 1 Minor note (B-19). No 500 left in api.log.**
+- **Fixed:** B-1, B-4, B-5, B-6, B-7, B-10, B-11, B-12, B-14.
+  - Races: the deterministic replays now give a 409 to the loser, and the next edit works (v2, v3). The next Signed offline with another scan also works. 6 parallel edits: 1×200, 5×409. 3 parallel versions and 3 Signed offline with different PDFs: 1 success each, 2×409.
+  - Representative and dated fee: both block Send (`SEND_BLOCKED`).
+  - Inputs: `[100]`, `[[100]]`, `true` and `{}` are refused. `{}`, `[1]` and `{"foo":1}` get "Nothing to change."
+  - Representative with visibility off: reads, but gets 404 on edit, send and withdraw.
+  - Bad ids: "No such … in your firm", code NOT_FOUND.
+  - Files: under `isolated-brk_fo5b/`, gone after `stop`.
+- **B-2 partly:** honest headers are refused at once, but a lying header is not. → B-17.
+- **B-3 partly:** footnotes, odd header names, docProps, decoy main part and comments are now refused with the name. A header registered by content type as `word/hdr1.bin` is still rendered (the tag prints empty) and not read, because the scan keeps `\.xml$` (`docx.ts`). Crafted only, so Minor. Reading every part also brought false refusals → B-18.
+- **B-8 partly:** between the limit and twice the limit the words are right ("A template is at most 5 MB.", "… at most 10 MB."). Above twice the limit (11 MB template, 20 MB PDF) and for two `file` parts, `main.ts:201` still says "25 MB" / "20 files".
+- **B-9 partly:** a second draft gets RETAINER_OPEN before rendering. Editing an Expired retainer after a new one took the prospect still renders first, then gets "This changed at the same time (someone else saved it)" → B-16.
+- **B-13 partly:** NFD "Café" gives NAME_TAKEN against NFC; U+200B gives "hidden characters".
+- **B-15 partly:** `%PDF-<html>…` without `%%EOF` is refused, and downloads send `nosniff`. `%PDF-<html><script>…</script></html>\n%%EOF` is still accepted as the signed copy (the check is header plus trailer only); low risk with `attachment` and `nosniff`.
+- **Suffix keys held.** The client never supplies a key. Links name only the key stored in the row, and the database ties each key to its row, version and kind. The suffix is 48 random bits, so a reused or forced key would need a collision. A link now also binds its person: O got 404 with R's link.
+
+**B-16 Minor (new) — the 409 mapping turns every database refusal into "someone else saved it".** `service.ts` `tx()` maps any message naming `fo_retainer…` to CHANGED. The DB text rule (`fo_retainer_text_ok`: single-line labels, no control characters) is stricter than `str()`, so each of these got 409 "This changed at the same time (someone else saved it). Open it again.":
+- a fee label with `\n`, `\t` (as pasted from a spreadsheet) or U+2028, on draft and on edit
+- a withdraw reason with U+0007
+- a Signed offline reason with U+0001 (its PDF stays stored)
+
+Retrying never helps. Expected: 422 at the field (refuse in `str()` what the DB refuses), and keep CHANGED for real races only.
+
+**B-17 Major (new; B-2 reopened) — the zip limit trusts the declared sizes, and pizzip inflates the whole part before it compares them.** `docx.ts` `load()` reads `_data.uncompressedSize`. pizzip's `prepareContent` runs `pako.inflateRaw` in full, then throws "size mismatch".
+- Round 1's bomb with its size patched to 4,000 bytes: 422, but after 1.4 s and RSS 0.6 → 1.4 GB.
+- A 3.1 MB file (under the 5 MB limit) holding 3 GB of spaces declared as 4,000 bytes: 422 after 16.6 s, peak RSS 6.6 GB. Another user's `GET …/placeholders` waited 14.6 s.
+
+I did not run two at once: the shared machine has 16 GB. Expected: inflate with a real output cap (`zlib.inflateRawSync(…, { maxOutputLength })` per part, total ≤ 30 MB) before handing the zip to pizzip, or refuse when the actual size differs from the declared one.
+
+**B-18 Minor (new) — reading every XML part refuses ordinary Word files over text that is never rendered.** docxtemplater renders `w:t`, `a:t`, `m:t`, `vt:lpwstr` and the docProps fields. The scan strips tags from every part, so these were refused with UNKNOWN_PLACEHOLDER (each also had valid `{client.name}` and fee tags):
+- A Zotero citation field (`w:instrText` `… CSL_CITATION {"citationID":…,"properties":{"formattedCitation":"(Smith, 2020)"}}`): refused as `{"formattedCitation":"(Smith, 2020)"}`.
+- A Word bibliography source (`customXml/item1.xml` `<b:Guid>{1B2C3D4E-…}</b:Guid>`, written by Insert Citation): refused as `{1B2C3D4E-…}`.
+- A tracked deletion (`w:delText`) of an old tag: refused.
+
+A python-docx file, the python-docx default template and the repo's `commercial/plan.docx` were accepted. A GUID in a `vt:lpwstr` custom property was refused correctly (it renders). Expected: read the text elements docxtemplater renders, in the parts it renders.
+
+**B-19 Minor note (new) — a refusal names every unknown placeholder.** A 3.3 MB file with 1.5 million `{uN}` tags stalled the server for 11 s and returned a 153 MB 422 body. Expected: name the first few (for example 20) and say "and N more".
