@@ -1,4 +1,4 @@
-Verdict: Approve 519097e5b0e1c4d8d73a3862f490578178077064 (round 2b; round 2 approved 214767843, round 1 on 75c40c54c was Changes requested, below)
+Verdict: Approve 333778f147bbf0266af286a6aee2527941293411 (round 3; round 2b approved 519097e5b, round 2 214767843, round 1 on 75c40c54c was Changes requested, below)
 
 # PF-14 review: background jobs (the real JobPort, the pg-boss adapter, the worker)
 
@@ -141,3 +141,18 @@ Verdict: Approve 214767843571d6acbf1d69833781aac5b5a12f28
 Diff only, `git diff 214767843..519097e5b`: pgboss-jobs.ts +2, check_pf14_jobs.ts +14, and this review moved to `product/screens/PF-14/` (unchanged). **m10 fixed:** `recurring()` called while the runner is starting now awaits `#ready` and then applies the schedule. My round-2 probe now gives `schedule in pg-boss = 0 9 * * *` (was `MISSING`). The new case is not vacuous: it fires `recurring()` from start's first `boss.work()`, after the schedule loop, which is exactly where the probe hit. After the fix the order is fixed by `await`s (ready resolves → state `started` → apply → the call returns), so I see no race behind the builder's one unexplained null run. **Per-name keys:** the local `ports/` matches PF-0p c491f25c8 (#1752), where the fake keys `used` by name+key and `cancel` reaches every name. The new case asserts that both adapters queue the same key under another name, which closes m1. Suite: 64 passed, 0 failed, twice in a row. No other change.
 
 Verdict: Approve 519097e5b0e1c4d8d73a3862f490578178077064
+
+---
+
+# Round 3 (bot-review fixes): 333778f147bbf0266af286a6aee2527941293411
+
+Diff only. **078a72d9b** is a merge of origin/main (#1752 PF-0p `ports/`, #1751 PF-L pg-boss 12.38.0, #1742 FO-1a) with no conflicts; `git diff origin/main...078a72d9b --name-only` lists only the PF-14 files. **333778f14** is `git diff 078a72d9b..333778f14`: `pgboss-jobs.ts` +67/−17 and `check_pf14_jobs.ts` +41. I checked each fix against pg-boss 12.38.0's code:
+
+* **Recurring key and runAt across retries.** A retry rewrites `start_after` but copies `created_on` (plans.js `failJobsBody`, `retried_jobs` re-inserts `created_on` as is), so the minute of `createdOn` stays the same on every attempt. A normal job's `runAt` is the new envelope field `due` (`at`, or now at enqueue), and an older envelope without it falls back to `startAfter`. This matches the fake (`queue(name, clock.now() | at)`). Tests: a 09:00 Toronto run fails, and its retry, in a later minute, has the same key and `runAt` (pass); the retry's own `startAfter` minute differs (fail); every retry of `broken:1` sees one `runAt`. Note, no finding: `due` comes from the app's clock (or the TestClock), not the database's `job_now()`. Skew between the two is milliseconds here.
+* **`stop()` during `start()`, and a failed start.** `stop()` while starting chains on `#ready` and then stops (or does nothing if the start failed). A start that fails after `boss.start()` stops pg-boss without waiting and clears `#queues`/`#working`, keeping the handlers and schedules for the next start. Tests: a `createQueue` that fails once makes start reject with no `xr-pf14-shaky` connection left; the next start runs that worker's job; a `stop()` raced against `start()` leaves 0 connections, and the runner then refuses work.
+* **A failed worker registration.** `#work` removes its `#working` mark when registration fails, and `handle()` after start removes its handler again if the registration fails, so a retry can register it. These are small and correct by reading. Only the failed-start path has a test (the `shaky` case); a `handle()` failing after start has none. Minor at most; not needed.
+* **A recurring run's dead-letter key** is rebuilt from `sourceName` and the minute of `sourceCreatedOn` (plans.js:915 maps `source_created_on as "sourceCreatedOn"`, which is the original job's `created_on` in `dlq_jobs`). Test: the dead-letter entry's key equals the run's key.
+
+I ran `check_pf14_jobs.ts` alongside the builder's suite run: **72 passed, 0 failed**. `tsc`: 15 errors, as before, none in the PF-14 files or `ports/` (now from main). pg-boss resolves to 12.38.0 from the lockfile. The builder reports 68/72 with the old `runAt`/key and start-error code put back, which fits the 4 new fail-capable cases above. I did not repeat that run. No new Blocker, Major or Minor. m11 (`enqueue` awaited in onModuleInit) and m12 (`deadLetters` reads the oldest 10 000) stay with FO-2 and PF-23.
+
+Verdict: Approve 333778f147bbf0266af286a6aee2527941293411
