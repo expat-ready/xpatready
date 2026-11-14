@@ -152,3 +152,6 @@ Head **c4d3f5a8**. I regenerated the client; `check_pf25_web_address` passes **6
 
 **Verdict: Approve** (commit c4d3f5a8e1078b3b837bb818870bcb542084ca37). Open: Blocker 0, Major 0. m4 (rate limit) stays as the PR's Question 3. m2 is now resolved by Lead B's ruling.
 *Not covered:* after my run, uncommitted edits to `service.ts` (+6/−3) and `check_pf25_web_address.ts` (+6/−1) appeared in this checkout from another agent. They are not part of c4d3f5a8, so this Approve does not cover them. Once pushed, they need a diff-only re-review.
+
+## Round 5: diff-only `c4d3f5a8..1c620891` (Devin's finding on #1763)
+`readReason` now counts code points (`[...reason].length`), as PostgreSQL's `length()` does, so the service and the database agree: an emoji plus a letter gets 422, not a raw database error. The new fail test covers both ends, and I re-ran the suite: **68/68**. No new findings. **Verdict: Approve** (commit 1c62089118e01891d7e8da4181d52aeb8310488b).
