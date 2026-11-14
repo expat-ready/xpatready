@@ -104,3 +104,86 @@ Reviewer (did not build it), 14 Nov 2026. Commit **5eca10767e7737a4cac403a17def7
 For commit 5eca10767e7737a4cac403a17def7ec2429d886c: fix B1 and M1. The m1-m6 fixes are recommended; they do not hold the label.
 
 Verdict: Block
+
+## Round 2 (diff-only, 540ebf88c)
+
+Reviewer (did not build it), 14 Nov 2026. Commit **540ebf88c63589b647965d50d77cc70748570dcd**. Read: the builder's six commits since 5eca1076 (`c276ebbe5`, `e599e2a31`, `a3f708b8f`, `353fba67e`, `38afab3da`, `540ebf88c`), diffed on PF-21's files only. `origin/main` is an ancestor of HEAD. Against `origin/main`, `platform.prisma` adds exactly two lines (under the kept `register (PF-21)` slot comments), `ports/events.ts` adds two `EVENT` lines and two shapes, and `check_pf3` adds only the `ADDED_BY_LATER_ROWS` filter. Journey score: **n/a** (no screen). D1–D20 and BIC are N/A.
+
+### What I ran (studio/, 127.0.0.1:54329 scratch databases only, all dropped; never :4400, never `xr_studio_demo`)
+* `npx tsx tests/check_pf21_complaints.ts`: **90 passed, 0 failed**.
+* `npx tsx tests/check_pf0p_ports.ts`: **71 passed, 0 failed** (each slot comment still appears once).
+* `npx tsx tests/check_pf3_platform_schema.ts`: **75 passed, 0 failed**.
+* `npx tsx tests/check_prisma_schema.ts`: **8 passed, 0 failed** (B1's rule line passes; the M lines pass).
+* `npx tsc -p api/tsconfig.json 2>&1 | grep -E "complaints|pf21|ports/"`: **0 lines**.
+* My probe on `xr_studio_rev2_pf21_*` (script in the session scratchpad; it drives the service through PF-0p's fakes):
+  * P1, the mail fails once: the job fails, 1 `REMINDER_SENT` event, the retry answers `skipped`, **0 mails ever sent**.
+  * P2, the handler and every Owner and Admin are deactivated: the job is `done` with 0 mails, and `REMINDER_SENT` carries `recipients: 0`.
+  * P3, two psql sessions insert ACKNOWLEDGED for the same complaint at once: one commits and one is refused "recorded once". The event lock holds.
+
+### Round 1, item by item
+**Review:**
+* B1: closed (`platform-register.prisma:1`; check_prisma_schema 8/8).
+* M1: closed. Five catalogue rows (migration:256-258). Per-role pass and fail tests for record and read take the keys from the real catalogue (test:269-283).
+* m1: closed. PF-0p's `JobPort.handle` exists (ports/jobs.ts), and `replyTo` is given.
+* m2 and m3: closed (test:285-294).
+* m4: closed: cancel, schedule and send now run after commit. That fix opens R2-M1 below; my round-1 advice to send after commit missed this case.
+* m5: (a), (b) and (d) closed. (c) is closed for close‖close and close‖step on two connections (test:342-352). The reminder race is not tested, but the database's "once" trigger backs it.
+* m6: closed (cursor pages, test:385-401).
+
+**Breaker:**
+* M1 (events): closed (test:404-424).
+* m1(a) and m1(b): closed.
+* m2, m3, m4, m7, m8, m9 and m10: closed, each with a test.
+* m5: closed: a row change needs its event, one-time events are written once, RECEIVED is checked at commit, events are locked per complaint, and dates must fall from 2000 on and in order. P3 confirms the lock.
+* m6: deferred to PF-12's role posture, named at migration:145-146.
+* m11: recorded in comments (complaints.ts:1-10; the handler acts per Lead 47).
+* m12: closed. Two slot lines per Lead 47 (3); `plat_complaint_has_text` and `plat_complaint_one_line` are the row's own names.
+
+### Checks asked for
+* **After-commit work:** cancel and schedule are correct (test:355-363). The mail is not (R2-M1).
+* **Event-before-row triggers (migration:159-207):** correct. The deferred RECEIVED trigger (:210-217) has its fail test (test:331-332).
+* **Event lock (:228):** works (P3), but has no fail test (R2-m3).
+* **Date order:** checked in both the service and the database.
+* **Cursor list:** correct. The order and the keyset agree for both sorts; times are kept to the millisecond.
+* **Inactive-handler fallback:** correct apart from R2-m1.
+* **Daylight saving:** the gap and the repeated hour are handled, and skipped days are dropped (business-days.ts:35-58).
+* **Outbox payloads:**
+  * They are ids and enums only. Both outbox rows are written last, in the same transaction.
+  * A rolled-back change writes none (test:419-424).
+  * No name, contact or summary reaches the audit lines, the events, the job payloads or the mail (test:367-372; my reading).
+* **P-600:**
+  * The stamp `20261114200000` is later than `20261114153000_fo1a_front_office_sales`.
+  * Every function and constraint is `plat_`.
+  * `migrate diff` is empty for plat_.
+  * The only additions outside the row's own tables are the two slot lines and the five catalogue rows Lead 47 allowed.
+* **Calls against main's real `ports/*`:**
+  * `AuditPort.record(tx, …)` passes the entity `plat_complaint`, which matches `AREA_ENTITY`.
+  * `JobPort.schedule`, `cancel` and `handle` are called with `JobOptions {key, firmId}`, and the key carries a uuid.
+  * `MailPort.send` passes only fields of its strict shape.
+  * The calls match.
+
+### Findings
+**Major**
+* **R2-M1. A failed reminder mail is recorded as sent, and the reminder is never sent.** (FO-13k line 2, "the reminder fires once".)
+  * Where: `complaints.ts:360` commits `REMINDER_SENT` and the `complaint.reminder` audit line ("Acknowledgement reminder sent to the handler"). The mail goes only after the commit (:368). When it fails, every retry stops at :351 ("skipped").
+  * MailPort says it "Throws when refused or not sent". Probe P1 shows the outcome: the immutable register and the audit trail state a reminder that never went, and none ever goes. The comment at :340-343 ("the job runs again") does not hold.
+  * Fix: send inside the transaction after the event insert. A send failure then rolls back and the queue retries; a commit failure after a send gives at worst one repeated reminder. Alternatively, write `REMINDER_SENT` only after the send succeeds.
+  * Test needed: `fakeMail({ failOn })` fails once, then succeeds. Expect 1 mail and 1 `REMINDER_SENT`. Today this gives 0 and 1.
+
+**Minor**
+* **R2-m1. A reminder can go to nobody.**
+  * Where: `complaints.ts:353-366`. With the handler inactive and no active Owner or Admin, `to` is empty. The run still records `REMINDER_SENT` (recipients 0), audits "sent to the firm's Owners and Admins" and returns `sent` (P2).
+  * Fix: when `to` is empty, skip without recording (or record it as not delivered).
+* **R2-m2. The reminder's mail class is wrong.** :368 sends it as `TRANSACTIONAL`. `ports/mail.ts:8-9` defines TRANSACTIONAL as "a person's own action" and lists reminders under SERVICE. Fix: `class: "SERVICE"`.
+* **R2-m3. The event trigger's lock (migration:228) has no fail test.** Every concurrent test goes through the service, which locks first. Removing the `FOR UPDATE` leaves 90/90 green. Fix: add P3 as a check (two raw sessions, one one-time event).
+
+**Note, not a finding:** `jobs.schedule` after commit (:201) has no recovery if the process stops between the commit and the call. JobPort takes no `tx`, so this belongs to PF-14's outbox and queue.
+
+### Could not check
+* `graph.mjs`: it rewrites `qa/GRAPH.md`, and this review may write only this file.
+* CI on this head.
+* Demo reset suites (no complaint rows are seeded; unchanged from round 1).
+
+For commit 540ebf88c63589b647965d50d77cc70748570dcd: fix R2-M1, with its pass and fail test. R2-m1 to R2-m3 are recommended and do not hold the label.
+
+Verdict: Block
