@@ -78,7 +78,7 @@ try {
 
   const clock = new FakeClock(at("2026-10-26 08:00"));   // Monday, EDT
   const make = (o: Partial<BookingPorts> & { mail?: FakeMail; arrival?: FakeArrival } = {}) => {
-    const mail = o.mail ?? fakeMail({ now: () => clock.now() }), arrival = o.arrival ?? fakeArrival(), audit = o.audit ?? fakeAudit(), jobs = o.jobs ?? fakeJobs(clock);
+    const mail = o.mail ?? fakeMail({ clock }), arrival = o.arrival ?? fakeArrival(), audit = o.audit ?? fakeAudit(), jobs = o.jobs ?? fakeJobs(clock);
     const warnings: string[] = [];
     const svc = new BookingService(db, { audit: audit as AuditPort<never>, clock, jobs, mail, arrival, publicBaseUrl: "http://localhost:4430", limits: { bookPerIp: 1000, bookPerFirm: 1000, slotsPerIp: 1000, tokenPerIp: 1000, ...o.limits }, warn: (m) => warnings.push(m) });
     return { svc, mail, arrival, audit, jobs, warnings };
