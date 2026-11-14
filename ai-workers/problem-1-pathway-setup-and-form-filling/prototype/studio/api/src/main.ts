@@ -231,6 +231,7 @@ async function main() {
   await registerFeatures(AppModule);
   await (await import("./platform/identity/sample-seed.ts")).seedSampleOnStart();   // P-571 (2), PF-4: PF-3's Sample seed after migrations, only with PLATFORM_SAMPLE_SEED=on (default off; never in production)
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: ["error", "warn"] });
+  (await import("./platform/observability/hook.ts")).observe(app); // PF-23: one JSON logger with redaction, request lines and metrics (NFR5-14, BR-16)
   app.useBodyParser("json", { limit: "5mb" });
   app.useGlobalFilters(new ProblemErrors());
   const web = join(STUDIO, "web", "dist");
