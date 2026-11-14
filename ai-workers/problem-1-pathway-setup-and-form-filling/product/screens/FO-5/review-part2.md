@@ -90,3 +90,40 @@ There is no screen, so the browser parts of `journey-test` (axe, widths, keyboar
 Block on **M1**. To fix: a change whose transaction rolled back (Edit, a new template version, Signed offline) must never leave a key that refuses the next attempt, and a lost race answers 409, never 500. Add a test that forces a rollback after the file write and then edits again. The Minors m1-m11 are for the builder to fix or record in the PR; m2, m3 and m10 need Lead B's answer, not a code change by themselves.
 
 Verdict: Block
+
+## Round 2 (diff-only)
+* **Commit reviewed:** `a79fa9e484a63f0f0cad3c792a1b6ced99069c76`. Only `git diff c97154b77..a79fa9e48` was read (the round 1 fix commit `a79fa9e48`; `867a9fb4b` and `9ad7981b9` add only this review and `break-report-part2.md`). Breaker's B-1..B-15 were read for what they ask, not re-tested.
+* **Run:** `node_modules/.bin/tsx --tsconfig api/tsconfig.json tests/check_fo5_retainers.ts`: **138 passed, 0 failed**. Probe: `placeholdersOf` (`api/src/front-office/retainers/docx.ts`) called from a scratch script on hand-made zips (results under B-2 below).
+* **P-600 read of the new migration `20261115010000_fo5_retainer_file_keys`:** it changes only FO-5's own constraints: three `*_file_key_check` constraints and `fo_retainer_offline_check`, on `fo_retainer_template`, `fo_retainer` and `fo_retainer_version`. No table, column, row, function or other area is touched. The offline constraint is re-created with part 1's other clauses word for word. Part 1's unsuffixed keys stay valid, and a key still names its own row, version and id (tested pass and fail). Its stamp `20261115010000` is later than main's newest (`20261114230000_pf25_web_address`; main has moved since the branch, and nothing conflicts). The rollback note is present. **Holds.**
+
+### Round 1 findings
+| Finding | Answer in the diff | Holds? |
+|---|---|---|
+| **M1** (and B-1) | Every stored key gets a fresh 12-hex attempt suffix: `service.ts` `attempt()`, used by upload, new version, `renderVersion` and Signed offline. The test rolls back an edit, and then a Signed offline, after the file write; the next attempt succeeds. Two edits at once give one winner and the loser 409. | **yes** |
+| B-5 | `tx()` maps a refusal raised inside a transaction to 409 | yes (see r2-m1) |
+| m3 (B-11) | `visible(ctx, id, true)` for edit, send, withdraw and Signed offline: the representative is read-only unless they own the prospect or sees-all is on | yes |
+| m4 | `{fees.label}` is accepted inside the loop and rendered there; outside the loop it is refused | yes; a section on a plain value (`{#client.phone}{client.phone}{/client.phone}`) is still refused as `client.phone.client.phone` (nit) |
+| m5 (B-7) | the default root is under `STUDIO_VAR` | yes |
+| m6 | the content type is compared; `.meta` and `.tmp` key endings are refused | yes |
+| m7 | link tokens are bound to the staff id; another person's link → 404 | yes |
+| m8 (B-9) | `RETAINER_OPEN` is checked before rendering, and the unique index maps to it | yes for Prepare; see r2-m2 for Edit |
+| m9 (B-4) | an ineligible representative blocks in read and in Send | yes |
+| m1, m2, m10, m11 | left as questions for Lead B in the PR body | accepted as recorded |
+
+### New in this diff
+**r2-M1 Major: B-2's zip-bomb limit trusts the sizes the zip declares about itself, so one edited header brings the bomb back.** `docx.ts` `load()` adds up `_data.uncompressedSize` from the zip's own directory and stops at 30 MB. pizzip inflates an entry in full and only *then* compares the real length with the declared one ("Bug : uncompressed data size mismatch").
+* **Reproduced:** I took a `.docx` whose `word/document.xml` really expands to 1.88 GB and patched its two size fields to say 1000 bytes. The file is 1.8 MB, under the 5 MB template limit. `placeholdersOf` refused it, but only after **6.3 s of synchronous inflate (the event loop blocked for every firm) and about 3.8 GB of resident memory**. A 300 KB variant: 0.9 s, 733 MB.
+* **Why it is worse now:** `placeholdersOf` reads every XML part, so a 5 MB upload can carry several lying parts, enough to exhaust memory on a normal server.
+* **Who can do it and what it costs:** an Owner or Admin of any firm, on purpose and as often as they like. Refused uploads write no audit line. The availability cost falls on every firm sharing the server.
+* **What the fix did achieve:** B-2's stored, persistent form (a template that stalls every later draft) is gone, because such a file is no longer accepted.
+* **Fix:** bound the inflate itself, not the declared size. For example, in `load()` inflate each entry before handing it on with `zlib.inflateRawSync(compressed, { maxOutputLength: declared })`, keeping the 30 MB running total, and refuse on `RangeError` with "We could not read this file.". Add a test with a lying header next to the honest bomb test.
+
+**Minor**
+* **r2-m1. `tx()` turns any database error that mentions an FO table into "This changed at the same time"** (`service.ts` `tx()`, the `/fo_retainer|fo_prospect|fo_stage_move|P2002|…/` line). A genuine bug, such as a check constraint the code violates, then reads as a harmless race. It is not logged, because the conflict replaces the error. Map only the race signals (P2002, P2034, serialization failure, deadlock, the named unique index) and let other errors through to the logged 500 path, or log the original before mapping.
+* **r2-m2. Edit and resend of an Expired retainer, after a new retainer took the prospect, still answers the generic race text.** `edit()`'s `tx()` passes no unique map, so `fo_retainer_one_live_per_prospect` falls through to `CHANGED` "This changed at the same time (someone else saved it)" instead of `RETAINER_OPEN` (B-9's second case). Pass the same `{ fo_retainer_one_live_per_prospect: open }` map, or check before rendering as Prepare does.
+* **nit.** An empty `PATCH` is now refused (B-12), so the way to rebind a draft to the person's corrected name (BR-7) is to send any field again, e.g. the same signer. That is fine for FO-5s, but say so in the code comment.
+
+### Verdict (round 2)
+Block on **r2-M1**: the zip-size limit must hold against a zip that lies about its sizes, with a test. Everything else from round 1 holds. r2-m1, r2-m2 and the nit are for the builder to fix or record.
+
+Verdict: Block
