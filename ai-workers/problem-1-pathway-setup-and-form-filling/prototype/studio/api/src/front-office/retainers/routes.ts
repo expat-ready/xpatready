@@ -31,7 +31,7 @@ export class RetainersController {
   draft(r: R, prospectId: string, b: B) { return this.svc.draft(staffOf(r), prospectId, b ?? {}); }
   read(r: R, id: string) { return this.svc.read(staffOf(r), id); }
   edit(r: R, id: string, b: B) { return this.svc.edit(staffOf(r), id, b ?? {}); }
-  send(r: R, id: string) { return this.svc.send(staffOf(r), id); }
+  send(r: R, id: string, b: B) { return this.svc.send(staffOf(r), id, b ?? {}); }
   withdraw(r: R, id: string, b: B) { return this.svc.withdraw(staffOf(r), id, b ?? {}); }
   signedOffline(r: R, id: string, b: B, f: F) { return this.svc.signedOffline(staffOf(r), id, b ?? {}, up(f)); }
   /** A short-lived link to one of the retainer's files (BR-15). */
@@ -66,7 +66,7 @@ decorate(C, "representatives", [Get("retainer-representatives"), PermissionKeys(
 decorate(C, "draft", [Post("prospects/:id/retainers"), PermissionKeys("agent/retainer:draft")], [Req(), Param("id"), Body()]);
 decorate(C, "read", [Get("retainers/:id"), PermissionKeys("agent/retainer:show")], [Req(), Param("id")]);
 decorate(C, "edit", [Patch("retainers/:id"), PermissionKeys("agent/retainer:draft")], [Req(), Param("id"), Body()]);
-decorate(C, "send", [Post("retainers/:id/send"), HttpCode(200), PermissionKeys("agent/retainer:send")], [Req(), Param("id")]);
+decorate(C, "send", [Post("retainers/:id/send"), HttpCode(200), PermissionKeys("agent/retainer:send")], [Req(), Param("id"), Body()]);
 decorate(C, "withdraw", [Post("retainers/:id/withdraw"), HttpCode(200), PermissionKeys("agent/retainer:void")], [Req(), Param("id"), Body()]);
 decorate(C, "signedOffline", [Post("retainers/:id/signed-offline"), HttpCode(200), file(OFFLINE_PDF_MAX_BYTES), PermissionKeys("agent/retainer:offline-sign")], [Req(), Param("id"), Body(), UploadedFile()]);
 decorate(C, "link", [Post("retainers/:id/download-link"), HttpCode(200), PermissionKeys("agent/retainer:download")], [Req(), Param("id"), Body()]);

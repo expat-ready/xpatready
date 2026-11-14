@@ -64,6 +64,17 @@ const uuidOf = (v: unknown, field: string): string | null => {
   return v.toLowerCase();
 };
 
+/** The version a page shows, which a change names (the stale-save rule; Devin 4575579111, break B-24). A JSON route takes
+ *  a whole number; a multipart one (Signed offline) its digits as text. Missing or malformed → 422 at the field. */
+function expectedVersionOf(body: Record<string, unknown>, multipart = false): number {
+  const v = body.expectedVersion;
+  const n = typeof v === "number" ? v : multipart && typeof v === "string" && /^\d{1,9}$/.test(v) ? Number(v) : NaN;
+  if (!Number.isInteger(n) || n < 1) return unprocessable("Send the version you are acting on (expectedVersion).", { expectedVersion: "Send the version shown on your page." });
+  return n;
+}
+const stale = (current: number, expected: number): never =>
+  conflict(`This agreement has a newer version (${current}) than the one you saw (${expected}). Open it again.`, "CHANGED");
+
 /** BR-5: fee rows in. Amounts in cents (whole numbers, 0 … CAD 100 million), empty while the draft has none. */
 export function feesOf(v: unknown): FeeIn[] {
   if (!Array.isArray(v) || v.length > 50) return unprocessable("Fee rows are a list of at most 50.", { fees: "At most 50 rows." });
@@ -379,8 +390,8 @@ export class Retainers {
     const r = await this.visible(ctx, id, true);
     if (!["templateId", "signerPersonId", "representativeStaffId", "fees"].some((k) => body[k] !== undefined)) unprocessable("Nothing to change.", {});   // B-12: no new version for nothing
     // A stale save is refused (STANDARDS stale-save rule; Devin 4575579111): the page sends the version it shows.
-    if (typeof body.expectedVersion !== "number" || !Number.isInteger(body.expectedVersion)) unprocessable("Send the version you edited (expectedVersion).", { expectedVersion: "Send the version you edited." });
-    if (body.expectedVersion !== r.currentVersion) conflict(`This agreement has a newer version (${r.currentVersion}) than the one you edited (${body.expectedVersion as number}). Open it again.`, "CHANGED");
+    const expected = expectedVersionOf(body);
+    if (expected !== r.currentVersion) stale(r.currentVersion, expected);
     if (!EDITABLE.includes(r.status)) conflict(r.status === "CLIENT_SIGNED" || r.status === "SIGNED" || r.status === "SIGNED_OFFLINE" ? "The client has signed this agreement: it can no longer be edited." : "This agreement is withdrawn: prepare a new one.", "NOT_EDITABLE");
     const p = await this.prospectFor(ctx, r.prospectId ?? notFound("prospect"), true);
     const open = () => conflict("This prospect already has an open retainer. Open it instead.", "RETAINER_OPEN");
@@ -414,8 +425,10 @@ export class Retainers {
 
   /** Send (BR-6, BR-8; AG-5-9): only a Draft, only with its choices made and the client name and a fee filled in. FO-6
    *  adds the signing request and the one email in this same step. */
-  async send(ctx: StaffContext, id: string) {
+  async send(ctx: StaffContext, id: string, body: Record<string, unknown> = {}) {
     const r = await this.visible(ctx, id, true);
+    const expected = expectedVersionOf(body);   // break B-24: never send a version the person did not see
+    if (expected !== r.currentVersion) stale(r.currentVersion, expected);
     if (r.status !== "DRAFT") conflict("Only a draft is sent. Edit it to make a new version first.", "NOT_DRAFT");
     const page = await this.read(ctx, id);   // its blockers include the representative's eligibility now (B-4)
     if (Object.keys(page.blockers).length) unprocessable(Object.values(page.blockers).join(" "), page.blockers, { code: "SEND_BLOCKED" });
@@ -452,6 +465,9 @@ export class Retainers {
   async signedOffline(ctx: StaffContext, id: string, body: Record<string, unknown>, file: Upload | undefined) {
     const r = await this.visible(ctx, id, true);
     const reason = str(body.reason, 200, "A reason", "reason", true, true)!;
+    // break B-24: the version the paper was signed on; a newer one saved meanwhile is never filed as signed.
+    const expected = expectedVersionOf(body, true);
+    if (expected !== r.currentVersion) stale(r.currentVersion, expected);
     if (!file?.bytes?.length) unprocessable("Upload the signed PDF.", { file: "Upload the signed PDF." });
     if (file!.size > OFFLINE_PDF_MAX_BYTES) unprocessable("The signed copy is at most 10 MB.", { file: "At most 10 MB." });
     const head = Buffer.from(file!.bytes.subarray(0, 5)).toString("latin1"), tail = Buffer.from(file!.bytes.subarray(-1024)).toString("latin1");
