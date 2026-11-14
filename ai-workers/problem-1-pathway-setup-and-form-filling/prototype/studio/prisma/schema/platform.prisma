@@ -97,6 +97,8 @@ model PlatformFirm {
   foRetainers         FoRetainer[]
 
   // back-relation slot: web address (PF-25)
+  webAddress     PlatformFirmWebAddress?      // platform-web-address.prisma
+  addressHistory PlatformFirmAddressHistory[]
 
   @@map("platform_firm")
 }
