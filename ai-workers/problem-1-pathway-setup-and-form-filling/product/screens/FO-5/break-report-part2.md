@@ -119,3 +119,43 @@ I did not run two at once: the shared machine has 16 GB. Expected: inflate with 
 A python-docx file, the python-docx default template and the repo's `commercial/plan.docx` were accepted. A GUID in a `vt:lpwstr` custom property was refused correctly (it renders). Expected: read the text elements docxtemplater renders, in the parts it renders.
 
 **B-19 Minor note (new) — a refusal names every unknown placeholder.** A 3.3 MB file with 1.5 million `{uN}` tags stalled the server for 11 s and returned a 153 MB 422 body. Expected: name the first few (for example 20) and say "and N more".
+
+## Round 3 — head `0b5518de9`, diff only (copy `brk_fo5c` on :4437, stopped; its files went with it)
+
+**Result: B-9 (second case), B-16, B-17 and B-18 fixed; B-3 fixed for the `.bin` header but still open for two other parts (B-21); B-19 partly fixed. New: 4 Minor (B-20..B-23), no Major. api.log has 4 × 500 (B-20, B-22).**
+- **B-17 fixed.** Each of these came back 422 "We could not read this file." in ≤ 0.08 s, and another user's request in parallel took ≤ 0.01 s:
+  - round 1's bomb (400 MB, honest header)
+  - the same bomb declaring 4,000 bytes
+  - 3 GB declaring 4,000 bytes in 3.1 MB
+  - 4.9 GB declaring 4,000 bytes in a 5.1 MB upload (under the 5 MiB limit)
+  - 8 lying parts of 600 MB each in 4.9 MB
+
+  One leftover → B-20.
+- **B-18 fixed.** These were all accepted with the right placeholders: Zotero field, bibliography `{GUID}`, tracked deletion, python-docx file, python-docx default template, repo `commercial/plan.docx`. A GUID in a `vt:lpwstr` custom property is still refused, and that is right: docxtemplater renders it.
+- **Consistent with docxtemplater (held):** text split across runs with `w:proofErr` and bold, `w:t xml:space="preserve"`, a smart tag, a DATE field with its displayed result, braces inside a field code (`instrText`), and `&#123;…&#125;` entities. The scan and the render agree on each.
+- **B-3 fixed for the `.bin` header** declared in `[Content_Types].xml`; it is now refused with its name. Two parts are still missed → B-21.
+- **B-19 partly fixed.** The answer now names 10 placeholders "and N more", and there is a cap of 2000. But the cap counts only after docxtemplater has compiled every tag (`docx.ts` `open()` comes before the counter). The 3.3 MB file with 1.5 million tags still took 8.6 s, and another user's `GET …/placeholders` waited 7.1 s. Above 2000 tags the answer is the bare "We could not read this file." with no reason. Owner and Admin only, file refused, so Minor. Count the `{` in the raw text before building the Docxtemplater, and say "more than 2000 placeholders".
+- **B-16 fixed.**
+  - Labels with `\n`, `\t`, U+2028 or U+000B, a withdraw reason with U+0007 and an offline reason with U+0001 → 422 at the field ("One line, no tabs." / "Remove control characters.").
+  - A multi-line reason with `\r\n` and `\t` is accepted.
+  - U+0085 (NEL) and U+200B in a label are accepted, and the database accepts them too: no 500.
+- **B-9 second case fixed.** Editing an Expired retainer after a new one took the prospect → 409 RETAINER_OPEN.
+
+**B-20 Minor (new) — a part whose declared size is too small, inside the 30 MB cap, gives 500.** `docx.ts:78` (`zip.file(name)?.asText()` outside the `UnreadableDocx` guard). A 34 KB upload with 29 parts of 1 MB each, each declaring 4,000 bytes: the new zlib pre-pass passes it (29 MB < 30 MB). Then pizzip's own inflate throws "Bug : uncompressed data size mismatch" (`zipEntry.js:69`), and the answer is 500. Crafted files only, nothing is stored, and the server is not slowed. Expected: refuse a part whose inflated size differs from its declared size in `load()`, or wrap the reads in `placeholdersOf` → 422 "We could not read this file."
+
+**B-21 Minor (B-3 rest) — two kinds of text docxtemplater renders are still not read.** docxtemplater renders `m:t` (equations) and the SmartArt data part (`diagramData+xml`, `a:t`). The scan reads only `<w:t>`.
+- `{client.passport}` inside an equation in the body: upload 201, placeholders `[client.name, fees, fees.label]`, and the render prints it empty.
+- `{client.passport}` in `word/diagrams/data1.xml` (declared as diagramData): the same.
+
+Word produces both (Insert Equation, SmartArt), but they are rare in a retainer. An unknown tag prints empty; no data leaks. Expected: read `m:t` and, in diagram data, `a:t` (docxtemplater's own `tagsXmlTextArray`).
+
+**B-22 Minor (new) — a template name that grows under NFC gives 500.** `service.ts` `nameOf120` checks the 120 limit in `str()`, then calls `.normalize("NFC")`. NFC expands U+FB2C to 3 code points and U+0958 to 2. Three cases each gave 500, logged as "unexpected database refusal … fo_retainer_template_name_check":
+- upload with a 41 × U+FB2C name (41 → 123 characters)
+- upload with a 120 × U+0958 name
+- rename `PATCH` with the 41 × U+FB2C name
+
+The upload leaves its stored file behind. Expected: normalise first, then check the length (422 "at most 120 characters").
+
+**B-23 Minor (new) — a declared part that is never rendered can still refuse a template.** The glossary document (`word/glossary/document.xml`, the building blocks Word keeps for content controls and Quick Parts; content type `…document.glossary+xml`) is read because it is declared. docxtemplater does not render it. A glossary entry "Insert {Client Name} here" → 422 "{Client Name} is not a placeholder we know." Rare. Expected: read only the content types docxtemplater renders (main, header, footer, footnotes, comments, the docProps, diagram data).
+
+**Held:** no 500 other than B-20 and B-22. Every refusal of the new checks is 422, with a code.
