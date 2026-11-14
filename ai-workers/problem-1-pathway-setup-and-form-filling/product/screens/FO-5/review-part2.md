@@ -179,3 +179,19 @@ Verdict: Approve 19a36dd3c33547d5b645310bdde51fc900a1ed0c
 Round 3c (type-only): `git diff 19a36dd3c..1d42f813f` is this review record plus one line in `service.ts` `read()`. It adds `as Record<string, unknown>` to `version.values`, a type assertion only, so the output does not change: the licence number is still set to `undefined` and so left out of the JSON. `node product/tools/typecheck.mjs` reports "no new type errors" (15 known, 0 fixed). No new findings.
 
 Verdict: Approve 1d42f813f2a4160f6f503faa74e379c4dbdd3aa3
+
+## Round 3d (diff-only, B-24)
+* **Commit reviewed:** `06f0861773d3657801f7262008656afdf3233514`. Only `git diff 542f3256c..06f086177` was read: `routes.ts`, `service.ts` and the test.
+* **Runs:** `node_modules/.bin/tsx --tsconfig api/tsconfig.json tests/check_fo5_retainers.ts`: **159 passed, 0 failed**. `node product/tools/typecheck.mjs`: "no new type errors" (15 known, 0 fixed).
+
+| Check | Holds? |
+|---|---|
+| `expectedVersionOf()` takes a whole number at least 1 on JSON routes. On multipart, it takes digit text (`/^\d{1,9}$/`). Anything else is a 422 at the field. `stale()` is a 409 `CHANGED` naming both versions. | yes |
+| `send()` checks the version right after `visible()`, before the blockers and before any write. Its transaction still updates only `where status = DRAFT and current_version = <checked version>`, so an edit landing between the check and the write is still refused. The route now passes its `Body`. | yes; the test covers stale (409, nothing sent), missing (422) and current (sent) |
+| `signedOffline()` checks the version after the reason and before the file checks, the file write and the transaction. Its transaction keeps `current_version = <checked version>`. | yes; the test covers stale (409, nothing filed, the prospect not won), missing or malformed (422) and current given as multipart text "2" (filed) |
+| `edit()` uses the same helper, so `0` or a negative is now 422. The lock re-check is unchanged. | yes |
+
+* **Note for FO-5f (Lead B's call, not a defect of this diff):** paper signed on an earlier version can no longer be filed once a newer version exists. Part 1 already ties Signed offline to the current version, so the firm's way out is to edit back to the signed terms (a new version) or withdraw. Say so on S6's Signed offline panel.
+* No new findings. r3-m1 and r3-m2 stand.
+
+Verdict: Approve 06f0861773d3657801f7262008656afdf3233514
