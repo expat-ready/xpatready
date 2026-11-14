@@ -72,7 +72,7 @@ for (const db of [EMPTY, DEMO, BARE]) { execFileSync(join(BIN, "dropdb"), [...PG
 const dbs: PrismaClient[] = [];
 try {
   const newest = all.filter((d) => d < NEW).at(-1) ?? "";
-  ok(`PF-21 (P-600 (4)): the migration has its own stamp, later than every one before it (newest before it: ${newest})`, all.includes(NEW) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1 && all.at(-1) === NEW, all.slice(-3));
+  ok(`PF-21 (P-600 (4)): the migration has its own stamp, later than every one before it (newest before it: ${newest})`, all.includes(NEW) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1 && newest < NEW && newest >= "20261114153000_fo1a_front_office_sales", all.slice(-3));   // never "the newest of all": later rows' migrations follow it on main
 
   // ----------------------------------------------------------------------- migration on empty and demo-data copies
   for (const d of all.filter((x) => x < NEW)) psql(BARE, ["-f", join(MIG, d, "migration.sql")]);
