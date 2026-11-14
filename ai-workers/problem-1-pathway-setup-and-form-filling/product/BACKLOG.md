@@ -494,6 +494,15 @@ Contracts: `design/platform-and-front-office-contracts-2026-11-14.md` draft 4, �
   * the task definition sets `PLATFORM_ENVIRONMENT=production` and `PLATFORM_IDENTITY=cognito` explicitly;
   * the deploy smoke test proves the running service refuses the local sign-in stand-in (a local token → 401) and that `/api/health/ready` reports `environment: production`, never `local`.
 
+### Rev 16.6 (14 Nov 22:59 IST, Lead B (3); copied by Lead 49 from 4d5667a6c): slot-line convention; one reset step for the seeds
+
+* **Slot lines:**
+  * PF-0p's `// back-relation slot: …` comments **stay**, as markers; an area's back-relation lines go directly under its own slot;
+  * `check_pf0p_ports.ts` keeps requiring all six comments;
+  * the briefs are updated (they said "replace").
+* **One demo-reset step** (FO-2 adds it, under the release holder's rev 15.1 conditions): PF-3's sample seed, then FO-1a's `seedSampleFirmsFrontOffice`, then PF-25's `catchUpFirmAddresses`. PF-25 adds no reset hook of its own.
+* **PF-25 #1763:** the trigger is gone (c4d3f5a8e), replaced by a `firm.created` consumer with catch-up and a backfill, and a re-review is running.
+
 ## Now
 | # | Area | Item | Done when (beyond the standard) | Source |
 |---|---|---|---|---|
