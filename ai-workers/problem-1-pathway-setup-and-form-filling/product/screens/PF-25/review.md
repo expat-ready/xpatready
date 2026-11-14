@@ -133,3 +133,22 @@ Head **0ca2da12**. PF-0p #1752 is merged in and the real `ports/` from main are 
 * **New findings: none.**
 
 **Verdict: Approve** (commit 0ca2da128094fce89e439c5709d5319447aa2468). Open: Blocker 0, Major 0. m4 stays as the PR's Question 3, and m2 waits for the release holder's ruling.
+
+## Round 4: diff-only re-review of `1ab0063b..c4d3f5a8` (Lead B's ruling on #1763)
+Head **c4d3f5a8**. I regenerated the client; `check_pf25_web_address` passes **67/67**. I also ran an isolated copy on :4522 (start, Sample seed, the command run twice, then a restart).
+* **The trigger is gone.** No PF-25 trigger remains on `platform_firm` (tested via `pg_trigger`), so address generation can no longer fail a firm's creation (P-600 (2)).
+* **The backfill** covers every firm that is not DELETED or ABANDONED, using its key when the key is free. Tested on the demo-data copy with `demo-law`: it gets an address, and `gone-law` (DELETED) gets none.
+* **The `firm.created` consumer** (`firm-created.ts`) follows FO-1a's `firm-seed.ts`:
+  * It uses `EVENT.FIRM_CREATED`, locks the firm row first (`for no key update`, as `change` and `claimAtSignUp` do), then the address.
+  * It is idempotent.
+  * A collision retries on the database's own refusal, up to 3 times. One failed firm never stops the others.
+
+  Lead B's three tests are met: one address per new firm; a re-run adds nothing (live, the second command run gave `{"results":[],"failed":[]}` and a restart added no audit line); a collision takes the next suggestion (`maple-immigration-3`) and the creation stands. A sign-up's chosen address is kept, and a DELETED firm gets none.
+* **The start-up catch-up** (`WebAddressCatchUp`) runs in the background, catches its own errors and never blocks the start. Tested.
+* **The demo-reset gap, judged acceptable.** The reset deletes one workspace's rows and platform rows carry none, so addresses survive a reset and there is nothing to redo. FO-1a has the same hook-less pattern.
+
+  One effect to know (not a finding, same as FO-1a): when the Sample seed runs *after* the app has started, as `isolated.sh` start-then-seed does, the Sample firms have no address until the next start or `tsx api/src/platform/web-address/firm-created.ts`. Live: no address after the seed, then `sample-firm` and `sample-solo` after the command.
+* **New findings: none.**
+
+**Verdict: Approve** (commit c4d3f5a8e1078b3b837bb818870bcb542084ca37). Open: Blocker 0, Major 0. m4 (rate limit) stays as the PR's Question 3. m2 is now resolved by Lead B's ruling.
+*Not covered:* after my run, uncommitted edits to `service.ts` (+6/−3) and `check_pf25_web_address.ts` (+6/−1) appeared in this checkout from another agent. They are not part of c4d3f5a8, so this Approve does not cover them. Once pushed, they need a diff-only re-review.
