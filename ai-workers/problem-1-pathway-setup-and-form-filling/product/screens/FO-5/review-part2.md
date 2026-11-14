@@ -160,3 +160,17 @@ No Blocker and no Major, so the row is not split.
 Approve. r2-M1 is fixed and verified against a zip that lies about its sizes. Every round 1 and round 2 finding holds or is recorded as a question for Lead B (m1, m2, m10, m11). r3-m1 and r3-m2 are Minors for the builder to fix or record, in this PR or a follow-up.
 
 Verdict: Approve 0b5518de93ffb1f73dae9d2932838ca259295338
+
+## Round 3b (diff-only, Devin's two findings)
+* **Commit reviewed:** `19a36dd3c33547d5b645310bdde51fc900a1ed0c`. Only `git diff 7a11b144f..19a36dd3c` was read: `routes.ts` (+1 line), `service.ts` (+11) and the test. `7a11b144f` added only records over the approved `0b5518de9`.
+* **Run:** `node_modules/.bin/tsx --tsconfig api/tsconfig.json tests/check_fo5_retainers.ts`: **153 passed, 0 failed**.
+
+| Devin thread | Answer in the diff | Holds? |
+|---|---|---|
+| 4575579111, a stale save overwrites fees | `edit()` requires an integer `body.expectedVersion`. A missing one is refused with 422 at the field. One that differs from the retainer's `currentVersion` is 409 `CHANGED`, naming the newer version. The `FOR UPDATE` re-check inside the transaction is unchanged, so a save that lands between the read and the lock is still refused. | **yes.** The test saves v2 from one tab: the v1 tab's save is 409 and v2's fee stays. A save without `expectedVersion` is 422. One naming v2 makes v3. Every other edit in the suite goes through a helper that sends the current version, so no existing check was loosened |
+| 4575579436, a link outlives a change of owner | `assertFileVisible()` takes the retainer id from the key (`retainers/<uuid>/…`, anything else 404). It re-runs the read form of `visible()`, which keeps the firm wall and the strict UUID check. `download` calls it after the token check and before reading the file. | **yes.** After the prospect changes owner with sees-all off, the former owner gets 404. The new owner and the retainer's representative still may download. A template key is 404. Every key `fileKey()` can sign is under `retainers/<id>/`, so no legitimate link is refused |
+
+* **nit.** The route's one-line call is exercised only through the service method; the suite has no HTTP-level check of it.
+* No new findings. r3-m1 and r3-m2 stand as written in round 3.
+
+Verdict: Approve 19a36dd3c33547d5b645310bdde51fc900a1ed0c
