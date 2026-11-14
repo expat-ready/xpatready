@@ -186,3 +186,24 @@ Expected: both routes require the version shown (`expectedVersion`) and answer 4
 **B-25 Minor (new) — an Edit made against a draft silently ends a request a colleague has just sent.** Send does not raise `current_version`, so `expectedVersion` still matches. Tab A showed draft v4; T sent v4 (200). Tab A saved with `expectedVersion: 4`: 200, v4 ended UPDATED, the retainer is back to DRAFT v5, and the client's live link is ended. The response shows the change, and every version is kept, so no data is lost. Expected: the stale check covers status too, or the version is raised on Send, so tab A gets 409 "This agreement was sent meanwhile".
 
 **B-26 Minor note — the link answer after a permissions change says "No such retainer in your firm."** That comes from `visible()`, not "No such file". It leaks nothing, so it is only wording.
+
+## Round 5 (edit, send, Signed offline, download) — head `06f086177` (copy `brk_fo5e` on :4439, stopped)
+
+**Result: B-24 fixed. No Major on money or access remains in these four paths. Still open, both Minor, for FO-5f: B-25 and the withdraw gap. No 500.**
+- **B-24 Send fixed.** R saw v1 (CAD 44.44). T saved v2 (CAD 999,999.00). R's Send with `expectedVersion: 1` → 409 CHANGED "This agreement has a newer version (2) than the one you saw (1)", and nothing was sent.
+  - Missing body, `{}`, `"2"`, `2.5`, `null`, `0`, `-1`, `true`, `[2]` → 422 INVALID at `expectedVersion`.
+  - `3` (ahead of the current version) → 409.
+- **B-24 Signed offline fixed.** The paper was v1 (CAD 1,500.00). T saved v2 (CAD 5,000,000.00). Signed offline with `expectedVersion=1` → 409; nothing filed and the prospect not Won.
+  - Multipart: missing, empty, `+2`, `2.0`, `0`, `1e0`, Arabic-Indic `٢`, `2,3`, and two `expectedVersion` fields → 422.
+  - `02` is read as 2. curl trims spaces around `-F` values, so `" 2"` arrived as `2`.
+- **Races (HTTP, in parallel, same retainer at v1):**
+  - Edit + Send + Signed offline, 5 rounds: exactly one success each time; the other two got 409 CHANGED. When Signed offline won, the version filed was v1 with its fee (100), the version everyone saw. When Edit won, nothing was sent or filed.
+  - Edit + Send, 4 rounds: Edit won every time (Send's lock check failed), and nothing was sent.
+- **Edit re-check holds** (round 4): the type checks now go through the shared `expectedVersionOf`, so `0` and `-1` now get 422.
+- **Download re-check holds** (round 4 replay, "everyone sees all" off):
+  - The owner+representative's link gave 200. After the owner moved, it still gave 200 (still the representative).
+  - After the representative also moved: 404. With the setting on again: 200.
+  - Links still work after withdraw. Firm B and O with R's link: 404 and 404.
+- **B-25 Minor still open (FO-5f).** T sent v1 (`expectedVersion: 1`). R, still on the draft view, saved with `expectedVersion: 1`: 200. v1 ended UPDATED and the client's request ended. This is the cause from round 4: Send does not raise `current_version`. No money is sent or filed unseen: the next Send or Signed offline needs `expectedVersion: 2`, which only comes from opening v2.
+- **Withdraw Minor still open (FO-5f).** `POST …/withdraw {"reason":"x","expectedVersion":1}` on a SENT v2 → 200 WITHDRAWN; the version is ignored. It changes no money or access, and the withdrawn retainer stays readable.
+- **B-26 note unchanged.**
