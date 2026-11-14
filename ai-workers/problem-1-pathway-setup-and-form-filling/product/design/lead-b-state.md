@@ -56,7 +56,8 @@ The newest are PF-0p, PF-21, PF-23, PF-23r, PF-23m, PF-24, PF-25, **ROW-w.md** (
 2. Answer row questions on the PRs above.
 3. Keep briefs two ahead: next are FO-1k (written; it collects every key the start-now rows left), FO-7b after FO-7a, PF-12 after FO-7a, FO-2 after PF-4 and PF-19a, PF-4b, PF-4s (PF-25w needs it), PF-5, PF-18a.
 4. Concepts still to make: FO-9s, FO-12s, FO-13s, FO-7s, PF-19s, PF-20s, PF-21s/rs, PF-17, PF-18s, FO-3w, FO-3st. The founder's look at FO-4, PF-6, FO-5s and PF-5s is still due.
-5. Open item 16: the Zoom app review and the College's licence-number format (step 0 in FO-3v and PF-4c). The College's site is unreachable from cloud lanes, so the Lead reads it from the Mac.
+5. **Follow-up minors to shape as rows:** FO-3 #1760's open Minors (listed in its PR body for Lead B), and any later PR's "Minors for Lead B" list.
+6. Open item 16: the Zoom app review and the College's licence-number format (step 0 in FO-3v and PF-4c). The College's site is unreachable from cloud lanes, so the Lead reads it from the Mac.
 
 ## Who is who
 * **Lead B** owns the new platform (firm sign-up, plans, subscriptions, staff sign-in and roles, walking skeleton) and front-office (enquiry → lead → prospect → booking → retainer → e-signature → payment) modules, all fenced (P-550, P-558). Writes rows and briefs on this branch; never edits `STATE.md`, `RULES.md`, `DECISIONS.md`, `BACKLOG.md`.
@@ -256,3 +257,4 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
 * 14 Nov 23:04 IST: Lead 49 copied rev 16.6 into BACKLOG (e5c681a94). Lead B (4) starts at the founder's morning typed turn. Until then Lead B (3) answers row questions only, in short turns, with no new work past ~50%.
 * 14 Nov 23:15 IST: Lead 49 ruled round 3 for PF-21 #1753: same reviewer, diff 540ebf88c..4688525, and the breaker re-runs (the migration changed). A new Major splits the row, and Lead B shapes the split.
 * 14 Nov 23:22 IST: the current Lead and release holder is now **Lead 50** (`local_1ee10674…`).
+* 15 Nov 00:28 IST: FO-3 #1760 round 3 approved (B-3 and R2-1 fixed, no Major); it goes ready and labels on green. Its open Minors are listed in the PR body for Lead B (4) to shape (added to the hand-over list).
