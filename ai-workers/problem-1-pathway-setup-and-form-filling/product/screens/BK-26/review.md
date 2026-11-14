@@ -82,18 +82,34 @@ The diff: `p5/transforms.ts` (+27/−12), `check_bk26_dependent_lists.ts`, the w
 
 **What I re-ran:**
 * Pure: BK-26 22/22. The new tests fail when their rule is removed: drop the alias and Hamilton/ON fails; put `codeFor` back and Pierrefonds fails; keep the separators and the separator test fails.
-* My own pure probe on the new head:
-  * Hamilton, Waterloo, Kingston, Sherbrooke and Saint John are written (3324, 3900, 3414, 2140, 0850), and "Sainte-Thérèse Ouest" (2432).
-  * Hamilton/QC, Pierrefonds and the separator are refused.
-  * "Toronto " with a trailing space and the code "3812" both give 3812.
+* My own pure probe on the new head: Hamilton, Waterloo, Kingston, Sherbrooke and Saint John are written (3324, 3900, 3414, 2140, 0850), and "Sainte-Thérèse Ouest" (2432). Hamilton/QC, Pierrefonds and the separator are refused. "Toronto " with a trailing space and the code "3812" both give 3812.
 * Other pure suites: `check_bk22_filler_steps` 41/41, `check_b107` green, `check_qa395` 22/22, `check_bk23` 28/28, `check_screen01_rules` 72/72, `p5 check_p5_engine` 35/35. Type check: no new errors (15 known).
 * Fresh isolated copy on :4458, stopped by trap: **BK-13 45/45 exit 0; BK-24 exit 0**, with IMM 1294's only open box being the consent (F2), so F1 is closed; **walk 8/8**, with the new words on the case page. This agrees with the builder's :4452 log.
 
 **Journey score at 6cedecd59: 9.5/10 (pass).** I re-scored from the automated re-walk and the probes; I did not redo the full visible walk.
-* Task completed, correct data, next step and plain words go up to 1: the cities the form lists are written, and the refusal words are true and plain.
-* Error recovery stays ½: when the answer is a near spelling ("Quebec" for "Quebec City"), the line does not name the form's nearest choice.
-* The other criteria are as in `journey-test-reviewer-2026-11-14.md`.
+Task completed, correct data, next step and plain words go up to 1: the cities the form lists are written, and the refusal words are true and plain. Error recovery stays ½: on a near spelling ("Quebec" for "Quebec City") the line does not name the form's nearest choice. The other criteria are as in `journey-test-reviewer-2026-11-14.md`.
 
 **Open:** no Blocker or Major. The only open items are Minors m4 and m5, accepted as they are.
 
-**Verdict: Approve** (for 6cedecd59a9804121bb5f728f87db5bba69c6766)
+**Verdict at 6cedecd59: Approve.** It carried to 28ece101c, which changes only this file.
+
+## Re-review, diff only (P-277): 28ece101c..9c8912166
+**Merge 1afe03bb5** (main at 40dde3502, which includes #1747 BK-25): `git merge-tree --write-tree 28ece101c 40dde3502` gives tree `aab723e08`, the same as 1afe03bb5's own tree, so it is git's automatic merge with nothing added. No file is changed by both main and this PR.
+
+**Fix 9c8912166** (test-only, +13/−7):
+* `check_bk24_required_boxes.ts`: OPEN is now empty, so any open box fails. This is stricter.
+* `check_qa144_sp_release.ts` K1 keeps its rules (no undecided box; BK-25's exact three). It adds BK-26's boxes as an exact set from the data: the IMM 1294 entries with `proposed: null`, pinned to exactly 1. Each must be mapped by a person with the reason "Changed by the sample loader: BK-26%", and by hand + asked + listed must be at least 45.
+* The root cause is right: the loader maps the city before step 400 fills the leftovers by hand, so the by-hand count went from 42 to 41.
+
+**Does K1 loosen anything? No.** On a loaded copy I ran K1's own queries with each change made inside a rolled-back transaction (scratchpad `rv/k1sql.py`).
+* As loaded: K1 passes, 41 by hand + 3 asked + 1 listed = 45, exactly.
+* K1 fails for: an unnamed IMM 1294 leftover decided as if by the BK-26 loader (the listed set no longer matches); an unnamed IMM 1294 or IMM 5646 leftover decided some other way (sum 44); a leftover left undecided (1 unresolved); the city decided otherwise, or filled by hand (listed set empty).
+* The "at least 45" lower bound is K1's own from before this PR, unchanged.
+
+**What I re-ran at 9c8912166** (fresh copies on :4458, stopped by trap): QA-144 27/27; BK-13 45/45; BK-24 28/28 with 0 open boxes (F1–F5 all closed); BK-26 22/22; the walk 7/8 on the first run, then 8/8 on a fresh rerun.
+
+**m6 (Minor):** the walk's axe check on the refused state is flaky. It once caught `color-contrast` on `.text-text.shadow-sm.bg-surface-raised`, the button while a copy is still being generated. That is existing UI this PR does not change, and neither CI nor the suite selection runs the walk. Fix when convenient: wait for "Generate a new copy" to be idle before running axe.
+
+**Open:** no Blocker or Major. Minors m4 and m5 (accepted) and m6.
+
+**Verdict: Approve** (for 9c8912166d41612cf4f43559db5c6532c58f6767)

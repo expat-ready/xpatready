@@ -71,6 +71,12 @@ try {
   ok(`BK-26: the new copy refuses the city in words and writes nothing ("${text2.slice(0, 260)}")`,
     /"MONTREAL" is not among the \d+ choices the form lists for "Province" ON/.test(text2) && /nothing is written/.test(text2), text2);
   await refused.scrollIntoViewIfNeeded().catch(() => null);
+  // Review m6 (#1749): the page is settled before axe reads it: the copy's button is enabled again (while a copy is being
+  // generated it is greyed, and axe once caught it mid-spin). A wait that times out fails loudly.
+  const gen = row().getByRole("button", { name: /Generate a (new )?copy|Generate again/ }).first();
+  let settled = false;
+  for (let i = 0; i < 240 && !settled; i++) { settled = await gen.isEnabled().catch(() => false); if (!settled) await r.waitForTimeout(250); }
+  ok("BK-26 setup: the new copy is made and its button is enabled again before the page is checked", settled);
   await shot("student-imm1294-city-refused"); await axe("the case page with the refused city");
   ok("BK-26: no page error on the walk", errors.length === 0, errors);
 } finally { await browser.close(); }
