@@ -14,6 +14,7 @@ import { PrismaClient } from "@prisma/client";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import pg from "pg";
 import { acknowledgeBy } from "../api/src/platform/complaints/business-days.ts";
 import { ACK_REMINDER_JOB, ackReminderKey, ComplaintsService, COMPLAINT_KEYS, registerComplaintJobs } from "../api/src/platform/complaints/complaints.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
@@ -418,6 +419,98 @@ try {
   const open3 = (await svc3.list(owner, "open")).items[0].id;
   const r2 = await failRec.close(owner, open3, { outcome: "RESOLVED", at: clock3.now().toISOString(), note: "x" }).then(() => "ok", (e: Error) => e.message);
   ok("PF-21 fail (events): a change rolled back by a failing audit writes no event (record and close)", /forced/.test(r1) && /forced/.test(r2) && count("module_event", "type like 'complaint.%'") === evBefore, { r1, r2 });
+
+  // ======================================================== review and break round 2 (review.md and break-report.md, "Round 2")
+  const clock4 = new FakeClock("2026-12-07T15:00:00Z"), jobs4 = fakeJobs(clock4), audit4 = fakeAudit();
+  let failNext = 1;
+  const mail4 = fakeMail({ failOn: () => failNext-- > 0 });
+  const svc4 = new ComplaintsService({ db, audit: audit4, jobs: jobs4, clock: clock4, mail: mail4 });
+  const at4 = (h: number) => new Date(Date.parse("2026-12-07T14:00:00Z") + h * HOUR).toISOString();
+
+  // R2-M1 (review and break): a failed send is never recorded as sent; the next run sends it, once.
+  const fl = await svc4.record(owner, { ...base, receivedAt: at4(-100) });
+  const run1 = await svc4.runAckReminder({ firmId: firmA, complaintId: fl.id }).then((r) => r, (e: Error) => `threw: ${e.message}`);
+  ok("PF-21 fail (R2-M1): a reminder whose mail fails throws (the job runs again) and its transaction leaves no REMINDER_SENT and no mail (the fake audit keeps a rolled-back line in memory, PF-0p's note; the database is the record)",
+    /threw: forced mail failure/.test(run1) && count("plat_complaint_event", `complaint_id='${fl.id}' and kind='REMINDER_SENT'`) === "0" && mail4.sent.length === 0, run1);
+  const run2 = await svc4.runAckReminder({ firmId: firmA, complaintId: fl.id }), run3 = await svc4.runAckReminder({ firmId: firmA, complaintId: fl.id });
+  ok("PF-21 pass (R2-M1): the next run sends it: then one mail and one REMINDER_SENT, and a third run is skipped",
+    run2 === "sent" && run3 === "skipped" && mail4.sent.length === 1 && count("plat_complaint_event", `complaint_id='${fl.id}' and kind='REMINDER_SENT'`) === "1", { run2, run3 });
+  ok("PF-21 pass (review R2-m2): the reminder is a SERVICE mail (ports/mail.ts: reminders and notices), with the firm's Reply-To", mail4.sent[0].class === "SERVICE" && !!mail4.sent[0].replyTo);
+
+  // Break R2-m1: a job queue that fails after the commit never turns a recorded complaint into an error.
+  const brokenJobs = { ...jobs4, schedule: async () => { throw new Error("queue down"); }, cancel: async () => { throw new Error("queue down"); } };
+  const svcQ = new ComplaintsService({ db, audit: fakeAudit(), jobs: brokenJobs, clock: clock4, mail: fakeMail() });
+  const n5 = Number(count("plat_complaint"));
+  const qr = await svcQ.record(owner, { ...base, receivedAt: at4(-1) });
+  ok("PF-21 pass/fail (break R2-m1): with the queue down, the complaint is recorded once and answered reminderScheduled: false (never an error that makes the person record it again)",
+    qr.reminderScheduled === false && Number(count("plat_complaint")) === n5 + 1 && (await svc4.record(owner, { ...base, receivedAt: at4(-1) })).reminderScheduled === true);
+  ok("PF-21 pass (break R2-m1): an acknowledgement with the queue down is still recorded (a failed cancel is harmless: the run skips it)",
+    (await answer(() => svcQ.acknowledge(owner, qr.id, { at: at4(0) }))) === "ok" && (await svc4.runAckReminder({ firmId: firmA, complaintId: qr.id })) === "skipped");
+
+  // Break R2-m2, R2-m3, R2-m9: ids, dates and cursors that used to give a 500.
+  const nonRfc = await answer(() => svc4.record(owner, { ...base, subjectId: "00000000-0000-0000-0000-000000000001" }));
+  const nonRfc2 = await answer(() => svc4.get(owner, "12345678-1234-1234-1234-123456789abc"));
+  const earlyLocal = await answer(() => svc4.record(owner, { ...base, receivedAt: "2000-01-01T00:30:00+05:00" }));
+  const numCursor = await answer(() => svc4.list(owner, "all", { cursor: 123 }));
+  ok("PF-21 fail (break R2-m2, R2-m3, R2-m9): an id the event shape would refuse → 422 / 404; 1999 in UTC written with an offset → 422; a cursor that is not text → 422",
+    nonRfc !== "ok" && nonRfc.status === 422 && !!nonRfc.fields?.subjectId && nonRfc2 !== "ok" && nonRfc2.status === 404 && earlyLocal !== "ok" && earlyLocal.status === 422 && numCursor !== "ok" && numCursor.status === 422, { nonRfc, nonRfc2, earlyLocal, numCursor });
+
+  // Break R2-m7: text of only marks, tags, selectors or format characters; a direction override in a name.
+  const exotic = ["\u{E0001}\u{E0041}", "́̂", "\u{E0100}\u{E0101}", "\u{1D173}\u{1D17A}", "￹￻", "឴឵", "᠋᠏", "\u{1BCA0}", "\u{13430}", "￾"];
+  const exoticAns = await Promise.all(exotic.map((t) => answer(() => svc4.record(owner, { ...base, summary: t }))));
+  ok("PF-21 fail (break R2-m7, service): a summary of only tags, combining marks, variation selectors, format controls or a noncharacter → 422 at summary",
+    exoticAns.every((a) => a !== "ok" && !!a.fields?.summary), exoticAns.map((a) => (a === "ok" ? "ok" : a.status)));
+  ok("PF-21 fail (break R2-m7, database): the database refuses the same summaries (pg_c_utf8 classes)",
+    exotic.every((t) => refused(DEMO, `insert into plat_complaint (id, firm_id, subject_kind, subject_id, received_at, channel, category, summary, handler_staff_id, acknowledge_by, recorded_by, updated_at) values (gen_random_uuid(), '${firmA}', 'CASE_PARTY', '${u(9)}', now(), 'EMAIL', 'OTHER', '${t}', '${T}', now() + interval '1 day', 'staff:x', now())`, /plat_complaint_summary_check/)));
+  const rlo = await answer(() => svc4.record(owner, { ...base, subjectKind: "OTHER_PERSON", subjectId: undefined, complainantName: "Client ‮tnemyap" }));
+  ok("PF-21 fail (break R2-m7): a direction override in a name → 422 (service) and refused by the database", rlo !== "ok" && !!rlo.fields?.complainantName
+    && refused(DEMO, otherPerson(u(602), firmA, T, "Client ‮tnemyap"), /plat_complaint_complainant_check/), rlo);
+  ok("PF-21 pass (break R2-m7): Arabic, Chinese, an accented name, a number, a currency sign and an emoji are text in both",
+    ["Client احمد", "王小明", "Zoë", "42", "€", "📄"].every((t) => sql(DEMO, `select plat_complaint_has_text('${t}')`) === "t"));
+
+  // Break R2-m4, R2-m5, R2-m6 and review R2-m3: the database at any isolation level, both ways, its own order and lock.
+  const conn = async () => { const c = new pg.Client({ connectionString: urlOf(DEMO) }); await c.connect(); return c; };
+  const fresh = await svc4.record(owner, { ...base, receivedAt: at4(-5) });
+  const [ra, rb] = [await conn(), await conn()];
+  await ra.query("begin isolation level repeatable read"); await rb.query("begin isolation level repeatable read");
+  await ra.query(`select 1 from plat_complaint where id = '${fresh.id}'`); await rb.query(`select 1 from plat_complaint where id = '${fresh.id}'`);
+  const ackSql = `insert into plat_complaint_event (id, firm_id, complaint_id, kind, at, actor) values (gen_random_uuid(), '${firmA}', '${fresh.id}', 'ACKNOWLEDGED', '${at4(-4)}', 'staff:x'); update plat_complaint set acknowledged_at = '${at4(-4)}' where id = '${fresh.id}'`;
+  await ra.query(ackSql);
+  const bDone = rb.query(ackSql).then(() => "ok", (e: { code?: string; message?: string }) => `${e.code}`);
+  await ra.query("commit");
+  const rrOut = await bDone; await rb.query("rollback").catch(() => undefined); await ra.end(); await rb.end();
+  ok("PF-21 fail (break R2-m4): under REPEATABLE READ a second ACKNOWLEDGED is refused (unique index or serialization), one stays",
+    rrOut !== "ok" && count("plat_complaint_event", `complaint_id='${fresh.id}' and kind='ACKNOWLEDGED'`) === "1", rrOut);
+  ok("PF-21 pass (break R2-m4): the one-time-events index is plat_ and firm-first", sql(DEMO, `select indexdef from pg_indexes where indexname = 'plat_complaint_event_once'`).includes("(firm_id, complaint_id, kind)"));
+  const stray = await svc4.record(owner, { ...base, receivedAt: at4(-5) });
+  ok("PF-21 fail (break R2-m5): an event without its change on the complaint is refused at commit (CLOSED on an open complaint, ACKNOWLEDGED alone, a HANDLER_CHANGED that names nobody new)",
+    refused(DEMO, `insert into plat_complaint_event (id, firm_id, complaint_id, kind, at, actor, detail) values (gen_random_uuid(), '${firmA}', '${stray.id}', 'CLOSED', '${at4(-1)}', 'staff:x', '{"outcome": "UPHELD"}')`, /needs its change on the complaint/)
+    && refused(DEMO, `insert into plat_complaint_event (id, firm_id, complaint_id, kind, at, actor) values (gen_random_uuid(), '${firmA}', '${stray.id}', 'ACKNOWLEDGED', '${at4(-1)}', 'staff:x')`, /needs its change on the complaint/)
+    && refused(DEMO, `insert into plat_complaint_event (id, firm_id, complaint_id, kind, at, actor, detail) values (gen_random_uuid(), '${firmA}', '${stray.id}', 'HANDLER_CHANGED', '${at4(-1)}', 'staff:x', '{"to": "${R}"}')`, /needs its change on the complaint/));
+  ok("PF-21 pass (break R2-m5): the stray complaint can still be closed through the service", (await answer(() => svc4.close(owner, stray.id, { outcome: "RESOLVED", at: at4(0), note: "Closed." }))) === "ok");
+  ok("PF-21 fail→pass (break R2-m6): a given seq is replaced by the database's own (a forged -1 never puts a step first)",
+    Number(sql(DEMO, `insert into plat_complaint_event (id, seq, firm_id, complaint_id, kind, at, actor, note) values (gen_random_uuid(), -1, '${firmA}', '${stray.id}', 'NOTE', '${at4(0)}', 'staff:x', 'late note') returning seq`)) > Number(sql(DEMO, `select max(seq) from plat_complaint_event where complaint_id = '${stray.id}' and kind = 'CLOSED'`)));
+  // Review R2-m3: the event trigger's lock: a raw STEP racing a raw close waits for it and is then refused.
+  const lk = await svc4.record(owner, { ...base, receivedAt: at4(-3) });
+  const [la, lb] = [await conn(), await conn()];
+  await la.query("begin");
+  await la.query(`insert into plat_complaint_event (id, firm_id, complaint_id, kind, at, actor, detail) values (gen_random_uuid(), '${firmA}', '${lk.id}', 'CLOSED', '${at4(-1)}', 'staff:x', '{"outcome": "RESOLVED"}'); update plat_complaint set status = 'CLOSED', outcome = 'RESOLVED', closed_at = '${at4(-1)}' where id = '${lk.id}'`);
+  const stepDone = lb.query(`insert into plat_complaint_event (id, firm_id, complaint_id, kind, at, actor, note) values (gen_random_uuid(), '${firmA}', '${lk.id}', 'STEP', '${at4(0)}', 'staff:x', 'raced')`).then(() => "ok", (e: { message?: string }) => String(e.message));
+  await new Promise((r) => setTimeout(r, 300));
+  const waited = (await (await conn().then((c) => { setTimeout(() => c.end(), 1000); return c; })).query(`select count(*)::int n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`)).rows[0].n >= 1;
+  await la.query("commit");
+  const stepOut = await stepDone; await la.end(); await lb.end();
+  ok("PF-21 fail (review R2-m3): a raw STEP racing a raw close waits on the trigger's lock, then is refused (a closed complaint takes only a NOTE)",
+    waited && /takes only a NOTE/.test(stepOut) && count("plat_complaint_event", `complaint_id='${lk.id}' and kind='STEP'`) === "0", { waited, stepOut });
+
+  // Review R2-m1, break R2-m8: no active handler, Owner or Admin → the firm's contact address, never "sent" to nobody.
+  const solo = sql(DEMO, `insert into platform_staff (id, firm_id, email, display_name, updated_at) values (gen_random_uuid(), '${firmB}', 'temp@sample-solo.example.com', 'Temp', now()) returning id`);
+  const soloC = await svc4.record(ownerB, { ...base, receivedAt: at4(-100), handlerStaffId: solo });
+  sql(DEMO, `update platform_staff set status = 'DEACTIVATED', deactivation_reason = 'Left' where firm_id = '${firmB}'`);
+  const m0b = mail4.sent.length, soloRun = await svc4.runAckReminder({ firmId: firmB, complaintId: soloC.id });
+  const contactB = sql(DEMO, `select contact_email from platform_firm where id = '${firmB}'`);
+  ok("PF-21 fail→pass (review R2-m1, break R2-m8): with no active handler, Owner or Admin the reminder goes to the firm's contact address, recorded as such",
+    soloRun === "sent" && mail4.sent.length === m0b + 1 && mail4.sent.at(-1)!.to === contactB.toLowerCase() && sql(DEMO, `select detail ->> 'sentTo' from plat_complaint_event where complaint_id = '${soloC.id}' and kind = 'REMINDER_SENT'`) === "firm_contact", { soloRun, to: mail4.sent.at(-1)?.to });
 } finally {
   for (const d of dbs) await d.$disconnect().catch(() => undefined);
   for (const db of [EMPTY, DEMO, BARE]) spawnSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", db], { stdio: "ignore" });

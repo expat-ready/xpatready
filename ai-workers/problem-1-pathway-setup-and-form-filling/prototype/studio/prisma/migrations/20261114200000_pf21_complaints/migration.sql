@@ -17,7 +17,8 @@
 -- Rollback (in this order): DELETE FROM "platform_role_permission" WHERE permission_key IN ('agent/complaint:record',
 --   'agent/complaint:read'); DROP TABLE "plat_complaint_event", "plat_complaint"; DROP FUNCTION
 --   plat_complaint_has_text(text), plat_complaint_one_line(text), plat_complaint_kept(), plat_complaint_write(),
---   plat_complaint_received(), plat_complaint_event_write(); DROP TYPE "PlatComplaintSubjectKind",
+--   plat_complaint_received(), plat_complaint_event_write(), plat_complaint_event_applied(); DROP INDEX
+--   "plat_complaint_event_once" goes with its table; DROP TYPE "PlatComplaintSubjectKind",
 --   "PlatComplaintChannel", "PlatComplaintCategory", "PlatComplaintStatus", "PlatComplaintOutcome",
 --   "PlatComplaintEventKind"; delete this folder's row from _prisma_migrations.
 
@@ -106,15 +107,17 @@ ALTER TABLE "plat_complaint" ADD CONSTRAINT "plat_complaint_firm_id_handler_staf
 ALTER TABLE "plat_complaint_event" ADD CONSTRAINT "plat_complaint_event_firm_id_complaint_id_fkey" FOREIGN KEY ("firm_id", "complaint_id") REFERENCES "plat_complaint"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- ------------------------------------------------------------------------------------------- rules Prisma cannot say
--- Text that is more than blanks (spaces of every width, invisible format marks, fillers and direction marks: break m4)
--- and holds no control character (C0 or C1). The service uses the same two lists (complaints.ts BLANK, CONTROL).
+-- Text: once the blanks are removed (spaces of every width, invisible format marks, fillers, direction marks: break m4),
+-- at least one letter, digit, punctuation mark or symbol, by the built-in Unicode collation pg_c_utf8 (no ICU; combining
+-- marks, tags, variation selectors and format characters alone are not text: break R2-m7); and no control character
+-- (C0 or C1). The service asks the same (complaints.ts BLANK, filled, CONTROL).
 CREATE FUNCTION plat_complaint_has_text(t text) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
-  SELECT t ~ '[^\u0009-\u000d \u0085 ­͏؜ᅟᅠ ᠎ -‏ -  -⁤⁦-⁯⠀　ㅤ︀-️﻿ﾠ]'
+  SELECT (regexp_replace(t, '[\u0009-\u000d \u0085\u00a0\u00ad\u034f\u061c\u115f\u1160\u1680\u180e\u2000-\u200f\u2028-\u202f\u205f-\u2064\u2066-\u206f\u2800\u3000\u3164\ufe00-\ufe0f\ufeff\uffa0]', '', 'g') COLLATE pg_c_utf8) ~ '[[:alpha:][:digit:][:punct:]]'
      AND t !~ '[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f-\u0084\u0086-\u009f]'
 $$;
--- One line: no line or paragraph break of any kind, no tab.
+-- One line: no line or paragraph break of any kind, no tab, no direction override or isolate (a name shown reversed).
 CREATE FUNCTION plat_complaint_one_line(t text) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
-  SELECT t !~ '[\u0009-\u000d\u0085  ]'
+  SELECT t !~ '[\u0009-\u000d\u0085\u2028\u2029\u202a-\u202e\u2066-\u2069]'
 $$;
 
 ALTER TABLE "plat_complaint"
@@ -225,6 +228,7 @@ BEGIN
   IF TG_OP <> 'INSERT' THEN
     RAISE EXCEPTION 'plat_complaint_event: complaint events are never changed (% refused)', TG_OP USING ERRCODE = 'insufficient_privilege';
   END IF;
+  NEW.seq := nextval(pg_get_serial_sequence('"plat_complaint_event"', 'seq'));   -- the order is the database's, never given (break R2-m6)
   SELECT status, received_at INTO c FROM "plat_complaint" WHERE firm_id = NEW.firm_id AND id = NEW.complaint_id FOR UPDATE;
   IF NOT FOUND THEN
     RETURN NEW;   -- the foreign key answers
@@ -249,6 +253,30 @@ BEGIN
   RETURN NEW;
 END $$;
 CREATE TRIGGER "plat_complaint_event_write" BEFORE INSERT OR UPDATE ON "plat_complaint_event" FOR EACH ROW EXECUTE FUNCTION plat_complaint_event_write();
+
+-- One-time events once, at any isolation level (break R2-m4: under REPEATABLE READ the trigger's count reads an old
+-- snapshot; a unique index does not). firm_id first.
+CREATE UNIQUE INDEX "plat_complaint_event_once" ON "plat_complaint_event" ("firm_id", "complaint_id", "kind")
+  WHERE "kind" IN ('RECEIVED', 'ACKNOWLEDGED', 'RESPONSE_SENT', 'REMINDER_SENT', 'CLOSED');
+
+-- The other way round (break R2-m5): an event that changes the record has its row change by the end of its transaction
+-- (checked at commit): ACKNOWLEDGED → acknowledged_at, RESPONSE_SENT → response_sent_at, CLOSED → closed with that date
+-- and outcome, the newest HANDLER_CHANGED → that handler. So no stray event waits to serve a later row change.
+CREATE FUNCTION plat_complaint_event_applied() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE c record;
+BEGIN
+  SELECT * INTO c FROM "plat_complaint" WHERE firm_id = NEW.firm_id AND id = NEW.complaint_id;
+  IF (NEW.kind = 'ACKNOWLEDGED' AND c.acknowledged_at IS DISTINCT FROM NEW.at)
+     OR (NEW.kind = 'RESPONSE_SENT' AND c.response_sent_at IS DISTINCT FROM NEW.at)
+     OR (NEW.kind = 'CLOSED' AND (c.status <> 'CLOSED' OR c.closed_at IS DISTINCT FROM NEW.at OR c.outcome::text IS DISTINCT FROM NEW.detail ->> 'outcome'))
+     OR (NEW.kind = 'HANDLER_CHANGED' AND c.handler_staff_id::text IS DISTINCT FROM NEW.detail ->> 'to'
+         AND NOT EXISTS (SELECT 1 FROM "plat_complaint_event" l WHERE l.firm_id = NEW.firm_id AND l.complaint_id = NEW.complaint_id AND l.kind = 'HANDLER_CHANGED' AND l.seq > NEW.seq)) THEN
+    RAISE EXCEPTION 'plat_complaint_event: a % event needs its change on the complaint in the same transaction', NEW.kind USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END $$;
+CREATE CONSTRAINT TRIGGER "plat_complaint_event_applied" AFTER INSERT ON "plat_complaint_event" DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW WHEN (NEW.kind IN ('ACKNOWLEDGED', 'RESPONSE_SENT', 'CLOSED', 'HANDLER_CHANGED')) EXECUTE FUNCTION plat_complaint_event_applied();
 
 -- The two permission keys of the row (FO-13k rev 12), in PF-3's role catalogue: added rows only, P-600 (b)'s one written
 -- exception (Lead 47's answer on #1753, 14 Nov 18:5x IST): record for Owner, Admin and Case Manager (anyone who hears a

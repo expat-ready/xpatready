@@ -9,8 +9,9 @@
 // (Owner, Admin) reads every one; record + read act on any; the handler reads and handles their own (steps, response,
 // close) without either key. Anyone else gets the same 404 as for another firm's complaint (an id leaks nothing).
 // Every change is one transaction: the event first, then the row (the database refuses a row change without its event),
-// one AuditPort line (a failing audit rolls everything back). Job and mail calls run after the commit (JobPort and
-// MailPort take no transaction): a rolled-back change never cancels a reminder or sends a mail.
+// one AuditPort line (a failing audit rolls everything back). Job calls run after the commit (JobPort takes no
+// transaction): a rolled-back change never cancels a reminder. The reminder's mail is sent inside its run, after its
+// event (runAckReminder): a failed send is never recorded as sent.
 // Events (contracts §0.5): complaint.received and complaint.closed go to the outbox (module_event), written last in the
 // change's transaction, ids and facts only (ports/events.ts). Not yet here: routes wait for PF-4's @PermissionKeys.
 import { HttpException, HttpStatus } from "@nestjs/common";
@@ -49,13 +50,19 @@ const closedRefused = (): never => problem(409, "complaint-closed", "This compla
 /** The same two lists as the migration's plat_complaint_has_text: blanks of every width, invisible format marks, fillers
  *  and direction marks do not count as text; no C0 or C1 control character. */
 const BLANK = "\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u00ad\\u034f\\u061c\\u115f\\u1160\\u1680\\u180e\\u2000-\\u200f\\u2028-\\u202f\\u205f-\\u2064\\u2066-\\u206f\\u2800\\u3000\\u3164\\ufe00-\\ufe0f\\ufeff\\uffa0";
-const FILLED = new RegExp(`[^${BLANK}]`);
+const BLANK_ALL = new RegExp(`[${BLANK}]`, "g");
+/** After removing the blanks, at least one letter (or letter number), ASCII digit, punctuation mark or symbol: the
+ *  migration's plat_complaint_has_text asks the same of the database's pg_c_utf8 classes ([:alpha:], ASCII [:digit:],
+ *  [:punct:] with symbols). Combining marks, tags, variation selectors and format characters alone are not text. */
+const SEEN = /[\p{L}\p{Nl}\p{P}\p{S}0-9]/u;
+const filled = (s: string) => SEEN.test(s.replace(BLANK_ALL, ""));
 const CONTROL = new RegExp("[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f-\\u0084\\u0086-\\u009f]");
-const LINE_BREAK = new RegExp("[\\u0009-\\u000d\\u0085\\u2028\\u2029]");
+/** One line: no line or paragraph break, no tab, and no direction override or isolate (a name shown reversed). */
+const LINE_BREAK = new RegExp("[\\u0009-\\u000d\\u0085\\u2028\\u2029\\u202a-\\u202e\\u2066-\\u2069]");
 const text = (max: number, oneLine = false) => z.string().max(max, `at most ${max} characters`)
-  .refine((s) => FILLED.test(s), "write something here")
+  .refine(filled, "write something here")
   .refine((s) => !CONTROL.test(s), "remove the control characters")
-  .refine((s) => !(oneLine && LINE_BREAK.test(s)), "keep this on one line");
+  .refine((s) => !(oneLine && LINE_BREAK.test(s)), "keep this on one line, without direction marks");
 
 const ISO = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(Z|[+-](\d{2}):(\d{2}))$/;
 /** A real calendar date and time (no 31 February, no 24:00), with its offset, from the year 2000. */
@@ -65,11 +72,13 @@ export function isInstant(s: string): boolean {
   const [y, mo, d, h, mi, se] = [m[1], m[2], m[3], m[4], m[5], m[6] ?? "0"].map(Number);
   if (y < 2000 || mo < 1 || mo > 12 || d < 1 || h > 23 || mi > 59 || se > 59) return false;
   if (m[7] !== "Z" && (Number(m[8]) > 14 || Number(m[9]) > 59)) return false;
-  return new Date(Date.UTC(y, mo - 1, d)).getUTCDate() === d && Number.isFinite(Date.parse(s));
+  return new Date(Date.UTC(y, mo - 1, d)).getUTCDate() === d && Number.isFinite(Date.parse(s)) && Date.parse(s) >= Date.UTC(2000, 0, 1);
 }
 const instant = z.string({ error: "a date and time is needed" }).refine(isInstant, "a real date and time from 2000 on, e.g. 2026-11-16T14:00:00Z").transform((s) => new Date(s));
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const uuid = z.string().regex(UUID, "an id").transform((s) => s.toLowerCase());
+/** The same uuid rule as the shared event shapes (ports/events.ts, zod's uuid): an id that passes here never fails there. */
+const UUID_SHAPE = z.string().uuid();
+const isUuid = (s: unknown): s is string => UUID_SHAPE.safeParse(s).success;
+const uuid = z.string().refine(isUuid, "an id").transform((s) => s.toLowerCase());
 
 export const SUBJECT_KINDS = ["FRONT_OFFICE_PERSON", "CASE_PARTY", "OTHER_PERSON"] as const;
 export const CHANNELS = ["EMAIL", "PHONE", "IN_PERSON", "LETTER", "WEB_FORM", "OTHER"] as const;
@@ -110,7 +119,7 @@ function parse<T extends z.ZodType>(schema: T, input: unknown): z.output<T> {
 }
 
 // ------------------------------------------------------------------------------------------------------------- views
-export type ComplaintView = Omit<PlatComplaint, "firmId"> & { overdue: boolean; events?: Omit<PlatComplaintEvent, "firmId" | "seq">[] };
+export type ComplaintView = Omit<PlatComplaint, "firmId"> & { overdue: boolean; events?: Omit<PlatComplaintEvent, "firmId" | "seq">[]; reminderScheduled?: boolean };
 export type ComplaintPage = { items: ComplaintView[]; next: string | null };
 const isOverdue = (c: PlatComplaint, now: Date) => c.status === "OPEN" && !c.acknowledgedAt && now > c.acknowledgeBy;
 const view = (c: PlatComplaint, now: Date, events?: PlatComplaintEvent[]): ComplaintView => {
@@ -119,9 +128,10 @@ const view = (c: PlatComplaint, now: Date, events?: PlatComplaintEvent[]): Compl
 };
 /** A list cursor: the last row's sort date and id, opaque to the caller. */
 const cursorOf = (at: Date, id: string) => Buffer.from(`${at.toISOString()}|${id}`).toString("base64url");
-function readCursor(s: string): { at: Date; id: string } {
+function readCursor(s: unknown): { at: Date; id: string } {
+  if (typeof s !== "string" || s.length > 200) return fieldErrors({ cursor: "start the list again" });
   const [at, id] = Buffer.from(s, "base64url").toString("utf8").split("|");
-  if (!at || !id || !UUID.test(id) || !isInstant(at)) return fieldErrors({ cursor: "start the list again" });
+  if (!at || !id || !isUuid(id) || !isInstant(at)) return fieldErrors({ cursor: "start the list again" });
   return { at: new Date(at), id };
 }
 
@@ -160,7 +170,7 @@ export class ComplaintsService {
 
   /** Locks one complaint of the firm for the rest of the transaction, or the 404 (another firm's, none, or not an id). */
   private async lock(tx: Tx, firmId: string, id: string): Promise<PlatComplaint> {
-    if (typeof id !== "string" || !UUID.test(id)) return notFound();
+    if (!isUuid(id)) return notFound();
     const scope = firmScope(firmId), key = id.toLowerCase();
     await tx.$queryRaw`SELECT id FROM "plat_complaint" WHERE firm_id = ${scope.firmId}::uuid AND id = ${key}::uuid FOR UPDATE`;
     return (await tx.platComplaint.findFirst({ where: firmScope(firmId, { id: key }) })) ?? notFound();
@@ -180,14 +190,17 @@ export class ComplaintsService {
     return out;
   }
 
-  /** Records a complaint (key agent/complaint:record): the RECEIVED event, the row, one audit line; after the commit,
-   *  the reminder job (keyed by the complaint, so it never queues twice). */
+  /** Records a complaint (key agent/complaint:record): the row, its RECEIVED event, one audit line, the outbox event;
+   *  after the commit, the reminder job (keyed by the complaint, so it never queues twice). The complaint is recorded
+   *  once committed: a job queue that fails afterwards is answered with `reminderScheduled: false` (never a 500 that
+   *  would make the person record it twice); the overdue list still shows the complaint when its date passes. */
   async record(ctx: StaffContext, input: unknown): Promise<ComplaintView> {
     if (!this.has(ctx, COMPLAINT_KEYS.record)) problem(403, "not-allowed", "Not allowed", "Recording a complaint needs the permission to record complaints.");
     const v = parse(RecordComplaint, input);
     this.notFuture({ receivedAt: v.receivedAt });
     const firmId = firmScope(ctx.firmId).firmId, now = this.d.clock.now();
-    return this.commit(async (tx, after) => {
+    let reminderScheduled = true;
+    const recorded = await this.commit(async (tx, after) => {
       if (!(await this.activeStaff(tx, firmId, v.handlerStaffId))) fieldErrors({ handlerStaffId: "choose an active staff member of your firm" });
       const due = acknowledgeBy(v.receivedAt, await this.calendar(tx, firmId));
       const c = await tx.platComplaint.create({ data: {
@@ -198,14 +211,15 @@ export class ComplaintsService {
       await tx.platComplaintEvent.create({ data: { firmId, complaintId: c.id, kind: "RECEIVED", at: v.receivedAt, actor: this.actor(ctx), detail: { channel: v.channel, category: v.category, handlerStaffId: v.handlerStaffId } } });
       await this.d.audit.record(tx, { firmId, actor: this.actor(ctx), action: "complaint.record", entity: "plat_complaint", entityKey: c.id, summary: `Complaint recorded (${v.category.toLowerCase()}, by ${v.subjectKind.toLowerCase().replace(/_/g, " ")}); acknowledge by ${due.toISOString()}`, detail: { complaintId: c.id, subjectKind: v.subjectKind, subjectId: v.subjectId ?? null, handlerStaffId: v.handlerStaffId } });
       await outbox(tx, c, ComplaintReceived.parse({ type: EVENT.COMPLAINT_RECEIVED, firmId, complaintId: c.id, subjectKind: c.subjectKind, subjectId: c.subjectId, receivedAt: c.receivedAt.toISOString() }));
-      after.push(() => this.d.jobs.schedule(ACK_REMINDER_JOB, due, { firmId, complaintId: c.id }, { key: ackReminderKey(c.id), firmId }));
+      after.push(() => this.d.jobs.schedule(ACK_REMINDER_JOB, due, { firmId, complaintId: c.id }, { key: ackReminderKey(c.id), firmId }).then(() => undefined, () => { reminderScheduled = false; }));
       return view(c, now);
     });
+    return { ...recorded, reminderScheduled };
   }
 
   /** One complaint with its events in order, for a person who may read it; otherwise the same 404 as another firm's. */
   async get(ctx: StaffContext, id: string): Promise<ComplaintView> {
-    if (typeof id !== "string" || !UUID.test(id)) return notFound();
+    if (!isUuid(id)) return notFound();
     const c = await this.d.db.platComplaint.findFirst({ where: firmScope(ctx.firmId, { id: id.toLowerCase() }) });
     if (!c || !this.canRead(ctx, c)) return notFound();
     const events = await this.d.db.platComplaintEvent.findMany({ where: firmScope(ctx.firmId, { complaintId: c.id }), orderBy: { seq: "asc" } });
@@ -215,14 +229,14 @@ export class ComplaintsService {
   /** The list, a page at a time (`next` is the cursor of the next page, null at the end): open, closed or all newest
    *  received first; overdue (open, not acknowledged, past its date) the longest overdue first. A person without the
    *  read key sees only the complaints they handle. */
-  async list(ctx: StaffContext, viewName: string = "open", page: { cursor?: string; limit?: number } = {}): Promise<ComplaintPage> {
+  async list(ctx: StaffContext, viewName: string = "open", page: { cursor?: unknown; limit?: number } = {}): Promise<ComplaintPage> {
     if (!(LIST_VIEWS as readonly string[]).includes(viewName)) fieldErrors({ view: `one of ${LIST_VIEWS.join(", ")}` });
     const limit = page.limit ?? PAGE;
     if (!Number.isInteger(limit) || limit < 1 || limit > PAGE) fieldErrors({ limit: `a whole number from 1 to ${PAGE}` });
     const now = this.d.clock.now(), v = viewName as ListView, byDue = v === "overdue";
     const mine = this.has(ctx, COMPLAINT_KEYS.read) ? {} : { handlerStaffId: ctx.staffId.toLowerCase() };
     const where: Prisma.PlatComplaintWhereInput = v === "open" ? { status: "OPEN" } : v === "closed" ? { status: "CLOSED" } : byDue ? { status: "OPEN", acknowledgedAt: null, acknowledgeBy: { lt: now } } : {};
-    const cur = page.cursor ? readCursor(page.cursor) : null;
+    const cur = page.cursor !== undefined && page.cursor !== null && page.cursor !== "" ? readCursor(page.cursor) : null;
     const after: Prisma.PlatComplaintWhereInput = !cur ? {} : byDue
       ? { OR: [{ acknowledgeBy: { gt: cur.at } }, { acknowledgeBy: cur.at, id: { gt: cur.id } }] }
       : { OR: [{ receivedAt: { lt: cur.at } }, { receivedAt: cur.at, id: { gt: cur.id } }] };
@@ -267,7 +281,7 @@ export class ComplaintsService {
       if (c.responseSentAt && v.at > c.responseSentAt) fieldErrors({ at: "the acknowledgement comes no later than the response" });
       await this.event(tx, ctx, c, "ACKNOWLEDGED", v.at, v.note);
       await tx.platComplaint.update({ where: this.where(c), data: { acknowledgedAt: v.at } });
-      after.push(() => this.d.jobs.cancel(ackReminderKey(c.id)));
+      after.push(() => this.d.jobs.cancel(ackReminderKey(c.id)).catch(() => false));   // a failed cancel is harmless: the run skips an acknowledged or closed complaint
       return { action: "complaint.acknowledge", summary: `Complaint acknowledged at ${v.at.toISOString()}` };
     });
   }
@@ -324,7 +338,7 @@ export class ComplaintsService {
       if (v.at < floor) fieldErrors({ at: "the close comes after the complaint was received, acknowledged and answered" });
       await this.event(tx, ctx, c, "CLOSED", v.at, v.note, { outcome: v.outcome });
       await tx.platComplaint.update({ where: this.where(c), data: { status: "CLOSED", outcome: v.outcome, closedAt: v.at } });
-      after.push(() => this.d.jobs.cancel(ackReminderKey(c.id)));
+      after.push(() => this.d.jobs.cancel(ackReminderKey(c.id)).catch(() => false));   // a failed cancel is harmless: the run skips an acknowledged or closed complaint
       return { action: "complaint.close", summary: `Complaint closed: ${v.outcome.toLowerCase().replace(/_/g, " ")}`, detail: { outcome: v.outcome },
         event: ComplaintClosed.parse({ type: EVENT.COMPLAINT_CLOSED, firmId: c.firmId, complaintId: c.id, subjectKind: c.subjectKind, subjectId: c.subjectId, outcome: v.outcome, closedAt: v.at.toISOString() }) };
     });
@@ -335,38 +349,41 @@ export class ComplaintsService {
     return problem(405, "complaint-kept", "Complaints are kept", "A complaint is never deleted. Close it with an outcome, or add a note.");
   }
 
-  /** The reminder job (JobPort): once, only while the complaint is open and not acknowledged, to the handler, or to the
-   *  firm's active Owners and Admins when the handler is no longer active. The mail names no complainant and no summary
-   *  (the handler opens the record) and gives the date in the firm's zone; it is sent after the commit, so a rolled-back
-   *  run sends nothing (the job runs again). */
+  /** The reminder job (JobPort): once, only while the complaint is open and not acknowledged, to the handler; to the
+   *  firm's active Owners and Admins when the handler is no longer active; to the firm's contact address when none of
+   *  them is active either (never a reminder to nobody). The mail names no complainant and no summary (the handler
+   *  opens the record) and gives the date in the firm's zone. It is sent inside the run's transaction, after the
+   *  REMINDER_SENT event and its audit line: a failed send rolls them back and the job runs again (at least once,
+   *  never recorded as sent when it was not; a commit that fails after a send can repeat the mail). */
   async runAckReminder(payload: unknown): Promise<"sent" | "skipped"> {
     const p = z.object({ firmId: uuid, complaintId: uuid }).safeParse(payload);
     if (!p.success) return "skipped";
     const { firmId, complaintId } = p.data;
-    let mails: { to: string; text: string; replyTo: string }[] = [];
-    const out = await this.commit(async (tx) => {
+    return this.commit(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "plat_complaint" WHERE firm_id = ${firmId}::uuid AND id = ${complaintId}::uuid FOR UPDATE`;
       const c = await tx.platComplaint.findFirst({ where: firmScope(firmId, { id: complaintId }) });
       if (!c || c.status === "CLOSED" || c.acknowledgedAt) return "skipped" as const;
       if (await tx.platComplaintEvent.findFirst({ where: firmScope(firmId, { complaintId, kind: "REMINDER_SENT" as const }), select: { id: true } })) return "skipped" as const;
       const handler = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: c.handlerStaffId, status: "ACTIVE" as const }), select: { email: true } });
-      const to = handler ? [handler.email] : (await tx.platformStaff.findMany({
+      const admins = handler ? [] : (await tx.platformStaff.findMany({
         where: firmScope(firmId, { status: "ACTIVE" as const, grants: { some: { role: { in: ["OWNER", "ADMIN"] as ("OWNER" | "ADMIN")[] }, endedAt: null } } }), select: { email: true }, orderBy: { email: "asc" },
       })).map((s) => s.email);
       const firm = await tx.platformFirm.findFirstOrThrow({ where: { id: firmScope(firmId).firmId }, select: { contactEmail: true } });
+      const sentTo: "handler" | "owners_admins" | "firm_contact" = handler ? "handler" : admins.length ? "owners_admins" : "firm_contact";
+      const to = handler ? [handler.email] : admins.length ? admins : [firm.contactEmail];
       const zone = await readSetting<string>(tx, firmId, TIME_ZONE.key);
       const due = new Intl.DateTimeFormat("en-CA", { timeZone: zone, dateStyle: "long", timeStyle: "short" }).format(c.acknowledgeBy);
       const now = this.d.clock.now();
-      await tx.platComplaintEvent.create({ data: { firmId, complaintId, kind: "REMINDER_SENT", at: now, actor: SYSTEM_ACTOR, detail: { handlerStaffId: c.handlerStaffId, handlerActive: !!handler, recipients: to.length } } });
-      await this.d.audit.record(tx, { firmId, actor: SYSTEM_ACTOR, action: "complaint.reminder", entity: "plat_complaint", entityKey: complaintId, summary: handler ? "Acknowledgement reminder sent to the handler" : "Acknowledgement reminder sent to the firm's Owners and Admins (the handler is not active)", detail: { complaintId, handlerStaffId: c.handlerStaffId, recipients: to.length } });
+      await tx.platComplaintEvent.create({ data: { firmId, complaintId, kind: "REMINDER_SENT", at: now, actor: SYSTEM_ACTOR, detail: { handlerStaffId: c.handlerStaffId, sentTo, recipients: to.length } } });
+      await this.d.audit.record(tx, { firmId, actor: SYSTEM_ACTOR, action: "complaint.reminder", entity: "plat_complaint", entityKey: complaintId,
+        summary: sentTo === "handler" ? "Acknowledgement reminder sent to the handler" : sentTo === "owners_admins" ? "Acknowledgement reminder sent to the firm's Owners and Admins (the handler is not active)" : "Acknowledgement reminder sent to the firm's contact address (no active handler, Owner or Admin)",
+        detail: { complaintId, handlerStaffId: c.handlerStaffId, sentTo, recipients: to.length } });
       const text = handler
         ? `A complaint you handle was due to be acknowledged by ${due} (${zone}). Open it in Complaints (reference ${complaintId}) and record the acknowledgement.`
         : `A complaint was due to be acknowledged by ${due} (${zone}), and its handler is no longer active. Open it in Complaints (reference ${complaintId}), choose a new handler and record the acknowledgement.`;
-      mails = to.map((t) => ({ to: t, text, replyTo: firm.contactEmail }));
+      for (const address of to) await this.d.mail.send({ firmId, to: address, replyTo: firm.contactEmail, subject: "A complaint is waiting for its acknowledgement", text, class: "SERVICE", templateKey: "platform.complaint.ack_reminder" });
       return "sent" as const;
     });
-    for (const m of mails) await this.d.mail.send({ firmId, to: m.to, replyTo: m.replyTo, subject: "A complaint is waiting for its acknowledgement", text: m.text, class: "TRANSACTIONAL", templateKey: "platform.complaint.ack_reminder" });
-    return out;
   }
 }
 
