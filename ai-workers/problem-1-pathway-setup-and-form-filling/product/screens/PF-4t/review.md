@@ -111,3 +111,50 @@ Journeys:
 * A real screen reader and an intended user's walk: N/A here.
 
 **Verdict: Approve 50ad8acd42395381d1a93fb6e11eaa9be1090bd7**
+
+---
+
+# Round 2 (P-277, diff only): `05a1d4dac..d66b3a000`, `tests/check_forms_qa53.ts`
+
+Reviewer, 14 Nov 2026. Read:
+* the diff (+39/−4, one file);
+* the release holder's ruling (Lead 50, #1775 comment 6883128053);
+* in the suite, `routes()`, `writes()`, `all`/`guarded`, and the personas (user-A author, user-O officer, user-P client).
+
+**Run:** copy `forms_qa53r` on :4547 at d66b3a000. `check_forms_qa53.ts 4547 xr_studio_forms_qa53r`: **34 passed, 0 failed**.
+* The five PF-4t checks pass. 2 platform reads and 8 writes were asked; `wrongPlatform` was `[]`.
+* The second copy on :4548 was gone afterwards. I stopped :4547 and left the tree as it was.
+
+## What I checked
+* **The exemption cannot swallow a non-platform path.**
+  * `isPlatform` is PF-4's own `PLATFORM_PATH` (`:15`), and its source and flags are pinned (`:60`). Widening it, dropping the boundary or adding another flag fails the pin, which is tested both ways.
+  * The `(\/|$)` boundary refuses `/api/platformx`. The planted route at `:206` shows it keeps both the QA-53 read and the QA-65 "names nobody" catch.
+  * The paths `routes()` and `writes()` build are slash-normalised, so `//` gives no prefix trick.
+  * The `i` flag matches the exemption to the guard's own boundary.
+  * Above all, **an exempted route is not skipped: it is asked live**. Every exempted read and write must answer 401 to nobody and to user-A, user-O and user-P (`:199-204`). Anything wrongly exempted that serves data fails there.
+  * Upper-case paths: `/API/Platform/me` as user-A answers 200, but with the web app's `index.html` fallback (text/html), not API data.
+  * `core.ts:92`'s own regex has no `i` flag. That is PF-4's code, outside this diff, and it doesn't hide anything from the suite.
+* **The existing QA-53 and QA-65 rules are unchanged for every other route.**
+  * `guarded` (`:90`) only adds `&& !isPlatform`.
+  * In `writes()` (`:156`), the new branch sits after the `@ConfigRead` and `OWN_GUARD_WRITES` branches and before the unnamed check. It takes only `PLATFORM_PATH` matches.
+  * The checks "every GET is seen" (`all.length === declared`), REVIEWED and OWN_GUARD are untouched. Platform GETs carry no mark, so they stay out of `marked`.
+* **The "never data" test is not blind.**
+  * The floors `platformReads ≥ 2` and `platformWrites ≥ 8` (`:204`) stop an empty scan from passing.
+  * A wrong or missing route answers 404, and 404 ≠ 401, so it fails.
+  * The body test flags any key outside a problem's six fields, and an array body too (its keys are indices).
+  * The seeded check proves 200-with-data, 401-with-data and a 2xx from the door are caught, and a clean 401 is not.
+* **The sign-in door's looser rule is justified.**
+  * `@StaffSignIn` means "no session yet", so 401 is not its answer. On this copy it answers **403 LOCAL_SIGN_IN_OFF** to nobody and to each persona, with a problem-only body. With the stand-in on, an empty body answers 400 FIRM_REQUIRED (round 1).
+  * The rule that matters, never a 2xx and never data, is kept. Its exact behaviour is covered by PF-4's own 113 checks.
+
+## Findings
+* **Blocker:** none.
+* **Major:** none.
+* **m1 (Minor), `tests/check_forms_qa53.ts:66`:** the door's rule `r.status < 400` also accepts **404 and 5xx**. If the door stopped being served, or crashed on `{}`, this suite would stay green. PF-4's suite would still catch it.
+  * Fix: `door ? (r.status < 400 || r.status === 404 || r.status >= 500) : r.status !== 401`.
+* **m2 (Minor), `tests/check_forms_qa53.ts:156`:** the looser door rule goes automatically to any write with `@StaffSignIn(` on its line. Every other exception in this file is a reviewed list (REVIEWED, OWN_GUARD, OWN_GUARD_WRITES).
+  * Fix: one line asserting the doors are exactly `["POST /api/platform/session/local"]`, so a new door fails until it is reviewed.
+
+Neither finding lets a non-platform route escape QA-53 or QA-65, and neither lets data out. Both are optional before the label; if fixed, a re-review reads only that diff.
+
+**Verdict: Approve d66b3a0005acad614c9cd5ff058849dd2fd50e8e**
