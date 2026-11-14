@@ -113,3 +113,5 @@ Task completed, correct data, next step and plain words go up to 1: the cities t
 **Open:** no Blocker or Major. Minors m4 and m5 (accepted) and m6.
 
 **Verdict: Approve** (for 9c8912166d41612cf4f43559db5c6532c58f6767)
+
+**Round 5 (diff only, 9c8912166..c3d8e51cb):** this file, plus `walk_bk26_city_1440.ts`, which now waits up to 60 s for the IMM 1294 "Generate a new copy" button to be enabled before axe and fails loudly on timeout; m6 closed. **Verdict: Approve** (for c3d8e51cb5d4dc656719c809933579aa0071fdf7)
