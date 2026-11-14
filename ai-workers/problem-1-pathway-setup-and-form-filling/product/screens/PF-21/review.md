@@ -250,3 +250,10 @@ Verdict: Approve
 Re-run on db7f992: `check_pf21_complaints` 107/107, `check_pf0p_ports` 71/71, and the tsc grep for `complaints|pf21|ports/` printed 0 lines.
 
 Verdict: Approve (for db7f9927170b60f8ffe9648358b17667f39ca3b2)
+
+### Re-stamp 8961aa7
+* **The change since c6d04bf (`git diff -M` on PF-21's files):** only the migration folder's rename `20261114200000_pf21_complaints` → `20261114214500_pf21_complaints` (similarity 100%), plus the folder name in `platform-register.prisma`'s comment and `NEW` in `check_pf21_complaints.ts`, one line each. `platform.prisma` changed too, from the clean merge of main. Against `origin/main` it still differs only by PF-21's two back-relation lines, and against main the migrations and `ports/` add only PF-21's folder and its event lines.
+* **The new stamp:** `20261114214500` is later than every migration on main; the newest is `20261114210000_fo5_retainer_tables`, and main is merged into the head. That no open PR uses `20261114214500` is the coordinator's list (#1754/#1755 at 190000, #1758 at 131305, #1763 at 230000); I did not check it myself.
+* **Re-run:** `check_pf21_complaints` gives **107/107**. The P-600 (4) check names `20261114210000_fo5_retainer_tables` as the newest before PF-21, and `migrate diff` names no plat_ table or type on both the empty and the demo-data copies.
+
+Verdict: Approve (for 8961aa76f8564787219387a4cf92738de4fabe26)
