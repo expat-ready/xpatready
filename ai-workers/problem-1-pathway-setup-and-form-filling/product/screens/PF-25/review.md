@@ -120,3 +120,16 @@ I also walked an isolated copy (`rev_pf25` on :4522, started and stopped in one 
 **Could not check (unchanged):** CI and the step-2 merge after PF-0p #1752 (re-stamp, then a diff-only re-review of that merge), the staff route (PF-4s), DNS and the certificate (PF-8), and D17 and D20.
 
 **Verdict: Approve** (commit 1c1bb096). Open: Blocker 0, Major 0. Minor m4 (rate limit) stays the PR's Question 3, and m2 waits for the release holder's ruling under Deviations.
+
+## Round 3: diff-only re-review of PF-25's own files, `1c1bb096..0ca2da12`
+Head **0ca2da12**. PF-0p #1752 is merged in and the real `ports/` from main are used (no overlay). I regenerated the client and ran: `check_pf25_web_address` **59/59**, `check_prisma_schema` 8/8, `check_pf0p_ports` 71/71.
+* **N1:** an absolute-form request line on a firm's address gets the plain not-found (`host.ts`). Tested over raw HTTP.
+* **N6:** when more than one `Host` header arrives and any of them is not ExpatReady's own, the answer is the plain not-found (read from `rawHeaders`). Tested both orders.
+* **N5:** a character outside `[a-z0-9.:-]` in a host that names a firm suffix gives `none`, so fail closed (`rules.ts`).
+* **N3:** the reason's trimmed and refused character lists are identical in `service.ts` (`EDGE_SPACE`, `BAD_CHARS`) and `platform_web_address_reason_ok`. Both layers are tested.
+* **N4:** `until = changed_at + interval '2160 hours'` in both the check and the trigger, so it does not depend on the time zone. Tested by writing in Toronto and reading in Casablanca and UTC.
+* **`platform.prisma`:** PF-25's slot comment is kept, with the two back-relations directly under it. `PlatformStaff`'s slot is untouched. Nothing else in PF-25's lines changed.
+* **Stamp:** `20261114230000` is still later than main's newest (`20261114153000`).
+* **New findings: none.**
+
+**Verdict: Approve** (commit 0ca2da128094fce89e439c5709d5319447aa2468). Open: Blocker 0, Major 0. m4 stays as the PR's Question 3, and m2 waits for the release holder's ruling.
