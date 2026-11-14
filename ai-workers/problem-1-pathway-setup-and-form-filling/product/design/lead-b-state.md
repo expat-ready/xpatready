@@ -43,7 +43,7 @@ The newest are PF-0p, PF-21, PF-23, PF-23r, PF-23m, PF-24, PF-25, **ROW-w.md** (
 | #1754 | PF-19a | draft | moves its lines under its slot; FO-1k collects its web-form key if missing |
 | #1753 | PF-21 part 1 | draft | routes in PF-21w after PF-4 |
 
-**Watching:** builders' row questions arrive as PR comments ("Question for the tech lead" or "Lead B"). Lead B (3) ran `$TMPDIR/lbw/scan.sh SINCE` (curl and python, paged, skipping our own comments) in a background until-loop; it lives in the session's temp folder, so rebuild it. **Lesson:** Python's urllib reads fail through the proxy; use curl with `--retry 3`, and print errors rather than swallowing them.
+**Watching:** builders' row questions arrive as PR comments ("Question for the tech lead" or "Lead B"). Lead B (3) ran `design/lead-b-tools/scan-pr-questions.sh SINCE` (committed; run it in place, its working files are git-ignored) (curl and python, paged, skipping our own comments) in a background until-loop. **Lesson:** Python's urllib reads fail through the proxy; use curl with `--retry 3`, and print errors rather than swallowing them.
 
 **Lessons from today:**
 * Never suggest a test that lists other areas' names (the FO-13 dequeue); an area's checks look only at its own prefix.
