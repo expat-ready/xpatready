@@ -222,3 +222,16 @@ Verdict: Approve 6bad0f6c418e299850383d53453460d5a51bd1a6
 * No new findings. r3-m1 and r3-m2 stand.
 
 Verdict: Approve 2a36d6952b8ba60098b5641b840fb09309159bf6
+
+## Round 3g (main merge after FO-3 and PF-4t)
+* **Commit reviewed:** `b79f50ce8243c97f8deb1e848ecf74336d4417ca`, a merge of `origin/main` (FO-3 #1760, PF-4t #1775; main is an ancestor) into `eb9004a0a`. Read: `git diff origin/main b79f50ce8 -- ports/events.ts api/src/front-office/retainers/routes.ts`, plus the file list of `git diff origin/main b79f50ce8` and `git diff eb9004a0a b79f50ce8` over FO-5's files.
+* **`ports/events.ts`:** relative to main, only FO-5's additions: the four `RETAINER_*` names after main's `BOOKING_*`, and `RetainerEventPayload` (strict; ids, kind, version, `prospectWon`) after main's `BookingEvent`. The text matches what was approved. Main's lines are untouched.
+* **`retainers/routes.ts`:** the same 15 routes in `@` form (`api/tsconfig.json` has `experimentalDecorators` and includes `src/front-office/**`), with `@Inject` on all four constructor parameters. I compared them one by one with the approved `decorate` table.
+  * Paths, verbs, `HttpCode(200)`s, keys, upload interceptors (2× limit) and parameter bindings are the same. Send's `Body` is still passed.
+  * `link` still signs for the person, and `download` still runs the token check, then `assertFileVisible`, then `no-store` and `nosniff`.
+  * The only import change is `decorate`, gone from `keys.ts` after PF-4t. No logic changed.
+* **Nothing else moved:** since `eb9004a0a`, FO-5's other files (`service.ts`, `docx.ts`, `placeholders.ts`, `files.ts`, the feature file, migration `20261115010000`, schema file, test) are unchanged. The other `front-office/` changes are main's FO-3 booking files. The whole diff from main is FO-5's own file list: records, code, migration, the two schema lines, the starter text and the tests (FO-5's suite, `check_b164`'s one line, `check_pf25`'s stamp check). Main's newest migration is still `20261114230000_pf25_web_address`, so FO-5's `20261115010000` stays later (P-600 (4)).
+* **Runs:** I re-ran `check_fo5_retainers.ts`: **159 passed, 0 failed** (its route-key check reads the `@` metadata). I did not re-run the other suites, the typecheck or the HTTP walk; the coordinator reports fo3 105/105, pf0p 71/71, case feed 39/39, b164 63/63, pf25 68/68, prisma 8/8, no new type errors, and the HTTP walk 12/12.
+* No new findings. r3-m1 and r3-m2 stand.
+
+Verdict: Approve b79f50ce8243c97f8deb1e848ecf74336d4417ca
