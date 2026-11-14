@@ -55,8 +55,10 @@ export function readReason(input: unknown): { ok: true; reason: string } | { ok:
   if (typeof input !== "string") return { ok: false, message: "Give the reason for the change (at least 3 characters)." };
   if (BAD_CHARS.test(input)) return { ok: false, message: "Remove the control or direction characters." };
   const reason = input.replace(EDGE_SPACE, "");
-  if (reason.length < 3) return { ok: false, message: "Give the reason for the change (at least 3 characters)." };
-  if (reason.length > 500) return { ok: false, message: "Keep the reason to 500 characters." };
+  // Characters as the database counts them (code points), not UTF-16 units: an emoji is one (Devin review on #1763).
+  const length = [...reason].length;
+  if (length < 3) return { ok: false, message: "Give the reason for the change (at least 3 characters)." };
+  if (length > 500) return { ok: false, message: "Keep the reason to 500 characters." };
   return { ok: true, reason };
 }
 

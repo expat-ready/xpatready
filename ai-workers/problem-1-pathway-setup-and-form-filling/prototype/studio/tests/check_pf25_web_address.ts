@@ -30,7 +30,7 @@ import { WebAddressCatchUp, WebAddressController, WebAddressHostRouting } from "
 import { catchUpFirmAddresses, FIRM_CREATED_ACTOR, onFirmCreated } from "../api/src/platform/web-address/firm-created.ts";
 import { EVENT } from "../ports/events.ts";
 import { checkAddressShape, readHost } from "../api/src/platform/web-address/rules.ts";
-import { ADDRESS_CHANGE_KEY, WebAddresses } from "../api/src/platform/web-address/service.ts";
+import { ADDRESS_CHANGE_KEY, readReason, WebAddresses } from "../api/src/platform/web-address/service.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
 const NEW = "20261114230000_pf25_web_address";
@@ -252,6 +252,10 @@ try {
   const badReasons = await Promise.all(["\t\u00a0ab\u00a0\t", "Renamed \u202e evil", "Renamed \u061c now", "\u200d\u200ca\u200c\u2060\u1680", "x".repeat(501)].map((reason) => problemOf(() => svc.change(ours, firmZ, { address: "zeta-two", reason }))));
   ok("PF-25 fail (break m9): a reason padded to under 3 characters, with a direction control, or over 500 characters → 422",
     badReasons.every((p) => p?.status === 422 && typeof (p.body.fields as Record<string, string>)?.reason === "string"), badReasons);
+  const emojiShort = await problemOf(() => svc.change(ours, firmZ, { address: "zeta-two", reason: String.fromCodePoint(0x1f600) + "a" }));
+  const emojiLong = readReason(String.fromCodePoint(0x1f600).repeat(250) + "x".repeat(250));
+  ok("PF-25 fail (Devin on #1763): a reason is counted in characters as the database counts them: an emoji and a letter (2) → 422, 500 characters with emoji → accepted",
+    emojiShort?.status === 422 && emojiLong.ok === true, [emojiShort, emojiLong]);
   const race = await Promise.allSettled([real.change(ours, firmZ, { address: "zeta-one", reason: "Race one" }), real.change(ours, firmZ, { address: "zeta-two", reason: "Race two" })]);
   ok("PF-25 pass (break m5): two staff changes of one firm at once both finish (one after the other, each from the address before it), no 500",
     race.every((r) => r.status === "fulfilled") && sql(EMPTY, `select string_agg(coalesce(old_address, '-') || '>' || new_address, ',' order by changed_at) from platform_firm_address_history where firm_id = '${firmZ}'`).split(",").length === 3
