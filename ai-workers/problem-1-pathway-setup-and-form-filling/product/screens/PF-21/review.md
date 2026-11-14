@@ -187,3 +187,58 @@ Reviewer (did not build it), 14 Nov 2026. Commit **540ebf88c63589b647965d50d77cc
 For commit 540ebf88c63589b647965d50d77cc70748570dcd: fix R2-M1, with its pass and fail test. R2-m1 to R2-m3 are recommended and do not hold the label.
 
 Verdict: Block
+
+## Round 3 (diff-only, 4688525)
+
+Reviewer (did not build it), 14 Nov 2026. Commit **4688525582d219e8194714b4917c63f81be41855**. Read only `git diff 540ebf88c..4688525` on `complaints.ts`, the migration and `check_pf21_complaints.ts` (Lead 49). Journey score: **n/a** (no screen).
+
+### What I ran (studio/, 127.0.0.1:54329 scratch databases only, all dropped; never :4400)
+* `check_pf21_complaints`: **107 passed, 0 failed**.
+* `check_pf0p_ports`: **71/71**.
+* `check_pf3_platform_schema`: **75/75**.
+* `check_prisma_schema`: **8/8**.
+* The tsc grep for `complaints|pf21|ports/`: **0 lines**.
+* Text rules, service against database: a scratch database holding only the migration's two functions, `plat_complaint_has_text` and `plat_complaint_one_line`. I ran them on every code point U+0001–U+10FFFF (surrogates skipped) and compared each with the service's `BLANK`, `SEEN`, `CONTROL` and `LINE_BREAK` (copied verbatim; Node uses Unicode 17.0, the cluster 16.0):
+  * One-line rule: identical on every code point. Direction overrides and isolates are refused by both.
+  * Text rule: differs on 6,116 code points (R3-m1).
+* CI's Postgres is 18 (`cloud-setup.sh`), so `pg_c_utf8` (needs 17 or later) is available. The audit adapter takes no lock, so sending mail inside the run holds only that complaint's row lock.
+
+### Round 2, item by item
+* **R2-M1: closed.**
+  * The mail is sent inside the run's transaction, after the `REMINDER_SENT` event and the audit line (complaints.ts:384).
+  * A failed send rolls back both and rethrows, so the queue runs it again.
+  * The fail-then-pass test: a failed run leaves 0 events and 0 mails; the next run sends 1 mail with 1 event; a third run is skipped.
+  * Repeating a mail when the commit fails after the send is documented, and is the right trade.
+* **R2-m1: closed.** With no active handler, Owner or Admin, the reminder goes to the firm's contact address. `sentTo` is recorded on the event and the audit line (test: `firm_contact`).
+* **R2-m2: closed.** The class is `SERVICE`, with a test.
+* **R2-m3: closed.** A raw STEP racing a raw close is seen waiting on the lock in `pg_stat_activity`, then refused.
+
+### Breaker's round 2 fixes in this diff
+* **`reminderScheduled`:** a queue failure after commit answers `false`, never a 500 that would invite a second record (:214). A failed cancel is caught; the run skips an acknowledged or closed complaint. Tested both ways.
+* **Uuids:** they use zod's own uuid rule, so an id the service accepts never fails the event shape. A non-RFC id gives 422 on record and 404 on get (tested).
+* **Year floor:** the floor is checked in UTC: `2000-01-01T00:30+05:00` → 422. This matches the database check.
+* **Text rule:** blanks are stripped, then a letter, digit, punctuation mark or symbol is required, via `pg_c_utf8` in SQL. The strip lists are the same in both, and every class is ASCII-escaped (migration:114-121). The breaker's ten exotic summaries are refused by both, and Arabic, Chinese, "Zoë", "42", "€" and an emoji pass both. Exact equality does not hold (R3-m1).
+* **Direction marks in names:** refused by both (tested).
+* **`plat_complaint_event_once` (:259):** a partial unique index, firm-first. A second ACKNOWLEDGED under REPEATABLE READ is refused, and one stays (tested). `migrate diff` is still empty for plat_.
+* **`plat_complaint_event_applied` (:278):** deferred. It refuses a stray CLOSED, ACKNOWLEDGED or HANDLER_CHANGED with no row change; the HANDLER_CHANGED check applies to the newest such event. The service path passes (tested).
+* **Forced seq (:231):** a given `-1` is replaced by the database's own number (tested).
+
+### Findings
+**Blocker: none. Major: none.**
+
+**Minor**
+* **R3-m1. The service and database text rules are close but not equal** (complaints.ts:57 against migration:114-117).
+  * 1,365 code points pass the database but not the service. They are combining marks (Mn/Mc) with the Unicode Alphabetic property, for example U+0363 and Hebrew points from U+05B0. The service is stricter here, so it answers 422 first; nothing breaks.
+  * 4,751 code points pass the service but not the database. They are Unicode 17 additions (mostly CJK Extension J, U+32400 on; plus U+20C1) that PG 18's Unicode 16 does not know. A summary made *only* of such characters would pass the service and then fail the database check, which is a 500, not a 422.
+  * Realistic text mixes in common characters and passes both.
+  * Fix (optional): use `\p{Alphabetic}` in place of `\p{L}\p{Nl}` to match `[:alpha:]`, and correct the comment "the same" to "the same up to Unicode version drift". A database check violation could also be mapped to a 422.
+
+**Note, not a finding:** in `plat_complaint_event_write`, `nextval` runs before the trigger's `FOR UPDATE` (:231 then :232). Two raw inserts racing on one complaint could in theory commit out of seq order. Service writes lock first, and row-lock waiters are served in order, so I found no reachable case. Taking the number after the lock would make the order certain.
+
+### Could not check
+* `graph.mjs` (it rewrites `qa/GRAPH.md`).
+* CI on this head.
+
+For commit 4688525582d219e8194714b4917c63f81be41855: no Blocker or Major is open. R3-m1 is optional and does not hold the label.
+
+Verdict: Approve
