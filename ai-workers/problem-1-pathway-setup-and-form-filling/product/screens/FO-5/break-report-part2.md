@@ -159,3 +159,30 @@ The upload leaves its stored file behind. Expected: normalise first, then check 
 **B-23 Minor (new) — a declared part that is never rendered can still refuse a template.** The glossary document (`word/glossary/document.xml`, the building blocks Word keeps for content controls and Quick Parts; content type `…document.glossary+xml`) is read because it is declared. docxtemplater does not render it. A glossary entry "Insert {Client Name} here" → 422 "{Client Name} is not a placeholder we know." Rare. Expected: read only the content types docxtemplater renders (main, header, footer, footnotes, comments, the docProps, diagram data).
 
 **Held:** no 500 other than B-20 and B-22. Every refusal of the new checks is 422, with a code.
+
+## Round 4 (two paths) — head `1d42f813f` (copy `brk_fo5d` on :4438, stopped)
+
+**Result: both fixes hold for what they cover. New: B-24 Major (FO-5f), B-25 Minor, B-26 Minor note. No 500.**
+- **Stale save on Edit holds.**
+  - `expectedVersion` missing, `"1"`, `1.5`, `null`, `true` or `[1]` → 422.
+  - `-1`, `0`, `1e0` against v3, and 2^53+1 → 409 CHANGED. (−1 and 0 should be 422; cosmetic.)
+  - `1.0` is the JSON number 1, so it was accepted.
+  - 6 tabs saving v3 at once → one 200 (v4), five 409; one fee row set. A later save that still says 3 → 409.
+  - The lock check in the transaction still catches a send that lands mid-edit.
+- **Download re-check holds.** With "everyone sees all" off:
+  - T's link (T owner and representative) gave 200. After the owner moved to R it still gave 200, because T was still the representative.
+  - After the representative also moved to R (Edit with `expectedVersion`), the same link gave 404.
+  - After the setting went back on: 200.
+  - Firm B and O with R's link: 404 and 404.
+  - After withdraw and after Signed offline, R's links (version and signed copy) still give 200, which is correct: the retainer stays readable (BR-10). The representative keeps read access after an owner change.
+  - Crafted keys: links name only keys stored in rows, and the DB ties each key to its retainer. `FileKey` refuses `.`/`..` segments and upper case, so `retainers/<visible id>/../<other id>/…` cannot be expressed. Keys outside `retainers/` get 404.
+
+**B-24 Major (new, scope FO-5f) — Send and Signed offline act on whatever version is current, not the version the person saw.** Only Edit takes `expectedVersion` (`service.ts` `send()`, `signedOffline()`; `routes.ts` send, signed-offline). STANDARDS l.27 [M]: stale save → 409.
+- **Send:** R's screen showed draft v5 with a fee of CAD 44.44. T saved v6 with "Changed by T" CAD 999,999.00. R pressed Send: 200, and **v6 was sent**, a fee R never saw. `POST …/send {"expectedVersion":99}` is ignored (200).
+- **Signed offline:** R's screen showed draft v1 with "Paper fee" CAD 1,500.00, and the paper signed was v1. T saved v2 with CAD 5,000,000.00. R recorded Signed offline (`expectedVersion=1` in the form is ignored): 200. **v2 is filed as the version signed on paper**, the prospect is Won, and the audit line says `version: 2`. This cannot be undone (BR-11), so the permanent record shows a fee the client never signed.
+
+Expected: both routes require the version shown (`expectedVersion`) and answer 409 CHANGED on a mismatch, the same check as Edit. Withdraw has the same gap but changes no money: Minor, the same fix.
+
+**B-25 Minor (new) — an Edit made against a draft silently ends a request a colleague has just sent.** Send does not raise `current_version`, so `expectedVersion` still matches. Tab A showed draft v4; T sent v4 (200). Tab A saved with `expectedVersion: 4`: 200, v4 ended UPDATED, the retainer is back to DRAFT v5, and the client's live link is ended. The response shows the change, and every version is kept, so no data is lost. Expected: the stale check covers status too, or the version is raised on Send, so tab A gets 409 "This agreement was sent meanwhile".
+
+**B-26 Minor note — the link answer after a permissions change says "No such retainer in your firm."** That comes from `visible()`, not "No such file". It leaks nothing, so it is only wording.
