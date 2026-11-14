@@ -26,7 +26,7 @@ import { ComplaintClosed, ComplaintReceived, EVENT } from "../ports/events.ts";
 import { fakeStaff, type StaffContext } from "../ports/staff.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261114200000_pf21_complaints";
+const NEW = "20261114214500_pf21_complaints";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const EMPTY = `xr_studio_pf21_empty_${process.pid}`, DEMO = `xr_studio_pf21_demo_${process.pid}`, BARE = `xr_studio_pf21_bare_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
