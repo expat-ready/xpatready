@@ -311,6 +311,9 @@ try {
   const clock = { now: () => nowMs };
   const store = new LocalFiles(join(WORK, "files")), links = new FileLinks("test-link-key-0123456789abcdef");
   const svc = new Retainers(db, store, clock);
+  // An edit sends the version the page shows (the stale-save rule): the retainer's current one, read just before.
+  const ed = async (s: Retainers, c: StaffContext, id: string, body: Record<string, unknown>) =>
+    s.edit(c, id, { expectedVersion: (await db.foRetainer.findUnique({ where: { id } }))?.currentVersion ?? 1, ...body });
   const fails = async (f: () => Promise<unknown>, status: number, re: RegExp = /./) => {
     try { await f(); return false; } catch (e) {
       const r = (e as { getResponse?: () => Record<string, unknown>; getStatus?: () => number });
@@ -383,11 +386,11 @@ try {
 
   // Fee rows (BR-5, money): cents, CAD, dates only for ON_DATE.
   ok("FO-5 fail: a negative fee, a fee over CAD 100 million, a fraction of a cent, or a date on an \"On signing\" row is refused",
-    await fails(() => svc.edit(R, RA1, { fees: [{ label: "x", amountMinor: -1 }] }), 422, /cents/)
-    && await fails(() => svc.edit(R, RA1, { fees: [{ label: "x", amountMinor: "10000000001" }] }), 422, /cents/)
-    && await fails(() => svc.edit(R, RA1, { fees: [{ label: "x", amountMinor: 10.5 }] }), 422, /cents/)
-    && await fails(() => svc.edit(R, RA1, { fees: [{ label: "x", amountMinor: 1, when: "ON_SIGNING", dueOn: "2027-01-01" }] }), 422, /On a date/));
-  const e2 = await svc.edit(R, RA1, { fees: [{ label: "Professional fee", amountMinor: 250000, when: "ON_SIGNING" }, { label: "Balance", amountMinor: 125050, when: "ON_DATE", dueOn: "2027-01-15" }] });
+    await fails(() => ed(svc, R, RA1, { fees: [{ label: "x", amountMinor: -1 }] }), 422, /cents/)
+    && await fails(() => ed(svc, R, RA1, { fees: [{ label: "x", amountMinor: "10000000001" }] }), 422, /cents/)
+    && await fails(() => ed(svc, R, RA1, { fees: [{ label: "x", amountMinor: 10.5 }] }), 422, /cents/)
+    && await fails(() => ed(svc, R, RA1, { fees: [{ label: "x", amountMinor: 1, when: "ON_SIGNING", dueOn: "2027-01-01" }] }), 422, /On a date/));
+  const e2 = await ed(svc, R, RA1, { fees: [{ label: "Professional fee", amountMinor: 250000, when: "ON_SIGNING" }, { label: "Balance", amountMinor: 125050, when: "ON_DATE", dueOn: "2027-01-15" }] });
   ok("FO-5 pass: an edit of a draft makes version 2 with its fee rows in cents, CAD, and the total (BR-5)",
     e2.version.n === 2 && e2.version.fees.map((f) => `${f.amountMinor}:${f.currency}:${f.when}:${f.dueOn}`).join(",") === "250000:CAD:ON_SIGNING:null,125050:CAD:ON_DATE:2027-01-15" && e2.version.values["fees.total"] === "CAD 3,750.50" && e2.canSend, e2);
 
@@ -408,7 +411,7 @@ try {
   const sent = await svc.send(R, RA1);
   ok("FO-5 pass: Send with the client name and a fee: SENT, the request open, one audit line and retainer.sent", sent.status === "SENT" && !!sent.version.sentAt && events(EVENT.RETAINER_SENT, RA1) === 1);
   ok("FO-5 fail: Send of a sent retainer is refused (only a draft is sent)", await fails(() => svc.send(R, RA1), 409, /NOT_DRAFT/));
-  const e3 = await svc.edit(R, RA1, { signerPersonId: PA });
+  const e3 = await ed(svc, R, RA1, { signerPersonId: PA });
   const ended = e3.versions.find((v) => v.n === 2)!;
   ok("FO-5 pass: an edit before any signature makes version 3 and ends version 2's request (UPDATED), back to DRAFT (BR-9)", e3.version.n === 3 && e3.status === "DRAFT" && !!ended.endedAt && ended.endReason === "UPDATED", e3.versions);
   ok("FO-5 pass: the new version takes the person's current name", e3.version.values["client.name"] === "Renamed Sample");
@@ -416,7 +419,7 @@ try {
   // AG-5-65: once the client signed, edit is refused; withdraw needs a reason; signed → no withdraw.
   await svc.send(R, RA1);
   sql(API, `update fo_retainer set status = 'CLIENT_SIGNED' where id = '${RA1}'`);   // FO-6's signing hook
-  ok("FO-5 fail: an edit after the client signed is refused (AG-5-65)", await fails(() => svc.edit(R, RA1, { fees: [{ label: "x", amountMinor: 1 }] }), 409, /can no longer be edited/));
+  ok("FO-5 fail: an edit after the client signed is refused (AG-5-65)", await fails(() => ed(svc, R, RA1, { fees: [{ label: "x", amountMinor: 1 }] }), 409, /can no longer be edited/));
   ok("FO-5 fail: withdraw without a reason, or with only spaces, is refused (AG-5-34)", await fails(() => svc.withdraw(R, RA1, {}), 422, /reason/) && await fails(() => svc.withdraw(R, RA1, { reason: "   " }), 422, /reason/));
 
   // Signed offline (BR-11): needs a PDF and a reason; makes the prospect WON once; cannot be undone.
@@ -448,7 +451,7 @@ try {
   ok("FO-5 pass: after Withdrawn, Prepare retainer is offered again for the prospect (BR-10)", w2.status === "DRAFT");
   await svc.send(R, w2.id);
   sql(API, `begin; update fo_retainer_version set ended_at = now(), end_reason = 'DECLINED' where retainer_id = '${w2.id}' and n = 1; update fo_retainer set status = 'DECLINED' where id = '${w2.id}'; commit;`);   // FO-6's decline
-  const rs = await svc.edit(R, w2.id, { fees: [{ label: "Fee", amountMinor: 45000 }] });
+  const rs = await ed(svc, R, w2.id, { fees: [{ label: "Fee", amountMinor: 45000 }] });
   ok("FO-5 pass: Edit and resend from Declined makes version 2 as a draft (AG-5-65 r1)", rs.status === "DRAFT" && rs.version.n === 2);
 
   // Corporate (BR-4, AG-5-50): no SIGNATORY → a warning and a pick, never a block; the client name is the company's.
@@ -460,8 +463,8 @@ try {
   ok("FO-5 pass: a Corporate prospect with no signatory contact still gets a draft, with a warning and the company's contacts to pick from (AG-5-50)",
     c1.status === "DRAFT" && c1.signerPersonId === null && c1.warnings.some((x) => /no signatory/.test(x)) && c1.signerOptions.length === 2 && c1.version.values["client.name"] === "Sample Bakery Ltd", c1);
   ok("FO-5 fail: it cannot be sent until someone who signs is chosen", await fails(() => svc.send(R, c1.id), 422, /Choose who signs/));
-  ok("FO-5 fail: a signer who is not one of the company's contacts is refused", await fails(() => svc.edit(R, c1.id, { signerPersonId: PA }), 422, /company's contacts/));
-  const c2 = await svc.edit(R, c1.id, { signerPersonId: CS });
+  ok("FO-5 fail: a signer who is not one of the company's contacts is refused", await fails(() => ed(svc, R, c1.id, { signerPersonId: PA }), 422, /company's contacts/));
+  const c2 = await ed(svc, R, c1.id, { signerPersonId: CS });
   ok("FO-5 pass: picking a contact as signer makes the retainer sendable; the client name stays the company's (BR-4)", c2.signerPersonId === CS && c2.canSend && c2.version.values["signer.name"] === "Signing Person Sample", c2.blockers);
   sql(API, `insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${A}', '${COA}', '${CS}', 'SIGNATORY', 'test')`);
   const PC2 = prospect(CP, R.staffId, { company: COA, contact: CP });
@@ -479,7 +482,7 @@ try {
 
   // Firm walls and download links (BR-15).
   ok("FO-5 fail: firm B reading firm A's retainer → 404 (and editing, sending, withdrawing it)",
-    await fails(() => svc.read(S, RA1), 404) && await fails(() => svc.edit(S, v.id, {}), 404) && await fails(() => svc.send(S, v.id), 404) && await fails(() => svc.withdraw(S, w.id, { reason: "x" }), 404));
+    await fails(() => svc.read(S, RA1), 404) && await fails(() => ed(svc, S, v.id, {}), 404) && await fails(() => svc.send(S, v.id), 404) && await fails(() => svc.withdraw(S, w.id, { reason: "x" }), 404));
   ok("FO-5 fail: firm B drafting on firm A's prospect → 404", await fails(() => svc.draft(S, PROSB, {}), 404));
   const key = await svc.fileKey(R, RA1, {}), signed = await svc.fileKey(R, RA1, { file: "signed-offline" });
   const l = links.sign(A, R.staffId, key, nowMs);
@@ -501,8 +504,8 @@ try {
   const m0 = await svc.draft(R, PROSM, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 1000 }] });
   const failEdit = new Retainers(db, store, clock, fakeAudit({ failOn: (e) => e.action === "retainer.edited" }) as never);
   ok("FO-5 fail (M1, B-1): an edit rolled back after its file was stored leaves the retainer at version 1",
-    await (async () => { try { await failEdit.edit(R, m0.id, { fees: [{ label: "Fee", amountMinor: 2000 }] }); return false; } catch { return (await svc.read(R, m0.id)).version.n === 1; } })());
-  const m1 = await svc.edit(R, m0.id, { fees: [{ label: "Fee", amountMinor: 3000 }] });
+    await (async () => { try { await ed(failEdit, R, m0.id, { fees: [{ label: "Fee", amountMinor: 2000 }] }); return false; } catch { return (await svc.read(R, m0.id)).version.n === 1; } })());
+  const m1 = await ed(svc, R, m0.id, { fees: [{ label: "Fee", amountMinor: 3000 }] });
   ok("FO-5 pass (M1, B-1): the next edit succeeds with version 2 (no \"key taken\" from the lost attempt)", m1.version.n === 2 && m1.version.fees[0].amountMinor === "3000");
   await svc.send(R, m0.id);
   const failOff = new Retainers(db, store, clock, fakeAudit({ failOn: (e) => e.action === "retainer.signed_offline" }) as never);
@@ -513,7 +516,7 @@ try {
   const PX = u(809); person(PX, "Race Client", "race@example.com");
   const PROSX = prospect(PX, R.staffId);
   const x0 = await svc.draft(R, PROSX, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 1000 }] });
-  const race = await Promise.allSettled([svc.edit(R, x0.id, { fees: [{ label: "A", amountMinor: 1 }] }), svc.edit(R, x0.id, { fees: [{ label: "B", amountMinor: 2 }] })]);
+  const race = await Promise.allSettled([ed(svc, R, x0.id, { fees: [{ label: "A", amountMinor: 1 }] }), ed(svc, R, x0.id, { fees: [{ label: "B", amountMinor: 2 }] })]);
   const lost = race.filter((x) => x.status === "rejected").map((x) => (x as PromiseRejectedResult).reason as { getStatus?: () => number });
   ok("FO-5 pass (B-5): of two edits at once one wins (version 2) and a loser, if any, gets 409", (await svc.read(R, x0.id)).version.n >= 2 && lost.every((e) => e.getStatus?.() === 409), lost.map((e) => e.getStatus?.() ?? String(e)));
   // B-2: a zip bomb is refused before it is decompressed.
@@ -527,17 +530,17 @@ try {
   ok("FO-5 pass (m4): {fees.label} inside the fee loop is accepted", loopT.placeholders.includes("fees.label") && !loopT.placeholders.some((x) => x.includes("fees.fees")));
   ok("FO-5 fail (m4): {fees.label} outside the fee loop is refused (it would print nothing)", await fails(() => svc.uploadTemplate(R, { name: "Outside" }, docx(["{client.name} {fees.label}"])), 422, /outside-the-fee-loop/));
   // B-6, B-10, B-12: fee rows and edits.
-  ok("FO-5 fail (B-6): an \"On a date\" fee without its date blocks Send", (await svc.edit(R, x0.id, { fees: [{ label: "Later", amountMinor: 500, when: "ON_DATE" }] })).blockers.fees === "A fee due on a date needs its date.");
-  ok("FO-5 fail (B-10): an amount given as a list is refused", await fails(() => svc.edit(R, x0.id, { fees: [{ label: "x", amountMinor: [100] }] }), 422, /cents/));
-  ok("FO-5 fail (B-12): an edit with nothing to change is refused (no new version)", await fails(() => svc.edit(R, x0.id, {}), 422, /Nothing to change/));
+  ok("FO-5 fail (B-6): an \"On a date\" fee without its date blocks Send", (await ed(svc, R, x0.id, { fees: [{ label: "Later", amountMinor: 500, when: "ON_DATE" }] })).blockers.fees === "A fee due on a date needs its date.");
+  ok("FO-5 fail (B-10): an amount given as a list is refused", await fails(() => ed(svc, R, x0.id, { fees: [{ label: "x", amountMinor: [100] }] }), 422, /cents/));
+  ok("FO-5 fail (B-12): an edit with nothing to change is refused (no new version)", await fails(() => ed(svc, R, x0.id, {}), 422, /Nothing to change/));
   // B-9: a second Prepare on a prospect with an open retainer: a plain 409, before any rendering.
   ok("FO-5 fail (B-9): a second retainer on a prospect with an open one → 409 RETAINER_OPEN", await fails(() => svc.draft(R, PROSX, { templateId: tplA.id }), 409, /RETAINER_OPEN/));
   // B-11, m3: the representative reads, but does not change, a retainer they cannot otherwise see.
   ok("FO-5 fail (B-11): with everyone-sees-all off the representative (not the owner) cannot edit, send or withdraw → 404",
-    await fails(() => svc.edit(T, v.id, { fees: [{ label: "x", amountMinor: 1 }] }), 404) && await fails(() => svc.send(T, v.id), 404) && await fails(() => svc.withdraw(T, v.id, { reason: "x" }), 404));
+    await fails(() => ed(svc, T, v.id, { fees: [{ label: "x", amountMinor: 1 }] }), 404) && await fails(() => svc.send(T, v.id), 404) && await fails(() => svc.withdraw(T, v.id, { reason: "x" }), 404));
   // B-4, m9: Send re-checks the representative.
   sql(API, `update platform_role_grant set ended_at = now(), ended_by = 'test', end_reason = 'test' where staff_id = '${T.staffId}' and role = 'CASE_MANAGER' and ended_at is null`);
-  const vT = await svc.edit(R, v.id, { fees: [{ label: "Fee", amountMinor: 900 }] }).catch(() => null);
+  const vT = await ed(svc, R, v.id, { fees: [{ label: "Fee", amountMinor: 900 }] }).catch(() => null);
   ok("FO-5 fail (B-4): once the representative lost the case-manager role, the retainer shows it and Send is refused",
     !!vT && /no longer active/.test(vT.blockers.representativeStaffId ?? "") && await fails(() => svc.send(R, v.id), 422, /representativeStaffId/));
   sql(API, `insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${A}', '${T.staffId}', 'CASE_MANAGER', 'test')`);
@@ -591,8 +594,8 @@ try {
   ok("FO-5 fail (B-19): fifteen unknown placeholders are named ten at a time, \"and 5 more\"", await fails(() => svc.uploadTemplate(R, { name: "Fifteen" }, docx([Array.from({ length: 15 }, (_, i) => `{y${i}}`).join(" ")])), 422, /and 5 more/));
   // B-16, r2-m1: text the database refuses is refused at the field (422), never "someone else saved it".
   ok("FO-5 fail (B-16): a fee label with a tab, or a reason with a control character, is refused at the field (422)",
-    await fails(() => svc.edit(R, x0.id, { fees: [{ label: "Fee\tpasted", amountMinor: 100 }] }), 422, /One line, no tabs/)
-    && await fails(() => svc.edit(R, x0.id, { fees: [{ label: "Fee x", amountMinor: 100 }] }), 422, /One line, no tabs/));
+    await fails(() => ed(svc, R, x0.id, { fees: [{ label: "Fee\tpasted", amountMinor: 100 }] }), 422, /One line, no tabs/)
+    && await fails(() => ed(svc, R, x0.id, { fees: [{ label: "Fee x", amountMinor: 100 }] }), 422, /One line, no tabs/));
   const PW = u(810); person(PW, "Reason Client", "rc@example.com");
   const PROSW = prospect(PW, R.staffId);
   const rw = await svc.draft(R, PROSW, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 100 }] });
@@ -606,7 +609,27 @@ try {
   await svc.send(R, ex.id);
   sql(API, `begin; update fo_retainer_version set ended_at = now(), end_reason = 'EXPIRED' where retainer_id = '${ex.id}' and n = 1; update fo_retainer set status = 'EXPIRED' where id = '${ex.id}'; commit;`);
   await svc.draft(R, PROSE, { templateId: tplA.id });
-  ok("FO-5 fail (r2-m2): Edit and resend of an Expired retainer after a new one took the prospect → 409 RETAINER_OPEN", await fails(() => svc.edit(R, ex.id, { fees: [{ label: "Fee", amountMinor: 200 }] }), 409, /RETAINER_OPEN/));
+  ok("FO-5 fail (r2-m2): Edit and resend of an Expired retainer after a new one took the prospect → 409 RETAINER_OPEN", await fails(() => ed(svc, R, ex.id, { fees: [{ label: "Fee", amountMinor: 200 }] }), 409, /RETAINER_OPEN/));
+
+  // ----------------------------------------------------------------- Devin's review at 7a11b144f (the two red findings)
+  // Stale save (4575579111): an edit names the version it was made from; another one saved meanwhile → 409, never a silent overwrite.
+  const PS = u(812); person(PS, "Stale Client", "st@example.com");
+  const PROSS = prospect(PS, R.staffId);
+  const st0 = await svc.draft(R, PROSS, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 10000 }] });
+  await svc.edit(R, st0.id, { expectedVersion: 1, fees: [{ label: "Fee", amountMinor: 20000 }] });   // one tab saves version 2; another still shows version 1
+  ok("FO-5 fail (stale save): a save from the version-1 page after version 2 exists → 409 CHANGED, and version 2's fee stays",
+    await fails(() => svc.edit(R, st0.id, { expectedVersion: 1, fees: [{ label: "Fee", amountMinor: 15000 }] }), 409, /newer version \(2\)/)
+    && (await svc.read(R, st0.id)).version.fees[0].amountMinor === "20000");
+  ok("FO-5 fail (stale save): an edit without expectedVersion is refused at the field (422)", await fails(() => svc.edit(R, st0.id, { fees: [{ label: "Fee", amountMinor: 1 }] }), 422, /expectedVersion/));
+  ok("FO-5 pass (stale save): an edit naming the current version makes version 3", (await svc.edit(R, st0.id, { expectedVersion: 2, fees: [{ label: "Fee", amountMinor: 30000 }] })).version.n === 3);
+  // Download after access is lost (4575579436): the download re-checks visibility, not only the link.
+  const vKey = await svc.fileKey(R, v.id, {});
+  ok("FO-5 pass (download): the prospect's owner may download the retainer's file", await svc.assertFileVisible(R, vKey).then(() => true, () => false));
+  sql(API, `update fo_prospect set owner_staff_id = '${O.staffId}' where id = '${PROSV}'`);   // the prospect changes owner (everyone-sees-all is off)
+  ok("FO-5 fail (download): after the prospect changed owner, the former owner's link no longer downloads (404)", await fails(() => svc.assertFileVisible(R, vKey), 404));
+  ok("FO-5 pass (download): the new owner and the retainer's representative still may", await svc.assertFileVisible(O, vKey).then(() => true, () => false) && await svc.assertFileVisible(T, vKey).then(() => true, () => false));
+  ok("FO-5 fail (download): a key that names no retainer → 404", await fails(() => svc.assertFileVisible(R, "retainer-templates/x/v1.docx"), 404));
+  sql(API, `update fo_prospect set owner_staff_id = '${R.staffId}' where id = '${PROSV}'`);
 
   // Routes (PF-4's guard): every route declares its agent/retainer:* key.
   const keysOf = (m: string) => (Reflect.getMetadata(PLATFORM_ACCESS, (RetainersController.prototype as unknown as Record<string, object>)[m]) as { keys?: string[] } | undefined)?.keys?.join(",");

@@ -44,6 +44,7 @@ export class RetainersController {
   async download(r: R, token: string, res: Response) {
     const ctx = staffOf(r), c = this.links.check(token, ctx.firmId, ctx.staffId, this.clock.now());
     if ("refused" in c) return c.refused === "expired" ? problem(410, "Link expired", "This download link has expired. Open the agreement again.", { code: "LINK_EXPIRED" }) : problem(404, "Not found", "No such file in your firm.", { code: "NOT_FOUND" });
+    await this.svc.assertFileVisible(ctx, c.key);   // still sees the retainer (404 otherwise)
     const f = await this.files.get(ctx.firmId, c.key);
     if (!f) return problem(404, "Not found", "No such file in your firm.", { code: "NOT_FOUND" });
     res.setHeader("Content-Disposition", `attachment; filename="${c.key.split("/").pop()}"`).setHeader("Cache-Control", "no-store").setHeader("X-Content-Type-Options", "nosniff").type(f.contentType).send(Buffer.from(f.bytes));

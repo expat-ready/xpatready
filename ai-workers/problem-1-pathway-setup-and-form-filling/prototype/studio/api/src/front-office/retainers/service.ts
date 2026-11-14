@@ -378,6 +378,9 @@ export class Retainers {
   async edit(ctx: StaffContext, id: string, body: Record<string, unknown>) {
     const r = await this.visible(ctx, id, true);
     if (!["templateId", "signerPersonId", "representativeStaffId", "fees"].some((k) => body[k] !== undefined)) unprocessable("Nothing to change.", {});   // B-12: no new version for nothing
+    // A stale save is refused (STANDARDS stale-save rule; Devin 4575579111): the page sends the version it shows.
+    if (typeof body.expectedVersion !== "number" || !Number.isInteger(body.expectedVersion)) unprocessable("Send the version you edited (expectedVersion).", { expectedVersion: "Send the version you edited." });
+    if (body.expectedVersion !== r.currentVersion) conflict(`This agreement has a newer version (${r.currentVersion}) than the one you edited (${body.expectedVersion as number}). Open it again.`, "CHANGED");
     if (!EDITABLE.includes(r.status)) conflict(r.status === "CLIENT_SIGNED" || r.status === "SIGNED" || r.status === "SIGNED_OFFLINE" ? "The client has signed this agreement: it can no longer be edited." : "This agreement is withdrawn: prepare a new one.", "NOT_EDITABLE");
     const p = await this.prospectFor(ctx, r.prospectId ?? notFound("prospect"), true);
     const open = () => conflict("This prospect already has an open retainer. Open it instead.", "RETAINER_OPEN");
@@ -484,6 +487,14 @@ export class Retainers {
     await tx.foStageMove.create({ data: { firmId: ctx.firmId, prospectId, fromStageId: last?.toStageId ?? null, toStageId: won.id, cause: "SIGNED_OFFLINE", byActor: `staff:${ctx.staffId}` } });
     await this.audit.record(tx, { ...this.line(ctx, "prospect.won", prospectId, "Won: retainer signed on paper", { prospectId, wonVia: "SIGNED_OFFLINE" }), entity: "fo_prospect" });
     return true;
+  }
+
+  /** A download re-checks that the person still sees the retainer the file belongs to (Devin 4575579436: a link outlived
+   *  a change of the prospect's owner). 404 otherwise. */
+  async assertFileVisible(ctx: StaffContext, key: string): Promise<void> {
+    const m = /^retainers\/([0-9a-f-]{36})\//.exec(key);
+    if (!m) return notFound("file");
+    await this.visible(ctx, m[1]);
   }
 
   /** The file a download link may name (BR-15): a version's document or the signed paper copy, of a retainer the person sees. */
