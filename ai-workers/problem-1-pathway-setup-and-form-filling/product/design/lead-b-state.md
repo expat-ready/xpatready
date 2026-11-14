@@ -258,3 +258,4 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
 * 14 Nov 23:15 IST: Lead 49 ruled round 3 for PF-21 #1753: same reviewer, diff 540ebf88c..4688525, and the breaker re-runs (the migration changed). A new Major splits the row, and Lead B shapes the split.
 * 14 Nov 23:22 IST: the current Lead and release holder is now **Lead 50** (`local_1ee10674…`).
 * 15 Nov 00:28 IST: FO-3 #1760 round 3 approved (B-3 and R2-1 fixed, no Major); it goes ready and labels on green. Its open Minors are listed in the PR body for Lead B (4) to shape (added to the hand-over list).
+* 15 Nov 01:08 IST: PF-4t #1775 went red because check_forms_qa53.ts now sees PF-4's routes. Lead B proposed a PLATFORM_PATH pattern (not a list) checked as 401 / no data (comment 6883123596). Lead 50 OK'd it (6883128053), adding a guard that asserts PLATFORM_PATH's source exactly, so widening it fails, and nudged the lane.
