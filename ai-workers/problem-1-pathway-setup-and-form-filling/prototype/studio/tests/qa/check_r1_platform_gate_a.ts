@@ -7,7 +7,8 @@
 //                               like FO-3's unknown slug (the plain not-found), so the public page can be routed by it.
 //   R1.13 (PF-23 logs)        → the alarm path: health live/ready answer; a request's X-Request-Id is kept in its JSON
 //                               log line and a seeded email in the request never reaches the log.
-//   R1.9 (PF-14 jobs)         → PF-21's reminder: the worker started with the app and made its own schema.
+//   R1.9 (PF-14 jobs)         start only: the worker starts and makes its schema; no module uses it (QA-453), so this
+//                               is not a gate A pass to the next step.
 // Run (an isolated copy; never :4400):
 //   zsh studio/tools/isolated.sh qagate 4474 start --ttl 20 PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on \
 //     && trap 'zsh studio/tools/isolated.sh qagate 4474 stop' EXIT \
@@ -74,7 +75,7 @@ for (const [bad, why] of [["Maple", "capitals"], ["-maple", "leading hyphen"], [
 
 // R1.13
 const live = await call("/api/health/live"), ready = await call("/api/health/ready");
-check("R1.13: health live and ready answer 200 with the database and job queue up", live.status === 200 && ready.status === 200, `${live.status}/${ready.status} ${JSON.stringify(ready.body).slice(0, 120)}`);
+check("R1.13: health live and ready answer 200 with the database up (the job queue is NOT counted: QA-452)", live.status === 200 && ready.status === 200 && ready.body?.checks?.database?.ok === true, `${live.status}/${ready.status} ${JSON.stringify(ready.body).slice(0, 120)}`);
 const rid = `qa-r1-${process.pid}`, seeded = "qa.leak.check@example.com";
 await call("/api/platform/session/local", { method: "POST", headers: { "content-type": "application/json", "x-request-id": rid }, body: JSON.stringify({ firmKey: "sample-firm", email: seeded, secondStep: true }) });
 await new Promise((r) => setTimeout(r, 500));
@@ -85,7 +86,7 @@ check("R1.13: a seeded email in a request body never reaches the log", !log.incl
 
 // R1.9
 const jobTables = psql(`select count(*) from information_schema.tables where table_schema = 'platform_jobs'`);
-check("R1.9→PF-21: the job worker started with the app and made its own schema (platform_jobs)", Number(jobTables) > 0, `${jobTables} tables`);
+check("R1.9 (start only, not gate A: no module uses the runner, QA-453): the job worker started with the app and made its own schema (platform_jobs)", Number(jobTables) > 0, `${jobTables} tables`);
 
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

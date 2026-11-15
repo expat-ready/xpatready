@@ -1,7 +1,7 @@
 # qa · capability R1 Platform — scoring the merged Platform rows (15 Nov 2026)
 
 **Mode:** `/qa capability` on the Release 1 **Platform** rows of `qa/CAPABILITIES.md` section "R1 · Release 1 capabilities" (rows and ids from #1748, P-592). Lead 51's brief (15 Nov, changed 09:1x IST): score only the Platform rows whose changes are merged; no new section. **Tested on `main` 2b7fe0060** (tree a96301aad). Live AI off, US$0, no priced button (P-175).
-**Verdicts:** a fresh Opus reader that ran nothing (P-303, P-432): `2026-11-15-capability-R1-platform/verdicts.md`. The tester's evidence is below; the reader's verdict is what the rows carry.
+**Verdict:** 1 Works (R1.2) · 9 Partial · 1 Not tested (R1.11), from a fresh Opus reader that ran nothing (P-303, P-432): `2026-11-15-capability-R1-platform/verdicts.md`. Bugs: 0 Blocker · 0 Critical · 2 new Major (QA-452, QA-453); QA-449 Major and QA-450, QA-451 Minor still open.
 
 ## 1. What was run
 
@@ -33,26 +33,30 @@ Two first-run failures were the test's own faults, fixed before the counted run:
 ## 2. Findings
 
 * **QA-452 (Gap · Major, R1.13; the fix lands in PF-14's worker, R1.9's code) — new.** PF-23 left three hooks for PF-14's real job worker and nothing on `main` connects them: (1) no module provides `JOB_QUEUE_PROBE`, so `/api/health/ready` answers `job_queue: {ok: null, "No job queue on this copy yet (PF-14 adds it); not counted."}` on a copy where PF-14's worker is running: a dead queue never makes ready 503 (PF-23 Done when (4): "ready (database and job queue)"); (2) no job handler is wrapped by `observeJob`, so a job run writes no job line and no job metrics (PF-23 (2): "job runs, failures and age per queue"; `observability/jobs.ts`: "PF-14's worker wraps every handler with it"); (3) `stuckJobs` (the SA8-D40 alarm) has no caller. Cause: PF-14 was built against PF-0p's fakes before PF-23 merged (#1757's body), and no BACKLOG row owns the wiring. Check: `tests/qa/check_qa452_jobs_observed.ts` 0/4 today (`qa452-mine.txt`). Owning lane: runtime.
-* **QA-453 (Gap, R1.9; the swap lands in FO-3's runtime ports) — new, added after the first reader brief.** PF-14's `PlatformJobs` (the real JobPort, injectable) is used by **no module of the running app**: the only module that queues jobs today, FO-3's booking (reminders), still gets PF-0p's in-memory `fakeJobs` "until PF-14's pg-boss adapter" (`front-office/booking/runtime-ports.ts:3-4, 18`), so a booking reminder lives in memory and is lost on a restart; PF-21's reminder has no runtime binding yet (PF-21w). R1.9's Done when ("a reminder fires at its time …; stopping the worker mid-job loses nothing") holds for PF-14's adapter in its suite, not for any reminder in the running app. Also reported as a fact by the Front office qa lane (#1748 comment 6888030400). Check: `tests/qa/check_qa453_real_jobport.ts` 0/2 today (`qa453-mine.txt`). Severity for the reader. Owning lane: front office (the swap), runtime (PF-14).
+* **QA-453 (Gap, R1.9; the swap lands in FO-3's runtime ports) — new, added after the first reader brief.** PF-14's `PlatformJobs` (the real JobPort, injectable) is used by **no module of the running app**: the only module that queues jobs today, FO-3's booking (reminders), still gets PF-0p's in-memory `fakeJobs` "until PF-14's pg-boss adapter" (`front-office/booking/runtime-ports.ts:3-4, 18`), so a booking reminder lives in memory and is lost on a restart; PF-21's reminder has no runtime binding yet (PF-21w). R1.9's Done when ("a reminder fires at its time …; stopping the worker mid-job loses nothing") holds for PF-14's adapter in its suite, not for any reminder in the running app. Also reported as a fact by the Front office qa lane (#1748 comment 6888030400). Check: `tests/qa/check_qa453_real_jobport.ts` 0/2 today (`qa453-mine.txt`). Reader: Gap · Major (Critical once bookings reach real people). Owning lane: front office (the swap), runtime (PF-14).
 * **QA-449 (Major, R1.16 and R1.11) — still open, re-seen on 2b7fe0060** (skipped batches 43656353031, 43668064105).
 * **QA-450, QA-451 (Minor, R1.12) — still open:** `web/src/modules/` still holds only `_example`; no pack checks the "one UI kit" half; the BACKLOG wording on a clash is unchanged.
 * **Minor, not filed:** `check_pf25_web_address.ts`'s usage line reads `tsx studio/tests/…`, but it needs `--tsconfig api/tsconfig.json` (as `run-suites.sh` gives) or it stops at `core.ts`'s decorators. Same for every suite that imports `api/src`; the runner is right, only the line misleads a person.
 
-## 3. Rows (the tester's proposal; the reader's verdicts decide)
+## 3. Verdicts (fresh Opus reader that ran nothing, P-303, P-432; `2026-11-15-capability-R1-platform/verdicts.md`)
 
-| Row | Changes merged | Not merged (scope of the row) | Proposed |
-|---|---|---|---|
-| R1.2 Database | PF-3 #1728 | — | Works |
-| R1.5 Staff sign-in, two-step, passkeys, lock-out | PF-4 #1744, PF-4t #1775 | PF-4b (passkeys, web session, invitation acceptance), PF-4s (our staff) | Partial |
-| R1.6 Permissions | PF-4 #1744 (deny by default, keys per route) | PF-6 (own versus all, money and licence apart) | Partial |
-| R1.9 Background jobs, schedules, reminders | PF-14 #1757 | no running-app module uses it yet (QA-453; QA-452 is R1.13's) | Partial (for QA-453; reader decides) |
-| R1.11 Server framework | PF-7 #1713 | — | Not tested (no run on `main`'s head) |
-| R1.12 Screen framework, one UI kit | PF-1 #1711 | the kit half has no row or check (QA-450) | Partial |
-| R1.13 Logs, metrics, error reports, alerts | PF-23 #1759 | PF-23's CI step (#1782, open), PF-23c (cloud log groups, alarms to a person); QA-452 Major | Partial |
-| R1.15 Secrets in a managed store | PF-24 #1756 | the managed store itself (PF-8's deploy) | Partial |
-| R1.16 Automated testing | PF-7 + CI | QA-449 Major | Partial |
-| R1.24 Each firm's own web address | PF-25 #1763 | wildcard DNS and certificate (PF-8, BACKLOG says so) | Works (in the app) |
-| R1.109 Complaints record | PF-21 part 1 #1753 (schema, service, events) | PF-21w (routes), PF-21s (screens) | Partial |
+**1 Works · 9 Partial · 1 Not tested** of the 11 merged Platform rows.
+
+| Row | Verdict | What holds it |
+|---|---|---|
+| R1.2 Database (PF-3) | **Works** | — ci 43656353002 job 132636128165 75/75; qa re-run 75/75; gate A by API R1.2 → R1.5 passes |
+| R1.5 Staff sign-in (PF-4, PF-4t) | Partial | PF-4b (passkeys, session, invitation acceptance) and PF-4s not merged; no merged pack tests a wrong or expired code or repeated wrong tries |
+| R1.6 Permissions (PF-4) | Partial | "own versus all" and "money and licence apart" have no merged pack; PF-6's Done when does not name them (Question 4) |
+| R1.9 Background jobs (PF-14) | Partial | QA-453 (Major): no running-app module uses PF-14's runner |
+| R1.11 Server framework (PF-7) | Not tested | `skeleton.yml` never ran on `main`'s head (QA-449) |
+| R1.12 Screen framework (PF-1) | Partial | the "one UI kit" half has no pack (QA-450, QA-451 Minor) |
+| R1.13 Logs, metrics, alerts (PF-23) | Partial | QA-452 (Major); PF-23's CI step #1782 open; PF-23c not built |
+| R1.15 Secrets (PF-24) | Partial | the managed store itself (PF-8) not built |
+| R1.16 Automated testing | Partial | QA-449 (Major) |
+| R1.24 Firm web address (PF-25) | Partial | `<firm>.expatready.com` needs PF-8's wildcard DNS and certificate and FO-3w's host-routed pages (the tester proposed "Works in the app"; the reader refused a qualified Works) |
+| R1.109 Complaints (PF-21 part 1) | Partial | routes (PF-21w) and screens (PF-21s) not merged |
+
+Gate A: the reader counted the R1.2 → R1.5, R1.6 and R1.24 walks; not R1.9 (it proves only that the worker starts, QA-453) nor R1.13's job-queue half (ready reads null, QA-452). The walk's labels now say so (re-run 20/20).
 
 ## 4. What could not be tested
 * R1.11 and the container half of R1.16 on `main`'s head (QA-449; dispatch asked). No walk by screens: no Platform screen exists. The shared demo (:4400) has no Platform screen to walk read-only.
@@ -62,6 +66,8 @@ Two first-run failures were the test's own faults, fixed before the counted run:
 1. Please dispatch `skeleton.yml` on `main`'s head (asked on #1748, comment 6888025422); R1.11 stays Not tested until then.
 2. QA-452: which row owns the PF-14 ↔ PF-23 wiring (a small PF-14b or PF-23 part 2)? No BACKLOG row names it.
 3. R1.15 (PF-24) is scored with the others; say if it should wait.
+4. R1.6: which row owns "own versus all" and "money and licence apart"? PF-6's Done when does not name them (reader).
+5. QA-453: the swap of FO-3's `fakeJobs` for PF-14's `PlatformJobs`: FO-3's lane or a PF-14 follow-up?
 
 ## 6. Suggestions
 * *Needed for the proof · Scaffolding:* a "wiring" line in the Done when of any row built against a port fake while the real side is in another row (QA-452's cause).
