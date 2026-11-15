@@ -13,6 +13,8 @@ Home: `ai-workers/problem-1-pathway-setup-and-form-filling/product/` (P). **The 
 ## 2. Pick
 * The row named in the message, else your top open row in `BACKLOG.md` (Owners, then Now, then Next). WIP: no new row while your last PR is unmerged.
 * **Duplicate check first (P-526):** search the row's words and code names in `BACKLOG*.md`, open PRs (records PRs too), `main`'s code and `qa/BUGS.md` (and the team's product on the integration track). Put `Duplicate check: searched <places>; none` or `found <id>` in the PR body. Found → "Question for the tech lead: duplicate of <id>" and stop; the copy that goes is removed before new work. Touch only what the row names; files another open PR touches → ask for the baton.
+* **Requirements (P-604):** read only the requirement text `python3 P/tools/trace-requirements.py --brief <row>` prints for your row; never invent a value, requirement or scope; unknown → write "not known" or ask (A73, P-502).
+* **Finish whole (P-606):** each "Done when" line names the test that proves it before you build; no new capability while one you started has parts merged and parts missing (blocked over 2 h → pull the next ready one); a port's fake and real adapters pass the same contract test.
 * Not ready (no acceptance test, an open founder question, a new screen part without an approved concept) → write the question with your recommendation for the tech lead and stop.
 * A founder ask: check in minutes that it fits `DECISIONS.md` and the agreed board and moves no other screen, area or row; a knock-on effect → one plain line to the tech lead with your recommendation before building.
 
