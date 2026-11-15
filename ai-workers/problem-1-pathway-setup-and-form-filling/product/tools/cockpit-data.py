@@ -896,7 +896,10 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     wj("github/main_checks.json", [{"name": c["name"], "status": c["status"], "conclusion": c["conclusion"]} for c in cr.get("check_runs", [])])
     # guards: label guard workflow on main, and the push guard (ci.yml job "guard") on the newest finished queue run
     gr = []
-    lg = gh.get("/actions/workflows/label-guard.yml/runs?branch=main&status=completed&per_page=1").get("workflow_runs", [])
+    # a run cancelled or skipped because a newer event replaced it (the workflow's concurrency group) is not a result: take the
+    # newest run that ran to an end (Lead 59, 15 Nov: 29 of the last 30 were "cancelled" and the board read the guard as failed)
+    lg = [r for r in gh.get("/actions/workflows/label-guard.yml/runs?branch=main&status=completed&per_page=30").get("workflow_runs", [])
+          if r.get("conclusion") not in ("cancelled", "skipped")][:1]
     gr.append({"name": "label guard (label-guard.yml on main)", "conclusion": lg[0]["conclusion"] if lg else None, "created_at": lg[0]["created_at"] if lg else None})
     # the push guard is a step: job "guard" on a draft push, step "push guard (part 1 only …)" of shard 1 on a full or queue run
     ci = gh.get("/actions/workflows/ci.yml/runs?status=completed&per_page=30").get("workflow_runs", [])

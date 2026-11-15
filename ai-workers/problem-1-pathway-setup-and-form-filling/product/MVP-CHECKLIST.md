@@ -15,9 +15,9 @@
 | Status | Rows |
 |---|---|
 | qa Works\* | 6 |
-| Merged | 5 (74, 76 and 77 moved back to Shaped: each gained a new part, CS-DL1, CS-NT1, CS-C1) |
+| Merged | 8 (9, 38, 40 moved up by Lead 59, 15 Nov 15:5x IST: their one part each merged, PF-14 #1757, FO-3 #1760; 74, 76 and 77 moved back to Shaped: each gained a new part, CS-DL1, CS-NT1, CS-C1) |
 | In PR (the whole row) | 0 (6 rows have a part in PR: 5, 6, 27, 29, 37, 41, through #1741, #1742, #1744) |
-| Shaped | 90 |
+| Shaped | 87 |
 | Not shaped | 0 |
 
 Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, messages, automation, portal login, complaints), **Front office** (leads, booking, retainers, signing, compliance checks), **Client money**, **Case side** (the release Lead's: cases, documents, forms, the configurator), **Audit**.
@@ -32,7 +32,7 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | 5 | Staff sign-in with two-step, passkeys, lock-out on leaving | Platform | PF-4 (In PR #1744), PF-4b, PF-4s | Shaped |
 | 6 | Permissions: deny by default, own versus all, money and licence apart | Platform | PF-4 (In PR #1744), PF-6 | Shaped |
 | 8 | Audit trail nobody can edit | Audit | AUD-1a, AUD-1b, AUD-1m | Shaped |
-| 9 | Background jobs, schedules, reminders | Platform | PF-14 | Shaped |
+| 9 | Background jobs, schedules, reminders | Platform | PF-14 (#1757) | Merged |
 | 10 | Checking every input | All | PF-28 (PF/FO); CS-V1 (case side) | Shaped |
 | 11 | Server framework | Platform | PF-7 | Merged |
 | 12 | Screen framework, one UI kit | Platform | PF-1 | Merged |
@@ -80,9 +80,9 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
 | 37 | Public booking page; no double booking | Front office | FO-1b (In PR #1741), FO-3 (API); booking screens: FO-3a, FO-3w, FO-3sc | Shaped |
-| 38 | Time zones from booking page to invite | Front office | FO-3 | Shaped |
+| 38 | Time zones from booking page to invite | Front office | FO-3 (#1760) | Merged |
 | 39 | Staff calendar screen | Front office | FO-3st (FO-3st1), FO-3sc | Shaped |
-| 40 | Calendar invite files | Front office | FO-3 | Shaped |
+| 40 | Calendar invite files | Front office | FO-3 (#1760) | Merged |
 | 41 | Staff hours and time off | Front office | FO-1b (In PR #1741), FO-3; screen: FO-3a, FO-3st (FO-3st2) | Shaped |
 | 42 | Reschedule or cancel by link; outcomes; consult record | Front office | FO-3; staff screen: FO-3a, FO-3w, FO-3st (FO-3st1, FO-3st3) | Shaped |
 | 43 | Two-way Google or Outlook calendar sync | Front office | FO-3s1, FO-3s2, FO-3s3, FO-3s4, FO-3s5 | Shaped (Google's and Microsoft's reviews are outside clocks) |
