@@ -10,6 +10,8 @@
 
 **Lead B (6) live (15 Nov 13:47 IST):** scan loop restarted. FO-3sr brief rewritten to P-606/P-610 (`lead-b-briefs/FO-3sr.md`, ready now) with its missing BACKLOG row (rev 16.17, for the Lead to copy). J-38's BACKLOG waits on is short (rev 16.17 copy text). No J-row is ready. FO-7mv brief still waits on FO-7a #1758 (draft).
 
+**Lead B (6) live (14:29 IST):** the current Lead is **Lead 58** (`local_5bec64f9…`); the feeding Lead is Lead 57 (`local_bef741db…`). The founder started cloud lanes for FO-4 (brief 9ebb5da30), PF-19b (9446bd33a), PF-21w, PF-21s stage 1 and FO-3sc; Lead 57 holds a PF-Lc card (cec0fc01c). Rulings given today on PR comments: #1813 FO-2, #1815 PF-5, #1816 PF-4b. Rows rev 16.17-16.20 are waiting for Lead 58 to copy. Owed: PF-6 and PF-5s briefs when PF-4b lands; FO-7mv when FO-7a #1758 merges. GitHub REST is shared by all sessions (ran out 14:2x); the scan loop posts through GraphQL when it must.
+
 ## START HERE: hand-over Lead B (5) → Lead B (6), written 15 Nov 13:24 IST before the account switch (Lead 55's ask)
 
 **Lead B (5):** session titled "Lead B (5) · 15 Nov 10:02 IST" (transcript `af59e652…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`.
