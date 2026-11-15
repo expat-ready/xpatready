@@ -15,7 +15,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime F
 
 **What to build (API only; no schema):**
 1. `samples/cicc-code-s24-items.json`: one entry per s. 24(3) paragraph: `{ letter, text (verbatim), section "24(3)(x)", url, currentTo, readOn, marks: { placeholders: [...], clauseMarker: "code:24-3-x" }, howWeCheck }` and a top-level `"legalReading": "Unconfirmed: no counsel"`.
-2. `api/src/front-office/retainers/code-checklist.ts`: for a template version, an item is **marked** when the version uses one of its placeholders or carries its clause marker (a `{{code:24-3-x}}` tag, read by FO-5f2's tag reader; the marker renders as nothing in the signed document). Pure function plus one read.
+2. `api/src/front-office/retainers/code-checklist.ts`: for a template version, an item is **marked** when the version uses one of its placeholders or carries its clause marker, written in the templates' own single-brace tags: `{code:24-3-k}`. `placeholders.ts` gains a known `code:24-3-<letter>` family (letters taken from the data file), so `checkPlaceholders`/`readTemplate` (`service.ts:224-237`) accept a known marker and still refuse an unknown one with 422 `UNKNOWN_PLACEHOLDER`; the family fills as the empty string, so the marker renders as nothing in the signed document. Pure function plus one read.
 3. `GET /api/front-office/retainer-templates/:id/checklist` (`agent/retainer:list`): `{ source: { title, section, url, currentTo }, marked: n, total: n, items: [{ letter, section, text, marked, howWeCheck }], legalReading: "Unconfirmed: no counsel" }` for the template's newest version, or `?version=` for one.
 4. The draft (`GET retainers/:id`) gains one quiet field `codeChecklist: { marked, total, link }`; nothing else changes on the draft. **`send` is untouched:** its two blocks (AG-5-9's client name and fee) stay the only refusals.
 
@@ -23,13 +23,14 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime F
 * `FO-5b DW1 pass/fail`: the data file has exactly the paragraphs s. 24(3) has on the page read (the test compares the letters with the file's own count and fails on a gap or a duplicate letter); each entry's text is non-empty and its section matches its letter.
 * `FO-5b DW2 pass/fail`: a template missing (k)'s placeholder and marker lists (k) unmarked with its section and text; adding the marker in a new version marks it.
 * `FO-5b DW3 pass/fail`: a draft from a template with unmarked items **sends** (200, the version is sent); a draft with no client name or no fee is still refused by AG-5-9's two checks (unchanged).
-* `FO-5b DW4 pass/fail`: the answer's source line names the Code, s. 24(3), its URL and its "current to" date; `legalReading` is "Unconfirmed: no counsel"; no shown string contains "required", "must" or "correct" (AG-05 rule 7, a word scan over the answer).
+* `FO-5b DW4 pass/fail`: the answer's source line names the Code, s. 24(3), its URL and its "current to" date; `legalReading` is "Unconfirmed: no counsel"; none of **our** strings (`howWeCheck`, labels, the source line, the draft's quiet line) contains "required", "must" or "correct" (AG-05 rule 7; the scan skips `items[].text`, which is the Code's own words).
+* `FO-5b DW2b pass/fail`: a template with `{code:24-3-k}` uploads (200); one with `{code:24-3-zz}` is refused 422 `UNKNOWN_PLACEHOLDER` naming it.
 * `FO-5b DW5 pass/fail`: the clause marker renders as nothing in the signed or downloaded document (FO-5's render path); a template with no markers still renders as before.
 * `FO-5b DW6`: firm B cannot read firm A's template checklist (404); a person without `agent/retainer:list` gets 403; FO-5, FO-5f and FO-5f2's suites pass unchanged.
 
 **Duplicate check:** BACKLOG (FO-5b; FO-5s shows the checklist panel; FO-5r was the e-signature research), open PRs (none on `retainers/` at 03:2x IST 16 Nov), `main` (no `code-checklist`, no s. 24 data in `samples/`; `complaints.ts` cites s. 24(3)(r)(v) for complaints only), BUGS (none); one `Duplicate check:` line after re-running it.
 
-**Touch list:** new `samples/cicc-code-s24-items.json`, new `api/src/front-office/retainers/code-checklist.ts`, `retainers/routes.ts` (one route), `retainers/service.ts` (the draft view's one field only), `retainers/docx.ts` only if the marker needs its own "renders as nothing" line (name it), `tests/check_fo5b_checklist.ts`, `api/src/front-office/MODULE.md` (entry point, tests line).
+**Touch list:** new `samples/cicc-code-s24-items.json`, new `api/src/front-office/retainers/code-checklist.ts`, `retainers/placeholders.ts` (the `code:24-3-<letter>` family and its empty fill), `retainers/routes.ts` (one route), `retainers/service.ts` (the draft view's one field only), `retainers/docx.ts` only if the marker needs its own "renders as nothing" line (name it), `tests/check_fo5b_checklist.ts`, `api/src/front-office/MODULE.md` (entry point, tests line).
 
 **Contract used:** FO-5's template store and FO-5f2's tag reader (contracts `platform-and-front-office-contracts-2026-11-14.md` §2.3 Retainer agreements). No `ports/` change.
 
