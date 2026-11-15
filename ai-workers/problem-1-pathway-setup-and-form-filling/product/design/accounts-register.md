@@ -9,7 +9,7 @@ The tech lead keeps this list. **No secrets, no names, no email addresses, no ac
 | 3 | AWS · budget alert | US$20/month alert | founder (email) | n/a | n/a | none | on |
 | 4 | Stripe · sandbox | test payments | founder | to confirm | Stripe email recovery | confirm MFA on | test mode; **test key in Secrets Manager** ca-central-1 (22:4x IST, pasted by the founder; shape checked only) |
 | 5 | Google Cloud · staging project | OAuth test app (Calendar, Gmail scopes) | founder (personal Google account) | Google 2-step | **Google backup codes** printed and in the manager | backup codes; move to Expat Ready's own Google org before production (A93) | consent screen in test mode |
-| 6 | BoldSign · e-signature | sandbox API | founder (company email) | n/a yet | support ticket | account refused by screening; fallback Signority on 18 Nov | blocked |
+| 6 | BoldSign · e-signature | sandbox API | founder (company email) | n/a yet | support ticket | region to confirm (Canada or default); use the founder's own browser for sign-ups | created 16 Nov from his Chrome |
 | 7 | Cloudflare · expatready.com DNS | site, mail and staging addresses | **a third party** | unknown | unknown | founder gets Administrator access before launch | risk |
 | 8 | Google Workspace · company mailbox | company email | **managed by a third party's Workspace** | unknown | unknown | Expat Ready's own Workspace, or admin rights, before launch | risk |
 | 9 | GoDaddy · expatready.com registrar | domain ownership | to confirm | unknown | unknown | confirm the registrant is Expat Ready | risk |
