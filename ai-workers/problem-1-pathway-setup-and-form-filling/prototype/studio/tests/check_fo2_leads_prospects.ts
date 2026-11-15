@@ -248,28 +248,45 @@ try {
   const rows = await leads.list(R, "all");
   const firmCal = { zone: await readSetting<string>(db, A, TIME_ZONE.key), hours: await readSetting<{ day: string; opens: string; closes: string }[]>(db, A, BUSINESS_HOURS.key), closedDays: await readSetting<string[]>(db, A, CLOSED_DAYS.key) };
   ok("FO-2 p2 pass: every open list row carries waitedOpenMinutes, exactly the firm's open minutes since arrival (review m7)", rows.length > 0 && rows.every((l) => l.waitedOpenMinutes === openMinutes(l.arrivedAt, new Date(clock), firmCal)), rows.slice(0, 1));
+  ok("FO-2 p2 fail (break m8): a wait longer than 400 days still counts the latest open days", openMinutes(new Date(clock - 500 * 86_400_000), new Date(clock), firmCal) >= openMinutes(new Date(clock - 30 * 86_400_000), new Date(clock), firmCal) && openMinutes(new Date(clock - 30 * 86_400_000), new Date(clock), firmCal) > 0);
   const t0 = Date.now(), win = openWindows(new Date(clock - 300 * 86_400_000), new Date(clock), firmCal);
   for (let i = 0; i < 500; i++) openMinutesIn(win, new Date(clock - (i % 300) * 86_400_000), new Date(clock));
   ok("FO-2 p2 fail (review M4): 500 rows up to 300 days old are counted from one walk in well under a second", Date.now() - t0 < 1000, Date.now() - t0);
 
-  // Assignees (Lead B's five): a Read-only member and a suspended Case Manager are added to firm A first.
+  // Assignees (Lead B rev 16.29): a Read-only member and a suspended Case Manager are added to firm A first.
   const addStaff = (name: string, role: string, status: string) => { const id = sql(`insert into platform_staff (id, firm_id, email, display_name, status, updated_at) values (gen_random_uuid(), '${A}', '${name.toLowerCase()}@sample-firm.example.com', '${name} (Sample)', '${status}', now()) returning id`); sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${A}', '${id}', '${role}', 'seed:FO-2-test')`); return id; };
   const ro = addStaff("Viewer", "READ_ONLY", "ACTIVE"), away = addStaff("Away", "CASE_MANAGER", "SUSPENDED");
   const forT = await leads.assignees(T), forO = await leads.assignees(O), forSolo = await leads.assignees(SOLO);
   const ids = forT.assignees.map((a) => a.staffId);
-  ok("FO-2 p2 pass: a Case Manager gets the active staff who work leads (R, O, T), no suspended person", [R.staffId, O.staffId, T.staffId].every((x) => ids.includes(x)) && !ids.includes(away) && forT.oneUser === false, forT);
-  ok("FO-2 p2 fail: a READ_ONLY member is never offered", !ids.includes(ro));
+  ok("FO-2 p2 pass: a Case Manager gets every active staff member, READ_ONLY included (AG-2-13c rule 11)", [R.staffId, O.staffId, T.staffId, ro].every((x) => ids.includes(x)) && forT.oneUser === false, forT);
+  ok("FO-2 p2 fail: no suspended or deactivated person is offered", !ids.includes(away));
   ok("FO-2 p2 fail: a Case Officer (no assign key) gets assignees: []", forO.assignees.length === 0);
   ok("FO-2 p2 pass: sample-solo gives oneUser: true", forSolo.oneUser === true);
   ok("FO-2 p2 fail: firm A's list never names firm B's staff", !ids.includes(SOLO.staffId) && !forSolo.assignees.some((a) => ids.includes(a.staffId)));
 
   // Assign to… (AG-2-13c).
   const toAssign = sql(`select id from fo_lead where firm_id = '${A}' and state = 'OPEN' and owner_staff_id is null order by arrived_at limit 1`);
-  ok("FO-2 p2 fail: Assign to a Read-only member (cannot work leads) → refused at the field", (await refusal(() => leads.assign(R, toAssign, { staffId: ro })))?.status === 422);
-  ok("FO-2 p2 fail: Assign to someone outside the firm → refused at the field", (await refusal(() => leads.assign(R, toAssign, { staffId: SOLO.staffId })))?.status === 422);
-  const assigned = await leads.assign(R, toAssign, { staffId: T.staffId }) as { ownerStaffId: string };
+  ok("FO-2 p2 fail: Assign to a suspended person → refused at the field", (await refusal(() => leads.assign(R, toAssign, { staffId: away, expectedOwnerStaffId: null })))?.status === 422);
+  ok("FO-2 p2 fail: Assign to someone outside the firm → refused at the field", (await refusal(() => leads.assign(R, toAssign, { staffId: SOLO.staffId, expectedOwnerStaffId: null })))?.status === 422);
+  const assigned = await leads.assign(R, toAssign, { staffId: T.staffId, expectedOwnerStaffId: null }) as { ownerStaffId: string };
   ok("FO-2 p2 pass: Assign to an active person who works leads; the audit line names the previous owner (none)", assigned.ownerStaffId === T.staffId && sql(`select coalesce(detail->>'previousOwnerStaffId', 'null') from audit_event where entity_key = '${toAssign}' and action = 'lead.taken' and detail->>'via' = 'ASSIGN'`) === "null");
-  ok("FO-2 p2 fail: Assign to the person who already has it → 409", (await refusal(() => leads.assign(R, toAssign, { staffId: T.staffId })))?.status === 409);
+  ok("FO-2 p2 fail: Assign to the person who already has it → 409", (await refusal(() => leads.assign(R, toAssign, { staffId: T.staffId, expectedOwnerStaffId: T.staffId })))?.status === 409);
+  const toRo = sql(`select id from fo_lead where firm_id = '${A}' and state = 'OPEN' and owner_staff_id is null order by arrived_at limit 1`);
+  ok("FO-2 p2 pass: Assign to a READ_ONLY member → done (any role, AG-2-13c rule 11)", ((await leads.assign(R, toRo, { staffId: ro, expectedOwnerStaffId: null })) as { id?: string; ownerStaffId?: string }).ownerStaffId === ro || sql(`select owner_staff_id from fo_lead where id = '${toRo}'`) === ro);
+
+  await post({ givenNames: "Stale", email: "stale@example.org" });
+  const staleLead = sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'stale@example.org'`);
+  await leads.take(O, staleLead);
+  const stale = await refusal(() => leads.assign(R, staleLead, { staffId: T.staffId, expectedOwnerStaffId: null }));
+  ok("FO-2 p2 fail (break M2): a stale Assign (the list showed it Unassigned) after a Take → 409, the taker keeps it", stale?.body.code === "STALE_OWNER" && sql(`select owner_staff_id from fo_lead where id = '${staleLead}'`) === O.staffId, stale);
+  ok("FO-2 p2 fail (break M2): Assign without the owner the list showed → refused at the field", (await refusal(() => leads.assign(R, staleLead, { staffId: T.staffId })))?.status === 422);
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  await post({ givenNames: "Hand", email: "handover@example.org" });
+  const handover = sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'handover@example.org'`);
+  await leads.take(T, handover);
+  const given = await leads.assign(T, handover, { staffId: O.staffId, expectedOwnerStaffId: T.staffId }) as { done?: boolean };
+  ok("FO-2 p2 fail (break M1): assigning on a lead the assigner then cannot see → done (not 404), and saved", given.done === true && sql(`select owner_staff_id from fo_lead where id = '${handover}'`) === O.staffId, given);
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
 
   // X-4: a one-user firm's form lead is owned by its one user.
   const soloWording = await db.$transaction((tx) => consent.publishWording(tx, { firmId: S, channel: "EMAIL", purpose: "MARKETING", locale: "en", text: "Send me news by email. (Sample)", by: "seed:FO-2-test" }));
@@ -304,6 +321,7 @@ try {
   const tLead = sql(`select id from fo_lead where firm_id = '${A}' and owner_staff_id = '${T.staffId}' and state = 'OPEN' limit 1`);
   ok("FO-2 p2 fail (review m2): Close by someone who cannot see the lead → 404, no owner named (the 409 is Take it's only)", (await refusal(() => leads.close(O, tLead, { reasonId: sql(`select id from fo_reason where firm_id = '${A}' and key = 'NOT_INTERESTED'`) })))?.status === 404);
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  ok("FO-2 p2 pass (break m6): personId null counts as absent (a new person)", ((await leads.add(R, { requestId: rid(), source: "Phone call", personId: null, givenNames: "Nell", email: "nell@example.org" })) as { person: { givenNames: string } }).person.givenNames === "Nell");
   ok("FO-2 p2 fail: Add with no email and no phone → refused at the field", (await refusal(() => leads.add(R, { requestId: rid(), source: "Phone call", givenNames: "Nobody", confirmedNew: true })))?.status === 422);
 
   // Close and Reopen (AG-2-80).
@@ -322,7 +340,10 @@ try {
   await post({ givenNames: "Mark", email: "mark@example.org", attribution: { utmSource: "goo​gle", landingPage: `https://maple.example/?q=${"x".repeat(1999)}\u{1F600}` } });
   const markAttr = sql(`select a.utm_source || '|' || right(a.landing_page, 1) || '|' || length(a.landing_page) from fo_lead_attribution a join fo_lead l on l.id = a.lead_id join fo_person p on p.id = l.person_id where p.email = 'mark@example.org'`).split("|");
   await post({ givenNames: "Emo", email: "emo@example.org", attribution: { utmCampaign: "a" + "\u{1F600}".repeat(150), referrerUrl: "https://ref.example/\u2028x" } });
-  ok("FO-2 p2 fail (review M3): a campaign of 150 emoji and U+2028 in a referrer → the lead kept, both stored cleaned and cut whole", sql(`select length(a.utm_campaign) || '|' || a.referrer_url from fo_lead_attribution a join fo_lead l on l.id = a.lead_id join fo_person p on p.id = l.person_id where p.email = 'emo@example.org'`) === "100|https://ref.example/x");
+  ok("FO-2 p2 fail (review M3): a campaign of 150 emoji and U+2028 in a referrer → the lead kept, both stored cleaned and cut whole", sql(`select length(a.utm_campaign) || '|' || a.referrer_url from fo_lead_attribution a join fo_lead l on l.id = a.lead_id join fo_person p on p.id = l.person_id where p.email = 'emo@example.org'`) === "151|https://ref.example/x");
+  await post({ givenNames: "Deva", email: "deva@example.org", attribution: { utmContent: "\u0958".repeat(200) } });
+  ok("FO-2 p2 fail (break M4): a captured value that grows when normalised is cut after, the lead kept", sql(`select length(a.utm_content) from fo_lead_attribution a join fo_lead l on l.id = a.lead_id join fo_person p on p.id = l.person_id where p.email = 'deva@example.org'`) === "200");
+  ok("FO-2 p2 pass (break m3): a 61-character name with emoji is taken (limits count characters)", (await refusal(() => post({ givenNames: "A" + "\u{1F600}".repeat(60), email: "emoji@example.org" }))) === null);
   ok("FO-2 p2 fail (break n3): an invisible mark inside a captured value is dropped, the lead kept", markAttr[0] === "google", markAttr);
   ok("FO-2 p2 fail (break n4): the cut never splits a character (no lone half of an emoji)", markAttr[1] !== "�" && Number(markAttr[2]) <= 2000, markAttr);
   ok("FO-2 p2 fail (break m4): a name with U+061C, U+3164 or a tag character → refused at the field", (await Promise.all(["Le؜na", "Leㅤna", "Le\u{E0041}na"].map((n) => refusal(() => post({ givenNames: n, email: "marks@example.org" }))))).every((r) => r?.status === 422));

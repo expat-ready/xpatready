@@ -1,6 +1,6 @@
 // FO-2 (contracts §2.1, §7; AG-2-4, -13c, -80, -84, -86): staff leads, firm-scoped (404), visibility by common.ts; a change
 // is one transaction: the row under its lock, one audit line, the outbox row last.
-import { Inject, Injectable } from "@nestjs/common";
+import { HttpException, Inject, Injectable } from "@nestjs/common";
 import type { FoLeadState, PrismaClient } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { EVENT, LeadEventPayload, type EventName } from "../../../../ports/events.ts";
@@ -59,20 +59,12 @@ export class Leads {
     }));
   }
 
-  /** Who a lead can be assigned to (Lead B on #1813): active staff holding agent/prospect:edit, listed only for a viewer
-   *  who may assign; oneUser when the firm has exactly one active staff member (X-4: Take it and Assign are hidden). */
+  /** Who a lead can be assigned to (AG-2-13c rule 11, AG1-D6; Lead B rev 16.29 on #1843): every active staff member of
+   *  the firm, not filtered by role, listed only for a viewer who may assign; oneUser when the firm has exactly one active
+   *  staff member (X-4: Take it and Assign are hidden). */
   async assignees(ctx: StaffContext) {
     const active = await this.db.platformStaff.findMany({ where: firmScope(ctx.firmId, { status: "ACTIVE" as const }), select: { id: true, displayName: true }, orderBy: [{ displayName: "asc" }, { id: "asc" }] });
-    if (!ctx.keys.includes("agent/prospect:assign")) return { oneUser: active.length === 1, assignees: [] };
-    const editors = await this.editors(this.db, ctx.firmId);
-    return { oneUser: active.length === 1, assignees: active.filter((a) => editors.has(a.id)).map((a) => ({ staffId: a.id, displayName: a.displayName })) };
-  }
-
-  /** The firm's staff whose live roles hold agent/prospect:edit (the people who can work a lead). */
-  private async editors(db: Tx | PrismaClient, firmId: string): Promise<Set<string>> {
-    const rows = await db.$queryRaw<{ staff_id: string }[]>`select distinct g.staff_id::text from platform_role_grant g join platform_role_permission p on p.role = g.role
-      where g.firm_id = ${firmScope(firmId).firmId}::uuid and g.ended_at is null and p.permission_key = 'agent/prospect:edit'`;
-    return new Set(rows.map((r) => r.staff_id));
+    return { oneUser: active.length === 1, assignees: ctx.keys.includes("agent/prospect:assign") ? active.map((a) => ({ staffId: a.id, displayName: a.displayName })) : [] };
   }
 
   /** One lead, if the viewer sees it (404 otherwise, the same as another firm's). The possible-match line names only a
@@ -122,13 +114,13 @@ export class Leads {
   async add(ctx: StaffContext, b: Record<string, unknown>) {
     const requestId = typeof b.requestId === "string" && UUID.test(b.requestId) ? b.requestId.toLowerCase() : unprocessable("requestId: a uuid the screen makes once per Add.", { requestId: "Missing." });
     const person = {
-      givenNames: text(b.givenNames, { field: "givenNames", what: "First name", max: 100, required: b.personId === undefined }),
+      givenNames: text(b.givenNames, { field: "givenNames", what: "First name", max: 100, required: b.personId == null }),
       familyName: text(b.familyName, { field: "familyName", what: "Last name", max: 100 }), email: email(b.email), phone: phone(b.phone),
     };
     const source = text(b.source, { field: "source", what: "Source", max: 60, required: true })!;   // AG-2-4 rule 1 (review m6)
     const message = text(b.note, { field: "note", what: "Note", max: 5000, multiline: true });
     const interestedInServiceId = await this.service(ctx.firmId, b.interestedIn);
-    const existingPersonId = b.personId === undefined ? undefined : typeof b.personId === "string" && UUID.test(b.personId) ? b.personId.toLowerCase() : notFound("person");
+    const existingPersonId = b.personId === undefined || b.personId === null ? undefined : typeof b.personId === "string" && UUID.test(b.personId) ? b.personId.toLowerCase() : notFound("person");
     const payloadHash = createHash("sha256").update(JSON.stringify([person, existingPersonId, source, interestedInServiceId, message])).digest("hex");
     // A retried Add finds its own lead before any check (review M1); the same request id with other details is refused (m4).
     const done = await this.db.foArrivalReceipt.findUnique({ where: { firmId_door_intakeKey: { firmId: firmScope(ctx.firmId).firmId, door: "MANUAL", intakeKey: `manual:${requestId}` } } });
@@ -163,13 +155,17 @@ export class Leads {
     return s?.id ?? unprocessable("Choose what they are interested in from the list.", { interestedIn: "Choose from the list." });
   }
 
-  /** Assign to… (AG-2-13c): an open lead to an active staff member of the firm who can work leads (agent/prospect:edit). */
+  /** Assign to… (AG-2-13c rules 2, 11): an open lead to an active staff member of the firm, any role. */
   assign(ctx: StaffContext, id: string, b: Record<string, unknown>) {
     return this.change(ctx, id, EVENT.LEAD_TAKEN, EVENT.LEAD_TAKEN, async (tx, l, staff) => {
       const want = typeof b.staffId === "string" && UUID.test(b.staffId) ? b.staffId.toLowerCase() : null;
       const to = want ? await tx.platformStaff.findFirst({ where: firmScope(ctx.firmId, { id: want, status: "ACTIVE" as const }), select: { id: true, displayName: true } }) : null;   // read in the change (review m3)
-      if (!to || !(await this.editors(tx, ctx.firmId)).has(to.id)) return unprocessable("Choose an active person of your firm who works leads.", { staffId: "Choose a person from the list." });
+      if (!to) return unprocessable("Choose an active person of your firm.", { staffId: "Choose a person from the list." });
       if (l.state !== "OPEN") return conflict("Only an open lead can be assigned.");
+      // The owner the screen showed (null = Unassigned): someone who took it meanwhile is never overwritten (break M2).
+      if (!("expectedOwnerStaffId" in b) || (b.expectedOwnerStaffId !== null && (typeof b.expectedOwnerStaffId !== "string" || !UUID.test(b.expectedOwnerStaffId)))) return unprocessable("expectedOwnerStaffId: the owner the list showed, or null.", { expectedOwnerStaffId: "Required." });
+      const was = typeof b.expectedOwnerStaffId === "string" ? b.expectedOwnerStaffId.toLowerCase() : null;
+      if (l.owner_staff_id !== was) { const now = l.owner_staff_id ? staff.get(l.owner_staff_id) : undefined; return conflict(now ? `${now.displayName} already has this lead.` : "This lead changed. Reload it.", "STALE_OWNER", { ownerStaffId: l.owner_staff_id }); }
       if (l.owner_staff_id === to.id) return conflict(`${to.displayName} already has this lead.`, "ALREADY_TAKEN", { ownerStaffId: to.id });
       await tx.foLead.update({ where: { id }, data: { ownerStaffId: to.id } });
       return { owner: to.id, summary: `assigned the lead to staff ${to.id}`, via: "ASSIGN" };
@@ -223,6 +219,7 @@ export class Leads {
         event: { type, subjectId: id, payload: LeadEventPayload.parse({ leadId: id, personId: l.person_id, door: l.door, state: r.state ?? l.state, ownerStaffId: r.owner, ...(r.reasonKey ? { closeReasonKey: r.reasonKey } : {}) }) },
       });
     });
-    return this.read(ctx, id);
+    // The person may no longer see it (assigned on while "everyone sees all" is off): the change is done (break M1).
+    return this.read(ctx, id).catch((e: unknown) => { if (e instanceof HttpException && e.getStatus() === 404) return { id, done: true }; throw e; });
   }
 }

@@ -24,7 +24,7 @@ export function text(v: unknown, o: { field: string; what: string; max: number; 
   if (v === undefined || v === null || (typeof v === "string" && !v.trim())) return o.required ? bad("this is required.") : null;
   if (typeof v !== "string") return bad("must be text.");
   const t = v.normalize("NFC").trim();
-  if (t.length > o.max) return bad(`at most ${o.max} characters.`);
+  if ([...t].length > o.max) return bad(`at most ${o.max} characters.`);   // characters, not UTF-16 units (break m3)
   if (CONTROL.test(t) || (!o.multiline && LINE_BREAK.test(t))) return bad(o.multiline ? "remove control characters." : "one line, no control characters.");
   if (!HAS_WORD.test(t)) return o.required ? bad("this is required.") : null;
   return t;

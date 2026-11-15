@@ -2,7 +2,7 @@
 // hours (platform.business_hours, platform.closed_days, the firm's time zone), worked out on the server. Pure, no date
 // library: PF-21's business-days.ts gives the zone's wall clock through Intl. Counted in real minutes, so a day whose
 // clocks change counts the minutes that passed. A list builds the firm's open windows once (openWindows) and each row
-// sums its overlap by binary search (review M4: never a walk per row); the walk covers at most MAX_DAYS days.
+// sums its overlap by binary search (review M4: never a walk per row); a wait longer than MAX_DAYS counts its last MAX_DAYS days.
 import { localDate, zonedInstant, type FirmCalendar } from "../../platform/complaints/business-days.ts";
 
 const WEEKDAY = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
@@ -14,7 +14,9 @@ export type OpenWindows = { starts: number[]; ends: number[]; before: number[] }
 export function openWindows(from: Date, to: Date, cal: FirmCalendar): OpenWindows {
   const w: OpenWindows = { starts: [], ends: [], before: [] };
   const closed = new Set(cal.closedDays), hours = new Map(cal.hours.map((h) => [h.day, h])), last = localDate(cal.zone, to);
-  for (let date = localDate(cal.zone, from), i = 0, sum = 0; date <= last && i < MAX_DAYS; date = nextDate(date), i++) {
+  // The last MAX_DAYS days before `to` (break m8: never the first ones after `from`, which would miss today).
+  const start = new Date(Math.max(from.getTime(), to.getTime() - MAX_DAYS * 86_400_000));
+  for (let date = localDate(cal.zone, start), i = 0, sum = 0; date <= last && i <= MAX_DAYS + 1; date = nextDate(date), i++) {
     const h = hours.get(WEEKDAY[new Date(`${date}T00:00:00Z`).getUTCDay()]);
     if (!h || closed.has(date)) continue;
     const s = zonedInstant(date, h.opens, cal.zone).getTime(), e = zonedInstant(date, h.closes, cal.zone).getTime();
