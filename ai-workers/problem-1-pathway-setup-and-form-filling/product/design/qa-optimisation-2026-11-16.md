@@ -12,12 +12,12 @@
 | Fact | Brief | Records (source) |
 |---|---|---|
 | Release 1 capabilities built (every part merged) | 12 of 101 | 15 of 101 at the Lead's last pass: 9 qa Works\*, 6 Merged (`MVP-CHECKLIST.md` §A counts, 15 Nov 16:3x IST); 7 of the 9 Works\* are old C-row proofs carried over (asterisk) |
-| Proven (qa Works on an R1 row) | about 6 | R1 rows Works in `qa/CAPABILITIES.md`: **2** (R1.2, R1.9); plus map 99 Works on qa #1833 and P-616; so 3 Release 1 rows by a qa verdict this week, 6 counting the carried C-row proofs the checklist marks qa Works\* without a fresh R1 verdict |
+| Proven (qa Works on an R1 row) | about 6 | R1 rows Works in `qa/CAPABILITIES.md`: **2** (R1.2, R1.9); plus map 99 Works on qa #1833 and P-616; so 3 Release 1 rows by a qa verdict this week, + 6 carried C-row proofs the checklist marks qa Works\* without a fresh R1 verdict = the checklist's 9 |
 | Items waiting for qa | 9 | not countable from files: `qa/built/` holds 38 notes, most older than this week (they are deleted only on a re-score) |
 | "No first qa verdict since 13 Nov" | — | **Not so for first verdicts**: R1 first verdicts were given on 14 Nov (#1748) and 15 Nov (#1789, #1792, #1833). True for **first-time Works on a newly built Release 1 capability other than R1.2** (14 Nov): every other first verdict was Partial or Not tested (§1.3) |
 
 ### 1.2 Time from all parts merged to qa's verdict (Release 1, 13-15 Nov)
-Sample: every R1 capability whose last named part merged between 13 Nov 19:00 UTC and 15 Nov 04:00 UTC and got a verdict (n = 7). Times: the part PR's `merged_at` and the qa commit that wrote the verdict (GitHub API).
+Sample: every R1 capability whose last named part merged between 13 Nov 19:00 UTC and 15 Nov 04:00 UTC and got a verdict (n = 7 last-part merges covering 10 capabilities). Times: the part PR's `merged_at` and the qa commit that wrote the verdict (GitHub API).
 | Capability | Last part (merged, UTC) | First verdict (commit, UTC) | Hours | Verdict |
 |---|---|---|---|---|
 | R1.12 Screen framework | PF-1 #1711, 13 Nov 19:42 | #1748, 14 Nov 09:57 | 14.3 | Partial |
@@ -27,7 +27,7 @@ Sample: every R1 capability whose last named part merged between 13 Nov 19:00 UT
 | R1.38, R1.40 Time zones, invite files | FO-3 #1760, 14 Nov 22:52 | #1792, 15 Nov 02:46 | 3.9 | Partial |
 | R1.109 Complaints | PF-21 part 1 #1753, 15 Nov 00:54 | #1789, 15 Nov 02:48 | 1.9 | Partial (parts missing) |
 | R1.53, R1.55 Retainer | FO-5 part 2 #1777, 15 Nov 03:20 | #1792, 15 Nov 03:35 | 0.25 | Partial |
-**Median 4.0 h to a first verdict (n = 7); 16.0 h to Works for the one capability that reached it after a Partial (n = 1).** Then the verdict waits for its records PR to merge: verdict commit → records merged 17.5 h (#1748), 3.4 h (#1789), 1.7 h (#1792), 1.6 h (#1833); **median 2.5 h (n = 4)**.
+**Median 4.0 h to a first verdict (n = 7 last-part merges); 16.0 h to Works for the one capability that reached it after a Partial (n = 1).** Then the verdict waits for its records PR to merge: verdict commit → records merged 17.5 h (#1748), 4.1 h (#1789, from its 02:48 verdict commit), 1.7 h (#1792), 1.6 h (#1833); **median 2.9 h (n = 4)**.
 
 ### 1.3 How often a first verdict is Works
 * **Release 1, 14-15 Nov: 1 of 20 first verdicts = 5%** (n = 20 rows scored for the first time, Not built and Not tested left out; PR titles and reports #1748 (3), #1789 (7 new), #1792 (8), #1833 (2)). The compass asks 80% or more (`RULES.md`, "Works on qa's first re-score after merge").
@@ -69,7 +69,7 @@ Sample: the same timed session (n = 1 session, 102 tool calls, 34.4 min; transcr
 ---
 
 ## 2. The target
-* **89 capabilities left** (101 − 12 built per the brief; 86 Shaped per the checklist) by **29 Nov** (P-609, P-614): 13 working days from 16 Nov → **6.8 a day average; 8-10 a day planned**, so a bad day and the re-scores of fixed Partials fit.
+* **86 capabilities left** (101 − 15 built in `MVP-CHECKLIST.md`; 89 on the brief's 12) by **29 Nov** (P-609, P-614): 13 working days from 16 Nov → **6.6 a day average (6.8 on the brief's count); 8-10 a day planned**, so a bad day and the re-scores of fixed Partials fit.
 * **qa can never prove faster than capabilities finish.** At ~2.4 rows a capability and ~10 new rows a day (15 a day × 67% not fixes), the build finishes about **4 capabilities a day** now. Proving 8-10 a day needs building to finish 8-10 a day too, which is a building and ordering question (P-606 (3), P-613 (1)); this page makes qa ready for it and stops qa time going to unfinished rows.
 * **Quality target unchanged:** first verdict Works ≥ 80% (the compass), Works → Partial at most 1 a day, Major or Critical after merge about 0.
 
@@ -78,7 +78,7 @@ Sample: the same timed session (n = 1 session, 102 tool calls, 34.4 min; transcr
 |---|---|---|
 | API-only capability (no screen; gate A by API, P-616) | ~15-25 min qa wall (timed session: 4.3 min a row for re-scores and API rows, n = 8) | — |
 | Screen capability (gate A by screens to the next step, 3 widths twice, axe, data, 15-min break pass, fresh reader) | ~60-90 min qa wall (report windows §1.4; estimate, to be measured by change 5) | — |
-| Mix of the remaining 89 (rows with a screen in their Done when: about two thirds) | ~55 min average | **~9 qa hours a day** |
+| Mix of the remaining 86 (rows with a screen in their Done when: about two thirds) | ~55 min average | **~9 qa hours a day** |
 | Lanes (one per module group, P-613 (4): platform, front office and booking, client money and retainer, case side) | — | **4 lanes × ~2.5 h of active scoring**, each scoring in batches as capabilities finish; a 5th lane only on a day with more than 10 finished |
 | Fresh Opus reader (P-303, P-432) | one reader per batch of rows, high effort | 4-6 reader runs a day |
 | Tokens | ~2.2 M cache-read and ~25 k new context a row (§1.4, n = 1 session, reader not included) | **~25-40 M cache-read a day** for 10 rows plus readers; no cap (P-555), every token justified (P-556); measured from change 5 on |
@@ -119,8 +119,8 @@ Links are the official sources; this cloud session's network refuses these hosts
 3. **Port contract tests** (P-606 (8)): one shared test per port run against fake and real adapters; a module wired to a fake where the real adapter is on `main` fails CI.
 4. **"Ready for qa" signal:** when the last named part and the join-and-walk row of a checklist row merge, CI or `lead-watch` writes the capability into one queue file with the merge time; qa pulls from it (this also gives §1.2 automatically).
 5. **Gate-A walk scripts in the protected set** once Works, so a later merge that breaks the walk demotes in CI.
-7. **A qa copy that starts first time:** the setup the timed session lost to sandbox shims (tsx, pg_ctl, nohup) and three failed starts goes into `isolated.sh` or the environment's setup, so setup falls from 22% toward 5%; the reader runs in the background while qa writes, not after it (the 8.2 min idle).
-6. **qa time and tokens per verdict** written by the qa session to its report header (start, end, rows, turns), so §3 is measured, not estimated.
+6. **A qa copy that starts first time:** the setup the timed session lost to sandbox shims (tsx, pg_ctl, nohup) and three failed starts goes into `isolated.sh` or the environment's setup, so setup falls from 22% toward 5%; the reader runs in the background while qa writes, not after it (the 8.2 min idle).
+7. **qa time and tokens per verdict** written by the qa session to its report header (start, end, rows, turns), so §3 is measured, not estimated.
 
 ## 7. Risks to quality and how each is held (no gate lowered)
 | Risk | Held by |
