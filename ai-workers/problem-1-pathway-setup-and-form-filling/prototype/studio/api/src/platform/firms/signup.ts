@@ -51,6 +51,8 @@ const Body = z.strictObject({
   acceptedTerms: z.array(z.string()).default([]), website: z.string().optional(), formStamp: z.string().max(200).default(""),
 });
 const VerifyBody = z.strictObject({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/), code: z.string().regex(/^\d{6}$/) });
+/** Pending lifetimes are measured with the database's clock, as the migration's rules are (PF-3 review m6). */
+const dbNow = async (db: Tx | PrismaClient) => (await db.$queryRaw<{ now: Date }[]>`select now() as now`)[0].now;
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 const slug = (s: string) => s.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/^[^a-z]+/, "").slice(0, 40) || "firm";
 
@@ -78,11 +80,13 @@ export class FirmSignUp {
   async plans() {
     const plans = await this.db.platformPlan.findMany({ where: { active: true }, orderBy: { seatsLimit: "asc" } });
     const ids = plans.flatMap((p) => [p.stripeMonthlyPrice, p.stripeYearlyPrice]).filter((x): x is string => !!x);
-    const prices = new Map((ids.length ? await this.ports.billing.prices(ids) : []).filter((p) => p.active).map((p) => [p.id, p]));
+    // Stripe unreachable: the plans show without prices (never an invented one) rather than no page.
+    const got = ids.length ? await this.ports.billing.prices(ids).catch(() => null) : [];
+    const prices = new Map((got ?? []).filter((p) => p.active).map((p) => [p.id, p]));
     const price = (id: string | null) => { const p = id ? prices.get(id) : undefined; return p ? { amountCents: p.unitAmount, currency: p.currency.toUpperCase(), interval: p.interval } : null; };
     return {
       plans: plans.map((p) => ({ code: p.code, name: p.name, seatsLimit: p.seatsLimit, trialDays: p.trialDays, monthly: price(p.stripeMonthlyPrice), yearly: price(p.stripeYearlyPrice) })),
-      taxNote: TAX_NOTE, defaultPlan: "team", defaultPeriod: "MONTHLY",
+      pricesAvailable: got !== null, taxNote: TAX_NOTE, defaultPlan: "team", defaultPeriod: "MONTHLY",
       terms: (await this.currentTerms()).map((t) => ({ id: t.id, kind: t.kind, version: t.version, url: t.url })),
       formStamp: this.stamp(this.ports.clock.now()),
     };
@@ -95,14 +99,14 @@ export class FirmSignUp {
     const b = parsed.data;
     let email: string;
     try { email = emailOf(b.email); } catch { throw fields(["email: give your work email (name@example.com)"]); }
-    const now = this.ports.clock.now();
+    const clockNow = this.ports.clock.now();
     const terms = await this.currentTerms();
     const given = new Set(b.acceptedTerms.map((t) => t.toLowerCase()));
     if (terms.length === 0 || terms.some((t) => !given.has(t.id)) || given.size !== terms.length) throw fields(["acceptedTerms: accept the current terms of service, privacy notice and data-processing terms"]);
     const plan = await this.db.platformPlan.findFirst({ where: { code: b.planCode, active: true } });
     if (!plan) throw fields(["planCode: choose one of the plans offered"]);
     // The door's protections answer like any other sign-up, storing and sending nothing (AG-4-20 rule 3, contracts §0.6).
-    if (b.website || !this.stampOk(b.formStamp, now)) return { status: "check-email", message: ACCEPTED };
+    if (b.website || !this.stampOk(b.formStamp, clockNow)) return { status: "check-email", message: ACCEPTED };
     const known = await this.knownAccount(email);
     if (known) {
       await this.ports.mail.send({ firmId: known, to: email, replyTo: "no-reply@expatready.com", subject: "You already have an ExpatReady account", text: `${ALREADY}\n${this.ports.appUrl}/sign-in`, class: "TRANSACTIONAL", templateKey: "platform.signup.already_have_account" });
@@ -111,6 +115,7 @@ export class FirmSignUp {
     const token = randomBytes(32).toString("base64url");
     await this.db.$transaction(async (tx) => {
       await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`platform_signup:${email}`}))`;
+      const now = await dbNow(tx);
       const live = await tx.platformSignupPending.findFirst({ where: { email, usedAt: null, expiresAt: { gt: now } } });
       if (live) return;   // one pending sign-up and one email while a link is live
       await tx.platformSignupPending.deleteMany({ where: { email, usedAt: null, expiresAt: { lte: now } } });
@@ -127,7 +132,7 @@ export class FirmSignUp {
     this.limit(`verify:${ip}`, this.limits.verifyPerIp);
     const parsed = VerifyBody.safeParse(body ?? {});
     if (!parsed.success) throw notFound();
-    const now = this.ports.clock.now();
+    const now = await dbNow(this.db);
     const pending = await this.db.platformSignupPending.findUnique({ where: { tokenHash: sha(parsed.data.token) } });
     if (!pending || pending.usedAt || pending.expiresAt <= now) throw notFound();
     if (!(await this.ports.identity.confirm({ subject: pending.identitySubject, code: parsed.data.code }))) throw problem(400, "CODE_WRONG", "Check the code", "That code is not the one we sent. Type the 6 digits from the email.");
@@ -135,7 +140,7 @@ export class FirmSignUp {
     const plan = await this.db.platformPlan.findFirstOrThrow({ where: { code: pending.planCode } });
     const made = await this.db.$transaction(async (tx) => {
       const used = await tx.platformSignupPending.updateMany({ where: { id: pending.id, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now } });
-      if (used.count !== 1) throw notFound();   // a double submit makes one firm
+      if (used.count !== 1) throw notFound();   // a double submit makes one firm (the row's lock orders the two)
       const firm = await tx.platformFirm.create({ data: { key: `${slug(pending.firmName)}-${randomBytes(4).toString("hex")}`, operatingName: pending.firmName, countryCode: pending.countryCode, status: "PROVISIONING", ownerEmail: pending.email, contactEmail: pending.email, billingEmail: pending.email } });
       const at = (action: string, entity: string, entityKey: string, summary: string, detail: Record<string, string | number | null> = {}) =>
         this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action, entity, entityKey, summary, detail });
@@ -168,7 +173,7 @@ export class FirmSignUp {
 
   /** Removes the expired pending sign-ups (used or not). */
   async purgeExpired(): Promise<number> {
-    return (await this.db.platformSignupPending.deleteMany({ where: { expiresAt: { lte: this.ports.clock.now() } } })).count;
+    return (await this.db.platformSignupPending.deleteMany({ where: { expiresAt: { lte: await dbNow(this.db) } } })).count;
   }
 
   /** The firm of a staff member or firm contact with this email (an account exists), else null. */
