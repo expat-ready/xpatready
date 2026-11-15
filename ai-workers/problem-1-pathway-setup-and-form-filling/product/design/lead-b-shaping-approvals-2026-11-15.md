@@ -10,7 +10,7 @@ Lead B (4) reviews the shaping lanes' rows in batches (P-604; Lead 52's ask, 15 
 * schema rows meet P-600, and their tests follow rev 16.7;
 * each row is one PR under about 800 lines.
 
-## Batch 1 (15 Nov 10:4x IST): S1 at 5b88c9646, S2 at cb89133bd, S3 at 3f67186c8
+## Batch 1 (15 Nov 09:1x IST): S1 at 5b88c9646, S2 at cb89133bd, S3 at 3f67186c8
 
 ### S1: Platform and Audit (map rows 1, 14, 10)
 
