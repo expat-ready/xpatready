@@ -1,0 +1,53 @@
+// PF-21w (PF-21's part 2; P-579, P-584 (8)): the complaints record's routes under /api/platform/complaints. Each declares
+// its access (PF-4's keys.ts; the platform guard refuses the rest, default deny); every rule stays in ComplaintsService
+// (complaints.ts, its "Who" lines): agent/complaint:record records; agent/complaint:read reads every one; record + read
+// act on any and change the handler; the handler reads and handles their own without either key; anyone else gets the
+// same 404 as for another firm's complaint. Delete is refused for everyone (the service's 405: the same answer for any
+// id, so it says nothing about which ids exist). The controller only reads the request and calls the service.
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Query, Req } from "@nestjs/common";
+import { AnyStaff, PermissionKeys, staffOf, type StaffContext } from "../identity/keys.ts";
+import { COMPLAINT_KEYS, ComplaintsService } from "./complaints.ts";
+
+type R = { platform?: StaffContext };
+type B = Record<string, unknown>;
+type Q = Record<string, unknown>;
+
+const SEES = "the handler sees their own; agent/complaint:read sees all, checked by the service";
+const HANDLES = "the handler handles their own; record + read act on any, checked by the service";
+
+/** A query value as one string: a repeated parameter (?view=a&view=b) is not one value, so the service refuses it. */
+const one = (v: unknown): string | undefined => (v === undefined ? undefined : typeof v === "string" ? v : "\u0000");
+/** The page size as a number for the service's own check (1 to PAGE); text that is not a whole number stays NaN. */
+const size = (v: unknown): number | undefined => { const s = one(v); return s === undefined ? undefined : /^\d{1,4}$/.test(s) ? Number(s) : Number.NaN; };
+
+@Controller("api/platform/complaints")
+export class ComplaintsController {
+  constructor(@Inject(ComplaintsService) private readonly svc: ComplaintsService) {}
+
+  @Post() @PermissionKeys(COMPLAINT_KEYS.record)
+  record(@Req() r: R, @Body() b: B) { return this.svc.record(staffOf(r), b ?? {}); }
+
+  @Get() @AnyStaff(SEES)
+  list(@Req() r: R, @Query() q: Q) { return this.svc.list(staffOf(r), one(q.view), { cursor: one(q.cursor), limit: size(q.limit) }); }
+
+  @Get(":id") @AnyStaff(SEES)
+  get(@Req() r: R, @Param("id") id: string) { return this.svc.get(staffOf(r), id); }
+
+  @Post(":id/acknowledge") @HttpCode(200) @AnyStaff(HANDLES)
+  acknowledge(@Req() r: R, @Param("id") id: string, @Body() b: B) { return this.svc.acknowledge(staffOf(r), id, b ?? {}); }
+
+  @Post(":id/steps") @HttpCode(200) @AnyStaff(HANDLES)
+  step(@Req() r: R, @Param("id") id: string, @Body() b: B) { return this.svc.addStep(staffOf(r), id, b ?? {}); }
+
+  @Post(":id/response-sent") @HttpCode(200) @AnyStaff(HANDLES)
+  responseSent(@Req() r: R, @Param("id") id: string, @Body() b: B) { return this.svc.responseSent(staffOf(r), id, b ?? {}); }
+
+  @Post(":id/close") @HttpCode(200) @AnyStaff(HANDLES)
+  close(@Req() r: R, @Param("id") id: string, @Body() b: B) { return this.svc.close(staffOf(r), id, b ?? {}); }
+
+  @Post(":id/handler") @HttpCode(200) @PermissionKeys(COMPLAINT_KEYS.record, COMPLAINT_KEYS.read)
+  handler(@Req() r: R, @Param("id") id: string, @Body() b: B) { return this.svc.changeHandler(staffOf(r), id, b ?? {}); }
+
+  @Delete(":id") @AnyStaff("refused for everyone: a complaint is never deleted")
+  remove(@Req() r: R, @Param("id") id: string) { return this.svc.remove(staffOf(r), id); }
+}
