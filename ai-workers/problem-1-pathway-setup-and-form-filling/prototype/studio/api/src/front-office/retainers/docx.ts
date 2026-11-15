@@ -48,6 +48,8 @@ export const PACKAGE_PART_MAX = 256 * 1024;
 /** FO-5f2 item 2 (Sample): the worker's old-space limit and each job's time limit. */
 export const WORKER_OLD_SPACE_MB = 256;
 export const WORKER_TIMEOUT_MS = 5000;
+/** The time limit in force; a test shortens it to reach the timeout path (review m-2). */
+export const workerTimeout = { ms: WORKER_TIMEOUT_MS };
 const PACKAGE_PART = /(^|\/)\[Content_Types\]\.xml$|\.rels$/i;
 
 function load(bytes: Uint8Array): PizZip {
@@ -140,7 +142,7 @@ function checkParts(zip: PizZip): void {
     const type = attrs.get("ContentType") ?? "";
     if (m[1] === "Default") {
       const ext = attrs.get("Extension");
-      if (attrs.size !== 2 || ext === undefined || !DEFAULTS[ext.toLowerCase()]?.test(type)) throw notAllowed(`Default ${JSON.stringify(ext ?? "")} as ${type.slice(0, 120)}`);
+      if (attrs.size !== 2 || ext === undefined || !(Object.hasOwn(DEFAULTS, ext.toLowerCase()) && DEFAULTS[ext.toLowerCase()].test(type))) throw notAllowed(`Default ${JSON.stringify(ext ?? "")} as ${type.slice(0, 120)}`);
     } else {
       const part = attrs.get("PartName");
       if (attrs.size !== 2 || part === undefined || !OVERRIDES.some(([t, where]) => (typeof t === "string" ? t === type : t.test(type)) && where.test(part))) throw notAllowed(`${part?.slice(0, 80) ?? "a part"} as ${type.slice(0, 120)}`);
@@ -151,13 +153,19 @@ function checkParts(zip: PizZip): void {
 // ----------------------------------------------------------------------------- FO-5f2 item 2: the worker, one job at a time
 // A breach (memory, a crash, over WORKER_TIMEOUT_MS) ends that worker only: the job answers TOO_COMPLEX, and the next job
 // starts a new worker. While idle the worker is unref'd, so it never keeps a process alive.
-let worker: Promise<Worker> | null = null, nextId = 0, queue: Promise<unknown> = Promise.resolve();
+let worker: Promise<Worker> | null = null, live: Worker | null = null, nextId = 0, queue: Promise<unknown> = Promise.resolve();
 
 function startWorker(): Promise<Worker> {
   return new Promise((resolve, reject) => {
     const w = new Worker(new URL("./docx-worker.ts", import.meta.url), { resourceLimits: { maxOldGenerationSizeMb: WORKER_OLD_SPACE_MB } });
     const fail = (e: unknown) => { w.off("message", ready); reject(e instanceof Error ? e : new Error(`the template worker stopped (${String(e)})`)); };
-    const ready = (m: { ready?: boolean }) => { if (m?.ready) { w.off("error", fail); w.off("exit", fail); w.unref(); resolve(w); } };
+    const ready = (m: { ready?: boolean }) => {
+      if (!m?.ready) return;
+      w.off("error", fail); w.off("exit", fail); w.off("message", ready); w.unref();
+      // While idle (review note): an error never goes unheard (it would end the API), and an exit lets the next job start a new worker.
+      live = w; w.on("error", () => undefined); w.on("exit", () => { if (live === w) { live = null; worker = null; } });
+      resolve(w);
+    };
     w.on("message", ready); w.once("error", fail); w.once("exit", fail);
   });
 }
@@ -171,9 +179,9 @@ async function runJob(job: Job): Promise<Reply> {
     const onBreach = (e?: unknown) => {
       if (worker === mine) worker = null;
       void w.terminate();
-      settle(() => reject(tooComplex(`template worker: ${e instanceof Error ? e.message : typeof e === "number" ? `exit ${e}` : `over ${WORKER_TIMEOUT_MS} ms`}`.slice(0, 200))));
+      settle(() => reject(tooComplex(`template worker: ${e instanceof Error ? e.message : typeof e === "number" ? `exit ${e}` : `over ${workerTimeout.ms} ms`}`.slice(0, 200))));
     };
-    const timer = setTimeout(onBreach, WORKER_TIMEOUT_MS);
+    const timer = setTimeout(onBreach, workerTimeout.ms);
     w.on("message", onMessage); w.on("error", onBreach); w.on("exit", onBreach); w.ref();
     w.postMessage(job);
   });
@@ -232,9 +240,9 @@ export function scanParts(zip: PizZip, deep: boolean): string[] {
   const byPart = new Map(overrides.filter((o) => o.part).map((o) => [o.part!.toLowerCase(), o.type]));
   const typeOf = (f: string) => byPart.get(f.toLowerCase()) ?? defaults.get(/\.([^./]+)$/.exec(f)?.[1]?.toLowerCase() ?? "") ?? "";
   const files = Object.keys(zip.files).filter((f) => !(zip.files as Record<string, { dir?: boolean }>)[f].dir);
-  // Never rendered by docxtemplater, so never read: the glossary (B-23) and charts (review m-4: a brace in a chart title
-  // is not a placeholder).
-  const skipped = (f: string) => /\.glossary\+xml$|drawingml\.chart\+xml$/i.test(typeOf(f)) || /^word\/(glossary|charts)\//i.test(f);
+  // Never rendered by docxtemplater, so never read: the glossary document (B-23) and charts (review m-4: a brace in a
+  // chart title is not a placeholder). By type only (FO-5f2 review M-1): word/glossary/settings.xml is compiled as settings.
+  const skipped = (f: string) => /\.glossary\+xml$|drawingml\.chart\+xml$/i.test(typeOf(f));
   const COVER = 'xmlns="http://schemas.microsoft.com/office/2006/coverPageProps"';   // the customXml docxtemplater compiles
   const parts = new Set(files.filter((f) => /\.xml$/i.test(f) || /[/+]xml$/i.test(typeOf(f))));
   const unescape = (t: string) => t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");

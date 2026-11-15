@@ -9,7 +9,7 @@ import PizZip from "pizzip";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
-import { PACKAGE_PART_MAX, UnreadableDocx, buildDocx, placeholdersOf, renderDocx } from "../api/src/front-office/retainers/docx.ts";
+import { PACKAGE_PART_MAX, UnreadableDocx, WORKER_TIMEOUT_MS, buildDocx, placeholdersOf, renderDocx, workerTimeout } from "../api/src/front-office/retainers/docx.ts";
 import { checkPlaceholders } from "../api/src/front-office/retainers/placeholders.ts";
 
 let pass = 0, fail = 0;
@@ -121,6 +121,13 @@ try {
   const r3 = await attempt(() => renderDocx(heavy, {}));
   ok("FO-5f2 DW3 fail: the same file on render → TOO_COMPLEX, and a render after it works", r3.code === "TOO_COMPLEX" && (await attempt(() => renderDocx(pkg({}), { "client.name": "x" }))).code === "accepted", r3);
 
+  // Review m-2: the time limit. Shortened to 20 ms, a job on a large body is over it: TOO_COMPLEX, and with the limit back
+  // the next job works on a new worker.
+  workerTimeout.ms = 20;
+  const slow = await attempt(() => placeholdersOf(pkg({ "word/document.xml": `<w:document ${NS}><w:body><w:p>${"<w:r><w:t>a</w:t></w:r>".repeat(200_000)}</w:p></w:body></w:document>` })));
+  workerTimeout.ms = WORKER_TIMEOUT_MS;
+  ok("FO-5f2 DW3 fail: a job over the time limit → TOO_COMPLEX, and the next job works", slow.code === "TOO_COMPLEX" && (await attempt(() => placeholdersOf(pkg({})))).code === "accepted", slow);
+
   // ------------------------------------------------------------------ DW4: every tag docxtemplater fills is checked
   const SETTINGS = ov("word/settings.xml", `${WML}settings+xml`), HDR1 = ov("word/header1.xml", HEADER);
   const D4: [string, Uint8Array][] = [
@@ -179,12 +186,19 @@ try {
     ["docProps/core.xml", { "docProps/core.xml": `<cp:coreProperties xmlns:cp="c" xmlns:dc="d"><dc:title>${FLOOD}</dc:title></cp:coreProperties>` }, ov("docProps/core.xml", "application/vnd.openxmlformats-package.core-properties+xml")],
     ["a coverPageProps customXml part", { "customXml/item1.xml": COVER(FLOOD) }, ""],
     ["a header named word/h.rels", { "word/h.rels": HDR(P(FLOOD)) }, ov("word/h.rels", HEADER)],
+    ["the glossary's settings (review M-1)", { "word/glossary/settings.xml": `<w:settings ${NS}><Company>${FLOOD}</Company></w:settings>` }, ov("word/glossary/settings.xml", `${WML}settings+xml`)],
   ];
   for (const [where, parts, types] of D7) {
     const b = pkg(parts, types);
     const up = await attempt(() => placeholdersOf(b)), rd = await attempt(() => renderDocx(b, {}));
     ok(`FO-5f2 DW7 fail: 1.5 M lone { in ${where} → refused on upload (${up.ms} ms) and on render (${rd.ms} ms), each under 2 s`,
       /TOO_MANY_PLACEHOLDERS|PARTS_NOT_ALLOWED|TOO_COMPLEX/.test(up.code) && up.code === rd.code && up.ms < 2000 && rd.ms < 2000, { up, rd });
+  }
+  const capG = await attempt(() => placeholdersOf(pkg({ "word/glossary/settings.xml": `<w:settings ${NS}><Company>${"{client.name}".repeat(3000)}</Company></w:settings>` }, ov("word/glossary/settings.xml", `${WML}settings+xml`))));
+  ok("FO-5f2 DW7 fail (review M-1, B-19): 3000 placeholders in the glossary's settings → TOO_MANY_PLACEHOLDERS", capG.code === "TOO_MANY_PLACEHOLDERS", capG);
+  for (const ext of ["__proto__", "constructor", "toString"]) {
+    const r = await attempt(() => placeholdersOf(pkg({}, `<Default Extension="${ext}" ContentType="image/png"/>`)));
+    ok(`FO-5f2 DW1 fail (review m-1): a Default with Extension "${ext}" → PARTS_NOT_ALLOWED, never a 500`, r.code === "PARTS_NOT_ALLOWED", r);
   }
   const d7ok = await attempt(() => placeholdersOf(pkg({ "word/document.xml": `<w:document ${NS}><w:body>${P("{client.name}".repeat(1999))}</w:body></w:document>` })));
   ok("FO-5f2 DW7 pass: 1999 placeholders (3998 braces) are accepted", d7ok.code === "accepted", d7ok.code);
