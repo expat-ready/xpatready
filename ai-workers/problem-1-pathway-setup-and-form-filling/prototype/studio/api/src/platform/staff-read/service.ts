@@ -3,13 +3,12 @@
 // neither accepted, revoked nor expired (the database's clock), of the live subscription's plan limit (BR-2, PF-4's
 // rule). A licence number is answered only on the Licences list (agent/firm-credential:manage) and on a person's own
 // account; never in a log line, event or email.
-import { Inject, Injectable } from "@nestjs/common";
+import { HttpException, Inject, Injectable } from "@nestjs/common";
 import { Db } from "../../core.ts";
 import { firmScope, notInFirm } from "../firm-scope.ts";
 import type { StaffContext } from "../identity/keys.ts";
 import { PlatformIdentity } from "../identity/service.ts";
 import { IDENTITY_ADMIN_PORT, type IdentityAdminPort, type TwoStep } from "../identity/session/provider.ts";
-import { readSetting } from "../settings.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const TWO_STEP_WORDS = "Required for all staff";
@@ -19,9 +18,9 @@ const include = { grants: { where: { endedAt: null }, select: { role: true }, or
 export class StaffReads {
   constructor(@Inject(Db) private readonly db: Db, @Inject(IDENTITY_ADMIN_PORT) private readonly admin: IdentityAdminPort, @Inject(PlatformIdentity) private readonly id: PlatformIdentity) {}
 
-  /** The provider's two-step state; unknown (null) when the provider cannot be asked, never a failed list. */
+  /** The provider's two-step state; unknown (null) when the provider refuses (an HTTP problem), never a failed list. */
   private async twoStep(s: { id: string; identitySubject: string | null; email: string }): Promise<TwoStep | null> {
-    try { return await this.admin.twoStep({ staffId: s.id, subject: s.identitySubject, email: s.email }); } catch { return null; }
+    try { return await this.admin.twoStep({ staffId: s.id, subject: s.identitySubject, email: s.email }); } catch (e) { if (e instanceof HttpException) return null; throw e; }
   }
 
   async seats(firmId: string) {
@@ -72,9 +71,9 @@ export class StaffReads {
     return this.myAccount(actor);
   }
 
-  /** GET /api/platform/settings/two-step: required for all staff, shown, no switch (question 3 decided, P-567). */
-  async twoStepSetting(actor: StaffContext) {
-    const on = await readSetting<boolean>(this.db, actor.firmId, "platform.require_two_step");
-    return { required: on === true, words: TWO_STEP_WORDS, changeable: false, methods: ["TOTP", "PASSKEY"] };
+  /** GET /api/platform/settings/two-step: required for all staff, shown, no switch (question 3 decided, P-567: fixed on,
+   *  so the answer is the decision itself, not a stored value). */
+  twoStepSetting() {
+    return { required: true as const, words: TWO_STEP_WORDS, changeable: false, methods: ["TOTP", "PASSKEY"] };
   }
 }

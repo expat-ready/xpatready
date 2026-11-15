@@ -110,11 +110,15 @@ try {
 
   // ------------------------------------------------- the invitation email (Lead B ruling 2: PF-4's invite and resend)
   const tokenIn = (address: string, i: number) => /#t=([A-Za-z0-9_-]{43})/.exec(mail.inbox(address)[i]?.text ?? "")?.[1] ?? "";
+  sql(`create function pf4b_refuse() returns trigger language plpgsql as $$ begin raise exception 'forced'; end $$; create trigger pf4b_refuse before insert on audit_event for each row when (new.action = 'platform.invitation.created') execute function pf4b_refuse()`);
+  const rolled = await call(base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email: "rolled.back@example.com", roles: ["CASE_OFFICER"] } });
+  sql(`drop trigger pf4b_refuse on audit_event; drop function pf4b_refuse()`);
+  ok("PF-4b fail (ruling 2): an invite rolled back after its row was written (forced audit failure) sends no email and keeps no invitation", rolled.status >= 500 && mail.inbox("rolled.back@example.com").length === 0 && sql(`select count(*) from platform_invitation where email = 'rolled.back@example.com'`) === "0", rolled.status);
   const inv = await call(base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email: "Mailed.Invitee@example.com", roles: ["CASE_OFFICER"] } });
   const t1 = tokenIn("mailed.invitee@example.com", 0), open1 = await call(base, "GET", `/api/public/invitations/${t1}`);
   ok("PF-4b pass (ruling 2): one invite → one email (after the commit) whose link opens VALID; the answer carries no token", inv.status === 201 && inv.body.emailed === true && !/token/i.test(JSON.stringify(inv.body)) && mail.inbox("mailed.invitee@example.com").length === 1 && open1.body.state === "VALID", [inv.body, open1.body]);
   const over = await call(base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email: "over.limit@example.com", roles: ["CASE_OFFICER"] } });
-  ok("PF-4b fail (ruling 2): an invite whose transaction is refused (5 of 5 seats: 409 PLAN_LIMIT_REACHED) sends no email", over.status === 409 && over.body.code === "PLAN_LIMIT_REACHED" && mail.inbox("over.limit@example.com").length === 0, over.body);
+  ok("PF-4b fail (ruling 2): an invite refused before its row (5 of 5 seats: 409 PLAN_LIMIT_REACHED) sends no email", over.status === 409 && over.body.code === "PLAN_LIMIT_REACHED" && mail.inbox("over.limit@example.com").length === 0, over.body);
   const resent = await call(base, "POST", `/api/platform/staff/invitations/${inv.body.id}/resend`, { token: tR });
   const t2 = tokenIn("mailed.invitee@example.com", 1), reopen = await Promise.all([t1, t2].map((t) => call(base, "GET", `/api/public/invitations/${t}`)));
   ok("PF-4b fail (ruling 2): after a resend the first link answers NOT_VALID and the new one VALID (a new token, a second email)", resent.status === 200 && resent.body.emailed === true && t2 && t2 !== t1 && reopen[0].body.state === "NOT_VALID" && reopen[1].body.state === "VALID", [resent.body, reopen.map((x) => x.body.state)]);
@@ -165,6 +169,9 @@ try {
   ok("PF-4b pass: sign-out-everywhere ends every session of that person at once (two live sessions → both 401), one audit line, the provider told", before.every((b) => b.status === 200) && soe.status === 200 && after.every((a) => a.status === 401 && a.body.code === "SESSION_REVOKED") && audits("platform.staff.signed_out_everywhere") === soeAudit + 1 && admin.signedOut.includes(oId), [soe.body, after.map((a) => a.body.code)]);
   const others = await Promise.all([call(base, "GET", "/api/platform/me", { token: tR }), call(base, "POST", `/api/platform/staff/${R}/sign-out-everywhere`, { token: tO })]);
   ok("PF-4b fail: it ends no one else's session (the Owner's still works), and a person without agent/staff:manage cannot do it (403)", others[0].status === 200 && others[1].status === 403, others.map((o) => o.status));
+  const crossRev = revs(S), crossAudit = audits("platform.staff.two_step_reset") + audits("platform.staff.signed_out_everywhere"), crossMail = mail.sent.length;
+  const cross = await Promise.all([`/api/platform/staff/${S}/reset-two-step`, `/api/platform/staff/${S}/sign-out-everywhere`, `/api/platform/staff/${S.toUpperCase()}/sign-out-everywhere`].map((p) => call(base, "POST", p, { token: tR })));
+  ok("PF-4b fail: firm A's Owner resetting or signing out firm B's person (a guessed id, any letter case) → 404, no revocation, no audit line, no email", cross.every((c) => c.status === 404) && revs(S) === crossRev && audits("platform.staff.two_step_reset") + audits("platform.staff.signed_out_everywhere") === crossAudit && mail.sent.length === crossMail, cross.map((c) => c.status));
   const tT = await signIn("user-T"); const out = await call(base, "POST", "/api/platform/session/sign-out", { token: tT }); const afterOut = await call(base, "GET", "/api/platform/me", { token: tT });
   ok("PF-4b pass/fail: sign-out ends the person's own session (200, then 401) with one audit line", out.status === 200 && afterOut.status === 401 && audits("platform.staff.signed_out") === 1, [out.body, afterOut.body]);
 
@@ -175,6 +182,8 @@ try {
   const own = await call(base, "POST", `/api/platform/staff/${R}/reset-two-step`, { token: tR });
   const adminOwner = await call(base, "POST", `/api/platform/staff/${R}/reset-two-step`, { token: tTA });
   const byOfficer = await call(base, "POST", `/api/platform/staff/${T}/reset-two-step`, { token: tO });
+  const adminSoe = await call(base, "POST", `/api/platform/staff/${R}/sign-out-everywhere`, { token: tTA });
+  ok("PF-4b fail: an Admin cannot sign an Owner out everywhere (403 OWNER_ONLY); the Owner's session still works", adminSoe.status === 403 && adminSoe.body.code === "OWNER_ONLY" && (await call(base, "GET", "/api/platform/me", { token: tR })).status === 200, adminSoe.body);
   ok("PF-4b fail: nobody resets their own two-step (403 OWN_TWO_STEP); an Admin cannot reset an Owner's (403 OWNER_ONLY); a Case Officer cannot at all (403)", own.status === 403 && own.body.code === "OWN_TWO_STEP" && adminOwner.status === 403 && adminOwner.body.code === "OWNER_ONLY" && byOfficer.status === 403, [own.body, adminOwner.body, byOfficer.status]);
   clock.t += 6 * 60_000;
   const resetAudit = audits("platform.staff.two_step_reset"), revT = revs(T), sentBefore = mail.sent.length;

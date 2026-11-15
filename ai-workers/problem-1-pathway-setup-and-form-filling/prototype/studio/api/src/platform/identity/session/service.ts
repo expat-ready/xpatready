@@ -37,9 +37,10 @@ export class PlatformSession {
     const firmId = firmScope(actor.firmId).firmId;
     return this.db.$transaction(async (tx) => {
       await tx.$queryRaw`select id from platform_firm where id = ${firmId}::uuid for update`;
-      const me = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: actor.staffId }), select: { status: true } });
+      const me = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: actor.staffId }), select: { status: true, grants: { where: { endedAt: null }, select: { role: true } } } });
       const rev = await tx.platformSessionRevocation.findFirst({ where: firmScope(firmId, { staffId: actor.staffId }), orderBy: { revokedAt: "desc" }, select: { revokedAt: true } });
       if (me?.status !== "ACTIVE" || (rev && actor.authTime * 1000 <= rev.revokedAt.getTime())) unauthorized("Your session ended before this change was made. Sign in again.", "SESSION_REVOKED");
+      if (me.grants.map((g) => g.role).sort().join() !== [...actor.roles].sort().join()) problem(409, "Your roles changed", "Your roles changed while this was being sent. Nothing was saved; try again.", { code: "ROLES_CHANGED" });
       return fn(tx);
     });
   }

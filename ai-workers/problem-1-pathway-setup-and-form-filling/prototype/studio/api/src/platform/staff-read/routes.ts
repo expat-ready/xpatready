@@ -25,5 +25,5 @@ export class StaffReadController {
   saveAccount(@Req() r: R, @Body() b: Record<string, unknown>) { return this.s.saveMyAccount(staffOf(r), b ?? {}); }
 
   @Get("settings/two-step") @PermissionKeys("agent/security-policy:manage")
-  twoStep(@Req() r: R) { return this.s.twoStepSetting(staffOf(r)); }
+  twoStep() { return this.s.twoStepSetting(); }
 }
