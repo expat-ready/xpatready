@@ -187,7 +187,12 @@
       "required": ["state", "banner", "diffs", "invariants", "notes", "freshness"],
       "properties": {
         "state": {"enum": ["agree", "disagree", "not checked"]},
-        "invariants": {"type": "array", "items": {"type": "object", "required": ["name", "ok", "detail"]}}
+        "invariants": {"type": "array", "items": {"type": "object", "required": ["name", "ok", "detail"]}},
+        "status_disagreements": {"type": "array", "items": {"type": "object", "required": ["map", "checklist", "computed", "kind", "cause"],
+                                 "properties": {"kind": {"enum": ["checklist behind", "checklist ahead"]}}}},
+        "status_explained": {"description": "Board v63: differences a rule explains (FORMULAS.md › §6 Data trust).",
+                             "type": "array", "items": {"type": "object", "required": ["map", "checklist", "computed", "kind", "cause"],
+                             "properties": {"kind": {"enum": ["no app code", "open item"]}}}}
       },
       "allOf": [
         {"if": {"properties": {"state": {"const": "agree"}}}, "then": {"properties": {"banner": {"type": "null"}}}},

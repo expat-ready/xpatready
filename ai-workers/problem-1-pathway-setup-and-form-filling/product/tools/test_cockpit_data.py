@@ -311,8 +311,43 @@ class TrustAndInvariants(unittest.TestCase):
         self.assertIn("2 (Shaped / Merged)", inv["Capabilities unique"]["detail"])
         self.assertEqual(c["pace"]["rows_total"]["value"], 8)          # counted once
         _, c0 = run()
-        self.assertEqual(c0["trust"]["status_disagreements"], [{"map": 2, "checklist": "Shaped", "computed": "built"},
-                                                               {"map": 8, "checklist": "Shaped", "computed": "built"}])
+        self.assertEqual([{k: x[k] for k in ("map", "checklist", "computed", "kind")} for x in c0["trust"]["status_disagreements"]],
+                         [{"map": 2, "checklist": "Shaped", "computed": "built", "kind": "checklist behind"},
+                          {"map": 8, "checklist": "Shaped", "computed": "built", "kind": "checklist behind"}])
+        self.assertEqual(c0["trust"]["status_explained"], [])
+
+    def test_banner_cause_ready_rows_follow_r3b_r3c(self):
+        """Board v63 item 3: the live banner "ready rows 7 vs 8" came from three places where the board's dependency reading
+        left the spec the check follows (live snapshot 15 Nov 14:22 IST, every BACKLOG row given a brief: board 90, check 93; now 93 and 93)."""
+        ids = {"PF-4", "PF-14", "FO-5", "AG-9"}
+        # R3b: "Done when:" written inline in a cell runs to the segment end; a "waits on" inside it is never a dependency (FO-5r)
+        self.assertEqual(cd.row_deps("| FO-5r | x | Done when: a page. P-561 waits on stream 4's A45 comparison. · Source: P-561 |"), ([], []))
+        # ... until a labelled "Waits on:" field starts again
+        self.assertEqual(cd.row_deps("| X | Done when: tests pass. Waits on: PF-4 merged |"), (["PF-4"], []))
+        # R3c: a bracket the clause end (";") cut open runs to the clause end (PF-11)
+        self.assertEqual(cd.row_deps("| PF-11 | **waits on:** PF-4 (merged), PF-14, FO-5 (`FilesPort` real adapter; the fake works) |"),
+                         (["PF-4", "PF-14", "FO-5"], []))
+        # R3: a requirement id with two dashes (AG-17-62) is not a row unless BACKLOG has it (X-20's "after approval (AG-17-62 ...")
+        self.assertEqual(cd.row_deps("| X-20 | LMIA after approval (AG-17-62 to -68), inspection pack (AG-17-53) |", ids), ([], []))
+        self.assertEqual(cd.row_deps("| X | **waits on:** AG-17-62 |", ids | {"AG-17-62"}), (["AG-17-62"], []))
+        self.assertEqual(cd.row_deps("| X | **waits on:** AG-17-62 |", ids), ([], []))
+
+    def test_records_differ_carry_their_cause(self):
+        # fixture rows 2 and 8: every part merged by an app PR, checklist still Shaped: "checklist behind", with the PR numbers
+        c = run()[1]["trust"]["status_disagreements"]
+        self.assertTrue(all(x["kind"] == "checklist behind" and "#" in x["cause"] for x in c))
+        # a cell naming an open item beside merged parts is explained, not "records differ" (live map 99)
+        ck = cd.Snap(FIX).file("MVP-CHECKLIST.md").replace("| FO-4 | Shaped |", "| FO-4; model choice open (founder) | Shaped |")
+        t = run(snap_with({CKP: ck}))[1]["trust"]
+        self.assertEqual([x["map"] for x in t["status_disagreements"]], [2])
+        self.assertEqual([(x["map"], x["kind"]) for x in t["status_explained"]], [(8, "open item")])
+        # a part merged only by a PR with no app code: explained (live maps 11 and 16, PF-7 #1713)
+        pulls = jread(os.path.join(FIX, "github/pulls.json"))
+        for p in pulls:
+            if p.get("merged_at") and cd.title_has(p["title"] or "", "PF-1"):
+                p["files_app"] = False
+        t = run(snap_with({"github/pulls.json": pulls}))[1]["trust"]
+        self.assertIn((1, "no app code"), [(x["map"], x["kind"]) for x in t["status_explained"]])
 
     def test_missing_backlog_id_and_works_row(self):
         ck = cd.Snap(FIX).file("MVP-CHECKLIST.md").replace("| 8 | Cap eight | Front office | FO-4 | Shaped |", "| 8 | Cap eight | Front office | FO-4, ZZ-1, FO-99 | Shaped |")

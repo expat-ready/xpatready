@@ -489,25 +489,61 @@ def dep_text(line, hdr):
     return " | ".join(c)
 
 
-def row_deps(line):
-    """§11 R3, R3b, R3c, R3d: dependencies of a BACKLOG row (its cells except Done when, see dep_text). A clause ends at the first ".", ";", "|", "·", a labelled field
-    ("decisions:", "Done when", "Source:") or the line end. Waits-on clause (any case, * or _ emphasis, optional colon):
-    every row id is a dependency; the leftover text, without ids, #<number>, punctuation and the filler words, is a
-    non-id dependency only when a word of 3+ letters remains. "After" clause (whole word, a row id within its next 3
-    tokens): only its row ids count. Returns (ids, non_ids)."""
+LABEL_FIELD = re.compile(r"\bdecisions\s*:|\bdone when\b|\bsource\s*:", re.I)
+WAITS_FIELD = re.compile(r"waits[\s*_]*on[\s*_]*:", re.I)
+
+
+def drop_fields(line):
+    """§11 R3b (board v63, as cockpit-reconcile.py): inside each segment (cut at "|" and "·"), text from a labelled field
+    ("decisions:", "Done when", "Source:") up to the next labelled "Waits on:" field (colon required) or the segment end
+    is never a dependency ("Done when: ... P-561 waits on stream 4's A45 comparison." blocks nothing)."""
+    out = []
+    for seg in re.split(r"([|·])", line):
+        keep = ""
+        while True:
+            lab = LABEL_FIELD.search(seg)
+            if not lab:
+                keep += seg
+                break
+            keep += seg[:lab.start()]
+            nxt = WAITS_FIELD.search(seg, lab.end())
+            if not nxt:
+                break
+            seg = seg[nxt.start():]
+        out.append(keep)
+    return "".join(out)
+
+
+def dep_ids(text, bl_ids=None):
+    """Row ids in a dependency clause: the cell rule, except that an id with two or more dashes (a requirement id such
+    as AG-17-62) counts only when BACKLOG has it (§11 R3: the dashed id shape is one dash: PF-4, B5-filings, DB-SPLIT)."""
+    return [x for x in cell_ids(text) if x.count("-") == 1 or (bl_ids is not None and x in bl_ids)]
+
+
+def row_deps(line, bl_ids=None):
+    """§11 R3, R3b, R3c, R3d: dependencies of a BACKLOG row (its cells except Done when, see dep_text; labelled fields
+    dropped, see drop_fields). A clause ends at the first ".", ";", "|", "·", a labelled field ("decisions:",
+    "Done when", "Source:") or the line end. Waits-on clause (any case, * or _ emphasis, optional colon): every row id
+    is a dependency; the leftover text, without ids, backticked and bracketed text (a bracket the clause end left open
+    runs to the clause end), #<number>, punctuation and the filler words, is a non-id dependency only when a word of
+    3+ letters remains. "After" clause (whole word, a row id within its next 3 tokens): only its row ids count.
+    bl_ids: the BACKLOG ids (for ids with two or more dashes). Returns (ids, non_ids)."""
     ids, non = [], []
+    line = drop_fields(line)
 
     def clause(m):
         e = CLAUSE_END.search(line, m.end())
         return line[m.end(): e.start() if e else len(line)]
     for m in WAITS_ON.finditer(line):
         t = clause(m)
-        got = cell_ids(t)
+        got = dep_ids(t, bl_ids)
         ids += [x for x in got if x not in ids]
-        rest = re.sub(r"`[^`]*`", " ", t)                                  # R3c: backticked text never blocks
+        rest = re.sub(r"`[^`]*`?", " ", t)                                 # R3c: backticked text never blocks
         while re.search(r"\([^()]*\)", rest):
             rest = re.sub(r"\([^()]*\)", " ", rest)                       # R3c: nor does bracketed text
-        rest = ID_TOKEN.sub(" ", re.sub(r"[*_`]", "", rest))
+        rest = re.sub(r"\(.*", " ", rest).replace(")", " ")               # R3c: a bracket the clause end left open
+        rest = ID_TOKEN.sub(lambda k: " " if k.group(1) in got or k.group(1).count("-") == 1 else k.group(1).replace("-", " "),
+                            re.sub(r"[*_`]", "", rest))
         rest = re.sub(r"\bmap\b(?=(?:\s+rows?)?\s+\d)", " ", rest, flags=re.I)     # R3d: "map" followed by numbers is filler
         rest = re.sub(r"#\d+", " ", rest)
         words = [w for w in re.findall(r"[A-Za-z0-9']+", rest) if w.lower() not in FILLER]
@@ -515,8 +551,8 @@ def row_deps(line):
             non.append(" ".join(words))
     for m in AFTER_W.finditer(line):
         t = re.sub(r"[*_`]", "", clause(m))
-        if any(cell_ids(tok) for tok in t.split()[:3]):
-            ids += [x for x in cell_ids(t) if x not in ids]
+        if any(dep_ids(tok, bl_ids) for tok in t.split()[:3]):
+            ids += [x for x in dep_ids(t, bl_ids) if x not in ids]
     return ids, non
 
 
@@ -1584,14 +1620,16 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     r1 = []                                            # R5: only ids the checklist cites (Bake rows count only when cited)
     for r in rows:
         r1 += [x for x in r["ids"] if x not in r1]
-    change_at, unclassified = {}, set()
+    change_at, unclassified, change_pr, nonapp_pr = {}, set(), {}, {}
     for p in sorted(merged, key=lambda p: p["merged_at"]):
         if is_records(p):
             continue
         for rid in r1:
             if rid not in change_at and title_has(p["title"], rid):
                 if p.get("files_app") is True:
-                    change_at[rid] = p["merged_at"]
+                    change_at[rid], change_pr[rid] = p["merged_at"], p["number"]
+                elif p.get("files_app") is False:
+                    nonapp_pr.setdefault(rid, p["number"])
                 elif p.get("files_app") is None:
                     unclassified.add(rid)
     unclassified -= set(change_at)
@@ -1666,8 +1704,26 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     if len(dated) >= 5:
         parts = len({x for r in dated for x in r["ids"]})
         ratio = num(round(parts / len(dated), 2), f"distinct parts of the {len(dated)} built rows with dated parts ÷ those rows", "mixed", L)
-    disagree = [{"map": r["map"], "checklist": r["status"], "computed": "built" if r["built"] else "not built"}
-                for r in rows if bool(r["built"]) != (r["status"] in ("Merged", "qa Works")) and not r.get("pre_baseline")]
+    # board v63: each difference carries its cause; two kinds follow from a rule and are listed apart (status_explained),
+    # not as "records differ": a part merged only by a PR with no app code (N2 counts app-code PRs), and a cell that
+    # names an open item beside merged parts ("model choice open"). The rest is the hand-kept status behind or ahead.
+    disagree, explained = [], []
+    for r in rows:
+        if bool(r["built"]) == (r["status"] in ("Merged", "qa Works")) or r.get("pre_baseline"):
+            continue
+        d_ = {"map": r["map"], "checklist": r["status"], "computed": "built" if r["built"] else "not built"}
+        open_items = [clean(x) for x in r["cell"].split(";") if not cell_ids(x) and not CAP_ID.search(x) and re.search(r"\bopen\b", x, re.I)]
+        unbuilt = [x for x in r["ids"] if x not in change_at]
+        if r["built"] and open_items:
+            explained.append(dict(d_, kind="open item", cause=f"all parts merged; the cell names an open item: {open_items[0]}"))
+        elif not r["built"] and unbuilt and all(x in nonapp_pr for x in unbuilt):
+            explained.append(dict(d_, kind="no app code", cause="merged only by a PR that changes no app code (" + ", ".join(
+                f"{x} #{nonapp_pr[x]}" for x in unbuilt) + "); built counts app-code PRs (N2)"))
+        elif r["built"]:
+            disagree.append(dict(d_, kind="checklist behind", cause="every part merged by an app-code PR (" + ", ".join(
+                f"{x} #{change_pr[x]}" for x in r["ids"]) + f", last on {r['built']}); the checklist status is not updated"))
+        else:
+            disagree.append(dict(d_, kind="checklist ahead", cause="not merged by an app-code PR: " + ", ".join(unbuilt)))
 
     # ---- §1 committed date, X, light
     h1 = next((d for d in plan.get("dates", []) if d.get("id") == "H1"), None)
@@ -1952,7 +2008,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
         line = bl["deps"].get(rid)
         if line is None or rid in merged_any or rid in inpr:
             continue
-        deps, non = row_deps(line)
+        deps, non = row_deps(line, bl["lines"])
         deps = [x for x in deps if x != rid]
         wait = [x for x in deps if x not in merged_any]
         if non or wait:
@@ -2206,6 +2262,8 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
         notes.append("Duplicate BACKLOG rows (first kept): " + ", ".join(bl["dupes"]))
     if disagree:
         notes.append("Checklist status and computed built differ on rows " + ", ".join(str(d["map"]) for d in disagree[:20]))
+    if explained:
+        notes.append("Checklist and computed differ by rule (not counted as records differ): " + "; ".join(f"{d['map']}: {d['kind']}" for d in explained))
 
     # ---- reconciliation (§6.5-6.6)
     keys = {"works_on_main": w_a, "works_total": t_a, "changes_per_day_window": Y["value"], "remaining_scope_changes": remaining,
@@ -2277,6 +2335,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     trust["invariants"] = invariants
     trust["notes"] = notes
     trust["status_disagreements"] = disagree
+    trust["status_explained"] = explained
 
     # ---- freshness (§6.8)
     fresh = [{"source": "GitHub data", "age_h": 0.0, "limit_h": FRESH_LIMIT_H["GitHub data"], "note": "snapshot age at publish; the page adds the time since"},
