@@ -31,7 +31,7 @@ async function main() {
   const page = await svc.publicSlots(key, "free", {}, "10.0.0.9");
   await clock.advance({ seconds: 5 });
   // Tue 17 Nov 10:00 Toronto = 15:00Z = 19:00 Dubai.
-  await svc.publicBook(key, "free", { givenNames: "Amira", familyName: "Haddad", email: `client-${key}@example.com`, mode: "VIDEO", startsAt: "2026-11-17T15:00:00.000Z", timeZone: "Asia/Dubai", consent: true, consentWordingId: page.consent!.wordingId, formStamp: page.formStamp }, "10.0.0.9");
+  await svc.publicBook(key, "free", { givenNames: "Client", familyName: "A", email: `client-${key}@example.com`, mode: "VIDEO", startsAt: "2026-11-17T15:00:00.000Z", timeZone: "Asia/Dubai", consent: true, consentWordingId: page.consent!.wordingId, formStamp: page.formStamp }, "10.0.0.9");
   const toClient = mail.sent.find((m) => m.to.toLowerCase().startsWith("client-"));
   const toHost = mail.sent.find((m) => m.to.toLowerCase().startsWith("host-"));
   ok("pass (kept): the booker's confirmation reads 7:00 p.m. (Asia/Dubai)", !!toClient && /7:00\s?p\.m\./.test(`${toClient.subject} ${toClient.text}`) && `${toClient.subject} ${toClient.text}`.includes("Asia/Dubai"), toClient?.subject);

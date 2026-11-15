@@ -44,7 +44,7 @@ async function main() {
   ok("R1.38 fail: an unknown zone → 400 in words, never 500", bad.status === 400, bad);
 
   await new Promise((r) => setTimeout(r, 3500)); // the form's minimum fill time (3 s)
-  const form = { givenNames: "Amira", familyName: "Haddad", email: `client-${key}@example.com`, mode: "VIDEO", startsAt: "2027-03-12T15:00:00.000Z", timeZone: "Asia/Dubai", consent: true, consentWordingId: s.body.consent?.wordingId, formStamp: s.body.formStamp };
+  const form = { givenNames: "Client", familyName: "A", email: `client-${key}@example.com`, mode: "VIDEO", startsAt: "2027-03-12T15:00:00.000Z", timeZone: "Asia/Dubai", consent: true, consentWordingId: s.body.consent?.wordingId, formStamp: s.body.formStamp };
   const b = await j("POST", `/api/public/firms/${key}/book/free/bookings`, form);
   ok("R1.38 book: 201, stored 15:00Z, shown 7:00 p.m. (Asia/Dubai)", b.status === 201 && b.body.startsAt === "2027-03-12T15:00:00.000Z" && /7:00\s?p\.m\..*\(Asia\/Dubai\)/.test(b.body.label), b);
   const token1: string = b.body.manageToken;
