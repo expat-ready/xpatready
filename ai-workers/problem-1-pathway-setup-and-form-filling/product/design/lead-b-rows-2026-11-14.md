@@ -1113,3 +1113,18 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
 * **The 25-day item:** counts from the line's source date (AG-6-73 r5), as rev 16.33 said. **This undoes 16.34's "invoice date" line.** The Code s. 32(g) point is "Unconfirmed: no counsel" in the brief.
 * **Tax rates and overpayments:** the requirement stands, and no founder question is needed.
 * **What holds from 16.33:** everything else in rev 16.33, and the enum storage of the trust answer.
+
+## Rev 16.35 (16 Nov 02:1x IST, Lead B (6)): batch 8 follow-ups (#1878, comment 6901029156; citation fix 4 corrected to AG-6-61 §7)
+* **FO-7q:** no role has invoice visibility of its own. An invoice is visible when its parent case or person is (AG-06 C5, "record visibility follows the parent record"); Billing / Finance included. The list calls the case side's helper and fails closed.
+* **FO-7ts gains a credit ledger** (AG-6-21 r5):
+  - insert-only; kinds `KEPT | APPLIED | REFUNDED`; held per case or person and currency;
+  - the balance never goes below zero, checked under the party lock;
+  - applying credit needs `agent/invoice:issue`.
+* **New shared port `RetainerStatusPort`** (`ports/`, zod and a fake; the release Lead reads it):
+  - `signedVersion(tx, firmId, retainerId)`, implemented by the front-office retainer module;
+  - client money never reads `fo_retainer*` directly;
+  - FO-7t part 5 uses it.
+* **The pay-link token:** FO-7ts adds `pay_link_token_hash` (unique where not null, the hash only) on the trust request and on `money_invoice` (AG-6-61 §7). There is no separate link table and it is not PF-27.
+  - It is not single-use (part payments are allowed).
+  - It stops when the item is paid in full, voided or cancelled.
+  - The page gives one not-found for all of those.
