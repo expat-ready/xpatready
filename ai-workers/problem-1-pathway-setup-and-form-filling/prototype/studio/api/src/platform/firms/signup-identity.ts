@@ -12,7 +12,7 @@ export type SignUpMail = { to: string; subject: string; text: string; sentAt: Da
 export interface SignUpIdentity {
   readonly via: "local" | "cognito";
   /** Registers the person and sends the provider's verification email; `link(code)` is our page's link with the code. */
-  register(input: { email: string; password: string; link: (code: string) => string }): Promise<{ subject: string }>;
+  register(input: { email: string; password: string; firmName: string; link: (code: string) => string }): Promise<{ subject: string }>;
   /** Whether `code` is the one the email carried (and is still valid). */
   confirm(input: { subject: string; code: string }): Promise<boolean>;
 }
@@ -26,11 +26,11 @@ export class LocalSignUp implements SignUpIdentity {
   private readonly mails: SignUpMail[] = [];
   constructor(private readonly now: () => Date) {}
 
-  async register(input: { email: string; password: string; link: (code: string) => string }) {
+  async register(input: { email: string; password: string; firmName: string; link: (code: string) => string }) {
     const subject = `local-signup:${hash(`${input.email}:${randomInt(2 ** 47)}`).toString("hex").slice(0, 32)}`;
     const code = String(randomInt(1_000_000)).padStart(6, "0");
     this.codes.set(subject, { hash: hash(code), until: this.now().getTime() + DAY });
-    this.mails.push({ to: input.email, subject: "Your ExpatReady verification code", text: `Your verification code is ${code}.\nOr open this link to confirm: ${input.link(code)}\nThe code lasts 24 hours.`, sentAt: this.now() });
+    this.mails.push({ to: input.email, subject: "Your ExpatReady verification code", text: `Someone asked to sign up "${input.firmName}" with this email address.\nYour verification code is ${code}.\nOr open this link to confirm: ${input.link(code)}\nThe code lasts 24 hours. If you did not ask for this, ignore this email: nothing is set up without the code.`, sentAt: this.now() });
     return { subject };
   }
 

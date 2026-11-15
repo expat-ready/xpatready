@@ -17,12 +17,14 @@ import { FakeClock } from "../ports/clock.ts";
 import { runContract } from "../ports/contracts/contract.ts";
 import { billingPortContract } from "../ports/contracts/billing-port.contract.ts";
 import { EVENT } from "../ports/events.ts";
+import { fakeJobs } from "../ports/jobs.ts";
 import { fakeMail } from "../ports/mail.ts";
+import { runtimeSignUpPorts } from "../api/src/platform/firms/runtime-ports.ts";
 import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
 import { StripeBilling } from "../api/src/platform/billing/stripe.ts";
 import { PlatformSignUpController } from "../api/src/platform/firms/routes.ts";
 import { LocalSignUp } from "../api/src/platform/firms/signup-identity.ts";
-import { ACCEPTED, ALREADY, FirmSignUp, TAX_NOTE, type SignUpPorts } from "../api/src/platform/firms/signup.ts";
+import { ACCEPTED, ALREADY, FirmSignUp, PURGE_JOB, TAX_NOTE, type SignUpPorts } from "../api/src/platform/firms/signup.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
 const NEW = "20261115090000_pf5_signup_terms";
@@ -102,7 +104,7 @@ try {
   ok("PF-5 fail: one live pending sign-up per email (a second is refused)", refused(pend("rule@firm.example.com", "h2"), /one_live/));
   ok("PF-5 fail: a pending sign-up changes only its used_at, once; a live one is never removed",
     refused(`update platform_signup_pending set firm_name = 'G' where id = '${live}'`, /changes only once/) && refused(`delete from platform_signup_pending where id = '${live}'`, /only after it expires/)
-    && sql(`update platform_signup_pending set used_at = now() where id = '${live}' returning 1`) === "1" && refused(`update platform_signup_pending set used_at = now() where id = '${live}'`, /changes only once/));
+    && sql(`update platform_signup_pending set used_at = now(), outcome = 'VERIFIED' where id = '${live}' returning 1`) === "1" && refused(`update platform_signup_pending set used_at = now(), outcome = 'REPLACED' where id = '${live}'`, /changes only once/));
   ok("PF-5 fail: a pending sign-up lives at most 24 hours, names existing terms and keeps the email in lower case",
     refused(pend("long@firm.example.com", "h3", "0 hours", "25 hours"), /life/) && refused(pend("Upper@firm.example.com", "h4"), /email_lower/)
     && refused(`insert into platform_signup_pending (email, id, firm_name, country_code, plan_code, identity_subject, terms_version_ids, terms_accepted_at, token_hash, expires_at) values ('t@f.example.com', gen_random_uuid(), 'F', 'CA', 'team', 's', array[gen_random_uuid()], now(), 'h5', now() + interval '1 hour')`, /do not exist/));
@@ -119,12 +121,15 @@ try {
 
   // ------------------------------------------------------------------------------------------------------ the service
   const clock = new FakeClock(new Date());
-  const mail = fakeMail({ clock });
+  const mail = fakeMail({ clock, failOn: () => failMail });
   let failAudit: string | null = null, failBilling = false;
   const billing = fakeBilling({ prices: PRICES, failOn: () => failBilling });
   const identity = new LocalSignUp(() => clock.now());
+  let failMail = false;
   const ports: SignUpPorts = { audit: { record: async (tx, e) => { if (failAudit && e.action === failAudit) throw new Error("forced audit failure"); await auditEvent.record(tx, e); } }, billing, identity, mail, clock, appUrl: "https://app.expatready.test" };
   const s = new FirmSignUp(db, ports);
+  /** A sign-up and the work it starts after its answer (break M1). */
+  const up = async (body: unknown, ip: string) => { const r = await s.signUp(body, ip); await s.settled(); return r; };
   const plans = await s.plans();
   const team = plans.plans.find((p) => p.code === "team"), solo = plans.plans.find((p) => p.code === "solo");
   ok("PF-5 pass: GET plans reads Stripe's prices through BillingPort, marked \"+ applicable taxes\", with the current terms",
@@ -135,23 +140,28 @@ try {
   const pendingCount = (email: string) => sql(`select count(*) from platform_signup_pending where email = '${email}'`);
   const verifyMails = (to: string) => identity.sent.filter((m) => m.to === to);
 
-  const noTerms = await problemOf(async () => s.signUp(await form({ acceptedTerms: terms.slice(0, 2) }), "10.0.0.1"));
+  const noTerms = await problemOf(async () => up(await form({ acceptedTerms: terms.slice(0, 2) }), "10.0.0.1"));
   ok("PF-5 fail: a sign-up without accepting every current terms version is refused at the field, nothing stored",
     noTerms?.status === 400 && JSON.stringify(noTerms.body.errors).includes("acceptedTerms") && pendingCount("owner@maple.example.com") === "0", noTerms);
-  const bot = await s.signUp(await form({ email: "bot@maple.example.com", website: "http://spam.example.com" }), "10.0.0.2");
+  const bot = await up(await form({ email: "bot@maple.example.com", website: "http://spam.example.com" }), "10.0.0.2");
   const fastForm = await form({ email: "fast@maple.example.com" });
-  const fast = await s.signUp({ ...fastForm, formStamp: (await s.plans()).formStamp }, "10.0.0.3");   // sent at once: too fast
+  const fast = await up({ ...fastForm, formStamp: (await s.plans()).formStamp }, "10.0.0.3");   // sent at once: too fast
   ok("PF-5 fail: the honeypot or a too-fast fill is answered like any other sign-up, nothing stored or sent",
     bot.message === ACCEPTED && fast.message === ACCEPTED && pendingCount("bot@maple.example.com") === "0" && pendingCount("fast@maple.example.com") === "0" && identity.sent.length === 0);
-  const first = await s.signUp(await form(), "10.0.0.4");
-  const second = await s.signUp(await form({ firmName: "Another Name" }), "10.0.0.5");
-  ok("PF-5 pass/fail: a second sign-up for the same email while a link is live → one pending sign-up and one email, the same answer",
-    first.message === ACCEPTED && second.message === ACCEPTED && pendingCount("owner@maple.example.com") === "1" && verifyMails("owner@maple.example.com").length === 1);
+  const first = await up(await form(), "10.0.0.4");
+  const firstLink = verifyMails("owner@maple.example.com")[0]?.text ?? "";
+  const second = await up(await form({ firmName: "Another Name" }), "10.0.0.5");
+  ok("PF-5 pass/fail (break M2): a second sign-up for the same email while a link is live → still one live pending sign-up, the newest (the first link ends, so nobody holds another person's address), each with its one email",
+    first.message === ACCEPTED && second.message === ACCEPTED && sql(`select count(*) from platform_signup_pending where email = 'owner@maple.example.com' and used_at is null`) === "1"
+    && sql(`select string_agg(coalesce(outcome, 'live') || ':' || firm_name, ',' order by created_at) from platform_signup_pending where email = 'owner@maple.example.com'`) === "REPLACED:Maple Immigration,live:Another Name"
+    && verifyMails("owner@maple.example.com").length === 2 && /"Another Name"/.test(verifyMails("owner@maple.example.com")[1].text));
+  const oldTry = await problemOf(() => s.verify({ token: /token=([A-Za-z0-9_-]{43})/.exec(firstLink)?.[1], code: /code=(\d{6})/.exec(firstLink)?.[1] }, "10.0.1.0"));
+  ok("PF-5 fail: the replaced sign-up's link → 404", oldTry?.status === 404, oldTry);
   ok("PF-5 fail: the password is never stored (not in the pending row, an audit line or an email)",
     !sql(`select row_to_json(p)::text from platform_signup_pending p`).includes(PASSWORD) && !sql(`select coalesce(string_agg(row_to_json(a)::text, ''), '') from audit_event a`).includes(PASSWORD) && !identity.sent.some((m) => m.text.includes(PASSWORD)));
   ok("PF-5 fail: an unverified sign-up creates no firm", sql(`select count(*) from platform_firm where contact_email = 'owner@maple.example.com'`) === "0");
 
-  const link = verifyMails("owner@maple.example.com")[0].text;
+  const link = verifyMails("owner@maple.example.com")[1].text;
   const token = /token=([A-Za-z0-9_-]{43})/.exec(link)?.[1] ?? "", code = /code=(\d{6})/.exec(link)?.[1] ?? "";
   const wrong = await problemOf(() => s.verify({ token, code: code === "000000" ? "111111" : "000000" }, "10.0.1.1"));
   ok("PF-5 fail: a wrong code is refused and makes no firm", wrong?.status === 400 && sql(`select count(*) from platform_firm where contact_email = 'owner@maple.example.com'`) === "0", wrong);
@@ -179,9 +189,15 @@ try {
     && sql(`select count(*) from module_event where firm_id = '${firmId}' and type = '${EVENT.FIRM_CREATED}'`) === "1");
   const again = await problemOf(() => s.verify({ token, code }, "10.0.1.5"));
   ok("PF-5 fail: a verification link used twice → 404", again?.status === 404, again);
-  const known = await s.signUp(await form(), "10.0.0.6");
+  const known = await up(await form(), "10.0.0.6");
   ok("PF-5 pass/fail: a sign-up for an email that already has an account → the same answer, an email saying \"You already have an account. Sign in.\", nothing stored",
-    known.message === ACCEPTED && mail.inbox("owner@maple.example.com").some((m) => m.text.startsWith(ALREADY)) && pendingCount("owner@maple.example.com") === "1" && verifyMails("owner@maple.example.com").length === 1);
+    known.message === ACCEPTED && mail.inbox("owner@maple.example.com").some((m) => m.text.startsWith(ALREADY)) && pendingCount("owner@maple.example.com") === "2" && verifyMails("owner@maple.example.com").length === 2);
+  await up(await form(), "10.0.0.9");
+  ok("PF-5 fail (break m3): at most 3 sign-up emails to one address an hour (the 4th sends nothing, same answer)", mail.inbox("owner@maple.example.com").length === 1);
+  failMail = true;
+  const mailDown = await problemOf(async () => up(await form({ email: "owner2@maple.example.com" }), "10.0.0.10"));
+  failMail = false;
+  ok("PF-5 fail (break m4): a mail failure never changes the answer (no 500 that tells a known email apart)", mailDown === null);
 
   sql(pend("late@firm.example.com", sha("L".repeat(43)), "25 hours"));
   const late = await problemOf(() => s.verify({ token: "L".repeat(43), code: "123456" }, "10.0.1.6"));
@@ -190,13 +206,13 @@ try {
   const purged = await s.purgeExpired();
   ok("PF-5 pass/fail (Lead B (3)): the sweep removes expired pending sign-ups (used or not) and keeps the live ones",
     purged >= 1 && pendingCount("late@firm.example.com") === "0" && sql(`select count(*) from platform_signup_pending where expires_at > now()`) !== "0", purged);
-  const resign = await s.signUp(await form({ email: "again@firm.example.com" }), "10.0.0.7");
+  const resign = await up(await form({ email: "again@firm.example.com" }), "10.0.0.7");
   ok("PF-5 pass: a new email signs up and gets its one verification email", resign.message === ACCEPTED && verifyMails("again@firm.example.com").length === 1 && pendingCount("again@firm.example.com") === "1");
 
   failBilling = true;
   const down = await s.plans();
   ok("PF-5 fail: Stripe unreachable → the plans still show, without prices, saying so", down.pricesAvailable === false && down.plans.length === 3 && down.plans.every((p) => p.monthly === null), down);
-  await s.signUp(await form({ email: "nostripe@firm.example.com", firmName: "No Stripe Law" }), "10.0.0.8");
+  await up(await form({ email: "nostripe@firm.example.com", firmName: "No Stripe Law" }), "10.0.0.8");
   const ns = verifyMails("nostripe@firm.example.com")[0].text;
   const nsOut = await s.verify({ token: /token=([A-Za-z0-9_-]{43})/.exec(ns)?.[1], code: /code=(\d{6})/.exec(ns)?.[1] }, "10.0.1.8");
   failBilling = false;
@@ -204,9 +220,49 @@ try {
     nsOut.checkoutUrl === null && /Sign in/.test(String(nsOut.next)) && sql(`select status from platform_firm where key = '${nsOut.firmKey}'`) === "PROVISIONING", nsOut);
 
   let limited: Awaited<ReturnType<typeof problemOf>> = null;
-  for (let i = 0; i < 11 && !limited; i++) limited = await problemOf(async () => s.signUp(await form({ email: `burst${i}@firm.example.com` }), "10.9.9.9"));
-  const otherIp = await s.signUp(await form({ email: "calm@firm.example.com" }), "10.9.9.8");
+  for (let i = 0; i < 11 && !limited; i++) limited = await problemOf(async () => up(await form({ email: `burst${i}@firm.example.com` }), "10.9.9.9"));
+  const otherIp = await up(await form({ email: "calm@firm.example.com" }), "10.9.9.8");
   ok("PF-5 pass/fail: the door's per-IP limit answers 429 after 10 tries in 10 minutes; another address is not held", limited?.status === 429 && otherIp.message === ACCEPTED, limited);
+
+  const p0 = await s.plans();
+  await clock.advance({ hours: 2, seconds: 1 });
+  const stale = await problemOf(async () => s.signUp({ ...(await form({ email: "stale@firm.example.com" })), formStamp: p0.formStamp }, "10.8.0.1"));
+  const foreign = await problemOf(async () => s.signUp({ ...(await form({ email: "foreign@firm.example.com" })), formStamp: new FirmSignUp(db, ports).stamp(clock.now()) }, "10.8.0.2"));
+  ok("PF-5 fail (break M3): a form older than 2 hours or stamped by another server asks for a reload (never a silent drop)", stale?.status === 400 && stale.body.code === "RELOAD" && foreign?.status === 400 && foreign.body.code === "RELOAD", [stale, foreign]);
+  const spaces = await problemOf(async () => s.signUp(await form({ email: "sp@firm.example.com", password: " ".repeat(14) }), "10.8.0.3"));
+  const missing = await problemOf(async () => s.signUp({ ...(await form()), firmName: undefined }, "10.8.0.4"));
+  ok("PF-5 fail (break m1, m8): a password of spaces is refused, and each field error names its field", spaces?.status === 400 && JSON.stringify(spaces.body.errors).includes("password:") && JSON.stringify(missing?.body.errors).includes("firmName:"), [spaces, missing]);
+  await up(await form({ email: "guess@firm.example.com" }), "10.8.0.5");
+  const g = verifyMails("guess@firm.example.com")[0].text, gTok = /token=([A-Za-z0-9_-]{43})/.exec(g)?.[1], gCode = /code=(\d{6})/.exec(g)?.[1] ?? "";
+  for (let i = 0; i < 5; i++) await problemOf(() => s.verify({ token: gTok, code: String((Number(gCode) + 1 + i) % 1_000_000).padStart(6, "0") }, "10.8.1.1"));
+  const afterGuesses = await problemOf(() => s.verify({ token: gTok, code: gCode }, "10.8.1.1"));
+  ok("PF-5 fail (break m5): 5 wrong codes end the link (the right code after them → 404)", afterGuesses?.status === 404, afterGuesses);
+  await up(await form({ email: "gone@firm.example.com", planCode: "solo" }), "10.8.0.6");
+  sql(`update platform_plan set active = false where code = 'solo'`);
+  const gm = verifyMails("gone@firm.example.com")[0].text;
+  const gone = await problemOf(() => s.verify({ token: /token=([A-Za-z0-9_-]{43})/.exec(gm)?.[1], code: /code=(\d{6})/.exec(gm)?.[1] }, "10.8.1.2"));
+  sql(`update platform_plan set active = true where code = 'solo'`);
+  ok("PF-5 fail (break m7): a plan switched off before the verification → 409, no firm", gone?.status === 409 && sql(`select count(*) from platform_firm where contact_email = 'gone@firm.example.com'`) === "0", gone);
+  const lone = sql(pend("rules2@firm.example.com", "h9"));
+  ok("PF-5 fail (break m6): no NULL terms, no date in the future, no TRUNCATE; the end time is the database's now",
+    refused(`insert into platform_signup_pending (id, email, firm_name, country_code, plan_code, identity_subject, terms_version_ids, terms_accepted_at, token_hash, expires_at) values (gen_random_uuid(), 'n@f.example.com', 'F', 'CA', 'team', 's', null, now(), 'h6', now() + interval '1 hour')`, /terms/)
+    && refused(`insert into platform_signup_pending (id, email, firm_name, country_code, plan_code, identity_subject, terms_version_ids, terms_accepted_at, token_hash, created_at, expires_at) values (gen_random_uuid(), 'fu@f.example.com', 'F', 'CA', 'team', 's', array['${tv}']::uuid[], now(), 'h7', now() + interval '100 years', now() + interval '100 years 1 hour')`, /dated now or earlier/)
+    && refused(`truncate platform_signup_pending`, /insert_only/)
+    && sql(`update platform_signup_pending set used_at = '2000-01-01', outcome = 'VERIFIED' where id = '${lone}' returning abs(extract(epoch from used_at - now())) < 60`) === "t");
+
+  await Promise.all([1, 2, 3].map(async (i) => s.signUp(await form({ email: "race@firm.example.com", firmName: `Race ${i}` }), `10.7.0.${i}`)));
+  await s.settled();
+  ok("PF-5 fail: three sign-ups for one email at once → one live pending sign-up", sql(`select count(*) from platform_signup_pending where email = 'race@firm.example.com' and used_at is null`) === "1");
+  const jobs = fakeJobs(clock), swept = new FirmSignUp(db, { ...ports, jobs });
+  await swept.registerJobs();
+  sql(pend("sweep@firm.example.com", "h10", "25 hours"));
+  await clock.advance({ hours: 1 }); await jobs.runDue();
+  ok(`PF-5 pass/fail (Lead B (3)): the hourly ${PURGE_JOB} job through JobPort removes an expired sign-up`, pendingCount("sweep@firm.example.com") === "0");
+  const shut = new FirmSignUp(db, runtimeSignUpPorts({ environment: "test", stripe: { secretKey: null, webhookSecret: null } }, { identity: "cognito", environment: "test", cognito: { userPoolId: null, clientId: null, mfaRequired: true }, localSecret: null }, {}));
+  const shutUp = await problemOf(async () => shut.signUp(await form({ email: "shut@firm.example.com" }), "10.6.0.1"));
+  const localPorts = runtimeSignUpPorts({ environment: "local", stripe: { secretKey: null, webhookSecret: null } }, { identity: "local", environment: "local", cognito: { userPoolId: null, clientId: null, mfaRequired: true }, localSecret: null }, {});
+  ok("PF-5 fail (review Major 1): a server without the identity provider's sign-up or Stripe answers 503, never a \"check your email\" that sends nothing; local runs the stand-ins",
+    shutUp?.status === 503 && shutUp.body.code === "SIGNUP_NOT_SET_UP" && pendingCount("shut@firm.example.com") === "0" && localPorts.notReady === null, shutUp);
 
   const routes = Object.getOwnPropertyNames(PlatformSignUpController.prototype).filter((k) => k !== "constructor").map((k) => {
     const h = (PlatformSignUpController.prototype as unknown as Record<string, () => unknown>)[k];

@@ -437,7 +437,7 @@ model PlatformTermsAcceptance {
 /// A self-serve sign-up waiting for its email verification (Lead B on #1815): no firm exists yet, so no firm_id, the one
 /// platform table outside PF-12's firm walls. No password or password hash (the password goes to the identity provider
 /// only). One live row per email (lower case; partial unique index); its token is kept only as a hash; used once
-/// (used_at, a trigger); purged by the sweep once expired (personal data).
+/// (used_at, a trigger), or replaced by a newer sign-up for the email; purged by the sweep once expired (personal data).
 model PlatformSignupPending {
   id              String                @id @default(uuid()) @db.Uuid
   email           String
@@ -453,6 +453,8 @@ model PlatformSignupPending {
   createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz
   expiresAt       DateTime              @map("expires_at") @db.Timestamptz
   usedAt          DateTime?             @map("used_at") @db.Timestamptz
+  /// Why it ended: VERIFIED (the firm was made) or REPLACED (a newer sign-up for the email took its place).
+  outcome         String?
 
   @@index([expiresAt])
   @@map("platform_signup_pending")

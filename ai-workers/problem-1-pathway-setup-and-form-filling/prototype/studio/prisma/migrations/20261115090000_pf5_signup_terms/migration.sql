@@ -6,8 +6,9 @@
 --     counsel).
 --   * platform_terms_acceptance: who accepted which version when (A46 row 100), keyed on (firm_id, staff_id); insert-only.
 --   * platform_signup_pending: a sign-up waiting for its email verification; no firm_id (no firm exists yet), no
---     password; one live row per email (partial unique index over the unused rows); its one change is used_at, set
---     once; a row is removed only after it expires (the sweep, or a new sign-up for the same email); it lives at most
+--     password; one live row per email (partial unique index over the unused rows); its one change is ending it, once
+--     (used_at at the database's now, with the outcome VERIFIED or REPLACED: a newer sign-up for the email replaces it);
+--     a row is removed only after it expires (the sweep), never truncated; it is dated now or earlier and lives at most
 --     24 hours (Sample); email lower case; the terms it names exist.
 -- Every function carries the platform_ prefix (rows rev 15.2).
 -- Rollback: DROP TABLE "platform_terms_acceptance", "platform_signup_pending", "platform_terms_version"; DROP TYPE
@@ -60,6 +61,7 @@ CREATE TABLE "platform_signup_pending" (
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "expires_at" TIMESTAMPTZ NOT NULL,
     "used_at" TIMESTAMPTZ,
+    "outcome" TEXT,
 
     CONSTRAINT "platform_signup_pending_pkey" PRIMARY KEY ("id")
 );
@@ -93,7 +95,8 @@ CREATE UNIQUE INDEX "platform_signup_pending_one_live" ON "platform_signup_pendi
 ALTER TABLE "platform_signup_pending" ADD CONSTRAINT "platform_signup_pending_email_lower" CHECK ("email" = lower("email"));
 ALTER TABLE "platform_signup_pending" ADD CONSTRAINT "platform_signup_pending_country" CHECK ("country_code" ~ '^[A-Z]{2}$');
 ALTER TABLE "platform_signup_pending" ADD CONSTRAINT "platform_signup_pending_life" CHECK ("expires_at" > "created_at" AND "expires_at" <= "created_at" + interval '24 hours');
-ALTER TABLE "platform_signup_pending" ADD CONSTRAINT "platform_signup_pending_terms" CHECK (cardinality("terms_version_ids") >= 1);
+ALTER TABLE "platform_signup_pending" ADD CONSTRAINT "platform_signup_pending_terms" CHECK ("terms_version_ids" IS NOT NULL AND cardinality("terms_version_ids") >= 1);
+ALTER TABLE "platform_signup_pending" ADD CONSTRAINT "platform_signup_pending_outcome" CHECK (("used_at" IS NULL) = ("outcome" IS NULL) AND ("outcome" IS NULL OR "outcome" IN ('VERIFIED', 'REPLACED')));
 ALTER TABLE "platform_terms_version" ADD CONSTRAINT "platform_terms_version_url" CHECK ("url" ~ '^(https://|/)');
 
 -- The terms and their acceptances are never changed or removed.
@@ -106,7 +109,8 @@ CREATE TRIGGER "platform_terms_version_no_truncate" BEFORE TRUNCATE ON "platform
 CREATE TRIGGER "platform_terms_acceptance_insert_only" BEFORE UPDATE OR DELETE ON "platform_terms_acceptance" FOR EACH ROW EXECUTE FUNCTION platform_terms_insert_only();
 CREATE TRIGGER "platform_terms_acceptance_no_truncate" BEFORE TRUNCATE ON "platform_terms_acceptance" FOR EACH STATEMENT EXECUTE FUNCTION platform_terms_insert_only();
 
--- A pending sign-up: its terms exist; its one change is used_at, once; it is removed only once expired.
+-- A pending sign-up: dated now or earlier, its terms exist; its one change is ending it, once, at the database's now; it is
+-- removed only once expired, never truncated.
 CREATE FUNCTION platform_signup_pending_rules() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN
@@ -114,10 +118,14 @@ BEGIN
     RETURN OLD;
   END IF;
   IF TG_OP = 'UPDATE' THEN
-    IF OLD.used_at IS NOT NULL OR NEW.used_at IS NULL OR (to_jsonb(NEW) - 'used_at') <> (to_jsonb(OLD) - 'used_at') THEN
-      RAISE EXCEPTION 'platform_signup_pending_rules: a sign-up changes only once, when it is used' USING ERRCODE = 'insufficient_privilege';
+    IF OLD.used_at IS NOT NULL OR NEW.used_at IS NULL OR (to_jsonb(NEW) - 'used_at' - 'outcome') <> (to_jsonb(OLD) - 'used_at' - 'outcome') THEN
+      RAISE EXCEPTION 'platform_signup_pending_rules: a sign-up changes only once, when it is used or replaced' USING ERRCODE = 'insufficient_privilege';
     END IF;
+    NEW.used_at := now();
     RETURN NEW;
+  END IF;
+  IF NEW.created_at > now() + interval '1 minute' OR NEW.used_at IS NOT NULL THEN
+    RAISE EXCEPTION 'platform_signup_pending_rules: a sign-up is dated now or earlier and starts unused' USING ERRCODE = 'check_violation';
   END IF;
   IF (SELECT count(*) FROM platform_terms_version WHERE id = ANY (NEW.terms_version_ids)) <> cardinality(NEW.terms_version_ids) THEN
     RAISE EXCEPTION 'platform_signup_pending_rules: a sign-up names terms versions that do not exist' USING ERRCODE = 'foreign_key_violation';
@@ -125,6 +133,7 @@ BEGIN
   RETURN NEW;
 END $$;
 CREATE TRIGGER "platform_signup_pending_rules" BEFORE INSERT OR UPDATE OR DELETE ON "platform_signup_pending" FOR EACH ROW EXECUTE FUNCTION platform_signup_pending_rules();
+CREATE TRIGGER "platform_signup_pending_no_truncate" BEFORE TRUNCATE ON "platform_signup_pending" FOR EACH STATEMENT EXECUTE FUNCTION platform_terms_insert_only();
 
 -- Sample terms (one version each; wording Sample until counsel reads it).
 INSERT INTO "platform_terms_version" ("id", "kind", "version", "url", "published_at") VALUES

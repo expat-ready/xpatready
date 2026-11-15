@@ -19,6 +19,7 @@ import type { ClockPort } from "../../../../ports/clock.ts";
 import { EVENT } from "../../../../ports/events.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
+import { firmScope } from "../firm-scope.ts";
 import { emailOf } from "../identity/service.ts";
 import type { SignUpIdentity } from "./signup-identity.ts";
 
@@ -28,11 +29,14 @@ export type SignUpPorts = {
   /** Our app's address (links in emails, Checkout's return pages). */
   appUrl: string;
   limits?: Partial<Limits>; formKey?: Buffer;
+  /** Why this server cannot take sign-ups (a provider not set up), or null: the door answers 503 with it. */
+  notReady?: string | null;
 };
 type Limits = { signupPerIp: number; verifyPerIp: number; windowMinutes: number; minFillSeconds: number };
 const LIMITS: Limits = { signupPerIp: 10, verifyPerIp: 30, windowMinutes: 10, minFillSeconds: 3 };
 /** A pending sign-up lives 24 hours (Sample; the migration's ceiling). */
 export const PENDING_HOURS = 24;
+const WRONG_CODES = 5, MAILS_PER_EMAIL_HOUR = 3;
 export const PURGE_JOB = "platform.signup.purge";
 export const ACCEPTED = "If this email can be used, we have sent a message to it. Open it to confirm your sign-up.";
 export const ALREADY = "You already have an account. Sign in.";
@@ -45,7 +49,7 @@ const notFound = () => problem(404, "NOT_FOUND", "Not found", "This link is not 
 const fields = (errors: string[]) => problem(400, "CHECK_FIELDS", "Check the form", "Some answers need changing.", { errors });
 
 const Body = z.strictObject({
-  email: z.string(), password: z.string().min(12, "password: at least 12 characters").max(256, "password: at most 256 characters"),
+  email: z.string(), password: z.string().min(12, "password: at least 12 characters").regex(/\S/, "password: not only spaces").max(256, "password: at most 256 characters"),
   firmName: z.string().trim().min(2, "firmName: 2 to 120 characters").max(120, "firmName: 2 to 120 characters").refine((s) => !/[\p{Cc}\p{Cf}]/u.test(s), "firmName: no control characters"),
   countryCode: z.literal("CA", { error: "countryCode: CA only for now" }), planCode: z.string().default("team"), period: z.enum(["MONTHLY", "YEARLY"]).default("MONTHLY"),
   acceptedTerms: z.array(z.string()).default([]), website: z.string().optional(), formStamp: z.string().max(200).default(""),
@@ -60,6 +64,8 @@ export class FirmSignUp {
   private readonly limits: Limits;
   private readonly formKey: Buffer;
   private readonly hits = new Map<string, number[]>();
+  private readonly mailsTo = new Map<string, number[]>();
+  private readonly wrongCodes = new Map<string, number>();
   constructor(private readonly db: PrismaClient, private readonly ports: SignUpPorts) {
     this.limits = { ...LIMITS, ...ports.limits };
     this.formKey = ports.formKey ?? randomBytes(32);
@@ -92,54 +98,82 @@ export class FirmSignUp {
     };
   }
 
+  private ready() { if (this.ports.notReady) throw problem(503, "SIGNUP_NOT_SET_UP", "Sign-up is not open here", "Sign-up is not set up on this server yet.", { reason: this.ports.notReady }); }
+
   async signUp(body: unknown, ip: string) {
+    this.ready();
     this.limit(`signup:${ip}`, this.limits.signupPerIp);
     const parsed = Body.safeParse(body ?? {});
-    if (!parsed.success) throw fields(parsed.error.issues.map((i) => i.message.includes(":") ? i.message : `${i.path.join(".") || "body"}: ${i.message}`));
+    if (!parsed.success) throw fields(parsed.error.issues.map((i) => { const f = i.path.join(".") || "body"; return i.message.startsWith(`${f}:`) ? i.message : `${f}: ${i.message}`; }));
     const b = parsed.data;
     let email: string;
     try { email = emailOf(b.email); } catch { throw fields(["email: give your work email (name@example.com)"]); }
-    const clockNow = this.ports.clock.now();
     const terms = await this.currentTerms();
     const given = new Set(b.acceptedTerms.map((t) => t.toLowerCase()));
     if (terms.length === 0 || terms.some((t) => !given.has(t.id)) || given.size !== terms.length) throw fields(["acceptedTerms: accept the current terms of service, privacy notice and data-processing terms"]);
     const plan = await this.db.platformPlan.findFirst({ where: { code: b.planCode, active: true } });
     if (!plan) throw fields(["planCode: choose one of the plans offered"]);
+    // A stamp that is not ours or is older than 2 hours (a restart, another server, a page left open) asks for a reload
+    // rather than dropping a real sign-up (break M3); only a too-fast fill is silent.
+    const stamp = this.stampAge(b.formStamp);
+    if (stamp === null) throw problem(400, "RELOAD", "Please reload the page", "This form is too old. Reload the page and send it again.");
     // The door's protections answer like any other sign-up, storing and sending nothing (AG-4-20 rule 3, contracts §0.6).
-    if (b.website || !this.stampOk(b.formStamp, clockNow)) return { status: "check-email", message: ACCEPTED };
-    const known = await this.knownAccount(email);
-    if (known) {
-      await this.ports.mail.send({ firmId: known, to: email, replyTo: "no-reply@expatready.com", subject: "You already have an ExpatReady account", text: `${ALREADY}\n${this.ports.appUrl}/sign-in`, class: "TRANSACTIONAL", templateKey: "platform.signup.already_have_account" });
-      return { status: "check-email", message: ACCEPTED };
-    }
-    const token = randomBytes(32).toString("base64url");
-    await this.db.$transaction(async (tx) => {
-      await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`platform_signup:${email}`}))`;
-      const now = await dbNow(tx);
-      const live = await tx.platformSignupPending.findFirst({ where: { email, usedAt: null, expiresAt: { gt: now } } });
-      if (live) return;   // one pending sign-up and one email while a link is live
-      await tx.platformSignupPending.deleteMany({ where: { email, usedAt: null, expiresAt: { lte: now } } });
-      const { subject } = await this.ports.identity.register({ email, password: b.password, link: (code) => `${this.ports.appUrl}/sign-up/verify#token=${token}&code=${code}` });
-      await tx.platformSignupPending.create({ data: {
-        email, firmName: b.firmName, countryCode: b.countryCode, planCode: plan.code, period: b.period, identitySubject: subject,
-        termsVersionIds: terms.map((t) => t.id), termsAcceptedAt: now, tokenHash: sha(token), createdAt: now, expiresAt: new Date(now.getTime() + PENDING_HOURS * 3600_000),
-      } });
-    });
+    if (b.website || stamp < this.limits.minFillSeconds * 1000) return { status: "check-email", message: ACCEPTED };
+    // The rest runs after the answer, so the answer's time says nothing about the email (break M1, m4).
+    this.later(() => this.signUpWork(email, b, plan.code, terms.map((t) => t.id)));
     return { status: "check-email", message: ACCEPTED };
   }
 
+  private async signUpWork(email: string, b: z.output<typeof Body>, planCode: string, termIds: string[]) {
+    if (!this.perEmail(email)) return;   // at most 3 emails to one address an hour (break m3)
+    const known = await this.knownAccount(email);
+    if (known) {
+      await this.ports.mail.send({ firmId: known, to: email, replyTo: "no-reply@expatready.com", subject: "You already have an ExpatReady account", text: `${ALREADY}\n${this.ports.appUrl}/sign-in`, class: "TRANSACTIONAL", templateKey: "platform.signup.already_have_account" });
+      return;
+    }
+    const token = randomBytes(32).toString("base64url");
+    // The newest sign-up for an email replaces a live one (its link ends), so nobody can hold another person's address
+    // for 24 hours, and a mistyped password is mended by signing up again (break M2). Still one live pending sign-up.
+    const { subject } = await this.ports.identity.register({ email, password: b.password, firmName: b.firmName, link: (code) => `${this.ports.appUrl}/sign-up/verify#token=${token}&code=${code}` });
+    await this.db.$transaction(async (tx) => {
+      await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`platform_signup:${email}`}))`;
+      const now = await dbNow(tx);
+      await tx.platformSignupPending.updateMany({ where: { email, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now, outcome: "REPLACED" } });
+      await tx.platformSignupPending.deleteMany({ where: { email, usedAt: null, expiresAt: { lte: now } } });
+      await tx.platformSignupPending.create({ data: {
+        email, firmName: b.firmName, countryCode: b.countryCode, planCode, period: b.period, identitySubject: subject,
+        termsVersionIds: termIds, termsAcceptedAt: now, tokenHash: sha(token), createdAt: now, expiresAt: new Date(now.getTime() + PENDING_HOURS * 3600_000),
+      } });
+    });
+  }
+
+  /** Work started after an answer; its failure is logged without personal data. `settled()` waits for it (tests). */
+  private readonly inflight = new Set<Promise<void>>();
+  private later(fn: () => Promise<void>) {
+    const p = fn().catch((e) => console.warn(`[sign-up] background step failed: ${e instanceof Error ? e.name : "error"}`)).finally(() => this.inflight.delete(p));
+    this.inflight.add(p);
+  }
+  async settled() { while (this.inflight.size) await Promise.all([...this.inflight]); }
+
   async verify(body: unknown, ip: string) {
+    this.ready();
     this.limit(`verify:${ip}`, this.limits.verifyPerIp);
     const parsed = VerifyBody.safeParse(body ?? {});
     if (!parsed.success) throw notFound();
     const now = await dbNow(this.db);
     const pending = await this.db.platformSignupPending.findUnique({ where: { tokenHash: sha(parsed.data.token) } });
     if (!pending || pending.usedAt || pending.expiresAt <= now) throw notFound();
-    if (!(await this.ports.identity.confirm({ subject: pending.identitySubject, code: parsed.data.code }))) throw problem(400, "CODE_WRONG", "Check the code", "That code is not the one we sent. Type the 6 digits from the email.");
+    if ((this.wrongCodes.get(pending.id) ?? 0) >= WRONG_CODES) throw notFound();   // 5 wrong codes end the link (break m5)
+    if (!(await this.ports.identity.confirm({ subject: pending.identitySubject, code: parsed.data.code }))) {
+      if (this.wrongCodes.size > 50_000) this.wrongCodes.clear();   // links last 24 hours; the cap is per process
+      this.wrongCodes.set(pending.id, (this.wrongCodes.get(pending.id) ?? 0) + 1);
+      throw problem(400, "CODE_WRONG", "Check the code", "That code is not the one we sent. Type the 6 digits from the email.");
+    }
     if (await this.knownAccount(pending.email)) throw problem(409, "ACCOUNT_EXISTS", "Sign in instead", ALREADY);
-    const plan = await this.db.platformPlan.findFirstOrThrow({ where: { code: pending.planCode } });
+    const plan = await this.db.platformPlan.findFirst({ where: { code: pending.planCode, active: true } });
+    if (!plan) throw problem(409, "PLAN_GONE", "Choose a plan again", "The plan you chose is no longer offered. Sign up again and choose one of the plans shown.");   // break m7
     const made = await this.db.$transaction(async (tx) => {
-      const used = await tx.platformSignupPending.updateMany({ where: { id: pending.id, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now } });
+      const used = await tx.platformSignupPending.updateMany({ where: { id: pending.id, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now, outcome: "VERIFIED" } });
       if (used.count !== 1) throw notFound();   // a double submit makes one firm (the row's lock orders the two)
       const firm = await tx.platformFirm.create({ data: { key: `${slug(pending.firmName)}-${randomBytes(4).toString("hex")}`, operatingName: pending.firmName, countryCode: pending.countryCode, status: "PROVISIONING", ownerEmail: pending.email, contactEmail: pending.email, billingEmail: pending.email } });
       const at = (action: string, entity: string, entityKey: string, summary: string, detail: Record<string, string | number | null> = {}) =>
@@ -163,9 +197,11 @@ export class FirmSignUp {
   private async startTrial(firm: { id: string; operatingName: string; contactEmail: string }, subId: string, plan: { stripeMonthlyPrice: string | null; stripeYearlyPrice: string | null; trialDays: number }, period: "MONTHLY" | "YEARLY") {
     const priceId = period === "YEARLY" ? plan.stripeYearlyPrice : plan.stripeMonthlyPrice;
     if (!priceId) return null;
-    const { customerId } = await this.ports.billing.ensureCustomer({ firmId: firm.id, email: firm.contactEmail, name: firm.operatingName });
-    await this.db.$transaction(async (tx) => {
-      await tx.platformSubscription.update({ where: { id: subId }, data: { stripeCustomerId: customerId } });
+    // The customer we stored wins: Stripe keeps an idempotency key about 24 hours only (review minor).
+    const had = (await this.db.platformSubscription.findFirst({ where: firmScope(firm.id, { id: subId }), select: { stripeCustomerId: true } }))?.stripeCustomerId;
+    const customerId = had ?? (await this.ports.billing.ensureCustomer({ firmId: firm.id, email: firm.contactEmail, name: firm.operatingName })).customerId;
+    if (!had) await this.db.$transaction(async (tx) => {
+      await tx.platformSubscription.updateMany({ where: firmScope(firm.id, { id: subId, stripeCustomerId: null }), data: { stripeCustomerId: customerId } });
       await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.subscription.customer_linked", entity: "platform_subscription", entityKey: subId, summary: "The firm's billing customer was created", detail: { customerId } });
     });
     return this.ports.billing.startTrialCheckout({ firmId: firm.id, customerId, priceId, trialDays: plan.trialDays, successUrl: `${this.ports.appUrl}/sign-up/trial-started`, cancelUrl: `${this.ports.appUrl}/sign-up/trial` });
@@ -193,11 +229,21 @@ export class FirmSignUp {
 
   /** The form's load stamp `<ms>.<hmac>`: a form sent sooner than minFillSeconds after it, older than 2 hours, or not ours, fails. */
   stamp(at: Date): string { const ms = String(at.getTime()); return `${ms}.${createHmac("sha256", this.formKey).update(`signup:${ms}`).digest("base64url")}`; }
-  private stampOk(stamp: string, now: Date): boolean {
+  /** The stamp's age in milliseconds, or null when it is not ours or older than 2 hours. */
+  private stampAge(stamp: string): number | null {
     const [ms, mac, extra] = stamp.split(".");
-    if (!/^\d{1,15}$/.test(ms ?? "") || !mac || extra !== undefined) return false;
+    if (!/^\d{1,15}$/.test(ms ?? "") || !mac || extra !== undefined) return null;
     const want = Buffer.from(this.stamp(new Date(Number(ms))).split(".")[1]), have = Buffer.from(mac);
-    const age = now.getTime() - Number(ms);
-    return want.length === have.length && timingSafeEqual(want, have) && age >= this.limits.minFillSeconds * 1000 && age <= 2 * 3600_000;
+    const age = this.ports.clock.now().getTime() - Number(ms);
+    return want.length === have.length && timingSafeEqual(want, have) && age >= 0 && age <= 2 * 3600_000 ? age : null;
   }
+
+  private perEmail(email: string): boolean {
+    const now = this.ports.clock.now().getTime(), list = (this.mailsTo.get(email) ?? []).filter((t) => t > now - 3600_000);
+    if (list.length >= MAILS_PER_EMAIL_HOUR) return false;
+    list.push(now); this.mailsTo.set(email, list);
+    if (this.mailsTo.size > 50_000) for (const [k, v] of this.mailsTo) if (!v.some((t) => t > now - 3600_000)) this.mailsTo.delete(k);
+    return true;
+  }
+
 }
