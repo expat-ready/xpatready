@@ -90,3 +90,63 @@ Scope: runtime only. There is no screen, so the 1024 px / 200 % walks, the BIC t
 * Part 2 (SES, bounces, unsubscribe) is out of scope.
 
 **Verdict: Changes needed** (Block). Fix B1 and M1. The Minors can follow or go in the same commit.
+
+## Re-review (1a016939b)
+Diff-only (P-277): `git diff 8064504e4..1a016939b`. That is two commits: d3fc939ce (break-round fixes) and 1a016939b (review-round fixes). Code and tests: 5 files, +55 −17. Reviewed on 15 Nov 2026. Own copy `rv2_pf19b` on :4494 (never :4400), stopped afterwards, database and files removed. Mutation runs used a scratch copy of `studio/` at 1a016939b (files byte-identical to the commit), never the shared tree. US$0, no keys.
+**Head moved:** the PR head is now d4cdc2064 (Lead B's `MessageRepeated` and address duty), pushed while this ran. It is **not covered** here and needs its own diff-only read.
+
+### What I ran
+* `check_pf19b_sending.ts` → **36 passed, 0 failed** (8 s).
+* `check_forms_qa53.ts 4494 xr_studio_rv2_pf19b`, each run on a freshly started copy:
+  * Runs 2 and 3: **40 passed, 0 failed**.
+  * Run 1 stopped with `fetch failed` at `:125`, just after the firm-workspace copy on :4495 stopped. I could not reproduce it, and the step it hit was already there before this PR. Note: a rerun on a used database gives "setup: the demo loads — 409", by design.
+* `check_c616_privacy.ts` 48/48. `graph.mjs --check`: G1/G2/G4/G5 = 0.
+* **Mutations.** I reverted each fix in the scratch copy and ran the suite again:
+
+| Reverted | Result |
+|---|---|
+| sweep back to one query (M1) | `break M1` FAIL |
+| row `FOR UPDATE` | `review m2` 6 workers FAIL (6 × `sent`) |
+| counter `FOR UPDATE` | `review m2` cap race FAIL |
+| persona check (m1) | `break m1` FAIL |
+| `msg/` attachment check | `break m3, m5, m7` FAIL |
+| template subject >200 | `break m3, m5, m7` FAIL |
+| advisory lock | the suite crashes with P2002 and exits 1 (red, but not through its named test) |
+| job key back to `msg.send:<id>` | **all 36 still pass** |
+
+### Earlier findings, checked
+| Finding | Status | Evidence |
+|---|---|---|
+| B1 QA-53 route list | **Fixed** | `"/api/demo/platform-inbox": "inbox"` added to `OWN_GUARD`, so the probe asks client 403, bad address 400 and Bearer 403 (passes, "(4)" routes); firm-workspace 404 now covers both inboxes (`{"inbox":404,"platformInbox":404}`); the file outside the touch list is OK'd by Lead B (#1824, answer 5) |
+| M1 crash rows starved | **Fixed for crash rows** (but see new M2) | `messages.ts:130-131` sweeps `stateReason IS NULL` apart from held; fail test `:166` fails on the old query |
+| breaker m1 persona name | Fixed | `demo-inbox.ts:21` matches `id` or `persona`, as `actorOf` does; `:168` (`client`, `client-b` 403; `user-O` 200) |
+| breaker m2 job key | Fixed for case (a), **no test** | `:84` `msg.send:<firm>:<id>`, so another firm's wrong dispatch no longer uses up the key. Case (b), a dispatch before commit, still uses it up; the doc says "after the commit" and the sweep now recovers it in about 3 minutes. The mutation passes 36/0 (m-a) |
+| breaker m3 subject | Fixed | `ports/messages.ts:21` one line (C0 and DEL); `messages.ts:65` the same, plus ≤200 after filling; `:171` (CRLF and a 300-character value) |
+| breaker m5 `msg/` attachments | Fixed | `:68`; FileKey is lower-case only with no `.`/`..` segment, so `msg/` cannot be dodged by case or `./` |
+| breaker m7 firm first | Fixed | `:49-50` before `ensureMessagesFirm` and the lock; `:171` expects `MessageRefused` |
+| my m2 lock tests | Fixed | `:177-187`; two of three locks fail their named test when removed (the advisory lock: see the table above) |
+| my m3 DW8 wording | Fixed in the test name | It names `check_c616_privacy` and `check_forms_qa53` (both run green above). The PR body still has no results for them (m-c) |
+| left for Lead B | Answered on #1824 (09:34) | breaker M2 → PF-19ad; my m5 → part 2; m4/m6/breaker m9 → part 2 `SENDING`; breaker m4/m6/m8 noted |
+
+### New findings
+* **M2 (Major): the new held pass has the same cross-firm starvation as M1.** One firm's held backlog stops every other firm's held rows from ever being released.
+  * Where: `messages.ts:131`, second query. It takes the 500 oldest held rows across all firms.
+  * Probe (scratch copy, real rows):
+    * Firm B is on trial at 50/50, with 505 committed sends aged 30 minutes. After one sweep: 500 held, 5 crash rows.
+    * Firm A is `ACTIVE` with room left, and has one row held "daily limit" (10 minutes old).
+    * After 3 sweeps and then +1 h, +2 h and +3 h: A's row is still `QUEUED`. Every hour B's 500 older rows are re-queued and re-held.
+    * A waits until B's backlog falls below 500, about 10 days at 50 a day.
+  * The PR says "held rows retry hourly and go the next day". That is false for every firm but the one with the backlog.
+  * Fix: release held rows only for firms that have room today (skip firms whose counter is at the cap), or a per-firm share (`ROW_NUMBER() OVER (PARTITION BY firm_id ORDER BY created_at) <= n`).
+  * Fail test: the probe above. Expect A's held row `SENT` on the first hourly sweep while B's 500+ rows stay held.
+* **m-a (Minor):** the job-key change (breaker m2) has no test. Fail test: `dispatch(firmA, [B's id])`, then `dispatch(B, [id])` → `SENT` without the sweep.
+* **m-b (Minor):** with the advisory lock removed, the suite crashes on P2002 and never reports through its named test. Use `Promise.allSettled` so the named line fails.
+* **m-c (Minor):** the PR body has not been updated for the two rounds. It needs the M1 sweep split and the results of `check_c616_privacy` and `check_forms_qa53`. Lead B (answer 5) also asks for an "Outside the touch list (approved)" section.
+* Nit: the one-line check leaves C1 (`U+0080`–`U+009F`) and `U+2028`/`U+2029` through. This is harmless for a JSON field, but worth recalling when part 2 writes raw MIME.
+
+### Scores changed
+D5 3 → 3: crash recovery is fixed, but released held rows now starve across firms (M2). D16 3 → 4: QA-53 is green, the locks and fixes fail their named tests when removed, but the job key is untested. Journey test re-run on the diff: **8.5 / 10**, unchanged (journeys 5, 9 and 10 now held for crash rows, persona and CI; error recovery stays ½ because of M2). See the addendum in `journey-test-reviewer-2026-11-15.md`.
+
+Fix M2 with its fail test. m-a to m-c can go in the same commit. Approval would be for that commit, read together with d4cdc2064.
+
+Verdict: Changes needed

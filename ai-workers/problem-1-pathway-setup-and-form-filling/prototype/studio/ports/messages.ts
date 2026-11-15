@@ -18,7 +18,7 @@ export const HELD_DAILY_LIMIT = "daily limit";
 
 const FieldName = z.string().regex(/^[a-z][a-z0-9_]*$/, "a field name (lower case, _)");
 export const TemplateKey = z.string().regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/, "a dotted lower-case key").max(100);
-const Words = z.strictObject({ subject: z.string().trim().min(1).max(200).regex(/^[^\u0000-\u001f\u007f]*$/, "a subject on one line"), text: z.string().min(1).max(100_000), html: z.string().min(1).max(500_000).optional() });
+const Words = z.strictObject({ subject: z.string().trim().min(1).max(200).regex(/^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]*$/, "a subject on one line"), text: z.string().min(1).max(100_000), html: z.string().min(1).max(500_000).optional() });
 const FromTemplate = z.strictObject({ templateKey: TemplateKey, values: z.record(FieldName, z.string().max(10_000)), language: z.enum(["en", "fr"]).default("en") });
 
 export const MessageSend = z.strictObject({

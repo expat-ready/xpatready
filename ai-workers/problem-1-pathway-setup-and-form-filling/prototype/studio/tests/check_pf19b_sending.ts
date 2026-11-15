@@ -175,9 +175,10 @@ try {
     && await refusedSend({ firmId: uuid() }, /not a platform firm/));
 
   // ------------------------------------------------------------------------------------------- review m2: the locks
-  const keyC = uuid(), par = await Promise.all(Array.from({ length: 8 }, () => tx((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: box("par"), content: words, idempotencyKey: keyC }))));
+  const keyC = uuid(), parAll = await Promise.allSettled(Array.from({ length: 8 }, () => tx((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: box("par"), content: words, idempotencyKey: keyC }))));
+  const par = parAll.filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof messages.send>>> => r.status === "fulfilled").map((r) => r.value);
   ok("review m2: 8 parallel sends with one key → one row, the other 7 answer it as repeated (the advisory lock)",
-    new Set(par.map((r) => r.outboxId)).size === 1 && par.filter((r) => r.repeated).length === 7 && (await db.msgOutbox.count({ where: { idempotencyKey: keyC } })) === 1, par);
+    par.length === 8 && new Set(par.map((r) => r.outboxId)).size === 1 && par.filter((r) => r.repeated).length === 7 && (await db.msgOutbox.count({ where: { idempotencyKey: keyC } })) === 1, par);
   const keyR = uuid(), rr = await Promise.allSettled([0, 1].map(() => db.$transaction((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: box("rr"), content: words, idempotencyKey: keyR }), { isolationLevel: "RepeatableRead" })));
   const retry = await db.$transaction((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: box("rr"), content: words, idempotencyKey: keyR }), { isolationLevel: "RepeatableRead" });
   const won = rr.find((r) => r.status === "fulfilled") as PromiseFulfilledResult<{ outboxId: string }> | undefined, lost = rr.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
@@ -192,6 +193,23 @@ try {
   ok("review m2: 5 workers racing for a trial firm's last place of the day → 1 sent, 4 held, the counter exactly 50 (the counter lock)",
     raced.filter((r) => r === "sent").length === 1 && raced.filter((r) => r === "held").length === 4 && sql(`select sent from msg_send_counter where firm_id='${firmB}' and day='${day}'`) === "50", raced);
   sql(`update platform_firm set status = 'ACTIVE' where id = '${firmB}'`);
+
+  // ------------------------------------------------------------------------------------------- re-review M2, m-a
+  sql(`update platform_firm set status = 'TRIAL' where id = '${firmB}'`);
+  sql(`insert into msg_outbox (id, firm_id, channel, address, rendered_hash, class, state, state_reason, idempotency_key, created_at, updated_at)
+    select gen_random_uuid(), '${firmB}', 'EMAIL', 'heldb' || g || '@example.com', repeat('0', 64), 'TRANSACTIONAL', 'QUEUED', '${HELD_DAILY_LIMIT}', 'heldb-' || g, now() - interval '2 days', now() from generate_series(1, 505) g`);
+  const xh = box("held"), qh = await tx((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: xh, content: words, idempotencyKey: uuid() }));
+  sql(`update msg_outbox set state_reason = '${HELD_DAILY_LIMIT}', created_at = now() - interval '1 day' where id = '${qh.outboxId}'`);
+  await clock.advance(61_000);
+  ok("re-review M2 fail→pass: 505 older rows another firm's cap holds never hide a held row of a firm with room: the next sweep sends it",
+    (await db.msgOutbox.findUniqueOrThrow({ where: { id: qh.outboxId } })).state === "SENT");
+  sql(`update platform_firm set status = 'ACTIVE' where id = '${firmB}'`);
+  const xk = box("key"), qk = await tx((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: xk, content: words, idempotencyKey: uuid() }));
+  await messages.dispatch(firmB, [qk.outboxId]); await jobs.runDue();
+  const afterWrong = (await db.msgOutbox.findUniqueOrThrow({ where: { id: qk.outboxId } })).state;
+  await messages.dispatch(firmA, [qk.outboxId]); await jobs.runDue();
+  ok("re-review m-a fail→pass: a dispatch naming the wrong firm sends nothing and never uses up the right firm's job key (the right dispatch sends at once)",
+    afterWrong === "QUEUED" && (await db.msgOutbox.findUniqueOrThrow({ where: { id: qk.outboxId } })).state === "SENT");
 
   // ------------------------------------------------------------------------------------------- PF-0c contract
   await runContract(messagePortContract, "Messages", () => ({

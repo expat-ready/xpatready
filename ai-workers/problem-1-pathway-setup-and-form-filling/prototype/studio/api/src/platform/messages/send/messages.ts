@@ -24,6 +24,8 @@ type Tx = Prisma.TransactionClient;
 export const SEND_QUEUE = "msg.send", SWEEP_QUEUE = "msg.outbox_sweep", CAP_ALERT_QUEUE = "msg.cap_alert";
 /** A QUEUED row older than this with no send is picked up by the sweep (a crash between commit and dispatch). */
 export const SWEEP_AFTER_MS = 2 * 60_000;
+/** Sample: per firm and kind (lost, held), the rows one sweep queues. */
+export const SWEEP_PER_FIRM = 50;
 
 /** A channel's sending adapter: it gets the stored message and answers the provider's id (or throws: not sent). */
 export type ChannelAdapter = { provider: string; deliver(tx: Tx, r: Rendered): Promise<{ providerId: string }> };
@@ -62,7 +64,7 @@ export class Messages implements MessagePort<Tx> {
       });
       if (!v) throw new MessageRefused(`no ${m.channel.toLowerCase()} template ${m.content.templateKey} (${m.content.language}) for this firm`);
       words = { subject: fillFields(v.subject ?? "", m.content.values), text: fillFields(v.body, m.content.values) };
-      if (!words.subject.trim() || words.subject.length > 200 || /[\u0000-\u001f\u007f]/.test(words.subject)) throw new MessageRefused(`template ${m.content.templateKey} gives no subject, one over 200 characters, or one with a line break`);
+      if (!words.subject.trim() || words.subject.length > 200 || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(words.subject)) throw new MessageRefused(`template ${m.content.templateKey} gives no subject, one over 200 characters, or one with a line break`);
       templateVersionId = v.id;
     } else words = m.content;
     for (const k of m.attachments) if (k.startsWith("msg/") || !(await this.d.files.exists(firmId, k))) throw new MessageRefused(`attachment ${k} is not a file of this firm`);
@@ -128,9 +130,14 @@ export class Messages implements MessagePort<Tx> {
   /** Each minute: every QUEUED row older than SWEEP_AFTER_MS gets a job keyed by the hour (a held row tries once an hour). */
   async sweep(): Promise<number> {
     const now = this.clock.now(), hour = now.toISOString().slice(0, 13);
-    // Rows a crash left (no reason) apart from rows the cap holds, so one firm's held backlog never hides another's lost row.
-    const stale = { state: "QUEUED" as const, createdAt: { lt: new Date(now.getTime() - SWEEP_AFTER_MS) } }, pick = { select: { id: true, firmId: true }, orderBy: { createdAt: "asc" as const }, take: 500 };
-    const rows = [...await this.d.db.msgOutbox.findMany({ where: { ...stale, stateReason: null }, ...pick }), ...await this.d.db.msgOutbox.findMany({ where: { ...stale, stateReason: HELD_DAILY_LIMIT }, ...pick })];
+    // Each firm gets its own share (SWEEP_PER_FIRM rows a crash left, and as many held by the cap, oldest first), so one
+    // firm's backlog never hides another firm's rows (break M1, re-review M2); a crash row goes before a held one.
+    const rows = await this.d.db.$queryRaw<{ id: string; firmId: string }[]>`
+      SELECT "id"::text AS id, "firm_id"::text AS "firmId" FROM (
+        SELECT "id", "firm_id", "created_at", "state_reason", row_number() OVER (PARTITION BY "firm_id", "state_reason" IS NULL ORDER BY "created_at", "id") AS rn
+        FROM "msg_outbox" WHERE "state" = 'QUEUED' AND "created_at" < ${new Date(now.getTime() - SWEEP_AFTER_MS)}::timestamptz
+          AND ("state_reason" IS NULL OR "state_reason" = ${HELD_DAILY_LIMIT})) x
+      WHERE rn <= ${SWEEP_PER_FIRM} ORDER BY ("state_reason" IS NOT NULL), "created_at" LIMIT 2000`;
     let n = 0;
     for (const r of rows) if ((await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
     return n;

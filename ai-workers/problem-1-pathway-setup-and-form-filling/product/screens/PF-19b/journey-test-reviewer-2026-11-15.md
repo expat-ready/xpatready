@@ -65,3 +65,13 @@ So the browser, axe, width and keyboard steps do not apply; each criterion says 
 * A real screen reader, and an intended user's unaided walk: D17/D20 stay with the founder. There is no screen.
 * CI on this head (draft, skipped).
 * SES / part 2.
+
+## Addendum: re-run on 1a016939b (diff-only, 15 Nov 2026)
+Own copy `rv2_pf19b` on :4494 (stopped afterwards), plus a scratch copy of `studio/` for the probes. US$0.
+* **Journey 5 (crash):** 510 rows another firm's cap holds plus one crash row of firm A. The next sweep sends A's row (`break M1`). **Held.**
+  * **New, under load:** a firm A row held "daily limit", with room today, behind firm B's 505 held rows. Still `QUEUED` after 3 sweeps and 3 hourly passes. **Failed under load (review M2).**
+* **Journey 9 (wrong role):** `client` and `client-b` → 403, `user-O` → 200 (suite). Client 403, bad address 400 and Bearer 403 over HTTP (QA-53). **Held.**
+* **Journey 10 (CI):** `check_forms_qa53` 40/0 on two fresh copies; one earlier run stopped with `fetch failed`, which I could not reproduce. `check_c616_privacy` 48/48. **Held.**
+* **Break it:** a CRLF subject, a 300-character filled subject, a `msg/` attachment and an unknown firm are each refused plainly. Parallel same-key sends, delivery and the cap race give no duplicates, now under test.
+
+Criteria unchanged: error recovery stays ½ (held rows starve across firms). **Score: 8.5 / 10. Pass.** The most valuable fix is review M2.
