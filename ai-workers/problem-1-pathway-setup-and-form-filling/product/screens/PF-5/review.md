@@ -146,4 +146,14 @@ The head merges `origin/main` (`0eb90eff1`, with PF-21w/PF-21v) into `58ecda033`
 
 Re-run at `8f6508d1b`: `check_pf5_signup_billing.ts` **53 passed, 0 failed** (Prisma client regenerated); `module-cards.py pr` on the PR's changed files with the `Card unchanged:` body line for api-features: **PASS** (2 modules touched, 14 cards). I did not re-run case_feed or qa53; the builder reports 39/39 and 42/42. The Minors left open from earlier rounds are unchanged and do not block.
 
-Verdict: Approve 8f6508d1bbe5bdeeb5713616bd670a396f7589e2
+Round 8 outcome: approve 8f6508d1b (superseded by Round 9 below).
+
+## Round 9 — the merge plus the re-stamp references, head `0fff0d3d05dfb56a5582b0cb6e2462a321caf246` (15 Nov 2026)
+`3f3faf9ee` merges `origin/main` (`e675369f7`) into `df908ece3` (my Round 8 record). `0fff0d3d0` then commits the two re-stamp references the merge had left out. `3f3faf9ee` on its own was not consistent: the PF-5 test's `NEW` still named the old folder. The new head fixes that, and I reviewed the two commits together.
+* **`tests/check_fo7a_money_schema.ts`:** `git diff 3f3faf9ee^2 0fff0d3d0` is empty for it. The PR no longer changes this file, and main's version is taken as is. Main's version (CS-C1a, l. 598-601) leaves out functions created by any later migration. Its regex matches PF-5's `CREATE FUNCTION platform_terms_insert_only()` / `platform_signup_pending_rules()`, so PF-5's functions stay out of FO-7a's count of 21 `money_` functions without any PF-5 edit. Round 5's `ownFns` edit is dropped, which is right because main now fixes the same thing.
+* **P-600 re-stamp:** `20261115130000_pf5_signup_terms` → `20261115180000_pf5_signup_terms`. The SQL is byte-for-byte the same as at Round 8 (`git diff` of the two blobs is empty), and only one PF-5 folder exists at the head. The new stamp is later than main's newest (`20261115170000_fo3sa_booking_overlap_confirmed`; also new: `20261115160000_csc1a_case_decision`) and unique. Neither new main migration touches PF-5's tables, and their functions use their own prefixes (`case_decision_*`). The references are updated at `0fff0d3d0` (the `platform.prisma` comment, the PF-5 test's `NEW`).
+* **Head vs main:** `git diff --stat` lists 17 files: PF-5's code, schema, migration, its test, `check_forms_qa53.ts`, the card and the PF-5 records. `check_fo7a_money_schema.ts` is no longer among them. Main is an ancestor of the head. For each file, what the branch adds on top of main is identical to Round 8 once the stamp is normalised, except `review.md` (my records).
+
+Re-run at `0fff0d3d0` (Prisma client regenerated): `check_pf5_signup_billing.ts` **53 passed, 0 failed**, including its check that the stamp is later than every migration before it and unique. `check_fo7a_money_schema.ts` **123 passed, 0 failed**, run with PF-5's later migration present. I did not run `check_forms_qa53.ts` (CI runs it); its PF-5 lines are unchanged since Round 7 and passed 42/42 for the builder. The Minors left open from earlier rounds are unchanged and do not block.
+
+Verdict: Approve 0fff0d3d05dfb56a5582b0cb6e2462a321caf246
