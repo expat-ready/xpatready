@@ -15,10 +15,10 @@
 | Status | Rows |
 |---|---|
 | qa Works\* | 6 |
-| Merged | 8 |
+| Merged | 5 (74, 76 and 77 moved back to Shaped: each gained a new part, CS-DL1, CS-NT1, CS-C1) |
 | In PR (the whole row) | 0 (6 rows have a part in PR: 5, 6, 27, 29, 37, 41, through #1741, #1742, #1744) |
-| Shaped | 68 |
-| Not shaped | 19 (9 wait on rows held for consolidation: 34, 64, 66, 67, 68, 69, 75, 79, 102; 9 on the release holder's drafted rows, for the tech lead's approval: 8, 70, 87, 88, 97, 98, 105, 106, 107; 1 on the case side's CS-V1: 10) |
+| Shaped | 81 |
+| Not shaped | 9 (all wait on the release holder's drafted rows, for the tech lead's approval: 8, 87, 88, 97 and 105 (AUD-), 98 (CS-98*), 106 and 107 (AS-), 70 (L-doc rewrite or S3's CS-D5c/CS-D5)) |
 
 Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, messages, automation, portal login, complaints), **Front office** (leads, booking, retainers, signing, compliance checks), **Client money**, **Case side** (the release Lead's: cases, documents, forms, the configurator), **Audit**.
 
@@ -27,13 +27,13 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 |---|---|---|---|---|
 | 1 | Hosting, data, backups and logs in Canada | Platform (running it) | PF-7 merged; PF-8a, PF-8b, PF-8c; PF-23c | Shaped (deploy waits on the founder's AWS account) |
 | 2 | Database | Platform | PF-3 (#1728) | Merged |
-| 3 | Walls between firms | Platform + case side | PF-12; case-side tables: **none yet** | Shaped (PF/FO only); **gap: case-side walls** |
+| 3 | Walls between firms | Platform + case side | PF-12; case-side tables: CS-W1, CS-W2, CS-W3, CS-W4 | Shaped |
 | 4 | Each query runs inside its firm | Platform | PF-12 | Shaped |
 | 5 | Staff sign-in with two-step, passkeys, lock-out on leaving | Platform | PF-4 (In PR #1744), PF-4b, PF-4s | Shaped |
 | 6 | Permissions: deny by default, own versus all, money and licence apart | Platform | PF-4 (In PR #1744), PF-6 | Shaped |
 | 8 | Audit trail nobody can edit | Audit | AUD-1a, AUD-1b, AUD-1m drafted (S1), for the tech lead's approval | Not shaped |
 | 9 | Background jobs, schedules, reminders | Platform | PF-14 | Shaped |
-| 10 | Checking every input | All | PF-28 (PF/FO); case side: CS-V1 drafted, not in BACKLOG | Not shaped (**gap: case-side part**) |
+| 10 | Checking every input | All | PF-28 (PF/FO); CS-V1 (case side) | Shaped |
 | 11 | Server framework | Platform | PF-7 | Merged |
 | 12 | Screen framework, one UI kit | Platform | PF-1 | Merged |
 | 13 | Logs, metrics, error reports, alerts | Platform (running it) | PF-23 merged; PF-23r, PF-23m, PF-23c, PF-23w | Shaped |
@@ -68,7 +68,7 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | 31 | Stage kinds; won by signature; totals per currency | Front office | FO-2, FO-4 | Shaped |
 | 32 | Assign, take, reassign; Unassigned; assignment rules | Front office | FO-4, FO-10 | Shaped |
 | 33 | Phone numbers | Front office | FO-2, FO-9a | Shaped |
-| 34 | One person's data as an export, logged | Front office (privacy) | PF-26, PF-26s; the case side's exporter CS-26e held for consolidation | Not shaped (**gap: case-side part**) |
+| 34 | One person's data as an export, logged | Front office (privacy) | PF-26, PF-26s; CS-X1 (the case side's section) | Shaped |
 | 35 | Contacts import from a spreadsheet | Platform | PF-10a, PF-10b, PF-10t, PF-10s | Shaped |
 | 36 | Simple automation, message many with consent | Platform + front office | PF-20, PF-20s, FO-10, FO-12b, FO-12c, FO-12s | Shaped |
 | 95 | Custom fields and saved views | Platform | PF-22a, PF-22v, PF-22s | Shaped |
@@ -129,25 +129,25 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
 | 63 | Per-person checklist with status words; reject with reason | Case side | C6.4 Works | qa Works\* |
-| 64 | Upload that resumes after a dropped connection | Not named | PF-F2 held for consolidation | Not shaped |
+| 64 | Upload that resumes after a dropped connection | Not named | PF-F2 (tus rail); CS-D1 (case doors) | Shaped |
 | 65 | Private storage in Canada: firm-prefixed keys, versions, encryption | Not named | PF-F1, PF-F1c | Shaped (the cloud part waits on the founder's AWS account) |
-| 66 | Virus scan; nothing served while scanning | Not named | PF-F3 held for consolidation | Not shaped |
-| 67 | File-type check | Not named | PF-F4 held for consolidation | Not shaped |
-| 68 | Preview for staff review | Not named | CS-D2 held for consolidation | Not shaped |
-| 69 | Read log, fingerprint, keep-period reminder | Not named | CS-D3, CS-D4 held for consolidation | Not shaped |
-| 70 | Expiry, translation and notarisation flags | Not named | CS-D5c, CS-D5 drafted (S3), for the tech lead's approval | Not shaped |
+| 66 | Virus scan; nothing served while scanning | Not named | PF-F3 | Shaped |
+| 67 | File-type check | Not named | PF-F4; CS-D1 (case side's damaged-PDF check) | Shaped |
+| 68 | Preview for staff review | Not named | CS-D5 (draft 2's preview) | Shaped |
+| 69 | Read log, fingerprint, keep-period reminder | Not named | CS-D6 (draft 2's read log, fingerprint, keep period) | Shaped |
+| 70 | Expiry, translation and notarisation flags | Not named | L-doc (later row; draft 2's rewrite not copied); S3's CS-D5c and flags row (its id CS-D5 clashes with draft 2's preview row), for the tech lead | Not shaped |
 
 ### J. Case work
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
 | 72 | Case with applicants, representative, pinned release | Case side | FO-8 (hand-over from a won prospect); C6.1 Works | Shaped |
 | 73 | Stages moved by events | Case side | C6.17 Works | qa Works\* |
-| 74 | Government deadlines that remind; working days with holidays | Case side | built (map); no qa capability row | Merged |
-| 75 | Tasks: My Tasks, Unassigned, handover | Case side | PF-29a to PF-29f (S2's TK-1 to TK-6) held for consolidation | Not shaped |
-| 76 | Notes; one timeline per record | Case side | built (map); no qa capability row | Merged |
-| 77 | Submission number and UCI; decision, close, reopen | Case side | C8.2 Partial; BK-17, B5-filings | Merged |
-| 79 | Firm dashboards and reports | Not named | PF-R1, PF-R2fo, PF-R2cm, PF-R2cs, PF-R3 held for consolidation | Not shaped |
-| 102 | Find a person or case by name, email or file number | Case side | PF-30a, PF-30s, CS-30c (S2's FD-1 to FD-3) held for consolidation | Not shaped |
+| 74 | Government deadlines that remind; working days with holidays | Case side | built (map); no qa capability row; CS-DL1 (reminders, working days; QA-471) | Shaped (a new part, CS-DL1) |
+| 75 | Tasks: My Tasks, Unassigned, handover | Case side | PF-29a to PF-29f; CS-T1 (case hosts, Unassigned cases) | Shaped |
+| 76 | Notes; one timeline per record | Case side | built (map); no qa capability row; FO-2 (front-office notes); CS-NT1 (case notes and timeline; QA-472) | Shaped (a new part, CS-NT1) |
+| 77 | Submission number and UCI; decision, close, reopen | Case side | C8.2 Partial; BK-17, B5-filings; CS-C1 (decision, close, reopen; QA-474) | Shaped (a new part, CS-C1) |
+| 79 | Firm dashboards and reports | Not named | PF-R1, PF-R2fo, PF-R2cm, PF-R3; CS-R1 (case metrics) | Shaped |
+| 102 | Find a person or case by name, email or file number | Case side | PF-30a, PF-30s; CS-S1 (the case finder) | Shaped |
 
 ### K. Government forms, the pathway set-up, AI on top
 | Map | Capability | Module | BACKLOG rows | Status |
