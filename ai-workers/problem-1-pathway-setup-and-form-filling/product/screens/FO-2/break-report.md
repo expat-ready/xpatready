@@ -89,10 +89,11 @@ Breaker run 15 Nov 2026, from 08:50 UTC. Isolated copy `brk_fo2` on :4434 (`PLAT
   - A stamp with its time moved back 10 s, and `123.abc`, both got 400 RELOAD.
   - The rule given to this breaker says a forged or altered stamp gets the thank-you answer and nothing stored. The M1 fix necessarily treats "not our key" like "forged".
   - What a bot learns is only that tampering is detected; a fresh stamp is free from GET. This is a trade-off for the reviewer to record (`challenge.md`), not a defect to fix here.
-- **Still held at 8e5cb929d:**
-  - a real post 201;
-  - honeypot and too-fast posts with valid fields get 201 and nothing is stored;
-  - `Cache-Control: no-store` on GET;
-  - 12 parallel posts of one `submissionId` made one lead, flagged as a possible match (counts +1 each);
-  - no bearer on Take gets 401; another firm's lead gets 404;
-  - O's All view lists only own and unassigned leads (the visibility filter is now in the query).
+- **Still held at 8e5cb929d:** a real post 201; honeypot and too-fast posts with valid fields get 201 and nothing is stored; `Cache-Control: no-store` on GET; 12 parallel posts of one `submissionId` made one lead, flagged as a possible match (counts +1 each); no bearer on Take gets 401; another firm's lead gets 404; O's All view lists only own and unassigned leads (the visibility filter is now in the query).
+
+## Re-check at f15bba1dd (15 Nov, clean worktree at f15bba1dd9e21705b245d9a9f0e1e4a841e9059f, fresh copy `brk_fo2` on :4434, stopped after)
+- **n1: fixed.** Everyone-sees-all off. 40 rounds of O and T taking one unassigned lead at once: always one 200 and one `409 "<owner> already has this lead."` (25/15), with 40 audit lines and 40 events. O and T probing R's lead L-00002 by id get 404, the same as their read and as another firm's lead (S: 404) or an unknown id. R taking his own lead again gets 409 naming himself.
+- **Wording swap: fixed.** I drew the form showing wording W1, switched `consent_wording_version_id` to W2, then posted with consent ticked: `400 RELOAD`, no lead and no consent row (0/0 before and after). Switching W2 to W1 gave the same 400. A draw-and-post with no switch records consent once, with the wording shown (W2 for the form drawn under W2). Setting the wording to NULL on an enabled form is refused by the database (`fo_web_form_consent_check`), so that path cannot happen.
+- **Long attribution: fixed.** A `landingPage` of 3,026 characters and a `utmSource` of 500 got 201 and the lead was kept; they were stored cut to 2,000 and 200. A control mark beyond the cut is dropped with the cut (201).
+- **New n3 (Minor): a captured attribution value with an invisible mark inside the kept length refuses the whole enquiry.** `attribution.utmSource:"goo​gle"` (from the page's URL, never typed by the visitor) gave `422 "utmSource: one line, no control characters."`, and no lead was stored. The visitor cannot see or fix it. This goes against the commit's own "captured, not typed: cut to length, never refused". Cause: `public.ts` `attributionOf` runs captured values through `text()`. Should have happened: drop or strip the bad value and keep the lead.
+- **New n4 (Minor): the cut can split an emoji.** A `landingPage` whose 2,000th UTF-16 unit is the first half of an emoji is stored ending in U+FFFD "�" (`x.slice(0, max)` counts UTF-16 units). The lead is kept (201). Should have happened: cut on a whole character (for example `Array.from(x).slice(…)`, or step back one unit when the cut ends on a high surrogate).
