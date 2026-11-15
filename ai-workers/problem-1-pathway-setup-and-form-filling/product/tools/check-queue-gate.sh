@@ -67,7 +67,7 @@ ok "label refused: the Approve names an older commit (with a comment, as the App
 cmt 7 o OWNER "Reviewer: Approve ${HEAD1:0:9}"; run label 7
 ok "label refused: a short SHA is not the head (the full 40 characters, B194)" "$(! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
 cmt 7 someone NONE "Reviewer: Approve $HEAD1"; run label 7
-ok "label refused: an Approve from an account that is not the owner's nor a known reviewer" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'no "Reviewer: Approve' <<< "$out" && echo 1)" "$out / $log"
+ok "label refused: an Approve from an account that is not the owner's nor a known reviewer" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'is not an Approve' <<< "$out" && echo 1)" "$out / $log"
 cmt 7 helper COLLABORATOR "Reviewer: Approve $HEAD1"; run label 7
 ok "label refused: a collaborator not in REVIEWERS" "$(! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
 REV="other helper" run label 7
@@ -75,11 +75,17 @@ ok "label: a known reviewer (REVIEWERS) with write access is allowed" "$(grep -q
 cmt 7 helper NONE "Reviewer: Approve $HEAD1"; REV=helper run label 7
 ok "label refused: a known reviewer's login without write access (author_association NONE)" "$(! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
 cmt 7 o OWNER "Reviewer: Approve $HEAD1"
-for f in ".github/workflows/x.yml" ".mergify.yml" "$S/prisma/migrations/3_c/migration.sql" "$S/web/src/runtime/fees.tsx" "$S/api/src/rounds.ts" "$S/prisma/schema/client-money.prisma"; do
+for f in ".github/workflows/x.yml" ".mergify.yml" "ai-workers/x/product/tools/queue-gate.sh" "ai-workers/x/product/tools/lead-read-paths.txt" ".githooks/pre-push" ".claude/skills/next/SKILL.md" "$S/prisma/schema/cases.prisma" "$S/prisma/migrations/3_c/migration.sql" "$S/web/src/runtime/fees.tsx" "$S/api/src/rounds.ts" "$S/prisma/schema/client-money.prisma"; do
   files 7 "$S/api/src/form.ts" "$f"; run label 7
   ok "label refused: $f keeps the Lead's read (P-423)" "$(! grep -q '^LABEL' <<< "$log" && grep -q "Lead's read" <<< "$out" && echo 1)" "$out / $log"
 done
 files 7 "$S/api/src/form.ts"
+cmt 7 o OWNER "> Reviewer: Approve $HEAD1"; run label 7
+ok "label refused: a quoted Approve line (> ...) is not the reviewer's own" "$(! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
+jq -n --arg h $HEAD1 '[{user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h)},
+  {user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Changes needed " + $h + " (round 2: M1)")}]' > "$T/fx/comments-7.json"; run label 7
+ok "label refused: a later \"Reviewer: Changes needed\" on the same head wins over the Approve (review m3)" "$(! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
+cmt 7 o OWNER "Reviewer: Approve $HEAD1"
 cirun $HEAD1 in_progress "" 2026-11-15T13:00:00Z; run label 7
 ok "label refused: ci still running on the head" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'ci on 111111111 is pending' <<< "$out" && echo 1)" "$out / $log"
 cirun $HEAD1 completed failure 2026-11-15T13:00:00Z; run label 7
@@ -104,7 +110,7 @@ ok "fresh: both add migrations (#502 after this ci started): failure and a re-ru
 files 8 "$S/api/src/form.ts"; cirun $HEAD1 completed success 2026-11-15T11:30:00Z; run fresh 8
 ok "fresh: a ci started after the merge touching its file: success" "$(grep -qx "STATUS $HEAD1 queue-fresh success" <<< "$log" && echo 1)" "$out / $log"
 cirun $HEAD1 completed success 2026-11-15T10:00:00Z; prj 8 $HEAD1; run fresh 8
-ok "fresh: stale but not labelled: failure, no re-run (a label re-runs it later)" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && ! grep -q RERUN <<< "$log" && echo 1)" "$out / $log"
+ok "fresh: not labelled: pending, never a success a later label could meet (review M2), no re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh pending" <<< "$log" && ! grep -q RERUN <<< "$log" && echo 1)" "$out / $log"
 prj 8 $HEAD1 false "review: approved,queued"; run fresh 8
 ok "fresh: a queued PR stays success (its batch is built on today's main), no re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh success" <<< "$log" && ! grep -q RERUN <<< "$log" && echo 1)" "$out / $log"
 prj 8 $HEAD1 false "review: approved"; cirun $HEAD1 completed success 2026-11-15T10:00:00Z 3; run fresh 8
@@ -114,8 +120,29 @@ ok "fresh: ci running: pending, never a cancel or a second run" "$(grep -qx "STA
 files 8 "ai-workers/x/product/STATE.md"; run fresh 8
 ok "fresh: no app code: success" "$(grep -qx "STATUS $HEAD1 queue-fresh success" <<< "$log" && echo 1)" "$out / $log"
 
+# --- review M2: at labelling, the verdict is posted before the label (Mergify reacts to the label within seconds)
+prj 9 $HEAD1; files 9 "$S/api/src/form.ts"; cmt 9 o OWNER "Reviewer: Approve $HEAD1"; cirun $HEAD1 completed success 2026-11-15T10:00:00Z; run label 9
+ok "label on a stale head: queue-fresh failure and a re-run come before the label (review M2)" "$(grep -n . <<< "$log" | awk -F: '/STATUS/ && /failure/ {s=$1} /LABEL 9/ {l=$1} END {exit !(s && l && s < l)}' && grep -qx 'RERUN 77' <<< "$log" && echo 1)" "$out / $log"
+cirun $HEAD1 completed success 2026-11-15T13:00:00Z; run label 9
+ok "label on a fresh head: queue-fresh success before the label" "$(grep -n . <<< "$log" | awk -F: '/STATUS/ && /success/ {s=$1} /LABEL 9/ {l=$1} END {exit !(s && l && s < l)}' && echo 1)" "$out / $log"
+# --- events, as GitHub sends them
+printf '%s' "{\"issue\": {\"number\": 9, \"pull_request\": {}}, \"comment\": {\"body\": \"Reviewer: Approve $HEAD1\"}}" > "$T/fx/ev.json"
+ev() { : > "$T/fx/log"; out=$(cd "$T/git" && PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x REPO=o/r API=https://api.test MAIN_REF=main GITHUB_EVENT_NAME=$1 GITHUB_EVENT_PATH="$T/fx/ev.json" bash "$G" event 2>&1); r=$?; log=$(cat "$T/fx/log"); }
+ev issue_comment
+ok "event issue_comment: an Approve comment labels the PR and sets queue-fresh once (no second verdict)" "$([ $r = 0 ] && grep -qx 'LABEL 9' <<< "$log" && [ "$(grep -c '^STATUS' <<< "$log")" = 1 ] && echo 1)" "exit $r: $out / $log"
+printf '{"workflow_run": {"pull_requests": [{"number": 9}]}}' > "$T/fx/ev.json"; ev workflow_run
+ok "event workflow_run: the PR of a finished ci is labelled and judged" "$([ $r = 0 ] && grep -qx 'LABEL 9' <<< "$log" && grep -q '^STATUS' <<< "$log" && echo 1)" "exit $r: $out / $log"
+printf '{"workflow_run": {"pull_requests": [{"number": 404}]}}' > "$T/fx/ev.json"; ev workflow_run
+ok "event: a PR that cannot be read makes the run red (exit 2, review m6)" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
+# --- review m1: a long file list is read whole (pipefail and SIGPIPE once made it "no app code")
+prj 8 $HEAD1 false "review: approved"; cirun $HEAD1 completed success 2026-11-15T10:00:00Z
+{ seq 1 2500 | sed "s|^|$S/api/src/f|; s|$|.ts|"; echo "$S/api/src/form.ts"; } | jq -R '{filename: .}' | jq -s . > "$T/fx/files-8.json"; run fresh 8
+ok "fresh: 2,501 files with app code are app code (review m1): stale, failure" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && echo 1)" "$out / $log"
+files 8 "$S/api/src/form.ts"; rm -f "$T/fx/run-77.json"; run fresh 8
+ok "fresh: the ci run cannot be read: pending, no re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh pending" <<< "$log" && ! grep -q RERUN <<< "$log" && echo 1)" "$out / $log"
+
 # --- the wiring
 R=$(git -C "$TOOLS" rev-parse --show-toplevel); M="$R/.mergify.yml"; W="$R/.github/workflows/queue-gate.yml"
 ok ".mergify.yml: the product queue needs queue-fresh for a PR touching prototype/" "$(awk '/- name: product/,/- name: records/' "$M" | grep -q 'check-success = queue-fresh' && awk '/- name: product/,/- name: records/' "$M" | grep -qF -- '-files ~= /prototype/' && echo 1)" "no queue-fresh condition in the product queue"
-ok "queue-gate.yml runs main's copy of queue-gate.sh on comments, ci runs, labels and pushes to main" "$([ -f "$W" ] && grep -q 'ref: main' "$W" && grep -q 'queue-gate.sh event' "$W" && grep -q 'issue_comment' "$W" && grep -q 'workflow_run' "$W" && ! grep -qE 'refs/pull|head\.sha' "$W" && echo 1)" "$W"
+ok "queue-gate.yml runs main's copy of queue-gate.sh on comments, ci runs, labels and pushes to main" "$([ -f "$W" ] && grep -q 'ref: main' "$W" && grep -q 'queue-gate.sh event' "$W" && grep -q 'issue_comment' "$W" && grep -q 'workflow_run' "$W" && ! grep -qE 'refs/pull|head\.sha' "$W" && grep -q '"OWNER","MEMBER","COLLABORATOR"' "$W" && echo 1)" "$W (an outsider's comment must start no write-token run, review m2)"
 finish

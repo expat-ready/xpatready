@@ -20,21 +20,25 @@ on:
     types: [labeled]
   push:
     branches: [main]
+  schedule:
+    - cron: "7,22,37,52 * * * *"   # labelled PRs judged again: a refused re-run, a lost event (review m6)
 permissions: {}
 jobs:
   gate:
     # A comment only when it is a reviewer's Approve on a PR; a label only when it is `review: approved`; ci runs of PRs.
     if: >-
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, 'Approve')) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, 'Approve') &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request') ||
       (github.event_name == 'pull_request_target' && github.event.label.name == 'review: approved') ||
-      github.event_name == 'push'
+      github.event_name == 'push' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # issues/pull-requests: the label and comments; statuses: queue-fresh; actions: re-run a stale ci run.
     permissions: { contents: read, issues: write, pull-requests: write, statuses: write, actions: write, checks: read }
     concurrency:
-      group: queue-gate-${{ github.event.issue.number || github.event.pull_request.number || github.event.workflow_run.head_sha || 'main' }}
+      # One group per PR (review m5); push and schedule share "main".
+      group: queue-gate-${{ github.event.issue.number || github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || 'main' }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4

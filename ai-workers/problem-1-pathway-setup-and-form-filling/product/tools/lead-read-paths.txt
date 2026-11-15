@@ -3,9 +3,16 @@
 # Workflows and the merge queue (P-214, P-423)
 ^\.github/
 ^\.mergify\.yml$
-# Migrations and the schema of client money
+# The guards themselves: the scripts main's workflows run (this list, the queue gate, label guard and sweep, the write-
+# token audit, the push guard, CI's tools), git hooks and the agents' skills and settings (review M1: a PR loosening
+# them must not be labelled by them)
+/product/tools/
+/product/screens/B119/
+^\.githooks/
+^\.claude/
+# The schema and its migrations (P-423)
 /prisma/migrations/
-/prisma/schema/client-money
+/prisma/schema/
 # Money paths: fees, prices, client money, invoices, paid model runs and their ledger (P-277, P-295)
 money
 (^|[^a-z])fees?([^a-z]|$)

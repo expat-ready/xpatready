@@ -49,14 +49,18 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 13 stuck|product/tools/outside-deps-watch.py|s/> timedelta(hours=48)/> timedelta(hours=9999)/|check-outside-deps-watch.sh
 13 fallback|product/tools/outside-deps-watch.py|s/if not fb.strip() or/if False and/|check-outside-deps-watch.sh
 13 decision|product/tools/outside-deps-watch.py|s/if not done and dd and/if False and/|check-outside-deps-watch.sh
-14 approve|product/tools/queue-gate.sh|s/grep -qxF "\$head"/true/|check-queue-gate.sh
+14 approve|product/tools/queue-gate.sh|s/grep -F "\$head"/cat/;s/+\$head\\b"/+"/|check-queue-gate.sh
 14 who|product/tools/queue-gate.sh|s/select((.user.login as \$l . \$who . index(\$l)) and/select(true and/|check-queue-gate.sh
 14 paths|product/tools/queue-gate.sh|s/^  \[ -z "\$bad" \]/  true/|check-queue-gate.sh
 14 ci|product/tools/queue-gate.sh|s/^  ci; \[ "\$ci_state" = success \]/  ci; true/|check-queue-gate.sh
 14 fresh|product/tools/queue-gate.sh|s/^  \[ -n "\$hit" \]/  false/|check-queue-gate.sh
 14 queued|product/tools/queue-gate.sh|s/^  has queued .. /  false \&\& /|check-queue-gate.sh
 14 sweep|product/tools/label-sweep.sh|s/^  if \[ "\$e" = 0 \] .. PR=/  if false \&\& PR=/|check-label-sweep.sh
-14 queue|../../.mergify.yml|/check-success = queue-fresh/d|check-queue-gate.sh'
+14 queue|../../.mergify.yml|/check-success = queue-fresh/d|check-queue-gate.sh
+14 pending|product/tools/queue-gate.sh|s/^  has "\$LABEL" .. \[ "\${LABELLING:-}" = 1 \]/  true/|check-queue-gate.sh
+14 order|product/tools/queue-gate.sh|s/^  LABELLING=1 fresh .. return 2; did_fresh=1/  did_fresh=0/|check-queue-gate.sh
+14 time|product/tools/queue-gate.sh|s/\[\[ "\$ts" > "\$run_started" \]\] .. continue/continue/|check-queue-gate.sh
+14 comment|../../.github/workflows/queue-gate.yml|/comment.author_association/d|check-queue-gate.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do

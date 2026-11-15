@@ -86,7 +86,7 @@ app files, or both PRs add migrations. 8% of queue entries (26 of 342) were like
 against 17% of the rest. When both PRs add migrations, 6 of 10 failed (60%).
 
 **The fix.** `product/tools/queue-gate.sh fresh` (run by `.github/workflows/queue-gate.yml`) sets the status
-`queue-fresh`. The product queue needs that status for app code (`.mergify.yml`). For a labelled PR in that state,
+`queue-fresh`. The product queue needs that status for app code (`.mergify.yml`). An unlabelled PR is `pending`: the verdict is made when the label goes on, before it goes on. For a labelled PR in that state,
 the gate re-runs its ci run on today's main (a re-run, never a cancel, P-371). The break then shows in a PR check
 (about 25 min, the PR's own suites) instead of a batch (46 min, 8 parts, plus up to 2 batches stacked behind it). In
 the last 24 it would have held #1755 and #1761 (batches #1765, #1766, #1767: 1,224 min). It costs about 26 extra
@@ -94,7 +94,7 @@ PR re-runs a week. It does not catch cause 3 (no shared file) or cause 2.
 
 **Step 3, the label.** The same workflow puts `review: approved` on by itself. That needs a comment "Reviewer: Approve
 <head SHA>" from the owner's account or a login in the repository variable `REVIEWERS`, green ci on that head, and
-no path in `product/tools/lead-read-paths.txt` (`.github/`, `.mergify.yml`, migrations, money; P-423). This targets
+no path in `product/tools/lead-read-paths.txt` (`.github/`, `.mergify.yml`, the schema and migrations, money, and the guards themselves: `product/tools/`, `.githooks/`, `.claude/`; P-423). A later "Reviewer: Changes needed" on the same head wins over the Approve. This targets
 the 39% of approved-to-merged time spent between queue entries, the part where a fixed PR waits for its lane to label it again.
 
 **Measure on 23 Nov** (same tool): failed batches with a migration member (6 of 24 now). Count of `queue-fresh`
