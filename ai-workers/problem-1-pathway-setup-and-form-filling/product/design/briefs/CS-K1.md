@@ -5,7 +5,7 @@ Drafted 16 Nov 01:5x IST by the case-side shaping lane from BACKLOG row CS-K1, c
 **Points the release Lead confirms in the approval:**
 * **Corporate means the PATHWAY node's client type**, as Lead 60 ruled on #1818 (ruling 4): `Combination.clientType` does not exist. A case whose pathway is `CORPORATE` gets a company client; every other case a person client (contract §5, P-588 (2): the client's kind never decides the count, SA-3-4).
 * **`fo_person_id` / `fo_company_id` stay empty** for every client this row makes: the front office's link is FO-8's (`prospect.won`). Columns are uuids with **no foreign key** to `front-office-sales.prisma` (contract §1 rule 4: case-side files never import front-office code; a cross-module foreign key is FO-8's call with Lead B).
-* **`client.created`** is written by FO-8 on `prospect.won`, not here; a directly opened case's new client writes an audit line only. **Question for the tech lead:** should a direct opening also write `client.created` (contract §4 lists it with a `prospect_id`, which a direct opening lacks)? Recommended: no, until FO-8.
+* **`client.created`** is written by FO-8 on `prospect.won`, not here; a directly opened case's new client writes an audit line only. **Ruled (Lead 61, comment 6900282370 on #1867):** a direct "Open a case" writes **no** `client.created` until FO-8; contract §4's payload carries a `prospect_id`, which a direct opening lacks.
 
 ---
 You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime CS-K1` and take **one row, CS-K1**, end to end on a fresh branch from `origin/main`, one PR.
@@ -37,7 +37,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime C
 
 **Parallel safety:** `cases.prisma` is a baton (P-438b, P-600): **after CS-C1a**, **before CS-T1** (Unassigned cases), CS-K2 and CS-K3 (they build on `case_client`), and before CS-W1/CS-W2 (the walls add `firm_id` to child tables; `case_client` is born with it). `createCase` in `runtime.ts`: **after CS-C1b**; CS-98b and FO-8 call it later with a `clientId`. `case-feed.ts`: one line, as CS-NT1 and CS-C1a add theirs. Loader files are shared with the demo lane: one line each, named in the PR. `core.ts`, `ports/` and `ports/events.ts` untouched.
 
-**Contract gap (for the PR body):** §4's `client.created` payload carries `prospect_id` and has no case for a direct opening (question above). §5 says "file owner" with no rule for who sets it; this row leaves it null and FO-8 sets it from the won prospect's owner.
+**Contract gap (for the PR body):** §4's `client.created` payload carries `prospect_id` and has no case for a direct opening (ruled above: none until FO-8). §5 says "file owner" with no rule for who sets it; this row leaves it null and FO-8 sets it from the won prospect's owner.
 
 **Reviewer and breaker** (schema, a backfill on every case; P-278). The breaker tries DW1 on a copy with many cases and a case whose principal has no profile, DW2 in parallel, DW5 through the API. The release holder reads the migration before the label (P-600 (5)).
 
