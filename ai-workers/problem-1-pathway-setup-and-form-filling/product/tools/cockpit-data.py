@@ -2248,7 +2248,7 @@ def main():
         red = sum(1 for c in ctx if c.get("conclusion") == "FAILURE" or c.get("state") in ("FAILURE", "ERROR"))
         running = sum(1 for c in ctx if c.get("status") in ("IN_PROGRESS", "QUEUED"))
         qs = [c for c in p["comments"]["nodes"] if "Question for the tech lead" in c["body"]]
-        ans = [c for c in p["comments"]["nodes"] if re.search(r"^## Tech lead|^\*\*Tech lead|Tech lead.s (ruling|answer)", c["body"], re.M)]
+        ans = [c for c in p["comments"]["nodes"] if re.search(r"^## Tech lead|^\*\*Tech lead|Tech lead.s (ruling|answer)|^\*\*Lead (B \([0-9]+\)|[0-9]+\b)", c["body"], re.M)]
         qopen = bool(qs) and (not ans or qs[-1]["createdAt"] > ans[-1]["createdAt"])
         design = bool(re.search(r"Design only|Design stage|Concept stage|concept for the tech lead", p.get("body") or ""))
         approved = "review: approved" in labels
