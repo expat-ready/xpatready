@@ -2,7 +2,7 @@
 
 Start only after **FO-7a, PF-12, FO-5, PF-4, PF-4b and PF-14 have merged** (PF-12: no money route before the `money_*` walls, P-584 (10)) (FO-5 brings the retainer fee rows, `DocumentRenderPort` and `FilesPort`; PF-4b brings `MailPort`; PF-14 brings `JobPort` and the fake clock). Money lane: FO-7a → FO-7b → FO-7c ∥ FO-7t → FO-7p, with FO-7r after FO-7b and FO-7t (P-576, rev 13). No schema change. Paste into a new cloud session on the repository (default branch `main`):
 
-> **Amendments, revs 16.33–16.38 (16 Nov, Lead B; money rules agreed by the release Lead on #1878, #1879, #1883). Where they differ from the text below, these win:**
+> **Amendments, revs 16.33–16.41 (16 Nov, Lead B; money rules agreed by the release Lead on #1878, #1879, #1883). Where they differ from the text below, these win:**
 > 1. **An overpayment is never refused** (AG-6-21 r2–r3, §13; MS-D11(5); AG-6-76 r4).
 >    - With the trust answer YES, the extra goes to the case's trust balance as a `RECEIPT`.
 >    - With trust off, the recording asks "Refund · Keep as credit" and a person chooses. "Keep as credit" writes FO-7ts's credit ledger (`KEPT`).
@@ -11,9 +11,15 @@ Start only after **FO-7a, PF-12, FO-5, PF-4, PF-4b and PF-14 have merged** (PF-1
 > 2. **"Invoice payments go to"** (AG-6-69): the rule and the setting route are here.
 >    - Owner only, by a role check. Offered only when the trust answer is YES. It applies to payments recorded after the change. Audited.
 >    - It uses FO-7ts's `invoice_payments_go_to` field. Its screen is FO-7s2's.
-> 3. **`ClientMoneyPort.addGovernmentFeeLine(tx, { caseId, partyId, feeRecordId, amountMinor, currency })`:** an untaxed `GOVERNMENT_FEE` line on the open draft for the case's Bill-to party, or on a new draft.
->    - The line is linked to the fee record, and the same fee twice makes one line.
->    - With no signed retainer there is no line, and the method answers "not yet invoiced" (AG17-D79).
+> 3. **Government fees: a typed line only (rev 16.41; P-607 (7), the founder: "Typed line now").** Staff add a `GOVERNMENT_FEE` line by hand on a draft. It is never taxed and shows no tax control.
+>    - There is no `addGovernmentFeeLine` and no line made from the case's fee record. The one-click line is X-S3-6, which is not in Release 1. Rev 16.38's method is withdrawn.
+>    - **An unsigned retainer is a warning, never a block** (AG-6-42 r1–r5; MS-D13 replaces AG17-D79 and the old refusal; government-fee lines included, r4).
+>      - Drafting or issuing for a party with no signed retainer (neither signed nor signed offline; with several signers, not all signed) needs `unsignedRetainerAcknowledged: true`. Without it the answer is 409 with "<Party>'s retainer isn't signed. Invoice anyway?".
+>      - With it, the invoice goes ahead, and who and when are stored on the invoice (AG-6-42 §7: `unsigned_retainer_confirmed_by` and `unsigned_retainer_confirmed_at`, two columns FO-7ts adds, rev 16.41). They are also in the audit entry.
+>      - With no signed retainer, the lines are typed by staff; schedule rows come only from a signed retainer or amendment (r5).
+>      - The firm-service exception (r2, a Service that needs no agreement) waits for the Services model. Until then every party is treated as needing one, which only shows the warning more often (the duplicate-beats-a-miss rule).
+>      - Deposits still come only from a signed retainer (r7).
+>      - Test: a pass and a fail each.
 > 4. **Routes go under `/api/front-office/money/*`**, where the staff guard covers them. There is no `/api/client-money/` prefix.
 > 5. **`ClientMoneyPort`'s interface and its fake go in `prototype/studio/ports/`** (zod only, the shared-port rule). The adapter goes in `api/src/client-money/`.
 >    - It is a shared contract, so the release Lead reads it (P-423).
