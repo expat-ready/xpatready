@@ -36,3 +36,6 @@ Unicode and right-to-left reasons work up to 200 characters. Over 200 → 500 (J
 Fixes that would raise the score, most valuable first: (1) no 500 from the cancel reason (raises task, words, feedback, recovery); (2) the `.ics` 404 identical to the other not-founds, with no download headers (raises recovery).
 
 Not tested: a real browser or screen reader, and an intended user's own walk. D17 and D20 stay with the founder.
+
+## Re-score at 042b60cf1
+J4 and J5 now hold: the `.ics` 404 is JSON with no download header, and reasons of 500 characters, with an email, or over two lines cancel and are kept, while bad characters get a 400 (suite run, 43/0). Task completed, plain words, feedback and state, and error recovery each go to 1. **Total 9 / 10, pass.**

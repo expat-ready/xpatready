@@ -45,3 +45,20 @@ Uncommitted edits to `public.controller.ts` and `service.ts` showed up in the wo
 No screen exists, so the screen-review steps that need one are N/A: keyboard walk, 1024 px / 200 % zoom, PRODUCT §3-§4 menu words, the BIC-01..BIC-20 scorecard, and D1-D20 as screen scores. D17 and D20 were simulated only. I did not run `graph.mjs`, because it rewrites `qa/GRAPH.md` and this review may write only this file and the journey report. I did not run the rest of the suites on `main` merged into the branch (the builder's step before the label), nor the RLS/tenancy test for the new list query beyond `firmScope`. The uncommitted fix edits were not reviewed.
 
 **Verdict: Block** (Changes needed). Fix #1 (Blocker) and #2 (Major), then re-review the diff. #3-#5 are Minor.
+
+## Re-review at 042b60cf1 (diff since d53843344 only, P-277)
+Read: `git diff d53843344 042b60cf1`. The code changes are in `public.controller.ts`, `service.ts` and `check_fo3pa_public_answers.ts`; the rest are records. Runs: `check_fo3pa_public_answers` 43 passed, 0 failed · `check_fo3_booking` 133/0 · `check_fo3sr_routes` 29/0. `tsc` (api) shows no error in a changed file; the same 15 errors as before, all in unrelated tests. No explicit `any` added (the one match is the word in a comment).
+* **#1 Blocker: closed.** `cancelBooking` (service.ts:488-490) now puts the reason in `summary` ("Consultation cancelled. The booker's reason: …"). That prefix is 45 characters, plus at most 500 for the reason, so 545, under the port's 600. `detail` holds ids only. `CancelBody` (service.ts:126-130) turns line breaks into spaces, trims, then caps at 500. It refuses lone surrogates, C0/C1 control characters, bidi overrides and isolates, zero-width characters and the BOM with a 400. The suite now runs on the real `auditEvent` adapter (the one that 500'd). New cases: 500 characters, a reason with an email, two lines → 200 and kept. Broken UTF-16, a bidi override, only invisible characters → 400, booking unchanged. Each of these would fail on d53843344.
+* **#2 Major: closed.** The `.ics` headers are now set in the handler after `publicIcs` succeeds (public.controller.ts:39-45, `Res({ passthrough: true })`). The new DW6 case checks that the voided and garbage 404s are `application/json` with no `Content-Disposition`. DW6's pass case still checks the download headers.
+* **#3-#5 Minor: closed.**
+  * Rate limits: a 429 case for the list and for `.ics`, with another IP not held back.
+  * Consent: `consent:false` with a wording id gives no consent.
+  * BR-5: a firm with no sentence books without the tick, and a tick there gives 409.
+  * The late reschedule switch is refused, booking unchanged.
+  * Also new: control and bidi characters dropped from `firmContact` (service.ts:785-786) and a blank phone gives null, with a test.
+* **The reason in the audit `summary`: acceptable as interim.** Lead B ruled "audit only, no column". The port limits `detail` to ids and facts but sets no such rule on `summary` ("one plain sentence a person reads"). Staff who read the audit trail will see the booker's words, which is what "kept in the audit" means. One point for Lead B, not a block: once AUD-1 makes the trail insert-only and hash-chained, free text there cannot be erased on request (Unconfirmed: no counsel). Lead B's answer on the PR settles where the reason lives for good.
+* **No new finding** in the diff. The test's `getStatus` casts are test-only. The `firmContact` change only drops characters and keeps the 200-character cap.
+
+Journey re-score: task completed, plain words, feedback and state, and error recovery go from ½ to 1 (the 500 and the `.ics` download on a 404 are gone). The score is now **9/10**, a pass with no 0. Accessibility and visual quality stay ½ (N/A, no screen: FO-3w).
+
+Verdict: Approve 042b60cf1922e8584d0058d0d04f852630d0f111
