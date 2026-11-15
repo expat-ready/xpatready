@@ -158,3 +158,38 @@ The rows stay approved as drafted. If the founder says no to one of them, Lead B
 Agreed: the proposed X rows are added in the same change that copies these rows (P-582). That covers S2's X-20 widening, "Task extras" and "Assessment extras", and S3's §7.
 
 **All three lanes are reviewed.** S1's last batch (PF-18ns, PF-19m*, PF-4p*, PF-23w) is still to come.
+
+## Batch 4 (15 Nov 09:3x IST): S1 at 64ea121fb (S1 finished; all three lanes are now reviewed)
+
+| Row | Verdict | Amendment or note |
+|---|---|---|
+| PF-18ns | approved | — |
+| PF-19m | approved | It adds to PF-19a's `platform-messages.prisma` only after PF-19a merges, the same area and in sequence (as accepted for PF-22v). Its migration test follows rev 16.7. |
+| PF-19mc | approved with amendment A | — |
+| PF-19mi | approved | The case side's matcher (subject references, case addresses) is the release holder's registration line. |
+| PF-19mx | approved | **S1's question 9, IMAP part: ruled "in Release 1"**, because the team's requirement asks for it (AG-10-4) and following it needs no question. It is ordered last in the mailbox chain. |
+| PF-19ms | approved | — |
+| PF-4p | approved with amendment B | — |
+| PF-4pw | approved | — |
+| PF-4ps | approved | — |
+| PF-23w | approved with amendment C | — |
+
+**Amendments:**
+* **A. One OAuth helper for Google and Microsoft (P-526).** PF-19mc (mailbox) and FO-3s2/FO-3s3 (calendar) each build OAuth 2.0 with PKCE, a signed `state` and token refresh for the same two providers. Whichever row lands first builds it once in `api/src/platform/oauth/` (PKCE, signed state, exchange, refresh, revoke, tokens through `SecretBoxPort`), and the other reuses it. Each row then adds only its own scopes and API calls. Done when, in the second row: "no second PKCE or state implementation (a grep test)".
+  * **One app registration per provider covering both features,** so the founder files one Google verification (calendar plus the restricted Gmail scopes, with the yearly security assessment that Gmail needs) and one Microsoft publisher verification, not two each. This merges S1 question 9's review part and S2 question 7 into one outside clock for the founder.
+* **B. PF-4p's table goes in its own area file** `platform-client-identity.prisma` (P-600 condition 1), not PF-3's `platform.prisma`; only the back-relation lines go under `platform.prisma`'s slot comments (rev 16.6). Its migration test follows rev 16.7.
+* **C. PF-23w waits on FO-3f (#1785)**, which has the booking files open; it changes FO-3's `runtime-ports.ts` only after FO-3f merges (the P-526 touch rule). Lead B (FO-3's owner) OKs that one swap.
+
+**S1's questions:**
+1. **Domain and DNS (founder).** Agreed: Route 53 in the founder's account with a `staging.` sub-zone. Already on the founder list.
+2. **Who builds the AUD rows (release holder).** Lead B's view: agree with the split. A PF/FO lane can build AUD-1b, AUD-1c, AUD-2, AUD-3, AUD-4 and AUD-5 behind the unchanged `AuditPort`; the release holder keeps AUD-1a and AUD-1m (case-side and shared files).
+3. **Fail-closed audit (founder: a departure from SA-11-7, BR-5 and NFR5-08).** Lead B recommends fail-closed for Release 1: an action that cannot be audited does not happen, there is no second queue that could lose lines, and PF-0p's port already works that way.
+4. **Object Lock compliance mode for 7 years (founder, already P-571 (3)).** Keep it, with the 1-day test bucket first, as the row says. This is separate from Lead B's governance-mode ruling for PF-8rc's **backup** vault: backups need an early delete path for a bad backup, while the audit archive must not have one.
+5. **Support sessions in Release 1 (founder: scope).** Lead B agrees with the lane's recommendation: read-only sessions, plus the Owner's "Allow support to make changes" switch.
+6. **The College's file-keeping period at source.** Lead B is on the Mac and can read it, together with open item 16 (the licence-number format). Lead 52 says which Lead does it.
+7. **`.xlsx` reading (Lead B at the gate): ruled as recommended.** PF-10b's gate entry tests candidates against P-587's six checks. If none passes, Release 1 accepts CSV only, with a plain "Save as CSV" step, and `.xlsx` becomes an X row.
+8. **Custom-field types and limits: ruled as recommended** (P-566 (3)). Ten types, 50 fields per record type, archive and never delete, and no formula or lookup fields.
+9. **Mailbox reviews:** see amendment A. **IMAP:** in Release 1, as ruled above.
+10. **Portal account key (with the release holder).** Lead B agrees that every case client gets an `fo_person`, so a person has one login. The release holder confirms in CS-K1.
+
+**Review complete.** Batches 1-4 cover every row of the three lanes. Lead B approved (or approved with amendments) all of its own rows. The release holder's rows are left to the release holder, with their joins checked.
