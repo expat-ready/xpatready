@@ -89,4 +89,30 @@ D1 3: items 1-4 met, item 5 partly · D2 3: B-19's cap gets past through M-1 · 
 
 **To fix before Approve:** M-2, with its test. Round 1's findings are closed.
 
-Verdict: Changes requested
+**Round 2 verdict:** Changes requested (`53aa60d46`).
+
+## Round 3 (diff only, P-277): `git diff 53aa60d46 3c74f8e76 -- '*.ts'`
+* **Commit reviewed:** `3c74f8e766a2727eb3dfaef8e1eb00712ff1df1d`. I read the diff of `docx.ts` and the test file. The .md changes are my round-2 text and the breaker's round 2.
+* **Suites at this head:** `check_fo5f2_template_safety` **72 passed, 0 failed**; `check_fo5_retainers` **232 passed, 0 failed**.
+
+| Round 2 / breaker | Fix | Holds? |
+|---|---|---|
+| M-2 orphaned worker after a timeout | `onBreach` also clears `live` when `live === w` (`docx.ts:191`) | yes, details below |
+| Test limit applied to the jobs behind | each job keeps the limit it was queued with (`Pending.ms`) | yes: in my probe, only the slow job hit the 20 ms limit, and every good job behind it was accepted |
+| Breaker round 2 m-1: "busy" answered only after the gate | `refuseIfBusy()` first in `placeholdersOf` | yes: the suite measured the 2 refusals at 1 ms each |
+
+**M-2 evidence:**
+* **The idle listener:** `docx.ts:173` now finds `live !== w` when the dying worker's late `exit` arrives, so it leaves the next worker in place.
+* **My round-2 probe (`leak.ts`), each job keeping its own limit:**
+  * 20 ms on the slow job, a good upload queued behind it, 10 rounds: threads stayed at 13, against 13 → 17 at `53aa60d46`.
+  * Real 5 s limit on one busy core: 4 rounds of `TOO_COMPLEX (over 5000 ms)` then `accepted`, and threads stayed at 8.
+* **Mutant:** deleting the new line makes all 3 rounds of the new DW3 test fail (69/72). Putting it back makes them pass. The test proves the rule.
+
+*Still open, and not blocking:*
+* m-3 is recorded: DW6's Word file is a stand-in until the founder supplies one saved by Word.
+* DW8 is the breaker's.
+* The breaker's m-2 and m-3, like my round-2 note on TEMPLATES_BUSY, follow from the ruled "one worker" and are for the row owner.
+
+**Round 3:** no Blocker or Major is open.
+
+Verdict: Approve 3c74f8e766a2727eb3dfaef8e1eb00712ff1df1d
