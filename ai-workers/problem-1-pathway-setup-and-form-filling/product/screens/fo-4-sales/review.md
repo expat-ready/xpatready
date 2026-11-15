@@ -46,3 +46,29 @@ Server authorisation is FO-2's: Read-only Take it gives 403 (DW6 fail side). No 
 `check_pf1_module_routes.ts`: it writes temporary module folders and PF-1 screenshots into the tree, and I may write only these two files, so I left it to CI. A real screen reader. An intended user's unaided walk (D17, D20). The graph tool (`G1 0 · G2 0`) does not see `staffApi(...)` calls, so the page → route links for this module are untraced (a tool gap, not this PR's). `frame-ancestors` on the HTML page (known, raised).
 
 **Verdict: Block**: fix 1, 2 and 3 (Majors); fix 4-12 or list them in the PR.
+
+## Re-review (P-277), 15 Nov 2026: `3bb03d144..ff9c21216b98b1ba63170e396ff2a64d50587454`, diff only
+Copy :4524 (head merged with FO-2 `ceda426a9`, `PLATFORM_IDENTITY=local`). The builder's suite gave **42/42** on my run. `tsc --noEmit` on web exits 0. Code and tests against `main` come to 767 added lines, under 800; records and screenshots are not counted.
+
+**Majors: all three closed.**
+1. **Plain source.** `words()` in `contract.ts` turns `WEBSITE` into "Website form" in both places. In the walk every row's Source reads "Website form", and the suite asserts it ("FO-4 plain words").
+2. **Skeletons.** The new `loading.tsx` uses the app's `Skeleton` with `role="status"` and a label, in all four states. I delayed `/leads` by 1.5 s: the skeleton rows draw under the chips, axe is clean, and it never says "No records" before data.
+3. **Read-only says why.** `data-why-no-take` appears under the Leads subtitle and in the lead's rail (only when the lead could be taken). The walk read "You can read leads. Taking one needs a role that works leads: ask your firm's Owner or Admin." axe is clean on both pages. DW6 asserts the line for Read-only and its absence for a Case Manager.
+
+**Minors 4, 5 and 8 (button): closed.** The false test comment is gone (`check_fo4_sales_browser.ts:142` now states the rule). `words(l.state)` maps ENGAGED to "Engaged". The button reads "Send my enquiry".
+
+**Breaker fixes, checked:**
+* **S1.** A session set to expire in 3 s showed the sign-in card on its own, with no rows left. Any 401 clears the session.
+* **S2.** `setStaffToken` drops every `["fo"]` query on the app's one `queryClient` (`main.tsx`'s provider), and the suite checks it.
+* **S3.** A send right after the draw is held until 2.1 s (the button shows busy). The lead was stored once (L-00015).
+* **RELOAD.** I forced a bad stamp. The form redrew with the answers and the tick kept, the summary took focus ("The form was refreshed…"), and the second send stored one lead (L-00014) with one consent row.
+
+**New Minors (not blocking):**
+* r1. The RELOAD redraw has no test of its own: removing the `RELOAD` branch would pass the suite.
+* r2. On a RELOAD caused by a changed consent wording, the tick stays checked against the new text (`web-form-page.tsx`, the `RELOAD` branch). Clearing `consent` when `form.consentText` changes would be safer (Unconfirmed: no counsel).
+* r3. `MIN_FILL_MS = 2_100` repeats FO-2's `LIMITS.minFillSeconds` in the web. It is safe today because the client waits longer than the server's floor; it drifts if FO-2 changes the limit.
+* r4. After a session expires, the card does not say "Your session ended".
+
+**Carried Minors 6, 7 and 9-12:** none blocking. They are listed in the PR body as carried; 9 and 10 belong with FO-2 part 2/3 routes. Add r1-r4 to that list.
+
+**Re-review verdict: Approve ff9c21216b98b1ba63170e396ff2a64d50587454**
