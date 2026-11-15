@@ -1,13 +1,10 @@
-// FO-2 (contracts §0.6 public doors, §2.1, §7 §2.1; AG-2-5 the web form, AG-2-49 the door's protections): the firm's
-// enquiry form, open to anyone. GET /api/public/forms/:token is an open read (OpenRead): the form's words, its
-// "Interested in" list, a fresh submissionId and a signed load stamp, with `frame-ancestors` naming the firm's allowed
-// sites. POST …/submissions: size first (32 KB), then the limits (30 a minute per address, 60 a minute per form token;
-// AG-2-49 rule 1), the token (an unknown token and a form that is off give one answer, "This form is not available"),
-// the allowed site (the Origin), a strict body, then the honeypot and the minimum fill time of 2 seconds measured on the
-// server from the signed stamp (a bot is answered like anyone else and nothing is stored), then the arrival path in one
-// transaction. The answer is the form's thank-you text, the same whether or not the person is known (AG-2-5 rule 10).
-// Limits, used stamps and the stamp's key live in this process (sized for about 100 firms, P-562); the key is
-// FO_FORM_STAMP_KEY when set, else random per process (a restart asks open pages to reload).
+// FO-2 (contracts §0.6, §2.1, §7 §2.1; AG-2-5, AG-2-49): the firm's enquiry form, open to anyone. GET …/forms/:token
+// (OpenRead): the form's words, its "Interested in" list, a fresh submissionId and a signed load stamp, with
+// `frame-ancestors` naming the allowed sites. POST …/submissions: 32 KB (also at the door, publicFormBodyLimit), 30 a
+// minute per address and 60 per form token (AG-2-49 rule 1), the token (unknown and off give one answer), the allowed
+// site (Origin), a strict body, then the honeypot and the 2-second fill time from the signed stamp (a bot is answered
+// like anyone else, nothing stored), then the arrival path. The answer is the thank-you text, known person or not.
+// Limits and the stamp key (FO_FORM_STAMP_KEY, else random per process) live in this process (about 100 firms, P-562).
 import { Body, Controller, Get, HttpCode, Inject, Injectable, Param, Post, Req, Res } from "@nestjs/common";
 import type { PrismaClient } from "@prisma/client";
 import type { NestExpressApplication } from "@nestjs/platform-express";

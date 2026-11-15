@@ -1,6 +1,5 @@
-// FO-2 (contracts §2.1, §7 binding; AG-02): what the sales files share: the answers (problems), the text and contact
-// rules, who sees what, and the one way a change is written down (one audit line through AuditPort in the change's
-// transaction, then the outbox row last, contracts §0.5 and PF-3 review m8).
+// FO-2 (contracts §2.1, §7; AG-02): what the sales files share: the answers, the text and contact rules, who sees what,
+// and how a change is written down (one audit line through AuditPort, then the outbox row last: §0.5, PF-3 m8).
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { EventName } from "../../../../ports/events.ts";

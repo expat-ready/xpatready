@@ -1,10 +1,8 @@
-// FO-2 (contracts §2.1, §7 §2.1; AG-2-84 the arrival path, AG-2-83 consent, AG-2-8a attribution): every door runs this
-// one path inside its own transaction: the receipt first (its intake key makes a repeat post one lead), then the person,
-// the lead, the lead's attribution (web form), the visitor's message as the lead's first INTERNAL note (#1742 review
-// m12), the consent through the platform's ConsentPort (subject FO_PERSON; no front-office consent table, rows rev 14),
-// the receipt marked CREATED, one audit line and the `lead.created` outbox row last.
-// A repeat enquiry is a new lead and a new person record, even while a lead is open (AG02-D6); a person of the firm with
-// the same email or the same readable phone is flagged as a possible match, never linked or merged (AG-2-84).
+// FO-2 (contracts §2.1, §7 §2.1; AG-2-84 arrival, AG-2-83 consent, AG-2-8a attribution): every door runs this path in
+// its own transaction: the receipt first (its intake key makes a repeat post one lead), the person, the lead, the
+// attribution, the visitor's message as the first INTERNAL note (#1742 m12), the consent through ConsentPort (FO_PERSON;
+// rows rev 14), the receipt CREATED, one audit line, `lead.created` last. A repeat enquiry is a new lead and person,
+// flagged as a possible match (same email or readable phone), never linked or merged (AG02-D6, AG-2-84).
 import type { PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { AuditPort } from "../../../../ports/audit.ts";

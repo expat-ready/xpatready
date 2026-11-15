@@ -87,7 +87,6 @@ try {
   const page = await forms.read(tokenA, req(), { setHeader: (n: string, v: string) => { if (n === "Content-Security-Policy") csp.push(v); } });
   ok("FO-2 pass: the open read gives the form's words, a submissionId and a load stamp", typeof page.submissionId === "string" && /^\d+\.[A-Za-z0-9_-]+$/.test(page.loadStamp) && page.consentText?.includes("Sample") && page.interestedIn.length > 0, page);
   ok("FO-2 pass: the served form carries frame-ancestors naming the allowed site", csp[0] === `frame-ancestors 'self' ${OWN} ${SITE}`, csp);
-  ok("FO-2 fail: frame-ancestors names no other site", !csp[0]?.includes("evil"), csp);
 
   const leadsBefore = count("fo_lead"), receiptsBefore = count("fo_arrival_receipt");
   const bot = await post({ ...lena, website: "http://spam.example" });
@@ -133,7 +132,6 @@ try {
   ok("FO-2 fail: a 33 KB body → 413 before the handler (the spy saw nothing), also sent in chunks", r413.status === 413 && r413c.status === 413 && (await r413.json()).code === "TOO_LARGE" && spy.length === 1, [r413.status, r413c.status, spy.length]);
   ok("FO-2 pass: a small body reaches the handler, parsed once", r201.status === 201 && (spy[0] as { message?: string })?.message === "hello");
   srv.close();
-
   // The person known or not: the same answer.
   const known = await post({ ...lena, consent: false }), fresh = await post({ givenNames: "Mo", email: "mo@example.org" });
   ok("FO-2 pass: the answer never says whether the person is known (known and new get the same answer)", JSON.stringify(known) === JSON.stringify(fresh), [known, fresh]);

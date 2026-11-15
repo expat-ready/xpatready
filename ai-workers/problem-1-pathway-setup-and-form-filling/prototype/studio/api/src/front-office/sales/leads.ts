@@ -1,7 +1,6 @@
-// FO-2 part 1 (contracts §2.1, §7 §2.1; AG-2-13c Unassigned leads, AG-2-84 possible match, AG-2-86 Take it): the staff
-// side of leads. Part 2 adds Add a lead by hand, Close and Reopen. Every read and write is firm-scoped (another firm's id is
-// 404) and follows who sees what (common.ts visibilityOf). Every change is one transaction: the lead row (changed only
-// from the state it was read in, under its row lock), one audit line through AuditPort, the outbox row last.
+// FO-2 part 1 (contracts §2.1, §7; AG-2-13c Unassigned leads, AG-2-84 match, AG-2-86 Take it): staff leads (part 2 adds
+// Add a lead, Close, Reopen). Firm-scoped (another firm's id 404), visibility by common.ts; a change is one transaction:
+// the lead row under its lock, one audit line through AuditPort, the outbox row last.
 import { HttpException, Inject, Injectable } from "@nestjs/common";
 import type { FoLeadState, PrismaClient } from "@prisma/client";
 import { EVENT, LeadEventPayload, type EventName } from "../../../../ports/events.ts";
