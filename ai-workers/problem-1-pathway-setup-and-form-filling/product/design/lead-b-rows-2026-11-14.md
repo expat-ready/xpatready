@@ -1225,7 +1225,7 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
   - AG-7-39's four case notifications calling `NotificationPort`.
   - Both are the case side's rows.
 
-## Rev 16.41 (16 Nov 05:0x IST, Lead B (6)): the government-fee method withdrawn (Lead 62's catch), the unsigned-retainer warning, PF-18n on PF-18np's port, and the table rows for five new rows
+## Rev 16.41 (16 Nov 04:2x IST, Lead B (6)): the government-fee method withdrawn (Lead 62's catch), the unsigned-retainer warning, PF-18n on PF-18np's port, and the table rows for five new rows
 * **Rev 16.38's `ClientMoneyPort.addGovernmentFeeLine` is withdrawn.**
   - It was the one-click line from a case fee, which the founder kept out of Release 1: P-607 (7) chose "Typed line now", with one-click as X-S3-6 (AG-6-40).
   - No AG-17 or LMIA requirement needs a programmatic call beyond AG-6-40 (AG17-D4/D13 "government fee line from the case" is AG-6-40 itself). So there is no founder question.
