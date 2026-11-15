@@ -1146,7 +1146,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     rem_shaped = sum(1 for x in shaped_ids if x not in change_at)
     rem_unshaped = sum(max(0, UNSHAPED_FACTOR - sum(1 for x in r["ids"] if x in change_at)) for r in unshaped)
     remaining = rem_shaped + rem_unshaped
-    R = num(remaining, f"unmerged ids of shaped Build rows ({rem_shaped}) + {UNSHAPED_FACTOR} × each Build row not shaped, "
+    R = num(remaining, f"unmerged ids of shaped capabilities ({rem_shaped}) + {UNSHAPED_FACTOR} × each capability not shaped, "
             f"less its merged parts ({rem_unshaped}); {ck_src}, {bl_src}, {gh_src}", "mixed", L,
             label=f"estimate: {len(unshaped)} unspecified capabilities × {UNSHAPED_FACTOR} (P-586 (4), to be settled 19 Nov)",
             shaped_unmerged=rem_shaped, unshaped_rows=len(unshaped), unshaped_estimate=rem_unshaped)
@@ -1165,9 +1165,9 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             r["built"] = max(change_day[x] for x in r["ids"]).isoformat()
     built_rows = [r for r in rows if r["built"]]
     pre = [r["map"] for r in rows if r.get("pre_baseline")]
-    B = num(len(built_rows), f"shaped Build rows whose BACKLOG parts all merged through app PRs (built date = the latest part's merge date); "
+    B = num(len(built_rows), f"shaped capabilities whose BACKLOG parts all merged through app PRs (built date = the latest part's merge date); "
             f"{ck_src}, {gh_src}", "mixed", L,
-            built_before=num(len(pre), "Build rows with no BACKLOG part that the checklist marks Merged or qa Works (built in the proof of concept, "
+            built_before=num(len(pre), "capabilities with no BACKLOG part that the checklist marks Merged or qa Works (built in the proof of concept, "
                              "before 13 Nov; no date)", "parsed", L, maps=pre))
     hist_caps = snap.cap_history()
     proven_reason = None
@@ -1262,10 +1262,10 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
         return None if wa is None or wb is None else sorted(wb - wa)
     hist_reason = "not measured: the checklist's earlier versions do not reach back that far in this snapshot"
     wr = reached(s_from, s_to)
-    D_wk = num(None if wr is None else len(wr), f"Build rows that reached qa Works (checklist Status reads qa Works, or proven) between {span_txt}; "
+    D_wk = num(None if wr is None else len(wr), f"capabilities that reached qa Works (checklist Status reads qa Works, or proven) between {span_txt}; "
                f"{ck_src} and its earlier versions", "mixed", L, hist_reason, maps=wr or [])
     wd = reached(d_start, d_end)
-    D_done = num(None if wd is None else len(wd), f"Build rows that reached qa Works (Status reads qa Works, or proven) in the 24 h to taken_at; {ck_src} "
+    D_done = num(None if wd is None else len(wd), f"capabilities that reached qa Works (Status reads qa Works, or proven) in the 24 h to taken_at; {ck_src} "
                  "and its earlier versions", "mixed", L, hist_reason, maps=wd or [])
     D_use = num(pct_used, f"{'at least ' if at_least else ''}the sum of rises between readings in a row from the same account, {span_txt}"
                 f"{' (a plan reset or an account change in between: use across it is not seen)' if at_least else ''}; {ul_src}",
@@ -1285,7 +1285,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
         return num(round(pct_used / n, 1), f"{pct_used}% of a weekly plan ÷ {n} {what}, between {span_txt}", "reported", L, lk="usage",
                    at_least=at_least)
     rows_left = None if works_at(cutoff) is None else nrows - len(works_at(cutoff))
-    rn_src = (f"Build rows not yet at qa Works (checklist Status reads qa Works, or proven) ÷ calendar days to the committed date {committed}; "
+    rn_src = (f"capabilities not yet at qa Works (checklist Status reads qa Works, or proven) ÷ calendar days to the committed date {committed}; "
               f"{ck_src}")
     if committed:
         RN = num(round(rows_left / days_left, 2) if days_left > 0 else None, rn_src, "mixed", L, "not measured: the committed date is today or past",
@@ -1444,7 +1444,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     cons = constraint(len(lanes), len(q_rows), room["value"], waits, qa_unknown, len(built_wait))
     stages = {k: {"count": num(n, {"review": "open non-draft PRs, CI green, no `review: approved` (Ready for label)",
                                    "merge": "open PRs labelled `review: approved`",
-                                   "qa": "built Build rows not yet proven"}[k] + f"; {gh_src}", "measured" if k != "qa" else "mixed", L),
+                                   "qa": "built capabilities not yet proven"}[k] + f"; {gh_src}", "measured" if k != "qa" else "mixed", L),
                   "wait_h": num(round(wv, 1) if wv is not None else None,
                                 {"review": "oldest: hours since the head commit", "merge": "oldest: hours since the label went on",
                                  "qa": "oldest: hours since the row was built"}[k], "measured" if k != "qa" else "mixed", L,
@@ -1625,9 +1625,9 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     # ---- invariants (M6)
     def inv(name, ok, detail):
         invariants.append({"name": name, "ok": bool(ok), "detail": detail})
-    inv("Build rows equal the baseline", nrows == baseline,
+    inv("Capabilities equal the baseline", nrows == baseline,
         f"{nrows} rows (baseline {baseline})" + ("" if nrows == baseline else ": scope changed, the scope line says so"))
-    inv("Build rows unique", not ck["dupes"], "duplicates: " + ", ".join(f"{d['map']} ({' / '.join(d['statuses'])})" for d in ck["dupes"]) if ck["dupes"] else "no duplicate map numbers")
+    inv("Capabilities unique", not ck["dupes"], "duplicates: " + ", ".join(f"{d['map']} ({' / '.join(d['statuses'])})" for d in ck["dupes"]) if ck["dupes"] else "no duplicate map numbers")
     inv("Every id a Shaped row cites exists in BACKLOG (R4)", not shaped_missing,
         "missing in BACKLOG.md: " + ", ".join(sorted(shaped_missing)) if shaped_missing else "all ids of Shaped rows found")
     bad = []
@@ -1682,10 +1682,10 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
 
     return {"keys": keys, "trust": trust, "fresh": fresh, "history_line": today_line, "history_prev": prev,
             "pace": {"changes_needed_per_day": X, "changes_per_day": Y, "built": B, "proven": P_,
-                     "rows_total": num(nrows, ck_src + ": Build rows", "parsed", L), "remaining": R, "ratio": ratio,
+                     "rows_total": num(nrows, ck_src + ": capabilities", "parsed", L), "remaining": R, "ratio": ratio,
                      "committed_date": committed, "committed_set_on": set_on, "tolerance_days": tol, "light": light,
                      "merged_changes": num(merged_r1, f"Release 1 changes merged so far ({gh_src})", "mixed", L), "delivery_24h": delivery,
-                     "scope_note": None if nrows == baseline else f"Scope changed: {nrows} Build rows (baseline {baseline})"},
+                     "scope_note": None if nrows == baseline else f"Scope changed: {nrows} capabilities (baseline {baseline})"},
             "forecast": {"p50": F50, "p85": F85, "sample": sample, "counts": counts, "days": [d.isoformat() for d in days14],
                          "runs": MC_RUNS, "seed": MC_SEED, "cap_days": MC_CAP},
             "burnup": burn, "capacity": capacity, "top3": top3, "org": org, "working_today": working,

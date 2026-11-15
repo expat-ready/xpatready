@@ -166,15 +166,27 @@ details.inline>summary{cursor:pointer;color:var(--accent);font-size:12.5px;displ
 .wmark{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-left:6px;vertical-align:middle}
 .wmark.rep{background:transparent;border:1.5px solid var(--accent);padding:0;margin-left:6px;width:8px;height:8px;border-radius:50%}
 .workline{font-size:13.5px;margin:0 0 8px}
+/* board v53 (A69, A70): the three top numbers, one row above the key-number strip */
+.strip-top{max-width:1120px;margin:0 auto 6px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.strip-top .tile{border-color:var(--accent)}
+.strip-top .tile .v{font-size:21px}
+.strip-top .tile .s2{font-size:11px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tabs{top:var(--striph,64px)}
+.reqs{font-size:12px;color:var(--ink2)} .reqs b{font-weight:600;color:var(--ink)}
 @media(max-width:760px){.strip-in{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:520px){
+  .strip-top{gap:4px}.strip-top .tile .v{font-size:16px}.strip-top .tile .s2,.strip-top .rep{display:none}.strip-top .tile .s{display:block;font-size:10px}
   .strip-in{gap:4px}.tile{padding:4px 5px}.tile .v{font:600 15px/1.2 var(--sans)}.tile .k{font-size:10px;text-transform:none;letter-spacing:0}.tile .s{display:none}
   section{padding:12px 10px 14px}
   th,td{padding:5px 6px}
 }
 </style>
 
-<div class="strip" id="strip"><div class="strip-in" id="stripIn">
+<div class="strip" id="strip"><div class="strip-top" id="stripTop">
+  <div class="tile"><div class="k">Works today</div><div class="v">&#x2026;</div></div>
+  <div class="tile"><div class="k">Plan % per capability</div><div class="v">&#x2026;</div></div>
+  <div class="tile"><div class="k">Lanes</div><div class="v">&#x2026;</div></div>
+</div><div class="strip-in" id="stripIn">
   <div class="tile"><div class="k">Needs you</div><div class="v">&#x2026;</div></div>
   <div class="tile"><div class="k">Release 1</div><div class="v">&#x2026;</div></div>
   <div class="tile"><div class="k">Proof of concept</div><div class="v">&#x2026;</div></div>
@@ -247,9 +259,35 @@ function relTile(){var P=D.pace;if(!P)return '<div class="tile"><div class="k">R
   return '<div class="tile"'+S(srcN(b))+'><div class="k">Release 1</div><div class="v">'+(b.value==null?"n/a":esc(b.value))+' built</div><div class="s">of '+esc(P.rows_total.value)+' \u00b7 proven: '+(pr.value==null?"not measured":esc(pr.value))+(diff?' \u00b7 records differ':'')+'</div></div>';}
 /* the Lead input's 2 h limit, judged again by the page at viewing time (review Minor 6) */
 function leadInputStale(){var a=D.top3&&D.top3.as_of;if(!a||a==="no Lead input")return true;var t=Date.parse(a);return isNaN(t)||(Date.now()-t)/3600000>2;}
-var PLAIN={works_on_main:"proof capabilities proven",works_total:"proof capabilities",changes_per_day_window:"changes a day",remaining_scope_changes:"changes left",built_rows:"rows built",proven_rows:"rows proven",open_app_prs:"open app changes",lanes_working:"lanes working",ready_rows:"rows ready",forecast_p50_date:"50% date",forecast_p85_date:"85% date",mc_daily_counts:"daily changes used for the forecast",mc_remaining_scope:"changes left used for the forecast",plan_pct_used_24h:"weekly plan used in 24 h",span_hours:"hours the readings cover",changes_merged_span:"changes merged over the readings",works_rows_span:"rows reaching qa Works over the readings",pct_per_change:"plan % per change",pct_per_works_row:"plan % per row",rows_done_24h:"rows done in 24 h",rows_needed_per_day:"rows needed a day"};
+var PLAIN={works_on_main:"proof capabilities proven",works_total:"proof capabilities",changes_per_day_window:"changes a day",remaining_scope_changes:"changes left",built_rows:"capabilities built",proven_rows:"capabilities proven",open_app_prs:"open app changes",lanes_working:"lanes working",ready_rows:"rows ready",forecast_p50_date:"50% date",forecast_p85_date:"85% date",mc_daily_counts:"daily changes used for the forecast",mc_remaining_scope:"changes left used for the forecast",plan_pct_used_24h:"weekly plan used in 24 h",span_hours:"hours the readings cover",changes_merged_span:"changes merged over the readings",works_rows_span:"capabilities reaching qa Works over the readings",pct_per_change:"plan % per change",pct_per_works_row:"plan % per capability",rows_done_24h:"capabilities done in 24 h",rows_needed_per_day:"capabilities needed a day",works_today:"capabilities at Works today",works_today_by_size:"sizes of today's Works",capabilities_not_mapped:"capabilities not mapped to a requirement",label_guard_removals_today:"label-guard removals today",ci_rule_failures_today:"rules-check CI failures today"};
 function plain(k){return PLAIN[k]||k.replace(/_/g," ");}
+/* board v53 (A69, A70): three numbers on top, each with its source, sha, time and class on hover; a missing one reads
+   "not measured" with its reason, never a guess. Rules caught stay internal (Health item 4). */
+var SIZES=["S","M","L"];
+function sizeMix(b){if(!b)return "";var t=SIZES.map(function(k){return k+" "+(b[k]||0);}).join(" \u00b7 ");return t+(b["not shaped"]?" \u00b7 not shaped "+b["not shaped"]:"");}
+function renderTop(){
+  var T=D.top_numbers,el=document.getElementById("stripTop");
+  if(!T){el.innerHTML='<div class="tile" style="grid-column:1/-1"><div class="k">Top numbers</div><div class="v">'+nm("missing from data.json")+'</div></div>';return;}
+  var W=T.works_today,P=T.pct_per_works,C=T.pct_per_change,L=T.lanes||{},wk=L.working,st=L.started,id=L.idle;
+  var wv=W.value==null?nm(W.reason):'<b>'+esc(W.value)+'</b><span class="muted"> of '+esc(W.target)+'</span>';
+  var ws=W.value==null?"capabilities at qa Works today":(W.value?sizeMix(W.by_size):"none yet")+' \u00b7 target '+esc(W.target)+' a day';
+  var pv,ps;
+  if(P.value!=null){pv=esc(Number(P.value).toFixed(1))+'%'+(P.at_least?'<span class="muted"> at least</span>':'');ps="of a weekly plan per capability at Works (24 h)";}
+  else if(/^no Works yet/.test(P.reason||"")){pv='<span'+S(srcN(P))+'>no Works yet</span>';ps=esc(P.reason.replace(/^no Works yet: /,""))+" of a weekly plan in 24 h";}
+  else{pv=nm(P.reason);ps="plan % per capability at Works (24 h)";}
+  var cs=C&&C.value!=null?esc(Number(C.value).toFixed(1))+"% per merged change":"per merged change: not measured";
+  var lv=wk&&wk.value!=null?'<b>'+esc(wk.value)+'</b>':nm(wk&&wk.reason);
+  lv+=st&&st.value!=null?'<span class="muted"> of '+esc(st.value)+'</span>':'';
+  var ls=st&&st.value!=null?"started \u00b7 "+esc(id.value)+" idle"+(id.names&&id.names.length?": "+esc(id.names.join(", ")):""):'started: <span class="nm"'+S(st&&st.reason)+'>not measured</span>';
+  var rep='<span class="rep">Lead-reported</span>';
+  el.innerHTML=
+   '<div class="tile"'+S(srcN(W)+(W.maps&&W.maps.length?" · capabilities (map numbers): "+W.maps.join(", "):"")+" · size: "+(W.size_rule||""))+'><div class="k">Works today</div><div class="v">'+wv+'</div><div class="s">'+ws+'</div></div>'+
+   '<div class="tile"'+S(srcN(P)+" | "+srcN(C))+'><div class="k">Plan % per capability at Works</div><div class="v">'+pv+rep+'</div><div class="s">'+ps+'</div><div class="s2">'+cs+'</div></div>'+
+   '<div class="tile"'+S(srcN(wk)+" | started: "+srcN(st)+(st&&st.names?" ("+st.names.join(", ")+")":"")+" | idle: "+srcN(id))+'><div class="k">Lanes working</div><div class="v">'+lv+(st&&st.value!=null?rep:"")+'</div><div class="s">'+ls+'</div></div>';
+  var sh=document.getElementById("strip");if(sh)document.documentElement.style.setProperty("--striph",sh.offsetHeight+"px");
+}
 function renderStrip(){
+  renderTop();
   var s=D.summary,el=document.getElementById("stripIn");
   var ny=v(s.needs_you),bu=v(s.burnup_pct),w=v(s.works)||[null,null],nd=v(s.next_date),age=dataAgeH();
   var H=D.health||{light:"amber"},ast=ageState(age),light=worst(worst(H.light,ast),leadInputStale()&&H.light==="green"?"amber":"green"),R=D.resources||{};
@@ -306,7 +344,7 @@ function rPace(){
   h+=rDelivery(B);
   var dis=((D.trust||{}).status_disagreements||[]);
   h+='<p class="line">Capabilities: '+N(P.built,"",B)+' of '+N(P.rows_total)+' built'+(bb&&bb.value?' <span class="small muted"'+S(srcN(bb))+'>(+'+esc(bb.value)+' built before 13 Nov)</span>':"")+', proven: '+N(P.proven,"",B)+'.'+
-    (dis.length?' <a href="#trust" class="small" data-go="details"'+S("the checklist's hand-kept status and the computed state differ on these rows; Details lists them")+'>records differ on rows '+esc(dis.map(function(x){return x.map;}).join(", "))+'</a>':"")+'</p>';
+    (dis.length?' <a href="#trust" class="small" data-go="details"'+S("the checklist's hand-kept status and the computed state differ on these capabilities; Details lists them")+'>records differ on capabilities '+esc(dis.map(function(x){return x.map;}).join(", "))+'</a>':"")+'</p>';
   var R=P.remaining;
   h+='<p class="small muted" style="margin:2px 0">Changes left: '+N(R)+' ('+esc(R.label)+')'+(P.ratio?'; measured '+N(P.ratio)+' changes per built capability':"")+'. Forecast sample: '+esc(F.sample)+'.</p>';
   if(P.scope_note)h+='<p class="small" style="color:var(--wait)">'+esc(P.scope_note)+'</p>';
@@ -326,18 +364,18 @@ function rDelivery(B){
   var head=sp.basis==="readings"?'Last '+esc(sp.hours)+' h of readings':'Last 24 h';
   if(U.value!=null)parts.push(least+val(U,"%")+' of a weekly plan used<span class="rep">Lead-reported</span>');else miss("weekly plan used",U);
   var per=function(cnt,n,one,many,label){
-    if(n.value!=null)return ' <span class="muted"'+S(srcN(n))+'>('+least+esc(U.value)+'% of plan \u00f7 '+esc(cnt.value)+' '+(cnt.value===1?one:many)+' = '+esc(Number(n.value).toFixed(1))+'% a'+(one==="row"?" row":" change")+')</span>';
+    if(n.value!=null)return ' <span class="muted"'+S(srcN(n))+'>('+least+esc(U.value)+'% of plan \u00f7 '+esc(cnt.value)+' '+(cnt.value===1?one:many)+' = '+esc(Number(n.value).toFixed(1))+'% a'+(one==="capability"?" capability":" change")+')</span>';
     if(cnt.value!==0&&cnt.value!=null&&U.value!=null)miss(label,n);
     return "";};
   if(Cm.value===0)parts.push('no Release 1 changes merged');
   else parts.push(val(Cm)+' Release 1 change'+(Cm.value===1?"":"s")+' merged'+per(Cm,X.pct_per_change,"change","changes","plan % per change"));
-  if(Wr.value==null)miss("rows reaching qa Works",Wr);
-  else if(Wr.value===0)parts.push('no rows reached qa Works');
-  else parts.push(val(Wr)+' row'+(Wr.value===1?"":"s")+' reached qa Works'+per(Wr,X.pct_per_works_row,"row","rows","plan % per row"));
+  if(Wr.value==null)miss("capabilities reaching qa Works",Wr);
+  else if(Wr.value===0)parts.push('no capabilities reached qa Works');
+  else parts.push(val(Wr)+' capabilit'+(Wr.value===1?"y":"ies")+' reached qa Works'+per(Wr,X.pct_per_works_row,"capability","capabilities","plan % per capability"));
   var rd=[];
-  if(Dn.value!=null)rd.push('done '+val(Dn));else miss("rows done a day",Dn);
-  if(RN.value!=null)rd.push('needed '+val(RN));else miss("rows needed a day",RN);
-  if(rd.length)parts.push('rows a day: '+rd.join(", ")+(CN&&CN.value!=null?' (changes a day: need '+val(CN)+')':""));
+  if(Dn.value!=null)rd.push('done '+val(Dn));else miss("capabilities done a day",Dn);
+  if(RN.value!=null)rd.push('needed '+val(RN));else miss("capabilities needed a day",RN);
+  if(rd.length)parts.push('capabilities a day: '+rd.join(", ")+(CN&&CN.value!=null?' (changes a day: need '+val(CN)+')':""));
   var bad=(U.bad_lines||[]).length?' <span class="small" style="color:var(--wait)"'+S("lines of the weekly-plan log left out: "+U.bad_lines.map(function(x){return "line "+x.line+" ("+x.why+")";}).join("; "))+'>'+U.bad_lines.length+' log line(s) left out</span>':"";
   return '<p class="line small"'+S(head+": "+(sp.from||"")+" to "+(sp.to||""))+'>'+head+': '+parts.join(' \u00b7 ')+(nms.length?' \u00b7 not measured: '+nms.join(", "):"")+'.'+bad+'</p>';
 }
@@ -424,9 +462,9 @@ function rTrust(){
   if(T.diffs&&T.diffs.length)h+='<ul class="items small">'+T.diffs.map(function(d){return '<li><span class="tag">differs</span><div>'+esc(plain(d.name))+': board '+esc(JSON.stringify(d.board))+', check '+esc(JSON.stringify(d.reconcile))+'</div></li>';}).join("")+'</ul>';
   h+='<h3>Invariants</h3><ul class="items small">'+(T.invariants||[]).map(function(i){return '<li><span class="tag">'+(i.ok?"holds":"broken")+'</span><div>'+dot(i.ok?"green":"red")+esc(i.name)+'<div class="muted">'+esc(i.detail)+'</div></div></li>';}).join("")+'</ul>';
   var dis=T.status_disagreements||[];
-  h+='<h3>Records differ ('+dis.length+')</h3>'+(dis.length?'<ul class="items small">'+dis.map(function(x){return '<li><span class="tag">row '+esc(x.map)+'</span><div>checklist says <b>'+esc(lab(x.checklist))+'</b>; computed from merged changes: <b>'+esc(x.computed)+'</b></div></li>';}).join("")+'</ul>':'<p class="small muted">None.</p>');
+  h+='<h3>Records differ ('+dis.length+')</h3>'+(dis.length?'<ul class="items small">'+dis.map(function(x){return '<li><span class="tag">capability '+esc(x.map)+'</span><div>checklist says <b>'+esc(lab(x.checklist))+'</b>; computed from merged changes: <b>'+esc(x.computed)+'</b></div></li>';}).join("")+'</ul>':'<p class="small muted">None.</p>');
   if(T.notes&&T.notes.length)h+='<h3>Notes</h3><ul class="items small">'+T.notes.map(function(n){return '<li>'+esc(n)+'</li>';}).join("")+'</ul>';
-  return section("","trust","Data trust","Whether the numbers can be trusted: the independent check, the invariants, and rows where the hand-kept checklist and the computed state differ.",h);
+  return section("","trust","Data trust","Whether the numbers can be trusted: the independent check, the invariants, and capabilities where the hand-kept checklist and the computed state differ.",h);
 }
 
 
@@ -523,7 +561,7 @@ function rPlan(){
 
 /* 5 architecture */
 function rArch(){
-  return section("07","arch","Product architecture","Each module, filled by the share of its Release 1 rows at qa Works (dark) and merged (light). Tap a module for its capabilities.",
+  return section("07","arch","Product architecture","Each module, filled by the share of its Release 1 capabilities at qa Works (dark) and merged (light). Tap a module for its capabilities.",
     '<div class="svgwrap" id="archsvg"></div><div class="legend"><span class="pill t-good">qa Works share</span><span class="pill t-prog">merged share</span></div><div class="modlist" id="modlist"><p class="small muted">Tap a module to list its capabilities.</p></div>');
 }
 function drawArch(){
@@ -532,13 +570,13 @@ function drawArch(){
   var mods=M.filter(function(m){return m.kind==="module";}),layer=M.filter(function(m){return m.kind==="layer";}),low=M.filter(function(m){return m.kind!=="module"&&m.kind!=="layer";});
   var cols=narrow?2:mods.length,gap=10,bw=(W-gap*(cols-1))/cols,bh=88,r1=Math.ceil(mods.length/cols);
   var y=0,s="",H;
-  function box(m,x,y,w,h){var d=m.done_share||0,g=m.merged_share||0,lbl=m.total+" rows \u00b7 "+Math.round(d*100)+"% Works";
+  function box(m,x,y,w,h){var d=m.done_share||0,g=m.merged_share||0,lbl=m.total+" capabilities \u00b7 "+Math.round(d*100)+"% Works";
     var o='<g data-mod="'+esc(m.id)+'" tabindex="0" role="button" aria-label="'+esc(m.name+", "+lbl)+'" style="cursor:pointer"><title>'+esc(m.name+": "+(m.what||"")+" \u2014 "+m.src)+'</title>';
     o+='<rect x="'+(x+.75)+'" y="'+(y+.75)+'" width="'+(w-1.5)+'" height="'+(h-1.5)+'" rx="6" fill="var(--panel2)" stroke="'+(m.kind==="gap"?"var(--wait)":"var(--line)")+'" stroke-dasharray="'+(m.kind==="gap"?"4 3":"")+'"/>';
     o+='<rect x="'+(x+1)+'" y="'+(y+h-10)+'" width="'+Math.max(0,(w-2)*g)+'" height="9" fill="var(--prog-soft)"/><rect x="'+(x+1)+'" y="'+(y+h-10)+'" width="'+Math.max(0,(w-2)*d)+'" height="9" fill="var(--good)"/>';
     var c=m.counts||{};o+='<svg x="'+(x+8)+'" y="'+y+'" width="'+Math.max(0,w-14)+'" height="'+(h-10)+'">';
     o+='<text x="0" y="18" font-size="13" font-weight="600" fill="var(--ink)">'+esc(m.name)+'</text>';
-    o+='<text x="0" y="36" font-size="11.5" fill="var(--ink2)" style="font-family:var(--mono)">'+esc(m.total)+' rows \u00b7 '+Math.round(d*100)+'% Works</text>';
+    o+='<text x="0" y="36" font-size="11.5" fill="var(--ink2)" style="font-family:var(--mono)">'+esc(m.total)+' capabilities \u00b7 '+Math.round(d*100)+'% Works</text>';
     o+='<text x="0" y="52" font-size="11" fill="var(--ink3)">'+esc(Math.round(g*100)+"% merged \u00b7 "+(c["In PR"]||0)+" in PR")+'</text>';
     o+='<text x="0" y="67" font-size="11" fill="var(--ink3)">'+esc((c["Shaped"]||0)+" shaped \u00b7 "+(c["Not shaped"]||0)+" not shaped")+'</text></svg></g>';return o;}
   mods.forEach(function(m,i){var r=Math.floor(i/cols),c=i%cols;s+=box(m,c*(bw+gap),r*(bh+gap),bw,bh);});
@@ -551,28 +589,46 @@ function drawArch(){
 }
 function showModule(id){
   var m=D.architecture.modules.filter(function(x){return x.id===id;})[0],el=document.getElementById("modlist");if(!m||!el)return;
-  var h='<h3>'+esc(m.name)+' \u00b7 '+m.total+' rows</h3><p class="small muted"'+S(m.src)+'>'+esc(m.what||"")+'</p><div class="box"><table><tbody>';
+  var h='<h3>'+esc(m.name)+' \u00b7 '+m.total+' capabilities</h3><p class="small muted"'+S(m.src)+'>'+esc(m.what||"")+'</p><div class="box"><table><tbody>';
   m.rows.forEach(function(r){h+='<tr><td class="mono n">'+r.map+'</td><td>'+esc(r.cap)+'</td><td>'+pill(r.status,tone(r.status))+'</td></tr>';});
   el.innerHTML=h+'</tbody></table></div>';
+}
+
+/* board v53 (A70): each capability's size (its backlog row count) and the requirement ids its backlog rows cite (Source:) */
+function rCapTable(){
+  var T=D.capability_table;if(!T)return section("","captable","Sizes and requirements","Not in data.json.",'<p>'+nm("missing from data.json")+'</p>');
+  var b=T.by_size,nmp=T.not_mapped,grp={};((D.capabilities||{}).groups||[]).forEach(function(g){grp[g.id]=g.name;});
+  var h='<p class="line small">By size: <span'+S(srcN(b))+'>'+(b.value?esc(sizeMix(b.value)):nm(b.reason))+'</span> \u00b7 '+
+    '<span'+S(srcN(nmp)+(nmp.maps&&nmp.maps.length?" · map numbers: "+nmp.maps.join(", "):""))+'>not mapped to a requirement: <b>'+esc(nmp.value)+'</b></span></p>';
+  h+='<p class="small muted">Size = how many backlog rows the capability\'s checklist cell names: 1 S, 2-3 M, 4 or more L; none, or not shaped yet: "not shaped". Requirements = the ids in its backlog rows\' Source field, grouped by section.</p>';
+  h+='<div class="box"><table><thead><tr><th class="n">Map</th><th>Capability</th><th>Size</th><th>Requirements</th><th>Status</th></tr></thead><tbody>';
+  var last=null;
+  T.rows.forEach(function(r){
+    if(r.group!==last){last=r.group;h+='<tr><td colspan="5" class="small muted"><b>'+esc(r.group+". "+(grp[r.group]||""))+'</b></td></tr>';}
+    var secs=Object.keys(r.req_by_section||{});
+    var req=secs.length?secs.map(function(k){return '<b>'+esc(k)+'</b> '+esc(r.req_by_section[k].map(function(x){return x.slice(k.length+1);}).join(", "));}).join(" \u00b7 "):'<span class="muted">not mapped</span>';
+    h+='<tr><td class="mono n">'+esc(r.map)+'</td><td>'+esc(r.cap)+'</td><td'+S(r.backlog_rows+" backlog row"+(r.backlog_rows===1?"":"s"))+'>'+esc(r.size)+'</td><td class="reqs"'+S(r.req.join(", "))+'>'+req+'</td><td>'+pill(r.status,tone(r.status))+'</td></tr>';});
+  h+='</tbody></table></div><p class="small muted"'+S(T.source_rule)+'>Source: MVP-CHECKLIST.md §A and BACKLOG.md at the records sha (parsed).</p>';
+  return section("","captable","Sizes and requirements","Each Release 1 capability with its size and the requirement ids its backlog rows cite.",h);
 }
 
 /* 6 capabilities */
 function rCaps(){
   var C=D.capabilities,cnt=v(C.counts)||{},tot=C.total||1,order=["qa Works","Merged","In PR","Shaped","Not shaped"];
-  var h='<h3>Release 1 burn-up: '+tot+' Build rows</h3><div class="bar"'+S(src(C.counts))+'>';
+  var h='<h3>Release 1 burn-up: '+tot+' capabilities</h3><div class="bar"'+S(src(C.counts))+'>';
   order.forEach(function(k){var n=cnt[k]||0;if(n)h+='<span style="width:'+(100*n/tot)+'%;background:'+toneVar(tone(k))+'" title="'+esc(k+": "+n)+'"></span>';});
   h+='</div><div class="legend">';order.forEach(function(k){h+=pill(k+" "+(cnt[k]||0),tone(k),src(C.counts));});h+='</div>';
   h+='<div class="groupgrid">';
   C.groups.forEach(function(g){var rs=C.rows.filter(function(r){return r.group===g.id;});var done=rs.filter(function(r){return r.status==="qa Works";}).length;
     h+='<div class="grp"><h4><span>'+esc(g.id+". "+g.name)+'</span><span class="mono muted"'+S(src(C.counts))+'>'+done+'/'+rs.length+'</span></h4>';
-    rs.forEach(function(r){var df=diffOf(r.map);h+='<div class="row"'+S("MVP-CHECKLIST.md row "+r.map+" \u00b7 "+r.module+" \u00b7 "+r.backlog)+'><span>'+esc(r.map+" "+r.cap)+workMark(r.map)+'</span><span>'+pill(r.status,tone(r.status))+(df?' <span class="rep"'+S("records differ: the checklist says "+lab(df.checklist)+"; computed from merged changes: "+df.computed)+'>records differ: '+esc(df.computed)+'</span>':"")+'</span></div>';});h+='</div>';});
+    rs.forEach(function(r){var df=diffOf(r.map);h+='<div class="row"'+S("MVP-CHECKLIST.md capability "+r.map+" \u00b7 "+r.module+" \u00b7 "+r.backlog)+'><span>'+esc(r.map+" "+r.cap)+workMark(r.map)+'</span><span>'+pill(r.status,tone(r.status))+(df?' <span class="rep"'+S("records differ: the checklist says "+lab(df.checklist)+"; computed from merged changes: "+df.computed)+'>records differ: '+esc(df.computed)+'</span>':"")+'</span></div>';});h+='</div>';});
   h+='</div><h3>qa capabilities ('+(v(C.qa)||[]).length+')</h3>';
   (v(C.qa_by_milestone)||[]).forEach(function(m){h+='<div class="small" style="margin:4px 0"'+S(src(C.qa_by_milestone))+'><b>'+esc(m.milestone)+'</b>: <span class="mono">'+m.works+' of '+m.total+'</span> Works</div>';});
   var qs=v(C.qa)||[];["M2","M3","T"].forEach(function(ms){var g=qs.filter(function(q){return q.m===ms;});if(!g.length)return;
     h+='<div class="small muted" style="margin:6px 0 3px">'+esc(ms)+'</div><div class="sq">';
     g.forEach(function(q){var t=tone(q.status);h+='<i style="background:'+toneVar(t)+(t==="none"?";background:transparent;border:1.5px solid var(--none)":"")+'" title="'+esc(q.id+" "+q.status+": "+q.name)+'" data-src="'+esc(q.id+" \u00b7 "+q.status+" \u00b7 "+q.name+" \u2014 "+src(C.qa))+'"></i>';});h+='</div>';});
   h+='<div class="legend">'+pill("Works","good")+pill("Built, awaiting qa","prog")+pill("Partial","wait")+pill("Broken","bad")+pill("Not tested or built","none")+'</div>';
-  return section("08","caps","Capabilities","Every Release 1 row by group with its status, then the qa capabilities as one square each.",h);
+  return section("08","caps","Capabilities","Every Release 1 capability by group with its status, then the qa capabilities as one square each.",h);
 }
 
 /* 7 building */
@@ -701,8 +757,8 @@ function rBacklog(){
 /* library: one master per document (P-593); edit this list when a master changes */
 var LIBRARY=[
  ["Team requirements (the PRD)","What the product must do: the team's requirement rows (AG-*), name-free copy, refreshed from the newest snapshot","Living","../domain/","@../domain/"],
- ["Capability sourcing map","Release 1 scope baseline, draft 6: 112 rows, build or buy (P-586)","Living","published page","https://claude.ai/artifact/8Fr4UUNR8yxwZrQ4nVi6wC"],
- ["Release 1 checklist","The one tracking page: 101 rows and their status, done for a row, launch readiness (P-592)","Living","MVP-CHECKLIST.md","@MVP-CHECKLIST.md"],
+ ["Capability sourcing map","Release 1 scope baseline, draft 6: 112 capabilities, build or buy (P-586)","Living","published page","https://claude.ai/artifact/8Fr4UUNR8yxwZrQ4nVi6wC"],
+ ["Release 1 checklist","The one tracking page: 101 capabilities and their status, done for a capability, launch readiness (P-592)","Living","MVP-CHECKLIST.md","@MVP-CHECKLIST.md"],
  ["Backlog","Every row to build, in order, with its Done when","Living","BACKLOG.md","@BACKLOG.md"],
  ["Contracts between modules","How platform, front office and case side connect: events, ports, firm walls","Living","design/*-contract*","@design/"],
  ["Rules in force","Every rule once, with the decision that set it","Living","RULES.md","@RULES.md"],
@@ -726,13 +782,13 @@ function rLibrary(){
 function rGlance(){
   var C=D.capabilities,c=v(C.counts)||{},tot=C.total||101,ny=v(D.summary.needs_you)||0,risks=(D.risks.items||[]).filter(function(r){return r.status!=="closed";});
   var byOwner={};risks.forEach(function(r){byOwner[r.owner]=(byOwner[r.owner]||0)+1;});
-  var stages=[["Not shaped","Not yet specified","No backlog row with a testable \"done when\" yet"],["Shaped","Specified, ready to build","Backlog row with acceptance criteria; nobody building it yet"],["In PR","In development","A pull request is open for the whole row"],["Merged","Built","Every part merged into the main line; qa has not proven it yet"],["qa Works","Proven","qa\'s independent Works verdict, with the test run on record"]];
+  var stages=[["Not shaped","Not yet specified","No backlog row with a testable \"done when\" yet"],["Shaped","Specified, ready to build","Backlog row with acceptance criteria; nobody building it yet"],["In PR","In development","A pull request is open for the whole capability"],["Merged","Built","Every part merged into the main line; qa has not proven it yet"],["qa Works","Proven","qa\'s independent Works verdict, with the test run on record"]];
   var h='<h3>Scope (capability map baseline, P-586)</h3><div class="kpis">'+
     kpi("Must-have (Release 1)",esc(tot),"built before the first real firm","capability map draft 6: Build rows")+
     kpi("Optional","8","decided one by one; out of the first build","capability map draft 6: Optional rows (P-572)")+
     kpi("Held","3","waiting on an outside answer","capability map draft 6: Held rows")+
     kpi("Deferred to after launch","31","backlog rows X-1 to X-31","BACKLOG.md section \"After the end-to-end production-grade system\" (P-582)")+'</div>';
-  h+='<h3>Delivery stages of the '+tot+' must-have rows (the checklist\'s status)</h3><div class="kpis">';
+  h+='<h3>Delivery stages of the '+tot+' must-have capabilities (the checklist\'s status)</h3><div class="kpis">';
   stages.forEach(function(st){h+=kpi(st[1],esc(c[st[0]]||0)+'<span class="muted" style="font-size:13px"> / '+tot+'</span>',esc(st[2]),src(C.counts));});
   h+=kpi("Released to production","0","no production yet: it opens after the launch gate (P-589)","P-589 (3), P-590 (1)")+'</div>';
   h+='<h3>Who must act</h3><div class="kpis">'+kpi("You",esc(ny),"open items in Needs you, at the top",src(D.summary.needs_you),ny?"alert":"");
@@ -743,7 +799,7 @@ function rGlance(){
 function rHeat(){
   var C=D.capabilities,order=["Not shaped","Shaped","In PR","Merged","qa Works"];
   var W=D.working_today,h=W?'<p class="workline"'+S(W.src+" \u00b7 "+W.sha+" \u00b7 as of "+W.as_of)+'><span class="wmark"></span> '+esc(W.line)+' <span class="small muted">(filled dot: open PR, measured; ring: Lead-reported lane)</span></p>':"";
-  h+='<div class="box"><table><thead><tr><th>Business function</th><th class="n">Rows</th>';
+  h+='<div class="box"><table><thead><tr><th>Business function</th><th class="n">Capabilities</th>';
   order.forEach(function(k){h+='<th class="n">'+esc(lab(k))+'</th>';});
   h+='<th>Where it stands</th></tr></thead><tbody>';
   C.groups.forEach(function(g){var rs=C.rows.filter(function(r){return r.group===g.id;}),c={};order.forEach(function(k){c[k]=0;});
@@ -758,8 +814,8 @@ function rHeat(){
     h+='<tr'+S(src(C.counts))+'><td>'+esc(g.id+". "+g.name)+wk+'</td><td class="n">'+rs.length+'</td>';
     order.forEach(function(k){var n=c[k]||0;h+='<td class="n"'+(n?' style="background:'+toneVar(tone(k))+'-soft"':'')+'>'+(n||'<span class="muted">0</span>')+'</td>';});
     h+='<td>'+pill(word,t)+'</td></tr>';});
-  h+='</tbody></table></div><p class="small muted">Counts are the checklist\'s hand-kept status; "records differ" marks rows whose computed state (from merged changes) is different; Details lists them. Colour rule: green = every row proven; amber = some built or in a pull request; blue = shaped, not started; grey = not shaped. Customer-experience walk, compliance and risk columns join when TR-1 (requirement sources) and qa\'s Release 1 capabilities land.</p>';
-  return section("","heat","Capability heat map","Each business function of Release 1 and how far its rows have got. The rows themselves are in the checklist (the Library).",h);
+  h+='</tbody></table></div><p class="small muted">Counts are the checklist\'s hand-kept status; "records differ" marks capabilities whose computed state (from merged changes) is different; Details lists them. Colour rule: green = every capability proven; amber = some built or in a pull request; blue = shaped, not started; grey = not shaped. Customer-experience walk, compliance and risk columns join when TR-1 (requirement sources) and qa\'s Release 1 capabilities land.</p>';
+  return section("","heat","Capability heat map","Each business function of Release 1 and how far its capabilities have got. The capabilities themselves are in the checklist (the Library).",h);
 }
 function rFresh(){
   var F=D.freshness,R=D.run||{};
@@ -774,7 +830,7 @@ function rFresh(){
 
 function render(){
   renderStrip();
-  var TABS=[["overview","Overview",[rOverview]],["caps","Capabilities",[rHeat,rCaps,rArch]],["factory","Factory",[rLeadQueue,rOrg,rSystem,rBuilding,rQuality,rDevops,rHeal,rImprove,rRes]],["launch","Launch readiness",[rRisks]],["library","Library",[rLibrary]],["details","Details",[rTrust,rLearn,rBacklog,rFresh]]];
+  var TABS=[["overview","Overview",[rOverview]],["caps","Capabilities",[rHeat,rCaps,rCapTable,rArch]],["factory","Factory",[rLeadQueue,rOrg,rSystem,rBuilding,rQuality,rDevops,rHeal,rImprove,rRes]],["launch","Launch readiness",[rRisks]],["library","Library",[rLibrary]],["details","Details",[rTrust,rLearn,rBacklog,rFresh]]];
   var one=function(f){try{return f();}catch(e){return '<section><p class="err">This block could not be drawn: '+esc(e.message)+'</p></section>';}};
   var cur="overview";try{var sv=localStorage.getItem("board-tab");if(sv&&TABS.some(function(t){return t[0]===sv;}))cur=sv;}catch(e){}
   var out=one(rBanner)+'<p class="goal">Goal: Release 1 (production grade), complete and end to end, ready for the first real firm\'s data after the launch gate (P-570, P-589, P-594).</p>'+one(rNeeds);
@@ -790,7 +846,7 @@ function render(){
   drawAll();
 }
 function drawAll(){[drawVSM,drawArch,drawBurnup,drawTimeline].forEach(function(f){try{f();}catch(e){}});}
-var rt=null;window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(function(){if(D){drawAll();}},150);});
+var rt=null;window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(function(){if(D){drawAll();renderTop();}},150);});
 setInterval(function(){if(D)renderStrip();},60000);
 
 fetch("data.json",{cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})

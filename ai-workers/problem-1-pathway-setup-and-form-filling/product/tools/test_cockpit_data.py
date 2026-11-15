@@ -307,8 +307,8 @@ class TrustAndInvariants(unittest.TestCase):
         ck = cd.Snap(FIX).file("MVP-CHECKLIST.md").replace("| 3 | Cap three |", "| 2 | Cap two again | Platform | PF-2 | Merged |\n| 3 | Cap three |")
         _, c = run(snap_with({CKP: ck}))
         inv = {i["name"]: i for i in c["trust"]["invariants"]}
-        self.assertFalse(inv["Build rows unique"]["ok"])
-        self.assertIn("2 (Shaped / Merged)", inv["Build rows unique"]["detail"])
+        self.assertFalse(inv["Capabilities unique"]["ok"])
+        self.assertIn("2 (Shaped / Merged)", inv["Capabilities unique"]["detail"])
         self.assertEqual(c["pace"]["rows_total"]["value"], 8)          # counted once
         _, c0 = run()
         self.assertEqual(c0["trust"]["status_disagreements"], [{"map": 2, "checklist": "Shaped", "computed": "built"},
