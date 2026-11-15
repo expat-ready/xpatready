@@ -205,7 +205,7 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
     const door = r.door ? DOORS[`${r.method} ${r.path}`] ?? -1 : undefined; // an unreviewed door has no status: always caught
     for (const actor of [null, "user-A", "user-O", "user-P"]) { const a = await ask(path, r.method, actor); if (platformWrong(a, door)) wrongPlatform.push(`${r.method} ${r.path} as ${actor ?? "nobody"}: ${a.status} ${JSON.stringify(a.body).slice(0, 80)}`); }
   }
-  ok(`PF-4t: the platform guard's routes (${platformReads.length} reads, ${platformWrites.length} writes) answer nobody and x-actor alone 401 (the sign-in door: a refusal), never data`,
+  ok(`PF-4t: the platform guard's routes (${platformReads.length} reads, ${platformWrites.length} writes) answer nobody and x-actor alone 401 (a sign-in door: its exact status in DOORS), never data`,
     platformReads.length >= 2 && platformWrites.length >= 8 && wrongPlatform.length === 0, wrongPlatform);
   ok("PF-4t fail: a seeded platform route answering 200 to x-actor alone, or 401 with data, is caught", platformWrong({ status: 200, body: { firmId: "x" } }) && platformWrong({ status: 401, body: { detail: "no", staffId: "x" } }) && platformWrong({ status: 200, body: { token: "t" } }, 403) && !platformWrong({ status: 401, body: { type: "t", title: "t", status: 401, detail: "d", code: "NOT_SIGNED_IN" } }));
   // PF-4f (PF-4t round 2 Minors m1, m2; Lead B rows rev 16.8).
