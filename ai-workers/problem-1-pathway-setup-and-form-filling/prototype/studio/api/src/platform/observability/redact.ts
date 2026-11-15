@@ -6,7 +6,7 @@
 //  * by pattern, in any text left: email addresses, bearer and basic credentials, JWTs, phone-like and document-like
 //    numbers, query-string values and key=value secrets are replaced by a marker naming what was there.
 // An error keeps its class, its code and its stack frames, never its message: a message can quote any value (a name in
-// "No client Jane Doe", a duplicate email from the database), and a name cannot be found by pattern.
+// "No client Client A", a duplicate email from the database), and a name cannot be found by pattern.
 // Never throws: a value that cannot be read becomes a marker.
 
 /** Field names (compared lower case, letters only, last dotted part) whose values never reach a log. */
@@ -51,10 +51,10 @@ const DOCUMENT_ID = /\b[A-Z]{1,2}\d{6,9}\b/g;
 // An 8-digit UCI written 1234-5678 (review m5; 10-digit ones are number runs), never a year range such as 2026-2027
 // nor a time range such as 0900-1700 (PF-23r: two 24-hour clock times, hhmm-hhmm).
 const UCI8 = /(?<![\w.:/-])\d{4}-\d{4}(?![\w:/-])/g;
-const YEAR_RANGE = /^(19|20)\d{2}-(19|20)\d{2}$/, TIME_RANGE = /^(?:(?:[01]\d|2[0-3])[0-5][05]|2400)-(?:(?:[01]\d|2[0-3])[0-5][05]|2400)$/; // minutes in 5s (review r1 m1)
+const YEAR_RANGE = /^(19|20)\d{2}-(19|20)\d{2}$/, TIME_RANGE = /^(?:(?:[01]\d|2[0-3])[03]0|2400)-(?:(?:[01]\d|2[0-3])[03]0|2400)$/; // whole and half hours only (review r1 m1; Devin: a UCI 1130-0845 stays hidden)
 // PostgreSQL repeats a refused row's values (PF-23r, FO-13 break 11): "DETAIL:  Key (email)=(x@y) already exists.",
 // "Failing row contains (…)". The words after DETAIL: and every value list are replaced; the column names stay.
-// To the end of the line, quotes included (review r1 m2: a value "Jane \"JJ\" Doe" leaked after its quote); a column
+// To the end of the line, quotes included (review r1 m2: a value "Client \"JJ\" Doe" leaked after its quote); a column
 // list may hold one level of brackets, an expression index's lower(email::text) (review r1 m3).
 const PG_DETAIL = /\b(DETAIL:)[^\n]*/g;
 const PG_KEY = /\b(Key \((?:[^()\n]|\([^()\n]*\)){0,200}\)=\()[^\n]*\)(?=[\s.,"]|$)/g;
@@ -147,13 +147,14 @@ function walk(value: unknown, depth: number, w: Walk): unknown {
 
 const COLUMN = /^[A-Za-z_][A-Za-z0-9_.]{0,62}$/;
 /** Prisma's error `meta` (PF-23r, FO-13 break 11): its values can repeat the refused row (a driver's message, a DETAIL
- *  line). Only the model's name and the constraint's columns stay; every other value is replaced. */
+ *  line). Only the model's name and the constraint's columns stay, and only when pattern redaction leaves them as they
+ *  are (a document number AB123456 is shaped like a column name); every other value is replaced. */
 function prismaMeta(meta: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   try {
     for (const [k, v] of Object.entries(meta).slice(0, 20)) {
       const cols = Array.isArray(v) ? v : typeof v === "string" ? [v] : null;
-      out[redactText(k)] = (k === "modelName" || k === "target") && cols?.length && cols.every((c) => typeof c === "string" && COLUMN.test(c)) ? v : "[redacted]";
+      out[redactText(k)] = (k === "modelName" || k === "target") && cols?.length && cols.every((c) => typeof c === "string" && COLUMN.test(c) && redactText(c) === c) ? v : "[redacted]";
     }
   } catch { return { meta: "[not logged: unreadable value]" }; }
   return out;
@@ -161,7 +162,7 @@ function prismaMeta(meta: Record<string, unknown>): Record<string, unknown> {
 
 const hasFrame = (s: string) => s.split("\n").slice(1).some((l) => isFrame(l.trim()));
 // The class only when it is shaped like one (TypeError, PrismaClientKnownRequestError, HttpException): a first line
-// "Jane: …" never gives "Jane".
+// "Client: …" never gives "Client".
 const ERROR_CLASS = /^\s*([A-Z][A-Za-z0-9_$]{0,50}(?:Error|Exception))(?=[:\s]|$)/;
 /** Text as a log keeps it: a stack trace written as text (console.error(err.stack), Nest's error(message, stack)) is
  *  reduced to its frames, since its first lines are the error's message, which can span several lines (Prisma's do:

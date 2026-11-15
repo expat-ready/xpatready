@@ -58,7 +58,7 @@ const ID = /^[A-Za-z0-9_.:-]{1,120}$/;
 const WORDS = new Set(["entity", "queue"]);
 /** An alarm is never stopped by the shape of its detail (review M1): in `entity` and `queue`, the app's own names, spaces
  *  become "_"; an id field (entityKey, firmId) with a space is a name, not an id, and is refused (PF-23r, review minor 2:
- *  the port promises to refuse names). A value that is not an id (an email, a sentence, "Jane Doe" as entityKey)
+ *  the port promises to refuse names). A value that is not an id (an email, a sentence, "Client A" as entityKey)
  *  becomes "not_an_id", never the value. */
 export function alertIds<T extends Record<string, string | undefined>>(ids: T): { [K in keyof T]: string | undefined } {
   const out: Record<string, string | undefined> = {};

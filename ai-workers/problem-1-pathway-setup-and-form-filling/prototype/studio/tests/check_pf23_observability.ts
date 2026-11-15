@@ -84,9 +84,9 @@ function capture() {
   const cyc: Record<string, unknown> = { id: "c" }; cyc.self = cyc;
   ok("PF-23r fail-guard (budget): a cycle is still [cycle], not [shared]", JSON.stringify(redact(cyc)) === '{"id":"c","self":"[cycle]"}', redact(cyc));
   // (2) alertIds: spaces become "_" only in entity and queue; an id with a space is a name.
-  const a = alertIds({ entity: "case fact", queue: "mail out", entityKey: "Jane Doe", firmId: "Acme Firm" });
+  const a = alertIds({ entity: "case fact", queue: "mail out", entityKey: "Client A", firmId: "Acme Firm" });
   ok("PF-23r pass (alertIds, review minor 2): entity \"case fact\" → case_fact, queue \"mail out\" → mail_out", a.entity === "case_fact" && a.queue === "mail_out", a);
-  ok("PF-23r fail (alertIds, review minor 2): entityKey \"Jane Doe\" and a firmId with a space are refused (not_an_id), never Jane_Doe", a.entityKey === "not_an_id" && a.firmId === "not_an_id", a);
+  ok("PF-23r fail (alertIds, review minor 2): entityKey \"Client A\" and a firmId with a space are refused (not_an_id), never Client_A", a.entityKey === "not_an_id" && a.firmId === "not_an_id", a);
   ok("PF-23r fail-guard (alertIds): a real id is kept as it is", alertIds({ entityKey: "3f1d2c1e-7b8a-4c5d-9e0f-112233445566", firmId: "firm-0001" }).entityKey === "3f1d2c1e-7b8a-4c5d-9e0f-112233445566");
   // (3) A stack whose message spans several lines (Prisma-style): frames only, plus the error's class.
   const prismaStack = `PrismaClientKnownRequestError: \nInvalid \`prisma.client.create()\` invocation:\n\nUnique constraint failed for ${CANARIES.name} <${CANARIES.email}>\n    at Ra.handleRequestError (/app/node_modules/@prisma/client/runtime/library.js:121:7315)\n    at async Fill.save (/app/api/src/fill-case.ts:379:5)`;
@@ -94,9 +94,9 @@ function capture() {
   ok("PF-23r pass (frames only, review minor 3): a 3-line error message with a stack logs its class and frames, never the message lines", /^\[stack\] PrismaClientKnownRequestError at /.test(st) && st.includes("fill-case.ts:379:5") && !/Invalid|Unique constraint/.test(st) && !leaks(st).length, st);
   const before = prismaStack.split("\n").slice(0, 4).join("\n");
   ok("PF-23r fail-guard (frames only): text with no frame line is still redacted by pattern only (a name stays: it cannot be found by pattern, which is why frames-only matters)", logText(before).includes(CANARIES.name) && !logText(before).includes(CANARIES.email));
-  ok("PF-23r fail-guard (frames only): a first line that is not an error class (\"Jane: …\") gives no class", logText(`Jane: hello\n    at x (/a.js:1:1)`) === "[stack] at x (/a.js:1:1)", logText(`Jane: hello\n    at x (/a.js:1:1)`));
+  ok("PF-23r fail-guard (frames only): a first line that is not an error class (\"Client: …\") gives no class", logText(`Client: hello\n    at x (/a.js:1:1)`) === "[stack] at x (/a.js:1:1)", logText(`Client: hello\n    at x (/a.js:1:1)`));
   // (4) Time ranges and cookies.
-  ok("PF-23r fail-guard (UCI8, review minor 4): a time range 0900-1700 stays; a UCI 1234-5678 is still replaced", redactText("open 0900-1700") === "open 0900-1700" && redactText("2355-2400") === "2355-2400" && redactText("uci 1234-5678") === "uci [number]", [redactText("open 0900-1700"), redactText("uci 1234-5678")]);
+  ok("PF-23r fail-guard (UCI8, review minor 4): a time range 0900-1700 stays; a UCI 1234-5678 is still replaced", redactText("open 0900-1700") === "open 0900-1700" && redactText("2330-2400") === "2330-2400" && redactText("uci 1234-5678") === "uci [number]", [redactText("open 0900-1700"), redactText("uci 1234-5678")]);
   ok("PF-23r pass (cookie, review minor 4): \"Cookie sid=abc\" with no \":\" is redacted; the word cookie in a sentence is kept", !/abc/.test(redactText("Cookie sid=abc")) && redactText("the cookie expired") === "the cookie expired", redactText("Cookie sid=abc"));
   // (5) PostgreSQL DETAIL and Prisma meta (FO-13 break 11): they repeat the refused row's values.
   const pgText = `error: duplicate key value violates unique constraint "person_name_key"\nDETAIL:  Key (display_name)=(${CANARIES.name}) already exists.`;
@@ -104,14 +104,15 @@ function capture() {
   const meta = redact({ code: "P2002", meta: { modelName: "Person", target: ["display_name"], driverAdapterError: { cause: { originalMessage: `Key (display_name)=(${CANARIES.name})` } }, cause: CANARIES.name }, detail: `Key (display_name)=(${CANARIES.name}) already exists.` }) as Record<string, Record<string, unknown>>;
   ok("PF-23r pass (Prisma meta, a pg error's detail field): only the model and the constraint's columns stay", meta.meta.modelName === "Person" && JSON.stringify(meta.meta.target) === '["display_name"]' && meta.meta.driverAdapterError === "[redacted]" && meta.meta.cause === "[redacted]" && meta.detail === "[redacted]" && !leaks(JSON.stringify(meta)).length, meta);
   // PF-23r review round 1, Minors 1-5.
-  ok("PF-23r pass/fail (review r1 m1): 0900-1700 and 2400 stay; a UCI 1130-0847 (minutes not in 5s) and 2359-2459 are replaced", redactText("0900-1700") === "0900-1700" && redactText("1730-2400") === "1730-2400" && redactText("uci 1130-0847") === "uci [number]" && redactText("2359-2459") === "[number]", [redactText("uci 1130-0847"), redactText("2359-2459")]);
-  const quoted = `Jane "JJ" ${CANARIES.name}`;
+  ok("PF-23r pass/fail (review r1 m1, review bot): 0900-1700, 1730-2400 stay (whole and half hours); UCIs 1130-0847, 1130-0845, 0915-1745 and 2359-2459 are replaced", redactText("0900-1700") === "0900-1700" && redactText("1730-2400") === "1730-2400" && redactText("uci 1130-0847") === "uci [number]" && redactText("uci 1130-0845") === "uci [number]" && redactText("0915-1745") === "[number]" && redactText("2359-2459") === "[number]", [redactText("uci 1130-0847"), redactText("2359-2459")]);
+  const quoted = `Client "JJ" ${CANARIES.name}`;
   ok("PF-23r fail (review r1 m2): a value with a quote in it loses all of itself in DETAIL, Failing row and Cookie sid=\"…\"", [`DETAIL:  Key (display_name)=(${quoted}) already exists.`, `Failing row contains (1, ${quoted}, null).`, `Cookie sid="${CANARIES.bearer}"; b=1`].every((t) => !redactText(t).includes(CANARIES.name) && !redactText(t).includes("JJ") && !redactText(t).includes(CANARIES.bearer)), [`DETAIL: x "JJ"`, `Cookie sid="${CANARIES.bearer}"`].map(redactText));
   ok("PF-23r fail (review r1 m3): a bare Key (lower(email::text))=(…) loses its value; the expression stays", redactText(`Key (lower(email::text))=(${CANARIES.name}) already exists.`) === "Key (lower(email::text))=([redacted]) already exists.", redactText(`Key (lower(email::text))=(${CANARIES.name}) already exists.`));
   ok("PF-23r fail-guard (review r1 m4): a text line starting \"at 10:00\" is not a frame: the text is redacted by pattern, not cut to frames", logText(`Summary line\nat 10:00 the job ran for ${CANARIES.email}`) === "Summary line\nat 10:00 the job ran for [email]", logText(`Summary line\nat 10:00 the job ran for ${CANARIES.email}`));
-  ok("PF-23r fail-guard (review r1 m4): in a stack, a message line \"at Jane Doe's office\" is not kept as a frame", !logText(`Error: x\nat ${CANARIES.name}'s office\n    at f (/a.js:1:2)`).includes(CANARIES.name), logText(`Error: x\nat ${CANARIES.name}'s office\n    at f (/a.js:1:2)`));
+  ok("PF-23r fail-guard (review r1 m4): in a stack, a message line \"at Client A's office\" is not kept as a frame", !logText(`Error: x\nat ${CANARIES.name}'s office\n    at f (/a.js:1:2)`).includes(CANARIES.name), logText(`Error: x\nat ${CANARIES.name}'s office\n    at f (/a.js:1:2)`));
   const d = new Date(0);
   ok("PF-23r fail-guard (review r1 m5): a Date met twice is written twice, never [shared]", JSON.stringify(redact({ startedAt: d, at: d })) === '{"startedAt":"1970-01-01T00:00:00.000Z","at":"1970-01-01T00:00:00.000Z"}', redact({ startedAt: d, at: d }));
+  ok("PF-23r fail (Prisma meta, review bot): a target or modelName shaped like a column but a document number (AB123456) is replaced", (() => { const m = (redact({ meta: { target: ["AB123456"], modelName: "AB123456" } }) as Record<string, Record<string, unknown>>).meta; return m.target === "[redacted]" && m.modelName === "[redacted]"; })());
   ok("PF-23r fail-guard (Prisma meta): a target that is not a column name list is replaced too", (redact({ meta: { target: [CANARIES.name] } }) as Record<string, Record<string, unknown>>).meta.target === "[redacted]");
 }
 
