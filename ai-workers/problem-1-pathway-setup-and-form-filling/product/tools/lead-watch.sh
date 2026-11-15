@@ -78,6 +78,12 @@ for b in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/boa
   age=$(( ( $(date +%s) - $(git log -1 --format=%ct "$b") ) / 60 ))
   [ "${n:-0}" -gt 0 ] && [ "$age" -le 1440 ] && ACT "$b has $n commit(s) not on $here (last push ${age} min ago): merge, test, publish"
 done
+# 3c. The "needs Lead" queue (P-611 (2), row G-1): LANE-REPORT first lines on open PRs in the window and on #1796 go
+# into product/state/items.json; open and not acked over 45 min = ACT, over 90 min = FOUNDER line. 3b stays as the
+# fallback for reports in free text. Ack with: python3 product/tools/items.py ack <id> --by "Lead N"; commit items.json.
+bash "$TOOLS/lead-queue.sh" "$since" > "$STATE_DIR/queue.txt" 2>&1; cat "$STATE_DIR/queue.txt"
+act=$((act + $(grep -c '^ACT' "$STATE_DIR/queue.txt")))
+git diff --quiet -- "$TOOLS/../state/items.json" 2>/dev/null || say "queue items.json changed: commit it with the records (P-557)"
 
 # 4. Lanes alive: branches pushed in the last 90 minutes (a lane is working only if it pushed, lead skill).
 git fetch -q origin 2>/dev/null
