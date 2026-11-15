@@ -15,6 +15,8 @@ import { jobIdOf } from "../api/src/platform/jobs/job-key.ts";
 import { currentJobFirm, DEAD_LETTER, JobRefused, JOBS_SCHEMA, PgBossJobs } from "../api/src/platform/jobs/pgboss-jobs.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { fakeJobs } from "../ports/jobs.ts";
+import { runContract } from "../ports/contracts/contract.ts";
+import { jobPortContract } from "../ports/contracts/job-port.contract.ts";
 
 const STUDIO = join(import.meta.dirname, "..");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -451,6 +453,20 @@ try {
     const lines = `${r.stdout}`.split("\n").filter((l) => JOBS_LINE.test(l));
     ok("PF-14 pass: prisma migrate diff from a database pg-boss has installed into names nothing of pg-boss's schema", (r.status === 0 || r.status === 2) && lines.length === 0, { status: r.status, lines: lines.slice(0, 5), err: r.stderr.slice(0, 300) });
     ok("PF-14 fail: the same filter catches a line that would drop pg-boss's table", JOBS_LINE.test(`DROP TABLE "platform_jobs"."job";`));
+  }
+
+  // PF-0c: both real adapters run JobPort's shared contract (PF-0p's fake runs it in check_pf0p_ports.ts): PgBossJobs on
+  // this file's test clock; PlatformJobs, the app's provider, on the wall clock against this scratch database.
+  await runContract(jobPortContract, "PgBossJobs", () => ({ jobs, ns: "pgboss", now: () => new Date(clock.now()), settle: (done) => tickUntil(done, 500, 20) }), ok);
+  {
+    process.env.DATABASE_URL = urlOf(MAIN);
+    const [{ PlatformJobs }, core] = await Promise.all([import("../api/src/platform/jobs/platform-jobs.ts"), import("../api/src/core.ts")]);
+    if (core.DATABASE_URL !== urlOf(MAIN)) throw new Error(`PF-0c: PlatformJobs would run on ${core.DATABASE_URL}, not this file's scratch database`);
+    const provider = new PlatformJobs();
+    await provider.onApplicationBootstrap();
+    try {
+      await runContract(jobPortContract, "PlatformJobs", () => ({ jobs: provider, ns: "provider", now: () => new Date(), settle: async (done) => { for (let i = 0; i < 40 && !done(); i++) await realPause(200); return done(); } }), ok);
+    } finally { await provider.onApplicationShutdown(); }
   }
 
   ok("PF-14: no pg-boss error during the whole run", errors.length === 0, errors);

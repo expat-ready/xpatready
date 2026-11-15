@@ -18,6 +18,8 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createSign, generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { runContract } from "../ports/contracts/contract.ts";
+import { identityPortContract } from "../ports/contracts/identity-port.contract.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const PORT = Number(process.argv[2] ?? 4541), BASE = `http://localhost:${PORT}`, COPY_DB = process.env.STUDIO_DB ?? "xr_studio_pf4";
@@ -112,6 +114,16 @@ try {
     await throwsLike(async () => { const a = await makeApp(local, [SystemKeyController]); apps.push(a.app); }, (e) => /agent\/\* keys.*SystemKeyController\.verify .*system\/firm:verify/.test(String(e))));
   ok("PF-4 pass: the rule itself accepts declared agent/* routes and refuses none of them",
     !(await throwsLike(() => assertEveryRouteDeclared([{ name: "X.y", method: "GET", path: "/api/platform/x", access: { kind: "keys", keys: ["agent/staff:manage"] } }]), () => true)));
+
+  // ----------------------------------------------- PF-0c: IdentityPort's shared contract (Lead B ruling 2, 15 Nov)
+  // LocalIdentity runs it here. CognitoIdentity runs it only with AWS credentials, a ca-central-1 pool and two test
+  // sign-in tokens from that pool (PF-4b's proof sets them); otherwise NOT TESTED, never counted green (P-405).
+  const KEY0C = "pf0c-contract-signing-key-0123456789ab";
+  await runContract(identityPortContract, "LocalIdentity", () => { const id = new LocalIdentity(KEY0C, () => Date.now()); return { identity: id, who: { staffId: R }, token: ({ secondStep }: { secondStep: boolean }) => id.issue(R, { authTimeMs: Date.now() - 60_000, secondStep }), expiredToken: () => new LocalIdentity(KEY0C, () => Date.now() - 2 * 3600_000).issue(R, { authTimeMs: Date.now() - 2 * 3600_000 - 60_000, secondStep: true }) }; }, ok);
+  const env0c = process.env, aws0c = !!(env0c.AWS_ACCESS_KEY_ID || env0c.AWS_PROFILE || env0c.AWS_WEB_IDENTITY_TOKEN_FILE);
+  const pool0c = env0c.PLATFORM_COGNITO_USER_POOL_ID && env0c.PLATFORM_COGNITO_CLIENT_ID && env0c.PF0C_COGNITO_SUBJECT && env0c.PF0C_COGNITO_ACCESS_TOKEN && env0c.PF0C_COGNITO_EXPIRED_TOKEN;
+  await runContract(identityPortContract, "CognitoIdentity", () => ({ identity: new CognitoIdentity({ userPoolId: env0c.PLATFORM_COGNITO_USER_POOL_ID ?? null, clientId: env0c.PLATFORM_COGNITO_CLIENT_ID ?? null, mfaRequired: true }), who: { identitySubject: env0c.PF0C_COGNITO_SUBJECT ?? "" }, token: () => env0c.PF0C_COGNITO_ACCESS_TOKEN ?? "", expiredToken: () => env0c.PF0C_COGNITO_EXPIRED_TOKEN ?? "" }), ok,
+    { notTested: !aws0c ? "no AWS credentials" : !pool0c ? "AWS credentials, but no Cognito pool and test sign-in tokens (PLATFORM_COGNITO_USER_POOL_ID, PLATFORM_COGNITO_CLIENT_ID, PF0C_COGNITO_SUBJECT, PF0C_COGNITO_ACCESS_TOKEN, PF0C_COGNITO_EXPIRED_TOKEN)" : null });
 
   // ------------------------------------------------------------------- the local stand-in and two-step sign-in
   ok("PF-4 fail: PLATFORM_IDENTITY=local is refused in the test environment and in production",

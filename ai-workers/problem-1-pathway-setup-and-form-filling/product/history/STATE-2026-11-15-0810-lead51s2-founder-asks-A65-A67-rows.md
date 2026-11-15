@@ -1,0 +1,7 @@
+# STATE founder-asks rows A65-A67, moved word for word by Lead 51 (series 2) at 08:1x IST 15 Nov (STATE size limit)
+
+| # | Ask (IST) | Status |
+|---|---|---|
+| A65 | ~16:0x (14 Nov, typed) what top fast-moving tech companies use in their machinery, pipeline, structure or frameworks that we miss and he should know, manage, build or monitor; suggest and add | **Strategy desk 05 step 5 (gap scan); after step 3** |
+| A66 | 18:1x (14 Nov, spoken, restated) where on the board are speed, delivery rate and token use; our target; is parallel work happening; speed since Release 1 started; what 15-20 capabilities a day needs, no quality cut | **answered ~18:1x with measured numbers; target chosen ~18:1x: 24 Nov (P-599)**; doing: ready rows on port fakes with Lead B, lanes scaled at his typed turns, first-time-green pre-check, day-3 check 17 Nov |
+| A67 | 19:4x (14 Nov, spoken, restated) next account is ready; wants delivery per token (merged, shipped capabilities), an industry measure, capabilities per day needed to finish in 10 days, all on the board; answer the open founder items one card at a time with pros, cons and a pick; set up 10 h autonomous with measured targets; push back where he is wrong; desk on Fable medium if useful | **Lead 48 answering 19:5x:** board gaps found ("Needs you" mixes the Lead's PR questions with his; no delivery-per-use number); cards one at a time; overnight plan |

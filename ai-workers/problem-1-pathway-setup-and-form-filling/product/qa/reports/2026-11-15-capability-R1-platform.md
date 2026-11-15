@@ -83,3 +83,7 @@ Gate A: the reader counted the R1.2 → R1.5, R1.6 and R1.24 walks; not R1.9 (it
 * QA-452 still open: `check_qa452_jobs_observed.ts` 0/3 (code checks) on e888e0add.
 * R1.13: PF-23's CI step #1782 merged (main 456b60af); still Partial (QA-452, PF-23c).
 
+
+## 9. After #1789 merged (main 2adba741)
+* **`tests/qa/check_qa470_host_mail_zone.ts` brought up to date** (Lead 54, #1789 comment 6889997785; found by FO-3h #1799). Since FO-3f #1785 booking mails are JobPort jobs, so the check now keeps its `fakeJobs(clock)`, calls `svc.registerJobs()` before `publicSlots` and `jobs.runDue()` after `publicBook`. On main e888e0add, on a fresh copy (qa470 :4475): unpatched 0/3 (it sent no mail at all), patched **1 passed, 2 failed** (`qa470-check-fixed-mine.txt`): the booker's confirmation passes, both QA-470 lines still fail on the host's email in the booker's zone, as QA-470 says. The row and its verdict stay the Front office lane's.
+* **Next for this lane (not started; the hand-over):** R1.9's re-score now that QA-453 is closed and all of PF-14 is merged (P-606). Needed: the merge batch on main's head green on `check_pf14_jobs.ts`; qa's re-run; gate A by API to the next step: a public booking on an isolated copy queues its mail job in `platform_jobs` (a row in `platform_jobs.job`), it survives a copy `restart`, and runs; then a fresh Opus reader. QA-452 still keeps R1.13 Partial; R1.11 waits for a `skeleton` run on a merge batch equal to main's head.

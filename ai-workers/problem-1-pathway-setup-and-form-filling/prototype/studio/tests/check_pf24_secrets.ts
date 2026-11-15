@@ -14,6 +14,8 @@ import { fakeSecretBox, maskedHint, maskedView, MaskedSecretView, memorySealedSt
 import { ConfigRefused, loadPlatformConfig, platformConfig, SCRUBBED_FROM_ENV, SECRET_SETTING_NAMES, SETTINGS } from "../api/src/platform/config/settings.ts";
 import { Secret } from "../api/src/platform/config/secret.ts";
 import { aesGcmSecretBox } from "../api/src/platform/secret-box/aes-gcm.ts";
+import { runContract } from "../ports/contracts/contract.ts";
+import { secretBoxPortContract } from "../ports/contracts/secret-box-port.contract.ts";
 import { enqueueReencrypt, reencryptJobKey, registerReencryptJob, runReencrypt, versionCounts, type ReencryptJobs, type ReencryptResult } from "../api/src/platform/secret-box/reencrypt.ts";
 
 const PORT = Number(process.argv[2] ?? 4524), NAME = process.argv[3] ?? "pf24";   // a lane passes its own port and name
@@ -182,6 +184,10 @@ const owner = (firmId: string, purpose = "zoom", personId: string | null = null)
   ok("pass: fakeSecretBox round-trips for its owner", fake.open(owner(FIRM_A), fs) === "t0k");
   ok("fail: fakeSecretBox refuses another firm, a changed value and a retired version", throwsLike(() => fake.open(owner(FIRM_B), fs), (e) => e instanceof SecretRefused) && throwsLike(() => fake.open(owner(FIRM_A), fs.slice(0, -2) + "zz"), (e) => e instanceof SecretRefused) && (fake.rotate(2, []), throwsLike(() => fake.open(owner(FIRM_A), fs), (e) => e instanceof SecretRefused && e.code === "KEY_RETIRED")));
 }
+
+// PF-0c: both adapters run SecretBoxPort's shared contract (one generated key per version, the same in every box made).
+await runContract(secretBoxPortContract, "aesGcmSecretBox", ({ current, held }) => aesGcmSecretBox(ring(current, Object.fromEntries(held.map((v) => [v, [K1, K2][v - 1]])))), ok);
+await runContract(secretBoxPortContract, "fakeSecretBox", ({ current, held }) => fakeSecretBox({ current, versions: held }), ok);
 
 console.log("== 4. a key change: the re-encrypt job moves every value; the old key then reads nothing");
 {
