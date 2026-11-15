@@ -633,7 +633,8 @@ export class BookingService {
       return { startsAt: free.startsAt, endsAt: free.endsAt, staffId: want ?? (any.current && free.staffIds.includes(any.current) ? any.current : free.staffIds[0]), warnings: [] };
     const active = new Set((await tx.platformStaff.findMany({ where: firmScope(firmId, { id: { in: [...type.hostStaffIds, ...(any.current ? [any.current] : [])] }, status: "ACTIVE" as const }), select: { id: true } })).map((h) => h.id));
     const staffId = want ?? (any.current && active.has(any.current) ? any.current : type.hostStaffIds.find((id) => active.has(id)));
-    if (!staffId || !active.has(staffId)) throw inactiveHost();   // deactivated since the check, or no active host at all (AG-4-53)
+    if (!staffId || !active.has(staffId))   // deactivated since the check, or no active host at all (AG-4-53; break F6)
+      throw want ? inactiveHost() : refused("No active host can take this time. Please choose an active host.", ["hostStaffId: choose an active host"]);
     const warnings = await this.warningsFor(tx, firmId, type, staffId, startsAt, ignoreBookingId);
     // No warning (a time between the page's starts, inside the host's hours): staff take it as asked (Rule 7, review M2).
     // Book anyway covers only the warnings the person was shown: one that appeared since is asked again (review M1).
@@ -809,7 +810,7 @@ const confirmer = (p: { warnings: Warning[] }, any?: AnyTime) => (any && p.warni
 const withWarnings = (w: Warning[]) => (w.length ? ` with warnings: ${[...new Set(w.map((x) => WARNING_WORDS[x.code]))].join(", ")}` : "");
 const anyTime = (b: { bookAnyway?: boolean; acceptedWarnings?: string[] }) => ({ bookAnyway: b.bookAnyway === true, accepted: b.acceptedWarnings ?? [] });
 /** AG-4-63 field 9: the reasons shown are kept in the audit entry only. */
-const warningDetail = (w: Warning[], confirmedBy: string | null): Record<string, boolean | string[] | string | null> => (w.length ? { bookedAnyway: true, warnings: [...new Set(w.map((x) => x.code))], overlapBookingIds: w.flatMap((x) => (x.bookingId ? [x.bookingId] : [])), overlapConfirmedByUserId: confirmedBy } : {});
+const warningDetail = (w: Warning[], confirmedBy: string | null): Record<string, boolean | string[] | string | null> => (w.length ? { bookedAnyway: true, warnings: [...new Set(w.map((x) => x.code))], overlapBookingIds: w.flatMap((x) => (x.bookingId ? [x.bookingId] : [])).slice(0, 50), overlapConfirmedByUserId: confirmedBy } : {});
 
 export const staffActor = (ctx: StaffContext): Actor => ({ word: `staff:${ctx.staffId}`, staffId: ctx.staffId });
 function need(ctx: StaffContext, key: string) { if (!ctx.keys.includes(key)) throw forbidden(key); }

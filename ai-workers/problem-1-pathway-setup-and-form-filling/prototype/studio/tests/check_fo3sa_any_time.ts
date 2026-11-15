@@ -232,6 +232,15 @@ try {
   ok("FO-3sa M2 pass: Thu 14:15 (between the 30-minute starts, inside the host's hours, host free) saves at once, no warning (Rule 7: warn, never block)", offGrid.status === 201 && offGrid.body.startsAt === iso("2026-10-29 14:15"), offGrid);
   const offGrid2 = await go("POST", "", P.CASE_OFFICER, body("2026-10-29 14:35"));
   ok("FO-3sa M2 fail: 14:35, over the 14:15 booking and its 10-minute gap, warns of the overlap and saves nothing", offGrid2.status === 409 && codes(offGrid2).join() === "OVERLAP" && await countAt("2026-10-29 14:35") === 0, offGrid2);
+
+  // ----------------------------------------------- break F3/F4: names never reach the audit, so no limit there is met
+  const longName = arrival.addPerson(A.id, { givenNames: "A".repeat(100), familyName: "pat@mail.example", email: "long@client.example" });
+  const held = await go("POST", "", P.OWNER, { ...body("2026-10-30 14:00"), personId: longName });
+  const over = await go("POST", "", P.CASE_OFFICER, body("2026-10-30 14:00", { bookAnyway: true, acceptedWarnings: ["OVERLAP"] }));
+  const a3 = over.body?.id ? auditOf(over.body.id, "booking.scheduled") : [];
+  ok("FO-3sa break F3/F4 pass: Book anyway over a booking for a 100-character, email-like name saves (no 500), and the audit line holds codes and ids, no name",
+    held.status === 201 && over.status === 201 && a3.length === 1 && !JSON.stringify(a3[0]).includes("AAAA") && !JSON.stringify(a3[0]).includes("@"), { held: held.status, over, a3 });
+  ok("FO-3sa break F3/F4 fail: the dialog itself still names the person it overlaps (shown to the staff member, never stored)", labels(await go("POST", "", P.CASE_OFFICER, body("2026-10-30 14:00"))).some((l: string) => l.includes("pat@mail.example")));
 } catch (e) {
   fail++; console.log(`FAIL  FO-3sa: the check stopped — ${String((e as Error)?.stack ?? e).slice(0, 800)}`);
 } finally {
