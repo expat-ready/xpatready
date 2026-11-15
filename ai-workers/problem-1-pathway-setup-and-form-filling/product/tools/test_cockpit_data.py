@@ -331,7 +331,7 @@ class TrustAndInvariants(unittest.TestCase):
         t2 = json.loads(json.dumps(theirs))
         plus = lambda n: (date.fromisoformat(k["forecast_p85_date"]) + timedelta(days=n)).isoformat()
         r7 = cd.reconcile_compare(k, theirs, None)
-        self.assertEqual(r7["compared"], 26)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's five
+        self.assertEqual(r7["compared"], 27)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's six
         t2["numbers"]["forecast_p85_date"]["value"] = plus(1)                 # +1 day: agrees
         self.assertEqual(cd.reconcile_compare(k, t2, None)["state"], "agree")
         t2["numbers"]["forecast_p85_date"]["value"] = plus(2)                 # +2 days: disagrees
@@ -822,7 +822,7 @@ class Delivery24h(unittest.TestCase):
             out, note = cd.run_reconcile(d, rec)
             self.assertIsNone(note)
             _, c = run(d, rec=out, note=None)
-            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 26, []))
+            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 27, []))
 
 
 BLP = "files/" + cd.REL + "/BACKLOG.md"
@@ -842,6 +842,7 @@ class TopNumbers(unittest.TestCase):
                          ["S", "M", "M", "L", "not shaped"])
         self.assertEqual(cd.cap_size(r(["A-1", "A-1"])), "S")                 # distinct ids
         self.assertEqual(cd.cap_size(r(["A-1", "A-2"], "Not shaped")), "not shaped")
+        self.assertEqual(cd.cap_size(r(["A-1"], "Not shaped yet")), "not shaped")    # one rule in both scripts: starts "Not shaped"
         c = self.tn()
         # map 1 PF-1 S · 2 PF-2, PF-3 M · 3 Not shaped · 4 FO-1 S · 5 Not shaped · 6 no backlog row (C6.2 only) · 7 BK-1..3 M · 8 FO-4 S
         self.assertEqual({x["map"]: x["size"] for x in c["capability_table"]["rows"]},
@@ -912,9 +913,14 @@ class TopNumbers(unittest.TestCase):
         self.assertEqual(cd.source_ids("| x | Source: AG-4-16, SA11-D8; P-574 |"), ["AG-4-16", "SA11-D8", "P-574"])
         self.assertEqual(cd.source_ids("· Source: P-579; Code SOR/2022-128 s. 24(2)(a) (laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/, "
                                        "read 13 Nov 2026; Unconfirmed: no counsel) |"), ["P-579"])
+        self.assertEqual(cd.source_ids("Source: AG-4-16, AG-4-16; AG-4-17/AG-4-18 (rev (2) AG-5-10) MVP-CHECKLIST.md, P-1."),
+                         ["AG-4-16", "AG-4-17", "AG-4-18", "P-1"])          # once each; "/" splits; nested brackets gone; a file name is no id
+        self.assertEqual(cd.source_ids("| a · Source: AG-1-1 · waits on: PF-2 |"), ["AG-1-1"])   # the field ends at the next "·"
         self.assertEqual([cd.req_section(x) for x in ("AG-4-16", "SA-11-25", "SA11-D8", "P-574", "NFR5-14")], ["AG-4", "SA-11", "SA11", "P", "NFR5"])
         bl = cd.Snap(FIX).file("BACKLOG.md").replace("**Row PF-1:** a fixture row", "**Row PF-1:** a fixture row · Source: AG-4-16, SA-11-25; P-574") \
             .replace("**Row PF-3:** a fixture row", "**Row PF-3:** a fixture row · Source: AG-4-17, AG-4-16 (see AG-9-9)")
+        bl = bl.replace("| PF-4 | lane | **Row PF-4:** a fixture row · **waits on:** nothing · decisions: none | done when it passes |",
+                        "| PF-4 | lane | **Row PF-4:** a fixture row | done when Source: AG-7-7 is read |")   # Done when is never read
         t = self.tn({BLP: bl})["capability_table"]
         rows = {x["map"]: x for x in t["rows"]}
         self.assertEqual(rows[1]["req_by_section"], {"AG-4": ["AG-4-16"], "SA-11": ["SA-11-25"], "P": ["P-574"]})
@@ -944,10 +950,20 @@ class TopNumbers(unittest.TestCase):
         li["breaches_found"] = 1
         rc, it = h4({"github/issue_comments_today.json": cm, "github/ci_failed_runs_today.json": ci, "lead-input.json": li})
         self.assertEqual((rc["label_guard_removals"]["value"], rc["label_guard_removals"]["prs"]), (1, [116]))   # 00:00 IST counts
-        self.assertEqual(rc["ci_rule_failures"]["value"], 2)                     # 502 and 503; 504 is yesterday
+        self.assertEqual(rc["ci_rule_failures"]["value"], 1)                     # 502 (check-docs step); 504 is yesterday
+        self.assertEqual(rc["ci_bundle_failures"]["value"], 1)                   # 503: shard 1's rules-files step (17 commands)
         self.assertEqual(it["state"], "amber")
-        self.assertIn("rules caught today: label-guard removals 1 (#116); rules-check CI failures (check-docs.sh) 2 (#105, #116); "
-                      "breaches found (Lead-reported) 1", it["detail"])
+        self.assertIn("rules caught today: label-guard removals 1 (#116); check-docs CI failures 1 (#116); "
+                      "rules-and-tools CI step failures (check-docs.sh + 16 other checks) 1 (#105); breaches found (Lead-reported) 1", it["detail"])
+        self.assertEqual(it["class"], "measured")
+        li3 = jread(os.path.join(FIX, "lead-input.json"))
+        li3["breaches_found"] = 2
+        rc, it = h4({"lead-input.json": li3})                                  # lit by a Lead-reported count alone
+        self.assertEqual((it["state"], it["class"]), ("amber", "reported"))
+        li4 = jread(os.path.join(FIX, "lead-input.json"))
+        li4["as_of"] = "2026-11-20T09:00:00+05:30"
+        rc, it = h4({"lead-input.json": li4})
+        self.assertIn("breaches found: not updated: Lead input 3.0 h old (limit 2 h)", it["detail"])
         rc, it = h4(drop=["github/issue_comments_today.json"])
         self.assertEqual((rc["label_guard_removals"]["value"], it["state"]), (None, "amber"))
         self.assertIn("not measured: label-guard removals: not measured: the PR comments of today were not read", it["detail"])
@@ -956,7 +972,7 @@ class TopNumbers(unittest.TestCase):
         rc, it = h4({"lead-input.json": li2})
         self.assertEqual(rc["push_guard_refusals"]["reason"], "not reported: Lead input has no push_guard_refusals")
         self.assertEqual(it["state"], "green")                                  # a Lead-reported gap is said, not lit
-        self.assertIn("(push guard refusals: not reported)", it["detail"])
+        self.assertIn("(push guard refusals: not reported: Lead input has no push_guard_refusals)", it["detail"])
 
     def test_reconcile_checks_the_new_counts(self):
         rec = os.path.join(HERE, "cockpit-reconcile.py")
@@ -969,13 +985,18 @@ class TopNumbers(unittest.TestCase):
                            "failed_steps": [{"job": "ci", "step": "notes check 1 of 2, rules files (check-docs.sh)"}]})
         for d in (snap_with({CKP: ck, BLP: bl, "github/issue_comments_today.json": cm, "github/ci_failed_runs_today.json": ci}),
                   snap_with({CK1: cd.Snap(FIX).text("git/checklist_records/ck0002.md")}),
+                  snap_with({BLP: cd.Snap(FIX).file("BACKLOG.md").replace("**Row BK-1:** a fixture row", "**Row BK-1:** x · Source: (rev (2) AG-5-10)")
+                             .replace("| FO-4 | lane | **Row FO-4:** a fixture row · **waits on:** PF-1 · decisions: none | done when it passes |",
+                                      "| FO-4 | lane | **Row FO-4:** x · Source: MVP-CHECKLIST.md | done when Source: AG-7-7 |")
+                             .replace("**Row PF-1:** a fixture row", "**Row PF-1:** x · Source: AG-4-16/AG-4-17"),
+                             CKP: cd.Snap(FIX).file("MVP-CHECKLIST.md").replace("| C6.2 Works | qa Works\\* |", "| C6.2 Works; FO-1 | qa Works\\* |")}),
                   snap_with(drop=["github/issue_comments_today.json", "github/ci_failed_runs_today.json"])):
             out, note = cd.run_reconcile(d, rec)
             self.assertIsNone(note)
             _, c = run(d, rec=out, note=None)
-            self.assertEqual((c["trust"]["state"], c["trust"]["diffs"]), ("agree", []))
+            self.assertEqual((c["trust"]["state"], c["trust"]["diffs"]), ("agree", []), c["trust"]["diffs"])
         k = c["keys"]
-        self.assertEqual((k["label_guard_removals_today"], k["ci_rule_failures_today"]), (None, None))
+        self.assertEqual((k["label_guard_removals_today"], k["ci_rule_failures_today"], k["ci_bundle_failures_today"]), (None, None, None))
         theirs = {"numbers": {"works_today": {"value": 5}}}
         self.assertEqual(cd.reconcile_compare(k, theirs, None)["banner"], "Numbers disagree: works_today")
 

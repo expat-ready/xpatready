@@ -938,27 +938,39 @@ def compute(snap):
         N["works_today"] = num(len(got), "rows at qa Works now, not before today's IST day", detail=got)
         N["works_today_by_size"] = num({k: sum(1 for m in got if sz.get(m) == k) for k in ("S", "M", "L", "not shaped")},
                                        "sizes of those rows")
-    # capabilities_not_mapped: rows none of whose parts' BACKLOG lines carry a Source: id (bracketed text dropped)
-    raw_lines = {}
-    for ln in (bl_text or "").splitlines():
+    # capabilities_not_mapped: rows none of whose parts' BACKLOG lines carry a Source: id. A row's text leaves out the
+    # column whose header starts "Done when"; a field runs from "Source:" to the next "·" or the cell's end; brackets
+    # are removed innermost first until none is left; tokens are runs of letters, digits, "." and "-", trailing "." and "-" cut.
+    src_cells = {}
+    bl_lines = (bl_text or "").splitlines()
+    dw = None
+    for i, ln in enumerate(bl_lines):
         cs = cells(ln)
-        if cs and cs[0]:
-            raw_lines.setdefault(clean(cs[0]), ln)
+        if not cs:
+            continue
+        nx = cells(bl_lines[i + 1]) if i + 1 < len(bl_lines) else None
+        if nx is not None and is_sep(nx) and not is_sep(cs):
+            dw = {k for k, h in enumerate(cs) if h.strip().lower().startswith("done when")}
+            continue
+        key = clean(cs[0])
+        if key and key not in src_cells:
+            src_cells[key] = [c for k, c in enumerate(cs) if k not in (dw or set())]
 
-    def has_source(line):
-        for seg in line.split("Source:")[1:]:
-            seg = seg.split("|")[0].split("\u00b7")[0]   # the field ends at the cell or the next "·"
-            prev = None
-            while prev != seg:
-                prev, seg = seg, re.sub(r"\([^()]*\)", " ", seg)
-            for tok in re.findall(r"[A-Za-z0-9][A-Za-z0-9\-./]*", seg):
-                if re.fullmatch(r"[A-Z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+", tok.rstrip(".-/")):
-                    return True
+    def has_source(cs):
+        for c in cs:
+            for seg in c.split("Source:")[1:]:
+                seg = seg.split("\u00b7")[0]
+                prev = None
+                while prev != seg:
+                    prev, seg = seg, re.sub(r"\([^()]*\)", " ", seg)
+                for tok in re.findall(r"[A-Za-z0-9][A-Za-z0-9.\-]*", seg):
+                    if re.fullmatch(r"[A-Z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+", tok.rstrip(".-")):
+                        return True
         return False
     if ck_text is None or bl_text is None:
         N["capabilities_not_mapped"] = num(None, "not measured: checklist or BACKLOG missing")
     else:
-        nm = [r["map"] for r in unique_rows if not any(has_source(raw_lines.get(x, "")) for x in r["parts"])]
+        nm = [r["map"] for r in unique_rows if not any(has_source(src_cells.get(x, [])) for x in r["parts"])]
         N["capabilities_not_mapped"] = num(len(nm), "rows with no Source: id on any part", detail=nm)
     # rules caught today: label-guard comments and ci.yml runs with a failed check-docs step, IST day of taken_at
     def day_items(rel, key):
@@ -974,9 +986,13 @@ def compute(snap):
     N["label_guard_removals_today"] = num(None, "not measured: no comments file") if lgc is None else \
         num(len({c["id"] for c in lgc if (c.get("head") or "").startswith("**Label guard:**")}), "label guard comments today")
     cir = day_items("github/ci_failed_runs_today.json", "runs")
+
+    def failed_runs(test):
+        return sum(1 for x in cir if any(test(st["step"].lower()) for st in x.get("failed_steps") or []))
     N["ci_rule_failures_today"] = num(None, "not measured: no failed-runs file") if cir is None else \
-        num(sum(1 for x in cir if any("check-docs" in st["step"].lower() or st["step"].lower().startswith("rules files")
-                                      for st in x.get("failed_steps") or [])), "runs with a failed check-docs step today")
+        num(failed_runs(lambda n: "check-docs" in n), "runs with a failed step naming check-docs today")
+    N["ci_bundle_failures_today"] = num(None, "not measured: no failed-runs file") if cir is None else \
+        num(failed_runs(lambda n: n.startswith("rules files")), "runs whose shard-1 rules-files step failed today")
 
     def per(n):
         if U is None:
@@ -1022,7 +1038,8 @@ def compute(snap):
              "proven_rows", "open_app_prs", "lanes_working", "ready_rows", "forecast_p50_date", "forecast_p85_date",
              "plan_pct_used_24h", "span_hours", "changes_merged_span", "works_rows_span", "pct_per_change",
              "pct_per_works_row", "rows_done_24h", "rows_needed_per_day",
-             "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today", "ci_rule_failures_today"]
+             "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today", "ci_rule_failures_today",
+             "ci_bundle_failures_today"]
     return {"version": 1,
             "numbers": {k: N[k] for k in order},
             "mc_inputs": {"daily_counts": r1_counts, "remaining_scope": remaining}}
@@ -1134,7 +1151,7 @@ def self_test():
         "plan_pct_used_24h", "span_hours", "changes_merged_span", "works_rows_span", "pct_per_change",
         "pct_per_works_row", "rows_done_24h", "rows_needed_per_day",
         "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today", "ci_rule_failures_today",
-        "daily_counts", "remaining_scope"])
+        "ci_bundle_failures_today", "daily_counts", "remaining_scope"])
     # P-602 (4), no log: the span is the whole 24 h to 20 Nov 06:30Z; PF-2's first app merge 19 Nov 20:00Z is inside.
     eq("changes_merged_span", (v["changes_merged_span"], n["changes_merged_span"]["detail"]), (1, ["PF-2"]))
     eq("works_rows_span no history", v["works_rows_span"], None)

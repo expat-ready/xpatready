@@ -146,7 +146,7 @@
                                     "plan_pct_used_24h", "span_hours", "changes_merged_span", "works_rows_span", "pct_per_change",
                                     "pct_per_works_row", "rows_done_24h", "rows_needed_per_day",
                                     "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today",
-                                    "ci_rule_failures_today"]},
+                                    "ci_rule_failures_today", "ci_bundle_failures_today"]},
     "top_numbers": {
       "description": "Board v53 (A69, A70): the top strip's three numbers (FORMULAS.md, Top numbers). Rules caught are not here: they live in Health item 4.",
       "type": "object", "required": ["works_today", "pct_per_works", "pct_per_change", "lanes"], "additionalProperties": false,

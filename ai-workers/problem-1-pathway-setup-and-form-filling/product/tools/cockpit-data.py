@@ -126,6 +126,28 @@ class GH:
                 break
         raise RuntimeError(f"GET {url.replace(self.api, '')} failed: {err}")
 
+    def get_pages(self, url, max_pages=40):
+        """GET every page of a list that pages by the Link header's rel="next" (cursor APIs such as /activity)."""
+        url = url if url.startswith("http") else self.api + url
+        out = []
+        for _ in range(max_pages):
+            if self.offline:
+                raise RuntimeError("offline")
+            self.calls += 1
+            r = subprocess.run(["curl", "-sS", "--fail-with-body", "-D", "-", "-H", "Accept: application/vnd.github+json",
+                                "-H", f"Authorization: token {self.token}", url], capture_output=True, text=True)
+            if r.returncode:
+                raise RuntimeError(f"GET {url.replace(self.api, '')} failed: {(r.stdout[-200:] + ' ' + r.stderr[:200]).strip()}")
+            head, _, body = r.stdout.partition("\n\n")          # text mode: curl's \r\n arrive as \n
+            while head.startswith("HTTP/") and body.startswith("HTTP/"):          # a 100-continue or proxy preamble
+                head, _, body = body.partition("\n\n")
+            out += json.loads(body)
+            m = re.search(r'<([^>]+)>;\s*rel="next"', head)
+            if not m:
+                return out
+            url = re.sub(r"^https://api\.github\.com/repositories/\d+", self.api, m.group(1))   # same repo, by its name
+        raise RuntimeError(f"more than {max_pages} pages")
+
     def graphql(self, query, variables):
         if self.offline:
             raise RuntimeError("offline")
@@ -516,26 +538,35 @@ def parse_backlog(text):
 
 TARGET_WORKS_PER_DAY = 10                      # founder A68 (15 Nov): 10 capabilities at qa Works a day
 SOURCE_RE = re.compile(r"Source:([^|·]*)")        # a BACKLOG row's " · Source: …" field, to the next "·" or the cell's end (P-595)
-SOURCE_ID = re.compile(r"(?<![0-9A-Za-z\-/.])([A-Z][A-Za-z0-9]*-[0-9A-Za-z]+(?:-[0-9A-Za-z]+)*)(?![0-9A-Za-z\-])")
+SOURCE_TOK = re.compile(r"[A-Za-z0-9][A-Za-z0-9.\-]*")     # a token: letters, digits, "." and "-" ("/" and spaces split tokens)
+SOURCE_ID = re.compile(r"[A-Z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+")   # a token (trailing "." and "-" cut) that is an id: AG-4-16, SA11-D8, P-574
 LABEL_GUARD_HEAD = "**Label guard:**"            # tools/label-guard.sh and label-guard.yml start every removal comment so
-RULES_STEP = re.compile(r"check-docs|^rules files", re.I)   # ci.yml steps that run tools/check-docs.sh (notes step; shard 1's "rules files, …")
+RULES_STEP = re.compile(r"check-docs", re.I)       # ci.yml steps whose name names tools/check-docs.sh (the notes run's "notes check 1 of 2 …")
+BUNDLE_STEP = re.compile(r"^rules files", re.I)     # shard 1's "rules files, decision impact, …": check-docs.sh plus 16 other commands
 
 
 def cap_size(r):
     """A70 (founder via Lead 51, 15 Nov): size = distinct backlog row ids in the capability's BACKLOG rows cell:
     1 = S, 2-3 = M, 4 or more = L; no row, or Status "Not shaped" = "not shaped". Measured from the cell, never judged."""
     n = len(set(r["ids"]))
-    if r["status"] == "Not shaped" or n == 0:
+    if r["status"].startswith("Not shaped") or n == 0:
         return "not shaped"
     return "S" if n == 1 else "M" if n <= 3 else "L"
 
 
-def source_ids(line):
-    """The requirement ids a BACKLOG row's Source: field names (bracketed text, such as a URL, left out); in order, once each."""
+def source_ids(text):
+    """The requirement ids in a BACKLOG row's Source: fields (text: the row without its Done-when column, bl["deps"]).
+    A field runs from "Source:" to the next "·" or the cell's end; bracketed text (a URL, "(3)") is removed, innermost first,
+    until none is left; then each token whose trailing "." and "-" are cut and that has the id shape counts. In order, once each."""
     out = []
-    for m in SOURCE_RE.finditer(line or ""):
-        txt = re.sub(r"\([^)]*\)", " ", m.group(1))
-        out += [x for x in SOURCE_ID.findall(txt) if x not in out]
+    for m in SOURCE_RE.finditer(text or ""):
+        txt, prev = m.group(1), None
+        while txt != prev:
+            prev, txt = txt, re.sub(r"\([^()]*\)", " ", txt)
+        for tok in SOURCE_TOK.findall(txt):
+            tok = tok.rstrip(".-")
+            if SOURCE_ID.fullmatch(tok) and tok not in out:
+                out.append(tok)
     return out
 
 
@@ -700,26 +731,65 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     # every branch is read (GitHub's ref ordering by commit date proved unreliable for branches: 14 Nov, today's lane branches missing)
     qb = """query($o:String!,$r:String!,$c:String){repository(owner:$o,name:$r){refs(refPrefix:"refs/heads/",first:100,after:$c){
       pageInfo{hasNextPage endCursor} nodes{name target{... on Commit{oid committedDate}}}}}}"""
-    refs, cur = [], None
-    for _ in range(40):
-        got = gh.graphql(qb, {"o": o, "r": r_, "c": cur})["repository"]["refs"]
-        refs += got["nodes"]
-        if not got["pageInfo"]["hasNextPage"]:
-            break
-        cur = got["pageInfo"]["endCursor"]
     day_ago = NOW - timedelta(hours=24)
-    wj("github/branches_recent.json", [{"name": x["name"], "sha": x["target"]["oid"], "pushed_at": x["target"]["committedDate"]}
-                                        for x in refs if x.get("target") and parse_iso(x["target"]["committedDate"]) >= day_ago])
+    try:
+        refs, cur = [], None
+        for _ in range(40):
+            got = gh.graphql(qb, {"o": o, "r": r_, "c": cur})["repository"]["refs"]
+            refs += got["nodes"]
+            if not got["pageInfo"]["hasNextPage"]:
+                break
+            cur = got["pageInfo"]["endCursor"]
+        recent = [{"name": x["name"], "sha": x["target"]["oid"], "pushed_at": x["target"]["committedDate"]}
+                  for x in refs if x.get("target") and parse_iso(x["target"]["committedDate"]) >= day_ago]
+    except RuntimeError as e:
+        # REST fallback (cloud sessions refuse GraphQL): the repository's push activity of the last day, newest push per branch,
+        # kept when the branch still exists. Push time here is the real push time, not the head commit's committed date.
+        ERRORS.append(f"branches: GraphQL refused ({str(e)[:80]}); REST push activity used (push time = the push itself)")
+        alive = {b["name"] for b in gh.get_pages("/branches?per_page=100")}
+        newest = {}
+        for a in gh.get_pages("/activity?time_period=day&per_page=100"):
+            if a.get("activity_type") in ("push", "force_push") and a["ref"].startswith("refs/heads/"):
+                n = a["ref"][len("refs/heads/"):]
+                if n in alive and (n not in newest or a["timestamp"] > newest[n]["pushed_at"]):
+                    newest[n] = {"name": n, "sha": a["after"], "pushed_at": a["timestamp"]}
+        recent = [x for x in newest.values() if parse_iso(x["pushed_at"]) >= day_ago]
+    wj("github/branches_recent.json", recent)
     # extra: open PRs' head commit time, CI rollup and the time `review: approved` was put on (§2 waits)
     qo = """query($o:String!,$r:String!){repository(owner:$o,name:$r){pullRequests(states:OPEN,first:100){nodes{number
       commits(last:1){nodes{commit{committedDate statusCheckRollup{state}}}}
       timelineItems(itemTypes:[LABELED_EVENT],last:30){nodes{... on LabeledEvent{createdAt label{name}}}}}}}}"""
     od = []
-    for x in gh.graphql(qo, {"o": o, "r": r_})["repository"]["pullRequests"]["nodes"]:
-        cm = ((x["commits"]["nodes"] or [{}])[0]).get("commit") or {}
-        lab = [e["createdAt"] for e in x["timelineItems"]["nodes"] if e and (e.get("label") or {}).get("name") == "review: approved"]
-        od.append({"number": x["number"], "head_committed_at": cm.get("committedDate"),
-                   "ci": ((cm.get("statusCheckRollup") or {}).get("state") or "NONE").lower(), "approved_labelled_at": lab[-1] if lab else None})
+    try:
+        nodes = gh.graphql(qo, {"o": o, "r": r_})["repository"]["pullRequests"]["nodes"]
+    except RuntimeError as e:
+        nodes = None
+        ERRORS.append(f"open PR detail: GraphQL refused ({str(e)[:80]}); REST used (CI state rebuilt from check runs and statuses)")
+    if nodes is not None:
+        for x in nodes:
+            cm = ((x["commits"]["nodes"] or [{}])[0]).get("commit") or {}
+            lab = [e["createdAt"] for e in x["timelineItems"]["nodes"] if e and (e.get("label") or {}).get("name") == "review: approved"]
+            od.append({"number": x["number"], "head_committed_at": cm.get("committedDate"),
+                       "ci": ((cm.get("statusCheckRollup") or {}).get("state") or "NONE").lower(), "approved_labelled_at": lab[-1] if lab else None})
+    else:
+        for x in [p for p in raw if p["state"] == "open"]:
+            sha = x["head"]["sha"]
+            c = gh.get(f"/commits/{sha}")
+            runs = gh.get(f"/commits/{sha}/check-runs?per_page=100").get("check_runs", [])
+            stt = gh.get(f"/commits/{sha}/status")
+            bad = {"failure", "timed_out", "cancelled", "action_required", "startup_failure"}
+            if any(r.get("conclusion") in bad for r in runs) or stt.get("state") in ("failure", "error") and stt.get("statuses"):
+                ci = "failure"
+            elif any(r.get("status") != "completed" for r in runs) or (stt.get("statuses") and stt.get("state") == "pending"):
+                ci = "pending"
+            elif runs or stt.get("statuses"):
+                ci = "success"
+            else:
+                ci = "none"
+            ev = gh.get_pages(f"/issues/{x['number']}/events?per_page=100", max_pages=5)
+            lab = [e["created_at"] for e in ev if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == "review: approved"]
+            od.append({"number": x["number"], "head_committed_at": c["commit"]["committer"]["date"], "ci": ci,
+                       "approved_labelled_at": lab[-1] if lab else None})
     wj("github/open_prs_detail.json", od)
     # board v53 (A69, A70): rules caught in the IST day so far (Health item 4). Read from IST midnight; a file is absent when
     # its read failed, so the number reads not measured.
@@ -1304,7 +1374,9 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
         r["size"] = cap_size(r)
         req = []
         for x in r["ids"]:
-            req += [s for s in source_ids(bl["lines"].get(x)) if s not in req]
+            for s_ in source_ids(bl["deps"].get(x)):
+                if s_ not in req:
+                    req.append(s_)
         r["req"] = req
     size_keys = ("S", "M", "L", "not shaped")
     by_size_all = {k: sum(1 for r in rows if r["size"] == k) for k in size_keys}
@@ -1586,11 +1658,13 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
                f"from 00:00 IST to taken_at; {gh_src} issue_comments_today.json", "measured", L,
                "not measured: the PR comments of today were not read", prs=[c["pr"] for c in lg])
     rj = snap.j("github/ci_failed_runs_today.json")
-    ci_hits = [x for x in (rj or {}).get("runs", []) if in_day(x["created_at"]) and any(RULES_STEP.search(st["step"]) for st in x["failed_steps"])]
-    ci_n = num(None if rj is None else len(ci_hits), "ci.yml runs today (latest attempt failed) with a failed step that runs tools/check-docs.sh "
-               f"(step name has check-docs or starts rules files); {gh_src} ci_failed_runs_today.json", "measured", L,
-               "not measured: today's failed CI runs were not read",
-               runs=[{"run": x["id"], "prs": x["prs"], "branch": x["head_branch"]} for x in ci_hits])
+    def ci_count(rx, what):
+        hits = [x for x in (rj or {}).get("runs", []) if in_day(x["created_at"]) and any(rx.search(st["step"]) for st in x["failed_steps"])]
+        return num(None if rj is None else len(hits), f"ci.yml runs today whose latest attempt failed with a failed step {what}; "
+                   f"{gh_src} ci_failed_runs_today.json", "measured", L, "not measured: today's failed CI runs were not read",
+                   runs=[{"run": x["id"], "prs": x["prs"], "branch": x["head_branch"]} for x in hits])
+    ci_n = ci_count(RULES_STEP, "whose name names check-docs.sh (the notes run's rules-files check)")
+    ci_b = ci_count(BUNDLE_STEP, "named \"rules files, …\" (shard 1: check-docs.sh plus 16 other rule and tool checks; any of them failing counts)")
 
     def li_today(k, what):
         if not li or k not in li:
@@ -1600,7 +1674,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
         if ist_day(li["as_of"]) != today:
             return num(None, f"Lead input {k}", "reported", L, f"not updated: Lead input is from {ist_day(li['as_of'])}, not today")
         return num(li[k], f"Lead input {k}: {what}", "reported", L)
-    rules = {"label_guard_removals": lg_n, "ci_rule_failures": ci_n,
+    rules = {"label_guard_removals": lg_n, "ci_rule_failures": ci_n, "ci_bundle_failures": ci_b,
              "breaches_found": li_today("breaches_found", "rule breaches the Lead found today"),
              "push_guard_refusals": li_today("push_guard_refusals", "pushes the Mac push guard refused today (it runs only on the Mac)"),
              "records_check": "no CI check named records-check exists in .github/workflows; the CI count covers the check-docs.sh steps",
@@ -1670,7 +1744,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             "pct_per_change": delivery["pct_per_change"]["value"], "pct_per_works_row": delivery["pct_per_works_row"]["value"],
             "rows_done_24h": D_done["value"], "rows_needed_per_day": RN["value"],
             "works_today": W_today["value"], "works_today_by_size": wt_by, "capabilities_not_mapped": len(not_mapped),
-            "label_guard_removals_today": lg_n["value"], "ci_rule_failures_today": ci_n["value"]}
+            "label_guard_removals_today": lg_n["value"], "ci_rule_failures_today": ci_n["value"], "ci_bundle_failures_today": ci_b["value"]}
     trust = reconcile_compare(keys, reconcile_out, reconcile_note)
     trust["invariants"] = invariants
     trust["notes"] = notes
@@ -1805,8 +1879,9 @@ def health(snap, now, comp, li):
     rc = comp.get("rules_caught")
     if rc:
         g4 = items[-1]
-        parts, caught, nm4 = [], False, []
-        for k, word in (("label_guard_removals", "label-guard removals"), ("ci_rule_failures", "rules-check CI failures (check-docs.sh)"),
+        parts, caught, nm4, by_rep = [], False, [], False
+        for k, word in (("label_guard_removals", "label-guard removals"), ("ci_rule_failures", "check-docs CI failures"),
+                        ("ci_bundle_failures", "rules-and-tools CI step failures (check-docs.sh + 16 other checks)"),
                         ("breaches_found", "breaches found (Lead-reported)"), ("push_guard_refusals", "push-guard refusals (Lead-reported)")):
             n = rc[k]
             if n["value"] is None:
@@ -1815,15 +1890,18 @@ def health(snap, now, comp, li):
                 continue
             if n["value"]:
                 caught = True
+                by_rep = by_rep or n["class"] == "reported"
                 ref = n.get("prs") or [p for r_ in n.get("runs") or [] for p in r_["prs"]]
                 parts.append(f"{word} {n['value']}" +
                              (" (" + ", ".join("#%d" % x for x in sorted(set(ref))[:8]) + ")" if ref else ""))
-        unrep = [k.replace("_", " ") for k in ("breaches_found", "push_guard_refusals") if rc[k]["value"] is None]
+        unrep = [f"{k.replace('_', ' ')}: {rc[k]['reason']}" for k in ("breaches_found", "push_guard_refusals") if rc[k]["value"] is None]
         g4["detail"] += "; rules caught today: " + ("; ".join(parts) if parts else "none") + \
-            (" (not measured: " + "; ".join(nm4) + ")" if nm4 else "") + (f" ({', '.join(unrep)}: not reported)" if unrep else "")
+            (" (not measured: " + "; ".join(nm4) + ")" if nm4 else "") + (f" ({'; '.join(unrep)})" if unrep else "")
         g4["rules_caught"] = rc
         if (caught or nm4) and g4["state"] == "green":
             g4["state"] = "amber"
+            if by_rep and not nm4 and not any(rc[k]["value"] for k in ("label_guard_removals", "ci_rule_failures", "ci_bundle_failures")):
+                g4["class"] = "reported"      # lit by a Lead-reported count alone: the weaker class (§0.3)
     burn = (li or {}).get("burn_pct_per_h")
     li_age = (cutoff - parse_iso(li["as_of"])).total_seconds() / 3600 if li and li.get("as_of") else None
     if burn is None:
