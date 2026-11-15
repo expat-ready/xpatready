@@ -150,3 +150,52 @@ D5 3 → 3: crash recovery is fixed, but released held rows now starve across fi
 Fix M2 with its fail test. m-a to m-c can go in the same commit. Approval would be for that commit, read together with d4cdc2064.
 
 Verdict: Changes needed
+
+## Re-review 2 (13ebbd0ef)
+Diff-only (P-277): `git diff 1a016939b..13ebbd0ef`. Two commits: d4cdc2064 (Lead B #1824 answer 4: `MessageRepeated`; the PF-19ad sentence) and 13ebbd0ef (M2, m-a, m-b, the subject nit). Code and tests: 3 files, +50 −12. Reviewed on 15 Nov 2026. Mutation and probe runs used the scratch copy, refreshed to 13ebbd0ef; the shared tree equals the head and was not touched. US$0, no keys.
+
+### What I ran
+* `check_pf19b_sending.ts`: **39 passed, 0 failed**, 3 runs out of 3 (so the REPEATABLE READ race is not flaky here).
+* `graph.mjs --check`: G1/G2/G4/G5 = 0.
+* QA-53: not rerun. Neither commit touches a route, a controller or `check_forms_qa53.ts`. It was 40/0 at 1a016939b.
+* **Mutations.** Each fix reverted in turn; each fails its named test:
+
+| Reverted | Result |
+|---|---|
+| sweep back to a global `LIMIT 500` | `re-review M2` FAIL |
+| advisory lock removed | `review m2` 8 parallel FAIL, now a named line (m-b) |
+| job key back to `msg.send:<id>` | `re-review m-a` FAIL |
+| `P2002 → MessageRepeated` catch removed | `Lead B #1824 (4)` FAIL |
+
+* **My M2 probe, real rows** (not files-less inserts):
+  * Firm B is on trial at 50/50 with 505 committed sends. After 12 sweeps, all 505 are held "daily limit".
+  * Firm A has room and one row held 10 minutes ago. One sweep sends it.
+  * B stays at 505 held, counter 50.
+
+### Findings, checked
+| Finding | Status | Evidence |
+|---|---|---|
+| M2 held rows starved across firms | **Fixed** | `messages.ts:135-140`: `row_number()` per firm and kind (lost / held), at most `SWEEP_PER_FIRM` 50 each (Sample), lost rows first, `LIMIT 2000`; fail test and probe above |
+| m-a job key untested | Fixed | wrong-firm dispatch → still `QUEUED`; right dispatch → `SENT` without the sweep; fails on revert |
+| m-b crash instead of named fail | Fixed | `Promise.allSettled` plus `par.length === 8` |
+| m-c PR body | With the builder (in progress, per the coordinator) | not a code item |
+| subject nit | Fixed | C1 (`\u007f-\u009f`) and `U+2028`/`U+2029` refused in both `Words` and the filled template (`ports/messages.ts:21`, `messages.ts:67`); no named test (a nit) |
+| Lead B answer 4: P2002 at REPEATABLE READ | Done as ruled | `.catch` maps P2002 to `MessageRepeated`; the retry answers the first row (`repeated: true`, same id); the test is two concurrent sends at RR |
+| Lead B answer 1: the address duty | Done as ruled | `ports/messages.ts:26-28` carries Lead B's sentence, PF-19ad named |
+
+### New observations (Minor, none blocking)
+* **m-d (Minor): fairness holds per firm, but across firms the `LIMIT 2000` cut is by age.**
+  * When more than 40 firms each have 50 or more rows due in one kind, the newest firms' rows stay outside the batch for as long as the older firms stay at their caps. Held rows re-held under the hourly key are picked again.
+  * This needs 40 or more capped firms at once, so it is not reachable in the reference build.
+  * Fix: `ORDER BY ("state_reason" IS NOT NULL), rn, "created_at"`, so every firm's first row comes before any firm's second. A good fit for part 2's scale work.
+* **Nit:** the catch maps any P2002 on `msg_outbox` to `MessageRepeated`. Today only the key's unique index can raise it (`id` is a random UUID); checking `meta.target` would keep that true.
+
+### Scores changed
+* D5 3 → 5: crash rows and held rows each get a share per firm; probe and test.
+* D16 4 → 5: every fix and lock fails its named test when removed.
+* D1 4 → 5: all part-1 rulings met; Lead B's answers 1 and 4 done.
+* Journey test addendum 2: error recovery ½ → 1, **9.0 / 10**.
+
+No open Blocker or Major. This approval is for 13ebbd0ef (and d4cdc2064 under it). m-c (PR body) and m-d can follow; list m-d in the PR.
+
+Verdict: Approve

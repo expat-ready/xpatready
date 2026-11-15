@@ -79,7 +79,7 @@ export class Messages implements MessagePort<Tx> {
         id, firmId, subjectKind: m.person?.kind ?? null, subjectId: m.person?.id.toLowerCase() ?? null, channel: m.channel, address, templateVersionId,
         renderedHash: put.sha256, class: m.class, state, stateReason: reason, consentId: decision.consentId ?? null, idempotencyKey: m.idempotencyKey,
       },
-    }).catch((e: { code?: string }) => { throw e?.code === "P2002" ? new MessageRepeated(m.idempotencyKey) : e; });
+    }).catch((e: { code?: string; meta?: { target?: unknown } }) => { throw e?.code === "P2002" && /idempotency/.test(JSON.stringify(e.meta ?? {})) ? new MessageRepeated(m.idempotencyKey) : e; });
     return { outboxId: id, state, reason, repeated: false };
   }
 
@@ -131,13 +131,13 @@ export class Messages implements MessagePort<Tx> {
   async sweep(): Promise<number> {
     const now = this.clock.now(), hour = now.toISOString().slice(0, 13);
     // Each firm gets its own share (SWEEP_PER_FIRM rows a crash left, and as many held by the cap, oldest first), so one
-    // firm's backlog never hides another firm's rows (break M1, re-review M2); a crash row goes before a held one.
+    // firm's backlog never hides another firm's rows (break M1, re-review M2); a crash row goes before a held one, and the batch takes each firm's first rows before any firm's later ones (re-review m-d).
     const rows = await this.d.db.$queryRaw<{ id: string; firmId: string }[]>`
       SELECT "id"::text AS id, "firm_id"::text AS "firmId" FROM (
         SELECT "id", "firm_id", "created_at", "state_reason", row_number() OVER (PARTITION BY "firm_id", "state_reason" IS NULL ORDER BY "created_at", "id") AS rn
         FROM "msg_outbox" WHERE "state" = 'QUEUED' AND "created_at" < ${new Date(now.getTime() - SWEEP_AFTER_MS)}::timestamptz
           AND ("state_reason" IS NULL OR "state_reason" = ${HELD_DAILY_LIMIT})) x
-      WHERE rn <= ${SWEEP_PER_FIRM} ORDER BY ("state_reason" IS NOT NULL), "created_at" LIMIT 2000`;
+      WHERE rn <= ${SWEEP_PER_FIRM} ORDER BY ("state_reason" IS NOT NULL), rn, "created_at" LIMIT 2000`;
     let n = 0;
     for (const r of rows) if ((await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
     return n;

@@ -75,3 +75,10 @@ Own copy `rv2_pf19b` on :4494 (stopped afterwards), plus a scratch copy of `stud
 * **Break it:** a CRLF subject, a 300-character filled subject, a `msg/` attachment and an unknown firm are each refused plainly. Parallel same-key sends, delivery and the cap race give no duplicates, now under test.
 
 Criteria unchanged: error recovery stays ½ (held rows starve across firms). **Score: 8.5 / 10. Pass.** The most valuable fix is review M2.
+
+## Addendum 2: re-run on 13ebbd0ef (diff-only, 15 Nov 2026)
+Scratch copy of `studio/` at 13ebbd0ef. US$0.
+* **Journey 5 (crash and held rows):** firm B on trial at its cap with 505 real held sends; firm A has room and one held row. One sweep sends A's row, and B stays held at counter 50. Crash rows still go first. **Held.**
+* **Break it:** two concurrent sends with one key at REPEATABLE READ give one row. The loser gets `MessageRepeated` (a typed answer, never a raw P2002), and its retry answers the first row. A wrong-firm dispatch leaves the right firm's job key free. **Held.**
+
+Error recovery ½ → 1. Remaining ½: next step obvious (no screen shows a held or suppressed reason yet) and feedback and state (no event kinds for SUPPRESSED or held; part 2 migration, Lead B answer 3). **Score: 9.0 / 10. Pass.**
