@@ -4,17 +4,20 @@
 // (audit.ts; a failed line rolls the change back) and writes its module_event row last (PF-3 review m8). Invitation
 // lifetimes and expiry are measured with the database's clock (`now()`), never a writer-set time (PF-3 review m6). A
 // licence number never appears in an audit line, an event payload or an answer other than the person's own record.
-import { Inject, Injectable, type OnModuleInit } from "@nestjs/common";
+import { Inject, Injectable, Optional, type OnModuleInit } from "@nestjs/common";
 import { PlatformRole, type Prisma } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import { Db } from "../../core.ts";
 import { EVENT, StaffEventPayload } from "../../../../ports/events.ts";
+import type { MailPort } from "../../../../ports/mail.ts";
 import { firmScope, notInFirm } from "../firm-scope.ts";
 import { actorWord, auditInvitation, auditStaff } from "./audit.ts";
 import { CognitoIdentity } from "./cognito.ts";
 import { FIRM_KEY, dutiesOf, forbidden, problem, unauthorized, type StaffContext } from "./keys.ts";
 import { LocalIdentity } from "./local.ts";
 import { IdentityRefused, PlatformClock, identityConfig, type IdentityPort } from "./port.ts";
+import { MAIL_PORT, SYSTEM_REPLY_TO } from "./session/mail.ts";
+import { requireStepUp } from "./session/step-up.ts";
 
 type Tx = Prisma.TransactionClient;
 export const IDENTITY_PORT = Symbol("IdentityPort");
@@ -23,7 +26,7 @@ export const ROLES = Object.values(PlatformRole) as PlatformRole[];
 export const ONLY_OWNER = "This is your firm's only active Owner. Give the Owner role to another person first.";
 export const ANOTHER_DEVICE = "You signed in on another device";
 /** An Owner change needs an identity check this recent (AG-1-42). */
-export const STEP_UP_SECONDS = 5 * 60;
+export { STEP_UP_SECONDS } from "./session/step-up.ts";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The port this server's configuration names (PLATFORM_IDENTITY). Unset: an adapter that refuses every token. */
@@ -75,7 +78,8 @@ const textOf = (v: unknown, what: string) => {
 // ---------------------------------------------------------------------------------------------------------- the service
 @Injectable()
 export class PlatformIdentity implements OnModuleInit {
-  constructor(@Inject(Db) private readonly db: Db, @Inject(IDENTITY_PORT) readonly port: IdentityPort, @Inject(PlatformClock) private readonly clock: PlatformClock) {}
+  constructor(@Inject(Db) private readonly db: Db, @Inject(IDENTITY_PORT) readonly port: IdentityPort, @Inject(PlatformClock) private readonly clock: PlatformClock,
+    @Optional() @Inject(MAIL_PORT) private readonly mail?: MailPort) {}
 
   async onModuleInit() {
     // Keys warmed at start (tech gate entry 2). A pool that cannot be reached now is fetched on the first request instead.
@@ -191,10 +195,8 @@ export class PlatformIdentity implements OnModuleInit {
     }
   }
 
-  /** An Owner-level change needs an identity check (sign-in) in the last 5 minutes (AG-1-42). */
-  private stepUp(actor: StaffContext, what: string) {
-    if (this.clock.now() / 1000 - actor.authTime > STEP_UP_SECONDS) forbidden(`Confirm it is you first: ${what} needs an identity check in the last 5 minutes. Sign in again, then retry.`, "STEP_UP_REQUIRED");
-  }
+  /** An Owner-level change needs an identity check (sign-in) in the last 5 minutes (AG-1-42): 401, sign in again (PF-4b). */
+  private stepUp(actor: StaffContext, what: string) { requireStepUp(actor, this.clock.now(), what); }
 
   /** The only-Owner guard (SA-6-44, AG-1-22, BR-27): refusing writes an audit line of its own, kept although the change is
    *  refused. Called inside the locked transaction; returns true when the change must be refused. */
@@ -294,15 +296,27 @@ export class PlatformIdentity implements OnModuleInit {
   /** Inserts an invitation measured from the database's clock (72 hours from now()); the token is kept only as a hash and
    *  is not returned (contracts §7: no token returned by a route; PF-4b's MailPort sends the link). */
   private async insertInvitation(tx: Tx, firmId: string, email: string, roles: PlatformRole[], by: string) {
-    const { hash } = PlatformIdentity.token();
+    const { token, hash } = PlatformIdentity.token();
     const [row] = await tx.$queryRaw<{ id: string; expires_at: Date; created_at: Date }[]>`insert into platform_invitation (id, firm_id, email, roles, token_hash, invited_by, expires_at)
       values (gen_random_uuid(), ${firmId}::uuid, ${email}, ${roles}::"PlatformRole"[], ${hash}, ${by}, now() + interval '72 hours') returning id, expires_at, created_at`;
-    return row;
+    return { ...row, token };
+  }
+
+  /** PF-4b: the invitation email, after the commit (a rolled-back invite sends nothing). The plain token is only in the
+   *  email's link, never stored or logged; a failed send leaves the invitation pending (resend sends a new link). */
+  private async emailInvitation(actor: StaffContext, to: string, token: string): Promise<boolean> {
+    if (!this.mail) return false;
+    try {
+      const firm = await this.db.platformFirm.findUnique({ where: { id: actor.firmId }, select: { operatingName: true } });
+      await this.mail.send({ firmId: actor.firmId, to, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.invitation", subject: `You are invited to join ${firm?.operatingName ?? "your firm"}`.replace(/[\r\n]+/g, " ").slice(0, 200),
+        text: `You are invited to join ${firm?.operatingName ?? "a firm"} on Expat Ready.\nOpen your invitation: /invitation#t=${token}\nIt works for 72 hours. If you did not expect this, ignore this email.` });
+      return true;
+    } catch { return false; }
   }
 
   async invite(actor: StaffContext, body: { email?: unknown; roles?: unknown; reason?: unknown }) {
     const email = emailOf(body.email), roles = rolesOf(body.roles), reason = reasonOf(body.reason, false);
-    return this.inFirm(actor, async (tx) => {
+    const out = await this.inFirm(actor, async (tx) => {
       await this.roleRules(actor, null, roles, [], reason, tx);
       if (await tx.platformStaff.findFirst({ where: firmScope(actor.firmId, { email }), select: { id: true } })) problem(409, "Already on your staff", "This person is already on your firm's staff.", { code: "ALREADY_STAFF" });
       const [{ open }] = await tx.$queryRaw<{ open: number }[]>`select count(*)::int as open from platform_invitation where firm_id = ${actor.firmId}::uuid and email = ${email} and accepted_at is null and revoked_at is null and expires_at > now()`;
@@ -310,8 +324,10 @@ export class PlatformIdentity implements OnModuleInit {
       await this.seatCheck(tx, actor.firmId);
       const row = await this.insertInvitation(tx, actor.firmId, email, roles, actorWord(actor.staffId));
       await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${roles.join(", ")}; 72 hours)`, detail: { invitationId: row.id, roles, reason } });
-      return { id: row.id, email, roles, status: "PENDING" as const, expiresAt: row.expires_at };
+      return { id: row.id, email, roles, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token };
     });
+    const { token, ...answer } = out;
+    return { ...answer, emailed: await this.emailInvitation(actor, email, token) };
   }
 
   async invitations(actor: StaffContext) {
@@ -334,7 +350,7 @@ export class PlatformIdentity implements OnModuleInit {
    *  invitation held no seat). */
   async resend(actor: StaffContext, id: string, body: { reason?: unknown } = {}) {
     const reason = reasonOf(body.reason, false);
-    return this.inFirm(actor, async (tx) => {
+    const out = await this.inFirm(actor, async (tx) => {
       const old = await this.openInvitation(tx, actor.firmId, id);
       // Break M2: resending gives the invitation's roles again, so the same rules as inviting apply (an Admin cannot resend
       // an Owner invitation, nor one with a role holding keys it lacks).
@@ -343,8 +359,10 @@ export class PlatformIdentity implements OnModuleInit {
       await this.seatCheck(tx, actor.firmId);
       const row = await this.insertInvitation(tx, actor.firmId, old.email, old.roles, actorWord(actor.staffId));
       await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.resent", entityKey: row.id, summary: "an invitation was sent again; the old link no longer works", detail: { invitationId: row.id, replaces: old.id, roles: old.roles } });
-      return { id: row.id, replaces: old.id, email: old.email, roles: old.roles, status: "PENDING" as const, expiresAt: row.expires_at };
+      return { id: row.id, replaces: old.id, email: old.email, roles: old.roles, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token };
     });
+    const { token, ...answer } = out;
+    return { ...answer, emailed: await this.emailInvitation(actor, answer.email, token) };
   }
 
   async revoke(actor: StaffContext, id: string) {
