@@ -173,8 +173,9 @@ try {
   await clock.setTime(at("2026-10-27 09:00").getTime() - 120_000);
   await tickUntil(() => sentKeys().includes("booking.reminder_1h"), 30_000, 30);
   await clock.setTime(at("2026-10-27 11:00").getTime() - 120_000);
-  await tickUntil(() => sentKeys().includes("booking.attendance_ask"), 30_000, 30);
-  ok("PF-23w DW7: the 1 h reminder and the attendance question (30 min after the end) run after the restart", sentKeys().includes("booking.reminder_1h") && mail2.inbox("host@pf23w.example").some((m) => m.templateKey === "booking.attendance_ask")
+  await tickUntil(() => jobLines("booking.attendance_ask", "done").length === 1, 30_000, 30);
+  // FO-3m DW6: the attendance question runs but mails no one (AG-4-39 rule 2, shown, not pushed).
+  ok("PF-23w DW7: the 1 h reminder and the attendance question (30 min after the end) run after the restart", sentKeys().includes("booking.reminder_1h") && !mail2.sent.some((m) => m.templateKey === "booking.attendance_ask")
     && clock.now() >= at("2026-10-27 11:00").getTime(), { sent: sentKeys(), now: new Date(clock.now()).toISOString() });
   ok("PF-23w DW7: each booking job's run wrote its job line (observeJob on the real worker)", jobLines("booking.reminder", "done").length === 2 && jobLines("booking.attendance_ask", "done").length === 1);
   ok("PF-23w DW7: nothing ran twice (2 reminders and 1 question after the restart, none before it)", mail2.sent.filter((m) => (m.templateKey ?? "").startsWith("booking.reminder")).length === 2 && !mail1.sent.some((m) => (m.templateKey ?? "").startsWith("booking.reminder")), { mail1: mail1.sent.map((m) => m.templateKey), mail2: sentKeys() });
