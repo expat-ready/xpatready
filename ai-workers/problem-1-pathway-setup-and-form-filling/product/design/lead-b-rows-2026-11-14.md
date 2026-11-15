@@ -1009,3 +1009,15 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
 * **Open with the release holder:** both PRs add to the one file `front-office-booking.prisma` (different models, additive). P-600 asks for a file of its own per row; whichever merges second re-stamps.
 
 **Rev 16.27 note (Lead 59, BACKLOG a842bddc6):** the P-600 exception is granted. FO-3pa #1830 and FO-3sa #1828 may share `front-office-booking.prisma`; the second to merge merges `main`, re-stamps and re-runs CI. Lead 59 reads both migrations before the labels.
+
+## Rev 16.28 (15 Nov 18:1x IST, Lead B (6)): PF-21s concept ruling (#1821, comment 6894543666)
+* **PF-21s approved for stage 2 once the concept takes the changes** (challenge: 1 Blocker, 5 Majors and 8 Minors, all accepted). The row's **waits on** becomes "PF-21w, PF-21v, PF-6 part 1" (it was "PF-6").
+* **New row PF-21v** (runtime, API only, under 800 lines; waits on PF-21w; Opus high, since it touches permissions). Name: complaint view fields for the screen. It adds three things:
+  - `businessDaysLeft` on each view, negative when late. A pure function beside `acknowledgeBy` in `business-days.ts` computes it, reading the firm calendar once per request.
+  - A `people` map (id to display name, including deactivated staff) and `firmTimeZone`, both on the list and on `GET /:id`.
+  - `GET /api/platform/complaints/handlers`: active staff, id and display name only, `@PermissionKeys` record key.
+  - **Done when** (DW1–DW4): each of the three has a pass and a fail case, a keyless handler sees names only on their own rows, and PF-21's suite passes unchanged except for the added cases.
+* **PF-6 split:** **part 1** is the platform frame and staff session holder in `web/src/modules/platform/`. It keeps the token, carries one fetch helper, handles 401 with "Signed in elsewhere", and puts the `/me` name in the header with no simulated-person controls. It waits on PF-4b. The rest of PF-6 follows as part 2 and later. Lead B's PF-6 brief will set this out.
+* **J-109's walk text is corrected:** "its 30-business-day clock" becomes "its acknowledge-by date (2 business days, Sample)". The 30 was Lead B's own slip in the PF-21s brief and J-109, and `domain/requirements-2026-10-19/` names no complaint period. A response-by period becomes a row only once the College's by-laws are read and cited (page, quote, date; AGENTS rule 4). This is not a founder question.
+* **Counts per view (G1)** are made in the browser from one `view=all` page, showing "100+" when `next` is set. A server `counts` field becomes a row only once a firm passes 100.
+* **PF-21w (#1823) is unchanged** (approved, touch list kept).

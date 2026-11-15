@@ -2,10 +2,12 @@
 
 Written 15 Nov by Lead B (6). Row: BACKLOG PF-21s ("concept first"; map row 109). **Two stages in one lane:** stage 1 (the concept) can start now; stage 2 (build) starts when **PF-21w** (the routes; brief `PF-21w.md`) is on `main` and the concept is approved. The row also waits on **PF-6** (staff, roles and licences screens; not built): the concept says which PF-6 pieces it uses (the app frame's Settings entry, the staff picker for a handler). **If it uses none, ask Lead B in a PR comment to drop the PF-6 wait** rather than waiting. Effort: Opus 5.5 medium for the concept; the challenge is Fable 5.2 medium (P-608).
 
+
+> **Rev 16.28 (15 Nov, Lead B ruling on #1821):** stage 2 waits on PF-21w, **PF-21v** (view fields `businessDaysLeft`, `people`, `firmTimeZone`, and `GET /handlers`) and **PF-6 part 1** (the platform frame and staff session holder). The chip counts are made in the browser from one `view=all` page ("100+" past one page). The full ruling is on PR #1821.
 ---
 You are a builder for the Expat Ready Pathway Configurator. Run `/next screens PF-21s` and take **one row, PF-21s**, end to end.
 
-**Stage 1, concept (records PR, skill `screen-concept`):** write `screens/pf-21-complaints/concept.md`, then a fresh challenge, then Lead B's approval (P-223 (4); there is no board). Inputs: only what `python3 product/tools/trace-requirements.py --brief PF-21s` and `--brief PF-21` print, PF-21's service (`api/src/platform/complaints/complaints.ts`: fields, `LIST_VIEWS` open/overdue/closed/all, `OUTCOMES`, the 30-business-day clock in `business-days.ts`, who sees what), PF-21w's route table, `EXPERIENCE.md` and P-473's style. It covers:
+**Stage 1, concept (records PR, skill `screen-concept`):** write `screens/pf-21-complaints/concept.md`, then a fresh challenge, then Lead B's approval (P-223 (4); there is no board). Inputs: only what `python3 product/tools/trace-requirements.py --brief PF-21s` and `--brief PF-21` print, PF-21's service (`api/src/platform/complaints/complaints.ts`: fields, `LIST_VIEWS` open/overdue/closed/all, `OUTCOMES`, the acknowledge-by date in `business-days.ts` (2 business days, Sample; corrected 15 Nov rev 16.28: there is no 30-business-day clock), who sees what), PF-21w's route table, `EXPERIENCE.md` and P-473's style. It covers:
 * **Jobs:** an Owner or Admin sees every complaint; a handler sees and handles their own; a Case Manager records but does not read all.
 * **List:** the four views with counts, the due date and the business days left (overdue in the one "needs you" colour), the subject's kind, the handler and the channel.
 * **Record page:** the facts, then a timeline of events (insert-only; a closed complaint changes only by a new event), with the next step as the one filled button (acknowledge → steps → response sent → close with an outcome); change handler only for those holding both keys.
@@ -17,7 +19,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next screens P
 **Stage 2, build (one PR):** files in `web/src/modules/platform/complaints/` (see `web/src/modules/README.md` and `_example/`), `tests/check_pf21s_complaints_browser.ts`.
 * **Named tests (P-606), from the concept's journeys, listed in the PR body first, at least:** **DW1** Owner sees all four views with right counts · **DW2** a handler sees only their own · **DW3** the next-step button walks acknowledge → step → response sent → close · **DW4** change handler is hidden for a Case Manager · **DW5** another firm's complaint id shows the not-found state · **DW6** overdue shows the needs-you colour and days late · keyboard-only, axe-core, 375/1024/1440.
 
-**Must still be true:** every suite passes unchanged; the screen calls only PF-21w's routes (no new API).
+**Must still be true:** every suite passes unchanged; the screen calls only PF-21's routes: PF-21w's and PF-21v's (rev 16.28), nothing else.
 
 **Duplicate check (P-526):** BACKLOG, open PRs (`PF-21s`, `complaints`), BUGS, `screens/`; one `Duplicate check:` line.
 
