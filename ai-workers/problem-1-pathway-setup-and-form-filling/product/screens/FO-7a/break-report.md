@@ -121,3 +121,62 @@ Fix: also refuse when an undo of the batch exists (line 1186).
 - An invoice total above 2^31−1 is refused at issue.
 - A batch from a released savepoint takes lines; a batch committed earlier refuses them.
 - A payment into TRUST with no deposit is refused at commit.
+
+## Round 4: head 35b028dae (diff `6f48fe29e..35b028dae`)
+Scratch database `xr_studio_fo7a_break_4` on :54329 had all 87 migrations applied in name order, plus firms A and B with trust on. It was dropped at the end. I tested with psql and with `pg` clients at RC, RR and SERIALIZABLE. Line numbers refer to `20261115042334_fo7a_client_money_tables/migration.sql`. `:A` stands for firm A and `:P` for a person. Cost: US$0.
+
+**Reproductions from round 3.**
+- B-12 holds. A correction naming a CORRECTION is refused, and so is one naming a REFUND_TO_CLIENT (23514). A bare correction is refused by `money_trust_entry_corrects_check` (23514). A negative or over-cap return is refused (23514). A third withdrawal on a 100.00 invoice is refused (23514).
+- B-13 holds. A direct `SELECT money_take_number(...)` is refused, also from a DO block (42501). These are refused with 23514: `SET money.taking_number='on'` with +100, a direct "+1 on both columns", `numbers_taken` alone, a reset to 1/0, and `INSERT … ON CONFLICT DO UPDATE SET next_number=1`. Deleting a used series is refused (42501).
+- B-14 holds. A credit note or write-off, then a withdrawal racing another withdrawal: 6/6 ok at RC, and 40001 for the loser at RR. A `due_date` UPDATE first still gives 40P01 in 6/6 runs, which is the stated known case (fails safe).
+- B-15 holds by reading (`IS NOT TRUE`, line 1218). B-16 holds: line, undo, line is refused (23514), and so are a line and an undo in one CTE (23514 at commit).
+- B-17 holds for U+2800, U+E0020, U+1F3FB, U+17B4, U+1D159 and U+FE0F. See B-21.
+
+**B-18 MAJOR: a trust application moves its full withdrawal out of trust even after the money was returned to trust.** Line 1233 caps a TRUST_APPLIED line at `-s.amount_minor`, the withdrawal itself. It does not subtract the returns, although the comment at line 1203 says "less what was returned before moving". Returns also do not look at the move list. So the trust bank can be emptied while the ledger still shows the money held. Person :P deposits 300.00; invoice INV totals 100.00. This loop was run three times and every statement committed:
+```sql
+INSERT INTO money_trust_entry (firm_id,person_id,kind,amount_minor,currency,invoice_id,created_by) VALUES (:A,:P,'WITHDRAWAL_TO_INVOICE',-10000,'CAD',:INV,'s') RETURNING id;  -- :W
+BEGIN; INSERT INTO money_move_batch (id,firm_id,currency,transfer_date,recorded_by) VALUES (:B,:A,'CAD',current_date,'s');
+INSERT INTO money_move_line (firm_id,batch_id,kind,direction,currency,amount_minor,source_trust_entry_id) VALUES (:A,:B,'TRUST_APPLIED','TRUST_TO_OPERATING','CAD',10000,:W); COMMIT;
+INSERT INTO money_trust_entry (firm_id,person_id,kind,amount_minor,currency,corrects_entry_id,reason,created_by) VALUES (:A,:P,'CORRECTION',10000,'CAD',:W,'r','s');
+```
+- Result: the ledger shows 300.00 held for :P, while 300.00 has moved from trust to operating for one 100.00 invoice. The ledger has no item to move anything back.
+- The other order also passes. Withdraw W1, return all of it, withdraw W2 (the cap re-opens, correctly), then move 100.00 for W1 and 100.00 for W2 in one batch. Both commit: 200.00 leaves trust for 100.00 applied (moved 20000, ledger out 10000).
+
+Should: a TRUST_APPLIED line is at most the withdrawal less its returns. A return of a withdrawal that has a live (not undone) move is refused until the move is undone, or is at most the withdrawal less returns less live moves. Because the move takes only the `money_move:` lock and a return takes the party lock, the move line should also take the party's trust lock, so the two cannot race.
+
+**B-19 MAJOR (for the tech lead; the P-603 rule as written allows it): the deposit-correction cap lets a WRONG_ACCOUNT move take other clients' money out of trust.** Lines 1246-1252 cap a trust→operating move at the negative corrections of the payment's deposit. A correction does not say why it was made, so two cases pass:
+- (a) **A bounced cheque.** `t_dep` makes a CHEQUE payment of 300.00 into TRUST plus its DEPOSIT. Then `INSERT … ('CORRECTION',-30000,…,corrects_entry_id=:DEP,reason='cheque bounced')` and a WRONG_ACCOUNT TRUST_TO_OPERATING line of 30000 on that payment. Both committed. 300.00 that never arrived is moved to operating, so it comes out of the other clients' trust money: the bank ends 300.00 below the ledger.
+- (b) **A deposit refunded, then also corrected.** On a 200.00 deposit, `REFUND_TO_CLIENT -20000`, then `CORRECTION -20000` naming the same deposit, then a WRONG_ACCOUNT move of 20000. All committed. The ledger fell by 400.00 for one 200.00 deposit, and 200.00 of the party's other money went to operating with no invoice.
+
+Line 1147 counts only earlier corrections, never refunds. Fix (the lead decides): give a deposit correction a cause, and let only a "wrong account" correction license a move. A bounced or uncleared cheque never does (the `cleared` flag defaults to true even for a cheque). Bound the corrections of a deposit by what is still held from it.
+
+**B-20 Minor: two documents still print one number, across kinds, when a prefix is reused.** The unique prefix index only holds at one moment. Firm B:
+```sql
+INSERT INTO money_number_series (firm_id,kind,prefix,next_number) VALUES (:B,'INVOICE','XA-',1);
+-- issue an invoice → XA-0001
+UPDATE money_number_series SET prefix='INV-' WHERE firm_id=:B AND kind='INVOICE';
+INSERT INTO money_number_series (firm_id,kind,prefix,next_number) VALUES (:B,'CREDIT_NOTE','XA-',1);
+-- a credit note on it → XA-0001
+```
+All committed: an invoice and a credit note are both XA-0001. This is the B-6 class: a prefix change is allowed on purpose (AG-6-44 rule 5), but a prefix a firm has used is never freed. Fix: keep a firm's used prefixes (per kind) and refuse them for another kind.
+
+**B-21 Minor: invisible text still passes `money_text_ok` (line 507).** These single characters return true:
+- U+FFF9–FFFB (interlinear annotation);
+- U+1BCA0–1BCA3 (shorthand format controls);
+- U+13430–1343F (Egyptian format controls);
+- U+0600, U+070F, U+110BD (prepended format marks);
+- U+16FE4 (Khitan filler);
+- a lone combining mark (U+0301, U+05AE);
+- noncharacters U+FFFF, U+2FFFE, U+10FFFF;
+- unassigned U+0378 and U+1D455;
+- private use U+E000 and U+F0000.
+
+Fix: add the Cf ranges and the noncharacters, and require at least one character that is not a combining mark (U+0300–036F and friends). Listing characters one by one in a C-ctype regex will keep leaking. An allow-list of visible blocks is the safer form.
+
+**Held in round 4:**
+- Corrections in parallel (10 pg clients). 10 × −30.00 on a 100.00 deposit: RC gives 3 ok and 7 × 23514; RR gives 1 ok and 9 × 23505; SERIALIZABLE gives 1 ok and 9 × 40001. Returns of 10 × 30.00 on a 100.00 withdrawal end the same way. Returns and re-withdrawals mixed on one invoice never put more than 100.00 applied at RC, RR or SERIALIZABLE.
+- Cross references refused. A correction on another party or currency (23514). A correction from firm B naming firm A's entry (23503). A positive deposit correction (23514). A withdrawal carrying `corrects_entry_id` (23514).
+- Same statement. Two deposit corrections in one multi-row INSERT are each within the cap and together over it: refused (23514; the second row sees the first). A correction and a withdrawal in one CTE that overdraw are refused (23514). A withdrawal and its return in one CTE are accepted (net zero, correct). Over-cap after a savepoint rollback is refused.
+- WRONG_ACCOUNT out of trust. With no correction, it is refused (23514). After an undo, a re-move above the payment is refused, and the ordinal stays unique.
+- Numbers. 20 parallel issuers with savepoint rollbacks and rollbacks gave INV-0002..0019 with no gap at RC, and 40001 for the losers at RR.
+- `money_move_line_not_undone`. Line and undo in one CTE are refused at commit. With `SET CONSTRAINTS … IMMEDIATE`, a line then an undo of the same batch commits. That only reorders an ordinary later undo, so it is not a finding.
