@@ -60,3 +60,27 @@ A test-only row: no screen, page, words, migration or data changes.
 Journey test (reviewer): 9.5/10, pass. See `journey-test-reviewer-2026-11-15.md`.
 
 Verdict: Approve 7eb0cf8a755349683500c276eefbe38de41d83e3
+
+## Round 2 (diff only, P-277): `git diff 7eb0cf8a7 95059dbe9`
+Head `95059dbe95bfce9da0985e8ed79c810521c1a946`.
+
+**Scope:**
+* `check_forms_qa53.ts` +6 lines (l.219–224), which close m-1.
+* My two record files under `product/screens/PF-4f/`, added exactly as I wrote them (byte-identical to my copies).
+* No other `prototype/studio` path changed (`git diff --quiet … -- prototype/studio ':!tests/check_forms_qa53.ts'`), so there is still no product code change.
+
+**m-1, closed:**
+* `doorMarks(dir)` counts every `@StaffSignIn(` in `api/src` except `platform/identity/keys.ts`. keys.ts has to be excluded, because its usage comment contains `@StaffSignIn("why")`.
+* New pass test: marks = DOORS length = doors the scan found. On my copy: marks 1, doors `["POST /api/platform/session/local"]`.
+* New fail test: a planted own-line door and a GET door give marks 3 against doors 1.
+* **Mutant:** I planted an own-line `@StaffSignIn` + `@Post("session/hidden")` in a scratch copy of `api/src`. The new pass test FAILS (`marks 2, doors [session/local]`). Before this commit, that layout was found by nothing.
+* Everything from round 1 is untouched: the l.217 list pin and its literal, the l.220 planted-door test, the live loop, `PLATFORM_PATH` and its guard.
+* A stray `@StaffSignIn(` in a comment outside keys.ts would make the check fail rather than pass, which is the safe direction.
+
+**Run:** my own copy `forms_qa53_rv` on :4479, check file at 95059dbe9: **40 passed, 0 failed, exit 0**. Copy stopped afterwards.
+
+**Round 2 findings:** none. CI on 95059dbe9 should still be green before the label.
+
+Journey score unchanged in substance. F1 is closed, so "correct data" goes to 1: **10/10** for this head.
+
+Verdict: Approve 95059dbe95bfce9da0985e8ed79c810521c1a946
