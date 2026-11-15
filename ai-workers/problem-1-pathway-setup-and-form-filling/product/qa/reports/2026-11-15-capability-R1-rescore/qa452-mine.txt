@@ -1,0 +1,4 @@
+PASS  QA-452 (1): a module provides JOB_QUEUE_PROBE for /api/health/ready — features/platform-jobs.ts
+PASS  QA-452 (2): PF-14's worker wraps job handlers with PF-23's observeJob — platform/jobs/platform-jobs.ts
+PASS  QA-452 (3): the stuck-job alarm is fed from the real queue — platform/jobs/stuck-check.ts
+3 passed, 0 failed
