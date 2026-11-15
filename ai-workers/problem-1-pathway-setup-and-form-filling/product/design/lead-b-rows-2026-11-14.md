@@ -1151,3 +1151,13 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
 * **FO-7s0's concept** is split into an index file plus one file per screen group, each under 100 lines. One challenge and one approval cover the set.
 * **Questions 4–8 (FO-7v reversals, `CARD_TERMINAL`, FO-7m "at that date", FO-7p and trust)** are the release Lead's money rules. Lead B's recommendations are on the PR.
   - If Lead 61 accepts 5c, FO-7ts's credit ledger gains a `REVERSED` kind.
+
+**Rev 16.37 note (16 Nov 02:2x IST): Lead 61's money rulings on #1881.**
+* **Lead B's recommendations 4–8 stand.** Because 5c is accepted, **FO-7ts's credit ledger gains `REVERSED`**.
+* **P3, the cross-payer pick, narrowed by Lead 61:**
+  - It is manual only and never pre-ticked.
+  - It is allowed only between payers on the same client's matter (the same case), never across clients.
+  - It is audited with a reason (reason required).
+  - The database guard widens only to "same case, same currency, pick recorded".
+  - DW16 adds a refusal test for each case: another case, another currency, no pick, and no reason.
+  - Unconfirmed: no counsel.
