@@ -147,3 +147,20 @@ No Blocker or Major is open.
 Verdict: Approve
 
 * **6e30ea54 (diff only, 2 lines):** the audit action strings "lead.created" (`arrival.ts`) and "lead.taken" (`leads.ts`) become `EVENT.LEAD_CREATED` and `EVENT.LEAD_TAKEN`. The values are identical and `EVENT` is already imported in both files, so behaviour is unchanged; it only clears `check_b164_no_engine_keys`. I did not re-run the suites (results as reported by the builder). Verdict: Approve
+
+## Re-review at 7b2d6f05 (diff only: `git diff a04cc29d 7b2d6f05`)
+* **What I ran:** a clean worktree at 7b2d6f05. `check_fo2_leads_prospects` gives 62 passed and `check_case_feed` gives 39/39. Code and test against origin/main come to 796 lines added and 3 removed; the records under `screens/` are not counted.
+* **`written()`** (`common.ts`) now writes the entity as the literal `"fo_lead"`, and its two callers stop passing it. The audit lines are unchanged.
+  * For part 2: prospect, call and note changes will need their own literal entity, or a second helper, not a parameter.
+* **`form()`** (`public.ts`) is shortened. I traced the paths: unknown token, form off, firm in a state other than TRIAL/ACTIVE, and allowed form. The logic is equivalent.
+* **`@OpenRead` moved before `@Get`:** the decorator order is the only change; the route is the same.
+* **`check_forms_qa53.ts`** (outside the touch list, raised with the tech lead on the PR):
+  * The public read is added to REVIEWED.
+  * PUBLIC_WRITES lists the submission route, and the check asserts that the scanned public writes equal it. It also checks live that an unknown token answers nobody 404.
+  * This is the right way to admit a public door into that guard. Before the label, the tech lead's OK must be on the PR.
+  * I did not run qa53 myself, since it needs a live copy (the builder reports 41/41).
+* **The test edits** only join wrapped `ok()` calls and drop section comments. No check is removed: the count stays at 62.
+
+No Blocker or Major is open.
+
+Verdict: Approve
