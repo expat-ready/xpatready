@@ -1,3 +1,5 @@
+**Corrected 15 Nov (Lead B (6), #1811 comment 6892225144):** the list and attendance-due routes need `agent/booking:list` (AG-4-67 rule 4 and its Access line); the AnyStaff lines below for those two routes, and DW3/DW6's "never 403", are superseded.
+
 # Brief: FO-3sr, the staff booking routes (FO-3's part 2; cloud builder lane; row owner Lead B)
 
 Written 15 Nov by Lead B (6). Replaces the FO-3sr line of the shared `ROW-w.md` brief (rev 16.4), which predates P-604, P-606 and P-610. **Ready now:** PF-4 #1744, FO-3 #1760, FO-3f #1785 and FO-3h #1799 are all on `main`, and no open PR builds these routes (checked 15 Nov 13:45 IST). Effort: Opus 5.5 **high** (a permissions row, P-608). Paste into a new cloud session on the repository (default branch `main`).
