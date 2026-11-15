@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { FirmId } from "./audit.ts";
 import { FAKE_NOW, type ClockPort } from "./clock.ts";
+import { Subject } from "./consent.ts";
 
 /** Why the email is sent: TRANSACTIONAL (a person's own action: a code, a link, a receipt), SERVICE (about the firm's
  *  account or a case: reminders, notices) or MARKETING (needs consent; the consent store, PF-19a, decides). */
@@ -27,6 +28,8 @@ export const MailMessage = z.strictObject({
   class: MailClass,
   /** The template the words came from (`booking.confirmed`), when one did. */
   templateKey: z.string().regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/).max(100).optional(),
+  /** The person the email is to (PF-19b: MessagePort's consent gate judges a SERVICE or MARKETING email by its person). */
+  person: Subject.optional(),
 });
 export type MailMessage = z.input<typeof MailMessage>;
 
