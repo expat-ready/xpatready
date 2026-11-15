@@ -47,4 +47,29 @@ N/A: a platform API item with no case-side screen (§6 scope).
 ## Could not check
 Stripe's real answers for `automatic_tax` on an account without Stripe Tax set up (it may refuse to create the session; the Mac check by Lead B with test keys); the `firm.created` consumers (PF-25 web address) on a `PROVISIONING` self-serve firm; `graph.mjs` was not run because it rewrites `qa/GRAPH.md`, outside this review's write list; no browser or screen reader (API only).
 
-Verdict: Changes requested
+Round 1 outcome: changes requested (superseded by Round 2 below).
+
+## Round 2 — diff only, `1cd85d6c7..373f50ec1fe89e45d9990c0c13c8e30c55ff1ea5` (15 Nov 2026)
+Read only the diff (9 files; three of them are this review, the journey report and the breaker's report, committed unchanged). `tests/check_pf5_signup_billing.ts` at the new head: **53 passed, 0 failed** (Prisma client regenerated for the new `outcome` column).
+
+| Finding | Status at 373f50ec1 | Evidence |
+|---|---|---|
+| Major 1, the running ports | **Fixed** | `runtime-ports.ts:20-29` builds from `platformConfig()` (the key is a `Secret`, `reveal()` only here) and `identityConfig()`. The fake runs only on a local server. Identity not local, or no key outside local, sets `notReady`, and `signup.ts:101` answers 503 `SIGNUP_NOT_SET_UP` on both doors. Pass and fail test: the test environment with Cognito gives 503 and stores nothing; local gives `notReady === null`. |
+| Major 2, account taken before sign-up / lock-out | **Mitigated; the rest goes to part 2** | `signup.ts:132-139`: the newest sign-up ends the live one (`outcome REPLACED`, its link 404s, tested). Still one live row. The email names the firm and says "if you did not ask for this, ignore" (`signup-identity.ts:33`). The builder's reading of "one email" is flagged to the tech lead in the PR. Checking the password at verify needs the Cognito adapter; it is a **must for part 2**. |
+| Major 3, silent loss | **Fixed** | `signup.ts:117-119`: a foreign, malformed or over-2-hours stamp gives a visible 400 `RELOAD`. Only the honeypot and a too-fast fill stay silent. Test covers both the stale and the foreign stamp. |
+| Major 4, timing / m4 | **Fixed** | `signup.ts:121-124`: the work that depends on the email runs after the answer (`later`), so a mail failure no longer changes the answer (tested). |
+| Minor 1, Stripe customer | Fixed | `signup.ts:200-206` reuses the stored `stripe_customer_id`; the update goes through `firmScope` (also Minor 7). |
+| Minor 2, SQL bypasses | Fixed | `migration.sql`: terms NOT NULL, `created_at` not in the future, `used_at` set to the database's now, outcome check, TRUNCATE refused; all tested. |
+| Minor 3 (field names), 6 (flood), 8 (inactive plan), 9 (register in the transaction), 10 (job + race tests), 11 (spaces, code tries) | Fixed | `signup.ts:109`, `:128` + `:241-247`, `:170-171`, `:136`, test lines for `PURGE_JOB` via `fakeJobs` and 3 concurrent sign-ups; `:52`, `:165-170`. |
+| Minor 4 (audit of the pending row and purge), Minor 5 (period if Stripe is down) | Deferred to part 2, written in the PR | Accepted: `AuditPort` needs a firm, and the period is in the `platform.subscription.created` audit detail. |
+
+**Left open (none blocks this commit):**
+* **m-r2a (Minor):** the per-email cap runs before the replace (`signup.ts:128`). An attacker can send 3 sign-ups for `victim@` an hour, so the victim's 4th sends nothing while the attacker's row stays live. That is a lock-out of at most 1 h, repeatable, and every email the victim receives names the attacker's firm and says to ignore it. Part 2's password check at verify closes it. Until then, consider letting a sign-up whose firm name differs replace without counting toward the cap, or alert on a hit cap.
+* **m-r2b (Minor):** a failure in the background step is only `console.warn` (`signup.ts:153`). If the provider is down, the person sees "check your email" and nothing comes. That is acceptable for the same-answer rule, but part 2 should give it a PF-23 alert or metric.
+* **Note:** the 503 body carries `reason` with internal wording ("PF-5 part 2: Cognito") on a public route. It is harmless; plain words could replace it.
+* **Note:** the Mac demo copy with `PLATFORM_IDENTITY` unset now answers 503 on sign-up. That is honest, and it replaces the earlier dead end.
+
+Size after round 2: about 1,230 lines in all, but the extra lines are records (+130) and tests (+90), and the code grew by about 90 lines. My round 1 view on size stands.
+Journey score unchanged at 7/10 (not re-walked; this round reviewed the diff only). Feedback (J9) and recovery would now score 1 each, which would make it 8/10 if re-walked.
+
+Verdict: Approve 373f50ec1fe89e45d9990c0c13c8e30c55ff1ea5
