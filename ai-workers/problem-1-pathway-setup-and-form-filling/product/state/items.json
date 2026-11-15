@@ -117,14 +117,30 @@
     "owner": "lane",
     "branch": "claude/tender-einstein-wpko9j",
     "pr": 1857,
-    "status": "open",
+    "status": "acked",
     "waiting_on": "Lead",
     "next_step": "merge, test, publish",
     "created_at": "2026-11-15T19:16:35Z",
     "updated_at": "2026-11-15T19:16:35Z",
-    "last_ack_by": null,
-    "acked_at": null,
+    "last_ack_by": "Lead 61",
+    "acked_at": "2026-11-15T20:28:58Z",
     "opened_at": "2026-11-15T19:16:35Z",
     "source": "pull/1857#issuecomment-6899825908"
+  },
+  {
+    "id": "QA-OPT-1116",
+    "kind": "ready",
+    "owner": "lane",
+    "branch": "claude/gracious-cerf-o013x3 \u00b7 head e8c57622186fd3b37675e15c338b9d2cc938843f \u00b7 records only (one design page)",
+    "pr": 1854,
+    "status": "open",
+    "waiting_on": "Lead",
+    "next_step": "merge, test, publish",
+    "created_at": "2026-11-15T20:01:40Z",
+    "updated_at": "2026-11-15T20:01:40Z",
+    "last_ack_by": null,
+    "acked_at": null,
+    "opened_at": "2026-11-15T20:01:40Z",
+    "source": "pull/1854#issuecomment-6900451861"
   }
 ]
