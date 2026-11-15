@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-621**, 15 Nov 21:5x IST (P-616 to P-619 added by Lead 61); the long page as of P-612 is word for word in `history/RULES-2026-11-15-1415-before-register.md`)
+# Rule register (the tech lead keeps it; as of **P-622**, 15 Nov 21:5x IST (P-616 to P-619 added by Lead 61); the long page as of P-612 is word for word in `history/RULES-2026-11-15-1415-before-register.md`)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced by** names the hook, CI step or script that blocks or fails a break; `prose` = only the reader enforces it (G-4 candidates, bottom); `(part)` = covers part of the rule. IDs: a letter (`P-611b`) = the decision's 2nd row, not its part (2); `IDX-n` = an index of done, product or integration decisions kept in the side file. **Start read**: this page, then the `DECISIONS.md` rows newer than "as of", word for word (P-314, P-440). Long text word for word: side files under `rules/`. `tools/check-docs.sh` fails a row with no enforced-by, a page over 25 KB, or one over 3 rows behind DECISIONS.
 
@@ -146,6 +146,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-619 | Enforcement steps 3-8 approved; alarms for a stale board (45 min) and outside items. | prose (B193 builds them) | 15 Nov |
 | P-620 | Each Claude account checks the company Gmail connector at start and after a switch; missing → ask the founder. | prose (B193 part 6) | 16 Nov |
 | P-621 | Google only (Gmail, Calendar) for now; Microsoft deferred; ports stay provider-neutral. | prose | 16 Nov |
+| P-622 | Theory of Constraints: finish before starting (WIP per group), hot files split, one full run per change, fewer Leads; gates unchanged. | prose (B193, B194) | 16 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |
@@ -179,4 +180,4 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | Weekly plan burn per hour (P-440) | 3% or less |
 
 ## Prose-only rows: G-4 candidates (P-611)
-G-4's five first: PR open before a push (P-557), reviewer Opus (P-303, P-608), Done when in briefs (P-606), label after Approve on the head (P-385, verify), lane branch sweep (P-557). All 107 rows marked `prose`: IDX-1, P-418, P-464, P-470, P-468, IDX-2, P-473, P-550, P-558, P-547, P-583, P-589, IDX-5, IDX-3, IDX-4, F-12Nov, P-500, P-502, P-503, P-504, P-505, P-508, P-511, P-512, P-514, P-515, P-530, P-536, P-539, P-541, P-542, P-551, P-553, P-555, P-556, P-565, P-566, P-576, P-580, P-582, P-587, P-592, P-593, P-595, P-597, P-599, P-600, P-602, P-604, P-605, P-606, P-607, P-610, P-611c, P-609, P-613, P-614, P-608, P-557, P-348c, P-442, P-405, P-439, P-526, P-526b, P-526c, P-337, P-436d, P-438b, P-348h, P-270, P-303, P-277, P-352, P-319, QA-221, P-335, P-251, P-434b, P-479, P-478, P-486, P-486b, P-384, P-423, P-294, P-390, P-254, P-170, P-338, P-286, P-388, F-7Nov, P-363, P-302, P-371, P-436a, P-446, P-446f, P-440c, P-440d, P-436f, P-445b, P-377, P-461, P-458, P-312.
+The list, word for word: `rules/prose-only-g4-candidates.md`.
