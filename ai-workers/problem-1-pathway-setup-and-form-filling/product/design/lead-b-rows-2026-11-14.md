@@ -1085,3 +1085,24 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
   - `tax_registered`, `qst_number` and `prices_include_tax`, and dropping `tax_rates`;
   - the pre-case → case trust transfer, as one pair of entries that nets to zero under the party lock;
   - the deposit request's retainer version, unique per version.
+
+## Rev 16.34 (16 Nov 02:1x IST, Lead B (6)): case-side batch answers for platform rows (#1872, #1875, #1877, #1870, #1878)
+* **#1878 reconciled** (comment 6900912668):
+  - The trust answer is stored as the enum from AG-6-59 §7 (structure, Lead B).
+  - **The 25 days count from the invoice date** (Lead 61's money ruling). This replaces rev 16.33's line.
+  - Tax rates and the overpayment rule have no DECISIONS row behind FO-7a's list or FO-7b's refusal, so the requirement stands. A setting is built only if Lead 61 takes the tax point to the founder.
+  - **Open with Lead 61:**
+    - the `/api/client-money/` prefix: the guard covers only `/api/platform/*` and `/api/front-office/*`, so either use `/api/front-office/money/*` or widen `PLATFORM_PATH` with a test;
+    - firm-wide invoice visibility against AG-06 C5.
+* **PF-12 creates `xr_case_lookup`** (#1872 Q10):
+  - no login, with IF NOT EXISTS, since CS-W3 may create it first;
+  - it owns only the three case firm-lookup definer functions and gets no table grant;
+  - it is added to PF-12's brief.
+* **New row PF-6sb** (screens, platform; waits on PF-6 part 1 and AUD-3b's API; #1875 Q4): the "Expat Ready support — name" banner shown while our staff are in a firm, and the Owner's support-access switch screen.
+* **PF-F3 aligned** (#1877 Q1, Lead 61's contract §4 ruling):
+  - `onClean` only makes the document reviewable;
+  - **the officer's acceptance (CS-D1) writes `document.accepted`, not the scan**;
+  - the row text "(where the case side writes `document.accepted`)" becomes "(where the case side marks the file ready to review)".
+* **New row PF-0a** (runtime, platform; #1870 Q3; waits on AUD-1b):
+  - the three direct audit writes in `api/src/platform/identity/audit.ts` and `settings.ts` move onto `AuditPort`, in the same transactions;
+  - every suite passes unchanged, and a test shows each write lands through the port.
