@@ -190,3 +190,108 @@ These rows are the release Lead's (case side). They touch busy case-side files (
 * password-protected uploads (AG-9-69);
 * ZIP unpacking (AG-9-54, SA-8-49; Q7);
 * several files per document and PDF Studio (AG-9-65 to -68; these belong to the checklist's own row 63, already Works for one file per line).
+
+---
+
+## 4. Map row 79: firm dashboards and reports (Platform)
+
+**Duplicate check (15 Nov 10:5x IST).**
+* **Searched:** BACKLOG, the rows file, `main` a31f52500 (`grep -i dashboard` in `api/src` and `web/src`), open PRs.
+* **Found:**
+  * no reporting service or dashboard in code or rows;
+  * FO-7r supplies money summaries per client and case, but no firm-wide figures;
+  * PF-22 (custom fields and saved views, map row 95) is named only. Saved views (AG-14-21) wait for it and are not built here;
+  * X-31 parks *our* console's health graphs, not the firm's dashboards;
+  * AG-14-39 sends money exports to AG-06 (FO-7r), so no export of money records is built here.
+
+**How it stays inside the module rules.** Each module registers its own metrics with the platform's `MetricRegistry`, with a read function that runs inside the module (the P-584 (2) pattern). The platform never imports a module's tables, and no module imports another (case-side contract §1 rule 4). Every figure is per currency (AG-14-15, -27), firm-scoped (PF-12), and scoped `view.own` or `view.all` on the server (AG-14-19).
+
+| # | Area | Item | Done when (beyond the standard) | Source · waits on · decisions |
+|---|---|---|---|---|
+| PF-R1 | runtime (platform: reporting service, API) | **The reporting service and its one door.**<br>(1) `ports/metrics.ts`: `MetricRegistry.register({ key, module, label, kind: COUNT \| MONEY \| PERCENT \| LIST, scopeAware, drillTarget, read(ctx, filters) })`, with a fake.<br>(2) `GET /api/platform/reports/dashboards/:role`: the seeded layout for that role, as data (AG-14-18): Owner, Case Manager, Billing / Finance and Case Officer in R1 (Q8).<br>(3) `POST /api/platform/reports/query`: metric keys plus filters (date range, person, client type Individual or Corporate, AG-14-20 and -33; Zod-checked, AG-14-30). It answers each metric from its module's `read` with `scope = own \| all \| financial`, worked out on the server from `agent/report:view.own`, `view.all` and `view-financial` (AG-14-19), never from the request.<br>(4) Money metrics return one figure per currency (AG-14-15).<br>(5) Each figure carries its drill-through target and filter (AG-14-22); the target module re-checks its own keys.<br>(6) The keys `agent/report:view.own`, `view.all`, `view-financial` and `export` are added to the permission catalogue as data (P-601's one exception, read before the label), with AG-14 §10's defaults.<br>(7) **Live reads, no rollup tables in R1** (Q8): each module's `read` uses firm-first indexes, and a metric that passes the STANDARDS §9 read budget on 100 Sample firms' worth of data fails CI.<br>**Touch:** new `ports/metrics.ts`, `ports/fakes/metrics.fake.ts`, `api/src/platform/reports/*.ts`, `api/src/features/platform-reports.ts`, the permission catalogue data lines (named in the PR), `tests/check_pfr1_reports.ts` | Tested with a pass and a fail each:<br>• a Case Officer with `view.own` gets only own-record figures for the same metric that an Owner gets firm-wide;<br>• a scope sent in the request is ignored;<br>• a money metric with CAD and USD returns two figures, never one total;<br>• an unknown metric key gives 400;<br>• a filter that fails its schema gives 400 with the message;<br>• firm A's query never counts firm B's rows (PF-12's cross-firm test);<br>• a registered metric that reads over budget fails the budget test;<br>• the drill target, followed by someone without the target's key, gives 403. | **Source:** AG-14-1, AG-14-4, AG-14-15, AG-14-18 to -20, AG-14-22, AG-14-27 to -30, AG-14-33 · **waits on:** PF-4 (keys), PF-12 (walls) · **decisions:** P-584 (2) (pattern), P-601 (catalogue data), P-562 (about 100 firms); Q8 · **breaker:** yes (permissions) · **size:** 1 PR |
+| PF-R2fo | runtime (front office registers its metrics) | **Sales metrics (AG-14-5, AG-14-7):** leads added and by source; unassigned leads waiting; stage counts per pipeline; engage rate and win rate; the per-person table (leads and prospects owned, engaged, won, calls logged).<br>Registered from `api/src/front-office/reports/metrics.ts`, reading only front-office tables. **Touch:** that file, one registration line in the front office's module set-up, `tests/check_pfr2fo_metrics.ts` | Tested with a pass and a fail each:<br>• the seeded Sample leads give the expected counts (a table test);<br>• a deactivated person's activity in the period shows as "(Inactive) Name" (AG-14-31);<br>• `view.own` counts only the viewer's leads;<br>• no figure reads a case-side or money table (import-boundary check). | **Source:** AG-14-5, AG-14-7, AG-14-31; AG-2-87 · **waits on:** PF-R1, FO-2, FO-4 data · **decisions:** P-584 (2) · reviewer only · **size:** 1 PR |
+| PF-R2cm | runtime (client money registers its metrics) | **Money metrics:**<br>• fees billed and fees collected by period (AG-14-13; collected counts payment dates);<br>• overdue ageing (current, 1-30, 31-60, 61-90, 90+) with the overdue total and overdue by client (AG-14-14);<br>• **trust received apart from fees collected** (AG-14-36; only when trust is on);<br>• tax collected per tax name (AG-14-37).<br>All per currency, `view-financial` or `view.all`. Registered from `api/src/client-money/reports/metrics.ts`, reading FO-7r's facts. **Touch:** that file, one registration line, `tests/check_pfr2cm_metrics.ts` | Tested with a pass and a fail each:<br>• a trust deposit never counts as fees collected (AG-14-36);<br>• with trust off, there is no trust metric in the answer;<br>• ageing buckets on the fake clock (a table test at each boundary day);<br>• two currencies are never summed;<br>• a person with only `view.own` and no `view-financial` gets no firm-wide money figure;<br>• tax collected sums each tax name apart. | **Source:** AG-14-13, AG-14-14, AG-14-15, AG-14-36, AG-14-37; AG-6-29 · **waits on:** PF-R1, FO-7r · **decisions:** P-567 (trust kept apart), P-575 (1) · **breaker:** yes (money) · **size:** 1 PR |
+| PF-R2cs | runtime (case side registers its metrics) | **Case metrics:** case load by stage, program and person, new against closed by period (AG-14-9); upcoming government deadlines in the next 14 days (Sample) and missed deadlines (AG-14-17).<br>Registered from one new case-side file through the case side's own read (never the front office's), with the release Lead's OK. **Touch:** new `api/src/case-reports/metrics.ts`, one registration line, `tests/check_pfr2cs_metrics.ts` | Tested with a pass and a fail each:<br>• the checkpoint's Sample cases give the expected counts;<br>• a closed and then reopened case counts once, as open;<br>• `view.own` counts only cases the viewer can see (AG-7-88's visibility check);<br>• a deadline after the window is not listed. | **Source:** AG-14-9, AG-14-17 · **waits on:** PF-R1, `case.closed` (case-side contract §5), the release Lead's OK · **decisions:** P-584 (2) · reviewer only · **size:** 1 PR |
+| PF-R3 | screens (platform: dashboards) | **The firm's Reports page.** A concept comes first (`product/screens/pf-r3-reports/concept.md`, with a best-in-class section and a fresh challenge, Lead B approves).<br>• the seeded dashboard for the viewer's role;<br>• tiles and tables from PF-R1;<br>• the shared filter bar (dates, person, client type);<br>• each figure links to its list with the same filter (drill-through);<br>• "Export CSV" of the shown table, for `agent/report:export` only, audited (AG-14-25, -26, -29);<br>• money per currency, side by side;<br>• empty states that say why ("No invoices in this period").<br>XLSX, scheduled reports and saved views are not built (X proposal below). **Touch:** `web/src/modules/platform/reports/*`, the concept folder, `tests/check_pfr3_reports_browser.ts` | Browser check:<br>• an Owner and a Case Officer see the same tiles at different scope;<br>• a drill-through opens the target list with the filter applied;<br>• a person without `agent/report:export` sees no export button, and an export writes one audit line;<br>• CAD and USD show apart;<br>• keyboard only; axe-core with 0 serious; 375, 1024 and 1440 widths;<br>• the page renders its first figures within the STANDARDS §9 budget on the Sample data. | **Source:** AG-14-18 to -22, AG-14-25, AG-14-26, AG-14-29, AG-14-33 · **waits on:** PF-R1, at least one PF-R2 row, PF-1 · **decisions:** P-223 (4), P-392; Q8 · **breaker:** yes (new screen) · **size:** 1 records PR (concept) + 1 PR |
+
+**Left out of row 79 (proposed X row):**
+* scheduled reports (AG-14-23, -24);
+* XLSX export (AG-14-25's second format);
+* saved and shared views (AG-14-21; with PF-22);
+* stage durations, on-time %, deficiency and SLA metrics (AG-14-10 to -12);
+* productivity, task throughput and call volume (AG-14-16);
+* compliance analytics (AG-14-17's at-risk part; §3.5);
+* rollups and a read replica (AG-14-2, -3; Q8);
+* the corporate dashboard (AG-14-34, already Release 2 in the requirement);
+* the weighted forecast (AG-14-8, already Release 2).
+
+---
+
+## 5. Map rows 85 and 86: already shaped; the two parts still missing
+
+**Duplicate check (15 Nov 10:5x IST).**
+* **Rows:** BACKLOG has PF-21b (requests to us and legal holds, `LegalHoldPort`), PF-21c (breach register and firm notices), PF-21d (erasure, `ErasurePort`) and PF-21rs (our console's Privacy pages), all Lead B's, from rev 15.
+* **Code:** PF-21 (complaints) is merged with `platform-register.prisma`. None of PF-21b, PF-21c, PF-21d or PF-21rs is in code or an open PR.
+* **Gap 1:** Lead B rev 15 says the case side's eraser and its `LegalHoldPort` checks "go into the release holder's CS- rows". No such row exists in BACKLOG or the case-side contract, so map row 85 cannot complete for case data.
+* **Gap 2:** PF-21rs's Done when is "the concept's journeys" with no testable journey named, so qa cannot score it under P-592. An amendment is proposed (not a new row).
+* Row 86 has no case-side part (firm notices go to the firm's Owner and Admins through `MessagePort`; the firm decides about its clients, PF-21c).
+
+| # | Area | Item | Done when (beyond the standard) | Source · waits on · decisions |
+|---|---|---|---|---|
+| CS-P1 | runtime (case side: erasure and legal hold) | **The case side honours a deletion request and a legal hold (completes map row 85 for case data).**<br>(1) The case side registers its eraser with `ErasurePort.register('case-side', eraser)`. For one party it anonymises the person's answers and profile values and deletes their documents' bytes through `FilesPort` (records tombstoned, AG-9-34). It keeps filed-form records and submission numbers with the name replaced by a reference, and never touches money rows (PF-21d keeps the financial floor).<br>(2) **Every case-side delete calls `LegalHoldPort.isHeld` first**: document delete (AG-9-58), case delete, the move script's clean-up, the demo reset's Sample-only deletes. A held item answers `HELD` with the reason and is never deleted (BR-12).<br>(3) A document deletion under an approved erasure skips "Recently deleted" (AG-9-58).<br>**Touch:** new `api/src/case-erasure/*.ts`, one `isHeld` call line in each case-side delete path (named in the PR), `tests/check_csp1_case_erasure.ts` | Tested with a pass and a fail each:<br>• the eraser run for a person with two cases anonymises both and leaves another person's answers alone;<br>• the document bytes are gone from `FilesPort` and the record is tombstoned;<br>• a filed form keeps its submission number with the name replaced;<br>• a person hold makes the eraser answer `HELD` and change nothing;<br>• a document delete on a held case gives `HELD` with the reason, never a success;<br>• firm A's erasure never touches firm B;<br>• every step is audited. | **Source:** SA-11 §3.4, SA-11-16, BR-12, BR-18; AG-9-34, AG-9-58 · **waits on:** PF-21b (`LegalHoldPort`), PF-21d (`ErasurePort`), CS-D1 (files in `FilesPort`), the release Lead's OK · **decisions:** P-571 (audit lines never deleted); legal reading **Unconfirmed: no counsel** · **breaker:** yes (deletion) · **size:** 1-2 PRs |
+| PF-21rs (amendment, Lead B's row) | screens (our console) | **Proposed sharper Done when** (the item text is unchanged). | Browser check, in our console as the Platform Owner:<br>• log a data request, see its target date of received + 30 days, move it to In progress then Completed, and see each event listed;<br>• on the fake clock, a request past its date shows Overdue with one alert;<br>• place a person hold, then try a delete of that person's record in a firm and see `HELD` with the reason; release it and the delete proceeds;<br>• open a breach naming two firms, send the notices, and see exactly one notice per firm and none to a third, with no second send offered;<br>• a firm user opening any of these pages gets 403;<br>• keyboard only; axe-core with 0 serious; 1024 and 1440 widths (console). | **Source:** SA-11 §3.5, §3.7, §3.8 · **waits on:** as PF-21rs · **decisions:** P-592 (qa-testable Done when) · for Lead B's yes or no |
+
+---
+
+## 6. Questions for the tech lead (each with a recommendation)
+
+Items marked **founder** depart from the team's requirements, so they go to the founder under P-566. The others are the Leads' to settle with evidence (P-486, P-566).
+
+| # | Question | Recommendation | Why |
+|---|---|---|---|
+| Q1 | Is the **monthly trust check** (AG-6-74) in Release 1? Map row 58's text does not name it. | **Yes, as FO-7m (1-2 PRs).** | It is how a firm proves its per-client ledger against the bank, and the trust review at C31 will ask for it. It is small and touches no busy file. Whether the College's Code requires it monthly is **Unconfirmed: no counsel**. |
+| Q2 | **founder:** a reversal of trust money already moved. AG-6-75 r4 lets the case's trust balance go below zero and shows it in red; FO-7a refuses any negative balance, and P-603 caps a correction at its deposit. | **No negative balance:** FO-7v adds an operating → trust to-move line and one Owner item instead. | This keeps P-603 and FO-7a's check unbroken. The firm still sees and fixes the shortfall, in the To move list rather than a red balance. It departs from AG-6-75 r4. |
+| Q3 | Provincial sales taxes (PST/RST) on a firm's fees. | **GST/HST from a cited CRA table (FO-7g). A firm adds any provincial tax from its own FO-7a rate list. No PST engine in R1.** | AG-6-4 rules out firm rate editing, but its own non-goals rule out a tax engine. Which provinces tax immigration services is a tax question (**Unconfirmed: no accountant**). |
+| Q4 | **founder:** the one-click government-fee line from the case (AG-6-40). | **R1: a typed Government fee line in the builder (never taxed). One-click goes to an X row** once the case side records fees paid by the firm (open PR #1074 area). | The case side has no "fee paid by the firm" record today, and map row 56 is met by the line kind. It departs from AG-6-40 in R1. |
+| Q5 | Pay from trust on a draft, "applied when issued" in one transaction (AG-6-68 r2, r7). | **Lead B rules.** The lane's default: the issue dialog issues, then applies in a second safe transaction, and shows both results. | Each step is safe alone (FO-7t refuses before issue). One transaction needs FO-7b's issue route to take the amount. Either is acceptable, so it is Lead B's call. |
+| Q6 | The virus scanner (PF-F3 step 0). | **AWS's managed malware scanning for S3, if AWS's own docs confirm `ca-central-1` and data in Canada; else ClamAV in its own container.** | The managed option has no scanner server to patch or feed signatures to. ClamAV is proven but GPL-2.0 (run as a separate process; licence reading **Unconfirmed: no counsel**). The STANDARDS §1 gate decides. |
+| Q7 | **founder:** ZIP uploads. SA-8-37 and SA-8-49 say unpack them; PF-F4 refuses them in R1. | **Refuse ZIP in R1** with "Upload the files inside one by one"; unpacking goes to an X row. | Unpacking is the riskiest upload path (zip bombs, nested and locked archives) and is not needed for one firm's first cases. It departs from SA-8-37 and SA-8-49. |
+| Q8 | Dashboards: live reads with no rollups or read replica (departs from AG-14-2, -3), and four seeded roles out of six (Owner, Case Manager, Billing / Finance, Case Officer). | **Yes:** live reads under a CI read budget at about 100 firms (P-562); rollups when a metric passes the budget; Rep and Compliance layouts later. | It is best practice at this size, so the Leads decide (P-566). It also avoids a second data path to keep in step. |
+| Q9 | The PDF viewer for staff preview (CS-D2). | **A STANDARDS §1 entry for an established PDF viewer library (for example Mozilla's PDF.js, Apache-2.0), with scripts off.** | Browsers' own PDF viewers do not run inside a sandboxed frame, and serving PDFs unsandboxed weakens AG-9-24's safety. |
+| Q10 | Keep periods for documents (CS-D4). | **Reminders only in R1, never automatic deletion. The period is a Sample until counsel sets it (AUD-2).** | Deleting client files on a guessed period is hard to undo. P-571 already keeps AUD-2 as the keep-period home. **Unconfirmed: no counsel.** |
+| Q11 | Add the proposed X rows (§7) to BACKLOG's "After the end-to-end production-grade system" list? | **Yes, in the same change that copies these rows** (P-582). | Nothing left out silently (P-570). |
+
+## 7. Proposed X rows (for the Lead's copy, P-582)
+
+| # | What | Requirement ids | Why later |
+|---|---|---|---|
+| X-S3-1 | Annotations on a document preview; a "please re-take" annotation that re-requests | AG-9-25 | The preview is enough to review in R1. |
+| X-S3-2 | ZIP unpacking (if Q7 is upheld) | AG-9-54; SA-8-49 | Riskiest upload path. |
+| X-S3-3 | Password-protected uploads unlocked on the client's device | AG-9-69 | Needs client-side PDF handling. |
+| X-S3-4 | Previews of HEIC, TIFF, Word and Excel by conversion | AG-9-24 (preview of all types) | A conversion service is new technology. |
+| X-S3-5 | Reports extras: scheduled reports, XLSX, saved and shared views, stage durations, SLA, productivity and compliance analytics, Rep and Compliance layouts, rollups | AG-14-2, -3, -10 to -12, -16, -21, -23 to -25; §3.5 | Q8. |
+| X-S3-6 | One-click government-fee line from a case fee (if Q4 is upheld) | AG-6-40 | Waits on the case side's fee record. |
+
+## 8. Summary: the 15 capabilities
+
+| Map | Capability | Module | Rows | Status once copied |
+|---|---|---|---|---|
+| 56 | Client invoices, tax by province, government-fee line | Client money | FO-7s0, FO-7g, FO-7q, FO-7s1 (with FO-7a, FO-7b) | Shaped |
+| 57 | Card payment into the operating account | Client money | FO-7s2 (with FO-7c) | Shaped |
+| 58 | Trust or operating; per-client ledger; To move | Client money | FO-7s3a, FO-7s3b; FO-7m on Q1 (with FO-7t) | Shaped |
+| 96 | Reversals, refunds, credit notes, plans, write-offs | Client money | FO-7v, FO-7s4 (with FO-7b, FO-7p, FO-7r) | Shaped |
+| 111 | Client statement and period exports | Client money | FO-7s5 (with FO-7r) | Shaped |
+| 64 | Upload that resumes | Platform | PF-F2 (+ CS-D1 for case documents) | Shaped |
+| 65 | Private storage in Canada | Platform | PF-F1, PF-F1c (needs the founder's AWS account) | Shaped (cloud part waits on the account) |
+| 66 | Virus scan; nothing served while scanning | Platform | PF-F3 | Shaped |
+| 67 | File-type check | Platform | PF-F4 | Shaped |
+| 68 | Preview for staff review | Case side | CS-D2 | Shaped |
+| 69 | Read log, fingerprint, keep-period reminder | Case side | CS-D3, CS-D4 | Shaped |
+| 70 | Expiry, translation, notarisation flags | Case side | CS-D5c, CS-D5 | Shaped |
+| 79 | Firm dashboards and reports | Platform | PF-R1, PF-R2fo, PF-R2cm, PF-R2cs, PF-R3 | Shaped |
+| 85 | Data-request register with legal hold | Platform | PF-21b, PF-21d, PF-21rs (existing) + CS-P1 | Shaped (checklist line stale) |
+| 86 | Breach register with firm notices | Platform | PF-21c, PF-21rs (existing) | Shaped (checklist line stale) |
+
+**Count:** 31 new rows (FO-7m conditional on Q1), plus 1 Done-when amendment (PF-21rs). Size: about 40-45 small PRs. That is a Hypothesis; the 19 Nov count settles it.
+
+**Rows that can start now on port fakes (P-576, P-599):** FO-7s0 (concept), PF-F4, PF-F1 (after its §1 entry), PF-R1. The rest follow their waits.
