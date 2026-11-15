@@ -844,7 +844,7 @@ PF-0c can run beside any of them. New capabilities (shaping Batches 1-5) start i
 | **X-Backup** | AWS Backup vault lock in compliance mode | — | Batch 1: governance mode in R1 until the first cloud drill passes. |
 | **X-Zip-xlsx** | `.xlsx` import, if no reader passes P-587 at PF-10b's gate | AG-18-4 | S1 question 7. |
 
-## Rev 16.13 (15 Nov 09:4x IST, Lead B (4)): FO-5f's row answers carried into FO-6 and FO-8 (#1791 comment 6889086217)
+## Rev 16.13 (15 Nov 09:5x IST, Lead B (4)): FO-5f's row answers carried into FO-6 and FO-8 (#1791 comment 6889086217)
 
 | Row | Where | Text |
 |---|---|---|
