@@ -199,3 +199,5 @@ Diff-only (P-277): `git diff 1a016939b..13ebbd0ef`. Two commits: d4cdc2064 (Lead
 No open Blocker or Major. This approval is for 13ebbd0ef (and d4cdc2064 under it). m-c (PR body) and m-d can follow; list m-d in the PR.
 
 Verdict: Approve
+
+Re-review 3 (6d1947d9835d6cfc396d4bde4bcaeb68234c530b): m-d ORDER BY `rn` before `created_at` holds and the P2002 mapping is narrowed to the key index (the RR test fails when the match is broken); suite 39/0. Verdict: Approve
