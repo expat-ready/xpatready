@@ -145,3 +145,5 @@ Verdict: Approve
 No Blocker or Major is open.
 
 Verdict: Approve
+
+* **6e30ea54 (diff only, 2 lines):** the audit action strings "lead.created" (`arrival.ts`) and "lead.taken" (`leads.ts`) become `EVENT.LEAD_CREATED` and `EVENT.LEAD_TAKEN`. The values are identical and `EVENT` is already imported in both files, so behaviour is unchanged; it only clears `check_b164_no_engine_keys`. I did not re-run the suites (results as reported by the builder). Verdict: Approve
