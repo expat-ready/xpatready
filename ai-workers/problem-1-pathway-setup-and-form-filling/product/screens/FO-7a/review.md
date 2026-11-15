@@ -346,3 +346,54 @@ With any letter, ASCII digit or symbol beside them, they pass. The columns conce
 **Not checked:** CI on this head; the breaker's B-20/B-21 pass; Lead B's review of the area file; the tech lead's ruling on the PR size question.
 
 Verdict: Approve
+
+## Round 6 (diff-only, `73a93e32c..3c42dc98a`)
+* **What I reviewed:** the branch head is `cf8a5bae0`. On top of `3c42dc98a` it adds only the breaker's round-5 report. The code diff touches two files: `money_text_ok`, plus the B-20 message, in the migration; and `check_fo7a_money_schema.ts`.
+* **Scope:** my round-5 m1 and m2, and the breaker's round 5 (B-21 broken in part, B-22, B-23). No new rules.
+* **Scratch database:** `xr_studio_fo7a_review6` on :54329, with all 93 migrations applied. I dropped it afterwards. Port 4400 and `xr_studio_demo` were not used. Cost: US$0.
+* **Journey score: N/A** (schema only).
+* **Suite:** `npx tsx tests/check_fo7a_money_schema.ts` gives 123/123 (exit 0).
+* **Line numbers** refer to `migration.sql` at `3c42dc98a`.
+
+### 1. The two lists match Unicode 15.1 exactly
+* I parsed the two ranges out of `money_text_ok` (`:446-527`) with Python 3.13 (`unicodedata` 15.1.0).
+* **Mark list:** 2,450 code points, equal to general category M (none missing, none extra).
+* **Number list:** 1,831 code points, equal to category N (none missing, none extra).
+* The adjacent string literals concatenate as intended. The pattern is a constant, so it is built once per plan.
+
+### 2. B-21 closed for Unicode 15.1; B-23 and m1 closed
+* **The breaker's round-5 cases are all false now:**
+  * the fatha alone, U+0345 alone, U+3000 U+0345, and U+13441 U+13442;
+  * fatha ×3, U+200B U+05B0 U+2800, U+3164 U+0345, U+00A0 U+0E31 U+FEFF, and U+FE0F fatha U+E0020.
+* **A sweep of every code point alone** (152,252 pass), categorised by Unicode 15.1, matches the builder's result:
+  * only L*, N*, P* and S* pass, plus 5,091 code points that are Cn in 15.1;
+  * no M, Cf, Co, Cs or Zs code point passes.
+* **Real text still passes:**
+  * decomposed `Fee`, decomposed Vietnamese, pointed Hebrew and vocalised Arabic;
+  * Hindi, Tamil, Thai, Lao, Khmer, Burmese and Korean conjoining jamo;
+  * keycap 1.
+* **B-23 / m2: digits and numbers alone now pass:** full-width `１２３４５`, Persian `۱۲۳۴۵۶`, an Arabic-Indic tax number, `½`, `①` and `²`.
+* **Cost:** 10,000 calls take 1.7 s on a 1,300-character text (0.98 s before) and 26 ms on a short reason (18 ms before). That is negligible for a CHECK.
+
+### 3. The Unicode 16.0 gap is acceptable
+* **What still passes:** a mark new in Unicode 16.0 is in neither list, so the ones PostgreSQL 18 counts as letters still pass alone. Reproduced as true each: U+0897 (Arabic pepet), U+10D69 (Garay), U+113B8 (Tulu-Tigalari) and U+1611E (Gurung Khema).
+* **Where they are:** in the sweep, the 15.1-Cn passes that are marks sit in four places: U+0897, Garay U+10D69, the Tulu-Tigalari signs U+113B7-113D8, and Gurung Khema U+1611E-1612E. I read the categories from the 16.0 charts; I could not load the 16.0 data on this machine.
+* **The other side:** a text made only of Unicode-16 digits is refused, for example U+10D40 or U+1CCF0.
+* **Why I accept it:**
+  * These scripts are new and fonts rarely carry them, so a lone mark shows as a box or a dotted circle, not as blank space.
+  * The check keeps a reason from being empty. It is not a money bound.
+  * The limit is stated in the header comment (`:441-445`).
+* **When to fix it:** regenerating both lists from Unicode 16.0 data would close it. Do that the next time `money_text_ok` changes (FO-7b), not in this PR.
+
+### 4. B-22: message only, accepted
+* The refusal now reads "% stays with the % series (a prefix a series used once it gave numbers is never another kind's)" (`:750`). That matches what the code does: it records an old prefix once the series has given any number.
+* The over-reservation stays. It fails safe and never repeats a number; I accepted it in round 5, and the breaker graded it Minor.
+* Both `TOR-` refusal tests match the new text (`check_fo7a_money_schema.ts:283-284`).
+* The B-20 logic is unchanged in this diff.
+
+### Findings
+No Blocker. No Major. No new Minor: the Unicode 16.0 gap in §3 is accepted as a stated limit, with the fix noted for FO-7b.
+
+**Not checked:** CI on `cf8a5bae0`, and the tech lead's PR-size ruling.
+
+Verdict: Approve
