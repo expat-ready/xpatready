@@ -354,7 +354,7 @@ try {
   ok("FO-5 fail: the same name twice in the firm is refused", await fails(() => svc.uploadTemplate(R, { name: "standard RETAINER" }, docx(GOOD)), 409, /NAME_TAKEN/));
   await svc.changeTemplate(R, noFee.id, { active: false });
   const st = await svc.starter();
-  const starterPh = placeholdersOf(st.bytes);
+  const starterPh = await placeholdersOf(st.bytes);
   ok("FO-5 pass: the starter is a .docx built at run time from the committed text, Sample, with the fee loop and only known placeholders (M5)",
     st.contentType === DOCX && /Unconfirmed: no counsel/.test(st.note) && starterPh.includes("fees.label") && starterPh.includes("client.name") && checkPlaceholders(starterPh).unknown.length === 0 && checkPlaceholders(starterPh).warnings.length === 0, starterPh);
 
@@ -601,7 +601,7 @@ try {
   const hidden = new PizZip(buildDocx(["{client.name}"]));
   hidden.file("[Content_Types].xml", hidden.file("[Content_Types].xml")!.asText().replace("</Types>", `<Override PartName="/word/hdr1.bin" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>`));
   hidden.file("word/hdr1.bin", `<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>{client.passport}</w:t></w:r></w:p></w:hdr>`);
-  ok("FO-5 fail (B-3): an unknown placeholder in a header declared under a non-.xml name is refused", await fails(() => svc.uploadTemplate(R, { name: "Hidden header" }, { bytes: new Uint8Array(hidden.generate({ type: "uint8array" })), size: 2000 }), 422, /client\.passport/));
+  ok("FO-5 fail (B-3): a header declared under a non-.xml name is refused (FO-5f2 item 1: not its standard place)", await fails(() => svc.uploadTemplate(R, { name: "Hidden header" }, { bytes: new Uint8Array(hidden.generate({ type: "uint8array" })), size: 2000 }), 422, /PARTS_NOT_ALLOWED/));
   // B-19: a bounded number of placeholders, and a short refusal.
   ok("FO-5 fail (B-19): a template with more than 2000 placeholders is refused, saying why (FO-5f item 5)", await fails(() => svc.uploadTemplate(R, { name: "Many" }, docx([Array.from({ length: 2100 }, (_, i) => `{x${i}}`).join(" ")])), 422, /more than 2000 placeholders.*TOO_MANY_PLACEHOLDERS/));
   ok("FO-5 fail (B-19): fifteen unknown placeholders are named ten at a time, \"and 5 more\"", await fails(() => svc.uploadTemplate(R, { name: "Fifteen" }, docx([Array.from({ length: 15 }, (_, i) => `{y${i}}`).join(" ")])), 422, /and 5 more/));
@@ -797,8 +797,7 @@ try {
   const GLOSS = `<Override PartName="/word/glossary/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.glossary+xml"/>`;
   const gl = await svc.uploadTemplate(R, { name: "With glossary" }, zipOf({ "word/document.xml": W(BASE), "word/glossary/document.xml": W(P("{client.passport}")) }, GLOSS));
   ok("FO-5f pass (B-23): an unknown placeholder only in the glossary is not a refusal and is not listed", !gl.placeholders.includes("client.passport"), gl);
-  const gl2 = await svc.uploadTemplate(R, { name: "Renamed glossary" }, zipOf({ "word/document.xml": W(BASE), "word/blocks.xml": W(P("{client.passport}")) }, `<Override PartName="/word/blocks.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.glossary+xml"/>`));
-  ok("FO-5f pass (B-23): a glossary declared under another name is skipped too", !gl2.placeholders.includes("client.passport"));
+  ok("FO-5f fail (B-23, FO-5f2 item 1): a glossary declared under another name is refused (not its standard place)", await fails(() => svc.uploadTemplate(R, { name: "Renamed glossary" }, zipOf({ "word/document.xml": W(BASE), "word/blocks.xml": W(P("{client.passport}")) }, `<Override PartName="/word/blocks.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.glossary+xml"/>`)), 422, /PARTS_NOT_ALLOWED/));
   ok("FO-5f fail (B-23): the same placeholder in the body is still refused", await fails(() => svc.uploadTemplate(R, { name: "Body passport" }, zipOf({ "word/document.xml": W(BASE + P("{client.passport}")) }, GLOSS)), 422, /client\.passport/));
 
   // Item 9 (Devin 4575579359): the "missing" list uses the template version the agreement was made from.
@@ -861,7 +860,7 @@ try {
   ok("FO-5f pass (review M-1): 4000 braces (2000 placeholders) are accepted", (await svc.uploadTemplate(R, { name: "Braces 4000" }, zipOf({ "word/document.xml": W(P("{client.name}".repeat(1998)) + P("{#fees}{/fees}")) }))).version === 1);
   // Review m-4: a chart is never rendered, so a brace in a chart title is not a refusal; SmartArt still is.
   const CHART = `<Override PartName="/word/charts/chart1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`;
-  ok("FO-5f pass (review m-4): a chart titled \"{Revenue}\" is accepted and not listed", !(await svc.uploadTemplate(R, { name: "Chart" }, zipOf({ "word/document.xml": W(BASE), "word/charts/chart1.xml": `<?xml version="1.0"?><c:chartSpace xmlns:c="c" xmlns:a="a"><a:p><a:r><a:t>{Revenue}</a:t></a:r></a:p></c:chartSpace>` }, CHART))).placeholders.includes("Revenue"));
+  ok("FO-5f fail (review m-4, FO-5f2 item 1): a chart is a part a template cannot have", await fails(() => svc.uploadTemplate(R, { name: "Chart" }, zipOf({ "word/document.xml": W(BASE), "word/charts/chart1.xml": `<?xml version="1.0"?><c:chartSpace xmlns:c="c" xmlns:a="a"><a:p><a:r><a:t>{Revenue}</a:t></a:r></a:p></c:chartSpace>` }, CHART)), 422, /PARTS_NOT_ALLOWED/));
   ok("FO-5f fail (review m-4): the same text in SmartArt is still refused", await fails(() => svc.uploadTemplate(R, { name: "SmartArt 2" }, zipOf({ "word/document.xml": W(BASE), "word/diagrams/data1.xml": `<?xml version="1.0"?><dgm:dataModel xmlns:dgm="d" xmlns:a="a"><a:p><a:r><a:t>{Revenue}</a:t></a:r></a:p></dgm:dataModel>` })), 422, /not filled/));
 
   // Review M-2 (break M-1): Signed offline on an earlier version names that version's representative and signer.
@@ -929,17 +928,18 @@ try {
   const COVERX = (t: string) => `<?xml version="1.0"?><CoverPageProperties xmlns="http://schemas.microsoft.com/office/2006/coverPageProps"><PublishDate/><Abstract>${t}</Abstract></CoverPageProperties>`;
   const HDR = (t: string) => `<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${P(t)}</w:hdr>`;
   const BIN = `<Default Extension="bin" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>`;
-  for (const [where, parts, types] of [["a coverPageProps customXml part", { "customXml/item1.xml": COVERX("{".repeat(1_500_000)) }, ""], ["a header typed by a Default rule (word/h.bin)", { "word/h.bin": HDR("{".repeat(1_500_000)) }, BIN]] as const) {
+  // FO-5f2 item 1: a header typed by a Default rule is now refused by the allowlist, before the brace count.
+  for (const [where, parts, types, code] of [["a coverPageProps customXml part", { "customXml/item1.xml": COVERX("{".repeat(1_500_000)) }, "", /TOO_MANY_PLACEHOLDERS/], ["a header typed by a Default rule (word/h.bin)", { "word/h.bin": HDR("{".repeat(1_500_000)) }, BIN, /PARTS_NOT_ALLOWED/]] as const) {
     const t = Date.now();
     ok(`FO-5f fail (review r2 M-1): 1.5 million lone "{" in ${where} are refused before the compile, in under 2 s`,
-      await fails(() => svc.uploadTemplate(R, { name: `Flood ${where}` }, zipOf({ "word/document.xml": W(BASE), ...parts }, types)), 422, /TOO_MANY_PLACEHOLDERS/) && Date.now() - t < 2000, `${Date.now() - t} ms`);
+      await fails(() => svc.uploadTemplate(R, { name: `Flood ${where}` }, zipOf({ "word/document.xml": W(BASE), ...parts }, types)), 422, code) && Date.now() - t < 2000, `${Date.now() - t} ms`);
   }
   ok("FO-5f fail (review r2, B-3 rest): an unknown placeholder in the coverPageProps part or the h.bin header is refused, never printed blank",
     await fails(() => svc.uploadTemplate(R, { name: "Cover passport" }, zipOf({ "word/document.xml": W(BASE), "customXml/item1.xml": COVERX("{client.passport}") })), 422, /client\.passport/)
-    && await fails(() => svc.uploadTemplate(R, { name: "Bin passport" }, zipOf({ "word/document.xml": W(BASE), "word/h.bin": HDR("{client.passport}") }, BIN)), 422, /client\.passport/)
+    && await fails(() => svc.uploadTemplate(R, { name: "Bin passport" }, zipOf({ "word/document.xml": W(BASE), "word/h.bin": HDR("{client.passport}") }, BIN)), 422, /PARTS_NOT_ALLOWED/)
     && await fails(() => svc.uploadTemplate(R, { name: "Lpwstr passport" }, zipOf({ "word/document.xml": W(BASE + `<vt:lpwstr xmlns:vt="v">{client.passport}</vt:lpwstr>`) })), 422, /client\.passport/));
-  const binOk = await svc.uploadTemplate(R, { name: "Bin header" }, zipOf({ "word/document.xml": W(BASE), "word/h.bin": HDR("{firm.name}"), "customXml/item1.xml": COVERX("{agreement.date}"), "customXml/item2.xml": `<?xml version="1.0"?><b:Sources xmlns:b="bib"><b:Source><b:Guid>{3F2504E0-4F89-11D3-9A0C-0305E82C3301}</b:Guid></b:Source></b:Sources>` }, BIN));
-  ok("FO-5f pass (review r2): known placeholders in the h.bin header and the cover part are listed; other customXml (a citation GUID) is not read",
+  const binOk = await svc.uploadTemplate(R, { name: "Bin header" }, zipOf({ "word/document.xml": W(BASE), "word/header1.xml": HDR("{firm.name}"), "customXml/item1.xml": COVERX("{agreement.date}"), "customXml/item2.xml": `<?xml version="1.0"?><b:Sources xmlns:b="bib"><b:Source><b:Guid>{3F2504E0-4F89-11D3-9A0C-0305E82C3301}</b:Guid></b:Source></b:Sources>` }, `<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>`));
+  ok("FO-5f pass (review r2): known placeholders in the header and the cover part are listed; other customXml (a citation GUID) is not read",
     binOk.placeholders.includes("firm.name") && binOk.placeholders.includes("agreement.date") && !binOk.placeholders.some((p) => /3F2504E0/.test(p)), binOk.placeholders);
   // Break r2-m2: an older version (no ids) naming another licensing body is not taken for the same representative.
   mvOf.mergeValues = async function (this: unknown, ...a: unknown[]) { const v = await realMv.apply(this, a); delete v["signer.person_id"]; delete v["representative.staff_id"]; return v; };

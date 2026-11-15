@@ -1,0 +1,31 @@
+// platform-permissions.prisma — the permission-key catalogue (PF-6b). Owner: Lead B (platform).
+// PF-6b (SA-6-24, SA-6-27, SA-6-12, SA-6-13; Lead B's brief rulings 1-4, 15 Nov): every agent/* key PF-3 and later rows
+// seed in platform_role_permission has one catalogue row here, carrying the two facts routes and roles are checked against:
+// scope (OWN for `…:view.own`, ALL for `…:view.all`, otherwise NONE) and class (MONEY, LICENCE or GENERAL). Its own file
+// and its own migration (P-600 (1)); platform_role_permission is not changed and gets no foreign key. A row that seeds a
+// new key adds its catalogue row in the same migration (tests/check_pf6b_permission_rules.ts DW1 fails otherwise).
+// Rules Prisma cannot say (scope follows the key's suffix) are in the migration 20261115120000_pf6b_permission_catalogue.
+
+/// OWN and ALL pair an area's `view.own` and `view.all` keys (SA-6-24); every other key is NONE.
+enum PlatformPermissionScope {
+  OWN
+  ALL
+  NONE
+}
+
+/// MONEY: never implied by another key, never handed out by a duty or bundle, and its grant writes its own audit line.
+/// LICENCE: the route also needs the person's licence record (platform guard, 403 NOT_LICENSED). GENERAL: neither.
+enum PlatformPermissionClass {
+  GENERAL
+  MONEY
+  LICENCE
+}
+
+/// One row per permission key (P-601 (1): catalogue facts as data).
+model PlatformPermissionKey {
+  key   String                  @id
+  scope PlatformPermissionScope
+  class PlatformPermissionClass
+
+  @@map("platform_permission_key")
+}

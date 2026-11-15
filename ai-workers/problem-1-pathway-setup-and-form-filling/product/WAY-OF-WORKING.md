@@ -109,3 +109,5 @@ Rows reaching Works · median approved-to-merged time · batch failure rate (tar
 
 ## Where things live
 The file map is in `PRODUCT.md`; the bar is `STANDARDS.md`, `EXPERIENCE.md`, `QUALITY.md`. `lanes/` and `history/` are history.
+
+**Library masters (founder, 15 Nov):** the documents everyone works from, with what feeds each, are listed in `cockpit/library.json` (the board's Library tab shows each as current or behind). Before relying on a master, check its row there. When your change touches a master's feed (a port, an event name, a scope decision, a qa verdict), update that master in the same PR when it is in your touch list; otherwise say so in the PR, and the Lead's check (`tools/library-freshness.py`, lead-watch section 8, git history only) marks it behind and the Lead refreshes only that one.

@@ -63,6 +63,27 @@ for n in $qs; do
   hit=$(gh pr view "$n" --json comments -q "[.comments[]|select(.createdAt>=\"$since\")|select(.body|test(\"Question for the tech lead\"))]|length")
   [ "${hit:-0}" -gt 0 ] && ACT "#$n has a new question for the tech lead"
 done
+# 3b. Lane reports to the Lead (A85, 15 Nov: board v61 reported "ready for Lead 54 to merge" on records PR #1796 at
+# 11:19 IST and waited 1.5 h unseen across a hand-over). Any open PR comment in the window addressed to a Lead that is
+# not a question, and any lane branch the Lead merges here (board/*) with commits not on this branch.
+rs=$(gh search prs --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" --state open "ready for Lead" --json number -q '.[].number' 2>/dev/null)
+for n in $rs; do
+  hit=$(gh pr view "$n" --json comments -q "[.comments[]|select(.createdAt>=\"$since\")|select(.body|test(\"(?i)ready for (the )?(tech )?lead|for the (tech )?lead to merge|Lead [0-9]+ to merge\"))]|length")
+  [ "${hit:-0}" -gt 0 ] && ACT "#$n has a lane report for the Lead (merge or publish it now)"
+done
+git fetch -q origin 2>/dev/null
+here=$(git rev-parse --abbrev-ref HEAD)
+for b in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/board/*' 'refs/remotes/origin/tools/*'); do
+  n=$(git rev-list --count "$here..$b" 2>/dev/null)
+  age=$(( ( $(date +%s) - $(git log -1 --format=%ct "$b") ) / 60 ))
+  [ "${n:-0}" -gt 0 ] && [ "$age" -le 1440 ] && ACT "$b has $n commit(s) not on $here (last push ${age} min ago): merge, test, publish"
+done
+# 3c. The "needs Lead" queue (P-611 (2), row G-1): LANE-REPORT first lines on open PRs and on #1796 (look-back 24 h,
+# idempotent) go into product/state/items.json; open and not acked over 45 min = ACT, over 90 min = FOUNDER line. 3b stays the
+# fallback for reports in free text. Ack with: python3 product/tools/items.py ack <id> --by "Lead N"; commit items.json.
+bash "$TOOLS/lead-queue.sh" > "$STATE_DIR/queue.txt" 2>&1; cat "$STATE_DIR/queue.txt"
+act=$((act + $(grep -c '^ACT' "$STATE_DIR/queue.txt")))
+git diff --quiet -- "$TOOLS/../state/items.json" 2>/dev/null || say "queue items.json changed: commit it with the records (P-557)"
 
 # 4. Lanes alive: branches pushed in the last 90 minutes (a lane is working only if it pushed, lead skill).
 git fetch -q origin 2>/dev/null
@@ -126,6 +147,12 @@ skills_off=$(for f in .claude/skills/next/SKILL.md .claude/skills/qa/SKILL.md .c
 if [ -z "$newest" ] || [ -z "$onmain" ]; then ACT "records on main: DECISIONS unreadable (branch ${newest:-?}, main ${onmain:-?})"
 elif [ "$newest" != "$onmain" ] || [ -n "$skills_off" ]; then ACT "records not on main: newest decision ${newest} here, ${onmain} on main; skills differing: ${skills_off:-none}; land the records PR now"
 else say "records on main: ${onmain} and the skills match"; fi
+
+# 8. Library freshness (founder, 15 Nov: library masters kept current on need, token-efficient). Git history only, no
+# document read: a living master whose feeds (cockpit/library.json) changed after it is behind; refresh only that one.
+lib=$(python3 "$TOOLS/library-freshness.py" 2>&1); nb=$?
+if [ "$nb" -gt 0 ]; then ACT "library: ${nb} master(s) behind: $(echo "$lib" | grep '^behind' | sed -E 's/^behind +//; s/: .*first [0-9a-f]+ at / since /; s/; refresh.*//' | paste -sd ';' -)"
+else say "library: every living master current"; fi
 
 exit "$act"
 
