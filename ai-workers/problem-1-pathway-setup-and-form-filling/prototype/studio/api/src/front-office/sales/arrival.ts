@@ -29,9 +29,6 @@ export type ArrivalIn = {
   /** The form's own wording (never text from the browser, AG-2-49 rule 6); absent when the tick was not ticked. */
   consent?: { wordingId: string; channel: Channel; purpose: Purpose; locale: string } | null;
   ipHash?: string | null;
-  /** The owner: the adder for a lead added by hand (AG-2-4 rule 8); none (Unassigned) for a form lead, except in a
-   *  one-user firm, whose one user owns every lead (X-4). */
-  ownerStaffId?: string | null;
   actor: string;
   payloadHash: string;
 };
@@ -56,11 +53,7 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
   const match = await possibleMatch(tx, firmId, a.person);
   const personId = randomUUID();
   await tx.foPerson.create({ data: { id: personId, firmId, givenNames: a.person.givenNames, familyName: a.person.familyName, email: a.person.email, phone: a.person.phone?.phone ?? null, phoneReadable: a.person.phone?.readable ?? true, createdBy: a.actor } });
-  let owner = a.ownerStaffId ?? null;
-  if (owner === null) {
-    const active = await tx.platformStaff.findMany({ where: firmScope(firmId, { status: "ACTIVE" as const }), select: { id: true }, take: 2 });
-    if (active.length === 1) owner = active[0].id;   // X-4: a one-user firm's one user owns every lead
-  }
+  const owner: string | null = null;   // Unassigned (part 2: the adder of a hand-added lead; a one-user firm's one user, X-4)
   const lead = await tx.foLead.create({
     data: { firmId, personId, door: a.door, source: a.source, sourceDetail: a.sourceDetail ?? null, interestedInServiceId: a.interestedInServiceId ?? null, ownerStaffId: owner, possibleMatchPersonId: match, createdBy: a.actor },
     select: { id: true, number: true },

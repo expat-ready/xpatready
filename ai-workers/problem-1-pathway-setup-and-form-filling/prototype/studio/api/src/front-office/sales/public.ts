@@ -1,10 +1,8 @@
 // FO-2 (contracts §0.6, §2.1, §7 §2.1; AG-2-5, AG-2-49): the firm's enquiry form, open to anyone. GET …/forms/:token
-// (OpenRead): the form's words, its "Interested in" list, a fresh submissionId and a signed load stamp, with
-// `frame-ancestors` naming the allowed sites. POST …/submissions: 32 KB (also at the door, publicFormBodyLimit), 30 a
-// minute per address and 60 per form token (AG-2-49 rule 1), the token (unknown and off give one answer), the allowed
-// site (Origin), a strict body, then the honeypot and the 2-second fill time from the signed stamp (a bot is answered
-// like anyone else, nothing stored), then the arrival path. The answer is the thank-you text, known person or not.
-// Limits and the stamp key (FO_FORM_STAMP_KEY, else random per process) live in this process (about 100 firms, P-562).
+// (OpenRead): the form's words, "Interested in", a fresh submissionId and signed load stamp, `frame-ancestors`. POST
+// …/submissions: the limits (30/min per address, 60 per token), 32 KB (also at the door), the token, the site (Origin), a
+// strict body, the honeypot and 2-second fill (answered like anyone, nothing stored; a stamp not ours → reload), then the
+// arrival path; the answer is the thank-you text, known person or not. Limits and stamp key (FO_FORM_STAMP_KEY, else random) in-process.
 import { Body, Controller, Get, HttpCode, Inject, Injectable, Param, Post, Req, Res } from "@nestjs/common";
 import type { PrismaClient } from "@prisma/client";
 import type { NestExpressApplication } from "@nestjs/platform-express";
@@ -65,6 +63,7 @@ export class PublicForms {
     this.limit(`read:ip:${ipOf(req)}`, this.limits.readsPerIp);
     const form = await this.form(token);
     res?.setHeader("Content-Security-Policy", frameAncestors(form.allowedSites, this.ports.publicOrigin));
+    res?.setHeader("Cache-Control", "no-store");   // a fresh submissionId and stamp each draw (review m7)
     const [services, wording] = await Promise.all([
       this.db.foService.findMany({ where: { firmId: form.firmId, active: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { id: true, label: true } }),
       form.consentWordingVersionId ? this.db.msgConsentWording.findFirst({ where: { firmId: form.firmId, id: form.consentWordingVersionId }, select: { text: true } }) : null,
@@ -80,11 +79,10 @@ export class PublicForms {
 
   /** One enquiry (AG-2-5 rule 10, AG-2-49). */
   async submit(token: string, body: unknown, req: Req) {
-    const length = Number(header(req, "content-length") ?? 0);
-    if (length > this.limits.maxBytes || Buffer.byteLength(JSON.stringify(body ?? null)) > this.limits.maxBytes) return tooBig();
     const ip = ipOf(req);
     this.limit(`post:ip:${ip}`, this.limits.postsPerIp);
     this.limit(`post:form:${String(token).slice(0, 100)}`, this.limits.postsPerForm);
+    if (Number(header(req, "content-length") ?? 0) > this.limits.maxBytes || Buffer.byteLength(JSON.stringify(body ?? null)) > this.limits.maxBytes) return tooBig();
     const form = await this.form(token);
     const origin = siteOf(header(req, "origin") ?? "");
     const allowed = new Set([...form.allowedSites.map(siteOf), siteOf(this.ports.publicOrigin ?? "")].filter(Boolean));
@@ -93,9 +91,6 @@ export class PublicForms {
     if (!b || typeof b !== "object" || Array.isArray(b) || Object.keys(b).some((k) => !BODY_KEYS.has(k))) return badBody();
     if (typeof b.submissionId !== "string" || !UUID.test(b.submissionId) || typeof b.loadStamp !== "string") return badBody();
     const thanks = { thankYouText: form.thankYouText };
-    // A bot (the honeypot filled, a stamp not ours, or sent faster than a person fills the form) is answered like anyone
-    // else, and nothing is stored (AG-2-49 rules 3, 7).
-    if ((b.website !== undefined && b.website !== "") || !this.stampOk(form.id, b.submissionId, b.loadStamp)) return thanks;
     const person = {
       givenNames: text(b.givenNames, { field: "givenNames", what: "First name", max: 100, required: true }),
       familyName: text(b.familyName, { field: "familyName", what: "Last name", max: 100 }),
@@ -111,6 +106,12 @@ export class PublicForms {
     }
     if (b.consent !== undefined && typeof b.consent !== "boolean") return badBody();
     const attribution = attributionOf(b.attribution);
+    // After the field checks, so a bot learns nothing from the order (break m1). The honeypot or a fill faster than a person
+    // → answered like anyone else, nothing stored (AG-2-49 rules 3, 7). A stamp not ours (this process's key changed, or a
+    // forgery) or older than a day → "reload", so a real visitor's enquiry is never lost silently (break M1).
+    const stamp = this.stampOf(form.id, b.submissionId, b.loadStamp);
+    if (stamp === "stale") return problem(400, "Not sent", "This page is out of date. Please reload it and send the form again.", { code: "RELOAD" });
+    if ((b.website !== undefined && b.website !== "") || stamp === "fast") return thanks;
     const wording = b.consent === true && form.consentWordingVersionId
       ? await this.db.msgConsentWording.findFirst({ where: { firmId: form.firmId, id: form.consentWordingVersionId }, select: { id: true, channel: true, purpose: true, locale: true } }) : null;
     const hash = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -146,13 +147,13 @@ export class PublicForms {
   /** `<ms>.<hmac>` over the form, the submission id and the time the form was drawn. */
   stamp(formId: string, submissionId: string, at: number) { return `${at}.${this.mac(formId, submissionId, String(at))}`; }
   private mac(formId: string, submissionId: string, ms: string) { return createHmac("sha256", this.key).update(`${formId}|${submissionId.toLowerCase()}|${ms}`).digest("base64url"); }
-  private stampOk(formId: string, submissionId: string, stamp: string) {
+  private stampOf(formId: string, submissionId: string, stamp: string): "ok" | "fast" | "stale" {
     const [ms, mac, extra] = stamp.split(".");
-    if (!/^\d{1,15}$/.test(ms ?? "") || !mac || extra !== undefined) return false;
+    if (!/^\d{1,15}$/.test(ms ?? "") || !mac || extra !== undefined) return "stale";
     const want = Buffer.from(this.mac(formId, submissionId, ms)), have = Buffer.from(mac);
-    if (have.length !== want.length || !timingSafeEqual(have, want)) return false;
+    if (have.length !== want.length || !timingSafeEqual(have, want)) return "stale";
     const age = this.now() - Number(ms);
-    return age >= this.limits.minFillSeconds * 1000 && age <= this.limits.stampHours * 3_600_000;
+    return age > this.limits.stampHours * 3_600_000 ? "stale" : age < this.limits.minFillSeconds * 1000 ? "fast" : "ok";
   }
 }
 
