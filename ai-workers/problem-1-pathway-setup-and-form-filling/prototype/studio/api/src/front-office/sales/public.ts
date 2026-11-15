@@ -35,6 +35,7 @@ const tooBig = () => problem(413, "Too large", "This form is too long. Please sh
 
 const BODY_KEYS = new Set(["givenNames", "familyName", "email", "phone", "interestedIn", "message", "consent", "submissionId", "loadStamp", "website", "attribution"]);
 const ATTRIBUTION_KEYS = ["utmSource", "utmMedium", "utmCampaign", "utmTerm", "utmContent", "clickId", "clickIdKind", "landingPage", "referrerUrl"] as const;
+const CAPTURED_JUNK = /[\u0000-\u001f\u007f\u00ad\u034f\u061c\u115f\u1160\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2069\u3164\ufeff\u{e0000}-\u{e007f}]/gu;
 const CLICK_KINDS = new Set(["GCLID", "FBCLID", "MSCLKID", "TTCLID", "OTHER"]);
 
 /** A site as the form stores and the browser sends it: scheme, host and port, lower case, no path. */
@@ -176,7 +177,8 @@ function attributionOf(v: unknown): Attribution | null {
     if (x === undefined || x === null || x === "") continue;
     if (k === "clickIdKind") { if (typeof x !== "string" || !CLICK_KINDS.has(x)) return badBody(); a.clickIdKind = x as Attribution["clickIdKind"]; continue; }
     const max = k === "landingPage" || k === "referrerUrl" ? 2000 : 200;   // captured, not typed: cut to length, never refused (Devin)
-    const t = text(typeof x === "string" ? x.slice(0, max) : x, { field: `attribution.${k}`, what: k, max });
+    // Captured, not typed: control and invisible marks dropped, cut by characters (never mid-emoji), never refused (break n3, n4).
+    const t = text(typeof x === "string" ? [...x.replace(CAPTURED_JUNK, "")].slice(0, max).join("") : x, { field: `attribution.${k}`, what: k, max });
     if (t) a[k] = t;
   }
   return Object.keys(a).length ? a : null;

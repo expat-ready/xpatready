@@ -14,7 +14,7 @@ export const conflict = (detail: string, code = "STATE", extra: Record<string, u
 export const notFound = (what = "lead"): never => problem(404, "Not found", `No such ${what} in your firm.`, { code: "NOT_FOUND" });
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/;   // + invisible and direction marks (break m4)
+const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u00ad\u034f\u061c\u115f\u1160\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2069\u3164\ufeff\u{e0000}-\u{e007f}]/u;   // + invisible, direction and tag marks (break m4)
 const LINE_BREAK = /[\n\r\u2028\u2029]/;
 const HAS_WORD = /[\p{L}\p{N}]/u;
 

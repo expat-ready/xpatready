@@ -43,6 +43,10 @@ export const EVENT = {
   LEAD_CREATED: "lead.created",
   /** A lead got an owner: Take it or Assign to (FO-2; AG-2-13c, AG-2-86). */
   LEAD_TAKEN: "lead.taken",
+  /** A lead was closed with a reason (FO-2; AG-2-80). */
+  LEAD_CLOSED: "lead.closed",
+  /** A closed lead was reopened (FO-2; AG-2-80). */
+  LEAD_REOPENED: "lead.reopened",
 } as const;
 export type EventName = (typeof EVENT)[keyof typeof EVENT];
 
@@ -111,5 +115,7 @@ export const LeadEventPayload = z.object({
   ownerStaffId: z.string().uuid().nullable(),
   /** lead.created only: the person of the firm with the same email or phone, flagged and never linked (AG-2-84). */
   possibleMatchPersonId: z.string().uuid().nullable().optional(),
+  /** lead.closed only: the reason's key (AG-2-80 rule 2). */
+  reasonKey: z.string().optional(),
 }).strict();
 export type LeadEventPayload = z.infer<typeof LeadEventPayload>;
