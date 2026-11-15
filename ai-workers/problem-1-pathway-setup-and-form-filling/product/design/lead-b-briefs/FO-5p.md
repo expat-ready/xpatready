@@ -1,0 +1,39 @@
+# Brief: FO-5p, preview a retainer or consultation agreement with a real record (map row 45, the front office's templates) (cloud builder lane; row owner Lead B)
+
+Drafted 16 Nov by the shaping lane, for Lead B's approval (P-558). Row: BACKLOG **FO-5p** (rev 13). **Model: Opus 5.5, effort: medium** (reviewer only, per the row).
+
+**Starts when:** FO-5 is on `main` (it is), and **not beside FO-5b** (both change `retainers/service.ts` and `routes.ts`; brief `FO-5b.md`) or **FO-3c**: whichever starts second waits.
+
+---
+You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime FO-5p` and take **one row, FO-5p, template preview**, end to end on a fresh branch from `origin/main`, one PR.
+
+**Read only these:** requirement text, in full (`domain/requirements-2026-11-02/02-functional-requirements/agent/AG-12-templates_v2.11_2026-10-27.md`): **AG-12-89** (preview with a real record "only from records the user may open"; shows resolved sections and unmet must-fill fields), **AG-12-90** (no record → a sample record), **AG-12-91** ("Send me a test" to the user's own staff email with "[Test]" in the subject, "recorded on the template's history and not on any client record"); on `main`: `api/src/front-office/retainers/service.ts` (`renderVersion`, the draft's values, the two must-fill checks of AG-5-9), `retainers/placeholders.ts`, `retainers/docx-worker.ts`, `retainers/routes.ts`, PF-19b's `MessagePort` (`ports/messages.ts`) for the test email, `sales/common.ts` (`visibilityOf`, who may open a prospect); the module card `api/src/front-office/MODULE.md`.
+
+**What to build (API only; no schema):**
+* `POST /api/front-office/retainer-templates/:id/preview` (`agent/retainer:list`) with `{ prospectId? }`: fills the template's newest version from that prospect's values (the same value builder the draft uses) or, with none, a **Sample** record (marked Sample); answers the `.docx` with "Preview — not sent" across each page and, beside it, the list of unmet must-fill fields. **Nothing is stored**: no retainer, no version, no file key.
+* A prospect the person may not open (AG-2-64, through `visibilityOf`) → the one not-found.
+* `POST …/:id/preview/test` (`agent/retainer:list`): emails the preview to **the caller's own staff email** (from the token's staff record, never from the body) through `MessagePort` as a TRANSACTIONAL message with "[Test]" at the start of the subject; writes one line on the template's history (audit entity `fo_retainer_template`), never on the prospect.
+* The watermark: a header or a repeated paragraph added by the worker on the preview path only; the sent and signed paths are unchanged.
+
+**Done when** (P-606; list the cases in the PR body first). In `tests/check_fo5p_preview.ts`:
+* `FO-5p DW1 pass/fail` (AG-12-89): a preview for a prospect the person may open shows its real values and the "Preview — not sent" mark on every page; for a prospect they may not open → 404.
+* `FO-5p DW2 pass/fail` (AG-12-89): a missing must-fill value (no fee) is listed beside the download; with it filled, the list is empty.
+* `FO-5p DW3 pass/fail` (AG-12-90): no prospect → the Sample record's values, marked Sample.
+* `FO-5p DW4 pass/fail`: after a preview, retainer, version and file counts are unchanged.
+* `FO-5p DW5 pass/fail` (AG-12-91): "Send me a test" sends one message to the caller's own staff email with "[Test]" in the subject; a body naming another address is ignored; the template's history gets one line and the prospect's timeline none.
+* `FO-5p DW6`: a sent retainer's document has no preview mark (FO-5's suites unchanged); firm B's template → 404.
+
+**Duplicate check:** BACKLOG (FO-5p; the firm's email and WhatsApp template previews are the case side's, map row 45), open PRs (none on `retainers/` at the time of writing), `main` (no preview route), BUGS (none); one `Duplicate check:` line after re-running it.
+
+**Touch list:** new `api/src/front-office/retainers/preview/*.ts`; `retainers/routes.ts` (two routes); `retainers/docx-worker.ts` (the preview mark, preview path only); `tests/check_fo5p_preview.ts`; `api/src/front-office/MODULE.md` (entry points, tests line).
+
+**Contract used:** FO-5's template store and render (contracts §2.3), `MessagePort` (PF-19b) for the test email. No `ports/` change.
+
+**Parallel safety:** `retainers/routes.ts` and `docx-worker.ts` are shared with **FO-5b** (the `{code:…}` family in `placeholders.ts`, one route) and **FO-3c** (consultation agreements): never two at once. `api/src/front-office/MODULE.md`: own lines only.
+
+**Reviewer only** (row).
+
+**P-610:** under 800 changed lines, tests included (estimate ~400); no split.
+**P-605/P-606 (every Lead B brief from 15 Nov):** Opus 5.5; no model switch mid-session. Finish whole: if an item turns out to need more than its touch list, stop and ask in a PR comment. Never widen the row silently, and never leave a part for later. Read only the requirement text the trace tool prints.
+**Rules (standard, every PF/FO brief):** P-559: firm tables, real sign-in and billing are ours in the PF/FO modules (amends P-335/P-357). One row, one session, one PR; new files only outside the touch list. Opus reviewer (P-303); re-review reads only the diff (P-277); label `review: approved` only after `Reviewer: Approve <sha>` and green CI (P-277, P-385); merge `main` only on a conflict (P-270). **Before asking for the label (rows rev 16, Lead 47: 4 of 4 labelled PRs went red after the label on 14 Nov):** run, on `main` merged into your branch, the suites of every CI part that was red on any earlier head of this PR, plus every suite in the shard that shares the demo database with yours, and paste the result lines in the PR. Live AI off, US$0, never a priced button (P-175). No real keys anywhere. Push after every step (P-557). Questions as a PR comment headed "Question for the tech lead"; report to the current Lead (`tools/current-lead.sh`) for the merge queue and to **Lead B** (row owner, branch `lead-b-front-office`, hand-over `product/design/lead-b-state.md`) for the row. Cross-module port interfaces, their fakes and shared event payload types go in `prototype/studio/ports/` (`zod` only; case-side contract v0.1 §1 rule 3); adapters stay in the module's folder; never import `engine/` or case-side files (rows rev 14.1). Event names come from `prototype/studio/ports/events.ts` (`EVENT.*`, FO-1a); add a new name there, never a string literal (rev 15.1). A database function in your migration carries your area's prefix (`fo_sales_`, `fo_booking_`, `fo_compliance_`, `fo_signing_`, `fo_retainer_`, `money_`, `msg_`, `plat_`, `platform_`), never a bare `fo_` name another area may also use, and your migration's stamp is later than the newest on `main` when it merges (rows rev 15.2, the FO-1a/FO-1b clash). Every token earns its outcome (P-556): read only the files named here and the code you change.
+---

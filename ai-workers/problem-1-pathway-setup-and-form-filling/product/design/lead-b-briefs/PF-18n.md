@@ -1,0 +1,41 @@
+# Brief: PF-18n, the in-app notification list (map row 50's missing part) (cloud builder lane; row owner Lead B)
+
+Drafted 16 Nov by the shaping lane, for Lead B's approval (P-558). Row: BACKLOG **PF-18n** (rev 15). The bell and list on screen are PF-18ns (later). **Model: Opus 5.5, effort: high** (schema; reviewer and breaker at high, P-605).
+
+**Starts when:** PF-18a **part 2** (`NotificationPrefsPort` in `ports/notification-prefs.ts`; brief `PF-18a.md`) is on `main`, and no open PR changes `platform-messages.prisma` (PF-19b part 2 adds a `SENDING` state there, rev 16.25: **one schema PR on that file at a time**, whichever starts second waits).
+
+---
+You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime PF-18n` and take **one row, PF-18n, the notification list**, end to end on a fresh branch from `origin/main`, one PR.
+
+**Read only these:** requirement text, in full (`domain/requirements-2026-11-02/02-functional-requirements/agent/`): **AG-10-29a** ("Notifications SHALL be tenant- and recipient-scoped and SHALL never leak cross-firm or cross-user"; the events routed through here), **AG-10-29b** (personal settings only; no firm matrix, no digest; "Who is told is decided by the product … not configured"), **AG-10-36** (the Individual / Corporate view never filters, hides or re-orders notifications) in `AG-10-communication-hub_v1.26_2026-10-27.md`; **AG-7-39** rules 2, 3, 6, 7, 10 ("One notification per person per item"; "Duplicate beats a miss: if two events name the same person for the same item, one notification goes"; no passport or financial number in a notification) in `AG-07-case-core-and-delivery_v3.12_2026-10-28.md`; **AG-16-10**. On `main`: `prisma/schema/platform-messages.prisma` (PF-19a's file), `ports/consent.ts` and `ports/messages.ts` (the in-transaction port pattern), PF-18a's `ports/notification-prefs.ts`, `ports/jobs.ts` (`JobPort`); the module card `api/src/platform/MODULE.md`.
+
+**What to build:**
+* `msg_notification` in `platform-messages.prisma` (one migration, stamp later than `main`'s, P-600): firm, recipient staff id, kind, group (one of AG-16 §3.3's eight), item kind and id, deep link (an app path, never a full URL), created at, read at; a unique `(firm_id, recipient, kind, item_kind, item_id)` (AG-7-39 rule 2).
+* `NotificationPort.notify(tx, { firmId, recipient, kind, group, item, link })` in **`ports/notifications.ts`** (zod only) with its fake: inside the caller's transaction; asks `NotificationPrefsPort.allows(firmId, recipient, group, "IN_APP")` first; a second notify for the same person, item and kind writes nothing (one row); a security group is never switched off (AG-16-10).
+* Routes (`/api/platform/me/notifications`, any staff, own only): list newest first, paged; unread count; mark one read; mark all read. Recipient and firm come from the token, never from the request.
+* A `JobPort` daily job removes **read** items older than 90 days (**Sample**: the requirements give no period; label it in the setting's description).
+* The row names its future callers (FO-10, PF-19b, FO-6, FO-7b, @mention; the case side's four are the release holder's): **none is wired here**; each calls the port in its own row.
+
+**Done when** (P-606; list the cases in the PR body first). In `tests/check_pf18n_notifications.ts`:
+* `PF-18n DW1 pass/fail` (AG-7-39 r2): notify twice for one person, item and kind → one row; a different kind for the same item → two rows.
+* `PF-18n DW2 pass/fail` (AG-16-10): in-app off for the group → no row; a security group → a row whatever the switch.
+* `PF-18n DW3 pass/fail` (AG-10-29a): my list never shows another person's items or another firm's; a mark-read on someone else's id → 404.
+* `PF-18n DW4 pass/fail`: mark all read → unread count 0; a new notify after it → count 1.
+* `PF-18n DW5 pass/fail`: a rollback in the caller's transaction leaves no notification.
+* `PF-18n DW6 pass/fail`: the 90-day job removes only read items older than 90 days (an unread 100-day-old item stays).
+* `PF-18n DW7`: the port's shared contract (`ports/contracts/notification-port.contract.ts`) passes on the real adapter and the fake (PF-0c); a notification's stored text holds no value that matches a passport or card number pattern (AG-7-39 r10: callers pass ids and a kind, never free text); the migration test in a parallel world (rows rev 16.7).
+
+**Duplicate check:** BACKLOG (PF-18n; PF-18ns is the bell; AG-7-39's four case events are the release holder's rows), open PRs (none on notifications at the time of writing), `main` (no `msg_notification`, no `ports/notifications.ts`), BUGS (none); one `Duplicate check:` line after re-running it.
+
+**Touch list:** `prisma/schema/platform-messages.prisma` + one migration folder; new `api/src/platform/notifications/*.ts`; new `ports/notifications.ts` and `ports/contracts/notification-port.contract.ts`; new `api/src/features/platform-notifications.ts`; `tests/check_pf18n_notifications.ts`; `api/src/platform/MODULE.md`.
+
+**Contract used:** `NotificationPrefsPort` (PF-18a), `JobPort` (PF-14), the in-transaction port pattern of `ConsentPort`. New port `NotificationPort` in `ports/` because every module calls it (case-side contract v0.1 §1 rule 3). **Contract gap:** the case side's AG-7-39 four events need a row that calls `NotificationPort` (the release holder's).
+
+**Parallel safety:** `platform-messages.prisma` is shared with PF-19b part 2 (and PF-19m later): one schema PR on it at a time; the second re-stamps. `ports/` gains new files only. `api/src/platform/MODULE.md`: own lines only.
+
+**Reviewer and breaker** (P-278: schema): the breaker tries a deep link with a full URL, a notify for a deactivated recipient, two parallel notifies for one item, and a paged list with a forged cursor.
+
+**P-610:** under 800 changed lines, tests included; split point if it would pass: part 1 table, port and contract (DW1, DW2, DW5, DW7); part 2 routes and the job (DW3, DW4, DW6).
+**P-605/P-606 (every Lead B brief from 15 Nov):** Opus 5.5; no model switch mid-session. Finish whole: if an item turns out to need more than its touch list, stop and ask in a PR comment. Never widen the row silently, and never leave a part for later. Read only the requirement text the trace tool prints.
+**Rules (standard, every PF/FO brief):** P-559: firm tables, real sign-in and billing are ours in the PF/FO modules (amends P-335/P-357). One row, one session, one PR; new files only outside the touch list. Opus reviewer (P-303); re-review reads only the diff (P-277); label `review: approved` only after `Reviewer: Approve <sha>` and green CI (P-277, P-385); merge `main` only on a conflict (P-270). **Before asking for the label (rows rev 16, Lead 47: 4 of 4 labelled PRs went red after the label on 14 Nov):** run, on `main` merged into your branch, the suites of every CI part that was red on any earlier head of this PR, plus every suite in the shard that shares the demo database with yours, and paste the result lines in the PR. Live AI off, US$0, never a priced button (P-175). No real keys anywhere. Push after every step (P-557). Questions as a PR comment headed "Question for the tech lead"; report to the current Lead (`tools/current-lead.sh`) for the merge queue and to **Lead B** (row owner, branch `lead-b-front-office`, hand-over `product/design/lead-b-state.md`) for the row. Cross-module port interfaces, their fakes and shared event payload types go in `prototype/studio/ports/` (`zod` only; case-side contract v0.1 §1 rule 3); adapters stay in the module's folder; never import `engine/` or case-side files (rows rev 14.1). Event names come from `prototype/studio/ports/events.ts` (`EVENT.*`, FO-1a); add a new name there, never a string literal (rev 15.1). A database function in your migration carries your area's prefix (`fo_sales_`, `fo_booking_`, `fo_compliance_`, `fo_signing_`, `fo_retainer_`, `money_`, `msg_`, `plat_`, `platform_`), never a bare `fo_` name another area may also use, and your migration's stamp is later than the newest on `main` when it merges (rows rev 15.2, the FO-1a/FO-1b clash). Every token earns its outcome (P-556): read only the files named here and the code you change.
+---
