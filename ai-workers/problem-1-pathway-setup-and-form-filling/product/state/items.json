@@ -94,5 +94,21 @@
     "acked_at": "2026-11-15T09:54:53Z",
     "opened_at": "2026-11-15T09:28:09Z",
     "source": "pull/1814#issuecomment-6892334903"
+  },
+  {
+    "id": "qa-2026-11-15",
+    "kind": "ready",
+    "owner": "lane",
+    "branch": "claude/qa-r1-rescore-1115",
+    "pr": 1833,
+    "status": "open",
+    "waiting_on": "Lead",
+    "next_step": "merge, test, publish",
+    "created_at": "2026-11-15T11:03:13Z",
+    "updated_at": "2026-11-15T11:03:13Z",
+    "last_ack_by": null,
+    "acked_at": null,
+    "opened_at": "2026-11-15T11:03:13Z",
+    "source": "pull/1833#issuecomment-6893358738"
   }
 ]
