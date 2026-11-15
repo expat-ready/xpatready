@@ -21,7 +21,8 @@ import { readSetting, TIME_ZONE } from "../../settings.ts";
 import { ensureMessagesFirm } from "../consent/messages-firm.ts";
 
 type Tx = Prisma.TransactionClient;
-export const SEND_QUEUE = "msg.send", SWEEP_QUEUE = "msg.outbox_sweep", CAP_ALERT_QUEUE = "msg.cap_alert";
+/** Queue names start "messages." (a short dotted head reads as a program key to B164's guard). */
+export const SEND_QUEUE = "messages.send", SWEEP_QUEUE = "messages.outbox_sweep", CAP_ALERT_QUEUE = "messages.cap_alert";
 /** A QUEUED row older than this with no send is picked up by the sweep (a crash between commit and dispatch). */
 export const SWEEP_AFTER_MS = 2 * 60_000;
 /** Sample: per firm and kind (lost, held), the rows one sweep queues. */
@@ -118,7 +119,7 @@ export class Messages implements MessagePort<Tx> {
       if (sent >= cap) { await tx.msgOutbox.update({ where, data: { stateReason: HELD_DAILY_LIMIT } }); alertDay = day; return "held" as const; }
       const { providerId } = await adapter.deliver(tx, rendered);
       await tx.$executeRaw`UPDATE "msg_send_counter" SET "sent" = "sent" + 1, "updated_at" = now() WHERE "firm_id" = ${firmId}::uuid AND "day" = ${day}::date`;
-      await tx.msgOutbox.update({ where, data: { state: "SENT", stateReason: null, providerId, sentAt: now } });
+      await tx.msgOutbox.update({ where, data: { state: "SENT", stateReason: null, providerId, sentAt: now, consentId: decision.consentId ?? null } });
       await tx.msgEvent.create({ data: { firmId, outboxId, kind: "SENT", providerEventId: providerId, occurredAt: now, detail: { provider: adapter.provider } } });
       return "sent" as const;
     });

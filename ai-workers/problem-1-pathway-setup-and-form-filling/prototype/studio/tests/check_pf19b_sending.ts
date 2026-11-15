@@ -83,6 +83,16 @@ try {
   const r1b = await sendNow({ firmId: firmA, person: p1, channel: "EMAIL", class: "MARKETING", address: x1, content: words });
   ok("DW1 pass: with a live consent the marketing message is SENT, naming the consent that allowed it (AG-10-27)", r1b.row.state === "SENT" && r1b.row.consentId === c1.id, r1b.row);
 
+  const q1 = await tx((t) => messages.send(t, { firmId: firmA, person: p1, channel: "EMAIL", class: "MARKETING", address: x1, content: words, idempotencyKey: uuid() }));
+  await clock.advance(1_000);
+  await tx((t) => consent.withdraw(t, { firmId: firmA, subject: p1, channel: "EMAIL", purpose: "MARKETING", via: "STAFF", by: "staff:pf19b" }));
+  await clock.advance(1_000);
+  const c1b = await tx((t) => consent.record(t, { firmId: firmA, subject: p1, channel: "EMAIL", purpose: "MARKETING", wordingId: w1.id, source: "WEB_FORM", locale: "en", recordedKind: "SELF_SERVICE", recordedBy: "system:web-form" }));
+  await messages.deliver(firmA, q1.outboxId);
+  const q1row = await db.msgOutbox.findUniqueOrThrow({ where: { id: q1.outboxId } });
+  ok("DW1 (Devin #1824): consent withdrawn and given again while the message waited → SENT names the new consent that allowed it, never the withdrawn one",
+    q1row.state === "SENT" && q1row.consentId === c1b.id && c1b.id !== c1.id, q1row);
+
   // ------------------------------------------------------------------------------------------- DW2 suppressed addresses
   const x2 = box("dw2");
   await tx((t) => consent.suppress(t, { firmId: firmA, channel: "EMAIL", address: x2, reason: "COMPLAINT", by: "system:pf19b" }));
