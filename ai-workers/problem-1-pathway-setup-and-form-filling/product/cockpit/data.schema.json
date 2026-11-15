@@ -6,7 +6,7 @@
   "type": "object",
   "allOf": [{"$ref": "#/$defs/walk"}],
   "required": ["schema", "freshness", "summary", "needs_you", "lead_queue", "pace", "forecast", "burnup", "capacity", "top3", "org",
-               "working_today", "health", "trust", "lineage", "reconcile_keys", "history", "run"],
+               "working_today", "health", "trust", "lineage", "reconcile_keys", "history", "run", "explain"],
   "properties": {
     "schema": {"const": 2},
     "freshness": {
@@ -110,7 +110,44 @@
                     "else": {"required": ["text", "why"], "properties": {"text": {"const": "Lead has not updated this"}}}}}
       }
     },
-    "org": {"type": "object", "required": ["founder", "leads", "lanes", "mismatches", "how", "src", "sha", "as_of", "class"]},
+    "org": {"type": "object", "required": ["founder", "leads", "lanes", "mismatches", "how", "src", "sha", "as_of", "class", "components"],
+            "properties": {
+              "lanes": {"type": "array", "items": {"$ref": "#/$defs/lane"}},
+              "components": {
+                "description": "Board v57 (founder 15 Nov 10:2x IST): the Team tab's org view. One item per Release 1 component, in this order; each with its owning Lead, responsibility, escalation path and lanes (FORMULAS.md › Team by component).",
+                "type": "object", "required": ["items", "unmapped", "escalation_rule", "standbys", "tech_lead", "src", "class", "as_of"],
+                "properties": {
+                  "items": {"type": "array", "minItems": 8, "maxItems": 8,
+                            "prefixItems": [{"properties": {"id": {"const": "platform"}}}, {"properties": {"id": {"const": "front_office"}}},
+                                            {"properties": {"id": {"const": "client_money"}}}, {"properties": {"id": {"const": "case_side"}}},
+                                            {"properties": {"id": {"const": "audit"}}}, {"properties": {"id": {"const": "pipeline"}}},
+                                            {"properties": {"id": {"const": "qa"}}}, {"properties": {"id": {"const": "strategy_desk"}}}],
+                            "items": {"type": "object", "required": ["id", "name", "job", "owner_kind", "owner", "escalation", "if_behind", "lanes", "maps", "behind"],
+                                      "properties": {"owner_kind": {"enum": ["tech", "lead-b"]},
+                                                     "owner": {"type": "object", "required": ["name", "role", "src"],
+                                                               "if": {"properties": {"name": {"type": "null"}}}, "then": {"required": ["reason"]}},
+                                                     "escalation": {"type": "array", "minItems": 3, "maxItems": 4, "items": {"type": "string"}},
+                                                     "lanes": {"type": "array", "items": {"$ref": "#/$defs/lane"}},
+                                                     "maps": {"type": "array", "items": {"type": "integer"}},
+                                                     "behind": {"type": "integer", "minimum": 0}}}},
+                  "unmapped": {"type": "array", "items": {"$ref": "#/$defs/lane"}}
+                }
+              }
+            }},
+    "explain": {
+      "description": "Board v57: one tooltip per number on the page, keyed as the page's data-tip attributes (FORMULAS.md › Tooltips). Window and n come from the data; a null n carries n_reason and the page shows 'not measured'.",
+      "type": "object", "minProperties": 1,
+      "additionalProperties": {
+        "type": "object", "required": ["label", "what", "window", "n", "n_of", "read", "src", "class", "as_of"],
+        "not": {"anyOf": [{"required": ["v"]}, {"required": ["value"]}]},
+        "properties": {
+          "what": {"type": "string", "minLength": 3}, "window": {"type": "string", "minLength": 3}, "read": {"type": "string"},
+          "n": {"type": ["integer", "null"], "minimum": 0}, "n_of": {"type": "string"}, "band": {"type": "string", "minLength": 3},
+          "class": {"enum": ["measured", "parsed", "reported"]}, "src": {"type": "string", "minLength": 3}
+        },
+        "if": {"properties": {"n": {"type": "null"}}}, "then": {"required": ["n_reason"], "properties": {"n_reason": {"type": "string", "minLength": 3}}}
+      }
+    },
     "working_today": {"type": "object", "required": ["groups", "rows", "line", "src", "sha", "as_of"]},
     "health": {
       "type": "object",
@@ -148,6 +185,19 @@
   },
   "$defs": {
     "light": {"enum": ["green", "amber", "red"]},
+    "lane": {
+      "description": "One lane on the Team tab: Lead input session (reported) and/or a lane branch (measured). component and owner from Lead input when given, else derived (FORMULAS.md › Team by component); maps = the Build rows citing its row id.",
+      "type": "object", "required": ["name", "role", "row", "pr", "state", "push_h", "seen", "component", "component_how", "kind", "idle_min", "last_push_at", "maps", "behind", "owner", "owner_how"],
+      "properties": {
+        "seen": {"enum": ["both", "reported only", "measured only"]},
+        "component": {"enum": ["platform", "front_office", "client_money", "case_side", "audit", "pipeline", "qa", "strategy_desk", null]},
+        "kind": {"enum": ["cloud", "mac", null]},
+        "idle_min": {"type": ["number", "null"], "minimum": 0},
+        "push_h": {"type": ["number", "null"]},
+        "maps": {"type": "array", "items": {"type": "object", "required": ["map", "cap"]}},
+        "behind": {"type": ["string", "null"]}
+      }
+    },
     "num": {
       "type": "object",
       "required": ["value", "src", "sha", "as_of", "class"],
