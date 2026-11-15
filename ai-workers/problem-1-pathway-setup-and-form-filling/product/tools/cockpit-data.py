@@ -190,9 +190,13 @@ def due_date(text, today=None):
         return None
 
 
+NOT_HIM = re.compile(r"\b(nothing|no|not|never|none|nobody|no longer)\s+(\w+\s+){0,2}(waits?|waiting|needs?|needed)\b", re.I)
+
+
 def his_clauses(text):
-    """Clauses (split on ";") of a status that ask for the founder's word or act and are not marked decided or done."""
-    return [c.strip() for c in re.split(r";", text or "") if NEEDS_HIM.search(c) and not DECIDED.search(c.strip())]
+    """Clauses (split on ";") of a status that ask for the founder's word or act and are not marked decided or done, nor
+    negated ("nothing waits on him", "no longer needs his word")."""
+    return [c.strip() for c in re.split(r";", text or "") if NEEDS_HIM.search(c) and not NOT_HIM.search(c) and not DECIDED.search(c.strip())]
 
 
 def state_needs(text=None, today=None):

@@ -1001,6 +1001,8 @@ class NeedsYouOnlyHis(unittest.TestCase):
              "| A83 | library kept current | refresh the 2 behind |\n"                                   # the Lead's work: not his
              "| A84 | info icons on every page | open: v61 lane |\n"                                     # a lane's work: not his
              "| A85 | pick the launch firm | answered; nothing waits |\n"
+             "| A5, A7 | earlier asks | done or superseded (Lead 52, 15 Nov; nothing waits on him); row in `history/x.md` |\n"   # STATE.md 15 Nov
+             "| A88 | rename | no longer needs his word |\n"
              "| A86 | account switch | built the script; waits on the founder's word by 17 Nov |\n"
              "| A87 | budget | **Lead 54:** sized two options | needs his decision before 2026-11-19 |\n"   # 4 cells: the last is the status
              "\n## For the founder (P-390)\nF3 open: choose the demo firm by 21 Nov; F4 ruled\n")
