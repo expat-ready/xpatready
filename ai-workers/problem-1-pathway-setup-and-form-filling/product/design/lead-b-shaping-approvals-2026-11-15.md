@@ -70,3 +70,54 @@ Lead B (4) reviews the shaping lanes' rows in batches (P-604; Lead 52's ask, 15 
 ## Next batches
 
 Lead B reviews each lane's next commits as they land (watch: `lead-b-tools/watch-shaping.sh`).
+
+## Batch 2 (15 Nov 09:3x IST): S1 at b8d266f65, S2 at b30ad2279, S3 at cb4b35ef0
+
+**Whose:** the audit rows (AUD-1a, AUD-1b, AUD-1m, AUD-1c, AUD-2, AUD-2c, AUD-3, AUD-3b, AUD-4, AUD-4s, AUD-5: AUD-1 and AUD-2 are the release holder's) are the release holder's to approve. So are the configurator and engine rows (AS-1m, AS-1g, AS-1s, AS-1c, AS-2e, AS-2d1, AS-2d2) and the case-side rows (CS-106c, CS-D1, CS-D2, CS-D3, CS-D4, CS-D5c, CS-D5). Lead B checks only their joins (below). The rest are Lead B's.
+
+**Cross-lane findings (apply on copy):**
+1. **One owner for `ports/keep-period.ts`.** AUD-5 (S1) and CS-D4 (S3) both create it. AUD-5 creates the port and its fake; CS-D4 only calls it, and its touch list drops `ports/keep-period.ts` and `ports/fakes/keep-period.fake.ts`. CS-D4 waits on AUD-5.
+2. **One area file per schema row (P-600 condition 1).** PF-11, PF-11c and AUD-3b each add a table to PF-21's `platform-register.prisma`. Each gets its own area file instead: PF-11 uses `platform-firm-export.prisma`, PF-11c uses `platform-firm-closure.prisma`, and AUD-3b uses the file the release holder names. The back-relation lines go under PF-0p's `platform.prisma` slot comments (rev 16.6). PF-22v adds to PF-22a's own file only after PF-22a merges (it already waits on PF-22a), which is accepted.
+3. **The scan port is PF-F3's.** PF-10b says "through `ScanPort` when the case side's CS-D3 lands". It should read "through `ScanPort` (PF-F3, platform); until PF-F3 merges, imports run on the scan fake in tests and are refused in production".
+4. **Upload routes sit under the swept prefix.** PF-F2's `/api/files/...` becomes `/api/platform/files/...`. PF-28's input sweep and PF-4t's `PLATFORM_PATH` guard then cover them; `/api/files` is in neither.
+5. **PF-27's `firmAllows(firmId, action)`** must be called at every client door it names. On copy, add one Done-when line to FO-6 (signing), FO-7c (pay link) and PF-4p (portal): "a locked firm's door answers PF-27's neutral refusal (test)". PF-27 adds the one-line call itself to any of those doors already on `main` when it lands, listed in its PR.
+6. **Every schema row's migration test follows rev 16.7.** It measures right after its own migration and never assumes it is the newest: PF-10a, PF-11, PF-11c, PF-22a, PF-22v, FO-15a, PF-F2 and the release holder's schema rows.
+
+### S1: firm exit, import, custom fields and views (map rows 22, 35, 95)
+
+| Row | Verdict | Amendment or note |
+|---|---|---|
+| PF-11 | approved with amendment 2 | — |
+| PF-11c | approved with amendment 2 | Its question 6 (floors that depend on the College) is labelled "Unconfirmed: no counsel" and goes to the founder only if a floor changes the build. |
+| PF-11s | approved | — |
+| PF-27 | approved with amendment 5 | — |
+| PF-10a | approved with amendment 6 | — |
+| PF-10b | approved with amendment 3 | — |
+| PF-10t | approved | — |
+| PF-10s | approved | — |
+| PF-22a | approved with amendment 6 | — |
+| PF-22v | approved with amendment 6 | — |
+| PF-22s | approved | — |
+| AUD-* | release holder's | Joins checked. AUD-1b and AUD-3 add one line each to PF-4's and PF-4s's guards, named in their touch lists, so Lead B (row owner) agrees. AUD-3b's support session is a new branch in PF-4's guard, so the release holder reads that line (P-423: permissions). |
+
+### S2: assessment in the front office (map rows 106, 107)
+
+| Row | Verdict | Amendment or note |
+|---|---|---|
+| FO-15a | approved with amendment 6 | — |
+| FO-15b | approved | Its Question 4 (the badge roll-up rule) waits for the lane's question text; Lead B rules on it then. |
+| FO-15s | approved | — |
+| AS-2c | approved | **Question 5 ruled: "Review before sharing" defaults to on** (Lead B, P-566 (3)). An assessment sent to a client is advice, so a licensed person reviews it first; the firm may turn the setting off. |
+| AS-2cs | approved | — |
+| AS-1*, AS-2e, AS-2d*, CS-106c | release holder's | Joins checked: FO-15b reads `EligibilityPort` (AS-1m), and CS-106c adds one line to FO-8's listener, which FO-8's lane must not hold at the same time. Score data is cited data on a release, never typed (AGENTS rule 4). |
+
+### S3: the file rail (map rows 64, 65, 66, 67)
+
+| Row | Verdict | Amendment or note |
+|---|---|---|
+| PF-F4 | approved | **Q7 ruled: a plain ZIP is refused in Release 1** with "Upload the files inside one by one" (Lead B, P-566 (3)). Unpacking a ZIP means scanning nested files and guarding against archive bombs at every door; the refusal is safe and clear. Unpacking becomes a later row. |
+| PF-F1 | approved | Lead B approves its STANDARDS §1 entry in the PR (step 0), as the row says. |
+| PF-F1c | approved | — |
+| PF-F2 | approved with amendments 4 and 6 | — |
+| PF-F3 | approved | **Q6 ruled: the managed scanner first** (Lead B, P-566 (3)). Step 0 checks AWS's managed malware scanning for S3 in `ca-central-1` at source (page and date). If it is available there, it is the real adapter: no daemon to run, and no GPL licence question. If it is not, the ClamAV container is used as the row says. Either way the state stays `SCAN_PENDING` (never `CLEAN`) on any error. |
+| CS-D1 … CS-D5 | release holder's | Joins checked: CS-D1 moves `mediaOf` onto PF-F4's `detect`, and the documents go onto PF-F2 and PF-F3's rail, so CS-D1 waits on PF-F2 and PF-F3; CS-D4 per finding 1. |
