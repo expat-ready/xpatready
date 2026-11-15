@@ -15,13 +15,13 @@ FO-5f lands with item 5 partly done: at 28f635a9a every brace in the text runs o
    * Apply the same check to `_rels/.rels` (compile parses both).
 5. **Text tags (review m-1, breaker round 3):** the scan reads only `w:t`, `vt:lpwstr` and `vt:lpstr` outside docProps and cover parts. docxtemplater fills every tag in `tagsXmlTextArray`: `Company`, `dc:title`, `cp:keywords`, and the others. Unknown placeholders in those tags (in a header, settings or a core-typed part outside `docProps/`), or in CDATA inside a `w:t`, are accepted and print blank. Braces there are counted (no flood).
 6. **Minor (breaker round 3):** a 25 MB `[Content_Types].xml` with 990 parts is accepted after 2 s at 360 MB.
-7. **Unfinished at the split:** a delimiter-change check (`{=[[ ]]=}`) had no result.
+7. **Delimiter change (breaker round 3, unverified: its check timed out at the split):** docxtemplater lets a file change its delimiters inside the text (`{=<< >>=}`; `changeDelimiterPrefix "="` is on by default). The new tags are neither brace-counted nor read for placeholders. Either refuse a delimiter change or turn it off (`delimiters` / `changeDelimiterPrefix: null` in the options, if docxtemplater's options allow it), with a fail test.
 
 **Done when (proposed):** each case above has a fail test, a pass test for a real Word file, and 1.5 M lone `{` refused in under 2 s in each way in. The breaker re-runs every way in over HTTP with a concurrent page read answering.
 
 Probe scripts from both agents (session scratchpad, not kept): reviewer `rev4/probe.ts`, `ct.ts`, `http.mts`; breaker `brk/attack*.mts`.
 
-## Breaker round 3 notes, word for word (stopped at the split)
+## Breaker round 3 notes, word for word (stopped at the split; final version)
 
 # FO-5f round 3 (stopped early) — findings for FO-5f2
 
@@ -86,3 +86,12 @@ The brace count is fine in every case below: each flood was refused in under 60 
   * comments on `word/c.dat`.
 * The reverse duplicate (header, then octet-stream): the flood is accepted, but docxtemplater does not compile that part either (the raw text stays `{client.passport}`), so nothing is printed blank.
 * The delimiter change (`{=[[ ]]=}`) was still running when the stop came, so it has no result.
+
+## Unverified lead: a delimiter change may get round the brace cap
+The delimiter check (`r3delim.mts`) ran two cases in one process:
+1. `{=[[ ]]=}Passport [[client.passport]]`;
+2. `{=<< >>=}` followed by 300,000 `&lt;&lt;` in the body.
+
+It was killed by its 120 s timeout (exit 143) and printed nothing: its output was buffered behind a pipe, so it is not known which case hung. Not verified, because the attack was stopped.
+
+Why it matters: docxtemplater supports changing the delimiters inside the text (`changeDelimiterPrefix "="`, on by default). After `{=<< >>=}`, the tags are `<<…>>`, so neither `braceCount` nor `TAG` sees them. A flood of `<<` would reach `compile()` uncounted, and `<<client.passport>>` would be printed blank. FO-5f2 should run each case alone with a timer. A likely fix is to refuse `{=` in the text, or to pass a `delimiters` option and set `syntax.changeDelimiterPrefix` to null.
