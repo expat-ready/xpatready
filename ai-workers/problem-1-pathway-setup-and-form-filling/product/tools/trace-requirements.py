@@ -14,7 +14,7 @@
 # read-only copies tools/sync-requirements.sh writes). Standard library only (P-502). Prints requirement text to the
 # terminal only; nothing it writes into git holds requirement text (P-504): the rendered block has ids and hashes.
 # Brief line (row part 4): see BRIEF_LINE below.
-import argparse, difflib, hashlib, os, re, subprocess, sys
+import argparse, difflib, hashlib, os, re, signal, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PRODUCT = os.path.dirname(HERE)
@@ -78,7 +78,21 @@ def home_files(root):
     return {k: max(v)[1] for k, v in cands.items()}
 
 
-LEAD_IDS = re.compile(r"^(\s*(?:#{1,6}|[-*]|\d+\.|\|)\s*[*`~]*)((?:%s)(?:[*`]*\s*(?:,|/|and|&)\s*[*`]*(?:%s))*)" % (ID, ID))
+LEAD_IDS = re.compile(r"^(\s*(?:#{1,6}|[-*]|\d+\.|\|)\s*[*`~]*)((?:%s)(?:[*`]*\s*(?:,|/|and|&|–|to)\s*[*`]*(?:%s))*)" % (ID, ID))
+RANGE_RE = re.compile(r"(%s)[*`]*\s*(?:–|to)\s*[*`]*(%s)" % (ID, ID))
+
+
+def lead_ids(group):
+    """Ids a definition line starts with; a range 'AG-6-50 – AG-6-56' gives every number in it."""
+    ids = []
+    for a, b in RANGE_RE.findall(group):
+        ma, mb = re.fullmatch(r"(.*-)(\d+)", a), re.fullmatch(r"(.*-)(\d+)", b)
+        if ma and mb and ma.group(1) == mb.group(1) and 0 < int(mb.group(2)) - int(ma.group(2)) <= 50:
+            ids += [f"{ma.group(1)}{k}" for k in range(int(ma.group(2)), int(mb.group(2)) + 1)]
+    for x in ID_RE.findall(group):
+        if x not in ids:
+            ids.append(x)
+    return ids
 WITHDRAWN = re.compile(r"^\s*(?:#{1,6}|[-*]|\d+\.|\|)\s*~~|\bWithdrawn\b")
 KIND_RANK = {"heading": 0, "bullet": 1, "table": 2}
 
@@ -96,7 +110,7 @@ def parse_module(text, prefix):
         m = LEAD_IDS.match(line)
         if not m:
             continue
-        ids = [x for x in ID_RE.findall(m.group(2)) if module_of(x) == prefix]
+        ids = [x for x in lead_ids(m.group(2)) if module_of(x) == prefix]
         if not ids:
             continue
         lead = m.group(1).strip()
@@ -257,7 +271,7 @@ def parse_backlog(text):
     return rows
 
 
-SOURCE_RE = re.compile(r"Source:\s*(.+?)(?=\s+·\s|\s*\||$)")
+SOURCE_RE = re.compile(r"(?<![`\w])\**Source:\**\s*(.+?)(?=\s+·\s|\s*\||$)")
 
 
 def parse_source(value):
@@ -379,7 +393,7 @@ def parse_decisions(text):
         m = re.match(r"^\|\s*(~~)?\s*(P-\d+)", line)
         if m:
             c = cells(line)
-            struck = bool(m.group(1)) or (len(c) > 2 and c[2].startswith("~~") and c[2].rstrip().endswith("~~"))
+            struck = bool(m.group(1)) or (len(c) > 2 and c[2].startswith("~~"))   # superseded lines are struck through
             out.setdefault(m.group(2), {"struck": struck, "text": line})
     return out
 
@@ -552,7 +566,9 @@ def gaps(ctx):
     snap = ctx.snap
     no_source = [r for r in ctx.r1 if ctx.rows.get(r, {}).get("shaped") and not ctx.sources.get(r)]
     unshaped = [c for c in ctx.checklist if status_word(c["status"]) == "Not shaped"]
-    covered = set(rows_citing(ctx.sources))
+    cited = set(rows_citing(ctx.sources))
+    blocks = {(snap.reqs[r]["file"], snap.reqs[r]["line"]) for r in cited if r in snap.reqs}
+    covered = cited | {r for r, q in snap.reqs.items() if (q["file"], q["line"]) in blocks}   # ids sharing a cited block
     uncovered = {m: [r for r in ids if r not in covered and not snap.reqs[r]["withdrawn"]] for m, ids in snap.by_module().items()}
     stale, missing, struck, declared, unknown, undated, conflicts = [], [], [], [], [], [], []
     devs = decision_deviations(ctx.decisions)
@@ -595,8 +611,8 @@ def cmd_gaps(ctx):
     n_unc = sum(len(v) for v in g["uncovered"].values())
     print(f"# Requirement gaps ({snap.name}; BACKLOG.md, MVP-CHECKLIST.md, trace/sources-seed.tsv)")
     print(f"Release 1 rows: {len(ctx.r1)} · with a Source: {len(g['with_source'])} · shaped with no Source: "
-          f"{len(g['no_source'])} · checklist rows not shaped (unmapped): {len(g['unshaped'])} · team ids: "
-          f"{len(snap.reqs)}, no row covers {n_unc} · to the founder: {len(g['conflicts']) + len(g['declared']) + len(g['struck'])}"
+          f"{len(g['no_source'])} · checklist rows not shaped (unmapped): {len(g['unshaped'])} · team ids in force: "
+          f"{sum(1 for r in snap.reqs.values() if not r['withdrawn'])}, no row covers {n_unc} · to the founder: {len(g['conflicts']) + len(g['declared']) + len(g['struck'])}"
           f" · Source problems: {len(g['stale']) + len(g['missing']) + len(g['unknown']) + len(g['undated'])}\n")
     print(f"## 1. Release 1 rows shaped with no Source ({len(g['no_source'])})")
     print(", ".join(g["no_source"]) or "none")
@@ -757,4 +773,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    if hasattr(signal, "SIGPIPE"):
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)   # quiet when piped into head
     sys.exit(main())
