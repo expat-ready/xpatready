@@ -836,5 +836,494 @@ class UsageLogScript(unittest.TestCase):
         self.assertEqual(([x["pct"] for x in readings], bad), ([53, 60], []))
 
 
+class TeamByComponent(unittest.TestCase):
+    """Board v57 (founder 15 Nov 10:2x IST): the Team tab's org view by component (FORMULAS.md › Team by component)."""
+    ROWS = [{"map": 24, "cap": "Each firm's own web address", "module": "Platform", "ids": ["PF-24w"]},
+            {"map": 41, "cap": "Booking", "module": "Front office (booking)", "ids": ["FO-3h"]},
+            {"map": 60, "cap": "Rules", "module": "configurator", "ids": ["XY-1"]}]
+    # the real BACKLOG shape of a join-and-walk row: no prefix rule, the map row is named in the Area cell (review M2)
+    BL = {"J-24": "| J-24 | join and walk (map row 24; P-606) | **Join and walk for map row 24** |",
+          "J-38": "| J-38 | join and walk (map row 38, 41; P-606) | x |"}
+
+    def test_component_mapping(self):
+        f = lambda row, role=None, given=None: cd.component_of(row, role, given, self.ROWS, self.BL)[0]
+        self.assertEqual(f("PF-4b"), "platform")
+        self.assertEqual(f("FO-1a"), "front_office")
+        self.assertEqual(f("FO-7t"), "client_money")              # FO-7* before FO
+        self.assertEqual(f("FO-7mv"), "client_money")
+        self.assertEqual(f("AS-2c"), "front_office")              # the client copy: Lead B's (BACKLOG)
+        self.assertEqual(f("AS-2cs"), "front_office")
+        self.assertEqual(f("AS-1m"), "case_side")                 # the configurator's AS rows: the release holder's (review M1)
+        self.assertEqual(f("AS-2d1"), "case_side")
+        self.assertEqual(f("CS-W1"), "case_side")
+        self.assertEqual(f("BK-17"), "case_side")
+        self.assertEqual(f("AUD-1a"), "audit")
+        self.assertEqual(f("CI-1"), "pipeline")
+        self.assertEqual(f("TR-1"), "pipeline")
+        self.assertEqual(f("Q-c613-6a"), "qa")
+        self.assertEqual(f("J-24"), "platform")                   # no prefix rule: map row 24 named in its Area cell → Module Platform
+        self.assertEqual(f("J-38"), "front_office")               # row 38 is not in the checklist; row 41 is (Front office)
+        self.assertEqual(f("XY-1"), "case_side")                  # cited by map row 60, Module "configurator"
+        self.assertIsNone(f("J-99"))                              # no BACKLOG line: not mapped
+        self.assertEqual(f("retests"), "qa")                      # row text
+        self.assertEqual(f("pipeline speed-up"), "pipeline")
+        self.assertIsNone(f("something else"))                    # not mapped, never guessed
+        self.assertEqual(f("PF-4", role="qa"), "qa")               # role before prefix
+        self.assertEqual(f(None, role="desk"), "strategy_desk")
+        self.assertEqual(f("PF-4", given="Client money"), "client_money")   # Lead input component wins, by name
+        self.assertEqual(f("PF-4", given="client_money"), "client_money")   # or by id
+        self.assertEqual(f("PF-4", given="no such part"), "platform")       # an unknown name falls back to the prefix
+        self.assertEqual(cd.component_of("FO-7t")[1], "row prefix FO-7")
+
+    def test_fixture_org_view(self):
+        s, comp = run()
+        K = comp["org"]["components"]
+        self.assertEqual([c["id"] for c in K["items"]],
+                         ["platform", "front_office", "client_money", "case_side", "audit", "pipeline", "qa", "strategy_desk"])
+        by = {c["id"]: c for c in K["items"]}
+        lanes = {l["name"]: l for c in K["items"] for l in c["lanes"]}
+        # FO-1 lane: Lead input row FO-1, PR #105 head pushed 3.5 h before 12:00 IST → 08:30 IST, behind (over 90 min), map row 4 cites FO-1
+        fo1 = lanes["FO-1 lane"]
+        self.assertEqual((fo1["component"], fo1["owner"], fo1["kind"], fo1["pr"]), ("front_office", "Lead B", "cloud", 105))
+        self.assertEqual(fo1["last_push_at"], "2026-11-20T08:30+05:30")
+        self.assertEqual(fo1["behind"], "no push for 3.5 h (GitHub)")
+        self.assertEqual(fo1["maps"], [{"map": 4, "cap": "Cap four"}])
+        # BK-6 lane: branch claude/bk-6 pushed 30 min ago → 11:30 IST, not behind; BK → Case side, the tech Lead's
+        bk6 = lanes["BK-6 lane"]
+        self.assertEqual((bk6["component"], bk6["owner"], bk6["behind"], bk6["last_push_at"]), ("case_side", "Lead 50", None, "2026-11-20T11:30+05:30"))
+        # a lane GitHub alone shows: its row from the PR title "runtime: FO-7 — …" → Client money
+        g = lanes["claude/fo-7"]
+        self.assertEqual((g["seen"], g["row"], g["component"], g["owner"]), ("measured only", "FO-7", "client_money", "Lead B"))
+        self.assertEqual(lanes["qa lane"]["component"], "qa")
+        self.assertNotIn("Old lane", lanes)                       # state done: not a lane
+        self.assertEqual(by["front_office"]["maps"], [4, 8])      # FO-1 → row 4, FO-4 → row 8
+        self.assertEqual(by["front_office"]["behind"], 1)
+        self.assertEqual(by["front_office"]["escalation"], ["the lane", "Lead B", "Lead 50 (tech Lead)",
+                                                            "the founder (only for money, a lower bar or a day or more)"])
+        self.assertEqual(len(by["case_side"]["escalation"]), 3)   # the tech Lead's own: lane → tech Lead → founder
+        self.assertEqual(by["audit"]["owner"]["name"], "Lead 50")         # AUD rows are the release holder's (BACKLOG; review M1)
+        self.assertEqual((K["tech_lead"], K["lead_b"], K["standbys"]), ("Lead 50", "Lead B", ["Lead 51"]))
+        self.assertEqual(K["unmapped"], [])
+        self.assertIn("Client money: FO-7", K["prefix_legend"])           # the page shows the data's legend, never its own
+
+    def test_release_holder_rows(self):
+        bl = ("* **The release holder's rows (now copied below):** AUD-1a, AUD-1b; AS-1m, AS-2e; CS-D1.\n"
+              "| AUD-1a | schema | the release holder's rows mentioned in a table row do not count |\n")
+        self.assertEqual(cd.release_holder_ids(bl), {"AUD-1a", "AUD-1b", "AS-1m", "AS-2e", "CS-D1"})
+
+    def test_lead_input_component_owner_and_idle(self):
+        li = jread(os.path.join(FIX, "lead-input.json"))
+        for x in li["sessions"]:
+            if x["name"] == "FO-4 lane":
+                x.update({"component": "Audit", "owner": "Lead 99", "idle_min": 120})
+        li["sessions"].append({"name": "Odd lane", "kind": "mac", "role": "builder", "state": "running", "row": "misc work", "idle_min": 5})
+        li["sessions"] = [x for x in li["sessions"] if x.get("role") != "lead-b"]
+        s, comp = run(snap_with({"lead-input.json": li}))
+        K = comp["org"]["components"]
+        by = {c["id"]: c for c in K["items"]}
+        fo4 = next(l for l in by["audit"]["lanes"] if l["name"] == "FO-4 lane")
+        self.assertEqual((fo4["owner"], fo4["owner_how"], fo4["component_how"]), ("Lead 99", "Lead input owner", "Lead input component"))
+        self.assertEqual(fo4["behind"], "idle 120 min (Lead input)")       # no push measured: the reported idle time decides
+        self.assertEqual([l["name"] for l in K["unmapped"]], ["Odd lane"])
+        self.assertIsNone(K["unmapped"][0]["behind"])
+        self.assertIsNone(by["platform"]["owner"]["name"])                 # no Lead B session: not reported, with a reason
+        self.assertIn("no Lead B session", by["platform"]["owner"]["reason"])
+
+
+class Tooltips(unittest.TestCase):
+    """Board v57: the explain block (one tooltip per number; window and n from the data; FORMULAS.md › Tooltips)."""
+    @classmethod
+    def setUpClass(cls):
+        out = tempfile.mkdtemp()
+        r = subprocess.run([sys.executable, os.path.join(HERE, "cockpit-data.py"), "--out", os.path.join(out, "data.json"),
+                            "--from-snapshot", FIX, "--offline", "--no-history-write"], capture_output=True, text=True, timeout=300)
+        assert r.returncode == 0, r.stderr
+        cls.d = jread(os.path.join(out, "data.json"))
+        cls.E = cls.d["explain"]
+
+    def test_every_entry_complete(self):
+        for k, e in self.E.items():
+            for f in ("label", "what", "window", "n", "n_of", "read", "src", "class"):
+                self.assertIn(f, e, k)
+            self.assertIn(e["class"], ("measured", "parsed", "reported"), k)
+            if e["n"] is None:
+                self.assertTrue(e.get("n_reason"), k)                    # missing data: not measured, with the reason
+
+    def test_window_and_n_from_the_data(self):
+        E, d = self.E, self.d
+        # pace: 7 Release 1 changes merged in the 8 IST days 13-20 Nov (Pace tests above)
+        self.assertEqual((E["pace.changes_per_day"]["n"], E["pace.changes_per_day"]["window"]),
+                         (7, "IST days from 13 Nov to 20 Nov, at most the last 14 (8 days)"))
+        self.assertEqual(E["forecast.p85"]["n"], 8)                       # 8 daily counts sampled
+        self.assertEqual(E["strip.release1"]["n"], 8)                     # 8 Build rows in the fixture checklist
+        # cycle times: app PRs merged 6-20 Nov 12:00 IST: #101-104, #107-111, #114, #118 = 11 (#119 merged after taken_at)
+        self.assertEqual(E["capacity.cycle_median_days"]["n"], 11)
+        self.assertEqual(d["capacity"]["cycle_median_days"]["n"], 11)
+        self.assertEqual(E["capacity.p85_days"]["n"], 11)
+        self.assertEqual(E["capacity.older"]["n"], 3)                     # open app PRs: #105, #115, #116
+        self.assertIsNone(E["capacity.qa.wait_h"]["n"])                   # the value is not measured, so no sample (review M3)
+        self.assertEqual(E["capacity.review.wait_h"]["n"], 1)            # #105, its head commit time read
+        # offline: merged PRs, nightly and CI runs not read → not measured, never 0 (review M4)
+        self.assertIsNone(d["pipeline"]["deploy_freq"]["v"])
+        self.assertIsNone(E["pipeline.deploy_freq"]["n"])
+        self.assertIsNone(d["healing"]["healed_prs"]["v"])
+        self.assertIsNone(E["healing.healed_prs"]["n"])
+        self.assertIsNone(E["pipeline.restore_h"]["n"])
+        self.assertIsNone(d["merges_per_day"]["v"])                      # 14 days of 0 would be a guess
+        self.assertIsNone(E["improving.app_merges"]["n"])
+        self.assertTrue(d["pipeline"]["change_fail"]["reason"].startswith("not measured: the nightly runs"))
+        self.assertNotIn("None", json.dumps(E))                           # no "None" in any tooltip text
+        self.assertNotIn("band", E["quality.demotions"])                  # a net-fall proxy: the compass band does not govern it (review M5)
+        self.assertEqual(E["vsm.queue.wait_h"]["window"], "flow-measure's runs read")
+        self.assertEqual(E["strip.health"]["n"], 7)
+        self.assertEqual(E["capacity.ready_rows"]["n"], len([b for b in jread(os.path.join(FIX, "briefs.json")) if b in cd.parse_backlog(cd.Snap(FIX).file("BACKLOG.md"))["lines"]]))
+        self.assertEqual(E["pace.plan_pct_used"]["n"], 4)                 # 4 usage-log readings in the 24 h
+        self.assertEqual(E["health.1"]["n"], 2)                           # main_checks.json: 2 check runs
+        self.assertEqual(E["strip.plan_use"]["class"], "reported")
+        self.assertIn("3% or less an hour", E["strip.plan_use"]["band"])  # RULES compass, P-440
+        self.assertIn("10 or more", E["pace.rows_done_per_day"]["band"])
+        self.assertIsNone(E["quality.review_rounds"]["n"])                # not measured, never guessed
+        self.assertIsNone(E["pipeline.queue_wait_min"]["n"])              # flow-measure not run
+        self.assertTrue(E["pipeline.queue_wait_min"]["n_reason"].startswith("tools/flow-measure.py not run yet"))
+        self.assertEqual(E["team.front_office.lanes"]["n"], 2)
+
+    def test_page_keys_all_in_explain(self):
+        html = open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read()
+        import re
+        keys = set()
+        for m in re.findall(r'T\("([^"]+)"\)|"(?:[a-z]+\.[a-z_0-9.]+)"(?=\)|,"|\))', html):
+            keys.update(m.split())
+        keys.update(k for m in re.findall(r'N\([^;]*?,"([a-z0-9_.]+)"\)', html) for k in [m])
+        keys.update(re.findall(r',(?:null|B|"[^"]*"),"([a-z]+\.[a-z0-9_.]+)"\)', html))
+        keys.update(re.findall(r'"",\s*"([a-z]+\.[a-z0-9_.]+)"\)', html))
+        dyn = {"health.": [str(i) for i in range(1, 8)], "improving.": list(self.d["improving"]["trends"]),
+               "team.": [c["id"] + ".lanes" for c in self.d["org"]["components"]["items"]],
+               "vsm.": [st["id"] + x for st in self.d["value_stream"]["stages"] for x in (".count", ".wait_h")]}
+        for pre, tails in dyn.items():
+            self.assertIn('T("' + pre + '"+', html.replace('T("vsm."+g.id+".count vsm."+g.id+".wait_h")', 'T("vsm."+x)'), pre)
+            keys.update(pre + t for t in tails)
+        sections = ("strip", "pace", "forecast", "capacity", "health", "factory", "vsm", "team", "quality", "pipeline", "healing",
+                    "improving", "resources", "building")       # the explain block's key families (FORMULAS.md › Tooltips)
+        keys = {k for k in keys if re.match(r"^[a-z]+\.[a-z0-9_]+(\.[a-z0-9_]+)?$", k) and k.split(".")[0] in sections}
+        cond = {"pace.changes_needed_per_day", "pace.ratio", "pace.built_before"}   # only when the data has them
+        missing = sorted(k for k in keys if k not in self.E and k not in cond)
+        self.assertEqual(missing, [])
+        self.assertGreater(len(keys), 90)
+
+    def test_schema_refuses_null_n_without_reason_and_unknown_component(self):
+        sch = os.path.join(cd.P, "cockpit", "data.schema.json")
+        self.assertEqual(cd.validate(self.d, sch), [])
+        d1 = json.loads(json.dumps(self.d))
+        del d1["explain"]["quality.review_rounds"]["n_reason"]
+        self.assertTrue(cd.validate(d1, sch))
+        d2 = json.loads(json.dumps(self.d))
+        d2["org"]["lanes"][0]["component"] = "marketing"
+        self.assertTrue(cd.validate(d2, sch))
+        d3 = json.loads(json.dumps(self.d))
+        del d3["explain"]["strip.health"]["window"]
+        self.assertTrue(cd.validate(d3, sch))
+        d4 = json.loads(json.dumps(self.d))
+        d4["org"]["components"]["items"] = d4["org"]["components"]["items"][::-1]   # the component order is part of the contract
+        self.assertTrue(cd.validate(d4, sch))
+
+
+class NeedsYouOnlyHis(unittest.TestCase):
+    """Board v61 (founder 15 Nov: "Needs you must show only what is needed from him"): an ask counts only when its status
+    asks for his word or act; each item has one line and the date it names (FORMULAS.md › Needs you)."""
+    STATE = ("## Founder asks\n| # | Ask (IST) | Status |\n|---|---|---|\n"
+             "| A83 | library kept current | refresh the 2 behind |\n"                                   # the Lead's work: not his
+             "| A84 | info icons on every page | open: v61 lane |\n"                                     # a lane's work: not his
+             "| A85 | pick the launch firm | answered; nothing waits |\n"
+             "| A5, A7 | earlier asks | done or superseded (Lead 52, 15 Nov; nothing waits on him); row in `history/x.md` |\n"   # STATE.md 15 Nov
+             "| A88 | rename | no longer needs his word |\n"
+             "| A86 | account switch | built the script; waits on the founder's word by 17 Nov |\n"
+             "| A87 | budget | **Lead 54:** sized two options | needs his decision before 2026-11-19 |\n"   # 4 cells: the last is the status
+             "\n## For the founder (P-390)\nF3 open: choose the demo firm by 21 Nov; F4 ruled\n")
+
+    def test_only_items_that_need_him_with_line_and_date(self):
+        asks, forf, wait = cd.state_needs(self.STATE, date(2026, 11, 15))
+        self.assertEqual([a["id"] for a in asks], ["A86", "A87"])
+        self.assertEqual((asks[0]["line"], asks[0]["by"]), ("waits on the founder's word by 17 Nov", "2026-11-17"))
+        self.assertEqual((asks[1]["line"], asks[1]["by"]), ("needs his decision before 2026-11-19", "2026-11-19"))
+        needs, _ = cd.needs_split(asks, forf, wait, [], True, "STATE.md", "g", today=date(2026, 11, 15))
+        self.assertEqual(needs["count"]["v"], 3)                            # A86, A87, F3
+        self.assertEqual([(i["id"], i["by"]) for i in needs["items"]], [("A86", "2026-11-17"), ("A87", "2026-11-19"), ("F3", "2026-11-21")])
+        self.assertEqual(needs["items"][2]["line"], "F3 open: choose the demo firm by 21 Nov")
+        self.assertTrue(all(i["line"] and "\n" not in i["line"] for i in needs["items"]))
+
+    def test_nothing_open_and_dates(self):
+        asks, forf, wait = cd.state_needs("## Founder asks\n| # | Ask | Status |\n|---|---|---|\n| A1 | x | open: v61 lane |\n", date(2026, 11, 15))
+        needs, _ = cd.needs_split(asks, forf, wait, [{"n": 1, "title": "q", "age_h": 1, "src": "x"}], True, "s", "g")
+        self.assertEqual((needs["count"]["v"], needs["items"]), (0, []))   # a PR question never makes an item
+        self.assertIsNone(cd.due_date("no date here"))
+        self.assertEqual(cd.due_date("by 3 Jan", date(2026, 11, 15)), "2027-01-03")   # the year after, not ten months back
+        html = open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read()
+        self.assertIn("Nothing needed from you", html)
+
+    def test_fixture_keeps_a2_with_its_line(self):
+        _, d = TooltipsData.data()
+        self.assertEqual([(i["id"], i["line"]) for i in d["needs_you"]["items"]], [("A2", "waiting on the founder's word")])
+
+
+class TooltipsData:
+    _d = None
+
+    @classmethod
+    def data(cls):
+        if cls._d is None:
+            out = tempfile.mkdtemp()
+            r = subprocess.run([sys.executable, os.path.join(HERE, "cockpit-data.py"), "--out", os.path.join(out, "data.json"),
+                                "--from-snapshot", FIX, "--offline", "--no-history-write"], capture_output=True, text=True, timeout=300)
+            assert r.returncode == 0, r.stderr
+            cls._d = jread(os.path.join(out, "data.json"))
+        return cls._d["explain"], cls._d
+
+
+class EarlyBandAndLeading(unittest.TestCase):
+    """Board v61 (founder A78, P-609): the early estimate band before the measured forecast, and three daily leading numbers."""
+    D16 = datetime(2026, 11, 16, 6, 30, tzinfo=timezone.utc)
+
+    def test_band_before_the_forecast(self):
+        # 16 Nov 12:00 IST: full IST days 13-15 Nov merged 1, 1, 0 (Pace tests); 9 changes left.
+        # low = 16 Nov + ceil(9 / 1) = 25 Nov; high = 16 Nov + ceil(9 / (2/3)) = 16 + 14 = 30 Nov
+        e = run(now=self.D16)[1]["pace"]["early_band"]
+        self.assertEqual((e["value"], e["confidence"], e["n"], e["counts"], e["remaining"]),
+                         ({"low": "2026-11-25", "high": "2026-11-30"}, "low", 3, [1, 1, 0], 9))
+        self.assertEqual(e["window"], "full IST days 13 Nov to 15 Nov (3 days)")
+        self.assertIn("÷ the best full IST day", e["src"])
+
+    def test_band_gives_way_to_the_forecast_and_needs_a_merge(self):
+        e = run()[1]["pace"]["early_band"]                                   # 20 Nov: 8 days, the Monte Carlo forecast stands
+        self.assertIsNone(e["value"])
+        self.assertEqual(e["reason"], "replaced by the measured forecast (Monte Carlo, from 17 Nov)")
+        pulls = [p for p in jread(os.path.join(FIX, "github/pulls.json")) if not p.get("merged_at") or p["merged_at"] < "2026-11-06T00:00:00Z"]
+        e0 = run(snap_with({"github/pulls.json": pulls}), now=self.D16)[1]["pace"]["early_band"]
+        self.assertIsNone(e0["value"])
+        self.assertEqual(e0["reason"], "not measured: no Release 1 change merged on a full IST day yet")
+
+    def test_committed_date_carried(self):
+        pl = json.loads(cd.Snap(FIX).file("cockpit/plan.json"))
+        pl["dates"][0].update(kind="committed", date="2026-11-29", date_to=None)
+        e = run(snap_with({"files/" + cd.REL + "/cockpit/plan.json": pl}), now=self.D16)[1]["pace"]["early_band"]
+        self.assertEqual(e["committed"], "2026-11-29")
+
+    def test_parts_and_capabilities_daily(self):
+        L = run()[1]["pace"]["leading"]
+        # 20 Nov: last full IST day 19 Nov merged 0 parts; today BK-3 (1). Built rows 4 (1: 14, 2 and 8: 18, 7: 20 Nov).
+        p, c = L["parts_merged"], L["caps_all_parts"]
+        self.assertEqual((p["value"], p["day"], p["today_so_far"]), (0, "2026-11-19", 1))
+        self.assertEqual([x["count"] for x in p["series"]], [1, 1, 0, 2, 0, 2, 0, 1])
+        self.assertEqual((c["value"], c["new_on_day"], c["today_so_far"], c["rows_total"]), (4, 0, 1, 8))
+        self.assertEqual([x["count"] for x in c["series"]], [0, 1, 0, 0, 0, 2, 0, 1])
+
+    def test_first_verdict_share(self):
+        # fixture: every capability already has its status in the oldest version (15 Nov): no first verdict is known
+        v = run()[1]["pace"]["leading"]["first_verdict_works_pct"]
+        self.assertIsNone(v["value"])
+        self.assertTrue(v["reason"].startswith("not measured"))
+        # add C9.2, absent on 15 Nov and Works on 18 Nov (first verdict Works); C9.1 Not built until 19 Nov, then Partial.
+        # C7.1 Partial (15) to Works (18) is not a first verdict. 2 first verdicts, 1 Works: 50%; on 19 Nov 1 verdict, 0 Works.
+        base = os.path.join(FIX, "git/capabilities_main")
+        a, b = open(os.path.join(base, "aaa111.md")).read(), open(os.path.join(base, "bbb222.md")).read()
+        b2 = b + "| C9.2 | 9 Next | Another row | M4 | Works | abc | fixture |\n"
+        c3 = b2.replace("| M4 | Not built |", "| M4 | Partial |")
+        jl = ('{"sha": "aaa111", "date": "2026-11-15T03:00:00Z"}\n{"sha": "bbb222", "date": "2026-11-18T05:00:00Z"}\n'
+              '{"sha": "ccc333", "date": "2026-11-19T05:00:00Z"}\n')
+        d = snap_with({"git/capabilities_main.jsonl": jl, "git/capabilities_main/bbb222.md": b2, "git/capabilities_main/ccc333.md": c3})
+        v = run(d)[1]["pace"]["leading"]["first_verdict_works_pct"]
+        self.assertEqual((v["value"], v["works"], v["n"], v["ids"], v["day_n"], v["day_works"]), (50, 1, 2, ["C9.1", "C9.2"], 1, 0))
+
+    def test_each_behind_an_explain_entry_with_window_and_n(self):
+        E, d = TooltipsData.data()
+        self.assertEqual((E["pace.early_band"]["n"], E["pace.early_band"]["window"]), (7, "full IST days 13 Nov to 19 Nov (7 days)"))
+        self.assertEqual(E["pace.leading_parts"]["n"], 0)
+        self.assertIn("IST day 2026-11-19", E["pace.leading_parts"]["window"])
+        self.assertEqual(E["pace.leading_caps"]["n"], 8)
+        self.assertEqual(E["pace.leading_fv"]["n"], 0)                    # no first verdict since 13 Nov: n 0, the share not measured
+        self.assertIsNone(d["pace"]["leading"]["first_verdict_works_pct"]["value"])
+        html = open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read()
+        for k in ("pace.early_band", "pace.leading_parts", "pace.leading_caps", "pace.leading_fv"):
+            self.assertIn('"' + k + '"', html)
+
+
+class WhatsNew(unittest.TestCase):
+    """G-5 (P-611): the weekly what's-new box. The fixture is taken Fri 20 Nov 12:00 IST (ISO week 2026-W47: Monday 16 Nov,
+    so amber from Mon 16 Nov 12:00 IST = 06:30 UTC, red from Tue 17 Nov 12:00 IST)."""
+    WN = "files/" + cd.REL + "/cockpit/whats-new.json"
+
+    def file(self, week="2026-W47", at="2026-11-16T10:00:00+05:30", **kw):
+        d = {"week": week, "checked_at": at, "checked_by": "Lead 55", "installed_version": "2.1.325", "newest_version": "2.1.325",
+             "new_items": [{"title": "A", "date": "2026-11-13", "source": "https://code.claude.com/docs/en/changelog", "adopt": "yes", "why": "w"},
+                           {"title": "B", "date": "2026-11-12", "source": "https://code.claude.com/docs/en/changelog", "adopt": "no", "why": "w"},
+                           {"title": "C", "date": "2026-11-09", "source": "https://code.claude.com/docs/en/changelog", "adopt": "yes", "why": "w"}],
+             "actions": [{"what": "x", "owner": "lead", "row": "G-5"}]}
+        d.update(kw)
+        return d
+
+    def wn(self, f, now):
+        s, comp = run(snap_with({} if f is None else {self.WN: f}), now=now)
+        return comp
+
+    def test_checked(self):
+        comp = self.wn(self.file(), NOW)
+        w = comp["whats_new"]
+        self.assertEqual((w["week"], w["state"], w["checked"], w["light"]["state"]), ("2026-W47", "checked", True, "green"))
+        self.assertEqual(w["adopt_yes"]["value"], 2)                       # A and C are yes; B is no
+        self.assertEqual((w["adopt_yes"]["sha"], w["adopt_yes"]["class"]), ("123456789", "parsed"))
+        self.assertEqual(len(w["items"]), 3)
+        self.assertTrue(next(i for i in comp["trust"]["invariants"] if i["name"].startswith("whats-new"))["ok"])
+
+    def test_unchecked_amber_after_monday_noon(self):
+        mon_1201 = datetime(2026, 11, 16, 6, 31, tzinfo=timezone.utc)     # Mon 16 Nov 12:01 IST
+        w = self.wn(self.file(week="2026-W46", at="2026-11-15T13:02:55+05:30"), mon_1201)["whats_new"]
+        self.assertEqual((w["state"], w["checked"], w["light"]["state"]), ("unchecked", False, "amber"))
+        self.assertIsNone(w["adopt_yes"]["value"])                         # not checked this week: no count, never 0
+        self.assertIn("the file is for 2026-W46", w["adopt_yes"]["reason"])
+        mon_1159 = datetime(2026, 11, 16, 6, 29, tzinfo=timezone.utc)     # before Monday 12:00 IST: grey, not yet due
+        self.assertEqual(self.wn(self.file(week="2026-W46", at="2026-11-15T13:02:55+05:30"), mon_1159)["whats_new"]["light"]["state"], "grey")
+
+    def test_unchecked_red_after_tuesday_noon(self):
+        w = self.wn(self.file(week="2026-W46", at="2026-11-15T13:02:55+05:30"), NOW)["whats_new"]      # Fri 20 Nov
+        self.assertEqual((w["state"], w["light"]["state"]), ("unchecked", "red"))
+        tue_1159 = datetime(2026, 11, 17, 6, 29, tzinfo=timezone.utc)
+        self.assertEqual(self.wn(self.file(week="2026-W46", at="2026-11-15T13:02:55+05:30"), tue_1159)["whats_new"]["light"]["state"], "amber")
+
+    def test_missing_reads_not_checked_never_zero(self):
+        comp = self.wn(None, NOW)                                          # the fixture has no whats-new.json
+        w = comp["whats_new"]
+        self.assertEqual((w["state"], w["checked"], w["light"]["state"]), ("missing", False, "red"))
+        self.assertIsNone(w["adopt_yes"]["value"])
+        self.assertTrue(w["adopt_yes"]["reason"].startswith("not checked"))
+        self.assertTrue(next(i for i in comp["trust"]["invariants"] if i["name"].startswith("whats-new"))["ok"])   # missing is not a broken record
+
+    def test_broken_file_breaks_the_invariant_and_is_not_checked(self):
+        bad = self.file(checked_at="2026-11-10T10:00:00+05:30",
+                        new_items=[{"title": "A", "date": "13 Nov", "source": "http://x", "adopt": "maybe", "why": "w"}])
+        comp = self.wn(bad, NOW)
+        w = comp["whats_new"]
+        self.assertEqual((w["state"], w["items"]), ("unchecked", []))
+        self.assertFalse(next(i for i in comp["trust"]["invariants"] if i["name"].startswith("whats-new"))["ok"])
+        self.assertIn("not in week 2026-W47", " ".join(w["problems"]))
+        self.assertEqual(self.wn("{not json", NOW)["whats_new"]["state"], "invalid")
+        self.assertIsNone(cd.build_explain(dict(TooltipsData.data()[1], whats_new=self.wn("{not json", NOW)["whats_new"]))["whats_new.box"]["n"])
+
+    def test_cli_schema_and_explain_with_the_committed_file(self):
+        f = jread(os.path.join(cd.P, "cockpit", "whats-new.json"))
+        self.assertEqual((f["week"], f["checked_by"]), ("2026-W46", "Lead 55"))
+        out = tempfile.mkdtemp()
+        sd = snap_with({self.WN: f})
+        r = subprocess.run([sys.executable, os.path.join(HERE, "cockpit-data.py"), "--out", os.path.join(out, "data.json"), "--from-snapshot", sd,
+                            "--offline", "--no-history-write", "--now", "2026-11-15T14:00:00+05:30"], capture_output=True, text=True, timeout=300)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        d = jread(os.path.join(out, "data.json"))
+        w = d["whats_new"]
+        self.assertEqual((w["state"], w["adopt_yes"]["value"], len(w["items"]), len(w["actions"])), ("checked", 8, 16, 3))
+        self.assertEqual(d["explain"]["whats_new.box"]["n"], 16)
+        with open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8") as f:
+            self.assertIn('"whats_new.box"', f.read())
+
+
+BROWSER_CHECK = r"""// board v61 scripted check: click-only info buttons on every tab, 375 px, axe light and dark
+const { chromium } = require('playwright');
+const fs = require('fs');
+const [,, url, axePath, shot] = process.argv;
+const axe = fs.readFileSync(axePath, 'utf8');
+const TABS = ['overview', 'caps', 'team', 'factory', 'launch', 'library', 'details'];
+const isOn = (p) => p.$eval('#tip', (e) => e.classList.contains('on'));
+(async () => {
+  const b = await chromium.launch(); const fails = []; const out = [];
+  for (const scheme of ['light', 'dark']) for (const w of [1280, 375]) {
+    const p = await b.newPage({ viewport: { width: w, height: 800 }, colorScheme: scheme });
+    await p.goto(url); await p.waitForSelector('.tabs button');
+    const tag = `${scheme} ${w}`;
+    if (await p.$('#srcbar')) fails.push(`${tag}: source bar still there`);
+    for (const t of TABS) {
+      await p.click(`.tabs button[data-tab="${t}"]`); await p.waitForTimeout(150);
+      const panel = `.tabpanel[data-panel="${t}"]`;
+      const r = await p.evaluate((panel) => {
+        const P = document.querySelector(panel), vis = (e) => e.getClientRects().length > 0;
+        const all = [...document.querySelectorAll('.ib')];
+        const marked = [...document.querySelectorAll('[data-tip],[data-info]')].filter((e) => (P.contains(e) || !e.closest('.tabpanel')) && vis(e));
+        const noBtn = marked.filter((e) => {
+          if (e.hasAttribute('data-nm') && e.parentElement.closest('[data-tip],[data-info]')) return false;
+          return !all.some((x) => (x._els || []).includes(e));
+        }).map((e) => e.outerHTML.slice(0, 90));
+        return { titles: document.querySelectorAll('#body [title], #strip [title], svg title').length,
+                 btns: P.querySelectorAll('.ib').length, noBtn, sw: document.documentElement.scrollWidth, iw: innerWidth,
+                 bad: all.filter((x) => x.tagName !== 'BUTTON' || !x.getAttribute('aria-label') || !x.hasAttribute('aria-expanded')).length };
+      }, panel);
+      out.push(`${tag} ${t}: ${r.btns} buttons`);
+      if (r.titles) fails.push(`${tag} ${t}: ${r.titles} hover titles`);
+      if (!r.btns) fails.push(`${tag} ${t}: no info button`);
+      if (r.noBtn.length) fails.push(`${tag} ${t}: ${r.noBtn.length} marks without a button: ${r.noBtn.slice(0, 3).join(' | ')}`);
+      if (r.bad) fails.push(`${tag} ${t}: ${r.bad} buttons without aria`);
+      if (r.sw > r.iw) fails.push(`${tag} ${t}: horizontal scroll ${r.sw} > ${r.iw}`);
+      // hovering and tapping the number show nothing
+      const nums = await p.$$(`${panel} [data-tip]:not(.tile):not(.kpi), ${panel} [data-info]`);
+      let num = null; for (const n of nums) if (await n.isVisible()) { num = n; break; }
+      if (num) {
+        await num.scrollIntoViewIfNeeded(); await num.hover(); await p.waitForTimeout(100);
+        if (await isOn(p)) fails.push(`${tag} ${t}: hover opened the panel`);
+        await num.click({ force: true, position: { x: 1, y: 1 } }); await p.waitForTimeout(50);
+        if (await isOn(p)) fails.push(`${tag} ${t}: tapping the number opened the panel`);
+      }
+      let btn = null; for (const x of await p.$$(`${panel} .ib`)) if (await x.isVisible()) { btn = x; break; }
+      if (!btn) { fails.push(`${tag} ${t}: no visible button`); continue; }
+      await btn.scrollIntoViewIfNeeded(); await btn.click();
+      const txt = await p.$eval('#tip', (e) => e.textContent);
+      if (!await isOn(p) || txt.length < 10) fails.push(`${tag} ${t}: click did not open the panel`);
+      if (await btn.getAttribute('aria-expanded') !== 'true') fails.push(`${tag} ${t}: aria-expanded not true`);
+      if (await p.evaluate(() => document.documentElement.scrollWidth) > w) fails.push(`${tag} ${t}: horizontal scroll with the panel open`);
+      if (scheme === 'light' && w === 375 && t === 'overview' && shot) await p.screenshot({ path: shot });
+      await p.addScriptTag({ content: axe });
+      const res = await p.evaluate(async () => (await axe.run(document, { resultTypes: ['violations'] })).violations
+        .filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id + ' x' + v.nodes.length + ' ' + v.nodes[0].target));
+      if (res.length) fails.push(`${tag} ${t}: axe ${res.join('; ')}`);
+      await btn.click(); if (await isOn(p)) fails.push(`${tag} ${t}: second click did not close`);
+      await btn.focus(); await p.keyboard.press('Enter');
+      if (!await isOn(p)) fails.push(`${tag} ${t}: Enter did not open`);
+      await p.keyboard.press('Escape');
+      if (await isOn(p)) fails.push(`${tag} ${t}: Esc did not close`);
+      if (!await btn.evaluate((x) => document.activeElement === x)) fails.push(`${tag} ${t}: focus not back on the button`);
+      await btn.click(); await p.mouse.click(w - 5, 5);
+      if (await isOn(p)) fails.push(`${tag} ${t}: click outside did not close`);
+    }
+    await p.close();
+  }
+  await b.close();
+  console.log(out.filter((x) => x.startsWith('light 1280')).join('\n'));
+  console.log(fails.length ? 'FAIL\n' + fails.join('\n') : 'OK: every tab, light and dark, 1280 and 375');
+  process.exit(fails.length ? 1 : 0);
+})();
+"""
+
+
+@unittest.skipUnless(os.environ.get("AXE_JS") and shutil.which("node"), "browser check: set AXE_JS to axe.min.js (axe-core 4.10) and have Playwright for node")
+class InfoIconsInBrowser(unittest.TestCase):
+    """Board v61 item 1 (founder 15 Nov: "an icon ... when I click on the icon, then only it should work ... on all the pages"):
+    on every tab, light and dark, 1280 and 375 px: no hover title or source bar; every marked number or block has a <button>
+    with aria-label and aria-expanded; hover and tapping the number show nothing; click opens, second click, Esc (focus back)
+    and a click outside close; no sideways scroll; axe 0 serious or critical with the panel open.
+    Run: AXE_JS=<path>/axe.min.js NODE_PATH=$(npm root -g) python3 -m pytest -q product/tools/test_cockpit_data.py -k Browser"""
+    def test_every_tab(self):
+        site = tempfile.mkdtemp()
+        shutil.copy(os.path.join(cd.P, "cockpit", "index.html"), site)
+        for now in ("2026-11-16T12:00:00+05:30", None):          # with the early band (16 Nov) and after it (20 Nov)
+            args = [sys.executable, os.path.join(HERE, "cockpit-data.py"), "--out", os.path.join(site, "data.json"),
+                    "--from-snapshot", FIX, "--offline", "--no-history-write"] + (["--now", now] if now else [])
+            self.assertEqual(subprocess.run(args, capture_output=True, timeout=300).returncode, 0)
+            js = os.path.join(site, "check.js")
+            with open(js, "w", encoding="utf-8") as f:
+                f.write(BROWSER_CHECK)
+            srv = subprocess.Popen([sys.executable, "-m", "http.server", "8762", "-d", site], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                import time
+                time.sleep(1)
+                r = subprocess.run(["node", js, "http://localhost:8762/index.html", os.environ["AXE_JS"]], capture_output=True, text=True, timeout=600)
+            finally:
+                srv.terminate()
+            self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-2000:])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -49,9 +49,11 @@ const REVIEWED: Record<string, "case" | "open"> = {
 /** C6.16 (B138): reads open to the shared guard because they have a guard of their own, each asked below.
  *  /api/link/*: an adult's own link (stand-in SI-21): a Bearer session from the link's code, x-actor refused (400),
  *  no session 401 (person-link.ts LinkOnlyGuard and PersonLinks.signed). /api/demo/inbox: the email stand-in SI-20,
- *  the demo workspace only (404 elsewhere) and never for a client persona (403). */
+ *  the demo workspace only (404 elsewhere) and never for a client persona (403). PF-19b: /api/demo/platform-inbox, the
+ *  platform's local email adapter (demo-inbox.ts), the same guard. */
 const OWN_GUARD: Record<string, "link" | "inbox"> = {
   "/api/link/me": "link", "/api/link/cases/:id/people/:subject/questionnaire": "link", "/api/demo/inbox": "inbox",
+  "/api/demo/platform-inbox": "inbox",
 };
 /** PF-4t (Lead 50 on #1775, Lead B's pattern): routes under /api/platform/ and /api/front-office/ belong to the platform
  *  guard (PF-4: a staff session, never x-actor; core.ts leaves these paths to it). They leave the configuration-read
@@ -86,7 +88,7 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   ok("QA-53: the check reads every GET route the code declares (none left unseen)", all.length === declared && declared > 40, { found: all.length, declared });
   const marked = all.filter((x) => x.mark && !x.path.startsWith("/api/runtime/") && !(x.path in OWN_GUARD && x.mark === "open")).map((x) => `${x.path} ${x.mark}`).sort();
   const reviewed = Object.entries(REVIEWED).map(([p, m]) => `${p} ${m}`).sort();
-  ok("C6.16: the reads with a guard of their own are exactly OWN_GUARD, each marked open in the code (a new one fails here until reviewed)", JSON.stringify(all.filter((x) => x.path in OWN_GUARD).map((x) => `${x.path} ${x.mark}`).sort()) === JSON.stringify(Object.keys(OWN_GUARD).map((p) => `${p} open`).sort()), all.filter((x) => x.path.startsWith("/api/link/") || x.path === "/api/demo/inbox"));
+  ok("C6.16: the reads with a guard of their own are exactly OWN_GUARD, each marked open in the code (a new one fails here until reviewed)", JSON.stringify(all.filter((x) => x.path in OWN_GUARD).map((x) => `${x.path} ${x.mark}`).sort()) === JSON.stringify(Object.keys(OWN_GUARD).map((p) => `${p} open`).sort()), all.filter((x) => x.path.startsWith("/api/link/") || x.path.startsWith("/api/demo/")));
   ok("QA-53: the reads that are not configuration reads are exactly the reviewed list (runtime aside): a new exception fails here until reviewed", JSON.stringify(marked) === JSON.stringify(reviewed), { marked, reviewed });
   ok("QA-53: every runtime route is a case read (the guard leaves case people's own routes untouched)", all.filter((x) => x.path.startsWith("/api/runtime/")).every((x) => x.mark === "case") && all.some((x) => x.path.startsWith("/api/runtime/")));
 
@@ -113,10 +115,10 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
     const name = `${DB.replace(/^xr_studio_/, "")}_firm`.slice(0, 40), port = PORT + 1;
     try {
       execFileSync("zsh", [join(import.meta.dirname, "..", "tools", "isolated.sh"), name, String(port), "start", "--ttl", "10", "STUDIO_WORKSPACE_KEY=firm"], { stdio: "ignore", timeout: 180_000 });
-      return { inbox: (await fetch(`http://localhost:${port}/api/demo/inbox?address=x%40example.com`)).status };
+      return { inbox: (await fetch(`http://localhost:${port}/api/demo/inbox?address=x%40example.com`)).status, platformInbox: (await fetch(`http://localhost:${port}/api/demo/platform-inbox?address=x%40example.com`)).status };
     } catch (e) { return { error: (e as Error).message.split("\n")[0] }; } finally { try { execFileSync("zsh", [join(import.meta.dirname, "..", "tools", "isolated.sh"), name, String(port), "stop"], { stdio: "ignore", timeout: 120_000 }); } catch { /* reported above */ } }
   })();
-  ok("C6.16 fail: the demo inbox is not found outside the demo workspace (a firm workspace answers 404)", firm.inbox === 404, firm);
+  ok("C6.16 fail: the demo inboxes (the case side's and PF-19b's platform inbox) are not found outside the demo workspace (a firm workspace answers 404)", firm.inbox === 404 && firm.platformInbox === 404, firm);
   const wrong: string[] = [];
   for (const g of guarded) {
     const path = fill(g.path) + (g.path === "/api/catalogue" || g.path === "/api/path-options" ? "?pathway=INDIVIDUAL" : g.path === "/api/structure" ? "?pathwayType=INDIVIDUAL" : "");
