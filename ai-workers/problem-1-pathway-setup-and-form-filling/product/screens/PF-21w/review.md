@@ -110,3 +110,23 @@ The audit lines (`complaint.record`, `.acknowledge`, `.reminder`) and the outbox
 **Verdict: Block.** To fix: M1, through a "Question for the tech lead" PR comment, closed by either a wider touch list or the lead's recorded deferral. Nothing else holds the label.
 
 Changes requested
+
+## Round 2 (head 172cc0da5, diff since d02865694 only, P-277)
+* **Diff:** three commits. They add `break-report.md`, this `review.md` (identical to round 1) and one label line in `tests/check_pf21w_routes.ts:168`, which closes m6. `routes.ts` and `features/platform-complaints.ts` are unchanged.
+* **Suite:** the head's test file, run on a scratch copy, gives 83 passed, 0 failed. The DW3 labels now read "on acknowledge, their own complaint → 200".
+* **M1: closed by a dated deferral.** Lead B ruled in PR comment 6892355382 (15 Nov 09:30 UTC), choosing option 1: M1 moves to row PF-21i (records rev 16.24).
+  * PF-21i's scope:
+    * an `Idempotency-Key` header, required (400 without one);
+    * `request_key` with a unique `(firm_id, request_key)`, in its own migration;
+    * the same key and body give the first 201; the same key with a different body gives 422;
+    * named tests, including two parallel posts.
+  * PF-21i is ordered before PF-21s's build and J-109. Until then no screen calls these routes.
+  * The PR body opens with the deferral line. The [M] standard stands and has its row; nothing is waived.
+* **Minors:** m6 is closed. The rest are unchanged, and Lead B gave each a route:
+  * the "sent" mail: demo data only, noted, no row;
+  * m3: added to PF-4pc's tests;
+  * the body-parser 500s: new row PF-0bp.
+
+No Blocker or Major is open.
+
+Approve 172cc0da5ddad09f3e9188130cf197e38c242f80
