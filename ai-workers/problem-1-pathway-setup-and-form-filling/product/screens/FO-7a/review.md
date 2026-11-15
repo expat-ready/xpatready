@@ -253,3 +253,96 @@ Head `35b028dae8ee889e46f3eb07f4b4620755d87967`. Scope: the tech lead's go (PR c
 **Fix list before Approve:** Major 1, with its fail tests. Minor 2 is cheap to add in the same commit. Minor 1 goes to FO-7t.
 
 Verdict: Changes needed
+
+## Round 5 (diff-only, `12b7236f9..73a93e32c`)
+Head `73a93e32c5d56c6fd5ad548801000a1cc9eb41ba`. The release holder ordered this pass: diff only, high effort, no new rules. I checked the move-list removal (`ecca4d110`), B-20 (`d62c189e9`), B-21 (`33926119a`), the merge of main (`bc4993b2e`) and the `check_pf0p_ports.ts` line (`73a93e32c`).
+* **Journey score: N/A.** The row is schema only: no screen and no route, as in round 1. In its place I ran SQL probes on my own scratch database, `xr_studio_fo7a_review5` on :54329. I applied all 93 migrations in name order and dropped the database at the end. I did not use port 4400 or `xr_studio_demo`. Cost: US$0.
+* **Commands, all exit 0:**
+  * `npx tsx tests/check_fo7a_money_schema.ts`: 123/123, including `migrate diff` empty on the empty copy and on the demo-data copy.
+  * `npx tsx tests/check_pf0p_ports.ts`: 113/113.
+  * `npx tsx tests/check_prisma_schema.ts`: 8/8.
+* Line numbers below refer to `20261115042334_fo7a_client_money_tables/migration.sql` at the head.
+
+### 1. Removal of `money_move_batch` and `money_move_line`: complete and clean
+* **The diff:** both tables are gone, along with:
+  * the enums `MoneyMoveKind` and `MoneyMoveDirection`;
+  * 5 indexes, 5 foreign keys and 3 checks;
+  * the insert-only and no-truncate triggers;
+  * `money_move_batch_write`, `money_move_line_write` and `money_move_line_not_undone` (24 functions → 21; the suite asserts 21);
+  * the back-relations `moveBatches` (settings) and `moveLines` (payment, trust entry);
+  * the 16 move tests;
+  * `transfer_date` from the "only dates" assertion; the `_minor` column count drops 11 → 10.
+* **Repo-wide search:** `git grep` at the head finds no `money_move`, `MoneyMove`, `moveLines` or `moveBatches` outside BACKLOG history rows and the FO-7a reports. The header (`:10-11`) and `client-money.prisma:8` point to FO-7mv. AG-6-73 is dropped from the source lists.
+* **Live database:** no relation, type, function, trigger, constraint or index names the money move tables. The only `%move%` objects are FO-1a's `fo_stage_move`, which is unrelated.
+* **Nothing kept depended on the move list.** No remaining trust-entry, payment or refund function reads the move tables. The round-4 review already noted that returns never read the move list. The P-603 deposit-correction rules stay in `money_trust_entry_write`.
+* **The rollback comment matches.** I ran the comment's statements as written (`:18-28`) in a transaction on the migrated scratch database:
+  * they completed without error;
+  * afterwards no `money_%` relation, no `money_%` function and no `Money%` type was left (0 / 0 / 0);
+  * the counts it names agree with the migration: 12 tables, 21 functions, 9 types.
+
+### 2. B-20 (a reused prefix prints one number twice): closed
+* **Design (`:628-685`):**
+  * When a series that has given numbers leaves a non-default prefix, the old prefix goes into `used_prefixes`, which is the database's on insert and update.
+  * Another kind taking a prefix in that list is refused (23514).
+  * Each prefix-changing write first touches the firm's `money_payment_settings` row.
+* **The break report's case, reproduced:** firm B prints `XA-0001` on an invoice. Then:
+  * the invoice series moves to `INV-` (`used_prefixes = {XA-}`);
+  * `INSERT … ('CREDIT_NOTE','XA-')` is refused (23514);
+  * `ON CONFLICT DO UPDATE SET prefix='XA-'` on a receipt series is refused (23514);
+  * a default `DR-` series renamed to `XA-` is refused (23514);
+  * writing `used_prefixes` directly (NULL, `'{}'`, or a value on insert) is refused (23514).
+* **Concurrent writers, `psql` sessions, two runs at each level:**
+
+| Race | READ COMMITTED | REPEATABLE READ |
+|---|---|---|
+| T1 moves the invoices off `Qx-` (holding 1.5 s) while T2 inserts a credit-note series `Qx-` | T2 waits on the settings row, then is refused (23514) | T2 gets 40001 at the touch |
+| T1 issues the **first** invoice under `QZ-` (0 → 1 numbers) while T2 renames the series to `INV-` | T2 waits on the series row, reads `numbers_taken = 1` and records `{QZ-}` | T2 gets 40001; a retry records `{QZ-}` |
+
+  In every case, a credit-note series `QZ-` taken afterwards is refused. Two reasons hold this together:
+  * the unique `(firm_id, prefix)` index covers the live prefixes;
+  * the defaults are reserved by `money_number_series_default_prefix_check`, so the default-prefix first use (which takes no lock) cannot collide.
+* **The settings touch is cheap.** It takes FOR NO KEY UPDATE, which does not block the FOR KEY SHARE that foreign-key checks take, and nothing else locks that row. At REPEATABLE READ, a concurrent edit of the settings row makes a prefix change fail with 40001, which is fail-safe.
+* **AG-6-44 rule 2 holds:** with no number taken, `next_number` 1 → 500 → 10, together with a prefix change to `XD-`, is accepted. After a number, a reset to 1 is refused (23514).
+* **Rule 5 holds:** a prefix change applies to the next number only, issued numbers are stored text, and a series may return to its own earlier prefix (`XA-` → `INV-` → `XA-`) without a duplicate entry in the list.
+* **The tests would catch a removal.** The `TOR-` cases at `check_fo7a_money_schema.ts:281-284` name the refusal message, so they fail without the fix. The race case alone would not always catch a removal, because the order in which the two writers run decides it; the sequential case covers that.
+
+### 3. B-21 (invisible text passes `money_text_ok`): closed as reported
+* **How the check works now (`:441-444`):** the listed invisible characters are removed, and what is left must match `[[:alnum:][:punct:]]` under `pg_c_utf8`. Under PostgreSQL 18 (Unicode 16.0), the posix "punct" class is Unicode punctuation or symbol, excluding letters.
+* **Refused:** all 21 break-report characters (the suite), plus U+2062, U+180E, U+3164, U+FFA0, U+115F, U+0080 alone, U+1D455 and U+2FFFE.
+* **Accepted (real text in many scripts):** Thai, Inuktitut syllabics, Cherokee, Hangul (precomposed and conjoining jamo), Ethiopic, Mongolian, Tifinagh, a Roman numeral (Nl), mathematical bold A, a ZWJ family emoji, a Canadian flag, keycap 1, `-`, `°` and `123`.
+* **`pg_c_utf8` is not new to main.** PF-21's migration (`20261114234500_pf21_complaints:115`) already uses it, so the PostgreSQL 16 fallback in `tools/new-machine.sh` already fails on main. That belongs to the tech lead, not this row.
+
+### 4. Merge of main and `check_pf0p_ports.ts`: correct
+* **`platform.prisma` against main** (`d52b7274e`, still main's head after `git fetch`):
+  * The only difference is the one line `moneySettings MoneyPaymentSettings?`, now under `// back-relation slot: money (FO-7a)` in `PlatformFirm`, as Lead B ruled.
+  * The old free-standing line is gone.
+  * `PlatformStaff`'s money slot stays empty.
+  * The migration stamp `20261115042334` is still later than main's newest (`20261115013000_fo13_compliance_tables`).
+* **`check_pf0p_ports.ts:803`:** I ran both the old and the new mutation against the head file, with the slot filled and with it emptied.
+  * Filled slot: the old mutation finds nothing (so the case FAILs), while the new one finds exactly one problem ("touches the slot above").
+  * Empty slot: both mutations find exactly one problem.
+  * So the new form works for a filled or an empty slot, and the case still fails when the rule is broken.
+
+### Builder's choices
+1. **`pg_c_utf8` needs PostgreSQL 17 or later: accepted.** Main already depends on it (PF-21). CI (`deploy/compose.test.yml`, `postgres:18.3`) and this machine run 18.
+2. **Text made only of non-ASCII digits is refused: accepted as a Minor.** See m2.
+3. **"A prefix is recorded only after numbers were taken under it": accepted, but the wording is not exact.** The code records an old prefix whenever the series has given any number, not only numbers under that prefix. Reproduced: `INV-` with numbers → `QM-` (prints nothing) → `QN-` gives `used_prefixes ∋ QM-`, and a credit-note series `QM-` is then refused. That over-reserves an unused prefix, which is safe and breaks neither AG-6-44 rule 2 nor rule 5. It is not a finding.
+
+### Findings
+No Blocker. No Major.
+
+**m1 (Minor, B-21 residue): two Egyptian blank letters still pass alone.**
+* `money_text_ok(U&'\+013441', 200)` and `money_text_ok(U&'\+013442', 200)` are both true. They are EGYPTIAN HIEROGLYPH FULL BLANK and HALF BLANK, letters (Lo) that render as empty space.
+* They are the only blank letters, symbols or punctuation marks I found outside the strip list. The rest of Unicode's default-ignorable set is listed or unassigned.
+* Fix, the same rule, one range: add `\U00013441-\U00013442` to the strip list at `:443`, with the two characters in the `b21` test array. It can wait for FO-7b.
+
+**m2 (Minor, builder's choice 2, more cases than listed): real text made only of digits or numbers outside ASCII is refused.** Each of these alone is false:
+* full-width `１２３`, the realistic case: a cheque `reference` typed with a Japanese IME;
+* Arabic-Indic `١٢٣` and Devanagari `१२`;
+* `½`, `²` and `①`.
+
+With any letter, ASCII digit or symbol beside them, they pass. The columns concerned include `reference` (200) and `tax_number` (40). No change is asked of this row. FO-7b can normalise input with NFKC, which turns full-width digits into ASCII, and show the field error.
+
+**Not checked:** CI on this head; the breaker's B-20/B-21 pass; Lead B's review of the area file; the tech lead's ruling on the PR size question.
+
+Verdict: Approve
