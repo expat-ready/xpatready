@@ -72,4 +72,13 @@ Read only the diff (9 files; three of them are this review, the journey report a
 Size after round 2: about 1,230 lines in all, but the extra lines are records (+130) and tests (+90), and the code grew by about 90 lines. My round 1 view on size stands.
 Journey score unchanged at 7/10 (not re-walked; this round reviewed the diff only). Feedback (J9) and recovery would now score 1 each, which would make it 8/10 if re-walked.
 
-Verdict: Approve 373f50ec1fe89e45d9990c0c13c8e30c55ff1ea5
+Round 2 outcome: approve 373f50ec1 (superseded by Round 3 below).
+
+## Round 3 — diff only, `a38262de8..fcfd5524bb6b9349d265fc5afdaab1df27ae14eb` (15 Nov 2026)
+`373f50ec1..a38262de8` changes only this review (records). `a38262de8..fcfd5524b` changes one file: `api/src/platform/firms/signup.ts` (+4 −6). The local `at()` helper is removed, and the four `AuditPort.record` calls in verify's transaction (`signup.ts:179-186`) now name their entity literally. That is what CI shard 8's `check_case_feed.ts` sweep needs.
+
+I compared each call with the old helper line by line. For all four calls (`firm.created`/`platform_firm`, `platform.staff.owner_created`/`platform_staff`, `platform.terms.accepted`/`platform_terms_acceptance`, `platform.subscription.created`/`platform_subscription`), the firmId, actor, action, entity, entityKey, summary and detail are the same. They stay in the same order inside the same transaction, and the `module_event` row is still last. No behaviour change.
+
+Re-run at `fcfd5524b`: `tests/check_pf5_signup_billing.ts` **53 passed, 0 failed**; `tests/check_case_feed.ts` **39/39 passed**. Round 2's open Minors (m-r2a, m-r2b) and notes are unchanged and still do not block.
+
+Verdict: Approve fcfd5524bb6b9349d265fc5afdaab1df27ae14eb
