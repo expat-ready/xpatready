@@ -322,7 +322,7 @@ function addIcons(root){
     var b=mkBtn(ibLabel(el));b._els=[el];var tag=el.tagName;
     if(tag==="TR"&&el.lastElementChild)el.lastElementChild.appendChild(b);
     else if(tag==="TABLE"){var th=el.querySelector("th");(th||el).appendChild(b);}
-    else if(tag==="LI")(el.lastElementChild||el).appendChild(b);
+    else if(tag==="LI"){var lt=el.lastElementChild||el;(lt.firstElementChild&&lt.firstElementChild.tagName==="DIV"?lt.firstElementChild:lt).appendChild(b);}
     else if(el.matches(BLOCKIB)){el.classList.add("hasib");el.appendChild(b);}
     else if(el.matches(".bar")||tag==="svg")el.insertAdjacentElement("afterend",b);
     else if(tag==="DIV"||tag==="P"||tag==="H4")el.appendChild(b);
@@ -424,15 +424,15 @@ function rPace(){
 /* board v61 (founder A78, P-609): the early band until the measured forecast, then three daily leading numbers */
 function rEarly(B){
   var P=D.pace,E=P.early_band,L=P.leading,h="";
-  if(E&&E.value)h+='<p class="line">Early estimate, <b>low confidence</b>: all Release 1 built between <span'+T("pace.early_band")+'>'+B(dshort(E.value.low))+' and '+B(dshort(E.value.high))+'</span> at the pace measured so far'+(E.committed?' (committed: '+esc(short(E.committed))+')':'')+'. The measured forecast replaces it after 5 days of history.</p>';
+  if(E&&E.value)h+='<p class="line">Early estimate, <strong>low confidence</strong>: all Release 1 built between <span'+T("pace.early_band")+'>'+B(dshort(E.value.low))+' and '+B(dshort(E.value.high))+'</span> at the pace measured so far'+(E.committed?' (committed: '+esc(short(E.committed))+')':'')+'. The measured forecast replaces it after 5 days of history.</p>';
   else if(E&&!/^replaced/.test(E.reason||""))h+='<p class="line small">Early estimate: '+nm(E.reason,"pace.early_band")+'.</p>';
   if(!L)return h;
   var lp=L.parts_merged,lc=L.caps_all_parts,lv=L.first_verdict_works_pct;
-  var nv=function(x,suf,key){return x.value==null?nm(x.reason,key):esc(x.value)+(suf||"");};
+  var nv=function(x,suf){return x.value==null?'<span style="font-size:13px">'+nm(x.reason)+'</span>':esc(x.value)+(suf||"");};
   h+='<div class="kpis" style="margin:6px 0">'+
-    kpi("Parts merged",nv(lp,"","pace.leading_parts"),lp.day?"on "+esc(short(lp.day))+" · today so far "+esc(lp.today_so_far):"today so far "+esc(lp.today_so_far),"","","pace.leading_parts")+
-    kpi("Capabilities with all parts merged",nv(lc,"","pace.leading_caps")+'<span class="muted" style="font-size:13px"> / '+esc(lc.rows_total)+'</span>',(lc.day?"+"+esc(lc.new_on_day)+" on "+esc(short(lc.day))+" · ":"")+"+"+esc(lc.today_so_far)+" today","","","pace.leading_caps")+
-    kpi("Works at the first qa verdict",nv(lv,"%","pace.leading_fv"),esc(lv.works)+" of "+esc(lv.n)+" first verdicts since 13 Nov","","","pace.leading_fv")+'</div>';
+    kpi("Parts merged",nv(lp,""),lp.day?"on "+esc(short(lp.day))+" · today so far "+esc(lp.today_so_far):"today so far "+esc(lp.today_so_far),"","","pace.leading_parts")+
+    kpi("Capabilities with all parts merged",nv(lc,"")+'<span class="muted" style="font-size:13px"> / '+esc(lc.rows_total)+'</span>',(lc.day?"+"+esc(lc.new_on_day)+" on "+esc(short(lc.day))+" · ":"")+"+"+esc(lc.today_so_far)+" today","","","pace.leading_caps")+
+    kpi("Works at the first qa verdict",nv(lv,"%"),esc(lv.works)+" of "+esc(lv.n)+" first verdicts since 13 Nov","","","pace.leading_fv")+'</div>';
   return h;
 }
 /* P-602 (4): delivery per use over the last 24 h; the divisions use deliveries over the same hours as the readings.
