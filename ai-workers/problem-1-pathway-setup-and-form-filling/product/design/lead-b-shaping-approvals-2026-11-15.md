@@ -121,3 +121,40 @@ Lead B reviews each lane's next commits as they land (watch: `lead-b-tools/watch
 | PF-F2 | approved with amendments 4 and 6 | — |
 | PF-F3 | approved | **Q6 ruled: the managed scanner first** (Lead B, P-566 (3)). Step 0 checks AWS's managed malware scanning for S3 in `ca-central-1` at source (page and date). If it is available there, it is the real adapter: no daemon to run, and no GPL licence question. If it is not, the ClamAV container is used as the row says. Either way the state stays `SCAN_PENDING` (never `CLEAN`) on any error. |
 | CS-D1 … CS-D5 | release holder's | Joins checked: CS-D1 moves `mediaOf` onto PF-F4's `detect`, and the documents go onto PF-F2 and PF-F3's rail, so CS-D1 waits on PF-F2 and PF-F3; CS-D4 per finding 1. |
+
+## Batch 3 (15 Nov 09:2x IST): S2 at 93db01193 and S3 at 651fa4ce2 (both lanes finished; their question lists are written)
+
+### Corrections to batches 1 and 2 (founder confirmations)
+
+Three of Lead B's rulings above depart from the team's requirements, so under P-566 they are **Lead B's recommendations, confirmed by the founder** rather than rulings. The lanes' question lists mark them "founder":
+* **S3 Q4 (AG-6-40):** the government-fee line is typed in R1; the one-click line goes to an X row.
+* **S3 Q7 (SA-8-37, SA-8-49):** plain ZIP refused in R1.
+* **S2 Q5 (BR-16's default "open"):** "Review before sharing" defaults to on.
+
+The rows stay approved as drafted. If the founder says no to one of them, Lead B amends that row.
+
+### Lead B's rows
+
+| Row | Verdict | Amendment or note |
+|---|---|---|
+| TK-1 to TK-6 (tasks) | approved, **renamed PF-29a to PF-29f** | S2's Q6 is ruled: **tasks are a platform service**, owned by Lead B's platform lane. The case side registers its hosts (TK-4's case half is the release holder's line) and keeps `CaseTask`. The lane proposed PF-27a…f, but S1 already uses PF-27 (firm lock), so the ids are **PF-29a (TK-1), PF-29b (TK-2), PF-29c (TK-3), PF-29d (TK-4), PF-29e (TK-5), PF-29f (TK-6)**. PF-29e waits on PF-4b (deactivation). TK-1's migration test follows rev 16.7. |
+| FD-1, FD-3 (find) | approved, **renamed PF-30a (FD-1) and PF-30s (FD-3)** | A platform door: FD-2 (the case side's finder, the release holder's) becomes **CS-30c**. The front office's finder in FD-1 reads front-office tables only. |
+| PF-R1 | approved | **S3's Q8 is ruled yes** (Lead B, P-566 (3)): live reads under a CI read budget at about 100 firms (P-562), with rollups added only when a metric passes its budget, and four seeded roles in R1. |
+| PF-R2fo, PF-R2cm | approved | — |
+| PF-R3 | approved | — |
+| PF-21rs (amendment) | approved | The sharper Done when replaces "the concept's journeys" (P-592). |
+
+### Release holder's rows (joins checked)
+* FD-2 (now CS-30c), PF-R2cs, CS-P1 and TK-4's case-side registration all register through platform ports (`FindPort`, `MetricRegistry`, `ErasurePort`/`LegalHoldPort`, `TaskPort`). The joins are right. CS-P1 closes the gap Lead B rev 15 left (the case side's eraser), so Lead B agrees it is needed.
+* S3 Q9 (PDF.js for CS-D2) and Q10 (keep-period reminders only, no automatic deletion) are case-side calls. Lead B agrees with both recommendations.
+
+### S2's other questions
+* **Q4, the badge rule: ruled "best outcome wins, naming its program"** (Lead B, P-566 (3)): Likely > Possibly (facts named) > Not eligible, with "Not assessed" when there is none. The badge says which program gave it ("Likely: FSW"), so it never overstates. Each program's full result is one click away.
+* **Q7, calendar outside clocks: agreed.** Register both apps in test mode now, and file Google's verification the day FO-3s2's PR is up. The founder's browser is needed (P-580).
+* **Q8, calendar libraries: agreed in principle.** Node's `fetch` plus one certified OAuth client for both providers, decided at the STANDARDS §1 gate in FO-3s2's PR.
+* **Q1 (LMIA timing), Q2 (which five provincial streams), Q3 (assessment-only releases):** configurator and case-side matters, so they are the release holder's. Q1 and Q2 go to the founder as the lane says.
+
+### Q11 and the X additions
+Agreed: the proposed X rows are added in the same change that copies these rows (P-582). That covers S2's X-20 widening, "Task extras" and "Assessment extras", and S3's §7.
+
+**All three lanes are reviewed.** S1's last batch (PF-18ns, PF-19m*, PF-4p*, PF-23w) is still to come.
