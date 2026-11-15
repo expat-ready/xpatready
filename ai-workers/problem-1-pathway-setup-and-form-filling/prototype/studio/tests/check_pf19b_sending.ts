@@ -153,7 +153,7 @@ try {
     await tx((t) => messages.send(t, { firmId: firmB, channel: "EMAIL", class: "TRANSACTIONAL", address: x7, content: { templateKey: "pf19b.hello", values: { name: "x" } }, idempotencyKey: uuid() })).then(() => false, (e: Error) => /no email template/.test(e.message)));
 
   // ------------------------------------------------------------------------------------------- DW8 the case side's inbox
-  ok("DW8: this row never writes demo_message (the case side's link emails stay as they are; tests/check_c616_person_link* run unchanged)", demoMessages() === demoBefore, [demoBefore, demoMessages()]);
+  ok("DW8: this row never writes demo_message (the case side's link emails stay as they are; its case-side suites check_c616_privacy and check_forms_qa53 run unchanged apart from listing the new route)", demoMessages() === demoBefore, [demoBefore, demoMessages()]);
   ok("DW8 fail: send refuses a bare client in place of the caller's transaction (no row written outside a transaction)",
     await messages.send(db as never, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: box("dw8"), content: words, idempotencyKey: uuid() }).then(() => false, (e: Error) => e instanceof TypeError));
 
@@ -173,6 +173,20 @@ try {
     && await refusedSend({ content: { templateKey: "pf19b.hello", values: { name: "n".repeat(300) } } }, /over 200/)
     && await refusedSend({ attachments: [fileKeyOf(firmA, qm1.outboxId)] }, /not a file of this firm/)
     && await refusedSend({ firmId: uuid() }, /not a platform firm/));
+
+  // ------------------------------------------------------------------------------------------- review m2: the locks
+  const keyC = uuid(), par = await Promise.all(Array.from({ length: 8 }, () => tx((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: box("par"), content: words, idempotencyKey: keyC }))));
+  ok("review m2: 8 parallel sends with one key → one row, the other 7 answer it as repeated (the advisory lock)",
+    new Set(par.map((r) => r.outboxId)).size === 1 && par.filter((r) => r.repeated).length === 7 && (await db.msgOutbox.count({ where: { idempotencyKey: keyC } })) === 1, par);
+  const runs = await Promise.all(Array.from({ length: 6 }, () => messages.deliver(firmA, par[0].outboxId)));
+  ok("review m2: 6 workers on one row at once → one send, one event (the row lock)",
+    runs.filter((r) => r === "sent").length === 1 && (await db.msgEvent.count({ where: { outboxId: par[0].outboxId } })) === 1, runs);
+  sql(`update platform_firm set status = 'TRIAL' where id = '${firmB}'`); sql(`update msg_send_counter set sent = 49 where firm_id = '${firmB}' and day = '${day}'`);
+  const race = await Promise.all(Array.from({ length: 5 }, () => tx((t) => messages.send(t, { firmId: firmB, channel: "EMAIL", class: "TRANSACTIONAL", address: box("race"), content: words, idempotencyKey: uuid() }))));
+  const raced = await Promise.all(race.map((r) => messages.deliver(firmB, r.outboxId)));
+  ok("review m2: 5 workers racing for a trial firm's last place of the day → 1 sent, 4 held, the counter exactly 50 (the counter lock)",
+    raced.filter((r) => r === "sent").length === 1 && raced.filter((r) => r === "held").length === 4 && sql(`select sent from msg_send_counter where firm_id='${firmB}' and day='${day}'`) === "50", raced);
+  sql(`update platform_firm set status = 'ACTIVE' where id = '${firmB}'`);
 
   // ------------------------------------------------------------------------------------------- PF-0c contract
   await runContract(messagePortContract, "Messages", () => ({
