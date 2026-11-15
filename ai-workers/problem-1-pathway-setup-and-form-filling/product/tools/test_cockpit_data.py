@@ -916,6 +916,7 @@ class TopNumbers(unittest.TestCase):
         self.assertEqual(cd.source_ids("Source: AG-4-16, AG-4-16; AG-4-17/AG-4-18 (rev (2) AG-5-10) MVP-CHECKLIST.md, P-1."),
                          ["AG-4-16", "AG-4-17", "AG-4-18", "P-1"])          # once each; "/" splits; nested brackets gone; a file name is no id
         self.assertEqual(cd.source_ids("| a · Source: AG-1-1 · waits on: PF-2 |"), ["AG-1-1"])   # the field ends at the next "·"
+        self.assertEqual(cd.source_ids("Source: E-signature research, a P-decision id, AG-2-8a, AG05-D4"), ["AG-2-8a", "AG05-D4"])
         self.assertEqual([cd.req_section(x) for x in ("AG-4-16", "SA-11-25", "SA11-D8", "P-574", "NFR5-14")], ["AG-4", "SA-11", "SA11", "P", "NFR5"])
         bl = cd.Snap(FIX).file("BACKLOG.md").replace("**Row PF-1:** a fixture row", "**Row PF-1:** a fixture row · Source: AG-4-16, SA-11-25; P-574") \
             .replace("**Row PF-3:** a fixture row", "**Row PF-3:** a fixture row · Source: AG-4-17, AG-4-16 (see AG-9-9)")
@@ -937,8 +938,10 @@ class TopNumbers(unittest.TestCase):
         self.assertEqual(it["state"], "green")
         self.assertTrue(it["detail"].endswith("; rules caught today: none"))
         cm = jread(os.path.join(FIX, "github/issue_comments_today.json"))
-        cm["comments"].append({"id": 9004, "pr": 116, "created_at": "2026-11-19T18:30:00Z", "head": "**Label guard:** `review: approved` removed."})
-        cm["comments"].append({"id": 9005, "pr": 118, "created_at": "2026-11-20T06:31:00Z", "head": "**Label guard:** after taken_at"})
+        cm["comments"].append({"id": 9004, "pr": 116, "created_at": "2026-11-19T18:30:00Z", "bot": True, "head": "**Label guard:** `review: approved` removed."})
+        cm["comments"].append({"id": 9006, "pr": 118, "created_at": "2026-11-20T02:00:00Z", "bot": False,
+                               "head": "**Label guard:** a person typing the guard's words"})   # not the guard: never counted
+        cm["comments"].append({"id": 9005, "pr": 118, "created_at": "2026-11-20T06:31:00Z", "bot": True, "head": "**Label guard:** after taken_at"})
         ci = jread(os.path.join(FIX, "github/ci_failed_runs_today.json"))
         ci["runs"] += [{"id": 502, "attempt": 2, "created_at": "2026-11-20T03:00:00Z", "head_branch": "claude/fo-7", "prs": [116],
                         "failed_steps": [{"job": "ci", "step": "notes check 1 of 2, rules files (check-docs.sh)"}]},
@@ -974,12 +977,25 @@ class TopNumbers(unittest.TestCase):
         self.assertEqual(it["state"], "green")                                  # a Lead-reported gap is said, not lit
         self.assertIn("(push guard refusals: not reported: Lead input has no push_guard_refusals)", it["detail"])
 
+    def test_rest_fallback_branches(self):
+        act = [{"ref": "refs/heads/claude/pf-9", "activity_type": "branch_creation", "after": "a1", "timestamp": "2026-11-20T04:30:00Z"},
+               {"ref": "refs/heads/claude/fo-1", "activity_type": "push", "after": "b1", "timestamp": "2026-11-20T03:00:00Z"},
+               {"ref": "refs/heads/claude/fo-1", "activity_type": "force_push", "after": "b2", "timestamp": "2026-11-20T05:00:00+00:00"},
+               {"ref": "refs/heads/claude/gone", "activity_type": "push", "after": "c1", "timestamp": "2026-11-20T05:00:00Z"},
+               {"ref": "refs/heads/claude/old", "activity_type": "push", "after": "d1", "timestamp": "2026-11-19T05:00:00Z"},
+               {"ref": "refs/heads/claude/fo-7", "activity_type": "branch_deletion", "after": "0", "timestamp": "2026-11-20T05:00:00Z"},
+               {"ref": "refs/tags/v1", "activity_type": "push", "after": "e1", "timestamp": "2026-11-20T05:00:00Z"}]
+        got = cd.branches_from_activity(act, {"claude/pf-9", "claude/fo-1", "claude/old", "claude/fo-7"}, NOW - timedelta(hours=24))
+        # a first push (branch_creation) counts; the newest push per branch; deleted, old, deletion events and tags do not
+        self.assertEqual(sorted((x["name"], x["sha"]) for x in got), [("claude/fo-1", "b2"), ("claude/pf-9", "a1")])
+
     def test_reconcile_checks_the_new_counts(self):
         rec = os.path.join(HERE, "cockpit-reconcile.py")
         ck = cd.Snap(FIX).file("MVP-CHECKLIST.md").replace("| BK-1 to BK-3 | Merged |", "| BK-1 to BK-4 | qa Works |")
         bl = cd.Snap(FIX).file("BACKLOG.md").replace("**Row BK-2:** a fixture row", "**Row BK-2:** a fixture row · Source: AG-5-1 (x)")
         cm = jread(os.path.join(FIX, "github/issue_comments_today.json"))
-        cm["comments"].append({"id": 9004, "pr": 116, "created_at": "2026-11-19T18:30:00Z", "head": "**Label guard:** removed"})
+        cm["comments"].append({"id": 9004, "pr": 116, "created_at": "2026-11-19T18:30:00Z", "bot": True, "head": "**Label guard:** removed"})
+        cm["comments"].append({"id": 9006, "pr": 118, "created_at": "2026-11-20T02:00:00Z", "bot": False, "head": "**Label guard:** typed"})
         ci = jread(os.path.join(FIX, "github/ci_failed_runs_today.json"))
         ci["runs"].append({"id": 502, "attempt": 1, "created_at": "2026-11-20T03:00:00Z", "head_branch": "b", "prs": [1],
                            "failed_steps": [{"job": "ci", "step": "notes check 1 of 2, rules files (check-docs.sh)"}]})

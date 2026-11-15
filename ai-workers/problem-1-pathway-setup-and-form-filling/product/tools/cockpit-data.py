@@ -539,7 +539,7 @@ def parse_backlog(text):
 TARGET_WORKS_PER_DAY = 10                      # founder A68 (15 Nov): 10 capabilities at qa Works a day
 SOURCE_RE = re.compile(r"Source:([^|·]*)")        # a BACKLOG row's " · Source: …" field, to the next "·" or the cell's end (P-595)
 SOURCE_TOK = re.compile(r"[A-Za-z0-9][A-Za-z0-9.\-]*")     # a token: letters, digits, "." and "-" ("/" and spaces split tokens)
-SOURCE_ID = re.compile(r"[A-Z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+")   # a token (trailing "." and "-" cut) that is an id: AG-4-16, SA11-D8, P-574
+SOURCE_ID = re.compile(r"[A-Z][A-Za-z0-9]*(?:-[A-Z0-9][A-Za-z0-9]*)+")   # an id token: AG-4-16, SA11-D8, AG-2-8a, P-574 (not P-decision)
 LABEL_GUARD_HEAD = "**Label guard:**"            # tools/label-guard.sh and label-guard.yml start every removal comment so
 RULES_STEP = re.compile(r"check-docs", re.I)       # ci.yml steps whose name names tools/check-docs.sh (the notes run's "notes check 1 of 2 …")
 BUNDLE_STEP = re.compile(r"^rules files", re.I)     # shard 1's "rules files, decision impact, …": check-docs.sh plus 16 other commands
@@ -608,6 +608,18 @@ def records_lag(branch_ref, main_ref):
     n = git_out("rev-list", "--count", f"{main_ref}..{branch_ref}")
     old = git_out("log", "--reverse", "--format=%cI", f"{main_ref}..{branch_ref}")
     return (int(n.strip()) if n else None), ((old or "").splitlines() or [None])[0]
+
+
+def branches_from_activity(activity, alive, since):
+    """REST fallback for branches_recent.json: the newest push (push, force push, or a branch's first push, branch_creation)
+    per branch that still exists, pushed at or after since; the time is the push itself."""
+    newest = {}
+    for a in activity:
+        if a.get("activity_type") in ("push", "force_push", "branch_creation") and (a.get("ref") or "").startswith("refs/heads/"):
+            n = a["ref"][len("refs/heads/"):]
+            if n in alive and (n not in newest or parse_iso(a["timestamp"]) > parse_iso(newest[n]["pushed_at"])):
+                newest[n] = {"name": n, "sha": a["after"], "pushed_at": a["timestamp"]}
+    return [x for x in newest.values() if parse_iso(x["pushed_at"]) >= since]
 
 
 def take_snapshot(snap, gh, cache, lead_input, appcode_max):
@@ -744,16 +756,11 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
                   for x in refs if x.get("target") and parse_iso(x["target"]["committedDate"]) >= day_ago]
     except RuntimeError as e:
         # REST fallback (cloud sessions refuse GraphQL): the repository's push activity of the last day, newest push per branch,
-        # kept when the branch still exists. Push time here is the real push time, not the head commit's committed date.
+        # kept when the branch still exists (a branch's first push is "branch_creation"). Push time here is the real push time,
+        # not the head commit's committed date.
         ERRORS.append(f"branches: GraphQL refused ({str(e)[:80]}); REST push activity used (push time = the push itself)")
-        alive = {b["name"] for b in gh.get_pages("/branches?per_page=100")}
-        newest = {}
-        for a in gh.get_pages("/activity?time_period=day&per_page=100"):
-            if a.get("activity_type") in ("push", "force_push") and a["ref"].startswith("refs/heads/"):
-                n = a["ref"][len("refs/heads/"):]
-                if n in alive and (n not in newest or a["timestamp"] > newest[n]["pushed_at"]):
-                    newest[n] = {"name": n, "sha": a["after"], "pushed_at": a["timestamp"]}
-        recent = [x for x in newest.values() if parse_iso(x["pushed_at"]) >= day_ago]
+        recent = branches_from_activity(gh.get_pages("/activity?time_period=day&per_page=100"),
+                                        {b["name"] for b in gh.get_pages("/branches?per_page=100")}, day_ago)
     wj("github/branches_recent.json", recent)
     # extra: open PRs' head commit time, CI rollup and the time `review: approved` was put on (§2 waits)
     qo = """query($o:String!,$r:String!){repository(owner:$o,name:$r){pullRequests(states:OPEN,first:100){nodes{number
@@ -800,7 +807,7 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
         while pg <= 30:
             got = gh.get(f"/issues/comments?since={d0}&sort=created&direction=asc&per_page=100&page={pg}")
             out += [{"id": c["id"], "pr": int(c["issue_url"].rsplit("/", 1)[1]), "created_at": c["created_at"],
-                     "head": (c.get("body") or "")[:60]} for c in got]
+                     "bot": (c.get("user") or {}).get("type") == "Bot", "head": (c.get("body") or "")[:60]} for c in got]
             if len(got) < 100:
                 return out
             pg += 1
@@ -1466,7 +1473,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     lanes = [b for b in branches if is_session_branch(b["name"]) and not b["name"].startswith(("lead/", "lead-b-"))      # §11 R8
              and cutoff - timedelta(minutes=LANE_WINDOW_MIN) <= parse_iso(b["pushed_at"]) <= cutoff]   # frozen snapshot (P-596): a push after taken_at belongs to the next refresh, as in cockpit-reconcile.py
     Lw = num(len(lanes), f"branches with a push in the last {LANE_WINDOW_MIN} min, not main, the merge queue or the Leads' records branches "
-             f"(lead/*, lead-b-*); {gh_src} branches_recent.json (push time = head commit time)", "measured", L, names=[b["name"] for b in lanes])
+             f"(lead/*, lead-b-*); {gh_src} branches_recent.json (push time = head commit time, or the push itself under the REST fallback)", "measured", L, names=[b["name"] for b in lanes])
     # R1b: ready rows treat any non-records merged PR (app code or not) as merged
     merged_any = set(change_at)
     for p in sorted(merged, key=lambda p: p["merged_at"]):
@@ -1653,8 +1660,8 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     in_day = lambda iso: iso is not None and d_lo <= parse_iso(iso) <= d_hi
     cj = snap.j("github/issue_comments_today.json")
     lg = sorted({c["id"]: c for c in (cj or {}).get("comments", []) if (c.get("head") or "").startswith(LABEL_GUARD_HEAD)
-                 and in_day(c["created_at"])}.values(), key=lambda c: c["created_at"])
-    lg_n = num(None if cj is None else len(lg), f"PR comments starting \"{LABEL_GUARD_HEAD}\" (a review: approved label removed) "
+                 and c.get("bot") is True and in_day(c["created_at"])}.values(), key=lambda c: c["created_at"])
+    lg_n = num(None if cj is None else len(lg), f"PR comments by a bot account (the guard's token) starting \"{LABEL_GUARD_HEAD}\" (a review: approved label removed) "
                f"from 00:00 IST to taken_at; {gh_src} issue_comments_today.json", "measured", L,
                "not measured: the PR comments of today were not read", prs=[c["pr"] for c in lg])
     rj = snap.j("github/ci_failed_runs_today.json")

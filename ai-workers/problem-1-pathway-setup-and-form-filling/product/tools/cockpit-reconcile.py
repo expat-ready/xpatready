@@ -964,7 +964,7 @@ def compute(snap):
                 while prev != seg:
                     prev, seg = seg, re.sub(r"\([^()]*\)", " ", seg)
                 for tok in re.findall(r"[A-Za-z0-9][A-Za-z0-9.\-]*", seg):
-                    if re.fullmatch(r"[A-Z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+", tok.rstrip(".-")):
+                    if re.fullmatch(r"[A-Z][A-Za-z0-9]*(?:-[A-Z0-9][A-Za-z0-9]*)+", tok.rstrip(".-")):
                         return True
         return False
     if ck_text is None or bl_text is None:
@@ -984,7 +984,8 @@ def compute(snap):
                 and parse_ts(x["created_at"]) <= now]
     lgc = day_items("github/issue_comments_today.json", "comments")
     N["label_guard_removals_today"] = num(None, "not measured: no comments file") if lgc is None else \
-        num(len({c["id"] for c in lgc if (c.get("head") or "").startswith("**Label guard:**")}), "label guard comments today")
+        num(len({c["id"] for c in lgc if c.get("bot") is True and (c.get("head") or "").startswith("**Label guard:**")}),
+            "label guard comments by a bot account today")
     cir = day_items("github/ci_failed_runs_today.json", "runs")
 
     def failed_runs(test):
