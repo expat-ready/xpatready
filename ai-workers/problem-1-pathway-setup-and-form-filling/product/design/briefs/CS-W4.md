@@ -9,11 +9,11 @@ Drafted 16 Nov 02:0x IST by the case-side shaping lane from BACKLOG row CS-W4 (l
   * At least the demo reset (`demo.ts`) writes configuration and case rows **in one transaction**. In all, 14 of the 56 also reach case tables by the CS-W3 measure, which over-counts.
   * The platform's own audit code creates a `Workspace` row (`api/src/platform/audit/audit-event.ts`, `platform/identity/audit.ts`), and so does `core.ts`'s `Workspace.create`.
 
-  **Question for the tech lead:** which way do configuration writes reach the configuration role?
+  **Ruled by Lead 61 (#1872 comment 6900882410, item 12): option (b)**, `SET LOCAL ROLE` inside PF-12's wrapper, not a second client. The Lead reads that migration and the wrapper before the label (P-423). The two options as weighed:
   * (a) A second provider `ConfigDb` connecting as the configuration role. Real separation, but it touches the injection of each of the 56 files' services, and it cannot share a transaction with case writes (two connections), so the mixed files need splitting or their atomicity is lost.
   * (b) `SET LOCAL ROLE` to the configuration role inside PF-12's wrapper when the request is a configuration write by a configuration person (or a Sample loader). One place, and transactions stay whole. But the app role must be a member of the configuration role, so it guards against mistakes, not against a taken-over app.
 
-  **Recommended:** (b) now (part 2: one migration with the role and grants, the wrapper hook, the loaders and the platform audit's `Workspace` write, about 400 lines with tests); (a) with real configuration sign-in (P-585 (3)), as its own row sized then.
+  **Chosen:** (b) (part 2: one migration with the role and grants, the wrapper hook, the loaders and the platform audit's `Workspace` write, about 400 lines with tests); (a) with real configuration sign-in (P-585 (3)), as its own row sized then.
 * **The gate cannot use name prefixes.** PF-12's missing-policy check works by prefix (`platform_*`, `fo_*`, `money_*`, `msg_*`, `auto_*`, `plat_complaint*`). Case-side tables have none (`runtime_case`, `party`, `filing`, …). So the case-side twin reads the **case-side area files** (`cases`, `answers`, `filings`, `review`, `submission`, `evidence`, `links`, `extension`, `case-notes`, and `case-search` / `case-corporate` when they exist). It requires each model to be either firm-owned with a forced policy, or on a named list: the two exceptions (P-588 (5)) plus the platform-wide `Route` and `Workspace`. **It also fails when a new schema file appears that is in neither PF-12's prefixes nor this file list**, so no file is left unclassified.
 * **`AuditEvent` is mixed** (contract §2.7) and AUD-1a moves it to `audit.prisma`. Its policy (a firm's lines plus null-firm configuration lines readable by the configurator) belongs to the audit rows, not here. It is listed in the gate as "audit's, policy by AUD-1".
 * **The MVP checklist's C2 says "Not started (no row)".** The rows are CS-W1 to CS-W4: a records line for the release Lead (`MVP-CHECKLIST.md:209`), not this builder's.
@@ -36,7 +36,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime C
 * **Part 2, the write wall on the platform-wide tables** (option (b), about 400 lines; option (a) would be its own row):
   * the configuration role (owner of nothing, `SELECT`/`INSERT`/`UPDATE`/`DELETE` on platform-wide tables only);
   * `REVOKE INSERT, UPDATE, DELETE` on those tables from the app role;
-  * configuration writes through the way the question above settles (recommended (b): `SET LOCAL ROLE` in PF-12's wrapper for a configuration person's write or a Sample loader, never for a case-side route);
+  * configuration writes through option (b), as ruled: inside the one transaction, PF-12's wrapper runs `SET LOCAL ROLE <configuration role>` just before a configuration person's write (or a Sample loader's) and `RESET ROLE` right after it, so the transaction's case statements run as the app role and nothing outlives the transaction. Never for a case-side route. A test shows `current_user` back on the app role after the write, within the same transaction;
   * the demo reset and the Sample loaders, which write configuration, through the same way;
   * every use of the configuration role audited, as PF-12's bypass role is.
 * **Named test cases**, file `tests/check_csw4_walls.ts`, a pass and a fail each:
@@ -62,7 +62,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime C
 * `start.sh` and the CI workflow are shared with PF-12; one line each.
 
 **Contract gap (for the PR body):**
-* Contract §1 rule 1's configuration role has no named mechanism (the question above).
+* Contract §1 rule 1's configuration role had no named mechanism: **resolved** as option (b), `SET LOCAL ROLE` inside PF-12's wrapper (Lead 61, comment 6900882410 on #1872); contract v0.2 should record it.
 * PF-12's prefix-based gate does not see case-side tables; the case side's twin closes the gap by file list.
 * `AuditEvent`'s mixed policy is unowned until AUD-1.
 
