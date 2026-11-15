@@ -5,7 +5,7 @@
 #   bash product/tools/check-guards.sh [--mutate]
 set -u
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
-TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-rule-register.sh"
+TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-rule-register.sh check-g4-rules.sh"
 bad=0
 for t in $TESTS; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
   [ $r = 0 ] || { bad=1; grep '^FAIL' "${TMPDIR:-/tmp}/guard-$$.log" | sed 's/^/      /'; }; done
@@ -34,15 +34,29 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 10|product/tools/check-docs.sh|s/-gt 3 \]/-gt 999 ]/|check-rules-lag.sh
 11 field|product/tools/check-docs.sh|s/\^((hook.CI.script): \[\^ \].prose( .\$))/.*/|check-rule-register.sh
 11 table end|product/tools/check-docs.sh|s/{ t = 0 }/{ }/|check-rule-register.sh
-11 size|product/tools/check-docs.sh|s/-gt 25600 \]/-gt 9999999 ]/|check-rule-register.sh'
+11 size|product/tools/check-docs.sh|s/-gt 25600 \]/-gt 9999999 ]/|check-rule-register.sh
+G4-1|product/tools/pr-open-guard.sh|s/^echo "Push to .*/exit 0/|check-g4-rules.sh
+G4-1 hook|../../.githooks/pre-push|/pr-open-guard.sh/d|check-g4-rules.sh
+G4-2 files|product/tools/agent-model-guard.sh|/has no ..model: opus/d|check-g4-rules.sh
+G4-2 hook|product/tools/agent-model-guard.sh|s/^  \[ -z "\$why" \] \&\& exit 0/  exit 0/|check-g4-rules.sh
+G4-3 dup|product/tools/brief-check.sh|/no ..Duplicate check:.. line/d|check-g4-rules.sh
+G4-3 test|product/tools/brief-check.sh|s/^elif ! printf/elif false \&\& printf/|check-g4-rules.sh
+G4-3 edited|../../.github/workflows/pr-rules.yml|s/types: \[opened, edited,/types: [opened,/|check-g4-rules.sh
+G4-5|product/tools/branch-sweep.sh|/grep -qxF "\$b" && continue/d|check-g4-rules.sh
+G4-5 open|product/tools/branch-sweep.sh|/headRefOid == \$s))/d|check-g4-rules.sh
+G4-5 wired|product/tools/lead-watch.sh|/branch-sweep.sh/d|check-g4-rules.sh
+G4-6|product/tools/pr-size.sh|s/-le "\$limit" \]/-le 999999 ]/|check-g4-rules.sh
+G4-7|product/tools/brief-check.sh|s/if \[ "\${1:-}" = --brief \]; then/if false; then/|check-g4-rules.sh
+G4-7 hook|product/tools/lane-preflight.sh|s/bash "\$DIR\/brief-check.sh" --brief)/true)/|check-g4-rules.sh
+G4-3 nolabel|../../.github/workflows/pr-rules.yml|s/ready_for_review\]/ready_for_review, labeled]/|check-g4-rules.sh'
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
   cp -R "$TOOLS" "$M/$P/product/"; cp -R "$ROOTD/$P/prototype/studio/tools" "$M/$P/prototype/studio/"
-  cp "$ROOTD/$P/product/qa/CAPABILITIES.md" "$M/$P/product/qa/"; cp -R "$ROOTD/.claude/skills" "$ROOTD/.claude/settings.json" "$M/.claude/"
+  cp "$ROOTD/$P/product/qa/CAPABILITIES.md" "$M/$P/product/qa/"; cp -R "$ROOTD/.claude/skills" "$ROOTD/.claude/settings.json" "$ROOTD/.claude/agents" "$M/.claude/"; cp -R "$ROOTD/.githooks" "$ROOTD/.mergify.yml" "$M/"
   cp "$ROOTD/.github/workflows/"*.yml "$M/.github/workflows/"; git -C "$M" init -q   # every workflow: check-label-guard parses two
   before=$(cksum < "$M/$P/$f"); sed -i.bak "$edit" "$M/$P/$f"; rm -f "$M/$P/$f.bak"
-  sh=bash; head -1 "$M/$P/$f" | grep -q zsh && sh=zsh; case "$f" in *.yml) sh=true;; esac   # a .yml is parsed by its test
+  sh=bash; head -1 "$M/$P/$f" | grep -q zsh && sh=zsh; case "$f" in *.yml|*.json) sh=true;; esac   # a .yml or .json is parsed by its test
   if [ "$before" = "$(cksum < "$M/$P/$f")" ]; then echo "FAIL  guard $g: the edit '$edit' changed nothing in $f"; bad=1
   elif ! $sh -n "$M/$P/$f" 2>"$M/log"; then echo "FAIL  guard $g: the edit '$edit' breaks $f's syntax, so its test failing proves nothing ($(head -1 "$M/log"))"; bad=1
   elif bash "$M/$P/product/tools/$t" > "$M/log" 2>&1; then echo "FAIL  guard $g: $t still passes with the guard off"; bad=1
