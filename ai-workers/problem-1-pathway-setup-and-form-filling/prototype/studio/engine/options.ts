@@ -163,6 +163,31 @@ export const isCodeRange = (note: string) => /^\s*\d+\s*\.\.\s*\d+\s*$/.test(not
 export const namesNoValues = (note: string) => isCodeRange(note) || /^\s*\d+\s*-\s*\d+\b/.test(note)
   || /\binventory\b|\boptions_resolved\b/i.test(note) || /\bcodes?\b[^,;]*\b(as listed|as in|listed (in|for))\b/i.test(note);
 
+/** QA-383 (BK-383): what a map note's bracket lists, read as a person reads it. "only option: Canada=511" lists one choice,
+ *  "Canada=511": "only option:" is a lead-in that says how many, no part of a label (before, the choice read "only option:
+ *  Canada" and that text was written in IMM 5409's Country box). An example list ("e.g. Canada=511, …", also after other
+ *  words, judged before any ";") and a note that names no values (namesNoValues: QA-272, QA-355) list nothing: null, so
+ *  the answer stays open and the form's own printed list decides its codes. Every reader of a note's list goes through it:
+ *  the question's choices and their labels (runtime/case.ts), a form field's choices (pdfOptions) and the fill's inline
+ *  code table (p5/transforms.ts). */
+export function noteList(note: string | null | undefined): string | null {
+  if (note === null || note === undefined || EXAMPLES.test(note.split(";")[0]) || namesNoValues(note)) return null;
+  const list = note.replace(LEAD_IN, "");
+  return list.trim() ? list : null;
+}
+const LEAD_IN = /^\s*only (?:option|choice|value)s?\s*:\s*/i;
+const EXAMPLES = /(?:^|[\s(,])(?:e\.\s?g\.?|eg\.?|for example|for instance|such as|example|incl\.|including)(?=[\s,:]|$)/i;
+
+/** QA-383 (BK-383): an answer saved before the fix with the lead-in ("only option: Canada") reads as its choice ("Canada").
+ *  Only on a choice field (`choices`: the keys it offers now), and only when the saved text is not itself a choice and the
+ *  text after the lead-in is one (review M1 on #1810): a person's own words ("Only choice: I stayed with my sister" on a
+ *  text field) are never changed. Any other value is unchanged. */
+export function withoutLeadIn(value: unknown, choices: readonly string[] | null | undefined): unknown {
+  if (typeof value !== "string" || !choices?.length || !LEAD_IN.test(value)) return value;
+  const rest = value.replace(LEAD_IN, ""), is = (x: string) => choices.some((c) => c.toLowerCase() === x.trim().toLowerCase());
+  return !is(value) && is(rest) ? rest : value;
+}
+
 /** QA-272: the same mapping with the range written as the form's own list, "(Citizen=01, Permanent resident=02, …)", the
  *  shape every other short list has, so a person is offered the form's words. Unchanged when the transform has no range,
  *  the form lists no choice in it, or a label could not be read back from that shape (a comma, "=", ";" or bracket). */
@@ -185,6 +210,7 @@ export function pdfOptions(box: { options_resolved?: [string, string][] | null; 
   const printed = box.ui === "choiceList" ? printedChoices(box) : [];
   if (Array.isArray(printed) && printed.length) return printed.map(([label, code]) => ({ code, label }));
   const m = /^code_list:[\w.]+ \(([^;)]*)/.exec((transform ?? "").trim());
-  if (!m) return [];
-  return m[1].split(",").map((pair) => /^\s*([^=|]+?)\s*=\s*(\w+)\s*$/.exec(pair)).filter((q): q is RegExpExecArray => !!q).map((q) => ({ code: q[2], label: q[1] }));
+  const list = noteList(m?.[1]); // QA-383: "only option:" is a lead-in; an "e.g." list is no list
+  if (!list) return [];
+  return list.split(",").map((pair) => /^\s*([^=|]+?)\s*=\s*(\w+)\s*$/.exec(pair)).filter((q): q is RegExpExecArray => !!q).map((q) => ({ code: q[2], label: q[1] }));
 }
