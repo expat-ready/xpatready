@@ -1146,6 +1146,83 @@ class EarlyBandAndLeading(unittest.TestCase):
             self.assertIn('"' + k + '"', html)
 
 
+class WhatsNew(unittest.TestCase):
+    """G-5 (P-611): the weekly what's-new box. The fixture is taken Fri 20 Nov 12:00 IST (ISO week 2026-W47: Monday 16 Nov,
+    so amber from Mon 16 Nov 12:00 IST = 06:30 UTC, red from Tue 17 Nov 12:00 IST)."""
+    WN = "files/" + cd.REL + "/cockpit/whats-new.json"
+
+    def file(self, week="2026-W47", at="2026-11-16T10:00:00+05:30", **kw):
+        d = {"week": week, "checked_at": at, "checked_by": "Lead 55", "installed_version": "2.1.325", "newest_version": "2.1.325",
+             "new_items": [{"title": "A", "date": "2026-11-13", "source": "https://code.claude.com/docs/en/changelog", "adopt": "yes", "why": "w"},
+                           {"title": "B", "date": "2026-11-12", "source": "https://code.claude.com/docs/en/changelog", "adopt": "no", "why": "w"},
+                           {"title": "C", "date": "2026-11-09", "source": "https://code.claude.com/docs/en/changelog", "adopt": "yes", "why": "w"}],
+             "actions": [{"what": "x", "owner": "lead", "row": "G-5"}]}
+        d.update(kw)
+        return d
+
+    def wn(self, f, now):
+        s, comp = run(snap_with({} if f is None else {self.WN: f}), now=now)
+        return comp
+
+    def test_checked(self):
+        comp = self.wn(self.file(), NOW)
+        w = comp["whats_new"]
+        self.assertEqual((w["week"], w["state"], w["checked"], w["light"]["state"]), ("2026-W47", "checked", True, "green"))
+        self.assertEqual(w["adopt_yes"]["value"], 2)                       # A and C are yes; B is no
+        self.assertEqual((w["adopt_yes"]["sha"], w["adopt_yes"]["class"]), ("123456789", "parsed"))
+        self.assertEqual(len(w["items"]), 3)
+        self.assertTrue(next(i for i in comp["trust"]["invariants"] if i["name"].startswith("whats-new"))["ok"])
+
+    def test_unchecked_amber_after_monday_noon(self):
+        mon_1201 = datetime(2026, 11, 16, 6, 31, tzinfo=timezone.utc)     # Mon 16 Nov 12:01 IST
+        w = self.wn(self.file(week="2026-W46", at="2026-11-15T13:02:55+05:30"), mon_1201)["whats_new"]
+        self.assertEqual((w["state"], w["checked"], w["light"]["state"]), ("unchecked", False, "amber"))
+        self.assertIsNone(w["adopt_yes"]["value"])                         # not checked this week: no count, never 0
+        self.assertIn("the file is for 2026-W46", w["adopt_yes"]["reason"])
+        mon_1159 = datetime(2026, 11, 16, 6, 29, tzinfo=timezone.utc)     # before Monday 12:00 IST: grey, not yet due
+        self.assertEqual(self.wn(self.file(week="2026-W46", at="2026-11-15T13:02:55+05:30"), mon_1159)["whats_new"]["light"]["state"], "grey")
+
+    def test_unchecked_red_after_tuesday_noon(self):
+        w = self.wn(self.file(week="2026-W46", at="2026-11-15T13:02:55+05:30"), NOW)["whats_new"]      # Fri 20 Nov
+        self.assertEqual((w["state"], w["light"]["state"]), ("unchecked", "red"))
+        tue_1159 = datetime(2026, 11, 17, 6, 29, tzinfo=timezone.utc)
+        self.assertEqual(self.wn(self.file(week="2026-W46", at="2026-11-15T13:02:55+05:30"), tue_1159)["whats_new"]["light"]["state"], "amber")
+
+    def test_missing_reads_not_checked_never_zero(self):
+        comp = self.wn(None, NOW)                                          # the fixture has no whats-new.json
+        w = comp["whats_new"]
+        self.assertEqual((w["state"], w["checked"], w["light"]["state"]), ("missing", False, "red"))
+        self.assertIsNone(w["adopt_yes"]["value"])
+        self.assertTrue(w["adopt_yes"]["reason"].startswith("not checked"))
+        self.assertTrue(next(i for i in comp["trust"]["invariants"] if i["name"].startswith("whats-new"))["ok"])   # missing is not a broken record
+
+    def test_broken_file_breaks_the_invariant_and_is_not_checked(self):
+        bad = self.file(checked_at="2026-11-10T10:00:00+05:30",
+                        new_items=[{"title": "A", "date": "13 Nov", "source": "http://x", "adopt": "maybe", "why": "w"}])
+        comp = self.wn(bad, NOW)
+        w = comp["whats_new"]
+        self.assertEqual((w["state"], w["items"]), ("unchecked", []))
+        self.assertFalse(next(i for i in comp["trust"]["invariants"] if i["name"].startswith("whats-new"))["ok"])
+        self.assertIn("not in week 2026-W47", " ".join(w["problems"]))
+        self.assertEqual(self.wn("{not json", NOW)["whats_new"]["state"], "invalid")
+        self.assertIsNone(cd.build_explain(dict(TooltipsData.data()[1], whats_new=self.wn("{not json", NOW)["whats_new"]))["whats_new.box"]["n"])
+
+    def test_cli_schema_and_explain_with_the_committed_file(self):
+        f = jread(os.path.join(cd.P, "cockpit", "whats-new.json"))
+        self.assertEqual((f["week"], f["checked_by"]), ("2026-W46", "Lead 55"))
+        out = tempfile.mkdtemp()
+        sd = snap_with({self.WN: f})
+        r = subprocess.run([sys.executable, os.path.join(HERE, "cockpit-data.py"), "--out", os.path.join(out, "data.json"), "--from-snapshot", sd,
+                            "--offline", "--no-history-write", "--now", "2026-11-15T14:00:00+05:30"], capture_output=True, text=True, timeout=300)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        d = jread(os.path.join(out, "data.json"))
+        w = d["whats_new"]
+        self.assertEqual((w["state"], w["adopt_yes"]["value"], len(w["items"]), len(w["actions"])), ("checked", 8, 16, 3))
+        self.assertEqual(d["explain"]["whats_new.box"]["n"], 16)
+        with open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8") as f:
+            self.assertIn('"whats_new.box"', f.read())
+
+
 BROWSER_CHECK = r"""// board v61 scripted check: click-only info buttons on every tab, 375 px, axe light and dark
 const { chromium } = require('playwright');
 const fs = require('fs');
