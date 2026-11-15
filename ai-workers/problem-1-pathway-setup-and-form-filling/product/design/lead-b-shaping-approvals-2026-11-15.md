@@ -159,7 +159,7 @@ Agreed: the proposed X rows are added in the same change that copies these rows 
 
 **All three lanes are reviewed.** S1's last batch (PF-18ns, PF-19m*, PF-4p*, PF-23w) is still to come.
 
-## Batch 4 (15 Nov 09:3x IST): S1 at 64ea121fb (S1 finished; all three lanes are now reviewed)
+## Batch 4 (15 Nov 09:2x IST): S1 at 64ea121fb (S1 finished; all three lanes are now reviewed)
 
 | Row | Verdict | Amendment or note |
 |---|---|---|
