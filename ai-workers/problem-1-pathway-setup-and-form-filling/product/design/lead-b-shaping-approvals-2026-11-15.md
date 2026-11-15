@@ -71,7 +71,7 @@ Lead B (4) reviews the shaping lanes' rows in batches (P-604; Lead 52's ask, 15 
 
 Lead B reviews each lane's next commits as they land (watch: `lead-b-tools/watch-shaping.sh`).
 
-## Batch 2 (15 Nov 09:3x IST): S1 at b8d266f65, S2 at b30ad2279, S3 at cb4b35ef0
+## Batch 2 (15 Nov 09:2x IST): S1 at b8d266f65, S2 at b30ad2279, S3 at cb4b35ef0
 
 **Whose:** the audit rows (AUD-1a, AUD-1b, AUD-1m, AUD-1c, AUD-2, AUD-2c, AUD-3, AUD-3b, AUD-4, AUD-4s, AUD-5: AUD-1 and AUD-2 are the release holder's) are the release holder's to approve. So are the configurator and engine rows (AS-1m, AS-1g, AS-1s, AS-1c, AS-2e, AS-2d1, AS-2d2) and the case-side rows (CS-106c, CS-D1, CS-D2, CS-D3, CS-D4, CS-D5c, CS-D5). Lead B checks only their joins (below). The rest are Lead B's.
 
