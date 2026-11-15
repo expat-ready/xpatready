@@ -142,5 +142,21 @@
     "acked_at": "2026-11-15T20:59:03Z",
     "opened_at": "2026-11-15T20:01:40Z",
     "source": "pull/1854#issuecomment-6900451861"
+  },
+  {
+    "id": "qa-2026-11-16-platform-followup",
+    "kind": "ready",
+    "owner": "lane",
+    "branch": "claude/tender-einstein-wpko9j",
+    "pr": 1895,
+    "status": "open",
+    "waiting_on": "Lead",
+    "next_step": "merge, test, publish",
+    "created_at": "2026-11-15T22:35:11Z",
+    "updated_at": "2026-11-15T22:35:11Z",
+    "last_ack_by": null,
+    "acked_at": null,
+    "opened_at": "2026-11-15T22:35:11Z",
+    "source": "pull/1895#issuecomment-6902502615"
   }
 ]
