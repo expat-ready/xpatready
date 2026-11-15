@@ -11,7 +11,7 @@ import { forbidden, type StaffContext } from "../../platform/identity/keys.ts";
 import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts";
 import { arrive, possibleMatch } from "./arrival.ts";
 import { actorOf, conflict, email, notFound, phone, sees, text, unprocessable, UUID, visibilityOf, written, type Tx } from "./common.ts";
-import { openMinutes } from "./open-minutes.ts";
+import { openMinutesIn, openWindows } from "./open-minutes.ts";
 import { SALES_PORTS, type SalesPorts } from "./public.ts";
 
 export const VIEWS = ["unassigned", "mine", "all", "closed"] as const;
@@ -49,11 +49,13 @@ export class Leads {
     const unowned = (o: string | null) => o === null || inactive.includes(o);
     const cal: FirmCalendar = { zone: await readSetting(this.db, ctx.firmId, TIME_ZONE.key), hours: await readSetting(this.db, ctx.firmId, BUSINESS_HOURS.key), closedDays: await readSetting(this.db, ctx.firmId, CLOSED_DAYS.key) };
     const now = new Date(this.ports.now?.() ?? Date.now());
+    const oldest = rows.filter((l) => l.state === "OPEN").reduce<Date | null>((m, l) => (!m || l.arrivedAt < m ? l.arrivedAt : m), null);
+    const windows = oldest ? openWindows(oldest, now, cal) : null;   // once per list (review M4)
     return rows.filter((l) => v === "unassigned" || sees(vis, ctx, unowned(l.ownerStaffId) ? null : l.ownerStaffId)).map((l) => ({
       id: l.id, number: l.number, name: nameOf(l.person), state: l.state, source: l.source, interestedIn: l.interestedIn?.label ?? null,
       ownerStaffId: l.ownerStaffId, owner: ownerLabel(l.ownerStaffId ? staff.get(l.ownerStaffId) : undefined), arrivedAt: l.arrivedAt,
       possibleMatch: l.possibleMatchPersonId !== null, fixNumber: !l.person.phoneReadable,
-      waitedOpenMinutes: l.state === "OPEN" ? openMinutes(l.arrivedAt, now, cal) : null,
+      waitedOpenMinutes: l.state === "OPEN" && windows ? openMinutesIn(windows, l.arrivedAt, now) : null,
     }));
   }
 
@@ -107,12 +109,12 @@ export class Leads {
   /** Take it (AG-2-86): only an open lead with no active owner; someone who took it first wins, and the second hears who. */
   take(ctx: StaffContext, id: string) {
     return this.change(ctx, id, EVENT.LEAD_TAKEN, EVENT.LEAD_TAKEN, async (tx, l, staff) => {
-      const owner = l.owner_staff_id ? staff.get(l.owner_staff_id) : undefined;
+      const owner = l.owner_staff_id ? staff.get(l.owner_staff_id) : undefined;   // (Take it: the loser hears who has it)
       if (owner?.status === "ACTIVE") return conflict(`${owner.displayName} already has this lead.`, "ALREADY_TAKEN", { ownerStaffId: owner.id });
       if (l.state !== "OPEN") return conflict("Only an open lead can be taken.");
       await tx.foLead.update({ where: { id }, data: { ownerStaffId: ctx.staffId } });
       return { owner: ctx.staffId, summary: "took the lead" };
-    });
+    }, true);   // AG-2-86 rule 3 covers Take it only (review m2)
   }
 
   /** Add a lead by hand (AG-2-4): checks for a known person first (409 KNOWN_PERSON with the matches the adder may see,
@@ -123,17 +125,26 @@ export class Leads {
       givenNames: text(b.givenNames, { field: "givenNames", what: "First name", max: 100, required: b.personId === undefined }),
       familyName: text(b.familyName, { field: "familyName", what: "Last name", max: 100 }), email: email(b.email), phone: phone(b.phone),
     };
-    const source = text(b.source, { field: "source", what: "Source", max: 60 }) ?? "MANUAL";
+    const source = text(b.source, { field: "source", what: "Source", max: 60, required: true })!;   // AG-2-4 rule 1 (review m6)
     const message = text(b.note, { field: "note", what: "Note", max: 5000, multiline: true });
     const interestedInServiceId = await this.service(ctx.firmId, b.interestedIn);
-    let existingPersonId: string | undefined;
-    if (b.personId !== undefined) existingPersonId = typeof b.personId === "string" && UUID.test(b.personId) ? b.personId.toLowerCase() : notFound("person");
-    else {
+    const existingPersonId = b.personId === undefined ? undefined : typeof b.personId === "string" && UUID.test(b.personId) ? b.personId.toLowerCase() : notFound("person");
+    const payloadHash = createHash("sha256").update(JSON.stringify([person, existingPersonId, source, interestedInServiceId, message])).digest("hex");
+    // A retried Add finds its own lead before any check (review M1); the same request id with other details is refused (m4).
+    const done = await this.db.foArrivalReceipt.findUnique({ where: { firmId_door_intakeKey: { firmId: firmScope(ctx.firmId).firmId, door: "MANUAL", intakeKey: `manual:${requestId}` } } });
+    if (done) return done.payloadHash === payloadHash && done.leadId ? this.read(ctx, done.leadId) : conflict("This request was already used with other details. Start a new Add.", "REQUEST_REUSED");
+    const vis = await visibilityOf(this.db, ctx), staff = await this.staffOf(ctx.firmId);
+    const activeOf = (o: string | null) => (o && staff.get(o)?.status === "ACTIVE" ? o : null);
+    if (existingPersonId) {
+      // Only a person the adder may see (review M2, AG-2-4 rule 6): one of their leads is visible to the adder.
+      const theirs = await this.db.foLead.findMany({ where: firmScope(ctx.firmId, { personId: existingPersonId }), select: { ownerStaffId: true } });
+      if (!theirs.some((l) => sees(vis, ctx, activeOf(l.ownerStaffId)))) return notFound("person");
+    } else {
       if (!person.email && !person.phone) unprocessable("Add an email or a phone number.", { email: "Add an email or a phone number." });
       const match = b.confirmedNew === true ? null : await possibleMatch(this.db, ctx.firmId, person);
       if (match) {
-        const [vis, leads, p] = await Promise.all([visibilityOf(this.db, ctx), this.db.foLead.findMany({ where: firmScope(ctx.firmId, { personId: match }), select: { number: true, ownerStaffId: true }, orderBy: { arrivedAt: "desc" } }), this.db.foPerson.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: match }) })]);
-        const seen = leads.find((l) => sees(vis, ctx, l.ownerStaffId));
+        const [leads, p] = await Promise.all([this.db.foLead.findMany({ where: firmScope(ctx.firmId, { personId: match }), select: { number: true, ownerStaffId: true }, orderBy: { arrivedAt: "desc" } }), this.db.foPerson.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: match }) })]);
+        const seen = leads.find((l) => sees(vis, ctx, activeOf(l.ownerStaffId)));   // a deactivated owner's lead is Unassigned (review m1)
         return conflict("This person may already be on file. Pick them, or say it is someone new.", "KNOWN_PERSON", {
           matches: [seen ? { personId: match, name: nameOf(p), lead: seen.number } : { personId: null, name: "A person you cannot see" }],
         });
@@ -141,7 +152,7 @@ export class Leads {
     }
     const out = await this.db.$transaction((tx) => arrive(tx, {
       firmId: ctx.firmId, door: "MANUAL", intakeKey: `manual:${requestId}`, person, existingPersonId, source, interestedInServiceId, message, ownerStaffId: ctx.staffId,
-      actor: actorOf(ctx), payloadHash: createHash("sha256").update(JSON.stringify([person, existingPersonId, source, interestedInServiceId, message])).digest("hex"),
+      actor: actorOf(ctx), payloadHash,
     }, this.ports));
     return this.read(ctx, out.leadId!);
   }
@@ -155,8 +166,9 @@ export class Leads {
   /** Assign to… (AG-2-13c): an open lead to an active staff member of the firm who can work leads (agent/prospect:edit). */
   assign(ctx: StaffContext, id: string, b: Record<string, unknown>) {
     return this.change(ctx, id, EVENT.LEAD_TAKEN, EVENT.LEAD_TAKEN, async (tx, l, staff) => {
-      const to = typeof b.staffId === "string" ? staff.get(b.staffId.toLowerCase()) : undefined;
-      if (!to || to.status !== "ACTIVE" || !(await this.editors(tx, ctx.firmId)).has(to.id)) return unprocessable("Choose an active person of your firm who works leads.", { staffId: "Choose a person from the list." });
+      const want = typeof b.staffId === "string" && UUID.test(b.staffId) ? b.staffId.toLowerCase() : null;
+      const to = want ? await tx.platformStaff.findFirst({ where: firmScope(ctx.firmId, { id: want, status: "ACTIVE" as const }), select: { id: true, displayName: true } }) : null;   // read in the change (review m3)
+      if (!to || !(await this.editors(tx, ctx.firmId)).has(to.id)) return unprocessable("Choose an active person of your firm who works leads.", { staffId: "Choose a person from the list." });
       if (l.state !== "OPEN") return conflict("Only an open lead can be assigned.");
       if (l.owner_staff_id === to.id) return conflict(`${to.displayName} already has this lead.`, "ALREADY_TAKEN", { ownerStaffId: to.id });
       await tx.foLead.update({ where: { id }, data: { ownerStaffId: to.id } });
@@ -191,7 +203,7 @@ export class Leads {
   /** One lead change: the row locked, then seen (404, or 409 naming the owner), the change, audit, outbox row last. */
   private async change(ctx: StaffContext, id: string, action: string, type: EventName,
     fn: (tx: Tx, l: { state: FoLeadState; owner_staff_id: string | null; person_id: string; door: "WEB_FORM" | "MANUAL" | "BOOKING"; number: string }, staff: Map<string, Staff>) =>
-      Promise<{ owner: string | null; summary: string; reasonKey?: string; state?: FoLeadState; via?: "ASSIGN" }>) {
+      Promise<{ owner: string | null; summary: string; reasonKey?: string; state?: FoLeadState; via?: "ASSIGN" }>, namesLoser = false) {
     if (typeof id !== "string" || !UUID.test(id)) return notFound();
     const [staff, vis] = await Promise.all([this.staffOf(ctx.firmId), visibilityOf(this.db, ctx)]);
     const activeOf = (o: string | null) => (o && staff.get(o)?.status === "ACTIVE" ? o : null);
@@ -203,12 +215,12 @@ export class Leads {
       // unowned (Unassigned leads) hears who got there first, whatever the timing (AG-2-86 rule 3, Lead B); else 404.
       const owner = l?.owner_staff_id ? staff.get(l.owner_staff_id) : undefined;
       if (!l) return notFound();
-      if (!sees(vis, ctx, activeOf(l.owner_staff_id))) return vis.seesUnassigned && owner?.status === "ACTIVE" ? conflict(`${owner.displayName} already has this lead.`, "ALREADY_TAKEN", { ownerStaffId: owner.id }) : notFound();
+      if (!sees(vis, ctx, activeOf(l.owner_staff_id))) return namesLoser && vis.seesUnassigned && owner?.status === "ACTIVE" ? conflict(`${owner.displayName} already has this lead.`, "ALREADY_TAKEN", { ownerStaffId: owner.id }) : notFound();
       const r = await fn(tx, l, staff);
       await written(tx, this.ports.audit, {
         firmId: ctx.firmId, actor: actorOf(ctx), action, entityKey: id, summary: `Staff ${ctx.staffId} ${r.summary}: ${l.number}.`,
         detail: { ownerStaffId: r.owner, previousOwnerStaffId: l.owner_staff_id, ...(r.reasonKey ? { reasonKey: r.reasonKey } : {}), ...(r.via ? { via: r.via } : {}) },
-        event: { type, subjectId: id, payload: LeadEventPayload.parse({ leadId: id, personId: l.person_id, door: l.door, state: r.state ?? l.state, ownerStaffId: r.owner, ...(r.reasonKey ? { reasonKey: r.reasonKey } : {}) }) },
+        event: { type, subjectId: id, payload: LeadEventPayload.parse({ leadId: id, personId: l.person_id, door: l.door, state: r.state ?? l.state, ownerStaffId: r.owner, ...(r.reasonKey ? { closeReasonKey: r.reasonKey } : {}) }) },
       });
     });
     return this.read(ctx, id);

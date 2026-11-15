@@ -115,7 +115,7 @@ export const LeadEventPayload = z.object({
   ownerStaffId: z.string().uuid().nullable(),
   /** lead.created only: the person of the firm with the same email or phone, flagged and never linked (AG-2-84). */
   possibleMatchPersonId: z.string().uuid().nullable().optional(),
-  /** lead.closed only: the reason's key (AG-2-80 rule 2). */
-  reasonKey: z.string().optional(),
+  /** lead.closed only: the reason's key (AG-2-80 rule 2; its name for it). */
+  closeReasonKey: z.string().optional(),
 }).strict();
 export type LeadEventPayload = z.infer<typeof LeadEventPayload>;
