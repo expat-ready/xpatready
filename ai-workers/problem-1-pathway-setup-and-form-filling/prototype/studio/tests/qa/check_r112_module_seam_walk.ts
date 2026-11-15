@@ -2,7 +2,7 @@
 // main (FO-4 part 1, web/src/modules/front-office) is walked as a firm's Case Manager would, from the module's own address
 // to the next capability's first step (the Leads list after the visible sign-in), at 400, 1024 and 1440 px, twice.
 //   1 /front-office/leads opens inside the app's one Frame (data-frame header, the place line) with the kit's fields;
-//     no page error, no sideways scroll, axe WCAG 2.2 AA clean;
+//     no page error, no sideways scroll, axe WCAG 2.2 AA clean (sign-in and Leads, round 1);
 //   2 fail: a wrong firm key is refused in words on the form (the kit's Notice), nobody is signed in;
 //   3 pass: the person types the firm key and work email, presses Sign in, and the Leads page opens (heading "Leads");
 //   4 the app's own pages beside the module (/, /sign-in, /cases) still open with their headings;
@@ -80,7 +80,11 @@ for (const round of [1, 2]) for (const width of [400, 1024, 1440]) {
   await p.getByRole("heading", { level: 1, name: "Leads" }).waitFor({ timeout: 20_000 }).catch(() => {});
   const after = await h1(p);
   ok(`R1.12 ${tag}: typed sign-in opens the Leads page inside the same Frame`, after === "Leads" && (await frameShape(p)).frame === "outside", after);
-  if (round === 1) await p.screenshot({ path: join(SHOTS, `r112-module-leads-${width}.png`), fullPage: true });
+  if (round === 1) {
+    const r = await new AxeBuilder({ page: p }).withTags(TAGS).analyze();
+    ok(`R1.12 ${tag}: axe finds no WCAG A/AA violation on the module's Leads page`, r.violations.length === 0, r.violations.map((v) => `${v.id}: ${v.nodes[0]?.target?.join(" ")}`).join(" | ") || undefined);
+    await p.screenshot({ path: join(SHOTS, `r112-module-leads-${width}.png`), fullPage: true });
+  }
   // 4 the app's own pages beside the module
   for (const [path, want] of [["/", "Immigration programs"], ["/sign-in", "Who are you today?"], ["/cases", "Cases"]] as const) {
     await p.goto(`${BASE}${path}`);

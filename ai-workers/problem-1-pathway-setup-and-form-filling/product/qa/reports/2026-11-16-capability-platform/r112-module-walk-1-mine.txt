@@ -12,6 +12,7 @@ PASS  R1.12 (400 px, round 1): no sideways page scroll
 PASS  R1.12 (400 px, round 1): axe finds no WCAG A/AA violation on the module's sign-in
 PASS  R1.12 (400 px, round 1): a wrong firm key is refused in words on the form, still the sign-in — "Not signed in No staff member of that firm signs in with that name."
 PASS  R1.12 (400 px, round 1): typed sign-in opens the Leads page inside the same Frame — "Leads"
+PASS  R1.12 (400 px, round 1): axe finds no WCAG A/AA violation on the module's Leads page
 PASS  R1.12 (400 px, round 1): / still opens with "Immigration programs" beside the module — "Immigration programs"
 PASS  R1.12 (400 px, round 1): /sign-in still opens with "Who are you today?" beside the module — "Who are you today?"
 PASS  R1.12 (400 px, round 1): /cases still opens with "Cases" beside the module — "Cases"
@@ -24,6 +25,7 @@ PASS  R1.12 (1024 px, round 1): no sideways page scroll
 PASS  R1.12 (1024 px, round 1): axe finds no WCAG A/AA violation on the module's sign-in
 PASS  R1.12 (1024 px, round 1): a wrong firm key is refused in words on the form, still the sign-in — "Not signed in No staff member of that firm signs in with that name."
 PASS  R1.12 (1024 px, round 1): typed sign-in opens the Leads page inside the same Frame — "Leads"
+PASS  R1.12 (1024 px, round 1): axe finds no WCAG A/AA violation on the module's Leads page
 PASS  R1.12 (1024 px, round 1): / still opens with "Immigration programs" beside the module — "Immigration programs"
 PASS  R1.12 (1024 px, round 1): /sign-in still opens with "Who are you today?" beside the module — "Who are you today?"
 PASS  R1.12 (1024 px, round 1): /cases still opens with "Cases" beside the module — "Cases"
@@ -36,6 +38,7 @@ PASS  R1.12 (1440 px, round 1): no sideways page scroll
 PASS  R1.12 (1440 px, round 1): axe finds no WCAG A/AA violation on the module's sign-in
 PASS  R1.12 (1440 px, round 1): a wrong firm key is refused in words on the form, still the sign-in — "Not signed in No staff member of that firm signs in with that name."
 PASS  R1.12 (1440 px, round 1): typed sign-in opens the Leads page inside the same Frame — "Leads"
+PASS  R1.12 (1440 px, round 1): axe finds no WCAG A/AA violation on the module's Leads page
 PASS  R1.12 (1440 px, round 1): / still opens with "Immigration programs" beside the module — "Immigration programs"
 PASS  R1.12 (1440 px, round 1): /sign-in still opens with "Who are you today?" beside the module — "Who are you today?"
 PASS  R1.12 (1440 px, round 1): /cases still opens with "Cases" beside the module — "Cases"
@@ -75,5 +78,5 @@ PASS  R1.12 (1440 px, round 2): /cases still opens with "Cases" beside the modul
 PASS  R1.12 (1440 px, round 2): the module's header is the app's (same height as /cases') — {"cases":{"frame":"cases","headerHeight":56},"mod":{"frame":"outside","headerHeight":56}}
 PASS  R1.12 (1440 px, round 2): no page error on the walk — []
 
-71/71 passed
+74/74 passed
 stopped qa_r112 (database and files removed; log in var/isolated-logs/qa_r112-api.log)
