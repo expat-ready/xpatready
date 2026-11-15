@@ -74,6 +74,27 @@ function expectedVersionOf(body: Record<string, unknown>, multipart = false): nu
 }
 const stale = (current: number, expected: number): never =>
   conflict(`This agreement has a newer version (${current}) than the one you saw (${expected}). Open it again.`, "CHANGED");
+const STATUSES = ["DRAFT", "SENT", "VIEWED", "CLIENT_SIGNED", "SIGNED", "SIGNED_OFFLINE", "DECLINED", "WITHDRAWN", "EXPIRED"];
+/** FO-5f item 2 (B-25): the status the page showed. Send does not raise the version, so the version alone does not name the
+ *  state a person acted on: Edit and Withdraw send both, and a mismatch is 409 CHANGED. Missing or unknown → 422. */
+function expectedStatusOf(body: Record<string, unknown>): string {
+  const v = body.expectedStatus;
+  if (typeof v !== "string" || !STATUSES.includes(v)) return unprocessable("Send the status you are acting on (expectedStatus).", { expectedStatus: "Send the status shown on your page." });
+  return v;
+}
+const WORDS: Record<string, string> = { DRAFT: "a draft", SENT: "sent", VIEWED: "viewed", CLIENT_SIGNED: "signed by the client", SIGNED: "signed", SIGNED_OFFLINE: "signed on paper", DECLINED: "declined", WITHDRAWN: "withdrawn", EXPIRED: "expired" };
+const restated = (current: string, expected: string): never =>
+  conflict(`This agreement is now ${WORDS[current]} (your page showed ${WORDS[expected]}). Open it again.`, "CHANGED");
+/** FO-5f item 3: the version the paper was signed on (Signed offline, multipart text). Default: the current one. */
+function signedVersionOf(body: Record<string, unknown>, current: number): number {
+  const v = body.signedVersion;
+  if (v === undefined || v === null || v === "") return current;
+  const n = typeof v === "number" ? v : typeof v === "string" && /^\d{1,9}$/.test(v) ? Number(v) : NaN;
+  if (!Number.isInteger(n) || n < 1 || n > current) return unprocessable(`The version signed on paper is one of versions 1 to ${current} (signedVersion).`, { signedVersion: `A version from 1 to ${current}.` });
+  return n;
+}
+/** The merge value that marks a version copied from an earlier one for Signed offline (FO-5f item 3). Not a placeholder. */
+export const COPIED_FROM = "copied_from_version";
 
 /** BR-5: fee rows in. Amounts in cents (whole numbers, 0 … CAD 100 million), empty while the draft has none. */
 export function feesOf(v: unknown): FeeIn[] {
@@ -121,7 +142,12 @@ export class Retainers {
       // refusing a move another transaction made first. Anything else is a fault: logged and answered 500, never hidden.
       if (/P2002|P2034|Unique constraint|could not serialize|deadlock|status cannot move|does not change|only the current version|a request ends once|sent_at is set once|current_version moves|written only as the current version|must end before version|comes back to DRAFT only|change only by an edit/i.test(m))
         conflict("This changed at the same time (someone else saved it). Open it again.", "CHANGED");
-      console.error(`[fo-retainers] unexpected database refusal: ${m.slice(0, 600)}`);
+      // FO-5f item 10 (r3-m2): only the error code and the constraint's name are logged, never Prisma's message or meta
+      // (a failing row's values could be personal data).
+      const meta = (e as { meta?: { code?: unknown; constraint?: unknown } })?.meta, name = /^[A-Za-z0-9_]{1,63}$/;
+      const code = [(e as { code?: unknown })?.code, meta?.code].find((c) => typeof c === "string" && name.test(c)) ?? "none";
+      const constraint = [meta?.constraint, /constraint "([A-Za-z0-9_]{1,63})"/.exec(m)?.[1]].find((c) => typeof c === "string" && name.test(c)) ?? "unknown";
+      console.error(`[fo-retainers] unexpected database refusal: code=${code} constraint=${constraint}`);
       throw e;
     }
   }
@@ -189,7 +215,7 @@ export class Retainers {
     if (file.size > TEMPLATE_MAX_BYTES) unprocessable("A template is at most 5 MB.", { file: "At most 5 MB." });
     let found: string[];
     try { found = placeholdersOf(file.bytes); } catch (e) {
-      if (e instanceof UnreadableDocx) return unprocessable("We could not read this file.", { file: "We could not read this file." }, { code: "UNREADABLE_FILE" });
+      if (e instanceof UnreadableDocx) { const says = e.says ?? "We could not read this file."; return unprocessable(says, { file: says }, { code: e.code ?? "UNREADABLE_FILE" }); }   // FO-5f: B-19, B-20, B-21 say why
       throw e;
     }
     const c = checkPlaceholders(found);
@@ -367,12 +393,13 @@ export class Retainers {
     const r = await this.visible(ctx, id);
     const versions = await this.db.foRetainerVersion.findMany({ where: { firmId: ctx.firmId, retainerId: r.id }, orderBy: { n: "asc" }, include: { fees: { orderBy: { position: "asc" } } } });
     const cur = versions.find((v) => v.n === r.currentVersion)!;
-    const tpl = await this.db.foRetainerTemplate.findFirst({ where: { firmId: ctx.firmId, id: r.templateId }, select: { name: true, placeholders: true } });
+    const tpl = await this.db.foRetainerTemplate.findFirst({ where: { firmId: ctx.firmId, id: r.templateId }, select: { name: true, placeholders: true, version: true } });
     const values = cur.mergeValues as Record<string, unknown>;
     // The prospect's header (BR-3: the retainer's representative reads it whatever the visibility setting).
     const ph = r.prospectId ? await this.db.foProspect.findFirst({ where: { firmId: ctx.firmId, id: r.prospectId }, select: { id: true, number: true, type: true, stage: { select: { label: true, kind: true } } } }) : null;
     const repOk = (await this.representatives(ctx.firmId)).some((x) => x.staffId === r.representativeStaffId);
-    const c = this.completeness(values, r.signerPersonId, tpl?.placeholders ?? [], repOk);
+    const c = this.completeness(values, r.signerPersonId, await this.placeholdersMadeFrom(ctx.firmId, r, tpl), repOk);
+    const signed = r.status === "SIGNED" || r.status === "SIGNED_OFFLINE";
     return {
       id: r.id, kind: r.kind, status: r.status, prospectId: r.prospectId, prospect: ph ? { id: ph.id, number: ph.number, type: ph.type, stage: ph.stage.label, stageKind: ph.stage.kind } : null, subject: r.subject, companyId: r.companyId, signerPersonId: r.signerPersonId,
       representativeStaffId: r.representativeStaffId, template: { id: r.templateId, name: tpl?.name ?? null, version: r.templateVersion },
@@ -380,8 +407,26 @@ export class Retainers {
         fees: cur.fees.map((f) => ({ position: f.position, label: f.label, amountMinor: f.amountMinor === null ? null : f.amountMinor.toString(), currency: f.currency, when: f.when, dueOn: f.dueOn?.toISOString().slice(0, 10) ?? null })) },
       canSend: r.status === "DRAFT" && !Object.keys(c.blockers).length, blockers: c.blockers, missing: c.missing,
       withdrawn: r.withdrawnAt ? { at: r.withdrawnAt, reason: r.withdrawnReason } : null, signedOffline: r.offlineAt ? { at: r.offlineAt, reason: r.offlineReason, filed: "Signed on paper" } : null,
-      versions: versions.map((v) => ({ n: v.n, sentAt: v.sentAt, endedAt: v.endedAt, endReason: v.endReason, sha256: v.originalSha256 })),
+      // FO-5f item 3: each version's fees (the Signed offline panel shows the chosen version's), whether it is the signed
+      // one, and the version a Signed offline copy was made from.
+      versions: versions.map((v) => {
+        const from = (v.mergeValues as Record<string, unknown>)[COPIED_FROM], copiedFrom = typeof from === "number" ? from : null;
+        return {
+          n: v.n, sentAt: v.sentAt, endedAt: v.endedAt, endReason: v.endReason, sha256: v.originalSha256, copiedFrom,
+          signed: signed ? v.n === r.currentVersion : null,
+          note: [copiedFrom !== null ? `Copied from version ${copiedFrom}, signed on paper` : null, signed && v.n !== r.currentVersion ? "Not signed" : null].filter(Boolean).join(". ") || null,
+          fees: v.fees.map((f) => ({ position: f.position, label: f.label, amountMinor: f.amountMinor === null ? null : f.amountMinor.toString(), currency: f.currency, when: f.when, dueOn: f.dueOn?.toISOString().slice(0, 10) ?? null })),
+        };
+      }),
     };
+  }
+
+  /** FO-5f item 9 (Devin 4575579359): an agreement's "missing" list uses the placeholders of the template version it was
+   *  made from. The template row holds its newest version's list; an older version's is read from its own stored file. */
+  private async placeholdersMadeFrom(firmId: string, r: { templateVersion: number; templateFileKey: string }, tpl: { placeholders: string[]; version: number } | null): Promise<string[]> {
+    if (tpl && tpl.version === r.templateVersion) return tpl.placeholders;
+    const f = await this.files.get(firmId, r.templateFileKey);
+    try { return f ? placeholdersOf(f.bytes) : tpl?.placeholders ?? []; } catch { return tpl?.placeholders ?? []; }
   }
 
   /** Edit (BR-9; AG-5-65): every edit is version n+1. On a sent one the open request ends (UPDATED) in the same
@@ -390,8 +435,9 @@ export class Retainers {
     const r = await this.visible(ctx, id, true);
     if (!["templateId", "signerPersonId", "representativeStaffId", "fees"].some((k) => body[k] !== undefined)) unprocessable("Nothing to change.", {});   // B-12: no new version for nothing
     // A stale save is refused (STANDARDS stale-save rule; Devin 4575579111): the page sends the version it shows.
-    const expected = expectedVersionOf(body);
+    const expected = expectedVersionOf(body), expectedStatus = expectedStatusOf(body);
     if (expected !== r.currentVersion) stale(r.currentVersion, expected);
+    if (expectedStatus !== r.status) restated(r.status, expectedStatus);   // FO-5f item 2 (B-25): sent by a colleague meanwhile
     if (!EDITABLE.includes(r.status)) conflict(r.status === "CLIENT_SIGNED" || r.status === "SIGNED" || r.status === "SIGNED_OFFLINE" ? "The client has signed this agreement: it can no longer be edited." : "This agreement is withdrawn: prepare a new one.", "NOT_EDITABLE");
     const p = await this.prospectFor(ctx, r.prospectId ?? notFound("prospect"), true);
     const open = () => conflict("This prospect already has an open retainer. Open it instead.", "RETAINER_OPEN");
@@ -410,10 +456,13 @@ export class Retainers {
     await this.tx(async (tx) => {
       const locked = await tx.$queryRaw<{ status: string; current_version: number }[]>(Prisma.sql`select status::text, current_version from fo_retainer where firm_id = ${ctx.firmId}::uuid and id = ${r.id}::uuid for update`);
       if (locked[0]?.status !== r.status || locked[0]?.current_version !== r.currentVersion) conflict("This agreement changed at the same time (for example the client signed). Open it again.", "CHANGED");
-      if (cur.sentAt && !cur.endedAt) await tx.foRetainerVersion.update({ where: { id: cur.id }, data: { endedAt: new Date(this.clock.now()), endReason: "UPDATED" } });
+      const ends = !!cur.sentAt && !cur.endedAt;
+      if (ends) await tx.foRetainerVersion.update({ where: { id: cur.id }, data: { endedAt: new Date(this.clock.now()), endReason: "UPDATED" } });
       await tx.foRetainer.update({ where: { id: r.id }, data: { status: "DRAFT", currentVersion: n, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId, templateId: t.id, templateVersion: t.version, templateFileKey: t.fileKey } });
       await this.writeVersion(tx, ctx, r.id, n, values, file, fees);
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.edited", r.id, `Edited: version ${n}${cur.sentAt && !cur.endedAt ? " (the earlier request ended)" : ""}`, { retainerId: r.id, version: n, endedVersion: cur.sentAt && !cur.endedAt ? cur.n : null, sha256: file.sha256 }), entity: "fo_retainer" });
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.edited", r.id, `Edited: version ${n}${ends ? " (the earlier request ended)" : ""}`, { retainerId: r.id, version: n, endedVersion: ends ? cur.n : null, sha256: file.sha256 }), entity: "fo_retainer" });
+      // FO-5f item 1: the ended request is told outside FO-5 (FO-6 cancels the signing request on it).
+      if (ends) await this.event(tx, ctx.firmId, EVENT.RETAINER_REQUEST_ENDED, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: cur.n, reason: "UPDATED" });
     }, { fo_retainer_one_live_per_prospect: open });
     return { ...(await this.read(ctx, r.id)), warnings: s.warnings, signerOptions: s.options };
   }
@@ -447,6 +496,10 @@ export class Retainers {
   async withdraw(ctx: StaffContext, id: string, body: Record<string, unknown>) {
     const r = await this.visible(ctx, id, true);
     const reason = str(body.reason, 200, "A reason", "reason", true, true)!;
+    // FO-5f item 2 (B-25 and the Withdraw gap): the version and the status the page showed.
+    const expected = expectedVersionOf(body), expectedStatus = expectedStatusOf(body);
+    if (expected !== r.currentVersion) stale(r.currentVersion, expected);
+    if (expectedStatus !== r.status) restated(r.status, expectedStatus);
     if (!WITHDRAWABLE.includes(r.status)) conflict(r.status === "SIGNED" || r.status === "SIGNED_OFFLINE" ? "A signed agreement cannot be withdrawn." : r.status === "DRAFT" ? "A draft has not been sent: edit it or leave it." : `A ${r.status.toLowerCase()} agreement cannot be withdrawn.`, "NOT_WITHDRAWABLE");
     await this.tx(async (tx) => {
       const now = new Date(this.clock.now());
@@ -461,29 +514,62 @@ export class Retainers {
 
   /** Signed offline (BR-11; AG-5-39, AG-5-47; contracts §2.6): a PDF and a reason; ends the open request; filed "Signed on
    *  paper", no seal; the prospect becomes WON (SIGNED_OFFLINE) once; cannot be undone. A consultation agreement never
-   *  makes a client (contracts §7 §2.3-§2.4). */
+   *  makes a client (contracts §7 §2.3-§2.4).
+   *  FO-5f item 3 (Lead B, rows rev 16.8): the paper may have been signed on an earlier version (`signedVersion`, default
+   *  the current one). The record files exactly what was signed: a new version copies that version's values, fees and
+   *  file (marked "copied from version k"), and that copy is filed as signed, in one transaction. History stays
+   *  forward-only (part 1's triggers unchanged); the newer unsigned versions stay, marked "not signed". The current
+   *  version's open request ends (UPDATED, `retainer.request_ended`). `expectedVersion` stays the stale check. */
   async signedOffline(ctx: StaffContext, id: string, body: Record<string, unknown>, file: Upload | undefined) {
     const r = await this.visible(ctx, id, true);
     const reason = str(body.reason, 200, "A reason", "reason", true, true)!;
-    // break B-24: the version the paper was signed on; a newer one saved meanwhile is never filed as signed.
+    // break B-24: the version the page showed; a newer one saved meanwhile is never filed as signed.
     const expected = expectedVersionOf(body, true);
     if (expected !== r.currentVersion) stale(r.currentVersion, expected);
+    const k = signedVersionOf(body, r.currentVersion);
     if (!file?.bytes?.length) unprocessable("Upload the signed PDF.", { file: "Upload the signed PDF." });
     if (file!.size > OFFLINE_PDF_MAX_BYTES) unprocessable("The signed copy is at most 10 MB.", { file: "At most 10 MB." });
     const head = Buffer.from(file!.bytes.subarray(0, 5)).toString("latin1"), tail = Buffer.from(file!.bytes.subarray(-1024)).toString("latin1");
     if (head !== "%PDF-" || !tail.includes("%%EOF")) unprocessable("The signed copy must be a PDF.", { file: "A PDF only." });   // B-15: header and trailer
     if (!OFFLINE_FROM.includes(r.status)) conflict(r.status === "SIGNED_OFFLINE" || r.status === "SIGNED" ? "This agreement is already signed." : `A ${r.status.toLowerCase()} agreement cannot be recorded as signed.`, "NOT_SIGNABLE");
+    // The client signed the current version electronically: a new version (the copy) is never made after that (AG-5-65).
+    if (k !== r.currentVersion && r.status === "CLIENT_SIGNED") conflict(`The client signed version ${r.currentVersion} electronically: record that version, or withdraw it first.`, "NOT_SIGNABLE");
+    // The copy's file is stored first (write-once, a fresh attempt key), like every other file here.
+    let copy: { values: Record<string, unknown>; fees: FeeIn[]; file: { key: string; sha256: string } } | null = null;
+    if (k !== r.currentVersion) {
+      const src = await this.db.foRetainerVersion.findFirstOrThrow({ where: { firmId: ctx.firmId, retainerId: r.id, n: k }, include: { fees: { orderBy: { position: "asc" } } } });
+      const f = await this.files.get(ctx.firmId, src.fileKey) ?? conflict(`Version ${k}'s file is missing.`, "VERSION_FILE_MISSING");
+      const ext = /\.pdf$/.test(src.fileKey) ? "pdf" : "docx";
+      const stored = await this.files.put(ctx.firmId, `retainers/${r.id}/v${r.currentVersion + 1}-${attempt()}.${ext}`, f.bytes, f.contentType);
+      copy = {
+        values: { ...(src.mergeValues as Record<string, unknown>), [COPIED_FROM]: k },
+        fees: src.fees.map((x) => ({ label: x.label, amountMinor: x.amountMinor, when: x.when, dueOn: x.dueOn?.toISOString().slice(0, 10) ?? null })),
+        file: stored,
+      };
+    }
     const offlineKey = `retainers/${r.id}/signed-offline-${attempt()}.pdf`;
     const stored = await this.files.put(ctx.firmId, offlineKey, file!.bytes, "application/pdf");
     let prospectWon = false;
+    const filed = copy ? r.currentVersion + 1 : r.currentVersion;
     await this.tx(async (tx) => {
       const now = new Date(this.clock.now());
-      const v = await tx.foRetainerVersion.updateMany({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion, endedAt: null }, data: { endedAt: now, endReason: "SIGNED_OFFLINE" } });
-      const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: r.status, currentVersion: r.currentVersion }, data: { status: "SIGNED_OFFLINE", offlineAt: now, offlineBy: `staff:${ctx.staffId}`, offlineReason: reason, offlineFileKey: offlineKey, offlineFileSha256: stored.sha256 } });
+      let ended: number | null = null, from = r.status;
+      if (copy) {
+        const locked = await tx.$queryRaw<{ status: string; current_version: number }[]>(Prisma.sql`select status::text, current_version from fo_retainer where firm_id = ${ctx.firmId}::uuid and id = ${r.id}::uuid for update`);
+        if (locked[0]?.status !== r.status || locked[0]?.current_version !== r.currentVersion) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
+        const cur = await tx.foRetainerVersion.findFirstOrThrow({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion } });
+        if (cur.sentAt && !cur.endedAt) { await tx.foRetainerVersion.update({ where: { id: cur.id }, data: { endedAt: now, endReason: "UPDATED" } }); ended = cur.n; }
+        await tx.foRetainer.update({ where: { id: r.id }, data: { status: "DRAFT", currentVersion: filed } });
+        await this.writeVersion(tx, ctx, r.id, filed, copy.values, copy.file, copy.fees);
+        from = "DRAFT";
+      }
+      const v = await tx.foRetainerVersion.updateMany({ where: { firmId: ctx.firmId, retainerId: r.id, n: filed, endedAt: null }, data: { endedAt: now, endReason: "SIGNED_OFFLINE" } });
+      const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: from as never, currentVersion: filed }, data: { status: "SIGNED_OFFLINE", offlineAt: now, offlineBy: `staff:${ctx.staffId}`, offlineReason: reason, offlineFileKey: offlineKey, offlineFileSha256: stored.sha256 } });
       if (n.count !== 1 || v.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
       if (r.kind === "RETAINER" && r.prospectId) prospectWon = await this.winProspect(tx, ctx, r.prospectId, now);
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.signed_offline", r.id, `Signed on paper${prospectWon ? "; the prospect is won" : ""}`, { retainerId: r.id, version: r.currentVersion, sha256: stored.sha256, prospectWon }), entity: "fo_retainer" });
-      await this.event(tx, ctx.firmId, EVENT.RETAINER_SIGNED_OFFLINE, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: r.currentVersion, prospectWon });
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.signed_offline", r.id, `Signed on paper${copy ? ` (version ${k}, filed as version ${filed}, a copy of it)` : ""}${prospectWon ? "; the prospect is won" : ""}`, { retainerId: r.id, version: filed, signedVersion: k, copiedFrom: copy ? k : null, endedVersion: ended, sha256: stored.sha256, prospectWon }), entity: "fo_retainer" });
+      if (ended !== null) await this.event(tx, ctx.firmId, EVENT.RETAINER_REQUEST_ENDED, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: ended, reason: "UPDATED" });
+      await this.event(tx, ctx.firmId, EVENT.RETAINER_SIGNED_OFFLINE, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: filed, prospectWon });
     });
     return { ...(await this.read(ctx, id)), prospectWon };
   }
@@ -510,7 +596,7 @@ export class Retainers {
   async assertFileVisible(ctx: StaffContext, key: string): Promise<void> {
     const m = /^retainers\/([0-9a-f-]{36})\//.exec(key);
     if (!m) return notFound("file");
-    await this.visible(ctx, m[1]);
+    try { await this.visible(ctx, m[1]); } catch { notFound("file"); }   // FO-5f item 11 (B-26): "No such file", never "retainer"
   }
 
   /** The file a download link may name (BR-15): a version's document or the signed paper copy, of a retainer the person sees. */
@@ -527,7 +613,8 @@ Injectable()(Retainers);
 type Person = { id: string; givenNames: string | null; familyName: string | null; email: string | null; phone: string | null };
 /** A template's name (B-13): one line, 1-120 characters, NFC, nothing hidden or turned around. */
 const nameOf120 = (v: unknown): string => {
-  const n = str(v, 120, "The template's name", "name")!.normalize("NFC");
+  // FO-5f item 7 (B-22): normalized first, so the length checked is the length stored (NFC can make a name longer).
+  const n = str(typeof v === "string" ? v.normalize("NFC") : v, 120, "The template's name", "name")!;
   if (HIDDEN.test(n) || /[\u0000-\u001f\u007f]/.test(n)) unprocessable("The template's name has hidden characters.", { name: "Remove hidden characters." });
   return n;
 };
