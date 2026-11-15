@@ -1,0 +1,15 @@
+PASS  R1.38 pass: stored 12 Mar 15:00Z (10:00 EST) with the booker's zone Asia/Dubai
+PASS  R1.38 pass: the staff move stores 16 Mar 14:00Z (10:00 EDT, after Toronto's change); the booker's zone kept
+NOTE  staff read of the booking (FO-3sr GET /:id): {"id":"624a9077-b5fb-4fd6-aeeb-3040a8940e67","status":"RESCHEDULED","sequence":1,"typeId":"ac90338c-b3e1-4f3c-a1fa-1f4797d3c460","staffId":"acdfc771-9895-4315-a35f-4dcf29f5b512","personId":"22599dd0-f8d9-449c-beaf-6507d03dee63","prospectId":null,"mode":"VIDEO","startsAt":"2027-03-16T14:00:00.000Z","endsAt":"2027-03-16T14:30:00.000Z","timeZone":"Asia/Dubai"}
+NOTE  booker mails: Your Free consultation is booked | Your Free consultation has moved | Your Free consultation is cancelled
+NOTE  host mails: Consultation is booked: Friday, March 12, 2027 at 10:00 a.m. (America/Toronto) | Consultation has moved: Tuesday, March 16, 2027 at 10:00 a.m. (America/Toronto) | Consultation is cancelled: Tuesday, March 16, 2027 at 10:00 a.m. (America/Toronto)
+PASS  R1.40 pass: three invites to the booker (book, move, cancel), each with an .ics
+PASS  R1.40 pass: one UID across all three, the host's too
+PASS  R1.40 pass: SEQUENCE rises on each change (staff move, staff cancel)
+PASS  R1.40 pass: METHOD:REQUEST, REQUEST, then CANCEL
+PASS  R1.40 / R1.38 pass: DTSTART in UTC, 15:00Z then 14:00Z after the change
+PASS  R1.40 fail case: the moved invite does not still carry the old time
+PASS  R1.38 pass: the booker reads 7:00 p.m. then 6:00 p.m. (Asia/Dubai) across Toronto's change
+PASS  R1.38 pass: the host reads 10:00 a.m. (America/Toronto) both times (office zone, AG-04 rule 9)
+PASS  R1.38 fail case: the host's moved mail does not read 9:00 or 11:00 (an offset not shifted)
+11 passed, 0 failed
