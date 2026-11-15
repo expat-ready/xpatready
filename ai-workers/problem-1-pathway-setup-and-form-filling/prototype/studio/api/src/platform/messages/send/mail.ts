@@ -6,7 +6,7 @@
 // transaction rolls back), then the outbox row, then dispatch. It throws only when nothing will be sent (refused,
 // suppressed, or the transaction failed), so the caller's job retries only then; a dispatch that fails after the commit
 // is left to the sweep (SWEEP_AFTER_MS), never retried here, so one email is never two rows.
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { FilesPort } from "../../../../../ports/files.ts";
 import { MailMessage, type MailPort } from "../../../../../ports/mail.ts";
@@ -17,7 +17,7 @@ import { firmScope } from "../../firm-scope.ts";
 export const attachmentKeyOf = (mailId: string, filename: string) => `mail/${mailId}/${filename.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[._-]+/, "").slice(0, 120) || "file"}`;
 
 export class MessagesMail implements MailPort {
-  constructor(private readonly d: { db: PrismaClient; messages: MessagePort; files: FilesPort; log?: (line: string) => void }) {}
+  constructor(private readonly d: { db: PrismaClient; messages: MessagePort<Prisma.TransactionClient>; files: FilesPort; log?: (line: string) => void }) {}
 
   async send(message: MailMessage): Promise<{ messageId: string }> {
     const m = MailMessage.parse(message);
