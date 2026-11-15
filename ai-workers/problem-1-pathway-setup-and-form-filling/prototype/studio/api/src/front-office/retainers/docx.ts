@@ -14,10 +14,16 @@ import { RenderData, TemplateKey, type DocumentRenderPort, type RenderedDocument
 
 export const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-/** The file could not be read as a Word document, or its placeholders are malformed. */
+/** The file could not be read as a Word document, or its placeholders are malformed. `says` is the plain sentence the
+ *  person reads when the refusal has its own reason (FO-5f: B-19, B-20, B-21); otherwise "We could not read this file." */
 export class UnreadableDocx extends Error {
-  constructor(readonly why: string) { super(`We could not read this file. (${why})`); this.name = "UnreadableDocx"; }
+  constructor(readonly why: string, readonly says?: string, readonly code?: string) { super(`We could not read this file. (${why})`); this.name = "UnreadableDocx"; }
 }
+/** FO-5f item 6 (B-20): a part whose size is not what the zip declares. */
+export const DAMAGED = "This file is damaged or is not a Word file.";
+/** FO-5f item 4 (r3-m1, B-21): placeholders in equations (`m:t`) or drawings and SmartArt (`a:t`) are refused, never printed blank. */
+export const NOT_FILLED = "Placeholders inside equations, drawings or SmartArt are not filled. Move it into normal text.";
+const damaged = (why: string) => new UnreadableDocx(why, DAMAGED, "DAMAGED_FILE");
 
 /** Sample limits on what a .docx may expand to (break B-2: a 400 KB file expanding to 400 MB stalled the server). Each
  *  part is inflated here first with a hard output cap (break B-17, review r2-M1: the sizes a zip declares can lie, and
@@ -30,7 +36,7 @@ export const DOCX_MAX_TAGS = 2000;
 function load(bytes: Uint8Array): PizZip {
   let zip: PizZip;
   try { zip = new PizZip(bytes); } catch (e) { throw new UnreadableDocx(`not a zip: ${(e as Error).message}`.slice(0, 200)); }
-  type Packed = { compressionMethod?: string; getCompressedContent?: () => string | Uint8Array };
+  type Packed = { compressionMethod?: string; uncompressedSize?: number; getCompressedContent?: () => string | Uint8Array };
   const entries = Object.values((zip as unknown as { files: Record<string, { dir?: boolean; _data?: Packed }> }).files);
   if (entries.length > DOCX_MAX_ENTRIES) throw new UnreadableDocx(`more than ${DOCX_MAX_ENTRIES} parts`);
   let used = 0;
@@ -43,6 +49,8 @@ function load(bytes: Uint8Array): PizZip {
       try { size = inflateRawSync(packed, { maxOutputLength: DOCX_MAX_UNCOMPRESSED - used + 1 }).length; }
       catch (e) { throw new UnreadableDocx((e as { code?: string }).code === "ERR_BUFFER_TOO_LARGE" ? "it expands to more than 30 MB" : "a damaged part"); }
     } else throw new UnreadableDocx("an unknown compression");
+    // FO-5f item 6 (B-20): pizzip refuses a part whose size is not the declared one only when it is read (a 500 there).
+    if (typeof f._data.uncompressedSize === "number" && size !== f._data.uncompressedSize) throw damaged("a part's size is not the size it declares");
     used += size;
     if (used > DOCX_MAX_UNCOMPRESSED) throw new UnreadableDocx("it expands to more than 30 MB");
   }
@@ -52,37 +60,77 @@ function load(bytes: Uint8Array): PizZip {
 function open(bytes: Uint8Array): Docxtemplater {
   const zip = load(bytes);
   if (!zip.file("word/document.xml")) throw new UnreadableDocx("no word/document.xml");
+  return compile(zip);
+}
+
+function compile(zip: PizZip): Docxtemplater {
   try {
     return new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true, errorLogging: false, nullGetter: () => "" });
   } catch (e) {
+    if (/size mismatch|corrupted|end of data/i.test((e as Error).message ?? "")) throw damaged((e as Error).message.slice(0, 200));   // B-20
     const errs = (e as { properties?: { errors?: { properties?: { explanation?: string } }[] } }).properties?.errors ?? [];
     throw new UnreadableDocx((errs.map((x) => x.properties?.explanation).filter(Boolean).join("; ") || (e as Error).message).slice(0, 300));
   }
 }
 
+/** How many "{" and "}" a text holds (a loop: a flood never allocates a match per brace). */
+function braceCount(t: string): number { let n = 0; for (let i = 0; i < t.length; i++) { const c = t.charCodeAt(i); if (c === 123 || c === 125) n++; } return n; }
+
 /** The placeholders a .docx uses, flattened: `client.name`, and for a loop its name and `<loop>.<field>` (`fees`,
  *  `fees.label`); inside a loop `{fees.label}` names the same field as `{label}` (review m4). Sorted, each once. Read from
  *  the text docxtemplater renders (break B-18: Word's own field codes, citation data and tracked deletions are not text
  *  and are not read): the `<w:t>` runs of every Word part, declared under any name (break B-3), and the text of the
- *  document properties. Read after docxtemplater has parsed the template, so a malformed tag is already refused.
- *  docxtemplater's own inspect helper needs a library we have not approved. */
+ *  document properties. The glossary (building blocks) is never rendered, so it is not read (FO-5f item 8, B-23). A
+ *  placeholder in an equation (`<m:t>`) or a drawing or SmartArt (`<a:t>`) is refused (FO-5f item 4). The placeholder cap
+ *  is counted from the text runs before docxtemplater compiles (FO-5f item 5, B-19: a flood of tags never costs a compile),
+ *  then docxtemplater parses the template, so a malformed tag is refused. docxtemplater's own inspect helper needs a
+ *  library we have not approved. */
 export function placeholdersOf(bytes: Uint8Array): string[] {
-  const zip = open(bytes).getZip();
-  const declared = [...(zip.file("[Content_Types].xml")?.asText() ?? "").matchAll(/PartName="\/([^"]+)"/g)].map((m) => m[1]);
-  const parts = new Set([...Object.keys(zip.files).filter((f) => /\.xml$/i.test(f)), ...declared]);
+  const zip = load(bytes);
+  if (!zip.file("word/document.xml")) throw new UnreadableDocx("no word/document.xml");
+  const read = (name: string): string | undefined => { try { return zip.file(name)?.asText(); } catch { throw damaged(`part ${name.slice(0, 80)} cannot be read`); } };
+  const types = read("[Content_Types].xml") ?? "";
+  const overrides = [...types.matchAll(/<Override\b[^>]*>/g)].map((m) => ({ part: /PartName="\/([^"]+)"/.exec(m[0])?.[1], type: /ContentType="([^"]+)"/.exec(m[0])?.[1] ?? "" }));
+  // Each part's type as docxtemplater resolves it (review round 2, M-1 rest): its Override, else the Default for its
+  // extension. A part typed as XML is read whatever its name (a header named h.bin is still compiled).
+  const defaults = new Map([...types.matchAll(/<Default\b[^>]*>/g)].map((m) => [(/Extension="([^"]+)"/.exec(m[0])?.[1] ?? "").toLowerCase(), /ContentType="([^"]+)"/.exec(m[0])?.[1] ?? ""]));
+  const byPart = new Map(overrides.filter((o) => o.part).map((o) => [o.part!.toLowerCase(), o.type]));
+  const typeOf = (f: string) => byPart.get(f.toLowerCase()) ?? defaults.get(/\.([^./]+)$/.exec(f)?.[1]?.toLowerCase() ?? "") ?? "";
+  const files = Object.keys(zip.files).filter((f) => !(zip.files as Record<string, { dir?: boolean }>)[f].dir);
+  // Never rendered by docxtemplater, so never read: the glossary (B-23) and charts (review m-4: a brace in a chart title
+  // is not a placeholder).
+  const skipped = (f: string) => /\.glossary\+xml$|drawingml\.chart\+xml$/i.test(typeOf(f)) || /^word\/(glossary|charts)\//i.test(f);
+  const COVER = 'xmlns="http://schemas.microsoft.com/office/2006/coverPageProps"';   // the customXml docxtemplater compiles
+  const parts = new Set(files.filter((f) => /\.xml$/i.test(f) || /[/+]xml$/i.test(typeOf(f))));
   const unescape = (t: string) => t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
-  const out = new Set<string>();
-  let tags = 0;
+  const runs = (xml: string, tag: string) => [...xml.matchAll(new RegExp(`<${tag}(?:\\s[^>]*)?>([^<]*)</${tag}>`, "g"))].map((m) => unescape(m[1])).join("");
+  const TAG = /\{([^{}]*)\}/g;
+  const texts: string[] = [];
+  let tags = 0, braces = 0;
+  const tooMany = () => new UnreadableDocx(`more than ${DOCX_MAX_TAGS} placeholders`, `This template has more than ${DOCX_MAX_TAGS} placeholders (or more than ${2 * DOCX_MAX_TAGS} { and } signs), the most one template may have.`, "TOO_MANY_PLACEHOLDERS");
   for (const name of parts) {
-    if (/(^|\/)\[Content_Types\]\.xml$|\.rels$|^customXml\//i.test(name)) continue;
-    const xml = zip.file(name)?.asText();
+    if (/(^|\/)\[Content_Types\]\.xml$|\.rels$/i.test(name) || skipped(name)) continue;
+    const xml = read(name);
     if (!xml) continue;
-    const text = /^docProps\//i.test(name)
-      ? unescape(xml.replace(/<[^>]*>/g, ""))
-      : [...xml.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map((m) => unescape(m[1])).join("");
+    const cover = /^customXml\//i.test(name);
+    if (cover && !xml.includes(COVER)) continue;   // other customXml (citations, GUIDs) is not compiled (B-18)
+    // The cap (B-19; review rounds 1 and 2, M-1): every brace in the part's XML is counted, paired or not and in any
+    // text tag, before the compile, so a flood of lone "{" never reaches it. A placeholder has two braces: at most
+    // twice the cap.
+    braces += braceCount(xml);
+    if (braces > 2 * DOCX_MAX_TAGS) throw tooMany();
+    const plain = cover || /^docProps\//i.test(name);   // property parts: their whole text is lexed
+    const drawn = plain ? "" : runs(xml, "m:t") + "\u0000" + runs(xml, "a:t");
+    if (/\{[^{}]*\}/.test(drawn)) throw new UnreadableDocx("a placeholder in an equation, drawing or SmartArt", NOT_FILLED, "PLACEHOLDER_NOT_FILLED");
+    const text = plain ? unescape(xml.replace(/<[^>]*>/g, "")) : runs(xml, "w:t") + "\u0000" + runs(xml, "vt:lpwstr") + "\u0000" + runs(xml, "vt:lpstr");
+    for (const _ of text.matchAll(TAG)) if (++tags > DOCX_MAX_TAGS) throw tooMany();
+    texts.push(text);
+  }
+  compile(zip);   // a malformed tag is refused here, after the cheap checks above
+  const out = new Set<string>();
+  for (const text of texts) {
     const stack: string[] = [];
-    for (const m of text.matchAll(/\{([^{}]*)\}/g)) {
-      if (++tags > DOCX_MAX_TAGS) throw new UnreadableDocx(`more than ${DOCX_MAX_TAGS} placeholders`);
+    for (const m of text.matchAll(TAG)) {
       const t = m[1].trim(), sigil = t[0];
       const field = (n: string) => (stack.length && n.startsWith(`${stack.join(".")}.`) ? n : [...stack, n].join("."));
       if (sigil === "#" || sigil === "^") { const n = t.slice(1).trim(); out.add(field(n)); stack.push(n); }

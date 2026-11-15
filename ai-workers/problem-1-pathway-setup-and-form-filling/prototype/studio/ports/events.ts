@@ -35,6 +35,9 @@ export const EVENT = {
   RETAINER_WITHDRAWN: "retainer.withdrawn",
   /** A retainer was recorded as signed on paper (front office, FO-5; AG-5-39; contracts §7 §2.3-§2.4). */
   RETAINER_SIGNED_OFFLINE: "retainer.signed_offline",
+  /** A sent retainer's open request ended because an edit made a newer version (front office, FO-5f; payload `version` =
+   *  the ended version, `reason` UPDATED). FO-6 cancels the signing request on it. */
+  RETAINER_REQUEST_ENDED: "retainer.request_ended",
 } as const;
 export type EventName = (typeof EVENT)[keyof typeof EVENT];
 
@@ -88,5 +91,7 @@ export const RetainerEventPayload = z.object({
   version: z.number().int().min(1),
   /** Signed offline only: whether this made the prospect WON (false when it already was, or for a consultation agreement). */
   prospectWon: z.boolean().optional(),
+  /** retainer.request_ended only: why the request ended (an edit made a newer version). */
+  reason: z.enum(["UPDATED"]).optional(),
 }).strict();
 export type RetainerEventPayload = z.infer<typeof RetainerEventPayload>;
