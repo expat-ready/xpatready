@@ -4,7 +4,7 @@ The tech lead keeps this list. **No secrets, no names, no email addresses, no ac
 
 | # | Provider · account | Purpose | Sign-in (role) | MFA | Recovery route | Gap to close | Status (15 Nov 22:3x IST) |
 |---|---|---|---|---|---|---|---|
-| 1 | AWS · root of the staging account | billing, account owner | founder (company email) | authenticator app, one device | AWS root recovery by email + phone | **second MFA device** on root; password in the manager | active |
+| 1 | AWS · root of the staging account | billing, account owner | founder (company email) | two devices: authenticator app (main phone) and a backup authenticator on a second device | AWS root recovery by email + phone | password in the manager | active; second MFA added 16 Nov 00:0x IST |
 | 2 | AWS · IAM Identity Center admin user | day-to-day admin, Canada only | founder | set by the founder (22:4x IST) | admin reset by root | none | **active**: AdministratorAccess, Canada only |
 | 3 | AWS · budget alert | US$20/month alert | founder (email) | n/a | n/a | none | on |
 | 4 | Stripe · sandbox | test payments | founder | to confirm | Stripe email recovery | confirm MFA on | test mode; **test key in Secrets Manager** ca-central-1 (22:4x IST, pasted by the founder; shape checked only) |
