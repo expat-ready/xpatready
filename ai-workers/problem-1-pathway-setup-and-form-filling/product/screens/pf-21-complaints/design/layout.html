@@ -86,16 +86,16 @@ fieldset{border:0;padding:0;margin:0 0 14px}
 
 <p class="board-title">Board 1 · Complaints list (Library list pattern) · signed in as Owner · Sample data</p>
 <section class="frame" aria-label="Board 1: complaints list">
-  <div class="hdr"><span class="logo">ExpatReady</span><span class="muted">Firm · Complaints</span><span style="margin-left:auto" class="muted">Owner ▾</span></div>
-  <div class="where">Cases › <strong>Complaints</strong></div>
+  <div class="hdr"><span class="logo">ExpatReady</span><span class="muted">Firm · Complaints</span><span style="margin-left:auto" class="muted" title="displayName from GET /api/platform/me">Owner G</span></div>
+  <div class="where"><a href="#">← Cases</a> · <strong>Complaints</strong></div>
   <div class="page">
     <div class="head">
       <div><h1>Complaints</h1><p class="sub">Every complaint made to the firm, how it was handled and how it ended.</p></div>
-      <button class="btn primary" type="button">Record a complaint</button>
+      <button class="btn primary" type="button">Record a complaint</button><!-- shown only with the record key -->
     </div>
     <div class="views" role="group" aria-label="Views">
       <button class="chip" aria-pressed="true" type="button">Open<span class="count">4</span></button>
-      <button class="chip needs" aria-pressed="false" type="button" title="Open and not acknowledged by its date">Overdue<span class="count">1</span></button>
+      <button class="chip needs" aria-pressed="false" type="button" title="Open and not acknowledged by its date. Once acknowledged, a complaint is not shown as overdue.">Overdue<span class="count">1</span></button>
       <button class="chip" aria-pressed="false" type="button">Closed<span class="count">7</span></button>
       <button class="chip" aria-pressed="false" type="button">All<span class="count">11</span></button>
     </div>
@@ -104,7 +104,7 @@ fieldset{border:0;padding:0;margin:0 0 14px}
         <thead><tr><th scope="col">Received</th><th scope="col">From</th><th scope="col">About <span class="sample">Sample</span></th><th scope="col">How it came <span class="sample">Sample</span></th><th scope="col">Handler</th><th scope="col">Acknowledge by <span class="sample">Sample period</span></th><th scope="col">Status</th></tr></thead>
         <tbody>
           <tr><td><a href="#record">10 Nov 2026</a></td><td>Client A<div class="muted" style="font-size:12px">Person on a case</div></td><td>Fees</td><td>Email</td><td>Case Manager B</td><td><span class="due-late">12 Nov · 1 business day late</span></td><td><span class="status late">Overdue</span></td></tr>
-          <tr><td><a href="#record">13 Nov 2026</a></td><td>Prospect C<div class="muted" style="font-size:12px">Front-office contact</div></td><td>Communication</td><td>Phone</td><td>Owner (you)</td><td>17 Nov · 2 business days left</td><td><span class="status open">Open</span></td></tr>
+          <tr><td><a href="#record">13 Nov 2026</a></td><td>Prospect C<div class="muted" style="font-size:12px">Front-office contact</div></td><td>Communication</td><td>Phone</td><td>Owner G (you)</td><td>17 Nov · 2 business days left</td><td><span class="status open">Open</span></td></tr>
           <tr><td><a href="#record">6 Nov 2026</a></td><td>Person D<div class="muted" style="font-size:12px">Someone else</div></td><td>Service</td><td>Letter</td><td>Admin E</td><td class="muted">Acknowledged 9 Nov</td><td><span class="status open">Open</span></td></tr>
           <tr><td><a href="#record">2 Nov 2026</a></td><td>Client F<div class="muted" style="font-size:12px">Person on a case</div></td><td>Conduct</td><td>In person</td><td>Case Manager B</td><td class="muted">Acknowledged 3 Nov</td><td><span class="status open">Open</span></td></tr>
         </tbody>
@@ -112,13 +112,13 @@ fieldset{border:0;padding:0;margin:0 0 14px}
     </div>
     <p class="muted" style="font-size:12px;margin-top:8px">Showing 4 of 4 open. Periods and lists are Sample until the College's by-laws are read (Unconfirmed: no counsel). <a href="#how">How it works</a></p>
   </div>
-  <p class="note">A handler without the read permission sees "Complaints you handle" as the subtitle and only their own rows; counts count only those. A Case Manager who handles none sees the empty state (Board 4) but can still record.</p>
+  <p class="note">A handler without the read permission sees "Complaints you handle" as the subtitle and only their own rows; counts count only those. A Case Manager who handles none sees the empty state (Board 4) but can still record. "Record a complaint" shows only with the record permission. Counts are counted from one page of All; when that page has more (more than 100), the chips show "100+". The header names the signed-in staff member (no simulated-person controls).</p>
 </section>
 
 <p class="board-title" id="record">Board 2 · Record page (Workspace pattern: facts, then timeline) · Owner · open, acknowledged</p>
 <section class="frame" aria-label="Board 2: complaint record page">
-  <div class="hdr"><span class="logo">ExpatReady</span><span class="muted">Firm · Complaints</span><span style="margin-left:auto" class="muted">Owner ▾</span></div>
-  <div class="where">← Complaints · Cases › Complaints › <strong>Fees · Client A · 10 Nov 2026</strong></div>
+  <div class="hdr"><span class="logo">ExpatReady</span><span class="muted">Firm · Complaints</span><span style="margin-left:auto" class="muted" title="displayName from GET /api/platform/me">Owner G</span></div>
+  <div class="where">← Complaints · Complaints › <strong>Fees · Client A · 10 Nov 2026</strong></div>
   <div class="page">
     <div class="head">
       <div><h1>Fees complaint from Client A</h1><p class="sub"><span class="status open">Open</span> · received 10 Nov 2026 by email · handled by Case Manager B</p></div>
@@ -128,15 +128,17 @@ fieldset{border:0;padding:0;margin:0 0 14px}
       <button class="btn primary" type="button">Record the response sent</button>
       <button class="btn" type="button">Add a handling step</button>
       <button class="btn" type="button">Add a note</button>
+      <button class="btn" type="button">Close with an outcome</button>
       <button class="btn link" type="button">Change handler</button>
     </div>
     <div class="cols">
       <div class="card">
         <h2>Facts</h2>
+        <p class="muted" style="font-size:12px;margin:4px 0 0">Dates and times in the firm's time zone (America/Toronto).</p>
         <dl>
           <dt>From</dt><dd>Client A · person on a case</dd>
           <dt>Contact</dt><dd>client-a@example.com</dd>
-          <dt>Received</dt><dd>10 Nov 2026, 14:05 (America/Toronto)</dd>
+          <dt>Received</dt><dd>10 Nov 2026, 14:05</dd>
           <dt>How it came</dt><dd>Email <span class="sample">Sample</span></dd>
           <dt>About</dt><dd>Fees <span class="sample">Sample</span></dd>
           <dt>Handler</dt><dd>Case Manager B</dd>
@@ -153,14 +155,14 @@ fieldset{border:0;padding:0;margin:0 0 14px}
         <p class="muted" style="margin:4px 0 0">Every event is kept. Nothing here is edited or deleted; a change is a new event.</p>
         <ol class="timeline">
           <li><div class="when">14 Nov 2026, 10:20 · Case Manager B</div><strong>Handling step</strong><div>Checked the fee agreement and the invoice dates with the Owner.</div></li>
-          <li><div class="when">13 Nov 2026, 09:10 · Case Manager B</div><strong>Acknowledged</strong> <span class="due-late" style="font-size:12px">1 business day after its date</span><div>Wrote to Client A that we are looking into it.</div></li>
+          <li><div class="when">13 Nov 2026, 09:10 · Case Manager B</div><strong>Acknowledged</strong><div>Wrote to Client A that we are looking into it.</div></li>
           <li><div class="when">13 Nov 2026, 08:00 · system</div><strong>Reminder sent to the handler</strong></div></li>
           <li><div class="when">10 Nov 2026, 14:05 · Case Manager B</div><strong>Received</strong> by email · about fees</li>
         </ol>
       </div>
     </div>
   </div>
-  <p class="note">Next-step button by status: not acknowledged → "Record the acknowledgement"; acknowledged, no step yet → "Add a handling step"; steps, no response → "Record the response sent"; response sent → "Close with an outcome"; closed → no filled button, "Add a note" only. "Change handler" shows only with both permissions (Owner, Admin) and only while open. No delete anywhere.</p>
+  <p class="note">Next-step button by status: not acknowledged → "Record the acknowledgement"; acknowledged, no step yet → "Add a handling step"; steps, no response → "Record the response sent"; response sent → "Close with an outcome"; closed → no filled button, "Add a note" only. While open, every other act the service allows is a quiet secondary button (Add a handling step, Add a note, Record the response sent until sent, Close with an outcome), so a complaint can close straight after receipt (e.g. Withdrawn). Action buttons show only for the handler or someone with both permissions; otherwise the read-only line (Board 4). "Change handler" shows only with both permissions (Owner, Admin) and only while open. No delete anywhere.</p>
 </section>
 
 <p class="board-title">Board 3 · Record a complaint (Side panel, right drawer, 520 px) · field errors shown</p>
@@ -171,19 +173,20 @@ fieldset{border:0;padding:0;margin:0 0 14px}
       <div class="body">
         <div class="banner danger" role="alert"><strong>There is a problem</strong><ul style="margin:4px 0 0 18px;padding:0"><li><a href="#f-name">The person's name is needed</a></li></ul></div>
         <fieldset class="field"><legend>Who made it</legend>
-          <div class="radios"><label><input type="radio" name="k"> Someone in the front office (a prospect or contact)</label><label><input type="radio" name="k"> A person on a case</label><label><input type="radio" name="k" checked> Someone else</label></div></fieldset>
-        <div class="field bad"><label for="f-name">Their name</label><input id="f-name" aria-describedby="e-name" aria-invalid="true"><div class="err" id="e-name">The person's name is needed.</div></div>
+          <div class="radios"><label><input type="radio" name="k" checked> Someone else</label></div>
+          <div class="hint">Complaints from a front-office contact or a person on a case are recorded from that person's page.</div></fieldset>
+        <div class="field bad"><label for="f-name">Their name</label><div class="hint">Always asked, for every kind of person.</div><input id="f-name" aria-describedby="e-name" aria-invalid="true"><div class="err" id="e-name">The person's name is needed.</div></div>
         <div class="field"><label for="f-contact">How to reach them (optional)</label><input id="f-contact"></div>
         <div class="field"><label for="f-when">Received on</label><div class="hint">Not in the future. Defaults to now.</div><input id="f-when" value="15 Nov 2026, 10:30"></div>
         <div class="field"><label for="f-ch">How it came <span class="sample">Sample list</span></label><select id="f-ch"><option>Email</option><option>Phone</option><option>In person</option><option>Letter</option><option>Web form</option><option>Other</option></select></div>
         <div class="field"><label for="f-cat">About <span class="sample">Sample list</span></label><select id="f-cat"><option>Service</option><option>Fees</option><option>Communication</option><option>Conduct</option><option>Privacy</option><option>Other</option></select></div>
         <div class="field"><label for="f-sum">What they said</label><textarea id="f-sum" rows="4"></textarea></div>
-        <div class="field"><label for="f-h">Handler</label><div class="hint">An active staff member of your firm. They are reminded if it is not acknowledged within 2 business days (Sample).</div><select id="f-h"><option>Owner (you)</option><option>Admin E</option><option>Case Manager B</option></select></div>
+        <div class="field"><label for="f-h">Handler</label><div class="hint">An active staff member of your firm. They are reminded if it is not acknowledged within 2 business days (Sample).</div><select id="f-h"><option>Owner G (you)</option><option>Admin E</option><option>Case Manager B</option></select></div>
       </div>
       <footer><button class="btn" type="button">Cancel</button><button class="btn primary" type="button">Record the complaint</button></footer>
     </div>
   </div>
-  <p class="note">The same right-drawer shape holds each record-page action: date (defaults to now) + note; Close adds the outcome (Resolved · Upheld · Not upheld · Withdrawn · Referred to the College, Sample list) and needs a note; Change handler holds the staff picker and an optional note.</p>
+  <p class="note">When a front-office or case-party id arrives in the address, that kind is offered and preset, and the name is prefilled; without one only "Someone else" is offered. Handler choices come from the complaints handler list (active staff). The same right-drawer shape holds each record-page action: date (defaults to now) + note; Close adds the outcome (Resolved · Upheld · Not upheld · Withdrawn · Referred to the College, Sample list) and needs a note; Change handler holds the staff picker and an optional note.</p>
 </section>
 
 <p class="board-title">Board 4 · States</p>
@@ -195,12 +198,15 @@ fieldset{border:0;padding:0;margin:0 0 14px}
     <div class="card"><h3>Closed</h3><div class="banner info" style="margin:0">Closed on 14 Nov 2026 · outcome: Resolved. A closed complaint is kept as it is; add a note if something more happens.</div><p><button class="btn" type="button">Add a note</button></p></div>
     <div class="card"><h3>Not found</h3><p><strong>We can't find this complaint.</strong> It may not exist, or it may not be one you can see.</p><a href="#">Back to Complaints</a><p class="muted" style="font-size:12px">Same words for another firm's id, someone else's complaint, a bad id.</p></div>
     <div class="card"><h3>Refused action</h3><div class="banner danger" style="margin:0" role="alert"><strong>This complaint is closed.</strong> It was closed while you were working. Your note was not saved; add it as a note instead.</div><p class="muted" style="font-size:12px">403: "You can't change this complaint. Ask an Owner or Admin." Reloads the record; the drawer keeps what was typed.</p></div>
+    <div class="card"><h3>Not found on an action</h3><p><strong>We can't find this complaint.</strong> It may not exist, or it may not be one you can see.</p><a href="#">Back to Complaints</a><p class="muted" style="font-size:12px">When a save answers 404 (e.g. the handler was changed while the drawer was open): the drawer and the record close, nothing of the record stays on screen, back to the list.</p></div>
+    <div class="card"><h3>Read-only</h3><div class="banner info" style="margin:0">You can see this complaint but not change it: only its handler, an Owner or an Admin can.</div><p class="muted" style="font-size:12px">Read permission without the record permission, not the handler: facts and timeline, no action buttons.</p></div>
+    <div class="card"><h3>Long content</h3><p style="overflow-wrap:anywhere">Fees complaint from a person with a very long name that runs to two hundred characters wraps here in the header and on the record…</p><p class="muted" style="font-size:12px">Header and record wrap the full text; the table cuts the name and summary to one line with the full text on hover. Summary and note up to 4,000 characters wrap in the record.</p></div>
   </div>
 </section>
 
 <p class="board-title" id="how">How it works panel (opens from the list footer link)</p>
 <section class="frame" aria-label="How it works">
-  <div class="page"><p><strong>How complaints work here.</strong> Record each complaint when it arrives. The handler acknowledges it, adds handling steps, records when the response was sent and closes it with an outcome. Everything stays on the record. The 2-business-day acknowledgement period and the lists of channels, topics and outcomes are Sample until the College's by-laws are read. Unconfirmed: no counsel.</p></div>
+  <div class="page"><p><strong>How complaints work here.</strong> Record each complaint when it arrives. The handler acknowledges it, adds handling steps, records when the response was sent and closes it with an outcome. Everything stays on the record. A complaint is overdue only while it is not acknowledged by its date; once acknowledged it shows as Open however long it waits. The 2-business-day acknowledgement period and the lists of channels, topics and outcomes are Sample until the College's by-laws are read. Unconfirmed: no counsel.</p></div>
 </section>
 </body>
 </html>

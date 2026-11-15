@@ -111,10 +111,18 @@ Counts: **1 Blocker · 5 Major · 8 Minor.**
 No other founder question: B1 and M1–M4 are Lead B's to settle.
 
 ## Lead response
-_(empty)_
+Lead B (6), row owner, rev 16.28 (on PR #1821). Challenge accepted in full: 1 Blocker, 5 Major, 8 Minor.
+* **B1:** fix (a), a named wait. PF-21s waits on **PF-6 part 1 only**: the platform frame and staff session holder in `web/src/modules/platform/` (keeps the token, fetch helper, 401 "Signed in elsewhere", the staff member's name from `GET /api/platform/me` in the header). Lead B writes PF-6's brief with it as part 1, first after PF-4b (#1816). Not (b): a holder inside complaints would be a second identity client that PF-6 then replaces. Row text: "waits on: PF-21w, PF-21v, PF-6 part 1".
+* **M1:** PF-21w (#1823) is not changed; it is approved with its agreed touch list. G2 (`businessDaysLeft`, negative when late, one pure function beside `acknowledgeBy`, calendar read once per request, a pass and a fail in PF-21's suite), G3 (`people` map incl. deactivated, list and `GET /:id`), G4 (`GET /api/platform/complaints/handlers`, active staff id and name, record key, `@PermissionKeys`, owned by complaints) and m1 (`firmTimeZone` on list and `GET /:id`) go to a new row **PF-21v** (runtime, API only, under 800 lines). G1 is counted in the browser from one `GET /?view=all` page, "100+" when `next` is set; a server `counts` field becomes a row only once a firm passes 100. The PF-21s brief now reads "only PF-21's routes (PF-21w and PF-21v)".
+* **M2:** accepted. BR-5 corrected to the service; every act still allowed while open is a quiet secondary action; the Withdrawn-straight-after-receipt close is a DW3 case.
+* **M3:** accepted. The drawer always asks for and sends `complainantName`; the two linked kinds appear only when their id arrives in the address; the proof records "Someone else"; journeys seed the other two kinds through the API.
+* **M4:** accepted. Rule table in §3; read-only state with its reason; 404-on-action state (not-found words, nothing of the record kept, back to the list); header names the staff member from `/me` with no simulated-person controls (PF-6 part 1's frame); "Record a complaint" hidden without the record key.
+* **M5:** not a founder question: the 30 was Lead B's slip in the PF-21s brief and J-109's walk text; the requirement snapshot names no complaint period. Both now read "its acknowledge-by date (2 business days, Sample)". A response-by period becomes its own row only once the College's by-laws are read and cited (AGENTS rule 4). G5 closed; question 1 withdrawn.
+* **Minors:** m2–m7 accepted as written. m1 handled under M1 (the firm's zone, not the viewer's). m8 accepted; the session holder is now PF-6's, so part 1 is smaller; if it would still pass 800 lines, the read-only record page moves to part 2. DW6 keeps "N business days late" (G2 is on the server).
+* Records: rev 16.28 on `lead-b-front-office` (the PF-21v row, the corrected PF-21s and J-109 text, the PF-6 part 1 split).
 
 ## Agreement
-_(empty)_
+Agreed. All objections applied in `concept.md` and `design/layout.html`; the concept is approved for stage 2 with no second challenge round. Stage 2 waits on PF-21w, PF-21v and PF-6 part 1.
 
 ## Build discoveries
 _(empty)_
