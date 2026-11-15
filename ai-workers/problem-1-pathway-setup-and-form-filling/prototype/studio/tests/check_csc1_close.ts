@@ -14,7 +14,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
@@ -60,6 +60,7 @@ for (const d of all) psql(DB, ["-f", join(MIG, d, "migration.sql")]);
   writeFileSync(cfg, `import { defineConfig } from "prisma/config";\nexport default defineConfig({ schema: ${JSON.stringify(SCHEMA)}, migrations: { path: ${JSON.stringify(MIG)} }, datasource: { url: ${JSON.stringify(urlOf(DB))} } });\n`);
   const r = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", SCHEMA, "--script"], { cwd: STUDIO, encoding: "utf8" });
   const mine = `${r.stdout}`.split("\n").filter((l) => /case_decision|closed_|close_outcome|withdraw/.test(l));
+  rmSync(cfg, { force: true });
   ok("CS-C1 M3 pass: migrate diff from the migrated database to the schema names nothing of this row", r.status === 0 && mine.length === 0, mine.length ? mine : r.stderr);
   ok("CS-C1 M3 pass: every function this migration adds is named case_*", sql(`select string_agg(proname, ',' order by proname) from pg_proc where pronamespace = 'public'::regnamespace and proname like 'case_decision%'`) === "case_decision_check_insert,case_decision_refuse_change"
     && !/CREATE FUNCTION (?!case_)/.test(readFileSync(join(MIG, NEW, "migration.sql"), "utf8")));
@@ -93,7 +94,7 @@ await app.listen(0, "127.0.0.1");
 const BASE = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
 
 try {
-  ok("setup: the app starts with this row's routes (PF-4's start-up rule: every declared route names agent/* keys)", feature.controllers.includes(CaseCloseController) && !!BASE);
+  ok("setup: the app starts with this row's routes (the platform guard's start-up rule passes)", feature.controllers.includes(CaseCloseController) && !!BASE);
   await seedSampleFirms(db);
   const firmOf = async (key: string) => (await db.platformFirm.findUniqueOrThrow({ where: { key } })).id;
   const FA = await firmOf("sample-firm"), FB = await firmOf("sample-solo");
@@ -260,6 +261,13 @@ try {
   const threw2 = await failing.reopen(ctxOwner, c6.id, { reason: "x" }).then(() => false, (e) => /forced rollback/.test(String(e)));
   ok("CS-C1 DW6 fail: a forced rollback of a reopen writes no case.reopened; the case stays CLOSED", threw2 && events(c6.id, EVENT.CASE_REOPENED) === 1 && caseRow(c6.id).startsWith("CLOSED|"), [threw2, caseRow(c6.id)]);
 
+  // Four closes at the same instant: the case row lock lets exactly one through (review m5).
+  const cr = newCase({ submitted: 1 });
+  await decide(cr, T.OWNER);
+  const race = await Promise.all([...Array.from({ length: 4 }, (_, i) => call(BASE, "POST", P(cr.id, "close"), { token: T.OWNER, body: { reason: `race ${i}` } }))]);
+  ok("CS-C1 DW6 fail: four closes at the same instant → one 200, the rest 409; one case.closed (the case row is locked first)",
+    race.filter((x) => x.status === 200).length === 1 && race.filter((x) => x.status === 409).length === 3 && events(cr.id, EVENT.CASE_CLOSED) === 1, race.map((x) => [x.status, x.body.code]));
+
   // ------------------------------------------------------------------------------- DW7: the database keeps decisions
   ok("CS-C1 DW7 fail: UPDATE on case_decision is refused by the database", refused(`update case_decision set outcome = 'REFUSED' where case_id = '${c1.id}'`, /case_decision: update is refused/));
   ok("CS-C1 DW7 fail: DELETE and TRUNCATE on case_decision are refused by the database", refused(`delete from case_decision where case_id = '${c1.id}'`, /case_decision: delete is refused/) && refused(`truncate case_decision`, /case_decision: truncate is refused/) && rows(c1.id) === "2");
@@ -270,6 +278,9 @@ try {
     && refused(`insert into case_decision (id, firm_id, case_id, filing_id, kind, outcome, decided_on, recorded_by) values (gen_random_uuid(), '${FA}', '${c1.id}', '${c1.filings[0]}', 'WITHDRAWAL', 'WITHDRAWN', current_date, 'x')`, /case_decision_kind_check/));
   ok("CS-C1 DW7 fail: the database refuses a closed case without its closing fields, or an open one keeping them", refused(`update runtime_case set status = 'CLOSED' where id = '${c1.id}'`, /runtime_case_closing_fields_check/)
     && refused(`update runtime_case set closed_reason = 'x' where id = '${c1.id}'`, /runtime_case_closing_fields_check/) && refused(`update runtime_case set status = 'ARCHIVED' where id = '${c1.id}'`, /runtime_case_(status|closing_fields)_check/));
+  ok("CS-C1 DW7 fail: a DELETE from inside another trigger is refused while the case exists (only the case's own cascade passes)",
+    refused(`begin; create temp table csc1_t (x int); create function pg_temp.csc1_del() returns trigger language plpgsql as $f$ begin delete from case_decision where case_id = '${c1.id}'; return new; end $f$;
+      create trigger csc1_t_del after insert on csc1_t for each row execute function pg_temp.csc1_del(); insert into csc1_t values (1); commit;`, /case_decision: delete is refused/) && rows(c1.id) === "2");
   sql(`delete from runtime_case where id = '${c1.id}'`);
   ok("CS-C1 DW7 pass: deleting the case itself (as the demo reset does) removes its decisions with it", rows(c1.id) === "0");
 

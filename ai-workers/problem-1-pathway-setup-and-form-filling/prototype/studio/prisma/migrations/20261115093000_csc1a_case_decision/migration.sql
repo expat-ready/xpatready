@@ -4,10 +4,17 @@
 --   * status is OPEN or CLOSED; a closed case has closed_at, close_outcome and closed_reason, an open one has none of the
 --     closing fields (a reopen clears them all, AG-7-13 rule 3); a withdrawn case is closed WITHDRAWN.
 --   * case_decision is insert-only: UPDATE, DELETE and TRUNCATE are refused (a correction is a new row). Its rows go only
---     with their case: the case's ON DELETE CASCADE deletes them from inside the foreign key's own trigger (depth > 1),
---     which a direct DELETE never is. A filing with a decision cannot be deleted (NO ACTION).
+--     with their case: a DELETE is let through only once the case row itself is gone (the case's ON DELETE CASCADE, as
+--     the demo reset deletes cases); any other DELETE, from a statement or from another trigger, is refused. A filing
+--     with a decision cannot be deleted (NO ACTION).
 --   * a new row names its case's own firm (platform_firm by runtime_case.firm_key), a filing of the same case, and a
 --     kind with its outcomes (DECISION: APPROVED, REFUSED, a Sample list until cited; WITHDRAWAL: WITHDRAWN, no filing).
+-- Rollback (in this order): DROP TABLE "case_decision"; DROP FUNCTION case_decision_check_insert(),
+--   case_decision_refuse_change(); ALTER TABLE "runtime_case" DROP CONSTRAINT "runtime_case_closing_fields_check",
+--   DROP CONSTRAINT "runtime_case_close_outcome_check", DROP CONSTRAINT "runtime_case_status_check", DROP CONSTRAINT
+--   "runtime_case_closed_from_stage_fkey", DROP COLUMN "close_outcome", DROP COLUMN "closed_at", DROP COLUMN
+--   "closed_from_stage", DROP COLUMN "closed_reason", DROP COLUMN "withdraw_reason", DROP COLUMN "withdrawn_at"; then
+--   delete this folder's row from _prisma_migrations. Closed cases lose their closing fields (export them first).
 
 -- AlterTable
 ALTER TABLE "runtime_case" ADD COLUMN     "close_outcome" TEXT,
@@ -65,8 +72,8 @@ ALTER TABLE "case_decision"
 
 CREATE FUNCTION case_decision_refuse_change() RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog AS $$
 BEGIN
-  -- The case's own cascade (a demo reset deleting cases) runs inside the foreign key's trigger: depth 2 or more here.
-  IF TG_OP = 'DELETE' AND pg_trigger_depth() > 1 THEN RETURN OLD; END IF;
+  -- The case's own cascade (a demo reset deleting cases): the case row is already gone when its decisions are deleted.
+  IF TG_OP = 'DELETE' AND NOT EXISTS (SELECT 1 FROM public."runtime_case" c WHERE c.id = OLD.case_id) THEN RETURN OLD; END IF;
   RAISE EXCEPTION 'case_decision: % is refused; a decision is a record (a correction is a new row)', lower(TG_OP)
     USING ERRCODE = 'restrict_violation';
 END $$;

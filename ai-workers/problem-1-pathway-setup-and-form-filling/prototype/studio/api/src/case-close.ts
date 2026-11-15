@@ -59,6 +59,7 @@ export class CaseClose {
       include: {
         filings: { where: { active: true }, select: { id: true, record: { select: { id: true } }, decisions: { where: { kind: "DECISION" }, select: { id: true } } } },
         stages: { where: { state: "CURRENT" }, select: { id: true } },
+        decisions: { where: { kind: "DECISION" }, select: { id: true } },   // any filing's, active or not (review m2)
       },
     });
     const firm = await tx.platformFirm.findUnique({ where: { key: c.firmKey }, select: { id: true } });
@@ -116,7 +117,7 @@ export class CaseClose {
       const { c, firmId, clientType } = await this.locked(tx, ctx, caseId);
       const reason = reasonOf(b), on = dateOf(b, "withdrawnOn");
       if (c.status !== "OPEN") conflict("This case is closed. Reopen it first.", "CASE_CLOSED");
-      if (c.filings.some((f) => f.decisions.length > 0)) conflict("A filing has a decision, so the case cannot be withdrawn (AG-7-50 rules 4 and 6). Close it with a reason instead.", "HAS_DECISION");
+      if (c.decisions.length > 0) conflict("A filing has a decision, so the case cannot be withdrawn (AG-7-50 rules 4 and 6). Close it with a reason instead.", "HAS_DECISION");
       const now = new Date(), stage = c.stages[0]?.id ?? null;
       const row = await tx.caseDecision.create({ data: { firmId, caseId: c.id, filingId: null, kind: "WITHDRAWAL", outcome: "WITHDRAWN", decidedOn: on, note: reason, recordedBy: `staff:${ctx.staffId}` } });
       const after = await tx.case.update({ where: { id: c.id }, data: { status: "CLOSED", closedAt: now, closedReason: reason, closeOutcome: "WITHDRAWN", withdrawnAt: now, withdrawReason: reason, closedFromStageId: stage } });

@@ -19,3 +19,10 @@ Written 15 Nov 2026 by the runtime builder (CS-C1 part 1), checked against `main
 
 ## What I build on an answer
 A → the brief as written, plus the `core.ts` line (named in the PR's first line). B → the brief with the `/api/front-office/cases/` paths. Either way one migration, `DW1`-`DW8` and journey W1, under 800 lines.
+
+## Answer and build notes (15 Nov, after Lead 58's OK of option A)
+* **Hook narrowed:** the line OK'd ("declares → return true") made PF-4's break-M1 test fail (a staff token on `/api/Platform/me` answered 200, not core's 403). The line now also needs `path.startsWith("/api/runtime/")` (exact case). PF-4's start-up rule (`platformRoutes`) collects only platform and front-office paths, so it does not check these routes' keys; a wrong key would refuse, never open (review m6).
+* **AG-7-33 rule 5 not built** (review m1): the decision does not set `Filing.status` to `DECIDED`. `case-prepare.ts:218,263` and `review-rounds.ts:369` treat only `SUBMITTED` as submitted, and the filing has no stage field (D9 Q54). The `case_decision` row is the record; the status move is a later row.
+* **`withdrawn_at`** is when the withdrawal was recorded; the date staff gave is `case_decision.decided_on` of the WITHDRAWAL row (review m3).
+* **`case.reopened` carries no `reason`** (contract §4 lists one): free text may hold personal data, so it stays in the audit line; the event carries `stageId` and `previousOutcome` (review m4).
+* **Follow-up row needed (review m8):** "a closed case has no moves" holds on the four new routes only; the existing `x-actor` case routes do not read `Case.status` (outside this row's touch list).
