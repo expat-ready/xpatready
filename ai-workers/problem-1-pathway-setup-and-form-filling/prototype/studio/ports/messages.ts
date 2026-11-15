@@ -24,8 +24,8 @@ const FromTemplate = z.strictObject({ templateKey: TemplateKey, values: z.record
 export const MessageSend = z.strictObject({
   firmId: FirmId,
   /** The person the message is to (consent is theirs); absent only for a TRANSACTIONAL message to a bare address. The
-   *  gate judges the person's consent and the address's suppression: that the address is this person's is the caller's
-   *  check (break M2; question to Lead B on #1824). */
+   *  gate judges the person's consent and the address's suppression. For SERVICE and MARKETING, the caller passes the
+   *  subject's own address from its own record; PF-19ad makes the gate check it (Lead B, #1824). */
   person: Subject.optional(),
   channel: Channel,
   class: MessageClass,
@@ -64,6 +64,12 @@ export interface MessagePort<Tx = unknown> {
 /** Refused: an unknown template, a field the template needs and the caller did not give, a missing attachment. */
 export class MessageRefused extends Error {
   constructor(message: string) { super(message); this.name = "MessageRefused"; }
+}
+
+/** A concurrent send with the same key committed first, after this caller's snapshot (REPEATABLE READ): nothing was
+ *  written; run the caller's transaction again and send answers the first row (repeated: true). */
+export class MessageRepeated extends Error {
+  constructor(readonly idempotencyKey: string) { super(`a concurrent send used idempotency key ${idempotencyKey} first: retry, and the retry answers that message`); this.name = "MessageRepeated"; }
 }
 
 /** Plain named-field replacement ({{ field }}); a field without a value is refused, never sent blank. */

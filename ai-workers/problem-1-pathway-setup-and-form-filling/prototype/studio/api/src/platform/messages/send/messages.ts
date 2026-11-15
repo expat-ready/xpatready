@@ -15,7 +15,7 @@ import { systemClock, type ClockPort } from "../../../../../ports/clock.ts";
 import { normaliseAddress, type Channel, type ConsentPort } from "../../../../../ports/consent.ts";
 import { sha256Hex, type FilesPort } from "../../../../../ports/files.ts";
 import type { JobPort } from "../../../../../ports/jobs.ts";
-import { DAILY_CAP, HELD_DAILY_LIMIT, MessageRefused, MessageSend, fillFields, gateReason, render, type MessagePort, type Rendered, type SendResult } from "../../../../../ports/messages.ts";
+import { DAILY_CAP, HELD_DAILY_LIMIT, MessageRefused, MessageRepeated, MessageSend, fillFields, gateReason, render, type MessagePort, type Rendered, type SendResult } from "../../../../../ports/messages.ts";
 import { firmScope } from "../../firm-scope.ts";
 import { readSetting, TIME_ZONE } from "../../settings.ts";
 import { ensureMessagesFirm } from "../consent/messages-firm.ts";
@@ -70,12 +70,14 @@ export class Messages implements MessagePort<Tx> {
     const id = randomUUID(), rendered = render(id, { ...m, firmId }, { name: firm.operatingName, replyTo: firm.contactEmail }, words);
     const put = await this.d.files.put(firmId, fileKeyOf(firmId, id), new TextEncoder().encode(JSON.stringify(rendered)), "application/json");
     const state = decision.allowed ? "QUEUED" : "SUPPRESSED", reason = gateReason(decision);
+    // A caller at REPEATABLE READ cannot see a row a concurrent send committed after its snapshot: its insert meets the
+    // key (P2002) and its transaction is spoilt, so it gets one typed answer; its retry answers the first row (Lead B, #1824).
     await tx.msgOutbox.create({
       data: {
         id, firmId, subjectKind: m.person?.kind ?? null, subjectId: m.person?.id.toLowerCase() ?? null, channel: m.channel, address, templateVersionId,
         renderedHash: put.sha256, class: m.class, state, stateReason: reason, consentId: decision.consentId ?? null, idempotencyKey: m.idempotencyKey,
       },
-    });
+    }).catch((e: { code?: string }) => { throw e?.code === "P2002" ? new MessageRepeated(m.idempotencyKey) : e; });
     return { outboxId: id, state, reason, repeated: false };
   }
 

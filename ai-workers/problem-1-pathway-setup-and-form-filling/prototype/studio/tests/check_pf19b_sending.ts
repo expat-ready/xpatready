@@ -25,7 +25,7 @@ import { fakeConsent } from "../ports/consent.ts";
 import { runContract } from "../ports/contracts/contract.ts";
 import { messagePortContract } from "../ports/contracts/message-port.contract.ts";
 import { fakeJobs } from "../ports/jobs.ts";
-import { fakeMessages, HELD_DAILY_LIMIT, type MessageSend, type Rendered } from "../ports/messages.ts";
+import { fakeMessages, HELD_DAILY_LIMIT, MessageRepeated, type MessageSend, type Rendered } from "../ports/messages.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -178,6 +178,11 @@ try {
   const keyC = uuid(), par = await Promise.all(Array.from({ length: 8 }, () => tx((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: box("par"), content: words, idempotencyKey: keyC }))));
   ok("review m2: 8 parallel sends with one key → one row, the other 7 answer it as repeated (the advisory lock)",
     new Set(par.map((r) => r.outboxId)).size === 1 && par.filter((r) => r.repeated).length === 7 && (await db.msgOutbox.count({ where: { idempotencyKey: keyC } })) === 1, par);
+  const keyR = uuid(), rr = await Promise.allSettled([0, 1].map(() => db.$transaction((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: box("rr"), content: words, idempotencyKey: keyR }), { isolationLevel: "RepeatableRead" })));
+  const retry = await db.$transaction((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: box("rr"), content: words, idempotencyKey: keyR }), { isolationLevel: "RepeatableRead" });
+  const won = rr.find((r) => r.status === "fulfilled") as PromiseFulfilledResult<{ outboxId: string }> | undefined, lost = rr.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+  ok("Lead B #1824 (4): two concurrent sends with one key at REPEATABLE READ → one row; the other gets MessageRepeated (never a raw P2002), and its retry answers the first row",
+    !!won && lost?.reason instanceof MessageRepeated && retry.repeated && retry.outboxId === won.value.outboxId && (await db.msgOutbox.count({ where: { idempotencyKey: keyR } })) === 1, rr.map((r) => r.status === "rejected" ? String(r.reason) : r.value));
   const runs = await Promise.all(Array.from({ length: 6 }, () => messages.deliver(firmA, par[0].outboxId)));
   ok("review m2: 6 workers on one row at once → one send, one event (the row lock)",
     runs.filter((r) => r === "sent").length === 1 && (await db.msgEvent.count({ where: { outboxId: par[0].outboxId } })) === 1, runs);
