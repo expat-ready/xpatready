@@ -1,8 +1,6 @@
-// PF-4b (contracts §1.2, §7 §1.2; concept pf-6-staff r2 BR-4, BR-5, BR-7, BR-9): the web session and invitation
-// acceptance. Every change runs in one transaction holding the firm's row lock, re-checks the actor under it (as PF-4),
-// and writes one audit line through AuditPort in that transaction (a failed line rolls the change back). Ending a
-// person's sessions is a platform_session_revocation row at the clock's now: the guard refuses every token whose sign-in
-// is at or before it (PF-4), so every session of that person ends at once. Invitation lifetimes use the database's clock.
+// PF-4b (contracts §7 §1.2; concept pf-6-staff BR-4, -5, -7, -9): web session and invitation acceptance. Each change: one
+// transaction holding the firm's row lock, the actor re-checked under it (as PF-4), one AuditPort line in it. Ending
+// sessions = a revocation row: the guard refuses every token signed in at or before it (PF-4), so all end at once.
 import { Inject, Injectable } from "@nestjs/common";
 import type { PlatformRole, Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
@@ -56,8 +54,8 @@ export class PlatformSession {
     const last = (await tx.platformStaff.findFirst({ where: firmScope(actor.firmId, { id: staffId }), select: { lastSignInAt: true } }))?.lastSignInAt?.getTime() ?? 0;
     await tx.platformSessionRevocation.create({ data: { firmId: actor.firmId, staffId, revokedAt: new Date(Math.max(this.clock.now(), last, staffId === actor.staffId ? actor.authTime * 1000 : 0)), reason } });
   }
-  private audit(tx: Tx, actor: StaffContext | null, firmId: string, action: string, entity: string, entityKey: string, summary: string, detail: Record<string, string | boolean | string[] | null>) {
-    return auditEvent.record(tx, { firmId, actor: actor ? actorWord(actor.staffId) : "system:invitation-accept", action, entity, entityKey, summary, detail });
+  private audit(tx: Tx, actor: StaffContext, action: string, entityKey: string, summary: string, detail: Record<string, string>) {
+    return auditEvent.record(tx, { firmId: actor.firmId, actor: actorWord(actor.staffId), action, entity: "platform_staff", entityKey, summary, detail });
   }
 
   // ------------------------------------------------------------------------------------------- invitations (public)
@@ -97,7 +95,7 @@ export class PlatformSession {
       const staff = await tx.platformStaff.create({ data: { firmId: inv.firm_id, email: inv.email, displayName: inv.email.split("@")[0].slice(0, 100), status: "ACTIVE" } });
       for (const role of inv.roles) await tx.platformRoleGrant.create({ data: { firmId: inv.firm_id, staffId: staff.id, role, grantedBy: inv.invited_by } });
       await tx.$executeRaw`update platform_invitation set accepted_at = now() where id = ${inv.id}::uuid`;
-      await this.audit(tx, null, inv.firm_id, "platform.invitation.accepted", "platform_invitation", inv.id, `an invitation was accepted; a staff member joined (${inv.roles.join(", ")})`, { invitationId: inv.id, staffId: staff.id, roles: inv.roles });
+      await auditEvent.record(tx, { firmId: inv.firm_id, actor: "system:invitation-accept", action: "platform.invitation.accepted", entity: "platform_invitation", entityKey: inv.id, summary: `an invitation was accepted; a staff member joined (${inv.roles.join(", ")})`, detail: { invitationId: inv.id, staffId: staff.id, roles: inv.roles } });
       // Last, so a refused provider call rolls everything back (AdminCreateUser with MessageAction SUPPRESS).
       const { subject } = await this.admin.createUser(inv.email);
       await tx.platformStaff.update({ where: { id: staff.id }, data: { identitySubject: subject } });
@@ -107,7 +105,7 @@ export class PlatformSession {
   }
 
   // ---------------------------------------------------------------------------------------------------- the session
-  /** GET /api/platform/session/callback?code=: the sign-in code → a session (the local stand-in through PF-4's sign-in,
+  /** POST /api/platform/session/callback { code }: the sign-in code (in the body, never in a URL or a log line) → a session (the local stand-in through PF-4's sign-in,
    *  which also ends any older session: one session at a time). */
   async callback(code: unknown) {
     if (typeof code !== "string" || !code) return unauthorized("This sign-in link has been used or has expired. Sign in again.", "SIGN_IN_CODE_REFUSED");
@@ -121,7 +119,7 @@ export class PlatformSession {
   async signOut(actor: StaffContext) {
     await this.inFirm(actor, async (tx) => {
       await this.endSessions(tx, actor, actor.staffId, "signed-out");
-      await this.audit(tx, actor, actor.firmId, "platform.staff.signed_out", "platform_staff", actor.staffId, "a staff member signed out", { staffId: actor.staffId });
+      await this.audit(tx, actor, "platform.staff.signed_out", actor.staffId, "a staff member signed out", { staffId: actor.staffId });
     });
     return { signedOut: true };
   }
@@ -133,7 +131,7 @@ export class PlatformSession {
       const t = await this.target(tx, actor.firmId, id);
       if (t.grants.some((g) => g.role === "OWNER") && t.id !== actor.staffId && !actor.roles.includes("OWNER")) forbidden("Only an Owner signs an Owner out everywhere.", "OWNER_ONLY");
       await this.endSessions(tx, actor, t.id, "signed-out-everywhere");
-      await this.audit(tx, actor, actor.firmId, "platform.staff.signed_out_everywhere", "platform_staff", t.id, "a staff member was signed out everywhere (every session ended)", { staffId: t.id });
+      await this.audit(tx, actor, "platform.staff.signed_out_everywhere", t.id, "a staff member was signed out everywhere (every session ended)", { staffId: t.id });
       await this.admin.signOutEverywhere({ staffId: t.id, subject: t.identitySubject, email: t.email });
       return { staffId: t.id, signedOutEverywhere: true };
     });
@@ -151,7 +149,7 @@ export class PlatformSession {
       if (t.status === "DEACTIVATED") problem(409, "Deactivated", "This person is deactivated: reactivate them first.", { code: "STAFF_NOT_ACTIVE" });
       requireStepUp(actor, this.clock.now(), "Resetting a person's two-step sign-in");
       await this.endSessions(tx, actor, t.id, "two-step-reset");
-      await this.audit(tx, actor, actor.firmId, "platform.staff.two_step_reset", "platform_staff", t.id, "a staff member's two-step sign-in was reset by an Owner or Admin; their sessions ended", { staffId: t.id });
+      await this.audit(tx, actor, "platform.staff.two_step_reset", t.id, "a staff member's two-step sign-in was reset by an Owner or Admin; their sessions ended", { staffId: t.id });
       // The out-of-band notice first: a mail failure changes nothing at the provider (the transaction rolls back).
       await this.mail.send({ firmId: actor.firmId, to: t.email, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.two_step_reset", subject: "Your two-step sign-in was reset",
         text: "An Owner or Admin of your firm reset your two-step sign-in. The next time you sign in, you set it up again. If you did not ask for this, tell your firm's Owner at once." });

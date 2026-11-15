@@ -1,8 +1,6 @@
-// PF-4b (concept pf-6-staff r2 §4, §6; AG-1-10, -13, -30, -40): the staff reads. Every read is scoped to the signed-in
-// person's firm (firmScope): another firm's id is 404, never 403. Seats used = active + suspended staff + invitations
-// neither accepted, revoked nor expired (the database's clock), of the live subscription's plan limit (BR-2, PF-4's
-// rule). A licence number is answered only on the Licences list (agent/firm-credential:manage) and on a person's own
-// account; never in a log line, event or email.
+// PF-4b (concept pf-6-staff §4, §6; AG-1-10, -13, -30, -40): the staff reads, firm-scoped (another firm's id: 404). Seats
+// = active + suspended + pending invitations (database clock) of the plan's limit (BR-2). A licence number only on the
+// Licences list and the person's own account; never in a log line, event or email.
 import { HttpException, Inject, Injectable } from "@nestjs/common";
 import { Db } from "../../core.ts";
 import { firmScope, notInFirm } from "../firm-scope.ts";

@@ -1,9 +1,6 @@
-// PF-4b (BACKLOG row PF-4b; brief product/design/lead-b-briefs/PF-4b.md on lead-b-front-office; contracts §7 §1.2):
-// the staff reads, the web session, invitation acceptance, the step-up check and the custom email sender. Every line of
-// the row's "Done when", each with a passing and a failing case. Part A runs in this process: a scratch database (every
-// migration, PF-3's Sample seed) and a Nest app of PF-4's and PF-4b's classes with the local stand-ins, a test clock and
-// the port fakes (fakeMail). Part B (with a port) reads the isolated copy (the real main.ts, PLATFORM_IDENTITY=local):
-// the feature is registered and the public door answers. No network, no model call (US$0).
+// PF-4b (row PF-4b; brief on lead-b-front-office; contracts §7 §1.2): every line of the row's "Done when", a pass and a
+// fail each. Part A: a scratch database and a Nest app of PF-4's and PF-4b's classes with the local stand-ins, a test
+// clock and fakeMail. Part B (with a port): the isolated copy (main.ts) registers the feature. No network, US$0.
 //   zsh studio/tools/isolated.sh pf4b 4542 start PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on && tsx studio/tests/check_pf4b_session_reads.ts 4542
 import "reflect-metadata";
 import { Module } from "@nestjs/common";
@@ -159,11 +156,11 @@ try {
   ok("PF-4b fail (break B1, B2): a provider failure after its user was made rolls back and the retry joins (the provider user reused); an email already signing in to another firm → 409 EMAIL_IN_ANOTHER_FIRM, nobody added", r1.status === 500 && r2.status === 200 && sql(`select count(*) from platform_staff where email = 'retry.person@example.com'`) === "1" && other.status === 409 && other.body.code === "EMAIL_IN_ANOTHER_FIRM" && sql(`select count(*) from platform_staff where id <> '${S}' and email = (select email from platform_staff where id = '${S}')`) === "0", [r1.status, r2.body, other.body]);
   ok("PF-4b fail (break B5): a trigger named like an object's own property (constructor) sends nothing and never throws", (await handleCustomEmail({ triggerSource: "constructor", request: { code: "x", userAttributes: { email: "a@example.com" } } }, { decrypt: async (c) => c, mail, firmOf: async () => FIRM_A })).sent === false);
   ok("PF-4b fail: the provider's own invitation mail (AdminCreateUser) is never sent by the custom email sender", (await handleCustomEmail({ triggerSource: "CustomEmailSender_AdminCreateUser", request: { code: "x", userAttributes: { email: "new.person@example.com" } } }, { decrypt: async (c) => c, mail, firmOf: async () => FIRM_A })).sent === false && mail.sent.length === mailBefore);
-  const code = new URL(won!.body.handOff.url, base).searchParams.get("code")!;
-  const cb = await call(base, "GET", `/api/platform/session/callback?code=${code}`), cb2 = await call(base, "GET", `/api/platform/session/callback?code=${code}`);
+  const code = /#code=([A-Za-z0-9_-]+)$/.exec(won!.body.handOff.url)?.[1] ?? "";
+  const cb = await call(base, "POST", "/api/platform/session/callback", { body: { code } }), cb2 = await call(base, "POST", "/api/platform/session/callback", { body: { code } });
   const newMe = await call(base, "GET", "/api/platform/me/account", { token: cb.body.token });
   ok("PF-4b pass: the hand-off's code → a session for the new person (callback), never cached", cb.status === 200 && newMe.status === 200 && newMe.body.staffId === won!.body.staffId && cb.headers.get("cache-control") === "no-store", [cb.body, newMe.body]);
-  ok("PF-4b fail: the same code twice, or none → 401 SIGN_IN_CODE_REFUSED", cb2.status === 401 && cb2.body.code === "SIGN_IN_CODE_REFUSED" && (await call(base, "GET", "/api/platform/session/callback")).status === 401, cb2.body);
+  ok("PF-4b fail: the same code twice, or none → 401 SIGN_IN_CODE_REFUSED", cb2.status === 401 && cb2.body.code === "SIGN_IN_CODE_REFUSED" && (await call(base, "POST", "/api/platform/session/callback", { body: {} })).status === 401, cb2.body);
 
   // ------------------------------------------------------------------------------------- sign out, everywhere
   const oId = (await db.platformStaff.findFirstOrThrow({ where: { email: "new.person@example.com" } })).id;

@@ -1,6 +1,5 @@
-// PF-4b (contracts §1.2, §7): the staff reads, the web session and invitation acceptance, behind PF-4's guard. The
-// provider's admin side and MailPort follow PLATFORM_IDENTITY: local → the stand-ins; otherwise the Cognito admin
-// adapter (it refuses, saying why, until its client passes the technology gate).
+// PF-4b (contracts §1.2, §7): staff reads, web session, invitation acceptance. The provider's admin side follows
+// PLATFORM_IDENTITY: local → the stand-in; otherwise the Cognito admin adapter (it refuses, saying why, until PF-4bc).
 import type { Feature } from "../features.ts";
 import { PlatformClock, identityConfig } from "../platform/identity/port.ts";
 import { LocalMail, MAIL_PORT } from "../platform/identity/session/mail.ts";

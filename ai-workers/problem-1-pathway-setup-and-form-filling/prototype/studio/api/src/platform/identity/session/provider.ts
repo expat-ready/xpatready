@@ -1,7 +1,6 @@
-// PF-4b: the identity provider's admin side, beside PF-4's IdentityPort (which only verifies tokens): create a user
-// with its own email suppressed (AWS AdminCreateUser: "Set to SUPPRESS to suppress sending the message", read 15 Nov
-// 2026), the set-password hand-off, a person's two-step state and its reset, sign-out everywhere, a sign-in code → who.
-// `local`: the stand-in (PLATFORM_IDENTITY=local only), in memory; its code signs in through PF-4's localSignIn.
+// PF-4b: the identity provider's admin side, beside PF-4's IdentityPort: create a user with its own email suppressed (AWS
+// AdminCreateUser: "Set to SUPPRESS to suppress sending the message", read 15 Nov 2026), the set-password hand-off,
+// two-step state and reset, sign-out everywhere, a sign-in code → who. `local`: in memory (PLATFORM_IDENTITY=local only);
 // `cognito`: refuses, saying why, until PF-Lc gates the Cognito client and PF-4bc builds it (Lead B ruling 4).
 import { randomBytes, randomUUID } from "node:crypto";
 import { problem } from "../keys.ts";
@@ -51,7 +50,7 @@ export class LocalIdentityAdmin implements IdentityAdminPort {
   async handOff(firmKey: string, email: string) {
     const code = randomBytes(32).toString("base64url");
     this.codes.set(code, { firmKey, email, until: this.now() + CODE_MS });
-    return { kind: "set-password" as const, url: `/api/platform/session/callback?code=${code}` };
+    return { kind: "set-password" as const, url: `/sign-in/callback#code=${code}` };   // the page posts the code to POST /api/platform/session/callback
   }
   /** The stand-in signs in with the second step done (PF-4's rule), so a person is set up unless their step was reset. */
   async twoStep(u: ProviderUser): Promise<TwoStep> { return { method: this.reset.has(u.staffId) ? null : "TOTP" }; }
