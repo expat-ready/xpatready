@@ -1975,6 +1975,17 @@ def build_explain(d):
             "items waiting", down, stg["wait_h"], band=f"limit {stg['limit_h']:g} h (FORMULAS.md §2)")
     put("capacity.parked", "Parked", "Open non-records PRs with no push for 7 days; kept out of the waiting stages (R8).", now_w, len(C.get("parked") or []),
         "PRs parked", "Should be closed or picked up.", src="open_prs_detail.json head commit times", cls="measured")
+    idle = C.get("idle") or []
+    put("capacity.idle", "No push in 90 min", "Open non-records PRs whose head commit is over 90 min old (parked PRs listed apart), with hours since.",
+        now_w, val(C["wip"]), "open app PRs", "A lane with no push for 90 min is behind; its Lead acts.",
+        src="open_prs_detail.json head commit times", cls="measured")
+    bp = d["building"].get("prs") or []
+    put("building.station", "PRs by station", "Open PRs at each factory-board station (tools/factory-board.sh's rules).", now_w + " (up to 60 open PRs, newest updated first)",
+        len(bp) or None, "open PRs read", "A pile at one station shows where work waits.", src=d["building"].get("src"), cls="measured",
+        n_reason="not measured: the open pull requests were not read at this refresh")
+    put("building.push", "Last push", "Hours since the PR's last push.", now_w, len(bp) or None, "open PRs read",
+        "Over 90 min on a working lane: the lane is behind; over 7 days: stale.", src=d["building"].get("src"), cls="measured",
+        n_reason="not measured: the open pull requests were not read at this refresh")
     # ---- Health (the panel under the strip)
     windows = {1: now_w + " (main's head)", 2: "now, by your clock", 3: now_w, 4: "the newest guard runs on main", 5: "the Lead's latest reading",
                6: "bugs open now; age from the first main commit naming them", 7: now_w}
