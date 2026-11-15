@@ -135,13 +135,14 @@ try {
   const o1 = await make(TO.id, "2026-10-29 10:00"), bf1 = await make(TB.id, "2026-10-27 09:00");
   const range = `?from=${encodeURIComponent(iso("2026-10-26 00:00"))}&to=${encodeURIComponent(iso("2026-11-02 00:00"))}`;
   const ids = (r: Res) => (Array.isArray(r.body) ? r.body.map((b: { id: string }) => b.id) : []);
-  const [ownAll, ownBf, bfAll, bfOther] = [await go("GET", range, P.OWNER), await go("GET", `${range}&staff=${P.BILLING_FINANCE.id}`, P.OWNER), await go("GET", range, P.BILLING_FINANCE), await go("GET", `${range}&staff=${P.OWNER.id}`, P.BILLING_FINANCE)];
-  ok("FO-3sr DW3 pass: with agent/booking:list (OWNER) the list is the firm's, and staff= filters it to one host",
-    ownAll.status === 200 && ids(ownAll).includes(o1.id) && ids(ownAll).includes(bf1.id) && ownBf.status === 200 && ids(ownBf).includes(bf1.id) && ownBf.body.every((b: { staffId: string }) => b.staffId === P.BILLING_FINANCE.id), [ownAll, ownBf]);
-  ok("FO-3sr DW3 fail: a BILLING_FINANCE host (no list key) sees only their own, never 403, and staff= another person is ignored",
-    bfAll.status === 200 && bfOther.status === 200 && ids(bfAll).includes(bf1.id) && !ids(bfAll).includes(o1.id) && JSON.stringify(ids(bfOther)) === JSON.stringify(ids(bfAll)), [bfAll, bfOther]);
+  const [ownAll, ownBf, roAll, bfAll, bfOther] = [await go("GET", range, P.OWNER), await go("GET", `${range}&staff=${P.BILLING_FINANCE.id}`, P.OWNER), await go("GET", range, P.READ_ONLY), await go("GET", range, P.BILLING_FINANCE), await go("GET", `${range}&staff=${P.BILLING_FINANCE.id}`, P.BILLING_FINANCE)];
+  ok("FO-3sr DW3 pass: with agent/booking:list (OWNER; READ_ONLY too) the list is the firm's, and staff= filters it to one host",
+    ownAll.status === 200 && ids(ownAll).includes(o1.id) && ids(ownAll).includes(bf1.id) && ownBf.status === 200 && ids(ownBf).includes(bf1.id) && ownBf.body.every((b: { staffId: string }) => b.staffId === P.BILLING_FINANCE.id)
+      && roAll.status === 200 && JSON.stringify(ids(roAll)) === JSON.stringify(ids(ownAll)), [ownAll, ownBf, roAll]);
+  ok("FO-3sr DW3 fail: BILLING_FINANCE (no list key) → 403 MISSING_PERMISSION on the list, also asking for their own bookings with staff= (AG-4-67 rule 4: the key opens lists at all)",
+    [bfAll, bfOther].every((x) => x.status === 403 && x.body.code === "MISSING_PERMISSION"), [bfAll, bfOther]);
   const [g1, g2, g3] = [await go("GET", `/${o1.id}`, P.BILLING_FINANCE), await go("GET", `/${bf1.id}`, P.BILLING_FINANCE), await go("GET", `/${o1.id}`, P.READ_ONLY)];
-  ok("FO-3sr DW4 pass: a host reads their own booking; a role with the list key reads another host's", g2.status === 200 && g2.body.id === bf1.id && g3.status === 200 && g3.body.id === o1.id, [g2, g3]);
+  ok("FO-3sr DW4 pass: a host without the list key (BILLING_FINANCE) opens their own booking by id (AG-4-67 rule 2); a role with the list key reads another host's", g2.status === 200 && g2.body.id === bf1.id && g3.status === 200 && g3.body.id === o1.id, [g2, g3]);
   const unknown = await go("GET", "/00000000-0000-4000-8000-00000000dead", P.BILLING_FINANCE);
   ok("FO-3sr DW4 fail: another host's booking without the list key → 404 (never 403), the same answer as an unknown id, so the id is not confirmed",
     g1.status === 404 && JSON.stringify(g1.body) === JSON.stringify(unknown.body), [g1, unknown]);
@@ -163,11 +164,12 @@ try {
   const oMon = await make(TO.id, "2026-10-26 14:00"), bfMon = await make(TB.id, "2026-10-26 15:00");
   await clock.set(at("2026-10-26 15:59"));   // bfMon ended 29 minutes ago, oMon 89
   const [bf29, own29] = [await go("GET", "/attendance-due", P.BILLING_FINANCE), await go("GET", "/attendance-due", P.OWNER)];
-  ok("FO-3sr DW6 fail: a booking that ended 29 minutes ago is not due (the host's and the firm's)", bf29.status === 200 && !ids(bf29).includes(bfMon.id) && !ids(own29).includes(bfMon.id) && ids(own29).includes(oMon.id), [bf29, own29]);
+  ok("FO-3sr DW6 fail: a booking that ended 29 minutes ago is not due (one that ended 89 minutes ago is)", own29.status === 200 && !ids(own29).includes(bfMon.id) && ids(own29).includes(oMon.id), own29);
+  ok("FO-3sr DW6 fail: BILLING_FINANCE (no list key) → 403 MISSING_PERMISSION on attendance-due, even as the host of a due booking", bf29.status === 403 && bf29.body.code === "MISSING_PERMISSION", bf29);
   await clock.set(at("2026-10-26 16:01"));   // bfMon ended 31 minutes ago
-  const [bf31, own31] = [await go("GET", "/attendance-due", P.BILLING_FINANCE), await go("GET", "/attendance-due", P.OWNER)];
-  ok("FO-3sr DW6 pass: 31 minutes after the end it is due; the host without the list key sees only their own, the list key the firm's",
-    JSON.stringify(ids(bf31)) === JSON.stringify([bfMon.id]) && ids(own31).includes(bfMon.id) && ids(own31).includes(oMon.id), [bf31, own31]);
+  const [ro31, own31] = [await go("GET", "/attendance-due", P.READ_ONLY), await go("GET", "/attendance-due", P.OWNER)];
+  ok("FO-3sr DW6 pass: 31 minutes after the end it is due; with the list key the due list is the firm's (another host's included)",
+    own31.status === 200 && ids(own31).includes(bfMon.id) && ids(own31).includes(oMon.id) && ro31.status === 200 && JSON.stringify(ids(ro31)) === JSON.stringify(ids(own31)), [ro31, own31]);
 
   // -------------------------------------------------------------------------------------------- DW5: attendance
   const early = await go("POST", `/${bf1.id}/attendance`, P.BILLING_FINANCE, { outcome: "COMPLETED" });
