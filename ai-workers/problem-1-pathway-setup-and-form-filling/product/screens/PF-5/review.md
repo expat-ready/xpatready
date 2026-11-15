@@ -98,4 +98,14 @@ Round 3 outcome: approve fcfd5524b (superseded by Round 4 below).
 
 Re-run at `9d2e0d7c8`: `tests/check_pf5_signup_billing.ts` **53 passed, 0 failed**. I did not re-run `check_forms_qa53.ts` myself, because it needs an isolated copy; the builder reports 41/41 on one. Round 2's open Minors (m-r2a, m-r2b) are unchanged and still do not block.
 
-Verdict: Approve 9d2e0d7c835040f963f69c933124df71b941e466
+Round 4 outcome: approve 9d2e0d7c8 (superseded by Round 5 below).
+
+## Round 5 — merge of main, `c15c128d6..c70d32c7e2641c50cdceeafe35453697e19b6887` (15 Nov 2026)
+I read what the head changes beyond `origin/main` in the shared tests, plus the PF-5 files touched by the merge. Main's own changes (FO-2, FO-7a, PF-6b) are main's and were not reviewed here.
+* **Conflict in `tests/check_forms_qa53.ts` (l. 46-55, 158-176, 203-206):** FO-2's `PUBLIC_WRITES` / `publicWrites` and its check are kept exactly as on main. PF-5's `PUBLIC_DOOR_WRITES` now collects into its own `doorWrites`, with its own exact-list check plus the HTTP call (400 or 503, never 2xx). The two lists are disjoint, and any write in neither list still lands in `unnamed`. `REVIEWED` holds both `/api/public/forms/:token` (FO-2) and `/api/public/plans` (PF-5). The exact-equality checks are unchanged, so neither QA-53 nor QA-65 is weakened. Round 4's Minor still applies: verify answers 404 to `{}` once the door is open.
+* **P-600 re-stamp:** the folder is renamed `20261115090000_pf5_signup_terms` → `20261115130000_pf5_signup_terms` as a pure rename (git shows R100: the SQL is byte-for-byte the same). The new stamp is later than main's newest, `20261115120000_pf6b_permission_catalogue`, and unique. The references in `platform.prisma`'s comment and in the PF-5 test's `NEW` constant are updated. Against main, the head's schema diff is only `platform.prisma` (+84, PF-5's own lines and slot lines).
+* **Rows rev 16.7 in `tests/check_fo7a_money_schema.ts` (l. 106-109, 601):** FO-7a's migration is now applied alone, the functions are read right after it (`ownFns`), and then the later migrations are applied. The "21 `money_` functions" check now counts `ownFns` minus BARE, so it measures FO-7a's own functions and no longer counts PF-5's two `platform_` functions. No other assertion changed: the demo-rows and migrate-diff checks still run after all migrations. This fixes a test that assumed it was newest, exactly as rev 16.7 asks; it does not loosen the test.
+
+Re-run at `c70d32c7e`, on main + branch, with the Prisma client regenerated: `check_pf5_signup_billing.ts` **53 passed, 0 failed** (its stamp check: later than every migration before it, and unique); `check_fo7a_money_schema.ts` **123 passed, 0 failed**. I did not re-run `check_forms_qa53.ts` (it needs an isolated copy; the builder reports 42/42) or the other suites the builder lists. Round 2's open Minors and Round 4's Minor are unchanged and do not block.
+
+Verdict: Approve c70d32c7e2641c50cdceeafe35453697e19b6887
