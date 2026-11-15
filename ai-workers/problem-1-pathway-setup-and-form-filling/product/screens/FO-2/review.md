@@ -128,3 +128,20 @@ Verdict: Approve
 No Blocker or Major is open.
 
 Verdict: Approve
+
+## Re-review at 310c2ea9 (diff only: `git diff ceda426a 310c2ea9`)
+* **What I ran:** a clean worktree at 310c2ea9. The suite gives **62 passed, 0 failed.** Code and test against origin/main come to 799 lines; the records under `screens/` are not counted.
+* **The change** (`leads.ts`, in `change()`): when a Take it loses, the answer now depends on whether the clicker may see unassigned leads (`vis.seesUnassigned`) and the lead now has an active owner. If both are true, the answer is 409 "<owner> already has this lead." Otherwise it is 404.
+  * The read before the lock is gone.
+  * This matches Lead B's ruling (comment 6892510521, AG-2-86 rules 1 and 3) and no longer depends on timing. It replaces my n5 trade-off.
+  * Another firm's lead still gives 404, because the query carries `firm_id` (the test `leads.take(SOLO, …)` gives 404).
+* **Tests:** the DWn lines cover "everyone sees all" off and on (409 with the name), and someone with neither view.all nor assign (404, no name). The race test and the Read-only key test stay.
+* **Mutation check:**
+  * Removing the 409 branch fails 2 tests (the race and DWn off).
+  * Naming the owner to everyone fails the 404/no-name test.
+* **Accepted consequence:** a person who may see Unassigned leads, and who probes a lead id in their own firm, learns who owns it. That is the requirement as ruled, and it stays inside the firm.
+* Only comments were shortened in `arrival.ts` and `features/front-office-sales.ts`, with no change in behaviour.
+
+No Blocker or Major is open.
+
+Verdict: Approve
