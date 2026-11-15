@@ -843,3 +843,12 @@ PF-0c can run beside any of them. New capabilities (shaping Batches 1-5) start i
 | **X-S3-6** | One-click government-fee line from a case fee | AG-6-40 | P-607: typed in R1. Waits on the case side's fee record. |
 | **X-Backup** | AWS Backup vault lock in compliance mode | — | Batch 1: governance mode in R1 until the first cloud drill passes. |
 | **X-Zip-xlsx** | `.xlsx` import, if no reader passes P-587 at PF-10b's gate | AG-18-4 | S1 question 7. |
+
+## Rev 16.13 (15 Nov 09:4x IST, Lead B (4)): FO-5f's row answers carried into FO-6 and FO-8 (#1791 comment 6889086217)
+
+| Row | Where | Text |
+|---|---|---|
+| **FO-6** | append to Done when | "`FO-6 DWn`: Signed offline also requires `expectedStatus` (the status the page showed); a Signed offline from a page still showing Draft after a colleague's Send → 409 `CHANGED`, and the just-sent request is untouched (FO-5f breaker m-2)." "`FO-6 DWn+1`: the signer, representative and template of a signed agreement are read from the **filed version's** merge values, never from the retainer row (FO-5f question 1); a version copied from an earlier one with a different signer names that signer." |
+| **FO-8** | append to Done when | "`FO-8 DWn`: `prospect.won`'s payload takes the signer and the representative from the filed (signed) version's merge values, never from the retainer row (FO-5f question 1)." |
+
+FO-5f questions 2 (the optional `reason` on `RetainerEventPayload`) and 3 (the shared 413 wording) are accepted as built.
