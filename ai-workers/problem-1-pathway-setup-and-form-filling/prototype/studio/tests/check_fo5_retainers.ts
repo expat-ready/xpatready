@@ -316,8 +316,10 @@ try {
   const sd = async (c: StaffContext, id: string) => svc.send(c, id, { expectedVersion: await cv(id) });
   const so = async (s: Retainers, c: StaffContext, id: string, body: Record<string, unknown>, file?: { bytes: Uint8Array; size: number }) =>
     s.signedOffline(c, id, { expectedVersion: String(await cv(id)), ...body }, file);
-  const ed = async (s: Retainers, c: StaffContext, id: string, body: Record<string, unknown>) =>
-    s.edit(c, id, { expectedVersion: (await db.foRetainer.findUnique({ where: { id } }))?.currentVersion ?? 1, ...body });
+  // FO-5f item 2 (B-25): Edit and Withdraw also send the status the page shows.
+  const shown = async (id: string) => { const x = await db.foRetainer.findUnique({ where: { id } }); return { expectedVersion: x?.currentVersion ?? 1, expectedStatus: x?.status ?? "DRAFT" }; };
+  const ed = async (s: Retainers, c: StaffContext, id: string, body: Record<string, unknown>) => s.edit(c, id, { ...(await shown(id)), ...body });
+  const wdr = async (c: StaffContext, id: string, body: Record<string, unknown>) => svc.withdraw(c, id, { ...(await shown(id)), ...body });
   const fails = async (f: () => Promise<unknown>, status: number, re: RegExp = /./) => {
     try { await f(); return false; } catch (e) {
       const r = (e as { getResponse?: () => Record<string, unknown>; getStatus?: () => number });
@@ -424,7 +426,7 @@ try {
   await sd(R, RA1);
   sql(API, `update fo_retainer set status = 'CLIENT_SIGNED' where id = '${RA1}'`);   // FO-6's signing hook
   ok("FO-5 fail: an edit after the client signed is refused (AG-5-65)", await fails(() => ed(svc, R, RA1, { fees: [{ label: "x", amountMinor: 1 }] }), 409, /can no longer be edited/));
-  ok("FO-5 fail: withdraw without a reason, or with only spaces, is refused (AG-5-34)", await fails(() => svc.withdraw(R, RA1, {}), 422, /reason/) && await fails(() => svc.withdraw(R, RA1, { reason: "   " }), 422, /reason/));
+  ok("FO-5 fail: withdraw without a reason, or with only spaces, is refused (AG-5-34)", await fails(() => wdr(R, RA1, {}), 422, /reason/) && await fails(() => wdr(R, RA1, { reason: "   " }), 422, /reason/));
 
   // Signed offline (BR-11): needs a PDF and a reason; makes the prospect WON once; cannot be undone.
   ok("FO-5 fail: Signed offline without a file, without a reason, or with a file that is not a PDF is refused (AG-5-39, AG-5-47)",
@@ -439,7 +441,7 @@ try {
     && sql(API, `select count(*) from fo_stage_move where prospect_id = '${PROS}' and cause = 'SIGNED_OFFLINE'`) === "1", off);
   ok("FO-5 fail: Signed offline again, or withdraw after it, is refused (cannot be undone), and the prospect is won once",
     await fails(() => so(svc, R, RA1, { reason: "again" }, pdf("again")), 409, /already signed/)
-    && await fails(() => svc.withdraw(R, RA1, { reason: "changed mind" }), 409, /A signed agreement cannot be withdrawn/)
+    && await fails(() => wdr(R, RA1, { reason: "changed mind" }), 409, /A signed agreement cannot be withdrawn/)
     && sql(API, `select count(*) from fo_stage_move where prospect_id = '${PROS}' and cause = 'SIGNED_OFFLINE'`) === "1");
   ok("FO-5 fail: a won prospect takes no new retainer", await fails(() => svc.draft(R, PROS, { templateId: tplA.id }), 409, /PROSPECT_CLOSED/));
 
@@ -447,9 +449,9 @@ try {
   const PB = u(802); person(PB, "Client B", "client.b@example.com");
   const PROSB = prospect(PB, R.staffId);
   const w = await svc.draft(R, PROSB, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 50000 }] });
-  ok("FO-5 fail: a draft is not withdrawn (BR-10)", await fails(() => svc.withdraw(R, w.id, { reason: "x" }), 409, /draft has not been sent/));
+  ok("FO-5 fail: a draft is not withdrawn (BR-10)", await fails(() => wdr(R, w.id, { reason: "x" }), 409, /draft has not been sent/));
   await sd(R, w.id);
-  const wd = await svc.withdraw(R, w.id, { reason: "Client changed plans" });
+  const wd = await wdr(R, w.id, { reason: "Client changed plans" });
   ok("FO-5 pass: withdraw from Sent with a reason ends the request; retainer.withdrawn written", wd.status === "WITHDRAWN" && wd.versions[0].endReason === "WITHDRAWN" && wd.withdrawn?.reason === "Client changed plans" && events(EVENT.RETAINER_WITHDRAWN, w.id) === 1);
   const w2 = await svc.draft(R, PROSB, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 50000 }] });
   ok("FO-5 pass: after Withdrawn, Prepare retainer is offered again for the prospect (BR-10)", w2.status === "DRAFT");
@@ -486,7 +488,7 @@ try {
 
   // Firm walls and download links (BR-15).
   ok("FO-5 fail: firm B reading firm A's retainer → 404 (and editing, sending, withdrawing it)",
-    await fails(() => svc.read(S, RA1), 404) && await fails(() => ed(svc, S, v.id, {}), 404) && await fails(() => sd(S, v.id), 404) && await fails(() => svc.withdraw(S, w.id, { reason: "x" }), 404));
+    await fails(() => svc.read(S, RA1), 404) && await fails(() => ed(svc, S, v.id, {}), 404) && await fails(() => sd(S, v.id), 404) && await fails(() => wdr(S, w.id, { reason: "x" }), 404));
   ok("FO-5 fail: firm B drafting on firm A's prospect → 404", await fails(() => svc.draft(S, PROSB, {}), 404));
   const key = await svc.fileKey(R, RA1, {}), signed = await svc.fileKey(R, RA1, { file: "signed-offline" });
   const l = links.sign(A, R.staffId, key, nowMs);
@@ -541,7 +543,7 @@ try {
   ok("FO-5 fail (B-9): a second retainer on a prospect with an open one → 409 RETAINER_OPEN", await fails(() => svc.draft(R, PROSX, { templateId: tplA.id }), 409, /RETAINER_OPEN/));
   // B-11, m3: the representative reads, but does not change, a retainer they cannot otherwise see.
   ok("FO-5 fail (B-11): with everyone-sees-all off the representative (not the owner) cannot edit, send or withdraw → 404",
-    await fails(() => ed(svc, T, v.id, { fees: [{ label: "x", amountMinor: 1 }] }), 404) && await fails(() => sd(T, v.id), 404) && await fails(() => svc.withdraw(T, v.id, { reason: "x" }), 404));
+    await fails(() => ed(svc, T, v.id, { fees: [{ label: "x", amountMinor: 1 }] }), 404) && await fails(() => sd(T, v.id), 404) && await fails(() => wdr(T, v.id, { reason: "x" }), 404));
   // B-4, m9: Send re-checks the representative.
   sql(API, `update platform_role_grant set ended_at = now(), ended_by = 'test', end_reason = 'test' where staff_id = '${T.staffId}' and role = 'CASE_MANAGER' and ended_at is null`);
   const vT = await ed(svc, R, v.id, { fees: [{ label: "Fee", amountMinor: 900 }] }).catch(() => null);
@@ -605,7 +607,7 @@ try {
   const rw = await svc.draft(R, PROSW, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 100 }] });
   await sd(R, rw.id);
   ok("FO-5 fail (B-16): a withdraw reason with a control character → 422; one with a line break is accepted",
-    await fails(() => svc.withdraw(R, rw.id, { reason: "bad\u0007bell" }), 422, /control characters/) && (await svc.withdraw(R, rw.id, { reason: "Line one\nline two" })).status === "WITHDRAWN");
+    await fails(() => wdr(R, rw.id, { reason: "bad\u0007bell" }), 422, /control characters/) && (await wdr(R, rw.id, { reason: "Line one\nline two" })).status === "WITHDRAWN");
   // r2-m2: Edit and resend of an Expired retainer after a new one took the prospect → RETAINER_OPEN, before rendering.
   const PE = u(811); person(PE, "Expiry Client", "ex@example.com");
   const PROSE = prospect(PE, R.staffId);
@@ -620,12 +622,12 @@ try {
   const PS = u(812); person(PS, "Stale Client", "st@example.com");
   const PROSS = prospect(PS, R.staffId);
   const st0 = await svc.draft(R, PROSS, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 10000 }] });
-  await svc.edit(R, st0.id, { expectedVersion: 1, fees: [{ label: "Fee", amountMinor: 20000 }] });   // one tab saves version 2; another still shows version 1
+  await svc.edit(R, st0.id, { expectedStatus: "DRAFT", expectedVersion: 1, fees: [{ label: "Fee", amountMinor: 20000 }] });   // one tab saves version 2; another still shows version 1
   ok("FO-5 fail (stale save): a save from the version-1 page after version 2 exists → 409 CHANGED, and version 2's fee stays",
-    await fails(() => svc.edit(R, st0.id, { expectedVersion: 1, fees: [{ label: "Fee", amountMinor: 15000 }] }), 409, /newer version \(2\)/)
+    await fails(() => svc.edit(R, st0.id, { expectedStatus: "DRAFT", expectedVersion: 1, fees: [{ label: "Fee", amountMinor: 15000 }] }), 409, /newer version \(2\)/)
     && (await svc.read(R, st0.id)).version.fees[0].amountMinor === "20000");
   ok("FO-5 fail (stale save): an edit without expectedVersion is refused at the field (422)", await fails(() => svc.edit(R, st0.id, { fees: [{ label: "Fee", amountMinor: 1 }] }), 422, /expectedVersion/));
-  ok("FO-5 pass (stale save): an edit naming the current version makes version 3", (await svc.edit(R, st0.id, { expectedVersion: 2, fees: [{ label: "Fee", amountMinor: 30000 }] })).version.n === 3);
+  ok("FO-5 pass (stale save): an edit naming the current version makes version 3", (await svc.edit(R, st0.id, { expectedStatus: "DRAFT", expectedVersion: 2, fees: [{ label: "Fee", amountMinor: 30000 }] })).version.n === 3);
   // Download after access is lost (4575579436): the download re-checks visibility, not only the link.
   const vKey = await svc.fileKey(R, v.id, {});
   ok("FO-5 pass (download): the prospect's owner may download the retainer's file", await svc.assertFileVisible(R, vKey).then(() => true, () => false));
@@ -639,7 +641,7 @@ try {
   const PB24 = u(813); person(PB24, "Version Client", "vc@example.com");
   const PROSB24 = prospect(PB24, R.staffId);
   const b0 = await svc.draft(R, PROSB24, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 4444 }] });   // the screen shows v1 at CAD 44.44
-  await svc.edit(R, b0.id, { expectedVersion: 1, fees: [{ label: "Fee", amountMinor: 99999900 }] });            // a colleague saves v2 at CAD 999,999.00
+  await svc.edit(R, b0.id, { expectedStatus: "DRAFT", expectedVersion: 1, fees: [{ label: "Fee", amountMinor: 99999900 }] });            // a colleague saves v2 at CAD 999,999.00
   ok("FO-5 fail (B-24): Send from the version-1 page after version 2 exists → 409 CHANGED, nothing sent",
     await fails(() => svc.send(R, b0.id, { expectedVersion: 1 }), 409, /newer version \(2\)/) && (await svc.read(R, b0.id)).status === "DRAFT");
   ok("FO-5 fail (B-24): Send without expectedVersion is refused at the field (422)", await fails(() => svc.send(R, b0.id, {}), 422, /expectedVersion/));
@@ -648,7 +650,7 @@ try {
   const PB25 = u(814); person(PB25, "Paper Client", "pc@example.com");
   const PROSB25 = prospect(PB25, R.staffId);
   const p0 = await svc.draft(R, PROSB25, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 150000 }] });   // paper signed on v1 at CAD 1,500.00
-  await svc.edit(R, p0.id, { expectedVersion: 1, fees: [{ label: "Fee", amountMinor: 500000000 }] });            // a colleague saves v2 at CAD 5,000,000.00
+  await svc.edit(R, p0.id, { expectedStatus: "DRAFT", expectedVersion: 1, fees: [{ label: "Fee", amountMinor: 500000000 }] });            // a colleague saves v2 at CAD 5,000,000.00
   ok("FO-5 fail (B-24): Signed offline naming the version the paper was signed on (1) after version 2 exists → 409, nothing filed, the prospect not won",
     await fails(() => svc.signedOffline(R, p0.id, { expectedVersion: "1", reason: "Signed at the office" }, pdf("v1 paper")), 409, /newer version \(2\)/)
     && (await svc.read(R, p0.id)).status === "DRAFT" && sql(API, `select s.kind from fo_prospect p join fo_stage s on s.id = p.stage_id where p.id = '${PROSB25}'`) !== "WON");
@@ -656,6 +658,188 @@ try {
     await fails(() => svc.signedOffline(R, p0.id, { reason: "x" }, pdf()), 422, /expectedVersion/) && await fails(() => svc.signedOffline(R, p0.id, { expectedVersion: "1.0", reason: "x" }, pdf()), 422, /expectedVersion/));
   ok("FO-5 pass (B-24): Signed offline naming the current version (multipart text \"2\") files version 2",
     (await svc.signedOffline(R, p0.id, { expectedVersion: "2", reason: "Signed at the office" }, pdf("v2 paper"))).status === "SIGNED_OFFLINE");
+
+  // ===================================================================================== FO-5f: retainer hardening
+  // Row FO-5f (rows rev 16.8; FO-5 part 2's Minors, #1777 comments 6883913744, 6884091038, 6884260179). Each numbered
+  // item has a pass and a fail test, named after its code.
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });   // two staff on one retainer
+  const reqEnded = (id: string) => events(EVENT.RETAINER_REQUEST_ENDED, id);
+  const payloadOf = (type: string, id: string) => sql(API, `select coalesce(string_agg(payload::text, '|' order by created_at), '') from module_event where type = '${type}' and subject_id = '${id}'`);
+  const newClient = (n: number, name: string) => { const p = u(7000 + n); person(p, name, `c${n}@example.com`); return prospect(p, R.staffId); };
+
+  // Item 1: an edit that ends a live request writes retainer.request_ended (version = the ended one, reason UPDATED).
+  const e1 = await svc.draft(R, newClient(1, "Ended Client"), { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 1000 }] });
+  await ed(svc, R, e1.id, { fees: [{ label: "Fee", amountMinor: 1100 }] });   // a draft's edit: no request to end
+  ok("FO-5f fail (item 1): an edit of an unsent draft writes no retainer.request_ended", reqEnded(e1.id) === 0);
+  await sd(R, e1.id);
+  await ed(svc, R, e1.id, { fees: [{ label: "Fee", amountMinor: 1200 }] });   // ends version 2's request
+  const p1 = JSON.parse(payloadOf(EVENT.RETAINER_REQUEST_ENDED, e1.id) || "{}");
+  ok("FO-5f pass (item 1): an edit that ends a sent request writes exactly one retainer.request_ended, naming the ended version 2 and reason UPDATED",
+    reqEnded(e1.id) === 1 && p1.version === 2 && p1.reason === "UPDATED" && p1.retainerId === e1.id && (await svc.read(R, e1.id)).versions[1].endReason === "UPDATED", p1);
+  ok("FO-5f pass (item 1): the event carries ids and facts only (strict payload: no name, email or licence)", !/example\.com|Ended Client/.test(payloadOf(EVENT.RETAINER_REQUEST_ENDED, e1.id)));
+
+  // Item 2 (B-25): Edit and Withdraw send the status the page showed, and Withdraw the version.
+  const b25 = await svc.draft(R, newClient(2, "Two Staff Client"), { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 2000 }] });
+  const tPage = await svc.read(T, b25.id);                                  // user-T opens the Draft page: version 1, DRAFT
+  await sd(R, b25.id);                                                      // user-R sends it (the version stays 1)
+  ok("FO-5f fail (B-25): user-T's edit from the Draft page after user-R's Send → 409 CHANGED; the request stays open, no new version, no request_ended",
+    await fails(() => svc.edit(T, b25.id, { expectedVersion: tPage.version.n, expectedStatus: tPage.status, fees: [{ label: "Fee", amountMinor: 1 }] }), 409, /CHANGED.*|now sent \(your page showed a draft\)/)
+    && await (async () => { const x = await svc.read(R, b25.id); return x.status === "SENT" && x.version.n === 1 && !x.versions[0].endedAt && reqEnded(b25.id) === 0; })());
+  ok("FO-5f fail (B-25): an edit or a withdraw without expectedStatus, or with an unknown one, is refused at the field (422)",
+    await fails(() => svc.edit(T, b25.id, { expectedVersion: 1, fees: [{ label: "Fee", amountMinor: 1 }] }), 422, /expectedStatus/)
+    && await fails(() => svc.edit(T, b25.id, { expectedVersion: 1, expectedStatus: "sent", fees: [{ label: "Fee", amountMinor: 1 }] }), 422, /expectedStatus/)
+    && await fails(() => svc.withdraw(R, b25.id, { expectedVersion: 1, reason: "x" }), 422, /expectedStatus/));
+  ok("FO-5f pass (B-25): the same edit from the page showing SENT makes version 2 and ends the request once",
+    (await svc.edit(T, b25.id, { expectedVersion: 1, expectedStatus: "SENT", fees: [{ label: "Fee", amountMinor: 2100 }] })).version.n === 2 && reqEnded(b25.id) === 1);
+  // Withdraw: the version gap (a newer version sent meanwhile) and the status gap (viewed meanwhile).
+  await sd(R, b25.id);                                                      // version 2 sent
+  ok("FO-5f fail (item 2, Withdraw): a withdraw without expectedVersion is refused at the field (422)", await fails(() => svc.withdraw(R, b25.id, { expectedStatus: "SENT", reason: "x" }), 422, /expectedVersion/));
+  ok("FO-5f fail (item 2, Withdraw): a withdraw from the version-1 page after version 2 was sent → 409 CHANGED, nothing withdrawn",
+    await fails(() => svc.withdraw(R, b25.id, { expectedVersion: 1, expectedStatus: "SENT", reason: "Client changed plans" }), 409, /newer version \(2\)/) && (await svc.read(R, b25.id)).status === "SENT");
+  sql(API, `update fo_retainer set status = 'VIEWED' where id = '${b25.id}'`);   // the client opened it (FO-6)
+  ok("FO-5f fail (item 2, Withdraw): a withdraw from a page showing SENT after the client viewed it → 409 CHANGED", await fails(() => svc.withdraw(R, b25.id, { expectedVersion: 2, expectedStatus: "SENT", reason: "x" }), 409, /now viewed \(your page showed sent\)/));
+  ok("FO-5f pass (item 2, Withdraw): naming version 2 and VIEWED withdraws it", (await svc.withdraw(R, b25.id, { expectedVersion: 2, expectedStatus: "VIEWED", reason: "Client changed plans" })).status === "WITHDRAWN");
+
+  // Item 3: Signed offline on paper signed against an earlier version files a copy of that version as signed.
+  const PR3 = newClient(3, "Paper One Client");
+  const s3 = await svc.draft(R, PR3, { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 150000 }] });   // v1 at CAD 1,500.00: printed, signed on paper
+  await ed(svc, R, s3.id, { fees: [{ label: "Fee", amountMinor: 500000000 }] });                                  // v2 at CAD 5,000,000.00
+  await sd(R, s3.id);                                                                                             // v2 sent for e-signing
+  const v1sha = (await svc.read(R, s3.id)).versions[0].sha256;
+  ok("FO-5f fail (item 3): signedVersion outside 1 … current (3, 0, \"1.5\", \"x\") is refused at the field (422), nothing filed",
+    (await Promise.all(["3", "0", "1.5", "x"].map((sv) => fails(() => so(svc, R, s3.id, { signedVersion: sv, reason: "Signed at the office" }, pdf()), 422, /signedVersion/)))).every(Boolean)
+    && (await svc.read(R, s3.id)).status === "SENT");
+  ok("FO-5f fail (item 3): the stale check still holds: expectedVersion 1 while version 2 exists → 409, even naming signedVersion 1",
+    await fails(() => svc.signedOffline(R, s3.id, { expectedVersion: "1", signedVersion: "1", reason: "x" }, pdf()), 409, /newer version \(2\)/));
+  const s3d = await svc.signedOffline(R, s3.id, { expectedVersion: "2", signedVersion: "1", reason: "Signed at the office on version 1" }, pdf("v1 paper"));
+  const a3 = JSON.parse(sql(API, `select detail::text from audit_event where entity_key = '${s3.id}' and action = 'retainer.signed_offline'`) || "{}");
+  const se3 = JSON.parse(payloadOf(EVENT.RETAINER_SIGNED_OFFLINE, s3.id) || "{}"), re3 = JSON.parse(payloadOf(EVENT.RETAINER_REQUEST_ENDED, s3.id) || "{}");
+  ok("FO-5f pass (item 3): naming version 1 while version 2 exists files version 3 = a copy of 1 (its fee, its file's sha256), marked signed",
+    s3d.status === "SIGNED_OFFLINE" && s3d.version.n === 3 && s3d.version.fees.length === 1 && s3d.version.fees[0].amountMinor === "150000" && s3d.version.sha256 === v1sha
+      && s3d.versions[2].copiedFrom === 1 && s3d.versions[2].signed === true && /Copied from version 1, signed on paper/.test(String(s3d.versions[2].note)), s3d.versions);
+  ok("FO-5f pass (item 3): the newer version 2 stays, marked \"Not signed\", its request ended (UPDATED, one retainer.request_ended)",
+    s3d.versions[1].signed === false && s3d.versions[1].note === "Not signed" && s3d.versions[1].fees[0].amountMinor === "500000000" && s3d.versions[1].endReason === "UPDATED" && reqEnded(s3.id) === 1 && re3.version === 2, s3d.versions);
+  ok("FO-5f pass (item 3): the audit line names version 1 (signed) and version 3 (filed); the event names version 3; the prospect is won",
+    a3.signedVersion === 1 && a3.version === 3 && a3.copiedFrom === 1 && a3.endedVersion === 2 && se3.version === 3 && se3.prospectWon === true
+      && sql(API, `select s.kind from fo_prospect p join fo_stage s on s.id = p.stage_id where p.id = '${PR3}'`) === "WON", { a3, se3 });
+  ok("FO-5f fail (item 3): the copy's stored file is its own key for version 3 (the part 1 key rule), the same bytes as version 1's",
+    /^retainers\/[0-9a-f-]{36}\/v3-[0-9a-f]{12}\.docx$/.test(await svc.fileKey(R, s3.id, { version: 3 }))
+      && sha256Hex((await store.get(A, await svc.fileKey(R, s3.id, { version: 3 })))!.bytes) === sha256Hex((await store.get(A, await svc.fileKey(R, s3.id, { version: 1 })))!.bytes));
+  // A draft whose newer version was never sent: the copy is filed, and no request ends.
+  const s3b = await svc.draft(R, newClient(4, "Paper Two Client"), { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 7000 }] });
+  await ed(svc, R, s3b.id, { fees: [{ label: "Fee", amountMinor: 9000 }] });
+  const s3bd = await so(svc, R, s3b.id, { signedVersion: "1", reason: "Signed on version 1" }, pdf());
+  ok("FO-5f pass (item 3): from a Draft at version 2, signedVersion 1 files version 3 (fee CAD 70.00) and writes no request_ended", s3bd.version.n === 3 && s3bd.version.fees[0].amountMinor === "7000" && reqEnded(s3b.id) === 0);
+  ok("FO-5f pass (item 3): signedVersion omitted (or the current one) files the current version, as before", (await so(svc, R, (await svc.draft(R, newClient(5, "Paper Three Client"), { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 1 }] })).id, { reason: "Signed" }, pdf())).version.n === 1);
+  // The client signed the current version electronically: no copy is made after that (AG-5-65).
+  const s3c = await svc.draft(R, newClient(6, "Paper Four Client"), { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 100 }] });
+  await ed(svc, R, s3c.id, { fees: [{ label: "Fee", amountMinor: 200 }] });
+  await sd(R, s3c.id);
+  sql(API, `update fo_retainer set status = 'CLIENT_SIGNED' where id = '${s3c.id}'`);
+  ok("FO-5f fail (item 3): after the client signed version 2, Signed offline naming version 1 → 409 NOT_SIGNABLE, nothing filed",
+    await fails(() => so(svc, R, s3c.id, { signedVersion: "1", reason: "x" }, pdf()), 409, /NOT_SIGNABLE/) && (await svc.read(R, s3c.id)).status === "CLIENT_SIGNED" && (await svc.read(R, s3c.id)).versions.length === 2);
+
+  // Items 4-8: reading a template.
+  const zipOf = (parts: Record<string, string>, types = "") => {
+    const z = new PizZip();
+    z.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>${types}</Types>`);
+    z.file("_rels/.rels", `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
+    for (const [k, v] of Object.entries(parts)) z.file(k, v);
+    const bytes = new Uint8Array(z.generate({ type: "uint8array", compression: "DEFLATE" }));
+    return { bytes, size: bytes.length };
+  };
+  const W = (body: string) => `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><w:body>${body}<w:sectPr/></w:body></w:document>`;
+  const P = (t: string) => `<w:p><w:r><w:t xml:space="preserve">${t}</w:t></w:r></w:p>`;
+  const BASE = P("Client {client.name}") + P("{#fees}{label} {amount}{/fees}");
+  // Item 4 (r3-m1 / B-21).
+  ok("FO-5f fail (B-21): a placeholder inside an equation (m:t) is refused with the plain sentence",
+    await fails(() => svc.uploadTemplate(R, { name: "Equation" }, zipOf({ "word/document.xml": W(BASE + `<w:p><m:oMath><m:r><m:t>{client.passport}</m:t></m:r></m:oMath></w:p>`) })), 422, /Placeholders inside equations, drawings or SmartArt are not filled\. Move it into normal text\..*PLACEHOLDER_NOT_FILLED/));
+  ok("FO-5f fail (B-21): a placeholder in SmartArt (a:t in word/diagrams/data1.xml) or a drawing is refused the same way, never printed blank",
+    await fails(() => svc.uploadTemplate(R, { name: "SmartArt" }, zipOf({ "word/document.xml": W(BASE), "word/diagrams/data1.xml": `<?xml version="1.0"?><dgm:dataModel xmlns:dgm="d" xmlns:a="a"><a:p><a:r><a:t>{client.name}</a:t></a:r></a:p></dgm:dataModel>` })), 422, /not filled/)
+    && await fails(() => svc.uploadTemplate(R, { name: "Drawing" }, zipOf({ "word/document.xml": W(BASE + `<w:p><a:p><a:r><a:t>Fee {fees.total}</a:t></a:r></a:p></w:p>`) })), 422, /not filled/));
+  ok("FO-5f pass (B-21): an equation or a drawing without a placeholder is accepted",
+    (await svc.uploadTemplate(R, { name: "Equation plain" }, zipOf({ "word/document.xml": W(BASE + `<w:p><m:oMath><m:r><m:t>x=2</m:t></m:r></m:oMath><a:p><a:r><a:t>Logo</a:t></a:r></a:p></w:p>`) }))).placeholders.includes("client.name"));
+  // Item 5 (B-19 rest): the cap is counted from the text runs before docxtemplater compiles, and the refusal says why.
+  const flood = zipOf({ "word/document.xml": W(BASE + P("{client.name}".repeat(1_500_000))) });
+  const t5 = Date.now();
+  ok("FO-5f fail (B-19): a file with 1.5 million placeholders is refused saying why (\"more than 2000 placeholders\"), in under 3 s",
+    await fails(() => svc.uploadTemplate(R, { name: "Flood" }, flood), 422, /more than 2000 placeholders.*TOO_MANY_PLACEHOLDERS/) && Date.now() - t5 < 3000, `${Date.now() - t5} ms`);
+  ok("FO-5f fail (B-19): 2001 placeholders, one over the cap, are refused", await fails(() => svc.uploadTemplate(R, { name: "Cap plus one" }, zipOf({ "word/document.xml": W(P("{client.name}".repeat(1999)) + P("{#fees}{/fees}")) })), 422, /more than 2000/));
+  ok("FO-5f pass (B-19): exactly 2000 placeholders are accepted", (await svc.uploadTemplate(R, { name: "Cap" }, zipOf({ "word/document.xml": W(P("{client.name}".repeat(1998)) + P("{#fees}{/fees}")) }))).placeholders.includes("fees"));
+  // Item 6 (B-20): a part whose size is not what it declares → 422 "damaged", never a 500.
+  const lying = (() => {
+    const good = zipOf({ "word/document.xml": W(BASE), "word/extra.xml": `<?xml version="1.0"?><x>${"a".repeat(500)}</x>` });
+    const b = Buffer.from(good.bytes), name = Buffer.from("word/extra.xml");
+    for (let i = 0; i < b.length - 4; i++) {
+      const sig = b.readUInt32LE(i);
+      if (sig === 0x04034b50 && b.subarray(i + 30, i + 30 + name.length).equals(name)) b.writeUInt32LE(100, i + 22);   // local header: uncompressed size
+      if (sig === 0x02014b50 && b.subarray(i + 46, i + 46 + name.length).equals(name)) b.writeUInt32LE(100, i + 24);   // central directory
+    }
+    return { bytes: new Uint8Array(b), size: b.length };
+  })();
+  ok("FO-5f fail (B-20): a part declaring 100 bytes that inflates to more is a 422 \"This file is damaged or is not a Word file.\", not a 500",
+    await fails(() => svc.uploadTemplate(R, { name: "Lying" }, lying), 422, /This file is damaged or is not a Word file\..*DAMAGED_FILE/));
+  ok("FO-5f pass (B-20): the same file with true sizes is accepted", (await svc.uploadTemplate(R, { name: "Not lying" }, zipOf({ "word/document.xml": W(BASE), "word/extra.xml": `<?xml version="1.0"?><x>${"a".repeat(500)}</x>` }))).version === 1);
+  // Item 7 (B-22): the name's length is checked after NFC (U+2ADC becomes two characters).
+  ok("FO-5f fail (B-22): a name of 65 characters that is 125 after NFC is a 422 (at most 120), not a 500",
+    await fails(() => svc.uploadTemplate(R, { name: "Fork " + "⫝̸".repeat(60) }, docx(GOOD)), 422, /at most 120 characters/));
+  const nfc = await svc.uploadTemplate(R, { name: "Fork " + "⫝̸".repeat(50) }, docx(GOOD));
+  ok("FO-5f pass (B-22): a name of 105 characters after NFC is accepted and stored normalized", nfc.name.length === 105 && nfc.name === nfc.name.normalize("NFC"));
+  ok("FO-5f fail (B-22): a rename that grows past 120 under NFC is a 422 too", await fails(() => svc.changeTemplate(R, nfc.id, { name: "⫝̸".repeat(61) }), 422, /at most 120/));
+  // Item 8 (B-23): the glossary (building blocks) is never rendered, so it is not read.
+  const GLOSS = `<Override PartName="/word/glossary/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.glossary+xml"/>`;
+  const gl = await svc.uploadTemplate(R, { name: "With glossary" }, zipOf({ "word/document.xml": W(BASE), "word/glossary/document.xml": W(P("{client.passport}")) }, GLOSS));
+  ok("FO-5f pass (B-23): an unknown placeholder only in the glossary is not a refusal and is not listed", !gl.placeholders.includes("client.passport"), gl);
+  const gl2 = await svc.uploadTemplate(R, { name: "Renamed glossary" }, zipOf({ "word/document.xml": W(BASE), "word/blocks.xml": W(P("{client.passport}")) }, `<Override PartName="/word/blocks.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.glossary+xml"/>`));
+  ok("FO-5f pass (B-23): a glossary declared under another name is skipped too", !gl2.placeholders.includes("client.passport"));
+  ok("FO-5f fail (B-23): the same placeholder in the body is still refused", await fails(() => svc.uploadTemplate(R, { name: "Body passport" }, zipOf({ "word/document.xml": W(BASE + P("{client.passport}")) }, GLOSS)), 422, /client\.passport/));
+
+  // Item 9 (Devin 4575579359): the "missing" list uses the template version the agreement was made from.
+  const t9 = await svc.uploadTemplate(R, { name: "Pinned" }, docx(["{client.name} {client.phone}", "{#fees}{label} {amount}{/fees}"]));
+  const r9 = await svc.draft(R, newClient(9, "Pinned Client"), { templateId: t9.id, fees: [{ label: "Fee", amountMinor: 900 }] });   // the person has no phone
+  await svc.newTemplateVersion(R, t9.id, docx(["{client.name} {company.name}", "{#fees}{label} {amount}{/fees}"]));   // version 2 drops the phone, adds the company
+  const m9 = (await svc.read(R, r9.id)).missing;
+  ok("FO-5f pass (item 9): an agreement made from template version 1 lists version 1's empty placeholder (client.phone)", m9.includes("client.phone"), m9);
+  ok("FO-5f fail (item 9): it does not list version 2's placeholders (company.name)", !m9.includes("company.name"), m9);
+
+  // Item 10 (r3-m2): tx()'s log line carries only the error code and the constraint name.
+  const logged: string[] = [], errLog = console.error;
+  console.error = (...a: unknown[]) => { logged.push(a.map(String).join(" ")); };
+  const txOf = svc as unknown as { tx: (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown> };
+  try {
+    await txOf.tx(async () => { throw Object.assign(new Error("Failing row contains (secret-person@example.com)"), { code: "P2010", meta: { code: "23514", message: "new row for relation violates check: secret-person@example.com", constraint: "fo_retainer_version_merge_values_check" } }); }).catch(() => undefined);
+    await txOf.tx(async (tx) => (tx as { $queryRawUnsafe: (q: string) => Promise<unknown> }).$queryRawUnsafe("select ('secret-person@example.com')::int")).catch(() => undefined);
+  } finally { console.error = errLog; }
+  ok("FO-5f pass (r3-m2): the log line names the error code and the constraint", logged.length === 2 && /code=P2010 constraint=fo_retainer_version_merge_values_check$/.test(logged[0]) && /code=\S+ constraint=unknown$/.test(logged[1]), logged);
+  ok("FO-5f fail (r3-m2): neither line carries Prisma's message or meta (the personal value)", logged.length === 2 && logged.every((l) => !/secret-person|Failing row|violates/.test(l)), logged);
+
+  // Item 11 (B-26): a refused download says "No such file".
+  const k11 = await svc.fileKey(R, e1.id, {});
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  sql(API, `update fo_prospect set owner_staff_id = '${O.staffId}' where id = (select prospect_id from fo_retainer where id = '${e1.id}')`);
+  ok("FO-5f fail (B-26): after access is lost the download is refused as \"No such file in your firm.\", never naming a retainer",
+    await fails(() => svc.assertFileVisible(R, k11), 404, /No such file in your firm\./) && !(await fails(() => svc.assertFileVisible(R, k11), 404, /retainer/)));
+  ok("FO-5f pass (B-26): the new owner still downloads it", await svc.assertFileVisible(O, k11).then(() => true, () => false));
+
+  // Item 12 (B-8): the shared upload filter names no size; each route's own message names its number.
+  const mainLine = readFileSync(join(STUDIO, "api", "src", "main.ts"), "utf8").split("\n").find((l) => /FO-5f item 12/.test(l)) ?? "";
+  ok("FO-5f pass (B-8): the shared upload filter's single-file message is \"This file is too large for this upload.\"", mainLine.includes('"This file is too large for this upload."'), mainLine);
+  ok("FO-5f fail (B-8): that message names no size (no MB, no number)", !/\d+\s*MB|\$\{mb\}/.test(mainLine.replace(/`Add at most \$\{files\} files[^`]*`/, "")), mainLine);
+  ok("FO-5f pass (B-8): the routes' own limits name their numbers (template 5 MB, signed paper 10 MB)",
+    await fails(() => svc.uploadTemplate(R, { name: "Big" }, { bytes: docx(GOOD).bytes, size: 5 * 1024 * 1024 + 1 }), 422, /at most 5 MB/)
+    && await fails(async () => so(svc, R, (await svc.draft(R, newClient(12, "Big Paper Client"), { templateId: tplA.id })).id, { reason: "x" }, { bytes: pdf().bytes, size: OFFLINE_PDF_MAX_BYTES + 1 }), 422, /at most 10 MB/));
+
+  // Item 13 (B-15, accepted risk): the signed-paper download is an attachment with nosniff, so HTML inside a PDF wrapper is never shown inline.
+  const h13 = await svc.draft(R, newClient(13, "Header Client"), { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 1 }] });
+  const html = Buffer.from("%PDF-1.4\n<html><script>alert(1)</script></html>\n%%EOF\n");
+  await so(svc, R, h13.id, { reason: "Signed" }, { bytes: new Uint8Array(html), size: html.length });
+  const ctrl = new RetainersController(svc, store, links, clock as never);
+  const res13 = { headers: {} as Record<string, string>, ct: "", body: undefined as unknown, setHeader(k: string, v: string) { this.headers[k.toLowerCase()] = v; return this; }, type(t: string) { this.ct = t; return this; }, send(b: unknown) { this.body = b; return this; } };
+  const tok = links.sign(A, R.staffId, await svc.fileKey(R, h13.id, { file: "signed-offline" }), clock.now()).token;
+  await ctrl.download({ platform: R }, tok, res13 as never);
+  ok("FO-5f pass (B-15): the signed-paper download sends Content-Disposition: attachment and X-Content-Type-Options: nosniff",
+    /^attachment;/.test(res13.headers["content-disposition"] ?? "") && res13.headers["x-content-type-options"] === "nosniff" && Buffer.isBuffer(res13.body), res13.headers);
+  ok("FO-5f fail (B-15): it is never served as HTML or inline", res13.ct === "application/pdf" && !/inline/i.test(res13.headers["content-disposition"] ?? ""), { ct: res13.ct, h: res13.headers });
 
   // Routes (PF-4's guard): every route declares its agent/retainer:* key.
   const keysOf = (m: string) => (Reflect.getMetadata(PLATFORM_ACCESS, (RetainersController.prototype as unknown as Record<string, object>)[m]) as { keys?: string[] } | undefined)?.keys?.join(",");
