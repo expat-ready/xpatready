@@ -353,3 +353,10 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
 * 15 Nov 10:08 IST: **FO-3h brief** (f9be2a5f8). `hostZone()` returns the firm zone until PF-18a, and PF-18a takes over the office-zone line; the attendance mail is included. Starts after FO-3f.
 * 15 Nov 10:1x IST: **PF-0c brief** (af22dd7a1). The port list was checked against `main`: AlertPort and DocumentRenderPort added, MailPort out (no real adapter yet). Starts now.
 * 15 Nov 10:11 IST: **PF-23w brief** (ba55198ee). It is the join row for map rows 9 and 13, with the J-9 walk; one injection line in the booking feature is OK'd. Starts after FO-3f #1785, which is queued. Each of the four briefs was reported ready to Lead 53.
+* 15 Nov (Lead 53 message): **PF-6b's three rulings accepted, and BACKLOG amended** (b70e40a78 on the lead branch):
+  * PF-6b's copy and direct-grant lines and PF-6's custom-role line moved to X-1;
+  * Touch names the new area file and `platform_permission_key`.
+  * **#1791 goes with (a):** a fresh high-effort diff-only review, the breaker re-runs the six ways in, and r2-m1/m2 are folded in.
+  * If M-1 is still open or a new Major appears, the clean part merges and **FO-5f2** goes to the top of the pull order.
+  * Lead 53 asks for each brief as it is pushed.
+* 15 Nov (Lead B (4) message): it stood down; its scan is stopped and its last commit was 308315966.
