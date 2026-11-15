@@ -5,8 +5,10 @@
 //   W2: the reminder is a row in pg-boss's job table (platform_jobs.job), waiting;
 //   W3: restart the API (isolated.sh restart); /api/health/ready is 200 with job_queue.ok true and the reminder is
 //       still queued;
-//   W4: the reminder runs at its due time and the booker's mail arrives in the demo inbox: not run here (PR #1800's
-//       question for the tech lead: the running app's mail and arrival are in-memory fakes and its clock is the system's).
+// The reminder running at its due time and mailing the booker into the demo inbox, and the browser step, are J-37's
+// (Lead B's ruling on #1800, comment 6889832067: after FO-3w, PF-4b's sending adapter and FO-2's real arrival). Known
+// gap until FO-2: on a running copy a reminder due after a restart finds no booker (fakeArrival is in memory) and sends
+// nothing; check_pf23w_jobs_wired.ts DW7 proves the jobs survive the restart and run, with the test's arrival.
 // The test firm, its host and its free-consultation type are written straight to the copy's database (Sample rows).
 // Run from prototype/ (US$0, no model call):
 //   zsh studio/tools/isolated.sh j9 4431 start --ttl 20 && trap 'zsh studio/tools/isolated.sh j9 4431 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_9.ts j9 4431
@@ -54,7 +56,6 @@ try {
   ok("J-9 W3: after the API restart /api/health/ready is 200 with job_queue.ok true", ready.status === 200 && ready.body.checks?.job_queue?.ok === true, ready);
   const r2 = await reminders();
   ok("J-9 W3: the reminders are still queued after the restart", r2.length === 2 && r2.every((r) => r.state === "created"), r2);
-  console.log("NOT RUN  J-9 W4 (the reminder mails the booker into the demo inbox): PR #1800's question for the tech lead");
 } finally {
   await db.$disconnect();
 }

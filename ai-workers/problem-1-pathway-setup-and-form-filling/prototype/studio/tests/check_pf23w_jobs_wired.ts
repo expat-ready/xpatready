@@ -199,7 +199,7 @@ try {
 const qa = (f: string) => {
   const p = join(STUDIO, "tests", "qa", f);
   if (!existsSync(p)) return { status: -1, out: `${f} not found (qa's file, #1789)` };
-  const r = spawnSync(process.execPath, [...process.execArgv, p], { encoding: "utf8", cwd: STUDIO });
+  const r = spawnSync(process.execPath, [...process.execArgv, p], { encoding: "utf8", cwd: process.cwd() });   // the folder this suite was started in: tsx's --tsconfig path is relative to it
   return { status: r.status, out: `${r.stdout}${r.stderr}`.trim() };
 };
 const q452 = qa("check_qa452_jobs_observed.ts"), q453 = qa("check_qa453_real_jobport.ts");
