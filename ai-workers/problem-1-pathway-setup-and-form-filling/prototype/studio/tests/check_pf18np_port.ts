@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { runContract } from "../ports/contracts/contract.ts";
 import { notificationPortContract } from "../ports/contracts/notification-port.contract.ts";
 import { fakeNotifications, NOTIFICATION_GROUP, NOTIFICATION_KIND, NotificationGroup, type NotificationItem, type NotificationKind, type NotificationRecipient, type NotificationRecord } from "../ports/notifications.ts";
-import { problems } from "../tools/check-port-contracts.mjs";
 
 const STUDIO = join(import.meta.dirname, ".."), WORK = join(STUDIO, "var", `pf18np-check-${process.pid}`);
 let pass = 0, fail = 0;
@@ -33,10 +32,13 @@ try {
   ok("PF-18np DW3 fail: without the directive, a kind with no group fails the type check (TS2741)", wo.status !== 0 && /TS2741/.test(wo.stdout), wo.stdout);
 
   // DW4: the contract guard passes on this tree and fails when the fake runs no contract; ports/ imports only zod and its own files.
-  ok("PF-18np DW4 pass: tools/check-port-contracts.mjs finds no problem", problems().length === 0, problems());
+  const guard = (root: string) => spawnSync(process.execPath, [join(root, "tools/check-port-contracts.mjs")], { encoding: "utf8" });
+  const here = guard(STUDIO);
+  ok("PF-18np DW4 pass: tools/check-port-contracts.mjs exits 0 and lists NotificationPort", here.status === 0 && /NotificationPort ×1/.test(here.stdout), here.stdout);
   const copy = join(WORK, "tree");
   for (const d of ["ports", "tools"]) cpSync(join(STUDIO, d), join(copy, d), { recursive: true });
-  ok("PF-18np DW4 fail: with no test running the contract, the guard names fakeNotifications", problems(copy).some((p: string) => /NotificationPort: fake adapter fakeNotifications/.test(p)), problems(copy));
+  const there = guard(copy);
+  ok("PF-18np DW4 fail: with no test running the contract, the guard exits 1 naming fakeNotifications", there.status === 1 && /NotificationPort: fake adapter fakeNotifications/.test(there.stdout), there.stdout);
   const foreign = (t: string) => [...t.matchAll(/\bfrom\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']/g)].map((m) => m[1] ?? m[2]).filter((s) => s !== "zod" && !/^\.\.?\/[a-z0-9-]+(\.contract)?\.ts$/.test(s));
   const files = ["ports/notifications.ts", "ports/contracts/notification-port.contract.ts"].flatMap((f) => foreign(readFileSync(join(STUDIO, f), "utf8")));
   ok("PF-18np DW4 pass: the port and its contract import only zod and ports/ files", files.length === 0, files);
