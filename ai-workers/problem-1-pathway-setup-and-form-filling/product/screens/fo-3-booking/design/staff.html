@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FO-3 booking — staff calendar and detail (Sample data)</title>
+<style>
+:root{--blue:#0862c5;--blue-50:#e6f4ff;--text:#1d2733;--muted:#5b6b7b;--border:#d8dee6;--bg:#f4f6f9;--white:#fff;--ok:#16794a;--warn:#a35a00;--danger:#b42318;--r:8px}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 Inter,system-ui,sans-serif;color:var(--text);background:var(--bg)}
+h1,h2,h3{font-family:"Proxima Nova",Inter,system-ui,sans-serif;margin:0}h1{font-size:24px}h2{font-size:18px}h3{font-size:16px}
+.note{max-width:1200px;margin:16px auto;padding:12px 16px;background:#fff8e6;border:1px solid #f0d9a0;border-radius:var(--r);font-size:12px}
+nav.tabs{max-width:1200px;margin:0 auto 8px;display:flex;gap:8px;flex-wrap:wrap}nav.tabs a{padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:#fff;color:var(--text);text-decoration:none}
+section.screen{max-width:1200px;margin:0 auto 32px;background:#fff;border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.cap{padding:8px 16px;background:#eef2f6;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}
+.shell{display:grid;grid-template-columns:200px 1fr;min-height:520px}.side{background:#f8fafc;border-right:1px solid var(--border);padding:16px 12px}.side b{display:block;font-size:12px;color:var(--muted);margin:12px 0 4px}.side a{display:block;padding:6px 8px;border-radius:6px;color:var(--text);text-decoration:none}.side a.on{background:var(--blue-50);color:var(--blue);font-weight:600}
+.main{padding:20px 24px}.head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:12px}.sub{color:var(--muted);margin-top:2px}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--text);font:inherit;cursor:pointer}.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.sm{height:28px;padding:0 10px;font-size:12px}.btn[disabled]{opacity:.5}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}.seg{display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden}.seg span{padding:6px 12px}.seg .on{background:var(--blue-50);color:var(--blue);font-weight:600}
+.due{border:1px solid #f0d9a0;background:#fff8e6;border-radius:var(--r);padding:8px 12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.week{display:grid;grid-template-columns:56px repeat(5,1fr);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}.week>div{border-right:1px solid var(--border);min-height:36px;padding:2px 4px;font-size:12px}.week .h{background:#f8fafc;font-weight:600;border-bottom:1px solid var(--border)}.week .tm{color:var(--muted)}
+.bk{background:var(--blue-50);border-left:3px solid var(--blue);border-radius:4px;padding:2px 6px;margin:2px 0}.bk.done{background:#e8f5ee;border-color:var(--ok)}.bk.ns{background:#f4f6f9;border-color:var(--muted)}
+.panel{margin:16px 24px 24px auto;width:520px;border:1px solid var(--border);border-radius:var(--r);box-shadow:0 8px 24px rgba(0,0,0,.08);background:#fff}.panel header,.panel footer{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px}.panel footer{border-top:1px solid var(--border);border-bottom:0}.panel .body{padding:16px}
+.sec{border-top:1px solid var(--border);padding-top:12px;margin-top:12px}.sec h3{font-size:14px;margin-bottom:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;border:1px solid var(--border);border-radius:999px;padding:2px 8px}.chip .dot{width:8px;height:8px;border-radius:2px;background:var(--blue)}
+.f{margin-bottom:12px}.f label{display:block;font-weight:600;margin-bottom:4px}.f input,.f select,.f textarea{width:100%;height:36px;border:1px solid var(--border);border-radius:6px;padding:0 10px;font:inherit}.f textarea{height:72px;padding:8px}.hint{font-size:12px;color:var(--muted)}.err{color:var(--danger);font-size:12px;margin-top:4px}
+.tags{display:flex;gap:6px;flex-wrap:wrap}.tag{border:1px solid var(--border);border-radius:999px;padding:2px 8px;font-size:12px;background:#f8fafc}
+.info{font-size:12px;color:var(--warn)}.greyed{opacity:.5}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:0}
+dialog{position:static;display:block;border:1px solid var(--border);border-radius:var(--r);box-shadow:0 8px 24px rgba(0,0,0,.08);max-width:460px;margin:16px auto}dialog ul{margin:8px 0;padding-left:18px}
+table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);text-align:left;font-weight:600;padding:8px;border-bottom:1px solid var(--border)}td{height:40px;padding:0 8px;border-bottom:1px solid var(--border)}
+</style></head><body>
+<div class="note"><b>FO-3 staff booking, board r1 (FO-3sc, 15 Nov). Concept wins where they differ.</b> Row FO-3st1. Front-office frame, area "Bookings". Office zone = the firm's zone until PF-18a. Every name and time is <b>Sample</b>. Journeys J-S1..S8 in concept §6. Not a pixel spec.</div>
+<nav class="tabs" aria-label="Screens on this board"><a href="#s1">1 Calendar (week)</a><a href="#s2">2 List view</a><a href="#s3">3 Booking detail: attendance</a><a href="#s4">4 Consult record and next step</a><a href="#s5">5 New booking and warning</a></nav>
+
+<section class="screen" id="s1"><div class="cap">1 · Calendar, Week, Team (AG-4-67). "Mine / Team" only with <code>agent/booking:list</code>. Our own grid, no calendar library. Route: GET bookings (FO-3sr); the team feed (FO-3a).</div>
+<div class="shell"><div class="side"><b>Bookings</b><a class="on" href="#s1">Calendar</a><b>Settings</b><a href="settings.html#t1">Booking types</a><a href="settings.html#t2">Timings</a></div>
+<div class="main"><div class="head"><div><h1>Bookings</h1><div class="sub">Your meetings and the team's. Times in America/Toronto (Toronto office).</div></div><button class="btn primary">New booking</button></div>
+<div class="bar"><div class="seg" role="group" aria-label="View"><span>Day</span><span class="on">Week</span><span>List</span></div><div class="seg" role="group" aria-label="Whose" title="Mine: meetings you host. Team: every booking you may see."><span>Mine</span><span class="on">Team</span></div><button class="btn">Host: anyone ▾</button><button class="btn">Today</button><button class="btn" aria-label="Previous week">‹</button><b>19 – 23 October 2026</b><button class="btn" aria-label="Next week">›</button></div>
+<div class="due" role="status"><span><b>Did Client B attend?</b> Free consultation, ended 14:30</span><span><button class="btn sm">Attended</button> <button class="btn sm">No-show</button></span></div>
+<div class="week"><div class="h"></div><div class="h">Mon 19</div><div class="h">Tue 20</div><div class="h">Wed 21</div><div class="h">Thu 22</div><div class="h">Fri 23</div>
+<div class="tm">09:00</div><div><div class="bk done">Client K · Study permit check</div></div><div></div><div><div class="bk">Client P · Free consultation</div></div><div></div><div class="hint">Client F: time off</div>
+<div class="tm">10:00</div><div></div><div><div class="bk">Client L · Free consultation</div></div><div></div><div><div class="bk">Client M · Free consultation</div></div><div></div>
+<div class="tm">14:00</div><div></div><div><div class="bk">Client B · Free consultation</div></div><div></div><div></div><div></div>
+<div class="tm">18:00</div><div></div><div><div class="bk">Client N · Overseas client call</div></div><div></div><div><div class="bk ns">Client O · No-show</div></div><div></div></div>
+<p class="hint">Status by shape and text: plain block Scheduled; green "Attended"; grey "No-show"; struck through "Cancelled" (hidden by default). Empty week: "No bookings this week. Share your booking page or click New booking." Loading: grey blocks. Hover a block: person, type, host, both zones.</p>
+</div></div></section>
+
+<section class="screen" id="s2"><div class="cap">2 · List view, Mine (a Case Officer without the list key sees only this and no switch: J-S1).</div>
+<div class="main"><table><thead><tr><th>When (America/Toronto)</th><th>Person</th><th>Booking type</th><th>Host</th><th>Way to meet</th><th>Status</th></tr></thead><tbody>
+<tr><td>Tue 20 Oct 14:00–14:30</td><td>Client B</td><td>Free consultation</td><td>Client F</td><td>Video call</td><td><span class="chip"><span class="dot"></span>Scheduled</span></td></tr>
+<tr><td>Wed 21 Oct 09:00–09:30</td><td>Client P</td><td>Free consultation</td><td>Client F</td><td>Phone call</td><td><span class="chip"><span class="dot"></span>Rescheduled</span></td></tr>
+</tbody></table></div></section>
+
+<section class="screen" id="s3"><div class="cap">3 · Booking detail, side panel, after the meeting ended (AG-4-39). Routes: GET /:id, POST /:id/attendance {COMPLETED|NO_SHOW} (FO-3sr). Paid bookings' buttons are <i>Not built</i> here (greyed).</div>
+<div class="panel" role="dialog" aria-labelledby="d-h"><header><h2 id="d-h">Client B · Free consultation</h2><span><span class="chip"><span class="dot"></span>Scheduled</span> <button class="btn sm" aria-haspopup="menu">More ▾</button></span></header>
+<div class="body"><p class="hint">More: Reschedule · Cancel booking</p>
+<div class="sec" style="border:0;margin:0;padding:0"><h3>When</h3><p>Tue 20 October 14:00–14:30 America/Toronto · 22:00 for Client B (Asia/Dubai)</p></div>
+<div class="sec"><h3>Who</h3><p>Client B · client.b@example.com · Host: Client F · Video call</p><p class="info">Outside Client F's hours</p></div>
+<div class="sec"><h3>Attendance</h3><p><b>Did Client B attend?</b></p><p><button class="btn">Attended</button> <button class="btn">No-show</button></p>
+<p class="greyed hint">Paid bookings (Not built here): "Attended (bill CAD 150 from trust)" · "Attended (bill CAD 150)" · after No-show "Keep the fee (bill it from trust) · Refund".</p>
+<p class="hint">Not shown before the meeting ends, nor for a cancelled booking. Answer can be changed later; Attended on, the record opens (screen 4).</p></div>
+<div class="sec"><p class="hint">Staff late change inside the limit: "This is inside the 4-hour limit. Client B can no longer change it online." Conflict: "Someone changed this booking. Reload to see the latest." + Reload.</p></div>
+</div></div></section>
+
+<section class="screen" id="s4"><div class="cap">4 · Consult record and next step (AG-4-49, -50), on a lead. Opens after Attended. Route: FO-3a part 2 (not built), incl. <code>prepareRetainer</code>. Engage box: FO-4's panel.</div>
+<div class="panel"><header><h2>Client B · Free consultation</h2><span class="chip"><span class="dot" style="background:var(--ok)"></span>Attended</span></header>
+<div class="body"><div class="sec" style="border:0;margin:0;padding:0"><h3>Consult record</h3>
+<div class="f"><label for="ts">Time spent (minutes)</label><input id="ts" value="35"><div class="hint">Pre-filled with the booked length (30).</div></div>
+<div class="f"><label for="nt">Notes (optional)</label><textarea id="nt">Has a job offer in Calgary; needs LMIA check</textarea></div>
+<div class="f"><label>Recommended (optional)</label><div class="tags"><span class="tag">Work permit ×</span><span class="tag">Translation ×</span><button class="btn sm">+ Add</button></div><div class="hint">From Client B's "Interested in" list.</div></div>
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:8px"><div class="f"><label for="qf">Quoted fee (optional)</label><input id="qf" value="3,500"></div><div class="f"><label for="cu">Currency</label><select id="cu"><option>CAD</option><option>USD</option></select></div></div>
+<div class="err">Choose a currency for the quoted fee. (shown when a fee has no currency)</div>
+<div class="f"><label>Assessment (staff only)</label><p class="hint">Shown read-only when one exists; never shown to the booker.</p></div>
+<button class="btn primary">Save record</button></div>
+<div class="sec"><h3>Next step</h3><p><button class="btn">Engage and prepare retainer</button> <button class="btn">Close lead</button> <button class="btn greyed" disabled title="Documents are not live yet">Request documents</button></p>
+<p class="hint">Prospect: "Prepare retainer". Case: no retainer button. Hidden without <code>agent/retainer:draft</code>. After a later No-show: "Attendance changed to No-show." on the record.</p></div>
+</div></div></section>
+
+<section class="screen" id="s5"><div class="cap">5 · New booking dialog and the warning (AG-4-63). Route: POST bookings (FO-3sr); free times: FO-3a preview.</div>
+<div class="two"><dialog open aria-labelledby="n-h"><div style="padding:16px"><h3 id="n-h">New booking</h3>
+<div class="f"><label for="pp">Person</label><input id="pp" value="Client P (lead)"></div>
+<div class="f"><label for="ty">Booking type</label><select id="ty"><option>Free consultation</option></select></div>
+<div class="f"><label for="ho">Host</label><select id="ho"><option>Client F</option></select></div>
+<div class="f"><label for="wm">Way to meet</label><select id="wm"><option>Phone call</option></select></div>
+<div class="f"><label>Free times</label><p><button class="btn sm">Mon 26 Oct 09:00</button> <button class="btn sm">09:30</button> <button class="btn sm">Pick another time</button></p></div>
+<p class="hint">No email: Client P will get no confirmation.</p>
+<button class="btn primary">Book</button></div></dialog>
+<dialog open aria-labelledby="w-h"><div style="padding:16px"><h3 id="w-h">Book anyway?</h3><ul><li>Outside Client F's hours</li><li>Overlaps Client F's booking Client B 11:00–11:30</li></ul>
+<p class="hint">All reasons it can list: Closed day · Outside &lt;host&gt;'s hours · &lt;host&gt; is on time off · Inside the shortest notice (4 hours) · Overlaps &lt;host&gt;'s booking &lt;person&gt; &lt;hh:mm&gt;–&lt;hh:mm&gt; · Busy on &lt;host&gt;'s own calendar.</p>
+<p><button class="btn primary">Book anyway</button> <button class="btn">Cancel</button></p></div></dialog></div></section>
+</body></html>

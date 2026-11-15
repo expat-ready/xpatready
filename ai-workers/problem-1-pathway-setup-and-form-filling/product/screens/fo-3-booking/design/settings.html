@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FO-3 booking — My account and Settings (Sample data)</title>
+<style>
+:root{--blue:#0862c5;--blue-50:#e6f4ff;--text:#1d2733;--muted:#5b6b7b;--border:#d8dee6;--bg:#f4f6f9;--white:#fff;--ok:#16794a;--warn:#a35a00;--danger:#b42318;--r:8px}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 Inter,system-ui,sans-serif;color:var(--text);background:var(--bg)}
+h1,h2,h3{font-family:"Proxima Nova",Inter,system-ui,sans-serif;margin:0}h1{font-size:24px}h2{font-size:18px}h3{font-size:16px}
+.note{max-width:1200px;margin:16px auto;padding:12px 16px;background:#fff8e6;border:1px solid #f0d9a0;border-radius:var(--r);font-size:12px}
+nav.tabs{max-width:1200px;margin:0 auto 8px;display:flex;gap:8px;flex-wrap:wrap}nav.tabs a{padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:#fff;color:var(--text);text-decoration:none}
+section.screen{max-width:1200px;margin:0 auto 32px;background:#fff;border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.cap{padding:8px 16px;background:#eef2f6;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}
+.shell{display:grid;grid-template-columns:200px 1fr;min-height:480px}.side{background:#f8fafc;border-right:1px solid var(--border);padding:16px 12px}.side b{display:block;font-size:12px;color:var(--muted);margin:12px 0 4px}.side a{display:block;padding:6px 8px;border-radius:6px;color:var(--text);text-decoration:none}.side a.on{background:var(--blue-50);color:var(--blue);font-weight:600}
+.main{padding:20px 24px}.head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:12px}.sub{color:var(--muted);margin-top:2px}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--text);font:inherit;cursor:pointer}.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.sm{height:28px;padding:0 10px;font-size:12px}.btn.link{border:0;background:none;color:var(--blue);padding:0 4px}
+.ws{display:grid;grid-template-columns:220px 1fr;gap:16px}.sets{border:1px solid var(--border);border-radius:var(--r);padding:8px}.set{padding:8px;border-radius:6px}.set.on{background:var(--blue-50)}.tagd{font-size:12px;border:1px solid var(--ok);color:var(--ok);border-radius:999px;padding:0 6px;margin-left:4px}
+.day{display:grid;grid-template-columns:110px 1fr;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)}.win{display:inline-flex;gap:4px;align-items:center;margin-right:8px}.win input{width:72px;height:32px;border:1px solid var(--border);border-radius:6px;padding:0 6px;font:inherit}.win.bad input{border-color:var(--danger)}
+.hint{font-size:12px;color:var(--muted)}.err{color:var(--danger);font-size:12px}.ok{color:var(--ok)}.warn{color:var(--warn)}
+table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);text-align:left;font-weight:600;padding:8px;border-bottom:1px solid var(--border)}td{height:40px;padding:0 8px;border-bottom:1px solid var(--border)}
+.f{margin-bottom:12px}.f label{display:block;font-weight:600;margin-bottom:4px}.f input,.f select{width:100%;height:36px;border:1px solid var(--border);border-radius:6px;padding:0 10px;font:inherit}
+.drawer{margin:16px 24px 24px auto;width:540px;border:1px solid var(--border);border-radius:var(--r);box-shadow:0 8px 24px rgba(0,0,0,.08)}.drawer header{padding:12px 16px;border-bottom:1px solid var(--border)}.drawer .body{padding:16px}.sec{border-top:1px solid var(--border);padding-top:12px;margin-top:12px}.sec h3{font-size:14px;margin-bottom:8px}
+pre{background:#f4f6f9;border-radius:6px;padding:8px;font-size:12px;overflow:auto}
+.cal{border:1px solid var(--border);border-radius:var(--r);padding:16px;max-width:640px}
+</style></head><body>
+<div class="note"><b>FO-3 My account and Settings, board r1 (FO-3sc, 15 Nov). Concept wins where they differ.</b> Rows FO-3st2 (Availability, Time off), FO-3st3 (Booking types, Timings), FO-3s5 (Calendar, a section of My account so there is one design). All routes FO-3a or FO-3s5 (not built). Every name, time and zone is <b>Sample</b>. Journeys J-A, J-T, J-C in concept §6.</div>
+<nav class="tabs" aria-label="Screens on this board"><a href="#a1">1 Availability</a><a href="#a2">2 Time off</a><a href="#c1">3 Calendar</a><a href="#t1">4 Booking types</a><a href="#t2">5 Timings</a></nav>
+
+<section class="screen" id="a1"><div class="cap">1 · My account → Availability (AG-4-62 rules 1-4, 6-8). No key for your own; an Owner or Admin picks a colleague (<code>agent/booking-event-type:configure-availability</code>).</div>
+<div class="shell"><div class="side"><b>My account</b><a href="#">Profile</a><a class="on" href="#a1">Availability</a><a href="#a2">Time off</a><a href="#c1">Calendar</a></div>
+<div class="main"><div class="head"><div><h1>Availability</h1><div class="sub">The hours you take bookings. Each booking type uses one of your sets.</div></div><span class="hint">Viewing: <button class="btn sm">Client F ▾</button> (Owner, Admin only)</span></div>
+<div class="ws"><div class="sets"><div class="set on"><b>Normal hours</b><span class="tagd">Default</span></div><div class="set"><b>Evening calls</b><br><button class="btn link">Make default</button></div><button class="btn sm" style="margin-top:8px">Add a set</button></div>
+<div><div class="f" style="max-width:320px"><label for="sn">Set name</label><input id="sn" value="Normal hours"></div>
+<p>Times in America/Toronto <button class="btn link">Change zone</button></p>
+<div class="day"><b>Monday</b><span><span class="win"><input value="09:00" aria-label="Monday start">–<input value="12:00" aria-label="Monday end"></span><span class="win"><input value="13:00" aria-label="Monday start 2">–<input value="17:00" aria-label="Monday end 2"></span><button class="btn sm">Add hours</button></span></div>
+<div class="day"><b>Tuesday</b><span><span class="win bad"><input value="14:00" aria-invalid="true" aria-describedby="e1">–<input value="13:00"></span> <span class="err" id="e1">End must be after start.</span></span></div>
+<div class="day"><b>Wednesday</b><span><span class="win"><input value="09:00">–<input value="17:00"></span></span></div>
+<div class="day"><b>Thursday</b><span><span class="win"><input value="09:00">–<input value="17:00"></span></span></div>
+<div class="day"><b>Friday</b><span class="hint">Unavailable <button class="btn sm">Add hours</button></span></div>
+<div class="day"><b>Saturday</b><span class="hint">Unavailable <button class="btn sm">Add hours</button></span></div>
+<div class="day"><b>Sunday</b><span class="hint">Unavailable <button class="btn sm">Add hours</button></span></div>
+<p style="margin-top:12px"><button class="btn primary">Save hours</button> <span class="hint">Existing bookings are not moved.</span></p>
+<p class="hint">Other errors: "These hours overlap." · "You cannot delete your default set." A new person starts with one set "Normal hours", copied from business hours, in the office zone. No hours at all: "You offer no times on the booking page. Staff can still book you, with a warning."</p></div></div>
+</div></div></section>
+
+<section class="screen" id="a2"><div class="cap">2 · My account → Time off (AG-4-62 rules 5, 8). Whole or part days. Never cancels or moves a booking.</div>
+<div class="main"><div class="head"><div><h2>Time off</h2></div><button class="btn primary">Add time off</button></div>
+<table><thead><tr><th>From</th><th>To</th><th>Whole day</th><th></th></tr></thead><tbody>
+<tr><td>Fri 23 Oct 2026 12:00</td><td>Fri 23 Oct 2026 17:00</td><td>No</td><td><button class="btn sm">Remove</button></td></tr>
+<tr><td>Mon 26 Oct 2026</td><td>Wed 28 Oct 2026</td><td>Yes</td><td><button class="btn sm">Remove</button></td></tr>
+</tbody></table>
+<p class="hint">Empty: "No time off planned." A booking inside new time off stays; staff move it themselves. A Case Manager entering a colleague's: the server's refusal, on the panel.</p></div></section>
+
+<section class="screen" id="c1"><div class="cap">3 · My account → Calendar (FO-3s5; AG-4-40, -56). Your own only, every plan. Routes: GET/POST me/calendar, connect/:provider, callback, DELETE (FO-3s5).</div>
+<div class="main"><h2>Calendar</h2><p class="sub">Connect your own calendar so we never offer a time you are busy.</p>
+<div class="cal"><p><b>Google</b> · <span class="ok">Connected</span> (client.f@maple.example)</p>
+<fieldset style="border:0;padding:0"><legend><b>Check for busy times</b></legend><label><input type="checkbox" checked> Client F (main)</label><br><label><input type="checkbox" checked> Family</label></fieldset>
+<div class="f" style="margin-top:8px;max-width:320px"><label for="ab">Add my bookings to</label><select id="ab"><option>Client F (main)</option><option>Maple shared</option></select></div>
+<button class="btn">Disconnect</button> <span class="hint">Your slots will use your Expat Ready hours.</span></div>
+<p class="hint">Not connected: "Not connected" + [Connect Google] [Connect Microsoft]. Broken: <span class="warn">Needs reconnecting</span> + [Reconnect]. Abandoned sign-in: still "Not connected", nothing stored.</p></div></section>
+
+<section class="screen" id="t1"><div class="cap">4 · Settings → Booking types (Library list + drawer; AG-4-16 rule 4 share). Edit: <code>agent/booking-event-type:edit</code> (Owner, Admin); <code>:list</code> read-only (Case Manager, Case Officer). Route: FO-3a.</div>
+<div class="main"><div class="head"><div><h1>Booking types</h1><div class="sub">What visitors and staff can book.</div></div><button class="btn primary">New booking type</button></div>
+<table><thead><tr><th>Name</th><th>Length</th><th>Hosts</th><th>On booking page</th><th></th></tr></thead><tbody>
+<tr><td>Free consultation</td><td>30 min</td><td>Client F, Client C</td><td>Yes</td><td><button class="btn sm">Duplicate</button> <button class="btn sm">Retire</button></td></tr>
+<tr><td>Overseas client call</td><td>45 min</td><td>Client C (Evening calls)</td><td>Yes</td><td><button class="btn sm">Duplicate</button> <button class="btn sm">Retire</button></td></tr>
+<tr><td>Case check-in</td><td>30 min</td><td>Client I</td><td>Never (case type)</td><td></td></tr>
+</tbody></table>
+<div class="drawer"><header><h2>Free consultation</h2></header><div class="body">
+<div class="sec" style="border:0;margin:0;padding:0"><h3>Definition</h3><div class="f"><label for="tn">Name</label><input id="tn" value="Free consultation"><div class="hint">Name must be 1 to 80 characters.</div></div><div class="f"><label for="tl">Length (minutes)</label><input id="tl" value="30"><div class="hint">Length must be 5 to 480 minutes.</div></div><label><input type="checkbox" checked> Show on booking page</label></div>
+<div class="sec"><h3>Hosts</h3><p>Client F · Uses set: Normal hours ▾</p><p>Client C · Uses set: Normal hours ▾</p></div>
+<div class="sec"><h3>Advanced</h3><label><input type="checkbox" checked> Allow reschedule</label><br><label><input type="checkbox" checked> Allow cancellation</label><p class="hint">Timings: firm defaults unless overridden here.</p></div>
+<div class="sec"><h3>Share</h3><p>https://maple.expatready.com/book/free-consultation <button class="btn sm">Copy link</button> <button class="btn sm">Copy embed code</button></p><pre>&lt;iframe src="https://maple.expatready.com/book/free-consultation" title="Book a meeting with Maple Immigration" width="100%" height="760"&gt;&lt;/iframe&gt;</pre><button class="btn">Preview as a booker</button> <span class="hint">Shows the public page's times; books nothing.</span></div>
+<p class="hint">Duplicate slug: "This web address is already used." Empty list: "No booking types yet. Add one so visitors can book." + New booking type.</p></div></div>
+</div></section>
+
+<section class="screen" id="t2"><div class="cap">5 · Settings → Timings (firm defaults; per-type overrides under Advanced). Route: FO-3a. Sample defaults from FO-3a's row.</div>
+<div class="main"><h1>Timings</h1><p class="sub">Firm defaults. A type may override them under Advanced.</p>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(160px,1fr));gap:12px;max-width:720px">
+<div class="f"><label for="r1">Reminders</label><input id="r1" value="24 h and 1 h"></div><div class="f"><label for="r2">Shortest notice</label><input id="r2" value="4 hours"></div><div class="f"><label for="r3">Booking window (days)</label><input id="r3" value="60"></div>
+<div class="f"><label for="r4">Gap before</label><input id="r4" value="0 minutes"></div><div class="f"><label for="r5">Gap after</label><input id="r5" value="10 minutes"></div><div class="f"><label for="r6">Self-service limit (hours)</label><input id="r6" value="4"></div></div>
+<button class="btn primary">Save timings</button> <span class="hint">Overridden on 1 type: Overseas client call.</span></div></section>
+</body></html>
