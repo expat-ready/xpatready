@@ -27,7 +27,7 @@ import { Messages, SWEEP_AFTER_MS } from "../api/src/platform/messages/send/mess
 import { fakeAlerts } from "../ports/alert.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { runContract } from "../ports/contracts/contract.ts";
-import { MAIL_CONTRACT_FIRM, mailPortContract } from "../ports/contracts/mail-port.contract.ts";
+import { MAIL_CONTRACT_FIRM, MAIL_CONTRACT_FIRM_B, mailPortContract } from "../ports/contracts/mail-port.contract.ts";
 import { fakeJobs, type JobHandler, type JobPort } from "../ports/jobs.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
@@ -199,6 +199,7 @@ try {
   // ------------------------------------------------------------------------------- PF-0c: MailPort's shared contract
   // The contract's firm is a platform firm here; each case gets a fresh address book, read back from the demo inbox.
   await db.platformFirm.create({ data: { id: MAIL_CONTRACT_FIRM, key: "pf19bm-contract", operatingName: "Sample Contract Firm", countryCode: "CA", status: "ACTIVE", contactEmail: "office@contract.example" } });
+  await db.platformFirm.create({ data: { id: MAIL_CONTRACT_FIRM_B, key: "pf19bm-contract-b", operatingName: "Sample Contract Firm B", countryCode: "CA", status: "ACTIVE", contactEmail: "office@contract-b.example" } });
   await runContract(mailPortContract, "MessagesMail", () => ({
     send: async (m) => { const r = await mail.send(m); await run(); return r; },
     inbox: async (a) => { try { return (await inbox.list(a, undefined)).messages.map((x) => ({ text: x.body })); } catch { return []; } },

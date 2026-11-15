@@ -62,6 +62,8 @@ export function fakeMail(opts: { failOn?: (m: z.output<typeof MailMessage>) => b
     async send(message) {
       const m = MailMessage.parse(message);
       if (m.attachments) m.attachments = m.attachments.map((a) => ({ ...a, bytes: new Uint8Array(a.bytes) }));   // the record keeps its own bytes
+      const had = m.idempotencyKey ? sent.find((x) => x.firmId === m.firmId.toLowerCase() && x.idempotencyKey === m.idempotencyKey) : undefined;
+      if (had) return { messageId: had.messageId };   // one key in one firm is one email (PF-19b)
       if (opts.failOn?.(m)) throw new Error(`forced mail failure: ${m.subject}`);
       const messageId = `fake-${String(sent.length + 1).padStart(6, "0")}`;
       sent.push({ ...m, firmId: m.firmId.toLowerCase(), to: m.to.toLowerCase(), messageId, sentAt: opts.clock ? opts.clock.now() : new Date(FAKE_NOW) });
