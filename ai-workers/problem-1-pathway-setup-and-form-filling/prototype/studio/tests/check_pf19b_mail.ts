@@ -26,6 +26,8 @@ import { MessagesMail } from "../api/src/platform/messages/send/mail.ts";
 import { Messages, SWEEP_AFTER_MS } from "../api/src/platform/messages/send/messages.ts";
 import { fakeAlerts } from "../ports/alert.ts";
 import { FakeClock } from "../ports/clock.ts";
+import { runContract } from "../ports/contracts/contract.ts";
+import { MAIL_CONTRACT_FIRM, mailPortContract } from "../ports/contracts/mail-port.contract.ts";
 import { fakeJobs } from "../ports/jobs.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
@@ -124,6 +126,14 @@ try {
     all5.length === 3 && /METHOD:CANCEL/.test(icsOf(0) ?? "") && /METHOD:REQUEST/.test(icsOf(1) ?? "") && new Set([0, 1, 2].map((i) => uidOf(icsOf(i)))).size === 1
     && seqOf(icsOf(0)) > seqOf(icsOf(1)) && seqOf(icsOf(1)) > seqOf(icsOf(2)), all5.map((m) => m.subject));
   ok("BM5 fail: the cancellation carries no reschedule link", !!all5[0] && !all5[0].body.includes("/manage#"));
+
+  // ------------------------------------------------------------------------------- PF-0c: MailPort's shared contract
+  // The contract's firm is a platform firm here; each case gets a fresh address book, read back from the demo inbox.
+  await db.platformFirm.create({ data: { id: MAIL_CONTRACT_FIRM, key: "pf19bm-contract", operatingName: "Sample Contract Firm", countryCode: "CA", status: "ACTIVE", contactEmail: "office@contract.example" } });
+  await runContract(mailPortContract, "MessagesMail", () => ({
+    send: async (m) => { const r = await mail.send(m); await run(); return r; },
+    inbox: async (a) => { try { return (await inbox.list(a, undefined)).messages.map((x) => ({ text: x.body })); } catch { return []; } },
+  }), ok);
 
   // ------------------------------------------------------------------------------- BM6 over HTTP, the app's route
   const child = spawn(join(STUDIO, "node_modules", ".bin", "tsx"), ["--tsconfig", join(STUDIO, "api", "tsconfig.json"), import.meta.filename, "--serve"], { env: { ...process.env, DATABASE_URL: URL, FO_FILES_DIR: join(WORK, "files") }, stdio: ["ignore", "pipe", "inherit"] });
