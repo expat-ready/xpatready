@@ -194,3 +194,62 @@ Not checked: CI on this head; the breaker's round 3; the isolated-copy C10.1 and
 **No Blocker and no Major is open.** Round 3 Minor 1 (the new deadlock) is advised before FO-7t, which will write credit-note returns.
 
 Verdict: Approve
+
+## Round 4 (diff only, P-277, P-303): `6f48fe29e..35b028dae`
+Head `35b028dae8ee889e46f3eb07f4b4620755d87967`. Scope: the tech lead's go (PR comment, 14 Nov 14:25 UTC), P-603, Lead B's AG-6-73 mapping, and break round 3 B-12 to B-17.
+* `check_fo7a_money_schema.ts`: 133/133 on :54329.
+* Probes ran on my own scratch database (`xr_studio_fo7a_review_probe4` on :54329). I applied every migration in order and dropped the database afterwards. Live AI was off, cost US$0, and port 4400 was not used.
+* Line numbers refer to the re-stamped `migration.sql` (`20261115042334_fo7a_client_money_tables`).
+* The re-stamp (P-600) has content identical to the old path, apart from the round-4 hunks (`git diff -M`: 90 % similarity, a rename).
+
+### Round 3 findings and break items, checked again
+| Item | Status | Evidence |
+|---|---|---|
+| R3-m1 / B-14: credit note then return, deadlock | **Closed** | `:828-831`: `money_issued_invoice` takes the party lock (the same key text as `:1083`) before the row. The builder's parallel test passes (credit note then withdrawal, and credit note then return, beside a withdrawal: all `ok`). |
+| R3-m2 / B-13: `money.taking_number` | **Closed** | The setting is gone. A direct `money_take_number` call, also from a `DO` block, is refused (42501). `proacl` is `{xr_studio=X/xr_studio}`. Once a number is taken, these direct updates are refused: `+1/+1`, a reset to `1/0`, `numbers_taken = 0`, and a delete. Issuing the next invoice still gives INV-0002 (series 3:2). Before the first number, 500 → 10 is accepted and 0 is refused by `next_check`. |
+| B-12: a correction of a return | **Closed in the ledger** | A correction naming a correction is refused, and so is one naming a refund. A REFUND naming an entry is refused (`corrects_check`). So is a correction naming nothing, one naming itself, one naming another party's deposit, and a positive correction of a deposit. The ledger loop now stops at 100.00 applied. **The move list does not stop: see Major 1.** |
+| B-15: `b.mine IS NOT TRUE` | **Closed** | `:1220`. |
+| B-16: a line after an undo in the same transaction | **Closed** | These are all refused: an undo then a line; a CTE with the undo first; a CTE with the line first (by the BEFORE trigger); and the CTE with `SET CONSTRAINTS money_move_line_not_undone IMMEDIATE` (at statement end). A legitimate undo in a later transaction, then a new move of the same source, works (ordinal 2). |
+| B-17: more invisible characters | **Closed as listed** | U+2800, U+E0020, U+E0001, U+1F3FB alone and U+FE0F alone are refused. An emoji with a skin tone is accepted. The remaining gaps are under Minor 2. |
+| Deposit corrections (P-603) | **Closed** | The builder's RC and RR races hold the sum at most the deposit. I checked the bounds by hand. |
+
+### Builder's choices
+1. **Accepted:** setting the first number lower or higher while `numbers_taken = 0`. This is AG-6-44 rule 2, and "never down" applies once numbers are taken.
+2. **Accepted:** a direct `+1/+1` update is refused (it moves only at `pg_trigger_depth() > 1`, `:731`). The owner can still write its own trigger, but that is PF-12's non-owner role, as in round 3.
+3. **Accepted, fail-safe.** I reproduced it: T1 updates an issued invoice's due date, then withdraws; T2 withdraws in between. T2 gets 40P01 and T1 commits, with one entry written. Nothing is wrong, and a retry works.
+4. **Accepted.** Undoing a batch with lines inside its own transaction makes no sense (roll back instead), and refusing it costs nothing.
+
+### Major
+1. **`:1230-1235` (TRUST_APPLIED) with `:1137-1145` (returns): money still leaves trust through the move list, beyond what the ledger applied. This is B-12 moved from the ledger to the bank. It breaks P-603 and Lead B's AG-6-73 mapping.**
+   * **What the check does:** a TRUST_APPLIED line may move up to `-withdrawal.amount_minor`. It never subtracts the returns (positive corrections) of that withdrawal, although the header at `:1203` says "up to its withdrawal (less what was returned before moving)".
+   * **Reproduced (scratch database):**
+     * Deposit 500.00. Issue invoice 601 for 100.00.
+     * W1 −100.00, then return +100.00. Move W1 TRUST_APPLIED 100.00: accepted.
+     * W2 −100.00 (the trust cap is open again). Move W2 100.00: accepted.
+     * Return W2 +100.00 *after* its move: accepted. The move stays live.
+     * W3 −100.00. Move W3 100.00: accepted.
+   * **Result:** 300.00 moved trust → operating against a 100.00 invoice. The ledger shows 100.00 applied, and the party's balance is 399.00 (one 1-cent withdrawal on a second invoice). The loop has no bound: each round adds a new withdrawal as a new move source.
+   * **Fix:**
+     * At move time, cap a TRUST_APPLIED line at `−withdrawal − sum(its returns)`.
+     * Refuse a return on a withdrawal when its returns plus its live (not undone) TRUST_APPLIED amount would exceed what was applied. The person undoes the move batch first.
+     * Take the party's trust lock in `money_move_line_write` for TRUST_APPLIED, so a move and a return of the same withdrawal serialise. They take different locks now (`money_move:` against `money_trust:`).
+   * **Fail tests needed:**
+     * Return then move: refused above the remainder.
+     * Move then return: refused while the move is live, and accepted after the batch is undone.
+     * The withdraw, return, withdraw loop moves at most 100.00 for a 100.00 invoice.
+   * **Why I did not raise it before:** it existed from round 1, and I missed it in rounds 1 to 3. It is in scope now because round 4's own requirement is that trust→operating moves map onto the ledger kinds. Its test only checks the *source kind* of a TRUST_APPLIED line, never its amount after returns.
+
+### Minor
+1. **`:1248-1252`: a bounced-cheque correction also opens a wrong-account move out of trust.**
+   * **Reproduced:** a 30.00 cheque deposit, then a −30.00 correction "Cheque bounced". A WRONG_ACCOUNT TRUST_TO_OPERATING move of 30.00 is then accepted. That money never arrived, so the move would take other clients' money.
+   * **Why the database cannot tell:** P-603 gives one negative kind for "bounced" and for "wrong account", and the reason is free text.
+   * **Not new scope:** FO-7t should write the wrong-account correction and its move together, and offer no move after a "bounced" correction. A schema fix would need a new column, so I list it only so it is not lost.
+2. **`:505-509`: B-17's deny list still lets through some invisible format characters.**
+   * Accepted as the whole reason: U+FFF9 to U+FFFB (interlinear annotation), U+1BCA0 to U+1BCA3 (shorthand format controls) and U+13430 (Egyptian format controls).
+   * **Fix (cheap):** add `￹-￻\U0001bca0-\U0001bca3\U00013430-\U0001343f`. A deny list will always trail Unicode. The lasting fix is a visible-character allow test when an ICU collation or ctype is available.
+
+**Not checked:** CI on this head; the breaker's round 4.
+
+**Fix list before Approve:** Major 1, with its fail tests. Minor 2 is cheap to add in the same commit. Minor 1 goes to FO-7t.
+
+Verdict: Changes needed
