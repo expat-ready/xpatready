@@ -25,7 +25,7 @@ import { ComplaintClosed, ComplaintReceived, EVENT } from "../../../../ports/eve
 import type { StaffContext } from "../../../../ports/staff.ts";
 import { firmScope } from "../firm-scope.ts";
 import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE } from "../settings.ts";
-import { acknowledgeBy, businessDaysBetween, localDate, type FirmCalendar } from "./business-days.ts";
+import { acknowledgeBy, businessDaysBetween, type FirmCalendar } from "./business-days.ts";
 
 export const COMPLAINT_KEYS = { record: "agent/complaint:record", read: "agent/complaint:read" } as const;
 export const ACK_REMINDER_JOB = "platform.complaint.ack_reminder";
