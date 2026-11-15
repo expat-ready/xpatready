@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { FirmId } from "./audit.ts";
 import { FAKE_NOW, type ClockPort } from "./clock.ts";
+import { Subject } from "./consent.ts";
 
 /** Why the email is sent: TRANSACTIONAL (a person's own action: a code, a link, a receipt), SERVICE (about the firm's
  *  account or a case: reminders, notices) or MARKETING (needs consent; the consent store, PF-19a, decides). */
@@ -27,6 +28,11 @@ export const MailMessage = z.strictObject({
   class: MailClass,
   /** The template the words came from (`booking.confirmed`), when one did. */
   templateKey: z.string().regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/).max(100).optional(),
+  /** The person the email is to (PF-19b: MessagePort's consent gate judges a SERVICE or MARKETING email by its person). */
+  person: Subject.optional(),
+  /** The sender's key (PF-19b, review m2): the same key in the same firm is the same email, so a job run twice sends
+   *  once. A caller with a job passes its job key. */
+  idempotencyKey: z.string().min(1).max(180).optional(),
 });
 export type MailMessage = z.input<typeof MailMessage>;
 
@@ -56,6 +62,8 @@ export function fakeMail(opts: { failOn?: (m: z.output<typeof MailMessage>) => b
     async send(message) {
       const m = MailMessage.parse(message);
       if (m.attachments) m.attachments = m.attachments.map((a) => ({ ...a, bytes: new Uint8Array(a.bytes) }));   // the record keeps its own bytes
+      const had = m.idempotencyKey ? sent.find((x) => x.firmId === m.firmId.toLowerCase() && x.idempotencyKey === m.idempotencyKey) : undefined;
+      if (had) return { messageId: had.messageId };   // one key in one firm is one email (PF-19b)
       if (opts.failOn?.(m)) throw new Error(`forced mail failure: ${m.subject}`);
       const messageId = `fake-${String(sent.length + 1).padStart(6, "0")}`;
       sent.push({ ...m, firmId: m.firmId.toLowerCase(), to: m.to.toLowerCase(), messageId, sentAt: opts.clock ? opts.clock.now() : new Date(FAKE_NOW) });
