@@ -1,4 +1,4 @@
-Verdict: Approve 53580c5ddcf787f7e0b016efd6e62d3345641e0e
+Verdict: Approve de7cda0f9d1fcf373ba1273737145b01edd6d519 (round 2; round 1 approved 53580c5dd)
 
 # PF-23r review: redaction hardening (PF-23's review minors 1-4 and FO-13 break 11)
 
@@ -55,3 +55,30 @@ Verdict: Approve 53580c5ddcf787f7e0b016efd6e62d3345641e0e
 
 * The full CI shards (the builder's pre-label run, brief rows rev 16). I ran only the three suites that import these files, plus the scanner.
 * Prisma's exact error text with a driver adapter (whether `DETAIL:` reaches a message string). I tested the redaction of each shape the PR names, not every Prisma version's wording.
+
+## Round 2 (de7cda0f9): re-review of the diff 53580c5dd..de7cda0f9 only (P-277)
+
+Diff: `redact.ts` (+22/-9), `check_pf23_observability.ts` (+10/-1), and this file committed unchanged. The touch list is kept.
+
+| Command | Result |
+|---|---|
+| `tsx tests/check_pf23_observability.ts 4493 xr_studio_rt_pf23r` | **99/99 passed** |
+| `tsx --tsconfig api/tsconfig.json tests/check_pf23w_jobs_wired.ts` | **31 passed, 0 failed** (qa452 3/3, qa453 2/2 inside it) |
+| `scan-logs.ts --self-test`; `scan-logs.ts var/isolated-logs` | ok; 3 logs, 254 lines, **0 findings** |
+| `tsc -p api/tsconfig.json --noEmit` | no error in `observability/*` or the test |
+
+| Round 1 | Fix | Test (can it fail on 53580c5dd?) | Probe on de7cda0f9 |
+|---|---|---|---|
+| m1 TIME_RANGE | minutes in 5s, plus `2400` (`redact.ts:54`) | `review r1 m1`: `1130-0847` and `2359-2459` → `[number]` (yes: both were kept) | `0900-1700`, `2400-2400` stay. A UCI whose halves are both 5-minute times still stays (`1130-0845`): 289 of 10,000 per half, about **0.08 %** of dashed 8-digit UCIs. Round 1 said "about 0.01 %"; that was my arithmetic error. Accepted: the row asks for time ranges to stay. |
+| m2 quotes | `PG_DETAIL` and `PG_ROW` run to the end of the line; COOKIE takes `"…"` as one unit (`:44`, `:59`, `:61`) | `review r1 m2` covers all three with a quoted canary (yes: "JJ" and the bearer leaked) | `Cookie: a="x y"; b=2` → `Cookie: [redacted]`. The alternatives start with different characters, so there is no backtracking blow-up (a 20,000-quote input runs in 1 ms). |
+| m3 bracketed column list | one level of brackets; value greedy to the last `)` on the line (`:60`) | `review r1 m3` on `lower(email::text)` (yes: there was no match) | `Key (a, lower(b))=(1, Jane Doe)` and `Jane (JJ) Doe` are both fully replaced. Greedy over-redacts the rest of a line ending in `)` (`… already exists. (see constraint foo)` → `Key (a)=([redacted])`), which errs on the safe side. |
+| m4 frame shape | `isFrame`: `at …` ending in `:line:col`, `(<anonymous>)`, `(native)` or `(index n)`, used by `framesOf` and the `logText` trigger (`:83-89`, `:162`) | two `review r1 m4` guards (yes: round 1 cut the text to `[stack] at 10:00…` and kept "at Jane Doe's office") | Real V8 frames are kept: `async Promise.all (index 0)`, `Generator.next (<anonymous>)`, `file:///…:1:2`, bare `/a.js:3:4`, `eval at …`. `Summary\nat 10:00:00 Jane Doe left` stays text. |
+| m5 leaves first | Error and Date are returned before `seen`/`path`, inside their own try (`:125-129`) | `review r1 m5`: a Date met twice is written twice (yes: it was `[shared]`) | A revoked proxy of a Date → `[not logged: unreadable value]`, the same as before. An Error deeper than 6 levels is now its safe shape instead of `[deep]`, which leaks nothing. |
+
+### New in round 2 (no Blocker, no Major)
+
+* **n1 (Nit) `redact.ts:44`:** an unclosed quote stops COOKIE at the quote: `Cookie sid="abc` → `Cookie [redacted]"abc`. A cookie header with an unclosed quote is malformed and does not come from a browser, so nothing needs to change now. If it is ever touched, let the quoted unit be `"[^"\n]*"?`.
+* **n2 (Nit), safe direction:** in JSON-shaped text, `PG_DETAIL` and COOKIE now replace everything to the end of the line (`{"cookie":"sid=abc","route":"/a"}` → `{"cookie":[redacted]`). Round 1's COOKIE did not match this shape at all, so this is a gain. No change needed.
+* The round-1 note (`not_an_id` shares the repeat key) and the nit (`health.ts:34`'s words) are unchanged and outside the row.
+
+**Verdict round 2: Approve de7cda0f9d1fcf373ba1273737145b01edd6d519.** Minors 1-5 are fixed, each with a test that fails on 53580c5dd; there is no open Blocker or Major.
