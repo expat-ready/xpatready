@@ -1,6 +1,8 @@
-# Rule register (the tech lead keeps it; as of **P-615**, 15 Nov 14:15 IST; the long page as of P-612 is word for word in `history/RULES-2026-11-15-1415-before-register.md`)
+# Rule register (the tech lead keeps it; as of **P-622**, 15 Nov 21:5x IST (P-616 to P-619 added by Lead 61); the long page as of P-612 is word for word in `history/RULES-2026-11-15-1415-before-register.md`)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced by** names the hook, CI step or script that blocks or fails a break; `prose` = only the reader enforces it (G-4 candidates, bottom); `(part)` = covers part of the rule. IDs: a letter (`P-611b`) = the decision's 2nd row, not its part (2); `IDX-n` = an index of done, product or integration decisions kept in the side file. **Start read**: this page, then the `DECISIONS.md` rows newer than "as of", word for word (P-314, P-440). Long text word for word: side files under `rules/`. `tools/check-docs.sh` fails a row with no enforced-by, a page over 25 KB, or one over 3 rows behind DECISIONS.
+
+**Triaged 16 Nov (B193 part 5, P-619 step 6):** 9 rows merged into the row that says the same and 5 retired, word for word in `rules/merged-and-retired-2026-11-16.md`; every old ID and where it went in `rules/rule-id-map-2026-11-16.tsv` (check-docs.sh fails a missing one); the check queue for the other prose rows: `design/rule-triage-2026-11-16.md`.
 
 ## Goal and order (detail: `rules/goal-and-order.md`)
 | ID | Rule | Enforced by | As of |
@@ -13,13 +15,11 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-468 | Stale copies are deleted only when the work is on GitHub, nothing is uncommitted, untracked files are in `archive/`, no session uses them; databases via prune-test-dbs.sh. | prose | 11 Nov |
 | IDX-2 | One-time or time-boxed directions, done or standing as recorded in the side file: P-485, P-506, P-507, P-533, P-537, P-545, P-569 (integration stopped). | prose | 14 Nov |
 | P-473 | UX style: calm work app, plain second-person client questions with "Why we ask", quiet surfaces, no motion library. | prose | 11 Nov |
-| P-550 | 2-3 tech leads for the four weeks from 13 Nov, each owning named modules and lanes; one holds the release; then back to one (amends P-511). | prose | 13 Nov |
 | P-558 | Two Leads: Lead B holds platform and front office in fenced modules; the release Lead holds release, Bake, case side, join, DB-SPLIT, firm walls, shared records (P-559). | prose | 13 Nov |
 | P-547 | The document system is approved with seven folds (its check never reds a product PR). | prose | 13 Nov |
 | P-583 | GitHub's free safety settings on in the checked order; the founder clicks, the Lead guides and verifies. | prose | 14 Nov |
 | P-589 | A private backup now; cut CI minutes first (B190); private at the gate before real firm data (P-590: option C). | prose | 14 Nov |
 | IDX-5 | Product and Release 1 scope rulings stand as recorded (read the row when its capability is touched): P-477, P-492, P-493, P-540, P-560 to P-562, P-564, P-567, P-568, P-570 to P-572, P-575, P-577 to P-579, P-581, P-584, P-585, P-598, P-603, P-612; with P-573, P-574, P-586. | prose | 15 Nov |
-| IDX-3 | Integration rules, stopped with the integration, kept in the side file for a resume: P-513, P-516, P-518 to P-520, P-522 to P-524, P-528, P-529, P-531, P-534, P-535, P-543, P-546, P-549; with P-517, P-527, P-544. | prose | 14 Nov |
 | IDX-4 | Product rulings stand in their DECISIONS rows (read one when its capability is touched): P-441, P-443, P-444, P-487, P-490, P-491, P-496 to P-498, P-510, P-525, P-538, P-548, P-588; with P-72, P-78, P-148, P-154, P-242, P-411; holds P-235 to P-248 lifted (P-316). | prose | 14 Nov |
 | P-488 | Gate B on a PR runs the REGRESSION-HELD checkpoint packs; records never claim Works that an open Major contradicts. | CI: ci.yml gate B (part) | 12 Nov |
 | F-12Nov | Every change is judged on value against cost; no over-engineering; never compromise compliance, money or quality (founder, 12 Nov). | prose | 12 Nov |
@@ -30,21 +30,15 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-504 | The repository is public: no specifics of the team's app in git; a classifier refusal is never routed around. | prose | 12 Nov |
 | P-505 | A PR that once carried team-app detail never merges: its final files land as one clean commit on a fresh branch. | prose | 12 Nov |
 | P-508 | Never leave a question card open when the founder may leave (cron fires only when idle); reference folder `reference/` (P-509). | prose | 13 Nov |
-| P-511 | One Lead (amended by P-550); the Fable planner is the founder's read-only strategy desk. | prose | 13 Nov |
 | P-512 | Questions go in the end-of-turn box (cards only while the founder types); expert facts revalidated on canada.ca (see P-541). | prose | 13 Nov |
 | P-514 | The Lead and the desk talk directly; each check looks at the desk's track file; the founder never relays. | prose (lead-watch skill) | 13 Nov |
-| P-515 | Every step rests on a framework chosen after comparing the top options; the cto-review skill measures DORA and flow. | prose | 13 Nov |
 | P-521 | The Lead orchestrates; only the Lead writes records; big desk items get a fresh Opus reviewer's verdict. | hook: stop-check.sh (part: lane edits to records) | 13 Nov |
 | P-530 | Founder blockers are pushed: a red "Waiting on the founder" line atop STATE, a push notification, re-sent each check after 30 min. | prose | 13 Nov |
 | P-532 | The Lead is the founder's single contact and owns every session; hand-over lists each lane's last message and whom it waits on. | script: handover.sh (part) | 13 Nov |
-| P-536 | Small fixes the desk and the Lead both recommend need no founder word, except money, a lower bar, a day or more, permissions, security. | prose | 13 Nov |
 | P-539 | This repository stays public; integration and strategy content goes only to private notes. | prose | 13 Nov |
-| P-541 | No immigration expert is booked: a value leaves Sample only with an official citation (page, quote, date). | prose | 13 Nov |
 | P-542 | No product row waits on pipeline, tooling or integration work. | prose | 13 Nov |
 | P-551 | No new account, key or purchase by anyone but the founder; named people for on call, support and breach before the first customer. | prose | 13 Nov |
 | P-553 | Launch on our own build; open-source parts only through STANDARDS §1 (P-563 stands). | prose | 13 Nov |
-| P-555 | Tokens and accounts are the founder's; no usage cap; everything on GitHub so a new account resumes in minutes (P-552, P-554 withdrawn). | prose | 13 Nov |
-| P-556 | No limit is not waste: every token is justified by the outcome. | prose | 13 Nov |
 | P-565 | Vendor facts from public sources; a working session past about half its context is replaced after a written hand-over. | prose | 14 Nov |
 | P-566 | Firm sign-up is the standard self-serve SaaS flow; questions best practice settles are decided by the Leads with evidence. | prose | 14 Nov |
 | P-576 | Order of work: critical features, then builder speed (contracts, ports with fakes, schema first); never two lanes on one busy file. | prose | 14 Nov |
@@ -58,7 +52,6 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-597 | The strategy desk runs on Fable 5.2 at high effort, set after the start, with five rules. | prose | 14 Nov |
 | P-599 | Ready rows at least two per lane; first-time green; at most two review rounds; day-3 check 17 Nov (date per P-609). | prose | 14 Nov |
 | P-600 | Schema rows run in parallel, each with its own file and migration folder, additive, a later stamp; the Lead reads the migration before the label (P-601). | prose | 14 Nov |
-| P-602 | Overnight on one account; lanes push and STATE says where to resume before 95%. | prose | 14 Nov |
 | P-604 | Builders and qa read only the requirement text trace-requirements.py --brief prints. | prose | 15 Nov |
 | P-605 | Opus 5.5 is the working model; Fable 5.2 only for the desk and challenges; no model switch mid-session. | prose | 15 Nov |
 | P-606 | Finish whole: each Done when names its test; no new capability while a started one has parts missing (amended P-613 (1)); qa scores when all parts merged. | prose | 15 Nov |
@@ -94,9 +87,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-526b | Rows name what they touch and wait on; overlapping touch lists never run at once. | prose | 13 Nov |
 | P-526c | No ruling lives only in an unmerged PR: records PRs over 24 h are merged or closed. | prose | 13 Nov |
 | P-337 | A lane ends when its PR is labelled; a warm lane may take one more row it knows (P-341). | prose | P-612 |
-| P-436d | PRs under ~800 lines, split by layer: schema, API, screen (P-438 (1), P-610). | prose | P-612 |
 | P-438b | One builder at a time on prisma/schema.prisma and api/src/case-prepare.ts; the Lead names the holder in STATE. | prose | P-612 |
-| P-348h | Two PRs carrying a migration take different stamps. | prose | P-612 |
 | P-270 | Merge main in only on a conflict; a PR that has merged main three times lands next (P-436 (1)). | prose | P-612 |
 | P-303 | Reviews on Opus: reviewer always; breaker only for money, schema, permissions or a new screen (P-278). | prose | P-612 |
 | P-277 | Re-review reads only the diff since the last Approve; a pure main merge needs no review (P-318 (1)); at most two rounds, then the Lead decides (P-293 (3)). | prose | P-612 |
@@ -115,7 +106,6 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 ## The tech lead (detail: `rules/tech-lead.md`)
 | ID | Rule | Enforced by | As of |
 |---|---|---|---|
-| P-479 | Co-founder's copy parked (P-480): the Sample PDF goes by hand later, accepted on its checksum, nothing committed. | prose | P-612 |
 | P-478 | Every report opens with "Needs you" then "Decide when you can"; every founder action is also a card; any spend is red with US$. | prose | P-612 |
 | P-591 | One cockpit built from script data, refreshed each check, its link opening every report; a fresh reviewer weekly; never duplicate work. | script: cockpit-data.py; CI: cockpit-tests.yml (part: data) | 14 Nov |
 | P-486 | "Decide when you can" is the Lead's (research, decide, record, implement); to the founder: money, a lower bar, a day or more, permissions, security, unsettled immigration facts. | prose | 11 Nov |
@@ -140,17 +130,22 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-336 | Records by the Lead alone; STATE one page ≤ 12 KB; DECISIONS appended newest first; records daily and at hand-over; records PRs merge when the queue is empty (P-436 (3)). | script: check-docs.sh (part: STATE 12 KB); CI: records-label.yml | P-612 |
 | P-440 | This page is refreshed at every hand-over and lags DECISIONS by at most 3 rows. | script: check-docs.sh (RULES LAG; test check-rules-lag.sh) | 9 Nov |
 | P-371 | Never cancel a CI run; re-run the failed part alone (P-384); product code only through the queue; check fixes may land ahead on green (P-214). | prose | P-612 |
+| P-616 | A capability with no screen passes gate A by API; map row 99's model choice is launch condition C26. | prose | 15 Nov |
+| P-617 | Size exception for #1815 only; rows briefed from now stay under 800 lines. | CI: pr-rules size step (pr-size.sh reads the row) | 15 Nov |
+| P-618 | Outside dependencies in `design/outside-dependencies.md`: start at need − lead time − 2× buffer; 🔴 when due or stuck 48 h; fallback and date on a block. | prose (B192 builds the alarm) | 15 Nov |
+| P-619 | Enforcement steps 3-8 approved; alarms for a stale board (45 min) and outside items. | prose (B193 builds them) | 15 Nov |
+| P-620 | Each Claude account checks the company Gmail connector at start and after a switch; missing → ask the founder. | prose (B193 part 6) | 16 Nov |
+| P-621 | Google only (Gmail, Calendar) for now; Microsoft deferred; ports stay provider-neutral. | prose | 16 Nov |
+| P-622 | Theory of Constraints: finish before starting (WIP per group), hot files split, one full run per change, fewer Leads; gates unchanged. | prose (B193, B194) | 16 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |
 |---|---|---|---|
-| P-436a | Cost is context size: about 75% of spend is long sessions re-reading 300k+ contexts. | prose | 9 Nov |
 | P-446 | A Lead hands over at the first check after 200k tokens beyond its start read, never compacts; at ~150k the standby reads RULES and STATE once. | prose (lead skill) | 9 Nov |
 | P-446f | Context by session type: builders end with the row (split before ~400k), qa ~300k, reviewers fresh (~150k); nobody reaches auto-compact. | prose | 9 Nov |
 | P-440b | The start read is this page plus the newer DECISIONS rows; never re-read big files on a check (P-372 (3)). | script: check-docs.sh (part: 25 KB, lag) | 15 Nov |
 | P-440c | No raw dumps into a Lead's context: filter every tool output. | prose | 9 Nov |
 | P-440d | Burn watch every check; over 3%/h twice in a row: end idle sessions, hand over any over 250k, tell the founder. | prose (usage-log.sh logs only) | 9 Nov |
-| P-436f | Models: Opus builds, reviews, breaks and reads fresh; Sonnet or Haiku for read-only side work; standbys idle; Fable never builds or reviews (P-455). | prose | P-612 |
 | P-445b | Unused connectors stay off. | prose | 11 Nov |
 | P-175b | Live AI is off on every copy; a live call only as a paid run the Lead approved, from a Terminal tab. | script: STUDIO_*_LIVE off by default in api/src (part) | P-612 |
 | P-295 | Day cap US$30, US$50 on 9 Nov (P-309, P-429, P-434); the Lead approves inside it, the founder above. | script: p2/ledger.ts (part: reserve before the call) | 9 Nov |
@@ -173,4 +168,4 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | Weekly plan burn per hour (P-440) | 3% or less |
 
 ## Prose-only rows: G-4 candidates (P-611)
-G-4's five first: PR open before a push (P-557), reviewer Opus (P-303, P-608), Done when in briefs (P-606), label after Approve on the head (P-385, verify), lane branch sweep (P-557). All 107 rows marked `prose`: IDX-1, P-418, P-464, P-470, P-468, IDX-2, P-473, P-550, P-558, P-547, P-583, P-589, IDX-5, IDX-3, IDX-4, F-12Nov, P-500, P-502, P-503, P-504, P-505, P-508, P-511, P-512, P-514, P-515, P-530, P-536, P-539, P-541, P-542, P-551, P-553, P-555, P-556, P-565, P-566, P-576, P-580, P-582, P-587, P-592, P-593, P-595, P-597, P-599, P-600, P-602, P-604, P-605, P-606, P-607, P-610, P-611c, P-609, P-613, P-614, P-608, P-557, P-348c, P-442, P-405, P-439, P-526, P-526b, P-526c, P-337, P-436d, P-438b, P-348h, P-270, P-303, P-277, P-352, P-319, QA-221, P-335, P-251, P-434b, P-479, P-478, P-486, P-486b, P-384, P-423, P-294, P-390, P-254, P-170, P-338, P-286, P-388, F-7Nov, P-363, P-302, P-371, P-436a, P-446, P-446f, P-440c, P-440d, P-436f, P-445b, P-377, P-461, P-458, P-312.
+The list, word for word: `rules/prose-only-g4-candidates.md`. Each prose row's outcome (check, merge, retire) and the check queue by breaks: `design/rule-triage-2026-11-16.md` (16 Nov).
