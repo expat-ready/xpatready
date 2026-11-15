@@ -1,0 +1,9 @@
+ci run 43668700997 ("Merge of #1748", head 25d43924d, tree 043cf61e02dad7d4cc8733d6a11d9f48fec39c03 = main e13603508's tree); 18 jobs success, guard and packs skipped; job logs read with the GitHub API 15 Nov ~03:35 UTC
+job 132674269980 (shard (6)):
+2026-11-15T03:17:43.6637248Z | check_fo3_booking.ts | PASS | 5 s | 105 passed, 0 failed |
+job 132674269984 (shard (1)):
+2026-11-15T03:22:48.9609607Z | check_fo1b_booking_schema.ts | PASS | 15 s | 80 passed, 0 failed |
+job 132674269959 (shard (8)):
+2026-11-15T03:20:14.0959668Z | check_fo1a_sales_schema.ts | PASS | 24 s | 124 passed, 0 failed |
+job 132674269950 (shard (2)):
+2026-11-15T03:20:25.4313681Z | check_fo5_retainers.ts | PASS | 20 s | FO-5 retainers: 159 passed, 0 failed |

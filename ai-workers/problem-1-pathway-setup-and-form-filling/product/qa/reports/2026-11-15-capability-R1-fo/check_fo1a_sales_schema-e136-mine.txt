@@ -1,0 +1,129 @@
+NOTICE:  database "xr_studio_fo1a_empty_26785" does not exist, skipping
+NOTICE:  database "xr_studio_fo1a_demo_26785" does not exist, skipping
+NOTICE:  database "xr_studio_fo1a_bare_26785" does not exist, skipping
+PASS  FO-1a: the migration has its own stamp, later than the newest on main before it (20261114120000_fo1b_booking_tables; P-348 (8))
+PASS  FO-1a pass: every migration applies to an empty database (the 15 front-office tables exist)
+PASS  FO-1a pass: migrate diff from the migrated empty database to the schema names no FO-1a table or type
+PASS  FO-1a fail: a database without FO-1a's migration differs from the schema (diff names the fo_ tables)
+PASS  FO-1a fail: the migration does not apply twice
+PASS  FO-1a pass: the migration applies to a demo-data copy and leaves its rows as they were
+PASS  FO-1a pass: migrate diff after it on the demo-data copy names no FO-1a table or type
+PASS  FO-1a pass: a lead has no stage, type, pipeline or value column (BR-22)
+PASS  FO-1a fail: a lead table with a stage and a value column is named by the same check
+PASS  FO-1a pass: every front-office table has firm_id first in an index
+PASS  FO-1a fail: a table whose index has firm_id only second is named
+PASS  FO-1a pass: each Sample firm gets 16 stages, 14 reasons, one web form (off) and its services (the released, not retired combination, named by its place; review m6)
+PASS  FO-1a fail: a released combination with no readable name (spaces, a tab, a no-break space) is left out, not a failed seed (break B6)
+PASS  FO-1a pass: both pipelines carry AG-02's eight keys in order, with one WON, one LOST and one NURTURE each (AG-2-52)
+PASS  FO-1a pass: the reason lists are AG-02's (AG-2-80 rule 2: five offered and two set by the system; AG-2-44 rules 2-3: seven, Duplicate a system reason; AG-2-98: Combined)
+PASS  FO-1a pass: a second seed changes nothing, and keeps a person's changes (a renamed stage, a service turned off)
+PASS  FO-1a pass: firm.created seeds a new firm once, even delivered twice at once (16 stages, reasons, one form, its services)
+PASS  FO-1a pass: with the setup row already there, three seeds at once seed once (one web form)
+PASS  FO-1a fail: the seed mark is set once (a cleared mark would seed again over a person's changes)
+PASS  FO-1a fail: a DELETED firm gets no front office
+PASS  FO-1a pass: another event type seeds nothing
+PASS  FO-1a pass: a firm.created missed by the subscriber is seeded by the catch-up, and only that one
+PASS  FO-1a fail: a firm id that is no platform firm is refused and seeds nothing
+PASS  FO-1a fail: a firm id that is not a uuid is refused before any query
+PASS  FO-1a pass: a repeat enquiry makes a second lead for the same person, while the first is open (AG02-D6)
+PASS  FO-1a pass: no unique index on fo_lead keys a lead by its person (so a repeat enquiry is a new lead)
+PASS  FO-1a fail: a one-lead-per-person unique index is named by the same check
+PASS  FO-1a fail: a lead without a person is refused
+PASS  FO-1a fail: a lead on another firm's person is refused (firm A cannot name firm B's row)
+PASS  FO-1a pass: the same intake key twice is one receipt (form + submission id; booking:<id>)
+PASS  FO-1a fail: a second receipt with the same key is refused when written without ON CONFLICT
+PASS  FO-1a fail: an intake key that does not carry its door and form is refused
+PASS  FO-1a fail: an intake key with a space or a line break is refused
+PASS  FO-1a pass: a booking by a person with an open prospect is a receipt with no lead (AG-2-84 rule 8)
+PASS  FO-1a fail: that outcome on another door, or without the person, is refused
+PASS  FO-1a fail: a receipt whose lead is about another person is refused (review m4)
+PASS  FO-1a fail: a receipt marked CREATED without its lead is refused
+PASS  FO-1a pass: a lead's attribution is written once (AG-2-8a)
+PASS  FO-1a fail: attribution refuses update, delete and truncate
+PASS  FO-1a fail: a second attribution for the same lead is refused
+PASS  FO-1a pass: L- numbers never repeat under 20 parallel inserts (L-00001 … L-00020, no gap)
+PASS  FO-1a pass: P- numbers never repeat under 20 parallel inserts (P-00001 … P-00020)
+PASS  FO-1a pass: numbers are per firm (another firm starts at L-00001)
+PASS  FO-1a fail: a number the writer gives is replaced by the next one
+PASS  FO-1a fail: a number never changes
+PASS  FO-1a fail: a number counter never goes back (a wound-back counter would repeat a removed lead's number)
+PASS  FO-1a fail: past 99999 a number grows a digit, never cut to a repeat (L-99999, L-100000)
+PASS  FO-1a fail: a front-office row of a firm with no front office set up is refused
+PASS  FO-1a fail: a prospect on a lead that is not ENGAGED is refused at commit (Engage makes both; break R2-2)
+PASS  FO-1a pass: a prospect sits on its own firm's stage of its type's pipeline
+PASS  FO-1a fail: a stage of the other pipeline is refused (composite key)
+PASS  FO-1a fail: another firm's stage is refused (composite key)
+PASS  FO-1a fail: an Individual prospect whose primary contact is not its subject is refused
+PASS  FO-1a fail: a Corporate prospect without a company is refused
+PASS  FO-1a fail: a Corporate prospect whose primary contact is not linked to the company is refused (at commit)
+PASS  FO-1a fail: a person linked to another company only is not enough
+PASS  FO-1a pass: a Corporate prospect with its company and a contact linked to it is accepted (AG-2-77 rule 4)
+PASS  FO-1a fail: that contact's last link cannot be ended or removed while the prospect is open (AG-2-77 rule 6)
+PASS  FO-1a fail: a second live PRIMARY contact at one company is refused
+PASS  FO-1a fail: the same person and role linked twice while live is refused
+PASS  FO-1a pass: the primary contact is swapped in one transaction (AG-2-77 rule 6)
+PASS  FO-1a fail: the same swap without repointing the prospect is refused at commit, and nothing of it stays
+PASS  FO-1a fail: of a new prospect and an ending link at once, the ending is refused; no open Corporate prospect is left without its contact (break B2)
+PASS  FO-1a fail: of two removals of one contact's two roles at once, the second is refused; the open prospect keeps a link (Devin review)
+PASS  FO-1a fail: of a new prospect and closing its lead at once, the close is refused; no lead with a prospect is left un-engaged (break R2-2)
+PASS  FO-1a fail: a move to Lost without a reason is refused (AG-2-44)
+PASS  FO-1a fail: a lead-close reason cannot be a lost reason
+PASS  FO-1a pass: Lost with a reason from the prospect list is accepted
+PASS  FO-1a fail: the WON stage without how it was won is refused (contracts §2.6)
+PASS  FO-1a pass: WON with won_via is accepted
+PASS  FO-1a pass: once the Corporate prospect is lost, its contact may leave the company
+PASS  FO-1a fail: a stage's key never changes, and the WON stage is never removed or turned off
+PASS  FO-1a pass: an ACTIVE stage the firm does not need can be removed (AG-2-20 rule 1)
+PASS  FO-1a fail: the last live ACTIVE stage of a pipeline is never removed or turned off (AG-2-20 rule 5; break B4)
+PASS  FO-1a fail: a second WON stage in one pipeline is refused
+PASS  FO-1a pass: a system reason may be renamed; its key stays (AG-2-80 tests)
+PASS  FO-1a fail: a system reason is never removed or turned off, and a reason's key never changes
+PASS  FO-1a fail: a CLOSED lead without a reason is refused (AG-2-80 rule 2)
+PASS  FO-1a fail: a lost reason cannot close a lead
+PASS  FO-1a pass: a lead closes with a reason from the lead list
+PASS  FO-1a fail: a close without who closed it, or an engage without who engaged, is refused
+PASS  FO-1a fail: a lead with a prospect stays ENGAGED (AG-2-80 rule 5)
+PASS  FO-1a pass: a lead's owner is a staff member of its firm
+PASS  FO-1a fail: another firm's staff member (or no staff member) as owner is refused
+PASS  FO-1a pass: a call is logged on a lead, about that lead's person
+PASS  FO-1a fail: a call on both a lead and a prospect, or on neither, is refused
+PASS  FO-1a fail: a call on a lead about another person is refused
+PASS  FO-1a pass: a note is INTERNAL unless it says otherwise (AG-13-21)
+PASS  FO-1a fail: a note on a lead about another person is refused (review m4)
+PASS  FO-1a fail: a note of only spaces, tabs or no-break spaces is refused
+PASS  FO-1a fail: notes are add-only (update, delete, truncate refused)
+PASS  FO-1a pass: a stage move to the prospect's stage keeps its cause
+PASS  FO-1a fail: a move to a stage the prospect is not in is refused (review m3)
+PASS  FO-1a fail: a move of a person into the WON stage is refused: only a signature, Signed offline or Convert wins (AG-2-28a; break R3-4)
+PASS  FO-1a fail: a move written with a back date gets the time it was made (break R3-1)
+PASS  FO-1a fail: a second first move, or a move from a stage the last move did not end in, is refused (break R2-4)
+PASS  FO-1a fail: a stage move is never changed
+PASS  FO-1a pass: Engage writes the lead's state and its prospect in one transaction, in either order
+PASS  FO-1a fail: a move between pipelines with another cause is refused
+PASS  FO-1a pass: Change type is recorded as a move between pipelines
+PASS  FO-1a fail: a signature (or Signed offline, or Convert) moving to a stage that is not WON is refused
+PASS  FO-1a pass: Engage and two moves in one transaction are accepted, 20 times in 20 (review R3-M1)
+PASS  FO-1a pass: after two overlapping transactions' moves, the next move from where the last ended is accepted (review R3-M1)
+PASS  FO-1a fail: the web form is not turned on without a consent wording (SA-11-29)
+PASS  FO-1a pass: with a consent wording version named, it turns on
+PASS  FO-1a fail: a front-office row never moves firm
+PASS  FO-1a fail: an email not in lower case, or an unreadable phone marked readable, is refused
+PASS  FO-1a pass: names in any script are names (株式会社さくら, السعر, Виза; break R2-1)
+PASS  FO-1a fail: a name of only spaces, punctuation, joiners or the Hangul filler is refused
+PASS  FO-1a fail: an intake key ending in a no-break or zero-width space is refused
+PASS  FO-1a fail: a receipt naming another firm's lead (or a lead that does not exist) without its person is refused (review R2-M1)
+PASS  FO-1a pass: a FAILED receipt that names no lead is kept
+PASS  FO-1a fail: a front office written already marked seeded, or at another number, is refused (break R2-7)
+PASS  FO-1a fail: a firm is marked seeded only with its stages, reasons and web form (break R3-3)
+PASS  FO-1a fail: a soft hyphen, a Braille blank, a lone combining accent, a variation selector or punctuation alone is no name (break R3-2)
+PASS  FO-1a fail: an intake key with a soft hyphen or any character outside printable ASCII is refused (break R3-2)
+PASS  FO-1a pass: an unreadable phone is kept as typed when marked so (AG-2-84 rule 5)
+PASS  FO-1a fail: a firm whose seed fails is named in the command's output, and the command exits 1 (Devin review)
+PASS  FO-1a pass: run again once the cause is gone, the command seeds that firm and exits 0
+PASS  FO-1a pass: the command runs when the suite was started with a repo-relative --tsconfig, as run-suites.sh does (#1742 second red run)
+PASS  FO-1a fail: handed on unresolved, that path stops tsx before the script runs (the cause, kept visible)
+PASS  FO-1a pass: an error the seed does not expect is printed as JSON on stdout, exit 1, never an unhandled rejection
+PASS  FO-1a pass: every fo_ function is this area's (fo_sales_ or named for its table) or FO-1b's; no old generic name is left
+PASS  FO-1a fail: a generic fo_ function (an old name) is named by the same check
+
+124 passed, 0 failed
