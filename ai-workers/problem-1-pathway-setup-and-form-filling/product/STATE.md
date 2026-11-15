@@ -14,7 +14,7 @@ Rules: RULES.md (register, as of P-615) + DECISIONS **P-616**. Account A2 (Ultra
 4. **A89 outside accounts:** Lead 56 `local_119f0fcb…` drives with the founder (he asked 19:1x: the agent does it end to end, he only unblocks; one line per finished step). AWS account created (activating); Stripe sandbox done; next MFA, budget, admin login, BoldSign.
 5. **Owed:** hand-merge PR (`.mergify.yml`, `screens/B119/check-queue-rules.py`, `tools/check-guards.sh` (+ check-sle-watch.sh), `tools/lead-watch.sh`; main newer); BACKLOG rows: CS-C1a's two follow-ups (#1818 body), FO-2's qa53 decorator-call scan (#1813); Library 2 masters behind; disk 11 GB (watch 10).
 6. **Founder, 21:00 batch** (from Lead 59, untouched): R1.11 skeleton.yml run; prompt-log lines 56-57; axe-core 4.10 install; share the board with his other accounts. Plus: size exemption for records PRs (pr-rules size step).
-7. **Sessions:** Lead 57 feeding `local_bef741db…`; Lead B (6) `local_1520b573…` (waits on #1816); desk 07 `local_7e42c0c5…`; Lead 56 (A89); standby: none after Lead 61 — **start Lead 62 and Lead 63 at the founder's next typed turn** (Opus medium, P-608).
+7. **Sessions:** Lead 57 feeding `local_bef741db…`; Lead B (6) `local_1520b573…` (waits on #1816); desk 07 `local_7e42c0c5…`; Lead 56 (A89); standbys: **Lead 62 `local_be1be806…`, Lead 63 `local_cdb44e83…`** (started 20:4x IST on the founder's "Yes, start both"; Opus medium, P-608).
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 | # | Ask (IST) | Status |
 |---|---|---|
@@ -44,5 +44,5 @@ F2, F8 closed by Lead 52 09:1x 15 Nov (before: "F2, F8 open (demo looks)"; they 
 **To-do (Lead 11):** word for word in `history/STATE-2026-11-14-0910-lead41s2-founder-asks-pointer-rows.md`.
 
 ## Leads, in order
-**Series 2 (P-433):** current = `current_lead:`; Leads 45-55 and earlier, word for word: `history/STATE-2026-11-15-2035-lead61s2-leads-45-55-lines.md`. **Lead 61 (series 2, local_14ad6773) from 20:12 IST 15 Nov**; Lead 60 (series 2, local_ef9b8721) 16:55-20:12; Lead 59 (series 2, local_a25b060c) 15:43-16:55; Lead 58 (series 2, local_5bec64f9) 14:27-15:4x; Lead 56 (series 2, local_119f0fcb) 13:41-14:27; Lead 57 is the feeding Lead (P-613 (2)). Standbys: none; start Lead 62 and Lead 63 at the founder's next typed turn (Opus medium, P-608).
+**Series 2 (P-433):** current = `current_lead:`; Leads 45-55 and earlier, word for word: `history/STATE-2026-11-15-2035-lead61s2-leads-45-55-lines.md`. **Lead 61 (series 2, local_14ad6773) from 20:12 IST 15 Nov**; Lead 60 (series 2, local_ef9b8721) 16:55-20:12; Lead 59 (series 2, local_a25b060c) 15:43-16:55; Lead 58 (series 2, local_5bec64f9) 14:27-15:4x; Lead 56 (series 2, local_119f0fcb) 13:41-14:27; Lead 57 is the feeding Lead (P-613 (2)). Standbys: Lead 62 (local_be1be806), Lead 63 (local_cdb44e83), from 20:4x IST 15 Nov.
 **Series 1: Leads 1 to 41, before 9 Nov 17:48 IST**, never renamed or renumbered: the full list, word for word, is in `history/STATE-2026-11-09-2130-lead2s2.md` ("Leads, in order").
