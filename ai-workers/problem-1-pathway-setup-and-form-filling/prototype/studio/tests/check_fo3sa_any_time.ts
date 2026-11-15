@@ -241,6 +241,22 @@ try {
   ok("FO-3sa break F3/F4 pass: Book anyway over a booking for a 100-character, email-like name saves (no 500), and the audit line holds codes and ids, no name",
     held.status === 201 && over.status === 201 && a3.length === 1 && !JSON.stringify(a3[0]).includes("AAAA") && !JSON.stringify(a3[0]).includes("@"), { held: held.status, over, a3 });
   ok("FO-3sa break F3/F4 fail: the dialog itself still names the person it overlaps (shown to the staff member, never stored)", labels(await go("POST", "", P.CASE_OFFICER, body("2026-10-30 14:00"))).some((l: string) => l.includes("pat@mail.example")));
+
+  // ------------------------------------------------------------------- Devin review (#1828): seconds, second host, case
+  const late = await go("POST", "", P.CASE_OFFICER, { ...body("2026-10-29 16:30"), startsAt: new Date(at("2026-10-29 16:30").getTime() + 30_000).toISOString() });
+  const early = await go("POST", "", P.CASE_OFFICER, { ...body("2026-10-29 16:29"), startsAt: new Date(at("2026-10-29 16:29").getTime() + 30_000).toISOString() });
+  ok("FO-3sa Devin-1 fail: a 30-minute meeting at 16:30:30 ends 30 s after the 17:00 close → OUTSIDE_HOURS, nothing saved", late.status === 409 && codes(late).join() === "OUTSIDE_HOURS", late);
+  ok("FO-3sa Devin-1 pass: 16:29:30 ends 16:59:30, inside the hours → saved as asked", early.status === 201 && early.body.startsAt === new Date(at("2026-10-29 16:29").getTime() + 30_000).toISOString(), early);
+  const adminBusy = await go("POST", "", P.CASE_OFFICER, body("2026-10-30 11:00", { hostStaffId: P.ADMIN.id }, T2.id));
+  const second = await go("POST", "", P.CASE_OFFICER, body("2026-10-30 11:15", {}, T2.id));
+  const forcedAdmin = await go("POST", "", P.CASE_OFFICER, body("2026-10-30 11:15", { hostStaffId: P.ADMIN.id }, T2.id));
+  ok("FO-3sa Devin-2 pass: Fri 11:15 (between starts) with no host chosen, the first host (Admin) busy and the second (Owner) free → saved with the Owner, no warning",
+    adminBusy.status === 201 && adminBusy.body.staffId === P.ADMIN.id && second.status === 201 && second.body.staffId === P.OWNER.id, [adminBusy, second]);
+  ok("FO-3sa Devin-2 fail: the same time with the busy Admin chosen → OVERLAP, nothing more saved", forcedAdmin.status === 409 && codes(forcedAdmin).join() === "OVERLAP" && await countAt("2026-10-30 11:15") === 1, forcedAdmin);
+  const upper = await go("POST", "", P.CASE_OFFICER, body("2026-10-29 15:00", { hostStaffId: P.OWNER.id.toUpperCase() }, T2.id));
+  const upperNot = await go("POST", "", P.CASE_OFFICER, body("2026-10-29 15:30", { hostStaffId: P.CASE_MANAGER.id.toUpperCase() }, T2.id));
+  ok("FO-3sa Devin-3 pass: an upper-case id of an active host is that host (stored in lower case)", upper.status === 201 && upper.body.staffId === P.OWNER.id, upper);
+  ok("FO-3sa Devin-3 fail: an upper-case id of a non-host is still refused as not a host", upperNot.status === 400 && (upperNot.body.issues ?? []).includes("hostStaffId: not a host of this consultation"), upperNot);
 } catch (e) {
   fail++; console.log(`FAIL  FO-3sa: the check stopped — ${String((e as Error)?.stack ?? e).slice(0, 800)}`);
 } finally {

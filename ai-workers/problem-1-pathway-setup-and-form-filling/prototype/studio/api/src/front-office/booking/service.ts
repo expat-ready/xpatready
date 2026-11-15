@@ -130,7 +130,7 @@ export const PublicBookingBody = z.strictObject({
 export const StaffBookingBody = z.strictObject({
   typeId: z.uuid(), personId: z.uuid(), mode: z.enum(MODES), startsAt: Instant, timeZone: Zone,
   /** FO-3sa: one of the type's active hosts; else the pick rule (the first free host, else the first active one). */
-  hostStaffId: z.uuid().optional(),
+  hostStaffId: z.uuid().transform((s) => s.toLowerCase()).optional(),   // ids are stored in lower case (Devin review)
   /** FO-3sa (AG-4-63 rule 4): save despite the warnings the first answer listed. */
   bookAnyway: z.boolean().optional(),
   /** FO-3sa (review M1): the warning codes the person was shown; a warning not among them gives a fresh answer. */
@@ -632,10 +632,16 @@ export class BookingService {
     if (free && (!want || free.staffIds.includes(want)))
       return { startsAt: free.startsAt, endsAt: free.endsAt, staffId: want ?? (any.current && free.staffIds.includes(any.current) ? any.current : free.staffIds[0]), warnings: [] };
     const active = new Set((await tx.platformStaff.findMany({ where: firmScope(firmId, { id: { in: [...type.hostStaffIds, ...(any.current ? [any.current] : [])] }, status: "ACTIVE" as const }), select: { id: true } })).map((h) => h.id));
-    const staffId = want ?? (any.current && active.has(any.current) ? any.current : type.hostStaffIds.find((id) => active.has(id)));
-    if (!staffId || !active.has(staffId))   // deactivated since the check, or no active host at all (AG-4-53; break F6)
+    const fallback = want ?? (any.current && active.has(any.current) ? any.current : type.hostStaffIds.find((id) => active.has(id)));
+    if (!fallback || !active.has(fallback))   // deactivated since the check, or no active host at all (AG-4-53; break F6)
       throw want ? inactiveHost() : refused("No active host can take this time. Please choose an active host.", ["hostStaffId: choose an active host"]);
-    const warnings = await this.warningsFor(tx, firmId, type, staffId, startsAt, ignoreBookingId);
+    // No host chosen: the first active host (the booking's own first) with no warning takes it; else the pick rule's
+    // host and its warnings (a time between the page's starts may suit a second host; Devin review).
+    let staffId = fallback, warnings = await this.warningsFor(tx, firmId, type, fallback, startsAt, ignoreBookingId);
+    if (!want && warnings.length) for (const id of type.hostStaffIds.filter((h) => active.has(h) && h !== fallback)) {
+      const w = await this.warningsFor(tx, firmId, type, id, startsAt, ignoreBookingId);
+      if (!w.length) { staffId = id; warnings = w; break; }
+    }
     // No warning (a time between the page's starts, inside the host's hours): staff take it as asked (Rule 7, review M2).
     // Book anyway covers only the warnings the person was shown: one that appeared since is asked again (review M1).
     if (warnings.length && (!any.bookAnyway || warnings.some((w) => !any.accepted.includes(w.code)))) throw needsConfirm(staffId, warnings);
@@ -803,8 +809,8 @@ type Held = { keep: () => void; release: () => void };
 async function lockHosts(tx: Tx, staffIds: string[]) {
   for (const staffId of [...new Set(staffIds)].sort()) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fo-booking-host:${staffId}`}))`;
 }
-/** The minute of the local day a moment falls on in `zone`. */
-const wallMinute = (at: Date, zone: string) => { const t = new Date(at.getTime() + tzOffset(zone, at) * MIN); return t.getUTCHours() * 60 + t.getUTCMinutes(); };
+/** The minute of the local day a moment falls on in `zone`, with its seconds as a fraction (16:30:30 is 990.5; Devin review). */
+const wallMinute = (at: Date, zone: string) => { const t = new Date(at.getTime() + tzOffset(zone, at) * MIN); return (t.getTime() - Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())) / MIN; };
 /** The staff member who chose Book anyway over an overlap; null for every other write (public and self-service ones). */
 const confirmer = (p: { warnings: Warning[] }, any?: AnyTime) => (any && p.warnings.some((w) => w.code === "OVERLAP") ? any.by : null);
 const withWarnings = (w: Warning[]) => (w.length ? ` with warnings: ${[...new Set(w.map((x) => WARNING_WORDS[x.code]))].join(", ")}` : "");
