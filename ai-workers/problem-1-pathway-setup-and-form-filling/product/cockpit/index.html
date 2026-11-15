@@ -246,7 +246,7 @@ function src(x){return x&&typeof x==="object"&&x.src?x.src:"";}
    (window and n come from the data). Neither shows anything on hover: addIcons() puts one ⓘ button beside each. */
 function S(s){return s?' data-info="'+esc(s)+'"':"";}
 function T(k){return k?' data-tip="'+esc(k)+'"':"";}
-function nz(x,suf){return x==null?'<span class="muted">n/a</span>':esc(x)+(suf||"");}
+function nz(x,suf){return x==null?'<span class="nm" data-nm="no value in data.json">not measured</span>':esc(x)+(suf||"");}
 function fmtDate(iso){if(!iso)return "not dated";var d=new Date(iso+"T00:00:00");return d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});}
 function short(iso){if(!iso)return "not dated";var d=new Date(iso+"T00:00:00");return d.toLocaleDateString("en-GB",{day:"numeric",month:"short"});}
 var LABEL={"Not shaped":"Not yet specified","Shaped":"Specified, ready to build","In PR":"In development","Merged":"Built","qa Works":"Proven","Works":"Proven","Built, awaiting qa":"Built, not yet proven","Partial":"Partly working","Not tested":"Not yet tested","Not built":"Not yet built"};
@@ -350,7 +350,7 @@ function dshort(x){return x&&/^\d{4}-/.test(x)?short(x):esc(x);}
 function srcV(x){if(!x||typeof x!=="object")return "";return [x.src,x.sha?"sha "+x.sha:"",x.as_of?"as of "+x.as_of:"",x["class"]||""].filter(Boolean).join(" \u00b7 ");}
 function relTile(){var P=D.pace;if(!P)return '<div class="tile"><div class="k">Release 1</div><div class="v">n/a</div></div>';
   var b=P.built,pr=P.proven,diff=((D.trust||{}).status_disagreements||[]).length;
-  return '<div class="tile"'+T("strip.release1 pace.proven")+'><div class="k">Release 1</div><div class="v">'+(b.value==null?"n/a":esc(b.value))+' built</div><div class="s">of '+esc(P.rows_total.value)+' \u00b7 proven: '+(pr.value==null?"not measured":esc(pr.value))+(diff?' \u00b7 records differ':'')+'</div></div>';}
+  return '<div class="tile"'+T("strip.release1 pace.proven")+'><div class="k">Release 1</div><div class="v">'+(b.value==null?'<span class="nm" data-nm="'+esc(b.reason||"not measured")+'">not measured</span>':esc(b.value)+' built')+'</div><div class="s">of '+esc(P.rows_total.value)+' \u00b7 proven: '+(pr.value==null?"not measured":esc(pr.value))+(diff?' \u00b7 records differ':'')+'</div></div>';}
 /* the Lead input's 2 h limit, judged again by the page at viewing time (review Minor 6) */
 function leadInputStale(){var a=D.top3&&D.top3.as_of;if(!a||a==="no Lead input")return true;var t=Date.parse(a);return isNaN(t)||(Date.now()-t)/3600000>2;}
 var PLAIN={works_on_main:"proof capabilities proven",works_total:"proof capabilities",changes_per_day_window:"changes a day",remaining_scope_changes:"changes left",built_rows:"rows built",proven_rows:"rows proven",open_app_prs:"open app changes",lanes_working:"lanes working",ready_rows:"rows ready",forecast_p50_date:"50% date",forecast_p85_date:"85% date",mc_daily_counts:"daily changes used for the forecast",mc_remaining_scope:"changes left used for the forecast",plan_pct_used_24h:"weekly plan used in 24 h",span_hours:"hours the readings cover",changes_merged_span:"changes merged over the readings",works_rows_span:"rows reaching qa Works over the readings",pct_per_change:"plan % per change",pct_per_works_row:"plan % per row",rows_done_24h:"rows done in 24 h",rows_needed_per_day:"rows needed a day"};
@@ -366,7 +366,7 @@ function renderStrip(){
    '<div class="tile"'+T("strip.poc")+'><div class="k">Proof of concept</div><div class="v">'+nz(w[0])+'<span class="muted">/'+nz(w[1])+'</span></div><div class="s">capabilities proven by qa</div></div>'+
    '<div class="tile"'+T("strip.next_date")+'><div class="k">Next date</div><div class="v">'+(nd?esc(short(nd.date)):"none")+'</div><div class="s">'+(nd?esc(nd.kind)+", in "+nd.days_left+" d":"")+'</div></div>'+
    '<div class="tile hl'+(light==="red"?" alert":light==="amber"?" warn":"")+'"'+T("strip.health")+'><button type="button" class="hlbtn" id="healthTile" aria-controls="healthPanel" aria-expanded="'+String(!document.getElementById("healthPanel").hidden)+'" aria-label="Health: '+esc(LIGHTWORD[light])+'; press for the seven checks"><span class="k">Health</span><span class="v">'+dot(light)+esc(LIGHTWORD[light])+'</span><span class="s">data '+ageText(age)+' old</span></button></div>'+
-   '<div class="tile"'+T("strip.plan_use")+'><div class="k">Plan use</div><div class="v">'+(wk==null?'<span class="nm">n/a</span>':esc(wk)+"%")+'</div><div class="s">'+(bn==null?"burn not reported":esc(bn)+" %/h")+' · US$'+(pd==null?"?":esc(pd))+' today</div></div>';
+   '<div class="tile"'+T("strip.plan_use")+'><div class="k">Plan use</div><div class="v">'+(wk==null?'<span class="nm" data-nm="'+esc(src(R.weekly_pct))+'">not measured</span>':esc(wk)+"%")+'</div><div class="s">'+(bn==null?"burn not measured":esc(bn)+" %/h")+' · '+(pd==null?"paid not measured":"US$"+esc(pd)+" today")+'</div></div>';
   var L=D.lineage||{},ah=L.ahead_of_main;
   document.getElementById("lineage").innerHTML='Records from <span class="mono">'+esc(L.records_branch||"?")+' @'+esc((L.records_sha||"").slice(0,9))+'</span>, '+
     (ah&&ah.value!=null?esc(ah.value)+' commits not on <span class="mono">main</span>':nm(ah&&ah.reason))+' · main <span class="mono">@'+esc((L.main_sha||"").slice(0,9))+'</span> · snapshot '+esc(L.taken_at||"");
@@ -527,7 +527,7 @@ function hhmm(iso){if(!iso)return null;var m=/T(\d{2}):(\d{2})/.exec(iso);return
 function laneRow(l,O){
   var q=l.seen!=="both",st=(l.state||"").toLowerCase(),tn=st==="blocked"?"bad":st==="running"||st==="pushing"||st==="working"?"good":st==="done"?"none":"wait";
   var where=l.kind==="cloud"?"cloud":l.kind==="mac"?"Mac":"cloud or Mac not reported";
-  var push=l.push_h!=null?'<span'+T("team.lane.push")+'>push '+esc(hhmm(l.last_push_at)||"")+' ('+esc(ageText(l.push_h))+' ago)</span>':'<span'+T("team.lane.push")+'><span class="nm" data-nm="no lane branch pushed in 24 h matched this lane">push not measured</span></span>';
+  var push=l.last_push_at?'<span'+T("team.lane.push")+'>push '+esc(hhmm(l.last_push_at)||"")+' ('+esc(ageText(l.push_h))+' ago)</span>':'<span'+T("team.lane.push")+'><span class="nm" data-nm="'+esc(l.push_reason||"no push time in data.json")+'">push not measured</span></span>';
   var idle=l.idle_min!=null?'<span'+T("team.lane.idle")+'>idle '+esc(l.idle_min)+' min<span class="rep">Lead-reported</span></span>':'<span'+T("team.lane.idle")+'><span class="nm" data-nm="the Lead input gives no idle_min for this lane">idle not reported</span></span>';
   var h='<div class="lanerow'+(l.behind?" behind":"")+'"><div class="nm1">'+(l.behind?'<span class="pill t-bad">behind</span> ':"")+esc(l.name)+(q?' <span class="rep"'+S("found only in "+(l.seen==="reported only"?"the Lead input":"GitHub (branches and open PRs)")+"; listed in Health item 7")+'>? '+esc(l.seen)+'</span>':"")+'</div>'+
     '<div class="meta"><span>'+esc(where)+'</span><span>row <b class="mono">'+esc(l.row||"none")+'</b></span><span>'+(l.pr?'PR <b class="mono">#'+esc(l.pr)+'</b>':'no PR')+'</span>'+(l.state?'<span>'+pill(l.state,tn)+'</span>':"")+push+idle+'</div>';
@@ -542,7 +542,7 @@ function rTeamTab(){
   var h='<div class="orgv"><div class="top"><div class="boss"><b>The founder</b><div class="small muted">product direction only; decides money, a lower bar, or a slip of a day or more</div></div></div><div class="stem"></div>';
   h+='<div class="leads"><div class="leadbox tl"><b>'+esc(tech)+'</b> · tech Lead, holds the release<div class="small muted">Owns: '+esc(own("tech"))+'</div><div class="small muted">Standbys: '+esc((K.standbys||[]).join(", ")||"none listed")+'</div></div>'+
     '<div class="leadbox lb"><b>'+(lb?esc(lb):'<span class="nm" data-nm="no session with role lead-b in the Lead input">Lead B not reported</span>')+'</b> · Lead B, platform and front office<div class="small muted">Owns: '+esc(own("lead-b"))+'</div><div class="small muted">Reports to '+esc(tech)+'</div></div></div><p class="small muted" style="margin:0">The coloured edge of each component shows its owner: green the tech Lead, blue Lead B.</p>';
-  h+='<p class="rule"><b>If a lane falls behind</b> (blocked, or no push or idle for 90 min): '+esc(K.escalation_rule)+'.'+ex+'</p>';
+  h+='<p class="rule"><b>If a lane falls behind</b> ('+esc(K.behind_rule||"rule not in data.json")+'): '+esc(K.escalation_rule)+'.'+ex+'</p>';
   h+='<div class="comps">';
   K.items.forEach(function(c){
     var lanes=c.lanes||[];
@@ -559,8 +559,8 @@ function rTeamTab(){
   if(K.unmapped&&K.unmapped.length)h+='<h3>Lanes not mapped to a component</h3><p class="small muted">No component in the Lead input and no known row prefix; the Lead adds <span class="mono">component</span> to the session.</p><div class="comps">'+K.unmapped.map(function(l){return '<div class="comp">'+laneRow(l,O)+'</div>';}).join("")+'</div>';
   h+='</div>';
   var t=D.team,c=v(t.counts)||{};
-  h+='<h3>Sessions in the Lead input</h3><div class="kpis">'+kpi("Cloud lanes pushing",nz(c.cloud_running),"pushed in the last 90 min","","","team.cloud_running")+kpi("Cloud lanes quiet or blocked",nz(c.cloud_idle),"","","","team.cloud_idle")+kpi("Mac sessions",nz(c.mac),"Leads, standbys, local lanes","","","team.mac")+'</div>';
-  h+='<p class="small muted">Reviewers: '+esc(O.reviewers)+'. How they work together: '+esc(O.how)+'. A lane marked ? is found by one source only (the Lead input or GitHub) and is listed in Health item 7. Component comes from the Lead input, else from the row id (PF Platform, FO Front office, FO-7 Client money, CS and BK Case side, AUD Audit, CI and TR Pipeline and checks, Q qa).</p>';
+  h+='<h3>Sessions in the Lead input</h3><div class="kpis">'+kpi("Cloud lanes pushing",nz(c.cloud_running),"","","","team.cloud_running")+kpi("Cloud lanes quiet or blocked",nz(c.cloud_idle),"","","","team.cloud_idle")+kpi("Mac sessions",nz(c.mac),"Leads, standbys, local lanes","","","team.mac")+'</div>';
+  h+='<p class="small muted">Reviewers: '+esc(O.reviewers)+'. How they work together: '+esc(O.how)+'. A lane marked ? is found by one source only (the Lead input or GitHub) and is listed in Health item 7. Component comes from the Lead input, else from the row id ('+esc(K.prefix_legend||"legend not in data.json")+'), else from the capability row it serves. BACKLOG\'s release holder\'s rows (AUD, the configurator\'s AS rows) are the tech Lead\'s.</p>';
   return section("","team","Team: who works now, by component","The founder, then each Release 1 component with its owning Lead, what they answer for, who acts when a lane falls behind, and the lanes working in it.",h);
 }
 
@@ -754,7 +754,7 @@ function rDevops(){
    kpi("Merge-queue batches",nz(bt[0]),nz(bt[1])+" failed \u00b7 "+nz(bt[2])+" cancelled",src(p.batches),"","pipeline.batches")+
    kpi("CI minutes a day",nz(v(p.ci_min_per_day)),"run time (approx), 7-day average",src(p.ci_min_per_day),"","pipeline.ci_min_per_day")+
    kpi("CI time thrown away",nz(v(p.thrown_share),"%"),"target under 20%",src(p.thrown_share),"","pipeline.thrown_share")+'</div>';
-  h+='<h3>Merges per day, 14 days</h3><div'+T("pipeline.merges_per_day")+' data-info="'+esc(m.days.map(function(d,i){return d.slice(5)+": "+m.all[i]+" merges, "+m.app[i]+" app code"+(m.partial[i]?" (not all classified)":"");}).join("; "))+'">'+bars(m.days,m.all,m.app,m.partial,"")+'</div>'+'<div class="legend"><span class="pill t-prog">all merges</span><span class="pill t-good">app-code merges (P-500)</span></div>';
+  h+='<h3>Merges per day, 14 days</h3><div'+T("pipeline.merges_per_day")+(v(D.merges_per_day)==null?'':' data-info="'+esc(m.days.map(function(d,i){return d.slice(5)+": "+m.all[i]+" merges, "+m.app[i]+" app code"+(m.partial[i]?" (not all classified)":"");}).join("; "))+'"')+'>'+(v(D.merges_per_day)==null?'<span class="nm" data-nm="'+esc(D.merges_per_day.reason||"not in data.json")+'">not measured</span>':bars(m.days,m.all,m.app,m.partial,""))+'</div>'+'<div class="legend"><span class="pill t-prog">all merges</span><span class="pill t-good">app-code merges (P-500)</span></div>';
   return section("11","devops","DevOps: delivery pipeline","How fast and how safely changes reach main. DORA's four keys, with proxies marked.",h);
 }
 

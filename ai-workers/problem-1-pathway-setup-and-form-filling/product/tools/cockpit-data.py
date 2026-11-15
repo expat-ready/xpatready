@@ -1056,8 +1056,8 @@ def constraint(L, Q, room, waits, qa_unknown, qa_count):
 
 
 # ---- Team by component (board v57, founder 15 Nov 10:2x IST): the founder → components → owning Lead → lanes
-# Owner "lead-b": the PF/FO/AUD rows sit in BACKLOG's "Full MVP: platform (PF) and front office (FO), shaped by Lead B"
-# section; "tech": the current tech Lead (STATE current_lead:), who holds the release.
+# Owner "lead-b": Lead B's PF and FO rows; "tech": the current tech Lead (STATE current_lead:), who holds the release. BACKLOG's
+# "The release holder's rows" lines (AUD-*, AS-1*, AS-2d*, AS-2e, CS-…) are the tech Lead's whatever their section.
 COMPONENTS = [
     {"id": "platform", "name": "Platform", "owner": "lead-b",
      "job": "Platform rows (PF): sign-in, firms, billing, messages, automation, portal login, complaints, running the service"},
@@ -1067,7 +1067,7 @@ COMPONENTS = [
      "job": "Client-money rows (FO-7*): invoices, card payments, the trust ledger"},
     {"id": "case_side", "name": "Case side", "owner": "tech",
      "job": "Case-side rows (CS, BK and the proof's rows): cases, documents, forms, the configurator"},
-    {"id": "audit", "name": "Audit", "owner": "lead-b",
+    {"id": "audit", "name": "Audit", "owner": "tech",
      "job": "Audit rows (AUD): one audit trail nobody can edit, across the modules"},
     {"id": "pipeline", "name": "Pipeline and checks", "owner": "tech",
      "job": "CI, the merge queue, the guards and the board's own checks (CI, TR rows)"},
@@ -1078,11 +1078,13 @@ COMPONENTS = [
 ]
 COMP_BY_ID = {c["id"]: c for c in COMPONENTS}
 # row id prefix → component; the longest prefix wins (FO-7 before FO)
-COMP_PREFIX = [("FO-7", "client_money"), ("FO-", "front_office"), ("AS-", "front_office"), ("PF-", "platform"), ("DB-", "platform"),
+COMP_PREFIX = [("FO-7", "client_money"), ("FO-", "front_office"), ("AS-2c", "front_office"), ("AS-", "case_side"), ("PF-", "platform"), ("DB-", "platform"),
                ("CS-", "case_side"), ("BK-", "case_side"), ("M3-", "case_side"), ("B5-", "case_side"), ("UX-", "case_side"),
                ("G-", "case_side"), ("L-", "case_side"), ("AUD-", "audit"), ("Q-", "qa"), ("CI-", "pipeline"), ("TR-", "pipeline"),
                ("Flaky-", "pipeline")]
-MODULE_COMP = {"platform": "platform", "front office": "front_office", "client money": "client_money", "case side": "case_side", "audit": "audit"}
+MODULE_COMP = {"platform": "platform", "front office": "front_office", "client money": "client_money", "case side": "case_side", "audit": "audit",
+               "configurator": "case_side"}
+AREA_MAPS = re.compile(r"\bmap rows? ((?:\d+(?:\s*(?:,|and)\s*)?)+)", re.I)     # "join and walk (map row 38, 40; P-606)"
 LANE_BEHIND_MIN = LANE_WINDOW_MIN                 # a lane falls behind with no push (or idle) for 90 min, or when blocked
 ESCALATION_STEPS = "lane → its Lead → the tech Lead → the founder only for money, a lower bar or a day or more"
 
@@ -1093,9 +1095,10 @@ def comp_name(text):
     return next((c["id"] for c in COMPONENTS if t in (c["id"].replace("_", " "), c["name"].lower())), None)
 
 
-def component_of(row, role=None, given=None, rows=None):
-    """(component id, how): Lead input `component` → role (qa, desk) → row id prefix → the Module of a Build row citing
-    the id → the words "pipeline"/"qa" in the row text → None ("not mapped")."""
+def component_of(row, role=None, given=None, rows=None, bl_lines=None):
+    """(component id, how): Lead input `component` → role (qa, desk) → the first row id with a known prefix → the Module of
+    a Build row citing the id, or of the map row its BACKLOG Area cell names ("map row 24") → the words "pipeline"/"CI" or
+    "qa"/"retest" in the row text → None ("not mapped")."""
     if given and comp_name(given):
         return comp_name(given), "Lead input component"
     if role == "qa":
@@ -1107,12 +1110,20 @@ def component_of(row, role=None, given=None, rows=None):
         for pre, cid in COMP_PREFIX:
             if rid.startswith(pre):
                 return cid, f"row prefix {pre.rstrip('-')}"
+    def mod_of(r):
+        return MODULE_COMP.get(re.sub(r"\s*\(.*?\)", "", r["module"].split("+")[0]).strip().lower())
     for rid in ids:
         for r in rows or []:
-            if rid in r["ids"]:
-                mod = re.sub(r"\s*\(.*?\)", "", r["module"].split("+")[0]).strip().lower()
-                if mod in MODULE_COMP:
-                    return MODULE_COMP[mod], f"Module of map row {r['map']}"
+            if rid in r["ids"] and mod_of(r):
+                return mod_of(r), f"Module of map row {r['map']}"
+    for rid in ids:
+        line = (bl_lines or {}).get(rid)
+        area = cells(line)[2] if line and len(cells(line)) > 2 else ""
+        m = AREA_MAPS.search(area)
+        for n in (re.findall(r"\d+", m.group(1)) if m else []):
+            r = next((x for x in rows or [] if x["map"] == int(n)), None)
+            if r and mod_of(r):
+                return mod_of(r), f"Module of map row {n} (BACKLOG Area cell)"
     low = (row or "").lower()
     if re.search(r"\bpipeline\b|\bci\b", low):
         return "pipeline", "row text"
@@ -1121,7 +1132,16 @@ def component_of(row, role=None, given=None, rows=None):
     return None, "not mapped"
 
 
-def org_components(org, sessions, rows, open_prs, taken, cur_lead, rsha):
+def release_holder_ids(bl_text):
+    """Row ids BACKLOG names on its "The release holder's rows" lines: the tech Lead's, whatever their section."""
+    out = set()
+    for line in (bl_text or "").splitlines():
+        if re.search(r"release holder's rows", line, re.I) and not line.startswith("| "):
+            out.update(cell_ids(line))
+    return out
+
+
+def org_components(org, sessions, rows, open_prs, taken, cur_lead, rsha, bl_lines=None, rh_ids=None):
     """The Team tab's org view: one block per component with its owner, responsibility, escalation path and lanes,
     each lane wired to the Build rows (MVP-CHECKLIST map rows) whose parts name its row id."""
     t0 = parse_iso(taken) if taken else None
@@ -1137,25 +1157,29 @@ def org_components(org, sessions, rows, open_prs, taken, cur_lead, rsha):
         if not row and ln.get("pr") in title_of:          # a lane GitHub alone shows: its row from the PR title
             row = title_id(title_of[ln["pr"]]) or loose_title_id(title_of[ln["pr"]])
             ln["row"] = row
-        cid, how = component_of(row, ln.get("role"), s.get("component"), rows)
+        cid, how = component_of(row, ln.get("role"), s.get("component"), rows, bl_lines)
         ln["component"], ln["component_how"] = cid, how
         ln["kind"] = s.get("kind")
         ln["idle_min"] = s.get("idle_min")
-        ln["last_push_at"] = ((t0 - timedelta(hours=ln["push_h"])).isoformat(timespec="minutes") if t0 and ln.get("push_h") is not None else None)
+        pa = parse_iso(ln["pushed_at"]) if ln.get("pushed_at") else None
+        ln["last_push_at"] = pa.astimezone(IST).isoformat(timespec="minutes") if pa else None
+        ln["push_reason"] = None if pa else ("no lane branch pushed in 24 h matched this lane" if ln["seen"] == "reported only" else "no push time read")
+        raw_min = (t0 - pa).total_seconds() / 60 if pa and t0 else None
         ids = cell_ids(row or "")
         ln["maps"] = [{"map": r["map"], "cap": r["cap"]} for r in rows if set(ids) & set(r["ids"])]
         why = None
         if (ln.get("state") or "").lower() == "blocked":
             why = "blocked (Lead input)"
-        elif ln.get("push_h") is not None and ln["push_h"] * 60 > LANE_BEHIND_MIN:
+        elif raw_min is not None and raw_min > LANE_BEHIND_MIN:
             why = f"no push for {ln['push_h']} h (GitHub)"
-        elif ln.get("push_h") is None and ln.get("idle_min") is not None and ln["idle_min"] > LANE_BEHIND_MIN:
+        elif raw_min is None and ln.get("idle_min") is not None and ln["idle_min"] > LANE_BEHIND_MIN:
             why = f"idle {ln['idle_min']} min (Lead input)"
         ln["behind"] = why
         given_owner = s.get("owner")
         comp = COMP_BY_ID.get(cid)
-        ln["owner"] = given_owner or (None if not comp else (lead_b or {}).get("name") if comp["owner"] == "lead-b" else tech["name"])
-        ln["owner_how"] = "Lead input owner" if given_owner else "component's owner" if comp else "not mapped"
+        rh = bool(set(ids) & (rh_ids or set()))
+        ln["owner"] = given_owner or (tech["name"] if rh else None if not comp else (lead_b or {}).get("name") if comp["owner"] == "lead-b" else tech["name"])
+        ln["owner_how"] = "Lead input owner" if given_owner else "BACKLOG: the release holder's row" if rh else "component's owner" if comp else "not mapped"
         (out[cid]["lanes"] if cid else unmapped).append(ln)
     comps = []
     for c in COMPONENTS:
@@ -1177,7 +1201,12 @@ def org_components(org, sessions, rows, open_prs, taken, cur_lead, rsha):
         if c["id"] == "strategy_desk":
             b["desk"] = org.get("desk") or []
         comps.append(b)
+    legend = {}
+    for pre, cid in COMP_PREFIX:
+        legend.setdefault(COMP_BY_ID[cid]["name"], []).append(pre.rstrip("-"))
     return {"items": comps, "unmapped": unmapped, "escalation_rule": ESCALATION_STEPS,
+            "behind_rule": f"blocked, or no push (or, with no push read, idle) for {LANE_BEHIND_MIN} min",
+            "prefix_legend": "; ".join(f"{k}: {', '.join(v)}" for k, v in legend.items()),
             "standbys": org.get("standbys") or [], "tech_lead": tech["name"], "lead_b": (lead_b or {}).get("name"),
             "src": "Lead input sessions (component, owner, row, pr; reported) + branches and open PRs (measured); component by row prefix "
                    "when not given (FORMULAS.md › Team by component)", "class": "reported + measured", "as_of": taken, "sha": rsha}
@@ -1565,7 +1594,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
         else:
             q_rows.append(rid)
     Q = num(len(q_rows), "R3: BACKLOG rows with a brief (exact id), not merged, no open PR, every dependency id merged and no non-id dependency; "
-            f"briefs.json, {bl_src}, {gh_src}", "mixed", L, rows=q_rows, not_ready=not_ready, n=len(briefs))
+            f"briefs.json, {bl_src}, {gh_src}", "mixed", L, rows=q_rows, not_ready=not_ready, n=sum(1 for b in briefs if b in bl["lines"]))
     room_v = (li or {}).get("max_lanes")
     room = num(max(0, int(room_v) - len(lanes)) if room_v is not None else None, "Lead input max_lanes − lanes working", "reported", L,
                "not measured: Lead input has no max_lanes")
@@ -1587,13 +1616,14 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
              "merge": (max([x for x in mw if x is not None], default=None), len(merge_q)),
              "qa": (qa_w, len(built_wait))}
     cons = constraint(len(lanes), len(q_rows), room["value"], waits, qa_unknown, len(built_wait))
+    timed = {"review": sum(1 for x in rw if x is not None), "merge": sum(1 for x in mw if x is not None), "qa": None if qa_unknown else len(built_wait)}
     stages = {k: {"count": num(n, {"review": "open non-draft PRs, CI green, no `review: approved` (Ready for label)",
                                    "merge": "open PRs labelled `review: approved`",
                                    "qa": "built Build rows not yet proven"}[k] + f"; {gh_src}", "measured" if k != "qa" else "mixed", L),
                   "wait_h": num(round(wv, 1) if wv is not None else None,
                                 {"review": "oldest: hours since the head commit", "merge": "oldest: hours since the label went on",
                                  "qa": "oldest: hours since the row was built"}[k], "measured" if k != "qa" else "mixed", L,
-                                "not measured: qa wait needs the checklist's qa id column" if k == "qa" and qa_unknown else "nothing waiting"),
+                                "not measured: qa wait needs the checklist's qa id column" if k == "qa" and qa_unknown else "nothing waiting", n=timed[k]),
                   "limit_h": LIMITS_H[k]} for k, (wv, n) in waits.items()}
     # work item age (R2-1)
     app_merged14 = [p for p in merged if p.get("files_app") is True and not is_records(p)
@@ -1657,7 +1687,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             prn = next((p["number"] for p in open_prs if p["head"]["ref"] == b["name"]), None)
             if prn is None and any(p["head"]["ref"] == b["name"] for p in pulls):
                 continue   # a branch whose PR is merged or closed is not a lane at work
-            measured[b["name"]] = {"branch": b["name"], "pr": prn, "push_h": round(hrs(b["pushed_at"]), 1)}
+            measured[b["name"]] = {"branch": b["name"], "pr": prn, "push_h": round(hrs(b["pushed_at"]), 1), "pushed_at": b["pushed_at"]}
     def lead_key(name):
         """Review M5: a lead is matched by its "Lead N" or "Lead B" prefix ("Lead 46 (tech lead)" reports to "Lead 46")."""
         m_ = re.match(r"\s*(Lead (?:\d+|B))\b", name or "")
@@ -1679,11 +1709,11 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             used.add(br_)
         lanes_out.append({"name": s.get("name"), "role": s.get("role"), "row": s.get("row"), "pr": s.get("pr") or (hit or {}).get("pr"),
                           "reports_to": s.get("reports_to"), "reports_key": lead_key(s.get("reports_to")), "state": s.get("state"),
-                          "push_h": (hit or {}).get("push_h"), "seen": "both" if hit else "reported only"})
+                          "push_h": (hit or {}).get("push_h"), "pushed_at": (hit or {}).get("pushed_at"), "seen": "both" if hit else "reported only"})
     for k, m in measured.items():
         if k not in used:
             lanes_out.append({"name": k, "role": "unknown", "row": None, "pr": m["pr"], "reports_to": None, "reports_key": None, "state": None,
-                              "push_h": m["push_h"], "seen": "measured only"})
+                              "push_h": m["push_h"], "pushed_at": m["pushed_at"], "seen": "measured only"})
     leads = [{"name": cur_lead or "current Lead (STATE current_lead: unreadable)", "key": lead_key(cur_lead),
               "role": "release holder: release, Bake, case side; the pipeline", "src": f"STATE.md current_lead @{rsha}"}]
     for s in sessions:
@@ -1698,7 +1728,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
            "mismatches": [x for x in lanes_out if x["seen"] != "both"], "class": "reported + measured",
            "src": "Lead input sessions (reported, with reports_to) cross-checked with branches_recent.json and open PRs (measured, 24 h)",
            "sha": L["mixed"][0], "as_of": taken}
-    org["components"] = org_components(org, sessions, rows, open_prs, taken, cur_lead, rsha)
+    org["components"] = org_components(org, sessions, rows, open_prs, taken, cur_lead, rsha, bl["lines"], release_holder_ids(bl_text))
 
     # ---- §7 working today
     wt_rows = {}
@@ -1947,7 +1977,7 @@ def health(snap, now, comp, li):
     item(7, "Data trust, work item age, org chart, freshness", st7, "; ".join(reasons) or "reconciliation agrees, invariants hold, nothing past its limit",
          "read the trust detail; fix the script, the record or the input it names", "current Lead", cls="measured")
     # board v57: each check's sample, for its tooltip (null = not measured, with the reason)
-    nmap = {1: (len(mc) if mc is not None else None, "check runs on main's head (plus the newest nightly)"),
+    nmap = {1: (len(mc) if mc is not None else None, "check runs on main's head"),
             2: (None, "computed by the page"),
             3: (n_ahead, "commits on STATE's this branch: that main lacks"),
             4: (len(gr) if gr else None, "guard runs read (label guard, push guard)"),
@@ -1962,6 +1992,13 @@ def health(snap, now, comp, li):
 
 
 COMPASS = "RULES.md › The compass (P-312)"
+NOT_READ_MERGED = "not measured: the merged pull requests were not read (offline or failed)"
+NOT_READ_NIGHTLY = "not measured: the nightly runs on main were not read (offline or failed)"
+
+
+def nn(x):
+    """A sample size for tooltip text: the number, or "not measured"."""
+    return "not measured" if x is None else str(x)
 
 
 def build_explain(d):
@@ -1977,9 +2014,12 @@ def build_explain(d):
     def val(x):
         return None if not isinstance(x, dict) else x.get("value", x.get("v"))
 
-    def put(key, label, what, window, n, n_of, read, x=None, band=None, n_reason=None, src=None, cls=None):
+    def put(key, label, what, window, n, n_of, read, x=None, band=None, n_reason=None, src=None, cls=None, n_override=None):
+        n = n_override if n_override is not None else n
         x = x if isinstance(x, dict) else {}
         n = n if isinstance(n, int) and not isinstance(n, bool) else None
+        if n_override is None and x and ("value" in x or "v" in x) and val(x) is None:
+            n = None                                     # a number not measured has no sample (review M3)
         e = {"label": label, "what": what, "window": window, "n": n, "n_of": n_of, "read": read,
              "src": src or x.get("src") or "the data script (cockpit-data.py)", "class": cls or x.get("class") or "parsed",
              "sha": x.get("sha"), "as_of": x.get("as_of") or taken}
@@ -1998,7 +2038,8 @@ def build_explain(d):
         "counted already. Each says in one line what to decide or do, and by when if the record names a date. PR questions for the "
         "tech lead are on the Factory tab.", now_w + " (STATE.md at the records commit)",
         val(sm["needs_you"]), "items counted (" + str(len(ny.get("asks") or [])) + " asks, " + str(len((ny.get("for_founder") or {}).get("open_ids") or [])) +
-        " F ids, " + str(len((ny.get("waiting_line") or {}).get("new_ids") or [])) + " Waiting ids)", "0 is the goal; each item waits on your word.", sm["needs_you"])
+        " F ids, " + str(len((ny.get("waiting_line") or {}).get("new_ids") or [])) + " Waiting ids)", "Lower is better; each item waits on your word.", sm["needs_you"],
+        band="0 open items")
     put("strip.release1", "Release 1 built", "Release 1 capabilities (Build rows of MVP-CHECKLIST.md §A) whose every BACKLOG part has merged through an "
         "app-code PR; proven = qa's Works verdict for the row.", "all time, from 13 Nov to " + t_ist, rows_n, "Build rows in the checklist",
         up + f" Release 1 is done when all {rows_n} rows are built and proven.", P["built"])
@@ -2010,13 +2051,14 @@ def build_explain(d):
     put("strip.next_date", "Next date", "The next dated row of the hand-kept plan (cockpit/plan.json); committed dates are the founder's, forecasts are estimates.",
         "dates from today on", len(dated), "dated plan rows", "Days left counts calendar days; a forecast is not a promise.", sm["next_date"])
     put("strip.health", "Health", "One light from seven checks: main CI, board data age, records on main, guards, burn, Major bugs on Works capabilities, "
-        "data trust.", now_w + "; data age by your clock", 7, "checks", "Green: all pass. Amber: one is not measured or near its limit. Red: one fails "
-        "(its action and owner show on tap).", src="health.items (seven checks) + the page's data age", cls="measured")
+        "data trust.", now_w + "; data age by your clock", None, "checks", "Green: all pass. Amber: one is not measured or near its limit. Red: one fails "
+        "(its action and owner show on tap).", src="health.items (seven checks) + the page's data age", cls="measured", n_override=len(d["health"]["items"]))
     R = d["resources"]
     put("strip.plan_use", "Plan use", "Share of the weekly Claude plan used, as the Lead typed it; burn = percent used per hour; paid US$ today.",
         "the current weekly plan (resets " + str(val(R["weekly_resets"]) or "not reported") + "); reading as of " + str(R["weekly_pct"].get("as_of") or "not reported"),
-        1 if val(R["weekly_pct"]) is not None else None, "Lead-reported reading", "Lower burn is better; paid stays US$0 with live AI off.", R["weekly_pct"],
-        band="burn 3% or less an hour (" + COMPASS + ", P-440)", n_reason="not measured: the Lead input has no weekly_pct")
+        1 if val(R["weekly_pct"]) is not None else None, "Lead-reported reading", "The big number has no band: it grows through the week. "
+        "Lower burn (the small line) is better; paid stays US$0 with live AI off.", R["weekly_pct"],
+        band="for the burn on the small line: 3% or less an hour (" + COMPASS + ", P-440)", n_reason="not measured: the Lead input has no weekly_pct")
     # ---- Plan and pace
     Y = P["changes_per_day"]
     last = datetime.fromisoformat(F["days"][-1]).strftime("%-d %b") if F.get("days") else "today"
@@ -2049,7 +2091,7 @@ def build_explain(d):
         "the mean of the full IST days. Shown only until the measured forecast (5 days of history, 17 Nov).",
         EB.get("window") or "full IST days from 13 Nov", EB.get("n"), "full IST days measured",
         "Low confidence: 2 to 4 days of pace say little. Compare the band with the committed date (" + str(EB.get("committed") or "none") +
-        "); a high date past it means the pace must rise.", EB)
+        "); a high date past it means the pace must rise.", EB, n_override=EB.get("n"))  # days measured is a real sample even when the band is retired
     LD = P.get("leading") or {}
     lp, lc, lv = LD.get("parts_merged") or {}, LD.get("caps_all_parts") or {}, LD.get("first_verdict_works_pct") or {}
     put("pace.leading_parts", "Parts merged a day", "Release 1 changes (BACKLOG parts) whose first app-code merge fell on the last full IST day.",
@@ -2060,7 +2102,7 @@ def build_explain(d):
         lc.get("rows_total"), "Build rows checked", up + " Proven comes later, at qa's Works verdict.", lc)
     put("pace.leading_fv", "Works at the first qa verdict", "Share of qa capabilities whose first verdict on main was Works (not Partial or Broken).",
         "first verdicts from 13 Nov to " + t_ist + " (qa/CAPABILITIES.md history on main, last 30 days)", lv.get("n"),
-        "capabilities with a first verdict", up + " A low share means rework before Works (P-606).", lv)
+        "capabilities with a first verdict", up + " A low share means rework before Works (P-606).", lv, n_override=lv.get("n"))  # 0 verdicts is a real sample; the share is what is not measured
     lt = P.get("light") or {}
     put("pace.light", "Pace light", "Grey: no committed date or tolerance; amber: no forecast yet; green: the 85% date is within the committed date plus the "
         "tolerance; red: later.", now_w, None, "a rule, not a count", "Green is on track. Now: " + str(lt.get("why")),
@@ -2118,8 +2160,8 @@ def build_explain(d):
                          ("qa", "Waiting for qa", "built Build rows not yet proven")):
         stg = C["stages"][k]
         put(f"capacity.{k}.count", lbl, rule.capitalize() + ".", now_w, val(stg["count"]), "items in the stage", down, stg["count"])
-        put(f"capacity.{k}.wait_h", lbl + ": longest", "The oldest item's wait: " + stg["wait_h"].get("src", "") + ".", now_w, val(stg["count"]),
-            "items waiting", down, stg["wait_h"], band=f"limit {stg['limit_h']:g} h (FORMULAS.md §2)")
+        put(f"capacity.{k}.wait_h", lbl + ": longest", "The oldest item's wait: " + stg["wait_h"].get("src", "") + ".", now_w, stg["wait_h"].get("n"),
+            "items with a wait time", down, stg["wait_h"], band=f"limit {stg['limit_h']:g} h (FORMULAS.md §2)")
     put("capacity.parked", "Parked", "Open non-records PRs with no push for 7 days; kept out of the waiting stages (R8).", now_w, len(C.get("parked") or []),
         "PRs parked", "Should be closed or picked up.", src="open_prs_detail.json head commit times", cls="measured")
     idle = C.get("idle") or []
@@ -2139,7 +2181,8 @@ def build_explain(d):
     reads = {1: "Red when a check on main's head or the newest nightly failed.", 2: "Amber at 45 min, red at 2 h.",
              3: "Red when the oldest records commit not on main is over 24 h old.", 4: "Red when a guard's newest run failed.",
              5: "Red above the limit.", 6: "Red when such a bug is over 48 h old.", 7: "Red when numbers disagree or an invariant breaks."}
-    bands = {5: "3% or less an hour (" + COMPASS + ", P-440)", 6: "about 0 (" + COMPASS + ": Major or Critical after merge)", 2: "under 45 min"}
+    bands = {5: "3% or less an hour (" + COMPASS + ", P-440)", 2: "under 45 min (the board's rule)",
+             6: "about 0 Major or Critical found after merge (" + COMPASS + "); this check counts every open one on a Works capability"}
     for it in d["health"]["items"]:
         put(f"health.{it['id']}", it["name"], it["name"] + ": " + (it.get("detail") or ""), windows[it["id"]], it.get("n"), it.get("n_of") or "",
             reads[it["id"]], band=bands.get(it["id"]), src="FORMULAS.md §5 item " + str(it["id"]), cls=it.get("class") or "measured",
@@ -2151,7 +2194,8 @@ def build_explain(d):
     for st in d["value_stream"]["stages"]:
         put(f"vsm.{st['id']}.count", st["name"], "Items in this factory stage now: " + st["count"]["src"] + ".", now_w, val(st["count"]), "items in the stage",
             "Counts move left to right; a pile-up shows where work waits.", st["count"])
-        put(f"vsm.{st['id']}.wait_h", st["name"] + ": median wait", st["wait_h"]["src"] + ".", now_w if st["id"] not in ("ci",) else "the last 2 days",
+        put(f"vsm.{st['id']}.wait_h", st["name"] + ": median wait", st["wait_h"]["src"] + ".",
+            {"ci": "the last 2 days", "queue": "flow-measure's runs read"}.get(st["id"], now_w),
             st["wait_h"].get("n"), "items timed", down + " The stage with the longest median is marked.", st["wait_h"])
     team = d["team"]
     for k, lbl, what in (("cloud_running", "Cloud lanes pushing", "Lead-reported cloud sessions whose PR had a push, or idle under 90 min, while running."),
@@ -2170,9 +2214,11 @@ def build_explain(d):
     put("quality.closed", "Closed after retest", "Rows in qa/BUGS-CLOSED.md; the small line counts those closed in the last 7 days.",
         "all rows kept; the last 7 days for the small line", val(Q["closed_total"]), "closed rows", up, Q["closed_total"])
     dem = d["improving"]["series"].get("works") or []
-    put("quality.demotions", "Works demotions", "Days when Works on main fell from one day's end to the next.", "the 14 IST days to " + t_ist,
+    put("quality.demotions", "Works demotions (proxy)", "Days when the Works total on main fell from one day's end to the next. A proxy: a "
+        "demotion offset by a new Works the same day is not seen, and several on one day count once. The compass's 'at most 1 Works → Partial "
+        "demotion a day' needs per-capability history, not read yet.", "the 14 IST days to " + t_ist,
         sum(1 for x in dem if x is not None) or None, "days with a Works reading", down, Q["demotions"],
-        band="at most 1 a day (" + COMPASS + ")", n_reason="not measured: Works history not read (offline or failed)")
+        n_reason="not measured: Works history not read (offline or failed)")
     fl = val(Q["flaky"]) or {}
     put("quality.flaky", "Flaky ledger", "Lines of tools/flaky-ledger.tsv: release or hand lines (big) and rule lines.", now_w,
         (fl.get("rule_lines") or 0) + (fl.get("release_or_hand_lines") or 0) if fl else None, "ledger lines", down, Q["flaky"])
@@ -2180,11 +2226,12 @@ def build_explain(d):
     pl = d["pipeline"]
     w7 = "the 7 days to " + t_ist
     put("pipeline.deploy_freq", pl["deploy_freq"]["label"], "PRs merged to main ÷ 7; the small line counts app-code PRs only (P-500).", w7,
-        pl["deploy_freq"].get("n"), "PRs merged", up, pl["deploy_freq"])
+        pl["deploy_freq"].get("n"), f"PRs merged (of them app code: {nn(pl['deploy_freq']['app_code'].get('n'))})", up, pl["deploy_freq"])
     put("pipeline.lead_time_h", pl["lead_time_h"]["label"], "Median hours from PR opened to merged.", w7, pl["lead_time_h"].get("n"), "PRs merged", down,
         pl["lead_time_h"])
     put("pipeline.change_fail", pl["change_fail"]["label"], "Share of finished nightly runs on main that failed (a proxy for change failure).", w7,
-        pl["change_fail"].get("n"), "finished nightly runs", down + " The small line's batch failures have their band under Merge-queue batches.",
+        pl["change_fail"].get("n"), f"finished nightly runs (reverts: out of {nn(pl['change_fail']['reverts'].get('n'))} PRs merged)",
+        down + " The small line's batch failures have their band under Merge-queue batches.",
         pl["change_fail"])
     put("pipeline.restore_h", pl["restore_h"]["label"], "Median hours from a failed nightly on main to the next green one.", "the last 60 nightly runs",
         pl["restore_h"].get("n"), "red-to-green recoveries", down, pl["restore_h"])
@@ -2239,7 +2286,8 @@ def build_explain(d):
     for c in oc.get("items") or []:
         put(f"team.{c['id']}.lanes", c["name"] + ": lanes", "Lanes working in this component (Lead input sessions and GitHub branches), and how many fall "
             "behind (blocked, or no push or idle for 90 min).", now_w + "; Lead input as of " + str(d["top3"].get("as_of")), len(c["lanes"]), "lanes",
-            "0 behind is the goal; behind lanes go to " + str((c.get("owner") or {}).get("name") or "the owner") + ".", src=oc.get("src"), cls="reported")
+            "Behind lanes go to " + str((c.get("owner") or {}).get("name") or "the owner") + ". Class: the weaker of reported and measured.",
+            src=oc.get("src"), cls="reported", band="0 lanes behind")
     return E
 
 
@@ -2441,7 +2489,9 @@ def main():
                 return out
             page += 1
         return out
-    merged = safe("merged PRs", merged_list, [])
+    merged = safe("merged PRs", merged_list, None)
+    merged_ok = merged is not None                  # board v57: nothing read → not measured, never 0 (P-596)
+    merged = merged or []
 
     # ---- app-code verdicts through tools/app-code-prs.sh (cached per PR)
     ac_path = os.path.join(cache, "appcode.json")
@@ -2502,7 +2552,9 @@ def main():
         return (x["head_branch"] or "").startswith("mergify/")
 
     # ---- nightly on main (main line red share and red to green)
-    nightly = safe("nightly runs", lambda: gh.get("/actions/workflows/nightly.yml/runs?branch=main&per_page=60")["workflow_runs"], [])
+    nightly = safe("nightly runs", lambda: gh.get("/actions/workflows/nightly.yml/runs?branch=main&per_page=60")["workflow_runs"], None)
+    nightly_ok = nightly is not None
+    nightly = nightly or []
 
     # ---- flow-measure.py (cached)
     fm_path = os.path.join(cache, "flow-measure.json")
@@ -2748,21 +2800,28 @@ def main():
     ci_hours = (fmv.get("pr_check_hours") or 0) + (fmv.get("queue_hours") or 0) if fm else None
     pipeline = {
         "band_note": "DORA bands: band not checked (cto-review skill: bands only from the newest DORA report, cited with page and date)",
-        "deploy_freq": V(round(len(m7) / 7, 1), "GitHub: PRs merged to main in the last 7 days ÷ 7 (merge-queue branches left out)",
-                         label="Changes reaching the main line, a day", n=len(m7),
-                         app_code=V(round(len(ac7) / 7, 1), "same, only PRs tools/app-code-prs.sh counts as app code (P-500)", n=len(ac7))),
-        "lead_time_h": V(med(lead7), "added: median hours from PR opened to merged, PRs merged in the last 7 days", label="PR opened to merged (proxy for lead time)", n=len(lead7)),
-        "change_fail": V(red_share, f"added: share of finished nightly runs on main that failed, last 7 days (n={len(nl7)})", label="Share turning the main line red (proxy)", n=len(nl7),
-                         reverts=V(len(reverts7), "merged PRs titled Revert…, last 7 days", n=len(m7)),
+        "deploy_freq": V(round(len(m7) / 7, 1) if merged_ok else None, "GitHub: PRs merged to main in the last 7 days ÷ 7 (merge-queue branches left out)",
+                         label="Changes reaching the main line, a day", n=len(m7) if merged_ok else None,
+                         **({} if merged_ok else {"reason": NOT_READ_MERGED}),
+                         app_code=V(round(len(ac7) / 7, 1) if merged_ok else None, "same, only PRs tools/app-code-prs.sh counts as app code (P-500)",
+                                    n=len(ac7) if merged_ok else None, **({} if merged_ok else {"reason": NOT_READ_MERGED}))),
+        "lead_time_h": V(med(lead7), "added: median hours from PR opened to merged, PRs merged in the last 7 days", label="PR opened to merged (proxy for lead time)",
+                         n=len(lead7) if merged_ok else None, **({} if merged_ok else {"reason": NOT_READ_MERGED})),
+        "change_fail": V(red_share, f"added: share of finished nightly runs on main that failed, last 7 days (n={len(nl7)})", label="Share turning the main line red (proxy)", n=len(nl7) if nightly_ok else None,
+                         **({} if nightly_ok else {"reason": NOT_READ_NIGHTLY}),
+                         reverts=V(len(reverts7) if merged_ok else None, "merged PRs titled Revert…, last 7 days", n=len(m7) if merged_ok else None,
+                                   **({} if merged_ok else {"reason": NOT_READ_MERGED})),
                          batch_fail=V(round(100 * fmv["queue_failed"] / fmv["queue_runs"], 1) if fm and fmv.get("queue_runs") else None, fm_src + ": queue_failed ÷ queue_runs")),
-        "restore_h": V(med(restores), "added: median hours from a failed nightly on main to the next green one, last 60 nightly runs", label="Time from red to green", n=len(restores),
+        "restore_h": V(med(restores), "added: median hours from a failed nightly on main to the next green one, last 60 nightly runs", label="Time from red to green", n=len(restores) if nightly_ok else None,
+                       **({} if nightly_ok else {"reason": NOT_READ_NIGHTLY}),
                        open_red=V(ist(red_since) if red_since else None, "nightly on main red since (none = green)")),
         "queue_wait_min": V((fmv.get("approved_to_merged_min") or {}).get("median"), fm_src + ": approved_to_merged_min.median",
                             p90=(fmv.get("approved_to_merged_min") or {}).get("p90"), n=(fmv.get("approved_to_merged_min") or {}).get("n")),
         "batches": V([fmv.get("queue_runs"), fmv.get("queue_failed"), fmv.get("queue_cancelled")], fm_src + ": queue_runs, queue_failed, queue_cancelled"),
         "ci_min_per_day": V(round(sum(x for x in series_ci7) / len(series_ci7)) if series_ci7 else None,
                             "added (approx): ci.yml run wall time, run_started_at to updated_at, summed per IST day, average of the last 7 full days",
-                            n=len(series_ci7),
+                            n=len(series_ci7) if series_ci7 else None,
+                            **({} if series_ci7 else {"reason": "not measured: no full day of CI runs was read (offline or failed)"}),
                             job_hours=V(ci_hours, fm_src + ": pr_check_hours + queue_hours (job time over the runs it read)")),
         "thrown_share": V(fmv.get("thrown_share"), fm_src + ": thrown_share (P-371 target under 20%)", n=fmv.get("runs_read")),
         "records_share": V(fmv.get("records_share"), fm_src + ": records_share (target under 20%)"),
@@ -2773,8 +2832,8 @@ def main():
     series = {"days": [d.isoformat() for d in days], "merges": [], "app_merges": [], "app_partial": [], "works": [], "lead_h": [], "batch_fail": [], "ci_min": []}
     for d in days:
         md_ = [m for m in merged if ts(m["merged"]).astimezone(IST).date() == d]
-        series["merges"].append(len(md_))
-        series["app_merges"].append(sum(1 for m in md_ if ac.get(str(m["n"]))))
+        series["merges"].append(len(md_) if merged_ok else None)          # not read is not zero (board v57)
+        series["app_merges"].append(sum(1 for m in md_ if ac.get(str(m["n"]))) if merged_ok else None)
         series["app_partial"].append(any(str(m["n"]) not in ac for m in md_))
         series["works"].append(wh.get(d))
         series["lead_h"].append(med([hours(ts(m["created"]), ts(m["merged"])) for m in md_]))
@@ -2807,6 +2866,7 @@ def main():
     }
 
     # healing: PR branches whose check run went red and later green (no Lead-comment check; best effort)
+    runs_ok = any(runs_by_day.get(d) is not None for d in days[-7:])
     by_branch = {}
     for d in days[-7:]:
         for x in runs_by_day.get(d) or []:
@@ -2825,8 +2885,9 @@ def main():
     healing = {
         "restarts": V(sum(int(s.get("restarts") or 0) for s in sessions) if li else None, li_src + ": sessions[].restarts"),
         "nudges": V(sum(int(s.get("nudges") or 0) for s in sessions) if li else None, li_src + ": sessions[].nudges"),
-        "healed_prs": V(len(healed), "added: PR branches whose ci.yml run went red, then green, last 7 days (Lead comments not checked)",
-                        median_h=med(healed), n=len(by_branch)),
+        "healed_prs": V(len(healed) if runs_ok else None, "added: PR branches whose ci.yml run went red, then green, last 7 days (Lead comments not checked)",
+                        median_h=med(healed), n=len(by_branch) if runs_ok else None,
+                        **({} if runs_ok else {"reason": "not measured: the CI runs of the last 7 days were not read (offline or failed)"})),
         "blocked": V([{"name": s.get("name"), "row": s.get("row"), "pr": s.get("pr")} for s in team if s["chip"] == "blocked"], li_src + " + open PR stations"),
         "ci_red_prs": V([{"n": p["n"], "push_age_h": p["push_age_h"]} for p in prs if not p["records"] and p["station"] == "CI red"], prs_src + ": station CI red"),
         "questions": V([{"n": q_["n"], "age_h": q_["age_h"]} for q_ in questions] if prs_ok else None,
@@ -2889,8 +2950,9 @@ def main():
                     "flaky": V(flaky(), f"tools/flaky-ledger.tsv in {copy}"),
                     "review_rounds": V(None, "not measured: needs every PR's review comments (costly)")},
         "pipeline": pipeline,
-        "merges_per_day": V({"days": series["days"], "all": series["merges"], "app": series["app_merges"], "partial": series["app_partial"]},
-                            "GitHub merged PRs per IST day; app = tools/app-code-prs.sh" + (f"; {unclassified} PRs not yet classified" if unclassified else "")),
+        "merges_per_day": V(None if not merged_ok else {"days": series["days"], "all": series["merges"], "app": series["app_merges"], "partial": series["app_partial"]},
+                            "GitHub merged PRs per IST day; app = tools/app-code-prs.sh" + (f"; {unclassified} PRs not yet classified" if unclassified else ""),
+                            **({} if merged_ok else {"reason": NOT_READ_MERGED})),
         "resources": resources,
         "risks": {"items": rk["risks"], "src": "cockpit/risks.json (hand-kept)", "unlisted": V(unlisted, "MVP-CHECKLIST.md §C items Not started that risks.json lacks")},
         "healing": healing,
