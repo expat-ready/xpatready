@@ -412,7 +412,8 @@ export class Retainers {
       representativeStaffId: r.representativeStaffId, template: { id: r.templateId, name: tpl?.name ?? null, version: r.templateVersion },
       version: { n: cur.n, sha256: cur.originalSha256, sentAt: cur.sentAt, values: { ...values, "representative.licence_number": undefined } as Record<string, unknown>,
         fees: cur.fees.map((f) => ({ position: f.position, label: f.label, amountMinor: f.amountMinor === null ? null : f.amountMinor.toString(), currency: f.currency, when: f.when, dueOn: f.dueOn?.toISOString().slice(0, 10) ?? null })) },
-      canSend: r.status === "DRAFT" && !Object.keys(c.blockers).length, blockers: c.blockers, missing: c.missing,
+      // break r2-m3: what blocks Send is shown only while the agreement can still be edited (never "Edit to choose another" on a signed one).
+      canSend: r.status === "DRAFT" && !Object.keys(c.blockers).length, blockers: EDITABLE.includes(r.status) ? c.blockers : {}, missing: c.missing,
       withdrawn: r.withdrawnAt ? { at: r.withdrawnAt, reason: r.withdrawnReason } : null, signedOffline: r.offlineAt ? { at: r.offlineAt, reason: r.offlineReason, filed: "Signed on paper" } : null,
       // FO-5f item 3: each version's fees (the Signed offline panel shows the chosen version's), whether it is the signed
       // one, and the version a Signed offline copy was made from.
@@ -553,7 +554,7 @@ export class Retainers {
       if (typeof sv[REPRESENTATIVE_ID] === "string") people = { signerPersonId: typeof sv[SIGNER_ID] === "string" ? sv[SIGNER_ID] as string : null, representativeStaffId: sv[REPRESENTATIVE_ID] as string };
       else {
         const cv = (await this.db.foRetainerVersion.findFirstOrThrow({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion } })).mergeValues as Record<string, unknown>;
-        if (["signer.name", "signer.email", "representative.name", "representative.licence_number"].some((x) => (sv[x] ?? null) !== (cv[x] ?? null)))
+        if (["signer.name", "signer.email", "representative.name", "representative.licensing_body", "representative.licence_number"].some((x) => (sv[x] ?? null) !== (cv[x] ?? null)))   // break r2-m2: the body too
           conflict(`Version ${k} names another signer or representative than version ${r.currentVersion}, and does not record who they are. Edit the agreement back to version ${k}'s people, then record it as signed.`, "NOT_SIGNABLE");
       }
       const f = await this.files.get(ctx.firmId, src.fileKey) ?? conflict(`Version ${k}'s file is missing.`, "VERSION_FILE_MISSING");

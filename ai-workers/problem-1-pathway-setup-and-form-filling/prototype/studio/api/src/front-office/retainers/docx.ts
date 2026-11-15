@@ -91,10 +91,17 @@ export function placeholdersOf(bytes: Uint8Array): string[] {
   const read = (name: string): string | undefined => { try { return zip.file(name)?.asText(); } catch { throw damaged(`part ${name.slice(0, 80)} cannot be read`); } };
   const types = read("[Content_Types].xml") ?? "";
   const overrides = [...types.matchAll(/<Override\b[^>]*>/g)].map((m) => ({ part: /PartName="\/([^"]+)"/.exec(m[0])?.[1], type: /ContentType="([^"]+)"/.exec(m[0])?.[1] ?? "" }));
+  // Each part's type as docxtemplater resolves it (review round 2, M-1 rest): its Override, else the Default for its
+  // extension. A part typed as XML is read whatever its name (a header named h.bin is still compiled).
+  const defaults = new Map([...types.matchAll(/<Default\b[^>]*>/g)].map((m) => [(/Extension="([^"]+)"/.exec(m[0])?.[1] ?? "").toLowerCase(), /ContentType="([^"]+)"/.exec(m[0])?.[1] ?? ""]));
+  const byPart = new Map(overrides.filter((o) => o.part).map((o) => [o.part!.toLowerCase(), o.type]));
+  const typeOf = (f: string) => byPart.get(f.toLowerCase()) ?? defaults.get(/\.([^./]+)$/.exec(f)?.[1]?.toLowerCase() ?? "") ?? "";
+  const files = Object.keys(zip.files).filter((f) => !(zip.files as Record<string, { dir?: boolean }>)[f].dir);
   // Never rendered by docxtemplater, so never read: the glossary (B-23) and charts (review m-4: a brace in a chart title
   // is not a placeholder).
-  const skipped = new Set(overrides.filter((o) => o.part && /\.glossary\+xml$|drawingml\.chart\+xml$/i.test(o.type)).map((o) => o.part!.toLowerCase()));
-  const parts = new Set([...Object.keys(zip.files).filter((f) => /\.xml$/i.test(f)), ...overrides.map((o) => o.part).filter((p): p is string => !!p)]);
+  const skipped = (f: string) => /\.glossary\+xml$|drawingml\.chart\+xml$/i.test(typeOf(f)) || /^word\/(glossary|charts)\//i.test(f);
+  const COVER = 'xmlns="http://schemas.microsoft.com/office/2006/coverPageProps"';   // the customXml docxtemplater compiles
+  const parts = new Set(files.filter((f) => /\.xml$/i.test(f) || /[/+]xml$/i.test(typeOf(f))));
   const unescape = (t: string) => t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
   const runs = (xml: string, tag: string) => [...xml.matchAll(new RegExp(`<${tag}(?:\\s[^>]*)?>([^<]*)</${tag}>`, "g"))].map((m) => unescape(m[1])).join("");
   const TAG = /\{([^{}]*)\}/g;
@@ -102,16 +109,20 @@ export function placeholdersOf(bytes: Uint8Array): string[] {
   let tags = 0, braces = 0;
   const tooMany = () => new UnreadableDocx(`more than ${DOCX_MAX_TAGS} placeholders`, `This template has more than ${DOCX_MAX_TAGS} placeholders (or more than ${2 * DOCX_MAX_TAGS} { and } signs), the most one template may have.`, "TOO_MANY_PLACEHOLDERS");
   for (const name of parts) {
-    if (/(^|\/)\[Content_Types\]\.xml$|\.rels$|^customXml\//i.test(name) || /^word\/(glossary|charts)\//i.test(name) || skipped.has(name.toLowerCase())) continue;
+    if (/(^|\/)\[Content_Types\]\.xml$|\.rels$/i.test(name) || skipped(name)) continue;
     const xml = read(name);
     if (!xml) continue;
-    const drawn = /^docProps\//i.test(name) ? "" : runs(xml, "m:t") + "\u0000" + runs(xml, "a:t");
-    if (/\{[^{}]*\}/.test(drawn)) throw new UnreadableDocx("a placeholder in an equation, drawing or SmartArt", NOT_FILLED, "PLACEHOLDER_NOT_FILLED");
-    const text = /^docProps\//i.test(name) ? unescape(xml.replace(/<[^>]*>/g, "")) : runs(xml, "w:t");
-    // The cap (B-19; review round 1 M-1): every brace docxtemplater would lex is counted, paired or not, so a flood of
-    // lone "{" never reaches the compile. A placeholder has two braces: at most twice the cap.
-    braces += braceCount(text) + braceCount(drawn);
+    const cover = /^customXml\//i.test(name);
+    if (cover && !xml.includes(COVER)) continue;   // other customXml (citations, GUIDs) is not compiled (B-18)
+    // The cap (B-19; review rounds 1 and 2, M-1): every brace in the part's XML is counted, paired or not and in any
+    // text tag, before the compile, so a flood of lone "{" never reaches it. A placeholder has two braces: at most
+    // twice the cap.
+    braces += braceCount(xml);
     if (braces > 2 * DOCX_MAX_TAGS) throw tooMany();
+    const plain = cover || /^docProps\//i.test(name);   // property parts: their whole text is lexed
+    const drawn = plain ? "" : runs(xml, "m:t") + "\u0000" + runs(xml, "a:t");
+    if (/\{[^{}]*\}/.test(drawn)) throw new UnreadableDocx("a placeholder in an equation, drawing or SmartArt", NOT_FILLED, "PLACEHOLDER_NOT_FILLED");
+    const text = plain ? unescape(xml.replace(/<[^>]*>/g, "")) : runs(xml, "w:t") + "\u0000" + runs(xml, "vt:lpwstr") + "\u0000" + runs(xml, "vt:lpstr");
     for (const _ of text.matchAll(TAG)) if (++tags > DOCX_MAX_TAGS) throw tooMany();
     texts.push(text);
   }

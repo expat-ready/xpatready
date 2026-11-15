@@ -912,6 +912,43 @@ try {
     && await fails(async () => svc.signedOffline(R, (await svc.draft(R, newClient(26, "Digits Two Client"), { templateId: tplA.id })).id, { expectedVersion: "1", signedVersion: "01", reason: "x" }, pdf()), 422, /signedVersion/));
   ok("FO-5f pass (break m-4): expectedVersion \"1\" (plain) is accepted", (await so(svc, R, (await svc.draft(R, newClient(27, "Digits Three Client"), { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 1 }] })).id, { reason: "x" }, pdf())).status === "SIGNED_OFFLINE");
 
+  // ------------------------------------------------------------- FO-5f review round 2 (review.md M-1 rest; break r2-m2, r2-m3)
+  // docxtemplater also compiles a coverPageProps customXml part and any part typed XML by a Default rule (h.bin): both are
+  // read, for the cap and for placeholders.
+  const COVERX = (t: string) => `<?xml version="1.0"?><CoverPageProperties xmlns="http://schemas.microsoft.com/office/2006/coverPageProps"><PublishDate/><Abstract>${t}</Abstract></CoverPageProperties>`;
+  const HDR = (t: string) => `<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${P(t)}</w:hdr>`;
+  const BIN = `<Default Extension="bin" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>`;
+  for (const [where, parts, types] of [["a coverPageProps customXml part", { "customXml/item1.xml": COVERX("{".repeat(1_500_000)) }, ""], ["a header typed by a Default rule (word/h.bin)", { "word/h.bin": HDR("{".repeat(1_500_000)) }, BIN]] as const) {
+    const t = Date.now();
+    ok(`FO-5f fail (review r2 M-1): 1.5 million lone "{" in ${where} are refused before the compile, in under 2 s`,
+      await fails(() => svc.uploadTemplate(R, { name: `Flood ${where}` }, zipOf({ "word/document.xml": W(BASE), ...parts }, types)), 422, /TOO_MANY_PLACEHOLDERS/) && Date.now() - t < 2000, `${Date.now() - t} ms`);
+  }
+  ok("FO-5f fail (review r2, B-3 rest): an unknown placeholder in the coverPageProps part or the h.bin header is refused, never printed blank",
+    await fails(() => svc.uploadTemplate(R, { name: "Cover passport" }, zipOf({ "word/document.xml": W(BASE), "customXml/item1.xml": COVERX("{client.passport}") })), 422, /client\.passport/)
+    && await fails(() => svc.uploadTemplate(R, { name: "Bin passport" }, zipOf({ "word/document.xml": W(BASE), "word/h.bin": HDR("{client.passport}") }, BIN)), 422, /client\.passport/)
+    && await fails(() => svc.uploadTemplate(R, { name: "Lpwstr passport" }, zipOf({ "word/document.xml": W(BASE + `<vt:lpwstr xmlns:vt="v">{client.passport}</vt:lpwstr>`) })), 422, /client\.passport/));
+  const binOk = await svc.uploadTemplate(R, { name: "Bin header" }, zipOf({ "word/document.xml": W(BASE), "word/h.bin": HDR("{firm.name}"), "customXml/item1.xml": COVERX("{agreement.date}"), "customXml/item2.xml": `<?xml version="1.0"?><b:Sources xmlns:b="bib"><b:Source><b:Guid>{3F2504E0-4F89-11D3-9A0C-0305E82C3301}</b:Guid></b:Source></b:Sources>` }, BIN));
+  ok("FO-5f pass (review r2): known placeholders in the h.bin header and the cover part are listed; other customXml (a citation GUID) is not read",
+    binOk.placeholders.includes("firm.name") && binOk.placeholders.includes("agreement.date") && !binOk.placeholders.some((p) => /3F2504E0/.test(p)), binOk.placeholders);
+  // Break r2-m2: an older version (no ids) naming another licensing body is not taken for the same representative.
+  mvOf.mergeValues = async function (this: unknown, ...a: unknown[]) { const v = await realMv.apply(this, a); delete v["signer.person_id"]; delete v["representative.staff_id"]; return v; };
+  const lb = await svc.draft(R, newClient(31, "Body Client"), { templateId: tplA.id, representativeStaffId: R.staffId, fees: [{ label: "Fee", amountMinor: 100 }] });
+  const bodyWas = sql(API, `select licensing_body from platform_staff_credential where staff_id = '${R.staffId}'`);
+  sql(API, `update platform_staff_credential set licensing_body = 'Another body (Sample)' where staff_id = '${R.staffId}'`);
+  await ed(svc, R, lb.id, { fees: [{ label: "Fee", amountMinor: 200 }] });
+  sql(API, `update platform_staff_credential set licensing_body = '${bodyWas.replace(/'/g, "''")}' where staff_id = '${R.staffId}'`);
+  mvOf.mergeValues = realMv;
+  ok("FO-5f fail (break r2-m2): an older version naming another licensing body → 409 NOT_SIGNABLE", await fails(() => so(svc, R, lb.id, { signedVersion: "1", reason: "x" }, pdf()), 409, /NOT_SIGNABLE/));
+  // Break r2-m3: a closed agreement shows no "Edit to choose another".
+  const repsOf = svc as unknown as { representatives: (f: string) => Promise<{ staffId: string; name: string }[]> };
+  const realReps = repsOf.representatives;
+  const openOne = await svc.draft(R, newClient(32, "Blocker Client"), { templateId: tplA.id, representativeStaffId: R.staffId });
+  repsOf.representatives = async () => [];   // every representative has lost the keys
+  const closedPage = await svc.read(R, m2.id), draftPage = await svc.read(R, openOne.id);
+  repsOf.representatives = realReps;
+  ok("FO-5f fail (break r2-m3): a signed agreement whose representative lost the keys lists no blocker (no \"Edit to choose another\")", closedPage.status === "SIGNED_OFFLINE" && Object.keys(closedPage.blockers).length === 0, closedPage.blockers);
+  ok("FO-5f pass (break r2-m3): an open agreement still lists it", draftPage.status === "DRAFT" && /Edit to choose another/.test(String(draftPage.blockers.representativeStaffId)), draftPage.blockers);
+
   // Routes (PF-4's guard): every route declares its agent/retainer:* key.
   const keysOf = (m: string) => (Reflect.getMetadata(PLATFORM_ACCESS, (RetainersController.prototype as unknown as Record<string, object>)[m]) as { keys?: string[] } | undefined)?.keys?.join(",");
   const want: Record<string, string> = { placeholders: "agent/retainer:list", starter: "agent/retainer:configure-template", templates: "agent/retainer:list", upload: "agent/retainer:configure-template", newVersion: "agent/retainer:configure-template", changeTemplate: "agent/retainer:configure-template", representatives: "agent/retainer:draft", draft: "agent/retainer:draft", read: "agent/retainer:show", edit: "agent/retainer:draft", send: "agent/retainer:send", withdraw: "agent/retainer:void", signedOffline: "agent/retainer:offline-sign", link: "agent/retainer:download", download: "agent/retainer:download" };
