@@ -3,7 +3,8 @@
 // its only creator). The path is keyed `booking:<booking id>`, so a repeat makes one person and one lead; a booker with an
 // open prospect makes no new lead; the person's only open prospect moves forward to Consult with the cause "consult
 // booked", never backward, and several open prospects move none. The consent the booker ticked (the firm's own sentence,
-// AG-4-19 rules 2-3, 6) travels with it and the path records it in the consent store (PF-19a's ConsentPort).
+// AG-4-19 rules 2-3, 6) travels with it and the path records it in the consent store (PF-19a's ConsentPort); booking
+// never needs the tick (rule 3), so an arrival may carry none (FO-3pa).
 // It runs inside the booking's own transaction (`tx`), so a failed arrival rolls the booking back.
 // This folder imports only zod and its own files (case-side contract v0.1 §1 rule 3).
 import { z } from "zod";
@@ -32,7 +33,8 @@ export type ArrivalConsent = z.input<typeof ArrivalConsent>;
 export const BookingArrival = z.strictObject({
   firmId: FirmId,
   person: ArrivalPerson,
-  consent: ArrivalConsent,
+  /** Absent when the visitor left the tick empty: no marketing consent (AG-4-19 rule 3; FO-3pa). */
+  consent: ArrivalConsent.optional(),
   /** The booking that brought the person; the arrival key is `booking:<bookingId>`. */
   bookingId: Uuid,
 });
@@ -56,8 +58,8 @@ export interface ArrivalPort<Tx = unknown> {
    *  prospect moves forward to Consult with the cause "consult booked" exactly as bookingArrived does (AG-2-26). Null when
    *  the person is not a person of the firm (the booking is then refused 404). Idempotent by `booking:<bookingId>`. */
   bookingForPerson(tx: Tx, booking: { firmId: string; personId: string; bookingId: string }): Promise<{ prospectId?: string } | null>;
-  /** The consent sentence the firm's booking form shows now, or null when the firm has none (the public form then takes
-   *  no booking: a booking always carries the person's consent). */
+  /** The consent sentence the firm's booking form shows now, or null when the firm has none (the form then shows no tick
+   *  and still books, AG-4-19 rules 3-4; FO-3pa). */
   bookingConsentWording(tx: Tx, firmId: string): Promise<ConsentWording | null>;
   /** The person's contact details for the booking's messages (confirmation, update, reminders), or null when the person
    *  is not a person of the firm. The booking keeps only the person's id (no names or addresses in fo_booking). */
