@@ -56,6 +56,15 @@ export type BookingPorts = {
 type Limits = { slotsPerIp: number; bookPerIp: number; bookPerFirm: number; tokenPerIp: number; windowMinutes: number; minFillSeconds: number };
 const LIMITS: Limits = { slotsPerIp: 120, bookPerIp: 10, bookPerFirm: 200, tokenPerIp: 30, windowMinutes: 10, minFillSeconds: 3 };
 
+/** The ports as given (BOOKING_PORTS): the running app leaves `jobs` out and gets PF-14's runner (FO-3f item 2: a
+ *  failed email is retried); a test module gives its own JobPort and needs no runner. */
+export type GivenBookingPorts = Omit<BookingPorts, "jobs"> & { jobs?: JobPort };
+export const bookingPortsWith = (ports: GivenBookingPorts, runner?: JobPort | null): BookingPorts => {
+  const jobs = ports.jobs ?? runner;
+  if (!jobs) throw new Error("FO-3 booking: no JobPort (PF-14's PlatformJobs is not registered, and the ports name none)");
+  return { ...ports, jobs };
+};
+
 // ------------------------------------------------------------------------------------------------------------- problems
 const problem = (status: number, slug: string, title: string, detail: string, extra: Record<string, unknown> = {}) =>
   new HttpException({ type: `https://expatready.local/problems/${slug}`, title, status, detail, ...extra }, status);
@@ -326,7 +335,8 @@ export class BookingService {
   // ========================================================================================================== writes
   /** `pub.gate` (the public door) runs first in the transaction, under the firm's transaction lock: it checks the firm's
    *  cap and the form stamp and records both, and returns how to undo that when the transaction does not commit; so
-   *  bookings in flight are counted one after another, never all against the same count (FO-3f items 4 and 5). Public
+   *  bookings in flight are counted one after another, never all against the same count (FO-3f items 4 and 5); and a
+   *  booking in flight that then fails (time taken) has given its count back before the next one is checked. Public
    *  writers take the firm's lock before the hosts' locks and nobody takes it after them, so no two writers wait on each
    *  other. `pub.token`: issue a link in the transaction for the answer (the public door only). */
   private async create(firmId: string, type: TypeRow, at: { startsAt: Date; mode: Mode; timeZone: string }, actor: Actor,

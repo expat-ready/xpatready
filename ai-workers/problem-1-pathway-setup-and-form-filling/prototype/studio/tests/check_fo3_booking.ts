@@ -13,12 +13,12 @@ import { fakeArrival, type FakeArrival } from "../ports/arrival.ts";
 import { fakeAudit, type AuditPort } from "../ports/audit.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { EVENT } from "../ports/events.ts";
-import { fakeJobs } from "../ports/jobs.ts";
+import { fakeJobs, type FakeJobs, type JobHandler, type JobPort } from "../ports/jobs.ts";
 import { fakeMail, type FakeMail } from "../ports/mail.ts";
 import { fakeStaff, type StaffContext } from "../ports/staff.ts";
 import { copyFirmHoursTo } from "../api/src/front-office/booking-seed.ts";
 import { bookingIcs, fold } from "../api/src/front-office/booking/ics.ts";
-import { BookingService, PublicBookingBody, type BookingPorts } from "../api/src/front-office/booking/service.ts";
+import { BookingService, bookingPortsWith, Name, PublicBookingBody, type BookingPorts } from "../api/src/front-office/booking/service.ts";
 import { computeSlots, wallToUtc } from "../api/src/front-office/booking/slots.ts";
 import { issueToken } from "../api/src/front-office/booking/tokens.ts";
 import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
@@ -236,11 +236,16 @@ try {
 
   // ------------------------------------------------------------------------------- mail after commit, never losing
   const broken = make({ mail: fakeMail({ failOn: () => true }) });
+  await broken.svc.registerJobs();
   const mb = await book(broken.svc, "free", "2026-11-03 16:00", "nomail");
-  ok("FO-3 mail pass: a throwing mail adapter still saves the booking (SCHEDULED in the database) and the failure is told",
-    (await db.foBooking.findUniqueOrThrow({ where: { id: mb.id } })).status === "SCHEDULED" && broken.warnings.some((w) => /emails/.test(w)), broken.warnings);
+  await (broken.jobs as FakeJobs).runDue();
+  ok("FO-3 mail pass: a throwing mail adapter still saves the booking (SCHEDULED in the database); the email jobs fail, for the runner to retry (FO-3f m3)",
+    (await db.foBooking.findUniqueOrThrow({ where: { id: mb.id } })).status === "SCHEDULED" && (broken.jobs as FakeJobs).jobs.filter((j) => j.key.startsWith(`booking:${mb.id}:0:mail-`) && j.status === "failed").length === 2, (broken.jobs as FakeJobs).jobs.filter((j) => j.name === "booking.mail"));
+  await (main.jobs as FakeJobs).runDue();
   const conf = main.mail.inbox("form@client.example");
-  ok("FO-3 mail pass: the booker's confirmation carries the self-service link and the time in their zone; fail: it holds no host id", conf.length === 1 && conf[0].text.includes(`/book/${A.key}/manage#${phoneOk.manageToken}`) && conf[0].text.includes(`(${TZ})`) && !conf[0].text.includes(A1.id), conf[0]?.text);
+  const linkOf = (text: string) => /\/manage#([^\s]+)/.exec(text)?.[1] ?? "";
+  ok("FO-3 mail pass: the booker's confirmation carries a live self-service link to this booking and the time in their zone; fail: it holds no host id",
+    conf.length === 1 && conf[0].text.includes(`/book/${A.key}/manage#`) && (await S.manageView(linkOf(conf[0].text), "ip")).startsAt === phoneOk.startsAt && conf[0].text.includes(`(${TZ})`) && !conf[0].text.includes(A1.id), conf[0]?.text);
 
   // ---------------------------------------------------------------------------------------------------- the invite
   const icsOf = (m: { attachments?: { bytes: Uint8Array }[] }) => new TextDecoder().decode(m.attachments![0].bytes);
@@ -254,6 +259,7 @@ try {
 
   // ------------------------------------------------------------------------------------------ self-service tokens
   const sv = await book(S, "free", "2026-11-04 10:00", "self");
+  await (main.jobs as FakeJobs).runDue();   // its emails (keyed booking:<id>:0:mail-*) are sent
   const second = await db.$transaction((tx) => issueToken(tx, A.id, sv.id, new Date(sv.endsAt)));
   ok("FO-3 tokens pass: two live links for one booking both open it", (await S.manageView(sv.manageToken, "ip")).status === "SCHEDULED" && (await S.manageView(second, "ip")).status === "SCHEDULED");
   // M2 (review): a reschedule to the booking's own time writes nothing: no audit line, no event, the links and reminders stay.
@@ -264,6 +270,7 @@ try {
       && (await db.foBooking.findUniqueOrThrow({ where: { id: sv.id } })).sequence === 0 && (await S.manageView(second, "ip")).status === "SCHEDULED"
       && (main.jobs as ReturnType<typeof fakeJobs>).jobs.filter((j) => j.key.startsWith(`booking:${sv.id}:0:`) && j.status === "waiting").length === 3);
   const mv1 = await full(await S.selfReschedule(sv.manageToken, { startsAt: iso("2026-11-04 11:00") }, "ip"));
+  await (main.jobs as FakeJobs).runDue();   // the first move's email goes before the second move (a stale one is not sent: FO-3f m3)
   ok("FO-3 door: the public reschedule answer names no host, person, prospect or type", noIds(mv1.answer), mv1.answer);
   const nfBody = await nf(() => S.manageView(sv.manageToken, "ip"));
   ok("FO-3 tokens fail: after a reschedule both old links give the identical not-found; pass: the new link works",
@@ -271,11 +278,13 @@ try {
   const mv2 = await full(await S.selfReschedule(mv1.manageToken, { startsAt: iso("2026-11-04 14:00") }, "ip"));
   ok("FO-3 reschedule pass: a RESCHEDULED booking reschedules again (sequence 2); the host is kept when free", mv2.status === "RESCHEDULED" && mv2.sequence === 2 && mv2.staffId === A1.id, mv2);
   ok("FO-3 reschedule fail: to a time that is not offered (Sunday) → 409 SLOT_TAKEN with fresh times", (await thrown(() => S.selfReschedule(mv2.manageToken, { startsAt: iso("2026-11-08 10:00") }, "ip")))?.body.code === "SLOT_TAKEN");
+  await (main.jobs as FakeJobs).runDue();
   const upd = main.mail.inbox("self@client.example");
   ok("FO-3 ics: the update keeps the UID and carries SEQUENCE:2", upd.length === 3 && icsOf(upd[2]).includes(`UID:${sv.id}@booking.expatready.com`) && icsOf(upd[2]).includes("SEQUENCE:2\r\n"), upd.map((m) => m.subject));
   const garbage = await nf(() => S.manageView("not-a-token", "ip")), forged = await nf(() => S.manageView(`${mv2.manageToken.split(".")[0]}.${"A".repeat(43)}`, "ip"));
   ok("FO-3 tokens fail: a malformed token and a right selector with a wrong verifier give the identical not-found", garbage === nfs[0] && forged === nfs[0]);
   const cxAnswer = await S.selfCancel(mv2.manageToken, "ip");
+  await (main.jobs as FakeJobs).runDue();
   const cx = { ...cxAnswer, ...(await db.foBooking.findUniqueOrThrow({ where: { id: sv.id }, select: { sequence: true } })) };
   ok("FO-3 door: the public cancel answer names no host, person, prospect or type", noIds(cxAnswer), cxAnswer);
   ok("FO-3 cancel pass: cancelled by link (sequence 3); METHOD:CANCEL with the same UID", cx.status === "CANCELLED" && cx.sequence === 3 && /METHOD:CANCEL\r\n/.test(icsOf(main.mail.inbox("self@client.example")[3])) && icsOf(main.mail.inbox("self@client.example")[3]).includes(`UID:${sv.id}@`));
@@ -385,6 +394,97 @@ try {
   const scx = await S.staffCancel(ctxA, sc.id);
   ok("FO-3 staff pass: cancel by staff → CANCELLED, booking.cancelled event", scx.status === "CANCELLED" && await db.moduleEvent.count({ where: { subjectId: sc.id, type: EVENT.BOOKING_CANCELLED } }) === 1);
   ok("FO-3 no money: no booking route or table takes a payment (no amount, card or price field in the answer)", !/amount|price|card|payment/i.test(JSON.stringify(sc)));
+
+  // ------------------------------------------------------------------------- FO-3f: booking hardening (rows rev 16.8)
+  const T3 = await type(A.id, "fo3f", [A2.id], { gapBeforeMinutes: 0, gapAfterMinutes: 0 });   // one host, no gaps: each listed time books once
+  const free3 = (await S.publicSlots(A.key, "fo3f", days("2026-11-16 00:00", "2026-11-21 00:00"), "ip")).slots.map((x) => x.startsAt);
+  let next3 = 0;
+  const slot3 = () => { const v = free3[next3++]; if (!v) throw new Error("FO-3f: out of free test slots"); return v; };
+  const form3 = async (svc: BookingService, who: string, extra: Record<string, unknown> = {}) => ({ ...(await form(svc, "fo3f", "2026-11-16 09:00", who)), startsAt: slot3(), ...extra });
+  const statusOf = (r: PromiseSettledResult<unknown>) => r.status === "fulfilled" ? 201 : ((r.reason as { getStatus?: () => number }).getStatus?.() ?? 0);
+  const codeOf = (r: PromiseSettledResult<unknown>) => r.status === "rejected" ? (r.reason as { getResponse?: () => { code?: string } }).getResponse?.().code : undefined;
+
+  // item 1, m10: U+200C / U+200D between letters
+  const persian = "علی‌رضا";   // علی‌رضا
+  const faForm = await form3(S, "fa", { givenNames: persian });
+  const fa = await S.publicBook(A.key, "fo3f", faForm, "ip").then(full, (e: unknown) => ({ status: "REFUSED", personId: null, refusal: (e as { getResponse?: () => unknown }).getResponse?.() }));
+  ok("FO-3f m10 pass: a Persian name with U+200C between letters (علی‌رضا) books, and the name is kept as typed; so do a ZWJ after a virama (Devanagari क्‍ष) and a ZWNJ in Hindi",
+    fa.status === "SCHEDULED" && !!fa.personId && (await main.arrival.contactOf(db, A.id, fa.personId))?.givenNames === persian && ["क्‍ष", "क्‌ष"].every((n) => Name.safeParse(n).success), fa);
+  const badJoin = ["‌Ana", "Ana‌", "Ana ‌Lee", "Ana‌‌Lee", "1‍2", "‍", "Ana‌-Lee"];
+  const refusedJoin = [];
+  for (const n of badJoin) refusedJoin.push((await thrown(async () => S.publicBook(A.key, "fo3f", await form3(S, "zw", { givenNames: n }), "ip")))?.status);
+  next3 -= badJoin.length;   // none booked
+  ok("FO-3f m10 fail: a joiner at the start or end, beside a space, digit or hyphen, doubled, or alone → 400 (the B-9 rule stays)", refusedJoin.every((x) => x === 400), refusedJoin);
+
+  // item 2, m3: the emails are keyed jobs; a failed send is retried after commit
+  const fj = fakeJobs(clock), handlers = new Map<string, JobHandler>();
+  const retrying: JobPort = { enqueue: (n, p, o) => fj.enqueue(n, p, o), schedule: (n, a, p, o) => fj.schedule(n, a, p, o), cancel: (k) => fj.cancel(k), recurring: (n, c, z) => fj.recurring(n, c, z), handle: async (n, h) => { handlers.set(n, h); await fj.handle(n, h); } };
+  let failures = 1;
+  const flaky = make({ jobs: retrying, mail: fakeMail({ clock, failOn: (m) => m.templateKey === "booking.booked" && failures-- > 0 }) });
+  await flaky.svc.registerJobs();
+  const fb = await full(await flaky.svc.publicBook(A.key, "fo3f", await form3(flaky.svc, "flaky"), "ip"));
+  const sentAtBook = flaky.mail.sent.length;
+  const mailJobs = () => fj.jobs.filter((j) => j.name === "booking.mail" && j.key.startsWith(`booking:${fb.id}:`));
+  ok("FO-3f m3 pass: the booking sends nothing itself; it queues one booking.mail job per recipient, keyed booking:<id>:0:mail-person / mail-host, ids only in the payload",
+    sentAtBook === 0 && mailJobs().map((j) => j.key).sort().join() === [`booking:${fb.id}:0:mail-host`, `booking:${fb.id}:0:mail-person`].join() && mailJobs().every((j) => !JSON.stringify(j.payload).includes("@") && !JSON.stringify(j.payload).includes(".")), mailJobs());
+  await fj.runDue();
+  const liveFor = (id: string) => db.foBookingToken.count({ where: { bookingId: id, voidedAt: null } });
+  const failed = mailJobs().find((j) => j.key.endsWith("mail-person"))!;
+  ok("FO-3f m3 fail: the person's send failed → its job failed (for the runner to retry), the booking stays, the link that send made is voided (only the answer's link is live), the host's email went",
+    failed.status === "failed" && /forced mail failure/.test(failed.error ?? "") && (await db.foBooking.findUniqueOrThrow({ where: { id: fb.id } })).status === "SCHEDULED" && await liveFor(fb.id) === 1 && flaky.mail.inbox("flaky@client.example").length === 0 && flaky.mail.inbox("a2@staff.example").some((m) => m.templateKey === "booking.host_booked"), failed);
+  await handlers.get("booking.mail")!({ name: failed.name, payload: failed.payload, key: failed.key, firmId: failed.firmId, runAt: failed.runAt, attempt: 2 });
+  const retried = flaky.mail.inbox("flaky@client.example");
+  ok("FO-3f m3 pass: the retry (attempt 2) sends the confirmation once, with a live link to the booking; the host is not emailed twice",
+    retried.length === 1 && (await flaky.svc.manageView(linkOf(retried[0].text), "ip")).startsAt === fb.startsAt && await liveFor(fb.id) === 2 && flaky.mail.sent.filter((m) => m.templateKey === "booking.host_booked").length === 1, retried.map((m) => m.text));
+  const stale = await full(await flaky.svc.publicBook(A.key, "fo3f", await form3(flaky.svc, "stale"), "ip"));
+  await flaky.svc.selfReschedule(stale.manageToken, { startsAt: slot3() }, "ip");
+  await fj.runDue();
+  ok("FO-3f m3 fail: a booked email whose booking moved before it ran is not sent (the moved email is), and makes no link",
+    flaky.mail.inbox("stale@client.example").map((m) => m.templateKey).join() === "booking.moved" && await liveFor(stale.id) === 2, flaky.mail.inbox("stale@client.example").map((m) => m.templateKey));
+  ok("FO-3f m3 pass: the running app's ports name no JobPort and take PF-14's runner; fail: with neither, the booking service refuses to start",
+    bookingPortsWith({ ...flaky.svc["ports"], jobs: undefined }, retrying).jobs === retrying && /no JobPort/.test(String((await thrown(() => bookingPortsWith({ ...flaky.svc["ports"], jobs: undefined }, null)))?.body.message)));
+
+  // item 3, m7: staff never get the visitor's link
+  const lia = main.arrival.addPerson(A.id, { givenNames: "Lia", familyName: "Sample", email: "lia@client.example" });
+  const tokensBefore = await db.foBookingToken.count();
+  const sl = await S.staffCreate(ctxA, { typeId: T3.id, personId: lia, mode: "VIDEO", startsAt: slot3(), timeZone: TZ });
+  ok("FO-3f m7 fail: the staff create answer carries no manageToken (nor any token-shaped value), and the transaction issued no link",
+    !("manageToken" in sl) && !/[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}/.test(JSON.stringify(sl)) && await db.foBookingToken.count() === tokensBefore, sl);
+  await (main.jobs as FakeJobs).runDue();
+  const liaMail = main.mail.inbox("lia@client.example");
+  ok("FO-3f m7 pass: the person still gets their link by email, and it opens the booking", liaMail.length === 1 && (await S.manageView(linkOf(liaMail[0].text), "ip")).startsAt === sl.startsAt, liaMail.map((m) => m.text));
+  const smoved = await S.staffReschedule(ctxA, sl.id, { startsAt: slot3() });
+  ok("FO-3f m7 fail: a staff move answers no token and issues none in its transaction (the moved email makes the only new link)",
+    !("manageToken" in smoved) && await db.foBookingToken.count() === tokensBefore + 1, smoved);
+
+  // item 4, B-8: one form stamp books once
+  const once = await form3(S, "once");
+  await S.publicBook(A.key, "fo3f", once, "ip");
+  const again = await thrown(() => S.publicBook(A.key, "fo3f", { ...once, startsAt: slot3(), email: "again@client.example" }, "ip"));
+  ok("FO-3f B-8 fail: the same stamp a second time (another time, another email) → 409 FORM_ALREADY_SENT \"This form was already sent. Reload the page to book again.\"",
+    again?.status === 409 && again.body.code === "FORM_ALREADY_SENT" && again.body.detail === "This form was already sent. Reload the page to book again.", again);
+  const taken = await form3(S, "retry", { startsAt: once.startsAt });
+  const t409 = await thrown(() => S.publicBook(A.key, "fo3f", taken, "ip"));
+  ok("FO-3f B-8 pass: a stamp whose booking was refused (time taken, 409 SLOT_TAKEN) books with the next time picked; a fresh stamp books",
+    t409?.body.code === "SLOT_TAKEN" && (await S.publicBook(A.key, "fo3f", { ...taken, startsAt: slot3() }, "ip")).status === "SCHEDULED" && (await S.publicBook(A.key, "fo3f", await form3(S, "fresh"), "ip")).status === "SCHEDULED");
+  const shared = await form3(S, "shared");
+  const par = await Promise.allSettled(Array.from({ length: 10 }, (_, i) => S.publicBook(A.key, "fo3f", { ...shared, startsAt: i ? slot3() : shared.startsAt, email: `shared${i}@client.example` }, `198.51.100.${100 + i}`)));
+  ok("FO-3f B-8 fail: one stamp sent 10 times at once for 10 free times → exactly one booking, 9 × 409 FORM_ALREADY_SENT",
+    par.filter((r) => r.status === "fulfilled").length === 1 && par.filter((r) => codeOf(r) === "FORM_ALREADY_SENT").length === 9, par.map(statusOf));
+  const sameMs = [S.stamp(A.id, clock.now()), S.stamp(A.id, clock.now())];
+  ok("FO-3f B-8 pass: two pages drawn in the same millisecond get two stamps (a random nonce), so two visitors never share one", sameMs[0] !== sameMs[1] && sameMs.every((x) => x.split(".")[0] === String(clock.now().getTime())));
+
+  // item 5, the cap race: the firm's cap under bookings in flight
+  const capped = make({ limits: { bookPerFirm: 3 } });
+  for (let i = 0; i < 2; i++) await capped.svc.publicBook(A.key, "fo3f", await form3(capped.svc, `cap${i}`), "ip");
+  ok("FO-3f cap pass: a booking refused inside its transaction (time taken) does not use up the cap", (await thrown(async () => capped.svc.publicBook(A.key, "fo3f", await form3(capped.svc, "captaken", { startsAt: once.startsAt }), "ip")))?.body.code === "SLOT_TAKEN");
+  const capForms = [];
+  for (let i = 0; i < 20; i++) capForms.push(await form3(capped.svc, `capr${i}`));
+  const locks0 = await db.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory'`;
+  const capRun = await Promise.allSettled(capForms.map((f, i) => capped.svc.publicBook(A.key, "fo3f", f, `203.0.113.${100 + i}`)));
+  const capBooked = await db.foBooking.count({ where: { firmId: A.id, typeId: T3.id, startsAt: { in: capForms.map((f) => new Date(f.startsAt as string)) } } });
+  ok("FO-3f cap pass: 20 parallel bookings for 20 free times at cap − 1 (2 of 3) → exactly one success", capRun.filter((r) => r.status === "fulfilled").length === 1 && capBooked === 1, capRun.map(statusOf));
+  ok("FO-3f cap fail: the other 19 → 429, never a booking past the cap; no advisory lock is left held", capRun.filter((r) => statusOf(r) === 429).length === 19 && (await db.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory'`)[0].n === locks0[0].n, capRun.map(statusOf));
 
   // --------------------------------------------------------------------------------------- over HTTP, with the guard
   // The app's decorators need the api's tsconfig, so the route checks run in a child of this file (`--serve`): the real

@@ -6,24 +6,14 @@
 // Nest's decorators are applied as calls below the classes (as PF-4's routes do): files under api/src/front-office/ are
 // outside api/tsconfig.json's decorator setting, so `@` forms would not compile there.
 import { Body, Controller, Get, HttpCode, Inject, Injectable, Optional, Param, Post, Query, Req, type OnModuleInit } from "@nestjs/common";
-import type { JobPort } from "../../../../ports/jobs.ts";
 import { Db, OpenRead } from "../../core.ts";
 import { PlatformJobs } from "../../platform/jobs/platform-jobs.ts";
-import { BookingService, type BookingPorts } from "./service.ts";
+import { BookingService, bookingPortsWith, type GivenBookingPorts } from "./service.ts";
 
 export const BOOKING_PORTS = "FO3_BOOKING_PORTS";
 type R = { ip?: string; socket?: { remoteAddress?: string } };
 type Q = Record<string, unknown>;
 const ipOf = (req: R) => String(req.ip ?? req.socket?.remoteAddress ?? "unknown").slice(0, 64);
-
-/** The ports as given (BOOKING_PORTS): the running app leaves `jobs` out and gets PF-14's runner (FO-3f item 2: a
- *  failed email is retried); a test module gives its own JobPort and needs no runner. */
-export type GivenBookingPorts = Omit<BookingPorts, "jobs"> & { jobs?: JobPort };
-export const bookingPortsWith = (ports: GivenBookingPorts, runner?: JobPort | null): BookingPorts => {
-  const jobs = ports.jobs ?? runner;
-  if (!jobs) throw new Error("FO-3 booking: no JobPort (PF-14's PlatformJobs is not registered, and the ports name none)");
-  return { ...ports, jobs };
-};
 
 export class Booking extends BookingService implements OnModuleInit {
   constructor(db: Db, ports: GivenBookingPorts, runner?: PlatformJobs | null) { super(db, bookingPortsWith(ports, runner)); }

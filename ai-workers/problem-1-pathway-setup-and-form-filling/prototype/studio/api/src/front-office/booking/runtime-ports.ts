@@ -7,7 +7,7 @@ import { fakeArrival } from "../../../../ports/arrival.ts";
 import { systemClock } from "../../../../ports/clock.ts";
 import { fakeMail } from "../../../../ports/mail.ts";
 import { auditEvent } from "../../platform/audit/audit-event.ts";
-import type { GivenBookingPorts } from "./public.controller.ts";
+import type { GivenBookingPorts } from "./service.ts";
 
 export function runtimeBookingPorts(): GivenBookingPorts {
   return {
