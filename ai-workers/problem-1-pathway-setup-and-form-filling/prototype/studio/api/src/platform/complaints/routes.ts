@@ -30,6 +30,10 @@ export class ComplaintsController {
   @Get() @AnyStaff(SEES)
   list(@Req() r: R, @Query() q: Q) { return this.svc.list(staffOf(r), one(q.view), { cursor: one(q.cursor), limit: size(q.limit) }); }
 
+  /** PF-21v: who can be made handler. Declared before /:id, so "handlers" is never read as an id. */
+  @Get("handlers") @PermissionKeys(COMPLAINT_KEYS.record)
+  handlers(@Req() r: R) { return this.svc.handlers(staffOf(r)); }
+
   @Get(":id") @AnyStaff(SEES)
   get(@Req() r: R, @Param("id") id: string) { return this.svc.get(staffOf(r), id); }
 
