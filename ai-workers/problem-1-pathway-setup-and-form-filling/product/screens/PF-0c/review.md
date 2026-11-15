@@ -2,7 +2,7 @@
 
 Reviewed head **6358be56fecab9610ddabb2bf3f08ee5daa97c59** (PR #1797, branch `claude/focused-goldberg-pw33gr`). It differs from 493615f8 only in `.github/workflows/ci.yml`, which is back to `origin/main`. The CI step is reviewed as the text proposed in the PR (`git show 493615f8 -- .github/workflows/ci.yml`). Brief: `lead-b-briefs/PF-0c.md` (Lead B rulings 1-4, binding). Read: all 10 files under `ports/contracts/`, the guard, the 7 test diffs, every port in `ports/`, `identity/port.ts`, and the real adapters' public methods.
 
-**Verdict: Block.** There are two Majors. Both are small fixes.
+**Round 1 (6358be56): Block**, two Majors. **Round 2 (3f19289d): Approve**, see the end.
 
 **Left out (screen-only):** concept fit, keyboard/1024 px/200 % walk, menu and words (PRODUCT §3-§4), team look, D1-D20 UX scores, the BIC-01-BIC-20 scorecard, retrofit mapping and the graph element check. None of these apply: there is no screen, concept.md or UI here. Checked instead: code correctness, whether each contract case is a rule of its port, vacuous passes (by mutation), the guard's detection (by fixtures), NOT TESTED handling, the CI step text, type safety and explicit `any`.
 
@@ -70,5 +70,38 @@ Accepted as raised in the PR (not findings):
 
 Not checked: CognitoIdentity for real (needs AWS and a pool, PF-4b); the CI run itself (no step on this head).
 
-Verdict: Block
+Round-1 verdict: Block
 To fix: M1, M2 (builder); C1 (tech lead, before or with the merge).
+
+## Round 2: diff only (P-277), `git diff 6358be56..3f19289d`
+Code commit reviewed: **3f19289dc177aa874097e9f4cb9250d3b56921ed** (5 files: the audit, consent, job and contract.ts contracts, and the guard).
+Head 053780f5 adds only review records: `git diff --stat 3f19289d 053780f5` lists just `screens/PF-0c/review.md` and `journey-test-reviewer-2026-11-15.md` (+129 lines), and no code changed.
+
+| Round-1 item | Round 2 | Evidence (this container) |
+|---|---|---|
+| M1 audit append-only | **Fixed** | `audit-port.contract.ts:58-66` writes two lines under one entity and entityKey, plus a third record, and expects all three in order. My upsert mutant A1 is now CAUGHT on that case |
+| M2 non-exported class | **Fixed** | `check-port-contracts.mjs:79` makes `export` optional; the new self-test case passes (self-test 9 passed, 0 failed). My probe "non-exported class behind an exported factory" now gives 1 adapter and 1 problem. `--list` shows the same 21 adapter lines as before: no new false positives |
+| m1 recurring / cancel across names | Recurring **fixed**; cancel **partly fixed, still Minor** | The no-op-recurring mutant J3 is caught by the new refusal case (bad cron, zone, name). The builder's j2b mutant is caught. **But** in the new cancel case (`job-port.contract.ts:95-107`) both jobs are a day ahead, so "neither cancelled job runs" cannot fail. My mutant J2c, whose `cancel` always ignores the second name, passes all 9 cases (scratch `j2c.mts`). Fix: queue both jobs to run now before any worker is registered, cancel, then register the workers and settle. Recurring runs are left to check_pf14 on purpose, as the header (`:5-6`) says |
+| m3 NOT TESTED only for Cognito | **Fixed** | `contract.ts:43, 57`: `runContract(clockPortContract, "systemClock", …, { notTested })` throws `may not report NOT TESTED (only CognitoIdentity …)`. Cognito still prints NOT TESTED in pf4 |
+| m5 late withdrawal | **Fixed** | New consent case: the consent is given 10 min ago and the withdrawal is dated 30 min ago, so `withdrawn` is 0 and the consent still allows. Both adapters pass 8/8. The rule is in `consent.ts:97-98` |
+| m2, m4 | Open, Minor | Left as listed. The builder puts them in the PR body |
+| C1 CI step | **Open merge condition (tech lead)** | Still not in ci.yml. The proposed text was judged correct in round 1. The guard is enforced in CI only once the step lands |
+
+Re-run on 3f19289d:
+- **Guard:** 0 problems, 629 ms.
+- **pf0p:** 113 passed, 0 failed (fakeJobs 9/9, DW3 PASS).
+- **pf14:** 92 passed, 0 failed (PgBossJobs 9/9, PlatformJobs 9/9).
+- **pf19a:** 94 passed, 0 failed (both adapters 8/8).
+- **pf4** (isolated `pf4` on :4434): 118/118 (LocalIdentity 4/4, Cognito NOT TESTED).
+- **typecheck.mjs:** no new errors (15 known).
+- **count-any:** 417, the same as the base.
+- **Touch list:** kept.
+
+pf24, pf23 and fo5 were not re-run, because their contracts and test lines are unchanged. contract.ts changed only on the NOT TESTED path, which they do not use.
+
+**Open after round 2:** no Blocker and no Major.
+- Minors: m1 (the cancel case is half vacuous, see J2c), m2 and m4.
+- Merge condition: C1. The tech lead commits the proposed CI step before or with the merge, so that DW1 and DW4 run in CI.
+- Journey score: unchanged at 8.8/10. "Task completed" and "correct data" would now each reach 1, which gives 10/10 on the applicable criteria once C1 lands.
+
+Verdict: Approve 3f19289dc177aa874097e9f4cb9250d3b56921ed
