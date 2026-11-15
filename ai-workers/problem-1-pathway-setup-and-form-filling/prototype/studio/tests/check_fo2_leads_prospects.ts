@@ -1,0 +1,271 @@
+// FO-2 part 1 (BACKLOG row FO-2, rev 15.1; brief design/lead-b-briefs/FO-2.md; contracts §2.1, §7; AG-2-5, -8a, -13c, -49,
+// -84, -86): the arrival path, the public door, the lead lists, one lead and Take it, each Done-when line with a pass and
+// a fail, on one scratch database (every migration, PF-3's and FO-1a's Sample seeds), dropped at the end. US$0.
+//   tsx studio/tests/check_fo2_leads_prospects.ts
+import "reflect-metadata";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@prisma/client";
+import { execFileSync } from "node:child_process";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fakeAudit } from "../ports/audit.ts";
+import { EVENT } from "../ports/events.ts";
+import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
+import { Leads } from "../api/src/front-office/sales/leads.ts";
+import { LIMITS, PublicForms, PublicFormsController, publicFormBodyLimit, type SalesPorts } from "../api/src/front-office/sales/public.ts";
+import express from "express";
+import type { AddressInfo } from "node:net";
+import { SalesController } from "../api/src/front-office/sales/routes.ts";
+import { auditEvent, platformAuditWorkspaceId } from "../api/src/platform/audit/audit-event.ts";
+import { assertEveryRouteDeclared } from "../api/src/platform/identity/guard.ts";
+import { dutiesOf, PLATFORM_ACCESS, type StaffContext } from "../api/src/platform/identity/keys.ts";
+import { ConsentStore } from "../api/src/platform/messages/consent/consent-store.ts";
+import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
+import { EVERYONE_SEES_ALL, writeSetting } from "../api/src/platform/settings.ts";
+
+const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
+const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
+const DB = `xr_studio_fo2_${process.pid}`, URL_ = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
+const SITE = "https://maple.example", OWN = "http://localhost:4400";
+
+let pass = 0, fail = 0;
+const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 400)}` : ""}`); };
+const sql = (q: string) => execFileSync(join(BIN, "psql"), [URL_, "-v", "ON_ERROR_STOP=1", "-q", "-Atc", q], { encoding: "utf8" }).trim();
+/** The status and body a refused call gives (HttpException), or null when it did not throw. */
+async function refusal(fn: () => Promise<unknown>): Promise<{ status: number; body: Record<string, unknown> } | null> {
+  try { await fn(); return null; } catch (e) {
+    const x = e as { getStatus?: () => number; getResponse?: () => unknown };
+    if (!x.getStatus) throw e;
+    return { status: x.getStatus(), body: x.getResponse!() as Record<string, unknown> };
+  }
+}
+const count = (t: string, where = "true") => Number(sql(`select count(*) from ${t} where ${where}`));
+
+execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]);
+execFileSync(join(BIN, "createdb"), [...PG, DB]);
+const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: URL_, options: "-c TimeZone=UTC" }) });
+try {
+  for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [URL_, "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
+  await seedSampleFirms(db);
+  const fo = await seedSampleFirmsFrontOffice(db);
+  ok("FO-2 setup: both Sample firms have a front office", fo.results.length === 2 && fo.failed.length === 0, fo);
+
+  const firm = (key: string) => sql(`select id from platform_firm where key = '${key}'`);
+  const A = firm("sample-firm"), S = firm("sample-solo");
+  const ctxOf = (actorId: string, keysOverride?: string[]): StaffContext => {
+    const [id, firmId] = sql(`select id || '|' || firm_id from platform_staff where actor_id = '${actorId}'`).split("|");
+    const roles = sql(`select string_agg(role::text, ',') from platform_role_grant where staff_id = '${id}'`).split(",");
+    const keys = keysOverride ?? sql(`select string_agg(distinct permission_key, ',') from platform_role_permission where role::text = any(string_to_array('${roles.join(",")}', ','))`).split(",");
+    return { staffId: id, firmId, firmKey: firmId === A ? "sample-firm" : "sample-solo", roles, keys, duties: dutiesOf(new Set(keys)), authTime: 0, via: "local" };
+  };
+  const R = ctxOf("user-R"), O = ctxOf("user-O"), T = ctxOf("user-T"), SOLO = ctxOf("user-S");
+
+  let clock = Date.parse("2026-11-16T10:00:00Z");
+  const consent = new ConsentStore(auditEvent);
+  const ports: SalesPorts = { audit: auditEvent, consent, now: () => clock, publicOrigin: OWN, formKey: Buffer.from("fo2-test-stamp-key (Sample, not a secret)") };
+  const forms = new PublicForms(db, ports), leads = new Leads(db, ports);
+  const wording = await db.$transaction((tx) => consent.publishWording(tx, { firmId: A, channel: "EMAIL", purpose: "MARKETING", locale: "en", text: "Send me news and offers from the firm by email. I can stop at any time. (Sample)", by: "seed:FO-2-test" }));
+  const tokenA = sql(`update fo_web_form set enabled = true, consent_wording_version_id = '${wording.id}', allowed_sites = '{${SITE}}' where firm_id = '${A}' returning public_token`);
+  const service = sql(`insert into fo_service (firm_id, label, sort_order, created_by) values ('${A}', 'Work permit (Sample)', 1, 'seed:FO-2-test') returning id`);   // no released combination here: the firm's own service (AG-16-76)
+
+  let ipN = 0;
+  const req = (o: { ip?: string; origin?: string | null; length?: number } = {}) => ({ ip: o.ip ?? `198.51.100.${(ipN++ % 200) + 1}`, headers: { ...(o.origin === null ? {} : { origin: o.origin ?? SITE }), ...(o.length ? { "content-length": String(o.length) } : {}) } });
+  const drawn = async (token = tokenA, r = req()) => { const f = await forms.read(token, r); clock += 3000; return f; };
+  const post = async (fields: Record<string, unknown>, o: { token?: string; ip?: string; origin?: string | null; form?: Awaited<ReturnType<typeof drawn>> } = {}) => {
+    const f = o.form ?? (await drawn(o.token ?? tokenA));
+    return forms.submit(o.token ?? tokenA, { submissionId: f.submissionId, loadStamp: f.loadStamp, ...fields }, req({ ip: o.ip, origin: o.origin }));
+  };
+  const lena = { givenNames: "Lena", familyName: "Park", email: "lena@example.org", phone: "+1 416 555 0101", interestedIn: service, message: "I need an LMIA. <script>alert(1)</script>", consent: true };
+
+  // ---------------------------------------------------------------------------------------------- the public door
+  const csp: string[] = [];
+  const page = await forms.read(tokenA, req(), { setHeader: (n: string, v: string) => { if (n === "Content-Security-Policy") csp.push(v); if (n === "Cache-Control") csp.push(`cache:${v}`); } });
+  ok("FO-2 pass: the open read gives the form's words, a submissionId and a load stamp, never cached", typeof page.submissionId === "string" && /^\d+\.[A-Za-z0-9_-]+$/.test(page.loadStamp) && page.consentText?.includes("Sample") && page.interestedIn.length > 0, page);
+  ok("FO-2 pass: the served form carries frame-ancestors naming the allowed site, and no-store", csp[0] === `frame-ancestors 'self' ${OWN} ${SITE}` && csp[1] === "cache:no-store", csp);
+
+  const leadsBefore = count("fo_lead"), receiptsBefore = count("fo_arrival_receipt");
+  const bot = await post({ ...lena, website: "http://spam.example" });
+  ok("FO-2 fail: the honeypot filled → answered like any other (the thank-you text), nothing stored", bot.thankYouText.length > 0 && count("fo_lead") === leadsBefore && count("fo_arrival_receipt") === receiptsBefore, bot);
+  const quick = await forms.read(tokenA, req());
+  clock += 1000;
+  const fast = await forms.submit(tokenA, { submissionId: quick.submissionId, loadStamp: quick.loadStamp, ...lena }, req());
+  ok("FO-2 fail: a fill 1 second after the form was drawn → answered like any other, nothing stored", fast.thankYouText === bot.thankYouText && count("fo_lead") === leadsBefore, fast);
+  const altered = await refusal(() => forms.submit(tokenA, { submissionId: quick.submissionId, loadStamp: quick.loadStamp.replace(/^\d+/, String(clock - 10_000)), ...lena }, req()));
+  ok("FO-2 fail: an altered load stamp → \"reload\" (400 RELOAD), nothing stored", altered?.body.code === "RELOAD" && count("fo_lead") === leadsBefore, altered);
+  // Break M1 / review M2: a page drawn before a restart (a new key) or a day ago is never lost silently.
+  const before = await drawn(), restarted = new PublicForms(db, { ...ports, formKey: Buffer.from("another process") });
+  const lost = await refusal(() => restarted.submit(tokenA, { submissionId: before.submissionId, loadStamp: before.loadStamp, ...lena }, req()));
+  clock += 25 * 3_600_000;
+  const old = await refusal(() => forms.submit(tokenA, { submissionId: before.submissionId, loadStamp: before.loadStamp, ...lena }, req()));
+  ok("FO-2 fail: after a restart, or a day later, a person's post is told to reload (never a silent thank-you), nothing stored", lost?.status === 400 && lost.body.detail === "This page is out of date. Please reload it and send the form again." && old?.body.code === "RELOAD" && count("fo_lead") === leadsBefore, [lost, old]);
+  const shown = await drawn();
+  const w2 = await db.$transaction((tx) => consent.publishWording(tx, { firmId: A, channel: "EMAIL", purpose: "MARKETING", locale: "en", text: "New wording (Sample).", by: "seed:FO-2-test" }));
+  sql(`update fo_web_form set consent_wording_version_id = '${w2.id}' where firm_id = '${A}'`);
+  const swapped = await refusal(() => forms.submit(tokenA, { submissionId: shown.submissionId, loadStamp: shown.loadStamp, ...lena }, req()));
+  sql(`update fo_web_form set consent_wording_version_id = '${wording.id}' where firm_id = '${A}'`);
+  ok("FO-2 fail (Devin): the form's wording changed after the page was drawn → reload; no consent for wording the visitor never saw", swapped?.body.code === "RELOAD" && count("msg_consent", `wording_id = '${w2.id}'`) === 0, swapped);
+  ok("FO-2 fail (break m1): a bad body is refused at the field whether sent fast or slow (a bot learns nothing from the order)", (await refusal(async () => { const q = await forms.read(tokenA, req()); return forms.submit(tokenA, { submissionId: q.submissionId, loadStamp: q.loadStamp, givenNames: "Nobody" }, req()); }))?.status === 422);
+
+  const f1 = await drawn();
+  const first = await post(lena, { form: f1 });
+  const lenaLead = sql(`select id from fo_lead where firm_id = '${A}' order by created_at desc limit 1`);
+  ok("FO-2 pass: a fill 3 seconds after → one lead, one receipt CREATED, the answer is the thank-you text", count("fo_lead") === leadsBefore + 1 && sql(`select outcome from fo_arrival_receipt where lead_id = '${lenaLead}'`) === "CREATED" && first.thankYouText === bot.thankYouText);
+  await post(lena, { form: f1 });
+  ok("FO-2 pass: the same submissionId twice → one lead", count("fo_lead") === leadsBefore + 1 && count("fo_arrival_receipt", `lead_id = '${lenaLead}'`) === 1);
+  ok("FO-2 pass: the lead is Unassigned (no owner) with source WEBSITE and the form's name, no stage, type or value", sql(`select coalesce(owner_staff_id::text, 'none') || '|' || source || '|' || source_detail || '|' || state from fo_lead where id = '${lenaLead}'`) === "none|WEBSITE|Website enquiry form|OPEN");
+  ok("FO-2 pass: the web form's message is the lead's first note, INTERNAL, stored as plain text", sql(`select visibility || '|' || text from fo_note where lead_id = '${lenaLead}'`) === "INTERNAL|I need an LMIA. <script>alert(1)</script>");
+  ok("FO-2 pass: the tick writes one consent row through ConsentPort (FO_PERSON, the form's wording, an address hash, no address)", sql(`select count(*) || '|' || min(c.subject_kind::text) || '|' || min(c.wording_id::text) || '|' || (min(length(c.ip_hash)) = 64)::text from msg_consent c join fo_lead l on l.person_id = c.subject_id where l.id = '${lenaLead}'`) === `1|FO_PERSON|${wording.id}|true`);
+  ok("FO-2 pass: the phone is kept in E.164", sql(`select phone from fo_person p join fo_lead l on l.person_id = p.id where l.id = '${lenaLead}'`) === "+14165550101");
+  const noTick = await post({ givenNames: "Ana", email: "ana@example.org" });
+  const anaLead = sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'ana@example.org'`);
+  ok("FO-2 fail: no tick → the lead with no consent row", !!anaLead && noTick.thankYouText === first.thankYouText && count("msg_consent c join fo_lead l on l.person_id = c.subject_id", `l.id = '${anaLead}'`) === 0);
+  ok("FO-2 fail: no email and no phone → refused at the field", (await refusal(() => post({ givenNames: "Nobody" })))?.status === 422);
+  ok("FO-2 fail (break m4): a name with a direction override or a zero-width space → refused at the field", (await refusal(() => post({ givenNames: "Le\u202ena", email: "rlo@example.org" })))?.status === 422 && (await refusal(() => post({ givenNames: "Le\u200bna", email: "zw@example.org" })))?.status === 422);
+  ok("FO-2 fail: an unknown field in the body → refused with no internal detail", (await refusal(() => post({ ...lena, isAdmin: true })))?.body.detail === "We could not read this form. Please reload the page and try again.");
+  const big = await refusal(() => post({ ...lena, message: "x".repeat(33 * 1024) }));
+  ok("FO-2 fail: a body over 32 KB → 413 and nothing saved", big?.status === 413 && count("fo_person", `email = 'lena@example.org'`) === 1, big);
+
+  // AG-2-49 rule 2 at the door itself (the hook in main.ts): refused as it is read, before any parser or handler.
+  const spy: unknown[] = [];
+  const door = express();
+  publicFormBodyLimit(door);
+  door.use(express.json({ limit: "5mb" }));   // the app-wide parser after it, as in main.ts
+  door.post("/api/public/forms/:token/submissions", (q, r) => { spy.push(q.body); r.status(201).json({}); });
+  const srv = door.listen(0, "127.0.0.1");
+  await new Promise((done) => srv.once("listening", done));
+  const at = `http://127.0.0.1:${(srv.address() as AddressInfo).port}/api/public/forms/${tokenA}/submissions`;
+  const send = (body: string, chunked = false) => fetch(at, { method: "POST", headers: { "content-type": "application/json" }, body: chunked ? new Blob([body]).stream() : body, ...(chunked ? { duplex: "half" } : {}) } as RequestInit);
+  const big33 = JSON.stringify({ message: "x".repeat(33 * 1024) });
+  const r413 = await send(big33), r413c = await send(big33, true), r201 = await send(JSON.stringify({ message: "hello" }));
+  ok("FO-2 fail: a 33 KB body → 413 before the handler (the spy saw nothing), also sent in chunks", r413.status === 413 && r413c.status === 413 && (await r413.json()).code === "TOO_LARGE" && spy.length === 1, [r413.status, r413c.status, spy.length]);
+  ok("FO-2 pass: a small body reaches the handler, parsed once", r201.status === 201 && (spy[0] as { message?: string })?.message === "hello");
+  srv.close();
+  const known = await post({ ...lena, consent: false }), fresh = await post({ givenNames: "Mo", email: "mo@example.org" });
+  ok("FO-2 pass: the answer never says whether the person is known (known and new get the same answer)", JSON.stringify(known) === JSON.stringify(fresh), [known, fresh]);
+  const repeat = sql(`select l.id || '|' || l.person_id || '|' || coalesce(l.possible_match_person_id::text, '') from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'lena@example.org' order by l.created_at desc limit 1`).split("|");
+  const lenaPerson = sql(`select person_id from fo_lead where id = '${lenaLead}'`);
+  ok("FO-2 pass: a repeat enquiry → a new lead flagged as a possible match of the earlier person", repeat[0] !== lenaLead && repeat[2] === lenaPerson);
+  ok("FO-2 fail: the repeat is never linked or merged (its own person record)", repeat[1] !== lenaPerson);
+
+  ok("FO-2 fail: a page outside the allowed sites → refused", (await refusal(() => post(lena, { origin: "https://evil.example" })))?.status === 403);
+  ok("FO-2 fail: no Origin at all → refused", (await refusal(() => post(lena, { origin: null })))?.status === 403);
+  ok("FO-2 pass: our own hosted page is allowed", (await post({ givenNames: "Own", email: "own@example.org" }, { origin: OWN })).thankYouText.length > 0);
+  sql(`update fo_web_form set enabled = false where firm_id = '${A}'`);
+  const off = await refusal(() => forms.read(tokenA, req())), offPost = await refusal(() => forms.submit(tokenA, { ...lena }, req()));
+  const unknown = await refusal(() => forms.read("x".repeat(30), req()));
+  ok("FO-2 pass: a form that is off → \"This form is not available\" (read and post)", off?.status === 404 && off.body.detail === "This form is not available." && offPost?.body.detail === "This form is not available.");
+  ok("FO-2 fail: an unknown token gives the very same answer", JSON.stringify(unknown) === JSON.stringify(off));
+  sql(`update fo_web_form set enabled = true where firm_id = '${A}'`);
+
+  // Limits (AG-2-49 rule 1's defaults): 30 a minute per address, 60 a minute per form token.
+  clock += 120_000;
+  const hp = { ...lena, website: "x" };   // honeypot posts count toward the limits and store nothing
+  const forms2 = forms;
+  const one = await forms2.read(tokenA, req({ ip: "203.0.113.9" }));
+  clock += 3000;
+  const posted = [];
+  for (let i = 0; i < LIMITS.postsPerIp; i++) posted.push(await refusal(() => forms2.submit(tokenA, { submissionId: one.submissionId, loadStamp: one.loadStamp, ...hp }, req({ ip: "203.0.113.9" }))));
+  const before31 = count("fo_lead");
+  const thirtyFirst = await refusal(() => forms2.submit(tokenA, { submissionId: one.submissionId, loadStamp: one.loadStamp, ...lena }, req({ ip: "203.0.113.9" })));
+  ok("FO-2 pass: 30 posts a minute from one address are taken", posted.every((p) => p === null));
+  clock += 61_000;
+  const bigs = [];
+  for (let i = 0; i < LIMITS.postsPerIp; i++) bigs.push((await refusal(() => forms2.submit(tokenA, { message: "x".repeat(33 * 1024) }, req({ ip: "203.0.113.10" }))))?.status);
+  ok("FO-2 fail (review M1): oversized posts count toward the address limit: 30 × 413, then the 31st → 429", bigs.every((x) => x === 413) && (await refusal(() => forms2.submit(tokenA, { ...hp }, req({ ip: "203.0.113.10" }))))?.status === 429, bigs);
+  clock -= 61_000;
+  ok("FO-2 fail: the 31st post a minute from one address → 429 and no lead", thirtyFirst?.status === 429 && count("fo_lead") === before31, thirtyFirst);
+  for (let i = 0; i < LIMITS.postsPerForm - LIMITS.postsPerIp; i++) await forms2.submit(tokenA, { submissionId: one.submissionId, loadStamp: one.loadStamp, ...hp }, req());
+  const sixtyFirst = await refusal(() => forms2.submit(tokenA, { submissionId: one.submissionId, loadStamp: one.loadStamp, ...lena }, req()));
+  ok("FO-2 fail: the 61st post a minute for one form token from many addresses → 429", sixtyFirst?.status === 429 && count("fo_lead") === before31);
+  clock += 61_000;
+  ok("FO-2 pass: a minute later the form takes posts again", (await refusal(() => forms2.submit(tokenA, { submissionId: one.submissionId, loadStamp: one.loadStamp, ...hp }, req()))) === null);
+
+  // ------------------------------------------------------------------------------------------- attribution
+  await post({ givenNames: "Utm", email: "utm@example.org", attribution: { utmCampaign: "spring", landingPage: "https://maple.example/lmia" } });
+  const utm = await leads.read(R, sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'utm@example.org'`)) as { attribution: Record<string, string> | null };
+  ok("FO-2 pass: attribution present on a form lead (campaign and landing page), one write-once row", utm.attribution?.utmCampaign === "spring" && utm.attribution.landingPage === "https://maple.example/lmia" && count("fo_lead_attribution") === 1, utm);
+  ok("FO-2 fail: a lead that arrived with no campaign facts has no attribution (nothing guessed)", ((await leads.read(R, anaLead)) as { attribution: unknown }).attribution === null);
+  await post({ givenNames: "Long", email: "long@example.org", attribution: { landingPage: `https://maple.example/?q=${"x".repeat(2100)}` } });
+  ok("FO-2 pass (Devin): a captured landing page over 2,000 characters is cut to length, the enquiry kept", sql(`select length(a.landing_page) from fo_lead_attribution a join fo_lead l on l.id = a.lead_id join fo_person p on p.id = l.person_id where p.email = 'long@example.org'`) === "2000");
+  ok("FO-2 fail: an attribution field outside the list → refused", (await refusal(() => post({ givenNames: "X", email: "x@example.org", attribution: { fbp: "1" } })))?.status === 400);
+
+  // ------------------------------------------------------------------------------------------- lists and visibility
+  const unassigned = await leads.list(R, "unassigned");
+  ok("FO-2 pass: Unassigned leads lists the open leads with no owner, oldest first", unassigned.length > 0 && unassigned.every((l) => l.ownerStaffId === null) && unassigned[0].id === lenaLead, unassigned.slice(0, 2));
+  const nobody = { ...O, keys: O.keys.filter((k) => !["agent/prospect:view.all", "agent/prospect:assign"].includes(k)) };
+  ok("FO-2 fail: a person who may neither see all nor assign → 403 on Unassigned leads", (await refusal(() => leads.list(nobody, "unassigned")))?.status === 403);
+  ok("FO-2 fail: an unknown view → refused", (await refusal(() => leads.list(R, "everything")))?.status === 422);
+
+  const taken = await leads.take(O, lenaLead) as { ownerStaffId: string };
+  ok("FO-2 pass: Take it on an unowned lead → the taker owns it, one audit line, one lead.taken event", taken.ownerStaffId === O.staffId && count("audit_event", `entity_key = '${lenaLead}' and action = 'lead.taken'`) === 1 && count("module_event", `subject_id = '${lenaLead}' and type = '${EVENT.LEAD_TAKEN}'`) === 1);
+  const again = await refusal(() => leads.take(T, lenaLead));
+  ok("FO-2 fail: Take it on an owned lead → 409 with the owner's name", again?.status === 409 && again.body.detail === "Case officer (Sample) already has this lead.", again);
+
+  // The match line names no one the viewer may not see (everyone-sees-all off).
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  await post({ ...lena, consent: false });
+  const newer = sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'lena@example.org' order by l.created_at desc limit 1`);
+  const matched = sql(`select possible_match_person_id from fo_lead where id = '${newer}'`);
+  sql(`update fo_lead set owner_staff_id = '${T.staffId}' where id = '${newer}'`);   // owned by T (Assign is part 2)
+  sql(`update fo_lead set owner_staff_id = '${R.staffId}' where person_id = '${matched}'`);
+  const tView = await leads.read(T, newer) as { possibleMatch: { line: string } };
+  const rView = await leads.read(R, newer) as { possibleMatch: { line: string } };
+  ok("FO-2 fail: the match line names no one the viewer may not see", tView.possibleMatch.line === "Possible match with a person you cannot see", tView.possibleMatch);
+  ok("FO-2 pass: an Owner sees the matched person's name", /^Possible match: Lena Park \(L-\d{5}\)$/.test(rView.possibleMatch.line), rView.possibleMatch);
+  ok("FO-2 fail: with everyone-sees-all off, another person's lead is not found (404) and not listed", (await refusal(() => leads.read(O, newer)))?.status === 404 && !(await leads.list(O, "all")).some((l) => l.id === newer));
+  ok("FO-2 pass: with everyone-sees-all off, a person still sees their own lead", (await leads.list(T, "mine")).some((l) => l.id === newer));
+  // Break M2 and review m6, with everyone-sees-all off: two people racing Take it: one wins, the other hears who has it.
+  let wins = 0, named = 0;
+  for (let i = 0; i < 6; i++) {
+    await post({ givenNames: `Race${i}`, email: `race${i}@example.org` });
+    const lid = sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'race${i}@example.org'`);
+    const r = await Promise.allSettled([leads.take(O, lid), leads.take(T, lid)]);
+    wins += r.filter((x) => x.status === "fulfilled").length;
+    named += r.filter((x) => x.status === "rejected" && /already has this lead/.test(JSON.stringify((x.reason as { getResponse?: () => unknown }).getResponse?.()))).length;
+  }
+  ok("FO-2 fail (break M2, review m6): 6 races of two Take it: exactly one wins each, the other gets 409 naming the owner", wins === 6 && named === 6, { wins, named });
+  // FO-2 DWn (AG-2-86 rule 3, Lead B on #1813): a late Take it by someone who could see the lead unowned → 409 with the name.
+  const takenByT = async (n: string) => { await post({ givenNames: n, email: `${n}@example.org` }); const id = sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = '${n}@example.org'`); await leads.take(T, id); return id; };
+  const lateLead = await takenByT("late");
+  const late = await refusal(() => leads.take(O, lateLead)), hidden = await refusal(() => leads.take(nobody, lateLead));
+  ok("FO-2 DWn fail: everyone-sees-all off, a Case Officer's Take it after a Case Manager's → 409 naming the Case Manager", late?.status === 409 && late.body.detail === "Second representative (Sample) already has this lead.", late);
+  ok("FO-2 DWn pass: someone who could never see it unowned (no view.all, no assign) → 404, no name", hidden?.status === 404 && !JSON.stringify(hidden.body).includes("Second representative"), hidden);
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+
+  const late2 = await takenByT("late2");
+  ok("FO-2 DWn fail: the same with everyone-sees-all on → 409 naming the Case Manager", (await refusal(() => leads.take(O, late2)))?.body.detail === "Second representative (Sample) already has this lead.");
+  ok("FO-2 fail: firm A's staff reading firm B's lead → 404", (await refusal(() => leads.read(SOLO, lenaLead)))?.status === 404 && (await refusal(() => leads.take(SOLO, lenaLead)))?.status === 404);
+  ok("FO-2 fail: firm B's lists never show firm A's leads (firm B has none)", (await leads.list(SOLO, "all")).length === 0 && count("fo_lead", `firm_id = '${A}'`) > 0);
+
+  // ------------------------------------------------------------------------------------------- audit and events
+  const createdLines = count("audit_event", `action = 'lead.created' and entity = 'fo_lead'`), createdEvents = count("module_event", `type = '${EVENT.LEAD_CREATED}'`);
+  ok("FO-2 pass: every lead made wrote one audit line and one lead.created event", createdLines === count("fo_lead") && createdEvents === count("fo_lead"), [createdLines, createdEvents, count("fo_lead")]);
+  ok("FO-2 pass: the events carry ids, never a name, email or phone", sql(`select count(*) from module_event where type like 'lead.%' and (payload::text ~ '@' or payload::text ~ 'Lena')`) === "0");
+  const failAudit = fakeAudit({ failOn: (e) => e.action === "lead.created" || e.action === "lead.taken" });
+  const failing = new Leads(db, { ...ports, audit: failAudit as never }), failingForms = new PublicForms(db, { ...ports, audit: failAudit as never });
+  const n0 = count("fo_lead"), r0 = count("fo_arrival_receipt"), e0 = count("module_event"), c0 = count("msg_consent");
+  const ff = await drawn();
+  const failedPost = await failingForms.submit(tokenA, { submissionId: ff.submissionId, loadStamp: ff.loadStamp, ...lena, email: "fail@example.org" }, req()).then(() => null, (e) => String(e));
+  ok("FO-2 fail: a forced audit failure rolls the arrival back (no person, lead, receipt, consent or event)", failedPost !== null && count("fo_lead") === n0 && count("fo_person", `email = 'fail@example.org'`) === 0 && count("fo_arrival_receipt") === r0 && count("msg_consent") === c0 && count("module_event") === e0, failedPost);
+  const unowned = sql(`select id from fo_lead where firm_id = '${A}' and state = 'OPEN' and owner_staff_id is null limit 1`);
+  await failing.take(O, unowned).catch(() => undefined);
+  ok("FO-2 fail: a forced audit failure rolls Take it back", sql(`select coalesce(owner_staff_id::text, 'none') from fo_lead where id = '${unowned}'`) === "none" && count("module_event", `subject_id = '${unowned}' and type = '${EVENT.LEAD_TAKEN}'`) === 0);
+
+  // ------------------------------------------------------------------------------------------- routes and keys
+  const keysOf = (m: string) => (Reflect.getMetadata(PLATFORM_ACCESS, (SalesController.prototype as unknown as Record<string, object>)[m]) as { keys?: string[] } | undefined)?.keys?.join(",");
+  const want: Record<string, string> = { list: "agent/prospect:show", read: "agent/prospect:show", take: "agent/prospect:edit" };
+  ok("FO-2 pass: every staff route declares its seeded agent/prospect:* key (default deny)", Object.entries(want).every(([m, k]) => keysOf(m) === k && Number(sql(`select count(*) from platform_role_permission where permission_key = '${k}'`)) > 0), Object.keys(want).map((m) => `${m}=${keysOf(m)}`));
+  const readOnly = sql(`select string_agg(permission_key, ',') from platform_role_permission where role = 'READ_ONLY'`).split(",");
+  ok("FO-2 DWn fail: a Read-only person cannot Take it (403 at the guard: no agent/prospect:edit)", ["take"].every((m) => !readOnly.includes(keysOf(m)!)) && readOnly.includes("agent/prospect:show"));
+  const routes = Object.keys(want).map((m) => ({ name: `SalesController.${m}`, method: "GET", path: "/api/front-office/leads", access: Reflect.getMetadata(PLATFORM_ACCESS, (SalesController.prototype as unknown as Record<string, object>)[m]) }));
+  ok("FO-2 pass: PF-4's start-up rule accepts every route", (() => { try { assertEveryRouteDeclared(routes); return true; } catch { return false; } })());
+  ok("FO-2 pass: the public door is outside the guarded paths and its read is an open read", Reflect.getMetadata("path", PublicFormsController) === "api/public/forms" && Reflect.getMetadata("studio:read-scope", PublicFormsController.prototype.read) === "open");
+} catch (e) {
+  fail++;
+  console.log(`FAIL  FO-2: the check stopped — ${String((e as Error).stack ?? e).slice(0, 1200)}`);
+} finally {
+  await db.$disconnect();
+  try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]); } catch { /* the next run's dropdb */ }
+}
+console.log(`\nFO-2 leads (part 1): ${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);

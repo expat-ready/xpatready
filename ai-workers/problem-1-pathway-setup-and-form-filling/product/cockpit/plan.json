@@ -1,15 +1,15 @@
 {
  "_about": "Hand-kept plan dates for the cockpit (P-591). One row per date; the page shows only these. kind: committed (a founder yes or a ruling fixes it) or forecast (a measured or sized estimate). level: high or mid. date: ISO day or null when not yet dated; date_to: the end of a range. Every row names the decision that sets it. The tech lead updates a row when its source decision changes.",
- "as_of": "2026-11-14",
+ "as_of": "2026-11-15",
  "dates": [
   {
    "id": "H1",
    "level": "high",
    "what": "Release 1 built: all 101 Build rows",
-   "date": "2026-11-24",
+   "date": "2026-11-29",
    "kind": "committed",
-   "source": "P-599 (founder, 14 Nov ~18:1x IST)",
-   "note": "Founder target: all 101 Build rows built in 10 days (~10 rows a day). The measured forecast stays beside it (H1F) until the 19 Nov count; day-3 check 17 Nov."
+   "source": "P-609 (founder, 15 Nov 10:3x IST; was 24 Nov, P-599)",
+   "note": "Founder: all 101 together, 15 days from 14 Nov instead of 10 (~7 capabilities a day from 15 Nov). The measured forecast stays beside it (H1F); day-3 check 17 Nov re-forecasts on measured numbers."
   },
   {
    "id": "H1F",

@@ -89,5 +89,7 @@
    "role": "standby",
    "state": "idle"
   }
- ]
+ ],
+ "breaches_found": 0,
+ "push_guard_refusals": 0
 }

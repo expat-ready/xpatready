@@ -1,0 +1,8 @@
+PASS  QA-383 setup: the configured checkpoint loads (Demo › Load the configured checkpoint) — {"status":201}
+PASS  QA-383 setup: With an LMIA (wp.lmia_inside) is on the checkpoint
+PASS  QA-383 setup: a With an LMIA case opens — {"status":201}
+PASS  QA-383 fail (C6.19): the question is on the case's questionnaire (client's, else the firm's) — {"status":200}
+FAIL  QA-383 fail (C6.19): no choice is labelled with the map note's lead-in "only option:" — {"offered":"[[{\"key\":\"only option: Canada\",\"label\":\"only option: Canada\"}]]"}
+FAIL  QA-383 fail (C6.19): the answer "Canada" is saved with no problem on it — {"status":200,"problems":["Choose one of: only option: Canada."]}
+
+4/6 passed
