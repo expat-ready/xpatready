@@ -1,4 +1,4 @@
-Verdict: Approve de7cda0f9d1fcf373ba1273737145b01edd6d519 (round 2; round 1 approved 53580c5dd)
+Verdict: Approve bf04b15dd770d9a264d2fb13ee5a65c9e7c758b2 (round 3; round 2 approved de7cda0f9, 4c5236aa and a8f37e3b; round 1 approved 53580c5dd)
 
 # PF-23r review: redaction hardening (PF-23's review minors 1-4 and FO-13 break 11)
 
@@ -82,3 +82,13 @@ Diff: `redact.ts` (+22/-9), `check_pf23_observability.ts` (+10/-1), and this fil
 * The round-1 note (`not_an_id` shares the repeat key) and the nit (`health.ts:34`'s words) are unchanged and outside the row.
 
 **Verdict round 2: Approve de7cda0f9d1fcf373ba1273737145b01edd6d519.** Minors 1-5 are fixed, each with a test that fails on 53580c5dd; there is no open Blocker or Major.
+
+## Round 3 (bf04b15dd): re-review of the diff a8f37e3b..bf04b15dd only (P-277), after Devin Review
+
+* **Prisma meta (`redact.ts:157`):** `target` and `modelName` are kept only when `COLUMN` matches *and* `redactText(c) === c`, so `AB123456` → `[redacted]`. Real columns and constraint names (`display_name`, `person_name_key`) match no pattern and stay. Test: `PF-23r fail (Prisma meta, review bot)`, which fails on a8f37e3b (the value was kept).
+* **TIME_RANGE (`redact.ts:54`):** whole and half hours only (`[03]0`, or `2400`). That is 49 of 10,000 values per half, so about 0.002 % of dashed 8-digit UCIs, down from round 2's 0.08 %. `1130-0845` and `0915-1745` → `[number]`; `0900-1700`, `1730-2400` and `2330-2400` stay. The test adds both UCIs, and it fails on a8f37e3b.
+* **AGENTS.md rule 5:** "Jane"/"Jane Doe" → "Client"/"Client A" in `alerts.ts:61`, `redact.ts:9`, `:57`, `:165`, the test, `qa/built/PF-23r.md` and this file. A word diff of this file shows only those names changed; my text is otherwise as I wrote it. No `Jane`/`John` is left in `observability/*.ts` or the test.
+* **`qa/built/PF-23r.md`:** now reads "an object or array met twice is `[shared]`" (my nit) and "time ranges on whole or half hours". Both match the code.
+* **Run:** the 4493 copy was down when I ran (`/api/health/live` gave no answer; its `api.log` is gone), so `check_pf23_observability.ts` gave **88/90**. All 88 non-live asserts pass, the new ones included; the 2 failures are the live part (`fetch failed`, and the missing log, ENOENT). The live part's code and test did not change in this diff, and the builder reports 100/100 on the copy while it was up. I did not start a copy of my own.
+
+No new finding. **Verdict round 3: Approve bf04b15dd770d9a264d2fb13ee5a65c9e7c758b2.**
