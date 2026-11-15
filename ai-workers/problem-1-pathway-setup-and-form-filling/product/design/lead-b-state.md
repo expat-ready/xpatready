@@ -4,6 +4,57 @@
 
 **Lead B (4)** (session titled "Lead B (4) · 15 Nov 07:42 IST", transcript `8d7cbb10…`, same worktree and branch) took over 15 Nov 07:42 IST from Lead B (3) (`local_cc58440f…`, parked at 53%). Its own START HERE is written at its hand-over; until then the section below stands.
 
+## START HERE: hand-over Lead B (4) → Lead B (5), written 15 Nov 09:3x IST at ~43% context (P-565)
+
+**Lead B (4):** session titled "Lead B (4) · 15 Nov 07:42 IST" (transcript `8d7cbb10…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`. Push with `git push origin HEAD:refs/heads/lead-b-front-office` (allowed domain github.com). The Lead B (3) section below is an earlier record.
+
+**The current Lead and release holder** is **Lead 52** (`local_e0cd21a4…`) unless `tools/current-lead.sh` names a later one. Report to the current Lead. It copies our rows into BACKLOG, labels PRs, reads migrations and CI diffs (P-423), and takes questions to the founder one at a time.
+
+**What Lead B (4) did (all pushed; each item is in the log below):**
+* **Rows rev 16.7 to 16.11** (`design/lead-b-rows-2026-11-14.md`):
+  * 16.7: migration tests in a parallel world, added to the schema briefs;
+  * 16.8: FO-5f, FO-3f, PF-4f;
+  * 16.9: a `Source:` for every PF/FO row;
+  * 16.10: qa R1 rows (PF-6b, FO-3h, case-side drafts CS-DL1 and CS-NT1);
+  * 16.11: **P-606**, the DWn test-case naming rule, J-rows (join and walk), PF-0c (port contract tests), and the **19 started capabilities ranked, with their missing parts and pull order**.
+  * Revs 16.7 to 16.9 are in BACKLOG; 16.10 and 16.11 have been sent to Lead 52 to copy.
+* **P-604 shaping lanes, all reviewed:** `design/lead-b-shaping-approvals-2026-11-15.md`, Batches 1-4. **Batch 5 is the consolidated platform rails**, after Lead 52's ruling that platform owns tasks (PF-29a-f), find (PF-30a/s), reports (PF-R*) and the file rail (PF-F2 on tus, PF-F3, PF-F4); the case side registers on them. Duplicates of the release holder's case-side draft 2 were dropped.
+* **College facts read at source:** `design/lead-b-college-facts-2026-11-15.md` (client files kept 6 years after closing; a monthly trust reconciliation within 90 days; the licence number has no published format). This closes open item 16.
+* **Briefs written:** FO-5f, FO-3f, PF-4f. FO-2 and FO-6 gained carried lines.
+
+**Open for Lead B (5):**
+1. **Watch:**
+   * restart `design/lead-b-tools/scan-pr-questions.sh 2026-11-15T04:00:00Z` (row questions on PF/FO PRs) in a background until-loop; its `seen.txt` holds what was already handled;
+   * the shaping branches are finished, so `watch-shaping.sh` is not needed.
+2. **PRs in flight:**
+   * FO-3f #1785 (reviewer and breaker running);
+   * PF-4f #1784 (labelled);
+   * FO-5f #1791 (draft);
+   * FO-13 #1755 (re-stamp after #1777, which has merged);
+   * FO-7a #1758 (stale since 14 Nov 19:55 IST; round 4 agreed);
+   * #1782 (PF-23's CI step, the Lead's).
+   * When FO-3f merges, PF-23w, FO-3h and FO-3sr can start.
+3. **Briefs to write next (P-606 rules: name the DWn cases, J-rows last):** PF-6b, FO-3h, PF-0c, PF-23w (S1's row text plus rev 16.10's lines and amendment C), then J-row briefs in rev 16.11's rank order. Use rev 16.11's pull order.
+4. **Founder questions with Lead 52** (with Lead B's recommendations):
+   * S3 Q2: trust never below zero;
+   * S3 Q4: a typed government-fee line;
+   * S3 Q7: ZIP refused;
+   * S2 Q1: LMIA timing;
+   * S2 Q2: which provincial streams;
+   * S2 Q5: review before sharing;
+   * S1 Q1: the domain;
+   * S1 Q3: fail-closed audit;
+   * S1 Q4: Object Lock compliance on the **audit archive** only (PF-8rc's backup vault stays in governance mode, a separate resource);
+   * S1 Q5: support sessions.
+   * Amend a row only if the founder says no.
+5. **Concepts still due** (skill screen-concept): FO-3sc, FO-7s0, PF-R3, PF-29f, PF-30s, FO-9s, FO-12s, FO-13s, PF-19s, PF-20s, PF-21s/rs, PF-17, PF-18s. The founder's look at FO-4, PF-6, FO-5s and PF-5s is still due.
+
+**Lessons from Lead B (4):**
+* **The duplicate check must include the release holder's draft files** that are not yet in BACKLOG (`design/case-side-rows-draft2-…` on the lead branch). Missing them let the shaping lanes duplicate 13 case-side rows.
+* **A ruling that departs from the team's requirement is only a recommendation:** the founder confirms it (P-566). Check the lane's "founder" marks before ruling.
+* **Use timestamps only from `TZ=Asia/Kolkata date`.** Lead B (4) guessed "+1 hour" three times and had to correct it.
+* **Weekly use rose from 79% to 86% in two hours** (the founder switches accounts at 95%, A68). Keep turns small, and do mechanical checks by script before reading rows.
+
 ## START HERE: hand-over Lead B (3) → Lead B (4), written 14 Nov 23:03 IST at ~46% context (P-565)
 
 **Lead B (3)** is session `local_59938793…`, worktree `lead-b-front-office-238861`, branch `lead-b-front-office` (push with `git push origin HEAD:refs/heads/lead-b-front-office`; `.git/config` can't be written from the sandbox). The sections below this one are earlier hand-overs, kept as records (P-188).
