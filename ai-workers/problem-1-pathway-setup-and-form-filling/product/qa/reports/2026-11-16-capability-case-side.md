@@ -54,3 +54,19 @@ QA-383 also held C6.19 (P-305 (3)). Its pack on the checkpoint in qa's container
 
 ## Suggestions
 * *Later · Scaffolding:* give the cloud qa lane `actions: write`, so P-339 runs do not wait for the Lead.
+
+## Addendum, 01:2x IST 16 Nov: C6.19, C7.1 and C7.8 move to Works (P-339)
+The tech lead (Lead 61) dispatched `nightly.yml` on main **af7df6d62** with `capabilities=C6.19 C7.1 C7.8` and `data=checkpoint` (comment on #1858). It ran as **run 43752890693** on GitHub's runners, with every job green:
+
+| Job | Pack | Result |
+|---|---|---|
+| 132930575827 | C7.1 | "C7.1-application-type.test.ts on the checkpoint: exit 0, 12/12 passed" · "Gate B: passed." |
+| 132930575858 | C7.8 | "C7.8.test.ts on the checkpoint: exit 0, 20/20 passed" · "Gate B: passed." |
+| 132930575852 | C6.19 | "C6.19.test.ts on the checkpoint: exit 0, 89/89 passed" · "Gate B: passed." |
+
+* **The run counts for qa's re-score.** Under `prototype/` (app and tests), the only change between e593acccc and af7df6d62 is one qa check file, `tests/qa/check_r140_staff_move_invite.ts`; everything else between them is records PRs. So the re-score on e593acccc stands.
+* **Rows now:**
+  * C6.19, C7.1 and C7.8 are **Works**.
+  * R1.80 stays **Partial**: C7.2 is still held by QA-315 and QA-165 (Majors).
+* **PF-21v** (the tech lead's answer): the complaint view fields for the screen, PR #1848. It is one more part of row 109, so row 109 is still **parts missing: PF-21s, PF-21v, J-109**.
+* **Not this PR's:** `tools/check-works-set.mjs` is 78/79 on main 81505985f with or without this change; the one FAIL is "break N1" (a base with no acceptance pack).

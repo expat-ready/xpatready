@@ -39,3 +39,11 @@ QA-383 also names C6.19. Closing it removes that hold too, but C6.19 is not judg
 R1.80 additionally needs QA-315 and QA-165 closed: the Mac's Adobe Validate and barcode evidence, then C7.2's pack green on GitHub.
 
 **Note (qa, after this verdict):** evidence.md § gateb-c619 now has its result line: "C6.19.test.ts on the checkpoint: exit 0, 89/89 passed" on main e593acccc.
+
+## C6.19 (16 Nov, after nightly 43752890693)
+**Verdict: Works (was Partial — ready for Works).** The reader ran nothing.
+- P-305 (3) is met. QA-383 (Critical), the only Blocker, Critical or Major that named C6.19, is closed: its two checks pass twice each (`evidence.md` § qa383-api, § qa383-screen). The one open row naming C6.19 is QA-384, a Minor.
+- The pack passed 89/89 (exit 0) on the checkpoint in qa's container on e593acccc (`evidence.md` § gateb-c619). It was 85 steps before BK-383.
+- P-339 is met. Nightly 43752890693 ran on GitHub's runners on main af7df6d62 with data=checkpoint. Job 132930575852 reports "C6.19.test.ts on the checkpoint: exit 0, 89/89 passed" and "Gate B: passed."
+- The run counts for main's head. Under `prototype/`, e593acccc to af7df6d62 changes only `tests/qa/check_r140_staff_move_invite.ts`, and af7df6d62 to main's head 81505985f changes nothing.
+- The row on e952d8382 carries the run id and the job id and says Works. That matches this verdict.
