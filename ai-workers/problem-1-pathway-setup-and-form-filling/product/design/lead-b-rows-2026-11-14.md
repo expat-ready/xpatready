@@ -1038,3 +1038,20 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
 * **Source:** AG-04 v2.1 (25 Oct), the `Booking` entity "`cancelReason`?", and the manage-link card's rule 8 ("an optional reason"). AGENTS rule 2 makes this a correction, not a founder question.
 * **The shared schema file** stays under Lead 59's P-600 exception (FO-3sa #1828 adds `overlap_confirmed_by_user_id` to the same `fo_booking`). Whichever merges second re-stamps its migration.
 * **New DW10** (pass and fail): a reason is stored, no reason stores NULL, 501 characters returns 400 with the booking unchanged, and the audit entry holds no part of the reason's text.
+
+## Rev 16.31 (16 Nov 01:1x IST, Lead B (6)): case-side shaping batch 1 answers (#1867, comment 6900265123)
+* **FO-7mv / FO-7t split agreed.**
+  - FO-7mv is the schema, the database guards and the derived list `money_to_move`, all tested at the database.
+  - FO-7t is the move routes ("I moved these", "Undo this batch", the read with totals) and the 25-day home item. FO-7t calls `money_move_line_write` and reads `money_to_move` only, with no move rule of its own. It waits on FO-7mv, FO-7b and PF-12.
+  - FO-7mv's brief is approved as row owner at `design/briefs/FO-7mv.md` (#1867). Lead B writes no second copy.
+* **CS-DL1's move to `api/src/platform/calendar/working-days.ts` is OK,** for the general calendar logic only:
+  - What moves: the business-day test, the zone helpers, `FirmCalendar`, `businessDaysBetween`, `countBack`, and `readFirmCalendar`.
+  - What stays: `ACK_BUSINESS_DAYS` and `acknowledgeBy` remain in `complaints/business-days.ts`, which imports from calendar. That file is not removed and does not become a re-export.
+  - It starts after PF-21v #1848. The PF-21, PF-21w and PF-21v suites must pass unchanged.
+* **New row PF-18np** (runtime, a shared contract; the release Lead reads it):
+  - It is `ports/notifications.ts`, zod plus a fake, with PF-18n's exact `notify(tx, {staffId}, kind, {kind, id})`.
+  - `NOTIFICATION_KIND` is a typed list, with each kind added by its consumer.
+  - The fake keeps one per person, per item and kind.
+  - No preference check, no table and no routes: those stay with PF-18n, which may add to the interface but not change `notify`.
+  - Tests: a duplicate gives one record, and an unknown kind is refused. Under 150 lines.
+  - Once it merges, CS-DL1b, CS-NT1b and CS-N1 may build on it.
