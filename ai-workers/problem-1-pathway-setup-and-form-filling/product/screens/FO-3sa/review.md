@@ -1,8 +1,49 @@
 # Review: FO-3sa, staff booking at any time (API only)
 
-Reviewer (Opus 5.5, did not build it), 15 Nov. Commit reviewed: `8fe4756467c201847e9b25d9073d3f4e32e831dc` (PR #1828, stacked on #1811). Diff reviewed: `2a3589aeb..8fe475646` only. Brief: `6774aee3d:…/lead-b-briefs/FO-3sa.md`; AG-4-63 (trace tool, `--brief FO-3st1`); concept `c28fcc0b7` §3 BR-13, §6.
+Reviewer (Opus 5.5, did not build it), 15 Nov. Brief: `6774aee3d:…/lead-b-briefs/FO-3sa.md`; AG-4-63 (trace tool, `--brief FO-3st1`); concept `c28fcc0b7` §3 BR-13, §6.
 
-**Verdict: Block** (Request changes): two Major findings, M1 and M2. Fixing both is a small change inside `service.ts` plus two tests.
+## Re-review at `66167b2f3cbcfb5ba6d8c0c3dc1f9c21768543b4` (diff `8fe475646..66167b2f3` only, P-277)
+
+**Verdict: Approve.** Reviewer: Approve 66167b2f3. No Blocker or Major is open.
+
+**Suites at this head** (scratch databases on :54329, never :4400; live AI off, US$0):
+* `check_fo3sa_any_time`: 33 passed, 0 failed
+* `check_fo3_booking`: 133 passed, 0 failed
+* `check_fo3sr_routes`: 29 passed, 0 failed
+* `check_fo1b_booking_schema`: 80 passed, 0 failed
+
+**M1: closed.** At `service.ts:641`, Book anyway now saves only when every current warning's code is in `acceptedWarnings`; otherwise the server answers a fresh 409. The probes:
+* Stale case: the person saw only OUTSIDE_HOURS, and an overlap appeared since. Now 409, with OVERLAP listed.
+* Bare `bookAnyway` with no codes: 409.
+* These are covered by the tests "M1 pass/fail".
+
+Residual, accepted under Lead B's ruling (PR comment 6893074492, DW10: "a person chose both"). A person who saw an overlap with booking X and accepted OVERLAP also saves over a booking Y that appeared after the dialog (probe R1: 201). The audit's `overlapBookingIds` lists both X and Y, so the record stays truthful about what was overlapped. This is no longer a finding.
+
+**M2: closed.** At `service.ts:639-641`, a time with no warning is taken as asked.
+* Probe: Tue 10:15 (off the 30-minute grid, in hours, host free) → 201.
+* Tests "M2 pass/fail": 14:15 saves; 14:35 over that booking plus its gap → OVERLAP.
+* The exclusion and the host locks still guard two off-grid writers.
+
+**m2: closed.** The audit summary uses code words ("with warnings: closed day, overlap"). `detail` holds the codes (de-duplicated), `overlapBookingIds` (capped at 50) and the confirmer, never a label or a name (`service.ts:810-813`; test "break F3/F4").
+
+**m4: closed.** Lead B ruled that `source` and `createdByUserId` are not on this row.
+
+**Recorded, not changed (accepted as the builder proposed):**
+* **m1 / F5:** a confirmed row keeps its exemption after the row it overlapped leaves. Every app writer still checks under the host locks, and DW9 shows a forced public post loses, even once the confirmed row is alone.
+* **m3:** the OVERLAP label ignores the record rule. It belongs to FO-3a part 2.
+* **F7:** label times for gap-only and fall-back overlaps.
+
+**New, Minor (not blocking):**
+* **n1:** the F6 message has no test. Probe: no active host and none chosen → 400 "No active host can take this time. Please choose an active host." with `hostStaffId: choose an active host`. Add one fail line to the suite when next touched.
+* **n2:** `acceptedWarnings` is also accepted on a time that is free, where it is ignored. That is harmless and noted only for FO-3st1's body.
+
+**Ticks DW1-DW10 at 66167b2f3** (pass and fail each, code and test): DW1 yes/yes · DW2 yes/yes (the audit has no name, ids only) · DW3 yes/yes · DW4 yes/yes · DW5 yes/yes · DW6 yes/yes · DW7 yes/yes · DW8 yes/yes · **DW9** yes (the public form books a free time with no confirmer) / yes (a forced public post at the confirmed time → 409 SLOT_TAKEN, before and after the base booking is cancelled; no confirmer set by the public door) · **DW10** yes (two parallel Book-anyway posts, both having accepted OVERLAP, both save, each with its own confirmer) / yes (the same two posts without Book anyway → both 409, nothing saved).
+
+**Journey score, re-scored at this head: 9/10 (7.5 of the 8 criteria that apply, scaled; accessibility and visual quality are N/A, no screen). Pass, no 0.** Task completed 1 (M2 fixed), next step 1, plain words 1, feedback and state 1, correct data 1 (M1 fixed), error recovery 1, speed 1. Trust ½: the overlap label still ignores the record rule (m3), and the R1 residual stands under Lead B's ruling. Journeys 4, 7 and 8 of the journey report now hold.
+
+---
+
+## First review at `8fe4756467c201847e9b25d9073d3f4e32e831dc` (diff `2a3589aeb..8fe475646`): Block (kept as written)
 
 ## Suites run (scratch databases on 127.0.0.1:54329, never :4400; live AI off, US$0)
 * `tests/check_fo3sa_any_time.ts`: 23 passed, 0 failed
