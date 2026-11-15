@@ -7,8 +7,8 @@
 // no model call (US$0). The scratch database is dropped at the end.
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf23w_jobs_wired.ts
 import "reflect-metadata";
-import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import pg from "pg";
@@ -16,6 +16,7 @@ import { TestClock } from "pg-boss";
 import type { AlertDetail, AlertKind, AlertPort } from "../ports/alert.ts";
 import { fakeArrival } from "../ports/arrival.ts";
 import { fakeMail, type FakeMail } from "../ports/mail.ts";
+import { QA_CHECKS, runQaCheck } from "./pf23w-qa-checks.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SRC = join(STUDIO, "api", "src");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -215,19 +216,13 @@ try {
 }
 
 // ------------------------------------------------------------------------------------------------------ DW5, DW6
-// qa's own checks, from qa's PR #1789 until it merges: on a checkout without them the case is reported "NOT RUN" with
-// the reason (never a pass), and the PR pastes their output.
-const qa = (f: string) => {
-  const p = join(STUDIO, "tests", "qa", f);
-  if (!existsSync(p)) return null;
-  const r = spawnSync(process.execPath, [...process.execArgv, p], { encoding: "utf8", cwd: process.cwd() });   // the folder this suite was started in: tsx's --tsconfig path is relative to it
-  return { status: r.status, out: `${r.stdout}${r.stderr}`.trim() };
-};
-for (const [name, file, pattern] of [["PF-23w DW5: qa's check_qa452_jobs_observed.ts passes", "check_qa452_jobs_observed.ts", /^[1-9]\d* passed, 0 failed$/m], ["PF-23w DW6: qa's check_qa453_real_jobport.ts passes 2/2", "check_qa453_real_jobport.ts", /^2 passed, 0 failed$/m]] as const) {
-  const r = qa(file);
-  if (!r) { console.log(`NOT RUN  ${name} — tests/qa/${file} is not on this checkout (qa's #1789)`); continue; }
-  console.log(r.out.split("\n").map((l) => `    ${file.slice(6, 12)}| ${l}`).join("\n"));
-  ok(name, r.status === 0 && pattern.test(r.out), r.out.slice(-300));
+// qa's own checks, from qa's PR #1789 until it merges (tests/pf23w-qa-checks.ts says why they live there): on a checkout
+// without them the case is reported "NOT RUN" with the reason (never a pass), and the PR pastes their output.
+for (const c of QA_CHECKS) {
+  const r = runQaCheck(c.path);
+  if (!r) { console.log(`NOT RUN  ${c.name} — ${c.path} is not on this checkout (qa's #1789)`); continue; }
+  console.log(r.out.split("\n").map((l) => `    ${c.tag}| ${l}`).join("\n"));
+  ok(c.name, r.status === 0 && c.pattern.test(r.out), r.out.slice(-300));
 }
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
