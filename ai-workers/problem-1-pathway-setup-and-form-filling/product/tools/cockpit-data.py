@@ -14,7 +14,7 @@
 #        [--flow-max-age-h 6] [--appcode-max 900] [--offline]
 import argparse, json, math, os, random, re, shutil, statistics, subprocess, sys, tempfile, time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 T0 = time.time()
@@ -161,11 +161,44 @@ def safe(name, fn, default=None):
 
 # ---------------------------------------------------------------- records in this copy
 DECIDED = re.compile(r"^(done|decided|answered|ruled)\b|\bdecided\b", re.I)
+# board v61 (founder 15 Nov: "Needs you must show only what is needed from him"): an ask row counts only when a clause of
+# its status (the row's last cell) says it waits on the founder's word or act; an ask he made that the Lead or a lane is
+# working is not his to do. FORMULAS.md › Needs you.
+NEEDS_HIM = re.compile(r"\b(needs? (you|him|his|the founder)|waits? on (you|him|the founder)|waiting on (you|him|the founder)|"
+                       r"(your|his|the founder's) (word|decision|call|answer|choice|yes|go)|founder (to )?(decides?|chooses?|confirms?|"
+                       r"answers?|runs?|approves?|picks?))\b", re.I)
+MONTHS = {m: i + 1 for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"))}
+DUE = re.compile(r"\b(?:by|before|until|due|on)\s+(?:(\d{4}-\d{2}-\d{2})|(\d{1,2})\s+([A-Za-z]{3})[a-z]*)", re.I)
 
 
-def state_needs(text=None):
-    """Open founder asks from STATE.md. Known fix (spec §6 10): an ask whose status says it is decided (or done,
-    answered, ruled) is not listed in Needs you."""
+def due_date(text, today=None):
+    """The date an item names as its deadline ("by 17 Nov", "before 2026-11-19"), ISO; None when it names none.
+    A day-month with no year takes the year that puts it nearest after today's month (Dec items stay this year in Nov)."""
+    m = DUE.search(text or "")
+    if not m:
+        return None
+    if m.group(1):
+        return m.group(1)
+    mon = MONTHS.get(m.group(3).lower()[:3])
+    if not mon:
+        return None
+    today = today or datetime.now(IST).date()
+    y = today.year + (1 if mon < today.month - 6 else 0) - (1 if mon > today.month + 6 else 0)
+    try:
+        return date(y, mon, int(m.group(2))).isoformat()
+    except ValueError:
+        return None
+
+
+def his_clauses(text):
+    """Clauses (split on ";") of a status that ask for the founder's word or act and are not marked decided or done."""
+    return [c.strip() for c in re.split(r";", text or "") if NEEDS_HIM.search(c) and not DECIDED.search(c.strip())]
+
+
+def state_needs(text=None, today=None):
+    """Founder asks from STATE.md that need the founder now. Known fix (spec §6 10): an ask whose status says it is decided
+    (or done, answered, ruled) is not listed. Board v61: only an ask whose status (the last cell) has a clause asking for his
+    word or act is listed; each carries that clause as its one line and the date it names (by)."""
     t = text if text is not None else (read("STATE.md") or "")
     asks, sec = [], None
     for line in t.splitlines():
@@ -174,13 +207,18 @@ def state_needs(text=None):
             continue
         if sec and sec.startswith("Founder asks") and line.startswith("| ") and not line.startswith("| #") and not line.startswith("|---"):
             c = cells(line)
-            if len(c) < 4:
+            if len(c) < 5:
                 continue
-            status = clean(c[3])
-            if DECIDED.search(status) or clean(c[2]).lower().startswith("done"):
+            status = clean(c[-2])
+            if DECIDED.search(status) and not his_clauses(status) or clean(c[2]).lower().startswith("done"):
                 continue
-            asks.append({"id": clean(c[1], 60), "ask": clean(c[2], 150), "status": clean(status, 170),
-                         "src": "STATE.md › Founder asks", "names": item_ids(" ".join(c[1:4]))})
+            hits = his_clauses(status)
+            if not hits:
+                continue
+            one = clean(hits[0], 160)
+            asks.append({"id": clean(c[1], 60), "ask": clean(c[2], 150), "status": clean(status, 170), "line": one,
+                         "by": due_date(hits[0], today) or due_date(c[2], today),
+                         "src": "STATE.md › Founder asks", "names": item_ids(" ".join(c[1:-1]))})
     m = re.search(r"^## For the founder[^\n]*\n+(.+)$", t, re.M)
     forf = clean(m.group(1), 220) if m else None
     w = re.search(r"\*\*Waiting on the founder[^*]*\*\*:?(.+)$", t, re.M)
@@ -921,7 +959,7 @@ def open_f_ids(line):
     return out
 
 
-def needs_split(asks, forf, waitline, questions, prs_ok, st_src, prs_src, lin=None):
+def needs_split(asks, forf, waitline, questions, prs_ok, st_src, prs_src, lin=None, today=None):
     """P-602 (1): Needs you counts only the founder's own items: open founder asks (one per table row), plus each F id the
     "For the founder" line marks open, plus each A or F id the "Waiting on the founder" line names that is not already
     counted (not named in an open ask row, not an open F id). A line naming no new id (a pointer such as "today's items
@@ -936,10 +974,23 @@ def needs_split(asks, forf, waitline, questions, prs_ok, st_src, prs_src, lin=No
     wnew = [x for x in item_ids(waitline) if x not in counted]
     n = len(asks) + len(fopen) + len(wnew)
 
+    def clause_of(line, rid):
+        """The ";"-clause of a line that names the id: his one line for that item."""
+        for c in re.split(r";", line or ""):
+            if rid in item_ids(c):
+                return clean(c.strip(), 160)
+        return clean(line, 160)
+    # board v61: one line per item: what he must decide or do, and by when when the record names a date (FORMULAS.md › Needs you)
+    items = [{"id": a["id"], "line": a.get("line") or a["ask"], "by": a.get("by"), "kind": "ask", "src": a["src"]} for a in asks]
+    items += [{"id": x, "line": clause_of(forf, x), "by": due_date(clause_of(forf, x), today), "kind": "for_founder",
+               "src": f"{st_src} › For the founder"} for x in fopen]
+    items += [{"id": x, "line": clause_of(waitline, x), "by": due_date(clause_of(waitline, x), today), "kind": "waiting",
+               "src": f"{st_src} › Start here › Waiting on the founder"} for x in wnew]
+
     def lineage(cls):
         sha, as_of = lin.get(cls, (None, None))
         return {"class": cls, "sha": sha or "none", "as_of": as_of or "unknown"}
-    needs = {"asks": asks,
+    needs = {"asks": asks, "items": items,
              "for_founder": V(forf, f"{st_src} › For the founder", open_ids=fopen, counted=bool(fopen)),
              "waiting_line": V(waitline, f"{st_src} › Start here › Waiting on the founder", new_ids=wnew, counted=bool(wnew)),
              "count": dict(V(n, f"open founder asks ({len(asks)} rows) + F ids the For the founder line marks open ({len(fopen)}) + ids the "
@@ -1393,6 +1444,66 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
                  {"state": "amber", "why": f"85% date {mc['p85']} within 7 days past {lim}"} if d85 <= lim + timedelta(days=7) else
                  {"state": "red", "why": f"85% date {mc['p85']} beyond {lim} + 7 days"})
 
+    # ---- board v61 (founder A78, P-609): early Release 1 estimate band, low confidence, until the measured forecast (5 days)
+    full = [d for d in win if d < today]                # IST days already over; today is still running
+    base = full or win
+    bcts = [per_day.get(d, 0) for d in base]
+    eb_src = (f"today + Release 1 changes left ({remaining}) ÷ the best full IST day's merges (low date) and ÷ the mean of the full "
+              f"IST days (high date), days {', '.join(d.strftime('%-d %b') for d in base)} ({', '.join(map(str, bcts))} merged); {gh_src}; {ck_src}")
+    eb_kw = {"confidence": "low", "committed": committed, "days": [d.isoformat() for d in base], "counts": bcts, "n": len(base),
+             "remaining": remaining, "window": (f"full IST days {base[0].strftime('%-d %b')} to {base[-1].strftime('%-d %b')} ({len(base)} days)"
+                                                if base else "no IST day since 13 Nov yet")}
+
+    def ahead(rate):
+        k = math.ceil(remaining / rate)
+        return "beyond 1 year" if k > MC_CAP else (today + timedelta(days=k)).isoformat()
+    if days_since >= 5:
+        EB = num(None, eb_src, "mixed", L, f"replaced by the measured forecast (Monte Carlo, from {first_day})", **eb_kw)
+    elif not bcts or max(bcts) == 0:
+        EB = num(None, eb_src, "mixed", L, "not measured: no Release 1 change merged on a full IST day yet", **eb_kw)
+    elif remaining <= 0:
+        EB = num({"low": today.isoformat(), "high": today.isoformat()}, eb_src, "mixed", L, **eb_kw)
+    else:
+        EB = num({"low": ahead(max(bcts)), "high": ahead(sum(bcts) / len(bcts))}, eb_src, "mixed", L, **eb_kw)
+
+    # ---- board v61: three daily leading numbers (founder A78)
+    last_full = full[-1] if full else None
+    lf_txt = last_full.strftime("%-d %b") if last_full else None
+    series = [{"day": d.isoformat(), "count": per_day.get(d, 0)} for d in win]
+    LD_parts = num(per_day.get(last_full, 0) if last_full else None,
+                   f"Release 1 changes (BACKLOG parts) whose first app-code merge fell on the IST day {lf_txt or 'not over yet'}; {gh_src}; {ck_src}",
+                   "mixed", L, "not measured: no full IST day since 13 Nov yet", day=last_full.isoformat() if last_full else None,
+                   today_so_far=per_day.get(today, 0), series=series)
+    built_on = lambda d: sum(1 for r in built_rows if r["built"] == d.isoformat())
+    LD_caps = num(len(built_rows), f"Build rows whose BACKLOG parts all merged (cumulative, from 13 Nov to the snapshot); {ck_src}; {gh_src}",
+                  "mixed", L, day=last_full.isoformat() if last_full else None, new_on_day=built_on(last_full) if last_full else None,
+                  today_so_far=built_on(today), rows_total=nrows, series=[{"day": d.isoformat(), "count": built_on(d)} for d in win])
+    # first verdict per qa capability: the first main version of qa/CAPABILITIES.md where it reads Works, Partial or Broken, after
+    # an earlier version where it did not (or was absent); a capability already with a verdict in the oldest version is left out
+    verdict = lambda st: st.startswith(("Works", "Partial", "Broken"))
+    first_v, seen = {}, {}
+    for i, hh in enumerate(hist_caps):
+        for cid, cv in parse_caps(hh["text"]).items():
+            if cid in first_v or cid in seen and seen[cid] == "known":
+                continue
+            if verdict(cv["status"]):
+                if i == 0:
+                    seen[cid] = "known"            # its first verdict is older than the history read
+                else:
+                    first_v[cid] = (ist_day(hh["date"]), cv["status"].startswith("Works"))
+            else:
+                seen[cid] = "open"
+    fv = {k: x for k, x in first_v.items() if x[0] >= R1_START}
+    fv_n, fv_w = len(fv), sum(1 for x in fv.values() if x[1])
+    fv_src = (f"qa capabilities whose first verdict on main fell from 13 Nov to the snapshot: Works at the first verdict ÷ all first verdicts "
+              f"({len(hist_caps)} versions of qa/CAPABILITIES.md on main, last 30 days)")
+    fl = [x for x in fv.values() if last_full and x[0] == last_full]
+    LD_fv = num(round(100 * fv_w / fv_n) if fv_n else None, fv_src, "measured", L,
+                "not measured: no qa capability got its first verdict on main since 13 Nov in the history read", works=fv_w, n=fv_n,
+                ids=sorted(fv), day=last_full.isoformat() if last_full else None,
+                day_works=sum(1 for x in fl if x[1]), day_n=len(fl))
+    leading = {"parts_merged": LD_parts, "caps_all_parts": LD_caps, "first_verdict_works_pct": LD_fv}
+
     # ---- history (N1): one line per IST day; today's line replaces earlier lines of today
     hist = [h for h in history if h.get("day") != today.isoformat()]
     file_shas = {rel: git_blob_sha(t) for rel in SNAP_FILES if rel != "cockpit/history.jsonl" for t in [snap.file(rel)] if t is not None}
@@ -1661,6 +1772,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             "pace": {"changes_needed_per_day": X, "changes_per_day": Y, "built": B, "proven": P_,
                      "rows_total": num(nrows, ck_src + ": Build rows", "parsed", L), "remaining": R, "ratio": ratio,
                      "committed_date": committed, "committed_set_on": set_on, "tolerance_days": tol, "light": light,
+                     "early_band": EB, "leading": leading,
                      "merged_changes": num(merged_r1, f"Release 1 changes merged so far ({gh_src})", "mixed", L), "delivery_24h": delivery,
                      "scope_note": None if nrows == baseline else f"Scope changed: {nrows} Build rows (baseline {baseline})"},
             "forecast": {"p50": F50, "p85": F85, "sample": sample, "counts": counts, "days": [d.isoformat() for d in days14],
@@ -1877,8 +1989,10 @@ def build_explain(d):
     rows_n = val(P["rows_total"])
     # ---- the key-number strip
     ny = d["needs_you"]
-    put("strip.needs_you", "Needs you", "Your own open items: founder asks not yet decided, F ids the For the founder line marks open, and ids the "
-        "Waiting on the founder line names that are not counted already. PR questions for the tech lead are not here.", now_w + " (STATE.md at the records commit)",
+    put("strip.needs_you", "Needs you", "Only what is needed from you: founder asks whose status asks for your word or act (an ask the Lead or a lane is working "
+        "is not yours to do), F ids the For the founder line marks open, and ids the Waiting on the founder line names that are not "
+        "counted already. Each says in one line what to decide or do, and by when if the record names a date. PR questions for the "
+        "tech lead are on the Factory tab.", now_w + " (STATE.md at the records commit)",
         val(sm["needs_you"]), "items counted (" + str(len(ny.get("asks") or [])) + " asks, " + str(len((ny.get("for_founder") or {}).get("open_ids") or [])) +
         " F ids, " + str(len((ny.get("waiting_line") or {}).get("new_ids") or [])) + " Waiting ids)", "0 is the goal; each item waits on your word.", sm["needs_you"])
     put("strip.release1", "Release 1 built", "Release 1 capabilities (Build rows of MVP-CHECKLIST.md §A) whose every BACKLOG part has merged through an "
@@ -1924,6 +2038,25 @@ def build_explain(d):
     if P.get("ratio"):
         put("pace.ratio", "Changes per built capability", "Distinct parts of built rows ÷ built rows with dated parts.", "all time",
             val(P["built"]), "built rows", "Used to check the 3-per-row estimate.", P["ratio"])
+    # board v61: the early estimate band and the three daily leading numbers (FORMULAS.md §1c)
+    EB = P.get("early_band") or {}
+    put("pace.early_band", "Early Release 1 estimate (low confidence)",
+        "A date band for all Release 1 changes at the pace measured so far: low date at the best full IST day's merges, high date at "
+        "the mean of the full IST days. Shown only until the measured forecast (5 days of history, 17 Nov).",
+        EB.get("window") or "full IST days from 13 Nov", EB.get("n"), "full IST days measured",
+        "Low confidence: 2 to 4 days of pace say little. Compare the band with the committed date (" + str(EB.get("committed") or "none") +
+        "); a high date past it means the pace must rise.", EB)
+    LD = P.get("leading") or {}
+    lp, lc, lv = LD.get("parts_merged") or {}, LD.get("caps_all_parts") or {}, LD.get("first_verdict_works_pct") or {}
+    put("pace.leading_parts", "Parts merged a day", "Release 1 changes (BACKLOG parts) whose first app-code merge fell on the last full IST day.",
+        "IST day " + str(lp.get("day") or "none yet") + " (00:00 to 24:00); today so far: " + str(lp.get("today_so_far")), val(lp),
+        "parts merged that day", up + " A leading number: parts merge before capabilities are built.", lp)
+    put("pace.leading_caps", "Capabilities with all parts merged", "Build rows whose BACKLOG parts have all merged (built), cumulative.",
+        "from 13 Nov to " + t_ist + "; new on " + str(lc.get("day") or "no full day yet") + ": " + str(lc.get("new_on_day")),
+        lc.get("rows_total"), "Build rows checked", up + " Proven comes later, at qa's Works verdict.", lc)
+    put("pace.leading_fv", "Works at the first qa verdict", "Share of qa capabilities whose first verdict on main was Works (not Partial or Broken).",
+        "first verdicts from 13 Nov to " + t_ist + " (qa/CAPABILITIES.md history on main, last 30 days)", lv.get("n"),
+        "capabilities with a first verdict", up + " A low share means rework before Works (P-606).", lv)
     lt = P.get("light") or {}
     put("pace.light", "Pace light", "Grey: no committed date or tolerance; amber: no forecast yet; green: the 85% date is within the committed date plus the "
         "tolerance; red: later.", now_w, None, "a rule, not a count", "Green is on track. Now: " + str(lt.get("why")),
@@ -2406,7 +2539,7 @@ def main():
     # ================================================================ sections
     rsha9 = (snap.meta.get("records_sha") or "")[:9]
     copy = f"snapshot of {snap.meta.get('records_branch')} @{rsha9}"
-    asks, forf, waitline = state_needs(snap.file("STATE.md") or "")
+    asks, forf, waitline = state_needs(snap.file("STATE.md") or "", NOW.astimezone(IST).date())
     st_src = f"STATE.md in {copy}"
     groups, rows, readiness = checklist(snap.file("MVP-CHECKLIST.md") or "")
     ck_src = f"MVP-CHECKLIST.md §A in {copy} (Status column)"
@@ -2427,7 +2560,8 @@ def main():
 
     # needs you (the founder's own items only) and the tech lead's PR questions apart (P-602 (1))
     needs, lead_queue = needs_split(asks, forf, waitline, questions, prs_ok, st_src, prs_src,
-                                    {"parsed": (rsha9, snap.meta.get("taken_at")), "measured": ((snap.meta.get("main_sha") or "")[:9], NOW.astimezone(IST).isoformat(timespec="seconds"))})
+                                    {"parsed": (rsha9, snap.meta.get("taken_at")), "measured": ((snap.meta.get("main_sha") or "")[:9], NOW.astimezone(IST).isoformat(timespec="seconds"))},
+                                    NOW.astimezone(IST).date())
 
     # status line
     status_line = {
