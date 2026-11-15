@@ -2,12 +2,12 @@
 
 current_lead: local_14ad6773-5a36-449e-821d-b40d3bec42d0 Lead 61 · 15 Nov 20:12 IST (series 2; took over from Lead 60 (series 2, local_ef9b8721) at ~345k, P-446)
 
-updated: 2026-11-15 20:12 IST by **Lead 60 (series 2, local_ef9b8721-…)** · weekly 0% at 13:41 (new account, Ultra; resets 17 Nov 10:29 IST) · milestone: **Works on main 93/98 (M2 60/60, M3 27/29, M4 0/1, T 6/8)**; Release 1 6/101 at qa Works; **target 29 Nov, all 101 (P-609)** · rules: **`RULES.md`** (as of P-610) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-15 20:2x IST by **Lead 61 (series 2, local_14ad6773-…)** (took over 20:12; check every 30 min set; nightly 15 Nov 05:28 IST run was cancelled, not red: rerun dispatch due) · weekly 0% at 13:41 (new account, Ultra; resets 17 Nov 10:29 IST) · milestone: **Works on main 93/98 (M2 60/60, M3 27/29, M4 0/1, T 6/8)**; Release 1 6/101 at qa Works; **target 29 Nov, all 101 (P-609)** · rules: **`RULES.md`** (as of P-610) · this branch: `lead/2026-11-07-lead31`
 
 Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
-## Hand-over: Lead 60 → Lead 61, %s IST 15 Nov — read this first (Lead 59 → 60 block word for word: `history/%s`)
-Rules: RULES.md (register, as of P-615) + DECISIONS **P-616**. Account A2 (Ultra): weekly 18%% at 20:1x; resets 17 Nov 10:29 IST. Lead 60 handed over at ~345k (start read ~117k).
+## Hand-over: Lead 60 → Lead 61, 20:12 IST 15 Nov — read this first (Lead 59 → 60 block word for word: `history/STATE-2026-11-15-2012-lead60s2-old-hand-over-block.md`)
+Rules: RULES.md (register, as of P-615) + DECISIONS **P-616**. Account A2 (Ultra): weekly 18% at 20:1x; resets 17 Nov 10:29 IST. Lead 60 handed over at ~345k (start read ~117k).
 1. **New this evening (A92):** `tools/sle-watch.py` runs as lead-watch section 9 (questions to the Lead 30 min, approved to queued 30 min with the cause named, lanes 90 min, stale 3 days); each MISS is an ACT line. Research and plan: `design/rule-enforcement-research-2026-11-15.md`; founder approved steps 1-2 only. **Add target R** (reviewer Approve on head + ci green + no label, 30 min: #1808 and #1811 stalled that way). Step 3 candidates: refuse a push to a PR labelled `queued` (19:13 reset); P-423 read before label.
 2. **Queue at 20:10:** 7 queued (#1823 PF-21w, #1816 PF-4b, #1811 FO-3sr, #1813 FO-2, #1815 PF-5, #1810 BK-383 Critical, #1808 PF-6b); #1834 records merged. #1818 CS-C1a new head 77920580d (re-review; Lead 60's P-423 OK was on 8604382: read the diff since). PF-21s #1821: Lead 60 told its cloud lane 20:1x to land the concept via the records queue.
 3. **Lead 57 (feeding)** cards PF-21v after #1823, CS-C1b after #1818, asks Lead B for PF-6/PF-5s/PF-4bc briefs after #1816; three FO-3 lanes (#1828, #1830, #1831) wait on #1811. Cloud lanes sleep through CI results: wake them in the claude.ai prompt box.
