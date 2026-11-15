@@ -72,7 +72,7 @@ pre{background:#f4f6f9;border-radius:6px;padding:8px;font-size:12px;overflow:aut
 <section class="screen" id="p4"><div class="cap">4 · Confirmation. Join details by way to meet. Join link and Add to calendar (.ics): <b>Row X1</b>. Reschedule and Cancel open the manage page with the token of the confirmation.</div>
 <div class="firm"><span class="logo" aria-hidden="true">M</span><b>Maple Immigration</b></div>
 <div class="page"><h1 class="ok">You are booked</h1>
-<div class="box"><p><b>Tuesday 20 October, 22:00 Asia/Dubai time, with Maple Immigration</b></p><p>Free consultation, 30 minutes, Video call</p><p>Your join link will follow.</p><p class="sub">We have sent the details to client.b@example.com.</p>
+<div class="box"><p><b>Tuesday 20 October, 22:00 Asia/Dubai time, with Maple Immigration</b></p><p>Free consultation, 30 minutes, Video call</p><p>Your join link will follow.</p><p class="sub">We have sent the details to client.b@example.</p>
 <div class="actions"><button class="btn primary">Add to calendar</button><a class="btn" href="#p5">Reschedule</a><a class="btn" href="#p5">Cancel booking</a></div></div>
 <p class="hint">Phone call: "The firm will call you on +971 50 000 0000." In person: "At 100 Sample Street, Toronto."</p></div></section>
 
@@ -91,7 +91,7 @@ pre{background:#f4f6f9;border-radius:6px;padding:8px;font-size:12px;overflow:aut
 <div class="msg bad">This page is not available.<div class="hint">Unknown firm, unknown or inactive slug, case type, a UUID: the same (AG-4-17 rule 3).</div></div>
 <div class="msg"><b>This time was just booked.</b> Please choose another time.<div class="actions"><span class="t" style="padding:0 12px">22:30</span><span class="t" style="padding:0 12px">Wed 21 Oct 17:00</span></div><div class="hint">Heading "Next free times"; the form keeps every answer.</div></div>
 <div><h3>Sunday 1 November</h3><p class="dst">Clocks change on this day. Times shown are real times in America/Toronto.</p><div class="times"><span class="t">01:00</span><span class="t">01:30</span><span class="t">02:00</span></div><p class="hint">01:00-01:59 happens twice; each time is offered once (FO-3 slots.ts).</p></div>
-<div class="msg">Please try again in a minute.<div class="hint">The 429 answer (rate limit); nothing saved. A 400 with no field issue shows the server's own sentence, e.g. "The firm's agreement text has changed. Please reload the page and tick the box again." and "This page was open for a long time. Please reload it to see the latest times."</div></div>
-<div><p class="hint">Loading: grey skeletons for the month grid and four time buttons; never "No free times" before the answer.</p><p class="hint">Embed (AG-4-16 rule 4): the same page inside</p><pre>&lt;iframe src="https://maple.expatready.com/book/maple/free-consultation" title="Book a meeting with Maple Immigration" width="100%" height="760"&gt;&lt;/iframe&gt;</pre></div>
+<div class="msg">Please try again in a minute.<div class="hint">The 429 answer (rate limit); nothing saved. A 400 with no field issue shows the server's own sentence: "We could not take this booking. Please try again." (honeypot, too fast) or "This page was open for a long time. Please reload it to see the latest times." The 409 consent-wording-changed: "The firm's agreement text has changed. Please reload the page and tick the box again."</div></div>
+<div><p class="hint">Embed (AG-4-16 rule 4): the same page inside</p><pre>&lt;iframe src="https://maple.expatready.com/book/maple/free-consultation" title="Book a meeting with Maple Immigration" width="100%" height="760"&gt;&lt;/iframe&gt;</pre></div>
 </div></section>
 </body></html>

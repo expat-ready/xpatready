@@ -151,7 +151,12 @@ Written by the concept's builder (for Lead B, the row owner, who approves r2). E
 * **Minors.** m1 BR-6 maps 429 and 400 (the 10-minute window is noted for Lead B: AG-4-20's "a minute" stays the text) · m2 BR-3 · m3 BR-8 · m4 BR-19 · m5 BR-4 rule and J-P5's spring day · m6 BR-14 and J-S4 · m7 seven days, Day at 375 px · m8 Read-only added; Q2 · m9 J-P9 has 360 · m10 Time off is a section of Availability; paid buttons "not rendered" · m11 §4b reduced to the requirement's own choices · m12 empty and loading drawn as panels; read-only as a banner and a view · m13 conflict "not drawn" until a staff write sends a version · m14 "This time was just booked." (AG-4-36 §12) wins, followed by the server's "Please choose another time."
 * **Found on the way (for Lead B, not this row):** the attendance job on `main` emails the host (`service.ts:553`) while AG-4-39 rule 2 says "Shown, not pushed (no email, no alert)": a `qa/BUGS.md` row or a fix row is Lead B's call.
 
+## Reviewer round 1 (Opus, on 02e1e4791: Changes requested, 2 Majors, 7 Minors) and the fixes
+* **R-M1** AG-4-67 rule 4 against J-S1: the concept now follows Lead B's FO-3sr correction (lists and attendance-due need the key); BR-12, BR-14, J-S1, J-S4 and the access line follow it; the host-without-key case is Q4 with a recommendation.
+* **R-M2** settings.html share link and embed now carry the firm key (`/book/maple/free-consultation`).
+* **Minors:** step-2 line, list columns, "Profile", the pinned tooltip, the notice-longer-than-window warning, Delete and its confirm, the plural, all added to §5; read-only Timings and Booking types and the staff banner drawn as panels (public loading was already a skeleton panel); BR-6 maps the 409 wording change and the honeypot's own sentence; firm name and branding added to Row X1; the Sample email is one value; the home item is AG-11's, said in BR-14; BR-18 cites AG-4-40, -56.
+
 ## Agreement
-r2 answers every Blocker and Major; no founder question; three questions for Lead B (concept §7). Awaiting Lead B's written approval on the PR (P-223 (4)).
+r2 answers every Blocker and Major of the challenge and of reviewer round 1; no founder question; four questions for Lead B (concept §7). Awaiting Lead B's written approval on the PR (P-223 (4)).
 
 ## Build discoveries
