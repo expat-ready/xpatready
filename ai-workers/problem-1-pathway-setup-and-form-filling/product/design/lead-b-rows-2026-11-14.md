@@ -1007,3 +1007,5 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
 * **FO-3sa** becomes schema + runtime. It adds `fo_booking.overlap_confirmed_by_user_id` and narrows `fo_booking_no_overlap` to rows where it is NULL (AG-4-63 rule 4, AG-4-26 O4); a reschedule clears it. New cases: DW9, a public booking never overlaps a confirmed row; DW10, two parallel Book-anyway posts both save.
 * **FO-2 part 3's Done when adds:** "the real `ArrivalPort` accepts a booking with no consent and records none".
 * **Open with the release holder:** both PRs add to the one file `front-office-booking.prisma` (different models, additive). P-600 asks for a file of its own per row; whichever merges second re-stamps.
+
+**Rev 16.27 note (Lead 59, BACKLOG a842bddc6):** the P-600 exception is granted. FO-3pa #1830 and FO-3sa #1828 may share `front-office-booking.prisma`; the second to merge merges `main`, re-stamps and re-runs CI. Lead 59 reads both migrations before the labels.
