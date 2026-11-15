@@ -3,9 +3,9 @@
 The reader ran nothing and judged from the evidence in this folder, `qa/CAPABILITIES.md`, `qa/BUGS.md` and `RULES.md` (P-305, P-339). Main is e593acccc, which includes #1810 (981c6c965). US$0.
 
 ## Evidence read
-- `qa383-api.txt`: `check_qa383_imm5710_current_cor.ts` ran on an isolated checkpoint copy and passed 17/17, then 16/16 (the 2nd run skips the load step). The choice offered reads "Canada". IMM 5710 writes 511 and IMM 5409 writes "Canada". A saved "only option: Canada" now reads as "Canada", and an "e.g." note gives no list. The same check was 4/6 on 1fcde2d15 and d52b7274e.
-- `qa383-screen.txt`: `check_qa383_screen.cjs` ran twice and every step passed. By screens the client sees only "Canada" and picking it saves "Canada" with no problem. The officer copies read back 511 (IMM 5710) and "Canada" (IMM 5409).
-- `gateb-c71-c78.txt`: gate-b.mjs on the checkpoint ran C7.1-application-type.test.ts (12/12, exit 0) and C7.8.test.ts (20/20, exit 0). It ran in qa's cloud container, **not on GitHub's runners**.
+- `evidence.md` § qa383-api: `check_qa383_imm5710_current_cor.ts` ran on an isolated checkpoint copy and passed 17/17, then 16/16 (the 2nd run skips the load step). The choice offered reads "Canada". IMM 5710 writes 511 and IMM 5409 writes "Canada". A saved "only option: Canada" now reads as "Canada", and an "e.g." note gives no list. The same check was 4/6 on 1fcde2d15 and d52b7274e.
+- `evidence.md` § qa383-screen: `check_qa383_screen.cjs` ran twice and every step passed. By screens the client sees only "Canada" and picking it saves "Canada" with no problem. The officer copies read back 511 (IMM 5710) and "Canada" (IMM 5409).
+- `evidence.md` § gateb-c71-c78: gate-b.mjs on the checkpoint ran C7.1-application-type.test.ts (12/12, exit 0) and C7.8.test.ts (20/20, exit 0). It ran in qa's cloud container, **not on GitHub's runners**.
 - The nightly.yml dispatch was refused with a 403 from the cloud lane. No nightly has run on main since 14 Nov, which is before #1810.
 - Gap in the record: none of the three logs prints the commit it ran on. The report must state e593acccc (or the tree hash) next to each log, or the logs must carry it.
 
@@ -23,7 +23,7 @@ The reader ran nothing and judged from the evidence in this folder, `qa/CAPABILI
 
 When closing, record the commit (e593acccc) and both log paths.
 
-QA-383 also names C6.19. Closing it removes that hold too, but C6.19 is not judged here: `gateb-c619.txt` has no result line.
+QA-383 also names C6.19. Closing it removes that hold too, but C6.19 is not judged here: `evidence.md` § gateb-c619 has no result line.
 
 ## Verdicts
 - **C7.1: Partial — ready for Works** (was Partial on QA-383). With QA-383 closed, no Blocker, Critical or Major names it (P-305 (3) is met). Its pack is green on the checkpoint on e593acccc (12/12), but only in qa's container. The P-339 run on GitHub's runners, with its run id in the row, is missing. This is the same case as the C6.16 precedent.
@@ -38,4 +38,4 @@ QA-383 also names C6.19. Closing it removes that hold too, but C6.19 is not judg
 
 R1.80 additionally needs QA-315 and QA-165 closed: the Mac's Adobe Validate and barcode evidence, then C7.2's pack green on GitHub.
 
-**Note (qa, after this verdict):** gateb-c619.txt now has its result line: "C6.19.test.ts on the checkpoint: exit 0, 89/89 passed" on main e593acccc.
+**Note (qa, after this verdict):** evidence.md § gateb-c619 now has its result line: "C6.19.test.ts on the checkpoint: exit 0, 89/89 passed" on main e593acccc.

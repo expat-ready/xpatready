@@ -1,7 +1,0 @@
-# main e593acccc, qa cloud container, isolated copy
-Gate B: the PR names C6.19; claims Works for none (no bug check).
-  packs: C6.19.test.ts
-    C6.19.test.ts on the checkpoint: exit 0, 89/89 passed (161 s: copy 7, Load the configured checkpoint 147, run 7)
-  packs took 161 s in all
-Gate B: passed.
-gate exit 0
