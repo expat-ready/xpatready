@@ -76,8 +76,8 @@ grep -q 'pr-size.sh" "$ADDS" "$DELS"' "$W" && grep -q 'contents: read' "$W"; ok 
 lp() { out=$(jq -n --arg t "$1" --arg p "$2" '{tool_name:$t,tool_input:{prompt:$p}}' | bash "$TOOLS/lane-preflight.sh" --hook); }
 lp mcp__claude-code-remote__create_session "$GOOD"; ok "(7) a brief with no model and effort line is refused" "$(deny)" "$out"
 lp mcp__claude-code-remote__create_session "$GOOD"$'\nModel: Opus 5.5, effort: medium'; ok "(7) a brief naming model and effort starts" "$([ -z "$out" ] && echo 1)" "$out"
-jq -e '[.hooks.PreToolUse[] | select(.matcher | test("create_session")) | .hooks[].command | select(test("lane-preflight.sh --hook"))] | length == 1' "$ROOTD/.claude/settings.json" >/dev/null
 lp mcp__claude-code-remote__create_session "/qa after-merge"$'\nModel: Opus 5.5, effort: medium'; ok "(7) a start naming no row (qa, standby) needs only the model and effort line" "$([ -z "$out" ] && echo 1)" "$out"
 lp mcp__claude-code-remote__create_session "/qa after-merge"; ok "(7) ... and is refused without it" "$(deny)" "$out"
+jq -e '[.hooks.PreToolUse[] | select(.matcher | test("create_session")) | .hooks[].command | select(test("lane-preflight.sh --hook"))] | length == 1' "$ROOTD/.claude/settings.json" >/dev/null
 ok "(7) settings.json runs the preflight hook on create_session too" "$([ $? = 0 ] && echo 1)"
 finish
