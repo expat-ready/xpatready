@@ -33,6 +33,7 @@ Rules: RULES.md (register, as of P-615) + DECISIONS **P-616** (gate A by API for
 F2, F8 closed by Lead 52 09:1x 15 Nov (before: "F2, F8 open (demo looks)"; they were looks on the demo with no decision, P-486); F14-F19 ruled; word for word in `history/STATE-2026-11-14-1700-lead46s2-for-founder-and-leads-lines.md`.
 
 ## Start here (next Lead)
+🟩 **Lead 60 check 18:40:** 7 PRs queued in three batches (#1836 PF-19b; #1837 #1834+#1818; #1838 #1823+#1816; #1813, #1815 behind), none merged in 30 min (batches ~50 min). #1811 merged main (a92333d4) plus a module-card line (e4f6598f): label guard removed the label, Opus re-review approved e4f6598f, the lane relabels on green.
 🟦 **Next to feed:** PF-21v (brief: lead-b-briefs PF-21v.md, only on the lead-b-front-office branch, 27760e6c8; BACKLOG ff42c4dbc) once #1823 merges; Lead 57 feeds it. Lead B owes PF-6 (part 1 first), PF-5s, FO-4 follow-up briefs after #1816 merges.
 🟩 **Earlier lines today (Lead 59 hand-over items on #1834, Lead 60 checks 17:13 and 17:40, #1834 labelled on the founder's word 17:4x):** word for word in `history/STATE-2026-11-15-1817-lead60s2-check-lines.md`.
 🟩 **Lead 60 sweep 18:1x (A90) and the 15 Nov switch line:** word for word in `history/STATE-2026-11-15-1823-lead60s2-sweep-and-switch-lines.md`. Still owed to BACKLOG: CS-C1a's two follow-ups (#1818 body) and FO-2's qa53 decorator-call scan row (#1813).
