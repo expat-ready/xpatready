@@ -63,3 +63,36 @@ Breaker run 15 Nov 2026, from 08:50 UTC. Isolated copy `brk_fo2` on :4434 (`PLAT
 - **Take race.** 6 parallel Take it calls (R, T, O ×2): one 200, and five 409 "Representative (Sample) already has this lead.". One `lead.taken` audit line and one event.
 - **Sessions and keys.** No bearer, only `x-actor`, or a forged bearer got 401. O Assign got 403 (missing `agent/prospect:assign`). READ_ONLY: Take 403, Assign 403, Unassigned list 200 (holds `view.all`). An upper-case lead id gives the same lead.
 - **Audit and outbox.** Audit lines and outbox rows matched one to one (`lead.created` 7/7; taken plus assigned 4 audit lines / 4 `lead.taken` events). Consent was recorded once (`FO_PERSON`, `WEB_FORM`, the form's wording id) and only when ticked on a stored lead.
+
+## Re-check at 8e5cb929d (15 Nov, clean worktree at 8e5cb929dd176114e8ef1a023e95c4c7e66b1199, copy `brk_fo2` on :4434, fresh database, stopped after). Same setup as above (seed, published wording, both forms on, everyone-sees-all off for the staff checks).
+- **M1: fixed.** I drew the form, restarted the copy, and posted with the old stamp. The answer was `400 RELOAD "This page is out of date. Please reload it and send the form again."` and the counts were unchanged (1/1/1/1/1). After a reload the same person was stored with 201. The rule "older than 24 h counts as stale" was checked by reading the code only (`stampOf`); the stamp cannot be signed from outside.
+- **M2: fixed for Take it; Assign is gone from part 1** (`POST …/assign` is now an Express 404).
+  - Race: 40 rounds of O and T both taking one unassigned lead at once (barrier). Each round had exactly one 200 and one `409 "<owner> already has this lead."` (12 rounds O lost, 28 T lost); 40 `lead.taken` audit lines and 40 events, so one each per round.
+- **m1: fixed.** A fast or honeypot post with invalid fields now gets the same 422 as a slow one: empty name 422, honeypot with empty name 422, fast bad email 422.
+- **m2: fixed on the normal path, still there on one edge.**
+  - A body over 32 KB sent as `application/json` gets `413 TOO_LARGE "This form is too long…"`, whole and chunked, also on `/API/Public/Forms/…` and with `; charset=utf-8`.
+  - With `content-type: application/vnd.api+json`, neither JSON parser reads the body. The handler's content-length check then throws 413, and `ProblemErrors` (`main.ts:189-201`) rewrites it to "This file is too large for this upload." Minor; a browser form always sends `application/json`.
+- **m3: not fixed.** After the window reset I sent 20 oversized posts whole and 15 chunked from one address, all 413. The next normal post got **400, not 429**.
+  - The handler now counts the limits before its own size check. But the route-scoped parser (`publicFormBodyLimit`, `public.ts:162`) refuses every body over 32 KB before the handler runs, so these posts are never counted.
+  - The cost of each refused post is now capped at 32 KB of parsing. Minor.
+- **m4: fixed for the marks named in the report; a few invisible characters still pass.**
+  - Refused (422): U+202E, U+200B, U+200E, U+00AD. A leading U+FEFF is trimmed (`trim()`), so that is fine.
+  - Still accepted as a first name, as a fast post (the bot path, so nothing was stored, but the field check passed): U+061C ARABIC LETTER MARK (a direction mark); U+3164 HANGUL FILLER, U+180E, U+034F, U+E0041 (tag characters).
+  - A name like `"\u3164A"` shows as "A" with an invisible lead character. Minor; the cause is the `CONTROL` list in `common.ts:17`. Refusing `\p{Cf}` plus U+3164/U+115F/U+1160 would cover these.
+- **New n1 (Minor): Take it on a lead the viewer cannot see now names its owner.**
+  - O cannot see R's lead L-00004: `GET /leads/:id` returns 404. `POST /leads/:id/take` returns `409 "Representative (Sample) already has this lead."` with `ownerStaffId`.
+  - Before 8e5cb929d this was 404, the same as another firm's lead (another firm's lead is still 404: S taking it got 404).
+  - Cause: `leads.ts` `change()` under the lock: `owner ? conflict(...) : notFound()`. It answers 409 for every owned lead the viewer cannot see, not only one that was taken during a race.
+  - Exposure is low (it needs the lead's UUID), but it goes against "404 if the viewer does not see it" and against naming nobody the viewer may not see.
+  - Should have happened: 409 naming the owner only when the viewer could see the lead before the lock (the lost race), otherwise 404.
+- **New n2 (Minor, rule conflict for the record): a forged or altered stamp is now answered 400 RELOAD, not like a real submission.**
+  - A stamp with its time moved back 10 s, and `123.abc`, both got 400 RELOAD.
+  - The rule given to this breaker says a forged or altered stamp gets the thank-you answer and nothing stored. The M1 fix necessarily treats "not our key" like "forged".
+  - What a bot learns is only that tampering is detected; a fresh stamp is free from GET. This is a trade-off for the reviewer to record (`challenge.md`), not a defect to fix here.
+- **Still held at 8e5cb929d:**
+  - a real post 201;
+  - honeypot and too-fast posts with valid fields get 201 and nothing is stored;
+  - `Cache-Control: no-store` on GET;
+  - 12 parallel posts of one `submissionId` made one lead, flagged as a possible match (counts +1 each);
+  - no bearer on Take gets 401; another firm's lead gets 404;
+  - O's All view lists only own and unassigned leads (the visibility filter is now in the query).
