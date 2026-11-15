@@ -232,3 +232,33 @@ UPDATE money_payment_settings SET tax_number = '١٢٣٤٥٦٧٨٩' WHERE firm_i
 `'No. ١٢٣'` passes, and so does text in 26 scripts (Devanagari, Tamil, Thai, Han, Kana, Hangul, Arabic, Hebrew, Greek, Cyrillic, Ethiopic, Georgian, Armenian, Khmer, Myanmar, Sinhala, Tibetan, Mongolian with FVS, Cherokee, Javanese, decomposed é, Persian with ZWNJ, emoji with skin tone, a flag, a keycap, a ZWJ family). Fix: `[[:digit:]]` under pg_c_utf8 is ASCII-only too (checked: `'١' ~ '[[:digit:]]' COLLATE pg_c_utf8` is false), but `'١' ~ '[[:alnum:]]' COLLATE pg_unicode_fast` is true, so add that as a second test (pg_unicode_fast alone drops symbols: `'€' ~ '[[:punct:]]'` is false there).
 
 **Held in round 5:** everything under B-20 above, and every listed B-17 and B-21 character.
+
+## Round 6 (B-21, B-22, B-23 at `3c42dc98a`)
+Scope: B-21, B-22 and B-23 only; head `cf8a5bae0` adds only the round 5 report. I used a fresh scratch database, `fo7a_break_r6` on :54329, with all 93 migration folders applied in name order with psql (C ctype). Firms came from the same scratch `mkfirm()` and `mkinv()` as round 5. The database was dropped at the end. `money_text_ok` is at lines 446-526. Cost: US$0.
+
+**B-21 holds.** Full scan: `select cp from (select generate_series(1,55295) union all select generate_series(57344,1114111)) x(cp) where money_text_ok(chr(cp),10)`, classified with Unicode 15.1 categories:
+- No character of category Mn, Mc, Me, Cf, Co, Cc or Zs passes alone. That is 1985 Mn, 452 Mc and 13 Me refused (round 5: 905 Mn and 423 Mc passed).
+- No unassigned character passes (`unicode_assigned()`).
+- U+13441 and U+13442 are refused.
+- The only marks that pass are those first assigned in Unicode 16.0 (U+0897, alone or as `U&'\0020\0897\0301'`), which is the stated known limit.
+
+The round 5 SQL is now refused with 23514 `money_credit_note_text_check`. That covers reason `U&'\064E'`, reason `U&'\+013441\+013442'`, and created_by `U&'\3000\0345'`. These mixes of marks and invisible characters all return false:
+```sql
+SELECT money_text_ok(t,50) FROM (VALUES (U&'\064E\064E\064E'), (U&'\200B\05B0\2800'), (U&'\3164\0345'), (U&'\00A0\0E31\FEFF'),
+ (U&'\FE0F\064E\+0E0020'), (U&'\200D\0670'), (U&'\0301\0302\0303\0304\0305\0306\0307\0308\0309'), (U&'\20DD'), (U&'\20E3\FE0F'),
+ (U&'\0488\0489'), (U&'\093E\093F'), (U&'\+01D165\+01D166\+01D16D'), (U&'\+013441\0301\+013442'), (U&'\1AB0\1DC0\FE20\+0E0100'),
+ (U&'\0F71\0F72\0F7F'), (U&'\302A\302B\3099\309A'), (U&'\1160\0345\+01BC9E\+016FE4')) v(t);   -- all false
+```
+Real text that has marks on its letters still passes. That includes pointed Hebrew (`תַּשְׁלוּם`), Arabic with harakat (`رَسُومُ الْمَلَفِّ`), Tibetan stacks (`བསྒྲུབས`), decomposed Vietnamese (`U&'Tie\0302\0301n'`), Devanagari, Tamil, Thai, Khmer, Myanmar, Sinhala, Javanese, Mongolian, keycaps `1️⃣` and `#️⃣`, a flag, a skin-tone emoji, a ZWJ family, `ﷺ`, and a Hangul filler followed by a letter (`ㅤ가`). A check on a 480-character text costs about 55 µs (20,000 different texts in 1.1 s), so the longer pattern does not matter for speed.
+
+**B-22 holds (as worded).** The behaviour is unchanged. After `mkinv` → INV-0001, then `UPDATE … SET prefix='TRO-'` and `… 'TOR-'`, `used_prefixes` is `{TRO-}`. Then `INSERT INTO money_number_series (firm_id,kind,prefix) VALUES (:g,'CREDIT_NOTE','TRO-')` is refused with 23514 "TRO- stays with the INVOICE series (a prefix a series used once it gave numbers is never another kind's)". The message no longer says it printed, and the rule as stated is what the database does. The B-20 reproduction is still refused, with the new wording.
+
+**B-23 holds.** These now commit: `INSERT INTO money_payment (…, reference) VALUES (…, '１２３４５')`, the same with `'۱۲۳۴۵۶'`, and `UPDATE money_payment_settings SET tax_number = '١٢٣٤٥٦٧٨٩'`. Every Nd, Nl and No character of Unicode 15.1 (680 + 236 + 915) passes alone, including `१२३४ ५६`, `๑๒๓`, `௧௨௩`, `፩፪`, `½`, `①②`, `²`, `Ⅻ` and `〇`.
+
+**B-24 Minor: digits first assigned in Unicode 16.0 are refused when written alone** (the N side of the stated mark limit, which covers marks only). PostgreSQL 18 is at Unicode 16.0 (`unicode_version()`). The N list was generated from 15.1, so these new decimal digits are neither in the list nor `[[:alnum:]]`: U+10D40–10D49 (Garay), U+116D0–116E3 (Myanmar Pao and Eastern Pwo Karen), U+11BF0–11BF9 (Sunuwar), U+16130–16139 (Gurung Khema), U+16D70–16D79 (Kirat Rai), U+1CCF0–1CCF9 (outlined digits) and U+1E5F1–1E5FA (Ol Onal).
+```sql
+SELECT money_text_ok(U&'\+010D40\+010D41', 50), money_text_ok(U&'\+016D70', 50);   -- false, false
+```
+Text in these scripts that also has letters passes, so the impact is small. Fix: generate both lists from Unicode 16.0, the data PostgreSQL 18 uses, and keep them on the same version as `unicode_version()`.
+
+**Held in round 6:** B-21, B-22 (as worded) and B-23, plus every B-17, B-21 round-4 and round-5 character.
