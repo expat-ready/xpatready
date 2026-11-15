@@ -28,7 +28,7 @@ reg "$T/ok.md" "${HEALTHY[@]}"; run "$T/ok.md"
 ok "a healthy register prints no ACT and exits 0" "$([ $rc = 0 ] && ! grep -q '^ACT' <<<"$out" && echo 1)" "exit $rc: $out"
 
 reg "$T/win.md" "${HEALTHY[@]}" '| 7 | Eta · partner account | needs documents | M4, 15 Dec | 19 Nov | founder | not started | 25 Nov · Google only |'; run "$T/win.md"
-ok "a row whose start date has passed, not started, ACTs" "$([ $rc = 1 ] && grep -q '^ACT outside: 7 Eta: start date 19 Nov reached' <<<"$out" && echo 1)" "exit $rc: $out"
+ok "a row whose start date has passed, not done, ACTs" "$([ $rc = 1 ] && grep -q '^ACT outside: 7 Eta: start date 19 Nov reached' <<<"$out" && echo 1)" "exit $rc: $out"
 reg "$T/today.md" "${HEALTHY[@]}" '| 7 | Eta · partner account | x | M4 | 20 Nov | founder | not started | 25 Nov · Google only |'; run "$T/today.md"
 ok "a row starting today ACTs" "$([ $rc = 1 ] && grep -q '^ACT outside: 7 Eta: start date 20 Nov' <<<"$out" && echo 1)" "exit $rc: $out"
 reg "$T/now.md" "${HEALTHY[@]}" '| 7 | Eta · ownership | n/a | launch | now | founder | risk: a third party holds it | before launch · own access |'; run "$T/now.md"
@@ -49,6 +49,15 @@ ok "a blocked row with no decision date ACTs" "$([ $rc = 1 ] && grep -q '^ACT ou
 
 reg "$T/dec.md" "${HEALTHY[@]}" '| 7 | Eta · partner | x | M4 | not started | founder | not started | 20 Nov · Google only |'; run "$T/dec.md"
 ok "a row not done whose decision date is today ACTs, naming the fallback" "$([ $rc = 1 ] && grep -q '^ACT outside: 7 Eta: decision date 20 Nov reached.*Google only' <<<"$out" && echo 1)" "exit $rc: $out"
+
+reg "$T/old.md" "${HEALTHY[@]}" '| 7 | Eta · partner | x | M4 | not started | founder | not started | 22 Nov · Google only |'
+out=$(python3 "$W" --file "$T/old.md" --now "2027-06-25 09:00" 2>&1); rc=$?
+ok "a yearless decision date seven months overdue still ACTs (Devin on #1849)" "$(grep -q '^ACT outside: 7 Eta: decision date 22 Nov reached' <<<"$out" && echo 1)" "exit $rc: $out"
+reg "$T/jan.md" '| 1 | Eta · partner | x | M4 | 3 Jan | founder | not started | 10 Jan · Google only |'
+out=$(python3 "$W" --file "$T/jan.md" --now "2026-12-01 09:00" 2>&1); rc=$?
+ok "a January start written in November is next year's, so it is not yet due" "$([ $rc = 0 ] && echo 1)" "exit $rc: $out"
+out=$(python3 "$W" --file "$T/jan.md" --now "2027-01-03 09:00" 2>&1); rc=$?
+ok "... and it ACTs on 3 Jan across the year boundary" "$([ $rc = 1 ] && grep -q '^ACT outside: 1 Eta: start date 03 Jan' <<<"$out" && echo 1)" "exit $rc: $out"
 
 reg "$T/three.md" "${HEALTHY[@]}" \
   '| 7 | Eta · a | x | y | 19 Nov | founder | not started | 25 Nov · z |' \

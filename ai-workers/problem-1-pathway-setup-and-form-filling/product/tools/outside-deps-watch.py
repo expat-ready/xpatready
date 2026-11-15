@@ -9,6 +9,8 @@
 # The status date is the newest "15 Nov" (with "21:40 IST" if given) in the Status cell, else the date in the Status
 # column's header ("Status (15 Nov 22:2x IST)"); a cell time with no date takes the header's day.
 # (4) A row not done whose decision date is today or past ACTs (decide, or take the fallback; review of #1849).
+# Yearless dates: the Status header's date is the latest one not after the check; every row date takes the year nearest
+# it (not the check's), so a deadline left months overdue keeps alarming (Devin on #1849).
 # Status words: only a Status starting "done" counts as done; "blocked" and "stuck" are the stopped states. The first
 # HH:MM in a Status cell is applied to its newest date: keep one dated event per cell.
 # Read-only, no network, US$0. Lead-watch runs it each check. Test: check-outside-deps-watch.sh.
@@ -26,18 +28,22 @@ ISO = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 TIME = re.compile(r"\b(\d{1,2}):(\d)([0-9x])\b")
 
 
-def dates(text, now):
-    """Every date in text as an IST datetime at 00:00; a day with no year takes the year that puts it nearest now."""
+def dates(text, ref, past=False):
+    """Every date in text as an IST datetime at 00:00. A day with no year takes the year nearest ref; with past=True,
+    the latest one not after ref (+1 day), as for the Status header, which is always written before the check."""
     out = []
     for d, m, y in DAY.findall(text):
-        yr = int(y) if y else now.year
+        yr = int(y) if y else ref.year
         try:
             t = datetime(yr, MON[m[:3].lower()], int(d), tzinfo=IST)
         except ValueError:
             continue
-        if not y and t - now > timedelta(days=183):
+        if not y and past:
+            if t - ref > timedelta(days=1):
+                t = t.replace(year=yr - 1)
+        elif not y and t - ref > timedelta(days=183):
             t = t.replace(year=yr - 1)
-        elif not y and now - t > timedelta(days=183):
+        elif not y and ref - t > timedelta(days=183):
             t = t.replace(year=yr + 1)
         out.append(t)
     for y, m, d in ISO.findall(text):
@@ -77,8 +83,9 @@ def main(argv):
     c_prov, c_start, c_stat, c_dec = col("provider"), col("start"), col("status"), col("decision")
     if None in (c_prov, c_start, c_stat, c_dec):
         print("ACT outside: register header lacks Provider, Start, Status or Decision"); return 99
-    hd = dates(head[c_stat], now)
+    hd = dates(head[c_stat], now, past=True)
     head_day = with_time(hd[0], head[c_stat]) if hd else None
+    ref = head_day or now   # row dates are read against the register's own date, so an old deadline stays past
     acts = []
     for r in rows:
         if not r or not r[0].isdigit() or len(r) <= max(c_prov, c_start, c_stat, c_dec):
@@ -89,12 +96,12 @@ def main(argv):
         done = sl.startswith("done")
         why = []
         if not done and "started" not in start.lower().replace("not started", ""):
-            sd = dates(start, now) or ([now] if re.search(r"\bnow\b", start, re.I) else [])
+            sd = dates(start, ref) or ([now] if re.search(r"\bnow\b", start, re.I) else [])
             if sd and min(sd).date() <= now.date():
                 why.append(f"start date {min(sd):%d %b} reached, not done (Start: {start}; Status: {stat[:60]})")
         blocked = sl.startswith("blocked") or sl.startswith("stuck")
         if blocked:
-            cd = dates(stat, now)
+            cd = dates(stat, ref)
             if cd:
                 t = max(cd)
                 t = with_time(head_day, stat) if head_day and t.date() == head_day.date() and not TIME.search(stat) \
@@ -108,7 +115,7 @@ def main(argv):
             elif now - t > timedelta(hours=48):
                 why.append(f"{sl.split(':')[0]} for {int((now - t).total_seconds() // 3600)} h (since {t:%d %b %H:%M} IST)")
         when, _, fb = dec.partition("·")
-        dd = dates(when, now)
+        dd = dates(when, ref)
         if not done and dd and min(dd).date() <= now.date():
             why.append(f"decision date {min(dd):%d %b} reached, not done: decide or take the fallback ({fb.strip() or 'none'})")
         if sl.startswith("blocked"):
