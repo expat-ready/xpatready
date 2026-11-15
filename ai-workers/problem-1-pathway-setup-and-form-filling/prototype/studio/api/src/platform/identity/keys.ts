@@ -28,6 +28,16 @@ export const PermissionKeys = (...keys: string[]) => {
 export const AnyStaff = (why: string) => declare({ kind: "any-staff", why });
 export const StaffSignIn = (why: string) => declare({ kind: "sign-in", why });
 
+/** PF-6b (ruling 4, SA-6-24): a route that returns an area's records marks the area whose `view.own`/`view.all` pair
+ *  decides what the person sees, e.g. @OwnOrAll("agent/prospect"). Metadata only: the service applies the rule (all with
+ *  `<area>:view.all` and the firm's "everyone sees all" on, otherwise own), and tests/check_pf6b_permission_rules.ts
+ *  sweeps every marked route (a marked route with no sweep entry fails it). */
+export const OWN_OR_ALL = "platform:own-or-all";
+export const OwnOrAll = (area: string) => {
+  if (!/^agent\/[a-z][a-z0-9-]*$/.test(area)) throw new Error(`OwnOrAll: name the area as agent/<area> (got ${area})`);
+  return SetMetadata(OWN_OR_ALL, area);
+};
+
 /** Today's duty words (engine/runtime/team.ts `Duty`; not imported: platform code never imports engine/), derived from
  *  keys (trace t3 §1: `represent` is holding the sign-off keys, SA-06 Appendix C): */
 export const DUTY_KEYS = {
@@ -54,3 +64,5 @@ export function problem(status: number, title: string, detail: string, extra: Re
 }
 export function unauthorized(detail: string, code = "NOT_SIGNED_IN"): never { return problem(401, "Sign in again", detail, { code }); }
 export function forbidden(detail: string, code = "NOT_ALLOWED"): never { return problem(403, "Not allowed", detail, { code }); }
+/** PF-6b (ruling 3): a LICENCE-class key alone is not enough; the person also needs their licence record. */
+export const NOT_LICENSED = "Only a licensed consultant can do this";
