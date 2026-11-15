@@ -1,16 +1,14 @@
 # Module cards (P-615 (3)): a PR that changes files in a module of the reference app
 # (api/src, web/src) also changes that module's MODULE card, unless its body has a line `Card unchanged: <reason>`.
 # The map is .claude/rules/modules/*.md (each a symlink to its card; the card's `paths:` are the module's files).
-# Runs on every PR and on an edit of its body; a few seconds, US$0, no secrets. Its own test runs first.
+# Runs on every PR and on an edit of its body; a few seconds, US$0, no secrets. Its own test runs first. No concurrency
+# group: a waiting run would be cancelled by a newer one, and a CI run is never cancelled.
 name: module-cards
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited, ready_for_review]
 permissions:
   contents: read
-concurrency:
-  group: module-cards-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
 jobs:
   module-cards:
     # A merge-queue batch PR carries no body of its own; each PR in it passed this check already.
@@ -30,6 +28,6 @@ jobs:
           BODY: ${{ github.event.pull_request.body }}
         run: |
           # The checkout is GitHub's test merge: its first parent is the base, so this is what the PR brings.
-          git diff --name-only --no-renames HEAD^1 HEAD > "$RUNNER_TEMP/changed"
+          git -c core.quotePath=false diff --name-only --no-renames HEAD^1 HEAD > "$RUNNER_TEMP/changed"
           printf '%s' "$BODY" > "$RUNNER_TEMP/body"
           python3 ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/module-cards.py pr "$RUNNER_TEMP/changed" "$RUNNER_TEMP/body"

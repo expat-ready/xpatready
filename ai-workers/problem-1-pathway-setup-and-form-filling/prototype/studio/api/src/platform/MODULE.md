@@ -10,7 +10,7 @@ Firms, staff and sign-in, settings, secrets, jobs, logs, complaints and message 
 **Entry points.** `/api/platform`: `GET me`, `POST session/local`, `POST staff/invitations`, `PATCH staff/:id/roles`, `POST staff/:id/deactivate`, `PUT staff/:id/credential`; `firmScope(firmId)`, `PlatformJobs` (`jobs.handle`), `CONSENT_PORT`, the guard of `/api/platform/*` and `/api/front-office/*`.
 
 **Invariants (set by).**
-- Every read and write of a platform or front-office table goes through `firmScope(firmId)`; another firm's row is "not found" (P-559, contracts §0.2).
+- Every read and write of a platform or front-office table goes through `firmScope(firmId)`; another firm's row is "not found" (PF-3, contracts §0.2; P-559).
 - Sized for about 100 firms in one process (P-562).
 - Two-step sign-in is required for every staff member (P-567).
 - The audit trail is append-only; demo reset deletes only demo lines, never a platform line (P-571 (1)).

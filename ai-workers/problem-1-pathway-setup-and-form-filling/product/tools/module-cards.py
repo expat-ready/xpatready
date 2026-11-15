@@ -44,7 +44,8 @@ def modules():
         card = os.path.relpath(os.path.realpath(rule), os.path.realpath(ROOT))
         text = open(rule, encoding="utf-8").read()
         fm = re.match(r"---\n(.*?)\n---\n", text, re.S)
-        pats = re.findall(r'^\s*-\s*"([^"]+)"\s*$', fm.group(1), re.M) if fm else []
+        key = re.search(r"^paths:[ \t]*\n((?:[ \t]+-.*(?:\n|\Z))+)", fm.group(1), re.M) if fm else None   # Claude Code reads only `paths:`
+        pats = re.findall(r'^\s*-\s*"([^"]+)"\s*$', key.group(1), re.M) if key else []
         if not pats:
             bad.append(f"{card}: no `paths:` list in its frontmatter"); continue
         n = text.count("\n") + (0 if text.endswith("\n") else 1)
@@ -67,7 +68,10 @@ def in_src(path):
 def tree():
     mods, bad = modules()
     files = subprocess.run(["git", "-C", ROOT, "ls-files", *SRC], capture_output=True, text=True, check=True).stdout.split()
+    linked = {c for c, _ in mods.values()}
     for f in files:
+        if f.startswith(SRC) and re.match(r"MODULE(\.[\w-]+)?\.md\Z", os.path.basename(f)) and f not in linked:
+            bad.append(f"{f}: a card no rule in {RULES}/ links to")
         o = owners(f, mods)
         if in_src(f) and len(o) != 1:
             bad.append(f"{f}: in {len(o)} modules ({', '.join(o) or 'none'}); exactly one card's `paths:` must claim it")
@@ -76,14 +80,17 @@ def tree():
 
 def pr(changed, body):
     mods, bad = modules()
-    reason = re.search(r"^\s*Card unchanged:[ \t]*(\S.*)$", body, re.M)
+    # One line, optionally a list item or bold: "Card unchanged: <why>"; the placeholder itself or punctuation is no reason.
+    reason = re.search(r"^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?Card unchanged:(?:\*\*)?[ \t]*(.*?)[ \t\r]*$", body, re.M)
+    if reason and (not re.search(r"\w", reason.group(1)) or re.fullmatch(r"<[^>]*>", reason.group(1))):
+        reason = None
     touched, unclaimed = {}, []
     cards = {c for c, _ in mods.values()}
     for f in changed:
         if f in cards:
             continue
         o = owners(f, mods)
-        if in_src(f) and not o:
+        if in_src(f) and not o and os.path.exists(os.path.join(ROOT, f)):   # a deleted or renamed-away file needs no claim
             unclaimed.append(f)
         for n in o:
             touched.setdefault(n, []).append(f)

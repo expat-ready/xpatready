@@ -10,7 +10,7 @@ The case screens: the case officer's cases, the client's questionnaire and the f
 **Entry points.** routes `/cases/*` and `/link` (`App.tsx`); API calls through `@/lib/api` to `/api/runtime/*` (card api-cases).
 
 **Invariants (set by).**
-- The server decides what each person may do; a screen only shows (STANDARDS §7, `lib/api.ts`).
+- The server decides what each person may do; a screen only shows (STANDARDS §6, `lib/api.ts`).
 - A person chosen on purpose who does not work on cases is never switched silently (P-456 (3), P-484).
 - A document's cost is shown before any read; live is never offered; replay is US$0 (P-110, P-175, P-295). Sample documents only (P-133).
 - Only values whose check digits pass collapse; each other value asks a tick or a correction (P-243).
