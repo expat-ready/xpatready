@@ -8,7 +8,7 @@
 
 **Lead B (4):** session titled "Lead B (4) · 15 Nov 07:42 IST" (transcript `8d7cbb10…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`. Push with `git push origin HEAD:refs/heads/lead-b-front-office` (allowed domain github.com). The Lead B (3) section below is an earlier record.
 
-**The current Lead and release holder** is **Lead 52** (`local_e0cd21a4…`) unless `tools/current-lead.sh` names a later one. Report to the current Lead. It copies our rows into BACKLOG, labels PRs, reads migrations and CI diffs (P-423), and takes questions to the founder one at a time.
+**The current Lead and release holder** is **Lead 53** (`local_cbc405f5…`, from 15 Nov ~09:5x IST; earlier Lead 52 `local_e0cd21a4…`) unless `tools/current-lead.sh` names a later one. Report to the current Lead. It copies our rows into BACKLOG, labels PRs, reads migrations and CI diffs (P-423), and takes questions to the founder one at a time.
 
 **What Lead B (4) did (all pushed; each item is in the log below):**
 * **Rows rev 16.7 to 16.11** (`design/lead-b-rows-2026-11-14.md`):
@@ -339,3 +339,4 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
 * 15 Nov 09:3x IST: **rows rev 16.11 (P-606)**: Done-when case naming rule (DWn), J-row pattern (join and walk), FO screens first, PF-0c port contract tests (CI guard), 19 started capabilities ranked with missing parts and J-rows, PF/FO pull order.
 * 15 Nov 09:3x IST: P-607 (the founder answered all nine; LMIA kept in R1, last). **Rows rev 16.12**: exact copy text for the existing-row edits (FO-3st pointer, FO-6/FO-7c/PF-4p firmAllows, PF-21rs Done when, PF-6, PF-23w, FO-3sr waits, P-607 decision lines) and the X additions.
 * 15 Nov 09:5x IST: FO-5f #1791 row questions answered (comment 6889086217); **rows rev 16.13** carries m-2 (expectedStatus on Signed offline) and the filed-version signer into FO-6 and FO-8 Done when.
+* 15 Nov 09:5x IST: the current Lead is now **Lead 53** (`local_cbc405f5…`), told what is waiting to be copied (revs 16.10 to 16.13 and Batch 5, unless Lead 52 already copied them).
