@@ -244,7 +244,7 @@ const seenRows = await shared.evaluate(() => (window as unknown as { seen: strin
 ok("FO-4 break S2: the Case Officer never sees the Case Manager's lead after the switch", seenRows.length > 0 && !seenRows.some((t) => t.includes(`${lena} Park`) && !t.includes(`${lena}b`)), seenRows.length);
 // Break S1: a session that expires with nobody clicking shows the sign-in card by itself.
 const expiring = await pageAs(null);
-await expiring.addInitScript((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 4000 })), tokens.O);
+await expiring.addInitScript((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 4000 })), await signIn(T.email));   // a fresh session: signing in again ends the older one
 await expiring.goto(`${BASE}/front-office/leads`);
 await expiring.getByRole("heading", { name: "Leads" }).waitFor({ timeout: 20_000 });
 await expiring.getByRole("heading", { name: "Sign in to your firm" }).waitFor({ timeout: 15_000 });
