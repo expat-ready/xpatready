@@ -1,0 +1,4 @@
+# STATE lines moved by Lead 58, 15 Nov 15:45 IST (word for word; size limit)
+
+🟩 **Switch of 15 Nov done (Lead 56, 13:4x IST):** new account Ultra, weekly **0%** (resets 17 Nov 10:29 IST). Check created (13,43). Standbys: Lead 57 `local_bef741db…`, Lead 58 `local_5bec64f9…`. Lead B (6) `local_1520b573…` in worktree `lead-b-front-office-238861`. FO-7a #1758 (quiet since 10:12 IST) restarted in the cloud (task_1ac28ecb). Active at the switch (pushed within 30 min): #1808 PF-6b, #1809 FO-5f2, #1810 BK-383, G-1+G-2, G-5 (old-account cloud lanes; restart any quiet over 90 min from its branch). #1805 merged 07:55 UTC; #1796, #1800, #1802 queued.
+🟦 **Account switch 15 Nov (13:2x IST, weekly 93%):** read `RESUME-ON-NEW-ACCOUNT.md` block "Switch of 15 Nov" first: in-flight list, first steps in order, the founder's start prompt.

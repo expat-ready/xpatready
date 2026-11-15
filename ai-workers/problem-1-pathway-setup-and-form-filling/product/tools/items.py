@@ -166,9 +166,11 @@ def cmd_ingest(args):
         extra = dict(re.findall(r"(?mi)^(owner|branch|next):\s*(\S.*?)\s*$", body))
         extra = {k.lower(): v for k, v in extra.items()}
         source = str(c.get("id") or "%s@%s" % (c.get("pr"), c["created_at"]))
+        source = re.sub(r"^https?://[^/]+/[^/]+/[^/]+/", "", source)  # no account name in records (AGENTS rule 5, push guard)
         it = find(items, iid)
         if it and (it.get("source") == source or parse_time(it["updated_at"]) >= t): continue  # seen, or older than the item
-        kv = dict(owner=extra.get("owner") or c.get("author") or "", branch=extra.get("branch") or c.get("branch") or "",
+        # owner is a role, never the GitHub login (AGENTS rule 5)
+        kv = dict(owner=extra.get("owner") or "lane", branch=extra.get("branch") or c.get("branch") or "",
                   pr=c.get("pr"), next_step=extra.get("next", ""))
         if it:
             if it["status"] == "open": updated += 1
