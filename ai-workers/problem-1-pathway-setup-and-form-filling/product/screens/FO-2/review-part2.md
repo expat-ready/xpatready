@@ -122,3 +122,17 @@ Journey score after the fixes: **9.5 / 10, a pass**.
 * Speed stays ½: the list still does about 120 ms of synchronous work for a firm with a year-old backlog.
 
 Verdict: Approve (982738fb6dde4f9bec63d8495fd329044fe364f5)
+
+## Re-review: diff only, `76e6a403..82a649d73` (Devin's three fixes)
+Read: `git diff 76e6a403 82a649d73`, in a clean worktree of my own. Code: `arrival.ts` +2, `leads.ts` +4. Tests: +10. Suite at 82a649d73: **113 passed, 0 failed**.
+
+What held:
+* **Closing note.** `close()` writes an add-only INTERNAL note "Closed (<label>): <note>" in the same transaction. Nothing is written when there is no note. `fo_note.text` is unbounded, so the prefix cannot overflow it. The test checks the note after Reopen.
+* **Assign with null (breaker m9).** Null is accepted only when the locked row has no active owner. The raw owner id still matches. An active owner who is not the expected one still gets 409 `STALE_OWNER`.
+* **One request id reused at once.** After the unique receipt key has serialised the two requests, `arrive()` throws 409 `REQUEST_REUSED` inside the second transaction, which rolls it back, so it writes nothing. The rule is limited to door MANUAL, so the public form stays silent.
+
+Minors (no fix asked):
+* The owner's active status comes from the staff map read just before the transaction (`leads.ts` `change`), the same window as the earlier m3.
+* The race test passes whichever of `add()`'s receipt lookup or `arrive()`'s check catches the reuse, so it cannot fail if only the new check is removed.
+
+Verdict: Approve (82a649d73eae7b0bc1a985d24f873797f1ef401a)
