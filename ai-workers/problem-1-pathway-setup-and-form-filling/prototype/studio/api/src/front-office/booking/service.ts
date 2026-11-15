@@ -140,6 +140,11 @@ const METHOD: Record<MailKind, InviteMethod> = { booked: "REQUEST", moved: "REQU
 /** A wall time in a zone for people: "Sunday, November 1, 2026 at 1:30 a.m. (America/Toronto)". */
 export const wallLabel = (at: Date, zone: string) => `${new Intl.DateTimeFormat("en-CA", { timeZone: zone, dateStyle: "full", timeStyle: "short" }).format(at)} (${zone})`;
 const MODE_WORDS: Record<Mode, string> = { VIDEO: "Video call", PHONE: "Phone call", IN_PERSON: "In person" };
+/** The zone a host's booking mail states its time in: the host's office zone (AG-04 v2.1 Part B rule 9, AG01-24; FO-3h,
+ *  QA-470). Offices with their own zones arrive with PF-18a, which extends this; today it is the firm's zone (PF-3). */
+export async function hostZone(db: Tx | PrismaClient, firmId: string, _staffId: string): Promise<string> {
+  return readSetting<string>(db, firmId, TIME_ZONE.key);
+}
 
 export class BookingService {
   private readonly limits: Limits;
@@ -493,9 +498,11 @@ export class BookingService {
     const verb = p.kind === "booked" ? "is booked" : p.kind === "moved" ? "has moved" : "is cancelled";
     if (p.to === "host") {
       // The host's copy holds only what runs the meeting (AG-4-42).
+      // The host's own office time, with the zone named (FO-3h, QA-470); the booker's zone is for the booker's mails.
       const host = await this.db.platformStaff.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.staffId }), select: { email: true, displayName: true } });
+      const hostWhen = wallLabel(b.startsAt, await hostZone(this.db, b.firmId, b.staffId));
       await this.ports.mail.send({ firmId: b.firmId, to: host.email, replyTo: firm.contactEmail, class: "SERVICE", templateKey: `booking.host_${p.kind}`,
-        subject: `Consultation ${verb}: ${wallLabel(b.startsAt, zone)}`, text: `${type.name} ${verb}: ${when}. ${how}.`, attachments: [invite({ name: host.displayName, email: host.email })] });
+        subject: `Consultation ${verb}: ${hostWhen}`, text: `${type.name} ${verb}: ${hostWhen}. ${how}.`, attachments: [invite({ name: host.displayName, email: host.email })] });
       return;
     }
     const person = b.personId ? await this.ports.arrival.contactOf(this.db, b.firmId, b.personId) : null;
@@ -544,7 +551,7 @@ export class BookingService {
     const host = await this.db.platformStaff.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.staffId }), select: { email: true } });
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: b.firmId }, select: { contactEmail: true } });
     await this.ports.mail.send({ firmId: b.firmId, to: host.email, replyTo: firm.contactEmail, class: "SERVICE", templateKey: "booking.attendance_ask",
-      subject: "Did they attend?", text: `Your consultation of ${wallLabel(b.startsAt, b.bookerTimeZone)} has ended. Please record whether the person attended (Attended or No-show).` });
+      subject: "Did they attend?", text: `Your consultation of ${wallLabel(b.startsAt, await hostZone(this.db, b.firmId, b.staffId))} has ended. Please record whether the person attended (Attended or No-show).` });
   }
 
   // ========================================================================================================= helpers
