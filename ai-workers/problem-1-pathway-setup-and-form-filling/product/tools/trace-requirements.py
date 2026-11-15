@@ -726,10 +726,14 @@ def cmd_ci(ctx, base):
     else:
         rel = os.path.relpath(os.path.abspath(ctx.backlog_path), subprocess.check_output(
             ["git", "-C", os.path.dirname(os.path.abspath(ctx.backlog_path)), "rev-parse", "--show-toplevel"], text=True).strip())
+        if subprocess.run(["git", "-C", PRODUCT, "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"],
+                          stdout=subprocess.DEVNULL).returncode != 0:
+            print(f"trace check: cannot read base {base} (not a file, not a commit)", file=sys.stderr)
+            return 2
         try:
             old_text = subprocess.check_output(["git", "-C", PRODUCT, "show", f"{base}:{rel}"], text=True, stderr=subprocess.DEVNULL)
         except subprocess.CalledProcessError:
-            old_text = ""
+            old_text = ""                                  # BACKLOG.md did not exist at the base
     old = parse_backlog(old_text)
     new_shaped = [r for r in ctx.r1 if ctx.rows.get(r, {}).get("shaped") and not old.get(r, {}).get("shaped")]
     bad = [r for r in new_shaped if not ctx.sources.get(r)]

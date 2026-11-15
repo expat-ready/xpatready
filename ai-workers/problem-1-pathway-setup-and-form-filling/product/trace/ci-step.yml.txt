@@ -1,0 +1,27 @@
+# TR-1 part (3): the CI check, for the Lead to add to .github/workflows/ci.yml (P-423; the builder does not edit .github/).
+# What it does: fails a records change that adds (or newly shapes) a Release 1 BACKLOG row with no `Source:`
+# (row text or trace/sources-seed.tsv). Records only: it never runs for KIND == code, so it never reds a product PR
+# (P-547 (4)). It also runs the tool's unit tests (standard library, under a second). US$0.
+# A BACKLOG-only change is KIND "notes" (job "ci"); a change that also touches a tool or guard is KIND "records"
+# (job "shard", part 1). One step for each, both below. Exit 1 prints ::error:: lines naming each row.
+#
+# ---- (a) job "ci", right after the step "notes check 2 of 2, decision impact (decision-impact.sh)" (same indent).
+#      HEAD there is the test merge pr-base.sh rebuilt on origin/main, so the merge base is today's main.
+      - name: notes check 3 of 3, a new shaped Release 1 row has a Source (TR-1, P-595; trace-requirements.py --ci)
+        if: env.MODE != 'same' && (env.KIND == 'notes')
+        run: |
+          python3 -m unittest "$P/tools/test_trace_requirements.py"
+          python3 "$P/tools/trace-requirements.py" --ci "$(git merge-base origin/main HEAD)"
+#
+# ---- (b) job "shard", right after the step "rules files, decision impact, graph, ... (part 1 only)" (same indent).
+#      RANGE is set by the step "the test merge on main" earlier in that job ("<base>..<head>").
+      - name: a new shaped Release 1 row has a Source (part 1 only, records; TR-1, P-595; trace-requirements.py --ci)
+        if: matrix.shard == 1 && env.KIND == 'records'
+        run: |
+          python3 -m unittest "$P/tools/test_trace_requirements.py"
+          python3 "$P/tools/trace-requirements.py" --ci "${RANGE%%..*}"
+#
+# Optional, later (not part of TR-1's Done when): add `python3 "$P/tools/trace-requirements.py" --render --check` to
+# the same two steps once the Lead re-renders at each records pass, so a stale generated block in MVP-CHECKLIST.md
+# is caught too. Proven locally on this branch: tools/test_trace_requirements.py
+# test_ci_fails_a_new_shaped_row_without_source_and_passes_with_one and test_ci_ignores_rows_outside_release_1_and_existing_rows.
