@@ -14,6 +14,7 @@ import { problemFromZod } from "../../contracts/programs.ts";
 import { caseView, checkValue, isClientField, OWN_LINK, pqrView, sectionAnswers, shapeOf, type Answer, type CaseView, type GroupAnswer, type Mode, type Participant, type Row } from "../../engine/runtime/case.ts";
 import { ownerOf, privateFrom, progressOf } from "../../engine/runtime/privacy.ts"; // C6.16
 import type { Snapshot } from "../../engine/snapshot.ts";
+import { withoutLeadIn } from "../../engine/options.ts"; // QA-383
 import { actorOf, Audit, CaseRead, Db, fail, need, RUNTIME_ACTORS, Workspace, type Actor } from "./core.ts";
 import { sameValue } from "./document-values.ts";
 import { refuseIfCaseRecorded } from "./submission-record.ts"; // C8.2: a recorded case keeps its people
@@ -486,8 +487,9 @@ export class Runtime {
     const a: Answer[] = answers.map((x) => { const src = x.sourceJson as { channel: string; actor: string; at: string; from?: string; recorded?: { by: string; at: string }; earlier_case?: string; earlier_reference?: string; reconfirmed_by?: string; reconfirmed_at?: string }; const first = src.from ? firsts.get(src.from) : undefined;
       // C6.19 (challenge B1, review M1): a copy from an earlier case keeps its status and its giver (channel, actor, and the
       // earlier answer's own `from`, so the origin is still who first gave it); where it came from is said apart.
+      // QA-383 (BK-383): an answer saved as "only option: Canada" before the fix reads as "Canada" in views, checks and fills.
       const copiedFrom = src.earlier_case && src.reconfirmed_by && src.reconfirmed_at ? { reference: src.earlier_reference ?? "", by: src.reconfirmed_by, at: src.reconfirmed_at } : null;
-      const one: Answer = { id: x.id, subjectId: keyOf.get(x.subjectId) ?? x.subjectId, field: x.canonicalFieldKey, rowKey: x.rowKey, value: x.valueJson, status: x.status as Answer["status"], channel: src.channel, actor: src.actor, at: src.at, origin: first ? { channel: first.channel, actor: first.actor, at: first.at } : null, ...(copiedFrom ? { copiedFrom } : {}) };
+      const one: Answer = { id: x.id, subjectId: keyOf.get(x.subjectId) ?? x.subjectId, field: x.canonicalFieldKey, rowKey: x.rowKey, value: withoutLeadIn(x.valueJson), status: x.status as Answer["status"], channel: src.channel, actor: src.actor, at: src.at, origin: first ? { channel: first.channel, actor: first.actor, at: first.at } : null, ...(copiedFrom ? { copiedFrom } : {}) };
       // C6.18 (P-244): a background answer, and whether an officer recorded it and the client has not re-confirmed it.
       if (!bg.has(one.field)) return one;
       // Who on the staff recorded it: this version, the version it confirms, or (re-confirmed) the one the client's names.

@@ -6,7 +6,7 @@ import { evalCondition, kkey, render, type Known, type Person, type Role } from 
 import { subjectKindOf, type Snapshot } from "../snapshot.ts";
 import { isFilingFact } from "../resolver.ts";
 import { checkFormat, snapshotFieldFormat, writesParts } from "../field-format.ts";
-import { namesNoValues } from "../options.ts";
+import { noteList, withoutLeadIn } from "../options.ts";
 import { z } from "zod";
 import { recordedDerivation } from "../../../p5/transforms.ts";
 import { gateOf, type GatePlacement } from "./gates.ts";
@@ -143,7 +143,8 @@ function shapeIn(s: Snapshot, field: string) {
   // choice field without an answer list may take (labels before any "=code").
   // QA-272: "(01..09)" names no values: on a release that kept it the answer stays open, never one choice called "01..09".
   // QA-355: nor does "(codes as listed in the inventory)" (namesNoValues): an added form's note never closes a shared fact.
-  const listed = ts.map((t) => /^code_list:\S+ \(([^)]*)\)/.exec(t)?.[1]).find((x) => x && !namesNoValues(x));
+  // QA-383 (noteList): "only option: Canada=511" offers "Canada", never "only option: Canada"; an "e.g." list offers nothing.
+  const listed = ts.map((t) => noteList(/^code_list:\S+ \(([^)]*)\)/.exec(t)?.[1])).find((x) => !!x);
   const choices = listed ? listed.split(",").map((x) => x.split("=")[0].trim()).filter(Boolean) : null;
   // C3.1 AT-10 (IRCC-F07, P-162): the form's own box limit for the whole answer (read from the PDF) counts too.
   const boxMax = snapshotFieldFormat(s as never, field).rules.filter((r) => r.check === "max_length" && !r.part).map((r) => Number(r.params.n)).filter((n) => n > 0);
@@ -165,7 +166,7 @@ export function optionsOf(s: Snapshot, field: string): { key: string; label: str
   const entries = (judgingMaps(s).field_maps as { entries: { fact?: string | null; transform?: string | null; option_map?: { map?: Record<string, string> } | null }[] }[]).flatMap((m) => m.entries.filter((e) => e.fact === field));
   const labelOf = (key: string) => {
     for (const e of entries) {
-      const list = /^code_list:\S+ \(([^)]*)\)/.exec(e.transform ?? "")?.[1];
+      const list = noteList(/^code_list:\S+ \(([^)]*)\)/.exec(e.transform ?? "")?.[1]); // QA-383: the lead-in is no label
       if (!list) continue;
       const pairs = list.split(";")[0].split(",").map((x) => x.trim()).filter(Boolean).map((x) => { const [l, c] = x.split("="); return { label: l.trim(), code: (c ?? l).trim() }; });
       const code = e.option_map?.map?.[key] ?? key;

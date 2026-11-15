@@ -167,7 +167,7 @@ async function api() {
   // transaction: the table is append-only and holds one current answer), confirmed as before. Set-up only.
   // Limit (review round 3, m1): both releases refuse more than 120 characters, so this step proves a refusal is shown and
   // blocks the tick, not that case B's release (rather than case A's) is the judge; the code passes case B's snapshot
-  // (offersOf). No honest example on the checkpoint tells them apart today (25 values on the 63 shared person facts).
+  // (offersOf). That is proven at the end of this part (cases A4, B4, V4: the current country of residence, since QA-383).
   const STALE = `IND: ${"stored under an older version of this field ".repeat(3).trim()}`;
   const staleId = crypto.randomUUID();
   sql(`begin; update client_canonical_answer set superseded_by_id = '${staleId}' where subject_id = '${pa}' and canonical_field_key = '${COUNTRY}' and row_key is null and superseded_by_id is null; insert into client_canonical_answer (id, workspace_id, party_id, subject_id, canonical_field_id, row_key, value_json, effective_at, canonical_field_key, status, verified_by, verified_at, source_json) select '${staleId}', workspace_id, party_id, subject_id, canonical_field_id, row_key, to_jsonb('${STALE}'::text), effective_at + interval '1 millisecond', canonical_field_key, status, verified_by, verified_at + interval '1 millisecond', source_json from client_canonical_answer where superseded_by_id = '${staleId}'; commit;`);
@@ -317,6 +317,22 @@ async function api() {
   const ro = fd ? await call("POST", `/runtime/cases/${d.id}/earlier-facts`, { earlierCase: a.id, take: [{ subject_id: pd, fact: fd.fact, from: fd.from_answer }], seen: { [`${pd}|${fd.fact}`]: null } }, OFFICER) : { status: 0, body: null };
   ok("C6.19 BR-7 fail: a case recorded as submitted copies nothing, in this capability's words", ro.status === 409 && /recorded as submitted to IRCC, so it is read-only: no facts are copied/.test(JSON.stringify(ro.body)) && copies(d.id) === 0, ro.body);
   ok("C6.19 BR-7: on a case not recorded, the officer re-confirms (case B above wrote its copies)", copies(b.id) > 0);
+
+  // Review round 3, m1 (on #1450), possible since QA-383 (BK-383): a copied value is judged by the release of the case it
+  // goes to, never the earlier case's. The current country of residence takes any country on the Visitor visa, and only
+  // Canada on With an LMIA (IMM 5710's map note "only option: Canada=511", read since BK-383 as the one choice "Canada";
+  // before, even "Canada" was refused there, so no step could tell the two releases apart). Case A4 holds "IND", valid on its
+  // own release: case B4 (With an LMIA) shows it refused in its own release's words; case V4 (Visitor visa) may use it.
+  const RES = "person.current_residence_country", N4 = `Client T ${run}`, a4 = await open(vv, "A4", N4), pa4 = principalOf(a4);
+  const saved4 = await answer(a4.id, pa4, RES, "IND");
+  await confirmAll(a4.id, pa4);
+  ok("setup: case A4's current country of residence \"IND\" is valid on the Visitor visa's release (no problem on it)", saved4.status === 200 && Array.isArray(saved4.body?.answer?.problems) && saved4.body.answer.problems.length === 0, saved4.body?.answer?.problems);
+  const resOn = async (x: Case) => ((await offerOf(x.id)).body as Offer).earlier.find((y) => y.case_id === a4.id)?.people.find((p) => p.subject_id === principalOf(x))?.facts.find((f) => f.fact === RES);
+  const b4 = await open(wp, "B4", N4), v4 = await open(vv, "V4", N4), onB4 = await resOn(b4), onV4 = await resOn(v4);
+  ok("C6.19 BR-2 fail (review round 3 m1): case A4's \"IND\" is refused on case B4 in B4's own release's words (\"Choose one of: Canada.\"), and cannot be ticked", onB4?.usable === false && onB4.value === "IND" && /Choose one of: Canada\./.test(JSON.stringify(onB4)) && !/only option/i.test(JSON.stringify(onB4)), onB4);
+  ok("C6.19 BR-2 (review round 3 m1): the same \"IND\" is usable on case V4, whose release (the Visitor visa, as case A4's) takes it: the judge is the receiving case's release", onV4?.usable === true && onV4.value === "IND", onV4);
+  const ticked4 = onB4 ? await call("POST", `/runtime/cases/${b4.id}/earlier-facts`, { earlierCase: a4.id, take: [{ subject_id: principalOf(b4), fact: RES, from: onB4.from_answer }], seen: { [`${principalOf(b4)}|${RES}`]: null } }, OFFICER) : { status: 0, body: null };
+  ok("C6.19 BR-2 fail (review round 3 m1): ticking it on case B4 anyway is refused; nothing copied", ticked4.status >= 400 && ticked4.status < 500 && copies(b4.id) === 0, { status: ticked4.status, body: ticked4.body });
 }
 
 pure();

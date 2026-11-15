@@ -3,6 +3,7 @@
 // closed set of steps, each matched exactly. Anything it does not recognise, a dependent code list, or a value the
 // box cannot hold goes to the hand-completion list (8.5) with its reason: never guessed, never truncated.
 // Finding (P5, D34): transformations, like conditions before AIW-D264, need a closed vocabulary in the contract.
+import { noteList } from "../studio/engine/options.ts"; // QA-383: one reader of a map note's list (a cycle by design: options.ts reads codeFor at call time only)
 
 export type Address = { po_box?: string; apt_unit?: string; street_number?: string; street_name?: string; city?: string; district?: string; province?: string; postal_code?: string; country?: string };
 export type Phone = { role?: string; type?: string; country_code?: string; number?: string; extension?: string };
@@ -367,7 +368,9 @@ export function runTransform(transform: string | undefined, value: unknown, box:
     // review", IMM 5707): that is what this step does (by hand), so the sentence orders nothing more.
     if ((m = /^code_list:[\w.]+(?: \(([^()]*(?:\([^()]*\)[^()]*)*)\))?(?:\.\s+((?:There is no option|This list has no)\b[^()]*\b(?:flag(?:ged)?|review)\b[^()]*))?$/.exec(s))) {
       const inline: Record<string, string> = {};
-      for (const pair of (m[1] ?? "").split(",")) { const q = /^\s*([^=|]+?)\s*=\s*(\w+)\s*$/.exec(pair); if (q) inline[q[1]] = q[2]; }
+      // QA-383 (BK-383, noteList): "only option: Canada=511" keys the table by "Canada", so "Canada" writes 511; an "e.g." list
+      // or a note naming no values gives no table, and the box's own printed list decides.
+      for (const pair of (noteList(m[1]) ?? "").split(",")) { const q = /^\s*([^=|]+?)\s*=\s*(\w+)\s*$/.exec(pair); if (q) inline[q[1]] = q[2]; }
       if (!choices(box).length && !Object.keys(inline).length) return hand("code list depends on another answer (dependent list); the form's own rules fill it");
       const code = box.options_scope ? dependentCode(String(v), choices(box)) : codeFor(String(v), box, Object.keys(inline).length ? inline : undefined) ?? (Object.keys(inline).length ? codeFor(String(v), box) : null);
       // BK-26: on a dependent list, a value not in the list for the other box's answer is refused in words, never written.
