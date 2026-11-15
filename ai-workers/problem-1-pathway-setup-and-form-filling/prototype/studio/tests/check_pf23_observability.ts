@@ -270,11 +270,11 @@ try {
   const scanned = scanCli([LOG]);
   ok("PF-23 pass (live log): the CI check passes on this copy's log", scanned.status === 0, scanned.stdout.trim());
   const ready = await get("/api/health/ready");
-  ok("PF-23 pass (ready): database answers → 200, status ok; the job queue named as not on this copy yet (PF-14), not counted", ready.status === 200 && ready.body?.status === "ok" && (ready.body?.checks as Record<string, Record<string, unknown>>)?.job_queue?.ok === null && ready.cache === "no-store", ready.body);
+  ok("PF-23 pass (ready): database answers → 200, status ok; the job queue counted and ok (PF-14's runner is the probe since PF-23w)", ready.status === 200 && ready.body?.status === "ok" && (ready.body?.checks as Record<string, Record<string, unknown>>)?.job_queue?.ok === true && ready.cache === "no-store", ready.body);
   psql(`alter database "${DB}" with allow_connections false`); cut = true;
   psql(`select pg_terminate_backend(pid) from pg_stat_activity where datname = '${DB}' and pid <> pg_backend_pid()`);
   const down = await get("/api/health/ready");
-  ok("PF-23 fail (ready): the database down → 503, failing names database, in words, never the connection string or the database's address (review m12)", down.status === 503 && (down.body?.failing as string[] | undefined)?.join() === "database" && /does not answer/.test(JSON.stringify(down.body)) && !/postgres(ql)?:\/\/|127\.0\.0\.1|54329|xr_studio/.test(JSON.stringify(down.body)), down.body);
+  ok("PF-23 fail (ready): the database down → 503, failing names exactly database and job_queue (pg-boss is on the same database; PF-23w), in words, never the connection string or the database's address (review m12)", down.status === 503 && [...((down.body?.failing as string[] | undefined) ?? [])].sort().join() === "database,job_queue" && /does not answer/.test(JSON.stringify(down.body)) && !/postgres(ql)?:\/\/|127\.0\.0\.1|54329|xr_studio/.test(JSON.stringify(down.body)), down.body);
   const liveDown = await get("/api/health/live");
   ok("PF-23 pass (live while the database is down): the process still answers 200", liveDown.status === 200);
   psql(`alter database "${DB}" with allow_connections true`); cut = false;
