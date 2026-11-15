@@ -68,3 +68,9 @@ qa re-scores each platform row within 4 h of its last part merging, and a fixed 
 * R1.11 after a green `skeleton.yml` on main;
 * R1.16 after QA-449's fix;
 * R1.5 after QA-476's fix.
+
+## Follow-up, 22:1x UTC 15 Nov (main 159bd9e45, app code = main dc4922f22)
+* **QA-476 closed.** Fix #1871: `check_qa476_signin_words.ts` passes 3/3 twice. The R1.12 walk passes 74/74 and shows the new words on the form. Moved to `history/qa-bugs-closed-2026-11-16-platform-group.md`.
+* **R1.12 still Works** on main's new head (the same walk).
+* **R1.11:** its Works is proven for af7df6d62's image. Since then #1848, #1818 and #1828 changed what goes into the image (api code, two migrations). qa asked the Lead on #1857 for a `skeleton.yml` dispatch on main's head, and re-confirms R1.11 from that run. Until QA-449 / B194 lands, each such merge needs one.
+* **Map row 109 (Complaints record):** PF-21v merged (#1848), but PF-21s (screens) has not: parts missing, no verdict (P-606).

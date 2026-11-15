@@ -1,0 +1,12 @@
+NOTICE:  database "xr_studio_qa476" does not exist, skipping
+web bundle does not match web/, contracts/, engine/ (missing, unstamped or built from other code; QA-181): rebuilding
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.
+isolated qa476 on http://localhost:4473 (xr_studio_qa476), stops itself in 15 min
+PASS  QA-476 control: the right firm key and work email sign in (200) — 200
+PASS  QA-476: both refusals are 401 with the same words (which half was wrong is not told) — {"wrongFirm":{"status":401,"detail":"No staff member signs in with that firm key and work email.","code":"UNKNOWN_STAFF"},"wrongMail":{"status":401,"detail":"No staff member signs in with that firm key and work email.","code":"UNKNOWN_STAFF"}}
+PASS  QA-476: the refusal names what the person typed (firm key and work email), not a name — "No staff member signs in with that firm key and work email."
+
+3/3 passed
+stopped qa476 (database and files removed; log in var/isolated-logs/qa476-api.log)
