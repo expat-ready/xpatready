@@ -73,6 +73,9 @@ function compile(zip: PizZip): Docxtemplater {
   }
 }
 
+/** How many "{" and "}" a text holds (a loop: a flood never allocates a match per brace). */
+function braceCount(t: string): number { let n = 0; for (let i = 0; i < t.length; i++) { const c = t.charCodeAt(i); if (c === 123 || c === 125) n++; } return n; }
+
 /** The placeholders a .docx uses, flattened: `client.name`, and for a loop its name and `<loop>.<field>` (`fees`,
  *  `fees.label`); inside a loop `{fees.label}` names the same field as `{label}` (review m4). Sorted, each once. Read from
  *  the text docxtemplater renders (break B-18: Word's own field codes, citation data and tracked deletions are not text
@@ -88,20 +91,28 @@ export function placeholdersOf(bytes: Uint8Array): string[] {
   const read = (name: string): string | undefined => { try { return zip.file(name)?.asText(); } catch { throw damaged(`part ${name.slice(0, 80)} cannot be read`); } };
   const types = read("[Content_Types].xml") ?? "";
   const overrides = [...types.matchAll(/<Override\b[^>]*>/g)].map((m) => ({ part: /PartName="\/([^"]+)"/.exec(m[0])?.[1], type: /ContentType="([^"]+)"/.exec(m[0])?.[1] ?? "" }));
-  const glossary = new Set(overrides.filter((o) => o.part && /\.glossary\+xml$/i.test(o.type)).map((o) => o.part!.toLowerCase()));
+  // Never rendered by docxtemplater, so never read: the glossary (B-23) and charts (review m-4: a brace in a chart title
+  // is not a placeholder).
+  const skipped = new Set(overrides.filter((o) => o.part && /\.glossary\+xml$|drawingml\.chart\+xml$/i.test(o.type)).map((o) => o.part!.toLowerCase()));
   const parts = new Set([...Object.keys(zip.files).filter((f) => /\.xml$/i.test(f)), ...overrides.map((o) => o.part).filter((p): p is string => !!p)]);
   const unescape = (t: string) => t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
   const runs = (xml: string, tag: string) => [...xml.matchAll(new RegExp(`<${tag}(?:\\s[^>]*)?>([^<]*)</${tag}>`, "g"))].map((m) => unescape(m[1])).join("");
   const TAG = /\{([^{}]*)\}/g;
   const texts: string[] = [];
-  let tags = 0;
+  let tags = 0, braces = 0;
+  const tooMany = () => new UnreadableDocx(`more than ${DOCX_MAX_TAGS} placeholders`, `This template has more than ${DOCX_MAX_TAGS} placeholders (or more than ${2 * DOCX_MAX_TAGS} { and } signs), the most one template may have.`, "TOO_MANY_PLACEHOLDERS");
   for (const name of parts) {
-    if (/(^|\/)\[Content_Types\]\.xml$|\.rels$|^customXml\//i.test(name) || /^word\/glossary\//i.test(name) || glossary.has(name.toLowerCase())) continue;
+    if (/(^|\/)\[Content_Types\]\.xml$|\.rels$|^customXml\//i.test(name) || /^word\/(glossary|charts)\//i.test(name) || skipped.has(name.toLowerCase())) continue;
     const xml = read(name);
     if (!xml) continue;
-    if (!/^docProps\//i.test(name) && /\{[^{}]*\}/.test(runs(xml, "m:t") + "\u0000" + runs(xml, "a:t"))) throw new UnreadableDocx("a placeholder in an equation, drawing or SmartArt", NOT_FILLED, "PLACEHOLDER_NOT_FILLED");
+    const drawn = /^docProps\//i.test(name) ? "" : runs(xml, "m:t") + "\u0000" + runs(xml, "a:t");
+    if (/\{[^{}]*\}/.test(drawn)) throw new UnreadableDocx("a placeholder in an equation, drawing or SmartArt", NOT_FILLED, "PLACEHOLDER_NOT_FILLED");
     const text = /^docProps\//i.test(name) ? unescape(xml.replace(/<[^>]*>/g, "")) : runs(xml, "w:t");
-    for (const _ of text.matchAll(TAG)) if (++tags > DOCX_MAX_TAGS) throw new UnreadableDocx(`more than ${DOCX_MAX_TAGS} placeholders`, `This template has more than ${DOCX_MAX_TAGS} placeholders, the most one template may have.`, "TOO_MANY_PLACEHOLDERS");
+    // The cap (B-19; review round 1 M-1): every brace docxtemplater would lex is counted, paired or not, so a flood of
+    // lone "{" never reaches the compile. A placeholder has two braces: at most twice the cap.
+    braces += braceCount(text) + braceCount(drawn);
+    if (braces > 2 * DOCX_MAX_TAGS) throw tooMany();
+    for (const _ of text.matchAll(TAG)) if (++tags > DOCX_MAX_TAGS) throw tooMany();
     texts.push(text);
   }
   compile(zip);   // a malformed tag is refused here, after the cheap checks above

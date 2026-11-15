@@ -824,8 +824,9 @@ try {
 
   // Item 12 (B-8): the shared upload filter names no size; each route's own message names its number.
   const mainLine = readFileSync(join(STUDIO, "api", "src", "main.ts"), "utf8").split("\n").find((l) => /FO-5f item 12/.test(l)) ?? "";
-  ok("FO-5f pass (B-8): the shared upload filter's single-file message is \"This file is too large for this upload.\"", mainLine.includes('"This file is too large for this upload."'), mainLine);
-  ok("FO-5f fail (B-8): that message names no size (no MB, no number)", !/\d+\s*MB|\$\{mb\}/.test(mainLine.replace(/`Add at most \$\{files\} files[^`]*`/, "")), mainLine);
+  ok("FO-5f pass (B-8): the shared upload filter's single-file message is \"This file is too large for this upload.\"", mainLine.includes(': "This file is too large for this upload.");'), mainLine);
+  ok("FO-5f fail (B-8): it names no size; only the intake and the form library (whose 25 MB limit this is) keep their number (review m-1)",
+    /\? `A file is larger than \$\{mb\} MB\. Nothing was added; add files up to \$\{mb\} MB each\.` : "This file is too large for this upload\."\);/.test(mainLine) && mainLine.includes("(intake|library"), mainLine);
   ok("FO-5f pass (B-8): the routes' own limits name their numbers (template 5 MB, signed paper 10 MB)",
     await fails(() => svc.uploadTemplate(R, { name: "Big" }, { bytes: docx(GOOD).bytes, size: 5 * 1024 * 1024 + 1 }), 422, /at most 5 MB/)
     && await fails(async () => so(svc, R, (await svc.draft(R, newClient(12, "Big Paper Client"), { templateId: tplA.id })).id, { reason: "x" }, { bytes: pdf().bytes, size: OFFLINE_PDF_MAX_BYTES + 1 }), 422, /at most 10 MB/));
@@ -841,6 +842,75 @@ try {
   ok("FO-5f pass (B-15): the signed-paper download sends Content-Disposition: attachment and X-Content-Type-Options: nosniff",
     /^attachment;/.test(res13.headers["content-disposition"] ?? "") && res13.headers["x-content-type-options"] === "nosniff" && Buffer.isBuffer(res13.body), res13.headers);
   ok("FO-5f fail (B-15): it is never served as HTML or inline", res13.ct === "application/pdf" && !/inline/i.test(res13.headers["content-disposition"] ?? ""), { ct: res13.ct, h: res13.headers });
+
+  // ------------------------------------------------------------- FO-5f review round 1 (review.md, break-report.md)
+  // Review M-1: lone braces count toward the cap before the compile (a 2 KB file of "{" ran the API out of memory).
+  for (const [n, label] of [[300_000, "300,000"], [1_500_000, "1.5 million"]] as const) {
+    const t = Date.now();
+    ok(`FO-5f fail (review M-1): ${label} lone "{" are refused before the compile (TOO_MANY_PLACEHOLDERS), in under 2 s`,
+      await fails(() => svc.uploadTemplate(R, { name: `Lone ${n}` }, zipOf({ "word/document.xml": W(BASE + P("{".repeat(n))) })), 422, /more than 2000 placeholders.*TOO_MANY_PLACEHOLDERS/) && Date.now() - t < 2000, `${Date.now() - t} ms`);
+  }
+  ok("FO-5f fail (review M-1): 4001 braces (one over twice the cap) are refused, paired or not", await fails(() => svc.uploadTemplate(R, { name: "Braces 4001" }, zipOf({ "word/document.xml": W(P("{client.name}".repeat(1999)) + P("{#fees}{/fees}") + P("}")) })), 422, /TOO_MANY_PLACEHOLDERS/));
+  ok("FO-5f pass (review M-1): 4000 braces (2000 placeholders) are accepted", (await svc.uploadTemplate(R, { name: "Braces 4000" }, zipOf({ "word/document.xml": W(P("{client.name}".repeat(1998)) + P("{#fees}{/fees}")) }))).version === 1);
+  // Review m-4: a chart is never rendered, so a brace in a chart title is not a refusal; SmartArt still is.
+  const CHART = `<Override PartName="/word/charts/chart1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`;
+  ok("FO-5f pass (review m-4): a chart titled \"{Revenue}\" is accepted and not listed", !(await svc.uploadTemplate(R, { name: "Chart" }, zipOf({ "word/document.xml": W(BASE), "word/charts/chart1.xml": `<?xml version="1.0"?><c:chartSpace xmlns:c="c" xmlns:a="a"><a:p><a:r><a:t>{Revenue}</a:t></a:r></a:p></c:chartSpace>` }, CHART))).placeholders.includes("Revenue"));
+  ok("FO-5f fail (review m-4): the same text in SmartArt is still refused", await fails(() => svc.uploadTemplate(R, { name: "SmartArt 2" }, zipOf({ "word/document.xml": W(BASE), "word/diagrams/data1.xml": `<?xml version="1.0"?><dgm:dataModel xmlns:dgm="d" xmlns:a="a"><a:p><a:r><a:t>{Revenue}</a:t></a:r></a:p></dgm:dataModel>` })), 422, /not filled/));
+
+  // Review M-2 (break M-1): Signed offline on an earlier version names that version's representative and signer.
+  // ("Everyone sees all" is off here, since item 11.)
+  const m2 = await svc.draft(R, newClient(21, "People Client"), { templateId: tplA.id, representativeStaffId: R.staffId, fees: [{ label: "Fee", amountMinor: 100000 }] });   // v1: user-R represents
+  await sd(R, m2.id);
+  await ed(svc, R, m2.id, { representativeStaffId: T.staffId });   // v2: user-T represents
+  await sd(R, m2.id);
+  ok("FO-5f pass (review M-2): before filing, user-T (v2's representative) reads the retainer", await svc.read(T, m2.id).then(() => true, () => false));
+  const m2d = await so(svc, R, m2.id, { signedVersion: "1", reason: "Signed on paper on version 1" }, pdf());
+  const a2 = JSON.parse(sql(API, `select detail::text from audit_event where entity_key = '${m2.id}' and action = 'retainer.signed_offline'`) || "{}");
+  ok("FO-5f pass (review M-2): the filed copy of version 1 names user-R as the representative, on the record and in the audit",
+    m2d.version.n === 3 && m2d.representativeStaffId === R.staffId && a2.representativeStaffId === R.staffId && a2.signedVersion === 1 && m2d.version.values["representative.staff_id"] === R.staffId, { rep: m2d.representativeStaffId, a2 });
+  ok("FO-5f fail (review M-2): user-T, on no signed paper, no longer reads the signed retainer (404)", await fails(() => svc.read(T, m2.id), 404));
+  // A version made before FO-5f records no ids: filed only when it names the same people as the current version.
+  const mvOf = svc as unknown as { mergeValues: (...a: unknown[]) => Promise<Record<string, unknown>> };
+  const realMv = mvOf.mergeValues;
+  mvOf.mergeValues = async function (this: unknown, ...a: unknown[]) { const v = await realMv.apply(this, a); delete v["signer.person_id"]; delete v["representative.staff_id"]; return v; };
+  const lg = await svc.draft(R, newClient(22, "Legacy Client"), { templateId: tplA.id, representativeStaffId: R.staffId, fees: [{ label: "Fee", amountMinor: 100 }] });
+  await ed(svc, R, lg.id, { representativeStaffId: T.staffId });
+  const lg2 = await svc.draft(R, newClient(23, "Legacy Same Client"), { templateId: tplA.id, representativeStaffId: R.staffId, fees: [{ label: "Fee", amountMinor: 100 }] });
+  await ed(svc, R, lg2.id, { fees: [{ label: "Fee", amountMinor: 200 }] });
+  mvOf.mergeValues = realMv;
+  ok("FO-5f fail (review M-2): a version without recorded ids that names another representative → 409 NOT_SIGNABLE, nothing filed",
+    await fails(() => so(svc, R, lg.id, { signedVersion: "1", reason: "x" }, pdf()), 409, /another signer or representative.*NOT_SIGNABLE/) && (await svc.read(R, lg.id)).status === "DRAFT");
+  ok("FO-5f pass (review M-2): a version without recorded ids that names the same people is filed (version 3, user-R)",
+    await (async () => { const x = await so(svc, R, lg2.id, { signedVersion: "1", reason: "x" }, pdf()); return x.version.n === 3 && x.representativeStaffId === R.staffId; })());
+  // Review m-2: the version signed on paper says so; only the newer versions say "Not signed".
+  ok("FO-5f pass (review m-2): version 1 (signed on paper) says \"Signed on paper; filed as version 3\"", m2d.versions[0].note === "Signed on paper; filed as version 3", m2d.versions);
+  ok("FO-5f fail (review m-2): version 2 says \"Not signed\", and the signed version is never labelled so", m2d.versions[1].note === "Not signed" && m2d.versions[0].note !== "Not signed");
+
+  // Review m-5: the copy path re-checks the retainer under its lock (a change between the read and the transaction → 409).
+  let hook: (() => void) | null = null;
+  const hooked = { put: async (f: string, k: string, b: Uint8Array, c: string) => { if (hook && /\/v\d+-[0-9a-f]{12}\.docx$/.test(k)) { const h = hook; hook = null; h(); } return store.put(f, k, b, c); }, get: (f: string, k: string) => store.get(f, k), exists: (f: string, k: string) => store.exists(f, k) };
+  const svcH = new Retainers(db, hooked as never, clock);
+  const lk = await svc.draft(R, newClient(24, "Lock Client"), { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 100 }] });
+  await ed(svc, R, lk.id, { fees: [{ label: "Fee", amountMinor: 200 }] });
+  await sd(R, lk.id);
+  hook = () => sql(API, `update fo_retainer set status = 'VIEWED' where id = '${lk.id}'`);   // the client opens it while the copy is stored
+  ok("FO-5f fail (review m-5): the client viewed it between the read and the transaction → 409 CHANGED, nothing filed",
+    await fails(() => so(svcH, R, lk.id, { signedVersion: "1", reason: "x" }, pdf()), 409, /CHANGED/) && (await svc.read(R, lk.id)).status === "VIEWED" && (await svc.read(R, lk.id)).versions.length === 2);
+  ok("FO-5f pass (review m-5): from the page showing that state, the copy is filed", (await so(svc, R, lk.id, { signedVersion: "1", reason: "x" }, pdf())).version.n === 3);
+
+  // Review m-3: a fault on a download stays a fault (500), never "No such file".
+  const brokenDb = new Proxy(db, { get: (t, k) => (k === "foRetainer" ? { findFirst: async () => { throw new Error("connection lost"); } } : Reflect.get(t, k)) });
+  const svcB = new Retainers(brokenDb as never, store, clock);
+  ok("FO-5f fail (review m-3): a database fault during the download check is not answered \"No such file\" (404)",
+    await svcB.assertFileVisible(R, k11).then(() => false, (e) => !(e instanceof Error && "getStatus" in e) && /connection lost/.test(String(e))));
+  ok("FO-5f pass (review m-3): a refusal is still \"No such file\" (404)", await fails(() => svc.assertFileVisible(T, k11), 404, /No such file/));
+
+  // Break m-3: the stale message reads the right way round; break m-4: plain digits only.
+  ok("FO-5f fail (break m-3): a page naming version 5 when the agreement is at version 1 → \"at version 1, not version 5\"", await fails(() => svc.withdraw(R, lk.id, { expectedVersion: 5, expectedStatus: "SIGNED_OFFLINE", reason: "x" }), 409, /at version 3, not version 5/));
+  ok("FO-5f fail (break m-4): signedVersion \"01\" and expectedVersion \"02\" are refused at the field (422)",
+    await fails(async () => svc.signedOffline(R, (await svc.draft(R, newClient(25, "Digits Client"), { templateId: tplA.id })).id, { expectedVersion: "01", reason: "x" }, pdf()), 422, /expectedVersion/)
+    && await fails(async () => svc.signedOffline(R, (await svc.draft(R, newClient(26, "Digits Two Client"), { templateId: tplA.id })).id, { expectedVersion: "1", signedVersion: "01", reason: "x" }, pdf()), 422, /signedVersion/));
+  ok("FO-5f pass (break m-4): expectedVersion \"1\" (plain) is accepted", (await so(svc, R, (await svc.draft(R, newClient(27, "Digits Three Client"), { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 1 }] })).id, { reason: "x" }, pdf())).status === "SIGNED_OFFLINE");
 
   // Routes (PF-4's guard): every route declares its agent/retainer:* key.
   const keysOf = (m: string) => (Reflect.getMetadata(PLATFORM_ACCESS, (RetainersController.prototype as unknown as Record<string, object>)[m]) as { keys?: string[] } | undefined)?.keys?.join(",");

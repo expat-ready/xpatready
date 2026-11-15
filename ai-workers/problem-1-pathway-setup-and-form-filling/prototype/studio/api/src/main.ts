@@ -198,7 +198,7 @@ class ProblemErrors implements ExceptionFilter {
         if (/\/form-copies\/[^/]+\/validated\/?$/.test(String(host.switchToHttp().getRequest()?.path ?? "")))
           return send(413, "Too large", many ? "Send only the one validated PDF you saved from Adobe. Nothing was recorded." : `The file is larger than ${MAX_VALIDATED_MB} MB: send the validated PDF of this form. Nothing was recorded.`);
         const files = MAX_FILES, mb = MAX_BYTES / 1024 / 1024;
-        return send(413, "Too large", many ? `Add at most ${files} files at a time. Nothing was added.` : "This file is too large for this upload.");   // FO-5f item 12 (B-8): names no size; each route words its own limit
+        return send(413, "Too large", many ? `Add at most ${files} files at a time. Nothing was added.` : /^\/api\/(intake|library\/forms\/upload)\/?$/.test(String(host.switchToHttp().getRequest()?.path ?? "")) ? `A file is larger than ${mb} MB. Nothing was added; add files up to ${mb} MB each.` : "This file is too large for this upload.");   // FO-5f item 12 (B-8): the shared message names no size; the intake and the form library (whose limit this is) keep theirs
       }
       if (typeof body === "object" && body.detail) return send(status, body.title ?? "Request refused", body.detail, body);
       const detail = typeof body === "object" ? (Array.isArray(body.message) ? body.message.join("; ") : body.message ?? e.message) : String(body);
