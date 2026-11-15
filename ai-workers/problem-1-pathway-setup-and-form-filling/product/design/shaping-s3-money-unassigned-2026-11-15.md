@@ -292,6 +292,6 @@ Items marked **founder** depart from the team's requirements, so they go to the 
 | 85 | Data-request register with legal hold | Platform | PF-21b, PF-21d, PF-21rs (existing) + CS-P1 | Shaped (checklist line stale) |
 | 86 | Breach register with firm notices | Platform | PF-21c, PF-21rs (existing) | Shaped (checklist line stale) |
 
-**Count:** 31 new rows (FO-7m conditional on Q1), plus 1 Done-when amendment (PF-21rs). Size: about 40-45 small PRs. That is a Hypothesis; the 19 Nov count settles it.
+**Count:** 28 new rows (11 money, FO-7m only on Q1; 5 file rail; 6 case-side documents; 5 reports; 1 case-side erasure), plus 1 Done-when amendment (PF-21rs). Every AG and SA id cited was checked by script to exist in `domain/requirements-2026-11-02/`. Size: about 40-45 small PRs. That is a Hypothesis; the 19 Nov count settles it.
 
 **Rows that can start now on port fakes (P-576, P-599):** FO-7s0 (concept), PF-F4, PF-F1 (after its §1 entry), PF-R1. The rest follow their waits.
