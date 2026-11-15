@@ -152,7 +152,7 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 ### K. Government forms, the pathway set-up, AI on top
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
-| 80 | IRCC forms per applicant from one set of answers | Case side | C7.1, C7.8 back to Partial (QA-383; qa #1833); C7.2 Partial; BK-10, BK-16, BK-22 to BK-24 | Merged |
+| 80 | IRCC forms per applicant from one set of answers | Case side | C7.1, C7.8 Partial, ready for Works (QA-383 closed 16 Nov, qa #1858; nightly re-test dispatched 01:0x IST); C7.2 Partial; BK-10, BK-16, BK-22 to BK-24 | Merged |
 | 82 | Readiness check; staff approval per form | Case side | C7.6, C7.10, C8.3 Works | qa Works\* |
 | 83 | Conditional questions and fields | Configurator | C4.4 Works | qa Works\* |
 | 84 | Pathway set-up: hierarchy, versioned releases, cited rules | Configurator | M2 60/60 Works | qa Works\* |
