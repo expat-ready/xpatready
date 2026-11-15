@@ -17,7 +17,10 @@ import { EVENT } from "../ports/events.ts";
 import { FileKeyTaken, sha256Hex } from "../ports/files.ts";
 import { FileLinks, LocalFiles } from "../api/src/front-office/files.ts";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
-import { DOCX, buildDocx, placeholdersOf } from "../api/src/front-office/retainers/docx.ts";
+import { DOCX, DocxRender, buildDocx, placeholdersOf, starterFrame } from "../api/src/front-office/retainers/docx.ts";
+import { runContract } from "../ports/contracts/contract.ts";
+import { documentRenderPortContract } from "../ports/contracts/document-render-port.contract.ts";
+import { filesPortContract } from "../ports/contracts/files-port.contract.ts";
 import { checkPlaceholders } from "../api/src/front-office/retainers/placeholders.ts";
 import { RetainersController } from "../api/src/front-office/retainers/routes.ts";
 import { OFFLINE_PDF_MAX_BYTES, Retainers } from "../api/src/front-office/retainers/service.ts";
@@ -333,6 +336,10 @@ try {
   const pdf = (s = "signed") => { const b = Buffer.from(`%PDF-1.4\n% ${s}\n%%EOF\n`); return { bytes: new Uint8Array(b), size: b.length }; };
   const audits = (key: string) => Number(sql(API, `select count(*) from audit_event where entity_key = '${key}'`));
   const events = (type: string, key: string) => Number(sql(API, `select count(*) from module_event where type = '${type}' and subject_id = '${key}'`));
+
+  // PF-0c: the real FilesPort (a fresh scratch folder each time) and DocumentRenderPort run their shared contracts.
+  await runContract(filesPortContract, "LocalFiles", () => new LocalFiles(join(WORK, "pf0c-files", crypto.randomUUID())), ok);
+  await runContract(documentRenderPortContract, "DocxRender", () => ({ render: new DocxRender(async (k) => (k === "retainer.starter" ? starterFrame() : null)), template: "retainer.starter", data: { lines: [{ text: "Client A", n: 1 }], firm: "sample-firm" }, reordered: { firm: "sample-firm", lines: [{ n: 1, text: "Client A" }] }, other: { lines: [{ text: "Client B", n: 1 }], firm: "sample-firm" }, text: (b: Uint8Array) => new PizZip(b).file("word/document.xml")?.asText().replace(/<[^>]+>/g, "") ?? "" }), ok);
 
   // Templates (BR-1).
   const GOOD = ["# Retainer", "Client: {client.name} ({client.email})", "Representative: {representative.name}", "{#fees}", "{label}: {amount} ({when}{due_on})", "{/fees}", "Total {fees.total}"];

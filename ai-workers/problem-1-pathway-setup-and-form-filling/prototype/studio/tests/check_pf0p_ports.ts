@@ -10,13 +10,19 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ZodError } from "zod";
-import { auditEvent, PLATFORM_AUDIT_WORKSPACE } from "../api/src/platform/audit/audit-event.ts";
+import { AuditEventAdapter, auditEvent, PLATFORM_AUDIT_WORKSPACE } from "../api/src/platform/audit/audit-event.ts";
 import { AuditEntry, AuditFailure, fakeAudit } from "../ports/audit.ts";
 import { FAKE_NOW, FakeClock, systemClock } from "../ports/clock.ts";
 import { FileKeyTaken, fakeFiles } from "../ports/files.ts";
 import { cronMatches, fakeJobs, parseCron, type JobRun } from "../ports/jobs.ts";
 import { fakeMail, MailMessage } from "../ports/mail.ts";
 import { fakeRender } from "../ports/render.ts";
+import { runContract } from "../ports/contracts/contract.ts";
+import { auditPortContract } from "../ports/contracts/audit-port.contract.ts";
+import { clockPortContract } from "../ports/contracts/clock-port.contract.ts";
+import { documentRenderPortContract } from "../ports/contracts/document-render-port.contract.ts";
+import { filesPortContract } from "../ports/contracts/files-port.contract.ts";
+import { jobPortContract, type JobHarness } from "../ports/contracts/job-port.contract.ts";
 import { FAKE_FIRM_ID, fakeStaff, StaffContext, staffActor } from "../ports/staff.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), PORTS = join(STUDIO, "ports"), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
@@ -226,6 +232,25 @@ const platform = readFileSync(join(SCHEMA, "platform.prisma"), "utf8");
 ok("slots pass: PlatformFirm and PlatformStaff each hold the six slot lines, one per area, separated by blank lines", slotProblems(platform, ["PlatformFirm", "PlatformStaff"]).length === 0, slotProblems(platform, ["PlatformFirm", "PlatformStaff"]));
 ok("slots fail: two slot lines with no blank line between them, or a missing one, are caught", slotProblems(platform.replace("  // back-relation slot: money (FO-7a)\n\n", "  // back-relation slot: money (FO-7a)\n"), ["PlatformFirm"]).length === 1 && slotProblems(platform.replace("  // back-relation slot: register (PF-21)\n", ""), ["PlatformFirm"]).length === 1);
 
+// ------------------------------------------------------------------- PF-0c: the shared contracts, run by each fake here
+const fakeJobsHarness = (): JobHarness => { const clock = new FakeClock(), jobs = fakeJobs(clock); return { jobs, ns: "fake", now: () => clock.now(), settle: async (done) => { await jobs.runDue(); return done(); } }; };
+await runContract(jobPortContract, "fakeJobs", fakeJobsHarness, ok);
+await runContract(filesPortContract, "fakeFiles", () => fakeFiles(), ok);
+await runContract(clockPortContract, "FakeClock", () => new FakeClock(), ok);
+await runContract(clockPortContract, "systemClock", () => systemClock, ok);
+await runContract(auditPortContract, "fakeAudit", () => { const a = fakeAudit(); return { audit: a, commit: (fn) => a.transaction(fn), rollback: (fn) => a.transaction(async (tx) => { await fn(tx); throw new Error("roll back"); }).catch(() => undefined), lines: async (firm, prefix) => a.entries.filter((e) => e.firmId.toLowerCase() === firm && e.entityKey.startsWith(prefix)) }; }, ok);
+await runContract(documentRenderPortContract, "fakeRender", () => ({ render: fakeRender({ templates: ["retainer.standard"] }), template: "retainer.standard", data: { client: { id: "p-1" }, fee: 1500 }, reordered: { fee: 1500, client: { id: "p-1" } }, other: { client: { id: "p-1" }, fee: 1600 }, text: (b: Uint8Array) => new TextDecoder().decode(b) }), ok);
+{
+  // DW3: a JobPort fake that ignores the key (it queues each enqueue under a fresh one), so a keyed job runs twice.
+  const wrongJobs = (): JobHarness => {
+    const h = fakeJobsHarness(), inner = h.jobs;
+    let n = 0;
+    return { ...h, jobs: { enqueue: (name, p, o) => inner.enqueue(name, p, { ...o, key: `${o.key}#${++n}` }), schedule: (name, at, p, o) => inner.schedule(name, at, p, o), cancel: (k) => inner.cancel(k), recurring: (name, c, z) => inner.recurring(name, c, z), handle: (name, fn) => inner.handle(name, (j) => fn({ ...j, key: j.key.replace(/#\d+$/, "") })) } };
+  };
+  const wrong = await runContract(jobPortContract, "wrongJobsFake", wrongJobs, null);
+  ok("PF-0c DW3 fail: a deliberately wrong JobPort fake that runs a keyed job twice fails the contract (case: a keyed job runs once)", wrong.failed.some((c) => c.startsWith("a keyed job runs once")) && wrong.passed.length > 0, wrong);
+}
+
 // --------------------------------------------------------------------------------- the real adapter on a scratch database
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]);
 execFileSync(join(BIN, "createdb"), [...PG, DB]);
@@ -288,6 +313,9 @@ try {
     ]);
     ok("adapter fail: when the first writer rolls back, the waiting second still commits its line (one line, one workspace)", firstFails[0].status === "rejected" && firstFails[1].status === "fulfilled" && lines() === 1 && sql(`select count(*) from audit_event where entity_key = 'race-d'`) === "1", firstFails.map((r) => r.status === "rejected" ? String(r.reason).slice(0, 200) : "ok"));
   } finally { await db2.$disconnect(); }
+
+  // PF-0c: the interim adapter runs AuditPort's shared contract (lines read back from audit_event by detail.firmId).
+  await runContract(auditPortContract, "AuditEventAdapter", () => ({ audit: new AuditEventAdapter(), commit: (fn) => db.$transaction((tx) => fn(tx)), rollback: (fn) => db.$transaction(async (tx) => { await fn(tx); throw new Error("roll back"); }).catch(() => undefined), lines: async (firm, prefix) => (await db.auditEvent.findMany({ where: { workspaceId: (await db.workspace.findUnique({ where: { key: PLATFORM_AUDIT_WORKSPACE } }))?.id ?? "00000000-0000-4000-8000-000000000000", entityKey: { startsWith: prefix }, detail: { path: ["firmId"], equals: firm } }, orderBy: [{ at: "asc" }, { entityKey: "asc" }] })).map((e) => ({ actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey ?? "", summary: e.summary })) }), ok);
 } finally {
   await db.$disconnect();
   execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]);
