@@ -3,8 +3,8 @@
 // cached, no case or person data, never a model call (US$0).
 //  * live: the process answers (200, always, while it runs).
 //  * ready: the database answers within its ping limit and the job queue is well; 503 naming each part that is not,
-//    in words. The job queue is PF-14's: it provides JOB_QUEUE_PROBE; until it does, ready names the queue as "not on
-//    this copy yet" and does not count it (ok: null).
+//    in words. The job queue is PF-14's: its runner provides JOB_QUEUE_PROBE (since PF-23w); a copy without it names
+//    the queue as "not on this copy yet" and does not count it (ok: null).
 // M1's GET /api/health (api/src/health.ts: database, disk, fill queue, commit) stays as it is.
 import { Controller, Get, Inject, Injectable, Optional, Res } from "@nestjs/common";
 import { Db, OpenRead } from "../../core.ts";
