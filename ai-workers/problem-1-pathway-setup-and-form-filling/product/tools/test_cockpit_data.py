@@ -1111,5 +1111,107 @@ class EarlyBandAndLeading(unittest.TestCase):
             self.assertIn('"' + k + '"', html)
 
 
+BROWSER_CHECK = r"""// board v61 scripted check: click-only info buttons on every tab, 375 px, axe light and dark
+const { chromium } = require('playwright');
+const fs = require('fs');
+const [,, url, axePath, shot] = process.argv;
+const axe = fs.readFileSync(axePath, 'utf8');
+const TABS = ['overview', 'caps', 'team', 'factory', 'launch', 'library', 'details'];
+const isOn = (p) => p.$eval('#tip', (e) => e.classList.contains('on'));
+(async () => {
+  const b = await chromium.launch(); const fails = []; const out = [];
+  for (const scheme of ['light', 'dark']) for (const w of [1280, 375]) {
+    const p = await b.newPage({ viewport: { width: w, height: 800 }, colorScheme: scheme });
+    await p.goto(url); await p.waitForSelector('.tabs button');
+    const tag = `${scheme} ${w}`;
+    if (await p.$('#srcbar')) fails.push(`${tag}: source bar still there`);
+    for (const t of TABS) {
+      await p.click(`.tabs button[data-tab="${t}"]`); await p.waitForTimeout(150);
+      const panel = `.tabpanel[data-panel="${t}"]`;
+      const r = await p.evaluate((panel) => {
+        const P = document.querySelector(panel), vis = (e) => e.getClientRects().length > 0;
+        const all = [...document.querySelectorAll('.ib')];
+        const marked = [...document.querySelectorAll('[data-tip],[data-info]')].filter((e) => (P.contains(e) || !e.closest('.tabpanel')) && vis(e));
+        const noBtn = marked.filter((e) => {
+          if (e.hasAttribute('data-nm') && e.parentElement.closest('[data-tip],[data-info]')) return false;
+          return !all.some((x) => (x._els || []).includes(e));
+        }).map((e) => e.outerHTML.slice(0, 90));
+        return { titles: document.querySelectorAll('#body [title], #strip [title], svg title').length,
+                 btns: P.querySelectorAll('.ib').length, noBtn, sw: document.documentElement.scrollWidth, iw: innerWidth,
+                 bad: all.filter((x) => x.tagName !== 'BUTTON' || !x.getAttribute('aria-label') || !x.hasAttribute('aria-expanded')).length };
+      }, panel);
+      out.push(`${tag} ${t}: ${r.btns} buttons`);
+      if (r.titles) fails.push(`${tag} ${t}: ${r.titles} hover titles`);
+      if (!r.btns) fails.push(`${tag} ${t}: no info button`);
+      if (r.noBtn.length) fails.push(`${tag} ${t}: ${r.noBtn.length} marks without a button: ${r.noBtn.slice(0, 3).join(' | ')}`);
+      if (r.bad) fails.push(`${tag} ${t}: ${r.bad} buttons without aria`);
+      if (r.sw > r.iw) fails.push(`${tag} ${t}: horizontal scroll ${r.sw} > ${r.iw}`);
+      // hovering and tapping the number show nothing
+      const nums = await p.$$(`${panel} [data-tip]:not(.tile):not(.kpi), ${panel} [data-info]`);
+      let num = null; for (const n of nums) if (await n.isVisible()) { num = n; break; }
+      if (num) {
+        await num.scrollIntoViewIfNeeded(); await num.hover(); await p.waitForTimeout(100);
+        if (await isOn(p)) fails.push(`${tag} ${t}: hover opened the panel`);
+        await num.click({ force: true, position: { x: 1, y: 1 } }); await p.waitForTimeout(50);
+        if (await isOn(p)) fails.push(`${tag} ${t}: tapping the number opened the panel`);
+      }
+      let btn = null; for (const x of await p.$$(`${panel} .ib`)) if (await x.isVisible()) { btn = x; break; }
+      if (!btn) { fails.push(`${tag} ${t}: no visible button`); continue; }
+      await btn.scrollIntoViewIfNeeded(); await btn.click();
+      const txt = await p.$eval('#tip', (e) => e.textContent);
+      if (!await isOn(p) || txt.length < 10) fails.push(`${tag} ${t}: click did not open the panel`);
+      if (await btn.getAttribute('aria-expanded') !== 'true') fails.push(`${tag} ${t}: aria-expanded not true`);
+      if (await p.evaluate(() => document.documentElement.scrollWidth) > w) fails.push(`${tag} ${t}: horizontal scroll with the panel open`);
+      if (scheme === 'light' && w === 375 && t === 'overview' && shot) await p.screenshot({ path: shot });
+      await p.addScriptTag({ content: axe });
+      const res = await p.evaluate(async () => (await axe.run(document, { resultTypes: ['violations'] })).violations
+        .filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id + ' x' + v.nodes.length + ' ' + v.nodes[0].target));
+      if (res.length) fails.push(`${tag} ${t}: axe ${res.join('; ')}`);
+      await btn.click(); if (await isOn(p)) fails.push(`${tag} ${t}: second click did not close`);
+      await btn.focus(); await p.keyboard.press('Enter');
+      if (!await isOn(p)) fails.push(`${tag} ${t}: Enter did not open`);
+      await p.keyboard.press('Escape');
+      if (await isOn(p)) fails.push(`${tag} ${t}: Esc did not close`);
+      if (!await btn.evaluate((x) => document.activeElement === x)) fails.push(`${tag} ${t}: focus not back on the button`);
+      await btn.click(); await p.mouse.click(w - 5, 5);
+      if (await isOn(p)) fails.push(`${tag} ${t}: click outside did not close`);
+    }
+    await p.close();
+  }
+  await b.close();
+  console.log(out.filter((x) => x.startsWith('light 1280')).join('\n'));
+  console.log(fails.length ? 'FAIL\n' + fails.join('\n') : 'OK: every tab, light and dark, 1280 and 375');
+  process.exit(fails.length ? 1 : 0);
+})();
+"""
+
+
+@unittest.skipUnless(os.environ.get("AXE_JS") and shutil.which("node"), "browser check: set AXE_JS to axe.min.js (axe-core 4.10) and have Playwright for node")
+class InfoIconsInBrowser(unittest.TestCase):
+    """Board v61 item 1 (founder 15 Nov: "an icon ... when I click on the icon, then only it should work ... on all the pages"):
+    on every tab, light and dark, 1280 and 375 px: no hover title or source bar; every marked number or block has a <button>
+    with aria-label and aria-expanded; hover and tapping the number show nothing; click opens, second click, Esc (focus back)
+    and a click outside close; no sideways scroll; axe 0 serious or critical with the panel open.
+    Run: AXE_JS=<path>/axe.min.js NODE_PATH=$(npm root -g) python3 -m pytest -q product/tools/test_cockpit_data.py -k Browser"""
+    def test_every_tab(self):
+        site = tempfile.mkdtemp()
+        shutil.copy(os.path.join(cd.P, "cockpit", "index.html"), site)
+        for now in ("2026-11-16T12:00:00+05:30", None):          # with the early band (16 Nov) and after it (20 Nov)
+            args = [sys.executable, os.path.join(HERE, "cockpit-data.py"), "--out", os.path.join(site, "data.json"),
+                    "--from-snapshot", FIX, "--offline", "--no-history-write"] + (["--now", now] if now else [])
+            self.assertEqual(subprocess.run(args, capture_output=True, timeout=300).returncode, 0)
+            js = os.path.join(site, "check.js")
+            with open(js, "w", encoding="utf-8") as f:
+                f.write(BROWSER_CHECK)
+            srv = subprocess.Popen([sys.executable, "-m", "http.server", "8762", "-d", site], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                import time
+                time.sleep(1)
+                r = subprocess.run(["node", js, "http://localhost:8762/index.html", os.environ["AXE_JS"]], capture_output=True, text=True, timeout=600)
+            finally:
+                srv.terminate()
+            self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-2000:])
+
+
 if __name__ == "__main__":
     unittest.main()
