@@ -126,8 +126,8 @@ try {
   ok("FO-3sr DW2 pass: the four roles with agent/booking:edit reschedule → 200", moved.every((x) => x.status === 200 && x.body.status === "RESCHEDULED"), moved.map((x) => [x.status, x.body?.code]));
   const noEdit = [await go("POST", `/${c.OWNER}/reschedule`, P.BILLING_FINANCE, { startsAt: iso("2026-10-29 09:00") }), await go("POST", `/${c.OWNER}/reschedule`, P.READ_ONLY, { startsAt: iso("2026-10-29 09:00") }),
     await go("POST", `/${c.OWNER}/cancel`, P.BILLING_FINANCE), await go("POST", `/${c.OWNER}/cancel`, P.READ_ONLY)];
-  ok("FO-3sr DW2 fail: BILLING_FINANCE and READ_ONLY reschedule or cancel → 403, the booking unchanged",
-    noEdit.every((x) => x.status === 403) && (await db.foBooking.findUniqueOrThrow({ where: { id: c.OWNER } })).startsAt.toISOString() === iso("2026-10-28 09:00") && await statusOf(c.OWNER) === "RESCHEDULED", noEdit.map((x) => x.status));
+  ok("FO-3sr DW2 fail: BILLING_FINANCE and READ_ONLY reschedule or cancel → 403 from the guard (MISSING_PERMISSION: the routes' own declaration, not only the service's check), the booking unchanged",
+    noEdit.every((x) => x.status === 403 && x.body.code === "MISSING_PERMISSION") && (await db.foBooking.findUniqueOrThrow({ where: { id: c.OWNER } })).startsAt.toISOString() === iso("2026-10-28 09:00") && await statusOf(c.OWNER) === "RESCHEDULED", noEdit.map((x) => [x.status, x.body?.code]));
   for (const r of Object.keys(c) as (keyof typeof c)[]) cancelled.push(await go("POST", `/${c[r]}/cancel`, P[r]));
   ok("FO-3sr DW2 pass: the four roles with agent/booking:edit cancel → 200", cancelled.every((x) => x.status === 200 && x.body.status === "CANCELLED"), cancelled.map((x) => [x.status, x.body?.code]));
 
