@@ -1,0 +1,41 @@
+# Source values for the first five FO rows (TR-1, Lead 51's ruling 15 Nov: kept here so this branch never edits BACKLOG rows).
+# trace-requirements.py reads this file as well as BACKLOG's `Source:` lines; a row owner may move a row's lines into
+# its BACKLOG Source and delete them here. Columns (tab-separated): row, ref (team id, P-id, official: ...), hash
+# (team ids only: `trace-requirements.py --hash <id>` against the newest ../domain/requirements-*). Ids and hashes only (P-504).
+# Picked from the ids each row names, plus the AG-02/AG-04/AG-05 headings its text builds (requirements-2026-11-02).
+row	ref	hash
+FO-1a	AG-2-1	1d2f4909
+FO-1a	AG-2-72	54819bca
+FO-1a	AG-2-2	c682136b
+FO-1a	AG-2-8a	d3375bc1
+FO-1a	AG-2-80	4bd0426d
+FO-1a	AG-2-83	374dfaf2
+FO-1a	AG-2-52	47221988
+FO-1a	AG-13-21	1d1202fb
+FO-1a	AG-16-76	88be2917
+FO-1a	SA-11-29	008e3a76
+FO-1b	AG-4-1	1f03d9dc
+FO-1b	AG-4-4	cfe71b8e
+FO-1b	AG-4-12	7f722357
+FO-1b	AG-4-25	38fe14c1
+FO-2	AG-2-4	9c2d4c90
+FO-2	AG-2-5	71f35252
+FO-2	AG-2-84	a98a0dc9
+FO-2	AG-2-80	4bd0426d
+FO-2	AG-2-49	328d1b6c
+FO-2	AG-13-30	a336bcc0
+FO-3	AG-4-1	1f03d9dc
+FO-3	AG-4-17	e2f20a35
+FO-3	AG-4-18	10fc62c4
+FO-3	AG-4-25	38fe14c1
+FO-3	AG-4-22	b2dc3d08
+FO-3	AG-4-47	71c38dc3
+FO-3	AG-2-10	4ac6a7fe
+FO-5	AG-5-3	29a22f7b
+FO-5	AG-5-4	e22c2719
+FO-5	AG-5-9	e0936ab1
+FO-5	AG-5-34	9ceb51a3
+FO-5	AG-5-47	aafaf1ce
+FO-5	AG-5-49	7eee1a85
+FO-5	AG-5-50	369c397b
+FO-5	AG-5-65	5fe1142a
