@@ -17,7 +17,7 @@
   * 16.9: a `Source:` for every PF/FO row;
   * 16.10: qa R1 rows (PF-6b, FO-3h, case-side drafts CS-DL1 and CS-NT1);
   * 16.11: **P-606**, the DWn test-case naming rule, J-rows (join and walk), PF-0c (port contract tests), and the **19 started capabilities ranked, with their missing parts and pull order**.
-  * Revs 16.7 to 16.9 are in BACKLOG; 16.10 and 16.11 have been sent to Lead 52 to copy.
+  * Revs 16.7 to 16.9 are in BACKLOG; 16.10, 16.11, **16.12** (edits to existing rows, the X additions, P-607) and Batch 5 have been sent to Lead 52 to copy. 55 shaping rows are in BACKLOG (6005ba666).
 * **P-604 shaping lanes, all reviewed:** `design/lead-b-shaping-approvals-2026-11-15.md`, Batches 1-4. **Batch 5 is the consolidated platform rails**, after Lead 52's ruling that platform owns tasks (PF-29a-f), find (PF-30a/s), reports (PF-R*) and the file rail (PF-F2 on tus, PF-F3, PF-F4); the case side registers on them. Duplicates of the release holder's case-side draft 2 were dropped.
 * **College facts read at source:** `design/lead-b-college-facts-2026-11-15.md` (client files kept 6 years after closing; a monthly trust reconciliation within 90 days; the licence number has no published format). This closes open item 16.
 * **Briefs written:** FO-5f, FO-3f, PF-4f. FO-2 and FO-6 gained carried lines.
@@ -35,7 +35,7 @@
    * #1782 (PF-23's CI step, the Lead's).
    * When FO-3f merges, PF-23w, FO-3h and FO-3sr can start.
 3. **Briefs to write next (P-606 rules: name the DWn cases, J-rows last):** PF-6b, FO-3h, PF-0c, PF-23w (S1's row text plus rev 16.10's lines and amendment C), then J-row briefs in rev 16.11's rank order. Use rev 16.11's pull order.
-4. **Founder questions with Lead 52** (with Lead B's recommendations):
+4. **Founder questions: all answered on 15 Nov as P-607** (as recommended, except LMIA, which stays in Release 1 and is scheduled last). Rev 16.12 applies them. The list as it was asked:
    * S3 Q2: trust never below zero;
    * S3 Q4: a typed government-fee line;
    * S3 Q7: ZIP refused;
