@@ -1,6 +1,6 @@
 # Brief: FO-3h, the host's booking emails in the host's office time (QA-470, map row 38) (cloud builder lane; row owner Lead B)
 
-**Start once FO-3f #1785 is on `main`** (same file, `api/src/front-office/booking/service.ts`). It is approved and queued as of 15 Nov 10:2x IST. No schema change. Builder at medium effort, reviewer at high (P-605). Pull order: PF-23w first, then this row (rev 16.11). The two touch different lines of `service.ts` and `PF-23w` swaps `runtime-ports.ts`: if both are open at once, the later one merges `main` in on a conflict (P-270), never by hand. Paste into a new cloud session on the repository (default branch `main`):
+**Start once FO-3f #1785 is on `main`** (same file, `api/src/front-office/booking/service.ts`). It is approved and queued as of 15 Nov 10:08 IST. No schema change. Builder at medium effort, reviewer at high (P-605). Pull order: PF-23w first, then this row (rev 16.11). The two touch different lines of `service.ts` and `PF-23w` swaps `runtime-ports.ts`: if both are open at once, the later one merges `main` in on a conflict (P-270), never by hand. Paste into a new cloud session on the repository (default branch `main`):
 
 ---
 You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime FO-3h` and take **one row, FO-3h**, end to end on a fresh branch from `origin/main`, one PR.
