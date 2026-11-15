@@ -15,7 +15,9 @@ import { fakeAudit } from "../ports/audit.ts";
 import { EVENT } from "../ports/events.ts";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
 import { Leads } from "../api/src/front-office/sales/leads.ts";
-import { LIMITS, PublicForms, PublicFormsController, type SalesPorts } from "../api/src/front-office/sales/public.ts";
+import { LIMITS, PublicForms, PublicFormsController, publicFormBodyLimit, type SalesPorts } from "../api/src/front-office/sales/public.ts";
+import express from "express";
+import type { AddressInfo } from "node:net";
 import { SalesController } from "../api/src/front-office/sales/routes.ts";
 import { auditEvent, platformAuditWorkspaceId } from "../api/src/platform/audit/audit-event.ts";
 import { assertEveryRouteDeclared } from "../api/src/platform/identity/guard.ts";
@@ -37,7 +39,7 @@ async function refusal(fn: () => Promise<unknown>): Promise<{ status: number; bo
   try { await fn(); return null; } catch (e) {
     const x = e as { getStatus?: () => number; getResponse?: () => unknown };
     if (!x.getStatus) throw e;
-    return { status: x.getStatus(), body: x.getResponse() as Record<string, unknown> };
+    return { status: x.getStatus(), body: x.getResponse!() as Record<string, unknown> };
   }
 }
 const count = (t: string, where = "true") => Number(sql(`select count(*) from ${t} where ${where}`));
@@ -115,6 +117,22 @@ try {
   ok("FO-2 fail: an unknown field in the body → refused with no internal detail", (await refusal(() => post({ ...lena, isAdmin: true })))?.body.detail === "We could not read this form. Please reload the page and try again.");
   const big = await refusal(() => post({ ...lena, message: "x".repeat(33 * 1024) }));
   ok("FO-2 fail: a body over 32 KB → 413 and nothing saved", big?.status === 413 && count("fo_person", `email = 'lena@example.org'`) === 1, big);
+
+  // AG-2-49 rule 2 at the door itself (the hook in main.ts): refused as it is read, before any parser or handler.
+  const spy: unknown[] = [];
+  const door = express();
+  publicFormBodyLimit(door);
+  door.use(express.json({ limit: "5mb" }));   // the app-wide parser after it, as in main.ts
+  door.post("/api/public/forms/:token/submissions", (q, r) => { spy.push(q.body); r.status(201).json({}); });
+  const srv = door.listen(0, "127.0.0.1");
+  await new Promise((done) => srv.once("listening", done));
+  const at = `http://127.0.0.1:${(srv.address() as AddressInfo).port}/api/public/forms/${tokenA}/submissions`;
+  const send = (body: string, chunked = false) => fetch(at, { method: "POST", headers: { "content-type": "application/json" }, body: chunked ? new Blob([body]).stream() : body, ...(chunked ? { duplex: "half" } : {}) } as RequestInit);
+  const big33 = JSON.stringify({ message: "x".repeat(33 * 1024) });
+  const r413 = await send(big33), r413c = await send(big33, true), r201 = await send(JSON.stringify({ message: "hello" }));
+  ok("FO-2 fail: a 33 KB body → 413 before the handler (the spy saw nothing), also sent in chunks", r413.status === 413 && r413c.status === 413 && (await r413.json()).code === "TOO_LARGE" && spy.length === 1, [r413.status, r413c.status, spy.length]);
+  ok("FO-2 pass: a small body reaches the handler, parsed once", r201.status === 201 && (spy[0] as { message?: string })?.message === "hello");
+  srv.close();
 
   // The person known or not: the same answer.
   const known = await post({ ...lena, consent: false }), fresh = await post({ givenNames: "Mo", email: "mo@example.org" });

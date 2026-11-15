@@ -10,6 +10,8 @@
 // FO_FORM_STAMP_KEY when set, else random per process (a restart asks open pages to reload).
 import { Body, Controller, Get, HttpCode, Inject, Injectable, Param, Post, Req, Res } from "@nestjs/common";
 import type { PrismaClient } from "@prisma/client";
+import type { NestExpressApplication } from "@nestjs/platform-express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { ConsentPort } from "../../../../ports/consent.ts";
@@ -155,6 +157,16 @@ export class PublicForms {
     const age = this.now() - Number(ms);
     return age >= this.limits.minFillSeconds * 1000 && age <= this.limits.stampHours * 3_600_000;
   }
+}
+
+/** AG-2-49 rule 2: the door's own JSON parser, registered before the app-wide one (the one-line hook in main.ts): a
+ *  body over 32 KB is refused as it is read (413), so neither the app's 5 MB parser nor the handler ever sees it; a
+ *  parsed body is left as it is for the app's parser (body-parser skips a request it has read). */
+export function publicFormBodyLimit(app: Pick<express.Express, "use"> | Pick<NestExpressApplication, "use">) {
+  (app as Pick<express.Express, "use">).use("/api/public/forms", express.json({ limit: LIMITS.maxBytes }), (err: { type?: string }, _req: Request, res: Response, next: NextFunction) => {
+    if (err?.type !== "entity.too.large") return next(err);
+    res.status(413).type("application/problem+json").json({ type: "https://expatready.local/problems/too-large", title: "Too large", status: 413, detail: "This form is too long. Please shorten your message and try again.", code: "TOO_LARGE" });
+  });
 }
 
 /** The CSP that lets only the firm's allowed sites (and our own page) show the form in a frame (AG-2-49 rule 4). */
