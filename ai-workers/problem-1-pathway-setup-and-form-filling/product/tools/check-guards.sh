@@ -56,7 +56,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 17 check|product/tools/lead-act-check.sh|s/-gt "\$CHECK_MIN" \]/-gt 99999 ]/|check-lead-act-check.sh
 17 board|product/tools/lead-act-check.sh|s/-gt "\$BOARD_MIN" \]/-gt 99999 ]/|check-lead-act-check.sh
 18|product/tools/wip-guard.py|s/^MAX_WAITING, MAX_HOURS = 2, 24/MAX_WAITING, MAX_HOURS = 99, 9999/|check-wip-guard.sh
-18 bug|product/tools/wip-guard.py|s/^    bugs = set(.*/    bugs = {1}/|check-wip-guard.sh
+18 bug|product/tools/wip-guard.py|s/ & open_bugs(root):/ or True:/|check-wip-guard.sh
 19|product/tools/ist-time-guard.py|s/                if not ok:/                if False:/|check-ist-time-guard.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 echo "--- each test without its guard (must FAIL)"

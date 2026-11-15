@@ -2,10 +2,11 @@
 """Finish before starting (B193 part 2 (e); P-622 (1), P-623 (1)): no new build row starts in a module group while that
 group has 2 capabilities built and waiting for qa, or one waiting over 24 h, unless the row is a qa bug fix.
 
-PreToolUse hook on create_session / start_session (the Lead starts a builder): the row IDs in the new session's prompt
-and title (PF-21v, FO-3, CS-C1b …) map to module groups by cockpit-data.py's COMP_PREFIX (longest prefix wins; the test
-keeps the two tables equal). "Waiting for qa" = a file in qa/built/ (P-221) on origin/main (else HEAD), its age = the
-commit that added it. A prompt naming an open qa bug (a `| QA-n |` row in qa/BUGS.md) is a bug fix and passes.
+PreToolUse hook on create_session / start_session (the Lead starts a builder): the row the brief starts
+("/next <area> <row>" or "Row <row>", as brief-check.sh asks; other IDs in the text are context) maps to its module
+group by cockpit-data.py's COMP_PREFIX (longest prefix wins; the test keeps the two tables equal). "Waiting for qa" = a file in qa/built/ (P-221) on origin/main (else HEAD), its age = the
+commit that added it. A fix of an open qa bug ("fix QA-n", "QA-n fix"; a `| QA-n |` row in qa/BUGS.md) passes, and so
+does a qa session (/qa …), which is what empties a full group.
 Fails open when the copy cannot be read (the lane preflight still runs). Also by hand:
   python3 wip-guard.py --status [repo root]    one line per module group; exit 1 when any group is full
 Env (tests): NOW (epoch seconds). Test: check-wip-guard.sh."""
@@ -27,6 +28,16 @@ def group(row_id):
         if row_id.startswith(pre):
             return comp
     return None
+
+
+QA_START = re.compile(r"(^|\s)/qa\b|^\s*qa\b", re.I)
+FIX = re.compile(r"\b(?:fix(?:es|ing)?|bug fix(?:es)?)\b[^.\n]{0,30}?\b(QA-\d+)\b|\b(QA-\d+)\b[^.\n]{0,10}?\bfix", re.I)
+
+
+def started_row(text):
+    """The row the session starts, as a brief names it (brief-check.sh): "/next <area> <row>" or "Row <row>"; else None."""
+    m = re.search(r"/next\s+[a-z]+\s+" + ROW.pattern, text) or re.search(r"\b[Rr]ow\s+" + ROW.pattern, text)
+    return m and m.group(1).rstrip(".")
 
 
 def git(root, *a):
@@ -81,13 +92,14 @@ def main():
     root = git(hook.get("cwd") or ".", "rev-parse", "--show-toplevel").strip()
     if not root:
         return 0
-    rows = {r.rstrip(".") for r in ROW.findall(text)}
-    groups = {group(r) for r in rows} & MODULES
-    if not groups:
+    if QA_START.search(text):
+        return 0   # a qa session empties the groups; never limited
+    row = started_row(text)
+    if not row or group(row) not in MODULES:
         return 0
-    bugs = set(re.findall(r"\bQA-\d+\b", text)) & open_bugs(root)
-    if bugs:
+    if {x for t in FIX.findall(text) for x in t if x} & open_bugs(root):
         return 0   # a qa bug fix may start in a full group
+    groups = {group(row)}
     w = waiting(root)
     blocked = [describe(g, w[g]) for g in sorted(groups) if full(w.get(g, []))]
     if not blocked:

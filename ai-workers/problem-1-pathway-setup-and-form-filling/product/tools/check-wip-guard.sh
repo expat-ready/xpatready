@@ -24,11 +24,16 @@ r=$(start "/next screens FO-5s booking page"); ok "front office with two waiting
 r=$(start "/next screens FO-7b invoices"); ok "client money (FO-7*, nothing waiting) starts" "$([ "$r" = allow ] && echo 1)" "got $r"
 r=$(start "/next forms FO-5s: fix QA-500 (qa bug) on the booking page"); ok "a qa bug fix may start in a full group" "$([ "$r" = allow ] && echo 1)" "got $r"
 r=$(start "/next forms FO-5s: see QA-999"); ok "... but only for an open qa bug" "$([ "$r" = deny ] && echo 1)" "got $r"
-r=$(start "B193 part 3: PR norms in CI (P-619)"); ok "a tooling row starts freely" "$([ "$r" = allow ] && echo 1)" "got $r"
+r=$(start "/next forms FO-5s; QA-500 noted"); ok "an open qa bug merely named (not fixed) does not let a row through" "$([ "$r" = deny ] && echo 1)" "got $r"
+r=$(start "Row B193 part 3: PR norms in CI (P-619); pass G-4 rule"); ok "a tooling row starts freely; other IDs in the text are context" "$([ "$r" = allow ] && echo 1)" "got $r"
+r=$(start "/next screens FO-7b invoices, after FO-3 and PF-23r"); ok "only the row started is judged (FO-7b), not the rows it mentions" "$([ "$r" = allow ] && echo 1)" "got $r"
+r=$(start "Row PF-6: the shared register"); ok "a brief naming its row as Row X-1 is judged too" "$([ "$r" = deny ] && echo 1)" "got $r"
+for q in "/qa capability FO-3" "/qa after-merge (PF-23w, PF-6b just merged)"; do
+  r=$(start "$q"); ok "a qa session is never limited (it empties the group): $q" "$([ "$r" = allow ] && echo 1)" "got $r"; done
 r=$(start "/next screens AS-3 case list"); ok "the case side with two waiting: refused" "$([ "$r" = deny ] && echo 1)" "got $r"
 git -C "$C" rm -q "$B/BK-11.md" && git -C "$C" commit -qm "qa scored BK-11"
 r=$(start "/next screens AS-3 case list"); ok "... once qa scores one, the case side (one waiting 3 h) starts" "$([ "$r" = allow ] && echo 1)" "got $r"
-out=$(jq -n --arg p "PF-6" --arg d "$C" '{tool_input:{prompt:$p}, cwd:$d}' | NOW=$NOW python3 -I "$G")
+out=$(jq -n --arg p "/next forms PF-6" --arg d "$C" '{tool_input:{prompt:$p}, cwd:$d}' | NOW=$NOW python3 -I "$G")
 ok "the refusal names the group and what waits" "$(echo "$out" | jq -e '.hookSpecificOutput.permissionDecisionReason | test("platform: PF-23r 30 h")' >/dev/null && echo 1)" "$out"
 o=$(NOW=$NOW python3 -I "$G" --status "$C"); rc=$?
 ok "--status lists the full groups and exits 1" "$([ $rc = 1 ] && grep -q '^FULL  front_office' <<< "$o" && grep -q '^ok    case_side' <<< "$o" && echo 1)" "$o"

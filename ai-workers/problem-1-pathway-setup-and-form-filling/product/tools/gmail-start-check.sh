@@ -17,10 +17,15 @@ if [ "${XR_GMAIL_CHECK:-}" != 1 ]; then
   [ "$LANE" = lead ] || exit 0
 fi
 [ -f "$tr_" ] || exit 0
-state=$(jq -rs '[.[] | select(.attachment.type? == "deferred_tools_delta") | .attachment] as $d
-  | ([$d[] | (.addedNames // [])[] | select(test("gmail"; "i"))] - [$d[] | (.removedNames // [])[] ]) as $have
-  | [$d[] | ((.failedMcpServers // []) + (.needsAuthMcpServers // []))[] | tostring | select(test("gmail"; "i"))] as $bad
-  | if ($have | length) > 0 then "ok" elif ($bad | length) > 0 then "failed" else "missing" end' "$tr_" 2>/dev/null) || exit 0
+# Replayed in order (a name added, removed and added again is there; readdedNames counts as added); "failed" when the
+# newest delta naming a Gmail server lists it as failed or needing sign-in.
+state=$(jq -rs 'reduce (.[] | select(.attachment.type? == "deferred_tools_delta") | .attachment) as $d ({have: {}, bad: false};
+    .have = (reduce (($d.removedNames // [])[]) as $n (.have; del(.[$n])))
+  | .have = (reduce ((($d.addedNames // []) + ($d.readdedNames // []))[]) as $n (.have; .[$n] = true))
+  | ([($d.failedMcpServers // []) + ($d.needsAuthMcpServers // []) | .[] | tostring | select(test("gmail"; "i"))] | length > 0) as $f
+  | ([($d.pendingMcpServers // [])[] | tostring | select(test("gmail"; "i"))] | length > 0) as $p
+  | .bad = (if $f then true elif $p then false else .bad end))
+  | if ([.have | keys[] | select(test("gmail"; "i"))] | length) > 0 then "ok" elif .bad then "failed" else "missing" end' "$tr_" 2>/dev/null) || exit 0
 mark="${TMPDIR:-/tmp}/xr-gmail-check/$sid"; mkdir -p "$(dirname "$mark")"
 [ "$(cat "$mark" 2>/dev/null)" = "$state" ] && exit 0
 echo "$state" > "$mark"

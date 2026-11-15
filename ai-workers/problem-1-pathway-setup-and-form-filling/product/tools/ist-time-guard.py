@@ -6,7 +6,7 @@ PreToolUse hook on Edit, MultiEdit and Write. Only times the edit adds are read 
 Write, is never re-judged). Read as IST: `2026-11-16 01:2x`, `16 Nov 01:20`, `01:20 IST 16 Nov`, `~01:2x IST` (x = 0); a date alone
 (`| 17 Nov |`, `updated: 17 Nov`, `as of 17 Nov`; a date in prose is usually a plan); a bare `HH:MM IST` is on its DECISIONS row's date, else today's, and counts as ahead only when it is at most 6 h ahead (a later one is
 yesterday's). Plans pass: a time with due, by, until, next, target, resets, planned, scheduled, from, before, ETA,
-expires or ends in the 40 characters before it on its line. One minute of grace. Also by hand:
+expires or ends just before it (one word between at most: "next check 01:3x"). One minute of grace. Also by hand:
   python3 ist-time-guard.py --scan FILE    prints each time ahead of now; exit 1 when there is one
 Env (tests): NOW (epoch seconds). Test: check-ist-time-guard.sh."""
 import json, os, re, sys, time
@@ -28,6 +28,7 @@ PATTERNS = [  # (regex, kind) — tried in order; a match is masked before the n
 STAMP = re.compile(r"(\|\s*|updated:?\s*|as of\s*)$", re.I)   # where a date alone is a stamp: a table cell, updated:, as of
 ROWDATE = re.compile(r"^\|[^|]*\|\s*(\d{1,2}) " + M + r"\s*\|")
 PLAN = re.compile(r"\b(due|by|until|till|next|target|reset|resets|planned|scheduled|from|before|eta|expires?|ends?|deadline|at the latest)\b", re.I)
+PLAN_END = re.compile(PLAN.pattern + r"(\s+[\w-]+)?\s*[:~]?\s*$", re.I)   # the plan word just before the time (one word between)
 
 
 def now_ist():
@@ -37,10 +38,11 @@ def now_ist():
 def ahead(text, now):
     """[(the text, how far ahead)] for each time or date in text ahead of now."""
     out = []
+    yr = lambda mon: now.year - 1 if mon > now.month + 6 else now.year + 1 if mon < now.month - 6 else now.year   # 31 Dec on 1 Jan
     for line in text.splitlines():
         masked = line
         rd = ROWDATE.match(line)   # a DECISIONS row: its bare times are on the row's date
-        rowday = rd and datetime(now.year, MON.index(rd.group(2)[:3]) + 1, int(rd.group(1)), tzinfo=IST)
+        rowday = rd and datetime(yr(MON.index(rd.group(2)[:3]) + 1), MON.index(rd.group(2)[:3]) + 1, int(rd.group(1)), tzinfo=IST)
         for rx, kind in PATTERNS:
             for m in rx.finditer(masked):
                 g = m.groups()
@@ -48,13 +50,13 @@ def ahead(text, now):
                     if kind == "iso":
                         when = datetime(int(g[0]), int(g[1]), int(g[2]), int(g[3]), int(g[4] + g[5].replace("x", "0")), tzinfo=IST)
                     elif kind == "dmy-t":
-                        when = datetime(now.year, MON.index(g[1][:3]) + 1, int(g[0]), int(g[2]), int(g[3] + g[4].replace("x", "0")), tzinfo=IST)
+                        when = datetime(yr(MON.index(g[1][:3]) + 1), MON.index(g[1][:3]) + 1, int(g[0]), int(g[2]), int(g[3] + g[4].replace("x", "0")), tzinfo=IST)
                     elif kind == "t-dmy":
-                        when = datetime(now.year, MON.index(g[4][:3]) + 1, int(g[3]), int(g[0]), int(g[1] + g[2].replace("x", "0")), tzinfo=IST)
+                        when = datetime(yr(MON.index(g[4][:3]) + 1), MON.index(g[4][:3]) + 1, int(g[3]), int(g[0]), int(g[1] + g[2].replace("x", "0")), tzinfo=IST)
                     elif kind == "iso-d":
                         when = datetime(int(g[0]), int(g[1]), int(g[2]), tzinfo=IST)
                     elif kind == "dmy":
-                        when = datetime(now.year, MON.index(g[1][:3]) + 1, int(g[0]), tzinfo=IST)
+                        when = datetime(yr(MON.index(g[1][:3]) + 1), MON.index(g[1][:3]) + 1, int(g[0]), tzinfo=IST)
                     elif rowday:
                         when = rowday.replace(hour=int(g[0]), minute=int(g[1] + g[2].replace("x", "0")))
                     else:
@@ -74,7 +76,7 @@ def ahead(text, now):
                     elif kind == "t" and gap < -timedelta(hours=18):
                         gap = when + timedelta(days=1) - now   # after midnight, written late the day before
                         gap = gap if gap <= timedelta(hours=6) else None
-                ok = not gap or gap <= timedelta(minutes=1) or PLAN.search(masked[max(0, m.start() - 40):m.start()])
+                ok = not gap or gap <= timedelta(minutes=1) or PLAN_END.search(masked[:m.start()])
                 if not ok:
                     out.append((m.group(0), gap))
             masked = rx.sub(lambda m: "#" * len(m.group(0)), masked)

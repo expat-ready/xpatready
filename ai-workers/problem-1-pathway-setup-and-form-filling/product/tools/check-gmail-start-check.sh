@@ -13,6 +13,8 @@ delta '["Read","mcp__Google_Drive__search_files"]' > "$T/none.jsonl"
 { cat "$T/none.jsonl"; delta '["mcp__claude_ai_Gmail__search_threads","mcp__claude_ai_Gmail__get_thread"]'; } > "$T/gmail.jsonl"
 { cat "$T/gmail.jsonl"; delta '[]' '["mcp__claude_ai_Gmail__search_threads","mcp__claude_ai_Gmail__get_thread"]'; } > "$T/switched.jsonl"
 { cat "$T/none.jsonl"; delta '[]' '[]' '["{\"name\":\"plugin:productivity:gmail\",\"errorCode\":\"ERR\"}"]'; } > "$T/failed.jsonl"
+{ cat "$T/switched.jsonl"; delta '["mcp__claude_ai_Gmail__search_threads"]'; } > "$T/back.jsonl"
+{ cat "$T/switched.jsonl"; jq -cn '{type:"attachment", attachment:{type:"deferred_tools_delta", addedNames:[], readdedNames:["mcp__claude_ai_Gmail__get_thread"]}}'; } > "$T/readded.jsonl"
 G="$TOOLS/gmail-start-check.sh"
 stop() {  # $1 lane, $2 transcript, $3 session id → block | pass
   local out; out=$(jq -n --arg t "$2" --arg s "$3" --arg d "$T/copy" '{session_id:$s, transcript_path:$t, cwd:$d, stop_hook_active:false}' | TMPDIR="$T" FAKE_LANE="$1" bash "$G")
@@ -21,6 +23,8 @@ r=$(stop lead "$T/none.jsonl" s1); ok "the Lead's session with no Gmail connecto
 r=$(stop lead "$T/none.jsonl" s1); ok "... once: the next stop passes" "$([ "$r" = pass ] && echo 1)" "got $r"
 r=$(stop lead "$T/gmail.jsonl" s2); ok "a session with Gmail tools passes" "$([ "$r" = pass ] && echo 1)" "got $r"
 r=$(stop lead "$T/switched.jsonl" s2); ok "after a switch removes Gmail, the same session is stopped again" "$([ "$r" = block ] && echo 1)" "got $r"
+r=$(stop lead "$T/back.jsonl" s2); ok "switched back (Gmail added, removed, added again): it passes" "$([ "$r" = pass ] && echo 1)" "got $r"
+r=$(stop lead "$T/readded.jsonl" s7); ok "a Gmail tool in readdedNames counts as there" "$([ "$r" = pass ] && echo 1)" "got $r"
 r=$(stop lead "$T/failed.jsonl" s3); ok "a failed Gmail connector is stopped" "$([ "$r" = block ] && echo 1)" "got $r"
 r=$(stop screens "$T/none.jsonl" s4); ok "a builder's copy is never stopped" "$([ "$r" = pass ] && echo 1)" "got $r"
 out=$(jq -n --arg t "$T/none.jsonl" --arg d "$T/copy" '{session_id:"s5", transcript_path:$t, cwd:$d}' | TMPDIR="$T" XR_GMAIL_CHECK=1 FAKE_LANE=unbound bash "$G")
