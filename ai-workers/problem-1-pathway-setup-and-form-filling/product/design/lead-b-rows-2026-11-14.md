@@ -1142,3 +1142,12 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
 * **FO-7s4p's payment plans use `agent/invoice:issue`.** The requirement withdrew plans and `agent/payment-plan:manage` (D3); the founder kept plans as a recorded departure (P-578); no new key is added.
 * **FO-7s5:** the export is a background job, stored through `FilesPort` behind a 24 h expiring download link (Sample) and audited (AG-6-31 r4). The key is `agent/billing:export`.
 * **The To-move route:** `/api/front-office/money/trust/to-move`.
+
+## Rev 16.37 (16 Nov 02:1x IST, Lead B (6)): client money batch 9 answers (#1881, comment 6901148452)
+* **FO-7ts** keeps the migration's refusal for `trust_enabled = true` rows.
+* **`ProvinceTaxRate`** is a cited code table (`api/src/client-money/tax/canada-gst-hst.ts`), not schema.
+* **FO-7ts part 3: all four steps are accepted** (P1 refund details, P2 tax treatment, P3 cross-payer pick, P4 newest-issued index). P3 starts only after the release Lead's money read.
+* **File order:** FO-7mv → FO-7ts parts 1–2 → part 3 → FO-7v part 1 and FO-7m part 1, one at a time.
+* **FO-7s0's concept** is split into an index file plus one file per screen group, each under 100 lines. One challenge and one approval cover the set.
+* **Questions 4–8 (FO-7v reversals, `CARD_TERMINAL`, FO-7m "at that date", FO-7p and trust)** are the release Lead's money rules. Lead B's recommendations are on the PR.
+  - If Lead 61 accepts 5c, FO-7ts's credit ledger gains a `REVERSED` kind.
