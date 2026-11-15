@@ -906,6 +906,95 @@ def compute(snap):
     N["rows_done_24h"] = num(None if wd is None else len(wd), no_hist if wd is None else "rows that reached qa Works in the 24 h",
                              detail=wd)
 
+    # --- board v53 (A69, A70): written from FORMULAS.md "Top numbers", not from cockpit-data.py
+    # works_today: rows at qa Works at taken_at, not at Works in the checklist as it stood before today's IST day
+    # (the newest version dated on an earlier IST day; first_works dated on an earlier IST day).
+    def works_before_today():
+        if ck_text is None:
+            return None
+        older = [x for x in (ck_versions or []) if ist_day(x[0]) < today]
+        if not older:
+            return None
+        out, seen = set(), set()
+        for r in parse_checklist(older[-1][1])[0]:
+            if r["map"] not in seen:
+                seen.add(r["map"])
+                if norm_status(r["status"]) == "qa Works":
+                    out.add(r["map"])
+        return out | {m for m, w in first_works.items() if w is not None and ist_day(w) < today}
+
+    def size_of(r):     # A70: count of distinct backlog ids in the BACKLOG rows cell; Not shaped or none -> not shaped
+        k = len(set(r["parts"]))
+        if k == 0 or norm_status(r["status"]).startswith("Not shaped"):
+            return "not shaped"
+        return {1: "S", 2: "M", 3: "M"}.get(k, "L")
+    wb, wn = works_before_today(), works_at(now)
+    if wb is None or wn is None:
+        N["works_today"] = num(None, no_hist)
+        N["works_today_by_size"] = num(None, no_hist)
+    else:
+        got = sorted(wn - wb, key=int)
+        sz = {r["map"]: size_of(r) for r in unique_rows}
+        N["works_today"] = num(len(got), "rows at qa Works now, not before today's IST day", detail=got)
+        N["works_today_by_size"] = num({k: sum(1 for m in got if sz.get(m) == k) for k in ("S", "M", "L", "not shaped")},
+                                       "sizes of those rows")
+    # capabilities_not_mapped: rows none of whose parts' BACKLOG lines carry a Source: id. A row's text leaves out the
+    # column whose header starts "Done when"; a field runs from "Source:" to the next "·" or the cell's end; brackets
+    # are removed innermost first until none is left; tokens are runs of letters, digits, "." and "-", trailing "." and "-" cut.
+    src_cells = {}
+    bl_lines = (bl_text or "").splitlines()
+    dw = None
+    for i, ln in enumerate(bl_lines):
+        cs = cells(ln)
+        if not cs:
+            continue
+        nx = cells(bl_lines[i + 1]) if i + 1 < len(bl_lines) else None
+        if nx is not None and is_sep(nx) and not is_sep(cs):
+            dw = {k for k, h in enumerate(cs) if h.strip().lower().startswith("done when")}
+            continue
+        key = clean(cs[0])
+        if key and key not in src_cells:
+            src_cells[key] = [c for k, c in enumerate(cs) if k not in (dw or set())]
+
+    def has_source(cs):
+        for c in cs:
+            for seg in c.split("Source:")[1:]:
+                seg = seg.split("\u00b7")[0]
+                prev = None
+                while prev != seg:
+                    prev, seg = seg, re.sub(r"\([^()]*\)", " ", seg)
+                for tok in re.findall(r"[A-Za-z0-9][A-Za-z0-9.\-]*", seg):
+                    if re.fullmatch(r"[A-Z][A-Za-z0-9]*(?:-[A-Z0-9][A-Za-z0-9]*)+", tok.rstrip(".-")):
+                        return True
+        return False
+    if ck_text is None or bl_text is None:
+        N["capabilities_not_mapped"] = num(None, "not measured: checklist or BACKLOG missing")
+    else:
+        nm = [r["map"] for r in unique_rows if not any(has_source(src_cells.get(x, [])) for x in r["parts"])]
+        N["capabilities_not_mapped"] = num(len(nm), "rows with no Source: id on any part", detail=nm)
+    # rules caught today: label-guard comments and ci.yml runs with a failed check-docs step, IST day of taken_at
+    def day_items(rel, key):
+        try:
+            d = snap.json(rel)
+        except ValueError:
+            return None
+        if not isinstance(d, dict):
+            return None
+        return [x for x in d.get(key) or [] if parse_ts(x.get("created_at")) and ist_day(parse_ts(x["created_at"])) == today
+                and parse_ts(x["created_at"]) <= now]
+    lgc = day_items("github/issue_comments_today.json", "comments")
+    N["label_guard_removals_today"] = num(None, "not measured: no comments file") if lgc is None else \
+        num(len({c["id"] for c in lgc if c.get("bot") is True and (c.get("head") or "").startswith("**Label guard:**")}),
+            "label guard comments by a bot account today")
+    cir = day_items("github/ci_failed_runs_today.json", "runs")
+
+    def failed_runs(test):
+        return sum(1 for x in cir if any(test(st["step"].lower()) for st in x.get("failed_steps") or []))
+    N["ci_rule_failures_today"] = num(None, "not measured: no failed-runs file") if cir is None else \
+        num(failed_runs(lambda n: "check-docs" in n), "runs with a failed step naming check-docs today")
+    N["ci_bundle_failures_today"] = num(None, "not measured: no failed-runs file") if cir is None else \
+        num(failed_runs(lambda n: n.startswith("rules files")), "runs whose shard-1 rules-files step failed today")
+
     def per(n):
         if U is None:
             return num(None, "not measured: no plan % used")
@@ -949,7 +1038,9 @@ def compute(snap):
     order = ["works_on_main", "works_total", "changes_per_day_window", "remaining_scope_changes", "built_rows",
              "proven_rows", "open_app_prs", "lanes_working", "ready_rows", "forecast_p50_date", "forecast_p85_date",
              "plan_pct_used_24h", "span_hours", "changes_merged_span", "works_rows_span", "pct_per_change",
-             "pct_per_works_row", "rows_done_24h", "rows_needed_per_day"]
+             "pct_per_works_row", "rows_done_24h", "rows_needed_per_day",
+             "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today", "ci_rule_failures_today",
+             "ci_bundle_failures_today"]
     return {"version": 1,
             "numbers": {k: N[k] for k in order},
             "mc_inputs": {"daily_counts": r1_counts, "remaining_scope": remaining}}
@@ -1060,7 +1151,8 @@ def self_test():
         "proven_rows", "open_app_prs", "lanes_working", "ready_rows", "forecast_p50_date", "forecast_p85_date",
         "plan_pct_used_24h", "span_hours", "changes_merged_span", "works_rows_span", "pct_per_change",
         "pct_per_works_row", "rows_done_24h", "rows_needed_per_day",
-        "daily_counts", "remaining_scope"])
+        "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today", "ci_rule_failures_today",
+        "ci_bundle_failures_today", "daily_counts", "remaining_scope"])
     # P-602 (4), no log: the span is the whole 24 h to 20 Nov 06:30Z; PF-2's first app merge 19 Nov 20:00Z is inside.
     eq("changes_merged_span", (v["changes_merged_span"], n["changes_merged_span"]["detail"]), (1, ["PF-2"]))
     eq("works_rows_span no history", v["works_rows_span"], None)

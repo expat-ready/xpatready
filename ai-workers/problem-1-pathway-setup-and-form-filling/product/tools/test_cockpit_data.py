@@ -307,8 +307,8 @@ class TrustAndInvariants(unittest.TestCase):
         ck = cd.Snap(FIX).file("MVP-CHECKLIST.md").replace("| 3 | Cap three |", "| 2 | Cap two again | Platform | PF-2 | Merged |\n| 3 | Cap three |")
         _, c = run(snap_with({CKP: ck}))
         inv = {i["name"]: i for i in c["trust"]["invariants"]}
-        self.assertFalse(inv["Build rows unique"]["ok"])
-        self.assertIn("2 (Shaped / Merged)", inv["Build rows unique"]["detail"])
+        self.assertFalse(inv["Capabilities unique"]["ok"])
+        self.assertIn("2 (Shaped / Merged)", inv["Capabilities unique"]["detail"])
         self.assertEqual(c["pace"]["rows_total"]["value"], 8)          # counted once
         _, c0 = run()
         self.assertEqual(c0["trust"]["status_disagreements"], [{"map": 2, "checklist": "Shaped", "computed": "built"},
@@ -331,7 +331,7 @@ class TrustAndInvariants(unittest.TestCase):
         t2 = json.loads(json.dumps(theirs))
         plus = lambda n: (date.fromisoformat(k["forecast_p85_date"]) + timedelta(days=n)).isoformat()
         r7 = cd.reconcile_compare(k, theirs, None)
-        self.assertEqual(r7["compared"], 21)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight
+        self.assertEqual(r7["compared"], 27)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's six
         t2["numbers"]["forecast_p85_date"]["value"] = plus(1)                 # +1 day: agrees
         self.assertEqual(cd.reconcile_compare(k, t2, None)["state"], "agree")
         t2["numbers"]["forecast_p85_date"]["value"] = plus(2)                 # +2 days: disagrees
@@ -569,6 +569,24 @@ class Contract(unittest.TestCase):
         d3 = json.loads(json.dumps(d))
         del d3["quality"]["review_rounds"]["reason"]                # a legacy number (v/src) is walked too
         self.assertTrue(cd.validate(d3, sch))
+        # board v53: the top numbers and the capability table are part of the contract
+        self.assertEqual((d["top_numbers"]["works_today"]["value"], d["top_numbers"]["lanes"]["started"]["value"]), (1, 4))
+        for path in (("top_numbers", "works_today", "by_size"), ("top_numbers", "lanes", "idle", "class"), ("capability_table", "not_mapped", "src")):
+            dx = json.loads(json.dumps(d))
+            o_ = dx
+            for k in path[:-1]:
+                o_ = o_[k]
+            del o_[path[-1]]
+            self.assertTrue(cd.validate(dx, sch), path)
+        dx = json.loads(json.dumps(d))
+        dx["top_numbers"]["works_today"]["target"] = 12              # the founder's target is 10 (A68)
+        self.assertTrue(cd.validate(dx, sch))
+        dx = json.loads(json.dumps(d))
+        dx["capability_table"]["rows"][0]["size"] = "XL"             # only S, M, L or not shaped
+        self.assertTrue(cd.validate(dx, sch))
+        dx = json.loads(json.dumps(d))
+        dx["top_numbers"]["rules_caught"] = {}                       # rules stay internal (A70): not in the top strip
+        self.assertTrue(cd.validate(dx, sch))
 
     def test_history_one_line_per_day(self):
         p = os.path.join(tempfile.mkdtemp(), "history.jsonl")
@@ -804,8 +822,199 @@ class Delivery24h(unittest.TestCase):
             out, note = cd.run_reconcile(d, rec)
             self.assertIsNone(note)
             _, c = run(d, rec=out, note=None)
-            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 21, []))
+            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 27, []))
 
+
+BLP = "files/" + cd.REL + "/BACKLOG.md"
+CK1 = "git/checklist_records/ck0001.md"
+
+
+class TopNumbers(unittest.TestCase):
+    """Board v53 (A69, amended by A70): Works today against 10 with S/M/L, plan % per Works capability, lanes working against
+    started, capability sizes and requirements, rules caught inside Health item 4. The IST day of taken_at is 20 Nov:
+    [20 Nov 00:00 IST = 19 Nov 18:30Z, 20 Nov 12:00 IST]."""
+    def tn(self, changes=None, **kw):
+        return run(snap_with(changes) if changes else FIX, **kw)[1]
+
+    def test_size_rule_counts_backlog_rows(self):
+        r = lambda ids, st="Shaped": {"ids": ids, "status": st}
+        self.assertEqual([cd.cap_size(r(x)) for x in (["A-1"], ["A-1", "A-2"], ["A-1", "A-2", "A-3"], ["A-1", "A-2", "A-3", "A-4"], [])],
+                         ["S", "M", "M", "L", "not shaped"])
+        self.assertEqual(cd.cap_size(r(["A-1", "A-1"])), "S")                 # distinct ids
+        self.assertEqual(cd.cap_size(r(["A-1", "A-2"], "Not shaped")), "not shaped")
+        self.assertEqual(cd.cap_size(r(["A-1"], "Not shaped yet")), "not shaped")    # one rule in both scripts: starts "Not shaped"
+        c = self.tn()
+        # map 1 PF-1 S · 2 PF-2, PF-3 M · 3 Not shaped · 4 FO-1 S · 5 Not shaped · 6 no backlog row (C6.2 only) · 7 BK-1..3 M · 8 FO-4 S
+        self.assertEqual({x["map"]: x["size"] for x in c["capability_table"]["rows"]},
+                         {1: "S", 2: "M", 3: "not shaped", 4: "S", 5: "not shaped", 6: "not shaped", 7: "M", 8: "S"})
+        self.assertEqual(c["capability_table"]["by_size"]["value"], {"S": 3, "M": 2, "L": 0, "not shaped": 3})
+
+    def test_works_today_on_the_fixture_and_missing_size(self):
+        w = self.tn()["top_numbers"]["works_today"]
+        # row 6 reads qa Works from ck0002 (20 Nov 02:00Z = 07:30 IST); before the day (ck0001, 17 Nov) it read Merged.
+        # Row 6 cites no backlog row: its size is "not shaped", never inferred.
+        self.assertEqual((w["value"], w["maps"], w["class"], w["target"]), (1, [6], "parsed", 10))
+        self.assertEqual(w["by_size"], {"S": 0, "M": 0, "L": 0, "not shaped": 1})
+        self.assertEqual(w["window"], {"from": "2026-11-20T00:00:00+05:30", "to": "2026-11-20T12:00:00+05:30"})
+
+    def test_works_today_size_mix(self):
+        # rows 7 (now BK-1 to BK-4: L) and 8 (FO-4: S) also reach qa Works today; ck0002 already shows them Merged/Shaped
+        ck = cd.Snap(FIX).file("MVP-CHECKLIST.md").replace("| BK-1 to BK-3 | Merged |", "| BK-1 to BK-4 | qa Works |") \
+            .replace("| FO-4 | Shaped |", "| FO-4 | qa Works |")
+        w = self.tn({CKP: ck})["top_numbers"]["works_today"]
+        self.assertEqual((w["value"], w["maps"]), (3, [6, 7, 8]))
+        self.assertEqual(w["by_size"], {"S": 1, "M": 0, "L": 1, "not shaped": 1})
+
+    def test_day_window_edges(self):
+        ck2 = cd.Snap(FIX).text("git/checklist_records/ck0002.md")
+        def at(when):
+            return self.tn({"git/checklist_records.jsonl": '{"sha": "ck0001", "date": "2026-11-17T00:00:00Z"}\n'
+                            '{"sha": "ckx", "date": "%s"}\n' % when, "git/checklist_records/ckx.md": ck2})
+        late = at("2026-11-19T18:29:59Z")                                   # 19 Nov 23:59:59 IST: yesterday
+        self.assertEqual(late["top_numbers"]["works_today"]["value"], 0)
+        self.assertEqual(late["pace"]["delivery_24h"]["rows_done_per_day"]["value"], 1)   # still inside the rolling 24 h
+        self.assertEqual(at("2026-11-19T18:30:00Z")["top_numbers"]["works_today"]["maps"], [6])   # 00:00:00 IST: today
+        self.assertEqual(at("2026-11-20T06:30:00Z")["top_numbers"]["works_today"]["maps"], [6])   # at taken_at: counted
+        none = self.tn({"git/checklist_records.jsonl": '{"sha": "ck0002", "date": "2026-11-20T02:00:00Z"}\n'})
+        w = none["top_numbers"]["works_today"]                               # history starts after midnight: not measured
+        self.assertEqual((w["value"], w["by_size"]), (None, None))
+        self.assertIn("earlier versions", w["reason"])
+
+    def test_zero_works_reads_no_works_yet(self):
+        c = self.tn({CK1: cd.Snap(FIX).text("git/checklist_records/ck0002.md")})   # row 6 already qa Works on 17 Nov
+        t = c["top_numbers"]
+        self.assertEqual(t["works_today"]["value"], 0)
+        self.assertIsNone(t["pct_per_works"]["value"])                         # never infinity
+        self.assertEqual(t["pct_per_works"]["reason"], "no Works yet: 12% used")
+        self.assertEqual((t["pct_per_change"]["value"], t["pct_per_works"]["class"]), (12.0, "reported"))
+        self.assertEqual(t["pct_per_works"], c["pace"]["delivery_24h"]["pct_per_works_row"])
+        self.assertEqual(self.tn()["top_numbers"]["pct_per_works"]["value"], 12.0)   # 12% ÷ 1 capability (row 6)
+
+    def test_lanes_working_started_idle(self):
+        L = self.tn()["top_numbers"]["lanes"]
+        # working: claude/bk-6 (pushed 30 min before taken_at). Started: FO-1, BK-6, FO-4 and qa lanes (Old lane is done).
+        # Idle: FO-1 (claude/fo-1 pushed 3.5 h ago), FO-4 and qa (no branch found).
+        self.assertEqual((L["working"]["value"], L["started"]["value"], L["idle"]["value"]), (1, 4, 3))
+        self.assertEqual((L["working"]["class"], L["started"]["class"], L["idle"]["class"]), ("measured", "reported", "reported"))
+        self.assertEqual(L["idle"]["names"], ["FO-1 lane", "FO-4 lane (no branch found)", "qa lane (no branch found)"])
+        br = jread(os.path.join(FIX, "github/branches_recent.json"))
+        next(b for b in br if b["name"] == "claude/fo-1")["pushed_at"] = "2026-11-20T05:30:00Z"
+        L2 = self.tn({"github/branches_recent.json": br})["top_numbers"]["lanes"]
+        self.assertEqual((L2["working"]["value"], L2["idle"]["value"]), (2, 2))
+        li = jread(os.path.join(FIX, "lead-input.json"))
+        li["as_of"] = "2026-11-20T09:00:00+05:30"
+        L3 = self.tn({"lead-input.json": li})["top_numbers"]["lanes"]
+        self.assertEqual((L3["started"]["value"], L3["started"]["reason"]), (None, "not measured: Lead input 3.0 h old (limit 2 h)"))
+        self.assertIsNone(L3["idle"]["value"])
+        L4 = run(snap_with(drop=["lead-input.json"]))[1]["top_numbers"]["lanes"]
+        self.assertEqual((L4["working"]["value"], L4["started"]["reason"]), (1, "not measured: no Lead input"))
+
+    def test_requirements_column(self):
+        self.assertEqual(cd.source_ids("| x | Source: AG-4-16, SA11-D8; P-574 |"), ["AG-4-16", "SA11-D8", "P-574"])
+        self.assertEqual(cd.source_ids("· Source: P-579; Code SOR/2022-128 s. 24(2)(a) (laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/, "
+                                       "read 13 Nov 2026; Unconfirmed: no counsel) |"), ["P-579"])
+        self.assertEqual(cd.source_ids("Source: AG-4-16, AG-4-16; AG-4-17/AG-4-18 (rev (2) AG-5-10) MVP-CHECKLIST.md, P-1."),
+                         ["AG-4-16", "AG-4-17", "AG-4-18", "P-1"])          # once each; "/" splits; nested brackets gone; a file name is no id
+        self.assertEqual(cd.source_ids("| a · Source: AG-1-1 · waits on: PF-2 |"), ["AG-1-1"])   # the field ends at the next "·"
+        self.assertEqual(cd.source_ids("Source: E-signature research, a P-decision id, AG-2-8a, AG05-D4"), ["AG-2-8a", "AG05-D4"])
+        self.assertEqual([cd.req_section(x) for x in ("AG-4-16", "SA-11-25", "SA11-D8", "P-574", "NFR5-14")], ["AG-4", "SA-11", "SA11", "P", "NFR5"])
+        bl = cd.Snap(FIX).file("BACKLOG.md").replace("**Row PF-1:** a fixture row", "**Row PF-1:** a fixture row · Source: AG-4-16, SA-11-25; P-574") \
+            .replace("**Row PF-3:** a fixture row", "**Row PF-3:** a fixture row · Source: AG-4-17, AG-4-16 (see AG-9-9)")
+        bl = bl.replace("| PF-4 | lane | **Row PF-4:** a fixture row · **waits on:** nothing · decisions: none | done when it passes |",
+                        "| PF-4 | lane | **Row PF-4:** a fixture row | done when Source: AG-7-7 is read |")   # Done when is never read
+        t = self.tn({BLP: bl})["capability_table"]
+        rows = {x["map"]: x for x in t["rows"]}
+        self.assertEqual(rows[1]["req_by_section"], {"AG-4": ["AG-4-16"], "SA-11": ["SA-11-25"], "P": ["P-574"]})
+        self.assertEqual(rows[2]["req"], ["AG-4-17", "AG-4-16"])               # the union over PF-2 and PF-3; bracketed id left out
+        self.assertEqual((t["not_mapped"]["value"], t["not_mapped"]["maps"]), (6, [3, 4, 5, 6, 7, 8]))
+
+    def test_rules_caught_fold_into_health_item_4(self):
+        def h4(changes=None, drop=()):
+            s, c = run(snap_with(changes, drop))
+            return c["rules_caught"], next(i for i in cd.health(s, NOW, c, s.j("lead-input.json"))["items"] if i["id"] == 4)
+        rc, it = h4()
+        # fixture: the label-guard comment at 19 Nov 23:59:59 IST is yesterday; the other quotes it mid-text; the CI failure is a suite
+        self.assertEqual([rc[k]["value"] for k in ("label_guard_removals", "ci_rule_failures", "breaches_found", "push_guard_refusals")], [0, 0, 0, 0])
+        self.assertEqual(it["state"], "green")
+        self.assertTrue(it["detail"].endswith("; rules caught today: none"))
+        cm = jread(os.path.join(FIX, "github/issue_comments_today.json"))
+        cm["comments"].append({"id": 9004, "pr": 116, "created_at": "2026-11-19T18:30:00Z", "bot": True, "head": "**Label guard:** `review: approved` removed."})
+        cm["comments"].append({"id": 9006, "pr": 118, "created_at": "2026-11-20T02:00:00Z", "bot": False,
+                               "head": "**Label guard:** a person typing the guard's words"})   # not the guard: never counted
+        cm["comments"].append({"id": 9005, "pr": 118, "created_at": "2026-11-20T06:31:00Z", "bot": True, "head": "**Label guard:** after taken_at"})
+        ci = jread(os.path.join(FIX, "github/ci_failed_runs_today.json"))
+        ci["runs"] += [{"id": 502, "attempt": 2, "created_at": "2026-11-20T03:00:00Z", "head_branch": "claude/fo-7", "prs": [116],
+                        "failed_steps": [{"job": "ci", "step": "notes check 1 of 2, rules files (check-docs.sh)"}]},
+                       {"id": 503, "attempt": 1, "created_at": "2026-11-20T04:00:00Z", "head_branch": "claude/fo-1", "prs": [105],
+                        "failed_steps": [{"job": "shard (1)", "step": "rules files, decision impact, graph, official PDFs"}]},
+                       {"id": 504, "attempt": 1, "created_at": "2026-11-19T18:00:00Z", "head_branch": "x", "prs": [],
+                        "failed_steps": [{"job": "ci", "step": "notes check 1 of 2, rules files (check-docs.sh)"}]}]
+        li = jread(os.path.join(FIX, "lead-input.json"))
+        li["breaches_found"] = 1
+        rc, it = h4({"github/issue_comments_today.json": cm, "github/ci_failed_runs_today.json": ci, "lead-input.json": li})
+        self.assertEqual((rc["label_guard_removals"]["value"], rc["label_guard_removals"]["prs"]), (1, [116]))   # 00:00 IST counts
+        self.assertEqual(rc["ci_rule_failures"]["value"], 1)                     # 502 (check-docs step); 504 is yesterday
+        self.assertEqual(rc["ci_bundle_failures"]["value"], 1)                   # 503: shard 1's rules-files step (17 commands)
+        self.assertEqual(it["state"], "amber")
+        self.assertIn("rules caught today: label-guard removals 1 (#116); check-docs CI failures 1 (#116); "
+                      "rules-and-tools CI step failures (check-docs.sh + 16 other checks) 1 (#105); breaches found (Lead-reported) 1", it["detail"])
+        self.assertEqual(it["class"], "measured")
+        li3 = jread(os.path.join(FIX, "lead-input.json"))
+        li3["breaches_found"] = 2
+        rc, it = h4({"lead-input.json": li3})                                  # lit by a Lead-reported count alone
+        self.assertEqual((it["state"], it["class"]), ("amber", "reported"))
+        li4 = jread(os.path.join(FIX, "lead-input.json"))
+        li4["as_of"] = "2026-11-20T09:00:00+05:30"
+        rc, it = h4({"lead-input.json": li4})
+        self.assertIn("breaches found: not updated: Lead input 3.0 h old (limit 2 h)", it["detail"])
+        rc, it = h4(drop=["github/issue_comments_today.json"])
+        self.assertEqual((rc["label_guard_removals"]["value"], it["state"]), (None, "amber"))
+        self.assertIn("not measured: label-guard removals: not measured: the PR comments of today were not read", it["detail"])
+        li2 = jread(os.path.join(FIX, "lead-input.json"))
+        del li2["push_guard_refusals"]
+        rc, it = h4({"lead-input.json": li2})
+        self.assertEqual(rc["push_guard_refusals"]["reason"], "not reported: Lead input has no push_guard_refusals")
+        self.assertEqual(it["state"], "green")                                  # a Lead-reported gap is said, not lit
+        self.assertIn("(push guard refusals: not reported: Lead input has no push_guard_refusals)", it["detail"])
+
+    def test_rest_fallback_branches(self):
+        act = [{"ref": "refs/heads/claude/pf-9", "activity_type": "branch_creation", "after": "a1", "timestamp": "2026-11-20T04:30:00Z"},
+               {"ref": "refs/heads/claude/fo-1", "activity_type": "push", "after": "b1", "timestamp": "2026-11-20T03:00:00Z"},
+               {"ref": "refs/heads/claude/fo-1", "activity_type": "force_push", "after": "b2", "timestamp": "2026-11-20T05:00:00+00:00"},
+               {"ref": "refs/heads/claude/gone", "activity_type": "push", "after": "c1", "timestamp": "2026-11-20T05:00:00Z"},
+               {"ref": "refs/heads/claude/old", "activity_type": "push", "after": "d1", "timestamp": "2026-11-19T05:00:00Z"},
+               {"ref": "refs/heads/claude/fo-7", "activity_type": "branch_deletion", "after": "0", "timestamp": "2026-11-20T05:00:00Z"},
+               {"ref": "refs/tags/v1", "activity_type": "push", "after": "e1", "timestamp": "2026-11-20T05:00:00Z"}]
+        got = cd.branches_from_activity(act, {"claude/pf-9", "claude/fo-1", "claude/old", "claude/fo-7"}, NOW - timedelta(hours=24))
+        # a first push (branch_creation) counts; the newest push per branch; deleted, old, deletion events and tags do not
+        self.assertEqual(sorted((x["name"], x["sha"]) for x in got), [("claude/fo-1", "b2"), ("claude/pf-9", "a1")])
+
+    def test_reconcile_checks_the_new_counts(self):
+        rec = os.path.join(HERE, "cockpit-reconcile.py")
+        ck = cd.Snap(FIX).file("MVP-CHECKLIST.md").replace("| BK-1 to BK-3 | Merged |", "| BK-1 to BK-4 | qa Works |")
+        bl = cd.Snap(FIX).file("BACKLOG.md").replace("**Row BK-2:** a fixture row", "**Row BK-2:** a fixture row · Source: AG-5-1 (x)")
+        cm = jread(os.path.join(FIX, "github/issue_comments_today.json"))
+        cm["comments"].append({"id": 9004, "pr": 116, "created_at": "2026-11-19T18:30:00Z", "bot": True, "head": "**Label guard:** removed"})
+        cm["comments"].append({"id": 9006, "pr": 118, "created_at": "2026-11-20T02:00:00Z", "bot": False, "head": "**Label guard:** typed"})
+        ci = jread(os.path.join(FIX, "github/ci_failed_runs_today.json"))
+        ci["runs"].append({"id": 502, "attempt": 1, "created_at": "2026-11-20T03:00:00Z", "head_branch": "b", "prs": [1],
+                           "failed_steps": [{"job": "ci", "step": "notes check 1 of 2, rules files (check-docs.sh)"}]})
+        for d in (snap_with({CKP: ck, BLP: bl, "github/issue_comments_today.json": cm, "github/ci_failed_runs_today.json": ci}),
+                  snap_with({CK1: cd.Snap(FIX).text("git/checklist_records/ck0002.md")}),
+                  snap_with({BLP: cd.Snap(FIX).file("BACKLOG.md").replace("**Row BK-1:** a fixture row", "**Row BK-1:** x · Source: (rev (2) AG-5-10)")
+                             .replace("| FO-4 | lane | **Row FO-4:** a fixture row · **waits on:** PF-1 · decisions: none | done when it passes |",
+                                      "| FO-4 | lane | **Row FO-4:** x · Source: MVP-CHECKLIST.md | done when Source: AG-7-7 |")
+                             .replace("**Row PF-1:** a fixture row", "**Row PF-1:** x · Source: AG-4-16/AG-4-17"),
+                             CKP: cd.Snap(FIX).file("MVP-CHECKLIST.md").replace("| C6.2 Works | qa Works\\* |", "| C6.2 Works; FO-1 | qa Works\\* |")}),
+                  snap_with(drop=["github/issue_comments_today.json", "github/ci_failed_runs_today.json"])):
+            out, note = cd.run_reconcile(d, rec)
+            self.assertIsNone(note)
+            _, c = run(d, rec=out, note=None)
+            self.assertEqual((c["trust"]["state"], c["trust"]["diffs"]), ("agree", []), c["trust"]["diffs"])
+        k = c["keys"]
+        self.assertEqual((k["label_guard_removals_today"], k["ci_rule_failures_today"], k["ci_bundle_failures_today"]), (None, None, None))
+        theirs = {"numbers": {"works_today": {"value": 5}}}
+        self.assertEqual(cd.reconcile_compare(k, theirs, None)["banner"], "Numbers disagree: works_today")
 
 class UsageLogScript(unittest.TestCase):
     """tools/usage-log.sh: refusals, names with a tab, a file with no final newline."""

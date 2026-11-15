@@ -136,6 +136,28 @@ class GH:
                 break
         raise RuntimeError(f"GET {url.replace(self.api, '')} failed: {err}")
 
+    def get_pages(self, url, max_pages=40):
+        """GET every page of a list that pages by the Link header's rel="next" (cursor APIs such as /activity)."""
+        url = url if url.startswith("http") else self.api + url
+        out = []
+        for _ in range(max_pages):
+            if self.offline:
+                raise RuntimeError("offline")
+            self.calls += 1
+            r = subprocess.run(["curl", "-sS", "--fail-with-body", "-D", "-", "-H", "Accept: application/vnd.github+json",
+                                "-H", f"Authorization: token {self.token}", url], capture_output=True, text=True)
+            if r.returncode:
+                raise RuntimeError(f"GET {url.replace(self.api, '')} failed: {(r.stdout[-200:] + ' ' + r.stderr[:200]).strip()}")
+            head, _, body = r.stdout.partition("\n\n")          # text mode: curl's \r\n arrive as \n
+            while head.startswith("HTTP/") and body.startswith("HTTP/"):          # a 100-continue or proxy preamble
+                head, _, body = body.partition("\n\n")
+            out += json.loads(body)
+            m = re.search(r'<([^>]+)>;\s*rel="next"', head)
+            if not m:
+                return out
+            url = re.sub(r"^https://api\.github\.com/repositories/\d+", self.api, m.group(1))   # same repo, by its name
+        raise RuntimeError(f"more than {max_pages} pages")
+
     def graphql(self, query, variables):
         if self.offline:
             raise RuntimeError("offline")
@@ -566,6 +588,45 @@ def parse_backlog(text):
     return {"ids": ids, "dupes": dupes, "lines": lines, "deps": deps, "bk": [x for x in ids if x.startswith("BK-")]}
 
 
+TARGET_WORKS_PER_DAY = 10                      # founder A68 ("10 capabilities in 10 h") and A69 ("10 a day"), 15 Nov
+SOURCE_RE = re.compile(r"Source:([^|·]*)")        # a BACKLOG row's " · Source: …" field, to the next "·" or the cell's end (P-595)
+SOURCE_TOK = re.compile(r"[A-Za-z0-9][A-Za-z0-9.\-]*")     # a token: letters, digits, "." and "-" ("/" and spaces split tokens)
+SOURCE_ID = re.compile(r"[A-Z][A-Za-z0-9]*(?:-[A-Z0-9][A-Za-z0-9]*)+")   # an id token: AG-4-16, SA11-D8, AG-2-8a, P-574 (not P-decision)
+LABEL_GUARD_HEAD = "**Label guard:**"            # tools/label-guard.sh and label-guard.yml start every removal comment so
+RULES_STEP = re.compile(r"check-docs", re.I)       # ci.yml steps whose name names tools/check-docs.sh (the notes run's "notes check 1 of 2 …")
+BUNDLE_STEP = re.compile(r"^rules files", re.I)     # shard 1's "rules files, decision impact, …": check-docs.sh plus 16 other commands
+
+
+def cap_size(r):
+    """A70 (founder via Lead 51, 15 Nov): size = distinct backlog row ids in the capability's BACKLOG rows cell:
+    1 = S, 2-3 = M, 4 or more = L; no row, or Status "Not shaped" = "not shaped". Measured from the cell, never judged."""
+    n = len(set(r["ids"]))
+    if r["status"].startswith("Not shaped") or n == 0:
+        return "not shaped"
+    return "S" if n == 1 else "M" if n <= 3 else "L"
+
+
+def source_ids(text):
+    """The requirement ids in a BACKLOG row's Source: fields (text: the row without its Done-when column, bl["deps"]).
+    A field runs from "Source:" to the next "·" or the cell's end; bracketed text (a URL, "(3)") is removed, innermost first,
+    until none is left; then each token whose trailing "." and "-" are cut and that has the id shape counts. In order, once each."""
+    out = []
+    for m in SOURCE_RE.finditer(text or ""):
+        txt, prev = m.group(1), None
+        while txt != prev:
+            prev, txt = txt, re.sub(r"\([^()]*\)", " ", txt)
+        for tok in SOURCE_TOK.findall(txt):
+            tok = tok.rstrip(".-")
+            if SOURCE_ID.fullmatch(tok) and tok not in out:
+                out.append(tok)
+    return out
+
+
+def req_section(rid):
+    """The section an id belongs to: the id without its last dash part (AG-4-16 → AG-4, SA11-D8 → SA11, P-574 → P)."""
+    return rid.rsplit("-", 1)[0]
+
+
 def parse_caps(text):
     """qa/CAPABILITIES.md rows: id, milestone, status (progress.sh's row rule, all four milestones)."""
     out = {}
@@ -599,6 +660,18 @@ def records_lag(branch_ref, main_ref):
     n = git_out("rev-list", "--count", f"{main_ref}..{branch_ref}")
     old = git_out("log", "--reverse", "--format=%cI", f"{main_ref}..{branch_ref}")
     return (int(n.strip()) if n else None), ((old or "").splitlines() or [None])[0]
+
+
+def branches_from_activity(activity, alive, since):
+    """REST fallback for branches_recent.json: the newest push (push, force push, or a branch's first push, branch_creation)
+    per branch that still exists, pushed at or after since; the time is the push itself."""
+    newest = {}
+    for a in activity:
+        if a.get("activity_type") in ("push", "force_push", "branch_creation") and (a.get("ref") or "").startswith("refs/heads/"):
+            n = a["ref"][len("refs/heads/"):]
+            if n in alive and (n not in newest or parse_iso(a["timestamp"]) > parse_iso(newest[n]["pushed_at"])):
+                newest[n] = {"name": n, "sha": a["after"], "pushed_at": a["timestamp"]}
+    return [x for x in newest.values() if parse_iso(x["pushed_at"]) >= since]
 
 
 def take_snapshot(snap, gh, cache, lead_input, appcode_max):
@@ -722,27 +795,103 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     # every branch is read (GitHub's ref ordering by commit date proved unreliable for branches: 14 Nov, today's lane branches missing)
     qb = """query($o:String!,$r:String!,$c:String){repository(owner:$o,name:$r){refs(refPrefix:"refs/heads/",first:100,after:$c){
       pageInfo{hasNextPage endCursor} nodes{name target{... on Commit{oid committedDate}}}}}}"""
-    refs, cur = [], None
-    for _ in range(40):
-        got = gh.graphql(qb, {"o": o, "r": r_, "c": cur})["repository"]["refs"]
-        refs += got["nodes"]
-        if not got["pageInfo"]["hasNextPage"]:
-            break
-        cur = got["pageInfo"]["endCursor"]
     day_ago = NOW - timedelta(hours=24)
-    wj("github/branches_recent.json", [{"name": x["name"], "sha": x["target"]["oid"], "pushed_at": x["target"]["committedDate"]}
-                                        for x in refs if x.get("target") and parse_iso(x["target"]["committedDate"]) >= day_ago])
+    try:
+        refs, cur = [], None
+        for _ in range(40):
+            got = gh.graphql(qb, {"o": o, "r": r_, "c": cur})["repository"]["refs"]
+            refs += got["nodes"]
+            if not got["pageInfo"]["hasNextPage"]:
+                break
+            cur = got["pageInfo"]["endCursor"]
+        recent = [{"name": x["name"], "sha": x["target"]["oid"], "pushed_at": x["target"]["committedDate"]}
+                  for x in refs if x.get("target") and parse_iso(x["target"]["committedDate"]) >= day_ago]
+    except RuntimeError as e:
+        # REST fallback (cloud sessions refuse GraphQL): the repository's push activity of the last day, newest push per branch,
+        # kept when the branch still exists (a branch's first push is "branch_creation"). Push time here is the real push time,
+        # not the head commit's committed date.
+        ERRORS.append(f"branches: GraphQL refused ({str(e)[:80]}); REST push activity used (push time = the push itself)")
+        recent = branches_from_activity(gh.get_pages("/activity?time_period=day&per_page=100"),
+                                        {b["name"] for b in gh.get_pages("/branches?per_page=100")}, day_ago)
+    wj("github/branches_recent.json", recent)
     # extra: open PRs' head commit time, CI rollup and the time `review: approved` was put on (§2 waits)
     qo = """query($o:String!,$r:String!){repository(owner:$o,name:$r){pullRequests(states:OPEN,first:100){nodes{number
       commits(last:1){nodes{commit{committedDate statusCheckRollup{state}}}}
       timelineItems(itemTypes:[LABELED_EVENT],last:30){nodes{... on LabeledEvent{createdAt label{name}}}}}}}}"""
     od = []
-    for x in gh.graphql(qo, {"o": o, "r": r_})["repository"]["pullRequests"]["nodes"]:
-        cm = ((x["commits"]["nodes"] or [{}])[0]).get("commit") or {}
-        lab = [e["createdAt"] for e in x["timelineItems"]["nodes"] if e and (e.get("label") or {}).get("name") == "review: approved"]
-        od.append({"number": x["number"], "head_committed_at": cm.get("committedDate"),
-                   "ci": ((cm.get("statusCheckRollup") or {}).get("state") or "NONE").lower(), "approved_labelled_at": lab[-1] if lab else None})
+    try:
+        nodes = gh.graphql(qo, {"o": o, "r": r_})["repository"]["pullRequests"]["nodes"]
+    except RuntimeError as e:
+        nodes = None
+        ERRORS.append(f"open PR detail: GraphQL refused ({str(e)[:80]}); REST used (CI state rebuilt from check runs and statuses)")
+    if nodes is not None:
+        for x in nodes:
+            cm = ((x["commits"]["nodes"] or [{}])[0]).get("commit") or {}
+            lab = [e["createdAt"] for e in x["timelineItems"]["nodes"] if e and (e.get("label") or {}).get("name") == "review: approved"]
+            od.append({"number": x["number"], "head_committed_at": cm.get("committedDate"),
+                       "ci": ((cm.get("statusCheckRollup") or {}).get("state") or "NONE").lower(), "approved_labelled_at": lab[-1] if lab else None})
+    else:
+        for x in [p for p in raw if p["state"] == "open"]:
+            sha = x["head"]["sha"]
+            c = gh.get(f"/commits/{sha}")
+            runs = gh.get(f"/commits/{sha}/check-runs?per_page=100").get("check_runs", [])
+            stt = gh.get(f"/commits/{sha}/status")
+            bad = {"failure", "timed_out", "cancelled", "action_required", "startup_failure"}
+            if any(r.get("conclusion") in bad for r in runs) or stt.get("state") in ("failure", "error") and stt.get("statuses"):
+                ci = "failure"
+            elif any(r.get("status") != "completed" for r in runs) or (stt.get("statuses") and stt.get("state") == "pending"):
+                ci = "pending"
+            elif runs or stt.get("statuses"):
+                ci = "success"
+            else:
+                ci = "none"
+            ev = gh.get_pages(f"/issues/{x['number']}/events?per_page=100", max_pages=5)
+            lab = [e["created_at"] for e in ev if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == "review: approved"]
+            od.append({"number": x["number"], "head_committed_at": c["commit"]["committer"]["date"], "ci": ci,
+                       "approved_labelled_at": lab[-1] if lab else None})
     wj("github/open_prs_detail.json", od)
+    # board v53 (A69, A70): rules caught in the IST day so far (Health item 4). Read from IST midnight; a file is absent when
+    # its read failed, so the number reads not measured.
+    d0 = datetime.combine(NOW.astimezone(IST).date(), datetime.min.time(), IST).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def read_comments():
+        out, pg = [], 1
+        while pg <= 30:
+            got = gh.get(f"/issues/comments?since={d0}&sort=created&direction=asc&per_page=100&page={pg}")
+            out += [{"id": c["id"], "pr": int(c["issue_url"].rsplit("/", 1)[1]), "created_at": c["created_at"],
+                     "bot": (c.get("user") or {}).get("type") == "Bot", "head": (c.get("body") or "")[:60]} for c in got]
+            if len(got) < 100:
+                return out
+            pg += 1
+        raise RuntimeError("more than 3,000 comments since IST midnight")
+    cm_today = safe("PR comments today", read_comments)
+    if cm_today is not None:
+        wj("github/issue_comments_today.json", {"from": d0, "comments": cm_today})
+
+    def read_failed_ci():
+        runs, pg = [], 1
+        while pg <= 10:
+            got = gh.get(f"/actions/workflows/ci.yml/runs?created=%3E%3D{d0}&status=failure&per_page=100&page={pg}").get("workflow_runs", [])
+            runs += got
+            if len(got) < 100:
+                break
+            pg += 1
+        out = []
+        for x in runs:
+            att = x.get("run_attempt") or 1
+            f = os.path.join(cache, f"ci-failed-{x['id']}-{att}.json")
+            if os.path.exists(f):
+                steps = json.load(open(f))
+            else:
+                jobs = gh.get(f"/actions/runs/{x['id']}/attempts/{att}/jobs?per_page=100").get("jobs", [])
+                steps = [{"job": j["name"], "step": s["name"]} for j in jobs for s in (j.get("steps") or []) if s.get("conclusion") == "failure"]
+                json.dump(steps, open(f, "w"))
+            out.append({"id": x["id"], "attempt": att, "created_at": x["created_at"], "head_branch": x.get("head_branch"),
+                        "prs": [p["number"] for p in x.get("pull_requests") or []], "failed_steps": steps})
+        return out
+    ci_today = safe("failed CI runs today", read_failed_ci)
+    if ci_today is not None:
+        wj("github/ci_failed_runs_today.json", {"from": d0, "workflow": "ci.yml", "runs": ci_today})
     # qa/CAPABILITIES.md on main, and every main commit touching it in the last 30 days
     wt("files_main/qa/CAPABILITIES.md", gh.get(f"/contents/{REL}/qa/CAPABILITIES.md?ref={msha}", raw=True))
     cms, page = [], 1
@@ -1386,7 +1535,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     rem_shaped = sum(1 for x in shaped_ids if x not in change_at)
     rem_unshaped = sum(max(0, UNSHAPED_FACTOR - sum(1 for x in r["ids"] if x in change_at)) for r in unshaped)
     remaining = rem_shaped + rem_unshaped
-    R = num(remaining, f"unmerged ids of shaped Build rows ({rem_shaped}) + {UNSHAPED_FACTOR} × each Build row not shaped, "
+    R = num(remaining, f"unmerged ids of shaped capabilities ({rem_shaped}) + {UNSHAPED_FACTOR} × each capability not shaped, "
             f"less its merged parts ({rem_unshaped}); {ck_src}, {bl_src}, {gh_src}", "mixed", L,
             label=f"estimate: {len(unshaped)} unspecified capabilities × {UNSHAPED_FACTOR} (P-586 (4), to be settled 19 Nov)",
             shaped_unmerged=rem_shaped, unshaped_rows=len(unshaped), unshaped_estimate=rem_unshaped)
@@ -1405,9 +1554,9 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             r["built"] = max(change_day[x] for x in r["ids"]).isoformat()
     built_rows = [r for r in rows if r["built"]]
     pre = [r["map"] for r in rows if r.get("pre_baseline")]
-    B = num(len(built_rows), f"shaped Build rows whose BACKLOG parts all merged through app PRs (built date = the latest part's merge date); "
+    B = num(len(built_rows), f"shaped capabilities whose BACKLOG parts all merged through app PRs (built date = the latest part's merge date); "
             f"{ck_src}, {gh_src}", "mixed", L,
-            built_before=num(len(pre), "Build rows with no BACKLOG part that the checklist marks Merged or qa Works (built in the proof of concept, "
+            built_before=num(len(pre), "capabilities with no BACKLOG part that the checklist marks Merged or qa Works (built in the proof of concept, "
                              "before 13 Nov; no date)", "parsed", L, maps=pre))
     hist_caps = snap.cap_history()
     proven_reason = None
@@ -1502,10 +1651,10 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
         return None if wa is None or wb is None else sorted(wb - wa)
     hist_reason = "not measured: the checklist's earlier versions do not reach back that far in this snapshot"
     wr = reached(s_from, s_to)
-    D_wk = num(None if wr is None else len(wr), f"Build rows that reached qa Works (checklist Status reads qa Works, or proven) between {span_txt}; "
+    D_wk = num(None if wr is None else len(wr), f"capabilities that reached qa Works (checklist Status reads qa Works, or proven) between {span_txt}; "
                f"{ck_src} and its earlier versions", "mixed", L, hist_reason, maps=wr or [])
     wd = reached(d_start, d_end)
-    D_done = num(None if wd is None else len(wd), f"Build rows that reached qa Works (Status reads qa Works, or proven) in the 24 h to taken_at; {ck_src} "
+    D_done = num(None if wd is None else len(wd), f"capabilities that reached qa Works (Status reads qa Works, or proven) in the 24 h to taken_at; {ck_src} "
                  "and its earlier versions", "mixed", L, hist_reason, maps=wd or [])
     D_use = num(pct_used, f"{'at least ' if at_least else ''}the sum of rises between readings in a row from the same account, {span_txt}"
                 f"{' (a plan reset or an account change in between: use across it is not seen)' if at_least else ''}; {ul_src}",
@@ -1525,7 +1674,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
         return num(round(pct_used / n, 1), f"{pct_used}% of a weekly plan ÷ {n} {what}, between {span_txt}", "reported", L, lk="usage",
                    at_least=at_least)
     rows_left = None if works_at(cutoff) is None else nrows - len(works_at(cutoff))
-    rn_src = (f"Build rows not yet at qa Works (checklist Status reads qa Works, or proven) ÷ calendar days to the committed date {committed}; "
+    rn_src = (f"capabilities not yet at qa Works (checklist Status reads qa Works, or proven) ÷ calendar days to the committed date {committed}; "
               f"{ck_src}")
     if committed:
         RN = num(round(rows_left / days_left, 2) if days_left > 0 else None, rn_src, "mixed", L, "not measured: the committed date is today or past",
@@ -1536,8 +1685,47 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     delivery = {"from": tiso(d_start), "to": tiso(d_end), "span": span,
                 "plan_pct_used": D_use, "changes_merged": D_ch, "works_rows": D_wk,
                 "pct_per_change": per(len(ch_span), "Release 1 changes merged", "no Release 1 changes merged"),
-                "pct_per_works_row": per(D_wk["value"], "Release 1 rows that reached qa Works", "no rows reached qa Works"),
+                "pct_per_works_row": per(D_wk["value"], "capabilities that reached qa Works", "no Works yet"),
                 "rows_done_per_day": D_done, "rows_needed_per_day": RN}
+
+    # ---- board v53 (A69, A70): size and requirements per capability; capabilities at qa Works in the IST day so far
+    for r in rows:
+        r["size"] = cap_size(r)
+        req = []
+        for x in r["ids"]:
+            for s_ in source_ids(bl["deps"].get(x)):
+                if s_ not in req:
+                    req.append(s_)
+        r["req"] = req
+    size_keys = ("S", "M", "L", "not shaped")
+    by_size_all = {k: sum(1 for r in rows if r["size"] == k) for k in size_keys}
+    not_mapped = [r["map"] for r in rows if not r["req"]]
+    day_start = datetime.combine(today, datetime.min.time(), IST)
+    # the day is [00:00 IST, taken_at]: the status "before the day" is the newest checklist commit before 00:00 IST
+    wt_maps = reached(day_start - timedelta(microseconds=1), cutoff)
+    size_of = {r["map"]: r["size"] for r in rows}
+    wt_by = None if wt_maps is None else {k: sum(1 for m in wt_maps if size_of.get(m) == k) for k in size_keys}
+    cap_word = lambda n: "capability" if n == 1 else "capabilities"
+    W_today = num(None if wt_maps is None else len(wt_maps),
+                  f"capabilities (MVP-CHECKLIST §A) at qa Works now and not at 00:00 IST {today.isoformat()} (Status reads qa Works, or proven); "
+                  f"{ck_src} and its earlier versions", "mixed", L, hist_reason, maps=wt_maps or [], by_size=wt_by,
+                  target=TARGET_WORKS_PER_DAY, target_src="founder A68 and A69 (15 Nov): 10 capabilities a day",
+                  window={"from": tiso(day_start), "to": tiso(cutoff)},
+                  size_rule="distinct backlog row ids in the capability's BACKLOG rows cell: 1 = S, 2-3 = M, 4+ = L; none or Not shaped = not shaped (A70)")
+    pw = dict(delivery["pct_per_works_row"])
+    if pct_used is not None and span_h >= USAGE_MIN_SPAN_H and D_wk["value"] == 0:
+        pw["reason"] = f"no Works yet: {pct_used}% used"
+    delivery["pct_per_works_row"] = pw
+    cap_table = {
+        "rows": [{"map": r["map"], "cap": clean(r["cap"], 90), "group": r["group"], "status": r["status"], "size": r["size"],
+                  "backlog_rows": len(set(r["ids"])), "req": r["req"],
+                  "req_by_section": {s: [x for x in r["req"] if req_section(x) == s] for s in dict.fromkeys(req_section(x) for x in r["req"])}}
+                 for r in rows],
+        "by_size": num(by_size_all, f"capabilities by size ({W_today['size_rule']}); {ck_src}", "parsed", L),
+        "not_mapped": num(len(not_mapped), f"capabilities none of whose backlog rows carries a Source: id; {ck_src}, {bl_src}", "parsed", L,
+                          maps=not_mapped),
+        "source_rule": "the ids in each backlog row's Source: field (P-595), bracketed text left out; the union over the capability's rows, "
+                       "grouped by section (the id without its last dash part)"}
 
     # ---- §1 forecast (Monte Carlo on 14 daily counts)
     days14 = win                                       # R8: the same days as the pace window
@@ -1657,7 +1845,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     lanes = [b for b in branches if is_session_branch(b["name"]) and not b["name"].startswith(("lead/", "lead-b-"))      # §11 R8
              and cutoff - timedelta(minutes=LANE_WINDOW_MIN) <= parse_iso(b["pushed_at"]) <= cutoff]   # frozen snapshot (P-596): a push after taken_at belongs to the next refresh, as in cockpit-reconcile.py
     Lw = num(len(lanes), f"branches with a push in the last {LANE_WINDOW_MIN} min, not main, the merge queue or the Leads' records branches "
-             f"(lead/*, lead-b-*); {gh_src} branches_recent.json (push time = head commit time)", "measured", L, names=[b["name"] for b in lanes],
+             f"(lead/*, lead-b-*); {gh_src} branches_recent.json (push time = head commit time, or the push itself under the REST fallback)", "measured", L, names=[b["name"] for b in lanes],
              n=sum(1 for b in branches if is_session_branch(b["name"]) and not b["name"].startswith(("lead/", "lead-b-"))))
     # R1b: ready rows treat any non-records merged PR (app code or not) as merged
     merged_any = set(change_at)
@@ -1709,7 +1897,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     timed = {"review": sum(1 for x in rw if x is not None), "merge": sum(1 for x in mw if x is not None), "qa": None if qa_unknown else len(built_wait)}
     stages = {k: {"count": num(n, {"review": "open non-draft PRs, CI green, no `review: approved` (Ready for label)",
                                    "merge": "open PRs labelled `review: approved`",
-                                   "qa": "built Build rows not yet proven"}[k] + f"; {gh_src}", "measured" if k != "qa" else "mixed", L),
+                                   "qa": "built capabilities not yet proven"}[k] + f"; {gh_src}", "measured" if k != "qa" else "mixed", L),
                   "wait_h": num(round(wv, 1) if wv is not None else None,
                                 {"review": "oldest: hours since the head commit", "merge": "oldest: hours since the label went on",
                                  "qa": "oldest: hours since the row was built"}[k], "measured" if k != "qa" else "mixed", L,
@@ -1799,7 +1987,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             used.add(br_)
         lanes_out.append({"name": s.get("name"), "role": s.get("role"), "row": s.get("row"), "pr": s.get("pr") or (hit or {}).get("pr"),
                           "reports_to": s.get("reports_to"), "reports_key": lead_key(s.get("reports_to")), "state": s.get("state"),
-                          "push_h": (hit or {}).get("push_h"), "pushed_at": (hit or {}).get("pushed_at"), "seen": "both" if hit else "reported only"})
+                          "push_h": (hit or {}).get("push_h"), "pushed_at": (hit or {}).get("pushed_at"), "seen": "both" if hit else "reported only", "branch": br_})
     for k, m in measured.items():
         if k not in used:
             lanes_out.append({"name": k, "role": "unknown", "row": None, "pr": m["pr"], "reports_to": None, "reports_key": None, "state": None,
@@ -1820,6 +2008,60 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
            "sha": L["mixed"][0], "as_of": taken}
     org["components"] = org_components(org, sessions, rows, open_prs, taken, cur_lead, rsha, bl["lines"], release_holder_ids(bl_text))
 
+    # ---- board v53 (A69, A70): lanes working against started. Working = Lw (measured, 90 min); started = the Lead input's
+    # builder and qa sessions not done (reported); idle = started lanes whose branch (as matched for the org chart) has no push in
+    # 90 min. Lead input older than 2 h, or none: started and idle not measured.
+    li_age_h = hrs(li["as_of"]) if li and li.get("as_of") else None
+    work_names = {b["name"] for b in lanes}
+    started = [x for x in lanes_out if x["seen"] != "measured only"]
+    lanes_src = "Lead input sessions with role builder or qa, state not done"
+    if not li:
+        st_reason = "not measured: no Lead input"
+    elif li_age_h is None or li_age_h > 2:
+        st_reason = f"not measured: Lead input {'has no as_of' if li_age_h is None else f'{round(li_age_h, 1)} h old (limit 2 h)'}"
+    else:
+        st_reason = None
+    idle_l = [x for x in started if x.get("branch") not in work_names]
+    lanes_top = {
+        "working": Lw,
+        "started": num(None if st_reason else len(started), lanes_src, "reported", L, st_reason, names=[x["name"] for x in started]),
+        "idle": num(None if st_reason else len(idle_l), f"started lanes ({lanes_src}) whose branch (its branch, its PR's head, or the one open PR "
+                    f"naming its row) has no push in the last {LANE_WINDOW_MIN} min ({gh_src})", "reported", L, st_reason,
+                    names=[x["name"] + ("" if x.get("branch") else " (no branch found)") for x in idle_l]),
+    }
+
+    # ---- board v53 (A70): rules caught in the IST day so far; shown only inside Health item 4 (rules stay internal)
+    d_lo, d_hi = day_start, cutoff
+    in_day = lambda iso: iso is not None and d_lo <= parse_iso(iso) <= d_hi
+    cj = snap.j("github/issue_comments_today.json")
+    lg = sorted({c["id"]: c for c in (cj or {}).get("comments", []) if (c.get("head") or "").startswith(LABEL_GUARD_HEAD)
+                 and c.get("bot") is True and in_day(c["created_at"])}.values(), key=lambda c: c["created_at"])
+    lg_n = num(None if cj is None else len(lg), f"PR comments by a bot account (the guard's token) starting \"{LABEL_GUARD_HEAD}\" (a review: approved label removed) "
+               f"from 00:00 IST to taken_at; {gh_src} issue_comments_today.json", "measured", L,
+               "not measured: the PR comments of today were not read", prs=[c["pr"] for c in lg])
+    rj = snap.j("github/ci_failed_runs_today.json")
+    def ci_count(rx, what):
+        hits = [x for x in (rj or {}).get("runs", []) if in_day(x["created_at"]) and any(rx.search(st["step"]) for st in x["failed_steps"])]
+        return num(None if rj is None else len(hits), f"ci.yml runs today whose latest attempt failed with a failed step {what}; "
+                   f"{gh_src} ci_failed_runs_today.json", "measured", L, "not measured: today's failed CI runs were not read",
+                   runs=[{"run": x["id"], "prs": x["prs"], "branch": x["head_branch"]} for x in hits])
+    ci_n = ci_count(RULES_STEP, "whose name names check-docs.sh (the notes run's rules-files check)")
+    ci_b = ci_count(BUNDLE_STEP, "named \"rules files, …\" (shard 1: check-docs.sh plus 16 other rule and tool checks; any of them failing counts)")
+
+    def li_today(k, what):
+        if not li or k not in li:
+            return num(None, f"Lead input {k}", "reported", L, f"not reported: Lead input has no {k}")
+        if st_reason:
+            return num(None, f"Lead input {k}", "reported", L, st_reason.replace("not measured", "not updated"))
+        if ist_day(li["as_of"]) != today:
+            return num(None, f"Lead input {k}", "reported", L, f"not updated: Lead input is from {ist_day(li['as_of'])}, not today")
+        return num(li[k], f"Lead input {k}: {what}", "reported", L)
+    rules = {"label_guard_removals": lg_n, "ci_rule_failures": ci_n, "ci_bundle_failures": ci_b,
+             "breaches_found": li_today("breaches_found", "rule breaches the Lead found today"),
+             "push_guard_refusals": li_today("push_guard_refusals", "push-guard refusals the Lead knows of today (the guard's refusals reach no shared record)"),
+             "records_check": "no CI check named records-check exists in .github/workflows; the CI count covers the check-docs.sh steps",
+             "window": {"from": tiso(d_lo), "to": tiso(d_hi)}}
+
     # ---- §7 working today
     wt_rows = {}
     for r in rows:
@@ -1839,9 +2081,9 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     # ---- invariants (M6)
     def inv(name, ok, detail):
         invariants.append({"name": name, "ok": bool(ok), "detail": detail})
-    inv("Build rows equal the baseline", nrows == baseline,
+    inv("Capabilities equal the baseline", nrows == baseline,
         f"{nrows} rows (baseline {baseline})" + ("" if nrows == baseline else ": scope changed, the scope line says so"))
-    inv("Build rows unique", not ck["dupes"], "duplicates: " + ", ".join(f"{d['map']} ({' / '.join(d['statuses'])})" for d in ck["dupes"]) if ck["dupes"] else "no duplicate map numbers")
+    inv("Capabilities unique", not ck["dupes"], "duplicates: " + ", ".join(f"{d['map']} ({' / '.join(d['statuses'])})" for d in ck["dupes"]) if ck["dupes"] else "no duplicate map numbers")
     inv("Every id a Shaped row cites exists in BACKLOG (R4)", not shaped_missing,
         "missing in BACKLOG.md: " + ", ".join(sorted(shaped_missing)) if shaped_missing else "all ids of Shaped rows found")
     bad = []
@@ -1885,7 +2127,9 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             "plan_pct_used_24h": pct_used, "span_hours": span_h if pct_used is not None else None,
             "changes_merged_span": len(ch_span), "works_rows_span": D_wk["value"],
             "pct_per_change": delivery["pct_per_change"]["value"], "pct_per_works_row": delivery["pct_per_works_row"]["value"],
-            "rows_done_24h": D_done["value"], "rows_needed_per_day": RN["value"]}
+            "rows_done_24h": D_done["value"], "rows_needed_per_day": RN["value"],
+            "works_today": W_today["value"], "works_today_by_size": wt_by, "capabilities_not_mapped": len(not_mapped),
+            "label_guard_removals_today": lg_n["value"], "ci_rule_failures_today": ci_n["value"], "ci_bundle_failures_today": ci_b["value"]}
     trust = reconcile_compare(keys, reconcile_out, reconcile_note)
     trust["invariants"] = invariants
     trust["notes"] = notes
@@ -1897,15 +2141,18 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
 
     return {"keys": keys, "trust": trust, "fresh": fresh, "history_line": today_line, "history_prev": prev,
             "pace": {"changes_needed_per_day": X, "changes_per_day": Y, "built": B, "proven": P_,
-                     "rows_total": num(nrows, ck_src + ": Build rows", "parsed", L), "remaining": R, "ratio": ratio,
+                     "rows_total": num(nrows, ck_src + ": capabilities", "parsed", L), "remaining": R, "ratio": ratio,
                      "committed_date": committed, "committed_set_on": set_on, "tolerance_days": tol, "light": light,
                      "early_band": EB, "leading": leading,
                      "merged_changes": num(merged_r1, f"Release 1 changes merged so far ({gh_src})", "mixed", L), "delivery_24h": delivery,
-                     "scope_note": None if nrows == baseline else f"Scope changed: {nrows} Build rows (baseline {baseline})"},
+                     "scope_note": None if nrows == baseline else f"Scope changed: {nrows} capabilities (baseline {baseline})"},
             "forecast": {"p50": F50, "p85": F85, "sample": sample, "counts": counts, "days": [d.isoformat() for d in days14],
                          "runs": MC_RUNS, "seed": MC_SEED, "cap_days": MC_CAP},
             "burnup": burn, "capacity": capacity, "top3": top3, "org": org, "working_today": working, "whats_new": wn,
-            "rows": [{"map": r["map"], "built": r["built"], "proven": r["proven"], "ids": r["ids"]} for r in rows]}
+            "top_numbers": {"works_today": W_today, "pct_per_works": delivery["pct_per_works_row"], "pct_per_change": delivery["pct_per_change"],
+                            "lanes": lanes_top},
+            "capability_table": cap_table, "rules_caught": rules,
+            "rows": [{"map": r["map"], "built": r["built"], "proven": r["proven"], "ids": r["ids"], "size": r["size"]} for r in rows]}
 
 
 RECON_TOLERANCE_DAYS = {"forecast_p50_date": 1, "forecast_p85_date": 1}
@@ -2014,6 +2261,33 @@ def health(snap, now, comp, li):
         item(4, "Guards", "red" if bad_g else "amber" if none_g else "green",
              ("failed: " + ", ".join(bad_g)) if bad_g else ("not measured: " + ", ".join(none_g)) if none_g else "label guard and push guard last runs green",
              "restore the guard and re-run it", "current Lead")
+    # board v53 (A70): rules caught today live here, not in the top strip; a catch or a breach turns item 4 amber (never green)
+    rc = comp.get("rules_caught")
+    if rc:
+        g4 = items[-1]
+        parts, caught, nm4, by_rep = [], False, [], False
+        for k, word in (("label_guard_removals", "label-guard removals"), ("ci_rule_failures", "check-docs CI failures"),
+                        ("ci_bundle_failures", "rules-and-tools CI step failures (check-docs.sh + 16 other checks)"),
+                        ("breaches_found", "breaches found (Lead-reported)"), ("push_guard_refusals", "push-guard refusals (Lead-reported)")):
+            n = rc[k]
+            if n["value"] is None:
+                if n["class"] == "measured":
+                    nm4.append(word.split(" (")[0] + ": " + n["reason"])
+                continue
+            if n["value"]:
+                caught = True
+                by_rep = by_rep or n["class"] == "reported"
+                ref = n.get("prs") or [p for r_ in n.get("runs") or [] for p in r_["prs"]]
+                parts.append(f"{word} {n['value']}" +
+                             (" (" + ", ".join("#%d" % x for x in sorted(set(ref))[:8]) + ")" if ref else ""))
+        unrep = [f"{k.replace('_', ' ')}: {rc[k]['reason']}" for k in ("breaches_found", "push_guard_refusals") if rc[k]["value"] is None]
+        g4["detail"] += "; rules caught today: " + ("; ".join(parts) if parts else "none") + \
+            (" (not measured: " + "; ".join(nm4) + ")" if nm4 else "") + (f" ({'; '.join(unrep)})" if unrep else "")
+        g4["rules_caught"] = rc
+        if (caught or nm4) and g4["state"] == "green":
+            g4["state"] = "amber"
+            if by_rep and not nm4 and not any(rc[k]["value"] for k in ("label_guard_removals", "ci_rule_failures", "ci_bundle_failures")):
+                g4["class"] = "reported"      # lit by a Lead-reported count alone: the weaker class (§0.3)
     burn = (li or {}).get("burn_pct_per_h")
     li_age = (cutoff - parse_iso(li["as_of"])).total_seconds() / 3600 if li and li.get("as_of") else None
     if burn is None:
@@ -3082,6 +3356,7 @@ def main():
                     "main_ref_is_head": ex.get("main_ref_is_head"), "current_lead": (comp["org"]["leads"] or [{}])[0].get("name")},
         "pace": comp["pace"], "forecast": comp["forecast"], "burnup": comp["burnup"], "capacity": comp["capacity"],
         "top3": comp["top3"], "org": comp["org"], "working_today": comp["working_today"], "health": hl, "whats_new": comp["whats_new"],
+        "top_numbers": comp["top_numbers"], "capability_table": comp["capability_table"],
         "trust": dict(comp["trust"], freshness=comp["fresh"] + [fm_fresh]),
         "reconcile_keys": comp["keys"], "build_rows": comp["rows"],
         "history": {"file": "cockpit/history.jsonl", "today": comp["history_line"], "previous_day": (comp["history_prev"] or {}).get("day"),
