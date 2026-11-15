@@ -1,0 +1,4 @@
+PASS  pass (kept): the booker's confirmation reads 7:00 p.m. (Asia/Dubai)
+FAIL  QA-470: the host's email reads the host's office time, 10:00 a.m. (America/Toronto) (AG-04 rule 9, AG01-24) — "Consultation is booked: Tuesday, November 17, 2026 at 7:00 p.m. (Asia/Dubai)"
+FAIL  QA-470 fail case: the host's email does not state the time only in the booker's zone — "Consultation is booked: Tuesday, November 17, 2026 at 7:00 p.m. (Asia/Dubai)"
+1 passed, 2 failed
