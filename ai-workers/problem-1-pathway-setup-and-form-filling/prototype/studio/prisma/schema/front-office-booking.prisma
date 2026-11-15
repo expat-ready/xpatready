@@ -60,6 +60,11 @@ model FoConsultationType {
   slotIntervalMinutes     Int?                  @map("slot_interval_minutes")
   meetingLink             String?               @map("meeting_link")
   active                  Boolean               @default(true)
+  /// FO-3pa (AG-4-16 rule 1, AG-4-9; concept fo-3-booking BR-1, BR-8): listed on the firm's booking page; a hidden type's
+  /// page answers the one not-found. The booker may reschedule or cancel by the link only when allowed (AG-4-36..38 rule 4).
+  showOnBookingPage       Boolean               @default(true) @map("show_on_booking_page")
+  allowReschedule         Boolean               @default(true) @map("allow_reschedule")
+  allowCancel             Boolean               @default(true) @map("allow_cancel")
   createdAt               DateTime              @default(now()) @map("created_at") @db.Timestamptz
   updatedAt               DateTime              @updatedAt @map("updated_at") @db.Timestamptz
 
