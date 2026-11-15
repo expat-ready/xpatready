@@ -1,0 +1,74 @@
+PASS  PF-0p pass: the seven ports are in studio/ports/ (audit, staff, clock, jobs, mail, files, render)
+PASS  PF-0p pass: every file in studio/ports/ imports only zod and its own files
+PASS  PF-0p fail: the import check catches a Prisma, a Nest, a node, an app, a dynamic, a side-effect and a require import
+PASS  audit pass: a full entry is accepted
+PASS  audit fail: an entry without firmId is refused
+PASS  audit fail: an actor that is not staff:, system: or seed: is refused
+PASS  audit fail: a summary over 600 characters is refused (600 accepted)
+PASS  audit fail: detail holding an email address is refused (ids only)
+PASS  audit fail: an unknown field is refused (strict)
+PASS  audit fail: an entity without an area prefix (a case or configuration entity) is refused; platform_, fo_, money_, msg_ pass
+PASS  audit pass: the fake records an entry in memory
+PASS  audit fail: the fake refuses an entry without firmId (nothing recorded)
+PASS  audit fail: failOn matching throws AuditFailure and records nothing
+PASS  audit pass: failOn not matching records
+PASS  audit pass: failOn receives the caller's tx, and discard(tx) drops that transaction's lines
+PASS  audit pass/fail: the fake's in-memory transaction keeps a committed line and drops a rolled-back one
+PASS  staff pass: fakeStaff gives a valid StaffContext (Sample firm Owner, local)
+PASS  staff pass: StaffContext has exactly PF-4's fields
+PASS  staff pass: fakeStaff's sign-in time is FAKE_NOW, the FakeClock's start (never the wall clock: review M2)
+PASS  staff fail: a sign-in 6 minutes before the clock's now is stale for a 5-minute step-up, whatever the day the test runs
+PASS  staff pass: fakeStaff takes a partial
+PASS  staff fail: a StaffContext without firmId is refused
+PASS  staff fail: fakeStaff refuses a shape the guard never gives (via, duty)
+PASS  clock pass: FakeClock advances
+PASS  clock pass: FakeClock sets
+PASS  clock fail: FakeClock refuses a backward step and a non-time
+PASS  clock fail: a caller changing the Date it got does not move the clock
+PASS  jobs pass: a job queues and runs once
+PASS  jobs fail: the same key never queues twice (second enqueue: queued false, one run)
+PASS  jobs fail: a key that ran does not queue again
+PASS  jobs fail: a scheduled job does not run before its time
+PASS  jobs pass: a scheduled job runs once the clock reaches it
+PASS  jobs pass: cancel takes back a waiting job
+PASS  jobs fail: a cancelled job never runs, and its key stays used
+PASS  jobs pass/fail: a key is unique per job name (another name queues it; the same name does not)
+PASS  jobs pass: cancel(key) cancels the waiting job under every name
+PASS  jobs fail: changing what jobs returns never changes the queued job (date and payload are copies)
+PASS  jobs fail: the options schema refuses a missing firmId
+PASS  jobs fail: a payload that is not plain JSON is refused (a Date)
+PASS  jobs fail: a bad job name is refused
+PASS  jobs fail: a handler's throw marks its job failed with the reason
+PASS  jobs fail: a recurring job does not run before its minute
+PASS  jobs pass: a recurring job runs at its minute in its zone (Fri 09:00 Toronto = 14:00 UTC)
+PASS  jobs pass: across a weekend it runs Monday only
+PASS  jobs fail: a day field starting with * and a restricted weekday both have to match (Vixie cron: Mon 30 Nov is not an odd day)
+PASS  jobs fail: a bad cron or zone is refused
+PASS  mail pass: sentAt is FAKE_NOW by default and the clock's now when given one
+PASS  mail pass: the fake inbox keeps the order sent, per address (lower case)
+PASS  mail fail: a message without firmId is refused (nothing sent)
+PASS  mail fail: a bad address, class or empty attachment is refused
+PASS  mail pass: an attachment and html are accepted
+PASS  mail fail: failOn forces a send failure
+PASS  mail fail: changing the sent buffer or the record read back never changes what was sent
+PASS  files pass: put returns the sha256 of the bytes
+PASS  files pass: get returns the same bytes and type; exists is true
+PASS  files fail: another firm's key reads as absent
+PASS  files pass: the same bytes again under the key are accepted (a retry)
+PASS  files fail: other bytes, or the same bytes as another type, under a used key are refused (write once)
+PASS  files fail: a missing firmId and a path-escaping key are refused
+PASS  render pass: the same template and data give the same bytes, whatever the key order
+PASS  render fail: other data gives other bytes
+PASS  render fail: an unknown template and non-JSON data are refused
+PASS  slots pass: PlatformFirm and PlatformStaff each hold the six slot lines, one per area, separated by blank lines
+PASS  slots fail: two slot lines with no blank line between them, or a missing one, are caught
+NOTICE:  database "xr_studio_pf0p_12118" does not exist, skipping
+PASS  slots pass: migrate diff names nothing in the platform tables (the slot lines change no schema)
+PASS  adapter pass: record writes one audit_event line in the platform-audit workspace, the firm id in detail.firmId (the entry's, never the detail's)
+PASS  adapter fail: failOn throws inside the transaction and the rolled-back transaction leaves no audit row and no change
+PASS  adapter fail: an entry without firmId is refused and the change rolls back
+PASS  adapter pass: a rolled-back first line leaves no workspace and no stale id; the next line remakes it
+PASS  adapter pass: two first writers at once both commit, one workspace (review M1)
+PASS  adapter fail: when the first writer rolls back, the waiting second still commits its line (one line, one workspace)
+
+71 passed, 0 failed
