@@ -108,4 +108,19 @@ I read what the head changes beyond `origin/main` in the shared tests, plus the 
 
 Re-run at `c70d32c7e`, on main + branch, with the Prisma client regenerated: `check_pf5_signup_billing.ts` **53 passed, 0 failed** (its stamp check: later than every migration before it, and unique); `check_fo7a_money_schema.ts` **123 passed, 0 failed**. I did not re-run `check_forms_qa53.ts` (it needs an isolated copy; the builder reports 42/42) or the other suites the builder lists. Round 2's open Minors and Round 4's Minor are unchanged and do not block.
 
-Verdict: Approve c70d32c7e2641c50cdceeafe35453697e19b6887
+Round 5 outcome: approve c70d32c7e (superseded by Round 6 below).
+
+## Round 6 — diff only, `c70d32c7e..95c46dd3d8a2d202e198f410dd093ff2f21b015d` (15 Nov 2026)
+`95c46dd3d` is my Round 5 record (review.md only). `262641c38` changes only `api/src/platform/MODULE.md`, the module card (P-615 (3)). I checked each new line against the code at this head:
+* **Purpose:** `firms/` (self-serve sign-up to a no-card trial) and `billing/` (BillingPort's Stripe adapter, with the port and its fake in `ports/billing.ts`). True: `firms/{signup,signup-identity,routes,runtime-ports}.ts`, `billing/stripe.ts`, `ports/billing.ts`.
+* **Entry points:** `/api/public`: `GET plans`, `POST signup`, `POST signup/verify`. These are exactly the routes in `firms/routes.ts`; no other route was added.
+* **Invariant "password only to the identity provider; one answer known or not":** true. The password reaches only `identity.register` (`signup.ts:136`), and the answer is returned before any work that depends on the email (`signup.ts:121-124`, Round 2).
+* **Invariant "billing only through BillingPort; fakes or recorded answers in CI, never a live call":** true. `startTrial` and `plans()` call only `ports.billing`. `runtime-ports.ts` uses the Stripe adapter only when PF-24's config holds a key, and config refuses a live key outside production. The test runs on `fakeBilling` and recorded answers.
+* **Tables:** `platformTermsVersion`, `platformTermsAcceptance`, `platformSignupPending`, the three PF-5 models. **Tests:** `check_pf5_signup_billing.ts` is added.
+* **`module-cards.py pr`** on the PR's changed files with the body line `Card unchanged: platform-firms.ts is one more registration through the existing seam`: **PASS** (2 modules touched; api-features is covered by that line). `api/src/features/platform-firms.ts` is indeed one registration through the existing seam, so leaving the api-features card unchanged is right.
+
+**One Minor (does not block): the card's firmScope invariant does not name the new exceptions.** Its first invariant still says "Every read and write of a platform or front-office table goes through `firmScope(firmId)`". PF-5 adds, by design, rows and reads outside it: `platform_signup_pending` has no firm (Lead B's ruling), `platform_terms_version` is a catalogue, and sign-up's account check reads `platformStaff` / `platformFirm` by email across firms (`signup.ts`, `knownAccount`). PF-4's lookup by identity subject was already a similar exception on main. Fix (now or in part 2): add "except the pre-firm sign-up rows, the terms catalogue and the account-by-email check at sign-up (PF-5)" to that invariant.
+
+No code, schema or test changed in this round, so the Round 5 runs stand (pf5 53/53, fo7a 123/123 at `c70d32c7e`). The earlier open Minors are unchanged and do not block.
+
+Verdict: Approve 95c46dd3d8a2d202e198f410dd093ff2f21b015d
