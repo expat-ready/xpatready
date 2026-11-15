@@ -87,11 +87,22 @@
         ]
       },
       {
-        "matcher": "(^|__)start_session$",
+        "matcher": "(^|__)(start_session|create_session)$",
         "hooks": [
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane-preflight.sh --hook",
+            "timeout": 15,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "^(Agent|Task)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/agent-model-guard.sh --hook",
             "timeout": 15,
             "onFailure": "block"
           }

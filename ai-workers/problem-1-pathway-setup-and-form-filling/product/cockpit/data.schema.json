@@ -6,7 +6,7 @@
   "type": "object",
   "allOf": [{"$ref": "#/$defs/walk"}],
   "required": ["schema", "freshness", "summary", "needs_you", "lead_queue", "pace", "forecast", "burnup", "capacity", "top3", "org",
-               "working_today", "whats_new", "health", "trust", "lineage", "reconcile_keys", "history", "run", "explain"],
+               "working_today", "whats_new", "health", "trust", "lineage", "reconcile_keys", "history", "run", "explain", "top_numbers", "capability_table", "behaviour", "customer"],
   "properties": {
     "schema": {"const": 2},
     "freshness": {
@@ -45,6 +45,8 @@
         "rows_total": {"$ref": "#/$defs/count"},
         "remaining": {"allOf": [{"$ref": "#/$defs/count"}, {"required": ["label", "shaped_unmerged", "unshaped_rows", "unshaped_estimate"]}]},
         "merged_changes": {"$ref": "#/$defs/count"},
+        "parts_merged": {"description": "Board v63 (P-613): distinct section A part ids matched by a merged non-records PR, of total (FORMULAS.md › Behaviour and customer).",
+                         "allOf": [{"$ref": "#/$defs/count"}, {"required": ["total", "ids"], "properties": {"total": {"type": "integer", "minimum": 0}}}]},
         "delivery_24h": {
           "description": "P-602 (4): delivery per use over the rolling 24 h ending at the snapshot's taken_at (FORMULAS.md §1b).",
           "type": "object",
@@ -185,7 +187,12 @@
       "required": ["state", "banner", "diffs", "invariants", "notes", "freshness"],
       "properties": {
         "state": {"enum": ["agree", "disagree", "not checked"]},
-        "invariants": {"type": "array", "items": {"type": "object", "required": ["name", "ok", "detail"]}}
+        "invariants": {"type": "array", "items": {"type": "object", "required": ["name", "ok", "detail"]}},
+        "status_disagreements": {"type": "array", "items": {"type": "object", "required": ["map", "checklist", "computed", "kind", "cause"],
+                                 "properties": {"kind": {"enum": ["checklist behind", "checklist ahead"]}}}},
+        "status_explained": {"description": "Board v63: differences a rule explains (FORMULAS.md › §6 Data trust).",
+                             "type": "array", "items": {"type": "object", "required": ["map", "checklist", "computed", "kind", "cause"],
+                             "properties": {"kind": {"enum": ["no app code", "open item"]}}}}
       },
       "allOf": [
         {"if": {"properties": {"state": {"const": "agree"}}}, "then": {"properties": {"banner": {"type": "null"}}}},
@@ -199,7 +206,64 @@
                                     "proven_rows", "open_app_prs", "lanes_working", "ready_rows", "forecast_p50_date", "forecast_p85_date",
                                     "mc_daily_counts", "mc_remaining_scope",
                                     "plan_pct_used_24h", "span_hours", "changes_merged_span", "works_rows_span", "pct_per_change",
-                                    "pct_per_works_row", "rows_done_24h", "rows_needed_per_day"]}
+                                    "pct_per_works_row", "rows_done_24h", "rows_needed_per_day",
+                                    "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today",
+                                    "ci_rule_failures_today", "ci_bundle_failures_today",
+                                    "parts_merged", "parts_total", "founder_asks_day", "rules_changes_day", "target_changes_week",
+                                    "launch_done", "launch_total", "counsel_open"]},
+    "top_numbers": {
+      "description": "Board v53 (A69, A70): the top strip's three numbers (FORMULAS.md, Top numbers). Rules caught are not here: they live in Health item 4.",
+      "type": "object", "required": ["works_today", "pct_per_works", "pct_per_change", "lanes"], "additionalProperties": false,
+      "properties": {
+        "works_today": {"allOf": [{"$ref": "#/$defs/count"},
+                                  {"required": ["maps", "by_size", "target", "window", "size_rule"],
+                                   "properties": {"target": {"const": 10}, "by_size": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/sizes"}]},
+                                                  "window": {"type": "object", "required": ["from", "to"]}}}]},
+        "pct_per_works": {"allOf": [{"$ref": "#/$defs/num"}, {"properties": {"class": {"const": "reported"}, "value": {"type": ["number", "null"], "minimum": 0}}}]},
+        "pct_per_change": {"allOf": [{"$ref": "#/$defs/num"}, {"properties": {"class": {"const": "reported"}, "value": {"type": ["number", "null"], "minimum": 0}}}]},
+        "lanes": {"type": "object", "required": ["working", "started", "idle"],
+                  "properties": {"working": {"allOf": [{"$ref": "#/$defs/count"}, {"properties": {"class": {"const": "measured"}}}]},
+                                 "started": {"allOf": [{"$ref": "#/$defs/count"}, {"required": ["names"], "properties": {"class": {"const": "reported"}}}]},
+                                 "idle": {"allOf": [{"$ref": "#/$defs/count"}, {"required": ["names"], "properties": {"class": {"const": "reported"}}}]}}}
+      }
+    },
+    "behaviour": {
+      "description": "Board v63 (P-615): the founder's own behaviour numbers, from records only (FORMULAS.md › Behaviour and customer).",
+      "type": "object", "required": ["founder_asks_day", "rules_changes_day", "target_changes_week"], "additionalProperties": false,
+      "properties": {
+        "founder_asks_day": {"allOf": [{"$ref": "#/$defs/count"}, {"properties": {"class": {"const": "parsed"}}},
+                             {"if": {"properties": {"value": {"type": "integer"}}}, "then": {"required": ["day", "today_so_far", "series", "undated", "mean_7d"]}}]},
+        "rules_changes_day": {"allOf": [{"$ref": "#/$defs/count"}, {"properties": {"class": {"const": "parsed"}}},
+                              {"if": {"properties": {"value": {"type": "integer"}}}, "then": {"required": ["day", "today_so_far", "series", "mean_7d"]}}]},
+        "target_changes_week": {"allOf": [{"$ref": "#/$defs/count"}, {"properties": {"class": {"const": "parsed"}}},
+                                {"if": {"properties": {"value": {"type": "integer"}}}, "then": {"required": ["ids", "items", "window"]}}]}
+      }
+    },
+    "customer": {
+      "description": "Board v63 (P-615): the Customer box. A number with no source is null with a reason, shown 'not measured'.",
+      "type": "object", "required": ["first_firm", "journey_walked", "counsel_open", "launch_done"], "additionalProperties": false,
+      "properties": {
+        "first_firm": {"type": "object", "required": ["value", "src", "class"],
+                       "properties": {"value": {"oneOf": [{"type": "null"}, {"type": "object", "required": ["name", "date"]}]}},
+                       "if": {"properties": {"value": {"type": "null"}}}, "then": {"required": ["reason"]}},
+        "journey_walked": {"type": "object", "required": ["value", "src", "class"],
+                           "if": {"properties": {"value": {"type": "null"}}}, "then": {"required": ["reason"]}},
+        "counsel_open": {"allOf": [{"$ref": "#/$defs/count"}, {"required": ["ids"]}]},
+        "launch_done": {"allOf": [{"$ref": "#/$defs/count"}, {"required": ["total", "ids"]}]}
+      }
+    },
+    "capability_table": {
+      "description": "Board v53 (A70): per capability its size (backlog row count: 1 S, 2-3 M, 4+ L; none or Not shaped: not shaped) and the Source: ids of its backlog rows by section.",
+      "type": "object", "required": ["rows", "by_size", "not_mapped", "source_rule"],
+      "properties": {
+        "rows": {"type": "array", "items": {"type": "object", "required": ["map", "cap", "status", "size", "backlog_rows", "req", "req_by_section"],
+                 "properties": {"map": {"type": "integer"}, "size": {"enum": ["S", "M", "L", "not shaped"]}, "backlog_rows": {"type": "integer", "minimum": 0},
+                                "req": {"type": "array", "items": {"type": "string"}},
+                                "req_by_section": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}, "minItems": 1}}}}},
+        "by_size": {"allOf": [{"$ref": "#/$defs/num"}, {"properties": {"class": {"const": "parsed"}, "value": {"$ref": "#/$defs/sizes"}}}]},
+        "not_mapped": {"allOf": [{"$ref": "#/$defs/count"}, {"required": ["maps"]}]}
+      }
+    }
   },
   "$defs": {
     "light": {"enum": ["green", "amber", "red"]},
@@ -216,6 +280,9 @@
         "behind": {"type": ["string", "null"]}
       }
     },
+    "sizes": {"type": "object", "required": ["S", "M", "L", "not shaped"], "additionalProperties": false,
+              "properties": {"S": {"type": "integer", "minimum": 0}, "M": {"type": "integer", "minimum": 0}, "L": {"type": "integer", "minimum": 0},
+                             "not shaped": {"type": "integer", "minimum": 0}}},
     "num": {
       "type": "object",
       "required": ["value", "src", "sha", "as_of", "class"],
