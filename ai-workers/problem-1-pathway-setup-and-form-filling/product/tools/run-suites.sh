@@ -191,8 +191,11 @@ REMEMBER=" "; [ -n "$GREEN" ] && REMEMBER=" $(cut -f1 "$GREEN" | grep -E '^check
 chosen() { [ -z "$PICK" ] && return 0; case "$PICK" in *" $1 "*) return 0;; esac; return 1; }
 picked() { case "$REMEMBER" in *" $1 "*) return 1;; esac; chosen "$1"; }
 # --shard i/n: the chosen units (a suite, or the three R1 suites together as check_runtime_r1a.ts) are dealt to n shards
-# longest first by tools/suite-times.tsv (unknown: 30 s; quarantined: 0), each to the shard with the least time so far.
+# longest first by tools/suite-times.tsv (unknown: 30 s), each to the shard with the least time so far. A quarantined
+# suite weighs 0 only where it is skipped (--changed, --skip-quarantined); the nightly full set runs it, so there it
+# weighs its time (15 Nov: all 5 weighed 0 and piled onto one nightly part with 0-s rows, 128 of 495 units).
 # Every machine computes the same deal, so the n shards together run each chosen unit once. myturn <unit>: is it mine?
+QW=" "; { [ -n "$CHANGED" ] || [ "$SKIPQ" = 1 ]; } && QW=" $QUARANTINE "
 TURN=0; MINE=" "
 if [ "$SHARDS" -gt 1 ] || [ "$LIST" = 1 ]; then
   units=()
@@ -202,7 +205,7 @@ if [ "$SHARDS" -gt 1 ] || [ "$LIST" = 1 ]; then
   [ -f "$RT0/check_runtime_r1a.ts" ] && { picked check_runtime_r1a.ts || picked check_runtime_r1c.cjs || picked check_runtime_r1d.ts; } && units+=(check_runtime_r1a.ts)
   for t in check_p2_guard check_p2_launch; do [ -z "${SUITES_TESTS_DIR:-}" ] && [ -f "$P/prototype/tests/$t.ts" ] && picked "$t.ts" && units+=("$t.ts"); done
   TURN=${#units[@]}
-  MINE=" $(printf '%s\n' "${units[@]}" | awk -v n="$SHARDS" -v me="$SHARD" -v q=" $QUARANTINE " -v tf="$P/product/tools/suite-times.tsv" '
+  MINE=" $(printf '%s\n' "${units[@]}" | awk -v n="$SHARDS" -v me="$SHARD" -v q="$QW" -v tf="$P/product/tools/suite-times.tsv" '
     BEGIN { while ((getline l < tf) > 0) { if (l ~ /^#/) continue; split(l, a, "\t"); t[a[1]] = a[2] } }
     { u[NR] = $0; w[NR] = (index(q, " " $0 " ") ? 0 : (($0 in t) ? t[$0] : 30)); if ($0 == "check_runtime_r1a.ts") w[NR] += t["check_runtime_r1c.cjs"] + t["check_runtime_r1d.ts"] }
     END { for (i = 1; i <= NR; i++) o[i] = i
@@ -293,6 +296,9 @@ guarded() {  # guarded <log> <command...>: the exit code is timeout's (124 timed
 }
 run() {  # $1 file, $2 label, rest: command. AGAIN readies a retry (recopy ...); NORETRY says why there is none; both cleared.
   local f="$1" label="$2"; shift 2; local log="$OUT/${f%.*}.log" t0=$SECONDS code=0 code2=0 note="" a src="" rw=""; RF="$f"
+  # CI only: one line per suite as it starts, on stderr (the job log), so a part stopped at its job limit, whose table
+  # never prints, still shows how long each suite took (15 Nov: nightly part 8 stopped twice at 59 min, no row).
+  [ -n "${CI:-}" ] && echo "run-suites: $f starts, ${SECONDS} s into this part" >&2
   for a in "$@"; do case "$a" in */"$f") src="$a";; esac; done   # the suite's own file, for its title (F5)
   if guarded "$log" "$@"; then st=PASS; else code=$?; st=FAIL; fi
   if [ "$st" = FAIL ] && [ "$RETRY" = 1 ]; then
