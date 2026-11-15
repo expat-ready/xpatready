@@ -116,7 +116,8 @@ function knownKeys(): Set<string> {
 
 /** Dotted names that are not structure keys: shared facts ("person.date_of_birth"), a check's field paths
  *  ("expected.people", "uci.subject", "cited.quote"), the resolver's "holder.spouse", a fee line's "exempt.under_age", and file names. */
-const NOT_KEYS = new Set(["case", "person", "relationship", "expected", "holder", "exempt", "uci", "cited"]);
+// "firm" and "fees" head FO-5's retainer placeholder names ({firm.name}, {fees.total}): fields of a document, no program.
+const NOT_KEYS = new Set(["case", "person", "relationship", "expected", "holder", "exempt", "uci", "cited", "firm", "fees"]);
 const FILE_ENDINGS = new Set(["json", "ts", "tsx", "js", "mjs", "cjs", "pdf", "md", "txt", "csv", "html", "py", "xml", "sql", "png"]);
 /** A program by name, in a name or a string. Roles (spouse, child) are not programs; neither are the abbreviations
  *  fact-name.ts upper-cases (LMIA, TRV), which name facts of any program. */

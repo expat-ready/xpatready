@@ -12,6 +12,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { planted, tsFiles } from "./lib/ts-files.ts";
+import { PLATFORM_PATH } from "../api/src/platform/identity/keys.ts";
 
 const PORT = Number(process.argv[2] ?? 4459), DB = process.argv[3] ?? "xr_studio_forms_qa53";
 const API = join(import.meta.dirname, "..", "api", "src");
@@ -52,6 +53,18 @@ const REVIEWED: Record<string, "case" | "open"> = {
 const OWN_GUARD: Record<string, "link" | "inbox"> = {
   "/api/link/me": "link", "/api/link/cases/:id/people/:subject/questionnaire": "link", "/api/demo/inbox": "inbox",
 };
+/** PF-4t (Lead 50 on #1775, Lead B's pattern): routes under /api/platform/ and /api/front-office/ belong to the platform
+ *  guard (PF-4: a staff session, never x-actor; core.ts leaves these paths to it). They leave the configuration-read
+ *  (QA-53) and person-naming (QA-65) rules and are asked instead: no session 401, x-actor alone (author, officer, client)
+ *  401, never data. The exemption is exactly PF-4's PLATFORM_PATH, pinned here so a widening fails. */
+const PLATFORM_SOURCE = "^\\/api\\/(platform|front-office)(\\/|$)", PLATFORM_FLAGS = "i";
+const exactPlatformPath = (re: RegExp) => re.source === PLATFORM_SOURCE && re.flags === PLATFORM_FLAGS;
+const isPlatform = (path: string) => PLATFORM_PATH.test(path);
+/** A platform answer that gives something away: not 401 (the sign-in door: any refusal, never a 2xx), or a body with
+ *  more than a problem's own fields. */
+const PROBLEM_FIELDS = new Set(["type", "title", "status", "detail", "message", "code"]);
+const platformWrong = (r: { status: number; body: unknown }, door = false) => (door ? r.status < 400 : r.status !== 401)
+  || (typeof r.body === "object" && r.body !== null && Object.keys(r.body).some((k) => !PROBLEM_FIELDS.has(k)));
 /** C6.16: the writes of the adult's own link, named by their Bearer session (never x-actor), each asked below. */
 const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/code", "/api/link/consent", "/api/link/end",
   "/api/link/cases/:id/people/:subject/answers/:field", "/api/link/cases/:id/people/:subject/rows", "/api/link/cases/:id/people/:subject/rows/:row",
@@ -74,7 +87,7 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   ok("QA-53: every runtime route is a case read (the guard leaves case people's own routes untouched)", all.filter((x) => x.path.startsWith("/api/runtime/")).every((x) => x.mark === "case") && all.some((x) => x.path.startsWith("/api/runtime/")));
 
   // Pass and fail per configuration read: nobody 401, an unknown name 401, officer 403, client 403; the author is answered.
-  const guarded = all.filter((x) => !x.mark);
+  const guarded = all.filter((x) => !x.mark && !isPlatform(x.path));
 
   // C6.16: each OWN_GUARD read's own guard. The link's reads: nobody 401 (no session); a simulated person, known or not,
   // 400 (x-actor refused); a made-up session 401; never data. The inbox: a client persona 403; an address that is not
@@ -129,7 +142,7 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   const post = async (path: string, actor: string | null, body: unknown) => (await fetch(`http://localhost:${PORT}${path}`, { method: "POST", headers: { "content-type": "application/json", ...(actor ? { "x-actor": actor } : {}) }, body: JSON.stringify(body) })).status;
   // B120: api/src's subfolders too.
   const writes = (dir: string) => {
-    const configPosts: string[] = [], unnamed: string[] = [], ownWrites: string[] = [];
+    const configPosts: string[] = [], unnamed: string[] = [], ownWrites: string[] = [], platformWrites: { path: string; method: string; door: boolean }[] = [];
     for (const f of tsFiles(dir)) {
       const text = readFileSync(join(dir, f), "utf8"), lines = text.split("\n");
       // The controller each line belongs to (C6.16: person-link.ts holds three, so the file's first is not every route's).
@@ -140,13 +153,14 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
           const path = `/${prefix}/${m[3]}`.replace(/\/+/g, "/");
           if (m[1]) configPosts.push(path);
           else if (OWN_GUARD_WRITES.includes(path.replace(/\/$/, ""))) ownWrites.push(path.replace(/\/$/, ""));
+          else if (isPlatform(path)) platformWrites.push({ path: path.replace(/\/$/, ""), method: m[2].toUpperCase(), door: /@StaffSignIn\(/.test(l) });
           else if (!/x-actor|actorOf|readerOf/.test(lines.slice(i, i + 3).join(" "))) unnamed.push(`${f}: ${path}`);
         }
       });
     }
-    return { configPosts, unnamed, ownWrites };
+    return { configPosts, unnamed, ownWrites, platformWrites };
   };
-  const { configPosts, unnamed, ownWrites } = writes(API);
+  const { configPosts, unnamed, ownWrites, platformWrites } = writes(API);
   const plantedDir = planted({ "features/checkpoint/999-planted.ts": '@Controller("api")\nexport class P {\n  @Get("planted/read") read() {}\n  @Post("planted/write")\n  write() {}\n}\n' });
   ok("QA-53 fail (B120): a GET route planted in a subfolder is found", routes(plantedDir).map((x) => x.path).join() === "/api/planted/read");
   ok("QA-65 fail (B120): a write planted in a subfolder that names nobody is caught", writes(plantedDir).unnamed.join() === "features/checkpoint/999-planted.ts: /api/planted/write");
@@ -171,6 +185,27 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   ok(`C6.16 fail: each write of the adult's own link (${OWN_GUARD_WRITES.length}) refuses a simulated person (400) and, with no session or a made-up token, answers 401 or 404, never a change`, wrongWrite.length === 0, wrongWrite);
   ok("QA-65: the configuration reads made by POST are exactly the reviewed three (finder plan, AI plan, condition check)", JSON.stringify(configPosts.sort()) === JSON.stringify(["/api/ai/plan", "/api/combinations/:id/forms/find/plan", "/api/conditions/check"]), configPosts);
   ok("QA-65: every other write names its person (none answers nobody by default)", unnamed.length === 0, unnamed);
+
+  // PF-4t: the platform guard's routes, asked (Lead 50 on #1775).
+  ok("PF-4t: the exemption is exactly PF-4's PLATFORM_PATH (source and flags pinned)", exactPlatformPath(PLATFORM_PATH), { source: PLATFORM_PATH.source, flags: PLATFORM_PATH.flags });
+  ok("PF-4t fail: a widened PLATFORM_PATH fails the pin (/api/ alone, no boundary, another flag)", !exactPlatformPath(/^\/api\//i) && !exactPlatformPath(/^\/api\/(platform|front-office)/i) && !exactPlatformPath(/^\/api\/(platform|front-office)(\/|$)/gi));
+  const platformReads = all.filter((x) => isPlatform(x.path));
+  const ask = async (path: string, method: string, actor: string | null) => {
+    const r = await fetch(`http://localhost:${PORT}${path}`, { method, headers: { "content-type": "application/json", ...(actor ? { "x-actor": actor } : {}) }, body: method === "GET" ? undefined : "{}" });
+    const text = await r.text(); let body: unknown = text; try { body = JSON.parse(text); } catch { /* text */ }
+    return { status: r.status, body };
+  };
+  const wrongPlatform: string[] = [];
+  for (const r of [...platformReads.map((x) => ({ path: x.path, method: "GET", door: false })), ...platformWrites]) {
+    const path = r.path.replace(/:id\b/g, "00000000-0000-4000-8000-000000000000");
+    for (const actor of [null, "user-A", "user-O", "user-P"]) { const a = await ask(path, r.method, actor); if (platformWrong(a, r.door)) wrongPlatform.push(`${r.method} ${r.path} as ${actor ?? "nobody"}: ${a.status} ${JSON.stringify(a.body).slice(0, 80)}`); }
+  }
+  ok(`PF-4t: the platform guard's routes (${platformReads.length} reads, ${platformWrites.length} writes) answer nobody and x-actor alone 401 (the sign-in door: a refusal), never data`,
+    platformReads.length >= 2 && platformWrites.length >= 8 && wrongPlatform.length === 0, wrongPlatform);
+  ok("PF-4t fail: a seeded platform route answering 200 to x-actor alone, or 401 with data, is caught", platformWrong({ status: 200, body: { firmId: "x" } }) && platformWrong({ status: 401, body: { detail: "no", staffId: "x" } }) && platformWrong({ status: 200, body: { token: "t" } }, true) && !platformWrong({ status: 401, body: { type: "t", title: "t", status: 401, detail: "d", code: "NOT_SIGNED_IN" } }));
+  const plantedNear = planted({ "planted-near.ts": '@Controller("api")\nexport class N {\n  @Get("platformx/read") read() {}\n  @Post("platformx/write")\n  write() {}\n}\n' });
+  ok("PF-4t pass/fail: a route outside PLATFORM_PATH (/api/platformx/…) keeps the QA-53 and QA-65 rules (a configuration read; a write naming nobody is caught)",
+    routes(plantedNear).every((x) => !x.mark && !isPlatform(x.path)) && writes(plantedNear).unnamed.join() === "planted-near.ts: /api/platformx/write" && writes(plantedNear).platformWrites.length === 0);
   const bodies: Record<string, unknown> = { "/api/ai/plan": { scope: vv, mode: "stub" }, "/api/combinations/:id/forms/find/plan": { mode: "rules" }, "/api/conditions/check": { condition: "", answers: {} } };
   const wrongPost: string[] = [];
   for (const cp of configPosts) {
