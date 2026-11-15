@@ -235,3 +235,15 @@ Verdict: Approve 2a36d6952b8ba60098b5641b840fb09309159bf6
 * No new findings. r3-m1 and r3-m2 stand.
 
 Verdict: Approve b79f50ce8243c97f8deb1e848ecf74336d4417ca
+
+## Round 3h (main merge after PF-21)
+* **Commit reviewed:** `c026c684a3fbb59c2eec9bf2cc4d608e5461c014`, a merge of `origin/main` (with PF-21 #1753; main is an ancestor) into `d9951461d`. Read: the two conflicted files against `origin/main`, the file list of `git diff origin/main c026c684a`, and FO-5's files since `d9951461d`.
+* **`ports/events.ts`:** compared with main, only FO-5's additions: the four `RETAINER_*` names after main's `COMPLAINT_*` names, and `RetainerEventPayload` after main's `ComplaintClosed`. The text matches what was approved. Main's lines, including PF-21's, are untouched.
+* **`tests/check_pf25_web_address.ts`:** no difference from main. PF-21's wording of the same stamp-check fix is taken, and FO-5's round 3e version is dropped.
+* **FO-5's files unchanged since `d9951461d`:** the diff over `api/src/front-office/retainers/`, `files.ts`, the feature file, migration `20261115010000`, the schema file, the starter text and `check_fo5_retainers.ts` is empty.
+* **The whole diff from main** is FO-5's list (15 files). `platform.prisma` moves only FO-5's three back-relation lines under its own slot lines, next to PF-21's `platComplaints*` lines, which stay as main has them.
+* **Migration order:** main's newest migration is `20261114234500_pf21_complaints`, earlier than FO-5's `20261115010000` (P-600 (4)).
+* **Runs:** I re-ran `check_fo5_retainers.ts`: **159 passed, 0 failed**. I did not re-run the other suites or the typecheck; the coordinator reports pf21 107/107, pf25 68/68, fo3 105/105, pf0p 71/71, case feed 39/39, b164 63/63, prisma 8/8, and no new type errors.
+* No new findings. r3-m1 and r3-m2 stand.
+
+Verdict: Approve c026c684a3fbb59c2eec9bf2cc4d608e5461c014
