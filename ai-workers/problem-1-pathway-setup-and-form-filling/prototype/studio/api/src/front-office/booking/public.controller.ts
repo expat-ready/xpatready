@@ -5,9 +5,10 @@
 // Staff routes (create, reschedule, cancel, attendance, list) are services until PF-4's guard is on main.
 // Nest's decorators are applied as calls below the classes (as PF-4's routes do): files under api/src/front-office/ are
 // outside api/tsconfig.json's decorator setting, so `@` forms would not compile there.
-import { Body, Controller, Get, HttpCode, Inject, Injectable, Param, Post, Query, Req, type OnModuleInit } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Inject, Injectable, Optional, Param, Post, Query, Req, type OnModuleInit } from "@nestjs/common";
 import { Db, OpenRead } from "../../core.ts";
-import { BookingService, type BookingPorts } from "./service.ts";
+import { PlatformJobs } from "../../platform/jobs/platform-jobs.ts";
+import { BookingService, bookingPortsWith, type GivenBookingPorts } from "./service.ts";
 
 export const BOOKING_PORTS = "FO3_BOOKING_PORTS";
 type R = { ip?: string; socket?: { remoteAddress?: string } };
@@ -15,12 +16,14 @@ type Q = Record<string, unknown>;
 const ipOf = (req: R) => String(req.ip ?? req.socket?.remoteAddress ?? "unknown").slice(0, 64);
 
 export class Booking extends BookingService implements OnModuleInit {
-  constructor(db: Db, ports: BookingPorts) { super(db, ports); }
+  constructor(db: Db, ports: GivenBookingPorts, runner?: PlatformJobs | null) { super(db, bookingPortsWith(ports, runner)); }
   async onModuleInit() { await this.registerJobs(); }
 }
 Injectable()(Booking);
 Inject(Db)(Booking, undefined, 0);
 Inject(BOOKING_PORTS)(Booking, undefined, 1);
+Inject(PlatformJobs)(Booking, undefined, 2);
+Optional()(Booking, undefined, 2);
 
 export class BookingPublicController {
   constructor(private readonly b: Booking) {}
