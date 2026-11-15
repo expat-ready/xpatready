@@ -27,7 +27,7 @@ import { LocalSignUp } from "../api/src/platform/firms/signup-identity.ts";
 import { ACCEPTED, ALREADY, FirmSignUp, PURGE_JOB, TAX_NOTE, type SignUpPorts } from "../api/src/platform/firms/signup.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261115130000_pf5_signup_terms";
+const NEW = "20261115180000_pf5_signup_terms";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_pf5_${process.pid}`, URL = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
 const WORK = join(STUDIO, "var", `pf5-check-${process.pid}`);

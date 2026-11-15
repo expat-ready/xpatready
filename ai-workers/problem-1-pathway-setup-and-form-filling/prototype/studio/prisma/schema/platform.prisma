@@ -385,7 +385,7 @@ model ModuleEvent {
 
 // PF-5 part 1 (contracts §7 §1.1; P-566; Lead B's rulings on #1815): the terms a firm's Owner accepts at sign-up and the
 // sign-up that waits for its email verification. Rules Prisma cannot say are in the migration
-// 20261115130000_pf5_signup_terms (insert-only terms, the pending row's one change and its purge, one live per email).
+// 20261115180000_pf5_signup_terms (insert-only terms, the pending row's one change and its purge, one live per email).
 
 /// The documents a person accepts at sign-up (A46 row 100). Their wording is Sample until counsel reads it (Unconfirmed:
 /// no counsel).
