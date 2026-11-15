@@ -582,7 +582,8 @@ function rTop3(){
 /* board v63 (P-615): the founder's own behaviour numbers and the Customer box; records only, "not measured" where no source */
 function rBehaviour(){
   var Bh=D.behaviour,Cu=D.customer;if(!Bh&&!Cu)return "";
-  var cnt=function(x,key){return x&&x.value!=null?'<span>'+esc(x.value)+'</span>':nm(x&&x.reason||"missing from data.json",key);};
+  var small=function(r,key){return '<span style="font-size:13px">'+nm(r||"missing from data.json",key)+'</span>';};
+  var cnt=function(x,key){return x&&x.value!=null?'<span>'+esc(x.value)+'</span>':small(x&&x.reason,key);};
   var h='';
   if(Bh){var a=Bh.founder_asks_day,r=Bh.rules_changes_day,t=Bh.target_changes_week;
     h+='<h3>Your numbers</h3><div class="kpis">'+
@@ -590,10 +591,10 @@ function rBehaviour(){
       kpi("Rule changes a day",cnt(r,"behaviour.rules"),r&&r.value!=null?"RULES.md on "+esc(short(r.day))+" \u00b7 today so far "+esc(r.today_so_far):"","","","behaviour.rules")+
       kpi("Target changes a week",cnt(t,"behaviour.targets"),t&&t.value!=null?(t.ids.length?esc(t.ids.join(", ")):"none")+" \u00b7 last 7 days":"","","","behaviour.targets")+'</div>';}
   if(Cu){var f=Cu.first_firm,j=Cu.journey_walked,c=Cu.counsel_open,l=Cu.launch_done;
-    var fv=f&&f.value?'<span style="font-size:15px">'+esc(f.value.name)+'</span>':nm(f&&f.reason,"customer.firm");
+    var fv=f&&f.value?'<span style="font-size:15px">'+esc(f.value.name)+'</span>':small(f&&f.reason,"customer.firm");
     h+='<h3>Customer</h3><div class="kpis">'+
       kpi("First firm",fv,f&&f.value?"from "+esc(short(f.value.date)):"named and dated","","","customer.firm")+
-      kpi("Journey steps walked",j&&j.value!=null?esc(j.value):nm(j&&j.reason,"customer.journey"),"","","","customer.journey")+
+      kpi("Journey steps walked",j&&j.value!=null?esc(j.value):small(j&&j.reason,"customer.journey"),"","","","customer.journey")+
       kpi("Counsel and expert items open",cnt(c,"customer.counsel"),c&&c.value!=null&&c.ids.length?esc(c.ids.join(", ")):"","","","customer.counsel")+
       kpi("Launch conditions done",cnt(l,"customer.launch")+(l&&l.value!=null?'<span class="muted" style="font-size:13px"> / '+esc(l.total)+'</span>':""),"checklist section C","","","customer.launch")+'</div>';}
   return '<section class="ovsec" id="behaviour"><h2>Your numbers and the customer</h2>'+h+'</section>';
