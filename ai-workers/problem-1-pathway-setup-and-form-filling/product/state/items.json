@@ -62,5 +62,37 @@
     "acked_at": "2026-11-15T09:19:50Z",
     "opened_at": "2026-11-15T09:09:13Z",
     "source": "pull/1814#issuecomment-6892130083"
+  },
+  {
+    "id": "board-v63",
+    "kind": "ready",
+    "owner": "lane",
+    "branch": "lead/2026-11-15-records-2",
+    "pr": 1814,
+    "status": "acked",
+    "waiting_on": "Lead",
+    "next_step": "merge, test, publish",
+    "created_at": "2026-11-15T09:22:33Z",
+    "updated_at": "2026-11-15T09:22:33Z",
+    "last_ack_by": "Lead 58",
+    "acked_at": "2026-11-15T09:54:53Z",
+    "opened_at": "2026-11-15T09:22:33Z",
+    "source": "pull/1814#issuecomment-6892274543"
+  },
+  {
+    "id": "G-4",
+    "kind": "ready",
+    "owner": "lane",
+    "branch": "tools/g4-mechanical-rules",
+    "pr": 1814,
+    "status": "acked",
+    "waiting_on": "Lead",
+    "next_step": "the Lead merges into lead/2026-11-07-lead31 after reading the two points marked \"for the Lead\"",
+    "created_at": "2026-11-15T09:28:09Z",
+    "updated_at": "2026-11-15T09:28:09Z",
+    "last_ack_by": "Lead 58",
+    "acked_at": "2026-11-15T09:54:53Z",
+    "opened_at": "2026-11-15T09:28:09Z",
+    "source": "pull/1814#issuecomment-6892334903"
   }
 ]
