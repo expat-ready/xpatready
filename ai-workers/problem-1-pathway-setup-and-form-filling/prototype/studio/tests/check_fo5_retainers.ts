@@ -903,7 +903,7 @@ try {
   const svcB = new Retainers(brokenDb as never, store, clock);
   ok("FO-5f fail (review m-3): a database fault during the download check is not answered \"No such file\" (404)",
     await svcB.assertFileVisible(R, k11).then(() => false, (e) => !(e instanceof Error && "getStatus" in e) && /connection lost/.test(String(e))));
-  ok("FO-5f pass (review m-3): a refusal is still \"No such file\" (404)", await fails(() => svc.assertFileVisible(T, k11), 404, /No such file/));
+  ok("FO-5f pass (review m-3): a refusal (user-R lost access) is still \"No such file\" (404)", await fails(() => svc.assertFileVisible(R, k11), 404, /No such file/));
 
   // Break m-3: the stale message reads the right way round; break m-4: plain digits only.
   ok("FO-5f fail (break m-3): a page naming version 5 when the agreement is at version 1 → \"at version 1, not version 5\"", await fails(() => svc.withdraw(R, lk.id, { expectedVersion: 5, expectedStatus: "SIGNED_OFFLINE", reason: "x" }), 409, /at version 3, not version 5/));
