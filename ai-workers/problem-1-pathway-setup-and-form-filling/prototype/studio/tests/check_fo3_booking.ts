@@ -22,7 +22,7 @@ import { BookingService, bookingPortsWith, Name, PublicBookingBody, type Booking
 import { computeSlots, wallToUtc } from "../api/src/front-office/booking/slots.ts";
 import { issueToken } from "../api/src/front-office/booking/tokens.ts";
 import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
-import { CLOSED_DAYS, writeSetting } from "../api/src/platform/settings.ts";
+import { CLOSED_DAYS, TIME_ZONE, writeSetting } from "../api/src/platform/settings.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -526,6 +526,77 @@ try {
   const [sA, sB] = await Promise.all([cA, cB]);
   ok("FO-3f cap pass: at cap − 1, a booking in flight that then fails (time taken) gives its place back before the next one is checked under the firm's lock, so the next real booking books, not 429 (review m2/m3, break F3)", sA === 409 && sB === 201, { sA, sB });
   ok("FO-3f cap fail: the other 19 → 429, never a booking past the cap; no advisory lock is left held", capRun.filter((r) => statusOf(r) === 429).length === 19 && (await db.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory'`)[0].n === locks0[0].n, capRun.map(statusOf));
+
+  // ---------------------------------------------------------- FO-3h: the host's mails in the host's office zone (QA-470)
+  // AG-04 v2.1 Part B rule 9 (AG01-24): staff see the host's office time. Today the office zone is the firm's (PF-3's
+  // platform.time_zone; PF-18a adds offices). Own firm, clock, jobs and mail, so the cases above are not disturbed.
+  {
+    const hz = new FakeClock(new Date("2026-11-16T13:00:00Z"));   // Monday 08:00 Toronto
+    const D = await firm("fo3h");
+    await writeSetting(db, { firmId: D.id, key: TIME_ZONE.key, value: TZ, by: "seed:fo3h", workspaceId: ws.id });
+    const D1 = await staff(D.id, "fo3h-host");
+    await copyFirmHoursTo(db, D.id, [D1.id]);
+    const TD = await type(D.id, "free", [D1.id]);
+    const mail = fakeMail({ clock: hz }), jobs = fakeJobs(hz);
+    const svc = new BookingService(db, { audit: fakeAudit() as AuditPort<never>, clock: hz, jobs, mail, arrival: fakeArrival(), publicBaseUrl: "http://localhost:4430", limits: { bookPerIp: 1000, bookPerFirm: 1000, slotsPerIp: 1000, tokenPerIp: 1000 }, warn: () => {} });
+    await svc.registerJobs();
+    const bookFrom = async (who: string, startsAt: string, timeZone: string) => {
+      const page = await svc.publicSlots(D.key, "free", {}, "10.0.0.7");
+      await hz.advance({ seconds: 5 });
+      return svc.publicBook(D.key, "free", { givenNames: "Client", familyName: who, email: `${who}@client.example`, mode: "VIDEO", startsAt, timeZone, consent: true, consentWordingId: page.consent!.wordingId, formStamp: page.formStamp }, "10.0.0.7");
+    };
+    const said = (m: { subject: string; text: string }) => `${m.subject}\n${m.text}`;
+    const hostMail = (key: string) => mail.inbox("fo3h-host@staff.example").find((m) => m.templateKey === key);
+    const TOR10 = /10:00\sa\.m\. \(America\/Toronto\)/, TOR11 = /11:00\sa\.m\. \(America\/Toronto\)/;
+
+    // Tue 17 Nov 10:00 Toronto = 15:00Z = 19:00 Dubai.
+    await bookFrom("dubai1", "2026-11-17T15:00:00.000Z", "Asia/Dubai");
+    await jobs.runDue();
+    const hb = hostMail("booking.host_booked");
+    ok("FO-3h DW1 pass: a booking from Asia/Dubai for Tue 17 Nov 10:00 Toronto mails the host \"10:00 a.m. (America/Toronto)\" in subject and text",
+      !!hb && TOR10.test(hb.subject) && TOR10.test(hb.text), hb && said(hb));
+    ok("FO-3h DW1 fail: no host mail states the time only in Asia/Dubai", mail.inbox("fo3h-host@staff.example").length === 1 && !said(hb!).includes("Asia/Dubai"), mail.inbox("fo3h-host@staff.example").map(said));
+    const pb = mail.inbox("dubai1@client.example").find((m) => m.templateKey === "booking.booked");
+    ok("FO-3h DW2: the booker's confirmation reads \"7:00 p.m. (Asia/Dubai)\" (kept)", !!pb && /7:00\sp\.m\. \(Asia\/Dubai\)/.test(pb.text), pb && said(pb));
+
+    // DW5: the invite stays in UTC and is byte-identical to the unchanged generator's output for the same booking.
+    const row1 = await db.foBooking.findFirstOrThrow({ where: { firmId: D.id, personId: { not: null }, startsAt: new Date("2026-11-17T15:00:00.000Z") } });
+    const icsFor = (attendee: { name: string; email: string }) => bookingIcs({ bookingId: row1.id, sequence: 0, method: "REQUEST", startsAt: row1.startsAt, endsAt: row1.endsAt, stamp: hz.now(),
+      summary: `${TD.name} with ${D.operatingName}`, description: `Video call. Your join link will follow.`, location: undefined, organizer: { name: D.operatingName, email: D.contactEmail }, attendee });
+    const hostIcs = new TextDecoder().decode(hb!.attachments![0].bytes), personIcs = new TextDecoder().decode(pb!.attachments![0].bytes);
+    ok("FO-3h DW5: the .ics start and end are still UTC (20261117T150000Z, 20261117T153000Z), byte-identical to before for the same booking",
+      [hostIcs, personIcs].every((x) => x.includes("DTSTART:20261117T150000Z\r\n") && x.includes("DTEND:20261117T153000Z\r\n"))
+        && hostIcs === icsFor({ name: "Sample fo3h-host", email: "fo3h-host@staff.example" }) && personIcs === icsFor({ name: "Client dubai1", email: "dubai1@client.example" }), hostIcs);
+
+    // DW3: booked from Dubai for Wed 18 Nov 10:00 Toronto, moved to 11:00 by the booker now in Tokyo, then cancelled.
+    const b2 = await bookFrom("dubai2", "2026-11-18T15:00:00.000Z", "Asia/Dubai");
+    await jobs.runDue();
+    const mv = await svc.selfReschedule(b2.manageToken, { startsAt: "2026-11-18T16:00:00.000Z", timeZone: "Asia/Tokyo" }, "10.0.0.7");
+    await jobs.runDue();
+    await svc.selfCancel(mv.manageToken, "10.0.0.7");
+    await jobs.runDue();
+    const hm = hostMail("booking.host_moved"), hc = hostMail("booking.host_cancelled");
+    const pm = mail.inbox("dubai2@client.example").find((m) => m.templateKey === "booking.moved");
+    ok("FO-3h DW3 pass: after the booker changes zone on reschedule, the host's reschedule and cancel mails read \"11:00 a.m. (America/Toronto)\"",
+      !!hm && !!hc && TOR11.test(hm.subject) && TOR11.test(hm.text) && TOR11.test(hc.subject) && TOR11.test(hc.text), [hm, hc].map((m) => m && said(m)));
+    ok("FO-3h DW3 fail: neither host mail states the time in the booker's zone (Asia/Tokyo or Asia/Dubai); the booker's own moved mail stays in Asia/Tokyo",
+      !!hm && !!hc && [hm, hc].every((m) => !/Asia\/(Tokyo|Dubai)/.test(said(m))) && !!pm && /1:00\sa\.m\. \(Asia\/Tokyo\)/.test(pm.text), [hm, hc, pm].map((m) => m && said(m)));
+
+    // DW4: the attendance question, 30 min after b1 ends (15:30Z), to the host in the host's zone.
+    await hz.set(new Date("2026-11-17T16:01:00Z"));
+    await jobs.runDue();
+    const ask = hostMail("booking.attendance_ask");
+    ok("FO-3h DW4: the attendance question to the host reads the host's zone (\"10:00 a.m. (America/Toronto)\", never Asia/Dubai)",
+      !!ask && TOR10.test(ask.text) && !said(ask).includes("Asia/Dubai") && ask.to === "fo3h-host@staff.example", ask && said(ask));
+
+    // hostZone reads the firm's own setting, not a fixed default (review m1): the firm moves to America/Regina (UTC-6 all year).
+    await writeSetting(db, { firmId: D.id, key: TIME_ZONE.key, value: "America/Regina", by: "seed:fo3h", workspaceId: ws.id });
+    await bookFrom("dubai3", "2026-11-19T17:00:00.000Z", "Asia/Dubai");   // Thu 19 Nov 12:00 Toronto = 11:00 Regina
+    await jobs.runDue();
+    const hv = mail.inbox("fo3h-host@staff.example").filter((m) => m.templateKey === "booking.host_booked").at(-1);
+    ok("FO-3h hostZone: a firm in America/Regina mails the host \"11:00 a.m. (America/Regina)\", not the setting's default zone",
+      !!hv && /11:00\sa\.m\. \(America\/Regina\)/.test(hv.subject) && /11:00\sa\.m\. \(America\/Regina\)/.test(hv.text) && !said(hv).includes("America/Toronto") && !said(hv).includes("Asia/Dubai"), hv && said(hv));
+  }
 
   // --------------------------------------------------------------------------------------- over HTTP, with the guard
   // The app's decorators need the api's tsconfig, so the route checks run in a child of this file (`--serve`): the real
