@@ -1867,6 +1867,12 @@ def health(snap, now, comp, li):
 
 COMPASS = "RULES.md › The compass (P-312)"
 NOT_READ_MERGED = "not measured: the merged pull requests were not read (offline or failed)"
+NOT_READ_NIGHTLY = "not measured: the nightly runs on main were not read (offline or failed)"
+
+
+def nn(x):
+    """A sample size for tooltip text: the number, or "not measured"."""
+    return "not measured" if x is None else str(x)
 
 
 def build_explain(d):
@@ -2073,11 +2079,11 @@ def build_explain(d):
     pl = d["pipeline"]
     w7 = "the 7 days to " + t_ist
     put("pipeline.deploy_freq", pl["deploy_freq"]["label"], "PRs merged to main ÷ 7; the small line counts app-code PRs only (P-500).", w7,
-        pl["deploy_freq"].get("n"), f"PRs merged (of them app code: {pl['deploy_freq']['app_code'].get('n')})", up, pl["deploy_freq"])
+        pl["deploy_freq"].get("n"), f"PRs merged (of them app code: {nn(pl['deploy_freq']['app_code'].get('n'))})", up, pl["deploy_freq"])
     put("pipeline.lead_time_h", pl["lead_time_h"]["label"], "Median hours from PR opened to merged.", w7, pl["lead_time_h"].get("n"), "PRs merged", down,
         pl["lead_time_h"])
     put("pipeline.change_fail", pl["change_fail"]["label"], "Share of finished nightly runs on main that failed (a proxy for change failure).", w7,
-        pl["change_fail"].get("n"), f"finished nightly runs (reverts out of {pl['change_fail']['reverts'].get('n')} PRs merged)",
+        pl["change_fail"].get("n"), f"finished nightly runs (reverts: out of {nn(pl['change_fail']['reverts'].get('n'))} PRs merged)",
         down + " The small line's batch failures have their band under Merge-queue batches.",
         pl["change_fail"])
     put("pipeline.restore_h", pl["restore_h"]["label"], "Median hours from a failed nightly on main to the next green one.", "the last 60 nightly runs",
@@ -2654,10 +2660,12 @@ def main():
         "lead_time_h": V(med(lead7), "added: median hours from PR opened to merged, PRs merged in the last 7 days", label="PR opened to merged (proxy for lead time)",
                          n=len(lead7) if merged_ok else None, **({} if merged_ok else {"reason": NOT_READ_MERGED})),
         "change_fail": V(red_share, f"added: share of finished nightly runs on main that failed, last 7 days (n={len(nl7)})", label="Share turning the main line red (proxy)", n=len(nl7) if nightly_ok else None,
+                         **({} if nightly_ok else {"reason": NOT_READ_NIGHTLY}),
                          reverts=V(len(reverts7) if merged_ok else None, "merged PRs titled Revert…, last 7 days", n=len(m7) if merged_ok else None,
                                    **({} if merged_ok else {"reason": NOT_READ_MERGED})),
                          batch_fail=V(round(100 * fmv["queue_failed"] / fmv["queue_runs"], 1) if fm and fmv.get("queue_runs") else None, fm_src + ": queue_failed ÷ queue_runs")),
         "restore_h": V(med(restores), "added: median hours from a failed nightly on main to the next green one, last 60 nightly runs", label="Time from red to green", n=len(restores) if nightly_ok else None,
+                       **({} if nightly_ok else {"reason": NOT_READ_NIGHTLY}),
                        open_red=V(ist(red_since) if red_since else None, "nightly on main red since (none = green)")),
         "queue_wait_min": V((fmv.get("approved_to_merged_min") or {}).get("median"), fm_src + ": approved_to_merged_min.median",
                             p90=(fmv.get("approved_to_merged_min") or {}).get("p90"), n=(fmv.get("approved_to_merged_min") or {}).get("n")),
@@ -2665,6 +2673,7 @@ def main():
         "ci_min_per_day": V(round(sum(x for x in series_ci7) / len(series_ci7)) if series_ci7 else None,
                             "added (approx): ci.yml run wall time, run_started_at to updated_at, summed per IST day, average of the last 7 full days",
                             n=len(series_ci7) if series_ci7 else None,
+                            **({} if series_ci7 else {"reason": "not measured: no full day of CI runs was read (offline or failed)"}),
                             job_hours=V(ci_hours, fm_src + ": pr_check_hours + queue_hours (job time over the runs it read)")),
         "thrown_share": V(fmv.get("thrown_share"), fm_src + ": thrown_share (P-371 target under 20%)", n=fmv.get("runs_read")),
         "records_share": V(fmv.get("records_share"), fm_src + ": records_share (target under 20%)"),
@@ -2675,8 +2684,8 @@ def main():
     series = {"days": [d.isoformat() for d in days], "merges": [], "app_merges": [], "app_partial": [], "works": [], "lead_h": [], "batch_fail": [], "ci_min": []}
     for d in days:
         md_ = [m for m in merged if ts(m["merged"]).astimezone(IST).date() == d]
-        series["merges"].append(len(md_))
-        series["app_merges"].append(sum(1 for m in md_ if ac.get(str(m["n"]))))
+        series["merges"].append(len(md_) if merged_ok else None)          # not read is not zero (board v57)
+        series["app_merges"].append(sum(1 for m in md_ if ac.get(str(m["n"]))) if merged_ok else None)
         series["app_partial"].append(any(str(m["n"]) not in ac for m in md_))
         series["works"].append(wh.get(d))
         series["lead_h"].append(med([hours(ts(m["created"]), ts(m["merged"])) for m in md_]))
@@ -2792,8 +2801,9 @@ def main():
                     "flaky": V(flaky(), f"tools/flaky-ledger.tsv in {copy}"),
                     "review_rounds": V(None, "not measured: needs every PR's review comments (costly)")},
         "pipeline": pipeline,
-        "merges_per_day": V({"days": series["days"], "all": series["merges"], "app": series["app_merges"], "partial": series["app_partial"]},
-                            "GitHub merged PRs per IST day; app = tools/app-code-prs.sh" + (f"; {unclassified} PRs not yet classified" if unclassified else "")),
+        "merges_per_day": V(None if not merged_ok else {"days": series["days"], "all": series["merges"], "app": series["app_merges"], "partial": series["app_partial"]},
+                            "GitHub merged PRs per IST day; app = tools/app-code-prs.sh" + (f"; {unclassified} PRs not yet classified" if unclassified else ""),
+                            **({} if merged_ok else {"reason": NOT_READ_MERGED})),
         "resources": resources,
         "risks": {"items": rk["risks"], "src": "cockpit/risks.json (hand-kept)", "unlisted": V(unlisted, "MVP-CHECKLIST.md §C items Not started that risks.json lacks")},
         "healing": healing,

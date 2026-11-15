@@ -969,6 +969,10 @@ class Tooltips(unittest.TestCase):
         self.assertIsNone(d["healing"]["healed_prs"]["v"])
         self.assertIsNone(E["healing.healed_prs"]["n"])
         self.assertIsNone(E["pipeline.restore_h"]["n"])
+        self.assertIsNone(d["merges_per_day"]["v"])                      # 14 days of 0 would be a guess
+        self.assertIsNone(E["improving.app_merges"]["n"])
+        self.assertTrue(d["pipeline"]["change_fail"]["reason"].startswith("not measured: the nightly runs"))
+        self.assertNotIn("None", json.dumps(E))                           # no "None" in any tooltip text
         self.assertNotIn("band", E["quality.demotions"])                  # a net-fall proxy: the compass band does not govern it (review M5)
         self.assertEqual(E["vsm.queue.wait_h"]["window"], "flow-measure's runs read")
         self.assertEqual(E["strip.health"]["n"], 7)

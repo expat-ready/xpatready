@@ -709,7 +709,7 @@ function rDevops(){
    kpi("Merge-queue batches",nz(bt[0]),nz(bt[1])+" failed \u00b7 "+nz(bt[2])+" cancelled",src(p.batches),"","pipeline.batches")+
    kpi("CI minutes a day",nz(v(p.ci_min_per_day)),"run time (approx), 7-day average",src(p.ci_min_per_day),"","pipeline.ci_min_per_day")+
    kpi("CI time thrown away",nz(v(p.thrown_share),"%"),"target under 20%",src(p.thrown_share),"","pipeline.thrown_share")+'</div>';
-  h+='<h3>Merges per day, 14 days</h3><div'+T("pipeline.merges_per_day")+'>'+bars(m.days,m.all,m.app,m.partial,"")+'</div>'+'<div class="legend"><span class="pill t-prog">all merges</span><span class="pill t-good">app-code merges (P-500)</span></div>';
+  h+='<h3>Merges per day, 14 days</h3><div'+T("pipeline.merges_per_day")+'>'+(v(D.merges_per_day)==null?'<span class="nm" data-nm="'+esc(D.merges_per_day.reason||"not in data.json")+'">not measured</span>':bars(m.days,m.all,m.app,m.partial,""))+'</div>'+'<div class="legend"><span class="pill t-prog">all merges</span><span class="pill t-good">app-code merges (P-500)</span></div>';
   return section("11","devops","DevOps: delivery pipeline","How fast and how safely changes reach main. DORA's four keys, with proxies marked.",h);
 }
 
