@@ -232,11 +232,17 @@ try {
     named += r.filter((x) => x.status === "rejected" && /already has this lead/.test(JSON.stringify((x.reason as { getResponse?: () => unknown }).getResponse?.()))).length;
   }
   ok("FO-2 fail (break M2, review m6): 6 races of two Take it: exactly one wins each, the other gets 409 naming the owner", wins === 6 && named === 6, { wins, named });
-  const late = await refusal(() => leads.take(T, sql(`select id from fo_lead where owner_staff_id = '${O.staffId}' limit 1`)));
-  ok("FO-2 fail (Devin security): Take it on a lead the person could not see → 404, no owner named", late?.status === 404 && !JSON.stringify(late.body).includes("Case officer"), late);
+  // FO-2 DWn (AG-2-86 rule 3, Lead B on #1813): a late Take it by someone who could see the lead unowned → 409 with the name.
+  const takenByT = async (n: string) => { await post({ givenNames: n, email: `${n}@example.org` }); const id = sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = '${n}@example.org'`); await leads.take(T, id); return id; };
+  const lateLead = await takenByT("late");
+  const late = await refusal(() => leads.take(O, lateLead)), hidden = await refusal(() => leads.take(nobody, lateLead));
+  ok("FO-2 DWn fail: everyone-sees-all off, a Case Officer's Take it after a Case Manager's → 409 naming the Case Manager", late?.status === 409 && late.body.detail === "Second representative (Sample) already has this lead.", late);
+  ok("FO-2 DWn pass: someone who could never see it unowned (no view.all, no assign) → 404, no name", hidden?.status === 404 && !JSON.stringify(hidden.body).includes("Second representative"), hidden);
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
 
   // Firm A and firm B.
+  const late2 = await takenByT("late2");
+  ok("FO-2 DWn fail: the same with everyone-sees-all on → 409 naming the Case Manager", (await refusal(() => leads.take(O, late2)))?.body.detail === "Second representative (Sample) already has this lead.");
   ok("FO-2 fail: firm A's staff reading firm B's lead → 404", (await refusal(() => leads.read(SOLO, lenaLead)))?.status === 404 && (await refusal(() => leads.take(SOLO, lenaLead)))?.status === 404);
   ok("FO-2 fail: firm B's lists never show firm A's leads (firm B has none)", (await leads.list(SOLO, "all")).length === 0 && count("fo_lead", `firm_id = '${A}'`) > 0);
 
@@ -259,7 +265,7 @@ try {
   const want: Record<string, string> = { list: "agent/prospect:show", read: "agent/prospect:show", take: "agent/prospect:edit" };
   ok("FO-2 pass: every staff route declares its seeded agent/prospect:* key (default deny)", Object.entries(want).every(([m, k]) => keysOf(m) === k && Number(sql(`select count(*) from platform_role_permission where permission_key = '${k}'`)) > 0), Object.keys(want).map((m) => `${m}=${keysOf(m)}`));
   const readOnly = sql(`select string_agg(permission_key, ',') from platform_role_permission where role = 'READ_ONLY'`).split(",");
-  ok("FO-2 fail: a Read-only person cannot write (does not hold Take it's key)", ["take"].every((m) => !readOnly.includes(keysOf(m)!)) && readOnly.includes("agent/prospect:show"));
+  ok("FO-2 DWn fail: a Read-only person cannot Take it (403 at the guard: no agent/prospect:edit)", ["take"].every((m) => !readOnly.includes(keysOf(m)!)) && readOnly.includes("agent/prospect:show"));
   const routes = Object.keys(want).map((m) => ({ name: `SalesController.${m}`, method: "GET", path: "/api/front-office/leads", access: Reflect.getMetadata(PLATFORM_ACCESS, (SalesController.prototype as unknown as Record<string, object>)[m]) }));
   ok("FO-2 pass: PF-4's start-up rule accepts every route", (() => { try { assertEveryRouteDeclared(routes); return true; } catch { return false; } })());
   ok("FO-2 pass: the public door is outside the guarded paths and its read is an open read", Reflect.getMetadata("path", PublicFormsController) === "api/public/forms" && Reflect.getMetadata("studio:read-scope", PublicFormsController.prototype.read) === "open");

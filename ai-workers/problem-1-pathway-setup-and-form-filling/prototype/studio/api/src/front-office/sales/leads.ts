@@ -1,6 +1,5 @@
-// FO-2 part 1 (contracts §2.1, §7; AG-2-13c Unassigned leads, AG-2-84 match, AG-2-86 Take it): staff leads (part 2 adds
-// Add a lead, Assign, Close, Reopen). Firm-scoped (another firm's id 404), visibility by common.ts; a change is one transaction:
-// the lead row under its lock, one audit line through AuditPort, the outbox row last.
+// FO-2 part 1 (contracts §2.1, §7; AG-2-13c, -84, -86): staff leads, firm-scoped (404), visibility by common.ts; a change
+// is one transaction: the row under its lock, one audit line, the outbox row last. Part 2: Add, Assign, Close, Reopen.
 import { Inject, Injectable } from "@nestjs/common";
 import type { FoLeadState, PrismaClient } from "@prisma/client";
 import { EVENT, LeadEventPayload, type EventName } from "../../../../ports/events.ts";
@@ -96,19 +95,17 @@ export class Leads {
     fn: (tx: Tx, l: { state: FoLeadState; owner_staff_id: string | null; person_id: string; door: "WEB_FORM" | "MANUAL" | "BOOKING"; number: string }, staff: Map<string, Staff>) =>
       Promise<{ owner: string | null; summary: string }>) {
     if (typeof id !== "string" || !UUID.test(id)) return notFound();
-    const [staff, vis, before] = await Promise.all([this.staffOf(ctx.firmId), visibilityOf(this.db, ctx), this.db.foLead.findFirst({ where: firmScope(ctx.firmId, { id }), select: { ownerStaffId: true } })]);
+    const [staff, vis] = await Promise.all([this.staffOf(ctx.firmId), visibilityOf(this.db, ctx)]);
     const activeOf = (o: string | null) => (o && staff.get(o)?.status === "ACTIVE" ? o : null);
-    if (!before) return notFound();
-    const sawIt = sees(vis, ctx, activeOf(before.ownerStaffId));   // only someone who saw it hears who has it (Devin security)
     id = id.toLowerCase();
     await this.db.$transaction(async (tx) => {
       const [l] = await tx.$queryRaw<{ state: FoLeadState; owner_staff_id: string | null; person_id: string; door: "WEB_FORM" | "MANUAL" | "BOOKING"; number: string }[]>`
         select state, owner_staff_id::text, person_id::text, door, number from fo_lead where firm_id = ${ctx.firmId}::uuid and id = ${id}::uuid for update`;
-      // Seen under the lock: a change never lands on a lead the person may no longer see (break M2); the one who lost the
-      // race hears who has it (BR-5); anyone else gets 404.
+      // Seen under the lock: a change never lands on a lead the person may not see (break M2). Someone who could see it
+      // unowned (Unassigned leads) hears who got there first, whatever the timing (AG-2-86 rule 3, Lead B); else 404.
       const owner = l?.owner_staff_id ? staff.get(l.owner_staff_id) : undefined;
       if (!l) return notFound();
-      if (!sees(vis, ctx, activeOf(l.owner_staff_id))) return sawIt && owner ? conflict(`${owner.displayName} already has this lead.`, "ALREADY_TAKEN", { ownerStaffId: owner.id }) : notFound();
+      if (!sees(vis, ctx, activeOf(l.owner_staff_id))) return vis.seesUnassigned && owner?.status === "ACTIVE" ? conflict(`${owner.displayName} already has this lead.`, "ALREADY_TAKEN", { ownerStaffId: owner.id }) : notFound();
       const r = await fn(tx, l, staff);
       await written(tx, this.ports.audit, {
         firmId: ctx.firmId, actor: actorOf(ctx), action, entity: "fo_lead", entityKey: id, summary: `Staff ${ctx.staffId} ${r.summary}: ${l.number}.`,
