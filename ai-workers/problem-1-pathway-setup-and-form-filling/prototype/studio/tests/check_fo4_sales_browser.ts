@@ -92,7 +92,7 @@ async function sendForm(p: Page, v: { given: string; family?: string; email: str
   await p.getByLabel("Interested in (optional)").selectOption({ label: "Work permit (Sample)" });
   if (v.tick) await p.getByRole("checkbox").check();
   await p.waitForTimeout(2300);
-  await p.getByRole("button", { name: "Send" }).click();
+  await p.getByRole("button", { name: "Send my enquiry" }).click();
   await p.locator('[data-form-state="thanks"], [role="alert"]').first().waitFor({ timeout: 15_000 });
   return (await p.locator("main").innerText()).trim();
 }
@@ -108,7 +108,7 @@ await shot(visitor, "web-form-375");
 // Fail: the form's own check keeps the answers and sends nothing.
 const before = Number(sql(`select count(*) from fo_lead where firm_id = '${A}'`));
 await visitor.getByLabel("Email", { exact: true }).fill("lena@example.org");
-await visitor.getByRole("button", { name: "Send" }).click();
+await visitor.getByRole("button", { name: "Send my enquiry" }).click();
 await visitor.getByText("Enter your first name.").first().waitFor({ timeout: 5_000 });
 ok("FO-4 DW1 fail: no first name → refused on the field and in a summary, the email kept, no lead", (await visitor.getByLabel("Email", { exact: true }).inputValue()) === "lena@example.org" && Number(sql(`select count(*) from fo_lead where firm_id = '${A}'`)) === before);
 const first = await sendForm(visitor, { given: lena, family: "Park", email: `lena.${run}@example.org`, phone: "+1 416 555 0101", tick: true });
@@ -136,6 +136,7 @@ const lenaRow = cm.locator(`tr[data-lead-row]`, { hasText: lena }).first();
 await lenaRow.waitFor({ timeout: 30_000 });
 const rowText = await lenaRow.innerText();
 ok("FO-4 DW1 pass: the lead is in Unassigned leads (the first chip for a Case Manager) with its waited time", (await cm.locator('[data-chip="unassigned"][aria-pressed="true"]').count()) === 1 && /since it arrived/.test(rowText) && rowText.includes("Work permit (Sample)"), rowText);
+ok("FO-4 plain words: the source reads \"Website form\", never the stored code", rowText.includes("Website form") && !rowText.includes("WEBSITE"), rowText);
 ok("FO-4 frame: the place line reads Sales › Leads", /Sales\s*›\s*Leads/.test(await cm.locator('[data-where] nav[aria-label="Path"]').innerText()), await cm.locator("[data-where]").innerText());
 ok("FO-4 BR-4: the menu badge counts the unassigned leads", /\d+ unassigned/.test(await cm.locator("[data-unassigned-badge]").innerText()));
 await axe("FO-4 Leads (1440 px)", cm);
@@ -172,7 +173,7 @@ await co.getByRole("heading", { name: "Lead not found" }).waitFor({ timeout: 20_
 ok("FO-4 AG-2-94 rule 16: a lead the viewer may not see reads as not found", true);
 // DW4: Take it, the race (BR-5)
 // With "everyone sees all" on (the default), the second person still sees the lead and hears who has it. With it off,
-// FO-2 answers 404 first (the lead is no longer theirs to see): asked on #1813; that case is checked after this one.
+// FO-2 names the owner only to someone who saw the lead just before, and answers 404 to anyone else (#1813, f15bba1dd).
 await seesAll(true);
 await co.goto(`${BASE}/front-office/leads`);
 const race = co.locator("tr[data-lead-row]", { hasText: `${lena}b` }).first();
@@ -203,15 +204,15 @@ await sendForm(visitor, { given: `Ravi${run}`, email: `ravi.${run}@example.org` 
 const ro = await pageAs(tokens.RO);
 await ro.goto(`${BASE}/front-office/leads`);
 await ro.locator("tr[data-lead-row]", { hasText: `Ravi${run}` }).waitFor({ timeout: 20_000 });
-ok("FO-4 DW6 pass: a Read-only person sees the unassigned lead but no Take it anywhere", (await ro.getByRole("button", { name: /^Take it/ }).count()) === 0);
+ok("FO-4 DW6 pass: a Read-only person sees the unassigned lead but no Take it anywhere, and is told why", (await ro.getByRole("button", { name: /^Take it/ }).count()) === 0 && (await ro.locator("[data-why-no-take]").innerText()).includes("Taking one needs a role that works leads"));
 await ro.goto(`${BASE}/front-office/leads/${leadIdOf(`Ravi${run}`)}`);
 await ro.getByRole("heading", { level: 1 }).waitFor({ timeout: 20_000 });
-ok("FO-4 DW6 pass: on the lead too, no Take it and no Assign for Read-only", (await ro.getByRole("button", { name: /Take it|Assign/ }).count()) === 0);
+ok("FO-4 DW6 pass: on the lead too, no Take it and no Assign for Read-only, with the reason in the rail", (await ro.getByRole("button", { name: /Take it|Assign/ }).count()) === 0 && (await ro.locator("aside [data-why-no-take]").count()) === 1);
 const roTake = await staffCall(tokens.RO, "POST", `/front-office/leads/${leadIdOf(`Ravi${run}`)}/take`);
 ok("FO-4 DW6 fail: the server refuses Read-only's Take it (403) and the lead stays unowned", roTake.status === 403 && sql(`select coalesce(owner_staff_id::text, '-') from fo_lead where id = '${leadIdOf(`Ravi${run}`)}'`) === "-", roTake.status);
 await cm.goto(`${BASE}/front-office/leads/${leadIdOf(`Ravi${run}`)}`);
 await cm.getByRole("heading", { level: 1 }).waitFor({ timeout: 20_000 });
-ok("FO-4 DW6 pass: a Case Manager (agent/prospect:edit) sees Take it on the same lead", (await cm.getByRole("button", { name: "Take it" }).count()) === 1);
+ok("FO-4 DW6 pass: a Case Manager (agent/prospect:edit) sees Take it on the same lead and no reason line", (await cm.getByRole("button", { name: "Take it" }).count()) === 1 && (await cm.locator("[data-why-no-take]").count()) === 0);
 // DW7: "(Inactive) Name"
 await sendForm(visitor, { given: `Ola${run}`, email: `ola.${run}@example.org` });
 const olaId = leadIdOf(`Ola${run}`);

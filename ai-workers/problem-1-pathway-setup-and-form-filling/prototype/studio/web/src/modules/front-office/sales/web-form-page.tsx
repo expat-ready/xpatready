@@ -8,6 +8,7 @@ import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Field, Input, Select } from "@/components/ui/controls";
 import { problemOf, PublicForm, Thanks, type Problem } from "./contract";
+import { Loading } from "./loading";
 const NOT_AVAILABLE = "This form is not available.";
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api/public/forms/${path}`, { ...init, headers: { accept: "application/json", ...(init?.body ? { "content-type": "application/json" } : {}) } });
@@ -83,7 +84,7 @@ function TheForm({ token, form, onSent }: { token: string; form: PublicForm; onS
         </label>
       ) : null}
       <div aria-hidden className="absolute -left-[9999px] h-px w-px overflow-hidden"><input ref={trap} name={TRAP} type="text" tabIndex={-1} autoComplete="off" defaultValue="" /></div>
-      <Button type="submit" size="lg" busy={busy} className="w-full sm:w-auto sm:self-start">Send</Button>
+      <Button type="submit" size="lg" busy={busy} className="w-full sm:w-auto sm:self-start">Send my enquiry</Button>
     </form>
   );
 }
@@ -99,7 +100,7 @@ export function WebFormPage() {
       <main className="mx-auto w-full max-w-lg rounded-xl border border-border bg-surface-raised p-5 shadow-sm sm:p-8">
         {unavailable ? <><h1 className="text-xl font-semibold">Enquiry form</h1><p data-form-state="not-available" className="mt-2 text-sm text-text-muted">{NOT_AVAILABLE}</p></>
           : sent !== null ? <><h1 className="text-xl font-semibold">{form.data?.name ?? "Thank you"}</h1><p data-form-state="thanks" role="status" className="mt-2 whitespace-pre-line text-sm">{sent}</p></>
-            : form.isPending ? <p role="status" className="text-sm text-text-muted">Loading the form…</p>
+            : form.isPending ? <Loading label="Loading the form" rows={5} />
               : form.isError ? <><h1 className="text-xl font-semibold">Enquiry form</h1><p role="alert" className="mt-2 text-sm text-text-muted">{(form.error as unknown as Problem).detail ?? "The form could not be loaded. Please try again later."}</p></>
                 : <><h1 className="text-xl font-semibold [overflow-wrap:anywhere]">{form.data.name}</h1><TheForm token={token} form={form.data} onSent={setSent} /></>}
       </main>

@@ -5,7 +5,8 @@
 import { Link, useLocation, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Notice, Pill } from "@/components/ui/controls";
-import { can, KEY, Lead } from "./contract";
+import { can, KEY, Lead, READ_ONLY_REASON, words } from "./contract";
+import { Loading } from "./loading";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { useTakeIt } from "./take-it";
@@ -18,7 +19,7 @@ function LeadBody({ id }: { id: string }) {
   const me = useStaff();
   const take = useTakeIt();
   const lead = useQuery({ queryKey: ["fo", "leads", "one", id], retry: false, queryFn: async () => Lead.parse(await staffApi(`/front-office/leads/${encodeURIComponent(id)}`)) });
-  if (lead.isPending) return <p role="status" className="text-sm text-text-muted">Loading the lead…</p>;
+  if (lead.isPending) return <Loading label="Loading the lead" rows={2} />;
   if (lead.isError) {
     const gone = lead.error instanceof StaffApiError && lead.error.status === 404;
     return (
@@ -39,7 +40,7 @@ function LeadBody({ id }: { id: string }) {
       <header className="flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-semibold text-text [overflow-wrap:anywhere]">{name}</h1>
         <Pill tone="info">{l.label}</Pill>
-        <Pill>{l.state === "OPEN" ? "Open" : "Closed"}</Pill>
+        <Pill>{words(l.state)}</Pill>
         <span className="text-sm text-text-muted">{l.number}</span>
       </header>
       {l.possibleMatch ? (
@@ -60,7 +61,7 @@ function LeadBody({ id }: { id: string }) {
             <h2 id="fo-enquiry" className="text-sm font-semibold">Enquiry</h2>
             <dl className="mt-2">
               <Row label="Interested in">{l.interestedIn ?? <span className="text-text-muted">Not given</span>}</Row>
-              <Row label="Source">{l.source}{l.sourceDetail ? <span className="text-text-muted"> · {l.sourceDetail}</span> : null}</Row>
+              <Row label="Source">{words(l.source)}{l.sourceDetail ? <span className="text-text-muted"> · {l.sourceDetail}</span> : null}</Row>
               <Row label="Arrived"><span title={`${sinceLabel(l.arrivedAt)} ago`}>{arrivedLabel(l.arrivedAt)}</span></Row>
               {attribution.map(([k, v]) => <Row key={k} label={ATTRIBUTION[k]}>{String(v)}</Row>)}
             </dl>
@@ -71,7 +72,8 @@ function LeadBody({ id }: { id: string }) {
             <p className="text-xs font-medium text-text-muted">Owner</p>
             <p data-owner className="mt-0.5 text-sm">{l.owner ?? "Nobody yet"}</p>
           </div>
-          {mayTake ? <Button busy={take.isPending} onClick={() => take.mutate(l)}>Take it</Button> : null}
+          {mayTake ? <Button busy={take.isPending} onClick={() => take.mutate(l)}>Take it</Button>
+            : !can(me, KEY.edit) && l.state === "OPEN" && !ownerActive ? <p data-why-no-take className="text-xs text-text-muted">{READ_ONLY_REASON}</p> : null}
         </aside>
       </div>
     </div>

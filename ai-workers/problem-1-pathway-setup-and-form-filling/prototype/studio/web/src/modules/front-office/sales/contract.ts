@@ -39,6 +39,11 @@ export type PublicForm = z.infer<typeof PublicForm>;
 export const Thanks = z.object({ thankYouText: z.string() });
 /** The permission keys each button needs (concept §6 as ruled on #1813: reads use `agent/prospect:show`). */
 export const KEY = { show: "agent/prospect:show", edit: "agent/prospect:edit", assign: "agent/prospect:assign", viewAll: "agent/prospect:view.all" } as const;
+/** A stored code in plain words (EXPERIENCE §5): the lead's source and state. */
+const WORDS: Record<string, string> = { WEBSITE: "Website form", OPEN: "Open", CLOSED: "Closed" };
+export const words = (code: string) => WORDS[code] ?? (code.charAt(0) + code.slice(1).toLowerCase()).replace(/_/g, " ");
+/** Why a person sees no Take it (BIC-18): their role may read leads but not work them. */
+export const READ_ONLY_REASON = "You can read leads. Taking one needs a role that works leads: ask your firm's Owner or Admin.";
 export const can = (me: Me | undefined, key: string) => !!me?.keys.includes(key);
 /** Unassigned leads are seen by people who may see all leads or assign them (AG-2-13c rule 6; FO-2 common.ts). */
 export const seesUnassigned = (me: Me | undefined) => can(me, KEY.viewAll) || can(me, KEY.assign);

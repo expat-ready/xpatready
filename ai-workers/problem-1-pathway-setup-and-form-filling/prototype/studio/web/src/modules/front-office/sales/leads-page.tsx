@@ -6,7 +6,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Input, Pill, Table } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
-import { can, KEY, LeadRows, seesUnassigned, type LeadRow } from "./contract";
+import { can, KEY, LeadRows, READ_ONLY_REASON, seesUnassigned, words, type LeadRow } from "./contract";
+import { Loading } from "./loading";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { useTakeIt } from "./take-it";
@@ -40,6 +41,7 @@ function LeadsBody() {
       <header>
         <h1 className="text-2xl font-semibold text-text">Leads</h1>
         <p className="mt-1 text-sm text-text-muted">People who showed interest. Take one to work it, or Engage it when it is a real opportunity.</p>
+        {!canTake ? <p data-why-no-take className="mt-1 text-xs text-text-muted">{READ_ONLY_REASON}</p> : null}
       </header>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div role="group" aria-label="Which leads" className="flex flex-wrap gap-2">
@@ -56,7 +58,7 @@ function LeadsBody() {
           <Input type="search" placeholder="Search by name or number" value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
       </div>
-      {rows.isPending ? <p role="status" className="text-sm text-text-muted">Loading leads…</p>
+      {rows.isPending ? <Loading label="Loading leads" />
         : rows.isError ? <p role="alert" className="text-sm text-text-danger">{rows.error instanceof StaffApiError ? rows.error.message : "Could not load the leads."} <Button variant="link" size="sm" onClick={() => rows.refetch()}>Try again</Button></p>
           : !rows.data.length ? <p data-empty className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">{EMPTY[view]}</p>
             : !shown.length ? <p role="status" className="text-sm text-text-muted">No lead matches “{q.trim()}”.</p>
@@ -73,7 +75,7 @@ function LeadsBody() {
                         </div>
                       </td>
                       <td>{l.interestedIn ?? <span className="text-text-muted">Not given</span>}</td>
-                      <td>{l.source}</td>
+                      <td>{words(l.source)}</td>
                       <td data-owner>{l.owner ?? <span className="text-text-muted">Nobody</span>}</td>
                       <td title={view === "unassigned" ? "Time since the enquiry arrived." : undefined}>{view === "unassigned" ? waitedLabel(l.arrivedAt) : arrivedLabel(l.arrivedAt)}</td>
                       <td className="text-right">

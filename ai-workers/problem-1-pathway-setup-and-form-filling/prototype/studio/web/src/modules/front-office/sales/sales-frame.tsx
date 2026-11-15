@@ -8,6 +8,7 @@ import { Frame, useWhere, type Crumb } from "@/components/frame";
 import { Button, Field, Input, Notice } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { LeadRows, seesUnassigned, type Me } from "./contract";
+import { Loading } from "./loading";
 import { setStaffToken, staffApi, StaffApiError, useLocalSignIn, useMe, useStaffToken } from "./session";
 const MeCtx = React.createContext<Me | null>(null);
 /** The signed-in staff member (inside SalesFrame only). */
@@ -74,7 +75,7 @@ export function SalesFrame({ crumbs, back, children }: { crumbs: Crumb[]; back?:
       menu={who ? <Menu me={who} /> : null}>
       <Place crumbs={crumbs} back={back ?? null} />
       {!token || (me.isError && !who) ? <SignIn failed={token ? refused : null} />
-        : !who ? <p role="status" className="text-sm text-text-muted">Loading…</p>
+        : !who ? <Loading label="Checking who is signed in" />
           : <MeCtx.Provider value={who}>{children}</MeCtx.Provider>}
     </Frame>
   );
