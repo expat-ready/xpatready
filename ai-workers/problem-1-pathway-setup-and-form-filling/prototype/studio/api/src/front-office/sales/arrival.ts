@@ -1,0 +1,75 @@
+// FO-2 (contracts §2.1, §7; AG-2-84, -83, -8a): every door's one path, in its own transaction: receipt first (a repeat
+// post is one lead), person, lead, attribution, the message as the first INTERNAL note (#1742 m12), consent through
+// ConsentPort (FO_PERSON), receipt CREATED, one audit line, `lead.created` last. A repeat enquiry is a new lead and
+// person, flagged as a possible match (same email or readable phone), never linked or merged (AG02-D6, AG-2-84).
+import type { PrismaClient } from "@prisma/client";
+import { randomUUID } from "node:crypto";
+import type { AuditPort } from "../../../../ports/audit.ts";
+import type { Channel, ConsentPort, Purpose } from "../../../../ports/consent.ts";
+import { EVENT, LeadEventPayload } from "../../../../ports/events.ts";
+import { firmScope } from "../../platform/firm-scope.ts";
+import { written, type Tx } from "./common.ts";
+
+export type Attribution = Partial<Record<"utmSource" | "utmMedium" | "utmCampaign" | "utmTerm" | "utmContent" | "clickId" | "landingPage" | "referrerUrl", string>>
+  & { clickIdKind?: "GCLID" | "FBCLID" | "MSCLKID" | "TTCLID" | "OTHER" };
+
+export type ArrivalIn = {
+  firmId: string;
+  door: "WEB_FORM" | "MANUAL";
+  intakeKey: string;   // form:<web form id>:<submission id> or manual:<request id> (checked)
+  webFormId?: string;
+  person: { givenNames: string | null; familyName: string | null; email: string | null; phone: { phone: string; readable: boolean } | null };
+  source: string;
+  sourceDetail?: string | null;
+  interestedInServiceId?: string | null;
+  message?: string | null;
+  attribution?: Attribution | null;
+  consent?: { wordingId: string; channel: Channel; purpose: Purpose; locale: string } | null;   // the form's own wording; none unticked
+  ipHash?: string | null;
+  actor: string;
+  payloadHash: string;
+};
+export type ArrivalOut = { leadId: string | null; personId: string | null; created: boolean };
+
+/** The possible match: the newest other person of the firm with the same email or the same readable phone. */
+export async function possibleMatch(tx: Tx | PrismaClient, firmId: string, p: ArrivalIn["person"], except?: string): Promise<string | null> {
+  const or = [...(p.email ? [{ email: p.email }] : []), ...(p.phone?.readable ? [{ phone: p.phone.phone, phoneReadable: true }] : [])];
+  if (!or.length) return null;
+  const m = await tx.foPerson.findFirst({ where: firmScope(firmId, { OR: or, ...(except ? { id: { not: except } } : {}) }), orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { id: true } });
+  return m?.id ?? null;
+}
+
+export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>; consent: ConsentPort<Tx> }): Promise<ArrivalOut> {
+  const firmId = firmScope(a.firmId).firmId;
+  // The receipt first (AG-2-84 rule 3). A second post with the same key waits on the unique key until the first commits,
+  // then finds its receipt and makes nothing.
+  const made = await tx.foArrivalReceipt.createMany({ data: [{ firmId, door: a.door, webFormId: a.webFormId ?? null, intakeKey: a.intakeKey, payloadHash: a.payloadHash, ipHash: a.ipHash ?? null }], skipDuplicates: true });
+  const receipt = await tx.foArrivalReceipt.findUniqueOrThrow({ where: { firmId_door_intakeKey: { firmId, door: a.door, intakeKey: a.intakeKey } } });
+  if (made.count === 0) return { leadId: receipt.leadId, personId: receipt.personId, created: false };
+
+  const match = await possibleMatch(tx, firmId, a.person);
+  const personId = randomUUID();
+  await tx.foPerson.create({ data: { id: personId, firmId, givenNames: a.person.givenNames, familyName: a.person.familyName, email: a.person.email, phone: a.person.phone?.phone ?? null, phoneReadable: a.person.phone?.readable ?? true, createdBy: a.actor } });
+  const owner: string | null = null;   // Unassigned (part 2: the adder of a hand-added lead; a one-user firm's one user, X-4)
+  const lead = await tx.foLead.create({
+    data: { firmId, personId, door: a.door, source: a.source, sourceDetail: a.sourceDetail ?? null, interestedInServiceId: a.interestedInServiceId ?? null, ownerStaffId: owner, possibleMatchPersonId: match, createdBy: a.actor },
+    select: { id: true, number: true },
+  });
+  if (a.attribution) await tx.foLeadAttribution.create({ data: { firmId, leadId: lead.id, ...a.attribution } });
+  if (a.message) await tx.foNote.create({ data: { firmId, personId, leadId: lead.id, visibility: "INTERNAL", text: a.message, byActor: a.actor } });
+  if (a.consent) {
+    await ports.consent.record(tx, {
+      firmId, subject: { kind: "FO_PERSON", id: personId }, channel: a.consent.channel, purpose: a.consent.purpose, wordingId: a.consent.wordingId,
+      source: "WEB_FORM", sourceRef: `fo_arrival_receipt:${receipt.id}`, locale: a.consent.locale, ...(a.ipHash ? { ipHash: a.ipHash } : {}),
+      jurisdiction: "CA", recordedKind: "SELF_SERVICE", recordedBy: a.actor,
+    });
+  }
+  await tx.foArrivalReceipt.update({ where: { id: receipt.id }, data: { outcome: "CREATED", completedAt: new Date(), leadId: lead.id, personId } });
+  await written(tx, ports.audit, {
+    firmId, actor: a.actor, action: EVENT.LEAD_CREATED, entityKey: lead.id,
+    summary: `Lead ${lead.number} arrived by ${a.door === "WEB_FORM" ? "the web form" : "hand"}${match ? ", flagged as a possible match" : ""}.`,
+    detail: { door: a.door, personId, ownerStaffId: owner, possibleMatchPersonId: match, consent: !!a.consent },
+    event: { type: EVENT.LEAD_CREATED, subjectId: lead.id, payload: LeadEventPayload.parse({ leadId: lead.id, personId, door: a.door, state: "OPEN", ownerStaffId: owner, possibleMatchPersonId: match }) },
+  });
+  return { leadId: lead.id, personId, created: true };
+}
