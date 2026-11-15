@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Complaints layout</title>
+<!-- PF-21s stage-1 layout (concept.md §4). Self-contained; team tokens copied from web/src/styles/tokens.css.
+     Three boards: list, record page, record drawer; then the states. All data is Sample. Not a build file. -->
+<style>
+:root{
+  --primary:#0862c5;--primary-hover:#054e9c;--surface:#f7f7f7;--raised:#ffffff;--text:#2d2d2d;--muted:#737373;
+  --link:#054e9c;--border:#d9d9d9;--border-strong:#bfbfbf;--warn:#ff8500;--warn-t:#663200;--warn-bg:#fff3e0;
+  --danger:#dc2626;--danger-t:#991b1b;--ok:#16a34a;--ok-t:#0f5c2e;--ring:#0862c580;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--surface);color:var(--text);font:14px/1.45 "Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+h1,h2,h3{font-family:"Proxima Nova","Inter",ui-sans-serif,sans-serif;margin:0}
+h1{font-size:24px}h2{font-size:18px}h3{font-size:16px}
+a{color:var(--link)}
+:focus-visible{outline:3px solid var(--ring);outline-offset:2px}
+.board-title{max-width:1200px;margin:32px auto 8px;padding:0 16px;font-size:12px;color:var(--muted);text-transform:none;letter-spacing:.02em}
+.frame{max-width:1200px;margin:0 auto 24px;background:var(--raised);border:1px solid var(--border);border-radius:8px;overflow:hidden;position:relative}
+.hdr{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border)}
+.logo{font-weight:700;color:var(--primary)}
+.where{padding:6px 16px;font-size:14px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--raised)}
+.page{padding:20px 16px;background:var(--surface)}
+.head{display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px;justify-content:space-between;margin-bottom:16px}
+.sub{color:var(--muted);margin-top:4px}
+.btn{font:inherit;border-radius:6px;padding:8px 14px;border:1px solid var(--border-strong);background:var(--raised);color:var(--text);cursor:pointer;min-height:36px}
+.btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+.btn.link{border:0;background:none;color:var(--link);padding:8px 4px;text-decoration:underline}
+.views{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.chip{border:1px solid var(--border-strong);background:var(--raised);border-radius:999px;padding:5px 12px;font-size:14px}
+.chip[aria-pressed=true]{border-color:var(--primary);color:var(--primary);font-weight:600}
+.chip.needs{border-color:var(--warn);color:var(--warn-t)}
+.count{display:inline-block;min-width:20px;margin-left:6px;padding:0 6px;border-radius:999px;background:#eeeeee;font-size:12px;text-align:center}
+.chip.needs .count{background:var(--warn-bg)}
+.tablewrap{overflow-x:auto;background:var(--raised);border:1px solid var(--border);border-radius:6px}
+table{border-collapse:collapse;width:100%;min-width:760px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);height:44px;vertical-align:middle}
+th{font-size:12px;color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:0}
+.muted{color:var(--muted)}
+.sample{font-size:12px;color:var(--muted);border:1px dashed var(--border-strong);border-radius:4px;padding:0 4px;margin-left:6px;white-space:nowrap}
+.status{display:inline-flex;align-items:center;gap:6px;font-size:12px;border-radius:999px;padding:2px 8px;border:1px solid var(--border-strong)}
+.status.open::before{content:"";width:8px;height:8px;border-radius:50%;border:2px solid var(--primary)}
+.status.closed::before{content:"✓";color:var(--ok-t);font-weight:700}
+.status.late{border-color:var(--warn);background:var(--warn-bg);color:var(--warn-t)}
+.status.late::before{content:"!";font-weight:700}
+.due-late{color:var(--warn-t);font-weight:600}
+.cols{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+@media(min-width:1024px){.cols{grid-template-columns:360px minmax(0,1fr)}}
+.card{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:16px}
+dl{display:grid;grid-template-columns:140px minmax(0,1fr);gap:8px 12px;margin:12px 0 0}
+dt{color:var(--muted)}dd{margin:0}
+.timeline{list-style:none;margin:12px 0 0;padding:0}
+.timeline li{position:relative;padding:0 0 16px 24px;border-left:2px solid var(--border);margin-left:6px}
+.timeline li::before{content:"";position:absolute;left:-7px;top:3px;width:12px;height:12px;border-radius:50%;background:var(--raised);border:2px solid var(--muted)}
+.timeline li:last-child{border-left-color:transparent}
+.timeline .when{font-size:12px;color:var(--muted)}
+.nextbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px;border:1px solid var(--border);border-radius:6px;background:var(--raised);margin-bottom:16px}
+.banner{padding:10px 12px;border-radius:6px;margin-bottom:12px;border:1px solid var(--border)}
+.banner.warn{border-color:var(--warn);background:var(--warn-bg);color:var(--warn-t)}
+.banner.info{background:#e6f4ff;border-color:#99d2ff}
+.banner.danger{border-color:var(--danger);color:var(--danger-t);background:#fff}
+.drawer-host{position:relative;min-height:640px;background:rgba(45,45,45,.25)}
+.drawer{position:absolute;top:0;right:0;bottom:0;width:min(520px,100%);background:var(--raised);display:flex;flex-direction:column;border-left:1px solid var(--border)}
+.drawer header,.drawer footer{padding:14px 16px;border-bottom:1px solid var(--border)}
+.drawer footer{border-top:1px solid var(--border);border-bottom:0;display:flex;justify-content:space-between}
+.drawer .body{padding:16px;overflow:auto;flex:1}
+.field{margin-bottom:14px}
+.field label,.field legend{display:block;font-weight:600;margin-bottom:4px}
+.field .hint{font-size:12px;color:var(--muted);margin-bottom:4px}
+.field input,.field select,.field textarea{width:100%;font:inherit;padding:8px;border:1px solid var(--border-strong);border-radius:6px;background:var(--raised)}
+.field .err{color:var(--danger-t);font-size:12px;margin-top:4px}
+.field.bad input{border-color:var(--danger)}
+fieldset{border:0;padding:0;margin:0 0 14px}
+.radios label{display:flex;gap:8px;font-weight:400;margin:4px 0}
+.states{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;padding:16px;background:var(--surface)}
+.skel{height:14px;border-radius:4px;background:#eeeeee;margin:10px 0}
+.note{font-size:12px;color:var(--muted);padding:8px 16px;border-top:1px dashed var(--border)}
+@media(max-width:640px){dl{grid-template-columns:1fr}.hdr{flex-wrap:wrap}}
+</style>
+</head>
+<body>
+
+<p class="board-title">Board 1 · Complaints list (Library list pattern) · signed in as Owner · Sample data</p>
+<section class="frame" aria-label="Board 1: complaints list">
+  <div class="hdr"><span class="logo">ExpatReady</span><span class="muted">Firm · Complaints</span><span style="margin-left:auto" class="muted">Owner ▾</span></div>
+  <div class="where">Cases › <strong>Complaints</strong></div>
+  <div class="page">
+    <div class="head">
+      <div><h1>Complaints</h1><p class="sub">Every complaint made to the firm, how it was handled and how it ended.</p></div>
+      <button class="btn primary" type="button">Record a complaint</button>
+    </div>
+    <div class="views" role="group" aria-label="Views">
+      <button class="chip" aria-pressed="true" type="button">Open<span class="count">4</span></button>
+      <button class="chip needs" aria-pressed="false" type="button" title="Open and not acknowledged by its date">Overdue<span class="count">1</span></button>
+      <button class="chip" aria-pressed="false" type="button">Closed<span class="count">7</span></button>
+      <button class="chip" aria-pressed="false" type="button">All<span class="count">11</span></button>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th scope="col">Received</th><th scope="col">From</th><th scope="col">About <span class="sample">Sample</span></th><th scope="col">How it came <span class="sample">Sample</span></th><th scope="col">Handler</th><th scope="col">Acknowledge by <span class="sample">Sample period</span></th><th scope="col">Status</th></tr></thead>
+        <tbody>
+          <tr><td><a href="#record">10 Nov 2026</a></td><td>Client A<div class="muted" style="font-size:12px">Person on a case</div></td><td>Fees</td><td>Email</td><td>Case Manager B</td><td><span class="due-late">12 Nov · 1 business day late</span></td><td><span class="status late">Overdue</span></td></tr>
+          <tr><td><a href="#record">13 Nov 2026</a></td><td>Prospect C<div class="muted" style="font-size:12px">Front-office contact</div></td><td>Communication</td><td>Phone</td><td>Owner (you)</td><td>17 Nov · 2 business days left</td><td><span class="status open">Open</span></td></tr>
+          <tr><td><a href="#record">6 Nov 2026</a></td><td>Person D<div class="muted" style="font-size:12px">Someone else</div></td><td>Service</td><td>Letter</td><td>Admin E</td><td class="muted">Acknowledged 9 Nov</td><td><span class="status open">Open</span></td></tr>
+          <tr><td><a href="#record">2 Nov 2026</a></td><td>Client F<div class="muted" style="font-size:12px">Person on a case</div></td><td>Conduct</td><td>In person</td><td>Case Manager B</td><td class="muted">Acknowledged 3 Nov</td><td><span class="status open">Open</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted" style="font-size:12px;margin-top:8px">Showing 4 of 4 open. Periods and lists are Sample until the College's by-laws are read (Unconfirmed: no counsel). <a href="#how">How it works</a></p>
+  </div>
+  <p class="note">A handler without the read permission sees "Complaints you handle" as the subtitle and only their own rows; counts count only those. A Case Manager who handles none sees the empty state (Board 4) but can still record.</p>
+</section>
+
+<p class="board-title" id="record">Board 2 · Record page (Workspace pattern: facts, then timeline) · Owner · open, acknowledged</p>
+<section class="frame" aria-label="Board 2: complaint record page">
+  <div class="hdr"><span class="logo">ExpatReady</span><span class="muted">Firm · Complaints</span><span style="margin-left:auto" class="muted">Owner ▾</span></div>
+  <div class="where">← Complaints · Cases › Complaints › <strong>Fees · Client A · 10 Nov 2026</strong></div>
+  <div class="page">
+    <div class="head">
+      <div><h1>Fees complaint from Client A</h1><p class="sub"><span class="status open">Open</span> · received 10 Nov 2026 by email · handled by Case Manager B</p></div>
+    </div>
+    <div class="nextbar" aria-label="Next step">
+      <span><strong>Next:</strong> the response to Client A</span>
+      <button class="btn primary" type="button">Record the response sent</button>
+      <button class="btn" type="button">Add a handling step</button>
+      <button class="btn" type="button">Add a note</button>
+      <button class="btn link" type="button">Change handler</button>
+    </div>
+    <div class="cols">
+      <div class="card">
+        <h2>Facts</h2>
+        <dl>
+          <dt>From</dt><dd>Client A · person on a case</dd>
+          <dt>Contact</dt><dd>client-a@example.com</dd>
+          <dt>Received</dt><dd>10 Nov 2026, 14:05 (America/Toronto)</dd>
+          <dt>How it came</dt><dd>Email <span class="sample">Sample</span></dd>
+          <dt>About</dt><dd>Fees <span class="sample">Sample</span></dd>
+          <dt>Handler</dt><dd>Case Manager B</dd>
+          <dt>Acknowledge by</dt><dd>12 Nov 2026, 17:00 · acknowledged 13 Nov <span class="sample">Sample period: 2 business days</span></dd>
+          <dt>Response sent</dt><dd class="muted">Not yet</dd>
+          <dt>Outcome</dt><dd class="muted">Not closed</dd>
+          <dt>Recorded by</dt><dd>Case Manager B, 10 Nov 2026</dd>
+        </dl>
+        <h3 style="margin-top:16px">What the complaint says</h3>
+        <p>Client A says the second instalment was charged before the work it covers was done. (Sample text.)</p>
+      </div>
+      <div class="card">
+        <h2>What happened</h2>
+        <p class="muted" style="margin:4px 0 0">Every event is kept. Nothing here is edited or deleted; a change is a new event.</p>
+        <ol class="timeline">
+          <li><div class="when">14 Nov 2026, 10:20 · Case Manager B</div><strong>Handling step</strong><div>Checked the fee agreement and the invoice dates with the Owner.</div></li>
+          <li><div class="when">13 Nov 2026, 09:10 · Case Manager B</div><strong>Acknowledged</strong> <span class="due-late" style="font-size:12px">1 business day after its date</span><div>Wrote to Client A that we are looking into it.</div></li>
+          <li><div class="when">13 Nov 2026, 08:00 · system</div><strong>Reminder sent to the handler</strong></div></li>
+          <li><div class="when">10 Nov 2026, 14:05 · Case Manager B</div><strong>Received</strong> by email · about fees</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+  <p class="note">Next-step button by status: not acknowledged → "Record the acknowledgement"; acknowledged, no step yet → "Add a handling step"; steps, no response → "Record the response sent"; response sent → "Close with an outcome"; closed → no filled button, "Add a note" only. "Change handler" shows only with both permissions (Owner, Admin) and only while open. No delete anywhere.</p>
+</section>
+
+<p class="board-title">Board 3 · Record a complaint (Side panel, right drawer, 520 px) · field errors shown</p>
+<section class="frame" aria-label="Board 3: record a complaint drawer">
+  <div class="drawer-host">
+    <div class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-title">
+      <header><h2 id="dr-title">Record a complaint</h2><p class="sub" style="margin:4px 0 0">It goes on the firm's complaints record and is never deleted.</p></header>
+      <div class="body">
+        <div class="banner danger" role="alert"><strong>There is a problem</strong><ul style="margin:4px 0 0 18px;padding:0"><li><a href="#f-name">The person's name is needed</a></li></ul></div>
+        <fieldset class="field"><legend>Who made it</legend>
+          <div class="radios"><label><input type="radio" name="k"> Someone in the front office (a prospect or contact)</label><label><input type="radio" name="k"> A person on a case</label><label><input type="radio" name="k" checked> Someone else</label></div></fieldset>
+        <div class="field bad"><label for="f-name">Their name</label><input id="f-name" aria-describedby="e-name" aria-invalid="true"><div class="err" id="e-name">The person's name is needed.</div></div>
+        <div class="field"><label for="f-contact">How to reach them (optional)</label><input id="f-contact"></div>
+        <div class="field"><label for="f-when">Received on</label><div class="hint">Not in the future. Defaults to now.</div><input id="f-when" value="15 Nov 2026, 10:30"></div>
+        <div class="field"><label for="f-ch">How it came <span class="sample">Sample list</span></label><select id="f-ch"><option>Email</option><option>Phone</option><option>In person</option><option>Letter</option><option>Web form</option><option>Other</option></select></div>
+        <div class="field"><label for="f-cat">About <span class="sample">Sample list</span></label><select id="f-cat"><option>Service</option><option>Fees</option><option>Communication</option><option>Conduct</option><option>Privacy</option><option>Other</option></select></div>
+        <div class="field"><label for="f-sum">What they said</label><textarea id="f-sum" rows="4"></textarea></div>
+        <div class="field"><label for="f-h">Handler</label><div class="hint">An active staff member of your firm. They are reminded if it is not acknowledged within 2 business days (Sample).</div><select id="f-h"><option>Owner (you)</option><option>Admin E</option><option>Case Manager B</option></select></div>
+      </div>
+      <footer><button class="btn" type="button">Cancel</button><button class="btn primary" type="button">Record the complaint</button></footer>
+    </div>
+  </div>
+  <p class="note">The same right-drawer shape holds each record-page action: date (defaults to now) + note; Close adds the outcome (Resolved · Upheld · Not upheld · Withdrawn · Referred to the College, Sample list) and needs a note; Change handler holds the staff picker and an optional note.</p>
+</section>
+
+<p class="board-title">Board 4 · States</p>
+<section class="frame" aria-label="Board 4: states">
+  <div class="states">
+    <div class="card"><h3>Empty (Open view)</h3><p>No open complaints. When someone complains to the firm, record it here: the handler is reminded to acknowledge it.</p><button class="btn primary" type="button">Record a complaint</button><p class="muted" style="font-size:12px">Handler without read: "No open complaints that you handle."</p></div>
+    <div class="card" aria-busy="true"><h3>Loading</h3><div class="skel"></div><div class="skel" style="width:80%"></div><div class="skel" style="width:60%"></div><span class="muted" style="font-size:12px">(screen reader: "Loading complaints")</span></div>
+    <div class="card"><h3>Overdue</h3><div class="banner warn" style="margin:0"><strong>Needs you:</strong> this complaint was due to be acknowledged by 12 Nov 2026 (1 business day late).</div><p class="muted" style="font-size:12px">Orange only for "needs you"; shape "!" and words carry it too.</p></div>
+    <div class="card"><h3>Closed</h3><div class="banner info" style="margin:0">Closed on 14 Nov 2026 · outcome: Resolved. A closed complaint is kept as it is; add a note if something more happens.</div><p><button class="btn" type="button">Add a note</button></p></div>
+    <div class="card"><h3>Not found</h3><p><strong>We can't find this complaint.</strong> It may not exist, or it may not be one you can see.</p><a href="#">Back to Complaints</a><p class="muted" style="font-size:12px">Same words for another firm's id, someone else's complaint, a bad id.</p></div>
+    <div class="card"><h3>Refused action</h3><div class="banner danger" style="margin:0" role="alert"><strong>This complaint is closed.</strong> It was closed while you were working. Your note was not saved; add it as a note instead.</div><p class="muted" style="font-size:12px">403: "You can't change this complaint. Ask an Owner or Admin." Reloads the record; the drawer keeps what was typed.</p></div>
+  </div>
+</section>
+
+<p class="board-title" id="how">How it works panel (opens from the list footer link)</p>
+<section class="frame" aria-label="How it works">
+  <div class="page"><p><strong>How complaints work here.</strong> Record each complaint when it arrives. The handler acknowledges it, adds handling steps, records when the response was sent and closes it with an outcome. Everything stays on the record. The 2-business-day acknowledgement period and the lists of channels, topics and outcomes are Sample until the College's by-laws are read. Unconfirmed: no counsel.</p></div>
+</section>
+</body>
+</html>
