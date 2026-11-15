@@ -18,7 +18,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { join } from "node:path";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261115093000_csc1a_case_decision";
+const NEW = "20261115160000_csc1a_case_decision";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_csc1_${process.pid}`, DEMO = `xr_studio_csc1_demo_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
@@ -45,7 +45,7 @@ for (const d of [DB, DEMO]) { execFileSync(join(BIN, "dropdb"), [...PG, "--if-ex
 
 // --------------------------------------------------------------------------------------------- M: the migration
 const before = all.filter((d) => d < NEW).at(-1) ?? "";
-ok(`CS-C1 M1 pass: the migration has its own stamp, later than every one before it (newest before it: ${before})`, all.includes(NEW) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1 && before >= "20261115013000_fo13_compliance_tables");
+ok(`CS-C1 M1 pass: the migration has its own stamp, later than every one before it (newest before it: ${before})`, all.includes(NEW) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1 && before >= "20261115120000_pf6b_permission_catalogue");
 for (const d of all.filter((x) => x < NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
 const W0 = randomUUID();
 sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number) values ('${randomUUID()}', '${W0}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-00001'), ('${randomUUID()}', '${W0}', '${randomUUID()}', 'user-P', 'user-O', 'C-2026-00002')`, DEMO);
