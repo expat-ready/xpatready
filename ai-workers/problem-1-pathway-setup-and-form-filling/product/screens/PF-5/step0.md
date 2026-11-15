@@ -14,7 +14,15 @@ Stripe's documentation site (docs.stripe.com) could not be read from this cloud 
 | 4 | Stripe's own trial-reminder email can be switched off | A Dashboard setting, not an API field: not in the library text. | **Not confirmed.** |
 | 5 | Customer Portal with plan switching off, card, invoices and cancel on (rev 13) | `BillingPortal/Configurations.d.ts` l. 94: `subscription_update: Features.SubscriptionUpdate` (with `payment_method_update`, `invoice_history`, `subscription_cancel` beside it) | Field exists. Not confirmed from the docs page. |
 
-No fact found **differs** from the row; 3 and 4 are unconfirmed. Per the brief, building stops here until the tech lead answers (questions in the PR).
+No fact found **differs** from the row; 3 and 4 were unconfirmed here.
+
+### Facts 3 and 4: read by Lead B on the Mac, 15 Nov 2026 (PR #1815 comment 6891947481, copied as written)
+* **Fact 3, tax on a trial with no address:** https://docs.stripe.com/tax/customer-locations: "Stripe Tax requires your customer's location to automatically calculate tax." For subscriptions with no location known: "invoices for a Subscription continue to finalize automatically but without calculating taxes." So a no-card trial with no address would invoice **untaxed**. Ruling: the billing step saves the address to the Stripe customer (`customer.address`; `customer_update[address]=auto` on any later Checkout) before the first invoice can finalize; named test `PF-5 DWn` (part 2): a trial reaching its end with no address on the customer is held (reason "business address needed") and never invoiced untaxed; fail case: an invoice finalized with `automatic_tax` disabled for `requires_location_inputs` is caught and alerted.
+* **Fact 3, coverage:** https://docs.stripe.com/tax/supported-countries/canada: "Stripe supports tax calculation for federal tax (GST/HST) and provincial tax (PST, QST or RST)"; "Stripe Tax only supports the general QST regime for Canadian businesses." GST, HST, QST, PST (BC, SK) and RST (Manitoba) are covered; the row's "PST" for Manitoba reads RST.
+* **Fact 4, Stripe's trial reminder:** https://docs.stripe.com/billing/revenue-recovery/customer-emails: "Send a reminder email 7 days before a free trial ends", Settings → Billing → automatic emails; a Dashboard switch only, no API setting found. https://docs.stripe.com/billing/subscriptions/trials/manage-trial-compliance: "You must comply with card network requirements when you use trial offers." Ruling: our own reminder from the `customer.subscription.trial_will_end` webhook through `MailPort` (part 3); switching Stripe's email off is a Dashboard click in the founder's account (P-580), not code.
+* **Assumed "Trial ending events" setting:** Stripe's default, 3 days before the trial ends (part 3 tests one reminder from `trial_will_end`; the same event twice gives one mail).
+
+Lead B's answers on the PR: split accepted (three parts); `platform_signup_pending` accepted in part 1's migration (no password or hash; email normalised with a partial unique index while live; an expiry and a `JobPort` sweep; no `firm_id`; the stamp later than `main`'s newest). Part 1 is being built on this PR.
 
 ## Size: the row does not fit one PR under 800 lines (P-610)
 
