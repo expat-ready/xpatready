@@ -20,8 +20,7 @@ export class PlatformSignUp extends FirmSignUp implements OnModuleInit {
 export class PlatformSignUpController {
   constructor(@Inject(PlatformSignUp) private readonly s: PlatformSignUp) {}
 
-  @Get("plans") @OpenRead("the public pricing page: plans, Stripe's prices and the current terms (contracts §0.6)")
-  plans() { return this.s.plans(); }
+  @OpenRead("the public pricing page, contracts §0.6: plans, Stripe's prices and the current terms") @Get("plans") plans() { return this.s.plans(); }
 
   @Post("signup") @HttpCode(202)
   signUp(@Body() b: unknown, @Req() r: R) { return this.s.signUp(b, ipOf(r)); }

@@ -45,7 +45,11 @@ const REVIEWED: Record<string, "case" | "open"> = {
   "/api/session": "open", "/api/attachments/:id/file": "open", "/api/intake/held/:id/file": "open", // QA-270: /api/artifacts/:id/file is a configuration read now
   "/api/releases": "case", "/api/activity": "case",
   "/api/health": "open", // M1: is this copy well (database, disk, fill queue, commit); no case or person data
+  "/api/public/plans": "open", // PF-5: the public pricing page (contracts §0.6): plans, prices and terms, no firm or person data
 };
+/** PF-5 (contracts §0.6): the public sign-up doors name nobody by design (no account exists yet); each is asked below:
+ *  an empty body is refused (400) or the door is shut on a copy without sign-up set up (503), never a 2xx. */
+const PUBLIC_DOOR_WRITES = ["/api/public/signup", "/api/public/signup/verify"];
 /** C6.16 (B138): reads open to the shared guard because they have a guard of their own, each asked below.
  *  /api/link/*: an adult's own link (stand-in SI-21): a Bearer session from the link's code, x-actor refused (400),
  *  no session 401 (person-link.ts LinkOnlyGuard and PersonLinks.signed). /api/demo/inbox: the email stand-in SI-20,
@@ -146,7 +150,7 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   const post = async (path: string, actor: string | null, body: unknown) => (await fetch(`http://localhost:${PORT}${path}`, { method: "POST", headers: { "content-type": "application/json", ...(actor ? { "x-actor": actor } : {}) }, body: JSON.stringify(body) })).status;
   // B120: api/src's subfolders too.
   const writes = (dir: string) => {
-    const configPosts: string[] = [], unnamed: string[] = [], ownWrites: string[] = [], platformWrites: { path: string; method: string; door: boolean }[] = [];
+    const configPosts: string[] = [], unnamed: string[] = [], ownWrites: string[] = [], publicWrites: string[] = [], platformWrites: { path: string; method: string; door: boolean }[] = [];
     for (const f of tsFiles(dir)) {
       const text = readFileSync(join(dir, f), "utf8"), lines = text.split("\n");
       // The controller each line belongs to (C6.16: person-link.ts holds three, so the file's first is not every route's).
@@ -157,14 +161,15 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
           const path = `/${prefix}/${m[3]}`.replace(/\/+/g, "/");
           if (m[1]) configPosts.push(path);
           else if (OWN_GUARD_WRITES.includes(path.replace(/\/$/, ""))) ownWrites.push(path.replace(/\/$/, ""));
+          else if (PUBLIC_DOOR_WRITES.includes(path.replace(/\/$/, ""))) publicWrites.push(path.replace(/\/$/, ""));
           else if (isPlatform(path)) platformWrites.push({ path: path.replace(/\/$/, ""), method: m[2].toUpperCase(), door: /@StaffSignIn\(/.test(l) });
           else if (!/x-actor|actorOf|readerOf/.test(lines.slice(i, i + 3).join(" "))) unnamed.push(`${f}: ${path}`);
         }
       });
     }
-    return { configPosts, unnamed, ownWrites, platformWrites };
+    return { configPosts, unnamed, ownWrites, publicWrites, platformWrites };
   };
-  const { configPosts, unnamed, ownWrites, platformWrites } = writes(API);
+  const { configPosts, unnamed, ownWrites, publicWrites, platformWrites } = writes(API);
   const plantedDir = planted({ "features/checkpoint/999-planted.ts": '@Controller("api")\nexport class P {\n  @Get("planted/read") read() {}\n  @Post("planted/write")\n  write() {}\n}\n' });
   ok("QA-53 fail (B120): a GET route planted in a subfolder is found", routes(plantedDir).map((x) => x.path).join() === "/api/planted/read");
   ok("QA-65 fail (B120): a write planted in a subfolder that names nobody is caught", writes(plantedDir).unnamed.join() === "features/checkpoint/999-planted.ts: /api/planted/write");
@@ -189,6 +194,9 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   ok(`C6.16 fail: each write of the adult's own link (${OWN_GUARD_WRITES.length}) refuses a simulated person (400) and, with no session or a made-up token, answers 401 or 404, never a change`, wrongWrite.length === 0, wrongWrite);
   ok("QA-65: the configuration reads made by POST are exactly the reviewed three (finder plan, AI plan, condition check)", JSON.stringify(configPosts.sort()) === JSON.stringify(["/api/ai/plan", "/api/combinations/:id/forms/find/plan", "/api/conditions/check"]), configPosts);
   ok("QA-65: every other write names its person (none answers nobody by default)", unnamed.length === 0, unnamed);
+  const doorAnswers = await Promise.all(PUBLIC_DOOR_WRITES.map(async (w) => `${w} ${await post(w, null, {})}`));
+  ok("PF-5: the public sign-up doors in the code are exactly PUBLIC_DOOR_WRITES, and each refuses an empty body (400) or is shut (503), never a 2xx",
+    JSON.stringify([...publicWrites].sort()) === JSON.stringify([...PUBLIC_DOOR_WRITES].sort()) && doorAnswers.every((a) => / (400|503)$/.test(a)), { publicWrites, doorAnswers });
 
   // PF-4t: the platform guard's routes, asked (Lead 50 on #1775).
   ok("PF-4t: the exemption is exactly PF-4's PLATFORM_PATH (source and flags pinned)", exactPlatformPath(PLATFORM_PATH), { source: PLATFORM_PATH.source, flags: PLATFORM_PATH.flags });
