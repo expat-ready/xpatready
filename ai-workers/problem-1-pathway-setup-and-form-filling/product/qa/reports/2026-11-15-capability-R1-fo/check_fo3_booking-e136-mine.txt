@@ -1,0 +1,108 @@
+NOTICE:  database "xr_studio_fo3_26544" does not exist, skipping
+PASS  FO-3 slots pass: 12:00 Monday is offered (inside the host's hours, after the 4 h shortest notice from 08:00)
+PASS  FO-3 slots fail: 11:30 Monday is inside the shortest notice and not offered
+PASS  FO-3 slots fail: no slot ends after the host's 17:00 (16:30 is the last start)
+PASS  FO-3 slots: each slot is labelled in the visitor's zone
+PASS  FO-3 slots fail: a slot on a firm closed day (28 Oct) is not offered
+PASS  FO-3 slots pass: the next open day (29 Oct) is offered
+PASS  FO-3 slots pass: a 15-minute interval offers 12:15; fail: the default interval (the meeting's length) does not
+PASS  FO-3 slots pass: inside a 2-day booking window 27 Oct is offered; fail: 29 Oct (beyond it) is not
+PASS  FO-3 slots fail: a type whose only host is suspended offers nothing (AG-4-53)
+PASS  FO-3 slots pass: a type with a suspended host and an active one offers times, and books the active one
+PASS  FO-3 slots fail: time off (Tue 09:00-12:00) removes 10:00; pass: 13:00 is offered
+PASS  FO-3 DST pass: on 1 Nov 2026 (America/Toronto) 01:30 is offered once, at its first moment (05:30Z)
+PASS  FO-3 DST fail: the second 01:30 (06:30Z) is not offered again
+PASS  FO-3 DST fail: on 8 Mar 2026 the skipped 02:00 and 02:30 are not offered; pass: 03:00 is
+PASS  FO-3 door: an unknown firm, an unknown slug, an inactive type and a firm on payment hold give the identical 404
+PASS  FO-3 door fail: a firm key with a NUL byte or capitals gives the same identical 404 (break B-7)
+PASS  FO-3 door pass: a known firm and active type answers its page (no host named)
+PASS  FO-3 form fail: no consent tick → 400
+PASS  FO-3 form fail: a missing last name → 400
+PASS  FO-3 form fail: phone mode without a phone → 400
+PASS  FO-3 form fail: a mode the type does not offer → 400
+PASS  FO-3 form fail: the honeypot filled → 400
+PASS  FO-3 form fail: another consent wording than the firm's → 409
+PASS  FO-3 form fail: a forged form stamp → 400
+PASS  FO-3 form fail: sent 1 s after the page loaded (minimum fill time) → 400
+PASS  FO-3 form fail: an invisible-only name, a right-to-left override, U+2028 → 400 (break B-9)
+PASS  FO-3 form fail: a Hangul filler, RLM, ALM or tag characters → 400 (break B-9 round 2)
+PASS  FO-3 form pass: a name in another script (Arabic, Korean, accented Latin) is taken by the name rule
+PASS  FO-3 form fail: a zone the database does not take (Etc/GMT0) → 400, never 500 (break B-2)
+PASS  FO-3 form fail: a start in year 0001 → 400; slots asked from year 0001 → 400 (break B-2)
+PASS  FO-3 form fail: a line break in a name → 400 (never 500)
+PASS  FO-3 form pass: America/TORONTO is kept in IANA's spelling, America/Toronto (break B-10)
+PASS  FO-3 door pass: empty posts and stamped forms for a never-offered time from 20 addresses do not use up the firm's limit; a real booking still goes through (break B-3)
+PASS  FO-3 door fail: once the firm's limit (3 here) of real bookings is reached, the next well-formed form → 429
+PASS  FO-3 door pass: 30 addresses reading the page to their own limit never close it for a new visitor (break R2-1); fail: the third read from one of them → 429
+PASS  FO-3 door: the public booking answer names no host, person, prospect or type (contracts §0.6); fail-proof: the row has them
+PASS  FO-3 form pass: phone mode with a phone, consent ticked → booked SCHEDULED
+PASS  FO-3 race: 20 parallel requests for one slot → exactly one booked, 19 answered 409 SLOT_TAKEN
+PASS  FO-3 race: one row in the database for that host and time
+PASS  FO-3 gaps fail: with 10 min after a 13:00 booking, the host's 13:30 is not offered; pass: 14:00 is
+PASS  FO-3 first free host: A1 is busy at 13:00 → the team booking goes to A2; pass: at 15:00 the first listed host (A1) takes it
+PASS  FO-3 hours pass: removing the host's Friday hours leaves the Friday booking as it was
+PASS  FO-3 hours fail: the change took effect for new bookings (no Friday slot for A1 any more)
+PASS  FO-3 hours: the copy back is refused for a person who still has hours (FO-1b's rule), so Friday stays empty
+PASS  FO-3 arrival pass: a new email runs the arrival path once, keyed booking:<id>, and makes one lead
+PASS  FO-3 arrival: a booker with an open prospect makes no new lead (still 1 lead)
+PASS  FO-3 arrival: the prospect moves to Consult once, with the cause "consult booked" (a second booking moves nothing)
+PASS  FO-3 arrival fail: a person with two open prospects moves neither, and the booking names no prospect
+PASS  FO-3 arrival fail: a failing arrival path rolls the booking back (nothing saved)
+PASS  FO-3 audit fail: a forced audit failure rolls the booking back (no booking, no token, no event)
+PASS  FO-3 audit pass: the booking wrote one audit_event line in its transaction (real interim adapter, platform-audit workspace)
+PASS  FO-3 event: one booking.scheduled outbox row, key <id>:0, ids only (no name or email)
+PASS  FO-3 audit: each booking made so far wrote exactly one booking.scheduled line (main service)
+PASS  FO-3 mail pass: a throwing mail adapter still saves the booking (SCHEDULED in the database) and the failure is told
+PASS  FO-3 mail pass: the booker's confirmation carries the self-service link and the time in their zone; fail: it holds no host id
+PASS  FO-3 ics: METHOD:REQUEST, a stable UID, SEQUENCE:0, DTSTART in UTC, CRLF lines
+PASS  FO-3 ics fail: no answer the person typed is inside (no phone; the booker's email only on the attendee line)
+PASS  FO-3 ics: lines fold at 75 octets without splitting a character
+PASS  FO-3 ics: text is escaped (comma, semicolon, newline)
+PASS  FO-3 tokens pass: two live links for one booking both open it
+PASS  FO-3 reschedule: to its own time → no event, no audit line, sequence 0, both links still live, the reminders still waiting
+PASS  FO-3 door: the public reschedule answer names no host, person, prospect or type
+PASS  FO-3 tokens fail: after a reschedule both old links give the identical not-found; pass: the new link works
+PASS  FO-3 reschedule pass: a RESCHEDULED booking reschedules again (sequence 2); the host is kept when free
+PASS  FO-3 reschedule fail: to a time that is not offered (Sunday) → 409 SLOT_TAKEN with fresh times
+PASS  FO-3 ics: the update keeps the UID and carries SEQUENCE:2
+PASS  FO-3 tokens fail: a malformed token and a right selector with a wrong verifier give the identical not-found
+PASS  FO-3 door: the public cancel answer names no host, person, prospect or type
+PASS  FO-3 cancel pass: cancelled by link (sequence 3); METHOD:CANCEL with the same UID
+PASS  FO-3 cancel fail: the used link now gives the identical not-found; pass: the freed 14:00 is offered again
+PASS  FO-3 tokens fail: while the firm is on payment hold its links give the identical not-found and move nothing; pass: back to Active, the link works
+PASS  FO-3 limit pass: 4 h 30 min before, the link can still change it
+PASS  FO-3 limit fail: 3 h before, the page says to reply or call, and a reschedule or cancel is refused 409
+PASS  FO-3 tokens fail: after the meeting's end the link gives the identical not-found
+PASS  FO-3 reminders: 24 h and 1 h reminders and the attendance question are queued on JobPort with sequence keys
+PASS  FO-3 reminders pass: the 24 h reminder is sent at its time
+PASS  FO-3 reminders fail: after a reschedule the old 1 h reminder (09:00) is not sent
+PASS  FO-3 reminders: the moved meeting (Fri 14:00) got its own 24 h reminder (Thu 14:00)
+PASS  FO-3 reminders pass: the new 1 h reminder (13:00) is sent once
+PASS  FO-3 attendance: 30 min after the end the host is asked "Did they attend?"
+PASS  FO-3 attendance: the question is due on the host's list
+PASS  FO-3 attendance fail: four days later nothing has marked it (still RESCHEDULED, no no-show event)
+PASS  FO-3 attendance pass: a person answers Attended (booking.completed), then changes it to No-show (booking.no_show)
+PASS  FO-3 attendance fail: before the meeting has started → 409
+PASS  FO-3 staff fail: creating without agent/booking:create → 403
+PASS  FO-3 staff pass: a staff booking moves the person's only open prospect to Consult with its cause, and names it
+PASS  FO-3 staff fail: a prospect id in the body is refused (400); a person of firm B booked by firm A → 404, nothing saved
+PASS  FO-3 staff fail: a booking id that is not a uuid → 404 (never 500)
+PASS  FO-3 audit fail: a forced audit failure on booking.rescheduled rolls it back (row unchanged, no event)
+PASS  FO-3 audit pass: booking.rescheduled wrote exactly one audit line and one event
+PASS  FO-3 audit fail: a forced audit failure on booking.cancelled rolls it back (row unchanged, no event)
+PASS  FO-3 audit pass: booking.cancelled wrote exactly one audit line and one event
+PASS  FO-3 audit fail: a forced audit failure on booking.completed rolls it back (row unchanged, no event)
+PASS  FO-3 audit pass: booking.completed wrote exactly one audit line and one event
+PASS  FO-3 staff pass: a staff member with the key books for a person (no arrival run, audit actor staff:<id>)
+PASS  FO-3 staff fail: firm B's staff reading, moving or cancelling firm A's booking → 404 (never 403)
+PASS  FO-3 staff fail: firm B cannot book firm A's type (404)
+PASS  FO-3 staff list: without agent/booking:list a person sees only the bookings they host; pass: with it, the firm's
+PASS  FO-3 staff fail: the host without the edit key may not cancel (403)
+PASS  FO-3 staff pass: cancel by staff → CANCELLED, booking.cancelled event
+PASS  FO-3 no money: no booking route or table takes a payment (no amount, card or price field in the answer)
+PASS  FO-3 http pass: the slots route answers 200 with no person header (open door)
+PASS  FO-3 http fail: unknown firm, unknown slug, inactive type and a bad link → 404 with the identical body
+PASS  FO-3 http fail: past 5 slot reads from one IP in the window (the 404s count too) → 429 (rate limit); pass: the fifth is 200
+PASS  FO-3 http fail: a POST with a half-filled form → 400 with the issues listed, nothing booked
+
+105 passed, 0 failed
