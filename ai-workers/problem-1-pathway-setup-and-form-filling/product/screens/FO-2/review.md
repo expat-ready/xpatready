@@ -103,3 +103,28 @@ Journey score at 8e5cb929d: error recovery rises to 1 and next step to 1, becaus
 No Blocker or Major is open.
 
 Verdict: Approve
+
+## Re-review at f15bba1dd (diff only: `git diff 257e012ba f15bba1dd`)
+* **What I ran:** a clean worktree at f15bba1dd. The suite gives **60 passed, 0 failed.** Code and test against origin/main come to 798 lines; the records under `screens/` are not counted.
+* **Mutation check:** I took the wording out of the stamp, and separately named the owner to everyone. Each change failed its own new test (6 failures in total, some of them knock-on).
+
+**The three fixes**
+* **Consent wording bound to the stamp: correct** (`public.ts`, `stamp`/`mac`/`stampOf`).
+  * The MAC now covers the form's `consentWordingVersionId`. A wording version is never edited, so a changed version means the visitor saw other words. That post gets RELOAD, and no consent is written against wording the visitor never saw (AG-2-49 rule 6).
+  * Side effect: publishing a new wording asks every open page to reload, ticked or not. That is acceptable.
+* **Owner named only to someone who saw the lead: correct** (`leads.ts`, `before`/`sawIt`).
+  * A probe with a lead id the person cannot see gets 404, with no name.
+  * The trade-off: with "everyone sees all" off, a taker whose request is read after the winner commits also gets 404, not 409. This narrows the Done-when line "409 with the owner's name" to the true race and to the firm's default setting ("everyone sees all" on). I accept it (n5, part 2: the screen can refresh the list on a 404).
+* **Long attribution cut to length: correct.** The cut happens before the text checks, and control marks are still refused.
+
+**Also in the diff**
+* My n4 is fixed: the unused `Body` import and `type B` are gone.
+* Only comments were shortened, with no change in meaning.
+
+**Deferred, reasons accepted**
+* Firm-hostname routing, PF-25's `registerPublicPath`, goes to part 3 with the hosted page.
+* The possible-match race between two first enquiries goes to part 2. It only ever flags a match, so the race can at worst miss a flag; nothing is linked or merged.
+
+No Blocker or Major is open.
+
+Verdict: Approve
