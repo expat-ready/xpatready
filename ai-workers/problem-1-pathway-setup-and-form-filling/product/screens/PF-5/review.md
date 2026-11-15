@@ -123,4 +123,18 @@ Round 5 outcome: approve c70d32c7e (superseded by Round 6 below).
 
 No code, schema or test changed in this round, so the Round 5 runs stand (pf5 53/53, fo7a 123/123 at `c70d32c7e`). The earlier open Minors are unchanged and do not block.
 
-Verdict: Approve 95c46dd3d8a2d202e198f410dd093ff2f21b015d
+Round 6 outcome: approve 95c46dd3d (superseded by Round 7 below).
+
+## Round 7 — the merge only, head `f2b65459f8c3aaf0ed6761c792f487995baa6d62` (15 Nov 2026; tech lead's ask, PR comment 6900447225)
+The head merges `origin/main` (`81505985f`, second parent) into the branch. Before it, `292849afe` was a clean merge of main's records, tooling and PF-21s concept, plus my Round 6 record; no code there was PF-5's. I read the hand resolution as what the head adds on top of main (`git diff f2b65459f^2 f2b65459f`) in the two conflicted files:
+* **`api/src/platform/MODULE.md`:** main's PF-4b entry-points line is kept word for word, with PF-5's `/api/public` doors (`GET plans`, `POST signup`, `POST signup/verify`) appended. Main's tables line gets PF-5's three tables. Main's tests line, with `check_pf4b_session_reads.ts`, gets `check_pf5_signup_billing.ts`. Purpose and the two PF-5 invariants are as approved in Round 6. Nothing from main is lost or reworded.
+* **`tests/check_forms_qa53.ts`:**
+  * `REVIEWED` keeps main's `/api/public/forms/:token` and `/api/public/invitations/:token` and adds only `/api/public/plans`.
+  * `PUBLIC_WRITES` is exactly main's (FO-2's submissions + PF-4b's invitation accept), and FO-2's exact-list check is unchanged.
+  * PF-5's `PUBLIC_DOOR_WRITES` keeps its own `doorWrites` bucket and its own exact-list + HTTP check, as in Round 5. The three lists are disjoint, so a write in none of them still lands in `unnamed`.
+  * Not weakened.
+* **Head vs main:** the head differs from main only in PF-5's own files, the two shared tests already reviewed (`check_forms_qa53.ts`, `check_fo7a_money_schema.ts`), the card and the PF-5 records. The migration stamp `20261115130000` is still later than main's newest (`20261115120000_pf6b_permission_catalogue`).
+
+Re-run at `f2b65459f` (Prisma client regenerated): `check_pf5_signup_billing.ts` **53 passed, 0 failed**. I did not re-run qa53, pf4b, case_feed, fo7a or pf3 myself (qa53 and pf4b need isolated copies); the builder reports them green. The Minors left open from earlier rounds are unchanged and do not block: Round 2 (two), Round 4 (verify's 404 once the door is open), Round 6 (card's firmScope exceptions).
+
+Verdict: Approve f2b65459f8c3aaf0ed6761c792f487995baa6d62
