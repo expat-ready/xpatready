@@ -1,7 +1,8 @@
 // PF-0c: ConsentPort's contract (ports/consent.ts). Run by fakeConsent and by ConsentStore
 // (api/src/platform/messages/consent/consent-store.ts). The port file's sentences: marketing needs a live MARKETING consent
 // on the channel; a WhatsApp message that is not marketing needs the live opt-in (SERVICE); service and transactional
-// email need none; a withdrawal ends every consent of its key given at or before it, and a decision for a withdrawn
+// email need none; a withdrawal ends every consent of its key given at or before it (a late-processed one never ends
+// a consent given after it), and a decision for a withdrawn
 // purpose is refused (WITHDRAWN) until a new consent is given after it; a suppressed address (in any spelling) stops
 // every class, and a second suppression changes nothing; a consent names its firm's wording of that channel and purpose
 // (another firm's is refused); wording versions count up from the last; no consent is given in the future; a SERVICE
@@ -63,6 +64,17 @@ export const consentPortContract = defineContract("ConsentPort", (make: () => Pr
       const again = await h.tx((t) => h.consent.record(t, given(h, p, w.id, { givenAt: ago(h, 30) })));
       const back = await h.consent.allows(h.reader, q);
       expect(back.allowed && back.consentId === again.id, "a consent given after the withdrawal allows again", back);
+    },
+  },
+  {
+    name: "a late-processed withdrawal never ends a consent given after its time",
+    async run() {
+      const h = await make(), p = person(), to = mailbox(), w = await wording(h, h.firmA, "EMAIL", "MARKETING");
+      const c = await h.tx((t) => h.consent.record(t, given(h, p, w.id, { givenAt: ago(h, 10) })));
+      const out = await h.tx((t) => h.consent.withdraw(t, { firmId: h.firmA, subject: p, channel: "EMAIL", purpose: "MARKETING", via: "STAFF", by: "system:late-import", at: ago(h, 30) }));
+      expect(out.withdrawn === 0, "the withdrawal ended nothing", out);
+      const d = await h.consent.allows(h.reader, { firmId: h.firmA, subject: p, channel: "EMAIL", address: to, class: "MARKETING" });
+      expect(d.allowed && d.consentId === c.id, "the later consent still allows", d);
     },
   },
   {

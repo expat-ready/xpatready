@@ -6,7 +6,7 @@
 //                                                           adapter and no contract, and on an adapter that runs none
 //   node studio/tools/check-port-contracts.mjs --list       the ports, adapters and contract calls it found
 // A port: an `export interface|type <X>Port` in ports/*.ts or api/src/platform/identity/port.ts.
-// A real adapter: under api/src/, a class with `implements … <X>Port …`, or an exported value or function typed
+// A real adapter: under api/src/, a class (exported or not) with `implements … <X>Port …`, or an exported value or function typed
 //   `: <X>Port` (a value made with `new <AdapterClass>(` is that class, not a second adapter); in ports/, an exported value
 //   typed `: <X>Port` whose name does not start with fake/Fake (systemClock).
 // A fake: in the port's own file, an exported function or class named fake…/Fake… (fakeJobs, FakeClock).
@@ -76,7 +76,7 @@ export function inventory(root = STUDIO) {
 
   const declared = (t, f, kind, fakeOk) => {
     const classes = new Set();
-    for (const m of t.matchAll(/^export\s+(?:default\s+)?(?:abstract\s+)?class\s+(\w+)[^{]*?\bimplements\s+([^{]+)\{/gm)) {
+    for (const m of t.matchAll(/^(?:export\s+(?:default\s+)?)?(?:abstract\s+)?class\s+(\w+)[^{]*?\bimplements\s+([^{]+)\{/gm)) {
       const isFake = /^fake/i.test(m[1]);
       if (isFake && !fakeOk) continue;
       classes.add(m[1]);
@@ -181,6 +181,9 @@ function selfTest() {
     del("ports/contracts/widget-port.contract.ts");
     put("api/src/platform/identity/local.ts", "export class LocalIdentity implements IdentityPort {}\n");
     ok("PF-0c DW1 fail: the identity port (outside ports/) is a port too: its real adapter needs a contract", problems(dir).some((p) => /^IdentityPort .*LocalIdentity.*identity-port\.contract\.ts/.test(p)), problems(dir));
+    put("api/src/mail/ses.ts", "class SesMail implements MailPort {\n  async send() {}\n}\nexport const sesMail = () => new SesMail();\n");
+    ok("PF-0c DW1 fail (review M2): a real adapter whose class is not exported still needs its port's contract", problems(dir).some((p) => /^MailPort .* has a real adapter \(SesMail\) and no contract/.test(p)), problems(dir));
+    del("api/src/mail/ses.ts");
     ok("PF-0c DW1: contract file names are the kebab case of the port (DocumentRenderPort → document-render-port)", contractFile("DocumentRenderPort") === "ports/contracts/document-render-port.contract.ts" && contractName("SecretBoxPort") === "secretBoxPortContract");
   } finally { rmSync(dir, { recursive: true, force: true }); }
   console.log(`\n${pass} passed, ${fail} failed`);

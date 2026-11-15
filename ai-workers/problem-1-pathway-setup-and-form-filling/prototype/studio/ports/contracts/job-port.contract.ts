@@ -1,8 +1,9 @@
 // PF-0c: JobPort's contract (ports/jobs.ts). Run by fakeJobs and by PgBossJobs and PlatformJobs (api/src/platform/jobs/).
 // Every case is a sentence of the port file: a key never queues twice under one job name, even after its job ran or was
-// cancelled; a key is per job name; cancel cancels every waiting job of a key and answers whether one was waiting; a
-// job scheduled later does not run now; a handler sees its job's payload, key and firm, attempt 1 first; a bad job name
-// is refused before anything is queued.
+// cancelled; a key is per job name; cancel cancels every waiting job of a key, whatever its name, and answers whether
+// one was waiting; a job scheduled later does not run now; a handler sees its job's payload, key and firm, attempt 1
+// first; a bad job name, cron or zone is refused before anything is queued. (A recurring schedule's runs are not a
+// contract case: they need a clock both a fake and the wall-clock provider can move; check_pf14_jobs.ts compares them.)
 import { defineContract, expect, expectRefused } from "./contract.ts";
 import type { JobPort, JobRun } from "../jobs.ts";
 import { stableJson } from "../render.ts";
@@ -89,6 +90,29 @@ export const jobPortContract = defineContract("JobPort", (make: () => Promise<Jo
         expect((await h.jobs.enqueue(name, {}, { key, firmId: FIRM })).queued === false, "a cancelled key stays used");
         await h.settle(() => runs.length > 0);
         expect(runs.length === 0, "the cancelled job never runs", runs.length);
+      },
+    },
+    {
+      name: "cancel cancels every waiting job of the key, whatever its name",
+      async run() {
+        const h = await make(), a = `contract.${h.ns}.cana`, b = `contract.${h.ns}.canb`, ra = await worker(h, a), rb = await worker(h, b), key = `can:${h.ns}:1`;
+        const at = new Date(h.now().getTime() + 24 * 3600_000);
+        await h.jobs.schedule(a, at, {}, { key, firmId: FIRM });
+        await h.jobs.schedule(b, at, {}, { key, firmId: FIRM });
+        expect(await h.jobs.cancel(key) === true, "cancel finds the waiting jobs");
+        expect(await h.jobs.cancel(key) === false, "neither job is still waiting");
+        expect((await h.jobs.enqueue(a, {}, { key, firmId: FIRM })).queued === false && (await h.jobs.enqueue(b, {}, { key, firmId: FIRM })).queued === false, "the key stays used under both names");
+        await h.settle(() => ra.length + rb.length > 0);
+        expect(ra.length + rb.length === 0, "neither cancelled job runs", { a: ra.length, b: rb.length });
+      },
+    },
+    {
+      name: "recurring refuses a cron that does not parse and a zone that does not exist",
+      async run() {
+        const h = await make();
+        await expectRefused(() => h.jobs.recurring(`contract.${h.ns}.sweep`, "nine every morning", "America/Toronto"), "a cron that does not parse");
+        await expectRefused(() => h.jobs.recurring(`contract.${h.ns}.sweep`, "0 9 * * *", "Mars/Olympus"), "a zone that does not exist");
+        await expectRefused(() => h.jobs.recurring("Not A Name", "0 9 * * *", "America/Toronto"), "a bad job name");
       },
     },
     {

@@ -55,13 +55,14 @@ export const auditPortContract = defineContract("AuditPort", (make: () => Promis
     },
   },
   {
-    name: "the trail only grows: a second line keeps the first as it was, in order",
+    name: "the trail only grows: a second line about the same record keeps the first as it was, in order",
     async run() {
       const h = await make(), t = tag();
       await h.commit((tx) => h.audit.record(tx, entry(`${t}-1`, { summary: "First." })));
-      await h.commit((tx) => h.audit.record(tx, entry(`${t}-2`, { action: "retainer.viewed", summary: "Second." })));
+      await h.commit((tx) => h.audit.record(tx, entry(`${t}-1`, { action: "retainer.viewed", summary: "Second." })));
+      await h.commit((tx) => h.audit.record(tx, entry(`${t}-2`, { summary: "Another record." })));
       const got = await h.lines(FIRM_A, t);
-      expect(got.map((l) => `${l.entityKey}:${l.action}:${l.summary}`).join("|") === `${t}-1:retainer.sent:First.|${t}-2:retainer.viewed:Second.`, "both lines, the first unchanged", got);
+      expect(got.map((l) => `${l.entityKey}:${l.action}:${l.summary}`).join("|") === `${t}-1:retainer.sent:First.|${t}-1:retainer.viewed:Second.|${t}-2:retainer.sent:Another record.`, "every line kept: the same record's second line never replaces its first", got);
     },
   },
   {

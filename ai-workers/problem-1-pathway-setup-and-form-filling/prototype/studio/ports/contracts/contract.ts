@@ -38,6 +38,10 @@ export async function expectRefused(f: () => unknown, what: string, test: (e: un
   if (!test(thrown)) throw new ContractBroken(`${what}: refused with another error`, thrown instanceof Error ? `${thrown.name}: ${thrown.message}` : String(thrown));
 }
 
+/** The adapters that may report NOT TESTED (Lead B ruling 2): CognitoIdentity without AWS credentials. Any other adapter
+ *  that cannot run here is a failure, never a skip. */
+export const NOT_TESTED_ALLOWED: readonly string[] = ["CognitoIdentity"];
+
 /** How long one case may take before it counts as failed (a real adapter that hangs never hangs the suite). */
 export const CASE_LIMIT_MS = 90_000;
 
@@ -50,6 +54,7 @@ export const CASE_LIMIT_MS = 90_000;
 export async function runContract<M>(contract: Contract<M>, adapter: string, make: M, report: Report | null, opts: { notTested?: string | null } = {}): Promise<ContractResult> {
   const result: ContractResult = { port: contract.port, adapter, passed: [], failed: [], notTested: opts.notTested ?? null };
   const label = `PF-0c DW2 ${contract.port} ${adapter}`;
+  if (result.notTested && !NOT_TESTED_ALLOWED.includes(adapter)) throw new Error(`runContract: ${adapter} may not report NOT TESTED (only ${NOT_TESTED_ALLOWED.join(", ")}, Lead B ruling 2): a NOT TESTED call is never coverage`);
   if (result.notTested) {
     if (report) console.log(`NOT TESTED  ${label}: ${result.notTested} (never counted green, P-405)`);
     return result;
