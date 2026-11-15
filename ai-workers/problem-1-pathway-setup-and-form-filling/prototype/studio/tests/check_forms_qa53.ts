@@ -158,7 +158,8 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
           if (m[1]) configPosts.push(path);
           else if (OWN_GUARD_WRITES.includes(path.replace(/\/$/, ""))) ownWrites.push(path.replace(/\/$/, ""));
           else if (isPlatform(path)) platformWrites.push({ path: path.replace(/\/$/, ""), method: m[2].toUpperCase(), door: /@StaffSignIn\(/.test(l) });
-          else if (!/x-actor|actorOf|readerOf/.test(lines.slice(i, i + 3).join(" "))) unnamed.push(`${f}: ${path}`);
+          // CS-C1a (#1818): a case write behind PF-4's guard names its person by the staff session (staffOf), not x-actor.
+          else if (!/x-actor|actorOf|readerOf|staffOf\(/.test(lines.slice(i, i + 3).join(" "))) unnamed.push(`${f}: ${path}`);
         }
       });
     }
