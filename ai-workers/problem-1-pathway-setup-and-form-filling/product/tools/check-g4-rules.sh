@@ -10,7 +10,7 @@ mkdir "$T/bin"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; W="$ROOTD/.github/wor
 deny() { echo "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null 2>&1 && echo 1; }
 
 # (1) A PR is still open before a push to its branch.
-printf '#!/bin/sh\n[ -n "$FX_DOWN" ] && exit 22\ncase "$*" in *"/repos/o/r/pulls?state=all&"*"head=o:lane/x"*) cat "$FX_PRS";; *) exit 22;; esac\n' > "$T/bin/curl"   # only the right question is answered; chmod +x "$T/bin/curl"
+printf '#!/bin/sh\n[ -n "$FX_DOWN" ] && exit 22\ncase "$*" in *"/repos/o/r/pulls?state=all&"*"head=o:lane/x"*) cat "$FX_PRS";; *) exit 22;; esac\n' > "$T/bin/curl"; chmod +x "$T/bin/curl"   # only the right question is answered
 po() { echo "$1" > "$T/prs.json"; out=$(PATH="$T/bin:$PATH" FX_PRS="$T/prs.json" FX_DOWN="${2:-}" REPO=o/r GH_TOKEN=x bash "$TOOLS/pr-open-guard.sh" lane/x 2>&1); r=$?; }
 po '[{"number":12,"state":"open","merged_at":null}]'; ok "(1) a branch with an open PR may be pushed" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 po '[]'; ok "(1) a new branch with no PR yet may be pushed" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
@@ -69,7 +69,7 @@ ps 601 200 ""; ok "(6) 801 changed lines fail" "$([ $r = 1 ] && echo "$out" | gr
 ps 900 100 "Size exception: P-610"; ok "(6) over 800 with a recorded exception passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 ps 900 100 "Size exception: P-999"; ok "(6) an exception that is not a DECISIONS row fails" "$([ $r = 1 ] && echo "$out" | grep -q 'P-999 is not a size row' && echo 1)" "exit $r: $out"
 ps 900 100 "Size exception: P-1"; ok "(6) an exception naming a row that is not about size fails" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
-grep -A6 'name: product' "$ROOTD/.mergify.yml" | grep -q 'check-success = pr-rules'; ok "(3)(6) the product merge queue waits for pr-rules" "$([ $? = 0 ] && echo 1)"
+grep -A12 'name: product' "$ROOTD/.mergify.yml" | grep -q 'check-success = pr-rules'; ok "(3)(6) the product merge queue waits for pr-rules" "$([ $? = 0 ] && echo 1)"
 grep -q 'pr-size.sh" "$ADDS" "$DELS"' "$W" && grep -q 'contents: read' "$W"; ok "(6) pr-rules.yml runs pr-size.sh, contents: read" "$([ $? = 0 ] && echo 1)"
 
 # (7) A lane start brief with no model and effort line is refused by lane-preflight.sh --hook (cloud starts too).
