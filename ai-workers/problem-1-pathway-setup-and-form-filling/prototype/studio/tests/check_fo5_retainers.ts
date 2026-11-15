@@ -18,7 +18,6 @@ import { FileKeyTaken, sha256Hex } from "../ports/files.ts";
 import { FileLinks, LocalFiles } from "../api/src/front-office/files.ts";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
 import { DOCX, DocxRender, buildDocx, placeholdersOf, starterFrame } from "../api/src/front-office/retainers/docx.ts";
-import PizZip from "pizzip";
 import { runContract } from "../ports/contracts/contract.ts";
 import { documentRenderPortContract } from "../ports/contracts/document-render-port.contract.ts";
 import { filesPortContract } from "../ports/contracts/files-port.contract.ts";

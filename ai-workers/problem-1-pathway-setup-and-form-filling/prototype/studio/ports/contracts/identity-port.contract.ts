@@ -25,7 +25,7 @@ export type IdentityHarness = {
 };
 
 /** IdentityRefused (port.ts) without importing it: an Error with the reason (`detail`) and a code. */
-const isRefusal = (code?: string) => (e: unknown) => e instanceof Error && typeof (e as { detail?: unknown }).detail === "string" && typeof (e as { code?: unknown }).code === "string" && (code === undefined || (e as { code: string }).code === code);
+const isRefusal = (code?: string) => (e: unknown) => e instanceof Error && typeof (e as { detail?: unknown }).detail === "string" && typeof (e as { code?: unknown }).code === "string" && (code === undefined || (e as unknown as { code: string }).code === code);
 
 export const identityPortContract = defineContract("IdentityPort", (make: () => Promise<IdentityHarness> | IdentityHarness) => [
   {
