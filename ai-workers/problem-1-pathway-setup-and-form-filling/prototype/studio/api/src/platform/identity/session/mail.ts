@@ -13,6 +13,8 @@ export class LocalMail implements MailPort {
   constructor(private readonly now: () => number) {}
   async send(message: MailMessage) {
     const m = MailMessage.parse(message);
+    const had = m.idempotencyKey ? this.kept.find((x) => x.firmId === m.firmId.toLowerCase() && x.idempotencyKey === m.idempotencyKey) : undefined;
+    if (had) return { messageId: had.messageId };   // one key in one firm is one email (PF-19b)
     const messageId = `local-${String(++this.n).padStart(6, "0")}`;
     this.kept.push({ ...m, to: m.to.toLowerCase(), firmId: m.firmId.toLowerCase(), messageId, sentAt: new Date(this.now()) });
     if (this.kept.length > 200) this.kept.shift();
