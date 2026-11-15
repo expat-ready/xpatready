@@ -1,0 +1,32 @@
+PASS  setup: the checkpoint offers With an LMIA as a later stage of a route — ["Express Entry stream","Outside Canada","Spouse or common-law partner","Visitor visa","With an LMIA – inside Canada"]
+PASS  74 part built: the later stage shows its deadline from the earlier stage's date, labelled Sample — Apply for the work permit by 1 Jul 2027 Sample
+PASS  74 underneath: the deadline is worked out on read, due on the date as entered, sample: true — {"label":"Apply for the work permit by","due":"2027-07-01","why":"The day study permit valid until (2027-07-01). Sample: not cited from canada.ca.","sample":true}
+GAP   74 working days with holidays: a deadline on Canada Day (a holiday) is shown as is; no working-day or holiday calendar on the case side — Apply for the work permit by 1 Jul 2027 Sample
+GAP   74 reminds: no reminder, task or Needs-you line comes from the deadline (the code says "never a reminder", engine/runtime/stages.ts BR-8)
+GAP   76 notes: the case page has no note box or Add a note
+GAP   76 one timeline per record: the case page has no timeline of its own
+GAP   76 underneath: GET /runtime/cases/:id/notes answers 404
+GAP   76 underneath: GET /runtime/cases/:id/timeline answers 404
+GAP   76 underneath: GET /runtime/cases/:id/activity answers 404
+PASS  76 underneath: the audit keeps the case's opening line, readable by its firm's staff through GET /activity (one feed for the whole firm) — ["Case officer opened case 33d4ed76 on \"With an LMIA – inside Canada\" released version 1 (a9"]
+GAP   76 no screen shows case staff a case's history: the Activity page tells the Case officer "This page is for the configuration people"
+GAP   77 decision: no decision control on the case page
+GAP   77 close: no close control on the case page
+GAP   77 reopen: no reopen control on the case page
+GAP   77 underneath: POST /runtime/cases/:id/decision answers 404
+GAP   77 underneath: POST /runtime/cases/:id/close answers 404
+GAP   77 underneath: POST /runtime/cases/:id/reopen answers 404
+PASS  77 underneath: the case's status is OPEN, as opened (nothing sets another status) — OPEN
+PASS  setup: the checkpoint's Sample family case is there
+PASS  80: Prepare application lists each applicant's own forms (IMM 5257 for every person) — {"Client A (Sample)":5,"Partner (Sample)":5,"Child (Sample)":2,"Child 18 or over (Sample)":5}
+PASS  80: one household questionnaire (one set of answers) for everyone
+PASS  80 underneath: each form line belongs to one person's own filing (filing owner = the person) — {"Client A (Sample)":["IMM 5476","IMM 5707","IMM 5257","IMM 5257 SCH1"],"Child (Sample)":["IMM 5257"],"Partner (Sample)":["IMM 5257","IMM 5257 SCH1","IMM 5707","IMM 5476"],"Child 18 or over (Sample)":["IMM 5257","IMM 5476","IMM 5257 SCH1","IMM 5707"]}
+PASS  80: a person's forms follow the person (the minor child has no IMM 5257 SCH1; the adult child has one) — {"Client A (Sample)":["IMM 5476","IMM 5707","IMM 5257","IMM 5257 SCH1"],"Child (Sample)":["IMM 5257"],"Partner (Sample)":["IMM 5257","IMM 5257 SCH1","IMM 5707","IMM 5476"],"Child 18 or over (Sample)":["IMM 5257","IMM 5476","IMM 5257 SCH1","IMM 5707"]}
+PASS  80 underneath: a copy asked for the principal and one for the spouse, each generated and read back intact (audit lines) — {"asked":["Case officer asked for a new copy of IMM 5257 for the spouse or partner on case cb4f28df (81 confirmed facts)","Case officer asked for a new copy of IMM 5257 for the principal applicant on case cb4f28df (81 confirmed facts)"],"made":["Copy 352ef740 of IMM 5257 on case cb4f28df generated: 66 form fields written, read back 66/66, intact","Copy b4e6c82a of IMM 5257 on case cb4f28df generated: 66 form fields written, read back 66/66, intact"]}
+PASS  80: no error banner after generating
+PASS  80 → C7.6 first step: Ready to file opens and lists the people's IMM 5257 lines
+FAIL  no sideways scroll at 400 px: family case, Ready to file
+PASS  axe: no serious or critical violation on the family case page — []
+PASS  no page error during the walk — []
+
+15/16 passed · 14 GAP (parts not offered) · width 400

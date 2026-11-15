@@ -1,0 +1,2 @@
+Gate B: the PR names C6.17, C8.2, C7.1, C7.8, C7.2; claims Works for none (no bug check).
+  packs: C6.17.test.ts, C8.2.test.ts, C7.1-application-type.test.ts, C7.8.test.ts, C7.2.test.ts
