@@ -2880,7 +2880,7 @@ def build_explain(d):
         "today so far: " + str(rc.get("today_so_far")) + "; mean of the 6 days before today: " + str(rc.get("mean_7d")) + ".",
         "IST day " + str(rc.get("day")) + " (00:00 to 24:00), git log", val(rc), "commits that day",
         down + " Each change is re-read by every Lead and lane before work.", rc)
-    put("behaviour.targets", "Target changes a week", "DECISIONS.md rows dated in the last 7 IST days whose bold text names a target with a date or a "
+    put("behaviour.targets", "Target changes a week", "DECISIONS.md rows dated in the last 7 IST days whose bold text has a clause naming a target with a date or a "
         "count, not kept or standing: " + (", ".join(tc.get("ids") or []) or "none") + ".",
         "7 IST days " + str((tc.get("window") or {}).get("from")) + " to " + str((tc.get("window") or {}).get("to")), val(tc), "target changes",
         down + " A moved target resets the pace line the board measures against.", tc)
