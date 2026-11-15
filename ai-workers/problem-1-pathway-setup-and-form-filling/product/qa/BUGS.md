@@ -7,7 +7,7 @@ Full text of each row (steps, expected, actual, evidence and check): `reports/bu
 
 **Old Majors, 15 Nov (qa capability old-majors, main 1fcde2d15; `reports/2026-11-15-capability-old-majors.md`; fresh reader on Opus at high effort):** of the 8 the board counted, **QA-278 is fixed on main and closed** (control run on bf12209f1 still fails); **QA-162, QA-234, QA-237, QA-239, QA-276 and QA-355 were already closed on 11 Nov** and re-pass on 1fcde2d15 (`BUGS-CLOSED.md`); **QA-383 stays open, re-rated Critical** (row below).
 
-**QA-383 closed, 16 Nov 00:5x IST (qa capability case side, main e593acccc, after BK-383 #1810; `reports/2026-11-16-capability-case-side.md`; fresh reader on Opus, P-303):** its two checks pass twice each; row in `BUGS-CLOSED.md`.
+**QA-383 closed, 16 Nov 00:3x IST (qa capability case side, main e593acccc, after BK-383 #1810; `reports/2026-11-16-capability-case-side.md`; fresh reader on Opus, P-303):** its two checks pass twice each; row in `BUGS-CLOSED.md`.
 
 | # | Type · Severity | Capability · Req./decision | Found · last seen | What happens (short) | Lane | Status |
 |---|---|---|---|---|---|---|

@@ -1,0 +1,8 @@
+# main e593acccc (tree as origin/main at 16 Nov 00:3x IST), qa cloud container, isolated copy
+Gate B: the PR names C7.1, C7.8; claims Works for none (no bug check).
+  packs: C7.1-application-type.test.ts, C7.8.test.ts
+    C7.1-application-type.test.ts on the checkpoint: exit 0, 12/12 passed (494 s: copy 8, Load the configured checkpoint 157, run 329)
+    C7.8.test.ts on the checkpoint: exit 0, 20/20 passed (367 s: copy 7, Load the configured checkpoint 157, run 203)
+  packs took 495 s in all
+Gate B: passed.
+gate exit 0

@@ -1,0 +1,27 @@
+# main e593acccc (tree as origin/main at 16 Nov 00:3x IST), qa cloud container, isolated copy
+NOTICE:  database "xr_studio_qa_r80s" does not exist, skipping
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.
+isolated qa_r80s on http://localhost:4475 (xr_studio_qa_r80s), stops itself in 30 min
+== screen run 1
+PASS QA-383s setup: With an LMIA is on the configured checkpoint
+PASS QA-383s setup: a case opens — {"status":201}
+PASS QA-383s: the client reaches the question by screens
+PASS QA-383s: the question's answer box is found (a list or choices), so the next step asserts something
+PASS QA-383s fail (C6.19): no choice on screen reads "only option:" — {"text":"Country or territory where the person currently resides Choose… Canada Choose… | Canada"}
+PASS BK-383s DW1: the one choice on screen reads "Canada" — {"shown":["Canada"]}
+PASS BK-383s DW4: picking it saves "Canada", with no problem shown — {"saved":"Canada","problem":null}
+PASS BK-383s DW2: IMM 5710's copy writes the form's code 511 — {"written":"511"}
+PASS BK-383s DW3: IMM 5409's copy writes "Canada" in the Country box — {"written":"Canada"}
+== screen run 2
+PASS QA-383s setup: With an LMIA is on the configured checkpoint
+PASS QA-383s setup: a case opens — {"status":201}
+PASS QA-383s: the client reaches the question by screens
+PASS QA-383s: the question's answer box is found (a list or choices), so the next step asserts something
+PASS QA-383s fail (C6.19): no choice on screen reads "only option:" — {"text":"Country or territory where the person currently resides Choose… Canada Choose… | Canada"}
+PASS BK-383s DW1: the one choice on screen reads "Canada" — {"shown":["Canada"]}
+PASS BK-383s DW4: picking it saves "Canada", with no problem shown — {"saved":"Canada","problem":null}
+PASS BK-383s DW2: IMM 5710's copy writes the form's code 511 — {"written":"511"}
+PASS BK-383s DW3: IMM 5409's copy writes "Canada" in the Country box — {"written":"Canada"}
+stopped qa_r80s (database and files removed; log in var/isolated-logs/qa_r80s-api.log)
