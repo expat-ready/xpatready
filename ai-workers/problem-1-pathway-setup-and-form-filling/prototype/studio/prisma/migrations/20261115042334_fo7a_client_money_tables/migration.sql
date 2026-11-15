@@ -1,20 +1,21 @@
 -- FO-7a (P-558, P-559, P-575 (1), P-576, P-599, P-600; BACKLOG row FO-7a rows rev 7, rev 10 part 2, amended by rev 13;
 -- contracts platform-and-front-office-contracts-2026-11-14.md §2.5, §7 binding (§2.5 trust), §8; AG-06: AG-6-1, -4,
--- -19, -44, -46, -59, -60, -61, -63, -69, -73, -76; Code SOR/2022-128 s. 32, s. 33(3), legal reading Unconfirmed: no
+-- -19, -44, -46, -59, -60, -61, -63, -69, -76; Code SOR/2022-128 s. 32, s. 33(3), legal reading Unconfirmed: no
 -- counsel; schema file prisma/schema/client-money.prisma, owner Lead B (client money, contracts §8)). New tables only;
 -- no existing table, column or row changes (platform_firm gains only a back-relation in Prisma, no column). Rows carry
 -- no workspace_id: the demo reset leaves them. Nothing outside api/src/client-money/ writes them.
 -- Re-stamped 15 Nov (P-600): was 20261114131305, now later than main's newest (20261115010000_fo5_retainer_file_keys).
 --   * the tables of the row: money_payment_settings, money_payment_account, money_number_series, money_invoice,
 --     money_invoice_line, money_credit_note, money_payment, money_refund, money_receipt, money_trust_request,
---     money_trust_entry; rev 13: money_write_off, money_move_batch, money_move_line.
+--     money_trust_entry; rev 13: money_write_off (rev 16.14: the move list, money_move_batch and
+--     money_move_line, is row FO-7mv).
 --   * person_id and company_id name FO-1a's fo_person and fo_company; FO-1a is not on main, so they have no foreign key
 --     yet: FO-1k adds them (rows rev 16). case_id names the case side's case: no key across the module wall.
 --   * rules Prisma cannot say, at the end: numbers from a per-firm series taken in the writing transaction (no gaps, never
 --     reused); an issued invoice frozen; insert-only tables; trust withdrawal names an issued invoice; a party's trust
---     balance never below zero (running balance, serialised); one write-off per invoice; moves and undo batches; checks
+--     balance never below zero (running balance, serialised); one write-off per invoice; checks
 --     on amounts, currencies, texts and ids.
--- Rollback (in this order): DROP TABLE "money_move_line", "money_move_batch", "money_write_off", "money_receipt",
+-- Rollback (in this order): DROP TABLE "money_write_off", "money_receipt",
 --   "money_trust_entry", "money_refund", "money_payment", "money_trust_request", "money_credit_note",
 --   "money_invoice_line", "money_invoice", "money_number_series", "money_payment_account", "money_payment_settings";
 --   DROP FUNCTION money_text_ok(text, integer), money_tax_rates_ok(jsonb), money_missing(text, text, uuid),
@@ -22,10 +23,8 @@
 --   "MoneySeriesKind"), money_number_series_write(), money_invoice_write(), money_invoice_line_write(),
 --   money_invoice_total(uuid, uuid), money_issued_invoice(uuid, uuid, "MoneyCurrency", text), money_credit_note_write(),
 --   money_write_off_write(), money_trust_on(uuid, text), money_trust_request_write(), money_payment_write(),
---   money_payment_trust_deposited(), money_refund_write(), money_receipt_write(), money_trust_entry_write(),
---   money_move_batch_write(), money_move_line_write(), money_move_line_not_undone(); DROP TYPE "MoneyMoveDirection",
---   "MoneyMoveKind", "MoneySeriesKind", "MoneyTrustEntryKind", "MoneyReceiptKind", "MoneyRefundRoute",
---   "MoneyAccountKind", "MoneyPaymentMethod", "MoneyLineKind", "MoneyAccountStatus", "MoneyCurrency"; delete this
+--   money_payment_trust_deposited(), money_refund_write(), money_receipt_write(), money_trust_entry_write(); DROP TYPE
+--   "MoneySeriesKind", "MoneyTrustEntryKind", "MoneyReceiptKind", "MoneyRefundRoute", "MoneyAccountKind", "MoneyPaymentMethod", "MoneyLineKind", "MoneyAccountStatus", "MoneyCurrency"; delete this
 --   folder's row from _prisma_migrations. (Truncate is refused by trigger: drop the tables, never truncate them.)
 
 -- CreateEnum
@@ -54,12 +53,6 @@ CREATE TYPE "MoneyTrustEntryKind" AS ENUM ('DEPOSIT', 'WITHDRAWAL_TO_INVOICE', '
 
 -- CreateEnum
 CREATE TYPE "MoneySeriesKind" AS ENUM ('INVOICE', 'CREDIT_NOTE', 'RECEIPT', 'TRUST_REQUEST');
-
--- CreateEnum
-CREATE TYPE "MoneyMoveKind" AS ENUM ('TRUST_APPLIED', 'WRONG_ACCOUNT', 'CARD_FEE_ON_TRUST');
-
--- CreateEnum
-CREATE TYPE "MoneyMoveDirection" AS ENUM ('TRUST_TO_OPERATING', 'OPERATING_TO_TRUST');
 
 -- CreateTable
 CREATE TABLE "money_payment_settings" (
@@ -273,37 +266,6 @@ CREATE TABLE "money_write_off" (
     CONSTRAINT "money_write_off_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "money_move_batch" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "firm_id" UUID NOT NULL,
-    "currency" "MoneyCurrency" NOT NULL,
-    "transfer_date" DATE,
-    "undoes_batch_id" UUID,
-    "reason" TEXT,
-    "recorded_by" TEXT NOT NULL,
-    "recorded_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "money_move_batch_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "money_move_line" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "firm_id" UUID NOT NULL,
-    "batch_id" UUID NOT NULL,
-    "kind" "MoneyMoveKind" NOT NULL,
-    "direction" "MoneyMoveDirection" NOT NULL,
-    "currency" "MoneyCurrency" NOT NULL,
-    "amount_minor" INTEGER NOT NULL,
-    "source_trust_entry_id" UUID,
-    "source_payment_id" UUID,
-    "move_ordinal" INTEGER NOT NULL DEFAULT 0,
-    "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "money_move_line_pkey" PRIMARY KEY ("id")
-);
-
 -- CreateIndex
 CREATE UNIQUE INDEX "money_payment_account_firm_id_key" ON "money_payment_account"("firm_id");
 
@@ -406,21 +368,6 @@ CREATE UNIQUE INDEX "money_trust_entry_firm_id_payment_id_key" ON "money_trust_e
 -- CreateIndex
 CREATE UNIQUE INDEX "money_write_off_firm_id_invoice_id_key" ON "money_write_off"("firm_id", "invoice_id");
 
--- CreateIndex
-CREATE UNIQUE INDEX "money_move_batch_firm_id_id_key" ON "money_move_batch"("firm_id", "id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "money_move_batch_firm_id_undoes_batch_id_key" ON "money_move_batch"("firm_id", "undoes_batch_id");
-
--- CreateIndex
-CREATE INDEX "money_move_line_firm_id_batch_id_idx" ON "money_move_line"("firm_id", "batch_id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "money_move_line_firm_id_source_trust_entry_id_kind_move_ord_key" ON "money_move_line"("firm_id", "source_trust_entry_id", "kind", "move_ordinal");
-
--- CreateIndex
-CREATE UNIQUE INDEX "money_move_line_firm_id_source_payment_id_kind_move_ordinal_key" ON "money_move_line"("firm_id", "source_payment_id", "kind", "move_ordinal");
-
 -- AddForeignKey
 ALTER TABLE "money_payment_settings" ADD CONSTRAINT "money_payment_settings_firm_id_fkey" FOREIGN KEY ("firm_id") REFERENCES "platform_firm"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
@@ -477,21 +424,6 @@ ALTER TABLE "money_trust_entry" ADD CONSTRAINT "money_trust_entry_firm_id_correc
 
 -- AddForeignKey
 ALTER TABLE "money_write_off" ADD CONSTRAINT "money_write_off_firm_id_invoice_id_fkey" FOREIGN KEY ("firm_id", "invoice_id") REFERENCES "money_invoice"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
--- AddForeignKey
-ALTER TABLE "money_move_batch" ADD CONSTRAINT "money_move_batch_firm_id_fkey" FOREIGN KEY ("firm_id") REFERENCES "money_payment_settings"("firm_id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
--- AddForeignKey
-ALTER TABLE "money_move_batch" ADD CONSTRAINT "money_move_batch_firm_id_undoes_batch_id_fkey" FOREIGN KEY ("firm_id", "undoes_batch_id") REFERENCES "money_move_batch"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
--- AddForeignKey
-ALTER TABLE "money_move_line" ADD CONSTRAINT "money_move_line_firm_id_batch_id_fkey" FOREIGN KEY ("firm_id", "batch_id") REFERENCES "money_move_batch"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
--- AddForeignKey
-ALTER TABLE "money_move_line" ADD CONSTRAINT "money_move_line_firm_id_source_trust_entry_id_fkey" FOREIGN KEY ("firm_id", "source_trust_entry_id") REFERENCES "money_trust_entry"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
--- AddForeignKey
-ALTER TABLE "money_move_line" ADD CONSTRAINT "money_move_line_firm_id_source_payment_id_fkey" FOREIGN KEY ("firm_id", "source_payment_id") REFERENCES "money_payment"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- ------------------------------------------------------------------------------------------------ rules Prisma cannot say
 -- Every function and trigger here carries the area's prefix money_ (rows rev 15.2). Refusals use SQLSTATE 23514
@@ -624,17 +556,6 @@ ALTER TABLE "money_trust_entry"
 ALTER TABLE "money_write_off"
   ADD CONSTRAINT "money_write_off_amount_check" CHECK ("amount_minor" > 0),
   ADD CONSTRAINT "money_write_off_text_check" CHECK (money_text_ok("reason", 200) AND money_text_ok("created_by", 200));
-ALTER TABLE "money_move_batch"
-  -- A batch records a bank transfer (its date, no reason); an undo names the batch it undoes and a reason.
-  ADD CONSTRAINT "money_move_batch_kind_check" CHECK (
-    ("undoes_batch_id" IS NULL AND "transfer_date" IS NOT NULL AND "reason" IS NULL)
-    OR ("undoes_batch_id" IS NOT NULL AND "undoes_batch_id" <> "id" AND money_text_ok("reason", 200))),
-  ADD CONSTRAINT "money_move_batch_by_check" CHECK (money_text_ok("recorded_by", 200));
-ALTER TABLE "money_move_line"
-  ADD CONSTRAINT "money_move_line_amount_check" CHECK ("amount_minor" > 0 AND "move_ordinal" >= 1),
-  -- A trust application comes from a trust withdrawal; a wrong-account amount and a card fee come from a payment.
-  ADD CONSTRAINT "money_move_line_source_check" CHECK (num_nonnulls("source_trust_entry_id", "source_payment_id") = 1
-    AND ("kind" = 'TRUST_APPLIED') = ("source_trust_entry_id" IS NOT NULL));
 
 -- ------------------------------------------------------------------------------------- firm_id and insert-only tables
 CREATE FUNCTION money_firm_fixed() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -648,7 +569,7 @@ CREATE TRIGGER money_payment_settings_firm_fixed BEFORE UPDATE OF firm_id ON "mo
 CREATE TRIGGER money_payment_account_firm_fixed BEFORE UPDATE OF firm_id ON "money_payment_account" FOR EACH ROW EXECUTE FUNCTION money_firm_fixed();
 
 -- Ledger rows are never changed or removed (row FO-7a; rev 13): update, delete and truncate are refused. A mistake is
--- a new row (a correction entry, a credit note, a refund, an undo batch).
+-- a new row (a correction entry, a credit note, a refund).
 CREATE FUNCTION money_insert_only() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   RAISE EXCEPTION '%: rows are never changed or removed (% refused); a mistake is a new row', TG_TABLE_NAME, TG_OP USING ERRCODE = 'insufficient_privilege';
@@ -658,15 +579,11 @@ CREATE TRIGGER money_refund_insert_only BEFORE UPDATE OR DELETE ON "money_refund
 CREATE TRIGGER money_receipt_insert_only BEFORE UPDATE OR DELETE ON "money_receipt" FOR EACH ROW EXECUTE FUNCTION money_insert_only();
 CREATE TRIGGER money_trust_entry_insert_only BEFORE UPDATE OR DELETE ON "money_trust_entry" FOR EACH ROW EXECUTE FUNCTION money_insert_only();
 CREATE TRIGGER money_write_off_insert_only BEFORE UPDATE OR DELETE ON "money_write_off" FOR EACH ROW EXECUTE FUNCTION money_insert_only();
-CREATE TRIGGER money_move_batch_insert_only BEFORE UPDATE OR DELETE ON "money_move_batch" FOR EACH ROW EXECUTE FUNCTION money_insert_only();
-CREATE TRIGGER money_move_line_insert_only BEFORE UPDATE OR DELETE ON "money_move_line" FOR EACH ROW EXECUTE FUNCTION money_insert_only();
 CREATE TRIGGER money_credit_note_no_truncate BEFORE TRUNCATE ON "money_credit_note" FOR EACH STATEMENT EXECUTE FUNCTION money_insert_only();
 CREATE TRIGGER money_refund_no_truncate BEFORE TRUNCATE ON "money_refund" FOR EACH STATEMENT EXECUTE FUNCTION money_insert_only();
 CREATE TRIGGER money_receipt_no_truncate BEFORE TRUNCATE ON "money_receipt" FOR EACH STATEMENT EXECUTE FUNCTION money_insert_only();
 CREATE TRIGGER money_trust_entry_no_truncate BEFORE TRUNCATE ON "money_trust_entry" FOR EACH STATEMENT EXECUTE FUNCTION money_insert_only();
 CREATE TRIGGER money_write_off_no_truncate BEFORE TRUNCATE ON "money_write_off" FOR EACH STATEMENT EXECUTE FUNCTION money_insert_only();
-CREATE TRIGGER money_move_batch_no_truncate BEFORE TRUNCATE ON "money_move_batch" FOR EACH STATEMENT EXECUTE FUNCTION money_insert_only();
-CREATE TRIGGER money_move_line_no_truncate BEFORE TRUNCATE ON "money_move_line" FOR EACH STATEMENT EXECUTE FUNCTION money_insert_only();
 -- Payments and issued numbers are records too: no truncate of payments, invoices, trust requests or the series.
 CREATE TRIGGER money_payment_no_truncate BEFORE TRUNCATE ON "money_payment" FOR EACH STATEMENT EXECUTE FUNCTION money_insert_only();
 CREATE TRIGGER money_invoice_no_truncate BEFORE TRUNCATE ON "money_invoice" FOR EACH STATEMENT EXECUTE FUNCTION money_insert_only();
@@ -1175,112 +1092,3 @@ BEGIN
   RETURN NEW;
 END $$;
 CREATE TRIGGER money_trust_entry_write BEFORE INSERT ON "money_trust_entry" FOR EACH ROW EXECUTE FUNCTION money_trust_entry_write();
-
--- ---------------------------------------------------------------------------------------------------- the "To move" list
--- An undo batch undoes a batch that is not itself an undo, in the same currency; one undo per batch (unique index).
-CREATE FUNCTION money_move_batch_write() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE b record;
-BEGIN
-  IF NEW.undoes_batch_id IS NOT NULL THEN
-    SELECT x.undoes_batch_id, x.currency INTO b FROM "money_move_batch" x WHERE x.firm_id = NEW.firm_id AND x.id = NEW.undoes_batch_id;
-    IF NOT FOUND THEN PERFORM money_missing('money_move_batch', 'batch', NEW.undoes_batch_id); END IF;
-    IF b.undoes_batch_id IS NOT NULL THEN
-      RAISE EXCEPTION 'money_move_batch: an undo is never undone (record the moves again instead)' USING ERRCODE = 'check_violation';
-    END IF;
-    IF b.currency <> NEW.currency THEN
-      RAISE EXCEPTION 'money_move_batch: an undo is in the currency of the batch it undoes (%)', b.currency USING ERRCODE = 'check_violation';
-    END IF;
-  END IF;
-  NEW.recorded_at := now();
-  RETURN NEW;
-END $$;
-CREATE TRIGGER money_move_batch_write BEFORE INSERT ON "money_move_batch" FOR EACH ROW EXECUTE FUNCTION money_move_batch_write();
-
--- A line goes into a batch written in this same transaction (one click, "I moved these"): a recorded batch never gains
--- lines later, and an undone one never (review round 1, m5; break B-7). "Written in this transaction" is a batch this
--- statement can see whose writer is still in progress: only this transaction's own rows (also from a savepoint,
--- review round 2, Minor 5) are both visible and in progress. The xmin is widened with the current epoch. It is in the batch's currency and matches its
--- source: a trust application moves up to its withdrawal (less what was returned before moving), trust to operating;
--- a wrong-account amount goes back towards the account it belonged in, at most the payment; a card fee on the trust
--- account is covered from operating, for a card payment received into trust, at most the payment (none can exist
--- while card into trust waits). A source (and kind) is in at most one batch that has not been undone: the lock
--- serialises two writers of the same source, every earlier line of it must be in an undone batch, and move_ordinal
--- (the count of its earlier lines + 1) is unique per source and kind, so even a stale read at REPEATABLE READ is
--- refused (23505) rather than moved twice. The lookups go by the source's own column (its unique index).
-CREATE FUNCTION money_move_line_write() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE b record; s record; src uuid := coalesce(NEW.source_trust_entry_id, NEW.source_payment_id); earlier integer; live uuid;
-BEGIN
-  SELECT x.undoes_batch_id, x.currency, pg_xact_status(((pg_current_xact_id()::text::bigint >> 32 << 32) | x.xmin::text::bigint)::text::xid8) = 'in progress' AS mine INTO b FROM "money_move_batch" x WHERE x.firm_id = NEW.firm_id AND x.id = NEW.batch_id;
-  IF NOT FOUND THEN PERFORM money_missing('money_move_line', 'batch', NEW.batch_id); END IF;
-  IF b.undoes_batch_id IS NOT NULL THEN
-    RAISE EXCEPTION 'money_move_line: an undo batch carries no lines (the undone batch''s lines go back to the list)' USING ERRCODE = 'check_violation';
-  END IF;
-  IF b.mine IS NOT TRUE THEN  -- unknown (NULL) is not mine (break round 3, B-15)
-    RAISE EXCEPTION 'money_move_line: a batch takes its lines in the transaction that records it; a recorded batch is never added to' USING ERRCODE = 'check_violation';
-  END IF;
-  IF EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = NEW.firm_id AND u.undoes_batch_id = NEW.batch_id) THEN
-    RAISE EXCEPTION 'money_move_line: an undone batch never gains a line, also in the transaction that records it' USING ERRCODE = 'check_violation';
-  END IF;
-  IF b.currency <> NEW.currency THEN
-    RAISE EXCEPTION 'money_move_line: a line is in its batch''s currency (%), not %', b.currency, NEW.currency USING ERRCODE = 'check_violation';
-  END IF;
-  IF num_nonnulls(NEW.source_trust_entry_id, NEW.source_payment_id) <> 1 OR (NEW.kind = 'TRUST_APPLIED') <> (NEW.source_trust_entry_id IS NOT NULL) THEN
-    RETURN NEW;  -- money_move_line_source_check refuses it
-  END IF;
-  IF NEW.kind = 'TRUST_APPLIED' THEN
-    SELECT e.kind, e.amount_minor, e.currency INTO s FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND e.id = NEW.source_trust_entry_id;
-    IF NOT FOUND THEN PERFORM money_missing('money_move_line', 'trust entry', NEW.source_trust_entry_id); END IF;
-    IF s.kind <> 'WITHDRAWAL_TO_INVOICE' OR NEW.direction <> 'TRUST_TO_OPERATING' OR NEW.amount_minor > -s.amount_minor OR NEW.currency <> s.currency THEN
-      RAISE EXCEPTION 'money_move_line: a trust application moves at most its withdrawal (% %) from trust to operating', -s.amount_minor, s.currency USING ERRCODE = 'check_violation';
-    END IF;
-  ELSE
-    SELECT p.amount_minor, p.currency, p.received_into, p.method INTO s FROM "money_payment" p WHERE p.firm_id = NEW.firm_id AND p.id = NEW.source_payment_id;
-    IF NOT FOUND THEN PERFORM money_missing('money_move_line', 'payment', NEW.source_payment_id); END IF;
-    IF NEW.amount_minor > s.amount_minor OR NEW.currency <> s.currency THEN
-      RAISE EXCEPTION 'money_move_line: at most the payment''s amount (% %)', s.amount_minor, s.currency USING ERRCODE = 'check_violation';
-    END IF;
-    IF NEW.kind = 'WRONG_ACCOUNT' AND ((s.received_into = 'OPERATING') <> (NEW.direction = 'OPERATING_TO_TRUST')) THEN
-      RAISE EXCEPTION 'money_move_line: money received into % moves out of it', s.received_into USING ERRCODE = 'check_violation';
-    END IF;
-    -- Money leaves trust only by the entry kinds of P-603: a wrong-account amount moved out of trust is the negative
-    -- correction of the deposit that was wrongly put in trust, so it moves at most what those corrections took out
-    -- (corrections of a deposit only ever take more out, so a later one never undoes this check).
-    IF NEW.kind = 'WRONG_ACCOUNT' AND NEW.direction = 'TRUST_TO_OPERATING'
-       AND NEW.amount_minor > coalesce((SELECT -sum(c.amount_minor) FROM "money_trust_entry" dep JOIN "money_trust_entry" c ON c.firm_id = dep.firm_id AND c.corrects_entry_id = dep.id
-         WHERE dep.firm_id = NEW.firm_id AND dep.payment_id = NEW.source_payment_id AND dep.kind = 'DEPOSIT'), 0) THEN
-      RAISE EXCEPTION 'money_move_line: money moves out of trust only as recorded in the trust ledger: correct the payment''s deposit first (a negative correction of at least %)', NEW.amount_minor USING ERRCODE = 'check_violation';
-    END IF;
-    IF NEW.kind = 'CARD_FEE_ON_TRUST' AND (s.method <> 'CARD' OR s.received_into <> 'TRUST' OR NEW.direction <> 'OPERATING_TO_TRUST') THEN
-      RAISE EXCEPTION 'money_move_line: a card fee on the trust account is for a card payment into trust, covered from operating into trust' USING ERRCODE = 'check_violation';
-    END IF;
-  END IF;
-  PERFORM pg_advisory_xact_lock(hashtextextended('money_move:' || NEW.firm_id || ':' || src || ':' || NEW.kind, 0));
-  IF NEW.source_trust_entry_id IS NOT NULL THEN
-    SELECT l.batch_id INTO live FROM "money_move_line" l
-      WHERE l.firm_id = NEW.firm_id AND l.source_trust_entry_id = NEW.source_trust_entry_id AND l.kind = NEW.kind
-        AND NOT EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = l.firm_id AND u.undoes_batch_id = l.batch_id) LIMIT 1;
-    SELECT count(*) INTO earlier FROM "money_move_line" l WHERE l.firm_id = NEW.firm_id AND l.source_trust_entry_id = NEW.source_trust_entry_id AND l.kind = NEW.kind;
-  ELSE
-    SELECT l.batch_id INTO live FROM "money_move_line" l
-      WHERE l.firm_id = NEW.firm_id AND l.source_payment_id = NEW.source_payment_id AND l.kind = NEW.kind
-        AND NOT EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = l.firm_id AND u.undoes_batch_id = l.batch_id) LIMIT 1;
-    SELECT count(*) INTO earlier FROM "money_move_line" l WHERE l.firm_id = NEW.firm_id AND l.source_payment_id = NEW.source_payment_id AND l.kind = NEW.kind;
-  END IF;
-  IF live IS NOT NULL THEN
-    RAISE EXCEPTION 'money_move_line: already moved in batch % (undo that batch first)', live USING ERRCODE = 'unique_violation';
-  END IF;
-  NEW.move_ordinal := earlier + 1;
-  NEW.created_at := now();
-  RETURN NEW;
-END $$;
-CREATE TRIGGER money_move_line_write BEFORE INSERT ON "money_move_line" FOR EACH ROW EXECUTE FUNCTION money_move_line_write();
--- At commit, too: a line and an undo of its batch written in one statement (a data-modifying CTE) cannot see each
--- other, so the line is checked again once the statement is over (break round 3, B-16).
-CREATE FUNCTION money_move_line_not_undone() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = NEW.firm_id AND u.undoes_batch_id = NEW.batch_id) THEN
-    RAISE EXCEPTION 'money_move_line: an undone batch never gains a line, also in the transaction that records it' USING ERRCODE = 'check_violation';
-  END IF;
-  RETURN NULL;
-END $$;
-CREATE CONSTRAINT TRIGGER money_move_line_not_undone AFTER INSERT ON "money_move_line" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION money_move_line_not_undone();

@@ -1,11 +1,12 @@
-// client-money.prisma — invoices, payments, refunds, receipts, trust ledger, write-offs, moves between accounts. Owner: Lead B (client money, contracts §8).
+// client-money.prisma — invoices, payments, refunds, receipts, trust ledger, write-offs. Owner: Lead B (client money, contracts §8).
 // One file per area (DB-SPLIT, studio/DEVELOPING.md): a new module adds its own file here; never edit another area's file without its owner.
 //
 // FO-7a (P-558, P-559, P-575 (1), P-576, P-599, P-600; BACKLOG row FO-7a rows rev 7, rev 10 part 2, amended by rev 13;
 // contracts platform-and-front-office-contracts-2026-11-14.md §2.5, §7 binding (§2.5 trust), §8; requirements AG-06:
-// AG-6-1, -4, -19, -44, -46, -59, -60, -61, -63, -69, -73, -76; Code SOR/2022-128 s. 32, s. 33(3), legal reading
-// Unconfirmed: no counsel). Schema only: the API is FO-7b (invoices, payments), FO-7t (trust), FO-7r (write-offs, moves),
-// FO-7c (card). Nothing outside api/src/client-money/ ever writes these tables; other modules ask ClientMoneyPort.
+// AG-6-1, -4, -19, -44, -46, -59, -60, -61, -63, -69, -76; Code SOR/2022-128 s. 32, s. 33(3), legal reading
+// Unconfirmed: no counsel). Schema only: the API is FO-7b (invoices, payments), FO-7t (trust), FO-7r (write-offs),
+// FO-7c (card); the "To move" list (AG-6-73) is row FO-7mv. Nothing outside api/src/client-money/ ever writes these
+// tables; other modules ask ClientMoneyPort.
 //
 // * Like the platform and front-office rows, these carry no workspace_id: the firm is the tenant and the demo reset
 //   leaves them. firm_id is first in every index but a primary key. A row naming another money row keys on
@@ -21,8 +22,7 @@
 //   database's, taken from a per-firm series inside the writing transaction (no gaps, never reused; AG-6-44); an issued
 //   invoice is frozen (lines, tax, party, currency, number); insert-only tables refuse update and delete; a trust
 //   withdrawal names an issued invoice of the same party and currency; a party's trust balance never goes below zero
-//   (running balance kept by the database, serialised per party and currency); one write-off per invoice; a move line
-//   is in at most one batch that has not been undone; an undo batch names the batch it undoes and a reason; credit
+//   (running balance kept by the database, serialised per party and currency); one write-off per invoice; credit
 //   notes, the write-off and trust paid on an invoice never exceed it; refunds never exceed their payment; nothing
 //   goes into trust while trust is off; issue, send, cancel and record times are the database's; a row a check names
 //   must be visible to it (never left to the foreign key at the end of the statement). Each holds at READ COMMITTED
@@ -97,18 +97,6 @@ enum MoneySeriesKind {
   TRUST_REQUEST
 }
 
-/// Why an amount must move between the trust and operating bank accounts (AG-6-73 rule 1 (a)-(c)).
-enum MoneyMoveKind {
-  TRUST_APPLIED
-  WRONG_ACCOUNT
-  CARD_FEE_ON_TRUST
-}
-
-enum MoneyMoveDirection {
-  TRUST_TO_OPERATING
-  OPERATING_TO_TRUST
-}
-
 /// A firm's money settings (AG-6-59, AG-6-71, AG-6-4/-45, AG-6-46): the operating and trust payment-details blocks
 /// printed on invoices and trust requests, the tax number and the firm's tax rates, the trust answer (off until the
 /// Owner says Yes) and the default due period. The firm anchor of this module: one row per firm.
@@ -134,7 +122,6 @@ model MoneyPaymentSettings {
   payments      MoneyPayment[]
   trustRequests MoneyTrustRequest[]
   trustEntries  MoneyTrustEntry[]
-  moveBatches   MoneyMoveBatch[]
 
   @@map("money_payment_settings")
 }
@@ -290,7 +277,6 @@ model MoneyPayment {
   refunds      MoneyRefund[]
   receipt      MoneyReceipt?
   trustEntry   MoneyTrustEntry?
-  moveLines    MoneyMoveLine[]
 
   @@unique([firmId, id])
   @@unique([firmId, stripePaymentIntentId])
@@ -413,7 +399,6 @@ model MoneyTrustEntry {
   corrects     MoneyTrustEntry?     @relation("MoneyTrustCorrection", fields: [firmId, correctsEntryId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
   correctedBy  MoneyTrustEntry[]    @relation("MoneyTrustCorrection")
   receipt      MoneyReceipt?
-  moveLines    MoneyMoveLine[]
 
   @@unique([firmId, id])
   @@unique([firmId, personId, currency, seq])
@@ -440,58 +425,4 @@ model MoneyWriteOff {
 
   @@unique([firmId, invoiceId])
   @@map("money_write_off")
-}
-
-/// "I moved these" (AG-6-73 rule 3): one batch of bank transfers between trust and operating, in one currency, with the
-/// transfer date and who recorded it. We move no money; the firm does the bank step. Never changed: a mistake is undone
-/// by a reversing batch that names the batch it undoes and a reason (its lines go back to the list); one undo per batch;
-/// an undo is never undone. Insert-only.
-model MoneyMoveBatch {
-  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  firmId        String        @map("firm_id") @db.Uuid
-  currency      MoneyCurrency
-  transferDate  DateTime?     @map("transfer_date") @db.Date
-  undoesBatchId String?       @map("undoes_batch_id") @db.Uuid
-  reason        String?
-  recordedBy    String        @map("recorded_by")
-  recordedAt    DateTime      @default(now()) @map("recorded_at") @db.Timestamptz
-
-  settings MoneyPaymentSettings @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
-  undoes   MoneyMoveBatch?      @relation("MoneyMoveUndo", fields: [firmId, undoesBatchId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
-  undoneBy MoneyMoveBatch?      @relation("MoneyMoveUndo")
-  lines    MoneyMoveLine[]
-
-  @@unique([firmId, id])
-  @@unique([firmId, undoesBatchId])
-  @@map("money_move_batch")
-}
-
-/// One moved amount in a batch (AG-6-73 rule 1): its kind and direction, currency and amount, and the source it came
-/// from (a trust withdrawal for TRUST_APPLIED; a payment for WRONG_ACCOUNT and CARD_FEE_ON_TRUST). A source is in at
-/// most one batch that has not been undone: move_ordinal (the database's) counts its moves, and (source, kind, ordinal)
-/// is unique, so two people ticking the same line at once make one batch. Lines are written in the transaction that
-/// records their batch, never after its undo. A wrong-account amount out of trust moves at most the negative
-/// corrections of its payment's deposit (P-603). Insert-only.
-model MoneyMoveLine {
-  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  firmId             String             @map("firm_id") @db.Uuid
-  batchId            String             @map("batch_id") @db.Uuid
-  kind               MoneyMoveKind
-  direction          MoneyMoveDirection
-  currency           MoneyCurrency
-  amountMinor        Int                @map("amount_minor")
-  sourceTrustEntryId String?            @map("source_trust_entry_id") @db.Uuid
-  sourcePaymentId    String?            @map("source_payment_id") @db.Uuid
-  /// The database's (a value the caller gives is replaced).
-  moveOrdinal        Int                @default(0) @map("move_ordinal")
-  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz
-
-  batch            MoneyMoveBatch   @relation(fields: [firmId, batchId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
-  sourceTrustEntry MoneyTrustEntry? @relation(fields: [firmId, sourceTrustEntryId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
-  sourcePayment    MoneyPayment?    @relation(fields: [firmId, sourcePaymentId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
-
-  @@unique([firmId, sourceTrustEntryId, kind, moveOrdinal])
-  @@unique([firmId, sourcePaymentId, kind, moveOrdinal])
-  @@index([firmId, batchId])
-  @@map("money_move_line")
 }

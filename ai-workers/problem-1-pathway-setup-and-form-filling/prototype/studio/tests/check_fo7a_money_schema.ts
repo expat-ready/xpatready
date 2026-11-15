@@ -1,8 +1,8 @@
 // FO-7a (P-558, P-559, P-575 (1), P-599, P-600; BACKLOG row FO-7a rows rev 7, rev 10 part 2, rev 13; contracts §2.5,
-// §7 §2.5, §8; AG-6-1, -4, -19, -44, -46, -59, -60, -61, -63, -69, -73, -76; Code SOR/2022-128 s. 32, s. 33(3),
+// §7 §2.5, §8; AG-6-1, -4, -19, -44, -46, -59, -60, -61, -63, -69, -76; Code SOR/2022-128 s. 32, s. 33(3),
 // Unconfirmed: no counsel): the client-money tables and their database rules. Every line of the row's "Done when" plus
-// the rev 13 lines, each with a passing and a failing case; numbers under 20 parallel writers and trust withdrawals and
-// moves under parallel writers are proved on real connections (READ COMMITTED and REPEATABLE READ). Three scratch
+// the rev 13 lines, each with a passing and a failing case; numbers under 20 parallel writers and trust withdrawals
+// under parallel writers are proved on real connections (READ COMMITTED and REPEATABLE READ). Three scratch
 // databases: "empty" gets every migration; "demo" gets every migration before FO-7a's, then demo-shaped rows (Sample
 // cases, an audit line, the Sample firms and staff), then FO-7a's migration and any later one; "bare" stops before it.
 // No server, no browser, no model call, no Stripe call (US$0). All are dropped at the end.
@@ -22,8 +22,8 @@ const EMPTY = `xr_studio_fo7a_empty_${process.pid}`, DEMO = `xr_studio_fo7a_demo
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
 const WORK = join(STUDIO, "var", `fo7a-check-${process.pid}`);
 const TABLES = ["money_payment_settings", "money_payment_account", "money_number_series", "money_invoice", "money_invoice_line", "money_credit_note",
-  "money_payment", "money_refund", "money_receipt", "money_trust_request", "money_trust_entry", "money_write_off", "money_move_batch", "money_move_line"];
-const INSERT_ONLY = ["money_credit_note", "money_refund", "money_receipt", "money_trust_entry", "money_write_off", "money_move_batch", "money_move_line"];
+  "money_payment", "money_refund", "money_receipt", "money_trust_request", "money_trust_entry", "money_write_off"];
+const INSERT_ONLY = ["money_credit_note", "money_refund", "money_receipt", "money_trust_entry", "money_write_off"];
 
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 400)}` : ""}`); };
@@ -114,15 +114,15 @@ try {
     (sql(DEMO, `create index money_tmp_bad on money_invoice (number)`), indexesNotFirmFirst(DEMO) === "money_tmp_bad") && (sql(DEMO, `drop index money_tmp_bad`), indexesNotFirmFirst(DEMO) === ""));
   ok("FO-7a pass: every amount is an integer — every *_minor column is integer, and no money_ column is a float or a decimal",
     sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and column_name like '%\\_minor' and data_type <> 'integer'`) === "0"
-    && sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and column_name like '%\\_minor'`) === "11"
+    && sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and column_name like '%\\_minor'`) === "10"
     && sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and data_type in ('real', 'double precision', 'numeric', 'money')`) === "0");
   ok("FO-7a pass: every table with an amount carries its currency, as an enum of CAD and USD",
     sql(DEMO, `select coalesce(string_agg(distinct c.table_name, ','), '') from information_schema.columns c where c.table_name like 'money\\_%' and c.column_name like '%\\_minor'
       and not exists (select 1 from information_schema.columns d where d.table_name = c.table_name and d.column_name = 'currency')`) === ""
     && sql(DEMO, `select string_agg(e.enumlabel, ',' order by e.enumsortorder) from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'MoneyCurrency'`) === "CAD,USD");
-  ok("FO-7a pass: no workspace_id (the demo reset leaves these rows), every instant is timestamptz, only due_date and transfer_date are dates",
+  ok("FO-7a pass: no workspace_id (the demo reset leaves these rows), every instant is timestamptz, only due_date is a date",
     sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and column_name = 'workspace_id'`) === "0"
-    && sql(DEMO, `select coalesce(string_agg(table_name || '.' || column_name, ',' order by table_name, column_name), '') from information_schema.columns where table_name like 'money\\_%' and data_type in ('timestamp without time zone', 'date', 'time without time zone', 'time with time zone')`) === "money_invoice.due_date,money_move_batch.transfer_date");
+    && sql(DEMO, `select coalesce(string_agg(table_name || '.' || column_name, ',' order by table_name, column_name), '') from information_schema.columns where table_name like 'money\\_%' and data_type in ('timestamp without time zone', 'date', 'time without time zone', 'time with time zone')`) === "money_invoice.due_date");
   ok("FO-7a: no secret column — no money_ column is named like a password, secret, token or API key (AG-16-18)",
     sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and column_name ~ '(password|secret|token|api_key|access_key)'`) === "0");
   // ------------------------------------------------------------------------------------------- settings and account
@@ -542,66 +542,6 @@ try {
     sql(DEMO, credit(u(703), 11299, true)).startsWith("CN-") && refused(DEMO, writeOff(u(703), 1), /more than is left on the invoice \(0\)/)
     && refused(DEMO, credit(u(701), 8800, true), /more than is left to credit on the invoice \(8799\)/) && sql(DEMO, `begin; ${credit(u(701), 8799, true)}; rollback;`).startsWith("CN-"));
 
-  // ------------------------------------------------------------------------------------------- the "To move" list
-  const batch = (id: string, opts: { undoes?: string; reason?: string; date?: string | null } = {}) =>
-    `insert into money_move_batch (id, firm_id, currency, transfer_date, undoes_batch_id, reason, recorded_by) values ('${id}', '${firmA}', 'CAD', ${opts.date === null ? "null" : `'${opts.date ?? "2026-11-20"}'`}, ${opts.undoes ? `'${opts.undoes}'` : "null"}, ${opts.reason ? `'${opts.reason}'` : "null"}, 'user-R') returning id`;
-  const moveLine = (b: string, src: string, kind = "TRUST_APPLIED", dir = "TRUST_TO_OPERATING", amount = 30000) =>
-    `insert into money_move_line (firm_id, batch_id, kind, direction, currency, amount_minor, ${kind === "TRUST_APPLIED" ? "source_trust_entry_id" : "source_payment_id"}) values ('${firmA}', '${b}', '${kind}', '${dir}', 'CAD', ${amount}, '${src}') returning move_ordinal`;
-  // "I moved these": one click writes the batch and its lines in one transaction.
-  const moved = (b: string, ...lines: string[]) => `${batch(b)}; ${lines.join("; ")}`;
-  const B1 = u(1300), B2 = u(1301), UNDO = u(1302), B3 = u(1303);
-  ok("FO-7a pass (AG-6-73 rule 3): \"I moved these\" — a batch with a date and the trust application (300.00, trust → operating)", sqlLast(DEMO, moved(B1, moveLine(B1, WD))) === "1");
-  ok("FO-7a fail: the same trust application in a second batch while the first stands is refused", refused(DEMO, moved(B2, moveLine(B2, WD)), /already moved in batch/, "23505"));
-  ok("FO-7a fail (rev 13): a move line update or delete is refused (insert-only); a batch update is refused",
-    refused(DEMO, `update money_move_line set amount_minor = 1 where batch_id = '${B1}'`, /never changed or removed/, "42501") && refused(DEMO, `delete from money_move_line where batch_id = '${B1}'`, /never changed or removed/, "42501")
-    && refused(DEMO, `update money_move_batch set transfer_date = '2026-11-21' where id = '${B1}'`, /never changed or removed/, "42501"));
-  ok("FO-7a fail: a trust application moving more than its withdrawal or the wrong way, or a wrong-account amount the wrong way, is refused",
-    refused(DEMO, moved(B2, moveLine(B2, WD, "TRUST_APPLIED", "TRUST_TO_OPERATING", 30001)), /moves at most its withdrawal/) && refused(DEMO, moved(B2, moveLine(B2, WD, "TRUST_APPLIED", "OPERATING_TO_TRUST")), /moves at most its withdrawal/)
-    && refused(DEMO, moved(B2, moveLine(B2, u(1103), "WRONG_ACCOUNT", "TRUST_TO_OPERATING", 500)), /received into OPERATING moves out of it/));
-  ok("FO-7a pass: money for trust received into operating moves operating → trust (wrong account)", sqlLast(DEMO, moved(B2, moveLine(B2, u(1103), "WRONG_ACCOUNT", "OPERATING_TO_TRUST", 500))) === "1");
-  {
-    // P-603 with AG-6-73: a trust-to-operating move maps onto the entry kinds money leaves trust by. TRUST_APPLIED names
-    // a withdrawal; WRONG_ACCOUNT out of trust is the negative correction of the deposit wrongly put in trust.
-    const BX = u(1309), anyCorrection = sql(DEMO, `select id from money_trust_entry where firm_id = '${firmA}' and kind = 'CORRECTION' limit 1`);
-    ok("FO-7a fail (P-603, Lead B's AG-6-73 test): a move out of trust whose source is not one of those entry kinds is refused — a trust application naming a deposit or a correction; a wrong-account amount out of trust with no correction of its deposit",
-      refused(DEMO, moved(BX, moveLine(BX, DEP, "TRUST_APPLIED", "TRUST_TO_OPERATING", 1)), /moves at most its withdrawal/)
-      && refused(DEMO, moved(BX, moveLine(BX, anyCorrection, "TRUST_APPLIED", "TRUST_TO_OPERATING", 1)), /moves at most its withdrawal/)
-      && refused(DEMO, moved(BX, moveLine(BX, u(1102), "WRONG_ACCOUNT", "TRUST_TO_OPERATING", 1)), /correct the payment's deposit first/, "23514"));
-    sql(DEMO, entry("CORRECTION", -300, { corrects: DEP, reason: "Paid into trust by mistake" }));
-    ok("FO-7a pass / fail (P-603, AG-6-73): after a 3.00 correction of the deposit, 3.01 out of trust as a wrong-account amount is refused and 3.00 moves",
-      refused(DEMO, moved(BX, moveLine(BX, u(1102), "WRONG_ACCOUNT", "TRUST_TO_OPERATING", 301)), /correct the payment's deposit first \(a negative correction of at least 301\)/)
-      && sqlLast(DEMO, `begin; ${moved(BX, moveLine(BX, u(1102), "WRONG_ACCOUNT", "TRUST_TO_OPERATING", 300))}; rollback;`) === "1");
-  }
-  ok("FO-7a fail (review round 1 m5, break B-7): a recorded batch never gains a line later", refused(DEMO, moveLine(B2, u(1102), "WRONG_ACCOUNT", "TRUST_TO_OPERATING", 1), /a recorded batch is never added to/));
-  ok("FO-7a fail (review round 1 m6, break B-11): a card fee on the trust account names a card payment into trust (none exists while card into trust waits)",
-    refused(DEMO, moved(u(1307), moveLine(u(1307), u(1103), "CARD_FEE_ON_TRUST", "OPERATING_TO_TRUST", 1)), /card fee on the trust account is for a card payment into trust/));
-  ok("FO-7a fail (rev 13): an undo batch without a reason, or with a reason but without the batch it undoes, is refused",
-    refused(DEMO, batch(UNDO, { undoes: B1, date: null }), /money_move_batch_kind_check/) && refused(DEMO, batch(UNDO, { reason: "Bank transfer failed" }), /money_move_batch_kind_check/));
-  ok("FO-7a pass (AG-6-73 rules 4, 6): undo names the batch it undoes and a reason; the trust application then moves again (ordinal 2), here net of 100.00 returned before moving (review round 1, m8)",
-    sql(DEMO, batch(UNDO, { undoes: B1, reason: "Bank transfer failed", date: null })) === UNDO && sqlLast(DEMO, moved(B3, moveLine(B3, WD, "TRUST_APPLIED", "TRUST_TO_OPERATING", 20000))) === "2");
-  ok("FO-7a fail: a batch is undone once, an undo is never undone, an undo carries no lines, and an undone batch never gains a line",
-    refused(DEMO, batch(u(1304), { undoes: B1, reason: "Again" }), /money_move_batch_firm_id_undoes_batch_id_key/, "23505")
-    && refused(DEMO, batch(u(1304), { undoes: UNDO, reason: "Undo the undo" }), /an undo is never undone/) && refused(DEMO, moveLine(UNDO, u(1103), "WRONG_ACCOUNT", "OPERATING_TO_TRUST", 1), /undo batch carries no lines/)
-    && refused(DEMO, moveLine(B1, u(1103), "WRONG_ACCOUNT", "OPERATING_TO_TRUST", 1), /a recorded batch is never added to/));
-  ok("FO-7a pass (review round 2, Minor 5): a batch written inside a savepoint takes its lines in the same transaction",
-    (psql(DEMO, ["-c", `begin; savepoint s1; ${batch(u(1308))}; release savepoint s1; savepoint s2; ${moveLine(u(1308), u(1102), "WRONG_ACCOUNT", "TRUST_TO_OPERATING", 1)}; release savepoint s2; commit;`]), true)
-    && sql(DEMO, `select count(*) from money_move_line where batch_id = '${u(1308)}'`) === "1");
-  ok("FO-7a pass (break round 3, B-15, by reading as the breaker did): \"the batch is mine\" refuses when the writer's status is unknown (NULL is not mine)",
-    /IF b\.mine IS NOT TRUE THEN/.test(sql(DEMO, `select prosrc from pg_proc where proname = 'money_move_line_write'`)));
-  {
-    sql(DEMO, pay(u(1140), "key-b16-oper-001", { amount: 500 })); sql(DEMO, pay(u(1141), "key-b16-oper-002", { amount: 500 }));
-    const BU = u(1310), BC = u(1311);
-    ok("FO-7a fail (break round 3, B-16): a line into a batch after its undo, in the batch's own transaction, is refused — written one by one, or the undo and the line in one statement (refused at commit)",
-      refused(DEMO, `begin; ${batch(BU)}; ${moveLine(BU, u(1140), "WRONG_ACCOUNT", "OPERATING_TO_TRUST", 100)}; ${batch(u(1312), { undoes: BU, reason: "Bank transfer failed", date: null })}; ${moveLine(BU, u(1141), "WRONG_ACCOUNT", "OPERATING_TO_TRUST", 100)}; commit;`, /undone batch never gains a line/, "23514")
-      && refused(DEMO, `begin; ${batch(BC)}; with x as (${batch(u(1313), { undoes: BC, reason: "Bank transfer failed", date: null })}) ${moveLine(BC, u(1141), "WRONG_ACCOUNT", "OPERATING_TO_TRUST", 100)}; commit;`, /undone batch never gains a line/, "23514")
-      && sql(DEMO, `select count(*) from money_move_batch where id in ('${BU}', '${BC}', '${u(1312)}', '${u(1313)}')`) === "0");
-  }
-  const W2 = sql(DEMO, entry("WITHDRAWAL_TO_INVOICE", -100, { inv: I1 }));
-  const B4 = u(1305), B5 = u(1306);
-  const two = await race(2, (i) => moved([B4, B5][i], moveLine([B4, B5][i], W2, "TRUST_APPLIED", "TRUST_TO_OPERATING", 100)));
-  ok("FO-7a pass (parallel): two people ticking the same line at once — one batch holds it, the other is refused (23505)",
-    two.filter((r) => r.value === "1").length === 1 && two.filter((r) => r.code === "23505").length === 1 && sql(DEMO, `select count(*) from money_move_line where source_trust_entry_id = '${W2}'`) === "1", two);
-
   // ------------------------------------------------------------------------------------- foreign keys and the firm
   ok("FO-7a pass: every money foreign key is RESTRICT on delete and on update, and every key between money rows includes firm_id",
     sql(DEMO, `select bool_and(confdeltype = 'r' and confupdtype = 'r') from pg_constraint where contype = 'f' and conrelid::regclass::text like 'money\\_%'`) === "t"
@@ -618,7 +558,7 @@ try {
     INSERT_ONLY.every((t) => refused(DEMO, `truncate ${t} cascade`, /never changed or removed/, "42501")));
   const fns = (db: string) => sql(db, `select string_agg(proname, ',' order by proname) from pg_proc where pronamespace = 'public'::regnamespace`).split(",");
   const added = fns(DEMO).filter((f) => !fns(BARE).includes(f));
-  ok("FO-7a pass (rows rev 15.2): every function the migration adds is named money_ (24 of them)", added.length === 24 && added.every((f) => f.startsWith("money_")), added);
+  ok("FO-7a pass (rows rev 15.2): every function the migration adds is named money_ (21 of them)", added.length === 21 && added.every((f) => f.startsWith("money_")), added);
 } finally {
   for (const c of conns) await c.end().catch(() => undefined);
   for (const d of dbs) await d.$disconnect().catch(() => undefined);
