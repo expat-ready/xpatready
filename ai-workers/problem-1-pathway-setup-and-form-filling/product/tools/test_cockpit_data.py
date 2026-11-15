@@ -994,5 +994,226 @@ class Tooltips(unittest.TestCase):
         self.assertTrue(cd.validate(d4, sch))
 
 
+class NeedsYouOnlyHis(unittest.TestCase):
+    """Board v61 (founder 15 Nov: "Needs you must show only what is needed from him"): an ask counts only when its status
+    asks for his word or act; each item has one line and the date it names (FORMULAS.md › Needs you)."""
+    STATE = ("## Founder asks\n| # | Ask (IST) | Status |\n|---|---|---|\n"
+             "| A83 | library kept current | refresh the 2 behind |\n"                                   # the Lead's work: not his
+             "| A84 | info icons on every page | open: v61 lane |\n"                                     # a lane's work: not his
+             "| A85 | pick the launch firm | answered; nothing waits |\n"
+             "| A5, A7 | earlier asks | done or superseded (Lead 52, 15 Nov; nothing waits on him); row in `history/x.md` |\n"   # STATE.md 15 Nov
+             "| A88 | rename | no longer needs his word |\n"
+             "| A86 | account switch | built the script; waits on the founder's word by 17 Nov |\n"
+             "| A87 | budget | **Lead 54:** sized two options | needs his decision before 2026-11-19 |\n"   # 4 cells: the last is the status
+             "\n## For the founder (P-390)\nF3 open: choose the demo firm by 21 Nov; F4 ruled\n")
+
+    def test_only_items_that_need_him_with_line_and_date(self):
+        asks, forf, wait = cd.state_needs(self.STATE, date(2026, 11, 15))
+        self.assertEqual([a["id"] for a in asks], ["A86", "A87"])
+        self.assertEqual((asks[0]["line"], asks[0]["by"]), ("waits on the founder's word by 17 Nov", "2026-11-17"))
+        self.assertEqual((asks[1]["line"], asks[1]["by"]), ("needs his decision before 2026-11-19", "2026-11-19"))
+        needs, _ = cd.needs_split(asks, forf, wait, [], True, "STATE.md", "g", today=date(2026, 11, 15))
+        self.assertEqual(needs["count"]["v"], 3)                            # A86, A87, F3
+        self.assertEqual([(i["id"], i["by"]) for i in needs["items"]], [("A86", "2026-11-17"), ("A87", "2026-11-19"), ("F3", "2026-11-21")])
+        self.assertEqual(needs["items"][2]["line"], "F3 open: choose the demo firm by 21 Nov")
+        self.assertTrue(all(i["line"] and "\n" not in i["line"] for i in needs["items"]))
+
+    def test_nothing_open_and_dates(self):
+        asks, forf, wait = cd.state_needs("## Founder asks\n| # | Ask | Status |\n|---|---|---|\n| A1 | x | open: v61 lane |\n", date(2026, 11, 15))
+        needs, _ = cd.needs_split(asks, forf, wait, [{"n": 1, "title": "q", "age_h": 1, "src": "x"}], True, "s", "g")
+        self.assertEqual((needs["count"]["v"], needs["items"]), (0, []))   # a PR question never makes an item
+        self.assertIsNone(cd.due_date("no date here"))
+        self.assertEqual(cd.due_date("by 3 Jan", date(2026, 11, 15)), "2027-01-03")   # the year after, not ten months back
+        html = open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read()
+        self.assertIn("Nothing needed from you", html)
+
+    def test_fixture_keeps_a2_with_its_line(self):
+        _, d = TooltipsData.data()
+        self.assertEqual([(i["id"], i["line"]) for i in d["needs_you"]["items"]], [("A2", "waiting on the founder's word")])
+
+
+class TooltipsData:
+    _d = None
+
+    @classmethod
+    def data(cls):
+        if cls._d is None:
+            out = tempfile.mkdtemp()
+            r = subprocess.run([sys.executable, os.path.join(HERE, "cockpit-data.py"), "--out", os.path.join(out, "data.json"),
+                                "--from-snapshot", FIX, "--offline", "--no-history-write"], capture_output=True, text=True, timeout=300)
+            assert r.returncode == 0, r.stderr
+            cls._d = jread(os.path.join(out, "data.json"))
+        return cls._d["explain"], cls._d
+
+
+class EarlyBandAndLeading(unittest.TestCase):
+    """Board v61 (founder A78, P-609): the early estimate band before the measured forecast, and three daily leading numbers."""
+    D16 = datetime(2026, 11, 16, 6, 30, tzinfo=timezone.utc)
+
+    def test_band_before_the_forecast(self):
+        # 16 Nov 12:00 IST: full IST days 13-15 Nov merged 1, 1, 0 (Pace tests); 9 changes left.
+        # low = 16 Nov + ceil(9 / 1) = 25 Nov; high = 16 Nov + ceil(9 / (2/3)) = 16 + 14 = 30 Nov
+        e = run(now=self.D16)[1]["pace"]["early_band"]
+        self.assertEqual((e["value"], e["confidence"], e["n"], e["counts"], e["remaining"]),
+                         ({"low": "2026-11-25", "high": "2026-11-30"}, "low", 3, [1, 1, 0], 9))
+        self.assertEqual(e["window"], "full IST days 13 Nov to 15 Nov (3 days)")
+        self.assertIn("÷ the best full IST day", e["src"])
+
+    def test_band_gives_way_to_the_forecast_and_needs_a_merge(self):
+        e = run()[1]["pace"]["early_band"]                                   # 20 Nov: 8 days, the Monte Carlo forecast stands
+        self.assertIsNone(e["value"])
+        self.assertEqual(e["reason"], "replaced by the measured forecast (Monte Carlo, from 17 Nov)")
+        pulls = [p for p in jread(os.path.join(FIX, "github/pulls.json")) if not p.get("merged_at") or p["merged_at"] < "2026-11-06T00:00:00Z"]
+        e0 = run(snap_with({"github/pulls.json": pulls}), now=self.D16)[1]["pace"]["early_band"]
+        self.assertIsNone(e0["value"])
+        self.assertEqual(e0["reason"], "not measured: no Release 1 change merged on a full IST day yet")
+
+    def test_committed_date_carried(self):
+        pl = json.loads(cd.Snap(FIX).file("cockpit/plan.json"))
+        pl["dates"][0].update(kind="committed", date="2026-11-29", date_to=None)
+        e = run(snap_with({"files/" + cd.REL + "/cockpit/plan.json": pl}), now=self.D16)[1]["pace"]["early_band"]
+        self.assertEqual(e["committed"], "2026-11-29")
+
+    def test_parts_and_capabilities_daily(self):
+        L = run()[1]["pace"]["leading"]
+        # 20 Nov: last full IST day 19 Nov merged 0 parts; today BK-3 (1). Built rows 4 (1: 14, 2 and 8: 18, 7: 20 Nov).
+        p, c = L["parts_merged"], L["caps_all_parts"]
+        self.assertEqual((p["value"], p["day"], p["today_so_far"]), (0, "2026-11-19", 1))
+        self.assertEqual([x["count"] for x in p["series"]], [1, 1, 0, 2, 0, 2, 0, 1])
+        self.assertEqual((c["value"], c["new_on_day"], c["today_so_far"], c["rows_total"]), (4, 0, 1, 8))
+        self.assertEqual([x["count"] for x in c["series"]], [0, 1, 0, 0, 0, 2, 0, 1])
+
+    def test_first_verdict_share(self):
+        # fixture: every capability already has its status in the oldest version (15 Nov): no first verdict is known
+        v = run()[1]["pace"]["leading"]["first_verdict_works_pct"]
+        self.assertIsNone(v["value"])
+        self.assertTrue(v["reason"].startswith("not measured"))
+        # add C9.2, absent on 15 Nov and Works on 18 Nov (first verdict Works); C9.1 Not built until 19 Nov, then Partial.
+        # C7.1 Partial (15) to Works (18) is not a first verdict. 2 first verdicts, 1 Works: 50%; on 19 Nov 1 verdict, 0 Works.
+        base = os.path.join(FIX, "git/capabilities_main")
+        a, b = open(os.path.join(base, "aaa111.md")).read(), open(os.path.join(base, "bbb222.md")).read()
+        b2 = b + "| C9.2 | 9 Next | Another row | M4 | Works | abc | fixture |\n"
+        c3 = b2.replace("| M4 | Not built |", "| M4 | Partial |")
+        jl = ('{"sha": "aaa111", "date": "2026-11-15T03:00:00Z"}\n{"sha": "bbb222", "date": "2026-11-18T05:00:00Z"}\n'
+              '{"sha": "ccc333", "date": "2026-11-19T05:00:00Z"}\n')
+        d = snap_with({"git/capabilities_main.jsonl": jl, "git/capabilities_main/bbb222.md": b2, "git/capabilities_main/ccc333.md": c3})
+        v = run(d)[1]["pace"]["leading"]["first_verdict_works_pct"]
+        self.assertEqual((v["value"], v["works"], v["n"], v["ids"], v["day_n"], v["day_works"]), (50, 1, 2, ["C9.1", "C9.2"], 1, 0))
+
+    def test_each_behind_an_explain_entry_with_window_and_n(self):
+        E, d = TooltipsData.data()
+        self.assertEqual((E["pace.early_band"]["n"], E["pace.early_band"]["window"]), (7, "full IST days 13 Nov to 19 Nov (7 days)"))
+        self.assertEqual(E["pace.leading_parts"]["n"], 0)
+        self.assertIn("IST day 2026-11-19", E["pace.leading_parts"]["window"])
+        self.assertEqual(E["pace.leading_caps"]["n"], 8)
+        self.assertEqual(E["pace.leading_fv"]["n"], 0)                    # no first verdict since 13 Nov: n 0, the share not measured
+        self.assertIsNone(d["pace"]["leading"]["first_verdict_works_pct"]["value"])
+        html = open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read()
+        for k in ("pace.early_band", "pace.leading_parts", "pace.leading_caps", "pace.leading_fv"):
+            self.assertIn('"' + k + '"', html)
+
+
+BROWSER_CHECK = r"""// board v61 scripted check: click-only info buttons on every tab, 375 px, axe light and dark
+const { chromium } = require('playwright');
+const fs = require('fs');
+const [,, url, axePath, shot] = process.argv;
+const axe = fs.readFileSync(axePath, 'utf8');
+const TABS = ['overview', 'caps', 'team', 'factory', 'launch', 'library', 'details'];
+const isOn = (p) => p.$eval('#tip', (e) => e.classList.contains('on'));
+(async () => {
+  const b = await chromium.launch(); const fails = []; const out = [];
+  for (const scheme of ['light', 'dark']) for (const w of [1280, 375]) {
+    const p = await b.newPage({ viewport: { width: w, height: 800 }, colorScheme: scheme });
+    await p.goto(url); await p.waitForSelector('.tabs button');
+    const tag = `${scheme} ${w}`;
+    if (await p.$('#srcbar')) fails.push(`${tag}: source bar still there`);
+    for (const t of TABS) {
+      await p.click(`.tabs button[data-tab="${t}"]`); await p.waitForTimeout(150);
+      const panel = `.tabpanel[data-panel="${t}"]`;
+      const r = await p.evaluate((panel) => {
+        const P = document.querySelector(panel), vis = (e) => e.getClientRects().length > 0;
+        const all = [...document.querySelectorAll('.ib')];
+        const marked = [...document.querySelectorAll('[data-tip],[data-info]')].filter((e) => (P.contains(e) || !e.closest('.tabpanel')) && vis(e));
+        const noBtn = marked.filter((e) => {
+          if (e.hasAttribute('data-nm') && e.parentElement.closest('[data-tip],[data-info]')) return false;
+          return !all.some((x) => (x._els || []).includes(e));
+        }).map((e) => e.outerHTML.slice(0, 90));
+        return { titles: document.querySelectorAll('#body [title], #strip [title], svg title').length,
+                 btns: P.querySelectorAll('.ib').length, noBtn, sw: document.documentElement.scrollWidth, iw: innerWidth,
+                 bad: all.filter((x) => x.tagName !== 'BUTTON' || !x.getAttribute('aria-label') || !x.hasAttribute('aria-expanded')).length };
+      }, panel);
+      out.push(`${tag} ${t}: ${r.btns} buttons`);
+      if (r.titles) fails.push(`${tag} ${t}: ${r.titles} hover titles`);
+      if (!r.btns) fails.push(`${tag} ${t}: no info button`);
+      if (r.noBtn.length) fails.push(`${tag} ${t}: ${r.noBtn.length} marks without a button: ${r.noBtn.slice(0, 3).join(' | ')}`);
+      if (r.bad) fails.push(`${tag} ${t}: ${r.bad} buttons without aria`);
+      if (r.sw > r.iw) fails.push(`${tag} ${t}: horizontal scroll ${r.sw} > ${r.iw}`);
+      // hovering and tapping the number show nothing
+      const nums = await p.$$(`${panel} [data-tip]:not(.tile):not(.kpi), ${panel} [data-info]`);
+      let num = null; for (const n of nums) if (await n.isVisible()) { num = n; break; }
+      if (num) {
+        await num.scrollIntoViewIfNeeded(); await num.hover(); await p.waitForTimeout(100);
+        if (await isOn(p)) fails.push(`${tag} ${t}: hover opened the panel`);
+        await num.click({ force: true, position: { x: 1, y: 1 } }); await p.waitForTimeout(50);
+        if (await isOn(p)) fails.push(`${tag} ${t}: tapping the number opened the panel`);
+      }
+      let btn = null; for (const x of await p.$$(`${panel} .ib`)) if (await x.isVisible()) { btn = x; break; }
+      if (!btn) { fails.push(`${tag} ${t}: no visible button`); continue; }
+      await btn.scrollIntoViewIfNeeded(); await btn.click();
+      const txt = await p.$eval('#tip', (e) => e.textContent);
+      if (!await isOn(p) || txt.length < 10) fails.push(`${tag} ${t}: click did not open the panel`);
+      if (await btn.getAttribute('aria-expanded') !== 'true') fails.push(`${tag} ${t}: aria-expanded not true`);
+      if (await p.evaluate(() => document.documentElement.scrollWidth) > w) fails.push(`${tag} ${t}: horizontal scroll with the panel open`);
+      if (scheme === 'light' && w === 375 && t === 'overview' && shot) await p.screenshot({ path: shot });
+      await p.addScriptTag({ content: axe });
+      const res = await p.evaluate(async () => (await axe.run(document, { resultTypes: ['violations'] })).violations
+        .filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id + ' x' + v.nodes.length + ' ' + v.nodes[0].target));
+      if (res.length) fails.push(`${tag} ${t}: axe ${res.join('; ')}`);
+      await btn.click(); if (await isOn(p)) fails.push(`${tag} ${t}: second click did not close`);
+      await btn.focus(); await p.keyboard.press('Enter');
+      if (!await isOn(p)) fails.push(`${tag} ${t}: Enter did not open`);
+      await p.keyboard.press('Escape');
+      if (await isOn(p)) fails.push(`${tag} ${t}: Esc did not close`);
+      if (!await btn.evaluate((x) => document.activeElement === x)) fails.push(`${tag} ${t}: focus not back on the button`);
+      await btn.click(); await p.mouse.click(w - 5, 5);
+      if (await isOn(p)) fails.push(`${tag} ${t}: click outside did not close`);
+    }
+    await p.close();
+  }
+  await b.close();
+  console.log(out.filter((x) => x.startsWith('light 1280')).join('\n'));
+  console.log(fails.length ? 'FAIL\n' + fails.join('\n') : 'OK: every tab, light and dark, 1280 and 375');
+  process.exit(fails.length ? 1 : 0);
+})();
+"""
+
+
+@unittest.skipUnless(os.environ.get("AXE_JS") and shutil.which("node"), "browser check: set AXE_JS to axe.min.js (axe-core 4.10) and have Playwright for node")
+class InfoIconsInBrowser(unittest.TestCase):
+    """Board v61 item 1 (founder 15 Nov: "an icon ... when I click on the icon, then only it should work ... on all the pages"):
+    on every tab, light and dark, 1280 and 375 px: no hover title or source bar; every marked number or block has a <button>
+    with aria-label and aria-expanded; hover and tapping the number show nothing; click opens, second click, Esc (focus back)
+    and a click outside close; no sideways scroll; axe 0 serious or critical with the panel open.
+    Run: AXE_JS=<path>/axe.min.js NODE_PATH=$(npm root -g) python3 -m pytest -q product/tools/test_cockpit_data.py -k Browser"""
+    def test_every_tab(self):
+        site = tempfile.mkdtemp()
+        shutil.copy(os.path.join(cd.P, "cockpit", "index.html"), site)
+        for now in ("2026-11-16T12:00:00+05:30", None):          # with the early band (16 Nov) and after it (20 Nov)
+            args = [sys.executable, os.path.join(HERE, "cockpit-data.py"), "--out", os.path.join(site, "data.json"),
+                    "--from-snapshot", FIX, "--offline", "--no-history-write"] + (["--now", now] if now else [])
+            self.assertEqual(subprocess.run(args, capture_output=True, timeout=300).returncode, 0)
+            js = os.path.join(site, "check.js")
+            with open(js, "w", encoding="utf-8") as f:
+                f.write(BROWSER_CHECK)
+            srv = subprocess.Popen([sys.executable, "-m", "http.server", "8762", "-d", site], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                import time
+                time.sleep(1)
+                r = subprocess.run(["node", js, "http://localhost:8762/index.html", os.environ["AXE_JS"]], capture_output=True, text=True, timeout=600)
+            finally:
+                srv.terminate()
+            self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-2000:])
+
+
 if __name__ == "__main__":
     unittest.main()
