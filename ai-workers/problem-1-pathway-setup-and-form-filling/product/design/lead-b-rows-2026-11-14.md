@@ -999,3 +999,5 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
 * **P-610 reading (Lead B, for the release holder):** the 800 counts code and tests; generated review, journey and break records don't count.
 
 **Rev 16.25 note (Lead 58, in BACKLOG):** P-610 reading confirmed: the 800 lines count code and tests only, and generated review, break and journey records do not count. G-4's `pr-size.sh` will skip those record paths when it merges. Every Lead B brief's "under 800 changed lines, tests included" reads this way.
+
+**Rev 16.26 (15 Nov, Lead B (6)): a late Take it names the winner (#1813, FO-4 breaker Major).** AG-2-86 rule 3 decides it ("If someone else got there first, it shows 'Client F already has this lead' … and changes nothing"). **FO-2's Done when adds:** "a losing Take it by someone who could see the lead while unowned (AG-2-64's unassigned-lead rule) answers 409 with the owner's name whatever the sharing mode or delay; someone who could never see it answers 404". This is in part 1 if it fits the 800, else first in part 2. FO-4 DW4 covers both sharing modes.
