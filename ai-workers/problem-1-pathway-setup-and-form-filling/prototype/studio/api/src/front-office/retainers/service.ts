@@ -213,11 +213,11 @@ export class Retainers {
 
   /** Reads an uploaded .docx (BR-1): unreadable → 422 "We could not read this file."; an unknown placeholder → 422 naming
    *  it; a missing client name or fee → accepted with warnings. */
-  private readTemplate(file: Upload | undefined) {
+  private async readTemplate(file: Upload | undefined) {
     if (!file?.bytes?.length) return unprocessable("Choose a .docx file.", { file: "Choose a .docx file." });
     if (file.size > TEMPLATE_MAX_BYTES) unprocessable("A template is at most 5 MB.", { file: "At most 5 MB." });
     let found: string[];
-    try { found = placeholdersOf(file.bytes); } catch (e) {
+    try { found = await placeholdersOf(file.bytes); } catch (e) {
       if (e instanceof UnreadableDocx) { const says = e.says ?? "We could not read this file."; return unprocessable(says, { file: says }, { code: e.code ?? "UNREADABLE_FILE" }); }   // FO-5f: B-19, B-20, B-21 say why
       throw e;
     }
@@ -236,7 +236,7 @@ export class Retainers {
     const name = nameOf120(body.name);
     const kind = (body.kind ?? "RETAINER") as "RETAINER" | "CONSULTATION";
     if (kind !== "RETAINER" && kind !== "CONSULTATION") unprocessable("Kind is RETAINER or CONSULTATION.", { kind: "RETAINER or CONSULTATION." });
-    const c = this.readTemplate(file);
+    const c = await this.readTemplate(file);
     const id = randomUUID(), key = `retainer-templates/${id}/v1-${attempt()}.docx`;
     const stored = await this.files.put(ctx.firmId, key, file!.bytes, DOCX);
     const taken = () => conflict("A template with this name already exists.", "NAME_TAKEN");
@@ -253,7 +253,7 @@ export class Retainers {
   async newTemplateVersion(ctx: StaffContext, id: string, file: Upload | undefined) {
     if (typeof id !== "string" || !UUID.test(id)) notFound("template");
     const t = await this.db.foRetainerTemplate.findFirst({ where: { firmId: ctx.firmId, id } }) ?? notFound("template");
-    const c = this.readTemplate(file);
+    const c = await this.readTemplate(file);
     const version = t.version + 1, key = `retainer-templates/${id}/v${version}-${attempt()}.docx`;
     const stored = await this.files.put(ctx.firmId, key, file!.bytes, DOCX);
     await this.tx(async (tx) => {
@@ -329,7 +329,7 @@ export class Retainers {
       const row = { label: f.label, amount: f.amount ?? "", when: f.when, due_on: f.due_on ? `, ${f.due_on}` : "" };
       return { ...row, ...Object.fromEntries(Object.entries(row).map(([x, y]) => [`fees.${x}`, y])) };   // {fees.label} inside the loop too (m4)
     }) : v;
-    const bytes = renderDocx(tpl.bytes, data);
+    const bytes = await renderDocx(tpl.bytes, data);
     const key = `retainers/${retainerId}/v${n}-${attempt()}.docx`;
     return this.files.put(firmId, key, bytes, DOCX);
   }
@@ -435,7 +435,7 @@ export class Retainers {
   private async placeholdersMadeFrom(firmId: string, r: { templateVersion: number; templateFileKey: string }, tpl: { placeholders: string[]; version: number } | null): Promise<string[]> {
     if (tpl && tpl.version === r.templateVersion) return tpl.placeholders;
     const f = await this.files.get(firmId, r.templateFileKey);
-    try { return f ? placeholdersOf(f.bytes) : tpl?.placeholders ?? []; } catch { return tpl?.placeholders ?? []; }
+    try { return f ? await placeholdersOf(f.bytes) : tpl?.placeholders ?? []; } catch { return tpl?.placeholders ?? []; }
   }
 
   /** Edit (BR-9; AG-5-65): every edit is version n+1. On a sent one the open request ends (UPDATED) in the same
