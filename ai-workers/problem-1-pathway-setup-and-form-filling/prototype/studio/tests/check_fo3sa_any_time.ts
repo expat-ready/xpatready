@@ -103,7 +103,7 @@ try {
   const closed = await go("POST", "", P.CASE_OFFICER, body("2026-10-28 10:00"));
   ok("FO-3sa DW1 fail: a closed-day time → 409 \"Book anyway?\" listing \"Closed day\", nothing saved",
     closed.status === 409 && closed.body.code === "WARNINGS" && codes(closed).join() === "CLOSED_DAY" && labels(closed).includes("Closed day") && await countAt("2026-10-28 10:00") === 0, closed);
-  const closedYes = await go("POST", "", P.CASE_OFFICER, body("2026-10-28 10:00", { bookAnyway: true }));
+  const closedYes = await go("POST", "", P.CASE_OFFICER, body("2026-10-28 10:00", { bookAnyway: true, acceptedWarnings: ["CLOSED_DAY"] }));
   const a1 = closedYes.body?.id ? auditOf(closedYes.body.id, "booking.scheduled") : [];
   ok("FO-3sa DW1 pass: Book anyway saves it, the audit entry records the reason (field 9), no overlap confirmer",
     closedYes.status === 201 && closedYes.body.status === "SCHEDULED" && a1.length === 1 && /with warnings: closed day/.test(a1[0].summary) && JSON.stringify(a1[0].detail?.warnings) === '["CLOSED_DAY"]'
@@ -123,7 +123,7 @@ try {
   ok("FO-3sa DW4 pass: Cancel (bookAnyway false or left out) saves nothing: no booking, no audit line, no event",
     cancelNo.status === 409 && sunday.status === 409 && await countAt("2026-11-01 11:00") === 0 && audit.entries.length === before
       && await db.moduleEvent.count({ where: { firmId: A.id, occurredAt: { gte: at("2026-10-26 08:00") }, payload: { path: ["startsAt"], equals: iso("2026-11-01 11:00") } } }) === 0, cancelNo);
-  const sundayYes = await go("POST", "", P.CASE_OFFICER, body("2026-11-01 11:00", { bookAnyway: true }));
+  const sundayYes = await go("POST", "", P.CASE_OFFICER, body("2026-11-01 11:00", { bookAnyway: true, acceptedWarnings: ["OUTSIDE_HOURS"] }));
   ok("FO-3sa DW4 fail: the same body with bookAnyway true saves it (the 409 was the only thing stopping it)", sundayYes.status === 201 && await countAt("2026-11-01 11:00") === 1, sundayYes);
 
   // ---------------------------------------------------------------------------------------------------- DW2: overlap
@@ -131,12 +131,13 @@ try {
   const clash = await go("POST", "", P.CASE_OFFICER, body("2026-10-27 13:00"));
   ok("FO-3sa DW2 fail: a time over the host's booking → the warning \"Overlaps Lee Sample 13:00–13:30\", nothing saved",
     first.status === 201 && clash.status === 409 && codes(clash).join() === "OVERLAP" && labels(clash).includes("Overlaps Lee Sample 13:00–13:30") && clash.body.warnings[0].bookingId === first.body.id && await countAt("2026-10-27 13:00") === 1, clash);
-  const clashYes = await go("POST", "", P.CASE_OFFICER, body("2026-10-27 13:00", { bookAnyway: true }));
+  const clashYes = await go("POST", "", P.CASE_OFFICER, body("2026-10-27 13:00", { bookAnyway: true, acceptedWarnings: ["OVERLAP"] }));
   const [r1, r2] = [await db.foBooking.findUniqueOrThrow({ where: { id: first.body.id } }), clashYes.body?.id ? await db.foBooking.findUniqueOrThrow({ where: { id: clashYes.body.id } }) : null];
   const a2 = clashYes.body?.id ? auditOf(clashYes.body.id, "booking.scheduled") : [];
   ok("FO-3sa DW2 pass: Book anyway keeps both bookings; the second's host row has overlapConfirmedByUserId = the Case Officer, and the audit shows it",
     clashYes.status === 201 && await countAt("2026-10-27 13:00") === 2 && r1.status === "SCHEDULED" && r1.overlapConfirmedByUserId === null && r2?.overlapConfirmedByUserId === P.CASE_OFFICER.id
-      && a2.length === 1 && a2[0].detail?.overlapConfirmedByUserId === P.CASE_OFFICER.id && /overlaps Lee Sample/.test(a2[0].summary), { clashYes, r2, a2 });
+      && a2.length === 1 && a2[0].detail?.overlapConfirmedByUserId === P.CASE_OFFICER.id && /with warnings: overlap/.test(a2[0].summary)
+      && JSON.stringify(a2[0].detail?.overlapBookingIds) === JSON.stringify([first.body.id]) && !JSON.stringify(a2[0]).includes("Lee"), { clashYes, r2, a2 });
   let dbRefused = "";
   try { await db.foBooking.create({ data: { firmId: A.id, typeId: T.id, staffId: P.OWNER.id, mode: "VIDEO", startsAt: at("2026-10-27 13:10"), endsAt: at("2026-10-27 13:40"), bookerTimeZone: TZ } }); } catch (e) { dbRefused = String(e); }
   ok("FO-3sa DW2 fail: an unconfirmed overlapping row is still refused by the database (fo_booking_no_overlap)", /no_overlap|23P01|exclusion/.test(dbRefused), dbRefused.slice(0, 300));
@@ -157,7 +158,7 @@ try {
   const goneAnyway = await go("POST", "", P.CASE_OFFICER, body("2026-11-01 12:00", { hostStaffId: P.ADMIN.id, bookAnyway: true }, T2.id));
   ok("FO-3sa DW6 fail: a deactivated host → 400 with the field error \"hostStaffId: choose an active host\" (with Book anyway too), nothing saved",
     [gone, goneAnyway].every((r) => r.status === 400 && (r.body.issues ?? []).includes("hostStaffId: choose an active host")) && await countAt("2026-10-29 10:00") === 0 && await countAt("2026-11-01 12:00") === 0, [gone, goneAnyway]);
-  const picked = await go("POST", "", P.CASE_OFFICER, body("2026-11-01 12:00", { bookAnyway: true }, T2.id));
+  const picked = await go("POST", "", P.CASE_OFFICER, body("2026-11-01 12:00", { bookAnyway: true, acceptedWarnings: ["OUTSIDE_HOURS"] }, T2.id));
   ok("FO-3sa DW6 pass: with no host chosen, Book anyway never takes the deactivated host (the pick rule skips it, AG-4-53)", picked.status === 201 && picked.body.staffId === P.OWNER.id, picked);
   const notHost = await go("POST", "", P.CASE_OFFICER, body("2026-10-29 11:00", { hostStaffId: P.CASE_MANAGER.id }));
   ok("FO-3sa DW6 fail: an active staff member who is not a host of the type → 400 field error, nothing saved", notHost.status === 400 && (notHost.body.issues ?? []).includes("hostStaffId: not a host of this consultation") && await countAt("2026-10-29 11:00") === 0, notHost);
@@ -167,12 +168,12 @@ try {
   const mvNo = await go("POST", `/${mv}/reschedule`, P.CASE_MANAGER, { startsAt: iso("2026-11-01 15:00") });
   ok("FO-3sa DW7 fail: a reschedule to Sunday 15:00 → the same warning, the booking unchanged",
     mvNo.status === 409 && codes(mvNo).join() === "OUTSIDE_HOURS" && (await db.foBooking.findUniqueOrThrow({ where: { id: mv } })).startsAt.toISOString() === iso("2026-10-27 10:00"), mvNo);
-  const mvYes = await go("POST", `/${mv}/reschedule`, P.CASE_MANAGER, { startsAt: iso("2026-11-01 15:00"), bookAnyway: true });
+  const mvYes = await go("POST", `/${mv}/reschedule`, P.CASE_MANAGER, { startsAt: iso("2026-11-01 15:00"), bookAnyway: true, acceptedWarnings: ["OUTSIDE_HOURS"] });
   const a7 = auditOf(mv, "booking.rescheduled");
   ok("FO-3sa DW7 pass: with Book anyway it moves (RESCHEDULED, same host), and the audit keeps the reason",
     mvYes.status === 200 && mvYes.body.status === "RESCHEDULED" && mvYes.body.startsAt === iso("2026-11-01 15:00") && mvYes.body.staffId === P.OWNER.id && a7.length === 1 && JSON.stringify(a7[0].detail?.warnings) === '["OUTSIDE_HOURS"]', { mvYes, a7 });
   const ovNo = await go("POST", `/${mv}/reschedule`, P.CASE_MANAGER, { startsAt: iso("2026-10-27 13:00") });
-  const ovYes = await go("POST", `/${mv}/reschedule`, P.CASE_MANAGER, { startsAt: iso("2026-10-27 13:00"), bookAnyway: true });
+  const ovYes = await go("POST", `/${mv}/reschedule`, P.CASE_MANAGER, { startsAt: iso("2026-10-27 13:00"), bookAnyway: true, acceptedWarnings: ["OVERLAP"] });
   ok("FO-3sa DW7 pass: a move over two bookings lists both overlaps; Book anyway moves it with the Case Manager as confirmer",
     ovNo.status === 409 && codes(ovNo).filter((c: string) => c === "OVERLAP").length === 2 && ovYes.status === 200 && (await db.foBooking.findUniqueOrThrow({ where: { id: mv } })).overlapConfirmedByUserId === P.CASE_MANAGER.id, { ovNo, ovYes });
   const back = await go("POST", `/${mv}/reschedule`, P.CASE_MANAGER, { startsAt: iso("2026-10-30 10:00") });
@@ -192,7 +193,7 @@ try {
   ok("FO-3sa DW8 fail: firm B's host id or type id → 404 (never named), nothing saved",
     bHost.status === 404 && bType.status === 404 && !JSON.stringify(bHost.body).includes(B1.id) && await db.foBooking.count({ where: { startsAt: at("2026-11-01 16:00") } }) === 0, [bHost, bType]);
   ok("FO-3sa DW8 pass: the four roles with the keys may book anyway (OWNER, ADMIN, CASE_MANAGER, CASE_OFFICER)",
-    (await Promise.all((["OWNER", "ADMIN", "CASE_MANAGER", "CASE_OFFICER"] as const).map((r, i) => go("POST", "", P[r], body(`2026-11-01 ${String(16 + i).padStart(2, "0")}:00`, { bookAnyway: true }))))).every((r) => r.status === 201));
+    (await Promise.all((["OWNER", "ADMIN", "CASE_MANAGER", "CASE_OFFICER"] as const).map((r, i) => go("POST", "", P[r], body(`2026-11-01 ${String(16 + i).padStart(2, "0")}:00`, { bookAnyway: true, acceptedWarnings: ["OUTSIDE_HOURS"] }))))).every((r) => r.status === 201));
 
   // ------------------------------------------- DW9: a public booking never lands on a confirmed overlap (Lead B, #1828)
   // Tue 27 Oct 13:00 holds the first booking and the confirmed one (DW2); the confirmed row is outside the database rule.
@@ -209,12 +210,28 @@ try {
   ok("FO-3sa DW9 pass: the same public form books a free time, with no confirmer", free9.status === 201 && (await db.foBooking.findFirstOrThrow({ where: { firmId: A.id, startsAt: at("2026-10-27 15:00") } })).overlapConfirmedByUserId === null, free9);
 
   // ------------------------------------------------------- DW10: two parallel Book-anyway posts both save (Lead B, #1828)
-  const [p1, p2] = await Promise.all([go("POST", "", P.OWNER, body("2026-11-01 11:00", { bookAnyway: true })), go("POST", "", P.CASE_OFFICER, body("2026-11-01 11:00", { bookAnyway: true }))]);
+  const [p1, p2] = await Promise.all([go("POST", "", P.OWNER, body("2026-11-01 11:00", { bookAnyway: true, acceptedWarnings: ["OUTSIDE_HOURS", "OVERLAP"] })), go("POST", "", P.CASE_OFFICER, body("2026-11-01 11:00", { bookAnyway: true, acceptedWarnings: ["OUTSIDE_HOURS", "OVERLAP"] }))]);
   const rows10 = await db.foBooking.findMany({ where: { id: { in: [p1.body?.id, p2.body?.id].filter(Boolean) } } });
   ok("FO-3sa DW10 pass: two parallel staff Book-anyway posts over the Sunday 11:00 booking both save, each with its own confirmer",
     p1.status === 201 && p2.status === 201 && await countAt("2026-11-01 11:00") === 3 && rows10.find((r) => r.id === p1.body.id)?.overlapConfirmedByUserId === P.OWNER.id && rows10.find((r) => r.id === p2.body.id)?.overlapConfirmedByUserId === P.CASE_OFFICER.id, [p1, p2]);
   const [q1, q2] = await Promise.all([go("POST", "", P.OWNER, body("2026-11-01 13:00")), go("POST", "", P.CASE_OFFICER, body("2026-11-01 13:00"))]);
   ok("FO-3sa DW10 fail: the same two posts without Book anyway both get the warning, and nothing is saved", q1.status === 409 && q2.status === 409 && await countAt("2026-11-01 13:00") === 0, [q1, q2]);
+
+  // ------------------------------------------------ review M1: Book anyway covers only the warnings the person was shown
+  const seen = await go("POST", "", P.CASE_OFFICER, body("2026-11-01 14:00"));
+  const owner14 = await go("POST", "", P.OWNER, body("2026-11-01 14:00", { bookAnyway: true, acceptedWarnings: codes(seen) }));
+  const stale = await go("POST", "", P.CASE_OFFICER, body("2026-11-01 14:00", { bookAnyway: true, acceptedWarnings: codes(seen) }));
+  const bare = await go("POST", "", P.CASE_OFFICER, body("2026-11-01 14:00", { bookAnyway: true }));
+  ok("FO-3sa M1 fail: a warning that appeared after the person saw the dialog (the Owner booked the time meanwhile) is asked again, and Book anyway with no codes is asked again; nothing saved",
+    seen.status === 409 && codes(seen).join() === "OUTSIDE_HOURS" && owner14.status === 201 && stale.status === 409 && codes(stale).includes("OVERLAP") && bare.status === 409 && await countAt("2026-11-01 14:00") === 1, [seen, owner14, stale, bare]);
+  const fresh = await go("POST", "", P.CASE_OFFICER, body("2026-11-01 14:00", { bookAnyway: true, acceptedWarnings: codes(stale) }));
+  ok("FO-3sa M1 pass: Book anyway on the new dialog's warnings saves, with the Case Officer as confirmer", fresh.status === 201 && (await db.foBooking.findUniqueOrThrow({ where: { id: fresh.body.id } })).overlapConfirmedByUserId === P.CASE_OFFICER.id, fresh);
+
+  // ----------------------------------------------- review M2: a time between the page's starts, inside the hours, is taken
+  const offGrid = await go("POST", "", P.CASE_OFFICER, body("2026-10-29 14:15"));
+  ok("FO-3sa M2 pass: Thu 14:15 (between the 30-minute starts, inside the host's hours, host free) saves at once, no warning (Rule 7: warn, never block)", offGrid.status === 201 && offGrid.body.startsAt === iso("2026-10-29 14:15"), offGrid);
+  const offGrid2 = await go("POST", "", P.CASE_OFFICER, body("2026-10-29 14:35"));
+  ok("FO-3sa M2 fail: 14:35, over the 14:15 booking and its 10-minute gap, warns of the overlap and saves nothing", offGrid2.status === 409 && codes(offGrid2).join() === "OVERLAP" && await countAt("2026-10-29 14:35") === 0, offGrid2);
 } catch (e) {
   fail++; console.log(`FAIL  FO-3sa: the check stopped — ${String((e as Error)?.stack ?? e).slice(0, 800)}`);
 } finally {

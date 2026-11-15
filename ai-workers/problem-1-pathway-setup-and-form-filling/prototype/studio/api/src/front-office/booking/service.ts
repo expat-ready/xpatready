@@ -85,7 +85,10 @@ const tooMany = () => problem(429, "too-many-requests", "Too many requests", "Pl
 /** A form stamp that already made a booking (FO-3f item 4, break B-8). */
 const formUsed = () => problem(409, "form-already-sent", "Already sent", "This form was already sent. Reload the page to book again.", { code: "FORM_ALREADY_SENT" });
 /** FO-3sa (AG-4-63 rule 3): one answer with every reason; nothing was saved. The same body with bookAnyway: true saves. */
-export type Warning = { code: "CLOSED_DAY" | "OUTSIDE_HOURS" | "INSIDE_NOTICE" | "BEYOND_WINDOW" | "OVERLAP"; label: string; bookingId?: string };
+const WARNING_CODES = ["CLOSED_DAY", "OUTSIDE_HOURS", "INSIDE_NOTICE", "BEYOND_WINDOW", "OVERLAP"] as const;
+export type Warning = { code: (typeof WARNING_CODES)[number]; label: string; bookingId?: string };
+/** The audit's words for each code (AG-4-63 field 9: "booked with warnings: closed day, overlap"; no person's name, m2). */
+const WARNING_WORDS: Record<Warning["code"], string> = { CLOSED_DAY: "closed day", OUTSIDE_HOURS: "outside hours", INSIDE_NOTICE: "inside notice", BEYOND_WINDOW: "beyond window", OVERLAP: "overlap" };
 const needsConfirm = (hostStaffId: string, warnings: Warning[]) => problem(409, "book-anyway", "Book anyway?", "This time is not one the booking page offers. Book anyway, or cancel to save nothing.", { code: "WARNINGS", hostStaffId, warnings });
 const inactiveHost = () => refused("Please choose an active host.", ["hostStaffId: choose an active host"]);
 
@@ -130,9 +133,11 @@ export const StaffBookingBody = z.strictObject({
   hostStaffId: z.uuid().optional(),
   /** FO-3sa (AG-4-63 rule 4): save despite the warnings the first answer listed. */
   bookAnyway: z.boolean().optional(),
+  /** FO-3sa (review M1): the warning codes the person was shown; a warning not among them gives a fresh answer. */
+  acceptedWarnings: z.array(z.enum(WARNING_CODES)).max(10).optional(),
 });
 export const RescheduleBody = z.strictObject({ startsAt: Instant, timeZone: Zone.optional() });
-export const StaffRescheduleBody = RescheduleBody.extend({ bookAnyway: z.boolean().optional() });
+export const StaffRescheduleBody = RescheduleBody.extend({ bookAnyway: z.boolean().optional(), acceptedWarnings: z.array(z.enum(WARNING_CODES)).max(10).optional() });
 export const SlotsQuery = z.object({ from: Instant.optional(), to: Instant.optional(), tz: Zone.optional() });
 
 const parse = <T extends z.ZodType>(schema: T, body: unknown): z.output<T> => {
@@ -146,7 +151,7 @@ type TypeRow = Awaited<ReturnType<Tx["foConsultationType"]["findFirstOrThrow"]>>
 type BookingRow = Awaited<ReturnType<Tx["foBooking"]["findFirstOrThrow"]>>;
 type Actor = { word: string; staffId?: string };
 /** FO-3sa: how a staff write places its time (the public door never passes one). */
-type AnyTime = { hostStaffId?: string; bookAnyway: boolean; by: string };
+type AnyTime = { hostStaffId?: string; bookAnyway: boolean; accepted: string[]; by: string };
 type Placed = { startsAt: Date; endsAt: Date; staffId: string; warnings: Warning[] };
 type MailKind = "booked" | "moved" | "cancelled";
 type AfterCommit = { booking: BookingRow; kind: MailKind; oldSequence?: number };
@@ -306,7 +311,7 @@ export class BookingService {
       const r = await this.ports.arrival.bookingForPerson(tx, { firmId: ctx.firmId, personId: b.personId, bookingId });
       if (!r) return notInFirm("person");
       return { personId: b.personId, ...(r.prospectId ? { prospectId: r.prospectId } : {}) };
-    }, undefined, { hostStaffId: b.hostStaffId, bookAnyway: b.bookAnyway === true, by: ctx.staffId });
+    }, undefined, { hostStaffId: b.hostStaffId, ...anyTime(b), by: ctx.staffId });
     // The visitor's link is the person's, sent to them by email; staff never get it (FO-3f item 3, review m7).
     return this.view(out.booking);
   }
@@ -316,7 +321,7 @@ export class BookingService {
     const b = parse(StaffRescheduleBody, body);
     await this.staffBooking(ctx, bookingId);
     if (b.startsAt.getTime() <= this.ports.clock.now().getTime()) throw refused("Please choose a time that has not started yet.", ["startsAt: in the past"]);
-    return this.view((await this.move(ctx.firmId, bookingId, b.startsAt, b.timeZone, staffActor(ctx), undefined, { bookAnyway: b.bookAnyway === true, by: ctx.staffId })).booking);
+    return this.view((await this.move(ctx.firmId, bookingId, b.startsAt, b.timeZone, staffActor(ctx), undefined, { ...anyTime(b), by: ctx.staffId })).booking);
   }
 
   async staffCancel(ctx: StaffContext, bookingId: string) {
@@ -630,8 +635,9 @@ export class BookingService {
     const staffId = want ?? (any.current && active.has(any.current) ? any.current : type.hostStaffIds.find((id) => active.has(id)));
     if (!staffId || !active.has(staffId)) throw inactiveHost();   // deactivated since the check, or no active host at all (AG-4-53)
     const warnings = await this.warningsFor(tx, firmId, type, staffId, startsAt, ignoreBookingId);
-    if (!warnings.length) throw new NoSlot();
-    if (!any.bookAnyway) throw needsConfirm(staffId, warnings);
+    // No warning (a time between the page's starts, inside the host's hours): staff take it as asked (Rule 7, review M2).
+    // Book anyway covers only the warnings the person was shown: one that appeared since is asked again (review M1).
+    if (warnings.length && (!any.bookAnyway || warnings.some((w) => !any.accepted.includes(w.code)))) throw needsConfirm(staffId, warnings);
     return { startsAt, endsAt: new Date(startsAt.getTime() + type.minutes * MIN), staffId, warnings };
   }
 
@@ -800,9 +806,10 @@ async function lockHosts(tx: Tx, staffIds: string[]) {
 const wallMinute = (at: Date, zone: string) => { const t = new Date(at.getTime() + tzOffset(zone, at) * MIN); return t.getUTCHours() * 60 + t.getUTCMinutes(); };
 /** The staff member who chose Book anyway over an overlap; null for every other write (public and self-service ones). */
 const confirmer = (p: { warnings: Warning[] }, any?: AnyTime) => (any && p.warnings.some((w) => w.code === "OVERLAP") ? any.by : null);
-const withWarnings = (w: Warning[]) => (w.length ? ` with warnings: ${w.map((x) => x.label.charAt(0).toLowerCase() + x.label.slice(1)).join(", ")}` : "");
+const withWarnings = (w: Warning[]) => (w.length ? ` with warnings: ${[...new Set(w.map((x) => WARNING_WORDS[x.code]))].join(", ")}` : "");
+const anyTime = (b: { bookAnyway?: boolean; acceptedWarnings?: string[] }) => ({ bookAnyway: b.bookAnyway === true, accepted: b.acceptedWarnings ?? [] });
 /** AG-4-63 field 9: the reasons shown are kept in the audit entry only. */
-const warningDetail = (w: Warning[], confirmedBy: string | null): Record<string, boolean | string[] | string | null> => (w.length ? { bookedAnyway: true, warnings: w.map((x) => x.code), warningLabels: w.map((x) => x.label), overlapConfirmedByUserId: confirmedBy } : {});
+const warningDetail = (w: Warning[], confirmedBy: string | null): Record<string, boolean | string[] | string | null> => (w.length ? { bookedAnyway: true, warnings: [...new Set(w.map((x) => x.code))], overlapBookingIds: w.flatMap((x) => (x.bookingId ? [x.bookingId] : [])), overlapConfirmedByUserId: confirmedBy } : {});
 
 export const staffActor = (ctx: StaffContext): Actor => ({ word: `staff:${ctx.staffId}`, staffId: ctx.staffId });
 function need(ctx: StaffContext, key: string) { if (!ctx.keys.includes(key)) throw forbidden(key); }
