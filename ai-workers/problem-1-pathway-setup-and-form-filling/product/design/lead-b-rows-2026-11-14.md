@@ -1161,3 +1161,17 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
   - The database guard widens only to "same case, same currency, pick recorded".
   - DW16 adds a refusal test for each case: another case, another currency, no pick, and no reason.
   - Unconfirmed: no counsel.
+
+## Rev 16.38 (16 Nov 02:3x IST, Lead B (6)): LMIA items (#1883, comment 6901285182; #1882, comment 6901285389)
+* **FO-7b adds `ClientMoneyPort.addGovernmentFeeLine`.**
+  - It puts an untaxed `GOVERNMENT_FEE` line on the open draft for the case's Bill-to party, or on a new draft.
+  - The line is linked to the fee record, and the same fee twice makes one line.
+  - With no signed retainer there is no line (AG17-D79). The release Lead reads the port change.
+* **New row PF-6vt** (screens; waits on PF-6 part 1): the Individual / Corporate view toggle in the staff frame (AG-17-2).
+  - Pages read the view from one hook and decide their own menu entries and filters.
+  - Leads are never filtered by it (AG02-D0).
+  - The brief reads AG-17-2 in full for where the choice is kept.
+* **AG-7-86 is the staff client screen's corporate panels, not the client portal.**
+  - Lead B's reading: it is the case side's row (FO-8, AG-07, BR-27). Money and company panels read through ports.
+  - The release Lead is to confirm. If the client screen is front office's, Lead B takes it as FO-4c.
+* **`fo_company` is the employer master** (agreed). Case-only facts are keyed to its id, with no copies of its facts. The case side never writes `fo_company`.
