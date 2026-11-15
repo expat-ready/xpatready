@@ -596,7 +596,7 @@ try {
   hidden.file("word/hdr1.bin", `<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>{client.passport}</w:t></w:r></w:p></w:hdr>`);
   ok("FO-5 fail (B-3): an unknown placeholder in a header declared under a non-.xml name is refused", await fails(() => svc.uploadTemplate(R, { name: "Hidden header" }, { bytes: new Uint8Array(hidden.generate({ type: "uint8array" })), size: 2000 }), 422, /client\.passport/));
   // B-19: a bounded number of placeholders, and a short refusal.
-  ok("FO-5 fail (B-19): a template with more than 2000 placeholders is refused as unreadable", await fails(() => svc.uploadTemplate(R, { name: "Many" }, docx([Array.from({ length: 2100 }, (_, i) => `{x${i}}`).join(" ")])), 422, /UNREADABLE_FILE/));
+  ok("FO-5 fail (B-19): a template with more than 2000 placeholders is refused, saying why (FO-5f item 5)", await fails(() => svc.uploadTemplate(R, { name: "Many" }, docx([Array.from({ length: 2100 }, (_, i) => `{x${i}}`).join(" ")])), 422, /more than 2000 placeholders.*TOO_MANY_PLACEHOLDERS/));
   ok("FO-5 fail (B-19): fifteen unknown placeholders are named ten at a time, \"and 5 more\"", await fails(() => svc.uploadTemplate(R, { name: "Fifteen" }, docx([Array.from({ length: 15 }, (_, i) => `{y${i}}`).join(" ")])), 422, /and 5 more/));
   // B-16, r2-m1: text the database refuses is refused at the field (422), never "someone else saved it".
   ok("FO-5 fail (B-16): a fee label with a tab, or a reason with a control character, is refused at the field (422)",
@@ -664,7 +664,7 @@ try {
   // item has a pass and a fail test, named after its code.
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });   // two staff on one retainer
   const reqEnded = (id: string) => events(EVENT.RETAINER_REQUEST_ENDED, id);
-  const payloadOf = (type: string, id: string) => sql(API, `select coalesce(string_agg(payload::text, '|' order by created_at), '') from module_event where type = '${type}' and subject_id = '${id}'`);
+  const payloadOf = (type: string, id: string) => sql(API, `select coalesce(string_agg(payload::text, '|' order by seq), '') from module_event where type = '${type}' and subject_id = '${id}'`);
   const newClient = (n: number, name: string) => { const p = u(7000 + n); person(p, name, `c${n}@example.com`); return prospect(p, R.staffId); };
 
   // Item 1: an edit that ends a live request writes retainer.request_ended (version = the ended one, reason UPDATED).
