@@ -66,6 +66,8 @@ The invite as received, and any mail (fake mail). Any screen. A walk on the shar
 5. Row 55: FO-5 part 2 already builds withdraw, Signed offline and re-issue at API level, but the checklist lists only FO-6 and FO-5s for row 55. Should FO-5 be added to row 55's BACKLOG list?
 6. R1.53 says "versioned until sent", but the routes allow an edit after Send that makes a new version (`service.ts:32`, BR-9, AG-5-65; second reader). Which wording is meant?
 
+**Answers (Lead 52, current Lead from 08:21 IST, on #1792, 15 Nov ~09:2x IST; P-486, reversible):** (1) keep R1.74 and R1.76. (2) The Lead changes checklist rows 74, 76 and 77 to match `main`; Lead B shapes rows for QA-471, QA-472 and QA-474. (3) RULES stands (P-348 (3)): a capability whose Done when has a screen reaches Works only after its screen is walked; only a capability with no screen in scope may pass gate A by API. R1.38 and R1.40 wait for their screens. (4) FO-5 (part 2) is added to row 55's rows. (5) R1.53: each Send freezes the sent version; an edit after Send makes a new version that must be sent again. The routes match, and the row is scored on that reading (still Partial: the 26 items and the screens). (6) FO-3w-staff, the QA-470 fix and QA-473 go to Lead B as rows. (7) The protected set matters once an R1 row reaches Works.
+
 ## 8. Suggestions
 * *Needed for the proof · Capability:* wire FO-3's staff routes now that PF-4 is on `main` (FO-3w-staff). Rows 41 and 42 cannot be walked without them.
 * *Later · Scaffolding:* a dev-only read of the fake outbox on isolated copies, so a walk can open the invite and the self-service mail.
