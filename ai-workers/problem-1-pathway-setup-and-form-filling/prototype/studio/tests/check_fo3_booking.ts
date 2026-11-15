@@ -550,7 +550,7 @@ try {
     const TOR10 = /10:00\sa\.m\. \(America\/Toronto\)/, TOR11 = /11:00\sa\.m\. \(America\/Toronto\)/;
 
     // Tue 17 Nov 10:00 Toronto = 15:00Z = 19:00 Dubai.
-    const b1 = await bookFrom("dubai1", "2026-11-17T15:00:00.000Z", "Asia/Dubai");
+    await bookFrom("dubai1", "2026-11-17T15:00:00.000Z", "Asia/Dubai");
     await jobs.runDue();
     const hb = hostMail("booking.host_booked");
     ok("FO-3h DW1 pass: a booking from Asia/Dubai for Tue 17 Nov 10:00 Toronto mails the host \"10:00 a.m. (America/Toronto)\" in subject and text",
@@ -587,7 +587,15 @@ try {
     await jobs.runDue();
     const ask = hostMail("booking.attendance_ask");
     ok("FO-3h DW4: the attendance question to the host reads the host's zone (\"10:00 a.m. (America/Toronto)\", never Asia/Dubai)",
-      !!ask && TOR10.test(ask.text) && !said(ask).includes("Asia/Dubai") && !!b1, ask && said(ask));
+      !!ask && TOR10.test(ask.text) && !said(ask).includes("Asia/Dubai") && ask.to === "fo3h-host@staff.example", ask && said(ask));
+
+    // hostZone reads the firm's own setting, not a fixed default (review m1): the firm moves to America/Regina (UTC-6 all year).
+    await writeSetting(db, { firmId: D.id, key: TIME_ZONE.key, value: "America/Regina", by: "seed:fo3h", workspaceId: ws.id });
+    await bookFrom("dubai3", "2026-11-19T17:00:00.000Z", "Asia/Dubai");   // Thu 19 Nov 12:00 Toronto = 11:00 Regina
+    await jobs.runDue();
+    const hv = mail.inbox("fo3h-host@staff.example").filter((m) => m.templateKey === "booking.host_booked").at(-1);
+    ok("FO-3h hostZone: a firm in America/Regina mails the host \"11:00 a.m. (America/Regina)\", not the setting's default zone",
+      !!hv && /11:00\sa\.m\. \(America\/Regina\)/.test(hv.subject) && /11:00\sa\.m\. \(America\/Regina\)/.test(hv.text) && !said(hv).includes("America/Toronto") && !said(hv).includes("Asia/Dubai"), hv && said(hv));
   }
 
   // --------------------------------------------------------------------------------------- over HTTP, with the guard
