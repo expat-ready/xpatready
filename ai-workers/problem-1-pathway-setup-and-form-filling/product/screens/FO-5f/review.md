@@ -137,4 +137,47 @@ Per the coordinator, this is the same defect as round 1's M-1, not a new Major.
 
 **To fix before Approve:** M-1 (the suffix rule, with its tests). Nothing else is open in this diff.
 
+**Round 3 verdict:** Block (`28f635a9a`).
+
+## Round 4 (final, fresh reviewer, diff-only): `git diff 28f635a9a 2b5a79e1d -- prototype/studio`
+* **Commit reviewed:** `2b5a79e1d3a970649e306948a3e38d8a246c3ee5`. Reviewer: Opus, a fresh session that did not build this row or review rounds 1-3. Read: the diff (`docx.ts`, one message in `service.ts`, the test file) and docxtemplater 3.71.1 `get-content-types.js`, `get-relation-types.js`, `docxtemplater.js` (`compile`, `updateFileTypeConfig`, `getTemplatedFiles`), `modules/common.js`, `filetypes.js`, `content-types.js`, `file-type-config.js`.
+* `tests/check_fo5_retainers.ts` at 2b5a79e1d: **247 passed, 0 failed** (exit 0, 36 s). `tsc -p api/tsconfig.json --noEmit` shows no error in a touched file.
+* Probes: direct `placeholdersOf` / `renderDocx` (scripts `probe.ts`, `render.ts`, `ct.ts`, `six.mts`, `real.mts` in `scratchpad/rev4/`). HTTP: isolated copy `rv4_fo5f` on :4437 (`http.mts`), upload as user-R with user-T's read sent 200 ms later; the copy is stopped. Baseline: 28f635a9a's `docx.ts` run from a scratch copy (`docx_old.ts`).
+
+| Round 3 item / question | Holds? |
+|---|---|
+| The six ways in (Extension "in", empty Extension, no dot, single-quoted Override, header under word/charts, header under customXml) | **yes**. Each is read and refused at 2b5a79e1d; at 28f635a9a all six listed only `client.name` (`six.mts`), so the new tests fail on the old code |
+| Typing by docxtemplater's own `getContentTypes` / `collectContentTypes` | yes for the typing itself. But the name filter after it and the parse before it leave M-1 open and add N-1 below |
+| Deep import of `docxtemplater/js/get-content-types.js` | acceptable: docxtemplater is pinned exactly (`package.json:33`, `"3.71.1"`), it has no `exports` map, and the cast uses `unknown`, not `any` (`docx.ts:21-24`). If an upgrade moves the file, the module fails at load, loudly, not silently |
+| False refusals on real Word files | none found: a Word-origin file (the python-docx default template, with `customXml/itemProps1.xml` GUIDs, styles, settings, header, docProps) lists `client.name, fees, fees.amount, fees.label, firm.name` |
+| breaker r2-m1 (legacy refusal wording) | yes: `service.ts:559` no longer promises "Edit the agreement back"; two tests |
+| breaker r2-m2 (licensing body) | yes (already at 28f635a9a) |
+
+**M-1 Major (rounds 1-3's M-1, still open): parts docxtemplater compiles still escape the brace count and the placeholder read, by their name.** `docx.ts:123` skips any part named `…[Content_Types].xml` or `….rels` before counting, whatever its type. docxtemplater compiles a part by its type alone (`common.js:37,60`), so an Override typed as a header on `word/h.rels`, `_rels/.rels`, `word/[Content_Types].xml` or `[Content_Types].xml` itself is compiled.
+* Repro, direct `placeholdersOf`, 200,000 lone `{` in a header at each of those four names: 8.3-8.5 s each, then "duplicate open tags" (not TOO_MANY_PLACEHOLDERS).
+* Repro, HTTP on :4437: `<Override PartName="/word/h.rels" ContentType="…wordprocessingml.header+xml"/>` with 200,000 `{` (1,342 bytes) → 422 after **9,667 ms**; user-T's list, sent 200 ms later, got ECONNRESET. The same file with `Passport {client.passport}` → **201**, `placeholders` without `client.passport`; `renderDocx` prints the value into `word/h.rels`, so the agreement prints it blank (B-3's rest).
+* Placeholder read only, `docx.ts:133`: a `customXml/` part typed core-properties (`customXml/item1.xml`, `<dc:title>{client.passport}</dc:title>`) or diagramData (`customXml/d.xml`) is brace-counted but not read, because only coverPageProps or `wordprocessingml` types pass. docxtemplater compiles both types (`common.js:20`); `renderDocx` printed the value into each.
+* **Fix:** skip by name only the exact `[Content_Types].xml` and `.rels` files *whose type is not one docxtemplater templates*; otherwise count and read them like any part. At `docx.ts:133`, read every customXml part whose type is a templated one (the `filetypes.docx` and `common.js` lists), not only `wordprocessingml`. Tests: 1.5 M `{` in a header Override on `word/h.rels` and on `_rels/.rels`, refused in under 2 s; `{client.passport}` in each and in a core-typed customXml part, refused.
+
+**N-1 Major (new; a regression in this diff): `[Content_Types].xml` is parsed into a full DOM before any cap, and a 9 KB upload kills the API.** `docx.ts:106` caps only `<Default` (100) and `<Override` (1000); `docx.ts:108` then calls `getContentTypes`, which builds an xmldom tree of the whole part (up to the 30 MB limit), and `compile()` at `docx.ts:141` parses it a second time.
+* Repro, direct: `[Content_Types].xml` plus 1,000,000 × `<a/>` (4,774-byte zip) → listed normally after 13,814 ms at 1,994 MB RSS; `getContentTypes` alone on it: 2,276 ms, 1,156 MB. With 2,000,000 × `<a/>` (8,670 bytes): heap out of memory.
+* Repro, HTTP on :4437: 1,000,000 → **201 after 13,421 ms**, user-T's read reset; 2,000,000 (8,696 bytes) → socket closed after 14 s, the API process died (`FATAL ERROR: … JavaScript heap out of memory` in `var/isolated-logs/rv4_fo5f-api.log`); every firm goes down.
+* Regression: at 28f635a9a the same 2,000,000-element file took 18,875 ms but did not crash; the second DOM held alongside docxtemplater's own takes it over the heap limit. 1,000,000 took 5,809 ms there and 13,814 ms here.
+* **Fix:** before any parse, refuse as damaged a `[Content_Types].xml` larger than a real one can be (1,000 Overrides of about 200 bytes: for example 256 KB), or with more than `DOCX_MAX_ENTRIES + 100 + 10` `<` signs. `_rels/.rels` is parsed the same way by `compile` (`get-relation-types.js:8`): give it the same size check. Test: 2 M `<a/>` in each refused in under 2 s.
+
+**m-1 Minor (not in this diff; recorded): the scan reads fewer text tags than docxtemplater lexes.** `docx.ts:134,137` reads the whole text only under `docProps/` or a cover part, and otherwise only `w:t`, `vt:lpwstr`, `vt:lpstr`. docxtemplater lexes `dc:title`, `Company`, `Abstract` and the rest of `tagsXmlTextArray` (`file-type-config.js:13`) in every templated part. Repro: `<Company>{client.passport}</Company>` in `word/document.xml`, or a core-typed `word/core.xml` with `<dc:title>{client.passport}</dc:title>` → `placeholdersOf` lists only `client.name`; `renderDocx` prints the value there. Braces are still counted, so this is no flood. **Fix:** read the text of every tag in that list, or treat any core/app/custom-typed part as plain.
+
+*Notes, not findings:* a 1,000,000 × `<w:p/>` body (9.6 KB) takes 2.2 s to compile, the same at 28f635a9a: an element flood in a templated part is outside the brace cap and outside this diff. Counting braces in attributes over-counts GUIDs (diagram data carries several per node); a Word file with many SmartArt graphics could pass 4,000. This was the same before this diff and none of my real files came near it.
+
+## D1-D20 (round 4, API row; D4, D7, D8, D12-D14 N/A; D17 and D20 simulated only)
+D1 3: item 5 still partly met (M-1) · D2 3: the placeholder list can miss a printed field (M-1) · D3 4: one typing path, docxtemplater's own · D5 1: an 8.7 KB upload kills the process (N-1) · D6 4 · D9 4 · D10 4: r2-m1 wording plain · D11 4 · D15 1: M-1, N-1 · D16 4: 247 passed; the six new routes fail on the old code · D18 4.
+
+## What I could not check (round 4)
+* No screen in this row: no browser walk, axe, 1024 px or 200 % zoom.
+* CI on the PR was not observed. I did not rerun other suites or mutants (diff-only ruling).
+
+**Journey score (round 4): 8 / 10** (`journey-test-reviewer-2026-11-15.md`, "Round 4"). It passes by score, but M-1 and N-1 are open Majors.
+
+**To fix (the row splits, per Lead 53):** M-1 (name-based skip at `docx.ts:123`; customXml read gate at `docx.ts:133`) and N-1 (size check on `[Content_Types].xml` and `_rels/.rels` before any parse), each with its fail tests. m-1 may be fixed with them or recorded.
+
 Verdict: Block
