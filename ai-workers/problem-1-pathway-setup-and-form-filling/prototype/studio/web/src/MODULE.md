@@ -17,14 +17,15 @@ The web app's shell: routes, the API client, module pages seam, shared words and
 - `APP_ROUTES` matches `App.tsx`'s routes; the test fails when they differ.
 - `actor` is the one current person; only `setActor` changes it (P-484).
 - The simulated person travels as `x-actor`; the server decides and refuses in plain words.
+- Firm-staff pages (`modules/front-office/`) call `/api/platform/*` and `/api/front-office/*` with PF-4's bearer token through `sales/session.ts` (`staffApi`, `useMe`), never `lib/api.ts`; a change of person drops every `["fo", …]` answer (FO-4).
 - Demo-only controls sit in one menu, never part of the product (P-35); the menu offers the six agreed combinations (P-148).
 - `styles/tokens.css` is the team's tokens, copied unchanged.
 - One way to say who can be in an application (`lib/people.ts`, P-161 (2)).
 
 **Tables.** none directly (web).
-**Tests.** `tests/check_pf1_module_routes.ts`, `tests/check_bk4a.ts`, `tests/check_forms_held_conditions_pure.ts`, `tests/check_bk3_frame.ts`.
+**Tests.** `tests/check_pf1_module_routes.ts`, `tests/check_fo4_sales_browser.ts`, `tests/check_bk4a.ts`, `tests/check_forms_held_conditions_pure.ts`, `tests/check_bk3_frame.ts`.
 
 **Do not.**
 - Edit `styles/tokens.css` by hand.
 - Route a module page from `App.tsx`.
-- Read who the person is anywhere but `getActor()`/`setActor` (`lib/api.ts`).
+- Read who the person is anywhere but `getActor()`/`setActor` (`lib/api.ts`), or, on firm-staff pages, `useMe()` (`sales/session.ts`).
