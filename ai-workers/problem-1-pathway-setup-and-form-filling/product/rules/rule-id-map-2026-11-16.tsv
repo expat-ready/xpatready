@@ -4,22 +4,22 @@
 # old_rows=145
 # line_sha = the first 16 hex of sha256 of the row's whole line as it was on RULES.md; a moved row must still hash to it.
 id	outcome	where	line_sha
-IDX-1	merged	IDX-5	1a52a4e28b0b1d74
+IDX-1	kept	RULES.md	-
 P-418	kept	RULES.md	-
 P-464	kept	RULES.md	-
 P-470	kept	RULES.md	-
 P-462	kept	RULES.md	-
 P-468	kept	RULES.md	-
-IDX-2	retired	P-545, P-569	ef800b0bf716d7d9
+IDX-2	kept	RULES.md	-
 P-473	kept	RULES.md	-
 P-550	merged	P-558	1b7c5d8413b66942
 P-558	kept	RULES.md	-
 P-547	kept	RULES.md	-
-P-583	retired	STATE / BACKLOG	249eea79ecf35898
-P-589	merged	P-539	2cac2f0fe0536e80
+P-583	kept	RULES.md	-
+P-589	kept	RULES.md	-
 IDX-5	kept	RULES.md	-
 IDX-3	retired	P-569	5dbe0558c8c265ba
-IDX-4	merged	IDX-5	89268e3f5e66f27f
+IDX-4	kept	RULES.md	-
 P-488	kept	RULES.md	-
 F-12Nov	kept	RULES.md	-
 P-500	kept	RULES.md	-
@@ -28,8 +28,8 @@ P-502	kept	RULES.md	-
 P-503	kept	RULES.md	-
 P-504	kept	RULES.md	-
 P-505	kept	RULES.md	-
-P-508	merged	P-388	8a524135081cd335
-P-511	retired	P-550, P-558, P-622	0c856291f5676bd4
+P-508	kept	RULES.md	-
+P-511	retired	P-558, P-622	0c856291f5676bd4
 P-512	kept	RULES.md	-
 P-514	kept	RULES.md	-
 P-515	merged	P-502	876d8645beffed3a
@@ -41,11 +41,11 @@ P-539	kept	RULES.md	-
 P-541	merged	P-170	86ce9f7fef440cb1
 P-542	kept	RULES.md	-
 P-551	kept	RULES.md	-
-P-553	merged	P-587	2ecd4c3d8fc5b5bc
+P-553	kept	RULES.md	-
 P-555	merged	P-461	c023bf7621b4e7bf
 P-556	merged	F-12Nov	d6476d97a8052436
 P-565	kept	RULES.md	-
-P-566	merged	P-294	f52fdb1a050a8323
+P-566	kept	RULES.md	-
 P-576	kept	RULES.md	-
 P-580	kept	RULES.md	-
 P-582	kept	RULES.md	-
@@ -68,7 +68,7 @@ P-611b	kept	RULES.md	-
 P-611c	kept	RULES.md	-
 P-609	kept	RULES.md	-
 P-613	kept	RULES.md	-
-P-614	merged	P-609	268588fe7f9c7779
+P-614	kept	RULES.md	-
 P-615	kept	RULES.md	-
 P-608	kept	RULES.md	-
 P-557	kept	RULES.md	-
@@ -95,7 +95,7 @@ P-385	kept	RULES.md	-
 P-352	kept	RULES.md	-
 P-319	kept	RULES.md	-
 P-348d	kept	RULES.md	-
-QA-221	merged	P-170	0b097eff140afac6
+QA-221	kept	RULES.md	-
 P-335	kept	RULES.md	-
 P-251	kept	RULES.md	-
 P-293b	kept	RULES.md	-
@@ -107,7 +107,7 @@ P-478	kept	RULES.md	-
 P-591	kept	RULES.md	-
 P-486	kept	RULES.md	-
 P-486b	kept	RULES.md	-
-P-384	merged	P-532	ab1a44f44d11ed51
+P-384	kept	RULES.md	-
 P-402	kept	RULES.md	-
 P-423	kept	RULES.md	-
 P-294	kept	RULES.md	-
@@ -132,7 +132,7 @@ P-617	kept	RULES.md	-
 P-618	kept	RULES.md	-
 P-619	kept	RULES.md	-
 P-620	kept	RULES.md	-
-P-621	merged	IDX-5	dc3c10dba1f36cf6
+P-621	kept	RULES.md	-
 P-622	kept	RULES.md	-
 P-436a	retired	P-446, P-446f	314a2f4ebd86d01a
 P-446	kept	RULES.md	-
@@ -145,7 +145,7 @@ P-445b	kept	RULES.md	-
 P-175b	kept	RULES.md	-
 P-295	kept	RULES.md	-
 P-295b	kept	RULES.md	-
-P-377	merged	P-175b	69702e82623f5f3e
+P-377	kept	RULES.md	-
 P-461	kept	RULES.md	-
 P-458	kept	RULES.md	-
-P-312	retired	P-502	e57006fdddbd609e
+P-312	kept	RULES.md	-

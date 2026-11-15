@@ -60,7 +60,8 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
   # B193 part 5 (P-619 step 6; P-188, P-611): rows moved out of the register are never lost. Each rules/rule-id-map-*.tsv
   # lists every ID the register had before a triage: "kept" is still a RULES.md row; "merged" and "retired" rows sit word
   # for word (same sha256 as the old line) in the paired rules/merged-and-retired-*.md, and a merged row's target is still
-  # a RULES.md row; the ID count equals old_rows. Test: check-rule-triage.sh.
+  # a RULES.md row; the ID count equals old_rows. A map never expires: a later removal of a row it lists as kept marks it
+  # merged or retired there (or a new dated map lists it). Test: check-rule-triage.sh.
   for M in "$PH"/rules/rule-id-map-*.tsv; do
     [ -f "$M" ] && [ -f "$R" ] || continue
     python3 -I - "$M" "$R" "$(dirname "$M")/merged-and-retired-$(basename "$M" .tsv | sed 's/^rule-id-map-//').md" <<'PY'
