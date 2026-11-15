@@ -899,3 +899,9 @@ FO-5f questions 2 (the optional `reason` on `RetainerEventPayload`) and 3 (the s
   * `tests/check_case_feed.ts` keeps proving that a firm's case feed never reads an area entity as its own.
 
 **(d) P-610 in every Lead B brief from now on.** Each brief keeps a PR under 800 changed lines, tests included, and names its split point if it may pass that; re-review reads only the new commits (P-277). This is applied now to the unstarted briefs PF-6b, FO-5f2 and the J-rows shared brief.
+
+## Rev 16.17 (15 Nov 13:5x IST, Lead B (6)): FO-3sr gets its own BACKLOG row and brief (P-611: it had none)
+
+Rev 16.10 named FO-3sr only in a note, and Lead 52's "not applied" list says "FO-3sr has no BACKLOG row". Its waits are all on `main` (PF-4 #1744, FO-3 #1760, FO-3f #1785, FO-3h #1799), so it is ready. Copy text for BACKLOG, after FO-3a:
+
+| FO-3sr | runtime (staff booking routes; FO-3 part 2; map rows 37, 41, 42) | **The staff routes for FO-3's staff services:** create, reschedule, cancel (`agent/booking:create`, `agent/booking:edit`), and list, get, attendance-due and attendance declared `@AnyStaff` with a reason, because a host always sees and answers their own (AG-4-67, AG-4-39) and the service checks `agent/booking:list` / `:edit` for others. No rule moves into the controller. **Touch:** `api/src/front-office/booking/staff.controller.ts` (new), `api/src/features/front-office-booking.ts` (one line), `tests/check_fo3sr_routes.ts` | `FO-3sr DW1-DW10` and walk `W1` as the brief names them: a pass and a fail per key on the six seeded roles; a host without the list key sees only their own; 404 across firms and for another host's booking; 401 without a token; PF-4's start-up check; no link token in the create answer | **Source:** FO-3 (AG-4-67, AG-4-39, AG-4-63); rev 16.4, rev 16.10; brief `lead-b-briefs/FO-3sr.md` · **waits on:** nothing (all merged) · Opus high, reviewer and breaker (permissions) · **size:** S (~350 lines; split point in the brief) |
