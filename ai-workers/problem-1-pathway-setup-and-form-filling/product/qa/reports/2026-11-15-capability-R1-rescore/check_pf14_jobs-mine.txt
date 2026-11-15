@@ -1,0 +1,104 @@
+PASS  PF-14 pass: the runner starts on an empty database with no error and pg-boss makes its own schema (platform_jobs)
+PASS  PF-14 fail: a database that is not there stops the start loudly (never a silent runner that runs nothing)
+(node:18909) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+PASS  PF-14: the test runner starts with no error
+PASS  PF-14 pass: the same key twice → one job (the second enqueue answers queued: false)
+PASS  PF-14 fail: a different key is a second job
+PASS  PF-14: both keys run once
+PASS  PF-14 pass: a key whose job has finished still refuses a second job (completed jobs are kept)
+PASS  PF-14 fail: a job without a firm is refused before anything is queued
+PASS  PF-14 fail: a firm id that is not a uuid is refused
+PASS  PF-14 fail: a payload that is not an object of ids is refused
+PASS  PF-14 fail: a job name outside the dotted lower-case form is refused
+PASS  PF-14 pass: a cancelled job's key stays used (PF-0p's rule)
+PASS  PF-14 fail: a job scheduled for an hour from now does not run 50 minutes in
+PASS  PF-14 pass: cancel(key) cancels a queued job (true) and a second cancel finds nothing (false)
+PASS  PF-14 pass: it runs once the clock reaches its time, and the cancelled one never runs
+PASS  PF-14 fail: a schedule without a valid time is refused
+PASS  PF-14 pass: 31 Oct (EDT): the 09:00 Toronto job runs at 13:00 UTC
+PASS  PF-14 fail: 1 Nov (EST): nothing runs at 13:00 UTC (08:00 Toronto; a fixed −4 offset would run it here)
+PASS  PF-14 pass: 1 Nov (EST): it runs once at 14:00 UTC, 09:00 Toronto
+PASS  PF-14 pass: exactly two runs, each created for its own instant (no double run in the repeated hour)
+PASS  PF-14: a recurring job is platform-wide (no firm) and fans out per firm with enqueue
+PASS  PF-14: each recurring run has runAt = its instant and the key <name>@<minute> (PF-0p's form)
+PASS  PF-14 fail: a time zone that does not exist is refused
+PASS  PF-14 fail: a cron that does not parse is refused
+PASS  PF-14 pass: a recurring run's retry, in a later minute, has the same key and runAt as its first try (09:00 Toronto, 2 Nov)
+PASS  PF-14 fail: the retry's own start time is in a later minute (a key read from it would differ)
+PASS  PF-14 pass: the run's dead-letter entry names the run's key, not just the job name
+PASS  PF-14 pass: 30 days later a job no worker fetched is still there and its key still refuses a second job
+PASS  PF-14 fail: on a queue with pg-boss's own retention (14 days) the same wait deletes the job (what PF-14's queues prevent)
+PASS  PF-14 fail: cancel(key) of a job already running answers false and the job finishes (completed, not cancelled)
+PASS  PF-14 pass: every retry of a job sees the same runAt (its due time, not the retry's start)
+PASS  PF-14 pass: a failing job is tried 1 + retryLimit times, the waits growing (back-off: ≥1 s, then ≥2 s)
+PASS  PF-14 pass: then it is on the dead-letter list with its name, key, firm and error
+PASS  PF-14 fail: a job that fails once and then succeeds is not on the dead-letter list
+PASS  PF-14 pass: a failed attempt stores its message only (no stack lines, which can carry values from the code)
+PASS  PF-14 fail: the error a handler threw had a stack with code lines (what is no longer stored)
+PASS  PF-14: nothing works the dead-letter list (it is a list, not a queue that reruns)
+PASS  PF-14 pass: each firm's job reads only its own firm's rows
+PASS  PF-14 pass: the handler runs inside its firm (currentJobFirm() is the job's firm)
+PASS  PF-14 fail: firm A's job asking for firm B's rows is refused by firmScope, reads nothing and ends on the dead-letter list
+PASS  PF-14 fail: a job whose firm id is not a firm never reaches its handler and ends on the dead-letter list
+PASS  PF-14 fail: a job without a firm that is not a recurring run never reaches its handler either
+PASS  PF-14: outside a job there is no job firm
+PASS  PF-14: the child worker took the job and was killed mid-job
+PASS  PF-14 fail: before its claim expires (60 s, Sample 15 min) the job is not rerun
+PASS  PF-14 pass: after the claim expires the job reruns once, completes, and its idempotent effect exists once
+PASS  PF-14 pass: nothing in api/src/platform/jobs imports a sending port (mail, messages, SMS, notifications)
+PASS  PF-14 fail: the same check catches a job file that would import MailPort
+PASS  PF-14 pass: stop waits for the running job to finish, completes it and closes the runner's connections
+PASS  PF-14 pass: …and after stop the runner refuses new work
+PASS  PF-14 pass: a stopped runner starts again, runs a job, and its second stop stops it too (no runner left running)
+PASS  PF-14 fail: a start that fails after pg-boss is up rejects, and leaves no pg-boss connection open
+PASS  PF-14 pass: the next start registers the worker whose queue failed before, and its job runs
+PASS  PF-14 pass: stop() called while start() runs waits for it, then stops the runner (no connection left)
+PASS  PF-14 fail: …and that runner refuses new work
+PASS  PF-14 fail: a handler that outlasts stop's limit is not completed by the stop: its job goes back for a retry, never lost
+{"time":"2026-11-15T10:37:09.729Z","level":"info","event":"job","correlationId":"job:boot:1","firmId":"0000000a-0000-4000-8000-000000000001","queue":"pf14.boot","jobId":"boot:1","outcome":"done","durationMs":0,"ageMs":2008,"Queue":"pf14.boot","JobRuns":1,"JobFailures":0,"JobAge":2008,"JobDuration":0,"_aws":{"Timestamp":1794739029729,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["Queue"]],"Metrics":[{"Name":"JobRuns","Unit":"Count"},{"Name":"JobFailures","Unit":"Count"},{"Name":"JobAge","Unit":"Milliseconds"},{"Name":"JobDuration","Unit":"Milliseconds"}]}]}}
+PASS  PF-14 pass: a module that calls recurring() in onModuleInit and enqueue() in onApplicationBootstrap starts with the app; the schedule is set and the job runs
+PASS  PF-14 pass: recurring() called while the runner is starting is in pg-boss once the call returns (review m10)
+PASS  PF-14 fail: an enqueue on a runner that never starts is refused with the reason (never a silent wait without end)
+{"time":"2026-11-15T10:37:12.020Z","level":"info","event":"job","correlationId":"job:app:1","firmId":"0000000a-0000-4000-8000-000000000001","queue":"pf14.app","jobId":"app:1","outcome":"done","durationMs":0,"ageMs":2004,"Queue":"pf14.app","JobRuns":1,"JobFailures":0,"JobAge":2004,"JobDuration":0,"_aws":{"Timestamp":1794739032020,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["Queue"]],"Metrics":[{"Name":"JobRuns","Unit":"Count"},{"Name":"JobFailures","Unit":"Count"},{"Name":"JobAge","Unit":"Milliseconds"},{"Name":"JobDuration","Unit":"Milliseconds"}]}]}}
+PASS  PF-14 pass: the feature file registers the provider; the worker starts with the app and runs a job
+PASS  PF-14: the app's runner listens for SIGTERM to stop cleanly
+PASS  PF-14 pass: app.close() stops the worker and removes its signal listeners
+PASS  PF-14 fail: after the app closed, a new job is refused (no runner left behind)
+PASS  PF-14 pass: SIGTERM with a job running: the job finishes and completes, then the process exits by the signal as before
+PASS  PF-14 fail: a job longer than the 8 s stop limit does not hold the process: it exits by the signal within 10 s, the job unfinished and back for a retry
+PASS  PF-14 pass: PF-0p's fake and the pg-boss adapter run 09:00 Toronto across 1 Nov at the same instants with the same keys
+PASS  PF-14 pass: the fake agrees: the same key twice → one job
+PASS  PF-14 pass: both agree a key is unique per job name: the same key under another name queues
+PASS  PF-14 fail: the fake agrees: a job without a firm is refused
+PASS  PF-14 pass: prisma migrate diff from a database pg-boss has installed into names nothing of pg-boss's schema
+PASS  PF-14 fail: the same filter catches a line that would drop pg-boss's table
+PASS  PF-0c DW2 JobPort PgBossJobs: a keyed job runs once (the same key again answers queued: false and never runs twice)
+PASS  PF-0c DW2 JobPort PgBossJobs: a key that ran stays used (enqueue again: queued false, no new run)
+PASS  PF-0c DW2 JobPort PgBossJobs: a different key under the same name is a second job; the same key under another name is its own job
+PASS  PF-0c DW2 JobPort PgBossJobs: the handler sees the job's name, payload, key and firm, attempt 1
+PASS  PF-0c DW2 JobPort PgBossJobs: a job scheduled a day ahead waits; cancel answers true once, then false, and the key stays used
+PASS  PF-0c DW2 JobPort PgBossJobs: cancel cancels every waiting job of the key, whatever its name
+PASS  PF-0c DW2 JobPort PgBossJobs: recurring refuses a cron that does not parse and a zone that does not exist
+PASS  PF-0c DW2 JobPort PgBossJobs: cancel of a key never queued answers false
+PASS  PF-0c DW2 JobPort PgBossJobs: a job name outside the dotted lower-case form, or a job without a firm, is refused
+PASS  PF-0c DW2 JobPort PgBossJobs: passes its contract (9 of 9 cases)
+{"time":"2026-11-15T10:37:35.837Z","level":"info","event":"job","correlationId":"job:once:provider:1","firmId":"0c0c0c0c-0000-4000-8000-00000000000a","queue":"contract.provider.once","jobId":"once:provider:1","outcome":"done","durationMs":0,"ageMs":2003,"Queue":"contract.provider.once","JobRuns":1,"JobFailures":0,"JobAge":2003,"JobDuration":0,"_aws":{"Timestamp":1794739055837,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["Queue"]],"Metrics":[{"Name":"JobRuns","Unit":"Count"},{"Name":"JobFailures","Unit":"Count"},{"Name":"JobAge","Unit":"Milliseconds"},{"Name":"JobDuration","Unit":"Milliseconds"}]}]}}
+PASS  PF-0c DW2 JobPort PlatformJobs: a keyed job runs once (the same key again answers queued: false and never runs twice)
+{"time":"2026-11-15T10:37:45.884Z","level":"info","event":"job","correlationId":"job:ran:provider:1","firmId":"0c0c0c0c-0000-4000-8000-00000000000a","queue":"contract.provider.ran","jobId":"ran:provider:1","outcome":"done","durationMs":0,"ageMs":2002,"Queue":"contract.provider.ran","JobRuns":1,"JobFailures":0,"JobAge":2002,"JobDuration":0,"_aws":{"Timestamp":1794739065884,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["Queue"]],"Metrics":[{"Name":"JobRuns","Unit":"Count"},{"Name":"JobFailures","Unit":"Count"},{"Name":"JobAge","Unit":"Milliseconds"},{"Name":"JobDuration","Unit":"Milliseconds"}]}]}}
+PASS  PF-0c DW2 JobPort PlatformJobs: a key that ran stays used (enqueue again: queued false, no new run)
+{"time":"2026-11-15T10:37:55.943Z","level":"info","event":"job","correlationId":"job:k:provider:1","firmId":"0c0c0c0c-0000-4000-8000-00000000000a","queue":"contract.provider.keya","jobId":"k:provider:1","outcome":"done","durationMs":0,"ageMs":1997,"Queue":"contract.provider.keya","JobRuns":1,"JobFailures":0,"JobAge":1997,"JobDuration":0,"_aws":{"Timestamp":1794739075943,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["Queue"]],"Metrics":[{"Name":"JobRuns","Unit":"Count"},{"Name":"JobFailures","Unit":"Count"},{"Name":"JobAge","Unit":"Milliseconds"},{"Name":"JobDuration","Unit":"Milliseconds"}]}]}}
+{"time":"2026-11-15T10:37:55.949Z","level":"info","event":"job","correlationId":"job:k:provider:1","firmId":"0c0c0c0c-0000-4000-8000-00000000000a","queue":"contract.provider.keyb","jobId":"k:provider:1","outcome":"done","durationMs":0,"ageMs":2000,"Queue":"contract.provider.keyb","JobRuns":1,"JobFailures":0,"JobAge":2000,"JobDuration":0,"_aws":{"Timestamp":1794739075949,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["Queue"]],"Metrics":[{"Name":"JobRuns","Unit":"Count"},{"Name":"JobFailures","Unit":"Count"},{"Name":"JobAge","Unit":"Milliseconds"},{"Name":"JobDuration","Unit":"Milliseconds"}]}]}}
+{"time":"2026-11-15T10:37:57.942Z","level":"info","event":"job","correlationId":"job:k:provider:2","firmId":"0c0c0c0c-0000-4000-8000-00000000000a","queue":"contract.provider.keya","jobId":"k:provider:2","outcome":"done","durationMs":0,"ageMs":3995,"Queue":"contract.provider.keya","JobRuns":1,"JobFailures":0,"JobAge":3995,"JobDuration":0,"_aws":{"Timestamp":1794739077942,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["Queue"]],"Metrics":[{"Name":"JobRuns","Unit":"Count"},{"Name":"JobFailures","Unit":"Count"},{"Name":"JobAge","Unit":"Milliseconds"},{"Name":"JobDuration","Unit":"Milliseconds"}]}]}}
+PASS  PF-0c DW2 JobPort PlatformJobs: a different key under the same name is a second job; the same key under another name is its own job
+{"time":"2026-11-15T10:37:59.972Z","level":"info","event":"job","correlationId":"job:shape:provider:1","firmId":"0c0c0c0c-0000-4000-8000-00000000000a","queue":"contract.provider.shape","jobId":"shape:provider:1","outcome":"done","durationMs":0,"ageMs":2003,"Queue":"contract.provider.shape","JobRuns":1,"JobFailures":0,"JobAge":2003,"JobDuration":0,"_aws":{"Timestamp":1794739079972,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["Queue"]],"Metrics":[{"Name":"JobRuns","Unit":"Count"},{"Name":"JobFailures","Unit":"Count"},{"Name":"JobAge","Unit":"Milliseconds"},{"Name":"JobDuration","Unit":"Milliseconds"}]}]}}
+PASS  PF-0c DW2 JobPort PlatformJobs: the handler sees the job's name, payload, key and firm, attempt 1
+PASS  PF-0c DW2 JobPort PlatformJobs: a job scheduled a day ahead waits; cancel answers true once, then false, and the key stays used
+PASS  PF-0c DW2 JobPort PlatformJobs: cancel cancels every waiting job of the key, whatever its name
+PASS  PF-0c DW2 JobPort PlatformJobs: recurring refuses a cron that does not parse and a zone that does not exist
+PASS  PF-0c DW2 JobPort PlatformJobs: cancel of a key never queued answers false
+PASS  PF-0c DW2 JobPort PlatformJobs: a job name outside the dotted lower-case form, or a job without a firm, is refused
+PASS  PF-0c DW2 JobPort PlatformJobs: passes its contract (9 of 9 cases)
+PASS  PF-14: no pg-boss error during the whole run
+
+92 passed, 0 failed

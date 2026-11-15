@@ -1,0 +1,21 @@
+PASS  R1.5: sign-in without the second step is refused in words — 401 {"type":"https://expatready.local/problems/two-step-required","title":"Sign in again","status":401,"detail":"Two-step si
+PASS  R1.2→R1.5: PF-3's seeded Sample staff user-R signs in (local stand-in, second step) — 200 keys token,tokenType,expiresIn,staffId,firmKey
+PASS  R1.2→R1.5: /me reads PF-3's firm, role grant and permission keys — {"staffId":"e33b3a64-ea14-4be3-a16c-9b2afe307124","firmId":"034afe10-9499-4500-8ee2-3fcef3d86328","firmKey":"sample-firm","displayName":"Representative (Sample)","email":"representative@sample-firm.ex
+PASS  R1.5: user-R's duties include represent (licence record from PF-3's seed)
+PASS  R1.6: a platform route with no token is refused (401), never data — 401
+PASS  R1.6: user-R (Owner + Case Manager in the seed) reads the invitations list — 200
+PASS  R1.6: user-T, a Case Manager without the staff key, is refused on the invitations list (403) — 403 {"type":"https://expatready.local/problems/missing-permission","title":"Not allowed","status":403,"detail":"Your roles d
+PASS  R1.6: user-O, a Case Officer, cannot invite staff (403) — 403
+PASS  R1.24: the Sample firm has a web address from its key — sample-firm
+PASS  R1.24: the firm's own host resolves the firm for its public pages — 200 {"webAddress":"sample-firm"}
+PASS  R1.24: a staff route asked on a firm's public address is the plain not-found (never served there) — 404
+PASS  R1.24→FO-3: an unknown host answers like FO-3's unknown booking slug (same status) — host 404, slug 404
+PASS  R1.24: "Maple" (capitals) is refused with a plain reason — {"address":"Maple","available":false,"reason":"uppercase","message":"Use lower-case letters only (maple, not Maple).","suggestion":"maple"}
+PASS  R1.24: "-maple" (leading hyphen) is refused with a plain reason — {"address":"-maple","available":false,"reason":"hyphen-edge","message":"A web address cannot start or end with a hyphen.","suggestion":"mapl
+PASS  R1.24: "ma" (too short) is refused with a plain reason — {"address":"ma","available":false,"reason":"short","message":"Use at least 3 characters.","suggestion":"ma-firm"}
+PASS  R1.24: "www" (reserved) is refused with a plain reason — {"address":"www","available":false,"reason":"reserved","message":"This address is kept for ExpatReady's own pages. Choose another.","suggest
+PASS  R1.13: health live and ready answer 200 with the database up and no part failing — 200/200 {"status":"ok","failing":[],"checks":{"database":{"ok":true,"words":"The database answers.","ms":0},"job_queue":{"ok":tr
+PASS  R1.13: the request's X-Request-Id is kept in one JSON log line with route and status — {"time":"2026-11-15T10:42:33.999Z","level":"warn","event":"request","correlationId":"qa-r1-24731","method":"POST","route":"/api/platform/session/local","status":401,"durationMs":2,"Route":"POST /api/p
+PASS  R1.13: a seeded email in a request body never reaches the log
+PASS  R1.9 (start only, not gate A: no module uses the runner, QA-453): the job worker started with the app and made its own schema (platform_jobs) — 13 tables
+20 passed, 0 failed
