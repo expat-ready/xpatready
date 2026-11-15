@@ -1,0 +1,30 @@
+---
+paths:
+  - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/{main,features,core,studio,busy,refusal,health,health-verdict,firms,canada}.ts"
+---
+# Module card: api-core (P-615)
+The API's start-up, shared providers and the configuration service. Read this before editing these files; update it in the same PR when an entry point, invariant, table or test below changes (or say `Card unchanged: <reason>` in the PR body).
+
+**Purpose.** `main.ts` builds the Nest app (body limit, session, combination read) and adds `features/*.ts`; `core.ts` holds the shared providers (`Db`, paths, simulated people and duties, demo workspace, audit, versioned edits); `studio.ts` is the Product Studio service (programs, combinations, library edits, preview, validation, review, release); `canada.ts` is the one canada.ca port; `refusal.ts` the release gates' shared refusal.
+**Owner area.** Shared by every lane (Unconfirmed: no lane map in code).
+**Entry points.** `GET /api/health`, `GET /api/session`, `PATCH /api/session/preferences`, `GET /api/combinations/:id`; providers `Db`, `Audit`, `Workspace`, `Studio`; `registerFeatures`/`featureSteps` (features.ts); `LiveCanada`/`FixtureCanada`.
+
+**Invariants (set by).**
+- A new controller or service registers in `features/<name>.ts`, never in `main.ts`'s list (P-214, P-376, B120).
+- canada.ca is read only through `canada.ts`; tests, CI and copies replay the recorded fixtures (`STUDIO_CANADA` unset).
+- Sample content passes only in the demo workspace and is a "Demo release", never a real publish (P-240).
+- A gate refusal carries every blocking problem in `errors[]`, never only the first (G1/G2 BR-8, `refusal.ts`).
+- Field formats come from the form and are enforced here (P-162); a list row's source is never blank (P-158).
+- Who fills a placement, and whether a question is a background answer, change only through a second person (P-97, B154).
+- Family information forms are the library's form roles, never a list in code (P-319).
+- A JSON body over 5 MB is refused in words before any route (P-179).
+- Busy errors (40P01, 55P03, P2034) mean nothing was written; try again (`busy.ts`).
+
+**Tables.** combination, programDef, canonicalField, configRelease, reviewSubmission, sectionQuestion, documentRequirement, predicate, auditEvent, combinationForm, formFieldMap.
+**Tests.** `tests/check_features_registry.ts`, `tests/check_pf0p_ports.ts`, `tests/check_f8_empty_release.ts`, `tests/check_bk4a.ts`.
+
+**Do not.**
+- Add a provider to `main.ts`'s `@Module` list for a new feature.
+- Call canada.ca, a model or the network outside the ports.
+- Name a combination or form number in code (P-319).
+- Return only the first problem of a gate.

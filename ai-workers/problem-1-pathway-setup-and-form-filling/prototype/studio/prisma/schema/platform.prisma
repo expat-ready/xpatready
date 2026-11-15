@@ -88,6 +88,7 @@ model PlatformFirm {
   messages MsgFirm? // platform-messages.prisma (the slot's comment stays: check_pf0p_ports keeps every slot line)
 
   // back-relation slot: money (FO-7a)
+  moneySettings MoneyPaymentSettings? // client-money.prisma (FO-7a; Lead B's OK on #1758)
 
   // back-relation slot: compliance (FO-13)
   foConflictChecks FoConflictCheck[] // FO-13 back-relations (front-office-compliance.prisma), Lead B's OK on #1755

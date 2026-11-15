@@ -1,0 +1,18 @@
+setup (not through the product): firm qa-r19-28579, one host, firm hours, type "free"
+PASS  slots: 200 with at least one slot 2 to 9 days out
+PASS  book: 201
+PASS  R1.9 underneath: two reminders in PF-14's queue (platform_jobs.job), not in memory
+PASS  R1.9 schedule: reminders at 24 h and 1 h before the start
+PASS  R1.9 schedule: one attendance question 30 min after the end
+PASS  R1.9 waiting: the reminders and the question wait (state created), none ran early
+PASS  R1.9 run: the booking emails (booker and host) ran to completion on the runner
+PASS  R1.9 once: every job carries its own key, no key twice
+8 passed, 0 failed
+--- app restarted on the same database (isolated.sh restart) ---
+PASS  R1.9 restart: after the app restarted on the same database, the same jobs are there
+PASS  R1.9 restart: the reminders and the question still wait
+PASS  R1.9 ready: the restarted app counts its job queue
+PASS  cancel by the visitor's link: 200 CANCELLED
+PASS  R1.9 cancel (fail case for a leftover): the reminders and the question are cancelled in the queue
+PASS  R1.9 cancel: the cancellation emails were queued as their own keyed jobs
+6 passed, 0 failed
