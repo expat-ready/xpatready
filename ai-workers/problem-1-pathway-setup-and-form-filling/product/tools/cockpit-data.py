@@ -584,7 +584,7 @@ def works_count(caps):
 
 # ---------------------------------------------------------------- snapshot (§6 1a): the one interface both scripts read
 SNAP_FILES = ["MVP-CHECKLIST.md", "BACKLOG.md", "STATE.md", "cockpit/plan.json", "cockpit/history.jsonl", "qa/BUGS.md",
-              "cockpit/health-exceptions.json", "cockpit/usage-log.tsv"]
+              "cockpit/health-exceptions.json", "cockpit/usage-log.tsv", "cockpit/whats-new.json"]
 
 
 def git_out(*args):
@@ -1212,6 +1212,95 @@ def org_components(org, sessions, rows, open_prs, taken, cur_lead, rsha, bl_line
                    "when not given (FORMULAS.md › Team by component)", "class": "reported + measured", "as_of": taken, "sha": rsha}
 
 
+WN_REL = "cockpit/whats-new.json"
+WN_ADOPT = ("yes", "later", "no")
+WN_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+WN_WEEK = re.compile(r"^\d{4}-W\d{2}$")
+
+
+def whats_new(text, now, L):
+    """G-5 (P-611): the weekly "what's new" check from cockpit/whats-new.json at the records sha. Checked = the file's week is
+    this ISO week (IST) and checked_at falls in it. Unchecked: amber from Monday 12:00 IST, red from Tuesday 12:00 IST, grey
+    before. A missing or unreadable file reads "not checked", never 0 (FORMULAS.md › What's new this week)."""
+    t = now.astimezone(IST)
+    y, w, _ = t.isocalendar()
+    week = f"{y}-W{w:02d}"
+    mon = t.date() - timedelta(days=t.weekday())
+    amber_at = datetime(mon.year, mon.month, mon.day, 12, tzinfo=IST)
+    red_at = amber_at + timedelta(days=1)
+    src = f"{WN_REL} at the records commit (written each Monday by the Lead or a read-only watcher)"
+    out = {"week": week, "file_week": None, "state": "missing", "checked": False, "checked_at": None, "checked_by": None,
+           "installed_version": None, "newest_version": None, "items": [], "actions": [], "problems": [],
+           "amber_at": amber_at.isoformat(timespec="seconds"), "red_at": red_at.isoformat(timespec="seconds"), "src": src}
+    f = None
+    if text is not None:
+        try:
+            f = json.loads(text)
+        except ValueError as e:
+            out["problems"].append(f"not JSON: {e}")
+        if f is not None and not isinstance(f, dict):
+            out["problems"].append("not a JSON object")
+            f = None
+    if f is not None:
+        out["state"] = "unchecked"
+        fw, ca = f.get("week"), f.get("checked_at")
+        out.update(file_week=fw, checked_at=ca, checked_by=f.get("checked_by"),
+                   installed_version=f.get("installed_version"), newest_version=f.get("newest_version"),
+                   coverage=f.get("coverage") if isinstance(f.get("coverage"), str) else None)
+        if not isinstance(fw, str) or not WN_WEEK.match(fw):
+            out["problems"].append(f"week {fw!r} is not YYYY-Www")
+        try:
+            ct = parse_iso(ca) if isinstance(ca, str) else None
+        except ValueError:
+            ct = None
+        ct = ct.astimezone(IST) if ct and ct.tzinfo else None
+        if ct is None:
+            out["problems"].append(f"checked_at {ca!r} is not an ISO time with an offset")
+        if ct and isinstance(fw, str):
+            cy, cw, _ = ct.isocalendar()
+            if f"{cy}-W{cw:02d}" != fw:
+                out["problems"].append(f"checked_at {ca} is not in week {fw}")
+        if not (isinstance(f.get("checked_by"), str) and f["checked_by"].strip()):
+            out["problems"].append("checked_by is empty")
+        for i, it in enumerate(f.get("new_items") if isinstance(f.get("new_items"), list) else []):
+            it = it if isinstance(it, dict) else {}
+            bad = [k for k in ("title", "why") if not (isinstance(it.get(k), str) and it[k].strip())]
+            bad += [] if isinstance(it.get("date"), str) and WN_DATE.match(it["date"]) else ["date"]
+            bad += [] if isinstance(it.get("source"), str) and it["source"].startswith("https://") else ["source"]
+            bad += [] if it.get("adopt") in WN_ADOPT else ["adopt"]
+            if bad:
+                out["problems"].append(f"new_items[{i}] left out: {', '.join(bad)} missing or wrong")
+            else:
+                out["items"].append({k: it[k] for k in ("title", "date", "source", "adopt", "why")})
+        if not isinstance(f.get("new_items"), list):
+            out["problems"].append("new_items is not a list")
+        acts = f.get("actions") if isinstance(f.get("actions"), list) else []
+        for i, a in enumerate(acts):
+            if isinstance(a, dict) and all(isinstance(a.get(k), str) and a[k].strip() for k in ("what", "owner", "row")):
+                out["actions"].append({k: a[k] for k in ("what", "owner", "row")})
+            else:
+                out["problems"].append(f"actions[{i}] left out: what, owner and row are each needed")
+        if len(acts) > 3:
+            out["problems"].append(f"{len(acts)} actions (the checklist allows three)")
+        if fw == week and ct and ct <= t and not out["problems"]:
+            out.update(state="checked", checked=True)
+    elif text is not None:
+        out["state"] = "invalid"
+    n = sum(1 for x in out["items"] if x["adopt"] == "yes")
+    why_not = {"missing": f"not checked: {WN_REL} is missing at the records commit",
+               "invalid": f"not checked: {WN_REL} could not be read ({'; '.join(out['problems'])})",
+               "unchecked": f"not checked this week ({week}): the file is for {out['file_week']}" +
+                            (f"; {'; '.join(out['problems'])}" if out["problems"] else "")}
+    out["adopt_yes"] = num(n if out["checked"] else None, src + ": new_items with adopt yes", "parsed", L, why_not.get(out["state"]))
+    if out["checked"]:
+        out["light"] = {"state": "green", "why": f"checked {ist(parse_iso(out['checked_at']))} by {out['checked_by']}"}
+    else:
+        st = "red" if t >= red_at else "amber" if t >= amber_at else "grey"
+        out["light"] = {"state": st, "why": why_not[out["state"]] + {"red": "; past Tuesday 12:00 IST", "amber": "; past Monday 12:00 IST",
+                                                                       "grey": "; due by Monday 12:00 IST"}[st]}
+    return out
+
+
 def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     """Every §1-§5 and §7 number from the snapshot. history: committed history.jsonl lines (dicts)."""
     meta = snap.meta
@@ -1774,6 +1863,9 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     if prev and (prev.get("audit") or {}).get("built") is not None and len(built_rows) < prev["audit"]["built"]:
         changed = prev.get("rows") != nrows or (prev.get("audit") or {}).get("checklist_sha") != file_shas.get("MVP-CHECKLIST.md")
         fall = {"from": prev["audit"]["built"], "to": len(built_rows), "day": prev["day"], "explained": changed}
+    wn = whats_new(snap.file(WN_REL), now, L)
+    inv("whats-new.json well formed (week and checked_at agree; items dated, sourced, adopt yes/later/no; at most 3 actions)",
+        wn["state"] == "missing" or not wn["problems"], "; ".join(wn["problems"]) or ("file missing: shown as not checked" if wn["state"] == "missing" else "holds"))
     inv("Cumulative built falls only with a scope or mapping change", mono and (fall is None or fall["explained"]),
         ("built fell from %d (%s) to %d: %s" % (fall["from"], fall["day"], fall["to"], "mapping or scope change line shown" if fall["explained"] else "no scope or mapping change")) if fall else
         "no fall")
@@ -1811,7 +1903,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
                      "scope_note": None if nrows == baseline else f"Scope changed: {nrows} Build rows (baseline {baseline})"},
             "forecast": {"p50": F50, "p85": F85, "sample": sample, "counts": counts, "days": [d.isoformat() for d in days14],
                          "runs": MC_RUNS, "seed": MC_SEED, "cap_days": MC_CAP},
-            "burnup": burn, "capacity": capacity, "top3": top3, "org": org, "working_today": working,
+            "burnup": burn, "capacity": capacity, "top3": top3, "org": org, "working_today": working, "whats_new": wn,
             "rows": [{"map": r["map"], "built": r["built"], "proven": r["proven"], "ids": r["ids"]} for r in rows]}
 
 
@@ -2029,6 +2121,13 @@ def build_explain(d):
             e["n_reason"] = n_reason or x.get("reason") or "not measured: the data holds no sample size for this number"
         E[key] = e
 
+    wn = d.get("whats_new") or {}
+    if wn:
+        put("whats_new.box", "What's new this week", "The weekly check of Claude Code and Claude.ai news (P-611): items marked adopt yes, later or "
+            "no with why, and up to three actions. The big number counts adopt yes; the full list and the actions follow below.",
+            f"ISO week {wn['week']} (IST); the file is for {wn.get('file_week') or 'no week'}", len(wn["items"]) if wn["state"] != "missing" else None,
+            "new items listed in the file", "Checked this week is green. Unchecked: amber from Monday 12:00 IST, red from Tuesday 12:00 IST. "
+            "A missing file reads not checked, never 0.", wn["adopt_yes"], n_reason=wn["adopt_yes"].get("reason"))
     sm, P, F, C = d["summary"], d["pace"], d["forecast"], d["capacity"]
     rows_n = val(P["rows_total"])
     # ---- the key-number strip
@@ -2981,7 +3080,7 @@ def main():
                                          "not measured: main's commit is not in this copy and origin/main could not be read"),
                     "main_ref_is_head": ex.get("main_ref_is_head"), "current_lead": (comp["org"]["leads"] or [{}])[0].get("name")},
         "pace": comp["pace"], "forecast": comp["forecast"], "burnup": comp["burnup"], "capacity": comp["capacity"],
-        "top3": comp["top3"], "org": comp["org"], "working_today": comp["working_today"], "health": hl,
+        "top3": comp["top3"], "org": comp["org"], "working_today": comp["working_today"], "health": hl, "whats_new": comp["whats_new"],
         "trust": dict(comp["trust"], freshness=comp["fresh"] + [fm_fresh]),
         "reconcile_keys": comp["keys"], "build_rows": comp["rows"],
         "history": {"file": "cockpit/history.jsonl", "today": comp["history_line"], "previous_day": (comp["history_prev"] or {}).get("day"),
