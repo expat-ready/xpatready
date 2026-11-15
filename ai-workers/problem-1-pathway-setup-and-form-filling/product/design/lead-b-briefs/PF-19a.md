@@ -46,6 +46,8 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime P
 
 **Re-stamp step (P-600, schema rows in parallel):** your migration folder's stamp must be later than `main`'s newest when you ask for the label. Whenever another migration merges to `main` before yours: (1) merge `main`; (2) rename your folder to a stamp later than `main`'s newest; (3) show `npx prisma migrate diff` empty and `migrate reset` clean on `main` + your branch; (4) re-run CI and the suites of every red part; (5) a diff-only re-Approve. P-600's five conditions apply: own schema file and migration folder; add only to your own tables (a shared model changes only through your own slot line); area-prefixed functions and triggers; the later stamp; the release holder reads your migration diff before the label.
 
+**Migration tests in a parallel world (rows rev 16.7):** your migration test measures **right after your own migration** (apply up to and including it, check, then apply the rest), and never assumes your migration is the newest of all. The stamp check is "later than every migration before it, and unique", never `all.at(-1)`. A test that assumes it is newest turns every later schema PR red.
+
 **Must still be true:** the demo reset, the checkpoint load (C10.1) and every existing suite pass unchanged, FO-1a's and PF-3's suites included; `tests/check_prisma_schema.ts` passes with the new file; the case side's tables are untouched.
 
 **Duplicate check (P-526):** BACKLOG, open PRs, `main`'s schema and code (`git grep -i 'consent\|suppression\|msg_'` under `prisma/` and `api/src`; FO-1a's comments naming PF-19a are not duplicates) and BUGS; one `Duplicate check:` line.
