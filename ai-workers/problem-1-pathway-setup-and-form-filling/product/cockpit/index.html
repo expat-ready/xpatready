@@ -149,6 +149,8 @@ details#details{margin:14px 0}details#details>summary{cursor:pointer;background:
 .card .w{font-weight:600;margin:1px 0}
 .card .small{font-size:12px;line-height:1.35}
 .card.miss{border-color:var(--wait);box-shadow:inset 3px 0 0 var(--wait)}
+.card.bad{border-color:var(--bad);box-shadow:inset 3px 0 0 var(--bad)}
+#tip ul.wnl{margin:2px 0 0;padding-left:16px} #tip ul.wnl li{margin:3px 0}
 details.more{margin:12px 0}
 details.more>summary{cursor:pointer;color:var(--ink2);font-size:13.5px;padding:6px 0}
 details.inline>summary{cursor:pointer;color:var(--accent);font-size:12.5px;display:inline}
@@ -290,7 +292,28 @@ function oneHTML(el){
       '<dt>Source</dt><dd>'+esc(e.src)+'</dd><dt>Class</dt><dd>'+esc(e["class"])+(e["class"]==="reported"?" (Lead-reported)":"")+(e.sha?' · sha '+esc(e.sha):"")+(e.as_of?' · as of '+esc(e.as_of):"")+'</dd></dl>';});
   var info=el.getAttribute("data-info");
   if(info)h+=(keys.length?'<div class="sep"></div>':'')+'<dl><dt>About</dt><dd>'+esc(info)+'</dd></dl>';
+  if(el.hasAttribute("data-wn"))h+=wnList();
   return h;}
+/* G-5 (P-611): the weekly what's-new check; the light is re-read with the viewer's clock (FORMULAS.md › What's new this week) */
+function wnLight(W){var t=Date.now(),a=Date.parse(W.amber_at),r=Date.parse(W.red_at),wk=7*86400000;
+  if(W.checked)return t>=a+wk?"amber":"green";return t>=r?"red":t>=a?"amber":W.light.state;}
+function wnLink(u){return /^https:\/\//.test(u||"")?' <a href="'+esc(u)+'" target="_blank" rel="noopener noreferrer">source</a>':"";}
+function wnList(){var W=D.whats_new;if(!W)return "";
+  var h='<div class="sep"></div><span class="l">Items'+(W.file_week?' ('+esc(W.file_week)+')':'')+'</span>';
+  h+=W.items.length?'<ul class="wnl">'+W.items.map(function(x){return '<li><b>'+esc(x.title)+'</b> · '+esc(short(x.date))+' · adopt <b>'+esc(x.adopt)+'</b><br>'+esc(x.why)+wnLink(x.source)+'</li>';}).join("")+'</ul>':'<p style="margin:0">No items: '+(W.state==="missing"?"the file is missing (not checked).":"none listed.")+'</p>';
+  h+='<div class="sep"></div><span class="l">Actions</span>'+(W.actions.length?'<ul class="wnl">'+W.actions.map(function(x){return '<li>'+esc(x.what)+' · owner '+esc(x.owner)+' · row '+esc(x.row)+'</li>';}).join("")+'</ul>':'<p style="margin:0">None listed.</p>');
+  if(W.problems.length)h+='<div class="sep"></div><p class="nmline"><b>File problems:</b> '+esc(W.problems.join("; "))+'</p>';
+  if(W.coverage)h+='<div class="sep"></div><dl><dt>Coverage</dt><dd>'+esc(W.coverage)+'</dd></dl>';
+  return h;}
+function rWhatsNew(){var W=D.whats_new;
+  if(!W)return '<section class="ovsec" id="whatsnew"><h2>What\'s new this week</h2><div class="card miss"'+S("whats_new missing from data.json: not checked")+'><div class="w">Not checked</div></div></section>';
+  var st=wnLight(W),cls=st==="red"?" bad":st==="amber"?" miss":"",when=W.checked_at?hhmm(W.checked_at):null;
+  var line=W.checked?'Checked: <b>yes</b> · '+esc(short(W.checked_at.slice(0,10)))+(when?' '+esc(when):"")+' by '+esc(W.checked_by):
+    'Checked: <b>no</b> · '+(W.state==="missing"?"no whats-new.json":W.state==="invalid"?"the file could not be read":"last check "+esc(W.file_week||"not dated")+(W.checked_by?" by "+esc(W.checked_by):""));
+  var due=st==="red"?"past Tuesday 12:00 IST":st==="amber"?"past Monday 12:00 IST":W.checked?"":"due Monday 12:00 IST";
+  return '<section class="ovsec" id="whatsnew"><h2>What\'s new this week</h2><div class="cards3"><div class="card'+cls+'" data-wn'+T("whats_new.box")+'>'+
+    '<div class="k">'+dot(st)+'Week '+esc(W.week)+'</div><div class="w">'+line+'</div>'+
+    '<div class="small">Adopt now: '+(W.adopt_yes.value==null?'<span class="nm">not checked</span>':'<b>'+esc(W.adopt_yes.value)+'</b> of '+esc(W.items.length)+' items')+(due?' · '+due:"")+'</div></div></div></section>';}
 function tipHTML(btn){var els=btn._els||[];
   if(btn._group){var inf=els.filter(function(x){return !x.getAttribute("data-tip");}),tp=els.filter(function(x){return x.getAttribute("data-tip");});
     return tp.map(oneHTML).join('<div class="sep"></div>')+(inf.length?(tp.length?'<div class="sep"></div>':'')+'<span class="l">'+esc(btn._group)+'</span><div class="glist">'+inf.map(function(x){return '<div>'+esc(x.getAttribute("data-info"))+'</div>';}).join("")+'</div>':"");}
@@ -518,7 +541,7 @@ function rTop3(){
   return '<section class="ovsec" id="top3"><h2>Top 3, with the Lead\'s recommendation</h2>'+h+'</div></section>';
 }
 function rOverview(){
-  return '<div class="ov">'+rPace()+rCapacity()+rTop3()+'</div>'+
+  return '<div class="ov">'+rPace()+rCapacity()+rTop3()+rWhatsNew()+'</div>'+
     '<details class="more" id="ovmore"><summary>More: Release 1 at a glance, on track, plan and dates</summary>'+rGlance()+rStatus()+rPlan()+'</details>';
 }
 
