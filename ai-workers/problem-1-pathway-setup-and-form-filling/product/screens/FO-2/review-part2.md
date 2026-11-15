@@ -92,3 +92,33 @@ Journeys, run against the service on a scratch database:
 Not checked: a browser walk (no screen); `check_forms_qa53` (it fails in this container on main as well, and CI runs it); a live HTTP run through the guard (the keys are checked by the suite's metadata test).
 
 **Verdict: Block** (reviewed eee7a5ba7). Fix M1, M2, M3 and M4, each with a pass and a fail test. The Minors can go in the same PR or be recorded for later.
+
+## Re-review: diff only, `eee7a5ba..982738fb6` (Lead B rev 16.29 applied)
+Read: `git diff eee7a5ba 982738fb6`, in a clean worktree of my own. Suite at 982738fb6: **110 passed, 0 failed**. I reran my first-round probes on a throwaway copy of the suite, then deleted it.
+
+| Finding | Status | Evidence |
+|---|---|---|
+| M1 retry | Fixed | `leads.ts` `add()` looks up the receipt `manual:<requestId>` first. Probe P1: the same body twice, with no `confirmedNew`, returns the same lead id. |
+| M2 hidden pick | Fixed | The picked `personId` must have a lead that `sees()` passes for, counting only active owners. Probe P2: O picking T's person gives 404, in lower or upper case. |
+| M3 attribution | Fixed | NFC first, then junk removed (U+2028 and U+2029 added), then the cut by characters; `text()` counts characters. Probe P3: 300 emoji plus U+2029 → the lead is kept, nothing refused. |
+| M4 wait cost | Fixed | `openWindows` runs once per list; each row is a binary search over prefix sums. Timing, 500 rows: 30 days old 20 ms, 400 days 121 ms, 1,000 days 112 ms (the walk is capped). Fri 16:30 → Mon 09:30 still gives 60. |
+| m1-m7 | Fixed | m1 `activeOf` in the known-person check; m2 `namesLoser` is set for Take it only (probe: Reopen and Assign of T's lead by O give 404); m3 the assignee is read in the transaction; m4 409 `REQUEST_REUSED`; m5 the event field is `closeReasonKey` (no other reader of `reasonKey` in api, ports or tests); m6 `source` is required; m7 the wait is checked exactly. |
+
+The breaker fixes I checked:
+* `expectedOwnerStaffId` with 409 STALE_OWNER, checked under the row lock, so a Take that won is never overwritten;
+* `{ id, done: true }` when the assigner loses sight of the lead;
+* `personId: null` counts as absent;
+* character limits.
+
+Each has a pass and a fail test. Lead B's rev 16.29 matches AG-2-13c rule 11 (any active staff member, suspended people refused), which also clears my note for the founder.
+
+New, Minor (Sample, no fix asked): a wait older than 400 days reports its last 400 days (136,860 minutes for both a 400-day and a 1,000-day row). The code says so (`open-minutes.ts` `MAX_DAYS`); the screen could show it as "over a year".
+
+Journey score after the fixes: **9.5 / 10, a pass**.
+* Task completed now 1: journeys 5 and 7 hold.
+* Plain words now 1: Close on another person's lead gives 404, not "already has this lead" (m2).
+* Correct data now 1.
+* Error recovery now 1.
+* Speed stays ½: the list still does about 120 ms of synchronous work for a firm with a year-old backlog.
+
+Verdict: Approve (982738fb6dde4f9bec63d8495fd329044fe364f5)
