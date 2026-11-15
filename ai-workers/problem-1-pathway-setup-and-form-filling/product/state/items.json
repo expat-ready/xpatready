@@ -53,13 +53,13 @@
     "owner": "lane",
     "branch": "lead/2026-11-15-records-2",
     "pr": 1814,
-    "status": "open",
+    "status": "acked",
     "waiting_on": "Lead",
     "next_step": "merge, test, publish",
     "created_at": "2026-11-15T09:09:13Z",
     "updated_at": "2026-11-15T09:09:13Z",
-    "last_ack_by": null,
-    "acked_at": null,
+    "last_ack_by": "Lead 58",
+    "acked_at": "2026-11-15T09:19:50Z",
     "opened_at": "2026-11-15T09:09:13Z",
     "source": "pull/1814#issuecomment-6892130083"
   }
