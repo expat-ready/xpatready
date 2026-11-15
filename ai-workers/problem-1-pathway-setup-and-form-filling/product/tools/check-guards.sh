@@ -47,7 +47,8 @@ G4-6|product/tools/pr-size.sh|s/-le "\$limit" \]/-le 999999 ]/|check-g4-rules.sh
 G4-7|product/tools/brief-check.sh|s/if \[ "\${1:-}" = --brief \]; then/if false; then/|check-g4-rules.sh
 G4-7 hook|product/tools/lane-preflight.sh|s/bash "\$DIR\/brief-check.sh" --brief)/true)/|check-g4-rules.sh
 G4-7 cloud|../../.claude/settings.json|s/start_session.create_session/start_session/|check-g4-rules.sh
-G4-3/6 gate|../../.mergify.yml|/check-success = pr-rules/d|check-g4-rules.sh'
+G4-3/6 gate|../../.mergify.yml|/check-success = pr-rules/d|check-g4-rules.sh
+G4-3 nolabel|../../.github/workflows/pr-rules.yml|s/ready_for_review\]/ready_for_review, labeled]/|check-g4-rules.sh'
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"

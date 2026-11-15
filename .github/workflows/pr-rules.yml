@@ -2,12 +2,13 @@
 # names its test and a "Duplicate check:" line; the PR is under 800 changed lines, tests included, unless the body names
 # a recorded exception ("Size exception: P-NNN"); reviewer and breaker agents are pinned to Opus high. Re-runs when the
 # body is edited. Merge-queue PRs (mergify/*) carry a generated body and records PRs (label "records", their own queue)
-# are skipped. The product queue in .mergify.yml waits for this check (check-success = pr-rules). Reads only, US$0.
+# are skipped. No "labeled": a label must never re-run the check the queue waits on (as ci.yml, review 6 Nov).
+# The product queue in .mergify.yml waits for this check (check-success = pr-rules). Reads only, US$0.
 # Test: product/tools/check-g4-rules.sh.
 name: pr-rules
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened, ready_for_review, labeled, unlabeled]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
 permissions:
   contents: read
 concurrency:
