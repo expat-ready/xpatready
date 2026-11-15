@@ -28,22 +28,22 @@ dialog{position:static;display:block;border:1px solid var(--border);border-radiu
 pre{background:#f4f6f9;border-radius:6px;padding:8px;font-size:12px;overflow:auto}
 @media (max-width:700px){.pick,.grid2{grid-template-columns:1fr}}
 </style></head><body>
-<div class="note"><b>FO-3 public booking pages, board r1 (FO-3sc, 15 Nov). Concept wins where they differ.</b> Rows FO-3w. Visitor, no sign-in. Firm branding from PF-13 (logo and colour). Every name, time and zone is <b>Sample</b>. Not a pixel spec: the builder uses the app's own components and tokens (TEAM-PATTERNS). Journeys J-P1..P9 in concept §6.</div>
+<div class="note"><b>FO-3 public booking pages, board r2 (FO-3sc, 15 Nov; r1 earlier that day). Concept wins where they differ.</b> Rows FO-3w. Visitor, no sign-in. Firm branding from PF-13 (logo and colour). Every name, time and zone is <b>Sample</b>. Not a pixel spec: the builder uses the app's own components and tokens (TEAM-PATTERNS). Journeys J-P1..P9 in concept §6. r2: addresses carry the firm key (<code>/book/maple/…</code>) until PF-25; parts marked <b>Row X1</b> are built only with that row (concept §6).</div>
 <nav class="tabs" aria-label="Screens on this board"><a href="#p1">1 /book</a><a href="#p2">2 Choose a time</a><a href="#p3">3 Your details (phone)</a><a href="#p4">4 You are booked</a><a href="#p5">5 Manage link</a><a href="#p6">6 States</a></nav>
 
-<section class="screen" id="p1"><div class="cap">1 · <code>maple.expatready.com/book</code> (AG-4-16 rules 1-2). Active public types ticked "Show on booking page"; case types never. Route: Q3 (not on a row yet).</div>
+<section class="screen" id="p1"><div class="cap">1 · <code>/book/maple</code> (AG-4-16 rules 1-2). Active public types ticked "Show on booking page"; case types never. Route: <b>Row X1</b>.</div>
 <div class="firm"><span class="logo" aria-hidden="true">M</span><b>Maple Immigration</b></div>
 <div class="page"><h1>Book a meeting with Maple Immigration</h1>
 <div class="cards">
 <div class="card"><h3>Free consultation</h3><p>Free consultation · 30 minutes<br>Video call, Phone call</p><a class="btn primary" href="#p2">Choose</a></div>
 <div class="card"><h3>Study permit check</h3><p>Study permit check · 45 minutes<br>Video call, In person</p><a class="btn primary" href="#p2">Choose</a></div>
 </div>
-<p class="hint">Empty: "No bookings are available online. Please contact the firm." + link "Email hello@maple.example" (AG-4-16 §12).</p></div></section>
+<div class="card" style="margin-top:16px;text-align:center"><p style="color:var(--text)">No bookings are available online. Please contact the firm.</p><a href="#">Email hello@maple.example</a><p class="hint">Empty state (AG-4-16 §12).</p></div></div></section>
 
-<section class="screen" id="p2"><div class="cap">2 · <code>/book/free-consultation</code>, step 1 (AG-4-18). Month grid + the day's times. Route on <code>main</code>: GET slots?from&amp;to&amp;tz. Client B in Dubai: Client F's 14:00 Toronto slot shows as 22:00.</div>
+<section class="screen" id="p2"><div class="cap">2 · <code>/book/maple/free-consultation</code>, step 1 (AG-4-18). Month grid + the day's times. Route on <code>main</code>: GET slots?from&amp;to&amp;tz. Client B in Dubai: Client F's 14:00 Toronto slot shows as 22:00.</div>
 <div class="firm"><span class="logo" aria-hidden="true">M</span><b>Maple Immigration</b></div>
 <div class="page"><h1>Choose a time</h1><p class="sub">Free consultation · 30 minutes</p>
-<p class="zone">Times shown in Asia/Dubai <button class="btn link" aria-haspopup="dialog">(change)</button></p>
+<p class="zone" title="Times change to the zone you pick. Your booked time stays the same.">Times shown in Asia/Dubai <button class="btn link" aria-haspopup="dialog">(change)</button></p>
 <div class="pick"><div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><button class="btn" aria-label="Previous month">‹</button><b>October 2026</b><button class="btn" aria-label="Next month">›</button></div>
 <div class="month" role="grid" aria-label="October 2026"><b>Mon</b><b>Tue</b><b>Wed</b><b>Thu</b><b>Fri</b><b>Sat</b><b>Sun</b>
 <span></span><span></span><span></span><span class="d off">1</span><span class="d off">2</span><span class="d off">3</span><span class="d off">4</span>
@@ -52,10 +52,10 @@ pre{background:#f4f6f9;border-radius:6px;padding:8px;font-size:12px;overflow:aut
 <span class="d free">19</span><span class="d on" aria-selected="true">20</span><span class="d free">21</span><span class="d free">22</span><span class="d off">23</span><span class="d off">24</span><span class="d off">25</span>
 <span class="d free">26</span><span class="d free">27</span><span class="d free">28</span><span class="d free">29</span><span class="d off">30</span><span class="d off">31</span></div></div>
 <div><h3>Tuesday 20 October</h3><div class="times" style="margin-top:8px"><span class="t">17:00</span><span class="t">17:30</span><span class="t sel">22:00</span><span class="t">22:30</span></div></div></div>
-<dialog open aria-label="Your time zone" style="margin-top:16px"><div class="f" style="padding:12px"><label for="tz">Your time zone</label><input id="tz" placeholder="Search for a city or zone" value="Europe/London"><div class="hint">After the change: "Times shown in Europe/London (change)"; the 22:00 slot shows 19:00; the booked time (UTC) is the same.</div></div></dialog>
-<p class="hint">No times this month: "No free times in October. Try the next month." + "Next month". No browser zone: the host set's zone, labelled the same way.</p></div></section>
+<dialog open aria-label="Your time zone" style="margin-top:16px"><div class="f" style="padding:12px"><label for="tz">Your time zone</label><input id="tz" placeholder="Search for a city or zone" value="Europe/London"><button class="btn primary" style="margin-top:8px">Use this zone</button><div class="hint">After the change: "Times shown in Europe/London (change)"; the 22:00 slot shows 19:00; the booked time (UTC) is the same.</div></div></dialog>
+<p class="hint">No times this month: "No free times in October. Try the next month." + "Next month". No browser zone: the zone the slots answer returns (the firm's today), labelled the same way.</p><div style="display:grid;grid-template-columns:1fr 260px;gap:20px" aria-hidden="true"><div style="height:200px;background:#eef2f6;border-radius:6px"></div><div><div style="height:44px;background:#eef2f6;border-radius:6px;margin-bottom:8px"></div><div style="height:44px;background:#eef2f6;border-radius:6px"></div></div></div><p class="hint">Loading state: skeletons for the grid and the times; never "No free times" before the answer.</p></div></section>
 
-<section class="screen" id="p3"><div class="cap">3 · Step 2 "Your details" at 375 px (AG-4-19, -20). Five inputs and one tick. Phone only for a phone call. Honeypot hidden. Route on <code>main</code>: POST bookings. Shown with errors after a send.</div>
+<section class="screen" id="p3"><div class="cap">3 · Step 2 "Your details" at 375 px (AG-4-19, -20). Five inputs and one tick. Phone only for a phone call. Honeypot hidden. Route on <code>main</code>: POST bookings. Shown with errors after a send. Drawn at 375; every step also works at 360.</div>
 <div class="phone"><div class="firm"><span class="logo" aria-hidden="true">M</span><b>Maple Immigration</b></div><div class="page">
 <h2>Your details</h2><p class="sub">Tuesday 20 October, 22:00 Asia/Dubai time · <button class="btn link">Back to times</button></p>
 <div class="summary" role="alert"><b>There is a problem</b><br><a href="#em">Enter an email like name@example.com.</a></div>
@@ -64,34 +64,34 @@ pre{background:#f4f6f9;border-radius:6px;padding:8px;font-size:12px;overflow:aut
 <div class="f bad"><label for="em">Email</label><input id="em" value="client.b@example" aria-describedby="em-e" aria-invalid="true" autocomplete="email"><div class="err" id="em-e">Enter an email like name@example.com.</div></div>
 <fieldset class="f" style="border:0;padding:0"><legend style="font-weight:600;margin-bottom:4px">How would you like to meet?</legend><div class="radio"><label><input type="radio" name="m" checked> Video call</label><label><input type="radio" name="m"> Phone call</label></div></fieldset>
 <div class="f"><label for="ph">Phone</label><input id="ph" placeholder="+971 50 000 0000" autocomplete="tel"><div class="hint">Include your country code, e.g. +1 416 555 0100. (Shown only when Phone call is chosen.)</div></div>
-<div class="f"><label style="font-weight:400;display:flex;gap:8px;align-items:flex-start"><input type="checkbox" style="width:24px;height:24px"> Yes, Maple Immigration may email me news and updates.</label><div class="hint">The firm's own sentence; never pre-ticked; booking does not need it (AG-4-19). Concept Q1: <code>main</code> still requires it.</div></div>
+<div class="f"><label style="font-weight:400;display:flex;gap:8px;align-items:flex-start"><input type="checkbox" style="width:24px;height:24px"> Yes, Maple Immigration may email me news and updates.</label><div class="hint">The firm's own sentence; never pre-ticked; booking does not need it (AG-4-19). No sentence: no box. Needs <b>Row X1</b> (main still requires the tick), so FO-3w waits on it.</div></div>
 <button class="btn primary" style="width:100%">Book this time</button>
 <p class="hint">Errors, each on its field and in the summary: "Enter your given names." · "Enter your family name." · "Enter an email like name@example.com." · "Enter a phone number with its country code, e.g. +1 416 555 0100."</p>
 </div></div></section>
 
-<section class="screen" id="p4"><div class="cap">4 · Confirmation. Join details by way to meet. Add to calendar (.ics, Q3). Reschedule and Cancel open the manage page with the token of the confirmation.</div>
+<section class="screen" id="p4"><div class="cap">4 · Confirmation. Join details by way to meet. Join link and Add to calendar (.ics): <b>Row X1</b>. Reschedule and Cancel open the manage page with the token of the confirmation.</div>
 <div class="firm"><span class="logo" aria-hidden="true">M</span><b>Maple Immigration</b></div>
 <div class="page"><h1 class="ok">You are booked</h1>
 <div class="box"><p><b>Tuesday 20 October, 22:00 Asia/Dubai time, with Maple Immigration</b></p><p>Free consultation, 30 minutes, Video call</p><p>Your join link will follow.</p><p class="sub">We have sent the details to client.b@example.com.</p>
 <div class="actions"><button class="btn primary">Add to calendar</button><a class="btn" href="#p5">Reschedule</a><a class="btn" href="#p5">Cancel booking</a></div></div>
 <p class="hint">Phone call: "The firm will call you on +971 50 000 0000." In person: "At 100 Sample Street, Toronto."</p></div></section>
 
-<section class="screen" id="p5"><div class="cap">5 · Manage link <code>/book/manage#&lt;token&gt;</code> (AG-4-36..38). No login. Routes on <code>main</code>: GET bookings/:token, …/slots, POST …/reschedule, …/cancel.</div>
+<section class="screen" id="p5"><div class="cap">5 · Manage link <code>/book/maple/manage#&lt;token&gt;</code>, the address the emails carry (AG-4-36..38). No login. Routes on <code>main</code>: GET bookings/:token, …/slots, POST …/reschedule, …/cancel.</div>
 <div class="grid2">
 <div class="box"><h2>Your booking</h2><p>Your booking: Tuesday 20 October, 22:00 Asia/Dubai time, with Maple Immigration.</p><div class="actions"><button class="btn primary">Reschedule</button><button class="btn">Cancel</button></div>
-<p class="hint">Reschedule opens "Choose a new time" (the screen 2 picker, the same type's times) and "Move to this time". Then: "Booking updated. We have sent a new email; links in older emails no longer work."</p></div>
-<dialog open aria-labelledby="cx"><div style="padding:16px"><h3 id="cx">Cancel this booking?</h3><div class="f" style="margin-top:8px"><label for="rs">Reason (optional)</label><input id="rs"></div><div class="actions"><button class="btn primary">Cancel booking</button><button class="btn">Keep booking</button></div><p class="hint">Then: "Your booking is cancelled. We have sent you an email."</p></div></dialog>
+<p class="hint">Reschedule opens "Choose a new time" (the screen 2 picker, the same type's times) and "Move to this time". Then: "Booking updated. We have sent a new email; links in older emails no longer work." The page carries on with the new token.</p></div>
+<dialog open aria-labelledby="cx"><div style="padding:16px"><h3 id="cx">Cancel this booking?</h3><p class="hint">With Row X1 only: "Reason (optional)" field (the route on main takes no body).</p><div class="actions"><button class="btn primary">Cancel booking</button><button class="btn">Keep booking</button></div><p class="hint">Then: "Your booking is cancelled. We have sent you an email."</p></div></dialog>
 </div></section>
 
 <section class="screen" id="p6"><div class="cap">6 · States (concept §4): inside the limit, not allowed by type, bad link, not found, slot taken, DST day, blocked, loading.</div>
 <div class="grid2">
-<div class="msg">It is less than 4 hours before your meeting. Please reply to this email or call us on +1 416 555 0100.<div class="hint">No buttons (AG-4-37 rule 5). Hours and phone need concept Q2.</div></div>
-<div class="msg">This booking cannot be changed online. Please reply to your confirmation email.<div class="hint">The type has Allow reschedule and Allow cancellation off.</div></div>
+<div class="msg">It is less than 4 hours before your meeting. Please reply to this email or call us on +1 416 555 0100.<div class="hint">No buttons (AG-4-37 rule 5), with Row X1. Until then the server's sentence: "Your meeting starts soon, so it can no longer be changed here. Please reply to your confirmation email or call the firm."</div></div>
+<div class="msg">This booking cannot be changed online. Please reply to your confirmation email.<div class="hint">The type has Allow reschedule and Allow cancellation off (Row X1).</div></div>
 <div class="msg bad">This link is no longer valid. Please use the link in your latest email, or reply to it.<div class="hint">Bad, expired, voided or cancelled: the same (AG-4-36 rule 9).</div></div>
 <div class="msg bad">This page is not available.<div class="hint">Unknown firm, unknown or inactive slug, case type, a UUID: the same (AG-4-17 rule 3).</div></div>
-<div class="msg">That time is not available any more. Please choose another time.<div class="actions"><span class="t" style="padding:0 12px">22:30</span><span class="t" style="padding:0 12px">Wed 21 Oct 17:00</span></div><div class="hint">Heading "Next free times"; the form keeps every answer.</div></div>
+<div class="msg"><b>This time was just booked.</b> Please choose another time.<div class="actions"><span class="t" style="padding:0 12px">22:30</span><span class="t" style="padding:0 12px">Wed 21 Oct 17:00</span></div><div class="hint">Heading "Next free times"; the form keeps every answer.</div></div>
 <div><h3>Sunday 1 November</h3><p class="dst">Clocks change on this day. Times shown are real times in America/Toronto.</p><div class="times"><span class="t">01:00</span><span class="t">01:30</span><span class="t">02:00</span></div><p class="hint">01:00-01:59 happens twice; each time is offered once (FO-3 slots.ts).</p></div>
-<div class="msg">Please try again in a minute.<div class="hint">Rate limit, honeypot or too fast: nothing saved. Also: "The firm's agreement text has changed. Please reload the page and tick the box again." and "This page was open for a long time. Please reload it to see the latest times."</div></div>
-<div><p class="hint">Loading: grey skeletons for the month grid and four time buttons; never "No free times" before the answer.</p><p class="hint">Embed (AG-4-16 rule 4): the same page inside</p><pre>&lt;iframe src="https://maple.expatready.com/book/free-consultation" title="Book a meeting with Maple Immigration" width="100%" height="760"&gt;&lt;/iframe&gt;</pre></div>
+<div class="msg">Please try again in a minute.<div class="hint">The 429 answer (rate limit); nothing saved. A 400 with no field issue shows the server's own sentence, e.g. "The firm's agreement text has changed. Please reload the page and tick the box again." and "This page was open for a long time. Please reload it to see the latest times."</div></div>
+<div><p class="hint">Loading: grey skeletons for the month grid and four time buttons; never "No free times" before the answer.</p><p class="hint">Embed (AG-4-16 rule 4): the same page inside</p><pre>&lt;iframe src="https://maple.expatready.com/book/maple/free-consultation" title="Book a meeting with Maple Immigration" width="100%" height="760"&gt;&lt;/iframe&gt;</pre></div>
 </div></section>
 </body></html>
