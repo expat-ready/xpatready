@@ -6,7 +6,7 @@
 // the messages code the first time it writes for a firm), which keys on platform_firm: one back-relation line on
 // PlatformFirm instead of one per table. firm_id is first in every index; the only exceptions are two partial indexes over
 // the platform's own templates, which have no firm. Rules Prisma cannot say are in the migration
-// 20261114190000_pf19a_platform_messages (functions and triggers prefixed msg_): wording, template versions and delivery
+// 20261115004500_pf19a_platform_messages (functions and triggers prefixed msg_): wording, template versions and delivery
 // events are write-once; a consent's withdrawal is set once, never cleared, and nothing else on it ever changes; a template
 // version and an outbox row stay in their template's firm. A consent names a wording of its own firm, channel and purpose
 // by a composite foreign key; a withdrawal is also its own insert-only row. Every firm row here is covered by PF-12's

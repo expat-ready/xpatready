@@ -20,7 +20,7 @@ import { FakeClock } from "../ports/clock.ts";
 import { ConsentRefused, fakeConsent, normaliseAddress, sha256Hex, type ConsentPort, type ConsentRecordInput } from "../ports/consent.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261114190000_pf19a_platform_messages";
+const NEW = "20261115004500_pf19a_platform_messages";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const EMPTY = `xr_studio_pf19a_empty_${process.pid}`, DEMO = `xr_studio_pf19a_demo_${process.pid}`, BARE = `xr_studio_pf19a_bare_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
