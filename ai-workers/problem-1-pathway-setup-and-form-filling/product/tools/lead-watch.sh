@@ -145,4 +145,11 @@ lib=$(python3 "$TOOLS/library-freshness.py" 2>&1); nb=$?
 if [ "$nb" -gt 0 ]; then ACT "library: ${nb} master(s) behind: $(echo "$lib" | grep '^behind' | sed -E 's/^behind +//; s/: .*first [0-9a-f]+ at / since /; s/; refresh.*//' | paste -sd ';' -)"
 else say "library: every living master current"; fi
 
+# 9. Wait-time targets (founder 18:4x IST 15 Nov, A92 steps 1-2; design/rule-enforcement-research-2026-11-15.md): a
+# question to the tech lead answered in 30 min, approved to queued in 30 min (with the cause named), a lane active every
+# 90 min. Each MISS is an ACT line, fixed in this check; "due" and "wait" lines are shown. Test: check-sle-watch.sh.
+while IFS= read -r l; do
+  case "$l" in MISS*) ACT "SLE ${l#MISS  }";; due*|wait*) say "sle   ${l#* }";; ok*) say "sle   every wait-time target met";; esac
+done < <(python3 -I "$TOOLS/sle-watch.py" 2>/dev/null)
+
 exit "$act"
