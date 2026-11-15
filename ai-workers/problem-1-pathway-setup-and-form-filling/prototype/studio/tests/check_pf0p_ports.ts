@@ -230,7 +230,7 @@ function slotProblems(text: string, models: string[]): string[] {
 }
 const platform = readFileSync(join(SCHEMA, "platform.prisma"), "utf8");
 ok("slots pass: PlatformFirm and PlatformStaff each hold the six slot lines, one per area, separated by blank lines", slotProblems(platform, ["PlatformFirm", "PlatformStaff"]).length === 0, slotProblems(platform, ["PlatformFirm", "PlatformStaff"]));
-ok("slots fail: two slot lines with no blank line between them, or a missing one, are caught", slotProblems(platform.replace("  // back-relation slot: money (FO-7a)\n\n", "  // back-relation slot: money (FO-7a)\n"), ["PlatformFirm"]).length === 1 && slotProblems(platform.replace("  // back-relation slot: register (PF-21)\n", ""), ["PlatformFirm"]).length === 1);
+ok("slots fail: two slot lines with no blank line between them, or a missing one, are caught", slotProblems(platform.replace(/(  \/\/ back-relation slot: money \(FO-7a\)\n)(?:.*\n)*?\n(?=  \/\/ back-relation slot:)/, "$1"), ["PlatformFirm"]).length === 1 && slotProblems(platform.replace("  // back-relation slot: register (PF-21)\n", ""), ["PlatformFirm"]).length === 1);
 
 // ------------------------------------------------------------------- PF-0c: the shared contracts, run by each fake here
 const fakeJobsHarness = (): JobHarness => { const clock = new FakeClock(), jobs = fakeJobs(clock); return { jobs, ns: "fake", now: () => clock.now(), settle: async (done) => { await jobs.runDue(); return done(); } }; };
