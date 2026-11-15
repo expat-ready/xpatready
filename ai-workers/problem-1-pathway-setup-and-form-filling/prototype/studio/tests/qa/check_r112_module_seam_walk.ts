@@ -101,4 +101,4 @@ for (const round of [1, 2]) for (const width of [400, 1024, 1440]) {
   await p.context().close();
 }
 await browser.close(); await db.$disconnect();
-summary();
+process.exitCode = summary() ? 1 : 0;
