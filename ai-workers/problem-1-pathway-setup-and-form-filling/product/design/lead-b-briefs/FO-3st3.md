@@ -1,0 +1,41 @@
+# Brief: FO-3st3, Settings → Booking types and Timings (map row 37's settings screens) (cloud builder lane; row owner Lead B)
+
+Drafted 16 Nov 02:3x IST by the shaping lane, for Lead B's approval (P-558). Row: BACKLOG **FO-3st3** (part 3 of 3 of FO-3st; key names rev 16.23). Concept approved: `screens/fo-3-booking/concept.md` r2 (FO-3sc, #1819, on `main`). **Model: Opus 5.5, effort: high** (new screens; reviewer and breaker at high, P-605).
+
+**Starts when:** FO-3a **part 1a** (types, preview) and **part 1b** (timings) are on `main` (brief `FO-3a.md`), and PF-6 part 1 (the session holder in `modules/platform/session.ts`) is on `main`.
+
+---
+You are a builder for the Expat Ready Pathway Configurator. Run `/next screens FO-3st3` and take **one row, FO-3st3, Booking types and Timings**, end to end on a fresh branch from `origin/main`, one PR.
+
+**Read only these:**
+* the concept `product/screens/fo-3-booking/concept.md` §3 **BR-19** and **BR-20**, §4 "Settings → Booking types … and Timings" and "Read-only", §5 "My account and Settings" (the Booking types and Timings strings), §6 **FO-3st3's journeys J-T1 to J-T5** and "Who sees what"; the mock-up `screens/fo-3-booking/design/settings.html` (types and timings parts);
+* requirement text, in full (`domain/requirements-2026-11-02/02-functional-requirements/agent/AG-04-consultation-and-booking_v2.1_2026-10-25.md`): **AG-4-8**, **AG-4-9** rules 1-7 and §10 Safety (the delete confirm "Delete 'Free consultation'? 3 future bookings stay booked."), **AG-4-10** §10 (the case-purpose line "Clients book this from their case. It is not on your booking page."), **AG-4-4, -5, -66** rules 1-3 and §8, **C5**;
+* on `main`: FO-3a 1a's `booking/settings/types.controller.ts` and 1b's timings routes, with their tests; FO-4's `web/src/modules/front-office/sales/sales-frame.tsx` (the front-office frame pattern) and `routes.tsx`;
+* the module card `web/src/MODULE.md`.
+
+**What to build:** the front-office **Bookings** area frame (the app's one Frame, BK-3, named "Bookings"; menu "Settings: Booking types, Timings"; the Calendar item comes with FO-3st1 and is not rendered here) and two pages in it: **Booking types** (library list + drawer with Definition · Hosts · Advanced (allow flags from FO-3pa; each timing as "Uses firm default (<value>)" with "Change for this type" and "Reset to firm default") · Share (the `/book/<firmKey>/<slug>` link and the iframe code) · Preview (the public times for a date and zone with the empty-day reason; writes nothing)), with Duplicate, Retire (switch off), Delete with its confirm, and the stale-save answer; **Timings** (the firm defaults form: reminders, shortest notice, window, gaps, self-service limit). Read-only for holders of `agent/booking-event-type:list` only (values as text, no buttons); no menu entry without `:list`. Files: new `web/src/modules/front-office/booking/settings/` and `booking/frame.tsx`, route lines in `front-office/routes.tsx`.
+
+**Done when** (P-606: list the cases in the PR body first; the reviewer ticks one per line). In `tests/check_fo3st3_types_browser.ts`:
+* `FO-3st3 J-T1 pass/fail` (AG-4-9 rule 1): an 81-character name → "Name must be 1 to 80 characters." at the field (the server's answer), nothing saved; 80 characters saves.
+* `FO-3st3 J-T2 pass/fail` (rule 4): Retire → the type is gone from `/book/maple`; its booking stays (read through the API); switching it on brings it back.
+* `FO-3st3 J-T3 pass/fail` (AG-4-8): Preview on 25 Dec → no times and "Closed day"; nothing written (counts through the API before and after).
+* `FO-3st3 J-T4 pass/fail` (C5): a Case Manager sees both pages read-only (no button, no field); Billing/Finance has no Bookings menu entry and a direct link shows the refusal words.
+* `FO-3st3 J-T5 pass/fail` (AG-4-4 rules 2-3): firm self-service limit 6 h → a type without override shows "Uses firm default (6 hours)"; "Change for this type" 2 h → that type uses 2 h; "Reset to firm default" → 6 h again.
+* `FO-3st3 DW6 pass/fail` (AG-4-9 rules 3, 5, 7; §10): Duplicate adds "(copy)"; Delete asks with the count of future bookings and keeps them; a save after another tab's save shows "Someone else changed this type. Reload to see their changes." and keeps the input; a case purpose shows AG-4-10's line.
+* `FO-3st3 DW7`: empty state (no booking types), loading skeletons; keyboard-only; axe-core with no serious or critical finding; 375, 1024, 1440.
+
+**Duplicate check:** BACKLOG (FO-3st3; FO-3a 1a/1b is its API; FO-3st1 adds the Calendar to the same Bookings frame), open PRs (none on `booking/settings/` web pages at 02:3x IST 16 Nov), `main` (no booking settings screen), BUGS (none); one `Duplicate check:` line after re-running it.
+
+**Touch list:** new files under `web/src/modules/front-office/booking/settings/` and `web/src/modules/front-office/booking/frame.tsx`; `web/src/modules/front-office/routes.tsx` (route lines); `tests/check_fo3st3_types_browser.ts`.
+
+**Contract used:** FO-3a part 1's routes over HTTP (contracts §2.2); the staff session from `modules/platform/session.ts`. No `ports/` change.
+
+**Parallel safety:** `booking/frame.tsx` is new here and **FO-3st1 adds its Calendar item later** (FO-3st1 starts after this row, or, if FO-3st1 starts first, it creates the frame and this row adds only its Settings items: whichever starts second waits for the first to merge). `front-office/routes.tsx`: one line per screen row; the second PR merges `main`. FO-3st2 lives in My account (PF-6's frame), so no shared file but `routes.tsx`.
+
+**Reviewer and breaker** (P-278: new screens): the breaker tries a slug edit to `manage` (reserved, BR-19), a duplicate's slug clash, a timing of -1 and 1e9, and a read-only user posting through the browser console (the server refuses).
+
+**P-610:** under 800 changed lines (estimate ~750). Split point if it would pass: part 1 the frame, Booking types and Preview (J-T1-J-T4, DW6); part 2 Timings and the per-type overrides (J-T5, DW7's Timings states).
+
+**P-605/P-606 (every Lead B brief from 15 Nov):** Opus 5.5; no model switch mid-session. Finish whole: if an item turns out to need more than its touch list, stop and ask in a PR comment. Never widen the row silently, and never leave a part for later. Read only the requirement text the trace tool prints.
+**Rules (standard, every PF/FO brief):** P-559: firm tables, real sign-in and billing are ours in the PF/FO modules (amends P-335/P-357). One row, one session, one PR; new files only outside the touch list. Opus reviewer (P-303); re-review reads only the diff (P-277); label `review: approved` only after `Reviewer: Approve <sha>` and green CI (P-277, P-385); merge `main` only on a conflict (P-270). **Before asking for the label (rows rev 16, Lead 47: 4 of 4 labelled PRs went red after the label on 14 Nov):** run, on `main` merged into your branch, the suites of every CI part that was red on any earlier head of this PR, plus every suite in the shard that shares the demo database with yours, and paste the result lines in the PR. Live AI off, US$0, never a priced button (P-175). No real keys anywhere. Push after every step (P-557). Questions as a PR comment headed "Question for the tech lead"; report to the current Lead (`tools/current-lead.sh`) for the merge queue and to **Lead B** (row owner, branch `lead-b-front-office`, hand-over `product/design/lead-b-state.md`) for the row. Cross-module port interfaces, their fakes and shared event payload types go in `prototype/studio/ports/` (`zod` only; case-side contract v0.1 §1 rule 3); adapters stay in the module's folder; never import `engine/` or case-side files (rows rev 14.1). Event names come from `prototype/studio/ports/events.ts` (`EVENT.*`, FO-1a); add a new name there, never a string literal (rev 15.1). A database function in your migration carries your area's prefix (`fo_sales_`, `fo_booking_`, `fo_compliance_`, `fo_signing_`, `fo_retainer_`, `money_`, `msg_`, `plat_`, `platform_`), never a bare `fo_` name another area may also use, and your migration's stamp is later than the newest on `main` when it merges (rows rev 15.2, the FO-1a/FO-1b clash). Every token earns its outcome (P-556): read only the files named here and the code you change.
+---
