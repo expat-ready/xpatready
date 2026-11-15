@@ -1,6 +1,6 @@
 // PF-19b part 1 (row 48's `local` adapter; stand-in SI-20 for real delivery): GET /api/demo/platform-inbox?address= lists
 // the messages the local adapter marked SENT to one address, newest first, with subject and body from the stored rendered
-// file. Demo workspace only (404 elsewhere); a client's persona never opens a mailbox (403), as person-link.ts's inbox.
+// file. Demo workspace only (404 elsewhere); a client's persona, by id or persona name, never opens a mailbox (403; break m1).
 import { Controller, Get, Headers, HttpStatus, Inject, Query } from "@nestjs/common";
 import { LINK_WORDS } from "../../../../contracts/person-link.ts";
 import { normaliseAddress } from "../../../../ports/consent.ts";
@@ -18,7 +18,7 @@ export class PlatformInbox {
 
   async list(address: H, xActor: H) {
     if (!this.demo()) fail("Not found.", HttpStatus.NOT_FOUND);
-    if (RUNTIME_ACTORS.some((a) => a.id === xActor && (a.duties as readonly string[]).includes("answer"))) fail(LINK_WORDS.inboxClient, HttpStatus.FORBIDDEN);
+    if (RUNTIME_ACTORS.some((a) => (a.id === xActor || a.persona === xActor) && (a.duties as readonly string[]).includes("answer"))) fail(LINK_WORDS.inboxClient, HttpStatus.FORBIDDEN);
     let a = "";
     try { a = normaliseAddress("EMAIL", address ?? ""); } catch { fail("Enter an email address like name@example.com.", HttpStatus.BAD_REQUEST); }
     const rows = await this.db.msgOutbox.findMany({

@@ -18,18 +18,21 @@ export const HELD_DAILY_LIMIT = "daily limit";
 
 const FieldName = z.string().regex(/^[a-z][a-z0-9_]*$/, "a field name (lower case, _)");
 export const TemplateKey = z.string().regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/, "a dotted lower-case key").max(100);
-const Words = z.strictObject({ subject: z.string().trim().min(1).max(200), text: z.string().min(1).max(100_000), html: z.string().min(1).max(500_000).optional() });
+const Words = z.strictObject({ subject: z.string().trim().min(1).max(200).regex(/^[^\u0000-\u001f\u007f]*$/, "a subject on one line"), text: z.string().min(1).max(100_000), html: z.string().min(1).max(500_000).optional() });
 const FromTemplate = z.strictObject({ templateKey: TemplateKey, values: z.record(FieldName, z.string().max(10_000)), language: z.enum(["en", "fr"]).default("en") });
 
 export const MessageSend = z.strictObject({
   firmId: FirmId,
-  /** The person the message is to (consent is theirs); absent only for a TRANSACTIONAL message to a bare address. */
+  /** The person the message is to (consent is theirs); absent only for a TRANSACTIONAL message to a bare address. The
+   *  gate judges the person's consent and the address's suppression: that the address is this person's is the caller's
+   *  check (break M2; question to Lead B on #1824). */
   person: Subject.optional(),
   channel: Channel,
   class: MessageClass,
   address: z.string().min(3).max(320),
   content: z.union([Words, FromTemplate]),
-  /** Files of the same firm to attach (FilesPort keys). */
+  /** Files of the same firm to attach (FilesPort keys; never a stored message under msg/). Caller HTML is trusted module
+   *  output, stored as given (PF-19c's templates feed it). */
   attachments: z.array(FileKey).max(10).default([]),
   /** The caller's key: the same key in the same firm is the same message (a retry returns the first row). */
   idempotencyKey: z.string().min(1).max(200),

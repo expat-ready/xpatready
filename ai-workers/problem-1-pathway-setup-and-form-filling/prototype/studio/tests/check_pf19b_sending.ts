@@ -157,6 +157,23 @@ try {
   ok("DW8 fail: send refuses a bare client in place of the caller's transaction (no row written outside a transaction)",
     await messages.send(db as never, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: box("dw8"), content: words, idempotencyKey: uuid() }).then(() => false, (e: Error) => e instanceof TypeError));
 
+  // ------------------------------------------------------------------------------------------- break round 1 (M1, m1, m3, m5, m7)
+  sql(`insert into msg_outbox (id, firm_id, channel, address, rendered_hash, class, state, state_reason, idempotency_key, created_at, updated_at)
+    select gen_random_uuid(), '${firmB}', 'EMAIL', 'held' || g || '@example.com', repeat('0', 64), 'TRANSACTIONAL', 'QUEUED', '${HELD_DAILY_LIMIT}', 'held-' || g, now() - interval '1 day', now() from generate_series(1, 510) g`);
+  const xm1 = box("m1"), qm1 = await tx((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: xm1, content: words, idempotencyKey: uuid() }));
+  sql(`update msg_outbox set created_at = now() - interval '5 minutes' where id = '${qm1.outboxId}'`);
+  await clock.advance(61_000);
+  ok("break M1 fail→pass: 510 rows another firm's cap holds never hide a row a crash left: the next sweep sends it",
+    (await db.msgOutbox.findUniqueOrThrow({ where: { id: qm1.outboxId } })).state === "SENT");
+  ok("break m1 fail: a client persona by persona name (client, client-b) also gets 403 from the platform inbox",
+    await statusOf(() => inbox.list(x0, "client")) === 403 && await statusOf(() => inbox.list(x0, "client-b")) === 403 && await statusOf(() => inbox.list(x0, "user-O")) === 200);
+  const refusedSend = (m: Partial<MessageSend>, re: RegExp) => tx((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: box("m"), content: words, idempotencyKey: uuid(), ...m })).then(() => false, (e: Error) => re.test(e.message));
+  ok("break m3, m5, m7 fail: a subject with a line break, a template subject over 200 characters, a stored message as an attachment and a firm id that is no firm are each refused",
+    await refusedSend({ content: { subject: "Hi\r\nBcc: x@example.com", text: "x" } }, /one line/)
+    && await refusedSend({ content: { templateKey: "pf19b.hello", values: { name: "n".repeat(300) } } }, /over 200/)
+    && await refusedSend({ attachments: [fileKeyOf(firmA, qm1.outboxId)] }, /not a file of this firm/)
+    && await refusedSend({ firmId: uuid() }, /not a platform firm/));
+
   // ------------------------------------------------------------------------------------------- PF-0c contract
   await runContract(messagePortContract, "Messages", () => ({
     messages, consent, tx: (f) => db.$transaction((t) => f(t)), settle: () => jobs.runDue(), firmA, firmB, senders, templateKey: "pf19b.hello",

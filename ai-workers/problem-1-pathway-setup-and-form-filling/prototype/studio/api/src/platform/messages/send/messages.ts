@@ -3,7 +3,7 @@
 // suppression list (ConsentPort.allows), the firm's sender, the template, then the rendered file through FilesPort (Lead B
 // ruling: written before the row, so a rolled-back transaction leaves at most an orphan file under its outbox id and no
 // row, hence nothing is ever sent for it) and the row, QUEUED or SUPPRESSED with the reason. dispatch() after the commit
-// queues one JobPort job per row (key msg.send:<id>); an hourly-keyed sweep each minute queues any QUEUED row a crash left
+// queues one JobPort job per row (key msg.send:<firm>:<id>); an hourly-keyed sweep each minute queues any QUEUED row a crash left
 // without a job, and held rows again. The worker locks the row, sends only a QUEUED row (so a job run twice sends once),
 // checks the file against rendered_hash (a change: FAILED "content changed", nothing sent), asks the gate again, counts the
 // firm's day (DAILY_CAP; the 51st trial message stays QUEUED, reason "daily limit", one alert per firm per day) and hands
@@ -46,13 +46,13 @@ export class Messages implements MessagePort<Tx> {
     const m = MessageSend.parse(input);
     const { firmId } = firmScope(m.firmId);
     const address = normaliseAddress(m.channel, m.address);
+    const firm = await tx.platformFirm.findUnique({ where: { id: firmId }, select: { operatingName: true, contactEmail: true } });
+    if (!firm) throw new MessageRefused(`firm ${firmId} is not a platform firm`);
     await ensureMessagesFirm(tx, firmId);
     // One writer per firm and key: a second send with the key answers the first row (never a second message).
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`msg_outbox:${firmId}:${m.idempotencyKey}`}))`;
     const had = await tx.msgOutbox.findFirst({ where: firmScope(firmId, { idempotencyKey: m.idempotencyKey }), select: { id: true, state: true, stateReason: true } });
     if (had) return { outboxId: had.id, state: had.state, reason: had.stateReason, repeated: true };
-    const firm = await tx.platformFirm.findUnique({ where: { id: firmId }, select: { operatingName: true, contactEmail: true } });
-    if (!firm) throw new MessageRefused(`firm ${firmId} is not a platform firm`);
     let words: { subject: string; text: string; html?: string }, templateVersionId: string | null = null;
     if ("templateKey" in m.content) {
       // The firm's own version first, else the platform's; the newest published one.
@@ -62,10 +62,10 @@ export class Messages implements MessagePort<Tx> {
       });
       if (!v) throw new MessageRefused(`no ${m.channel.toLowerCase()} template ${m.content.templateKey} (${m.content.language}) for this firm`);
       words = { subject: fillFields(v.subject ?? "", m.content.values), text: fillFields(v.body, m.content.values) };
-      if (!words.subject.trim()) throw new MessageRefused(`template ${m.content.templateKey} has no subject`);
+      if (!words.subject.trim() || words.subject.length > 200 || /[\u0000-\u001f\u007f]/.test(words.subject)) throw new MessageRefused(`template ${m.content.templateKey} gives no subject, one over 200 characters, or one with a line break`);
       templateVersionId = v.id;
     } else words = m.content;
-    for (const k of m.attachments) if (!(await this.d.files.exists(firmId, k))) throw new MessageRefused(`attachment ${k} is not a file of this firm`);
+    for (const k of m.attachments) if (k.startsWith("msg/") || !(await this.d.files.exists(firmId, k))) throw new MessageRefused(`attachment ${k} is not a file of this firm`);
     const decision = await this.d.consent.allows(tx, { firmId, subject: m.person, channel: m.channel, address, class: m.class });
     const id = randomUUID(), rendered = render(id, { ...m, firmId }, { name: firm.operatingName, replyTo: firm.contactEmail }, words);
     const put = await this.d.files.put(firmId, fileKeyOf(firmId, id), new TextEncoder().encode(JSON.stringify(rendered)), "application/json");
@@ -81,7 +81,7 @@ export class Messages implements MessagePort<Tx> {
 
   async dispatch(firmIdIn: string, outboxIds: string[]): Promise<void> {
     const { firmId } = firmScope(firmIdIn);
-    for (const id of outboxIds) await this.d.jobs.enqueue(SEND_QUEUE, { firmId, outboxId: id }, { key: `msg.send:${id}`, firmId });
+    for (const id of outboxIds) await this.d.jobs.enqueue(SEND_QUEUE, { firmId, outboxId: id }, { key: `msg.send:${firmId}:${id}`, firmId });
   }
 
   /** The worker: sends one outbox row at most once. Answers what happened (for logs and tests). */
@@ -126,7 +126,9 @@ export class Messages implements MessagePort<Tx> {
   /** Each minute: every QUEUED row older than SWEEP_AFTER_MS gets a job keyed by the hour (a held row tries once an hour). */
   async sweep(): Promise<number> {
     const now = this.clock.now(), hour = now.toISOString().slice(0, 13);
-    const rows = await this.d.db.msgOutbox.findMany({ where: { state: "QUEUED", createdAt: { lt: new Date(now.getTime() - SWEEP_AFTER_MS) } }, select: { id: true, firmId: true }, orderBy: { createdAt: "asc" }, take: 500 });
+    // Rows a crash left (no reason) apart from rows the cap holds, so one firm's held backlog never hides another's lost row.
+    const stale = { state: "QUEUED" as const, createdAt: { lt: new Date(now.getTime() - SWEEP_AFTER_MS) } }, pick = { select: { id: true, firmId: true }, orderBy: { createdAt: "asc" as const }, take: 500 };
+    const rows = [...await this.d.db.msgOutbox.findMany({ where: { ...stale, stateReason: null }, ...pick }), ...await this.d.db.msgOutbox.findMany({ where: { ...stale, stateReason: HELD_DAILY_LIMIT }, ...pick })];
     let n = 0;
     for (const r of rows) if ((await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
     return n;
