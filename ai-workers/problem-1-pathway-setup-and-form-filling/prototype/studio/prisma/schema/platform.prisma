@@ -93,6 +93,7 @@ model PlatformFirm {
   // back-relation slot: compliance (FO-13)
 
   // back-relation slot: register (PF-21)
+  platComplaints PlatComplaint[] // platform-register.prisma
 
   // back-relation slot: retainers (FO-5)
 
@@ -231,6 +232,7 @@ model PlatformStaff {
   // back-relation slot: compliance (FO-13)
 
   // back-relation slot: register (PF-21)
+  platComplaintsHandled PlatComplaint[] // platform-register.prisma (the handler)
 
   // back-relation slot: retainers (FO-5)
 
