@@ -180,3 +180,55 @@ Fix: add the Cf ranges and the noncharacters, and require at least one character
 - WRONG_ACCOUNT out of trust. With no correction, it is refused (23514). After an undo, a re-move above the payment is refused, and the ordinal stays unique.
 - Numbers. 20 parallel issuers with savepoint rollbacks and rollbacks gave INV-0002..0019 with no gap at RC, and 40001 for the losers at RR.
 - `money_move_line_not_undone`. Line and undo in one CTE are refused at commit. With `SET CONSTRAINTS … IMMEDIATE`, a line then an undo of the same batch commits. That only reorders an ordinary later undo, so it is not a finding.
+
+## Round 5 (B-20, B-21 only, at `73a93e32c`)
+Scope: the release holder's ruling, B-20 and B-21 only; the move list has left the PR and was not tested. Scratch database `fo7a_break_r5` on :54329 had all 93 migration folders applied in name order with psql (C ctype, as the team's). Firms came from a scratch `mkfirm()` (platform_firm, then settings with trust on). `mkinv()` issues a 100.00 invoice and `mkcn()` writes a 0.01 credit note. I used psql, plus `pg` clients at RC and RR, each race run 3 times. The database was dropped at the end. Line numbers refer to `20261115042334_fo7a_client_money_tables/migration.sql`. `:f` stands for the firm. Cost: US$0.
+
+**B-20 holds** (lines 95 and 628-684). The round-4 reproduction (`INSERT … INVOICE 'XA-'`; issue → XA-0001; `UPDATE … SET prefix='INV-'`; `INSERT … CREDIT_NOTE 'XA-'`) is now refused with 23514 "XA- printed the INVOICE series' numbers". These were also refused:
+- The update path (`UPDATE … SET prefix='XA-' WHERE kind='CREDIT_NOTE'`), the upsert (`… ON CONFLICT (firm_id,kind) DO UPDATE SET prefix=excluded.prefix`), and RECEIPT and TRUST_REQUEST to XA- (all 23514).
+- Several renames XA-→YA-→ZA-, each printed: `used_prefixes` is `{XA-,YA-,ZA-}`, and each of them is refused to the credit-note series. The invoice series may go back to XA-, and its numbering continues (XA-0002, no repeat).
+- Numbers from every trigger: a receipt (XR-0001) and trust requests sent on insert and on update (XT-0001, XT-0002). After a rename, XR- and XT- are refused to INVOICE, CREDIT_NOTE and the other kind (23514).
+- Delete and re-create: a printed series cannot be deleted (42501). An unprinted one can be, and a re-created credit-note series still cannot take XA- (23514).
+- Default prefixes: after INV-0001 and a rename to TOR-, INV- is refused to the other three kinds, and CN- to INVOICE, by `money_number_series_default_prefix_check`.
+- One statement and CTEs: `UPDATE … SET prefix = CASE kind WHEN 'INVOICE' THEN 'YA-' ELSE 'XA-' END` was refused in both physical row orders (23514). So were `WITH a AS (UPDATE … INVOICE 'YA-') UPDATE|INSERT … 'XA-'` and the reverse CTE order (23514, or 23505 when the insert runs first).
+- In one transaction: print, rename, then RECEIPT to PA- is refused (23514).
+- A caller writing `used_prefixes`: `INSERT … used_prefixes '{ZZ-}'` and `… NULL` are refused. So are `UPDATE … SET used_prefixes='{}'` or `NULL`, `SET prefix='ZA-', used_prefixes='{}'`, `ON CONFLICT DO UPDATE SET used_prefixes='{}'`, and `SET used_prefixes='{XA-}'` on another series. All give 23514 "used_prefixes is the database's". A kind change is refused too (23514).
+- Real connections, each race run 3 times with the same outcome:
+  - Rename (uncommitted) against a credit-note insert of XA-: RC 23514, RR 40001.
+  - Rename committed after the other side's snapshot: RC 23514, RR 40001.
+  - Three-way: an uncommitted XA-0001 on a fresh series, a rename waiting on the row, and a credit-note insert of XA-. At RC the rename records XA- (its trigger reads the refreshed row, `numbers_taken`=1) and the insert gets 23505. At RR the rename gets 40001 and the insert 23505.
+  - Issue committed after the renamer's snapshot: RC records XA- and the later insert gets 23514; RR gives 40001.
+  - Two renames at once (INVOICE away from XA-, CREDIT_NOTE to XA-): RC 23514, RR 40001.
+  - 13 writers (one rename, 12 inserts or renames of CN, R and DR to XA-): 1 ok and 12 refused (23514, 23505 or 40001), at RC and RR, every run.
+
+**B-21 broken (in part; the round-4 characters hold)** (line 443). Each round-4 and round-3 character now returns false: U+FFF9–FFFB, 1BCA0/3, 13430/F, 0600, 070F, 110BD, 16FE4, 0301, 05AE, FFFF, 2FFFE, 10FFFF, 0378, 1D455, E000, F0000, 2800, E0020, 1F3FB, 17B4, 1D159 and FE0F. No unassigned or private-use code point passes (`unicode_assigned()` over the full scan). The class "a lone combining mark" still passes whenever the mark has Unicode's Alphabetic property, because `[[:alnum:]]` under pg_c_utf8 counts it. 905 Mn and 423 Mc code points pass alone. Scan: `select cp from generate_series(1,1114111) cp where cp not between 55296 and 57343 and money_text_ok(chr(cp),10)`, run in two ranges because `chr` refuses surrogates. These committed:
+```sql
+INSERT INTO money_credit_note (firm_id,invoice_id,amount_minor,currency,reason,created_by)
+  VALUES (:f, lastinv(:f), 1, 'CAD', U&'\064E', 'user-R');                          -- Arabic fatha alone → CN-0001
+INSERT INTO money_credit_note (firm_id,invoice_id,amount_minor,currency,reason,created_by)
+  VALUES (:f, lastinv(:f), 1, 'CAD', U&'\+013441\+013442', U&'\3000\0345');         -- Egyptian FULL/HALF BLANK (Lo); created_by = ideographic space + U+0345 → CN-0002
+SELECT money_text_ok(U&'\064E\064E\064E',50), money_text_ok(U&'\200B\05B0\2800',50), money_text_ok(U&'\3164\0345',50),
+       money_text_ok(U&'\00A0\0E31\FEFF',50), money_text_ok(U&'\FE0F\064E\+0E0020',50);   -- all true
+```
+Other single marks that pass: U+0345, 0363–036F, 05B0–05BD, 0610–061A, 064B–0657, 0670, 0E31, 1DE7, 1BC9E and 1171E. Should: the text holds at least one character that is not a mark (Mn, Mc or Me). In SQL, that means removing `\p{M}`-like ranges before the `[[:alnum:][:punct:]]` test, or testing `[[:alnum:][:punct:]]` on a copy with marks stripped. U+13441/13442 (Egyptian blanks, Lo) belong in the blank class.
+
+**B-22 Minor: a prefix that never printed is kept from every other kind, and the refusal says it printed.** Line 661 appends OLD.prefix whenever `OLD.numbers_taken > 0`. That count covers the whole series, not the outgoing prefix. So a mistyped prefix, fixed before any use, is locked away for good:
+```sql
+SELECT mkinv(:f);                                                                      -- INV-0001
+UPDATE money_number_series SET prefix='TRO-' WHERE firm_id=:f AND kind='INVOICE';      -- typo, nothing printed
+UPDATE money_number_series SET prefix='TOR-' WHERE firm_id=:f AND kind='INVOICE';      -- used_prefixes = {TRO-}
+INSERT INTO money_number_series (firm_id,kind,prefix) VALUES (:f,'CREDIT_NOTE','TRO-');
+-- 23514 "TRO- printed the INVOICE series' numbers" (it never did)
+```
+The same happens after XA-→TOR-→XA- (`{XA-,TOR-}`), and when the only number under a prefix was rolled back to a savepoint (`{PA-}`, with PA-0002 never committed). It fails safe and never repeats a number. Fix: record the prefix only if a number was taken under it, for example by keeping `numbers_taken` at the moment the prefix was set and comparing.
+
+**B-23 Minor (regression from the B-21 fix): text written only in non-ASCII digits is refused.** Under pg_c_utf8, `[[:alnum:]]` is Alphabetic plus ASCII 0-9 only, and the digits are not punctuation, so all 670 non-ASCII Nd code points (and the No ones such as ½, ①, ²) fail alone. The expression before `33926119a` accepted all three of these:
+```sql
+INSERT INTO money_payment (firm_id,invoice_id,method,amount_minor,currency,received_into,received_at,idempotency_key,recorded_by,reference)
+  VALUES (:f, lastinv(:f), 'CHEQUE', 100, 'CAD', 'OPERATING', now(), 'key-r5-t8-01', 'user-R', '１２３４５');   -- 23514 money_payment_reference_check (full-width cheque number)
+-- same with reference '۱۲۳۴۵۶' (Persian digits): 23514
+UPDATE money_payment_settings SET tax_number = '١٢٣٤٥٦٧٨٩' WHERE firm_id = :f;  -- 23514 money_payment_settings_tax_number_check
+```
+`'No. ١٢٣'` passes, and so does text in 26 scripts (Devanagari, Tamil, Thai, Han, Kana, Hangul, Arabic, Hebrew, Greek, Cyrillic, Ethiopic, Georgian, Armenian, Khmer, Myanmar, Sinhala, Tibetan, Mongolian with FVS, Cherokee, Javanese, decomposed é, Persian with ZWNJ, emoji with skin tone, a flag, a keycap, a ZWJ family). Fix: `[[:digit:]]` under pg_c_utf8 is ASCII-only too (checked: `'١' ~ '[[:digit:]]' COLLATE pg_c_utf8` is false), but `'١' ~ '[[:alnum:]]' COLLATE pg_unicode_fast` is true, so add that as a second test (pg_unicode_fast alone drops symbols: `'€' ~ '[[:punct:]]'` is false there).
+
+**Held in round 5:** everything under B-20 above, and every listed B-17 and B-21 character.
