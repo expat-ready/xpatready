@@ -41,6 +41,8 @@ Residual, accepted under Lead B's ruling (PR comment 6893074492, DW10: "a person
 
 **Journey score, re-scored at this head: 9/10 (7.5 of the 8 criteria that apply, scaled; accessibility and visual quality are N/A, no screen). Pass, no 0.** Task completed 1 (M2 fixed), next step 1, plain words 1, feedback and state 1, correct data 1 (M1 fixed), error recovery 1, speed 1. Trust ½: the overlap label still ignores the record rule (m3), and the R1 residual stands under Lead B's ruling. Journeys 4, 7 and 8 of the journey report now hold.
 
+**Records check at `4345517a6d8bb3f367d249c3606435761db82433`** (diff `66167b2f3..4345517a6`: `qa/built/FO-3sa.md` plus this file): not approved yet, one wording fix. The line says "A time the public page would not offer answers 409 'Book anyway?'". That is untrue for a time between the page's starts, inside the host's hours, with the host free: it saves at once, with no warning (M2's fix, `service.ts:639-641`). Fix: "A time with a warning answers 409 …", and add "a time between the page's starts with no warning is saved as asked". Optional: also say that a time already started is refused (400 "startsAt: in the past") even with Book anyway (`service.ts:308, 323`). Everything else in the line matches the code. The code is unchanged since 66167b2f3, so that approval of the code stands.
+
 ---
 
 ## First review at `8fe4756467c201847e9b25d9073d3f4e32e831dc` (diff `2a3589aeb..8fe475646`): Block (kept as written)
