@@ -1,0 +1,112 @@
+NOTICE:  database "xr_studio_pf21_empty_11046" does not exist, skipping
+NOTICE:  database "xr_studio_pf21_demo_11046" does not exist, skipping
+NOTICE:  database "xr_studio_pf21_bare_11046" does not exist, skipping
+PASS  PF-21 (P-600 (4)): the migration has its own stamp, later than every one before it (newest before it: 20261114230000_pf25_web_address)
+PASS  PF-21 fail: before PF-21's migration there is no plat_ table and the schema differs (diff names plat_complaint)
+PASS  PF-21 pass: every migration applies to an empty database; both tables exist
+PASS  PF-21 pass: migrate diff from the migrated empty database to the schema names no plat_ table or type
+PASS  PF-21 fail: the migration does not apply twice
+PASS  PF-21 pass: the migration applies to a demo-data copy (cases, audit, the Sample firms and staff) and leaves its rows as they were
+PASS  PF-21 pass: migrate diff after it (and every later migration) on the demo-data copy names no plat_ table or type
+PASS  PF-21 (P-600 (3), rev 15.2): every database function the migration adds carries the plat_ prefix, and it adds some
+PASS  PF-21 fail→pass: firm_id is first in every index of both tables (the primary keys aside)
+PASS  PF-21: no plat_ column stores a time without its zone
+PASS  PF-21 fail (FO-13k line 1): no received date → 422 at the field receivedAt; no summary → 422 at summary; a summary of only (non-breaking, zero-width) spaces → 422 at summary; nothing written
+PASS  PF-21 fail: a received date in the future, another person without a name, another person with a record id, a linked person without an id → 422 at the field
+PASS  PF-21 fail: a handler from firm B → 422 at handlerStaffId; an unknown field (a firm id) → 422; nothing written
+PASS  PF-21 fail: recording without agent/complaint:record → 403
+PASS  PF-21 pass (line 1): with a received date and a summary the complaint is recorded OPEN, with its RECEIVED event, one audit line and one reminder job keyed by the complaint
+PASS  PF-21 pass: acknowledge-by is the close of the 2nd business day after the received day (Mon 09:00 Toronto → Wed 18 Nov 17:00 Toronto = 22:00Z)
+PASS  PF-21 pass/fail: a Friday complaint skips the weekend (Fri 20 Nov → Tue 24 Nov 17:00), and a closed day is skipped too (Mon 23 Nov closed → Wed 25 Nov)
+PASS  PF-21 pass: the firm's own zone counts (a complaint at 23:30 Toronto on Monday is a Monday complaint: 17 Nov 04:30Z → Wed 18 Nov)
+PASS  PF-21 fail (line 2): before the acknowledge-by date no reminder is sent
+PASS  PF-21 fail: before its date the complaint is not overdue
+PASS  PF-21 pass (line 2): past the date one reminder goes to the handler, recorded as one REMINDER_SENT event and one audit line by the system; the mail names no complainant and no summary
+PASS  PF-21 fail (line 2, once): the reminder does not fire again, and running the job again by hand is skipped
+PASS  PF-21 pass: the list's overdue view shows it (open, not acknowledged, past its date)
+PASS  PF-21 pass: acknowledging cancels the reminder job
+PASS  PF-21 fail (line 2): an acknowledged complaint gets no reminder, even when the job is run by hand
+PASS  PF-21 fail: the acknowledgement is recorded once (409), and the database refuses a second one
+PASS  PF-21 pass: steps, the response and the close are recorded; the complaint is CLOSED with its outcome and date
+PASS  PF-21 fail (line 3): closing again with another outcome → 409; a step after the close → 409; the outcome is still RESOLVED
+PASS  PF-21 fail (line 3, database): changing a closed complaint's outcome directly is refused
+PASS  PF-21 pass (line 3): a closed complaint stays readable and takes a NOTE as a new event; nothing on the record changes
+PASS  PF-21 fail (database): a closed complaint takes no event but a NOTE
+PASS  PF-21 fail (line 4): a case officer who is not the handler cannot read it (404, the same as another firm's) nor see it in the list
+PASS  PF-21 pass (line 4): the handler (no complaint keys) reads it with its events; the list shows the handler's own; Owner reads every one
+PASS  PF-21 pass/fail: the read key alone reads every complaint but changes none (403)
+PASS  PF-21 fail: a staff member who may not read it cannot change it either (404)
+PASS  PF-21 fail: the handler without the keys cannot pass the complaint on (403)
+PASS  PF-21 pass: Owner changes the handler; the new handler reads it and the old one no longer does
+PASS  PF-21 fail (firm wall): firm B's Owner cannot read, list or close firm A's complaint (404, never 403)
+PASS  PF-21 pass (firm wall): firm B's complaint is firm B's alone
+PASS  PF-21 fail (database): a complaint naming another firm's staff member as handler is refused 23503
+PASS  PF-21 fail (database): a complaint's facts never change (summary, received date)
+PASS  PF-21 fail (database): another person needs a name and no record id; a closed complaint needs its outcome and date
+PASS  PF-21 pass (database): another person with a name only is accepted
+PASS  PF-21 fail (line 5): delete → refused for everyone (Owner with both keys and the handler: 405)
+PASS  PF-21 fail (line 5, database): deleting or truncating a complaint or its events is refused, even directly
+PASS  PF-21 fail (database): an event is never changed (insert-only)
+PASS  PF-21 pass (line 5): every complaint and event is still there
+PASS  PF-21 pass: a staff member no complaint names can still be deleted (as before PF-21)
+PASS  PF-21 fail (database): a staff member who handles a complaint (and nothing else) cannot be deleted or change id (RESTRICT: 23001)
+PASS  PF-21 pass: the three foreign keys of the register are RESTRICT on delete and on update
+PASS  PF-21 pass (line 6): every change wrote one AuditPort line (record ×3, acknowledge, step, response, close, note, handler, reminder), each on plat_complaint with the complaint's id
+PASS  PF-21 pass: no audit line carries the complaint's words or a person's name (ids only in detail; summaries are fixed phrases)
+PASS  PF-21 fail: refused calls wrote no audit line (exactly the changes above)
+PASS  PF-21 fail (line 6): a forced audit failure rolls the record back — no complaint, no event, no reminder job
+PASS  PF-21 fail (line 6): a forced audit failure on close leaves the complaint OPEN with no CLOSED event
+PASS  PF-21: no plat_ column is named like a password, secret or token
+PASS  PF-21 (Lead 47): the catalogue gives agent/complaint:record to Owner, Admin and Case Manager and agent/complaint:read to Owner and Admin, nothing else
+PASS  PF-21 pass/fail per role (Lead 47): Owner, Admin and Case Manager record a complaint; Case Officer, Billing / Finance and Read-only → 403
+PASS  PF-21 pass/fail per role (Lead 47): Owner and Admin read a complaint they do not handle; Case Manager, Case Officer, Billing / Finance and Read-only → 404
+PASS  PF-21 fail (review m3, break m2): 31 February, the year 0099 and 24:00 → 422 at receivedAt (never shifted, never a 500)
+PASS  PF-21 pass: a real date with an offset is accepted (2026-11-30T09:00:00-05:00)
+PASS  PF-21 fail (review m2, break m3): 36 dashes or 36 letters as an id → 404 on read and on change (never a 500)
+PASS  PF-21 fail (break m4): a summary of only invisible marks, a C1 control, a line separator in a name → 422 at the field
+PASS  PF-21 fail (break m4, database): an ideographic or em space only summary is refused by the database too
+PASS  PF-21 pass: right-to-left and emoji text is kept as written
+PASS  PF-21 fail (break m7): an acknowledgement after the response, or a close before the response → 422 at the date
+PASS  PF-21 fail (break m7, database): acknowledged after the response, or closed before it, is refused by plat_complaint_dates_check
+PASS  PF-21 pass (break m7): acknowledged before the response, then closed after it
+PASS  PF-21 fail (break m5): a row change without its event is refused (acknowledged, answered, closed, a new handler)
+PASS  PF-21 fail (break m5): a second ACKNOWLEDGED event, a second RECEIVED event or an event dated before the receipt is refused
+PASS  PF-21 fail (break m5): a complaint written without its RECEIVED event is refused at commit
+PASS  PF-21 pass (break m5): with its event, a row change is accepted; then the response date is recorded once
+PASS  PF-21 pass/fail (race, two connections): two closes at once → exactly one closes, the other answers 409; one CLOSED event
+PASS  PF-21 pass (race): a step racing a close is either before it or refused (409), never a STEP after CLOSED
+PASS  PF-21 fail→pass (break m1): an acknowledgement rolled back by a failing audit leaves its reminder job queued (cancel runs only after commit)
+PASS  PF-21 fail (review m4): a reminder run that rolls back sends no mail and records no REMINDER_SENT
+PASS  PF-21 pass: the named person's name and contact are on the record itself
+PASS  PF-21 fail (no leak): the reminder for it went out, and no audit line, job payload or mail carries the name, the contact or the summary's words
+PASS  PF-21 pass (break m10): the reminder gives the date in the firm's zone (America/Toronto) and a Reply-To of the firm's contact address
+PASS  PF-21 fail→pass (break m10): a deactivated handler gets no reminder; the firm's active Owners and Admins do
+PASS  PF-21 pass (review m5, daylight saving): Fri 30 Oct 2026 → Tue 3 Nov 17:00 EST (22:00Z) across the clocks going back; Fri 6 Mar 2026 → Tue 10 Mar 17:00 EDT (21:00Z) across the clocks going forward
+PASS  PF-21 pass (break m8): a closing time inside a daylight-saving gap lands just after the gap on the same day (Toronto 8 Mar 2026 02:30 → 03:30 EDT)
+PASS  PF-21 pass (break m9): "all" comes in pages of 100 with a cursor, and the pages together are every complaint of the firm once (154)
+PASS  PF-21 pass (break m9): the overdue view starts with the longest overdue (the oldest date first) and pages on in that order
+PASS  PF-21 fail (break m9): a page over 100 or a made-up cursor → 422
+PASS  PF-21 pass (events): a recorded complaint wrote one complaint.received, its close one complaint.closed, and the note after the close none (the outbox, contracts §0.5)
+PASS  PF-21 pass (events): the payloads read with the shared shapes (ports/events.ts) and carry the firm, the complaint, the subject and the outcome
+PASS  PF-21 fail (events): no event payload carries a name, a contact or the summary's words (the named person's complaint included)
+PASS  PF-21 fail (events): a payload with a name in it, or without its complaint id, is refused by the shared shape
+PASS  PF-21 fail (events): a change rolled back by a failing audit writes no event (record and close)
+PASS  PF-21 fail (R2-M1): a reminder whose mail fails throws (the job runs again) and its transaction leaves no REMINDER_SENT and no mail (the fake audit keeps a rolled-back line in memory, PF-0p's note; the database is the record)
+PASS  PF-21 pass (R2-M1): the next run sends it: then one mail and one REMINDER_SENT, and a third run is skipped
+PASS  PF-21 pass (review R2-m2): the reminder is a SERVICE mail (ports/mail.ts: reminders and notices), with the firm's Reply-To
+PASS  PF-21 pass/fail (break R2-m1): with the queue down, the complaint is recorded once and answered reminderScheduled: false (never an error that makes the person record it again)
+PASS  PF-21 pass (break R2-m1): an acknowledgement with the queue down is still recorded (a failed cancel is harmless: the run skips it)
+PASS  PF-21 fail (break R2-m2, R2-m3, R2-m9): an id the event shape would refuse → 422 / 404; 1999 in UTC written with an offset → 422; a cursor that is not text → 422
+PASS  PF-21 fail (break R2-m7, service): a summary of only tags, combining marks, variation selectors, format controls or a noncharacter → 422 at summary
+PASS  PF-21 fail (break R2-m7, database): the database refuses the same summaries (pg_c_utf8 classes)
+PASS  PF-21 fail (break R2-m7): a direction override in a name → 422 (service) and refused by the database
+PASS  PF-21 pass (break R2-m7): Arabic, Chinese, an accented name, a number, a currency sign and an emoji are text in both
+PASS  PF-21 fail (break R2-m4): under REPEATABLE READ a second ACKNOWLEDGED is refused (unique index or serialization), one stays
+PASS  PF-21 pass (break R2-m4): the one-time-events index is plat_ and firm-first
+PASS  PF-21 fail (break R2-m5): an event without its change on the complaint is refused at commit (CLOSED on an open complaint, ACKNOWLEDGED alone, a HANDLER_CHANGED that names nobody new)
+PASS  PF-21 pass (break R2-m5): the stray complaint can still be closed through the service
+PASS  PF-21 fail→pass (break R2-m6): a given seq is replaced by the database's own (a forged -1 never puts a step first)
+PASS  PF-21 fail (review R2-m3): a raw STEP racing a raw close waits on the trigger's lock, then is refused (a closed complaint takes only a NOTE)
+PASS  PF-21 fail→pass (review R2-m1, break R2-m8): with no active handler, Owner or Admin the reminder goes to the firm's contact address, recorded as such
+
+107 passed, 0 failed
