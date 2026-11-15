@@ -61,3 +61,13 @@ No open Major or Critical names R1.12. QA-450 and QA-451 are Minor, and P-305 ho
 * **R1.11:** dispatch `skeleton.yml` on main e593acccc (P-439). If green, R1.11 is Works on the next reader's look. R1.16 still waits on QA-449's fix: a batch or push trigger, and a required check.
 * **R1.12:** move it to Works once the walk is committed. Confirm the Done-when line "judged in qa's walks" as your ruling, and close QA-450.
 * **New UX Minor on R1.5:** agree it and qa logs it; the fix is one line in `service.ts` plus the walk's assertion.
+
+### R1.11 re-score after the Lead's dispatch (run 43752888288)
+**Verdict: Works (was Partial).** Scored on main's head **af7df6d62** itself: `skeleton.yml` run 43752888288, job 132930539826, workflow_dispatch on main, conclusion success.
+* **My own reads:** `origin/main` is af7df6d62; e593acccc is its ancestor. `git diff e593acccc af7df6d62` over `prototype/` and `official-sources/` changes one file, `studio/tests/qa/check_r140_staff_move_invite.ts`. `Dockerfile.dockerignore` excludes `studio/tests`, so the image's inputs are the same on both commits. `Dockerfile`, `Dockerfile.dockerignore`, `tools/`, `deploy/` and `skeleton.yml` have no diff.
+* **The job log's lines (the new file):** migrations applied first; smoke 6/6 PASS (health, first page, bundle, `/me`, non-root uid 1000, no secret in 7 env names and 17 layers). Seeded fail 1 (database stopped): `FAIL health … 503`, then "seeded fail caught". Seeded fail 2 (root image with a key): `FAIL non-root`, `FAIL no secret`, then "seeded fail caught". The lines match the texts in `skeleton-smoke.sh` and `skeleton.yml` (lines 63, 89, 122, 135).
+* **Every Done-when clause is met.** The last one, "on main's code on GitHub's runners", is met by this run. The independent re-run is qa's local replay on e593acccc (same image inputs, stated deviations). With this reader, P-339 is satisfied.
+* **QA-449 and P-305:** QA-449 named R1.11 only because it could not be scored on main. Its own "Expected" accepts "the Lead dispatches it after each code merge", and that happened for this head. So QA-449 stops holding R1.11: narrow the BUGS.md row to R1.16. It stays open and Major.
+* **R1.16 stays Partial, held by QA-449.** One dispatch is not "on every merge batch". `skeleton.yml` still has only `pull_request` and `workflow_dispatch` triggers, and the file still says it "is not a required check".
+* **Quoted, not verifiable here:** the run and job ids, the step conclusions and that the log lines are verbatim. The new log file is **untracked** (`??`): commit it before the row cites it (P-557).
+* **Keeping it Works:** this proof covers af7df6d62's image tree only. The next merge that touches the image inputs needs another dispatch until QA-449 is fixed.

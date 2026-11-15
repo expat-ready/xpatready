@@ -5,11 +5,11 @@ Lane: qa, platform group (P-613 (4)), cloud copy. Rows: MVP-CHECKLIST 11, 12, 16
 ## Verdict
 | Row | Was (d52b7274e) | Now (e593acccc) | Held by |
 |---|---|---|---|
-| R1.11 Server framework (PF-7) | Not tested | **Partial** | QA-449 (Major): the container proof never runs on main's code on GitHub's runners |
+| R1.11 Server framework (PF-7) | Not tested | **Works** (main af7df6d62, after the Lead's dispatch; Partial at first) | — (QA-449 no longer holds it) |
 | R1.12 Screen framework, one UI kit (PF-1) | Partial | **Works** | nothing (QA-451 Minor, records) |
 | R1.16 Automated testing (PF-7) | Partial | **Partial** | QA-449 (Major) |
 
-Release 1 at qa Works: +1 (R1.12).
+Release 1 at qa Works: +2 (R1.12; R1.11 after the Lead's dispatch of `skeleton.yml`, run 43752888288, a fresh reader's re-score in `verdicts.md`).
 
 ## What works
 * **Every non-quarantined suite is green on the batch that made main's head.** ci 43742297658 (merge batch "merged #1822", head 3e36ca662, the same tree as main e593acccc): 8 shards, 493 PASS, 0 FAIL, 17 quarantined (P-205); 5 checkpoint jobs, types and ci green. The suite lines were read from the job logs: `ci-43742297658-suite-lines.txt`.
