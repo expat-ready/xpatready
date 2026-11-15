@@ -116,4 +116,17 @@ case "$ts" in   # empty, "null" (the curl fallback's jq -r) or any unparsable va
      [ "$age" -ge 24 ] && ACT "backup ${age} h old: run tools/backup-refresh.sh (allowed_domains github.com)";;
 esac
 
+# 7. Records reach main (Lead 53, 15 Nov, founder A76: P-606's skill lines sat off main for 5 days and no check said so).
+# The newest DECISIONS row and the next/qa skills on this Lead branch must be on origin/main; otherwise cloud builders and
+# qa follow old rules. Each check ACTs until the records PR merges (a fresh lead/<today> branch, P-505 clean commit).
+D=ai-workers/problem-1-pathway-setup-and-form-filling/product/DECISIONS.md
+newest=$(git show HEAD:"$D" 2>/dev/null | grep -m1 -oE '^\| P-[0-9]+' | tr -d '| ')
+onmain=$(git show origin/main:"$D" 2>/dev/null | grep -m1 -oE '^\| P-[0-9]+' | tr -d '| ')
+skills_off=$(for f in .claude/skills/next/SKILL.md .claude/skills/qa/SKILL.md .claude/skills/lead/SKILL.md; do git diff --quiet origin/main HEAD -- "$f" 2>/dev/null || printf '%s ' "${f#.claude/skills/}"; done)
+if [ -z "$newest" ] || [ -z "$onmain" ]; then ACT "records on main: DECISIONS unreadable (branch ${newest:-?}, main ${onmain:-?})"
+elif [ "$newest" != "$onmain" ] || [ -n "$skills_off" ]; then ACT "records not on main: newest decision ${newest} here, ${onmain} on main; skills differing: ${skills_off:-none}; land the records PR now"
+else say "records on main: ${onmain} and the skills match"; fi
+
+exit "$act"
+
 exit "$act"
