@@ -10,4 +10,5 @@
 `{"as_of":"2026-11-14T13:00:00+05:30","weekly_pct":48,"weekly_resets":"2026-11-20T04:30:00+05:30","burn_pct_per_h":1.5,"paid_usd_today":0,`
 `"sessions":[{"name":"FO-1a lane","kind":"cloud","role":"builder","state":"running","row":"FO-1a","pr":1742,"idle_min":20,"restarts":0,"nudges":0}]}`
 `kind` is `cloud` or `mac`; `state` `blocked` turns a chip red; `"example": true` marks example data on the page.
+Since board v57 (15 Nov) per session also, optional: `component` (platform, front_office, client_money, case_side, audit, pipeline, qa, strategy_desk, or the name; else derived from the row id, FORMULAS.md › Team by component), `owner` (overrides the component's Lead), `row`, `pr`, `idle_min`. Every number's tooltip comes from `data.json › explain` (FORMULAS.md › Tooltips).
 Since P-596 also: `top3` (`{"today":{"what","why","rec","owner","needs_you"?},"week":{…},"month":{…}}`), `max_lanes`, and per session `role` (`lead`, `lead-b`, `builder`, `qa`, `standby`, `desk`), `reports_to`, `branch`. Older than 2 h counts as not updated.
