@@ -6,7 +6,7 @@
 // Staff routes (create, reschedule, cancel, attendance, list) are services until PF-4's guard is on main.
 // Nest's decorators are applied as calls below the classes (as PF-4's routes do): files under api/src/front-office/ are
 // outside api/tsconfig.json's decorator setting, so `@` forms would not compile there.
-import { Body, Controller, Get, Header, HttpCode, Inject, Injectable, Optional, Param, Post, Query, Req, type OnModuleInit } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Inject, Injectable, Optional, Param, Post, Query, Req, Res, type OnModuleInit } from "@nestjs/common";
 import { Db, OpenRead } from "../../core.ts";
 import { PlatformJobs } from "../../platform/jobs/platform-jobs.ts";
 import { BookingService, bookingPortsWith, type GivenBookingPorts } from "./service.ts";
@@ -35,7 +35,14 @@ export class BookingPublicController {
   manageSlots(token: string, q: Q, req: R) { return this.b.manageSlots(token, q, ipOf(req)); }
   reschedule(token: string, body: unknown, req: R) { return this.b.selfReschedule(token, body, ipOf(req)); }
   cancel(token: string, body: unknown, req: R) { return this.b.selfCancel(token, ipOf(req), body); }
-  ics(token: string, req: R) { return this.b.publicIcs(token, ipOf(req)); }
+  /** The file's headers are set only on success, so a not-found or a limit answers as JSON, not as a download (break M2). */
+  async ics(token: string, req: R, res: { setHeader(k: string, v: string): void }) {
+    const body = await this.b.publicIcs(token, ipOf(req));
+    res.setHeader("Content-Type", "text/calendar; charset=utf-8; method=REQUEST");
+    res.setHeader("Content-Disposition", 'attachment; filename="invite.ics"');
+    res.setHeader("Cache-Control", "no-store");
+    return body;
+  }
 }
 
 type Dec = MethodDecorator;
@@ -55,5 +62,4 @@ route("manage", [Get("bookings/:token"), OpenRead("the booker's own self-service
 route("manageSlots", [Get("bookings/:token/slots"), OpenRead("the booker's own self-service link: the times it may move to")], [Param("token"), Query(), Req()]);
 route("reschedule", [Post("bookings/:token/reschedule"), HttpCode(200)], [Param("token"), Body(), Req()]);
 route("cancel", [Post("bookings/:token/cancel"), HttpCode(200)], [Param("token"), Body(), Req()]);
-route("ics", [Get("bookings/:token/ics"), Header("Content-Type", "text/calendar; charset=utf-8; method=REQUEST"), Header("Content-Disposition", 'attachment; filename="invite.ics"'), Header("Cache-Control", "no-store"),
-  OpenRead("the booker's own self-service link: the booking's calendar file (FO-3pa)")], [Param("token"), Req()]);
+route("ics", [Get("bookings/:token/ics"), OpenRead("the booker's own self-service link: the booking's calendar file (FO-3pa)")], [Param("token"), Req(), Res({ passthrough: true })]);

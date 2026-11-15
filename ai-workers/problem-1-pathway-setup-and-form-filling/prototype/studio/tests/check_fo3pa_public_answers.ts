@@ -1,19 +1,19 @@
 // FO-3pa (rows rev 16.23; Lead B's answers on PR #1830, 15 Nov; concept fo-3-booking r2 §3 BR-1, BR-2, BR-5, BR-8, BR-9,
 // §6; AG-4-16..-20, -36..-38): the public booking answers, over HTTP on the feature's own public controller. Cases
 // DW1..DW9, each with a passing and a failing case: a scratch database (every migration), one small Nest app with the
-// public controller and the Booking provider, PF-0p's fake clock, jobs, mail and audit, and the ArrivalPort fake. No model
+// public controller and the Booking provider, the real interim audit adapter (audit_event, as the running app), PF-0p's
+// fake clock, jobs and mail, and the ArrivalPort fake. No model
 // call (US$0). Dropped at the end.
 //   tsx studio/tests/check_fo3pa_public_answers.ts
 import "reflect-metadata";
 import { Module } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fakeArrival } from "../ports/arrival.ts";
-import { fakeAudit } from "../ports/audit.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { fakeJobs } from "../ports/jobs.ts";
 import { fakeMail } from "../ports/mail.ts";
@@ -43,14 +43,16 @@ const { Db, READ_SCOPE } = await import("../api/src/core.ts");
 const { Booking, BOOKING_PORTS, BookingPublicController } = await import("../api/src/front-office/booking/public.controller.ts");
 const { wallToUtc } = await import("../api/src/front-office/booking/slots.ts");
 const { copyFirmHoursTo } = await import("../api/src/front-office/booking-seed.ts");
+const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
+const { BookingService } = await import("../api/src/front-office/booking/service.ts");
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: URL, options: "-c TimeZone=UTC" }) });
 const at = (s: string) => { const [d, t] = s.split(" "); const [y, m, dd] = d.split("-").map(Number); const [h, mi] = t.split(":").map(Number); return wallToUtc(y, m, dd, h * 60 + mi, TZ)!; };
 const iso = (s: string) => at(s).toISOString();
 
 const clock = new FakeClock(at("2026-10-26 08:00"));   // Monday, EDT
-const arrival = fakeArrival(), jobs = fakeJobs(clock), mail = fakeMail({ clock }), audit = fakeAudit();
-const ports = { audit: audit as never, clock, jobs, mail, arrival, publicBaseUrl: "http://localhost:4430", limits: { bookPerIp: 1000, bookPerFirm: 1000, slotsPerIp: 1000, tokenPerIp: 1000 } };
+const arrival = fakeArrival(), jobs = fakeJobs(clock), mail = fakeMail({ clock });
+const ports = { audit: auditEvent as never, clock, jobs, mail, arrival, publicBaseUrl: "http://localhost:4430", limits: { bookPerIp: 1000, bookPerFirm: 1000, slotsPerIp: 1000, tokenPerIp: 1000 } };
 @Module({ controllers: [BookingPublicController] as never[], providers: [Db, Booking, { provide: BOOKING_PORTS, useValue: ports }] as never[] }) class TestApp {}
 
 let app: Awaited<ReturnType<typeof NestFactory.create>> | null = null;
@@ -91,6 +93,7 @@ try {
   };
   const rowOf = async (token: string) => { const t = await db.foBookingToken.findUniqueOrThrow({ where: { id: token.split(".")[0] } }); return db.foBooking.findUniqueOrThrow({ where: { id: t.bookingId } }); };
   const strip = (b: Record<string, unknown>) => { const { manageToken: _t, ...rest } = b; return rest; };
+  const cancelLines = (bookingId: string) => db.auditEvent.findMany({ where: { entityKey: bookingId, action: "booking.cancelled" } });
 
   // ------------------------------------------------------------------------------------------------ the routes declare
   const open = (m: string) => Reflect.getMetadata(READ_SCOPE, (BookingPublicController.prototype as unknown as Record<string, object>)[m]);
@@ -125,6 +128,19 @@ try {
   const callTick = arrival.calls.filter((c) => c.person.email === "tick@client.example");
   ok("FO-3pa DW3 pass: with the tick, the booking carries one consent with the firm's wording id and the time it was given",
     tick.status === 201 && callTick.length === 1 && callTick[0].consent?.wordingId === wording && callTick[0].consent?.givenAt.getTime() === clock.now().getTime(), callTick);
+  const falseTick = await book("fo3pa-a", "free", "2026-10-27 16:00", "falsetick", { consent: false, consentWordingId: wording });
+  ok("FO-3pa DW3 fail: consent false sent with a wording id books with no consent (the id alone never makes one; review m)",
+    falseTick.status === 201 && arrival.calls.find((c) => c.person.email === "falsetick@client.example")?.consent === undefined, falseTick.body);
+  // BR-5: a firm with no consent sentence shows no box and still books; a tick there has nothing to agree to.
+  const noWording = new BookingService(db, { ...ports, arrival: fakeArrival({ wording: null }) });
+  const nwPage = await noWording.publicSlots("fo3pa-a", "free", {}, "10.0.0.9");
+  await clock.advance({ seconds: 5 });
+  const nwForm = { givenNames: "Ana", familyName: "Sample", email: "nowording@client.example", mode: "VIDEO", startsAt: iso("2026-10-27 10:00"), timeZone: TZ, formStamp: nwPage.formStamp };
+  const nwBooked = await noWording.publicBook("fo3pa-a", "free", nwForm, "10.0.0.9");
+  let nwTick = 0;
+  try { await noWording.publicBook("fo3pa-a", "free", { ...nwForm, email: "nowording2@client.example", startsAt: iso("2026-10-27 10:30"), consent: true, consentWordingId: wording }, "10.0.0.9"); } catch (e) { nwTick = (e as { getStatus(): number }).getStatus(); }
+  ok("FO-3pa DW3 pass: a firm with no consent sentence shows no box (consent null) and books without the tick (BR-5)", nwPage.consent === null && nwBooked.status === "SCHEDULED", nwPage.consent);
+  ok("FO-3pa DW3 fail: at a firm with no consent sentence, a tick → 409 consent-wording-changed, nothing booked", nwTick === 409 && await db.foBooking.count({ where: { firmId: A.id, startsAt: at("2026-10-27 10:30") } }) === 0, nwTick);
   const before = arrival.calls.length;
   const badTick = await book("fo3pa-a", "free", "2026-10-27 15:00", "badtick", { consent: true, consentWordingId: "00000000-0000-4000-8000-000000000bad" });
   const tickNoId = await book("fo3pa-a", "free", "2026-10-27 15:00", "ticknoid", { consent: true });
@@ -141,6 +157,10 @@ try {
     [shown.body.type, strip(noTick.body), manage.body].every((a) => a.selfServiceLimitHours === 4 && a.allowCancel === true && a.allowReschedule === true), [shown.body.type, manage.body]);
   ok("FO-3pa DW4 fail: no answer carries a staff, firm, type or person id, nor the business address's other keys",
     answers.every(noIds) && !answers.some((a) => JSON.stringify(a).includes("SECRET-NOT-PUBLIC")), answers);
+  await db.platformFirm.update({ where: { id: N.id }, data: { businessAddress: { city: "Line\r\nBreak\u202eCity", phone: "  " } } });
+  const mPage = await page("fo3pa-n", "free");
+  ok("FO-3pa DW4 fail: line breaks and bidirectional characters in the firm's address are dropped, a blank phone is null (break m3)", mPage.body.firm.address?.city === "Line Break City" && mPage.body.firm.phone === null, mPage.body.firm);
+  await db.platformFirm.update({ where: { id: N.id }, data: { businessAddress: Prisma.DbNull } });
   const nPage = await page("fo3pa-n", "free");
   ok("FO-3pa DW4 fail: a firm with no business address answers phone and address null, never an error", nPage.status === 200 && nPage.body.firm.phone === null && nPage.body.firm.address === null && nPage.body.firm.email === "hello@fo3pa-n.example", nPage.body.firm);
 
@@ -153,7 +173,7 @@ try {
   const ncCancel = await go("POST", `/bookings/${nc.body.manageToken}/cancel`, {});
   const ncAfter = await rowOf(nc.body.manageToken);
   ok("FO-3pa DW5 fail: allowCancel false gives a cancel attempt by link the refusal (409 NOT_ALLOWED_BY_LINK), the booking unchanged",
-    ncCancel.status === 409 && ncCancel.body.code === "NOT_ALLOWED_BY_LINK" && ncAfter.status === "SCHEDULED" && ncAfter.sequence === ncRow.sequence && !audit.entries.some((e) => e.entityKey === ncRow.id && e.action === "booking.cancelled"), [ncCancel.body, ncAfter.status]);
+    ncCancel.status === 409 && ncCancel.body.code === "NOT_ALLOWED_BY_LINK" && ncAfter.status === "SCHEDULED" && ncAfter.sequence === ncRow.sequence && (await cancelLines(ncRow.id)).length === 0, [ncCancel.body, ncAfter.status]);
   const nm = await book("fo3pa-a", "no-move", "2026-10-28 11:00", "nomove");
   const nmMove = await go("POST", `/bookings/${nm.body.manageToken}/reschedule`, { startsAt: iso("2026-10-28 14:00") });
   const nmSlots = await go("GET", `/bookings/${nm.body.manageToken}/slots`);
@@ -167,6 +187,11 @@ try {
   await db.foConsultationType.update({ where: { id: T.free.id }, data: { allowCancel: true } });
   ok("FO-3pa DW5 fail: cancelling switched off after the manage page loaded (it showed Cancel) is still refused, booking unchanged",
     lateView.body.canCancel === true && lateCancel.status === 409 && (await rowOf(late.body.manageToken)).status === "SCHEDULED", lateCancel.body);
+  await db.foConsultationType.update({ where: { id: T.free.id }, data: { allowReschedule: false } });
+  const lateMove = await go("POST", `/bookings/${late.body.manageToken}/reschedule`, { startsAt: iso("2026-10-28 16:00") });
+  await db.foConsultationType.update({ where: { id: T.free.id }, data: { allowReschedule: true } });
+  ok("FO-3pa DW5 fail: rescheduling switched off after the manage page loaded (it showed Reschedule) is still refused, booking unchanged",
+    lateView.body.canReschedule === true && lateMove.status === 409 && lateMove.body.code === "NOT_ALLOWED_BY_LINK" && (await rowOf(late.body.manageToken)).startsAt.toISOString() === iso("2026-10-28 15:00"), lateMove.body);
   const okCancel = await go("POST", `/bookings/${late.body.manageToken}/cancel`);
   ok("FO-3pa DW5 pass: a type that allows it is cancelled by link (200 CANCELLED)", okCancel.status === 200 && okCancel.body.status === "CANCELLED", okCancel.body);
 
@@ -190,6 +215,8 @@ try {
   await db.foBookingToken.update({ where: { id: moved.body.manageToken.split(".")[0] }, data: { voidedAt: clock.now() } });
   const voided = await go("GET", `/bookings/${moved.body.manageToken}/ics`), garbage = await go("GET", "/bookings/not-a-token/ics");
   ok("FO-3pa DW6 fail: a voided token and a garbage token give 404, identical to every other not-found", voided.status === 404 && garbage.status === 404 && voided.text === unknownSlug.text && garbage.text === unknownSlug.text, [voided.text, garbage.text]);
+  ok("FO-3pa DW6 fail: the not-found is JSON, never a calendar download (break M2)",
+    /^application\/json/.test(voided.headers.get("content-type") ?? "") && !voided.headers.get("content-disposition") && !garbage.headers.get("content-disposition"), [...voided.headers]);
 
   // ------------------------------------------------------------------------------------------------------------ DW7
   const REASON = "Sample reason: moving to another city";
@@ -200,26 +227,52 @@ try {
   ok("FO-3pa DW7 fail: a reason over 500 characters or with a control character → 400, the booking unchanged",
     tooLong.status === 400 && control.status === 400 && (await db.foBooking.findUniqueOrThrow({ where: { id: rcRow.id } })).status === "SCHEDULED", [tooLong.body, control.body]);
   const rcCancel = await go("POST", `/bookings/${rc.body.manageToken}/cancel`, { reason: `  ${REASON}  ` });
-  const rcAudit = audit.entries.filter((e) => e.entityKey === rcRow.id && e.action === "booking.cancelled");
-  ok("FO-3pa DW7 pass: the reason (trimmed, up to 500 characters) is kept in the cancel's audit entry",
-    rcCancel.status === 200 && rcAudit.length === 1 && (rcAudit[0].detail as Record<string, unknown>)?.reason === REASON, rcAudit);
+  const rcAudit = await cancelLines(rcRow.id);
+  ok("FO-3pa DW7 pass: the reason (trimmed) is kept in the cancel's audit entry, in its sentence, never in its ids-only detail",
+    rcCancel.status === 200 && rcAudit.length === 1 && rcAudit[0].summary === `Consultation cancelled. The booker's reason: ${REASON}` && !JSON.stringify(rcAudit[0].detail).includes("moving"), rcAudit);
   const rcView = await go("GET", `/bookings/${rc.body.manageToken}`);
-  ok("FO-3pa DW7 fail: the reason is never shown back: not in the cancel answer, not on the booking row, and the cancelled link is the one not-found",
-    !rcCancel.text.includes("moving to another city") && !JSON.stringify(await db.foBooking.findUniqueOrThrow({ where: { id: rcRow.id } })).includes("moving") && rcView.status === 404 && rcView.text === unknownSlug.text, [rcCancel.text, rcView.status]);
+  const events = await db.moduleEvent.findMany({ where: { subjectId: rcRow.id } });
+  ok("FO-3pa DW7 fail: the reason is never shown back: not in the cancel answer, the booking row, its events or mails, and the cancelled link is the one not-found",
+    !rcCancel.text.includes("moving to another city") && !JSON.stringify(await db.foBooking.findUniqueOrThrow({ where: { id: rcRow.id } })).includes("moving") && !JSON.stringify(events.map((e) => e.payload)).includes("moving")
+      && !mail.sent.some((m) => JSON.stringify(m).includes("moving to another city")) && rcView.status === 404 && rcView.text === unknownSlug.text, [rcCancel.text, rcView.status]);
   const noReason = await book("fo3pa-a", "free", "2026-10-30 13:00", "noreason");
   const nrRow = await rowOf(noReason.body.manageToken);
   const nrCancel = await go("POST", `/bookings/${noReason.body.manageToken}/cancel`);
-  ok("FO-3pa DW7 pass: a cancel with no body still works and its audit entry has no reason",
-    nrCancel.status === 200 && audit.entries.some((e) => e.entityKey === nrRow.id && e.action === "booking.cancelled" && !("reason" in ((e.detail as object) ?? {}))), nrCancel.body);
+  ok("FO-3pa DW7 pass: a cancel with no body still works and its audit sentence names no reason",
+    nrCancel.status === 200 && (await cancelLines(nrRow.id))[0]?.summary === "Consultation cancelled.", nrCancel.body);
+  // Break B1, B2, M1, m2: any reason the form takes is taken in full, or refused with 400, never a 500.
+  const reasons = [["500 characters", "r".repeat(500)], ["an email address in it", "Please write to sample.person@client.example instead"], ["two lines", "First line\nsecond line"]] as const;
+  const kept: unknown[] = [];
+  for (const [i, [what, reason]] of reasons.entries()) {
+    const b = await book("fo3pa-a", "free", `2026-10-30 ${String(14 + i).padStart(2, "0")}:00`, `reason${i}`);
+    const r = await go("POST", `/bookings/${b.body.manageToken}/cancel`, { reason });
+    const line = (await cancelLines((await rowOf(b.body.manageToken)).id))[0];
+    kept.push({ what, status: r.status, summary: line?.summary?.slice(0, 80) });
+    ok(`FO-3pa DW7 pass: a reason with ${what} cancels (200) and is kept in the audit sentence (break B1, B2)`, r.status === 200 && r.body.status === "CANCELLED" && !!line && line.summary.endsWith(reason.replace("\n", " ")), kept.at(-1));
+  }
+  const bad = await book("fo3pa-a", "free", "2026-10-30 09:00", "badreason");
+  const badRow = await rowOf(bad.body.manageToken);
+  const refusedReasons = await Promise.all(["x\ud800y", "right\u202eto left", "\u200b\u200b"].map((reason) => go("POST", `/bookings/${bad.body.manageToken}/cancel`, { reason })));
+  ok("FO-3pa DW7 fail: a reason with broken UTF-16, a bidirectional override or only invisible characters → 400, never a 500; the booking unchanged (break M1, m2)",
+    refusedReasons.every((r) => r.status === 400) && (await db.foBooking.findUniqueOrThrow({ where: { id: badRow.id } })).status === "SCHEDULED", refusedReasons.map((r) => [r.status, r.body?.issues]));
 
   // ------------------------------------------------------------------------------------------------------------ DW8
   const ncPage = await page("fo3pa-a", "no-cancel");
   ok("FO-3pa DW8 fail: the type page never carries the join link (its meetingLink is null, the link nowhere in the answer)", ncPage.status === 200 && ncPage.body.type.meetingLink === null && !ncPage.text.includes(LINK), ncPage.body.type);
   ok("FO-3pa DW8 pass: the confirmation and the manage answer of a confirmed video booking carry the join link", nc.body.joinLink === LINK && ncView.body.joinLink === LINK, [nc.body.joinLink, ncView.body.joinLink]);
-  const phone = await book("fo3pa-a", "no-cancel", "2026-10-30 15:00", "phone", { mode: "PHONE", phone: "+1 416 555 0199" });
+  const phone = await book("fo3pa-a", "no-cancel", "2026-10-30 16:00", "phone", { mode: "PHONE", phone: "+1 416 555 0199" });
   const freeNoLink = strip(noTick.body);
   ok("FO-3pa DW8 fail: a phone booking, and a type with no link, answer joinLink null", phone.status === 201 && phone.body.joinLink === null && freeNoLink.joinLink === null, [phone.body.joinLink, freeNoLink.joinLink]);
   ok("FO-3pa DW8 fail: a cancelled booking's answer carries no join link", okCancel.body.joinLink === null && rcCancel.body.joinLink === null, [okCancel.body.joinLink]);
+
+  // ---------------------------------------------------------------------------- the new routes are rate-limited
+  const tight = new BookingService(db, { ...ports, limits: { slotsPerIp: 2, tokenPerIp: 2 } });
+  const status = async (f: () => Promise<unknown>) => { try { await f(); return 200; } catch (e) { return (e as { getStatus(): number }).getStatus(); } };
+  const listRuns = [await status(() => tight.publicList("fo3pa-a", "192.0.2.1")), await status(() => tight.publicList("fo3pa-a", "192.0.2.1")), await status(() => tight.publicList("fo3pa-a", "192.0.2.1")), await status(() => tight.publicList("fo3pa-a", "192.0.2.2"))];
+  const live = await book("fo3pa-a", "free", "2026-10-30 11:00", "limits");
+  const icsRuns = [await status(() => tight.publicIcs(live.body.manageToken, "192.0.2.3")), await status(() => tight.publicIcs(live.body.manageToken, "192.0.2.3")), await status(() => tight.publicIcs(live.body.manageToken, "192.0.2.3"))];
+  ok("FO-3pa door pass: the list and the calendar file answer within the per-IP limit, and another address is not held back", listRuns[0] === 200 && listRuns[1] === 200 && listRuns[3] === 200 && icsRuns[0] === 200 && icsRuns[1] === 200, { listRuns, icsRuns });
+  ok("FO-3pa door fail: past the per-IP limit the list and the calendar file answer 429 (contracts §0.6)", listRuns[2] === 429 && icsRuns[2] === 429, { listRuns, icsRuns });
 } catch (e) {
   fail++;
   console.log(`FAIL  FO-3pa: the check stopped — ${e instanceof Error ? e.stack : String(e)}`);

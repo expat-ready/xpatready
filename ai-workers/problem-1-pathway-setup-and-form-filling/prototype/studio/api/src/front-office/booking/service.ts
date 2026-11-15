@@ -123,7 +123,11 @@ export const StaffBookingBody = z.strictObject({
 });
 export const RescheduleBody = z.strictObject({ startsAt: Instant, timeZone: Zone.optional() });
 /** The booker's reason for a cancel by link: kept in the audit entry only, never shown back (FO-3pa). */
-export const CancelBody = z.strictObject({ reason: z.string().trim().max(500).refine((v) => !/[\u0000-\u0008\u000b-\u001f\u007f]/.test(v), "no control characters").optional() });
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+/** Line breaks become spaces (the audit summary is one sentence); control, bidirectional and invisible characters and
+ *  broken UTF-16 are refused, as in names (break B1, M1, m2). At most 500 UTF-16 units, so the summary stays under 600. */
+export const CancelBody = z.strictObject({ reason: z.string().transform((v) => v.replace(/\r\n|[\r\n\u2028\u2029]/g, " ").trim()).pipe(z.string().max(500)
+  .refine((v) => !LONE_SURROGATE.test(v) && !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069\u200b\u200e\u200f\u061c\ufeff]/.test(v), "no control or invisible characters")).optional() });
 export const SlotsQuery = z.object({ from: Instant.optional(), to: Instant.optional(), tz: Zone.optional() });
 
 const parse = <T extends z.ZodType>(schema: T, body: unknown): z.output<T> => {
@@ -481,7 +485,9 @@ export class BookingService {
       if (!ACTIVE.includes(b.status)) throw problem(409, "not-active", "Not changed", "This booking is no longer active.");
       const after = await tx.foBooking.update({ where: { id: b.id }, data: { status: "CANCELLED" } });
       await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.cancelled", entity: "fo_booking", entityKey: b.id,
-        summary: "Consultation cancelled.", detail: { bookingId: b.id, from: b.status, sequence: after.sequence, ...(reason ? { reason } : {}) } });
+        // The booker's reason is their own words, so it goes in the sentence a person reads, never in `detail` (ids and
+        // facts only, AuditPort's rule; break B1, B2). Audit only: no column, never shown back (FO-3pa DW7).
+        summary: reason ? `Consultation cancelled. The booker's reason: ${reason}` : "Consultation cancelled.", detail: { bookingId: b.id, from: b.status, sequence: after.sequence } });
       await this.outbox(tx, after, EVENT.BOOKING_CANCELLED);
       return { booking: after, type, oldSequence: b.sequence };
     }, TX);
@@ -776,7 +782,8 @@ const ADDRESS_PARTS = [["unit", "unit"], ["streetNumber", "street_number"], ["st
  *  the business address (PF-1's shape, platform.prisma), known parts only, strings only. No id. */
 export function firmContact(firm: FirmRow) {
   const a = firm.businessAddress && typeof firm.businessAddress === "object" && !Array.isArray(firm.businessAddress) ? firm.businessAddress as Record<string, unknown> : {};
-  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 200) : null);
+  // Control and bidirectional characters dropped: the firm's own data, shown on a public page (break m3).
+  const str = (v: unknown) => { const t = typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200) : ""; return t || null; };
   const parts = ADDRESS_PARTS.map(([k, src]) => [k, str(a[src])] as const).filter(([, v]) => v !== null);
   return { name: firm.operatingName, email: firm.contactEmail, phone: str(a.phone), address: parts.length ? Object.fromEntries(parts) as Record<string, string> : null };
 }
