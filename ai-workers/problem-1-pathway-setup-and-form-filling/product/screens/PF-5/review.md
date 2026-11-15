@@ -137,4 +137,13 @@ The head merges `origin/main` (`81505985f`, second parent) into the branch. Befo
 
 Re-run at `f2b65459f` (Prisma client regenerated): `check_pf5_signup_billing.ts` **53 passed, 0 failed**. I did not re-run qa53, pf4b, case_feed, fo7a or pf3 myself (qa53 and pf4b need isolated copies); the builder reports them green. The Minors left open from earlier rounds are unchanged and do not block: Round 2 (two), Round 4 (verify's 404 once the door is open), Round 6 (card's firmScope exceptions).
 
-Verdict: Approve f2b65459f8c3aaf0ed6761c792f487995baa6d62
+Round 7 outcome: approve f2b65459f (superseded by Round 8 below).
+
+## Round 8 — the merge only, head `8f6508d1bbe5bdeeb5713616bd670a396f7589e2` (15 Nov 2026)
+The head merges `origin/main` (`0eb90eff1`, with PF-21w/PF-21v) into `58ecda033`, which is my Round 7 record (review.md only). One file was resolved by hand:
+* **`api/src/platform/MODULE.md`** (`git diff 8f6508d1b^2 8f6508d1b`): main's entry-points line is kept word for word, now starting with PF-21w's `/api/platform/complaints` and PF-21v's `GET handlers`, with PF-5's `/api/public` doors (`GET plans`, `POST signup`, `POST signup/verify`) appended. Main's tables line gets PF-5's three tables. Main's tests line, with `check_pf21w_routes.ts` and `check_pf21v_views.ts`, gets `check_pf5_signup_billing.ts`. Purpose and the two PF-5 invariants are as approved in Round 6. Nothing from main is lost or reworded.
+* **`git diff --stat 8f6508d1b^2 8f6508d1b`** lists the same 18 files as in Round 7 (PF-5's code, schema, migration, tests, card and records). I compared the branch's added and removed lines for each of those files with Round 7's merge. They are identical in every file except `review.md` (my Round 7 record), so no code, schema, migration or shared-test change came in. The stamp `20261115130000` is still later than main's newest (`20261115120000_pf6b_permission_catalogue`).
+
+Re-run at `8f6508d1b`: `check_pf5_signup_billing.ts` **53 passed, 0 failed** (Prisma client regenerated); `module-cards.py pr` on the PR's changed files with the `Card unchanged:` body line for api-features: **PASS** (2 modules touched, 14 cards). I did not re-run case_feed or qa53; the builder reports 39/39 and 42/42. The Minors left open from earlier rounds are unchanged and do not block.
+
+Verdict: Approve 8f6508d1bbe5bdeeb5713616bd670a396f7589e2
