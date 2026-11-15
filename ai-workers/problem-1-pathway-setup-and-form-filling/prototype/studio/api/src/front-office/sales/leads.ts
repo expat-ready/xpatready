@@ -154,13 +154,13 @@ export class Leads {
 
   /** Assign to… (AG-2-13c): an open lead to an active staff member of the firm who can work leads (agent/prospect:edit). */
   assign(ctx: StaffContext, id: string, b: Record<string, unknown>) {
-    return this.change(ctx, id, "lead.assigned", EVENT.LEAD_TAKEN, async (tx, l, staff) => {
+    return this.change(ctx, id, EVENT.LEAD_TAKEN, EVENT.LEAD_TAKEN, async (tx, l, staff) => {
       const to = typeof b.staffId === "string" ? staff.get(b.staffId.toLowerCase()) : undefined;
       if (!to || to.status !== "ACTIVE" || !(await this.editors(tx, ctx.firmId)).has(to.id)) return unprocessable("Choose an active person of your firm who works leads.", { staffId: "Choose a person from the list." });
       if (l.state !== "OPEN") return conflict("Only an open lead can be assigned.");
       if (l.owner_staff_id === to.id) return conflict(`${to.displayName} already has this lead.`, "ALREADY_TAKEN", { ownerStaffId: to.id });
       await tx.foLead.update({ where: { id }, data: { ownerStaffId: to.id } });
-      return { owner: to.id, summary: `assigned the lead to staff ${to.id}` };
+      return { owner: to.id, summary: `assigned the lead to staff ${to.id}`, via: "ASSIGN" };
     });
   }
 
@@ -191,7 +191,7 @@ export class Leads {
   /** One lead change: the row locked, then seen (404, or 409 naming the owner), the change, audit, outbox row last. */
   private async change(ctx: StaffContext, id: string, action: string, type: EventName,
     fn: (tx: Tx, l: { state: FoLeadState; owner_staff_id: string | null; person_id: string; door: "WEB_FORM" | "MANUAL" | "BOOKING"; number: string }, staff: Map<string, Staff>) =>
-      Promise<{ owner: string | null; summary: string; reasonKey?: string; state?: FoLeadState }>) {
+      Promise<{ owner: string | null; summary: string; reasonKey?: string; state?: FoLeadState; via?: "ASSIGN" }>) {
     if (typeof id !== "string" || !UUID.test(id)) return notFound();
     const [staff, vis] = await Promise.all([this.staffOf(ctx.firmId), visibilityOf(this.db, ctx)]);
     const activeOf = (o: string | null) => (o && staff.get(o)?.status === "ACTIVE" ? o : null);
@@ -207,7 +207,7 @@ export class Leads {
       const r = await fn(tx, l, staff);
       await written(tx, this.ports.audit, {
         firmId: ctx.firmId, actor: actorOf(ctx), action, entityKey: id, summary: `Staff ${ctx.staffId} ${r.summary}: ${l.number}.`,
-        detail: { ownerStaffId: r.owner, previousOwnerStaffId: l.owner_staff_id, ...(r.reasonKey ? { reasonKey: r.reasonKey } : {}) },
+        detail: { ownerStaffId: r.owner, previousOwnerStaffId: l.owner_staff_id, ...(r.reasonKey ? { reasonKey: r.reasonKey } : {}), ...(r.via ? { via: r.via } : {}) },
         event: { type, subjectId: id, payload: LeadEventPayload.parse({ leadId: id, personId: l.person_id, door: l.door, state: r.state ?? l.state, ownerStaffId: r.owner, ...(r.reasonKey ? { reasonKey: r.reasonKey } : {}) }) },
       });
     });

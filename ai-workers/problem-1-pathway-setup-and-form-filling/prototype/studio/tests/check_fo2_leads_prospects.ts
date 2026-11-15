@@ -264,7 +264,7 @@ try {
   ok("FO-2 p2 fail: Assign to a Read-only member (cannot work leads) → refused at the field", (await refusal(() => leads.assign(R, toAssign, { staffId: ro })))?.status === 422);
   ok("FO-2 p2 fail: Assign to someone outside the firm → refused at the field", (await refusal(() => leads.assign(R, toAssign, { staffId: SOLO.staffId })))?.status === 422);
   const assigned = await leads.assign(R, toAssign, { staffId: T.staffId }) as { ownerStaffId: string };
-  ok("FO-2 p2 pass: Assign to an active person who works leads; the audit line names the previous owner (none)", assigned.ownerStaffId === T.staffId && sql(`select coalesce(detail->>'previousOwnerStaffId', 'null') from audit_event where entity_key = '${toAssign}' and action = 'lead.assigned'`) === "null");
+  ok("FO-2 p2 pass: Assign to an active person who works leads; the audit line names the previous owner (none)", assigned.ownerStaffId === T.staffId && sql(`select coalesce(detail->>'previousOwnerStaffId', 'null') from audit_event where entity_key = '${toAssign}' and action = 'lead.taken' and detail->>'via' = 'ASSIGN'`) === "null");
   ok("FO-2 p2 fail: Assign to the person who already has it → 409", (await refusal(() => leads.assign(R, toAssign, { staffId: T.staffId })))?.status === 409);
 
   // X-4: a one-user firm's form lead is owned by its one user.
