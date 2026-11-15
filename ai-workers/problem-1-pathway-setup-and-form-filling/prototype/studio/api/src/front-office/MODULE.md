@@ -12,7 +12,7 @@ The firm's front office: public booking and retainer agreements, with their file
 **Invariants (set by).**
 - Every public read is marked open on the read guard (OpenRead, P-348 (4)); the door's own protections live in the service.
 - Every public miss (unknown firm, hidden, retired or unknown type, bad or voided link) is the one identical not-found; public answers carry no ids (FO-3pa, BR-2).
-- A type's `allowReschedule` and `allowCancel` are read inside the change's transaction, after the row lock; a booker's cancel reason goes in the audit sentence only, never in `detail` (ids only) or a column (FO-3pa).
+- A type's `allowReschedule` and `allowCancel` are read inside the change's transaction, after the row lock; a booker's cancel reason is kept on the booking (`cancel_reason`, at most 500, only when CANCELLED), never in the audit entry (FO-3pa, Lead B rev 16.30).
 - A self-service token is `<selector>.<verifier>`: looked up by id, verifier checked (FO-3, BR-10).
 - Rate limits are rolling windows per key, sized for about 100 firms in one process (P-562).
 - Every file belongs to one firm and lives under the firm's own folder (FO-5, contracts §0.3).

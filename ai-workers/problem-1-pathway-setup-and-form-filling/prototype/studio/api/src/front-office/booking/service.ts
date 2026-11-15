@@ -122,10 +122,11 @@ export const StaffBookingBody = z.strictObject({
   typeId: z.uuid(), personId: z.uuid(), mode: z.enum(MODES), startsAt: Instant, timeZone: Zone,
 });
 export const RescheduleBody = z.strictObject({ startsAt: Instant, timeZone: Zone.optional() });
-/** The booker's reason for a cancel by link: kept in the audit entry only, never shown back (FO-3pa). */
+/** The booker's reason for a cancel by link: kept on the booking only (cancel_reason), never shown back (FO-3pa). */
 const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
-/** Line breaks become spaces (the audit summary is one sentence); control, bidirectional and invisible characters and
- *  broken UTF-16 are refused, as in names (break B1, M1, m2). At most 500 UTF-16 units, so the summary stays under 600. */
+/** Line breaks become spaces (one line on the booking); control, bidirectional and invisible characters and
+ *  broken UTF-16 are refused, as in names (break B1, M1, m2). At most 500 UTF-16 units (the column's check counts
+ *  characters, so every reason taken here fits it). */
 export const CancelBody = z.strictObject({ reason: z.string().transform((v) => v.replace(/\r\n|[\r\n\u2028\u2029]/g, " ").trim()).pipe(z.string().max(500)
   .refine((v) => !LONE_SURROGATE.test(v) && !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069\u200b\u200e\u200f\u061c\ufeff]/.test(v), "no control or invisible characters")).optional() });
 export const SlotsQuery = z.object({ from: Instant.optional(), to: Instant.optional(), tz: Zone.optional() });
@@ -295,7 +296,7 @@ export class BookingService {
     return { ...this.publicAnswer(out.booking, type, firm), manageToken: out.token ?? token };
   }
 
-  /** POST a cancel by link, with the booker's optional reason (audit only, FO-3pa DW7). */
+  /** POST a cancel by link, with the booker's optional reason (kept on the booking, FO-3pa DW7, DW10). */
   async selfCancel(token: string, ip: string, body?: unknown) {
     this.limit(`token:ip:${ip}`, this.limits.tokenPerIp);
     const c = parse(CancelBody, body);
@@ -483,11 +484,11 @@ export class BookingService {
       const type = await tx.foConsultationType.findFirstOrThrow({ where: firmScope(firmId, { id: b.typeId }) });
       if (token) await this.recheckToken(tx, token, b, type, "cancelled");
       if (!ACTIVE.includes(b.status)) throw problem(409, "not-active", "Not changed", "This booking is no longer active.");
-      const after = await tx.foBooking.update({ where: { id: b.id }, data: { status: "CANCELLED" } });
+      // The booker's reason is kept on the booking (AG-04 v2.1 Booking.cancelReason; Lead B rev 16.30), never in the audit
+      // entry, which holds ids and facts (AuditPort's rule): it says only that a reason was given (FO-3pa DW7, DW10).
+      const after = await tx.foBooking.update({ where: { id: b.id }, data: { status: "CANCELLED", ...(reason ? { cancelReason: reason } : {}) } });
       await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.cancelled", entity: "fo_booking", entityKey: b.id,
-        // The booker's reason is their own words, so it goes in the sentence a person reads, never in `detail` (ids and
-        // facts only, AuditPort's rule; break B1, B2). Audit only: no column, never shown back (FO-3pa DW7).
-        summary: reason ? `Consultation cancelled. The booker's reason: ${reason}` : "Consultation cancelled.", detail: { bookingId: b.id, from: b.status, sequence: after.sequence } });
+        summary: token ? `Consultation cancelled by the booker.${reason ? " A reason was given." : ""}` : "Consultation cancelled.", detail: { bookingId: b.id, from: b.status, sequence: after.sequence } });
       await this.outbox(tx, after, EVENT.BOOKING_CANCELLED);
       return { booking: after, type, oldSequence: b.sequence };
     }, TX);

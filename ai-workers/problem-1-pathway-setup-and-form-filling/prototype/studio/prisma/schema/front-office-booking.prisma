@@ -133,6 +133,9 @@ model FoBooking {
   startsAt        DateTime                  @map("starts_at") @db.Timestamptz
   endsAt          DateTime                  @map("ends_at") @db.Timestamptz
   bookerTimeZone  String                    @map("visitor_time_zone")
+  /// FO-3pa (AG-04 v2.1 Booking.cancelReason; AG-4-38 rule 8; Lead B rev 16.30): the booker's optional reason, written
+  /// only by a cancel by link, in its transaction; at most 500 characters; NULL unless CANCELLED. Never in the audit.
+  cancelReason    String?                   @map("cancel_reason")
   blockRange      Unsupported("tstzrange")? @map("block_range")
   createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime                  @updatedAt @map("updated_at") @db.Timestamptz

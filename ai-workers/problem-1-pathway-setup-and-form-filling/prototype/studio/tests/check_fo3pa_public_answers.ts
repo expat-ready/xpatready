@@ -1,6 +1,6 @@
 // FO-3pa (rows rev 16.23; Lead B's answers on PR #1830, 15 Nov; concept fo-3-booking r2 §3 BR-1, BR-2, BR-5, BR-8, BR-9,
 // §6; AG-4-16..-20, -36..-38): the public booking answers, over HTTP on the feature's own public controller. Cases
-// DW1..DW9, each with a passing and a failing case: a scratch database (every migration), one small Nest app with the
+// DW1..DW10, each with a passing and a failing case: a scratch database (every migration), one small Nest app with the
 // public controller and the Booking provider, the real interim audit adapter (audit_event, as the running app), PF-0p's
 // fake clock, jobs and mail, and the ArrivalPort fake. No model
 // call (US$0). Dropped at the end.
@@ -224,37 +224,45 @@ try {
   const rcRow = await rowOf(rc.body.manageToken);
   const tooLong = await go("POST", `/bookings/${rc.body.manageToken}/cancel`, { reason: "x".repeat(501) });
   const control = await go("POST", `/bookings/${rc.body.manageToken}/cancel`, { reason: "bad\u0007bell" });
-  ok("FO-3pa DW7 fail: a reason over 500 characters or with a control character → 400, the booking unchanged",
-    tooLong.status === 400 && control.status === 400 && (await db.foBooking.findUniqueOrThrow({ where: { id: rcRow.id } })).status === "SCHEDULED", [tooLong.body, control.body]);
+  const rowNow = (id: string) => db.foBooking.findUniqueOrThrow({ where: { id } });
+  ok("FO-3pa DW10 fail: a reason over 500 characters or with a control character → 400, the booking unchanged and no reason stored",
+    tooLong.status === 400 && control.status === 400 && (await rowNow(rcRow.id)).status === "SCHEDULED" && (await rowNow(rcRow.id)).cancelReason === null, [tooLong.body, control.body]);
   const rcCancel = await go("POST", `/bookings/${rc.body.manageToken}/cancel`, { reason: `  ${REASON}  ` });
   const rcAudit = await cancelLines(rcRow.id);
-  ok("FO-3pa DW7 pass: the reason (trimmed) is kept in the cancel's audit entry, in its sentence, never in its ids-only detail",
-    rcCancel.status === 200 && rcAudit.length === 1 && rcAudit[0].summary === `Consultation cancelled. The booker's reason: ${REASON}` && !JSON.stringify(rcAudit[0].detail).includes("moving"), rcAudit);
+  ok("FO-3pa DW10 pass: the reason (trimmed) is stored on the booking (cancel_reason) in the cancel's own write", rcCancel.status === 200 && (await rowNow(rcRow.id)).cancelReason === REASON && (await rowNow(rcRow.id)).status === "CANCELLED", await rowNow(rcRow.id));
+  ok("FO-3pa DW10 pass: the audit entry says a reason was given and holds no part of its text",
+    rcAudit.length === 1 && rcAudit[0].summary === "Consultation cancelled by the booker. A reason was given." && !JSON.stringify(rcAudit[0]).includes("moving") && !JSON.stringify(rcAudit[0]).includes("Sample reason"), rcAudit);
   const rcView = await go("GET", `/bookings/${rc.body.manageToken}`);
   const events = await db.moduleEvent.findMany({ where: { subjectId: rcRow.id } });
-  ok("FO-3pa DW7 fail: the reason is never shown back: not in the cancel answer, the booking row, its events or mails, and the cancelled link is the one not-found",
-    !rcCancel.text.includes("moving to another city") && !JSON.stringify(await db.foBooking.findUniqueOrThrow({ where: { id: rcRow.id } })).includes("moving") && !JSON.stringify(events.map((e) => e.payload)).includes("moving")
+  ok("FO-3pa DW7 fail: the reason is never shown back: not in the cancel answer, its events or mails, and the cancelled link is the one not-found",
+    !rcCancel.text.includes("moving to another city") && !JSON.stringify(events.map((e) => e.payload)).includes("moving")
       && !mail.sent.some((m) => JSON.stringify(m).includes("moving to another city")) && rcView.status === 404 && rcView.text === unknownSlug.text, [rcCancel.text, rcView.status]);
   const noReason = await book("fo3pa-a", "free", "2026-10-30 13:00", "noreason");
   const nrRow = await rowOf(noReason.body.manageToken);
   const nrCancel = await go("POST", `/bookings/${noReason.body.manageToken}/cancel`);
-  ok("FO-3pa DW7 pass: a cancel with no body still works and its audit sentence names no reason",
-    nrCancel.status === 200 && (await cancelLines(nrRow.id))[0]?.summary === "Consultation cancelled.", nrCancel.body);
+  ok("FO-3pa DW10 pass: a cancel with no body still works, stores NULL and its audit sentence names no reason",
+    nrCancel.status === 200 && (await rowNow(nrRow.id)).cancelReason === null && (await cancelLines(nrRow.id))[0]?.summary === "Consultation cancelled by the booker.", nrCancel.body);
   // Break B1, B2, M1, m2: any reason the form takes is taken in full, or refused with 400, never a 500.
   const reasons = [["500 characters", "r".repeat(500)], ["an email address in it", "Please write to sample.person@client.example instead"], ["two lines", "First line\nsecond line"]] as const;
   const kept: unknown[] = [];
   for (const [i, [what, reason]] of reasons.entries()) {
     const b = await book("fo3pa-a", "free", `2026-10-30 ${String(14 + i).padStart(2, "0")}:00`, `reason${i}`);
     const r = await go("POST", `/bookings/${b.body.manageToken}/cancel`, { reason });
-    const line = (await cancelLines((await rowOf(b.body.manageToken)).id))[0];
-    kept.push({ what, status: r.status, summary: line?.summary?.slice(0, 80) });
-    ok(`FO-3pa DW7 pass: a reason with ${what} cancels (200) and is kept in the audit sentence (break B1, B2)`, r.status === 200 && r.body.status === "CANCELLED" && !!line && line.summary.endsWith(reason.replace("\n", " ")), kept.at(-1));
+    const row = await rowOf(b.body.manageToken);
+    const line = (await cancelLines(row.id))[0];
+    kept.push({ what, status: r.status, stored: row.cancelReason?.slice(0, 60), summary: line?.summary });
+    ok(`FO-3pa DW10 pass: a reason with ${what} cancels (200) and is stored whole on the booking, not in the audit (break B1, B2)`,
+      r.status === 200 && r.body.status === "CANCELLED" && row.cancelReason === reason.replace("\n", " ") && line?.summary === "Consultation cancelled by the booker. A reason was given.", kept.at(-1));
   }
   const bad = await book("fo3pa-a", "free", "2026-10-30 09:00", "badreason");
   const badRow = await rowOf(bad.body.manageToken);
   const refusedReasons = await Promise.all(["x\ud800y", "right\u202eto left", "\u200b\u200b"].map((reason) => go("POST", `/bookings/${bad.body.manageToken}/cancel`, { reason })));
-  ok("FO-3pa DW7 fail: a reason with broken UTF-16, a bidirectional override or only invisible characters → 400, never a 500; the booking unchanged (break M1, m2)",
-    refusedReasons.every((r) => r.status === 400) && (await db.foBooking.findUniqueOrThrow({ where: { id: badRow.id } })).status === "SCHEDULED", refusedReasons.map((r) => [r.status, r.body?.issues]));
+  ok("FO-3pa DW10 fail: a reason with broken UTF-16, a bidirectional override or only invisible characters → 400, never a 500; the booking unchanged (break M1, m2)",
+    refusedReasons.every((r) => r.status === 400) && (await rowNow(badRow.id)).status === "SCHEDULED" && (await rowNow(badRow.id)).cancelReason === null, refusedReasons.map((r) => [r.status, r.body?.issues]));
+  // The database's own rule: a reason only on a cancelled booking, at most 500 characters.
+  const dbRefuses = async (sql: string) => { try { await db.$executeRawUnsafe(sql); return false; } catch { return true; } };
+  ok("FO-3pa DW10 fail: the database refuses a reason on a booking that is not cancelled, and one over 500 characters",
+    await dbRefuses(`UPDATE fo_booking SET cancel_reason = 'x' WHERE id = '${badRow.id}'`) && await dbRefuses(`UPDATE fo_booking SET cancel_reason = repeat('x', 501) WHERE id = '${rcRow.id}'`) && (await rowNow(rcRow.id)).cancelReason === REASON);
 
   // ------------------------------------------------------------------------------------------------------------ DW8
   const ncPage = await page("fo3pa-a", "no-cancel");
