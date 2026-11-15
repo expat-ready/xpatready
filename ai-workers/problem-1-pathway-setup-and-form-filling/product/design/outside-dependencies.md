@@ -1,6 +1,6 @@
 # Outside dependencies (P-618): bring them forward before they block
 
-The tech lead keeps this list. It holds no secrets and no names. Lead times come from the provider's own page, cited; "to cite" means not yet found, so plan with the 2-week minimum. Start date = need date − lead time − 2× buffer (at least 2 weeks for anything with screening or human review). Every check flags a row inside its start window, or stuck over 48 h, as 🔴 Needs you (alarm: B192).
+The tech lead keeps this list. It holds no secrets and no names. Lead times come from the provider's own page, cited; "to cite" means not yet found, so plan with the 2-week minimum. Start date = need date − lead time − 2× buffer (at least 2 weeks for anything with screening or human review). **Sign-ups run in the founder's own browser** (16 Nov: BoldSign's screening refused the automated browser twice and accepted his own Chrome at once). Every check flags a row inside its start window, or stuck over 48 h, as 🔴 Needs you (alarm: B192).
 
 | # | Provider · what | Lead time (cited) | Needed by (row, date) | Start | Owner | Status (15 Nov 21:5x IST) | Decision date · fallback |
 |---|---|---|---|---|---|---|---|
