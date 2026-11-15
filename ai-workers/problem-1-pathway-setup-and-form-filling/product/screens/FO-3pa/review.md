@@ -66,3 +66,21 @@ Verdict: Approve 042b60cf1922e8584d0058d0d04f852630d0f111
 Approve 08576c9b389e4f30d695bee0d16bc627b76a5c70 (records only since 042b60cf1)
 
 Verdict: Approve 08576c9b389e4f30d695bee0d16bc627b76a5c70
+
+## Re-review at d1715795a (diff since the main merge 77210ce46 only)
+Read: `git diff 77210ce46 d1715795a` (7 files, +53/-33); none of `main`'s own changes. Runs: `check_fo3pa_public_answers` 45 passed, 0 failed · `check_fo3_booking` 133/0. I did not start `run-suites.sh` (one was already running in this copy).
+* **Migration re-stamp: correct.** The migration is now `20261115170000_fo3pa_booking_type_flags`, after `main`'s newest (`20261115120000_pf6b_permission_catalogue`). The old 110000 folder is gone; it was never on `main`. It is still additive only: the three type switches as before, plus `fo_booking.cancel_reason text NULL` with `CHECK (cancel_reason IS NULL OR (char_length(cancel_reason) <= 500 AND status = 'CANCELLED'))`. Existing rows stay NULL and pass the check. The body caps at 500 UTF-16 units, which is never more than 500 characters, so anything the API accepts fits the column. The schema matches (`cancelReason String? @map("cancel_reason")`).
+* **Lead B rev 16.30: done as ruled.** Only `cancelBooking` writes the reason, in its own update in the cancel's transaction (service.ts:489). Only `selfCancel` passes a reason (:304); the staff cancel passes none (:346). The audit summary is `Consultation cancelled by the booker.`, plus ` A reason was given.` when there is one, with no part of the text. A staff cancel keeps `Consultation cancelled.` The round-1 `CancelBody` checks are unchanged. The reason reaches no public answer, no event payload (`outbox` builds its fields one by one, :500-505), no mail and no staff `view()`.
+* **DW10 ticked.**
+  * Pass cases: the trimmed reason is stored and the audit holds none of it; 500 characters, an email address, or two lines are stored whole; no reason stores NULL with the plain sentence.
+  * Fail cases: 501 characters or a control character → 400, booking unchanged, NULL; broken UTF-16, a bidi override or only invisible characters → 400, NULL; the database itself refuses a reason on a booking that is not cancelled, and one over 500 characters.
+  * The test would catch a broken rule: dropping the `cancelReason` write fails the stored case, and putting the text in the summary fails the audit case.
+* **DW7 still holds.** The reason is not in the cancel answer, the events or the mails, and the cancelled link answers the one not-found. The old "not on the booking row" part was correctly removed, since the row now keeps it by ruling.
+* **`api/src/front-office/MODULE.md`: true.**
+  * The public routes listed match `public.controller.ts:58-65`.
+  * The two new invariants match the code: the one not-found with no ids, and the switches read after the row lock. So does the line saying the reason lives on the booking and never in the audit.
+  * The test list now includes `check_fo3pa_public_answers.ts`.
+* **`qa/built/FO-3pa.md`: true.** "kept on the booking, never shown back on the public pages" matches the code.
+* No new finding.
+
+Verdict: Approve d1715795abbefb773228e466b7e0f84de6e61bd5
