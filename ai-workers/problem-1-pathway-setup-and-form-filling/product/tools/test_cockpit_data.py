@@ -331,7 +331,7 @@ class TrustAndInvariants(unittest.TestCase):
         t2 = json.loads(json.dumps(theirs))
         plus = lambda n: (date.fromisoformat(k["forecast_p85_date"]) + timedelta(days=n)).isoformat()
         r7 = cd.reconcile_compare(k, theirs, None)
-        self.assertEqual(r7["compared"], 21)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight
+        self.assertEqual(r7["compared"], 26)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's five
         t2["numbers"]["forecast_p85_date"]["value"] = plus(1)                 # +1 day: agrees
         self.assertEqual(cd.reconcile_compare(k, t2, None)["state"], "agree")
         t2["numbers"]["forecast_p85_date"]["value"] = plus(2)                 # +2 days: disagrees

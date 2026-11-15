@@ -1,0 +1,23 @@
+{
+ "from": "2026-11-19T18:30:00Z",
+ "comments": [
+  {
+   "id": 9001,
+   "pr": 116,
+   "created_at": "2026-11-19T18:29:59Z",
+   "head": "**Label guard:** `review: approved` removed. The head `abc12345"
+  },
+  {
+   "id": 9002,
+   "pr": 105,
+   "created_at": "2026-11-20T04:00:00Z",
+   "head": "Question for the tech lead: which table holds the owner?"
+  },
+  {
+   "id": 9003,
+   "pr": 116,
+   "created_at": "2026-11-20T05:00:00Z",
+   "head": "A note quoting **Label guard:** inside, not at the start"
+  }
+ ]
+}
