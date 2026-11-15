@@ -21,10 +21,12 @@ pf "$(gb 70)" 16 ""; ok "exactly 7 GB and load 16 pass" "$([ $r = 0 ] && echo 1)
 pf "$(gb 150)" 17.2 ""; ok "a 1-minute load of 17.2 is refused" "$([ $r = 1 ] && echo "$out" | grep -q 'load 17.2, over 16' && echo 1)" "exit $r: $out"
 pf "$(gb 150)" 3 "4420 4431 4452 4471"; ok "four running test copies are refused, with their ports" "$([ $r = 1 ] && echo "$out" | grep -q '4 test copies running, cap 4 (ports: 4420 4431 4452 4471' && echo 1)" "exit $r: $out"
 pf "$(gb 30)" 20 "4420 4431 4452 4471"; ok "every reason is named at once" "$([ $r = 1 ] && [ "$(echo "$out" | grep '^REFUSED' | grep -o 'under 7 GB\|over 16\|cap 4' | wc -l)" = 3 ] && echo 1)" "$out"
-hook() { out=$(jq -n --arg t "$5" '{tool_name:"start_session", tool_input:{target:$t}}' | PATH="$T/bin:$PATH" FAKE_KB="$1" FAKE_LOAD="$2" FAKE_PORTS="$3" bash "$P" --hook); r=$?; }
+BRIEF=$'Row X-1. Model: Opus 5.5, effort: medium.\nDuplicate check: searched BACKLOG; none\nDone when: check-x.sh exits 0'   # passes brief-check.sh --brief (G-4)
+hook() { out=$(jq -n --arg t "$5" --arg p "${6-$BRIEF}" '{tool_name:"start_session", tool_input:{target:$t, prompt:$p}}' | PATH="$T/bin:$PATH" FAKE_KB="$1" FAKE_LOAD="$2" FAKE_PORTS="$3" bash "$P" --hook); r=$?; }
 hook "$(gb 37)" 3 "" x local; ok "hook: a Mac start at 3.7 GB is denied with the reason" "$(echo "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | test("3.7 GB"))' >/dev/null && echo 1)" "$out"
 hook "$(gb 37)" 3 "" x cloud; ok "hook: a cloud start is not checked" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "$out"
 hook "$(gb 150)" 3 "" x ""; ok "hook: a Mac start with room passes" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "$out"
+hook "$(gb 150)" 3 "" x cloud "Row X-1. Done when: check-x.sh exits 0"; ok "hook: a cloud brief with no model and effort line or Duplicate check is denied (G-4 (7))" "$(echo "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | test("model and effort") and test("Duplicate check"))' >/dev/null && echo 1)" "$out"
 ROOTD="$(cd "$TOOLS/../../../.." && pwd)"
 jq -e '[.hooks.PreToolUse[] | select(.matcher | test("start_session")) | .hooks[].command | select(test("lane-preflight.sh --hook"))] | length == 1' "$ROOTD/.claude/settings.json" >/dev/null
 ok "settings.json runs the preflight hook on start_session" "$([ $? = 0 ] && echo 1)"

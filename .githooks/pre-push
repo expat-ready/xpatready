@@ -16,5 +16,7 @@ while read -r lref lsha rref rsha; do
   # (6 Nov, #1072: a canada.ca capture already on main). Known limit: a commit on a remote-tracking ref that GitHub has
   # since dropped (fetch.prune unset) counts as on the remote; CI's guard still checks every PR's base..head.
   "$GUARD" --unpushed "$lsha" "$1" || rc=1
+  # P-611, G-4 (1): a branch whose PR merged or closed takes no more pushes (they would reach no PR).
+  case "$rref" in refs/heads/*) bash "$(dirname "$GUARD")/pr-open-guard.sh" "${rref#refs/heads/}" || rc=1;; esac
 done
 exit $rc

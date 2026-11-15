@@ -1,0 +1,34 @@
+# PR body and size rules (P-611, row G-4 (2), (3), (6); P-526, P-606, P-608, P-610): the body has a "Done when" that
+# names its test and a "Duplicate check:" line; the PR is under 800 changed lines, tests included, unless the body names
+# a recorded exception ("Size exception: P-NNN"); reviewer and breaker agents are pinned to Opus high. Re-runs when the
+# body is edited. Merge-queue PRs (mergify/*) carry a generated body and are skipped. Reads only, US$0.
+# Test: product/tools/check-g4-rules.sh.
+name: pr-rules
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+concurrency:
+  group: pr-rules-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  pr-rules:
+    if: "${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      T: ai-workers/problem-1-pathway-setup-and-form-filling/product/tools
+      BODY: "${{ github.event.pull_request.body }}"
+      ADDS: "${{ github.event.pull_request.additions }}"
+      DELS: "${{ github.event.pull_request.deletions }}"
+    steps:
+      - uses: actions/checkout@v4
+      - name: body has a testable Done when and a Duplicate check line
+        run: printf '%s\n' "$BODY" | bash "$T/brief-check.sh"
+      - name: under 800 changed lines, or a recorded exception
+        if: "${{ !cancelled() }}"
+        run: printf '%s\n' "$BODY" | bash "$T/pr-size.sh" "$ADDS" "$DELS"
+      - name: reviewer and breaker agents on Opus high
+        if: "${{ !cancelled() }}"
+        run: bash "$T/agent-model-guard.sh"
