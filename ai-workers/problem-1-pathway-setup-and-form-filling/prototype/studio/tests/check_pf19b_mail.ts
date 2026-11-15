@@ -1,6 +1,6 @@
 // PF-19b booking mail (qa #1855, map rows 38 and 40): MailPort over MessagePort (MessagesMail), so the booking service's
 // mail goes through the outbox, the consent gate, the worker and the local adapter, and a booking's invite.ics is read
-// back from GET /api/demo/platform-inbox. Named tests BM1-BM6, each with a pass and a fail. The real BookingService with
+// back from GET /api/demo/platform-inbox. Named tests BM1-BM9, each with a pass and a fail. The real BookingService with
 // the app's runtime ports (runtimeBookingPorts) on a scratch database with every migration; fakeJobs on a fake clock;
 // files in a scratch folder; the route over HTTP through a child Nest app (this file with --serve). No model call, nothing
 // leaves the machine (US$0). The database and folder are removed at the end.
@@ -9,7 +9,7 @@ import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { readdirSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { Db } from "../api/src/core.ts";
 import { copyFirmHoursTo } from "../api/src/front-office/booking-seed.ts";
@@ -28,7 +28,7 @@ import { fakeAlerts } from "../ports/alert.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { runContract } from "../ports/contracts/contract.ts";
 import { MAIL_CONTRACT_FIRM, mailPortContract } from "../ports/contracts/mail-port.contract.ts";
-import { fakeJobs } from "../ports/jobs.ts";
+import { fakeJobs, type JobHandler, type JobPort } from "../ports/jobs.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -60,7 +60,10 @@ try {
   const logs: string[] = [];
   const mail = new MessagesMail({ db, messages, files, log: (l) => logs.push(l) });
   // The app's own booking ports, with the test's clock and jobs (the app takes jobs from PF-14's runner).
-  const S = new BookingService(db, { ...runtimeBookingPorts(mail), clock, jobs, publicBaseUrl: "http://localhost:4430", limits: { bookPerIp: 1000, bookPerFirm: 1000, slotsPerIp: 1000, tokenPerIp: 1000 } });
+  // Booking's handlers are kept, so a test can run one job a second time, as a runner does after a crash (break M1).
+  const handlers = new Map<string, JobHandler>();
+  const bookingJobs: JobPort = { enqueue: (...a) => jobs.enqueue(...a), schedule: (...a) => jobs.schedule(...a), cancel: (...a) => jobs.cancel(...a), recurring: (...a) => jobs.recurring(...a), handle: async (n, h) => { handlers.set(n, h); await jobs.handle(n, h); } };
+  const S = new BookingService(db, { ...runtimeBookingPorts(mail), clock, jobs: bookingJobs, publicBaseUrl: "http://localhost:4430", limits: { bookPerIp: 1000, bookPerFirm: 1000, slotsPerIp: 1000, tokenPerIp: 1000 } });
   await S.registerJobs();
   const inbox = new PlatformInbox(db as unknown as Db, files, () => true);
   const run = async () => { await jobs.runDue(); await jobs.runDue(); };
@@ -126,6 +129,50 @@ try {
     all5.length === 3 && /METHOD:CANCEL/.test(icsOf(0) ?? "") && /METHOD:REQUEST/.test(icsOf(1) ?? "") && new Set([0, 1, 2].map((i) => uidOf(icsOf(i)))).size === 1
     && seqOf(icsOf(0)) > seqOf(icsOf(1)) && seqOf(icsOf(1)) > seqOf(icsOf(2)), all5.map((m) => m.subject));
   ok("BM5 fail: the cancellation carries no reschedule link", !!all5[0] && !all5[0].body.includes("/manage#"));
+
+  // ------------------------------------------------------------------------------- BM7 reminders and the attendance question (review M1)
+  const b7 = await S.publicBook(A.key, "free", await form("2026-10-27 09:00", "rem"), "10.0.0.1");
+  const c7 = await S.publicBook(A.key, "free", await form("2026-10-27 11:00", "quiet"), "10.0.0.1");
+  await run();
+  await db.msgSuppression.create({ data: { firmId: A.id, channel: "EMAIL", address: "quiet@client.example", reason: "COMPLAINT", createdBy: "seed:pf19bm" } });
+  for (let h = 0; h < 30; h++) { await clock.advance({ hours: 1 }); await run(); }   // past both reminders and both meetings' ends
+  const rem = (await inbox.list("rem@client.example", undefined)).messages, remRows = await db.msgOutbox.findMany({ where: { address: "rem@client.example", class: "SERVICE" } });
+  const asks = (await inbox.list(A1.email, undefined)).messages.filter((m) => m.subject === "Did they attend?");
+  ok("BM7 pass: the 24 h and 1 h reminders go through the outbox as SERVICE for the booker (FO_PERSON) and are SENT; the host's attendance question is SENT for the host",
+    rem.filter((m) => m.subject.startsWith("Reminder:")).length === 2 && remRows.length === 2 && remRows.every((r) => r.state === "SENT" && r.subjectKind === "FO_PERSON") && asks.length >= 1, { rem: rem.map((m) => m.subject), remRows: remRows.map((r) => [r.state, r.subjectKind]), asks: asks.length });
+  const quietRows = await db.msgOutbox.findMany({ where: { address: "quiet@client.example", class: "SERVICE" } });
+  ok("BM7 fail: a booker suppressed after booking gets no reminder: the rows are SUPPRESSED by the gate, the inbox holds only the confirmation",
+    quietRows.length >= 2 && quietRows.every((r) => r.state === "SUPPRESSED" && /COMPLAINT/.test(r.stateReason ?? "")) && (await inbox.list("quiet@client.example", undefined)).messages.length === 1, quietRows.map((r) => [r.state, r.stateReason]));
+  void b7; void c7;
+
+  // ------------------------------------------------------------------------------- BM8 one key, one email (review m2)
+  const once = { firmId: A.id, to: "twice@client.example", replyTo: A.contactEmail, class: "TRANSACTIONAL" as const, subject: "Once", text: "x", idempotencyKey: "booking:job-1" };
+  const [k1, k2] = [await mail.send(once), await mail.send(once)];
+  await mail.send({ ...once, idempotencyKey: "booking:job-2" });
+  await run();
+  ok("BM8 pass: a job run twice with its key sends once (the second call answers the first row, without throwing)", k1.messageId === k2.messageId && (await db.msgOutbox.count({ where: { address: "twice@client.example", idempotencyKey: "mail:booking:job-1" } })) === 1);
+  ok("BM8 fail: another key is another email", (await inbox.list("twice@client.example", undefined)).messages.length === 2);
+  const job8 = jobs.jobs.find((j) => j.name === "booking.mail" && j.status === "done" && j.key.endsWith("mail-person") && j.firmId === A.id)!;
+  const rows8 = () => db.msgOutbox.count({ where: { idempotencyKey: `mail:${job8.key}` } });
+  const had8 = await rows8();
+  await handlers.get("booking.mail")!({ ...job8, payload: structuredClone(job8.payload) }); await run();
+  ok("BM8 pass: booking's own mail job run a second time after it sent makes no second row and no second email (it passes its job key)", had8 === 1 && (await rows8()) === 1, { key: job8?.key, had8 });
+
+  // ------------------------------------------------------------------------------- BM9 refused before anything is stored (review m5)
+  const filesOf = () => existsSync(join(WORK, "files", A.id, "mail")) ? readdirSync(join(WORK, "files", A.id, "mail")).length : 0;
+  const before9 = filesOf();
+  const e9 = await rejects(() => mail.send({ firmId: A.id, to: "nine@client.example", replyTo: A.contactEmail, class: "TRANSACTIONAL", subject: "Two\nlines", text: "x", attachments: [{ filename: "a.txt", contentType: "text/plain", bytes: new TextEncoder().encode("a") }] }));
+  ok("BM9 fail: a subject on two lines is refused as MessageRefused, and no attachment file is stored", e9?.name === "MessageRefused" && filesOf() === before9, { e: e9?.name, before9, after: filesOf() });
+  await mail.send({ firmId: A.id, to: "nine@client.example", replyTo: A.contactEmail, class: "TRANSACTIONAL", subject: "One line", text: "x", attachments: [{ filename: "a.txt", contentType: "text/plain", bytes: new TextEncoder().encode("a") }] });
+  ok("BM9 pass: the same mail on one line stores its attachment and is accepted", filesOf() === before9 + 1);
+  const e9b = await rejects(() => mail.send({ firmId: A.id, to: "ana.sample@client-.example", replyTo: A.contactEmail, class: "TRANSACTIONAL", subject: "Hello", text: "x" }));
+  ok("BM9 fail: an address the channel refuses (a@b-.example) is MessageRefused, and the error text never quotes the address (break M2)",
+    e9b?.name === "MessageRefused" && !e9b.message.includes("client-.example") && (await db.msgOutbox.count({ where: { address: { contains: "client-.example" } } })) === 0, e9b?.message);
+  const k9 = await mail.send({ firmId: A.id, to: "nine@client.example", replyTo: A.contactEmail, class: "TRANSACTIONAL", subject: "Two files", text: "x", attachments: ["Invite.ics", "invite.ics", "x.meta"].map((filename) => ({ filename, contentType: "text/plain", bytes: new TextEncoder().encode(filename) })) });
+  await run();
+  const m9 = (await inbox.list("nine@client.example", undefined)).messages.find((m) => m.id === k9.messageId);
+  ok("BM9 pass: two names that clean alike and a .meta name are all kept, each with its own bytes (break m3)",
+    m9?.attachments.length === 3 && m9.attachments.map((a) => a.text).join("|") === "Invite.ics|invite.ics|x.meta", m9?.attachments);
 
   // ------------------------------------------------------------------------------- PF-0c: MailPort's shared contract
   // The contract's firm is a platform firm here; each case gets a fresh address book, read back from the demo inbox.

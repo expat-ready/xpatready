@@ -11,6 +11,8 @@ import { LOCAL_PROVIDER } from "./channels/email/local.ts";
 import { fileKeyOf } from "./send/messages.ts";
 
 type H = string | undefined;
+/** A text attachment longer than this is listed without its text (review m4; an invite is about 1 KB). */
+export const INBOX_TEXT_MAX = 64 * 1024;
 
 /** Made by the feature's factory (api/src/features/platform-messages.ts) with the messages' own FilesPort. */
 export class PlatformInbox {
@@ -33,7 +35,7 @@ export class PlatformInbox {
       const attachments = [];
       for (const k of m.attachments) {
         const a = await this.files.get(r.firmId, k);
-        if (a) attachments.push({ filename: k.split("/").at(-1)!, content_type: a.contentType, size: a.bytes.byteLength, text: /^text\//.test(a.contentType) ? new TextDecoder().decode(a.bytes) : null });
+        if (a) attachments.push({ filename: k.split("/").at(-1)!, content_type: a.contentType, size: a.bytes.byteLength, text: /^text\//.test(a.contentType) && a.bytes.byteLength <= INBOX_TEXT_MAX ? new TextDecoder().decode(a.bytes) : null });
       }
       messages.push({ id: r.id, class: r.class, from: `${m.from.name} <${m.from.address}>`, reply_to: m.replyTo, subject: m.subject, body: m.text, html: m.html, attachments, sent_at: r.sentAt?.toISOString() ?? null });
     }

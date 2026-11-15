@@ -30,6 +30,9 @@ export const MailMessage = z.strictObject({
   templateKey: z.string().regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/).max(100).optional(),
   /** The person the email is to (PF-19b: MessagePort's consent gate judges a SERVICE or MARKETING email by its person). */
   person: Subject.optional(),
+  /** The sender's key (PF-19b, review m2): the same key in the same firm is the same email, so a job run twice sends
+   *  once. A caller with a job passes its job key. */
+  idempotencyKey: z.string().min(1).max(180).optional(),
 });
 export type MailMessage = z.input<typeof MailMessage>;
 
