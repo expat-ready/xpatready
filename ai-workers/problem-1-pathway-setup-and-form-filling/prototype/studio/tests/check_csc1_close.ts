@@ -9,7 +9,7 @@
 //   tsx studio/tests/check_csc1_close.ts
 import "reflect-metadata";
 import { Controller, Get, Module } from "@nestjs/common";
-import { APP_GUARD, NestFactory } from "@nestjs/core";
+import { APP_GUARD, NestFactory, Reflector } from "@nestjs/core";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -77,6 +77,7 @@ const { IDENTITY_PORT, PlatformIdentity } = await import("../api/src/platform/id
 const { PlatformGuard } = await import("../api/src/platform/identity/guard.ts");
 const { PlatformIdentityController } = await import("../api/src/platform/identity/routes.ts");
 const { CaseClose } = await import("../api/src/case-close.ts");
+const { PermissionKeys } = await import("../api/src/platform/identity/keys.ts");
 const feature = (await import("../api/src/features/case-close.ts")).default;
 const { CaseCloseController } = await import("../api/src/features/case-close.ts");
 const { EVENT, CaseClosedPayload, CaseReopenedPayload } = await import("../ports/events.ts");
@@ -162,6 +163,15 @@ try {
   const mixed = await Promise.all([call(BASE, "POST", `/API/Runtime/cases/${hc.id}/close`, { token: T.OWNER, body: { reason: "x" } }), call(BASE, "POST", `/api/RUNTIME/cases/${hc.id}/close`, { body: { reason: "x" } })]);
   ok("CS-C1 H3 fail: a declared case route in other letter case is never answered: a staff token → 403 link-only (as before the hook), no token → 401; the case unchanged",
     mixed[0].status === 403 && /link-only/.test(mixed[0].body.type) && mixed[1].status === 401 && caseRow(hc.id).startsWith("OPEN|"), mixed.map((r) => [r.status, r.body.type ?? r.body.code]));
+  // The hook takes only routes declaring permission keys (break M1): AnyStaff and StaffSignIn on /api/runtime stay core's.
+  const { AnyStaff, StaffSignIn } = await import("../api/src/platform/identity/keys.ts");
+  const access = (kind: "keys" | "any" | "sign") => ({ switchToHttp: () => ({ getRequest: () => ({ method: "POST", path: `/api/runtime/cases/${hc.id}/x`, headers: { authorization: `Bearer ${T.OWNER}` } }) }), getHandler: () => H[kind], getClass: () => Object });
+  const H = { keys: function k() {}, any: function a() {}, sign: function s() {} };
+  PermissionKeys("agent/case:record-decision")(H.keys); AnyStaff("probe")(H.any); StaffSignIn("probe")(H.sign);
+  const g = new ConfigReadGuard(new Reflector());
+  const take = (kind: "keys" | "any" | "sign") => { try { return g.canActivate(access(kind) as never) ? "passed" : "refused"; } catch (e) { return (e as { getStatus?: () => number }).getStatus?.() ?? "error"; } };
+  ok("CS-C1 H3 fail: on /api/runtime a Bearer route declaring AnyStaff or StaffSignIn is still refused 403 link-only; only PermissionKeys passes to PF-4's guard",
+    take("keys") === "passed" && take("any") === 403 && take("sign") === 403, [take("keys"), take("any"), take("sign")]);
   const coreLine = readFileSync(join(STUDIO, "api", "src", "core.ts"), "utf8").split("\n").find((l) => l.includes("PLATFORM_ACCESS, [ctx.getHandler()"));
   ok("CS-C1 H4 pass: core.ts's hook is one line with its why comment naming CS-C1a and Lead 58's comment on #1818", !!coreLine && /CS-C1a/.test(coreLine) && /#1818/.test(coreLine) && /6892215478/.test(coreLine), coreLine);
 
@@ -173,6 +183,9 @@ try {
   ok("CS-C1 DW1 fail: a decision on an unsubmitted filing → 409 NOT_SUBMITTED; no row", r.status === 409 && r.body.code === "NOT_SUBMITTED" && rows(c1.id) === "1", r.body);
   r = await decide(c1, T.CASE_MANAGER, { outcome: "MAYBE" });
   const r2 = await decide(c1, T.CASE_MANAGER, { decidedOn: "2027-02-30" }), r3 = await decide(c1, T.CASE_MANAGER, { filingId: hc.filings[0] });
+  const odd = await Promise.all([decide(c1, T.CASE_MANAGER, { decidedOn: "0000-01-01" }), decide(c1, T.CASE_MANAGER, { note: "a\u0000b" }),
+    call(BASE, "POST", P(c1.id, "close"), { token: T.CASE_MANAGER, body: { reason: "\u200B" } }), call(BASE, "POST", P(c1.id, "close"), { token: T.CASE_MANAGER, body: { reason: "x\u0000" } })]);
+  ok("CS-C1 DW1 fail (break m1, m2, m4): year 0000, a NUL in a note or reason, an invisible-only reason → 400, never a 500", odd[0].status === 400 && odd[1].status === 400 && odd[2].status === 400 && odd[3].status === 400 && rows(c1.id) === "1", odd.map((x) => [x.status, x.body.code]));
   ok("CS-C1 DW1 fail: an outcome outside the Sample list or an impossible date → 400 on its field; another case's filing → 404", r.status === 400 && !!r.body.fields?.outcome && r2.status === 400 && !!r2.body.fields?.decidedOn && r3.status === 404 && rows(c1.id) === "1", [r.body, r2.body, r3.body]);
   r = await decide(c1, T.CASE_MANAGER, { outcome: "REFUSED" });
   ok("CS-C1 DW1 pass: a second decision on the same filing is a correction, a new row (AG-7-33 §10), never an overwrite", r.status === 201 && rows(c1.id) === "2" && sql(`select string_agg(outcome, ',' order by recorded_at, outcome) from case_decision where case_id = '${c1.id}'`).split(",").sort().join(",") === "APPROVED,REFUSED", r.body);
@@ -276,6 +289,8 @@ try {
     refused(`insert into case_decision (id, firm_id, case_id, filing_id, kind, outcome, decided_on, recorded_by) values (gen_random_uuid(), '${FB}', '${c1.id}', '${c1.filings[0]}', 'DECISION', 'APPROVED', current_date, 'x')`, /is not the firm of case/)
     && refused(`insert into case_decision (id, firm_id, case_id, filing_id, kind, outcome, decided_on, recorded_by) values (gen_random_uuid(), '${FA}', '${c1.id}', '${hc.filings[0]}', 'DECISION', 'APPROVED', current_date, 'x')`, /is not a filing of case/)
     && refused(`insert into case_decision (id, firm_id, case_id, filing_id, kind, outcome, decided_on, recorded_by) values (gen_random_uuid(), '${FA}', '${c1.id}', '${c1.filings[0]}', 'WITHDRAWAL', 'WITHDRAWN', current_date, 'x')`, /case_decision_kind_check/));
+  ok("CS-C1 DW7 fail (break m6): the database refuses a decision on a filing not recorded as submitted",
+    refused(`insert into case_decision (id, firm_id, case_id, filing_id, kind, outcome, decided_on, recorded_by) values (gen_random_uuid(), '${FA}', '${c1.id}', '${c1.filings[1]}', 'DECISION', 'APPROVED', current_date, 'x')`, /is not recorded as submitted/));
   ok("CS-C1 DW7 fail: the database refuses a closed case without its closing fields, or an open one keeping them", refused(`update runtime_case set status = 'CLOSED' where id = '${c1.id}'`, /runtime_case_closing_fields_check/)
     && refused(`update runtime_case set closed_reason = 'x' where id = '${c1.id}'`, /runtime_case_closing_fields_check/) && refused(`update runtime_case set status = 'ARCHIVED' where id = '${c1.id}'`, /runtime_case_(status|closing_fields)_check/));
   ok("CS-C1 DW7 fail: a DELETE from inside another trigger is refused while the case exists (only the case's own cascade passes)",

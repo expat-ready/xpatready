@@ -7,7 +7,8 @@
 --     with their case: a DELETE is let through only once the case row itself is gone (the case's ON DELETE CASCADE, as
 --     the demo reset deletes cases); any other DELETE, from a statement or from another trigger, is refused. A filing
 --     with a decision cannot be deleted (NO ACTION).
---   * a new row names its case's own firm (platform_firm by runtime_case.firm_key), a filing of the same case, and a
+--   * a new row names its case's own firm (platform_firm by runtime_case.firm_key), a filing of the same case (recorded
+--     as submitted, C8.2's filing_record, for a DECISION), and a
 --     kind with its outcomes (DECISION: APPROVED, REFUSED, a Sample list until cited; WITHDRAWAL: WITHDRAWN, no filing).
 -- Rollback (in this order): DROP TABLE "case_decision"; DROP FUNCTION case_decision_check_insert(),
 --   case_decision_refuse_change(); ALTER TABLE "runtime_case" DROP CONSTRAINT "runtime_case_closing_fields_check",
@@ -88,6 +89,9 @@ BEGIN
   END IF;
   IF NEW.filing_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "filing" x WHERE x.id = NEW.filing_id AND x.case_id = NEW.case_id) THEN
     RAISE EXCEPTION 'case_decision: filing % is not a filing of case %', NEW.filing_id, NEW.case_id USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.kind = 'DECISION' AND NOT EXISTS (SELECT 1 FROM "filing_record" r WHERE r.filing_id = NEW.filing_id) THEN
+    RAISE EXCEPTION 'case_decision: filing % is not recorded as submitted', NEW.filing_id USING ERRCODE = 'check_violation';
   END IF;
   NEW.recorded_at := now();   -- the database's time, never the writer's
   RETURN NEW;

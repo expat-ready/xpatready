@@ -26,15 +26,20 @@ const notFound = (what = "case"): never => problem(404, "Not found", `No such ${
 const conflict = (detail: string, code: string): never => problem(409, "Not possible now", detail, { code });
 const invalid = (field: string, detail: string): never => problem(400, "Check the details", detail, { code: "INVALID", fields: { [field]: detail } });
 
+/** Words a person reads: no NUL or other control character but tab and new line (break m1). */
+const BAD_TEXT = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
+/** Spaces and invisible characters only count as empty (break m4). */
+const blank = (t: string) => !t.replace(/[\s\u200B-\u200D\u2060\uFEFF]/g, "");
 function reasonOf(b: B): string {
   const r = typeof b.reason === "string" ? b.reason.trim() : "";
-  if (!r) return problem(400, "A reason is needed", "Give a reason.", { code: "REASON_REQUIRED", fields: { reason: "Give a reason." } });
+  if (BAD_TEXT.test(r)) return invalid("reason", "Plain text only.");
+  if (blank(r)) return problem(400, "A reason is needed", "Give a reason.", { code: "REASON_REQUIRED", fields: { reason: "Give a reason." } });
   if (r.length > REASON_MAX) return invalid("reason", `At most ${REASON_MAX} characters.`);
   return r;
 }
 function dateOf(b: B, field: string): Date {
   const d = b[field];
-  if (typeof d !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(`${d}T00:00:00Z`)) || new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) !== d)
+  if (typeof d !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(`${d}T00:00:00Z`)) || new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) !== d || d < "1900-01-01" || d > "2200-12-31")
     return invalid(field, "A real date as YYYY-MM-DD.");
   return new Date(`${d}T00:00:00Z`);
 }
@@ -99,7 +104,7 @@ export class CaseClose {
       const outcome = typeof b.outcome === "string" ? b.outcome : "";
       if (!(DECISION_OUTCOMES as readonly string[]).includes(outcome)) invalid("outcome", `One of ${DECISION_OUTCOMES.join(", ")} (Sample list).`);
       const decidedOn = dateOf(b, "decidedOn");
-      const note = b.note == null || b.note === "" ? null : typeof b.note === "string" && b.note.trim().length <= NOTE_MAX ? b.note.trim() || null : invalid("note", `Plain text, at most ${NOTE_MAX} characters.`);
+      const note = b.note == null || b.note === "" ? null : typeof b.note === "string" && b.note.trim().length <= NOTE_MAX && !BAD_TEXT.test(b.note) ? b.note.trim() || null : invalid("note", `Plain text, at most ${NOTE_MAX} characters.`);
       const filing = typeof b.filingId === "string" ? c.filings.find((f) => f.id === b.filingId) : undefined;
       if (!filing) return notFound("filing on this case");
       if (!filing.record) conflict("This filing is not recorded as submitted, so it has no decision yet (AG-7-33 rule 2).", "NOT_SUBMITTED");
