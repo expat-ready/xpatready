@@ -2,6 +2,25 @@
 
 Start only after **FO-7a, PF-12, FO-5, PF-4, PF-4b and PF-14 have merged** (PF-12: no money route before the `money_*` walls, P-584 (10)) (FO-5 brings the retainer fee rows, `DocumentRenderPort` and `FilesPort`; PF-4b brings `MailPort`; PF-14 brings `JobPort` and the fake clock). Money lane: FO-7a → FO-7b → FO-7c ∥ FO-7t → FO-7p, with FO-7r after FO-7b and FO-7t (P-576, rev 13). No schema change. Paste into a new cloud session on the repository (default branch `main`):
 
+> **Amendments, revs 16.33–16.38 (16 Nov, Lead B; money rules agreed by the release Lead on #1878, #1879, #1883). Where they differ from the text below, these win:**
+> 1. **An overpayment is never refused** (AG-6-21 r2–r3, §13; MS-D11(5); AG-6-76 r4).
+>    - With the trust answer YES, the extra goes to the case's trust balance as a `RECEIPT`.
+>    - With trust off, the recording asks "Refund · Keep as credit" and a person chooses. "Keep as credit" writes FO-7ts's credit ledger (`KEPT`).
+>    - When two payments arrive at once, the second becomes extra, noted "Paid twice?".
+>    - Test: a pass and a fail each.
+> 2. **"Invoice payments go to"** (AG-6-69): the rule and the setting route are here.
+>    - Owner only, by a role check. Offered only when the trust answer is YES. It applies to payments recorded after the change. Audited.
+>    - It uses FO-7ts's `invoice_payments_go_to` field. Its screen is FO-7s2's.
+> 3. **`ClientMoneyPort.addGovernmentFeeLine(tx, { caseId, partyId, feeRecordId, amountMinor, currency })`:** an untaxed `GOVERNMENT_FEE` line on the open draft for the case's Bill-to party, or on a new draft.
+>    - The line is linked to the fee record, and the same fee twice makes one line.
+>    - With no signed retainer there is no line, and the method answers "not yet invoiced" (AG17-D79).
+> 4. **Routes go under `/api/front-office/money/*`**, where the staff guard covers them. There is no `/api/client-money/` prefix.
+> 5. **`ClientMoneyPort`'s interface and its fake go in `prototype/studio/ports/`** (zod only, the shared-port rule). The adapter goes in `api/src/client-money/`.
+>    - It is a shared contract, so the release Lead reads it (P-423).
+>    - The touch list's `api/src/client-money/port.ts` becomes the adapter, plus a new `ports/client-money.ts`.
+> 6. **Recorded-by-hand methods** (AG-6-19 r1): `BANK_TRANSFER | WIRE | CHEQUE | CASH | E_TRANSFER | CARD_TERMINAL | OTHER`. FO-7ts adds the two new ones. `CARD` is online only.
+> 7. **Starts when** FO-7ts parts 1–2 are on `main` (it needs the trust answer, the credit ledger and the methods), as well as the rows above.
+
 ---
 You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime FO-7b` and take **one row, FO-7b**, end to end on a fresh branch from `origin/main`, one PR.
 

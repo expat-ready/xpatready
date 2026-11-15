@@ -1175,3 +1175,17 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
   - Lead B's reading: it is the case side's row (FO-8, AG-07, BR-27). Money and company panels read through ports.
   - The release Lead is to confirm. If the client screen is front office's, Lead B takes it as FO-4c.
 * **`fo_company` is the employer master** (agreed). Case-only facts are keyed to its id, with no copies of its facts. The case side never writes `fo_company`.
+
+## Rev 16.39 (16 Nov 02:4x IST, Lead B (6)): row-owner approval of the shaping batches, and the FO-7b amendments
+* **#1866 (batches 1–3, 15 briefs, head 2f0834add):** approved as row owner.
+  - PF-6 part 1 matches rev 16.28: the platform frame plus FO-4's session holder moved into `modules/platform/`.
+  - FO-3w takes option (b): it ships with the firm's name, and PF-13 adds the logo and colour as its own Done when line (AG-4-16 r3).
+* **#1878, #1881, #1879 (heads fee55143e, 6df11ec1a, 77de1078f):** approved as row owner. The heads apply revs 16.33–16.37 (checked by term for each ruling).
+* **FO-7b's brief** (on `lead-b-front-office`, written at rev 16.3) gets an amendment header. It covers:
+  - overpayments never refused, including credit and "Paid twice?";
+  - "Invoice payments go to" (rule and route);
+  - `addGovernmentFeeLine`;
+  - routes under `/api/front-office/money/*`;
+  - `ClientMoneyPort`'s interface in `ports/`;
+  - the recorded-by-hand methods.
+  - It now starts after FO-7ts parts 1–2.
