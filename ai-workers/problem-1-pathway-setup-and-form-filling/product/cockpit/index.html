@@ -39,7 +39,7 @@ a{color:var(--accent)}
 /* sticky strip */
 .strip{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);margin:0;padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px))}
 .strip-in{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
-.tile{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0;cursor:help}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0}
 .tile .k{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile .v{font:600 19px/1.15 var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile .s{font-size:11px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -64,11 +64,10 @@ td.n,th.n{text-align:right;white-space:nowrap}
 .muted{color:var(--ink3)}
 .small{font-size:12.5px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
-.kpi{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;cursor:help;min-width:0}
+.kpi{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;min-width:0}
 .kpi .k{font-size:12px;color:var(--ink2)}
 .kpi .v{font:600 22px/1.2 var(--mono)}
 .kpi .s{font-size:11.5px;color:var(--ink3)}
-[data-src]{cursor:help}
 /* pills: tone by colour AND by shape mark */
 .pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:1px 8px 1px 6px;font-size:12px;font-weight:500;white-space:nowrap;border:1px solid transparent;line-height:1.5}
 .pill::before{content:"";width:8px;height:8px;flex:none;background:currentColor}
@@ -86,19 +85,19 @@ ul.items li>div{min-width:0;overflow-wrap:anywhere}
 ul.items li:last-child{border-bottom:0}
 .tag{font:500 12px var(--mono);color:var(--ink);background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:0 5px;white-space:nowrap}
 .oneline{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden}
-.oneline>div{background:var(--panel);padding:8px 10px;cursor:help}
+.oneline>div{background:var(--panel);padding:8px 10px}
 .oneline .k{font-size:11.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.04em}
 .oneline .v{font:600 17px/1.3 var(--mono)}
 .oneline .s{font-size:12px;color:var(--ink2)}
 svg text{font-family:var(--sans)}
 .svgwrap{width:100%}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
-.chip{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12.5px;background:var(--panel2);cursor:help}
+.chip{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12.5px;background:var(--panel2)}
 .chip b{font-weight:600}
 .bar{display:flex;height:22px;border-radius:4px;overflow:hidden;border:1px solid var(--line)}
 .bar>span{display:block;height:100%}
 .sq{display:grid;grid-template-columns:repeat(auto-fill,minmax(18px,1fr));gap:3px}
-.sq i{display:block;aspect-ratio:1;border-radius:3px;cursor:help}
+.sq i{display:block;aspect-ratio:1;border-radius:3px}
 .groupgrid{display:grid;grid-template-columns:1fr;gap:10px}
 @media(min-width:760px){.groupgrid{grid-template-columns:1fr 1fr}}
 .grp{border:1px solid var(--line);border-radius:6px;padding:8px 10px}
@@ -106,7 +105,7 @@ svg text{font-family:var(--sans)}
 .grp .row{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:3px 0;border-top:1px dashed var(--line)}
 .grp .row span:first-child{min-width:0}
 .trend{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
-.trend>div{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;cursor:help}
+.trend>div{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
 .err{border:2px solid var(--bad);background:var(--bad-soft);color:var(--ink);border-radius:8px;padding:14px;margin:18px 0}
 details#details{margin:14px 0}details#details>summary{cursor:pointer;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;font:600 15px/1.3 var(--sans);color:var(--ink2)}details#details[open]>summary{color:var(--ink)}
 .goal{margin:10px 0 4px;font-size:14px;color:var(--ink2)}
@@ -114,9 +113,6 @@ details#details{margin:14px 0}details#details>summary{cursor:pointer;background:
 .tabs button{font:500 14px/1 var(--sans);padding:9px 14px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--ink2);cursor:pointer}
 .tabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--bg)}
 .tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.srcbar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--ink);color:var(--bg);font-size:12.5px;padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:none}
-.srcbar.on{display:block}
-.srcbar b{font-weight:600}
 .example{display:inline-block;border:1px dashed var(--wait);color:var(--wait);border-radius:4px;padding:0 6px;font-size:11.5px;margin-left:6px}
 .modlist{margin-top:10px}
 .dim{opacity:.55}
@@ -126,7 +122,7 @@ details#details{margin:14px 0}details#details>summary{cursor:pointer;background:
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:baseline;flex:none}
 .lt-green{background:var(--good)} .lt-amber{background:var(--wait);border-radius:2px;transform:rotate(45deg)} .lt-red{background:var(--bad);border-radius:0;clip-path:polygon(50% 0,100% 100%,0 100%)} .lt-grey{background:transparent;border:1.5px solid var(--none)}
 .tile.hl{cursor:pointer}
-.nm{color:var(--ink3);font-style:italic;font-weight:400;border-bottom:1px dotted var(--ink3);cursor:help}
+.nm{color:var(--ink3);font-style:italic;font-weight:400}
 .rep{display:inline-block;border:1px solid var(--line);color:var(--ink3);border-radius:4px;padding:0 5px;font-size:10.5px;margin-left:5px;vertical-align:middle;font-style:normal;font-weight:400}
 .banner{border-radius:8px;padding:9px 12px;margin:12px 0 0;font-size:14px;border:1px solid}
 .banner.red{background:var(--bad-soft);border-color:var(--bad);color:var(--ink)} .banner.amber{background:var(--wait-soft);border-color:var(--wait);color:var(--ink)}
@@ -166,8 +162,8 @@ details.inline>summary{cursor:pointer;color:var(--accent);font-size:12.5px;displ
 .wmark{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-left:6px;vertical-align:middle}
 .wmark.rep{background:transparent;border:1.5px solid var(--accent);padding:0;margin-left:6px;width:8px;height:8px;border-radius:50%}
 .workline{font-size:13.5px;margin:0 0 8px}
-/* board v57: one tooltip per number (hover, keyboard focus, tap; Esc closes) */
-#tip{position:fixed;z-index:40;width:max-content;max-width:min(380px,calc(100vw - 16px));background:var(--panel);color:var(--ink);border:1px solid var(--ink3);border-radius:8px;padding:9px 11px;font-size:12.5px;line-height:1.4;box-shadow:0 6px 24px rgba(0,0,0,.2);display:none}
+/* board v61: the info panel a button opens (click or Enter; a second click, Esc or a click outside closes) */
+#tip{position:fixed;z-index:40;max-height:70vh;overflow:auto;width:max-content;max-width:min(380px,calc(100vw - 16px));background:var(--panel);color:var(--ink);border:1px solid var(--ink3);border-radius:8px;padding:9px 11px;font-size:12.5px;line-height:1.4;box-shadow:0 6px 24px rgba(0,0,0,.2);display:none}
 #tip.on{display:block}
 #tip.sheet{left:8px;right:8px;bottom:8px;top:auto;max-width:none;width:auto;max-height:60vh;overflow:auto}
 #tip .l{display:block;font-weight:600;font-size:13px;margin-bottom:4px}
@@ -176,8 +172,19 @@ details.inline>summary{cursor:pointer;color:var(--accent);font-size:12.5px;displ
 #tip dd{margin:0;overflow-wrap:anywhere}
 #tip .sep{border-top:1px solid var(--line);margin:7px 0}
 #tip .nmline{margin:0 0 6px;color:var(--wait)}
-[data-tip]{cursor:help}
-[data-tip]:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+/* board v61 (founder 15 Nov): one small info button beside each number or block; click only, hover shows nothing */
+.ib{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin:-4px -2px -4px 2px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--accent);font:600 15px/1 var(--sans);cursor:pointer;vertical-align:middle;flex:none}
+.ib:hover{background:var(--accent-soft)}
+.ib:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.ib[aria-expanded="true"]{background:var(--accent);color:var(--bg)}
+.hasib{position:relative;padding-right:26px}
+.hasib>.ib{position:absolute;top:4px;right:3px;margin:0}
+.grpib{margin:2px 0 0}
+.hlbtn{all:unset;display:block;cursor:pointer;width:100%;box-sizing:border-box}
+.hlbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+.hlbtn>span{display:block}
+#tip .glist{margin:0;max-height:40vh;overflow:auto}
+#tip .glist div{padding:1px 0;border-top:1px dashed var(--line)}
 /* board v57: Team tab, the org view by component */
 .orgv{display:grid;gap:10px}
 .orgv .top{display:flex;justify-content:center}
@@ -222,11 +229,10 @@ details.inline>summary{cursor:pointer;color:var(--accent);font-size:12.5px;displ
   <div class="tile"><div class="k">Plan use</div><div class="v">&#x2026;</div></div>
 </div><div class="lineage" id="lineage"></div><div id="healthPanel" hidden></div></div>
 <div class="wrap" id="app">
-  <header class="top"><h1>Founder's Progress Board</h1><p>Pathway Configurator, Release 1. Every number comes from the data script; hover, tap or tab to a number to see what it counts, its time window and sample, how to read it and its source.</p></header>
+  <header class="top"><h1>Founder's Progress Board</h1><p>Pathway Configurator, Release 1. Every number comes from the data script; press the ⓘ beside a number to see what it counts, its time window and sample, how to read it and its source.</p></header>
   <div id="body"><p class="muted">Loading data.json&#x2026;</p></div>
 </div>
-<div class="srcbar" id="srcbar" role="status" aria-live="polite"></div>
-<div id="tip" role="tooltip"></div>
+<div id="tip" role="region" aria-live="polite" aria-label="About this number"></div>
 
 <script>
 (function(){
@@ -236,9 +242,10 @@ var D=null;
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];});}
 function v(x){return x&&typeof x==="object"&&"v" in x?x.v:x;}
 function src(x){return x&&typeof x==="object"&&x.src?x.src:"";}
-function S(s){return s?' data-src="'+esc(s)+'" title="'+esc(s)+'"':"";}
-/* board v57: a number's tooltip, by its key(s) in data.json's explain block (window and n come from the data) */
-function T(k){return k?' data-tip="'+esc(k)+'" tabindex="0"':"";}
+/* board v61: S marks a block whose info is a plain source line; T marks a number by its key(s) in data.json's explain block
+   (window and n come from the data). Neither shows anything on hover: addIcons() puts one ⓘ button beside each. */
+function S(s){return s?' data-info="'+esc(s)+'"':"";}
+function T(k){return k?' data-tip="'+esc(k)+'"':"";}
 function nz(x,suf){return x==null?'<span class="muted">n/a</span>':esc(x)+(suf||"");}
 function fmtDate(iso){if(!iso)return "not dated";var d=new Date(iso+"T00:00:00");return d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});}
 function short(iso){if(!iso)return "not dated";var d=new Date(iso+"T00:00:00");return d.toLocaleDateString("en-GB",{day:"numeric",month:"short"});}
@@ -255,29 +262,23 @@ function ageText(h){if(h==null)return "n/a";if(h<0)h=0;if(h<1)return Math.round(
 function section(no,id,title,why,inner){return '<section id="'+id+'"><h2>'+esc(title)+'</h2><p class="why">'+esc(why)+'</p>'+inner+'</section>';}
 function kpi(label,val,sub,s,cls,key){return '<div class="kpi'+(cls?" "+cls:"")+'"'+(key?T(key):S(s))+'><div class="k">'+esc(label)+'</div><div class="v">'+val+'</div>'+(sub?'<div class="s">'+sub+'</div>':"")+'</div>';}
 
-/* source bar on tap */
-var bar=document.getElementById("srcbar"),barT=null;
+/* board v61: clicks. Only a ⓘ button opens its panel; tapping a number does nothing; a second click, Esc or a click outside closes */
 document.addEventListener("click",function(e){
-  var tp=e.target.closest("[data-tip]");
-  if(tp){if(tipEl===tp&&tipPinned)tipHide();else tipShow(tp,true);if(tp.id!=="healthTile"&&!tp.closest("[data-mod]"))return;}
-  else if(!tip.contains(e.target))tipHide();
+  var b=e.target.closest&&e.target.closest(".ib");
+  if(b){e.preventDefault();if(tipBtn===b)tipHide();else tipShow(b);return;}
+  if(tipBtn&&!tip.contains(e.target))tipHide();
   var go=e.target.closest("[data-go]");
   if(go){e.preventDefault();var tb=document.querySelector('.tabs button[data-tab="'+go.getAttribute("data-go")+'"]');if(tb){tb.click();var tg=document.getElementById("trust");if(tg)tg.scrollIntoView();}return;}
-  var el=e.target.closest("[data-src]");
   var mod=e.target.closest("[data-mod]");
   if(mod){showModule(mod.getAttribute("data-mod"));}
-  if(!el){bar.classList.remove("on");return;}
-  bar.innerHTML="<b>Source:</b> "+esc(el.getAttribute("data-src"));
-  bar.classList.add("on");clearTimeout(barT);barT=setTimeout(function(){bar.classList.remove("on");},7000);
 });
 document.addEventListener("keydown",function(e){
-  if(e.key==="Escape"&&tipEl){var f=tipEl;tipHide();if(f.focus)f.focus();return;}
-  if((e.key==="Enter"||e.key===" ")&&e.target.getAttribute&&e.target.getAttribute("data-tip")&&!e.target.getAttribute("role")){e.preventDefault();if(tipEl===e.target&&tipPinned)tipHide();else tipShow(e.target,true);return;}
+  if(e.key==="Escape"&&tipBtn){var f=tipBtn;tipHide();if(f.focus)f.focus();return;}
   if((e.key==="Enter"||e.key===" ")&&e.target.getAttribute&&e.target.getAttribute("data-mod")){e.preventDefault();showModule(e.target.getAttribute("data-mod"));}
 });
-/* board v57 tooltip: what it counts, window and sample, how to read it, source and class (FORMULAS.md › Tooltips) */
-var tip=document.getElementById("tip"),tipEl=null,tipPinned=false;
-function tipHTML(el){
+var tip=document.getElementById("tip"),tipBtn=null;
+/* the panel: what it counts, window and sample, how to read it, source and class (FORMULAS.md › Info icons) */
+function oneHTML(el){
   var keys=(el.getAttribute("data-tip")||"").split(/\s+/).filter(Boolean),E=(D&&D.explain)||{},h="";
   var nx=el.getAttribute("data-nm")?el:el.querySelector("[data-nm]");
   if(nx)h+='<p class="nmline"><b>Not measured:</b> '+esc(nx.getAttribute("data-nm"))+'</p>';
@@ -286,19 +287,52 @@ function tipHTML(el){
     h+='<span class="l">'+esc(e.label)+'</span><dl><dt>Counts</dt><dd>'+esc(e.what)+'</dd><dt>Window</dt><dd>'+esc(e.window)+'</dd>'+
       '<dt>Sample</dt><dd>'+(e.n==null?'<i>not measured</i> ('+esc(e.n_reason||"no sample in the data")+')':'n = '+esc(e.n)+(e.n_of?' '+esc(e.n_of):""))+'</dd>'+
       '<dt>Read it</dt><dd>'+esc(e.read||"")+(e.band?' <b>Healthy:</b> '+esc(e.band)+'.':"")+'</dd>'+
-      '<dt>Source</dt><dd>'+esc(e.src)+'</dd><dt>Class</dt><dd>'+esc(e["class"])+(e["class"]==="reported"?" (Lead-reported)":"")+(e.sha?' \u00b7 sha '+esc(e.sha):"")+(e.as_of?' \u00b7 as of '+esc(e.as_of):"")+'</dd></dl>';});
+      '<dt>Source</dt><dd>'+esc(e.src)+'</dd><dt>Class</dt><dd>'+esc(e["class"])+(e["class"]==="reported"?" (Lead-reported)":"")+(e.sha?' · sha '+esc(e.sha):"")+(e.as_of?' · as of '+esc(e.as_of):"")+'</dd></dl>';});
+  var info=el.getAttribute("data-info");
+  if(info)h+=(keys.length?'<div class="sep"></div>':'')+'<dl><dt>About</dt><dd>'+esc(info)+'</dd></dl>';
   return h;}
+function tipHTML(btn){var els=btn._els||[];
+  if(btn._group){var inf=els.filter(function(x){return !x.getAttribute("data-tip");}),tp=els.filter(function(x){return x.getAttribute("data-tip");});
+    return tp.map(oneHTML).join('<div class="sep"></div>')+(inf.length?(tp.length?'<div class="sep"></div>':'')+'<span class="l">'+esc(btn._group)+'</span><div class="glist">'+inf.map(function(x){return '<div>'+esc(x.getAttribute("data-info"))+'</div>';}).join("")+'</div>':"");}
+  return oneHTML(els[0]);}
 function tipPlace(el){var r=el.getBoundingClientRect(),vw=window.innerWidth,vh=window.innerHeight;
   if(vw<=520){tip.classList.add("sheet");tip.style.left="";tip.style.top="";return;}
   tip.classList.remove("sheet");var w=tip.offsetWidth,hh=tip.offsetHeight,x=Math.min(Math.max(8,r.left),vw-w-8),y=r.bottom+6;
   if(y+hh>vh-8)y=Math.max(8,r.top-hh-6);tip.style.left=x+"px";tip.style.top=y+"px";}
-function tipShow(el,pin){if(tipEl&&tipEl!==el)tipEl.removeAttribute("aria-describedby");tipEl=el;tipPinned=!!pin;tip.innerHTML=tipHTML(el);tip.classList.add("on");el.setAttribute("aria-describedby","tip");tipPlace(el);bar.classList.remove("on");}
-function tipHide(){if(tipEl)tipEl.removeAttribute("aria-describedby");tipEl=null;tipPinned=false;tip.classList.remove("on");}
-document.addEventListener("mouseover",function(e){var el=e.target.closest&&e.target.closest("[data-tip]");if(el&&el!==tipEl&&!tipPinned)tipShow(el);});
-document.addEventListener("mouseout",function(e){if(!tipEl||tipPinned)return;var to=e.relatedTarget;if(to&&(tipEl.contains(to)||tip.contains(to)))return;if(e.target.closest&&e.target.closest("[data-tip]")===tipEl)tipHide();});
-document.addEventListener("focusin",function(e){var el=e.target.closest&&e.target.closest("[data-tip]");if(el&&el!==tipEl)tipShow(el);});
-document.addEventListener("focusout",function(e){if(tipEl&&e.target===tipEl&&!tip.contains(e.relatedTarget))tipHide();});
-window.addEventListener("scroll",function(){if(tipEl){if(tipPinned)tipPlace(tipEl);else tipHide();}},{passive:true});
+function tipShow(btn){tipHide();tipBtn=btn;tip.innerHTML=tipHTML(btn);tip.setAttribute("aria-label",btn.getAttribute("aria-label"));tip.classList.add("on");btn.setAttribute("aria-expanded","true");tipPlace(btn);}
+function tipHide(){if(tipBtn)tipBtn.setAttribute("aria-expanded","false");tipBtn=null;tip.classList.remove("on");}
+window.addEventListener("scroll",function(){if(tipBtn)tipPlace(tipBtn);},{passive:true});
+/* one ⓘ per marked element: a table row gets it in its last cell, a list item in its text, a tile or card in its corner,
+   an inline number right after it; marks inside one chart (svg) or one square grid share a single button after it */
+var BLOCKIB=".tile,.kpi,.card,.oneline>div,.trend>div";
+function ibLabel(el){var k=(el.getAttribute("data-tip")||"").split(/\s+/)[0],E=(D&&D.explain)||{};
+  if(k&&E[k])return E[k].label;var t=(el.textContent||"").replace(/\s+/g," ").trim();return t?t.slice(0,60):"this item";}
+function mkBtn(label){var b=document.createElement("button");b.type="button";b.className="ib";b.textContent="ⓘ";
+  b.setAttribute("aria-label","About: "+label);b.setAttribute("aria-expanded","false");b.setAttribute("aria-controls","tip");return b;}
+function addIcons(root){
+  var groups=[];
+  (root||document).querySelectorAll("[data-tip],[data-info],[data-nm]").forEach(function(el){
+    if(el.hasAttribute("data-ib"))return;
+    el.setAttribute("data-ib","1");
+    if(el.hasAttribute("data-nm")&&el.parentElement&&el.parentElement.closest("[data-tip],[data-info]"))return;  /* a "not measured" inside a marked block: its reason shows in that block's panel */
+    var svg=el.closest("svg"),sq=el.closest(".sq");
+    if(svg){while(svg.parentElement&&svg.parentElement.closest("svg"))svg=svg.parentElement.closest("svg");}
+    var host=svg||sq;
+    if(host){var g=groups.filter(function(x){return x.host===host;})[0];if(!g){g={host:host,els:[]};groups.push(g);}g.els.push(el);return;}
+    var b=mkBtn(ibLabel(el));b._els=[el];var tag=el.tagName;
+    if(tag==="TR"&&el.lastElementChild)el.lastElementChild.appendChild(b);
+    else if(tag==="TABLE"){var th=el.querySelector("th");(th||el).appendChild(b);}
+    else if(tag==="LI")(el.lastElementChild||el).appendChild(b);
+    else if(el.matches(BLOCKIB)){el.classList.add("hasib");el.appendChild(b);}
+    else if(el.matches(".bar")||tag==="svg")el.insertAdjacentElement("afterend",b);
+    else if(tag==="DIV"||tag==="P"||tag==="H4")el.appendChild(b);
+    else el.insertAdjacentElement("afterend",b);});
+  groups.forEach(function(g){var nxt=g.host.nextElementSibling;
+    if(nxt&&nxt.classList.contains("grpib")){nxt._els=nxt._els.concat(g.els);return;}
+    var lab=g.host.getAttribute("aria-label")||(g.host.classList.contains("sq")?"these squares":"this chart");
+    var b=mkBtn(lab);b.classList.add("grpib");b._els=g.els;b._group=g.host.classList.contains("sq")?"Each square":"Details";g.host.insertAdjacentElement("afterend",b);});
+  if(tipBtn&&!document.body.contains(tipBtn))tipHide();
+}
 
 function dataAgeH(){return D?(Date.now()-Date.parse(D.freshness.generated_at))/3600000:null;}
 /* Health item 2, the one number the page computes (spec §0.5): data age from generated_at and the viewer's clock */
@@ -327,11 +361,11 @@ function renderStrip(){
   var H=D.health||{light:"amber"},ast=ageState(age),light=worst(worst(H.light,ast),leadInputStale()&&H.light==="green"?"amber":"green"),R=D.resources||{};
   var wk=v(R.weekly_pct),bn=v(R.burn_pct_per_h),pd=v(R.paid_usd_today);
   el.innerHTML=
-   '<div class="tile'+(ny>0?" alert":"")+'"'+T("strip.needs_you")+'><div class="k">Needs you</div><div class="v">'+nz(ny)+'</div><div class="s">open items</div></div>'+
+   '<div class="tile'+(ny>0?" alert":"")+'"'+T("strip.needs_you")+'><div class="k">Needs you</div><div class="v">'+nz(ny)+'</div><div class="s">'+(ny===0?"nothing from you":"for you to decide or do")+'</div></div>'+
    relTile()+
    '<div class="tile"'+T("strip.poc")+'><div class="k">Proof of concept</div><div class="v">'+nz(w[0])+'<span class="muted">/'+nz(w[1])+'</span></div><div class="s">capabilities proven by qa</div></div>'+
    '<div class="tile"'+T("strip.next_date")+'><div class="k">Next date</div><div class="v">'+(nd?esc(short(nd.date)):"none")+'</div><div class="s">'+(nd?esc(nd.kind)+", in "+nd.days_left+" d":"")+'</div></div>'+
-   '<div class="tile hl'+(light==="red"?" alert":light==="amber"?" warn":"")+'" id="healthTile" role="button" tabindex="0" aria-expanded="false" data-tip="strip.health" aria-label="Health: '+esc(LIGHTWORD[light])+'; press for the seven checks"><div class="k">Health</div><div class="v">'+dot(light)+esc(LIGHTWORD[light])+'</div><div class="s">data '+ageText(age)+' old</div></div>'+
+   '<div class="tile hl'+(light==="red"?" alert":light==="amber"?" warn":"")+'"'+T("strip.health")+'><button type="button" class="hlbtn" id="healthTile" aria-controls="healthPanel" aria-expanded="'+String(!document.getElementById("healthPanel").hidden)+'" aria-label="Health: '+esc(LIGHTWORD[light])+'; press for the seven checks"><span class="k">Health</span><span class="v">'+dot(light)+esc(LIGHTWORD[light])+'</span><span class="s">data '+ageText(age)+' old</span></button></div>'+
    '<div class="tile"'+T("strip.plan_use")+'><div class="k">Plan use</div><div class="v">'+(wk==null?'<span class="nm">n/a</span>':esc(wk)+"%")+'</div><div class="s">'+(bn==null?"burn not reported":esc(bn)+" %/h")+' · US$'+(pd==null?"?":esc(pd))+' today</div></div>';
   var L=D.lineage||{},ah=L.ahead_of_main;
   document.getElementById("lineage").innerHTML='Records from <span class="mono">'+esc(L.records_branch||"?")+' @'+esc((L.records_sha||"").slice(0,9))+'</span>, '+
@@ -339,7 +373,7 @@ function renderStrip(){
   renderHealth(ast,age);
   var t=document.getElementById("healthTile");
   t.onclick=function(){var p=document.getElementById("healthPanel");p.hidden=!p.hidden;t.setAttribute("aria-expanded",String(!p.hidden));};
-  t.onkeydown=function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();t.onclick();}};
+  addIcons(document.getElementById("strip"));
 }
 function renderHealth(ast,age){
   var H=D.health,p=document.getElementById("healthPanel");if(!H){p.innerHTML='<p class="muted">Health not in data.json.</p>';return;}
@@ -375,6 +409,7 @@ function rPace(){
       'At the current pace: 50% by '+N(F.p50,"",function(x){return B(dshort(x));},"forecast.p50")+', 85% by '+N(F.p85,"",function(x){return B(dshort(x));},"forecast.p85")+'.')+'</p>';
     h+='<p class="line small">'+pace+'.</p>';
   }
+  h+=rEarly(B);
   h+=rDelivery(B);
   var dis=((D.trust||{}).status_disagreements||[]);
   h+='<p class="line">Capabilities: '+N(P.built,"",B,"pace.built")+' of '+N(P.rows_total,"",null,"pace.rows_total")+' built'+(bb&&bb.value?' <span class="small muted"'+T("pace.built_before")+'>(+'+esc(bb.value)+' built before 13 Nov)</span>':"")+', proven: '+N(P.proven,"",B,"pace.proven")+'.'+
@@ -385,6 +420,20 @@ function rPace(){
   h+='<div class="svgwrap" id="burnup"></div>';
   h+='<details class="inline"><summary>Roadmap timeline</summary><div class="svgwrap" id="timeline" style="margin-top:6px"></div></details>';
   return '<section class="ovsec" id="pace"><h2>Plan and pace</h2>'+h+'</section>';
+}
+/* board v61 (founder A78, P-609): the early band until the measured forecast, then three daily leading numbers */
+function rEarly(B){
+  var P=D.pace,E=P.early_band,L=P.leading,h="";
+  if(E&&E.value)h+='<p class="line">Early estimate, <b>low confidence</b>: all Release 1 built between <span'+T("pace.early_band")+'>'+B(dshort(E.value.low))+' and '+B(dshort(E.value.high))+'</span> at the pace measured so far'+(E.committed?' (committed: '+esc(short(E.committed))+')':'')+'. The measured forecast replaces it after 5 days of history.</p>';
+  else if(E&&!/^replaced/.test(E.reason||""))h+='<p class="line small">Early estimate: '+nm(E.reason,"pace.early_band")+'.</p>';
+  if(!L)return h;
+  var lp=L.parts_merged,lc=L.caps_all_parts,lv=L.first_verdict_works_pct;
+  var nv=function(x,suf,key){return x.value==null?nm(x.reason,key):esc(x.value)+(suf||"");};
+  h+='<div class="kpis" style="margin:6px 0">'+
+    kpi("Parts merged",nv(lp,"","pace.leading_parts"),lp.day?"on "+esc(short(lp.day))+" · today so far "+esc(lp.today_so_far):"today so far "+esc(lp.today_so_far),"","","pace.leading_parts")+
+    kpi("Capabilities with all parts merged",nv(lc,"","pace.leading_caps")+'<span class="muted" style="font-size:13px"> / '+esc(lc.rows_total)+'</span>',(lc.day?"+"+esc(lc.new_on_day)+" on "+esc(short(lc.day))+" · ":"")+"+"+esc(lc.today_so_far)+" today","","","pace.leading_caps")+
+    kpi("Works at the first qa verdict",nv(lv,"%","pace.leading_fv"),esc(lv.works)+" of "+esc(lv.n)+" first verdicts since 13 Nov","","","pace.leading_fv")+'</div>';
+  return h;
 }
 /* P-602 (4): delivery per use over the last 24 h; the divisions use deliveries over the same hours as the readings.
    "not measured" is said once per line: the figures not measured are listed at the end, each with its reason on hover */
@@ -421,7 +470,7 @@ function drawBurnup(){
   var x=xScale(d0,d1,W,pad),mx=Math.max.apply(null,[1].concat(B.scope.filter(function(z){return z!=null;}),B.built));
   var y=function(z){return top+(Hh-top-18)*(1-z/mx);};
   var s='<svg width="100%" viewBox="0 0 '+W+' '+Hh+'" role="img" aria-label="Release 1 burn-up: scope, built and proven capabilities">';
-  if(B.h1&&B.h1.from){var a=x(B.h1.from),b=x(B.h1.to||B.h1.from);s+='<rect x="'+a+'" y="'+top+'" width="'+Math.max(3,b-a)+'" height="'+(Hh-top-18)+'" fill="var(--wait-soft)" stroke="var(--wait)" stroke-dasharray="'+(B.h1.kind==="committed"?"":"3 2")+'"><title>Plan H1 '+esc(B.h1.from+(B.h1.to?" to "+B.h1.to:"")+" ("+B.h1.kind+")")+'</title></rect>';}
+  if(B.h1&&B.h1.from){var a=x(B.h1.from),b=x(B.h1.to||B.h1.from);s+='<rect x="'+a+'" y="'+top+'" width="'+Math.max(3,b-a)+'" height="'+(Hh-top-18)+'" fill="var(--wait-soft)" stroke="var(--wait)" stroke-dasharray="'+(B.h1.kind==="committed"?"":"3 2")+'"/>';}
   var f=D.forecast||{};[["p50","50%"],["p85","85%"]].forEach(function(k){var vv=f[k[0]]&&f[k[0]].value;if(vv&&/^\d/.test(vv)){s+='<line x1="'+x(vv)+'" x2="'+x(vv)+'" y1="'+top+'" y2="'+(Hh-18)+'" stroke="var(--prog)" stroke-dasharray="2 3"/><text x="'+(x(vv)+2)+'" y="'+(top+9)+'" font-size="9.5" fill="var(--prog)">'+k[1]+'</text>';}});
   function path(arr,step){var pts=[],prev=null;arr.forEach(function(z,i){if(z==null)return;var X=x(B.days[i]),Y=y(z);if(step&&prev!=null)pts.push(X+","+y(prev));pts.push(X+","+Y);prev=z;});return pts.join(" ");}
   s+='<polyline points="'+path(B.scope,true)+'" fill="none" stroke="var(--ink3)" stroke-width="1.5"/>';
@@ -430,7 +479,7 @@ function drawBurnup(){
   s+='<line x1="'+pad+'" x2="'+(W-pad)+'" y1="'+(Hh-18)+'" y2="'+(Hh-18)+'" stroke="var(--line)"/>';
   s+='<text x="'+pad+'" y="'+(Hh-4)+'" font-size="10" fill="var(--ink3)">'+esc(short(d0))+'</text><text x="'+(W-pad)+'" y="'+(Hh-4)+'" font-size="10" text-anchor="end" fill="var(--ink3)">'+esc(short(d1))+'</text>';
   s+='<text x="'+(pad-4)+'" y="'+(y(mx)+4)+'" font-size="10" text-anchor="end" fill="var(--ink3)">'+mx+'</text><text x="'+(pad+2)+'" y="'+(top+8)+'" font-size="9.5" fill="var(--ink3)">capabilities</text>';
-  host.innerHTML=s+'</svg><div class="legend small"'+S(B.src)+'><span class="pill t-none">scope</span><span class="pill t-prog">built</span><span class="pill t-good">proven</span><span class="pill t-wait">plan H1 (band while a forecast)</span></div>';
+  host.innerHTML=s+'</svg><div class="legend small"'+S(B.src+(B.h1&&B.h1.from?" \u00b7 plan H1 "+B.h1.from+(B.h1.to?" to "+B.h1.to:"")+" ("+B.h1.kind+")":""))+'><span class="pill t-none">scope</span><span class="pill t-prog">built</span><span class="pill t-good">proven</span><span class="pill t-wait">plan H1 (band while a forecast)</span></div>';
 }
 function drawTimeline(){
   var host=document.getElementById("timeline");if(!host)return;
@@ -440,9 +489,9 @@ function drawTimeline(){
   var s='<svg width="100%" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Roadmap: plan dates by module">';
   s+='<line x1="'+pad+'" x2="'+(W-pad)+'" y1="20" y2="20" stroke="var(--line)" stroke-width="2"/><line x1="'+x(today)+'" x2="'+x(today)+'" y1="8" y2="'+(H-4)+'" stroke="var(--accent)" stroke-dasharray="3 3"/><text x="'+(x(today)+3)+'" y="12" font-size="10" fill="var(--accent)">today</text>';
   ds.forEach(function(d,i){var X=x(d.date),c=d.kind==="committed";
-    s+='<circle cx="'+X+'" cy="20" r="5" fill="'+(c?"var(--good)":"var(--panel)")+'" stroke="'+(c?"var(--good)":"var(--wait)")+'" stroke-width="2"><title>'+esc(d.id+" "+d.what+" ("+d.kind+", "+d.source+")")+'</title></circle>';
+    s+='<circle cx="'+X+'" cy="20" r="5" fill="'+(c?"var(--good)":"var(--panel)")+'" stroke="'+(c?"var(--good)":"var(--wait)")+'" stroke-width="2"/>';
     s+='<text x="'+Math.min(W-pad,Math.max(pad,X))+'" y="'+(40+i*15)+'" font-size="10.5" text-anchor="'+(X>W*0.7?"end":"start")+'" fill="var(--ink2)">'+esc(d.id+" "+short(d.date)+" · "+d.what.slice(0,60))+'</text>';});
-  host.innerHTML=s+'</svg><div class="legend small">'+pill("committed","good")+pill("forecast","wait")+'</div>';
+  host.innerHTML=s+'</svg><div class="legend small"'+S(ds.map(function(d){return d.id+" "+d.date+": "+d.what+" ("+d.kind+", "+d.source+")";}).join("; "))+'>'+pill("committed","good")+pill("forecast","wait")+'</div>';
 }
 
 /* §2 capacity */
@@ -480,7 +529,7 @@ function laneRow(l,O){
   var where=l.kind==="cloud"?"cloud":l.kind==="mac"?"Mac":"cloud or Mac not reported";
   var push=l.push_h!=null?'<span'+T("team.lane.push")+'>push '+esc(hhmm(l.last_push_at)||"")+' ('+esc(ageText(l.push_h))+' ago)</span>':'<span'+T("team.lane.push")+'><span class="nm" data-nm="no lane branch pushed in 24 h matched this lane">push not measured</span></span>';
   var idle=l.idle_min!=null?'<span'+T("team.lane.idle")+'>idle '+esc(l.idle_min)+' min<span class="rep">Lead-reported</span></span>':'<span'+T("team.lane.idle")+'><span class="nm" data-nm="the Lead input gives no idle_min for this lane">idle not reported</span></span>';
-  var h='<div class="lanerow'+(l.behind?" behind":"")+'"><div class="nm1">'+(l.behind?'<span class="pill t-bad">behind</span> ':"")+esc(l.name)+(q?' <span class="rep" title="'+esc("found only in "+(l.seen==="reported only"?"the Lead input":"GitHub (branches and open PRs)")+"; listed in Health item 7")+'">? '+esc(l.seen)+'</span>':"")+'</div>'+
+  var h='<div class="lanerow'+(l.behind?" behind":"")+'"><div class="nm1">'+(l.behind?'<span class="pill t-bad">behind</span> ':"")+esc(l.name)+(q?' <span class="rep"'+S("found only in "+(l.seen==="reported only"?"the Lead input":"GitHub (branches and open PRs)")+"; listed in Health item 7")+'>? '+esc(l.seen)+'</span>':"")+'</div>'+
     '<div class="meta"><span>'+esc(where)+'</span><span>row <b class="mono">'+esc(l.row||"none")+'</b></span><span>'+(l.pr?'PR <b class="mono">#'+esc(l.pr)+'</b>':'no PR')+'</span>'+(l.state?'<span>'+pill(l.state,tn)+'</span>':"")+push+idle+'</div>';
   if(l.behind)h+='<div class="small" style="color:var(--bad)">'+esc(l.behind)+' → '+esc(l.owner||"its Lead")+' acts</div>';
   h+='<div class="serves">'+(l.maps&&l.maps.length?'Serves capability '+l.maps.map(function(m){return 'row '+esc(m.map)+' '+esc(m.cap);}).join("; "):'Serves no Release 1 capability row by its row id')+(l.owner_how==="Lead input owner"?' · owner set in the Lead input':"")+'</div></div>';
@@ -530,23 +579,18 @@ function rTrust(){
 
 function diffOf(map){return ((D.trust||{}).status_disagreements||[]).filter(function(x){return x.map===map;})[0];}
 /* §7 working today */
+function workText(map){var W=D.working_today;if(!W)return "";var r=W.rows[String(map)];if(!r)return "";
+  return r.kind==="pr"?"working today: open PR #"+r.prs.join(", #")+" (measured)":"working today: Lead-reported lane "+r.sessions.join(", ");}
 function workMark(map){var W=D.working_today;if(!W)return "";var r=W.rows[String(map)];if(!r)return "";
-  return r.kind==="pr"?'<span class="wmark" title="open PR #'+esc(r.prs.join(", #"))+'" data-src="'+esc("working today: open PR #"+r.prs.join(", #")+" (measured)")+'"></span>':'<span class="wmark rep" title="Lead-reported lane: '+esc(r.sessions.join(", "))+'" data-src="'+esc("working today: Lead-reported lane "+r.sessions.join(", "))+'"></span>';}
+  return '<span class="wmark'+(r.kind==="pr"?"":" rep")+'" role="img" aria-label="'+esc(workText(map))+'"></span>';}
 
-/* 1 needs you */
+/* 1 needs you (board v61, founder 15 Nov): only what is needed from him, one line each with its date; the tech lead's PR
+   questions stay on the Factory tab (P-602 (1)); nothing open says so in words */
 function rNeeds(){
-  /* review M2: the count and the top item on the first screen; everything else behind one click */
-  var n=D.needs_you,items=[];
-  n.asks.forEach(function(a){items.push('<li'+S(a.src)+'><span class="tag">'+esc(a.id)+'</span><div><div>'+esc(a.ask)+'</div><div class="small muted">'+esc(a.status)+'</div></div></li>');});
-  /* P-602 (1): only the founder's own items; the tech lead's PR questions are on the Factory tab */
-  var extra=[];
-  /* a line counts only the ids it marks open or names new (FORMULAS.md); a pointer line shows behind the click */
-  [["for_founder","For you","open_ids"],["waiting_line","Waiting","new_ids"]].forEach(function(k){var x=n[k[0]];if(!v(x))return;var ids=x[k[2]]||[];
-    var li='<li'+S(srcV(x))+'><span class="tag">'+(ids.length?esc(ids.join(", ")):k[1])+'</span><div class="small">'+esc(v(x))+'</div></li>';(ids.length?items:extra).push(li);});
+  var n=D.needs_you,its=n.items||[];
+  var items=its.map(function(i){return '<li'+S(i.src)+'><span class="tag">'+esc(i.id)+'</span><div><div>'+esc(i.line)+'</div>'+(i.by?'<div class="small"><b>By '+esc(fmtDate(i.by))+'</b></div>':'')+'</div></li>';});
   var cnt=v(D.summary.needs_you);if(cnt==null)cnt=items.length;
-  var h='<section id="needs" class="ovsec" style="margin:12px 0 0"><h2>Needs you <span class="mono"'+S(srcV(D.summary.needs_you))+'>'+esc(cnt)+'</span></h2><ul class="items">'+(items[0]||'<li class="muted">Nothing open.</li>')+'</ul>';
-  var more=items.slice(1).concat(extra);
-  if(more.length)h+='<details class="inline"><summary>'+(items.length>1?(items.length-1)+' more':'more')+(extra.length?' and notes':'')+'</summary><ul class="items">'+more.join("")+'</ul></details>';
+  var h='<section id="needs" class="ovsec" style="margin:12px 0 0"><h2>Needs you <span class="mono"'+T("strip.needs_you")+'>'+esc(cnt)+'</span></h2><ul class="items">'+(items.join("")||'<li class="muted">Nothing needed from you.</li>')+'</ul>';
   return h+'</section>';
 }
 
@@ -617,7 +661,7 @@ function drawArch(){
   var cols=narrow?2:mods.length,gap=10,bw=(W-gap*(cols-1))/cols,bh=88,r1=Math.ceil(mods.length/cols);
   var y=0,s="",H;
   function box(m,x,y,w,h){var d=m.done_share||0,g=m.merged_share||0,lbl=m.total+" rows \u00b7 "+Math.round(d*100)+"% Works";
-    var o='<g data-mod="'+esc(m.id)+'" tabindex="0" role="button" aria-label="'+esc(m.name+", "+lbl)+'" style="cursor:pointer"><title>'+esc(m.name+": "+(m.what||"")+" \u2014 "+m.src)+'</title>';
+    var o='<g data-mod="'+esc(m.id)+'" tabindex="0" role="button" aria-label="'+esc(m.name+", "+lbl+"; press to list its capabilities")+'" style="cursor:pointer">';
     o+='<rect x="'+(x+.75)+'" y="'+(y+.75)+'" width="'+(w-1.5)+'" height="'+(h-1.5)+'" rx="6" fill="var(--panel2)" stroke="'+(m.kind==="gap"?"var(--wait)":"var(--line)")+'" stroke-dasharray="'+(m.kind==="gap"?"4 3":"")+'"/>';
     o+='<rect x="'+(x+1)+'" y="'+(y+h-10)+'" width="'+Math.max(0,(w-2)*g)+'" height="9" fill="var(--prog-soft)"/><rect x="'+(x+1)+'" y="'+(y+h-10)+'" width="'+Math.max(0,(w-2)*d)+'" height="9" fill="var(--good)"/>';
     var c=m.counts||{};o+='<svg x="'+(x+8)+'" y="'+y+'" width="'+Math.max(0,w-14)+'" height="'+(h-10)+'">';
@@ -638,23 +682,24 @@ function showModule(id){
   var h='<h3>'+esc(m.name)+' \u00b7 '+m.total+' rows</h3><p class="small muted"'+S(m.src)+'>'+esc(m.what||"")+'</p><div class="box"><table><tbody>';
   m.rows.forEach(function(r){h+='<tr><td class="mono n">'+r.map+'</td><td>'+esc(r.cap)+'</td><td>'+pill(r.status,tone(r.status))+'</td></tr>';});
   el.innerHTML=h+'</tbody></table></div>';
+  addIcons(el);
 }
 
 /* 6 capabilities */
 function rCaps(){
   var C=D.capabilities,cnt=v(C.counts)||{},tot=C.total||1,order=["qa Works","Merged","In PR","Shaped","Not shaped"];
-  var h='<h3>Release 1 burn-up: '+tot+' Build rows</h3><div class="bar"'+S(src(C.counts))+'>';
-  order.forEach(function(k){var n=cnt[k]||0;if(n)h+='<span style="width:'+(100*n/tot)+'%;background:'+toneVar(tone(k))+'" title="'+esc(k+": "+n)+'"></span>';});
-  h+='</div><div class="legend">';order.forEach(function(k){h+=pill(k+" "+(cnt[k]||0),tone(k),src(C.counts));});h+='</div>';
+  var h='<h3>Release 1 burn-up: '+tot+' Build rows</h3><div class="bar" role="img" aria-label="'+esc(order.map(function(k){return lab(k)+" "+(cnt[k]||0);}).join(", "))+'"'+S(order.map(function(k){return lab(k)+": "+(cnt[k]||0);}).join(", ")+" | "+src(C.counts))+'>';
+  order.forEach(function(k){var n=cnt[k]||0;if(n)h+='<span style="width:'+(100*n/tot)+'%;background:'+toneVar(tone(k))+'"></span>';});
+  h+='</div><div class="legend">';order.forEach(function(k){h+=pill(k+" "+(cnt[k]||0),tone(k));});h+='</div>';
   h+='<div class="groupgrid">';
   C.groups.forEach(function(g){var rs=C.rows.filter(function(r){return r.group===g.id;});var done=rs.filter(function(r){return r.status==="qa Works";}).length;
     h+='<div class="grp"><h4><span>'+esc(g.id+". "+g.name)+'</span><span class="mono muted"'+S(src(C.counts))+'>'+done+'/'+rs.length+'</span></h4>';
-    rs.forEach(function(r){var df=diffOf(r.map);h+='<div class="row"'+S("MVP-CHECKLIST.md row "+r.map+" \u00b7 "+r.module+" \u00b7 "+r.backlog)+'><span>'+esc(r.map+" "+r.cap)+workMark(r.map)+'</span><span>'+pill(r.status,tone(r.status))+(df?' <span class="rep"'+S("records differ: the checklist says "+lab(df.checklist)+"; computed from merged changes: "+df.computed)+'>records differ: '+esc(df.computed)+'</span>':"")+'</span></div>';});h+='</div>';});
+    rs.forEach(function(r){var df=diffOf(r.map);h+='<div class="row"'+S("MVP-CHECKLIST.md row "+r.map+" \u00b7 "+r.module+" \u00b7 "+r.backlog+(workText(r.map)?" \u00b7 "+workText(r.map):"")+(df?" \u00b7 records differ: the checklist says "+lab(df.checklist)+"; computed from merged changes: "+df.computed:""))+'><span>'+esc(r.map+" "+r.cap)+workMark(r.map)+'</span><span>'+pill(r.status,tone(r.status))+(df?' <span class="rep">records differ: '+esc(df.computed)+'</span>':"")+'</span></div>';});h+='</div>';});
   h+='</div><h3>qa capabilities ('+(v(C.qa)||[]).length+')</h3>';
   (v(C.qa_by_milestone)||[]).forEach(function(m){h+='<div class="small" style="margin:4px 0"'+S(src(C.qa_by_milestone))+'><b>'+esc(m.milestone)+'</b>: <span class="mono">'+m.works+' of '+m.total+'</span> Works</div>';});
   var qs=v(C.qa)||[];["M2","M3","T"].forEach(function(ms){var g=qs.filter(function(q){return q.m===ms;});if(!g.length)return;
-    h+='<div class="small muted" style="margin:6px 0 3px">'+esc(ms)+'</div><div class="sq">';
-    g.forEach(function(q){var t=tone(q.status);h+='<i style="background:'+toneVar(t)+(t==="none"?";background:transparent;border:1.5px solid var(--none)":"")+'" title="'+esc(q.id+" "+q.status+": "+q.name)+'" data-src="'+esc(q.id+" \u00b7 "+q.status+" \u00b7 "+q.name+" \u2014 "+src(C.qa))+'"></i>';});h+='</div>';});
+    h+='<div class="small muted" style="margin:6px 0 3px">'+esc(ms)+'</div><div class="sq" aria-label="qa capabilities '+esc(ms)+', one square each">';
+    g.forEach(function(q){var t=tone(q.status);h+='<i style="background:'+toneVar(t)+(t==="none"?";background:transparent;border:1.5px solid var(--none)":"")+'"'+S(q.id+" \u00b7 "+q.status+" \u00b7 "+q.name+" \u2014 "+src(C.qa))+'></i>';});h+='</div>';});
   h+='<div class="legend">'+pill("Works","good")+pill("Built, awaiting qa","prog")+pill("Partial","wait")+pill("Broken","bad")+pill("Not tested or built","none")+'</div>';
   return section("08","caps","Capabilities","Every Release 1 row by group with its status, then the qa capabilities as one square each.",h);
 }
@@ -693,8 +738,8 @@ function bars(days,a,b,partial,s){
   var W=640,H=120,n=days.length,bw=W/n,mx=Math.max.apply(null,a.concat([1]));
   var o='<svg width="100%" viewBox="0 0 '+W+' '+(H+26)+'" role="img" aria-label="Merges per day, 14 days"'+S(s)+'>';
   for(var i=0;i<n;i++){var ha=H*a[i]/mx,hb=H*b[i]/mx,x=i*bw+3;
-    o+='<rect x="'+x+'" y="'+(H-ha)+'" width="'+(bw-6)+'" height="'+ha+'" fill="var(--prog-soft)" stroke="var(--prog)" stroke-width=".5"><title>'+esc(days[i]+": "+a[i]+" merges, "+b[i]+" app code"+(partial[i]?" (not all classified)":""))+'</title></rect>';
-    o+='<rect x="'+(x+3)+'" y="'+(H-hb)+'" width="'+(bw-12)+'" height="'+hb+'" fill="var(--good)"><title>'+esc(days[i]+": "+b[i]+" app-code merges")+'</title></rect>';
+    o+='<rect x="'+x+'" y="'+(H-ha)+'" width="'+(bw-6)+'" height="'+ha+'" fill="var(--prog-soft)" stroke="var(--prog)" stroke-width=".5"/>';
+    o+='<rect x="'+(x+3)+'" y="'+(H-hb)+'" width="'+(bw-12)+'" height="'+hb+'" fill="var(--good)"/>';
     if(i%2===n%2||n<8)o+='<text x="'+(x+(bw-6)/2)+'" y="'+(H+20)+'" font-size="'+(document.getElementById("body").clientWidth<520?20:12)+'" text-anchor="middle" fill="var(--ink3)">'+esc(days[i].slice(8))+'</text>';}
   return o+'</svg>';
 }
@@ -709,7 +754,7 @@ function rDevops(){
    kpi("Merge-queue batches",nz(bt[0]),nz(bt[1])+" failed \u00b7 "+nz(bt[2])+" cancelled",src(p.batches),"","pipeline.batches")+
    kpi("CI minutes a day",nz(v(p.ci_min_per_day)),"run time (approx), 7-day average",src(p.ci_min_per_day),"","pipeline.ci_min_per_day")+
    kpi("CI time thrown away",nz(v(p.thrown_share),"%"),"target under 20%",src(p.thrown_share),"","pipeline.thrown_share")+'</div>';
-  h+='<h3>Merges per day, 14 days</h3><div'+T("pipeline.merges_per_day")+'>'+bars(m.days,m.all,m.app,m.partial,"")+'</div>'+'<div class="legend"><span class="pill t-prog">all merges</span><span class="pill t-good">app-code merges (P-500)</span></div>';
+  h+='<h3>Merges per day, 14 days</h3><div'+T("pipeline.merges_per_day")+' data-info="'+esc(m.days.map(function(d,i){return d.slice(5)+": "+m.all[i]+" merges, "+m.app[i]+" app code"+(m.partial[i]?" (not all classified)":"");}).join("; "))+'">'+bars(m.days,m.all,m.app,m.partial,"")+'</div>'+'<div class="legend"><span class="pill t-prog">all merges</span><span class="pill t-good">app-code merges (P-500)</span></div>';
   return section("11","devops","DevOps: delivery pipeline","How fast and how safely changes reach main. DORA's four keys, with proxies marked.",h);
 }
 
@@ -839,8 +884,8 @@ function rHeat(){
     else if(c["Shaped"]>0){t="prog";word="specified, not started";}
     else {t="none";word="not specified yet";}
     var nd=rs.filter(function(r){return diffOf(r.map);}).length;if(nd)word+=" (records differ on "+nd+")";
-    var wr=W?rs.filter(function(r){return W.rows[String(r.map)];}):[],wk=wr.length?(wr.some(function(r){return W.rows[String(r.map)].kind==="pr";})?'<span class="wmark" title="working today: '+esc(wr.map(function(r){return r.map;}).join(", "))+'"></span>':'<span class="wmark rep" title="Lead-reported lane on '+esc(wr.map(function(r){return r.map;}).join(", "))+'"></span>'):"";
-    h+='<tr'+S(src(C.counts))+'><td>'+esc(g.id+". "+g.name)+wk+'</td><td class="n">'+rs.length+'</td>';
+    var wr=W?rs.filter(function(r){return W.rows[String(r.map)];}):[],wt=wr.length?(wr.some(function(r){return W.rows[String(r.map)].kind==="pr";})?"working today on rows ":"Lead-reported lane on rows ")+wr.map(function(r){return r.map;}).join(", "):"",wk=wt?'<span class="wmark'+(/^Lead/.test(wt)?" rep":"")+'" role="img" aria-label="'+esc(wt)+'"></span>':"";
+    h+='<tr'+S(src(C.counts)+(wt?" \u00b7 "+wt:""))+'><td>'+esc(g.id+". "+g.name)+wk+'</td><td class="n">'+rs.length+'</td>';
     order.forEach(function(k){var n=c[k]||0;h+='<td class="n"'+(n?' style="background:'+toneVar(tone(k))+'-soft"':'')+'>'+(n||'<span class="muted">0</span>')+'</td>';});
     h+='<td>'+pill(word,t)+'</td></tr>';});
   h+='</tbody></table></div><p class="small muted">Counts are the checklist\'s hand-kept status; "records differ" marks rows whose computed state (from merged changes) is different; Details lists them. Colour rule: green = every row proven; amber = some built or in a pull request; blue = shaped, not started; grey = not shaped. Customer-experience walk, compliance and risk columns join when TR-1 (requirement sources) and qa\'s Release 1 capabilities land.</p>';
@@ -866,6 +911,7 @@ function render(){
   out+='<div class="tabs" role="tablist">'+TABS.map(function(t){return '<button role="tab" type="button" data-tab="'+t[0]+'" aria-selected="'+(t[0]===cur)+'">'+esc(t[1])+'</button>';}).join("")+'</div>';
   TABS.forEach(function(t){out+='<div class="tabpanel" role="tabpanel" data-panel="'+t[0]+'"'+(t[0]===cur?'':' hidden')+'>';t[2].forEach(function(f){out+=one(f);});out+='</div>';});
   document.getElementById("body").innerHTML=out;
+  addIcons(document.getElementById("body"));
   /* axe scrollable-region-focusable: a table that scrolls sideways can be reached by keyboard */
   document.querySelectorAll(".box").forEach(function(b){b.tabIndex=0;b.setAttribute("role","region");var h=b.closest("section");var t=h&&h.querySelector("h2");b.setAttribute("aria-label",(t?t.textContent:"table")+" (scrolls sideways)");});
   document.querySelectorAll(".tabs button").forEach(function(b){b.addEventListener("click",function(){var id=b.getAttribute("data-tab");
@@ -876,7 +922,7 @@ function render(){
   document.querySelectorAll("details").forEach(function(dd){dd.addEventListener("toggle",drawAll);});
   drawAll();
 }
-function drawAll(){[drawVSM,drawArch,drawBurnup,drawTimeline].forEach(function(f){try{f();}catch(e){}});}
+function drawAll(){[drawVSM,drawArch,drawBurnup,drawTimeline].forEach(function(f){try{f();}catch(e){}});addIcons(document.getElementById("body"));}
 var rt=null;window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(function(){if(D){drawAll();}},150);});
 setInterval(function(){if(D)renderStrip();},60000);
 
