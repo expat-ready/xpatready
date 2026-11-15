@@ -9,7 +9,7 @@
 //                               log line and a seeded email in the request never reaches the log.
 //   R1.9 (PF-14 jobs)         start only: the worker starts and makes its schema; no module uses it (QA-453), so this
 //                               is not a gate A pass to the next step.
-// Run (an isolated copy; never :4400):
+// Run from prototype/ (an isolated copy; never :4400):
 //   zsh studio/tools/isolated.sh qagate 4474 start --ttl 20 PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on \
 //     && trap 'zsh studio/tools/isolated.sh qagate 4474 stop' EXIT \
 //     && tsx --tsconfig studio/api/tsconfig.json studio/tests/qa/check_r1_platform_gate_a.ts 4474 qagate
@@ -34,7 +34,9 @@ const call = async (path: string, init: RequestInit = {}) => {
   return { status: r.status, body: parse(await r.text()) };
 };
 const signInAs = async (actorId: string) => (await call("/api/platform/session/local", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", actorId, secondStep: true }) })).body?.token as string;
-const psql = (sql: string) => execFileSync("psql", ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio", "-d", `xr_studio_${NAME}`, "-Atc", sql], { encoding: "utf8" }).trim();
+const PSQL = ["/opt/homebrew/opt/postgresql@18/bin/psql", "/usr/local/bin/psql", "/usr/bin/psql"].find((x) => { try { execFileSync(x, ["--version"]); return true; } catch { return false; } }) ?? "psql";
+const psqlRaw = (sql: string) => execFileSync(PSQL, ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio", "-d", `xr_studio_${NAME}`, "-Atc", sql], { encoding: "utf8" }).trim();
+const psql = (sql: string) => { try { return psqlRaw(sql); } catch (e) { return `psql failed: ${(e as Error).message.split("\n")[0]}`; } };   // review m6: a FAIL, never a crash
 
 // R1.2 → R1.5
 const noStep = await call("/api/platform/session/local", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", actorId: "user-R" }) });
@@ -44,7 +46,7 @@ const token = signIn.body?.token ?? signIn.body?.accessToken ?? signIn.body?.ses
 check("R1.2→R1.5: PF-3's seeded Sample staff user-R signs in (local stand-in, second step)", signIn.status < 300 && typeof token === "string", `${signIn.status} keys ${Object.keys(signIn.body ?? {}).join(",")}`);
 const me = await call("/api/platform/me", { headers: { authorization: `Bearer ${token}` } });
 const meText = JSON.stringify(me.body);
-check("R1.2→R1.5: /me reads PF-3's firm, role grant and permission keys", me.status === 200 && /sample-firm|firm/i.test(meText) && /CASE_MANAGER/.test(meText) && /agent\//.test(meText), meText.slice(0, 200));
+check("R1.2→R1.5: /me reads PF-3's firm, role grant and permission keys", me.status === 200 && me.body?.firmKey === "sample-firm" && /CASE_MANAGER/.test(meText) && /agent\//.test(meText), meText.slice(0, 200));
 check("R1.5: user-R's duties include represent (licence record from PF-3's seed)", /represent/.test(meText));
 // R1.6
 const anon = await call("/api/platform/staff/invitations");
@@ -75,13 +77,13 @@ for (const [bad, why] of [["Maple", "capitals"], ["-maple", "leading hyphen"], [
 
 // R1.13
 const live = await call("/api/health/live"), ready = await call("/api/health/ready");
-check("R1.13: health live and ready answer 200 with the database up (the job queue is NOT counted: QA-452)", live.status === 200 && ready.status === 200 && ready.body?.checks?.database?.ok === true, `${live.status}/${ready.status} ${JSON.stringify(ready.body).slice(0, 120)}`);
+check("R1.13: health live and ready answer 200 with the database up and no part failing", live.status === 200 && ready.status === 200 && ready.body?.checks?.database?.ok === true && ready.body?.checks?.job_queue?.ok !== false, `${live.status}/${ready.status} ${JSON.stringify(ready.body).slice(0, 120)}`);
 const rid = `qa-r1-${process.pid}`, seeded = "qa.leak.check@example.com";
 await call("/api/platform/session/local", { method: "POST", headers: { "content-type": "application/json", "x-request-id": rid }, body: JSON.stringify({ firmKey: "sample-firm", email: seeded, secondStep: true }) });
 await new Promise((r) => setTimeout(r, 500));
 const log = readFileSync(LOG, "utf8"), line = log.split("\n").find((l) => l.includes(rid)) ?? "";
 let parsed: any = null; try { parsed = JSON.parse(line.slice(line.indexOf("{"))); } catch { /* not JSON */ }
-check("R1.13: the request's X-Request-Id is kept in one JSON log line with route and status", !!parsed && JSON.stringify(parsed).includes(rid) && /status|statusCode/.test(line), line.slice(0, 200));
+check("R1.13: the request's X-Request-Id is kept in one JSON log line with route and status", !!parsed && parsed.correlationId === rid && typeof parsed.route === "string" && (parsed.status ?? parsed.statusCode) === 401, line.slice(0, 200));
 check("R1.13: a seeded email in a request body never reaches the log", !log.includes(seeded));
 
 // R1.9

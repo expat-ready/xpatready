@@ -5,7 +5,7 @@
 //   2. every job handler is wrapped by PF-23's observeJob (one job line and its metrics per run; observability/jobs.ts
 //      says "PF-14's worker wraps every handler with it");
 //   3. the stuck-job alarm (alerts.ts stuckJobs, SA8-D40) is fed from the real queue by some caller.
-// Run (an isolated copy; never :4400):
+// Run from prototype/ (an isolated copy; never :4400):
 //   zsh studio/tools/isolated.sh qagate 4474 start --ttl 20 && trap 'zsh studio/tools/isolated.sh qagate 4474 stop' EXIT \
 //     && tsx --tsconfig studio/api/tsconfig.json studio/tests/qa/check_qa452_jobs_observed.ts 4474
 // Without a port it runs the code checks (2, 3, and the provider half of 1) only. US$0.
@@ -16,14 +16,16 @@ const SRC = join(import.meta.dirname, "..", "..", "api", "src"), PORT = process.
 let pass = 0, fail = 0;
 const check = (label: string, ok: boolean, detail = "") => { ok ? pass++ : fail++; console.log(`${ok ? "PASS" : "FAIL"}  ${label}${detail ? ` — ${detail}` : ""}`); };
 const files = (dir: string): string[] => readdirSync(dir).flatMap((n) => { const p = join(dir, n); return statSync(p).isDirectory() ? files(p) : p.endsWith(".ts") ? [p] : []; });
-const all = files(SRC).map((p) => ({ p: p.slice(SRC.length + 1), t: readFileSync(p, "utf8") }));
-const users = (word: string, except: string) => all.filter((f) => f.p !== except && new RegExp(`\\b${word}\\b`).test(f.t)).map((f) => f.p);
+const code = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");   // comments never count (review M1, m1)
+const all = files(SRC).map((p) => ({ p: p.slice(SRC.length + 1), t: code(readFileSync(p, "utf8")) }));
+// A use, not a name: a call, or a provider entry for the token (review M1).
+const users = (use: RegExp, except: string) => all.filter((f) => f.p !== except && use.test(f.t)).map((f) => f.p);
 
-const probe = users("JOB_QUEUE_PROBE", "platform/observability/health.ts");
+const probe = users(/provide\s*:\s*JOB_QUEUE_PROBE\b/, "platform/observability/health.ts");
 check("QA-452 (1): a module provides JOB_QUEUE_PROBE for /api/health/ready", probe.length > 0, probe.join(", ") || "only health.ts names it");
-const wrapped = users("observeJob", "platform/observability/jobs.ts");
+const wrapped = users(/\bobserveJob\s*\(/, "platform/observability/jobs.ts");
 check("QA-452 (2): PF-14's worker wraps job handlers with PF-23's observeJob", wrapped.some((p) => p.startsWith("platform/jobs/")), wrapped.join(", ") || "no caller");
-const stuck = users("stuckJobs", "platform/observability/alerts.ts");
+const stuck = users(/\bstuckJobs\s*\(/, "platform/observability/alerts.ts");
 check("QA-452 (3): the stuck-job alarm is fed from the real queue", stuck.length > 0, stuck.join(", ") || "no caller");
 if (PORT) {
   const r = await fetch(`http://localhost:${PORT}/api/health/ready`), body = await r.json() as { checks?: { job_queue?: { ok: boolean | null; words: string } } };

@@ -1,6 +1,6 @@
 PASS  R1.5: sign-in without the second step is refused in words — 401 {"type":"https://expatready.local/problems/two-step-required","title":"Sign in again","status":401,"detail":"Two-step si
 PASS  R1.2→R1.5: PF-3's seeded Sample staff user-R signs in (local stand-in, second step) — 200 keys token,tokenType,expiresIn,staffId,firmKey
-PASS  R1.2→R1.5: /me reads PF-3's firm, role grant and permission keys — {"staffId":"521df0b1-5029-4725-ac00-db84a5191e0d","firmId":"1babc06e-3c6c-47f2-95d7-97b307438c18","firmKey":"sample-firm","displayName":"Representative (Sample)","email":"representative@sample-firm.ex
+PASS  R1.2→R1.5: /me reads PF-3's firm, role grant and permission keys — {"staffId":"0a0e3bb6-c8f3-4fba-ba9e-3c30d707c2be","firmId":"b0f9f13d-54ea-4369-bc9c-b6dec7945610","firmKey":"sample-firm","displayName":"Representative (Sample)","email":"representative@sample-firm.ex
 PASS  R1.5: user-R's duties include represent (licence record from PF-3's seed)
 PASS  R1.6: a platform route with no token is refused (401), never data — 401
 PASS  R1.6: user-R (Owner + Case Manager in the seed) reads the invitations list — 200
@@ -14,8 +14,8 @@ PASS  R1.24: "Maple" (capitals) is refused with a plain reason — {"address":"M
 PASS  R1.24: "-maple" (leading hyphen) is refused with a plain reason — {"address":"-maple","available":false,"reason":"hyphen-edge","message":"A web address cannot start or end with a hyphen.","suggestion":"mapl
 PASS  R1.24: "ma" (too short) is refused with a plain reason — {"address":"ma","available":false,"reason":"short","message":"Use at least 3 characters.","suggestion":"ma-firm"}
 PASS  R1.24: "www" (reserved) is refused with a plain reason — {"address":"www","available":false,"reason":"reserved","message":"This address is kept for ExpatReady's own pages. Choose another.","suggest
-PASS  R1.13: health live and ready answer 200 with the database up (the job queue is NOT counted: QA-452) — 200/200 {"status":"ok","failing":[],"checks":{"database":{"ok":true,"words":"The database answers.","ms":1},"job_queue":{"ok":nu
-PASS  R1.13: the request's X-Request-Id is kept in one JSON log line with route and status — {"time":"2026-11-15T02:47:45.530Z","level":"warn","event":"request","correlationId":"qa-r1-21320","method":"POST","route":"/api/platform/session/local","status":401,"durationMs":3,"Route":"POST /api/p
+PASS  R1.13: health live and ready answer 200 with the database up and no part failing — 200/200 {"status":"ok","failing":[],"checks":{"database":{"ok":true,"words":"The database answers.","ms":1},"job_queue":{"ok":nu
+PASS  R1.13: the request's X-Request-Id is kept in one JSON log line with route and status — {"time":"2026-11-15T04:01:23.696Z","level":"warn","event":"request","correlationId":"qa-r1-2094","method":"POST","route":"/api/platform/session/local","status":401,"durationMs":3,"Route":"POST /api/pl
 PASS  R1.13: a seeded email in a request body never reaches the log
 PASS  R1.9 (start only, not gate A: no module uses the runner, QA-453): the job worker started with the app and made its own schema (platform_jobs) — 13 tables
 20 passed, 0 failed
