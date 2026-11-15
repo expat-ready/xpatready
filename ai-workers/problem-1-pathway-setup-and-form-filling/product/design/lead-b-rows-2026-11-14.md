@@ -1189,3 +1189,38 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
   - `ClientMoneyPort`'s interface in `ports/`;
   - the recorded-by-hand methods.
   - It now starts after FO-7ts parts 1–2.
+
+## Rev 16.40 (16 Nov 04:2x IST, Lead B (6)): shaping batch 4 (#1894, head 826cc680), row-owner ruling (comment 6902726103)
+* **Approved:** PF-18a, PF-18n and FO-5p. **Approved with corrections:** PF-13 and FO-3c part 1. The lane pushes the corrections together with its three Minors, and re-review reads only that commit.
+* **PF-13:**
+  - The key is `agent/settings:edit` / `agent/settings:list` (AG-16-2; both seeded). The row's `agent/firm-branding:manage` is dropped.
+  - **Footer and email signature are in PF-13 part 1** (AG-16-2 SHALL; the requirement wins, AGENTS rule 2):
+    - settings `platform.branding.footer` (at most 1,000 characters) and `platform.branding.email_signature` (at most 2,000), both plain text;
+    - the footer is drawn in `layout()`; new case DW8.
+  - **Images: no new library.**
+    - Metadata is stripped by reading the file's structure. JPEG keeps APP0, APP14 and the image segments, and drops APP1–13, APP15 and COM. PNG keeps the critical chunks plus tRNS, cHRM, gAMA, iCCP, sRGB and pHYs.
+    - A file whose structure does not parse gets 415. Images are served with `nosniff`.
+    - The row's "re-encoded" becomes "metadata stripped". Re-encoding waits until a real need.
+  - **Banner and tagline are held (part 3). This goes to the founder through the tech lead.** AG-16-2 and AG-16 §7 `FirmBranding` say "no banner or tagline"; P-574 (1) lists the banner. Lead B recommends dropping them. The favicon stays in.
+* **PF-19c (amended):** a `firm.email_signature` field in its `TemplateRegistry`, read from PF-13's setting (AG-16-2).
+* **PF-18a:** DW1 adds AG-1-74 §12 (AG16-55): an address with no province, or outside Canada, pre-fills the firm's zone. The row's "`platform.prisma`, after PF-15 on the baton" becomes a new area file, `platform-offices.prisma` (P-600).
+* **PF-18n (amended):** **one unread notification per person per item** (AG-7-39 rule 2 and its "Duplicate beats a miss" edge case), not "per item and kind".
+  - A new event for an unread item updates that row's kind and time.
+  - Once the item is read, a new event makes a new row.
+  - Read items older than 90 days are removed (Sample).
+* **FO-3c (amended, part 1 = AG-4-15's accept flow; part 2 held):** e-signature through `SigningPort` moves to part 2.
+  - Part 1 records the version and time, through a tick on the public page or a no-login `AGREEMENT`-purpose link after a staff booking.
+  - It never blocks a staff booking.
+  - The accepted copy reads "Accepted by <name> on <date and time>, version N", and is emailed and filed.
+  - **Question for the founder (through the tech lead), with the evidence from trace t8:**
+    - Code s. 23(3) speaks of the "signed consultation agreement".
+    - The College's Guide says it "must be dated and signed by the client and the licensee".
+    - AG-4-15 §13 says "No e-signature of the agreement".
+    - Does a recorded acceptance meet s. 23(3)? The founder asks the immigration expert or counsel.
+    - Recommendation: build the accept flow now. Add signing by the client and the host (part 2) only if the answer is no.
+    - Unconfirmed: no counsel.
+* **FO-3w (amended):** after FO-3c part 1, the public booking page shows the agreement's link and the "I accept" tick when the type requires it (AG-4-15 r3).
+* **For the release holder (P-423):**
+  - the case's `officeId` calling `OfficeClockPort` (AG-1-74, "the case's office decides");
+  - AG-7-39's four case notifications calling `NotificationPort`.
+  - Both are the case side's rows.
