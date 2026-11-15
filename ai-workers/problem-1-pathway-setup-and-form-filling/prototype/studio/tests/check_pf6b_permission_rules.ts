@@ -111,7 +111,7 @@ try {
   @Controller("api/front-office") class LicenceProbe { @Get("pf6b-licence-probe") @PermissionKeys("agent/case:form-approve") approve() { return { ok: true }; } }
   const clock = new (class extends PlatformClock { t = Date.now(); override now() { return this.t; } })();
   const local = new LocalIdentity("pf6b-check-signing-key-0123456789abcdef", () => clock.now());
-  const makeApp = async () => {
+  const makeApp = async (): Promise<string> => {
     @Module({ controllers: [PlatformIdentityController, LicenceProbe] as never[], providers: [Db, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard }] as never[] }) class TestApp {}
     const app = await NestFactory.create(TestApp, { logger: false });
     apps.push(app);
@@ -144,9 +144,9 @@ try {
   // ------------------------------------------------------------------------ DW4: the separate money-keys audit line
   const moneyLines = (who: string) => sql(`select coalesce(string_agg(detail::text, '|'), '') from audit_event where action = 'platform.staff.money_keys_granted' and entity_key = '${who}'`);
   const bfMoney = sql(`select string_agg(k.key, ',' order by k.key) from platform_role_permission rp join platform_permission_key k on k.key = rp.permission_key where rp.role = 'BILLING_FINANCE' and k.class = 'MONEY'`);
-  const toBF = await call("PATCH", `/api/platform/staff/${O}/roles`, tR, { roles: ["CASE_OFFICER", "BILLING_FINANCE"] });
+  const toBF = await call("PATCH", `/api/platform/staff/${O}/roles`, tR, { roles: ["CASE_OFFICER", "READ_ONLY", "BILLING_FINANCE"] });
   const line = moneyLines(O);
-  ok("PF-6b DW4 pass: assigning Billing/Finance writes its own money-keys audit line naming those keys (names only), beside the roles line",
+  ok("PF-6b DW4 pass: assigning Billing/Finance (with Read-only) writes its own money-keys audit line naming those keys and only the role that brings them (names only), beside the roles line",
     toBF.status === 200 && !!bfMoney && line !== "" && !line.includes("|") && (JSON.parse(line).moneyKeys as string[]).join() === bfMoney && JSON.parse(line).roles.join() === "BILLING_FINANCE"
     && sql(`select count(*) from audit_event where action = 'platform.staff.roles_changed' and entity_key = '${O}'`) === "1", { toBF, line, bfMoney });
   const toRO = await call("PATCH", `/api/platform/staff/${T}/roles`, tR, { roles: ["CASE_MANAGER", "READ_ONLY"] });
@@ -165,6 +165,16 @@ try {
   sql(`insert into platform_staff_credential select * from pf6b_licence_aside; drop table pf6b_licence_aside`);
   const licensed = await call("GET", "/api/front-office/pf6b-licence-probe", tT);
   ok("PF-6b DW5 pass: once their licence record exists, the same person and route answer 200", licensed.status === 200 && licensed.body?.ok === true, licensed);
+  // Fail closed (break m1, review m2): a hand-edited catalogue never switches the licence check off.
+  sql(`update platform_permission_key set class = 'GENERAL' where key = 'agent/case:form-approve'`);
+  ok("PF-6b DW5 fail: a catalogue whose sign-off key was edited to GENERAL stops the start-up, naming the key",
+    await throwsLike(() => makeApp(), /catalogue disagrees.*agent\/case:form-approve: NONE\/GENERAL, expected NONE\/LICENCE/));
+  sql(`update platform_permission_key set class = 'LICENCE' where key = 'agent/case:form-approve'; create table pf6b_catalogue_aside as select * from platform_permission_key; delete from platform_permission_key`);
+  const emptied = await makeApp();
+  sql(`create table pf6b_licence_aside as select * from platform_staff_credential where staff_id = '${T}'; delete from platform_staff_credential where staff_id = '${T}'`);
+  const noRows = await (await fetch(`${emptied}/api/front-office/pf6b-licence-probe`, { headers: { authorization: `Bearer ${tT}` } })).json().catch(() => null) as { code?: string } | null;
+  sql(`insert into platform_staff_credential select * from pf6b_licence_aside; drop table pf6b_licence_aside; insert into platform_permission_key select * from pf6b_catalogue_aside; drop table pf6b_catalogue_aside`);
+  ok("PF-6b DW5 fail: with the catalogue rows gone, the code's own sign-off list still refuses an unlicensed holder (403 NOT_LICENSED)", noRows?.code === "NOT_LICENSED", noRows);
   const noKey = await call("GET", "/api/front-office/pf6b-licence-probe", await tokenOf("user-O"));
   ok("PF-6b DW5 pass: without the key the answer stays 403 MISSING_PERMISSION (licence never replaces the key)", noKey.status === 403 && noKey.body?.code === "MISSING_PERMISSION", noKey);
 

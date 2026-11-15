@@ -160,7 +160,9 @@ export class Retainers {
     }
   }
 
-  /** All of the firm's prospects (and their retainers): the person's agent/prospect:view.all key and the firm setting (PF-6b). */
+  /** All of the firm's prospects (and their retainers): the person's agent/prospect:view.all key and the firm setting (PF-6b).
+   *  The key is read from the person's live role grants, the tables the guard reads, not from req.platform.keys: callers
+   *  that build a context themselves (FO-5's suite) keep their results (Lead B, #1808). */
   private async seesAll(ctx: StaffContext) {
     return (await readSetting<boolean>(this.db, ctx.firmId, EVERYONE_SEES_ALL.key)) === true && holdsKey(this.db, ctx.firmId, ctx.staffId, PROSPECT_VIEW_ALL);
   }

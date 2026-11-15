@@ -12,7 +12,7 @@
 import { Inject, Injectable, type CanActivate, type ExecutionContext, type OnModuleInit } from "@nestjs/common";
 import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants.js";
 import { ModulesContainer, Reflector } from "@nestjs/core";
-import { assertNoBundleHandsOutMoney } from "./catalogue.ts";
+import { LICENCE_KEYS, assertNoBundleHandsOutMoney, catalogueMismatches } from "./catalogue.ts";
 import { DUTY_KEYS, FIRM_KEY, NOT_LICENSED, OWN_OR_ALL, PLATFORM_ACCESS, PLATFORM_PATH, forbidden, type PlatformAccess, type StaffContext } from "./keys.ts";
 import { PlatformIdentity } from "./service.ts";
 
@@ -60,12 +60,16 @@ type Req = { method: string; path?: string; url?: string; headers: Record<string
 export class PlatformGuard implements CanActivate, OnModuleInit {
   constructor(@Inject(Reflector) private readonly reflector: Reflector, @Inject(ModulesContainer) private readonly modules: ModulesContainer, @Inject(PlatformIdentity) private readonly identity: PlatformIdentity) {}
 
-  /** The LICENCE-class keys, read once from the catalogue (it changes only by migration). */
+  /** The LICENCE-class keys, read once from the catalogue (it changes only by migration), always with the code's own list:
+   *  a catalogue row edited by hand can never switch the check off (break m1, review m2), and a catalogue that disagrees
+   *  with ruling 1 (catalogue.ts scopeOf/classOf) stops the start-up. */
   private licence: Promise<Set<string>> | null = null;
   private licenceKeys() {
     this.licence ??= this.identity.catalogue().then((rows) => {
       assertNoBundleHandsOutMoney(DUTY_KEYS, rows);   // PF-6b ruling 2 (a): stops the start-up
-      return new Set(rows.filter((r) => r.class === "LICENCE").map((r) => r.key));
+      const wrong = catalogueMismatches(rows);
+      if (wrong.length) throw new Error(`The permission-key catalogue disagrees with PF-6b's rules (platform_permission_key): ${wrong.join("; ")}`);
+      return new Set([...LICENCE_KEYS, ...rows.filter((r) => r.class === "LICENCE").map((r) => r.key)]);
     }).catch((e) => { this.licence = null; throw e; });
     return this.licence;
   }
@@ -86,7 +90,9 @@ export class PlatformGuard implements CanActivate, OnModuleInit {
       const missing = access.keys.filter((k) => !staff.keys.includes(k));
       if (missing.length) forbidden(`Your roles do not include the permission this needs (${missing.join(", ")}).`, "MISSING_PERMISSION");
       const licence = await this.licenceKeys();
-      if (access.keys.some((k) => licence.has(k)) && !(await this.identity.isLicensed(staff.firmId, staff.staffId))) forbidden(NOT_LICENSED, "NOT_LICENSED");   // PF-6b ruling 3
+      if (access.keys.some((k) => licence.has(k)) && !(await this.identity.isLicensed(staff.firmId, staff.staffId))) forbidden(NOT_LICENSED, "NOT_LICENSED");
+      // PF-6b ruling 3, P-612 (founder, 15 Nov: "Yes, keep the check"): a recorded departure from SA-6-27, which says the
+      // permission system never checks licence. Unconfirmed: no counsel.
     }
     req.platform = staff;
     return true;

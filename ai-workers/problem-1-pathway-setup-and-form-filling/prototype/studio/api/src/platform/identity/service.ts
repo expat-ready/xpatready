@@ -235,8 +235,11 @@ export class PlatformIdentity implements OnModuleInit {
       for (const role of added) await tx.platformRoleGrant.create({ data: { firmId: actor.firmId, staffId: t.id, role, grantedBy: actorWord(actor.staffId), grantedAt: now } });
       await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.roles_changed", entityKey: t.id, summary: `roles changed: ${from.join(", ") || "none"} → ${to.join(", ")}`, detail: { staffId: t.id, before: from, after: to, reason } });
       // PF-6b ruling 2 (b): a role that brings money keys writes its own line, naming the keys (key names only).
-      const money = await moneyKeysOfRoles(tx, added);
-      if (money.length) await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.money_keys_granted", entityKey: t.id, summary: `money permissions given with ${added.join(", ")}: ${money.length} keys`, detail: { staffId: t.id, roles: added, moneyKeys: money } });
+      // Only the roles that bring a money key are named (break m2).
+      const moneyRoles: string[] = [];
+      for (const role of added) if ((await moneyKeysOfRoles(tx, [role])).length) moneyRoles.push(role);
+      const money = await moneyKeysOfRoles(tx, moneyRoles);
+      if (money.length) await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.money_keys_granted", entityKey: t.id, summary: `money permissions given with ${moneyRoles.join(", ")}: ${money.length} keys`, detail: { staffId: t.id, roles: moneyRoles, moneyKeys: money } });
       await tx.moduleEvent.create({ data: { firmId: actor.firmId, type: EVENT.STAFF_ROLES_CHANGED, subjectId: t.id, payload: StaffEventPayload.parse({ staffId: t.id }) } });   // last (m8)
       return { staffId: t.id, roles: to, changed: true };
     });
