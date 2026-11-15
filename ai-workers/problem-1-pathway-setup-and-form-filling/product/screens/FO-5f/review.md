@@ -180,4 +180,15 @@ D1 3: item 5 still partly met (M-1) · D2 3: the placeholder list can miss a pri
 
 **To fix (the row splits, per Lead 53):** M-1 (name-based skip at `docx.ts:123`; customXml read gate at `docx.ts:133`) and N-1 (size check on `[Content_Types].xml` and `_rels/.rels` before any parse), each with its fail tests. m-1 may be fixed with them or recorded.
 
-Verdict: Block
+**Round 4 verdict:** Block (`2b5a79e1d`).
+
+## Split confirmation (Lead 53, PR comment 6889263876): head `6d37dcf7acd3f159a88453eb48f75112e0e00cae`
+This is not a new code review. It checks that the split left only round 4's clean part at this head.
+1. **Code is r2-m1 only: holds.** `git diff 28f635a9a 6d37dcf7a -- prototype/studio` touches 2 files (+6 −1): the `service.ts:559` refusal wording and its pass and fail tests (`check_fo5_retainers.ts:883-886`). `docx.ts` is byte-identical to 28f635a9a, and round 3's attempt and its tests are gone. Suite at this head (my run): **232 passed, 0 failed**, exit 0, with both r2-m1 tests passing.
+2. **Everything else after 28f635a9a is records: holds.** It is `review.md` and the journey report (my round-4 text, identical to what I wrote) plus `fo5f2-handover.md`. 6d37dcf7a adds only the breaker's final notes to the hand-over (`git diff --stat 439c6b45c 6d37dcf7a`: that one file). The hand-over carries my findings faithfully: M-1's name-based skips (item 2), customXml types (item 3), N-1 with its fix for `[Content_Types].xml` and `_rels/.rels` (item 4), and m-1 (item 5). Two points for FO-5f2, not for this head:
+   * The six ways in from round 3 are open again at this head (item 1 names the reverted try that closed them).
+   * The `[Content_Types].xml` parse stall exists without N-1's crash: 1 M / 2 M `<a/>` take 6.1 s / 17.0 s on `origin/main` and 5.8 s / 18.9 s at 28f635a9a, with no crash on either. Item 4's size check fixes it too.
+   * Item 7 (delimiter change), which the hand-over calls unverified, **I verified on this head and on main alike.** `{=&lt;&lt; &gt;&gt;=}` followed by 20,000 `&lt;&lt;` gets past the brace cap and takes 2.9 s to compile on both. `{=[[ ]]=}[[client.passport]]` renders the value. The scan lists `=[[ ]]=` as a placeholder, so an upload is likely refused as unknown, but the flood still reaches `compile()`. This is part of M-1's rest.
+3. **No Blocker or Major left at this head: holds.** M-1's rest is moved to FO-5f2 by the ruling and is no worse here than on `main`. N-1 came only with the reverted code and is absent here (above). Round 4 found the r2-m1 change clean. m-1 (text tags) is a Minor, recorded in the hand-over.
+
+Verdict: Approve 6d37dcf7acd3f159a88453eb48f75112e0e00cae
