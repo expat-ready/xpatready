@@ -1,0 +1,53 @@
+# Queue gate (B194, founder 16 Nov: "concretely fix this problem"; measured in
+# ai-workers/problem-1-pathway-setup-and-form-filling/product/design/merge-queue-causes-2026-11-16.md).
+# 1. Auto-label: `review: approved` goes on by itself once the owner's account (or a login in the repository variable
+#    REVIEWERS) comments "Reviewer: Approve <head SHA>", ci is green on that head, and no path keeps the Lead's read
+#    (.github/, .mergify.yml, migrations, money: P-423, product/tools/lead-read-paths.txt). No waiting for a lane to wake.
+# 2. queue-fresh: a commit status Mergify's product queue needs for app code (.mergify.yml). "failure" when main merged a
+#    PR touching the same app files, or a second migration, after the PR's green ci started; a labelled PR's ci run is
+#    then re-run (a re-run tests today's main, D6; never a cancel, P-371).
+# Every trigger here runs the default branch's copy of this file; the job checks out main only, and never the PR's code
+# (no fetch of its commits): the PR's files are read through the API as names. Script and tests: product/tools/queue-gate.sh,
+# check-queue-gate.sh.
+name: queue-gate
+on:
+  issue_comment:
+    types: [created]
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+  pull_request_target:
+    types: [labeled]
+  push:
+    branches: [main]
+permissions: {}
+jobs:
+  gate:
+    # A comment only when it is a reviewer's Approve on a PR; a label only when it is `review: approved`; ci runs of PRs.
+    if: >-
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, 'Approve')) ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request') ||
+      (github.event_name == 'pull_request_target' && github.event.label.name == 'review: approved') ||
+      github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # issues/pull-requests: the label and comments; statuses: queue-fresh; actions: re-run a stale ci run.
+    permissions: { contents: read, issues: write, pull-requests: write, statuses: write, actions: write, checks: read }
+    concurrency:
+      group: queue-gate-${{ github.event.issue.number || github.event.pull_request.number || github.event.workflow_run.head_sha || 'main' }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+          sparse-checkout: ai-workers/problem-1-pathway-setup-and-form-filling/product/tools
+      - name: queue gate (label, queue-fresh)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          REVIEWERS: ${{ vars.REVIEWERS }}
+          MAIN_REF: origin/main
+        run: bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/queue-gate.sh event

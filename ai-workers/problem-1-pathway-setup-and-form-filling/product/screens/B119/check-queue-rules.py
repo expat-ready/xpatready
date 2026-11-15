@@ -88,6 +88,7 @@ def case(what, files, record, want, title="evidence: something", labels=("review
 
 
 A = f"{P}/prototype/studio"
+F = ("ci", "queue-fresh")  # B194: app code also needs the status queue-fresh (queue-gate.sh)
 CASES = [  # what, files, a record by #1139's definition?, the queue it must join
     case("the daily records PR: STATE, DECISIONS, BACKLOG, RULES", [f"{R}/STATE.md", f"{R}/DECISIONS.md", f"{R}/BACKLOG.md", f"{R}/RULES.md"], True, "records", "lead: records 6 Nov"),
     case("qa notes with screenshots, a run's text and a built note", [f"{R}/qa/BUGS.md", f"{R}/qa/walks/x/shot.png", f"{R}/qa/runs/out.txt", f"{R}/qa/built/C1.3.md"], True, "records", "qa: after-merge"),
@@ -95,10 +96,10 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("the history folder", [f"{R}/history/lead20-handover.md", f"{R}/history/old/STATE-2026-11-05.txt"], True, "records"),
     case("the way of working (a record under product/)", [f"{R}/WAY-OF-WORKING.md"], True, "records"),
     case("an M3 title on records only still goes to records", [f"{R}/qa/CAPABILITIES.md"], True, "records", "M3 qa: C7.3 scored"),
-    case("records plus one app file: product", [f"{R}/STATE.md", f"{A}/api/src/core.ts"], False, "product"),
-    case("records plus one app file, M3 title: product (no title routing)", [f"{R}/qa/built/C7.3.md", f"{A}/web/src/App.tsx"], False, "product", "forms: C7.3 — x"),
-    case("an M3 title on code: product", [f"{A}/web/src/App.tsx"], False, "product", "M3 runtime: C7.5 — x"),
-    case("app code alone: product", [f"{A}/api/src/demo.ts"], False, "product", "runtime: C4.11 — x"),
+    case("records plus one app file: product", [f"{R}/STATE.md", f"{A}/api/src/core.ts"], False, "product", checks=F),
+    case("records plus one app file, M3 title: product (no title routing)", [f"{R}/qa/built/C7.3.md", f"{A}/web/src/App.tsx"], False, "product", "forms: C7.3 — x", checks=F),
+    case("an M3 title on code: product", [f"{A}/web/src/App.tsx"], False, "product", "M3 runtime: C7.5 — x", checks=F),
+    case("app code alone: product", [f"{A}/api/src/demo.ts"], False, "product", "runtime: C4.11 — x", checks=F),
     case("a qa script (.cjs) is not a record", [f"{R}/qa/walks/x/walk.cjs"], False, "product"),
     case("a tool under product/tools/, even a .md", [f"{R}/tools/README.md"], False, "product"),
     case("this row's checker (.py under screens/)", [f"{R}/screens/B119/check-queue-rules.py"], False, "product"),
@@ -107,11 +108,12 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("a workflow", [".github/workflows/ci.yml"], False, "product"),
     case("a skill", [".claude/skills/next/SKILL.md"], False, "product"),
     case("a look-alike name: STATE.md.bak", [f"{R}/STATE.md.bak"], False, "product"),
-    case("a look-alike place: STATE.md outside product/", [f"{A}/STATE.md"], False, "product"),
+    case("a look-alike place: STATE.md outside product/", [f"{A}/STATE.md"], False, "product", checks=F),
     case("records without the review label: no queue", [f"{R}/STATE.md"], True, None, labels=()),
     case("records with ci not green: no queue", [f"{R}/STATE.md"], True, None, checks=()),
     case("records against another base: no queue", [f"{R}/STATE.md"], True, None, base="lead/x"),
     case("a draft records PR: no queue (a draft runs no check, #875)", [f"{R}/STATE.md"], True, None, draft=True),
+    case("app code without queue-fresh (B194): no queue", [f"{A}/api/src/demo.ts"], False, None),
     case("code without the review label: no queue", [f"{A}/api/src/core.ts"], False, None, labels=()),
     # B170a (#1545): a change to the XFA engine also needs the xfa-engine workflow's check green (Lead 18, 11 Nov).
     case("an XFA engine change with xfa-engine green: product", ["packages/xfa-engine/src/x.ts"], False, "product",

@@ -26,6 +26,9 @@ permissions:
   contents: read
   issues: write
   pull-requests: write
+  # B194: the sweep asks queue-gate.sh eligible, which reads the check "ci" and its run (read only).
+  checks: read
+  actions: read
 # No concurrency group: GitHub would cancel a waiting run, and every run checks the PR's head as it is now, back to its
 # last approved commit, so runs are independent (#1136 review M2). A run that fails or times out removes the label.
 jobs:
