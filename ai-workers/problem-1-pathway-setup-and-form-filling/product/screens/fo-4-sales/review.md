@@ -90,3 +90,10 @@ Copy :4524 (head merged with FO-2 `ceda426a9`, `PLATFORM_IDENTITY=local`). The b
 * **Carried Minors** (6, 7, 9-12, r1-r4): unchanged, none blocking. Minor 4 is now also fixed at the API, as above.
 
 **Re-review 2 verdict: Approve 2783e8edc904cd2ab91536ba637653ed45c74202**
+
+## Re-review 3 (P-277), 15 Nov 2026: `747479f17..8fb00ff8184fba53b96a9994e79312a18904739e`, diff only
+Three files changed: `session.ts`, `web-form-page.tsx`, the test. The head contains current `origin/main`. Code and tests against main: 781 added lines by `git diff --shortstat` (786 by pr-rules), under 800. `tsc --noEmit` exits 0. I take the builder's 45/45 on a fresh copy that includes main; the copy is stopped, so I did not re-run it.
+* **Consent tick (my r2, Devin), closed.** RELOAD now clears `consent` and asks the person to tick again; every other answer is kept. The new check: a rewritten stamp redraws the page with the name kept, the tick cleared and nothing stored; sent again, it is stored with no `msg_consent` row. This also closes **r1**: removing the RELOAD branch or the clear fails the check.
+* **Storage refused (Devin), closed for the reported case:** the session is kept in memory too, and with `setItem` throwing, sign-in still opens Leads (checked). **New Minor r5, not blocking.** `read()` prefers storage over memory (`session.ts:14-15`). A stale expired entry plus a later `setItem` failure (quota full) would hide a fresh in-memory sign-in. It leaks nothing. Fix: memory first, storage only when memory is empty. Nit: the "tick again" wording reads the pre-reload `form.consentText`. **Devin's framing finding:** PR Question 3, API-side, still open for the tech lead (S4 / BR-3 `frame-ancestors`). **Carried Minors** 6, 7, 9-12, r3, r4, r5: none blocking.
+
+**Re-review 3 verdict: Approve 8fb00ff8184fba53b96a9994e79312a18904739e**
