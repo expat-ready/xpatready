@@ -143,9 +143,9 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-616 | A capability with no screen passes gate A by API; map row 99's model choice is launch condition C26. | prose | 15 Nov |
 | P-617 | Size exception for #1815 only; rows briefed from now stay under 800 lines. | CI: pr-rules size step (pr-size.sh reads the row) | 15 Nov |
 | P-618 | Outside dependencies in `design/outside-dependencies.md`: start at need − lead time − 2× buffer; 🔴 when due or stuck 48 h; fallback and date on a block. | prose (B192 builds the alarm) | 15 Nov |
-| P-619 | Rule enforcement steps 3-8 approved, plus board-stale (45 min) and outside-dependency alarms. | prose (B193 builds them) | 15 Nov |
-| P-620 | Every Claude account checks the company Gmail connector at start and after a switch; missing → ask the founder at once. | prose (B193 part 6) | 16 Nov |
-| P-621 | Release 1 first build is Google only (Gmail, Google Calendar); Microsoft adapters and outside accounts deferred; ports stay provider-neutral. | prose | 16 Nov |
+| P-619 | Enforcement steps 3-8 approved; alarms for a stale board (45 min) and outside items. | prose (B193 builds them) | 15 Nov |
+| P-620 | Each Claude account checks the company Gmail connector at start and after a switch; missing → ask the founder. | prose (B193 part 6) | 16 Nov |
+| P-621 | Google only (Gmail, Calendar) for now; Microsoft deferred; ports stay provider-neutral. | prose | 16 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |
