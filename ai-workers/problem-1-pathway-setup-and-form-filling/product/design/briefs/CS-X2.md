@@ -97,16 +97,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime C
   * **The guard clauses**, per the list above, and the new marker-only guards on `party_profile` and `case_client`.
   * **A row is never born as the marker.** One `BEFORE INSERT` trigger per erased table (`case_erase_no_marker_insert`) refuses a marker-shaped value, so a client cannot type one as an answer.
   * **Soundness, stated plainly:** the app's database role can still call `set_config` itself. The guarantee is therefore the single function, plus CS-X3's CI guard over the code, plus the check that the flag must equal this transaction's id. The full lock, a separate role owning `case_erase_subject` as `SECURITY DEFINER` with the app role denied UPDATE on erase columns, is named in the PR as PF-12's walls' step, the same level as FO-13's.
-  * `client_canonical_answer.value_json`;
-  * `answer_snapshot.facts_json` (`input_hash` kept as proof);
-  * `validated_copy.read_back`;
-  * `read_value.value_json` and `corrected_value_json`;
-  * `form_instance.result_json`;
-  * `filing_person_record`'s personal fields, as the builder lists them from the model;
-  * `party_profile.display_name` → "Erased person <short id>" and `contact_channels_json` → `{}`;
-  * `case_client.display_name` and `contact` → "Client CL-xxxxx (erased)".
-
-  A marker never turns back into a value (the clause accepts only marker values).
+  * A marker never turns back into a value (the clause accepts only marker values).
 * **Named test cases**, file `tests/check_csx2_erase_schema.ts`, a pass and a fail each:
   * **CS-X2 DW1:** `case_erase_subject` on a subject → its answer's `value_json` is the marker, and every other column is equal before and after; a direct UPDATE to the marker **without** the flag (as any caller would) → refused; with the flag set by `set_config` in a different transaction (a stale id) → refused; to any other value → refused with the old message.
   * **CS-X2 DW2:** a marker changed back to a value → refused; an UPDATE that sets the marker **and** changes `status` → refused; an INSERT of a marker-shaped answer (as a client's save would send it) → refused.
@@ -124,7 +115,8 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime C
      * `FLOOR` → `RETAINED { until }`;
      * `WARN` → erased (decided at approval); an approval without `keepPeriodWarned` → `ERROR`, nothing changed;
      * an open case (status `OPEN`) → `RETAINED { words: "Case open: close it first." }` before the door is asked.
-  2. **Erased:** for the party's own subject on that case only (the principal through `case_client`, a family member through `Party.fo_person_id`), one call to `case_erase_subject` inside the door's `remove` callback. It sets every erase column the part 1 list names, writes one `case_erased_file` row per file, and keeps `sha256` and type. `demo_message` rows of the person's links are deleted in the same callback (kind `erasure`).
+  2. **Erased:** for the party's own subject on that case only (the principal through `case_client`, a family member through `Party.fo_person_id`), one call to `case_erase_subject` inside the door's `remove` callback. It sets every erase column the part 1 list names except `party_profile`'s (step 4; a second function `case_erase_profile(p_party, p_request, p_on)` under the same flag rule), writes one `case_erased_file` row per file, and keeps `sha256` and type. `demo_message` rows of the person's links are deleted in the same callback (kind `erasure`).
+  4. **The person's `party_profile` last.** `Party` is per workspace and shared by every case of that person there, so its name and contact are replaced only when **every** case of that `Party` answered `ERASED` in this run. If any case is `HELD`, `RETAINED` or `ERROR`, the profile is kept and the result says "Name kept: case <number> is held/retained". This runs in its own transaction after the per-case ones, through the door (kind `erasure`, persons = the party, every case id of the `Party`).
   3. **Bytes after commit:** for each `case_erased_file` row with no `bytes_removed_at`, `FilesPort.delete` (or the door's local-path remover for files still on local disk), then `bytes_removed_at` is set. On failure it is retried idempotently: a re-run finishes the remaining rows and changes nothing else.
 * **The result per case** goes back to PF-21d (`ERASED | HELD | RETAINED | NOT_FOUND | ERROR`, with dates and counts, never values) for the request's events.
 * **Rows that stay**, by rule and named in the result's words: case number, filings' application numbers and dates, team, stages, decisions, and the audit trail.
@@ -134,6 +126,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime C
   * **CS-X2 DW6:** an open case → `RETAINED` "Case open"; after close the same request → erased.
   * **CS-X2 DW7:** a closed case inside the firm's reminder with `keepPeriodWarned: true` → erased; an approval without it → `ERROR`, every row byte-equal, never `RETAINED` or `ERASED`.
   * **CS-X2 DW8:** erased → every answer and snapshot of the principal subject is the marker (history rows too), the UCI is the marker and the application number is kept, every file's bytes are gone (`FilesPort.get` null) with its row, `sha256` and case number kept, and the profile, link address and client name are replaced by the reference.
+  * **CS-X2 DW8c:** a `Party` on two cases, one erased and one `RETAINED` (open) → the erased case's answers are markers, and `party_profile` keeps its name and contact; when both are erased → the profile is replaced.
   * **CS-X2 DW8b:** a family member (matched by `Party.fo_person_id`) → only their own subject is erased, and the principal's is byte-equal; a `RETAINED` (open) case keeps its UCI.
   * **CS-X2 DW9:** the spouse's answers, documents and profile on the same case are byte-equal before and after (SA-11-40 §11 test 2).
   * **CS-X2 DW10:** a party with two closed cases, one under a case hold → one `ERASED` and one `HELD`, so the module's result is partial, never complete.

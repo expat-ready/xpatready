@@ -48,7 +48,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime C
 **Read only these:** `ports/person-export.ts` and its contract (PF-26's); `ports/files.ts` (with PF-F3's `scanState`); `prisma/schema/cases.prisma` (`Case`, `case_client`, `CaseStage`, `CaseParticipant`, `Party`, `PartyProfile`, `case_decision`), `answers.prisma`, `evidence.prisma`, `filings.prisma`, `submission.prisma`, `links.prisma`, `review.prisma` (models only); `api/src/clients.ts` (CS-K1); `api/src/case-close.ts` (CS-C1a, the firm from `platform_firm` by key); `api/src/features/platform-complaints.ts` (an `onModuleInit` registration that runs once); `api/src/MODULE.cases.md`.
 
 ## Part 1 (CS-X1a): the client's section and the completeness check (expected ~650 lines)
-* **`api/src/case-export/person-tables.ts`:** one typed table that names, for **every** case-side model (discovered as CS-X3's guard discovers them: the `.prisma` files are parsed and `Case`, `AnswerSubject`, `Party` and every model reachable from them through relation fields are taken; today they sit in `cases`, `answers`, `evidence`, `filings`, `submission`, `links` and `review`), one of three things:
+* **`api/src/case-export/person-tables.ts`:** one typed table that names, for **every** case-side model (CS-X3's `CASE_SIDE_SCHEMA_FILES`: every model in `cases`, `answers`, `evidence`, `filings`, `submission`, `links` and `review`, parsed from those files; the configurator's models, such as `Combination`, are never entered), one of three things:
   * `EXPORT` with its section;
   * `EXCLUDED` with a reason: no person data (`Route`, `FirmCaseCounter`, `PackWorkPin`); access secrets (`PersonLinkTry`, `PersonLinkSession`); a person's own view choice (`PersonPreference`, a staff setting);
   * `VIA` another section (e.g. `AnswerSubject` through answers).
@@ -110,7 +110,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime C
 * Part 1 adds only new files, plus `api/src/MODULE.cases.md` (one paragraph; merge `main` on a conflict).
 * No schema in part 1, so it does not hold the `cases.prisma` baton; part 2 holds it (the ruled column), after CS-K1, CS-T1 and CS-W1 have released it (P-526b, P-576), and its `runtime.ts` hook does not run alongside CS-C1b's or CS-K1's `createCase` work.
 * **CS-X2 runs after part 1** (it imports `person-tables.ts`). Any later case row that adds a table with person data must add its line to `person-tables.ts` in its own PR, or DW7 turns red (intended; tell its builder).
-* `runtime.ts`, `core.ts`, `case-feed.ts` and `ports/` are untouched.
+* `core.ts`, `case-feed.ts` and `ports/` are untouched. `runtime.ts` is untouched in parts 1 and 3; part 2 adds the one `addPerson` hook (above).
 
 **Contract gap (for the PR body):**
 * `PersonExportPort` is not on `main` and in neither contract's ports list (case-side §3, platform §7).
