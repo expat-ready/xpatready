@@ -10,7 +10,7 @@
 | C7.1 | Partial (QA-383) | **Partial — ready for Works** | QA-383 closed; pack 12/12 on the checkpoint; only the GitHub-runner run is missing (P-339) |
 | C7.8 | Partial (QA-383) | **Partial — ready for Works** | QA-383 closed; pack 20/20 on the checkpoint; only the GitHub-runner run is missing (P-339) |
 | R1.80 | Partial | **Partial (stays)** | C7.2 is still held by QA-315 and QA-165 (Majors), and C7.1 and C7.8 are not Works yet |
-| C6.19 | Partial (QA-383) | see § 3 | QA-383 named it too |
+| C6.19 | Partial (QA-383) | **Partial — ready for Works** | QA-383 closed; pack 89/89 on the checkpoint; GitHub run missing (P-339) |
 
 **QA-383 (Critical) is closed** (row in `BUGS-CLOSED.md`). Evidence, all on isolated copies with the configured checkpoint:
 * `tests/qa/check_qa383_imm5710_current_cor.ts`: **17/17, then 16/16** (the second run skips the load step). It was 4/6 on 1fcde2d15 and d52b7274e. It shows that:
@@ -35,7 +35,7 @@
 | PF-21v | not found on main or in BACKLOG | — | Question 2 below |
 
 ## 3. C6.19
-QA-383 also held C6.19 (P-305 (3)). Its pack ran on the checkpoint in qa's container: see `…/gateb-c619.log` and the C6.19 row. A GitHub-runner run is needed for Works there too.
+QA-383 also held C6.19 (P-305 (3)). Its pack on the checkpoint in qa's container: "C6.19.test.ts on the checkpoint: exit 0, 89/89 passed" (`…/gateb-c619.log`). It is **Partial — ready for Works**: the GitHub-runner run is the only thing missing. (The fresh reader judged C7.1, C7.8 and QA-383 only; C6.19's verdict is qa's, under the same rule.)
 
 ## Limits
 * The by-screens walk is the scripted client journey only: one headless browser at its default width. I did not replay it at 400, 1024 or 1440 px, and did not use a headed pane.
