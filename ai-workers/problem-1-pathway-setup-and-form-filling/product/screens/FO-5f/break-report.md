@@ -72,3 +72,27 @@ This does no harm: the value maps to the same whole number, and range and stale 
 15. The opposite lock orders of Withdraw (version row, then retainer) and of Signed offline with a copy (retainer, then version) never produced a 500 in these runs. A possible deadlock is mapped to 409 by `svc:143`.
 16. Load: 30 parallel Signed offline (k = 1) calls on 30 retainers → 30 × 200, no P2028.
 17. The pair (version, status) names one state: the triggers at `mig:324-344` allow DRAFT again only together with a new version.
+
+## Round 2 — head `f3505fc58` (items 2 and 3 as changed by `git diff 7338fdfa2 f3505fc58 -- …/retainers/service.ts`)
+
+Same copy `brk_fo5f` on :4438, started fresh and stopped afterwards (scripts `scratchpad/brk/attack3.mts`, `attack4.mts`; logs `run4.log`, `run5.log`). **Result: 0 Blocker, 0 Major, 3 Minor. M-1, m-1, m-3 and m-4 are fixed; m-2 is with Lead B.**
+
+**r2-m1 Minor — a legacy version (no ids) whose signer's email or representative's name changed later can never be filed as a copy, and the advice in the refusal cannot work.** Where: `svc:553-558`.
+Reproduction: v1 is drafted; the subject person's email is changed; v2 is made by an edit; the ids are taken out of v1 to make it a pre-FO-5f row; Signed offline with `signedVersion 1`.
+Observed: 409 NOT_SIGNABLE, "Edit the agreement back to version 1's people, then record it as signed". An edit prints the person's current email again, so v1's values are never matched. The same happens when a representative's display name changes.
+Only versions written before `f3505fc58` are affected. Expected: compare the people (the retainer's ids at the time) rather than the printed text, or word the refusal so it does not promise a way out.
+
+**r2-m2 Minor — the legacy comparison can match two different people.** Where: `svc:556`, which compares name, email and licence number but not `representative.licensing_body`.
+Reproduction (`attack4.mts`): T is given R's display name and licence number; v1 is drafted with T; T is renamed back; v2 is edited to R; v1's ids are taken out; v1 is filed.
+Observed: 200, and the retainer is filed naming **R**, although v1's paper names T. This needs two staff with the same name and licence number (a data error), so it is an edge case.
+
+**r2-m3 Minor — filing on a version whose representative is no longer eligible returns "Edit to choose another" on a signed record.** Where: `svc:407`, `svc:415` (`blockers` returned whatever the status).
+Reproduction: v1 rep T, v2 rep R; T's grants are ended; Signed offline with `signedVersion 1`.
+Observed: 200 SIGNED_OFFLINE; the retainer names T, which is correct for the paper. The response's `blockers` say "The representative is no longer active, licensed or a case manager. Edit to choose another.", but a signed retainer cannot be edited. Expected: no Send blockers on a signed retainer, or a plain note.
+
+**Held in round 2:**
+1. **M-1, individual:** v1 rep R, v2 rep T, paper on v1 → the retainer, the page and the audit name R. With "everyone sees all" off, T reads it before filing (200) and not after (404). **M-1, corporate:** v1 signer A, v2 signer B, paper on v1 → A is restored, also after A's contact ended. A v1 with no signer is filed with signer null (as k = n allows).
+2. **Legacy:** same people → filed with the retainer's ids; another representative → 409 NOT_SIGNABLE, nothing written. **Crafted ids:** templates naming `{signer.person_id}`, `{representative.staff_id}` or `{copied_from_version}` → 422. The ids come only from `mergeValues` (validated signer and representative), so another firm's staff cannot reach a version through the API, and `mig:166`'s composite foreign key would refuse it.
+3. **m-1:** notes read `1:Signed on paper; filed as version 3`, `2:Not signed`, `3:Copied from version 1, signed on paper`. **m-3:** "This agreement is at version 1, not version 2." **m-4:** `expectedVersion "02"` and `"2 "`, and `signedVersion "01"`, `"001"`, `"+1"`, `"1 "` and `"0"` → all 422; JSON 2.5 → 422.
+4. **Races with the new row update**, 6 runs each: Signed offline (k = 1) + Edit, + Withdraw, ×3 + Signed offline (k = n), and + Send from Draft. Each run has one 200 and the rest 409 CHANGED, never a 500; when the copy won, the retainer named v1's representative. The audit's `representativeStaffId` and `signerPersonId` match the row in every filing.
+5. The ids in `version.values` are ids the page already returns. The template columns stay as version n's, which the trigger at `mig:362-371` requires; after filing only the "missing" list reads them.

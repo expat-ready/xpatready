@@ -72,4 +72,41 @@ D1 3: items 3 and 5 partly met · D2 3: M-2 leaves the record inconsistent; race
 
 **To fix before Approve:** M-1 and M-2 (each with its pass and fail test). The Minors may be fixed here or recorded.
 
+**Round 1 verdict:** Block (`7338fdfa2`).
+
+## Round 2 (diff-only, P-277, P-603): `git diff 7338fdfa2 f3505fc58 -- prototype/studio`
+* **Commit reviewed:** `f3505fc583d3ad228161ebd15efcb57c0f6bbec0`. Read: the diff (4 files) and docxtemplater 3.71.1 `get-content-types.js` (to check the new cap's reach).
+* `tests/check_fo5_retainers.ts` at f3505fc58: **223 passed, 0 failed** (exit 0).
+
+| Round 1 | Fix | Holds? |
+|---|---|---|
+| M-1 brace flood | `braceCount` over `w:t`, `m:t`, `a:t` and docProps text, refused above 2 x cap before `compile` | **partly**: a body flood is refused in 15 ms (my probe: 200,000 lone `{` in `word/document.xml`). Parts the scan skips are still compiled: **M-1 still open** below |
+| M-2 signed record's people | ids recorded in the merge values; the copy restores signer and representative in the same bump; pre-FO-5f versions filed only when the people match | yes. Tests: user-T loses read access after filing v1 (404); legacy refusal 409 and legacy pass; the audit names both ids. Restoring them within the bump is allowed by `migration.sql:345-351`; the template columns stay, as judged in round 1 |
+| m-1 intake words | path match keeps the 25 MB sentence for `/api/intake` and `/api/library/forms/upload` (both under `@Controller("api")`); `mb` used | yes |
+| m-2 "Not signed" | version k: "Signed on paper; filed as version N" | yes (test) |
+| m-3 catch-all | only a 404 `HttpException` becomes "No such file" | yes (test with a failing database) |
+| m-4 chart braces | chart parts are skipped by path and content type | yes (test); SmartArt is still refused |
+| m-5 lock untested | a FilesPort hook sets VIEWED between the read and the transaction → 409 | yes (test) |
+| breaker m-3, m-4 | stale wording for a higher version; `^[1-9]\d{0,8}$` | yes (tests) |
+
+**M-1 Major (round 1's M-1, not fully fixed; not a new defect): the brace cap covers only the parts the scan reads, but docxtemplater also compiles parts the scan skips.** At `docx.ts:97` the scan reads only `*.xml` files and `Override` parts, and `docx.ts:105` skips every `customXml/` part. docxtemplater compiles more than that (`get-content-types.js` `collectContentTypes`; `docxtemplater.js` `getTemplatedFiles`):
+* `customXml/item*.xml` whose namespace is `coverPageProps`, and
+* any file typed by a `<Default Extension="…">` rule, whatever its name.
+
+The braces in those parts never reach `braces` (`docx.ts:113`), so `compile(zip)` at `docx.ts:118` still lexes them all.
+* Repro (direct `placeholdersOf`, script `scratchpad/rev/r2.mts`), body `{client.name}` plus 200,000 lone `{` placed in:
+  * `customXml/item1.xml` (`<CoverPageProperties xmlns="http://schemas.microsoft.com/office/2006/coverPageProps"><Abstract>{{{…`, 1,299 bytes): 9,036 ms, 575 MB;
+  * `word/h.bin`, typed by `<Default Extension="bin" ContentType="…wordprocessingml.header+xml"/>` (1,282 bytes): 8,937 ms, 576 MB.
+* With 1,500,000 `{` in the customXml part: `FATAL ERROR: … JavaScript heap out of memory` after 72 s, the same crash as round 1, now behind one more step.
+* Both parts are really rendered: `renderDocx` printed `Passport:  Email: a@example.com` from `word/h.bin` and `For ` from the cover part. So `{client.passport}` placed there is also never checked and prints blank (`placeholdersOf` returned only `["client.name"]`). That is B-3's rest and item 4's "never printed blank", by the same cause.
+* **Fix:** read for the cap, and for placeholders, every part docxtemplater will compile:
+  1. Resolve each zip entry's type as `collectContentTypes` does (Overrides, then `Default` by extension).
+  2. Take the docx types (main, header, footer, footnotes, comments) and the common ones (settings, core, app, custom, diagramData, diagramDrawing), plus `customXml/item\d+.xml` holding the coverPageProps namespace.
+  3. Alternatively, refuse a Word XML type declared on a name that is not `.xml`.
+* Add fail tests: 1.5 M `{` in a coverPageProps part, and in a `Default`-typed `.bin` header, each refused in under 2 s.
+
+*Notes, not findings:* the new merge values `signer.person_id` and `representative.staff_id` are shown in the page's `version.values`. They are staff-only ids, and a template naming them is refused as an unknown placeholder (they are not in `PLACEHOLDERS`).
+
+**To fix before Approve:** M-1 (the parts above, with the two fail tests). Nothing else is open from round 1 or from the breaker's Minors in this diff.
+
 Verdict: Block
