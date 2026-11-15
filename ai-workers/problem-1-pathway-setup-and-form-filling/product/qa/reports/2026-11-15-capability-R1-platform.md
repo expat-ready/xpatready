@@ -73,3 +73,6 @@ Gate A: the reader counted the R1.2 → R1.5, R1.6 and R1.24 walks; not R1.9 (it
 
 ## 6. Suggestions
 * *Needed for the proof · Scaffolding:* a "wiring" line in the Done when of any row built against a port fake while the real side is in another row (QA-452's cause).
+
+## 7. Lead 52's answers (#1789 comment 6888849124, 15 Nov)
+1. R1.11 counts a `skeleton` check run on the merge-queue batch whose merge commit equals main's head; none exists (batches 43656353031 and 43668064105 skipped it), so R1.11 stays Not tested until an app merge whose batch runs it. 2. QA-452 → new row PF-14b (Lead B). 3. QA-453 → a follow-up row after FO-3f #1785 (Lead B). 4. R1.6 Partial until Lead B adds the two halves to a Done when. 5. One PR in the product queue; the three `tests/qa/` checks get a fresh Opus reviewer (diff only). 6. R1.15 Partial is correct.
