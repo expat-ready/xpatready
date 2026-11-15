@@ -26,7 +26,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime P
 
 **Contract used:** none (the app's one error filter; STANDARDS §6).
 
-**Parallel safety:** `main.ts` is the app's one shared file. **PF-4pc** (BACKLOG; waits on CS-C1a #1818) changes `main.ts:244`'s path match; this row changes only `ProblemErrors`, a different block, so the two may run at once and the second merges `main` in. No other open PR touches `main.ts` today; if one opens on `ProblemErrors`, this row waits.
+**Parallel safety:** `api/src/MODULE.core.md` (the api-core card) is also edited by CS-C1a #1818: if this row changes the card, whichever merges second merges `main` (prefer `Card unchanged: <reason>`). `main.ts` is the app's one shared file. **PF-4pc** (BACKLOG; waits on CS-C1a #1818) changes `main.ts:244`'s path match; this row changes only `ProblemErrors`, a different block, so the two may run at once and the second merges `main` in. No other open PR touches `main.ts` today; if one opens on `ProblemErrors`, this row waits.
 
 **Reviewer only** (no permissions, money or schema).
 

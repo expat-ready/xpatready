@@ -2,7 +2,7 @@
 
 Drafted 16 Nov 01:2x IST by the shaping lane, for Lead B's approval (P-558). Row: BACKLOG **PF-4bc** (rev 16.20, #1816 Q4). It finishes map row 5's API: on `main` every `CognitoIdentityAdmin` method refuses with 503 `SIGN_IN_NOT_SET_UP`. **Model: Opus 5.5, effort: high** (sign-in; reviewer and breaker at high, P-605).
 
-**Starts when:** now. PF-4b (#1816) and PF-Lc (`@aws-sdk/client-cognito-identity-provider` 3.1161.0 in `package.json`) are on `main`.
+**Starts when:** PF-24w (brief `PF-24w.md`) is on `main`, since both change `identityConfig`. PF-4b (#1816) and PF-Lc (`@aws-sdk/client-cognito-identity-provider` 3.1161.0 in `package.json`) are on `main`.
 
 ---
 You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime PF-4bc` and take **one row, PF-4bc, the Cognito side of IdentityAdminPort**, end to end on a fresh branch from `origin/main`, one PR.
@@ -18,35 +18,37 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime P
 **What to build (API only; no schema; no new package):**
 1. `CognitoIdentityAdmin` implements every method with `CognitoIdentityProviderClient` in `ca-central-1`:
    * `createUser(email)`: `AdminCreateUser` with `MessageAction: "SUPPRESS"` always; on `UsernameExistsException`, `AdminGetUser` and return its `sub` (the port's "reuses the one an earlier, rolled-back accept left");
-   * `twoStep(u)`: from `AdminGetUser` (`UserMFASettingList` / `PreferredMfaSetting`): `TOTP`, `PASSKEY`, or null;
+   * `twoStep(u)`: from `AdminGetUser` (`UserMFASettingList` / `PreferredMfaSetting`): `TOTP`, `PASSKEY`, or null. **Verify first** (add to the list above) how Cognito reports a passkey (WebAuthn) credential; if `AdminGetUser` does not, name the call that does (for example `ListWebAuthnCredentials` needs the user's own token, so an admin path may not exist) and ask before mapping `PASSKEY`;
    * `resetTwoStep(u)`: clears the person's second step as the verified AWS call says (AG-1-67: the caller's revocation row already ends our access tokens);
    * `signOutEverywhere(u)`: `AdminUserGlobalSignOut`;
    * `redeem(code)`: exchanges the code at the pool's token endpoint, verifies the returned ID token with `aws-jwt-verify` (already in; PF-4's `cognito.ts` verifies access tokens, so use a `tokenUse: "id"` verifier for the same pool and client), and returns `{ firmKey, email }`; a used or expired code → the port's `SIGN_IN_CODE_REFUSED` 401;
    * `handOff(firmKey, email)`: as verified above.
-2. `identityConfig` gains the pool's managed-login domain (`PLATFORM_COGNITO_DOMAIN`), read through PF-24's typed loader if that is where `PLATFORM_COGNITO_*` are read on `main`; missing domain with `PLATFORM_IDENTITY=cognito` fails at start, as PF-24w's rule (fails closed).
+2. The pool's managed-login domain (`PLATFORM_COGNITO_DOMAIN`) is added to PF-24's loader (`config/settings.ts` `SETTINGS`), which after PF-24w is the only reader of `PLATFORM_COGNITO_*`; missing domain with `PLATFORM_IDENTITY=cognito` fails at start, as PF-24w's rule (fails closed).
 3. **A shared contract** `ports/contracts/identity-admin-port.contract.ts` (PF-0c pattern; the port stays in `provider.ts`, so the shape is restated as `identity-port.contract.ts` does). Cases from the port file's own comments: create returns a subject; a second create of the same email returns the same subject; `redeem` is one-use and refuses after 5 minutes; `twoStep` after `resetTwoStep` is null; every refusal is a 401/503 problem with a plain `detail` and a `code`, never a raw provider message.
 4. Every AWS error maps to the port's problem answer (`SIGN_IN_NOT_SET_UP` 503 when the pool is unreachable or not configured; 401 for a refused code); the AWS message, request id and any token go to no log line (PF-23's redaction test covers it).
 
 **Done when** (P-606: list the cases in the PR body before writing code; the reviewer ticks one per line). In `tests/check_pf4bc_cognito_admin.ts`, the Cognito client stubbed with **recorded responses** (no network in CI; `aws-sdk-client-mock` is not in `package.json`, so use the SDK's own `middlewareStack` or a constructor-injected `send`, no new package):
-* `PF-4bc DW1 pass/fail`: the shared contract passes on `LocalIdentityAdmin` and on `CognitoIdentityAdmin` with recorded responses; a deliberately broken stub (create without SUPPRESS) fails it (shown once, then removed).
-* `PF-4bc DW2 pass/fail`: every `AdminCreateUser` request carries `MessageAction: "SUPPRESS"` (asserted on the recorded request); `UsernameExistsException` returns the existing `sub`, never a second user.
+* `PF-4bc DW1 pass/fail`: the shared contract passes on `LocalIdentityAdmin` and on `CognitoIdentityAdmin` with recorded responses; a deliberately broken stub (a second create of the same email returning a new subject) fails it (shown once, then removed).
+* `PF-4bc DW2 pass/fail`: every `AdminCreateUser` request carries `MessageAction: "SUPPRESS"` (asserted on the recorded request); `UsernameExistsException` returns the existing `sub`, never a second user; a broken stub that drops `MessageAction` on retry fails this case (shown once, then removed).
 * `PF-4bc DW3 pass/fail`: `redeem` with a recorded token answer returns the firm key and email; a recorded `invalid_grant` answers 401 `SIGN_IN_CODE_REFUSED`; a second redeem of the same code is refused.
 * `PF-4bc DW4 pass/fail`: `resetTwoStep` then `twoStep` → null; `signOutEverywhere` sends `AdminUserGlobalSignOut` for the person's own username only.
 * `PF-4bc DW5 pass/fail`: a recorded `NotAuthorizedException`, `ResourceNotFoundException` and a network error each map to the port's problem; the response body and the captured log lines hold no AWS message, request id, token or email.
 * `PF-4bc DW6 pass/fail`: `PLATFORM_IDENTITY=cognito` without the domain refuses to start with a plain line naming the setting; with it, `identityConfig` returns it.
-* `PF-4bc DW7`: `node tools/check-port-contracts.mjs` passes with the new contract (both adapters call `runContract`), and `check_pf4_identity.ts`, `check_pf4b_session_reads.ts` and PF-0c's suite pass unchanged.
+* `PF-4bc DW7`: `tools/check-port-contracts.mjs` scans only `ports/*.ts` and `identity/port.ts` (its header), so it cannot see `IdentityAdminPort` in `session/provider.ts`: add `api/src/platform/identity/session/provider.ts` to its scan list, show it failing once with the contract call removed from one adapter's test, then passing; and `check_pf4_identity.ts`, `check_pf4b_session_reads.ts` and PF-0c's suite pass unchanged.
 * **Not a merge gate:** the one live proof against the founder's pool (C21) is recorded later as NOT TESTED until it runs (P-405).
 
 **Duplicate check:** BACKLOG (PF-4b, PF-4bc, PF-Lc, PF-8b), open PRs (none touching `provider.ts`, `cognito.ts` or `ports/contracts/` at 01:2x IST 16 Nov), `main` (the refusing `CognitoIdentityAdmin`; no `identity-admin-port.contract.ts`), BUGS (none); one `Duplicate check:` line after re-running it.
 
-**Touch list:** `api/src/platform/identity/session/provider.ts` (the Cognito class only; the `LocalIdentityAdmin` gains only its `runContract` call in the test), `api/src/platform/identity/port.ts` (`identityConfig`'s domain line), new `ports/contracts/identity-admin-port.contract.ts`, `tests/check_pf4bc_cognito_admin.ts`, `api/src/platform/MODULE.md` (tests line). **Must still be true:** every PF-4, PF-4b, PF-0c, PF-23 and PF-24 suite.
+**Touch list:** `api/src/platform/identity/session/provider.ts` (the Cognito class only; the `LocalIdentityAdmin` gains only its `runContract` call in the test), `api/src/platform/config/settings.ts` (the domain setting), new `ports/contracts/identity-admin-port.contract.ts`, `tests/check_pf4bc_cognito_admin.ts`, `tools/check-port-contracts.mjs` (one scan path), `api/src/features/platform-staff-read.ts` (the constructor line, if the client is injected), `api/src/platform/MODULE.md` (tests line). **Must still be true:** every PF-4, PF-4b, PF-0c, PF-23 and PF-24 suite.
 
 **Contract used:** PF-4b's `IdentityAdminPort` (`provider.ts`), contracts `platform-and-front-office-contracts-2026-11-14.md` §1.2 (IdentityPort, Cognito in ca-central-1); PF-0c's contract-test rule.
 
 **Parallel safety:**
-* `provider.ts` and `port.ts` are touched by no open PR. PF-4s (our own staff's sign-in, a second pool) will add its own adapter files and must not edit `provider.ts`; if PF-4s needs a shared change there, it starts after this row merges.
-* `ports/contracts/` is shared: this row only adds a new file. PF-19b's open #1860 changes `ports/mail.ts`, not `contracts/`.
-* `api/src/platform/MODULE.md` is shared by every platform row (PF-21v #1848 may edit it too): change only the tests line; whichever merges second merges `main` in.
+* **PF-24w merges first** (it moves `identityConfig`'s reads into the loader); then this row adds the domain to `config/settings.ts`. `provider.ts` is touched by no open PR. PF-4s (our own staff's sign-in, a second pool) will add its own adapter files and must not edit `provider.ts`; if PF-4s needs a shared change there, it starts after this row merges.
+* `ports/contracts/` is shared: this row only adds a new file. #1860 changes `ports/contracts/mail-port.contract.ts`, a different file: no conflict.
+* `tools/check-port-contracts.mjs` (its scan list, DW7) is shared tooling: one line; the second PR merges `main`.
+* `api/src/features/platform-staff-read.ts` builds `new CognitoIdentityAdmin(c.cognito)`: if the client is injected through the constructor, that one line changes too. No open PR touches it.
+* `api/src/platform/MODULE.md` is shared by every platform row (#1848, #1860 and #1815 all edit it): change only the tests line; whichever merges second merges `main` in.
 
 **Reviewer and breaker** (P-278: sign-in): the breaker tries a replayed code, a code for another client, an error string carrying an email, and `MessageAction` dropped on retry.
 

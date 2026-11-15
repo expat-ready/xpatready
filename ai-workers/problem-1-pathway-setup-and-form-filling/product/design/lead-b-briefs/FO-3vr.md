@@ -16,12 +16,12 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime F
 1. **Lists need the key** (AG-4-67 rule 4): `GET bookings` and `GET bookings/attendance-due` stay behind `agent/booking:list` (FO-3sr, rev 16.22). Within them, a row is returned when **any** of 2-5 holds.
 2. **The host always sees it** (rule 2): `staffId = me`.
 3. **On a prospect** (`prospectId` set; rule 1 → AG-2-64 rule 3): the viewer sees that prospect: `seesAll` from `sales/common.ts`'s `visibilityOf`, or the prospect's `ownerStaffId` is theirs, or it has no active owner and the viewer `seesUnassigned`.
-4. **On a person with leads, no prospect** (rule 1 → AG-2-64 rule 2 a-c): the viewer sees any lead of that person (`sees(v, ctx, lead.ownerStaffId)`, the lead list's own rule), or owns any prospect of that person (rule 2 c).
+4. **On a person with leads, no prospect** (rule 1 → AG-2-64 rule 2 a-c): the viewer sees any lead of that person by the lead list's own rule, or owns any prospect of that person (rule 2 c). A lead whose owner is deactivated counts as Unassigned (`sales/leads.ts:44, 97, 139`, `inactive`/`activeOf`).
 5. **Not linked yet** (no lead and no prospect for the person, or no person; rule 3): AG-2-64's unassigned-lead rule: `seesUnassigned`.
 6. **The record rule is in the query** (rule 10 "Server-side filters"; AG-2-64 rule 1): one Prisma `where` (or one SQL `EXISTS` set) built from 2-5, inside `firmScope`, before ordering and the 92-day window; never a filter after the read.
 7. **Direct links** (`GET bookings/:id`, attendance, reschedule, cancel, which go through `staffBooking`): the same rule; outside it the one not-found (`notInFirm("booking")`, AG-2-64 rule 4 e). The host's own stays open without the list key (rev 16.22).
 8. **No masking** (rule 5): a visible booking keeps its full view; nothing is blanked for some viewers.
-9. **Reuse, do not copy:** call `visibilityOf` and `sees` from `sales/common.ts`; write no second own-versus-all rule. (Not yet built and out of this row: AG-2-64 rule 2 d-e, the File owner and the possible-match flag; they join here when FO-9a lands, through the same helper.)
+9. **Reuse, do not copy:** build the list `where` from `visibilityOf`'s `seesAll` and `seesUnassigned` the way `sales/leads.ts:44` builds the lead list's (in the query), and use `sees()` only for the direct links of rule 7 (one row already read); write no second own-versus-all rule. (Not yet built and out of this row: AG-2-64 rule 2 d-e, the File owner and the possible-match flag; they join here when FO-9a lands, through the same helper.)
 
 **Done when** (P-606: list the cases in the PR body before writing code; the reviewer ticks one per line; a line with no case is a red finding). In `tests/check_fo3vr_visibility.ts`, with the firm setting `platform.everyone_sees_all` on and a Case Officer role copy **without** `agent/prospect:view.all` made in the test's own data (PF-6b DW6's pattern):
 * `FO-3vr DW1 pass/fail` (AG-4-67 test 1): the own-only Case Officer does not see a booking on a colleague's lead in `GET bookings`, `attendance-due` or `GET bookings/:id` (404); the `view.all` holder does.
@@ -41,7 +41,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime F
 
 **Parallel safety:**
 * **FO-3a part 2's staff read feed** (concept FO-3sc §6: it "applies AG-4-67") must call this row's filter, not write a second one.
-* `booking/service.ts` is the booking area's one service: **FO-3m #1831, FO-3sa #1828, FO-3pa #1830 and #1860 (PF-19b booking mail, which also edits `service.ts`) merge first**, then this row; **FO-3a part 1a and 1b** (brief `FO-3a.md`) do not touch `service.ts`'s read methods but do touch the file's type and slot readers, so FO-3a part 1a starts after this row merges, or this row waits for it (whichever lane starts second waits).
+* `booking/service.ts` is the booking area's one service: **FO-3m #1831, FO-3sa #1828, FO-3pa #1830 and #1860 (PF-19b booking mail, which also edits `service.ts`) merge first**, then this row; **FO-3a part 1a** changes only the two type lookups' `where` (`service.ts:180`, `:274`: `deleted_at: null`), and **1b** the slot readers; neither touches this row's methods, but by file (P-526) **whichever of FO-3vr and FO-3a 1a starts second waits** for the first to merge.
 * `api/src/front-office/MODULE.md` is shared by every FO row: change only the one invariant and the tests line; a second PR merges `main` in.
 
 **Reviewer and breaker** (P-278: permissions): the breaker tries a booking id from another lead, a `staff=` query for another host, the attendance route, and a lead reassigned between list and open (AG-2-64 rule 7).
