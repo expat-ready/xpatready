@@ -76,3 +76,10 @@ Gate A: the reader counted the R1.2 → R1.5, R1.6 and R1.24 walks; not R1.9 (it
 
 ## 7. Lead 52's answers (#1789 comment 6888849124, 15 Nov)
 1. R1.11 counts a `skeleton` check run on the merge-queue batch whose merge commit equals main's head; none exists (batches 43656353031 and 43668064105 skipped it), so R1.11 stays Not tested until an app merge whose batch runs it. 2. QA-452 → new row PF-14b (Lead B). 3. QA-453 → a follow-up row after FO-3f #1785 (Lead B). 4. R1.6 Partial until Lead B adds the two halves to a Done when. 5. One PR in the product queue; the three `tests/qa/` checks get a fresh Opus reviewer (diff only). 6. R1.15 Partial is correct.
+
+## 8. After #1792 and FO-3f (main e888e0add)
+* Merged `main` into this PR (conflict in `qa/BUGS.md` only: both lanes added rows after QA-451; both kept, QA-449..453 then QA-470..474).
+* **QA-453 closed** on retest: FO-3f #1785 makes booking take PF-14's `PlatformJobs`; `check_qa453_real_jobport.ts` 2/2 (was 0/2). Row moved to `qa/BUGS-CLOSED.md`. R1.9 stays Partial in this PR's records until its re-score (next round: machine run on main's head, gate A to a queued booking reminder in `platform_jobs`, fresh reader; P-606: all of PF-14 is merged).
+* QA-452 still open: `check_qa452_jobs_observed.ts` 0/3 (code checks) on e888e0add.
+* R1.13: PF-23's CI step #1782 merged (main 456b60af); still Partial (QA-452, PF-23c).
+

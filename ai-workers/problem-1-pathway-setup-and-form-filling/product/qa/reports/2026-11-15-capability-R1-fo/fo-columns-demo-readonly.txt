@@ -1,0 +1,5 @@
+fo_lead|door|NO|USER-DEFINED
+fo_lead|person_id|NO|uuid
+fo_lead|source|NO|text
+fo_retainer_template|kind|NO|USER-DEFINED
+firms|0
