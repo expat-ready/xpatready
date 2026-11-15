@@ -90,6 +90,8 @@ model PlatformFirm {
   // back-relation slot: money (FO-7a)
 
   // back-relation slot: compliance (FO-13)
+  foConflictChecks FoConflictCheck[] // FO-13 back-relations (front-office-compliance.prisma), Lead B's OK on #1755
+  foIdentityChecks FoIdentityCheck[]
 
   // back-relation slot: register (PF-21)
   platComplaints PlatComplaint[] // platform-register.prisma
@@ -230,6 +232,9 @@ model PlatformStaff {
   // back-relation slot: money (FO-7a)
 
   // back-relation slot: compliance (FO-13)
+  foConflictChecksChecked   FoConflictCheck[] @relation("FoConflictCheckedBy") // FO-13 back-relations (front-office-compliance.prisma), Lead B's OK on #1755
+  foConflictChecksConfirmed FoConflictCheck[] @relation("FoConflictConfirmedBy")
+  foIdentityChecksChecked   FoIdentityCheck[] @relation("FoIdentityCheckedBy")
 
   // back-relation slot: register (PF-21)
   platComplaintsHandled PlatComplaint[] // platform-register.prisma (the handler)
