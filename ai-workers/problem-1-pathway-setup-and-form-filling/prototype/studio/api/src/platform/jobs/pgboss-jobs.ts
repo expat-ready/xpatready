@@ -76,6 +76,8 @@ export type PgBossJobsOptions = {
 export class PgBossJobs implements JobPort {
   readonly boss: PgBoss;
   readonly retry: RetryPolicy;
+  /** pg-boss's schema in our database (JOBS_SCHEMA unless a test names its own). */
+  readonly schema: string;
   #handlers = new Map<string, JobHandler>();
   #schedules = new Map<string, { cron: string; zone: string }>();
   #queues = new Set<string>();
@@ -94,13 +96,16 @@ export class PgBossJobs implements JobPort {
     const clock = o.boss?.clock;
     this.#now = clock ? () => clock.now() : () => Date.now();
     this.#poll = o.pollingIntervalSeconds ?? 2;
-    this.boss = new PgBoss({ connectionString: o.connectionString, schema: o.schema ?? JOBS_SCHEMA, max: 3, application_name: "xr-studio-jobs", ...o.boss });
+    this.schema = o.boss?.schema ?? o.schema ?? JOBS_SCHEMA;   // pg-boss options passed through win (they are spread last below)
+    this.boss = new PgBoss({ connectionString: o.connectionString, schema: this.schema, max: 3, application_name: "xr-studio-jobs", ...o.boss });
     // pg-boss emits "error" for background failures (maintenance, a lost connection); an EventEmitter "error" with no
     // listener would end the process, so it always has one.
     this.boss.on("error", (e) => (o.onError ?? ((x: Error) => console.error(`jobs: ${x.message}`)))(e));
   }
 
   get started() { return this.#state === "started"; }
+  /** The time pg-boss runs on, in ms (its TestClock in tests): the stuck-job check (PF-23w) reads ages by it. */
+  now(): number { return this.#now(); }
 
   /** Starts pg-boss (creating or migrating its schema), the dead-letter list, the schedules and a worker per handler
    *  registered so far. A stopped runner can start again. */
