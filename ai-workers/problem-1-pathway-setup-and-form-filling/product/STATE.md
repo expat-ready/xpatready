@@ -2,7 +2,7 @@
 
 current_lead: local_ef9b8721-fbc1-4ec4-bbde-a1f38d21b5e6 Lead 60 · 15 Nov 16:55 IST (series 2; took over from Lead 59 (series 2, local_a25b060c) at ~305k, P-446); start read ~117k (get_usage 16:56); hand over ~317k; check cron 33f6c45f at :07/:37
 
-updated: 2026-11-15 18:17 IST by **Lead 60 (series 2, local_ef9b8721-…)** · weekly 0% at 13:41 (new account, Ultra; resets 17 Nov 10:29 IST) · milestone: **Works on main 93/98 (M2 60/60, M3 27/29, M4 0/1, T 6/8)**; Release 1 6/101 at qa Works; **target 29 Nov, all 101 (P-609)** · rules: **`RULES.md`** (as of P-610) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-15 18:23 IST by **Lead 60 (series 2, local_ef9b8721-…)** · weekly 0% at 13:41 (new account, Ultra; resets 17 Nov 10:29 IST) · milestone: **Works on main 93/98 (M2 60/60, M3 27/29, M4 0/1, T 6/8)**; Release 1 6/101 at qa Works; **target 29 Nov, all 101 (P-609)** · rules: **`RULES.md`** (as of P-610) · this branch: `lead/2026-11-07-lead31`
 
 Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
@@ -28,9 +28,7 @@ Rules: RULES.md (register, as of P-615) + DECISIONS **P-616** (gate A by API for
 | A88 | 15:5x IST 15 Nov: status, "0 of 10", plan use, fix the board end to end, what needs him | done (board fixed and republished; his three non-urgent asks open); row word for word in `history/STATE-2026-11-15-1605-lead59s2-A88-row-and-board-item.md` |
 | A89 | 16:0x IST 15 Nov: do the six founder-start steps in order (AWS account, DNS, mail out of test mode, billing, Google review, Microsoft review), the Lead drives the browser and computer, he signs in, types passwords, codes and card, approves; keep pushing him whenever he is available; real integrations for critical things; what does DNS need, any smarter way | **Lead 56 (`local_119f0fcb`) drives it in its own session** (typed to it 16:04; facts from Lead B note lead-b6-outside-clocks (side-session-notes, not in git)); Lead 59 records and nudges, ticks as Lead 56 reports. DNS found on Cloudflare (registrar GoDaddy, mail on Google Workspace): Lead 56 plans staging delegated to Route 53 now and the full move before the first real firm; Lead 59 suggested keeping Cloudflare for the root: his call at step 2 |
 
-| A90 | 18:1x IST 15 Nov: check every system and every lane (cloud through claude.ai in the browser pane), what works and what doesn't, which decisions and approvals need him, the questions, the speed, is the board and Library work done and reviewed several times, clean stale lanes | in progress (Lead 60) |
-| A91 | 18:1x IST 15 Nov: many rules not enforced or picked up; are the 30-minute checks running; the board and progress were to be watched and fixed proactively, nothing seen solved; a way to see progress; is merging partials and fixing after the industry way; our speed, run rate, expectation per day per capability | in progress (Lead 60) |
-| A92 | 18:3x IST 15 Nov: who is responsible for the whole pipeline, discussions, decisions, rules and workflow being followed (the Lead); what is missing; are we set up to best-in-class practice; find how the industry manages this, from standard practice and documentation, and build the same, so these silly mistakes stop | answered by Lead 60 (owner: the Lead); plan proposed, waits on his go |
+| A90-A92 | 18:1x-18:3x IST 15 Nov: check every lane and system; rules not enforced, checks, progress view, speed and partials; who enforces the pipeline and best practice | A90 done (sweep 18:1x); A91 answered; A92 answered (the Lead owns it), enforcement plan waits on his go; rows word for word in `history/STATE-2026-11-15-1823-lead60s2-founder-asks-A90-A92.md` |
 ## For the founder (P-390)
 F2, F8 closed by Lead 52 09:1x 15 Nov (before: "F2, F8 open (demo looks)"; they were looks on the demo with no decision, P-486); F14-F19 ruled; word for word in `history/STATE-2026-11-14-1700-lead46s2-for-founder-and-leads-lines.md`.
 
