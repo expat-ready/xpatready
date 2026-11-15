@@ -13,7 +13,7 @@ The tech lead keeps this list. **No secrets, no names, no email addresses, no ac
 | 7 | Cloudflare · expatready.com DNS | site, mail and staging addresses | **a third party** | unknown | unknown | founder gets Administrator access before launch | risk |
 | 8 | Google Workspace · company mailbox | company email | **managed by a third party's Workspace** | unknown | unknown | Expat Ready's own Workspace, or admin rights, before launch | risk |
 | 9 | GoDaddy · expatready.com registrar | domain ownership | to confirm | unknown | unknown | confirm the registrant is Expat Ready | risk |
-| 10 | Microsoft · Partner Center / Entra | Microsoft calendar sign-in | founder | to set | to set | needs company documents; not started | not started |
+| 10 | Microsoft · Partner Center / Entra | Microsoft calendar sign-in | founder | to set | to set | deferred (P-621): Google only at this stage | deferred |
 | 11 | GitHub · the repository | code and records | founder | to confirm | GitHub recovery codes | recovery codes in the manager | active |
 | 12 | Claude accounts (A1, A2) | the build team | founder | to confirm | provider recovery | note which account holds the board link | active |
 
