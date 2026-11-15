@@ -62,3 +62,7 @@ Read: `git diff d53843344 042b60cf1`. The code changes are in `public.controller
 Journey re-score: task completed, plain words, feedback and state, and error recovery go from ½ to 1 (the 500 and the `.ics` download on a 404 are gone). The score is now **9/10**, a pass with no 0. Accessibility and visual quality stay ½ (N/A, no screen: FO-3w).
 
 Verdict: Approve 042b60cf1922e8584d0058d0d04f852630d0f111
+
+Approve 08576c9b389e4f30d695bee0d16bc627b76a5c70 (records only since 042b60cf1)
+
+Verdict: Approve 08576c9b389e4f30d695bee0d16bc627b76a5c70
