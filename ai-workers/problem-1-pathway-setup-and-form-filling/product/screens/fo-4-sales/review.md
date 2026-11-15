@@ -72,3 +72,21 @@ Copy :4524 (head merged with FO-2 `ceda426a9`, `PLATFORM_IDENTITY=local`). The b
 **Carried Minors 6, 7 and 9-12:** none blocking. They are listed in the PR body as carried; 9 and 10 belong with FO-2 part 2/3 routes. Add r1-r4 to that list.
 
 **Re-review verdict: Approve ff9c21216b98b1ba63170e396ff2a64d50587454**
+
+## Re-review 2 (P-277), 15 Nov 2026: `8b71874ff..2783e8edc904cd2ab91536ba637653ed45c74202`, diff only
+* **8b71874ff is a records-only commit after my Approve of ff9c21216:** break-report and review.md, nothing else.
+* **Merge 6e3c24696 is pure.** Its parents are 8b71874ff and `2a9ed28c0`, which is on `origin/main`.
+  * `git diff 6e3c24696^2 6e3c24696` holds only this PR's 21 files (the FO-4 web module, its test and its records), so the merge changed nothing of main's.
+  * `git diff 6e3c24696^1 6e3c24696` touches no FO-4 file; under the sales paths it brings in only FO-2's `api/src/front-office/sales/*`.
+  * `git diff 8b71874ff 2783e8edc` on `modules/front-office/` and `check_fo4_sales_browser.ts` is empty, so the screen code and test I approved are unchanged.
+* **FO-2 as merged against `ceda426a9`, which I walked:** the response shapes are the same, so the zod contract still holds. The only behaviour change is in Take it's race answer. A person who may see Unassigned leads now always hears "<name> already has this lead." where before they could get 404. That closes my Minor 4 at the API.
+* **5eeda790e, the web-shell `MODULE.md` card.** It adds one invariant, one test name and one "Do not" clause, and all three are true of the code:
+  * Staff calls go only through `staffApi`/`useMe` in `sales/session.ts`, and no `api(...)` from `lib/api.ts` is used. The only imports from `lib/api.ts` are `queryClient` and `useToast`, not route calls.
+  * `setStaffToken` drops `["fo"]`.
+  * `check_fo4_sales_browser.ts` exists.
+  * `module-cards.py pr` on the PR's changed files with its body gives `PASS module cards: 1 module(s) touched, 14 cards`.
+* **2783e8edc** changes five screenshots only.
+* **Not re-run by me:** the suites. My :4524 copy is gone, and the FO-4 code is unchanged since my walk. I take the builder's 42/42 (`check_fo4_sales_browser.ts`) and 28/28 (`check_pf1_module_routes.ts`) on fresh copies against main. Those result lines are not yet pasted in the PR, which brief rule rev 16 asks for before the label. CI's `module-cards` was still running on this head when I looked.
+* **Carried Minors** (6, 7, 9-12, r1-r4): unchanged, none blocking. Minor 4 is now also fixed at the API, as above.
+
+**Re-review 2 verdict: Approve 2783e8edc904cd2ab91536ba637653ed45c74202**
