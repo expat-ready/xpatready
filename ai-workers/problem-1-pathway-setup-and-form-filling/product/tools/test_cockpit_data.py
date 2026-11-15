@@ -1568,6 +1568,16 @@ class BehaviourPartsCustomer(unittest.TestCase):
         self.assertEqual((a["value"], a["day"], a["today_so_far"], a["undated"], a["mean_7d"]), (3, "2026-11-19", 1, 3, 0.7))
         self.assertEqual([x["count"] for x in a["series"]], [0, 0, 0, 0, 1, 3, 1])
         self.assertIsNone(run(snap_with(drop=["files/" + cd.REL + "/STATE.md"]))[1]["behaviour"]["founder_asks_day"]["value"])
+        # review Major 1: the fixture table is split by a blank line after A3 (live STATE.md after A82); both scripts read past it,
+        # an impossible day ("31 Nov") is no date, and a repeated id counts once
+        st = cd.Snap(FIX).file("STATE.md").replace("| A8 | 18:0x (18 Nov, spoken) older | done |\n",
+                                                   "| A8 | 18:0x (18 Nov, spoken) older | done |\n| A4, A9 | 19 Nov again; 31 Nov typo | done |\n")
+        d = snap_with({"files/" + cd.REL + "/STATE.md": st})
+        self.assertEqual(run(d)[1]["behaviour"]["founder_asks_day"]["value"], 4)          # A4-A6 and A9
+        rec = json.loads(subprocess.run([sys.executable, "-I", os.path.join(HERE, "cockpit-reconcile.py"), d],
+                                        capture_output=True, text=True, timeout=300).stdout)["numbers"]
+        self.assertEqual(rec["founder_asks_day"]["value"], 4)
+        self.assertIsNone(cd.day_of("31 Nov typo; 40 Decisions", date(2026, 11, 20)))
 
     def test_rules_changes_a_day(self):
         r = run()[1]["behaviour"]["rules_changes_day"]

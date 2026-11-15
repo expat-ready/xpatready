@@ -1039,10 +1039,13 @@ def compute(snap):
     mon = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
 
     def first_date(txt):
-        for d_, m_ in re.findall(r"(?<!\d)(\d{1,2}) ([A-Z][a-z]{2})", txt or ""):
+        for d_, m_ in re.findall(r"(?<!\d)(\d{1,2}) ([A-Z][a-z]{2})[a-z]*\b", txt or ""):
             if m_.lower() in mon:
                 y = today.year if (mon[m_.lower()], int(d_)) <= (today.month, today.day) else today.year - 1
-                return dt.date(y, mon[m_.lower()], int(d_))
+                try:
+                    return dt.date(y, mon[m_.lower()], int(d_))
+                except ValueError:          # "31 Nov", "40 Decisions": not a date
+                    continue
         return None
     part_ids = []
     for r in rows:
@@ -1060,12 +1063,15 @@ def compute(snap):
         N["founder_asks_day"] = num(None, "not measured: STATE.md missing")
     else:
         sec = re.search(r"^## Founder asks[^\n]*\n(.*?)(?=^## |\Z)", st_text, re.M | re.S)
-        n = 0
-        for _, header, body in tables(sec.group(1) if sec else ""):
-            for rc in body:
-                if len(rc) >= 2 and first_date(rc[1]) == yday:
-                    for a, b in re.findall(r"\b[AS](\d+)(?:-[AS]?(\d+))?\b", rc[0]):
-                        n += int(b or a) - int(a) + 1
+        seen = set()
+        for ln in (sec.group(1) if sec else "").splitlines():     # every table line of the section: a blank line may split the table
+            rc = cells(ln)
+            if not rc or len(rc) < 2 or is_sep(rc) or clean(rc[0]) == "#":
+                continue
+            if first_date(rc[1]) == yday:
+                for pre, a, b in re.findall(r"\b([AS])(\d+)(?:-[AS]?(\d+))?\b", rc[0]):
+                    seen.update("%s%d" % (pre, k) for k in range(int(a), int(b or a) + 1))
+        n = len(seen)
         N["founder_asks_day"] = num(n, "ask ids of Founder asks rows whose Ask cell names yesterday (IST)")
     rl = snap.text("git/rules_log.jsonl")
     N["rules_changes_day"] = num(None, "not measured: no git/rules_log.jsonl") if rl is None else \
@@ -1095,7 +1101,7 @@ def compute(snap):
     N["launch_total"] = num(len(lc) if ck_text is not None else None, "section C rows")
     N["launch_done"] = num(sum(1 for rc in lc if len(rc) > 2 and clean(rc[2]).lower().startswith("done")) if lc else None,
                            "section C rows whose status starts with Done")
-    N["counsel_open"] = num(sum(1 for rc in lc if re.search(r"counsel|immigration expert", " ".join(rc[1:3]), re.I)
+    N["counsel_open"] = num(sum(1 for rc in lc if re.search(r"\b(?:counsel|immigration expert)\b", " ".join(rc[1:3]), re.I)
                                 and not clean(rc[2]).lower().startswith("done")) if lc else None,
                             "section C rows naming counsel or the immigration expert, not Done")
 

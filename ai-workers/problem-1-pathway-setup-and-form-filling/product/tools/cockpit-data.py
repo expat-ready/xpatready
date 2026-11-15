@@ -683,17 +683,20 @@ def works_count(caps):
 DAY_MON = re.compile(r"\b(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\b")
 ASK_ID = re.compile(r"\b([AS])(\d+)(?:-[AS]?(\d+))?\b")
 TARGET_WORD = re.compile(r"\btarget\b", re.I)
-TARGET_VALUE = re.compile(DAY_MON.pattern + r"|\b\d+ (?:capabilities|capability|Build rows|rows)\b")
+TARGET_VALUE = re.compile(DAY_MON.pattern + r"|(?i:\b\d+ (?:capabilit|build rows|rows))")
 TARGET_KEPT = re.compile(r"\b(kept|stands|unchanged)\b", re.I)
 
 
 def day_of(text, today):
     """The first "15 Nov" in a text as a date (the year that keeps it on or before today); None when the text has none."""
-    m = DAY_MON.search(text or "")
-    if not m:
-        return None
-    d = date(today.year, MONTHS[m.group(2).lower()], int(m.group(1)))
-    return d if d <= today else date(today.year - 1, d.month, d.day)
+    for m in DAY_MON.finditer(text or ""):
+        mo, dy = MONTHS[m.group(2).lower()], int(m.group(1))
+        y = today.year if (mo, dy) <= (today.month, today.day) else today.year - 1
+        try:
+            return date(y, mo, dy)
+        except ValueError:                  # "31 Nov", "40 Decisions": not a date, read on
+            continue
+    return None
 
 
 def ask_ids(cell):
@@ -2872,17 +2875,18 @@ def build_explain(d):
         up + " Parts merge before a capability is built: this moves every day even when 'built' does not.", pm, n_override=pm.get("total"))
     B_ = d.get("behaviour") or {}
     fa, rc, tc = B_.get("founder_asks_day") or {}, B_.get("rules_changes_day") or {}, B_.get("target_changes_week") or {}
+    nm_ = lambda x, k: str(x.get(k)) if x.get(k) is not None else "not measured"
     put("behaviour.asks", "Your asks a day", "Ask ids in STATE.md's Founder asks table dated on the last full IST day (a row 'A49-A67' counts 19); "
-        "today so far: " + str(fa.get("today_so_far")) + "; mean of the 6 days before today: " + str(fa.get("mean_7d")) + ".",
-        "IST day " + str(fa.get("day")) + " (00:00 to 24:00); " + str(fa.get("undated")) + " older asks carry no date and are left out",
+        "today so far: " + nm_(fa, "today_so_far") + "; mean of the 6 days before today: " + nm_(fa, "mean_7d") + ".",
+        ("IST day " + str(fa.get("day")) + " (00:00 to 24:00); " + str(fa.get("undated")) + " older asks carry no date and are left out") if val(fa) is not None else "not measured",
         val(fa), "asks that day", "Neither good nor bad by itself: many asks a day split the Leads' time between asks and building.", fa)
     put("behaviour.rules", "Rule changes a day", "Commits that change RULES.md (the rules in force) on the records branch, on the last full IST day; "
-        "today so far: " + str(rc.get("today_so_far")) + "; mean of the 6 days before today: " + str(rc.get("mean_7d")) + ".",
-        "IST day " + str(rc.get("day")) + " (00:00 to 24:00), git log", val(rc), "commits that day",
+        "today so far: " + nm_(rc, "today_so_far") + "; mean of the 6 days before today: " + nm_(rc, "mean_7d") + ".",
+        ("IST day " + str(rc.get("day")) + " (00:00 to 24:00), git log") if val(rc) is not None else "not measured", val(rc), "commits that day",
         down + " Each change is re-read by every Lead and lane before work.", rc)
     put("behaviour.targets", "Target changes a week", "DECISIONS.md rows dated in the last 7 IST days whose bold text has a clause naming a target with a date or a "
         "count, not kept or standing: " + (", ".join(tc.get("ids") or []) or "none") + ".",
-        "7 IST days " + str((tc.get("window") or {}).get("from")) + " to " + str((tc.get("window") or {}).get("to")), val(tc), "target changes",
+        ("7 IST days " + str((tc.get("window") or {}).get("from")) + " to " + str((tc.get("window") or {}).get("to"))) if val(tc) is not None else "not measured", val(tc), "target changes",
         down + " A moved target resets the pace line the board measures against.", tc)
     cu = d.get("customer") or {}
     put("customer.firm", "First firm", "The first real firm (named by role) and its date, from cockpit/plan.json first_firm.", "the records at " + t_ist,
