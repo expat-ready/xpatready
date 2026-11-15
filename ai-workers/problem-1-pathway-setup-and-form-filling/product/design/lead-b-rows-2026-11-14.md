@@ -1029,3 +1029,12 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
 * **Named tests now:** a Case Manager gets READ_ONLY and BILLING_FINANCE members too (no deactivated or suspended person); a Case Officer gets []; assigning to a READ_ONLY member returns 200; firm A never lists firm B.
 * **FO-4 DW17** is corrected to match.
 * **The lesson (Lead B):** read the newest snapshot (`requirements-2026-11-02`) for every PF/FO rule before ruling. Rev 16.21 was ruled from the row text alone.
+
+## Rev 16.30 (15 Nov 22:3x IST, Lead B (6)): FO-3pa cancel reason kept on the booking (#1830, comment 6898083510)
+* **This supersedes rev 16.23's "cancel reason: audit only".** FO-3pa's migration adds `fo_booking.cancel_reason text NULL`, checked by `char_length <= 500`.
+  - Only the booker's cancel writes it, in the transaction that sets CANCELLED.
+  - The audit summary says only "Consultation cancelled by the booker." and, when there is a reason, "A reason was given.". The reason's text never goes in the audit entry.
+  - `cancelled_at` is not added (not asked; the audit line has the time).
+* **Source:** AG-04 v2.1 (25 Oct), the `Booking` entity "`cancelReason`?", and the manage-link card's rule 8 ("an optional reason"). AGENTS rule 2 makes this a correction, not a founder question.
+* **The shared schema file** stays under Lead 59's P-600 exception (FO-3sa #1828 adds `overlap_confirmed_by_user_id` to the same `fo_booking`). Whichever merges second re-stamps its migration.
+* **New DW10** (pass and fail): a reason is stored, no reason stores NULL, 501 characters returns 400 with the booking unchanged, and the audit entry holds no part of the reason's text.
