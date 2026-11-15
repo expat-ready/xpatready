@@ -25,7 +25,7 @@ import { ComplaintClosed, ComplaintReceived, EVENT } from "../../../../ports/eve
 import type { StaffContext } from "../../../../ports/staff.ts";
 import { firmScope } from "../firm-scope.ts";
 import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE } from "../settings.ts";
-import { acknowledgeBy, type FirmCalendar } from "./business-days.ts";
+import { acknowledgeBy, businessDaysBetween, localDate, type FirmCalendar } from "./business-days.ts";
 
 export const COMPLAINT_KEYS = { record: "agent/complaint:record", read: "agent/complaint:read" } as const;
 export const ACK_REMINDER_JOB = "platform.complaint.ack_reminder";
@@ -119,13 +119,43 @@ function parse<T extends z.ZodType>(schema: T, input: unknown): z.output<T> {
 }
 
 // ------------------------------------------------------------------------------------------------------------- views
-export type ComplaintView = Omit<PlatComplaint, "firmId"> & { overdue: boolean; events?: Omit<PlatComplaintEvent, "firmId" | "seq">[]; reminderScheduled?: boolean };
-export type ComplaintPage = { items: ComplaintView[]; next: string | null };
+/** PF-21v: what the screen shows without working it out itself (STANDARDS §7). `businessDaysLeft`: for an open, not
+ *  acknowledged complaint, the business days from today to its acknowledge-by day (0: due today), or, once overdue,
+ *  minus the business days it is late, at least 1 (so the sign always agrees with `overdue`); null once acknowledged or
+ *  closed. `people`: the display name of every staff id in the answer (handler, recorder, event actors, a handler
+ *  change's from and to; staff of any status; names only), keyed by the bare id (an actor "staff:<id>" is <id>).
+ *  `firmTimeZone`: the firm's zone setting. */
+export type ComplaintView = Omit<PlatComplaint, "firmId"> & { overdue: boolean; businessDaysLeft: number | null; events?: Omit<PlatComplaintEvent, "firmId" | "seq">[]; reminderScheduled?: boolean };
+export type People = Record<string, string>;
+export type ComplaintPage = { items: ComplaintView[]; next: string | null; people: People; firmTimeZone: string };
+export type ComplaintDetail = ComplaintView & { people: People; firmTimeZone: string };
+export type HandlerChoices = { items: { id: string; displayName: string }[] };
 const isOverdue = (c: PlatComplaint, now: Date) => c.status === "OPEN" && !c.acknowledgedAt && now > c.acknowledgeBy;
-const view = (c: PlatComplaint, now: Date, events?: PlatComplaintEvent[]): ComplaintView => {
+/** One request's calendar and the day answers its rows share (the settings are read once per request). */
+type Days = { cal: FirmCalendar; seen: Map<string, Date | null> };
+function daysLeft(c: PlatComplaint, now: Date, d: Days): number | null {
+  if (c.status !== "OPEN" || c.acknowledgedAt) return null;
+  if (isOverdue(c, now)) return -Math.max(1, businessDaysBetween(d.cal, c.acknowledgeBy, now, d.seen));
+  return businessDaysBetween(d.cal, now, c.acknowledgeBy, d.seen);
+}
+const view = (c: PlatComplaint, now: Date, d: Days, events?: PlatComplaintEvent[]): ComplaintView => {
   const { firmId: _f, ...rest } = c;
-  return { ...rest, overdue: isOverdue(c, now), ...(events ? { events: events.map(({ firmId: _ef, seq: _s, ...e }) => e) } : {}) };
+  return { ...rest, overdue: isOverdue(c, now), businessDaysLeft: daysLeft(c, now, d), ...(events ? { events: events.map(({ firmId: _ef, seq: _s, ...e }) => e) } : {}) };
 };
+/** The staff ids an answer names: the handler, the recorder and each staff actor ("staff:<id>"), and a handler
+ *  change's from and to. A system actor is not staff. */
+function staffIdsIn(c: PlatComplaint, events: PlatComplaintEvent[] = []): string[] {
+  const out = [c.handlerStaffId];
+  const actor = (a: string) => { const m = /^staff:(.+)$/.exec(a); if (m && isUuid(m[1])) out.push(m[1].toLowerCase()); };
+  actor(c.recordedBy);
+  for (const e of events) {
+    actor(e.actor);
+    if (e.kind === "HANDLER_CHANGED" && e.detail && typeof e.detail === "object" && !Array.isArray(e.detail)) {
+      for (const k of ["from", "to"] as const) { const v = (e.detail as Record<string, unknown>)[k]; if (isUuid(v)) out.push(v.toLowerCase()); }
+    }
+  }
+  return out;
+}
 /** A list cursor: the last row's sort date and id, opaque to the caller. */
 const cursorOf = (at: Date, id: string) => Buffer.from(`${at.toISOString()}|${id}`).toString("base64url");
 function readCursor(s: unknown): { at: Date; id: string } {
@@ -154,6 +184,15 @@ export class ComplaintsService {
   /** Act: the handler, or someone who holds both keys. */
   private canAct = (ctx: StaffContext, c: PlatComplaint) => this.handles(ctx, c) || (this.has(ctx, COMPLAINT_KEYS.read) && this.has(ctx, COMPLAINT_KEYS.record));
   private actor = (ctx: StaffContext) => `staff:${ctx.staffId.toLowerCase()}`;
+
+  /** The names behind the staff ids of rows the reader may already see: one read, the firm's staff of any status. */
+  private async people(firmId: string, ids: string[]): Promise<People> {
+    const want = [...new Set(ids)];
+    if (!want.length) return {};
+    const rows = await this.d.db.platformStaff.findMany({ where: firmScope(firmId, { id: { in: want } }), select: { id: true, displayName: true } });
+    return Object.fromEntries(rows.map((r) => [r.id, r.displayName]));
+  }
+  private async days(db: Tx | PrismaClient, firmId: string): Promise<Days> { return { cal: await this.calendar(db, firmId), seen: new Map() }; }
 
   private async calendar(db: Tx | PrismaClient, firmId: string): Promise<FirmCalendar> {
     return {
@@ -202,7 +241,7 @@ export class ComplaintsService {
     let reminderScheduled = true;
     const recorded = await this.commit(async (tx, after) => {
       if (!(await this.activeStaff(tx, firmId, v.handlerStaffId))) fieldErrors({ handlerStaffId: "choose an active staff member of your firm" });
-      const due = acknowledgeBy(v.receivedAt, await this.calendar(tx, firmId));
+      const days = await this.days(tx, firmId), due = acknowledgeBy(v.receivedAt, days.cal);
       const c = await tx.platComplaint.create({ data: {
         firmId, subjectKind: v.subjectKind, subjectId: v.subjectId ?? null, complainantName: v.complainantName ?? null, complainantContact: v.complainantContact ?? null,
         receivedAt: v.receivedAt, channel: v.channel, category: v.category, summary: v.summary, handlerStaffId: v.handlerStaffId,
@@ -212,18 +251,19 @@ export class ComplaintsService {
       await this.d.audit.record(tx, { firmId, actor: this.actor(ctx), action: "complaint.record", entity: "plat_complaint", entityKey: c.id, summary: `Complaint recorded (${v.category.toLowerCase()}, by ${v.subjectKind.toLowerCase().replace(/_/g, " ")}); acknowledge by ${due.toISOString()}`, detail: { complaintId: c.id, subjectKind: v.subjectKind, subjectId: v.subjectId ?? null, handlerStaffId: v.handlerStaffId } });
       await outbox(tx, c, ComplaintReceived.parse({ type: EVENT.COMPLAINT_RECEIVED, firmId, complaintId: c.id, subjectKind: c.subjectKind, subjectId: c.subjectId, receivedAt: c.receivedAt.toISOString() }));
       after.push(() => this.d.jobs.schedule(ACK_REMINDER_JOB, due, { firmId, complaintId: c.id }, { key: ackReminderKey(c.id), firmId }).then(() => undefined, () => { reminderScheduled = false; }));
-      return view(c, now);
+      return view(c, now, days);
     });
     return { ...recorded, reminderScheduled };
   }
 
   /** One complaint with its events in order, for a person who may read it; otherwise the same 404 as another firm's. */
-  async get(ctx: StaffContext, id: string): Promise<ComplaintView> {
+  async get(ctx: StaffContext, id: string): Promise<ComplaintDetail> {
     if (!isUuid(id)) return notFound();
     const c = await this.d.db.platComplaint.findFirst({ where: firmScope(ctx.firmId, { id: id.toLowerCase() }) });
     if (!c || !this.canRead(ctx, c)) return notFound();
     const events = await this.d.db.platComplaintEvent.findMany({ where: firmScope(ctx.firmId, { complaintId: c.id }), orderBy: { seq: "asc" } });
-    return view(c, this.d.clock.now(), events);
+    const days = await this.days(this.d.db, ctx.firmId);
+    return { ...view(c, this.d.clock.now(), days, events), people: await this.people(ctx.firmId, staffIdsIn(c, events)), firmTimeZone: days.cal.zone };
   }
 
   /** The list, a page at a time (`next` is the cursor of the next page, null at the end): open, closed or all newest
@@ -245,8 +285,19 @@ export class ComplaintsService {
       orderBy: byDue ? [{ acknowledgeBy: "asc" }, { id: "asc" }] : [{ receivedAt: "desc" }, { id: "asc" }],
       take: limit + 1,
     });
-    const items = rows.slice(0, limit), last = items.at(-1);
-    return { items: items.map((c) => view(c, now)), next: rows.length > limit && last ? cursorOf(byDue ? last.acknowledgeBy : last.receivedAt, last.id) : null };
+    const items = rows.slice(0, limit), last = items.at(-1), days = await this.days(this.d.db, ctx.firmId);
+    return {
+      items: items.map((c) => view(c, now, days)), next: rows.length > limit && last ? cursorOf(byDue ? last.acknowledgeBy : last.receivedAt, last.id) : null,
+      people: await this.people(ctx.firmId, items.flatMap((c) => staffIdsIn(c))), firmTimeZone: days.cal.zone,
+    };
+  }
+
+  /** PF-21v: who can be made handler (key agent/complaint:record): the firm's active staff, by name then id; the id and
+   *  the name only. */
+  async handlers(ctx: StaffContext): Promise<HandlerChoices> {
+    if (!this.has(ctx, COMPLAINT_KEYS.record)) problem(403, "not-allowed", "Not allowed", "Choosing a handler needs the permission to record complaints.");
+    const items = await this.d.db.platformStaff.findMany({ where: firmScope(ctx.firmId, { status: "ACTIVE" as const }), select: { id: true, displayName: true }, orderBy: [{ displayName: "asc" }, { id: "asc" }] });
+    return { items };
   }
 
   /** One change to a complaint by a person who may act on it: lock, check, event, row, audit — one transaction; its
@@ -260,7 +311,7 @@ export class ComplaintsService {
       const r = await act(tx, c, after);
       await this.d.audit.record(tx, { firmId, actor: this.actor(ctx), action: r.action, entity: "plat_complaint", entityKey: c.id, summary: r.summary, detail: { complaintId: c.id, ...(r.detail ?? {}) } });
       if (r.event) await outbox(tx, c, r.event);
-      return view((await tx.platComplaint.findFirst({ where: firmScope(firmId, { id: c.id }) }))!, this.d.clock.now());
+      return view((await tx.platComplaint.findFirst({ where: firmScope(firmId, { id: c.id }) }))!, this.d.clock.now(), await this.days(tx, firmId));
     });
   }
 
