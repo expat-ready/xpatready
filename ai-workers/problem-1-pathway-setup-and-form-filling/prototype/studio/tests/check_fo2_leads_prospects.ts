@@ -100,6 +100,12 @@ try {
   const old = await refusal(() => forms.submit(tokenA, { submissionId: before.submissionId, loadStamp: before.loadStamp, ...lena }, req()));
   ok("FO-2 fail: after a restart, or a day later, a person's post is told to reload (never a silent thank-you), nothing stored",
     lost?.status === 400 && lost.body.detail === "This page is out of date. Please reload it and send the form again." && old?.body.code === "RELOAD" && count("fo_lead") === leadsBefore, [lost, old]);
+  const shown = await drawn();
+  const w2 = await db.$transaction((tx) => consent.publishWording(tx, { firmId: A, channel: "EMAIL", purpose: "MARKETING", locale: "en", text: "New wording (Sample).", by: "seed:FO-2-test" }));
+  sql(`update fo_web_form set consent_wording_version_id = '${w2.id}' where firm_id = '${A}'`);
+  const swapped = await refusal(() => forms.submit(tokenA, { submissionId: shown.submissionId, loadStamp: shown.loadStamp, ...lena }, req()));
+  sql(`update fo_web_form set consent_wording_version_id = '${wording.id}' where firm_id = '${A}'`);
+  ok("FO-2 fail (Devin): the form's wording changed after the page was drawn → reload; no consent for wording the visitor never saw", swapped?.body.code === "RELOAD" && count("msg_consent", `wording_id = '${w2.id}'`) === 0, swapped);
   ok("FO-2 fail (break m1): a bad body is refused at the field whether sent fast or slow (a bot learns nothing from the order)",
     (await refusal(async () => { const q = await forms.read(tokenA, req()); return forms.submit(tokenA, { submissionId: q.submissionId, loadStamp: q.loadStamp, givenNames: "Nobody" }, req()); }))?.status === 422);
 
@@ -185,6 +191,8 @@ try {
   const utm = await leads.read(R, sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'utm@example.org'`)) as { attribution: Record<string, string> | null };
   ok("FO-2 pass: attribution present on a form lead (campaign and landing page), one write-once row", utm.attribution?.utmCampaign === "spring" && utm.attribution.landingPage === "https://maple.example/lmia" && count("fo_lead_attribution") === 1, utm);
   ok("FO-2 fail: a lead that arrived with no campaign facts has no attribution (nothing guessed)", ((await leads.read(R, anaLead)) as { attribution: unknown }).attribution === null);
+  await post({ givenNames: "Long", email: "long@example.org", attribution: { landingPage: `https://maple.example/?q=${"x".repeat(2100)}` } });
+  ok("FO-2 pass (Devin): a captured landing page over 2,000 characters is cut to length, the enquiry kept", sql(`select length(a.landing_page) from fo_lead_attribution a join fo_lead l on l.id = a.lead_id join fo_person p on p.id = l.person_id where p.email = 'long@example.org'`) === "2000");
   ok("FO-2 fail: an attribution field outside the list → refused", (await refusal(() => post({ givenNames: "X", email: "x@example.org", attribution: { fbp: "1" } })))?.status === 400);
 
   // ------------------------------------------------------------------------------------------- lists and visibility
@@ -225,7 +233,7 @@ try {
   }
   ok("FO-2 fail (break M2, review m6): 6 races of two Take it: exactly one wins each, the other gets 409 naming the owner", wins === 6 && named === 6, { wins, named });
   const late = await refusal(() => leads.take(T, sql(`select id from fo_lead where owner_staff_id = '${O.staffId}' limit 1`)));
-  ok("FO-2 fail (review m6): a later Take it on a lead the person cannot see → 409 naming the owner, not 404", late?.status === 409 && late.body.detail === "Case officer (Sample) already has this lead.", late);
+  ok("FO-2 fail (Devin security): Take it on a lead the person could not see → 404, no owner named", late?.status === 404 && !JSON.stringify(late.body).includes("Case officer"), late);
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
 
   // Firm A and firm B.

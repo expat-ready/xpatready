@@ -24,8 +24,7 @@ export type SalesPorts = {
   publicOrigin?: string;
   limits?: Partial<typeof LIMITS>;
 };
-/** AG-2-49 rule 1 (starting defaults, "the tests check these defaults"), rule 2 (32 KB), rule 3 (2 seconds). Reads are
- *  limited per address only (a per-firm read cap let a few addresses close a firm's page, FO-3 break R2-1). */
+/** AG-2-49 rules 1-3 (its own defaults); reads limited per address only (FO-3 break R2-1). */
 export const LIMITS = { postsPerIp: 30, postsPerForm: 60, readsPerIp: 120, windowSeconds: 60, minFillSeconds: 2, maxBytes: 32 * 1024, stampHours: 24 };
 
 const unavailable = () => problem(404, "Not available", "This form is not available.", { code: "FORM_NOT_AVAILABLE" });
@@ -73,7 +72,7 @@ export class PublicForms {
       name: form.name, thankYouText: form.thankYouText,
       fields: ["givenNames", "familyName", "email", "phone", "interestedIn", "message", "consent"],
       interestedIn: services, consentText: wording?.text ?? null,
-      submissionId, loadStamp: this.stamp(form.id, submissionId, this.now()),
+      submissionId, loadStamp: this.stamp(form.id, submissionId, this.now(), form.consentWordingVersionId),
     };
   }
 
@@ -106,10 +105,8 @@ export class PublicForms {
     }
     if (b.consent !== undefined && typeof b.consent !== "boolean") return badBody();
     const attribution = attributionOf(b.attribution);
-    // After the field checks, so a bot learns nothing from the order (break m1). The honeypot or a fill faster than a person
-    // → answered like anyone else, nothing stored (AG-2-49 rules 3, 7). A stamp not ours (this process's key changed, or a
-    // forgery) or older than a day → "reload", so a real visitor's enquiry is never lost silently (break M1).
-    const stamp = this.stampOf(form.id, b.submissionId, b.loadStamp);
+    // After the field checks (break m1): honeypot or too fast → thanks, nothing stored; a stamp not ours or a day old → reload (break M1).
+    const stamp = this.stampOf(form.id, b.submissionId, b.loadStamp, form.consentWordingVersionId);   // a changed wording → reload (Devin)
     if (stamp === "stale") return problem(400, "Not sent", "This page is out of date. Please reload it and send the form again.", { code: "RELOAD" });
     if ((b.website !== undefined && b.website !== "") || stamp === "fast") return thanks;
     const wording = b.consent === true && form.consentWordingVersionId
@@ -144,22 +141,20 @@ export class PublicForms {
     if (this.hits.size > 50_000) for (const [k, v] of this.hits) if (!v.some((t) => t > since)) this.hits.delete(k);
   }
 
-  /** `<ms>.<hmac>` over the form, the submission id and the time the form was drawn. */
-  stamp(formId: string, submissionId: string, at: number) { return `${at}.${this.mac(formId, submissionId, String(at))}`; }
-  private mac(formId: string, submissionId: string, ms: string) { return createHmac("sha256", this.key).update(`${formId}|${submissionId.toLowerCase()}|${ms}`).digest("base64url"); }
-  private stampOf(formId: string, submissionId: string, stamp: string): "ok" | "fast" | "stale" {
+  /** `<ms>.<hmac>` over the form, the submission id, the time the form was drawn and the consent wording it showed. */
+  stamp(formId: string, submissionId: string, at: number, wording: string | null) { return `${at}.${this.mac(formId, submissionId, String(at), wording)}`; }
+  private mac(formId: string, sub: string, ms: string, wording: string | null) { return createHmac("sha256", this.key).update(`${formId}|${sub.toLowerCase()}|${ms}|${wording ?? ""}`).digest("base64url"); }
+  private stampOf(formId: string, submissionId: string, stamp: string, wording: string | null): "ok" | "fast" | "stale" {
     const [ms, mac, extra] = stamp.split(".");
     if (!/^\d{1,15}$/.test(ms ?? "") || !mac || extra !== undefined) return "stale";
-    const want = Buffer.from(this.mac(formId, submissionId, ms)), have = Buffer.from(mac);
+    const want = Buffer.from(this.mac(formId, submissionId, ms, wording)), have = Buffer.from(mac);
     if (have.length !== want.length || !timingSafeEqual(have, want)) return "stale";
     const age = this.now() - Number(ms);
     return age > this.limits.stampHours * 3_600_000 ? "stale" : age < this.limits.minFillSeconds * 1000 ? "fast" : "ok";
   }
 }
 
-/** AG-2-49 rule 2: the door's own JSON parser, registered before the app-wide one (the one-line hook in main.ts): a
- *  body over 32 KB is refused as it is read (413), so neither the app's 5 MB parser nor the handler ever sees it; a
- *  parsed body is left as it is for the app's parser (body-parser skips a request it has read). */
+/** AG-2-49 rule 2: the door's own 32 KB JSON parser before the app's 5 MB one (main.ts hook): refused as it is read. */
 export function publicFormBodyLimit(app: Pick<express.Express, "use"> | Pick<NestExpressApplication, "use">) {
   (app as Pick<express.Express, "use">).use("/api/public/forms", express.json({ limit: LIMITS.maxBytes }), (err: { type?: string }, _req: Request, res: Response, next: NextFunction) => {
     if (err?.type !== "entity.too.large") return next(err);
@@ -167,7 +162,7 @@ export function publicFormBodyLimit(app: Pick<express.Express, "use"> | Pick<Nes
   });
 }
 
-/** The CSP that lets only the firm's allowed sites (and our own page) show the form in a frame (AG-2-49 rule 4). */
+/** Only the allowed sites and our own page may frame the form (AG-2-49 rule 4). */
 export function frameAncestors(sites: string[], own?: string) {
   const list = [...new Set(sites.map(siteOf).filter((s): s is string => !!s))];
   return `frame-ancestors 'self'${own && siteOf(own) ? ` ${siteOf(own)}` : ""}${list.map((s) => ` ${s}`).join("")}`;
@@ -182,7 +177,8 @@ function attributionOf(v: unknown): Attribution | null {
     const x = (v as Record<string, unknown>)[k];
     if (x === undefined || x === null || x === "") continue;
     if (k === "clickIdKind") { if (typeof x !== "string" || !CLICK_KINDS.has(x)) return badBody(); a.clickIdKind = x as Attribution["clickIdKind"]; continue; }
-    const t = text(x, { field: `attribution.${k}`, what: k, max: k === "landingPage" || k === "referrerUrl" ? 2000 : 200 });
+    const max = k === "landingPage" || k === "referrerUrl" ? 2000 : 200;   // captured, not typed: cut to length, never refused (Devin)
+    const t = text(typeof x === "string" ? x.slice(0, max) : x, { field: `attribution.${k}`, what: k, max });
     if (t) a[k] = t;
   }
   return Object.keys(a).length ? a : null;

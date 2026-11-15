@@ -18,8 +18,7 @@ const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u00ad\u200b-\u200
 const LINE_BREAK = /[\n\r\u2028\u2029]/;
 const HAS_WORD = /[\p{L}\p{N}]/u;
 
-/** One trimmed text field, or null when empty and not required. Refused: not text, longer than `max`, no letter or digit,
- *  a control character (a line break only where `multiline`). Stored as plain text, never run (AG-2-49 rule 5). */
+/** One trimmed text field, or null: not text, too long, no letter or digit, or a control mark → refused (AG-2-49 rule 5). */
 export function text(v: unknown, o: { field: string; what: string; max: number; required?: boolean; multiline?: boolean }): string | null {
   const bad = (m: string) => unprocessable(`${o.what}: ${m}`, { [o.field]: m });
   if (v === undefined || v === null || (typeof v === "string" && !v.trim())) return o.required ? bad("this is required.") : null;
@@ -40,9 +39,8 @@ export function email(v: unknown, field = "email"): string | null {
   return e;
 }
 
-/** A phone in E.164 when it can be read (a number with its +country, or a 10-digit North American number, the firm's one
- *  country being Canada, FD-68: Sample rule until PF's phone library), else kept as typed and marked unreadable: an
- *  enquiry is never dropped over a phone format (AG-2-84 rule 5); staff see "Fix number". */
+/** E.164 when readable (+country, or a 10-digit North American number: Sample rule, FD-68), else kept as typed and
+ *  flagged unreadable, never dropped (AG-2-84 rule 5, "Fix number"). */
 export function phone(v: unknown, field = "phone"): { phone: string; readable: boolean } | null {
   const t = text(v, { field, what: "Phone", max: 40 });
   if (t === null) return null;
@@ -54,9 +52,8 @@ export function phone(v: unknown, field = "phone"): { phone: string; readable: b
 
 export const actorOf = (ctx: StaffContext) => `staff:${ctx.staffId}`;
 
-/** Who sees which leads (contracts §2.1 "Visibility"; AG-2-13c rules 6, 9): Owners and Admins see all; others see all when
- *  the firm's "everyone sees all" is on and they hold the view.all key, else their own. Unassigned leads are seen by
- *  people who may see all (the view.all key) or assign. */
+/** Who sees which leads (contracts §2.1; AG-2-13c rules 6, 9): Owners and Admins all; others all with "everyone sees
+ *  all" and view.all, else their own; Unassigned leads with view.all or assign. */
 export async function visibilityOf(db: Tx | PrismaClient, ctx: StaffContext) {
   const admin = DUTY_KEYS.firm_admin.every((k) => ctx.keys.includes(k));
   const everyone = (await readSetting<boolean>(db, ctx.firmId, EVERYONE_SEES_ALL.key)) === true;

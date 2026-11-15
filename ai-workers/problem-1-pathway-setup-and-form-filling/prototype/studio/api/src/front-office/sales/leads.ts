@@ -96,16 +96,19 @@ export class Leads {
     fn: (tx: Tx, l: { state: FoLeadState; owner_staff_id: string | null; person_id: string; door: "WEB_FORM" | "MANUAL" | "BOOKING"; number: string }, staff: Map<string, Staff>) =>
       Promise<{ owner: string | null; summary: string }>) {
     if (typeof id !== "string" || !UUID.test(id)) return notFound();
-    const [staff, vis] = await Promise.all([this.staffOf(ctx.firmId), visibilityOf(this.db, ctx)]);
+    const [staff, vis, before] = await Promise.all([this.staffOf(ctx.firmId), visibilityOf(this.db, ctx), this.db.foLead.findFirst({ where: firmScope(ctx.firmId, { id }), select: { ownerStaffId: true } })]);
+    const activeOf = (o: string | null) => (o && staff.get(o)?.status === "ACTIVE" ? o : null);
+    if (!before) return notFound();
+    const sawIt = sees(vis, ctx, activeOf(before.ownerStaffId));   // only someone who saw it hears who has it (Devin security)
     id = id.toLowerCase();
     await this.db.$transaction(async (tx) => {
       const [l] = await tx.$queryRaw<{ state: FoLeadState; owner_staff_id: string | null; person_id: string; door: "WEB_FORM" | "MANUAL" | "BOOKING"; number: string }[]>`
         select state, owner_staff_id::text, person_id::text, door, number from fo_lead where firm_id = ${ctx.firmId}::uuid and id = ${id}::uuid for update`;
-      // Seen under the lock, so a change never lands on a lead the person may no longer see (break M2); the one who lost
-      // the race hears who has it (BR-5).
+      // Seen under the lock: a change never lands on a lead the person may no longer see (break M2); the one who lost the
+      // race hears who has it (BR-5); anyone else gets 404.
       const owner = l?.owner_staff_id ? staff.get(l.owner_staff_id) : undefined;
       if (!l) return notFound();
-      if (!sees(vis, ctx, owner?.status === "ACTIVE" ? owner.id : null)) return owner ? conflict(`${owner.displayName} already has this lead.`, "ALREADY_TAKEN", { ownerStaffId: owner.id }) : notFound();
+      if (!sees(vis, ctx, activeOf(l.owner_staff_id))) return sawIt && owner ? conflict(`${owner.displayName} already has this lead.`, "ALREADY_TAKEN", { ownerStaffId: owner.id }) : notFound();
       const r = await fn(tx, l, staff);
       await written(tx, this.ports.audit, {
         firmId: ctx.firmId, actor: actorOf(ctx), action, entity: "fo_lead", entityKey: id, summary: `Staff ${ctx.staffId} ${r.summary}: ${l.number}.`,

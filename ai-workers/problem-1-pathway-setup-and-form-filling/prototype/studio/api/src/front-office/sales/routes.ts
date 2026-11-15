@@ -2,12 +2,11 @@
 // agent/prospect:* keys; PF-4's guard refuses the rest, default deny). The concept's `agent/prospect:list` is not a seeded
 // key: the seeded `agent/prospect:show` reads (with view.all/view.own deciding which rows, common.ts visibilityOf). Take
 // it edits. Part 2 adds Add a lead (create), Assign (assign), Close and Reopen (edit).
-import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from "@nestjs/common";
+import { Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from "@nestjs/common";
 import { PermissionKeys, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
 import { Leads } from "./leads.ts";
 
 type R = { platform?: StaffContext };
-type B = Record<string, unknown>;
 
 @Controller("api/front-office")
 export class SalesController {

@@ -17,8 +17,7 @@ export type Attribution = Partial<Record<"utmSource" | "utmMedium" | "utmCampaig
 export type ArrivalIn = {
   firmId: string;
   door: "WEB_FORM" | "MANUAL";
-  /** `form:<web form id>:<submission id>` or `manual:<request id>` (the receipt's checked key). */
-  intakeKey: string;
+  intakeKey: string;   // form:<web form id>:<submission id> or manual:<request id> (checked)
   webFormId?: string;
   person: { givenNames: string | null; familyName: string | null; email: string | null; phone: { phone: string; readable: boolean } | null };
   source: string;
@@ -26,8 +25,7 @@ export type ArrivalIn = {
   interestedInServiceId?: string | null;
   message?: string | null;
   attribution?: Attribution | null;
-  /** The form's own wording (never text from the browser, AG-2-49 rule 6); absent when the tick was not ticked. */
-  consent?: { wordingId: string; channel: Channel; purpose: Purpose; locale: string } | null;
+  consent?: { wordingId: string; channel: Channel; purpose: Purpose; locale: string } | null;   // the form's own wording; none unticked
   ipHash?: string | null;
   actor: string;
   payloadHash: string;
