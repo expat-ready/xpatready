@@ -11,7 +11,7 @@ import type { AuditPort } from "../../../../ports/audit.ts";
 import type { Channel, ConsentPort, Purpose } from "../../../../ports/consent.ts";
 import { EVENT, LeadEventPayload } from "../../../../ports/events.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
-import { notFound, written, type Tx } from "./common.ts";
+import { written, type Tx } from "./common.ts";
 
 export type Attribution = Partial<Record<"utmSource" | "utmMedium" | "utmCampaign" | "utmTerm" | "utmContent" | "clickId" | "landingPage" | "referrerUrl", string>>
   & { clickIdKind?: "GCLID" | "FBCLID" | "MSCLKID" | "TTCLID" | "OTHER" };
@@ -23,8 +23,6 @@ export type ArrivalIn = {
   intakeKey: string;
   webFormId?: string;
   person: { givenNames: string | null; familyName: string | null; email: string | null; phone: { phone: string; readable: boolean } | null };
-  /** Add a lead by hand for a person already on file (picked in the known-person check): no new person record. */
-  existingPersonId?: string;
   source: string;
   sourceDetail?: string | null;
   interestedInServiceId?: string | null;
@@ -57,16 +55,9 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
   const receipt = await tx.foArrivalReceipt.findUniqueOrThrow({ where: { firmId_door_intakeKey: { firmId, door: a.door, intakeKey: a.intakeKey } } });
   if (made.count === 0) return { leadId: receipt.leadId, personId: receipt.personId, created: false };
 
-  let personId: string, match: string | null;
-  if (a.existingPersonId) {
-    const known = await tx.foPerson.findFirst({ where: firmScope(firmId, { id: a.existingPersonId }), select: { id: true } });
-    if (!known) return notFound("person");
-    personId = known.id; match = null;
-  } else {
-    match = await possibleMatch(tx, firmId, a.person);
-    personId = randomUUID();
-    await tx.foPerson.create({ data: { id: personId, firmId, givenNames: a.person.givenNames, familyName: a.person.familyName, email: a.person.email, phone: a.person.phone?.phone ?? null, phoneReadable: a.person.phone?.readable ?? true, createdBy: a.actor } });
-  }
+  const match = await possibleMatch(tx, firmId, a.person);
+  const personId = randomUUID();
+  await tx.foPerson.create({ data: { id: personId, firmId, givenNames: a.person.givenNames, familyName: a.person.familyName, email: a.person.email, phone: a.person.phone?.phone ?? null, phoneReadable: a.person.phone?.readable ?? true, createdBy: a.actor } });
   let owner = a.ownerStaffId ?? null;
   if (owner === null) {
     const active = await tx.platformStaff.findMany({ where: firmScope(firmId, { status: "ACTIVE" as const }), select: { id: true }, take: 2 });

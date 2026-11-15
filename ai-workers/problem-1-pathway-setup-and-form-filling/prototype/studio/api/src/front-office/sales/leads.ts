@@ -1,19 +1,17 @@
-// FO-2 (contracts §2.1, §7 §2.1; AG-2-4 Add a lead, AG-2-13c Unassigned leads, AG-2-80 close and Reopen, AG-2-84
-// possible match, AG-2-86 Take it): the staff side of leads. Every read and write is firm-scoped (another firm's id is
+// FO-2 part 1 (contracts §2.1, §7 §2.1; AG-2-13c Unassigned leads, AG-2-84 possible match, AG-2-86 Take it): the staff
+// side of leads. Part 2 adds Add a lead by hand, Close and Reopen. Every read and write is firm-scoped (another firm's id is
 // 404) and follows who sees what (common.ts visibilityOf). Every change is one transaction: the lead row (changed only
 // from the state it was read in, under its row lock), one audit line through AuditPort, the outbox row last.
 import { HttpException, Inject, Injectable } from "@nestjs/common";
 import type { FoLeadState, PrismaClient } from "@prisma/client";
-import { createHash } from "node:crypto";
 import { EVENT, LeadEventPayload, type EventName } from "../../../../ports/events.ts";
 import { Db } from "../../core.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { forbidden, type StaffContext } from "../../platform/identity/keys.ts";
-import { arrive, possibleMatch } from "./arrival.ts";
-import { actorOf, conflict, email, notFound, phone, sees, text, unprocessable, UUID, visibilityOf, written, type Tx } from "./common.ts";
+import { actorOf, conflict, notFound, sees, unprocessable, UUID, visibilityOf, written, type Tx } from "./common.ts";
 import { SALES_PORTS, type SalesPorts } from "./public.ts";
 
-export const VIEWS = ["unassigned", "mine", "all", "closed"] as const;
+export const VIEWS = ["unassigned", "mine", "all"] as const;
 type View = (typeof VIEWS)[number];
 type Staff = { id: string; displayName: string; status: string };
 const nameOf = (p: { givenNames: string | null; familyName: string | null }) => [p.givenNames, p.familyName].filter(Boolean).join(" ") || "(no name)";
@@ -29,14 +27,14 @@ export class Leads {
     return new Map(rows.map((s) => [s.id, s]));
   }
 
-  /** Unassigned leads (open, no active owner, oldest first), Mine, All open, Closed. */
+  /** Unassigned leads (open, no active owner, oldest first), Mine, All open (part 2 adds Closed). */
   async list(ctx: StaffContext, view: unknown) {
-    const v = (VIEWS as readonly string[]).includes(String(view ?? "all")) ? (String(view ?? "all") as View) : unprocessable("Choose a view: unassigned, mine, all or closed.", { view: "Unknown view." });
+    const v = (VIEWS as readonly string[]).includes(String(view ?? "all")) ? (String(view ?? "all") as View) : unprocessable("Choose a view: unassigned, mine or all.", { view: "Unknown view." });
     const vis = await visibilityOf(this.db, ctx);
     if (v === "unassigned" && !vis.seesUnassigned) return forbidden("Unassigned leads are seen by people who may see all leads or assign them.", "MISSING_PERMISSION");
     const staff = await this.staffOf(ctx.firmId);
     const inactive = [...staff.values()].filter((s) => s.status !== "ACTIVE").map((s) => s.id);
-    const state: FoLeadState = v === "closed" ? "CLOSED" : "OPEN";
+    const state: FoLeadState = "OPEN";
     const where = v === "unassigned" ? { state, OR: [{ ownerStaffId: null }, { ownerStaffId: { in: inactive } }] }
       : v === "mine" ? { state, ownerStaffId: ctx.staffId } : { state };
     const rows = await this.db.foLead.findMany({
@@ -82,50 +80,6 @@ export class Leads {
     return { lead, vis, staff };
   }
 
-  /** Add a lead by hand (AG-2-4): checks for a known person first (409 KNOWN_PERSON with the matches the adder may see,
-   *  unless the request picks one, `personId`, or says it is someone new, `confirmedNew`); the adder owns it (rule 8). */
-  async add(ctx: StaffContext, b: Record<string, unknown>) {
-    const requestId = typeof b.requestId === "string" && UUID.test(b.requestId) ? b.requestId.toLowerCase() : unprocessable("requestId: a uuid the screen makes once per Add.", { requestId: "Missing." });
-    const person = {
-      givenNames: text(b.givenNames, { field: "givenNames", what: "First name", max: 100, required: !b.personId }),
-      familyName: text(b.familyName, { field: "familyName", what: "Last name", max: 100 }),
-      email: email(b.email), phone: phone(b.phone),
-    };
-    const source = text(b.source, { field: "source", what: "Source", max: 60 }) ?? "MANUAL";
-    const message = text(b.note, { field: "note", what: "Note", max: 5000, multiline: true });
-    const interestedInServiceId = await this.service(ctx.firmId, b.interestedIn);
-    let existingPersonId: string | undefined;
-    if (b.personId !== undefined) {
-      if (typeof b.personId !== "string" || !UUID.test(b.personId)) return notFound("person");
-      existingPersonId = b.personId.toLowerCase();
-    } else {
-      if (!person.email && !person.phone) unprocessable("Add an email or a phone number.", { email: "Add an email or a phone number." });
-      if (b.confirmedNew !== true) {
-        const match = await possibleMatch(this.db, ctx.firmId, person);
-        if (match) {
-          const vis = await visibilityOf(this.db, ctx);
-          const leads = await this.db.foLead.findMany({ where: firmScope(ctx.firmId, { personId: match }), select: { number: true, ownerStaffId: true }, orderBy: { arrivedAt: "desc" } });
-          const p = await this.db.foPerson.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: match }) });
-          const seen = leads.find((l) => sees(vis, ctx, l.ownerStaffId));
-          return conflict("This person may already be on file. Pick them, or say it is someone new.", "KNOWN_PERSON", {
-            matches: [seen ? { personId: match, name: nameOf(p), lead: seen.number } : { personId: null, name: "A person you cannot see" }],
-          });
-        }
-      }
-    }
-    const out = await this.db.$transaction((tx) => arrive(tx, {
-      firmId: ctx.firmId, door: "MANUAL", intakeKey: `manual:${requestId}`, person, existingPersonId, source, interestedInServiceId, message,
-      ownerStaffId: ctx.staffId, actor: actorOf(ctx), payloadHash: createHash("sha256").update(JSON.stringify([person, existingPersonId, source, interestedInServiceId, message])).digest("hex"),
-    }, this.ports));
-    return this.read(ctx, out.leadId!);
-  }
-
-  private async service(firmId: string, v: unknown): Promise<string | null> {
-    if (v === undefined || v === null || v === "") return null;
-    const s = typeof v === "string" && UUID.test(v) ? await this.db.foService.findFirst({ where: firmScope(firmId, { id: v, active: true }), select: { id: true } }) : null;
-    return s?.id ?? unprocessable("Choose what they are interested in from the list.", { interestedIn: "Choose from the list." });
-  }
-
   /** Take it (AG-2-86): only an open lead with no active owner; someone who took it first wins, and the second hears who. */
   take(ctx: StaffContext, id: string) {
     return this.change(ctx, id, "lead.taken", EVENT.LEAD_TAKEN, async (tx, l, staff) => {
@@ -149,34 +103,10 @@ export class Leads {
     });
   }
 
-  /** Close a lead with a reason from the firm's list (AG-2-80 rules 2-3; a system reason is set only by the system). */
-  close(ctx: StaffContext, id: string, b: Record<string, unknown>) {
-    return this.change(ctx, id, "lead.closed", EVENT.LEAD_CLOSED, async (tx, l) => {
-      const reason = typeof b.reasonId === "string" && UUID.test(b.reasonId)
-        ? await tx.foReason.findFirst({ where: firmScope(ctx.firmId, { id: b.reasonId, kind: "LEAD_CLOSE" as const, active: true, isSystem: false }) }) : null;
-      if (!reason) return unprocessable("Choose why you are closing it.", { reasonId: "Choose why you are closing it." });
-      const note = text(b.note, { field: "note", what: "Note", max: 2000, multiline: true });
-      if (l.state !== "OPEN") return conflict(l.state === "CLOSED" ? "This lead is already closed." : "An engaged lead stays engaged (AG-2-80 rule 5).");
-      await tx.foLead.update({ where: { id }, data: { state: "CLOSED", closeReasonId: reason.id, closeReasonKind: "LEAD_CLOSE", closeNote: note, closedAt: new Date(), closedBy: actorOf(ctx) } });
-      return { owner: l.owner_staff_id, summary: `closed the lead (${reason.key})`, reasonKey: reason.key, state: "CLOSED" as const };
-    });
-  }
-
-  /** Reopen a closed lead with a reason (AG-2-80): it is open again with its owner; the reason is kept as a note. */
-  reopen(ctx: StaffContext, id: string, b: Record<string, unknown>) {
-    return this.change(ctx, id, "lead.reopened", EVENT.LEAD_REOPENED, async (tx, l) => {
-      const why = text(b.reason, { field: "reason", what: "Reason", max: 2000, required: true, multiline: true })!;
-      if (l.state !== "CLOSED") return conflict("Only a closed lead can be reopened.");
-      await tx.foLead.update({ where: { id }, data: { state: "OPEN", closeReasonId: null, closeReasonKind: null, closeNote: null, closedAt: null, closedBy: null } });
-      await tx.foNote.create({ data: { firmId: ctx.firmId, personId: l.person_id, leadId: id, visibility: "INTERNAL", text: `Reopened: ${why}`, byActor: actorOf(ctx) } });
-      return { owner: l.owner_staff_id, summary: "reopened the lead" };
-    });
-  }
-
   /** One lead change: visible (404), the row locked and read again, the change, the audit line, the outbox row last. */
   private async change(ctx: StaffContext, id: string, action: string, type: EventName,
     fn: (tx: Tx, l: { state: FoLeadState; owner_staff_id: string | null; person_id: string; door: "WEB_FORM" | "MANUAL" | "BOOKING"; number: string }, staff: Map<string, Staff>) =>
-      Promise<{ owner: string | null; summary: string; reasonKey?: string; state?: FoLeadState }>) {
+      Promise<{ owner: string | null; summary: string }>) {
     const { staff } = await this.visible(ctx, id);
     id = id.toLowerCase();
     await this.db.$transaction(async (tx) => {
@@ -186,8 +116,8 @@ export class Leads {
       const r = await fn(tx, l, staff);
       await written(tx, this.ports.audit, {
         firmId: ctx.firmId, actor: actorOf(ctx), action, entity: "fo_lead", entityKey: id, summary: `Staff ${ctx.staffId} ${r.summary}: ${l.number}.`,
-        detail: { ownerStaffId: r.owner, ...(r.reasonKey ? { reasonKey: r.reasonKey } : {}) },
-        event: { type, subjectId: id, payload: LeadEventPayload.parse({ leadId: id, personId: l.person_id, door: l.door, state: r.state ?? "OPEN", ownerStaffId: r.owner, ...(r.reasonKey ? { reasonKey: r.reasonKey } : {}) }) },
+        detail: { ownerStaffId: r.owner },
+        event: { type, subjectId: id, payload: LeadEventPayload.parse({ leadId: id, personId: l.person_id, door: l.door, state: l.state, ownerStaffId: r.owner }) },
       });
     });
     // The viewer may no longer see it (assigned to someone else while "everyone sees all" is off): say it is done.

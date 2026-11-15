@@ -1,8 +1,9 @@
 // FO-2 (BACKLOG row FO-2 and its rev 15.1 amendment; brief design/lead-b-briefs/FO-2.md; contracts §2.1, §7 binding;
-// AG-2-4, -5, -8a, -13c, -49, -80, -84, -86): leads and the public web form. Part 1: the arrival path, the public door
-// (token, allowed site, honeypot, minimum fill time, limits, size), Add a lead by hand, the lead lists and one lead, Take
-// it, Assign, Close and Reopen; each Done-when line with a pass and a fail. One scratch database with every migration and
-// the Sample firms (PF-3's seed, then FO-1a's), dropped at the end. No server, no browser, no model call (US$0).
+// AG-2-5, -8a, -13c, -49, -84, -86): leads and the public web form. Part 1: the arrival path, the public door (token,
+// allowed site, honeypot, minimum fill time, limits, size), the lead lists and one lead, Take it and Assign (part 2:
+// Add a lead by hand, Close, Reopen, Engage and prospects); each Done-when line with a pass and a fail. One scratch
+// database with every migration and the Sample firms (PF-3's seed, then FO-1a's), dropped at the end. No server, no
+// browser, no model call (US$0).
 //   tsx studio/tests/check_fo2_leads_prospects.ts
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -62,7 +63,7 @@ try {
 
   let clock = Date.parse("2026-11-16T10:00:00Z");
   const consent = new ConsentStore(auditEvent);
-  const ports: SalesPorts = { audit: auditEvent, consent, now: () => clock, publicOrigin: OWN };
+  const ports: SalesPorts = { audit: auditEvent, consent, now: () => clock, publicOrigin: OWN, formKey: Buffer.from("fo2-test-stamp-key (Sample, not a secret)") };
   const forms = new PublicForms(db, ports), leads = new Leads(db, ports);
   const wording = await db.$transaction((tx) => consent.publishWording(tx, { firmId: A, channel: "EMAIL", purpose: "MARKETING", locale: "en", text: "Send me news and offers from the firm by email. I can stop at any time. (Sample)", by: "seed:FO-2-test" }));
   const tokenA = sql(`update fo_web_form set enabled = true, consent_wording_version_id = '${wording.id}', allowed_sites = '{${SITE}}' where firm_id = '${A}' returning public_token`);
@@ -159,23 +160,12 @@ try {
   ok("FO-2 pass: in a one-user firm the form lead is owned by its one user (X-4)", sql(`select owner_staff_id from fo_lead where firm_id = '${S}' order by created_at desc limit 1`) === SOLO.staffId);
   ok("FO-2 fail: in a firm of three the form lead stays Unassigned", sql(`select count(*) from fo_lead where firm_id = '${A}' and door = 'WEB_FORM' and owner_staff_id is not null`) === "0");
 
-  // ------------------------------------------------------------------------------------- staff: Add a lead by hand
-  const rid = () => crypto.randomUUID();
-  const knownCheck = await refusal(() => leads.add(R, { requestId: rid(), givenNames: "Lena", email: "LENA@example.org" }));
-  ok("FO-2 pass: Add a lead checks for a known person first (409 KNOWN_PERSON with the match)", knownCheck?.status === 409 && knownCheck.body.code === "KNOWN_PERSON" && /Lena Park/.test(JSON.stringify(knownCheck.body.matches)), knownCheck);
-  const picked = await leads.add(R, { requestId: rid(), personId: lenaPerson }) as { id: string; person: { id: string }; ownerStaffId: string; possibleMatch: unknown };
-  ok("FO-2 pass: picking the known person makes a lead on that person (no new person), owned by the adder", picked.person.id === lenaPerson && picked.ownerStaffId === R.staffId);
-  const handRid = rid();
-  const hand = await leads.add(R, { requestId: handRid, givenNames: "Kai", familyName: "Lee", phone: "416-555-0199", confirmedNew: true }) as { id: string; ownerStaffId: string; attribution: unknown; door: string };
-  await leads.add(R, { requestId: handRid, givenNames: "Kai", familyName: "Lee", phone: "416-555-0199", confirmedNew: true });
-  ok("FO-2 pass: a lead added by hand is owned by whoever adds it", hand.ownerStaffId === R.staffId && hand.door === "MANUAL");
-  ok("FO-2 pass: the same Add request twice → one lead", count("fo_lead l join fo_person p on p.id = l.person_id", `p.phone = '+14165550199'`) === 1);
-  const formLead = await leads.read(R, lenaLead) as { attribution: unknown };
-  const attrLead = sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'own@example.org'`);
-  await forms.submit(tokenA, { ...(await drawn().then((f) => ({ submissionId: f.submissionId, loadStamp: f.loadStamp }))), givenNames: "Utm", email: "utm@example.org", attribution: { utmCampaign: "spring", landingPage: "https://maple.example/lmia" } }, req());
+  // ------------------------------------------------------------------------------------------- attribution
+  await post({ givenNames: "Utm", email: "utm@example.org", attribution: { utmCampaign: "spring", landingPage: "https://maple.example/lmia" } });
   const utm = await leads.read(R, sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'utm@example.org'`)) as { attribution: Record<string, string> | null };
-  ok("FO-2 pass: attribution present on a form lead (campaign and landing page)", utm.attribution?.utmCampaign === "spring" && utm.attribution.landingPage === "https://maple.example/lmia", utm);
-  ok("FO-2 fail: attribution empty on a hand-added lead", hand.attribution === null && !!attrLead && formLead !== undefined);
+  ok("FO-2 pass: attribution present on a form lead (campaign and landing page), one write-once row", utm.attribution?.utmCampaign === "spring" && utm.attribution.landingPage === "https://maple.example/lmia" && count("fo_lead_attribution") === 1, utm);
+  ok("FO-2 fail: a lead that arrived with no campaign facts has no attribution (nothing guessed)", ((await leads.read(R, anaLead)) as { attribution: unknown }).attribution === null);
+  ok("FO-2 fail: an attribution field outside the list → refused", (await refusal(() => post({ givenNames: "X", email: "x@example.org", attribution: { fbp: "1" } })))?.status === 400);
 
   // ------------------------------------------------------------------------------------------- lists and visibility
   const unassigned = await leads.list(R, "unassigned");
@@ -205,45 +195,34 @@ try {
   const rView = await leads.read(R, newer) as { possibleMatch: { line: string } };
   ok("FO-2 fail: the match line names no one the viewer may not see", tView.possibleMatch.line === "Possible match with a person you cannot see", tView.possibleMatch);
   ok("FO-2 pass: an Owner sees the matched person's name", /^Possible match: Lena Park \(L-\d{5}\)$/.test(rView.possibleMatch.line), rView.possibleMatch);
-  ok("FO-2 fail: with everyone-sees-all off, another person's lead is not found (404)", (await refusal(() => leads.read(O, picked.id)))?.status === 404);
+  ok("FO-2 fail: with everyone-sees-all off, another person's lead is not found (404) and not listed", (await refusal(() => leads.read(O, newer)))?.status === 404 && !(await leads.list(O, "all")).some((l) => l.id === newer));
+  ok("FO-2 pass: with everyone-sees-all off, a person still sees their own lead", (await leads.list(T, "mine")).some((l) => l.id === newer));
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
 
   // Firm A and firm B.
   ok("FO-2 fail: firm A's staff reading firm B's lead → 404", (await refusal(() => leads.read(SOLO, lenaLead)))?.status === 404 && (await refusal(() => leads.take(SOLO, lenaLead)))?.status === 404);
   ok("FO-2 pass: firm B's lists never show firm A's leads", (await leads.list(SOLO, "all")).every((l) => sql(`select firm_id from fo_lead where id = '${l.id}'`) === S));
 
-  // Close and Reopen.
-  const sysReason = sql(`select id from fo_reason where firm_id = '${A}' and kind = 'LEAD_CLOSE' and is_system limit 1`);
-  const reason = sql(`select id from fo_reason where firm_id = '${A}' and kind = 'LEAD_CLOSE' and key = 'NOT_INTERESTED'`);
-  ok("FO-2 fail: Close without a reason → refused at the field", (await refusal(() => leads.close(O, lenaLead, {})))?.body.fields !== undefined);
-  ok("FO-2 fail: Close with a system reason → refused", (await refusal(() => leads.close(O, lenaLead, { reasonId: sysReason })))?.status === 422);
-  ok("FO-2 fail: Close with firm B's reason → refused", (await refusal(() => leads.close(O, lenaLead, { reasonId: sql(`select id from fo_reason where firm_id = '${S}' and key = 'NOT_INTERESTED'`) })))?.status === 422);
-  const closed = await leads.close(O, lenaLead, { reasonId: reason, note: "Not now." }) as { state: string; closeReason: string };
-  ok("FO-2 pass: Close with a reason → CLOSED, listed under Closed, one lead.closed event", closed.state === "CLOSED" && closed.closeReason === "Not interested" && (await leads.list(O, "closed")).some((l) => l.id === lenaLead) && count("module_event", `subject_id = '${lenaLead}' and type = '${EVENT.LEAD_CLOSED}'`) === 1);
-  ok("FO-2 fail: Close twice → 409", (await refusal(() => leads.close(O, lenaLead, { reasonId: reason })))?.status === 409);
-  ok("FO-2 fail: Reopen without a reason → refused at the field", (await refusal(() => leads.reopen(O, lenaLead, {})))?.status === 422);
-  const reopened = await leads.reopen(O, lenaLead, { reason: "They called back." }) as { state: string; ownerStaffId: string };
-  ok("FO-2 pass: Reopen a closed lead with a reason → OPEN with its owner; the reason is a note", reopened.state === "OPEN" && reopened.ownerStaffId === O.staffId && count("fo_note", `lead_id = '${lenaLead}' and text = 'Reopened: They called back.'`) === 1);
-  ok("FO-2 fail: Reopen an open lead → 409", (await refusal(() => leads.reopen(O, lenaLead, { reason: "x" })))?.status === 409);
-
   // ------------------------------------------------------------------------------------------- audit and events
   const createdLines = count("audit_event", `action = 'lead.created' and entity = 'fo_lead'`), createdEvents = count("module_event", `type = '${EVENT.LEAD_CREATED}'`);
   ok("FO-2 pass: every lead made wrote one audit line and one lead.created event", createdLines === count("fo_lead") && createdEvents === count("fo_lead"), [createdLines, createdEvents, count("fo_lead")]);
   ok("FO-2 pass: the events carry ids, never a name, email or phone", sql(`select count(*) from module_event where type like 'lead.%' and (payload::text ~ '@' or payload::text ~ 'Lena')`) === "0");
-  const failing = new Leads(db, { ...ports, audit: fakeAudit({ failOn: (e) => e.action === "lead.created" || e.action === "lead.taken" }) as never });
-  const n0 = count("fo_lead"), r0 = count("fo_arrival_receipt"), e0 = count("module_event");
-  const failedAdd = await refusal(() => failing.add(R, { requestId: rid(), givenNames: "Fail", email: "fail@example.org", confirmedNew: true })).catch((e) => ({ status: 0, body: { error: String(e) } }));
-  ok("FO-2 fail: a forced audit failure rolls the arrival back (no person, lead, receipt or event)", failedAdd !== null && count("fo_lead") === n0 && count("fo_person", `email = 'fail@example.org'`) === 0 && count("fo_arrival_receipt") === r0 && count("module_event") === e0, failedAdd);
+  const failAudit = fakeAudit({ failOn: (e) => e.action === "lead.created" || e.action === "lead.taken" });
+  const failing = new Leads(db, { ...ports, audit: failAudit as never }), failingForms = new PublicForms(db, { ...ports, audit: failAudit as never });
+  const n0 = count("fo_lead"), r0 = count("fo_arrival_receipt"), e0 = count("module_event"), c0 = count("msg_consent");
+  const ff = await drawn();
+  const failedPost = await failingForms.submit(tokenA, { submissionId: ff.submissionId, loadStamp: ff.loadStamp, ...lena, email: "fail@example.org" }, req()).then(() => null, (e) => String(e));
+  ok("FO-2 fail: a forced audit failure rolls the arrival back (no person, lead, receipt, consent or event)", failedPost !== null && count("fo_lead") === n0 && count("fo_person", `email = 'fail@example.org'`) === 0 && count("fo_arrival_receipt") === r0 && count("msg_consent") === c0 && count("module_event") === e0, failedPost);
   const unowned = sql(`select id from fo_lead where firm_id = '${A}' and state = 'OPEN' and owner_staff_id is null limit 1`);
   await failing.take(O, unowned).catch(() => undefined);
   ok("FO-2 fail: a forced audit failure rolls Take it back", sql(`select coalesce(owner_staff_id::text, 'none') from fo_lead where id = '${unowned}'`) === "none" && count("module_event", `subject_id = '${unowned}' and type = '${EVENT.LEAD_TAKEN}'`) === 0);
 
   // ------------------------------------------------------------------------------------------- routes and keys
   const keysOf = (m: string) => (Reflect.getMetadata(PLATFORM_ACCESS, (SalesController.prototype as unknown as Record<string, object>)[m]) as { keys?: string[] } | undefined)?.keys?.join(",");
-  const want: Record<string, string> = { list: "agent/prospect:show", read: "agent/prospect:show", add: "agent/prospect:create", take: "agent/prospect:edit", assign: "agent/prospect:assign", close: "agent/prospect:edit", reopen: "agent/prospect:edit" };
+  const want: Record<string, string> = { list: "agent/prospect:show", read: "agent/prospect:show", take: "agent/prospect:edit", assign: "agent/prospect:assign" };
   ok("FO-2 pass: every staff route declares its seeded agent/prospect:* key (default deny)", Object.entries(want).every(([m, k]) => keysOf(m) === k && Number(sql(`select count(*) from platform_role_permission where permission_key = '${k}'`)) > 0), Object.keys(want).map((m) => `${m}=${keysOf(m)}`));
   const readOnly = sql(`select string_agg(permission_key, ',') from platform_role_permission where role = 'READ_ONLY'`).split(",");
-  ok("FO-2 fail: a Read-only person cannot write (holds none of the write routes' keys)", ["add", "take", "assign", "close", "reopen"].every((m) => !readOnly.includes(keysOf(m)!)) && readOnly.includes("agent/prospect:show"));
+  ok("FO-2 fail: a Read-only person cannot write (holds none of the write routes' keys)", ["take", "assign"].every((m) => !readOnly.includes(keysOf(m)!)) && readOnly.includes("agent/prospect:show"));
   const routes = Object.keys(want).map((m) => ({ name: `SalesController.${m}`, method: "GET", path: "/api/front-office/leads", access: Reflect.getMetadata(PLATFORM_ACCESS, (SalesController.prototype as unknown as Record<string, object>)[m]) }));
   ok("FO-2 pass: PF-4's start-up rule accepts every route", (() => { try { assertEveryRouteDeclared(routes); return true; } catch { return false; } })());
   ok("FO-2 pass: the public door is outside the guarded paths and its read is an open read", Reflect.getMetadata("path", PublicFormsController) === "api/public/forms" && Reflect.getMetadata("studio:read-scope", PublicFormsController.prototype.read) === "open");
