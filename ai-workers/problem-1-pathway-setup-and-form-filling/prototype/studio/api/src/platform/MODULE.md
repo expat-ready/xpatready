@@ -7,7 +7,7 @@ Firms, staff and sign-in, settings, secrets, jobs, logs, complaints and message 
 
 **Purpose.** `firm-scope.ts` the one firm filter; `identity/` tokens, staff and the guard (Cognito or local); `settings.ts` and `config/` typed firm settings and app configuration; `secret-box/` AES-256-GCM secrets; `jobs/` the one job runner (pg-boss); `observability/` the one logger, redaction, metrics, alerts; `web-address/` each firm's web address; `complaints/`; `messages/consent/` the consent store; `audit/`.
 **Owner area.** platform module rows PF-* (Unconfirmed: no lane map in code).
-**Entry points.** `/api/platform`: `GET me`, `POST session/local`, `POST staff/invitations`, `PATCH staff/:id/roles`, `POST staff/:id/deactivate`, `PUT staff/:id/credential`; `firmScope(firmId)`, `PlatformJobs` (`jobs.handle`), `CONSENT_PORT`, the guard of `/api/platform/*` and `/api/front-office/*`.
+**Entry points.** `/api/platform`: `GET me`, `POST session/local`, `POST staff/invitations`, `PATCH staff/:id/roles`, `POST staff/:id/deactivate`, `PUT staff/:id/credential`; PF-4b: `GET staff`, `GET staff/:id`, `GET licences`, `GET|PUT me/account`, `GET settings/two-step`, `POST session/callback`, `POST session/sign-out`, `POST staff/:id/sign-out-everywhere`, `POST staff/:id/reset-two-step`, `/api/public/invitations/:token` (+ `/accept`), `requireStepUp` (401), `MAIL_PORT`, `IDENTITY_ADMIN_PORT`; `firmScope(firmId)`, `PlatformJobs` (`jobs.handle`), `CONSENT_PORT`, the guard of `/api/platform/*` and `/api/front-office/*`.
 
 **Invariants (set by).**
 - Every read and write of a platform or front-office table goes through `firmScope(firmId)`; another firm's row is "not found" (PF-3, contracts §0.2; P-559).
@@ -20,7 +20,7 @@ Firms, staff and sign-in, settings, secrets, jobs, logs, complaints and message 
 - Values for experts to set are labelled Sample, never guessed (P-170).
 
 **Tables.** platformFirm, platformStaff, platformStaffCredential, platformRoleGrant, platformSessionRevocation, platformFirmSetting, platformFirmWebAddress, platComplaint, platComplaintEvent, msgConsent, msgConsentWording, moduleEvent, auditEvent.
-**Tests.** `tests/check_pf3_platform_schema.ts`, `tests/check_pf4_identity.ts`, `tests/check_pf14_jobs.ts`, `tests/check_pf21_complaints.ts`, `tests/check_pf23_observability.ts`, `tests/check_pf24_secrets.ts`, `tests/check_pf25_web_address.ts`.
+**Tests.** `tests/check_pf3_platform_schema.ts`, `tests/check_pf4_identity.ts`, `tests/check_pf4b_session_reads.ts`, `tests/check_pf14_jobs.ts`, `tests/check_pf21_complaints.ts`, `tests/check_pf23_observability.ts`, `tests/check_pf24_secrets.ts`, `tests/check_pf25_web_address.ts`.
 
 **Do not.**
 - Query a firm table without `firmScope`.
