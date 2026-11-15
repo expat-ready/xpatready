@@ -982,3 +982,18 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
 
 * **PF-4pc** adds a test: ConfigReadGuard's 403 on upper-case platform paths becomes the same guarded answer as the lower-case path (#1823).
 * **PF-21s** adds: "the Record click sends a fresh `Idempotency-Key` and reuses it on retry".
+
+**Rev 16.25 (15 Nov, Lead B (6)): PF-19b part 1 rulings (#1824, comment by Lead B).**
+* **PF-19b part 2's Done when adds (copy text):**
+  * "firm status: `DELETED` and `ABANDONED` send nothing (QUEUED, 'firm not sending'); `SECURITY_LOCK` sends TRANSACTIONAL only; `PAYMENT_HOLD` keeps the trial cap";
+  * "at most once to SES: a new `SENDING` state (additive enum value, own migration, P-600) committed before the call; stuck over 1 h → `FAILED` 'outcome unknown' with one alert and no automatic resend; 3 provider errors → `FAILED`; a 4xx → `FAILED` at once";
+  * "`msg_event` gains the kinds for SUPPRESSED and held rows".
+  * Part 2 is now **schema + runtime**, so the release holder reads the migration (P-600, P-423).
+* **New row, copy text:**
+
+| Row | Area | Item | Done when | Source · waits on |
+|---|---|---|---|---|
+| PF-19ad | runtime (messages: the address is the person's) | **A MARKETING send's address must belong to its subject.** The consent gate asks a per-side resolver port (`FO_PERSON` → FO-2's person record; `CASE_PARTY` → the case side's) whether the address is the subject's current one; if not, SUPPRESSED, "address not the person's". Ports and their fakes in `ports/`. **Touch:** `ports/messages.ts` (resolver type), `api/src/platform/messages/send/gate.ts`, the front office's resolver adapter (one file), `tests/check_pf19ad_address.ts` | marketing to P1's own address with consent → QUEUED; to another address on P1's consent → SUPPRESSED with the reason; SERVICE unchanged; a subject kind with no resolver → SUPPRESSED (fail closed) | #1824 M2; AG-2-83; CASL Unconfirmed: no counsel · **waits on:** PF-19b part 1, FO-2 part 1 · **before any row that sends MARKETING** (FO-10, campaigns) · reviewer + breaker · **size:** S |
+
+* **PF-19c's Done when adds:** "template values are HTML-escaped in the rendered body; a value with `<script>` renders as text".
+* **P-610 reading (Lead B, for the release holder):** the 800 counts code and tests; generated review, journey and break records don't count.
