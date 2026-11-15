@@ -85,6 +85,12 @@ ok "label refused: a quoted Approve line (> ...) is not the reviewer's own" "$(!
 jq -n --arg h $HEAD1 '[{user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h)},
   {user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Changes needed " + $h + " (round 2: M1)")}]' > "$T/fx/comments-7.json"; run label 7
 ok "label refused: a later \"Reviewer: Changes needed\" on the same head wins over the Approve (review m3)" "$(! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
+jq -n --arg h $HEAD1 '[{user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h)},
+  {user: {login: "o"}, author_association: "OWNER", body: "**Reviewer: Changes requested**: fix M1 first"}]' > "$T/fx/comments-7.json"; run label 7
+ok "label refused: a later verdict naming no SHA (\"Reviewer: Changes requested\") wins (round 2 m2)" "$(! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
+jq -n --arg h $HEAD1 '[{user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h)},
+  {user: {login: "o"}, author_association: "OWNER", body: "Reviewer: Approve 2222222222222222222222222222222222222222 (another PR quoted)"}]' > "$T/fx/comments-7.json"; run label 7
+ok "label: a later verdict about another commit does not undo the head's Approve" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
 cmt 7 o OWNER "Reviewer: Approve $HEAD1"
 cirun $HEAD1 in_progress "" 2026-11-15T13:00:00Z; run label 7
 ok "label refused: ci still running on the head" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'ci on 111111111 is pending' <<< "$out" && echo 1)" "$out / $log"
@@ -134,15 +140,20 @@ printf '{"workflow_run": {"pull_requests": [{"number": 9}]}}' > "$T/fx/ev.json";
 ok "event workflow_run: the PR of a finished ci is labelled and judged" "$([ $r = 0 ] && grep -qx 'LABEL 9' <<< "$log" && grep -q '^STATUS' <<< "$log" && echo 1)" "exit $r: $out / $log"
 printf '{"workflow_run": {"pull_requests": [{"number": 404}]}}' > "$T/fx/ev.json"; ev workflow_run
 ok "event: a PR that cannot be read makes the run red (exit 2, review m6)" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
+rm -f "$T/fx/issues.json"; ev push
+ok "event push: the labelled PRs cannot be listed: red (exit 2, round 2 m5)" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
 # --- review m1: a long file list is read whole (pipefail and SIGPIPE once made it "no app code")
 prj 8 $HEAD1 false "review: approved"; cirun $HEAD1 completed success 2026-11-15T10:00:00Z
 { seq 1 2500 | sed "s|^|$S/api/src/f|; s|$|.ts|"; echo "$S/api/src/form.ts"; } | jq -R '{filename: .}' | jq -s . > "$T/fx/files-8.json"; run fresh 8
 ok "fresh: 2,501 files with app code are app code (review m1): stale, failure" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && echo 1)" "$out / $log"
+( cd "$T/git" && git checkout -qb big main~0 && for i in $(seq 1 3000); do echo "$S/api/src/g$i.ts"; done | while read -r f; do echo x > "$f"; done && git add -A && GIT_COMMITTER_DATE=2026-11-15T12:30:00Z git commit -qm big && git checkout -q main && GIT_COMMITTER_DATE=2026-11-15T12:30:00Z git merge -q --no-ff big -m "Merge pull request #503 from o/big" )
+seq 1 3000 | sed "s|^|$S/api/src/g|; s|$|.ts|" | jq -R '{filename: .}' | jq -s . > "$T/fx/files-8.json"; cirun $HEAD1 completed success 2026-11-15T12:10:00Z; run fresh 8
+ok "fresh: 3,000 files shared with a merge are still a hit (round 2 m1: no grep -q in a pipe)" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && echo 1)" "$out / $log"
 files 8 "$S/api/src/form.ts"; rm -f "$T/fx/run-77.json"; run fresh 8
 ok "fresh: the ci run cannot be read: pending, no re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh pending" <<< "$log" && ! grep -q RERUN <<< "$log" && echo 1)" "$out / $log"
 
 # --- the wiring
 R=$(git -C "$TOOLS" rev-parse --show-toplevel); M="$R/.mergify.yml"; W="$R/.github/workflows/queue-gate.yml"
 ok ".mergify.yml: the product queue needs queue-fresh for a PR touching prototype/" "$(awk '/- name: product/,/- name: records/' "$M" | grep -q 'check-success = queue-fresh' && awk '/- name: product/,/- name: records/' "$M" | grep -qF -- '-files ~= /prototype/' && echo 1)" "no queue-fresh condition in the product queue"
-ok "queue-gate.yml runs main's copy of queue-gate.sh on comments, ci runs, labels and pushes to main" "$([ -f "$W" ] && grep -q 'ref: main' "$W" && grep -q 'queue-gate.sh event' "$W" && grep -q 'issue_comment' "$W" && grep -q 'workflow_run' "$W" && ! grep -qE 'refs/pull|head\.sha' "$W" && grep -q '"OWNER","MEMBER","COLLABORATOR"' "$W" && echo 1)" "$W (an outsider's comment must start no write-token run, review m2)"
+ok "queue-gate.yml runs main's copy of queue-gate.sh on comments, ci runs, labels and pushes to main" "$([ -f "$W" ] && grep -q 'ref: main' "$W" && grep -q 'queue-gate.sh event' "$W" && grep -q 'issue_comment' "$W" && grep -q 'workflow_run' "$W" && ! grep -qE 'refs/pull|head\.sha' "$W" && grep -q '"OWNER","MEMBER","COLLABORATOR"' "$W" && grep -q 'types: \[labeled, unlabeled\]' "$W" && echo 1)" "$W (an outsider's comment must start no write-token run, review m2)"
 finish

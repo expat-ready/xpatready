@@ -16,7 +16,7 @@
 #            P-371); the re-run's green sets "success". A queued PR is left success: its batch is built on today's main.
 #            After 3 attempts it is success (the batch checks it). An unlabelled PR is "pending": the verdict is made
 #            when the label goes on (label() decides it before labelling; a person's label starts a run), so a label
-#            never meets an old success (review M2). Every 15 minutes the labelled PRs are judged again (a refused re-run).
+#            never meets an old success (review M2). Every 30 minutes the labelled PRs are judged again (a refused re-run).
 #   eligible — exit 0 when `label` would label this PR now (the label aside); used by label-sweep.sh.
 #   event  — reads GITHUB_EVENT_NAME / GITHUB_EVENT_PATH and runs the above for the PR(s) concerned.
 # Env: GH_TOKEN, REPO (owner/name), PR (label, fresh, eligible); REVIEWERS; API (default https://api.github.com);
@@ -59,8 +59,14 @@ judge() {  # eligibility for the label; reason in $why
   local cs who bad; cs=$(pages "repos/$REPO/issues/$PR/comments") || { why="its comments cannot be read"; return 1; }
   who=$(printf '%s\n' "$OWNER" ${REVIEWERS:-} | jq -Rn '[inputs | select(length > 0)]')
   echo "$cs" | jq -r --argjson who "$who" '.[] | select((.user.login as $l | $who | index($l)) and (.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")) | .body' \
-    | tr -d '*_`' | grep -iE '^[[:space:]]*reviewer:' | grep -F "$head" | tail -1 | grep -qiE "^[[:space:]]*reviewer:[[:space:]]*approve[sd]?[[:space:]]+$head\b" \
-    || { why="the last \"Reviewer:\" line naming $head from the owner's account or a known reviewer is not an Approve"; return 1; }
+    | tr -d '*_`' | grep -iE '^[[:space:]]*reviewer:' > "$H.v"; true
+  # The last verdict that can be about this head decides: a line naming the head (or a prefix of it), or naming no SHA
+  # at all ("Reviewer: Changes requested: fix M1", round 2 m2). It must be an Approve naming the full head.
+  local l x last="" keep; while IFS= read -r l; do keep=1
+    for x in $(grep -oiE '\b[0-9a-f]{7,40}\b' <<< "$l"; true); do keep=0; case "$head" in "${x,,}"*) keep=1; break;; esac; done
+    [ "$keep" = 1 ] && last=$l; done < "$H.v"; rm -f "$H.v"
+  grep -qiE "^[[:space:]]*reviewer:[[:space:]]*approve[sd]?[[:space:]]+$head\b" <<< "$last" \
+    || { why="the last \"Reviewer:\" verdict about $head from the owner's account or a known reviewer is not an Approve naming it"; return 1; }
   bad=$(grep -iEf <(grep -v '^#' "$HERE/lead-read-paths.txt" | grep .) <<< "$files" | head -3 | sed 's/.*/`&`/' | paste -sd ' ' -)
   [ -z "$bad" ] || { why="it touches a path that keeps the Lead's read (P-423): $bad"; return 1; }
   ci; [ "$ci_state" = success ] || { why="ci on ${head:0:9} is $ci_state"; return 1; }
@@ -85,7 +91,8 @@ fresh() {
   while read -r m ts subj; do
     [ -n "$m" ] || continue; [[ "$ts" > "$run_started" ]] || continue
     mf=$(git diff --no-renames --name-only "$m^1" "$m" 2>/dev/null)
-    if comm -12 <(sort -u <<< "$mine") <(sort -u <<< "$mf") | grep -q .; then hit="$subj ($(comm -12 <(sort -u <<< "$mine") <(sort -u <<< "$mf") | head -1 | sed 's|.*/||'))"; break; fi
+    local both; both=$(comm -12 <(sort -u <<< "$mine") <(sort -u <<< "$mf"); true)   # no grep -q in a pipe (round 2 m1)
+    if [ -n "$both" ]; then hit="$subj ($(sed -n '1s|.*/||p' <<< "$both"))"; break; fi
     if [ "$mig" -gt 0 ] && grep -qE "$MIG" <<< "$mf"; then hit="$subj (a migration)"; break; fi
   done < <(TZ=UTC git log --first-parent --date=format-local:%Y-%m-%dT%H:%M:%SZ --format='%H %cd %s' --since="$run_started" "$MAIN_REF" 2>/dev/null | awk '{print $1, $2, $6}')
   [ -n "$hit" ] || { status success "no merge since this ci started touches its files"; return; }
@@ -118,7 +125,8 @@ event() {
       PR=$(jq -r .issue.number "$e"); TRIGGER=approve both || rc=$?;;
     workflow_run) for n in $(jq -r '.workflow_run.pull_requests[].number' "$e"); do PR=$n; both || rc=$?; done;;   # a fork PR has none: no queue-fresh (fails closed)
     pull_request_target) PR=$(jq -r .pull_request.number "$e"); fresh || rc=$?;;
-    push|schedule) for n in $(pages "repos/$REPO/issues?state=open&labels=review%3A%20approved" | jq -r '.[] | select(.pull_request) | .number'); do PR=$n; fresh || rc=$?; done;;
+    push|schedule) local ns; ns=$(pages "repos/$REPO/issues?state=open&labels=review%3A%20approved") || { echo "queue-gate: cannot list the labelled PRs"; return 2; }
+      for n in $(echo "$ns" | jq -r '.[] | select(.pull_request) | .number'); do PR=$n; fresh || rc=$?; done;;
     *) echo "queue-gate: event ${GITHUB_EVENT_NAME:-none} is not handled"; return 2;;
   esac; return $rc; }
 

@@ -8,7 +8,8 @@
 #    then re-run (a re-run tests today's main, D6; never a cancel, P-371).
 # Every trigger here runs the default branch's copy of this file; the job checks out main only, and never the PR's code
 # (no fetch of its commits): the PR's files are read through the API as names. Script and tests: product/tools/queue-gate.sh,
-# check-queue-gate.sh.
+# check-queue-gate.sh. A fork PR's ci run names no PR (workflow_run.pull_requests is empty): it gets no queue-fresh,
+# so it never joins the queue by itself (fails closed).
 name: queue-gate
 on:
   issue_comment:
@@ -17,11 +18,12 @@ on:
     workflows: [ci]
     types: [completed]
   pull_request_target:
-    types: [labeled]
+    # unlabeled: the PR goes back to pending, so a label put on again never meets an old success (round 2 m3)
+    types: [labeled, unlabeled]
   push:
     branches: [main]
   schedule:
-    - cron: "7,22,37,52 * * * *"   # labelled PRs judged again: a refused re-run, a lost event (review m6)
+    - cron: "7,37 * * * *"   # labelled PRs judged again: a refused re-run, a lost event (review m6)
 permissions: {}
 jobs:
   gate:
@@ -38,7 +40,7 @@ jobs:
     permissions: { contents: read, issues: write, pull-requests: write, statuses: write, actions: write, checks: read }
     concurrency:
       # One group per PR (review m5); push and schedule share "main".
-      group: queue-gate-${{ github.event.issue.number || github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || 'main' }}
+      group: queue-gate-${{ github.event.issue.number || github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || (github.event_name == 'workflow_run' && format('run-{0}', github.run_id)) || 'main' }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4

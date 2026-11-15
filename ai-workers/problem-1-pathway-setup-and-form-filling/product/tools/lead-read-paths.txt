@@ -10,6 +10,9 @@
 /product/screens/B119/
 ^\.githooks/
 ^\.claude/
+^(CLAUDE|AGENTS)\.md$
+# CI's gates that ci.yml runs from the PR's own copy (gate-b.mjs, works-set.mjs, check-port-contracts.mjs)
+/prototype/studio/tools/
 # The schema and its migrations (P-423)
 /prisma/migrations/
 /prisma/schema/
