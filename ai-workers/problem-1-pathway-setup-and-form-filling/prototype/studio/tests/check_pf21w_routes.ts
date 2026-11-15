@@ -95,7 +95,7 @@ try {
 
   // ---------------------------------------------------------------------------------------------------------- DW9
   const routes = platformRoutes(app.get(ModulesContainer), app.get(Reflector)).filter((r) => r.path.startsWith("/api/platform/complaints"));
-  ok("PF-21w DW9 pass: PF-4's start-up check passes with the nine complaint routes, each declared", routes.length === 9 && routes.every((r) => r.access) && (() => { try { assertEveryRouteDeclared(routes); return true; } catch { return false; } })(), routes.map((r) => `${r.method} ${r.path}`));
+  ok("PF-21w DW9 pass: PF-4's start-up check passes with the ten complaint routes (PF-21v added GET /handlers), each declared", routes.length === 10 && routes.every((r) => r.access) && (() => { try { assertEveryRouteDeclared(routes); return true; } catch { return false; } })(), routes.map((r) => `${r.method} ${r.path}`));
   const stripped = routes.map((r, i) => (i === 0 ? { ...r, access: undefined } : r));
   ok("PF-21w DW9 fail: assertEveryRouteDeclared refuses the list with one route stripped of its declaration, naming it", throwsLike(() => assertEveryRouteDeclared(stripped), new RegExp(`no declared permission keys.*${routes[0].name}`)));
   const declared = Object.fromEntries(routes.map((r) => [`${r.method} ${r.path}`, r.access]));
