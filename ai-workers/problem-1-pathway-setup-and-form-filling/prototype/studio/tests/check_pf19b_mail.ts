@@ -1,6 +1,6 @@
 // PF-19b booking mail (qa #1855, map rows 38 and 40): MailPort over MessagePort (MessagesMail), so the booking service's
 // mail goes through the outbox, the consent gate, the worker and the local adapter, and a booking's invite.ics is read
-// back from GET /api/demo/platform-inbox. Named tests BM1-BM9, each with a pass and a fail. The real BookingService with
+// back from GET /api/demo/platform-inbox. Named tests BM1-BM10, each with a pass and a fail. The real BookingService with
 // the app's runtime ports (runtimeBookingPorts) on a scratch database with every migration; fakeJobs on a fake clock;
 // files in a scratch folder; the route over HTTP through a child Nest app (this file with --serve). No model call, nothing
 // leaves the machine (US$0). The database and folder are removed at the end.
@@ -173,6 +173,28 @@ try {
   const m9 = (await inbox.list("nine@client.example", undefined)).messages.find((m) => m.id === k9.messageId);
   ok("BM9 pass: two names that clean alike and a .meta name are all kept, each with its own bytes (break m3)",
     m9?.attachments.length === 3 && m9.attachments.map((a) => a.text).join("|") === "Invite.ics|invite.ics|x.meta", m9?.attachments);
+
+  // ------------------------------------------------------------------------------- BM10 a suppression is final (Lead B, #1860)
+  await db.msgSuppression.create({ data: { firmId: A.id, channel: "EMAIL", address: "never@client.example", reason: "COMPLAINT", createdBy: "seed:pf19bm" } });
+  const b10 = await S.publicBook(A.key, "free", await form("2026-10-30 10:00", "never"), "10.0.0.1");
+  await run();
+  const job10 = jobs.jobs.filter((j) => j.name === "booking.mail" && j.key.endsWith("mail-person") && j.status !== "waiting").at(-1);
+  const rows10 = await db.msgOutbox.findMany({ where: { address: "never@client.example" } });
+  const bid10 = (await db.foBookingToken.findUniqueOrThrow({ where: { id: b10.manageToken.split(".")[0] } })).bookingId;
+  const tok10 = await db.foBookingToken.findFirst({ where: { id: { not: b10.manageToken.split(".")[0] }, bookingId: bid10 }, orderBy: { createdAt: "desc" } });
+  const st10 = (await db.foBooking.findUniqueOrThrow({ where: { id: bid10 } })).status;
+  ok("BM10 pass: a suppressed booker: one SUPPRESSED record, the mail job ends done (no retry: zero further attempts), the link it made is voided, the booking stays booked",
+    rows10.length === 1 && rows10[0].state === "SUPPRESSED" && job10?.status === "done" && !!tok10?.voidedAt && st10 === "SCHEDULED", { rows: rows10.map((r) => r.state), job: job10?.status, voided: tok10?.voidedAt });
+  {
+    const c2 = new FakeClock(clock.now()), j2 = fakeJobs(c2);
+    const S2 = new BookingService(db, { ...runtimeBookingPorts({ send: async () => { throw new Error("mail server away"); } }), clock: c2, jobs: j2, publicBaseUrl: "http://localhost:4430", limits: { bookPerIp: 1000, bookPerFirm: 1000, slotsPerIp: 1000, tokenPerIp: 1000 }, warn: () => undefined });
+    await S2.registerJobs();
+    const page = await S2.publicSlots(A.key, "free", {}, "10.0.0.1"); await c2.advance({ seconds: 5 });
+    await S2.publicBook(A.key, "free", { givenNames: "Ana", familyName: "Sample away", email: "away@client.example", mode: "VIDEO", startsAt: iso("2026-10-30 13:00"), timeZone: TZ, consent: true, consentWordingId: page.consent!.wordingId, formStamp: page.formStamp }, "10.0.0.1");
+    await j2.runDue();
+    const failed = j2.jobs.filter((j) => j.name === "booking.mail" && j.status === "failed").length;
+    ok("BM10 fail: a mail failure that is not a refusal (the mail server away) is still thrown, so the runner retries it", failed === 2, j2.jobs.map((j) => [j.name, j.status]));
+  }
 
   // ------------------------------------------------------------------------------- PF-0c: MailPort's shared contract
   // The contract's firm is a platform firm here; each case gets a fresh address book, read back from the demo inbox.

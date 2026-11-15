@@ -22,6 +22,7 @@ import type { ClockPort } from "../../../../ports/clock.ts";
 import { BookingEvent, EVENT } from "../../../../ports/events.ts";
 import type { JobPort, JobRun } from "../../../../ports/jobs.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
+import { MessageRefused } from "../../../../ports/messages.ts";
 import type { StaffContext } from "../../../../ports/staff.ts";
 import { firmScope, notInFirm } from "../../platform/firm-scope.ts";
 import { CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts";
@@ -502,7 +503,7 @@ export class BookingService {
       const host = await this.db.platformStaff.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.staffId }), select: { email: true, displayName: true } });
       const hostWhen = wallLabel(b.startsAt, await hostZone(this.db, b.firmId, b.staffId));
       await this.ports.mail.send({ firmId: b.firmId, to: host.email, replyTo: firm.contactEmail, class: "SERVICE", person: { kind: "STAFF", id: b.staffId }, idempotencyKey: job.key, templateKey: `booking.host_${p.kind}`,
-        subject: `Consultation ${verb}: ${hostWhen}`, text: `${type.name} ${verb}: ${hostWhen}. ${how}.`, attachments: [invite({ name: host.displayName, email: host.email })] });
+        subject: `Consultation ${verb}: ${hostWhen}`, text: `${type.name} ${verb}: ${hostWhen}. ${how}.`, attachments: [invite({ name: host.displayName, email: host.email })]  }).catch((e) => this.refusedIsFinal(e, b.id));
       return;
     }
     const person = b.personId ? await this.ports.arrival.contactOf(this.db, b.firmId, b.personId) : null;
@@ -516,8 +517,15 @@ export class BookingService {
         attachments: [invite({ name: `${person.givenNames} ${person.familyName}`, email: person.email })] });
     } catch (e) {
       if (token) await this.db.foBookingToken.update({ where: { id: token.split(".")[0] }, data: { voidedAt: new Date() } }).catch(() => undefined);
-      throw e;
+      this.refusedIsFinal(e, b.id);
     }
+  }
+
+  /** A refused email (suppressed, no consent, an address the channel refuses) is final: the job ends without a retry, as a
+   *  retry would only try again to mail someone we must not mail (Lead B, #1860). Any other failure is thrown and retried. */
+  private refusedIsFinal(e: unknown, bookingId: string): void {
+    if (!(e instanceof MessageRefused)) throw e;
+    this.warn(`email for booking ${bookingId} not sent, final: ${e.message}`);
   }
 
   /** A link for the email, issued under the booking's row lock while it is still active at `sequence`; else null. */
@@ -539,7 +547,7 @@ export class BookingService {
     const person = await this.ports.arrival.contactOf(this.db, b.firmId, b.personId);
     if (!person) return;
     await this.ports.mail.send({ firmId: b.firmId, to: person.email, replyTo: firm.contactEmail, class: "SERVICE", person: { kind: "FO_PERSON", id: b.personId }, idempotencyKey: job.key, templateKey: `booking.reminder_${p.kind}`,
-      subject: `Reminder: your ${type.name} ${p.kind === "24h" ? "tomorrow" : "in one hour"}`, text: `Hello ${person.givenNames},\n\nThis is a reminder of your ${type.name} with ${firm.operatingName}: ${wallLabel(b.startsAt, b.bookerTimeZone)}. ${MODE_WORDS[b.mode as Mode]}.\n\nReplies to this email reach the firm.` });
+      subject: `Reminder: your ${type.name} ${p.kind === "24h" ? "tomorrow" : "in one hour"}`, text: `Hello ${person.givenNames},\n\nThis is a reminder of your ${type.name} with ${firm.operatingName}: ${wallLabel(b.startsAt, b.bookerTimeZone)}. ${MODE_WORDS[b.mode as Mode]}.\n\nReplies to this email reach the firm.` }).catch((e) => this.refusedIsFinal(e, b.id));
   }
 
   /** The attendance question: the host is asked; nothing is recorded until a person answers (AG-4-39 rules 1-4). */
@@ -551,7 +559,7 @@ export class BookingService {
     const host = await this.db.platformStaff.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.staffId }), select: { email: true } });
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: b.firmId }, select: { contactEmail: true } });
     await this.ports.mail.send({ firmId: b.firmId, to: host.email, replyTo: firm.contactEmail, class: "SERVICE", person: { kind: "STAFF", id: b.staffId }, idempotencyKey: job.key, templateKey: "booking.attendance_ask",
-      subject: "Did they attend?", text: `Your consultation of ${wallLabel(b.startsAt, await hostZone(this.db, b.firmId, b.staffId))} has ended. Please record whether the person attended (Attended or No-show).` });
+      subject: "Did they attend?", text: `Your consultation of ${wallLabel(b.startsAt, await hostZone(this.db, b.firmId, b.staffId))} has ended. Please record whether the person attended (Attended or No-show).` }).catch((e) => this.refusedIsFinal(e, b.id));
   }
 
   // ========================================================================================================= helpers
