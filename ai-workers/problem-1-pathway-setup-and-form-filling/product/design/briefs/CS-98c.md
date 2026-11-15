@@ -58,7 +58,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime C
   * **CS-98c DW3:** a channel whose window passed before submission → CRITICAL "expired"; inside the window → no warning.
   * **CS-98c DW4:** three candidates with a flagged residence status, not hired and no reason → **one** combined CRITICAL; the same three with an unflagged status → none.
   * **CS-98c DW5:** a second entry with the same name, case and accents ignored → the offer; "Different person" saves it; "Same person" adds nothing.
-  * **CS-98c DW6:** after Change stream the new file's clock is "not started" and the old file's channels show for reference only.
+  * **CS-98c DW6:** after Change stream the new file's clock is "not started" and the old file's channels show for reference only; a channel logged on the old file does not count towards the new file's minimum (BR-8), and a fixture that counts it makes the test fail.
   * **CS-98c DW7:** a client-actor read of candidates → 404; staff read → 200.
   * **CS-98c DW8 (part 2):** an ad whose wage differs from the job's → CRITICAL naming "wage" and the ad; the same wage → none; `dutiesMatch` false → CRITICAL.
   * **CS-98c DW9 (part 2):** with a cited fixture advertising row, the latest submission date's reminder is registered once with its key; with a Sample row, the date shows "Sample" and no job is registered (P-412 F13 (b)); moving a channel's start date re-registers it (the old job cancelled); a reminder counted in working days onto a closed day lands on the last open day before it.
