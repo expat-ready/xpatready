@@ -375,3 +375,4 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
 * 15 Nov (Lead 54 message): rev 16.16 copied into BACKLOG and both contracts. (c) agreed: `case_`, added to `AREA_ENTITY` by whichever of CS-W1 or AUD-1 lands first. P-610's time corrected to 11:0x.
 * 15 Nov: **FO-3h #1799:** qa's QA-470 check has been out of date since #1785 (mail now goes through jobs). Accepted the builder's patched run as evidence, not committed; the three lines were sent through Lead 54 to qa. The scan was restarted.
 * 15 Nov 11:50 IST: the current Lead is now **Lead 55** (`local_1ddb0c4c…`, from 11:49 IST, confirmed in STATE). Report to Lead 55.
+* 15 Nov: **PF-23w #1800 B1:** OK'd changing two assertions in `check_pf23_observability.ts`: ok === true, and failing = exactly {database, job_queue}. The suite must pass 65/65 on an isolated copy before the label. Lead 55 was told. The scan was restarted.
