@@ -536,7 +536,7 @@ def parse_backlog(text):
     return {"ids": ids, "dupes": dupes, "lines": lines, "deps": deps, "bk": [x for x in ids if x.startswith("BK-")]}
 
 
-TARGET_WORKS_PER_DAY = 10                      # founder A68 (15 Nov): 10 capabilities at qa Works a day
+TARGET_WORKS_PER_DAY = 10                      # founder A68 ("10 capabilities in 10 h") and A69 ("10 a day"), 15 Nov
 SOURCE_RE = re.compile(r"Source:([^|·]*)")        # a BACKLOG row's " · Source: …" field, to the next "·" or the cell's end (P-595)
 SOURCE_TOK = re.compile(r"[A-Za-z0-9][A-Za-z0-9.\-]*")     # a token: letters, digits, "." and "-" ("/" and spaces split tokens)
 SOURCE_ID = re.compile(r"[A-Z][A-Za-z0-9]*(?:-[A-Z0-9][A-Za-z0-9]*)+")   # an id token: AG-4-16, SA11-D8, AG-2-8a, P-574 (not P-decision)
@@ -1397,7 +1397,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     W_today = num(None if wt_maps is None else len(wt_maps),
                   f"capabilities (MVP-CHECKLIST §A) at qa Works now and not at 00:00 IST {today.isoformat()} (Status reads qa Works, or proven); "
                   f"{ck_src} and its earlier versions", "mixed", L, hist_reason, maps=wt_maps or [], by_size=wt_by,
-                  target=TARGET_WORKS_PER_DAY, target_src="founder A68 (15 Nov): 10 capabilities a day",
+                  target=TARGET_WORKS_PER_DAY, target_src="founder A68 and A69 (15 Nov): 10 capabilities a day",
                   window={"from": tiso(day_start), "to": tiso(cutoff)},
                   size_rule="distinct backlog row ids in the capability's BACKLOG rows cell: 1 = S, 2-3 = M, 4+ = L; none or Not shaped = not shaped (A70)")
     pw = dict(delivery["pct_per_works_row"])
@@ -1683,7 +1683,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
         return num(li[k], f"Lead input {k}: {what}", "reported", L)
     rules = {"label_guard_removals": lg_n, "ci_rule_failures": ci_n, "ci_bundle_failures": ci_b,
              "breaches_found": li_today("breaches_found", "rule breaches the Lead found today"),
-             "push_guard_refusals": li_today("push_guard_refusals", "pushes the Mac push guard refused today (it runs only on the Mac)"),
+             "push_guard_refusals": li_today("push_guard_refusals", "push-guard refusals the Lead knows of today (the guard's refusals reach no shared record)"),
              "records_check": "no CI check named records-check exists in .github/workflows; the CI count covers the check-docs.sh steps",
              "window": {"from": tiso(d_lo), "to": tiso(d_hi)}}
 
