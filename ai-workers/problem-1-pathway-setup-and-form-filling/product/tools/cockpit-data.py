@@ -2805,6 +2805,38 @@ def build_explain(d):
             "behind (blocked, or no push or idle for 90 min).", now_w + "; Lead input as of " + str(d["top3"].get("as_of")), len(c["lanes"]), "lanes",
             "Behind lanes go to " + str((c.get("owner") or {}).get("name") or "the owner") + ". Class: the weaker of reported and measured.",
             src=oc.get("src"), cls="reported", band="0 lanes behind")
+    # ---- board v63 (P-613, P-615): parts merged, behaviour numbers, Customer box
+    pm = P.get("parts_merged") or {}
+    put("pace.parts_merged", "Parts merged", "Release 1 parts (the distinct BACKLOG ids the checklist section A names) that a merged pull request "
+        "names in its title; records-only PRs never count.", "from the first merge to " + t_ist, pm.get("total"), "Release 1 parts",
+        up + " Parts merge before a capability is built: this moves every day even when 'built' does not.", pm, n_override=pm.get("total"))
+    B_ = d.get("behaviour") or {}
+    fa, rc, tc = B_.get("founder_asks_day") or {}, B_.get("rules_changes_day") or {}, B_.get("target_changes_week") or {}
+    put("behaviour.asks", "Your asks a day", "Ask ids in STATE.md's Founder asks table dated on the last full IST day (a row 'A49-A67' counts 19); "
+        "today so far: " + str(fa.get("today_so_far")) + "; mean of the 6 days before today: " + str(fa.get("mean_7d")) + ".",
+        "IST day " + str(fa.get("day")) + " (00:00 to 24:00); " + str(fa.get("undated")) + " older asks carry no date and are left out",
+        val(fa), "asks that day", "Neither good nor bad by itself: many asks a day split the Leads' time between asks and building.", fa)
+    put("behaviour.rules", "Rule changes a day", "Commits that change RULES.md (the rules in force) on the records branch, on the last full IST day; "
+        "today so far: " + str(rc.get("today_so_far")) + "; mean of the 6 days before today: " + str(rc.get("mean_7d")) + ".",
+        "IST day " + str(rc.get("day")) + " (00:00 to 24:00), git log", val(rc), "commits that day",
+        down + " Each change is re-read by every Lead and lane before work.", rc)
+    put("behaviour.targets", "Target changes a week", "DECISIONS.md rows dated in the last 7 IST days whose bold text names a target with a date or a "
+        "count, not kept or standing: " + (", ".join(tc.get("ids") or []) or "none") + ".",
+        "7 IST days " + str((tc.get("window") or {}).get("from")) + " to " + str((tc.get("window") or {}).get("to")), val(tc), "target changes",
+        down + " A moved target resets the pace line the board measures against.", tc)
+    cu = d.get("customer") or {}
+    put("customer.firm", "First firm", "The first real firm (named by role) and its date, from cockpit/plan.json first_firm.", "the records at " + t_ist,
+        None, "", "Set once the founder names the firm and the day its data goes in.", cu.get("first_firm"),
+        n_reason=(cu.get("first_firm") or {}).get("reason") or "one record, not a sample")
+    put("customer.journey", "Journey steps walked", "The first firm's journey steps walked end to end, of all its steps.", "the records at " + t_ist,
+        None, "", up, cu.get("journey_walked"))
+    co, ld = cu.get("counsel_open") or {}, cu.get("launch_done") or {}
+    put("customer.counsel", "Counsel and expert items open", "Launch conditions in the checklist section C that name counsel or the immigration "
+        "expert and are not Done: " + (", ".join(co.get("ids") or []) or "none") + ".", "the checklist at " + t_ist, ld.get("total"),
+        "launch conditions read", down + " Each one needs a booked person; none is booked yet (P-541).", co, n_override=ld.get("total"))
+    put("customer.launch", "Launch conditions done", "Rows of the checklist section C (production readiness) whose status starts with Done.",
+        "the checklist at " + t_ist, ld.get("total"), "launch conditions", up + " All must be Done before the first real firm's data (P-589).",
+        ld, n_override=ld.get("total"))
     return E
 
 

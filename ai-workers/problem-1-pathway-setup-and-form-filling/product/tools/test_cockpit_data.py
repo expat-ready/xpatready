@@ -1507,6 +1507,77 @@ const isOn = (p) => p.$eval('#tip', (e) => e.classList.contains('on'));
 """
 
 
+class BehaviourPartsCustomer(unittest.TestCase):
+    """Board v63 (P-613, P-615): parts merged of all Release 1 parts; the founder's behaviour numbers; the Customer box.
+    Fixture, today 20 Nov IST: STATE Founder asks A1-A3 undated, A4-A6 '19 Nov asks', A7 '(20 Nov, typed)', A8 '(18 Nov, spoken)';
+    git/rules_log.jsonl r1 19 Nov 09:30, r2 20 Nov 01:30, r3 19 Nov 00:30, r4 20 Nov 08:30 IST; DECISIONS P-5 (12 Nov) to P-9 (20 Nov);
+    checklist section C: C1 Not started, C2 counsel Not started, C3 Done, C4 counsel Done."""
+
+    def test_parts_merged_of_all_parts(self):
+        # parts cited: PF-1, PF-2, PF-3, PF-4, FO-1, FO-2, FO-3, BK-1, BK-2, BK-3, FO-4 = 11. Merged non-records PR titles name
+        # PF-1, PF-2, PF-3, PF-4, BK-1, BK-2, BK-3 and FO-4 (app or not, R1b) = 8; FO-1 is only in an open PR.
+        pm = run()[1]["pace"]["parts_merged"]
+        self.assertEqual((pm["value"], pm["total"]), (8, 11))
+        self.assertNotIn("FO-1", pm["ids"])
+
+    def test_records_pr_never_counts_a_part(self):
+        pulls = jread(os.path.join(FIX, "github/pulls.json"))
+        for p in pulls:
+            if p.get("merged_at") and "FO-4" in (p["title"] or ""):
+                p["title"] += " (records only)"
+        self.assertEqual(run(snap_with({"github/pulls.json": pulls}))[1]["pace"]["parts_merged"]["value"], 7)
+
+    def test_founder_asks_a_day(self):
+        a = run()[1]["behaviour"]["founder_asks_day"]
+        # 19 Nov: A4-A6 = 3; today 20 Nov: A7 = 1; 18 Nov: A8 = 1; A1-A3 undated (3). Mean 14-19 Nov = (1 + 3) / 6 = 0.7
+        self.assertEqual((a["value"], a["day"], a["today_so_far"], a["undated"], a["mean_7d"]), (3, "2026-11-19", 1, 3, 0.7))
+        self.assertEqual([x["count"] for x in a["series"]], [0, 0, 0, 0, 1, 3, 1])
+        self.assertIsNone(run(snap_with(drop=["files/" + cd.REL + "/STATE.md"]))[1]["behaviour"]["founder_asks_day"]["value"])
+
+    def test_rules_changes_a_day(self):
+        r = run()[1]["behaviour"]["rules_changes_day"]
+        self.assertEqual((r["value"], r["today_so_far"]), (2, 2))          # r1, r3 on 19 Nov; r2, r4 on 20 Nov
+        r0 = run(snap_with(drop=["git/rules_log.jsonl"]))[1]["behaviour"]["rules_changes_day"]
+        self.assertIsNone(r0["value"])
+        self.assertTrue(r0["reason"].startswith("not measured"))
+
+    def test_target_changes_a_week(self):
+        t = run()[1]["behaviour"]["target_changes_week"]
+        # P-9 (date) and P-7 (count, second bold part) count; P-8 kept; P-6 names a target with no date or count; P-5 is 12 Nov
+        self.assertEqual((t["value"], t["ids"], t["window"]), (2, ["P-9", "P-7"], {"from": "2026-11-14", "to": "2026-11-20"}))
+        self.assertEqual(cd.target_changes("| P-1 | 1 Nov | **Release 1 target: 24 Nov.** |", date(2026, 11, 20))[0]["day"], "2026-11-01")
+
+    def test_customer_box(self):
+        c = run()[1]["customer"]
+        self.assertIsNone(c["first_firm"]["value"])
+        self.assertTrue(c["first_firm"]["reason"].startswith("not measured"))
+        self.assertIsNone(c["journey_walked"]["value"])
+        self.assertEqual((c["launch_done"]["value"], c["launch_done"]["total"], c["launch_done"]["ids"]), (2, 4, ["C3", "C4"]))
+        self.assertEqual((c["counsel_open"]["value"], c["counsel_open"]["ids"]), (1, ["C2"]))
+        pl = json.loads(cd.Snap(FIX).file("cockpit/plan.json"))
+        pl["first_firm"] = {"name": "Client A", "date": "2026-12-01"}
+        f = run(snap_with({"files/" + cd.REL + "/cockpit/plan.json": pl}))[1]["customer"]["first_firm"]
+        self.assertEqual(f["value"], {"name": "Client A", "date": "2026-12-01"})
+
+    def test_reconcile_agrees_on_the_eight_new_keys(self):
+        rec = json.loads(subprocess.run([sys.executable, "-I", os.path.join(HERE, "cockpit-reconcile.py"), FIX],
+                                        capture_output=True, text=True, timeout=300).stdout)["numbers"]
+        want = {"parts_merged": 8, "parts_total": 11, "founder_asks_day": 3, "rules_changes_day": 2, "target_changes_week": 2,
+                "launch_done": 2, "launch_total": 4, "counsel_open": 1}
+        self.assertEqual({k: rec[k]["value"] for k in want}, want)
+        self.assertEqual({k: run()[1]["keys"][k] for k in want}, want)
+
+    def test_each_has_an_info_entry_and_a_page_key(self):
+        E, d = TooltipsData.data()
+        self.assertEqual((E["pace.parts_merged"]["n"], E["behaviour.asks"]["n"], E["customer.launch"]["n"]), (11, 3, 4))
+        self.assertIsNone(E["customer.firm"]["n"])
+        self.assertTrue(E["customer.firm"]["n_reason"].startswith("not measured"))
+        html = open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read()
+        for k in ("pace.parts_merged", "behaviour.asks", "behaviour.rules", "behaviour.targets", "customer.firm", "customer.journey",
+                  "customer.counsel", "customer.launch"):
+            self.assertIn('"' + k + '"', html)
+
+
 @unittest.skipUnless(os.environ.get("AXE_JS") and shutil.which("node"), "browser check: set AXE_JS to axe.min.js (axe-core 4.10) and have Playwright for node")
 class InfoIconsInBrowser(unittest.TestCase):
     """Board v61 item 1 (founder 15 Nov: "an icon ... when I click on the icon, then only it should work ... on all the pages"):

@@ -473,7 +473,8 @@ function rPace(){
   h+=rEarly(B);
   h+=rDelivery(B);
   var dis=((D.trust||{}).status_disagreements||[]);
-  h+='<p class="line">Capabilities: '+N(P.built,"",B,"pace.built")+' of '+N(P.rows_total,"",null,"pace.rows_total")+' built'+(bb&&bb.value?' <span class="small muted"'+T("pace.built_before")+'>(+'+esc(bb.value)+' built before 13 Nov)</span>':"")+', proven: '+N(P.proven,"",B,"pace.proven")+'.'+
+  h+='<p class="line">Capabilities: '+N(P.built,"",B,"pace.built")+' of '+N(P.rows_total,"",null,"pace.rows_total")+' built'+(bb&&bb.value?' <span class="small muted"'+T("pace.built_before")+'>(+'+esc(bb.value)+' built before 13 Nov)</span>':"")+', proven: '+N(P.proven,"",B,"pace.proven")+(P.proven&&P.proven.value!=null?' of '+esc(P.rows_total.value):"")+
+    (P.parts_merged?' \u00b7 parts merged: '+N(P.parts_merged,"",B,"pace.parts_merged")+(P.parts_merged.value!=null?' of '+esc(P.parts_merged.total):""):"")+'.'+
     (dis.length?' <a href="#trust" class="small" data-go="details"'+S("the checklist's hand-kept status and the computed state differ on these capabilities; Details lists them")+'>records differ on capabilities '+esc(dis.map(function(x){return x.map;}).join(", "))+'</a>':"")+'</p>';
   var R=P.remaining;
   h+='<p class="small muted" style="margin:2px 0">Changes left: '+N(R,"",null,"pace.remaining")+' ('+esc(R.label)+')'+(P.ratio?'; measured '+N(P.ratio,"",null,"pace.ratio")+' changes per built capability':"")+'. Forecast sample: '+esc(F.sample)+'.</p>';
@@ -578,8 +579,27 @@ function rTop3(){
     h+='<div class="card"'+S(c.what+" — "+c.why+" — Lead recommends: "+c.rec+" — owner "+c.owner+" | "+T.src+" · "+T.sha+" · as of "+T.as_of+" · reported")+'><div class="k">'+nm_[k]+'<span class="rep">Lead-reported</span>'+(T.example?'<span class="example">example data</span>':"")+'</div><div class="w">'+esc(c.what)+'</div><div class="small">'+esc(c.why)+'</div><div class="small rec"><b>Lead recommends:</b> '+esc(c.rec)+'</div><div class="small muted">Owner: '+esc(c.owner)+(c.needs_you?' · <a href="#needs">needs you: '+esc(c.needs_you)+'</a>':"")+'</div></div>';});
   return '<section class="ovsec" id="top3"><h2>Top 3, with the Lead\'s recommendation</h2>'+h+'</div></section>';
 }
+/* board v63 (P-615): the founder's own behaviour numbers and the Customer box; records only, "not measured" where no source */
+function rBehaviour(){
+  var Bh=D.behaviour,Cu=D.customer;if(!Bh&&!Cu)return "";
+  var cnt=function(x,key){return x&&x.value!=null?'<span>'+esc(x.value)+'</span>':nm(x&&x.reason||"missing from data.json",key);};
+  var h='';
+  if(Bh){var a=Bh.founder_asks_day,r=Bh.rules_changes_day,t=Bh.target_changes_week;
+    h+='<h3>Your numbers</h3><div class="kpis">'+
+      kpi("Your asks a day",cnt(a,"behaviour.asks"),a&&a.value!=null?"on "+esc(short(a.day))+" \u00b7 today so far "+esc(a.today_so_far):"","","","behaviour.asks")+
+      kpi("Rule changes a day",cnt(r,"behaviour.rules"),r&&r.value!=null?"RULES.md on "+esc(short(r.day))+" \u00b7 today so far "+esc(r.today_so_far):"","","","behaviour.rules")+
+      kpi("Target changes a week",cnt(t,"behaviour.targets"),t&&t.value!=null?(t.ids.length?esc(t.ids.join(", ")):"none")+" \u00b7 last 7 days":"","","","behaviour.targets")+'</div>';}
+  if(Cu){var f=Cu.first_firm,j=Cu.journey_walked,c=Cu.counsel_open,l=Cu.launch_done;
+    var fv=f&&f.value?'<span style="font-size:15px">'+esc(f.value.name)+'</span>':nm(f&&f.reason,"customer.firm");
+    h+='<h3>Customer</h3><div class="kpis">'+
+      kpi("First firm",fv,f&&f.value?"from "+esc(short(f.value.date)):"named and dated","","","customer.firm")+
+      kpi("Journey steps walked",j&&j.value!=null?esc(j.value):nm(j&&j.reason,"customer.journey"),"","","","customer.journey")+
+      kpi("Counsel and expert items open",cnt(c,"customer.counsel"),c&&c.value!=null&&c.ids.length?esc(c.ids.join(", ")):"","","","customer.counsel")+
+      kpi("Launch conditions done",cnt(l,"customer.launch")+(l&&l.value!=null?'<span class="muted" style="font-size:13px"> / '+esc(l.total)+'</span>':""),"checklist section C","","","customer.launch")+'</div>';}
+  return '<section class="ovsec" id="behaviour"><h2>Your numbers and the customer</h2>'+h+'</section>';
+}
 function rOverview(){
-  return '<div class="ov">'+rPace()+rCapacity()+rTop3()+rWhatsNew()+'</div>'+
+  return '<div class="ov">'+rPace()+rBehaviour()+rCapacity()+rTop3()+rWhatsNew()+'</div>'+
     '<details class="more" id="ovmore"><summary>More: Release 1 at a glance, on track, plan and dates</summary>'+rGlance()+rStatus()+rPlan()+'</details>';
 }
 
