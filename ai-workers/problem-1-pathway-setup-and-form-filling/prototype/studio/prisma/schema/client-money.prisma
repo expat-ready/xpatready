@@ -80,7 +80,8 @@ enum MoneyReceiptKind {
 }
 
 /// A trust ledger entry (row FO-7a; contracts §7 §2.5). DEPOSIT is +, WITHDRAWAL_TO_INVOICE and REFUND_TO_CLIENT are −,
-/// CORRECTION is either. Entries are never changed: a mistake is a new CORRECTION entry.
+/// CORRECTION names one withdrawal (+, money returned from it) or one deposit (−, at most the deposit). Money leaves
+/// trust only by a withdrawal to an issued invoice or a refund to the client (P-603). Entries are never changed.
 enum MoneyTrustEntryKind {
   DEPOSIT
   WITHDRAWAL_TO_INVOICE
@@ -383,7 +384,8 @@ model MoneyTrustRequest {
 /// One entry of a party's trust ledger (contracts §7 §2.5; Code s. 32(d): separate records per client). Insert-only.
 /// seq and balance_after_minor are the database's: the running balance per (party, currency), which never goes below
 /// zero. A withdrawal names an issued invoice of the same party and currency (s. 32(f)); a deposit names the payment
-/// received into trust that brought it; a refund to the client and a correction carry a reason.
+/// received into trust that brought it; a correction names exactly one withdrawal or deposit (never a correction, so
+/// it never re-opens an invoice's trust cap, P-603); a refund to the client and a correction carry a reason.
 model MoneyTrustEntry {
   id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   firmId            String              @map("firm_id") @db.Uuid
@@ -468,7 +470,8 @@ model MoneyMoveBatch {
 /// from (a trust withdrawal for TRUST_APPLIED; a payment for WRONG_ACCOUNT and CARD_FEE_ON_TRUST). A source is in at
 /// most one batch that has not been undone: move_ordinal (the database's) counts its moves, and (source, kind, ordinal)
 /// is unique, so two people ticking the same line at once make one batch. Lines are written in the transaction that
-/// records their batch. Insert-only.
+/// records their batch, never after its undo. A wrong-account amount out of trust moves at most the negative
+/// corrections of its payment's deposit (P-603). Insert-only.
 model MoneyMoveLine {
   id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   firmId             String             @map("firm_id") @db.Uuid

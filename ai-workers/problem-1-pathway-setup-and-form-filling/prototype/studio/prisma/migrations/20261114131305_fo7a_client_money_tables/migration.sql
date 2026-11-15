@@ -22,7 +22,7 @@
 --   money_invoice_total(uuid, uuid), money_issued_invoice(uuid, uuid, "MoneyCurrency", text), money_credit_note_write(),
 --   money_write_off_write(), money_trust_on(uuid, text), money_trust_request_write(), money_payment_write(),
 --   money_payment_trust_deposited(), money_refund_write(), money_receipt_write(), money_trust_entry_write(),
---   money_move_batch_write(), money_move_line_write(); DROP TYPE "MoneyMoveDirection",
+--   money_move_batch_write(), money_move_line_write(), money_move_line_not_undone(); DROP TYPE "MoneyMoveDirection",
 --   "MoneyMoveKind", "MoneySeriesKind", "MoneyTrustEntryKind", "MoneyReceiptKind", "MoneyRefundRoute",
 --   "MoneyAccountKind", "MoneyPaymentMethod", "MoneyLineKind", "MoneyAccountStatus", "MoneyCurrency"; delete this
 --   folder's row from _prisma_migrations. (Truncate is refused by trigger: drop the tables, never truncate them.)
@@ -499,10 +499,11 @@ ALTER TABLE "money_move_line" ADD CONSTRAINT "money_move_line_firm_id_source_pay
 -- Free text a person typed: 1..max characters, at least one visible character, no control characters and no bidi
 -- controls. The databases run with the C ctype, where [:space:] is ASCII only, so every Unicode space, invisible
 -- format character and line or paragraph separator is listed (break B-9: an ideographic space, RLM, a bidi override
--- or U+2028 passed as a reason).
+-- or U+2028 passed as a reason; round 3, B-17: a braille blank, a tag space, a lone skin-tone modifier, U+1D159 and
+-- U+17B4; variation selectors and the musical format characters with them).
 CREATE FUNCTION money_text_ok(t text, max_len integer) RETURNS boolean LANGUAGE sql IMMUTABLE AS
   $$ SELECT t IS NOT NULL AND char_length(t) BETWEEN 1 AND max_len
-       AND t ~ '[^[:space:]\u0085\u00a0\u00ad\u034f\u061c\u115f\u1160\u1680\u180e\u2000-\u200f\u2028-\u202f\u205f-\u206f\u3000\u3164\ufeff\uffa0]'
+       AND t ~ '[^[:space:]\u0085\u00a0\u00ad\u034f\u061c\u115f\u1160\u1680\u17b4\u17b5\u180b-\u180f\u2000-\u200f\u2028-\u202f\u205f-\u206f\u2800\u3000\u3164\ufe00-\ufe0f\ufeff\uffa0\U0001d159\U0001d173-\U0001d17a\U0001f3fb-\U0001f3ff\U000e0000-\U000e007f\U000e0100-\U000e01ef]'
        AND t !~ '[[:cntrl:]\u0085\u2028\u2029\u202a-\u202e\u2066-\u2069]' $$;
 -- The firm's tax rates: a JSON list (at most 10) of { "name": 1..40 characters, "ratePpm": 0..1000000 } (parts per
 -- million: Quebec's QST 9.975 % is 99750; basis points could not hold it, review round 2, Major 1).
@@ -603,7 +604,8 @@ ALTER TABLE "money_trust_request"
     OR ("cancelled_at" IS NOT NULL AND money_text_ok("cancelled_by", 200) AND money_text_ok("cancel_reason", 200)));
 ALTER TABLE "money_trust_entry"
   ADD CONSTRAINT "money_trust_entry_party_check" CHECK (num_nonnulls("person_id", "company_id") = 1),
-  -- The sign follows the kind: a deposit adds, a withdrawal or a refund takes away, a correction does either.
+  -- The sign follows the kind: a deposit adds, a withdrawal or a refund takes away; a correction's sign follows the
+  -- entry it names (money_trust_entry_write: a return from a withdrawal adds, a correction of a deposit takes away).
   ADD CONSTRAINT "money_trust_entry_sign_check" CHECK (
     ("kind" = 'DEPOSIT' AND "amount_minor" > 0) OR ("kind" IN ('WITHDRAWAL_TO_INVOICE', 'REFUND_TO_CLIENT') AND "amount_minor" < 0)
     OR ("kind" = 'CORRECTION' AND "amount_minor" <> 0)),
@@ -612,7 +614,9 @@ ALTER TABLE "money_trust_entry"
   -- A deposit names the payment received into trust that brought it; only a deposit does.
   ADD CONSTRAINT "money_trust_entry_deposit_payment" CHECK (("kind" = 'DEPOSIT') = ("payment_id" IS NOT NULL)),
   ADD CONSTRAINT "money_trust_entry_reason_check" CHECK (CASE WHEN "kind" IN ('REFUND_TO_CLIENT', 'CORRECTION') THEN money_text_ok("reason", 200) ELSE "reason" IS NULL END),
-  ADD CONSTRAINT "money_trust_entry_corrects_check" CHECK ("corrects_entry_id" IS NULL OR ("kind" = 'CORRECTION' AND "corrects_entry_id" <> "id")),
+  -- A correction names exactly one entry (a withdrawal or a deposit, checked in money_trust_entry_write); only a
+  -- correction names one (P-603; break round 3, B-12: a correction naming nothing took money out of trust).
+  ADD CONSTRAINT "money_trust_entry_corrects_check" CHECK (("kind" = 'CORRECTION') = ("corrects_entry_id" IS NOT NULL) AND "corrects_entry_id" IS DISTINCT FROM "id"),
   ADD CONSTRAINT "money_trust_entry_by_check" CHECK (money_text_ok("created_by", 200)),
   -- Never below zero (row FO-7a; Code s. 32(d)); seq starts at 1 per party and currency.
   ADD CONSTRAINT "money_trust_entry_balance_check" CHECK ("balance_after_minor" >= 0 AND "seq" >= 1);
@@ -679,8 +683,10 @@ CREATE TRIGGER money_number_series_no_truncate BEFORE TRUNCATE ON "money_number_
 -- AG-6-44: INV-0001, CN-0001, R-0001, DR-0001, growing past 9999 (INV-9999 → INV-10000). A number is taken only here,
 -- inside the transaction that writes the numbered row, by one UPDATE on the series row: a second writer waits for the
 -- first to commit (or fails to serialise), and a rolled-back writer gives its number back. So numbers never repeat
--- and never skip. A firm moving from another system may raise next_number; it never goes back, and the row is never
--- deleted. The series row is made on first use with the default prefix.
+-- and never skip. Until the first number is taken a firm moving from another system may set its first number; after
+-- that the row moves only by one taken number (next_number and numbers_taken + 1 together), never goes back, and is
+-- never deleted. The series row is made on first use with the default prefix. money_take_number runs only from a
+-- numbered row's trigger, and nobody else may call it (break round 3, B-13: a direct call skipped a number).
 CREATE FUNCTION money_format_number(prefix text, n integer) RETURNS text LANGUAGE sql IMMUTABLE AS
   $$ SELECT prefix || CASE WHEN n < 10000 THEN lpad(n::text, 4, '0') ELSE n::text END $$;
 CREATE FUNCTION money_take_number(f uuid, k "MoneySeriesKind") RETURNS text LANGUAGE plpgsql AS $$
@@ -689,12 +695,14 @@ BEGIN
   INSERT INTO "money_number_series" (firm_id, kind, prefix, next_number, updated_at)
     VALUES (f, k, CASE k WHEN 'INVOICE' THEN 'INV-' WHEN 'CREDIT_NOTE' THEN 'CN-' WHEN 'RECEIPT' THEN 'R-' ELSE 'DR-' END, 1, now())
     ON CONFLICT (firm_id, kind) DO NOTHING;
-  PERFORM set_config('money.taking_number', 'on', true);
+  IF pg_trigger_depth() = 0 THEN
+    RAISE EXCEPTION 'money_take_number: a number is taken only by writing the numbered row (a direct call would skip one)' USING ERRCODE = 'insufficient_privilege';
+  END IF;
   UPDATE "money_number_series" SET next_number = next_number + 1, numbers_taken = numbers_taken + 1, updated_at = now()
     WHERE firm_id = f AND kind = k RETURNING prefix, next_number - 1 INTO p, n;
-  PERFORM set_config('money.taking_number', 'off', true);
   RETURN money_format_number(p, n);
 END $$;
+REVOKE EXECUTE ON FUNCTION money_take_number(uuid, "MoneySeriesKind") FROM PUBLIC;
 CREATE FUNCTION money_number_series_write() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN
@@ -712,14 +720,15 @@ BEGIN
   IF (NEW.firm_id, NEW.kind) IS DISTINCT FROM (OLD.firm_id, OLD.kind) THEN
     RAISE EXCEPTION 'money_number_series: firm_id and kind never change' USING ERRCODE = 'check_violation';
   END IF;
-  -- Numbers move only inside money_take_number (one number, counted). Until the first number is taken a firm moving
-  -- from another system may still set or correct its first number (AG-6-44 rule 2); after that a direct change is
-  -- refused, so no update can skip a number (break B-6; review round 2, Minor 3: two direct "+ 1" updates skipped two).
+  -- Until the first number is taken a firm moving from another system may still set or correct its first number
+  -- (AG-6-44 rule 2). Otherwise the row moves only by one number taken: next_number and numbers_taken both + 1, from
+  -- money_take_number inside a numbered row's trigger (a direct "+ 1" update would skip one; no switch turns this off,
+  -- break round 3, B-13), so no update skips, reuses or resets a number (break B-6; review
+  -- round 2, Minor 3), and numbers_taken never goes back (a series that gave numbers stays undeletable).
   IF (NEW.next_number, NEW.numbers_taken) IS DISTINCT FROM (OLD.next_number, OLD.numbers_taken)
-     AND coalesce(current_setting('money.taking_number', true), 'off') <> 'on' THEN
-    IF OLD.numbers_taken > 0 OR NEW.numbers_taken <> OLD.numbers_taken THEN
-      RAISE EXCEPTION 'money_number_series: the % series has given numbers; it moves only by taking one (a change from % to % would skip or reuse)', OLD.kind, OLD.next_number, NEW.next_number USING ERRCODE = 'check_violation';
-    END IF;
+     AND NOT (OLD.numbers_taken = 0 AND NEW.numbers_taken = 0)
+     AND NOT (NEW.next_number = OLD.next_number + 1 AND NEW.numbers_taken = OLD.numbers_taken + 1 AND pg_trigger_depth() > 1) THEN
+    RAISE EXCEPTION 'money_number_series: the % series moves only by taking one number (a change from % to % would skip, reuse or reset)', OLD.kind, OLD.next_number, NEW.next_number USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;
 END $$;
@@ -809,9 +818,16 @@ CREATE FUNCTION money_invoice_total(f uuid, inv uuid) RETURNS bigint LANGUAGE sq
 -- serialise (40001) because the row changed after its snapshot (review round 1: a row lock alone does not refresh a
 -- snapshot). Returns what is still open to credit, write off or pay from trust: the total less credit notes and the
 -- write-off (break B-8: a full credit note and a write-off exceeded the total).
+-- Before it touches the row it takes the invoice party's trust lock (the one a trust entry takes first), so every path
+-- locks the party first and the invoice row second: a credit note then a return in one transaction never deadlocks
+-- with a withdrawal on the same invoice (review round 3, Minor 1; break round 3, B-14: 40P01).
 CREATE FUNCTION money_issued_invoice(f uuid, inv uuid, cur "MoneyCurrency", what text) RETURNS bigint LANGUAGE plpgsql AS $$
-DECLARE i record; credited bigint; written bigint;
+DECLARE i record; credited bigint; written bigint; party uuid; pcur "MoneyCurrency";
 BEGIN
+  SELECT coalesce(x.person_id, x.company_id), x.currency INTO party, pcur FROM "money_invoice" x WHERE x.firm_id = f AND x.id = inv;
+  IF party IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended('money_trust:' || f || ':' || party || ':' || pcur, 0));
+  END IF;
   UPDATE "money_invoice" x SET updated_at = now() WHERE x.firm_id = f AND x.id = inv RETURNING x.issued_at, x.currency INTO i;
   IF NOT FOUND THEN PERFORM money_missing(what, 'invoice', inv); END IF;
   IF i.issued_at IS NULL THEN
@@ -1050,7 +1066,13 @@ CREATE TRIGGER money_receipt_write BEFORE INSERT ON "money_receipt" FOR EACH ROW
 -- A deposit names a payment received into trust, of the same amount and currency (its trust request, if any, and its
 -- invoice under "Trust first", if any, of the same party), and only with trust on; a withdrawal names an issued
 -- invoice of the same party and currency (s. 32(f)) and never pays more than is open on it after credit notes and the
--- write-off (review round 1, m4; break B-5); a correction names, if any, an entry of the same party and currency.
+-- write-off (review round 1, m4; break B-5).
+-- Money leaves trust only by a withdrawal to an issued invoice or a refund to the client (P-603; s. 32(f) reading
+-- Unconfirmed: no counsel). A correction names exactly one withdrawal or one deposit of the same party and currency,
+-- never a correction or a refund: naming a withdrawal it returns money from it (positive, at most what was applied less
+-- earlier returns); naming a deposit it corrects it (negative, all its corrections together at most the deposit: a
+-- bounced cheque, money for another party). So a correction never re-opens an invoice's trust cap (break round 3,
+-- B-12: withdraw, return, correct the return, withdraw again let 300.00 leave trust for one 100.00 invoice).
 CREATE FUNCTION money_trust_entry_write() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE d record; last_seq integer; last_balance bigint; party uuid := coalesce(NEW.person_id, NEW.company_id); bal bigint; applied bigint; open_amount bigint; returned bigint;
 BEGIN
@@ -1104,19 +1126,25 @@ BEGIN
     -- money_issued_invoice); returns what is open after them.
     open_amount := money_issued_invoice(NEW.firm_id, NEW.invoice_id, NEW.currency, 'money_trust_entry');
   END IF;
-  IF NEW.corrects_entry_id IS NOT NULL THEN
+  IF NEW.kind = 'CORRECTION' AND NEW.corrects_entry_id IS NOT NULL THEN  -- another kind naming one: money_trust_entry_corrects_check
     SELECT e.person_id, e.company_id, e.currency, e.kind, e.amount_minor INTO d FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND e.id = NEW.corrects_entry_id;
     IF NOT FOUND THEN PERFORM money_missing('money_trust_entry', 'entry', NEW.corrects_entry_id); END IF;
     IF (d.person_id, d.company_id, d.currency) IS DISTINCT FROM (NEW.person_id, NEW.company_id, NEW.currency) THEN
       RAISE EXCEPTION 'money_trust_entry: a correction is on the same party and currency as the entry it corrects' USING ERRCODE = 'check_violation';
     END IF;
-    -- Money returned from a trust application: positive, and never more than was applied (the party's lock is held,
-    -- so the returns of one withdrawal are read after every earlier one).
-    IF d.kind = 'WITHDRAWAL_TO_INVOICE' THEN
-      SELECT coalesce(sum(c.amount_minor), 0) INTO returned FROM "money_trust_entry" c WHERE c.firm_id = NEW.firm_id AND c.corrects_entry_id = NEW.corrects_entry_id;
-      IF NEW.amount_minor <= 0 OR returned + NEW.amount_minor > -d.amount_minor THEN
-        RAISE EXCEPTION 'money_trust_entry: money returned from a trust application is positive and at most what was applied (% applied, % returned)', -d.amount_minor, returned USING ERRCODE = 'check_violation';
-      END IF;
+    IF d.kind NOT IN ('WITHDRAWAL_TO_INVOICE', 'DEPOSIT') THEN
+      RAISE EXCEPTION 'money_trust_entry: a correction names a withdrawal (to return money from it) or a deposit (to correct it), never a % (P-603: money leaves trust only to an issued invoice or back to the client)', d.kind USING ERRCODE = 'check_violation';
+    END IF;
+    -- What the earlier corrections of that entry add up to (the party's lock is held, so they are read after every
+    -- earlier one; a stale read at REPEATABLE READ takes a seq already taken and is refused, 23505).
+    SELECT coalesce(sum(c.amount_minor), 0) INTO returned FROM "money_trust_entry" c WHERE c.firm_id = NEW.firm_id AND c.corrects_entry_id = NEW.corrects_entry_id;
+    -- Money returned from a trust application: positive, and never more than was applied.
+    IF d.kind = 'WITHDRAWAL_TO_INVOICE' AND (NEW.amount_minor <= 0 OR returned + NEW.amount_minor > -d.amount_minor) THEN
+      RAISE EXCEPTION 'money_trust_entry: money returned from a trust application is positive and at most what was applied (% applied, % returned)', -d.amount_minor, returned USING ERRCODE = 'check_violation';
+    END IF;
+    -- A deposit corrected: negative, and all its corrections together never more than the deposit.
+    IF d.kind = 'DEPOSIT' AND (NEW.amount_minor >= 0 OR -(returned + NEW.amount_minor) > d.amount_minor) THEN
+      RAISE EXCEPTION 'money_trust_entry: a correction of a deposit takes money out, at most the deposit (% deposited, % corrected before)', d.amount_minor, -returned USING ERRCODE = 'check_violation';
     END IF;
   END IF;
   IF NEW.kind = 'WITHDRAWAL_TO_INVOICE' AND NEW.invoice_id IS NOT NULL THEN
@@ -1186,8 +1214,11 @@ BEGIN
   IF b.undoes_batch_id IS NOT NULL THEN
     RAISE EXCEPTION 'money_move_line: an undo batch carries no lines (the undone batch''s lines go back to the list)' USING ERRCODE = 'check_violation';
   END IF;
-  IF NOT b.mine THEN
+  IF b.mine IS NOT TRUE THEN  -- unknown (NULL) is not mine (break round 3, B-15)
     RAISE EXCEPTION 'money_move_line: a batch takes its lines in the transaction that records it; a recorded batch is never added to' USING ERRCODE = 'check_violation';
+  END IF;
+  IF EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = NEW.firm_id AND u.undoes_batch_id = NEW.batch_id) THEN
+    RAISE EXCEPTION 'money_move_line: an undone batch never gains a line, also in the transaction that records it' USING ERRCODE = 'check_violation';
   END IF;
   IF b.currency <> NEW.currency THEN
     RAISE EXCEPTION 'money_move_line: a line is in its batch''s currency (%), not %', b.currency, NEW.currency USING ERRCODE = 'check_violation';
@@ -1209,6 +1240,14 @@ BEGIN
     END IF;
     IF NEW.kind = 'WRONG_ACCOUNT' AND ((s.received_into = 'OPERATING') <> (NEW.direction = 'OPERATING_TO_TRUST')) THEN
       RAISE EXCEPTION 'money_move_line: money received into % moves out of it', s.received_into USING ERRCODE = 'check_violation';
+    END IF;
+    -- Money leaves trust only by the entry kinds of P-603: a wrong-account amount moved out of trust is the negative
+    -- correction of the deposit that was wrongly put in trust, so it moves at most what those corrections took out
+    -- (corrections of a deposit only ever take more out, so a later one never undoes this check).
+    IF NEW.kind = 'WRONG_ACCOUNT' AND NEW.direction = 'TRUST_TO_OPERATING'
+       AND NEW.amount_minor > coalesce((SELECT -sum(c.amount_minor) FROM "money_trust_entry" dep JOIN "money_trust_entry" c ON c.firm_id = dep.firm_id AND c.corrects_entry_id = dep.id
+         WHERE dep.firm_id = NEW.firm_id AND dep.payment_id = NEW.source_payment_id AND dep.kind = 'DEPOSIT'), 0) THEN
+      RAISE EXCEPTION 'money_move_line: money moves out of trust only as recorded in the trust ledger: correct the payment''s deposit first (a negative correction of at least %)', NEW.amount_minor USING ERRCODE = 'check_violation';
     END IF;
     IF NEW.kind = 'CARD_FEE_ON_TRUST' AND (s.method <> 'CARD' OR s.received_into <> 'TRUST' OR NEW.direction <> 'OPERATING_TO_TRUST') THEN
       RAISE EXCEPTION 'money_move_line: a card fee on the trust account is for a card payment into trust, covered from operating into trust' USING ERRCODE = 'check_violation';
@@ -1234,3 +1273,13 @@ BEGIN
   RETURN NEW;
 END $$;
 CREATE TRIGGER money_move_line_write BEFORE INSERT ON "money_move_line" FOR EACH ROW EXECUTE FUNCTION money_move_line_write();
+-- At commit, too: a line and an undo of its batch written in one statement (a data-modifying CTE) cannot see each
+-- other, so the line is checked again once the statement is over (break round 3, B-16).
+CREATE FUNCTION money_move_line_not_undone() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = NEW.firm_id AND u.undoes_batch_id = NEW.batch_id) THEN
+    RAISE EXCEPTION 'money_move_line: an undone batch never gains a line, also in the transaction that records it' USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END $$;
+CREATE CONSTRAINT TRIGGER money_move_line_not_undone AFTER INSERT ON "money_move_line" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION money_move_line_not_undone();
