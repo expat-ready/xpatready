@@ -104,4 +104,19 @@ pf24, pf23 and fo5 were not re-run, because their contracts and test lines are u
 - Merge condition: C1. The tech lead commits the proposed CI step before or with the merge, so that DW1 and DW4 run in CI.
 - Journey score: unchanged at 8.8/10. "Task completed" and "correct data" would now each reach 1, which gives 10/10 on the applicable criteria once C1 lands.
 
-Verdict: Approve 3f19289dc177aa874097e9f4cb9250d3b56921ed
+Round-2 verdict: Approve 3f19289dc177aa874097e9f4cb9250d3b56921ed (code)
+
+## Round-2 addendum: the CI step (C1), head 1d7bfa60, diff only (P-277)
+- **What changed:** `git diff 5ce2e350 1d7bfa60` touches only `.github/workflows/ci.yml`, with 10 lines added and none removed. The other commits since 3f19289d (053780f5, 5ce2e350) are review records only, so the code is still 3f19289d.
+- **Same text as judged in round 1:** the added lines are identical to the step added in 2fff2680, which is the step in 493615f8. The whole `ci.yml` at 1d7bfa60 is byte-identical to `ci.yml` at 493615f8, and the YAML parses.
+- **Where it sits:**
+  - in job `shard` (`if: matrix.shard == 1`, part 1 only);
+  - right after the rules / tools' own checks step and before Playwright;
+  - `$S` is set in that job;
+  - the default `bash -e` stops the job on a failed self-test or guard;
+  - the time goes to the log and to `$GITHUB_STEP_SUMMARY`.
+- **Local run at 1d7bfa60:** `--self-test` 9 passed, 0 failed; the guard gave 0 problems in 647 ms.
+- **C1 is met.** DW1 and DW4 now run in CI. I have not seen a CI run of this head; the green CI that the label needs will show it.
+- **Still open:** Minors m1 (the cancel case is half vacuous, J2c), m2 and m4. No Blocker or Major.
+
+Verdict: Approve 1d7bfa60c5014211653d3ccd2292a268fedb7859
