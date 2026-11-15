@@ -35,8 +35,24 @@ function walk(dir, out = []) {
   }
   return out;
 }
-/** The source without comments, so a port named in a comment is never taken for code. */
-const code = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
+/** The source without comments, so a port or a call named in a comment is never taken for code. Strings are kept and
+ *  skipped over ("agent/*" or "http://" inside a string is not a comment); a regular expression literal is read as code,
+ *  which is safe for the patterns below (they never hold a quote and a comment marker together). */
+export function code(text) {
+  let out = "", i = 0, quote = null;
+  while (i < text.length) {
+    const c = text[i], n = text[i + 1];
+    if (quote) {
+      out += c;
+      if (c === "\\") { out += n ?? ""; i += 2; continue; }
+      if (c === quote || (c === "\n" && quote !== "`")) quote = null;
+      i++;
+    } else if (c === "/" && n === "/") { while (i < text.length && text[i] !== "\n") i++; }
+    else if (c === "/" && n === "*") { const end = text.indexOf("*/", i + 2); const gone = text.slice(i, end < 0 ? text.length : end + 2); out += gone.replace(/[^\n]/g, ""); i = end < 0 ? text.length : end + 2; }
+    else { if (c === '"' || c === "'" || c === "`") quote = c; out += c; i++; }
+  }
+  return out;
+}
 /** The text of a block whose `{` ends just before `from`, by counting braces (strings are short in these files). */
 function bodyAt(text, from) {
   for (let i = from, depth = 1; i < text.length; i++) {
@@ -157,9 +173,9 @@ function selfTest() {
     ok("PF-0c DW1: a port with no real adapter needs no contract yet (MailPort with only its fake)", !problems(dir).some((p) => /MailPort/.test(p)), problems(dir));
     put("ports/contracts/widget-port.contract.ts", "export const widgetPortContract = defineContract(\"WidgetPort\", () => []);\n");
     ok("PF-0c DW1 pass: with the contract and every adapter (fake included) running it, the guard passes", problems(dir).length === 0, problems(dir));
-    put("tests/check_widget.ts", "await runContract(widgetPortContract, \"RealWidget\", () => 1, ok);\n// await runContract(widgetPortContract, \"makeWidget\", () => 1, ok);\n");
+    put("tests/check_widget.ts", "const keys = [\"agent/*\", \"http://x\"]; /* await runContract(widgetPortContract, \"fakeWidget\", () => 1, ok); */\nawait runContract(widgetPortContract, \"RealWidget\", () => 1, ok); // \"system/*\" keys\n// await runContract(widgetPortContract, \"makeWidget\", () => 1, ok);\n");
     const missing = problems(dir);
-    ok("PF-0c DW1 fail: an adapter, real or fake, whose test runs no contract fails the guard (a call in a comment does not count)", missing.length === 2 && missing.some((p) => /real adapter makeWidget/.test(p)) && missing.some((p) => /fake adapter fakeWidget/.test(p)), missing);
+    ok("PF-0c DW1 fail: an adapter, real or fake, whose test runs no contract fails the guard (a call in a comment does not count; \"agent/*\" in a string is no comment)", missing.length === 2 && missing.some((p) => /real adapter makeWidget/.test(p)) && missing.some((p) => /fake adapter fakeWidget/.test(p)), missing);
     put("ports/contracts/widget-port.contract.ts", "export const somethingElse = 1;\n");
     ok("PF-0c DW1 fail: a contract file that does not export <port>Contract fails the guard", problems(dir).some((p) => /does not export widgetPortContract/.test(p)), problems(dir));
     del("ports/contracts/widget-port.contract.ts");
