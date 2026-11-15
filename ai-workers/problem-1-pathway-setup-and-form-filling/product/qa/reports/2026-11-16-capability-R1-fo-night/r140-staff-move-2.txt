@@ -1,6 +1,6 @@
 PASS  R1.38 pass: stored 12 Mar 15:00Z (10:00 EST) with the booker's zone Asia/Dubai
 PASS  R1.38 pass: the staff move stores 16 Mar 14:00Z (10:00 EDT, after Toronto's change); the booker's zone kept
-NOTE  staff read of the booking (FO-3sr GET /:id): {"id":"3e0f415a-8ac5-43f1-ac54-f8e0d11879eb","status":"RESCHEDULED","sequence":1,"typeId":"5cead460-3712-496f-8d89-1caff229525d","staffId":"6ab9d97b-a8f2-4b8f-a61b-a78703bcdd09","personId":"6124c761-706f-4603-9bb5-5031b699b279","prospectId":null,"mode":"VIDEO","startsAt":"2027-03-16T14:00:00.000Z","endsAt":"2027-03-16T14:30:00.000Z","timeZone":"Asia/Dubai"}
+NOTE  staff read of the booking (FO-3sr GET /:id): {"id":"438a0c7c-3a40-40fa-b830-e179a56657cf","status":"RESCHEDULED","sequence":1,"typeId":"4adbe9ec-dbf9-446f-b3b3-387706667b15","staffId":"54a7e4a4-60b9-45e5-a24f-320c95bbe5f2","personId":"a4560b56-b4bb-4e93-bf71-008e9a1bead8","prospectId":null,"mode":"VIDEO","startsAt":"2027-03-16T14:00:00.000Z","endsAt":"2027-03-16T14:30:00.000Z","timeZone":"Asia/Dubai"}
 NOTE  booker mails: Your Free consultation is booked | Your Free consultation has moved | Your Free consultation is cancelled
 NOTE  host mails: Consultation is booked: Friday, March 12, 2027 at 10:00 a.m. (America/Toronto) | Consultation has moved: Tuesday, March 16, 2027 at 10:00 a.m. (America/Toronto) | Consultation is cancelled: Tuesday, March 16, 2027 at 10:00 a.m. (America/Toronto)
 PASS  R1.40 pass: three invites to the booker (book, move, cancel), each with an .ics

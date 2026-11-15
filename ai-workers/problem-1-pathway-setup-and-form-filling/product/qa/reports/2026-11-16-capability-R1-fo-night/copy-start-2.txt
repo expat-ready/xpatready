@@ -2,4 +2,4 @@ NOTICE:  database "xr_studio_qa_fon" does not exist, skipping
 Loaded Prisma config from prisma.config.ts.
 
 Prisma schema loaded from prisma/schema.
-isolated qa_fon on http://localhost:4472 (xr_studio_qa_fon), stops itself in 20 min
+isolated qa_fon on http://localhost:4472 (xr_studio_qa_fon), stops itself in 15 min

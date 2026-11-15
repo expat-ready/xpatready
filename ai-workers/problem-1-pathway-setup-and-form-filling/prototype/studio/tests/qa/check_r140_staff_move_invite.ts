@@ -1,5 +1,6 @@
 // qa R1.38 / R1.40 (16 Nov, after FO-3sr #1811): a visitor in Asia/Dubai books Friday 12 Mar 2027 10:00 Toronto (EST),
-// then the host moves it through the staff path (FO-3sr's staffReschedule) to Tuesday 16 Mar 10:00 Toronto (EDT, after
+// then the host moves it through FO-3sr's staff service calls (staffReschedule, staffCancel, staffGet; the HTTP guard and
+// controller are FO-3sr's own pack) to Tuesday 16 Mar 10:00 Toronto (EDT, after
 // Toronto's 14 Mar 2027 change), then cancels it. Checks: the stored instants in UTC (15:00Z, then 14:00Z); each invite
 // keeps one UID, SEQUENCE rises, METHOD:REQUEST then METHOD:CANCEL; DTSTART in UTC; the booker's mail in Dubai's wall time
 // (7:00 p.m., then 6:00 p.m.), the host's in the office zone (10:00 a.m. both times, America/Toronto). Each with a fail
@@ -58,13 +59,13 @@ async function main() {
   console.log(`NOTE  host mails: ${toH.map((m) => m.subject).join(" | ")}`);
   const uid = `UID:${b.id}@booking.expatready.com`;
   ok("R1.40 pass: three invites to the booker (book, move, cancel), each with an .ics", toB.length === 3 && toB.every((m) => ics(m).length > 0), toB.map((m) => m.subject));
-  ok("R1.40 pass: one UID across all three, the host's too", [...toB, ...toH].every((m) => ics(m).includes(uid)), [...toB, ...toH].map((m) => /UID:[^\r]*/.exec(ics(m))?.[0]));
+  ok("R1.40 pass: one UID across all three, the host's too", toH.length === 3 && [...toB, ...toH].every((m) => ics(m).includes(uid)), [...toB, ...toH].map((m) => /UID:[^\r]*/.exec(ics(m))?.[0]));
   const seq = toB.map((m) => Number(/SEQUENCE:(\d+)/.exec(ics(m))?.[1] ?? -1));
-  ok("R1.40 pass: SEQUENCE rises on each change (staff move, staff cancel)", seq.length === 3 && seq[0] < seq[1] && seq[1] < seq[2], seq);
+  ok("R1.40 pass: SEQUENCE rises on each change (staff move, staff cancel)", seq.length === 3 && seq[0] >= 0 && seq[0] < seq[1] && seq[1] < seq[2], seq);
   ok("R1.40 pass: METHOD:REQUEST, REQUEST, then CANCEL", /METHOD:REQUEST\r\n/.test(ics(toB[0])) && /METHOD:REQUEST\r\n/.test(ics(toB[1])) && /METHOD:CANCEL\r\n/.test(ics(toB[2])), toB.map((m) => /METHOD:\w+/.exec(ics(m))?.[0]));
   ok("R1.40 / R1.38 pass: DTSTART in UTC, 15:00Z then 14:00Z after the change", ics(toB[0]).includes("DTSTART:20270312T150000Z") && ics(toB[1]).includes("DTSTART:20270316T140000Z"), [ics(toB[0]).match(/DTSTART[^\r]*/)?.[0], ics(toB[1]).match(/DTSTART[^\r]*/)?.[0]]);
   ok("R1.40 fail case: the moved invite does not still carry the old time", !ics(toB[1]).includes("DTSTART:20270312T150000Z"), ics(toB[1]).match(/DTSTART[^\r]*/)?.[0]);
-  ok("R1.38 pass: the booker reads 7:00 p.m. then 6:00 p.m. (Asia/Dubai) across Toronto's change", /7:00\s?p\.m\./.test(words(toB[0])) && /6:00\s?p\.m\./.test(words(toB[1])) && words(toB[1]).includes("Asia/Dubai"), [toB[0]?.subject, toB[1]?.subject]);
+  ok("R1.38 pass: the booker reads 7:00 p.m. then 6:00 p.m. (Asia/Dubai) across Toronto's change", /7:00\s?p\.m\./.test(words(toB[0])) && words(toB[0]).includes("Asia/Dubai") && /6:00\s?p\.m\./.test(words(toB[1])) && words(toB[1]).includes("Asia/Dubai"), [toB[0]?.subject, toB[1]?.subject]);
   ok("R1.38 pass: the host reads 10:00 a.m. (America/Toronto) both times (office zone, AG-04 rule 9)", toH.length >= 2 && /10:00\s?a\.m\./.test(words(toH[0])) && /10:00\s?a\.m\./.test(words(toH[1])) && words(toH[1]).includes("America/Toronto"), toH.map((m) => m.subject));
   ok("R1.38 fail case: the host's moved mail does not read 9:00 or 11:00 (an offset not shifted)", !!toH[1] && !/(9|11):00\s?a\.m\./.test(words(toH[1])), toH[1]?.subject);
   await db.foBooking.deleteMany({ where: { firmId: firm.id } }).catch(() => {});

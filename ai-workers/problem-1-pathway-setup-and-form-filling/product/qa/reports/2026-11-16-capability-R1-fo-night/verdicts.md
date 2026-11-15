@@ -12,7 +12,7 @@ CI: merge-queue run 43742297658 (head 3e36ca66, same tree 32ac4601) success, sha
 ## R1.40 Calendar invite files — **Partial**
 * Reason: every Done-when clause is shown in tests, but no invite can be opened from the running app (mail is in-memory `fakeMail`) and no screen walk exists; gate A cannot be met.
 * Newly proven vs 15 Nov (e13603508, Partial): the invite chain now holds on the staff path, not only the visitor's link. `r140-staff-move-1/2.txt`: three .ics to the booker (book, staff move, staff cancel), one UID across all, the host's too; SEQUENCE rises on each change; METHOD REQUEST, REQUEST, CANCEL; DTSTART 15:00Z then 14:00Z across the DST change; the moved invite does not carry the old time.
-* Still missing: PF-4b (demo-inbox sending adapter) and PF-19b (real sending), so an invite is seen only in memory; FO-3w (no page to book from); J-38 (walk "both mails and the .ics right", not merged; P-606 (2)).
+* Still missing: booking mail wired to a sending adapter with an inbox (booking still uses `fakeMail`; PF-4b #1816 is merged but booking does not use it; real sending is PF-19b, row 48), so an invite is seen only in memory; FO-3w (no page to book from); J-38 (walk "both mails and the .ics right", not merged; P-606 (2)).
 * Gate A: **not met**.
 
 ## Notes for the Lead

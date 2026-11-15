@@ -15,7 +15,7 @@ Merge-queue run **43742297658** (merged #1822, head 3e36ca66; its tree 32ac4601 
 | `tests/qa/check_qa470_host_mail_zone.ts` | 3/3 | `…/qa470.txt` |
 | **new** `tests/qa/check_r140_staff_move_invite.ts` | **11/11, twice** | `…/r140-staff-move-{1,2}.txt` |
 
-The new check: a visitor in Asia/Dubai books Fri 12 Mar 2027 10:00 Toronto (EST); the host moves it **through FO-3sr's staff path** to Tue 16 Mar 10:00 (EDT, after Toronto's 14 Mar change), then cancels. Stored 15:00Z then 14:00Z (SQL); the booker's mails read 7:00 p.m. then 6:00 p.m. (Asia/Dubai); the host's read 10:00 a.m. (America/Toronto) both times; three invites, one UID (the host's too), SEQUENCE rising, METHOD REQUEST, REQUEST, CANCEL, DTSTART in UTC. Each line with a fail case. This closes the 15 Nov gap "no test shows the staff-zone time across a daylight-saving change" for the host's mail.
+The new check: a visitor in Asia/Dubai books Fri 12 Mar 2027 10:00 Toronto (EST); the host moves it **through FO-3sr's staff service calls** (staffReschedule, staffCancel; the HTTP guard and controller are covered by FO-3sr's own 29/29 pack) to Tue 16 Mar 10:00 (EDT, after Toronto's 14 Mar change), then cancels. Stored 15:00Z then 14:00Z (SQL); the booker's mails read 7:00 p.m. then 6:00 p.m. (Asia/Dubai); the host's read 10:00 a.m. (America/Toronto) both times; three invites, one UID (the host's too), SEQUENCE rising, METHOD REQUEST, REQUEST, CANCEL, DTSTART in UTC. Each line with a fail case. This closes the 15 Nov gap "no test shows the staff-zone time across a daylight-saving change" for the host's mail.
 
 ## 3. Verdicts
 | Row | Verdict | Why |
