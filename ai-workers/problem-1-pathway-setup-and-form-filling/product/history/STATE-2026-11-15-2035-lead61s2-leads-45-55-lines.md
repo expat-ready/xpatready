@@ -1,0 +1,3 @@
+# STATE lines moved word for word by Lead 61, 20:3x IST 15 Nov (Leads, in order: Leads 45-55; STATE headroom under 12 KB)
+
+**Lead 55 (series 2, local_1ddb0c4c) from 11:49 IST 15 Nov**; Lead 54 (series 2, local_dc187db5) 10:46-11:49; Lead 53 (series 2, local_cbc405f5) 09:54-10:46; Lead 52 (series 2, local_e0cd21a4) 08:21-09:54; Lead 51 (series 2, local_7e5e5b99) 07:43-08:20; Lead 50 (series 2, local_1ee10674) 23:2x-07:4x; Lead 49 (series 2, local_93551126) 20:24-23:2x; Lead 48 (series 2, local_1aede380) 18:52-20:3x; Lead 47 (series 2, local_a358e18f) 17:07-18:55; Lead 46 (series 2, local_3cc8e2ba) 15:46-17:0x; Lead 45 (local_24e909a3) 13:48-15:4x; earlier and Lead B: word for word in `history/STATE-2026-11-14-1700-lead46s2-for-founder-and-leads-lines.md`.
