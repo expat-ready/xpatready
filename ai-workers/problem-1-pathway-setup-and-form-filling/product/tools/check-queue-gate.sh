@@ -89,8 +89,13 @@ jq -n --arg h $HEAD1 '[{user: {login: "o"}, author_association: "OWNER", body: (
   {user: {login: "o"}, author_association: "OWNER", body: "**Reviewer: Changes requested**: fix M1 first"}]' > "$T/fx/comments-7.json"; run label 7
 ok "label refused: a later verdict naming no SHA (\"Reviewer: Changes requested\") wins (round 2 m2)" "$(! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
 jq -n --arg h $HEAD1 '[{user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h)},
-  {user: {login: "o"}, author_association: "OWNER", body: "Reviewer: Approve 2222222222222222222222222222222222222222 (another PR quoted)"}]' > "$T/fx/comments-7.json"; run label 7
+  {user: {login: "o"}, author_association: "OWNER", body: "Reviewer: Approve 2222222222222222222222222222222222abcdef (another PR quoted)"}]' > "$T/fx/comments-7.json"; run label 7
 ok "label: a later verdict about another commit does not undo the head's Approve" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
+for w in "ci run 19283746501 failed" "date 20261115" "the page was defaced"; do
+  jq -n --arg h $HEAD1 --arg w "$w" '[{user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h)},
+    {user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Changes requested: " + $w)}]' > "$T/fx/comments-7.json"; run label 7
+  ok "label refused: a later Changes requested mentioning \"$w\" (not a SHA) still wins (round 3 m1)" "$(! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
+done
 cmt 7 o OWNER "Reviewer: Approve $HEAD1"
 cirun $HEAD1 in_progress "" 2026-11-15T13:00:00Z; run label 7
 ok "label refused: ci still running on the head" "$(! grep -q '^LABEL' <<< "$log" && grep -q 'ci on 111111111 is pending' <<< "$out" && echo 1)" "$out / $log"

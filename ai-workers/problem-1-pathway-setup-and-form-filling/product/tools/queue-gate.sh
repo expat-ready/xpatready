@@ -26,7 +26,7 @@ set -uo pipefail
 API="${API:-https://api.github.com}"; MAIN_REF="${MAIN_REF:-origin/main}"; LABEL="review: approved"; CTX="queue-fresh"
 HERE=$(cd "$(dirname "$0")" && pwd)
 for v in GH_TOKEN REPO; do [ -n "${!v:-}" ] || { echo "queue-gate: $v is not set"; exit 2; }; done
-H=$(mktemp); trap 'rm -f "$H"' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
+H=$(mktemp); trap 'rm -f "$H" "$H.v"' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
 printf 'Authorization: Bearer %s\nAccept: application/vnd.github+json\n' "$GH_TOKEN" > "$H"
 api() { curl -sS --fail-with-body -H @"$H" "$@"; }
 pages() { local p=1 all='[]' one sep='?'; case "$1" in *\?*) sep='&';; esac
@@ -61,9 +61,11 @@ judge() {  # eligibility for the label; reason in $why
   echo "$cs" | jq -r --argjson who "$who" '.[] | select((.user.login as $l | $who | index($l)) and (.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")) | .body' \
     | tr -d '*_`' | grep -iE '^[[:space:]]*reviewer:' > "$H.v"; true
   # The last verdict that can be about this head decides: a line naming the head (or a prefix of it), or naming no SHA
-  # at all ("Reviewer: Changes requested: fix M1", round 2 m2). It must be an Approve naming the full head.
+  # at all ("Reviewer: Changes requested: fix M1", round 2 m2). A SHA has a digit and a letter: a run id, a date or a
+  # word like "defaced" is not one, so such a line still counts (round 3 m1, fails closed). It must be an Approve
+  # naming the full head. (tr, not ${x,,}: the Mac's bash 3.2.)
   local l x last="" keep; while IFS= read -r l; do keep=1
-    for x in $(grep -oiE '\b[0-9a-f]{7,40}\b' <<< "$l"; true); do keep=0; case "$head" in "${x,,}"*) keep=1; break;; esac; done
+    for x in $(grep -oiE '\b[0-9a-f]{7,40}\b' <<< "$l" | tr A-F a-f | grep '[0-9]' | grep '[a-f]'; true); do keep=0; case "$head" in "$x"*) keep=1; break;; esac; done
     [ "$keep" = 1 ] && last=$l; done < "$H.v"; rm -f "$H.v"
   grep -qiE "^[[:space:]]*reviewer:[[:space:]]*approve[sd]?[[:space:]]+$head\b" <<< "$last" \
     || { why="the last \"Reviewer:\" verdict about $head from the owner's account or a known reviewer is not an Approve naming it"; return 1; }
