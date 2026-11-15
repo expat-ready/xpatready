@@ -142,12 +142,12 @@ export class PlatformIdentity implements OnModuleInit {
     const firm = await this.db.platformFirm.findUnique({ where: { key: body.firmKey }, select: { id: true, key: true } });
     const who = typeof body.actorId === "string" && body.actorId ? { actorId: body.actorId } : { email: emailOf(body.email) };
     const staff = firm && await this.db.platformStaff.findFirst({ where: firmScope(firm.id, who) });
-    if (!firm || !staff) return unauthorized("No staff member of that firm signs in with that name.", "UNKNOWN_STAFF");
+    if (!firm || !staff) return unauthorized("No staff member signs in with that firm key and work email.", "UNKNOWN_STAFF");
     if (staff.status !== "ACTIVE") return unauthorized("This staff account is not active. Ask your firm's Owner or Admin.", "STAFF_NOT_ACTIVE");
     if (body.secondStep !== true) return unauthorized("Two-step sign-in is required for every staff member: finish the second step (secondStep: true).", "TWO_STEP_REQUIRED");
     // The new session starts after the last sign-in and the last revocation (a deactivation in the same millisecond).
     const authMs = await this.recordSignIn(firm.id, firm.key, staff.id, "local stand-in", (last, revoked) => Math.max(this.clock.now(), (last ?? 0) + 1, (revoked ?? 0) + 1));
-    if (authMs === null) return unauthorized("No staff member of that firm signs in with that name.", "UNKNOWN_STAFF");
+    if (authMs === null) return unauthorized("No staff member signs in with that firm key and work email.", "UNKNOWN_STAFF");
     return { token: this.port.issue(staff.id, { authTimeMs: authMs, secondStep: true }), tokenType: "Bearer", expiresIn: 3600, staffId: staff.id, firmKey: firm.key };
   }
 

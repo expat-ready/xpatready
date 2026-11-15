@@ -19,6 +19,7 @@ The API's start-up, shared providers and the configuration service. Read this be
 - Family information forms are the library's form roles, never a list in code (P-319).
 - A JSON body over 5 MB is refused in words before any route (P-179).
 - Busy errors (40P01, 55P03, P2034) mean nothing was written; try again (`busy.ts`).
+- `ConfigReadGuard` leaves `/api/platform/*`, `/api/front-office/*` and `/api/runtime/*` routes that declare `@PermissionKeys` (exact case) to PF-4's guard; any other Bearer is 403 link-only (Lead 58, #1818).
 
 **Tables.** combination, programDef, canonicalField, configRelease, reviewSubmission, sectionQuestion, documentRequirement, predicate, auditEvent, combinationForm, formFieldMap.
 **Tests.** `tests/check_features_registry.ts`, `tests/check_pf0p_ports.ts`, `tests/check_f8_empty_release.ts`, `tests/check_bk4a.ts`.

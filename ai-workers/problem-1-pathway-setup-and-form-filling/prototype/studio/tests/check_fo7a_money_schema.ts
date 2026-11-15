@@ -10,7 +10,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
@@ -103,10 +103,7 @@ try {
   await pre.$disconnect();
   const demoRows = `select (select count(*) from runtime_case) || ':' || (select count(*) from audit_event) || ':' || (select count(*) from platform_firm) || ':' || (select count(*) from platform_staff) || ':' || (select string_agg(id::text, ',' order by id) from platform_firm)`;
   const before = sql(DEMO, demoRows);
-  psql(DEMO, ["-f", join(MIG, NEW, "migration.sql")]);
-  // Rows rev 16.7: the functions this migration adds are read right after it, before any later migration (PF-5's adds its own).
-  const ownFns = sql(DEMO, `select string_agg(proname, ',' order by proname) from pg_proc where pronamespace = 'public'::regnamespace`).split(",");
-  for (const d of all.filter((x) => x > NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
+  for (const d of all.filter((x) => x >= NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
   ok("FO-7a pass: the migration applies to a demo-data copy (cases, audit, the Sample firms and staff) and leaves its rows as they were", sql(DEMO, demoRows) === before, before);
   ok("FO-7a pass: migrate diff after it on the demo-data copy names no money table or type", moneyDiff(DEMO).length === 0, moneyDiff(DEMO));
 
@@ -598,7 +595,9 @@ try {
   ok("FO-7a pass: every insert-only money table also refuses truncate",
     INSERT_ONLY.every((t) => refused(DEMO, `truncate ${t} cascade`, /never changed or removed/, "42501")));
   const fns = (db: string) => sql(db, `select string_agg(proname, ',' order by proname) from pg_proc where pronamespace = 'public'::regnamespace`).split(",");
-  const added = ownFns.filter((f) => !fns(BARE).includes(f));
+  // Later rows' migrations follow this one on main (CS-C1a's case_decision_*, #1818): their own functions are theirs.
+  const later = new Set(all.filter((d) => d > NEW).flatMap((d) => [...readFileSync(join(MIG, d, "migration.sql"), "utf8").matchAll(/CREATE (?:OR REPLACE )?FUNCTION\s+(?:public\.)?"?([a-z_][a-z0-9_]*)"?\s*\(/gi)].map((m) => m[1])));
+  const added = fns(DEMO).filter((f) => !fns(BARE).includes(f) && !later.has(f));
   ok("FO-7a pass (rows rev 15.2): every function the migration adds is named money_ (21 of them)", added.length === 21 && added.every((f) => f.startsWith("money_")), added);
 } finally {
   for (const c of conns) await c.end().catch(() => undefined);
