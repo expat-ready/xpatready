@@ -16,7 +16,7 @@ gh pr list --state open --limit 60 --json number,title,isDraft,labels,statusChec
       ((.statusCheckRollup|map(.conclusion)|map(select(.=="FAILURE"))|length)),
       ((.statusCheckRollup|map(select((.status//"")=="IN_PROGRESS" or (.status//"")=="QUEUED"))|length)),
       (((.comments|map(select(.body|test("Question for the tech lead")))|last|.createdAt)//"") as $q
-        | ((.comments|map(select(.body|test("^## Tech lead|^\\*\\*Tech lead|Tech lead.s (ruling|answer)")))|last|.createdAt)//"") as $a
+        | ((.comments|map(select(.body|test("^## Tech lead|^\\*\\*Tech lead|Tech lead.s (ruling|answer)|^\\*\\*Lead (B \\([0-9]+\\)|[0-9]+\\b)")))|last|.createdAt)//"") as $a
         | if $q!="" and $q>$a then "open" else "-" end),
       ((.body|test("Design only|Design stage|Concept stage|concept for the tech lead")))
     ]|@tsv' |
