@@ -283,6 +283,16 @@ jobs:
           bash "$P/tools/pr-base.sh" --self-test
           node "$S/tools/check-gate-b.mjs"
           node "$S/tools/check-works-set.mjs"
+      - name: every port's fake and real adapters run one shared contract (part 1 only; studio/tools/check-port-contracts.mjs, timed)
+        # PF-0c (P-606 (8)): a port in studio/ports/ (or identity/port.ts) with a real adapter has
+        # ports/contracts/<port>.contract.ts, and every adapter of it, fakes included, calls it in its own test file. The
+        # self-test first proves a port with a real adapter and no contract fails (DW1); the guard fails over 10 s (DW4).
+        if: matrix.shard == 1
+        run: |
+          node "$S/tools/check-port-contracts.mjs" --self-test
+          start=$(date +%s%N)
+          node "$S/tools/check-port-contracts.mjs"
+          echo "PF-0c DW4: the port-contract guard took $(( ($(date +%s%N) - start) / 1000000 )) ms (limit 10000)" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Playwright's own Chromium
         if: env.KIND == 'code'
         run: cd "$S" && ./node_modules/.bin/playwright install chromium
