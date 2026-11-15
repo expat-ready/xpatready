@@ -73,7 +73,7 @@ for n in $rs; do
 done
 git fetch -q origin 2>/dev/null
 here=$(git rev-parse --abbrev-ref HEAD)
-for b in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/board/*'); do
+for b in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/board/*' 'refs/remotes/origin/tools/*'); do
   n=$(git rev-list --count "$here..$b" 2>/dev/null)
   age=$(( ( $(date +%s) - $(git log -1 --format=%ct "$b") ) / 60 ))
   [ "${n:-0}" -gt 0 ] && [ "$age" -le 1440 ] && ACT "$b has $n commit(s) not on $here (last push ${age} min ago): merge, test, publish"
