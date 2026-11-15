@@ -67,3 +67,33 @@ lead: cap concurrent in-flight uploads, and bound the main-thread cost of the hu
 | memory-exhaust `runs` file, single | 422 TOO_COMPLEX | 2–4.5 s | 335 ms |
 | **6× `runs` concurrent (firm A), firm B legit upload** | B: **201 after 27.3 s** | — | 2429 ms |
 | 24× `runs` concurrent | all 422 | 86 s total | 3575 ms |
+
+## Round 2 — head 53aa60d46 (renders first, at most 8 waiting uploads, TEMPLATES_BUSY)
+Fresh copy :4472 (`--ttl 45`), stopped at the end; each risky case in its own process and timeout. A = user-R, B = user-S;
+page read = B's `GET /retainer-templates` every 100 ms.
+
+**F1: fixed as designed; three Minors.** Renders skip queued uploads, and the queue is capped.
+- 6 `runs` from A (6× 422 TOO_COMPLEX): B's real upload 201 after 24.1 s (behind 6 jobs); B's starter 200 in 4.9 s.
+  Reads 0 failed, slowest 1.3 s; RSS peak 1228 MB.
+- 24 from A (10× TOO_COMPLEX, 14× TEMPLATES_BUSY): B's upload 422 TEMPLATES_BUSY. Reads 0 failed, slowest 2.7 s.
+- **m-1 "busy" is not at once.** B got it after 2.2 s, A after up to 5.6 s: `placeholdersOf` runs `gate()` (main-thread
+  inflate and scan) before `inWorker` checks the queue length, so every concurrent upload pays its gate first.
+- **m-2 a render can wait about 8.7 s.** Starter during the 24 burst: +0.3 s → 8.7 s, +6 s → 8.2 s, +15 s → 2.5 s,
+  +25 s → 3.9 s. One job, but that is the rest of a hostile job (up to the 5 s limit) plus a new worker starting.
+- **m-3 the 8 slots are shared by every firm.** While A keeps 8+ uploads in flight, every other firm's upload gets
+  TEMPLATES_BUSY (B's upload at +6 s got 201 only after 30.9 s, on a freed slot). Renders stay protected. Possible fix:
+  a share of the slots per firm.
+- Held: the render lane has no cap, but it is no lever: 60 concurrent starters from A took 0.43 s in all (about 7 ms
+  each), and meanwhile B's starter took 131 ms and B's upload 201 in 153 ms.
+
+**F2: not reproduced; treated as closed.** Two rounds on one process, no restart. Each round: 46 varied uploads (every DW1
+case in flood and passport, plus huge CT, N-1, entities, a 300 k-deep header, 1.2 M header runs), then a burst of 4× `runs`
+from A with B's upload and starter.
+- Round 1: same pid; RSS 573 → 747 MB, burst peak 1150 → 662 MB. B's upload 201 in 15.6 s, starter 4.4 s; slowest read 3.2 s.
+- Round 2: same pid; RSS 661 → 848 MB, burst peak 1349 → 660 MB. B's upload 201 in 14.5 s, starter 5.0 s; slowest read 3.0 s.
+- No read failed. The api.log has no FATAL and no out-of-memory line.
+
+**Nothing regressed.** DW1: all 14 ways in, flood and passport, gave round 1's refusals in both rounds (10–151 ms). DW7
+(1.5 M `{`): glossary `settings.xml` `<Company>` 422 TOO_MANY_PLACEHOLDERS in 66 ms (passport: UNKNOWN in 37 ms); body,
+footer, core `dc:subject` 37–42 ms; 3,000 `{client.name}` 12 ms. The real Word and LibreOffice files: 201 in about 40 ms.
+Still open (round-3 Minor): 970 header Overrides are accepted after 1.6–2.0 s, and the page read waits 0.7–1.0 s meanwhile.

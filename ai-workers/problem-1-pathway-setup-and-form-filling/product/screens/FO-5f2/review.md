@@ -59,4 +59,34 @@ D1 3: items 1-4 met, item 5 partly · D2 3: B-19's cap gets past through M-1 · 
 
 **To fix before Approve (this is a Block in the WAY-OF-WORKING sense: a Major is open):** M-1, with its DW7 and B-19 tests. The Minors may be fixed here or recorded.
 
+**Round 1 verdict:** Changes requested (`caedcec16`).
+
+## Round 2 (diff only, P-277): `git diff caedcec16 53aa60d46`
+* **Commit reviewed:** `53aa60d4684d683bad2e21a0bcea57817ddfb1a0`. I read the diff of `docx.ts` and the test file and the breaker's `break-report.md` (F1, F2). For the fixture I checked only that the JSON is the same (the parsed content is equal at both commits).
+* **Suites at this head:** `check_fo5f2_template_safety` **70 passed, 0 failed**; `check_fo5_retainers` **232 passed, 0 failed** (B-23's glossary lines included).
+
+| Round 1 | Fix | Holds? |
+|---|---|---|
+| M-1 glossary settings | `skipped` is by type only (`docx.ts:258`) | yes. My round-1 probes again: 1.5 M `{` → TOO_MANY_PLACEHOLDERS in 33 ms (upload) and 20 ms (render); 3,000, 20,000 and 60,000 `{client.name}` → refused in 4-14 ms. DW7 and B-19 lines added |
+| m-1 prototype keys | `Object.hasOwn` (`docx.ts:145`) | yes: `constructor`, `__proto__`, `toString`, `hasOwnProperty` → PARTS_NOT_ALLOWED; tests added |
+| m-2 timeout untested | `workerTimeout.ms`, set to 20 ms in one test | yes: the timeout path is now tested |
+| m-3 Word fixture | none (a stand-in until the founder supplies a file saved by Word) | recorded, as agreed |
+| Idle-worker note | a permanent `error` listener; `exit` clears `live` and `worker` (`docx.ts:173`) | **no**: it brings in M-2 below |
+| Breaker F1, F2 | two lanes (renders first), at most 8 uploads wait, then 422 TEMPLATES_BUSY | yes as built: the F1 and F2 tests pass, and renders wait for at most the job in flight |
+
+**M-2 Major (new in this round): after a timeout breach, the job queued behind it leaves its worker running and orphaned. Each such pair leaks one worker in the API process.**
+* **Cause:** `onBreach` (`docx.ts:187`) sets `worker = null` and calls `w.terminate()`, but it leaves `live` pointing at the dying worker. `pump()` starts the next job at once, and `worker` becomes that job's new worker. Then the old worker's `exit` arrives: `terminate()` is asynchronous on a timeout, whereas after an out-of-memory error the exit comes in the same tick. The idle listener at `docx.ts:173` sees `live === w` and sets `worker = null`, which wipes the new worker's handle. The new worker finishes its job and stays alive, idle and unreferenced. The next job starts yet another worker.
+* **Repro** (`/tmp/claude-0/-home-user-xpatready/1350ca85-7653-5e6c-af92-51b453c4608e/scratchpad/rev_fo5f2/leak.ts`): each round is a file that breaches by the time limit, with a good upload queued right behind it.
+  * Real limits, 5 s, on one busy core (`taskset -c 0` beside a busy loop): `TOO_COMPLEX (over 5000 ms)` then `accepted`. Threads went 13 → 14 → 15 over 3 rounds, and 8 → 12 over 5 rounds in an earlier run.
+  * With the suite's 20 ms knob: threads 13 → 17 and RSS 134 → 289 MB over 10 rounds. Threads went up by one exactly in the rounds whose second job was accepted.
+  * Control, a memory breach with a good job queued behind it: threads stayed at 13 for 8 rounds.
+* **Why it matters:** a firm that alternates a slow file with a good one grows the shared process by one worker per pair, without limit. That works against the row's goal ("can never take down the API") and may feed the breaker's F2.
+* **Fix:** in `onBreach`, also clear `live` when `live === w`. Or let the `exit` listener clear `worker` only while `worker` still resolves to `w`. Add a test: a timeout breach with a job queued behind it, then one more job; assert that no extra worker was started (a start counter, or the thread count back at its baseline).
+
+*Notes, not findings:*
+* `TEMPLATES_BUSY` lets one firm that keeps 9 slow uploads in flight make other firms' uploads be refused (renders keep going). That is the price of the ruled "one worker"; it is for the row owner.
+* `workerTimeout` is a mutable export used as a test knob. That is acceptable.
+
+**To fix before Approve:** M-2, with its test. Round 1's findings are closed.
+
 Verdict: Changes requested

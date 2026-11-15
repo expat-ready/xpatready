@@ -48,8 +48,10 @@ export const PACKAGE_PART_MAX = 256 * 1024;
 /** FO-5f2 item 2 (Sample): the worker's old-space limit and each job's time limit. */
 export const WORKER_OLD_SPACE_MB = 256;
 export const WORKER_TIMEOUT_MS = 5000;
-/** The time limit in force; a test shortens it to reach the timeout path (review m-2). */
+/** The time limit for jobs queued from now on; a test shortens it to reach the timeout path (review m-2). */
 export const workerTimeout = { ms: WORKER_TIMEOUT_MS };
+/** How many workers were started (a test checks that a breach starts exactly one new one: review round 2, M-2). */
+export const workerStats = { starts: 0 };
 const PACKAGE_PART = /(^|\/)\[Content_Types\]\.xml$|\.rels$/i;
 
 function load(bytes: Uint8Array): PizZip {
@@ -159,12 +161,13 @@ let worker: Promise<Worker> | null = null, live: Worker | null = null, nextId = 
  *  holds unbounded memory. */
 export const MAX_WAITING_UPLOADS = 8;
 export const BUSY = "Templates are being checked for other uploads. Try again in a minute.";
-type Pending = { job: Job; resolve: (r: Reply) => void; reject: (e: unknown) => void };
+type Pending = { job: Job; ms: number; resolve: (r: Reply) => void; reject: (e: unknown) => void };
 const waiting: Record<Job["op"], Pending[]> = { render: [], tags: [] };
 
 function startWorker(): Promise<Worker> {
   return new Promise((resolve, reject) => {
     const w = new Worker(new URL("./docx-worker.ts", import.meta.url), { resourceLimits: { maxOldGenerationSizeMb: WORKER_OLD_SPACE_MB } });
+    workerStats.starts++;
     const fail = (e: unknown) => { w.off("message", ready); reject(e instanceof Error ? e : new Error(`the template worker stopped (${String(e)})`)); };
     const ready = (m: { ready?: boolean }) => {
       if (!m?.ready) return;
@@ -177,7 +180,7 @@ function startWorker(): Promise<Worker> {
   });
 }
 
-async function runJob(job: Job): Promise<Reply> {
+async function runJob(job: Job, ms: number): Promise<Reply> {
   const mine = (worker ??= startWorker().catch((e) => { worker = null; throw e; }));
   const w = await mine;
   return new Promise<Reply>((resolve, reject) => {
@@ -185,13 +188,18 @@ async function runJob(job: Job): Promise<Reply> {
     const onMessage = (r: Reply) => { if (r.id === job.id) settle(() => resolve(r)); };
     const onBreach = (e?: unknown) => {
       if (worker === mine) worker = null;
+      if (live === w) live = null;   // review round 2, M-2: its late exit must never drop the next worker
       void w.terminate();
-      settle(() => reject(tooComplex(`template worker: ${e instanceof Error ? e.message : typeof e === "number" ? `exit ${e}` : `over ${workerTimeout.ms} ms`}`.slice(0, 200))));
+      settle(() => reject(tooComplex(`template worker: ${e instanceof Error ? e.message : typeof e === "number" ? `exit ${e}` : `over ${ms} ms`}`.slice(0, 200))));
     };
-    const timer = setTimeout(onBreach, workerTimeout.ms);
+    const timer = setTimeout(onBreach, ms);
     w.on("message", onMessage); w.on("error", onBreach); w.on("exit", onBreach); w.ref();
     w.postMessage(job);
   });
+}
+
+function refuseIfBusy(): void {
+  if (waiting.tags.length >= MAX_WAITING_UPLOADS) throw new UnreadableDocx("the upload queue is full", BUSY, "TEMPLATES_BUSY");
 }
 
 function pump(): void {
@@ -199,13 +207,13 @@ function pump(): void {
   const next = waiting.render.shift() ?? waiting.tags.shift();
   if (!next) return;
   running = true;
-  runJob(next.job).then(next.resolve, next.reject).finally(() => { running = false; pump(); });
+  runJob(next.job, next.ms).then(next.resolve, next.reject).finally(() => { running = false; pump(); });
 }
 
 /** Queues a job for the worker (renders first); a worker refusal becomes UnreadableDocx. */
 async function inWorker(op: Job["op"], bytes: Uint8Array, data?: Record<string, unknown>): Promise<Reply> {
-  if (op === "tags" && waiting.tags.length >= MAX_WAITING_UPLOADS) throw new UnreadableDocx("the upload queue is full", BUSY, "TEMPLATES_BUSY");
-  const r = await new Promise<Reply>((resolve, reject) => { waiting[op].push({ job: { id: ++nextId, op, bytes, data }, resolve, reject }); pump(); });
+  if (op === "tags") refuseIfBusy();
+  const r = await new Promise<Reply>((resolve, reject) => { waiting[op].push({ job: { id: ++nextId, op, bytes, data }, ms: workerTimeout.ms, resolve, reject }); pump(); });
   if (!r.error) return r;
   const { code, why, says } = r.error;
   throw code === "UNREADABLE_FILE" ? new UnreadableDocx(why) : new UnreadableDocx(why, says ?? (code === "DAMAGED_FILE" ? DAMAGED : undefined), code);
@@ -226,6 +234,7 @@ function braceCount(t: string): number { let n = 0; for (let i = 0; i < t.length
  *  itself parsed (item 3: property-text tags, CDATA, cover-page customXml, a `{=` delimiter change), so a tag it would
  *  fill is never missed. */
 export async function placeholdersOf(bytes: Uint8Array): Promise<string[]> {
+  refuseIfBusy();   // breaker round 2, m-1: before the gate's cost, so "busy" is answered at once
   gate(bytes);
   return (await inWorker("tags", bytes)).tags ?? [];
 }

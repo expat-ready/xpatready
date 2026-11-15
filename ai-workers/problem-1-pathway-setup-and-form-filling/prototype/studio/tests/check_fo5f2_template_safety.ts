@@ -9,7 +9,7 @@ import PizZip from "pizzip";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
-import { MAX_WAITING_UPLOADS, PACKAGE_PART_MAX, UnreadableDocx, WORKER_TIMEOUT_MS, buildDocx, placeholdersOf, renderDocx, workerTimeout } from "../api/src/front-office/retainers/docx.ts";
+import { MAX_WAITING_UPLOADS, PACKAGE_PART_MAX, UnreadableDocx, WORKER_TIMEOUT_MS, buildDocx, placeholdersOf, renderDocx, workerStats, workerTimeout } from "../api/src/front-office/retainers/docx.ts";
 import { checkPlaceholders } from "../api/src/front-office/retainers/placeholders.ts";
 
 let pass = 0, fail = 0;
@@ -123,10 +123,19 @@ try {
 
   // Review m-2: the time limit. Shortened to 20 ms, a job on a large body is over it: TOO_COMPLEX, and with the limit back
   // the next job works on a new worker.
-  workerTimeout.ms = 20;
-  const slow = await attempt(() => placeholdersOf(pkg({ "word/document.xml": `<w:document ${NS}><w:body><w:p>${"<w:r><w:t>a</w:t></w:r>".repeat(200_000)}</w:p></w:body></w:document>` })));
-  workerTimeout.ms = WORKER_TIMEOUT_MS;
-  ok("FO-5f2 DW3 fail: a job over the time limit → TOO_COMPLEX, and the next job works", slow.code === "TOO_COMPLEX" && (await attempt(() => placeholdersOf(pkg({})))).code === "accepted", slow);
+  // Review round 2, M-2: a good job queued behind the timed-out one starts exactly one new worker, and the one after
+  // reuses it (the old worker's late exit never drops it: no orphaned worker left running).
+  const slowBody = pkg({ "word/document.xml": `<w:document ${NS}><w:body><w:p>${"<w:r><w:t>a</w:t></w:r>".repeat(200_000)}</w:p></w:body></w:document>` });
+  for (let round = 1; round <= 3; round++) {
+    const before = workerStats.starts;
+    workerTimeout.ms = 20;
+    const slowJob = attempt(() => placeholdersOf(slowBody));
+    workerTimeout.ms = WORKER_TIMEOUT_MS;   // each job keeps the limit it was queued with: only the first is shortened
+    const [slow, behind] = await Promise.all([slowJob, attempt(() => placeholdersOf(pkg({})))]);
+    const next = await attempt(() => placeholdersOf(pkg({})));
+    ok(`FO-5f2 DW3 fail (round ${round}): a job over the time limit → TOO_COMPLEX; the job behind it and the next one work on one new worker`,
+      slow.code === "TOO_COMPLEX" && behind.code === "accepted" && next.code === "accepted" && workerStats.starts - before === 1, { slow: slow.code, behind: behind.code, next: next.code, started: workerStats.starts - before });
+  }
 
   // Breaker F1, F2: a burst of uploads never holds a render for more than the job in flight, and at most
   // MAX_WAITING_UPLOADS wait; the rest are refused at once.
@@ -137,7 +146,8 @@ try {
   const codes = (await Promise.all(burst)).map((r) => r.code), rendered = await render;
   const order = done.filter((d) => d === "render" || codes[Number(d.slice(1))] === "accepted");
   ok(`FO-5f2 F1 pass: a render queued behind ${burst.length} uploads runs right after the one in flight`, rendered.code === "accepted" && order[0] === "u0" && order[1] === "render", order);
-  ok(`FO-5f2 F2 fail: of ${burst.length} uploads at once, 1 runs, ${MAX_WAITING_UPLOADS} wait and 2 are refused TEMPLATES_BUSY`, codes.filter((c) => c === "TEMPLATES_BUSY").length === 2 && codes.filter((c) => c === "accepted").length === MAX_WAITING_UPLOADS + 1, codes);
+  const busyMs = (await Promise.all(burst)).filter((r) => r.code === "TEMPLATES_BUSY").map((r) => r.ms);
+  ok(`FO-5f2 F2 fail: of ${burst.length} uploads at once, 1 runs, ${MAX_WAITING_UPLOADS} wait and 2 are refused TEMPLATES_BUSY at once (${busyMs.join(", ")} ms)`, codes.filter((c) => c === "TEMPLATES_BUSY").length === 2 && codes.filter((c) => c === "accepted").length === MAX_WAITING_UPLOADS + 1 && busyMs.every((ms) => ms < 50), codes);
 
   // ------------------------------------------------------------------ DW4: every tag docxtemplater fills is checked
   const SETTINGS = ov("word/settings.xml", `${WML}settings+xml`), HDR1 = ov("word/header1.xml", HEADER);
