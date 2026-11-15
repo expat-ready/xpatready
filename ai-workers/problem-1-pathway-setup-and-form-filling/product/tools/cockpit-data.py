@@ -643,9 +643,93 @@ def works_count(caps):
     return sum(1 for v in rows if v["status"].startswith("Works")), len(rows)
 
 
+# ---------------------------------------------------------------- board v63 (P-613, P-615): behaviour numbers, Customer box
+DAY_MON = re.compile(r"\b(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\b")
+ASK_ID = re.compile(r"\b([AS])(\d+)(?:-[AS]?(\d+))?\b")
+TARGET_WORD = re.compile(r"\btarget\b", re.I)
+TARGET_VALUE = re.compile(DAY_MON.pattern + r"|\b\d+ (?:capabilities|capability|Build rows|rows)\b")
+TARGET_KEPT = re.compile(r"\b(kept|stands|unchanged)\b", re.I)
+
+
+def day_of(text, today):
+    """The first "15 Nov" in a text as a date (the year that keeps it on or before today); None when the text has none."""
+    m = DAY_MON.search(text or "")
+    if not m:
+        return None
+    d = date(today.year, MONTHS[m.group(2).lower()], int(m.group(1)))
+    return d if d <= today else date(today.year - 1, d.month, d.day)
+
+
+def ask_ids(cell):
+    """Ask ids a STATE row names: "A49-A67" expands to 19 ids, "S10" stays one."""
+    out = []
+    for p, a, b in ASK_ID.findall(cell or ""):
+        for i in range(int(a), int(b or a) + 1):
+            if f"{p}{i}" not in out:
+                out.append(f"{p}{i}")
+    return out
+
+
+def founder_asks_dated(state_text, today):
+    """STATE.md › Founder asks: each row's ask ids and the day its Ask cell names (none: undated). Returns ({day: [ids]}, [ids])."""
+    by, undated, sec = {}, [], None
+    for line in (state_text or "").splitlines():
+        if line.startswith("## "):
+            sec = line[3:]
+            continue
+        if not (sec or "").startswith("Founder asks") or not line.startswith("| ") or line.startswith(("| #", "|---")):
+            continue
+        c = cells(line)
+        if len(c) < 4:
+            continue
+        ids, d = ask_ids(c[1]), day_of(c[2], today)
+        if d is None:
+            undated += ids
+        else:
+            by.setdefault(d, []).extend(i for i in ids if i not in by.get(d, []))
+    return by, undated
+
+
+def target_changes(dec_text, today):
+    """DECISIONS.md rows that change a date or count target: a bold part of the row names "target" with a date or a count and
+    does not say kept, stands or unchanged. Returns [{id, day, text}] with the row's own date."""
+    out = []
+    for line in (dec_text or "").splitlines():
+        m = re.match(r"^\| (P-\d+) \| ([^|]+) \|(.*)$", line)
+        if not m:
+            continue
+        d = day_of(m.group(2), today)
+        for seg in re.findall(r"\*\*(.+?)\*\*", m.group(3)):
+            if TARGET_WORD.search(seg) and TARGET_VALUE.search(seg) and not TARGET_KEPT.search(seg):
+                out.append({"id": m.group(1), "day": d.isoformat() if d else None, "text": clean(seg, 140)})
+                break
+    return out
+
+
+def launch_conditions(ck_text):
+    """MVP-CHECKLIST.md section C: every | C<n> | item | status | decision | row; done when the status starts with Done;
+    a counsel item names counsel or the immigration expert in its item or status."""
+    rows, inC = [], False
+    for line in (ck_text or "").splitlines():
+        if line.startswith("## "):
+            inC = line.startswith("## C.")
+            continue
+        if inC and re.match(r"^\| C\d+ \|", line):
+            c = cells(line)
+            st = clean(c[3]) if len(c) > 3 else ""
+            rows.append({"id": c[1], "item": clean(c[2], 120), "status": st, "done": st.lower().startswith("done"),
+                         "counsel": bool(re.search(r"\b(counsel|immigration expert)\b", c[2] + " " + st, re.I))})
+    return rows
+
+
+def day_series(per_day, today, n=7):
+    """[{day, count}] for the n IST days ending today (oldest first)."""
+    return [{"day": (today - timedelta(days=i)).isoformat(), "count": per_day.get(today - timedelta(days=i), 0)} for i in range(n - 1, -1, -1)]
+
+
 # ---------------------------------------------------------------- snapshot (§6 1a): the one interface both scripts read
 SNAP_FILES = ["MVP-CHECKLIST.md", "BACKLOG.md", "STATE.md", "cockpit/plan.json", "cockpit/history.jsonl", "qa/BUGS.md",
-              "cockpit/health-exceptions.json", "cockpit/usage-log.tsv", "cockpit/whats-new.json"]
+              "cockpit/health-exceptions.json", "cockpit/usage-log.tsv", "cockpit/whats-new.json", "DECISIONS.md"]
 
 
 def git_out(*args):
@@ -715,6 +799,10 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
                 wt(f"git/checklist_records/{sha_}.md", t_)
                 ck_lines.append(json.dumps({"sha": sha_, "date": when}))
     wt("git/checklist_records.jsonl", "\n".join(sorted(ck_lines, key=lambda x: json.loads(x)["date"])) + ("\n" if ck_lines else ""))
+    # board v63 (P-615): RULES.md commits on the records sha in the 8 days before taken_at (git/rules_log.jsonl: sha, date)
+    rl = (git_out("log", "--format=%H %cI", f"--since={(NOW - timedelta(days=8)).strftime('%Y-%m-%dT%H:%M:%SZ')}", rsha, "--",
+                  f"{REL}/RULES.md") or "").splitlines()
+    wt("git/rules_log.jsonl", "".join(json.dumps({"sha": x.split()[0], "date": x.split()[1]}) + "\n" for x in rl if x.strip()))
     # extra (not in the shared layout; read only by cockpit-data.py): records lag for the strip and Health item 3
     main_local = msha if sh(["git", "-C", ROOT, "cat-file", "-e", msha + "^{commit}"]).returncode == 0 else None
     main_ref = main_local or (git_out("rev-parse", "origin/main") or "").strip() or None
@@ -2130,6 +2218,61 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             "rows_done_24h": D_done["value"], "rows_needed_per_day": RN["value"],
             "works_today": W_today["value"], "works_today_by_size": wt_by, "capabilities_not_mapped": len(not_mapped),
             "label_guard_removals_today": lg_n["value"], "ci_rule_failures_today": ci_n["value"], "ci_bundle_failures_today": ci_b["value"]}
+    # ---- board v63 (P-613, P-615): parts merged of all Release 1 parts; the founder's behaviour numbers; the Customer box
+    parts_m = [x for x in r1 if any(not is_records(p) and title_has(p["title"] or "", x) for p in merged)]
+    PM = num(len(parts_m), f"Release 1 parts (distinct BACKLOG ids the checklist section A cites) matched by a merged non-records PR "
+             f"title (R1b); {ck_src}; {gh_src}", "mixed", L, total=len(r1), ids=parts_m)
+    st_text = snap.file("STATE.md")
+    w7 = [today - timedelta(days=i) for i in range(6, -1, -1)]
+    if st_text is None:
+        FA = num(None, "STATE.md › Founder asks", "parsed", L, "not measured: STATE.md missing from the snapshot")
+    else:
+        fa_by, fa_und = founder_asks_dated(st_text, today)
+        fa = {d: len(v) for d, v in fa_by.items()}
+        FA = num(fa.get(today - timedelta(days=1), 0), f"STATE.md › Founder asks @{rsha}: ask ids per day the Ask cell names (a range "
+                 f"A49-A67 counts 19); the last full IST day", "parsed", L, day=(today - timedelta(days=1)).isoformat(),
+                 today_so_far=fa.get(today, 0), series=day_series(fa, today), undated=len(fa_und),
+                 mean_7d=round(sum(fa.get(d, 0) for d in w7[:-1]) / 6, 1))
+    rl_text = snap.text("git/rules_log.jsonl")
+    if rl_text is None:
+        RC = num(None, "git log of RULES.md", "parsed", L, "not measured: the snapshot has no RULES.md git log (git/rules_log.jsonl)")
+    else:
+        rc = {}
+        for ln in rl_text.splitlines():
+            if ln.strip():
+                d_ = ist_day(json.loads(ln)["date"])
+                rc[d_] = rc.get(d_, 0) + 1
+        RC = num(rc.get(today - timedelta(days=1), 0), f"commits that change RULES.md on the records branch @{rsha} (git log), "
+                 f"per IST day; the last full IST day", "parsed", L, day=(today - timedelta(days=1)).isoformat(),
+                 today_so_far=rc.get(today, 0), series=day_series(rc, today), mean_7d=round(sum(rc.get(d, 0) for d in w7[:-1]) / 6, 1))
+    dec_text = snap.file("DECISIONS.md")
+    if dec_text is None:
+        TC = num(None, "DECISIONS.md", "parsed", L, "not measured: DECISIONS.md missing from the snapshot")
+    else:
+        tcs = [x for x in target_changes(dec_text, today) if x["day"] and w7[0].isoformat() <= x["day"] <= today.isoformat()]
+        TC = num(len(tcs), f"DECISIONS.md @{rsha}: rows dated in the 7 IST days ending today whose bold text names a target with a "
+                 f"date or a count, not kept or standing", "parsed", L, ids=[x["id"] for x in tcs], items=tcs,
+                 window={"from": w7[0].isoformat(), "to": today.isoformat()})
+    lc_rows = launch_conditions(ck_text)
+    ff = plan.get("first_firm") if isinstance(plan.get("first_firm"), dict) else None
+    customer = {
+        "first_firm": num({"name": ff.get("name"), "date": ff.get("date")} if ff and ff.get("name") and ff.get("date") else None,
+                          "cockpit/plan.json first_firm {name (a role), date}", "parsed", L,
+                          "not measured: no record names the first real firm and its date (cockpit/plan.json has no first_firm)"),
+        "journey_walked": num(None, "no record of the first firm's journey", "parsed", L,
+                              "not measured: no record lists the first firm's journey steps or which were walked"),
+        "counsel_open": num(sum(1 for x in lc_rows if x["counsel"] and not x["done"]) if lc_rows else None,
+                            f"{ck_src} section C: items naming counsel or the immigration expert, status not Done", "parsed", L,
+                            "not measured: the checklist has no section C rows", ids=[x["id"] for x in lc_rows if x["counsel"] and not x["done"]]),
+        "launch_done": num(sum(1 for x in lc_rows if x["done"]) if lc_rows else None,
+                           f"{ck_src} section C: launch conditions whose status starts with Done", "parsed", L,
+                           "not measured: the checklist has no section C rows", total=len(lc_rows),
+                           ids=[x["id"] for x in lc_rows if x["done"]])}
+    behaviour = {"founder_asks_day": FA, "rules_changes_day": RC, "target_changes_week": TC}
+    keys.update({"parts_merged": PM["value"], "parts_total": len(r1), "founder_asks_day": FA["value"], "rules_changes_day": RC["value"],
+                 "target_changes_week": TC["value"], "launch_done": customer["launch_done"]["value"],
+                 "launch_total": len(lc_rows), "counsel_open": customer["counsel_open"]["value"]})
+
     trust = reconcile_compare(keys, reconcile_out, reconcile_note)
     trust["invariants"] = invariants
     trust["notes"] = notes
@@ -2143,7 +2286,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             "pace": {"changes_needed_per_day": X, "changes_per_day": Y, "built": B, "proven": P_,
                      "rows_total": num(nrows, ck_src + ": capabilities", "parsed", L), "remaining": R, "ratio": ratio,
                      "committed_date": committed, "committed_set_on": set_on, "tolerance_days": tol, "light": light,
-                     "early_band": EB, "leading": leading,
+                     "early_band": EB, "leading": leading, "parts_merged": PM,
                      "merged_changes": num(merged_r1, f"Release 1 changes merged so far ({gh_src})", "mixed", L), "delivery_24h": delivery,
                      "scope_note": None if nrows == baseline else f"Scope changed: {nrows} capabilities (baseline {baseline})"},
             "forecast": {"p50": F50, "p85": F85, "sample": sample, "counts": counts, "days": [d.isoformat() for d in days14],
@@ -2151,7 +2294,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             "burnup": burn, "capacity": capacity, "top3": top3, "org": org, "working_today": working, "whats_new": wn,
             "top_numbers": {"works_today": W_today, "pct_per_works": delivery["pct_per_works_row"], "pct_per_change": delivery["pct_per_change"],
                             "lanes": lanes_top},
-            "capability_table": cap_table, "rules_caught": rules,
+            "capability_table": cap_table, "rules_caught": rules, "behaviour": behaviour, "customer": customer,
             "rows": [{"map": r["map"], "built": r["built"], "proven": r["proven"], "ids": r["ids"], "size": r["size"]} for r in rows]}
 
 
@@ -3356,7 +3499,7 @@ def main():
                     "main_ref_is_head": ex.get("main_ref_is_head"), "current_lead": (comp["org"]["leads"] or [{}])[0].get("name")},
         "pace": comp["pace"], "forecast": comp["forecast"], "burnup": comp["burnup"], "capacity": comp["capacity"],
         "top3": comp["top3"], "org": comp["org"], "working_today": comp["working_today"], "health": hl, "whats_new": comp["whats_new"],
-        "top_numbers": comp["top_numbers"], "capability_table": comp["capability_table"],
+        "top_numbers": comp["top_numbers"], "capability_table": comp["capability_table"], "behaviour": comp["behaviour"], "customer": comp["customer"],
         "trust": dict(comp["trust"], freshness=comp["fresh"] + [fm_fresh]),
         "reconcile_keys": comp["keys"], "build_rows": comp["rows"],
         "history": {"file": "cockpit/history.jsonl", "today": comp["history_line"], "previous_day": (comp["history_prev"] or {}).get("day"),

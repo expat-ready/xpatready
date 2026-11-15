@@ -1035,12 +1035,76 @@ def compute(snap):
     N["forecast_p50_date"] = num(p50, why)
     N["forecast_p85_date"] = num(p85, why)
 
+    # --- board v63 (P-613, P-615): parts merged, behaviour numbers, launch conditions (FORMULAS.md › Behaviour and customer)
+    mon = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
+
+    def first_date(txt):
+        for d_, m_ in re.findall(r"(?<!\d)(\d{1,2}) ([A-Z][a-z]{2})", txt or ""):
+            if m_.lower() in mon:
+                y = today.year if (mon[m_.lower()], int(d_)) <= (today.month, today.day) else today.year - 1
+                return dt.date(y, mon[m_.lower()], int(d_))
+        return None
+    part_ids = []
+    for r in rows:
+        part_ids += [x for x in r["parts"] if x not in part_ids]
+    if pulls is None or ck_text is None:
+        N["parts_merged"] = num(None, "not measured: pulls or checklist missing")
+    else:
+        N["parts_merged"] = num(sum(1 for x in part_ids if any(title_matches(p.get("title"), x) for _, p in merged_counted)),
+                                "distinct section A part ids with a merged non-records PR")
+    N["parts_total"] = num(len(part_ids) if ck_text is not None else None, "distinct section A part ids")
+    st_path = snap.find("files/", "STATE.md")
+    st_text = snap.text(st_path) if st_path else None
+    yday = today - dt.timedelta(days=1)
+    if st_text is None:
+        N["founder_asks_day"] = num(None, "not measured: STATE.md missing")
+    else:
+        sec = re.search(r"^## Founder asks[^\n]*\n(.*?)(?=^## |\Z)", st_text, re.M | re.S)
+        n = 0
+        for _, header, body in tables(sec.group(1) if sec else ""):
+            for rc in body:
+                if len(rc) >= 2 and first_date(rc[1]) == yday:
+                    for a, b in re.findall(r"\b[AS](\d+)(?:-[AS]?(\d+))?\b", rc[0]):
+                        n += int(b or a) - int(a) + 1
+        N["founder_asks_day"] = num(n, "ask ids of Founder asks rows whose Ask cell names yesterday (IST)")
+    rl = snap.text("git/rules_log.jsonl")
+    N["rules_changes_day"] = num(None, "not measured: no git/rules_log.jsonl") if rl is None else \
+        num(sum(1 for ln in rl.splitlines() if ln.strip() and ist_day(parse_ts(json.loads(ln)["date"])) == yday),
+            "RULES.md commits on the IST day before today")
+    dec_path = snap.find("files/", "DECISIONS.md")
+    dec = snap.text(dec_path) if dec_path else None
+    if dec is None:
+        N["target_changes_week"] = num(None, "not measured: DECISIONS.md missing")
+    else:
+        hits = []
+        for ln in dec.splitlines():
+            m = re.match(r"\| (P-\d+) \| ([^|]+)\|", ln)
+            d = first_date(m.group(2)) if m else None
+            if d is None or not (today - dt.timedelta(days=6) <= d <= today):
+                continue
+            for b in re.findall(r"\*\*(.+?)\*\*", ln[m.end():]):
+                low = b.lower()
+                if (re.search(r"\btarget\b", low) and not re.search(r"\b(?:kept|stands|unchanged)\b", low)
+                        and (first_date(b) or re.search(r"\b\d+ (?:capabilit|build rows|rows)", low))):
+                    hits.append(m.group(1))
+                    break
+        N["target_changes_week"] = num(len(hits), "DECISIONS rows of the last 7 IST days changing a dated or counted target", detail=hits)
+    sec_c = re.search(r"^## C\.[^\n]*\n(.*?)(?=^## |\Z)", ck_text or "", re.M | re.S)
+    lc = [rc for _, header, body in tables(sec_c.group(1) if sec_c else "") for rc in body if rc and re.fullmatch(r"C\d+", clean(rc[0]))]
+    N["launch_total"] = num(len(lc) if ck_text is not None else None, "section C rows")
+    N["launch_done"] = num(sum(1 for rc in lc if len(rc) > 2 and clean(rc[2]).lower().startswith("done")) if lc else None,
+                           "section C rows whose status starts with Done")
+    N["counsel_open"] = num(sum(1 for rc in lc if re.search(r"counsel|immigration expert", " ".join(rc[1:3]), re.I)
+                                and not clean(rc[2]).lower().startswith("done")) if lc else None,
+                            "section C rows naming counsel or the immigration expert, not Done")
+
     order = ["works_on_main", "works_total", "changes_per_day_window", "remaining_scope_changes", "built_rows",
              "proven_rows", "open_app_prs", "lanes_working", "ready_rows", "forecast_p50_date", "forecast_p85_date",
              "plan_pct_used_24h", "span_hours", "changes_merged_span", "works_rows_span", "pct_per_change",
              "pct_per_works_row", "rows_done_24h", "rows_needed_per_day",
              "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today", "ci_rule_failures_today",
-             "ci_bundle_failures_today"]
+             "ci_bundle_failures_today", "parts_merged", "parts_total", "founder_asks_day", "rules_changes_day",
+             "target_changes_week", "launch_done", "launch_total", "counsel_open"]
     return {"version": 1,
             "numbers": {k: N[k] for k in order},
             "mc_inputs": {"daily_counts": r1_counts, "remaining_scope": remaining}}
@@ -1152,7 +1216,8 @@ def self_test():
         "plan_pct_used_24h", "span_hours", "changes_merged_span", "works_rows_span", "pct_per_change",
         "pct_per_works_row", "rows_done_24h", "rows_needed_per_day",
         "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today", "ci_rule_failures_today",
-        "ci_bundle_failures_today", "daily_counts", "remaining_scope"])
+        "ci_bundle_failures_today", "parts_merged", "parts_total", "founder_asks_day", "rules_changes_day",
+        "target_changes_week", "launch_done", "launch_total", "counsel_open", "daily_counts", "remaining_scope"])
     # P-602 (4), no log: the span is the whole 24 h to 20 Nov 06:30Z; PF-2's first app merge 19 Nov 20:00Z is inside.
     eq("changes_merged_span", (v["changes_merged_span"], n["changes_merged_span"]["detail"]), (1, ["PF-2"]))
     eq("works_rows_span no history", v["works_rows_span"], None)
