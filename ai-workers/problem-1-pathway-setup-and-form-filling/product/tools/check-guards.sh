@@ -39,6 +39,7 @@ G4-1|product/tools/pr-open-guard.sh|s/^echo "Push to .*/exit 0/|check-g4-rules.s
 G4-1 hook|../../.githooks/pre-push|/pr-open-guard.sh/d|check-g4-rules.sh
 G4-2 files|product/tools/agent-model-guard.sh|/has no ..model: opus/d|check-g4-rules.sh
 G4-2 hook|product/tools/agent-model-guard.sh|s/^  \[ -z "\$why" \] \&\& exit 0/  exit 0/|check-g4-rules.sh
+G4-2 wired|../../.claude/settings.json|s/agent-model-guard.sh --hook/agent-model-guard.sh/|check-g4-rules.sh
 G4-3 dup|product/tools/brief-check.sh|/no ..Duplicate check:.. line/d|check-g4-rules.sh
 G4-3 test|product/tools/brief-check.sh|s/^elif ! printf/elif false \&\& printf/|check-g4-rules.sh
 G4-3 edited|../../.github/workflows/pr-rules.yml|s/types: \[opened, edited,/types: [opened,/|check-g4-rules.sh
@@ -48,6 +49,7 @@ G4-5 wired|product/tools/lead-watch.sh|/branch-sweep.sh/d|check-g4-rules.sh
 G4-6|product/tools/pr-size.sh|s/-le "\$limit" \]/-le 999999 ]/|check-g4-rules.sh
 G4-7|product/tools/brief-check.sh|s/if \[ "\${1:-}" = --brief \]; then/if false; then/|check-g4-rules.sh
 G4-7 hook|product/tools/lane-preflight.sh|s/bash "\$DIR\/brief-check.sh" --brief)/true)/|check-g4-rules.sh
+G4-7 cloud|../../.claude/settings.json|s/start_session.create_session/start_session/|check-g4-rules.sh
 G4-3 nolabel|../../.github/workflows/pr-rules.yml|s/ready_for_review\]/ready_for_review, labeled]/|check-g4-rules.sh'
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do

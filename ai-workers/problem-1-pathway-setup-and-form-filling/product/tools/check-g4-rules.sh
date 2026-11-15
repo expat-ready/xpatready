@@ -33,7 +33,8 @@ ah screen-reviewer "Review screen 41" sonnet ""; ok "(2) hook: a reviewer launch
 ah general-purpose "Breaker for PF-25" opus medium; ok "(2) hook: a breaker launched at medium effort is denied" "$(deny)" "$out"
 ah screen-reviewer "Review screen 41" opus high; ok "(2) hook: a reviewer on Opus high passes" "$([ -z "$out" ] && echo 1)" "$out"
 ah Explore "Break down the routes" haiku ""; ok "(2) hook: other agents keep their model" "$([ -z "$out" ] && echo 1)" "$out"
-# Held by Lead 58 (15 Nov): the settings.json hook on Agent and Task waits for the founder (his settings, a typed turn); its test returns with it.
+jq -e '[.hooks.PreToolUse[] | select(.matcher == "^(Agent|Task)$") | .hooks[].command | select(test("agent-model-guard.sh --hook"))] | length == 1' "$ROOTD/.claude/settings.json" >/dev/null
+ok "(2) settings.json runs the hook on Agent and Task" "$([ $? = 0 ] && echo 1)"
 grep -q 'agent-model-guard.sh"' "$W"; ok "(2) pr-rules.yml checks the agent files" "$([ $? = 0 ] && echo 1)"
 
 # (3) "Done when" naming its test, and "Duplicate check:", in every PR body and brief.
@@ -81,5 +82,6 @@ lp mcp__claude-code-remote__create_session "$GOOD"$'\nModel: Opus 5.5, effort: m
 lp mcp__claude-code-remote__create_session "/qa after-merge"$'\nModel: Opus 5.5, effort: medium'; ok "(7) a start naming no row (qa, standby) needs only the model and effort line" "$([ -z "$out" ] && echo 1)" "$out"
 lp mcp__claude-code-remote__create_session $'/next screens B124\nModel: Opus 5.5, effort: medium'; ok "(7) a /next brief naming a row (B124) still needs Done when and Duplicate check" "$(deny)" "$out"
 lp mcp__claude-code-remote__create_session "/qa after-merge"; ok "(7) ... and is refused without it" "$(deny)" "$out"
-# Held by Lead 58 (15 Nov): the settings.json create_session matcher waits for the founder (his settings, a typed turn); its test returns with it.
+jq -e '[.hooks.PreToolUse[] | select(.matcher | test("create_session")) | .hooks[].command | select(test("lane-preflight.sh --hook"))] | length == 1' "$ROOTD/.claude/settings.json" >/dev/null
+ok "(7) settings.json runs the preflight hook on create_session too" "$([ $? = 0 ] && echo 1)"
 finish
