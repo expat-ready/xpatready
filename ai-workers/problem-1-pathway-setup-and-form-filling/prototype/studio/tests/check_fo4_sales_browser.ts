@@ -82,7 +82,7 @@ const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `${name
 const leadIdOf = (given: string) => sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where l.firm_id = '${A}' and p.given_names = '${given}' order by l.arrived_at desc limit 1`);
 const formUrl = `${BASE}/front-office/web-form/${token}`;
 /** A visitor fills and sends the form like a person (the stamp needs 2 s between drawing and sending, AG-2-49 rule 3). */
-async function sendForm(p: Page, v: { given: string; family?: string; email: string; phone?: string; tick?: boolean }) {
+async function sendForm(p: Page, v: { given: string; family?: string; email: string; phone?: string; tick?: boolean; quick?: boolean }) {
   await p.goto(formUrl);
   await p.getByLabel("First name").waitFor({ timeout: 30_000 });
   await p.getByLabel("First name").fill(v.given);
@@ -91,7 +91,7 @@ async function sendForm(p: Page, v: { given: string; family?: string; email: str
   if (v.phone) await p.getByLabel("Phone (optional)").fill(v.phone);
   await p.getByLabel("Interested in (optional)").selectOption({ label: "Work permit (Sample)" });
   if (v.tick) await p.getByRole("checkbox").check();
-  await p.waitForTimeout(2300);
+  if (!v.quick) await p.waitForTimeout(2300);
   await p.getByRole("button", { name: "Send my enquiry" }).click();
   await p.locator('[data-form-state="thanks"], [role="alert"]').first().waitFor({ timeout: 15_000 });
   return (await p.locator("main").innerText()).trim();
@@ -116,6 +116,9 @@ ok("FO-4 DW1 pass: the form sent at 375 px gives the firm's thank-you", first.in
 await shot(visitor, "web-form-thanks-375");
 const lenaId = leadIdOf(lena);
 ok("FO-4 DW1 pass: the enquiry is one open lead with no owner, and the tick wrote one consent row", !!lenaId && sql(`select state || '|' || coalesce(owner_staff_id::text, '-') from fo_lead where id = '${lenaId}'`) === "OPEN|-", lenaId);
+// Break S3: a visitor who sends at once (autofill) is held until 2 s and the enquiry is kept, never dropped as a bot.
+const quick = await sendForm(visitor, { given: `Quick${run}`, email: `quick.${run}@example.org`, quick: true });
+ok("FO-4 BR-3 pass: a form sent at once is held, thanked and stored (break S3)", quick.includes("Thank you.") && !!leadIdOf(`Quick${run}`), quick);
 // DW2: the same person again (known now): the same words, and a second lead flagged as a possible match (BR-2).
 const again = await sendForm(visitor, { given: `${lena}b`, family: "Park", email: `lena.${run}@example.org` });
 ok("FO-4 DW2 pass: a known person's enquiry gets the same thank-you, word for word", again.replace(`${lena}b`, lena) === first || again === first, { first, again });
@@ -226,6 +229,26 @@ const ola = cm.locator("tr[data-lead-row]", { hasText: `Ola${run}` }).first();
 await ola.waitFor({ timeout: 20_000 });
 ok("FO-4 DW7 pass: a deactivated owner's lead is in Unassigned with \"(Inactive) Name\" and Take it", (await ola.locator("[data-owner]").innerText()).trim() === `(Inactive) ${GONE.name}` && (await ola.getByRole("button", { name: /^Take it/ }).count()) === 1);
 await shot(cm, "leads-inactive-owner-1440");
+// Break S2: after one person signs out, the next never sees the last person's rows, even for a moment.
+const shared = await pageAs(tokens.T);
+await shared.goto(`${BASE}/front-office/leads?view=all`);
+await shared.locator("tr[data-lead-row]", { hasText: `${lena} Park` }).first().waitFor({ timeout: 20_000 });
+await shared.evaluate(() => { (window as unknown as { seen: string[] }).seen = []; new MutationObserver(() => { for (const r of document.querySelectorAll("tr[data-lead-row]")) (window as unknown as { seen: string[] }).seen.push(r.textContent ?? ""); }).observe(document.body, { subtree: true, childList: true }); });
+await shared.getByRole("button", { name: "Sign out" }).click();
+await shared.getByLabel("Firm key").fill("sample-firm");
+await shared.getByLabel("Work email").fill(O.email);
+await shared.getByRole("button", { name: "Sign in" }).click();
+await shared.locator("tr[data-lead-row]").first().waitFor({ timeout: 20_000 });
+await shared.waitForTimeout(800);
+const seenRows = await shared.evaluate(() => (window as unknown as { seen: string[] }).seen);
+ok("FO-4 break S2: the Case Officer never sees the Case Manager's lead after the switch", seenRows.length > 0 && !seenRows.some((t) => t.includes(`${lena} Park`) && !t.includes(`${lena}b`)), seenRows.length);
+// Break S1: a session that expires with nobody clicking shows the sign-in card by itself.
+const expiring = await pageAs(null);
+await expiring.addInitScript((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 4000 })), tokens.O);
+await expiring.goto(`${BASE}/front-office/leads`);
+await expiring.getByRole("heading", { name: "Leads" }).waitFor({ timeout: 20_000 });
+await expiring.getByRole("heading", { name: "Sign in to your firm" }).waitFor({ timeout: 15_000 });
+ok("FO-4 break S1: an expired session shows the sign-in card without a click, and no name or Sign out stays", (await expiring.getByRole("button", { name: "Sign out" }).count()) === 0);
 // the sign-in card
 const nobody = await pageAs(null);
 await nobody.goto(`${BASE}/front-office/leads`);

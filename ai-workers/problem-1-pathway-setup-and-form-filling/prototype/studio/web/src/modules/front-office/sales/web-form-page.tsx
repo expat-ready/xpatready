@@ -21,7 +21,10 @@ type Values = { givenNames: string; familyName: string; email: string; phone: st
 const EMPTY: Values = { givenNames: "", familyName: "", email: "", phone: "", interestedIn: "", consent: false };
 /** The honeypot (AG-2-49): a field people never see or reach; a bot that fills it is thanked and nothing is stored. */
 const TRAP = "website";
-function TheForm({ token, form, onSent }: { token: string; form: PublicForm; onSent: (thanks: string) => void }) {
+/** AG-2-49 rule 3: a form sent sooner than 2 s after it was drawn reads as a bot and is dropped, so a person who is that
+ *  quick (autofill) is held until then, never lost (break S3). */
+const MIN_FILL_MS = 2_100;
+function TheForm({ token, form, drawnAt, onSent, onReload }: { token: string; form: PublicForm; drawnAt: number; onSent: (thanks: string) => void; onReload: () => Promise<unknown> }) {
   const [v, setV] = React.useState<Values>(EMPTY);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [refused, setRefused] = React.useState<string | null>(null);
@@ -40,6 +43,8 @@ function TheForm({ token, form, onSent }: { token: string; form: PublicForm; onS
     if (Object.keys(own).length) { requestAnimationFrame(() => summary.current?.focus()); return; }
     setBusy(true);
     try {
+      const wait = drawnAt + MIN_FILL_MS - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       const body = {
         submissionId: form.submissionId, loadStamp: form.loadStamp,
         givenNames: v.givenNames, familyName: v.familyName || undefined, email: v.email, phone: v.phone || undefined,
@@ -51,6 +56,8 @@ function TheForm({ token, form, onSent }: { token: string; form: PublicForm; onS
     } catch (x) {
       const p = x as Problem;
       if (p.code === "FORM_NOT_AVAILABLE") { onSent(""); return; }
+      // An old page (a stamp from before a restart or a changed wording): draw it again, answers kept, and ask once more.
+      if (p.code === "RELOAD") { await onReload(); setErrors({}); setRefused("The form was refreshed. Please check your answers and press Send my enquiry again."); requestAnimationFrame(() => summary.current?.focus()); return; }
       setErrors(p.fields ?? {});
       setRefused(p.detail ?? "The form could not be sent. Please try again.");
       requestAnimationFrame(() => summary.current?.focus());
@@ -102,7 +109,7 @@ export function WebFormPage() {
           : sent !== null ? <><h1 className="text-xl font-semibold">{form.data?.name ?? "Thank you"}</h1><p data-form-state="thanks" role="status" className="mt-2 whitespace-pre-line text-sm">{sent}</p></>
             : form.isPending ? <Loading label="Loading the form" rows={5} />
               : form.isError ? <><h1 className="text-xl font-semibold">Enquiry form</h1><p role="alert" className="mt-2 text-sm text-text-muted">{(form.error as unknown as Problem).detail ?? "The form could not be loaded. Please try again later."}</p></>
-                : <><h1 className="text-xl font-semibold [overflow-wrap:anywhere]">{form.data.name}</h1><TheForm token={token} form={form.data} onSent={setSent} /></>}
+                : <><h1 className="text-xl font-semibold [overflow-wrap:anywhere]">{form.data.name}</h1><TheForm token={token} form={form.data} drawnAt={form.dataUpdatedAt} onSent={setSent} onReload={() => form.refetch()} /></>}
       </main>
     </div>
   );

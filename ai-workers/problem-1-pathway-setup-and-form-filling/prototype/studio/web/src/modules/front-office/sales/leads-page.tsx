@@ -30,6 +30,7 @@ function LeadsBody() {
   const view: View = chips.some((c) => c.view === asked) ? asked! : chips[0].view;
   const [q, setQ] = React.useState("");
   const rows = useLeads(view);
+  const empty = view === "mine" && !can(me, KEY.edit) ? "You have no open leads." : EMPTY[view];
   const take = useTakeIt();
   const canTake = can(me, KEY.edit);
   const needle = q.trim().toLowerCase();
@@ -60,7 +61,7 @@ function LeadsBody() {
       </div>
       {rows.isPending ? <Loading label="Loading leads" />
         : rows.isError ? <p role="alert" className="text-sm text-text-danger">{rows.error instanceof StaffApiError ? rows.error.message : "Could not load the leads."} <Button variant="link" size="sm" onClick={() => rows.refetch()}>Try again</Button></p>
-          : !rows.data.length ? <p data-empty className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">{EMPTY[view]}</p>
+          : !rows.data.length ? <p data-empty className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">{empty}</p>
             : !shown.length ? <p role="status" className="text-sm text-text-muted">No lead matches “{q.trim()}”.</p>
               : (
                 <Table label={`Leads: ${CHIPS.find((c) => c.view === view)!.label}`} head={["Lead", "Interested in", "Source", "Owner", view === "unassigned" ? "Waited" : "Arrived", ""]}>

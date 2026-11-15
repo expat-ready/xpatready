@@ -4,6 +4,7 @@
 // (`POST /api/platform/session/local`) until the firm's own sign-in screens land (PF-6 on PF-4b's web session).
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryClient } from "@/lib/api";
 import { Me, problemOf, type Problem } from "./contract";
 const KEY = "xr-staff-session";
 type Stored = { token: string; expiresAt: number };
@@ -20,6 +21,8 @@ export function setStaffToken(token: string | null, expiresInSeconds = 3600) {
     if (token) sessionStorage.setItem(KEY, JSON.stringify({ token, expiresAt: Date.now() + expiresInSeconds * 1000 } satisfies Stored));
     else sessionStorage.removeItem(KEY);
   } catch { /* storage refused: the session lasts until the page reloads */ }
+  // A new person (or none) never sees the last person's rows (break S2): every sales answer is dropped.
+  queryClient.removeQueries({ queryKey: ["fo"] });
   changed();
 }
 /** The token, or null when signed out or expired. */
@@ -27,7 +30,14 @@ export const staffToken = () => read()?.token ?? null;
 export function useStaffToken() {
   const [, force] = React.useState(0);
   React.useEffect(() => { const l = () => force((n) => n + 1); listeners.add(l); return () => { listeners.delete(l); }; }, []);
-  return staffToken();
+  // The session ends at its expiry even when nothing is clicked (break S1): the sign-in card shows then.
+  const s = read();
+  React.useEffect(() => {
+    if (!s) return;
+    const t = setTimeout(() => setStaffToken(null), Math.min(s.expiresAt - Date.now(), 2_147_000_000));
+    return () => clearTimeout(t);
+  }, [s?.token, s?.expiresAt]);   // eslint-disable-line react-hooks/exhaustive-deps -- keyed on the stored session
+  return s?.token ?? null;
 }
 /** A refused call: the server's plain reason (Problem Details `detail`), its code and field errors. */
 export class StaffApiError extends Error {
@@ -44,7 +54,8 @@ export async function staffApi<T>(path: string, init: { method?: string; json?: 
   const text = await res.text();
   const data: unknown = text ? (() => { try { return JSON.parse(text); } catch { return text; } })() : null;
   if (!res.ok) {
-    if (res.status === 401 && token) setStaffToken(null);
+    // Any 401 ends the session here, also one whose token expired before this call (break S1).
+    if (res.status === 401) setStaffToken(null);
     throw new StaffApiError(res.status, problemOf(data, res.status));
   }
   return data as T;
