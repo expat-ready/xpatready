@@ -9,17 +9,14 @@ import { Button, Field, Input, Notice } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { LeadRows, seesUnassigned, type Me } from "./contract";
 import { setStaffToken, staffApi, StaffApiError, useLocalSignIn, useMe, useStaffToken } from "./session";
-
 const MeCtx = React.createContext<Me | null>(null);
 /** The signed-in staff member (inside SalesFrame only). */
 export const useStaff = () => React.useContext(MeCtx)!;
-
 /** Open unassigned leads, for the menu badge (only for people who see them). */
 export function useUnassignedCount(me: Me | null) {
   const on = !!me && seesUnassigned(me);
   return useQuery({ queryKey: ["fo", "leads", "unassigned"], enabled: on, queryFn: async () => LeadRows.parse(await staffApi("/front-office/leads?view=unassigned")) });
 }
-
 function Menu({ me }: { me: Me }) {
   const unassigned = useUnassignedCount(me).data?.length ?? 0;
   const item = ({ isActive }: { isActive: boolean }) => cn("flex min-h-9 items-center justify-between gap-2 rounded-lg px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", isActive ? "bg-primary/10 font-medium text-text-link" : "text-text hover:bg-text/5");
@@ -34,7 +31,6 @@ function Menu({ me }: { me: Me }) {
     </nav>
   );
 }
-
 function SignIn({ failed }: { failed?: string | null }) {
   const signIn = useLocalSignIn();
   const [firmKey, setFirmKey] = React.useState("");
@@ -59,13 +55,11 @@ function SignIn({ failed }: { failed?: string | null }) {
     </section>
   );
 }
-
 /** Names the place on the frame's line; it must render inside Frame, whose context it sets. */
 function Place({ crumbs, back }: { crumbs: Crumb[]; back: { to: string; label: string } | null }) {
   useWhere([{ label: "Sales", to: "/front-office/leads" }, ...crumbs], back);
   return null;
 }
-
 /** The sales area's page: the frame, the place line, and the page once someone is signed in. */
 export function SalesFrame({ crumbs, back, children }: { crumbs: Crumb[]; back?: { to: string; label: string } | null; children: React.ReactNode }) {
   const token = useStaffToken();

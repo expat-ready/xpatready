@@ -5,10 +5,8 @@
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Me, problemOf, type Problem } from "./contract";
-
 const KEY = "xr-staff-session";
 type Stored = { token: string; expiresAt: number };
-
 function read(): Stored | null {
   try {
     const s = JSON.parse(sessionStorage.getItem(KEY) ?? "null") as Stored | null;
@@ -31,13 +29,11 @@ export function useStaffToken() {
   React.useEffect(() => { const l = () => force((n) => n + 1); listeners.add(l); return () => { listeners.delete(l); }; }, []);
   return staffToken();
 }
-
 /** A refused call: the server's plain reason (Problem Details `detail`), its code and field errors. */
 export class StaffApiError extends Error {
   constructor(readonly status: number, readonly problem: Problem) { super(problem.detail ?? problem.title ?? `${status}`); }
   field(name: string) { return this.problem.fields?.[name] ?? null; }
 }
-
 /** One call to a staff route with the bearer token. A 401 ends the session here (the sign-in card shows again). */
 export async function staffApi<T>(path: string, init: { method?: string; json?: unknown } = {}): Promise<T> {
   const token = staffToken();
@@ -53,13 +49,11 @@ export async function staffApi<T>(path: string, init: { method?: string; json?: 
   }
   return data as T;
 }
-
 /** Who is signed in: roles, permission keys and duties (`GET /api/platform/me`). */
 export function useMe() {
   const token = useStaffToken();
   return useQuery({ queryKey: ["fo", "me", token], enabled: !!token, retry: false, queryFn: async () => Me.parse(await staffApi("/platform/me")) });
 }
-
 /** PF-4's local stand-in sign-in (the server refuses it unless PLATFORM_IDENTITY=local). */
 export function useLocalSignIn() {
   const qc = useQueryClient();

@@ -4,7 +4,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/lib/api";
 import { LeadChanged } from "./contract";
 import { staffApi, StaffApiError } from "./session";
-
 export function useTakeIt() {
   const qc = useQueryClient();
   const toast = useToast();

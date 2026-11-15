@@ -8,9 +8,7 @@ import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Field, Input, Select } from "@/components/ui/controls";
 import { problemOf, PublicForm, Thanks, type Problem } from "./contract";
-
 const NOT_AVAILABLE = "This form is not available.";
-
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api/public/forms/${path}`, { ...init, headers: { accept: "application/json", ...(init?.body ? { "content-type": "application/json" } : {}) } });
   const text = await res.text();
@@ -18,12 +16,10 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) throw problemOf(data, res.status);
   return data as T;
 }
-
 type Values = { givenNames: string; familyName: string; email: string; phone: string; interestedIn: string; consent: boolean };
 const EMPTY: Values = { givenNames: "", familyName: "", email: "", phone: "", interestedIn: "", consent: false };
 /** The honeypot (AG-2-49): a field people never see or reach; a bot that fills it is thanked and nothing is stored. */
 const TRAP = "website";
-
 function TheForm({ token, form, onSent }: { token: string; form: PublicForm; onSent: (thanks: string) => void }) {
   const [v, setV] = React.useState<Values>(EMPTY);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
@@ -32,7 +28,6 @@ function TheForm({ token, form, onSent }: { token: string; form: PublicForm; onS
   const set = <K extends keyof Values>(k: K) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setV((x) => ({ ...x, [k]: k === "consent" ? (e.target as HTMLInputElement).checked : e.target.value }));
   const summary = React.useRef<HTMLDivElement>(null);
   const trap = React.useRef<HTMLInputElement>(null);
-
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
     // The form's own checks first, on the field and in a summary, with every answer kept (BIC-13).
@@ -60,7 +55,6 @@ function TheForm({ token, form, onSent }: { token: string; form: PublicForm; onS
       requestAnimationFrame(() => summary.current?.focus());
     } finally { setBusy(false); }
   };
-
   const list = Object.values(errors);
   return (
     <form noValidate onSubmit={send} className="relative mt-5 flex flex-col gap-4" aria-describedby={list.length || refused ? "fo-form-summary" : undefined}>
@@ -93,7 +87,6 @@ function TheForm({ token, form, onSent }: { token: string; form: PublicForm; onS
     </form>
   );
 }
-
 export function WebFormPage() {
   const { token = "" } = useParams();
   const [sent, setSent] = React.useState<string | null>(null);

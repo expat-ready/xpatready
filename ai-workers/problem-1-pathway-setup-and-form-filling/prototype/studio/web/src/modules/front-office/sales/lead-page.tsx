@@ -10,13 +10,10 @@ import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { useTakeIt } from "./take-it";
 import { arrivedLabel, sinceLabel } from "./time";
-
 const ATTRIBUTION: Record<string, string> = { utmSource: "Campaign source", utmMedium: "Medium", utmCampaign: "Campaign", utmTerm: "Term", utmContent: "Content", clickId: "Click id", clickIdKind: "Click id kind", landingPage: "Landing page", referrerUrl: "Referring page" };
-
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="grid grid-cols-[8rem_1fr] gap-2 py-1.5 text-sm"><dt className="text-text-muted">{label}</dt><dd className="min-w-0 [overflow-wrap:anywhere]">{children}</dd></div>;
 }
-
 function LeadBody({ id }: { id: string }) {
   const me = useStaff();
   const take = useTakeIt();
@@ -80,7 +77,6 @@ function LeadBody({ id }: { id: string }) {
     </div>
   );
 }
-
 export function LeadPage() {
   const { id = "" } = useParams();
   const from = (useLocation().state as { from?: string } | null)?.from;

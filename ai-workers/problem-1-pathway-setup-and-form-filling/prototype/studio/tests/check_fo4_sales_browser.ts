@@ -22,7 +22,6 @@ import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { platformAuditWorkspaceId } from "../api/src/platform/audit/audit-event.ts";
 import { EVERYONE_SEES_ALL, writeSetting } from "../api/src/platform/settings.ts";
 import { client, recorder } from "./runtime/api.ts";
-
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 const PORT = Number(process.argv[2] ?? 4524), DBNAME = process.argv[3] ?? "xr_studio_screens_fo4";
 const BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..");
@@ -33,8 +32,7 @@ const { sql: rawSql } = client(PORT, DBNAME);
 /** psql prints "INSERT 0 1" after a RETURNING row: keep the first line only. */
 const sql = (q: string) => rawSql(q).split("\n")[0].trim();
 const run = Date.now().toString(36);
-
-// ------------------------------------------------------------------------------------------------ data (Sample)
+// data (Sample)
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/${DBNAME}`, options: "-c TimeZone=UTC" }) });
 await seedSampleFirms(db);
 const fo = await seedSampleFirmsFrontOffice(db);
@@ -57,7 +55,6 @@ const addStaff = (tag: string, role: string, name: string) => {
   return { id, email: `fo4-${tag}-${run}@sample-firm.example.com`, name };
 };
 const RO = addStaff("ro", "READ_ONLY", `Sample Reader ${run}`), GONE = addStaff("gone", "CASE_OFFICER", `Sample Leaver ${run}`);
-
 async function signIn(email: string): Promise<string> {
   const r = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", email, secondStep: true }) });
   const b = await r.json() as { token?: string; detail?: string };
@@ -66,8 +63,7 @@ async function signIn(email: string): Promise<string> {
 }
 const tokens = { T: await signIn(T.email), O: await signIn(O.email), RO: await signIn(RO.email) };
 const staffCall = (tok: string, method: string, path: string) => fetch(`${BASE}/api${path}`, { method, headers: { authorization: `Bearer ${tok}` } });
-
-// ------------------------------------------------------------------------------------------------ browser
+// browser
 const browser: Browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
 const errors: string[] = [];
 async function pageAs(tok: string | null, width = 1440): Promise<Page> {
@@ -85,7 +81,6 @@ const noSideways = async (name: string, p: Page) => ok(`${name}: no sideways pag
 const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
 const leadIdOf = (given: string) => sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where l.firm_id = '${A}' and p.given_names = '${given}' order by l.arrived_at desc limit 1`);
 const formUrl = `${BASE}/front-office/web-form/${token}`;
-
 /** A visitor fills and sends the form like a person (the stamp needs 2 s between drawing and sending, AG-2-49 rule 3). */
 async function sendForm(p: Page, v: { given: string; family?: string; email: string; phone?: string; tick?: boolean }) {
   await p.goto(formUrl);
@@ -101,8 +96,7 @@ async function sendForm(p: Page, v: { given: string; family?: string; email: str
   await p.locator('[data-form-state="thanks"], [role="alert"]').first().waitFor({ timeout: 15_000 });
   return (await p.locator("main").innerText()).trim();
 }
-
-// ---------------------------------------------------------------------------------- DW1, DW2: the visitor's form
+// DW1, DW2: the visitor's form
 const visitor = await pageAs(null, 375);
 const lena = `Lena${run}`;
 await visitor.goto(formUrl);
@@ -135,8 +129,7 @@ sql(`update fo_web_form set enabled = true where firm_id = '${A}'`);
 await visitor.goto(`${BASE}/front-office/web-form/not-a-real-token-at-all-xxxxxx`);
 await visitor.locator('[data-form-state="not-available"]').waitFor({ timeout: 15_000 });
 ok("FO-4 DW2 fail: an unknown token gives the same answer as a form that is off", (await visitor.locator("main").innerText()).includes("This form is not available."));
-
-// ---------------------------------------------------------------------------------- DW1: Unassigned with waited time
+// DW1: Unassigned with waited time
 const cm = await pageAs(tokens.T);
 await cm.goto(`${BASE}/front-office/leads`);
 const lenaRow = cm.locator(`tr[data-lead-row]`, { hasText: lena }).first();
@@ -156,8 +149,7 @@ ok("FO-4 search pass: the name finds the lead", (await cm.locator("tr[data-lead-
 await cm.getByRole("searchbox").fill(`nobody-${run}`);
 ok("FO-4 search fail: a name nobody has says nothing matches", (await cm.getByText(`No lead matches “nobody-${run}”.`).count()) === 1);
 await cm.getByRole("searchbox").fill("");
-
-// ---------------------------------------------------------------------------------- DW3: the match line (BR-2)
+// DW3: the match line (BR-2)
 // The Case Manager takes the first lead, so its person is the Case Manager's; the Case Officer (no "everyone sees all")
 // may not see that person, the Case Manager may.
 const takeFirst = await staffCall(tokens.T, "POST", `/front-office/leads/${lenaId}/take`);
@@ -178,8 +170,7 @@ ok("FO-4 DW3 fail: the Case Officer's match line names nobody", coMatch.includes
 await co.goto(`${BASE}/front-office/leads/${lenaId}`);
 await co.getByRole("heading", { name: "Lead not found" }).waitFor({ timeout: 20_000 });
 ok("FO-4 AG-2-94 rule 16: a lead the viewer may not see reads as not found", true);
-
-// ---------------------------------------------------------------------------------- DW4: Take it, the race (BR-5)
+// DW4: Take it, the race (BR-5)
 // With "everyone sees all" on (the default), the second person still sees the lead and hears who has it. With it off,
 // FO-2 answers 404 first (the lead is no longer theirs to see): asked on #1813; that case is checked after this one.
 await seesAll(true);
@@ -207,8 +198,7 @@ ok("FO-4 DW4 pass (keyboard only): Tab reaches Take it, Enter takes the lead, an
 await co.goto(`${BASE}/front-office/leads?view=mine`);
 await co.locator("tr[data-lead-row]", { hasText: `Kim${run}` }).waitFor({ timeout: 20_000 });
 ok("FO-4 Mine: the taken lead is under Mine", true);
-
-// ---------------------------------------------------------------------------------- DW6: buttons follow the keys
+// DW6: buttons follow the keys
 await sendForm(visitor, { given: `Ravi${run}`, email: `ravi.${run}@example.org` });
 const ro = await pageAs(tokens.RO);
 await ro.goto(`${BASE}/front-office/leads`);
@@ -222,8 +212,7 @@ ok("FO-4 DW6 fail: the server refuses Read-only's Take it (403) and the lead sta
 await cm.goto(`${BASE}/front-office/leads/${leadIdOf(`Ravi${run}`)}`);
 await cm.getByRole("heading", { level: 1 }).waitFor({ timeout: 20_000 });
 ok("FO-4 DW6 pass: a Case Manager (agent/prospect:edit) sees Take it on the same lead", (await cm.getByRole("button", { name: "Take it" }).count()) === 1);
-
-// ---------------------------------------------------------------------------------- DW7: "(Inactive) Name"
+// DW7: "(Inactive) Name"
 await sendForm(visitor, { given: `Ola${run}`, email: `ola.${run}@example.org` });
 const olaId = leadIdOf(`Ola${run}`);
 sql(`update fo_lead set owner_staff_id = '${GONE.id}' where id = '${olaId}'`);
@@ -236,8 +225,7 @@ const ola = cm.locator("tr[data-lead-row]", { hasText: `Ola${run}` }).first();
 await ola.waitFor({ timeout: 20_000 });
 ok("FO-4 DW7 pass: a deactivated owner's lead is in Unassigned with \"(Inactive) Name\" and Take it", (await ola.locator("[data-owner]").innerText()).trim() === `(Inactive) ${GONE.name}` && (await ola.getByRole("button", { name: /^Take it/ }).count()) === 1);
 await shot(cm, "leads-inactive-owner-1440");
-
-// ---------------------------------------------------------------------------------- the sign-in card
+// the sign-in card
 const nobody = await pageAs(null);
 await nobody.goto(`${BASE}/front-office/leads`);
 await nobody.getByRole("heading", { name: "Sign in to your firm" }).waitFor({ timeout: 20_000 });
@@ -251,7 +239,6 @@ await nobody.getByLabel("Work email").fill(O.email);
 await nobody.getByRole("button", { name: "Sign in" }).click();
 await nobody.getByRole("heading", { name: "Leads" }).waitFor({ timeout: 20_000 });
 ok("FO-4 sign-in pass: a Sample staff member signs in (local stand-in) and lands on Leads", true);
-
 ok("FO-4: no page error in the browser", errors.length === 0, errors);
 await db.$disconnect();
 await browser.close();

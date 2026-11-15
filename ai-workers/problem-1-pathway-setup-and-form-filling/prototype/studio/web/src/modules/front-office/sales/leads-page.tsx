@@ -11,7 +11,6 @@ import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { useTakeIt } from "./take-it";
 import { arrivedLabel, waitedLabel } from "./time";
-
 type View = "unassigned" | "mine" | "all";
 const CHIPS: { view: View; label: string }[] = [{ view: "unassigned", label: "Unassigned leads" }, { view: "mine", label: "Mine" }, { view: "all", label: "All open" }];
 const EMPTY: Record<View, string> = {
@@ -19,11 +18,9 @@ const EMPTY: Record<View, string> = {
   mine: "You have no open leads. Take one from Unassigned leads, or ask to be assigned one.",
   all: "No open leads.",
 };
-
 export function useLeads(view: View) {
   return useQuery({ queryKey: ["fo", "leads", view], queryFn: async () => LeadRows.parse(await staffApi(`/front-office/leads?view=${view}`)) });
 }
-
 function LeadsBody() {
   const me = useStaff();
   const [params, setParams] = useSearchParams();
@@ -38,7 +35,6 @@ function LeadsBody() {
   const shown = (rows.data ?? []).filter((l) => !needle || l.name.toLowerCase().includes(needle) || l.number.toLowerCase().includes(needle));
   // A lead with no active owner: none, or a deactivated one, shown "(Inactive) Name" (BR-4).
   const unowned = (l: LeadRow) => l.ownerStaffId === null || (l.owner ?? "").startsWith("(Inactive) ");
-
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4">
       <header>
@@ -60,7 +56,6 @@ function LeadsBody() {
           <Input type="search" placeholder="Search by name or number" value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
       </div>
-
       {rows.isPending ? <p role="status" className="text-sm text-text-muted">Loading leads…</p>
         : rows.isError ? <p role="alert" className="text-sm text-text-danger">{rows.error instanceof StaffApiError ? rows.error.message : "Could not load the leads."} <Button variant="link" size="sm" onClick={() => rows.refetch()}>Try again</Button></p>
           : !rows.data.length ? <p data-empty className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">{EMPTY[view]}</p>
@@ -91,7 +86,6 @@ function LeadsBody() {
     </div>
   );
 }
-
 export function LeadsPage() {
   return <SalesFrame crumbs={[{ label: "Leads" }]}><LeadsBody /></SalesFrame>;
 }
