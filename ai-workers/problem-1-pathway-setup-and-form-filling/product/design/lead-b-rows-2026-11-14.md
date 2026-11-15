@@ -797,7 +797,7 @@ No front-office screen exists yet. These go to the top of ready, each built on i
 
 PF-0c can run beside any of them. New capabilities (shaping Batches 1-5) start in a group only after that group's started rows are closed.
 
-## Rev 16.12 (15 Nov 09:4x IST, Lead B (4)): edits to existing rows and the X additions, as exact copy text (Lead 52's "not applied" list; P-607)
+## Rev 16.12 (15 Nov 09:3x IST, Lead B (4)): edits to existing rows and the X additions, as exact copy text (Lead 52's "not applied" list; P-607)
 
 **P-607 (founder, 15 Nov), noted:**
 * All nine answers follow Lead B's recommendations, except **LMIA: row 98's CS-98* rows are in Release 1, scheduled last in the case-side lane** (amends P-568 for row 98).
