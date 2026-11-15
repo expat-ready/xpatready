@@ -215,3 +215,107 @@ QA-474 (decision, close, reopen) is draft 2's CS-C1.
 * **Draft 2's older ids are kept where the rows are the same:** CS-X1, CS-X2 and CS-X3 stay; CS-26e and CS-P1 are dropped.
 * **PF-F2 adopts CS-D2's tus protocol** (open standard, P-502) with `@tus/s3-store` as the platform rail; PF-F3 and PF-F4 replace CS-D3 and CS-D4.
 * **Draft 2's CS-D1, CS-D1b, CS-D5 and CS-D6 stay the release holder's.** S3's CS-D2, CS-D3 and CS-D4 are dropped.
+
+## Batch 5: consolidated (15 Nov 09:4x IST; Lead 52's ruling on the draft-2 duplicates)
+
+**Ruling (Lead 52, P-486, P-584's pattern, reversible):** platform owns the shared rails (one task store, one find door, one metrics registry, one file rail), and the case side registers on them. The texts below are the platform rows to copy.
+
+**How to read them:**
+* "Base" means the lane row's text at the named commit, kept word for word except where a line below replaces it.
+* Every earlier amendment (batches 1-4: the rename, `/api/platform/files`, rev 16.7, and the rest) still applies.
+* Where the lane row and draft 2 differed, the line says which design wins and why.
+
+### Tasks: PF-29a to PF-29f (base: S2's TK-1 to TK-6, `shaping/s2-front-office-case` at 93db01193)
+
+| Row | Base | Changes |
+|---|---|---|
+| PF-29a | TK-1 | none. `plat_task` in `platform-tasks.prisma`. |
+| PF-29b | TK-2 | none. `TaskPort` with `registerHost`. |
+| PF-29c | TK-3 | none. |
+| PF-29d | TK-4 | **Front-office half only:** the front office registers `fo_person` (context LEAD or PROSPECT). The case side's `case` and `case_client` hosts, today's `CaseTask` handling and the **Unassigned-cases queue route** are **CS-T1 (trimmed, the release holder's)**. Touch drops `api/src/case-delivery/tasks-host.ts` and the `submission-record.ts` line. |
+| PF-29e | TK-5 | none (waits on PF-4b). |
+| PF-29f | TK-6 | **Folds in CS-T2 (the work screen).** The page has three tabs: **My Tasks · Unassigned tasks** (for `agent/task:assign` or `view.all`) **· Unassigned cases**. The last tab reads CS-T1's queue route and shows only for `agent/case:edit` or `agent/case:assign`. Each row shows what, case number and client (or the lead's name), the due date with "Overdue" in words, the stage, and the type label. Actions: one-click **Take it** on a case, **Done** and **Reassign** on a task. Counts on the tabs; empty and error states in words; no hand-over dialog (X-18). Done when adds: "a Take it race shows the other person's name"; "a person without the keys sees no Unassigned tabs"; "buttons have screen-reader names"; "phone width (375)". The touch list adds one link in the staff navigation; `web/src/runtime/work.tsx` (CS-T2's) is not created. |
+
+### Find: PF-30a and PF-30s (base: S2's FD-1 and FD-3)
+
+| Row | Base | Changes |
+|---|---|---|
+| PF-30a | FD-1 | none. `FindPort`, `GET /api/platform/find`, the front office's finder. **The case finder is CS-S1 (trimmed, the release holder's):** it keeps `case_party_index` and its triggers and registers with `FindPort`. CS-30c is dropped. |
+| PF-30s | FD-3 | **Folds in CS-S2.** It adds:<br>• results the viewer cannot open are counted only ("3 more you cannot see") and never linked;<br>• recent searches are never stored;<br>• the matched part is highlighted;<br>• a person's result shows their role, case number and stage.<br>Done when adds: "results within STANDARDS §9's budget on 100 Sample firms"; "no result shows 'No matches. Try an email, phone or file number'"; "keyboard only". `web/src/runtime/search.tsx` (CS-S2's) is not created. |
+
+### Reports: PF-R1, PF-R2fo, PF-R2cm, PF-R3 (base: S3's rows, `shaping/s3-money-unassigned` at 651fa4ce2)
+
+| Row | Base | Changes |
+|---|---|---|
+| PF-R1 | PF-R1 | **`MetricRegistry.register` takes CS-R1's `MetricDefinition` shape as its zod type** (source, aggregation, money treatment, drill target; AG-14-4), so the case side registers without a second shape. Q8 is ruled (live reads under a read budget; four seeded roles). |
+| PF-R2fo, PF-R2cm | as written | none. |
+| PF-R2cs | — | **Dropped.** The case metrics are **CS-R1 (trimmed, the release holder's)**, registered through `MetricRegistry`. |
+| PF-R3 | PF-R3 | **Folds in CS-R2.** The Owner's landing dashboard has:<br>• 4-6 number cards, each with "what this counts";<br>• the stage bar (from CS-R1's case metrics);<br>• the **overdue-by-person** list, linking to PF-29f's work screen;<br>• a month picker;<br>• the Individual/Corporate switch;<br>• CSV export of each table for `agent/report:export`, with one audit line (AG-13-43).<br>Done when adds: "the screen equals the API for the seeded firm"; "a `view.own` holder sees their own view and a `view.all` holder sees the firm"; "phone width". `web/src/runtime/dashboard.tsx` (CS-R2's) is not created. |
+
+### The file rail: PF-F2, PF-F3, PF-F4 (base: S3's rows; replaces draft 2's CS-D2, CS-D3, CS-D4)
+
+**PF-F2: uploads that resume, on tus (replaces the base's own session tables).**
+* **Item:** the platform's one upload rail on the **tus protocol** (an open standard for resumable uploads, P-502):
+  * server `@tus/server` with `@tus/file-store` locally and **`@tus/s3-store`** on PF-F1's bucket; client `tus-js-client` in `web/src/lib/resumable-upload.ts`;
+  * all three libraries through the STANDARDS §1 gate and P-587's checks in the PR (licence, upkeep, maintainers, Scorecard, recorded and not assumed), added by PF-L's one-PR rule.
+* **Mounting and doors:** mounted at `/api/platform/files/uploads` (batch 2, amendment 4). **Doors register** with `UploadDoorPort.register(door, { authorize(ctx, meta), allowedKinds, onComplete(tx, file), onClean(tx, file) })`; the doors are `STAFF`, `CLIENT_LINK`, `CLIENT_PORTAL` and `SUPPORT`.
+* **Every request checks access:**
+  * The upload id is made by the server and carries the firm, the door and the door's target. For a case door that is the case and the checklist line or document type, taken from tus metadata.
+  * Every tus request checks the session's firm and the door's `authorize`. Another firm's or another person's id answers 404.
+* **At creation:** PF-F4's checks run on the declared `Upload-Length` and type, and nothing is staged on a refusal.
+* **On finish:**
+  * PF-F4 checks the actual bytes;
+  * `FilesPort.put` stores the file under the door's key;
+  * `plat_file` is written as `SCANNING`, and PF-F3's scan job is queued;
+  * the door's `onComplete` runs;
+  * the staging copy is removed.
+* **Expiry:** an unfinished upload expires after 24 hours (Sample; tus's expiration extension). A PF-14 job cleans it up, and **asks `LegalHoldPort` first**: if the person is held, the upload is kept and listed.
+* **Storage:** `plat_file` is the only new table (`platform-files.prisma`: firm, key, sha256, size, media type, scan state, scanned at, signature name). tus keeps its own upload records, and the base's `plat_upload_session` and `plat_upload_part` are **dropped**.
+* **Screen words** (from CS-D2): "Upload paused: reconnecting", "Resumed, 62%".
+* **Done when (a pass and a fail each):**
+  * a transfer cut mid-file resumes from the server's offset, and the finished file's sha256 matches;
+  * a repeated chunk is stored once;
+  * finished bytes that contradict the allowed kinds are refused, and nothing is stored;
+  * another firm's or person's upload id → 404;
+  * an expired upload cannot be finished;
+  * a held person's expired upload is kept;
+  * the declared size over the limit is refused at creation;
+  * a browser test cuts the network mid-upload and the file completes;
+  * the migration test follows rev 16.7.
+* **Waits on:** PF-F4, PF-F1 (for S3) or the local store, PF-14, PF-12, PF-21b (`LegalHoldPort`; its fake until then).
+* **Breaker:** yes (schema, public door). **Size:** 2 PRs (the rail; the client library and the words).
+
+**PF-F3: nothing served while scanning (base PF-F3, with CS-D3's gate).**
+* **Replaced: the gate moves inside `FilesPort` itself**, CS-D3's design, so no door can skip it. The base had a `servable()` wrapper.
+  * `FilesPort` gains `scanState(key)` and `markScanned(key, state)`, plus `getForScan(key)` for the scan job only.
+  * `get` and every signed link refuse anything not `CLEAN`, answering **409 "Still being checked"** while scanning and **410 "Removed: unsafe file"** when quarantined.
+  * The base's "a test walks every route that returns file bytes" stays, as a second guard.
+* **Added:**
+  * `ERROR` retries three times, then the file stays `SCAN_PENDING` for staff (never `CLEAN`), with the base's alert.
+  * `INFECTED` is quarantined: kept for the audit and never served. Staff are told in words; the uploader is told "This file could not be accepted".
+  * The door's **`onClean`** runs in the scan job's transaction, which is where the case side writes `document.accepted`, only for a `CLEAN` file.
+  * The EICAR string is built at test time and never committed.
+* **Scanner (Q6, ruled):** AWS's managed malware scanning for S3 if its own docs confirm `ca-central-1`, else ClamAV in its own container (clamd `INSTREAM`, behind a setting, off in CI, with one opt-in smoke test).
+* **Done when adds:** "while scanning → 409; infected → 410; `onClean` runs once for a clean file and never for an infected one".
+
+**PF-F4: one file check (base PF-F4, with CS-D4's checks).**
+* **Changed, one rule: the bytes decide the type.**
+  * A file whose name or declared type disagrees with its bytes is **stored under the bytes' type with its name corrected** (CS-D4's rule), and a double extension is cleaned.
+  * It is refused only when the bytes' type is not allowed at that door.
+  * This replaces the base's "a declared type the bytes contradict is refused": the result is just as safe, and friendlier to staff and clients.
+* **Added from CS-D4:**
+  * an image whose header declares more than **89.5 megapixels** (Sample; read from the PNG `IHDR` and JPEG `SOF` headers, no library) is refused, and nothing is stored;
+  * a PDF with active content (`/JavaScript`, `/OpenAction`, `/AA`, `/Launch`, XFA, embedded files) is **flagged, not refused**, because IRCC's own forms carry scripts. It is shown as "Contains scripts: opened only in the safe viewer", detected by a byte scan with no library.
+  * The "damaged PDF" check needs a parser, so it stays in the case side's adoption (CS-D1, through the form engine's existing Python door). Platform code never imports `engine/`.
+* **Allowed kinds:** the platform knows the union (PDF, JPEG, PNG, HEIC, TIFF, Word, Excel). **Each door narrows it** through `allowedKinds`. The case side's per-document-type list (`DocumentType.allowed_media`, default PDF, JPEG and PNG) is the case side's, in its adoption rows. Plain ZIP is refused in R1 (Q7, founder confirmation pending).
+* **Done when adds:**
+  * a bomb PNG header is refused and stores nothing;
+  * a renamed JPEG is stored as `image/jpeg` with a `.jpg` name;
+  * an IRCC form PDF with scripts is stored and flagged;
+  * a door that allows images only refuses a PDF, with the allowed list in words;
+  * every refusal ends "Nothing was stored."
+
+**PF-F1 and PF-F1c:** unchanged (batch 2). **The release holder's adoption rows:** CS-D1 and CS-D1b move the case side onto the rail (register the case doors with `UploadDoorPort`, `mediaOf` → PF-F4's `detect`, the damaged-PDF check). CS-D5 and CS-D6 stay the case side's. S3's CS-D2, CS-D3 and CS-D4 are dropped.
+
+### Dropped from the lanes (do not copy)
+CS-26e (→ CS-X1), CS-P1 (→ CS-X2, CS-X3), CS-30c (→ CS-S1), PF-R2cs (→ CS-R1), S3's CS-D2, CS-D3, CS-D4. Also dropped: the base PF-F2's `plat_upload_session` and `plat_upload_part`.
