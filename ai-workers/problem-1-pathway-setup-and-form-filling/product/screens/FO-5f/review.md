@@ -109,4 +109,32 @@ The braces in those parts never reach `braces` (`docx.ts:113`), so `compile(zip)
 
 **To fix before Approve:** M-1 (the parts above, with the two fail tests). Nothing else is open from round 1 or from the breaker's Minors in this diff.
 
+**Round 2 verdict:** Block (`f3505fc58`).
+
+## Round 3 (diff-only): `git diff f3505fc58 28f635a9a -- prototype/studio`
+* **Commit reviewed:** `28f635a9a3a62fe9b12493cbfaee845db0f392a0`. Read: the diff (`docx.ts`, `service.ts`, the test file) and docxtemplater 3.71.1 `get-content-types.js` `collectContentTypes` (called at `docxtemplater.js:558`).
+* `tests/check_fo5_retainers.ts` at 28f635a9a: **230 passed, 0 failed** (exit 0).
+
+| Item | Holds? |
+|---|---|
+| Round 2 M-1 rest: Override-else-Default types, parts typed XML read, coverPageProps customXml read, braces counted in the raw XML | **partly**. Each round-2 repro is refused (`word/h.bin` under `Extension="bin"`: 200,000 `{` → TOO_MANY_PLACEHOLDERS in 14 ms; the cover part per the new tests). Over-counting braces outside text tags is safe: a Word file carries only a few (GUIDs in `settings.xml`, `docProps/custom.xml`). The Default lookup does not match docxtemplater's: **M-1 still open** below |
+| breaker r2-m2: licensing body in the old-version comparison | yes |
+| breaker r2-m3: no `blockers` unless EDITABLE | yes |
+
+**M-1 Major (rounds 1 and 2's M-1, still the same defect: the cap and the placeholder scan miss parts docxtemplater compiles).** The two sides read a Default rule differently:
+* `docx.ts:98` looks up the text after the last `.` of the name (lower-cased), and `docx.ts:96` drops an empty `Extension`.
+* docxtemplater types a file by a plain suffix test, `name.slice(name.length - extension.length) === extension`: no dot, case-sensitive, first match wins, and `Extension=""` matches every file that has no Override.
+
+A part docxtemplater types as a header can therefore still fall outside `parts` (`docx.ts:104`), so its braces never reach `braces` (`docx.ts:120`). Repro (direct `placeholdersOf`, then `renderDocx`; script `scratchpad/rev/r3.mts`), with `{client.name}` in the body:
+* `<Default Extension="in" ContentType="…wordprocessingml.header+xml"/>` with a header at `word/h.bin` (docxtemplater: "h.bin" ends with "in"): the scan lists `["client.name"]`, but the render prints `Passport ` (`{client.passport}` blank). With 200,000 `{` there: 10,355 ms, 568 MB. With 1,500,000: `FATAL ERROR: … JavaScript heap out of memory` after 73 s.
+* `<Default Extension="" …header+xml/>` with `word/h.bin`: the same (200,000 `{` → 10,922 ms, 581 MB).
+* `<Default Extension="hdr" …header+xml/>` with a header at `word/hdr` (no dot): not read, rendered blank.
+* Control: `Extension="bin"` is refused in 14 ms, so the miss is only the suffix rule.
+
+**Fix (small, in `placeholdersOf`):** type each file exactly as `collectContentTypes` does: Override by its exact name, else the first `Default` in document order whose `Extension` is a suffix of the name, empty included, case-sensitive; then read every file typed XML. A tighter alternative: refuse as "damaged" any `Default` that gives a Word part type (main, header, footer, footnotes, comments, settings, the docProps, diagram data or drawing), or that has an empty Extension. Word declares those parts by Override only. Add fail tests: 1.5 M `{` under `Extension="in"` and under `Extension=""`, each refused in under 2 s, and `{client.passport}` there refused.
+
+Per the coordinator, this is the same defect as round 1's M-1, not a new Major.
+
+**To fix before Approve:** M-1 (the suffix rule, with its tests). Nothing else is open in this diff.
+
 Verdict: Block
