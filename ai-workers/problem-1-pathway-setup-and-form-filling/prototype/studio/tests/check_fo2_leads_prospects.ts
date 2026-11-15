@@ -288,6 +288,12 @@ try {
   ok("FO-2 p2 fail (break M1): assigning on a lead the assigner then cannot see → done (not 404), and saved", given.done === true && sql(`select owner_staff_id from fo_lead where id = '${handover}'`) === O.staffId, given);
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
 
+  const goneId = addStaff("Gone", "CASE_OFFICER", "ACTIVE");
+  await post({ givenNames: "Orphan", email: "orphan@example.org" });
+  const orphan = sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'orphan@example.org'`);
+  sql(`update fo_lead set owner_staff_id = '${goneId}' where id = '${orphan}'`); sql(`update platform_staff set status = 'DEACTIVATED' where id = '${goneId}'`);
+  ok("FO-2 p2 fail (Devin, break m9): a deactivated owner's lead (shown Unassigned) assigns with expectedOwnerStaffId null", ((await leads.assign(R, orphan, { staffId: T.staffId, expectedOwnerStaffId: null })) as { ownerStaffId?: string }).ownerStaffId === T.staffId);
+
   // X-4: a one-user firm's form lead is owned by its one user.
   const soloWording = await db.$transaction((tx) => consent.publishWording(tx, { firmId: S, channel: "EMAIL", purpose: "MARKETING", locale: "en", text: "Send me news by email. (Sample)", by: "seed:FO-2-test" }));
   const tokenS = sql(`update fo_web_form set enabled = true, consent_wording_version_id = '${soloWording.id}', allowed_sites = '{${SITE}}' where firm_id = '${S}' returning public_token`);
@@ -314,6 +320,9 @@ try {
   const moFirst = await leads.add(R, mo) as { id: string }, moAgain = await leads.add(R, mo) as { id: string };
   ok("FO-2 p2 fail (review M1): the same Add retried (no confirmedNew) returns its own lead, not 409 KNOWN_PERSON", moAgain.id === moFirst.id && count("fo_person", `email = 'mo.retry@example.org'`) === 1);
   ok("FO-2 p2 fail (review m4): the same request id with other details → 409 REQUEST_REUSED", (await refusal(() => leads.add(R, { ...mo, givenNames: "Other" })))?.body.code === "REQUEST_REUSED");
+  const raceRid = rid();
+  const raced = await Promise.allSettled([leads.add(R, { requestId: raceRid, source: "Phone call", givenNames: "Ra", email: "ra1@example.org", confirmedNew: true }), leads.add(R, { requestId: raceRid, source: "Phone call", givenNames: "Rb", email: "ra2@example.org", confirmedNew: true })]);
+  ok("FO-2 p2 fail (Devin): one request id sent twice at once with other details → one lead, the other REQUEST_REUSED", raced.filter((x) => x.status === "fulfilled").length === 1 && raced.some((x) => x.status === "rejected" && /REQUEST_REUSED/.test(JSON.stringify((x.reason as { getResponse?: () => unknown }).getResponse?.()))), raced.map((x) => x.status));
   ok("FO-2 p2 fail (review m6): Add with no source → refused at the field (AG-2-4 rule 1)", (await refusal(() => leads.add(R, { requestId: rid(), givenNames: "Src", email: "src@example.org", confirmedNew: true })))?.status === 422);
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
   const tPerson = sql(`select person_id from fo_lead where firm_id = '${A}' and owner_staff_id = '${T.staffId}' and state = 'OPEN' limit 1`);
@@ -334,6 +343,7 @@ try {
   ok("FO-2 p2 fail: Reopen without a reason → refused at the field", (await refusal(() => leads.reopen(R, hand.id, {})))?.status === 422);
   const reopened = await leads.reopen(R, hand.id, { reason: "They called back." }) as { state: string; ownerStaffId: string };
   ok("FO-2 p2 pass: Reopen → OPEN with its owner, the reason kept as an INTERNAL note, one lead.reopened event", reopened.state === "OPEN" && reopened.ownerStaffId === R.staffId && count("fo_note", `lead_id = '${hand.id}' and text = 'Reopened: They called back.' and visibility = 'INTERNAL'`) === 1 && count("module_event", `subject_id = '${hand.id}' and type = '${EVENT.LEAD_REOPENED}'`) === 1);
+  ok("FO-2 p2 fail (Devin): the closing note survives Reopen (kept as an INTERNAL note)", count("fo_note", `lead_id = '${hand.id}' and text = 'Closed (Not interested): Not now.'`) === 1);
   ok("FO-2 p2 fail: Reopen an open lead → 409", (await refusal(() => leads.reopen(R, hand.id, { reason: "x" })))?.status === 409);
 
   // Part 1's Minors: captured attribution cleaned, not refused (break n3, n4); two first enquiries race (Devin).

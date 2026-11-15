@@ -8,7 +8,7 @@ import type { AuditPort } from "../../../../ports/audit.ts";
 import type { Channel, ConsentPort, Purpose } from "../../../../ports/consent.ts";
 import { EVENT, LeadEventPayload } from "../../../../ports/events.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
-import { notFound, written, type Tx } from "./common.ts";
+import { conflict, notFound, written, type Tx } from "./common.ts";
 
 export type Attribution = Partial<Record<"utmSource" | "utmMedium" | "utmCampaign" | "utmTerm" | "utmContent" | "clickId" | "landingPage" | "referrerUrl", string>>
   & { clickIdKind?: "GCLID" | "FBCLID" | "MSCLKID" | "TTCLID" | "OTHER" };
@@ -47,6 +47,8 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
   // then finds its receipt and makes nothing.
   const made = await tx.foArrivalReceipt.createMany({ data: [{ firmId, door: a.door, webFormId: a.webFormId ?? null, intakeKey: a.intakeKey, payloadHash: a.payloadHash, ipHash: a.ipHash ?? null }], skipDuplicates: true });
   const receipt = await tx.foArrivalReceipt.findUniqueOrThrow({ where: { firmId_door_intakeKey: { firmId, door: a.door, intakeKey: a.intakeKey } } });
+  // A hand-added request id used twice at once with other details is refused here too, after the key serialised them (Devin).
+  if (made.count === 0 && a.door === "MANUAL" && receipt.payloadHash !== a.payloadHash) return conflict("This request was already used with other details. Start a new Add.", "REQUEST_REUSED");
   if (made.count === 0) return { leadId: receipt.leadId, personId: receipt.personId, created: false };
 
   let personId: string, match: string | null = null;

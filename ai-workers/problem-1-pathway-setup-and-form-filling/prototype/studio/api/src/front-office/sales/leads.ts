@@ -165,7 +165,9 @@ export class Leads {
       // The owner the screen showed (null = Unassigned): someone who took it meanwhile is never overwritten (break M2).
       if (!("expectedOwnerStaffId" in b) || (b.expectedOwnerStaffId !== null && (typeof b.expectedOwnerStaffId !== "string" || !UUID.test(b.expectedOwnerStaffId)))) return unprocessable("expectedOwnerStaffId: the owner the list showed, or null.", { expectedOwnerStaffId: "Required." });
       const was = typeof b.expectedOwnerStaffId === "string" ? b.expectedOwnerStaffId.toLowerCase() : null;
-      if (l.owner_staff_id !== was) { const now = l.owner_staff_id ? staff.get(l.owner_staff_id) : undefined; return conflict(now ? `${now.displayName} already has this lead.` : "This lead changed. Reload it.", "STALE_OWNER", { ownerStaffId: l.owner_staff_id }); }
+      const activeOwner = l.owner_staff_id && staff.get(l.owner_staff_id)?.status === "ACTIVE" ? l.owner_staff_id : null;
+      // A deactivated owner's lead is Unassigned, so null is right for it too (Devin, break m9).
+      if (l.owner_staff_id !== was && !(was === null && activeOwner === null)) { const now = l.owner_staff_id ? staff.get(l.owner_staff_id) : undefined; return conflict(now ? `${now.displayName} already has this lead.` : "This lead changed. Reload it.", "STALE_OWNER", { ownerStaffId: l.owner_staff_id }); }
       if (l.owner_staff_id === to.id) return conflict(`${to.displayName} already has this lead.`, "ALREADY_TAKEN", { ownerStaffId: to.id });
       await tx.foLead.update({ where: { id }, data: { ownerStaffId: to.id } });
       return { owner: to.id, summary: `assigned the lead to staff ${to.id}`, via: "ASSIGN" };
@@ -181,6 +183,8 @@ export class Leads {
       const note = text(b.note, { field: "note", what: "Note", max: 2000, multiline: true });
       if (l.state !== "OPEN") return conflict(l.state === "CLOSED" ? "This lead is already closed." : "An engaged lead stays engaged (AG-2-80 rule 5).");
       await tx.foLead.update({ where: { id }, data: { state: "CLOSED", closeReasonId: reason.id, closeReasonKind: "LEAD_CLOSE", closeNote: note, closedAt: new Date(), closedBy: actorOf(ctx) } });
+      // The closing note is kept as an add-only note too, so a later Reopen (which clears closeNote) never loses it (Devin).
+      if (note) await tx.foNote.create({ data: { firmId: ctx.firmId, personId: l.person_id, leadId: id, visibility: "INTERNAL", text: `Closed (${reason.label}): ${note}`, byActor: actorOf(ctx) } });
       return { owner: l.owner_staff_id, summary: `closed the lead (${reason.key})`, reasonKey: reason.key, state: "CLOSED" as const };
     });
   }
