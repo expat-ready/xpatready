@@ -1106,3 +1106,10 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
 * **New row PF-0a** (runtime, platform; #1870 Q3; waits on AUD-1b):
   - the three direct audit writes in `api/src/platform/identity/audit.ts` and `settings.ts` move onto `AuditPort`, in the same transactions;
   - every suite passes unchanged, and a test shows each write lands through the port.
+
+**Rev 16.34 note (16 Nov 02:2x IST): Lead 61's final answers on #1878 (comment 6900938081) replace the open points above.**
+* **Routes:** `/api/front-office/money/*`, with no change to `PLATFORM_PATH`.
+* **Invoice visibility:** scoped as AG-06 C5 says, failing closed.
+* **The 25-day item:** counts from the line's source date (AG-6-73 r5), as rev 16.33 said. **This undoes 16.34's "invoice date" line.** The Code s. 32(g) point is "Unconfirmed: no counsel" in the brief.
+* **Tax rates and overpayments:** the requirement stands, and no founder question is needed.
+* **What holds from 16.33:** everything else in rev 16.33, and the enum storage of the trust answer.
