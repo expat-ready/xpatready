@@ -214,6 +214,11 @@ try {
   await decide(c3b, T.OWNER);
   r = await call(BASE, "POST", P(c3b.id, "withdraw"), { token: T.OWNER, body: { reason: "The client stopped", withdrawnOn: "2027-03-04" } });
   ok("CS-C1 DW3 fail: withdraw while one filing already has a decision → 409 (AG-7-50 rule 4: it is not closed WITHDRAWN)", r.status === 409 && r.body.code === "HAS_DECISION" && caseRow(c3b.id).startsWith("OPEN|"), r.body);
+  const c3d = newCase({ filings: 2, submitted: 1 });
+  await decide(c3d, T.OWNER);
+  sql(`update filing set active = false where id = '${c3d.filings[0]}'`);
+  r = await call(BASE, "POST", P(c3d.id, "withdraw"), { token: T.OWNER, body: { reason: "The client stopped", withdrawnOn: "2027-03-04" } });
+  ok("CS-C1 DW3 fail (review m2): a decision on a filing later set inactive still blocks withdrawal → 409 HAS_DECISION", r.status === 409 && r.body.code === "HAS_DECISION" && caseRow(c3d.id).startsWith("OPEN|"), r.body);
   const c3c = newCase({ filings: 2, submitted: 1 });
   r = await call(BASE, "POST", P(c3c.id, "withdraw"), { token: T.OWNER, body: { withdrawnOn: "2027-03-04" } });
   const r3b = await call(BASE, "POST", P(c3c.id, "withdraw"), { token: T.OWNER, body: { reason: "The client stopped" } });
