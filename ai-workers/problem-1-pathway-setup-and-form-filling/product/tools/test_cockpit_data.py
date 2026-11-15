@@ -838,22 +838,33 @@ class UsageLogScript(unittest.TestCase):
 
 class TeamByComponent(unittest.TestCase):
     """Board v57 (founder 15 Nov 10:2x IST): the Team tab's org view by component (FORMULAS.md › Team by component)."""
-    ROWS = [{"map": 24, "cap": "Each firm's own web address", "module": "Front office (booking)", "ids": ["J-24", "FO-3"]}]
+    ROWS = [{"map": 24, "cap": "Each firm's own web address", "module": "Platform", "ids": ["PF-24w"]},
+            {"map": 41, "cap": "Booking", "module": "Front office (booking)", "ids": ["FO-3h"]},
+            {"map": 60, "cap": "Rules", "module": "configurator", "ids": ["XY-1"]}]
+    # the real BACKLOG shape of a join-and-walk row: no prefix rule, the map row is named in the Area cell (review M2)
+    BL = {"J-24": "| J-24 | join and walk (map row 24; P-606) | **Join and walk for map row 24** |",
+          "J-38": "| J-38 | join and walk (map row 38, 41; P-606) | x |"}
 
     def test_component_mapping(self):
-        f = lambda row, role=None, given=None: cd.component_of(row, role, given, self.ROWS)[0]
+        f = lambda row, role=None, given=None: cd.component_of(row, role, given, self.ROWS, self.BL)[0]
         self.assertEqual(f("PF-4b"), "platform")
         self.assertEqual(f("FO-1a"), "front_office")
         self.assertEqual(f("FO-7t"), "client_money")              # FO-7* before FO
         self.assertEqual(f("FO-7mv"), "client_money")
-        self.assertEqual(f("AS-2c"), "front_office")
+        self.assertEqual(f("AS-2c"), "front_office")              # the client copy: Lead B's (BACKLOG)
+        self.assertEqual(f("AS-2cs"), "front_office")
+        self.assertEqual(f("AS-1m"), "case_side")                 # the configurator's AS rows: the release holder's (review M1)
+        self.assertEqual(f("AS-2d1"), "case_side")
         self.assertEqual(f("CS-W1"), "case_side")
         self.assertEqual(f("BK-17"), "case_side")
         self.assertEqual(f("AUD-1a"), "audit")
         self.assertEqual(f("CI-1"), "pipeline")
         self.assertEqual(f("TR-1"), "pipeline")
         self.assertEqual(f("Q-c613-6a"), "qa")
-        self.assertEqual(f("J-24"), "front_office")               # no prefix rule: the Module of map row 24, which cites it
+        self.assertEqual(f("J-24"), "platform")                   # no prefix rule: map row 24 named in its Area cell → Module Platform
+        self.assertEqual(f("J-38"), "front_office")               # row 38 is not in the checklist; row 41 is (Front office)
+        self.assertEqual(f("XY-1"), "case_side")                  # cited by map row 60, Module "configurator"
+        self.assertIsNone(f("J-99"))                              # no BACKLOG line: not mapped
         self.assertEqual(f("retests"), "qa")                      # row text
         self.assertEqual(f("pipeline speed-up"), "pipeline")
         self.assertIsNone(f("something else"))                    # not mapped, never guessed
@@ -890,9 +901,15 @@ class TeamByComponent(unittest.TestCase):
         self.assertEqual(by["front_office"]["escalation"], ["the lane", "Lead B", "Lead 50 (tech Lead)",
                                                             "the founder (only for money, a lower bar or a day or more)"])
         self.assertEqual(len(by["case_side"]["escalation"]), 3)   # the tech Lead's own: lane → tech Lead → founder
-        self.assertEqual(by["audit"]["owner"]["name"], "Lead B")
+        self.assertEqual(by["audit"]["owner"]["name"], "Lead 50")         # AUD rows are the release holder's (BACKLOG; review M1)
         self.assertEqual((K["tech_lead"], K["lead_b"], K["standbys"]), ("Lead 50", "Lead B", ["Lead 51"]))
         self.assertEqual(K["unmapped"], [])
+        self.assertIn("Client money: FO-7", K["prefix_legend"])           # the page shows the data's legend, never its own
+
+    def test_release_holder_rows(self):
+        bl = ("* **The release holder's rows (now copied below):** AUD-1a, AUD-1b; AS-1m, AS-2e; CS-D1.\n"
+              "| AUD-1a | schema | the release holder's rows mentioned in a table row do not count |\n")
+        self.assertEqual(cd.release_holder_ids(bl), {"AUD-1a", "AUD-1b", "AS-1m", "AS-2e", "CS-D1"})
 
     def test_lead_input_component_owner_and_idle(self):
         li = jread(os.path.join(FIX, "lead-input.json"))
@@ -944,6 +961,22 @@ class Tooltips(unittest.TestCase):
         self.assertEqual(d["capacity"]["cycle_median_days"]["n"], 11)
         self.assertEqual(E["capacity.p85_days"]["n"], 11)
         self.assertEqual(E["capacity.older"]["n"], 3)                     # open app PRs: #105, #115, #116
+        self.assertIsNone(E["capacity.qa.wait_h"]["n"])                   # the value is not measured, so no sample (review M3)
+        self.assertEqual(E["capacity.review.wait_h"]["n"], 1)            # #105, its head commit time read
+        # offline: merged PRs, nightly and CI runs not read → not measured, never 0 (review M4)
+        self.assertIsNone(d["pipeline"]["deploy_freq"]["v"])
+        self.assertIsNone(E["pipeline.deploy_freq"]["n"])
+        self.assertIsNone(d["healing"]["healed_prs"]["v"])
+        self.assertIsNone(E["healing.healed_prs"]["n"])
+        self.assertIsNone(E["pipeline.restore_h"]["n"])
+        self.assertIsNone(d["merges_per_day"]["v"])                      # 14 days of 0 would be a guess
+        self.assertIsNone(E["improving.app_merges"]["n"])
+        self.assertTrue(d["pipeline"]["change_fail"]["reason"].startswith("not measured: the nightly runs"))
+        self.assertNotIn("None", json.dumps(E))                           # no "None" in any tooltip text
+        self.assertNotIn("band", E["quality.demotions"])                  # a net-fall proxy: the compass band does not govern it (review M5)
+        self.assertEqual(E["vsm.queue.wait_h"]["window"], "flow-measure's runs read")
+        self.assertEqual(E["strip.health"]["n"], 7)
+        self.assertEqual(E["capacity.ready_rows"]["n"], len([b for b in jread(os.path.join(FIX, "briefs.json")) if b in cd.parse_backlog(cd.Snap(FIX).file("BACKLOG.md"))["lines"]]))
         self.assertEqual(E["pace.plan_pct_used"]["n"], 4)                 # 4 usage-log readings in the 24 h
         self.assertEqual(E["health.1"]["n"], 2)                           # main_checks.json: 2 check runs
         self.assertEqual(E["strip.plan_use"]["class"], "reported")
