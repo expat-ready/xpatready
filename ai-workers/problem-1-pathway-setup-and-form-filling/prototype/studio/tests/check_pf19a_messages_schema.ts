@@ -18,6 +18,8 @@ import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { AuditFailure, fakeAudit } from "../ports/audit.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { ConsentRefused, fakeConsent, normaliseAddress, sha256Hex, type ConsentPort, type ConsentRecordInput } from "../ports/consent.ts";
+import { runContract } from "../ports/contracts/contract.ts";
+import { consentPortContract } from "../ports/contracts/consent-port.contract.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
 const NEW = "20261115004500_pf19a_platform_messages";
@@ -393,6 +395,9 @@ try {
     JSON.stringify(seq) === JSON.stringify(["CONSENT", "NO_CONSENT", "WITHDRAWN", "TRANSACTIONAL", "SUPPRESSED", "WITHDRAWN"]) && fw.textHash === w1.textHash && !!fc.id, seq);
   ok("PF-19a fail: fakeConsent refuses another firm's wording, as the store does",
     await throwsLike(() => fk.record(null, webTick(P2, fwB.id)), (e) => /not this firm's/.test(String(e))));
+  // PF-0c: the store (the real interim audit adapter, this file's clock) and the fake run ConsentPort's shared contract.
+  await runContract(consentPortContract, "ConsentStore", () => ({ consent: store, tx: (f) => db.$transaction((t) => f(t)), reader: db, now: () => clock.now(), firmA, firmB, by: byR }), ok);
+  await runContract(consentPortContract, "fakeConsent", () => ({ consent: fakeConsent({ now: () => clock.now() }), tx: (f) => f(null), reader: null, now: () => clock.now(), firmA, firmB, by: byR }), ok);
   ok("PF-19a: no secret column — no msg_ column is named like a password, secret, token or key",
     sql(DEMO, `select count(*) from information_schema.columns where table_name = any('{${MSG_TABLES.join(",")}}') and column_name ~ '(password|secret|token|api_key)'`) === "0");
 } finally {

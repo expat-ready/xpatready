@@ -5,6 +5,7 @@
 // is refused before anything is queued.
 import { defineContract, expect, expectRefused } from "./contract.ts";
 import type { JobPort, JobRun } from "../jobs.ts";
+import { stableJson } from "../render.ts";
 
 /** What a job adapter's test hands the contract. */
 export type JobHarness = {
@@ -71,7 +72,7 @@ export const jobPortContract = defineContract("JobPort", (make: () => Promise<Jo
         expect(await h.settle(() => runs.length === 1), "the job ran", runs.length);
         const j = runs[0];
         expect(j.name === name && j.key === `shape:${h.ns}:1` && j.firmId?.toLowerCase() === FIRM && j.attempt === 1, "name, key, firm and attempt 1", { name: j.name, key: j.key, firmId: j.firmId, attempt: j.attempt });
-        expect(JSON.stringify(j.payload) === JSON.stringify({ bookingId: "b-7", n: 2, flags: [true, false] }), "the payload as given", j.payload);
+        expect(stableJson(j.payload) === stableJson({ bookingId: "b-7", n: 2, flags: [true, false] }), "the payload as given (key order aside: jsonb keeps its own)", j.payload);
         expect(j.runAt instanceof Date && Number.isFinite(j.runAt.getTime()), "runAt is a time", j.runAt);
       },
     },
