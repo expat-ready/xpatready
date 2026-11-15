@@ -7,6 +7,16 @@ Shape follows Lead B's `platform-and-front-office-contracts-2026-11-14.md` (bran
 **What it rests on.** v0's inventory of `origin/main` at `f1d0d403e` (`case-side-inventory-2026-11-14.md`, this folder), the challenge's recount at the same commit (`case-side-contract-v0-challenge-2026-11-14.md`), and the desk's own reads of `origin/main` at `f1d0d403e` (fetched 10:0x IST 14 Nov; `main` had not moved): `engine/runtime/eligibility.ts`, `engine/render.ts`, `engine/eligibility-gates.ts`, `engine/answer-keys.ts`, `engine/snapshot.ts` import lines; `contracts/` imports; `api/src/runtime.ts` 245-304, 294, 960; `auditEvent.create` per file; `package.json` (no lint or import-boundary tool). Decisions read word for word: P-575, P-584, P-585, P-588. Paths are under `prototype/studio/` unless they start otherwise.
 No immigration value is asserted. Regulatory points: Unconfirmed: no counsel.
 
+**Refreshed 15 Nov against origin/main e888e0add; changes since 14 Nov (the original text below is kept; code in `prototype/studio/ports/`):**
+* **Folder shape differs from §1 rule 3.** The code has a flat folder: one file per port, the fake in the same file, no `*.port.ts` suffix, no `fakes/` folder, no `ports/contracts/` folder, no `ports/matching.ts`. It still imports only zod and its own files. Whether to move to the written shape is for the tech lead.
+* **Case-side ports named in §3 and §6 are not in code yet:** `PartySearchPort`, `EligibilityPort`, `ClientMergePort`, `CaseCountPort`, `CaseSummaryPort`, `ReleasePort`, `ScanPort`, `FormFillPort`, `EntitlementPort`, `PersonMergePort`, `ClientMoneyPort`, `MessagesPort`, `IdentityPort`. (`ports/eligibility.port.ts` and the match normaliser of 3.1 do not exist.)
+* **Platform ports now in code that this contract relies on:** `AuditPort` (`audit.ts`: `record(tx, entry)` in the caller's transaction; entities carry an area prefix, so §2.5's case-side audit lines will need their own prefix agreed), `FilesPort` (`files.ts`: `put`, `get`, `exists`, write-once, per firm, fake included; covers §6's `FilesPort` row), `ConsentPort` (`consent.ts`, the platform's consent store behind §6's `MessagesPort` row; subjects include `CASE_PARTY`), `JobPort`, `ClockPort`, `MailPort`, `DocumentRenderPort`, `StaffContext`, `SecretBoxPort`, `AlertPort`, and `ArrivalPort` (front office).
+* **Events in `EVENT` (`events.ts`):** `firm.created`, `staff.roles_changed`, `staff.deactivated`, `booking.scheduled`, `booking.rescheduled`, `booking.cancelled`, `booking.completed`, `booking.no_show`, `complaint.received`, `complaint.closed`, `retainer.drafted`, `retainer.sent`, `retainer.withdrawn`, `retainer.signed_offline`. Payload types: `FirmCreated`, `StaffEventPayload`, `StaffRolesChanged`, `StaffDeactivated`, `BookingEvent`, `ComplaintReceived`, `ComplaintClosed`, `RetainerEventPayload`.
+* **The case side's own events in §4 are not in code:** `client.created`, `case.opened`, `case.closed`, `case.reopened`, `client.merged`, `release.published`, `document.accepted`, and the incoming `prospect.won` and `signing.completed` have no name or payload type in `events.ts` yet. `retainer.executed` (which §4 reaches through Lead B's §2.4) is also not in code; the signing event is called `signing.completed` here and `retainer.executed` there: unresolved, for the tech lead.
+* **Rows rev 16.16 (15 Nov):** `signing.completed` is the one signing event for both sides (FO-6 adds it; its payload now also carries document kind and, for a retainer, the fee lines). **Audit prefix:** case-side entities written through `AuditPort` use `case_`; `AREA_ENTITY` gains `case` in the first case-side row that writes through `AuditPort` (CS-W1 or AUD-1, whichever lands first), a one-line shared-file hook (P-584); agreed by the release holder, Lead 54.
+* **Complaints:** `complaint.received` / `complaint.closed` carry a subject kind `FRONT_OFFICE_PERSON | CASE_PARTY | OTHER_PERSON` and the other module's id (platform register, PF-21); the case side is a possible source of the `CASE_PARTY` id. Not mentioned in §3 to §4 before.
+* Nothing was removed from the code in this window.
+
 ---
 
 ## 0. Facts about today's case side that shape this contract (counts re-checked by the challenge)
@@ -147,12 +157,12 @@ Money is read, not listened to: an unpaid invoice shows as a warning through `Cl
 ## 6. Outside services on the case side
 | Port (interface in `ports/`) | Fake | Real | Today |
 |---|---|---|---|
-| `FilesPort` | temp folder | private storage in Canada, firm-prefixed keys | none: local disk in 5 files |
+| `FilesPort` | temp folder | private storage in Canada, firm-prefixed keys | none: local disk in 5 files *(15 Nov: the port and its in-memory fake exist in `ports/files.ts`; a local write-once adapter by FO-5; the case side's five files still write to disk)* |
 | `ScanPort` | always clean, one always-refused file | the map's row 66 | none |
 | `CanadaSource` | recorded pages | live reader, host allow-list | exists |
 | AI launcher | fake launcher | guarded launcher, spend ledger, live switch off | exists |
 | `FormFillPort` | fixture forms | the XFA package in a child process | one door file, no fake class |
-| `MessagesPort` (platform, P-584 (1)) | platform's fake | email and WhatsApp behind the consent gate | demo table `DemoMessage` |
+| `MessagesPort` (platform, P-584 (1)) | platform's fake | email and WhatsApp behind the consent gate | demo table `DemoMessage` *(15 Nov: `ConsentPort` and `MailPort` exist in `ports/`; no `MessagesPort` file yet)* |
 | `IdentityPort` (platform) | `local` stand-in | Cognito | `x-actor` header, 338 lines in 70 files |
 | `EntitlementPort` (platform, PF-15) | allow-all, plus a fixed limit set by the test | PF-15's plans | none |
 
