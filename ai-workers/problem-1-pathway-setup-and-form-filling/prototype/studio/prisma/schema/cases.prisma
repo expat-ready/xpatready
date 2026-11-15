@@ -28,6 +28,16 @@ model Case {
   /// C6.11 (BR-20, SI-9): the Sample firm whose staff work this case (samples/firms.json); staff of another firm reach
   /// none of its cases. Cases opened before C6.11 belong to the Sample firm.
   firmKey        String   @default("sample-firm") @map("firm_key")
+  /// CS-C1a (AG-7-34, AG-7-50, AG-7-13): status moves OPEN → CLOSED → OPEN only (a check in the migration). A closed case
+  /// has its closing fields and an open one none: a reopen clears them, and its audit line keeps the old values.
+  closedAt       DateTime? @map("closed_at") @db.Timestamptz
+  closedReason   String?   @map("closed_reason")
+  /// WITHDRAWN · COMPLETED (the case closing itself: not built, AG-7-49) · CLOSED_BY_STAFF. STREAM_CHANGED comes later.
+  closeOutcome   String?   @map("close_outcome")
+  withdrawnAt    DateTime? @map("withdrawn_at") @db.Timestamptz
+  withdrawReason String?   @map("withdraw_reason")
+  /// The stage current when the case closed: a reopen returns to it (AG-7-13 rule 3).
+  closedFromStageId String? @map("closed_from_stage") @db.Uuid
 
   /// A case keeps its combination: deleting a combination with cases is refused (reset deletes cases first).
   combination  Combination       @relation(fields: [combinationId], references: [id], onDelete: Restrict)
@@ -59,6 +69,8 @@ model Case {
   reviewRoundRows   ReviewRoundFiling[] // C8.3
   reviewRoundForms  ReviewRoundForm[]   // C8.3
   reviewChecks      ReviewCheck[]       // C8.3
+  decisions         CaseDecision[]      // CS-C1a
+  closedFromStage   CaseStage?          @relation("CaseClosedFromStage", fields: [closedFromStageId], references: [id], onDelete: NoAction)
 
   /// C6.11 break M2, M3: a reference and an idempotency key are unique within a firm, so one firm neither collides with
   /// nor learns of another firm's cases.
@@ -194,6 +206,7 @@ model CaseStage {
   lines       ChecklistLine[]
   findings    ReviewFinding[]
   tasks       CaseTask[]
+  closedCases Case[]            @relation("CaseClosedFromStage") // CS-C1a
 
   @@unique([caseId, ord])
   @@unique([caseId, combinationId])
@@ -316,4 +329,34 @@ model CaseTask {
   @@index([caseId])
   @@index([stageId])
   @@map("case_task")
+}
+
+/// CS-C1a (AG-7-33, AG-7-50, BR-10): a decision on one submitted filing, or a whole-case withdrawal (no filing). Insert-only:
+/// triggers refuse UPDATE, DELETE and TRUNCATE (a correction is a new row, AG-7-33 §10); the rows go only with their case
+/// (a demo reset deletes cases). outcome: a Sample list until cited (AG-7-33 rule 4: the pack names the vocabulary).
+model CaseDecision {
+  id         String   @id @default(uuid()) @db.Uuid
+  /// The platform firm (platform_firm.id) of the case's firm key.
+  firmId     String   @map("firm_id") @db.Uuid
+  caseId     String   @map("case_id") @db.Uuid
+  filingId   String?  @map("filing_id") @db.Uuid
+  /// DECISION · WITHDRAWAL
+  kind       String
+  /// DECISION: APPROVED · REFUSED (Sample); WITHDRAWAL: WITHDRAWN.
+  outcome    String
+  decidedOn  DateTime @map("decided_on") @db.Date
+  note       String?
+  recordedBy String   @map("recorded_by")
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz
+  /// STANDARDS §4 (idempotent creates): the decision request's key and its sha256; the same key again returns this row.
+  idempotencyKey         String? @map("idempotency_key")
+  idempotencyFingerprint String? @map("idempotency_fingerprint") @db.VarChar(64)
+
+  case   Case    @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  filing Filing? @relation(fields: [filingId], references: [id], onDelete: NoAction)
+
+  @@unique([caseId, idempotencyKey])
+  @@index([firmId, caseId])
+  @@index([filingId])
+  @@map("case_decision")
 }
