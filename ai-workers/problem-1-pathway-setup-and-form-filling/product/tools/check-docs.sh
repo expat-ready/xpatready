@@ -45,17 +45,19 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
   if [ -f "$R" ]; then
     b=$(wc -c < "$R"); [ "$b" -gt 25600 ] && echo "RULES TOO BIG ($((b / 1024)) KB > 25 KB): move long text word for word to product/rules/<topic>.md and keep one line per rule (P-611)"
     grep -qE '^\| ID \| Rule \| Enforced by \| As of \|' "$R" || echo "RULES REGISTER: RULES.md has no '| ID | Rule | Enforced by | As of |' table (P-611)"
+    # A header spelled differently would leave its rows unchecked.
+    grep -nE '^\| *ID *\|' "$R" | grep -vE '^[0-9]+:\| ID \| Rule \| Enforced by \| As of \|$' | sed 's/^\([0-9]*\):.*/RULES REGISTER: line \1 is a register header not spelled exactly "| ID | Rule | Enforced by | As of |"/'
     awk -F'|' '/^\| ID \| Rule \| Enforced by \| As of \|/ { t = 1; next } t && /^\|-/ { next }
       t && /^\|/ { for (i = 2; i <= 5; i++) { c[i] = $i; gsub(/^[ \t]+|[ \t]+$/, "", c[i]) }
         if (NF != 6) { print "RULES REGISTER: line " NR " needs exactly 4 cells (ID | Rule | Enforced by | As of): " substr($0, 1, 60); next }
-        if (c[2] !~ /^[A-Z]+-[0-9A-Za-z.]+$/) print "RULES REGISTER: line " NR " has no rule ID (like P-611 or P-611.2): " substr($0, 1, 60)
+        if (c[2] !~ /^[A-Z]+-[0-9A-Za-z.]+$/) print "RULES REGISTER: line " NR " has no rule ID (like P-611, P-611b or IDX-1): " substr($0, 1, 60)
         else if (seen[c[2]]++) print "RULES REGISTER: rule ID " c[2] " appears twice (line " NR ")"
         if (c[3] == "") print "RULES REGISTER: " c[2] " has no rule text"
-        if (c[4] !~ /^(hook|CI|script|prose)/) print "RULES REGISTER: " c[2] " has no enforced-by (hook: …, CI: …, script: … or prose), found \"" c[4] "\""
+        if (c[4] !~ /^((hook|CI|script): [^ ]|prose( |$))/) print "RULES REGISTER: " c[2] " has no enforced-by (hook: <name>, CI: <name>, script: <name> or prose), found \"" c[4] "\""
         if (c[5] == "") print "RULES REGISTER: " c[2] " has no as-of"; next }
       { t = 0 }' "$R"
   fi
-  for f in "$PH"/*.md "$PH"/domain/*.md "$ROOT"/.claude/skills/*/SKILL.md "$ROOT"/.claude/agents/*.md; do
+  for f in "$PH"/*.md "$PH"/domain/*.md "$PH"/rules/*.md "$ROOT"/.claude/skills/*/SKILL.md "$ROOT"/.claude/agents/*.md; do
     grep -o '`[A-Za-z0-9_./-]*\.md`' "$f" | tr -d '`' | sort -u | while read -r ref; do
       # Retired files (P-188, P-189) live in git history; old decision rows and records may still name them.
       case "$ref" in WORKFLOW.md|LANES.md|CHARTER.md|LEAD.md|RETRO.md|WAVE-1.md|SCREENS.md|REQUESTS.md|PLAN.md|WAY-OF-WORKING-draft.md|TEAM.md) continue;; esac

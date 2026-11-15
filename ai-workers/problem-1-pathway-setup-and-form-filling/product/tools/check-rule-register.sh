@@ -20,6 +20,12 @@ printf '| P-7 | A rule missing a cell. | 15 Nov |\n' | page; run
 ok "a row with three cells fails" "$([ $r = 1 ] && echo "$out" | grep -q 'needs exactly 4 cells' && echo 1)" "exit $r: $out"
 printf '| P-1 | A rule. | prose | 15 Nov |\n| P-1 | Again. | prose | 15 Nov |\n' | page; run
 ok "a rule ID used twice fails" "$([ $r = 1 ] && echo "$out" | grep -q 'rule ID P-1 appears twice' && echo 1)" "exit $r: $out"
+{ printf '| P-1 | A rule. | prose | 15 Nov |\n\n## Compass\n| Number | Healthy |\n|---|---|\n| Burn | 3%% |\n'; } | page; run
+ok "a different table after the register is not read as rows" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+printf '| P-8 | A rule. | hook: | 15 Nov |\n| P-9 | A rule. | prosecco | 15 Nov |\n' | page; run
+ok "a bare 'hook:' and a word that only starts with prose fail" "$([ $r = 1 ] && echo "$out" | grep -q 'P-8 has no enforced-by' && echo "$out" | grep -q 'P-9 has no enforced-by' && echo 1)" "exit $r: $out"
+printf '| P-1 | A rule. | prose | 15 Nov |\n\n| ID | Rule | Enforced-by | As of |\n|---|---|---|---|\n| P-2 | Unchecked. |  | 15 Nov |\n' | page; run
+ok "a misspelt register header fails" "$([ $r = 1 ] && echo "$out" | grep -q 'not spelled exactly' && echo 1)" "exit $r: $out"
 printf '# Rules in force (as of **P-9**, test)\n\n* A long paragraph rule, no register.\n' > "$P/RULES.md"; run
 ok "a page with no register table fails" "$([ $r = 1 ] && echo "$out" | grep -q "RULES REGISTER: RULES.md has no" && echo 1)" "exit $r: $out"
 { printf '| P-1 | A rule. | prose | 15 Nov |\n'; for i in $(seq 10 260); do printf '| P-%s | %0100d | prose | 15 Nov |\n' "$i" 0; done; } | page; run

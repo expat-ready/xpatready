@@ -32,7 +32,8 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 9 batch|../../.github/workflows/label-guard.yml|s/types: \[synchronize, labeled, opened\]/types: [synchronize, labeled]/|check-label-sweep.sh
 9 ci|../../.github/workflows/label-guard.yml|/    workflows: \[ci\]/d|check-label-sweep.sh
 10|product/tools/check-docs.sh|s/-gt 3 \]/-gt 999 ]/|check-rules-lag.sh
-11 field|product/tools/check-docs.sh|s/(hook.CI.script.prose)/.*/|check-rule-register.sh
+11 field|product/tools/check-docs.sh|s/\^((hook.CI.script): \[\^ \].prose( .\$))/.*/|check-rule-register.sh
+11 table end|product/tools/check-docs.sh|s/{ t = 0 }/{ }/|check-rule-register.sh
 11 size|product/tools/check-docs.sh|s/-gt 25600 \]/-gt 9999999 ]/|check-rule-register.sh'
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
