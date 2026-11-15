@@ -997,3 +997,5 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
 
 * **PF-19c's Done when adds:** "template values are HTML-escaped in the rendered body; a value with `<script>` renders as text".
 * **P-610 reading (Lead B, for the release holder):** the 800 counts code and tests; generated review, journey and break records don't count.
+
+**Rev 16.25 note (Lead 58, in BACKLOG):** P-610 reading confirmed: the 800 lines count code and tests only, and generated review, break and journey records do not count. G-4's `pr-size.sh` will skip those record paths when it merges. Every Lead B brief's "under 800 changed lines, tests included" reads this way.
