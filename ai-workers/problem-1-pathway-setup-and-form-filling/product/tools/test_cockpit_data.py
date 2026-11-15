@@ -836,5 +836,163 @@ class UsageLogScript(unittest.TestCase):
         self.assertEqual(([x["pct"] for x in readings], bad), ([53, 60], []))
 
 
+class TeamByComponent(unittest.TestCase):
+    """Board v57 (founder 15 Nov 10:2x IST): the Team tab's org view by component (FORMULAS.md › Team by component)."""
+    ROWS = [{"map": 24, "cap": "Each firm's own web address", "module": "Front office (booking)", "ids": ["J-24", "FO-3"]}]
+
+    def test_component_mapping(self):
+        f = lambda row, role=None, given=None: cd.component_of(row, role, given, self.ROWS)[0]
+        self.assertEqual(f("PF-4b"), "platform")
+        self.assertEqual(f("FO-1a"), "front_office")
+        self.assertEqual(f("FO-7t"), "client_money")              # FO-7* before FO
+        self.assertEqual(f("FO-7mv"), "client_money")
+        self.assertEqual(f("AS-2c"), "front_office")
+        self.assertEqual(f("CS-W1"), "case_side")
+        self.assertEqual(f("BK-17"), "case_side")
+        self.assertEqual(f("AUD-1a"), "audit")
+        self.assertEqual(f("CI-1"), "pipeline")
+        self.assertEqual(f("TR-1"), "pipeline")
+        self.assertEqual(f("Q-c613-6a"), "qa")
+        self.assertEqual(f("J-24"), "front_office")               # no prefix rule: the Module of map row 24, which cites it
+        self.assertEqual(f("retests"), "qa")                      # row text
+        self.assertEqual(f("pipeline speed-up"), "pipeline")
+        self.assertIsNone(f("something else"))                    # not mapped, never guessed
+        self.assertEqual(f("PF-4", role="qa"), "qa")               # role before prefix
+        self.assertEqual(f(None, role="desk"), "strategy_desk")
+        self.assertEqual(f("PF-4", given="Client money"), "client_money")   # Lead input component wins, by name
+        self.assertEqual(f("PF-4", given="client_money"), "client_money")   # or by id
+        self.assertEqual(f("PF-4", given="no such part"), "platform")       # an unknown name falls back to the prefix
+        self.assertEqual(cd.component_of("FO-7t")[1], "row prefix FO-7")
+
+    def test_fixture_org_view(self):
+        s, comp = run()
+        K = comp["org"]["components"]
+        self.assertEqual([c["id"] for c in K["items"]],
+                         ["platform", "front_office", "client_money", "case_side", "audit", "pipeline", "qa", "strategy_desk"])
+        by = {c["id"]: c for c in K["items"]}
+        lanes = {l["name"]: l for c in K["items"] for l in c["lanes"]}
+        # FO-1 lane: Lead input row FO-1, PR #105 head pushed 3.5 h before 12:00 IST → 08:30 IST, behind (over 90 min), map row 4 cites FO-1
+        fo1 = lanes["FO-1 lane"]
+        self.assertEqual((fo1["component"], fo1["owner"], fo1["kind"], fo1["pr"]), ("front_office", "Lead B", "cloud", 105))
+        self.assertEqual(fo1["last_push_at"], "2026-11-20T08:30+05:30")
+        self.assertEqual(fo1["behind"], "no push for 3.5 h (GitHub)")
+        self.assertEqual(fo1["maps"], [{"map": 4, "cap": "Cap four"}])
+        # BK-6 lane: branch claude/bk-6 pushed 30 min ago → 11:30 IST, not behind; BK → Case side, the tech Lead's
+        bk6 = lanes["BK-6 lane"]
+        self.assertEqual((bk6["component"], bk6["owner"], bk6["behind"], bk6["last_push_at"]), ("case_side", "Lead 50", None, "2026-11-20T11:30+05:30"))
+        # a lane GitHub alone shows: its row from the PR title "runtime: FO-7 — …" → Client money
+        g = lanes["claude/fo-7"]
+        self.assertEqual((g["seen"], g["row"], g["component"], g["owner"]), ("measured only", "FO-7", "client_money", "Lead B"))
+        self.assertEqual(lanes["qa lane"]["component"], "qa")
+        self.assertNotIn("Old lane", lanes)                       # state done: not a lane
+        self.assertEqual(by["front_office"]["maps"], [4, 8])      # FO-1 → row 4, FO-4 → row 8
+        self.assertEqual(by["front_office"]["behind"], 1)
+        self.assertEqual(by["front_office"]["escalation"], ["the lane", "Lead B", "Lead 50 (tech Lead)",
+                                                            "the founder (only for money, a lower bar or a day or more)"])
+        self.assertEqual(len(by["case_side"]["escalation"]), 3)   # the tech Lead's own: lane → tech Lead → founder
+        self.assertEqual(by["audit"]["owner"]["name"], "Lead B")
+        self.assertEqual((K["tech_lead"], K["lead_b"], K["standbys"]), ("Lead 50", "Lead B", ["Lead 51"]))
+        self.assertEqual(K["unmapped"], [])
+
+    def test_lead_input_component_owner_and_idle(self):
+        li = jread(os.path.join(FIX, "lead-input.json"))
+        for x in li["sessions"]:
+            if x["name"] == "FO-4 lane":
+                x.update({"component": "Audit", "owner": "Lead 99", "idle_min": 120})
+        li["sessions"].append({"name": "Odd lane", "kind": "mac", "role": "builder", "state": "running", "row": "misc work", "idle_min": 5})
+        li["sessions"] = [x for x in li["sessions"] if x.get("role") != "lead-b"]
+        s, comp = run(snap_with({"lead-input.json": li}))
+        K = comp["org"]["components"]
+        by = {c["id"]: c for c in K["items"]}
+        fo4 = next(l for l in by["audit"]["lanes"] if l["name"] == "FO-4 lane")
+        self.assertEqual((fo4["owner"], fo4["owner_how"], fo4["component_how"]), ("Lead 99", "Lead input owner", "Lead input component"))
+        self.assertEqual(fo4["behind"], "idle 120 min (Lead input)")       # no push measured: the reported idle time decides
+        self.assertEqual([l["name"] for l in K["unmapped"]], ["Odd lane"])
+        self.assertIsNone(K["unmapped"][0]["behind"])
+        self.assertIsNone(by["platform"]["owner"]["name"])                 # no Lead B session: not reported, with a reason
+        self.assertIn("no Lead B session", by["platform"]["owner"]["reason"])
+
+
+class Tooltips(unittest.TestCase):
+    """Board v57: the explain block (one tooltip per number; window and n from the data; FORMULAS.md › Tooltips)."""
+    @classmethod
+    def setUpClass(cls):
+        out = tempfile.mkdtemp()
+        r = subprocess.run([sys.executable, os.path.join(HERE, "cockpit-data.py"), "--out", os.path.join(out, "data.json"),
+                            "--from-snapshot", FIX, "--offline", "--no-history-write"], capture_output=True, text=True, timeout=300)
+        assert r.returncode == 0, r.stderr
+        cls.d = jread(os.path.join(out, "data.json"))
+        cls.E = cls.d["explain"]
+
+    def test_every_entry_complete(self):
+        for k, e in self.E.items():
+            for f in ("label", "what", "window", "n", "n_of", "read", "src", "class"):
+                self.assertIn(f, e, k)
+            self.assertIn(e["class"], ("measured", "parsed", "reported"), k)
+            if e["n"] is None:
+                self.assertTrue(e.get("n_reason"), k)                    # missing data: not measured, with the reason
+
+    def test_window_and_n_from_the_data(self):
+        E, d = self.E, self.d
+        # pace: 7 Release 1 changes merged in the 8 IST days 13-20 Nov (Pace tests above)
+        self.assertEqual((E["pace.changes_per_day"]["n"], E["pace.changes_per_day"]["window"]),
+                         (7, "IST days from 13 Nov to 20 Nov, at most the last 14 (8 days)"))
+        self.assertEqual(E["forecast.p85"]["n"], 8)                       # 8 daily counts sampled
+        self.assertEqual(E["strip.release1"]["n"], 8)                     # 8 Build rows in the fixture checklist
+        # cycle times: app PRs merged 6-20 Nov 12:00 IST: #101-104, #107-111, #114, #118 = 11 (#119 merged after taken_at)
+        self.assertEqual(E["capacity.cycle_median_days"]["n"], 11)
+        self.assertEqual(d["capacity"]["cycle_median_days"]["n"], 11)
+        self.assertEqual(E["capacity.p85_days"]["n"], 11)
+        self.assertEqual(E["capacity.older"]["n"], 3)                     # open app PRs: #105, #115, #116
+        self.assertEqual(E["pace.plan_pct_used"]["n"], 4)                 # 4 usage-log readings in the 24 h
+        self.assertEqual(E["health.1"]["n"], 2)                           # main_checks.json: 2 check runs
+        self.assertEqual(E["strip.plan_use"]["class"], "reported")
+        self.assertIn("3% or less an hour", E["strip.plan_use"]["band"])  # RULES compass, P-440
+        self.assertIn("10 or more", E["pace.rows_done_per_day"]["band"])
+        self.assertIsNone(E["quality.review_rounds"]["n"])                # not measured, never guessed
+        self.assertIsNone(E["pipeline.queue_wait_min"]["n"])              # flow-measure not run
+        self.assertTrue(E["pipeline.queue_wait_min"]["n_reason"].startswith("tools/flow-measure.py not run yet"))
+        self.assertEqual(E["team.front_office.lanes"]["n"], 2)
+
+    def test_page_keys_all_in_explain(self):
+        html = open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read()
+        import re
+        keys = set()
+        for m in re.findall(r'T\("([^"]+)"\)|"(?:[a-z]+\.[a-z_0-9.]+)"(?=\)|,"|\))', html):
+            keys.update(m.split())
+        keys.update(k for m in re.findall(r'N\([^;]*?,"([a-z0-9_.]+)"\)', html) for k in [m])
+        keys.update(re.findall(r',(?:null|B|"[^"]*"),"([a-z]+\.[a-z0-9_.]+)"\)', html))
+        keys.update(re.findall(r'"",\s*"([a-z]+\.[a-z0-9_.]+)"\)', html))
+        dyn = {"health.": [str(i) for i in range(1, 8)], "improving.": list(self.d["improving"]["trends"]),
+               "team.": [c["id"] + ".lanes" for c in self.d["org"]["components"]["items"]],
+               "vsm.": [st["id"] + x for st in self.d["value_stream"]["stages"] for x in (".count", ".wait_h")]}
+        for pre, tails in dyn.items():
+            self.assertIn('T("' + pre + '"+', html.replace('T("vsm."+g.id+".count vsm."+g.id+".wait_h")', 'T("vsm."+x)'), pre)
+            keys.update(pre + t for t in tails)
+        sections = ("strip", "pace", "forecast", "capacity", "health", "factory", "vsm", "team", "quality", "pipeline", "healing",
+                    "improving", "resources", "building")       # the explain block's key families (FORMULAS.md › Tooltips)
+        keys = {k for k in keys if re.match(r"^[a-z]+\.[a-z0-9_]+(\.[a-z0-9_]+)?$", k) and k.split(".")[0] in sections}
+        cond = {"pace.changes_needed_per_day", "pace.ratio", "pace.built_before"}   # only when the data has them
+        missing = sorted(k for k in keys if k not in self.E and k not in cond)
+        self.assertEqual(missing, [])
+        self.assertGreater(len(keys), 90)
+
+    def test_schema_refuses_null_n_without_reason_and_unknown_component(self):
+        sch = os.path.join(cd.P, "cockpit", "data.schema.json")
+        self.assertEqual(cd.validate(self.d, sch), [])
+        d1 = json.loads(json.dumps(self.d))
+        del d1["explain"]["quality.review_rounds"]["n_reason"]
+        self.assertTrue(cd.validate(d1, sch))
+        d2 = json.loads(json.dumps(self.d))
+        d2["org"]["lanes"][0]["component"] = "marketing"
+        self.assertTrue(cd.validate(d2, sch))
+        d3 = json.loads(json.dumps(self.d))
+        del d3["explain"]["strip.health"]["window"]
+        self.assertTrue(cd.validate(d3, sch))
+        d4 = json.loads(json.dumps(self.d))
+        d4["org"]["components"]["items"] = d4["org"]["components"]["items"][::-1]   # the component order is part of the contract
+        self.assertTrue(cd.validate(d4, sch))
+
+
 if __name__ == "__main__":
     unittest.main()
