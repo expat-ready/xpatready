@@ -89,3 +89,43 @@ Journeys (all run against the suite or my probe):
 Could not check: a real pg-boss retry of `booking.mail` (fakeJobs never retries; m1 and m2 are read from code); a booking in the running app (no seed); D17/D20 (no intended user).
 
 Verdict: Changes requested (M1)
+
+## Re-review 9e79149
+Read only `git diff 4275ff548..9e79149d0` (P-277), on 15 Nov 2026. The changes: `service.ts` (4 job keys), `mail.ts`, `ports/mail.ts`, `demo-inbox.ts`, the suite, and the records.
+
+**What I ran:**
+* `check_pf19b_mail` **25/0**.
+* Neighbouring suites: `check_fo3_booking` 133/0, `check_pf0p_ports` 113/0, `check_pf4b_session_reads` 51/0, `check_pf19b_sending` 40/0, `check_fo3sr_routes` 29/0.
+* `typecheck.mjs`: no new errors (15 known).
+
+**Mutations** (scratch worktree, each reverted):
+* (H) delete the reminder and attendance `person` → BM7 pass and BM7 fail both fail.
+* (K) drop `job.key` from the booker's mail → BM8 (booking's own job rerun) fails.
+* (L) skip the `MessageSend` pre-check → both BM9 subject cases fail.
+* (M) skip the address pre-check → BM9's address case fails.
+* (N) attachments back in one folder → the suite stops on `FileKeyTaken`.
+* (P) remove the 64 KB cap → **25/0** (untested, n2).
+
+| Earlier finding | Status | Evidence |
+|---|---|---|
+| **M1** reminder and attendance `person` untested | **Closed** | BM7 pass: the 24 h and 1 h reminders are `SENT`, `SERVICE`, `FO_PERSON`, and the host's question is `SENT`. BM7 fail: a booker suppressed after booking → reminders `SUPPRESSED` (COMPLAINT), and the inbox holds only the confirmation. Mutation H. |
+| m1 permanent refusal retried | Reduced | The job key makes a retry answer the same SUPPRESSED row, so there are no extra rows now. Each retry still issues and voids a token and stores an orphan `.ics` (n1). Left as Minor, agreed. |
+| m2 at most once only per call | **Closed** | `MailMessage.idempotencyKey` (max 180, plus `mail:` stays within MessageSend's 200). Booking passes `job.key` on all four sends. The real runner gives the caller's key back (`pgboss-jobs.ts:344`). A repeated row that is QUEUED or SENT is a success, and only SUPPRESSED, FAILED or BOUNCED throw. BM8 at the port and through booking's own handler. Mutation K. |
+| m3 replyTo and templateKey silently dropped | **Closed** | The `mail.ts` header says so. |
+| m4 unbounded inbox text | **Closed** in code | `INBOX_TEXT_MAX` is 64 KB; above it the text is null and the size is still listed. No test (n2). |
+| m5 ZodError after files stored | **Closed** | `MessageSend.safeParse` and `normaliseAddress` run before any `files.put`. Issue texts are zod messages and paths, with no values. The address refusal never quotes the address. BM9. Mutations L and M. |
+| m6 vacuous fail cases | Open, Minor | Unchanged. The new BM7, BM8 and BM9 fail cases are real. |
+| m7 brief deviation | Open, Minor | There is still no comment on the PR from Lead B or from the Lead. Record the acknowledgement or the override before the label. Part 2 reuses `MessagesMail`. |
+| break m3 key collisions | **Closed** | `mail/<id>/<n>/<name>`; a `.meta` or `.tmp` name gets a trailing `-`. BM9. Mutation N. |
+
+**New, Minor only**
+* **n1.** On a rerun or retry, the attachments are stored under a fresh random `mailId` before the repeated row answers, so every rerun leaves an orphan file. The person mail's rerun also leaves a live manage token that nobody received (the coordinator noted it). Use the key for the attachment folder when one is given (e.g. a hash of it), and void the unused token when `repeated`.
+* **n2.**
+  * No case checks the 64 KB cap (mutation P passes).
+  * Only the booker's `job.key` is proved: dropping the key from the host, reminder or attendance send alone passes BM8.
+  * One BM case per key, or one case looping over the four, would close this.
+* **n3.** A job key of 181-200 characters is valid for JobPort but refused by `MailMessage` (max 180), and would fail on every try. Booking's keys are about 60 characters, so there is no live risk. Note it at the field.
+
+There is no Blocker and no Major open. The journey score is unchanged at **8.5 / 10**. Error recovery is still ½ (n1, m1's retries), but the twice-run job now sends once.
+
+Verdict: Approve 9e79149d0e98d10599c7d4a72c49bdd2678920b6
