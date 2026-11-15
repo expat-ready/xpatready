@@ -10,7 +10,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
@@ -595,7 +595,9 @@ try {
   ok("FO-7a pass: every insert-only money table also refuses truncate",
     INSERT_ONLY.every((t) => refused(DEMO, `truncate ${t} cascade`, /never changed or removed/, "42501")));
   const fns = (db: string) => sql(db, `select string_agg(proname, ',' order by proname) from pg_proc where pronamespace = 'public'::regnamespace`).split(",");
-  const added = fns(DEMO).filter((f) => !fns(BARE).includes(f));
+  // Later rows' migrations follow this one on main (CS-C1a's case_decision_*, #1818): their own functions are theirs.
+  const later = new Set(all.filter((d) => d > NEW).flatMap((d) => [...readFileSync(join(MIG, d, "migration.sql"), "utf8").matchAll(/CREATE (?:OR REPLACE )?FUNCTION\s+(?:public\.)?"?([a-z_][a-z0-9_]*)"?\s*\(/gi)].map((m) => m[1])));
+  const added = fns(DEMO).filter((f) => !fns(BARE).includes(f) && !later.has(f));
   ok("FO-7a pass (rows rev 15.2): every function the migration adds is named money_ (21 of them)", added.length === 21 && added.every((f) => f.startsWith("money_")), added);
 } finally {
   for (const c of conns) await c.end().catch(() => undefined);
