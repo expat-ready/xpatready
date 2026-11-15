@@ -30,6 +30,7 @@ Rules: RULES.md (register, as of P-615) + DECISIONS **P-616** (gate A by API for
 
 | A90 | 18:1x IST 15 Nov: check every system and every lane (cloud through claude.ai in the browser pane), what works and what doesn't, which decisions and approvals need him, the questions, the speed, is the board and Library work done and reviewed several times, clean stale lanes | in progress (Lead 60) |
 | A91 | 18:1x IST 15 Nov: many rules not enforced or picked up; are the 30-minute checks running; the board and progress were to be watched and fixed proactively, nothing seen solved; a way to see progress; is merging partials and fixing after the industry way; our speed, run rate, expectation per day per capability | in progress (Lead 60) |
+| A92 | 18:3x IST 15 Nov: who is responsible for the whole pipeline, discussions, decisions, rules and workflow being followed (the Lead); what is missing; are we set up to best-in-class practice; find how the industry manages this, from standard practice and documentation, and build the same, so these silly mistakes stop | answered by Lead 60 (owner: the Lead); plan proposed, waits on his go |
 ## For the founder (P-390)
 F2, F8 closed by Lead 52 09:1x 15 Nov (before: "F2, F8 open (demo looks)"; they were looks on the demo with no decision, P-486); F14-F19 ruled; word for word in `history/STATE-2026-11-14-1700-lead46s2-for-founder-and-leads-lines.md`.
 
