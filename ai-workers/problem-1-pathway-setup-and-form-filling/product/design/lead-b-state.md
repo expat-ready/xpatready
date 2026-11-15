@@ -369,3 +369,4 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
 * 15 Nov 10:46 IST: the current Lead is now **Lead 54** (`local_dc187db5…`, confirmed in STATE). PF-0c #1797's ci.yml step is in Lead 53's hand-over list. Report to Lead 54 from now on.
 * 15 Nov: Lead 54 replied that it is a standby with no "take over now", although STATE and current-lead.sh name it current. The report was re-sent to Lead 53 with the mismatch named, asking it to send the go or correct STATE.
 * 15 Nov: mismatch resolved. Lead 53 sent Lead 54 "take over now" at 10:47 IST, and Lead 54 is the current Lead. The report (PF-0c #1797's P-423 read, the ready briefs) was re-sent to Lead 54.
+* 15 Nov (Lead 54 message): PF-0c #1797 option (a) OK'd by Lead 54 (comment 6889675458). **FO-3f #1785 merged**, so PF-23w, FO-3h and FO-3sr start in the founder's next typed turn; PF-6b and FO-5f2 start after #1791.
