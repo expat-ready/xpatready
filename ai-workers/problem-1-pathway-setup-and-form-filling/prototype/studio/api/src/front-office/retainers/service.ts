@@ -555,7 +555,8 @@ export class Retainers {
       else {
         const cv = (await this.db.foRetainerVersion.findFirstOrThrow({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion } })).mergeValues as Record<string, unknown>;
         if (["signer.name", "signer.email", "representative.name", "representative.licensing_body", "representative.licence_number"].some((x) => (sv[x] ?? null) !== (cv[x] ?? null)))   // break r2-m2: the body too
-          conflict(`Version ${k} names another signer or representative than version ${r.currentVersion}, and does not record who they are. Edit the agreement back to version ${k}'s people, then record it as signed.`, "NOT_SIGNABLE");
+          // break r2-m1 (Lead B's wording): no promised way out that cannot work (an edit prints today's details again).
+          conflict(`Version ${k} names another signer or representative than version ${r.currentVersion}. This version was saved before people were recorded by id; record a new version as signed instead.`, "NOT_SIGNABLE");
       }
       const f = await this.files.get(ctx.firmId, src.fileKey) ?? conflict(`Version ${k}'s file is missing.`, "VERSION_FILE_MISSING");
       const ext = /\.pdf$/.test(src.fileKey) ? "pdf" : "docx";

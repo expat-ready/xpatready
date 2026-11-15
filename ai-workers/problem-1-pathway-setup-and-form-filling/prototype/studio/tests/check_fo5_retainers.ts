@@ -880,6 +880,10 @@ try {
   mvOf.mergeValues = realMv;
   ok("FO-5f fail (review M-2): a version without recorded ids that names another representative → 409 NOT_SIGNABLE, nothing filed",
     await fails(() => so(svc, R, lg.id, { signedVersion: "1", reason: "x" }, pdf()), 409, /another signer or representative.*NOT_SIGNABLE/) && (await svc.read(R, lg.id)).status === "DRAFT");
+  ok("FO-5f pass (break r2-m1): the refusal says the version predates recorded ids and to record a new version as signed",
+    await fails(() => so(svc, R, lg.id, { signedVersion: "1", reason: "x" }, pdf()), 409, /saved before people were recorded by id; record a new version as signed instead/));
+  ok("FO-5f fail (break r2-m1): it never promises \"Edit the agreement back\" (an edit prints today's details, so it could never match)",
+    !(await fails(() => so(svc, R, lg.id, { signedVersion: "1", reason: "x" }, pdf()), 409, /Edit the agreement back/)));
   ok("FO-5f pass (review M-2): a version without recorded ids that names the same people is filed (version 3, user-R)",
     await (async () => { const x = await so(svc, R, lg2.id, { signedVersion: "1", reason: "x" }, pdf()); return x.version.n === 3 && x.representativeStaffId === R.staffId; })());
   // Review m-2: the version signed on paper says so; only the newer versions say "Not signed".
