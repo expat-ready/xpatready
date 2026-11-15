@@ -81,7 +81,7 @@ export class Leads {
 
   /** Take it (AG-2-86): only an open lead with no active owner; someone who took it first wins, and the second hears who. */
   take(ctx: StaffContext, id: string) {
-    return this.change(ctx, id, "lead.taken", EVENT.LEAD_TAKEN, async (tx, l, staff) => {
+    return this.change(ctx, id, EVENT.LEAD_TAKEN, EVENT.LEAD_TAKEN, async (tx, l, staff) => {
       const owner = l.owner_staff_id ? staff.get(l.owner_staff_id) : undefined;
       if (owner?.status === "ACTIVE") return conflict(`${owner.displayName} already has this lead.`, "ALREADY_TAKEN", { ownerStaffId: owner.id });
       if (l.state !== "OPEN") return conflict("Only an open lead can be taken.");

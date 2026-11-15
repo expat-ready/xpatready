@@ -66,7 +66,7 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
   }
   await tx.foArrivalReceipt.update({ where: { id: receipt.id }, data: { outcome: "CREATED", completedAt: new Date(), leadId: lead.id, personId } });
   await written(tx, ports.audit, {
-    firmId, actor: a.actor, action: "lead.created", entity: "fo_lead", entityKey: lead.id,
+    firmId, actor: a.actor, action: EVENT.LEAD_CREATED, entity: "fo_lead", entityKey: lead.id,
     summary: `Lead ${lead.number} arrived by ${a.door === "WEB_FORM" ? "the web form" : "hand"}${match ? ", flagged as a possible match" : ""}.`,
     detail: { door: a.door, personId, ownerStaffId: owner, possibleMatchPersonId: match, consent: !!a.consent },
     event: { type: EVENT.LEAD_CREATED, subjectId: lead.id, payload: LeadEventPayload.parse({ leadId: lead.id, personId, door: a.door, state: "OPEN", ownerStaffId: owner, possibleMatchPersonId: match }) },
