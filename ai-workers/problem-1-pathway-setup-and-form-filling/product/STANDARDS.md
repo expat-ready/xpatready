@@ -42,6 +42,8 @@ Job → **Masters** (stored once: key, label, status, version, source, where use
 
 ## 7. Code and tests
 * [M] Strict TypeScript, no `any`; team lint rules; domain names from `PRODUCT.md` §4; no duplicated logic between web and API; no dead or commented-out code.
+* [M] Comments say **why**, with the decision or bug number that set it (`P-615`, `B88`, `QA-403`); never status ("done", "WIP", "fixed now"), dates of work, sessions, lanes or people (AGENTS rule 5). What the code does is the code's job; the history is git (P-615 (4)).
+* [M] Each module has a card (`MODULE.md`, or `MODULE.<name>.md` for a group of files, at most 40 lines) next to its code, loaded by the path-scoped rule `.claude/rules/modules/<module>.md` (a symlink to it): purpose, owner area, entry points, invariants with their numbers, tables, tests, "do not". The PR that changes a module updates its card, or says `Card unchanged: <reason>` in its body; CI `module-cards` checks it (P-615 (3), `product/tools/module-cards.py`).
 * [M] Test pyramid: unit (engine, validators) → integration on real PostgreSQL → a few Playwright journeys per screen.
 * [M] A rule's test fails when the rule is removed (reviewer spot-checks). [M] axe-core on every screen state.
 * [S] Property-based tests for the engine and resolver ([M] when the engine changes). [M] Golden expected-answer tests for AI, scored, with stub/replay.
