@@ -1289,7 +1289,8 @@ def whats_new(text, now, L):
     n = sum(1 for x in out["items"] if x["adopt"] == "yes")
     why_not = {"missing": f"not checked: {WN_REL} is missing at the records commit",
                "invalid": f"not checked: {WN_REL} could not be read ({'; '.join(out['problems'])})",
-               "unchecked": f"not checked this week ({week}): the file is for {out['file_week']}" +
+               "unchecked": f"not checked this week ({week}): " + ("checked_at is after the snapshot time" if out["file_week"] == week
+                                                                   and not out["problems"] else f"the file is for {out['file_week']}") +
                             (f"; {'; '.join(out['problems'])}" if out["problems"] else "")}
     out["adopt_yes"] = num(n if out["checked"] else None, src + ": new_items with adopt yes", "parsed", L, why_not.get(out["state"]))
     if out["checked"]:
@@ -2125,7 +2126,7 @@ def build_explain(d):
     if wn:
         put("whats_new.box", "What's new this week", "The weekly check of Claude Code and Claude.ai news (P-611): items marked adopt yes, later or "
             "no with why, and up to three actions. The big number counts adopt yes; the full list and the actions follow below.",
-            f"ISO week {wn['week']} (IST); the file is for {wn.get('file_week') or 'no week'}", len(wn["items"]) if wn["state"] != "missing" else None,
+            f"ISO week {wn['week']} (IST); the file is for {wn.get('file_week') or 'no week'}", len(wn["items"]) if wn["state"] not in ("missing", "invalid") else None,
             "new items listed in the file", "Checked this week is green. Unchecked: amber from Monday 12:00 IST, red from Tuesday 12:00 IST. "
             "A missing file reads not checked, never 0.", wn["adopt_yes"], n_reason=wn["adopt_yes"].get("reason"))
     sm, P, F, C = d["summary"], d["pace"], d["forecast"], d["capacity"]

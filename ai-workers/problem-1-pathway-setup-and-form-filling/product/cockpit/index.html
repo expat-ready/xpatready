@@ -296,7 +296,7 @@ function oneHTML(el){
   return h;}
 /* G-5 (P-611): the weekly what's-new check; the light is re-read with the viewer's clock (FORMULAS.md › What's new this week) */
 function wnLight(W){var t=Date.now(),a=Date.parse(W.amber_at),r=Date.parse(W.red_at),wk=7*86400000;
-  if(W.checked)return t>=a+wk?"amber":"green";return t>=r?"red":t>=a?"amber":W.light.state;}
+  if(W.checked)return t>=r+wk?"red":t>=a+wk?"amber":"green";return t>=r?"red":t>=a?"amber":W.light.state;}
 function wnLink(u){return /^https:\/\//.test(u||"")?' <a href="'+esc(u)+'" target="_blank" rel="noopener noreferrer">source</a>':"";}
 function wnList(){var W=D.whats_new;if(!W)return "";
   var h='<div class="sep"></div><span class="l">Items'+(W.file_week?' ('+esc(W.file_week)+')':'')+'</span>';

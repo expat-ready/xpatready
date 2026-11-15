@@ -1205,6 +1205,7 @@ class WhatsNew(unittest.TestCase):
         self.assertFalse(next(i for i in comp["trust"]["invariants"] if i["name"].startswith("whats-new"))["ok"])
         self.assertIn("not in week 2026-W47", " ".join(w["problems"]))
         self.assertEqual(self.wn("{not json", NOW)["whats_new"]["state"], "invalid")
+        self.assertIsNone(cd.build_explain(dict(TooltipsData.data()[1], whats_new=self.wn("{not json", NOW)["whats_new"]))["whats_new.box"]["n"])
 
     def test_cli_schema_and_explain_with_the_committed_file(self):
         f = jread(os.path.join(cd.P, "cockpit", "whats-new.json"))
@@ -1218,7 +1219,8 @@ class WhatsNew(unittest.TestCase):
         w = d["whats_new"]
         self.assertEqual((w["state"], w["adopt_yes"]["value"], len(w["items"]), len(w["actions"])), ("checked", 8, 16, 3))
         self.assertEqual(d["explain"]["whats_new.box"]["n"], 16)
-        self.assertIn('"whats_new.box"', open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read())
+        with open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8") as f:
+            self.assertIn('"whats_new.box"', f.read())
 
 
 BROWSER_CHECK = r"""// board v61 scripted check: click-only info buttons on every tab, 375 px, axe light and dark
