@@ -193,6 +193,28 @@ try {
     bHost.status === 404 && bType.status === 404 && !JSON.stringify(bHost.body).includes(B1.id) && await db.foBooking.count({ where: { startsAt: at("2026-11-01 16:00") } }) === 0, [bHost, bType]);
   ok("FO-3sa DW8 pass: the four roles with the keys may book anyway (OWNER, ADMIN, CASE_MANAGER, CASE_OFFICER)",
     (await Promise.all((["OWNER", "ADMIN", "CASE_MANAGER", "CASE_OFFICER"] as const).map((r, i) => go("POST", "", P[r], body(`2026-11-01 ${String(16 + i).padStart(2, "0")}:00`, { bookAnyway: true }))))).every((r) => r.status === 201));
+
+  // ------------------------------------------- DW9: a public booking never lands on a confirmed overlap (Lead B, #1828)
+  // Tue 27 Oct 13:00 holds the first booking and the confirmed one (DW2); the confirmed row is outside the database rule.
+  const slots9 = await call(base, "GET", `/api/public/firms/${A.key}/book/any/slots?from=${encodeURIComponent(iso("2026-10-27 00:00"))}&to=${encodeURIComponent(iso("2026-10-28 00:00"))}&tz=${TZ}`);
+  await clock.set(new Date(clock.now().getTime() + 5000));   // past the minimum fill time
+  const pubBody = (when: string) => ({ givenNames: "Pat", familyName: "Sample", email: "pat@client.example", mode: "VIDEO", startsAt: iso(when), timeZone: TZ, consent: true, consentWordingId: slots9.body?.consent?.wordingId, formStamp: slots9.body?.formStamp });
+  const forced = await call(base, "POST", `/api/public/firms/${A.key}/book/any/bookings`, undefined, pubBody("2026-10-27 13:00"));
+  await db.foBooking.update({ where: { id: first.body.id }, data: { status: "CANCELLED" } });   // only the confirmed row is left at 13:00
+  const forced2 = await call(base, "POST", `/api/public/firms/${A.key}/book/any/bookings`, undefined, pubBody("2026-10-27 13:00"));
+  ok("FO-3sa DW9 fail: with a confirmed overlapping booking in place, a forced public post for that time loses under the host lock (409 SLOT_TAKEN), even once it is the only booking there, and sets no confirmer",
+    slots9.status === 200 && !slots9.body.slots.some((x: { startsAt: string }) => x.startsAt === iso("2026-10-27 13:00")) && [forced, forced2].every((r) => r.status === 409 && r.body.code === "SLOT_TAKEN")
+      && await countAt("2026-10-27 13:00") === 1 && await db.foBooking.count({ where: { firmId: A.id, overlapConfirmedByUserId: { not: null }, personId: { not: lee } } }) === 0, [slots9.status, forced, forced2]);
+  const free9 = await call(base, "POST", `/api/public/firms/${A.key}/book/any/bookings`, undefined, { ...pubBody("2026-10-27 15:00"), formStamp: slots9.body?.formStamp });
+  ok("FO-3sa DW9 pass: the same public form books a free time, with no confirmer", free9.status === 201 && (await db.foBooking.findFirstOrThrow({ where: { firmId: A.id, startsAt: at("2026-10-27 15:00") } })).overlapConfirmedByUserId === null, free9);
+
+  // ------------------------------------------------------- DW10: two parallel Book-anyway posts both save (Lead B, #1828)
+  const [p1, p2] = await Promise.all([go("POST", "", P.OWNER, body("2026-11-01 11:00", { bookAnyway: true })), go("POST", "", P.CASE_OFFICER, body("2026-11-01 11:00", { bookAnyway: true }))]);
+  const rows10 = await db.foBooking.findMany({ where: { id: { in: [p1.body?.id, p2.body?.id].filter(Boolean) } } });
+  ok("FO-3sa DW10 pass: two parallel staff Book-anyway posts over the Sunday 11:00 booking both save, each with its own confirmer",
+    p1.status === 201 && p2.status === 201 && await countAt("2026-11-01 11:00") === 3 && rows10.find((r) => r.id === p1.body.id)?.overlapConfirmedByUserId === P.OWNER.id && rows10.find((r) => r.id === p2.body.id)?.overlapConfirmedByUserId === P.CASE_OFFICER.id, [p1, p2]);
+  const [q1, q2] = await Promise.all([go("POST", "", P.OWNER, body("2026-11-01 13:00")), go("POST", "", P.CASE_OFFICER, body("2026-11-01 13:00"))]);
+  ok("FO-3sa DW10 fail: the same two posts without Book anyway both get the warning, and nothing is saved", q1.status === 409 && q2.status === 409 && await countAt("2026-11-01 13:00") === 0, [q1, q2]);
 } catch (e) {
   fail++; console.log(`FAIL  FO-3sa: the check stopped — ${String((e as Error)?.stack ?? e).slice(0, 800)}`);
 } finally {
