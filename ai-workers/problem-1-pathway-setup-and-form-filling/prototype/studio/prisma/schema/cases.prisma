@@ -348,10 +348,14 @@ model CaseDecision {
   note       String?
   recordedBy String   @map("recorded_by")
   recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz
+  /// STANDARDS §4 (idempotent creates): the decision request's key and its sha256; the same key again returns this row.
+  idempotencyKey         String? @map("idempotency_key")
+  idempotencyFingerprint String? @map("idempotency_fingerprint") @db.VarChar(64)
 
   case   Case    @relation(fields: [caseId], references: [id], onDelete: Cascade)
   filing Filing? @relation(fields: [filingId], references: [id], onDelete: NoAction)
 
+  @@unique([caseId, idempotencyKey])
   @@index([firmId, caseId])
   @@index([filingId])
   @@map("case_decision")

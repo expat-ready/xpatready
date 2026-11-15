@@ -190,6 +190,15 @@ try {
   r = await decide(c1, T.CASE_MANAGER, { outcome: "REFUSED" });
   ok("CS-C1 DW1 pass: a second decision on the same filing is a correction, a new row (AG-7-33 §10), never an overwrite", r.status === 201 && rows(c1.id) === "2" && sql(`select string_agg(outcome, ',' order by recorded_at, outcome) from case_decision where case_id = '${c1.id}'`).split(",").sort().join(",") === "APPROVED,REFUSED", r.body);
 
+  // STANDARDS §4 (Devin review on #1818): a retried decision with its key returns the first row; the key with another body is refused.
+  const ci = newCase({ submitted: 1 });
+  const k1 = await decide(ci, T.OWNER, { idempotencyKey: "csc1-retry-1" });
+  const k2 = await Promise.all([decide(ci, T.OWNER, { idempotencyKey: "csc1-retry-1" }), decide(ci, T.OWNER, { idempotencyKey: "csc1-retry-1" })]);
+  ok("CS-C1 DW1 pass (idempotent create): the same key again, also twice at once, returns the first decision; one row, one audit line",
+    k1.status === 201 && k2.every((x) => x.status === 201 && x.body.decision?.id === k1.body.decision?.id && x.body.replayed === true) && rows(ci.id) === "1" && sql(`select count(*) from audit_event where entity_key = '${ci.id}'`) === "1", [k1.body, k2.map((x) => x.body)]);
+  const k3 = await decide(ci, T.OWNER, { idempotencyKey: "csc1-retry-1", outcome: "REFUSED" }), k4 = await decide(ci, T.OWNER, { idempotencyKey: "bad key!" });
+  ok("CS-C1 DW1 fail (idempotent create): the key with another decision → 409 IDEMPOTENCY_KEY_REUSED; a malformed key → 400; still one row", k3.status === 409 && k3.body.code === "IDEMPOTENCY_KEY_REUSED" && k4.status === 400 && rows(ci.id) === "1", [k3.body, k4.body]);
+
   // ------------------------------------------------------------------------------- DW2: the key decides, never the role name
   const without = ["READ_ONLY", "BILLING_FINANCE", "CASE_OFFICER"], withKey = ["OWNER", "ADMIN", "CASE_MANAGER"];
   const c2 = newCase({ submitted: 1 });
@@ -297,7 +306,8 @@ try {
   ok("CS-C1 DW7 fail (break m6): the database refuses a decision on a filing not recorded as submitted",
     refused(`insert into case_decision (id, firm_id, case_id, filing_id, kind, outcome, decided_on, recorded_by) values (gen_random_uuid(), '${FA}', '${c1.id}', '${c1.filings[1]}', 'DECISION', 'APPROVED', current_date, 'x')`, /is not recorded as submitted/));
   ok("CS-C1 DW7 fail: the database refuses a closed case without its closing fields, or an open one keeping them", refused(`update runtime_case set status = 'CLOSED' where id = '${c1.id}'`, /runtime_case_closing_fields_check/)
-    && refused(`update runtime_case set closed_reason = 'x' where id = '${c1.id}'`, /runtime_case_closing_fields_check/) && refused(`update runtime_case set status = 'ARCHIVED' where id = '${c1.id}'`, /runtime_case_(status|closing_fields)_check/));
+    && refused(`update runtime_case set closed_reason = 'x' where id = '${c1.id}'`, /runtime_case_closing_fields_check/)
+    && refused(`update runtime_case set status = 'CLOSED', closed_at = now(), close_outcome = 'CLOSED_BY_STAFF', closed_reason = null where id = '${c1.id}'`, /runtime_case_closing_fields_check/) && refused(`update runtime_case set status = 'ARCHIVED' where id = '${c1.id}'`, /runtime_case_(status|closing_fields)_check/));
   ok("CS-C1 DW7 fail: a DELETE from inside another trigger is refused while the case exists (only the case's own cascade passes)",
     refused(`begin; create temp table csc1_t (x int); create function pg_temp.csc1_del() returns trigger language plpgsql as $f$ begin delete from case_decision where case_id = '${c1.id}'; return new; end $f$;
       create trigger csc1_t_del after insert on csc1_t for each row execute function pg_temp.csc1_del(); insert into csc1_t values (1); commit;`, /case_decision: delete is refused/) && rows(c1.id) === "2");

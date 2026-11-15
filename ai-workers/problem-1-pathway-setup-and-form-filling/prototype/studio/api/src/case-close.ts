@@ -10,6 +10,7 @@
 // Every change is one transaction: the case row is locked first, then the rows, the case's audit line, and the outbox
 // event (module_event, firm id from platform_firm by the case's firm key until CS-W1) last. Another firm's case is 404.
 import { HttpException, Inject, Injectable } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { CaseClosedPayload, CaseReopenedPayload, EVENT } from "../../ports/events.ts";
 import { Db } from "./core.ts";
@@ -100,6 +101,15 @@ export class CaseClose {
   async decide(ctx: StaffContext, caseId: string, b: B) {
     return this.run(async (tx) => {
       const { c, firmId } = await this.locked(tx, ctx, caseId);
+      // STANDARDS §4: the same key again (a retry after a lost answer) returns the first decision, never a second row.
+      const key = b.idempotencyKey == null ? null : typeof b.idempotencyKey === "string" && /^[A-Za-z0-9._:-]{1,100}$/.test(b.idempotencyKey) ? b.idempotencyKey : invalid("idempotencyKey", "1-100 letters, digits, . _ : -");
+      const { idempotencyKey: _k, ...request } = b;
+      const fingerprint = createHash("sha256").update(JSON.stringify([request.filingId, request.outcome, request.decidedOn, request.note ?? null])).digest("hex");
+      if (key) {
+        const again = await tx.caseDecision.findUnique({ where: { caseId_idempotencyKey: { caseId: c.id, idempotencyKey: key } } });
+        if (again && again.idempotencyFingerprint !== fingerprint) conflict("This idempotency key was already used for a different decision; nothing was recorded. Use a new key.", "IDEMPOTENCY_KEY_REUSED");
+        if (again) return { decision: { ...again, decidedOn: again.decidedOn.toISOString().slice(0, 10) }, everyFilingDecided: c.filings.every((f) => f.decisions.length > 0), replayed: true };
+      }
       if (c.status !== "OPEN") conflict("This case is closed. Reopen it first.", "CASE_CLOSED");
       const outcome = typeof b.outcome === "string" ? b.outcome : "";
       if (!(DECISION_OUTCOMES as readonly string[]).includes(outcome)) invalid("outcome", `One of ${DECISION_OUTCOMES.join(", ")} (Sample list).`);
@@ -108,7 +118,7 @@ export class CaseClose {
       const filing = typeof b.filingId === "string" ? c.filings.find((f) => f.id === b.filingId) : undefined;
       if (!filing) return notFound("filing on this case");
       if (!filing.record) conflict("This filing is not recorded as submitted, so it has no decision yet (AG-7-33 rule 2).", "NOT_SUBMITTED");
-      const row = await tx.caseDecision.create({ data: { firmId, caseId: c.id, filingId: filing.id, kind: "DECISION", outcome, decidedOn, note, recordedBy: `staff:${ctx.staffId}` } });
+      const row = await tx.caseDecision.create({ data: { firmId, caseId: c.id, filingId: filing.id, kind: "DECISION", outcome, decidedOn, note, recordedBy: `staff:${ctx.staffId}`, idempotencyKey: key, idempotencyFingerprint: key ? fingerprint : null } });
       const correction = filing.decisions.length > 0;
       await this.audit(tx, ctx, c, "case.decision.recorded", `Decision ${outcome.toLowerCase()} recorded${correction ? " (a correction: a new row)" : ""}`, { decisionId: row.id, filingId: filing.id, outcome, decidedOn: decidedOn.toISOString().slice(0, 10), correction });
       const decided = c.filings.every((f) => f.id === filing.id || f.decisions.length > 0);

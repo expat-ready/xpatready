@@ -37,9 +37,14 @@ CREATE TABLE "case_decision" (
     "note" TEXT,
     "recorded_by" TEXT NOT NULL,
     "recorded_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "idempotency_key" TEXT,
+    "idempotency_fingerprint" VARCHAR(64),
 
     CONSTRAINT "case_decision_pkey" PRIMARY KEY ("id")
 );
+
+-- CreateIndex
+CREATE UNIQUE INDEX "case_decision_case_id_idempotency_key_key" ON "case_decision"("case_id", "idempotency_key");
 
 -- CreateIndex
 CREATE INDEX "case_decision_firm_id_case_id_idx" ON "case_decision"("firm_id", "case_id");
@@ -62,7 +67,7 @@ ALTER TABLE "runtime_case"
   ADD CONSTRAINT "runtime_case_close_outcome_check" CHECK ("close_outcome" IN ('WITHDRAWN', 'COMPLETED', 'CLOSED_BY_STAFF')),
   ADD CONSTRAINT "runtime_case_closing_fields_check" CHECK (
     ("status" = 'OPEN' AND "closed_at" IS NULL AND "closed_reason" IS NULL AND "close_outcome" IS NULL AND "withdrawn_at" IS NULL AND "withdraw_reason" IS NULL AND "closed_from_stage" IS NULL)
-    OR ("status" = 'CLOSED' AND "closed_at" IS NOT NULL AND "close_outcome" IS NOT NULL AND length(btrim("closed_reason")) > 0
+    OR ("status" = 'CLOSED' AND "closed_at" IS NOT NULL AND "close_outcome" IS NOT NULL AND "closed_reason" IS NOT NULL AND length(btrim("closed_reason")) > 0
         AND (("close_outcome" = 'WITHDRAWN') = ("withdrawn_at" IS NOT NULL)) AND (("withdrawn_at" IS NULL) = ("withdraw_reason" IS NULL))));
 
 ALTER TABLE "case_decision"
