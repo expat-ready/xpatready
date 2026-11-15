@@ -158,6 +158,9 @@ try {
   const probe = await Promise.all([call(BASE, "GET", "/api/runtime/probe", { token: T.OWNER }), call(BASE, "GET", "/api/runtime/probe", { auth: `Bearer ${linkToken}` }), call(BASE, "GET", "/api/runtime/probe", { actor: "user-A" })]);
   ok("CS-C1 H3 fail: an undeclared /api/runtime/* route with a staff or link Bearer token still gives 403 link-only", probe[0].status === 403 && /link-only/.test(probe[0].body.type) && probe[1].status === 403 && /link-only/.test(probe[1].body.type), probe.map((r) => [r.status, r.body.type]));
   ok("CS-C1 H3 pass: the same undeclared route with the simulated-person header (a configuration person) behaves as before (200)", probe[2].status === 200, probe[2]);
+  const mixed = await Promise.all([call(BASE, "POST", `/API/Runtime/cases/${hc.id}/close`, { token: T.OWNER, body: { reason: "x" } }), call(BASE, "POST", `/api/RUNTIME/cases/${hc.id}/close`, { body: { reason: "x" } })]);
+  ok("CS-C1 H3 fail: a declared case route in other letter case is never answered: a staff token → 403 link-only (as before the hook), no token → 401; the case unchanged",
+    mixed[0].status === 403 && /link-only/.test(mixed[0].body.type) && mixed[1].status === 401 && caseRow(hc.id).startsWith("OPEN|"), mixed.map((r) => [r.status, r.body.type ?? r.body.code]));
   const coreLine = readFileSync(join(STUDIO, "api", "src", "core.ts"), "utf8").split("\n").find((l) => l.includes("PLATFORM_ACCESS, [ctx.getHandler()"));
   ok("CS-C1 H4 pass: core.ts's hook is one line with its why comment naming CS-C1a and Lead 58's comment on #1818", !!coreLine && /CS-C1a/.test(coreLine) && /#1818/.test(coreLine) && /6892215478/.test(coreLine), coreLine);
 
@@ -224,7 +227,7 @@ try {
     r.status === 403 && r.body.code === "MISSING_PERMISSION" && r5.status === 400 && r5.body.code === "REASON_REQUIRED" && caseRow(c4.id).startsWith("CLOSED|"), [r.body, r5.body]);
   const closedAt = sql(`select to_char(closed_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS') from runtime_case where id = '${c4.id}'`);
   r = await call(BASE, "POST", P(c4.id, "reopen"), { token: T.CASE_MANAGER, body: { reason: "Late document" } });
-  const line = JSON.parse(sql(`select detail::text from audit_event where entity_key = '${c4.id}' and action = 'case.reopened'`) || "{}");
+  const line = JSON.parse(sql(`select detail::text from audit_event where entity = 'case' and entity_key = '${c4.id}' and action = 'case.reopened'`) || "{}");
   ok("CS-C1 DW5 pass: reopen with the key and a reason → OPEN at closed_from_stage; the closing fields are cleared",
     r.status === 200 && r.body.case?.status === "OPEN" && r.body.stageId === c4.stage && r.body.currentStageId === c4.stage && caseRow(c4.id) === "OPEN|||false|", r.body);
   ok("CS-C1 DW5 pass: the reopen's audit line keeps the old close values (outcome, reason, closed at, stage) and the reopen reason",

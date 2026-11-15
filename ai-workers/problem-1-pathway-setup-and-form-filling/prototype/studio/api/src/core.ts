@@ -91,7 +91,7 @@ export class ConfigReadGuard implements CanActivate {
     // refused, never read as nobody or mixed with a simulated person.
     const auth = req.headers.authorization, path = req.path ?? req.url ?? "";
     if (/^\/api\/(platform|front-office)(\/|$)/.test(path)) return true;   // PF-4 (Lead 43 OK on #1744): these paths belong to the platform guard (api/src/platform/identity/guard.ts)
-    if (this.reflector.getAllAndOverride(PLATFORM_ACCESS, [ctx.getHandler(), ctx.getClass()])) return true;   // CS-C1a (Lead 58's OK, #1818 comment 6892215478): a route that declares its keys is the platform guard's too, whatever its path
+    if (path.startsWith("/api/runtime/") && this.reflector.getAllAndOverride(PLATFORM_ACCESS, [ctx.getHandler(), ctx.getClass()])) return true;   // CS-C1a (Lead 58's OK, #1818 comment 6892215478): a case route that declares its keys is the platform guard's; exact case only, so PF-4's break M1 holds
     if (typeof auth === "string" && /^bearer\s/i.test(auth) && !path.startsWith("/api/link/")) throw new HttpException({ type: "https://expatready.local/problems/link-only", title: "Not for a link session", status: 403, detail: "A person's own link reaches only their own questions, never the firm's or the client's pages." }, HttpStatus.FORBIDDEN);
     const scope = this.reflector.getAllAndOverride<string>(READ_SCOPE, [ctx.getHandler(), ctx.getClass()]);
     if (scope === "open") return true;

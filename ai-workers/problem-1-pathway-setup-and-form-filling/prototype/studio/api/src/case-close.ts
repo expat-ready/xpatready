@@ -83,7 +83,7 @@ export class CaseClose {
   }
 
   private async audit(tx: Tx, ctx: StaffContext, c: { id: string; workspaceId: string; caseNumber: string }, action: string, summary: string, detail: Record<string, unknown>) {
-    await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: `staff:${ctx.staffId}`, action, entity: "runtime_case", entityKey: c.id, summary: `${c.caseNumber}: ${summary}`.slice(0, 600), detail: { ...detail, firmId: ctx.firmId } as Prisma.InputJsonValue } });
+    await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: `staff:${ctx.staffId}`, action, entity: "case", entityKey: c.id, summary: `${c.caseNumber}: ${summary}`.slice(0, 600), detail: { ...detail, firmId: ctx.firmId } as Prisma.InputJsonValue } });
   }
 
   private async closedEvent(tx: Tx, firmId: string, p: CaseClosedPayload) {
