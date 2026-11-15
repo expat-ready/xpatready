@@ -53,14 +53,18 @@ export function useAlerts(a: AlertPort): AlertPort { const was = alerts; alerts 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const ID = /^[A-Za-z0-9_.:-]{1,120}$/;
-/** An alarm is never stopped by the shape of its detail (review M1): this app's own entity names have spaces ("case
- *  fact", "form copy"), so spaces become "_"; any other value that is still not an id (an email, a sentence) becomes
- *  "not_an_id", never the value. */
+/** The fields that name a kind of thing, in the app's own words ("case fact", "form copy", a queue "mail out"); every
+ *  other field (entityKey, firmId) is an id. */
+const WORDS = new Set(["entity", "queue"]);
+/** An alarm is never stopped by the shape of its detail (review M1): in `entity` and `queue`, the app's own names, spaces
+ *  become "_"; an id field (entityKey, firmId) with a space is a name, not an id, and is refused (PF-23r, review minor 2:
+ *  the port promises to refuse names). A value that is not an id (an email, a sentence, "Client A" as entityKey)
+ *  becomes "not_an_id", never the value. */
 export function alertIds<T extends Record<string, string | undefined>>(ids: T): { [K in keyof T]: string | undefined } {
   const out: Record<string, string | undefined> = {};
   for (const [k, v] of Object.entries(ids)) {
     if (v === undefined) { out[k] = undefined; continue; }
-    const s = String(v).trim().replace(/\s+/g, "_").slice(0, 120);
+    const t = String(v).trim(), s = (WORDS.has(k) ? t.replace(/\s+/g, "_") : t).slice(0, 120);
     out[k] = ID.test(s) && !/@/.test(s) ? s : "not_an_id";
   }
   return out as { [K in keyof T]: string | undefined };
