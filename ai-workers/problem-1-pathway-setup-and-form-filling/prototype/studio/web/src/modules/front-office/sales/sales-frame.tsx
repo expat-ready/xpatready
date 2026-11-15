@@ -60,12 +60,17 @@ function SignIn({ failed }: { failed?: string | null }) {
   );
 }
 
+/** Names the place on the frame's line; it must render inside Frame, whose context it sets. */
+function Place({ crumbs, back }: { crumbs: Crumb[]; back: { to: string; label: string } | null }) {
+  useWhere([{ label: "Sales", to: "/front-office/leads" }, ...crumbs], back);
+  return null;
+}
+
 /** The sales area's page: the frame, the place line, and the page once someone is signed in. */
 export function SalesFrame({ crumbs, back, children }: { crumbs: Crumb[]; back?: { to: string; label: string } | null; children: React.ReactNode }) {
   const token = useStaffToken();
   const me = useMe();
   const qc = useQueryClient();
-  useWhere([{ label: "Sales", to: "/front-office/leads" }, ...crumbs], back ?? null);
   const signOut = () => { setStaffToken(null); qc.removeQueries({ queryKey: ["fo"] }); };
   const who = me.data;
   const refused = me.error instanceof StaffApiError ? me.error.message : me.error ? "Could not check who is signed in." : null;
@@ -73,6 +78,7 @@ export function SalesFrame({ crumbs, back, children }: { crumbs: Crumb[]; back?:
     <Frame area="outside" title="Sales" subtitle={who ? who.displayName : undefined} home="/front-office/leads"
       controls={who ? <Button variant="ghost" size="sm" onClick={signOut}>Sign out</Button> : null}
       menu={who ? <Menu me={who} /> : null}>
+      <Place crumbs={crumbs} back={back ?? null} />
       {!token || (me.isError && !who) ? <SignIn failed={token ? refused : null} />
         : !who ? <p role="status" className="text-sm text-text-muted">Loading…</p>
           : <MeCtx.Provider value={who}>{children}</MeCtx.Provider>}
