@@ -16,7 +16,7 @@ import pg from "pg";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261114131305_fo7a_client_money_tables", PF3 = "20261114015002_pf3_platform_tables";
+const NEW = "20261115042334_fo7a_client_money_tables", PF3 = "20261114015002_pf3_platform_tables";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const EMPTY = `xr_studio_fo7a_empty_${process.pid}`, DEMO = `xr_studio_fo7a_demo_${process.pid}`, BARE = `xr_studio_fo7a_bare_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;

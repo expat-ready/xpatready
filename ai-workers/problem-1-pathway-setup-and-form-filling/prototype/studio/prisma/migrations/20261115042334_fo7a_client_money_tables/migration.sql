@@ -4,6 +4,7 @@
 -- counsel; schema file prisma/schema/client-money.prisma, owner Lead B (client money, contracts §8)). New tables only;
 -- no existing table, column or row changes (platform_firm gains only a back-relation in Prisma, no column). Rows carry
 -- no workspace_id: the demo reset leaves them. Nothing outside api/src/client-money/ writes them.
+-- Re-stamped 15 Nov (P-600): was 20261114131305, now later than main's newest (20261115010000_fo5_retainer_file_keys).
 --   * the tables of the row: money_payment_settings, money_payment_account, money_number_series, money_invoice,
 --     money_invoice_line, money_credit_note, money_payment, money_refund, money_receipt, money_trust_request,
 --     money_trust_entry; rev 13: money_write_off, money_move_batch, money_move_line.
