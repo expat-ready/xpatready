@@ -12,7 +12,7 @@ machine minutes went to a run that merged nothing.
 | # | cause (root, with the batches it took down behind it) | batches | of them cascades | CI min | share |
 |---|---|---|---|---|---|
 | 1 | **Two PRs that add migrations:** an area's schema check (`check_fo1a_sales_schema.ts`, `check_fo7a_money_schema.ts`: "every function the migration adds is this area's") broke when another area's migration came first: #1755 and #1761 after FO-1a (#1742) merged; #1818's CS-C1a functions against FO-7a's check. | 6 | 3 | 2,443 | 25% |
-| 2 | **Flaky:** the same code later merged with the suite green (members merged unchanged): `check_b151_unpriced_browser.ts` (2), `check_c95_release_update_browser.ts` (1), `check_bk5_start_browser.cjs` (1), part 8 outside a suite (1). | 5 | 0 | 2,093 | 21% |
+| 2 | **Flaky:** the same code later merged with the suite green (members merged unchanged; a fix landing on main in between is not ruled out): `check_b151_unpriced_browser.ts` (2), `check_c95_release_update_browser.ts` (1), `check_bk5_start_browser.cjs` (1), part 8 outside a suite (1). | 5 | 0 | 2,093 | 21% |
 | 3 | **Forms release questions:** BK-13's `check_bk13_zero_code_run.ts` broke on BK-22 (#1698), in the same batch as BK-13 (#1695), then on BK-23 on main. The two PRs share no file. | 5 | 1 | 2,088 | 21% |
 | 4–6 | BK-18's Works packs (#1691, 3 batches, 1,274 min); QA-439 against main's c95 (#1643, 3, 1,216); BK-17 against main's filings (#1612, 2, 740). | 8 | 4 | 3,230 | 33% |
 

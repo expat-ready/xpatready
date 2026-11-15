@@ -25,8 +25,11 @@ def get(path, cache, raw=False):
     if os.path.exists(key):
         s = open(key).read()
     else:
-        h = ["-H", f"Authorization: Bearer {os.environ['GITHUB_TOKEN']}"] if os.environ.get("GITHUB_TOKEN") else []
-        s = subprocess.run(["curl", "-sSL", "--fail", *h, f"{API}/{path}"], capture_output=True, text=True).stdout
+        # The token goes to curl on stdin (-H @-), never on its command line, where ps would show it (Devin on #1861).
+        tok = os.environ.get("GITHUB_TOKEN")
+        h = ["-H", "@-"] if tok else []
+        s = subprocess.run(["curl", "-sSL", "--fail", *h, f"{API}/{path}"], input=f"Authorization: Bearer {tok}\n" if tok else "",
+                           capture_output=True, text=True).stdout
         if s: open(key, "w").write(s)
     return s if raw else (json.loads(s) if s else {})
 
@@ -66,7 +69,7 @@ def classify(b, failed, later):
     if unmerged:
         return "broke", "never merged: " + ", ".join(f"#{p}" for p in unmerged)
     if b["suites"]:
-        return "flaky", "members merged unchanged; the same suite(s) passed in their merge batch"
+        return "flaky", "members merged unchanged; the same suite(s) passed in their merge batch (a fix on main in between is not ruled out)"
     return "flaky-job", "members merged unchanged; a non-suite job (" + ", ".join(b["jobs"]) + ") failed"
 
 def main():

@@ -39,7 +39,8 @@ CODE='/prototype/'; DOCS='\.(md|txt|png|jpe?g|gif|webp|svg|pdf)$'; MIG='/prisma/
 load() {  # PR → pr, head, files, labels
   pr=$(api "$API/repos/$REPO/pulls/$PR") || { echo "#$PR: cannot read the PR"; return 2; }
   head=$(echo "$pr" | jq -r .head.sha); labels=$(echo "$pr" | jq -r '[.labels[].name] | join("\n")')
-  files=$(pages "repos/$REPO/pulls/$PR/files" | jq -r '.[].filename') || { echo "#$PR: cannot read its files"; return 2; }; }
+  # A renamed file counts under both names (Devin on #1861): a later main change to the old path still overlaps.
+  files=$(pages "repos/$REPO/pulls/$PR/files" | jq -r '.[] | .filename, (.previous_filename // empty)') || { echo "#$PR: cannot read its files"; return 2; }; }
 has() { grep -qxF "$1" <<< "$labels"; }
 ci() {  # the check "ci" on $head → ci_state (success|pending|failure), run_id, run_started, run_attempt, run_status
   local c; c=$(api "$API/repos/$REPO/commits/$head/check-runs?check_name=ci&per_page=100") || { ci_state=failure; return; }

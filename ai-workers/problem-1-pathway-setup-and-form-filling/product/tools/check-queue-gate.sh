@@ -114,6 +114,8 @@ ok "eligible: exit 1 for a refused case" "$([ $r = 1 ] && echo 1)" "exit $r: $ou
 cmt 7 o OWNER "Reviewer: Approve $HEAD1"
 prj 8 $HEAD1 false "review: approved"; files 8 "$S/api/src/form.ts"; cirun $HEAD1 completed success 2026-11-15T10:00:00Z; run fresh 8
 ok "fresh: main merged #501 touching the same file after this ci started: failure, and the labelled PR's ci is re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && grep -qx 'RERUN 77' <<< "$log" && grep -q '#501' <<< "$out" && echo 1)" "$out / $log"
+jq -n --arg n "$S/api/src/form-v2.ts" --arg o "$S/api/src/form.ts" '[{filename: $n, previous_filename: $o}]' > "$T/fx/files-8.json"; run fresh 8
+ok "fresh: a PR that renamed form.ts is stale when main changed form.ts (the old name counts, Devin on #1861)" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && echo 1)" "$out / $log"
 files 8 "$S/api/src/other.ts"; run fresh 8
 ok "fresh: no merge since touches its files: success, no re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh success" <<< "$log" && ! grep -q RERUN <<< "$log" && echo 1)" "$out / $log"
 files 8 "$S/prisma/migrations/9_z/migration.sql"; run fresh 8
