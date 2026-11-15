@@ -5,11 +5,16 @@
 # reasons when any fails. Limits: PREFLIGHT_MIN_GB, PREFLIGHT_MAX_LOAD, COPY_CAP.
 #   bash product/tools/lane-preflight.sh          a person or the Lead, before start_session
 #   bash product/tools/lane-preflight.sh --hook   PreToolUse hook on start_session (.claude/settings.json): a session
-#                                                 started on this machine is refused with the reason; a cloud one passes
+#                                                 started on this machine is refused with the reason; a cloud one passes;
+#                                                 any brief failing brief-check.sh --brief is refused (G-4 (3), (7))
 # Test: check-lane-preflight.sh.
 DIR="$(cd "$(dirname "$0")" && pwd)"; min=${PREFLIGHT_MIN_GB:-7}; maxload=${PREFLIGHT_MAX_LOAD:-16}; cap=${COPY_CAP:-4}
 if [ "${1:-}" = --hook ]; then
-  target=$(jq -r '.tool_input.target // .tool_input.location // empty' 2>/dev/null)
+  in=$(cat); target=$(echo "$in" | jq -r '.tool_input.target // .tool_input.location // empty' 2>/dev/null)
+  # G-4 (3), (7) (P-608, P-526): every lane brief, here or in the cloud, names model and effort, "Done when", "Duplicate check:".
+  miss=$(echo "$in" | jq -r '.tool_input.prompt // .tool_input.message // .tool_input.brief // empty' | bash "$DIR/brief-check.sh" --brief) \
+    || { jq -n --arg r "Lane brief refused (P-608, P-611 G-4): $miss Add them and start again." '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'; exit 0; }
+  case "$(echo "$in" | jq -r '.tool_name // empty')" in *create_session) target=cloud;; esac
   [ "$target" = cloud ] && exit 0
   out=$(bash "$0"); [ $? = 0 ] && exit 0
   jq -n --arg r "$out" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:("No lane starts without room (founder, 6 Nov). " + $r + " Free disk or stop test copies first, or start the lane in the cloud.")}}'

@@ -5,6 +5,9 @@
 // thrown with personal data); a job that fails with personal data; metric lines as embedded metric format; alerts
 // (an audit write failing after its retries raises one, a second within 5 min none; stuck jobs; legal clocks);
 // AlertPort's fake; the "no personal data in logs" scanner failing on a planted leaking line.
+// PF-23r (Part 1c and the end of Part 2): the redaction budget and "[shared]", id fields refused in alerts, frames only
+// for a stack whose message spans lines, time ranges and "Cookie sid=…", PostgreSQL DETAIL and Prisma meta stripped
+// (a refused insert of a seeded name logs and answers without the name).
 // Part 2, an isolated copy: the hooked server's api.log (correlation id kept or made, one line per request, no
 // personal value from a request), /api/health/live and /ready, ready 503 with its database down and 200 back.
 // US$0, no model call.
@@ -20,11 +23,12 @@ import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { AlertDetail, fakeAlerts } from "../ports/alert.ts";
 import { ALERT_REPEAT_MS, clocksNear, LogAlerts, stuckJobs, STUCK_JOB_MS, writeAuditWithAlarm } from "../api/src/platform/observability/alerts.ts";
-import { observe } from "../api/src/platform/observability/hook.ts";
+import { observe, patchConsole } from "../api/src/platform/observability/hook.ts";
 import { observeJob } from "../api/src/platform/observability/jobs.ts";
 import { JsonLog, logPort, useLog } from "../api/src/platform/observability/log.ts";
 import { emfProblems, mailLine } from "../api/src/platform/observability/metrics.ts";
-import { redact, redactText } from "../api/src/platform/observability/redact.ts";
+import { alertIds } from "../api/src/platform/observability/alerts.ts";
+import { logText, redact, REDACT_BUDGET, redactText } from "../api/src/platform/observability/redact.ts";
 import { CANARIES, scanText, seededValues } from "../api/src/platform/observability/scan-logs.ts";
 import { recorder } from "./runtime/api.ts";
 import { runContract } from "../ports/contracts/contract.ts";
@@ -62,9 +66,54 @@ function capture() {
   ok("PF-23 pass (review m4): every pair of a cookie header is replaced, not only the first", !/abc|def/.test(redactText("Cookie: sid=abc; other=def")), redactText("Cookie: sid=abc; other=def"));
   ok("PF-23 pass/fail (review m5): an 8-digit UCI 1234-5678 is replaced; a year range 2026-2027 is kept", redactText("uci 1234-5678") === "uci [number]" && redactText("2026-2027") === "2026-2027");
   const shared = { id: "r-1" };
-  ok("PF-23 fail-guard (review m6): an epoch time in ms, a package@version frame and a value shared by two fields are kept", redactText("at 1794662215060") === "at 1794662215060" && redactText("node_modules/@nestjs+core@11.1.29/x.js") === "node_modules/@nestjs+core@11.1.29/x.js" && JSON.stringify(redact({ a: shared, b: shared })) === '{"a":{"id":"r-1"},"b":{"id":"r-1"}}');
+  ok("PF-23 fail-guard (review m6): an epoch time in ms, a package@version frame and a value shared by two fields are kept", redactText("at 1794662215060") === "at 1794662215060" && redactText("node_modules/@nestjs+core@11.1.29/x.js") === "node_modules/@nestjs+core@11.1.29/x.js" && JSON.stringify(redact({ a: shared, b: shared })) === '{"a":{"id":"r-1"},"b":"[shared]"}'); // PF-23r: the second sight is "[shared]", never "[cycle]"
   const err = redact(Object.assign(new Error(sentence), { code: "P2002" })) as Record<string, unknown>;
   ok("PF-23 pass (an error): kept as class, code and frames; its message, which quotes a name, is never kept", err.errorName === "Error" && err.code === "P2002" && Array.isArray(err.frames) && (err.frames as unknown[]).length > 0 && !leaks(JSON.stringify(err)).length, err);
+}
+
+// ---- Part 1c: PF-23r, redaction hardening (#1759 review minors 1-4; FO-13 break 11)
+{
+  // (1) A graph with 20 shared references per level over 10 levels: walked once per value, inside the budget.
+  let level: unknown = { id: "leaf" };
+  for (let i = 0; i < 10; i++) { const refs: Record<string, unknown> = {}; for (let j = 0; j < 20; j++) refs[`r${j}`] = level; level = refs; }
+  const t0 = performance.now(), wide = JSON.stringify(redact(level)), ms = performance.now() - t0;
+  ok("PF-23r pass (budget, review minor 1): 20 shared references per level over 10 levels finish in under a second, shared values show [shared], nothing over budget", ms < 1000 && /\[shared\]/.test(wide) && !/over budget/.test(wide) && (wide.match(/\[shared\]/g) ?? []).length < REDACT_BUDGET, { ms: Math.round(ms), shared: (wide.match(/\[shared\]/g) ?? []).length });
+  const many = Array.from({ length: 50 }, (_, i) => Array.from({ length: 50 }, (_, j) => ({ i, j })));
+  const big = JSON.stringify(redact(many));
+  ok(`PF-23r fail (budget): ${50 * 50 * 3} distinct values in one call stop at ${REDACT_BUDGET}: the rest is [over budget]`, /\[over budget\]/.test(big) && big.includes('{"i":0,"j":0}'), big.length);
+  const cyc: Record<string, unknown> = { id: "c" }; cyc.self = cyc;
+  ok("PF-23r fail-guard (budget): a cycle is still [cycle], not [shared]", JSON.stringify(redact(cyc)) === '{"id":"c","self":"[cycle]"}', redact(cyc));
+  // (2) alertIds: spaces become "_" only in entity and queue; an id with a space is a name.
+  const a = alertIds({ entity: "case fact", queue: "mail out", entityKey: "Client A", firmId: "Acme Firm" });
+  ok("PF-23r pass (alertIds, review minor 2): entity \"case fact\" → case_fact, queue \"mail out\" → mail_out", a.entity === "case_fact" && a.queue === "mail_out", a);
+  ok("PF-23r fail (alertIds, review minor 2): entityKey \"Client A\" and a firmId with a space are refused (not_an_id), never Client_A", a.entityKey === "not_an_id" && a.firmId === "not_an_id", a);
+  ok("PF-23r fail-guard (alertIds): a real id is kept as it is", alertIds({ entityKey: "3f1d2c1e-7b8a-4c5d-9e0f-112233445566", firmId: "firm-0001" }).entityKey === "3f1d2c1e-7b8a-4c5d-9e0f-112233445566");
+  // (3) A stack whose message spans several lines (Prisma-style): frames only, plus the error's class.
+  const prismaStack = `PrismaClientKnownRequestError: \nInvalid \`prisma.client.create()\` invocation:\n\nUnique constraint failed for ${CANARIES.name} <${CANARIES.email}>\n    at Ra.handleRequestError (/app/node_modules/@prisma/client/runtime/library.js:121:7315)\n    at async Fill.save (/app/api/src/fill-case.ts:379:5)`;
+  const st = logText(prismaStack);
+  ok("PF-23r pass (frames only, review minor 3): a 3-line error message with a stack logs its class and frames, never the message lines", /^\[stack\] PrismaClientKnownRequestError at /.test(st) && st.includes("fill-case.ts:379:5") && !/Invalid|Unique constraint/.test(st) && !leaks(st).length, st);
+  const before = prismaStack.split("\n").slice(0, 4).join("\n");
+  ok("PF-23r fail-guard (frames only): text with no frame line is still redacted by pattern only (a name stays: it cannot be found by pattern, which is why frames-only matters)", logText(before).includes(CANARIES.name) && !logText(before).includes(CANARIES.email));
+  ok("PF-23r fail-guard (frames only): a first line that is not an error class (\"Client: …\") gives no class", logText(`Client: hello\n    at x (/a.js:1:1)`) === "[stack] at x (/a.js:1:1)", logText(`Client: hello\n    at x (/a.js:1:1)`));
+  // (4) Time ranges and cookies.
+  ok("PF-23r fail-guard (UCI8, review minor 4): a time range 0900-1700 stays; a UCI 1234-5678 is still replaced", redactText("open 0900-1700") === "open 0900-1700" && redactText("2330-2400") === "2330-2400" && redactText("uci 1234-5678") === "uci [number]", [redactText("open 0900-1700"), redactText("uci 1234-5678")]);
+  ok("PF-23r pass (cookie, review minor 4): \"Cookie sid=abc\" with no \":\" is redacted; the word cookie in a sentence is kept", !/abc/.test(redactText("Cookie sid=abc")) && redactText("the cookie expired") === "the cookie expired", redactText("Cookie sid=abc"));
+  // (5) PostgreSQL DETAIL and Prisma meta (FO-13 break 11): they repeat the refused row's values.
+  const pgText = `error: duplicate key value violates unique constraint "person_name_key"\nDETAIL:  Key (display_name)=(${CANARIES.name}) already exists.`;
+  ok("PF-23r pass (DETAIL): a DETAIL line, a Key (…)=(…) value list and a \"Failing row contains\" row lose their values; column and constraint names stay", !leaks(redactText(pgText)).length && /person_name_key/.test(redactText(pgText)) && !redactText(`Key (display_name)=(${CANARIES.name}) already exists.`).includes(CANARIES.name) && redactText(`Key (display_name)=(${CANARIES.name})`).includes("display_name") && !redactText(`Failing row contains (1, ${CANARIES.name}, null).`).includes(CANARIES.name), redactText(pgText));
+  const meta = redact({ code: "P2002", meta: { modelName: "Person", target: ["display_name"], driverAdapterError: { cause: { originalMessage: `Key (display_name)=(${CANARIES.name})` } }, cause: CANARIES.name }, detail: `Key (display_name)=(${CANARIES.name}) already exists.` }) as { meta: Record<string, unknown>; detail: unknown };
+  ok("PF-23r pass (Prisma meta, a pg error's detail field): only the model and the constraint's columns stay", meta.meta.modelName === "Person" && JSON.stringify(meta.meta.target) === '["display_name"]' && meta.meta.driverAdapterError === "[redacted]" && meta.meta.cause === "[redacted]" && meta.detail === "[redacted]" && !leaks(JSON.stringify(meta)).length, meta);
+  // PF-23r review round 1, Minors 1-5.
+  ok("PF-23r pass/fail (review r1 m1, review bot): 0900-1700, 1730-2400 stay (whole and half hours); UCIs 1130-0847, 1130-0845, 0915-1745 and 2359-2459 are replaced", redactText("0900-1700") === "0900-1700" && redactText("1730-2400") === "1730-2400" && redactText("uci 1130-0847") === "uci [number]" && redactText("uci 1130-0845") === "uci [number]" && redactText("0915-1745") === "[number]" && redactText("2359-2459") === "[number]", [redactText("uci 1130-0847"), redactText("2359-2459")]);
+  const quoted = `Client "JJ" ${CANARIES.name}`;
+  ok("PF-23r fail (review r1 m2): a value with a quote in it loses all of itself in DETAIL, Failing row and Cookie sid=\"…\"", [`DETAIL:  Key (display_name)=(${quoted}) already exists.`, `Failing row contains (1, ${quoted}, null).`, `Cookie sid="${CANARIES.bearer}"; b=1`].every((t) => !redactText(t).includes(CANARIES.name) && !redactText(t).includes("JJ") && !redactText(t).includes(CANARIES.bearer)), [`DETAIL: x "JJ"`, `Cookie sid="${CANARIES.bearer}"`].map(redactText));
+  ok("PF-23r fail (review r1 m3): a bare Key (lower(email::text))=(…) loses its value; the expression stays", redactText(`Key (lower(email::text))=(${CANARIES.name}) already exists.`) === "Key (lower(email::text))=([redacted]) already exists.", redactText(`Key (lower(email::text))=(${CANARIES.name}) already exists.`));
+  ok("PF-23r fail-guard (review r1 m4): a text line starting \"at 10:00\" is not a frame: the text is redacted by pattern, not cut to frames", logText(`Summary line\nat 10:00 the job ran for ${CANARIES.email}`) === "Summary line\nat 10:00 the job ran for [email]", logText(`Summary line\nat 10:00 the job ran for ${CANARIES.email}`));
+  ok("PF-23r fail-guard (review r1 m4): in a stack, a message line \"at Client A's office\" is not kept as a frame", !logText(`Error: x\nat ${CANARIES.name}'s office\n    at f (/a.js:1:2)`).includes(CANARIES.name), logText(`Error: x\nat ${CANARIES.name}'s office\n    at f (/a.js:1:2)`));
+  const d = new Date(0);
+  ok("PF-23r fail-guard (review r1 m5): a Date met twice is written twice, never [shared]", JSON.stringify(redact({ startedAt: d, at: d })) === '{"startedAt":"1970-01-01T00:00:00.000Z","at":"1970-01-01T00:00:00.000Z"}', redact({ startedAt: d, at: d }));
+  ok("PF-23r fail (Prisma meta, review bot): a target or modelName shaped like a column but a document number (AB123456) is replaced", (() => { const m = (redact({ meta: { target: ["AB123456"], modelName: "AB123456" } }) as Record<string, Record<string, unknown>>).meta; return m.target === "[redacted]" && m.modelName === "[redacted]"; })());
+  ok("PF-23r fail-guard (Prisma meta): a target that is not a column name list is replaced too", (redact({ meta: { target: [CANARIES.name] } }) as Record<string, Record<string, unknown>>).meta.target === "[redacted]");
 }
 
 // ---- Part 1b: the logger, Nest's messages, LogPort
@@ -158,7 +207,7 @@ Module({ controllers: [ProbeController] })(ProbeModule);
   ok("PF-23 pass (Nest's Logger once hooked): its error is a JSON line with frames, and the message (which quotes a name) is not kept", p.some((x) => x.event === "nest" && x.context === "Mailer" && x.level === "error" && Array.isArray(x.frames) && /not logged/.test(String(x.message))));
   ok("PF-23 pass (review m14, negative control): a header a route writes to the console reaches the log, redacted (so the request-side check can fail)", p.some((x) => x.event === "console" && x.correlationId === got.echo.rid && /echo Bearer \[token\] \[email\]/.test(String(x.message))), p.filter((x) => x.correlationId === got.echo.rid));
   ok("PF-23 pass (review m8): a request the caller aborted is logged as aborted (499), never as a success", p.some((x) => x.event === "request" && x.correlationId === "pf23-aborted-01" && x.status === 499 && x.outcome === "aborted" && x.Errors === 0), p.filter((x) => x.correlationId === "pf23-aborted-01"));
-  ok("PF-23 pass (review m2): a stack written as text keeps its frames only; its first line (the message) is gone", p.some((x) => x.event === "console" && /^\[stack\] at /.test(String(x.message))), p.filter((x) => x.event === "console").map((x) => String(x.message).slice(0, 60)));
+  ok("PF-23 pass (review m2): a stack written as text keeps its frames only; its first line (the message) is gone", p.some((x) => x.event === "console" && /^\[stack\] (Error )?at /.test(String(x.message))), p.filter((x) => x.event === "console").map((x) => String(x.message).slice(0, 60)));
   ok("PF-23 fail-guard (review m1): a throwing getter and a revoked proxy never make console.* throw", !consoleThrew && p.some((x) => x.event === "console" && /unreadable value/.test(JSON.stringify(x))));
   ok("PF-23 pass (review m7, jobs): a job's lines, its handler's own included, carry job:<id> as correlation id and its firm", p.some((x) => x.event === "console" && x.message === "rendering" && x.correlationId === "job:job-0002" && x.firmId === "firm-0002") && p.some((x) => x.event === "job" && x.jobId === "job-0002" && x.correlationId === "job:job-0002"));
   ok("PF-23 pass/fail (review m9): a job with no created time has no JobAge metric; one with it has", p.some((x) => x.event === "job" && x.jobId === "job-0002" && !("JobAge" in x)) && p.some((x) => x.event === "job" && x.jobId === "job-0001" && typeof x.JobAge === "number"));
@@ -287,6 +336,34 @@ try {
   let back = await get("/api/health/ready");
   for (let i = 0; i < 20 && back.status !== 200; i++) { await new Promise((r) => setTimeout(r, 500)); back = await get("/api/health/ready"); }
   ok("PF-23 pass (ready): the database back → 200 again, without a restart", back.status === 200 && back.body?.status === "ok", back.body);
+  // PF-23r (FO-13 break 11): a refused insert of a seeded name, through the product's route and on the database itself.
+  const m3 = await import("../acceptance/lib/m3.ts");
+  const combo = () => m3.sql(`select c.id from combination c where c.combination_key='vv.single' and exists (select 1 from config_release r where r.combination_id=c.id)`);
+  if (!combo()) await m3.call("POST", "/demo/load", { sample: "configured" }, "user-A");
+  const f = await m3.firms(), officer = f.officer ?? "user-O";
+  const open = () => m3.call("POST", "/runtime/cases", { combinationId: combo(), clientActor: "user-P", principal: { displayName: "Sample Client N" }, reference: `${CANARIES.name} ${m3.run}`, ...(f.rep ? { representative: f.rep, caseOfficers: [officer] } : {}) }, officer);
+  const first = await open(), dup = await open();
+  await new Promise((r) => setTimeout(r, 200));
+  const after = readFileSync(LOG, "utf8");
+  ok("PF-23r pass (a refused insert of a seeded name, the answer): the product refuses the second case with the same reference (409) and its answer never repeats the name", first.status === 201 && dup.status === 409 && !JSON.stringify(dup.body).includes(CANARIES.name), [first.status, dup.status, dup.body]);
+  ok("PF-23r fail-guard (a refused insert of a seeded name, the server's log): the name is in no line of the server's log", !after.includes(CANARIES.name));
+  // The same refusal straight from PostgreSQL's driver: its error carries DETAIL with the value; logged every way the app logs.
+  const pg = (await import("pg")).default, c = new pg.Client({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/${DB}` });
+  await c.connect();
+  let pgErr: (Error & { detail?: string }) | undefined;
+  try {
+    await c.query("create temporary table pf23r_probe (display_name text unique)");
+    await c.query("insert into pf23r_probe values ($1)", [CANARIES.name]);
+    await c.query("insert into pf23r_probe values ($1)", [CANARIES.name]);
+  } catch (e) { pgErr = e as Error & { detail?: string }; } finally { await c.end(); }
+  const cap = capture();
+  logPort.error("db_refused", pgErr, { table: "pf23r_probe" });
+  logPort.warn("db_refused", { cause: { ...pgErr }, detail: pgErr?.detail, text: `${pgErr?.message}\nDETAIL:  ${pgErr?.detail}`, meta: { modelName: "Probe", driverAdapterError: { cause: { originalMessage: pgErr?.detail } } } });
+  const unpatch = patchConsole(cap.l); // the app's console calls, as the server patches them
+  try { console.error(`${pgErr?.stack}\nDETAIL:  ${pgErr?.detail}`); console.error(pgErr); console.warn("refused:", { ...pgErr }); } finally { unpatch(); }
+  cap.restore();
+  ok("PF-23r fail (the driver's error repeats the name: the check can fail)", typeof pgErr?.detail === "string" && pgErr.detail.includes(CANARIES.name), pgErr?.detail);
+  ok("PF-23r pass (a refused insert of a seeded name, logPort): the error, its fields, its DETAIL text and a Prisma-style meta are logged without the name", cap.lines.length >= 2 && !cap.lines.join("\n").includes(CANARIES.name) && cap.parsed().some((x) => x.event === "db_refused" && x.level === "warn"), cap.lines);
 } catch (e) { ok(`PF-23: the live part ran to its end (crashed: ${(e as Error).message})`, false); }
 finally { if (cut) { try { psql(`alter database "${DB}" with allow_connections true`); } catch { /* stop drops it anyway */ } } }
 process.exitCode = summary() ? 1 : 0;
