@@ -1,0 +1,3 @@
+# STATE Start-here line moved word for word by Lead 61, 22:1x IST 15 Nov
+
+🟩 **Lead 60 evening (16:55-19:5x), word for word in `history/STATE-2026-11-15-1958-lead60s2-evening-lines.md`:** earlier-line pointers, A92 steps 1-2 (sle-watch in lead-watch section 9; 8 stale PRs closed on his word), check 19:10 (#1811 relabelled), 19:13 queue reset by a push to queued #1818 (guard candidate: refuse a push to a `queued` PR). **Next:** sle-watch target R (Approve on head + green + no label, 30 min); BACKLOG owes CS-C1a's two follow-ups (#1818) and FO-2's qa53 scan row (#1813); Library 3 masters behind; hand-merge PR (hand-over item 2).
