@@ -1,8 +1,8 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_cbc405f5-a67a-4513-89dc-2b7079c6d4dc Lead 53 · 15 Nov 09:54 IST (series 2; took over from Lead 52 (series 2, local_e0cd21a4) at ~390k, ~253k beyond its start read of ~137k, P-446); start read: measure with get_usage; hand over 200k beyond it
+current_lead: local_cbc405f5-a67a-4513-89dc-2b7079c6d4dc Lead 53 · 15 Nov 09:54 IST (series 2; took over from Lead 52 (series 2, local_e0cd21a4) at ~390k, ~253k beyond its start read of ~137k, P-446); start read ~159k (get_usage 09:57); hand over ~359k
 
-updated: 2026-11-15 09:54 IST by **Lead 52 (series 2, local_e0cd21a4-…)** at hand-over to Lead 53 · weekly 87% at 09:53 (A1; resets 20 Nov 04:30 IST; switch at 95%, his word) · milestone: **Works on main 93/98 (M2 60/60, M3 27/29, M4 0/1, T 6/8)**; Release 1 6/101 at qa Works, 90 Shaped, 0 Not shaped; **target 24 Nov (P-599)** · rules: **`RULES.md`** (as of P-603) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-15 09:54 IST by **Lead 52 (series 2, local_e0cd21a4-…)** at hand-over to Lead 53 · weekly 87% at 09:53 (A1; resets 20 Nov 04:30 IST; switch at 95%, his word) · milestone: **Works on main 93/98 (M2 60/60, M3 27/29, M4 0/1, T 6/8)**; Release 1 6/101 at qa Works, 90 Shaped, 0 Not shaped; **target 24 Nov (P-599)** · rules: **`RULES.md`** (as of P-607) · this branch: `lead/2026-11-07-lead31`
 
 Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
