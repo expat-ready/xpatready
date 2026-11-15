@@ -12,6 +12,8 @@ export const EVENT = {
   STAFF_ROLES_CHANGED: "staff.roles_changed",
   /** A staff member was deactivated: their sessions ended at once (platform, PF-4; contracts §1.2 events out). */
   STAFF_DEACTIVATED: "staff.deactivated",
+  /** A staff member joined by accepting an invitation (platform, PF-4b; contracts §1.2 events out). */
+  STAFF_JOINED: "staff.joined",
   /** A consultation was booked (front office, FO-3; AG-4-47). Keys: bookingId and bookingId:sequence. */
   BOOKING_SCHEDULED: "booking.scheduled",
   /** A booking moved to a new time or host (FO-3). */
@@ -54,6 +56,9 @@ export type FirmCreated = z.infer<typeof FirmCreated>;
  *  licence; a consumer reads the person's current roles from the platform). The firm is the outbox row's firm_id. */
 export const StaffEventPayload = z.object({ staffId: z.string().uuid() }).strict();
 export type StaffEventPayload = z.infer<typeof StaffEventPayload>;
+/** The payload PF-4b writes for `staff.joined`: ids only (the staff member and the invitation accepted). */
+export const StaffJoinedPayload = z.object({ staffId: z.string().uuid(), invitationId: z.string().uuid() }).strict();
+export type StaffJoinedPayload = z.infer<typeof StaffJoinedPayload>;
 /** What a consumer of either staff event needs: the outbox row's type and firm, and the payload's staff id. */
 export const StaffRolesChanged = z.object({ type: z.literal(EVENT.STAFF_ROLES_CHANGED), firmId: z.string().uuid(), payload: StaffEventPayload });
 export type StaffRolesChanged = z.infer<typeof StaffRolesChanged>;
