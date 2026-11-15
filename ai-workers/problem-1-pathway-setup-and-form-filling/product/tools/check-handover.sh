@@ -30,9 +30,17 @@ out=$($H "$NEXT" "$TITLE" --dry-run 2>&1); r=$?
 ok "merged here, it passes again" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 out=$($H "bad id" "$TITLE" --dry-run 2>&1); ok "a bad session id is refused (exit 1)" "$([ $? = 1 ] && echo 1)" "$out"
 out=$($H "$NEXT" "$TITLE" 2>&1); r=$?
+ok "the real run refuses an uncommitted items.json (an ack counts once pushed)" "$([ $r = 1 ] && echo "$out" | grep -q 'commit and push STATE.md and state/items.json first' && echo 1)" "exit $r: $out"
+git -C "$C" commit -qm "ack G-9" -- "$PRODREL/state/items.json"
+out=$($H "$NEXT" "$TITLE" 2>&1); r=$?
 ok "the real run rewrites current_lead: and pushes it" "$([ $r = 0 ] && git -C "$T/origin.git" show "lead/x:$PRODREL/STATE.md" | grep -qx "current_lead: $NEXT $TITLE (took over from Lead 1, local_aaa-0000)" && echo 1)" "exit $r: $out"
 ok "it prints the lane line and the take-over text" "$(echo "$out" | grep -q "Current Lead is now Lead 2 ($NEXT)" && echo "$out" | grep -q '^  take over now: you are Lead 2' && echo 1)" "$out"
 ok "only STATE.md is in the hand-over commit" "$([ "$(git -C "$C" show --name-only --format= HEAD)" = "$PRODREL/STATE.md" ] && echo 1)" "$(git -C "$C" show --stat HEAD)"
 out=$(bash "$C/$D/takeover.sh" 2>&1); r=$?
 ok "takeover prints the lead, the log since the previous hand-over, items, lanes and the CronCreate line" "$([ $r = 0 ] && echo "$out" | grep -q "^lead  $NEXT" && echo "$out" | grep -q 'Hand-over: Lead 1 -> Lead 2' && echo "$out" | grep -q 'acked .*G-9' && echo "$out" | grep -q '^lanes no board' && echo "$out" | grep -qE 'CronCreate\(cron: "[0-9]+,[0-9]+ \* \* \* \*", prompt: "run lead-watch; read STATE Start here", recurring: true\)' && echo 1)" "exit $r: $out"
+sed -i.bak 's/^\(current_lead: .*\)$/\1; start read ~100k/' "$C/$PRODREL/STATE.md" && rm -f "$C/$PRODREL/STATE.md.bak"
+git -C "$C" commit -qam "lead: Lead 2 took over; start read ~100k"
+out=$(bash "$C/$D/takeover.sh" 2>&1)
+ok "the new Lead's own edit to its line is not taken for a hand-over" "$(echo "$out" | grep -q 'Hand-over: Lead 1 -> Lead 2' && echo 1)" "$out"
+out=$($H "$NEXT" "$TITLE" --dry-run 2>&1); ok "the same session id is refused at once" "$([ $? = 1 ] && echo "$out" | grep -q 'already the current Lead' && echo 1)" "$out"
 finish
