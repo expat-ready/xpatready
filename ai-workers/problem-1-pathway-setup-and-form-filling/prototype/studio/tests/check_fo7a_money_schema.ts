@@ -365,6 +365,15 @@ try {
   ok("FO-7a fail (break round 3, B-17): a reason that is only a braille blank, a tag space, U+1D159, U+17B4, a lone skin-tone modifier or a variation selector is refused; an emoji with its skin tone is still text",
     ["\u2800", "\u{E0020}", "\u{1D159}", "\u17B4", "\u{1F3FB}", "\uFE0F"].every((r) => refused(DEMO, credit(I1, 1, false, r), /money_credit_note_text_check/))
     && sql(DEMO, `begin; ${credit(I1, 1, false, "Fee waived \u{1F44D}\u{1F3FD}")}; rollback;`).startsWith("CN-"));
+  // Break round 4, B-21: format controls, prepended marks, a lone combining mark, noncharacters, unassigned and private
+  // use, each alone. Text now needs one Unicode letter, digit, punctuation mark or symbol (pg_c_utf8 classes).
+  const b21 = ["\uFFF9", "\uFFFA", "\uFFFB", "\u{1BCA0}", "\u{1BCA3}", "\u{13430}", "\u{1343F}", "\u0600", "\u070F", "\u{110BD}", "\u{16FE4}",
+    "\u0301", "\u05AE", "\uFFFF", "\u{2FFFE}", "\u{10FFFF}", "\u0378", "\u{1D455}", "\uE000", "\u{F0000}", " \u0301\uFFFB "];
+  const b21ok = (r: string) => sql(DEMO, `begin; ${credit(I1, 1, false, r)}; rollback;`).startsWith("CN-");
+  ok("FO-7a fail (break round 4, B-21): a reason that is only an interlinear, shorthand or Egyptian format control, a prepended mark, a lone combining mark, a noncharacter, an unassigned or a private-use character is refused",
+    b21.every((r) => refused(DEMO, credit(I1, 1, false, r), /money_credit_note_text_check/)), b21.filter((r) => !refused(DEMO, credit(I1, 1, false, r), /money_credit_note_text_check/)).map((r) => [...r].map((c) => c.codePointAt(0)!.toString(16))));
+  ok("FO-7a pass (B-21): written text in any script is still text — a decomposed é, Hindi with its vowel sign, Hebrew, Arabic, CJK, a symbol, an emoji, a number",
+    ["Fe\u0301e reduced", "\u0936\u0941\u0932\u094D\u0915 \u0915\u092E", "\u05D4\u05E0\u05D7\u05D4", "\u062E\u0635\u0645", "\u6599\u91D1", "\u20AC", "\u{1F44D}", "2"].every(b21ok));
 
   // ------------------------------------------------------------------------------------------------- trust requests
   const req = (id: string, sent: boolean, party = `person_id`, pid = P1, amount = 100000, f = firmA) =>

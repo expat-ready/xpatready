@@ -434,10 +434,13 @@ ALTER TABLE "money_write_off" ADD CONSTRAINT "money_write_off_firm_id_invoice_id
 -- controls. The databases run with the C ctype, where [:space:] is ASCII only, so every Unicode space, invisible
 -- format character and line or paragraph separator is listed (break B-9: an ideographic space, RLM, a bidi override
 -- or U+2028 passed as a reason; round 3, B-17: a braille blank, a tag space, a lone skin-tone modifier, U+1D159 and
--- U+17B4; variation selectors and the musical format characters with them).
+-- U+17B4; variation selectors and the musical format characters with them). Round 4, B-21: listing more kept leaking
+-- (format controls, prepended marks, a lone combining mark, noncharacters, unassigned, private use), so once the
+-- listed invisible characters are taken out, the text must still hold one letter, digit, punctuation mark or symbol by
+-- Unicode's classes: PostgreSQL's built-in pg_c_utf8 collation (PostgreSQL 17 and later; the team's major is 18).
 CREATE FUNCTION money_text_ok(t text, max_len integer) RETURNS boolean LANGUAGE sql IMMUTABLE AS
   $$ SELECT t IS NOT NULL AND char_length(t) BETWEEN 1 AND max_len
-       AND t ~ '[^[:space:]\u0085\u00a0\u00ad\u034f\u061c\u115f\u1160\u1680\u17b4\u17b5\u180b-\u180f\u2000-\u200f\u2028-\u202f\u205f-\u206f\u2800\u3000\u3164\ufe00-\ufe0f\ufeff\uffa0\U0001d159\U0001d173-\U0001d17a\U0001f3fb-\U0001f3ff\U000e0000-\U000e007f\U000e0100-\U000e01ef]'
+       AND regexp_replace(t, '[[:space:]\u0085\u00a0\u00ad\u034f\u061c\u115f\u1160\u1680\u17b4\u17b5\u180b-\u180f\u2000-\u200f\u2028-\u202f\u205f-\u206f\u2800\u3000\u3164\ufe00-\ufe0f\ufeff\uffa0\U0001d159\U0001d173-\U0001d17a\U0001f3fb-\U0001f3ff\U000e0000-\U000e007f\U000e0100-\U000e01ef]', '', 'g') ~ '[[:alnum:][:punct:]]' COLLATE pg_c_utf8
        AND t !~ '[[:cntrl:]\u0085\u2028\u2029\u202a-\u202e\u2066-\u2069]' $$;
 -- The firm's tax rates: a JSON list (at most 10) of { "name": 1..40 characters, "ratePpm": 0..1000000 } (parts per
 -- million: Quebec's QST 9.975 % is 99750; basis points could not hold it, review round 2, Major 1).
