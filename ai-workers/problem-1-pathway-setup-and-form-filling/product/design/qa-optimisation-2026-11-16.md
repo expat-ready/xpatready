@@ -16,9 +16,9 @@
 | Items waiting for qa | 9 | not countable from files: `qa/built/` holds 38 notes, most older than this week (they are deleted only on a re-score) |
 | "No first qa verdict since 13 Nov" | — | **Not so for first verdicts**: R1 first verdicts were given on 14 Nov (#1748) and 15 Nov (#1789, #1792, #1833). True for **first-time Works on a newly built Release 1 capability other than R1.2** (14 Nov): every other first verdict was Partial or Not tested (§1.3) |
 
-### 1.2 Time from all parts merged to qa's verdict (Release 1, 13-15 Nov)
-Sample: every R1 capability whose last named part merged between 13 Nov 19:00 UTC and 15 Nov 04:00 UTC and got a verdict (n = 7 last-part merges covering 10 capabilities). Times: the part PR's `merged_at` and the qa commit that wrote the verdict (GitHub API).
-| Capability | Last part (merged, UTC) | First verdict (commit, UTC) | Hours | Verdict |
+### 1.2 Time from the newest part merged to qa's first verdict (Release 1, 13-15 Nov)
+Sample: every R1 capability that had a part merge between 13 Nov 19:00 UTC and 15 Nov 04:00 UTC and then got a verdict (n = 7 newest-part merges covering 10 capabilities). **The start event is the newest merged part, not the last of all parts:** R1.109 (PF-21 part 2 missing), R1.53 (FO-5b, FO-5s missing) and R1.55 (FO-6, FO-5s missing) were scored with parts still missing (`2026-11-15-capability-R1-fo.md`; Devin review on #1854). That early scoring is what change 1 (§8) stops. Times: the part PR's `merged_at` and the qa commit that wrote the verdict (GitHub API).
+| Capability | Newest part (merged, UTC) | First verdict (commit, UTC) | Hours | Verdict |
 |---|---|---|---|---|
 | R1.12 Screen framework | PF-1 #1711, 13 Nov 19:42 | #1748, 14 Nov 09:57 | 14.3 | Partial |
 | R1.11, R1.16 Server framework, automated testing | PF-7 #1713, 13 Nov 22:41 | #1748, 14 Nov 09:57 | 11.3 | Not tested, Partial |
@@ -27,7 +27,7 @@ Sample: every R1 capability whose last named part merged between 13 Nov 19:00 UT
 | R1.38, R1.40 Time zones, invite files | FO-3 #1760, 14 Nov 22:52 | #1792, 15 Nov 02:46 | 3.9 | Partial |
 | R1.109 Complaints | PF-21 part 1 #1753, 15 Nov 00:54 | #1789, 15 Nov 02:48 | 1.9 | Partial (parts missing) |
 | R1.53, R1.55 Retainer | FO-5 part 2 #1777, 15 Nov 03:20 | #1792, 15 Nov 03:35 | 0.25 | Partial |
-**Median 4.0 h to a first verdict (n = 7 last-part merges); 16.0 h to Works for the one capability that reached it after a Partial (n = 1).** Then the verdict waits for its records PR to merge: verdict commit → records merged 17.5 h (#1748), 4.1 h (#1789, from its 02:48 verdict commit), 1.7 h (#1792), 1.6 h (#1833); **median 2.9 h (n = 4)**.
+**Median 4.0 h from the newest part merged to a first verdict (n = 7 merges).** **All parts merged → first verdict, the completed-capability figure:** only R1.2 (4.0 h, Works) and R1.9 (7.8 h, Partial; 16.0 h to Works) clearly had every part merged (n = 2); §6 item 4 (the ready-for-qa signal) makes this sample measurable for every capability. Then the verdict waits for its records PR to merge: verdict commit → records merged 17.5 h (#1748), 4.1 h (#1789, from its 02:48 verdict commit), 1.7 h (#1792), 1.6 h (#1833); **median 2.9 h (n = 4)**.
 
 ### 1.3 How often a first verdict is Works
 * **Release 1, 14-15 Nov: 1 of 20 first verdicts = 5%** (n = 20 rows scored for the first time, Not built and Not tested left out; PR titles and reports #1748 (3), #1789 (7 new), #1792 (8), #1833 (2)). The compass asks 80% or more (`RULES.md`, "Works on qa's first re-score after merge").
