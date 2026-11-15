@@ -1,0 +1,99 @@
+# FO-4 part 1 — review (reviewer agent, 15 Nov 2026)
+
+PR #1822 at `3bb03d144c1abb8c59e041cc2115e3c3b9b770e7` (branch `claude/friendly-fermat-rhrpoj`). Scope: the hosted enquiry form, Leads (Unassigned leads, Mine, All open, search, waited time, Take it) and one lead, beside FO-2 part 1 (#1813). The bar: brief FO-4 part 1 (9ebb5da30), concept r2 and board r2 (`lead-b-front-office`), `STANDARDS.md`, `EXPERIENCE.md`. Copy under test: :4461 (FO-2 part 1 merged in, `PLATFORM_IDENTITY=local`), never :4400. The builder's suite: **38/38** on my run. Size: 763 lines added, 0 removed (under 800). Journey test: `journey-test-reviewer-2026-11-15.md`, **8/10**.
+
+**Verdict: Block** (on the skill's scale, Ship after fixes): three Majors, each a few lines. Approve after they are fixed and re-checked on the diff only.
+
+## Deferred items (Lead B's rulings on #1813, comment 6892106486; none counted against this PR)
+Waited time in open hours and the Assign picker with the one-user hiding are both moved to the FO-4 part that follows FO-2's route. The screen does not hide this: the cell reads "… since it arrived", not "open min". Closed moves to part 2. Search covers name and number only; the placeholder says so, and the email and phone `q` is asked of FO-2 part 2. `frame-ancestors` is missing on the hosted HTML page; it is raised in the PR body (Q4) and is an API-side file. The local stand-in sign-in card says what it is in its own text (`sales-frame.tsx:48`). FO-2 part 1 has no Assign route (`routes.ts`: "Part 2 adds … Assign"), so "no Assign button" is correct, not missing.
+
+## Issues (Must = Major, Should = Minor)
+1. **Must (Major), raw code on the main path.** Source shows `WEBSITE` on every Leads row and on the lead ("WEBSITE · Website enquiry form"): `leads-page.tsx:76`, `lead-page.tsx:63`; builder's own `screenshots/leads-unassigned-1440.png`. This breaks EXPERIENCE §5 [M] (plain words, no codes) and BIC-19 ("no internal ids on the main path"); the board's word is "Website form". **Fix:** a words map in `contract.ts` (`WEBSITE` → "Website form"; an unknown code → `sourceDetail`, else "Other"), used in both places, plus a check that `WEBSITE` never shows.
+2. **Must (Major), no loading skeletons.** All four loading states are a text line ("Loading leads…", "Loading the lead…", "Loading the form…", "Loading…"): `leads-page.tsx:59`, `lead-page.tsx:21`, `web-form-page.tsx:102`, `sales-frame.tsx:77`. EXPERIENCE §4 [M] and concept §4 ("loading skeletons") ask for skeletons. BIC-18 is Partly, so under the §6 rule this is a Must. **Fix:** use the app's `components/ui/skeleton.tsx` (table rows, the two rails, the form card).
+3. **Must (Major), read-only does not say why.** A Read-only person gets the lists and the lead with no Take it and no word of explanation (walk: RO chips shown, 0 Take it). On the lead the rail reads "Owner: Nobody yet" and nothing else. EXPERIENCE §4 [M] read-only state, BIC-18 ("read-only says why") and concept §4 ("read-only for Read-only people") all ask for the reason. **Fix:** without `agent/prospect:edit`, one muted line, for example "You can view leads. Taking one needs a role that works leads.", in the lead's rail and under the Leads subtitle. Add a DW6 assertion for it.
+4. **Should, a stale Take it is worded as not found when "everyone sees all" is off.** The Case Officer took L-00013, then the Case Manager clicked Take it on the stale row. The toast said "No such lead in your firm." (FO-2 answers 404 by its no-leak rule). The row does refresh away. The test comment says this case "is checked after this one" (`tests/check_fo4_sales_browser.ts:175`), but no such check exists. **Fix:** in `take-it.ts:13`, map a 404 on take to "Someone else has this lead now." (it names nobody, so nothing leaks). Add the check or drop the comment.
+5. **Should, a 3-state field read as 2.** `lead-page.tsx:42` shows anything not `OPEN` as "Closed", so an `ENGAGED` lead (FoLeadState has three values; FO-5's tests insert them) reads "Closed". **Fix:** map OPEN/ENGAGED/CLOSED to words.
+6. **Should, tooltips by `title` only (BIC-14 Partly).** "Possible match", "Fix number", the Waited cell and Arrived use `title` (`leads-page.tsx:71-72,78`; `lead-page.tsx:56,64`), which never opens on keyboard focus. The app has `Tip` (`components/status.tsx:15`). The Waited tooltip text also differs from concept §5 (it drops "counting only your open hours"); that is right until open hours land.
+7. **Should, focus is lost.** After sign-in focus lands on BODY, and the same happens after Take it on the lead (the button goes away) and after Send on the form. Move focus to the page's h1, the owner line or the thank-you (BIC-20).
+8. **Should, words against the concept and board.** The form's button is "Send"; the board says "Send my enquiry" (verb plus object, BIC-11; `web-form-page.tsx:86`). The fields read "First name" and "Last name (optional)", where concept §4 and the board say "Given names" and "Family name", with family name not optional (`web-form-page.tsx:67-68`). FO-2's API accepts a missing family name and uses the same words. Record the choice in the PR, or align with the concept.
+9. **Should, not recorded as deferred.** Three concept items are not in this part and not in the PR's "Not in this part" list: the empty state's "Copy your form link" (concept §4; the link comes with part 3's settings route), the Next step column ("Call now", board screen 2) and the waited time in the lead's right rail (board screen 4). List them so part 2 or 3 picks them up.
+10. **Should, owner state read from display text.** `leads-page.tsx:37` and `lead-page.tsx:34` decide "no active owner" by the prefix "(Inactive) " of the owner's display label. Ask FO-2 for an `ownerActive` boolean. Until then it is harmless: a wrong guess only shows a Take it that the server refuses.
+11. **Should, no menu below 768 px.** Below 768 px, which includes 1024 px at 200 % zoom, the Sales menu and its "n unassigned" badge are hidden (`sales-frame.tsx:24`, `hidden md:block`) and nothing replaces them. The chips still work. **Fix:** show the badge count beside the page title at narrow widths.
+12. **Should, PR body.** "Checks and results: In progress." Paste the result lines before asking for the label (brief rule rev 16).
+
+## D1–D20 (1–5)
+D1 4 BR-1/2/3/4/5/10 behave per concept, deferrals ruled · D2 5 double-click Send → one lead; race → one owner, one audit line · D3 4 one `take-it.ts`, one contract · D4 N/A · D5 4 reload, back (chip kept), bogus token → sign-in, RELOAD answer shown · D6 4 `lead.taken` audit line with actor · D7 N/A (no AI) · D8 4 "Sales › Leads › Lead" + Back · D9 4 Take it is the one action; Next step column absent · D10 3 `WEBSITE` code; title-only tooltips · D11 3 toasts good; text loaders, focus loss · D12 4 team tokens, one primary, orange only for the badge · D13 4 axe clean on all states; 375/1024/200 % no sideways scroll; keyboard path works · D14 4 `Frame`, `Table`, `Pill`, `Field` · D15 5 Leads 108 ms after sign-in, form 235 ms, one request per view · D16 4 DW1-4, 6, 7 pass+fail; the 404 race comment claims an unwritten check · D17 simulated only · D18 4 match line, source detail, attribution shown · D19 N/A (J-27) · D20 simulated only.
+
+## Scorecard (EXPERIENCE §6; concept §4c)
+| BIC | Score | Evidence |
+|---|---|---|
+| 01 | N/A | Answer keys travel at Engage/Convert (part 2+) |
+| 02, 03, 05, 06, 07, 09, 12, 15, 16, 17 | N/A | As concept §4c / no such step in part 1 |
+| 04 | Met | "Last name (optional)", "Phone (optional)", "Interested in (optional)" in words |
+| 08 | Partly | Three chips; Closed deferred (ruled) |
+| 10 | N/A | Next step is computed by FO-2 later (issue 9) |
+| 11 | Partly | One primary per panel; "Send" lacks its object (issue 8) |
+| 13 | Met | Empty send: field errors + summary focused, input kept (88 chars kept on bad email) |
+| 14 | Partly | `title` only (issue 6) |
+| 18 | Partly | Empty text present; no skeletons; read-only gives no reason (issues 2, 3) |
+| 19 | Partly | Five inputs + tick; `WEBSITE` code on the main path (issue 1) |
+| 20 | Partly | Keyboard path, 200 % zoom pass; focus lost (issue 7) |
+
+## Code (check 5)
+Server authorisation is FO-2's: Read-only Take it gives 403 (DW6 fail side). No per-row requests: the badge shares the `["fo","leads","unassigned"]` query. There are no migrations. zod parses every answer at the edge. Problem Details come through `problemOf`. The honeypot is out of the tab order. The submissionId and stamp are fresh per draw (`gcTime: 0`). `tsc --noEmit` on web exits 0. Rule-removal spot-check: removing the inactive-owner arm of `unowned` drops DW7's Take it, so the check fails; showing Take it to Read-only fails DW6. Retrofit mapping (check 6): no `build-notes.md` in `screens/fo-4-sales/`; the PR body carries the mapping (Should).
+
+## Not checked
+`check_pf1_module_routes.ts`: it writes temporary module folders and PF-1 screenshots into the tree, and I may write only these two files, so I left it to CI. A real screen reader. An intended user's unaided walk (D17, D20). The graph tool (`G1 0 · G2 0`) does not see `staffApi(...)` calls, so the page → route links for this module are untraced (a tool gap, not this PR's). `frame-ancestors` on the HTML page (known, raised).
+
+**Verdict: Block**: fix 1, 2 and 3 (Majors); fix 4-12 or list them in the PR.
+
+## Re-review (P-277), 15 Nov 2026: `3bb03d144..ff9c21216b98b1ba63170e396ff2a64d50587454`, diff only
+Copy :4524 (head merged with FO-2 `ceda426a9`, `PLATFORM_IDENTITY=local`). The builder's suite gave **42/42** on my run. `tsc --noEmit` on web exits 0. Code and tests against `main` come to 767 added lines, under 800; records and screenshots are not counted.
+
+**Majors: all three closed.**
+1. **Plain source.** `words()` in `contract.ts` turns `WEBSITE` into "Website form" in both places. In the walk every row's Source reads "Website form", and the suite asserts it ("FO-4 plain words").
+2. **Skeletons.** The new `loading.tsx` uses the app's `Skeleton` with `role="status"` and a label, in all four states. I delayed `/leads` by 1.5 s: the skeleton rows draw under the chips, axe is clean, and it never says "No records" before data.
+3. **Read-only says why.** `data-why-no-take` appears under the Leads subtitle and in the lead's rail (only when the lead could be taken). The walk read "You can read leads. Taking one needs a role that works leads: ask your firm's Owner or Admin." axe is clean on both pages. DW6 asserts the line for Read-only and its absence for a Case Manager.
+
+**Minors 4, 5 and 8 (button): closed.** The false test comment is gone (`check_fo4_sales_browser.ts:142` now states the rule). `words(l.state)` maps ENGAGED to "Engaged". The button reads "Send my enquiry".
+
+**Breaker fixes, checked:**
+* **S1.** A session set to expire in 3 s showed the sign-in card on its own, with no rows left. Any 401 clears the session.
+* **S2.** `setStaffToken` drops every `["fo"]` query on the app's one `queryClient` (`main.tsx`'s provider), and the suite checks it.
+* **S3.** A send right after the draw is held until 2.1 s (the button shows busy). The lead was stored once (L-00015).
+* **RELOAD.** I forced a bad stamp. The form redrew with the answers and the tick kept, the summary took focus ("The form was refreshed…"), and the second send stored one lead (L-00014) with one consent row.
+
+**New Minors (not blocking):**
+* r1. The RELOAD redraw has no test of its own: removing the `RELOAD` branch would pass the suite.
+* r2. On a RELOAD caused by a changed consent wording, the tick stays checked against the new text (`web-form-page.tsx`, the `RELOAD` branch). Clearing `consent` when `form.consentText` changes would be safer (Unconfirmed: no counsel).
+* r3. `MIN_FILL_MS = 2_100` repeats FO-2's `LIMITS.minFillSeconds` in the web. It is safe today because the client waits longer than the server's floor; it drifts if FO-2 changes the limit.
+* r4. After a session expires, the card does not say "Your session ended".
+
+**Carried Minors 6, 7 and 9-12:** none blocking. They are listed in the PR body as carried; 9 and 10 belong with FO-2 part 2/3 routes. Add r1-r4 to that list.
+
+**Re-review verdict: Approve ff9c21216b98b1ba63170e396ff2a64d50587454**
+
+## Re-review 2 (P-277), 15 Nov 2026: `8b71874ff..2783e8edc904cd2ab91536ba637653ed45c74202`, diff only
+* **8b71874ff is a records-only commit after my Approve of ff9c21216:** break-report and review.md, nothing else.
+* **Merge 6e3c24696 is pure.** Its parents are 8b71874ff and `2a9ed28c0`, which is on `origin/main`.
+  * `git diff 6e3c24696^2 6e3c24696` holds only this PR's 21 files (the FO-4 web module, its test and its records), so the merge changed nothing of main's.
+  * `git diff 6e3c24696^1 6e3c24696` touches no FO-4 file; under the sales paths it brings in only FO-2's `api/src/front-office/sales/*`.
+  * `git diff 8b71874ff 2783e8edc` on `modules/front-office/` and `check_fo4_sales_browser.ts` is empty, so the screen code and test I approved are unchanged.
+* **FO-2 as merged against `ceda426a9`, which I walked:** the response shapes are the same, so the zod contract still holds. The only behaviour change is in Take it's race answer. A person who may see Unassigned leads now always hears "<name> already has this lead." where before they could get 404. That closes my Minor 4 at the API.
+* **5eeda790e, the web-shell `MODULE.md` card.** It adds one invariant, one test name and one "Do not" clause, and all three are true of the code:
+  * Staff calls go only through `staffApi`/`useMe` in `sales/session.ts`, and no `api(...)` from `lib/api.ts` is used. The only imports from `lib/api.ts` are `queryClient` and `useToast`, not route calls.
+  * `setStaffToken` drops `["fo"]`.
+  * `check_fo4_sales_browser.ts` exists.
+  * `module-cards.py pr` on the PR's changed files with its body gives `PASS module cards: 1 module(s) touched, 14 cards`.
+* **2783e8edc** changes five screenshots only.
+* **Not re-run by me:** the suites. My :4524 copy is gone, and the FO-4 code is unchanged since my walk. I take the builder's 42/42 (`check_fo4_sales_browser.ts`) and 28/28 (`check_pf1_module_routes.ts`) on fresh copies against main. Those result lines are not yet pasted in the PR, which brief rule rev 16 asks for before the label. CI's `module-cards` was still running on this head when I looked.
+* **Carried Minors** (6, 7, 9-12, r1-r4): unchanged, none blocking. Minor 4 is now also fixed at the API, as above.
+
+**Re-review 2 verdict: Approve 2783e8edc904cd2ab91536ba637653ed45c74202**
+
+## Re-review 3 (P-277), 15 Nov 2026: `747479f17..8fb00ff8184fba53b96a9994e79312a18904739e`, diff only
+Three files changed: `session.ts`, `web-form-page.tsx`, the test. The head contains current `origin/main`. Code and tests against main: 781 added lines by `git diff --shortstat` (786 by pr-rules), under 800. `tsc --noEmit` exits 0. I take the builder's 45/45 on a fresh copy that includes main; the copy is stopped, so I did not re-run it.
+* **Consent tick (my r2, Devin), closed.** RELOAD now clears `consent` and asks the person to tick again; every other answer is kept. The new check: a rewritten stamp redraws the page with the name kept, the tick cleared and nothing stored; sent again, it is stored with no `msg_consent` row. This also closes **r1**: removing the RELOAD branch or the clear fails the check.
+* **Storage refused (Devin), closed for the reported case:** the session is kept in memory too, and with `setItem` throwing, sign-in still opens Leads (checked). **New Minor r5, not blocking.** `read()` prefers storage over memory (`session.ts:14-15`). A stale expired entry plus a later `setItem` failure (quota full) would hide a fresh in-memory sign-in. It leaks nothing. Fix: memory first, storage only when memory is empty. Nit: the "tick again" wording reads the pre-reload `form.consentText`. **Devin's framing finding:** PR Question 3, API-side, still open for the tech lead (S4 / BR-3 `frame-ancestors`). **Carried Minors** 6, 7, 9-12, r3, r4, r5: none blocking.
+
+**Re-review 3 verdict: Approve 8fb00ff8184fba53b96a9994e79312a18904739e**
