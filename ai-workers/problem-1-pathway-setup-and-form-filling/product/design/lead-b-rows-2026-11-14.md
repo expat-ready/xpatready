@@ -1021,3 +1021,11 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
 * **J-109's walk text is corrected:** "its 30-business-day clock" becomes "its acknowledge-by date (2 business days, Sample)". The 30 was Lead B's own slip in the PF-21s brief and J-109, and `domain/requirements-2026-10-19/` names no complaint period. A response-by period becomes a row only once the College's by-laws are read and cited (page, quote, date; AGENTS rule 4). This is not a founder question.
 * **Counts per view (G1)** are made in the browser from one `view=all` page, showing "100+" when `next` is set. A server `counts` field becomes a row only once a firm passes 100.
 * **PF-21w (#1823) is unchanged** (approved, touch list kept).
+
+## Rev 16.29 (15 Nov 21:3x IST, Lead B (6)): FO-2 assignees corrected to the requirement (#1843, comment 6897258247)
+* **Supersedes rev 16.21's assignees line.** `GET /api/front-office/leads/assignees` now lists **every active staff member of the firm, whatever their role**. The `agent/prospect:edit` filter is gone.
+* **Source:** AG-02 v2.6 (28 Oct), AG-2-13c rule 11: "The everyday picker lists active users of this firm, not filtered by role (AG1-D6)." The only role filter is in the deactivation handover (AG-1-48). AGENTS rule 2 puts the requirement first, so this is a correction, not a deviation, and not a founder question.
+* **Unchanged:** the list is empty unless the viewer holds `agent/prospect:assign`; the new owner must be active and in the same firm (rule 2); `oneUser` and the firm scope as before.
+* **Named tests now:** a Case Manager gets READ_ONLY and BILLING_FINANCE members too (no deactivated or suspended person); a Case Officer gets []; assigning to a READ_ONLY member returns 200; firm A never lists firm B.
+* **FO-4 DW17** is corrected to match.
+* **The lesson (Lead B):** read the newest snapshot (`requirements-2026-11-02`) for every PF/FO rule before ruling. Rev 16.21 was ruled from the row text alone.
