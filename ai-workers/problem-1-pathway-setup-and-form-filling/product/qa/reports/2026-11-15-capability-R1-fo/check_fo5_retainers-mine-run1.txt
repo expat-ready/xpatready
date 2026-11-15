@@ -1,0 +1,64 @@
+NOTICE:  database "xr_studio_fo5_empty_13980" does not exist, skipping
+NOTICE:  database "xr_studio_fo5_demo_13980" does not exist, skipping
+PASS  FO-5: the migration has its own stamp, later than every one before it (newest before it: 20261114153000_fo1a_front_office_sales; P-600 (4))
+PASS  FO-5: every database function of the migration carries the fo_retainer_ prefix (rows rev 15.2)
+PASS  FO-5 pass: every migration applies to an empty database and makes the four tables
+PASS  FO-5 pass: migrate diff from the migrated empty database to the schema names no FO-5 table or type
+PASS  FO-5 pass: every index but a primary key starts with firm_id (contracts §0.2)
+PASS  FO-5 fail: the migration does not apply twice
+PASS  FO-5 fail: before FO-5's migration there is no fo_retainer table and the schema differs
+PASS  FO-5 pass: the migration applies to a demo-data copy (a case, an audit line, the Sample firms and staff) and leaves its rows as they were
+PASS  FO-5 pass: migrate diff after it on the demo-data copy names no FO-5 table or type
+PASS  FO-5 pass: a template is written at version 1, active, kind RETAINER by default
+PASS  FO-5 pass: a CONSULTATION template, and the same name in another firm, are accepted
+PASS  FO-5 fail: the same template name twice in a firm is refused, also in another case or spacing (B-15)
+PASS  FO-5 fail: a blank, padded, zero-width or two-line name, a bad sha256, a key not named by the template and version (.., upper case, another template's), a placeholder that is not a dotted lower-case name or is listed twice, a blank actor
+PASS  FO-5 fail: a template is not written at version 3
+PASS  FO-5 pass: a new file makes version 2 under its own key (BR-1)
+PASS  FO-5 fail: the file changes without a new version, the version jumps or goes back, a new version keeps the old key (B-16), the kind, the id or the firm changes
+PASS  FO-5 pass: a template can be switched off and on, and renamed
+PASS  FO-5 pass: a retainer is written DRAFT at version 1 with its version 1 (the merge values snapshot) and fee rows (CAD, minor units; one with no amount yet)
+PASS  FO-5 fail: a retainer without its version, or a second live retainer for the same prospect, is refused (at commit; one live per prospect, BR-10)
+PASS  FO-5 fail: written in another status, from an older or later template version than its current one, with another key, a CONSULTATION template for a RETAINER, an inactive template
+PASS  FO-5 fail: firm A's retainer naming firm B's template or firm B's staff member is refused (composite keys)
+PASS  FO-5 fail: a RETAINER without a prospect, a COMPANY subject without a company, a PERSON subject with one, are refused
+PASS  FO-5 pass: a CONSULTATION agreement without a prospect, and a COMPANY retainer with its company, are accepted
+PASS  FO-5 fail: a version that is not the retainer's current one, or written already sent, is refused
+PASS  FO-5 fail: a fee row in another currency, negative, over CAD 100 million, a due date on a non-date row or out of range (infinity, BC; B-13), position 0, a blank, zero-width or two-line label (B-14)
+PASS  FO-5 fail: merge values over 64 KB, or not an object, are refused (B-14)
+PASS  FO-5 fail: a fee row added in a later transaction than its version (its file is already stored) is refused (review m1)
+PASS  FO-5 fail: a fee row or a version never changes, and is never deleted or truncated (AG-5-3)
+PASS  FO-5 fail: SENT while the version is unsent, or a sent version on a DRAFT retainer, is refused at commit (B-8)
+PASS  FO-5 pass: DRAFT → SENT with version 1's request sent, in one transaction
+PASS  FO-5 fail: sent_at is set once; SENT does not come back to DRAFT without a new version; a fee row on a sent version is refused
+PASS  FO-5 fail: the representative or signer of a sent retainer changes only by an edit
+PASS  FO-5 fail: version 2 before version 1's request ended is refused (BR-9: the old request ends first)
+PASS  FO-5 fail: a new version number with no version row is refused at commit (B-8)
+PASS  FO-5 pass: an edit before any signature: v1's request ends (UPDATED), version 2 with its own fee rows, in one transaction
+PASS  FO-5 fail: a request ends once; an ended_at without its reason is refused; the version count does not jump
+PASS  FO-5 pass: version 1 still holds its own values and fee (a later edit never alters it, AG-5-3)
+PASS  FO-5 fail: a draft's template, signer or subject does not change without a new version
+PASS  FO-5 fail: an edit to an inactive template, an older version of it, or a CONSULTATION template is refused
+PASS  FO-5 pass: a draft switches to another template, then to another signer and to a company subject, each with a new version (M1)
+PASS  FO-5 fail: an older, never-sent version is not sent or ended once a newer one exists (B-7: one open request)
+PASS  FO-5 pass: Signed offline straight from a draft (the unsent request ends SIGNED_OFFLINE; BR-11)
+PASS  FO-5 pass: SENT → VIEWED → CLIENT_SIGNED with the request open
+PASS  FO-5 fail: an edit after the client signed is refused (AG-5-65), and CLIENT_SIGNED never expires (BR-16)
+PASS  FO-5 fail: withdraw without a reason, with a blank or line-break-only one, one over 200 characters, or a blank actor, is refused (AG-5-34, B-14)
+PASS  FO-5 fail: WITHDRAWN while the request is still open is refused at commit (B-9)
+PASS  FO-5 fail: Signed offline without the PDF, without a reason, with a bad hash or another retainer's file key is refused (AG-5-39, AG-5-47)
+PASS  FO-5 pass: Signed offline from Client signed, with its file, reason and actor
+PASS  FO-5 fail: a Signed offline retainer cannot be undone, withdrawn or changed, and its request does not change (final)
+PASS  FO-5 fail: a DRAFT retainer is not withdrawn (BR-10)
+PASS  FO-5 pass: withdraw from SENT with a reason; the prospect then takes a new retainer
+PASS  FO-5 fail: a WITHDRAWN retainer does not change, and its request does not change
+PASS  FO-5 fail: a DECLINED retainer keeps the prospect (no second live one) and does not go back to SENT
+PASS  FO-5 pass: Edit and resend from DECLINED makes version 2 (AG-5-65 r1)
+PASS  FO-5 pass: Edit and resend from EXPIRED makes version 2 while no other retainer took the prospect
+PASS  FO-5 pass: withdraw from CLIENT_SIGNED with a reason (BR-10)
+PASS  FO-5 pass: CLIENT_SIGNED → SIGNED (FO-6's completion) with the request open
+PASS  FO-5 fail: a SIGNED retainer does not change, and its request is not ended later (B-9)
+PASS  FO-5 fail: a fee row names firm B's version → refused (composite key)
+PASS  FO-5 fail: firm_id of a retainer never changes
+
+FO-5 retainers: 60 passed, 0 failed

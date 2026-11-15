@@ -283,6 +283,16 @@ jobs:
           bash "$P/tools/pr-base.sh" --self-test
           node "$S/tools/check-gate-b.mjs"
           node "$S/tools/check-works-set.mjs"
+      - name: every port's fake and real adapters run one shared contract (part 1 only; studio/tools/check-port-contracts.mjs, timed)
+        # PF-0c (P-606 (8)): a port in studio/ports/ (or identity/port.ts) with a real adapter has
+        # ports/contracts/<port>.contract.ts, and every adapter of it, fakes included, calls it in its own test file. The
+        # self-test first proves a port with a real adapter and no contract fails (DW1); the guard fails over 10 s (DW4).
+        if: matrix.shard == 1
+        run: |
+          node "$S/tools/check-port-contracts.mjs" --self-test
+          start=$(date +%s%N)
+          node "$S/tools/check-port-contracts.mjs"
+          echo "PF-0c DW4: the port-contract guard took $(( ($(date +%s%N) - start) / 1000000 )) ms (limit 10000)" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Playwright's own Chromium
         if: env.KIND == 'code'
         run: cd "$S" && ./node_modules/.bin/playwright install chromium
@@ -304,6 +314,16 @@ jobs:
             if [ -n "$GREEN" ]; then printf '%s\n' "$GREEN" > "$RUNNER_TEMP/green.tsv"; sel+=(--skip-green "$RUNNER_TEMP/green.tsv"); fi; fi
           bash "$P/tools/run-suites.sh" --demo --retry "${sel[@]}" --shard "${{ matrix.shard }}/$N" | tee suites.md
           exit ${PIPESTATUS[0]}
+      - name: no personal data in logs (PF-23, Doc-1 release gate; every server log this part's suites wrote; a few seconds)
+        # SA-11 BR-16, SA-11-37: the servers above log through PF-23's redacting logger; this reads every copy's api.log
+        # and fails on a seeded personal value (the sample data's people, PF-23's canaries), an email address, a bearer
+        # credential or a JWT, naming file, line and rule, never the value. Its self-test first proves a planted leaking
+        # line fails. Runs even when a suite failed, so a leak is never hidden behind a red suite.
+        if: ${{ !cancelled() && env.KIND == 'code' }}
+        run: |
+          cd "$S"
+          ./node_modules/.bin/tsx api/src/platform/observability/scan-logs.ts --self-test
+          ./node_modules/.bin/tsx api/src/platform/observability/scan-logs.ts
       - name: summary
         if: always() && env.KIND == 'code'
         run: '[ -f suites.md ] && cat suites.md >> "$GITHUB_STEP_SUMMARY" || true'

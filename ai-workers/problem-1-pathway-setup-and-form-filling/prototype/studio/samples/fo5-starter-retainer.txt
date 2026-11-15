@@ -1,0 +1,16 @@
+# SAMPLE RETAINER AGREEMENT (starter template)
+Sample wording for a firm to adapt. Unconfirmed: no counsel. This is not legal advice and has not been reviewed against any regulator's code.
+Date: {agreement.date} · Version {agreement.version}
+# Between
+{firm.name} (the firm), represented by {representative.name}, {representative.licensing_body} licence {representative.licence_number}
+and {client.name} (the client), {client.email}, {client.phone}, signed for the client by {signer.name} ({signer.email}).
+# Services
+The firm will provide the immigration services agreed with the client. [Describe the services, what is included and what is not.]
+# Fees
+{#fees}
+{label}: {amount} ({when}{due_on})
+{/fees}
+Total: {fees.total}
+# Signatures
+Client: ______________________   Date: __________
+For the firm: ______________________   Date: __________

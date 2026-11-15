@@ -198,7 +198,7 @@ class ProblemErrors implements ExceptionFilter {
         if (/\/form-copies\/[^/]+\/validated\/?$/.test(String(host.switchToHttp().getRequest()?.path ?? "")))
           return send(413, "Too large", many ? "Send only the one validated PDF you saved from Adobe. Nothing was recorded." : `The file is larger than ${MAX_VALIDATED_MB} MB: send the validated PDF of this form. Nothing was recorded.`);
         const files = MAX_FILES, mb = MAX_BYTES / 1024 / 1024;
-        return send(413, "Too large", many ? `Add at most ${files} files at a time. Nothing was added.` : `A file is larger than ${mb} MB. Nothing was added; add files up to ${mb} MB each.`);
+        return send(413, "Too large", many ? `Add at most ${files} files at a time. Nothing was added.` : /^\/api\/(intake|library\/forms\/upload)\/?$/.test(String(host.switchToHttp().getRequest()?.path ?? "")) ? `A file is larger than ${mb} MB. Nothing was added; add files up to ${mb} MB each.` : "This file is too large for this upload.");   // FO-5f item 12 (B-8): the shared message names no size; the intake and the form library (whose limit this is) keep theirs
       }
       if (typeof body === "object" && body.detail) return send(status, body.title ?? "Request refused", body.detail, body);
       const detail = typeof body === "object" ? (Array.isArray(body.message) ? body.message.join("; ") : body.message ?? e.message) : String(body);
@@ -229,7 +229,9 @@ async function main() {
   const port = Number(process.env.STUDIO_PORT ?? 4400);
   // P-214: a new feature registers itself in api/src/features/<feature>.ts, not in the @Module list above.
   await registerFeatures(AppModule);
+  await (await import("./platform/identity/sample-seed.ts")).seedSampleOnStart();   // P-571 (2), PF-4: PF-3's Sample seed after migrations, only with PLATFORM_SAMPLE_SEED=on (default off; never in production)
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: ["error", "warn"] });
+  (await import("./platform/observability/hook.ts")).observe(app); // PF-23: one JSON logger with redaction, request lines and metrics (NFR5-14, BR-16)
   app.useBodyParser("json", { limit: "5mb" });
   app.useGlobalFilters(new ProblemErrors());
   const web = join(STUDIO, "web", "dist");

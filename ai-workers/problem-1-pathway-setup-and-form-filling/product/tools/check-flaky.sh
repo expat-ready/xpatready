@@ -262,6 +262,23 @@ ok "#1660: the no-row runner copy for the next check really drops the quarantine
 c=$(SUITES_QUARANTINE_AUTO= CI= COPY_PREFIX= SUITES_LOCKS="$W/locks" SUITES_TESTS_DIR="$W/sz/tests" SUITES_OUT="$W/sz/out" FX_STATE="$W/sz/state" bash "$NOROW" --changed "$SB..$SH" --shard 2/3 > "$W/szn.out" 2>&1; echo $?)
 ok "#1660: a unit dealt to a shard that leaves no row fails, by name" "$(grep -qF '| check_screen01_api.ts | FAIL | | dealt to shard 2/3 but left no row (ran, quarantined or skipped) |' "$W/szn.out" && [ "$c" = 1 ] && echo 1)" "exit $c; $(srow "$W/szn.out")"
 
+# 7e. 15 Nov (nightly part 8 stopped twice at its 59-minute limit): a quarantined suite weighs its suite-times.tsv time
+# in the deal where it runs (the nightly full set: no --changed, no --skip-quarantined), 0 only where it is skipped; and
+# under CI each suite's start is one stderr line, so a part stopped at its job limit still shows where its time went.
+# Fixture: dv_backbone and screen01_api (on the static QUARANTINE list, timed above dv_backbone) on 2 shards. The deal is
+# read from the rows (ran: PASS or FAIL), so a copy without tsx (the .ts fixture then exits 127) tests it too.
+qt=$(awk -F'\t' '$1 == "check_screen01_api.ts" { print $2 }' "$T/suite-times.tsv")
+ok "15 Nov set-up: screen01_api (quarantined) is timed above dv_backbone, so the two deals differ" "$([ "${qt:-0}" -gt "${dvt:-0}" ] && echo 1)" "screen01_api ${qt:-none} s, dv_backbone ${dvt:-none} s: rework 7e's fixture"
+fx qw check_dv_backbone_browser.cjs check_screen01_api.ts
+qw1=$(SUITES_QUARANTINE_AUTO= rs qw --shard 1/2); cp "$W/qw.out" "$W/qw1.out"
+qw2=$(SUITES_QUARANTINE_AUTO= rs qw --shard 2/2)
+ok "15 Nov fail-before: in the nightly set the quarantined suite weighs its time (screen01_api on 1/2, dv_backbone on 2/2; main dealt it 0 s)" "$(grep -qE '^\| check_screen01_api\.ts \| (PASS|FAIL) \|' "$W/qw1.out" && ! grep -q dv_backbone "$W/qw1.out" && grep -qE '^\| check_dv_backbone_browser\.cjs \| PASS \|' "$W/qw.out" && ! grep -q screen01_api "$W/qw.out" && echo 1)" "exits $qw1 $qw2; 1/2: $(srow "$W/qw1.out"); 2/2: $(srow "$W/qw.out")"
+qs1=$(SUITES_QUARANTINE_AUTO= rs qw --skip-quarantined --shard 1/2); cp "$W/qw.out" "$W/qs1.out"
+qs2=$(SUITES_QUARANTINE_AUTO= rs qw --skip-quarantined --shard 2/2)
+ok "15 Nov: where it is skipped (--skip-quarantined) it still weighs 0 (dv_backbone on 1/2, screen01_api's quarantined row on 2/2)" "$(grep -qE '^\| check_dv_backbone_browser\.cjs \| PASS \|' "$W/qs1.out" && grep -qE '^\| check_screen01_api\.ts \| quarantined \|' "$W/qw.out" && [ "$qs1$qs2" = 00 ] && echo 1)" "exits $qs1 $qs2; 1/2: $(srow "$W/qs1.out"); 2/2: $(srow "$W/qw.out")"
+c=$(SUITES_QUARANTINE_AUTO= CI=1 COPY_PREFIX= SUITES_LOCKS="$W/locks" SUITES_TESTS_DIR="$W/qw/tests" SUITES_OUT="$W/qw/out" FX_STATE="$W/qw/state" bash "$T/run-suites.sh" > "$W/qci.out" 2> "$W/qci.err"; echo $?)
+ok "15 Nov: under CI each suite's start is a stderr line (the job log), outside the summary table" "$(grep -qE '^run-suites: check_dv_backbone_browser\.cjs starts, [0-9]+ s into this part$' "$W/qci.err" && grep -qE '^run-suites: check_screen01_api\.ts starts' "$W/qci.err" && ! grep -q '^run-suites:' "$W/qci.out" && ! grep -q '^run-suites:' "$W/qw.err" && echo 1)" "exit $c; stderr: $(head -3 "$W/qci.err" | tr '\n' ' ')"
+
 # 7c. The b78 hang (6 Nov): the runner gives every suite /dev/null as stdin and timeout -k, and writes a hung suite's
 # processes to its log. Each case runs under an outer limit, on this runner and on a copy with main's old plain
 # `timeout <limit> "$@" > "$log"` (the suite inherits the runner's stdin, no -k): the old one fails, this one passes.
