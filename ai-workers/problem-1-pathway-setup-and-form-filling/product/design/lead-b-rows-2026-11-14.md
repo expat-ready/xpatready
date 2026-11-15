@@ -600,3 +600,100 @@ Source: `product/design/case-side-contract-v0.1-2026-11-14.md` on `lead/2026-11-
 **Order:** FO-5f after #1777 merges; FO-3f now (both its waits are done); PF-4f now if the release holder OKs the case-side file. All three are schema-free and may run beside any schema row.
 
 **Rev 16.8 ruling (Lead 51, 15 Nov 07:5x IST):** PF-4f's `tests/check_forms_qa53.ts` OK (keep the `PLATFORM_PATH` pattern and its exact-source guard); FO-5f's one `main.ts` line OK as a shared-file hook (P-584), named in the PR's touch list. FO-5f decisions noted. Order: FO-3f and PF-4f start now; FO-5f after #1777. Lead 51 copies rev 16.7 and 16.8 into BACKLOG at its next records pass.
+
+## Rev 16.9 (15 Nov 08:0x IST, Lead B (4)): a `Source:` for every PF/FO row (P-595; Lead 51's ask)
+
+**How:** each row's Source lists (1) the team's fine requirement ids it already cites, every one checked by script to exist in the newest name-free copy `domain/requirements-2026-11-02/` (shorthand such as "AG-4-16, -17" expanded; one slip, `AG-2-13` in FO-12s, dropped as not found); (2) the P-decisions that set or changed it (process rules such as P-223 and P-423 left out); (3) the regulator's Code with its official page and read date where the row cites it. Rows no requirement asks for (engineering seams, tools) carry the P-decision that created them. Rows that cited only a section got fine ids by hand: PF-21b, PF-21c, PF-21d, PF-21rs (SA-11 §4), PF-4s (SA-7), PF-19s (AG-12). **Content hashes** are left to TR-1's `trace-requirements.py`, which computes them from these ids. FO-13k is left out (moved to PF-21 by P-584 (8)).
+
+**Copy rule for BACKLOG:** append `Source: <value>` to the row's last column (decisions or sources), unchanged.
+
+| Row | State | Source |
+|---|---|---|
+| FO-3f | new lane row (rev 16.8) | AG-4-1, AG-4-4, AG-4-5, AG-4-7, AG-4-9, AG-4-11, AG-4-12, AG-4-14, AG-4-16, AG-4-19, AG-4-22, AG-4-26, AG-4-29, AG-4-32, AG-4-34, AG-4-36, AG-4-37, AG-4-39, AG-4-47, AG-4-62, AG-4-63, AG-4-67, AG-2-10, AG-2-26; PR #1760 review and break reports (the items harden these rules) |
+| FO-5f | new lane row (rev 16.8) | AG-5-65, AG-5-50, AG-5-47, AG-5-49, AG-5-9, AG-5-3, AG-5-34, AG-5-16, AG-5-28, AG-5-39, AG-5-64; P-566 (3) (the Lead B decisions in rev 16.8); PR #1777 review and break reports |
+| PF-4f | new lane row (rev 16.8) | P-291, P-599; PR #1775 round 2 m1, m2 |
+| FO-5 | open PR | AG-5-65, AG-5-50, AG-5-47, AG-5-49, AG-5-9, AG-5-3, AG-5-34, AG-5-16, AG-5-28, AG-5-39, AG-5-64 |
+| FO-13 | open PR | P-579; Code SOR/2022-128 s. 5, 15, 16, 24(2)(a), 24(3)(o)(r)(v), 29, 35(1)(c), 37 (laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/, current to 2026-10-19, read 13 Nov 2026; Unconfirmed: no counsel) |
+| PF-19a | open PR | SA-11-29, AG-10-22, AG-2-83; P-584, P-559 |
+| FO-7a | open PR | AG-6-59, AG-16-14, AG-6-1, AG-6-4, AG-6-19, AG-6-44, AG-6-46, AG-6-60, AG-6-61, AG-6-63, AG-6-69; Code SOR/2022-128 s. 32(d), 33(3) (laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/, current to 2026-10-19, read 13 Nov 2026; Unconfirmed: no counsel) |
+| FO-5r | not built | P-561, P-562 |
+| PF-4b | not built | AG-1-10, AG-1-12, AG-1-13, AG-1-30, AG-1-40, AG-1-41, AG-1-42, AG-1-55, AG-1-70, SA-6-29 |
+| PF-5 | not built | SA-4-54, SA-4-67, SA-4-30, SA-4-79, SA-4-82, AG-1-65, SA-2-4, SA-2-6, SA-2-7, SA-2-21, SA-2-22, SA-2-24, SA-3-19, SA-3-46, SA-4-4, SA-4-8, SA-4-11, SA-4-20, SA-4-21, SA-4-22, SA-4-25, SA-4-26, SA-4-27, SA-4-35, SA-4-52; P-566 |
+| PF-5s | not built | SA-2-1, SA-2-24, SA-3-46, SA-4-4, SA-4-5, SA-4-30, SA-4-52, SA-4-54, SA-4-67, SA-4-79, SA-4-82, AG-1-65; P-566 |
+| PF-7 | not built | P-558 |
+| PF-23c | not built | NFR5-14; P-558 |
+| PF-26 | not built | AG-2-93, SA-11-36, SA-11-40, AG-2-49a |
+| PF-18n | not built | AG-10-29a, AG-10-29b, AG-10-36, AG-7-39, AG-16-10 |
+| PF-21b | not built | NFR5-14, SA11-D4, SA11-D3, SA-11-18, SA-11-27, SA-11-28, SA-11-40 |
+| PF-21c | not built | SA-11-25, SA-11-14, SA11-D8, SA-11-24, SA-11-35 |
+| PF-21d | not built | SA-11-16, SA-11-18, SA-11-28, SA-11-40 |
+| PF-21rs | not built | SA-11-18, SA-11-24, SA-11-27, SA-11-34 |
+| FO-3a | not built | AG-4-9, AG-4-10, AG-4-62, AG-4-4, AG-4-5, AG-4-66, AG-4-8, AG-4-49, AG-4-67 |
+| FO-3w | not built | AG-4-16, AG-4-17, AG-4-18, AG-4-19, AG-4-20, AG-4-36, AG-4-37, AG-4-38 |
+| FO-3st | not built | AG-4-63, AG-4-39, AG-4-49, AG-4-50, AG-4-4, AG-4-8, AG-4-9, AG-4-62, AG-4-67 |
+| FO-1k | not built | P-559, P-600 |
+| FO-2 | not built | AG-2-4, AG-2-5, AG-2-8a, AG-2-13c, AG-2-26, AG-2-37a, AG-2-44, AG-2-47, AG-2-49, AG-2-75, AG-2-80, AG-2-84, AG-2-94, AG-13-30 |
+| FO-2b | not built | AG-2-52, AG-2-53, AG-2-75, AG-2-76, AG-2-77, AG-2-79 |
+| FO-3c | not built | AG-4-22; P-564 |
+| FO-4 | not built | AG-2-4, AG-2-5, AG-2-13c, AG-2-18, AG-2-44, AG-2-47, AG-2-53, AG-2-75, AG-2-77, AG-2-80, AG-2-94; P-392 |
+| FO-4b | not built | AG-2-5, AG-2-8a, AG-2-49 |
+| FO-8 | not built | P-560, P-558, P-559 |
+| FO-5b | not built | AG-5-9; P-566 |
+| FO-6 | not built | AG-5-21, AG-5-65, AG-5-34, AG-5-20, AG-5-25, AG-5-26, AG-5-28, AG-5-31, AG-5-37, AG-5-41, AG-5-62, AG-5-68, AG05-D4; P-564, P-563 |
+| FO-6v | not built | P-561, P-563 |
+| FO-5s | not built | AG-5-4, AG-5-7, AG-5-8, AG-5-9, AG-5-20, AG-5-26, AG-5-27, AG-5-31, AG-5-34, AG-5-39, AG-5-49, AG-5-50, AG-5-55, AG-5-57, AG-5-62, AG-5-64, AG-5-65, AG-5-68; P-564, P-473 |
+| PF-6 | not built | AG-1-10, AG-1-12, AG-1-13, AG-1-15, AG-1-22, AG-1-30, AG-1-31, AG-1-40, AG-1-41, AG-1-42, AG-1-55, AG-1-66, AG-1-69, AG-1-70, SA-6-29, SA-6-44 |
+| PF-12 | not built | AG-1-1, AG-1-3, AG-1-45 |
+| PF-13 | not built | AG-1-6, AG-1-9, AG-16-2; P-574 |
+| FO-7b | not built | AG-6-1, AG-6-61, AG-6-46, AG-6-19, AG-6-63, AG-6-48, AG-6-23, AG-6-71, AG-6-4, AG-6-44 |
+| FO-7c | not built | AG-16-14, AG-6-14, AG-6-49, AG-6-16, AG-6-17 |
+| FO-7t | not built | AG-6-59, AG-6-60, AG-6-61, AG-6-62, AG-6-69 |
+| FO-9a | not built | AG-2-16, AG-2-78, AG-2-96; P-574 |
+| FO-9b | not built | AG-2-16, AG-2-78, AG-2-96; P-574, P-575 |
+| FO-9s | not built | P-574 |
+| FO-10 | not built | AG-2-13a, AG-2-13b, AG-2-13d; P-574, P-570 |
+| FO-11 | not built | AG-16-18; P-574 |
+| FO-7p | not built | P-574, P-567, P-578 |
+| FO-12b | not built | AG-2-31, AG-2-39, AG-2-56 |
+| FO-12c | not built | AG-2-90, AG-2-91 |
+| FO-12s | not built | AG-2-31, AG-2-90, AG-2-91 |
+| FO-13c | not built | Code SOR/2022-128 s. 5, 15, 16, 24(3)(o), 35(1)(c) (laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/, current to 2026-10-19, read 13 Nov 2026; Unconfirmed: no counsel) |
+| FO-13i | not built | P-579; Code SOR/2022-128 s. 24(2)(a) (laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/, current to 2026-10-19, read 13 Nov 2026; Unconfirmed: no counsel) |
+| FO-13s | not built | P-579 |
+| PF-4s | not built | SA-7-1, SA-7-2, SA-7-3, SA-7-10, SA-7-11, SA-7-14, SA-7-20 |
+| PF-4c | not built | AG-1-69, AG-1-34, SA-3-39, AG1-D19 |
+| PF-15 | not built | SA-3-39, SA-3-40, SA-3-58, SA-4-56, SA-3-62 |
+| PF-16 | not built | SA-4-28, SA-4-49, SA-4-53, SA-4-55, SA-4-62, SA-4-79, SA-4-91, SA-3-58, SA-4-56, SA-4-89; P-566 |
+| PF-17 | not built | SA-2-14, SA-2-22, SA-2-23, SA-4-24, SA-4-49, SA-4-50, SA-4-62, SA-4-80 |
+| PF-18a | not built | AG-16-10, AG-16-59, AG-16-68, AG-1-74, AG-16-11 |
+| PF-18b | not built | AG-16-63 |
+| PF-18s | not built | AG-16-10, AG-16-63, AG-16-68 |
+| FO-3v | not built | AG-4-58, AG-4-59, AG-16-73, AG-4-29; P-580 |
+| FO-5p | not built | AG-12-89 |
+| FO-6d | not built | AG-5-61; P-564 |
+| FO-6ds | not built | AG-5-61 |
+| FO-7r | not built | AG-6-28, AG-6-76, AG-6-31, AG-6-12, AG-6-21 |
+| FO-14 | not built | AG-15-29, AG-15-30, AG-15-54, AG-10-73, AG-15-31, AG-15-32, AG-15-33 |
+| PF-19b | not built | AG-2-59, AG-10-1, AG-10-3, AG-10-5, AG-10-20, AG-10-22, AG-10-25, AG-16-17; P-584 |
+| PF-19c | not built | AG-12-70, AG-12-89, AG-12-44, AG-12-45, AG-12-65, AG-12-66, AG-12-95, AG-12-99; P-584 |
+| PF-19s | not built | AG-12-4, AG-12-15, AG-12-16, AG-12-19 |
+| PF-20 | not built | AG-2-31, AG-2-33, AG-2-59; P-584 |
+| PF-20s | not built | AG-16-50, AG-16-51 |
+| PF-21s | not built | P-579, P-584 |
+| PF-23r | not built | SA-11-37, NFR5-14 |
+| PF-23m | not built | SA-11-37 |
+| PF-1 | merged | P-558, P-559 |
+| PF-2 | merged | P-553, P-556 |
+| PF-3 | merged | SA-2-1, SA-2-4, SA-2-9, SA-2-24, SA-2-25, SA-3-41, SA-3-46, SA-4-11, SA-6-27, SA-6-31, AG-1-17, AG-1-30, AG-16-3, AG-16-24, AG-16-59; P-559 |
+| FO-1b | merged | AG-4-1, AG-4-4, AG-4-9, AG-4-26, AG-4-36, AG-4-62; P-559 |
+| FO-1a | merged | AG-2-52, AG-2-77, AG-2-84, AG-2-8a, AG-13-21, SA-11-29, AG-16-76; P-559 |
+| PF-L | merged | P-576 |
+| PF-0p | merged | P-599, P-600 |
+| PF-24 | merged | SA-8-1, SA-8-4, SA-8-6, NFR5-05, SA8-D1 |
+| PF-4 | merged | SA-6-14, SA-6-18, SA-6-29, SA-6-44, AG-1-12, AG-1-13, AG-1-15, AG-1-19, AG-1-22, AG-1-30, AG-1-31, AG-1-40, AG-1-42, AG-1-55, AG-1-66, AG-16-24; P-566, P-571 |
+| PF-23 | merged | SA-11-37, SA-8-27, NFR5-14, SA8-D40 |
+| PF-14 | merged | AG-10-1, AG-11-17 |
+| PF-25 | merged | SA-2-27, AG-4-17, AG-4-16, AG-15-27, SA-2-1, SA-2-2, SA2-D8, SA2-D21 |
+| FO-3 | merged | AG-4-1, AG-4-4, AG-4-5, AG-4-7, AG-4-9, AG-4-11, AG-4-12, AG-4-14, AG-4-16, AG-4-19, AG-4-22, AG-4-26, AG-4-29, AG-4-32, AG-4-34, AG-4-36, AG-4-37, AG-4-39, AG-4-47, AG-4-62, AG-4-63, AG-4-67, AG-2-10, AG-2-26 |
+| PF-4t | merged | P-291, P-599 |
+| PF-21 | merged | P-584, P-579; Code SOR/2022-128 s. 24(3)(r)(v), 29, 37 (laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/, current to 2026-10-19, read 13 Nov 2026; Unconfirmed: no counsel) |
