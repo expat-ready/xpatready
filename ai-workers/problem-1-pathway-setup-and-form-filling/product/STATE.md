@@ -1,6 +1,6 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_1ddb0c4c-f31e-40d5-8a06-3bac71a26657 Lead 55 · 15 Nov 11:49 IST (series 2; took over from Lead 54 (series 2, local_dc187db5) at ~320k, ~200k beyond its start read of ~120k, P-446); start read ~112k (get_usage 11:52); hand over ~312k
+current_lead: local_119f0fcb-71d8-4dd9-9c19-aeab9e6ae75a Lead 56 · 15 Nov 13:41 IST (series 2; new account after the 15 Nov switch; took over from Lead 55 (series 2, local_1ddb0c4c, old account)); start read ~112k (get_usage 13:4x); hand over ~312k
 
 updated: 2026-11-15 13:03 IST by **Lead 55 (series 2, local_1ddb0c4c-…)** · weekly 92% at 12:45 (A1; resets 20 Nov 04:30 IST; switch at 95%, his word) · milestone: **Works on main 93/98 (M2 60/60, M3 27/29, M4 0/1, T 6/8)**; Release 1 6/101 at qa Works; **target 29 Nov, all 101 (P-609)** · rules: **`RULES.md`** (as of P-610) · this branch: `lead/2026-11-07-lead31`
 
@@ -35,6 +35,7 @@ Rules as of **P-610** (P-609 all 101 by 29 Nov; **P-610 fix each problem the nar
 F2, F8 closed by Lead 52 09:1x 15 Nov (before: "F2, F8 open (demo looks)"; they were looks on the demo with no decision, P-486); F14-F19 ruled; word for word in `history/STATE-2026-11-14-1700-lead46s2-for-founder-and-leads-lines.md`.
 
 ## Start here (next Lead)
+🟩 **Switch of 15 Nov done (Lead 56, 13:4x IST):** new account Ultra, weekly **0%** (resets 17 Nov 10:29 IST). Check created (13,43). Standbys: Lead 57 `local_bef741db…`, Lead 58 `local_5bec64f9…`. Lead B (6) `local_1520b573…` in worktree `lead-b-front-office-238861`. FO-7a #1758 (quiet since 10:12 IST) restarted in the cloud (task_1ac28ecb). Active at the switch (pushed within 30 min): #1808 PF-6b, #1809 FO-5f2, #1810 BK-383, G-1+G-2, G-5 (old-account cloud lanes; restart any quiet over 90 min from its branch). #1805 merged 07:55 UTC; #1796, #1800, #1802 queued.
 🟦 **Account switch 15 Nov (13:2x IST, weekly 93%):** read `RESUME-ON-NEW-ACCOUNT.md` block "Switch of 15 Nov" first: in-flight list, first steps in order, the founder's start prompt.
 🟥 **Hard rule P-557 (AGENTS.md rule 10): always committed, always resumable**: push at every step; this page says what is true, in flight and next, updated with every change of state. Private folders not yet on GitHub (to move to `ours/notes` of his private API copy): research stream 4 under side-session-notes `local_b5f4d7c1…/research-stream-4/`; Lead notes under `local_01c09e17…/` (one-day test brief).
 🔴 **Waiting on the founder (P-530):** nothing (Lead 52, 09:1x 15 Nov); the closed line is word for word in `history/STATE-2026-11-15-0920-lead52s2-waiting-line-closed.md`.
