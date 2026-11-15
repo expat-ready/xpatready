@@ -31,7 +31,7 @@ const WORDS: Record<string, { subject: string; text: (code: string) => string }>
 
 export async function handleCustomEmail(e: CustomEmailEvent, p: SenderPorts): Promise<{ sent: boolean; reason?: string }> {
   if (e.triggerSource === "CustomEmailSender_AdminCreateUser") return { sent: false, reason: "invitations are sent by us, never by the provider" };
-  const words = WORDS[e.triggerSource];
+  const words = Object.hasOwn(WORDS, e.triggerSource) ? WORDS[e.triggerSource] : undefined;   // never the prototype (break B5)
   if (!words) return { sent: false, reason: "not an email this product sends" };
   const email = e.request.userAttributes?.email?.trim().toLowerCase();
   if (!email) return { sent: false, reason: "no email address on the person" };

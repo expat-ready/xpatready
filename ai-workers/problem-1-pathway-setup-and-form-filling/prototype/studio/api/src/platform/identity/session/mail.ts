@@ -1,7 +1,5 @@
-// PF-4b (rows rev 14): MailPort's `local` adapter for staff and system email (the port itself is PF-0p's,
-// ports/mail.ts). PF-19b later routes it through MessagePort with one line here. The brief names the demo inbox
-// (demo_message), but its rows need a person link (link_id, a required foreign key): staff email cannot go there without
-// a schema change, so this adapter keeps the emails in memory (newest 200) until the question on the PR is answered.
+// PF-4b (rows rev 14): MailPort's `local` adapter for staff and system email (the port is PF-0p's, ports/mail.ts).
+// In memory (newest 200) until PF-19b routes it through MessagePort (Lead B ruling 3: demo_message needs a person link).
 // It checks each email exactly as the port's fake does, and never writes a body to a log line.
 import { MailMessage, type MailPort, type SentMail } from "../../../../../ports/mail.ts";
 

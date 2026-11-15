@@ -1,11 +1,8 @@
-// PF-4b: the identity provider's admin side, beside PF-4's IdentityPort (which only verifies tokens). What PF-4b needs
-// from the provider: create a user with the provider's own email suppressed (AWS AdminCreateUser: "Set to SUPPRESS to
-// suppress sending the message", read 15 Nov 2026), the hand-off to set a password, a person's two-step state, reset it,
-// sign them out everywhere, and turn a sign-in code into a session. Two adapters:
-//   local   the stand-in for CI and the Mac (PLATFORM_IDENTITY=local, never in test or production: identityConfig);
-//           it remembers in memory, like the provider would, and its hand-off code signs in through PF-4's localSignIn.
-//   cognito refuses with the reason: its calls need the AWS SDK's Cognito client, which is not in the app yet (the
-//           STANDARDS §1 gate; question on the PR). The pool's settings were verified at AWS's documentation (PR body).
+// PF-4b: the identity provider's admin side, beside PF-4's IdentityPort (which only verifies tokens): create a user
+// with its own email suppressed (AWS AdminCreateUser: "Set to SUPPRESS to suppress sending the message", read 15 Nov
+// 2026), the set-password hand-off, a person's two-step state and its reset, sign-out everywhere, a sign-in code → who.
+// `local`: the stand-in (PLATFORM_IDENTITY=local only), in memory; its code signs in through PF-4's localSignIn.
+// `cognito`: refuses, saying why, until PF-Lc gates the Cognito client and PF-4bc builds it (Lead B ruling 4).
 import { randomBytes, randomUUID } from "node:crypto";
 import { problem } from "../keys.ts";
 import type { IdentityConfig } from "../port.ts";
@@ -21,7 +18,8 @@ export type HandOff = { kind: "set-password"; url: string };
 
 export interface IdentityAdminPort {
   readonly via: "local" | "cognito";
-  /** Creates the provider user with the provider's own email suppressed; returns its subject. */
+  /** Creates the provider user with the provider's own email suppressed, or reuses the one an earlier, rolled-back
+   *  accept left (Cognito: AdminCreateUser's UsernameExistsException → AdminGetUser); returns its subject. */
   createUser(email: string): Promise<{ subject: string }>;
   handOff(firmKey: string, email: string): Promise<HandOff>;
   twoStep(u: ProviderUser): Promise<TwoStep>;
@@ -44,7 +42,8 @@ export class LocalIdentityAdmin implements IdentityAdminPort {
   constructor(private readonly now: () => number) {}
 
   async createUser(email: string) {
-    if ([...this.users.values()].includes(email)) problem(409, "Already has an account", "This email already has a sign-in account.", { code: "PROVIDER_USER_EXISTS" });
+    const had = [...this.users].find(([, e]) => e === email);
+    if (had) return { subject: had[0] };
     const subject = `local-${randomUUID()}`;
     this.users.set(subject, email);
     return { subject };

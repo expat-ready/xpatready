@@ -52,7 +52,9 @@ export class PlatformSession {
 
   /** Ends every session of a person now (one revocation row; the guard reads it on their next request). */
   private async endSessions(tx: Tx, actor: StaffContext, staffId: string, reason: string) {
-    await tx.platformSessionRevocation.create({ data: { firmId: actor.firmId, staffId, revokedAt: new Date(this.clock.now()), reason } });
+    // At least the person's latest sign-in (the stand-in may date one a few ms ahead of the clock: break B6).
+    const last = (await tx.platformStaff.findFirst({ where: firmScope(actor.firmId, { id: staffId }), select: { lastSignInAt: true } }))?.lastSignInAt?.getTime() ?? 0;
+    await tx.platformSessionRevocation.create({ data: { firmId: actor.firmId, staffId, revokedAt: new Date(Math.max(this.clock.now(), last, staffId === actor.staffId ? actor.authTime * 1000 : 0)), reason } });
   }
   private audit(tx: Tx, actor: StaffContext | null, firmId: string, action: string, entity: string, entityKey: string, summary: string, detail: Record<string, string | boolean | string[] | null>) {
     return auditEvent.record(tx, { firmId, actor: actor ? actorWord(actor.staffId) : "system:invitation-accept", action, entity, entityKey, summary, detail });
@@ -89,6 +91,8 @@ export class PlatformSession {
       const inv = i!;
       await tx.$queryRaw`select id from platform_firm where id = ${inv.firm_id}::uuid for update`;
       if (await tx.platformStaff.findFirst({ where: firmScope(inv.firm_id, { email: inv.email }), select: { id: true } })) problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" });
+      // One sign-in account is one firm's staff member (identity_subject is unique): the invitee, who holds the link, is told plainly.
+      if (await tx.platformStaff.findFirst({ where: { email: inv.email }, select: { id: true } })) problem(409, "Use another email", `This email already signs in to another firm. Ask ${inv.firm_name} to invite another address.`, { code: "EMAIL_IN_ANOTHER_FIRM" });
       const staff = await tx.platformStaff.create({ data: { firmId: inv.firm_id, email: inv.email, displayName: inv.email.split("@")[0].slice(0, 100), status: "ACTIVE" } });
       for (const role of inv.roles) await tx.platformRoleGrant.create({ data: { firmId: inv.firm_id, staffId: staff.id, role, grantedBy: inv.invited_by } });
       await tx.$executeRaw`update platform_invitation set accepted_at = now() where id = ${inv.id}::uuid`;
