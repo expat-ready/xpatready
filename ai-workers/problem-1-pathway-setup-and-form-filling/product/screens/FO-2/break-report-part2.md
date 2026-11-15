@@ -94,3 +94,45 @@ Extra sample-firm staff were added with psql: Readonly Rita (READ_ONLY), Suspend
 - **One-user firm.** The solo form lead is owned by S, and `oneUser:true` while S is the only active user.
 - **Open-hours wait.** Friday 16:00 → 60 min (expected 60). Friday 30 Oct 16:30 EDT, across the DST change → 4,830 (expected 4,830). Arrived Sunday → 0.
 - **Views.** `view=ALL` and `view=` → 422.
+
+## Re-check at 982738fb
+
+Re-run on 15 Nov 2026 at 982738fb6, in a fresh worktree. Fresh copy `brk_fo2b` on :4434, with the same set-up (front-office seed, one consent wording, maple form on, extra staff added with psql). The copy was stopped at the end. No code was changed.
+
+**Results for the earlier findings**
+
+| Finding | Re-test | Result |
+|---|---|---|
+| B1 | 480 open leads, 300-400 days old, `GET leads?view=all` | Fixed. 192 / 146 ms (R), 207 ms (`unassigned`), 129 ms (O), down from 55-64 s. |
+| B1 | Leads 200 days old, with a parallel `GET leads/assignees` | Fixed. The list took 92 ms and the other call 107 ms, down from 31 s. |
+| B1 | Leads 900 days old | Fixed. 147 ms, and the wait counts the last 400 days (136,800 min), so m8 is fixed too. |
+| B1 | Open-hours values | Unchanged: Friday 16:00 gives 60, Friday 30 Oct across the clock change gives 4,830, Sunday gives 0. |
+| M1 | everyone-sees-all off; T assigns an unowned lead to O | Fixed. `200 {"id":…,"done":true}`, and O is the owner. |
+| M2 | Take vs Assign and Assign vs Assign races, 25 rounds each, everyone-sees-all on and off, with `expectedOwnerStaffId:null` | Fixed. Never two 200s. Whoever lands second gets 409 ALREADY_TAKEN (Take) or 409 STALE_OWNER (Assign). |
+| M2 | `expectedOwnerStaffId` missing, a number or a non-uuid | 422. A wrong owner gets 409 STALE_OWNER. |
+| M3 | everyone-sees-all off; O picks R's person Lena by `personId` | Fixed. 404 "No such person in your firm." |
+| M4 | Public form with captured values that were refused before | Fixed. All 201, nothing refused. See the details below this table. |
+| m3, m4, m6 | Spot checks | Fixed. A 61-character emoji name gives 201. A reused `requestId` with another body gives 409 REQUEST_REUSED, and the same body gives 201. `personId:null` gives 201. |
+
+M4 details, all answered 201:
+* 150 and 250 × 😀 in `utmSource` were dropped. They contain no letter or digit, so `text()` treats them as empty. They were not refused.
+* `utmCampaign:"spring sale"` was stored as `springsale`.
+* `utmTerm:" "` was stored as null.
+* 200 and 300 × U+0958 in `utmContent` were cut to 200 characters.
+* 2,500 × U+20000 in `landingPage`, and 2,100 × e+U+0301 in `referrerUrl`, were cut to 2,000 characters.
+* ZWSP, RLO and tag marks in `utmMedium` were stripped (`cpc`).
+* A 250-character `clickId` was cut to 200.
+
+Assignees are now every active staff member (rev 16.29): Read-only Rita can be assigned (200). Suspended, deactivated and other-firm targets still get 422.
+
+**New findings at 982738fb**
+
+**m9 (Minor): an Unassigned lead with a deactivated owner refuses `expectedOwnerStaffId:null` and names the inactive person.** `leads.ts` `assign`: it compares the raw `owner_staff_id`.
+- Did: lead owned by Deactivated Dan. `GET leads?view=unassigned` lists it with `owner:"(Inactive) Deactivated Dan"` and `ownerStaffId:<Dan>`. T `assign {staffId:T, expectedOwnerStaffId:null}`.
+- Actual: `409 STALE_OWNER "Deactivated Dan already has this lead."` Sending Dan's id works (200).
+- Expected: accept null for a lead the list shows as Unassigned, as the brief says ("null for Unassigned"). Or name the expected value in the contract, and never say an inactive person "already has" a lead.
+
+**m10 (Minor): an assigner who loses a race to Take gets 404, not 409.** `leads.ts` `change`: `namesLoser` is now only for Take.
+- Did: everyone-sees-all off. O Take raced against T `assign {expectedOwnerStaffId:null}`.
+- Actual: in 3 of 25 rounds T got `404 "No such lead in your firm."` for a lead it had just seen in Unassigned. In the other 22 rounds T's assign landed first and O got 409 ALREADY_TAKEN.
+- Expected: 409 STALE_OWNER "This lead changed. Reload it." without the owner's name, so the screen can say why.
