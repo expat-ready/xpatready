@@ -6,6 +6,52 @@
 
 **Lead B (5)** (session titled "Lead B (5) · 15 Nov 10:02 IST", transcript `af59e652…`, same worktree and branch) took over 15 Nov 10:02 IST from Lead B (4) (`local_64f5d828…`, ~43% context, P-565); started by Lead 53 (`local_cbc405f5…`). Start read: RULES.md as of P-607 (from `origin/lead/2026-11-07-lead31`; this branch's copy is older) and the START HERE below. Its own START HERE is written at its hand-over.
 
+## START HERE: hand-over Lead B (5) → Lead B (6), written 15 Nov 13:24 IST before the account switch (Lead 55's ask)
+
+**Lead B (5):** session titled "Lead B (5) · 15 Nov 10:02 IST" (transcript `af59e652…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`.
+* Push with `git push origin HEAD:refs/heads/lead-b-front-office` (allowed domain github.com).
+* **The current Lead is Lead 55** (`local_1ddb0c4c…`, from 11:49 IST). Always check `tools/current-lead.sh` on `origin/lead/2026-11-07-lead31` first; Leads changed three times today.
+* **RULES:** read the copy on `origin/lead/2026-11-07-lead31`; this branch's copy is old. Since P-607, two rules matter here:
+  * **P-610:** a PR stays under 800 changed lines, tests included; a brief names its split point; re-review reads only the new commits.
+  * **P-612:** the three sign-off keys need a licence record, a recorded departure from SA-6-27.
+
+**All Lead B rows up to rev 16.16 are in BACKLOG** (the Leads confirmed each copy; nothing is left to copy). Briefs are in `lead-b-briefs/`: PF-6b, FO-3h, PF-0c, PF-23w, FO-5f2 and J-rows (J-24 to J-48).
+
+**PRs at 13:24 IST:**
+
+| PR | Row | State | Next step |
+|---|---|---|---|
+| #1800 | PF-23w | labelled, queued | Merges by itself. Rulings given: the walk is API-only, W4 moved to J-37; two assertions changed in `check_pf23_observability.ts` |
+| #1808 | PF-6b | open, not labelled | P-612 passed (comment 6891179666), and Q2/Q3 agreed. Watch for review findings. **Shares `retainers/service.ts` with #1809:** the second to merge merges `main` in |
+| #1809 | FO-5f2 | draft | Q1-Q3 accepted (comment 6891234464): async rendering, four more allowed parts with customXml still read for tags, and the python-docx Word sample for now |
+| #1758 | FO-7a | draft | The split was confirmed: FO-7a keeps the base tables, fixes B-20/B-21 and gets one diff-only pass. The move list is the new row **FO-7mv** (rev 16.14; brief not written yet) |
+| merged today | FO-3f #1785, FO-5f #1791, PF-0c #1797, FO-3h #1799, FO-13 #1755 | — | — |
+
+**Owed and next, in order:**
+1. **Watch:** restart the scan loop (it stops only on questions):
+
+   `cd design/lead-b-tools && while true; do out=$(./scan-pr-questions.sh 2026-11-15T04:00:00Z | grep -E "WATCH-ERROR|^#.*[Qq]uestion"); [[ -n $out ]] && { echo $out; exit; }; sleep 180; done`
+
+   `seen.txt` holds what was handled (not committed).
+2. **Briefs to write** (P-606 named DWn cases; the P-610 split point; the standard rules line from `FO-3f.md` plus the P-610 sentence):
+   * **FO-7mv**, when FO-7a merges (rev 16.14 has the row);
+   * FO-3sr's brief exists as `ROW-w.md`; check it against P-606/P-610 before its lane starts.
+3. **J-rows:** each starts only when every part it waits on is on `main`. J-24, J-38 and J-37 also wait on FO-3w (no public booking page on `main` yet), and J-38/J-37 on PF-4b's demo-inbox mail adapter (the running app's booking mail is `fakeMail` in memory).
+4. **Known gaps recorded:**
+   * a reminder that comes due after a restart sends nothing until FO-2 (`fakeArrival` is in memory);
+   * qa's QA-470 check needed three job lines; qa did it in #1805.
+5. **Concepts still due** (skill screen-concept): FO-3sc first, then FO-7s0, PF-R3, PF-29f, PF-30s, FO-9s, FO-12s, FO-13s, PF-19s, PF-20s, PF-21s/rs, PF-17, PF-18s.
+6. **Founder questions:** none open from Lead B.
+
+**Lessons from Lead B (5):**
+* Read every cited requirement line **in full** (the trace tool prints it) before ruling. I read 400 characters of SA-6-27 and missed "the permission system never checks licence" (it became P-612).
+* The duplicate check covers **row ids** too: FO-7m already existed, so the new row became FO-7mv.
+* Before naming a walk's screen or mail path, check it exists on `main` (#1800).
+* Check the row's facts against `main` before briefing. Rows assumed a permission catalogue table, custom roles (X-1), MailPort's real adapter and office time zones, none of which exist.
+* In zsh, backticks inside double quotes run as commands: write PR comments to a file and post with `python3 -I` + curl.
+* `$TMPDIR` is shared: a stray `grp.py` there broke Python; run scripts from the session scratchpad with `python3 -I`.
+* Times only from `TZ=Asia/Kolkata date`: I wrote "10:2x" once and fixed it.
+
 ## START HERE: hand-over Lead B (4) → Lead B (5), written 15 Nov 09:3x IST at ~43% context (P-565)
 
 **Lead B (4):** session titled "Lead B (4) · 15 Nov 07:42 IST" (transcript `8d7cbb10…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`. Push with `git push origin HEAD:refs/heads/lead-b-front-office` (allowed domain github.com). The Lead B (3) section below is an earlier record.
