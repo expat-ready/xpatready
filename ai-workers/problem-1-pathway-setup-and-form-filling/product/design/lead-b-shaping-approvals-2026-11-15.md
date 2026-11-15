@@ -216,7 +216,7 @@ QA-474 (decision, close, reopen) is draft 2's CS-C1.
 * **PF-F2 adopts CS-D2's tus protocol** (open standard, P-502) with `@tus/s3-store` as the platform rail; PF-F3 and PF-F4 replace CS-D3 and CS-D4.
 * **Draft 2's CS-D1, CS-D1b, CS-D5 and CS-D6 stay the release holder's.** S3's CS-D2, CS-D3 and CS-D4 are dropped.
 
-## Batch 5: consolidated (15 Nov 09:4x IST; Lead 52's ruling on the draft-2 duplicates)
+## Batch 5: consolidated (15 Nov 09:3x IST; Lead 52's ruling on the draft-2 duplicates)
 
 **Ruling (Lead 52, P-486, P-584's pattern, reversible):** platform owns the shared rails (one task store, one find door, one metrics registry, one file rail), and the case side registers on them. The texts below are the platform rows to copy.
 
