@@ -17,7 +17,7 @@
   * 16.9: a `Source:` for every PF/FO row;
   * 16.10: qa R1 rows (PF-6b, FO-3h, case-side drafts CS-DL1 and CS-NT1);
   * 16.11: **P-606**, the DWn test-case naming rule, J-rows (join and walk), PF-0c (port contract tests), and the **19 started capabilities ranked, with their missing parts and pull order**.
-  * Revs 16.7 to 16.9 are in BACKLOG; 16.10, 16.11, **16.12** (edits to existing rows, the X additions, P-607) and Batch 5 have been sent to Lead 52 to copy. 55 shaping rows are in BACKLOG (6005ba666).
+  * **All of revs 16.7 to 16.13 and Batch 5 are in BACKLOG** (Lead 53 checked line by line: e500e3a7c, a859caa70). Earlier status: 16.10, 16.11, **16.12** (edits to existing rows, the X additions, P-607) and Batch 5 have been sent to Lead 52 to copy. 55 shaping rows are in BACKLOG (6005ba666).
 * **P-604 shaping lanes, all reviewed:** `design/lead-b-shaping-approvals-2026-11-15.md`, Batches 1-4. **Batch 5 is the consolidated platform rails**, after Lead 52's ruling that platform owns tasks (PF-29a-f), find (PF-30a/s), reports (PF-R*) and the file rail (PF-F2 on tus, PF-F3, PF-F4); the case side registers on them. Duplicates of the release holder's case-side draft 2 were dropped.
 * **College facts read at source:** `design/lead-b-college-facts-2026-11-15.md` (client files kept 6 years after closing; a monthly trust reconciliation within 90 days; the licence number has no published format). This closes open item 16.
 * **Briefs written:** FO-5f, FO-3f, PF-4f. FO-2 and FO-6 gained carried lines.
@@ -340,3 +340,4 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
 * 15 Nov 09:3x IST: P-607 (the founder answered all nine; LMIA kept in R1, last). **Rows rev 16.12**: exact copy text for the existing-row edits (FO-3st pointer, FO-6/FO-7c/PF-4p firmAllows, PF-21rs Done when, PF-6, PF-23w, FO-3sr waits, P-607 decision lines) and the X additions.
 * 15 Nov 09:5x IST: FO-5f #1791 row questions answered (comment 6889086217); **rows rev 16.13** carries m-2 (expectedStatus on Signed offline) and the filed-version signer into FO-6 and FO-8 Done when.
 * 15 Nov 09:5x IST: the current Lead is now **Lead 53** (`local_cbc405f5…`), told what is waiting to be copied (revs 16.10 to 16.13 and Batch 5, unless Lead 52 already copied them).
+* 15 Nov 09:5x IST: Lead 53 confirmed everything is in BACKLOG (e500e3a7c: rev 16.10, Batch 5, rev 16.11, the 16.12 edits and X additions; a859caa70: rev 16.13). Nothing is left to copy. PF-23w, then FO-3h, then FO-3sr, when FO-3f merges.
