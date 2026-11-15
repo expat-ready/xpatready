@@ -38,6 +38,15 @@ export const EVENT = {
   /** A sent retainer's open request ended because an edit made a newer version (front office, FO-5f; payload `version` =
    *  the ended version, `reason` UPDATED). FO-6 cancels the signing request on it. */
   RETAINER_REQUEST_ENDED: "retainer.request_ended",
+
+  /** A lead arrived: by the web form or added by hand (front office, FO-2; AG-2-84). */
+  LEAD_CREATED: "lead.created",
+  /** A lead got an owner: Take it or Assign to (FO-2; AG-2-13c, AG-2-86). */
+  LEAD_TAKEN: "lead.taken",
+  /** A lead was closed with a reason (FO-2; AG-2-80). */
+  LEAD_CLOSED: "lead.closed",
+  /** A closed lead was reopened (FO-2; AG-2-80). */
+  LEAD_REOPENED: "lead.reopened",
 } as const;
 export type EventName = (typeof EVENT)[keyof typeof EVENT];
 
@@ -95,3 +104,18 @@ export const RetainerEventPayload = z.object({
   reason: z.enum(["UPDATED"]).optional(),
 }).strict();
 export type RetainerEventPayload = z.infer<typeof RetainerEventPayload>;
+
+/** The payload FO-2 writes for every lead.* event: ids and facts only (no name, email or phone; a consumer reads the lead
+ *  itself). The firm is the outbox row's firm_id; module_event.subject_id is the lead's id. */
+export const LeadEventPayload = z.object({
+  leadId: z.string().uuid(),
+  personId: z.string().uuid(),
+  door: z.enum(["WEB_FORM", "MANUAL", "BOOKING"]),
+  state: z.enum(["OPEN", "ENGAGED", "CLOSED"]),
+  ownerStaffId: z.string().uuid().nullable(),
+  /** lead.created only: the person of the firm with the same email or phone, flagged and never linked (AG-2-84). */
+  possibleMatchPersonId: z.string().uuid().nullable().optional(),
+  /** lead.closed only: the reason's key (AG-2-80 rule 2). */
+  reasonKey: z.string().optional(),
+}).strict();
+export type LeadEventPayload = z.infer<typeof LeadEventPayload>;
