@@ -46,3 +46,13 @@ No Done-when line is without a case.
 No screen (API only). No real Cognito sign-in (local stand-in only). CI on `main` merged into the branch not run here (merge is clean). The release holder's own read of the migration and guard diff (P-423, P-600) is still due before the label.
 
 Verdict: Approve 4e2fddb24d12333a701016615bf720ad49bcdc9b
+
+## Re-review (diff 4e2fddb..541ae0d)
+This re-review reads only `git diff 4e2fddb2 541ae0d3 -- …/prototype` (4 files, +31/-10), per P-277. I ran `check_pf6b_permission_rules.ts` at 541ae0d in a separate worktree: **24 passed, 0 failed**.
+* **m1 (fixed):** `guard.ts:93-95` now cites P-612 next to the check: the founder's "keep the check", a recorded departure from SA-6-27, Unconfirmed: no counsel. The `seesAll` comment (`service.ts:163-165`) says why it reads live grants and not `req.platform.keys`. The PR body items are for the builder to fill; they are not code.
+* **m2 (fixed, fail closed):** `guard.ts:67-73`. The licence set is now `LICENCE_KEYS` ∪ the catalogue's LICENCE rows, so an edited or missing row can no longer switch the check off. A catalogue that disagrees with `catalogueMismatches` throws inside `licenceKeys()`, which stops the start-up. A failure resets the cached promise, so a later request retries and never keeps a half-built set. New DW5 fail cases: `:169-171` shows a sign-off key edited to GENERAL stopping the start-up, naming the key; `:172-177` shows that with the catalogue emptied, an unlicensed holder still gets 403 `NOT_LICENSED`. Both put the data back before continuing. Removing the `LICENCE_KEYS` union makes `:177` fail.
+* **Breaker m2 (fixed):** `service.ts:238-242` (identity). The money-keys line names only the added roles that bring a money key. It costs one small query per added role (at most six), inside the same transaction, and the event is still written last. DW4 (`:147-151`) assigns Case Officer + Read-only + Billing/Finance; O already holds Case Officer, so the added roles are Read-only and Billing/Finance, and the line expects `roles = BILLING_FINANCE` only. Key names only, no values (AG-1-31).
+* **m3 (accepted as a listed Minor):** the sweep still calls `svc.read`. `RetainersController.read` is a one-line pass-through today (`routes.ts:55`). This stays open as a known limit and is not blocking.
+* No new findings. Nothing in this diff changes the starter roles or any FO/PF behaviour beyond the guard start-up check, and the real catalogue passes that check (DW2). The journey score stands at 9/10.
+
+Verdict: Approve 541ae0d38edd79046bf85cba8bc6c1ead8241f34
