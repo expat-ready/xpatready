@@ -9,7 +9,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime P
 
 **What `main` does today (checked 16 Nov, `81505985`):** `api/src/main.ts` sets `app.useBodyParser("json", { limit: "5mb" })` after FO-2's `publicFormBodyLimit` (32 KB on the web-form door), and `ProblemErrors` already turns an oversized body (`e.type === "entity.too.large"` or `status 413`) into a 413 problem answer ("This request is larger than the 5 MB the server takes…"). **Nothing handles a malformed JSON body** (`entity.parse.failed`, status 400): no line in `api/src` names it, so it falls through to the last branch. Prove that first with the failing test.
 
-**Read only these:** `api/src/main.ts` (`ProblemErrors`, lines ~180-225, and the parser lines ~234-236), `api/src/front-office/sales/public.ts` (`publicFormBodyLimit`, `tooBig`), STANDARDS §6 line 40 (the problem-details line), the module card `.claude/rules/modules/api-core.md`.
+**Read only these:** `api/src/main.ts` (`ProblemErrors`, lines ~180-225, and the parser lines ~234-236), `api/src/front-office/sales/public.ts` (`publicFormBodyLimit`, `tooBig`), STANDARDS §6 line 40 (the problem-details line), the module card `api/src/MODULE.core.md`.
 
 **What to build:** in `ProblemErrors`, before the generic branches, `e?.type === "entity.parse.failed"` (or a body-parser error with `status 400` and `expose`) → 400 problem JSON, title "Request refused", detail "The request body is not valid JSON. Nothing was saved or started.", `code: "BODY_NOT_JSON"`. The 413 branch keeps its words; it gains `code: "BODY_TOO_LARGE"`. Neither answer repeats any part of the body or the parser's own message (the parser's message quotes the bad text).
 
@@ -22,7 +22,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime P
 
 **Duplicate check:** BACKLOG (PF-0bp; PF-28 "checking every input" is the zod layer inside handlers, not the parser), open PRs (none touching `main.ts`'s `ProblemErrors` at 01:3x IST 16 Nov), `main` (no `entity.parse.failed` in `api/src`), BUGS (none); one `Duplicate check:` line after re-running it.
 
-**Touch list:** `api/src/main.ts` (`ProblemErrors` only), `tests/check_pf0bp_body_errors.ts`, `.claude/rules/modules/api-core.md` only if its invariants name the error answers (else `Card unchanged: <reason>`). **Must still be true:** every suite.
+**Touch list:** `api/src/main.ts` (`ProblemErrors` only), `tests/check_pf0bp_body_errors.ts`, `api/src/MODULE.core.md` only if its invariants name the error answers (else `Card unchanged: <reason>`). **Must still be true:** every suite.
 
 **Contract used:** none (the app's one error filter; STANDARDS §6).
 

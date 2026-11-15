@@ -2,7 +2,7 @@
 
 Drafted 16 Nov 01:4x IST by the shaping lane, for Lead B's approval (P-558). Row: BACKLOG **FO-3vr** (rev 16.22, #1811). It closes the visibility half of the booking capabilities: on `main`, `staffList` with `agent/booking:list` returns **every** booking of the firm, whatever the lead's owner. **Model: Opus 5.5, effort: high** (permissions; reviewer and breaker at high, P-605).
 
-**Starts when:** FO-3m **#1831**, FO-3sa **#1828** and FO-3pa **#1830** are all on `main` (each changes `api/src/front-office/booking/service.ts`; overlapping touch lists never run at once, P-526). Its own waits, FO-2 part 1 (lead ownership) and PF-6b (own versus all), are on `main`.
+**Starts when:** FO-3m **#1831**, FO-3sa **#1828**, FO-3pa **#1830** and PF-19b's booking mail **#1860** are all on `main` (each changes `api/src/front-office/booking/service.ts`; overlapping touch lists never run at once, P-526). Its own waits, FO-2 part 1 (lead ownership) and PF-6b (own versus all), are on `main`.
 
 ---
 You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime FO-3vr` and take **one row, FO-3vr, booking visibility**, end to end on a fresh branch from `origin/main`, one PR.
@@ -10,7 +10,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime F
 **Read only these:**
 * the requirement text, in full: **AG-4-67** (`domain/requirements-2026-11-02/02-functional-requirements/agent/AG-04-consultation-and-booking_v2.1_2026-10-25.md`, "Who sees a booking", rules 1-5, its two tests and its edge case "Host changed → the old host no longer sees it unless the record rule allows"), and **AG-2-64** rules 1-4 and 7 (`AG-02-prospect-lead-sales-crm_v2.6_2026-10-28.md`, "Who sees which leads and prospects"); AG-4-67's rule 1 also names AG-7-90 for a booking on a case: **out of this row** (`fo_booking` has no case link on `main`; the case side's booking link brings it);
 * on `main`: `api/src/front-office/booking/service.ts` (`staffList`, `attendanceDue`, `staffBooking` and the routes that use it), `booking/staff.controller.ts`, `api/src/front-office/sales/common.ts` (`visibilityOf`, `sees`), `prisma/schema/front-office-booking.prisma` (`FoBooking.personId`, `prospectId`) and `front-office-sales.prisma` (`FoLead.personId`, `ownerStaffId`; `FoProspect.ownerStaffId`, `personId`);
-* the module card `.claude/rules/modules/api-front-office.md`.
+* the module card `api/src/front-office/MODULE.md`.
 
 **The rule, as built here (each line cites its source):**
 1. **Lists need the key** (AG-4-67 rule 4): `GET bookings` and `GET bookings/attendance-due` stay behind `agent/booking:list` (FO-3sr, rev 16.22). Within them, a row is returned when **any** of 2-5 holds.
@@ -33,15 +33,16 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime F
 * `FO-3vr DW7`: the filter is in the query: with 150 bookings of which 3 are visible, a 92-day list returns exactly those 3 (none dropped by a page cap), and a spy on the Prisma call shows one `findMany` with the visibility `where`.
 * `FO-3vr DW8`: FO-3's, FO-3sr's, FO-3m's, FO-3sa's, FO-3pa's and FO-2's suites pass unchanged except cases that asserted the old "every firm booking" answer, each named in the PR body with the AG-4-67 line that changes it.
 
-**Duplicate check:** BACKLOG (FO-3vr; PF-6b's sweep left bookings out by ruling 4), open PRs (none on booking visibility at 01:4x IST 16 Nov; #1828/#1830/#1831 touch the same file, hence the wait), `main` (`staffList`'s comment says AG-4-67 but filters only by host), BUGS (none); one `Duplicate check:` line after re-running it.
+**Duplicate check:** BACKLOG (FO-3vr; PF-6b's sweep left bookings out by ruling 4), open PRs (none on booking visibility at 01:4x IST 16 Nov; #1828/#1830/#1831/#1860 touch the same file, hence the wait), `main` (`staffList`'s comment says AG-4-67 but filters only by host), BUGS (none); one `Duplicate check:` line after re-running it.
 
-**Touch list:** `api/src/front-office/booking/service.ts` (`staffList`, `attendanceDue`, `staffBooking` only), `tests/check_fo3vr_visibility.ts`, `.claude/rules/modules/api-front-office.md` (one invariant: "a booking follows its record's visibility, or its host sees it (AG-4-67)"; tests line). **Not touched:** `sales/common.ts` (imported as is; if it needs a new export, stop and ask), any schema.
+**Touch list:** `api/src/front-office/booking/service.ts` (`staffList`, `attendanceDue`, `staffBooking` only), `tests/check_fo3vr_visibility.ts`, `api/src/front-office/MODULE.md` (one invariant: "a booking follows its record's visibility, or its host sees it (AG-4-67)"; tests line). **Not touched:** `sales/common.ts` (imported as is; if it needs a new export, stop and ask), any schema.
 
 **Contract used:** none new. Inside one module (front office): booking reads the sales area's visibility helper (contracts `platform-and-front-office-contracts-2026-11-14.md` §2.1 "who sees which leads"); PF-6b's own-versus-all keys.
 
 **Parallel safety:**
-* `booking/service.ts` is the booking area's one service: **FO-3m #1831, FO-3sa #1828, FO-3pa #1830 merge first**, then this row; **FO-3a part 1a and 1b** (brief `FO-3a.md`) do not touch `service.ts`'s read methods but do touch the file's type and slot readers, so FO-3a part 1a starts after this row merges, or this row waits for it (whichever lane starts second waits).
-* `api-front-office.md` is shared by every FO row: change only the one invariant and the tests line; a second PR merges `main` in.
+* **FO-3a part 2's staff read feed** (concept FO-3sc §6: it "applies AG-4-67") must call this row's filter, not write a second one.
+* `booking/service.ts` is the booking area's one service: **FO-3m #1831, FO-3sa #1828, FO-3pa #1830 and #1860 (PF-19b booking mail, which also edits `service.ts`) merge first**, then this row; **FO-3a part 1a and 1b** (brief `FO-3a.md`) do not touch `service.ts`'s read methods but do touch the file's type and slot readers, so FO-3a part 1a starts after this row merges, or this row waits for it (whichever lane starts second waits).
+* `api/src/front-office/MODULE.md` is shared by every FO row: change only the one invariant and the tests line; a second PR merges `main` in.
 
 **Reviewer and breaker** (P-278: permissions): the breaker tries a booking id from another lead, a `staff=` query for another host, the attendance route, and a lead reassigned between list and open (AG-2-64 rule 7).
 

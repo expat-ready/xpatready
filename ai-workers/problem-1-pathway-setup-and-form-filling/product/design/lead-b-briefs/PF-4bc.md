@@ -11,7 +11,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime P
 * the BACKLOG row PF-4bc and `design/lead-b-rows-2026-11-14.md` (branch `lead-b-front-office`) rev 16.20;
 * the requirement lines, in full, from `domain/requirements-2026-11-02/02-functional-requirements/agent/AG-01-firm-setup-and-onboarding_v1.26_2026-10-25.md`: **AG-1-10** (an invite sends a single-use, expiring set-password invite **via Mailer**), **AG-1-70** (staff account emails are ExpatReady's and go through AG-10's single send path, so the provider's own emails are suppressed), **AG-1-41** and **AG-1-67** (sign-out everywhere; a second-step reset ends the other sessions), **AG1-D20** (4);
 * on `main`: `api/src/platform/identity/session/provider.ts` (the port, `LocalIdentityAdmin`, the refusing `CognitoIdentityAdmin`), `session/service.ts` (its callers), `api/src/platform/identity/port.ts` (`identityConfig`), `cognito.ts` (PF-4's verifier: how the pool and client are read), `ports/contracts/contract.ts` and `identity-port.contract.ts` (the PF-0c pattern), `tools/check-port-contracts.mjs`;
-* the module card `.claude/rules/modules/api-platform.md`.
+* the module card `api/src/platform/MODULE.md`.
 
 **First, verify at source and stop if it differs (P-170; no AWS account exists yet, C21).** Read AWS's own API reference pages for `AdminCreateUser` (`MessageAction`, `UsernameExistsException`), `AdminGetUser`, `AdminResetUserPassword` or `AdminSetUserPassword`, `AdminSetUserMFAPreference`, `AdminUserGlobalSignOut`, and the Cognito managed login token endpoint (`/oauth2/token`, `grant_type=authorization_code`). Quote each sentence you build on, with its URL and the date read, in the PR body. **The hand-off is the open point:** with the invite email suppressed, how the invitee first sets a password (a provider-hosted page, or our page calling `RespondToAuthChallenge` after `AdminSetUserPassword` with `Permanent=false`). If AWS's pages give no path that keeps the provider's own email off and leaves our `MailPort` email as the only invite (AG-1-70), **stop and ask in a PR comment headed "Question for the tech lead"** before writing the hand-off; the other methods do not wait on it.
 
@@ -39,14 +39,14 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime P
 
 **Duplicate check:** BACKLOG (PF-4b, PF-4bc, PF-Lc, PF-8b), open PRs (none touching `provider.ts`, `cognito.ts` or `ports/contracts/` at 01:2x IST 16 Nov), `main` (the refusing `CognitoIdentityAdmin`; no `identity-admin-port.contract.ts`), BUGS (none); one `Duplicate check:` line after re-running it.
 
-**Touch list:** `api/src/platform/identity/session/provider.ts` (the Cognito class only; the `LocalIdentityAdmin` gains only its `runContract` call in the test), `api/src/platform/identity/port.ts` (`identityConfig`'s domain line), new `ports/contracts/identity-admin-port.contract.ts`, `tests/check_pf4bc_cognito_admin.ts`, `.claude/rules/modules/api-platform.md` (tests line). **Must still be true:** every PF-4, PF-4b, PF-0c, PF-23 and PF-24 suite.
+**Touch list:** `api/src/platform/identity/session/provider.ts` (the Cognito class only; the `LocalIdentityAdmin` gains only its `runContract` call in the test), `api/src/platform/identity/port.ts` (`identityConfig`'s domain line), new `ports/contracts/identity-admin-port.contract.ts`, `tests/check_pf4bc_cognito_admin.ts`, `api/src/platform/MODULE.md` (tests line). **Must still be true:** every PF-4, PF-4b, PF-0c, PF-23 and PF-24 suite.
 
 **Contract used:** PF-4b's `IdentityAdminPort` (`provider.ts`), contracts `platform-and-front-office-contracts-2026-11-14.md` §1.2 (IdentityPort, Cognito in ca-central-1); PF-0c's contract-test rule.
 
 **Parallel safety:**
 * `provider.ts` and `port.ts` are touched by no open PR. PF-4s (our own staff's sign-in, a second pool) will add its own adapter files and must not edit `provider.ts`; if PF-4s needs a shared change there, it starts after this row merges.
 * `ports/contracts/` is shared: this row only adds a new file. PF-19b's open #1860 changes `ports/mail.ts`, not `contracts/`.
-* `api-platform.md` is shared by every platform row (PF-21v #1848 may edit it too): change only the tests line; whichever merges second merges `main` in.
+* `api/src/platform/MODULE.md` is shared by every platform row (PF-21v #1848 may edit it too): change only the tests line; whichever merges second merges `main` in.
 
 **Reviewer and breaker** (P-278: sign-in): the breaker tries a replayed code, a code for another client, an error string carrying an email, and `MessageAction` dropped on retry.
 
