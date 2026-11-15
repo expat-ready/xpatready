@@ -40,7 +40,8 @@ const CREDENTIAL = /\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]{4,}/gi;
 const JWT = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g;
 // A cookie header holds several pairs (review m4): everything after "cookie:" to the end of the line or quote.
 // "Cookie sid=abc" (no ":") is a cookie header too (PF-23r).
-const COOKIE = /\b(set-cookie|cookie)(["']?\s*[:=]\s*|\s+(?=[A-Za-z0-9_.-]+=))[^\n"]+/gi;
+// A quoted value runs to its closing quote (review r1 m2: `Cookie sid="abc"` lost only its first character).
+const COOKIE = /\b(set-cookie|cookie)(["']?\s*[:=]\s*|\s+(?=[A-Za-z0-9_.-]+=))(?:"[^"\n]*"|[^\n"])+/gi;
 const ASSIGNED_SECRET = /\b(password|passwd|secret|token|api[_-]?key|authorization)(["']?\s*[:=]\s*["']?)[^\s"',;&]+/gi;
 const QUERY_VALUE = /([?&][A-Za-z0-9_.[\]-]{1,60}=)[^&\s"'#]+/g;
 // A run of 9 to 15 digits, with spaces, dots, dashes or brackets between them (a phone number, a document number), not
@@ -50,12 +51,14 @@ const DOCUMENT_ID = /\b[A-Z]{1,2}\d{6,9}\b/g;
 // An 8-digit UCI written 1234-5678 (review m5; 10-digit ones are number runs), never a year range such as 2026-2027
 // nor a time range such as 0900-1700 (PF-23r: two 24-hour clock times, hhmm-hhmm).
 const UCI8 = /(?<![\w.:/-])\d{4}-\d{4}(?![\w:/-])/g;
-const YEAR_RANGE = /^(19|20)\d{2}-(19|20)\d{2}$/, TIME_RANGE = /^([01]\d|2[0-3])[0-5]\d-([01]\d|2[0-4])[0-5]\d$/;
+const YEAR_RANGE = /^(19|20)\d{2}-(19|20)\d{2}$/, TIME_RANGE = /^(?:(?:[01]\d|2[0-3])[0-5][05]|2400)-(?:(?:[01]\d|2[0-3])[0-5][05]|2400)$/; // minutes in 5s (review r1 m1)
 // PostgreSQL repeats a refused row's values (PF-23r, FO-13 break 11): "DETAIL:  Key (email)=(x@y) already exists.",
 // "Failing row contains (…)". The words after DETAIL: and every value list are replaced; the column names stay.
-const PG_DETAIL = /\b(DETAIL:)[^\n"]*/g;
-const PG_KEY = /\b(Key \([^)\n]{0,200}\)=\()[^\n]*?\)(?=[\s.,"]|$)/g;
-const PG_ROW = /\b(Failing row contains )\([^\n"]*\)/g;
+// To the end of the line, quotes included (review r1 m2: a value "Jane \"JJ\" Doe" leaked after its quote); a column
+// list may hold one level of brackets, an expression index's lower(email::text) (review r1 m3).
+const PG_DETAIL = /\b(DETAIL:)[^\n]*/g;
+const PG_KEY = /\b(Key \((?:[^()\n]|\([^()\n]*\)){0,200}\)=\()[^\n]*\)(?=[\s.,"]|$)/g;
+const PG_ROW = /\b(Failing row contains )\([^\n]*\)/g;
 const isEpochMs = (m: string) => /^1\d{12}$/.test(m); // 13 plain digits from 1 (2001-2286): a time in ms, kept (review m6)
 
 /** Free text with every personal pattern replaced by a marker. */
@@ -75,10 +78,15 @@ export function redactText(s: string): string {
     .replace(DOCUMENT_ID, "[number]");
 }
 
+/** A V8 stack frame: "at …" ending in a place (file:line:col, <anonymous>, native), never "at 10:00 the job ran"
+ *  (review r1 m4). */
+const FRAME_END = /(:\d+:\d+\)?|\((?:<anonymous>|native|index \d+)\))$/;
+const isFrame = (l: string) => l.startsWith("at ") && FRAME_END.test(l);
+
 /** Stack frames only ("at …" lines): the first line of a stack repeats the message, so it is left out. */
 export function framesOf(stack: unknown, max = 8): string[] {
   if (typeof stack !== "string") return [];
-  return stack.split("\n").map((l) => l.trim()).filter((l) => l.startsWith("at ")).slice(0, max).map(redactText);
+  return stack.split("\n").map((l) => l.trim()).filter(isFrame).slice(0, max).map(redactText);
 }
 
 /** An error as a log carries it: class, code, HTTP status and frames; never the message. */
@@ -114,13 +122,16 @@ function walk(value: unknown, depth: number, w: Walk): unknown {
   if (typeof value === "string") return logText(value);
   if (typeof value === "bigint") return value.toString();
   if (typeof value !== "object") return `[${typeof value}]`;
+  // Leaves first: a Date or an Error met twice is written twice, never "[shared]" (review r1 m5).
+  try {
+    if (value instanceof Error) return safeError(value);
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? "[invalid date]" : value.toISOString();
+  } catch { return "[not logged: unreadable value]"; }
   if (w.path.has(value)) return "[cycle]";
   if (w.seen.has(value)) return "[shared]";
   if (depth >= 6) return "[deep]";
   w.seen.add(value); w.path.add(value);
   try {
-    if (value instanceof Error) return safeError(value);
-    if (value instanceof Date) return Number.isNaN(value.getTime()) ? "[invalid date]" : value.toISOString();
     if (Array.isArray(value)) return value.slice(0, 50).map((v) => walk(v, depth + 1, w));
     if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return "[bytes]";
     const out: Record<string, unknown> = {};
@@ -148,7 +159,7 @@ function prismaMeta(meta: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
-const FRAME_LINE = /\n\s*at \S/;
+const hasFrame = (s: string) => s.split("\n").slice(1).some((l) => isFrame(l.trim()));
 // The class only when it is shaped like one (TypeError, PrismaClientKnownRequestError, HttpException): a first line
 // "Jane: …" never gives "Jane".
 const ERROR_CLASS = /^\s*([A-Z][A-Za-z0-9_$]{0,50}(?:Error|Exception))(?=[:\s]|$)/;
@@ -157,7 +168,7 @@ const ERROR_CLASS = /^\s*([A-Z][A-Za-z0-9_$]{0,50}(?:Error|Exception))(?=[:\s]|$
  *  PF-23r, review minor 3); only the frame lines and the first line's error class are kept. Any other text is
  *  redacted by pattern. */
 export function logText(s: string): string {
-  if (!FRAME_LINE.test(s)) return redactText(s);
+  if (!hasFrame(s)) return redactText(s);
   const cls = ERROR_CLASS.exec(s.split("\n", 1)[0])?.[1];
   return `[stack]${cls ? ` ${cls}` : ""} ${framesOf(s).join(" | ")}`;
 }
