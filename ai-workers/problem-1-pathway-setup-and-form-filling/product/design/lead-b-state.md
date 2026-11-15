@@ -431,3 +431,11 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
 * 15 Nov: **PF-6b #1808 Q1, a conflict:** SA-6-27 says "never checks licence", while map row 6 / R1.6 says "licence apart". It was sent to Lead 55 as a founder question, recommending to keep the check as a recorded departure. Meanwhile the row builds as written: no route declares a LICENCE key, and it is reversible. Lead 55 was asked to hold any route declaring a LICENCE key until the founder answers. Q2 (show route only) and Q3 (read view.all from grants) agreed. **Lesson:** read every cited requirement line in full before ruling; I read only the first 400 characters of SA-6-27. The scan loop now stops only on questions.
 * 15 Nov: **P-612** (founder 13:08 IST): keep the licence check, a recorded departure from SA-6-27. Passed to the #1808 builder; the hold is lifted.
 * 15 Nov: **FO-5f2 #1809:** accepted Q1 (async plus six awaits in service.ts; the builder's "no PF-6b PR" was wrong, since #1808 is open, so the second to merge merges main in), Q2 (four allowlist additions, with customXml still read for tags) and Q3 (the python-docx Word sample for now). The scan was restarted.
+
+**Lead B (6) live (16 Nov, 01:xx IST):**
+* **The shaping lane (Lead 61) now drafts the PF/FO "Shaped, no brief" rows.** This includes PF-6, PF-5s and PF-4bc, which PF-4b's merge unblocked. Lead B wrote none of these three.
+* **Lead B's duty:** approve or correct each of the lane's batch records PRs (about 5 briefs each) as row owner (P-558).
+* **The batches must carry three things:**
+  - PF-6 part 1 is the platform frame plus the staff session holder (rev 16.28), and PF-21s waits on it;
+  - FO-4's later parts follow revs 16.21 and 16.29 (the assignees list is every active staff member);
+  - every rule is checked against `domain/requirements-2026-11-02/` before it is written (revs 16.29 and 16.30 were corrections for missing this).
