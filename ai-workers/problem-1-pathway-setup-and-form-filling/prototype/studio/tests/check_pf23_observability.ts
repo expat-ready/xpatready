@@ -27,6 +27,8 @@ import { emfProblems, mailLine } from "../api/src/platform/observability/metrics
 import { redact, redactText } from "../api/src/platform/observability/redact.ts";
 import { CANARIES, scanText, seededValues } from "../api/src/platform/observability/scan-logs.ts";
 import { recorder } from "./runtime/api.ts";
+import { runContract } from "../ports/contracts/contract.ts";
+import { alertPortContract } from "../ports/contracts/alert-port.contract.ts";
 
 const PORT = Number(process.argv[2] ?? 4487), DB = process.argv[3] ?? "xr_studio_pf23obs";
 const STUDIO = join(import.meta.dirname, "..");
@@ -225,6 +227,10 @@ Module({ controllers: [ProbeController] })(ProbeModule);
   const fakeRefused = await fake.raise("job_stuck", { rule: "x y" } as never).then(() => false, () => true);
   ok("PF-23 pass/fail (AlertPort's fake): keeps a valid alert in order; refuses a bad one like the adapter", fake.raised.length === 1 && fake.raised[0].kind === "audit_chain_break" && fakeRefused);
 }
+
+// ---- PF-0c: the log-line adapter and the fake run AlertPort's shared contract
+await runContract(alertPortContract, "LogAlerts", () => new LogAlerts(), ok);
+await runContract(alertPortContract, "fakeAlerts", () => fakeAlerts(), ok);
 
 // ---- Part 1f: the CI check "no personal data in logs" (scan-logs.ts)
 const scanCli = (args: string[]) => spawnSync(join(STUDIO, "node_modules", ".bin", "tsx"), [join(STUDIO, "api", "src", "platform", "observability", "scan-logs.ts"), ...args], { encoding: "utf8" });
