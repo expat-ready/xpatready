@@ -1062,3 +1062,26 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
 * **J-37 and J-38's swap list** marks booking mail as already swapped by PF-19b part 1.
 * **A suppressed address is a final refusal, never retried.** The fix goes in #1860 if it fits the touch list, otherwise it is part 2's first item. Test: one record, zero further attempts, the booking unchanged.
 * **Part 2 also takes**, each with a test: the orphan invite file and the unmailed manage link on a rerun, and the 64 KB inbox cap.
+
+## Rev 16.33 (16 Nov 02:0x IST, Lead B (6)): client-money batch 8 answers (#1878, comment 6900887428), against AG-06 v2.1
+* **FO-7t's trust answer: Owner only, three states.**
+  - The states are `UNANSWERED | YES | NO` (AG-6-59 §7–8). It is a role check in the service, since no key exists (MS-D24(4)).
+  - Until YES the firm behaves as trust off.
+  - FO-7a's boolean `trust_enabled` is replaced in FO-7ts.
+* **The 25-day To-move item** counts a line's age from its source date, the withdrawal (AG-6-73 r5). The s. 32(g) reading is Unconfirmed: no counsel.
+* **Money routes use `/api/front-office/money/*`,** where the existing staff guard covers them; no new prefix.
+* **The Connect webhook** gets its own route and its own signing secret through PF-24. The builder cites Stripe's Connect webhook page first (P-170).
+* **Tax rates are ExpatReady province data, never firm-edited** (AG-6-4 §3, §13).
+  - FO-7a's `tax_rates` goes unused and is dropped in FO-7ts.
+  - FO-7g reads `ProvinceTaxRate`, with values cited from CRA or marked Sample.
+  - "Registered for tax" is its own boolean, and registered requires a tax number.
+* **FO-7b correction: an overpayment is never refused** (AG-6-21 §13, MS-D11(5); AG-6-76 r4).
+  - With trust YES the extra goes to trust as a `RECEIPT`.
+  - With trust off a person chooses "Refund · Keep as credit".
+  - When two payments arrive at once, the second becomes extra, noted "Paid twice?".
+* **FO-7q**: the hard test is the query plan; the 300 ms (AG-6-30 r4, the requirement's own example) is measured and reported. A Case Officer sees only invoices on cases and people they can see (C5), and an empty list if that helper isn't on `main` (fail closed).
+* **New row FO-7ts** (schema, client money; waits on FO-7mv; Opus high; the release Lead reads the migration). It covers:
+  - `trust_answer`, `trust_answered_by` and `trust_answered_at`, replacing `trust_enabled` (existing rows map to UNANSWERED);
+  - `tax_registered`, `qst_number` and `prices_include_tax`, and dropping `tax_rates`;
+  - the pre-case → case trust transfer, as one pair of entries that nets to zero under the party lock;
+  - the deposit request's retainer version, unique per version.
