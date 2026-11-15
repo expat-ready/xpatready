@@ -1,0 +1,79 @@
+NOTICE:  database "xr_studio_qa_r112" does not exist, skipping
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.
+isolated qa_r112 on http://localhost:4472 (xr_studio_qa_r112), stops itself in 30 min
+PASS  R1.12 setup: the Sample firm and its front office are seeded — []
+PASS  R1.12 setup: the Sample firm's Case Manager has a work email — "second.representative@sample-firm.example.com"
+PASS  R1.12 (400 px, round 1): /front-office/leads opens the module's sign-in — "Sign in to your firm"
+PASS  R1.12 (400 px, round 1): the module page sits in the app's one Frame (data-frame, its header) — {"frame":"outside","headerHeight":56}
+PASS  R1.12 (400 px, round 1): the place line names the module's area
+PASS  R1.12 (400 px, round 1): no sideways page scroll
+PASS  R1.12 (400 px, round 1): axe finds no WCAG A/AA violation on the module's sign-in
+PASS  R1.12 (400 px, round 1): a wrong firm key is refused in words on the form, still the sign-in — "Not signed in No staff member of that firm signs in with that name."
+PASS  R1.12 (400 px, round 1): typed sign-in opens the Leads page inside the same Frame — "Leads"
+PASS  R1.12 (400 px, round 1): / still opens with "Immigration programs" beside the module — "Immigration programs"
+PASS  R1.12 (400 px, round 1): /sign-in still opens with "Who are you today?" beside the module — "Who are you today?"
+PASS  R1.12 (400 px, round 1): /cases still opens with "Cases" beside the module — "Cases"
+PASS  R1.12 (400 px, round 1): the module's header is the app's (same height as /cases') — {"cases":{"frame":"cases","headerHeight":56},"mod":{"frame":"outside","headerHeight":56}}
+PASS  R1.12 (400 px, round 1): no page error on the walk — []
+PASS  R1.12 (1024 px, round 1): /front-office/leads opens the module's sign-in — "Sign in to your firm"
+PASS  R1.12 (1024 px, round 1): the module page sits in the app's one Frame (data-frame, its header) — {"frame":"outside","headerHeight":56}
+PASS  R1.12 (1024 px, round 1): the place line names the module's area
+PASS  R1.12 (1024 px, round 1): no sideways page scroll
+PASS  R1.12 (1024 px, round 1): axe finds no WCAG A/AA violation on the module's sign-in
+PASS  R1.12 (1024 px, round 1): a wrong firm key is refused in words on the form, still the sign-in — "Not signed in No staff member of that firm signs in with that name."
+PASS  R1.12 (1024 px, round 1): typed sign-in opens the Leads page inside the same Frame — "Leads"
+PASS  R1.12 (1024 px, round 1): / still opens with "Immigration programs" beside the module — "Immigration programs"
+PASS  R1.12 (1024 px, round 1): /sign-in still opens with "Who are you today?" beside the module — "Who are you today?"
+PASS  R1.12 (1024 px, round 1): /cases still opens with "Cases" beside the module — "Cases"
+PASS  R1.12 (1024 px, round 1): the module's header is the app's (same height as /cases') — {"cases":{"frame":"cases","headerHeight":56},"mod":{"frame":"outside","headerHeight":56}}
+PASS  R1.12 (1024 px, round 1): no page error on the walk — []
+PASS  R1.12 (1440 px, round 1): /front-office/leads opens the module's sign-in — "Sign in to your firm"
+PASS  R1.12 (1440 px, round 1): the module page sits in the app's one Frame (data-frame, its header) — {"frame":"outside","headerHeight":56}
+PASS  R1.12 (1440 px, round 1): the place line names the module's area
+PASS  R1.12 (1440 px, round 1): no sideways page scroll
+PASS  R1.12 (1440 px, round 1): axe finds no WCAG A/AA violation on the module's sign-in
+PASS  R1.12 (1440 px, round 1): a wrong firm key is refused in words on the form, still the sign-in — "Not signed in No staff member of that firm signs in with that name."
+PASS  R1.12 (1440 px, round 1): typed sign-in opens the Leads page inside the same Frame — "Leads"
+PASS  R1.12 (1440 px, round 1): / still opens with "Immigration programs" beside the module — "Immigration programs"
+PASS  R1.12 (1440 px, round 1): /sign-in still opens with "Who are you today?" beside the module — "Who are you today?"
+PASS  R1.12 (1440 px, round 1): /cases still opens with "Cases" beside the module — "Cases"
+PASS  R1.12 (1440 px, round 1): the module's header is the app's (same height as /cases') — {"cases":{"frame":"cases","headerHeight":56},"mod":{"frame":"outside","headerHeight":56}}
+PASS  R1.12 (1440 px, round 1): no page error on the walk — []
+PASS  R1.12 (400 px, round 2): /front-office/leads opens the module's sign-in — "Sign in to your firm"
+PASS  R1.12 (400 px, round 2): the module page sits in the app's one Frame (data-frame, its header) — {"frame":"outside","headerHeight":56}
+PASS  R1.12 (400 px, round 2): the place line names the module's area
+PASS  R1.12 (400 px, round 2): no sideways page scroll
+PASS  R1.12 (400 px, round 2): a wrong firm key is refused in words on the form, still the sign-in — "Not signed in No staff member of that firm signs in with that name."
+PASS  R1.12 (400 px, round 2): typed sign-in opens the Leads page inside the same Frame — "Leads"
+PASS  R1.12 (400 px, round 2): / still opens with "Immigration programs" beside the module — "Immigration programs"
+PASS  R1.12 (400 px, round 2): /sign-in still opens with "Who are you today?" beside the module — "Who are you today?"
+PASS  R1.12 (400 px, round 2): /cases still opens with "Cases" beside the module — "Cases"
+PASS  R1.12 (400 px, round 2): the module's header is the app's (same height as /cases') — {"cases":{"frame":"cases","headerHeight":56},"mod":{"frame":"outside","headerHeight":56}}
+PASS  R1.12 (400 px, round 2): no page error on the walk — []
+PASS  R1.12 (1024 px, round 2): /front-office/leads opens the module's sign-in — "Sign in to your firm"
+PASS  R1.12 (1024 px, round 2): the module page sits in the app's one Frame (data-frame, its header) — {"frame":"outside","headerHeight":56}
+PASS  R1.12 (1024 px, round 2): the place line names the module's area
+PASS  R1.12 (1024 px, round 2): no sideways page scroll
+PASS  R1.12 (1024 px, round 2): a wrong firm key is refused in words on the form, still the sign-in — "Not signed in No staff member of that firm signs in with that name."
+PASS  R1.12 (1024 px, round 2): typed sign-in opens the Leads page inside the same Frame — "Leads"
+PASS  R1.12 (1024 px, round 2): / still opens with "Immigration programs" beside the module — "Immigration programs"
+PASS  R1.12 (1024 px, round 2): /sign-in still opens with "Who are you today?" beside the module — "Who are you today?"
+PASS  R1.12 (1024 px, round 2): /cases still opens with "Cases" beside the module — "Cases"
+PASS  R1.12 (1024 px, round 2): the module's header is the app's (same height as /cases') — {"cases":{"frame":"cases","headerHeight":56},"mod":{"frame":"outside","headerHeight":56}}
+PASS  R1.12 (1024 px, round 2): no page error on the walk — []
+PASS  R1.12 (1440 px, round 2): /front-office/leads opens the module's sign-in — "Sign in to your firm"
+PASS  R1.12 (1440 px, round 2): the module page sits in the app's one Frame (data-frame, its header) — {"frame":"outside","headerHeight":56}
+PASS  R1.12 (1440 px, round 2): the place line names the module's area
+PASS  R1.12 (1440 px, round 2): no sideways page scroll
+PASS  R1.12 (1440 px, round 2): a wrong firm key is refused in words on the form, still the sign-in — "Not signed in No staff member of that firm signs in with that name."
+PASS  R1.12 (1440 px, round 2): typed sign-in opens the Leads page inside the same Frame — "Leads"
+PASS  R1.12 (1440 px, round 2): / still opens with "Immigration programs" beside the module — "Immigration programs"
+PASS  R1.12 (1440 px, round 2): /sign-in still opens with "Who are you today?" beside the module — "Who are you today?"
+PASS  R1.12 (1440 px, round 2): /cases still opens with "Cases" beside the module — "Cases"
+PASS  R1.12 (1440 px, round 2): the module's header is the app's (same height as /cases') — {"cases":{"frame":"cases","headerHeight":56},"mod":{"frame":"outside","headerHeight":56}}
+PASS  R1.12 (1440 px, round 2): no page error on the walk — []
+
+71/71 passed
+stopped qa_r112 (database and files removed; log in var/isolated-logs/qa_r112-api.log)
