@@ -91,6 +91,7 @@ model PlatformFirm {
   // back-relation slot: compliance (FO-13)
 
   // back-relation slot: register (PF-21)
+  platComplaints PlatComplaint[] // platform-register.prisma
 
   // back-relation slot: retainers (FO-5)
   foRetainerTemplates FoRetainerTemplate[] // front-office-retainers.prisma (rows rev 16.6: under the slot line)
@@ -230,6 +231,7 @@ model PlatformStaff {
   // back-relation slot: compliance (FO-13)
 
   // back-relation slot: register (PF-21)
+  platComplaintsHandled PlatComplaint[] // platform-register.prisma (the handler)
 
   // back-relation slot: retainers (FO-5)
   foRetainersRepresented FoRetainer[] // front-office-retainers.prisma (rows rev 16.6: under the slot line)
