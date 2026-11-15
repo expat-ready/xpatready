@@ -60,10 +60,14 @@ const OWN_GUARD: Record<string, "link" | "inbox"> = {
 const PLATFORM_SOURCE = "^\\/api\\/(platform|front-office)(\\/|$)", PLATFORM_FLAGS = "i";
 const exactPlatformPath = (re: RegExp) => re.source === PLATFORM_SOURCE && re.flags === PLATFORM_FLAGS;
 const isPlatform = (path: string) => PLATFORM_PATH.test(path);
-/** A platform answer that gives something away: not 401 (the sign-in door: any refusal, never a 2xx), or a body with
- *  more than a problem's own fields. */
+/** PF-4f m2: the sign-in doors (@StaffSignIn: no session yet) are a reviewed list, each with the exact status it answers
+ *  here (m1). This copy starts without PLATFORM_IDENTITY (the usage line), so the local stand-in's door refuses every
+ *  caller with 403 LOCAL_SIGN_IN_OFF (service.ts localSignIn). A new door fails the list check until reviewed. */
+const DOORS: Record<string, number> = { "POST /api/platform/session/local": 403 };
+/** A platform answer that gives something away: not 401 (a sign-in door: not its exact status in DOORS, so a 2xx, 404
+ *  or 5xx is caught), or a body with more than a problem's own fields. */
 const PROBLEM_FIELDS = new Set(["type", "title", "status", "detail", "message", "code"]);
-const platformWrong = (r: { status: number; body: unknown }, door = false) => (door ? r.status < 400 : r.status !== 401)
+const platformWrong = (r: { status: number; body: unknown }, door?: number) => r.status !== (door ?? 401)
   || (typeof r.body === "object" && r.body !== null && Object.keys(r.body).some((k) => !PROBLEM_FIELDS.has(k)));
 /** C6.16: the writes of the adult's own link, named by their Bearer session (never x-actor), each asked below. */
 const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/code", "/api/link/consent", "/api/link/end",
@@ -198,11 +202,22 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   const wrongPlatform: string[] = [];
   for (const r of [...platformReads.map((x) => ({ path: x.path, method: "GET", door: false })), ...platformWrites]) {
     const path = r.path.replace(/:id\b/g, "00000000-0000-4000-8000-000000000000");
-    for (const actor of [null, "user-A", "user-O", "user-P"]) { const a = await ask(path, r.method, actor); if (platformWrong(a, r.door)) wrongPlatform.push(`${r.method} ${r.path} as ${actor ?? "nobody"}: ${a.status} ${JSON.stringify(a.body).slice(0, 80)}`); }
+    const door = r.door ? DOORS[`${r.method} ${r.path}`] ?? -1 : undefined; // an unreviewed door has no status: always caught
+    for (const actor of [null, "user-A", "user-O", "user-P"]) { const a = await ask(path, r.method, actor); if (platformWrong(a, door)) wrongPlatform.push(`${r.method} ${r.path} as ${actor ?? "nobody"}: ${a.status} ${JSON.stringify(a.body).slice(0, 80)}`); }
   }
   ok(`PF-4t: the platform guard's routes (${platformReads.length} reads, ${platformWrites.length} writes) answer nobody and x-actor alone 401 (the sign-in door: a refusal), never data`,
     platformReads.length >= 2 && platformWrites.length >= 8 && wrongPlatform.length === 0, wrongPlatform);
-  ok("PF-4t fail: a seeded platform route answering 200 to x-actor alone, or 401 with data, is caught", platformWrong({ status: 200, body: { firmId: "x" } }) && platformWrong({ status: 401, body: { detail: "no", staffId: "x" } }) && platformWrong({ status: 200, body: { token: "t" } }, true) && !platformWrong({ status: 401, body: { type: "t", title: "t", status: 401, detail: "d", code: "NOT_SIGNED_IN" } }));
+  ok("PF-4t fail: a seeded platform route answering 200 to x-actor alone, or 401 with data, is caught", platformWrong({ status: 200, body: { firmId: "x" } }) && platformWrong({ status: 401, body: { detail: "no", staffId: "x" } }) && platformWrong({ status: 200, body: { token: "t" } }, 403) && !platformWrong({ status: 401, body: { type: "t", title: "t", status: 401, detail: "d", code: "NOT_SIGNED_IN" } }));
+  // PF-4f (PF-4t round 2 Minors m1, m2; Lead B rows rev 16.8).
+  const doorsOf = (ws: { path: string; method: string; door: boolean }[]) => ws.filter((w) => w.door).map((w) => `${w.method} ${w.path}`).sort();
+  ok("PF-4f m1 pass: a sign-in door answering its exact status (403 LOCAL_SIGN_IN_OFF, a problem's own fields) is not caught",
+    !platformWrong({ status: 403, body: { type: "t", title: "Not available", status: 403, detail: "d", code: "LOCAL_SIGN_IN_OFF" } }, DOORS["POST /api/platform/session/local"]));
+  ok("PF-4f m1 fail: a sign-in door answering 404, 500, 401 or 400 instead of its exact status is caught (status < 400 let 404 and 5xx pass)",
+    [404, 500, 503, 401, 400].every((st) => platformWrong({ status: st, body: { type: "t", title: "t", status: st, detail: "d" } }, DOORS["POST /api/platform/session/local"])));
+  ok("PF-4f m2 pass: the sign-in doors in the code are exactly the reviewed list [\"POST /api/platform/session/local\"]",
+    JSON.stringify(doorsOf(platformWrites)) === JSON.stringify(Object.keys(DOORS).sort()) && JSON.stringify(Object.keys(DOORS)) === JSON.stringify(["POST /api/platform/session/local"]), doorsOf(platformWrites));
+  const plantedDoor = planted({ "platform/planted-door.ts": '@Controller("api/platform")\nexport class D {\n  @Post("session/local") @StaffSignIn("door")\n  local() {}\n  @Post("session/other") @StaffSignIn("an added door")\n  other() {}\n}\n' });
+  ok("PF-4f m2 fail: an added door (a planted second @StaffSignIn route) fails the list check", JSON.stringify(doorsOf(writes(plantedDoor).platformWrites)) !== JSON.stringify(Object.keys(DOORS).sort()) && doorsOf(writes(plantedDoor).platformWrites).join() === "POST /api/platform/session/local,POST /api/platform/session/other", doorsOf(writes(plantedDoor).platformWrites));
   const plantedNear = planted({ "planted-near.ts": '@Controller("api")\nexport class N {\n  @Get("platformx/read") read() {}\n  @Post("platformx/write")\n  write() {}\n}\n' });
   ok("PF-4t pass/fail: a route outside PLATFORM_PATH (/api/platformx/…) keeps the QA-53 and QA-65 rules (a configuration read; a write naming nobody is caught)",
     routes(plantedNear).every((x) => !x.mark && !isPlatform(x.path)) && writes(plantedNear).unnamed.join() === "planted-near.ts: /api/platformx/write" && writes(plantedNear).platformWrites.length === 0);
