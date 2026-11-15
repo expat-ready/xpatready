@@ -25,7 +25,7 @@ import { ComplaintClosed, ComplaintReceived, EVENT } from "../../../../ports/eve
 import type { StaffContext } from "../../../../ports/staff.ts";
 import { firmScope } from "../firm-scope.ts";
 import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE } from "../settings.ts";
-import { acknowledgeBy, businessDaysBetween, type FirmCalendar } from "./business-days.ts";
+import { acknowledgeBy, BusinessDayTally, businessDaysBetween, type FirmCalendar } from "./business-days.ts";
 
 export const COMPLAINT_KEYS = { record: "agent/complaint:record", read: "agent/complaint:read" } as const;
 export const ACK_REMINDER_JOB = "platform.complaint.ack_reminder";
@@ -132,11 +132,11 @@ export type ComplaintDetail = ComplaintView & { people: People; firmTimeZone: st
 export type HandlerChoices = { items: { id: string; displayName: string }[] };
 const isOverdue = (c: PlatComplaint, now: Date) => c.status === "OPEN" && !c.acknowledgedAt && now > c.acknowledgeBy;
 /** One request's calendar and the day answers its rows share (the settings are read once per request). */
-type Days = { cal: FirmCalendar; seen: Map<string, Date | null> };
+type Days = { cal: FirmCalendar; tally: BusinessDayTally };
 function daysLeft(c: PlatComplaint, now: Date, d: Days): number | null {
   if (c.status !== "OPEN" || c.acknowledgedAt) return null;
-  if (isOverdue(c, now)) return -Math.max(1, businessDaysBetween(d.cal, c.acknowledgeBy, now, d.seen));
-  return businessDaysBetween(d.cal, now, c.acknowledgeBy, d.seen);
+  if (isOverdue(c, now)) return -Math.max(1, businessDaysBetween(d.cal, c.acknowledgeBy, now, d.tally));
+  return businessDaysBetween(d.cal, now, c.acknowledgeBy, d.tally);
 }
 const view = (c: PlatComplaint, now: Date, d: Days, events?: PlatComplaintEvent[]): ComplaintView => {
   const { firmId: _f, ...rest } = c;
@@ -192,7 +192,7 @@ export class ComplaintsService {
     const rows = await this.d.db.platformStaff.findMany({ where: firmScope(firmId, { id: { in: want } }), select: { id: true, displayName: true } });
     return Object.fromEntries(rows.map((r) => [r.id, r.displayName]));
   }
-  private async days(db: Tx | PrismaClient, firmId: string): Promise<Days> { return { cal: await this.calendar(db, firmId), seen: new Map() }; }
+  private async days(db: Tx | PrismaClient, firmId: string): Promise<Days> { const cal = await this.calendar(db, firmId); return { cal, tally: new BusinessDayTally(cal) }; }
 
   private async calendar(db: Tx | PrismaClient, firmId: string): Promise<FirmCalendar> {
     return {

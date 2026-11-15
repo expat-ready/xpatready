@@ -37,7 +37,7 @@ const { PlatformGuard, assertEveryRouteDeclared, platformRoutes } = await import
 const { platformAuditWorkspaceId } = await import("../api/src/platform/identity/audit.ts");
 const { PlatformJobs } = await import("../api/src/platform/jobs/platform-jobs.ts");
 const { BUSINESS_HOURS, CLOSED_DAYS, TIME_ZONE, writeSetting } = await import("../api/src/platform/settings.ts");
-const { acknowledgeBy, businessDaysBetween } = await import("../api/src/platform/complaints/business-days.ts");
+const { acknowledgeBy, BusinessDayTally, businessDaysBetween } = await import("../api/src/platform/complaints/business-days.ts");
 const { ComplaintsService, COMPLAINT_KEYS } = await import("../api/src/platform/complaints/complaints.ts");
 const { fakeAudit } = await import("../ports/audit.ts");
 const { FakeClock } = await import("../ports/clock.ts");
@@ -115,6 +115,12 @@ try {
   ok("PF-21v DW1 (DST, clocks forward Sun 8 Mar 2026): Fri 6 Mar 23:30 EST to Mon 9 Mar 00:30 EDT is 1 (Monday), read in the zone, not in UTC or a fixed offset", businessDaysBetween(open, at("2026-03-07T04:30:00Z"), at("2026-03-09T04:30:00Z")) === 1);
   ok("PF-21v DW1 fail (DST): Mon 9 Mar 00:30 EDT is still Monday, so Friday to Sunday 23:59 EDT counts nothing", businessDaysBetween(open, at("2026-03-07T04:30:00Z"), at("2026-03-09T03:59:00Z")) === 0);
 
+  const shared = new BusinessDayTally(cal), spans: [Date, Date][] = [];
+  for (let i = 0; i < 60; i++) { const x = Date.parse("2025-01-01T12:00:00Z") + ((i * 7919) % 700) * 86_400_000, y = x + ((i * 104729) % 400 - 50) * 86_400_000 + (i % 5) * 3_600_000; spans.push([new Date(x), new Date(y)]); }
+  const mismatched = spans.filter(([x, y]) => businessDaysBetween(cal, x, y, shared) !== businessDaysBetween(cal, x, y));
+  ok("PF-21v DW1 pass: one tally shared by 60 spans in any order (earlier starts, later ends) counts each exactly as a fresh one does", mismatched.length === 0, mismatched.slice(0, 3));
+  ok("PF-21v DW1 fail: the shared tally still counts no weekend or closed day (Friday 13 → Monday 16 Nov stays 0 after the walk)", businessDaysBetween(cal, fri, at("2026-11-16T15:00:00Z"), shared) === 0);
+
   // ---------------------------------------------------------------------------------------------------------- DW2
   await set(firmA, CLOSED_DAYS.key, ["2026-11-16"]);
   const clock = new FakeClock("2026-11-13T20:00:00Z");
@@ -155,6 +161,11 @@ try {
   ok("PF-21v DW2 pass: a page of 100 reads the calendar settings once (3 setting reads: zone, hours, closed days)", hundred.items.length === 100 && reads === 3 && hundred.items.every((v) => (v.acknowledgedAt ? v.businessDaysLeft === null : typeof v.businessDaysLeft === "number")), { n: hundred.items.length, reads });
   reads = 0; await svc.get(owner, a.id);
   ok("PF-21v DW2 fail→pass: GET /:id reads them once too (not once per event)", reads === 3, reads);
+
+  for (let i = 0; i < 100; i++) await rec(new Date(Date.parse("2000-01-03T15:00:00Z") + i * 3_600_000).toISOString());
+  const t0 = performance.now(), old = await svc.list(owner, "overdue", { limit: 100 }), ms = performance.now() - t0;
+  const oldest = old.items[0], expectOld = oldest ? -businessDaysBetween(cal, oldest.acknowledgeBy, clock.now()) : 0;
+  ok("PF-21v DW2 pass (break M1): a page of 100 complaints overdue since 2000 is one walk of the dates, not one per row (under 400 ms), with the right count", old.items.length === 100 && oldest?.businessDaysLeft === expectOld && expectOld < -6000 && ms < 400, { ms: Math.round(ms), got: oldest?.businessDaysLeft, expectOld });
 
   // -------------------------------------------------------------------------------------------- the app for DW3-DW6
   const { app, base } = await makeApp();
