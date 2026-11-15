@@ -1128,3 +1128,17 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
   - It is not single-use (part payments are allowed).
   - It stops when the item is paid in full, voided or cancelled.
   - The page gives one not-found for all of those.
+
+## Rev 16.36 (16 Nov 02:1x IST, Lead B (6)): money screens batch 10 answers (#1879, comment 6901053560)
+* **FO-7s2:** `GET /payment-account` takes `agent/payment-rail:connect` (Owner, C5). Other screens get only a `cardPayments` boolean in their own reads.
+* **FO-7s3b:**
+  - The Money views get their own pages under `/money/…` in `web/src/modules/client-money/`, linked from the case page.
+  - "Pay from trust" is pre-ticked, using same-payer money only (AG-6-68 r2).
+* **FO-7ts gains** `BANK_TRANSFER` and `CARD_TERMINAL` (AG-6-19 r1; `CARD` is online only), and `invoice_payments_go_to` (`OPERATING` default | `TRUST_FIRST`), with changed by and at (AG-6-69 §7).
+* **"Invoice payments go to"** (AG-6-69 §8):
+  - The rule and the setting route are FO-7b's: Owner only, offered only when trust is YES, audited.
+  - The screen is FO-7s2's Getting paid page, under Advanced.
+* **The inline trust question:** one component, built by FO-7s3a. FO-3's and FO-5's screen rows each place it as one line of their own.
+* **FO-7s4p's payment plans use `agent/invoice:issue`.** The requirement withdrew plans and `agent/payment-plan:manage` (D3); the founder kept plans as a recorded departure (P-578); no new key is added.
+* **FO-7s5:** the export is a background job, stored through `FilesPort` behind a 24 h expiring download link (Sample) and audited (AG-6-31 r4). The key is `agent/billing:export`.
+* **The To-move route:** `/api/front-office/money/trust/to-move`.
