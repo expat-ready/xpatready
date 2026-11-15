@@ -1,1 +1,50 @@
-[]
+[
+  {
+    "id": "G-1",
+    "kind": "ready",
+    "owner": "lane",
+    "branch": "tools/g1-g2-needs-lead-queue",
+    "pr": 1796,
+    "status": "acked",
+    "waiting_on": "Lead",
+    "next_step": "merge, test, publish",
+    "created_at": "2026-11-15T07:47:05Z",
+    "updated_at": "2026-11-15T07:47:05Z",
+    "last_ack_by": "Lead 56",
+    "acked_at": "2026-11-15T08:55:55Z",
+    "opened_at": "2026-11-15T07:47:05Z",
+    "source": "pull/1796#issuecomment-6891261890"
+  },
+  {
+    "id": "G-2",
+    "kind": "ready",
+    "owner": "lane",
+    "branch": "tools/g1-g2-needs-lead-queue",
+    "pr": 1796,
+    "status": "acked",
+    "waiting_on": "Lead",
+    "next_step": "merge, test, publish",
+    "created_at": "2026-11-15T07:47:19Z",
+    "updated_at": "2026-11-15T07:47:19Z",
+    "last_ack_by": "Lead 56",
+    "acked_at": "2026-11-15T08:55:55Z",
+    "opened_at": "2026-11-15T07:47:19Z",
+    "source": "pull/1796#issuecomment-6891264205"
+  },
+  {
+    "id": "G-5",
+    "kind": "ready",
+    "owner": "lane",
+    "branch": "lead/2026-11-15-records",
+    "pr": 1796,
+    "status": "acked",
+    "waiting_on": "Lead",
+    "next_step": "merge, test, publish",
+    "created_at": "2026-11-15T07:48:43Z",
+    "updated_at": "2026-11-15T07:48:43Z",
+    "last_ack_by": "Lead 56",
+    "acked_at": "2026-11-15T08:55:55Z",
+    "opened_at": "2026-11-15T07:48:43Z",
+    "source": "pull/1796#issuecomment-6891278825"
+  }
+]
