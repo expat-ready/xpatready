@@ -910,7 +910,7 @@ New rows named here (PF-18np, FO-7ts, PF-6sb, PF-0a, PF-6vt) take their text fro
 **(c) Front-office screens first in the ready order**
 No front-office screen exists yet. These go to the top of ready, each built on its API contract in parallel with the API row (P-606 (9)):
 1. **FO-4** (sales screens; concept r2 approved) beside **FO-2** (its API).
-2. **FO-3sc**, then FO-3w and FO-3st1-3.
+2. **FO-3sc** (done: concept r2 merged in #1819, 15 Nov; Lead 62 16 Nov), then FO-3w (after FO-3pa #1830) and FO-3st1-3 (after FO-3a part 1).
 3. **FO-5s** (concept r2 approved) after FO-6.
 4. **PF-6** (staff screens; concept approved) beside PF-4b.
 5. **PF-5s** after PF-5.

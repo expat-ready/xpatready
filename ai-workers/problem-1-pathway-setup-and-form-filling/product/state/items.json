@@ -158,5 +158,21 @@
     "acked_at": null,
     "opened_at": "2026-11-15T22:35:11Z",
     "source": "pull/1895#issuecomment-6902502615"
+  },
+  {
+    "id": "QA-OPT-1116b",
+    "kind": "ready",
+    "owner": "lane",
+    "branch": "claude/gracious-cerf-o013x3 \u00b7 head 55eba0ebe251749ba68c3347ee6983697402f09a \u00b7 records only (\u00a71.2 of the qa optimisation page)",
+    "pr": 1884,
+    "status": "open",
+    "waiting_on": "Lead",
+    "next_step": "merge, test, publish",
+    "created_at": "2026-11-15T22:49:42Z",
+    "updated_at": "2026-11-15T22:49:42Z",
+    "last_ack_by": null,
+    "acked_at": null,
+    "opened_at": "2026-11-15T22:49:42Z",
+    "source": "pull/1884#issuecomment-6902686713"
   }
 ]
