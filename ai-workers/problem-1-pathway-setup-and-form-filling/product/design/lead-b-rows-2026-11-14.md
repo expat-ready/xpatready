@@ -972,3 +972,13 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
   * **FO-3a and FO-3st3:** key `agent/booking-type:manage` → `agent/booking-event-type:edit` (types, Timings) and `agent/booking-event-type:configure-availability` (per-type gaps, notice, window).
   * **FO-3a part 2:** rev 16.16 (b)'s `prepareRetainer` line is withdrawn. Instead: "the consult record's 'Prepare a retainer' button opens FO-5's retainer draft with the record id; FO-5 reads the record's items and fee through a read port with a fake in `ports/`; nothing is sent from the record".
   * **FO-3m** adds: "the attendance job makes the due item and sends no mail (AG-4-39 rule 2, 'Shown, not pushed (no email, no alert)'); no `booking.attendance_ask` mail is sent".
+
+**Rev 16.24 (15 Nov, Lead B (6)): PF-21w's M1 deferred to a row with a date (#1823, comment by Lead B), and two small rows.**
+
+| Row | Area | Item | Done when | Source · waits on |
+|---|---|---|---|---|
+| PF-21i | schema + runtime (complaints: one create per request) | **Recording a complaint is idempotent (STANDARDS §4 [M]).** `POST /api/platform/complaints` requires an `Idempotency-Key` header (IETF httpapi draft form), stored as `plat_complaint.request_key` with a unique `(firm_id, request_key)` (a migration in `platform-register.prisma`, stamp later than `main`'s). **Touch:** `platform-register.prisma` + one migration folder, `api/src/platform/complaints/complaints.ts` (`record`), PF-21w's route (header read), `tests/check_pf21i_idempotent.ts` | three posts with one key → one complaint, one reminder job, one `complaint.received`; same key with a different body → 422 "This request key was already used for a different complaint."; two parallel posts with one key → one row; no key → 400 | STANDARDS §4; #1823 M1 · **waits on:** PF-21w merged · before PF-21s's build and J-109 · reviewer + breaker (schema) · **size:** S |
+| PF-0bp | runtime (platform: body errors) | **Body-parser errors are problem answers, never 500:** a malformed JSON body → 400 and an oversized body → 413, both as problem JSON on every API route. **Touch:** `main.ts` (the parser's error handler), `tests/check_pf0bp_body_errors.ts` | malformed JSON → 400 with a plain message; over the limit → 413; neither reaches a handler; neither answer echoes the body | #1823 (pre-existing) · **waits on:** FO-2 part 1 #1813 (same `main.ts` lines) · reviewer only · **size:** S |
+
+* **PF-4pc** adds a test: ConfigReadGuard's 403 on upper-case platform paths becomes the same guarded answer as the lower-case path (#1823).
+* **PF-21s** adds: "the Record click sends a fresh `Idempotency-Key` and reuses it on retry".
