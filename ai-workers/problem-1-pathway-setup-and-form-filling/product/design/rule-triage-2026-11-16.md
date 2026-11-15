@@ -10,7 +10,7 @@ Written by the rule-triage lane (cloud, Opus 5.5 high), 16 Nov 2026 01:0x IST, f
 | Rows `prose` (only the reader enforces them) | 113 | **99** | **88** |
 | **Prose share** | **77.9%** | **75.6%** | **67.2%** |
 
-P-619's "102 prose rules" was counted at 18:4x IST 15 Nov on a 142-row register; main af7df6d6 has 145 rows, 113 of them prose (rows added since, e.g. P-616 and P-618 to P-622, are prose). Under 30% of 131 rows is at most 39 prose rows: about 48 checks from the queue in section 3 beyond the 12 cells in section 4. 70 of the 99 check rows are cost S.
+P-619's "102 prose rules" was counted at 18:4x IST 15 Nov on a 142-row register; main af7df6d6 has 145 rows, 113 of them prose (rows added since, e.g. P-616 and P-618 to P-622, are prose). Under 30% of 131 rows is at most 39 prose rows: about 48 checks from the queue in section 3 beyond the 12 cells in section 4 (as of #1864; after the follow-up named 11 cells: 88 − 39 = 49 more checks). 70 of the 99 check rows are cost S.
 
 The share falls little from merging alone: most prose rules are distinct duties, so the lever is checks, not fewer rows. Outcomes for the 113 prose rows: **99 CHECK, 9 MERGE, 5 RETIRE.** Of the 99 checks, 12 already exist in whole or part and only the cell is stale, 1 is built but not wired (P-557), 4 are being built by B193 parts (P-423, P-619, P-620, P-622), 82 are new (P-302's existing warning among them, since a warning does not block).
 
