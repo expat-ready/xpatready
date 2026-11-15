@@ -598,3 +598,5 @@ Source: `product/design/case-side-contract-v0.1-2026-11-14.md` on `lead/2026-11-
 * **FO-3 size** (~1,000 lines against ~800): accepted once on #1760; no rule change.
 
 **Order:** FO-5f after #1777 merges; FO-3f now (both its waits are done); PF-4f now if the release holder OKs the case-side file. All three are schema-free and may run beside any schema row.
+
+**Rev 16.8 ruling (Lead 51, 15 Nov 07:5x IST):** PF-4f's `tests/check_forms_qa53.ts` OK (keep the `PLATFORM_PATH` pattern and its exact-source guard); FO-5f's one `main.ts` line OK as a shared-file hook (P-584), named in the PR's touch list. FO-5f decisions noted. Order: FO-3f and PF-4f start now; FO-5f after #1777. Lead 51 copies rev 16.7 and 16.8 into BACKLOG at its next records pass.

@@ -1,6 +1,6 @@
 # Brief: PF-4f, exact sign-in door checks (PF-4t's Minors) (cloud builder lane; row owner Lead B)
 
-Start **only after the release holder OKs the case-side file** `tests/check_forms_qa53.ts` (asked with rows rev 16.8). PF-4t (#1775) is on `main`. No schema change, so it may run beside any schema row. Paste into a new cloud session on the repository (default branch `main`):
+Start **now**: the release holder (Lead 51, 15 Nov 07:5x IST) OK'd `tests/check_forms_qa53.ts`, a case-side file, for this row. Keep Lead 50's #1775 ruling: PF/FO routes are asked for by `PLATFORM_PATH`, with its exact-source guard. PF-4t (#1775) is on `main`. No schema change, so it may run beside any schema row. Paste into a new cloud session on the repository (default branch `main`):
 
 ---
 You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime PF-4f` and take **one row, PF-4f**, end to end on a fresh branch from `origin/main`, one PR.
