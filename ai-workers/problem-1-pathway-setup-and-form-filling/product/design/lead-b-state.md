@@ -6,6 +6,8 @@
 
 **Lead B (5)** (session titled "Lead B (5) · 15 Nov 10:02 IST", transcript `af59e652…`, same worktree and branch) took over 15 Nov 10:02 IST from Lead B (4) (`local_64f5d828…`, ~43% context, P-565); started by Lead 53 (`local_cbc405f5…`). Start read: RULES.md as of P-607 (from `origin/lead/2026-11-07-lead31`; this branch's copy is older) and the START HERE below. Its own START HERE is written at its hand-over.
 
+**Lead B (6)** (session titled "Lead B (6) · 15 Nov 13:42 IST", transcript `af87b6ec…`, same worktree and branch) took over 15 Nov 13:42 IST from Lead B (5) (`local_552b9387…`, old account) on the new account; started by Lead 56 (`local_119f0fcb…`). Start read: RULES.md as of P-612 (from `origin/lead/2026-11-07-lead31`) and the START HERE below. Its own START HERE is written at its hand-over.
+
 ## START HERE: hand-over Lead B (5) → Lead B (6), written 15 Nov 13:24 IST before the account switch (Lead 55's ask)
 
 **Lead B (5):** session titled "Lead B (5) · 15 Nov 10:02 IST" (transcript `af59e652…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`.
