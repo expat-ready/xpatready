@@ -343,3 +343,13 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
 * 15 Nov 09:5x IST: FO-5f #1791 row questions answered (comment 6889086217); **rows rev 16.13** carries m-2 (expectedStatus on Signed offline) and the filed-version signer into FO-6 and FO-8 Done when.
 * 15 Nov 09:5x IST: the current Lead is now **Lead 53** (`local_cbc405f5…`), told what is waiting to be copied (revs 16.10 to 16.13 and Batch 5, unless Lead 52 already copied them).
 * 15 Nov 09:5x IST: Lead 53 confirmed everything is in BACKLOG (e500e3a7c: rev 16.10, Batch 5, rev 16.11, the 16.12 edits and X additions; a859caa70: rev 16.13). Nothing is left to copy. PF-23w, then FO-3h, then FO-3sr, when FO-3f merges.
+* 15 Nov 10:02 IST: **Lead B (5)** took over (78bb4536d). Lead 53 and Lead B (4) told; the PR-question scan was restarted in a background loop.
+* 15 Nov 10:0x IST: **PF-6b brief** (a27965558). Lead B rulings in it:
+  * a new catalogue table `platform_permission_key` in its own area file (P-600);
+  * custom-role copy lines go to X-1;
+  * own versus all is decided by the `view.all` key AND the firm setting.
+  * It starts after FO-5f #1791. The BACKLOG amendments for PF-6b and PF-6 were sent to Lead 53.
+* 15 Nov 10:0x IST: **#1791 round-3 question**: as row owner, recommended (a), a diff-only high-effort re-Approve, with r2-m1 and r2-m2 folded in (comment 6889254325). The (a)/(b) call is Lead 53's.
+* 15 Nov 10:08 IST: **FO-3h brief** (f9be2a5f8). `hostZone()` returns the firm zone until PF-18a, and PF-18a takes over the office-zone line; the attendance mail is included. Starts after FO-3f.
+* 15 Nov 10:1x IST: **PF-0c brief** (af22dd7a1). The port list was checked against `main`: AlertPort and DocumentRenderPort added, MailPort out (no real adapter yet). Starts now.
+* 15 Nov 10:11 IST: **PF-23w brief** (ba55198ee). It is the join row for map rows 9 and 13, with the J-9 walk; one injection line in the booking feature is OK'd. Starts after FO-3f #1785, which is queued. Each of the four briefs was reported ready to Lead 53.
