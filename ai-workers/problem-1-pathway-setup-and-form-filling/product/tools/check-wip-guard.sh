@@ -28,6 +28,8 @@ r=$(start "/next forms FO-5s; QA-500 noted"); ok "an open qa bug merely named (n
 r=$(start "Row B193 part 3: PR norms in CI (P-619); pass G-4 rule"); ok "a tooling row starts freely; other IDs in the text are context" "$([ "$r" = allow ] && echo 1)" "got $r"
 r=$(start "/next screens FO-7b invoices, after FO-3 and PF-23r"); ok "only the row started is judged (FO-7b), not the rows it mentions" "$([ "$r" = allow ] && echo 1)" "got $r"
 r=$(start "Row PF-6: the shared register"); ok "a brief naming its row as Row X-1 is judged too" "$([ "$r" = deny ] && echo 1)" "got $r"
+for q in "/next screens PF-30 then /qa after-merge tests it" "QA-5 closed. /next screens PF-30" "Row PF-30 fix layout, QA-500 context"; do
+  r=$(start "$q"); ok "no way round the limit: $q" "$([ "$r" = deny ] && echo 1)" "got $r"; done
 for q in "/qa capability FO-3" "/qa after-merge (PF-23w, PF-6b just merged)"; do
   r=$(start "$q"); ok "a qa session is never limited (it empties the group): $q" "$([ "$r" = allow ] && echo 1)" "got $r"; done
 r=$(start "/next screens AS-3 case list"); ok "the case side with two waiting: refused" "$([ "$r" = deny ] && echo 1)" "got $r"

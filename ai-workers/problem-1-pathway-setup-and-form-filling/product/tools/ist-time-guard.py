@@ -2,11 +2,13 @@
 """Times only from `TZ=Asia/Kolkata date` (B193 part 2 (f), P-302; broken several times on 15-16 Nov): refuses an edit
 of product/STATE.md or product/DECISIONS.md whose new text holds a time or date ahead of now in IST.
 
-PreToolUse hook on Edit, MultiEdit and Write. Only times the edit adds are read (a time already in the replaced text, or in the file for a
-Write, is never re-judged). Read as IST: `2026-11-16 01:2x`, `16 Nov 01:20`, `01:20 IST 16 Nov`, `~01:2x IST` (x = 0); a date alone
-(`| 17 Nov |`, `updated: 17 Nov`, `as of 17 Nov`; a date in prose is usually a plan); a bare `HH:MM IST` is on its DECISIONS row's date, else today's, and counts as ahead only when it is at most 6 h ahead (a later one is
-yesterday's). Plans pass: a time with due, by, until, next, target, resets, planned, scheduled, from, before, ETA,
-expires or ends just before it (one word between at most: "next check 01:3x"). One minute of grace. Also by hand:
+PreToolUse hook on Edit, MultiEdit and Write. Only times the edit adds are read (a time already in the replaced text,
+or in the file for a Write, is never re-judged). Read as IST: `2026-11-16 01:2x`, `16 Nov 01:20`, `01:20 IST 16 Nov`,
+`~01:2x IST` (x = 0); a date alone as a stamp (`| 17 Nov |`, `updated: 17 Nov`, `as of 17 Nov`; a date in prose is
+usually a plan); a bare `HH:MM` (with or without IST; not UTC, not a range's end) on its DECISIONS row's date, else
+today's, ahead only when at most 6 h ahead (a later one is yesterday's). Plans pass: a time with due, by, until, next, target, resets, planned, scheduled, before, ETA,
+expires or ends just before it ("by", "until", "till", "before" directly; the others with two words between
+at most: "next 30-minute check 01:3x"). One minute of grace. Also by hand:
   python3 ist-time-guard.py --scan FILE    prints each time ahead of now; exit 1 when there is one
 Env (tests): NOW (epoch seconds). Test: check-ist-time-guard.sh."""
 import json, os, re, sys, time
@@ -23,12 +25,11 @@ PATTERNS = [  # (regex, kind) — tried in order; a match is masked before the n
     (re.compile(T + r"(?: IST)?,? (\d{1,2}) " + M + r"\b"), "t-dmy"),
     (re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b"), "iso-d"),
     (re.compile(r"\b(\d{1,2}) " + M + r"\b"), "dmy"),
-    (re.compile(T + r" IST\b"), "t"),
+    (re.compile(r"(?<![\d:.\u2013-])" + T + r"(?![\dx:])(?: IST\b)?(?!\s*(?:UTC|GMT|Z\b))"), "t"),   # a bare time; not a UTC one, not a range's end
 ]
 STAMP = re.compile(r"(\|\s*|updated:?\s*|as of\s*)$", re.I)   # where a date alone is a stamp: a table cell, updated:, as of
 ROWDATE = re.compile(r"^\|[^|]*\|\s*(\d{1,2}) " + M + r"\s*\|")
-PLAN = re.compile(r"\b(due|by|until|till|next|target|reset|resets|planned|scheduled|from|before|eta|expires?|ends?|deadline|at the latest)\b", re.I)
-PLAN_END = re.compile(PLAN.pattern + r"(\s+[\w-]+)?\s*[:~]?\s*$", re.I)   # the plan word just before the time (one word between)
+PLAN_END = re.compile(r"(\b(by|until|till|before)\s*|\b(due|next|target|reset|resets|planned|scheduled|eta|expires?|ends?|deadline|at the latest)\b(\s+[\w-]+){0,2}\s*)[:~]?\s*$", re.I)   # "by 01:30" directly; "next 30-minute check 01:3x" (two words between)
 
 
 def now_ist():

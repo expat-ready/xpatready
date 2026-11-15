@@ -30,8 +30,8 @@ def group(row_id):
     return None
 
 
-QA_START = re.compile(r"(^|\s)/qa\b|^\s*qa\b", re.I)
-FIX = re.compile(r"\b(?:fix(?:es|ing)?|bug fix(?:es)?)\b[^.\n]{0,30}?\b(QA-\d+)\b|\b(QA-\d+)\b[^.\n]{0,10}?\bfix", re.I)
+QA_START = re.compile(r"^\s*/qa\b")   # a qa session's brief starts with /qa
+FIX = re.compile(r"\b(?:bug )?fix(?:es|ing)?(?: for)? (QA-\d+)\b|\b(QA-\d+)(?: bug)? fix", re.I)   # "fix QA-12", "QA-12 fix"
 
 
 def started_row(text):
@@ -92,9 +92,9 @@ def main():
     root = git(hook.get("cwd") or ".", "rev-parse", "--show-toplevel").strip()
     if not root:
         return 0
-    if QA_START.search(text):
-        return 0   # a qa session empties the groups; never limited
     row = started_row(text)
+    if QA_START.search(text) and not re.search(r"/next\s", text):
+        return 0   # a qa session empties the groups; never limited
     if not row or group(row) not in MODULES:
         return 0
     if {x for t in FIX.findall(text) for x in t if x} & open_bugs(root):

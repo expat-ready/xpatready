@@ -15,10 +15,10 @@ edit() {  # $1 file, $2 old, $3 new → allow | deny
   if printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null 2>&1; then echo deny; else echo allow; fi; }
 u='updated: 2026-11-16 00:5x IST by Lead 61'
 for n in 'updated: 2026-11-16 01:3x IST by Lead 61' 'updated: 16 Nov 02:10 IST by Lead 61' '(founder ~01:1x IST, typed to Lead 61)' \
-         'took over 23:40 IST 16 Nov' '| P-623 | 17 Nov | **WIP limit** |' 'merged at 05:00 IST' 'checked by the Lead at 01:40 IST'; do
+         'took over 23:40 IST 16 Nov' '| P-623 | 17 Nov | **WIP limit** |' 'merged at 05:00 IST' 'checked by the Lead at 01:40 IST' 'weekly 18% at 01:4x' 'merged by hand at 01:43' 'from 01:4x the queue is empty'; do
   r=$(edit "$S" "$u" "$n"); ok "a time ahead of now is refused: $n" "$([ "$r" = deny ] && echo 1)" "got $r"; done
 for n in 'updated: 2026-11-16 01:0x IST by Lead 61' 'updated: 16 Nov 00:58 IST' '(founder 23:5x IST, last night)' 'took over 20:12 IST 15 Nov' \
-         '| P-623 | 16 Nov | **WIP limit** |' 'next check 01:3x IST; weekly resets 17 Nov 10:29 IST' 'target all 101 by 29 Nov' 'due 02:00 IST' 'qa verdicts due by 18 Nov 12:00'; do
+         '| P-623 | 16 Nov | **WIP limit** |' 'next check 01:3x IST; weekly resets 17 Nov 10:29 IST' 'target all 101 by 29 Nov' 'due 02:00 IST' 'qa verdicts due by 18 Nov 12:00' 'next 30-minute check ~01:3x IST' 'nightly at 22:00 UTC' 'queue 20:59-21:16 merged' 'weekly 18% at 00:5x'; do
   r=$(edit "$S" "$u" "$n"); ok "passes: $n" "$([ "$r" = allow ] && echo 1)" "got $r"; done
 r=$(edit "$D" "x" "| P-500 | 12 Nov | rule (founder 14:0x IST) |"); ok "a DECISIONS row's bare time is on the row's date (12 Nov 14:0x is past)" "$([ "$r" = allow ] && echo 1)" "got $r"
 r=$(edit "$D" "x" "| P-623 | 16 Nov | rule (founder 03:1x IST) |"); ok "... and today's row with a later time is refused" "$([ "$r" = deny ] && echo 1)" "got $r"

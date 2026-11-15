@@ -40,6 +40,9 @@ for c in 'gh pr edit --add-label "review: approved" 1' 'gh pr edit -R o/r 1 --ad
          "gh api repos/o/r/issues/1/labels -f 'labels[]=review: approved'" 'gh pr edit 1 --add-label review:\ approved' 'gh pr edit https://github.com/o/r/pull/1 --add-label "review: approved"' \
          'gh pr edit --add-label "review: approved"'; do
   r=$(guard "$c"); ok "every way of adding the label is guarded: $c" "$([ "$r" = deny ] && echo 1)" "got $r"; done
+r=$(guard 'gh pr edit 1 --add-label queued --remove-label "review: approved"'); ok "adding another label while removing review: approved passes" "$([ "$r" = allow ] && echo 1)" "got $r"
+pr 11 ".mergify.yml" "Lead read the diff: ${H:0:9}"; H2=$(echo "${H:0:9}" | tr a-f A-F); pr 12 ".mergify.yml" "Lead read the diff: $H2"
+r=$(guard "gh pr edit 12 $L"); ok "an uppercase SHA in the read line counts" "$([ "$r" = allow ] && echo 1)" "got $r"
 r=$(guard "gh api -X DELETE 'repos/o/r/issues/1/labels/review%3A%20approved'"); ok "removing the label through gh api passes" "$([ "$r" = allow ] && echo 1)" "got $r"
 pr 9 "$S/web/a.tsx" ""; jq '.changedFiles = 140' "$T/f/9.json" > "$T/f/9b" && mv "$T/f/9b" "$T/f/9.json"
 r=$(guard "gh pr edit 9 $L"); ok "a PR over 100 files counts as sensitive (a migration may be past the list)" "$([ "$r" = deny ] && echo 1)" "got $r"

@@ -19,9 +19,9 @@ verdict() {  # $1 PR number → prints the reason and returns 1 when the label n
   # GitHub lists at most 100 files: a bigger PR counts as sensitive (a migration may be past the 100th).
   [ -z "$files" ] && [ "$(printf '%s' "$j" | jq '(.changedFiles // 0) > (.files | length)')" = true ] && files="$(printf '%s' "$j" | jq -r '.changedFiles') files (only 100 listed) "
   [ -z "$files" ] && return 0
-  head=$(printf '%s' "$j" | jq -r '.headRefOid')
+  head=$(printf '%s' "$j" | jq -r '.headRefOid | ascii_downcase')
   printf '%s' "$j" | jq -r '.comments[] | select((.authorAssociation // "OWNER") | test("OWNER|MEMBER|COLLABORATOR")) | .body' \
-    | grep -oiE 'Lead read the diff:? +[0-9a-f]{7,40}' | grep -oiE '[0-9a-f]{7,40}$' \
+    | grep -oiE 'Lead read the diff:? +[0-9a-f]{7,40}' | grep -oiE '[0-9a-f]{7,40}$' | tr 'A-F' 'a-f' \
     | while read -r s; do case "$head" in "$s"*) echo yes;; esac; done | grep -q yes && return 0
   echo "#$1 touches $(printf '%s' "$files" | tr '\n' ' ')and has no comment \"Lead read the diff: ${head:0:9}\" for its head ${head:0:9}"
   return 1
@@ -38,7 +38,7 @@ case "$tool" in
     while IFS= read -r seg; do
       printf '%s' "$seg" | grep -qiE 'review(: |%3A ?%20|:%20)approved' || continue
       if printf '%s' "$seg" | grep -qE 'gh[[:space:]]+(pr|issue)[[:space:]]+edit'; then
-        printf '%s' "$seg" | grep -q -- '--add-label' || continue
+        printf '%s' "$seg" | grep -qiE -- "--add-label[= ]+[\"']?[^\"'-]*review(: |%3A ?%20|:%20)approved" || continue
       elif printf '%s' "$seg" | grep -qE 'gh[[:space:]]+api'; then
         printf '%s' "$seg" | grep -q 'labels' || continue
         printf '%s' "$seg" | grep -qiE '(-X|--method)[= ]*DELETE' && continue
@@ -46,6 +46,8 @@ case "$tool" in
       n=$(printf '%s' "$seg" | grep -oE '(pull|pulls|issues)/[0-9]+' | head -1 | grep -oE '[0-9]+$')
       [ -z "$n" ] && n=$(printf '%s' "$seg" | sed -E 's/.*[[:space:]]edit[[:space:]]//' | tr -s ' \t' '\n\n' | grep -E '^[0-9]+$' | head -1)
       [ -z "$n" ] && n=$(gh pr list --head "$(git branch --show-current 2>/dev/null)" --state open --json number 2>/dev/null | jq -r '.[0].number // empty' 2>/dev/null)
+      R=$(printf '%s' "$seg" | grep -oE -- '(-R|--repo)[= ]+[^ ]+' | head -1 | sed -E 's/^(-R|--repo)[= ]+//')
+      [ -n "$R" ] && export GH_REPO="$R"   # the PR is read from the repository the command names
       prs="$prs ${n:-unknown}"
     done <<< "$(printf '%s\n' "$cmd" | tr ';&|' '\n\n\n')" ;;
   *)
