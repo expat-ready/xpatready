@@ -66,6 +66,7 @@ model Filing {
   reviews    FilingReview[]  // C7.6
   passes     ReadinessPass[] // C7.6
   reviewRounds ReviewRoundFiling[] // C8.3
+  decisions    CaseDecision[]      // CS-C1a
   reviewForms  ReviewRoundForm[]   // C8.3
 
   @@unique([caseId, stageId, subjectId])
