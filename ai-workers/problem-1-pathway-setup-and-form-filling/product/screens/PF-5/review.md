@@ -81,4 +81,21 @@ I compared each call with the old helper line by line. For all four calls (`firm
 
 Re-run at `fcfd5524b`: `tests/check_pf5_signup_billing.ts` **53 passed, 0 failed**; `tests/check_case_feed.ts` **39/39 passed**. Round 2's open Minors (m-r2a, m-r2b) and notes are unchanged and still do not block.
 
-Verdict: Approve fcfd5524bb6b9349d265fc5afdaab1df27ae14eb
+Round 3 outcome: approve fcfd5524b (superseded by Round 4 below).
+
+## Round 4 — diff only, `4701000279..9d2e0d7c835040f963f69c933124df71b941e466` (15 Nov 2026)
+`fcfd5524b..4701000279` changes only this review (records). `4701000279..9d2e0d7c8` changes two files:
+* **`api/src/platform/firms/routes.ts:23`:** `@OpenRead("…") @Get("plans") plans()` now sits on one line, with no parentheses in the text, so QA-53's scanner (`check_forms_qa53.ts:33,36`) sees the open mark. Same decorators, same route, same handler: no behaviour change. GET `/api/public/plans` was already open at run time through `ConfigReadGuard`; only the static sweep missed it.
+* **`tests/check_forms_qa53.ts`** (a shared test outside PF-5's touch list; the builder names it in the PR):
+  * `"/api/public/plans": "open"` is added to `REVIEWED`.
+  * `PUBLIC_DOOR_WRITES` is added for the two sign-up POSTs.
+
+**Does the test edit weaken QA-53 or QA-65? No.**
+* **QA-53:** it still compares the marked open reads with `REVIEWED` by exact equality (l. 91-94), so one more reviewed entry exempts only that path. A new open read anywhere still fails until it is reviewed.
+* **QA-65:** the new exemption is an exact list of two paths, checked against the code: the doors found must equal the list (`JSON.stringify` of sorted arrays), so a third public write fails. The branch sits after `OWN_GUARD_WRITES` and before the platform and unnamed branches. Any other write that names nobody still lands in `unnamed`, and `unnamed.length === 0` is unchanged. Each listed door is asked over HTTP with no person and an empty body, and must answer 400 or 503 and never 2xx.
+
+**One Minor (does not block): the door check will go red when sign-up opens.** At `check_forms_qa53.ts:197-199` the check accepts only `400|503`. On a copy where sign-up is set up (part 2, or a run with `PLATFORM_IDENTITY=local`), POST `/api/public/signup/verify` with `{}` answers **404**: an invalid body gets the same not-found as a bad link (`signup.ts`, `VerifyBody` parse fails → `notFound()`). So this check turns red as soon as the door opens, while the door behaves as designed. Fix, in part 2 or now: accept `400|404|503` for verify, or ask each door for its own expected status. Today's CI copy is shut (503), so the check passes; it does not yet exercise the 400 path, which `check_pf5_signup_billing.ts` covers.
+
+Re-run at `9d2e0d7c8`: `tests/check_pf5_signup_billing.ts` **53 passed, 0 failed**. I did not re-run `check_forms_qa53.ts` myself, because it needs an isolated copy; the builder reports 41/41 on one. Round 2's open Minors (m-r2a, m-r2b) are unchanged and still do not block.
+
+Verdict: Approve 9d2e0d7c835040f963f69c933124df71b941e466
