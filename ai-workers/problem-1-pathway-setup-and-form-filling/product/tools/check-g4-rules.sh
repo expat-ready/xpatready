@@ -16,6 +16,8 @@ po '[{"number":12,"state":"open","merged_at":null}]'; ok "(1) a branch with an o
 po '[]'; ok "(1) a new branch with no PR yet may be pushed" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 po '[{"number":12,"state":"closed","merged_at":"2026-11-15T01:00:00Z"},{"number":9,"state":"closed","merged_at":null}]'
 ok "(1) a branch whose PRs merged or closed is refused, naming them" "$([ $r = 1 ] && echo "$out" | grep -q '#12 merged, #9 closed' && echo 1)" "exit $r: $out"
+out=$(PATH="$T/bin:$PATH" FX_PRS="$T/prs.json" REPO=o/r GH_TOKEN=x bash "$TOOLS/pr-open-guard.sh" lead/2026-11-07-lead31 2>&1); r=$?
+ok "(1) the tech lead's lead/* branch is not checked (its records go through records PRs)" "$([ $r = 0 ] && echo "$out" | grep -q 'tech-lead branch' && echo 1)" "exit $r: $out"
 po '[]' down; ok "(1) GitHub unreadable: a warning, not a block" "$([ $r = 0 ] && echo "$out" | grep -q '^warn' && echo 1)" "exit $r: $out"
 grep -q 'pr-open-guard.sh' "$ROOTD/.githooks/pre-push"; ok "(1) .githooks/pre-push runs pr-open-guard.sh" "$([ $? = 0 ] && echo 1)"
 

@@ -8,6 +8,9 @@
 set -u
 b=${1:?branch}; API="${API:-https://api.github.com}"
 [ -n "${XR_ALLOW_CLOSED_PR_PUSH:-}" ] && { echo "pr-open-guard: $b not checked (XR_ALLOW_CLOSED_PR_PUSH)"; exit 0; }
+# The tech lead's lead/* branch lives for days by design (P-188): its records reach main through records PRs, so its old
+# closed or merged PRs say nothing about this push (founder's OK to Lead 58, 15 Nov: the guard refused the Lead's records push).
+case "$b" in lead/*) echo "pr-open-guard: $b is a tech-lead branch, not checked"; exit 0;; esac
 REPO="${REPO:-$(git remote get-url "${2:-origin}" 2>/dev/null | sed -E 's#^.*github\.com[:/]##; s#\.git$##')}"
 H=$(mktemp "${TMPDIR:-/tmp}/prog.XXXXXXXX"); trap 'rm -f "$H"' EXIT; chmod 600 "$H"
 tok="${GH_TOKEN:-$(gh auth token 2>/dev/null)}"; echo 'Accept: application/vnd.github+json' > "$H"
