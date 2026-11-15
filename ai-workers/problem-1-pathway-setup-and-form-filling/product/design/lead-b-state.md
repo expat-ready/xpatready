@@ -8,7 +8,7 @@
 
 **Lead B (6)** (session titled "Lead B (6) · 15 Nov 13:42 IST", transcript `af87b6ec…`, same worktree and branch) took over 15 Nov 13:42 IST from Lead B (5) (`local_552b9387…`, old account) on the new account; started by Lead 56 (`local_119f0fcb…`). Start read: RULES.md as of P-612 (from `origin/lead/2026-11-07-lead31`) and the START HERE below. Its own START HERE is written at its hand-over.
 
-**Lead B (6) live (15 Nov 13:5x IST):** scan loop restarted. FO-3sr brief rewritten to P-606/P-610 (`lead-b-briefs/FO-3sr.md`, ready now) with its missing BACKLOG row (rev 16.17, for the Lead to copy). J-38's BACKLOG waits on is short (rev 16.17 copy text). No J-row is ready. FO-7mv brief still waits on FO-7a #1758 (draft).
+**Lead B (6) live (15 Nov 13:47 IST):** scan loop restarted. FO-3sr brief rewritten to P-606/P-610 (`lead-b-briefs/FO-3sr.md`, ready now) with its missing BACKLOG row (rev 16.17, for the Lead to copy). J-38's BACKLOG waits on is short (rev 16.17 copy text). No J-row is ready. FO-7mv brief still waits on FO-7a #1758 (draft).
 
 ## START HERE: hand-over Lead B (5) → Lead B (6), written 15 Nov 13:24 IST before the account switch (Lead 55's ask)
 

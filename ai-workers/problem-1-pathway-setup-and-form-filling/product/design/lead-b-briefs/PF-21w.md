@@ -1,6 +1,6 @@
 # Brief: PF-21w, the complaint routes (PF-21's part 2; cloud builder lane; row owner Lead B)
 
-Written 15 Nov by Lead B (6). Replaces the PF-21w line of the shared `ROW-w.md` brief (rev 16.4). **Ready now:** PF-4 #1744 and PF-21 #1753 are on `main`; no PF-21w PR exists (checked 15 Nov 14:3x IST). Map row 109 needs this and PF-21s (J-109). Effort: Opus 5.5 **high** (permissions row, P-608).
+Written 15 Nov by Lead B (6). Replaces the PF-21w line of the shared `ROW-w.md` brief (rev 16.4). **Ready now:** PF-4 #1744 and PF-21 #1753 are on `main`; no PF-21w PR exists (checked 15 Nov 14:10 IST). Map row 109 needs this and PF-21s (J-109). Effort: Opus 5.5 **high** (permissions row, P-608).
 
 ---
 You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime PF-21w` and take **one row, PF-21w**, end to end on a fresh branch from `origin/main`, one PR.
