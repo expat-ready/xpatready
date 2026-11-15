@@ -1,5 +1,5 @@
 // qa R1.9 "Background jobs, schedules, reminders" (PF-14 runner, used by FO-3's booking since FO-3f): gate A walked by
-// API on a running isolated copy (no screen; P-348 (3) "otherwise by API to the next step"). A person books a
+// API on a running isolated copy (background jobs have no screen; by API as R1.2 was accepted, 15 Nov verdicts). A person books a
 // consultation over HTTP; underneath, the booking's jobs sit in PF-14's real queue (pg-boss, schema platform_jobs):
 // two reminders (24 h and 1 h before) and the host's attendance question (30 min after), each at its instant, each once;
 // the two booking emails run to completion on the runner. Phase "after" runs after the shell restarts the app on the same
@@ -57,14 +57,14 @@ async function book() {
   ok("R1.9 waiting: the reminders and the question wait (state created), none ran early", rem.length + ask.length === 3 && [...rem, ...ask].every((x) => x.state === "created"), [...rem, ...ask].map((x) => x.state));
   ok("R1.9 run: the booking emails (booker and host) ran to completion on the runner", mail.length === 2 && mail.every((x) => x.state === "completed"), mail.map((x) => [x.data?.to, x.state]));
   const keys = js.map((x) => x.key ?? "");
-  ok("R1.9 once: every job carries its own key, no key twice", keys.length === 5 && keys.every(Boolean) && new Set(keys).size === keys.length, keys);
+  ok("R1.9 keys: every job carries its own key, no key twice (the once-only proof is PF-14's suite)", keys.length === 5 && keys.every(Boolean) && new Set(keys).size === keys.length, keys);
   writeFileSync(stateFile, JSON.stringify({ bookingId: row!.id, link: b.body.manageToken, count: js.length }));
 }
 
 async function after() {
   const st = JSON.parse(readFileSync(stateFile, "utf8"));
   const js = await jobsOf(st.bookingId);
-  ok("R1.9 restart: after the app restarted on the same database, the same jobs are there", st.count === 5 && js.length === st.count, js.map((x) => [x.name, x.state]));
+  ok("R1.9 restart: after the app restarted on the same database, as many jobs are there", st.count === 5 && js.length === st.count, js.map((x) => [x.name, x.state]));
   ok("R1.9 restart: the reminders and the question still wait", js.filter((x) => x.name !== "booking.mail").length === 3 && js.filter((x) => x.name !== "booking.mail").every((x) => x.state === "created"), js.map((x) => [x.name, x.state]));
   const h = await j("GET", "/api/health/ready");
   ok("R1.9 ready: the restarted app counts its job queue", h.status === 200 && h.body.checks?.job_queue?.ok === true, h);

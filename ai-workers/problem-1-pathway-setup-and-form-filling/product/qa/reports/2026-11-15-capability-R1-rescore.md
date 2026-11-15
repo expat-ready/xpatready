@@ -1,7 +1,7 @@
 # qa · capability R1 re-score: map rows 2, 9, 11, 12, 16, 38, 80, 99 (15 Nov 2026)
 
 **Mode:** `/qa capability` (plan C, P-613; brief from Lead 56, carried on by Lead 59): score on `origin/main` the Release 1 capabilities for MVP-CHECKLIST §A map rows 2, 9, 11, 12, 16, 80 and 99, and re-score R1.9, R1.11 and R1.38. **Tested on `main` d52b7274e** (tree cdf97e36e). Live AI off, US$0, no priced button (P-175). Model Opus 5.5, medium effort; fresh reader Opus 5.5, high effort (P-605).
-**Verdict (tester's draft; the fresh reader's ruling is in `2026-11-15-capability-R1-rescore/verdicts.md` and wins):** see §4.
+**Verdict (fresh Opus 5.5 reader, high effort, ran nothing; `2026-11-15-capability-R1-rescore/verdicts.md`):** **2 Works** (R1.2 re-confirmed; **R1.9 new**) · **5 Partial** (R1.12, R1.16, R1.38, map 80, map 99) · **1 Not tested** (R1.11). Bugs: 0 Blocker · 0 Critical · 0 new Major · 1 new Minor (QA-475); closed QA-452 (Major), QA-470, QA-473 (Minor); QA-383 (Critical), QA-449 (Major), QA-450, QA-451 still open.
 
 ## 1. What was run on GitHub (P-339)
 
@@ -37,7 +37,7 @@ Copies started and stopped in the same command (`isolated.sh … start --ttl …
 
 Each row's Done when is from `qa/CAPABILITIES.md` (R1 section). `decision-impact.sh` on d52b7274e: every decision maps to a row or is exempt (no Gap). `trace-requirements.py --brief 99` answers "no Release 1 row 99" (case side, covered by C rows, P-526).
 
-## 4. Draft verdicts (the reader rules)
+## 4. Verdicts (the reader agreed with every draft below; its corrections are in §4a)
 
 | Row | Draft | Why |
 |---|---|---|
@@ -50,10 +50,22 @@ Each row's Done when is from `qa/CAPABILITIES.md` (R1 section). `decision-impact
 | Map 80 IRCC forms per applicant from one set of answers | **Partial** | QA-383 (Critical) still reproduces on d52b7274e (4/6), so C7.1 and C7.8 stay Partial (P-305 (3)); C7.2 Partial (Adobe Validate and barcode evidence, QA-315); BK-10, BK-16, BK-22, BK-23, BK-24 merged; C7.8 20/20 on the checkpoint |
 | Map 99 AI on top of the guardrails | **Partial** | C3.1 (17/0, 107/0), C6.5 (57, 13, 33) and C7.5 (16/16) green on main's tree; BK-14 merged (#1573); **missing: the founder's model choice** (checklist "model choice open (founder)"); only Minor bugs open on C6.5 (QA-353, QA-380, QA-381) |
 
+## 4a. The reader's corrections (all taken)
+* R1.38 is also held by J-38 (join and walk) not merged (P-606 (2)), and no test shows the staff-zone time across a daylight-saving change.
+* Map 80: C7.2 is held by QA-165 as well as QA-315 (both Major). MVP-CHECKLIST row 80's "C7.1, C7.8 Works" is out of date.
+* Map 99: BK-14's own suites are green too. The rules do not settle the model choice: for the Lead. If it moves to launch condition §C C26, row 99 is Works on this evidence; a different model later needs C6.5 and C7.5 re-proved.
+* R1.9 rests on gate A by API (no screen), as R1.2 was accepted; if the Lead holds "by screens only", both go to Partial. After a restart a reminder finds no booker (in-memory arrival fake, FO-2 / J-37), so it sends nothing: the walk proves the queue keeps the jobs, not that the reminder is delivered after a restart.
+* The walk's key line proves distinct keys, not once-only (PF-14's suite proves that); its restart line proves an equal count. Labels fixed in the check. The check's header no longer quotes P-348 (3) as allowing "by API".
+* QA-452's check ran its 3 code-only lines (not the line that needs a port). The api log's job lines are now saved: `r19-api-log-job-lines.txt`.
+* Local re-runs used the sandbox shims in §2; they count for the re-run (P-290) on that understanding.
+* The gate-A check (`check_r1_platform_gate_a.ts`) still labels its R1.9 line as blocked by QA-453: left for the next round.
+
 ## 5. Bugs
 * **Close QA-452** (Major): fixed by PF-23w (#1800); qa's check 3/3 on d52b7274e; PF-23w 31/31 on GitHub. R1.13 still Partial for PF-23c (cloud logs, alarms to a person); not re-scored in this round.
 * **Close QA-470** (Minor): fixed by FO-3h (#1799); qa's check 3/3.
-* QA-449 (Major), QA-450, QA-451 (Minor), QA-383 (Critical) re-seen on d52b7274e. No new bug.
+* **Close QA-473** (Minor; found closable by the reader): FO-3's in-memory job fake is gone since FO-3f #1785; what is left (the arrival fake after a restart) is FO-2 / J-37's.
+* **New QA-475** (Gap · Minor, nearest R1.9, does not hold it; FO-3's lane): a booking's jobs are queued after the commit and a queueing failure only logs a warning (`service.ts:466`), so a crash or queue outage in between leaves a booking with no confirmation or reminders.
+* QA-449 (Major), QA-450, QA-451 (Minor), QA-383 (Critical), QA-315, QA-165 (Major) re-seen on d52b7274e. No severity change.
 
 ## 6. Could not test
 * `skeleton.yml` on main's head (dispatch refused here; no docker in this session's sandbox).
