@@ -108,6 +108,19 @@ try {
   ok("PF-4b fail: an expired and a revoked invitation hold no seat (not counted)", seats?.pending === 1, seats);
   sql(`update platform_staff set status = 'ACTIVE' where id = '${T}'`);
 
+  // ------------------------------------------------- the invitation email (Lead B ruling 2: PF-4's invite and resend)
+  const tokenIn = (address: string, i: number) => /#t=([A-Za-z0-9_-]{43})/.exec(mail.inbox(address)[i]?.text ?? "")?.[1] ?? "";
+  const inv = await call(base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email: "Mailed.Invitee@example.com", roles: ["CASE_OFFICER"] } });
+  const t1 = tokenIn("mailed.invitee@example.com", 0), open1 = await call(base, "GET", `/api/public/invitations/${t1}`);
+  ok("PF-4b pass (ruling 2): one invite → one email (after the commit) whose link opens VALID; the answer carries no token", inv.status === 201 && inv.body.emailed === true && !/token/i.test(JSON.stringify(inv.body)) && mail.inbox("mailed.invitee@example.com").length === 1 && open1.body.state === "VALID", [inv.body, open1.body]);
+  const over = await call(base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email: "over.limit@example.com", roles: ["CASE_OFFICER"] } });
+  ok("PF-4b fail (ruling 2): an invite whose transaction is refused (5 of 5 seats: 409 PLAN_LIMIT_REACHED) sends no email", over.status === 409 && over.body.code === "PLAN_LIMIT_REACHED" && mail.inbox("over.limit@example.com").length === 0, over.body);
+  const resent = await call(base, "POST", `/api/platform/staff/invitations/${inv.body.id}/resend`, { token: tR });
+  const t2 = tokenIn("mailed.invitee@example.com", 1), reopen = await Promise.all([t1, t2].map((t) => call(base, "GET", `/api/public/invitations/${t}`)));
+  ok("PF-4b fail (ruling 2): after a resend the first link answers NOT_VALID and the new one VALID (a new token, a second email)", resent.status === 200 && resent.body.emailed === true && t2 && t2 !== t1 && reopen[0].body.state === "NOT_VALID" && reopen[1].body.state === "VALID", [resent.body, reopen.map((x) => x.body.state)]);
+  ok("PF-4b pass (ruling 2): the plain token is never stored (only its hash) and never in a log line", sql(`select count(*) from platform_invitation where token_hash in ('${t1}','${t2}')`) === "0" && ![t1, t2].some((t) => printed.includes(t)));
+  sql(`update platform_invitation set revoked_at = now() where email = 'mailed.invitee@example.com' and revoked_at is null`);   // its seat back for the steps below
+
   // ----------------------------------------------------------------------------- 403 on the list, 200 on own account
   const asO = await Promise.all(["/api/platform/staff", `/api/platform/staff/${R}`, "/api/platform/licences", "/api/platform/settings/two-step"].map((p) => call(base, "GET", p, { token: tO })));
   ok("PF-4b fail: a person without agent/staff:manage (Case Officer) gets 403 on the list, a person, the licences and the two-step setting", asO.every((r) => r.status === 403 && r.body.code === "MISSING_PERMISSION"), asO.map((r) => r.status));
@@ -130,6 +143,8 @@ try {
   ok("PF-4b pass: accept creates one staff member with the invitation's roles and one provider user, writes one audit line, and returns the hand-off to set a password",
     !!won && won.body.handOff?.kind === "set-password" && created === 1 && sql(`select count(*) from platform_staff where email = 'new.person@example.com'`) === "1" && sql(`select string_agg(role::text, ',') from platform_role_grant where staff_id = '${won.body.staffId}'`) === "CASE_OFFICER" && audits("platform.invitation.accepted") === acceptAudit + 1, acc.map((a) => a.body));
   ok("PF-4b fail: two accepts at once → one wins, the other 410 NOT_VALID; never a second account; the provider sends no email of its own (none through MailPort either)", lost?.status === 410 && lost.body.code === "INVITATION_NOT_VALID" && mail.sent.length === mailBefore && created === 1, lost?.body);
+  const joined = sql(`select count(*) || ':' || max(payload::text) from module_event where type = 'staff.joined'`);
+  ok("PF-4b pass/fail (ruling 5): accept writes one staff.joined event (ids only: staff and invitation); the second accept (410) writes none", joined === `1:{"staffId": "${won!.body.staffId}", "invitationId": "${fresh.id}"}`, joined);
   const late = await Promise.all([expired.token, revoked.token, fresh.token].map((t) => call(base, "POST", `/api/public/invitations/${t}/accept`)));
   ok("PF-4b fail: accepting an expired (410 EXPIRED), revoked or used (410 NOT_VALID) token creates nobody", late[0].status === 410 && late[0].body.code === "INVITATION_EXPIRED" && late.slice(1).every((l) => l.status === 410 && l.body.code === "INVITATION_NOT_VALID") && created === 1 && sql(`select count(*) from platform_staff where email in ('late.person@example.com','gone.person@example.com')`) === "0", late.map((l) => l.body));
   ok("PF-4b fail: the provider's own invitation mail (AdminCreateUser) is never sent by the custom email sender", (await handleCustomEmail({ triggerSource: "CustomEmailSender_AdminCreateUser", request: { code: "x", userAttributes: { email: "new.person@example.com" } } }, { decrypt: async (c) => c, mail, firmOf: async () => FIRM_A })).sent === false && mail.sent.length === mailBefore);
@@ -154,7 +169,7 @@ try {
   ok("PF-4b pass/fail: sign-out ends the person's own session (200, then 401) with one audit line", out.status === 200 && afterOut.status === 401 && audits("platform.staff.signed_out") === 1, [out.body, afterOut.body]);
 
   // ------------------------------------------------------------------------------ step-up and resetting two-step
-  ok("PF-4b pass/fail: the step-up check allows a sign-in 5 minutes old and refuses one older (401 STEP_UP_REQUIRED)", (() => { try { requireStepUp({ authTime: 1000 }, 1000_000 + 300_000, "x"); } catch { return false; } try { requireStepUp({ authTime: 1000 }, 1000_000 + 301_000, "x"); return false; } catch (e: any) { return e.getStatus() === 401 && e.getResponse().code === "STEP_UP_REQUIRED"; } })());
+  ok("PF-4b DWn pass/fail: the step-up check allows a sign-in 5 minutes old and refuses one older (401 STEP_UP_REQUIRED)", (() => { try { requireStepUp({ authTime: 1000 }, 1000_000 + 300_000, "x"); } catch { return false; } try { requireStepUp({ authTime: 1000 }, 1000_000 + 301_000, "x"); return false; } catch (e: any) { return e.getStatus() === 401 && e.getResponse().code === "STEP_UP_REQUIRED"; } })());
   sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${FIRM_A}', '${T}', 'ADMIN', 'check')`);
   tR = await signIn("user-R"); const tTA = await signIn("user-T");
   const own = await call(base, "POST", `/api/platform/staff/${R}/reset-two-step`, { token: tR });
@@ -164,16 +179,22 @@ try {
   clock.t += 6 * 60_000;
   const resetAudit = audits("platform.staff.two_step_reset"), revT = revs(T), sentBefore = mail.sent.length;
   const stale = await call(base, "POST", `/api/platform/staff/${T}/reset-two-step`, { token: tR });
-  ok("PF-4b fail: an Owner whose sign-in is older than 5 minutes → 401 STEP_UP_REQUIRED (\"Confirm it's you\"), nothing changed, nobody emailed", stale.status === 401 && stale.body.code === "STEP_UP_REQUIRED" && audits("platform.staff.two_step_reset") === resetAudit && revs(T) === revT && mail.sent.length === sentBefore, stale.body);
+  ok("PF-4b DWn fail: an Owner whose sign-in is older than 5 minutes → 401 STEP_UP_REQUIRED (\"Confirm it's you\"), nothing changed, nobody emailed", stale.status === 401 && stale.body.code === "STEP_UP_REQUIRED" && audits("platform.staff.two_step_reset") === resetAudit && revs(T) === revT && mail.sent.length === sentBefore, stale.body);
   tR = await signIn("user-R");
   failMail = true; const mailDown = await call(base, "POST", `/api/platform/staff/${T}/reset-two-step`, { token: tR }); failMail = false;
   ok("PF-4b fail: when the email to the person cannot be sent, the reset rolls back (no audit line, no ended session, the provider unchanged)", mailDown.status >= 500 && audits("platform.staff.two_step_reset") === resetAudit && revs(T) === revT && (await admin.twoStep({ staffId: T, subject: null, email: "" })).method === "TOTP", mailDown.status);
   const reset = await call(base, "POST", `/api/platform/staff/${T}/reset-two-step`, { token: tR });
   const tMail = mail.inbox(sql(`select email from platform_staff where id = '${T}'`));
   const tList = (await call(base, "GET", "/api/platform/staff", { token: tR })).body.staff.find((s: any) => s.id === T);
-  ok("PF-4b pass: within 5 minutes the Owner resets the Admin's two-step: one audit line, the person's sessions end, they are emailed through MailPort, the list shows two-step not set up",
+  ok("PF-4b DWn pass: within 5 minutes the Owner resets the Admin's two-step: one audit line, the person's sessions end, they are emailed through MailPort, the list shows two-step not set up",
     reset.status === 200 && audits("platform.staff.two_step_reset") === resetAudit + 1 && (await call(base, "GET", "/api/platform/me", { token: tTA })).status === 401 && tMail.length === 1 && tMail[0].templateKey === "identity.two_step_reset" && tList?.twoStep?.method === null, [reset.body, tMail.length, tList]);
-  console.log("WAIT  PF-4b (Question 1 on the PR; not counted, never green): PF-4's own Owner-role change still answers 403 STEP_UP_REQUIRED, not 401; the two-line change is outside the touch list");
+  clock.t += 6 * 60_000;
+  const staleOwner = await call(base, "PATCH", `/api/platform/staff/${O}/roles`, { token: tR, body: { roles: ["CASE_OFFICER", "OWNER"], reason: "cover while away" } });
+  tR = await signIn("user-R");
+  const freshOwner = await call(base, "PATCH", `/api/platform/staff/${O}/roles`, { token: tR, body: { roles: ["CASE_OFFICER", "OWNER"], reason: "cover while away" } });
+  ok("PF-4b DWn fail (ruling 1): PF-4's Owner-role change with an auth_time older than 5 minutes → 401 STEP_UP_REQUIRED, nothing changed", staleOwner.status === 401 && staleOwner.body.code === "STEP_UP_REQUIRED" && staleOwner.body.title === "Confirm it's you", staleOwner.body);
+  ok("PF-4b DWn pass (ruling 1): within 5 minutes the same change is allowed (200; O holds Owner)", freshOwner.status === 200 && freshOwner.body.roles.includes("OWNER"), freshOwner.body);
+  sql(`update platform_role_grant set ended_at = now(), ended_by = 'check', end_reason = 'check' where staff_id = '${O}' and role = 'OWNER' and ended_at is null`);
 
   // --------------------------------------------------------------------- one audit line in the transaction, fail-closed
   const record = auditEvent.record.bind(auditEvent); const revO = revs(O);

@@ -6,6 +6,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { PlatformRole, Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
+import { EVENT, StaffJoinedPayload } from "../../../../../ports/events.ts";
 import type { MailPort } from "../../../../../ports/mail.ts";
 import { Db } from "../../../core.ts";
 import { auditEvent } from "../../audit/audit-event.ts";
@@ -94,6 +95,7 @@ export class PlatformSession {
       // Last, so a refused provider call rolls everything back (AdminCreateUser with MessageAction SUPPRESS).
       const { subject } = await this.admin.createUser(inv.email);
       await tx.platformStaff.update({ where: { id: staff.id }, data: { identitySubject: subject } });
+      await tx.moduleEvent.create({ data: { firmId: inv.firm_id, type: EVENT.STAFF_JOINED, subjectId: staff.id, payload: StaffJoinedPayload.parse({ staffId: staff.id, invitationId: inv.id }) } });   // last (PF-3 m8)
       return { staffId: staff.id, firmKey: inv.firm_key, roles: inv.roles, handOff: await this.admin.handOff(inv.firm_key, inv.email) };
     });
   }

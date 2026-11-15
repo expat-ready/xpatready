@@ -9,5 +9,5 @@ export const STEP_UP_SECONDS = 5 * 60;
 export const STEP_UP_WORDS = "Confirm it's you: sign in again, then try once more.";
 
 export function requireStepUp(actor: Pick<StaffContext, "authTime">, nowMs: number, what: string): void {
-  if (nowMs / 1000 - actor.authTime > STEP_UP_SECONDS) problem(401, "Confirm it's you", `${STEP_UP_WORDS} ${what} needs a sign-in in the last 5 minutes.`, { code: "STEP_UP_REQUIRED" });
+  if (nowMs / 1000 - actor.authTime > STEP_UP_SECONDS) problem(401, "Confirm it's you", `${STEP_UP_WORDS} ${what.charAt(0).toUpperCase()}${what.slice(1)} needs a sign-in in the last 5 minutes.`, { code: "STEP_UP_REQUIRED" });
 }
