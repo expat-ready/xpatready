@@ -1055,3 +1055,10 @@ Both go in FO-2 part 1 if it stays under 800 lines, else they open FO-2 part 2. 
   - No preference check, no table and no routes: those stay with PF-18n, which may add to the interface but not change `notify`.
   - Tests: a duplicate gives one record, and an unknown kind is refused. Under 150 lines.
   - Once it merges, CS-DL1b, CS-NT1b and CS-N1 may build on it.
+
+## Rev 16.32 (16 Nov 01:1x IST, Lead B (6)): PF-19b booking mail swap confirmed (#1860, comment 6900280637)
+* **Booking mail now runs on `MessagePort`'s `MessagesMail` in PF-19b part 1**, per the current Lead's brief (P-622 (1), qa #1855). That supersedes the PF-19b brief's line "do not move FO-3's `runtime-ports.ts`".
+* **PF-19b part 2 reuses `MessagesMail`** (no second adapter). Its only move is from the demo outbox to SES: at most once, with the SENDING state (rev 16.25).
+* **J-37 and J-38's swap list** marks booking mail as already swapped by PF-19b part 1.
+* **A suppressed address is a final refusal, never retried.** The fix goes in #1860 if it fits the touch list, otherwise it is part 2's first item. Test: one record, zero further attempts, the booking unchanged.
+* **Part 2 also takes**, each with a test: the orphan invite file and the unmailed manage link on a rerun, and the 64 KB inbox cap.
