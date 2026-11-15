@@ -1,10 +1,7 @@
-// PF-4b (AG-1-70: one send path): the identity provider's custom email sender. Cognito hands every email it would send
-// to our function ("The Lambda triggers CustomEmailSender and CustomSMSSender support third-party email and SMS
-// notifications in user pools"), with the code encrypted ("Amazon Cognito encrypts these secrets with an AWS KMS
-// customer managed key and the AWS Encryption SDK"); setting it up is a script, not the console ("These configurations
-// aren't available from Amazon Cognito console"): AWS, read 15 Nov 2026. This handler is that function's body: decrypt
-// (the deployed function passes the Encryption SDK's decrypt; tests a fake) → our words → MailPort. AdminCreateUser
-// mail never comes (we create users with SUPPRESS); if it does, nothing is sent. No code or body is ever logged.
+// PF-4b (AG-1-70: one send path): Cognito's custom email sender body. Cognito hands every email to our function with the
+// code encrypted by our KMS key, set up by script, not the console (AWS, read 15 Nov 2026; PR body). Decrypt (the
+// Encryption SDK in the deployed function; a fake in tests) → our words → MailPort. AdminCreateUser mail is never sent
+// (we create users with SUPPRESS). No code or body is ever logged.
 import type { MailPort } from "../../../../../ports/mail.ts";
 import { SYSTEM_REPLY_TO } from "./mail.ts";
 

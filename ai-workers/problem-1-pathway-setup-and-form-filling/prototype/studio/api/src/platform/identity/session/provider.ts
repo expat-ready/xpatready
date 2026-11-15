@@ -77,10 +77,6 @@ export class CognitoIdentityAdmin implements IdentityAdminPort {
       ? "This server cannot manage sign-in accounts yet: the Cognito admin client is not in the app (it needs the technology gate)."
       : "Staff sign-in is not set up on this server (no Cognito pool is configured).", { code: "SIGN_IN_NOT_SET_UP" });
   }
-  async createUser(): Promise<{ subject: string }> { return this.refuse(); }
-  async handOff(): Promise<HandOff> { return this.refuse(); }
-  async twoStep(): Promise<TwoStep> { return this.refuse(); }
-  async resetTwoStep() { this.refuse(); }
-  async signOutEverywhere() { this.refuse(); }
-  async redeem(): Promise<{ firmKey: string; email: string }> { return this.refuse(); }
+  async createUser(): Promise<{ subject: string }> { return this.refuse(); } async handOff(): Promise<HandOff> { return this.refuse(); } async twoStep(): Promise<TwoStep> { return this.refuse(); }
+  async resetTwoStep() { this.refuse(); } async signOutEverywhere() { this.refuse(); } async redeem(): Promise<{ firmKey: string; email: string }> { return this.refuse(); }
 }

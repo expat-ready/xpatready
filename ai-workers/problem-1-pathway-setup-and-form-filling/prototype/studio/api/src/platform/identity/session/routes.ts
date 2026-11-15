@@ -10,16 +10,12 @@ type R = { platform?: StaffContext };
 @Controller("api/platform")
 export class PlatformSessionController {
   constructor(@Inject(PlatformSession) private readonly s: PlatformSession) {}
-
   @Get("session/callback") @Header("Cache-Control", "no-store") @Header("Referrer-Policy", "no-referrer") @StaffSignIn("the sign-in code is the proof: there is no session yet")
   callback(@Query("code") code: unknown) { return this.s.callback(code); }
-
   @Post("session/sign-out") @HttpCode(200) @AnyStaff("a person ends their own session")
   signOut(@Req() r: R) { return this.s.signOut(staffOf(r)); }
-
   @Post("staff/:id/sign-out-everywhere") @HttpCode(200) @PermissionKeys("agent/staff:manage")
   signOutEverywhere(@Req() r: R, @Param("id") id: string) { return this.s.signOutEverywhere(staffOf(r), id); }
-
   @Post("staff/:id/reset-two-step") @HttpCode(200) @PermissionKeys("agent/staff:manage")
   resetTwoStep(@Req() r: R, @Param("id") id: string) { return this.s.resetTwoStep(staffOf(r), id); }
 }
@@ -28,10 +24,8 @@ export class PlatformSessionController {
 @Controller("api/public/invitations")
 export class PublicInvitationController {
   constructor(@Inject(PlatformSession) private readonly s: PlatformSession) {}
-
   @Get(":token") @Header("Cache-Control", "no-store") @Header("Referrer-Policy", "no-referrer")
   state(@Param("token") token: string) { return this.s.invitationState(token); }
-
   @Post(":token/accept") @HttpCode(200) @Header("Cache-Control", "no-store") @Header("Referrer-Policy", "no-referrer")
   accept(@Param("token") token: string) { return this.s.accept(token); }
 }

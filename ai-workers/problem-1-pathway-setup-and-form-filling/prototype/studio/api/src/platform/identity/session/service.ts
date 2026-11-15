@@ -85,11 +85,12 @@ export class PlatformSession {
    *  to set a password. The invitation row is locked, so a second accept (parallel or later) finds it used. */
   async accept(token: string) {
     return this.db.$transaction(async (tx) => {
+      const pre = await this.invitation(tx, token, false);   // one lock order with PF-4's resend and revoke: firm, then invitation
+      if (pre) await tx.$queryRaw`select id from platform_firm where id = ${pre.firm_id}::uuid for update`;
       const i = await this.invitation(tx, token, true), state = PlatformSession.stateOf(i);
       if (state === "EXPIRED") problem(410, "Invitation expired", INVITE_WORDS.expired(i!.firm_name), { code: "INVITATION_EXPIRED", state });
       if (state !== "VALID") problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state });
       const inv = i!;
-      await tx.$queryRaw`select id from platform_firm where id = ${inv.firm_id}::uuid for update`;
       if (await tx.platformStaff.findFirst({ where: firmScope(inv.firm_id, { email: inv.email }), select: { id: true } })) problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" });
       // One sign-in account is one firm's staff member (identity_subject is unique): the invitee, who holds the link, is told plainly.
       if (await tx.platformStaff.findFirst({ where: { email: inv.email }, select: { id: true } })) problem(409, "Use another email", `This email already signs in to another firm. Ask ${inv.firm_name} to invite another address.`, { code: "EMAIL_IN_ANOTHER_FIRM" });

@@ -15,6 +15,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fakeMail } from "../ports/mail.ts";
+import { runContract } from "../ports/contracts/contract.ts";
+import { mailPortContract } from "../ports/contracts/mail-port.contract.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const PORT = process.argv[2] ? Number(process.argv[2]) : null;
@@ -226,8 +228,8 @@ try {
   ok("PF-4b fail: a person who is not our staff, or an unknown trigger, gets nothing", !stranger.sent && !(await handleCustomEmail({ triggerSource: "CustomEmailSender_Other", request: {} }, { decrypt: async () => "", mail, firmOf: async () => FIRM_A })).sent && mail.sent.length === sentC + 1);
   const cog = new CognitoIdentityAdmin({ userPoolId: "ca-central-1_X", clientId: "c", mfaRequired: true });
   ok("PF-4b fail: the cognito admin adapter refuses (503 SIGN_IN_NOT_SET_UP) and says why, never a silent success", await cog.createUser().then(() => false, (e: any) => e.getStatus() === 503 && /technology gate/.test(e.getResponse().detail)));
-  const lm = new LocalMail(() => clock.now()); await lm.send({ firmId: FIRM_A, to: "A@Example.com", replyTo: "no-reply@expatready.example", subject: "s", text: "t", class: "TRANSACTIONAL" });
-  ok("PF-4b pass/fail: the local MailPort adapter keeps a checked email and refuses a bad one like the fake", lm.inbox("a@example.com").length === 1 && await lm.send({ firmId: "x", to: "no", replyTo: "no", subject: "", text: "", class: "TRANSACTIONAL" } as never).then(() => false, () => true));
+  await runContract(mailPortContract, "LocalMail", () => new LocalMail(() => clock.now()), ok);
+  await runContract(mailPortContract, "fakeMail", () => fakeMail(), ok);
 
   // ---------------------------------------------------------------------------- a licence number never leaks
   const leaks = { log: printed.includes(LICENCE), email: mail.sent.some((m) => JSON.stringify(m).includes(LICENCE)), audit: sql(`select count(*) from audit_event where summary like '%${LICENCE}%' or detail::text like '%${LICENCE}%'`) !== "0", events: sql(`select count(*) from module_event where payload::text like '%${LICENCE}%'`) !== "0" };

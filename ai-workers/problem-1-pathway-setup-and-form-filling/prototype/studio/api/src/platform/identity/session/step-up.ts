@@ -1,8 +1,5 @@
-// PF-4b (contracts §7 §1.2; AG-1-42; BR-5): the step-up check. A change that needs "Confirm it's you" is allowed only
-// when the session's sign-in (`auth_time`, on StaffContext.authTime; AWS: "auth_time The authentication time, in Unix
-// time format, that your user completed authentication", read 15 Nov 2026) is at most 5 minutes old; otherwise 401
-// STEP_UP_REQUIRED, so the screen sends the person to sign in again and back. The local stand-in's re-sign-in is
-// POST /api/platform/session/local (PF-4).
+// PF-4b (contracts §7 §1.2; AG-1-42; BR-5): "Confirm it's you". A change is allowed only when the session's sign-in
+// (`auth_time`, AWS-verified 15 Nov 2026) is at most 5 minutes old; else 401 STEP_UP_REQUIRED (sign in again and back).
 import { problem, type StaffContext } from "../keys.ts";
 
 export const STEP_UP_SECONDS = 5 * 60;
