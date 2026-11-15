@@ -371,6 +371,8 @@ export function runTransform(transform: string | undefined, value: unknown, box:
       // QA-383 (BK-383, noteList): "only option: Canada=511" keys the table by "Canada", so "Canada" writes 511; an "e.g." list
       // or a note naming no values gives no table, and the box's own printed list decides.
       for (const pair of (noteList(m[1]) ?? "").split(",")) { const q = /^\s*([^=|]+?)\s*=\s*(\w+)\s*$/.exec(pair); if (q) inline[q[1]] = q[2]; }
+      // Review m2 on #1810: a note of examples (or one naming no values) on a box that prints no list says so, not "dependent".
+      if (!choices(box).length && !Object.keys(inline).length && m[1] && !noteList(m[1])) return hand("the map's note gives examples only (no list), and the box prints no list of its own");
       if (!choices(box).length && !Object.keys(inline).length) return hand("code list depends on another answer (dependent list); the form's own rules fill it");
       const code = box.options_scope ? dependentCode(String(v), choices(box)) : codeFor(String(v), box, Object.keys(inline).length ? inline : undefined) ?? (Object.keys(inline).length ? codeFor(String(v), box) : null);
       // BK-26: on a dependent list, a value not in the list for the other box's answer is refused in words, never written.

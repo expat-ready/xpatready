@@ -321,7 +321,7 @@ async function api() {
   // Review round 3, m1 (on #1450), possible since QA-383 (BK-383): a copied value is judged by the release of the case it
   // goes to, never the earlier case's. The current country of residence takes any country on the Visitor visa, and only
   // Canada on With an LMIA (IMM 5710's map note "only option: Canada=511", read since BK-383 as the one choice "Canada";
-  // before, even "Canada" was refused there, so no step could tell the two releases apart). Case A4 holds "IND", valid on its
+  // before, even "Canada" was refused there, in words naming the lead-in). Case A4 holds "IND", valid on its
   // own release: case B4 (With an LMIA) shows it refused in its own release's words; case V4 (Visitor visa) may use it.
   const RES = "person.current_residence_country", N4 = `Client T ${run}`, a4 = await open(vv, "A4", N4), pa4 = principalOf(a4);
   const saved4 = await answer(a4.id, pa4, RES, "IND");

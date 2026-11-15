@@ -85,6 +85,13 @@ async function written(caseId: string, subject: string, form: keyof typeof BOX, 
   const o5710 = await written(caseId, principal!, "IMM 5710", "old"), o5409 = await written(caseId, principal!, "IMM 5409", "old");
   ok("BK-383 DW5 (IMM 5710): its copy writes the form's code 511", o5710 === "511", { written: o5710 });
   ok("BK-383 DW5 (IMM 5409): its copy writes \"Canada\" in the Country box, never the lead-in", o5409 === "Canada", { written: o5409 });
+  // DW5 fail (review M1 on #1810): only an old choice is read without its lead-in; a person's own words on a text field
+  // that happen to start the same way are never changed.
+  const TEXT = "person.original_entry_place", OWN = "Only choice: I stayed with my sister";
+  const own = await call("PUT", `/runtime/cases/${caseId}/answers/${principal}/${TEXT}`, { value: OWN, expectedId: null }, OFFICER);
+  const ownRead = (await call("GET", `/runtime/cases/${caseId}/questionnaire?mode=agent`, undefined, OFFICER)).body;
+  const ownHits: unknown[] = []; const w2 = (n: unknown) => { if (Array.isArray(n)) n.forEach(w2); else if (n && typeof n === "object") { const o = n as Record<string, unknown>; if (o.fact === TEXT && o.subjectId === principal) ownHits.push((o as { answer?: { value?: unknown } }).answer?.value); Object.values(o).forEach(w2); } }; w2(ownRead);
+  ok("BK-383 DW5 fail: a free-text answer that starts \"Only choice:\" reads back word for word (saved and on the questionnaire)", own.status === 200 && own.body?.answer?.value === OWN && ownHits.includes(OWN), { status: own.status, saved: own.body?.answer?.value, read: ownHits });
   for (const value of ["Canada"]) {
     const r = await call("PUT", `/runtime/cases/${caseId}/answers/${principal}/${FIELD}`, { value, expectedId: read?.id ?? null }, CLIENT);
     // A refused choice is saved with a problem on it ("answered with a problem"), so 200 alone is not acceptance.
@@ -97,7 +104,8 @@ async function written(caseId: string, subject: string, form: keyof typeof BOX, 
   // DW6 (pure, the same helper every reader uses): an "e.g." note names examples, not the list.
   const eg = "code_list:imm1344.country (e.g. Canada=511, United States of America=461)";
   ok("BK-383 DW6: an \"e.g.\" note gives no option list (noteList, pdfOptions)", noteList("e.g. Canada=511, United States of America=461") === null && pdfOptions({}, eg).length === 0 && noteList("codes as in inventory, e.g. Stateless=979") === null, { options: pdfOptions({}, eg) });
-  ok("BK-383 DW6: the fill writes no example's code into a box that prints no list (by hand instead)", "hand" in runTransform(eg, "United States of America", {}));
+  const byHand = runTransform(eg, "United States of America", {}) as { reason?: string };
+  ok("BK-383 DW6: the fill writes no example's code into a box that prints no list (by hand, saying the note gives examples only)", "hand" in byHand && /examples only/.test(byHand.reason ?? ""), byHand);
   ok("BK-383 DW1 (pure): \"only option: Canada=511\" lists the one choice \"Canada\" and the fill writes 511 for it", noteList("only option: Canada=511") === "Canada=511" && JSON.stringify(pdfOptions({}, "code_list:imm5710.current_cor (only option: Canada=511)")) === JSON.stringify([{ code: "511", label: "Canada" }]) && (runTransform("code_list:imm5710.current_cor (only option: Canada=511)", "Canada", {}) as { value?: string }).value === "511");
   process.exitCode = summary() ? 1 : 0;
 })().catch((e) => { console.error(e); process.exitCode = 1; });

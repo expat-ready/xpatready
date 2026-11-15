@@ -6,7 +6,7 @@ import { evalCondition, kkey, render, type Known, type Person, type Role } from 
 import { subjectKindOf, type Snapshot } from "../snapshot.ts";
 import { isFilingFact } from "../resolver.ts";
 import { checkFormat, snapshotFieldFormat, writesParts } from "../field-format.ts";
-import { noteList, withoutLeadIn } from "../options.ts";
+import { noteList } from "../options.ts";
 import { z } from "zod";
 import { recordedDerivation } from "../../../p5/transforms.ts";
 import { gateOf, type GatePlacement } from "./gates.ts";

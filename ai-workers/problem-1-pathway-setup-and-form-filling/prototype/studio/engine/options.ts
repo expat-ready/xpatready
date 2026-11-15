@@ -176,11 +176,17 @@ export function noteList(note: string | null | undefined): string | null {
   return list.trim() ? list : null;
 }
 const LEAD_IN = /^\s*only (?:option|choice|value)s?\s*:\s*/i;
-const EXAMPLES = /(?:^|[\s(,])(?:e\.\s?g\.?|eg\.|for example|for instance|such as)(?=[\s,:]|$)/i;
+const EXAMPLES = /(?:^|[\s(,])(?:e\.\s?g\.?|eg\.?|for example|for instance|such as|example|incl\.|including)(?=[\s,:]|$)/i;
 
-/** QA-383 (BK-383): an answer saved before the fix with the lead-in ("only option: Canada") reads as its choice ("Canada"),
- *  wherever saved answers are read; any other value is unchanged. */
-export const withoutLeadIn = (value: unknown): unknown => typeof value === "string" && LEAD_IN.test(value) ? value.replace(LEAD_IN, "") : value;
+/** QA-383 (BK-383): an answer saved before the fix with the lead-in ("only option: Canada") reads as its choice ("Canada").
+ *  Only on a choice field (`choices`: the keys it offers now), and only when the saved text is not itself a choice and the
+ *  text after the lead-in is one (review M1 on #1810): a person's own words ("Only choice: I stayed with my sister" on a
+ *  text field) are never changed. Any other value is unchanged. */
+export function withoutLeadIn(value: unknown, choices: readonly string[] | null | undefined): unknown {
+  if (typeof value !== "string" || !choices?.length || !LEAD_IN.test(value)) return value;
+  const rest = value.replace(LEAD_IN, ""), is = (x: string) => choices.some((c) => c.toLowerCase() === x.trim().toLowerCase());
+  return !is(value) && is(rest) ? rest : value;
+}
 
 /** QA-272: the same mapping with the range written as the form's own list, "(Citizen=01, Permanent resident=02, …)", the
  *  shape every other short list has, so a person is offered the form's words. Unchanged when the transform has no range,
