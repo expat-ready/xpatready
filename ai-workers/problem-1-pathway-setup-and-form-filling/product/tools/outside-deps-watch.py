@@ -8,6 +8,9 @@
 # and the status date is over 48 h ago; (3) its Status is blocked and its Decision cell has no date or no fallback.
 # The status date is the newest "15 Nov" (with "21:40 IST" if given) in the Status cell, else the date in the Status
 # column's header ("Status (15 Nov 22:2x IST)"); a cell time with no date takes the header's day.
+# (4) A row not done whose decision date is today or past ACTs (decide, or take the fallback; review of #1849).
+# Status words: only a Status starting "done" counts as done; "blocked" and "stuck" are the stopped states. The first
+# HH:MM in a Status cell is applied to its newest date: keep one dated event per cell.
 # Read-only, no network, US$0. Lead-watch runs it each check. Test: check-outside-deps-watch.sh.
 #   python3 product/tools/outside-deps-watch.py [--file REGISTER] [--now "YYYY-MM-DD HH:MM"] (IST)
 # Exit code = number of ACT lines (99 = register missing or unreadable).
@@ -88,7 +91,7 @@ def main(argv):
         if not done and "started" not in start.lower().replace("not started", ""):
             sd = dates(start, now) or ([now] if re.search(r"\bnow\b", start, re.I) else [])
             if sd and min(sd).date() <= now.date():
-                why.append(f"start date {min(sd):%d %b} reached, not started and not done (Start: {start}; Status: {stat[:60]})")
+                why.append(f"start date {min(sd):%d %b} reached, not done (Start: {start}; Status: {stat[:60]})")
         blocked = sl.startswith("blocked") or sl.startswith("stuck")
         if blocked:
             cd = dates(stat, now)
@@ -104,9 +107,12 @@ def main(argv):
                 why.append("blocked with no status date: write when it became blocked")
             elif now - t > timedelta(hours=48):
                 why.append(f"{sl.split(':')[0]} for {int((now - t).total_seconds() // 3600)} h (since {t:%d %b %H:%M} IST)")
+        when, _, fb = dec.partition("·")
+        dd = dates(when, now)
+        if not done and dd and min(dd).date() <= now.date():
+            why.append(f"decision date {min(dd):%d %b} reached, not done: decide or take the fallback ({fb.strip() or 'none'})")
         if sl.startswith("blocked"):
-            when, _, fb = dec.partition("·")
-            if not dates(when, now):
+            if not dd:
                 why.append("blocked with no decision date")
             if not fb.strip() or fb.strip().lower() in ("none", "-", "—", "tbd", "?"):
                 why.append("blocked with no fallback")

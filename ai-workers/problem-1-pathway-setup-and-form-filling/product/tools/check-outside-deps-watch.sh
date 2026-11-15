@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # B192 (P-618): outside-deps-watch.py ACTs on a register row inside its start window, on a row stuck over 48 h and on a
-# blocked row with no fallback or no decision date, and stays quiet on a healthy register. Planted registers in a temp
+# blocked row with no fallback or no decision date, on a decision date reached, and stays quiet on a healthy register. Planted registers in a temp
 # dir, a fixed --now, no network, US$0. Run by check-guards.sh.
 #   bash product/tools/check-outside-deps-watch.sh
 set -u
@@ -46,6 +46,9 @@ reg "$T/nofb.md" "${HEALTHY[@]}" '| 7 | Eta · sign-up | x | FO-6 | started 19 N
 ok "a blocked row with no fallback ACTs" "$([ $rc = 1 ] && grep -q '^ACT outside: 7 Eta: blocked with no fallback' <<<"$out" && echo 1)" "exit $rc: $out"
 reg "$T/nodate.md" "${HEALTHY[@]}" '| 7 | Eta · sign-up | x | FO-6 | started 19 Nov | founder | blocked: refused 20 Nov | set later · Other provider |'; run "$T/nodate.md"
 ok "a blocked row with no decision date ACTs" "$([ $rc = 1 ] && grep -q '^ACT outside: 7 Eta: blocked with no decision date' <<<"$out" && echo 1)" "exit $rc: $out"
+
+reg "$T/dec.md" "${HEALTHY[@]}" '| 7 | Eta · partner | x | M4 | not started | founder | not started | 20 Nov · Google only |'; run "$T/dec.md"
+ok "a row not done whose decision date is today ACTs, naming the fallback" "$([ $rc = 1 ] && grep -q '^ACT outside: 7 Eta: decision date 20 Nov reached.*Google only' <<<"$out" && echo 1)" "exit $rc: $out"
 
 reg "$T/three.md" "${HEALTHY[@]}" \
   '| 7 | Eta · a | x | y | 19 Nov | founder | not started | 25 Nov · z |' \
