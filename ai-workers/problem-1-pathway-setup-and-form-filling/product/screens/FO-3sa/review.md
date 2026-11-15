@@ -43,6 +43,10 @@ Residual, accepted under Lead B's ruling (PR comment 6893074492, DW10: "a person
 
 **Records check at `4345517a6d8bb3f367d249c3606435761db82433`** (diff `66167b2f3..4345517a6`: `qa/built/FO-3sa.md` plus this file): not approved yet, one wording fix. The line says "A time the public page would not offer answers 409 'Book anyway?'". That is untrue for a time between the page's starts, inside the host's hours, with the host free: it saves at once, with no warning (M2's fix, `service.ts:639-641`). Fix: "A time with a warning answers 409 …", and add "a time between the page's starts with no warning is saved as asked". Optional: also say that a time already started is refused (400 "startsAt: in the past") even with Book anyway (`service.ts:308, 323`). Everything else in the line matches the code. The code is unchanged since 66167b2f3, so that approval of the code stands.
 
+**Records check at `c9f2458bc2b3fd710a74e1f5f37f5af4ec8c6b12`** (diff `4345517a6..c9f2458bc`: `qa/built/FO-3sa.md` and this file only, no code): the line now matches the code. It covers warned times, off-grid times saved as asked, and past times refused with 400.
+
+Reviewer: Approve c9f2458bc2b3fd710a74e1f5f37f5af4ec8c6b12
+
 ---
 
 ## First review at `8fe4756467c201847e9b25d9073d3f4e32e831dc` (diff `2a3589aeb..8fe475646`): Block (kept as written)
