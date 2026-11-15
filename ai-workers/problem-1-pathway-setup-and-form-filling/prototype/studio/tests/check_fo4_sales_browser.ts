@@ -209,7 +209,7 @@ await noStore.getByRole("heading", { name: "Leads" }).waitFor({ timeout: 20_000 
 // the sign-in card
 const nobody = await pageAs(null); await nobody.goto(`${BASE}/front-office/leads`); await nobody.getByRole("heading", { name: "Sign in to your firm" }).waitFor({ timeout: 20_000 });
 await nobody.getByLabel("Firm key").fill("sample-firm"); await nobody.getByLabel("Work email").fill(`nobody-${run}@example.org`); await nobody.getByRole("button", { name: "Sign in" }).click();
-await nobody.getByText("No staff member of that firm signs in with that name.").waitFor({ timeout: 10_000 });
+await nobody.getByText("No staff member signs in with that firm key and work email.").waitFor({ timeout: 10_000 });
 ok("FO-4 sign-in fail: an unknown email is refused with the server's words", true);
 await axe("FO-4 sign-in card", nobody);
 await nobody.getByLabel("Work email").fill(O.email); await nobody.getByRole("button", { name: "Sign in" }).click(); await nobody.getByRole("heading", { name: "Leads" }).waitFor({ timeout: 20_000 });

@@ -130,6 +130,13 @@ try {
     await throwsLike(() => identityConfig({ PLATFORM_IDENTITY: "local", PLATFORM_ENVIRONMENT: "test" }), (e) => /never runs in the test environment or production/.test(String(e)))
     && await throwsLike(() => identityConfig({ PLATFORM_IDENTITY: "local", PLATFORM_ENVIRONMENT: "production" }), (e) => /never runs/.test(String(e))));
   ok("PF-4 pass: PLATFORM_IDENTITY=local is accepted where the environment is local (what this check sets)", identityConfig({ PLATFORM_IDENTITY: "local" }).identity === "local");
+  // QA-476 (UX · Minor, R1.5; words agreed by Lead 61 on #1857): the form asks for a firm key and a work email, so a
+  // refusal names those two, never a "name"; one combined message, so it does not tell which half was wrong.
+  const QA476 = "No staff member signs in with that firm key and work email.";
+  const byMail = (firmKey: string, email: string) => call(L.base, "POST", "/api/platform/session/local", { body: { firmKey, email, secondStep: true } });
+  const wrongFirm = await byMail("no-such-firm", "representative@sample-firm.example.com"), wrongMail = await byMail("sample-firm", "nobody@example.org");
+  ok("QA-476 fail: a wrong firm key and a wrong work email get the same 401 UNKNOWN_STAFF, in the form's words",
+    [wrongFirm, wrongMail].every((r) => r.status === 401 && r.body.code === "UNKNOWN_STAFF" && r.body.detail === QA476), { wrongFirm, wrongMail });
   const noSecond = await signIn("user-R", "sample-firm", false);
   ok("PF-4 fail: two-step is required — a sign-in without the second step is refused (401 TWO_STEP_REQUIRED)", noSecond.status === 401 && noSecond.body.code === "TWO_STEP_REQUIRED", noSecond);
   const halfToken = local.issue(R, { authTimeMs: clock.now(), secondStep: false });
