@@ -153,7 +153,14 @@ function checkParts(zip: PizZip): void {
 // ----------------------------------------------------------------------------- FO-5f2 item 2: the worker, one job at a time
 // A breach (memory, a crash, over WORKER_TIMEOUT_MS) ends that worker only: the job answers TOO_COMPLEX, and the next job
 // starts a new worker. While idle the worker is unref'd, so it never keeps a process alive.
-let worker: Promise<Worker> | null = null, live: Worker | null = null, nextId = 0, queue: Promise<unknown> = Promise.resolve();
+let worker: Promise<Worker> | null = null, live: Worker | null = null, nextId = 0, running = false;
+/** Breaker F1, F2: renders (drafts, edits, sends of accepted templates) go before waiting uploads, and at most this many
+ *  uploads wait (Sample), so a burst of hostile uploads never holds another firm's render for more than one job, nor
+ *  holds unbounded memory. */
+export const MAX_WAITING_UPLOADS = 8;
+export const BUSY = "Templates are being checked for other uploads. Try again in a minute.";
+type Pending = { job: Job; resolve: (r: Reply) => void; reject: (e: unknown) => void };
+const waiting: Record<Job["op"], Pending[]> = { render: [], tags: [] };
 
 function startWorker(): Promise<Worker> {
   return new Promise((resolve, reject) => {
@@ -187,15 +194,21 @@ async function runJob(job: Job): Promise<Reply> {
   });
 }
 
-/** Sends a job to the worker after the jobs before it; a worker refusal becomes UnreadableDocx. */
-function inWorker(op: Job["op"], bytes: Uint8Array, data?: Record<string, unknown>): Promise<Reply> {
-  const run = queue.then(() => runJob({ id: ++nextId, op, bytes, data })).then((r) => {
-    if (!r.error) return r;
-    const { code, why, says } = r.error;
-    throw code === "UNREADABLE_FILE" ? new UnreadableDocx(why) : new UnreadableDocx(why, says ?? (code === "DAMAGED_FILE" ? DAMAGED : undefined), code);
-  });
-  queue = run.catch(() => undefined);
-  return run;
+function pump(): void {
+  if (running) return;
+  const next = waiting.render.shift() ?? waiting.tags.shift();
+  if (!next) return;
+  running = true;
+  runJob(next.job).then(next.resolve, next.reject).finally(() => { running = false; pump(); });
+}
+
+/** Queues a job for the worker (renders first); a worker refusal becomes UnreadableDocx. */
+async function inWorker(op: Job["op"], bytes: Uint8Array, data?: Record<string, unknown>): Promise<Reply> {
+  if (op === "tags" && waiting.tags.length >= MAX_WAITING_UPLOADS) throw new UnreadableDocx("the upload queue is full", BUSY, "TEMPLATES_BUSY");
+  const r = await new Promise<Reply>((resolve, reject) => { waiting[op].push({ job: { id: ++nextId, op, bytes, data }, resolve, reject }); pump(); });
+  if (!r.error) return r;
+  const { code, why, says } = r.error;
+  throw code === "UNREADABLE_FILE" ? new UnreadableDocx(why) : new UnreadableDocx(why, says ?? (code === "DAMAGED_FILE" ? DAMAGED : undefined), code);
 }
 
 /** How many "{" and "}" a text holds (a loop: a flood never allocates a match per brace). */

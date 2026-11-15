@@ -9,7 +9,7 @@ import PizZip from "pizzip";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
-import { PACKAGE_PART_MAX, UnreadableDocx, WORKER_TIMEOUT_MS, buildDocx, placeholdersOf, renderDocx, workerTimeout } from "../api/src/front-office/retainers/docx.ts";
+import { MAX_WAITING_UPLOADS, PACKAGE_PART_MAX, UnreadableDocx, WORKER_TIMEOUT_MS, buildDocx, placeholdersOf, renderDocx, workerTimeout } from "../api/src/front-office/retainers/docx.ts";
 import { checkPlaceholders } from "../api/src/front-office/retainers/placeholders.ts";
 
 let pass = 0, fail = 0;
@@ -127,6 +127,17 @@ try {
   const slow = await attempt(() => placeholdersOf(pkg({ "word/document.xml": `<w:document ${NS}><w:body><w:p>${"<w:r><w:t>a</w:t></w:r>".repeat(200_000)}</w:p></w:body></w:document>` })));
   workerTimeout.ms = WORKER_TIMEOUT_MS;
   ok("FO-5f2 DW3 fail: a job over the time limit → TOO_COMPLEX, and the next job works", slow.code === "TOO_COMPLEX" && (await attempt(() => placeholdersOf(pkg({})))).code === "accepted", slow);
+
+  // Breaker F1, F2: a burst of uploads never holds a render for more than the job in flight, and at most
+  // MAX_WAITING_UPLOADS wait; the rest are refused at once.
+  const mid = pkg({ "word/document.xml": `<w:document ${NS}><w:body><w:p>${"<w:r><w:t>a</w:t></w:r>".repeat(30_000)}</w:p></w:body></w:document>` });
+  const done: string[] = [];
+  const burst = Array.from({ length: MAX_WAITING_UPLOADS + 3 }, (_, i) => attempt(() => placeholdersOf(mid)).then((r) => { done.push(`u${i}`); return r; }));
+  const render = attempt(() => renderDocx(pkg({}), { "client.name": "x" })).then((r) => { done.push("render"); return r; });
+  const codes = (await Promise.all(burst)).map((r) => r.code), rendered = await render;
+  const order = done.filter((d) => d === "render" || codes[Number(d.slice(1))] === "accepted");
+  ok(`FO-5f2 F1 pass: a render queued behind ${burst.length} uploads runs right after the one in flight`, rendered.code === "accepted" && order[0] === "u0" && order[1] === "render", order);
+  ok(`FO-5f2 F2 fail: of ${burst.length} uploads at once, 1 runs, ${MAX_WAITING_UPLOADS} wait and 2 are refused TEMPLATES_BUSY`, codes.filter((c) => c === "TEMPLATES_BUSY").length === 2 && codes.filter((c) => c === "accepted").length === MAX_WAITING_UPLOADS + 1, codes);
 
   // ------------------------------------------------------------------ DW4: every tag docxtemplater fills is checked
   const SETTINGS = ov("word/settings.xml", `${WML}settings+xml`), HDR1 = ov("word/header1.xml", HEADER);
