@@ -1,6 +1,6 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_7e5e5b99-fc19-4eb0-804b-98af20169e86 Lead 51 · 15 Nov 07:4x IST (series 2; took over from Lead 50 (series 2, local_1ee10674) at ~400k, ~260k beyond its start read of ~139k: no standby existed overnight, so it handed over at the founder's first typed turn, P-446); start read: measure with get_usage; hand over 200k beyond it
+current_lead: local_7e5e5b99-fc19-4eb0-804b-98af20169e86 Lead 51 · 15 Nov 07:4x IST (series 2; took over from Lead 50 (series 2, local_1ee10674) at ~400k, ~260k beyond its start read of ~139k: no standby existed overnight, so it handed over at the founder's first typed turn, P-446); start read ~149k (get_usage 07:5x); hand over ~349k
 
 updated: 2026-11-15 07:4x IST by **Lead 50 (series 2, local_1ee10674-…)** at hand-over to Lead 51 · weekly 78% at 07:28 (resets 20 Nov 04:30 IST) · milestone: **Works on main 93/98 (M2 60/60, M3 27/29, M4 0/1, T 6/8)**; **Release 1 target 24 Nov (P-599)**; Bake walk 2 unblocked · rules: **`RULES.md`** (as of P-603) · this branch: `lead/2026-11-07-lead31`
 
@@ -15,6 +15,7 @@ Rules as of **P-603** (no newer DECISIONS rows; Lead 50's PR rulings are in PR c
 4. **Nightly:** 15 Nov run 43655888932 parts 1-7 green (33-51 min), **part 8 timed out at 59 min twice** (not a test failure) → pipeline fix ahead of the queue: rebalance the 8 parts from a fresh `tools/suite-times.tsv` (P-436 (7)).
 5. **Bake → walk 2: unblocked** (BK-25 + BK-26 merged): reset + configured load, `make-copies.mts` (Lead 45's scratchpad `bk20/`), Acrobat Validate by computer use (P-533), qa walk 2. In review: FO-7a #1758 (round 4, P-603).
 6. **Sessions:** **Lead B (4)** `local_64f5d828` started 07:4x (rows owner; Lead B (3) `local_cc58440f` parked); standbys **Lead 51** `local_7e5e5b99` (taking over), **Lead 52** `local_e0cd21a4` (first standby after the hand-over; start Lead 53 at his next typed turn). Strategy desk 05 `local_3f793d6b` idle. **Lead to-do:** records PR to `main`; BACKLOG lines from Lead B rows rev 16.7 (migration tests measure after their own migration) and #1777's FO-8 catch-up + size limits; board's 4 review Minors; College complaint pages for PF-21's citations (P-601 (5)); CS- rows draft 2; 28 Dependabot alerts.
+**Lead 51 live (07:5x IST 15 Nov):** check 13df8e3b at :13/:43 created. #1782: fresh Opus reviewer (subagent) reviewing the 10-line step; label on its Approve + green. **Order changed (no re-stamp):** #1777 FO-5 part 2 is green with Approve on head, but PF-19a #1754's CI (re-started 02:12 UTC) is still running; label #1754 first when green, then #1777 right after (later stamp lands second, so neither re-stamps); then FO-13 #1755 re-stamps to `…013000`. Nightly part 8: a measuring subagent is refreshing `tools/suite-times.tsv` on branch `lead/2026-11-15-nightly-rebalance` (no PR yet; Lead opens it after reading). Weekly 79% at 07:5x.
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 | # | Ask (IST) | Status |
 |---|---|---|
