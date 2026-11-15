@@ -949,6 +949,32 @@ try {
   ok("FO-5f fail (break r2-m3): a signed agreement whose representative lost the keys lists no blocker (no \"Edit to choose another\")", closedPage.status === "SIGNED_OFFLINE" && Object.keys(closedPage.blockers).length === 0, closedPage.blockers);
   ok("FO-5f pass (break r2-m3): an open agreement still lists it", draftPage.status === "DRAFT" && /Edit to choose another/.test(String(draftPage.blockers.representativeStaffId)), draftPage.blockers);
 
+  // ------------------------------------------------------------- FO-5f review round 3 (review.md M-1 rest: content types)
+  // Each part is typed exactly as docxtemplater types it (its own getContentTypes / collectContentTypes): a Default whose
+  // Extension merely ends the name ("in" for h.bin), an empty Extension, a name with no dot, single-quoted attributes, a
+  // header Override placed under word/charts or customXml.
+  const HT = "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml";
+  const ways: [string, Record<string, string>, (t: string) => Record<string, string>][] = [
+    ["a Default Extension=\"in\" (word/h.bin)", { types: `<Default Extension="in" ContentType="${HT}"/>` }, (t) => ({ "word/h.bin": HDR(t) })],
+    ["an empty Default Extension (word/h.bin)", { types: `<Default Extension="" ContentType="${HT}"/>` }, (t) => ({ "word/h.bin": HDR(t) })],
+    ["a name with no dot (word/hdr, Extension=\"hdr\")", { types: `<Default Extension="hdr" ContentType="${HT}"/>` }, (t) => ({ "word/hdr": HDR(t) })],
+    ["a single-quoted Override (word/x.bin)", { types: `<Override PartName='/word/x.bin' ContentType='${HT}'/>` }, (t) => ({ "word/x.bin": HDR(t) })],
+    ["a header Override under word/charts", { types: `<Override PartName="/word/charts/h.xml" ContentType="${HT}"/>` }, (t) => ({ "word/charts/h.xml": HDR(t) })],
+    ["a header Override under customXml", { types: `<Override PartName="/customXml/item9.xml" ContentType="${HT}"/>` }, (t) => ({ "customXml/item9.xml": HDR(t) })],
+  ];
+  for (const [where, { types }, part] of ways) {
+    const t = Date.now();
+    ok(`FO-5f fail (review r3 M-1): 1.5 million lone "{" in ${where} are refused before the compile, in under 2 s`,
+      await fails(() => svc.uploadTemplate(R, { name: `R3 flood ${where}` }, zipOf({ "word/document.xml": W(BASE), ...part("{".repeat(1_500_000)) }, types)), 422, /TOO_MANY_PLACEHOLDERS/) && Date.now() - t < 2000, `${Date.now() - t} ms`);
+    ok(`FO-5f fail (review r3, B-3 rest): an unknown placeholder in ${where} is refused, never printed blank`,
+      await fails(() => svc.uploadTemplate(R, { name: `R3 passport ${where}` }, zipOf({ "word/document.xml": W(BASE), ...part("{client.passport}") }, types)), 422, /client\.passport/));
+  }
+  const r3ok = await svc.uploadTemplate(R, { name: "R3 header known" }, zipOf({ "word/document.xml": W(BASE), "word/hdr": HDR("{firm.name}") }, `<Default Extension="hdr" ContentType="${HT}"/>`));
+  ok("FO-5f pass (review r3): a known placeholder in a header with no dot in its name is read and listed", r3ok.placeholders.includes("firm.name"), r3ok.placeholders);
+  ok("FO-5f fail (review r3): more than 100 Default rules is a damaged file (the typing loops parts × rules)",
+    await fails(() => svc.uploadTemplate(R, { name: "R3 defaults" }, zipOf({ "word/document.xml": W(BASE) }, Array.from({ length: 101 }, (_, i) => `<Default Extension="e${i}" ContentType="application/xml"/>`).join(""))), 422, /DAMAGED_FILE/));
+  ok("FO-5f pass (review r3): a file with a few Default rules is read as before", (await svc.uploadTemplate(R, { name: "R3 few defaults" }, zipOf({ "word/document.xml": W(BASE) }, `<Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/>`))).version === 1);
+
   // Routes (PF-4's guard): every route declares its agent/retainer:* key.
   const keysOf = (m: string) => (Reflect.getMetadata(PLATFORM_ACCESS, (RetainersController.prototype as unknown as Record<string, object>)[m]) as { keys?: string[] } | undefined)?.keys?.join(",");
   const want: Record<string, string> = { placeholders: "agent/retainer:list", starter: "agent/retainer:configure-template", templates: "agent/retainer:list", upload: "agent/retainer:configure-template", newVersion: "agent/retainer:configure-template", changeTemplate: "agent/retainer:configure-template", representatives: "agent/retainer:draft", draft: "agent/retainer:draft", read: "agent/retainer:show", edit: "agent/retainer:draft", send: "agent/retainer:send", withdraw: "agent/retainer:void", signedOffline: "agent/retainer:offline-sign", link: "agent/retainer:download", download: "agent/retainer:download" };

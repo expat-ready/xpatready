@@ -9,10 +9,19 @@
 // the starter's placeholders reach the firm as typed (a rendered value is never parsed again).
 import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";
+import { createRequire } from "node:module";
 import { inflateRawSync } from "node:zlib";
 import { RenderData, TemplateKey, type DocumentRenderPort, type RenderedDocument } from "../../../../ports/render.ts";
 
 export const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/** docxtemplater's own content-type resolution (review round 3, M-1): each part typed exactly as docxtemplater types it
+ *  before compiling (its XML parser; an Override by exact name, else the first Default whose Extension ends the name,
+ *  case-sensitive, an empty one matching all), so no part it compiles goes unread. Same installed version (3.71.1). */
+const ctOf = createRequire(import.meta.url)("docxtemplater/js/get-content-types.js") as {
+  getContentTypes(zip: PizZip): { overrides: unknown; defaults: unknown };
+  collectContentTypes(overrides: unknown, defaults: unknown, zip: PizZip): Record<string, string>;
+};
 
 /** The file could not be read as a Word document, or its placeholders are malformed. `says` is the plain sentence the
  *  person reads when the refusal has its own reason (FO-5f: B-19, B-20, B-21); otherwise "We could not read this file." */
@@ -89,17 +98,19 @@ export function placeholdersOf(bytes: Uint8Array): string[] {
   const zip = load(bytes);
   if (!zip.file("word/document.xml")) throw new UnreadableDocx("no word/document.xml");
   const read = (name: string): string | undefined => { try { return zip.file(name)?.asText(); } catch { throw damaged(`part ${name.slice(0, 80)} cannot be read`); } };
+  // Each part's type as docxtemplater resolves it (review rounds 2 and 3, M-1 rest). A part typed as XML is read whatever
+  // its name (a header named h.bin, or hdr with no dot, is still compiled).
+  // Real Word files declare a handful of Default rules and one Override per part; more is a damaged or hostile file
+  // (the resolution below loops parts × rules).
   const types = read("[Content_Types].xml") ?? "";
-  const overrides = [...types.matchAll(/<Override\b[^>]*>/g)].map((m) => ({ part: /PartName="\/([^"]+)"/.exec(m[0])?.[1], type: /ContentType="([^"]+)"/.exec(m[0])?.[1] ?? "" }));
-  // Each part's type as docxtemplater resolves it (review round 2, M-1 rest): its Override, else the Default for its
-  // extension. A part typed as XML is read whatever its name (a header named h.bin is still compiled).
-  const defaults = new Map([...types.matchAll(/<Default\b[^>]*>/g)].map((m) => [(/Extension="([^"]+)"/.exec(m[0])?.[1] ?? "").toLowerCase(), /ContentType="([^"]+)"/.exec(m[0])?.[1] ?? ""]));
-  const byPart = new Map(overrides.filter((o) => o.part).map((o) => [o.part!.toLowerCase(), o.type]));
-  const typeOf = (f: string) => byPart.get(f.toLowerCase()) ?? defaults.get(/\.([^./]+)$/.exec(f)?.[1]?.toLowerCase() ?? "") ?? "";
+  if ((types.match(/<Default\b/g)?.length ?? 0) > 100 || (types.match(/<Override\b/g)?.length ?? 0) > DOCX_MAX_ENTRIES) throw damaged("too many content types");
+  let typed: Record<string, string>;
+  try { const ct = ctOf.getContentTypes(zip); typed = ctOf.collectContentTypes(ct.overrides ?? [], ct.defaults ?? [], zip); } catch { throw damaged("[Content_Types].xml cannot be read"); }
+  const typeOf = (f: string) => typed[f] ?? "";
   const files = Object.keys(zip.files).filter((f) => !(zip.files as Record<string, { dir?: boolean }>)[f].dir);
   // Never rendered by docxtemplater, so never read: the glossary (B-23) and charts (review m-4: a brace in a chart title
-  // is not a placeholder).
-  const skipped = (f: string) => /\.glossary\+xml$|drawingml\.chart\+xml$/i.test(typeOf(f)) || /^word\/(glossary|charts)\//i.test(f);
+  // is not a placeholder), known by their type (never by folder: a header placed under word/charts is still compiled).
+  const skipped = (f: string) => /\.glossary\+xml$|drawingml\.chart\+xml$/i.test(typeOf(f));
   const COVER = 'xmlns="http://schemas.microsoft.com/office/2006/coverPageProps"';   // the customXml docxtemplater compiles
   const parts = new Set(files.filter((f) => /\.xml$/i.test(f) || /[/+]xml$/i.test(typeOf(f))));
   const unescape = (t: string) => t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
@@ -112,13 +123,14 @@ export function placeholdersOf(bytes: Uint8Array): string[] {
     if (/(^|\/)\[Content_Types\]\.xml$|\.rels$/i.test(name) || skipped(name)) continue;
     const xml = read(name);
     if (!xml) continue;
-    const cover = /^customXml\//i.test(name);
-    if (cover && !xml.includes(COVER)) continue;   // other customXml (citations, GUIDs) is not compiled (B-18)
-    // The cap (B-19; review rounds 1 and 2, M-1): every brace in the part's XML is counted, paired or not and in any
-    // text tag, before the compile, so a flood of lone "{" never reaches it. A placeholder has two braces: at most
-    // twice the cap.
+    // The cap (B-19; review rounds 1-3, M-1): every brace in every XML part is counted, paired or not and in any text
+    // tag, before the compile, so a flood of lone "{" never reaches it. A placeholder has two braces: at most twice the cap.
     braces += braceCount(xml);
     if (braces > 2 * DOCX_MAX_TAGS) throw tooMany();
+    // customXml is compiled when it is coverPageProps or typed as a Word part; other customXml (citations, GUIDs) is
+    // not read for placeholders (B-18).
+    const cover = /^customXml\//i.test(name) && xml.includes(COVER);
+    if (/^customXml\//i.test(name) && !cover && !/wordprocessingml/i.test(typeOf(name))) continue;
     const plain = cover || /^docProps\//i.test(name);   // property parts: their whole text is lexed
     const drawn = plain ? "" : runs(xml, "m:t") + "\u0000" + runs(xml, "a:t");
     if (/\{[^{}]*\}/.test(drawn)) throw new UnreadableDocx("a placeholder in an equation, drawing or SmartArt", NOT_FILLED, "PLACEHOLDER_NOT_FILLED");
