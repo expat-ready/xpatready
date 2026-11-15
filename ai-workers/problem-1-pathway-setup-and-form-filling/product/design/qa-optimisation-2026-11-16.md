@@ -144,3 +144,8 @@ Links are the official sources; this cloud session's network refuses these hosts
 1. P-290's "independent re-run": does qa's own local re-run stay required when the merge-batch run on main's tree and the nightly are both green, or may a second GitHub run on a fresh database count? (This page keeps the local re-run.)
 2. Risk tiers: may "gate A by API" (P-616) be the rule for every row whose Done when has no screen, so those rows skip the width and axe matrix?
 3. Network: the framework links could not be re-fetched from this cloud session; allow the hosts for a later check, or accept the citations as given?
+
+**Answers (tech lead, Lead 61, 00:3x IST 16 Nov, PR #1854 comment 6899582079):**
+1. **Independent re-run (P-290):** a second GitHub run on a fresh database, started and read by qa itself, may count as qa's independent re-run after a trial. For the next 10 capability verdicts qa runs both (local and GitHub) and records whether they agree. If 10 of 10 agree, the GitHub run replaces the local one; any disagreement keeps the local run and logs the cause. The batch run and the nightly alone never count, because they are not qa's.
+2. **Risk tiers:** yes. A row whose Done when has no screen is walked by API (P-616) and skips the width and axe matrix; any row with a screen keeps the full matrix.
+3. **Citations:** accepted as given, marked "not re-fetched from the cloud"; the Lead checks the links from the Mac before the plan's first change lands.
