@@ -94,6 +94,13 @@ ok("FO-4 DW1 pass: the enquiry is one open lead with no owner, and the tick wrot
 // Break S3: a visitor who sends at once (autofill) is held until 2 s and the enquiry is kept, never dropped as a bot.
 const quick = await sendForm(visitor, { given: `Quick${run}`, email: `quick.${run}@example.org`, quick: true });
 ok("FO-4 BR-3 pass: a form sent at once is held, thanked and stored (break S3)", quick.includes("Thank you.") && !!leadIdOf(`Quick${run}`), quick);
+// A page out of date (a stamp not ours): redrawn with the answers kept and the consent tick cleared (Devin #1822, review r1).
+await visitor.goto(formUrl); await visitor.getByLabel("First name").fill(`Stale${run}`); await visitor.getByLabel("Email", { exact: true }).fill(`stale.${run}@example.org`); await visitor.getByRole("checkbox").check(); await visitor.waitForTimeout(2300);
+await visitor.route("**/submissions", (r) => r.continue({ postData: JSON.stringify({ ...JSON.parse(r.request().postData() ?? "{}"), loadStamp: "1.not-ours" }) }), { times: 1 });
+await visitor.getByRole("button", { name: "Send my enquiry" }).click(); await visitor.getByText("The form was refreshed.").waitFor({ timeout: 15_000 });
+ok("FO-4 BR-3 reload: a stale page is redrawn, the answers kept, the consent tick cleared, nothing stored", (await visitor.getByLabel("First name").inputValue()) === `Stale${run}` && !(await visitor.getByRole("checkbox").isChecked()) && !leadIdOf(`Stale${run}`));
+await visitor.getByRole("button", { name: "Send my enquiry" }).click(); await visitor.locator('[data-form-state="thanks"]').waitFor({ timeout: 15_000 });
+ok("FO-4 BR-3 reload: sent again, it is thanked and stored with no consent row", !!leadIdOf(`Stale${run}`) && sql(`select count(*) from msg_consent where subject_id = (select person_id from fo_lead where id = '${leadIdOf(`Stale${run}`)}')`) === "0");
 // DW2: the same person again (known now): the same words, and a second lead flagged as a possible match (BR-2).
 const again = await sendForm(visitor, { given: `${lena}b`, family: "Park", email: `lena.${run}@example.org` });
 ok("FO-4 DW2 pass: a known person's enquiry gets the same thank-you, word for word", again.replace(`${lena}b`, lena) === first || again === first, { first, again });
@@ -195,6 +202,10 @@ const expiring = await pageAs(null);
 await expiring.addInitScript((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 4000 })), await signIn(T.email));   // a fresh session: signing in again ends the older one
 await expiring.goto(`${BASE}/front-office/leads`); await expiring.getByRole("heading", { name: "Leads" }).waitFor({ timeout: 20_000 }); await expiring.getByRole("heading", { name: "Sign in to your firm" }).waitFor({ timeout: 15_000 });
 ok("FO-4 break S1: an expired session shows the sign-in card without a click, and no name or Sign out stays", (await expiring.getByRole("button", { name: "Sign out" }).count()) === 0);
+// A browser that refuses storage still signs in, for as long as the page stays open (Devin #1822).
+const noStore = await pageAs(null); await noStore.addInitScript(() => { Storage.prototype.setItem = () => { throw new Error("refused"); }; });
+await noStore.goto(`${BASE}/front-office/leads`); await noStore.getByLabel("Firm key").fill("sample-firm"); await noStore.getByLabel("Work email").fill(T.email); await noStore.getByRole("button", { name: "Sign in" }).click();
+await noStore.getByRole("heading", { name: "Leads" }).waitFor({ timeout: 20_000 }); ok("FO-4 storage refused: sign-in still opens Leads (session kept in memory)", true);
 // the sign-in card
 const nobody = await pageAs(null); await nobody.goto(`${BASE}/front-office/leads`); await nobody.getByRole("heading", { name: "Sign in to your firm" }).waitFor({ timeout: 20_000 });
 await nobody.getByLabel("Firm key").fill("sample-firm"); await nobody.getByLabel("Work email").fill(`nobody-${run}@example.org`); await nobody.getByRole("button", { name: "Sign in" }).click();

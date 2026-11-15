@@ -57,7 +57,8 @@ function TheForm({ token, form, drawnAt, onSent, onReload }: { token: string; fo
       const p = x as Problem;
       if (p.code === "FORM_NOT_AVAILABLE") { onSent(""); return; }
       // An old page (a stamp from before a restart or a changed wording): draw it again, answers kept, and ask once more.
-      if (p.code === "RELOAD") { await onReload(); setErrors({}); setRefused("The form was refreshed. Please check your answers and press Send my enquiry again."); requestAnimationFrame(() => summary.current?.focus()); return; }
+      // The consent tick is cleared: the redrawn wording may differ, and a tick counts only for words the person saw (Devin #1822).
+      if (p.code === "RELOAD") { await onReload(); setErrors({}); setV((x) => ({ ...x, consent: false })); setRefused(`The form was refreshed. Please check your answers${form.consentText ? ", tick the box again if you agree to its words," : ""} and press Send my enquiry again.`); requestAnimationFrame(() => summary.current?.focus()); return; }
       setErrors(p.fields ?? {});
       setRefused(p.detail ?? "The form could not be sent. Please try again.");
       requestAnimationFrame(() => summary.current?.focus());

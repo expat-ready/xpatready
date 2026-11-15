@@ -8,19 +8,21 @@ import { queryClient } from "@/lib/api";
 import { Me, problemOf, type Problem } from "./contract";
 const KEY = "xr-staff-session";
 type Stored = { token: string; expiresAt: number };
+/** The session in memory too, so a browser that refuses storage keeps it until the page reloads (Devin #1822). */
+let memory: Stored | null = null;
 function read(): Stored | null {
-  try {
-    const s = JSON.parse(sessionStorage.getItem(KEY) ?? "null") as Stored | null;
-    return s && typeof s.token === "string" && typeof s.expiresAt === "number" && s.expiresAt > Date.now() ? s : null;
-  } catch { return null; }
+  let s: Stored | null = memory;
+  try { const kept = sessionStorage.getItem(KEY); if (kept !== null) s = JSON.parse(kept) as Stored | null; } catch { /* storage refused: memory only */ }
+  return s && typeof s.token === "string" && typeof s.expiresAt === "number" && s.expiresAt > Date.now() ? s : null;
 }
 const listeners = new Set<() => void>();
 function changed() { for (const l of listeners) l(); }
 export function setStaffToken(token: string | null, expiresInSeconds = 3600) {
+  memory = token ? { token, expiresAt: Date.now() + expiresInSeconds * 1000 } : null;
   try {
-    if (token) sessionStorage.setItem(KEY, JSON.stringify({ token, expiresAt: Date.now() + expiresInSeconds * 1000 } satisfies Stored));
+    if (memory) sessionStorage.setItem(KEY, JSON.stringify(memory));
     else sessionStorage.removeItem(KEY);
-  } catch { /* storage refused: the session lasts until the page reloads */ }
+  } catch { /* storage refused: the session lasts in memory until the page reloads */ }
   // A new person (or none) never sees the last person's rows (break S2): every sales answer is dropped.
   queryClient.removeQueries({ queryKey: ["fo"] });
   changed();
