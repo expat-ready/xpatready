@@ -724,7 +724,7 @@ try {
       && sql(API, `select s.kind from fo_prospect p join fo_stage s on s.id = p.stage_id where p.id = '${PR3}'`) === "WON", { a3, se3 });
   ok("FO-5f fail (item 3): the copy's stored file is its own key for version 3 (the part 1 key rule), the same bytes as version 1's",
     /^retainers\/[0-9a-f-]{36}\/v3-[0-9a-f]{12}\.docx$/.test(await svc.fileKey(R, s3.id, { version: 3 }))
-      && sha256Hex((await store.get(A, await svc.fileKey(R, s3.id, { version: 3 })))!.bytes) === sha256Hex((await store.get(A, await svc.fileKey(R, s3.id, { version: 1 })))!.bytes));
+      && await sha256Hex((await store.get(A, await svc.fileKey(R, s3.id, { version: 3 })))!.bytes) === await sha256Hex((await store.get(A, await svc.fileKey(R, s3.id, { version: 1 })))!.bytes));
   // A draft whose newer version was never sent: the copy is filed, and no request ends.
   const s3b = await svc.draft(R, newClient(4, "Paper Two Client"), { templateId: tplA.id, fees: [{ label: "Fee", amountMinor: 7000 }] });
   await ed(svc, R, s3b.id, { fees: [{ label: "Fee", amountMinor: 9000 }] });
@@ -814,9 +814,10 @@ try {
   ok("FO-5f fail (r3-m2): neither line carries Prisma's message or meta (the personal value)", logged.length === 2 && logged.every((l) => !/secret-person|Failing row|violates/.test(l)), logged);
 
   // Item 11 (B-26): a refused download says "No such file".
-  const k11 = await svc.fileKey(R, e1.id, {});
+  const r11 = await svc.draft(R, newClient(11, "File Client"), { templateId: tplA.id, representativeStaffId: T.staffId });   // user-T represents: user-R sees it only as the owner
+  const k11 = await svc.fileKey(R, r11.id, {});
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
-  sql(API, `update fo_prospect set owner_staff_id = '${O.staffId}' where id = (select prospect_id from fo_retainer where id = '${e1.id}')`);
+  sql(API, `update fo_prospect set owner_staff_id = '${O.staffId}' where id = (select prospect_id from fo_retainer where id = '${r11.id}')`);
   ok("FO-5f fail (B-26): after access is lost the download is refused as \"No such file in your firm.\", never naming a retainer",
     await fails(() => svc.assertFileVisible(R, k11), 404, /No such file in your firm\./) && !(await fails(() => svc.assertFileVisible(R, k11), 404, /retainer/)));
   ok("FO-5f pass (B-26): the new owner still downloads it", await svc.assertFileVisible(O, k11).then(() => true, () => false));
