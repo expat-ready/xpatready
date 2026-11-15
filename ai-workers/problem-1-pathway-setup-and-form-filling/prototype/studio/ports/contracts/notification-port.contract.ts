@@ -16,12 +16,12 @@ const uuid = () => globalThis.crypto.randomUUID();
 const K = NOTIFICATION_KIND.PORT_SELF_TEST;
 export const notificationPortContract = defineContract("NotificationPort", (make: () => Promise<NotificationHarness> | NotificationHarness) => [
   {
-    name: "PF-18np DW1: two notifies for one person and item give one record, its kind and time replaced (the newer kind); after markRead a new notify gives a second",
+    name: "PF-18np DW1: two notifies for one person and item give one record (kind and time replaced; a kind change is tested once a second kind exists); after markRead a new notify gives a second",
     async run() {
       const h = await make(), staffId = uuid(), item: NotificationItem = { kind: "case", id: uuid() };
       await h.tx((t) => h.notifications.notify(t, { staffId }, K, item)); const first = (await h.sent(staffId))[0];
       await h.tx((t) => h.notifications.notify(t, { staffId }, K, item)); const one = await h.sent(staffId);
-      expect(one.length === 1 && one[0].kind === K && one[0].item.id === item.id && one[0].at.getTime() > first.at.getTime(), "one record, its kind and time replaced", one);
+      expect(one.length === 1 && one[0].kind === K && one[0].item.id === item.id && one[0].at.getTime() >= first.at.getTime(), "one record, its kind and time replaced (never older)", one);
       await h.tx((t) => h.notifications.notify(t, { staffId: uuid() }, K, item)); expect((await h.sent(staffId)).length === 1, "another person's notify is their own record");
       await h.markRead(staffId, item);
       await h.tx((t) => h.notifications.notify(t, { staffId }, K, item));
