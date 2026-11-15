@@ -515,7 +515,7 @@ def parse_backlog(text):
 
 
 TARGET_WORKS_PER_DAY = 10                      # founder A68 (15 Nov): 10 capabilities at qa Works a day
-SOURCE_RE = re.compile(r"Source:([^|]*)")         # a BACKLOG row's " · Source: …" field, to the end of its cell (P-595)
+SOURCE_RE = re.compile(r"Source:([^|·]*)")        # a BACKLOG row's " · Source: …" field, to the next "·" or the cell's end (P-595)
 SOURCE_ID = re.compile(r"(?<![0-9A-Za-z\-/.])([A-Z][A-Za-z0-9]*-[0-9A-Za-z]+(?:-[0-9A-Za-z]+)*)(?![0-9A-Za-z\-])")
 LABEL_GUARD_HEAD = "**Label guard:**"            # tools/label-guard.sh and label-guard.yml start every removal comment so
 RULES_STEP = re.compile(r"check-docs|^rules files", re.I)   # ci.yml steps that run tools/check-docs.sh (notes step; shard 1's "rules files, …")
