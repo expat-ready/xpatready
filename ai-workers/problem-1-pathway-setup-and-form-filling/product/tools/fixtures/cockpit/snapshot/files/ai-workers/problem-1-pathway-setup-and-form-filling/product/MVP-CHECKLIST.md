@@ -34,3 +34,6 @@
 | # | Item | Status | Decision |
 |---|---|---|---|
 | C1 | Item one | Not started | P-1 |
+| C2 | Counsel reads the retainer (Unconfirmed: no counsel) | Not started | P-2 |
+| C3 | Backups restored once | Done (drill 18 Nov) | P-3 |
+| C4 | The College's rules read (Unconfirmed: no counsel) | Done | P-4 |
