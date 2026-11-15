@@ -116,4 +116,10 @@ if [ -z "$newest" ] || [ -z "$onmain" ]; then ACT "records on main: DECISIONS un
 elif [ "$newest" != "$onmain" ] || [ -n "$skills_off" ]; then ACT "records not on main: newest decision ${newest} here, ${onmain} on main; skills differing: ${skills_off:-none}; land the records PR now"
 else say "records on main: ${onmain} and the skills match"; fi
 
+# 8. Library freshness (founder, 15 Nov: library masters kept current on need, token-efficient). Git history only, no
+# document read: a living master whose feeds (cockpit/library.json) changed after it is behind; refresh only that one.
+lib=$(python3 "$TOOLS/library-freshness.py" 2>&1); nb=$?
+if [ "$nb" -gt 0 ]; then ACT "library: ${nb} master(s) behind: $(echo "$lib" | grep '^behind' | sed -E 's/^behind +//; s/: .*first [0-9a-f]+ at / since /; s/; refresh.*//' | paste -sd ';' -)"
+else say "library: every living master current"; fi
+
 exit "$act"

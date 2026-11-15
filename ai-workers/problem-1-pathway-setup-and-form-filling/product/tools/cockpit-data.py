@@ -39,6 +39,16 @@ def library_base(repo):
         br = "main"
     return f"https://github.com/{repo}/blob/{br}/ai-workers/problem-1-pathway-setup-and-form-filling/product/"
 
+def library_freshness():
+    """Library masters current or behind (founder, 15 Nov; tools/library-freshness.py reads git history only)."""
+    try:
+        r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "library-freshness.py"), "--json"],
+                           capture_output=True, text=True, timeout=60)
+        return json.loads(r.stdout)
+    except Exception as e:
+        ERRORS.append(f"library freshness not read: {e}")
+        return None
+
 def V(v, src, **kw):
     d = {"v": v, "src": src}
     d.update(kw)
@@ -2713,6 +2723,7 @@ def main():
             "records_copy": V(copy, "records branch and sha of the snapshot (meta.json)", sha=(snap.meta.get("records_sha") or "")[:9],
                               **{"class": "parsed", "as_of": snap.meta.get("taken_at")}),
             "library_base": library_base(gh.repo),
+            "library_freshness": library_freshness(),
             "lead_input_age_h": V(li_age, li_src), "lead_input_example": bool(li and li.get("example")),
             "flow_measure_age_h": V(fm_age, fm_src),
         },

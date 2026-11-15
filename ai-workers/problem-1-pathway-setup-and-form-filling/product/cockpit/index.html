@@ -798,10 +798,11 @@ var LIBRARY=[
  ["Pathway Configurator handover","The proof's verdict, how it works, what is left (private: the Mac only)","History (10 Nov)","reference/private/",""]
 ];
 function rLibrary(){
-  var h='<div class="box"><table><thead><tr><th>Document</th><th>What it is</th><th>Status</th><th>Master</th></tr></thead><tbody>';
-  var base=(D.freshness&&D.freshness.library_base)||null;
-  LIBRARY.forEach(function(d){var u=d[4];if(u&&u.charAt(0)==='@')u=base?base+u.slice(1):'';h+='<tr><td>'+(u?'<a href="'+esc(u)+'" target="_blank" rel="noopener">'+esc(d[0])+'</a>':esc(d[0]))+'</td><td class="small">'+esc(d[1])+'</td><td>'+pill(d[2],d[2]==="Living"?"good":d[2]==="Decision record"?"prog":"none")+'</td><td class="mono small">'+esc(d[3])+'</td></tr>';});
-  return section("04","library","Library: master documents","One master per document (P-593). Living ones are kept current; history ones are kept for reference and no longer updated.",h+'</tbody></table></div>');
+  var h='<div class="box"><table><thead><tr><th>Document</th><th>What it is</th><th>Status</th><th>Up to date?</th><th>Master</th></tr></thead><tbody>';
+  var base=(D.freshness&&D.freshness.library_base)||null,LF={};((D.freshness&&D.freshness.library_freshness)||[]).forEach(function(x){LF[x.name]=x;});
+  var fr=function(n){var x=LF[n];if(!x)return '<span class="muted small">not checked</span>';if(x.state==="behind")return '<span'+S(x.why)+'>'+pill("behind since "+x.since,"wait")+'</span>';if(x.state==="current")return '<span'+S(x.why)+'>'+pill("current","good")+'</span>';return '<span class="muted small"'+S(x.why)+'>'+esc(x.state)+'</span>';};
+  LIBRARY.forEach(function(d){var u=d[4];if(u&&u.charAt(0)==='@')u=base?base+u.slice(1):'';h+='<tr><td>'+(u?'<a href="'+esc(u)+'" target="_blank" rel="noopener">'+esc(d[0])+'</a>':esc(d[0]))+'</td><td class="small">'+esc(d[1])+'</td><td>'+pill(d[2],d[2]==="Living"?"good":d[2]==="Decision record"?"prog":"none")+'</td><td>'+fr(d[0])+'</td><td class="mono small">' +esc(d[3])+'</td></tr>';});
+  return section("04","library","Library: master documents","One master per document (P-593). Living ones are kept current on need: a master is marked behind when what feeds it changed after it (cockpit/library.json; git history only), and only that one is refreshed. History ones are kept for reference and no longer updated.",h+'</tbody></table></div>');
 }
 
 /* capability heat map (P-595): the 12 business functions against how far each got; colours by written rule */
