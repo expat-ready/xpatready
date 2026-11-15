@@ -46,12 +46,13 @@ G4-5 wired|product/tools/lead-watch.sh|/branch-sweep.sh/d|check-g4-rules.sh
 G4-6|product/tools/pr-size.sh|s/-le "\$limit" \]/-le 999999 ]/|check-g4-rules.sh
 G4-7|product/tools/brief-check.sh|s/if \[ "\${1:-}" = --brief \]; then/if false; then/|check-g4-rules.sh
 G4-7 hook|product/tools/lane-preflight.sh|s/bash "\$DIR\/brief-check.sh" --brief)/true)/|check-g4-rules.sh
-G4-7 cloud|../../.claude/settings.json|s/start_session.create_session/start_session/|check-g4-rules.sh'
+G4-7 cloud|../../.claude/settings.json|s/start_session.create_session/start_session/|check-g4-rules.sh
+G4-3/6 gate|../../.mergify.yml|/check-success = pr-rules/d|check-g4-rules.sh'
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
   cp -R "$TOOLS" "$M/$P/product/"; cp -R "$ROOTD/$P/prototype/studio/tools" "$M/$P/prototype/studio/"
-  cp "$ROOTD/$P/product/qa/CAPABILITIES.md" "$M/$P/product/qa/"; cp -R "$ROOTD/.claude/skills" "$ROOTD/.claude/settings.json" "$ROOTD/.claude/agents" "$M/.claude/"; cp -R "$ROOTD/.githooks" "$M/"
+  cp "$ROOTD/$P/product/qa/CAPABILITIES.md" "$M/$P/product/qa/"; cp -R "$ROOTD/.claude/skills" "$ROOTD/.claude/settings.json" "$ROOTD/.claude/agents" "$M/.claude/"; cp -R "$ROOTD/.githooks" "$ROOTD/.mergify.yml" "$M/"
   cp "$ROOTD/.github/workflows/"*.yml "$M/.github/workflows/"; git -C "$M" init -q   # every workflow: check-label-guard parses two
   before=$(cksum < "$M/$P/$f"); sed -i.bak "$edit" "$M/$P/$f"; rm -f "$M/$P/$f.bak"
   sh=bash; head -1 "$M/$P/$f" | grep -q zsh && sh=zsh; case "$f" in *.yml|*.json) sh=true;; esac   # a .yml or .json is parsed by its test

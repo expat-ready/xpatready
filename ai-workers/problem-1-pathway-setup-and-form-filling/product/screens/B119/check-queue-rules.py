@@ -80,7 +80,7 @@ def _is_records(files):
     return r.stdout.strip() == "yes"
 
 
-def case(what, files, record, want, title="evidence: something", labels=("review: approved",), checks=("ci",),
+def case(what, files, record, want, title="evidence: something", labels=("review: approved",), checks=("ci", "pr-rules"),
          draft=False, base="main"):
     return {"what": what, "record": record, "want": want,
             "pr": {"files": list(files), "title": title, "label": list(labels), "check-success": list(checks),

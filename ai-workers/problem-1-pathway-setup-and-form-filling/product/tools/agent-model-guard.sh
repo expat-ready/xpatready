@@ -9,9 +9,9 @@
 set -u
 if [ "${1:-}" = --hook ]; then
   in=$(cat); who=$(echo "$in" | jq -r '[.tool_input.subagent_type, .tool_input.description] | map(. // "") | join(" ")')
-  echo "$who" | grep -qiE 'review|break' || exit 0
+  echo "$who" | grep -qiE '(^|[^a-z])(review|reviewer|breaker)([^a-z]|$)' || exit 0
   m=$(echo "$in" | jq -r '.tool_input.model // empty'); e=$(echo "$in" | jq -r '.tool_input.effort // empty')
-  why=""; [ -n "$m" ] && ! echo "$m" | grep -qi opus && why="model $m"
+  why=""; [ -n "$m" ] && [ "$m" != inherit ] && ! echo "$m" | grep -qi opus && why="model $m"
   case "$e" in ""|high|xhigh|max) ;; *) why="${why:+$why, }effort $e";; esac
   [ -z "$why" ] && exit 0
   jq -n --arg r "Reviewers and breakers run on Opus at high effort (P-608 (2)); this launch ($who) asks for $why. Launch it again with model opus, effort high, or leave both out." \

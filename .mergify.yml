@@ -31,6 +31,7 @@ queue_rules:
       - -draft
       - "label = review: approved"
       - check-success = ci
+      - check-success = pr-rules   # G-4 (P-611): body has Done when + Duplicate check, under 800 lines (P-610)
       - -label=records
     merge_conditions:
       - check-success = ci
