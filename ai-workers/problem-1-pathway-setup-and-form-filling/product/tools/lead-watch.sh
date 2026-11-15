@@ -63,6 +63,21 @@ for n in $qs; do
   hit=$(gh pr view "$n" --json comments -q "[.comments[]|select(.createdAt>=\"$since\")|select(.body|test(\"Question for the tech lead\"))]|length")
   [ "${hit:-0}" -gt 0 ] && ACT "#$n has a new question for the tech lead"
 done
+# 3b. Lane reports to the Lead (A85, 15 Nov: board v61 reported "ready for Lead 54 to merge" on records PR #1796 at
+# 11:19 IST and waited 1.5 h unseen across a hand-over). Any open PR comment in the window addressed to a Lead that is
+# not a question, and any lane branch the Lead merges here (board/*) with commits not on this branch.
+rs=$(gh search prs --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" --state open "ready for Lead" --json number -q '.[].number' 2>/dev/null)
+for n in $rs; do
+  hit=$(gh pr view "$n" --json comments -q "[.comments[]|select(.createdAt>=\"$since\")|select(.body|test(\"(?i)ready for (the )?(tech )?lead|for the (tech )?lead to merge|Lead [0-9]+ to merge\"))]|length")
+  [ "${hit:-0}" -gt 0 ] && ACT "#$n has a lane report for the Lead (merge or publish it now)"
+done
+git fetch -q origin 2>/dev/null
+here=$(git rev-parse --abbrev-ref HEAD)
+for b in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/board/*'); do
+  n=$(git rev-list --count "$here..$b" 2>/dev/null)
+  age=$(( ( $(date +%s) - $(git log -1 --format=%ct "$b") ) / 60 ))
+  [ "${n:-0}" -gt 0 ] && [ "$age" -le 1440 ] && ACT "$b has $n commit(s) not on $here (last push ${age} min ago): merge, test, publish"
+done
 
 # 4. Lanes alive: branches pushed in the last 90 minutes (a lane is working only if it pushed, lead skill).
 git fetch -q origin 2>/dev/null
