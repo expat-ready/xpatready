@@ -156,6 +156,9 @@ Written by the concept's builder (for Lead B, the row owner, who approves r2). E
 * **R-M2** settings.html share link and embed now carry the firm key (`/book/maple/free-consultation`).
 * **Minors:** step-2 line, list columns, "Profile", the pinned tooltip, the notice-longer-than-window warning, Delete and its confirm, the plural, all added to §5; read-only Timings and Booking types and the staff banner drawn as panels (public loading was already a skeleton panel); BR-6 maps the 409 wording change and the honeypot's own sentence; firm name and branding added to Row X1; the Sample email is one value; the home item is AG-11's, said in BR-14; BR-18 cites AG-4-40, -56.
 
+## Lead B's answers and the last edit
+Lead B approved r2 at d249d18a2 on the PR (comment 6892339436) and accepted Q1-Q4 (rows FO-3pa and FO-3sa; seeded keys; FO-5 draft by record id; no Bookings menu for a host without the list key) and the attendance-email bug (FO-3m). The last edit: Row X1/X2 renamed FO-3pa/FO-3sa, §7 records the answers, the staff.html caption and the 409 `form-already-sent` text fixed, and a host without the key reads their booking from FO-3a part 2's feed (not FO-3sr's ids-only `GET /:id`).
+
 ## Agreement
 r2 answers every Blocker and Major of the challenge and of reviewer round 1; no founder question; four questions for Lead B (concept §7). Awaiting Lead B's written approval on the PR (P-223 (4)).
 
