@@ -2,7 +2,7 @@
 
 **One file for the 15 J-rows, in rev 16.11's rank order.** A lane gets **the shared brief below plus its row's section**. Map rows 9 + 13 have no separate J-row: PF-23w is their join, and its brief carries the J-9 walk. Row 15's join is PF-24w (J-15 walk in its Done when), and row 1's is PF-8c's deploy smoke. **A J-row starts only when every part it waits on is on `main`** (the Lead checks `main`, not the BACKLOG status). It adds no feature, only the joins.
 
-**What is real on `main` (checked 15 Nov 10:13 IST, `git grep 'fake[A-Z]…(' api/src`):** the only fakes in a running path are FO-3 booking's `jobs`, `mail` and `arrival` (`api/src/front-office/booking/runtime-ports.ts`). PF-23w swaps `jobs`; `mail` waits on the sending adapter (PF-4b / PF-18n / PF-19b); `arrival` waits on FO-2. Every J-row builder **re-runs that grep in step 0** and lists each fake still in its capability's running path. Every fake listed in the row's section must be gone; any other fake found goes in the PR's Questions, and is never left silently.
+**What is real on `main` (checked 15 Nov 10:13 IST, `git grep 'fake[A-Z]…(' api/src`):** the only fakes in a running path are FO-3 booking's `jobs`, `mail` and `arrival` (`mail` is `fakeMail` in memory, **not** the demo inbox; `main` has no public booking page yet, only its API: #1800) (`api/src/front-office/booking/runtime-ports.ts`). PF-23w swaps `jobs`; `mail` waits on the sending adapter (PF-4b / PF-18n / PF-19b); `arrival` waits on FO-2. Every J-row builder **re-runs that grep in step 0** and lists each fake still in its capability's running path. Every fake listed in the row's section must be gone; any other fake found goes in the PR's Questions, and is never left silently.
 
 ---
 ## Shared brief (paste first, then the row's section)
@@ -37,9 +37,9 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime <
 ## The rows, in rank order
 
 ### J-24: each firm's own web address (map row 24), rank 3
-* **Waits on:** PF-25w (after PF-4s). DNS is PF-8b (founder's AWS), so it is **not** in this row: the walk runs on `<firm>.localhost` through the app's own host routing.
+* **Waits on:** PF-25w (after PF-4s) and FO-3w (the public booking page; `main` has only its API, PR #1800). DNS is PF-8b (founder's AWS), so it is **not** in this row: the walk runs on `<firm>.localhost` through the app's own host routing.
 * **Swaps:** none on `main` today. List any PF-25w leaves.
-* **Screen:** the public booking page (FO-3's).
+* **Screen:** FO-3w's public booking page.
 * **Walk:**
   * `W1`: open `http://<firm-key>.localhost:<port>/`;
   * `W2`: it resolves to that firm and shows its booking page, with the firm name and consultation types;
@@ -48,7 +48,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime <
 
 ### J-109: complaints record (map row 109), rank 4
 * **Waits on:** PF-21w (routes), PF-21s (screen; concept first).
-* **Swaps:** complaints' `jobs` must be `PlatformJobs` (after PF-23w) and its clock the system clock. Its `mail` may stay the demo inbox until the sending adapter lands; name that in the PR.
+* **Swaps:** complaints' `jobs` must be `PlatformJobs` (after PF-23w) and its clock the system clock. Its `mail` may stay `fakeMail` (in memory, not the demo inbox) until the sending adapter lands; name that in the PR.
 * **Screen:** PF-21s's list and record page.
 * **Walk:**
   * `W1`: a Case Manager logs a complaint;
@@ -58,9 +58,9 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime <
   * `W5`: it ends at the closed complaint in the list. No next capability follows, so the list is the end.
 
 ### J-38: time zones and calendar invite files (map rows 38, 40), rank 5
-* **Waits on:** FO-3f #1785, FO-3h, PF-23w.
-* **Swaps:** none beyond PF-23w's. Mail stays the demo inbox, and the walk reads it there.
-* **Screen:** the public booking page plus the demo inbox.
+* **Waits on:** FO-3f (merged), FO-3h, PF-23w, FO-3w (the page), and PF-4b's sending adapter writing the demo inbox on the demo copy. The running app's booking mail is `fakeMail` in memory today, so a walk cannot read it (#1800).
+* **Swaps:** booking's `mail` from `fakeMail` to the demo-inbox adapter (shared with J-37; whichever lands first does it).
+* **Screen:** FO-3w plus the demo inbox.
 * **Walk:**
   * `W1`: a booker in Asia/Dubai books 10:00 Toronto;
   * `W2`: the booker's mail reads 7:00 p.m. (Asia/Dubai);
@@ -115,14 +115,15 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime <
   * `W6`: ends at row 37's first step: book a consultation for the prospect.
 
 ### J-37: public booking page, no double booking (map row 37), rank 11
-* **Waits on:** FO-3f, FO-3sr, FO-3sc → FO-3w, PF-23w.
-* **Swaps:** none beyond PF-23w's. `arrival` follows FO-2 if it has merged; if not, name it in the PR as J-27's swap.
+* **Waits on:** FO-3f, FO-3sr, FO-3sc → FO-3w, PF-23w, FO-2 (real arrival) and PF-4b's demo-inbox sending adapter.
+* **Swaps:** booking's `mail` from `fakeMail` to the demo-inbox adapter (as J-38), and `arrival` from `fakeArrival` to FO-2's port (as J-27; whichever lands first does it). These carry PF-23w's deferred J-9 W4 (#1800, Lead B ruling 6889832067): today a reminder due after a restart finds no booker and sends nothing.
 * **Screen:** FO-3w (from FO-3sc's concept).
 * **Walk:**
   * `W1`: the public page lists slots;
   * `W2`: booker A books one;
   * `W3`: booker B, on the same slot in a second browser, is refused and offered the next slots;
-  * `W4`: A's confirmation arrives;
+  * `W4`: A's confirmation arrives in the demo inbox;
+  * `W4b` (J-9 W4, moved from PF-23w): restart the API; A's reminder still runs at its due time (clock seam on the demo copy, named in the PR) and arrives in the demo inbox;
   * `W5`: ends at row 42's first step: A's manage link.
 
 ### J-41: staff hours and time off (map row 41), rank 12
