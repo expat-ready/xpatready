@@ -266,3 +266,45 @@ I did not repeat fo1a, pf24, g1 or the isolated start; the builder's runs stand 
 None: no Blocker, Major or Minor. The merge brought no change to the PR's migration, its other schema file or the store. `20261114190000_pf19a_platform_messages` is still the last migration. The known items from round 3 stand as listed there.
 
 Verdict: Approve (head 34aeabbe94057a390eea2b6534c5d9ed13e40eb6)
+
+## Round 5 (re-stamp; diff since 764b14ece)
+
+Head `799ae710c2dbaff98d5598b0e70767fefbb238df`, which is also the remote branch head. The last Approve was at `764b14ece7380edb5ae5f4685cd607c952b9cb9f`. The diff holds two commits:
+* `548a660b7`: merges origin/main at `2b7fe0060` (PF-21 #1753). That is still origin/main's tip and the merge base, so main has nothing past it.
+* `799ae710c`: the re-stamp to Lead 50's slot `20261115004500` (PR comment 6883915878, P-600 (4)).
+
+I read only the PR's own files, with `git diff -M 764b14ece 799ae710c -- <PR files>`. That filter lists only the new migration path, so git shows the migration as 433 added lines. Run on the migrations folder, `-M` shows the real change, a rename.
+
+**What changed in the PR's files since the Approve:**
+* the folder rename;
+* `prisma/schema/platform-messages.prisma:9`, the header comment's stamp;
+* `tests/check_pf19a_messages_schema.ts:23`, `NEW`.
+
+Nothing else changed. `consent-store.ts`, `ports/consent.ts`, `platform-consent.ts`, `messages-firm.ts`, `index.ts` and the slot line are unchanged.
+
+### The five checks
+1. **The rename is 100%.**
+   * `git diff -M --summary` says `{20261114190000_pf19a_platform_messages => 20261115004500_pf19a_platform_messages}/migration.sql (100%)`.
+   * Both blobs are `ac9c93572f55eb6c9d3c7ad842eb542b6f6e80a9`, sha256 `2cf39683…cb157e1d25` for both, mode 100644. The SQL is byte-identical.
+   * The folder holds only `migration.sql`, and no `20261114190000` folder is left in the tree.
+2. **The stamp is later than every migration on main.**
+   * Main's newest migrations are `20261114230000_pf25_web_address` and then `20261114234500_pf21_complaints`. `20261115004500` is later than both.
+   * No folder on origin/main or at head shares the 14 digits. Nothing even starts `202611150045`.
+   * At head, ours is the last folder before `migration_lock.toml`.
+3. **No stale reference is left.** `git grep 20261114190000 799ae710c` finds the old stamp only in `review.md` and `break-report.md`, which are records. It is in no code, schema or test file.
+4. **The merge brings nothing that conflicts with this PR's schema.**
+   * Against main, the PR's only change to `platform.prisma` is still the one line at `:90`, `messages MsgFirm?`. It sits directly under `// back-relation slot: messages (PF-19a)` (`:89`), with the blank line kept before `money (FO-7a)`.
+   * PF-21's own lines fill only its own slots: `platComplaints` at `:96-97`, and `platComplaintsHandled` in `PlatformStaff` at `:235-236`. PF-25's lines are at `:101-103`.
+   * No other schema file defines a `Msg*` model or a `msg_` map. The other `messages` field (`links.prisma:39`, `DemoMessage[]`) is on another model.
+   * Only one other migration mentions `msg_`, the FO-1a migration (`20261114153000_fo1a_front_office_sales/migration.sql:5`). That is a comment that hands consent to PF-19a, not a name.
+   * PF-21's and PF-25's migrations create no `msg_` object.
+5. **The migration still applies after PF-21's.** I ran both suites on `799ae710c`. The local Postgres is at 127.0.0.1:54329, and port 4400 was not touched.
+   * `check_pf19a_messages_schema`: **76 passed, 0 failed**. The stamp check reads "later than every one before it (newest before it: 20261114234500_pf21_complaints)". The scratch databases were dropped afterwards, and none is left.
+   * `check_prisma_schema`: **8 passed, 0 failed**. The migrations give the schema, apart from the 5 known differences.
+
+### Findings
+None: no Blocker, Major or Minor. The known items from round 3 stand as listed there.
+
+Journey test: N/A, no score, as in rounds 1 to 4. This PR has no screen, route or user step.
+
+Verdict: Approve (head 799ae710c2dbaff98d5598b0e70767fefbb238df)
