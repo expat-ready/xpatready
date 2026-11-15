@@ -165,7 +165,7 @@ try {
     const no = await call("POST", `/${theirs}/${route}`, as.BILLING_FINANCE.token, body(ago(5 - i)));
     ok(`PF-21w DW3 fail: a non-handler without the keys (BILLING_FINANCE) on ${route} → 404`, no.status === 404 && no.body.code === "NOT_FOUND", no);
     const yes = await call("POST", `/${recorded.ADMIN}/${route}`, as.CASE_OFFICER.token, body(ago(5 - i)));
-    ok(`PF-21w DW3 pass: the CASE_OFFICER handler (no complaint key) ${route}s their own → 200`, yes.status === 200, yes);
+    ok(`PF-21w DW3 pass: the CASE_OFFICER handler (no complaint key) on ${route}, their own complaint → 200`, yes.status === 200, yes);
   }
   ok("PF-21w DW3: the handler's own complaint is closed RESOLVED", (await call("GET", `/${recorded.ADMIN}`, as.OWNER.token)).body.outcome === "RESOLVED");
   const cm = await call("POST", `/${mine}/acknowledge`, as.CASE_MANAGER.token, { at: ago(5) });
