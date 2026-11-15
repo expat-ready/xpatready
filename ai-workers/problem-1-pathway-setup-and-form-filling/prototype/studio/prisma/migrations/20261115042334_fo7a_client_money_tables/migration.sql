@@ -438,9 +438,92 @@ ALTER TABLE "money_write_off" ADD CONSTRAINT "money_write_off_firm_id_invoice_id
 -- (format controls, prepended marks, a lone combining mark, noncharacters, unassigned, private use), so once the
 -- listed invisible characters are taken out, the text must still hold one letter, digit, punctuation mark or symbol by
 -- Unicode's classes: PostgreSQL's built-in pg_c_utf8 collation (PostgreSQL 17 and later; the team's major is 18).
+-- Round 5: pg_c_utf8 counts a mark Unicode calls Alphabetic (an Arabic fatha alone) as a letter, so every combining
+-- mark (general category M) is taken out too, with the Egyptian blanks U+13441-2; and its [:alnum:] has ASCII digits
+-- only, so every number character (category N: full-width, Persian, Arabic-Indic digits, ½) counts as written (break
+-- B-23). Both lists are generated from Unicode 15.1's general categories (Python's unicodedata); a mark first assigned
+-- in Unicode 16.0 is not in them.
 CREATE FUNCTION money_text_ok(t text, max_len integer) RETURNS boolean LANGUAGE sql IMMUTABLE AS
   $$ SELECT t IS NOT NULL AND char_length(t) BETWEEN 1 AND max_len
-       AND regexp_replace(t, '[[:space:]\u0085\u00a0\u00ad\u034f\u061c\u115f\u1160\u1680\u17b4\u17b5\u180b-\u180f\u2000-\u200f\u2028-\u202f\u205f-\u206f\u2800\u3000\u3164\ufe00-\ufe0f\ufeff\uffa0\U0001d159\U0001d173-\U0001d17a\U0001f3fb-\U0001f3ff\U000e0000-\U000e007f\U000e0100-\U000e01ef]', '', 'g') ~ '[[:alnum:][:punct:]]' COLLATE pg_c_utf8
+       AND regexp_replace(regexp_replace(t, '[[:space:]\u0085\u00a0\u00ad\u034f\u061c\u115f\u1160\u1680\u17b4\u17b5\u180b-\u180f\u2000-\u200f\u2028-\u202f\u205f-\u206f\u2800\u3000\u3164\ufe00-\ufe0f\ufeff\uffa0\U0001d159\U0001d173-\U0001d17a\U0001f3fb-\U0001f3ff\U000e0000-\U000e007f\U000e0100-\U000e01ef\U00013441-\U00013442]', '', 'g'),
+         '[' ||
+         '\u0300-\u036f\u0483-\u0489\u0591-\u05bd\u05bf\u05c1-\u05c2\u05c4-\u05c5\u05c7\u0610-\u061a'
+         '\u064b-\u065f\u0670\u06d6-\u06dc\u06df-\u06e4\u06e7-\u06e8\u06ea-\u06ed\u0711\u0730-\u074a'
+         '\u07a6-\u07b0\u07eb-\u07f3\u07fd\u0816-\u0819\u081b-\u0823\u0825-\u0827\u0829-\u082d\u0859-\u085b'
+         '\u0898-\u089f\u08ca-\u08e1\u08e3-\u0903\u093a-\u093c\u093e-\u094f\u0951-\u0957\u0962-\u0963'
+         '\u0981-\u0983\u09bc\u09be-\u09c4\u09c7-\u09c8\u09cb-\u09cd\u09d7\u09e2-\u09e3\u09fe\u0a01-\u0a03'
+         '\u0a3c\u0a3e-\u0a42\u0a47-\u0a48\u0a4b-\u0a4d\u0a51\u0a70-\u0a71\u0a75\u0a81-\u0a83\u0abc'
+         '\u0abe-\u0ac5\u0ac7-\u0ac9\u0acb-\u0acd\u0ae2-\u0ae3\u0afa-\u0aff\u0b01-\u0b03\u0b3c\u0b3e-\u0b44'
+         '\u0b47-\u0b48\u0b4b-\u0b4d\u0b55-\u0b57\u0b62-\u0b63\u0b82\u0bbe-\u0bc2\u0bc6-\u0bc8\u0bca-\u0bcd'
+         '\u0bd7\u0c00-\u0c04\u0c3c\u0c3e-\u0c44\u0c46-\u0c48\u0c4a-\u0c4d\u0c55-\u0c56\u0c62-\u0c63'
+         '\u0c81-\u0c83\u0cbc\u0cbe-\u0cc4\u0cc6-\u0cc8\u0cca-\u0ccd\u0cd5-\u0cd6\u0ce2-\u0ce3\u0cf3'
+         '\u0d00-\u0d03\u0d3b-\u0d3c\u0d3e-\u0d44\u0d46-\u0d48\u0d4a-\u0d4d\u0d57\u0d62-\u0d63\u0d81-\u0d83'
+         '\u0dca\u0dcf-\u0dd4\u0dd6\u0dd8-\u0ddf\u0df2-\u0df3\u0e31\u0e34-\u0e3a\u0e47-\u0e4e\u0eb1'
+         '\u0eb4-\u0ebc\u0ec8-\u0ece\u0f18-\u0f19\u0f35\u0f37\u0f39\u0f3e-\u0f3f\u0f71-\u0f84\u0f86-\u0f87'
+         '\u0f8d-\u0f97\u0f99-\u0fbc\u0fc6\u102b-\u103e\u1056-\u1059\u105e-\u1060\u1062-\u1064\u1067-\u106d'
+         '\u1071-\u1074\u1082-\u108d\u108f\u109a-\u109d\u135d-\u135f\u1712-\u1715\u1732-\u1734\u1752-\u1753'
+         '\u1772-\u1773\u17b4-\u17d3\u17dd\u180b-\u180d\u180f\u1885-\u1886\u18a9\u1920-\u192b\u1930-\u193b'
+         '\u1a17-\u1a1b\u1a55-\u1a5e\u1a60-\u1a7c\u1a7f\u1ab0-\u1ace\u1b00-\u1b04\u1b34-\u1b44\u1b6b-\u1b73'
+         '\u1b80-\u1b82\u1ba1-\u1bad\u1be6-\u1bf3\u1c24-\u1c37\u1cd0-\u1cd2\u1cd4-\u1ce8\u1ced\u1cf4'
+         '\u1cf7-\u1cf9\u1dc0-\u1dff\u20d0-\u20f0\u2cef-\u2cf1\u2d7f\u2de0-\u2dff\u302a-\u302f\u3099-\u309a'
+         '\ua66f-\ua672\ua674-\ua67d\ua69e-\ua69f\ua6f0-\ua6f1\ua802\ua806\ua80b\ua823-\ua827\ua82c'
+         '\ua880-\ua881\ua8b4-\ua8c5\ua8e0-\ua8f1\ua8ff\ua926-\ua92d\ua947-\ua953\ua980-\ua983\ua9b3-\ua9c0'
+         '\ua9e5\uaa29-\uaa36\uaa43\uaa4c-\uaa4d\uaa7b-\uaa7d\uaab0\uaab2-\uaab4\uaab7-\uaab8\uaabe-\uaabf'
+         '\uaac1\uaaeb-\uaaef\uaaf5-\uaaf6\uabe3-\uabea\uabec-\uabed\ufb1e\ufe00-\ufe0f\ufe20-\ufe2f\U000101fd'
+         '\U000102e0\U00010376-\U0001037a\U00010a01-\U00010a03\U00010a05-\U00010a06\U00010a0c-\U00010a0f'
+         '\U00010a38-\U00010a3a\U00010a3f\U00010ae5-\U00010ae6\U00010d24-\U00010d27\U00010eab-\U00010eac'
+         '\U00010efd-\U00010eff\U00010f46-\U00010f50\U00010f82-\U00010f85\U00011000-\U00011002'
+         '\U00011038-\U00011046\U00011070\U00011073-\U00011074\U0001107f-\U00011082\U000110b0-\U000110ba'
+         '\U000110c2\U00011100-\U00011102\U00011127-\U00011134\U00011145-\U00011146\U00011173'
+         '\U00011180-\U00011182\U000111b3-\U000111c0\U000111c9-\U000111cc\U000111ce-\U000111cf'
+         '\U0001122c-\U00011237\U0001123e\U00011241\U000112df-\U000112ea\U00011300-\U00011303'
+         '\U0001133b-\U0001133c\U0001133e-\U00011344\U00011347-\U00011348\U0001134b-\U0001134d\U00011357'
+         '\U00011362-\U00011363\U00011366-\U0001136c\U00011370-\U00011374\U00011435-\U00011446\U0001145e'
+         '\U000114b0-\U000114c3\U000115af-\U000115b5\U000115b8-\U000115c0\U000115dc-\U000115dd'
+         '\U00011630-\U00011640\U000116ab-\U000116b7\U0001171d-\U0001172b\U0001182c-\U0001183a'
+         '\U00011930-\U00011935\U00011937-\U00011938\U0001193b-\U0001193e\U00011940\U00011942-\U00011943'
+         '\U000119d1-\U000119d7\U000119da-\U000119e0\U000119e4\U00011a01-\U00011a0a\U00011a33-\U00011a39'
+         '\U00011a3b-\U00011a3e\U00011a47\U00011a51-\U00011a5b\U00011a8a-\U00011a99\U00011c2f-\U00011c36'
+         '\U00011c38-\U00011c3f\U00011c92-\U00011ca7\U00011ca9-\U00011cb6\U00011d31-\U00011d36\U00011d3a'
+         '\U00011d3c-\U00011d3d\U00011d3f-\U00011d45\U00011d47\U00011d8a-\U00011d8e\U00011d90-\U00011d91'
+         '\U00011d93-\U00011d97\U00011ef3-\U00011ef6\U00011f00-\U00011f01\U00011f03\U00011f34-\U00011f3a'
+         '\U00011f3e-\U00011f42\U00013440\U00013447-\U00013455\U00016af0-\U00016af4\U00016b30-\U00016b36'
+         '\U00016f4f\U00016f51-\U00016f87\U00016f8f-\U00016f92\U00016fe4\U00016ff0-\U00016ff1'
+         '\U0001bc9d-\U0001bc9e\U0001cf00-\U0001cf2d\U0001cf30-\U0001cf46\U0001d165-\U0001d169'
+         '\U0001d16d-\U0001d172\U0001d17b-\U0001d182\U0001d185-\U0001d18b\U0001d1aa-\U0001d1ad'
+         '\U0001d242-\U0001d244\U0001da00-\U0001da36\U0001da3b-\U0001da6c\U0001da75\U0001da84'
+         '\U0001da9b-\U0001da9f\U0001daa1-\U0001daaf\U0001e000-\U0001e006\U0001e008-\U0001e018'
+         '\U0001e01b-\U0001e021\U0001e023-\U0001e024\U0001e026-\U0001e02a\U0001e08f\U0001e130-\U0001e136'
+         '\U0001e2ae\U0001e2ec-\U0001e2ef\U0001e4ec-\U0001e4ef\U0001e8d0-\U0001e8d6\U0001e944-\U0001e94a'
+         '\U000e0100-\U000e01ef' || ']', '', 'g')
+         ~ ('[[:alnum:][:punct:]' ||
+         '\u0030-\u0039\u00b2-\u00b3\u00b9\u00bc-\u00be\u0660-\u0669\u06f0-\u06f9\u07c0-\u07c9\u0966-\u096f'
+         '\u09e6-\u09ef\u09f4-\u09f9\u0a66-\u0a6f\u0ae6-\u0aef\u0b66-\u0b6f\u0b72-\u0b77\u0be6-\u0bf2'
+         '\u0c66-\u0c6f\u0c78-\u0c7e\u0ce6-\u0cef\u0d58-\u0d5e\u0d66-\u0d78\u0de6-\u0def\u0e50-\u0e59'
+         '\u0ed0-\u0ed9\u0f20-\u0f33\u1040-\u1049\u1090-\u1099\u1369-\u137c\u16ee-\u16f0\u17e0-\u17e9'
+         '\u17f0-\u17f9\u1810-\u1819\u1946-\u194f\u19d0-\u19da\u1a80-\u1a89\u1a90-\u1a99\u1b50-\u1b59'
+         '\u1bb0-\u1bb9\u1c40-\u1c49\u1c50-\u1c59\u2070\u2074-\u2079\u2080-\u2089\u2150-\u2182\u2185-\u2189'
+         '\u2460-\u249b\u24ea-\u24ff\u2776-\u2793\u2cfd\u3007\u3021-\u3029\u3038-\u303a\u3192-\u3195'
+         '\u3220-\u3229\u3248-\u324f\u3251-\u325f\u3280-\u3289\u32b1-\u32bf\ua620-\ua629\ua6e6-\ua6ef'
+         '\ua830-\ua835\ua8d0-\ua8d9\ua900-\ua909\ua9d0-\ua9d9\ua9f0-\ua9f9\uaa50-\uaa59\uabf0-\uabf9'
+         '\uff10-\uff19\U00010107-\U00010133\U00010140-\U00010178\U0001018a-\U0001018b\U000102e1-\U000102fb'
+         '\U00010320-\U00010323\U00010341\U0001034a\U000103d1-\U000103d5\U000104a0-\U000104a9'
+         '\U00010858-\U0001085f\U00010879-\U0001087f\U000108a7-\U000108af\U000108fb-\U000108ff'
+         '\U00010916-\U0001091b\U000109bc-\U000109bd\U000109c0-\U000109cf\U000109d2-\U000109ff'
+         '\U00010a40-\U00010a48\U00010a7d-\U00010a7e\U00010a9d-\U00010a9f\U00010aeb-\U00010aef'
+         '\U00010b58-\U00010b5f\U00010b78-\U00010b7f\U00010ba9-\U00010baf\U00010cfa-\U00010cff'
+         '\U00010d30-\U00010d39\U00010e60-\U00010e7e\U00010f1d-\U00010f26\U00010f51-\U00010f54'
+         '\U00010fc5-\U00010fcb\U00011052-\U0001106f\U000110f0-\U000110f9\U00011136-\U0001113f'
+         '\U000111d0-\U000111d9\U000111e1-\U000111f4\U000112f0-\U000112f9\U00011450-\U00011459'
+         '\U000114d0-\U000114d9\U00011650-\U00011659\U000116c0-\U000116c9\U00011730-\U0001173b'
+         '\U000118e0-\U000118f2\U00011950-\U00011959\U00011c50-\U00011c6c\U00011d50-\U00011d59'
+         '\U00011da0-\U00011da9\U00011f50-\U00011f59\U00011fc0-\U00011fd4\U00012400-\U0001246e'
+         '\U00016a60-\U00016a69\U00016ac0-\U00016ac9\U00016b50-\U00016b59\U00016b5b-\U00016b61'
+         '\U00016e80-\U00016e96\U0001d2c0-\U0001d2d3\U0001d2e0-\U0001d2f3\U0001d360-\U0001d378'
+         '\U0001d7ce-\U0001d7ff\U0001e140-\U0001e149\U0001e2f0-\U0001e2f9\U0001e4f0-\U0001e4f9'
+         '\U0001e8c7-\U0001e8cf\U0001e950-\U0001e959\U0001ec71-\U0001ecab\U0001ecad-\U0001ecaf'
+         '\U0001ecb1-\U0001ecb4\U0001ed01-\U0001ed2d\U0001ed2f-\U0001ed3d\U0001f100-\U0001f10c'
+         '\U0001fbf0-\U0001fbf9' || ']') COLLATE pg_c_utf8
        AND t !~ '[[:cntrl:]\u0085\u2028\u2029\u202a-\u202e\u2066-\u2069]' $$;
 -- The firm's tax rates: a JSON list (at most 10) of { "name": 1..40 characters, "ratePpm": 0..1000000 } (parts per
 -- million: Quebec's QST 9.975 % is 99750; basis points could not hold it, review round 2, Major 1).
@@ -664,7 +747,7 @@ BEGIN
     SELECT s.kind INTO k FROM "money_number_series" s
       WHERE s.firm_id = NEW.firm_id AND s.kind <> NEW.kind AND NEW.prefix = ANY (s.used_prefixes) LIMIT 1;
     IF FOUND THEN
-      RAISE EXCEPTION 'money_number_series: % printed the % series'' numbers (a prefix a firm printed with is never another kind''s)', NEW.prefix, k USING ERRCODE = 'check_violation';
+      RAISE EXCEPTION 'money_number_series: % stays with the % series (a prefix a series used once it gave numbers is never another kind''s)', NEW.prefix, k USING ERRCODE = 'check_violation';
     END IF;
   END IF;
   IF TG_OP = 'INSERT' THEN

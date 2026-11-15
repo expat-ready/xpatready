@@ -280,8 +280,8 @@ try {
     }
     ok("FO-7a fail (break round 4, B-20): after the invoices move from TOR- to INV-, the credit notes cannot take TOR- (it printed TOR-10001); not as a later prefix change either",
       sql(DEMO, rename("INVOICE", "INV-")) === "INV-"
-      && refused(DEMO, series("CREDIT_NOTE", "TOR-"), /TOR- printed the INVOICE series' numbers/, "23514")
-      && refused(DEMO, `begin; ${series("CREDIT_NOTE", "XB-")}; ${rename("CREDIT_NOTE", "TOR-")}; commit;`, /TOR- printed the INVOICE series' numbers/, "23514"));
+      && refused(DEMO, series("CREDIT_NOTE", "TOR-"), /TOR- stays with the INVOICE series/, "23514")
+      && refused(DEMO, `begin; ${series("CREDIT_NOTE", "XB-")}; ${rename("CREDIT_NOTE", "TOR-")}; commit;`, /TOR- stays with the INVOICE series/, "23514"));
     sql(DEMO, `delete from money_number_series where firm_id = '${firmG}' and kind = 'CREDIT_NOTE'`);
     ok("FO-7a pass (B-20; AG-6-44 rule 5): a series may go back to a prefix it printed with, a prefix that printed nothing is free, and the used prefixes are the database's", (() => { try { return true
       && sql(DEMO, rename("INVOICE", "TOR-")) === "TOR-" && sql(DEMO, rename("INVOICE", "INV-")) === "INV-"
@@ -368,12 +368,17 @@ try {
   // Break round 4, B-21: format controls, prepended marks, a lone combining mark, noncharacters, unassigned and private
   // use, each alone. Text now needs one Unicode letter, digit, punctuation mark or symbol (pg_c_utf8 classes).
   const b21 = ["\uFFF9", "\uFFFA", "\uFFFB", "\u{1BCA0}", "\u{1BCA3}", "\u{13430}", "\u{1343F}", "\u0600", "\u070F", "\u{110BD}", "\u{16FE4}",
-    "\u0301", "\u05AE", "\uFFFF", "\u{2FFFE}", "\u{10FFFF}", "\u0378", "\u{1D455}", "\uE000", "\u{F0000}", " \u0301\uFFFB "];
-  const b21ok = (r: string) => sql(DEMO, `begin; ${credit(I1, 1, false, r)}; rollback;`).startsWith("CN-");
+    "\u0301", "\u05AE", "\uFFFF", "\u{2FFFE}", "\u{10FFFF}", "\u0378", "\u{1D455}", "\uE000", "\u{F0000}", " \u0301\uFFFB ",
+    // round 5: a lone mark Unicode calls Alphabetic (an Arabic fatha, a Devanagari vowel sign, a Thai vowel), several
+    // marks, and the Egyptian blanks U+13441-2 (letters that show as empty space)
+    "\u064E", "\u093F", "\u0E31", "\u0301\u064E\u093F", "\u{13441}", "\u{13442}"];
+  const b21ok = (r: string) => { try { return sql(DEMO, `begin; ${credit(I1, 1, false, r)}; rollback;`).startsWith("CN-"); } catch { return false; } };
   ok("FO-7a fail (break round 4, B-21): a reason that is only an interlinear, shorthand or Egyptian format control, a prepended mark, a lone combining mark, a noncharacter, an unassigned or a private-use character is refused",
     b21.every((r) => refused(DEMO, credit(I1, 1, false, r), /money_credit_note_text_check/)), b21.filter((r) => !refused(DEMO, credit(I1, 1, false, r), /money_credit_note_text_check/)).map((r) => [...r].map((c) => c.codePointAt(0)!.toString(16))));
   ok("FO-7a pass (B-21): written text in any script is still text — a decomposed é, Hindi with its vowel sign, Hebrew, Arabic, CJK, a symbol, an emoji, a number",
-    ["Fe\u0301e reduced", "\u0936\u0941\u0932\u094D\u0915 \u0915\u092E", "\u05D4\u05E0\u05D7\u05D4", "\u062E\u0635\u0645", "\u6599\u91D1", "\u20AC", "\u{1F44D}", "2"].every(b21ok));
+    ["Fe\u0301e reduced", "\u0936\u0941\u0932\u094D\u0915 \u0915\u092E", "\u05D4\u05E0\u05D7\u05D4", "\u062E\u0635\u0645", "\u6599\u91D1", "\u20AC", "\u{1F44D}", "2"].every(b21ok)
+    // round 5, B-23: a number written only in another script's digits (full-width, Persian, Arabic-Indic), a fraction
+    && ["\uFF11\uFF12\uFF13\uFF14\uFF15", "\u06F1\u06F2\u06F3\u06F4\u06F5\u06F6", "\u0661\u0662\u0663", "\u0966\u0967", "\u00BD"].every(b21ok));
 
   // ------------------------------------------------------------------------------------------------- trust requests
   const req = (id: string, sent: boolean, party = `person_id`, pid = P1, amount = 100000, f = firmA) =>
