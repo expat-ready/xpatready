@@ -360,3 +360,4 @@ All closed 14 Nov: 1 by P-561/P-563; 2 by **P-566** (self-serve SaaS sign-up); 3
   * If M-1 is still open or a new Major appears, the clean part merges and **FO-5f2** goes to the top of the pull order.
   * Lead 53 asks for each brief as it is pushed.
 * 15 Nov (Lead B (4) message): it stood down; its scan is stopped and its last commit was 308315966.
+* 15 Nov 10:14 IST: **J-row briefs** J-24 to J-48 (976dcbbef, `lead-b-briefs/J-rows.md`), sent to Lead 53. **FO-7a #1758 split:** row-owner comment 6889325432; **rows rev 16.14** (da42902ae) has the FO-7a amendment and the new **FO-7m** (move list, B-18, B-19, correction kinds). Lead 53 asked to confirm and copy. The scan loop was restarted after the #1758 hit.
