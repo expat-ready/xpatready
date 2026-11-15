@@ -193,3 +193,25 @@ Agreed: the proposed X rows are added in the same change that copies these rows 
 10. **Portal account key (with the release holder).** Lead B agrees that every case client gets an `fo_person`, so a person has one login. The release holder confirms in CS-K1.
 
 **Review complete.** Batches 1-4 cover every row of the three lanes. Lead B approved (or approved with amendments) all of its own rows. The release holder's rows are left to the release holder, with their joins checked.
+
+## Held after review (15 Nov 09:3x IST): duplicates of the release holder's case-side draft 2
+
+Lead B's duplicate check missed `design/case-side-rows-draft2-2026-11-14.md` (on `lead/2026-11-07-lead31`, not yet in BACKLOG). It already shapes several things the lanes re-shaped. **These approvals are held** until Lead 52 and Lead B settle one owner for each:
+
+| Lane rows | Draft 2 rows |
+|---|---|
+| PF-29a-f (tasks) | CS-T1, CS-T2 |
+| PF-30a, PF-30s, CS-30c (find) | CS-S1, CS-S2 |
+| PF-R1-R3, PF-R2cs (reports) | CS-R1, CS-R2 |
+| CS-26e (person export) | CS-X1 |
+| CS-P1 (erasure and legal hold) | CS-X2, CS-X3 |
+| PF-F2, PF-F3, PF-F4 (file rail) | CS-D2 (tus), CS-D3, CS-D4 |
+| S3's CS-D2, CS-D3, CS-D4 (same ids, different rows) | CS-D5, CS-D6 |
+
+QA-474 (decision, close, reopen) is draft 2's CS-C1.
+
+**Lead B's proposal** (sent to Lead 52):
+* **Platform owns the shared rails, and the case side registers on them.** That is one task store, one find door, one metrics registry and one file rail. Draft 2's CS-T1, CS-S1 and CS-R1 shrink to the case side's registrations and queues; CS-T2, CS-S2 and CS-R2 fold into PF-29f, PF-30s and PF-R3; CS-30c and PF-R2cs are dropped.
+* **Draft 2's older ids are kept where the rows are the same:** CS-X1, CS-X2 and CS-X3 stay; CS-26e and CS-P1 are dropped.
+* **PF-F2 adopts CS-D2's tus protocol** (open standard, P-502) with `@tus/s3-store` as the platform rail; PF-F3 and PF-F4 replace CS-D3 and CS-D4.
+* **Draft 2's CS-D1, CS-D1b, CS-D5 and CS-D6 stay the release holder's.** S3's CS-D2, CS-D3 and CS-D4 are dropped.
