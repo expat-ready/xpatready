@@ -17,28 +17,28 @@
 | qa Works\* | 6 |
 | Merged | 8 |
 | In PR (the whole row) | 0 (6 rows have a part in PR: 5, 6, 27, 29, 37, 41, through #1741, #1742, #1744) |
-| Shaped | 44 |
-| Not shaped | 43 (19 with no BACKLOG row at all, 5 with a part that has none, the rest only named) |
+| Shaped | 68 |
+| Not shaped | 19 (9 wait on rows held for consolidation: 34, 64, 66, 67, 68, 69, 75, 79, 102; 9 on the release holder's drafted rows, for the tech lead's approval: 8, 70, 87, 88, 97, 98, 105, 106, 107; 1 on the case side's CS-V1: 10) |
 
 Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, messages, automation, portal login, complaints), **Front office** (leads, booking, retainers, signing, compliance checks), **Client money**, **Case side** (the release Lead's: cases, documents, forms, the configurator), **Audit**.
 
 ### A. Foundations
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
-| 1 | Hosting, data, backups and logs in Canada | Platform (running it) | PF-7 merged; PF-8 cloud deploy named only | Not shaped (needs the founder's AWS account) |
+| 1 | Hosting, data, backups and logs in Canada | Platform (running it) | PF-7 merged; PF-8a, PF-8b, PF-8c; PF-23c | Shaped (deploy waits on the founder's AWS account) |
 | 2 | Database | Platform | PF-3 (#1728) | Merged |
 | 3 | Walls between firms | Platform + case side | PF-12; case-side tables: **none yet** | Shaped (PF/FO only); **gap: case-side walls** |
 | 4 | Each query runs inside its firm | Platform | PF-12 | Shaped |
 | 5 | Staff sign-in with two-step, passkeys, lock-out on leaving | Platform | PF-4 (In PR #1744), PF-4b, PF-4s | Shaped |
 | 6 | Permissions: deny by default, own versus all, money and licence apart | Platform | PF-4 (In PR #1744), PF-6 | Shaped |
-| 8 | Audit trail nobody can edit | Audit | AUD-1, AUD-2 named only | Not shaped |
+| 8 | Audit trail nobody can edit | Audit | AUD-1a, AUD-1b, AUD-1m drafted (S1), for the tech lead's approval | Not shaped |
 | 9 | Background jobs, schedules, reminders | Platform | PF-14 | Shaped |
-| 10 | Checking every input | All | **none yet** (Zod is in the app; each row's own tests) | Not shaped (**gap**) |
+| 10 | Checking every input | All | PF-28 (PF/FO); case side: CS-V1 drafted, not in BACKLOG | Not shaped (**gap: case-side part**) |
 | 11 | Server framework | Platform | PF-7 | Merged |
 | 12 | Screen framework, one UI kit | Platform | PF-1 | Merged |
-| 13 | Logs, metrics, error reports, alerts | Platform (running it) | **none yet** | Not shaped (**gap**) |
-| 14 | Backups with a tested restore | Platform (running it) | PF-8 named only | Not shaped |
-| 15 | Secrets in a managed store | Platform (running it) | **none yet** (PF-7's committed-key check is merged) | Not shaped (**gap**) |
+| 13 | Logs, metrics, error reports, alerts | Platform (running it) | PF-23 merged; PF-23r, PF-23m, PF-23c, PF-23w | Shaped |
+| 14 | Backups with a tested restore | Platform (running it) | PF-8r, PF-8rc | Shaped (the cloud drill waits on the founder's AWS account) |
+| 15 | Secrets in a managed store | Platform (running it) | PF-24 merged; PF-24w; the cloud half in PF-8b | Shaped |
 | 16 | Automated testing | Platform | PF-7 | Merged |
 
 ### B. The firm as our customer (self-serve SaaS)
@@ -47,9 +47,9 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | 19 | A firm is created once, with plan, trial and owner | Platform | PF-3 merged; PF-5 | Shaped |
 | 20 | One entitlement check; seat and plan limits; downgrade check; invite many at once | Platform | PF-5, PF-15, PF-4c, PF-6 | Shaped |
 | 21 | Our own invoices with sales tax | Platform | PF-5 (Stripe Tax) | Shaped |
-| 22 | Suspend, cancel, failed-payment hold, data download on exit | Platform | PF-5; PF-11 named only | Not shaped |
+| 22 | Suspend, cancel, failed-payment hold, data download on exit | Platform | PF-5; PF-11, PF-11s, PF-27, PF-11c | Shaped |
 | 23 | Firm logo, colour, sender name, favicon, banner | Platform | PF-13 | Shaped |
-| 24 | Each firm's own web address | Platform | **none yet** (sub-domain or one address: open, map item 8) | Not shaped (**gap**) |
+| 24 | Each firm's own web address | Platform | PF-25 merged; PF-25w; wildcard DNS and certificate in PF-8b | Shaped |
 | 89 | Public pricing page | Platform | PF-5s | Shaped |
 | 90 | Self-serve sign-up, email check, trial with no card, private links, trial banners | Platform | PF-5, PF-5s, PF-16 | Shaped |
 | 91 | Plans, change, cancel, invoices, card update, yearly plans, refunds, billing emails | Platform | PF-5, PF-5s, PF-16 | Shaped |
@@ -68,24 +68,24 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | 31 | Stage kinds; won by signature; totals per currency | Front office | FO-2, FO-4 | Shaped |
 | 32 | Assign, take, reassign; Unassigned; assignment rules | Front office | FO-4, FO-10 | Shaped |
 | 33 | Phone numbers | Front office | FO-2, FO-9a | Shaped |
-| 34 | One person's data as an export, logged | Front office (privacy) | **none yet** | Not shaped (**gap**) |
-| 35 | Contacts import from a spreadsheet | Platform | PF-10 named only | Not shaped |
+| 34 | One person's data as an export, logged | Front office (privacy) | PF-26, PF-26s; the case side's exporter CS-26e held for consolidation | Not shaped (**gap: case-side part**) |
+| 35 | Contacts import from a spreadsheet | Platform | PF-10a, PF-10b, PF-10t, PF-10s | Shaped |
 | 36 | Simple automation, message many with consent | Platform + front office | PF-20, PF-20s, FO-10, FO-12b, FO-12c, FO-12s | Shaped |
-| 95 | Custom fields and saved views | Platform | PF-22 named only | Not shaped |
-| 98 | Corporate clients, employers, LMIA | Front office + case side | FO-2b; LMIA work on the case side: **none yet** | Not shaped (**gap: case-side part**) |
+| 95 | Custom fields and saved views | Platform | PF-22a, PF-22v, PF-22s | Shaped |
+| 98 | Corporate clients, employers, LMIA | Front office + case side | FO-2b, FO-8; LMIA on the case side: CS-98r to CS-98s2 drafted (S2), for the tech lead's approval | Not shaped (**gap: case-side part**) |
 | 108 | Conflict-of-interest check | Front office | FO-13, FO-13c, FO-13s | Shaped |
 | 110 | Client identity check | Front office | FO-13, FO-13i, FO-13s | Shaped |
 
 ### D. Booking
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
-| 37 | Public booking page; no double booking | Front office | FO-1b (In PR #1741), FO-3 (API); booking screens: **none yet** | Not shaped (**gap: screens**) |
+| 37 | Public booking page; no double booking | Front office | FO-1b (In PR #1741), FO-3 (API); booking screens: FO-3a, FO-3w, FO-3sc | Shaped |
 | 38 | Time zones from booking page to invite | Front office | FO-3 | Shaped |
-| 39 | Staff calendar screen | Front office | **none yet** | Not shaped (**gap**) |
+| 39 | Staff calendar screen | Front office | FO-3st (FO-3st1), FO-3sc | Shaped |
 | 40 | Calendar invite files | Front office | FO-3 | Shaped |
-| 41 | Staff hours and time off | Front office | FO-1b (In PR #1741), FO-3; screen: **none yet** | Not shaped (**gap: screen**) |
-| 42 | Reschedule or cancel by link; outcomes; consult record | Front office | FO-3; staff screen: **none yet** | Not shaped (**gap: screen**) |
-| 43 | Two-way Google or Outlook calendar sync | Front office | FO-3s named only | Not shaped (Google review is an outside clock) |
+| 41 | Staff hours and time off | Front office | FO-1b (In PR #1741), FO-3; screen: FO-3a, FO-3st (FO-3st2) | Shaped |
+| 42 | Reschedule or cancel by link; outcomes; consult record | Front office | FO-3; staff screen: FO-3a, FO-3w, FO-3st (FO-3st1, FO-3st3) | Shaped |
+| 43 | Two-way Google or Outlook calendar sync | Front office | FO-3s1, FO-3s2, FO-3s3, FO-3s4, FO-3s5 | Shaped (Google's and Microsoft's reviews are outside clocks) |
 | 104 | Consultation agreement signed before the first consult | Front office | FO-3c, FO-5, FO-5s | Shaped |
 | 112 | Video meeting links on bookings | Front office | FO-3v (Meet and Teams through the booking rows) | Shaped |
 
@@ -97,8 +97,8 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | 47 | One email layout | Platform | PF-19b | Shaped |
 | 48 | Sending, delivery state, bounces, the firm's sender name | Platform | PF-19b, PF-L | Shaped |
 | 49 | Consent gate before every send; unsubscribe | Platform | PF-19a, PF-19b | Shaped |
-| 50 | In-app notifications; personal notification settings | Platform | PF-18a, PF-18s (settings); the notification list itself: **none yet** | Not shaped (**gap: part**) |
-| 52 | Connected mailbox; WhatsApp (no SMS) | Platform + front office | FO-11 (WhatsApp); PF-19m named only | Not shaped (Google mail review: weeks) |
+| 50 | In-app notifications; personal notification settings | Platform | PF-18a, PF-18s (settings); PF-18n (the list); PF-18ns | Shaped |
+| 52 | Connected mailbox; WhatsApp (no SMS) | Platform + front office | FO-11 (WhatsApp); PF-19m, PF-19mc, PF-19mi, PF-19mx, PF-19ms | Shaped (Google mail review: weeks) |
 
 ### F. Retainer and e-signature
 | Map | Capability | Module | BACKLOG rows | Status |
@@ -110,32 +110,32 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 ### G. Client money
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
-| 56 | Client invoices, tax by province, government-fee line | Client money | FO-7a, FO-7b; screens FO-7s named only | Not shaped (screens) |
-| 57 | Card payment of invoiced fees into the firm's operating account | Client money | FO-7c; FO-7s named only | Not shaped (screens) |
-| 58 | Trust or operating on every payment; per-client ledger; "to move" list | Client money | FO-7a, FO-7t; FO-7s named only | Not shaped (screens) |
+| 56 | Client invoices, tax by province, government-fee line | Client money | FO-7a, FO-7b; FO-7s0, FO-7g, FO-7q, FO-7s1 | Shaped |
+| 57 | Card payment of invoiced fees into the firm's operating account | Client money | FO-7c; FO-7s2 | Shaped |
+| 58 | Trust or operating on every payment; per-client ledger; "to move" list | Client money | FO-7a, FO-7t; FO-7s3a, FO-7s3b, FO-7m | Shaped |
 | 59 | Money arithmetic | Client money | FO-7a | Shaped |
 | 60 | Deposit invoice prepared on signature | Client money | FO-7b | Shaped |
-| 96 | Reversals, refunds, credit notes, payment plans, write-offs | Client money | FO-7b, FO-7p, FO-7r; FO-7s named only | Not shaped (screens) |
-| 111 | Client statement and period exports for the accountant | Client money | FO-7r; FO-7s named only | Not shaped (screens) |
+| 96 | Reversals, refunds, credit notes, payment plans, write-offs | Client money | FO-7b, FO-7p, FO-7r; FO-7v, FO-7s4 | Shaped |
+| 111 | Client statement and period exports for the accountant | Client money | FO-7r; FO-7s5 | Shaped |
 
 ### H. Client links and portal
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
 | 61 | Sign and pay by single-use link | Front office + client money | FO-6, FO-7c | Shaped |
-| 62 | Client login portal; progress stream with "last update" | Platform | PF-4p named only; FO-14 | Not shaped |
+| 62 | Client login portal; progress stream with "last update" | Platform | PF-4p, PF-4pw, PF-4ps; FO-14 | Shaped |
 | 101 | Client answers and uploads through a secure link | Case side | C6.2, C6.16 Works | qa Works\* |
 
 ### I. Documents
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
 | 63 | Per-person checklist with status words; reject with reason | Case side | C6.4 Works | qa Works\* |
-| 64 | Upload that resumes after a dropped connection | Not named | **none yet** | Not shaped (**gap**) |
-| 65 | Private storage in Canada: firm-prefixed keys, versions, encryption | Not named | **none yet** (FO-5's `FilesPort` is a local folder only) | Not shaped (**gap**) |
-| 66 | Virus scan; nothing served while scanning | Not named | **none yet** | Not shaped (**gap**) |
-| 67 | File-type check | Not named | **none yet** | Not shaped (**gap**) |
-| 68 | Preview for staff review | Not named | **none yet** | Not shaped (**gap**) |
-| 69 | Read log, fingerprint, keep-period reminder | Not named | **none yet** | Not shaped (**gap**) |
-| 70 | Expiry, translation and notarisation flags | Not named | **none yet** | Not shaped (**gap**) |
+| 64 | Upload that resumes after a dropped connection | Not named | PF-F2 held for consolidation | Not shaped |
+| 65 | Private storage in Canada: firm-prefixed keys, versions, encryption | Not named | PF-F1, PF-F1c | Shaped (the cloud part waits on the founder's AWS account) |
+| 66 | Virus scan; nothing served while scanning | Not named | PF-F3 held for consolidation | Not shaped |
+| 67 | File-type check | Not named | PF-F4 held for consolidation | Not shaped |
+| 68 | Preview for staff review | Not named | CS-D2 held for consolidation | Not shaped |
+| 69 | Read log, fingerprint, keep-period reminder | Not named | CS-D3, CS-D4 held for consolidation | Not shaped |
+| 70 | Expiry, translation and notarisation flags | Not named | CS-D5c, CS-D5 drafted (S3), for the tech lead's approval | Not shaped |
 
 ### J. Case work
 | Map | Capability | Module | BACKLOG rows | Status |
@@ -143,11 +143,11 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | 72 | Case with applicants, representative, pinned release | Case side | FO-8 (hand-over from a won prospect); C6.1 Works | Shaped |
 | 73 | Stages moved by events | Case side | C6.17 Works | qa Works\* |
 | 74 | Government deadlines that remind; working days with holidays | Case side | built (map); no qa capability row | Merged |
-| 75 | Tasks: My Tasks, Unassigned, handover | Case side | **none yet** | Not shaped (**gap**) |
+| 75 | Tasks: My Tasks, Unassigned, handover | Case side | PF-29a to PF-29f (S2's TK-1 to TK-6) held for consolidation | Not shaped |
 | 76 | Notes; one timeline per record | Case side | built (map); no qa capability row | Merged |
 | 77 | Submission number and UCI; decision, close, reopen | Case side | C8.2 Partial; BK-17, B5-filings | Merged |
-| 79 | Firm dashboards and reports | Not named | **none yet** | Not shaped (**gap**) |
-| 102 | Find a person or case by name, email or file number | Case side | **none yet** | Not shaped (**gap**) |
+| 79 | Firm dashboards and reports | Not named | PF-R1, PF-R2fo, PF-R2cm, PF-R2cs, PF-R3 held for consolidation | Not shaped |
+| 102 | Find a person or case by name, email or file number | Case side | PF-30a, PF-30s, CS-30c (S2's FD-1 to FD-3) held for consolidation | Not shaped |
 
 ### K. Government forms, the pathway set-up, AI on top
 | Map | Capability | Module | BACKLOG rows | Status |
@@ -157,18 +157,18 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | 83 | Conditional questions and fields | Configurator | C4.4 Works | qa Works\* |
 | 84 | Pathway set-up: hierarchy, versioned releases, cited rules | Configurator | M2 60/60 Works | qa Works\* |
 | 99 | AI on top of the guardrails: proposed values, document reading | Case side | C3.1, C6.5, C7.5 Works; BK-14; model choice open (founder) | Shaped |
-| 106 | Pathway assessment AS-1: Express Entry and FSW scores | Front office + configurator | FO-15, AS-1 named only | Not shaped |
-| 107 | Pathway assessment AS-2: five provincial streams, client copy | Front office + configurator | AS-2 named only | Not shaped |
+| 106 | Pathway assessment AS-1: Express Entry and FSW scores | Front office + configurator | FO-15a, FO-15b, FO-15s; AS-1m, AS-1g, AS-1s, AS-1c, CS-106c drafted (S2), for the tech lead's approval | Not shaped |
+| 107 | Pathway assessment AS-2: five provincial streams, client copy | Front office + configurator | AS-2c, AS-2cs; AS-2e, AS-2d1, AS-2d2 drafted (S2), for the tech lead's approval | Not shaped |
 
 ### L. Privacy registers and audit views
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
-| 85 | Data-request register with legal hold | Not named | **none yet** | Not shaped (**gap**) |
-| 86 | Breach register with firm notices | Not named | **none yet** | Not shaped (**gap**) |
-| 87 | Our access to a firm's data, logged and shown to the firm | Audit | AUD-1 named only (PF-12's bypass role is audited) | Not shaped |
-| 88 | The firm reads its own audit log | Audit | AUD-1 named only | Not shaped |
-| 97 | Tamper-evident audit chain | Audit | AUD-1, AUD-2 named only | Not shaped |
-| 105 | Keep periods; a leaving firm is closed, not deleted | Audit + platform | AUD-2 named only; PF-5 closes at 90 days | Not shaped |
+| 85 | Data-request register with legal hold | Not named | PF-21b, PF-21d, PF-21rs | Shaped |
+| 86 | Breach register with firm notices | Not named | PF-21c, PF-21rs | Shaped |
+| 87 | Our access to a firm's data, logged and shown to the firm | Audit | AUD-3, AUD-3b drafted (S1), for the tech lead's approval; PF-12's bypass role is audited | Not shaped |
+| 88 | The firm reads its own audit log | Audit | AUD-4, AUD-4s drafted (S1), for the tech lead's approval | Not shaped |
+| 97 | Tamper-evident audit chain | Audit | AUD-1c, AUD-2, AUD-2c drafted (S1), for the tech lead's approval | Not shaped |
+| 105 | Keep periods; a leaving firm is closed, not deleted | Audit + platform | PF-11c; PF-5 closes at 90 days; AUD-5 drafted (S1), for the tech lead's approval | Not shaped |
 | 109 | Complaints record | Platform | PF-21, PF-21s | Shaped |
 
 **Optional (8, out of the first build, P-572; kept as BACKLOG X-1 to X-8):** 7 custom roles · 17 feature switches · 18 French and Quebec tax · 25 demo firm · 51 outgoing webhooks and API keys · 71 reading text from scans · 78 full-text search · 81 ordinary PDF form filling.
