@@ -720,3 +720,79 @@ Source: `product/design/case-side-contract-v0.1-2026-11-14.md` on `lead/2026-11-
 | **FO-3h** | runtime (booking: the host's time zone in mail) | **The host's booking emails show the host's office time (QA-470).** The confirmation, reschedule and cancel emails to the **host** state the time in the host's office zone with the zone named ("10:00 a.m. (America/Toronto)"). The booker's own emails stay in the booker's zone, and the `.ics` stays in UTC. **Touch:** `api/src/front-office/booking/service.ts` (the mail lines), `tests/check_fo3_booking.ts` (cases added) | qa's `tests/qa/check_qa470_host_mail_zone.ts` passes 3/3; a booking from Asia/Dubai for 10:00 Toronto mails the host "10:00 a.m. (America/Toronto)" and the booker "7:00 p.m. (Asia/Dubai)"; a host in an office with a different zone from the firm's gets their office's zone (PF-18a) | **Source:** AG-04 Part B rule 9, AG01-24; qa #1792 (QA-470) · **waits on:** FO-3f #1785 merged (same file) · decisions: none · reviewer only · **size:** S |
 | **CS-DL1** (case side: the release holder approves) | runtime (case side: government deadlines that remind) | **Deadlines that remind, in calendar or working days (map row 74; QA-471).**<br>(1) A stage's or milestone's deadline (AG-7-10's `deadlineOffsetDays`; AG-7-33's deadline-bearing milestones) gets a counting mode from pack data: `CALENDAR` (today's rule) or `WORKING`. `WORKING` skips weekends and the firm's and office's **closed days** (AG-4-7 in PF-3, AG-4-60 in PF-18a). The helper is one platform function, moved from PF-21's `api/src/platform/complaints/business-days.ts` to `api/src/platform/calendar/working-days.ts`, which Lead B OKs as its owner.<br>(2) **Reminders:** a `JobPort` job per deadline (key `deadline:<case>:<item>`) notifies the case officer and the representative through `NotificationPort` (PF-18n) at 7 days, 2 days and on the day (Sample), and puts one "Needs you" item on their home. A reminder is never sent twice.<br>(3) **Close and reopen stop and restart them** (AG-7-35; CS-C1's `case.closed` and `case.reopened`). A moved deadline re-arms with the new date. A missed deadline shows "Missed" in red on the case.<br>**Touch:** the case side's stage and milestone files (named by the release holder), the moved helper, new `api/src/case-deadlines/*.ts`, `tests/check_csdl1_deadlines.ts` | a 10-working-day deadline across a weekend and a firm closed day lands on the right date; the same in `CALENDAR` mode counts every day; the 7-day, 2-day and on-the-day reminders each fire once on the fake clock (a re-run sends nothing new); closing the case cancels pending reminders and reopening re-arms them; a moved deadline re-arms; firm A's job never reads firm B's cases; PF-21's complaint clock gives the same results after the helper moves | **Source:** AG-7-10, AG-7-33, AG-7-35; map row 74; qa #1792 (QA-471) · **waits on:** PF-14 (merged), PF-18n, CS-C1, PF-3/PF-18a closed days · decisions: the release holder (case side). Holiday suggestions stay X-25 · **breaker: yes (deadlines a client can lose a case on)** · **size:** 1-2 PRs |
 | **CS-NT1** (case side: the release holder approves) | schema + runtime + screen (case side: notes and the case timeline) | **Notes on a case and on a case client, and one timeline per case (map row 76; QA-472, the case half).**<br>(1) `case_note` in a case-side area file (firm, case or case client, author, text 1-5,000 plain, visibility `INTERNAL` (default) or `CLIENT_VISIBLE`, pinned, created). It is add-only like FO-1a's `fo_note`: an edit writes a new version and keeps the old one (AG-13-24 author or admin only, firm-scoped). Portal reads return only `CLIENT_VISIBLE` notes (AG-13-21). An @mention notifies through PF-18n (AG-13-22).<br>(2) **The case timeline** is a read view, newest first, over the case's `audit_event` lines, its notes, its documents' events and its deadlines and decisions (CS-DL1, CS-C1), paged, with filters by kind. It replaces "go to the workspace Activity page" for one case.<br>(3) A screen panel on the case page: add a note, pin, and the timeline.<br>AG-13-25's single polymorphic notes service across both sides is **left as an X row**: front office keeps `fo_note`, and the case side gets `case_note` with the same shape and rules.<br>**Touch:** new case-side area file + one migration folder, `api/src/case-notes/*.ts`, the case page's panel files (named by the release holder), `tests/check_csnt1_notes_timeline.ts` | a note is added and listed; an edit keeps the earlier version; another firm's note → 404; a Case Officer cannot edit another person's note, and an Admin can; a `CLIENT_VISIBLE` note appears in the portal read and an `INTERNAL` one never does; an @mention notifies once; the timeline lists a document upload, a note and a decision in order and pages at 50; the migration test follows rev 16.7 | **Source:** AG-13-20, AG-13-21, AG-13-22, AG-13-23, AG-13-24; map row 76; qa #1792 (QA-472) · **waits on:** CS-W1 (walls), PF-18n; the timeline's decision lines after CS-C1 · decisions: the release holder (case side); AG-13-25 to X · **breaker: yes (personal data, portal visibility)** · **size:** 2 PRs (notes; timeline and panel) |
+
+## Rev 16.11 (15 Nov 09:4x IST, Lead B (4)): P-606, finish whole and name every test (Lead 52's ask)
+
+### (a) Every Done when line names its test: rule for every Lead B row, the Batch 5 rows and the qa rows
+* Each Done when line becomes **one named case** in the row's test file: `"<ROW> DW<n>: <the line in short>"`, numbered in the order the lines are written. Example: `tests/check_fo3h_*.ts` holds `"FO-3h DW1: host mail in host's office zone"`.
+* A pass and a fail case share the number (`DW3 pass`, `DW3 fail`).
+* The brief lists the case names before building (P-606 (4)), and the reviewer ticks one case per line. A line with no case is a red review finding, never a Minor.
+* Journeys are named the same way in the join row's walk file (`J-<cap> W<n>`).
+* This holds for every row already shaped (no row is rewritten; the builder adds the names in step 0 and the reviewer checks them), and for every new row.
+
+### (b) One "join and walk" row per multi-part capability
+* A **J-row** is the last row of a capability. It owns:
+  1. the **wiring** no part owns (QA-452's lesson);
+  2. **every swap from a port fake to the real adapter** that the capability's running path needs (QA-453's lesson);
+  3. the **screen**, if the capability has one, either built in the J-row or named as its one waits-on screen row;
+  4. the **walk**: one browser journey from the capability's first step to the next capability's first step (gate A), in `tests/journeys/j_<cap>.ts`.
+* qa scores the capability when its J-row merges (P-606 (2)).
+* **Size:** S to M. It adds no new feature, only the joins.
+
+### (c) Front-office screens first in the ready order
+No front-office screen exists yet. These go to the top of ready, each built on its API contract in parallel with the API row (P-606 (9)):
+1. **FO-4** (sales screens; concept r2 approved) beside **FO-2** (its API).
+2. **FO-3sc**, then FO-3w and FO-3st1-3.
+3. **FO-5s** (concept r2 approved) after FO-6.
+4. **PF-6** (staff screens; concept approved) beside PF-4b.
+5. **PF-5s** after PF-5.
+
+### (d) CI guard: one shared contract test per port, row **PF-0c**
+| Row | Area | Item | Done when | Source · waits on |
+|---|---|---|---|---|
+| **PF-0c** | CI + tests (ports: contract tests) | **Each port's fake and its real adapters pass one shared contract test** (Fowler's ContractTest; P-606 (8)). It covers `ports/contracts/<port>.contract.ts` for every port in `ports/` that has both a fake and a real adapter on `main` today: `JobPort` (fake, pg-boss), `FilesPort` (fake, local), `SecretBoxPort`, `IdentityPort` (local stand-in; Cognito later), `MailPort` (fake, demo inbox), `ClockPort`, `AuditPort` (interim adapter), `ConsentPort` (PF-19a). Each contract is a function taking an adapter factory; the fake's suite and the real adapter's suite both call it. **The CI guard** `tools/check-port-contracts.mjs` fails when a file under `ports/` declares a port that has a real adapter but no contract file, or a contract that one of its adapters does not run. **Touch:** new `ports/contracts/*.ts`, `tools/check-port-contracts.mjs`, one CI step (the release holder reads it, P-423), the adapters' own test files (one call each) | `PF-0c DW1`: the guard fails on a test port with a real adapter and no contract (shown once, then removed). `DW2`: each listed port's fake and real adapter pass its contract. `DW3`: a deliberately wrong fake (a `JobPort` fake that runs a keyed job twice) fails the contract. `DW4`: the guard runs in under 10 s. | P-606 (8); QA-452, QA-453 · **waits on:** nothing · reviewer only · **size:** 1 PR |
+
+### (e) Finish order: the started capabilities, with their missing parts
+**Counted from MVP-CHECKLIST §A** (lead branch, 15 Nov) against `main`: every capability in Lead B's areas with **at least one part merged and at least one part missing**. That makes **19**; Lead 52's "11" is probably qa's Partial verdicts, a subset of these. They are ranked by fewest missing parts, so lanes close the nearest ones first. A lane takes no new capability in its group while one of these is open (P-606 (3)).
+
+| Rank | Map row | Capability | Merged | Missing parts → J-row |
+|---|---|---|---|---|
+| 1 | 9 + 13 | Background jobs; logs, metrics and alerts | PF-14, PF-23 | **PF-23w** (it is this pair's J-row: the probe, `observeJob`, the stuck alarm, FO-3's swap to `PlatformJobs`; after FO-3f) · PF-23r · #1782 (CI step) · later PF-23c (cloud) |
+| 2 | 15 | Secrets in a managed store | PF-24 | PF-24w · the cloud half in PF-8b (founder's AWS) → **J-15** = PF-24w's walk (start fails closed; a secret is read once) |
+| 3 | 24 | Each firm's own web address | PF-25 | PF-25w (after PF-4s) · DNS in PF-8b → **J-24**: a firm address opens its booking page (walk to row 37) |
+| 4 | 109 | Complaints record | PF-21 part 1 | PF-21w (routes) · PF-21s (screen) → **J-109**: log a complaint, its 30-business-day clock, close it |
+| 5 | 38, 40 | Time zones; calendar invite files | FO-3 | FO-3h (QA-470) · FO-3f (#1785, open) → **J-38**: book from another zone, both mails and the `.ics` right |
+| 6 | 6 | Permissions: own versus all; money and licence apart | PF-4 | **PF-6b** (rev 16.10) · PF-6's two Done when lines → **J-6**: the R1.6 walk on screen and API |
+| 7 | 5 | Staff sign-in, two-step, lock-out | PF-4, PF-4t, PF-4f (#1784 labelled) | PF-4b (Cognito proof needs the founder's AWS) · PF-4s · PF-6 (screens) → **J-5**: invite → accept → two-step → sign in → lock-out on leaving |
+| 8 | 49 | Consent gate before every send | PF-19a | PF-19b (sending) → **J-49**: a send without consent is blocked; unsubscribe works |
+| 9 | 28 | Consent recorded per purpose | PF-19a | FO-2 (the web form records it) → **J-28** (inside J-27's walk) |
+| 10 | 27 | Every lead carries a source | FO-1a | **FO-2** (API) · **FO-4** (screens) → **J-27**: web form → lead with source and consent → Unassigned → Take it → Engage (walk to row 37) |
+| 11 | 37 | Public booking page; no double booking | FO-1b, FO-3 | FO-3f · FO-3sr · FO-3sc → FO-3w · PF-23w (real jobs) → **J-37**: the public page books a slot, and a second booker of the same slot is refused |
+| 12 | 41 | Staff hours and time off | FO-1b, FO-3 | FO-3a part 1 · FO-3st2 → **J-41** |
+| 13 | 42 | Reschedule or cancel by link; outcomes; consult record | FO-3 | FO-3sr · FO-3a part 2 · FO-3st1, FO-3st3 → **J-42**: reschedule by link → attendance → consult record → the next step button (walk to row 53) |
+| 14 | 53 | Retainer with the regulator's items; versioned until signed | FO-5 parts 1 and 2 | FO-5f (#1791, open) · FO-5b · FO-6 (signing) · FO-5s → **J-53**: draft from template → send → sign → WON (walk to the case side's `prospect.won`, FO-8) |
+| 15 | 104 | Consultation agreement before the first consult | FO-5 | FO-3c · FO-6 · FO-5s → **J-104** |
+| 16 | 19 | A firm is created once, with plan, trial and owner | PF-3 | PF-5 (Stripe needs the founder's test account) · PF-5s → **J-19**: sign up → trial → first staff invite (walk to row 5) |
+| 17 | 29 | One person record; duplicate warning; safe merge | FO-1a | FO-9a · FO-9b (the case side's client merge) · FO-9s → **J-29** |
+| 18 | 1 | Hosting in Canada | PF-7 | PF-8a, PF-8b, PF-8c, PF-23c (founder's AWS) → **J-1** = PF-8c's deploy smoke |
+| 19 | 48 | Sending, delivery state, bounces | PF-L (libraries) | PF-19b → **J-48** (with J-49) |
+
+**J-row texts (one pattern, so the table is the spec):**
+* **Item:** "Join and walk for map row N: the wiring and fake-to-real swaps listed, the screen named, and the walk named".
+* **Touch:** the swap lines named by the parts, plus `tests/journeys/j_<N>.ts`.
+* **Done when:** each listed swap is shown real by a test that fails on the fake (`J-N DW1..`), and the walk passes in a visible browser and as a scripted check (`J-N W1..`), ending at the next capability's first step.
+* **Waits on:** the listed parts.
+* **Size:** S to M, reviewer and breaker.
+* Rows 9+13 and 15 need no separate J-row, because PF-23w and PF-24w already are their joins; their walks are added to those rows' Done when.
+
+**Pull order for the PF/FO lanes, finish first** (P-606 (3), (9)):
+1. PF-23w → FO-3h → FO-3sr (as FO-3f merges);
+2. PF-6b;
+3. PF-21w → J-109 after PF-21s;
+4. FO-2 beside FO-4 (screens first);
+5. FO-3sc → FO-3w;
+6. FO-5f → FO-6 → FO-5s;
+7. PF-19b;
+8. then the rest of the table.
+
+PF-0c can run beside any of them. New capabilities (shaping Batches 1-5) start in a group only after that group's started rows are closed.
