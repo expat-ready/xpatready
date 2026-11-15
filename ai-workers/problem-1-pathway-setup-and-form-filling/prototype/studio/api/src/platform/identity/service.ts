@@ -11,6 +11,7 @@ import { Db } from "../../core.ts";
 import { EVENT, StaffEventPayload } from "../../../../ports/events.ts";
 import { firmScope, notInFirm } from "../firm-scope.ts";
 import { actorWord, auditInvitation, auditStaff } from "./audit.ts";
+import { moneyKeysOfRoles, readCatalogue } from "./catalogue.ts";
 import { CognitoIdentity } from "./cognito.ts";
 import { FIRM_KEY, dutiesOf, forbidden, problem, unauthorized, type StaffContext } from "./keys.ts";
 import { LocalIdentity } from "./local.ts";
@@ -81,6 +82,11 @@ export class PlatformIdentity implements OnModuleInit {
     // Keys warmed at start (tech gate entry 2). A pool that cannot be reached now is fetched on the first request instead.
     if (this.port instanceof CognitoIdentity && this.port.ready) await this.port.warm().catch((e) => console.warn(`platform identity: Cognito keys not fetched at start (${String((e as Error)?.message ?? e).slice(0, 120)}); they are fetched on the first sign-in`));
   }
+
+  /** PF-6b: the permission-key catalogue (the guard reads its LICENCE keys and checks the bundles once). */
+  catalogue() { return readCatalogue(this.db); }
+  /** PF-6b ruling 3 (SA-6-27, AG-1-30): a person is licensed when they have a licence record. */
+  async isLicensed(firmId: string, staffId: string) { return !!(await this.db.platformStaffCredential.findFirst({ where: firmScope(firmId, { staffId }), select: { id: true } })); }
 
   /** The guard's work: a bearer token → the staff member, or a 401 at once (deactivated, revoked, no second step). */
   async authenticate(token: string | undefined): Promise<StaffContext> {
@@ -228,6 +234,12 @@ export class PlatformIdentity implements OnModuleInit {
       for (const g of t.grants.filter((g) => removed.includes(g.role))) await tx.platformRoleGrant.update({ where: { id: g.id }, data: { endedAt: now, endedBy: actorWord(actor.staffId), endReason: reason ?? "roles changed" } });
       for (const role of added) await tx.platformRoleGrant.create({ data: { firmId: actor.firmId, staffId: t.id, role, grantedBy: actorWord(actor.staffId), grantedAt: now } });
       await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.roles_changed", entityKey: t.id, summary: `roles changed: ${from.join(", ") || "none"} → ${to.join(", ")}`, detail: { staffId: t.id, before: from, after: to, reason } });
+      // PF-6b ruling 2 (b): a role that brings money keys writes its own line, naming the keys (key names only).
+      // Only the roles that bring a money key are named (break m2).
+      const moneyRoles: string[] = [];
+      for (const role of added) if ((await moneyKeysOfRoles(tx, [role])).length) moneyRoles.push(role);
+      const money = await moneyKeysOfRoles(tx, moneyRoles);
+      if (money.length) await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.money_keys_granted", entityKey: t.id, summary: `money permissions given with ${moneyRoles.join(", ")}: ${money.length} keys`, detail: { staffId: t.id, roles: moneyRoles, moneyKeys: money } });
       await tx.moduleEvent.create({ data: { firmId: actor.firmId, type: EVENT.STAFF_ROLES_CHANGED, subjectId: t.id, payload: StaffEventPayload.parse({ staffId: t.id }) } });   // last (m8)
       return { staffId: t.id, roles: to, changed: true };
     });
