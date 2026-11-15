@@ -990,6 +990,134 @@ def constraint(L, Q, room, waits, qa_unknown, qa_count):
             "line": f"More lanes won't help now: the constraint is {k} (wait {round(cand[k], 1)} h)."}
 
 
+# ---- Team by component (board v57, founder 15 Nov 10:2x IST): the founder → components → owning Lead → lanes
+# Owner "lead-b": the PF/FO/AUD rows sit in BACKLOG's "Full MVP: platform (PF) and front office (FO), shaped by Lead B"
+# section; "tech": the current tech Lead (STATE current_lead:), who holds the release.
+COMPONENTS = [
+    {"id": "platform", "name": "Platform", "owner": "lead-b",
+     "job": "Platform rows (PF): sign-in, firms, billing, messages, automation, portal login, complaints, running the service"},
+    {"id": "front_office", "name": "Front office", "owner": "lead-b",
+     "job": "Front-office rows (FO, AS): leads, booking, retainers, signing, compliance checks, the client copy"},
+    {"id": "client_money", "name": "Client money", "owner": "lead-b",
+     "job": "Client-money rows (FO-7*): invoices, card payments, the trust ledger"},
+    {"id": "case_side", "name": "Case side", "owner": "tech",
+     "job": "Case-side rows (CS, BK and the proof's rows): cases, documents, forms, the configurator"},
+    {"id": "audit", "name": "Audit", "owner": "lead-b",
+     "job": "Audit rows (AUD): one audit trail nobody can edit, across the modules"},
+    {"id": "pipeline", "name": "Pipeline and checks", "owner": "tech",
+     "job": "CI, the merge queue, the guards and the board's own checks (CI, TR rows)"},
+    {"id": "qa", "name": "qa", "owner": "tech",
+     "job": "Independent tests of merged work; the Works verdicts in qa/CAPABILITIES.md"},
+    {"id": "strategy_desk", "name": "Strategy desk", "owner": "tech",
+     "job": "The founder's read-only strategy session; the tech Lead opens and reopens it"},
+]
+COMP_BY_ID = {c["id"]: c for c in COMPONENTS}
+# row id prefix → component; the longest prefix wins (FO-7 before FO)
+COMP_PREFIX = [("FO-7", "client_money"), ("FO-", "front_office"), ("AS-", "front_office"), ("PF-", "platform"), ("DB-", "platform"),
+               ("CS-", "case_side"), ("BK-", "case_side"), ("M3-", "case_side"), ("B5-", "case_side"), ("UX-", "case_side"),
+               ("G-", "case_side"), ("L-", "case_side"), ("AUD-", "audit"), ("Q-", "qa"), ("CI-", "pipeline"), ("TR-", "pipeline"),
+               ("Flaky-", "pipeline")]
+MODULE_COMP = {"platform": "platform", "front office": "front_office", "client money": "client_money", "case side": "case_side", "audit": "audit"}
+LANE_BEHIND_MIN = LANE_WINDOW_MIN                 # a lane falls behind with no push (or idle) for 90 min, or when blocked
+ESCALATION_STEPS = "lane → its Lead → the tech Lead → the founder only for money, a lower bar or a day or more"
+
+
+def comp_name(text):
+    """A component given in Lead input, by id or by name (any case); None when unknown."""
+    t = (text or "").strip().lower().replace("-", " ").replace("_", " ")
+    return next((c["id"] for c in COMPONENTS if t in (c["id"].replace("_", " "), c["name"].lower())), None)
+
+
+def component_of(row, role=None, given=None, rows=None):
+    """(component id, how): Lead input `component` → role (qa, desk) → row id prefix → the Module of a Build row citing
+    the id → the words "pipeline"/"qa" in the row text → None ("not mapped")."""
+    if given and comp_name(given):
+        return comp_name(given), "Lead input component"
+    if role == "qa":
+        return "qa", "role qa"
+    if role in ("desk", "strategy desk"):
+        return "strategy_desk", "role desk"
+    ids = cell_ids(row or "")
+    for rid in ids:
+        for pre, cid in COMP_PREFIX:
+            if rid.startswith(pre):
+                return cid, f"row prefix {pre.rstrip('-')}"
+    for rid in ids:
+        for r in rows or []:
+            if rid in r["ids"]:
+                mod = re.sub(r"\s*\(.*?\)", "", r["module"].split("+")[0]).strip().lower()
+                if mod in MODULE_COMP:
+                    return MODULE_COMP[mod], f"Module of map row {r['map']}"
+    low = (row or "").lower()
+    if re.search(r"\bpipeline\b|\bci\b", low):
+        return "pipeline", "row text"
+    if re.search(r"\bqa\b|\bretests?\b", low):
+        return "qa", "row text"
+    return None, "not mapped"
+
+
+def org_components(org, sessions, rows, open_prs, taken, cur_lead, rsha):
+    """The Team tab's org view: one block per component with its owner, responsibility, escalation path and lanes,
+    each lane wired to the Build rows (MVP-CHECKLIST map rows) whose parts name its row id."""
+    t0 = parse_iso(taken) if taken else None
+    lead_b = next((l for l in org["leads"][1:]), None)
+    tech = org["leads"][0]
+    by_name = {s.get("name"): s for s in sessions}
+    title_of = {p["number"]: p["title"] for p in open_prs}
+    out = {c["id"]: {"id": c["id"], "name": c["name"], "job": c["job"], "owner_kind": c["owner"], "lanes": []} for c in COMPONENTS}
+    unmapped = []
+    for ln in org["lanes"]:
+        s = by_name.get(ln["name"]) or {}
+        row = ln.get("row")
+        if not row and ln.get("pr") in title_of:          # a lane GitHub alone shows: its row from the PR title
+            row = title_id(title_of[ln["pr"]]) or loose_title_id(title_of[ln["pr"]])
+            ln["row"] = row
+        cid, how = component_of(row, ln.get("role"), s.get("component"), rows)
+        ln["component"], ln["component_how"] = cid, how
+        ln["kind"] = s.get("kind")
+        ln["idle_min"] = s.get("idle_min")
+        ln["last_push_at"] = ((t0 - timedelta(hours=ln["push_h"])).isoformat(timespec="minutes") if t0 and ln.get("push_h") is not None else None)
+        ids = cell_ids(row or "")
+        ln["maps"] = [{"map": r["map"], "cap": r["cap"]} for r in rows if set(ids) & set(r["ids"])]
+        why = None
+        if (ln.get("state") or "").lower() == "blocked":
+            why = "blocked (Lead input)"
+        elif ln.get("push_h") is not None and ln["push_h"] * 60 > LANE_BEHIND_MIN:
+            why = f"no push for {ln['push_h']} h (GitHub)"
+        elif ln.get("push_h") is None and ln.get("idle_min") is not None and ln["idle_min"] > LANE_BEHIND_MIN:
+            why = f"idle {ln['idle_min']} min (Lead input)"
+        ln["behind"] = why
+        given_owner = s.get("owner")
+        comp = COMP_BY_ID.get(cid)
+        ln["owner"] = given_owner or (None if not comp else (lead_b or {}).get("name") if comp["owner"] == "lead-b" else tech["name"])
+        ln["owner_how"] = "Lead input owner" if given_owner else "component's owner" if comp else "not mapped"
+        (out[cid]["lanes"] if cid else unmapped).append(ln)
+    comps = []
+    for c in COMPONENTS:
+        b = out[c["id"]]
+        if c["owner"] == "lead-b":
+            own = {"name": lead_b["name"], "role": "Lead B: platform and front office", "src": lead_b["src"]} if lead_b else \
+                  {"name": None, "role": "Lead B", "src": "Lead input sessions (no session with role lead-b)", "reason": "not reported: no Lead B session in the Lead input"}
+            esc_ = ["the lane", own["name"] or "Lead B", tech["name"] + " (tech Lead)", "the founder (only for money, a lower bar or a day or more)"]
+            acts = f"{own['name'] or 'Lead B'} unblocks or restarts the lane; if not cleared in about an hour, {tech['name']} (the tech Lead) steps in"
+        else:
+            own = {"name": tech["name"], "role": "tech Lead and release holder", "src": tech["src"]}
+            esc_ = ["the lane", tech["name"] + " (tech Lead)", "the founder (only for money, a lower bar or a day or more)"]
+            acts = f"{tech['name']} (the tech Lead) unblocks or restarts the lane"
+        if c["id"] == "strategy_desk":
+            acts = f"{tech['name']} reopens the desk from its track file; the desk advises the founder and changes nothing"
+        maps = sorted({m["map"] for ln in b["lanes"] for m in ln["maps"]})
+        b.update({"owner": own, "escalation": esc_, "if_behind": acts, "maps": maps,
+                  "behind": sum(1 for ln in b["lanes"] if ln["behind"])})
+        if c["id"] == "strategy_desk":
+            b["desk"] = org.get("desk") or []
+        comps.append(b)
+    return {"items": comps, "unmapped": unmapped, "escalation_rule": ESCALATION_STEPS,
+            "standbys": org.get("standbys") or [], "tech_lead": tech["name"], "lead_b": (lead_b or {}).get("name"),
+            "src": "Lead input sessions (component, owner, row, pr; reported) + branches and open PRs (measured); component by row prefix "
+                   "when not given (FORMULAS.md › Team by component)", "class": "reported + measured", "as_of": taken, "sha": rsha}
+
+
 def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     """Every §1-§5 and §7 number from the snapshot. history: committed history.jsonl lines (dicts)."""
     meta = snap.meta
@@ -1444,6 +1572,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
            "mismatches": [x for x in lanes_out if x["seen"] != "both"], "class": "reported + measured",
            "src": "Lead input sessions (reported, with reports_to) cross-checked with branches_recent.json and open PRs (measured, 24 h)",
            "sha": L["mixed"][0], "as_of": taken}
+    org["components"] = org_components(org, sessions, rows, open_prs, taken, cur_lead, rsha)
 
     # ---- §7 working today
     wt_rows = {}
