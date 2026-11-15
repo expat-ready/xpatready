@@ -4,6 +4,8 @@
 
 **Lead B (4)** (session titled "Lead B (4) · 15 Nov 07:42 IST", transcript `8d7cbb10…`, same worktree and branch) took over 15 Nov 07:42 IST from Lead B (3) (`local_cc58440f…`, parked at 53%). Its own START HERE is written at its hand-over; until then the section below stands.
 
+**Lead B (5)** (session titled "Lead B (5) · 15 Nov 10:02 IST", transcript `af59e652…`, same worktree and branch) took over 15 Nov 10:02 IST from Lead B (4) (`local_64f5d828…`, ~43% context, P-565); started by Lead 53 (`local_cbc405f5…`). Start read: RULES.md as of P-607 (from `origin/lead/2026-11-07-lead31`; this branch's copy is older) and the START HERE below. Its own START HERE is written at its hand-over.
+
 ## START HERE: hand-over Lead B (4) → Lead B (5), written 15 Nov 09:3x IST at ~43% context (P-565)
 
 **Lead B (4):** session titled "Lead B (4) · 15 Nov 07:42 IST" (transcript `8d7cbb10…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`. Push with `git push origin HEAD:refs/heads/lead-b-front-office` (allowed domain github.com). The Lead B (3) section below is an earlier record.
