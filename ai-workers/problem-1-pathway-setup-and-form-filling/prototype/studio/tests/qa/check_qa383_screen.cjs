@@ -2,12 +2,39 @@
 // checkpoint, the client opens their questionnaire and finds "Country or territory where the person currently resides".
 // Fails while the screen offers a choice worded with the map note's lead-in "only option:"; passes when it reads "Canada".
 // The case is opened by route (the officer's step, not under test). US$0, live AI off.
+// BK-383 (the fix) extends it: DW1 the choice on screen reads "Canada"; DW4 picking it saves "Canada" with no problem shown;
+// then the officer's copies (by route) write DW2 IMM 5710's code 511 and DW3 "Canada" in IMM 5409's Country box, read back
+// from the PDFs (the proven E5 reader, as check_qa395_own_country.ts).
 //   zsh tools/isolated.sh qa_383s 4477 start && node tests/qa/check_qa383_screen.cjs 4477 xr_studio_qa_383s <screenshot dir>
 const { chromium } = require("playwright");
 const { execFileSync } = require("node:child_process");
 const port = Number(process.argv[2] ?? 4477), db = process.argv[3] ?? "xr_studio_qa_383s", base = `http://localhost:${port}`, shots = process.argv[4] ?? ".";
 const sql = (q) => execFileSync("psql", [`postgresql://xr_studio@127.0.0.1:54329/${db}`, "-Atc", q], { encoding: "utf8" }).trim();
 const LABEL = "Country or territory where the person currently resides";
+const { mkdtempSync, rmSync, writeFileSync } = require("node:fs"), { tmpdir } = require("node:os"), { join } = require("node:path");
+const STUDIO = join(__dirname, "..", ".."), PY = join(STUDIO, "..", "..", "..", "..", ".tools", "solution-1-prototype", ".venv", "bin", "python");
+const BOX = { "IMM 5710": "form1.Page1.PersonalDetails.CurrentCOR.CurrentCOR.Row2.Country", "IMM 5409": "IMM_5409.Page1.Info.Country" };
+/** What the officer's copy of one form writes in its Country box for the person, read back from the PDF ("" none; null no copy). */
+async function written(caseId, subject, form) {
+  const r = await api("POST", `/runtime/cases/${caseId}/forms/${encodeURIComponent(form)}/${subject}/generate`, { idempotencyKey: `qa383s-${form.replace(" ", "")}-${Date.now().toString(36)}` }, "user-O");
+  let copy = null;
+  if (r.body?.id) for (let i = 0; i < 90 && !["GENERATED", "FAILED"].includes(copy?.status ?? ""); i++) { await new Promise((z) => setTimeout(z, 500)); copy = (await api("GET", `/runtime/form-copies/${r.body.id}`, undefined, "user-O")).body; }
+  if (copy?.status !== "GENERATED") return null;
+  // IMM 5710's blank PDF already holds 511 in this box: the copy's own record must say it wrote the box.
+  const result = sql(`select b->>'result' from form_instance f, jsonb_array_elements(f.result_json->'boxes') b where f.id='${r.body.id}' and replace(b->>'box', '[0]', '')='${BOX[form]}'`);
+  if (result !== "written") return `(not written: ${result || "no such box"})`;
+  const pdf = Buffer.from(await (await fetch(`${base}/api/runtime/form-copies/${r.body.id}/file`, { headers: { "x-actor": "user-O" } })).arrayBuffer());
+  const dir = mkdtempSync(join(tmpdir(), "q383s-")), file = join(dir, "copy.pdf");
+  try {
+    writeFileSync(file, pdf);
+    const code = "import sys, json; sys.path.insert(0, sys.argv[1]); import e5_roundtrip as E, xml.etree.ElementTree as ET\n"
+      + "r = E.open_reader(open(sys.argv[2], 'rb').read()); d = E.data_root(ET.fromstring(E.xfa_streams(r)['datasets'].get_object().get_data()))\n"
+      + "print(json.dumps({p: v for p, v in E.leaves(d) if v}))";
+    const values = JSON.parse(execFileSync(PY, ["-I", "-c", code, join(STUDIO, "..", "p1"), file], { encoding: "utf8" }).trim().split("\n").pop());
+    const at = Object.keys(values).find((k) => k.replace(/\[0\]/g, "") === BOX[form]);
+    return at ? values[at] : "";
+  } catch { return null; } finally { rmSync(dir, { recursive: true, force: true }); }
+}
 const api = (method, path, body, actor) => fetch(`${base}/api${path}`, { method, headers: { "content-type": "application/json", "x-actor": actor }, body: body ? JSON.stringify(body) : undefined }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) }));
 let failed = 0; const ok = (name, pass, d) => { if (!pass) failed++; console.log(`${pass ? "PASS" : "FAIL"} ${name}${d ? " — " + JSON.stringify(d) : ""}`); };
 (async () => {
@@ -47,6 +74,20 @@ let failed = 0; const ok = (name, pass, d) => { if (!pass) failed++; console.log
     await (await box.count() ? box : q).screenshot({ path: `${shots}/qa383-question.png` });
     await p.screenshot({ path: `${shots}/qa383-page.png` });
     ok('QA-383s fail (C6.19): no choice on screen reads "only option:"', !/only option/i.test(text), { text: text.replace(/\s+/g, " ").slice(0, 300) });
+    const shown = await sel.count() ? await sel.evaluate((x) => [...x.options].filter((o) => o.value).map((o) => o.textContent.trim())) : [];
+    ok('BK-383s DW1: the one choice on screen reads "Canada"', JSON.stringify(shown) === JSON.stringify(["Canada"]), { shown });
+    // DW4: the pick above is saved as the person saves it ("Save and come back later"), with no problem on screen.
+    await p.getByRole("button", { name: "Save and come back later" }).click();
+    const principal = sql(`select p.subject_id from case_participant p where p.case_id='${opened.body.id}' and p.role='principal'`);
+    const saved = () => sql(`select a.value_json #>> '{}' from client_canonical_answer a where a.subject_id='${principal}' and a.canonical_field_key='person.current_residence_country' and a.superseded_by_id is null`);
+    for (let i = 0; i < 20 && saved() !== "Canada"; i++) await p.waitForTimeout(250);
+    const problem = (await box.innerText().catch(() => "")).match(/Choose one of[^\n]*/)?.[0] ?? null;
+    ok('BK-383s DW4: picking it saves "Canada", with no problem shown', saved() === "Canada" && !problem, { saved: saved(), problem });
+    await p.screenshot({ path: `${shots}/qa383-picked.png` });
+    const subject = (await api("GET", `/runtime/cases/${opened.body.id}`, undefined, "user-O")).body?.people?.find((x) => x.role === "principal")?.subject_id;
+    const w5710 = await written(opened.body.id, subject, "IMM 5710"), w5409 = await written(opened.body.id, subject, "IMM 5409");
+    ok("BK-383s DW2: IMM 5710's copy writes the form's code 511", w5710 === "511", { written: w5710 });
+    ok('BK-383s DW3: IMM 5409\'s copy writes "Canada" in the Country box', w5409 === "Canada", { written: w5409 });
   }
   await b.close(); process.exitCode = failed ? 1 : 0;
 })().catch((e) => { console.error(e); process.exitCode = 1; });
