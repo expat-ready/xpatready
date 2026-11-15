@@ -1,0 +1,3 @@
+PASS  QA-453: no running-app module queues its jobs on PF-0p's in-memory fakeJobs
+PASS  QA-453: some module outside platform/jobs injects PF-14's PlatformJobs (the real JobPort) — front-office/booking/public.controller.ts, front-office/booking/service.ts
+2 passed, 0 failed
