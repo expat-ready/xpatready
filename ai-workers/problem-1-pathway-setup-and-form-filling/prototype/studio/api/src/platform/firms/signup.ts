@@ -176,16 +176,14 @@ export class FirmSignUp {
       const used = await tx.platformSignupPending.updateMany({ where: { id: pending.id, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now, outcome: "VERIFIED" } });
       if (used.count !== 1) throw notFound();   // a double submit makes one firm (the row's lock orders the two)
       const firm = await tx.platformFirm.create({ data: { key: `${slug(pending.firmName)}-${randomBytes(4).toString("hex")}`, operatingName: pending.firmName, countryCode: pending.countryCode, status: "PROVISIONING", ownerEmail: pending.email, contactEmail: pending.email, billingEmail: pending.email } });
-      const at = (action: string, entity: string, entityKey: string, summary: string, detail: Record<string, string | number | null> = {}) =>
-        this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action, entity, entityKey, summary, detail });
-      await at("firm.created", "platform_firm", firm.id, "Firm created by self-serve sign-up (setting up)", { status: "PROVISIONING", country: pending.countryCode });
+      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "firm.created", entity: "platform_firm", entityKey: firm.id, summary: "Firm created by self-serve sign-up (setting up)", detail: { status: "PROVISIONING", country: pending.countryCode } });
       const owner = await tx.platformStaff.create({ data: { firmId: firm.id, email: pending.email, displayName: pending.email.split("@")[0], identitySubject: pending.identitySubject } });
       await tx.platformRoleGrant.create({ data: { firmId: firm.id, staffId: owner.id, role: "OWNER", grantedBy: ACTOR, grantedAt: now } });
-      await at("platform.staff.owner_created", "platform_staff", owner.id, "The person who signed up is the firm's Owner", { staffId: owner.id });
+      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.staff.owner_created", entity: "platform_staff", entityKey: owner.id, summary: "The person who signed up is the firm's Owner", detail: { staffId: owner.id } });
       for (const versionId of pending.termsVersionIds) await tx.platformTermsAcceptance.create({ data: { firmId: firm.id, staffId: owner.id, versionId, acceptedAt: pending.termsAcceptedAt } });
-      await at("platform.terms.accepted", "platform_terms_acceptance", owner.id, "The Owner's acceptance of the current terms recorded", { staffId: owner.id, versions: pending.termsVersionIds.length });
+      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.terms.accepted", entity: "platform_terms_acceptance", entityKey: owner.id, summary: "The Owner's acceptance of the current terms recorded", detail: { staffId: owner.id, versions: pending.termsVersionIds.length } });
       const sub = await tx.platformSubscription.create({ data: { firmId: firm.id, planId: plan.id, status: "TRIAL" } });
-      await at("platform.subscription.created", "platform_subscription", sub.id, `Trial subscription on ${plan.name}, ${pending.period.toLowerCase()}`, { plan: plan.code, period: pending.period });
+      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.subscription.created", entity: "platform_subscription", entityKey: sub.id, summary: `Trial subscription on ${plan.name}, ${pending.period.toLowerCase()}`, detail: { plan: plan.code, period: pending.period } });
       await tx.moduleEvent.create({ data: { firmId: firm.id, type: EVENT.FIRM_CREATED, subjectId: firm.id, payload: { firmId: firm.id } } });   // last (m8)
       return { firm, owner, sub };
     });
