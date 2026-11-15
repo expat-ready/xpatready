@@ -46,5 +46,21 @@
     "acked_at": "2026-11-15T08:55:55Z",
     "opened_at": "2026-11-15T07:48:43Z",
     "source": "pull/1796#issuecomment-6891278825"
+  },
+  {
+    "id": "G-3",
+    "kind": "ready",
+    "owner": "lane",
+    "branch": "lead/2026-11-15-records-2",
+    "pr": 1814,
+    "status": "open",
+    "waiting_on": "Lead",
+    "next_step": "merge, test, publish",
+    "created_at": "2026-11-15T09:09:13Z",
+    "updated_at": "2026-11-15T09:09:13Z",
+    "last_ack_by": null,
+    "acked_at": null,
+    "opened_at": "2026-11-15T09:09:13Z",
+    "source": "pull/1814#issuecomment-6892130083"
   }
 ]
