@@ -68,3 +68,38 @@ Journey score: **6.5 of 8 applicable criteria (8.1/10 scaled); pass bar met, err
 
 Verdict: Block
 Fix list: M1 (count the limits before the size refusal, with a test); M2 (no silent drop for a stamp that fails the MAC or is expired; key from config, as a question to Lead B; with a test). The Minors may go in the same push or be recorded as hand-offs.
+
+## Re-review at 8e5cb929d (diff only: `git diff b4db3a009 8e5cb929d`)
+* **Checked in a clean worktree at 8e5cb929d.** The suite gives **58 passed, 0 failed.** The PR diff against origin/main is 797 lines.
+* **Live API on :4433**, with its own database (now dropped) and the same seed, wording and allowed site as before.
+
+**Earlier findings**
+* **M1, fixed.** Both limits are now counted before the size refusal (`public.ts:82-85`). The route-scoped `express.json({ limit: 32 KB })` (`publicFormBodyLimit`, plus one line in `main.ts`, with the OKs on the PR) refuses a big body as it is read, so the 5 MB parse cannot be forced any more.
+  * Live: 31 posts of 40 KB got 413.
+  * Over HTTP these posts stop at the door's parser before the counter, so the next normal post got 400, not 429. The cost of each refusal is now bounded (at most 32 KB read), so this is no longer a flood path.
+  * The suite line "oversized posts count toward the address limit" holds only when the service is called directly (n1).
+* **M2, fixed.** A forged stamp, an expired one, or one signed by a previous process gets 400 RELOAD "This page is out of date. Please reload it and send the form again." Nothing is stored.
+  * Live: I loaded the form, restarted the API and posted as a person. The answer was RELOAD with 0 people saved, never a silent thank-you.
+  * The honeypot and a too-fast fill still get the thank-you text. The bot check now runs after the field checks.
+* **m5, fixed.** The "all" view filters by visibility in the query, before the 500 cap (`leads.ts:38-39`). Live, with everyone-sees-all off, the Case officer's list showed only their own lead.
+* **m6, fixed.** Visibility is checked again under the row lock. Live:
+  * Two parallel Take it calls gave one 200 and one 409 naming the owner.
+  * With everyone-sees-all off, a later Take it on a lead someone else owns got 409 "Case officer (Sample) already has this lead.", while a plain read of that lead stays 404.
+* **m7, fixed.** The open read sends `Cache-Control: no-store` (seen live).
+* **m4, partly fixed, the rest deferred.** The audit detail now carries `previousOwnerStaffId`. Assign and X-4 (with their events and `assignedBy`) move to part 2 (`POST …/assign` now answers 404). That is acceptable inside the split.
+* **m1, m2, m3, m8: recorded in the PR** as hand-offs to FO-4/FO-4b or as known gaps. Accepted; m8's races were also checked live (above).
+* **m9, fixed.** The PR body now matches the commit and says part 2 will be split before it is built.
+
+**The breaker's changes.** Invisible and direction marks are refused in text fields (`common.ts:17`). A malformed JSON body to the door gets the app's usual 400 problem answer, the same as any other route.
+
+**New Minor (does not block)**
+* **n1. Test wording.** In the suite, the line "oversized posts count toward the address limit" calls the service directly. Over HTTP the door's parser refuses those posts first, so they are not counted. Either reword the line or count the posts in the parser's error branch (`public.ts`, `publicFormBodyLimit`).
+* **n2. The stamp key is still random per process** (`public.ts:57`) unless `FO_FORM_STAMP_KEY` is set. With more than one API instance, a post that lands on another instance asks for a reload every time. There is no data loss now. Put the key in the secrets runbook before a second instance runs (a question for Lead B; deploy is outside the touch list).
+* **n3. No owner on leads made between part 1 and part 2.** A one-user firm's form leads stay Unassigned until part 2 adds X-4, and nothing fills in the owner afterwards. The owner can still Take them; this affects Sample data only.
+* **n4. Leftover imports.** `routes.ts` still imports `Body` and declares `type B`, which no route uses now.
+
+Journey score at 8e5cb929d: error recovery rises to 1 and next step to 1, because a stale page now says "reload". That gives **7.5 of 8 applicable criteria (9.4/10 scaled); pass.**
+
+No Blocker or Major is open.
+
+Verdict: Approve
