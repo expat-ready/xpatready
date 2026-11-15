@@ -41,6 +41,7 @@ let failed = 0; const ok = (name, pass, d) => { if (!pass) failed++; console.log
     await q.scrollIntoViewIfNeeded();
     const box = q.locator("xpath=ancestor::*[self::fieldset or self::div][.//select or .//input[@type='radio'] or .//*[@role='combobox' or @role='radio']][1]");
     const text = (await box.innerText().catch(() => "")) + " " + (await box.locator("option").allInnerTexts().catch(() => [])).join(" | ");
+    ok("QA-383s: the question's answer box is found (a list or choices), so the next step asserts something", (await box.count()) > 0);
     const sel = box.locator("select").first();
     if (await sel.count()) await sel.selectOption({ index: 1 }).catch(() => {}); // the one choice offered, as a person picks it
     await (await box.count() ? box : q).screenshot({ path: `${shots}/qa383-question.png` });
