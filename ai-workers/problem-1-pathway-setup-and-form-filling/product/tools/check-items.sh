@@ -68,4 +68,21 @@ for it in d:
 print("ok")
 EOF
 ); ok "every item has the schema's fields and enums" "$([ "$out" = ok ] && echo 1)" "$out"
+
+# Review fixes: a repeat report while open never resets the clock; a broken queue is an ACT, not a quiet queue.
+echo '[]' > "$ITEMS_FILE"
+printf '%s\n' '{"number":1796,"headRefName":"lead/x","comments":[' \
+ '{"id":"d1","author":{"login":"lane"},"createdAt":"2026-11-15T08:00:00.5Z","body":"LANE-REPORT: blocked B-1"},' \
+ '{"id":"d2","author":{"login":"lane"},"createdAt":"2026-11-15T08:40:00Z","body":"LANE-REPORT: blocked B-1\nstill blocked"},' \
+ '{"id":"d3","author":{"login":"lane"},"createdAt":"2026-11-15T08:41:00Z","body":"LANE-REPORT: Ready B-2 (head abc)"}]}' > "$T/1796.json"
+out=$(run 2026-11-15T09:31:00Z); r=$?
+ok "a repeat report while open keeps the clock: FOUNDER at 91 min after a nudge at 40" "$([ $r = 1 ] && echo "$out" | grep -q '^FOUNDER .*B-1 has waited 91 min' && echo "$out" | grep -q '1 updated while open' && echo 1)" "exit $r: $out"
+ok "a fractional-second time is read" "$(grep -q '"id": "B-1"' "$ITEMS_FILE" && echo 1)" "$(cat "$ITEMS_FILE")"
+ok "a malformed LANE-REPORT line warns and is not queued" "$(echo "$out" | grep -q 'warn  #1796: malformed report line' && ! grep -q 'B-2' "$ITEMS_FILE" && echo 1)" "$out"
+echo '<<<<<<< HEAD' > "$ITEMS_FILE"
+out=$(run 2026-11-15T09:40:00Z); r=$?
+ok "an unreadable items.json is an ACT, not a quiet queue" "$([ $r -ge 1 ] && echo "$out" | grep -q '^ACT   queue: a PR or items.json could not be read' && echo 1)" "exit $r: $out"
+echo '[]' > "$ITEMS_FILE"; printf '#!/bin/bash\nexit 1\n' > "$T/bin/gh"
+out=$(run 2026-11-15T09:40:00Z); r=$?
+ok "gh failing is an ACT, not a quiet queue" "$([ $r = 1 ] && echo "$out" | grep -q '^ACT   queue:' && echo 1)" "exit $r: $out"
 finish

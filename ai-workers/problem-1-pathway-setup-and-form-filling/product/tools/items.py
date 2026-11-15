@@ -8,9 +8,9 @@ Lanes report with a comment whose FIRST line is   LANE-REPORT: <ready|blocked|qu
   items.py ack <id> --by WHO          the Lead has seen it; clears ACT and FOUNDER lines until the next report on that id
   items.py done <id> [--by WHO]
   items.py list [--open] [--stale MIN]  --stale: open, un-acked, older than MIN minutes (default 45)
-  items.py ingest --since ISO         stdin: JSON [{pr, branch, author, created_at, body, id}] (PR comments)
+  items.py ingest [--since ISO]       stdin: JSON [{pr, branch, author, created_at, body, id}] (PR comments)
   items.py watch [--act 45] [--founder 90]   ACT for open un-acked items over 45 min, FOUNDER over 90; exit = ACT count
-  items.py blocking                  open un-acked items, one per line; exit 1 when any (handover.sh refuses on them)
+  items.py blocking                  open un-acked items, one per line; exit 1 when any (handover.sh, row G-2, refuses on them)
 
 Env: ITEMS_FILE (default ../state/items.json from this file), ITEMS_NOW (ISO time, tests only). Stdlib only, US$0.
 Test: check-items.sh."""
@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 
 KINDS = ("ready", "blocked", "question", "approval")
 NEXT = {"ready": "merge, test, publish", "blocked": "unblock it", "question": "answer it", "approval": "approve or refuse"}
+LOOSE = re.compile(r"^\s*LANE-REPORT\b", re.I)
 REPORT = re.compile(r"^\s*LANE-REPORT:\s+(ready|blocked|question|approval)\s+([A-Za-z0-9][A-Za-z0-9._/-]*)\s*$")
 FILE = os.environ.get("ITEMS_FILE") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "state", "items.json")
 
@@ -28,7 +29,9 @@ def die(msg, code=2):
 
 
 def parse_time(s):
-    return datetime.strptime(s.replace("Z", "+00:00")[:25], "%Y-%m-%dT%H:%M:%S%z") if "T" in s else die("bad time: " + s)
+    m = re.match(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:?\d\d)$", (s or "").strip())
+    if not m: raise ValueError("bad time: %r" % s)
+    return datetime.strptime(m.group(1) + m.group(2).replace("Z", "+0000").replace(":", ""), "%Y-%m-%dT%H:%M:%S%z")
 
 
 def now():
@@ -73,11 +76,13 @@ def new_item(iid, kind, t, owner="", branch="", pr=None, waiting_on="Lead", next
     if kind not in KINDS: die("kind must be one of " + "|".join(KINDS))
     return {"id": iid, "kind": kind, "owner": owner, "branch": branch, "pr": pr, "status": "open", "waiting_on": waiting_on,
             "next_step": next_step or NEXT[kind], "created_at": iso(t), "updated_at": iso(t), "last_ack_by": None,
-            "acked_at": None, "source": source}
+            "acked_at": None, "opened_at": iso(t), "source": source}
 
 
 def reopen(it, kind, t, source, **kv):
-    """A new report on a known id (question, then ready): it needs the Lead again, so the ack is cleared."""
+    """A new report on a known id (question, then ready): it needs the Lead again, so the ack is cleared. While the item
+    is still open the clock keeps running from opened_at: a lane re-posting never resets the 45/90-min timeouts."""
+    if it["status"] != "open": it["opened_at"] = iso(t)
     it.update(kind=kind, status="open", updated_at=iso(t), last_ack_by=None, acked_at=None, source=source,
               next_step=kv.get("next_step") or NEXT[kind])
     for k in ("owner", "branch", "pr"):
@@ -85,7 +90,7 @@ def reopen(it, kind, t, source, **kv):
 
 
 def age_min(it, t):
-    return int((t - parse_time(it["updated_at"])).total_seconds() // 60)
+    return int((t - parse_time(it.get("opened_at") or it["updated_at"])).total_seconds() // 60)
 
 
 def unacked(it):
@@ -145,12 +150,17 @@ def cmd_ingest(args):
     f, _ = flags(args, ("since",))
     since = parse_time(f["since"]) if f.get("since") else None
     comments = json.load(sys.stdin)
-    items, added, reopened = load(), 0, 0
+    items, added, reopened, updated = load(), 0, 0, 0
     for c in sorted(comments, key=lambda c: c.get("created_at") or ""):
         body = (c.get("body") or "").replace("\r", "")
-        m = REPORT.match(body.split("\n", 1)[0])
-        if not m or not c.get("created_at"): continue
-        t = parse_time(c["created_at"])
+        first = body.split("\n", 1)[0]
+        m = REPORT.match(first)
+        if not m:
+            if LOOSE.match(first): print("warn  #%s: malformed report line, not queued (want LANE-REPORT: <%s> <item-id>): %s"
+                                         % (c.get("pr"), "|".join(KINDS), first.strip()[:100]))
+            continue
+        try: t = parse_time(c.get("created_at"))
+        except ValueError: print("warn  #%s: report with unreadable time %r, not queued" % (c.get("pr"), c.get("created_at"))); continue
         if since and t < since: continue
         kind, iid = m.group(1), m.group(2)
         extra = dict(re.findall(r"(?mi)^(owner|branch|next):\s*(\S.*?)\s*$", body))
@@ -160,10 +170,13 @@ def cmd_ingest(args):
         if it and (it.get("source") == source or parse_time(it["updated_at"]) >= t): continue  # seen, or older than the item
         kv = dict(owner=extra.get("owner") or c.get("author") or "", branch=extra.get("branch") or c.get("branch") or "",
                   pr=c.get("pr"), next_step=extra.get("next", ""))
-        if it: reopen(it, kind, t, source, **kv); reopened += 1
+        if it:
+            if it["status"] == "open": updated += 1
+            else: reopened += 1
+            reopen(it, kind, t, source, **kv)
         else: items.append(new_item(iid, kind, t, kv["owner"], kv["branch"], kv["pr"], "Lead", kv["next_step"], source)); added += 1
-    if added or reopened: save(items)
-    print("ingest %d new, %d reopened" % (added, reopened))
+    if added or reopened or updated: save(items)
+    print("ingest %d new, %d reopened, %d updated while open" % (added, reopened, updated))
 
 
 def cmd_watch(args):
