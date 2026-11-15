@@ -193,3 +193,43 @@ Reviewer (did not build it), 14 Nov 2026. Commit **c841df3f466f34040b92a7ccbbb64
 No Blocker or Major is open at c841df3f466f34040b92a7ccbbb64ae5720940dc.
 
 **Verdict: Approve** (c841df3f466f34040b92a7ccbbb64ae5720940dc)
+
+## Round 4 (diff-only, second re-stamp): head d906da42
+
+Reviewer (did not build it), 15 Nov 2026. Commit **d906da4239eaa89b987956e83813c037c2270b78**. Scope: only what FO-13 changed since the round-3 record at 7b105810 (P-277): the re-stamp d906da42 (P-600, Lead 50's slot, comment 6886595100). The clean merge 763e29129 of origin/main (PF-25 #1763, PF-21 #1753, PF-19a #1754, FO-5 part 2 #1777 and others) brings only main's changes, which are not reviewed here. Schema only: no screen, so walks, 1024 px / 200 % and BIC remain N/A, as in rounds 1-3.
+
+**What I checked**
+* **Diff 7b105810 → d906da42 on FO-13's paths** (`-M`):
+  * The migration is a pure rename (`similarity index 100%`): `20261114223000_fo13_compliance_tables` → `20261115013000_fo13_compliance_tables`.
+  * Two one-line edits follow it: the `NEW` constant in `tests/check_fo13_compliance_schema.ts` and the migration name in the header comment of `front-office-compliance.prisma`. Nothing else in either file changed since the approved c841df3f.
+  * The other entries in that range (PF-25, PF-21, PF-19a, FO-5 migrations and schema files; main's lines in platform.prisma) are main's.
+* **(a) migration.sql is the approved blob.** At d906da42, at c841df3f and at 7b105810 it is `1193f19fe3841a541c8329fccce779763d52c4b3`.
+* **(b) Stamp order.** `20261115013000` is later than origin/main's newest, `20261115010000_fo5_retainer_file_keys` (then `20261115004500_pf19a_platform_messages`, `20261114234500_pf21_complaints`). It is the only folder with that 14-digit prefix, and there is one fo13 migration folder. The tree has three older duplicate prefixes (20261025090000, 20261031140000, 20261102010000); all three are on origin/main as well, so they are not FO-13's.
+* **(c) platform.prisma.** `git diff origin/main d906da42` adds the same five lines as round 3, directly under `// back-relation slot: compliance (FO-13)`, and the slot comment stays:
+  * PlatformFirm: `foConflictChecks`, `foIdentityChecks`;
+  * PlatformStaff: `foConflictChecksChecked` (`FoConflictCheckedBy`), `foConflictChecksConfirmed` (`FoConflictConfirmedBy`), `foIdentityChecksChecked` (`FoIdentityCheckedBy`).
+  * `git diff c841df3f d906da42` on platform.prisma touches none of these lines; it shows only main's PF-19a, PF-21, FO-5 and PF-25 lines in their own slots.
+  * `npx prisma validate` in the export: "The schemas at prisma/schema are valid".
+* **`git diff --stat origin/main d906da42`.** Six files, +1063/-0, all FO-13's: break-report.md, review.md, the migration (320), front-office-compliance.prisma (135), platform.prisma (+5), the test (309). The growth from round 3's +1016 is review.md only.
+* **(d) Suites,** run from a `git archive` export of d906da42 with its own copy of studio/node_modules and `npx prisma generate`, via `node_modules/.bin/tsx --tsconfig api/tsconfig.json tests/<file>` against 127.0.0.1:54329. :4400 was not used. All exit 0:
+
+| Suite | Result |
+|---|---|
+| `check_fo13_compliance_schema.ts` | 76 passed, 0 failed (migrate diff on the empty and demo-data databases names no FO-13 table or type) |
+| `check_fo1a_sales_schema.ts` | 124 passed, 0 failed |
+| `check_pf19a_messages_schema.ts` | 76 passed, 0 failed |
+| `check_pf21_complaints.ts` | 107 passed, 0 failed |
+| `check_fo5_retainers.ts` | 159 passed, 0 failed |
+| `check_pf0p_ports.ts` | 71 passed, 0 failed (six slot lines per model; migrate diff names nothing in the platform tables) |
+
+* **Databases.** Each suite made and dropped its own databases; no `xr_studio_*` database from these runs is left. During the runs the list changed in one way: `xr_studio_rt_fo13d1` went and `xr_studio_rt_fo13b` came. That is another session's runtime database: it has a live `xr-studio-jobs` connection, and none of the six suites names an `xr_studio_rt_*` database. I did not touch it.
+
+**Findings:** no Blocker, no Major, no new Minor.
+* Info only, as in round 3: `break-report.md` still names the first stamp. It is a record of that run (P-188), so no change is asked.
+* n1-n3 from round 2 stay carried to FO-13c / FO-13i.
+
+**Journey score:** unchanged at **10 / 10**. The SQL is byte-identical and the back-relations are unchanged, so the round-2 journey (FO-13c's and FO-13i's code, by psql and the Prisma client) still holds. The FO-13 suite that covers it passes 76/76 at this head, and the four neighbouring suites now on main (FO-1a, PF-19a, PF-21, FO-5) pass alongside it.
+
+No Blocker or Major is open at d906da4239eaa89b987956e83813c037c2270b78.
+
+**Verdict: Approve** (d906da4239eaa89b987956e83813c037c2270b78)
