@@ -66,11 +66,11 @@ export type Visibility = Awaited<ReturnType<typeof visibilityOf>>;
 export const sees = (v: Visibility, ctx: StaffContext, ownerStaffId: string | null) =>
   v.seesAll || ownerStaffId === ctx.staffId || (ownerStaffId === null && v.seesUnassigned);
 
-/** One change written down: the audit line (fail-closed) and then the outbox row, last in the transaction. */
+/** One lead change written down (entity fo_lead, named literally for check_case_feed's sweep): the audit line (fail-closed) and then the outbox row, last in the transaction. */
 export async function written(tx: Tx, audit: AuditPort<Tx>, c: {
-  firmId: string; actor: string; action: string; entity: string; entityKey: string; summary: string;
+  firmId: string; actor: string; action: string; entityKey: string; summary: string;
   detail?: Record<string, string | number | boolean | null>; event?: { type: EventName; subjectId: string; payload: object };
 }) {
-  await audit.record(tx, { firmId: c.firmId, actor: c.actor, action: c.action, entity: c.entity, entityKey: c.entityKey, summary: c.summary, detail: c.detail ?? {} });
+  await audit.record(tx, { firmId: c.firmId, actor: c.actor, action: c.action, entity: "fo_lead", entityKey: c.entityKey, summary: c.summary, detail: c.detail ?? {} });
   if (c.event) await tx.moduleEvent.create({ data: { firmId: c.firmId, type: c.event.type, subjectId: c.event.subjectId, payload: c.event.payload as Prisma.InputJsonValue } });
 }

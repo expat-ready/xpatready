@@ -66,8 +66,7 @@ try {
   const forms = new PublicForms(db, ports), leads = new Leads(db, ports);
   const wording = await db.$transaction((tx) => consent.publishWording(tx, { firmId: A, channel: "EMAIL", purpose: "MARKETING", locale: "en", text: "Send me news and offers from the firm by email. I can stop at any time. (Sample)", by: "seed:FO-2-test" }));
   const tokenA = sql(`update fo_web_form set enabled = true, consent_wording_version_id = '${wording.id}', allowed_sites = '{${SITE}}' where firm_id = '${A}' returning public_token`);
-  // A fresh database has no released combination, so the firm adds its own service (AG-16-76: a firm may add its own).
-  const service = sql(`insert into fo_service (firm_id, label, sort_order, created_by) values ('${A}', 'Work permit (Sample)', 1, 'seed:FO-2-test') returning id`);
+  const service = sql(`insert into fo_service (firm_id, label, sort_order, created_by) values ('${A}', 'Work permit (Sample)', 1, 'seed:FO-2-test') returning id`);   // no released combination here: the firm's own service (AG-16-76)
 
   let ipN = 0;
   const req = (o: { ip?: string; origin?: string | null; length?: number } = {}) => ({ ip: o.ip ?? `198.51.100.${(ipN++ % 200) + 1}`, headers: { ...(o.origin === null ? {} : { origin: o.origin ?? SITE }), ...(o.length ? { "content-length": String(o.length) } : {}) } });
@@ -98,16 +97,14 @@ try {
   const lost = await refusal(() => restarted.submit(tokenA, { submissionId: before.submissionId, loadStamp: before.loadStamp, ...lena }, req()));
   clock += 25 * 3_600_000;
   const old = await refusal(() => forms.submit(tokenA, { submissionId: before.submissionId, loadStamp: before.loadStamp, ...lena }, req()));
-  ok("FO-2 fail: after a restart, or a day later, a person's post is told to reload (never a silent thank-you), nothing stored",
-    lost?.status === 400 && lost.body.detail === "This page is out of date. Please reload it and send the form again." && old?.body.code === "RELOAD" && count("fo_lead") === leadsBefore, [lost, old]);
+  ok("FO-2 fail: after a restart, or a day later, a person's post is told to reload (never a silent thank-you), nothing stored", lost?.status === 400 && lost.body.detail === "This page is out of date. Please reload it and send the form again." && old?.body.code === "RELOAD" && count("fo_lead") === leadsBefore, [lost, old]);
   const shown = await drawn();
   const w2 = await db.$transaction((tx) => consent.publishWording(tx, { firmId: A, channel: "EMAIL", purpose: "MARKETING", locale: "en", text: "New wording (Sample).", by: "seed:FO-2-test" }));
   sql(`update fo_web_form set consent_wording_version_id = '${w2.id}' where firm_id = '${A}'`);
   const swapped = await refusal(() => forms.submit(tokenA, { submissionId: shown.submissionId, loadStamp: shown.loadStamp, ...lena }, req()));
   sql(`update fo_web_form set consent_wording_version_id = '${wording.id}' where firm_id = '${A}'`);
   ok("FO-2 fail (Devin): the form's wording changed after the page was drawn → reload; no consent for wording the visitor never saw", swapped?.body.code === "RELOAD" && count("msg_consent", `wording_id = '${w2.id}'`) === 0, swapped);
-  ok("FO-2 fail (break m1): a bad body is refused at the field whether sent fast or slow (a bot learns nothing from the order)",
-    (await refusal(async () => { const q = await forms.read(tokenA, req()); return forms.submit(tokenA, { submissionId: q.submissionId, loadStamp: q.loadStamp, givenNames: "Nobody" }, req()); }))?.status === 422);
+  ok("FO-2 fail (break m1): a bad body is refused at the field whether sent fast or slow (a bot learns nothing from the order)", (await refusal(async () => { const q = await forms.read(tokenA, req()); return forms.submit(tokenA, { submissionId: q.submissionId, loadStamp: q.loadStamp, givenNames: "Nobody" }, req()); }))?.status === 422);
 
   const f1 = await drawn();
   const first = await post(lena, { form: f1 });
@@ -117,8 +114,7 @@ try {
   ok("FO-2 pass: the same submissionId twice → one lead", count("fo_lead") === leadsBefore + 1 && count("fo_arrival_receipt", `lead_id = '${lenaLead}'`) === 1);
   ok("FO-2 pass: the lead is Unassigned (no owner) with source WEBSITE and the form's name, no stage, type or value", sql(`select coalesce(owner_staff_id::text, 'none') || '|' || source || '|' || source_detail || '|' || state from fo_lead where id = '${lenaLead}'`) === "none|WEBSITE|Website enquiry form|OPEN");
   ok("FO-2 pass: the web form's message is the lead's first note, INTERNAL, stored as plain text", sql(`select visibility || '|' || text from fo_note where lead_id = '${lenaLead}'`) === "INTERNAL|I need an LMIA. <script>alert(1)</script>");
-  ok("FO-2 pass: the tick writes one consent row through ConsentPort (FO_PERSON, the form's wording, an address hash, no address)",
-    sql(`select count(*) || '|' || min(c.subject_kind::text) || '|' || min(c.wording_id::text) || '|' || (min(length(c.ip_hash)) = 64)::text from msg_consent c join fo_lead l on l.person_id = c.subject_id where l.id = '${lenaLead}'`) === `1|FO_PERSON|${wording.id}|true`);
+  ok("FO-2 pass: the tick writes one consent row through ConsentPort (FO_PERSON, the form's wording, an address hash, no address)", sql(`select count(*) || '|' || min(c.subject_kind::text) || '|' || min(c.wording_id::text) || '|' || (min(length(c.ip_hash)) = 64)::text from msg_consent c join fo_lead l on l.person_id = c.subject_id where l.id = '${lenaLead}'`) === `1|FO_PERSON|${wording.id}|true`);
   ok("FO-2 pass: the phone is kept in E.164", sql(`select phone from fo_person p join fo_lead l on l.person_id = p.id where l.id = '${lenaLead}'`) === "+14165550101");
   const noTick = await post({ givenNames: "Ana", email: "ana@example.org" });
   const anaLead = sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'ana@example.org'`);
@@ -144,7 +140,6 @@ try {
   ok("FO-2 fail: a 33 KB body → 413 before the handler (the spy saw nothing), also sent in chunks", r413.status === 413 && r413c.status === 413 && (await r413.json()).code === "TOO_LARGE" && spy.length === 1, [r413.status, r413c.status, spy.length]);
   ok("FO-2 pass: a small body reaches the handler, parsed once", r201.status === 201 && (spy[0] as { message?: string })?.message === "hello");
   srv.close();
-  // The person known or not: the same answer.
   const known = await post({ ...lena, consent: false }), fresh = await post({ givenNames: "Mo", email: "mo@example.org" });
   ok("FO-2 pass: the answer never says whether the person is known (known and new get the same answer)", JSON.stringify(known) === JSON.stringify(fresh), [known, fresh]);
   const repeat = sql(`select l.id || '|' || l.person_id || '|' || coalesce(l.possible_match_person_id::text, '') from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'lena@example.org' order by l.created_at desc limit 1`).split("|");
@@ -152,7 +147,6 @@ try {
   ok("FO-2 pass: a repeat enquiry → a new lead flagged as a possible match of the earlier person", repeat[0] !== lenaLead && repeat[2] === lenaPerson);
   ok("FO-2 fail: the repeat is never linked or merged (its own person record)", repeat[1] !== lenaPerson);
 
-  // Allowed sites and an off form.
   ok("FO-2 fail: a page outside the allowed sites → refused", (await refusal(() => post(lena, { origin: "https://evil.example" })))?.status === 403);
   ok("FO-2 fail: no Origin at all → refused", (await refusal(() => post(lena, { origin: null })))?.status === 403);
   ok("FO-2 pass: our own hosted page is allowed", (await post({ givenNames: "Own", email: "own@example.org" }, { origin: OWN })).thankYouText.length > 0);
@@ -202,10 +196,8 @@ try {
   ok("FO-2 fail: a person who may neither see all nor assign → 403 on Unassigned leads", (await refusal(() => leads.list(nobody, "unassigned")))?.status === 403);
   ok("FO-2 fail: an unknown view → refused", (await refusal(() => leads.list(R, "everything")))?.status === 422);
 
-  // Take it and Assign.
   const taken = await leads.take(O, lenaLead) as { ownerStaffId: string };
-  ok("FO-2 pass: Take it on an unowned lead → the taker owns it, one audit line, one lead.taken event",
-    taken.ownerStaffId === O.staffId && count("audit_event", `entity_key = '${lenaLead}' and action = 'lead.taken'`) === 1 && count("module_event", `subject_id = '${lenaLead}' and type = '${EVENT.LEAD_TAKEN}'`) === 1);
+  ok("FO-2 pass: Take it on an unowned lead → the taker owns it, one audit line, one lead.taken event", taken.ownerStaffId === O.staffId && count("audit_event", `entity_key = '${lenaLead}' and action = 'lead.taken'`) === 1 && count("module_event", `subject_id = '${lenaLead}' and type = '${EVENT.LEAD_TAKEN}'`) === 1);
   const again = await refusal(() => leads.take(T, lenaLead));
   ok("FO-2 fail: Take it on an owned lead → 409 with the owner's name", again?.status === 409 && again.body.detail === "Case officer (Sample) already has this lead.", again);
 
@@ -240,7 +232,6 @@ try {
   ok("FO-2 DWn pass: someone who could never see it unowned (no view.all, no assign) → 404, no name", hidden?.status === 404 && !JSON.stringify(hidden.body).includes("Second representative"), hidden);
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
 
-  // Firm A and firm B.
   const late2 = await takenByT("late2");
   ok("FO-2 DWn fail: the same with everyone-sees-all on → 409 naming the Case Manager", (await refusal(() => leads.take(O, late2)))?.body.detail === "Second representative (Sample) already has this lead.");
   ok("FO-2 fail: firm A's staff reading firm B's lead → 404", (await refusal(() => leads.read(SOLO, lenaLead)))?.status === 404 && (await refusal(() => leads.take(SOLO, lenaLead)))?.status === 404);

@@ -125,10 +125,8 @@ export class PublicForms {
   private async form(token: unknown) {
     if (typeof token !== "string" || !/^[A-Za-z0-9_-]{22,100}$/.test(token)) return unavailable();
     const f = await this.db.foWebForm.findUnique({ where: { publicToken: token } });
-    if (!f || !f.enabled) return unavailable();
-    const firm = await this.db.platformFirm.findUnique({ where: { id: f.firmId }, select: { status: true } });
-    if (!firm || !["TRIAL", "ACTIVE"].includes(firm.status)) return unavailable();
-    return f;
+    const firm = f?.enabled ? await this.db.platformFirm.findUnique({ where: { id: f.firmId }, select: { status: true } }) : null;
+    return f && firm && ["TRIAL", "ACTIVE"].includes(firm.status) ? f : unavailable();
   }
 
   /** A rolling one-minute limit per key (counted on every request, refused or not; AG-2-49 rule 1). */
@@ -188,7 +186,7 @@ function attributionOf(v: unknown): Attribution | null {
 export class PublicFormsController {
   constructor(@Inject(PublicForms) private readonly forms: PublicForms) {}
 
-  @Get(":token") @OpenRead("the firm's public enquiry form: its words, a submission id and load stamp (contracts §0.6, §7 §2.1)")
+  @OpenRead("the firm's public enquiry form: its words, a submission id and load stamp, contracts §0.6") @Get(":token")   // QA-53 REVIEWED
   read(@Param("token") token: string, @Req() req: Req, @Res({ passthrough: true }) res: Res) { return this.forms.read(token, req, res); }
 
   @Post(":token/submissions") @HttpCode(201)

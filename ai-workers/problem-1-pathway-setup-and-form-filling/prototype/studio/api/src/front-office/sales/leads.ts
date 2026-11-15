@@ -108,7 +108,7 @@ export class Leads {
       if (!sees(vis, ctx, activeOf(l.owner_staff_id))) return vis.seesUnassigned && owner?.status === "ACTIVE" ? conflict(`${owner.displayName} already has this lead.`, "ALREADY_TAKEN", { ownerStaffId: owner.id }) : notFound();
       const r = await fn(tx, l, staff);
       await written(tx, this.ports.audit, {
-        firmId: ctx.firmId, actor: actorOf(ctx), action, entity: "fo_lead", entityKey: id, summary: `Staff ${ctx.staffId} ${r.summary}: ${l.number}.`,
+        firmId: ctx.firmId, actor: actorOf(ctx), action, entityKey: id, summary: `Staff ${ctx.staffId} ${r.summary}: ${l.number}.`,
         detail: { ownerStaffId: r.owner, previousOwnerStaffId: l.owner_staff_id },
         event: { type, subjectId: id, payload: LeadEventPayload.parse({ leadId: id, personId: l.person_id, door: l.door, state: l.state, ownerStaffId: r.owner }) },
       });
