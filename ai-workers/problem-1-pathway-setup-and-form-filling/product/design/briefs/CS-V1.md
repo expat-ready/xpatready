@@ -1,9 +1,10 @@
 # Brief: CS-V1, check every input on the case-side routes (map row 10; case side, API only; cloud builder lane; row owner the release Lead)
 
-Drafted 16 Nov 02:1x IST by the case-side shaping lane from BACKLOG row CS-V1 (line 828), checked against `main` 81505985f. **Draft until the release Lead approves it.** Model: Opus 5.5, effort: medium (input checks on existing routes; no schema, money or new screen; P-608). **Ready when:** PR 1 now. PR 2 after PR 1. PR 3a after PR 1, the Bake's tag (P-499) and CS-D1b (`sign-steps.ts`). PR 3b (`runtime.ts`) after CS-K1, CS-NT1 part 1 and CS-W1 have merged. **Four PRs** (the row's three, with PR 3 split in two for `runtime.ts`), each under 400 lines.
+Drafted 16 Nov 02:1x IST by the case-side shaping lane from BACKLOG row CS-V1 (line 828), checked against `main` 81505985f. **Draft until the release Lead approves it.** Model: Opus 5.5, effort: medium (input checks on existing routes; no schema, money or new screen; P-608). **Ready when:** PR 1 now. PR 2 after PR 1. PR 3a after PR 1, the Bake's tag (P-499) and CS-D1b (`sign-steps.ts`). PR 3b (`runtime.ts`) after the Bake's tag (P-499) and after CS-K1, CS-NT1 part 1 and CS-W1 have merged. **Four PRs** (the row's three, with PR 3 split in two for `runtime.ts`), each under 400 lines.
 
 **Points the release Lead confirms in the approval (the code on `main` differs from the row's text):**
-* **A route finder already exists.** `tests/check_forms_qa53.ts:26` has `routes()`, which finds every route in `api/src` (subfolders too) from the code, using `tests/lib/ts-files.ts`. PR 1 **moves it to `tests/lib/routes.ts`** and both tests import it: one finder, no second copy. That is one line changed in `check_forms_qa53.ts`, the file FO-2's owed qa53 scan row will also touch (tell that row's builder).
+* **No finder for write routes exists.** `tests/check_forms_qa53.ts:24-42` has `routes()`, but it finds **`@Get` routes only** (its pattern is `@Get\("…"\)`), because QA-53 guards reads. Bodies come with `@Post`, `@Put` and `@Patch`, so PR 1 writes its own finder in a new `tests/lib/routes.ts`. It covers every verb (`@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`), the controller prefix, `@Body`/`@Query`/`@Param`, and the handler's service method, using `tests/lib/ts-files.ts`. `check_forms_qa53.ts` is not touched; FO-2's owed qa53 scan row may later move onto the new finder (tell that row's builder).
+* **PR 3's wait on the Bake's tag is kept for both halves.** The row puts PR 3 after the Bake's tag (P-499). This brief's split keeps that wait on PR 3a and on PR 3b, and adds CS-K1, CS-NT1 part 1 and CS-W1 for PR 3b. An earlier draft had dropped the tag from 3b.
 * **The count** matches the row's within the controllers' own decorators: on `main`, 126 routes under `@Controller("api/runtime")` and `@Controller("api/link")` in 24 files, 82 of them taking `@Body()` or `@Query()` (`person-link.ts`'s count includes its `api/demo` controller). A handler passes the body to a service method, which parses it with `parse(Schema, body)` (`api/src/programs.ts:40`), so the check follows each handler into its service method. That is how the row measured 20 unparsed methods. The 20 are taken as the starting allow-list only after PR 1's check confirms each one; the row's per-file split is the expected result.
 * **"An unknown field answers 400" applies to the new schemas only.** On `main`, 56 schemas are strict (`strictObject` / `.strict()`) against 192 plain `z.object(` ones. Making the 47 existing parsed methods strict could refuse fields today's screens send. That would be a behaviour change outside this row: name it as a follow-up, and do not do it here.
 * **A non-UUID id already answers 404 in most places.** `ProblemErrors` in `main.ts` maps a malformed id to "not found", and `case-changes.ts:34` checks the pattern. PR 1's check **asks every route with a `:id`-style parameter with a non-UUID and expects 404**, listing the routes that answer 500 (into the allow-list, fixed in PR 2-3b). It does not add a second mapping.
@@ -12,13 +13,13 @@ Drafted 16 Nov 02:1x IST by the case-side shaping lane from BACKLOG row CS-V1 (l
 ---
 You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime CS-V1 <PR>` (PRs: `1-check`, `2-review-readiness-additions`, `3a-link-prepare-sign`, `3b-runtime`) and take **one PR of row CS-V1**, end to end on a fresh branch from `origin/main`.
 
-**The row:** `product/BACKLOG.md` row **CS-V1**, read with the points above. Sources (cite these; the row has no team id of its own): `product/STANDARDS.md` **§6** (contract first: zod schemas shared by the API and the web app; errors as RFC 9457 Problem Details with field-level messages), map row 10 ("gap"); **AG-1-45@a4057ff0** (no endpoint returns an unbounded set or another firm's data: a malformed id is "not found", never a server error).
+**The row:** `product/BACKLOG.md` row **CS-V1**, read with the points above. Sources (cite these; the row has no team id of its own): `product/STANDARDS.md` **§6** (contract first: zod schemas shared by the API and the web app; errors as RFC 9457 Problem Details with field-level messages), map row 10 ("gap"); **AG-1-45@a4057ff0** (every list or read is paginated and scoped to the firm; no endpoint returns an unbounded set or another firm's data). The 404 for a malformed id is the app's own rule, in `main.ts`'s `ProblemErrors` (`:211`, "A malformed id (not a UUID, or with a NUL byte) is simply not found (review #4, break m5)"), not AG-1-45's.
 
-**Read only these:** `tests/check_forms_qa53.ts` (`routes()`, `:26` onwards) and `tests/lib/ts-files.ts`; `api/src/programs.ts:40` (`parse`); `api/src/main.ts`'s `ProblemErrors`; for your PR, the files it names and their schemas in `contracts/` (`contracts/runtime.ts`, `contracts/person-link.ts`, and the file each other one already imports from).
+**Read only these:** `tests/check_forms_qa53.ts:24-42` (`routes()`, as a model only: it finds GETs) and `tests/lib/ts-files.ts`; `api/src/programs.ts:40` (`parse`); `api/src/main.ts`'s `ProblemErrors`; for your PR, the files it names and their schemas in `contracts/` (`contracts/runtime.ts`, `contracts/person-link.ts`, and the file each other one already imports from).
 
 **What to build:**
 * **PR 1, the check** (~350 lines):
-  * `tests/lib/routes.ts` (the moved finder);
+  * new `tests/lib/routes.ts`, the finder for every verb (point above);
   * new `tests/check_csv1_inputs.ts`, which:
     1. lists every route under `api/runtime` and `api/link`, in any file or folder, `features/` included;
     2. follows each handler that takes a body or query into its service method;
@@ -37,13 +38,13 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime C
   * **CS-V1 DW4** (each of PR 2, 3a, 3b): for each fixed method, an oversized string, a wrong type and an unknown field each answer 400 with the field named, and **store nothing** (row counts read before and after). A correct body still answers as before.
   * **CS-V1 DW5** (PR 3b): the allow-list is empty and the check passes.
 * **Touch (nothing else):**
-  * PR 1: new `tests/lib/routes.ts`, `tests/check_forms_qa53.ts` (the import line), new `tests/check_csv1_inputs.ts`;
+  * PR 1: new `tests/lib/routes.ts`, new `tests/check_csv1_inputs.ts`;
   * PR 2, 3a, 3b: the named files (their service methods' first lines only) and their `contracts/` schema files, plus the test's allow-list.
   * No engine, schema or screen change. A web screen that sent an extra field to a now-strict route is a stop-and-ask.
 
 **Done when:** `tsx studio/tests/check_csv1_inputs.ts` exits 0 with the PR's DW cases each passing and failing as named, and after PR 3b the allow-list is empty (DW5). `check_forms_qa53.ts`, the case suites of the touched files (found with `tools/check-select-suites.sh`) and the web screens' browser suites for those routes (named in the PR) pass unchanged. Full `ci` is green on the head.
 
-**Duplicate check:** searched BACKLOG (no row covers input checks on the case side; map row 10 "gap"; FO-2's qa53 scan row is the route finder's other user), open PRs (`check_csv1`, `tests/lib/routes.ts`), `git grep -n "routes()" tests` on `main` (only `check_forms_qa53.ts`) and BUGS. zod 4.4.3 is in `package.json`; no list or check says which routes parse.
+**Duplicate check:** searched BACKLOG (no row covers input checks on the case side; map row 10 "gap"; FO-2's qa53 scan row is the route finder's other user), open PRs (`check_csv1`, `tests/lib/routes.ts`), `git grep -n "routes()" tests` on `main` (only `check_forms_qa53.ts`, GETs only) and BUGS. zod 4.4.3 is in `package.json`; no list or check says which routes parse.
 
 **Parallel safety (against the rows that add or change routes):**
 * **CS-C1b** (`runtime.ts` `createCase`, no route): no overlap with PR 3b's methods; PR 3b waits for it anyway (below).
