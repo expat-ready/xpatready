@@ -1,0 +1,4 @@
+  - [pid=23817] exception while trying to kill process: Error: kill EPERM
+  - [pid=23817] <process did exit: exitCode=21, signal=null>
+    '  - [pid=23817] exception while trying to kill process: Error: kill EPERM',
+    '  - [pid=23817] <process did exit: exitCode=21, signal=null>',
