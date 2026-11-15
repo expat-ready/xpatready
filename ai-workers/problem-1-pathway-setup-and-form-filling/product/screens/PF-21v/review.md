@@ -81,3 +81,20 @@ Reviewer (Opus 5.5, did not build it), 15 Nov. Commit **c799e5fa0eeee1574ab0c709
 Journey score (reviewer role, API journeys; report: `journey-test-reviewer-2026-11-15.md`): **8.5/10, pass, no 0.**
 
 Verdict: Approve c799e5fa0eeee1574ab0c709127bb1ca4622cbec
+
+## Re-review, diff only (P-277): c799e5fa0..762632f0c
+* **What I read:** 2eda64fb3 (the card, as read above), 946d28704 (m1: `localDate` dropped, `complaints.ts:28`), c8c484182 (records only), and 762632f0c (`BusinessDayTally` in `business-days.ts:76-103`, wired in `complaints.ts:135-139,195`; DW1 and DW2 tests added).
+* **Suites at 762632f0c:** `check_pf21v_views.ts` 54/0, `check_pf21w_routes.ts` 83/0, `check_pf21_complaints.ts` 107/0.
+* **The tally is correct.**
+  * The forward and backward extension (`cum[k]` over `(lo, lo+k]`; the `shift` re-bases the old totals) matched a naive weekday count on 2000 random spans from 2000 to 2026, in random order: 0 mismatches.
+  * It also gave 0 mismatches on 100 rows taken newest first across 26 years (the "all" view's order, so every row extends the tally backward).
+  * The Apia skipped day (30 Dec 2011) is still not counted.
+* **The new tests catch real breaks.** Each mutation turns the suite red:
+  * a fresh tally per row: the DW2 timing check fails;
+  * an off-by-one in the backward shift: 3 red;
+  * a backward window shifted by one day: the DW1 shared-tally check fails.
+* **Cost:** one walk of the dates per request. 26 years of dates take 245–355 ms however the rows are ordered; the concatenation is negligible next to the date work. Before this fix it was 1.3–1.6 s.
+* **m4 (new, Minor). The DW2 check has a thin wall-clock margin.** It needs under 400 ms. Over five runs on this 4-core sandbox it measured 270, 373, 332, 271 and 347 ms; the last two ran with four busy loops beside it. It never failed, but a slower or busier CI runner can turn it red with no code cause. Fix if wanted: assert on the number of date look-ups (one per date, around 9 800), or widen the bound. It does not hold the label.
+* **The breaker's Minors left as questions** (a calendar change after recording, a firm with no opening days (my m3), code-point sort of handlers): that is the right route, since they need a ruling, not code. My m1 and m2 are closed.
+
+Verdict: Approve 762632f0cc4b97972c122b39b6947f1c8dacacfc

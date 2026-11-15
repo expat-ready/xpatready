@@ -163,9 +163,16 @@ try {
   ok("PF-21v DW2 fail→pass: GET /:id reads them once too (not once per event)", reads === 3, reads);
 
   for (let i = 0; i < 100; i++) await rec(new Date(Date.parse("2000-01-03T15:00:00Z") + i * 3_600_000).toISOString());
-  const t0 = performance.now(), old = await svc.list(owner, "overdue", { limit: 100 }), ms = performance.now() - t0;
+  // Counted, not timed (review m4): each date read is a few Intl formatToParts calls; one walk of ~9,800 dates stays far
+  // under 100,000 calls, where a walk per row (100 × ~9,800 dates) is millions.
+  const proto = Intl.DateTimeFormat.prototype, real = proto.formatToParts;
+  let reads2 = 0;
+  proto.formatToParts = function (this: Intl.DateTimeFormat, d?: Date | number) { reads2++; return real.call(this, d); };
+  let old: Awaited<ReturnType<typeof svc.list>>;
+  try { old = await svc.list(owner, "overdue", { limit: 100 }); } finally { proto.formatToParts = real; }
+  const span = Math.round((clock.now().getTime() - Date.parse("2000-01-03T15:00:00Z")) / 86_400_000);
   const oldest = old.items[0], expectOld = oldest ? -businessDaysBetween(cal, oldest.acknowledgeBy, clock.now()) : 0;
-  ok("PF-21v DW2 pass (break M1): a page of 100 complaints overdue since 2000 is one walk of the dates, not one per row (under 400 ms), with the right count", old.items.length === 100 && oldest?.businessDaysLeft === expectOld && expectOld < -6000 && ms < 400, { ms: Math.round(ms), got: oldest?.businessDaysLeft, expectOld });
+  ok("PF-21v DW2 pass (break M1): a page of 100 complaints overdue since 2000 is one walk of the dates, not one per row (date reads under 10 per date of the span), with the right count", old.items.length === 100 && oldest?.businessDaysLeft === expectOld && expectOld < -6000 && reads2 < 10 * span, { reads2, span, got: oldest?.businessDaysLeft, expectOld });
 
   // -------------------------------------------------------------------------------------------- the app for DW3-DW6
   const { app, base } = await makeApp();
