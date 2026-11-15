@@ -83,3 +83,12 @@ Outside this PR's files (note only): `/front-office/web-form/<token>/x` or a lin
 * **Speed:** the leads API answers in under 20 ms (budget < 1 s).
 
 Not re-tested: the "cannot see" match line (DW3). My probe matched an unassigned duplicate, which the viewer may see.
+
+## Re-check at ff9c21216 (15 Nov; :4524 = this head + FO-2 ceda426a9, db `xr_studio_screens_fo4`)
+**Result: S1, S2 and S3 are fixed. No screen Blocker or Major is left, apart from S4 (`frame-ancestors`), which stays FO-2's PR question. One API Major is left for #1813 (A5).**
+* **S1 fixed.** With the expiry set in the past and a chip clicked, the sign-in card shows, the name leaves the header and the stored session is removed. A 4 s session with nothing clicked shows the card after 5 s on Leads (0 rows left) and on one lead (the email is gone). Signing in again stays on the same lead.
+* **S2 fixed.** Leads: the Owner had 13 rows on All open. After a 401 the Case Officer signed in on the same tab, and the table read 2, 0, then 9 (polled every 10 ms); the Owner's 13 never showed. One lead: the Owner had open a lead the Case Manager owns. After the Case Officer signed in, the h1 went "Sign in to your firm", then empty, then "Lead not found"; the lead's name never showed.
+* **S3 fixed.** Send pressed 350 ms after the page loaded was held, then thanked, and the enquiry was stored. Three `requestSubmit()` calls during the hold sent 3 POSTs and made 1 lead.
+* **S5 fixed.** A forged stamp got `RELOAD`. The page said "The form was refreshed…", moved focus to the summary and kept the answers. Sending again was thanked and made 1 lead.
+* **Fixed in the diff, not re-tested in the browser:** S9, S13 and S14. **Still open, all Minor:** S6, S7, S8, S10, S11 and S12.
+* **A5 Major, API (FO-2), still at ceda426a9: BR-5 fails for viewers without see-all.** The Case Manager took a lead; 0.7 s later the Case Officer ("Everyone sees all" off) pressed Take it on their stale row. The toast read "No such lead in your firm.", not "<name> already has this lead.". Cause: `sawIt` is worked out from the row read before the lock (`api/leads.ts:99-102`). By then the lead is someone else's, so the server answers 404; only a truly simultaneous click gets the 409 with the name. Naming the owner or not is a choice for the row owner. Until then the screen shows a 404 as if the lead did not exist.
