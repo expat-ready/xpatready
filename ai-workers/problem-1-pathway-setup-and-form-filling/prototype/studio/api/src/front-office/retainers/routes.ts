@@ -6,7 +6,7 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Req, Res, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
-import { PermissionKeys, problem, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
+import { OwnOrAll, PermissionKeys, problem, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
 import { PlatformClock } from "../../platform/identity/port.ts";
 import { FileLinks, LocalFiles } from "../files.ts";
 import { OFFLINE_PDF_MAX_BYTES, Retainers, TEMPLATE_MAX_BYTES, type Upload } from "./service.ts";
@@ -51,7 +51,7 @@ export class RetainersController {
   @Post("prospects/:id/retainers") @PermissionKeys("agent/retainer:draft")
   draft(@Req() r: R, @Param("id") prospectId: string, @Body() b: B) { return this.svc.draft(staffOf(r), prospectId, b ?? {}); }
 
-  @Get("retainers/:id") @PermissionKeys("agent/retainer:show")
+  @Get("retainers/:id") @PermissionKeys("agent/retainer:show") @OwnOrAll("agent/prospect")
   read(@Req() r: R, @Param("id") id: string) { return this.svc.read(staffOf(r), id); }
 
   @Patch("retainers/:id") @PermissionKeys("agent/retainer:draft")

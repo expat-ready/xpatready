@@ -6,7 +6,9 @@
 // the row (write-once, so a retry writes the same bytes and a lost transaction leaves only an unreferenced file).
 // Reads and writes are firm-scoped: another firm's id is 404 (contracts §0.2). With "everyone sees all" off (PF-3's
 // platform.everyone_sees_all), a person sees a prospect's retainers when they own the prospect, and the retainer's
-// representative always sees it and the prospect's header (BR-3). Money is in cents, CAD.
+// representative always sees it and the prospect's header (BR-3). PF-6b (ruling 4, SA-6-24): "sees all" also needs the
+// person's own agent/prospect:view.all key (a role without it is own-only), read from their live grants. Money is in
+// cents, CAD.
 import { HttpException, Injectable } from "@nestjs/common";
 import { Prisma, type FoRetainerFeeWhen, type PrismaClient } from "@prisma/client";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -16,6 +18,7 @@ import type { AuditPort } from "../../../../ports/audit.ts";
 import { EVENT, RetainerEventPayload, type EventName } from "../../../../ports/events.ts";
 import type { FilesPort } from "../../../../ports/files.ts";
 import { auditEvent } from "../../platform/audit/audit-event.ts";
+import { holdsKey } from "../../platform/identity/catalogue.ts";
 import { DUTY_KEYS, problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { EVERYONE_SEES_ALL, readSetting } from "../../platform/settings.ts";
 import { DOCX, DocxRender, STARTER_KEY, UnreadableDocx, buildStarter, placeholdersOf, renderDocx, starterFrame } from "./docx.ts";
@@ -98,6 +101,8 @@ function signedVersionOf(body: Record<string, unknown>, current: number): number
 export const COPIED_FROM = "copied_from_version";
 /** The merge values that name a version's signer and representative by id (FO-5f review M-2). Not placeholders. */
 export const SIGNER_ID = "signer.person_id", REPRESENTATIVE_ID = "representative.staff_id";
+/** The key that opens every prospect of the firm (SA-6-24); its sibling agent/prospect:view.own is everyone's own. */
+export const PROSPECT_VIEW_ALL = "agent/prospect:view.all";
 
 /** BR-5: fee rows in. Amounts in cents (whole numbers, 0 … CAD 100 million), empty while the draft has none. */
 export function feesOf(v: unknown): FeeIn[] {
@@ -155,7 +160,12 @@ export class Retainers {
     }
   }
 
-  private async seesAll(firmId: string) { return (await readSetting<boolean>(this.db, firmId, EVERYONE_SEES_ALL.key)) === true; }
+  /** All of the firm's prospects (and their retainers): the person's agent/prospect:view.all key and the firm setting (PF-6b).
+   *  The key is read from the person's live role grants, the tables the guard reads, not from req.platform.keys: callers
+   *  that build a context themselves (FO-5's suite) keep their results (Lead B, #1808). */
+  private async seesAll(ctx: StaffContext) {
+    return (await readSetting<boolean>(this.db, ctx.firmId, EVERYONE_SEES_ALL.key)) === true && holdsKey(this.db, ctx.firmId, ctx.staffId, PROSPECT_VIEW_ALL);
+  }
 
   /** The firm's people who may represent (BR-3): active, a licence record, and the case-manager sign-off keys. */
   async representatives(firmId: string): Promise<{ staffId: string; name: string }[]> {
@@ -176,7 +186,7 @@ export class Retainers {
       include: { subjectPerson: true, subjectCompany: { include: { contacts: { where: { validTo: null }, include: { person: true }, orderBy: { validFrom: "asc" } } } }, primaryContact: true, stage: true },
     });
     if (!p) return notFound("prospect");
-    if (!viaRepresentative && !(await this.seesAll(ctx.firmId)) && p.ownerStaffId !== ctx.staffId) return notFound("prospect");
+    if (!viaRepresentative && !(await this.seesAll(ctx)) && p.ownerStaffId !== ctx.staffId) return notFound("prospect");
     return p;
   }
 
@@ -186,7 +196,7 @@ export class Retainers {
     if (typeof id !== "string" || !UUID.test(id)) return notFound();
     const r = await this.db.foRetainer.findFirst({ where: { firmId: ctx.firmId, id } });
     if (!r) return notFound();
-    if ((!change && r.representativeStaffId === ctx.staffId) || (await this.seesAll(ctx.firmId))) return r;
+    if ((!change && r.representativeStaffId === ctx.staffId) || (await this.seesAll(ctx))) return r;
     if (r.prospectId) {
       const p = await this.db.foProspect.findFirst({ where: { firmId: ctx.firmId, id: r.prospectId }, select: { ownerStaffId: true } });
       if (p?.ownerStaffId === ctx.staffId) return r;

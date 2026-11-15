@@ -14,10 +14,10 @@
 
 | Status | Rows |
 |---|---|
-| qa Works\* | 6 |
-| Merged | 5 (74, 76 and 77 moved back to Shaped: each gained a new part, CS-DL1, CS-NT1, CS-C1) |
+| qa Works\* | 9 (2, 9, 99 added by Lead 59, 15 Nov 16:3x IST on qa #1833 and P-616) |
+| Merged | 6 (2 and 9 to qa Works, 16:3x; 9, 38, 40 moved up by Lead 59, 15 Nov 15:5x IST: their one part each merged, PF-14 #1757, FO-3 #1760; 74, 76 and 77 moved back to Shaped: each gained a new part, CS-DL1, CS-NT1, CS-C1) |
 | In PR (the whole row) | 0 (6 rows have a part in PR: 5, 6, 27, 29, 37, 41, through #1741, #1742, #1744) |
-| Shaped | 90 |
+| Shaped | 86 |
 | Not shaped | 0 |
 
 Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, messages, automation, portal login, complaints), **Front office** (leads, booking, retainers, signing, compliance checks), **Client money**, **Case side** (the release Lead's: cases, documents, forms, the configurator), **Audit**.
@@ -26,13 +26,13 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
 | 1 | Hosting, data, backups and logs in Canada | Platform (running it) | PF-7 merged; PF-8a, PF-8b, PF-8c; PF-23c | Shaped (deploy waits on the founder's AWS account) |
-| 2 | Database | Platform | PF-3 (#1728) | Merged |
+| 2 | Database | Platform | PF-3 (#1728); R1.2 Works (qa #1833, gate A by API, P-616) | qa Works |
 | 3 | Walls between firms | Platform + case side | PF-12; case-side tables: CS-W1, CS-W2, CS-W3, CS-W4 | Shaped |
 | 4 | Each query runs inside its firm | Platform | PF-12 | Shaped |
 | 5 | Staff sign-in with two-step, passkeys, lock-out on leaving | Platform | PF-4 (In PR #1744), PF-4b, PF-4s | Shaped |
 | 6 | Permissions: deny by default, own versus all, money and licence apart | Platform | PF-4 (In PR #1744), PF-6 | Shaped |
 | 8 | Audit trail nobody can edit | Audit | AUD-1a, AUD-1b, AUD-1m | Shaped |
-| 9 | Background jobs, schedules, reminders | Platform | PF-14 | Shaped |
+| 9 | Background jobs, schedules, reminders | Platform | PF-14 (#1757); R1.9 Works (qa #1833, gate A by API, P-616) | qa Works |
 | 10 | Checking every input | All | PF-28 (PF/FO); CS-V1 (case side) | Shaped |
 | 11 | Server framework | Platform | PF-7 | Merged |
 | 12 | Screen framework, one UI kit | Platform | PF-1 | Merged |
@@ -80,9 +80,9 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
 | 37 | Public booking page; no double booking | Front office | FO-1b (In PR #1741), FO-3 (API); booking screens: FO-3a, FO-3w, FO-3sc | Shaped |
-| 38 | Time zones from booking page to invite | Front office | FO-3 | Shaped |
+| 38 | Time zones from booking page to invite | Front office | FO-3 (#1760) | Merged |
 | 39 | Staff calendar screen | Front office | FO-3st (FO-3st1), FO-3sc | Shaped |
-| 40 | Calendar invite files | Front office | FO-3 | Shaped |
+| 40 | Calendar invite files | Front office | FO-3 (#1760) | Merged |
 | 41 | Staff hours and time off | Front office | FO-1b (In PR #1741), FO-3; screen: FO-3a, FO-3st (FO-3st2) | Shaped |
 | 42 | Reschedule or cancel by link; outcomes; consult record | Front office | FO-3; staff screen: FO-3a, FO-3w, FO-3st (FO-3st1, FO-3st3) | Shaped |
 | 43 | Two-way Google or Outlook calendar sync | Front office | FO-3s1, FO-3s2, FO-3s3, FO-3s4, FO-3s5 | Shaped (Google's and Microsoft's reviews are outside clocks) |
@@ -152,11 +152,11 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 ### K. Government forms, the pathway set-up, AI on top
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
-| 80 | IRCC forms per applicant from one set of answers | Case side | C7.1, C7.8 Works; C7.2 Partial; BK-10, BK-16, BK-22 to BK-24 | Merged |
+| 80 | IRCC forms per applicant from one set of answers | Case side | C7.1, C7.8 back to Partial (QA-383; qa #1833); C7.2 Partial; BK-10, BK-16, BK-22 to BK-24 | Merged |
 | 82 | Readiness check; staff approval per form | Case side | C7.6, C7.10, C8.3 Works | qa Works\* |
 | 83 | Conditional questions and fields | Configurator | C4.4 Works | qa Works\* |
 | 84 | Pathway set-up: hierarchy, versioned releases, cited rules | Configurator | M2 60/60 Works | qa Works\* |
-| 99 | AI on top of the guardrails: proposed values, document reading | Case side | C3.1, C6.5, C7.5 Works; BK-14; model choice open (founder) | Shaped |
+| 99 | AI on top of the guardrails: proposed values, document reading | Case side | C3.1, C6.5, C7.5 Works; BK-14; Works on qa #1833 (the model choice is launch condition C26, not a part, P-616) | qa Works\* |
 | 106 | Pathway assessment AS-1: Express Entry and FSW scores | Front office + configurator | FO-15a, FO-15b, FO-15s; AS-1m, AS-1g, AS-1s, AS-1c, CS-106c | Shaped |
 | 107 | Pathway assessment AS-2: five provincial streams, client copy | Front office + configurator | AS-2c, AS-2cs; AS-2e, AS-2d1, AS-2d2 (streams: one founder card, P-607 (9)) | Shaped |
 
