@@ -77,7 +77,11 @@ try {
   ok("PF-3 pass: migrate diff after it on the demo-data copy names no PF-3 table or type", platformDiff(DEMO).length === 0, platformDiff(DEMO));
 
   // ------------------------------------------------------------------------------------------------- catalogues (data)
-  const perRole = sql(DEMO, `select string_agg(role || ':' || n, ',' order by role) from (select role::text, count(*) n from platform_role_permission group by role) x`);
+  // Keys later rows add to the catalogue (P-601; Lead B on #1753): Appendix C is asserted exactly for SA-06's own keys, and
+  // each adding row asserts its own rows exactly. A row that adds keys extends this list (never a wider filter).
+  const ADDED_BY_LATER_ROWS = ["agent/complaint:"];   // PF-21: agent/complaint:record, agent/complaint:read
+  const laterKeys = ADDED_BY_LATER_ROWS.map((p) => `permission_key not like '${p}%'`).join(" and ");
+  const perRole = sql(DEMO, `select string_agg(role || ':' || n, ',' order by role) from (select role::text, count(*) n from platform_role_permission where ${laterKeys} group by role) x`);
   ok("PF-3 pass: the starter roles' keys per role equal SA-06 v3.15 Appendix C (Owner 231, Admin 213, Case Manager 145, Case Officer 99, Billing / Finance 46, Read-only 40)",
     perRole === "ADMIN:213,BILLING_FINANCE:46,CASE_MANAGER:145,CASE_OFFICER:99,OWNER:231,READ_ONLY:40", perRole);
   ok("PF-3 pass: every seeded key is a firm (agent/*) key; Owner-only keys are on Owner alone (SA6-D5)",
@@ -166,8 +170,8 @@ try {
 
   // ----------------------------------------------------------------------------------------------- settings (lines 8-9)
   const WS = u(1), audits = () => sql(DEMO, `select count(*) from audit_event where entity = 'platform_firm_setting'`);
-  ok("PF-3 pass: an unset key reads its default (currency CAD, two-step off until founder question 3, business hours Mon-Fri 09:00-17:00)",
-    await readSetting(db, firmA, "platform.currency") === "CAD" && await readSetting(db, firmA, "platform.require_two_step") === false
+  ok("PF-3 pass: an unset key reads its default (currency CAD, two-step on and fixed since P-567 (PF-4), business hours Mon-Fri 09:00-17:00)",
+    await readSetting(db, firmA, "platform.currency") === "CAD" && await readSetting(db, firmA, "platform.require_two_step") === true
     && JSON.stringify(await readSetting(db, firmA, "platform.business_hours")) === JSON.stringify(["MON", "TUE", "WED", "THU", "FRI"].map((day) => ({ day, opens: "09:00", closes: "17:00" }))));
   ok("PF-3 fail: a value that fails its registered schema is refused and nothing is written",
     await throwsLike(() => writeSetting(db, { firmId: firmA, key: "platform.currency", value: "EUR", by: "user-R", workspaceId: WS }), (e) => e instanceof SettingRefused && e.getStatus() === 400)
