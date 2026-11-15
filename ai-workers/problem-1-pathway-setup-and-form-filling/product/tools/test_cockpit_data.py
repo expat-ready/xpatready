@@ -1581,6 +1581,9 @@ class BehaviourPartsCustomer(unittest.TestCase):
         # P-9 (date) and P-7 (count, second bold part) count; P-8 kept; P-6 names a target with no date or count; P-5 is 12 Nov
         self.assertEqual((t["value"], t["ids"], t["window"]), (2, ["P-9", "P-7"], {"from": "2026-11-14", "to": "2026-11-20"}))
         self.assertEqual(cd.target_changes("| P-1 | 1 Nov | **Release 1 target: 24 Nov.** |", date(2026, 11, 20))[0]["day"], "2026-11-01")
+        # the date must sit in the target's own clause (live P-549: "... the target's shape accepted, ... on Monday 16 Nov")
+        self.assertEqual(cd.target_changes("| P-2 | 13 Nov | **Pause (his decisions: the target's shape accepted, a test on Monday 16 Nov).** |",
+                                           date(2026, 11, 20)), [])
 
     def test_customer_box(self):
         c = run()[1]["customer"]

@@ -1084,8 +1084,9 @@ def compute(snap):
                 continue
             for b in re.findall(r"\*\*(.+?)\*\*", ln[m.end():]):
                 low = b.lower()
-                if (re.search(r"\btarget\b", low) and not re.search(r"\b(?:kept|stands|unchanged)\b", low)
-                        and (first_date(b) or re.search(r"\b\d+ (?:capabilit|build rows|rows)", low))):
+                parts = [c for c in re.split(r"[;,(]", b) if re.search(r"\btarget\b", c.lower())]
+                if (parts and not re.search(r"\b(?:kept|stands|unchanged)\b", low)
+                        and any(first_date(c) or re.search(r"\b\d+ (?:capabilit|build rows|rows)", c.lower()) for c in parts)):
                     hits.append(m.group(1))
                     break
         N["target_changes_week"] = num(len(hits), "DECISIONS rows of the last 7 IST days changing a dated or counted target", detail=hits)

@@ -727,8 +727,8 @@ def founder_asks_dated(state_text, today):
 
 
 def target_changes(dec_text, today):
-    """DECISIONS.md rows that change a date or count target: a bold part of the row names "target" with a date or a count and
-    does not say kept, stands or unchanged. Returns [{id, day, text}] with the row's own date."""
+    """DECISIONS.md rows that change a date or count target: a bold part of the row has a clause (cut at ";", "," and "(")
+    naming "target" with a date or a count, and the bold part does not say kept, stands or unchanged. Returns [{id, day, text}] with the row's own date."""
     out = []
     for line in (dec_text or "").splitlines():
         m = re.match(r"^\| (P-\d+) \| ([^|]+) \|(.*)$", line)
@@ -736,7 +736,8 @@ def target_changes(dec_text, today):
             continue
         d = day_of(m.group(2), today)
         for seg in re.findall(r"\*\*(.+?)\*\*", m.group(3)):
-            if TARGET_WORD.search(seg) and TARGET_VALUE.search(seg) and not TARGET_KEPT.search(seg):
+            cl = [c for c in re.split(r"[;,(]", seg) if TARGET_WORD.search(c)]      # the date or count is in the target's own clause
+            if any(TARGET_VALUE.search(c) for c in cl) and not TARGET_KEPT.search(seg):
                 out.append({"id": m.group(1), "day": d.isoformat() if d else None, "text": clean(seg, 140)})
                 break
     return out
