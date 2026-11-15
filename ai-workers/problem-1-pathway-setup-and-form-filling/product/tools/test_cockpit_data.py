@@ -569,6 +569,24 @@ class Contract(unittest.TestCase):
         d3 = json.loads(json.dumps(d))
         del d3["quality"]["review_rounds"]["reason"]                # a legacy number (v/src) is walked too
         self.assertTrue(cd.validate(d3, sch))
+        # board v53: the top numbers and the capability table are part of the contract
+        self.assertEqual((d["top_numbers"]["works_today"]["value"], d["top_numbers"]["lanes"]["started"]["value"]), (1, 4))
+        for path in (("top_numbers", "works_today", "by_size"), ("top_numbers", "lanes", "idle", "class"), ("capability_table", "not_mapped", "src")):
+            dx = json.loads(json.dumps(d))
+            o_ = dx
+            for k in path[:-1]:
+                o_ = o_[k]
+            del o_[path[-1]]
+            self.assertTrue(cd.validate(dx, sch), path)
+        dx = json.loads(json.dumps(d))
+        dx["top_numbers"]["works_today"]["target"] = 12              # the founder's target is 10 (A68)
+        self.assertTrue(cd.validate(dx, sch))
+        dx = json.loads(json.dumps(d))
+        dx["capability_table"]["rows"][0]["size"] = "XL"             # only S, M, L or not shaped
+        self.assertTrue(cd.validate(dx, sch))
+        dx = json.loads(json.dumps(d))
+        dx["top_numbers"]["rules_caught"] = {}                       # rules stay internal (A70): not in the top strip
+        self.assertTrue(cd.validate(dx, sch))
 
     def test_history_one_line_per_day(self):
         p = os.path.join(tempfile.mkdtemp(), "history.jsonl")

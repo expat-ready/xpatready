@@ -2553,6 +2553,7 @@ def main():
                     "main_ref_is_head": ex.get("main_ref_is_head"), "current_lead": (comp["org"]["leads"] or [{}])[0].get("name")},
         "pace": comp["pace"], "forecast": comp["forecast"], "burnup": comp["burnup"], "capacity": comp["capacity"],
         "top3": comp["top3"], "org": comp["org"], "working_today": comp["working_today"], "health": hl,
+        "top_numbers": comp["top_numbers"], "capability_table": comp["capability_table"],
         "trust": dict(comp["trust"], freshness=comp["fresh"] + [fm_fresh]),
         "reconcile_keys": comp["keys"], "build_rows": comp["rows"],
         "history": {"file": "cockpit/history.jsonl", "today": comp["history_line"], "previous_day": (comp["history_prev"] or {}).get("day"),
