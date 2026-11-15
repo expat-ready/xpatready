@@ -796,3 +796,50 @@ No front-office screen exists yet. These go to the top of ready, each built on i
 8. then the rest of the table.
 
 PF-0c can run beside any of them. New capabilities (shaping Batches 1-5) start in a group only after that group's started rows are closed.
+
+## Rev 16.12 (15 Nov 09:4x IST, Lead B (4)): edits to existing rows and the X additions, as exact copy text (Lead 52's "not applied" list; P-607)
+
+**P-607 (founder, 15 Nov), noted:**
+* All nine answers follow Lead B's recommendations, except **LMIA: row 98's CS-98* rows are in Release 1, scheduled last in the case-side lane** (amends P-568 for row 98).
+* Q4 and Q7 are upheld, so the government-fee line is typed in R1 and ZIP is refused in R1.
+* The domain is `<firm>.expatready.com` on Route 53. PF-8b's domain parameter is `expatready.com`, and its question 1 is closed.
+
+**Already written, to copy as they are:**
+* **Batch 5, consolidated:** `design/lead-b-shaping-approvals-2026-11-15.md`, section "Batch 5: consolidated" (b1c10da9d, time fixed in a8a2fe9ae).
+* **P-606's join rows and the test-naming rule:** this file's "Rev 16.11" (abe049146).
+* **The qa rows:** "Rev 16.10" (5fd3862a3).
+
+### Edits to existing BACKLOG rows (replace or append exactly as written)
+
+| Row | Where | Text |
+|---|---|---|
+| **FO-3st** | replace the whole row's Item | "**Split into FO-3st1 (bookings calendar and booking detail), FO-3st2 (My account → Availability and Time off) and FO-3st3 (Settings → Booking types and Timings)**, shaping S2, approved in batch 1; no new scope. This row is a pointer only, so build the three." |
+| **FO-6** | append to Done when | "`FO-6 DWn`: a locked firm's signing door answers PF-27's neutral refusal through `firmAllows(firmId, 'sign')` (test; batch 2, amendment 5)." Also append: "`FO-6 DWn+1`: an Edit that ends a live request and a Withdraw each cancel the signing request through `SigningPort.cancel` in the same transaction; signing after either is refused (rev 16.8)." |
+| **FO-7c** | append to Done when | "`FO-7c DWn`: a locked firm's pay link answers PF-27's neutral refusal through `firmAllows(firmId, 'pay')` (test; batch 2, amendment 5)." |
+| **PF-4p** | append to Done when | "`PF-4p DWn`: a locked firm's portal lets a client sign in, see status and download their own documents, while uploads, signing, messaging and payments answer PF-27's neutral refusal (test; batch 2, amendment 5)." |
+| **PF-21rs** | replace Done when (S3's text, approved in batch 3) | "Browser check, in our console as the Platform Owner (`PF-21rs W1`-`W6`): (W1) log a data request, see its target date of received + 30 days, move it to In progress then Completed, and see each event listed; (W2) on the fake clock, a request past its date shows Overdue with one alert; (W3) place a person hold, then try to delete that person's record in a firm and see `HELD` with the reason; release it and the delete proceeds; (W4) open a breach naming two firms, send the notices, and see exactly one notice per firm and none to a third, with no second send offered; (W5) a firm user opening any of these pages gets 403; (W6) keyboard only, axe-core with 0 serious, at 1024 and 1440 widths (console)." |
+| **PF-6** | append to Done when (rev 16.10) | "`PF-6 DWn`: the role editor shows money keys and licence actions in their own groups, each ticked one by one, never by a group tick; a custom role copied from a starter role shows its money keys unticked unless the starter had them." "`PF-6 DWn+1`: a Case Officer without `view.all` sees only their own items in every list the screens show (PF-6b's sweep, in the browser)." |
+| **PF-23w** | append to Done when (rev 16.10) | "`PF-23w DWn`: qa's `tests/qa/check_qa452_*.ts` passes: ready counts the job queue, every handler is wrapped by `observeJob`, and `stuckJobs` runs." "`PF-23w DWn+1`: qa's `tests/qa/check_qa453_real_jobport.ts` passes 2/2; a booking reminder and the attendance question queued before a restart still run after it (QA-473)." Also add to waits on: "FO-3f #1785 merged (batch 4, amendment C)". |
+| **FO-3sr** | append to waits on | "FO-3f #1785 merged (same booking files)." |
+| **PF-8b** | replace "decisions: the domain name and where its DNS lives (founder; question 1)" | "decisions: P-607, `<firm>.expatready.com` on Route 53 in the founder's AWS account, with a `staging.` sub-zone." |
+| **FO-7v** | replace "decisions: P-603; Q2" | "decisions: P-603; P-607 (trust never negative, departing from AG-6-75 r4)." |
+| **AS-2c** | replace "Question 5" | "P-607 (review before sharing on by default, departing from BR-16's default)." |
+| **PF-F4** | replace "decisions: Q7" | "decisions: P-607 (plain ZIP refused in R1, departing from SA-8-37 and SA-8-49)." |
+| **FO-7s1** | replace "Q4" | "P-607 (the government-fee line is typed in R1; one-click is X-S3-6)." |
+
+### X additions (batch 3, Q11; add to "After the end-to-end production-grade system", P-582)
+
+| X | What | Requirement ids | Why later |
+|---|---|---|---|
+| **X-20 (widened)** | LMIA after approval (AG-17-62 to -68), inspection pack (AG-17-53), corporate dashboard (AG-17-56), quick LMIA check (AG-17-77, -78), candidate CSV import (AG-17-80), outstanding-items request (AG-17-82), ad cost as an expense (AG-17-83), filing summary (AG-17-70), employer portal views (AG-17-21's portal part, AG-17-90) | as listed | Row 98's core is in R1 (P-607); these extras follow. |
+| **X-Tasks** | Task extras: subtasks (AG-13-3), templates (AG-13-4), tasks from dated items (AG-13-65), working-day due dates (AG-13-69), Overdue by person (AG-13-68), tasks from email and "Remind me if no reply" (AG-13-71, -72), Recently deleted (AG-13-70), stand-alone reminders (AG-13-10 to -16) | as listed | PF-29's core first. |
+| **X-Assess** | Assessment extras: what-if recommendations (AG-3-22 to -24), the cut-off band (AG-3-15; P-236), the stale queue and run diff (AG-3-29, -30), pinned re-runs (AG-3-31), bulk and automatic re-runs, the client copy in the client's own language (BR-17, French first) | as listed | FO-15 and AS-2c first. |
+| **X-Notes** | One polymorphic notes service across front office and case side (AG-13-25) | AG-13-25 | Rev 16.10 (CS-NT1): two tables with the same shape in R1. |
+| **X-S3-1** | Annotations on a document preview; a "please re-take" annotation that re-requests | AG-9-25 | The preview is enough to review in R1. |
+| **X-S3-2** | ZIP unpacking | AG-9-54; SA-8-49 | P-607: refused in R1. |
+| **X-S3-3** | Password-protected uploads unlocked on the client's device | AG-9-69 | Needs client-side PDF handling. |
+| **X-S3-4** | Previews of HEIC, TIFF, Word and Excel by conversion | AG-9-24 | A conversion service is new technology. |
+| **X-S3-5** | Reports extras: scheduled reports, XLSX, saved and shared views, stage durations, SLA, productivity and compliance analytics, Rep and Compliance layouts, rollups | AG-14-2, -3, -10 to -12, -16, -21, -23 to -25 | Q8 (live reads in R1). |
+| **X-S3-6** | One-click government-fee line from a case fee | AG-6-40 | P-607: typed in R1. Waits on the case side's fee record. |
+| **X-Backup** | AWS Backup vault lock in compliance mode | — | Batch 1: governance mode in R1 until the first cloud drill passes. |
+| **X-Zip-xlsx** | `.xlsx` import, if no reader passes P-587 at PF-10b's gate | AG-18-4 | S1 question 7. |
