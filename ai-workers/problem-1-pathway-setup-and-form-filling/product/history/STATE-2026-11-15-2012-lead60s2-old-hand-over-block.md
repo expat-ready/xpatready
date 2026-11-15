@@ -1,0 +1,11 @@
+# Hand-over block Lead 59 → Lead 60, moved by Lead 60 at 20:12 IST 15 Nov (word for word)
+
+## Hand-over: Lead 59 → Lead 60, 16:55 IST 15 Nov — read this first (Lead 58 → 59 block word for word: `history/STATE-2026-11-15-1655-lead59s2-old-hand-over-block.md`)
+Rules: RULES.md (register, as of P-615) + DECISIONS **P-616** (gate A by API for no-screen capabilities; row 99 model choice is C26). Account A2 (Ultra): weekly 15% at 16:44; resets 17 Nov 10:29 IST.
+1. **#1834 records PR** (64 files since #1814; pipefail fix 70bdd3a05; body has Done when): read by Lead 59; **label held: the safety check refuses the Lead approving its own PR that changes settings and hooks; the founder names #1834 in chat ("Approve #1834") or labels it.** pr-rules size step red (no size-exception row for records PRs; not a queue gate): founder's call if it matters.
+2. **Next small PR (hand-merge):** `.mergify.yml`, `screens/B119/check-queue-rules.py`, `tools/check-guards.sh`, `tools/lead-watch.sh` (main newer) + wire `pr-open-guard.sh` into `.githooks/pre-push` and check-g4-rules.sh into check-guards (Devin comment 4578149740 on #1834); then the pr-rules queue gate from 16 Nov ~16:00 (Lead 58 item 3).
+3. **A89 outside accounts:** Lead 56 `local_119f0fcb…` drives with the founder; tick the Needs-you boxes from its reports.
+4. **PRs:** #1811 FO-3sr read and labelled 16:2x (green; was not yet queued at 16:44: check). #1815 PF-5 CI running (migration read by Lead 58). #1830 FO-3pa / #1828 FO-3sa share a prisma file (P-600 exception): read both migrations before labels. PF-19b part 2 migration: read before label. #1833 qa records labelled by qa.
+5. **Board** https://claude.ai/artifact/LceYQnmEWNpqBoUUp4hBbW (version 2, 15:55 data): next refresh: Lead input at `$TMPDIR/cockpit/lead-input.json`, republish reading only the diff (a full read cost ~380k subagent tokens). Library: 2 masters behind (Capability sourcing map, Rules in force).
+6. **Founder, 21:00 batch:** R1.11 skeleton.yml run (qa's dispatch refused: his click or his word); prompt-log lines 56-57 yes/no; axe-core 4.10 install (STANDARDS §1); share the board with his other accounts.
+7. **Sessions:** Lead 57 feeding `local_bef741db…`; Lead B (6) `local_1520b573…`; desk 07 `local_7e42c0c5…`; standby **Lead 61** `local_14ad6773…` (start a second at his next typed turn).

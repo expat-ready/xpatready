@@ -12,6 +12,8 @@ export const EVENT = {
   STAFF_ROLES_CHANGED: "staff.roles_changed",
   /** A staff member was deactivated: their sessions ended at once (platform, PF-4; contracts §1.2 events out). */
   STAFF_DEACTIVATED: "staff.deactivated",
+  /** A staff member joined by accepting an invitation (platform, PF-4b; contracts §1.2 events out). */
+  STAFF_JOINED: "staff.joined",
   /** A consultation was booked (front office, FO-3; AG-4-47). Keys: bookingId and bookingId:sequence. */
   BOOKING_SCHEDULED: "booking.scheduled",
   /** A booking moved to a new time or host (FO-3). */
@@ -43,6 +45,10 @@ export const EVENT = {
   LEAD_CREATED: "lead.created",
   /** A lead got an owner: Take it or Assign to (FO-2; AG-2-13c, AG-2-86). */
   LEAD_TAKEN: "lead.taken",
+  /** A lead was closed with a reason (FO-2; AG-2-80). */
+  LEAD_CLOSED: "lead.closed",
+  /** A closed lead was reopened (FO-2; AG-2-80). */
+  LEAD_REOPENED: "lead.reopened",
 } as const;
 export type EventName = (typeof EVENT)[keyof typeof EVENT];
 
@@ -54,6 +60,9 @@ export type FirmCreated = z.infer<typeof FirmCreated>;
  *  licence; a consumer reads the person's current roles from the platform). The firm is the outbox row's firm_id. */
 export const StaffEventPayload = z.object({ staffId: z.string().uuid() }).strict();
 export type StaffEventPayload = z.infer<typeof StaffEventPayload>;
+/** The payload PF-4b writes for `staff.joined`: ids only (the staff member and the invitation accepted). */
+export const StaffJoinedPayload = z.object({ staffId: z.string().uuid(), invitationId: z.string().uuid() }).strict();
+export type StaffJoinedPayload = z.infer<typeof StaffJoinedPayload>;
 /** What a consumer of either staff event needs: the outbox row's type and firm, and the payload's staff id. */
 export const StaffRolesChanged = z.object({ type: z.literal(EVENT.STAFF_ROLES_CHANGED), firmId: z.string().uuid(), payload: StaffEventPayload });
 export type StaffRolesChanged = z.infer<typeof StaffRolesChanged>;
@@ -111,5 +120,7 @@ export const LeadEventPayload = z.object({
   ownerStaffId: z.string().uuid().nullable(),
   /** lead.created only: the person of the firm with the same email or phone, flagged and never linked (AG-2-84). */
   possibleMatchPersonId: z.string().uuid().nullable().optional(),
+  /** lead.closed only: the reason's key (AG-2-80 rule 2; its name for it). */
+  closeReasonKey: z.string().optional(),
 }).strict();
 export type LeadEventPayload = z.infer<typeof LeadEventPayload>;
