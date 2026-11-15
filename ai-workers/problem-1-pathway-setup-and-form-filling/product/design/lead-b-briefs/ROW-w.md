@@ -4,7 +4,7 @@ Rows rev 16.4. **Start the day PF-4 (#1744) is on `main`** and the row's part 1 
 
 | `<row>w` | Part 1 | Routes and keys | Waits on |
 |---|---|---|---|
-| **PF-21w** | PF-21 #1753 | the complaint routes. `agent/complaint:record` goes to OWNER, ADMIN and CASE_MANAGER, and `agent/complaint:read` to OWNER and ADMIN (P-601); the handler reads their own complaints without the key | PF-4, #1753 merged |
+| **PF-21w** (**superseded by its own brief `PF-21w.md`, 15 Nov, Lead B (6)**) | PF-21 #1753 | the complaint routes. `agent/complaint:record` goes to OWNER, ADMIN and CASE_MANAGER, and `agent/complaint:read` to OWNER and ADMIN (P-601); the handler reads their own complaints without the key | PF-4, #1753 merged |
 | **FO-3sr** (**superseded by its own brief `FO-3sr.md`, 15 Nov, Lead B (6)**; FO-3's staff routes; rev 16.4 called it "FO-3w-staff", renamed so it isn't confused with FO-3w, the public booking screens) | FO-3 #1760 | staff create, reschedule and cancel bookings, using FO-3's `agent/booking:*` keys as its row names them (AG-4-67 visibility: a host always sees their own) | PF-4, #1760 merged |
 | **PF-25w** | PF-25 #1763 | the staff-only address change (`system/firm:address`, with a reason, audited) | **PF-4s** (our own staff's sign-in), not PF-4, plus #1763 merged |
 
