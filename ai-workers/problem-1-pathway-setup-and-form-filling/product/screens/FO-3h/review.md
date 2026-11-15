@@ -62,3 +62,22 @@ Independent Opus reviewer at high effort (P-303, P-605), 15 Nov 2026. I did not 
 **Verdict: Approve** (no open Blocker or Major; m1, m2 and n1 are not blocking. Label only after green CI on the ready head, P-277/P-385.)
 
 Reviewer: Approve 0d40a7419a9ac0a64ce400d78b737a20e107f9b2
+
+## Re-review, diff only (P-277): 0d40a741..5ba4c9d0b9e24c92dc099a1c26d638c2230b4cbd
+
+I read only `git diff 0d40a7419a9ac0a64ce400d78b737a20e107f9b2..5ba4c9d0b9e24c92dc099a1c26d638c2230b4cbd`. It touches 4 files, and no app code changed.
+
+* **`product/qa/built/FO-3h.md`** (+1 line): a records line. It states the same scope as the review: four host mails, `hostZone` returns the firm's zone, the booker's mails, reminders and .ics are unchanged.
+* **`screens/FO-3h/review.md` and `journey-test-reviewer-2026-11-15.md`**: committed byte-identical to what I wrote (`git diff --quiet` against the head is clean).
+* **m1 closed** (`check_fo3_booking.ts:592-598`): new case "FO-3h hostZone". The firm's `platform.time_zone` is set to America/Regina, then a booking for 19 Nov 17:00Z mails the host "11:00 a.m. (America/Regina)" in subject and text, with no Toronto or Dubai.
+  * The expected time is right: Intl gives "11:00 a.m." in Regina and "12:00 p.m." in Toronto for that instant.
+  * Regina (UTC-6 all year, no DST) avoids any tz-data doubt.
+  * The case runs last in FO-3h's own firm, so no earlier case sees the new zone.
+  * **Mutant re-run at this head:** with `hostZone` returning the literal "America/Toronto", the suite now gives **132 passed, 1 failed**, and the failure is exactly this case ("12:00 p.m. (America/Toronto)"). At 0d40a741 that mutant survived 132/0.
+* **n1 closed** (`:590`): `!!b1` is replaced by `ask.to === "fo3h-host@staff.example"`. This is a real check that the attendance question goes to the host. Removing the `b1` binding is harmless.
+* **Suite at this head:** `tsx tests/check_fo3_booking.ts`, **133 passed, 0 failed**, exit 0. This matches the builder.
+* **Still open, owner the builder:** m2, pasting the checks into the PR body before the label. It is process, not code, and does not block. The qa follow-up from the first review stands: qa adds the 3 job-runner lines to its check, and QA-470 stays open until that file passes 3/3 on main.
+
+**Re-review verdict: Approve.** No Blocker or Major. m1 and n1 are closed; m2 is the builder's, before the label. Label only after green CI on the ready head (P-277, P-385).
+
+Reviewer: Approve 5ba4c9d0b9e24c92dc099a1c26d638c2230b4cbd
