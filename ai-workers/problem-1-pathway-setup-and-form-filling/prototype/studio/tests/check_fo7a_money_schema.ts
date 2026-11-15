@@ -266,6 +266,30 @@ try {
     && sql(DEMO, `select number from money_invoice where id = '${u(802)}'`) === "INV-10000");
   ok("FO-7a fail (break B-6): two series of a firm sharing a prefix is refused (23505)",
     refused(DEMO, `insert into money_number_series (firm_id, kind, prefix) values ('${firmG}', 'CREDIT_NOTE', 'TOR-')`, /money_number_series_firm_id_prefix_key/, "23505"));
+  {
+    // Break round 4, B-20: a prefix a series has printed numbers with stays that series' (AG-6-44 rule 5 lets the
+    // series move on to a new prefix; the old one is never freed for another kind: TOR-10001 is an invoice for good).
+    const series = (k: string, p: string) => `insert into money_number_series (firm_id, kind, prefix) values ('${firmG}', '${k}', '${p}') returning prefix`;
+    const rename = (k: string, p: string) => `update money_number_series set prefix = '${p}' where firm_id = '${firmG}' and kind = '${k}' returning prefix`;
+    for (const iso of ["read committed", "repeatable read"]) {
+      // One writer frees TOR- from the invoices while another gives it to the credit notes: never both.
+      const r = await race(2, (i) => [rename("INVOICE", "INV-"), series("CREDIT_NOTE", "TOR-")][i], iso);
+      ok(`FO-7a fail (break round 4, B-20, parallel at ${iso}): moving the invoices off TOR- while the credit notes take TOR- never commits both`,
+        r.filter((x) => x.value !== undefined).length <= 1 && sql(DEMO, `select count(*) from money_number_series where firm_id = '${firmG}' and kind = 'CREDIT_NOTE'`) === "0", r);
+      sql(DEMO, `delete from money_number_series where firm_id = '${firmG}' and kind = 'CREDIT_NOTE'; ${rename("INVOICE", "TOR-")}`);
+    }
+    ok("FO-7a fail (break round 4, B-20): after the invoices move from TOR- to INV-, the credit notes cannot take TOR- (it printed TOR-10001); not as a later prefix change either",
+      sql(DEMO, rename("INVOICE", "INV-")) === "INV-"
+      && refused(DEMO, series("CREDIT_NOTE", "TOR-"), /TOR- printed the INVOICE series' numbers/, "23514")
+      && refused(DEMO, `begin; ${series("CREDIT_NOTE", "XB-")}; ${rename("CREDIT_NOTE", "TOR-")}; commit;`, /TOR- printed the INVOICE series' numbers/, "23514"));
+    sql(DEMO, `delete from money_number_series where firm_id = '${firmG}' and kind = 'CREDIT_NOTE'`);
+    ok("FO-7a pass (B-20; AG-6-44 rule 5): a series may go back to a prefix it printed with, a prefix that printed nothing is free, and the used prefixes are the database's", (() => { try { return true
+      && sql(DEMO, rename("INVOICE", "TOR-")) === "TOR-" && sql(DEMO, rename("INVOICE", "INV-")) === "INV-"
+      && sql(DEMO, `select used_prefixes::text from money_number_series where firm_id = '${firmG}' and kind = 'INVOICE'`) === "{TOR-}"
+      && sqlLast(DEMO, `begin; ${series("RECEIPT", "XC-")}; ${rename("RECEIPT", "XD-")}; ${series("CREDIT_NOTE", "XC-")}; rollback;`) === "XC-"
+      && refused(DEMO, `update money_number_series set used_prefixes = '{}' where firm_id = '${firmG}' and kind = 'INVOICE'`, /used_prefixes is the database's/, "23514")
+      && refused(DEMO, `insert into money_number_series (firm_id, kind, prefix, used_prefixes) values ('${firmG}', 'RECEIPT', 'XE-', '{TOR-}')`, /used_prefixes is the database's/, "23514"); } catch { return false; } })());
+  }
   ok("FO-7a fail: a hand-made number that repeats one already issued in the firm is refused by the unique index", refused(DEMO, `alter table money_invoice disable trigger money_invoice_write; update money_invoice set number = 'INV-0001' where id = '${u(700)}'`, /money_invoice_firm_id_number_key/, "23505")
     && sql(DEMO, `select count(*) from pg_trigger where tgname = 'money_invoice_write' and tgenabled = 'O'`) === "1");
 

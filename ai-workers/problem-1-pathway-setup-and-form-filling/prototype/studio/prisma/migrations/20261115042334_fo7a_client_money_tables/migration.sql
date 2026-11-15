@@ -92,6 +92,7 @@ CREATE TABLE "money_number_series" (
     "prefix" TEXT NOT NULL,
     "next_number" INTEGER NOT NULL DEFAULT 1,
     "numbers_taken" INTEGER NOT NULL DEFAULT 0,
+    "used_prefixes" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "updated_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "money_number_series_pkey" PRIMARY KEY ("firm_id","kind")
@@ -622,6 +623,7 @@ BEGIN
 END $$;
 REVOKE EXECUTE ON FUNCTION money_take_number(uuid, "MoneySeriesKind") FROM PUBLIC;
 CREATE FUNCTION money_number_series_write() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE dflt text; k "MoneySeriesKind";
 BEGIN
   IF TG_OP = 'DELETE' THEN
     IF OLD.numbers_taken > 0 THEN
@@ -633,10 +635,37 @@ BEGIN
     IF NEW.numbers_taken <> 0 THEN
       RAISE EXCEPTION 'money_number_series: numbers_taken is the database''s' USING ERRCODE = 'check_violation';
     END IF;
-    RETURN NEW;
+    IF NEW.used_prefixes IS DISTINCT FROM '{}'::text[] THEN
+      RAISE EXCEPTION 'money_number_series: used_prefixes is the database''s' USING ERRCODE = 'check_violation';
+    END IF;
+  ELSE
+    IF (NEW.firm_id, NEW.kind) IS DISTINCT FROM (OLD.firm_id, OLD.kind) THEN
+      RAISE EXCEPTION 'money_number_series: firm_id and kind never change' USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.used_prefixes IS DISTINCT FROM OLD.used_prefixes THEN
+      RAISE EXCEPTION 'money_number_series: used_prefixes is the database''s' USING ERRCODE = 'check_violation';
+    END IF;
   END IF;
-  IF (NEW.firm_id, NEW.kind) IS DISTINCT FROM (OLD.firm_id, OLD.kind) THEN
-    RAISE EXCEPTION 'money_number_series: firm_id and kind never change' USING ERRCODE = 'check_violation';
+  -- Break round 4, B-20: a prefix a series has printed with stays that series' (AG-6-44 rule 5 lets it move on, as
+  -- TOR- after INV-; the old prefix is never freed for another kind, or XA-0001 would print twice). The database keeps
+  -- them in used_prefixes; a series' own default is reserved for it already (money_number_series_default_prefix_check).
+  -- Writers of a firm's prefixes serialise on its settings row (touched: at REPEATABLE READ a stale writer is refused,
+  -- at READ COMMITTED it waits and then reads the other's prefixes). A default-prefix first use (money_take_number)
+  -- records and checks nothing, so it takes no lock.
+  dflt := CASE NEW.kind WHEN 'INVOICE' THEN 'INV-' WHEN 'CREDIT_NOTE' THEN 'CN-' WHEN 'RECEIPT' THEN 'R-' ELSE 'DR-' END;
+  IF (TG_OP = 'INSERT' AND NEW.prefix <> dflt) OR (TG_OP = 'UPDATE' AND NEW.prefix <> OLD.prefix) THEN
+    UPDATE "money_payment_settings" SET updated_at = updated_at WHERE firm_id = NEW.firm_id;
+    IF TG_OP = 'UPDATE' AND OLD.numbers_taken > 0 AND OLD.prefix <> dflt AND NOT OLD.prefix = ANY (OLD.used_prefixes) THEN
+      NEW.used_prefixes := OLD.used_prefixes || OLD.prefix;
+    END IF;
+    SELECT s.kind INTO k FROM "money_number_series" s
+      WHERE s.firm_id = NEW.firm_id AND s.kind <> NEW.kind AND NEW.prefix = ANY (s.used_prefixes) LIMIT 1;
+    IF FOUND THEN
+      RAISE EXCEPTION 'money_number_series: % printed the % series'' numbers (a prefix a firm printed with is never another kind''s)', NEW.prefix, k USING ERRCODE = 'check_violation';
+    END IF;
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    RETURN NEW;
   END IF;
   -- Until the first number is taken a firm moving from another system may still set or correct its first number
   -- (AG-6-44 rule 2). Otherwise the row moves only by one number taken: next_number and numbers_taken both + 1, from

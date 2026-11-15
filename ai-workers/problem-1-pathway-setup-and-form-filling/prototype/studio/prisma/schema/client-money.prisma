@@ -155,6 +155,8 @@ model MoneyNumberSeries {
   nextNumber Int             @default(1) @map("next_number")
   /// How many numbers the series has given, the database's: while 0, the firm may still set its first number.
   numbersTaken Int @default(0) @map("numbers_taken")
+  /// The prefixes this series printed numbers with before its current one, the database's: never another kind's (B-20).
+  usedPrefixes String[] @default([]) @map("used_prefixes")
   updatedAt  DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   settings MoneyPaymentSettings @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
