@@ -129,6 +129,8 @@ model FoBooking {
   endsAt          DateTime                  @map("ends_at") @db.Timestamptz
   bookerTimeZone  String                    @map("visitor_time_zone")
   blockRange      Unsupported("tstzrange")? @map("block_range")
+  /// FO-3sa (AG-4-63 rule 4): the staff member who chose "Book anyway" over an overlap; the no-overlap rule skips the row.
+  overlapConfirmedByUserId String?        @map("overlap_confirmed_by_user_id") @db.Uuid
   createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime                  @updatedAt @map("updated_at") @db.Timestamptz
 
