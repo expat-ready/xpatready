@@ -35,7 +35,7 @@ Copies started and stopped in the same command (`isolated.sh … start --ttl …
 
 ## 3. Requirements and decisions
 
-Each row's Done when is from `qa/CAPABILITIES.md` (R1 section). No new decision affects these rows since the last round (`decision-impact.sh` not re-run: records only since 2b7fe0060 for these areas). `trace-requirements.py --brief 99` answers "no Release 1 row 99" (case side, covered by C rows, P-526).
+Each row's Done when is from `qa/CAPABILITIES.md` (R1 section). `decision-impact.sh` on d52b7274e: every decision maps to a row or is exempt (no Gap). `trace-requirements.py --brief 99` answers "no Release 1 row 99" (case side, covered by C rows, P-526).
 
 ## 4. Draft verdicts (the reader rules)
 
@@ -61,8 +61,8 @@ Each row's Done when is from `qa/CAPABILITIES.md` (R1 section). No new decision 
 * Headed screen walks: none of R1.2, R1.9, R1.11, R1.16 has a screen; R1.38's booking page is not built; map 80 and 99 screens were walked in earlier C-row rounds and not re-walked here.
 
 ## Questions for the Lead
-1. Please dispatch `skeleton.yml` on main's head (this session's permission check refused it); R1.11 is scored on that run.
-2. Map 99: is "model choice open (founder)" a part of the capability (Partial until he chooses) or a launch condition outside it?
+1. R1.11 waits on one `skeleton.yml` run on main's code. This qa session's dispatch was refused by its permission check, so the founder decides how that run happens (QA-449's fix would make it automatic).
+2. Map 99: is "model choice open (founder)" a part of the capability (Partial until the founder chooses) or a launch condition outside it?
 
 ## Suggestions
 * *Needed for the proof · Scaffolding:* run `skeleton.yml` on merge batches or on push to main (QA-449), so R1.11 and R1.16 are judged on main's code without a hand dispatch.
