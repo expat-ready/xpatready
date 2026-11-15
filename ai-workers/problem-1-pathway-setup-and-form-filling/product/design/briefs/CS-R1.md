@@ -6,10 +6,11 @@ Drafted 16 Nov 04:0x IST by the case-side shaping lane from BACKLOG row CS-R1 (l
 * **Part 1** after all of these are on `main`:
   * PF-R1 (`ports/metrics.ts`, the query route, the `agent/report:*` keys);
   * CS-C1a (#1818: `closedAt`, `status` CLOSED);
+  * CS-C1b (`api/src/case-count.ts`, the client-type reader this row reuses);
   * CS-K3 (`api/src/case-access.ts` `caseScope`, the one own-versus-all check);
   * CS-W1, and CS-W2's `cases`, `review` and `evidence` PRs (`firm_id` indexed on every table read; today's keys start with `workspace_id`, so a firm-only filter cannot use them).
 * **Part 2** after part 1.
-* **Part 3** after the release Lead names the row that stores stage targets (question below).
+* **Part 3** after a configurator row adds a target to the stage definitions (ruled below; no BACKLOG row adds it yet).
 
 **Points the release Lead confirms in the approval (the requirement or `main` corrects the row):**
 * **The client type is not `Combination.clientType`.** That column does not exist. The type is the PATHWAY node's `program_def.client_type` (`pathways.prisma:37`), as Lead 60 ruled on #1818 (ruling 4) and as CS-C1b's reader does. Use that reader, not a second one.
@@ -20,12 +21,12 @@ Drafted 16 Nov 04:0x IST by the case-side shaping lane from BACKLOG row CS-R1 (l
   * **document deficiencies** = checklist lines `rejected` (`case-checklist.ts:303` state) for count and rate;
   * **open review findings** (`ReviewFinding`) under their own name.
 
-  **Time-to-cure needs history:** a line's state changes in place (`checklist_line.state`, `version`). Each rejection and cure must be read from the audit lines `case-checklist.ts` writes, or the number is not built. **Question for the tech lead:** read the audit trail (recommended if the "rejected" and accepted lines carry the line id), or add a state-history table (schema; the `evidence` area's holder).
+  **Ruled (Lead 61, comment 6900882993 on #1876, item 7): time-to-cure is read from the audit trail; no new history table.** A line's state changes in place (`checklist_line.state`, `version`), but `case-checklist.ts` writes one audit line per state change with the line's id (`:198`, entity "checklist line", the state's words) and one "received" line on an upload (`:306`). Time-to-cure is the span from a "rejected" line to the next "received" line for the same line id. The firm comes through the line's case (`audit_event` has no firm column until AUD-1a).
 * **Rules the row leaves out or defers.** Per Lead 61's ruling (comment 6900282370 on #1867), they are sequenced as later parts, not dropped:
   * AG-14-12's **processing time** (end to end, per segment, with cohort comparison): part 2;
-  * AG-14-12's **SLA breaches** and AG-14-11's **on-time %** and **breach list**: part 3. They need a target per stage, which `main` lacks; `CaseStage.spec.deadline` is a Sample government deadline (P-412 F13 (b)), not a firm service level. **Question for the tech lead:** which row stores stage targets (AG-14 §3 `:230`: "within their SLA / target")? Part 3 waits on it.
-  * AG-14-9's **office** and **service** groupings: `main` has neither an office nor a firm Services list on a case. They are named in the PR as missing and built when the field exists (the same question).
-* **"Overdue tasks by person" is no longer the case side's.** Batch 5 moved tasks to PF-29a's `plat_task` (CS-T1's brief: no schema in any part), and AG-13-68@e3e4feb7 also lists AG-10's Waiting-on-us threads. **Question for the tech lead:** PF-29's tasks module registers this number (recommended), with PF-R3 already naming the list. It leaves this row.
+  * AG-14-12's **SLA breaches** and AG-14-11's **on-time %** and **breach list**: part 3. They need a target per stage, which `main` lacks; `CaseStage.spec.deadline` is a Sample government deadline (P-412 F13 (b)), not a firm service level. **Ruled (Lead 61, comment 6900882993 on #1876, item 8): stage targets live in the configurator's stage definitions.** This is confirmed against the snapshot's owning text: the delivery stages "are the per-program `StagePipeline` published in the Country Pack (Doc 1 §5.13.4; the Reporter reads them, does not define them)", and on-time means "within their `deadlineOffsetDays`/SLA target" (`05-Doc-3-Agent-Console.md:6681`). `main`'s stage definitions carry no target (`git grep deadlineOffsetDays` is empty). Part 3 waits on a configurator row that adds one, and **the Lead names or adds that row**.
+  * AG-14-9's **office** and **service** groupings: **ruled (same comment, item 8): they live in platform settings.** This is confirmed: offices are a firm setting under `agent/settings:edit` (`SA-06-rbac_v3.15_2026-10-25.md:1061`; AG01-10, offices hidden until a second one), and services are the one Settings → Services list (MS-D18, `SA-03-subscription-plans-and-entitlements_v2.29_2026-10-25.md:79`, Home AG-16). `api/src/platform/settings.ts` on `main` registers neither, and a case has no office or service field. The PR names both as missing; they join part 3 when a platform row registers them and the case gains the link.
+* **Ruled (Lead 61, comment 6900882993 on #1876, item 9): "overdue tasks by person" is PF-29's number.** Batch 5 moved tasks to PF-29a's `plat_task` (CS-T1's brief: no schema in any part), and AG-13-68@e3e4feb7 also lists AG-10's Waiting-on-us threads. PF-29's tasks module registers it, PF-R3 already names the list, and it leaves this row.
 * **Live reads, not rollups.** This departs from AG-14-3@7d18fdc4. It is ruled in PF-R1 (Q8, Lead B), and each read must pass STANDARDS §9's budget on 100 Sample firms (P-562), as PF-R1's budget test runs it.
 * **No money metric here** (FO-7r and PF-R2cm).
 
@@ -69,19 +70,19 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime C
   * **CS-R1 DW1:** a seeded firm (fixed fixture: 7 open cases over 3 stages, 2 closed this month, 1 last month) returns the exact counts per stage, officer, status and month.
   * **CS-R1 DW2:** a second firm's identical fixture never changes firm A's numbers, and firm A's query never reads firm B's rows (the walls' cross-firm test, PF-12's pattern).
   * **CS-R1 DW3:** a `view.own` ctx counts only the cases whose current team holds the viewer (`caseScope`); a `view.all` ctx counts the firm; a scope field sent in the filters is ignored (PF-R1's route; this read never sees it).
-  * **CS-R1 DW4:** an empty firm returns 0 and empty rows, never a throw, for every metric.
+  * **CS-R1 DW4:** an empty firm returns 0 and empty rows, never a throw, for every metric; a firm whose only cases are closed returns 0 open cases (never the closed count) on `case.load`.
   * **CS-R1 DW5:** stage durations on fixed dates give the hand-computed average and median, the slowest is flagged, and an open stage is left out.
   * **CS-R1 DW6:** a CORPORATE-pathway case counts under Corporate and a family case under Individual, and the client-type filter narrows every number.
-  * **CS-R1 DW7:** each read's `EXPLAIN` uses an index on the firm column (no `Seq Scan` on a case table) and passes PF-R1's budget test on 100 Sample firms.
+  * **CS-R1 DW7:** small fixtures make the planner prefer a sequential scan, so the test runs each read's `EXPLAIN` under `SET LOCAL enable_seqscan = off` and requires an index scan on the firm column. It also checks in `pg_indexes` that a firm-first index exists on every table the read touches. Each read passes PF-R1's budget test on 100 Sample firms; a throwaway read on a column with no index fails.
   * **CS-R1 DW8:** each metric returns its definition in words, and its drill target opens the list with the same filter; a target followed without `agent/case:view.all` re-checks and narrows (PF-R1 (5)).
 * **Touch (part 1, nothing else):** new `api/src/reports/definitions.ts`, new `api/src/reports/case-load.ts`, `new-vs-closed.ts`, `stage-durations.ts`, `documents-waiting.ts`, new `api/src/features/case-reports.ts`, new `tests/check_csr1_reports.ts`, `api/src/MODULE.cases.md` (paths gain `reports/*`; the metrics under Entry points).
 
 ## Part 2 (CS-R1b): deficiencies, findings and processing time (expected ~450 lines)
-* `case.document_deficiencies`: lines `rejected` by stage and officer. The rate is rejected lines over lines with a document. Time-to-cure (rejected → the next accepted document) follows the Lead's answer above; if that answer is the audit trail, it is read from it, else that one number waits.
+* `case.document_deficiencies`: lines `rejected` by stage and officer. The rate is rejected lines over lines with a document. Time-to-cure (from "rejected" to the next "received" for the same line, read from the audit trail as ruled) is given as average and median.
 * `case.review_findings_open`: open `ReviewFinding` by stage and officer, named as findings, not deficiencies; time to resolve from `createdAt` to `resolvedAt`.
 * `case.processing_time`: end to end (`createdAt` → `closedAt`) and per stage, by the month opened (the cohort), with average and median.
 * **Named test cases** (same file), a pass and a fail each:
-  * **CS-R1 DW9:** the hand-computed deficiency count and rate on a fixture.
+  * **CS-R1 DW9:** the hand-computed deficiency count, rate and time-to-cure (from fixture audit lines) on a fixture; a line rejected and never re-received is counted with no cure time, not as 0.
   * **CS-R1 DW10:** findings count only `open` and give the hand-computed time to resolve.
   * **CS-R1 DW11:** cohorts by opened month give the hand-computed end-to-end median, and a reopened case counts once, from first open to last close.
   * **CS-R1 DW12:** cross-firm, `own` scope and the budget, as DW2, DW3 and DW7, for the three numbers.
@@ -106,7 +107,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime C
 * `MetricRegistry` is not on `main` and in neither contract's ports list.
 * PF-R1 names `read(ctx, filters)` without naming `ctx`'s fields: this brief needs `firmId`, `scope` and the viewer's staff and actor id for `caseScope`.
 * The drill-through filters the case list must accept (stage, officer, client type, month) are not routes on `main`: the PR lists which exist.
-* The stage-target source (part 3) is not shaped.
+* The stage target in the configurator's stage definitions (part 3) is not shaped by any row; nor are offices or services in platform settings.
 
 **Reviewer and breaker** (P-278: no breaker, as no schema, money, permission key or screen; the reviewer checks the scope rule at high effort). The reviewer tries:
 * a `view.own` viewer who has just been taken off a case;
@@ -114,5 +115,5 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime C
 * a stage that started before the date range and ended inside it (stated rule in words);
 * firm B's rows with the same stage keys.
 
-**Rules (standard):** Opus 5.5, no model switch mid-session (P-605). Finish whole: if an item needs more than its touch list, stop and ask in a PR comment headed "Question for the tech lead"; never widen the row silently. One part, one PR, under 800 changed lines tests included (P-610); Opus reviewer (P-303); label `review: approved` only after `Reviewer: Approve <sha>` and green CI (P-277, P-385); merge `main` only on a conflict (P-270). Never push to a PR that carries the `queued` label. Before asking for the label, run on `main` merged into your branch the suites of every CI part that was red on any earlier head plus every suite in your shard's demo database, and paste the result lines. Live AI off, US$0 (P-175). Push after every step (P-557). Report to the current Lead (`tools/current-lead.sh`). Read only the files named here and the code you change (P-556).
+**Rules (standard):** Opus 5.5, no model switch mid-session (P-605). Finish whole: if an item needs more than its touch list, stop and ask in a PR comment headed "Question for the tech lead"; never widen the row silently. One part, one PR, under 800 changed lines tests included (P-610); Opus reviewer (P-303); label `review: approved` only after `Reviewer: Approve <sha>` and green CI (P-277, P-385); merge `main` only on a conflict (P-270). Never push to a PR that carries the `queued` label. Before asking for the label, run on `main` merged into your branch the suites of every CI part that was red on any earlier head plus every suite in your shard's demo database, and paste the result lines. Live AI off, US$0 (P-175). Push after every step (P-557). Report to the current Lead (`tools/current-lead.sh`). Read only the files named here and the code you change (P-556). Re-review reads only the diff since the last Approve (P-277, P-610).
 ---
