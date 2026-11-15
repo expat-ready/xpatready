@@ -2016,7 +2016,7 @@ def build_explain(d):
     Q = d["quality"]
     sc = val(Q["sev_counts"]) or {}
     nopen = sum(sc.values()) if sc else None
-    for k, read, band in (("Critical", down, None), ("Major", down + " A Major keeps a capability Partial.", "about 0 found after merge (" + COMPASS + ")"),
+    for k, read, band in (("Critical", down, None), ("Major", down + " A Major keeps a capability Partial.", "about 0 Major or Critical found after merge (" + COMPASS + "); this count is every open one"),
                           ("Minor", down, None)):
         put(f"quality.{k.lower()}", "Open " + k, f"Open {k} rows in qa/BUGS.md.", now_w + " (BUGS.md at the records commit)", nopen, "open bugs",
             read, Q["sev_counts"], band=band)
@@ -2037,8 +2037,8 @@ def build_explain(d):
     put("pipeline.lead_time_h", pl["lead_time_h"]["label"], "Median hours from PR opened to merged.", w7, pl["lead_time_h"].get("n"), "PRs merged", down,
         pl["lead_time_h"])
     put("pipeline.change_fail", pl["change_fail"]["label"], "Share of finished nightly runs on main that failed (a proxy for change failure).", w7,
-        pl["change_fail"].get("n"), "finished nightly runs", down, pl["change_fail"],
-        band="batches thrown away 15% or less (" + COMPASS + ")")
+        pl["change_fail"].get("n"), "finished nightly runs", down + " The small line's batch failures have their band under Merge-queue batches.",
+        pl["change_fail"])
     put("pipeline.restore_h", pl["restore_h"]["label"], "Median hours from a failed nightly on main to the next green one.", "the last 60 nightly runs",
         pl["restore_h"].get("n"), "red-to-green recoveries", down, pl["restore_h"])
     qw = pl["queue_wait_min"]

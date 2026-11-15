@@ -105,7 +105,7 @@ Every number on the key-number strip, Plan and pace, Capacity, the Health panel,
 | `health.1` … `health.7` | per item (above) | `health.items[].n` | item 5 ≤ 3%/h; item 6 about 0 (compass) |
 | `factory.lead_queue`, `vsm.<stage>.count`, `vsm.<stage>.wait_h`, `building.station`, `building.push` | now (CI wait: 2 days) | PRs with a question; items in the stage; items timed; open PRs read | — |
 | `quality.*` | now (BUGS.md at the records sha); demotions 14 days; closed: all, 7 days | open bugs; closed rows; days with a Works reading; ledger lines | Major/Critical about 0; demotions ≤ 1 a day (compass) |
-| `pipeline.*` | 7 days; restore: 60 nightly runs; CI minutes: 7 full days; flow-measure's runs; merges: 14 days | as the sample fields above | batches thrown ≤ 15% (compass); CI thrown < 20% (P-371) |
+| `pipeline.*` | 7 days; restore: 60 nightly runs; CI minutes: 7 full days; flow-measure's runs; merges: 14 days | as the sample fields above | `pipeline.batches`: thrown away ≤ 15% (compass); `pipeline.thrown_share` < 20% (P-371) |
 | `healing.*`, `team.cloud_running`, `team.cloud_idle`, `team.mac`, `resources.*` | the Lead input's as_of; now | sessions reported; open PRs read; 1 reading | burn ≤ 3%/h; disk floor 10 GB; US$0 |
 | `improving.<trend>` | the 14 IST days to taken_at | days with data (this week + the week before) | — |
 | `team.<component>.lanes`, `team.lane.push`, `team.lane.idle` | now; the Lead input | lanes in the component; none (one lane's own time) | 0 behind |
