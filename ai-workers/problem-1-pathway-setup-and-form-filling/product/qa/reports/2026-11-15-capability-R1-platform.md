@@ -58,6 +58,8 @@ Two first-run failures were the test's own faults, fixed before the counted run:
 
 Gate A: the reader counted the R1.2 → R1.5, R1.6 and R1.24 walks; not R1.9 (it proves only that the worker starts, QA-453) nor R1.13's job-queue half (ready reads null, QA-452). The walk's labels now say so (re-run 20/20).
 
+**On main e1360350 (#1748, PF-19a and FO-5 part 2 merged since):** merge batch ci 43668064108 (tree 2bc908d2e = main's code) green on every suite; qa's pf3 re-run 75/75 (`check_pf3_platform_schema-mine-e1360350.txt`); QA-452 and QA-453 checks still fail. Nothing in `platform/jobs`, `platform/observability` or `booking/runtime-ports.ts` changed.
+
 ## 4. What could not be tested
 * R1.11 and the container half of R1.16 on `main`'s head (QA-449; dispatch asked). No walk by screens: no Platform screen exists. The shared demo (:4400) has no Platform screen to walk read-only.
 * Coverage (c8) not rerun for these rows: the PF suites start their own scratch databases and copies; the floor is unchanged by records.
