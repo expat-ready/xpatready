@@ -331,7 +331,7 @@ try {
   const combo = () => m3.sql(`select c.id from combination c where c.combination_key='vv.single' and exists (select 1 from config_release r where r.combination_id=c.id)`);
   if (!combo()) await m3.call("POST", "/demo/load", { sample: "configured" }, "user-A");
   const f = await m3.firms(), officer = f.officer ?? "user-O";
-  const open = () => m3.call("POST", "/runtime/cases", { combinationId: combo(), clientActor: "user-P", principal: { displayName: "Sample Client N" }, reference: CANARIES.name, ...(f.rep ? { representative: f.rep, caseOfficers: [officer] } : {}) }, officer);
+  const open = () => m3.call("POST", "/runtime/cases", { combinationId: combo(), clientActor: "user-P", principal: { displayName: "Sample Client N" }, reference: `${CANARIES.name} ${m3.run}`, ...(f.rep ? { representative: f.rep, caseOfficers: [officer] } : {}) }, officer);
   const first = await open(), dup = await open();
   await new Promise((r) => setTimeout(r, 200));
   const after = readFileSync(LOG, "utf8");
