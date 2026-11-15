@@ -17,8 +17,8 @@
 | qa Works\* | 6 |
 | Merged | 5 (74, 76 and 77 moved back to Shaped: each gained a new part, CS-DL1, CS-NT1, CS-C1) |
 | In PR (the whole row) | 0 (6 rows have a part in PR: 5, 6, 27, 29, 37, 41, through #1741, #1742, #1744) |
-| Shaped | 81 |
-| Not shaped | 9 (all wait on the release holder's drafted rows, for the tech lead's approval: 8, 87, 88, 97 and 105 (AUD-), 98 (CS-98*), 106 and 107 (AS-), 70 (L-doc rewrite or S3's CS-D5c/CS-D5)) |
+| Shaped | 90 |
+| Not shaped | 0 |
 
 Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, messages, automation, portal login, complaints), **Front office** (leads, booking, retainers, signing, compliance checks), **Client money**, **Case side** (the release Lead's: cases, documents, forms, the configurator), **Audit**.
 
@@ -31,7 +31,7 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | 4 | Each query runs inside its firm | Platform | PF-12 | Shaped |
 | 5 | Staff sign-in with two-step, passkeys, lock-out on leaving | Platform | PF-4 (In PR #1744), PF-4b, PF-4s | Shaped |
 | 6 | Permissions: deny by default, own versus all, money and licence apart | Platform | PF-4 (In PR #1744), PF-6 | Shaped |
-| 8 | Audit trail nobody can edit | Audit | AUD-1a, AUD-1b, AUD-1m drafted (S1), for the tech lead's approval | Not shaped |
+| 8 | Audit trail nobody can edit | Audit | AUD-1a, AUD-1b, AUD-1m | Shaped |
 | 9 | Background jobs, schedules, reminders | Platform | PF-14 | Shaped |
 | 10 | Checking every input | All | PF-28 (PF/FO); CS-V1 (case side) | Shaped |
 | 11 | Server framework | Platform | PF-7 | Merged |
@@ -72,7 +72,7 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | 35 | Contacts import from a spreadsheet | Platform | PF-10a, PF-10b, PF-10t, PF-10s | Shaped |
 | 36 | Simple automation, message many with consent | Platform + front office | PF-20, PF-20s, FO-10, FO-12b, FO-12c, FO-12s | Shaped |
 | 95 | Custom fields and saved views | Platform | PF-22a, PF-22v, PF-22s | Shaped |
-| 98 | Corporate clients, employers, LMIA | Front office + case side | FO-2b, FO-8; LMIA on the case side: CS-98r to CS-98s2 drafted (S2), for the tech lead's approval | Not shaped (**gap: case-side part**) |
+| 98 | Corporate clients, employers, LMIA | Front office + case side | FO-2b, FO-8; LMIA on the case side: CS-98r, CS-98a to CS-98e, CS-98s1, CS-98s2 (P-607 (5): Release 1, last) | Shaped |
 | 108 | Conflict-of-interest check | Front office | FO-13, FO-13c, FO-13s | Shaped |
 | 110 | Client identity check | Front office | FO-13, FO-13i, FO-13s | Shaped |
 
@@ -135,7 +135,7 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | 67 | File-type check | Not named | PF-F4; CS-D1 (case side's damaged-PDF check) | Shaped |
 | 68 | Preview for staff review | Not named | CS-D5 (draft 2's preview) | Shaped |
 | 69 | Read log, fingerprint, keep-period reminder | Not named | CS-D6 (draft 2's read log, fingerprint, keep period) | Shaped |
-| 70 | Expiry, translation and notarisation flags | Not named | L-doc (later row; draft 2's rewrite not copied); S3's CS-D5c and flags row (its id CS-D5 clashes with draft 2's preview row), for the tech lead | Not shaped |
+| 70 | Expiry, translation and notarisation flags | Not named | CS-D7c, CS-D7 (S3's flags rows, renamed); L-doc keeps copy kind | Shaped |
 
 ### J. Case work
 | Map | Capability | Module | BACKLOG rows | Status |
@@ -157,18 +157,18 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | 83 | Conditional questions and fields | Configurator | C4.4 Works | qa Works\* |
 | 84 | Pathway set-up: hierarchy, versioned releases, cited rules | Configurator | M2 60/60 Works | qa Works\* |
 | 99 | AI on top of the guardrails: proposed values, document reading | Case side | C3.1, C6.5, C7.5 Works; BK-14; model choice open (founder) | Shaped |
-| 106 | Pathway assessment AS-1: Express Entry and FSW scores | Front office + configurator | FO-15a, FO-15b, FO-15s; AS-1m, AS-1g, AS-1s, AS-1c, CS-106c drafted (S2), for the tech lead's approval | Not shaped |
-| 107 | Pathway assessment AS-2: five provincial streams, client copy | Front office + configurator | AS-2c, AS-2cs; AS-2e, AS-2d1, AS-2d2 drafted (S2), for the tech lead's approval | Not shaped |
+| 106 | Pathway assessment AS-1: Express Entry and FSW scores | Front office + configurator | FO-15a, FO-15b, FO-15s; AS-1m, AS-1g, AS-1s, AS-1c, CS-106c | Shaped |
+| 107 | Pathway assessment AS-2: five provincial streams, client copy | Front office + configurator | AS-2c, AS-2cs; AS-2e, AS-2d1, AS-2d2 (streams: one founder card, P-607 (9)) | Shaped |
 
 ### L. Privacy registers and audit views
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
 | 85 | Data-request register with legal hold | Not named | PF-21b, PF-21d, PF-21rs | Shaped |
 | 86 | Breach register with firm notices | Not named | PF-21c, PF-21rs | Shaped |
-| 87 | Our access to a firm's data, logged and shown to the firm | Audit | AUD-3, AUD-3b drafted (S1), for the tech lead's approval; PF-12's bypass role is audited | Not shaped |
-| 88 | The firm reads its own audit log | Audit | AUD-4, AUD-4s drafted (S1), for the tech lead's approval | Not shaped |
-| 97 | Tamper-evident audit chain | Audit | AUD-1c, AUD-2, AUD-2c drafted (S1), for the tech lead's approval | Not shaped |
-| 105 | Keep periods; a leaving firm is closed, not deleted | Audit + platform | PF-11c; PF-5 closes at 90 days; AUD-5 drafted (S1), for the tech lead's approval | Not shaped |
+| 87 | Our access to a firm's data, logged and shown to the firm | Audit | AUD-3, AUD-3b; PF-12's bypass role is audited | Shaped |
+| 88 | The firm reads its own audit log | Audit | AUD-4, AUD-4s | Shaped |
+| 97 | Tamper-evident audit chain | Audit | AUD-1c, AUD-2, AUD-2c | Shaped |
+| 105 | Keep periods; a leaving firm is closed, not deleted | Audit + platform | PF-11c; PF-5 closes at 90 days; AUD-5 (6 years from closing, College s. 7.2; CS-D6 reads it) | Shaped |
 | 109 | Complaints record | Platform | PF-21, PF-21s | Shaped |
 
 **Optional (8, out of the first build, P-572; kept as BACKLOG X-1 to X-8):** 7 custom roles · 17 feature switches · 18 French and Quebec tax · 25 demo firm · 51 outgoing webhooks and API keys · 71 reading text from scans · 78 full-text search · 81 ordinary PDF form filling.
