@@ -2,7 +2,7 @@
 
 The tech lead keeps this list. It holds no secrets and no names. Lead times come from the provider's own page, cited; "to cite" means not yet found, so plan with the 2-week minimum. Start date = need date − lead time − 2× buffer (at least 2 weeks for anything with screening or human review). Every check flags a row inside its start window, or stuck over 48 h, as 🔴 Needs you (alarm: B192).
 
-| # | Provider · what | Lead time (cited) | Needed by (row, date) | Start | Owner | Status (15 Nov 22:2x IST) | Decision date · fallback |
+| # | Provider · what | Lead time (cited) | Needed by (row, date) | Start | Owner | Status (15 Nov 21:5x IST) | Decision date · fallback |
 |---|---|---|---|---|---|---|---|
 | 1 | AWS · Route 53 domain registration (staging domain) | to cite; support case reply "usually within 24 h" (Lead 56) | PF-8b staging, before the first staging deploy | started 15 Nov | founder (account), Lead 56 | blocked: new-account block; free support case filed 15 Nov | 18 Nov · Cloudflare Registrar |
 | 2 | BoldSign · Canada sandbox API (e-signature) | to cite | FO-6v's one Mac check | started 15 Nov | founder (email), Lead 56 | blocked: sign-up refused (Canada and US); support ticket opened 21:40 IST | 18 Nov · Signority |

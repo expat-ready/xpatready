@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-619**, 15 Nov 22:2x IST (P-616 to P-619 added by Lead 61); the long page as of P-612 is word for word in `history/RULES-2026-11-15-1415-before-register.md`)
+# Rule register (the tech lead keeps it; as of **P-619**, 15 Nov 21:5x IST (P-616 to P-619 added by Lead 61); the long page as of P-612 is word for word in `history/RULES-2026-11-15-1415-before-register.md`)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced by** names the hook, CI step or script that blocks or fails a break; `prose` = only the reader enforces it (G-4 candidates, bottom); `(part)` = covers part of the rule. IDs: a letter (`P-611b`) = the decision's 2nd row, not its part (2); `IDX-n` = an index of done, product or integration decisions kept in the side file. **Start read**: this page, then the `DECISIONS.md` rows newer than "as of", word for word (P-314, P-440). Long text word for word: side files under `rules/`. `tools/check-docs.sh` fails a row with no enforced-by, a page over 25 KB, or one over 3 rows behind DECISIONS.
 
