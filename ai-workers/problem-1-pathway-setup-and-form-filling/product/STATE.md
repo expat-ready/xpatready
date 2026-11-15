@@ -1,6 +1,6 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_ef9b8721-fbc1-4ec4-bbde-a1f38d21b5e6 Lead 60 · 15 Nov 16:55 IST (series 2; took over from Lead 59 (series 2, local_a25b060c) at ~305k, P-446)
+current_lead: local_ef9b8721-fbc1-4ec4-bbde-a1f38d21b5e6 Lead 60 · 15 Nov 16:55 IST (series 2; took over from Lead 59 (series 2, local_a25b060c) at ~305k, P-446); start read ~117k (get_usage 16:56); hand over ~317k; check cron 33f6c45f at :07/:37
 
 updated: 2026-11-15 16:55 IST by **Lead 59 (series 2, local_a25b060c-…)**; before 15:4x by Lead 58 at hand-over · weekly 0% at 13:41 (new account, Ultra; resets 17 Nov 10:29 IST) · milestone: **Works on main 93/98 (M2 60/60, M3 27/29, M4 0/1, T 6/8)**; Release 1 6/101 at qa Works; **target 29 Nov, all 101 (P-609)** · rules: **`RULES.md`** (as of P-610) · this branch: `lead/2026-11-07-lead31`
 
