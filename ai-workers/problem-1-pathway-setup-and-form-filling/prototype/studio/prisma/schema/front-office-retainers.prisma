@@ -93,7 +93,7 @@ model FoRetainerTemplate {
 }
 
 /// A retainer (or consultation) agreement for a prospect (FO-5 row; BR-2..BR-11). The template, its version and file are
-/// fixed at draft. signer_person_id is the person who signs: the prospect's person, or for a company one of its contacts
+/// those of the current version: an edit (a new version) may switch to the template's current file. signer_person_id is the person who signs: the prospect's person, or for a company one of its contacts
 /// (empty until picked: a Corporate prospect with no SIGNATORY contact gets a warning, never a block, AG-5-50; Send needs
 /// it, FO-6). The representative is an active staff member with a licence and the case-manager keys (API check, BR-3).
 /// current_version is the newest fo_retainer_version's n. At most one live RETAINER per prospect: WITHDRAWN and EXPIRED
