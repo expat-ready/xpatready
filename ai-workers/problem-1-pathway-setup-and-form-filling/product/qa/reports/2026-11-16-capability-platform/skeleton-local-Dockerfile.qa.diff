@@ -1,0 +1,14 @@
+36,39c36
+< RUN cd ${P}/prototype/studio && npm ci \
+<  && mkdir -p /app/${P}/prototype/node_modules-src && cp ../env/node/package.json ../env/node/package-lock.json /app/${P}/prototype/node_modules-src/ \
+<  && cd /app/${P}/prototype/node_modules-src && npm ci --omit=dev \
+<  && mv node_modules ../node_modules && cd .. && rm -rf node_modules-src
+---
+> RUN --mount=type=secret,id=ca,target=/run/qa-ca.crt NODE_EXTRA_CA_CERTS=/run/qa-ca.crt sh -c 'cd $P/prototype/studio && npm ci && mkdir -p /app/$P/prototype/node_modules-src && cp ../env/node/package.json ../env/node/package-lock.json /app/$P/prototype/node_modules-src/ && cd /app/$P/prototype/node_modules-src && npm ci --omit=dev && mv node_modules ../node_modules && cd .. && rm -rf node_modules-src'
+42,45c39
+< RUN cd ${P}/prototype/studio \
+<  && ./node_modules/.bin/prisma generate \
+<  && (cd web && ../node_modules/.bin/vite build) \
+<  && rm -rf var && mkdir var
+---
+> RUN --mount=type=secret,id=ca,target=/run/qa-ca.crt NODE_EXTRA_CA_CERTS=/run/qa-ca.crt sh -c 'cd $P/prototype/studio && ./node_modules/.bin/prisma generate && (cd web && ../node_modules/.bin/vite build) && rm -rf var && mkdir var'
