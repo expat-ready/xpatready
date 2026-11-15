@@ -38,6 +38,7 @@ const { JsonLog, useLog } = await import("../api/src/platform/observability/log.
 const { useAlerts, STUCK_JOB_MS } = await import("../api/src/platform/observability/alerts.ts");
 const { PlatformJobs, PLATFORM_JOBS_BOSS } = await import("../api/src/platform/jobs/platform-jobs.ts");
 const { STUCK_CHECK_QUEUE } = await import("../api/src/platform/jobs/stuck-check.ts");
+const { DEAD_LETTER } = await import("../api/src/platform/jobs/pgboss-jobs.ts");
 const { BOOKING_PORTS, Booking } = await import("../api/src/front-office/booking/public.controller.ts");
 const { copyFirmHoursTo } = await import("../api/src/front-office/booking-seed.ts");
 const { wallToUtc } = await import("../api/src/front-office/booking/slots.ts");
@@ -115,6 +116,8 @@ try {
   const boomFailed = jobLines("pf23w.boom", "failed"), boomErrors = lines.filter((l) => l.event === "job_error" && l.queue === "pf23w.boom");
   ok("PF-23w DW2 fail: a failing job's run writes one failure line (outcome failed) and one error line, never its message", boomRuns === 1 && boomFailed.length === 1 && boomErrors.length === 1
     && !JSON.stringify(boomErrors).includes("pf23w boom"), { boomRuns, boomFailed, boomErrors });
+  await tickUntil(() => boomRuns === 2, 5_000, 20);   // PF-14's first retry, 30 s later (Sample policy)
+  ok("PF-23w DW2 fail: the wrapper passes the throw on, so pg-boss retries the job (a second run, a second failure line)", boomRuns === 2 && jobLines("pf23w.boom", "failed").length === 2, { boomRuns, failed: jobLines("pf23w.boom", "failed").length });
   // The check every handler must pass: each run has its job line. A handler registered around PlatformJobs.handle has none.
   const wrappedCheck = (queue: string, runs: number) => runs > 0 && jobLines(queue).length === runs;
   ok("PF-23w DW2 pass: a handler registered through PlatformJobs.handle is wrapped by observeJob (one job line per run)", wrappedCheck("pf23w.ok", okRuns));
@@ -160,15 +163,20 @@ try {
   ok("PF-23w DW7: after the API restart the reminders and the attendance question are still queued", afterRestart.filter((r) => r.state === "created" && (r.name === "booking.reminder" || r.name === "booking.attendance_ask")).length === 3, afterRestart);
   ok("PF-23w DW7: after the restart ready is ok", (await ready(port)).status === 200);
   const sentKeys = () => mail2.sent.map((m) => m.templateKey);
-  await tickUntil(() => sentKeys().includes("booking.reminder_24h"), 5 * 60_000, 400);
+  // The clock jumps to two minutes before each due time, then steps on (pg-boss's job_now() moves with it).
+  await clock.setTime(at("2026-10-26 10:00").getTime() - 120_000);
+  await tickUntil(() => sentKeys().includes("booking.reminder_24h"), 30_000, 30);
   ok("PF-23w DW7: the 24 h reminder runs after the restart, at its due time on the clock (Mon 10:00 Toronto), and mails the booker",
     mail2.inbox("ana@client.example").some((m) => m.templateKey === "booking.reminder_24h") && clock.now() >= at("2026-10-26 10:00").getTime() && clock.now() < at("2026-10-26 10:00").getTime() + 15 * 60_000, { sent: sentKeys(), now: new Date(clock.now()).toISOString() });
   ok("PF-23w DW7 fail: the 1 h reminder has not run yet at that time (due Tue 09:00)", !sentKeys().includes("booking.reminder_1h"));
-  await tickUntil(() => sentKeys().includes("booking.attendance_ask"), 10 * 60_000, 300);
+  await clock.setTime(at("2026-10-27 09:00").getTime() - 120_000);
+  await tickUntil(() => sentKeys().includes("booking.reminder_1h"), 30_000, 30);
+  await clock.setTime(at("2026-10-27 11:00").getTime() - 120_000);
+  await tickUntil(() => sentKeys().includes("booking.attendance_ask"), 30_000, 30);
   ok("PF-23w DW7: the 1 h reminder and the attendance question (30 min after the end) run after the restart", sentKeys().includes("booking.reminder_1h") && mail2.inbox("host@pf23w.example").some((m) => m.templateKey === "booking.attendance_ask")
     && clock.now() >= at("2026-10-27 11:00").getTime(), { sent: sentKeys(), now: new Date(clock.now()).toISOString() });
   ok("PF-23w DW7: each booking job's run wrote its job line (observeJob on the real worker)", jobLines("booking.reminder", "done").length === 2 && jobLines("booking.attendance_ask", "done").length === 1);
-  ok("PF-23w DW7: nothing ran twice (2 reminders and 1 question after the restart, none before it)", mail2.sent.filter((m) => m.templateKey.startsWith("booking.reminder")).length === 2 && !mail1.sent.some((m) => m.templateKey.startsWith("booking.reminder")), { mail1: mail1.sent.map((m) => m.templateKey), mail2: sentKeys() });
+  ok("PF-23w DW7: nothing ran twice (2 reminders and 1 question after the restart, none before it)", mail2.sent.filter((m) => (m.templateKey ?? "").startsWith("booking.reminder")).length === 2 && !mail1.sent.some((m) => (m.templateKey ?? "").startsWith("booking.reminder")), { mail1: mail1.sent.map((m) => m.templateKey), mail2: sentKeys() });
 
   // ------------------------------------------------------------------------------------------------------------ DW3
   // A job no worker takes (its queue has no handler) waits past its due time; the stuck check (the platform cron job,
@@ -190,24 +198,36 @@ try {
   ok("PF-23w DW3 fail: a job due tomorrow is not stuck", stuckFor("pf23w.later").length === 0);
   await tickUntil(() => stuckFor("pf23w.nobody").length > 1, 60_000, 4);
   ok("PF-23w DW3: after 5 minutes a job still stuck raises again (one alert per job per 5 minutes)", stuckFor("pf23w.nobody").length === 2 && clock.now() - firstAt >= 5 * 60_000, { n: stuckFor("pf23w.nobody").length, after: clock.now() - firstAt });
+  // DW2's failing job waits in pg-boss's retry state, due since Monday: after the restart no worker takes that queue.
+  ok("PF-23w DW3 pass: a job in the retry state long past its due time is reported stuck too", stuckFor("pf23w.boom").length > 0, stuckFor("pf23w.boom"));
+  // The dead-letter list: DW2's failing job, its handler registered again on this app, runs out of retries and lands
+  // there, where no worker takes it; however old it gets, it is never reported stuck.
+  await jobs.handle("pf23w.boom", async () => { boomRuns++; throw new Error("pf23w boom"); });
+  const deadCount = async () => (await q<{ n: number }>(`select count(*)::int as n from platform_jobs.job where name = $1`, [DEAD_LETTER]))[0]!.n;
+  await tickUntil(async () => (await deadCount()) > 0, 30_000, 120);
+  const dead = await deadCount();
+  await tickUntil(() => false, 60_000, 32);   // the dead-letter row is now over STUCK_JOB_MS old, and the cron ran each minute
+  ok("PF-23w DW3 fail: the dead-letter list (DW2's failed job, waiting with no worker) is never reported stuck", dead > 0 && stuckFor(DEAD_LETTER).length === 0, { dead, boomRuns, alerts: stuckFor(DEAD_LETTER) });
 } finally {
   await current?.close().catch(() => {});
   await sql.end();
+  execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]);
 }
 
 // ------------------------------------------------------------------------------------------------------ DW5, DW6
+// qa's own checks, from qa's PR #1789 until it merges: on a checkout without them the case is reported "NOT RUN" with
+// the reason (never a pass), and the PR pastes their output.
 const qa = (f: string) => {
   const p = join(STUDIO, "tests", "qa", f);
-  if (!existsSync(p)) return { status: -1, out: `${f} not found (qa's file, #1789)` };
+  if (!existsSync(p)) return null;
   const r = spawnSync(process.execPath, [...process.execArgv, p], { encoding: "utf8", cwd: process.cwd() });   // the folder this suite was started in: tsx's --tsconfig path is relative to it
   return { status: r.status, out: `${r.stdout}${r.stderr}`.trim() };
 };
-const q452 = qa("check_qa452_jobs_observed.ts"), q453 = qa("check_qa453_real_jobport.ts");
-console.log(q452.out.split("\n").map((l) => `    qa452| ${l}`).join("\n"));
-ok("PF-23w DW5: qa's check_qa452_jobs_observed.ts passes", q452.status === 0 && /3 passed, 0 failed/.test(q452.out), q452.out.slice(-300));
-console.log(q453.out.split("\n").map((l) => `    qa453| ${l}`).join("\n"));
-ok("PF-23w DW6: qa's check_qa453_real_jobport.ts passes 2/2", q453.status === 0 && /2 passed, 0 failed/.test(q453.out), q453.out.slice(-300));
-
-execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]);
+for (const [name, file, pattern] of [["PF-23w DW5: qa's check_qa452_jobs_observed.ts passes", "check_qa452_jobs_observed.ts", /^[1-9]\d* passed, 0 failed$/m], ["PF-23w DW6: qa's check_qa453_real_jobport.ts passes 2/2", "check_qa453_real_jobport.ts", /^2 passed, 0 failed$/m]] as const) {
+  const r = qa(file);
+  if (!r) { console.log(`NOT RUN  ${name} — tests/qa/${file} is not on this checkout (qa's #1789)`); continue; }
+  console.log(r.out.split("\n").map((l) => `    ${file.slice(6, 12)}| ${l}`).join("\n"));
+  ok(name, r.status === 0 && pattern.test(r.out), r.out.slice(-300));
+}
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

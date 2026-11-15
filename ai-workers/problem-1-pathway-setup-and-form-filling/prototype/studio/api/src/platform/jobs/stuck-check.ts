@@ -2,8 +2,9 @@
 // through PlatformJobs (so it is wrapped by observeJob like every other handler). Each run reads pg-boss's own job table
 // (no table of ours) for jobs older than STUCK_JOB_MS: waiting ones (created or retry) whose due time passed that long
 // ago, and active ones started that long ago. A job due tomorrow is not stuck. It hands them to PF-23's stuckJobs, which
-// raises `job_stuck` (one alert per queue, naming its oldest job and the count). A job already in an alert is left out
-// for ALERT_REPEAT_MS (5 min, Sample): the memory is this process's, as the brief rules (Lead B ruling 3, 15 Nov).
+// raises `job_stuck` (one alert per queue, naming its oldest job and the count). A queue whose stuck jobs were all in an
+// alert within ALERT_REPEAT_MS (5 min, Sample) raises nothing: at most one alert per job per 5 minutes. The memory is
+// this process's, as the brief rules (Lead B ruling 3, 15 Nov): with several API processes each keeps its own (PF-8).
 import { ALERT_REPEAT_MS, currentAlerts, STUCK_JOB_MS, stuckJobs } from "../observability/alerts.ts";
 import type { AlertPort } from "../../../../ports/alert.ts";
 import type { PgBossJobs } from "./pgboss-jobs.ts";
@@ -34,14 +35,18 @@ export class StuckCheck {
     return (rows as { name: string; id: string; since: Date | string }[]).map((r) => ({ queue: r.name, id: String(r.id), since: new Date(r.since) }));
   }
 
-  /** One check: raises job_stuck for the queues holding a stuck job not alerted in the last 5 minutes; returns them. */
+  /** One check: for each queue holding a stuck job not alerted in the last 5 minutes, raises job_stuck once, counting
+   *  every stuck job of that queue and naming its oldest; returns the queues alerted. The memory is per queue and job
+   *  (a key reused in two queues is two jobs). */
   async run(limitMs = STUCK_JOB_MS): Promise<string[]> {
-    const now = this.runner.now();
-    for (const [id, at] of this.#alerted) if (now - at >= ALERT_REPEAT_MS) this.#alerted.delete(id);
-    const fresh = (await this.candidates(limitMs)).filter((j) => !this.#alerted.has(j.id));
-    if (!fresh.length) return [];
-    const queues = await stuckJobs(fresh, { now: () => new Date(now) }, this.alerts(), limitMs);
-    for (const j of fresh) if (queues.includes(j.queue)) this.#alerted.set(j.id, now);
+    const now = this.runner.now(), mark = (j: StuckCandidate) => `${j.queue}|${j.id}`;
+    for (const [k, at] of this.#alerted) if (now - at >= ALERT_REPEAT_MS) this.#alerted.delete(k);
+    const all = await this.candidates(limitMs);
+    const due = new Set(all.filter((j) => !this.#alerted.has(mark(j))).map((j) => j.queue));
+    if (!due.size) return [];
+    const jobs = all.filter((j) => due.has(j.queue));
+    const queues = await stuckJobs(jobs, { now: () => new Date(now) }, this.alerts(), limitMs);
+    for (const j of jobs) if (queues.includes(j.queue)) this.#alerted.set(mark(j), now);
     return queues;
   }
 }

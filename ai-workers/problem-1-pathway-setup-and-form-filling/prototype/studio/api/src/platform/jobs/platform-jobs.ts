@@ -22,10 +22,12 @@ const SIGNALS = ["SIGTERM", "SIGINT"] as const;
 /** Optional: pg-boss options for this runner (a test passes pg-boss's TestClock as `clock`; the app passes none). */
 export const PLATFORM_JOBS_BOSS = "PF14_PLATFORM_JOBS_BOSS";
 
-/** A handler wrapped by PF-23's observeJob: the job's key is its id, its due time its age's start, its firm its scope. */
+/** A handler wrapped by PF-23's observeJob: the job's key is its id, its due time its age's start, its firm its scope.
+ *  A recurring run's key is `<name>@<minute, ISO>`; its "@" becomes ":at:" so the line keeps the run's id (observeJob
+ *  takes ids of letters, digits and _ . : - only). A throw is passed on, so pg-boss still retries. */
 export const observed = (queue: string, handler: JobHandler, now?: () => number): JobHandler => {
   const run = observeJob(queue, (j: { id: string; createdAt: Date; firmId?: string; run: JobRun }) => handler(j.run), now);
-  return (job) => run({ id: job.key, createdAt: job.runAt, firmId: job.firmId ?? undefined, run: job });
+  return (job) => run({ id: job.key.replace(/@/g, ":at:"), createdAt: job.runAt, firmId: job.firmId ?? undefined, run: job });
 };
 
 @Injectable()
