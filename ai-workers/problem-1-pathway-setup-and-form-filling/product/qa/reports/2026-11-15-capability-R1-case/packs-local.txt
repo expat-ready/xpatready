@@ -1,2 +1,10 @@
 Gate B: the PR names C6.17, C8.2, C7.1, C7.8, C7.2; claims Works for none (no bug check).
   packs: C6.17.test.ts, C8.2.test.ts, C7.1-application-type.test.ts, C7.8.test.ts, C7.2.test.ts
+    C6.17.test.ts on the checkpoint: exit 0, 47/47 passed (360 s: copy 10, Load the configured checkpoint 184, run 166)
+    C8.2.test.ts on the checkpoint: exit 0, 19/19 passed (373 s: copy 10, Load the configured checkpoint 184, run 179)
+    C7.1-application-type.test.ts on the checkpoint: exit 0, 12/12 passed (534 s: copy 10, Load the configured checkpoint 185, run 338)
+    C7.8.test.ts on the checkpoint: exit 0, 20/20 passed (335 s: copy 7, Load the configured checkpoint 157, run 171)
+    C7.2.test.ts on the checkpoint: exit 0, 11/11 passed (168 s: copy 7, Load the configured checkpoint 159, run 3)
+  packs took 697 s in all
+Gate B: passed.
+exit 0
