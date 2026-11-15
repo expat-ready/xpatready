@@ -57,6 +57,41 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
         if (c[5] == "") print "RULES REGISTER: " c[2] " has no as-of"; next }
       { t = 0 }' "$R"
   fi
+  # B193 part 5 (P-619 step 6; P-188, P-611): rows moved out of the register are never lost. Each rules/rule-id-map-*.tsv
+  # lists every ID the register had before a triage: "kept" is still a RULES.md row; "merged" and "retired" rows sit word
+  # for word (same sha256 as the old line) in the paired rules/merged-and-retired-*.md, and a merged row's target is still
+  # a RULES.md row; the ID count equals old_rows. Test: check-rule-triage.sh.
+  for M in "$PH"/rules/rule-id-map-*.tsv; do
+    [ -f "$M" ] && [ -f "$R" ] || continue
+    python3 -I - "$M" "$R" "$(dirname "$M")/merged-and-retired-$(basename "$M" .tsv | sed 's/^rule-id-map-//').md" <<'PY'
+import sys, re, os, hashlib
+m, r, sf = sys.argv[1:4]; mn = os.path.basename(m)
+rid = lambda l: (lambda c: c[1].strip() if len(c) > 2 else "")(l.split("|"))
+pat = re.compile(r"^\| [A-Z]+-[0-9A-Za-z.]+ \|")
+reg = {rid(l) for l in open(r).read().split("\n") if pat.match(l)}
+side = {}
+if os.path.exists(sf):
+    for l in open(sf).read().split("\n"):
+        if pat.match(l) and l.count("|") == 5: side.setdefault(rid(l), set()).add(hashlib.sha256(l.encode()).hexdigest()[:16])
+want = None; seen = set(); n = 0
+for l in open(m).read().split("\n"):
+    if l.startswith("# old_rows="): want = int(l.split("=", 1)[1]); continue
+    if not l.strip() or l.startswith("#") or l.startswith("id\t"): continue
+    f = l.split("\t"); n += 1
+    if len(f) != 4: print(f"RULE MAP: {mn} line \"{l[:40]}\" needs 4 tab-separated fields (id, outcome, where, line_sha)"); continue
+    i, o, w, h = f
+    if i in seen: print(f"RULE MAP: {i} is listed twice in {mn}")
+    seen.add(i)
+    if o == "kept":
+        if i not in reg: print(f"RULE MAP: {i} is kept but is not a RULES.md row: put it back, or move its line word for word to {os.path.basename(sf)} and mark it merged or retired (B193 part 5)")
+    elif o in ("merged", "retired"):
+        if h not in side.get(i, ()): print(f"RULE MAP: {i} is {o} but its old line is not word for word in {os.path.basename(sf)} (sha {h})")
+        if o == "merged" and w not in reg: print(f"RULE MAP: {i} is merged into {w}, which is not a RULES.md row")
+    else: print(f"RULE MAP: {i} has outcome \"{o}\" (kept, merged or retired)")
+if want is None: print(f"RULE MAP: {mn} has no '# old_rows=N' line")
+elif n != want: print(f"RULE MAP: {mn} lists {n} IDs but the register had old_rows={want}: an old ID is missing")
+PY
+  done
   for f in "$PH"/*.md "$PH"/domain/*.md "$PH"/rules/*.md "$ROOT"/.claude/skills/*/SKILL.md "$ROOT"/.claude/agents/*.md; do
     grep -o '`[A-Za-z0-9_./-]*\.md`' "$f" | tr -d '`' | sort -u | while read -r ref; do
       # Retired files (P-188, P-189) live in git history; old decision rows and records may still name them.
