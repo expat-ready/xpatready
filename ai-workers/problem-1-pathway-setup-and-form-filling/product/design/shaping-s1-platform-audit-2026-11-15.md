@@ -28,13 +28,13 @@
 | 35 | Contacts import from a spreadsheet | Platform | PF-10 named | PF-10a, PF-10b, PF-10t, PF-10s | Shaped |
 | 95 | Custom fields and saved views | Platform | PF-22 named | PF-22a, PF-22v, PF-22s | Shaped |
 | 50 | In-app notifications; personal notification settings | Platform | PF-18a, PF-18s, PF-18n | PF-18ns | Shaped |
-| 52 | Connected mailbox; WhatsApp (no SMS) | Platform + front office | FO-11 (WhatsApp); PF-19m named | PF-19m, PF-19mc, PF-19mi, PF-19ms | Shaped (Google's review is an outside clock) |
+| 52 | Connected mailbox; WhatsApp (no SMS) | Platform + front office | FO-11 (WhatsApp); PF-19m named | PF-19m, PF-19mc, PF-19mi, PF-19mx, PF-19ms | Shaped (Google's review is an outside clock) |
 | 62 | Client login portal; progress stream with "last update" | Platform | FO-14 (stream); PF-4p named | PF-4p, PF-4pw, PF-4ps | Shaped |
 | 13 | Logs, metrics, error reports, alerts | Platform (running it) | PF-23 merged, PF-23r, PF-23m, PF-23c | PF-23w (QA-452) | Shaped |
 | 15 | Secrets in a managed store | Platform (running it) | PF-24 merged, PF-24w | (cloud half in PF-8b) | Shaped |
 | 24 | Each firm's own web address | Platform | PF-25 merged, PF-25w | (wildcard DNS and certificate in PF-8b) | Shaped |
 
-**Size (Hypothesis):** 37 new rows, about 37-45 PRs, of which 9 need the founder's AWS account or an outside review before their last step; the rest build now against port fakes (P-576, P-599).
+**Size (Hypothesis):** 38 new rows, about 50-60 PRs (most rows are 1 PR, the larger ones 2), of which 7 need the founder's AWS account or an outside review before their last step; the rest build now against port fakes (P-576, P-599).
 
 ---
 
