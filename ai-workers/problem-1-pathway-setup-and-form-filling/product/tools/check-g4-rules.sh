@@ -43,8 +43,8 @@ bc "${GOOD/Duplicate check:/Duplicates}"; ok "(3) a body with no Duplicate check
 bc $'Done when: it looks nice\nDuplicate check: searched BACKLOG; none'; ok "(3) a Done when that names no test fails, a Duplicate check after it does not count" "$([ $r = 1 ] && echo "$out" | grep -q 'names no test' && echo 1)" "exit $r: $out"
 bc $'## Done when\n\n- check-x.sh exits 0\n\nDuplicate check: none'; ok "(3) a Done when heading with a test in its list passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 bc $'Duplicate check: none'; ok "(3) a body with no Done when fails" "$([ $r = 1 ] && echo "$out" | grep -q 'no "Done when"' && echo 1)" "exit $r: $out"
-grep -q 'brief-check.sh"$' "$W" && grep -q 'types: \[opened, edited,' "$W"; ! grep -qE 'types:.*labeled' "$W"; ok "(3) pr-rules.yml never re-runs on a label (the queue waits on it)" "$([ $? = 0 ] && echo 1)"
-ok "(3) pr-rules.yml checks every body, again on each edit" "$([ $? = 0 ] && echo 1)"
+! grep -qE 'types:.*labeled' "$W"; ok "(3) pr-rules.yml never re-runs on a label (the queue waits on it)" "$([ $? = 0 ] && echo 1)"
+grep -q 'brief-check.sh"$' "$W" && grep -q 'types: \[opened, edited,' "$W"; ok "(3) pr-rules.yml checks every body, again on each edit" "$([ $? = 0 ] && echo 1)"
 
 # (5) Every branch ahead of main with no open PR and no LANE-REPORT is listed.
 O="$T/origin.git"; R="$T/repo"; git init -q --bare -b main "$O"; git init -q -b main "$R"
