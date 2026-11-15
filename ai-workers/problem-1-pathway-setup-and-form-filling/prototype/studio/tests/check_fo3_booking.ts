@@ -439,8 +439,9 @@ try {
   const stale = await full(await flaky.svc.publicBook(A.key, "fo3f", await form3(flaky.svc, "stale"), "ip"));
   await flaky.svc.selfReschedule(stale.manageToken, { startsAt: slot3() }, "ip");
   await fj.runDue();
-  ok("FO-3f m3 fail: a booked email whose booking moved before it ran is not sent (the moved email is), and makes no link",
-    flaky.mail.inbox("stale@client.example").map((m) => m.templateKey).join() === "booking.moved" && await liveFor(stale.id) === 2, flaky.mail.inbox("stale@client.example").map((m) => m.templateKey));
+  const staleHost = flaky.mail.inbox("a2@staff.example").filter((m) => icsOf(m).includes(`UID:${stale.id}@`)).map((m) => m.templateKey);
+  ok("FO-3f m3 fail: booked emails whose booking moved before they ran are not sent, to the person or the host (the moved ones are), and make no link (review m4)",
+    flaky.mail.inbox("stale@client.example").map((m) => m.templateKey).join() === "booking.moved" && staleHost.join() === "booking.host_moved" && await liveFor(stale.id) === 2, { person: flaky.mail.inbox("stale@client.example").map((m) => m.templateKey), host: staleHost });
   ok("FO-3f m3 pass: the running app's ports name no JobPort and take PF-14's runner; fail: with neither, the booking service refuses to start",
     bookingPortsWith({ ...flaky.svc["ports"], jobs: undefined }, retrying).jobs === retrying && /no JobPort/.test(String((await thrown(() => bookingPortsWith({ ...flaky.svc["ports"], jobs: undefined }, null)))?.body.message)));
 
@@ -471,6 +472,35 @@ try {
   const par = await Promise.allSettled(Array.from({ length: 10 }, (_, i) => S.publicBook(A.key, "fo3f", { ...shared, startsAt: i ? slot3() : shared.startsAt, email: `shared${i}@client.example` }, `198.51.100.${100 + i}`)));
   ok("FO-3f B-8 fail: one stamp sent 10 times at once for 10 free times → exactly one booking, 9 × 409 FORM_ALREADY_SENT",
     par.filter((r) => r.status === "fulfilled").length === 1 && par.filter((r) => codeOf(r) === "FORM_ALREADY_SENT").length === 9, par.map(statusOf));
+  const edge = await form3(S, "edge");
+  await S.publicBook(A.key, "fo3f", edge, "ip");
+  const edgeBack = clock.now();
+  await clock.set(new Date(Number(String(edge.formStamp).split(".")[0]) + 2 * 60 * 60_000));   // the stamp's last valid moment
+  const atEdge = await thrown(() => S.publicBook(A.key, "fo3f", { ...edge, startsAt: slot3(), email: "edge2@client.example" }, "ip"));
+  await clock.set(new Date(Number(String(edge.formStamp).split(".")[0]) + 2 * 60 * 60_000 + 1));
+  const pastEdge = await thrown(() => S.publicBook(A.key, "fo3f", { ...edge, startsAt: slot3(), email: "edge3@client.example" }, "ip"));
+  await clock.set(edgeBack);
+  ok("FO-3f B-8 fail: at exactly 2 h after the page was drawn (the stamp's last valid moment), a used stamp is still refused 409 FORM_ALREADY_SENT; 1 ms later the age rule refuses it 400 (review m1, break F1)",
+    atEdge?.body.code === "FORM_ALREADY_SENT" && pastEdge?.status === 400, { atEdge, pastEdge });
+  /** Holds the host's transaction lock (as a booking for that host would), so a public booking for A2 waits inside its
+   *  transaction, after the firm's lock and its gate, until `free()` (break F2/F3: a booking in flight). */
+  const holdHost = async () => {
+    let free!: () => void, got!: () => void;
+    const gate = new Promise<void>((r) => { free = r; }), taken = new Promise<void>((r) => { got = r; });
+    const tx = db.$transaction(async (t) => { await t.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fo-booking-host:${A2.id}`}))`; got(); await gate; }, { timeout: 30_000 });
+    await taken;
+    return async () => { free(); await tx; };
+  };
+  const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const inflight = await form3(S, "inflight", { startsAt: once.startsAt });   // a time already taken: it will fail
+  let freeHost = await holdHost();
+  const fA = S.publicBook(A.key, "fo3f", inflight, "198.51.100.200").then(() => 201, (e: { getResponse?: () => { code?: string } }) => e.getResponse?.().code);
+  await pause(300);
+  const fB = S.publicBook(A.key, "fo3f", { ...inflight, startsAt: slot3(), email: "inflight2@client.example" }, "198.51.100.201").then(() => 201, (e: { getResponse?: () => { code?: string } }) => e.getResponse?.().code);
+  await pause(300);
+  await freeHost();
+  const [rA, rB] = await Promise.all([fA, fB]);
+  ok("FO-3f B-8 pass: the same stamp sent while its first send (for a taken time) is still in flight waits, then books once the first has failed (review m2, break F2)", rA === "SLOT_TAKEN" && rB === 201, { rA, rB });
   const sameMs = [S.stamp(A.id, clock.now()), S.stamp(A.id, clock.now())];
   ok("FO-3f B-8 pass: two pages drawn in the same millisecond get two stamps (a random nonce), so two visitors never share one", sameMs[0] !== sameMs[1] && sameMs.every((x) => x.split(".")[0] === String(clock.now().getTime())));
 
@@ -483,7 +513,18 @@ try {
   const locks0 = await db.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory'`;
   const capRun = await Promise.allSettled(capForms.map((f, i) => capped.svc.publicBook(A.key, "fo3f", f, `203.0.113.${100 + i}`)));
   const capBooked = await db.foBooking.count({ where: { firmId: A.id, typeId: T3.id, startsAt: { in: capForms.map((f) => new Date(f.startsAt as string)) } } });
-  ok("FO-3f cap pass: 20 parallel bookings for 20 free times at cap − 1 (2 of 3) → exactly one success", capRun.filter((r) => r.status === "fulfilled").length === 1 && capBooked === 1, capRun.map(statusOf));
+  ok("FO-3f cap pass: 20 parallel bookings for 20 free times at cap − 1 (2 of 3) → exactly one success (held by the check-and-hold in the transaction, which counts bookings in flight)", capRun.filter((r) => r.status === "fulfilled").length === 1 && capBooked === 1, capRun.map(statusOf));
+  const capped2 = make({ limits: { bookPerFirm: 3 } });
+  for (let i = 0; i < 2; i++) await capped2.svc.publicBook(A.key, "fo3f", await form3(capped2.svc, `cap2${i}`), "ip");
+  const doomed = await form3(capped2.svc, "doomed", { startsAt: once.startsAt }), good2 = await form3(capped2.svc, "good2");
+  freeHost = await holdHost();
+  const cA = capped2.svc.publicBook(A.key, "fo3f", doomed, "198.51.100.210").then(() => 201, (e: { getStatus?: () => number }) => e.getStatus?.());
+  await pause(300);
+  const cB = capped2.svc.publicBook(A.key, "fo3f", good2, "198.51.100.211").then(() => 201, (e: { getStatus?: () => number }) => e.getStatus?.());
+  await pause(300);
+  await freeHost();
+  const [sA, sB] = await Promise.all([cA, cB]);
+  ok("FO-3f cap pass: at cap − 1, a booking in flight that then fails (time taken) gives its place back before the next one is checked under the firm's lock, so the next real booking books, not 429 (review m2/m3, break F3)", sA === 409 && sB === 201, { sA, sB });
   ok("FO-3f cap fail: the other 19 → 429, never a booking past the cap; no advisory lock is left held", capRun.filter((r) => statusOf(r) === 429).length === 19 && (await db.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory'`)[0].n === locks0[0].n, capRun.map(statusOf));
 
   // --------------------------------------------------------------------------------------- over HTTP, with the guard

@@ -145,10 +145,12 @@ export class BookingService {
   private readonly limits: Limits;
   private readonly formKey: Buffer;
   private readonly hits = new Map<string, number[]>();
-  /** Form stamps that made a booking, with the time each stops being valid (2 h after it was drawn). In this process,
-   *  like the limits and the stamp's own key (random per process unless `formKey` is given): a stamp drawn by another
-   *  process is not ours anyway (FO-3f item 4). */
-  private readonly usedStamps = new Map<string, number>();
+  /** Form stamps that made a booking (or are making one: `pending`), with the last moment the stamp is valid (2 h after it
+   *  was drawn). In this process, like the limits and the stamp's own key (random per process unless `formKey` is given):
+   *  a stamp drawn by another process is not ours anyway (FO-3f item 4). */
+  private readonly usedStamps = new Map<string, { until: number; pending: boolean }>();
+  /** Per firm, the bookings in flight that hold a place under the cap (not yet in `hits`, which counts made ones). */
+  private readonly capPending = new Map<string, number>();
   private readonly warn: (msg: string) => void;
 
   constructor(private readonly db: PrismaClient, private readonly ports: BookingPorts) {
@@ -205,9 +207,10 @@ export class BookingService {
     const b = parse(PublicBookingBody, body);
     if (b.website) throw refused("We could not take this booking. Please try again.");
     this.checkStamp(firm.id, b.formStamp);
-    if (this.stampUsed(b.formStamp)) throw formUsed();
-    // The firm's limit is checked here and counted only when a booking is made (break B-3); the booking's transaction
-    // checks it again, with the stamp, under the firm's lock (gate, below).
+    if (this.stampUsed(b.formStamp, false)) throw formUsed();
+    // The firm's limit is checked here and counted only when a booking is made (break B-3). These two quick checks see
+    // only bookings made, never ones in flight, which may still fail (review m2); the booking's transaction checks both
+    // again, with the ones in flight, under the firm's lock (gate, below).
     this.limit(`book:firm:${firm.id}`, this.limits.bookPerFirm, false);
     if (!type.modes.includes(b.mode)) throw refused("Please choose one of the ways to meet offered.", ["mode: not offered for this consultation"]);
     if (b.mode === "PHONE" && !b.phone) throw refused("Please give a phone number for a phone call.", ["phone: required for a phone call"]);
@@ -334,37 +337,40 @@ export class BookingService {
 
   // ========================================================================================================== writes
   /** `pub.gate` (the public door) runs first in the transaction, under the firm's transaction lock: it checks the firm's
-   *  cap and the form stamp and records both, and returns how to undo that when the transaction does not commit; so
-   *  bookings in flight are counted one after another, never all against the same count (FO-3f items 4 and 5); and a
-   *  booking in flight that then fails (time taken) has given its count back before the next one is checked. Public
-   *  writers take the firm's lock before the hosts' locks and nobody takes it after them, so no two writers wait on each
-   *  other. `pub.token`: issue a link in the transaction for the answer (the public door only). */
+   *  cap and the form stamp and holds a place for both (FO-3f items 4 and 5). The cap is held by that check-and-hold,
+   *  which counts the bookings in flight; the firm's lock puts them in a line, and a booking that fails gives its place
+   *  back inside its transaction, before the lock is let go, so the next one in line is checked against bookings made
+   *  or still being made, never against one that has just failed (review m3, break F2/F3). Public writers take the
+   *  firm's lock before the hosts' locks and nobody takes it after them, so no two writers wait on each other.
+   *  `pub.token`: issue a link in the transaction for the answer (the public door only). */
   private async create(firmId: string, type: TypeRow, at: { startsAt: Date; mode: Mode; timeZone: string }, actor: Actor,
-    arrive: (tx: Tx, bookingId: string) => Promise<{ personId: string; prospectId?: string }>, pub?: { gate: () => () => void; token: true }) {
+    arrive: (tx: Tx, bookingId: string) => Promise<{ personId: string; prospectId?: string }>, pub?: { gate: () => Held; token: true }) {
     for (let attempt = 0; ; attempt++) {
       const bookingId = randomUUID();
-      let undo: (() => void) | undefined;
+      let held: Held | undefined;
       try {
         const done = await this.db.$transaction(async (tx) => {
           if (pub) {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fo-booking-firm:${firmScope(firmId).firmId}`}))`;
-            undo = pub.gate();
+            held = pub.gate();
           }
-          const slot = await this.freeSlot(tx, firmId, type, at.startsAt);
-          const row = await tx.foBooking.create({ data: { id: bookingId, firmId, typeId: type.id, staffId: slot.staffIds[0], mode: at.mode, startsAt: slot.startsAt, endsAt: slot.endsAt, bookerTimeZone: at.timeZone } });
-          const who = await arrive(tx, bookingId);
-          const booking = await tx.foBooking.update({ where: { id: row.id }, data: { personId: who.personId, prospectId: who.prospectId ?? null } });
-          const token = pub?.token ? await issueToken(tx, firmId, booking.id, booking.endsAt) : undefined;
-          await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.scheduled", entity: "fo_booking", entityKey: booking.id,
-            summary: `Consultation booked (${type.name}).`, detail: { bookingId: booking.id, typeId: type.id, staffId: booking.staffId, personId: who.personId, prospectId: who.prospectId ?? null, startsAt: booking.startsAt.toISOString(), sequence: booking.sequence } });
-          await this.outbox(tx, booking, EVENT.BOOKING_SCHEDULED);
-          return { booking, token };
+          try {
+            const slot = await this.freeSlot(tx, firmId, type, at.startsAt);
+            const row = await tx.foBooking.create({ data: { id: bookingId, firmId, typeId: type.id, staffId: slot.staffIds[0], mode: at.mode, startsAt: slot.startsAt, endsAt: slot.endsAt, bookerTimeZone: at.timeZone } });
+            const who = await arrive(tx, bookingId);
+            const booking = await tx.foBooking.update({ where: { id: row.id }, data: { personId: who.personId, prospectId: who.prospectId ?? null } });
+            const token = pub?.token ? await issueToken(tx, firmId, booking.id, booking.endsAt) : undefined;
+            await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.scheduled", entity: "fo_booking", entityKey: booking.id,
+              summary: `Consultation booked (${type.name}).`, detail: { bookingId: booking.id, typeId: type.id, staffId: booking.staffId, personId: who.personId, prospectId: who.prospectId ?? null, startsAt: booking.startsAt.toISOString(), sequence: booking.sequence } });
+            await this.outbox(tx, booking, EVENT.BOOKING_SCHEDULED);
+            return { booking, token };
+          } catch (e) { held?.release(); throw e; }   // given back before the rollback lets the firm's lock go
         }, TX);
-        undo = undefined;   // committed: the stamp and the count stay
+        held?.keep();   // committed: the stamp and the count stay
         await this.afterCommit({ booking: done.booking, kind: "booked" });
         return done;
       } catch (e) {
-        undo?.();
+        held?.release();   // the commit itself failed (no-op when given back already)
         // Another booking took the host between the slot check and the write (the database's no-overlap rule, or the
         // deadlock PostgreSQL reports when two writers of one range wait on each other): try again, which re-reads the
         // free hosts; when the retries are spent, the visitor gets fresh times.
@@ -654,24 +660,35 @@ export class BookingService {
 
   private mac(firmId: string, ms: string, nonce: string) { return createHmac("sha256", this.formKey).update(`${firmId.toLowerCase()}|${ms}|${nonce}`).digest("base64url"); }
 
-  private stampUsed(stamp: string) {
+  /** Whether the stamp has made a booking (with `pending`, also: is making one). Kept up to and including the last
+   *  moment checkStamp still takes the stamp (review m1, break F1). */
+  private stampUsed(stamp: string, pending: boolean) {
     const now = this.ports.clock.now().getTime();
-    if (this.usedStamps.size > 50_000) for (const [k, until] of this.usedStamps) if (until <= now) this.usedStamps.delete(k);
-    return (this.usedStamps.get(stamp) ?? 0) > now;
+    if (this.usedStamps.size > 50_000) for (const [k, u] of this.usedStamps) if (u.until < now) this.usedStamps.delete(k);
+    const u = this.usedStamps.get(stamp);
+    return !!u && u.until >= now && (pending || !u.pending);
   }
 
-  /** Inside the booking's transaction, under the firm's lock: the stamp has not booked, and the firm's cap is not reached;
-   *  both are recorded now (before the commit, so the next booking in flight sees them) and undone if it does not commit. */
-  private gate(firmId: string, stamp: string): () => void {
-    if (this.stampUsed(stamp)) throw formUsed();
-    this.limit(`book:firm:${firmId}`, this.limits.bookPerFirm);
-    const hit = this.hits.get(`book:firm:${firmId}`)!.at(-1)!;
-    this.usedStamps.set(stamp, Number(stamp.split(".")[0]) + 2 * 60 * MIN);
-    return () => {
-      this.usedStamps.delete(stamp);
-      const list = this.hits.get(`book:firm:${firmId}`), i = list?.lastIndexOf(hit) ?? -1;
-      if (list && i >= 0) list.splice(i, 1);
+  /** Inside the booking's transaction, under the firm's lock: the stamp has not booked and is not booking, and the firm's
+   *  bookings made plus those in flight are under the cap; a place is held for both, kept on commit, given back if not. */
+  private gate(firmId: string, stamp: string): Held {
+    if (this.stampUsed(stamp, true)) throw formUsed();
+    const key = `book:firm:${firmId}`, since = this.ports.clock.now().getTime() - this.limits.windowMinutes * MIN;
+    const made = (this.hits.get(key) ?? []).filter((t) => t > since).length, inFlight = this.capPending.get(firmId) ?? 0;
+    if (made + inFlight >= this.limits.bookPerFirm) throw tooMany();
+    this.capPending.set(firmId, inFlight + 1);
+    this.usedStamps.set(stamp, { until: Number(stamp.split(".")[0]) + 2 * 60 * MIN, pending: true });
+    let open = true;
+    const settle = (kept: boolean) => {
+      if (!open) return;
+      open = false;
+      const n = (this.capPending.get(firmId) ?? 1) - 1;
+      if (n > 0) this.capPending.set(firmId, n); else this.capPending.delete(firmId);
+      const u = this.usedStamps.get(stamp);
+      if (kept) { if (u) u.pending = false; this.limit(key, Number.POSITIVE_INFINITY); }
+      else if (u?.pending) this.usedStamps.delete(stamp);
     };
+    return { keep: () => settle(true), release: () => settle(false) };
   }
 
   /** The minimum fill time (AG-4-20 rule 3): a form sent sooner than a person could fill it, or with a stamp that is not
@@ -691,6 +708,8 @@ export class BookingService {
 /** No free host at the asked time, found inside the write; the caller answers 409 with fresh times once the transaction
  *  has ended (reading them inside it would hold a second connection). */
 class NoSlot extends Error {}
+/** A place held under the firm's cap and for the form stamp, while a public booking is in flight. */
+type Held = { keep: () => void; release: () => void };
 
 export const staffActor = (ctx: StaffContext): Actor => ({ word: `staff:${ctx.staffId}`, staffId: ctx.staffId });
 function need(ctx: StaffContext, key: string) { if (!ctx.keys.includes(key)) throw forbidden(key); }
