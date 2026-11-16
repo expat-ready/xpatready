@@ -95,6 +95,15 @@ try {
   sql(`delete from platform_role_permission where permission_key = 'agent/pf6r-test:read'`);
   ok("PF-6r DW1 fail: a role key with no catalogue row is a 500, never a key answered without its class", lost.status === 500 && !JSON.stringify(lost.body).includes("pf6r-test"), lost);
 
+  ok("PF-6r DW1 pass: each role's keys are in byte order (collate C), the same on every database", a.body.roles.every((r: any) => { const k = r.keys.map((x: any) => x.key); return JSON.stringify(k) === JSON.stringify([...k].sort()); }));
+  sql(`update platform_permission_key set class = 'GENERAL' where key = 'agent/invoice:create'`);
+  const hand = await get(tR);
+  sql(`update platform_permission_key set class = 'MONEY' where key = 'agent/invoice:create'`);
+  ok("PF-6r DW1 fail (break m1): a catalogue row hand-edited to a wrong class (agent/invoice:create GENERAL) is a 500, never answered as GENERAL", hand.status === 500 && !JSON.stringify(hand.body).includes("invoice"), hand.status);
+  sql(`insert into platform_role_permission (role, permission_key) values ('READ_ONLY', 'agent/Bad:Key')`);
+  const shape = await get(tR);
+  sql(`delete from platform_role_permission where permission_key = 'agent/Bad:Key'`);
+  ok("PF-6r DW1 fail (break m3): a row the guard ignores (not a firm key's shape) is left out, as the guard does; the read still answers 200", shape.status === 200 && JSON.stringify(shape.body) === JSON.stringify(a.body), shape.status);
   // --------------------------------------------------------------------------------------------------------- DW2
   as("ADMIN"); const admin = await get(tO);
   ok("PF-6r DW2 pass: OWNER (user-R) and ADMIN get 200 with the same answer", a.status === 200 && admin.status === 200 && JSON.stringify(admin.body) === JSON.stringify(a.body), admin.status);
@@ -117,6 +126,12 @@ try {
   ok("PF-6r DW3 pass: GET /api/platform/roles declares agent/staff:manage, and assertEveryRouteDeclared accepts every route", accepted && mine?.access?.kind === "keys" && JSON.stringify((mine.access as { keys: string[] }).keys) === '["agent/staff:manage"]', mine);
   let refused = ""; try { assertEveryRouteDeclared(routes.map((r) => (r === mine ? { ...r, access: undefined } : r))); } catch (e) { refused = String(e); }
   ok("PF-6r DW3 fail: the route list with GET /api/platform/roles stripped of its declaration is refused, naming it", refused.includes("StaffReadController.roles (GET /api/platform/roles)"), refused);
+
+  // -------------------------------------------------------------- break m4 (last: an enum value cannot be dropped)
+  sql(`alter type "PlatformRole" add value 'PF6R_SEVENTH'`);
+  sql(`insert into platform_role_permission (role, permission_key) values ('PF6R_SEVENTH', 'agent/invoice:create')`);
+  const seventh = await get(tR);
+  ok("PF-6r DW1 fail (break m4): a seventh role with rows is a 500, never left out of the answer silently", seventh.status === 500, seventh.status);
 } finally {
   await app?.close().catch(() => {});
   await db.$disconnect();
