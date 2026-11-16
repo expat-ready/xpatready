@@ -1264,3 +1264,25 @@ Status table:
 | PF-6sb | not built | P-607 (4); AUD-3b |
 | PF-0a | not built | SA-11-7; P-607 (3) |
 | PF-6vt | not built | AG-17-2, AG02-D0, AG-10-36 |
+
+## Rev 16.42 (16 Nov 06:1x IST, Lead B (6)): shaping batch 5 (#1901, head 1a29b129), row-owner ruling (comment 6904223946)
+* **Approved:** FO-13i, FO-13c, PF-21b, PF-21c and PF-19c, plus the batch 4 follow-ups. The lane pushes the corrections together with its m12 and n1–n5.
+* **Code ss. 5, 15, 16 and 35(1)(c) read at source** by Lead B on the Mac (Justice Laws, current to 2026-10-19, read 16 Nov 2026). They are added to trace t8 as §1b.
+* **FO-13c (amended):** the gates are no longer conditional.
+  - `CONFLICT_CANNOT_ACT` blocks send and signed-offline, and convert when it is on `main` (s. 15(2), s. 16).
+  - `POTENTIAL_CONFLICT` goes ahead only with disclosure text. The signed retainer carrying it is the written consent (s. 15(1)).
+  - A conflict found after signing is shown for the representative, and nothing ends by itself (s. 35(1)(c)).
+  - "A check before send" is our product rule, which the PR says. Unconfirmed: no counsel.
+* **PF-19c (amended):** a send refused for a missing field value is never silent. It is recorded as refused, with the field named, in the firm's message log, and the sender sees the reason.
+* **PF-21b:** `LegalHoldPort` takes CS-X3's shape:
+  - `isHeld(tx, firmId, subjects[])`, with every match reported;
+  - the real adapter takes the lock itself;
+  - `LEGAL_HOLD_CATEGORY` ships with CS-X3's five names.
+  - Its keys are `system/compliance:legal-hold` and `system/compliance:dsr-manage` (Sample), Platform Owner only.
+  - The release holder confirms the CS-X3 side and the category list before part 1 merges.
+* **PF-21c:** the Auditor gets `system/breach:read` (ours). `breach_clock_near` stays in `ALERT_KINDS`, unused (SA11-D8). A later notice to the same firm carries `supersedes` (our rule).
+* **New row PF-Fd** (runtime, platform files: the delete door).
+
+| PF-Fd | runtime (platform files: delete) | **`FilesPort.delete(firmId, key)`** (rows rev 16.42; the contract gap from #1901): in `ports/files.ts`, with its fake, the front office's local adapter (`api/src/front-office/files.ts`) and a shared contract case (PF-0c). The port's rule: the caller checks `LegalHoldPort.isHeld` first; the port itself holds no legal-hold logic. Deleting a missing key is a no-op that answers `false`; another firm's key is refused. The S3 adapter's delete is PF-F1's. **Touch:** `ports/files.ts`, `ports/contracts/files-port.contract.ts` (one case), `api/src/front-office/files.ts`, `tests/check_pffd_delete.ts` | a pass and a fail each: a stored file is deleted and `get` then answers not found; a missing key → `false`; firm B's key from firm A → refused, nothing deleted; the contract passes on the fake and on the local adapter | SA-11 §3.5 (callers' order, BR-7) · **waits on:** nothing · brief: shaping lane (next batch), then Lead B · **model:** Opus medium · reviewer only · **size:** under 200 lines · Source: rows rev 16.42 |
+
+| PF-Fd | not built | SA-11 §3.5, BR-7 |

@@ -61,6 +61,24 @@ Count: 26 items in s. 24(3) (a)-(z), plus 5 in s. 23(2), plus the s. 24(2) preco
 
 Not confirmed: an explicit rule that the service agreement must be signed by the client and licensee. The Code refers to a "signed service agreement" (s. 24(4)) but has no stand-alone signature clause. The Guide's "dated and signed" wording is for the consultation agreement only. A "language of the document" rule (apart from the s. 24(3)(s) language of service, and the Guide's "English or French" for the consultation agreement) was not found in the Code. The College's earlier Retainer Agreement Regulation (referred to in the Guide) is not confirmed (see section 2 note).
 
+## 1b. Conflicts of interest (ss. 5, 15, 16, 35(1)(c)), read 16 Nov 2026 by Lead B (6) for FO-13c
+
+Source: CODE url (laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html), current to 2026-10-19, read 16 Nov 2026. Each quote is under 15 words; the full sentences are at the source.
+
+| Rule | Code | Source | Quote | Current to | Read |
+|---|---|---|---|---|---|
+| Loyalty includes avoiding conflicts of interest | s. 5 | CODE url | "loyal to their clients, including by avoiding conflicts of interest" | 2026-10-19 | 16 Nov 2026 |
+| A possible conflict: only after written disclosure and the client's written consent | s. 15(1) | CODE url | "disclosed the nature and extent of the conflict to the client in writing" + "free and informed consent in writing" | same | same |
+| An actual conflict: not even with consent, unless the licensee can act uncompromised (objectivity, trust, confidentiality) | s. 15(2) | CODE url | "must not provide … even with their consent, if doing so would result in a conflict" | same | same |
+| Conflicts a client cannot consent to: loans either way, unrelated transactions (unless fair, with written independent advice, s. 16(2)), an intimate relationship (with the spouse exception) | s. 16(1)(a)-(c), 16(2) | CODE url | "constitute a conflict of interest to which a client cannot consent" | same | same |
+| A conflict arising mid-service ends the agreement, unless consent per s. 15 | s. 35(1)(c) | CODE url | "would place the licensee in a conflict of interest, unless the licensee obtains the client's consent" | same | same |
+
+For the software (Unconfirmed: no counsel):
+* `POTENTIAL_CONFLICT` means written disclosure plus written consent before services; the signed retainer that carries the s. 24(3)(o) description is the written consent.
+* `CONFLICT_CANNOT_ACT` blocks: s. 15(2), and s. 16 cannot be consented to.
+* A conflict found after signing is a matter for the representative (s. 35(1)(c)): the product shows it and never ends an agreement by itself.
+* "Record a check before the retainer is sent" is our product rule implementing ss. 5 and 15; the Code names no check step.
+
 ## 2. Client account (trust) rules
 
 | Item | Provision | URL | Quote (<=15 words) | Page date | Read on |
