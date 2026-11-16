@@ -77,3 +77,18 @@ None.
 - Release-holder SQL read (P-423).
 
 **Verdict: Changes needed.** Fix M1 and confirm M2 on the next head. The Minors are for the builder to fix or to answer in the PR.
+
+## Re-review: `ccbc1825..c166a1ce9` (diff only, P-277)
+Runs at c166a1ce9 (the main checkout, clean): `check_pf12b_bypass_audit` **27/0**, `check_fo3_booking` 133/0, `check_fo2_leads_prospects` 113/0. The two FO suites test that refusing a bypass use inside another breaks no door.
+- **M2: fixed.** check_pf5's list now includes `platform.bypass`. I did not re-run it; the builder reports 53/0.
+- **m3: fixed.** `touchFirm` throws `FirmScopeError` when given a client (detected by `$disconnect`, `firm-scope.ts:192`). Real transactions still write (DW4, same `xmin`).
+- **m4: fixed.** The firm is reserved before the await and released on failure (`:194-204`).
+- **m6: fixed.** `touchEachFirm` gives each firm its own transaction. In the sweep (`messages.ts:145-148`), a firm whose line failed gets nothing queued, the other firms go ahead, then the job fails. The new DW2 check covers it.
+- **Breaker M1:** a bypass use inside another is now refused (`:157-159`), with a test.
+- **m1, m2, m5:** accepted as known limits. They go in the PR for the Lead. The DW1 fail line now names the limit.
+- **M1: still open.** `CORRELATION` (`firm-scope.ts:182`) keeps `^job:[A-Za-z0-9._-]{1,100}$`. `correlationOf` (`observability/hook.ts:23-25`) passes a caller's `X-Request-Id` that has that shape.
+  - Repro, in process with the real `correlationOf` and `touchFirm`: header `job:Jane.Doe.passport.lost` gives `kept: true`, stored `"job:Jane.Doe.passport.lost"`. Header `job:Jane-Doe-1990-01-01-client-of-sample-firm` is stored the same way. Without the prefix it is stored as null.
+  - So the unauthenticated sign-up can still write free text into a firm's trail.
+  - **Fix:** keep only `^(job:)?<uuid>$`, if pg-boss job ids are uuids. Alternatively, mark the scope's correlation id as server-made (`observability/jobs.ts:20`, the uuid fallback in `correlationOf`), so a client value is never kept. Add a fail test for a `job:`-prefixed header.
+
+**Verdict: Changes needed** (M1).

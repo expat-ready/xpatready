@@ -85,10 +85,10 @@ try {
   // The known limit (review m1, break M1): the line is written where a use calls touchFirm; a use that reads without the call
   // writes none. The guard is the named list, one use at a time (no use inside another) and this suite, per use.
   ok("PF-12b DW1 fail (QA-499's count before any use runs, and the known limit): a cross-firm read that never calls touchFirm writes no line, so QA-499's count reads 0", total() === 0 && (await asBypass("platform.demo.reset", () => db.platformStaff.findMany({ select: { firmId: true } }))).length >= 2 && total() === 0);
-  const queued = await requestScope.run({ correlationId: "job:pf12b-sweep", firmId: () => undefined }, () => asJob("messages.outbox_sweep", () => messages.sweep()));
+  const queued = await requestScope.run({ correlationId: "job:0b12b000-0000-4000-8000-00000000a001", firmId: () => undefined }, () => asJob("messages.outbox_sweep", () => messages.sweep()));
   ok("PF-12b DW1 pass: the outbox sweep writes one platform.bypass line per firm it read, then queues both firms' rows", lines("job:messages.outbox_sweep") === [A, B].sort().map((f) => `${f}:1`).join(",") && queued === 2, { lines: lines("job:messages.outbox_sweep"), queued });
   const line = sql(`select actor || '|' || entity || '|' || entity_key || '|' || (detail->>'method') || '|' || (detail->>'correlationId') from audit_event where action = 'platform.bypass' and detail->>'use' = 'job:messages.outbox_sweep' and detail->>'firmId' = '${A}'`);
-  ok("PF-12b DW1 pass: the line names the use, the actor (system:<use>), the firm, the method (none outside a request) and the correlation id", line === `system:job:messages.outbox_sweep|platform_firm|${A}|none|job:pf12b-sweep`, line);
+  ok("PF-12b DW1 pass: the line names the use, the actor (system:<use>), the firm, the method (none outside a request) and the correlation id", line === `system:job:messages.outbox_sweep|platform_firm|${A}|none|job:0b12b000-0000-4000-8000-00000000a001`, line);
   await resetSampleFirmSettings(db);
   ok("PF-12b DW1 pass: the demo reset writes one line per Sample firm, each in its own firm's trail", lines("platform.demo.reset") === [A, B].sort().map((f) => `${f}:1`).join(","), lines("platform.demo.reset"));
   await requestScope.run({ correlationId: "0b12b000-0000-4000-8000-00000000c0de", firmId: () => undefined }, () => inRequest(inboxRoute, () => inbox.list(INBOX, undefined)));
@@ -108,14 +108,15 @@ try {
   ok("PF-12b fail (break M1): a bypass use inside another is refused before any query (it would cross under the outer use's lines)", nested instanceof BypassRefused, String(nested));
   const spoof = fakeAudit(), wasS = onBypassAudit(spoof);
   await requestScope.run({ correlationId: "Jane.Doe.passport.lost", firmId: () => undefined }, () => asBypass("platform.demo.reset", async () => { await touchFirm({}, A); }));
+  await requestScope.run({ correlationId: "job:Jane.Doe.passport.lost", firmId: () => undefined }, () => asBypass("platform.demo.reset", async () => { await touchFirm({}, B); }));
   await requestScope.run({ correlationId: "0b12b000-0000-4000-8000-00000000beef", firmId: () => undefined }, () => asBypass("platform.demo.reset", async () => { await touchFirm({}, A); }));
   const clientErr = await errOf(() => asBypass("platform.demo.reset", () => touchFirm(db, A)));
   const tx4 = {};
   await asBypass("platform.demo.reset", () => Promise.all([touchFirm(tx4, A), touchFirm(tx4, A), touchFirm(tx4, A)]));
   onBypassAudit(wasS);
-  ok("PF-12b fail (break M2): a caller's X-Request-Id that is not our id shape is never kept in the trail (null); a uuid is kept", spoof.entries[0]?.detail.correlationId === null && spoof.entries[1]?.detail.correlationId === "0b12b000-0000-4000-8000-00000000beef", spoof.entries.map((e) => e.detail));
+  ok("PF-12b fail (break M2): a caller's X-Request-Id that is not our id shape (free text, or free text after job:) is never kept in the trail (null); a uuid is kept", spoof.entries[0]?.detail.correlationId === null && spoof.entries[1]?.detail.correlationId === null && spoof.entries[2]?.detail.correlationId === "0b12b000-0000-4000-8000-00000000beef", spoof.entries.map((e) => e.detail));
   ok("PF-12b fail (break m3): touchFirm refuses the client in place of a transaction (its line would commit alone)", clientErr instanceof FirmScopeError, String(clientErr));
-  ok("PF-12b pass (break m4): three touches of one firm at the same moment in one transaction write one line", spoof.entries.length === 3, spoof.entries.length);
+  ok("PF-12b pass (break m4): three touches of one firm at the same moment in one transaction write one line", spoof.entries.length === 4, spoof.entries.length);
 
   // ---------------------------------------------------------------------------------------------------------- DW2
   const refusing = fakeAudit({ failOn: (e) => e.action === "platform.bypass" });

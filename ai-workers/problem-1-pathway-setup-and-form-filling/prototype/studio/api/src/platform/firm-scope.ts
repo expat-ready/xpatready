@@ -178,8 +178,9 @@ export class BypassNotRecorded extends HttpException {
 
 const touched = new WeakMap<object, Set<string>>();
 /** The correlation id kept in an audit line: ours (a uuid, or job:<id>) only. A caller's X-Request-Id can hold any text,
- *  personal data too, and the trail keeps it for good (break M2): another shape is kept as null. */
-const CORRELATION = /^(job:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^job:[A-Za-z0-9._-]{1,100}$/i;
+ *  personal data too, and the trail keeps it for good (break M2, review M1): only a uuid, alone or after job:, is kept;
+ *  any other shape is kept as null. */
+const CORRELATION = /^(job:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;   // observability/jobs.ts makes job:<pg-boss uuid>
 /** PF-12b: inside a bypass use, the firm whose rows this transaction reads or writes. Writes one platform.bypass line to
  *  that firm's trail inside `tx` (once per firm and transaction): the use, the method (never the path), the actor
  *  (system:<use>; none of the per-firm uses runs in a staff session) and the correlation id. A failed write throws
