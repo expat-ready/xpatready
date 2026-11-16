@@ -204,3 +204,40 @@ Re-scored on the harness evidence; I did not re-walk the running app in round 2.
 * Error recovery rises from ½ to 1: M1, m3 and m4 are fixed.
 * **Total 8/10**, with no criterion at 0: a pass.
 * Still at ½: next step obvious (m8), plain words (raw enum text in the province error), accessibility and visual quality (no screen).
+
+## Round 3: diff-only re-review (P-277), head `d04803ca052d3054b8b8a358a13d403d4516ea92`
+
+I read only `git diff 97b77db..d04803c -- ai-workers/`.
+
+**The check:** I ran `tests/check_pf5_signup_billing.ts` and got **82 passed, 0 failed**.
+
+Verdict: Approve d04803ca052d3054b8b8a358a13d403d4516ea92
+
+### What changed, and whether it holds
+**The breaker's R2: an outage no longer drops a paid event** (`webhook.ts` sweep and receive).
+* **Retries keep going:** a failing receipt is retried every sweep until it is more than 72 hours old, which is Stripe's retry window. Only then is it set aside, and only after at least 5 tries.
+* **Ordering:** receipts with the fewest tries still go first, so bad receipts do not block good ones. The try count stops at 9 and the regex still reads it.
+* **When an outage ends:** the backlog drains at 50 receipts per 5-minute sweep, and a redelivery from Stripe is handled at once.
+* **The test proves the window:** "keptRecent" would read 0, not 50, if receipts were still set aside after 5 sweeps regardless of age.
+* **Redelivery of a set-aside event:** the receipt is reset (`handledAt` null, outcome "redelivered") and handled.
+  * Only a signed event can do this.
+  * "redelivered" sorts before "retry …" in the sweep.
+  * If it fails again it counts from try 1 and is set aside again after 5 more sweeps.
+  * Tested: the outcome becomes `invoice.paid: …`.
+* **The alert:** `currentAlerts().raise("job_stuck", …)` fires at the 5th try and again when a receipt is set aside.
+  * The payload matches `AlertDetail` (`ports/alert.ts`): rule `PF-5.webhook`, the sweep queue name and the receipt's uuid are all valid ids.
+  * A failure to raise the alert is caught, so it never breaks the sweep.
+
+**n1, first half** (`account.ts`): a failed release of the held draft now answers with a next step ("Saved. Your held invoice could not be released yet: save the address again in a few minutes."). Still open: if the subscription read fails, nothing is said, and the release is not limited to a draft held for the address. Both stay listed in the PR.
+
+**n4** (`step0.md`): `GET|PUT firm/profile` has moved to part 3's bullet with the reason (P-610, #1959). The row's Done-when stays traceable.
+
+### New Minor (list in the PR; does not block)
+* **n5. No test checks the alert.** Removing the two `raise` lines would keep all 82 checks green, which goes against STANDARDS [M] l. 48 (a rule's test fails when the rule is removed).
+  * **Fail test:** pass a `fakeAlerts()` (the alert seam, `currentAlerts`) and check one `job_stuck` with `entityKey` = the receipt id at the 5th sweep. That is about 2 lines.
+  * **Why it does not block:** the money behaviour, retrying within Stripe's window and handling a redelivery, is tested. Only the alert to a person is untested.
+
+### Still open from rounds 1 and 2 (none blocks; reasons in round 2)
+m5, m7 (the case-route 402: list it in the PR as an unmet Done-when line), m8, m10, m12, m13, n1 (second half), n2, n3.
+
+**Journey score: 8/10, unchanged** (a pass). The R2 fix and the n1 message improve error recovery and feedback, both already at 1.
