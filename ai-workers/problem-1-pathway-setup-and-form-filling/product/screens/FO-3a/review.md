@@ -215,3 +215,19 @@ Verdict: Changes requested
 **Blockers:** none. **Majors:** none. **Minors open:** the description wording question above. m8, m10, m11 and m12 are named in the PR for later.
 
 Verdict: Approve 6ea08284c84bc364102055cacbb3b674fb7a688d
+
+## Re-review 3 at `42360d87c1977f8bd15ba7e73fc2b101d8d5df22` (diff `10045039..42360d87` only, P-277)
+
+**What the diff is.** `1004503` is a records commit; against `6ea0828`, which I approved, it changes no code. The diff is one line: `types.ts:253`, in `futureBookings`. The status list for Prisma's `in` loses `as const` (a readonly tuple, which CI's `types` check refused with TS2322) and becomes a mutable `("SCHEDULED" | "RESCHEDULED")[]`. The values are the same and the query is the same, so behaviour does not change.
+
+**Type check** (`product/tools/typecheck.mjs`, run in a clean worktree):
+* At the parent: 9 new errors. One is the CI error: `settings/types.ts(253): TS2322 … readonly ["SCHEDULED", "RESCHEDULED"]`.
+* At this head: 8 new errors, none in a file this PR touches.
+* All 8 are "Cannot find module 'ajv' / '@anthropic-ai/sdk'" (TS2307), with two follow-on TS7006 errors, in `../p2/*` and `../contracts/portal-capture.ts`. They come from this cloud copy, which lacks those packages, and they are identical at the parent. CI installs those packages, so its result is the one that counts.
+* `tsc web`: 0 errors.
+
+**Test:** `check_fo3a_booking_types` passes 48/48 at this head. No other suite's inputs changed.
+
+**Blockers:** none. **Majors:** none. **Minors open:** as in Re-review 2 (the description wording question for Lead B).
+
+Verdict: Approve 42360d87c1977f8bd15ba7e73fc2b101d8d5df22
