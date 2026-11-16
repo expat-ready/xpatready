@@ -34,7 +34,7 @@ PRs = pull requests per the drafts (P-610). "Ready" = every wait in the draft is
 | R1.75 | Tasks, Unassigned, handover | CS-T1 (5) | PF-29a..f | no | CS-K3, PF-29a |
 | R1.3 | Walls between firms (case tables) | CS-W1 (2), CS-W2 (many), CS-W3 (spike + parts), CS-W4 (2) | (PF-12 merged) | CS-W3 part 0 spike | CS-W1: CS-K1 + `cases.prisma` holder |
 | R1.106 | Assessment AS-1 | AS-1m, AS-1g, AS-1s, AS-1c, CS-106c (2) | FO-15a, b, s | AS-1m after CS-V1 part 2; AS-1g after #2017 + baton | AS-1s: AS-1m+1g; AS-1c: AS-1g+1s + Question 3 (assessment-only release?) |
-| R1.107 | Assessment AS-2 | AS-2c, AS-2cs, AS-2e, AS-2d1, AS-2d2 (no briefs) | — | no | founder card on streams (P-607 (9)) |
+| R1.107 | Assessment AS-2 | AS-2c, AS-2cs, AS-2e, AS-2d1, AS-2d2 (no briefs) | — | no | founder card on streams (P-607 (9)); P-650 (2): streams assessment only, "Assessment only: no forms" |
 | R1.98 | Corporate clients, LMIA | CS-98r (2), 98a, 98b (2), 98c (2), 98d, 98e, 98s1 (concept + 2), 98s2 (2), 98s3 (proposed) | FO-2b, FO-8 | CS-98s1 concept | P-607 (5): last; CS-98r step 0 on the Mac |
 
 **Client money (mine since 21:1x IST):** merged FO-7a #1758, FO-7mv #1924; FO-7a2 #1991 open (Lead B). One chain on `client-money.prisma`: FO-7ts p1 → p2 → p3 → FO-7b → FO-7c ∥ FO-7t (3) → FO-7v, FO-7m, FO-7p, FO-7g (2), FO-7r (3), FO-7q; screens FO-7s0 (concept, **ready now**) → FO-7s1, s2, s3a, s3b, s4, s5. No lane touches `money_move_line_write`, `money_trust_entry_moves`, `money_to_move`, `money_move_batch`, `money_trust_entry_write`, `money_credit_note_write` until #1991 merges.
@@ -85,7 +85,7 @@ Rows proven or Lead-B-only are not listed. R1.77 finishes on CS-C1b + QA-397; R1
 ## 3. To do next (me)
 1. Briefs for lanes C5-C8 (CS-S1 part 1, CS-W3 part 0, AUD-4s concept, CS-98s1 concept).
 2. Done 23:4x IST: QA-397 is BACKLOG row BK-21; brief `build-lead-c-briefs/BK-21.md`.
-3. Done 23:4x IST: briefs AS-1m and AS-1g. Still to write: AS-1s (waits on both) and AS-1c (cited canada.ca values; waits on AS-1g, AS-1s and Question 3). **Question 3 is not in DECISIONS (checked 23:5x IST). Sent to Lead 71 as a founder question; I recommend "assessment only for Release 1, no form lines".** `engine/channels.ts` already has a "No forms yet" state, so a release with no form lines looks supported; AS-1c step 0 confirms it.
+3. Done 23:4x IST: briefs AS-1m and AS-1g. Still to write: AS-1s (waits on both) and AS-1c (cited canada.ca values; waits on AS-1g, AS-1s and Question 3). **Question 3 answered as P-650 (00:4x IST 17 Nov): Express Entry stays end to end, and AS-1c ADDS the assessment to the existing Profile combination; the five provincial streams are assessment only.** Briefs AS-1s and AS-1c written 23:5x IST. `engine/channels.ts` already has a "No forms yet" state, so a release with no form lines looks supported; AS-1c step 0 confirms it.
 4. Done 21:2x IST: the College citation (Client File Management Regulation 2021-001 s. 7.2, page 7, read 16 Nov 2026) is in `build-lead-c-briefs/AUD-5-1.md`; AUD-5 part 1 is ready now.
 5. Each check: read my lanes' PRs and pushes; a lane counts only after a push (P-326); answer "Question for the tech lead" comments within 30 min.
 
