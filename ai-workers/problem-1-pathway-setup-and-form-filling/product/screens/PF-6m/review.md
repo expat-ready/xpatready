@@ -65,3 +65,19 @@ Blockers: none · Majors: none · Minors: F2 workspace race on an empty DB, F4 c
 
 Verdict: Approve (142cefbb6)
 Blockers: none · Majors: none · Minors: F1 invitation outlives inviter (older code, BUGS row), F4 signup door (question for the row owner).
+
+## Re-review at 584a4cb8f (P-277: diff only, `7d3c079a6..584a4cb8f`; card only, no code)
+* **Card change.** `studio/api/src/platform/MODULE.md` gains one invariant line, and `tests/check_pf6m_money_line.ts` is added to its Tests list. The card is 32 lines, under the 40 limit.
+* **Card checks (run on this head).**
+  * `module-cards.py pr` on the PR's changed files: "PASS 1 module(s) touched, 14 cards".
+  * `module-cards.py tree`: "PASS 14 cards, tree checked".
+  * The tool's own fixtures, `check-module-cards.sh` under bash, exit 0.
+* **Accurate as written.**
+  * Both doors call `writeMoneyKeysGranted`: role change at `identity/service.ts`, invitation accept at `session/service.ts:100`.
+  * No other writer of `platform.staff.money_keys_granted` exists in `api/src`.
+  * Each change writes at most one line, naming every money role it adds, and always in the caller's `tx`.
+  * The test path exists and passes, 12/12 at 142cefbb6, with no code change since.
+* **Minor (wording, does not block).** The line opens "A role that brings money keys writes one … line", which as a module invariant reads as universal. The card's paths also cover `firms/signup.ts`, which grants OWNER (16 money keys) with no line (F4, still open as a question for the row owner). Scoping it as "When role change or invitation accept gives a role that brings money keys, …" would match the code exactly. The trailing "from role change and invitation accept alike" already narrows it.
+
+Verdict: Approve (584a4cb8f)
+Blockers: none · Majors: none · Minors: the card's invariant wording should name the two doors (signup is the F4 question); F1 still open (older code, BUGS row).
