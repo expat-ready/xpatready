@@ -618,7 +618,7 @@ def compute(snap):
 
     # --- Works on main
     if cap_text is None:
-        for k in ("works_on_main", "works_total"):
+        for k in ("works_on_main", "works_total", "r1_proven_qa"):
             N[k] = num(None, "not measured: files_main/qa/CAPABILITIES.md missing from the snapshot")
     else:
         caps = parse_capabilities(cap_text)
@@ -629,6 +629,10 @@ def compute(snap):
         detail = ", ".join("%s %d/%d" % (m, a, b) for m, (a, b) in by_m.items())
         N["works_on_main"] = num(works, "C rows with M in M2/M3/M4/T reading Works on main (%s)" % detail)
         N["works_total"] = num(len(tracked), "C rows with M in M2/M3/M4/T on main")
+        # P-636 (16 Nov): Proven = qa's verdict on main only; the Release 1 rows R1.n reading Works
+        r1 = {k: v for k, v in caps.items() if re.fullmatch(r"R1\.\d+", k)}
+        N["r1_proven_qa"] = num(sum(1 for v in r1.values() if reads_works(v[1])) if r1 else None,
+                                "R1 rows reading Works in qa/CAPABILITIES.md on main" if r1 else "not measured: no R1 rows on main")
 
     # --- PR indexes (records PRs never count, R1)
     merged_app, merged_counted, open_counted = [], [], []
@@ -1112,7 +1116,7 @@ def compute(snap):
              "pct_per_works_row", "rows_done_24h", "rows_needed_per_day",
              "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today", "ci_rule_failures_today",
              "ci_bundle_failures_today", "parts_merged", "parts_total", "founder_asks_day", "rules_changes_day",
-             "target_changes_week", "launch_done", "launch_total", "counsel_open"]
+             "target_changes_week", "launch_done", "launch_total", "counsel_open", "r1_proven_qa"]
     return {"version": 1,
             "numbers": {k: N[k] for k in order},
             "mc_inputs": {"daily_counts": r1_counts, "remaining_scope": remaining}}
@@ -1225,7 +1229,7 @@ def self_test():
         "pct_per_works_row", "rows_done_24h", "rows_needed_per_day",
         "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today", "ci_rule_failures_today",
         "ci_bundle_failures_today", "parts_merged", "parts_total", "founder_asks_day", "rules_changes_day",
-        "target_changes_week", "launch_done", "launch_total", "counsel_open", "daily_counts", "remaining_scope"])
+        "target_changes_week", "launch_done", "launch_total", "counsel_open", "r1_proven_qa", "daily_counts", "remaining_scope"])
     # P-602 (4), no log: the span is the whole 24 h to 20 Nov 06:30Z; PF-2's first app merge 19 Nov 20:00Z is inside.
     eq("changes_merged_span", (v["changes_merged_span"], n["changes_merged_span"]["detail"]), (1, ["PF-2"]))
     eq("works_rows_span no history", v["works_rows_span"], None)
