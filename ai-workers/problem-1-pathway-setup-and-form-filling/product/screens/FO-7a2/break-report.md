@@ -98,3 +98,28 @@ Same setup on `xr_studio_brk_a2r2` (all 101 folders), dropped at the end. I re-r
   - Returned then move → the move is refused at RC (both orders).
   - At RR and SERIALIZABLE the stale move commits (ledger −100.00, 100.00 moved). That is the same end state as the legal order "move, then Returned", which is accepted sequentially, so it is not a break.
 - **B-8 and the random run:** the write-off words are floored (no negative "left"). Random run: 1,500 steps, bank equation difference 0. No application over-moved, no choice above what moved, no cover above its note, no entry other than a reversal below zero. The run never hit the targeted order of B-9.
+
+## Round 3 (at `6138ac80c92ff0a783e26a5f62fcf8da2d77f146`)
+Same setup on `xr_studio_brk_a2r3`, dropped at the end. Fixtures: `two` is one 200.00 application moved in two batches of 100.00 (B1, B2); `pair` is P1 and P2, each with a moved 300.00 application, and one batch BB holding a 100.00 line of each. Lines refer to the migration at this commit.
+
+**B-10 Minor: a batch with lines for several parties can no longer be undone if a choice covers one line, and the other parties' share cannot be recorded any other way.**
+- Repro: `pair`; `cn(:I2,10000,'OVERPAID_REFUND',10000,:W2)`. `undo(:BB)` → 23514 "a credit note's refund or move-back choice covers this move". `move(:W1,10000,'OPERATING_TO_TRUST')` → 23514 too (P1 has no choice).
+- Result: if the bank sent the BB transfer back, P1's 100.00 is in trust and cannot be recorded. The same holds for a refund choice on a single-party batch. "Ledger + list = bank" is then off by the transfer until a reviewed one-off.
+- Where: `money_move_batch_owed_back` (lines 229-247) refuses the batch as a whole.
+- Should: name the uncovered lines in the error and give them a way back. For example, allow the undo and have the covered line raise a trust → operating item (or an "owed" item) for its choice, rather than refuse the batch.
+
+**Deadlocks (FO-7mv B-5 class, not re-filed):**
+- D1: A writes a move batch with a P2 line; B runs `undo(:BB)`, which locks P1 then waits for P2; A adds a P1 line → 40P01 for B, at RC and RR.
+- D4: the same with A's returns on P2 then P1.
+- Both are detected and one side aborts; nothing is half-written. The undo locks in party order (line 237), so two undos of batches holding P1 and P2 in opposite orders never deadlock (RC: both written; RR: 40001).
+
+### Round 3: what held
+- **B-9 (a) and (c), one step at a time:** after a 30.00 move-back, `undo(:B1)` → 23514. The list stays at 20.00 operating → trust, and ledger + list = bank = 830.00. The undo-then-move-again order of (c) is refused at the undo, so the re-move never happens.
+- **B-9 (b), races at RC, RR and SERIALIZABLE, wait and stale orders** (`two`, plus a choice where named):
+  - two undos (B1, B2) while a 100.00 choice stands;
+  - an undo vs a refund choice, in both orders;
+  - an undo vs a 100.00 move-back;
+  - an undo vs a 200.00 move-back choice with no choice before it.
+  - In every case one side is refused (23514 at RC; 40001 at RR and SERIALIZABLE), or both are correct (an undo of the uncovered batch, then the move-back). Covered never exceeded moved, and bank − book stayed 0.
+- **Single statements:** two undo rows in one INSERT, two undos in one statement, and a choice plus an undo in one CTE (both orders) → all refused as a whole.
+- **Multi-party undo with no choice:** written. An undo whose choice covers only P2's line → refused as a whole (see B-10).

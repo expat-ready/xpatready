@@ -136,3 +136,30 @@ Please add this sequence as a DW5 fail case.
 2. M3, the PR body: the Done-when list and "Changed tests".
 
 Verdict: Block
+
+## Re-review 2 at `6138ac80c92ff0a783e26a5f62fcf8da2d77f146` (diff since fec651362 only, P-277)
+**Suites:** FO-7a2 33/0, FO-7a 123/0, FO-7mv 45/0, prisma 8/0; pf12 95/5, the same five API-start checks. **Size:** 722 + 10 code lines (< 800). **Probes:** scratch database `xr_studio_rev_fo7a2c` (dropped).
+
+* **N1 fixed.** `money_owed_live` = least(choices, T2O live + O2T live), and the new `money_move_batch_owed_back` refuses an undo whose moves a choice covers. My N1 sequence, with two batches of 80.00 and 120.00:
+  * the uncovered 80.00 undo is allowed, and ledger + T2O − O2T = 950 = bank;
+  * the covered 120.00 undo is refused (23514);
+  * a second undo of the same batch still gets FO-7mv's unique refusal;
+  * an undo of the O2T batch is allowed, and the identity holds at 880.
+* **Locking.**
+  * Undo racing a credit note's choice: at RC the note waits, reads after the undo and is refused ("only 100.00 … has moved"); at RR it gets 40001.
+  * Two undos under a 100.00 choice: at RC the second is refused; at RR it gets 40001. Moved stays 100.00, covered 100.00.
+  * The lock order is the same as a move and a credit note: party lock, then invoice row.
+* **PF-12.** The new trigger function is DEFINER, owned by xr_wall_reader, search_path pinned, and runs after the `0_pf12_firm_first` gate. The helpers stay INVOKER, and DW7 asserts both.
+* **Tests.** The B1 case now also asserts the undo is refused. B-9 (a) checks the undo refusal, the list (T2O 50.00, O2T 20.00) and the 50.01 move refusal. There is a pass case for an uncovered undo. Each rule's test fails when the rule is removed: the undo, cap and owed-back assertions are exact.
+* **M3 fixed.** The PR body has the Done-when list (DW1–DW7 plus round 1) and "Changed tests" (each matches what I judged).
+
+**Minors left (none blocks):**
+* m1, m3, m5 and n1 as before. n1: `money_to_move` still lists a line that B-4 refuses.
+* **n2, new: the undo refusal changes FO-7mv's undo (AG-6-73 rule 6) through a new trigger on `money_move_batch`.** Lead 69 widened the touch list to the three FO-7mv functions and the column; this trigger is beyond that. It is breaker B-9's recommended fix and sits in the same migration, but the PR body still describes fec651362: it does not name `money_move_batch_owed_back` or the undo refusal, and its parallel-safety list leaves out `money_move_batch`.
+  * Name both for the tech lead's migration read (P-423) before the label.
+  * Note one known limit: a trust → operating batch recorded by mistake before a choice was made can no longer be undone, and nothing else records "it never moved" (Unconfirmed: no counsel on the trust-account effect).
+  * This needs the tech lead's notice. It needs no code change in this row.
+
+No Blocker or Major is open.
+
+Verdict: Approve 6138ac80c92ff0a783e26a5f62fcf8da2d77f146
