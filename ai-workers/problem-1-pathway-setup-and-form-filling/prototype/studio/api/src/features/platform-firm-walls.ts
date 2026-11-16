@@ -8,6 +8,10 @@ import { Db } from "../core.ts";
 import type { Feature } from "../features.ts";
 import { appRoleProblems, inRequest, wallUnscopedQueries } from "../platform/firm-scope.ts";
 
+// Loaded by registerFeatures before the app is built: from here on, in the API server, a query outside every scope reads
+// nothing (breaker m8: no start-up query runs on the bypass by default).
+wallUnscopedQueries();
+
 @Injectable()
 export class FirmWallsInterceptor implements NestInterceptor, OnModuleInit {
   constructor(@Inject(Db) private readonly db: Db) {}

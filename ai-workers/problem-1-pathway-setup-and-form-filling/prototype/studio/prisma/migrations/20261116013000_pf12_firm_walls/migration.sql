@@ -11,6 +11,11 @@
 --   * xr_staff_bypass   NOLOGIN, BYPASSRLS: our own staff's audited bypass. xr_app may SET ROLE to it (SET TRUE) but does
 --                       not inherit it (INHERIT FALSE); only api/src/platform/firm-scope.ts asBypass() does, for a name on
 --                       its named list, and every use writes a log line.
+--   * xr_wall_reader    NOLOGIN, BYPASSRLS: owns the firm tables' trigger functions (SECURITY DEFINER, search_path
+--                       pinned with pg_temp last) and the one address lookup, so every trigger and check on main sees
+--                       every firm's rows as it did before the walls (the app was a superuser) and keeps refusing what it
+--                       refused (breaker M1, M2: an invoker trigger could not see the other firm's row it exists to
+--                       refuse). Nobody logs in as it or may SET ROLE to it.
 --   * xr_case_lookup    NOLOGIN (rev 16.34, #1872 Q10): created here when CS-W1 part 1 has not created it already; PF-12's
 --                       from then on. It owns only the case side's firm-lookup definer functions (CS-W1, CS-W3) and gets
 --                       no table grant here. xr_app is never a member.
@@ -26,7 +31,8 @@
 -- Every later platform_*, fo_*, money_*, msg_*, auto_* and plat_complaint* table ships its own policy in its own migration
 -- (tests/check_pf12_walls.ts fails otherwise).
 --
--- Down: DROP FUNCTION platform_web_address_taken(text[], timestamptz); DROP POLICY "pf12_firm" (and "pf12_platform_read") ON each table below; ALTER TABLE … NO FORCE ROW LEVEL SECURITY,
+-- Down: DROP FUNCTION platform_web_address_taken(text[], timestamptz, uuid); each trigger function below back to
+-- SECURITY INVOKER, RESET search_path, OWNER TO the migration role; DROP POLICY "pf12_firm" (and "pf12_platform_read") ON each table below; ALTER TABLE … NO FORCE ROW LEVEL SECURITY,
 -- DISABLE ROW LEVEL SECURITY; DROP FUNCTION platform_session_firm(); REVOKE xr_data, xr_staff_bypass FROM xr_app;
 -- ALTER DEFAULT PRIVILEGES … REVOKE …; DROP ROLE only after every database on the cluster has run the same.
 
@@ -35,6 +41,7 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'xr_data') THEN CREATE ROLE xr_data NOLOGIN; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'xr_app') THEN CREATE ROLE xr_app LOGIN; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'xr_staff_bypass') THEN CREATE ROLE xr_staff_bypass NOLOGIN BYPASSRLS; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'xr_wall_reader') THEN CREATE ROLE xr_wall_reader NOLOGIN BYPASSRLS; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'xr_case_lookup') THEN CREATE ROLE xr_case_lookup NOLOGIN; END IF;
 END
 $$;
@@ -42,28 +49,30 @@ $$;
 ALTER ROLE xr_data NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE xr_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT;
 ALTER ROLE xr_staff_bypass NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
+ALTER ROLE xr_wall_reader NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
 ALTER ROLE xr_case_lookup NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE xr_app SET log_error_verbosity = 'terse';
 GRANT xr_data TO xr_app WITH INHERIT TRUE, SET FALSE;
 GRANT xr_data TO xr_staff_bypass WITH INHERIT TRUE, SET FALSE;
+GRANT xr_data TO xr_wall_reader WITH INHERIT TRUE, SET FALSE;
 GRANT xr_staff_bypass TO xr_app WITH INHERIT FALSE, SET TRUE;
 
 GRANT USAGE ON SCHEMA public TO xr_data;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO xr_data;
-GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO xr_data;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO xr_data;   -- nextval, never setval (breaker m7)
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO xr_data;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO xr_data;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO xr_data;
 
 -- PF-25's address check reads every firm's addresses (a web address is public; one firm's choice must not take another's),
--- also inside a firm's own transaction, so it is one narrow definer function: addresses and their firm ids only, owned
--- by the bypass role (BYPASSRLS), callable by xr_app only.
-CREATE FUNCTION platform_web_address_taken(addresses text[], at timestamptz) RETURNS TABLE (address text, firm_id uuid)
-  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
-  AS $fn$ SELECT w.address, w.firm_id FROM platform_firm_web_address w WHERE w.address = ANY (addresses)
-          UNION ALL SELECT h.old_address, h.firm_id FROM platform_firm_address_history h WHERE h.old_address = ANY (addresses) AND h.until > at $fn$;
-ALTER FUNCTION platform_web_address_taken(text[], timestamptz) OWNER TO xr_staff_bypass;
-REVOKE ALL ON FUNCTION platform_web_address_taken(text[], timestamptz) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION platform_web_address_taken(text[], timestamptz) TO xr_app;
+-- also inside a firm's own transaction, so it is one narrow definer function: the addresses taken or held by another
+-- firm than `self`, and nothing else (no firm id), owned by xr_wall_reader, callable by xr_app only.
+CREATE FUNCTION platform_web_address_taken(addresses text[], at timestamptz, self uuid) RETURNS SETOF text
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
+  AS $fn$ SELECT w.address FROM platform_firm_web_address w WHERE w.address = ANY (addresses) AND w.firm_id IS DISTINCT FROM self
+          UNION SELECT h.old_address FROM platform_firm_address_history h WHERE h.old_address = ANY (addresses) AND h.until > at AND h.firm_id IS DISTINCT FROM self $fn$;
+ALTER FUNCTION platform_web_address_taken(text[], timestamptz, uuid) OWNER TO xr_wall_reader;
+REVOKE ALL ON FUNCTION platform_web_address_taken(text[], timestamptz, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION platform_web_address_taken(text[], timestamptz, uuid) TO xr_app;
 
 -- The session's firm: set by api/src/platform/firm-scope.ts for each query (set_config('app.firm_id', …)); none → null.
 CREATE FUNCTION platform_session_firm() RETURNS uuid LANGUAGE sql STABLE PARALLEL SAFE SET search_path = pg_catalog
@@ -114,3 +123,18 @@ ALTER TABLE "platform_terms_acceptance" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "pf12_firm" ON "platform_terms_acceptance" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
 ALTER TABLE "platform_signup_pending" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "platform_signup_pending" FORCE ROW LEVEL SECURITY;
+
+-- Every trigger function on a firm table (65 on main) runs as xr_wall_reader, so the rules they check across tables hold
+-- against xr_app as they did against the old superuser app. A later migration's trigger function on a firm table does the
+-- same (tests/check_pf12_walls.ts fails otherwise).
+DO $readers$
+DECLARE f regprocedure;
+BEGIN
+  FOR f IN SELECT DISTINCT t.tgfoid::regprocedure FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+           WHERE NOT t.tgisinternal AND c.relnamespace = 'public'::regnamespace AND c.relname ~ '^(platform_|fo_|money_|msg_|auto_|plat_complaint)'
+  LOOP
+    EXECUTE format('ALTER FUNCTION %s SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp', f);
+    EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
+  END LOOP;
+END
+$readers$;

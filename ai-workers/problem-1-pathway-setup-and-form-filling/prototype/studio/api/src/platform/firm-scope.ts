@@ -139,7 +139,8 @@ export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promis
   const entry = Object.prototype.hasOwnProperty.call(BYPASS_USES, use) ? BYPASS_USES[use] : undefined;
   const store = scope.getStore(), route = store?.route;
   if (!entry) throw new BypassRefused(`asBypass: "${use}" is not on the named list (firm-scope.ts BYPASS_USES)`);
-  const allowed = route !== undefined ? entry.routes.some((r) => r.test(route)) : store === undefined ? !!(entry.outside || entry.direct) : !!entry.outside;
+  // A direct call (no scope at all) only in a suite or tool process: in the API server every request and job has its scope.
+  const allowed = route !== undefined ? entry.routes.some((r) => r.test(route)) : store === undefined ? !!(entry.outside || (entry.direct && unscoped === "direct")) : !!entry.outside;
   if (!allowed) throw new BypassRefused(`asBypass: "${use}" is not allowed ${route === undefined ? "outside a request" : `on ${route}`}`);
   bypassLine(use, route);
   return scope.run({ route, bypass: use }, async () => await fn());
@@ -148,7 +149,11 @@ export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promis
 // ----------------------------------------------------------------------------------------------- the request's firm
 type ScopedReq = { method?: string; path?: string; url?: string; [k: symbol]: unknown };
 const REQ_FIRM = Symbol("pf12.firm");
-const routeOf = (req: ScopedReq) => `${String(req.method ?? "GET").toUpperCase()} ${String(req.path ?? req.url ?? "").split("?")[0]}`;
+/** "METHOD /path" as the router matches it: HEAD answers as GET, and a trailing slash is the same route (breaker m3). */
+const routeOf = (req: ScopedReq) => {
+  const m = String(req.method ?? "GET").toUpperCase(), path = String(req.path ?? req.url ?? "").split("?")[0];
+  return `${m === "HEAD" ? "GET" : m} ${path.length > 1 ? path.replace(/\/+$/, "") || "/" : path}`;
+};
 /** PF-4's guard, first thing in every request, before any await: a fresh scope (its route, no firm) for the rest of the
  *  request. PF-4's guard is reached synchronously from Nest's router (core.ts's ConfigReadGuard returns a boolean), so
  *  the handler, its pipes and every query it makes continue in this scope; nothing of an earlier request survives. */
@@ -225,15 +230,18 @@ export function walledPool(databaseUrl: string, env: NodeJS.ProcessEnv = process
 }
 
 // --------------------------------------------------------------------------------------------- the start-up check
-/** The start-up check (api/src/features/platform-firm-walls.ts): what the app's role may not be: a table owner (or a member of one), a superuser, a BYPASSRLS role. One line per
+/** The start-up check (api/src/features/platform-firm-walls.ts): what the app's role may not be: a table or function owner (or a member of one, the bypass role included), a superuser, a BYPASSRLS role. One line per
  *  problem; none means the role is fit to serve. */
 export async function appRoleProblems(query: (sql: string) => Promise<{ rows: Record<string, unknown>[] }>): Promise<string[]> {
   const { rows: [r] } = await query(`select current_user as role, r.rolsuper as super, r.rolbypassrls as bypass,
-      (select count(*)::int from pg_class c where c.relkind in ('r','p','v','m','f') and c.relnamespace = 'public'::regnamespace and pg_has_role(current_user, c.relowner, 'MEMBER')) as owned
+      (select count(*)::int from pg_class c where c.relkind in ('r','p','v','m','f') and c.relnamespace = 'public'::regnamespace and pg_has_role(current_user, c.relowner, 'MEMBER')) as owned,
+      (select count(*)::int from pg_proc p where p.pronamespace = 'public'::regnamespace and pg_has_role(current_user, p.proowner, 'MEMBER')) as fns
     from pg_roles r where r.rolname = current_user`);
   const out: string[] = [];
   if (r.super) out.push(`${String(r.role)} is a superuser`);
   if (r.bypass) out.push(`${String(r.role)} has BYPASSRLS`);
   if (Number(r.owned) > 0) out.push(`${String(r.role)} owns (or may act as the owner of) ${String(r.owned)} table(s)`);
+  // A role it may become (the bypass role) owning a function could rewrite it (breaker m6): the wall functions are xr_wall_reader's.
+  if (Number(r.fns) > 0) out.push(`${String(r.role)} owns (or may act as the owner of) ${String(r.fns)} function(s)`);
   return out;
 }
