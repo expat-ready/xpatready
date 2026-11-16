@@ -208,6 +208,9 @@ details.inline>summary{cursor:pointer;color:var(--accent);font-size:12.5px;displ
 .fcard .chev{color:var(--accent);font-size:13px}.fcard .chev::after{content:" ▾"}.fcard[open] .chev::after{content:" ▴"}
 .fcard .fbig{grid-column:1/-1;font-size:22px;font-weight:600;min-width:0}
 .fcard .fbig .sep{color:var(--ink3);font-weight:400;padding:0 5px}
+.fcard .fbig .flw{display:inline-flex;align-items:center;font-size:17px;margin-right:14px;white-space:nowrap}
+.fcard .fbig .flw .dot{width:13px;height:13px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .fcard .fline{grid-column:1/-1;min-width:0}
 .fbody{border-top:1px solid var(--line);padding:10px 14px 12px;background:var(--panel2);display:flex;flex-direction:column;gap:6px;font-size:14px;border-radius:0 0 10px 10px}
 .fbody p{margin:0}.fsrc{font-size:12.5px;color:var(--accent)}
@@ -582,6 +585,7 @@ function rFirst(){
     (R.qa_not_built_ids.length?'<p class="warnline">qa tested '+R.qa_not_built_ids.length+' after all their listed parts merged and found them unfinished, so they count as In progress: '+esc(R.qa_not_built_ids.map(function(m){return "R1."+m;}).join(", "))+'.</p>':'')+
     (R.unlisted_ids.length?'<p class="warnline">qa\'s file lists '+(R.planned-R.unlisted_ids.length)+' of '+R.planned+'; not listed yet: '+esc(R.unlisted_ids.map(function(m){return "R1."+m;}).join(", "))+'.</p>':'')+
     '<p><a href="#" data-open="caps">Open every capability and its stage</a></p>',"first.release");
+  h+=rFlow();
   h+=fcard("today","Today"+(Td.goal?" · goal by "+esc(Td.by_text||hmDay(Td.by)):""),
     Td.goal?esc(Td.proven)+' of '+esc(Td.goal)+' Proven':'No proving goal set',pill(Td.state)+esc(Td.why),
     (Td.plan?'<p><b>The Lead\'s plan today:</b> '+esc(Td.plan)+' <span class="rep">Lead-reported</span></p>':''),"first.today");
@@ -603,6 +607,13 @@ function rFirst(){
     '<ul class="flist">'+(D.health.items||[]).map(function(i){var st=i.state==="page"?ageState(age):i.state;return '<li data-keep'+T("health."+i.id)+'><div>'+dot(st)+'<b>'+esc(i.name)+'</b> — '+(i.state==="page"?"board data "+esc(ageText(age))+" old":(st==="red"||st==="amber")&&i.action?esc(i.action)+' · <b>Who:</b> '+esc(i.owner||""):"fine")+'</div></li>';}).join("")+'</ul>',"strip.health");
   return '<div class="firstsec" role="region" aria-label="First screen">'+h+'</div></div>';
 }
+/* P-644 (founder 21:2x IST 16 Nov): one compact box, four lights (build, prove, merge, resources) and the forecast line */
+var FLW={green:"on target",amber:"below target",red:"off target",grey:"not measured"};
+function rFlow(){var Fl=D.flow;if(!Fl||!Fl.lights)return "";
+  var big=Fl.lights.map(function(L){return '<span class="flw">'+dot(L.light)+esc(L.name)+'<span class="vh"> '+esc(FLW[L.light]||L.light)+'</span></span>';}).join("");
+  var body=Fl.lights.map(function(L){return '<div class="srow"><b>'+dot(L.light)+esc(L.name)+': '+esc(L.big)+'</b><span class="small">'+esc(FLW[L.light]||L.light)+' · '+esc(L.target)+'</span>'+
+    ul(L.lines,6)+((L.maps||[]).length?'<span class="small">In the 24 h: '+esc(L.maps.map(capName).join("; "))+'</span>':'')+'</div>';}).join("");
+  return fcard("flow","Flow: what is going well",big,esc(Fl.forecast),body,"first.flow");}
 function hmDay(iso){try{return new Date(iso).toLocaleString("en-GB",{timeZone:"Asia/Kolkata",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})+" IST";}catch(e){return iso||"";}}
 /* A115: Capabilities in his view: each business function with a four-colour bar, then each capability with its stage */
 function rStages(){var R=D.first&&D.first.release;if(!R||!R.groups)return "";
