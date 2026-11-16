@@ -1,12 +1,13 @@
 // FO-4 part 1 (concept r2 §4 screen 2, pattern Catalogue; BR-4, BR-5, BR-10; AG-2-13c, AG-2-86): Leads. Chips
 // Unassigned leads · Mine · All open (Closed comes with Close and Reopen, part 2), a search over the rows shown, and a
 // table; Take it on a lead nobody active owns. The chip is kept in the address (?view=), so Back returns to it.
+// FO-4sf (AG-2-23 rule 1): a Source filter beside the chips, any of the doors, kept in the address (?source=); none = all.
 import * as React from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Input, Pill, Table } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
-import { can, KEY, LeadRows, READ_ONLY_REASON, seesUnassigned, words, type LeadRow } from "./contract";
+import { can, KEY, LeadRows, READ_ONLY_REASON, seesUnassigned, SOURCES, sourcesIn, words, type LeadRow, type SourceCode } from "./contract";
 import { Loading } from "./loading";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
@@ -19,18 +20,25 @@ const EMPTY: Record<View, string> = {
   mine: "You have no open leads. Take one from Unassigned leads, or ask to be assigned one.",
   all: "No open leads.",
 };
-export function useLeads(view: View) {
-  return useQuery({ queryKey: ["fo", "leads", view], queryFn: async () => LeadRows.parse(await staffApi(`/front-office/leads?view=${view}`)) });
+export function useLeads(view: View, sources: SourceCode[] = []) {
+  const src = sources.length ? `&source=${sources.join(",")}` : "";
+  return useQuery({ queryKey: ["fo", "leads", view, ...(sources.length ? [sources.join(",")] : [])], queryFn: async () => LeadRows.parse(await staffApi(`/front-office/leads?view=${view}${src}`)) });
 }
+const chipCls = (on: boolean) => cn("min-h-8 rounded-full border px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", on ? "border-primary bg-primary/10 font-medium text-text-link" : "border-border bg-surface-raised text-text hover:bg-text/5");
 function LeadsBody() {
   const me = useStaff();
   const [params, setParams] = useSearchParams();
   const chips = CHIPS.filter((c) => c.view !== "unassigned" || seesUnassigned(me));
   const asked = params.get("view") as View | null;
   const view: View = chips.some((c) => c.view === asked) ? asked! : chips[0].view;
+  const sources = sourcesIn(params.get("source"));
+  /** Keep the address in step: the chip (left out for the first) and the sources (left out when none). */
+  const go = (v: View, s: SourceCode[]) => setParams({ ...(v === chips[0].view ? {} : { view: v }), ...(s.length ? { source: s.join(",") } : {}) }, { replace: true });
+  const toggle = (c: SourceCode) => go(view, sources.includes(c) ? sources.filter((x) => x !== c) : SOURCES.map((s) => s.code).filter((x) => x === c || sources.includes(x)));
   const [q, setQ] = React.useState("");
-  const rows = useLeads(view);
-  const empty = view === "mine" && !can(me, KEY.edit) ? "You have no open leads." : EMPTY[view];
+  const rows = useLeads(view, sources);
+  const named = SOURCES.filter((s) => sources.includes(s.code)).map((s) => s.label).join(" or ");
+  const empty = sources.length ? `No leads from ${named} here. Clear the source filter to see every source.` : view === "mine" && !can(me, KEY.edit) ? "You have no open leads." : EMPTY[view];
   const take = useTakeIt();
   const canTake = can(me, KEY.edit);
   const needle = q.trim().toLowerCase();
@@ -48,11 +56,19 @@ function LeadsBody() {
         <div role="group" aria-label="Which leads" className="flex flex-wrap gap-2">
           {chips.map((c) => (
             <button key={c.view} type="button" aria-pressed={c.view === view} data-chip={c.view}
-              onClick={() => setParams(c.view === chips[0].view ? {} : { view: c.view }, { replace: true })}
-              className={cn("min-h-8 rounded-full border px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", c.view === view ? "border-primary bg-primary/10 font-medium text-text-link" : "border-border bg-surface-raised text-text hover:bg-text/5")}>
+              onClick={() => go(c.view, sources)} className={chipCls(c.view === view)}>
               {c.label}
             </button>
           ))}
+        </div>
+        <div role="group" aria-labelledby="fo-source-label" data-source-filter className="flex flex-wrap items-center gap-2">
+          <span id="fo-source-label" className="text-sm text-text-muted">Source</span>
+          {SOURCES.map((s) => (
+            <button key={s.code} type="button" aria-pressed={sources.includes(s.code)} data-source={s.code} onClick={() => toggle(s.code)} className={chipCls(sources.includes(s.code))}>
+              {s.label}
+            </button>
+          ))}
+          {sources.length ? <Button variant="link" size="sm" data-source-clear onClick={() => go(view, [])}>Clear source</Button> : null}
         </div>
         <label className="w-full sm:w-72">
           <span className="sr-only">Search leads by name or number</span>

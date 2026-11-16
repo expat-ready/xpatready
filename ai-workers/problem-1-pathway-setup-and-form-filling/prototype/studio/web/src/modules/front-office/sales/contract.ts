@@ -42,6 +42,11 @@ export const KEY = { show: "agent/prospect:show", edit: "agent/prospect:edit", a
 /** A stored code in plain words (EXPERIENCE §5): the lead's source and state. */
 const WORDS: Record<string, string> = { WEBSITE: "Website form", OPEN: "Open", CLOSED: "Closed" };
 export const words = (code: string) => WORDS[code] ?? (code.charAt(0) + code.slice(1).toLowerCase()).replace(/_/g, " ");
+/** FO-4sf (AG-2-23 rule 1): the lead's arrival door, the list's Source filter (`?source=`), in plain words. */
+export const SOURCES = [{ code: "WEB_FORM", label: "Web form" }, { code: "MANUAL", label: "Added by staff" }, { code: "BOOKING", label: "Booking" }] as const;
+export type SourceCode = (typeof SOURCES)[number]["code"];
+/** The known codes of a `?source=` value, in the list's order; anything else is dropped (the API refuses it). */
+export const sourcesIn = (raw: string | null): SourceCode[] => { const asked = new Set((raw ?? "").split(",")); return SOURCES.filter((s) => asked.has(s.code)).map((s) => s.code); };
 /** Why a person sees no Take it (BIC-18): their role may read leads but not work them. */
 export const READ_ONLY_REASON = "You can read leads. Taking one needs a role that works leads: ask your firm's Owner or Admin.";
 export const can = (me: Me | undefined, key: string) => !!me?.keys.includes(key);

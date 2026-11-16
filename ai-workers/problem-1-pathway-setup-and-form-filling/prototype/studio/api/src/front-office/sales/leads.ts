@@ -8,7 +8,7 @@ import { Db } from "../../core.ts";
 import { platformAuditWorkspaceId } from "../../platform/audit/audit-event.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import type { FirmCalendar } from "../../platform/complaints/business-days.ts";
-import { forbidden, type StaffContext } from "../../platform/identity/keys.ts";
+import { forbidden, problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts";
 import { arrive, possibleMatch } from "./arrival.ts";
 import { actorOf, conflict, email, notFound, phone, sees, text, unprocessable, UUID, visibilityOf, written, type Tx } from "./common.ts";
@@ -17,6 +17,17 @@ import { SALES_PORTS, type SalesPorts } from "./public.ts";
 
 export const VIEWS = ["unassigned", "mine", "all", "closed"] as const;
 type View = (typeof VIEWS)[number];
+/** FO-4sf (AG-2-23 rule 1, lead filters "source"): the stored arrival doors a lead list filters by. The `source` text
+ *  column is free (a manual lead's typed source, a form's label), so the fixed values are the door's (FoDoor). */
+export const SOURCES = ["WEB_FORM", "MANUAL", "BOOKING"] as const;
+type Source = (typeof SOURCES)[number];
+/** `?source=A,B` or `?source=A&source=B`; none → every source. An unknown value → 400 naming the allowed ones. */
+export function sourcesOf(raw: unknown): Source[] | null {
+  const asked = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw]).flatMap((x) => String(x).split(",")).map((x) => x.trim()).filter(Boolean);
+  const bad = asked.filter((x) => !(SOURCES as readonly string[]).includes(x));
+  if (bad.length) return problem(400, "Check the filter", `Unknown source: ${bad.join(", ").slice(0, 120)}. Choose from ${SOURCES.join(", ")}.`, { code: "INVALID", fields: { source: `Choose from ${SOURCES.join(", ")}.` }, allowed: [...SOURCES] });
+  return asked.length ? [...new Set(asked as Source[])] : null;
+}
 /** How recent an owner change from Unassigned counts as the race that names the winner (Sample, FO-2v brief). */
 const RACE_MINUTES = 10;
 type Staff = { id: string; displayName: string; status: string };
@@ -35,8 +46,9 @@ export class Leads {
 
   /** Unassigned leads (open, no active owner, oldest first), Mine, All open, Closed; each open row with the time it has
    *  waited in the firm's open hours (BR-4, AG-2-13c rule 6), worked out here. */
-  async list(ctx: StaffContext, view: unknown) {
+  async list(ctx: StaffContext, view: unknown, source?: unknown) {
     const v = (VIEWS as readonly string[]).includes(String(view ?? "all")) ? (String(view ?? "all") as View) : unprocessable("Choose a view: unassigned, mine, all or closed.", { view: "Unknown view." });
+    const doors = sourcesOf(source);
     const vis = await visibilityOf(this.db, ctx);
     if (v === "unassigned" && !vis.seesUnassigned) return forbidden("Unassigned leads are seen by people who may see all leads or assign them.", "MISSING_PERMISSION");
     const staff = await this.staffOf(ctx.firmId);
@@ -45,8 +57,8 @@ export class Leads {
     const where = v === "unassigned" ? { state, OR: [{ ownerStaffId: null }, { ownerStaffId: { in: inactive } }] }
       : v === "mine" ? { state, ownerStaffId: ctx.staffId }
       : vis.seesAll ? { state } : { state, OR: [{ ownerStaffId: ctx.staffId }, ...(vis.seesUnassigned ? [{ ownerStaffId: null }, { ownerStaffId: { in: inactive } }] : [])] };   // in the query, before the page cap (review m5)
-    const rows = await this.db.foLead.findMany({
-      where: firmScope(ctx.firmId, where), orderBy: v === "unassigned" ? [{ arrivedAt: "asc" }, { id: "asc" }] : [{ arrivedAt: "desc" }, { id: "asc" }], take: 500,
+    const rows = await this.db.foLead.findMany({   // the source filter narrows inside the visibility, never widens it (FO-4sf)
+      where: firmScope(ctx.firmId, doors ? { AND: [where, { door: { in: doors } }] } : where), orderBy: v === "unassigned" ? [{ arrivedAt: "asc" }, { id: "asc" }] : [{ arrivedAt: "desc" }, { id: "asc" }], take: 500,
       include: { person: { select: { givenNames: true, familyName: true, phoneReadable: true } }, interestedIn: { select: { label: true } } },
     });
     const unowned = (o: string | null) => o === null || inactive.includes(o);
