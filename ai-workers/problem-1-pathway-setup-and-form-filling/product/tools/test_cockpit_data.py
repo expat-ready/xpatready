@@ -2068,13 +2068,32 @@ class Flow(unittest.TestCase):
         self.assertEqual(L["overall"]["text"], "Overall: 3 of 5 proven; 29 Nov needs about 0.2 a day; at the current pace, all proven about 23 Nov")
         self.assertEqual((L["today"]["light"], L["week"]["light"], L["overall"]["light"]), ("red", "red", "green"))
         self.assertIn("for the 2 days so far", L["week"]["src"])                # 10 a day for Mon and Tue: 20 green, 14 amber
-        f2 = dict(f, flow_works_week=15)
+        f2 = dict(f, flow_works_week=8)                                     # Tuesday: under 10 for Monday alone, 7 or more
         self.assertEqual({x["key"]: x for x in cd.proven_lines(d, f2)}["week"]["light"], "amber")
         late = dict(f, flow_forecast="2026-12-03")
         self.assertEqual({x["key"]: x for x in cd.proven_lines(d, late)}["overall"]["light"], "amber")   # up to 7 days after
         self.assertEqual({x["key"]: x for x in cd.proven_lines(d, dict(f, flow_forecast=None))}["overall"]["light"], "red")
         nq = dict(f, no_qa=True, flow_works_today=None, flow_works_week=None)
         self.assertEqual([x["light"] for x in cd.proven_lines(d, nq)], ["grey", "grey", "grey"])
+
+    def test_midnight_monday_and_sunday(self):
+        # review m5: the IST day and the Monday-start week at the edges (both scripts read taken_at the same way)
+        a = self.at
+        rows = [{"map": 1, "built": "2026-11-22", "built_at": a("2026-11-22T23:50"), "qa_tested_at": None},
+                {"map": 2, "built": "2026-11-23", "built_at": a("2026-11-23T00:05"), "qa_tested_at": None}]
+        qa = {1: "Works", 2: "Works"}
+        since = {1: a("2026-11-22T23:50"), 2: a("2026-11-23T00:05")}       # Sunday 23:50, Monday 00:05
+        mon = cd.flow_counts(rows, qa, {}, 2, since, datetime.fromisoformat(a("2026-11-23T00:10").replace("Z", "+00:00")))
+        self.assertEqual((mon["week_start"], mon["flow_works_today"], mon["flow_works_week"], mon["flow_rows_built_today"]), ("2026-11-23", 1, 1, 1))
+        sun = cd.flow_counts(rows[:1], {1: "Works"}, {}, 1, {1: a("2026-11-16T00:00")}, datetime.fromisoformat(a("2026-11-22T23:55").replace("Z", "+00:00")))
+        self.assertEqual((sun["week_start"], sun["flow_works_week"]), ("2026-11-16", 1))   # Monday 16 Nov 00:00 counts
+        sun2 = cd.flow_counts(rows[:1], {1: "Works"}, {}, 1, {1: a("2026-11-15T23:59")}, datetime.fromisoformat(a("2026-11-22T23:55").replace("Z", "+00:00")))
+        self.assertEqual(sun2["flow_works_week"], 0)                         # Sunday 15 Nov 23:59 is last week
+
+    def test_week_light_early_in_the_day(self):
+        # review m1: at 00:10 on Tuesday, 10 proven on Monday is on target, not red
+        self.assertEqual((cd.week_light(10, 2), cd.week_light(8, 2), cd.week_light(6, 2)), ("green", "amber", "red"))
+        self.assertEqual((cd.week_light(10, 1), cd.week_light(60, 7), cd.week_light(None, 3)), ("green", "green", "grey"))
 
     def test_a_day_without_a_part_gives_no_worst_date(self):
         a = self.at
@@ -2176,6 +2195,8 @@ class Flow(unittest.TestCase):
         self.assertFalse([x for x in c["trust"]["diffs"] if x["name"].startswith("flow_")], c["trust"]["diffs"])
         for n in cd.FLOW_KEYS:
             self.assertEqual(out["numbers"][n]["value"], k[n], n)
+        # the four IST-day counts, exact (20 Nov is a Friday: the week runs from Monday 16 Nov)
+        self.assertEqual((k["flow_works_today"], k["flow_works_week"]), (1, 2))   # row 8 today; rows 2 (18 Nov) and 8 this week
 
     def test_both_scripts_agree_on_the_fixture(self):
         out, note = cd.run_reconcile(FIX, os.path.join(HERE, "cockpit-reconcile.py"))

@@ -3048,6 +3048,17 @@ def flow_box(d, fc, li, li_src, ci):
     return {"lights": [build, prove, merge, res], "forecast": fl, "src": "FORMULAS.md › Flow"}
 
 
+def week_light(n, days_in):
+    """The week's light: 10 a day (floor 7) for the days so far, today included, or for the full days before today (at
+    least 1), whichever reads better, so the light is not red in the small hours after a day on target (review m1)."""
+    if n is None:
+        return "grey"
+    order = ["red", "amber", "green"]
+    a = flow_band(n, FLOW_TARGET * days_in, FLOW_FLOOR * days_in, low_good=False)
+    b = flow_band(n, FLOW_TARGET * max(1, days_in - 1), FLOW_FLOOR * max(1, days_in - 1), low_good=False)
+    return max(a, b, key=order.index)
+
+
 def proven_lines(d, fc):
     """Lead 70 (founder A133, 22:0x IST 16 Nov): "11 of 10 proven" mixed the total with the day's goal. Three plain lines,
     each with its light: today (IST day) against 10 (floor 7, P-644); this week (Monday to Sunday IST) against 70, the
@@ -3075,10 +3086,10 @@ def proven_lines(d, fc):
         {"key": "today", "light": flow_band(wt, FLOW_TARGET, FLOW_FLOOR, low_good=False) or "grey",
          "text": f"Today (IST day): {wt} proven of {FLOW_TARGET} (floor {FLOW_FLOOR}, P-644)" if wt is not None else "Today (IST day): " + nm,
          "src": "R1 rows whose current run of Works began today, IST (FORMULAS.md › Flow, Prove); " + at, "maps": fc["works_today_maps"]},
-        {"key": "week", "light": flow_band(ww, FLOW_TARGET * days_in, FLOW_FLOOR * days_in, low_good=False) or "grey",
+        {"key": "week", "light": week_light(ww, days_in),
          "text": f"This week (Mon to Sun IST): {ww} proven of {FLOW_TARGET * 7}" if ww is not None else "This week (Mon to Sun IST): " + nm,
          "src": f"the same rows, from Monday {wk.strftime('%d %b')}; the light compares with {FLOW_TARGET} a day (floor {FLOW_FLOOR}) for the "
-                f"{days_in} day{'s' if days_in != 1 else ''} so far; " + at},
+                f"{days_in} day{'s' if days_in != 1 else ''} so far, or for the full days before today (at least 1), whichever reads better; " + at},
         {"key": "overall", "light": ol or "grey",
          "text": (f"Overall: {pn} of {tot} proven; " + (f"{dm(tgt)} needs about {need} a day" if tgt and need is not None else
                   f"{dm(tgt)}: the date has passed" if tgt else "no committed date")
@@ -3611,14 +3622,14 @@ def build_explain(d):
         fl_ = d.get("flow")
         if fl_:
             put("first.flow", "Flow", "Which part of the work is going well: building, proving, merging, or the people and machines behind them. "
-                "Each light is green, amber or red against its target (P-644).", "the 24 h to the snapshot, and the last 3 full IST days",
+                "Each light is green, amber or red against its target (P-644).", "today (IST day), with the last 24 h and the last 3 full IST days as trends",
                 None, "", fl_["forecast"], src="; ".join(f"{L['name']}: {L['src']}" for L in fl_["lights"]), cls="measured",
                 behind=[f"{L['name']} ({L['light']}): {L['big']}; {L['target']}; " + "; ".join(L["lines"]) for L in fl_["lights"]]
                 + [f"{L['name']} today: {lb(m)}" for L in fl_["lights"] for m in L.get("maps") or []])
         pls = fs.get("proven_lines") or []
         put("first.today", "Proven: today, this week, overall", "How many capabilities qa proved today and this week against "
             "P-644's 10 a day, and overall against all of Release 1 with the date at the current pace.", "today (IST), this week "
-            "(Monday to Sunday IST) and all to date", (pls[0].get("maps") and len(pls[0]["maps"])) or 0, "capabilities proven today",
+            "(Monday to Sunday IST) and all to date", (d.get("reconcile_keys") or {}).get("flow_works_today"), "capabilities proven today",
             " · ".join(x["text"] for x in pls), src="; ".join(f"{x['key']}: {x['src']}" for x in pls), cls="measured",
             todo=T_.get("plan") or None, behind=[f"{x['text']} ({x['light']})" for x in pls] + [f"proven today: {lb(m)}" for m in (pls[0].get("maps") if pls else []) or []]
             + [f"Built, waiting for qa: {lb(m)}" for m in R_["waiting_ids"]])
