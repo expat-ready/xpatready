@@ -45,8 +45,9 @@ const firm = (key: string, name: string) => db.platformFirm.create({ data: { key
 const M = await firm("maple", "Maple Immigration"), E = await firm("maple-empty", "Sample Empty Firm"), Q = await firm("maple-quiet", "Sample Quiet Firm");
 const host = async (firmId: string, name: string) => {
   const s = await db.platformStaff.create({ data: { firmId, email: `${name.replace(/\W/g, "").toLowerCase()}@${firmId.slice(0, 8)}.example`, displayName: name } });
-  // Mon-Fri 09:00-17:00 and Sunday 00:00-04:00 Toronto (the DST nights, J-P5). Sample.
-  await db.foAvailability.createMany({ data: [1, 2, 3, 4, 5].map((weekday) => ({ firmId, staffId: s.id, weekday, startMinute: 540, endMinute: 1020, timeZone: TZ })).concat([{ firmId, staffId: s.id, weekday: 0, startMinute: 0, endMinute: 240, timeZone: TZ }]) });
+  // Mon-Fri 09:00-17:00, Sunday 00:00-04:00 (the DST nights, J-P5) and Monday 19:00-20:00 (an evening past UTC midnight,
+  // Devin #1921) Toronto. Sample.
+  await db.foAvailability.createMany({ data: [1, 2, 3, 4, 5].map((weekday) => ({ firmId, staffId: s.id, weekday, startMinute: 540, endMinute: 1020, timeZone: TZ })).concat([{ firmId, staffId: s.id, weekday: 0, startMinute: 0, endMinute: 240, timeZone: TZ }, { firmId, staffId: s.id, weekday: 1, startMinute: 1140, endMinute: 1200, timeZone: TZ }]) });
   return s;
 };
 const F = await host(M.id, "Client F"), FQ = await host(Q.id, "Client C");
@@ -163,7 +164,16 @@ try {
     await p.getByRole("button", { name: "(change) time zone" }).click(); await p.getByLabel("Search for a city or zone").fill("America/Toronto"); await p.getByRole("button", { name: "Use this zone" }).click();
     await p.getByRole("button", { name: "Monday 30 November", exact: true }).click();
     ok("FO-3w J-P2 (break M1): Dubai switched to Toronto still shows Mon 30 Nov's last times (16:30), read in the new zone", (await p.getByRole("button", { name: "Monday 30 November, 16:30 America/Toronto time" }).count()) === 1, await p.locator("[data-day-times]").innerText());
-    await ctx.close(); await clock.to(at("2026-10-16 09:00"));
+    await ctx.close();
+    // Devin #1921: a browser with no zone the server takes ("Factory") is shown the firm's zone, and the month is read in
+    // it, so the firm's evening on the month's last day (19:30 Toronto = 00:30 UTC the next day) is still there.
+    const f = await visitor("Factory", 1440, clock.now());
+    await open(f.p, "/book/maple/free-consultation"); await f.p.getByRole("button", { name: "Monday 30 November", exact: true }).click();
+    ok("FO-3w BR-3 (Devin #1921): no browser zone → the firm's zone, and Mon 30 Nov 19:30 America/Toronto is offered", (await f.p.locator("[data-zone-line]").innerText()).includes("America/Toronto") && (await f.p.getByRole("button", { name: "Monday 30 November, 19:30 America/Toronto time" }).count()) === 1, await f.p.locator("[data-day-times]").innerText());
+    // A month that fails to load says so, and never also "No free times" (Devin #1921, review n1).
+    await f.p.route("**/slots?**", (rt) => rt.abort("failed")); await f.p.getByRole("button", { name: "Next month" }).click(); await f.p.getByRole("alert").first().waitFor();
+    ok("FO-3w (review n1): a month that fails to load shows the error and not \"No free times\"", (await f.p.locator('[data-public-state="no-times"]').count()) === 0 && (await mainText(f.p)).includes("We could not load the times. Please try again."), await mainText(f.p));
+    await f.ctx.close(); await clock.to(at("2026-10-16 09:00"));
   }
   // ------------------------------------------------------------------------------------------------------------- J-P3
   {

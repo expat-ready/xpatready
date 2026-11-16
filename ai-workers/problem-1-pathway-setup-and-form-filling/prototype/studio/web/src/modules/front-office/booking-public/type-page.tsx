@@ -35,7 +35,10 @@ export function BookingTypePage() {
   const q = useQuery({
     queryKey: key, retry: false, staleTime: Infinity, refetchOnWindowFocus: false, placeholderData: (prev) => prev,
     queryFn: () => {
-      const z = zone ?? "UTC", from = monthStart(month, z).toISOString(), to = monthStart(nextMonth(month), z).toISOString();
+      // No browser zone: the answer comes in the firm's zone, not yet known here, so the month is asked a day wider each
+      // side in UTC and the grid keeps the month's own days (Devin #1921: a firm's evening on the 30th is 00:30 UTC on the 1st).
+      const pad = zone ? 0 : 86_400_000, z = zone ?? "UTC";
+      const from = new Date(monthStart(month, z).getTime() - pad).toISOString(), to = new Date(monthStart(nextMonth(month), z).getTime() + pad).toISOString();
       return publicCall(`firms/${encodeURIComponent(firmKey)}/book/${encodeURIComponent(slug)}/slots?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${zone ? `&tz=${encodeURIComponent(zone)}` : ""}`, Slots);
     },
   });
@@ -53,7 +56,7 @@ export function BookingTypePage() {
             : chosen ? <Details d={d} zone={shown} slot={chosen} stampedAt={q.dataUpdatedAt} firmKey={firmKey} slug={slug}
                 onBack={() => setChosen(null)} onPick={setChosen} onBooked={(answer, email, phone) => setBooked({ answer, email, phone })}
                 onStale={() => qc.invalidateQueries({ queryKey: ["public-slots", firmKey, slug] })} />
-              : <Times d={d} loading={q.isFetching && (q.isPlaceholderData || !q.data)} error={q.error as Problem | null} zone={shown} month={month} onMonth={setMonth} onZone={setZone} onPick={setChosen} />}
+              : <Times d={d} loading={q.isFetching && (q.isPlaceholderData || !q.data)} error={q.data ? null : q.error as Problem | null} zone={shown} month={month} onMonth={setMonth} onZone={setZone} onPick={setChosen} />}
         </PublicFrame>
       );
     }}</Gate>
@@ -143,7 +146,7 @@ function Times({ d, loading, error, zone, month, onMonth, onZone, onPick }: { d:
               <h3 className="text-base font-semibold">{dayWords(new Date(daySlots[0].startsAt), zone)}</h3>
               {clocksChange(shownDay, zone) ? <p data-dst className="mt-2 rounded-lg bg-surface-sunken px-3 py-2 text-xs">Clocks change on this day. Times shown are real times in {zone}.</p> : null}
               <ul className="mt-2 flex flex-col gap-2">{daySlots.map((s) => <li key={s.startsAt}><Button variant="outline" size="lg" className="h-11 w-full" aria-label={whenWords(new Date(s.startsAt), zone)} onClick={() => onPick(s)}>{hhmm(new Date(s.startsAt), zone)}</Button></li>)}</ul>
-            </> : <p data-public-state="no-times" className="text-sm">No free times in {monthName(month)}. Try the next month.</p>}
+            </> : error ? null : <p data-public-state="no-times" className="text-sm">No free times in {monthName(month)}. Try the next month.</p>}
         </div>
       </div>
     </section>
@@ -182,7 +185,8 @@ function Details({ d, zone, slot, stampedAt, firmKey, slug, onBack, onPick, onBo
       onBooked(r, v.email.trim(), v.phone);
     } catch (x) {
       // M3: a lost answer or one we cannot read is a refusal like any other, never a crash with nothing shown.
-      const p: Problem = x && typeof x === "object" && "issues" in x ? x as Problem : { status: 0, issues: [], slots: [] };
+      // A ZodError (an answer that no longer fits the contract) is an Error with object issues: not a refusal (review n2).
+      const p: Problem = x && typeof x === "object" && !(x instanceof Error) && "issues" in x ? x as Problem : { status: 0, issues: [], slots: [] };
       const fields = Object.fromEntries(p.issues.map((i) => i.split(":")[0]).filter((f) => FIELD_WORDS[f]).map((f) => [f, FIELD_WORDS[f]]));
       if (p.status === 429) setRefused({ text: TRY_LATER });
       else if (p.slug === "slot-taken") { setRefused({ text: "This time was just booked.", next: p.slots.slice(0, 4) }); onStale(); }
