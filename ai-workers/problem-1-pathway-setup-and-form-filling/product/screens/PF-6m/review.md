@@ -81,3 +81,18 @@ Blockers: none · Majors: none · Minors: F1 invitation outlives inviter (older 
 
 Verdict: Approve (584a4cb8f)
 Blockers: none · Majors: none · Minors: the card's invariant wording should name the two doors (signup is the F4 question); F1 still open (older code, BUGS row).
+
+## Re-review at f2e1a442d (P-277, P-270: the merge of origin/main fd2dee855, which brings PF-12 #1910)
+* **Card resolution correct.** `MODULE.md` keeps PF-12's `check_pf12_walls.ts` and adds `check_pf6m_money_line.ts`. Against main, the card differs only by PF-6m's invariant line and that one test name. It is 34 lines, under 40.
+* **Nothing of PF-12 lost.** `git diff origin/main f2e1a442d -- studio/api` has exactly PF-6m's own changes and nothing else: `money-line.ts` (new), the `audit.ts` delegation, the role-change call, and the accept's import and call. Every removed line is one of PF-6m's intended replacements. No PF-12 line appears in the diff, so every one is kept: `asBypass` around accept and `invitationState`, `enterFirm`, the walls.
+* **Money line placement.** At `session/service.ts:100`, still inside `asBypass("platform.identity.invitation", () => this.db.$transaction(async (tx) => …))`. It comes after the grants and before `accepted_at`, the accepted line and `createUser`, so DW2's rollback still covers it.
+  * Its reads (`platform_role_permission`, `platform_permission_key`) are PF-12's named unwalled catalogues.
+  * Its writes (`workspace`, `audit_event`) are the same tables the accepted line already writes.
+* **Runs on the merged tree.** `Db` connects as `xr_app` through `walledPool` (`core.ts:36`), so the in-process suites and the isolated copies run behind the walls.
+  * In-process: PF-6m 12/12, PF-4b 53/53, PF-6b 28/28, PF-12 walls 100/100, PF-0p 113/113.
+  * **PF-4 119/119 in full** (isolated `pf4` on :4437).
+  * qa's QA-478 line passes on isolated :4436 through the real `main.ts`. QA-479 now passes too, from main; it is not this row.
+* The F1 and F4 notes and the card-wording Minor are unchanged from earlier and still do not block.
+
+Verdict: Approve (f2e1a442d)
+Blockers: none · Majors: none · Minors: unchanged (card invariant wording; F1 BUGS row; F4 signup question).
