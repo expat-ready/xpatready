@@ -175,3 +175,14 @@ Verdict: Approve 6138ac80c92ff0a783e26a5f62fcf8da2d77f146
 **To fix before Approve:** R3-1 only. The SQL and tests are unchanged from the Approve at 6138ac80c.
 
 Verdict: Block
+
+## Re-review 4 at `f1e838eba54d8807e68378683afa61f4ba0d0a90` (diff `-M` since 6138ac80c only)
+* **R3-1 fixed.** `studio/node_modules` is no longer in the tree. The only `node_modules` path in it is `prototype/node_modules`, which was already on `main`.
+* The PR's files against `main` are the migration, the schema, the three tests, MODULE.md with its link, and the records (design.md, review.md, break-report.md).
+* Since my Approve at 6138ac80c the code changed only by:
+  * the rename to `20261116133000_fo7a2_ledger_rules`, 100 % similar with no SQL change;
+  * the test's `NEW` constant.
+* The stamp is later than `main`'s newest and than open #1918 and #1961. FO-7a2 passes 33/0 and prisma 8/0 on the same SQL (run at 3fb235245).
+* n2 goes to the tech lead with the migration-read request (P-423).
+
+Verdict: Approve f1e838eba54d8807e68378683afa61f4ba0d0a90
