@@ -2097,6 +2097,16 @@ class Flow(unittest.TestCase):
                              "proven about 2 days after they are built. Proving: the 2 rows left, at qa's 0.33 rows a day, about 23 Nov. "
                              "Best 22 Nov; worst no date (a day with nothing merged or proven).")
 
+    def test_forecast_sentence_when_all_done(self):
+        f = self.small()
+        f.update({"flow_parts_left": 0, "to_prove": 0, "flow_forecast": "2026-11-17", "flow_forecast_best": "2026-11-17", "flow_forecast_worst": "2026-11-17"})
+        fl = cd.flow_box({"lineage": {}}, f, {}, "x", None)["forecast"]
+        self.assertIn("Building: every part has merged", fl)
+        self.assertIn("Proving: every row is proven.", fl)
+        g = self.small()
+        g["flow_parts_3d"] = [1, 1, 1]
+        self.assertIn("(1 part a day)", cd.flow_box({"lineage": {}}, g, {}, "x", None)["forecast"])
+
     def test_no_qa_rows_leaves_build_measured(self):
         # review m6: with no Release 1 row in qa's file, Prove and the forecast are not measured; Build still is, on both sides
         out, note = cd.run_reconcile(FIX, os.path.join(HERE, "cockpit-reconcile.py"))

@@ -3020,7 +3020,8 @@ def flow_box(d, fc, li, li_src, ci):
         fl = f"All {n_all} proven: not measured (qa's file has no Release 1 rows)"
     else:
         def rate(x, what):                                # 2 decimals under 1 a day, so the rate matches its date
-            return f"{round(x, 2) if x < 1 else round(x, 1):g} {what} a day"
+            v = round(x, 2) if x < 1 else round(x, 1)
+            return f"{v:g} {what[:-1] if v == 1 else what} a day"
         built_txt = ("Building: every part has merged" if fc["flow_parts_left"] <= 0 else
                      "Building: the last part merges about " + (dm(fc["parts_done"]) or "no date") + f" ({rate(sum(b3) / 3, 'parts')})")
         fl = (f"All {n_all} rows proven about " + (dm(fct) or "no date yet") + ". " + built_txt
