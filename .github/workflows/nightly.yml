@@ -139,45 +139,6 @@ jobs:
           name: nightly-suite-logs-part-${{ matrix.shard }}
           path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/var/suites/
           retention-days: 14
-  restore-drill:
-    # PF-8r (NFR5-04 "quarterly restore drill … with recorded evidence"; P-586, map row 14): every night, the restore drill
-    # on compose.test.yml's pinned PostgreSQL: dump, restore into a fresh database, check, time (tools/restore-drill.sh),
-    # with its three fail cases (tests/check_pf8r_restore.ts). Red on any FAIL; the evidence files are the run's artefact
-    # (no row data). Its own job: it needs docker and the image, so run-suites.sh skips it. US$0, no model call, no key.
-    # Every night (Lead 69 on #2014): no `needs`, so it waits on no other job; on the schedule its condition is always
-    # true, and by hand it runs with the full set (no capabilities named), never on a named-capability re-test.
-    # tests/check_pf8r_nightly_job.ts checks this wiring on every change to it.
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.capabilities == '' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions: { contents: read }
-    env:
-      S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
-    steps:
-      - uses: actions/checkout@v4
-        with: { persist-credentials: false }
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
-      - name: the studio's packages (tsx runs the test)
-        run: cd "$S" && npm ci
-      - name: build the image studio-skeleton:test (as skeleton.yml)
-        run: docker compose -f "$S/deploy/compose.test.yml" build --pull
-      - name: restore drill, its pass and its three fail cases (tests/check_pf8r_restore.ts)
-        run: |
-          cd "$S" && ./node_modules/.bin/tsx --tsconfig api/tsconfig.json tests/check_pf8r_restore.ts | tee drill.txt
-          st=${PIPESTATUS[0]}
-          { echo "### Restore drill on $(git rev-parse --short HEAD)"; grep -E '^(PASS|FAIL)  PF-8r|^    restore time|passed$' drill.txt; } >> "$GITHUB_STEP_SUMMARY"
-          exit "$st"
-      - name: evidence (the drill's evidence files and logs; no row data)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: restore-drill-evidence
-          path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/var/restore-drill/
-          retention-days: 90
   works-plan:
     # D5: the Works rows with a pack, all milestones, as at most 5 groups balanced by packs (a checkpoint pack weighs double).
     needs: plan

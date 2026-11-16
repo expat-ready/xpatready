@@ -56,8 +56,7 @@ while [ $# -gt 0 ]; do case "$1" in
   *) echo "run-suites.sh: unknown option $1 (--demo, --names, --list, --changed <base>..<head>, --shard <i>/<n>, --skip-quarantined, --direct, --skip-green <file>, --retry); no suite was run"; exit 2;;
 esac; shift; done
 # Not regression suites: the 100-program exercise needs its own fixture copy (run by hand, see its usage line).
-# PF-8r's restore drill needs docker and the built image studio-skeleton:test: it runs in nightly.yml's job restore-drill.
-SKIP="check_catalogue_scale.cjs check_pf8r_restore.ts"
+SKIP="check_catalogue_scale.cjs"
 # Quarantine (P-205, 31 Oct): a suite that fails at random is skipped in PR and merge-queue checks (--changed) until its
 # fix merges, so one unreliable test cannot stall every batch; the nightly full run still runs it. Remove a name when
 # its fix lands. check_cost_warning_browser.cjs was quarantined 31 Oct and came back 1 Nov when its fix (#177, X8a: the
