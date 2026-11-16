@@ -254,3 +254,16 @@ Drawn from Google's production readiness review, the AWS Well-Architected pillar
 | C31 | Trust ledger's outside review and the accountant's read (Unconfirmed: no counsel) | Not started (founder books) | no decision yet (map open item 4) |
 | C32 | The College's rules read for the conflict, complaints and identity checks (Unconfirmed: no counsel) | Not started | P-579 |
 | C33 | A narrow launch scope written for the first firm | Not started | P-551 |
+
+## Sub-parts named before building (P-644 rule 1; Lead 69, 21:1x IST 16 Nov, from Build Lead A rev 16.74; form confirmed by the board session on cockpit-data.py at d66bcfd2d)
+The board counts each listed part; a PR title must name it the same way ("runtime: PF-13 part 1 — …"); a title without "part" counts as the whole id.
+- PF-13 parts 1-2
+- PF-18a parts 1-2
+- PF-11 parts 1-3
+- PF-15 parts 1-2
+- PF-4c parts 1-2
+- FO-3st1 parts 1-2
+- FO-9b parts 0-2
+- PF-26 parts 1, 1b and 2
+- FO-3a parts 1a, 1b, 2a and 2b
+- PF-21s parts 3 and 4 (stage 2; stage 1 merged as #1821)

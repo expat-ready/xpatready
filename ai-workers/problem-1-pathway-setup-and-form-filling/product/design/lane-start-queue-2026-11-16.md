@@ -4,7 +4,7 @@ Started at the founder's next typed turn (sessions start only in a founder-typed
 
 | # | Row | Brief | Second ready brief | Status |
 |---|---|---|---|---|
-| 1 | PF-21s stage 2 part 1 | PF-21s.md (branch) + P-626-order.md A5 (branch) | PF-21s stage 2 part 2 | queued |
+| 1 | PF-21s part 3 (stage 2 part 1; title "PF-21s part 3") | PF-21s.md (branch) + P-626-order.md A5 (branch) | PF-21s part 4 | queued |
 | 2 | PF-21i | PF-21i.md (main) | PF-Fd (main) | queued |
 | 3 | PF-13 part 1 | PF-13.md (main) + PF-13 blocks of P-627-amendments.md and P-630-amendments.md (branch; the blocks win) | PF-13 part 2 | queued |
 | 4 | PF-8r | PF-8r.md (main) | PF-18b (main) | queued |
