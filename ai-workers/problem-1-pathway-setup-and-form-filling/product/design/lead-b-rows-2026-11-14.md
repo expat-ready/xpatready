@@ -1689,3 +1689,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - **Part 1 (now):** the cross-firm uses write one `platform.bypass` line per firm touched, in that firm's transaction, or are refused (fail-closed). Every `BYPASS_USES` entry names its `audit` field.
   - **Part 2 (after part 1):** the seven own-firm doors move to narrow `xr_wall_reader` definer lookups and leave `BYPASS_USES`. It splits into 2a and 2b past 800 lines, and never runs beside the `identity/` rows.
   - DW1 to DW7. Opus high, breaker yes, and the release holder reads the SQL.
+* **Lead 70, 23:04 IST:** PF-12b part 1 is now the night queue's top row, because it frees R1.4 to be proven. Part 2 waits on part 1, with the `identity/` exclusions kept. The QA-500 rewording is held until part 2 lands.
