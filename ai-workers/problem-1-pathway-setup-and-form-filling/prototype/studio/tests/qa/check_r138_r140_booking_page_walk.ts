@@ -31,7 +31,8 @@ const inbox = async (address: string, want: number) => {
     if (r.messages.length >= want) return r.messages.reverse();
     await new Promise((x) => setTimeout(x, 1000));
   }
-  return [];
+  const r = await (await fetch(`${BASE}/api/demo/platform-inbox?address=${encodeURIComponent(address)}`)).json() as { messages: { subject: string; attachments: { filename: string; text: string | null }[] }[] };
+  return r.messages.reverse();   // what arrived, so a failing line shows it
 };
 
 async function bookOnce(p: Page, key: string, width: number, day: string, time: string, email: string, tag: string) {
@@ -105,6 +106,40 @@ async function main() {
   await p.screenshot({ path: join(SHOTS, "next-step-reschedule-400.png"), fullPage: true });
   console.log(`NOTE  next step: Reschedule → ${resched?.replace(/#.*/, "#<token>")} shows: ${JSON.stringify(after)}`);
   ok("next step (map row 42): Reschedule opens a page that can change the booking", /choose a (new )?time|reschedule|change/i.test(after) && !/not found|404/i.test(after), after);
+
+  // After FO-3w part 2 (#1982, 21:32 IST 16 Nov): R1.40's update and cancel by screens, on the manage page the email link
+  // opens. Reschedule → a new time → "Move to this time"; then Cancel → "Cancel booking". The invites read back from the
+  // demo inbox must keep one UID, raise SEQUENCE, carry the new DTSTART, and end with METHOD:CANCEL.
+  if ((await p.getByRole("button", { name: "Reschedule" }).count()) > 0) {
+    const last = runs[runs.length - 1], email = `client-${last.tag}-${key}@example.com`;
+    const row0 = await db.foBooking.findFirst({ where: { firmId: firm.id, bookerTimeZone: "Asia/Dubai" }, orderBy: { createdAt: "desc" } });
+    await p.getByRole("button", { name: "Reschedule" }).click();
+    await p.getByRole("heading", { name: "Choose a new time" }).waitFor();
+    const first = p.getByRole("radio").first(); const chosen = await first.getAttribute("aria-label");
+    await first.click(); await p.getByRole("button", { name: "Move to this time" }).click();
+    await p.locator("[data-updated]").waitFor({ timeout: 20_000 }).catch(() => {});
+    await p.screenshot({ path: join(SHOTS, "manage-moved-400.png"), fullPage: true });
+    const movedText = await p.locator("main").innerText();
+    ok(`R1.40 by screens: "Move to this time" (${chosen}) says the booking is updated and a new email is sent`, /Booking updated/.test(movedText) && !!chosen && movedText.includes(chosen.replace(/ Asia\/Dubai time$/, "")), movedText.slice(0, 200));
+    const row1 = await db.foBooking.findUnique({ where: { id: row0!.id } });
+    const z = row1!.startsAt.toISOString().replace(/[-:]/g, "").replace(".000", "");
+    // A person cancels later: wait for the moved mail first (the worker drops a mail whose booking changed before it ran).
+    ok("R1.40 by screens: the moved mail reaches the booker's demo inbox before the cancel", (await inbox(email, 2)).length === 2);
+    await p.getByRole("button", { name: "Cancel", exact: true }).click();
+    await p.getByRole("button", { name: "Cancel booking" }).click();
+    await p.locator('[data-public-state="cancelled"]').waitFor({ timeout: 20_000 }).catch(() => {});
+    await p.screenshot({ path: join(SHOTS, "manage-cancelled-400.png"), fullPage: true });
+    const row2 = await db.foBooking.findUnique({ where: { id: row0!.id } });
+    ok("R1.40 by screens: \"Cancel booking\" cancels it (CANCELLED underneath)", row2?.status === "CANCELLED", row2?.status);
+    const ms = await inbox(email, 3);
+    const icsAt = (i: number) => ms[i]?.attachments.find((a) => /\.ics$/.test(a.filename))?.text ?? "";
+    const uid = `UID:${row0!.id}@booking.expatready.com`;
+    const seq = [0, 1, 2].map((i) => Number(/SEQUENCE:(\d+)/.exec(icsAt(i))?.[1] ?? -1));
+    console.log(`NOTE  manage-page invites: ${ms.map((m) => m.subject).join(" | ")} · SEQUENCE ${seq.join(",")} · moved DTSTART ${/DTSTART[^\r\n]*/.exec(icsAt(1))?.[0]}`);
+    ok("R1.40 by screens: three invites to the booker (booked, moved, cancelled), one UID", ms.length === 3 && [0, 1, 2].every((i) => icsAt(i).includes(uid)), ms.map((m) => m.subject));
+    ok("R1.40 by screens: SEQUENCE rises; METHOD REQUEST, REQUEST, CANCEL", seq[0] >= 0 && seq[0] < seq[1] && seq[1] < seq[2] && /METHOD:REQUEST/.test(icsAt(0)) && /METHOD:REQUEST/.test(icsAt(1)) && /METHOD:CANCEL/.test(icsAt(2)), seq);
+    ok(`R1.40 / R1.38 by screens: the moved invite carries the new time in UTC (DTSTART:${z}), not the old one`, icsAt(1).includes(`DTSTART:${z}`) && !icsAt(1).includes("DTSTART:20270316T140000Z"), /DTSTART[^\r\n]*/.exec(icsAt(1))?.[0]);
+  }
 
   await browser.close();
   console.log(`${pass} passed, ${fail} failed`);
