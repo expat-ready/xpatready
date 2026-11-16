@@ -1997,32 +1997,38 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
                   "mixed", L, day=last_full.isoformat() if last_full else None, new_on_day=built_on(last_full) if last_full else None,
                   today_so_far=built_on(today), rows_total=nrows, series=[{"day": d.isoformat(), "count": built_on(d)} for d in win])
     # first verdict per qa capability: the first main version of qa/CAPABILITIES.md where it reads Works, Partial or Broken, after
-    # an earlier version where it did not (or was absent); a capability already with a verdict in the oldest version is left out
+    # an earlier version where it did not (or was absent); a capability already with a verdict in the oldest version is left out.
+    # Two shares, never mixed (Lead 64, 16 Nov): the proof-of-concept C capabilities, and the Release 1 R capabilities beside it.
     verdict = lambda st: st.startswith(("Works", "Partial", "Broken"))
-    first_v, seen = {}, {}
-    for i, hh in enumerate(hist_caps):
-        for cid, cv in parse_caps(hh["text"]).items():
-            if not cid.startswith("C"):              # the first-verdict share keeps to the C capabilities (as before 16 Nov)
-                continue
-            if cid in first_v or cid in seen and seen[cid] == "known":
-                continue
-            if verdict(cv["status"]):
-                if i == 0:
-                    seen[cid] = "known"            # its first verdict is older than the history read
+
+    def first_verdict_share(prefix, what, one):
+        first_v, seen = {}, {}
+        for i, hh in enumerate(hist_caps):
+            for cid, cv in parse_caps(hh["text"]).items():
+                if not cid.startswith(prefix):
+                    continue
+                if cid in first_v or cid in seen and seen[cid] == "known":
+                    continue
+                if verdict(cv["status"]):
+                    if i == 0:
+                        seen[cid] = "known"            # its first verdict is older than the history read
+                    else:
+                        first_v[cid] = (ist_day(hh["date"]), cv["status"].startswith("Works"))
                 else:
-                    first_v[cid] = (ist_day(hh["date"]), cv["status"].startswith("Works"))
-            else:
-                seen[cid] = "open"
-    fv = {k: x for k, x in first_v.items() if x[0] >= R1_START}
-    fv_n, fv_w = len(fv), sum(1 for x in fv.values() if x[1])
-    fv_src = (f"qa capabilities whose first verdict on main fell from 13 Nov to the snapshot: Works at the first verdict ÷ all first verdicts "
-              f"({len(hist_caps)} versions of qa/CAPABILITIES.md on main, last 30 days)")
-    fl = [x for x in fv.values() if last_full and x[0] == last_full]
-    LD_fv = num(round(100 * fv_w / fv_n) if fv_n else None, fv_src, "measured", L,
-                "not measured: no qa capability got its first verdict on main since 13 Nov in the history read", works=fv_w, n=fv_n,
-                ids=sorted(fv), day=last_full.isoformat() if last_full else None,
-                day_works=sum(1 for x in fl if x[1]), day_n=len(fl))
-    leading = {"parts_merged": LD_parts, "caps_all_parts": LD_caps, "first_verdict_works_pct": LD_fv}
+                    seen[cid] = "open"
+        fv = {k: x for k, x in first_v.items() if x[0] >= R1_START}
+        fv_n, fv_w = len(fv), sum(1 for x in fv.values() if x[1])
+        fv_src = (f"{what} whose first verdict on main fell from 13 Nov to the snapshot: Works at the first verdict ÷ all first verdicts "
+                  f"({len(hist_caps)} versions of qa/CAPABILITIES.md on main, last 30 days)")
+        fl = [x for x in fv.values() if last_full and x[0] == last_full]
+        return num(round(100 * fv_w / fv_n) if fv_n else None, fv_src, "measured", L,
+                   f"not measured: no {one} got its first verdict on main since 13 Nov in the history read",
+                   works=fv_w, n=fv_n, ids=sorted(fv), day=last_full.isoformat() if last_full else None,
+                   day_works=sum(1 for x in fl if x[1]), day_n=len(fl))
+    LD_fv = first_verdict_share("C", "qa capabilities", "qa capability")
+    LD_fv_r1 = first_verdict_share("R", "qa Release 1 capabilities (R ids)", "qa Release 1 capability")
+    leading = {"parts_merged": LD_parts, "caps_all_parts": LD_caps, "first_verdict_works_pct": LD_fv,
+               "first_verdict_works_pct_r1": LD_fv_r1}
 
     # ---- history (N1): one line per IST day; today's line replaces earlier lines of today
     hist = [h for h in history if h.get("day") != today.isoformat()]
@@ -2763,6 +2769,12 @@ def build_explain(d):
     put("pace.leading_fv", "Works at the first qa verdict", "Share of qa capabilities whose first verdict on main was Works (not Partial or Broken).",
         "first verdicts from 13 Nov to " + t_ist + " (qa/CAPABILITIES.md history on main, last 30 days)", lv.get("n"),
         "capabilities with a first verdict", up + " A low share means rework before Works (P-606).", lv, n_override=lv.get("n"))  # 0 verdicts is a real sample; the share is what is not measured
+    lr = LD.get("first_verdict_works_pct_r1") or {}
+    put("pace.leading_fv_r1", "Release 1: Works at the first qa verdict", "Share of qa's Release 1 capabilities (R ids) whose first verdict on "
+        "main was Works (not Partial or Broken). Kept apart from the proof-of-concept share beside it, never mixed (Lead 64, 16 Nov).",
+        "first verdicts from 13 Nov to " + t_ist + " (qa/CAPABILITIES.md history on main, last 30 days)", lr.get("n"),
+        "Release 1 capabilities with a first verdict", up + " A low share means rework before Works (P-606).", lr, n_override=lr.get("n"),
+        behind=[f"{i} first verdict" for i in lr.get("ids") or []])
     lt = P.get("light") or {}
     put("pace.light", "Pace light", "Grey: no committed date or tolerance; amber: no forecast yet; green: the 85% date is within the committed date plus the "
         "tolerance; red: later.", now_w, None, "a rule, not a count", "Green is on track. Now: " + str(lt.get("why")),
