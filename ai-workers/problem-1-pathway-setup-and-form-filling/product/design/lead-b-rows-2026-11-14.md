@@ -1510,3 +1510,13 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 5. **R1.99:** shards 2–8 of run 43801075002 were read on the Mac. All show `retries: 0`, with 445 PASS, 0 FAIL and 19 quarantined (not run). The lines are posted on #1953.
 * **Records clash:** #1929 and #1953 both define QA-477 to QA-481, with different meanings, and Lead 66 has QA-490. This is for the Lead to renumber.
 * Lead 66 settled rev 16.63's three items: #1929 keeps QA-477 to QA-481, and #1953 renumbers to QA-491 to QA-495 (or points to #1929's row for the same bug); row 27 is narrowed and FO-4sf added on the Lead branch; the case side's person-link email row is in STATE after PF-19b part 2. FO-4sf starts after #1933, at the founder's next typed turn. **Rev 16.63's references to "QA-477" to "QA-481 (#1953)" read as #1953's new numbers once renumbered.**
+
+## Rev 16.64 (16 Nov 12:4x IST, Lead B (6)): #1956 (PF-19b part 2): sealed transactional bodies; new row PF-19e
+
+* **#1956 ships with the `MAIL_PORT` binding on hold**, listed under "Known gaps".
+* **New row PF-19e** (`lead-b-briefs/PF-19e.md`):
+  - every `TRANSACTIONAL` body is stored sealed by `SecretBoxPort` (per firm, purpose `message-body`; platform account messages under the platform key), and only the worker and the demo inbox open it;
+  - the `MAIL_PORT` switch to `MessagesMail` (AG-1-70);
+  - account and security mail is exempt from the firm's daily cap of 50, with a platform per-address limit of 5 an hour (Sample);
+  - a suppressed staff address on an invitation or reset answers 409 with a plain sentence, never 500.
+* The release holder reads it (P-423). It starts after #1956, and not beside PF-19p.
