@@ -19,7 +19,7 @@ import type { ClockPort } from "../../../../ports/clock.ts";
 import { EVENT } from "../../../../ports/events.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
-import { firmScope } from "../firm-scope.ts";
+import { asBypass, firmScope } from "../firm-scope.ts";
 import { emailOf } from "../identity/service.ts";
 import type { SignUpIdentity } from "./signup-identity.ts";
 
@@ -100,7 +100,10 @@ export class FirmSignUp {
 
   private ready() { if (this.ports.notReady) throw problem(503, "SIGNUP_NOT_SET_UP", "Sign-up is not open here", "Sign-up is not set up on this server yet.", { reason: this.ports.notReady }); }
 
-  async signUp(body: unknown, ip: string) {
+  /** PF-12: the sign-up door makes a firm that does not exist yet and checks the email across every firm, so it runs on
+   *  its named use (firm-scope.ts BYPASS_USES "platform.firms.signup"); so does verify. */
+  signUp(body: unknown, ip: string) { return asBypass("platform.firms.signup", () => this.signUpDoor(body, ip)); }
+  private async signUpDoor(body: unknown, ip: string) {
     this.ready();
     this.limit(`signup:${ip}`, this.limits.signupPerIp);
     const parsed = Body.safeParse(body ?? {});
@@ -155,7 +158,8 @@ export class FirmSignUp {
   }
   async settled() { while (this.inflight.size) await Promise.all([...this.inflight]); }
 
-  async verify(body: unknown, ip: string) {
+  verify(body: unknown, ip: string) { return asBypass("platform.firms.signup", () => this.verifyDoor(body, ip)); }
+  private async verifyDoor(body: unknown, ip: string) {
     this.ready();
     this.limit(`verify:${ip}`, this.limits.verifyPerIp);
     const parsed = VerifyBody.safeParse(body ?? {});

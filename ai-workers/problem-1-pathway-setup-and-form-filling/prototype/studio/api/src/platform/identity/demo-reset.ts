@@ -5,7 +5,7 @@
 // stores no setting values, so a Sample firm's seed value of each key is its registered default. Only the demo calls it
 // (Demo.wipe, one line); a firm that is not seeded is skipped.
 import type { PrismaClient } from "@prisma/client";
-import { firmScope } from "../firm-scope.ts";
+import { asBypass, firmScope } from "../firm-scope.ts";
 import { readSampleFirms } from "../seed-sample-firms.ts";
 import { registeredSettings, writeSetting } from "../settings.ts";
 import { platformAuditWorkspaceId } from "./audit.ts";
@@ -14,6 +14,9 @@ export const RESET_ACTOR = "system";
 export const RESET_REASON = "demo reset";
 
 export async function resetSampleFirmSettings(db: PrismaClient, firmKeys: string[] = readSampleFirms().map((f) => f.key)): Promise<{ changed: { firmKey: string; key: string }[]; unregistered: string[] }> {
+  return asBypass("platform.demo.reset", () => resetSettings(db, firmKeys));   // PF-12: every Sample firm
+}
+async function resetSettings(db: PrismaClient, firmKeys: string[]): Promise<{ changed: { firmKey: string; key: string }[]; unregistered: string[] }> {
   const defs = new Map(registeredSettings().map((d) => [d.key, d]));
   const changed: { firmKey: string; key: string }[] = [], unregistered: string[] = [];
   for (const firmKey of firmKeys) {

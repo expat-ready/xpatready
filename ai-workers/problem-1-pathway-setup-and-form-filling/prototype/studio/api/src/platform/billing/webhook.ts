@@ -13,7 +13,7 @@ import { BillingSignatureError, type BillingEvent, type BillingPort, type Billin
 import type { ClockPort } from "../../../../ports/clock.ts";
 import { EVENT } from "../../../../ports/events.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
-import { firmScope } from "../firm-scope.ts";
+import { asBypass, firmScope, withFirm } from "../firm-scope.ts";
 import { currentAlerts } from "../observability/alerts.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -51,8 +51,9 @@ export class BillingEvents {
     await this.ports.jobs.recurring(SWEEP_JOB, "*/5 * * * *", "UTC");
   }
 
-  /** POST /api/hooks/stripe with the raw body and the Stripe-Signature header. */
-  async receive(raw: unknown, signature: string | undefined) {
+  /** POST /api/hooks/stripe: raw body and Stripe-Signature; PF-12's named use, each change run as its firm (refresh). */
+  receive(raw: unknown, signature: string | undefined) { return asBypass("platform.billing.stripe-webhook", () => this.door(raw, signature)); }
+  private async door(raw: unknown, signature: string | undefined) {
     if (this.ports.notReady) throw problem(503, "BILLING_NOT_SET_UP", "Billing is not set up here", this.ports.notReady);
     const body = Buffer.isBuffer(raw) ? raw.toString("utf8") : typeof raw === "string" ? raw : null;
     if (body === null) throw problem(400, "SIGNATURE", "Not signed", "A Stripe event needs its raw body and its Stripe-Signature header.");
@@ -114,7 +115,7 @@ export class BillingEvents {
    *  read never lands after a newer one). */
   async refresh(rowId: string, firmId: string, stripeSubId: string): Promise<string> {
     let draft: string | null = null;
-    const out = await this.db.$transaction(async (tx) => {
+    const out = await withFirm(firmId, () => this.db.$transaction(async (tx) => {
       await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`plat_billing:${firmId}`}))`;
       const row = await tx.platformSubscription.findFirstOrThrow({ where: firmScope(firmId, { id: rowId }) });
       const firm = await tx.platformFirm.findUniqueOrThrow({ where: { id: firmId } });
@@ -138,12 +139,11 @@ export class BillingEvents {
       await this.ports.audit.record(tx, { firmId, actor: ACTOR, action: notes.length ? "platform.subscription.move_refused" : "platform.subscription.synced", entity: "platform_subscription", entityKey: row.id,
         summary: notes.length ? `Billing move refused: ${notes.join("; ")}` : `Subscription ${row.status} → ${next}; firm ${firm.status} → ${firmNext} (${reason})`,
         detail: { from: row.status, to: next, firmFrom: firm.status, firmTo: firmNext, reason, stripeStatus: snap.status, ...ends } });
-      // Events last in the transaction (PF-3 review m8).
-      if (next !== row.status) await tx.moduleEvent.create({ data: { firmId, type: EVENT.FIRM_SUBSCRIPTION_CHANGED, subjectId: row.id, payload: { firmId, old: row.status, new: next, reason } } });
+      if (next !== row.status) await tx.moduleEvent.create({ data: { firmId, type: EVENT.FIRM_SUBSCRIPTION_CHANGED, subjectId: row.id, payload: { firmId, old: row.status, new: next, reason } } });   // events last (PF-3 m8)
       if (firmNext !== firm.status && firmNext === "ACTIVE") await tx.moduleEvent.create({ data: { firmId, type: EVENT.FIRM_ACTIVATED, subjectId: firmId, payload: { firmId } } });
       if (firmNext !== firm.status && firmNext === "PAYMENT_HOLD") await tx.moduleEvent.create({ data: { firmId, type: EVENT.FIRM_PAYMENT_HOLD, subjectId: firmId, payload: { firmId, reason } } });
       return notes.length ? notes.join("; ") : `${row.status} → ${next}`;
-    }, { timeout: 30_000 });
+    }, { timeout: 30_000 }));
     if (draft) await this.ports.billing.holdDraftInvoice(draft);
     return out;
   }
