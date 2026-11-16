@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-625**, 15 Nov 21:5x IST (P-616 to P-619 added by Lead 61); the long page as of P-612 is word for word in `history/RULES-2026-11-15-1415-before-register.md`)
+# Rule register (the tech lead keeps it; as of **P-629**, 16 Nov 07:3x IST (P-626 to P-629 added by Lead 64; the page as of P-625 is word for word in `history/RULES-2026-11-16-0735-lead64s2-as-of-P-625.md`); the long page as of P-612 is word for word in `history/RULES-2026-11-15-1415-before-register.md`)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced by** names the hook, CI step or script that blocks or fails a break; `prose` = only the reader enforces it (G-4 candidates, bottom); `(part)` = covers part of the rule. IDs: a letter (`P-611b`) = the decision's 2nd row, not its part (2); `IDX-n` = an index of done, product or integration decisions kept in the side file. **Start read**: this page, then the `DECISIONS.md` rows newer than "as of", word for word (P-314, P-440). Long text word for word: side files under `rules/`. `tools/check-docs.sh` fails a row with no enforced-by, a page over 25 KB, or one over 3 rows behind DECISIONS.
 
@@ -140,6 +140,10 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-623 | WIP: 2 waiting per group or 24 h; stopped builders fix qa bugs first; release Lead orders qa's queue; board leads with qa verdicts a day. | prose (B193, B194) | 16 Nov |
 | P-624 | Virus scan by AWS GuardDuty for S3 behind ScanPort, after a ca-central-1 console check. | prose | 16 Nov |
 | P-625 | Staging on AWS's own address until a domain is needed; base domain is a setting; no second host. | prose | 16 Nov |
+| P-626 | Finish partials first: missing rows that complete the 18 Partial R1 capabilities go first (FO-3w, FO-3a, FO-3st, J-38, PF-21s, PF-6 packs); 10 R1 proven by qa by 08:00 IST 17 Nov; no gate changes. | prose | 16 Nov |
+| P-627 | The founder's seven morning answers stand (booking ours; Google calendar adapter, Cronofy dated fallback; #1875 @SupportMayChange; #1876 export attaches documents; #1886 keeps P-155 (1)/P-412 F9; FO-3c one signing path via FO-6); (6) amended by P-629. | prose | 16 Nov |
+| P-628 | While the founder is away the Lead decides product questions from requirements and past decisions, records each as a Lead ruling with its reason, and lists it for his review; immigration/legal values still only from official sources. | prose | 16 Nov |
+| P-629 | PF-13 branding: logo, colours, favicon, banner and an ~80-character tagline (client portal, booking page); emails and PDFs only logo and firm name; overrides AG-16-2; part 1 under 800 lines. | prose | 16 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |
