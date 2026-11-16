@@ -379,6 +379,11 @@ Contracts: `design/platform-and-front-office-contracts-2026-11-14.md` draft 4, �
 | PF-21v | runtime (permissions, API only) | **Complaint view fields for the screen (rev 16.28, Lead B, copied by Lead 60):** (1) `businessDaysLeft` on each view, negative when late, from a pure function beside `acknowledgeBy` in `business-days.ts` reading the firm calendar once per request; (2) a `people` map (id to display name, deactivated staff included) and `firmTimeZone` on the list and on `GET /:id`; (3) `GET /api/platform/complaints/handlers`: active staff, id and display name only, `@PermissionKeys` record key. Counts per view are made in the browser from one `view=all` page ("100+" when `next` is set); a server `counts` field only once a firm passes 100. **Touch:** `api/src/platform/complaints/`, its tests | DW1-DW4: each of the three has a pass and a fail case; a keyless handler sees names only on their own rows; PF-21's suite passes unchanged except the added cases | P-579, P-584 (8) · **waits on:** PF-21w · brief: Lead B · **model:** Opus high (permissions) · **breaker: yes (permissions)** · **size:** under 800 lines, 1 PR · Source: P-579, P-584 |
 | PF-21i | schema + runtime (complaints: one create per request) | **Recording a complaint is idempotent (STANDARDS §4 [M]).** `POST /api/platform/complaints` requires an `Idempotency-Key` header (IETF httpapi draft form), stored as `plat_complaint.request_key` with a unique `(firm_id, request_key)` (a migration in `platform-register.prisma`, stamp later than `main`'s). **Touch:** `platform-register.prisma` + one migration folder, `api/src/platform/complaints/complaints.ts` (`record`), PF-21w's route (header read), `tests/check_pf21i_idempotent.ts` | three posts with one key → one complaint, one reminder job, one `complaint.received`; same key with a different body → 422 "This request key was already used for a different complaint."; two parallel posts with one key → one row; no key → 400 | STANDARDS §4; #1823 M1 · **waits on:** PF-21w merged · before PF-21s's build and J-109 · reviewer + breaker (schema) · **size:** S · (rev 16.24, copied by Lead 58 from d98c01e2f) |
 | PF-0bp | runtime (platform: body errors) | **Body-parser errors are problem answers, never 500:** a malformed JSON body → 400 and an oversized body → 413, both as problem JSON on every API route. **Touch:** `main.ts` (the parser's error handler), `tests/check_pf0bp_body_errors.ts` | malformed JSON → 400 with a plain message; over the limit → 413; neither reaches a handler; neither answer echoes the body | #1823 (pre-existing) · **waits on:** FO-2 part 1 #1813 (same `main.ts` lines) · reviewer only · **size:** S · (rev 16.24, copied by Lead 58 from d98c01e2f) |
+| PF-18np | runtime (platform: shared port, no table) | **The notification port only (map row 50; rows rev 16.31, 16.41):** `ports/notifications.ts`, zod only, with its fake.<br>• `NotificationPort.notify(tx, { staffId }, kind, { kind, id })` inside the caller's transaction; ids only (AG-7-39 r10).<br>• `NotificationGroup`: AG-16 §3.3's eight groups.<br>• `NOTIFICATION_KIND`, plus `NOTIFICATION_GROUP` (a kind without a group fails the type check) and `NOTIFICATION_ITEM_KIND`; each consumer adds its own lines.<br>• The fake keeps one per person per item (AG-7-39 r2), with `markRead`.<br>• A shared contract in `ports/contracts/`.<br>• No table, no route and no preference check: those are PF-18n's, which never changes `notify`'s shape.<br>**Touch:** new `ports/notifications.ts`, `ports/contracts/notification-port.contract.ts`, `tests/check_pf18np_port.ts` | DW1–DW4, a pass and a fail each:<br>• a second notify for the same person and item gives one record with the newer kind, and a new record after it is read;<br>• an unknown kind, an unknown item kind, or a non-uuid id is refused with nothing recorded;<br>• a kind without a group fails the type check;<br>• `check-port-contracts.mjs` passes, and `ports/` imports only zod | AG-7-39 r2, r10; AG-16 §3.3 · **waits on:** nothing · brief: `design/lead-b-briefs/PF-18np.md` · **model:** Opus medium · reviewer only; the release Lead reads it (P-423) · **size:** under 150 lines, 1 PR · Source: rows rev 16.31, 16.41 |
+| FO-7ts | schema (client money) | **Money settings and ledger schema steps, in three parts in series (rows rev 16.33, 16.35–16.37, 16.41):**<br>• **Part 1:**<br>  ◦ the trust answer `UNANSWERED \| YES \| NO`, with who and when, replacing `trust_enabled`; the allowed moves are a trigger, and Owner-only is a service role check;<br>  ◦ `tax_registered`, `qst_number` and `prices_include_tax`; `tax_rates` dropped (`ProvinceTaxRate` is cited code);<br>  ◦ `invoice_payments_go_to` (`OPERATING` default \| `TRUST_FIRST`), with who and when;<br>  ◦ methods `BANK_TRANSFER` and `CARD_TERMINAL`;<br>  ◦ `pay_link_token_hash` (hash only, unique where not null) on the trust request and `money_invoice`;<br>  ◦ the deposit request's retainer version, unique per version;<br>  ◦ `unsigned_retainer_confirmed_by` and `unsigned_retainer_confirmed_at` on `money_invoice` (AG-6-42 §7).<br>• **Part 2, under the party lock:** the pre-case → case trust pair, netting to zero; the credit ledger, insert-only, `KEPT \| APPLIED \| REFUNDED \| REVERSED`, per party and currency, never below zero.<br>• **Part 3:** P1 trust refund details; P2 tax treatment; P3 the same-case pick of another payer's money (manual, with a reason, audited); P4 the newest-issued index.<br>• The migration keeps its refusal for `trust_enabled = true` rows.<br>**Touch:** `prisma/schema/client-money.prisma` + one migration folder per part, its tests | each part's DWn cases from the brief, a pass and a fail each, tested at the database, including the migration test in a parallel world (rows rev 16.7) | AG-6-59 §6–8, AG-6-4, AG-6-19 r1, AG-6-21 r5, AG-6-42 §7, AG-6-61 §7, AG-6-68, AG-6-69 §7 · **waits on:** FO-7mv (part 1); each part on the one before · brief: `design/briefs/FO-7ts.md` (#1881) · **model:** Opus high · **breaker: yes (money)**; the release Lead reads each migration, and P3's guard before it starts (P-423) · **size:** each part under 800 lines · Source: rows rev 16.33, 16.35, 16.36, 16.37, 16.41 |
+| PF-6sb | screens (platform: staff frame) | **The support banner and the Owner's support-access switch (rows rev 16.34; #1875 Q4; P-607 (4)):**<br>• while ExpatReady staff are in a firm, every staff page shows "Expat Ready support — <name>", with the mode (read-only, or change mode) and the time left;<br>• the Owner's screen turns support access on and off, and grants change mode for the 60-minute session;<br>• every step shows on the firm's audit chain.<br>Reads AUD-3b's API only, with no rule of its own.<br>**Touch:** new files under `web/src/modules/platform/support/`, one frame slot line, `tests/check_pf6sb_support_browser.ts` | a pass and a fail each:<br>• the banner shows during a support session and not otherwise;<br>• a non-Owner sees no switch, and the API refuses with 403;<br>• change mode ends at 60 minutes and the banner says so;<br>• keyboard-only; axe-core; 375/1024/1440 | AG-16 support access (AUD-3b's cited ids) · **waits on:** PF-6 part 1, AUD-3b's API · brief: shaping lane, then Lead B · **model:** Opus high (permissions) · **breaker: yes (permissions)** · **size:** under 800 lines · Source: rows rev 16.34 |
+| PF-0a | runtime (platform: audit) | **The platform's three direct audit writes move onto `AuditPort` (rows rev 16.34; #1870 Q3; P-607 (3), fail-closed):** the writes in `api/src/platform/identity/audit.ts` and `settings.ts` call `AuditPort.record(tx, …)` in the same transactions, with no behaviour change.<br>**Touch:** those two files, `tests/check_pf0a_audit_port.ts` | a pass and a fail each: each of the three writes lands through the port (a spy), and a failing audit write rolls back the change (fail-closed); every existing suite passes unchanged | SA-11-7 (departure P-607 (3)) · **waits on:** AUD-1b · brief: shaping lane, then Lead B · **model:** Opus medium · reviewer only · **size:** under 300 lines · Source: rows rev 16.34 |
+| PF-6vt | screens (platform: staff frame) | **The Individual / Corporate view toggle in the staff frame (rows rev 16.38; AG-17-2):**<br>• one toggle in the frame; where the choice is kept follows AG-17-2, which the brief reads in full;<br>• pages read the view from one hook (`useClientView()`) and decide their own menu entries and filters;<br>• leads are never filtered by it (AG02-D0), and notifications are never filtered (AG-10-36).<br>**Touch:** the frame's toggle slot, new `web/src/modules/platform/client-view/*`, `tests/check_pf6vt_view_browser.ts` | a pass and a fail each:<br>• switching changes the hook's value on every page, with no reload;<br>• the leads list is the same in both views;<br>• keyboard-only; axe-core; 375/1024/1440 | AG-17-2; AG02-D0; AG-10-36 · **waits on:** PF-6 part 1 · brief: shaping lane, then Lead B · **model:** Opus medium · reviewer only · **size:** under 400 lines · Source: rows rev 16.38 |
 
 * **Rev 14 (Lead B (3), P-584 module homes, P-585, P-586):** **What changed and why.** P-584 (Lead 41, from A51 rev 3 §12) makes **messages and templates (email, WhatsApp) with the consent gate, automation, custom fields and views, client portal login and the complaints register platform services** (Lead B's under P-558), so the case side never depends on the front office to reach a client. P-585 gives Lead B map row 62 (client portal) and row 43 (calendar sync). P-584 (10): `money_*` tables join PF-12's walls now. P-584 (9): the listed one-line hooks (contracts §5, PF-3's case-feed line) are the written exception to one change, one module; a new hook needs both owners. Binding text: contracts §9.
 * **Rev 14 (Lead B (3), P-584 module homes, P-585, P-586):** **Duplicate check (14 Nov ~10:0x IST):** `main` has no sending layer, consent gate, template store or automation engine: only the demo inbox stand-in (`api/src/person-link.ts` `DemoInboxController`, `demo_message` in `links.prisma`, SI-20), which the platform's `local` adapter keeps working. BACKLOG: map rows 45-49 had no row (case side, unshaped); FO-11 and FO-12a named "map rows 48/49" as the case side's. Open PRs: none on these areas.
@@ -658,9 +663,229 @@ Contracts: `design/platform-and-front-office-contracts-2026-11-14.md` draft 4, �
 | PF-23 | merged | SA-11-37, SA-8-27, NFR5-14, SA8-D40 |
 | PF-14 | merged | AG-10-1, AG-11-17 |
 | PF-25 | merged | SA-2-27, AG-4-17, AG-4-16, AG-15-27, SA-2-1, SA-2-2, SA2-D8, SA2-D21 |
+| PF-18np | not built | AG-7-39, AG-16 §3.3 |
+| FO-7ts | not built | AG-6-59, AG-6-4, AG-6-19, AG-6-21, AG-6-42, AG-6-61, AG-6-68, AG-6-69 |
+| PF-6sb | not built | P-607 (4); AUD-3b |
+| PF-0a | not built | SA-11-7; P-607 (3) |
+| PF-6vt | not built | AG-17-2, AG02-D0, AG-10-36 |
 | FO-3 | merged | AG-4-1, AG-4-4, AG-4-5, AG-4-7, AG-4-9, AG-4-11, AG-4-12, AG-4-14, AG-4-16, AG-4-19, AG-4-22, AG-4-26, AG-4-29, AG-4-32, AG-4-34, AG-4-36, AG-4-37, AG-4-39, AG-4-47, AG-4-62, AG-4-63, AG-4-67, AG-2-10, AG-2-26 |
 | PF-4t | merged | P-291, P-599 |
 | PF-21 | merged | P-584, P-579; Code SOR/2022-128 s. 24(3)(r)(v), 29, 37 (laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/, current to 2026-10-19, read 13 Nov 2026; Unconfirmed: no counsel) |
+
+### Revs 16.31-16.39 (16 Nov 01:1x-02:4x IST, Lead B (6); copied by Lead 62 word for word from `lead-b-front-office` 6514b32bf, `design/lead-b-rows-2026-11-14.md`)
+New rows named here (PF-18np, FO-7ts, PF-6sb, PF-0a, PF-6vt) take their text from these sections until Lead B writes their table rows. **Held by Lead 62 (16 Nov 04:3x IST):** rev 16.38's `ClientMoneyPort.addGovernmentFeeLine` conflicts with X-S3-6 ("One-click government-fee line from a case fee", P-607: typed in R1); FO-7b builds without it until the conflict is settled (P-607 is the founder's decision, AGENTS rule 2).
+
+#### Rev 16.31 (16 Nov 01:1x IST, Lead B (6)): case-side shaping batch 1 answers (#1867, comment 6900265123)
+* **FO-7mv / FO-7t split agreed.**
+  - FO-7mv is the schema, the database guards and the derived list `money_to_move`, all tested at the database.
+  - FO-7t is the move routes ("I moved these", "Undo this batch", the read with totals) and the 25-day home item. FO-7t calls `money_move_line_write` and reads `money_to_move` only, with no move rule of its own. It waits on FO-7mv, FO-7b and PF-12.
+  - FO-7mv's brief is approved as row owner at `design/briefs/FO-7mv.md` (#1867). Lead B writes no second copy.
+* **CS-DL1's move to `api/src/platform/calendar/working-days.ts` is OK,** for the general calendar logic only:
+  - What moves: the business-day test, the zone helpers, `FirmCalendar`, `businessDaysBetween`, `countBack`, and `readFirmCalendar`.
+  - What stays: `ACK_BUSINESS_DAYS` and `acknowledgeBy` remain in `complaints/business-days.ts`, which imports from calendar. That file is not removed and does not become a re-export.
+  - It starts after PF-21v #1848. The PF-21, PF-21w and PF-21v suites must pass unchanged.
+* **New row PF-18np** (runtime, a shared contract; the release Lead reads it):
+  - It is `ports/notifications.ts`, zod plus a fake, with PF-18n's exact `notify(tx, {staffId}, kind, {kind, id})`.
+  - `NOTIFICATION_KIND` is a typed list, with each kind added by its consumer.
+  - The fake keeps one per person, per item and kind.
+  - No preference check, no table and no routes: those stay with PF-18n, which may add to the interface but not change `notify`.
+  - Tests: a duplicate gives one record, and an unknown kind is refused. Under 150 lines.
+  - Once it merges, CS-DL1b, CS-NT1b and CS-N1 may build on it.
+
+#### Rev 16.32 (16 Nov 01:1x IST, Lead B (6)): PF-19b booking mail swap confirmed (#1860, comment 6900280637)
+* **Booking mail now runs on `MessagePort`'s `MessagesMail` in PF-19b part 1**, per the current Lead's brief (P-622 (1), qa #1855). That supersedes the PF-19b brief's line "do not move FO-3's `runtime-ports.ts`".
+* **PF-19b part 2 reuses `MessagesMail`** (no second adapter). Its only move is from the demo outbox to SES: at most once, with the SENDING state (rev 16.25).
+* **J-37 and J-38's swap list** marks booking mail as already swapped by PF-19b part 1.
+* **A suppressed address is a final refusal, never retried.** The fix goes in #1860 if it fits the touch list, otherwise it is part 2's first item. Test: one record, zero further attempts, the booking unchanged.
+* **Part 2 also takes**, each with a test: the orphan invite file and the unmailed manage link on a rerun, and the 64 KB inbox cap.
+
+#### Rev 16.33 (16 Nov 02:0x IST, Lead B (6)): client-money batch 8 answers (#1878, comment 6900887428), against AG-06 v2.1
+* **FO-7t's trust answer: Owner only, three states.**
+  - The states are `UNANSWERED | YES | NO` (AG-6-59 §7–8). It is a role check in the service, since no key exists (MS-D24(4)).
+  - Until YES the firm behaves as trust off.
+  - FO-7a's boolean `trust_enabled` is replaced in FO-7ts.
+* **The 25-day To-move item** counts a line's age from its source date, the withdrawal (AG-6-73 r5). The s. 32(g) reading is Unconfirmed: no counsel.
+* **Money routes use `/api/front-office/money/*`,** where the existing staff guard covers them; no new prefix.
+* **The Connect webhook** gets its own route and its own signing secret through PF-24. The builder cites Stripe's Connect webhook page first (P-170).
+* **Tax rates are ExpatReady province data, never firm-edited** (AG-6-4 §3, §13).
+  - FO-7a's `tax_rates` goes unused and is dropped in FO-7ts.
+  - FO-7g reads `ProvinceTaxRate`, with values cited from CRA or marked Sample.
+  - "Registered for tax" is its own boolean, and registered requires a tax number.
+* **FO-7b correction: an overpayment is never refused** (AG-6-21 §13, MS-D11(5); AG-6-76 r4).
+  - With trust YES the extra goes to trust as a `RECEIPT`.
+  - With trust off a person chooses "Refund · Keep as credit".
+  - When two payments arrive at once, the second becomes extra, noted "Paid twice?".
+* **FO-7q**: the hard test is the query plan; the 300 ms (AG-6-30 r4, the requirement's own example) is measured and reported. A Case Officer sees only invoices on cases and people they can see (C5), and an empty list if that helper isn't on `main` (fail closed).
+* **New row FO-7ts** (schema, client money; waits on FO-7mv; Opus high; the release Lead reads the migration). It covers:
+  - `trust_answer`, `trust_answered_by` and `trust_answered_at`, replacing `trust_enabled` (existing rows map to UNANSWERED);
+  - `tax_registered`, `qst_number` and `prices_include_tax`, and dropping `tax_rates`;
+  - the pre-case → case trust transfer, as one pair of entries that nets to zero under the party lock;
+  - the deposit request's retainer version, unique per version.
+
+#### Rev 16.34 (16 Nov 02:1x IST, Lead B (6)): case-side batch answers for platform rows (#1872, #1875, #1877, #1870, #1878)
+* **#1878 reconciled** (comment 6900912668):
+  - The trust answer is stored as the enum from AG-6-59 §7 (structure, Lead B).
+  - **The 25 days count from the invoice date** (Lead 61's money ruling). This replaces rev 16.33's line.
+  - Tax rates and the overpayment rule have no DECISIONS row behind FO-7a's list or FO-7b's refusal, so the requirement stands. A setting is built only if Lead 61 takes the tax point to the founder.
+  - **Open with Lead 61:**
+    - the `/api/client-money/` prefix: the guard covers only `/api/platform/*` and `/api/front-office/*`, so either use `/api/front-office/money/*` or widen `PLATFORM_PATH` with a test;
+    - firm-wide invoice visibility against AG-06 C5.
+* **PF-12 creates `xr_case_lookup`** (#1872 Q10):
+  - no login, with IF NOT EXISTS, since CS-W3 may create it first;
+  - it owns only the three case firm-lookup definer functions and gets no table grant;
+  - it is added to PF-12's brief.
+* **New row PF-6sb** (screens, platform; waits on PF-6 part 1 and AUD-3b's API; #1875 Q4): the "Expat Ready support — name" banner shown while our staff are in a firm, and the Owner's support-access switch screen.
+* **PF-F3 aligned** (#1877 Q1, Lead 61's contract §4 ruling):
+  - `onClean` only makes the document reviewable;
+  - **the officer's acceptance (CS-D1) writes `document.accepted`, not the scan**;
+  - the row text "(where the case side writes `document.accepted`)" becomes "(where the case side marks the file ready to review)".
+* **New row PF-0a** (runtime, platform; #1870 Q3; waits on AUD-1b):
+  - the three direct audit writes in `api/src/platform/identity/audit.ts` and `settings.ts` move onto `AuditPort`, in the same transactions;
+  - every suite passes unchanged, and a test shows each write lands through the port.
+
+**Rev 16.34 note (16 Nov 02:2x IST): Lead 61's final answers on #1878 (comment 6900938081) replace the open points above.**
+* **Routes:** `/api/front-office/money/*`, with no change to `PLATFORM_PATH`.
+* **Invoice visibility:** scoped as AG-06 C5 says, failing closed.
+* **The 25-day item:** counts from the line's source date (AG-6-73 r5), as rev 16.33 said. **This undoes 16.34's "invoice date" line.** The Code s. 32(g) point is "Unconfirmed: no counsel" in the brief.
+* **Tax rates and overpayments:** the requirement stands, and no founder question is needed.
+* **What holds from 16.33:** everything else in rev 16.33, and the enum storage of the trust answer.
+
+#### Rev 16.35 (16 Nov 02:1x IST, Lead B (6)): batch 8 follow-ups (#1878, comment 6901029156; citation fix 4 corrected to AG-6-61 §7)
+* **FO-7q:** no role has invoice visibility of its own. An invoice is visible when its parent case or person is (AG-06 C5, "record visibility follows the parent record"); Billing / Finance included. The list calls the case side's helper and fails closed.
+* **FO-7ts gains a credit ledger** (AG-6-21 r5):
+  - insert-only; kinds `KEPT | APPLIED | REFUNDED`; held per case or person and currency;
+  - the balance never goes below zero, checked under the party lock;
+  - applying credit needs `agent/invoice:issue`.
+* **New shared port `RetainerStatusPort`** (`ports/`, zod and a fake; the release Lead reads it):
+  - `signedVersion(tx, firmId, retainerId)`, implemented by the front-office retainer module;
+  - client money never reads `fo_retainer*` directly;
+  - FO-7t part 5 uses it.
+* **The pay-link token:** FO-7ts adds `pay_link_token_hash` (unique where not null, the hash only) on the trust request and on `money_invoice` (AG-6-61 §7). There is no separate link table and it is not PF-27.
+  - It is not single-use (part payments are allowed).
+  - It stops when the item is paid in full, voided or cancelled.
+  - The page gives one not-found for all of those.
+
+#### Rev 16.36 (16 Nov 02:1x IST, Lead B (6)): money screens batch 10 answers (#1879, comment 6901053560)
+* **FO-7s2:** `GET /payment-account` takes `agent/payment-rail:connect` (Owner, C5). Other screens get only a `cardPayments` boolean in their own reads.
+* **FO-7s3b:**
+  - The Money views get their own pages under `/money/…` in `web/src/modules/client-money/`, linked from the case page.
+  - "Pay from trust" is pre-ticked, using same-payer money only (AG-6-68 r2).
+* **FO-7ts gains** `BANK_TRANSFER` and `CARD_TERMINAL` (AG-6-19 r1; `CARD` is online only), and `invoice_payments_go_to` (`OPERATING` default | `TRUST_FIRST`), with changed by and at (AG-6-69 §7).
+* **"Invoice payments go to"** (AG-6-69 §8):
+  - The rule and the setting route are FO-7b's: Owner only, offered only when trust is YES, audited.
+  - The screen is FO-7s2's Getting paid page, under Advanced.
+* **The inline trust question:** one component, built by FO-7s3a. FO-3's and FO-5's screen rows each place it as one line of their own.
+* **FO-7s4p's payment plans use `agent/invoice:issue`.** The requirement withdrew plans and `agent/payment-plan:manage` (D3); the founder kept plans as a recorded departure (P-578); no new key is added.
+* **FO-7s5:** the export is a background job, stored through `FilesPort` behind a 24 h expiring download link (Sample) and audited (AG-6-31 r4). The key is `agent/billing:export`.
+* **The To-move route:** `/api/front-office/money/trust/to-move`.
+
+#### Rev 16.37 (16 Nov 02:1x IST, Lead B (6)): client money batch 9 answers (#1881, comment 6901148452)
+* **FO-7ts** keeps the migration's refusal for `trust_enabled = true` rows.
+* **`ProvinceTaxRate`** is a cited code table (`api/src/client-money/tax/canada-gst-hst.ts`), not schema.
+* **FO-7ts part 3: all four steps are accepted** (P1 refund details, P2 tax treatment, P3 cross-payer pick, P4 newest-issued index). P3 starts only after the release Lead's money read.
+* **File order:** FO-7mv → FO-7ts parts 1–2 → part 3 → FO-7v part 1 and FO-7m part 1, one at a time.
+* **FO-7s0's concept** is split into an index file plus one file per screen group, each under 100 lines. One challenge and one approval cover the set.
+* **Questions 4–8 (FO-7v reversals, `CARD_TERMINAL`, FO-7m "at that date", FO-7p and trust)** are the release Lead's money rules. Lead B's recommendations are on the PR.
+  - If Lead 61 accepts 5c, FO-7ts's credit ledger gains a `REVERSED` kind.
+
+**Rev 16.37 note (16 Nov 02:2x IST): Lead 61's money rulings on #1881.**
+* **Lead B's recommendations 4–8 stand.** Because 5c is accepted, **FO-7ts's credit ledger gains `REVERSED`**.
+* **P3, the cross-payer pick, narrowed by Lead 61:**
+  - It is manual only and never pre-ticked.
+  - It is allowed only between payers on the same client's matter (the same case), never across clients.
+  - It is audited with a reason (reason required).
+  - The database guard widens only to "same case, same currency, pick recorded".
+  - DW16 adds a refusal test for each case: another case, another currency, no pick, and no reason.
+  - Unconfirmed: no counsel.
+
+#### Rev 16.38 (16 Nov 02:3x IST, Lead B (6)): LMIA items (#1883, comment 6901285182; #1882, comment 6901285389)
+* **FO-7b adds `ClientMoneyPort.addGovernmentFeeLine`.**
+  - It puts an untaxed `GOVERNMENT_FEE` line on the open draft for the case's Bill-to party, or on a new draft.
+  - The line is linked to the fee record, and the same fee twice makes one line.
+  - With no signed retainer there is no line (AG17-D79). The release Lead reads the port change.
+* **New row PF-6vt** (screens; waits on PF-6 part 1): the Individual / Corporate view toggle in the staff frame (AG-17-2).
+  - Pages read the view from one hook and decide their own menu entries and filters.
+  - Leads are never filtered by it (AG02-D0).
+  - The brief reads AG-17-2 in full for where the choice is kept.
+* **AG-7-86 is the staff client screen's corporate panels, not the client portal.**
+  - Lead B's reading: it is the case side's row (FO-8, AG-07, BR-27). Money and company panels read through ports.
+  - The release Lead is to confirm. If the client screen is front office's, Lead B takes it as FO-4c.
+* **`fo_company` is the employer master** (agreed). Case-only facts are keyed to its id, with no copies of its facts. The case side never writes `fo_company`.
+
+#### Rev 16.39 (16 Nov 02:4x IST, Lead B (6)): row-owner approval of the shaping batches, and the FO-7b amendments
+* **#1866 (batches 1–3, 15 briefs, head 2f0834add):** approved as row owner.
+  - PF-6 part 1 matches rev 16.28: the platform frame plus FO-4's session holder moved into `modules/platform/`.
+  - FO-3w takes option (b): it ships with the firm's name, and PF-13 adds the logo and colour as its own Done when line (AG-4-16 r3).
+* **#1878, #1881, #1879 (heads fee55143e, 6df11ec1a, 77de1078f):** approved as row owner. The heads apply revs 16.33–16.37 (checked by term for each ruling).
+* **FO-7b's brief** (on `lead-b-front-office`, written at rev 16.3) gets an amendment header. It covers:
+  - overpayments never refused, including credit and "Paid twice?";
+  - "Invoice payments go to" (rule and route);
+  - `addGovernmentFeeLine`;
+  - routes under `/api/front-office/money/*`;
+  - `ClientMoneyPort`'s interface in `ports/`;
+  - the recorded-by-hand methods.
+
+### Revs 16.40-16.41 (16 Nov 04:2x IST, Lead B (6); copied by Lead 62 word for word from `lead-b-front-office` e7a100700; the five table rows rev 16.41 lists are in the Full MVP table and the status table)
+
+#### Rev 16.40 (16 Nov 04:2x IST, Lead B (6)): shaping batch 4 (#1894, head 826cc680), row-owner ruling (comment 6902726103)
+* **Approved:** PF-18a, PF-18n and FO-5p. **Approved with corrections:** PF-13 and FO-3c part 1. The lane pushes the corrections together with its three Minors, and re-review reads only that commit.
+* **PF-13:**
+  - The key is `agent/settings:edit` / `agent/settings:list` (AG-16-2; both seeded). The row's `agent/firm-branding:manage` is dropped.
+  - **Footer and email signature are in PF-13 part 1** (AG-16-2 SHALL; the requirement wins, AGENTS rule 2):
+    - settings `platform.branding.footer` (at most 1,000 characters) and `platform.branding.email_signature` (at most 2,000), both plain text;
+    - the footer is drawn in `layout()`; new case DW8.
+  - **Images: no new library.**
+    - Metadata is stripped by reading the file's structure. JPEG keeps APP0, APP14 and the image segments, and drops APP1–13, APP15 and COM. PNG keeps the critical chunks plus tRNS, cHRM, gAMA, iCCP, sRGB and pHYs.
+    - A file whose structure does not parse gets 415. Images are served with `nosniff`.
+    - The row's "re-encoded" becomes "metadata stripped". Re-encoding waits until a real need.
+  - **Banner and tagline are held (part 3). This goes to the founder through the tech lead.** AG-16-2 and AG-16 §7 `FirmBranding` say "no banner or tagline"; P-574 (1) lists the banner. Lead B recommends dropping them. The favicon stays in.
+* **PF-19c (amended):** a `firm.email_signature` field in its `TemplateRegistry`, read from PF-13's setting (AG-16-2).
+* **PF-18a:** DW1 adds AG-1-74 §12 (AG16-55): an address with no province, or outside Canada, pre-fills the firm's zone. The row's "`platform.prisma`, after PF-15 on the baton" becomes a new area file, `platform-offices.prisma` (P-600).
+* **PF-18n (amended):** **one unread notification per person per item** (AG-7-39 rule 2 and its "Duplicate beats a miss" edge case), not "per item and kind".
+  - A new event for an unread item updates that row's kind and time.
+  - Once the item is read, a new event makes a new row.
+  - Read items older than 90 days are removed (Sample).
+* **FO-3c (amended, part 1 = AG-4-15's accept flow; part 2 held):** e-signature through `SigningPort` moves to part 2.
+  - Part 1 records the version and time, through a tick on the public page or a no-login `AGREEMENT`-purpose link after a staff booking.
+  - It never blocks a staff booking.
+  - The accepted copy reads "Accepted by <name> on <date and time>, version N", and is emailed and filed.
+  - **Question for the founder (through the tech lead), with the evidence from trace t8:**
+    - Code s. 23(3) speaks of the "signed consultation agreement".
+    - The College's Guide says it "must be dated and signed by the client and the licensee".
+    - AG-4-15 §13 says "No e-signature of the agreement".
+    - Does a recorded acceptance meet s. 23(3)? The founder asks the immigration expert or counsel.
+    - Recommendation: build the accept flow now. Add signing by the client and the host (part 2) only if the answer is no.
+    - Unconfirmed: no counsel.
+* **FO-3w (amended):** after FO-3c part 1, the public booking page shows the agreement's link and the "I accept" tick when the type requires it (AG-4-15 r3).
+* **For the release holder (P-423):**
+  - the case's `officeId` calling `OfficeClockPort` (AG-1-74, "the case's office decides");
+  - AG-7-39's four case notifications calling `NotificationPort`.
+  - Both are the case side's rows.
+
+#### Rev 16.41 (16 Nov 04:2x IST, Lead B (6)): the government-fee method withdrawn (Lead 62's catch), the unsigned-retainer warning, PF-18n on PF-18np's port, and the table rows for five new rows
+* **Rev 16.38's `ClientMoneyPort.addGovernmentFeeLine` is withdrawn.**
+  - It was the one-click line from a case fee, which the founder kept out of Release 1: P-607 (7) chose "Typed line now", with one-click as X-S3-6 (AG-6-40).
+  - No AG-17 or LMIA requirement needs a programmatic call beyond AG-6-40 (AG17-D4/D13 "government fee line from the case" is AG-6-40 itself). So there is no founder question.
+  - FO-7b: staff type `GOVERNMENT_FEE` lines by hand, never taxed. FO-7b's amendment 3 is rewritten.
+* **Lead B's second slip in the same item:** rev 16.38's "no line without a signed retainer (AG17-D79)" was out of date. **MS-D13 (25 Oct) replaced AG17-D79.** Invoicing on an unsigned retainer is a warning, never a block, government-fee lines included (AG-6-42 r1–r5, r7). FO-7b now has:
+  - `unsignedRetainerAcknowledged: true`, or a 409 with "<Party>'s retainer isn't signed. Invoice anyway?";
+  - who and when stored on the invoice: `unsigned_retainer_confirmed_by` and `unsigned_retainer_confirmed_at`, two columns **FO-7ts part 1 adds** (AG-6-42 §7);
+  - lines typed by staff when no signed retainer exists (r5); deposits still only from a signed retainer (r7).
+  - The firm-service exception (r2) waits for the Services model. Until then every party needs one, so the warning shows more often, never less.
+  - **For the tech lead:** add one line to `design/briefs/FO-7ts.md` part 1 for the two columns (nullable `uuid` and `timestamptz` on `money_invoice`, both set or both null, by a CHECK).
+* **PF-18n builds on PF-18np's port. It does not create its own `ports/notifications.ts`.** This corrects batch 4 (#1894), whose PF-18n brief drafted a second port with another shape. The case-side briefs (CS-DL1, CS-N1, CS-D6, CS-98c, CS-98d) already call `notify(tx, { staffId }, NOTIFICATION_KIND.X, { kind, id })`.
+  - PF-18n's adapter takes the group from `NOTIFICATION_GROUP[kind]`.
+  - It builds the deep link from the item kind through its own map: an app path, and an unknown item kind gets no link but still makes a row (duplicate beats a miss).
+  - It reads the recipient's firm from the staff row, and refuses a staff id that is not found.
+  - PF-18n starts after **PF-18np** and PF-18a part 2.
+  - **PF-18np's rule is now "one per person per item"** (AG-7-39 r2; rev 16.40 already set this for PF-18n), replacing rev 16.31's "per item and kind".
+* **PF-18np's brief:** `design/lead-b-briefs/PF-18np.md` (new). It covers:
+  - the eight groups as an enum;
+  - `NOTIFICATION_KIND` and `NOTIFICATION_GROUP`, typed so a kind without a group fails the type check;
+  - `NOTIFICATION_ITEM_KIND`;
+  - the fake, keeping one per person per item, with `markRead`;
+  - the shared contract; DW1–DW4; under 150 lines.
+
 
 ### Release 1 rows from the specifying lanes (P-604, 15 Nov; approved by Lead B (4))
 
@@ -685,7 +910,7 @@ Contracts: `design/platform-and-front-office-contracts-2026-11-14.md` draft 4, �
 **(c) Front-office screens first in the ready order**
 No front-office screen exists yet. These go to the top of ready, each built on its API contract in parallel with the API row (P-606 (9)):
 1. **FO-4** (sales screens; concept r2 approved) beside **FO-2** (its API).
-2. **FO-3sc**, then FO-3w and FO-3st1-3.
+2. **FO-3sc** (done: concept r2 merged in #1819, 15 Nov; Lead 62 16 Nov), then FO-3w (after FO-3pa #1830) and FO-3st1-3 (after FO-3a part 1).
 3. **FO-5s** (concept r2 approved) after FO-6.
 4. **PF-6** (staff screens; concept approved) beside PF-4b.
 5. **PF-5s** after PF-5.
@@ -902,6 +1127,9 @@ No front-office screen exists yet. These go to the top of ready, each built on i
 | CS-98e | runtime (case side: workers, API only) | **Positions to workers, and "Create work permit case".**<br>• A position takes a worker (named before filing or matched after approval, AG-17-43).<br>• Milestones are plain dates; only permit expiry and renewal-due raise reminders (AG-17-44).<br>• **"Create work permit case"** opens the worker's own **individual** case through `createCase`, with the worker as its client. It writes `corp_case_link` `WORKER_PERMIT` and sets the position to `CASE_LINKED`. It copies, once, the employer facts the worker's pinned release reads, using **the existing copy rules in `engine/runtime/employer.ts`** ("copies, not live links", BR-11). It also copies the shareable document types and sets Bill to the worker by default (AG-17-45..47).<br>• A CRITICAL warning at the lead time before validity ends if a position has no permit application, after which it becomes `LAPSED` (AG-17-50). Worker removal and permit refusal are handled (AG-17-51).<br>• The worker never sees the employer file (BR-10).<br>• **The Sample stand-in (SI-10)** keeps working for the demo. The real file becomes the employer case's source when the Sample setting is off, and the audit-event link stays readable (`linkedOf`).<br>**Touch:** new `api/src/case-delivery/corporate/workers.ts`, a one-line hook in `api/src/employer-cases.ts` (`employerCasesOf` reads real files when present; the release Lead's OK, contract §7), `tests/check_cs98e_workers.ts` | Tested with a pass and a fail each:<br>• Create work permit case on an `APPROVED` position → an individual case linked, employer facts present as Declared answers with source "linked_file" and none overwritten silently (BR-4 of C1.3);<br>• the same on a `NOT_APPROVED` position → refused;<br>• a second worker case for one position → refused;<br>• a non-shareable document type is not copied;<br>• the worker's client-portal read of the LMIA file → refused;<br>• the lapse warning fires on a fixed clock and the position becomes `LAPSED`;<br>• the C1.3 suites and the checkpoint load pass unchanged (QA-434 and QA-351 not reopened);<br>• the worker's case counts as individual (SA-3-4) | **Source:** AG-17-43, AG-17-44, AG-17-45, AG-17-46, AG-17-47, AG-17-50, AG-17-51, BR-10, BR-11, BR-14 · **Duplicate check:** C1.3/C11.5 on `main` do the worker-side copy from a Sample employer case; this row feeds the same copy rules from the real file (no duplicate logic) · **waits on:** CS-98d, contract §5 (worker as client), C1.3's code (merged) · decisions: P-106, SI-10 (stand-in), P-588 (2), P-568 · **breaker:** yes (people and permissions across two cases) · **size:** 1 PR, ~550 lines · **P-607 (5):** in Release 1, scheduled last in the case-side lane |
 | CS-98s1 | screens (case side: LMIA, part 1 of 2; concept first) | **The LMIA board and the file's Set-up and Recruitment steps.**<br>• Concept screens/cs-98-lmia/concept.md (skill `screen-concept`), challenged and approved first (P-223 (4)).<br>• The **LMIA board** (AG-17-54, -55), filtered by stage, employer and owner. It is never filtered by the Individual/Corporate view in search (AG17-D6).<br>• The file page's steps (AG-17-14..19; a step shows only when it has items): **Set-up** (job, location, positions, stream proposal and confirm, warnings with waive) and **Recruitment** (channels, the clock, candidates, report).<br>• Sample values are marked "Sample".<br>**Touch:** new files under `web/src/modules/case-delivery/corporate/`, `tests/check_cs98s1_lmia_browser.ts` | The concept is r2 after a fresh challenge and approved. Journeys with a pass and a fail each: open a file from a company client, add 3 positions, confirm the proposed stream, waive a CRITICAL warning with a reason, log a channel and watch "day X of Y", record a rejected candidate, download the report. Keyboard-only, axe-core, 375/1024/1440 | **Source:** AG-17-2, AG-17-14, AG-17-15, AG-17-16, AG-17-17, AG-17-18, AG-17-19, AG-17-54, AG-17-55, AG17-D6 · **Duplicate check:** none (15 Nov) · **waits on:** CS-98b, CS-98c · decisions: P-223 (4), P-568 · **breaker:** yes (new screens) · **size:** concept PR + 1 build PR (~600 lines) · **P-607 (5):** in Release 1, scheduled last in the case-side lane |
 | CS-98s2 | screens (case side: LMIA, part 2 of 2) | **Submission, decision, positions and workers, and the corporate panel on the client screen** (AG-17-57). Covers: submit with sign-off; officer contacts; record the decision with positions approved; Withdraw; Re-apply; the validity clock; each position's row with its worker, milestones and "Create work permit case"; the client screen's corporate panel listing the employer's LMIA files and positions. Uses the concept from CS-98s1. **Touch:** new files under `web/src/modules/case-delivery/corporate/decision/`, `…/positions/`, one panel line in the client screen, `tests/check_cs98s2_lmia_browser.ts` | Journeys with a pass and a fail each: record 3 of 4 approved, Create work permit case for one worker, and land on the worker's case with the employer facts shown as copied. Approving 5 of 4 is refused with the server's message. A Withdraw button is gone after the decision. Keyboard-only, axe-core, 375/1024/1440 | **Source:** AG-17-36, AG-17-37, AG-17-39, AG-17-40, AG-17-41, AG-17-43, AG-17-45, AG-17-57, AG-17-89 · **Duplicate check:** none (15 Nov) · **waits on:** CS-98s1, CS-98d, CS-98e · decisions: P-568 · **breaker:** yes (new screens) · **size:** 1 PR, ~600 lines · **P-607 (5):** in Release 1, scheduled last in the case-side lane |
+| CS-98s3a | runtime + config data (case side: LMIA onboarding) | **Employer onboarding action lines and employer documents** (AG-17 §3.3): `corp_rule_action_line` as platform-wide **Sample** configuration in CS-98r's area file, released in `corporate_rules` and listed in G1 (a corporate-only stand-in for SA-01B Extension 2's action lines, X-ActionLine); `corp_onboarding_item`; employer documents read `caseChecklist` (no second list); the opening-answer timeline line (AG-17-20). Brief CS-98s3 on #1886 (lands with it). | Brief CS-98s3 DW1-DW5, each with a pass and a fail | **Source:** AG-17-18 to AG-17-21, AG-17 §3.3 · **Duplicate check:** none (#1886, 16 Nov) · **waits on:** CS-98s1, CS-98s2 part 1, CS-98r, CS-98a, CS-98b · **breaker:** yes · **size:** ~700 (splits s3a1/s3a2 over 800) · Opus high |
+| CS-98s3b | runtime (case side: LMIA quality check and sign-off) | **LMIA checks join the case's readiness view** (AG-17-31, AG-17-33: advertising, employer documents, previous refusal, set-up re-run, fee for information) as inputs to the file's filing, with CS-98b's codes and `ReadinessPass`; a CRITICAL finding passes only with `agent/case:waive-deficiency` and a reason; sign-off builds the founder's decisions (P-155 (1), P-412 F9: representative of record only; a fact change withdraws), AG-17-35's difference is with the founder; `corp_sign_off` with `FilingReview`; "Ready for sign-off" notifies the file owner through PF-18np (`CORPORATE_READY_FOR_SIGN_OFF`). | Brief CS-98s3 DWs for s3b | **Source:** AG-17-31, AG-17-33, AG-17-34, AG-17-35 · **Duplicate check:** none (#1886) · **waits on:** CS-98s3a, CS-98c part 2, CS-98d part 1, PF-18np · **schema:** `corp_sign_off` migration (the release Lead reads it) · **breaker:** yes · Opus high |
+| CS-98s3c | screens (case side: LMIA steps 2, 3 and the quality check) | **The three steps' screens** on the LMIA file, after the CS-98-lmia concept's r3 adds them (fresh challenge, approval, P-223 (4)). | Brief CS-98s3 walk DWs for s3c | **Source:** AG-17 §3.3, §3.5 · **Duplicate check:** none (#1886) · **waits on:** CS-98s3b, concept r3 · **breaker:** yes (new screens) · Opus high |
 
 **S2: assessment (map rows 106, 107)**
 
@@ -1096,5 +1324,6 @@ Source: capability map draft 5.2 §0 (CAPABILITY-SOURCING-MAP.md, private notes;
 | X-S3-4 | Previews of HEIC, TIFF, Word and Excel by conversion | AG-9-24 | A conversion service is new technology. |
 | X-S3-5 | Reports extras: scheduled reports, XLSX, saved and shared views, stage durations, SLA, productivity and compliance analytics, Rep and Compliance layouts, rollups | AG-14-2, -3, -10 to -12, -16, -21, -23 to -25 | Q8 (live reads in R1). |
 | X-S3-6 | One-click government-fee line from a case fee | AG-6-40 | P-607: typed in R1. Waits on the case side's fee record. |
+| X-ActionLine | One general action-line model for every pathway (SA-01B Extension 2), replacing CS-98s3a's corporate-only `corp_rule_action_line` | SA-01B Ext. 2; AG-17 §3.3 | Lead 62 on #1886 (16 Nov, P-610 narrowest fix): the corporate stand-in in R1. |
 | X-Backup | AWS Backup vault lock in compliance mode | — | Batch 1: governance mode in R1 until the first cloud drill passes. |
 | X-Zip-xlsx | `.xlsx` import, if no reader passes P-587 at PF-10b's gate | AG-18-4 | S1 question 7. |
