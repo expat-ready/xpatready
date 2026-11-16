@@ -649,7 +649,7 @@ function rPace(){
   h+=rEarly(B);
   h+=rDelivery(B);
   var dis=((D.trust||{}).status_disagreements||[]);
-  h+='<p class="line">Capabilities: '+N(P.built,"",B,"pace.built")+' of '+N(P.rows_total,"",null,"pace.rows_total")+' built'+(bb&&bb.value?' <span class="small muted"'+T("pace.built_before")+'>(+'+esc(bb.value)+' built before 13 Nov)</span>':"")+', proven: '+N(P.proven,"",B,"pace.proven")+(P.proven&&P.proven.value!=null?' of '+esc(P.rows_total.value):"")+
+  h+='<p class="line">Capabilities with all parts merged since 13 Nov: '+N(P.built,"",B,"pace.built")+' of '+N(P.rows_total,"",null,"pace.rows_total")+(bb&&bb.value?' <span class="small muted"'+T("pace.built_before")+'>(+'+esc(bb.value)+' built before 13 Nov)</span>':"")+'; Built (first screen, Proven included): '+(D.first&&D.first.release.built!=null?esc(D.first.release.built):'not measured')+', Proven (qa\'s file): '+(D.first&&D.first.release.proven!=null?esc(D.first.release.proven):'not measured')+
     (P.parts_merged?' \u00b7 parts merged: '+N(P.parts_merged,"",B,"pace.parts_merged")+(P.parts_merged.value!=null?' of '+esc(P.parts_merged.total):""):"")+'.'+
     (dis.length?' <a href="#trust" class="small" data-go="details"'+S("the checklist's hand-kept status and the computed state differ on these capabilities; Details lists them")+'>records differ on capabilities '+esc(dis.map(function(x){return x.map;}).join(", "))+'</a>':"")+'</p>';
   var R=P.remaining;
@@ -897,7 +897,7 @@ function drawVSM(){
 function rStatus(){
   var s=D.status_line,w=v(s.works)||[],r=v(s.rows_done)||[],nc=v(s.next_committed),fc=v(s.build_forecast);
   var h='<div class="oneline">'+
-   '<div'+S(src(s.works))+'><div class="k">Proof of concept: proven by qa</div><div class="v">'+nz(w[0])+' / '+nz(w[1])+'</div><div class="s">proof-of-concept capabilities</div></div>'+
+   '<div'+S(src(s.works))+'><div class="k">Proof of concept: qa passed</div><div class="v">'+nz(w[0])+' / '+nz(w[1])+'</div><div class="s">proof-of-concept capabilities</div></div>'+
    '<div'+S(src(s.rows_done))+'><div class="k"><span class="nowords">Checklist mark: qa Works</span> (hand-kept; Proven is on the first screen)</div><div class="v">'+nz(r[0])+' / '+nz(r[1])+'</div><div class="s">'+nz(v(s.rows_merged_or_better))+' merged or better</div></div>'+
    '<div'+S(src(s.next_committed))+'><div class="k">Next committed date</div><div class="v">'+(nc?esc(short(nc.date)):"none")+'</div><div class="s">'+(nc?esc(nc.what):"")+'</div></div>'+
    '<div'+S(src(s.build_forecast))+'><div class="k">Build forecast</div><div class="v">'+(fc&&fc.date?esc(short(fc.date))+(fc.date_to?"\u2013"+esc(short(fc.date_to)):""):"none")+'</div><div class="s">'+(fc?esc(fc.kind)+" \u00b7 "+esc(fc.source):"")+'</div></div>'+
@@ -1013,7 +1013,7 @@ function rQuality(){
   h+='<h3>Open Major and Critical ('+mj.length+')</h3><div class="box"><table><thead><tr><th>Bug</th><th>Severity</th><th>Capability</th><th>What happens</th></tr></thead><tbody>';
   mj.forEach(function(b){h+='<tr'+S(Q.src)+'><td class="mono">'+esc(b.id)+'</td><td>'+pill(b.sev,b.sev==="Critical"?"bad":"wait")+'</td><td class="mono small">'+esc(b.cap)+'</td><td class="small">'+esc(b.what)+'</td></tr>';});
   if(!mj.length)h+='<tr><td colspan="4" class="muted">None open.</td></tr>';
-  return section("10","quality","Testing and quality","What qa has found and not yet closed, and whether proven capabilities slipped.",h+'</tbody></table></div>');
+  return section("10","quality","Testing and quality","What qa has found and not yet closed, and whether capabilities qa passed slipped.",h+'</tbody></table></div>');
 }
 
 /* 9 devops */
@@ -1165,8 +1165,8 @@ function rHeat(){
   C.groups.forEach(function(g){var rs=C.rows.filter(function(r){return r.group===g.id;}),c={};order.forEach(function(k){c[k]=0;});
     rs.forEach(function(r){c[r.status]=(c[r.status]||0)+1;});
     var done=c["qa Works"],built=done+c["Merged"],moving=built+c["In PR"],t,word;
-    if(rs.length&&done===rs.length){t="good";word="all proven";}
-    else if(moving>0){t="wait";word=built+" of "+rs.length+" built, "+done+" proven";}
+    if(rs.length&&done===rs.length){t="good";word="all checklist qa Works";}
+    else if(moving>0){t="wait";word=built+" of "+rs.length+" merged, "+done+" checklist qa Works (can lag qa)";}
     else if(c["Shaped"]>0){t="prog";word="specified, not started";}
     else {t="none";word="not specified yet";}
     var nd=rs.filter(function(r){return diffOf(r.map);}).length;if(nd)word+=" (records differ on "+nd+")";
