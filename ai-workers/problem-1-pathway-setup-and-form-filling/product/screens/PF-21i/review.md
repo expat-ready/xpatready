@@ -123,3 +123,43 @@ I also queried `pg_proc` on a scratch database with every migration applied.
 **To fix before Approve:** M1, with its test.
 
 Verdict: Block
+
+## Re-review (P-277), 16 Nov: `44f28ba6f..b302fe3df71e775e3e76346b92c36938e0ebcca7`, the diff only
+The diff touches `complaints.ts` (+9/-3), `idempotency.ts` (+7/-2) and `check_pf21i_idempotent.ts` (+32/-1). The other files in it are records: the break report and this reviewer's two files.
+
+The studio tree equals b302fe3. Re-run results:
+
+| Suite | Result |
+|---|---|
+| `check_pf21i_idempotent` | 28/0 |
+| `check_pf21_complaints` | 107/0 |
+| `check_pf21w_routes` | 83/0 |
+| `check_pf21v_views` | 54/0 |
+| `check_pf12_walls` | 100/0 |
+
+All five exited 0.
+
+**M1: fixed.**
+* `complaints.ts:265-266`: a repeat now answers `{ ...first, handlerStaffId: v.handlerStaffId, acknowledgedAt/responseSentAt/outcome/closedAt: null, status: "OPEN", updatedAt: first.createdAt }`.
+* These are exactly the fields the service's four later writes change: acknowledge, response-sent, handler and close. No other code in `api/src` writes `plat_complaint`.
+* `v.handlerStaffId` is the first handler, because the hash matched.
+* `overdue` and `businessDaysLeft` are recomputed from `acknowledgeBy`, which the first answer already showed, so they reveal nothing new.
+* **Fail-first, checked by me:** I put 44f28ba6f's `complaints.ts` under b302fe3's test in a scratch worktree. The result was 26/28, with exactly the two DW2b lines red.
+* DW2b covers journey 9 and more: acknowledge, response, handler change and close, the manager's GET answering 404, and a field-by-field match. `updatedAt` is left out of that match; that is acceptable.
+
+**m5: fixed.** At `idempotency.ts:33-34`, a value that starts with a quote must be one whole quoted string. A lone `"`, `"k";p=1` and `"abc` are each refused with 400, and DW4 lists all three.
+
+**m4: fixed.**
+* The comment at `idempotency.ts:25-27` now says Node joins a repeated header with ", ".
+* DW4 now sends two header lines through `node:http` and expects 400.
+
+**Still open (Minor, accepted as listed):**
+* m1: a repeat carries no `reminderScheduled`.
+* m3: one 422 sentence (the brief's wording).
+* m2: the IETF quotes remain the tech lead's question.
+
+No new finding in the diff.
+
+**Journey score (reviewer), re-scored:** correct data rises to 1, so **7.5/10**. That is still below 8, held back by the two Minors and the N/A halves. Under P-26 it does not block, since no Blocker or Major is open.
+
+Verdict: Approve b302fe3df71e775e3e76346b92c36938e0ebcca7
