@@ -440,6 +440,46 @@ class Rulings(unittest.TestCase):
         self.assertEqual(q["not_ready"], [{"id": "FO-2", "waits_on": [], "non_id": ["contract v0"]},
                                           {"id": "BK-6", "waits_on": ["FO-1"], "non_id": []}])
 
+    def test_release1_capability_rows_read_by_both_scripts(self):
+        # 16 Nov board: invariant "every qa Works row names a qa capability that reads Works on main" failed on rows 2 and 9,
+        # proven by R1.2 and R1.9, because both parsers read only C rows; the R1 table has a Status column and no M column
+        r1 = ("\n## Release 1\n\n| # | Map row: capability | Module | Status | Tested on | Done when |\n|---|---|---|---|---|---|\n"
+              "| R1.2 | 2 Database | Platform | Works | abc | fixture |\n| R1.3 | 3 Files | Platform | Not built | abc | fixture |\n")
+        caps = cd.Snap(FIX).text("files_main/qa/CAPABILITIES.md") + r1
+        spec_r = importlib.util.spec_from_file_location("cockpit_reconcile_t", os.path.join(HERE, "cockpit-reconcile.py"))
+        rc = importlib.util.module_from_spec(spec_r)
+        spec_r.loader.exec_module(rc)
+        board = {k: v["status"] for k, v in cd.parse_caps(caps).items()}
+        check = {k: v[1] for k, v in rc.parse_capabilities(caps).items()}
+        self.assertEqual(board, check)
+        self.assertEqual((board["R1.2"], board["R1.3"], cd.parse_caps(caps)["R1.2"]["m"]), ("Works", "Not built", ""))
+        self.assertEqual(cd.works_count(cd.parse_caps(caps)), cd.works_count(cd.parse_caps(caps[:-len(r1)])))   # Works count unchanged
+        ck = cd.Snap(FIX).file("MVP-CHECKLIST.md").replace("| 6 | Cap six | Case side | C6.2 Works | qa Works\\* |",
+                                                            "| 6 | Cap six | Case side | R1.2 Works | qa Works\\* |")
+        self.assertIn("R1.2 Works", ck)
+        d = snap_with({"files_main/qa/CAPABILITIES.md": caps, CKP: ck})
+        out, note = cd.run_reconcile(d, os.path.join(HERE, "cockpit-reconcile.py"))
+        self.assertIsNone(note)
+        _, c = run(d, rec=out, note=None)
+        inv = [i for i in c["trust"]["invariants"] if i["name"].startswith("Every qa Works row")][0]
+        self.assertTrue(inv["ok"], inv)
+        self.assertEqual((c["trust"]["state"], c["trust"]["diffs"]), ("agree", []), c["trust"]["diffs"])
+
+    def test_bold_first_cell_is_a_backlog_row_in_both_scripts(self):
+        # 16 Nov board 7: "Numbers disagree: ready_rows" board 7, check 8. BACKLOG row FO-7mv is written "| **FO-7mv** |";
+        # the board read only a plain first cell, so it never saw the row; the check removes "**" and "`" (one rule, FORMULAS.md
+        # › BACKLOG rows). A bold or backticked first cell is the same row in both scripts.
+        for mark in ("**", "`"):
+            bl = cd.Snap(FIX).file("BACKLOG.md").replace("| FO-2 | lane |", "| %sFO-2%s | lane |" % (mark, mark))
+            self.assertIn("| %sFO-2%s |" % (mark, mark), bl)
+            self.assertIn("FO-2", cd.parse_backlog(bl)["lines"])
+            d = snap_with({BLP: bl})
+            out, note = cd.run_reconcile(d, os.path.join(HERE, "cockpit-reconcile.py"))
+            self.assertIsNone(note)
+            _, c = run(d, rec=out, note=None)
+            self.assertIn("FO-2", c["capacity"]["ready_rows"]["rows"])
+            self.assertEqual((c["trust"]["state"], c["trust"]["diffs"]), ("agree", []), c["trust"]["diffs"])
+
     def test_r1b_ready_counts_any_merged_pr(self):
         # BK-5's only PR (#112) is not app code: not a change (R1b), but merged for readiness, so a row waiting on it is ready
         bl = cd.Snap(FIX).file("BACKLOG.md").replace("**Row BK-6:** a fixture row; brief: briefs/BK-6 · **waits on:** nothing",
@@ -539,7 +579,9 @@ class Health(unittest.TestCase):
         self.assertEqual(st, {1: "green", 2: "page", 3: "green", 4: "green", 5: "green", 6: "red", 7: "amber"})
         self.assertEqual(h["light"], "red")
         six = h["items"][5]
-        self.assertEqual((six["detail"], six["owner"]), ("older than 48 h: QA-9", "qa lane via the current Lead"))
+        self.assertEqual((six["detail"], six["owner"]), ("open Major or Critical bugs on capabilities marked proven, older than 48 h: QA-9",
+                                                  "current Lead (builders and qa fix)"))
+        self.assertEqual(six["bugs"][0]["id"], "QA-9")
 
     def test_lead_input_missing_stale_hot(self):
         _, st = self.states(snap_with(drop=["lead-input.json"]))
@@ -563,6 +605,58 @@ class Health(unittest.TestCase):
         gr[1]["conclusion"] = "failure"
         _, st = self.states(snap_with({"meta.json": meta, "github/guard_runs.json": gr}))
         self.assertEqual((st[3], st[4]), ("red", "red"))
+
+    def test_item_6_reads_main_bugs_not_the_records_copy(self):
+        # 16 Nov: the Lead's records copy of qa/BUGS.md was 6 days old and listed bugs closed on main (QA-383, QA-162) as open;
+        # the qa lane writes bugs on main, so item 6 reads files_main/qa/BUGS.md when the snapshot has it
+        rec = cd.Snap(FIX).file("qa/BUGS.md")
+        self.assertEqual(self.states()[1][6], "red")                       # records copy: QA-9 open, 74 h old
+        closed_on_main = "\n".join(ln for ln in rec.splitlines() if "| QA-9 |" not in ln) + "\n"
+        h, st = self.states(snap_with({"files_main/qa/BUGS.md": closed_on_main}))
+        self.assertEqual(st[6], "green")
+        self.assertIsNone(h["items"][5]["action"])
+
+    def test_every_item_not_green_says_what_to_do_and_who(self):
+        # 16 Nov (founder: "a lot of red health stuff ... it doesn't show me anything"): amber items carry an action too
+        for d in (FIX, snap_with(drop=["lead-input.json", "github/guard_runs.json"])):
+            h, _ = self.states(d)
+            for i in h["items"]:
+                if i["state"] in ("red", "amber"):
+                    self.assertTrue(i["action"] and i["owner"], i)
+                if i["state"] == "green":
+                    self.assertIsNone(i["action"], i)
+
+    def test_records_lag_counts_files_main_never_had_not_commits(self):
+        # 16 Nov: board 7 said "1,114 commits on lead/… not on main" although records reach main as one rebuilt commit on a
+        # fresh branch (P-505). Old rule: rev-list main..branch. New rule: files whose branch version main never had.
+        g = tempfile.mkdtemp(prefix="cockpit-git-")
+        def git(*a, at="2026-11-10T10:00:00+05:30"):
+            env = dict(os.environ, GIT_AUTHOR_DATE=at, GIT_COMMITTER_DATE=at, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@e",
+                       GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@e", GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+            return subprocess.run(["git", "-C", g, *a], capture_output=True, text=True, env=env, check=True).stdout.strip()
+        def put(name, text):
+            with open(os.path.join(g, name), "w") as f:
+                f.write(text)
+        git("init", "-q", "-b", "main")
+        put("STATE.md", "s0\n"); put("BACKLOG.md", "b0\n"); git("add", "-A"); git("commit", "-qm", "base")
+        git("checkout", "-qb", "lead")
+        put("STATE.md", "s1\n"); git("commit", "-qam", "lead 1", at="2026-11-11T10:00:00+05:30")
+        put("BACKLOG.md", "b1\n"); git("commit", "-qam", "lead 2", at="2026-11-12T10:00:00+05:30")
+        git("checkout", "-q", "main")                         # records rebuilt on main: same content, a different commit
+        put("STATE.md", "s1\n"); put("BACKLOG.md", "b1\n"); git("commit", "-qam", "records rebuilt on main", at="2026-11-13T10:00:00+05:30")
+        put("app.ts", "x\n"); git("add", "-A"); git("commit", "-qm", "app change", at="2026-11-13T11:00:00+05:30")
+        git("checkout", "-q", "lead")
+        put("STATE.md", "s2\n"); git("commit", "-qam", "lead 3", at="2026-11-14T10:00:00+05:30")
+        old_root, cd.ROOT = cd.ROOT, g
+        try:
+            self.assertEqual(git("rev-list", "--count", "main..lead"), "3")          # what the old rule reported
+            n, oldest, files = cd.records_lag("lead", "main")
+            self.assertEqual((n, [f["path"] for f in files]), (1, ["STATE.md"]))   # BACKLOG's b1 is on main; STATE's s2 is not
+            self.assertEqual(cd.parse_iso(oldest), cd.parse_iso("2026-11-14T10:00:00+05:30"))
+            put("STATE.md", "s1\n"); git("commit", "-qam", "lead 4: back to main's version", at="2026-11-14T12:00:00+05:30")
+            self.assertEqual(cd.records_lag("lead", "main")[:2], (0, None))
+        finally:
+            cd.ROOT = old_root
 
 
 class Contract(unittest.TestCase):
@@ -1376,6 +1470,21 @@ class EarlyBandAndLeading(unittest.TestCase):
         d = snap_with({"git/capabilities_main.jsonl": jl, "git/capabilities_main/bbb222.md": b2, "git/capabilities_main/ccc333.md": c3})
         v = run(d)[1]["pace"]["leading"]["first_verdict_works_pct"]
         self.assertEqual((v["value"], v["works"], v["n"], v["ids"], v["day_n"], v["day_works"]), (50, 1, 2, ["C9.1", "C9.2"], 1, 0))
+
+    def test_first_verdict_share_r1_apart(self):
+        # Lead 64, 16 Nov: the Release 1 (R) share is its own number beside the C share, never mixed
+        base = os.path.join(FIX, "git/capabilities_main")
+        a, b = open(os.path.join(base, "aaa111.md")).read(), open(os.path.join(base, "bbb222.md")).read()
+        r1 = "\n| # | Map row: capability | Module | Status | Tested on | Done when |\n|---|---|---|---|---|---|\n"
+        a2 = a + r1 + "| R1.2 | 2 Database | Platform | Not built | abc | x |\n| R1.3 | 3 Files | Platform | Not built | abc | x |\n"
+        b2 = b + r1 + "| R1.2 | 2 Database | Platform | Works | abc | x |\n| R1.3 | 3 Files | Platform | Partial | abc | x |\n"
+        jl = '{"sha": "aaa111", "date": "2026-11-15T03:00:00Z"}\n{"sha": "bbb222", "date": "2026-11-18T05:00:00Z"}\n'
+        d = snap_with({"git/capabilities_main.jsonl": jl, "git/capabilities_main/aaa111.md": a2, "git/capabilities_main/bbb222.md": b2})
+        c = run(d)[1]
+        r, cc = c["pace"]["leading"]["first_verdict_works_pct_r1"], c["pace"]["leading"]["first_verdict_works_pct"]
+        self.assertEqual((r["value"], r["works"], r["n"], r["ids"]), (50, 1, 2, ["R1.2", "R1.3"]))
+        self.assertFalse([x for x in (cc.get("ids") or []) if x.startswith("R")])     # never mixed into the C share
+        self.assertIsNone(run()[1]["pace"]["leading"]["first_verdict_works_pct_r1"]["value"])
 
     def test_each_behind_an_explain_entry_with_window_and_n(self):
         E, d = TooltipsData.data()

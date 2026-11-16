@@ -5,11 +5,12 @@ import * as React from "react";
 import { NavLink } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Frame, useWhere, type Crumb } from "@/components/frame";
-import { Button, Field, Input, Notice } from "@/components/ui/controls";
+import { Button } from "@/components/ui/controls";
+import { SignInCard as SignIn } from "@/modules/platform/frame";
 import { cn } from "@/lib/utils";
 import { LeadRows, seesUnassigned, type Me } from "./contract";
 import { Loading } from "./loading";
-import { setStaffToken, staffApi, StaffApiError, useLocalSignIn, useMe, useStaffToken } from "./session";
+import { setStaffToken, staffApi, StaffApiError, useMe, useStaffToken } from "./session";
 const MeCtx = React.createContext<Me | null>(null);
 /** The signed-in staff member (inside SalesFrame only). */
 export const useStaff = () => React.useContext(MeCtx)!;
@@ -30,30 +31,6 @@ function Menu({ me }: { me: Me }) {
         {unassigned ? <span data-unassigned-badge className="rounded-md bg-warn/15 px-1.5 py-0.5 text-[11px] font-medium text-text-warn">{unassigned} unassigned</span> : null}
       </NavLink>
     </nav>
-  );
-}
-function SignIn({ failed }: { failed?: string | null }) {
-  const signIn = useLocalSignIn();
-  const [firmKey, setFirmKey] = React.useState("");
-  const [email, setEmail] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(failed ?? null);
-  const send = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true); setError(null);
-    try { await signIn(firmKey.trim(), email.trim()); } catch (x) { setError(x instanceof StaffApiError ? x.message : "Could not sign in. Please try again."); } finally { setBusy(false); }
-  };
-  return (
-    <section aria-labelledby="fo-sign-in" className="mx-auto mt-6 max-w-md rounded-xl border border-border bg-surface-raised p-6 shadow-sm">
-      <h1 id="fo-sign-in" className="text-lg font-semibold">Sign in to your firm</h1>
-      <p className="mt-1 text-sm text-text-muted">The sales screens are for your firm's staff. This is the local stand-in sign-in until the firm sign-in screens are built.</p>
-      <form className="mt-4 flex flex-col gap-3" onSubmit={send}>
-        <Field label="Firm key"><Input value={firmKey} onChange={(e) => setFirmKey(e.target.value)} autoComplete="organization" required /></Field>
-        <Field label="Work email"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required /></Field>
-        {error ? <Notice tone="danger" title="Not signed in">{error}</Notice> : null}
-        <Button type="submit" busy={busy} className="self-start">Sign in</Button>
-      </form>
-    </section>
   );
 }
 /** Names the place on the frame's line; it must render inside Frame, whose context it sets. */
