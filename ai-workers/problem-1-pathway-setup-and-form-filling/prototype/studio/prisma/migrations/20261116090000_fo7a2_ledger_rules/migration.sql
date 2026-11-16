@@ -3,10 +3,28 @@
 -- B-17 of FO-7mv's break report; legal reading Unconfirmed: no counsel): the trust ledger's reversal and credit-note rules.
 -- Replaces FO-7a's money_trust_entry_write, money_credit_note_write and money_write_off_write (CREATE OR REPLACE; owner and
 -- PF-12's reader settings kept below) and its balance check; adds money_trust_paid, money_payment_returned_not_cleared and
--- the view money_trust_shortfall. No table or column. Rollback: re-run FO-7a's three functions from its migration, put back
+-- the view money_trust_shortfall; rule 2c (widened by Lead 69 on #1991): money_credit_note's overpaid choice, its
+-- return to trust (money_credit_note_owed_back) and FO-7mv's money_move_line_write, money_trust_entry_moves and money_to_move
+-- replaced for the operating → trust line a credit note owes. No table. Rollback: re-run FO-7a's three functions from its migration, put back
 -- money_trust_entry_balance_check (balance_after_minor >= 0 AND seq >= 1) once no row is below zero, DROP VIEW
 -- money_trust_shortfall, DROP TRIGGER money_payment_returned_not_cleared ON money_payment, DROP FUNCTION
 -- money_payment_returned_not_cleared(), money_trust_paid(uuid, uuid).
+
+-- Rule 2c's columns (Prisma's DDL): the choice, the amount it covers and the withdrawal it names, all three or none.
+CREATE TYPE "MoneyOverpaidChoice" AS ENUM ('OVERPAID_REFUND', 'OVERPAID_TO_TRUST');
+ALTER TABLE "money_credit_note" ADD COLUMN "overpaid_choice" "MoneyOverpaidChoice", ADD COLUMN "overpaid_entry_id" UUID, ADD COLUMN "overpaid_minor" INTEGER;
+CREATE INDEX "money_credit_note_firm_id_overpaid_entry_id_idx" ON "money_credit_note"("firm_id", "overpaid_entry_id");
+ALTER TABLE "money_credit_note" ADD CONSTRAINT "money_credit_note_firm_id_overpaid_entry_id_fkey" FOREIGN KEY ("firm_id", "overpaid_entry_id") REFERENCES "money_trust_entry"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE "money_credit_note" ADD CONSTRAINT "money_credit_note_overpaid_check" CHECK (num_nonnulls("overpaid_choice", "overpaid_entry_id", "overpaid_minor") IN (0, 3) AND coalesce("overpaid_minor", 1) > 0);
+
+-- What a trust application has moved to operating, or back into trust, in batches not undone; and what credit notes owe
+-- back to trust from it (OVERPAID_TO_TRUST), or cover in all (both choices).
+CREATE OR REPLACE FUNCTION money_moved_live(f uuid, src uuid, dir "MoneyMoveDirection") RETURNS bigint LANGUAGE sql STABLE SET search_path = pg_catalog, public, pg_temp AS
+  $$ SELECT coalesce(sum(l.amount_minor), 0) FROM "money_move_line" l WHERE l.firm_id = f AND l.source_entry_id = src AND l.direction = dir
+       AND NOT EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = l.firm_id AND u.undoes_batch_id = l.batch_id) $$;
+CREATE OR REPLACE FUNCTION money_owed_back(f uuid, w uuid, only_to_trust boolean) RETURNS bigint LANGUAGE sql STABLE SET search_path = pg_catalog, public, pg_temp AS
+  $$ SELECT coalesce(sum(c.overpaid_minor), 0) FROM "money_credit_note" c WHERE c.firm_id = f AND c.overpaid_entry_id = w
+       AND (NOT only_to_trust OR c.overpaid_choice = 'OVERPAID_TO_TRUST') $$;
 
 -- Trust applied to an invoice and not returned: its withdrawals less the money returned to trust from them (FO-7a's sum).
 CREATE OR REPLACE FUNCTION money_trust_paid(f uuid, inv uuid) RETURNS bigint LANGUAGE sql STABLE SET search_path = pg_catalog, public, pg_temp AS
@@ -134,16 +152,36 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION money_credit_note_write() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE open_amount bigint; trust bigint;
+DECLARE open_amount bigint; trust bigint; w record; freed bigint := 0;
 BEGIN
   IF NEW.number IS NOT NULL THEN
     RAISE EXCEPTION 'money_credit_note: the number is the database''s' USING ERRCODE = 'check_violation';
   END IF;
+  IF num_nonnulls(NEW.overpaid_choice, NEW.overpaid_entry_id, NEW.overpaid_minor) NOT IN (0, 3) THEN
+    RAISE EXCEPTION 'money_credit_note: a refund or move-back choice carries its amount and its trust application, all three (money_credit_note_overpaid_check)' USING ERRCODE = 'check_violation';
+  END IF;
   open_amount := money_issued_invoice(NEW.firm_id, NEW.invoice_id, NEW.currency, 'money_credit_note');
-  trust := money_trust_paid(NEW.firm_id, NEW.invoice_id);
+  -- Trust paid and not returned, less what earlier "Refund to the client" choices already freed (refunded from operating).
+  trust := money_trust_paid(NEW.firm_id, NEW.invoice_id) - (SELECT coalesce(sum(c.overpaid_minor), 0) FROM "money_credit_note" c
+    WHERE c.firm_id = NEW.firm_id AND c.invoice_id = NEW.invoice_id AND c.overpaid_choice = 'OVERPAID_REFUND');
+  -- Rule 2c (P-634 (2)): trust money of this invoice that already moved to operating is freed for the credit note only
+  -- with the person's choice, "Refund to the client" or "Move back to trust", never kept in operating; at most what moved
+  -- and no earlier choice covers.
+  IF NEW.overpaid_entry_id IS NOT NULL THEN
+    SELECT e.kind, e.invoice_id INTO w FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND e.id = NEW.overpaid_entry_id;
+    IF NOT FOUND THEN PERFORM money_missing('money_credit_note', 'trust entry', NEW.overpaid_entry_id); END IF;
+    IF w.kind IS DISTINCT FROM 'WITHDRAWAL_TO_INVOICE' OR w.invoice_id IS DISTINCT FROM NEW.invoice_id THEN
+      RAISE EXCEPTION 'money_credit_note: a refund or move-back choice names a trust application to this invoice' USING ERRCODE = 'check_violation';
+    END IF;
+    freed := money_moved_live(NEW.firm_id, NEW.overpaid_entry_id, 'TRUST_TO_OPERATING') - money_owed_back(NEW.firm_id, NEW.overpaid_entry_id, false);
+    IF NEW.overpaid_minor > freed THEN
+      RAISE EXCEPTION 'money_credit_note: only % % of that trust application has moved to operating and has no refund or move-back choice yet', to_char(greatest(freed, 0) / 100.0, 'FM999,999,990.00'), NEW.currency USING ERRCODE = 'check_violation';
+    END IF;
+    trust := trust - NEW.overpaid_minor;
+  END IF;
   IF NEW.amount_minor > open_amount - trust THEN
     IF NEW.amount_minor <= open_amount THEN
-      RAISE EXCEPTION 'money_credit_note: % % of this invoice was paid from trust: return % % to trust first (a correction naming the withdrawal, AG-6-48 rule 4), then credit it',
+      RAISE EXCEPTION 'money_credit_note: % % of this invoice was paid from trust: return % % to trust first (a correction naming the withdrawal, AG-6-48 rule 4), then credit it; for money already moved to operating, choose Refund to the client or Move back to trust (OVERPAID_REFUND, OVERPAID_TO_TRUST)',
         to_char(trust / 100.0, 'FM999,999,990.00'), NEW.currency, to_char((NEW.amount_minor - (open_amount - trust)) / 100.0, 'FM999,999,990.00'), NEW.currency USING ERRCODE = 'check_violation';
     END IF;
     RAISE EXCEPTION 'money_credit_note: % is more than is left to credit on the invoice (%)', NEW.amount_minor, open_amount - trust USING ERRCODE = 'check_violation';
@@ -183,6 +221,19 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
+-- Rule 2c: "Move back to trust" returns the credited money to the client's trust balance at once (the RETURN naming the
+-- withdrawal), and the To move list shows the operating → trust transfer the firm owes until it is moved back.
+CREATE OR REPLACE FUNCTION money_credit_note_owed_back() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE w record;
+BEGIN
+  IF NEW.overpaid_choice = 'OVERPAID_TO_TRUST' THEN
+    SELECT e.person_id, e.company_id, e.case_id, e.currency INTO w FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND e.id = NEW.overpaid_entry_id;
+    INSERT INTO "money_trust_entry" (firm_id, person_id, company_id, case_id, kind, amount_minor, currency, corrects_entry_id, reason, created_by)
+      VALUES (NEW.firm_id, w.person_id, w.company_id, w.case_id, 'CORRECTION', NEW.overpaid_minor, w.currency, NEW.overpaid_entry_id, 'Credit note ' || NEW.number || ': moved back to trust', NEW.created_by);
+  END IF;
+  RETURN NULL;
+END $$;
+CREATE TRIGGER money_credit_note_owed_back AFTER INSERT ON "money_credit_note" FOR EACH ROW EXECUTE FUNCTION money_credit_note_owed_back();
 CREATE TRIGGER money_payment_returned_not_cleared BEFORE UPDATE OF "cleared" ON "money_payment" FOR EACH ROW EXECUTE FUNCTION money_payment_returned_not_cleared();
 
 -- AG-6-75 rule 4, AG-6-60 rule 7: each party below zero, per currency, with the reversal that took it below (the latest
@@ -195,12 +246,156 @@ CREATE OR REPLACE VIEW "money_trust_shortfall" WITH (security_invoker = true) AS
             ORDER BY e.firm_id, e.person_id, e.company_id, e.currency, e.seq DESC) l
    WHERE l.balance_after_minor < 0;
 
+-- FO-7mv's move rules and list, replaced for rule 2c (an operating → trust line only for what a credit note owes back).
+CREATE OR REPLACE FUNCTION money_move_line_write() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE b record; s record; party uuid; earlier integer; moved bigint; returned bigint; cap bigint; arrived boolean;
+BEGIN
+  SELECT x.undoes_batch_id, x.currency, x.direction, pg_xact_status(((pg_current_xact_id()::text::bigint >> 32 << 32) | x.xmin::text::bigint)::text::xid8) = 'in progress' AS mine
+    INTO b FROM "money_move_batch" x WHERE x.firm_id = NEW.firm_id AND x.id = NEW.batch_id;
+  IF NOT FOUND THEN PERFORM money_missing('money_move_line', 'batch', NEW.batch_id); END IF;
+  IF b.undoes_batch_id IS NOT NULL THEN
+    RAISE EXCEPTION 'money_move_line: an undo batch carries no lines (the undone batch''s lines go back to the list)' USING ERRCODE = 'check_violation';
+  END IF;
+  IF b.mine IS NOT TRUE THEN
+    RAISE EXCEPTION 'money_move_line: a batch takes its lines in the transaction that records it; a recorded batch is never added to' USING ERRCODE = 'check_violation';
+  END IF;
+  IF EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = NEW.firm_id AND u.undoes_batch_id = NEW.batch_id) THEN
+    RAISE EXCEPTION 'money_move_line: an undone batch never gains a line, also in the transaction that records it' USING ERRCODE = 'check_violation';
+  END IF;
+  IF (NEW.currency, NEW.direction) IS DISTINCT FROM (b.currency, b.direction) THEN
+    RAISE EXCEPTION 'money_move_line: a line is in its batch''s currency and direction (% %); CAD and USD never share a batch', b.currency, b.direction USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.kind = 'CARD_FEE_ON_TRUST' THEN
+    RAISE EXCEPTION 'money_move_line: card fees on the trust account wait for card payments into trust (held, P-567; FO-7c)' USING ERRCODE = 'check_violation';
+  END IF;
+  SELECT e.kind, e.amount_minor, e.currency, e.person_id, e.company_id, e.invoice_id, e.correction_kind, d.kind AS corrected_kind, p.id AS deposit_payment_id
+    INTO s FROM "money_trust_entry" e LEFT JOIN "money_trust_entry" d ON d.firm_id = e.firm_id AND d.id = e.corrects_entry_id
+      LEFT JOIN "money_payment" p ON p.firm_id = d.firm_id AND p.id = d.payment_id
+    WHERE e.firm_id = NEW.firm_id AND e.id = NEW.source_entry_id;
+  IF NOT FOUND THEN PERFORM money_missing('money_move_line', 'trust entry', NEW.source_entry_id); END IF;
+  -- The party's lock first, before anything that can change is read (break B-22: a "Returned" still open was missed).
+  party := coalesce(s.person_id, s.company_id);
+  PERFORM pg_advisory_xact_lock(hashtextextended('money_trust:' || NEW.firm_id || ':' || party || ':' || s.currency, 0));
+  IF NEW.kind = 'TRUST_APPLIED' AND s.kind IS DISTINCT FROM 'WITHDRAWAL_TO_INVOICE' THEN
+    RAISE EXCEPTION 'money_move_line: a trust application moves a withdrawal to an invoice, not a %', s.kind USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.kind = 'WRONG_ACCOUNT' AND (s.kind IS DISTINCT FROM 'CORRECTION' OR s.corrected_kind IS DISTINCT FROM 'DEPOSIT' OR s.correction_kind IS DISTINCT FROM 'WRONG_ACCOUNT') THEN
+    RAISE EXCEPTION 'money_move_line: only a WRONG_ACCOUNT correction of a deposit licenses a wrong-account move out of trust (this entry is a %): a bounced cheque or an entry error never reached the trust account as money to move',
+      coalesce(s.correction_kind::text || ' ', '') || s.kind USING ERRCODE = 'check_violation';
+  END IF;
+  -- A wrong-account line moves only money that arrived: its payment is cleared and was never "Returned" (break B-20: a
+  -- bounced cheque ticked cleared afterwards), read after the party's lock (a "Returned" takes it too) and with the
+  -- payment row share-locked, so a "Cleared" tick written after this snapshot fails to serialise (40001) at REPEATABLE
+  -- READ instead of being missed.
+  IF NEW.kind = 'WRONG_ACCOUNT' THEN
+    SELECT x.cleared AND NOT EXISTS (SELECT 1 FROM "money_trust_entry" r JOIN "money_trust_entry" c ON c.firm_id = r.firm_id AND c.id = NEW.source_entry_id
+             WHERE r.firm_id = NEW.firm_id AND r.corrects_entry_id = c.corrects_entry_id AND r.correction_kind = 'RETURNED')
+      INTO arrived FROM "money_payment" x WHERE x.firm_id = NEW.firm_id AND x.id = s.deposit_payment_id FOR SHARE;
+  END IF;
+  IF NEW.kind = 'WRONG_ACCOUNT' AND arrived IS NOT TRUE THEN
+    RAISE EXCEPTION 'money_move_line: the payment this wrong-account correction names is not cleared, or was returned; it moves only once it has cleared' USING ERRCODE = 'check_violation';
+  END IF;
+  -- FO-7a2 rule 2c: back into trust only a trust application's money a credit note owes ("Move back to trust").
+  IF NEW.direction <> 'TRUST_TO_OPERATING' AND NEW.kind <> 'TRUST_APPLIED' THEN
+    RAISE EXCEPTION 'money_move_line: a % line moves from trust to operating (money into trust waits for its own ledger entry)', NEW.kind USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.currency <> s.currency THEN
+    RAISE EXCEPTION 'money_move_line: a line is in its entry''s currency (%)', s.currency USING ERRCODE = 'check_violation';
+  END IF;
+  NEW.invoice_id := coalesce(NEW.invoice_id, s.invoice_id);
+  IF NEW.person_id IS NULL AND NEW.company_id IS NULL THEN
+    NEW.person_id := s.person_id; NEW.company_id := s.company_id;
+  END IF;
+  IF (NEW.invoice_id, NEW.person_id, NEW.company_id) IS DISTINCT FROM (s.invoice_id, s.person_id, s.company_id) THEN
+    RAISE EXCEPTION 'money_move_line: a line''s invoice and party are its trust entry''s' USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.kind = 'TRUST_APPLIED' THEN
+    UPDATE "money_invoice" x SET updated_at = now() WHERE x.firm_id = NEW.firm_id AND x.id = s.invoice_id;
+  END IF;
+  SELECT count(*) INTO earlier FROM "money_move_line" l WHERE l.firm_id = NEW.firm_id AND l.source_entry_id = NEW.source_entry_id;
+  moved := money_moved_live(NEW.firm_id, NEW.source_entry_id, NEW.direction);
+  IF NEW.direction = 'OPERATING_TO_TRUST' THEN
+    cap := money_owed_back(NEW.firm_id, NEW.source_entry_id, true);
+    IF moved + NEW.amount_minor > cap THEN
+      RAISE EXCEPTION 'money_move_line: a TRUST_APPLIED line moves from trust to operating, or back into trust only what a credit note owes (% % owed back, % moved back)', cap, NEW.currency, moved USING ERRCODE = 'check_violation';
+    END IF;
+    NEW.move_ordinal := earlier + 1;
+    NEW.created_at := now();
+    RETURN NEW;
+  END IF;
+  IF NEW.kind = 'TRUST_APPLIED' THEN
+    SELECT coalesce(sum(c.amount_minor), 0) INTO returned FROM "money_trust_entry" c WHERE c.firm_id = NEW.firm_id AND c.corrects_entry_id = NEW.source_entry_id;
+  ELSE
+    returned := 0;
+  END IF;
+  -- What a credit note owes back to trust from this application can move out again only after it is moved back (rule 2c).
+  cap := -s.amount_minor - returned + CASE WHEN NEW.kind = 'TRUST_APPLIED' THEN money_owed_back(NEW.firm_id, NEW.source_entry_id, true) ELSE 0 END;
+  IF moved + NEW.amount_minor > cap THEN
+    RAISE EXCEPTION 'money_move_line: % % would move more than this entry still holds (% % to move: % less % returned to trust, % moved before)',
+      NEW.amount_minor, NEW.currency, cap - moved, NEW.currency, -s.amount_minor, returned, moved USING ERRCODE = 'check_violation';
+  END IF;
+  NEW.move_ordinal := earlier + 1;
+  NEW.created_at := now();
+  RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION money_trust_entry_moves() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE c record; moved bigint; returned bigint;
+BEGIN
+  IF NEW.kind <> 'CORRECTION' OR NEW.corrects_entry_id IS NULL THEN RETURN NULL; END IF;
+  SELECT e.kind, e.amount_minor, e.invoice_id INTO c FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND e.id = NEW.corrects_entry_id;
+  IF c.kind = 'DEPOSIT' AND NEW.correction_kind IS NULL THEN
+    RAISE EXCEPTION 'money_trust_entry: a correction of a deposit says why it was made: RETURNED, RECORDED_BY_MISTAKE, WRONG_CLIENT, OTHER or WRONG_ACCOUNT' USING ERRCODE = 'check_violation';
+  END IF;
+  IF c.kind <> 'DEPOSIT' AND NEW.correction_kind IS NOT NULL THEN
+    RAISE EXCEPTION 'money_trust_entry: only a correction of a deposit has a correction kind (this one names a %)', c.kind USING ERRCODE = 'check_violation';
+  END IF;
+  IF c.kind = 'WITHDRAWAL_TO_INVOICE' THEN
+    UPDATE "money_invoice" x SET updated_at = now() WHERE x.firm_id = NEW.firm_id AND x.id = c.invoice_id;
+    -- Moved out, less what a credit note owes back (rule 2c: that part comes back to trust now and moves back later).
+    moved := money_moved_live(NEW.firm_id, NEW.corrects_entry_id, 'TRUST_TO_OPERATING') - money_owed_back(NEW.firm_id, NEW.corrects_entry_id, true);
+    SELECT coalesce(sum(r.amount_minor), 0) INTO returned FROM "money_trust_entry" r WHERE r.firm_id = NEW.firm_id AND r.corrects_entry_id = NEW.corrects_entry_id;
+    IF moved > -c.amount_minor - returned THEN
+      RAISE EXCEPTION 'money_trust_entry: % % of this trust application has moved to operating, so only % can come back to trust: undo that move batch first',
+        moved, NEW.currency, greatest(-c.amount_minor - (returned - NEW.amount_minor) - moved, 0) USING ERRCODE = 'check_violation';
+    END IF;
+  END IF;
+  RETURN NULL;
+END $$;
+
+CREATE OR REPLACE VIEW "money_to_move" WITH (security_invoker = true) AS
+  WITH src AS (
+    SELECT e.firm_id, e.id AS source_entry_id, 'TRUST_APPLIED'::"MoneyMoveKind" AS kind, 'TRUST_TO_OPERATING'::"MoneyMoveDirection" AS direction, e.currency, e.person_id, e.company_id, e.case_id, e.invoice_id,
+           (-e.amount_minor + money_owed_back(e.firm_id, e.id, true))::integer AS eligible_minor,
+           (SELECT coalesce(sum(c.amount_minor), 0)::integer FROM "money_trust_entry" c WHERE c.firm_id = e.firm_id AND c.corrects_entry_id = e.id) AS returned_minor,
+           e.created_at
+      FROM "money_trust_entry" e WHERE e.kind = 'WITHDRAWAL_TO_INVOICE'
+    UNION ALL
+    SELECT e.firm_id, e.id, 'WRONG_ACCOUNT'::"MoneyMoveKind", 'TRUST_TO_OPERATING'::"MoneyMoveDirection", e.currency, e.person_id, e.company_id, e.case_id, NULL::uuid,
+           -e.amount_minor, 0, e.created_at
+      FROM "money_trust_entry" e WHERE e.kind = 'CORRECTION' AND e.correction_kind = 'WRONG_ACCOUNT'
+        -- shown once its payment has cleared (it moves only then)
+        AND EXISTS (SELECT 1 FROM "money_trust_entry" d JOIN "money_payment" p ON p.firm_id = d.firm_id AND p.id = d.payment_id
+                     WHERE d.firm_id = e.firm_id AND d.id = e.corrects_entry_id AND p.cleared
+                       AND NOT EXISTS (SELECT 1 FROM "money_trust_entry" r WHERE r.firm_id = d.firm_id AND r.corrects_entry_id = d.id AND r.correction_kind = 'RETURNED'))
+    UNION ALL
+    -- Rule 2c: what credit notes owe back to trust from a trust application, operating → trust.
+    SELECT e.firm_id, e.id, 'TRUST_APPLIED'::"MoneyMoveKind", 'OPERATING_TO_TRUST'::"MoneyMoveDirection", e.currency, e.person_id, e.company_id, e.case_id, e.invoice_id,
+           money_owed_back(e.firm_id, e.id, true)::integer, 0, e.created_at
+      FROM "money_trust_entry" e WHERE e.kind = 'WITHDRAWAL_TO_INVOICE' AND money_owed_back(e.firm_id, e.id, true) > 0
+  ), m AS (
+    SELECT s.*, money_moved_live(s.firm_id, s.source_entry_id, s.direction)::integer AS moved_minor FROM src s
+  )
+  SELECT firm_id, source_entry_id, kind, direction, currency, person_id, company_id, case_id, invoice_id, eligible_minor, returned_minor, moved_minor,
+         eligible_minor - returned_minor - moved_minor AS open_minor, created_at
+    FROM m WHERE eligible_minor - returned_minor - moved_minor > 0;
+
 -- PF-12: trigger functions on firm tables run as the wall reader (SECURITY DEFINER, search_path pinned); CREATE OR
 -- REPLACE keeps the owner but resets these settings, so they are set again.
 DO $readers$
 DECLARE f text;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['money_trust_entry_write()', 'money_credit_note_write()', 'money_write_off_write()', 'money_payment_returned_not_cleared()', 'money_trust_paid(uuid, uuid)'] LOOP
+  FOREACH f IN ARRAY ARRAY['money_trust_entry_write()', 'money_credit_note_write()', 'money_write_off_write()', 'money_payment_returned_not_cleared()', 'money_trust_paid(uuid, uuid)', 'money_credit_note_owed_back()', 'money_move_line_write()', 'money_trust_entry_moves()', 'money_moved_live(uuid, uuid, "MoneyMoveDirection")', 'money_owed_back(uuid, uuid, boolean)'] LOOP
     EXECUTE format('ALTER FUNCTION %s SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp', f);
     EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
   END LOOP;

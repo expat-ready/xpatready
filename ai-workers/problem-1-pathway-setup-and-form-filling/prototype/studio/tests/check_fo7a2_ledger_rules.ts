@@ -1,7 +1,7 @@
 // FO-7a2 (brief product/design/lead-b-briefs/FO-7a2.md rev 16.53, order rev 16.58; P-634, P-638; AG-6-60 rule 7, AG-6-63 rule 7,
 // AG-6-68 rules 5 and 8, AG-6-75 rules 1-6, AG-6-48 rules 3-4, AG-6-73 rules 1 and 4; FO-7mv's break report B-3, B-4, B-10,
 // B-13, B-17; legal reading Unconfirmed: no counsel): the trust ledger's reversal and credit-note rules, in the database.
-// DW1-DW4, DW6, DW7 of the brief, each passing and failing as named (DW5, rule 2c, waits on the tech lead's answer on #1991).
+// DW1-DW7 of the brief, each passing and failing as named (rule 2c widened by Lead 69 on #1991).
 // Two scratch databases: "t" gets every migration (the cases run here), "pre" every migration before FO-7a2's. No server,
 // no browser, no model call, no Stripe call (US$0). Both are dropped at the end.
 //   tsx studio/tests/check_fo7a2_ledger_rules.ts
@@ -49,12 +49,12 @@ try {
   psql(T, ["-1", "-f", join(MIG, NEW, "migration.sql")]);
   for (const d of all.filter((x) => x > NEW)) psql(T, ["-1", "-f", join(MIG, d, "migration.sql")]);
   const changed = fns(T).filter((f) => !fnBefore.includes(f)).map((f) => f.split(":")[0]).sort();
-  ok("FO-7a2 DW7 pass: right after its migration the functions it adds or replaces are all money_ (three of FO-7a's replaced, two new)",
-    JSON.stringify(changed) === JSON.stringify(["money_credit_note_write()", "money_payment_returned_not_cleared()", "money_trust_entry_write()", "money_trust_paid(uuid,uuid)", "money_write_off_write()"]), changed);
+  ok("FO-7a2 DW7 pass: right after its migration the functions it adds or replaces are all money_ (three of FO-7a's and two of FO-7mv's replaced for rule 2c, five new)",
+    JSON.stringify(changed) === JSON.stringify(["money_credit_note_owed_back()", "money_credit_note_write()", "money_move_line_write()", "money_moved_live(uuid,uuid,\"MoneyMoveDirection\")", "money_owed_back(uuid,uuid,boolean)", "money_payment_returned_not_cleared()", "money_trust_entry_moves()", "money_trust_entry_write()", "money_trust_paid(uuid,uuid)", "money_write_off_write()"]), changed);
   ok("FO-7a2 DW7 pass: every one of them runs as PF-12's wall reader (SECURITY DEFINER, owner xr_wall_reader, search_path pinned)",
-    sql(T, `select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader' and array_to_string(p.proconfig, ',') like 'search_path=%') from pg_proc p where p.proname in ('money_credit_note_write','money_payment_returned_not_cleared','money_trust_entry_write','money_trust_paid','money_write_off_write')`) === "t");
-  ok("FO-7a2 DW7 pass: migrate diff names no money table or type; the shortfall view reads with the caller's rights (PF-12's walls)",
-    moneyDiff(T).length === 0 && sql(T, `select coalesce(array_to_string(reloptions, ','), '') from pg_class where relname = 'money_trust_shortfall'`) === "security_invoker=true", moneyDiff(T));
+    sql(T, `select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader' and array_to_string(p.proconfig, ',') like 'search_path=%') from pg_proc p where p.proname in ('money_credit_note_write','money_payment_returned_not_cleared','money_trust_entry_write','money_trust_paid','money_write_off_write','money_credit_note_owed_back','money_move_line_write','money_trust_entry_moves','money_moved_live','money_owed_back')`) === "t");
+  ok("FO-7a2 DW7 pass: migrate diff names no money table or type; the shortfall view and the To move list read with the caller's rights (PF-12's walls)",
+    moneyDiff(T).length === 0 && sql(T, `select string_agg(coalesce(array_to_string(reloptions, ','), ''), '|' order by relname) from pg_class where relname in ('money_to_move', 'money_trust_shortfall')`) === "security_invoker=true|security_invoker=true", moneyDiff(T));
   ok("FO-7a2 DW7 fail: before its migration a reversal below zero is refused (the old balance check)",
     sql(PRE, `select pg_get_constraintdef(oid) from pg_constraint where conname = 'money_trust_entry_balance_check'`).includes("balance_after_minor >= 0) AND (seq >= 1"));
 
@@ -133,6 +133,35 @@ try {
     ok("FO-7a2 DW4 pass: on a part-paid invoice (40.00 of 100.00 from trust) a 60.00 credit note needs no return; 60.01 does",
       last(T, `begin; ${`insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, "full", reason, created_by) values ('${firmA}', '${inv3}', 6000, 'CAD', false, 'Part cancelled', 'user-R') returning number`}; rollback;`).startsWith("CN-")
       && refused(T, `insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, "full", reason, created_by) values ('${firmA}', '${inv3}', 6001, 'CAD', false, 'Part cancelled', 'user-R')`, /return 0\.01 CAD to trust first/));
+  }
+
+
+  // ------------------------------------------------------------------------------------------- DW5 (B-13; rule 2c, P-634 (2))
+  {
+    const P = u(7); deposit(100000, P); const inv = invoice(20000, P), w = sql(T, entry("WITHDRAWAL_TO_INVOICE", -20000, P, { inv }));
+    move(w, 20000);
+    const cn = (amount: number, choice?: string, cover = amount) => `insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, "full", reason, created_by${choice ? ", overpaid_choice, overpaid_minor, overpaid_entry_id" : ""}) values ('${firmA}', '${inv}', ${amount}, 'CAD', false, 'Service cancelled', 'user-R'${choice ? `, '${choice}', ${cover}, '${w}'` : ""}) returning number`;
+    const list = (dir: string) => sql(T, `select coalesce(sum(open_minor), 0) from money_to_move where source_entry_id = '${w}' and direction = '${dir}'`);
+    const bank = () => Number(balance(P)) + Number(list("TRUST_TO_OPERATING")) - Number(list("OPERATING_TO_TRUST"));
+    const bankBefore = bank();
+    ok("FO-7a2 DW5 fail (P-634 (2)): a credit note on trust money already moved to operating, with no choice, is refused; there is no \"keep in operating\" choice",
+      refused(T, cn(5000), /for money already moved to operating, choose Refund to the client or Move back to trust/, "23514")
+      && refused(T, cn(5000, "KEEP_IN_OPERATING"), /invalid input value for enum "MoneyOverpaidChoice"/));
+    const bal = Number(balance(P));
+    ok("FO-7a2 DW5 pass (rule 2c): \"Move back to trust\" for 50.00 returns it to the client's trust balance at once and lists 50.00 operating → trust; ledger + list = the bank's trust account",
+      sql(T, cn(5000, "OVERPAID_TO_TRUST")).startsWith("CN-") && Number(balance(P)) === bal + 5000 && list("OPERATING_TO_TRUST") === "5000" && list("TRUST_TO_OPERATING") === "0" && bank() === bankBefore);
+    const back = randomUUID();
+    ok("FO-7a2 DW5 fail: moving back more than is owed (50.01) is refused; pass: the 50.00 moves back and the list is clear",
+      refused(T, `begin; insert into money_move_batch (id, firm_id, currency, direction, transfer_date, recorded_by) values ('${randomUUID()}', '${firmA}', 'CAD', 'OPERATING_TO_TRUST', '2026-11-20', 'user-R'); insert into money_move_line (firm_id, batch_id, kind, direction, currency, amount_minor, source_entry_id) select firm_id, id, 'TRUST_APPLIED', 'OPERATING_TO_TRUST', 'CAD', 5001, '${w}' from money_move_batch where direction = 'OPERATING_TO_TRUST' order by recorded_at desc limit 1; commit;`, /back into trust only what a credit note owes \(5000 CAD owed back, 0 moved back\)/)
+      && last(T, `begin; insert into money_move_batch (id, firm_id, currency, direction, transfer_date, recorded_by) values ('${back}', '${firmA}', 'CAD', 'OPERATING_TO_TRUST', '2026-11-21', 'user-R'); insert into money_move_line (firm_id, batch_id, kind, direction, currency, amount_minor, source_entry_id) values ('${firmA}', '${back}', 'TRUST_APPLIED', 'OPERATING_TO_TRUST', 'CAD', 5000, '${w}'); commit; select 1`) === "1"
+      && list("OPERATING_TO_TRUST") === "0" && bank() === bankBefore + 5000);
+    const before = Number(balance(P));
+    ok("FO-7a2 DW5 pass: \"Refund to the client\" for another 50.00 records the choice and leaves trust as it is (the refund is from operating); fail: a choice for more than has moved and is not yet covered (100.01) is refused",
+      sql(T, cn(5000, "OVERPAID_REFUND")).startsWith("CN-") && Number(balance(P)) === before && list("OPERATING_TO_TRUST") === "0"
+      && refused(T, cn(10001, "OVERPAID_REFUND"), /only 100\.00 CAD of that trust application has moved to operating and has no refund or move-back choice yet/));
+    ok("FO-7a2 DW5 fail: a choice without its amount or withdrawal, or naming another invoice's application, is refused",
+      refused(T, `insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, "full", reason, created_by, overpaid_choice) values ('${firmA}', '${inv}', 100, 'CAD', false, 'x', 'user-R', 'OVERPAID_REFUND')`, /money_credit_note_overpaid_check/)
+      && refused(T, `insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, "full", reason, created_by, overpaid_choice, overpaid_minor, overpaid_entry_id) values ('${firmA}', '${invoice(1000, P)}', 100, 'CAD', false, 'x', 'user-R', 'OVERPAID_REFUND', 100, '${w}')`, /names a trust application to this invoice/));
   }
 
   // ------------------------------------------------------------------------------------------- DW6 (B-3)
