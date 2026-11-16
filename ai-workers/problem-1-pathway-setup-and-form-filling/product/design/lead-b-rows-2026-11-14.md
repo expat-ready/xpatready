@@ -1311,3 +1311,13 @@ Amendments to paste above the briefs are in `lead-b-briefs/P-627-amendments.md`.
 * **Calendar:** no Calendly. FO-3s2 (our Google adapter) comes first. FO-3s3 (Microsoft) stays shaped, after it. Cronofy is only a dated fallback behind `CalendarPort`; the date is Lead 63's (P-628), and Google's OAuth verification goes in the outside-dependency register now.
 * **Correction to P-626 A1:** FO-3w's agreement tick is FO-3c **part 1**'s line, not part 2's.
 * #1875, #1876 and #1886 are case-side batches, not Lead B rows: P-627 (3) to (5) are for the case-side shaping lane.
+
+## Rev 16.45 (16 Nov 07:3x IST, Lead B (6)): PF-13 gains the tagline (P-629 amends P-627 (6))
+
+`lead-b-briefs/P-627-amendments.md` §PF-13 is rewritten:
+* the brand set is the logo, colours, favicon, banner and a tagline;
+* `platform.branding.tagline` is plain text of 1 to 80 characters on one line, shown under the firm's name on the client portal header and FO-3w's public frame (new line DW10);
+* emails and PDFs carry neither the banner nor the tagline;
+* part 1 stays under 800 lines, or the tagline moves whole to part 2.
+
+Rev 16.44's "no tagline field anywhere" is withdrawn. One reading is for Lead 64 to confirm (P-628): AG-16-2's legal footer, the sender name and the colour stay in emails.
