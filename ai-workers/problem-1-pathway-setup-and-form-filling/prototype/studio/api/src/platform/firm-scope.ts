@@ -95,8 +95,8 @@ export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonl
   "platform.identity.sign-in": { why: "the sign-in doors find the firm by its key, then run as it (PF-4, PF-4b)", routes: [/^POST \/api\/platform\/session\/(local|callback)$/i], direct: true },
   "platform.identity.invitation": { why: "the invitation link: the token is the only key, and one sign-in account is one firm's staff member across all firms (PF-4b, BR-4)", routes: [/^(GET|POST) \/api\/public\/invitations\/[^/]+(\/accept)?$/i], direct: true },
   "fo.sales.web-form": { why: "the public enquiry form finds its firm by the form's token, then runs as it (FO-2)", routes: [/^(GET|POST) \/api\/public\/forms\/[^/]+(\/submissions)?$/i], direct: true },
-  "fo.booking.public-page": { why: "the public booking page finds its firm by key, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/firms\/[^/]+\/book\/[^/]+\/(slots|bookings)$/i], direct: true },
-  "fo.booking.self-service": { why: "the booker's own link finds its firm by the link's token, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/bookings\/[^/]+(\/(slots|reschedule|cancel))?$/i], direct: true },
+  "fo.booking.public-page": { why: "the public booking page finds its firm by key, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/firms\/[^/]+\/book(\/[^/]+\/(slots|bookings))?$/i], direct: true },
+  "fo.booking.self-service": { why: "the booker's own link finds its firm by the link's token, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/bookings\/[^/]+(\/(slots|reschedule|cancel|ics))?$/i], direct: true },
   "platform.web-address.host": { why: "the host routing finds the firm a firm address serves, on every request (PF-25)", routes: [/^[A-Z]+ \//] },
   "platform.web-address.catch-up": { why: "at start, every firm with no web address yet gets one (PF-25)", routes: [], outside: true },
   "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i], direct: true },
@@ -154,10 +154,14 @@ const routeOf = (req: ScopedReq) => {
   const m = String(req.method ?? "GET").toUpperCase(), path = String(req.path ?? req.url ?? "").split("?")[0];
   return `${m === "HEAD" ? "GET" : m} ${path.length > 1 ? path.replace(/\/+$/, "") || "/" : path}`;
 };
-/** PF-4's guard, first thing in every request, before any await: a fresh scope (its route, no firm) for the rest of the
+/** PF-4's guard, first thing in every request, before any await: a fresh scope (its route, and no firm unless the host
+ *  routing found the firm whose address this is) for the rest of the
  *  request. PF-4's guard is reached synchronously from Nest's router (core.ts's ConfigReadGuard returns a boolean), so
  *  the handler, its pipes and every query it makes continue in this scope; nothing of an earlier request survives. */
-export function enterRequest(req: object) { scope.enterWith({ route: routeOf(req as ScopedReq) }); }
+export function enterRequest(req: object) {
+  const firmId = (req as ScopedReq)[REQ_FIRM];   // a firm's own web address: the firm the host routing found (setRequestFirm)
+  scope.enterWith({ route: routeOf(req as ScopedReq), firmId: typeof firmId === "string" ? firmId : undefined });
+}
 /** PF-4's guard: the request's firm, once the session names it (the scope enterRequest opened, and the request itself
  *  for FirmWallsInterceptor). */
 export function setRequestFirm(req: object, firmId: string) {

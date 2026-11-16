@@ -12,7 +12,7 @@
 // A's address never serves firm B's page. Wildcard DNS and the certificate are PF-8's.
 import { readHost } from "./rules.ts";
 import type { WebAddresses } from "./service.ts";
-import { asBypass, inRequest } from "../firm-scope.ts";
+import { asBypass, inRequest, setRequestFirm } from "../firm-scope.ts";
 
 type Req = { method: string; path: string; originalUrl?: string; url: string; rawHeaders?: string[]; protocol?: string; headers: Record<string, string | string[] | undefined>; publicFirm?: { firmId: string } };
 type Res = { status(code: number): Res; setHeader(k: string, v: string): unknown; end(body?: string): unknown };
@@ -72,6 +72,7 @@ export function webAddressHost(addresses: Pick<WebAddresses, "resolveHost">) {
         const { pathname } = pathAndQuery(req);
         if (!(req.originalUrl ?? req.url).startsWith("/") || ODD_PATH.test(pathname) || !isPublicPath(pathname)) return sendPublicNotFound(req, res);
         req.publicFirm = { firmId: r.firmId };
+        setRequestFirm(req, r.firmId);   // PF-12: a firm's public page runs as that firm (review B1)
         return next();
       }
       if (r.kind === "redirect") {

@@ -55,6 +55,9 @@ ALTER ROLE xr_app SET log_error_verbosity = 'terse';
 GRANT xr_data TO xr_app WITH INHERIT TRUE, SET FALSE;
 GRANT xr_data TO xr_staff_bypass WITH INHERIT TRUE, SET FALSE;
 GRANT xr_data TO xr_wall_reader WITH INHERIT TRUE, SET FALSE;
+-- Trigger functions call helpers closed to PUBLIC (money_take_number): the reader may call every function; xr_app not.
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO xr_wall_reader;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO xr_wall_reader;
 GRANT xr_staff_bypass TO xr_app WITH INHERIT FALSE, SET TRUE;
 
 GRANT USAGE ON SCHEMA public TO xr_data;

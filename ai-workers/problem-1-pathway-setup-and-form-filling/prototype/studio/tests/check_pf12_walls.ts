@@ -17,6 +17,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { execFileSync, spawn } from "node:child_process";
+import { request } from "node:http";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
@@ -306,19 +307,43 @@ try {
   ok("PF-12 fail: the guard cannot set a firm id that is not a uuid", refused(() => setRequestFirm({}, "sample-firm"), /not a firm id/));
 
   // ---------------------------------------------------------------------------- the real API: start-up refusal and pass
-  const start = (env: Record<string, string>) => new Promise<{ code: number | null; out: string }>((resolve) => {
+  const PORT = 46000 + (process.pid % 1000), BASE = `http://127.0.0.1:${PORT}`;
+  // The real main.ts; `during` runs while it serves, then it is stopped.
+  const start = (env: Record<string, string>, during?: () => Promise<void>) => new Promise<{ code: number | null; out: string }>((resolve) => {
     const p = spawn(join(STUDIO, "node_modules", ".bin", "tsx"), ["--tsconfig", join(STUDIO, "api", "tsconfig.json"), join(STUDIO, "api", "src", "main.ts")],
-      { cwd: STUDIO, env: { ...process.env, DATABASE_URL: urlOf(EMPTY), STUDIO_PORT: String(46000 + (process.pid % 1000)), STUDIO_VAR: join(STUDIO, "var", `pf12-check-${process.pid}`), ...env }, stdio: ["ignore", "pipe", "pipe"] });
-    let out = "";
+      { cwd: STUDIO, env: { ...process.env, DATABASE_URL: urlOf(EMPTY), STUDIO_PORT: String(PORT), STUDIO_VAR: join(STUDIO, "var", `pf12-check-${process.pid}`), ...env }, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "", up = false;
     const done = (code: number | null) => { clearTimeout(t); resolve({ code, out }); };
-    const t = setTimeout(() => { p.kill("SIGKILL"); done(-1); }, 120_000);
-    const seen = (b: Buffer) => { out += b.toString(); if (/Product Studio on http/.test(out)) { p.kill("SIGTERM"); } };
+    const t = setTimeout(() => { p.kill("SIGKILL"); done(-1); }, 180_000);
+    const seen = (b: Buffer) => { out += b.toString(); if (!up && /Product Studio on http/.test(out)) { up = true; void (during?.() ?? Promise.resolve()).finally(() => p.kill("SIGTERM")); } };
     p.stdout.on("data", seen); p.stderr.on("data", seen); p.on("exit", (code) => done(code));
   });
   const asOwner = await start({ APP_DATABASE_URL: urlOf(EMPTY) });
   ok("PF-12 fail: the API refuses to start when it connects as the table owner (it names the reason)", !/Product Studio on http/.test(asOwner.out) && /PF-12: the API refuses to start/.test(asOwner.out) && asOwner.code !== 0, asOwner.out.slice(-400));
-  const asApp1 = await start({});
+  // Review M3: the doors through the real walled server, as a person would, on the demo-data copy.
+  const http = async (path: string, o: { host?: string; token?: string; body?: unknown } = {}) => {
+    const r = await fetch(`${BASE}${path}`, { method: o.body ? "POST" : "GET", headers: { "content-type": "application/json", ...(o.host ? { host: o.host } : {}), ...(o.token ? { authorization: `Bearer ${o.token}` } : {}) }, body: o.body ? JSON.stringify(o.body) : undefined });
+    return { status: r.status, body: await r.json().catch(() => null) as any };
+  };
+  // fetch drops a Host header, so a firm's own address is asked with node:http.
+  const onHost = (path: string, host: string) => new Promise<{ status: number; body: any }>((res) => { request({ host: "127.0.0.1", port: PORT, path, headers: { host } }, (r) => { let d = ""; r.on("data", (c) => (d += c)); r.on("end", () => { let b: unknown = null; try { b = JSON.parse(d); } catch { /* not json */ } res({ status: r.statusCode ?? 0, body: b }); }); }).on("error", () => res({ status: -1, body: null })).end(); });
+  const seen: Record<string, unknown> = {};
+  const asApp1 = await start({ DATABASE_URL: urlOf(DEMO), PLATFORM_IDENTITY: "local" }, async () => {
+    seen.site = await onHost("/api/public/site", `pf12-b.localhost:${PORT}`);
+    seen.noSite = await onHost("/api/public/site", `pf12-nobody.localhost:${PORT}`);
+    const signIn = await http("/api/platform/session/local", { body: { firmKey: "sample-firm", actorId: "user-R", secondStep: true } });
+    seen.signIn = signIn.status;
+    seen.own = await http(`/api/platform/staff/${aStaff}`, { token: signIn.body?.token });
+    seen.other = await http(`/api/platform/staff/${bStaff}`, { token: signIn.body?.token });
+    seen.page = (await http("/api/public/firms/sample-solo/book")).status;
+  });
   ok("PF-12 pass: the API starts as xr_app (DATABASE_URL's user changed to xr_app)", /Product Studio on http/.test(asApp1.out) && !/refuses to start/.test(asApp1.out), asApp1.out.slice(-400));
+  const site = seen.site as { status: number; body: any }, other = seen.other as { status: number }, mine = seen.own as { status: number };
+  ok("PF-12 pass (review B1): a firm's own web address answers its public site through the walls; fail: an unknown address is 404",
+    site?.status === 200 && site.body?.webAddress === "pf12-b" && (seen.noSite as { status: number })?.status === 404, seen);
+  ok("PF-12 pass: a staff member signs in through the walled server and reads their own firm's staff member; fail: another firm's by id is 404",
+    seen.signIn === 200 && mine?.status === 200 && other?.status === 404, seen);
+  ok("PF-12 pass (review M2): the booking page list (FO-3pa) answers through its named use, never 500", seen.page === 200 || seen.page === 404, seen.page);
 } finally {
   for (const c of clients) await c.$disconnect().catch(() => undefined);
   for (const p of pools) await p.end().catch(() => undefined);
