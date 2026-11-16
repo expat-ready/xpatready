@@ -729,11 +729,11 @@ STUCK_NAMES = ("stuck_main_gap_min", "stuck_approved_over_60")
 
 
 def stuck_numbers(N, snap, meta, now):
-    """Written from FORMULAS.md › Stuck now. Last merge to main: whole minutes from meta.main_at to taken_at (floor).
+    """Written from FORMULAS.md › Stuck now. Last merge to main: whole minutes from meta.main_at to taken_at (floor, at least 0).
     Approved over 60: entries of github/approved_open.json whose labeled_at is more than 60 minutes before taken_at;
     no list (missing, or an error object) -> not measured."""
     m = parse_ts(meta.get("main_at"))
-    N["stuck_main_gap_min"] = num(int((now - m).total_seconds() // 60) if m else None,
+    N["stuck_main_gap_min"] = num(max(0, int((now - m).total_seconds() // 60)) if m else None,
                                   "Stuck now: minutes from main's newest commit to taken_at" if m else "not measured: meta.main_at missing")
     try:
         ap = snap.json("github/approved_open.json")

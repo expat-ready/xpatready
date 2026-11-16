@@ -2235,7 +2235,7 @@ class StuckNow(unittest.TestCase):
         self.assertEqual((L["merge"]["text"], L["merge"]["light"]), ("Last merge to main: 75 min ago", "red"))   # over 60
         self.assertEqual((L["queue"]["text"], L["queue"]["light"]), ("Actions runs waiting for a machine: 31", "red"))   # over 30
         self.assertEqual((L["sessions"]["text"], L["sessions"]["light"]), ("Sessions awaiting input or failed: 1: next forms (Awaiting input)", "red"))
-        self.assertIn("per the Lead's check of claude.ai/code at 11:30 IST", L["sessions"]["src"])
+        self.assertIn("per the Lead's check of claude.ai/code at 20 Nov 11:30 IST, 30 min before this data", L["sessions"]["src"])
         self.assertEqual((L["approved"]["text"], L["approved"]["light"]), ("Approved, not merged for over 60 min: 1: #11 (90 min)", "red"))
         ok = self.lines(ci={"queued_runs": 4}, li={"stuck_sessions": [], "stuck_sessions_at": "2026-11-20T06:00:00Z"},
                         meta={"taken_at": "2026-11-20T12:00:00+05:30", "main_at": "2026-11-20T06:20:00Z"}, ap=[])
@@ -2243,6 +2243,12 @@ class StuckNow(unittest.TestCase):
         nm = self.lines()
         self.assertEqual((nm["queue"]["light"], nm["sessions"]["light"], nm["sessions"]["text"]), ("grey", "grey", "Sessions awaiting input or failed: not reported"))
         self.assertEqual(self.lines(ci={"queued_runs": 20})["queue"]["light"], "amber")
+        # review m2, m3: an empty list from an old check, or with a time that has no zone or does not parse, is amber, never green
+        for at in ("2026-11-20T04:00:00Z", "2026-11-20T11:00:00", "23:40 IST", "2026-11-20T11:20:00+05:30"):
+            got = self.lines(li={"stuck_sessions": [], "stuck_sessions_at": at})["sessions"]["light"]
+            self.assertEqual(got, "green" if at.endswith("+05:30") else "amber", at)
+        # review m4: a merge after the snapshot time reads 0, not -1
+        self.assertEqual(cd.stuck_counts({"taken_at": "2026-11-20T12:00:00+05:30", "main_at": "2026-11-20T06:30:30Z"}, [])["stuck_main_gap_min"], 0)
 
     def test_both_scripts_agree(self):
         meta = json.loads(cd.Snap(FIX).text("meta.json"))
@@ -2254,6 +2260,13 @@ class StuckNow(unittest.TestCase):
         self.assertEqual((c["keys"]["stuck_main_gap_min"], c["keys"]["stuck_approved_over_60"]), (75, 1))
         self.assertEqual((out["numbers"]["stuck_main_gap_min"]["value"], out["numbers"]["stuck_approved_over_60"]["value"]), (75, 1))
         self.assertFalse([x for x in c["trust"]["diffs"] if x["name"].startswith("stuck_")], c["trust"]["diffs"])
+        # review m6: no main_at and an error object, end to end: not measured on both sides, no difference
+        d2 = snap_with({"github/approved_open.json": {"error": "offline"}})
+        o2, _ = cd.run_reconcile(d2, os.path.join(HERE, "cockpit-reconcile.py"))
+        _, c2 = run(d2, rec=o2, note=None)
+        self.assertEqual((c2["keys"]["stuck_main_gap_min"], c2["keys"]["stuck_approved_over_60"]), (None, None))
+        self.assertEqual((o2["numbers"]["stuck_main_gap_min"]["value"], o2["numbers"]["stuck_approved_over_60"]["value"]), (None, None))
+        self.assertFalse([x for x in c2["trust"]["diffs"] if x["name"].startswith("stuck_")], c2["trust"]["diffs"])
 
 
 if __name__ == "__main__":

@@ -171,10 +171,10 @@ One box on the first screen, under Release 1: four lights and one forecast line.
 
 ## Stuck now (founder A134, 23:3x IST 16 Nov via Lead 70: one place to see what is stuck)
 The first card on the first screen, four lines, each with its light, with the source and time under each:
-- **Last merge to main: N min ago.** N = whole minutes from main's newest commit (GitHub commits/main, taken into the snapshot as meta.main_at) to the snapshot time: lead-watch's jam number (P-646). Green to 30 min, amber to 60, red over 60.
+- **Last merge to main: N min ago.** N = whole minutes from main's newest commit (GitHub commits/main, taken into the snapshot as meta.main_at) to the snapshot time (at least 0): lead-watch's jam number (P-646). Green to 30 min, amber to 60, red over 60.
 - **Actions runs waiting for a machine: N.** GitHub Actions runs with status queued (total_count), at the snapshot: lead-watch's jam number (P-646). Green to 15, amber to 30, red over 30.
-- **Sessions awaiting input or failed: N, by title.** From the Lead's check of claude.ai/code (P-647), written into the Lead input as `stuck_sessions` ([{title, state}]) and `stuck_sessions_at`; shown "per the Lead's check at HH:MM", Lead-reported. Red when any, green when none, grey when the Lead input has no `stuck_sessions`.
-- **Approved, not merged for over 60 min: N.** Open PRs labelled `review: approved` whose newest "labeled" event for that label is more than 60 minutes before the snapshot (GitHub issue events; up to 40 PRs read). Red when any, green when none; a PR with no such event is not counted.
+- **Sessions awaiting input or failed: N, by title.** From the Lead's check of claude.ai/code (P-647), written into the Lead input as `stuck_sessions` ([{title, state}]) and `stuck_sessions_at`; shown "per the Lead's check at <day time>, N min before this data", Lead-reported. Red when any; green when none and the check is 60 min old or less; amber when none but the check is older or has no time with a zone; grey when the Lead input has no `stuck_sessions`.
+- **Approved, not merged for over 60 min: N.** Open PRs labelled `review: approved` whose newest "labeled" event for that label is more than 60 minutes before the snapshot (GitHub issue events, every page; up to 40 PRs read, and a run note says when more were open). Red when any, green when none, grey when the reading failed or is missing; a PR with no such event is not counted.
 - The checker recomputes the first and the last from the same snapshot (stuck_main_gap_min, stuck_approved_over_60); the queue and the sessions are readings.
 
 ## Proven: today, this week, overall (founder A133, 22:0x IST 16 Nov via Lead 70: "11 of 10 proven" mixed the total with the day's goal)

@@ -413,6 +413,7 @@ FLOW_DISK_GB = 7                               # the Mac's disk floor for the Fl
 STUCK_MAX_PRS = 40                             # open approved PRs whose label time is read (one call each)
 STUCK_MERGE_MIN = (30, 60)                     # Stuck now: last merge to main, green to 30 min, red over 60 (P-646)
 STUCK_QUEUE = (15, 30)                         # Stuck now: Actions runs waiting for a machine, red over 30 (P-646)
+STUCK_SESSIONS_FRESH_MIN = 60                  # Stuck now: an empty session list older than this reads amber, not green
 STUCK_APPROVED_MIN = 60                        # Stuck now: approved and not merged for over 60 min
 CI_SAMPLE_RUNS = 20                            # CI runs (newest, last 3 h) whose jobs are read for the wait
 LEAD_B_BRANCH = "lead-b-front-office"          # Lead B's branch holding design/lead-b-briefs/ (Lead input lead_b_branch overrides)
@@ -1077,10 +1078,12 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     try:
         ap = []
         for p in [p for p in pulls if p.get("state") == "open" and any((l.get("name") == "review: approved") for l in p.get("labels") or [])][:STUCK_MAX_PRS]:
-            ev = gh.get(f"/issues/{p['number']}/events?per_page=100")
+            ev = gh.get_pages(f"/issues/{p['number']}/events?per_page=100", max_pages=5)   # every page: the newest label event
             at = [e["created_at"] for e in ev if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == "review: approved"]
             ap.append({"number": p["number"], "title": p.get("title"), "labeled_at": max(at) if at else None})
         wj("github/approved_open.json", ap)
+        if len([p for p in pulls if p.get("state") == "open" and any((l.get("name") == "review: approved") for l in p.get("labels") or [])]) > STUCK_MAX_PRS:
+            ERRORS.append(f"Stuck now: more than {STUCK_MAX_PRS} approved PRs open; the oldest beyond {STUCK_MAX_PRS} were not read")
     except Exception as e:
         wj("github/approved_open.json", {"error": str(e)[:200]})
     # branches with a push in the last 24 h (GitHub keeps no push time per branch: the head commit's committed date stands in)
@@ -3085,7 +3088,7 @@ def stuck_counts(meta, approved):
     (main's head commit time) to the snapshot, and the open PRs labelled `review: approved` whose label is over 60 min
     old at the snapshot. cockpit-reconcile.py recomputes both."""
     taken, main_at = parse_iso(meta.get("taken_at")), parse_iso(meta.get("main_at"))
-    gap = int((taken - main_at).total_seconds() // 60) if taken and main_at else None
+    gap = max(0, int((taken - main_at).total_seconds() // 60)) if taken and main_at else None   # a merge after taken_at reads 0
     if not isinstance(approved, list):
         return {"stuck_main_gap_min": gap, "stuck_approved_over_60": None, "approved_old": [],
                 "approved_reason": "not measured: " + ((approved or {}).get("error") if isinstance(approved, dict) else "this snapshot has no approved-PR reading")}
@@ -3115,10 +3118,19 @@ def stuck_now(d, sc, ci, li, li_src):
          "src": f"GitHub Actions runs with status queued (total_count), as lead-watch's jam line (P-646); green to {STUCK_QUEUE[0]}, red over {STUCK_QUEUE[1]}; " + at}]
     if isinstance(ss, list):
         names = [f"{x.get('title') or 'untitled'} ({x.get('state') or 'state not given'})" for x in ss if isinstance(x, dict)]
-        when = ist(parse_iso(ss_at)).split(" ", 2)[-1].replace(" IST", "") if ss_at and parse_iso(ss_at) else "time not given"
-        lines.append({"key": "sessions", "light": "red" if names else "green",
+        try:
+            sa = parse_iso(ss_at) if ss_at else None
+            sa = sa if sa and sa.tzinfo else None                  # a time with no zone is not trusted
+        except ValueError:
+            sa = None
+        tk = parse_iso(taken) if taken else None
+        age = int((tk - sa).total_seconds() // 60) if sa and tk else None
+        when = (ist(sa) + (f", {age} min before this data" if age is not None else "")) if sa else "a time not given"
+        stale = age is None or age > STUCK_SESSIONS_FRESH_MIN
+        lines.append({"key": "sessions", "light": "red" if names else ("amber" if stale else "green"),
                       "text": (f"Sessions awaiting input or failed: {len(names)}" + (": " + "; ".join(names) if names else "")),
-                      "src": f"per the Lead's check of claude.ai/code at {when} IST (P-647), Lead-reported; " + li_src, "items": names})
+                      "src": f"per the Lead's check of claude.ai/code at {when} (P-647), Lead-reported; amber when no session is listed but the "
+                             f"check is over {STUCK_SESSIONS_FRESH_MIN} min old or undated; " + li_src, "items": names})
     else:
         lines.append({"key": "sessions", "light": "grey", "text": "Sessions awaiting input or failed: not reported",
                       "src": "the Lead input has no stuck_sessions (the Lead's check of claude.ai/code, P-647)", "items": []})
