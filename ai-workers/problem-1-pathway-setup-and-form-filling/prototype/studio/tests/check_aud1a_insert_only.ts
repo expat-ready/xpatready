@@ -104,6 +104,9 @@ try {
   ok("AUD-1a DW5 fail: after the migration an insert with an actor word the mapping does not know is refused, naming the word, and leaves nothing",
     /actor word 'alice' has no actor type/.test(unknownErr) && n(BARE, "select count(*) from audit_event") === lines0 && refused(() => sql(BARE, line(W_DEMO, "test")), /actor word 'test' has no actor type/), unknownErr.slice(0, 300));
 
+  ok("AUD-1a DW5 fail (breaker): a blank or spaced id after a prefix is no known word ('staff: ', 'staff:', 'person: x')", ["staff: ", "staff:", "person: x", "system:\nx"].every((w) => refused(() => sql(BARE, line(W_DEMO, w.replace("\n", "' || chr(10) || '"))), /has no actor type/)) && n(BARE, "select count(*) from audit_event") === lines0);
+  ok("AUD-1a DW5 fail (breaker): a writer that passes an actor_type other than its word's is refused (user-P as SYSTEM); passing the word's own type goes in",
+    refused(() => sql(BARE, line(W_DEMO, "user-P", { actor_type: "'SYSTEM'" })), /is CLIENT, not SYSTEM/) && (() => { sql(BARE, line(W_DEMO, "user-P", { actor_type: "'CLIENT'" })); return n(BARE, "select count(*) from audit_event") === lines0 + 1; })());
   // The forced fixture: an actor word the mapping does not know makes the migration fail, naming it; nothing is changed.
   for (const d of before) psql(urlOf(FORCED), ["-f", join(MIG, d, "migration.sql")]);
   sql(FORCED, `insert into workspace (id, key, label) values ('${W_DEMO}', 'demo', 'Demo')`);
@@ -126,7 +129,7 @@ try {
   ok("AUD-1a DW1 fail: an UPDATE as the app's connection is refused by the grant (SA-11-3: no UPDATE right), the owner's by the trigger in plain words",
     /permission denied for table audit_event/.test(err(() => tx(BARE, `update audit_event set summary = 'x' where id = '${demoLine}'`, false, "xr_app"))) && /audit lines are never changed or deleted \(UPDATE refused\)/.test(err(() => tx(BARE, `update audit_event set summary = 'x' where id = '${demoLine}'`, false))));
   ok("AUD-1a DW1 fail: a TRUNCATE is refused, as the owner (trigger) and as the app (no grant), even with the setting on", refused(() => tx(BARE, "truncate audit_event", true), /TRUNCATE refused/) && refused(() => tx(BARE, "truncate audit_event", true, "xr_app"), /permission denied|TRUNCATE refused/) && snap() === s0);
-  ok("AUD-1a DW1 pass: an INSERT still goes through (as the app's connection)", (() => { tx(BARE, line(W_DEMO, "user-A"), false, "xr_app"); return n(BARE, "select count(*) from audit_event") === lines0 + 1; })());
+  ok("AUD-1a DW1 pass: an INSERT still goes through (as the app's connection)", (() => { tx(BARE, line(W_DEMO, "user-A"), false, "xr_app"); return n(BARE, "select count(*) from audit_event") === lines0 + 2; })());
 
   // ------------------------------------------------------------------------------------------- DW2: DELETE only as the reset
   const rows = () => n(BARE, "select count(*) from audit_event");

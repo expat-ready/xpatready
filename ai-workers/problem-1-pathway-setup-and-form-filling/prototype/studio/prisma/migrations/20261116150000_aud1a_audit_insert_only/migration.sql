@@ -28,14 +28,15 @@ CREATE INDEX "audit_event_firm_id_at_idx" ON "audit_event"("firm_id", "at");
 -- The one mapping from an actor word to its type (Lead 61, comment 6900882210 on #1870), used by the back-fill and the
 -- insert trigger. staff:<id>, the firm-staff ids and user-A/B/C (the Sample firm's configuration people, not our staff)
 -- are FIRM_STAFF; client ids and person:<party id> (a person on their own link) are CLIENT; system, system:<door> and
--- rules (the rules resolving findings) are SYSTEM; seed:<row> is SEED. Any other word: null (never guessed, BR-3).
+-- rules (the rules resolving findings) are SYSTEM; seed:<row> is SEED. An id after the prefix is AuditPort's shape
+-- (a letter or digit first, no spaces: breaker). Any other word: null (never guessed, BR-3).
 CREATE FUNCTION aud_event_actor_type(actor text) RETURNS "AuditActorType"
   LANGUAGE sql IMMUTABLE PARALLEL SAFE SET search_path = pg_catalog, public, pg_temp
   AS $fn$ SELECT CASE
-    WHEN actor ~ '^staff:.+' OR actor IN ('user-A', 'user-B', 'user-C', 'user-O', 'user-R', 'user-T', 'user-S') THEN 'FIRM_STAFF'
-    WHEN actor ~ '^person:.+' OR actor IN ('user-P', 'user-Q') THEN 'CLIENT'
-    WHEN actor IN ('system', 'rules') OR actor ~ '^system:.+' THEN 'SYSTEM'
-    WHEN actor ~ '^seed:.+' THEN 'SEED'
+    WHEN actor ~ '^staff:[A-Za-z0-9][A-Za-z0-9._:/-]*$' OR actor IN ('user-A', 'user-B', 'user-C', 'user-O', 'user-R', 'user-T', 'user-S') THEN 'FIRM_STAFF'
+    WHEN actor ~ '^person:[A-Za-z0-9][A-Za-z0-9._:/-]*$' OR actor IN ('user-P', 'user-Q') THEN 'CLIENT'
+    WHEN actor IN ('system', 'rules') OR actor ~ '^system:[A-Za-z0-9][A-Za-z0-9._:/-]*$' THEN 'SYSTEM'
+    WHEN actor ~ '^seed:[A-Za-z0-9][A-Za-z0-9._:/-]*$' THEN 'SEED'
   END::"AuditActorType" $fn$;
 
 -- An actor word the mapping does not know fails the migration, with the words listed (at most 20 shown).
@@ -64,19 +65,23 @@ UPDATE "audit_event" e SET "case_id" = c."id"
 
 ALTER TABLE "audit_event" ALTER COLUMN "actor_type" SET NOT NULL;
 
--- Insert trigger: actor_type from the actor word when the writer leaves it out (every writer on main does); a word the
--- mapping does not know is refused (BR-3: never inferred), so the writer's transaction fails like any audit failure.
+-- Insert trigger: actor_type from the actor word (every writer on main leaves it out; one that passes it must pass the
+-- word's own type); a word the mapping does not know is refused (BR-3: never inferred), so the writer's transaction
+-- fails like any audit failure. A new kind of writer (our staff, AUD-1b) adds its word to aud_event_actor_type.
 CREATE FUNCTION aud_event_fill() RETURNS trigger
   LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp
   AS $fn$
+DECLARE t "AuditActorType" := aud_event_actor_type(NEW."actor");
 BEGIN
-  IF NEW."actor_type" IS NULL THEN
-    NEW."actor_type" := aud_event_actor_type(NEW."actor");
-    IF NEW."actor_type" IS NULL THEN
-      RAISE EXCEPTION 'audit line refused: the actor word % has no actor type (staff:<id>, person:<id>, system:<door>, seed:<row> or a simulated person''s id)', quote_literal(NEW."actor")
-        USING ERRCODE = 'check_violation';
-    END IF;
+  IF t IS NULL THEN
+    RAISE EXCEPTION 'audit line refused: the actor word % has no actor type (staff:<id>, person:<id>, system:<door>, seed:<row> or a simulated person''s id)', quote_literal(NEW."actor")
+      USING ERRCODE = 'check_violation';
   END IF;
+  -- A writer that passes actor_type passes the word's own type (breaker: never a type the word does not have).
+  IF NEW."actor_type" IS NOT NULL AND NEW."actor_type" <> t THEN
+    RAISE EXCEPTION 'audit line refused: the actor word % is %, not %', quote_literal(NEW."actor"), t, NEW."actor_type" USING ERRCODE = 'check_violation';
+  END IF;
+  NEW."actor_type" := t;
   RETURN NEW;
 END $fn$;
 CREATE TRIGGER "aud_event_fill" BEFORE INSERT ON "audit_event" FOR EACH ROW EXECUTE FUNCTION aud_event_fill();
