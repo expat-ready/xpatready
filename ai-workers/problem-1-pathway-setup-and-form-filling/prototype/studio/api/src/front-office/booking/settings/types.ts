@@ -250,7 +250,7 @@ export class BookingTypesService {
   }
 
   private futureBookings(db: Tx | PrismaClient, firmId: string, typeId: string) {
-    return db.foBooking.count({ where: firmScope(firmId, { typeId, status: { in: ["SCHEDULED", "RESCHEDULED"] as const }, startsAt: { gt: this.ports.clock.now() } }) });
+    return db.foBooking.count({ where: firmScope(firmId, { typeId, status: { in: ["SCHEDULED", "RESCHEDULED"] as ("SCHEDULED" | "RESCHEDULED")[] }, startsAt: { gt: this.ports.clock.now() } }) });
   }
 
   /** Hosts being added are active staff of the firm (a host already on the type stays, even if suspended since; break m6). */
