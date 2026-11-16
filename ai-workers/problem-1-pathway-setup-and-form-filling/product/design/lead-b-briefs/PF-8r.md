@@ -1,0 +1,48 @@
+# Brief: PF-8r, a tested restore that runs every night (map row 14, first half) (cloud builder lane; row owner Lead B)
+
+Drafted 16 Nov by the shaping lane, for Lead B's approval (P-558). Row: BACKLOG **PF-8r** (runtime + tooling; local, US$0; reviewer only; 1 PR). It is the first half of map row 14 ("one restore drill passed", P-586); the cloud half is PF-8rc (the founder's AWS account). **Model: Opus 5.5, effort: medium** (a script, a runbook and one nightly entry; no product code path changes).
+
+**Starts when:** now (the row waits on nothing). No open PR touches `.github/workflows/nightly.yml`, `deploy/` or a restore script at the time of writing (#1861 touches `label-guard.yml`, `queue-gate.yml` and `.mergify.yml` only; check again at start).
+
+---
+You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime PF-8r` and take **one row, PF-8r, the restore drill**, end to end on a fresh branch from `origin/main`, one PR.
+
+**The rule (cite it in the PR):** `domain/requirements-2026-11-02/01-techno-functional/02-Architecture-Decision-Record.md` **NFR5-04** (line ~155: "RPO ≤ 15 min (continuous WAL/PITR), RTO ≤ 4 h for region failure; daily full + continuous incremental backups, all in Canadian regions, encrypted … quarterly restore drill is a contractual deliverable"; "Implication: … quarterly drill with recorded evidence"), and decision **P-586** (map row 14 counts done at "one restore drill passed").
+
+**Read only these:** NFR5-04 above; on `main`: `prototype/studio/deploy/compose.test.yml` (PostgreSQL 18.3 pinned by digest, trust auth on compose's own network, the release step that applies `prisma/migrations`), `prototype/studio/tools/skeleton-smoke.sh` (the smoke journey and its PASS/FAIL lines), `prototype/studio/tools/demo-dump.mjs` and the demo reset it uses, `.github/workflows/nightly.yml` (the nightly set, P-502: shards, `cloud-setup.sh`, the summary step), `prototype/studio/deploy/RUNBOOK-secrets.md` (the runbook style), `product/tools/run-suites.sh` (how a suite is found and run).
+
+**What to build:**
+* **`prototype/studio/tools/restore-drill.sh`** (bash 3.2 compatible, as `skeleton-smoke.sh`; never calls a model; US$0):
+  1. on `compose.test.yml`'s PostgreSQL, apply the migrations and seed the Sample firms and a demo case (the existing demo reset; no new seed);
+  2. `pg_dump --format=custom` of the database;
+  3. restore it with `pg_restore` into a **fresh** PostgreSQL container of the same pinned image (a second compose project or a second service, never the first database);
+  4. checks, each printing PASS or FAIL with what it saw: `prisma migrate status` reports nothing pending and no drift; for a fixed list of tables (written in the script: every `platform_*`, `fo_*`, `msg_*` and `module_event` table plus the case tables the demo case fills), the same row count and the same SHA-256 of the sorted ids; the app starts against the restored database and `skeleton-smoke.sh` passes against it; **the audit chain verifies end to end** once AUD-1c's verifier is on `main` (it is not on `main` today: `git grep aud_event_chain` finds nothing), and until then the step prints `SKIP: AUD-1c's chain verifier is not on main` in words;
+  5. prints the measured restore time (dump start to the last check) in seconds, and writes an evidence file `restore-drill-evidence.json` (time, `main`'s sha, each check's result, the table counts; **no row data, no personal data**).
+* **Nightly entry:** one job (or one step in an existing job) in `.github/workflows/nightly.yml` that runs the drill and fails red on any FAIL; the evidence file uploaded as the run's artefact. **Any line under `.github/` needs the release holder's own diff read before the label (P-423)**: list the lines in the PR body.
+* **`prototype/studio/deploy/RUNBOOK-restore.md`:** the cloud steps for PF-8rc (restore to a point in time as a **new** instance, run the same checks, switch the service's database secret, keep the old instance until signed off), who decides (the release holder; the founder signs off a real restore), how the 15-minute RPO and 4-hour RTO are measured (NFR5-04), and the evidence file a cloud drill writes. Cloud names and commands are written as the plan for PF-8rc, labelled "not run yet".
+
+**Done when** (P-606; list the cases in the PR body first; the reviewer ticks one per line), `tests/check_pf8r_restore.ts` runs the drill and its fail cases:
+* `PF-8r DW1 pass`: the drill passes on today's `main` (every check PASS, the audit step SKIP in words) and writes the evidence file.
+* `PF-8r DW2 fail`: one table's rows deleted in the restored copy after the restore (simulated corruption) → the count check fails and names the table; nothing else is reported as passing for that table.
+* `PF-8r DW3 fail`: a restore into a database the release step has given one extra, unapplied migration → `migrate status` fails with the migration's name.
+* `PF-8r DW4`: the drill finishes in under 5 minutes on GitHub's runner (measured, **Sample** bound), and the printed time is in the evidence file.
+* `PF-8r DW5`: the evidence file and the logs hold no row values (a test greps them for the Sample firms' emails and names: none).
+* `PF-8r DW6`: the runbook names every step and the evidence file; `tools/check-docs.sh` passes.
+
+**Duplicate check:** BACKLOG (PF-8r; PF-8rc the cloud drill; PF-8a-c the cloud estate; AUD-1c the chain verifier), `design/lead-b-briefs/` and `design/briefs/` (no restore brief; AUD-1c's brief is the verifier's), open PRs (none touching `nightly.yml`, `deploy/` or a restore script), `main` (`deploy/` holds `RUNBOOK-secrets.md`, `compose.test.yml` and `container-entry.mjs` only; no `restore-drill.sh`), BUGS (none); one `Duplicate check:` line after re-running it.
+
+**Touch list:** new `prototype/studio/tools/restore-drill.sh`, new `prototype/studio/deploy/RUNBOOK-restore.md`, new `prototype/studio/tests/check_pf8r_restore.ts`, `.github/workflows/nightly.yml` (one job or step; the release holder's diff read, P-423). Nothing in `api/`, `web/`, `prisma/` or `ports/`.
+
+**Contract used:** none between modules; the drill reads the database as a whole. The test environment is PF-7's (`compose.test.yml`, `skeleton-smoke.sh`); the module card is unchanged (`Card unchanged: tooling only`).
+
+**Parallel safety:**
+* `.github/workflows/nightly.yml` is shared tooling: one row at a time; #1861 (B194) and #1865 (B193 part 2) do not touch it at the time of writing. If another PR on it opens first, merge `main` after it lands; add a job, never reorder the shards.
+* `deploy/compose.test.yml` is read only here; PF-24w edits it (one line), so do not edit it, and if PF-24w changes it first, re-run the drill.
+* AUD-1c later turns the SKIP into a real check: its builder edits one step in `restore-drill.sh`, named in AUD-1c's PR.
+* PF-8rc starts after this row, from the runbook.
+
+**Reviewer only** (row). The reviewer checks that the restore really goes into a second, fresh database (not the first one renamed) and that DW2's corruption happens after the dump.
+
+**P-610:** ~350 changed lines, tests included; no split.
+**P-605/P-606 (every Lead B brief from 15 Nov):** Opus 5.5; no model switch mid-session. Finish whole: if an item turns out to need more than its touch list, stop and ask in a PR comment. Never widen the row silently, and never leave a part for later. Read only the requirement text the trace tool prints.
+**Rules (standard, every PF/FO brief):** P-559: firm tables, real sign-in and billing are ours in the PF/FO modules (amends P-335/P-357). One row, one session, one PR; new files only outside the touch list. Opus reviewer (P-303); re-review reads only the diff (P-277); label `review: approved` only after `Reviewer: Approve <sha>` and green CI (P-277, P-385); merge `main` only on a conflict (P-270). **Before asking for the label (rows rev 16, Lead 47: 4 of 4 labelled PRs went red after the label on 14 Nov):** run, on `main` merged into your branch, the suites of every CI part that was red on any earlier head of this PR, plus every suite in the shard that shares the demo database with yours, and paste the result lines in the PR. Live AI off, US$0, never a priced button (P-175). No real keys anywhere. Push after every step (P-557). Questions as a PR comment headed "Question for the tech lead"; report to the current Lead (`tools/current-lead.sh`) for the merge queue and to **Lead B** (row owner, branch `lead-b-front-office`, hand-over `product/design/lead-b-state.md`) for the row. Cross-module port interfaces, their fakes and shared event payload types go in `prototype/studio/ports/` (`zod` only; case-side contract v0.1 §1 rule 3); adapters stay in the module's folder; never import `engine/` or case-side files (rows rev 14.1). Event names come from `prototype/studio/ports/events.ts` (`EVENT.*`, FO-1a); add a new name there, never a string literal (rev 15.1). A database function in your migration carries your area's prefix (`fo_sales_`, `fo_booking_`, `fo_compliance_`, `fo_signing_`, `fo_retainer_`, `money_`, `msg_`, `plat_`, `platform_`), never a bare `fo_` name another area may also use, and your migration's stamp is later than the newest on `main` when it merges (rows rev 15.2, the FO-1a/FO-1b clash). Every token earns its outcome (P-556): read only the files named here and the code you change.
