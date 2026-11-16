@@ -82,7 +82,9 @@ try {
   const inboxRoute = { method: "GET", path: "/api/demo/platform-inbox" };
 
   // ---------------------------------------------------------------------------------------------------------- DW1
-  ok("PF-12b DW1 fail (QA-499's steps before the change): a cross-firm read that touches no firm writes no line, so the count starts at 0", total() === 0 && (await asBypass("platform.demo.reset", () => db.platformStaff.findMany({ select: { firmId: true } }))).length >= 2 && total() === 0);
+  // The known limit (review m1, break M1): the line is written where a use calls touchFirm; a use that reads without the call
+  // writes none. The guard is the named list, one use at a time (no use inside another) and this suite, per use.
+  ok("PF-12b DW1 fail (QA-499's count before any use runs, and the known limit): a cross-firm read that never calls touchFirm writes no line, so QA-499's count reads 0", total() === 0 && (await asBypass("platform.demo.reset", () => db.platformStaff.findMany({ select: { firmId: true } }))).length >= 2 && total() === 0);
   const queued = await requestScope.run({ correlationId: "job:pf12b-sweep", firmId: () => undefined }, () => asJob("messages.outbox_sweep", () => messages.sweep()));
   ok("PF-12b DW1 pass: the outbox sweep writes one platform.bypass line per firm it read, then queues both firms' rows", lines("job:messages.outbox_sweep") === [A, B].sort().map((f) => `${f}:1`).join(",") && queued === 2, { lines: lines("job:messages.outbox_sweep"), queued });
   const line = sql(`select actor || '|' || entity || '|' || entity_key || '|' || (detail->>'method') || '|' || (detail->>'correlationId') from audit_event where action = 'platform.bypass' and detail->>'use' = 'job:messages.outbox_sweep' and detail->>'firmId' = '${A}'`);
