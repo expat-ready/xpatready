@@ -609,11 +609,14 @@ def parse_backlog(text):
         if SEP_LINE.match(line) and prev is not None:
             hdr = cells(prev)
         prev = line
-        m = re.match(r"^\| (" + IDRE + r")" + _END, line)
+        # One rule with cockpit-reconcile.py (16 Nov, board 7 "ready_rows 7 vs 8"): the first cell with "**" and "`" removed
+        # is the row id, so "| **FO-7mv** |" is row FO-7mv (FORMULAS.md › BACKLOG rows).
+        first = cells(line)[1].replace("**", "").replace("`", "").strip() if line.startswith("|") and line.count("|") > 2 else ""
+        m = re.match(r"^(" + IDRE + r")" + _END, first)
         if not m:
             continue
         rid = m.group(1)
-        if re.match(r"^\| " + re.escape(rid) + r" \|", line):
+        if first == rid:
             if rid in lines:
                 dupes.append(rid)
                 continue
@@ -664,13 +667,25 @@ def req_section(rid):
 
 
 def parse_caps(text):
-    """qa/CAPABILITIES.md rows: id, milestone, status (progress.sh's row rule, all four milestones)."""
-    out = {}
-    for line in (text or "").splitlines():
+    """qa/CAPABILITIES.md rows: id, milestone, status (progress.sh's row rule, all four milestones).
+    16 Nov: also the Release 1 rows (R1.2 …), whose table has no M column: status from that table's Status column, m "" (so
+    they never enter the M2/T/M3/M4 Works count). Same rule in cockpit-reconcile.py parse_capabilities. Until then a checklist
+    row proven by R1.2 failed the invariant "every qa Works row names a qa capability that reads Works on main"."""
+    out, si = {}, None
+    lines = (text or "").splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("|") and i + 1 < len(lines) and SEP_LINE.match(lines[i + 1]):
+            low = [x.replace("*", "").strip().lower() for x in cells(line)]
+            si = low.index("status") if "status" in low else None
+            continue
         if re.match(r"^\| C\d", line):
             c = cells(line)
             if len(c) > 5:
                 out[c[1]] = {"m": c[4], "status": c[5].replace("*", "").strip()}
+        elif re.match(r"^\| R\d+\.\d+ \|", line) and si is not None:
+            c = cells(line)
+            if si < len(c) and c[1] not in out:
+                out[c[1]] = {"m": "", "status": c[si].replace("*", "").strip()}
     return out
 
 
@@ -777,13 +792,48 @@ def git_out(*args):
     return r.stdout if r.returncode == 0 else None
 
 
+def _raw_changes(rng):
+    """(commit, commit time, path, new blob) for every file change in a git range, newest commit first."""
+    out, cur = [], None
+    for ln in (git_out("log", "--raw", "--no-abbrev", "--no-renames", "--format=@%H %cI", rng) or "").splitlines():
+        if ln.startswith("@"):
+            cur = ln[1:].split()
+        elif ln.startswith(":") and cur and "\t" in ln:
+            meta, path = ln.split("\t", 1)
+            out.append((cur[0], cur[1], path, meta.split()[3]))
+    return out
+
+
 def records_lag(branch_ref, main_ref):
-    """Commits on a records branch that main lacks, and the oldest one's time (git, read-only)."""
+    """Record files on a records branch holding a version main has never had, and the time of the oldest such change
+    (git, read-only). Fixed 16 Nov: records reach main as one rebuilt commit on a fresh branch (P-505, "records since #…,
+    rebuilt on main"), never by merging the Lead's branch, so counting commits (`rev-list main..branch`, 1,133 on 16 Nov)
+    only grows. Per file instead: a file counts when the branch's version differs from main's and never appeared in main's
+    history since the two last shared a commit; its age is the oldest branch change after the last version main also had.
+    Returns (files, oldest time, [{path, since, sha}] oldest first)."""
     if not branch_ref or not main_ref:
-        return None, None
-    n = git_out("rev-list", "--count", f"{main_ref}..{branch_ref}")
-    old = git_out("log", "--reverse", "--format=%cI", f"{main_ref}..{branch_ref}")
-    return (int(n.strip()) if n else None), ((old or "").splitlines() or [None])[0]
+        return None, None, None
+    base = (git_out("merge-base", main_ref, branch_ref) or "").strip()
+    if not base:
+        return None, None, None
+    on_main = {(p, b) for _, _, p, b in _raw_changes(f"{base}..{main_ref}")}
+    mine = _raw_changes(f"{main_ref}..{branch_ref}")
+    zero = "0" * 40
+    out = []
+    for p in sorted({x[2] for x in mine}):
+        hb = (git_out("rev-parse", "-q", "--verify", f"{branch_ref}:{p}") or "").strip() or zero
+        mb = (git_out("rev-parse", "-q", "--verify", f"{main_ref}:{p}") or "").strip() or zero
+        if hb == mb or (p, hb) in on_main:
+            continue
+        oldest = None
+        for c, when, _, b in (x for x in mine if x[2] == p):
+            if (p, b) in on_main:
+                break
+            oldest = (c, when)
+        if oldest:
+            out.append({"path": p, "since": oldest[1], "sha": oldest[0][:9]})
+    out.sort(key=lambda x: parse_iso(x["since"]))
+    return len(out), (out[0]["since"] if out else None), out
 
 
 def branches_from_activity(activity, alive, since):
@@ -850,10 +900,11 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     m = re.search(r"this branch: `([^`]+)`", st)
     state_branch = m.group(1) if m else None
     sref = rsha if state_branch == branch else ((git_out("rev-parse", "--verify", "-q", state_branch) or "").strip() or None) if state_branch else None
-    n1, o1 = records_lag(rsha, main_ref)
-    n2, o2 = records_lag(sref, main_ref)
+    n1, o1, _ = records_lag(rsha, main_ref)
+    n2, o2, f2 = records_lag(sref, main_ref) if sref != rsha else (n1, o1, records_lag(rsha, main_ref)[2])
     meta["extra"] = {"main_ref_used": main_ref, "main_ref_is_head": bool(main_local), "records_ahead": n1, "records_oldest_unmerged_at": o1,
-                     "state_branch": state_branch, "state_branch_sha": sref, "state_branch_ahead": n2, "state_branch_oldest_unmerged_at": o2}
+                     "state_branch": state_branch, "state_branch_sha": sref, "state_branch_ahead": n2, "state_branch_oldest_unmerged_at": o2,
+                     "state_branch_files": f2, "records_lag_rule": "files"}
     wj("meta.json", meta)
     # every PR (state all)
     raw, page = [], 1
@@ -1045,8 +1096,13 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
         wt(f"git/capabilities_main/{sha}.md", txt)
         lines.append(json.dumps({"sha": sha, "date": c["commit"]["committer"]["date"]}))
     wt("git/capabilities_main.jsonl", "\n".join(lines) + ("\n" if lines else ""))
+    # qa/BUGS.md on main (16 Nov): the qa lane records bugs on main; the Lead's records copy can be days old (its BUGS.md was
+    # last touched 10 Nov and still listed QA-383 and QA-162, closed on main), so Health item 6 reads main's, as Quality does
+    bugs_main = safe("qa/BUGS.md on main", lambda: gh.get(f"/contents/{REL}/qa/BUGS.md?ref={msha}", raw=True))
+    if bugs_main is not None:
+        wt("files_main/qa/BUGS.md", bugs_main)
     # first main commit adding each open Critical/Major bug (git log -S on the table cell, so QA-44 never matches QA-449)
-    bugs = parse_bugs(git_out("show", f"{rsha}:{REL}/qa/BUGS.md") or "")
+    bugs = parse_bugs(bugs_main if bugs_main is not None else (git_out("show", f"{rsha}:{REL}/qa/BUGS.md") or ""))
     first = {}
     for b in bugs:
         if b["sev"] in ("Critical", "Major") and b["open"] and main_ref:
@@ -1946,6 +2002,8 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     first_v, seen = {}, {}
     for i, hh in enumerate(hist_caps):
         for cid, cv in parse_caps(hh["text"]).items():
+            if not cid.startswith("C"):              # the first-verdict share keeps to the C capabilities (as before 16 Nov)
+                continue
             if cid in first_v or cid in seen and seen[cid] == "known":
                 continue
             if verdict(cv["status"]):
@@ -2420,12 +2478,13 @@ def health(snap, now, comp, li):
     items = []
 
     def item(i, name, state, detail, action=None, owner=None, cls="measured"):
-        items.append({"id": i, "name": name, "state": state, "detail": detail, "action": action if state == "red" else None,
-                      "owner": owner if state == "red" else None, "class": cls})
+        # 16 Nov (founder: "a lot of red health stuff"): every item that is not green says what to do and who, amber too
+        items.append({"id": i, "name": name, "state": state, "detail": detail, "action": action if state in ("red", "amber") else None,
+                      "owner": owner if state in ("red", "amber") else None, "class": cls})
     mc = snap.j("github/main_checks.json")
     ni = snap.j("github/main_nightly.json") or {}
     if mc is None:
-        item(1, "main CI", "amber", "not measured: no check runs read for main's head")
+        item(1, "main CI", "amber", "not measured: no check runs read for main's head", "refresh the board; if it stays unread, check GitHub access", "current Lead")
     else:
         badc = [c["name"] for c in mc if c.get("conclusion") in ("failure", "timed_out", "action_required", "startup_failure")]
         running = [c["name"] for c in mc if c.get("status") != "completed"]
@@ -2433,9 +2492,9 @@ def health(snap, now, comp, li):
             item(1, "main CI", "red", "failed on main's head: " + ", ".join(badc + (["nightly"] if ni.get("conclusion") in ("failure", "timed_out") else [])),
                  "fix main before anything else merges", "current Lead")
         elif not mc and not ni:
-            item(1, "main CI", "amber", "not measured: main's head has no check runs and no nightly run was read")
+            item(1, "main CI", "amber", "not measured: main's head has no check runs and no nightly run was read", "refresh the board after the next merge or nightly run", "current Lead")
         elif running:
-            item(1, "main CI", "amber", "running on main's head: " + ", ".join(running[:5]))
+            item(1, "main CI", "amber", "running on main's head: " + ", ".join(running[:5]), "nothing yet: wait for the checks to finish, then refresh", "current Lead")
         else:
             ok_n = sum(1 for c in mc if c.get("conclusion") in ("success", "neutral"))
             sk_n = sum(1 for c in mc if c.get("conclusion") == "skipped")
@@ -2452,18 +2511,24 @@ def health(snap, now, comp, li):
     old = ex.get("state_branch_oldest_unmerged_at")
     n_ahead = ex.get("state_branch_ahead")
     if not ex.get("state_branch") or n_ahead is None:
-        item(3, "Records on main", "amber", "not measured: STATE's this branch: line or the git refs could not be read")
+        item(3, "Records on main", "amber", "not measured: STATE's this branch: line or the git refs could not be read", "fix STATE.md's \"this branch:\" line or fetch the branch, then refresh", "current Lead")
     elif n_ahead == 0 or not old:
         item(3, "Records on main", "green", f"{ex['state_branch']} has nothing main lacks")
     else:
         age = (cutoff - parse_iso(old)).total_seconds() / 3600
+        files = ex.get("state_branch_files") or []
+        unit = "record files" if ex.get("records_lag_rule") == "files" else "commits"   # older snapshots counted commits
+        first_f = (" (" + ", ".join(f"{os.path.relpath(f['path'], REL) if f['path'].startswith(REL + '/') else f['path']} since "
+                                     f"{ist(parse_iso(f['since']))}" for f in files[:3]) + (", …" if len(files) > 3 else "") + ")") if files else ""
         item(3, "Records on main", "red" if age > 24 else "green",
-             f"{n_ahead} commits on {ex['state_branch']} not on main; oldest {round(age, 1)} h" +
+             f"{n_ahead} {unit} on the Lead's branch {ex['state_branch']} hold changes main does not have; the oldest is "
+             f"{round(age, 1)} h old{first_f}" +
              ("" if ex.get("main_ref_is_head") else " (compared with the local origin/main, older than main's head)"),
-             "open the records PR to main", "current Lead")
+             "put these files in the next records PR to main, or drop the changes main has since replaced", "current Lead")
+        items[-1]["files"] = files
     gr = snap.j("github/guard_runs.json")
     if not gr:
-        item(4, "Guards", "amber", "not measured: no guard runs read")
+        item(4, "Guards", "amber", "not measured: no guard runs read", "check that the guard workflows still run on main", "current Lead")
     else:
         bad_g = [g["name"] for g in gr if g.get("conclusion") not in ("success", None)]
         none_g = [g["name"] for g in gr if g.get("conclusion") is None]
@@ -2495,20 +2560,23 @@ def health(snap, now, comp, li):
         g4["rules_caught"] = rc
         if (caught or nm4) and g4["state"] == "green":
             g4["state"] = "amber"
+            g4["action"], g4["owner"] = ("nothing to fix in the guards: they caught these today; the lanes named fix their PRs, "
+                                         "the Lead watches for the same rule caught twice"), "current Lead"
             if by_rep and not nm4 and not any(rc[k]["value"] for k in ("label_guard_removals", "ci_rule_failures", "ci_bundle_failures")):
                 g4["class"] = "reported"      # lit by a Lead-reported count alone: the weaker class (§0.3)
     burn = (li or {}).get("burn_pct_per_h")
     li_age = (cutoff - parse_iso(li["as_of"])).total_seconds() / 3600 if li and li.get("as_of") else None
     if burn is None:
-        item(5, "Burn", "amber", "not measured: Lead input has no burn_pct_per_h", cls="reported")
+        item(5, "Burn", "amber", "not measured: Lead input has no burn_pct_per_h", "write burn_pct_per_h in the Lead input at the next check", "current Lead", cls="reported")
     elif li_age is not None and li_age > 2:
-        item(5, "Burn", "amber", f"Lead-reported {burn}%/h is {round(li_age, 1)} h old (limit 2 h)", cls="reported")
+        item(5, "Burn", "amber", f"Lead-reported {burn}%/h is {round(li_age, 1)} h old (limit 2 h)", "update the Lead input and refresh the board", "current Lead", cls="reported")
     else:
         item(5, "Burn", "red" if burn > BURN_LIMIT else "green", f"Lead-reported {burn}% of the weekly plan per hour (limit {BURN_LIMIT})",
              "slow the lanes or stop paid work until burn is under 3%/h", "current Lead", cls="reported")
     caps = parse_caps(snap.text("files_main/qa/CAPABILITIES.md"))
     first = snap.j("git/bug_first_seen.json") or {}
-    bugs = [b for b in parse_bugs(snap.file("qa/BUGS.md") or "") if b["open"] and b["sev"] in ("Critical", "Major")
+    bugs_txt = snap.text("files_main/qa/BUGS.md")         # main's copy (16 Nov); older snapshots fall back to the records copy
+    bugs = [b for b in parse_bugs(bugs_txt if bugs_txt is not None else (snap.file("qa/BUGS.md") or "")) if b["open"] and b["sev"] in ("Critical", "Major")
             and any(caps.get(c, {}).get("status", "").startswith("Works") for c in b["caps"])]
     # R6: Majors a decision rules as not holding their capability (Lead-kept cockpit/health-exceptions.json) are shown, not counted
     exc_text = snap.file("cockpit/health-exceptions.json")
@@ -2526,8 +2594,12 @@ def health(snap, now, comp, li):
         elif (cutoff - parse_iso(first[b["id"]])).total_seconds() / 3600 > BUG_AGE_H:
             old_b.append(b["id"])
     item(6, "Major bugs on Works capabilities", "red" if old_b else "amber" if unk else "green",
-         ("older than 48 h: " + ", ".join(old_b)) if old_b else ("age not measured: " + ", ".join(unk)) if unk else
-         f"{len(bugs)} open Critical/Major on Works capabilities, none older than 48 h", "fix or re-rate the bug; a Major keeps its capability Partial", "qa lane via the current Lead", cls="parsed")
+         ("open Major or Critical bugs on capabilities marked proven, older than 48 h: " + ", ".join(old_b)) if old_b else
+         ("age not measured: " + ", ".join(unk)) if unk else
+         f"{len(bugs)} open Critical/Major on Works capabilities, none older than 48 h",
+         "fix each bug, or mark its capability Partial (a Major means not proven); the Lead gives them to a builder or the qa lane",
+         "current Lead (builders and qa fix)", cls="parsed")
+    items[-1]["bugs"] = [{"id": b["id"], "caps": b["caps"], "sev": b["sev"]} for b in bugs if b["id"] in old_b]
     if excluded:
         items[-1]["detail"] += "; " + "; ".join(excluded)
         items[-1]["excluded"] = excluded
@@ -2555,7 +2627,7 @@ def health(snap, now, comp, li):
     # board v57: each check's sample, for its tooltip (null = not measured, with the reason)
     nmap = {1: (len(mc) if mc is not None else None, "check runs on main's head"),
             2: (None, "computed by the page"),
-            3: (n_ahead, "commits on STATE's this branch: that main lacks"),
+            3: (n_ahead, "record files on STATE's this branch: whose version main never had"),
             4: (len(gr) if gr else None, "guard runs read (label guard, push guard)"),
             5: (1 if burn is not None else None, "Lead-reported reading"),
             6: (len(bugs), "open Critical or Major bugs on Works capabilities (exceptions left out)"),
@@ -2590,7 +2662,8 @@ def build_explain(d):
     def val(x):
         return None if not isinstance(x, dict) else x.get("value", x.get("v"))
 
-    def put(key, label, what, window, n, n_of, read, x=None, band=None, n_reason=None, src=None, cls=None, n_override=None):
+    def put(key, label, what, window, n, n_of, read, x=None, band=None, n_reason=None, src=None, cls=None, n_override=None,
+            todo=None, behind=None):
         n = n_override if n_override is not None else n
         x = x if isinstance(x, dict) else {}
         n = n if isinstance(n, int) and not isinstance(n, bool) else None
@@ -2601,6 +2674,10 @@ def build_explain(d):
              "sha": x.get("sha"), "as_of": x.get("as_of") or taken}
         if band:
             e["band"] = band
+        if todo:                                         # 16 Nov: what to do and who, shown in the panel a click opens
+            e["todo"] = todo
+        if behind:                                       # the rows, PRs, files or bugs behind the number (at most 40)
+            e["behind"] = [str(z) for z in behind[:40]] + ([f"… and {len(behind) - 40} more"] if len(behind) > 40 else [])
         if n is None:
             e["n_reason"] = n_reason or x.get("reason") or "not measured: the data holds no sample size for this number"
         E[key] = e
@@ -2730,7 +2807,10 @@ def build_explain(d):
     put("capacity.lanes_working", "Lanes working", "Branches with a push (head commit) in the last 90 min, not main, the queue or the Leads' records branches.",
         "the 90 min to " + t_ist, C["lanes_working"].get("n"), "lane branches with a push in 24 h", "Compare with free lane slots and rows ready.", C["lanes_working"])
     put("capacity.ready_rows", "Rows ready with a brief", "BACKLOG rows with a brief, not merged, no open PR, every dependency merged.", now_w,
-        C["ready_rows"].get("n"), "rows with a brief", "Rows ready with nobody on them mean a lane could start.", C["ready_rows"])
+        C["ready_rows"].get("n"), "rows with a brief", "Rows ready with nobody on them mean a lane could start.", C["ready_rows"],
+        todo="the Lead starts a lane on a ready row when there is room (current Lead)",
+        behind=[f"{r} ready" for r in C["ready_rows"].get("rows") or []] +
+               [f"{x['id']} not ready: waits on " + ", ".join(x["waits_on"] + x["non_id"]) for x in C["ready_rows"].get("not_ready") or []])
     put("capacity.room", "Free lane slots", "The Lead's lane limit (max_lanes) minus lanes working.", now_w + "; max_lanes as the Lead reported it",
         1 if val(C["room"]) is not None else None, "Lead-reported limit", "Above 0 with rows ready: add a lane.", C["room"],
         n_reason="not measured: the Lead input has no max_lanes")
@@ -2762,14 +2842,17 @@ def build_explain(d):
     windows = {1: now_w + " (main's head)", 2: "now, by your clock", 3: now_w, 4: "the newest guard runs on main", 5: "the Lead's latest reading",
                6: "bugs open now; age from the first main commit naming them", 7: now_w}
     reads = {1: "Red when a check on main's head or the newest nightly failed.", 2: "Amber at 45 min, red at 2 h.",
-             3: "Red when the oldest records commit not on main is over 24 h old.", 4: "Red when a guard's newest run failed.",
+             3: "Red when the oldest record change not on main is over 24 h old.", 4: "Red when a guard's newest run failed.",
              5: "Red above the limit.", 6: "Red when such a bug is over 48 h old.", 7: "Red when numbers disagree or an invariant breaks."}
     bands = {5: "3% or less an hour (" + COMPASS + ", P-440)", 2: "under 45 min (the board's rule)",
              6: "about 0 Major or Critical found after merge (" + COMPASS + "); this check counts every open one on a Works capability"}
     for it in d["health"]["items"]:
         put(f"health.{it['id']}", it["name"], it["name"] + ": " + (it.get("detail") or ""), windows[it["id"]], it.get("n"), it.get("n_of") or "",
             reads[it["id"]], band=bands.get(it["id"]), src="FORMULAS.md §5 item " + str(it["id"]), cls=it.get("class") or "measured",
-            n_reason="computed by the page from generated_at" if it["id"] == 2 else None)
+            n_reason="computed by the page from generated_at" if it["id"] == 2 else None,
+            todo=(it["action"] + " (" + it["owner"] + ")") if it.get("action") else "nothing: this check is green",
+            behind=[f"{f['path'].replace(REL + '/', '')} — changed {ist(parse_iso(f['since']))}, commit {f['sha']}" for f in it.get("files") or []] +
+                   [f"{b_['id']} ({b_['sev']}) on " + ", ".join(b_["caps"]) for b_ in it.get("bugs") or []])
     # ---- Factory
     lq = d["lead_queue"]
     put("factory.lead_queue", "Questions waiting on the tech lead", "Open PRs whose newest 'Question for the tech lead' has no later answer.",
@@ -3593,7 +3676,7 @@ def main():
     data.update({
         "lineage": {"records_branch": meta.get("records_branch"), "records_sha": meta.get("records_sha"), "main_sha": meta.get("main_sha"),
                     "taken_at": meta.get("taken_at"), "snapshot": snap_dir, "repo_path": REL,
-                    "ahead_of_main": num(ex.get("records_ahead"), "git rev-list --count main..records (read-only, at snapshot)", "measured", L,
+                    "ahead_of_main": num(ex.get("records_ahead"), "record files on the records copy whose version main never had (tools/cockpit-data.py records_lag, read-only, at snapshot)", "measured", L,
                                          "not measured: main's commit is not in this copy and origin/main could not be read"),
                     "main_ref_is_head": ex.get("main_ref_is_head"), "current_lead": (comp["org"]["leads"] or [{}])[0].get("name")},
         "pace": comp["pace"], "forecast": comp["forecast"], "burnup": comp["burnup"], "capacity": comp["capacity"],
