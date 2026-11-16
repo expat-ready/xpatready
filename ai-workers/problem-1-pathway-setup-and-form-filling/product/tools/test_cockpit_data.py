@@ -1433,7 +1433,7 @@ class Tooltips(unittest.TestCase):
         R = f["release"]
         self.assertEqual((R["planned"], R["built"], R["proven"], R["waiting"]), (4, 3, 1, 2))   # built 1, 3 by parts + 2 by qa's pass
         self.assertEqual(R["unlisted_ids"], [4])
-        self.assertEqual(R["qa_not_built_ids"], [3])
+        self.assertEqual(R["qa_not_built_ids"], [])                                               # no qa test after the merge: Built, awaiting qa
         self.assertEqual((R["days_left"], R["need_per_day"], R["state"]), (13, 0.2, "on track"))  # 3 left in 13 days; 1 proven in 4 days
         self.assertEqual((f["today"]["short"], f["today"]["state"]), (2, "at risk"))
         self.assertEqual([x["id"] for x in f["needs"]["items"]], ["A1", "C5"])                   # dated today; C12 later; C2 not the founder's
@@ -1442,6 +1442,15 @@ class Tooltips(unittest.TestCase):
         self.assertIsNone(cd.first_screen(d, {}, None, "x")["release"]["proven"])
         st = R["stage"]                                                       # A115: one stage per capability, the furthest first
         self.assertEqual((st["2"], st["1"], st["3"], st["4"]), ("proven", "built", "built", "planned"))
+        # P-639 (Lead 66): qa's verdict decides. Row 3 reads Not built: tested after its last part merged, it is In
+        # progress (qa found it unfinished); merged after qa's last test, it stays Built (awaiting qa).
+        rows_after = [dict(r) for r in d["build_rows"]]
+        rows_after[2].update(built_at="2026-11-15T10:00:00Z", qa_tested_at="2026-11-15T12:00:00Z")
+        f2 = cd.first_screen(dict(d, build_rows=rows_after), {2: "Works", 3: "Not built", 1: "Partial"}, None, "x")["release"]
+        self.assertEqual((f2["stage"]["3"], f2["qa_not_built_ids"], f2["built"]), ("in progress", [3], 2))   # fail case
+        rows_after[2].update(qa_tested_at="2026-11-15T09:00:00Z")
+        f3 = cd.first_screen(dict(d, build_rows=rows_after), {2: "Works", 3: "Not built", 1: "Partial"}, None, "x")["release"]
+        self.assertEqual((f3["stage"]["3"], f3["qa_not_built_ids"], f3["built"]), ("built", [], 3))          # pass case: awaiting qa
         self.assertEqual(sum(R["stage_counts"].values()), R["planned"])
         self.assertEqual(f["needs"]["items"][1]["unblocks"], "the launch gate")                     # no trigger in the case: the gate
         self.assertEqual(cd.nocode("Engage counsel (P-541, founder) before the gate P-589"), "Engage counsel before the gate")

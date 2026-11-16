@@ -676,7 +676,7 @@ def compute(snap):
         return got
 
     named_parts = {}
-    for m in re.finditer(r"(?<![A-Za-z0-9-])([A-Z]{1,4}-[A-Za-z0-9]+)" + part_rx, bl_text or ""):
+    for m in re.finditer(r"(?<![A-Za-z0-9-])([A-Z]{1,4}-[A-Za-z0-9]+)" + part_rx, (bl_text or "") + "\n" + (ck_text or "")):  # BACKLOG and the checklist's listed parts
         named_parts.setdefault(m.group(1), set()).update(parts_of(m.group(2)))
 
     def app_merged_at(rid):

@@ -1778,6 +1778,8 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
         r1 += [x for x in r["ids"] if x not in r1]
     change_at, unclassified, change_pr, nonapp_pr = {}, set(), {}, {}
     app_prs, bl_named = {}, backlog_parts(bl_text)
+    for k, v in backlog_parts(ck_text).items():          # Lead 66 (16 Nov): the parts a checklist row lists count too
+        bl_named.setdefault(k, set()).update(v)
     for p in sorted(merged, key=lambda p: p["merged_at"]):
         if is_records(p):
             continue
@@ -1846,6 +1848,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             continue
         if all(x in change_at for x in r["ids"]):
             r["built"] = max(change_day[x] for x in r["ids"]).isoformat()
+            r["built_at"] = max(change_at[x] for x in r["ids"])
     built_rows = [r for r in rows if r["built"]]
     pre = [r["map"] for r in rows if r.get("pre_baseline")]
     B = num(len(built_rows), f"shaped capabilities whose BACKLOG parts all merged through app PRs (built date = the latest part's merge date); "
@@ -1853,6 +1856,14 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             built_before=num(len(pre), "capabilities with no BACKLOG part that the checklist marks Merged or qa Works (built in the proof of concept, "
                              "before 13 Nov; no date)", "parsed", L, maps=pre))
     hist_caps = snap.cap_history()
+    qa_tested_at, prev_line = {}, {}
+    for h in hist_caps:                                   # oldest first
+        for line in (h.get("text") or "").splitlines():
+            m = re.match(r"^\|\s*\**R1\.(\d+)\**\s*\|", line)
+            if m:
+                n = int(m.group(1))
+                if prev_line.get(n) != line:
+                    qa_tested_at[n], prev_line[n] = h["date"], line
     proven_reason = None
     if not ck["has_qa_col"]:
         proven_reason = "not measured: the checklist has no qa id column yet (qa's R1 capabilities, #1748)"
@@ -2525,7 +2536,8 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             "top_numbers": {"works_today": W_today, "pct_per_works": delivery["pct_per_works_row"], "pct_per_change": delivery["pct_per_change"],
                             "lanes": lanes_top},
             "capability_table": cap_table, "rules_caught": rules, "behaviour": behaviour, "customer": customer,
-            "rows": [{"map": r["map"], "built": r["built"], "proven": r["proven"], "ids": r["ids"], "size": r["size"]} for r in rows],
+            "rows": [{"map": r["map"], "built": r["built"], "built_at": r.get("built_at"), "proven": r["proven"], "ids": r["ids"],
+                      "size": r["size"], "qa_tested_at": qa_tested_at.get(r["map"])} for r in rows],
             "r1_qa": r1_qa}
 
 
@@ -2779,10 +2791,22 @@ def first_screen(d, r1_qa, li, li_src):
     rows = d.get("build_rows") or []
     planned = [r["map"] for r in rows]
     proven = sorted(m for m in planned if QA_WORKS.match(r1_qa.get(m) or ""))
-    built = sorted(set(m for m in planned if any(r["map"] == m and r.get("built") for r in rows)) | set(proven))
+    # P-639 (Lead 66, 16 Nov): qa's verdict on main decides. A row whose listed parts all merged is Built (awaiting qa)
+    # unless qa tested it after its last part merged and read Partial or Not built: then it is In progress (qa found it
+    # unfinished). A row merged after qa's last test stays Built (awaiting qa), so the founder sees what qa owes.
+    row_of = {r["map"]: r for r in rows}
+
+    def qa_after_merge(m):
+        r = row_of.get(m) or {}
+        ta, ba = r.get("qa_tested_at"), r.get("built_at")
+        return bool(ta and ba and parse_iso(ta) >= parse_iso(ba))
+    parts_done = [m for m in planned if (row_of.get(m) or {}).get("built")]
+    qa_unfinished = sorted(m for m in parts_done if m not in proven and re.match(r"(Partial|Not built)", r1_qa.get(m) or "")
+                           and qa_after_merge(m))
+    built = sorted((set(parts_done) - set(qa_unfinished)) | set(proven))
     waiting = [m for m in built if m not in proven]
     unlisted = [m for m in planned if m not in r1_qa]
-    qa_not_built = [m for m in waiting if (r1_qa.get(m) or "").startswith("Not built")]
+    qa_not_built = qa_unfinished
     lbl = lambda m: f"R1.{m} {names.get(m, '')}".strip()
     qa_src = "qa/CAPABILITIES.md on main (R1 rows; R1.n = checklist map row n)"
     # Release 1 against the committed date
@@ -2812,7 +2836,7 @@ def first_screen(d, r1_qa, li, li_src):
     stage = {}
     for m in planned:
         stage[m] = ("proven" if m in proven else "built" if m in built else
-                    "in progress" if str(m) in wt or (r1_qa.get(m) or "").startswith("Partial") else "planned")
+                    "in progress" if m in qa_unfinished or str(m) in wt or (r1_qa.get(m) or "").startswith("Partial") else "planned")
     groups = []
     gname = {g["id"]: g["name"] for g in (d.get("capabilities") or {}).get("groups") or []}
     grp_of = {r["map"]: r.get("group") for r in (d.get("capability_table") or {}).get("rows") or []}
@@ -2880,9 +2904,9 @@ def first_screen(d, r1_qa, li, li_src):
                           "items": bl or [f.get("path", "") for f in (h.get("files") or [])][:40], "owner": h.get("owner") or "current Lead",
                           "since": "over 48 h" if bl else "see Health", "next": h.get("action") or "", "src": "Health check " + str(h["id"])})
     if qa_not_built:
-        stuck.append({"what": f"{len(qa_not_built)} Built capabilities that qa's file still reads Not built",
-                      "items": [lbl(m) for m in qa_not_built], "owner": "qa (through the current Lead)",
-                      "since": "since their parts merged", "next": "qa re-checks each and records Proven, Partial or Not built", "src": qa_src})
+        stuck.append({"what": f"{len(qa_not_built)} capabilities qa found unfinished after all their listed parts merged",
+                      "items": [f"{lbl(m)}: qa reads {r1_qa.get(m)}" for m in qa_not_built], "owner": "current Lead (a builder takes the missing part)",
+                      "since": "qa's last test", "next": "name the missing part in BACKLOG and the checklist row, then build it", "src": qa_src})
     if unlisted:
         stuck.append({"what": f"{len(unlisted)} Release 1 capabilities missing from qa's file",
                       "items": [lbl(m) for m in unlisted], "owner": "qa (through the current Lead)", "since": "not listed yet",
