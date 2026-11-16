@@ -160,6 +160,16 @@ ok("FO-4sf DW3 pass: the chip's × (keyboard) removes that source, clears the ad
 await p.goto(`${BASE}/front-office/leads?view=all&source=Referral&source=WEBSITE`); await p.locator(`tr[data-lead-row="${numberOf(L.tWeb)}"]`).waitFor({ timeout: 30_000 });
 await p.locator("[data-source-clear]").click(); await p.locator(`tr[data-lead-row="${numberOf(L.tMan)}"]`).waitFor({ timeout: 15_000 });
 ok("FO-4sf DW3 pass: All sources clears every chosen source and the address", !p.url().includes("source=") && (await p.locator("[data-source-chip]").count()) === 0, p.url());
+// Fail side (Devin on #1962): the sources cannot be loaded. The asked filter is kept and no unfiltered list is fetched.
+let unfiltered = 0;
+await p.route("**/api/front-office/leads/sources", (r) => r.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ title: "Unavailable", detail: "Sample outage." }) }));
+p.on("request", (r) => { const u = new URL(r.url()); if (u.pathname.endsWith("/api/front-office/leads") && u.searchParams.get("view") === "all" && !u.searchParams.has("source")) unfiltered++; });   // view=all only: the frame's own Unassigned count is not the list
+await p.goto(`${BASE}/front-office/leads?view=all&source=Referral`); await p.locator("[data-source-blocked]").waitFor({ timeout: 30_000 });
+ok("FO-4sf DW3 fail: when the sources cannot be loaded, the asked source stays (chip and message), no unfiltered list is fetched or shown, and Try again is offered",
+  (await p.locator('[data-source-chip="Referral"]').count()) === 1 && unfiltered === 0 && (await p.locator("tr[data-lead-row]").count()) === 0 && (await p.getByRole("button", { name: "Try again" }).count()) >= 1, { unfiltered });
+await p.unroute("**/api/front-office/leads/sources");
+await p.getByRole("button", { name: "Try again" }).first().click(); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ timeout: 15_000 });
+ok("FO-4sf DW3 pass: Try again loads the sources and the filtered list follows", (await shown()).has(numberOf(L.tBook)) && !(await shown()).has(numberOf(L.tMan)));
 // Fail side: a hand-edited address with an unknown source is dropped (all sources shown), never an error page.
 await p.goto(`${BASE}/front-office/leads?view=all&source=FAX`); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ timeout: 30_000 });
 ok("FO-4sf DW3 fail: an unknown ?source= in the address is ignored: no chip, every source listed, no error", (await p.locator("[data-source-chip]").count()) === 0 && (await p.getByRole("alert").count()) === 0);

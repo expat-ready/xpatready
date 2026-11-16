@@ -4,6 +4,7 @@
 import * as React from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { FoldArrow } from "@/components/fold-out";
 import { Button, Input, Pill, Table } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { can, KEY, LeadRows, LeadSources, READ_ONLY_REASON, seesUnassigned, words, type LeadRow } from "./contract";
@@ -52,7 +53,7 @@ function SourceFilter({ choices, chosen, toggle, clear, failed, retry }: { choic
     <div ref={box} data-source-filter className="relative flex flex-wrap items-center gap-2" onKeyDown={(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); close(true); } }}
       onBlur={(e) => { if (open && !box.current?.contains(e.relatedTarget as Node | null)) close(false); }}>   {/* focus leaving closes it (review m9) */}
       <Button ref={opener} variant="outline" size="sm" aria-expanded={open} aria-controls="fo-source-list" data-source-toggle onClick={() => (open ? close(true) : setOpen(true))}>
-        {chosen.length ? `Source (${chosen.length})` : "Source: all"}
+        <FoldArrow open={open} />{chosen.length ? `Source (${chosen.length})` : "Source: all"}
       </Button>
       {chosen.map((c) => (
         <span key={c} data-source-chip={c} className="inline-flex min-h-8 items-center gap-1 rounded-full border border-primary bg-primary/10 pl-3 pr-1 text-sm font-medium text-text-link [overflow-wrap:anywhere]">
@@ -94,11 +95,15 @@ function LeadsBody() {
   // (FO-4sf). Only sources the person has are kept: one typed into the address that they have not is dropped.
   const known = useSources();
   const choices = known.data ?? [];
-  const sources = known.isPending ? [] : params.getAll("source").filter((x, i, all) => choices.includes(x) && all.indexOf(x) === i);
+  const askedSources = params.getAll("source").filter((x, i, all) => all.indexOf(x) === i);
+  // The sources could not be loaded: the asked ones are kept as they are and no list is fetched, so a failed lookup
+  // never turns a filtered address into every lead (Devin on #1962).
+  const sources = known.isPending ? [] : known.isError ? askedSources : askedSources.filter((x) => choices.includes(x));
+  const blocked = known.isError && askedSources.length > 0;
   const go = (next: View, src: string[]) => { const p = new URLSearchParams(); if (next !== chips[0].view) p.set("view", next); for (const x of src) p.append("source", x); setParams(p, { replace: true }); };
   const toggle = (c: string) => go(view, sources.includes(c) ? sources.filter((x) => x !== c) : choices.filter((x) => x === c || sources.includes(x)));
   const [q, setQ] = React.useState("");
-  const rows = useLeads(view, sources, !known.isPending);
+  const rows = useLeads(view, sources, !known.isPending && !blocked);
   const empty = view === "mine" && !can(me, KEY.edit) ? "You have no open leads." : EMPTY[view];
   const take = useTakeIt();
   const canTake = can(me, KEY.edit);
@@ -129,7 +134,8 @@ function LeadsBody() {
           <Input type="search" placeholder="Search by name or number" value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
       </div>
-      {rows.isPending || known.isPending ? <Loading label="Loading leads" />
+      {blocked ? <p data-source-blocked className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">The leads from {sources.map(words).join(" or ")} are not shown because the sources could not be loaded. Use Try again beside Source, or choose All sources.</p>
+        : rows.isPending || known.isPending ? <Loading label="Loading leads" />
         : rows.isError ? <p role="alert" className="text-sm text-text-danger">{rows.error instanceof StaffApiError ? rows.error.message : "Could not load the leads."} <Button variant="link" size="sm" onClick={() => rows.refetch()}>Try again</Button></p>
           : !rows.data.length && sources.length ? <p data-empty role="status" className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">No leads from {sources.map(words).join(" or ")} here. Choose All sources to see every lead.</p>
           : !rows.data.length ? <p data-empty className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">{empty}</p>
