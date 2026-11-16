@@ -2,7 +2,7 @@
 
 current_lead: local_9ae95739-227d-49dc-a332-03c706a6d512 Lead 70 · 16 Nov 21:52 IST (series 2; took over from Lead 69 (series 2, local_28bf6046) at ~330k beyond start, P-446)
 
-updated: 2026-11-16 21:58 IST by **Lead 70 (series 2, local_9ae95739)**: took over 21:53 (start read ~121k, hand over ~321k, P-446); check cron ea1bd7ac at :13/:43 · weekly 90% at 21:57 (resets 17 Nov 10:30 IST) · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-644**; DECISIONS P-645, P-646 newer) · this branch: `lead/2026-11-07-lead31`; Lead 69 handed over at 21:52 (took over 19:24; its check cron d99a740d); check notes 19:26-20:25 word for word in `history/STATE-2026-11-16-2052-lead69s2-check-notes-asks-A121-A122-leads-line.md`
+updated: 2026-11-16 21:58 IST by **Lead 70 (series 2, local_9ae95739)**: took over 21:53 (start read ~121k, hand over ~321k, P-446); check cron ea1bd7ac at :13/:43 · weekly 90% at 21:57 (resets 17 Nov 10:30 IST) · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-644**; DECISIONS P-645 to P-647 newer) · this branch: `lead/2026-11-07-lead31`; Lead 69 handed over at 21:52 (took over 19:24; its check cron d99a740d); check notes 19:26-20:25 word for word in `history/STATE-2026-11-16-2052-lead69s2-check-notes-asks-A121-A122-leads-line.md`
 
 Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
@@ -18,6 +18,7 @@ Rules: RULES.md (as of **P-644**; "Account facts" line on top: GitHub Pro since 
 10. **Board v18 (22:09; board session local_d01fe726):** Flow lights all red: build 4 rows in 24 h against 10; prove 3 rows, built to proven median 33 h; failed batches 20.4%; Mac disk 4 GB. **Forecast for all 101 proven: about 31 Mar (qa at 0.67 rows a day is the limit), best 14 Feb, against 29 Nov.** #2015 (Flow box) Lead-read and labelled 22:2x. A133 progress box (IST day, week, overall) sent to the board session. Next check: Prove Lead's qa lane count and what doubles proving.
 12. **Check 22:56:** weekly reset to 0% by the founder. **Why nothing was proven since 18:24:** (a) nothing merged since 21:32: CI is saturated (68 runs queued; a 6-PR batch failed on shard 2 and split); fix: lanes keep PRs as drafts until Approve (sent to both Build Leads, night queue); (b) only R1.4 was whole, and it is Partial on QA-499 (ruled to Build Lead A, #1999). #2017 ruled (test change stays; F2 to C). #2014 waits on the founder's word for check-select-suites.sh.
 13. **23:1x (P-646):** 8.7 GB of stale git temp packs deleted (disk 4 → 13 GB); Lead 72 standby started (local_af927c49); jam alarms in lead-watch.sh; routines updated (CI brake, drafts). Owed: board Flow stages as ACT lines; founder word on #2014 check-select-suites.sh.
+14. **Every check also (P-647):** read claude.ai/code statuses (built-in browser, one script call); act on Awaiting input and Failed at once; continue idle lanes with work left; archive merged ones. #2014: third file pushed 2aa9949e1 (founder's word). Board link: https://claude.ai/artifact/EUxtzcCPrPEfTWWvLqvyMX.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 | # | Ask (IST) | Status |
