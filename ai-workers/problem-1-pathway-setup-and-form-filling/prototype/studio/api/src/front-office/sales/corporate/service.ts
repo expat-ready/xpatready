@@ -16,6 +16,7 @@ import { companyMatches, normaliseCompanyName } from "./match.ts";
 export const ROLES = ["PRIMARY", "SIGNATORY", "HR", "BILLING", "OTHER"] as const;
 const TYPES = ["INDIVIDUAL", "CORPORATE"] as const;
 type B = Record<string, unknown>;
+type Detail = Record<string, string | number | boolean | null>;
 const nameOf = (p: { givenNames: string | null; familyName: string | null }) => [p.givenNames, p.familyName].filter(Boolean).join(" ") || "(no name)";
 const idOf = (v: unknown, field: string, what: string) => (typeof v === "string" && UUID.test(v) ? v.toLowerCase() : unprocessable(`${what}: choose one from the list.`, { [field]: "Choose one from the list." }));
 const roleOf = (v: unknown) => ((ROLES as readonly unknown[]).includes(v) ? (v as FoContactRole) : unprocessable("Role: PRIMARY, SIGNATORY, HR, BILLING or OTHER (AG-2-77 rule 3).", { role: "Choose a role from the list." }));
@@ -46,8 +47,12 @@ export class Corporate {
     return { vis, see: (owner: string | null) => vis.seesAll || owner === ctx.staffId };
   }
 
-  private audit(tx: Tx, ctx: StaffContext, action: string, entity: string, entityKey: string, summary: string, detail: Record<string, string | number | boolean | null>) {
-    return this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action, entity, entityKey, summary, detail });
+  /** One audit line on a prospect, or on a company contact link (entities named literally, for check_case_feed's sweep). */
+  private audit(tx: Tx, ctx: StaffContext, action: string, entityKey: string, summary: string, detail: Detail) {
+    return this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action, entity: "fo_prospect", entityKey, summary, detail });
+  }
+  private auditLink(tx: Tx, ctx: StaffContext, action: string, entityKey: string, summary: string, detail: Detail) {
+    return this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action, entity: "fo_company_contact", entityKey, summary, detail });
   }
   private event(tx: Tx, firmId: string, type: string, subjectId: string, payload: object) {
     return tx.moduleEvent.create({ data: { firmId, type, subjectId, payload: payload as never } });
@@ -109,7 +114,7 @@ export class Corporate {
       const stage = await this.firstStage(tx, ctx.firmId, "CORPORATE");
       const p = await tx.foProspect.create({ data: { firmId: ctx.firmId, leadId: l.id, type: "CORPORATE", stageId: stage.id, subjectCompanyId: company.id, primaryContactPersonId: l.person_id, ownerStaffId: owner, createdBy: actorOf(ctx) } });
       await tx.foStageMove.create({ data: { firmId: ctx.firmId, prospectId: p.id, toStageId: stage.id, cause: "PERSON", byActor: actorOf(ctx) } });
-      await this.audit(tx, ctx, EVENT.LEAD_ENGAGED, "fo_prospect", p.id, `Staff ${ctx.staffId} engaged lead ${l.number} as Corporate.`, {
+      await this.audit(tx, ctx, EVENT.LEAD_ENGAGED, p.id, `Staff ${ctx.staffId} engaged lead ${l.number} as Corporate.`, {
         leadId: l.id, type: "CORPORATE", companyId: company.id, companyCreated: company.created, matchedOn: company.offered ? "ORG_NAME" : null, offered: company.offered, enquirerRole: role, ownerStaffId: owner, ownerFilled: active === null,
       });
       if (active === null) await this.event(tx, ctx.firmId, EVENT.LEAD_TAKEN, l.id, LeadEventPayload.parse({ leadId: l.id, personId: l.person_id, door: l.door, state: "ENGAGED", ownerStaffId: owner }));
@@ -195,7 +200,7 @@ export class Corporate {
       if (live.some((l) => l.personId === personId && l.role === role)) conflict("This person already has this role at the company.", "ALREADY_LINKED");
       if (role === "PRIMARY" && live.some((l) => l.role === "PRIMARY")) conflict("The company has a primary contact. Make this person primary by changing their role.", "PRIMARY_TAKEN");
       const link = await tx.foCompanyContact.create({ data: { firmId: ctx.firmId, companyId: c.id, personId: personId!, role, createdBy: actorOf(ctx) } });
-      await this.audit(tx, ctx, "company_contact.added", "fo_company_contact", link.id, `Staff ${ctx.staffId} added a ${role} contact to company ${c.id}.`, { companyId: c.id, personId, role, newPerson: newPerson !== null });
+      await this.auditLink(tx, ctx, "company_contact.added", link.id, `Staff ${ctx.staffId} added a ${role} contact to company ${c.id}.`, { companyId: c.id, personId, role, newPerson: newPerson !== null });
       return link.id;
     });
     return { id: linkId, ...(await this.contacts(ctx, c.id)) };
@@ -229,7 +234,7 @@ export class Corporate {
       }
       await tx.foCompanyContact.update({ where: { id: l.id }, data: { validTo: now } });
       const n = await tx.foCompanyContact.create({ data: { firmId: ctx.firmId, companyId: l.companyId, personId: l.personId, role, createdBy: actorOf(ctx) } });
-      await this.audit(tx, ctx, "company_contact.role_changed", "fo_company_contact", n.id, `Staff ${ctx.staffId} changed a contact's role from ${l.role} to ${role}.`, { companyId: l.companyId, personId: l.personId, fromRole: l.role, toRole: role, endedLinkId: l.id, previousPrimaryPersonId: old?.personId ?? null });
+      await this.auditLink(tx, ctx, "company_contact.role_changed", n.id, `Staff ${ctx.staffId} changed a contact's role from ${l.role} to ${role}.`, { companyId: l.companyId, personId: l.personId, fromRole: l.role, toRole: role, endedLinkId: l.id, previousPrimaryPersonId: old?.personId ?? null });
     });
     return this.contacts(ctx, l.companyId);
   }
@@ -246,7 +251,7 @@ export class Corporate {
       if (!others && named) conflict(`This person is the primary contact of ${named.number}. Make another person primary first.`, "PRIMARY_NEEDED");
       const n = await tx.foCompanyContact.updateMany({ where: firmScope(ctx.firmId, { id: l.id, validTo: null }), data: { validTo: new Date() } });
       if (n.count !== 1) conflict("This contact changed. Reload it.", "CHANGED");
-      await this.audit(tx, ctx, "company_contact.ended", "fo_company_contact", l.id, `Staff ${ctx.staffId} ended a ${l.role} contact of company ${l.companyId}.`, { companyId: l.companyId, personId: l.personId, role: l.role });
+      await this.auditLink(tx, ctx, "company_contact.ended", l.id, `Staff ${ctx.staffId} ended a ${l.role} contact of company ${l.companyId}.`, { companyId: l.companyId, personId: l.personId, role: l.role });
     });
     return this.contacts(ctx, l.companyId);
   }
@@ -278,7 +283,7 @@ export class Corporate {
       const same = stages.find((s) => s.key === cur.key && (s.kind === "ACTIVE" || s.kind === "NURTURE"));
       const earlier = stages.filter((s) => s.kind === "ACTIVE" && s.sortOrder < cur.sortOrder).at(-1);
       const stage = same ?? earlier ?? stages.find((s) => s.kind === "ACTIVE")!;
-      let subject: { subjectPersonId: string | null; subjectCompanyId: string | null; primaryContactPersonId: string }, extra: Record<string, string | number | boolean | null> = {};
+      let subject: { subjectPersonId: string | null; subjectCompanyId: string | null; primaryContactPersonId: string }, extra: Detail = {};
       if (to === "CORPORATE") {
         const company = await this.company(tx, ctx, b, name, see);
         const role = await this.link(tx, ctx, company.id, p.subject_person_id!);
@@ -292,7 +297,7 @@ export class Corporate {
       }
       await tx.foProspect.update({ where: { id }, data: { type: to, stageId: stage.id, ...subject } });
       await tx.foStageMove.create({ data: { firmId: ctx.firmId, prospectId: id, fromStageId: cur.id, toStageId: stage.id, cause: "CHANGE_TYPE", byActor: actorOf(ctx) } });
-      await this.audit(tx, ctx, EVENT.PROSPECT_TYPE_CHANGED, "fo_prospect", id, `Staff ${ctx.staffId} changed ${p.number} from ${p.type} to ${to}${same ? "" : ` (stage ${cur.key} is not in that pipeline: now ${stage.key})`}.`, {
+      await this.audit(tx, ctx, EVENT.PROSPECT_TYPE_CHANGED, id, `Staff ${ctx.staffId} changed ${p.number} from ${p.type} to ${to}${same ? "" : ` (stage ${cur.key} is not in that pipeline: now ${stage.key})`}.`, {
         fromType: p.type, toType: to, fromStageKey: cur.key, toStageKey: stage.key, sameStage: !!same,
         fromSubjectPersonId: p.subject_person_id, fromSubjectCompanyId: p.subject_company_id, toSubjectPersonId: subject.subjectPersonId, toSubjectCompanyId: subject.subjectCompanyId, ...extra,
       });
