@@ -9,7 +9,8 @@ SINCE="${1:-30}"
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; gh() { bash "$TOOLS/gh.sh" "$@"; }
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT" || exit 99
 STATE_DIR="/private/tmp/claude-$(id -u)/lead-watch"; mkdir -p "$STATE_DIR"
-act=0; say() { echo "$1"; }; ACT() { act=$((act+1)); echo "ACT   $1"; }
+act=0; say() { echo "$1"; }; ACT() { act=$((act+1)); echo "ACT   $1"; echo "ACT   $1" >> "$SEEN"; }
+SEEN="$STATE_DIR/seen.$$"; : > "$SEEN"; seen() { printf '%s\n' "$1" >> "$SEEN"; }; trap 'rm -f "$SEEN"' EXIT   # B202: lines step 9b reuses
 
 say "time  $(TZ=Asia/Kolkata date '+%d %b %H:%M IST')"
 
@@ -41,7 +42,7 @@ merged=$(gh pr list --state merged --search "merged:>=$since" --json number,titl
 # P-500: product progress counts only PRs that changed app code (by files changed); the rest are shown apart.
 appm=$( [ -n "$merged" ] && echo "$merged" | bash "$TOOLS/app-code-prs.sh")
 say "merged in ${SINCE} min: $(echo "$appm" | grep -c .) changed app code (P-500) · $(echo "$merged" | grep -c .) in all (records, docs, tooling, tests included)"; [ -n "$appm" ] && echo "$appm" | sed 's/^/      app  /'
-prs=$(gh pr list --state open --limit 80 --json number,title,labels,isDraft,headRefName,statusCheckRollup)
+prs=$(gh pr list --state open --limit 80 --json number,title,labels,isDraft,headRefName,statusCheckRollup,additions,deletions,createdAt)
 echo "$prs" | python3 -I -c '
 import json,sys
 prs=[p for p in json.load(sys.stdin) if not p["headRefName"].startswith("mergify/")]
@@ -55,7 +56,7 @@ print("queue %d queued · %d approved not queued · %d open without label" % (le
 for p in deq: print("ACT   #%d dequeued: owner merges main or fixes (%s)" % (p["number"],p["title"][:50]))
 for p in rl:  print("ACT   #%d red after approval (%s)" % (p["number"],p["title"][:50]))
 ' | tee "$STATE_DIR/q.txt"
-act=$((act + $(grep -c '^ACT' "$STATE_DIR/q.txt")))
+act=$((act + $(grep -c '^ACT' "$STATE_DIR/q.txt"))); cat "$STATE_DIR/q.txt" >> "$SEEN"
 
 # 3. Questions for the tech lead in the window.
 qs=$(gh search prs --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" --state open "Question for the tech lead" --json number -q '.[].number' 2>/dev/null)
@@ -81,7 +82,7 @@ done
 # 3c. The "needs Lead" queue (P-611 (2), row G-1): LANE-REPORT first lines on open PRs and on #1796 (look-back 24 h,
 # idempotent) go into product/state/items.json; open and not acked over 45 min = ACT, over 90 min = FOUNDER line. 3b stays the
 # fallback for reports in free text. Ack with: python3 product/tools/items.py ack <id> --by "Lead N"; commit items.json.
-bash "$TOOLS/lead-queue.sh" > "$STATE_DIR/queue.txt" 2>&1; cat "$STATE_DIR/queue.txt"
+bash "$TOOLS/lead-queue.sh" > "$STATE_DIR/queue.txt" 2>&1; cat "$STATE_DIR/queue.txt"; cat "$STATE_DIR/queue.txt" >> "$SEEN"
 act=$((act + $(grep -c '^ACT' "$STATE_DIR/queue.txt")))
 git diff --quiet -- "$TOOLS/../state/items.json" 2>/dev/null || say "queue items.json changed: commit it with the records (P-557)"
 
@@ -89,7 +90,7 @@ git diff --quiet -- "$TOOLS/../state/items.json" 2>/dev/null || say "queue items
 git fetch -q origin 2>/dev/null
 # 1b. Local lanes (founder, 8 Nov, P-420): a Mac lane that stops, or whose messages are paused, makes no GitHub signal.
 # After the fetch, so "PRs merged since" reads today's main. Counted by its ACT lines (a crash adds none, and says so).
-ll=$(bash "$TOOLS/local-lanes.sh" 2>&1); llrc=$?; [ -n "$ll" ] && echo "$ll"; lln=$(grep -c '^ACT' <<<"$ll")
+ll=$(bash "$TOOLS/local-lanes.sh" 2>&1); llrc=$?; [ -n "$ll" ] && echo "$ll"; seen "$ll"; lln=$(grep -c '^ACT' <<<"$ll")
 [ "$llrc" != "$lln" ] && echo "warn  local-lanes.sh exit $llrc but $lln ACT line(s): read its output"
 act=$((act + lln))
 alive=$(git for-each-ref --sort=-committerdate --format='%(committerdate:unix) %(refname:short)' refs/remotes/origin \
@@ -154,6 +155,29 @@ lib=$(python3 "$TOOLS/library-freshness.py" 2>&1); nb=$?
 if [ "$nb" -gt 0 ]; then ACT "library: ${nb} master(s) behind: $(echo "$lib" | grep '^behind' | sed -E 's/^behind +//; s/: .*first [0-9a-f]+ at / since /; s/; refresh.*//' | paste -sd ';' -)"
 else say "library: every living master current"; fi
 od=$(python3 "$TOOLS/outside-deps-watch.py" 2>&1); echo "$od"; act=$((act + $(grep -c '^ACT' <<<"$od")))   # 9. Outside dependencies (B192, P-618): start window, stuck 48 h, blocked without decision date or fallback
+seen "$od"
+
+# 9b. Known failures (B202, founder A119 16 Nov, P-639): every failure already met is one line of tools/known-failures.tsv,
+# checked every time from what this check already read: size walls, records PRs, records off main, the proving pipe
+# (Built waiting for qa vs qa lanes pushing) and the feeding pipe (ready rows per running builder, idle builders with no row).
+# Lines already printed above (questions, approved then red, sle-watch, the board's idle lanes) are counted, not repeated.
+kf_off=$(for f in $(git diff --name-only origin/main HEAD -- "$D" "${D%/*}/BACKLOG.md" "${D%/*}/STATE.md" "${D%/*}/RULES.md" .claude/skills 2>/dev/null); do
+  tm=$(git log -1 --format=%ct origin/main -- "$f" 2>/dev/null); git log --format="%H %ct $f" HEAD -- "$f" 2>/dev/null | awk -v tm="${tm:-0}" '$2 > tm' | tail -1; done)
+P_DIR="${D%/*}" KF_PRS="$prs" KF_ALIVE="$alive" KF_OFF="$kf_off" KF_SEEN="$SEEN" KF_BOARD="${COCKPIT_DATA:-${TMPDIR:-/tmp}/cockpit/data.json}" \
+python3 -I -c '
+import json, os, time
+from datetime import datetime, timezone
+E = os.environ; P = E["P_DIR"]
+size = lambda f: os.path.getsize(f) if os.path.exists(f) else None
+try: prs = json.loads(E["KF_PRS"] or "null")
+except ValueError: prs = None
+try: board = json.load(open(E["KF_BOARD"]))
+except (OSError, ValueError): board = None
+off = [{"sha": l.split()[0], "at": datetime.fromtimestamp(int(l.split()[1]), timezone.utc).isoformat(), "file": l.split()[2]} for l in E["KF_OFF"].splitlines() if l.strip()]
+print(json.dumps({"now": datetime.now(timezone.utc).isoformat(), "files": {"RULES.md": size(P + "/RULES.md"), "STATE.md": size(P + "/STATE.md")},
+  "prs": prs, "records_off_main": off, "alive": [a for a in E["KF_ALIVE"].splitlines() if a.strip()], "board": board,
+  "seen": open(E["KF_SEEN"]).read().splitlines()}))' > "$STATE_DIR/known-facts.json"
+kf=$(python3 -I "$TOOLS/known-failures.py" --facts "$STATE_DIR/known-facts.json" 2>&1); echo "$kf"; act=$((act + $(grep -c '^ACT' <<<"$kf")))
 
 exit "$act"
 
