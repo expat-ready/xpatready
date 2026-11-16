@@ -1,64 +1,59 @@
-# Review: FO-3w part 1, the public booking pages (PR #1921): re-review at 003e49c33
+# Review: FO-3w part 1, the public booking pages (PR #1921): re-review at e903d44e3
 
-Reviewer: Opus 5.5, effort high, fresh context (did not build it). Skill `screen-review`. Journey test: `journey-test-reviewer-fo3w-part1-2026-11-16.md`, **8/10** at 52d96246d. The fixes below lift error recovery and accessibility to 1 each, so **9/10 at this head**.
-**First review:** 52d96246d, verdict Block. **Re-review:** the diff only, `git diff 52d96246d..003e49c33 -- …/prototype`. Five files changed: `type-page.tsx`, `time.ts`, `contract.ts`, `frame.tsx` and the test. Date 16 Nov 2026, ~10:00 IST.
+Reviewer: Opus 5.5, effort high, fresh context (did not build it). Skill `screen-review`. Journey test: `journey-test-reviewer-fo3w-part1-2026-11-16.md` (8/10 at 52d96246d; **9/10 from 003e49c33**, unchanged here).
+**Reviews so far:**
+- 52d96246d: Block.
+- 003e49c33: Approve (R1, B-M1..B-M3, m1, m4, m5 fixed).
+- **This one:** the diff only, `git diff 9404ab637..e903d44e3 -- …/prototype`. Two files: `type-page.tsx` and the test. 16 Nov 2026, ~10:45 IST.
+
 **The bar:** brief `lead-b-briefs/FO-3w.md` with A1 (P-626-order.md) and P-629; concept `fo-3-booking` r2 §3 BR-1..BR-7 and BR-11, §4 Public, §5 and §6.
 
-**Verdict: Approve.** Every Major from the first review is fixed, each with a check that fails without its fix. CI's `pr-rules` and `module-cards` are green on this head. Four new Minors and the earlier Shoulds remain; none blocks.
+**Verdict: Approve.** Devin's finding and my n1 and n2 are fixed. The two new checks fail when their fixes are reverted. Nothing new blocks.
 
-## Re-run at 003e49c33 (ports 4545 and 4845-4846; never :4400)
-- **Suite:** `check_fo3w_booking_browser.ts` 65/65, exit 0, on a fresh copy. I rebuilt `web/dist` at this head and ran from a scratch worktree, so no shared-tree file was touched.
-- **My walks, repeated on the same copy:**
-  - Zone dialog at 360 px: Close 44 × 44; "Use this zone" 126 × 44; input 286 × 44.
-  - axe (WCAG 2.2 tags) on the dialog finds nothing.
-  - 200 % zoom at 1024 and 1440: no sideways scroll.
-  - No console or page error.
-  - The two-tab slot-taken journey and the Persian and long names still hold.
-- **DW11:** passed at 52d96246d (PF-1 28/28, FO-4 45/45). Not re-run: the diff touches neither `routes.tsx` nor any shared file.
+## Re-run at e903d44e3 (ports 4546-4548 and 4846-4849; never :4400)
+- **Suite:** `check_fo3w_booking_browser.ts` **67/67, exit 0** on a fresh copy. `web/dist` rebuilt at this head; run from a scratch worktree, so no shared-tree file was touched.
+- **Mutation:** I reverted both fixes (`pad = 0`, and the no-times line drawn even on error), rebuilt, and ran on a fresh copy: **65/67**. Exactly the two new checks fail:
+  - "BR-3 (Devin #1921): no browser zone → … Mon 30 Nov 19:30"
+  - "(review n1): a month that fails to load shows the error and not 'No free times'"
+- **Test seed:** the Monday 19:00-20:00 Toronto window (`check_fo3w…:48-50`) only adds Sample hours. Earlier checks still pass with it: J-P2's 30 Nov list now ends with 19:00 and 19:30.
 
-## First review's findings
-| Id | Status | Evidence at 003e49c33 |
+## The diff, checked
+| Item | Status | Evidence |
 |---|---|---|
-| R1: dialog targets under 44 px | **Fixed** | The picker has its own Radix dialog (`type-page.tsx:82-99`), Close and the button `min-h-11 min-w-11` / `h-11`; `controls.tsx` untouched. The test's `small()` now covers `[role=dialog]` with the dialog open (`check_fo3w…:272-276, 283-287`). |
-| B-M1: zone change hid times at the month's edge | **Fixed** | The zone is in the query key (`type-page.tsx:34`). A keyboard change to London fetched once with `tz=Europe/London`, and the labels redrew. New check: Dubai → Toronto still shows Mon 30 Nov 16:30. That instant is past Dubai's month end, so the check fails without the fix. |
-| B-M2: picker took zones the server refuses | **Fixed** | `realZone`, `browserZone` and `allZones` keep only the server's shape (`time.ts:8-15`). Factory, +05:30 and Etc/GMT+14 are refused on the field. |
-| B-M3: a lost answer showed nothing | **Fixed** | A failed `fetch` becomes Problem status 0 (`contract.ts:42-44`), and the catch guards the shape (`type-page.tsx:185`). Aborted POST → "We could not take this booking. Please try again.", answers kept, no page error. |
-| m1: focus dropped to BODY | **Fixed** | Each step's h1 takes focus when it replaces another (`useHeadingFocus`, `type-page.tsx:64-69`). Walk: after choosing a time, focus is on "Your details"; after Back, on "Choose a time". Escape, Close and "Use this zone" return focus to "(change)", as the Trigger should. |
-| m2: undeclared strings | **Declared** in the PR body for concept §5. |
-| m3: `title` tooltip | Left as a Should, as the PR states (BIC-14 Partly). |
-| m4: header 16 px off | **Fixed** (`frame.tsx:12-13`). |
-| m5: J-P2 fail did not check the zone | **Fixed** (`check_fo3w…:143`). |
-| CI body | **Fixed:** `pr-rules` and `module-cards` succeed on 003e49c33. |
+| Devin (red): no browser zone lost the firm's evening on a month's last day (BR-3) | **Fixed** | Details below the table. |
+| n1: failed month also said "No free times" | **Fixed** | `Times` gets `error` only when there is no data for this key (`type-page.tsx:59`). The no-times line is withheld while `error` is set (`:149`). Check: aborted slots → "We could not load the times. Please try again." and no `[data-public-state=no-times]`. |
+| n2: a ZodError taken for a refusal | **Fixed** | The guard adds `!(x instanceof Error)` (`type-page.tsx:189`). A ZodError or TypeError now gives the status-0 sentence, "We could not take this booking. Please try again.", never a crash. No check, as the PR says: it needs the API to drift from the contract. Accepted. |
+| n4: zone pattern copied from the API | Left for a shared contract; answered on Devin's thread. Stays a Should. |
 
-Also in the diff, and checked:
-- Names are wrapped and wrapped in `<bdi>` (breaker m3, m4).
-- A later error keeps the page drawn (breaker m8). Walk: a month load aborted → the grid and h1 stay, with "We could not load the times. Please try again." above them.
-- Breaker M4 (Reschedule and Cancel lead to a dead end until part 2) is answered in the PR with the brief's split. Accepted.
+**How the Devin fix works** (`type-page.tsx:38-42`):
+- With no zone, the month is asked one day wider each side in UTC, with no `tz`. One day covers every offset up to ±14 h. The window is at most 33 days, well under the server's 62-day cap.
+- The grid still filters to the month's own days in the firm's zone (`inMonth`, `monthGrid`).
+- With a zone, `pad` is 0, so the request is unchanged.
+- Check: a "Factory" browser sees "Times shown in America/Toronto" and Mon 30 Nov 19:30 (00:30 UTC on 1 Dec).
 
-## New Minors (Should; none blocks)
-- **n1. A failed month says both "could not load" and "No free times in December. Try the next month."** Cause: `type-page.tsx:146` draws the no-times text from the last good data. To see it: abort the slots call, then press Next month. Fix: when `error` is set for this month, draw no grid and no no-times line.
-- **n2. A success answer that fails the zod contract would still crash the catch.**
-  - `schema.parse` throws a ZodError (`contract.ts:48`).
-  - A ZodError has an `issues` array of objects, so the guard `"issues" in x` takes it as a Problem (`type-page.tsx:185`).
-  - `i.split` then throws (`:186`). The booking is made, but nothing is shown.
-  - This only happens if the API drifts from the contract.
-  - Fix: test `typeof x.status === "number"`, or turn a parse failure into a status-0 Problem in `publicCall`.
-- **n3. The picker opens with focus on Close, not on "Search for a city or zone".** Radix's default is the first focusable element. The team's `Dialog` focuses the first field (`openOnFirstField`). Fix: `onOpenAutoFocus` → the input (`type-page.tsx:86`).
-- **n4. The server's zone pattern is copied into the web app** (`time.ts:8`, from `service.ts`'s `ZONE_NAME`), as the phone pattern is (`type-page.tsx:23`). STANDARDS §7 says no logic duplicated between web and API. Fix: move both into a shared contract, as a later item.
+**Read and found sound:**
+- With a zone nothing changes, and a zone change still refetches in that zone (B-M1's check passes).
+- A background refetch that fails while data is shown now keeps the data and no alert. That is right: the shown times are still the last good answer, and slot-taken already gave its own message.
 
-## Scores at this head (changes from the first review only)
-- **D5** 3 → 4: a lost answer is said, and a later error keeps the page.
-- **D12** 4: the header is aligned.
-- **D13** 3 → 4: 44 px in the dialog, focus managed; the tooltip is still hover only.
-- **D16** 4 → 5: each fix has a fail check; the dialog is measured.
-- **BIC-20** Partly → Met.
-- **BIC-13, BIC-14** still Partly (Should).
-- Others as in the first review: D1 4, D2 5, D3 4, D8-D11 4, D14 4, D15 5, D18 4, D19 4; D4, D6, D7 N/A; D17 and D20 simulated only.
+## Still open (Should; none blocks)
+- **n3.** The zone picker opens with focus on Close, not on the field (`type-page.tsx:89`). The team's Dialog uses `openOnFirstField`.
+- **n4.** Duplicated zone and phone patterns (`time.ts:8`, `type-page.tsx:23`): for a shared contract.
+- **m3, BIC-14.** The zone-line tooltip is a native `title`, so keyboard and touch users never see it.
+- **BIC-13.** The error summary's lines are not links to their fields.
+- **Part 2.** Reschedule and Cancel lead to "This page is not available." until the manage page lands (the brief's split; the PR states it).
+
+## Scores at this head
+Unchanged from 003e49c33:
+- D1 4 · D2 5 · D3 4 · D5 4 · D8-D11 4 · D12 4 · D13 4 · D14 4 · D15 5 · D16 5 · D18 4 · D19 4
+- D4, D6, D7 N/A · D17 and D20 simulated only
+- BIC-20 Met · BIC-13 and BIC-14 Partly (Should)
+- Journey 9/10
 
 ## Could not check
-- A real screen reader. A visible (headed) browser: headless only here.
+- A real screen reader. A visible (headed) browser: headless only.
 - An intended visitor's unaided walk (D17 and D20 stay with the founder).
-- Safari and Firefox zone spellings.
-- The full CI run: the PR is still a draft.
+- Safari and Firefox.
+- CI at e903d44e3: `pr-rules`, `module-cards` and `guard` were still running when I wrote this; they were green at 003e49c33, and the body is unchanged.
+- DW11: not re-run. It passed at 52d96246d, and since then no change touches `routes.tsx` or a shared file.
 
 Verdict: Approve
