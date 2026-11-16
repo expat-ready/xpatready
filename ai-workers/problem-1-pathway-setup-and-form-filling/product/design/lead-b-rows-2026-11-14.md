@@ -1733,3 +1733,10 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * Lead 71 ruled on #2021 (P-205): a whole-suite entry for `check_bk5_start_browser.cjs` in `run-suites.sh` QUARANTINE, with a comment block naming QA-498, the ruling, "remove by 18 Nov or when the QA-498 fix lands", and that the nightly full set still runs it. No per-line skip. Cloud builder, one PR, Ready for Lead read, Opus reviewer, no breaker; the Lead labels it and it lands ahead (P-214).
 * Briefs: `lead-b-briefs/QA-498q.md` (the quarantine: start now) and `lead-b-briefs/QA-498.md` (the fix: root cause first, P-502; it starts after QA-498q merges; it takes the name off the list; first among the night lines).
 * Until QA-498 lands, BK-5 stays Partial (P-305), and qa does not count the demo doors as Works.
+
+## rev 16.90 (17 Nov 03:38 IST): #1945 merged (03:37 IST), three rows unblocked
+* PF-6 part 2a (web only), PF-6m2 (`identity/session/service.ts`, `firms/signup-identity.ts`) and PF-4c part 1 (`identity/service.ts`, `identity/routes.ts`, new `batch-invite.ts`) may run in parallel. Their touch lists do not overlap with each other or with any open PR.
+* PF-4c part 1 shares `api/src/platform/MODULE.md` with #2029 (PF-12b part 1): one entry-point line, and whichever opens second merges main on the conflict (P-270).
+* New hold: #2029 touches `messages/send/messages.ts`, so PF-19e now waits on #2029 as well as #1956 and #1961.
+* PF-12b part 2 waits on #2029, and must never run beside PF-6m2 or PF-4c part 1 (both touch identity).
+* Merge watch: #1956, #1961, #1959, #1918, #2029.
