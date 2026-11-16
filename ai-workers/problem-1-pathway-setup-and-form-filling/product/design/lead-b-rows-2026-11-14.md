@@ -1701,3 +1701,7 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 ## Rev 16.84 (16 Nov 23:26 IST): Lead 70's network rule posted on the 11 working PF/FO PRs
 * **The rule:** never ask for a network or environment change, and never wait on one. A blocked public page gets `Not verified: <site> blocked on the cloud network`; the lane uses what the repository holds and goes on. Build Lead A reads blocked official pages from the Mac when a claim needs it, as it did for FO-13i.
 * **Posted on 11 PRs** (comments 6924561016 to 6924564927): #2028 (PF-Fp part 1, new), #2025, #2021, #2019, #2014, #2012, #2011, #2009, #2001, #1998 and #1991. The labelled and queued PRs were left alone.
+
+## Rev 16.85 (16 Nov 23:41 IST): CI jam check for Lead 71
+* **Lead 71's figures:** no merge since 21:32 IST, 104 runs queued, about 11–16 jobs at once, and about 16 jobs per full ci run. Lead 71's rule: a PR whose head has no `Reviewer: Approve <head>` stays a draft, and nobody pushes to a ready PR except a fix. The label-guard and records-label start-up failures (16:42–18:00 UTC) were a scheduled GitHub brownout of `pull_request_target`, now over. Lead 71 read #2012's migration (cbf6bebd3: additive, later stamp); it waits only on ci.
+* **Lead B's check:** all 11 working PF/FO PRs, by head sha against their comments. All 11 have `Reviewer: Approve` on their current head: #2028, #2025, #2021, #2019, #2014, #2012, #2011, #2001, #1998, #1991 are ready, and #2009 is a draft. None breaks the rule, so no draft change was needed.
