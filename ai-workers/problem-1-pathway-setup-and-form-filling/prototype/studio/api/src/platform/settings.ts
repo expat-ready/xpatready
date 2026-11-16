@@ -203,8 +203,10 @@ export const EVERYONE_SEES_ALL = registerSetting({
   description: "Everyone in the firm sees every client, case, prospect and task (SA6-D1 seeds the view.all keys on every starter role); off means each person sees their own.",
   schema: z.boolean(), default: true,
 });
-/** PF-19p: a platform value, not a firm's: messages read its default only, and only ExpatReady staff may change it. */
-export const ACCOUNT_MAIL_FROM = registerSetting({ key: "platform.account_mail_from", ownerModule: "platform", changePermission: "system/settings:manage", description: "The From and Reply-To address of platform account emails (sign-up's verification), sent as ExpatReady. Sample no-reply@expatready.com.", schema: z.email(), default: PLATFORM_ACCOUNT_FROM_SAMPLE });
+/** PF-19p: a platform value, not a firm's. The settings store holds firm values only, so messages read this definition's
+ *  default: changing it is a code change until ExpatReady staff get a platform settings route (PF-17's console; its key
+ *  system/settings:manage is held by no firm role, so no firm route can set it). Break F2. */
+export const ACCOUNT_MAIL_FROM = registerSetting({ key: "platform.account_mail_from", ownerModule: "platform", changePermission: "system/settings:manage", description: "The From and Reply-To address of platform account emails (sign-up's verification), sent as ExpatReady. A platform value: messages read this default, never a firm's value. Sample no-reply@expatready.com.", schema: z.email(), default: PLATFORM_ACCOUNT_FROM_SAMPLE });
 export const REQUIRE_TWO_STEP = registerSetting({
   key: "platform.require_two_step", ownerModule: "platform", changePermission: "agent/security-policy:manage",
   description: "Require two-step sign-in for all staff (AG-1-40, AG-16-24): fixed on, not offered as a choice (question 3, decided by Lead B under P-566 (3), confirmed by the founder P-567; contracts §7 §1.2). Enforced at every request by the platform guard (PF-4).",

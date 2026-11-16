@@ -21,7 +21,7 @@ import { ConsentStore } from "../api/src/platform/messages/consent/consent-store
 import { PlatformInbox } from "../api/src/platform/messages/demo-inbox.ts";
 import { channelsOf } from "../api/src/platform/messages/send/channels.ts";
 import { MessagesMail } from "../api/src/platform/messages/send/mail.ts";
-import { fileKeyOf, Messages, PLATFORM_FILES_SPACE, SWEEP_AFTER_MS } from "../api/src/platform/messages/send/messages.ts";
+import { fileKeyOf, Messages, PLATFORM_FILES_SPACE, PLATFORM_SEND_TRIES, platformRetryAfterMs, SWEEP_AFTER_MS, SWEEP_PER_FIRM } from "../api/src/platform/messages/send/messages.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { ACCOUNT_MAIL_FROM } from "../api/src/platform/settings.ts";
 import { fakeAlerts } from "../ports/alert.ts";
@@ -121,6 +121,26 @@ try {
   sql(`update msg_outbox set rendered_hash = '${"b".repeat(64)}' where id = '${q3.outboxId}'`);
   await messages.dispatch(null, [q3.outboxId]);
   ok("DW1 fail: a platform row whose file no longer matches is FAILED \"content changed\" and nothing is sent", (await db.msgOutbox.findUniqueOrThrow({ where: { id: q3.outboxId } })).stateReason === "content changed" && (await inbox.list(to3, undefined)).messages.length === 0);
+
+  // ------------------------------------------------------------------------------------- DW1: a provider that refuses
+  // (break F1) A platform row whose send throws counts its tries, waits longer each time, and is FAILED after
+  // PLATFORM_SEND_TRIES with a log line (ids only); stuck rows never starve a newer one.
+  const lines: string[] = [], flaky = { provider: "local", async deliver(_t: unknown, r: Rendered) { if (r.to.startsWith("pf19p.stuck")) throw new Error("provider refused"); return { providerId: `local:${r.outboxId}` }; } };
+  const clock2 = new FakeClock(clock.now()), jobs2 = fakeJobs(clock2);   // its own runner: the first instance's sweep never sees these rows
+  const m2 = new Messages({ db, consent, files, jobs: jobs2, alerts: () => fakeAlerts(), channels: channelsOf([["EMAIL", flaky]]), clock: clock2, log: (l) => lines.push(l) });
+  const stuck = [];
+  for (let i = 0; i < SWEEP_PER_FIRM + 1; i++) { const r = await tx((t) => m2.send(t, { platformAccount: true, channel: "EMAIL", class: "TRANSACTIONAL", address: box(`stuck${i}`), content: words, idempotencyKey: uuid() })); await m2.dispatch(null, [r.outboxId]); stuck.push(r.outboxId); }
+  const fresh = await tx((t) => m2.send(t, { platformAccount: true, channel: "EMAIL", class: "TRANSACTIONAL", address: box("fresh"), content: words, idempotencyKey: uuid() }));
+  sql(`update msg_outbox set updated_at = '${new Date(clock2.now().getTime() + 1000).toISOString()}' where id = '${fresh.outboxId}'`);   // newer than every stuck row's try
+  const after1 = await db.msgOutbox.findUniqueOrThrow({ where: { id: stuck[0] } });
+  ok("DW1 fail: a platform send the provider refuses stays QUEUED with its try counted and a log line naming only ids",
+    after1.state === "QUEUED" && after1.stateReason === `send failed: try 1 of ${PLATFORM_SEND_TRIES}` && lines.length === stuck.length && lines.every((l) => !l.includes("@") && /outbox [0-9a-f-]{36}/.test(l)), { after1, line: lines[0] });
+  await clock2.advance(platformRetryAfterMs(1) + 2000); await m2.sweep();
+  ok("DW1 pass: the first sweep sends a fresh platform row although more than SWEEP_PER_FIRM stuck rows are due (never starved)", (await db.msgOutbox.findUniqueOrThrow({ where: { id: fresh.outboxId } })).state === "SENT");
+  for (let i = 0; i < 60; i++) { await clock2.advance(60_000); await m2.sweep(); }
+  const states = await db.msgOutbox.findMany({ where: { id: { in: stuck } }, select: { state: true, stateReason: true } });
+  ok(`DW1 fail: after ${PLATFORM_SEND_TRIES} tries with growing waits each stuck row is FAILED "send failed" and is tried no more`,
+    states.every((r) => r.state === "FAILED" && r.stateReason === "send failed") && lines.length === stuck.length * PLATFORM_SEND_TRIES, { states: states.slice(0, 3), lines: lines.length });
 
   // ------------------------------------------------------------------------------------- DW2: the database's checks
   const ins = (firm: string | null, audience: string) => `insert into msg_outbox (id, firm_id, audience, channel, address, rendered_hash, class, idempotency_key, updated_at)

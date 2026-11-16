@@ -34,10 +34,16 @@ export const SEND_QUEUE = "messages.send", SWEEP_QUEUE = "messages.outbox_sweep"
 export const SWEEP_AFTER_MS = 2 * 60_000;
 /** Sample: per firm and kind (lost, held), the rows one sweep queues. */
 export const SWEEP_PER_FIRM = 50;
+/** Sample (PF-19p, break F1): sends of one platform account row before it is FAILED "send failed". The firm path's retries
+ *  are JobPort's; a platform row has no job, so it counts its own tries in state_reason ("send failed: try n of N"). */
+export const PLATFORM_SEND_TRIES = 5;
+/** The wait before a platform row's next try: SWEEP_AFTER_MS, doubled after each failed try (2, 4, 8, 16 minutes). */
+export const platformRetryAfterMs = (tries: number) => SWEEP_AFTER_MS * 2 ** Math.max(0, tries - 1);
+const triesOf = (reason: string | null) => Number(/^send failed: try (\d+) of \d+$/.exec(reason ?? "")?.[1] ?? 0);
 
 /** A channel's sending adapter: it gets the stored message and answers the provider's id (or throws: not sent). */
 export type ChannelAdapter = { provider: string; deliver(tx: Tx, r: Rendered): Promise<{ providerId: string }> };
-export type MessagesDeps = { db: PrismaClient; consent: ConsentPort<Tx>; files: FilesPort; jobs: JobPort; alerts: () => AlertPort; channels: Map<Channel, ChannelAdapter>; clock?: ClockPort };
+export type MessagesDeps = { db: PrismaClient; consent: ConsentPort<Tx>; files: FilesPort; jobs: JobPort; alerts: () => AlertPort; channels: Map<Channel, ChannelAdapter>; clock?: ClockPort; log?: (line: string) => void };
 
 export const fileKeyOf = (firmId: string | null, outboxId: string) => `msg/${firmId ?? "platform"}/outbox/${outboxId}.json`;
 /** PF-19p: the file store space of platform account messages (FilesPort keys files by a uuid; this one is no firm's). */
@@ -112,7 +118,7 @@ export class Messages implements MessagePort<Tx> {
 
   async dispatch(firmIdIn: string | null, outboxIds: string[]): Promise<void> {
     if (firmIdIn === null) {   // PF-19p: platform account rows, sent now (a failure stays QUEUED for the sweep)
-      for (const id of outboxIds) await this.deliverPlatform(id).catch(() => undefined);
+      for (const id of outboxIds) await this.deliverPlatform(id).catch((e: unknown) => this.d.log?.(`messages: platform account outbox ${id} not sent (${e instanceof Error ? e.name : "error"}); the sweep tries it`));
       return;
     }
     const { firmId } = firmScope(firmIdIn);
@@ -159,8 +165,21 @@ export class Messages implements MessagePort<Tx> {
     return out;
   }
 
-  /** PF-19p: sends one platform account row at most once (the row lock and QUEUED, as deliver); no gate, no cap, no event. */
-  async deliverPlatform(outboxId: string): Promise<"sent" | "skipped" | "failed"> {
+  /** PF-19p: sends one platform account row at most once (the row lock and QUEUED, as deliver); no gate, no cap, no event.
+   *  A send that throws (the provider refused, the network) leaves the row QUEUED with its try counted, or FAILED "send
+   *  failed" at PLATFORM_SEND_TRIES, and writes one log line of ids (break F1). */
+  async deliverPlatform(outboxId: string): Promise<"sent" | "skipped" | "failed" | "retry"> {
+    try { return await this.sendPlatformRow(outboxId); } catch (e) {
+      const row = await this.d.db.msgOutbox.findFirst({ where: { id: outboxId, audience: "PLATFORM_ACCOUNT", firmId: null, state: "QUEUED" }, select: { stateReason: true } });
+      if (!row) throw e;
+      const tries = triesOf(row.stateReason) + 1, last = tries >= PLATFORM_SEND_TRIES;
+      await this.d.db.msgOutbox.updateMany({ where: { id: outboxId, state: "QUEUED", stateReason: row.stateReason }, data: last ? { state: "FAILED", stateReason: "send failed", updatedAt: this.clock.now() } : { stateReason: `send failed: try ${tries} of ${PLATFORM_SEND_TRIES}`, updatedAt: this.clock.now() } });
+      this.d.log?.(`messages: platform account outbox ${outboxId} send failed (${e instanceof Error ? e.name : "error"}), try ${tries} of ${PLATFORM_SEND_TRIES}${last ? ": FAILED" : ""}`);
+      return last ? "failed" : "retry";
+    }
+  }
+
+  private async sendPlatformRow(outboxId: string): Promise<"sent" | "skipped" | "failed"> {
     return this.d.db.$transaction(async (tx) => {
       const [row] = await tx.$queryRaw<{ state: string; channel: Channel; address: string; rendered_hash: string }[]>`
         SELECT "state"::text AS state, "channel"::text AS channel, "address", "rendered_hash" FROM "msg_outbox"
@@ -180,7 +199,8 @@ export class Messages implements MessagePort<Tx> {
   }
 
   /** Each minute: every QUEUED row older than SWEEP_AFTER_MS gets a job keyed by the hour (a held row tries once an hour);
-   *  PF-19p: platform account rows (no firm, so no job) are delivered here, SWEEP_PER_FIRM a run, oldest first. */
+   *  PF-19p: platform account rows (no firm, so no job) are delivered here, SWEEP_PER_FIRM a run, each once its wait
+   *  (platformRetryAfterMs) is over: never-tried rows first, so rows that keep failing never hold back a new one. */
   async sweep(): Promise<number> {
     const now = this.clock.now(), hour = now.toISOString().slice(0, 13);
     // Each firm gets its own share (SWEEP_PER_FIRM rows a crash left, and as many held by the cap, oldest first), so one
@@ -193,10 +213,13 @@ export class Messages implements MessagePort<Tx> {
       WHERE rn <= ${SWEEP_PER_FIRM} ORDER BY ("state_reason" IS NOT NULL), rn, "created_at" LIMIT 2000`;
     let n = 0;
     for (const r of rows) if ((await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
-    const platform = await this.d.db.msgOutbox.findMany({
-      where: { audience: "PLATFORM_ACCOUNT", firmId: null, state: "QUEUED", createdAt: { lt: new Date(now.getTime() - SWEEP_AFTER_MS) } },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: SWEEP_PER_FIRM, select: { id: true },
+    const due = await this.d.db.msgOutbox.findMany({
+      where: { audience: "PLATFORM_ACCOUNT", firmId: null, state: "QUEUED", updatedAt: { lt: new Date(now.getTime() - SWEEP_AFTER_MS) } },
+      orderBy: [{ updatedAt: "asc" }, { id: "asc" }], take: 2000, select: { id: true, stateReason: true, updatedAt: true },
     });
+    // A row never tried goes first, then the fewest tries, then the least recently tried (break F1: stuck rows never starve a new one).
+    const platform = due.filter((r) => r.updatedAt.getTime() <= now.getTime() - platformRetryAfterMs(triesOf(r.stateReason)))
+      .sort((x, y) => triesOf(x.stateReason) - triesOf(y.stateReason) || x.updatedAt.getTime() - y.updatedAt.getTime()).slice(0, SWEEP_PER_FIRM);
     for (const r of platform) if ((await this.deliverPlatform(r.id).catch(() => "failed" as const)) === "sent") n++;
     return n;
   }

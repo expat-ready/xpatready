@@ -18,7 +18,7 @@ const files = new LocalFiles();
 export default {
   controllers: [PlatformInboxController],
   providers: [
-    { provide: MESSAGE_PORT, useFactory: (db: Db, jobs: PlatformJobs) => new Messages({ db, consent: consentStore, files, jobs, alerts: currentAlerts, channels: appChannels() }), inject: [Db, PlatformJobs] },
+    { provide: MESSAGE_PORT, useFactory: (db: Db, jobs: PlatformJobs) => new Messages({ db, consent: consentStore, files, jobs, alerts: currentAlerts, channels: appChannels(), log: (l) => console.warn(l) }), inject: [Db, PlatformJobs] },
     { provide: MESSAGES_MAIL, useFactory: (db: Db, messages: Messages) => new MessagesMail({ db, messages, files, log: (l) => console.warn(l) }), inject: [Db, MESSAGE_PORT] },
     { provide: PlatformInbox, useFactory: (db: Db) => new PlatformInbox(db, files), inject: [Db] },
   ],
