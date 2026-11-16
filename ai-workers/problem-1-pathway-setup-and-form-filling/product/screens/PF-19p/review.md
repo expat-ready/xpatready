@@ -193,3 +193,32 @@ Journeys 5 (provider failure) and 10 (across the boundary) now hold, with m-r2 a
 **Fix list (recommended, not blocking):** m-r1 (branch on the job's firm), m-r2 (count before the send), m-r3 (wording), m-r4 (one assertion).
 
 Verdict: Approve 8b82dfd2f1170990519b1daa6d701d1dd5a0b345
+
+## Re-review (diff 8b82dfd2f..f0793beb3)
+
+Diff only (P-277), 16 Nov 2026: `f0793beb3` changes `send/messages.ts` (+8/−3) and `tests/check_pf19p_platform_mail.ts` (+18/−2). `148894cc4` in between is records only (`break-report.md`). Code not edited.
+
+### What I ran (checkout at f0793beb3, clean tree)
+`check_pf19p_platform_mail` 68/0, `check_pf19b_sending` 42/0, `check_pf14_jobs` 95/0. I did not re-run the others; the builder reports pf12 100/0, pf0p 114/0, pf19b_mail 29/0, fo3_booking 133/0 and a clean tsc.
+
+### The four Minors
+* **m-r1: resolved.**
+  - The send handler is now `deliver(j.firmId, outboxId)` (`send/messages.ts:244`), so the job's own firm picks the path and the payload's `firmId` is never read.
+  - A job with no firm can only reach `deliverPlatform`, which selects only platform rows with no firm. So Lead B's condition 3 is now held by the code, not only by its callers.
+  - Firm sends are unchanged in effect. Both places that queue a firm send set `payload.firmId` equal to `opts.firmId` (`:136`, `:227`), so `j.firmId` is the same firm.
+  - A recurring run on `messages.send` (no firm) now goes to `deliverPlatform` and is skipped, which is harmless.
+  - New test: a platform job whose payload names firm A's QUEUED row leaves it QUEUED. On the old line it would have been sent through the firm path.
+* **m-r2: resolved.**
+  - The platform sweep key is now `msg.send:platform:<id>[:try:n]:sweep:<hour>` (`:237`), the same pattern as the firm rows' hourly key.
+  - A try that was never counted is queued again within the hour, and the dispatch's key (`:132`) is never reused.
+  - Cost: a row whose job is still waiting can get one more job each hour. That is the same as the firm path, and it stays bounded: the row lock and the QUEUED check stop a second send, and a failing provider ends the row FAILED at 5 counted tries.
+  - New test: after the try's count is cleared, a sweep an hour later queues it again and counts try 1. My earlier probe of this case (QUEUED for good) would now recover in the same way.
+* **m-r3: resolved.** The comment at `:44-46` now says that pg-boss's own retries usually make tries 2 to 4, and the sweep's wait covers what is left.
+* **m-r4: resolved.** A new DW1 line checks that the dispatch's job ends `failed`, not `done`, after a send that throws. Without the rethrow at `:189` that line fails.
+
+### New findings
+None. m-r5 (the 2000-row window) stays accepted as bounded.
+
+The journey score is unchanged in kind, with error recovery's edge (m-r2) now closed. I did not re-walk it beyond the suite lines above.
+
+Verdict: Approve f0793beb3f87718be3fb30fec0f125849da6332d
