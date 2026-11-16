@@ -71,3 +71,30 @@ Commit `371cbbd6bae4cb0499210b34d39419ca10c6e2db` on `claude/runtime-fo7a2` (PR 
 - **Firm walls:** a move-back line naming another firm's withdrawal, or another firm's invoice id, a credit note naming another firm's withdrawal, and a row naming firm B are all refused. `money_trust_shortfall` and `money_to_move` show 0 rows of firm B to `xr_app`.
 - **Ledger + T2O open − O2T open = bank:** held at every one of 1,500 random steps (deposits, applications, returns, moves, undos, credit notes with and without choices, move-backs, refunds, reversals, WRONG_ACCOUNT) with a difference of 0.
 - **Budget:** one firm with 7,420 entries (5,000 applications). `money_to_move` total: 175 ms (23 ms before FO-7a2), 206 ms as `xr_app`. `money_trust_shortfall`: 14 ms. Both are under STANDARDS §9's 1 s.
+
+## Round 2 (at `fec6513625399af837cbbf249406b3ffd0048918`)
+Same setup on `xr_studio_brk_a2r2` (all 101 folders), dropped at the end. I re-ran each round-1 repro and attacked the fixes with psql, two `pg` clients at RC, RR and SERIALIZABLE, and a new 1,500-step random run. Lines refer to the migration at this commit. B-5, B-6 and B-7 are unchanged (noted by the lane, not re-filed).
+
+**B-9 Major (B-2 not closed): an undo of the trust → operating batch, set against a move-back that has moved, breaks "ledger + list = bank" or brings back the phantom pair.** `money_owed_live` = least(choices, moved live) (line 29) shrinks the owed amount when the move is undone, but not what has already moved back.
+- (a) Repro: `dep(:P,100000)`; `inv(:P,20000)`; `wd`→`:W`; `move(:W,20000)`→`:B1`; `cn(:I,5000,'OVERPAID_TO_TRUST',5000,:W)`; `move(:W,3000,'OPERATING_TO_TRUST')`. Up to here, ledger + list = bank = 830.00.
+  - `undo(:B1)`. Then `money_owed_live` = 0 and the operating → trust item is 0 − 30 (hidden by `open > 0`, line 410). Trust → operating shows 150.00.
+  - Result: ledger 850.00 + 150.00 = **1,000.00, but the bank holds 1,030.00**. The 30.00 of firm money moved back sits in trust and appears on no list.
+- (b) The race: A runs `undo(:B1)`, B runs `move(:W,5000,'OPERATING_TO_TRUST')`. Both commit at RC (wait order) and at RR (both orders): the bank holds 50.00 more than ledger + list. SERIALIZABLE aborts one of them.
+- (c) Repro: undo `:B1` before any move-back, then `move(:W,15000)`, which equals what trust pays. `money_owed_live` = least(50, 150) = 50, so the choice attaches to the new move. The list again shows 50.00 trust → operating and 50.00 operating → trust. `move(:W,5000)` commits, which puts 200.00 in operating for 150.00 paid from trust.
+- Should: an undo of a trust → operating batch is refused while a choice covers its moves (name the credit note: move back, or undo the move-back first). The batch insert takes the party lock and touches the line's invoice, as a move does, so the race in (b) waits or gets 40001. Or the owed amount is fixed when the choice is made, and an undo raises a trust → operating item for whatever has already moved back.
+
+### Round 2: what held
+- **B-1, caps with several credit notes:**
+  - Three notes on one moved 300.00 application (refund 100, move back 100, refund 100) were accepted. A cover of 100.01 was refused, and so was a fourth note of 0.01. Credited 300, covered 300, bank equation 0.
+  - On 300.00 with 200.00 moved and 100.00 unpaid: a note of 150 with cover 50.01 → refused, "at most 50.00 CAD". Cover 50 → accepted; then 50/50 and 100/100. Credited 300, covered 200, trust net 150.
+  - Two applications, one moved and one not: a full note with a choice on the moved one is refused until the unmoved one is returned in the same transaction, then CN-0007. A further choice → refused. Round 1's B-1 (a)–(c) are all refused.
+- **B-3:** the four helpers are SECURITY INVOKER, owned by the migration role. As `xr_app` with firm E's id they return 0, 0, 0, 0 for firm D's invoice and application. With firm D's id they return D's own figures (200.00, 300.00, 100.00), and `money_to_move` gives D's rows. Triggers still see every firm (all round-1 repros behave as described).
+- **B-4, across sources:** never looser than the party's bank share, because each line checks its own source.
+  - Two unmoved 100.00 applications, party at −100.00 → each is refused, as is 0.01.
+  - One 300.00 application at −100.00 → 200.01 refused, 200.00 moved.
+  - A two-line batch at −200.00 → refused as a whole. Single lines later → refused.
+  - It is stricter than needed: with 100.00 of real money behind one application, nothing moves until the other is returned (AG-6-75 rule 3 asks for that return anyway).
+- **B-4 in races:**
+  - Returned then move → the move is refused at RC (both orders).
+  - At RR and SERIALIZABLE the stale move commits (ledger −100.00, 100.00 moved). That is the same end state as the legal order "move, then Returned", which is accepted sequentially, so it is not a break.
+- **B-8 and the random run:** the write-off words are floored (no negative "left"). Random run: 1,500 steps, bank equation difference 0. No application over-moved, no choice above what moved, no cover above its note, no entry other than a reversal below zero. The run never hit the targeted order of B-9.

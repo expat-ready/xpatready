@@ -27,7 +27,7 @@ CREATE OR REPLACE FUNCTION money_owed_back(f uuid, w uuid, only_to_trust boolean
        AND (NOT only_to_trust OR c.overpaid_choice = 'OVERPAID_TO_TRUST') $$;
 -- The move-back still owed: the choices, but never more than is still in operating (an undone move takes it back, break B-2).
 CREATE OR REPLACE FUNCTION money_owed_live(f uuid, w uuid) RETURNS bigint LANGUAGE sql STABLE SET search_path = pg_catalog, public, pg_temp AS
-  $$ SELECT least(money_owed_back(f, w, true), money_moved_live(f, w, 'TRUST_TO_OPERATING')) $$;
+  $$ SELECT least(money_owed_back(f, w, true), money_moved_live(f, w, 'TRUST_TO_OPERATING') + money_moved_live(f, w, 'OPERATING_TO_TRUST')) $$;
 -- These helpers keep their caller's rights (as FO-7a's do): inside a trigger they run as the wall reader, called directly
 -- or from a view they see only the session's firm (review M1, break B-3).
 
@@ -221,6 +221,30 @@ BEGIN
   NEW.created_at := now();
   RETURN NEW;
 END $$;
+
+-- Breaks B-2, B-9 and review N1: a trust → operating batch whose moves a credit note's refund or move-back choice covers is
+-- never undone (the money went to operating and the choice says where it goes next; a mistake is recorded forward). The
+-- undo takes each source's party lock and touches its invoice first, as a move and a credit note do, so the two go one
+-- at a time (READ COMMITTED) or the later fails to serialise (REPEATABLE READ).
+CREATE OR REPLACE FUNCTION money_move_batch_owed_back() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE l record;
+BEGIN
+  IF NEW.undoes_batch_id IS NULL OR EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = NEW.firm_id AND u.undoes_batch_id = NEW.undoes_batch_id) THEN
+    RETURN NEW;  -- not an undo, or already undone (FO-7mv's unique index refuses the second)
+  END IF;
+  FOR l IN SELECT x.source_entry_id, x.currency, coalesce(x.person_id, x.company_id) AS party, x.invoice_id, sum(x.amount_minor) AS amount
+             FROM "money_move_line" x WHERE x.firm_id = NEW.firm_id AND x.batch_id = NEW.undoes_batch_id AND x.direction = 'TRUST_TO_OPERATING' AND x.kind = 'TRUST_APPLIED'
+            GROUP BY 1, 2, 3, 4 ORDER BY 3, 1 LOOP
+    PERFORM pg_advisory_xact_lock(hashtextextended('money_trust:' || NEW.firm_id || ':' || l.party || ':' || l.currency, 0));
+    UPDATE "money_invoice" i SET updated_at = now() WHERE i.firm_id = NEW.firm_id AND i.id = l.invoice_id;
+    IF money_owed_back(NEW.firm_id, l.source_entry_id, false) > 0
+       AND money_moved_live(NEW.firm_id, l.source_entry_id, 'TRUST_TO_OPERATING') - l.amount < money_owed_back(NEW.firm_id, l.source_entry_id, false) THEN
+      RAISE EXCEPTION 'money_move_batch: a credit note''s refund or move-back choice covers this move, so it is never undone (record the money''s way back instead)' USING ERRCODE = 'check_violation';
+    END IF;
+  END LOOP;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER money_move_batch_owed_back BEFORE INSERT ON "money_move_batch" FOR EACH ROW EXECUTE FUNCTION money_move_batch_owed_back();
 
 -- B-17: a payment reversed as "Returned" (it bounced) is never ticked cleared afterwards. Read after the party's lock is
 -- not possible here (a tick takes none); at READ COMMITTED a "Returned" written first is seen.
@@ -420,7 +444,7 @@ CREATE OR REPLACE VIEW "money_to_move" WITH (security_invoker = true) AS
 DO $readers$
 DECLARE f text;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['money_trust_entry_write()', 'money_credit_note_write()', 'money_write_off_write()', 'money_payment_returned_not_cleared()', 'money_credit_note_owed_back()', 'money_move_line_write()', 'money_trust_entry_moves()'] LOOP
+  FOREACH f IN ARRAY ARRAY['money_trust_entry_write()', 'money_credit_note_write()', 'money_write_off_write()', 'money_payment_returned_not_cleared()', 'money_credit_note_owed_back()', 'money_move_line_write()', 'money_trust_entry_moves()', 'money_move_batch_owed_back()'] LOOP
     EXECUTE format('ALTER FUNCTION %s SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp', f);
     EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
   END LOOP;

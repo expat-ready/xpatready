@@ -97,3 +97,42 @@ Journeys, through the walls as the API's role: (1) Biller records a bounced cheq
 5. Minors m1–m5, recommended in the same push.
 
 Verdict: Block
+
+## Re-review at `fec6513625399af837cbbf249406b3ffd0048918` (diff since 371cbbd6b only, P-277)
+**Suites:** FO-7a2 32/0, FO-7a 123/0, FO-7mv 45/0, prisma 8/0; pf12 95/5, the same five API-start checks as before. **Size:** 692 + 10 code lines, plus 26 in design.md. The other 172 lines are the review and the break report. Probes ran in the scratch database `xr_studio_rev_fo7a2b` (dropped).
+
+| Earlier finding | Now |
+|---|---|
+| B1 (Refund, then undo, then return, then a second CN) | **Fixed.** The return is refused ("only 0 can come back") and the second CN is refused ("(0)"), and the new test covers both. `trust` is floored in the CN and write-off checks. |
+| M1 (definer helpers read other firms) | **Fixed.** As `xr_app` in firm A, `money_trust_paid`, `money_moved_live` and `money_owed_live` on firm B return 0, 0, 0. The four helpers are INVOKER; the seven trigger functions are DEFINER and reader-owned, and DW7 asserts both. |
+| M2 (choice not bound to the credit note) | **Fixed.** The cover is ≤ `amount − (open − trust)`. A 10.00 note covering 100.00 is refused; breaker B-1(c) (100.00 unpaid) is refused "at most 0.00"; the exact 50.00 part is accepted. The write-off now subtracts refund choices. |
+| M3 (PR body) | Open. The builder says it comes after this review. It is required before the label. |
+| m2, m4 | Fixed (the FO-7mv DW6 label; Lead B's line-with-no-credit-note case). m1, m3 and m5 stay open, as Minors. |
+
+**New Major N1: the ledger identity breaks after a move-back followed by an undo of the outbound batch.** It comes from breaker B-2's fix. `money_owed_live = least(move-back choices, T2O moved live)` ignores money already moved back, so the O2T item clips below zero and drops off the list. Reproduced:
+* Deposit 1,000.00.
+* Withdrawal 200.00, moved out (bank 800).
+* CN 120.00 "Move back to trust" (ledger 920).
+* O2T 70.00 moved back (bank 870).
+* The 200.00 batch is undone (bank 1,070).
+* `money_to_move` then shows T2O 80.00 and O2T 0, so ledger + T2O − O2T = **1,000.00 ≠ 1,070.00**. The firm's 70.00 sits in trust and is not listed.
+* Row: eligible 27,000, returned 12,000, moved 7,000, open 8,000 after one more 70.00 move, which drifts instead of settling.
+
+Fix (migration.sql:29–30): `least(money_owed_back(f, w, true), money_moved_live(f, w, 'TRUST_TO_OPERATING') + money_moved_live(f, w, 'OPERATING_TO_TRUST'))`. I tried it in a rolled-back transaction:
+* this sequence gives T2O 150.00, O2T 0, and 920 + 150 = 1,070 ✓;
+* breaker B-2's case stays T2O 50.00 only, with 950 + 50 = 1,000 ✓.
+
+Please add this sequence as a DW5 fail case.
+
+**New Minor n1:** the B-4 refusal is in `money_move_line_write` only. `money_to_move` still lists the unmoved application of a party below zero, so the list shows a line that the database refuses to move. Breaker B-4 asked for the list to be capped the same way.
+
+**Breaker items left open (my view):**
+* B-5 follows the brief's 1c words: Minor, agreed.
+* B-6 is the same as my m3: Minor. A tick racing a Returned is not refused at RC either, but the end state equals tick-then-Returned, which is allowed.
+* B-7: Minor, agreed.
+
+**To fix before Approve:**
+1. N1, with its test.
+2. M3, the PR body: the Done-when list and "Changed tests".
+
+Verdict: Block
