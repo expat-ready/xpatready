@@ -15,6 +15,7 @@ Rules: RULES.md (as of **P-634**) + DECISIONS **P-635 to P-637** word for word (
 5. **Founder's plan answers to carry out:** enforcement plan `design/enforcement-plan-2026-11-16.md` step 0: once #1865 merges, give the founder its settings lines in one daily batch **without gmail-start-check** (P-633); context-diet: no settings change (founder agreed the quality view: remove the three synced plugins Productivity, Product management, Engineering in the desktop app; MEMORY.md trim owed).
 6. **Forecast told to the founder:** 0-2 newly Proven by ~15:40 IST; 7-9 Proven by 08:00 IST 17 Nov (target 10, P-626). Today 4 Works, 18 Partial, 59 Not built on qa's file (81 of 101 listed).
 7. **Start Lead 67 standby** at the founder's next typed turn (Lead 66 local_6e882eeb is then the first standby).
+8. **Lead B (6) to Lead 65, 10:4x IST:** Lead reads before label (P-423): FO-7a2's migration (FO-7mv lane; #1924 stays draft until FO-7a2 merges) and PF-6r's permissions diff (J-6 lane); #1918 FO-3a 1a waits on the Lead's migration read, then pass DW0a-c (rev 16.50) to the 1b builder; Lead B rev 16.55, hand-over `design/lead-b-state.md` on lead-b-front-office.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 | # | Ask (IST) | Status |
