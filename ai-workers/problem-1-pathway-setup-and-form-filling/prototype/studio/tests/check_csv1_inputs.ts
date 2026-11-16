@@ -97,6 +97,19 @@ ok("CS-V1 DW1 pass: the same route parsing its body with a schema passes", good.
 const viaSafe = judge(inputs(planted({ "things.ts": route("const r = Thing.safeParse(body ?? {});") })), new Set());
 const viaJson = judge(inputs(planted({ "things.ts": route("const r = JSON.parse(String(body));") })), new Set());
 ok("CS-V1 DW1: Schema.safeParse counts as a parse; JSON.parse does not", viaSafe.unlisted.length === 0 && viaJson.unlisted.length === 1, { viaSafe, viaJson });
+// Review of #2007 (M1, m1, m2): only a parse of the whole value counts; an input with no one name, or read off @Req(), is
+// unparsed (loud), never missing; qs.parse is not a schema.
+const fails = (files: Record<string, string>) => judge(inputs(planted(files)), new Set()).unlisted.length === 1;
+ok("CS-V1 DW1 fail: a parse of one field (parse(S, body.name)) leaves the body unparsed", fails({ "things.ts": route("const n = parse(Thing, body.name);") }));
+ok("CS-V1 DW1 fail: a body's field written into an object literal ({ name: body }) is not the whole body", fails({ "things.ts": route("const n = parse(Thing, { name: body });") }));
+ok("CS-V1 DW1 fail: qs.parse(body) is not a zod schema", fails({ "things.ts": route("const n = qs.parse(body);") }));
+const handOff = (arg: string) => route("").replace("{  return { id }; }", "{ return this.more(id, " + arg + "); }\n  async more(id: string, x: unknown) { return parse(Thing, x); }");
+ok("CS-V1 DW1 pass: the whole body handed on ({ ...body }, body ?? {}) and parsed there counts", !fails({ "things.ts": handOff("{ ...body }") }) && !fails({ "things.ts": handOff("body ?? {}") }));
+ok("CS-V1 DW1 fail: one field handed on (body.name) and parsed there does not count", fails({ "things.ts": handOff("(body as { name: unknown }).name") }));
+const viaReq = route("").replace('@Post("things/:id") put(@Param("id") id: string, @Body() b: unknown) { return this.t.put(id, b); }', '@Post("things/:id") put(@Param("id") id: string, @Req() r: { body: unknown }) { return this.t.put(id, r.body); }');
+const viaDestructure = route("").replace("@Body() b: unknown) { return this.t.put(id, b); }", "@Body() { name }: { name: string }) { return this.t.put(id, name); }");
+ok("CS-V1 DW1 fail: a body read off @Req() (req.body) is unparsed, not missing", fails({ "things.ts": viaReq }));
+ok("CS-V1 DW1 fail: a destructured @Body() is unparsed, not missing", fails({ "things.ts": viaDestructure }));
 
 // ---- DW2: the allow-list only shrinks.
 const unfixed = [...ALLOW][0], dropped = new Set([...ALLOW].filter((k) => k !== unfixed));
@@ -107,14 +120,16 @@ const dw2b = judge(found, new Set([...ALLOW, fixedKey, "gone.ts POST /api/runtim
 ok("CS-V1 DW2 fail: a method fixed (or gone) but still listed fails", dw2b.fixedButListed.sort().join("|") === ["gone.ts POST /api/runtime/gone body", fixedKey].sort().join("|"), dw2b);
 ok("CS-V1 DW2 pass: today's list matches the code exactly", j.unlisted.length === 0 && j.fixedButListed.length === 0);
 
-// ---- DW3: every route with an id parameter answers 404 to a malformed id (a running copy).
-const withId = all.filter((r) => /:[a-z]*id\b/i.test(r.path));
+// ---- DW3: every route with an id parameter answers 404 to a malformed id (a running copy). Every path parameter is
+// asked (review of #2007 m3: :run, :doc, :answer, :row are ids too), each set to the malformed value.
+const withId = all.filter((r) => /:[A-Za-z]+/.test(r.path));
 const answers: { route: string; probe: string; status: number }[] = [];
 const fill = (path: string, v: string) => path.replace(/:[A-Za-z]+/g, v);
 let reached = true;
 for (const r of withId) for (const probe of ["not-a-uuid", "not-a-uuid%00"]) {
   try {
-    const res = await fetch(`http://localhost:${PORT}${fill(r.path, probe)}`, { method: r.verb, headers: { "x-actor": "user-O", ...(r.verb === "GET" || r.verb === "DELETE" ? {} : { "content-type": "application/json" }) }, ...(r.verb === "GET" ? {} : { body: "{}" }) });
+    const method = r.verb === "ALL" ? "POST" : r.verb, bodyless = method === "GET" || method === "HEAD" || method === "OPTIONS";
+    const res = await fetch(`http://localhost:${PORT}${fill(r.path, probe)}`, { method, headers: { "x-actor": "user-O", ...(bodyless ? {} : { "content-type": "application/json" }) }, ...(bodyless ? {} : { body: "{}" }) });
     answers.push({ route: `${r.verb} ${r.path}`, probe, status: res.status });
   } catch { reached = false; break; }
 }
