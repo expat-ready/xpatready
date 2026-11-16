@@ -1,4 +1,4 @@
-setup (not through the product: no firm, staff, hours or type screens yet): firm qa-r140-1972, one host, type "free"
+setup (not through the product: no firm, staff, hours or type screens yet): firm qa-r140-5027, one host, type "free"
 PASS  book: 201 at 15:00Z
 PASS  the booked mail reaches the booker's demo inbox before the move
 PASS  move by link across Toronto's change: 200 at 14:00Z
@@ -13,16 +13,16 @@ PRODID:-//Expat Ready//Booking//EN
 CALSCALE:GREGORIAN
 METHOD:REQUEST
 BEGIN:VEVENT
-UID:9e5c300c-f9e8-4db6-b90f-22b0337f6372@booking.expatready.com
+UID:fcfc88ec-2723-418e-9a35-27a37cb02475@booking.expatready.com
 SEQUENCE:0
-DTSTAMP:20261116T001713Z
+DTSTAMP:20261116T002443Z
 DTSTART:20270312T150000Z
 DTEND:20270312T153000Z
 SUMMARY:Free consultation with Sample qa firm
 DESCRIPTION:Video call. Your join link will follow.
-ORGANIZER;CN="Sample qa firm":mailto:qa-r140-1972@firm.example
+ORGANIZER;CN="Sample qa firm":mailto:qa-r140-5027@firm.example
 ATTENDEE;CN="Client A";ROLE=REQ-PARTICIPANT;RSVP=FALSE:mailto:client-qa-r14
- 0-1972@example.com
+ 0-5027@example.com
 STATUS:CONFIRMED
 TRANSP:OPAQUE
 END:VEVENT
@@ -31,12 +31,13 @@ END:VCALENDAR
 PASS  R1.40 running app: the booker's demo inbox holds three mails (booked, moved, cancelled), each with an invite .ics
 PASS  R1.40 running app: the host's demo inbox holds three mails, each with an invite .ics
 PASS  R1.40 one UID across all six invites (an update replaces the event)
-PASS  R1.40 SEQUENCE present and rising (book, move, cancel)
-PASS  R1.40 METHOD:REQUEST, REQUEST, then CANCEL (a cancel removes it)
+NOTE  SEQUENCE booker 0,1,2 · host 0,1,2
+PASS  R1.40 SEQUENCE present and rising (book, move, cancel), booker and host alike
+PASS  R1.40 METHOD REQUEST, REQUEST, then CANCEL (a cancel removes it), booker and host alike
 PASS  R1.40 / R1.38 DTSTART in UTC: 15:00Z, then 14:00Z after the change (the same time as the booking)
 PASS  R1.40 fail case: the moved invite does not still carry the old time
-PASS  R1.38 the booker's mails read 7:00 p.m., then 6:00 p.m. (Asia/Dubai)
-PASS  R1.38 the host's mails read 10:00 a.m. (America/Toronto) both times
+PASS  R1.38 the booker's mails read 7:00 p.m., then 6:00 p.m., each naming Asia/Dubai
+PASS  R1.38 the host's mails read 10:00 a.m., each naming America/Toronto
 PASS  R1.38 fail case: the host's moved mail does not read 9:00 or 11:00 a.m. (an offset not shifted)
 PASS  fail case: a malformed address → 400 in words
 16 passed, 0 failed

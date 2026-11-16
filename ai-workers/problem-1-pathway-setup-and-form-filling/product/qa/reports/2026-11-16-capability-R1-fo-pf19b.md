@@ -25,14 +25,14 @@ The latest batch run, 43777123886, is on main fecf52a2b's own tree 753ff42a and 
 
 The inbox walk: a visitor in Asia/Dubai books Fri 12 Mar 2027 10:00 Toronto, moves it by the self-service link to Mon 15 Mar 10:00 (after Toronto's 14 Mar change), then cancels. The demo inbox (`GET /api/demo/platform-inbox`, stand-in SI-20) then holds three mails each for the booker and the host, each with an `invite.ics`. The invites show:
 - one UID;
-- SEQUENCE 0, then 1, then 2;
-- METHOD REQUEST, REQUEST, then CANCEL;
+- SEQUENCE 0, then 1, then 2 (printed for booker and host alike);
+- METHOD REQUEST, REQUEST, then CANCEL, on the host's three as well as the booker's;
 - DTSTART 20270312T150000Z, then 20270315T140000Z;
 - the booker's mails reading 7:00 then 6:00 p.m. (Asia/Dubai), and the host's 10:00 a.m. (America/Toronto) both times.
 
-A malformed address gets 400. The first invite is printed whole in `…/r140-inbox-walk-1.txt`.
+A malformed address gets 400. The first invite is printed whole in `…/r140-inbox-walk-1.txt`. After the reviewer's first round, each fail case first asserts that its mail exists, so none can pass on an empty inbox; run twice again, 16/16.
 
-**Observation, not a finding (reader's ruling):** the first, unpaced walk (`…/r140-inbox-walk-unpaced-*.txt`, 7/14) booked, moved and cancelled within seconds, and only the cancel mail arrived. `runMail` sends only the newest state's mail (`service.ts`: "a newer state has its own email, so an older one is not sent"). The calendar still ends correct, so this is by design. The walk now waits for each mail, the way a person would move it later.
+**Observation, not a finding (reader's ruling):** the first, unpaced walk (`…/r140-inbox-walk-unpaced-*.txt`, 7/14, run with the test's first version, before the reviewer's fixes) booked, moved and cancelled within seconds, and only the cancel mail arrived. `runMail` sends only the newest state's mail (`service.ts`: "a newer state has its own email, so an older one is not sent"). The calendar still ends correct, so this is by design. The walk now waits for each mail, the way a person would move it later.
 
 ## 3. Verdicts
 | Row | Verdict | Why |
