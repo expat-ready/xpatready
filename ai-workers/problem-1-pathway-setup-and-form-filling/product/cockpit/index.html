@@ -328,7 +328,7 @@ function T(k){return k?' data-tip="'+esc(k)+'"':"";}
 function nz(x,suf){return x==null?'<span class="nm" data-nm="no value in data.json">not measured</span>':esc(x)+(suf||"");}
 function fmtDate(iso){if(!iso)return "not dated";var d=new Date(iso+"T00:00:00");return d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});}
 function short(iso){if(!iso)return "not dated";var d=new Date(iso+"T00:00:00");return d.toLocaleDateString("en-GB",{day:"numeric",month:"short"});}
-var LABEL={"Not shaped":"Not yet specified","Shaped":"Specified, ready to build","In PR":"In development","Merged":"Built","qa Works":"Proven","Works":"Proven","Built, awaiting qa":"Built, not yet proven","Partial":"Partly working","Not tested":"Not yet tested","Not built":"Not yet built"};
+var LABEL={"Not shaped":"Not yet specified","Shaped":"Specified, ready to build","In PR":"In development","Merged":"Checklist: merged","qa Works":"Checklist: qa Works (can lag qa)","Works":"qa passed (proof of concept)","Built, awaiting qa":"Checklist: built, awaiting qa","Partial":"Partly working","Not tested":"Not yet tested","Not built":"Not yet built"};
 function lab(k){return LABEL[k]||k;}
 function pill(text,tone,s){return '<span class="pill t-'+tone+'"'+S(s)+'>'+esc(lab(text))+'</span>';}
 var TONE={"qa Works":"good","Merged":"prog","In PR":"prog","Shaped":"wait","Not shaped":"none",
@@ -345,6 +345,8 @@ function kpi(label,val,sub,s,cls,key){return '<div class="kpi'+(cls?" "+cls:"")+
 document.addEventListener("click",function(e){
   if(e.target.closest&&e.target.closest("#rf")&&DB&&D){var now=new Date().toISOString();DBMSG="";RQ={state:"requested",at:now,data_at:D.freshness.generated_at};paintFresh();
     dbWrite("board/refresh",{state:"requested",at:now,data_at:D.freshness.generated_at},function(m){RQ=null;DBMSG=m;paintFresh();});return;}
+  var nl=e.target.closest&&e.target.closest("[data-needs]");
+  if(nl){e.preventDefault();var fc=document.getElementById("fc-needs");if(fc){fc.open=true;fc.querySelectorAll("details").forEach(function(x){x.open=true;});fc.scrollIntoView({block:"start"});}return;}
   var op=e.target.closest&&e.target.closest("[data-open]");
   if(op){e.preventDefault();var tb2=document.querySelector('.tabs button[data-tab="'+op.getAttribute("data-open")+'"]');if(tb2){var sec=tb2.closest("details");while(sec){sec.open=true;sec=sec.parentElement&&sec.parentElement.closest("details");}tb2.click();tb2.scrollIntoView({block:"start"});}return;}
   var b=e.target.closest&&e.target.closest(".ib");
@@ -615,7 +617,8 @@ function rWho(){var C=((D.org||{}).components||{}).items||[],st=(D.first&&D.firs
   C.forEach(function(c){(c.lanes||[]).forEach(function(l){if((l.maps||[]).length)rows.push({c:c.name,l:l});else other.push(l.name);});});
   if(!rows.length)return section("","who","Who is doing what","Each lane and what it works on.",'<p class="muted">No lane reported.</p>');
   var h=rows.map(function(x){var l=x.l,ms=l.maps||[],isIdle=idle.indexOf(l.name)>=0;var when=isIdle?"idle: no push in 90 min (the Lead follows up)":l.last_push_at?"last push "+hmIST(l.last_push_at):"working";
-    return '<div class="srow"><b>'+esc(l.name)+'</b><span class="small">'+esc(x.c)+' · '+when+'</span>'+
+    var nm2=/^[a-z]+\/[\w.-]+$/.test(l.name||"")?(l.row?"Lane on "+l.row:"A lane seen only on GitHub"):l.name;
+    return '<div class="srow"><b>'+esc(nm2)+'</b><span class="small">'+esc(x.c)+' · '+when+'</span>'+
       (ms.length?ms.map(function(m){return '<div class="caprow"><span class="cid">R1.'+esc(m.map)+'</span>'+stchip(st[String(m.map)]||"planned")+'<span>'+esc(m.cap)+'</span></div>';}).join(""):'<span class="small muted">Not tied to a Release 1 capability (pipeline or tooling work).</span>')+'</div>';}).join("");
   if(other.length)h+='<p class="small muted">'+other.length+' more lanes work on tools and checks, not on a Release 1 capability (Team detail, for the tech lead).</p>';
   return section("","who","Who is doing what","Each lane, the capabilities it works on (with their stage) and when it last pushed.",h);}
@@ -1054,7 +1057,7 @@ function rRes(){
 /* 11 risks */
 function rRisks(){
   var K=D.risks,h='<div class="box"><table><thead><tr><th>ID</th><th>Risk</th><th>Owner</th><th>By</th><th>Status</th></tr></thead><tbody>';
-  K.items.forEach(function(r){h+='<tr'+S(K.src+" \u00b7 "+r.source+" \u00b7 mitigation: "+r.mitigation)+'><td class="mono">'+esc(r.id)+'</td><td>'+esc(r.risk)+'<div class="small muted">'+esc(r.mitigation)+'</div>'+(r.owner==="founder"?'<div class="small"><b data-rstatus="risk-'+esc(r.id)+'"></b></div>':'')+'</td><td class="small">'+esc(r.owner)+'</td><td class="small mono" style="white-space:nowrap">'+(r.trigger_date?esc(short(r.trigger_date)):'<span class="muted">gate</span>')+'</td><td>'+pill(r.status,r.status==="closed"?"good":r.status==="watching"?"wait":"bad")+'</td></tr>';});
+  K.items.forEach(function(r){h+='<tr'+S(K.src+" \u00b7 "+r.source+" \u00b7 mitigation: "+r.mitigation)+'><td class="mono">'+esc(r.id)+'</td><td>'+esc(r.risk)+'<div class="small muted">'+esc(r.mitigation)+'</div>'+(r.owner==="founder"?'<div class="small"><b data-rstatus="risk-'+esc(r.id)+'"></b> <a href="#fc-needs" data-needs="1">set your status in Needs you</a></div>':'')+'</td><td class="small">'+esc(r.owner)+'</td><td class="small mono" style="white-space:nowrap">'+(r.trigger_date?esc(short(r.trigger_date)):'<span class="muted">gate</span>')+'</td><td>'+pill(r.status,r.status==="closed"?"good":r.status==="watching"?"wait":"bad")+'</td></tr>';});
   h+='</tbody></table></div>';
   var un=v(K.unlisted)||[];
   if(un.length)h+='<p class="small"'+S(src(K.unlisted))+'>'+pill(un.length+" launch items not in this list","wait")+' '+esc(un.map(function(x){return x.id;}).join(", "))+'</p>';
@@ -1212,9 +1215,6 @@ function render(){
 }
 function drawAll(){[drawVSM,drawArch,drawBurnup,drawTimeline].forEach(function(f){try{f();}catch(e){}});addIcons(document.getElementById("body"));}
 var rt=null;window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(function(){if(D){drawAll();}},150);});
-/* P-636: one word per stage everywhere on the page: qa's "Works" reads Proven (panels keep the source words) */
-function provenWords(root){if(!root)return;var w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null),n,L=[];while((n=w.nextNode()))L.push(n);
-  L.forEach(function(x){var s=x.nodeValue;if(/Works/.test(s)&&!(x.parentElement&&x.parentElement.closest(".nowords"))){var r=s.replace(/\bqa Works\b/g,"Proven").replace(/\bWorks\b/g,"Proven");if(r!==s)x.nodeValue=r;}});}
 /* the strip redraws each minute for the data age; a panel opened from the strip stays open (16 Nov: it used to close) */
 setInterval(function(){if(!D)return;var s=document.getElementById("strip"),bs=s.querySelectorAll(".ib"),i=tipBtn?Array.prototype.indexOf.call(bs,tipBtn):-1;
   renderStrip();if(i>=0){var nb=s.querySelectorAll(".ib")[i];if(nb)tipShow(nb);}},60000);
