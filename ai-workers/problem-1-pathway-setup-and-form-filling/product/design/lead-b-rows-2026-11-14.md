@@ -1655,3 +1655,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **PF-8r (comment 6922124215):**
   1. **`main`'s schema drift:** the comparison approach is accepted. The 5 statements (`fact_source`, `form_edition_accept`, `person_role`, `validated_copy`, DROP `canonical_field_name`) are a NOTE. The condition: a fail case where one index or policy is dropped after the restore must be FAIL. The drift fix is case-side, so it is a fix row for Build Lead C / the release holder. PF-8r does not wait for it.
   2. **`nightly.yml` and `run-suites.sh`:** these are the Lead's files, so the Lead decides. The row owner agrees the patch is in scope. The Lead should check the job condition `caps == '[]'` against "runs every night".
+* **Lead 69's answers, 21:51 IST:**
+  1. **PF-8r (#2014):** the lane has the baton for `nightly.yml` and `run-suites.sh` (comment 6922144923). The drill runs every night, with no `caps == '[]'` condition, and it fails on a dropped index or policy. Lead 69 reads the diff before the label.
+  2. **The schema drift row** has gone to Build Lead C.
+  3. **PF-18s's BACKLOG row** now carries `PUT /api/platform/staff/:staffId/office` (amendment on lead/2026-11-07-lead31).
+  4. **The next Lead:** Lead 69 hands over to Lead 70 shortly (P-446). Whoever is the current Lead is read from `tools/current-lead.sh`.
