@@ -1691,3 +1691,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - DW1 to DW7. Opus high, breaker yes, and the release holder reads the SQL.
 * **Lead 70, 23:04 IST:** PF-12b part 1 is now the night queue's top row, because it frees R1.4 to be proven. Part 2 waits on part 1, with the `identity/` exclusions kept. The QA-500 rewording is held until part 2 lands.
 * **PF-8r, the third Lead file (23:13 IST):** on the founder's word (23:2x), Lead 70 put the `check-select-suites.sh` change on #2014 as 2aa9949e1. It was applied by hand, because the comment's patch text was cut short; the PR comment says so. The nightly check passes in a scratch clone. Next: the builder runs both tests on this head, and the reviewer reads only this commit.
+
+## Rev 16.83 (16 Nov 23:16 IST): FO-7s0 (#2016, Build Lead C's row): facts given, not a ruling (comment 6924325967)
+* **P-634 (1) supersedes FO-7v's "never below".** A negative appears only after a reversal's shortfall, red and labelled. Refreshing FO-7v is C's job.
+* **The clash:** the lane recommends an operating → trust To-move line that covers a reversal's shortfall. After #1991, `main` accepts only the credit-note operating → trust line (rev 16.73); every other one gets 409. So the shortfall is shown, but no covering line exists. If the concept needs one, it is a new row for C, with a P-423 migration read. Until then, the screen draws no button or line that `main` refuses.
+* Unconfirmed: no counsel (whether a firm must cover a shortfall from its own funds, and how soon).
