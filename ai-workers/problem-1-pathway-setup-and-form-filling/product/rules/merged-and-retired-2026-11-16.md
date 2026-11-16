@@ -68,3 +68,8 @@ Moved word for word from `RULES.md` (main af7df6d6) by the rule-triage lane, 16 
 **Triaged 16 Nov (B193 part 5, P-619 step 6):** 9 rows merged into the row that says the same and 5 retired, word for word in `rules/merged-and-retired-2026-11-16.md`; every old ID and where it went in `rules/rule-id-map-2026-11-16.tsv` (check-docs.sh fails a missing one); the check queue for the other prose rows: `design/rule-triage-2026-11-16.md`.
 
 * Retired by Lead 69, 20:5x IST 16 Nov (replaced by P-643), row word for word: | P-642 | Extra usage cap US$50 tonight; until the founder switches it on, the 96% stop line stands. (replaced by P-643) | prose | 16 Nov |
+
+## Moved by Lead 70, 23:3x IST 16 Nov (RULES size limit; P-641 superseded by P-643, P-312 freeze expired, P-611c Monday what's-new check unchanged)
+| P-611c | Monday "what's new" check into cockpit/whats-new.json, shown as a board box. | prose | 15 Nov |
+| P-641 | Push harder tonight on extra usage: lanes run past the 96% line to 08:00 IST 17 Nov; spend red in US$ each check. | prose | 16 Nov |
+| P-312 | Changes on a measured number, checked after a fixed period, kept or undone (freeze expired). | prose | 10 Nov |

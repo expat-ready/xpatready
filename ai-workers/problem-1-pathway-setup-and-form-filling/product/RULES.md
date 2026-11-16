@@ -1,10 +1,10 @@
-# Rule register (the tech lead keeps it; as of **P-644**, 16 Nov 20:5x IST (P-639 to P-644 added by Lead 69); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-16-2015-lead69s2-as-of-P-638.md`, whose first line lists the older ones)
+# Rule register (the tech lead keeps it; as of **P-647**, 16 Nov 23:3x IST (P-639 to P-644 added by Lead 69; P-645 to P-647 by Lead 70); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-16-2015-lead69s2-as-of-P-638.md`, whose first line lists the older ones)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced by** names the hook, CI step or script that blocks or fails a break; `prose` = only the reader enforces it (G-4 candidates, bottom); `(part)` = covers part of the rule. IDs: a letter (`P-611b`) = the decision's 2nd row, not its part (2); `IDX-n` = an index of done, product or integration decisions kept in the side file. **Start read**: this page, then the `DECISIONS.md` rows newer than "as of", word for word (P-314, P-440). Long text word for word: side files under `rules/`. `tools/check-docs.sh` fails a row with no enforced-by, a page over 25 KB, or one over 3 rows behind DECISIONS.
 
 **Account facts (founder, 21:4x IST 16 Nov):** GitHub **Pro** (P-282) = 40 concurrent Actions jobs; repo **public** (P-263), so Actions minutes cost nothing; private at the gate on own runners (P-589). The limit is 40 jobs at once, not minutes: never propose buying Pro. Quote word for word: `rules/tokens-money-account.md`.
 
-**Triaged 16 Nov (B193 part 5):** the note, merged and retired rows and the ID map: `rules/merged-and-retired-2026-11-16.md`.
+**Retired and moved rows** (B193 part 5; P-312, P-611c, P-641 since): `rules/merged-and-retired-2026-11-16.md`.
 
 ## Goal and order (detail: `rules/goal-and-order.md`)
 | ID | Rule | Enforced by | As of |
@@ -52,7 +52,6 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-610 | Fix each problem the narrowest way; a row's PR under 800 changed lines; re-review reads only new commits. | CI: pr-rules pr-size.sh (part: 800 changed lines; not yet a required check) | 15 Nov |
 | P-611a | Each Lead rule has a script, hook or CI enforcer where one can be written; this register names it. | script: check-docs.sh (register field; test check-rule-register.sh) | 15 Nov |
 | P-611b | One queue for reports, questions, blockers and approvals with owner, ack, timeout (45 min ACT, 90 min founder); no hand-over with an un-acked item. | script: items.py, lead-queue.sh, handover.sh (tests check-items.sh, check-handover.sh) | 15 Nov |
-| P-611c | Monday "what's new" check into cockpit/whats-new.json, shown as a board box. | prose | 15 Nov |
 | P-609 | Release 1 = all 101 together, committed date 29 Nov; under 50% at the 17 Nov check, options to the founder at once. | prose | 15 Nov |
 | P-613 | Plan C: lanes may be added for nearly-done capabilities; a feeding Lead; non-urgent asks batched at 09:00 and 21:00 IST; qa per module group. | prose | 15 Nov |
 | P-614 | Target kept: all 101 by 29 Nov; no gate lowered; the 17 Nov check reports the forecast with the same measures. | prose | 15 Nov |
@@ -148,9 +147,11 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-638 | FO-7mv merges before FO-7a2 (shrunk); P-634's money rules unchanged. | prose | 16 Nov |
 | P-639 | The board and the Lead's check verify each other: each check acts on the board's Today and Stuck items against their primary source; a mismatch is an ACT fixed the same day. | script: lead-watch.sh (part: ACT lines; B201's tests) | 16 Nov |
 | P-640 | Halve qa time per row (Built to Proven), gates unchanged; staging-domain fallback Cloudflare Registrar. | prose | 16 Nov |
-| P-641 | Push harder tonight on extra usage: lanes run past the 96% line to 08:00 IST 17 Nov; spend red in US$ each check. | prose | 16 Nov |
 | P-643 | (replaces P-642) No extra usage; lanes run past 96%; at 96% the Lead tells the founder, who resets the account before 98%. | prose | 16 Nov |
 | P-644 | Build 10, prove 10 R1 rows a day (floor 7/7); Lead + Build Leads A, C + Prove Lead; whole parts first; no scope cuts. | prose (plan in design/) | 16 Nov |
+| P-645 | Hourly cloud routines take the first free row of the night queue; only the Lead edits it. | prose (routine prompt) | 16 Nov |
+| P-646 | Jam alarms each check (disk, no merge 60 min, CI queue over 30); drafts until Approve; act unasked. | script: lead-watch.sh (1b, 2b) | 16 Nov |
+| P-647 | Each check reads claude.ai/code statuses and acts on waiting lanes; no lane waits on a network change. | prose (built-in browser script) | 16 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |
@@ -167,7 +168,6 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-377 | Live runs from a Terminal tab (sandbox network); a paid run on the data Works counts on, never fixture-only. | prose | 9 Nov |
 | P-461 | Use the plan to its limit (P-344; P-431 replaced); the weekly meter is not a stop line; at 98% tell the founder; lanes push after every step (P-458). | prose | 11 Nov |
 | P-458 | On an account switch: get_usage first, then `RESUME-ON-NEW-ACCOUNT.md`. | prose | 11 Nov |
-| P-312 | Process freeze until 10 Nov 22:30 IST (expired); changes on a measured number, checked after a fixed period, kept or undone. | prose | 10 Nov |
 
 ## The compass (P-312)
 Word for word in `rules/tech-lead.md` (judged daily from tools, never from prose).
