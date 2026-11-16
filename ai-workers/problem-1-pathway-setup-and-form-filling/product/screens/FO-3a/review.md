@@ -231,3 +231,41 @@ Verdict: Approve 6ea08284c84bc364102055cacbb3b674fb7a688d
 **Blockers:** none. **Majors:** none. **Minors open:** as in Re-review 2 (the description wording question for Lead B).
 
 Verdict: Approve 42360d87c1977f8bd15ba7e73fc2b101d8d5df22
+
+## Re-review 4 at `27749b65ae280d5f268c978cbac2e4a3046b31ea` (merge of `main` ddc6e919c, FO-3m #1831; P-270)
+
+**Parents.** The merge's first parent is `b38c4fa`, a records commit with no code change from `42360d8`, which I approved. Its second parent is `ddc6e919c`.
+
+**Was the resolution right?** I re-merged the two parents mechanically with `git merge-tree`.
+* Only `front-office/MODULE.md` conflicts; `service.ts` merges by itself.
+* The committed merge differs from that automatic merge in `MODULE.md` alone: the conflict block is resolved and nothing else changes.
+* On the card, the **Tests.** line keeps both `check_fo3m_answers.ts` (from main) and `check_fo3a_booking_types.ts` (from this branch).
+* Both new invariant lines are kept: FO-3a's deleted-type line and FO-3m's attendance line.
+* Nothing from either side was lost: compared with main, the card differs only by FO-3a's entry points, its invariant and its test.
+
+**`service.ts` compared with main** (`git diff ddc6e919c 27749b65`): exactly the three `where` lines, as A2 allows.
+* the public type: `deletedAt: null`, purpose FREE_CONSULT or OTHER;
+* the public list: the same;
+* staff create: `deletedAt: null`.
+
+FO-3m adds no new lookup that picks a bookable type. Every other type read still goes by the booking's own id, so a deleted type's bookings stay manageable.
+
+The PR still touches the same 8 files compared with main (+769/−7). Its migration `20261116090000` is still the newest.
+
+**Suites on the merged tree** (clean worktree, scratch databases on :54329, never :4400):
+* `check_fo3a_booking_types`: 48/48
+* `check_fo3m_answers`: 14/14
+* FO-3: 133/133
+* FO-3pa: 45/45
+* FO-3sa: 39/39
+* FO-3sr: 29/29
+* FO-1b: 80/80, with the migrate diff clean
+
+**Type check** (`typecheck.mjs`, 8 GB heap):
+* `tsc web`: 0 errors.
+* `tsc api`: the same 8 environment-only errors as in Re-review 3, all missing `ajv` or `@anthropic-ai/sdk` in `../p2` and `../contracts`.
+* No error in a studio file.
+
+**Blockers:** none. **Majors:** none. **Minors open:** as in Re-review 2 (the description wording question for Lead B).
+
+Verdict: Approve 27749b65ae280d5f268c978cbac2e4a3046b31ea
