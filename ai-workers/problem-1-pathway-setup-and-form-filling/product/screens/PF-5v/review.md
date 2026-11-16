@@ -103,3 +103,24 @@ I took the role of a client of the public sign-up API and sent requests with cur
 Not tested: a person's unaided walk on the sign-up screen (none built yet), a real screen reader, and the email through MailPort (part 2).
 
 Verdict: Approve 2dce7a1caebb996c356bb1c99368298422c28872
+
+## Re-review (diff only, P-277): `2dce7a1c..922c87be`
+Two commits are in the diff: c3da635e (the module card) and 922c87be (this review, plus fixes for m1, m4 and m5). Neither changes a line of `api/src`.
+* **Module card:** `api/src/platform/MODULE.md` adds `tests/check_pf5v_signup_mail.ts` to the Tests line. `module-cards.py tree` passes (14 cards).
+* **m1, fixed.** The new check needs all of these in the `typed` answer:
+  * `extra: not a field of this form`;
+  * the three empty messages for a wrong type of email, password and firm name;
+  * `period: check this answer`.
+
+  I re-ran three breaks against it, and each fails the new check:
+  * the `unrecognized_keys` branch removed;
+  * `z.string()` without `{ error }`;
+  * a different fallback message.
+* **m4, fixed.** The header now says part 1 (QA-484) only and that QA-481 is part 2. The 4th check is renamed so it no longer claims the bad email; its assertions are unchanged.
+* **m5, fixed.** `qa/built/PF-5v.md` now says that a wrong type of email, password or firm name answers as empty, and any other wrong answer gets "<field>: check this answer".
+* **m2 and m3** stay listed in the PR as Minors, which the bar allows.
+* **Run:** `tests/check_pf5v_signup_mail.ts` passes 7/0. The PF-5 suite and the code are unchanged since the first review.
+
+No Blocker or Major.
+
+Verdict: Approve 922c87be04e967c8e140998f11ac1c85497664b5
