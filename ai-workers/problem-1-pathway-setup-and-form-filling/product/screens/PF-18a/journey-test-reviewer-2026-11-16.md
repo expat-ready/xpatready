@@ -18,7 +18,7 @@ Commit `6ba0a5e69690229b8749bbe05713cd6cf7e7e838` (branch `claude/zealous-rubin-
 Each add writes one row plus one audit line, and the first add writes two rows plus two audit lines. Firm settings are untouched. An `xr_app` session without a firm reads nothing (the suite's walls cases, re-run).
 
 ## Break-it pass (findings; details and fixes in `review.md`)
-* **Major:** deleting a staff member placed in an office **succeeds** and leaves an orphan `platform_staff_office` row (SQL in a rolled-back transaction: `DELETE 1`, orphan_rows 1). The trigger checks run on insert only (`migration.sql:63-73`). Lead B ruled real keys on #2009, 16:19Z.
+* **Major on 6ba0a5e, closed on 081df1d** (the real keys refuse the delete; re-checked on a scratch database). Deleting a staff member placed in an office **succeeds** and leaves an orphan `platform_staff_office` row (SQL in a rolled-back transaction: `DELETE 1`, orphan_rows 1). The trigger checks run on insert only (`migration.sql:63-73`). Lead B ruled real keys on #2009, 16:19Z.
 * **Minor:** two parallel PATCH renames to `Twin<i>` and `twin<i>` both answered 200 in **10 of 10** runs. Same-case renames are fine: 409/200 each time (P2002 maps to 409).
 * **Minor:** two parallel PATCHes of the same office's zone write two audit lines that both say "from America/Vancouver". One of them has the wrong "before".
 * **Minor:** PATCH `{province: "BC"}` on a US office answers 200 and stores nothing. PATCH `{}` writes an audit line "Office changed" although nothing changed.
@@ -30,13 +30,13 @@ Each add writes one row plus one audit line, and the first add writes two rows p
 | Next step obvious | 1 | `multipleOffices`, `first` and `timeZoneFrom` tell the screen what to show |
 | Plain words | 1 | The AG-1-74 wording "Choose a time zone from the list"; each issue names its field |
 | Feedback and state | ½ | An ignored province still gets 200 with no field error; "Office changed" is logged for an empty PATCH |
-| Correct data | ½ | Orphan rows on staff delete; names differing only in case get in under a race; the audit "from" is wrong under parallel PATCHes |
+| Correct data | ½ | Orphan rows on staff delete (6ba0a5e only; fixed in 081df1d); names differing only in case get in under a race; the audit "from" is wrong under parallel PATCHes |
 | Error recovery | 1 | Double POST gives 201 + 409; a failed first add rolls back the first office |
 | Accessibility and screen sizes | N/A | No screen in this row (PF-18s) |
 | Speed | 1 | Every call 7-73 ms on the isolated copy |
 | Visual quality | N/A | No screen |
 | Trust and sources | 1 | The zone pack cites tzdata 2026e `zone1970.tab`, read 2026-11-16. I checked each quoted comment against `/usr/share/zoneinfo/zone1970.tab` and they match; our own choices are labelled "ours" |
 
-**Score: 7 of 8 applicable criteria (8.75/10 scaled), no criterion at 0: Pass.** The most valuable fixes come first: real keys (correct data), case-insensitive name uniqueness under lock (correct data), and a 400 or explicit drop for a province abroad (feedback).
+**Score: 7 of 8 applicable criteria (8.75/10 scaled), no criterion at 0: Pass.** On 081df1d the score is unchanged: 7 of 8 applicable, Pass. The most valuable fixes come first: case-insensitive name uniqueness under lock (correct data), and a 400 or explicit drop for a province abroad (feedback).
 
 **Could not test:** a visible-browser walk, axe, widths and keyboard (no screen). D17 and D20 stay with the founder. The real case-side and booking callers of OfficeClockPort do not exist yet (part 2; contract gap).

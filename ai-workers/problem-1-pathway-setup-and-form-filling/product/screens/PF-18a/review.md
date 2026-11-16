@@ -1,6 +1,6 @@
 # PF-18a part 1 (offices): independent review
 
-Commit `6ba0a5e69690229b8749bbe05713cd6cf7e7e838`, branch `claude/zealous-rubin-lxcmfs`, draft PR #2009 (12 files, 792+/4−, under P-610's 800 lines). The brief is `design/lead-b-briefs/PF-18a.md` on `main`, part 1 only. Requirements: AG-1-74, AG-16-68, AG-16-59 from the trace tool. API and schema only, no screen: the screen-review UI checks, the BIC scorecard (case-side screens only) and D8-D14 are N/A. The journey test is in `journey-test-reviewer-2026-11-16.md`.
+**Final head reviewed: `081df1dc1d6496096004846677840ee8566f9a31`.** It is first review on `6ba0a5e` plus a re-review of `git diff 6ba0a5e 081df1d` (P-277: real keys, as Lead B ruled). Branch `claude/zealous-rubin-lxcmfs`, draft PR #2009 (12 files, 792+/4−, under P-610's 800 lines). The brief is `design/lead-b-briefs/PF-18a.md` on `main`, part 1 only. Requirements: AG-1-74, AG-16-68, AG-16-59 from the trace tool. API and schema only, no screen: the screen-review UI checks, the BIC scorecard (case-side screens only) and D8-D14 are N/A. The journey test is in `journey-test-reviewer-2026-11-16.md`.
 
 **Re-run by me on this commit:**
 * `tsx --tsconfig api/tsconfig.json tests/check_pf18a_offices.ts`: **71 passed, 0 failed** (24.7 s, Postgres :54329).
@@ -8,7 +8,10 @@ Commit `6ba0a5e69690229b8749bbe05713cd6cf7e7e838`, branch `claude/zealous-rubin-
 * Isolated copy `rv18a` on :4433: API journeys and break pass, then stopped.
 * The branch merges into `origin/main` (f7dde02c8) without conflict. The stamp `20261116190000` is later than main's newest migration (`20261116030000`).
 
-The working tree holds the builder's uncommitted switch to real keys (made after Lead B's ruling). I did not review it; this verdict is for 6ba0a5e only.
+**Re-run on 081df1d** (checkout `120e280`, which adds only these records files on top of it):
+* `check_pf18a_offices` 71/0, `check_pf0p_ports` 113/0, `check_pf12_walls` 100/0, `check_pf3_platform_schema` 75/0.
+* check-port-contracts: 0 problems.
+* On a scratch database with every migration: deleting a staff member who has an office row is refused (`platform_staff_office_firm_id_staff_id_fkey` RESTRICT). Deleting a firm is refused too.
 
 ## Done when (part 1 share)
 | Line | Result | Evidence |
@@ -20,17 +23,20 @@ The working tree holds the builder's uncommitted switch to real keys (made after
 | DW7 | **Partly** | Contract met: it runs on the real adapter and the fake, a broken adapter fails it, and check-port-contracts is green. The stamp check is correct. **Not met: rev 16.7's "measure right after its own migration"** (M2). |
 
 ## Design choices asked to judge
-1. **Triggers instead of keys: not accepted.** On delete they hold nothing (M1). Lead B, the row owner, ruled real keys plus a `// back-relation slot: offices (PF-18a)` line, in this PR (#2009, 16:19Z).
+1. **Triggers instead of keys: not accepted on 6ba0a5e; fixed on 081df1d.** Lead B ruled real keys and a slot line (#2009, 16:19Z).
+   * 081df1d adds `platform_office.firm_id → platform_firm` and `(firm_id, staff_id) → platform_staff(firm_id, id)`, both RESTRICT.
+   * The slot `// back-relation slot: offices (PF-18a)` has one line in each model; check_pf0p keeps every slot.
+   * `platform_staff_office_write` and the firm check are gone. `platform_office_write` keeps the zone and immutability rules.
 2. **Staff→office by service method only: accepted.** The brief lists only `/offices`. The method is audited and firm-scoped (404 across firms) and tested by direct call. Lead B accepted it and put `PUT /api/platform/staff/:staffId/office` on PF-18s. The PR body should say so.
 3. **No province stored abroad: accepted as a data rule.** The DB check enforces it, and AG-1-74 §12 needs only "abroad → firm zone". But the given value is dropped silently (m3).
 
 ## Findings
 **Major**
-* **M1. Firm and staff integrity holds only on insert.** `migration.sql:40-73` (`platform_office_write`, `platform_staff_office_write`). The triggers check that the firm and the staff member exist when a row is written. A later delete of the parent is not blocked.
+* **M1 (closed on 081df1d).** The finding below was on 6ba0a5e. It is fixed by the real keys; the deletes are now refused, re-run above. The remaining gap, a missing test, is m5. **Firm and staff integrity holds only on insert.** `migration.sql:40-73` (`platform_office_write`, `platform_staff_office_write`). The triggers check that the firm and the staff member exist when a row is written. A later delete of the parent is not blocked.
   * Failing case, run on the isolated copy inside a rolled-back transaction: put a staff member in "Calgary HQ" (insert a `platform_staff_office` row), then `delete from platform_staff where id = <them>` → `DELETE 1`, and 1 orphan row remains. `OfficeClockPort.officeOfStaff` would still answer an office for a person who does not exist. The same applies to `platform_firm` (no key).
   * The precedent is FO-1b, FO-13 and PF-21: RESTRICT keys, with tests "a named staff member cannot be deleted".
   * Fix, as ruled: composite keys `(firm_id) → platform_firm` and `(firm_id, staff_id) → platform_staff(firm_id, id)`, RESTRICT, plus slot and back-relation lines in `platform.prisma`. Drop the write-check triggers. Add a fail test: a staff member or firm with an office row cannot be deleted. Add a pass test: one without such a row can.
-* **M2. The migration test is not "parallel world" (DW7, rows rev 16.7).** `tests/check_pf18a_offices.ts:90-91` applies this migration *and every later one* (`x >= NEW`), then checks that the demo rows are unchanged.
+* **M2 (open on 081df1d). The migration test is not "parallel world" (DW7, rows rev 16.7).** `tests/check_pf18a_offices.ts:92-93` on 081df1d (90-91 on 6ba0a5e) applies this migration *and every later one* (`x >= NEW`), then checks that the demo rows are unchanged.
   * Failing case: any later migration that writes a row in `audit_event`, `platform_firm_setting`, `platform_staff`, `platform_firm` or `runtime_case`. Once this PR merges, its suite goes red on main and on later PRs. That is exactly the PF-25 incident rev 16.7 was written for.
   * Fix: apply `NEW` only, run the line-91/92 checks, then apply the rest.
 
@@ -50,6 +56,8 @@ The working tree holds the builder's uncommitted switch to real keys (made after
   * Fix: a 400 field issue (or an explicit `issues` note), and "saved unchanged" when before equals after.
 * **m4. The fake's own copy of the firm defaults can drift.** `ports/offices.ts:43` `FIRM_DEFAULTS` copies `settings.ts`'s defaults, and no contract case covers "a firm that never saved its settings". Fix: add that contract case, comparing the real adapter's defaults with the fake's.
 
+* **m5. No test fails if the keys' RESTRICT is removed** (081df1d). The suite checks only the insert side (`*_fkey` on insert). Changing the keys to CASCADE, or dropping RESTRICT, would leave it green. Fix, the FO-1b pattern: "a staff member or firm named by an office row cannot be deleted" (fail) and "one with no office row can" (pass).
+
 ## Checked and holding
 * Firm walls: `firmScope` on every query; PF-12 policy, gate trigger and `xr_wall_reader` functions.
 * First-office materialisation runs under an advisory lock: two parallel adds give 3 rows and 1 `is_first`. A unique partial index holds one first office.
@@ -64,7 +72,7 @@ The working tree holds the builder's uncommitted switch to real keys (made after
 | D | Score | Evidence |
 |---|---|---|
 | D1 | 4 | Every part-1 rule has a behaviour and a test; DW7 is partly met (M2) |
-| D2 | 3 | No key on firm/staff (M1); the case-insensitive name rule fails under a race (m1) |
+| D2 | 4 | Real keys on 081df1d (M1 closed); the case-insensitive name rule fails under a race (m1) |
 | D3 | 5 | Reuses the firm settings' schemas, `firmScope`, `AuditPort`, the problem shape |
 | D4 | 5 | The pre-fill resolves for all 13 codes; there is no unreachable state |
 | D5 | 5 | Double POST gives 201 + 409; a failed first add rolls back |
@@ -81,6 +89,6 @@ The working tree holds the builder's uncommitted switch to real keys (made after
 
 **Could not check:** a browser walk, axe, widths (no screen); the real callers of OfficeClockPort (part 2, case side); CI on the PR (draft, guard only).
 
-**Fix list:** M1 (real keys, as Lead B ruled), M2 (measure right after the migration). The Minors are recommended in the same push.
+**Fix list (081df1d):** M2. Measure right after this migration: apply `NEW` alone, check, then apply the rest. m1-m5 are recommended in the same push.
 
-Verdict: Changes requested
+Verdict: Changes requested 081df1dc1d6496096004846677840ee8566f9a31
