@@ -64,7 +64,7 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
   # merged or retired there (or a new dated map lists it). Test: check-rule-triage.sh.
   for M in "$PH"/rules/rule-id-map-*.tsv; do
     [ -f "$M" ] && [ -f "$R" ] || continue
-    python3 -I - "$M" "$R" "$(dirname "$M")/merged-and-retired-$(basename "$M" .tsv | sed 's/^rule-id-map-//').md" <<'PY'
+    python3 -I - "$M" "$R" "$(dirname "$M")/merged-and-retired-$(basename "$M" .tsv | sed 's/^rule-id-map-//').md" <<'PY' || echo "RULE MAP: the check of $(basename "$M") stopped with an error (python exit $?), so nothing in it was checked: fix the map's format"
 import sys, re, os, hashlib
 m, r, sf = sys.argv[1:4]; mn = os.path.basename(m)
 rid = lambda l: (lambda c: c[1].strip() if len(c) > 2 else "")(l.split("|"))
