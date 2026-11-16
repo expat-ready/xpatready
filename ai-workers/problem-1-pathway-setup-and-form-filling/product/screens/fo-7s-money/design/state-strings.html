@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FO-7s0 state × string table</title>
+<!-- FO-7s0 DW1 and DW3 (concept.md). Every visible money string per trust state, and every action on a trust screen.
+     U = Unanswered, Y = Yes, N0 = No with nothing held, NH = No with money held or To move not empty (AG-6-59 r6).
+     DW1: no trust word in U or N0 except the trust question itself (Owner only, AG-6-59 r2-r3), marked q.
+     DW3: only "Pay from trust" (to an issued invoice) and "Refund to client" take money out of trust (P-603).
+     Open with ?plant=dw1 (a "Received into" in U) or ?plant=dw3 (a "Transfer" action): the check must say FAIL. -->
+<style>
+:root{--bg:#f5f7fa;--card:#fff;--text:#1a2233;--muted:#5b667a;--ok:#1d7a46;--bad:#b42318;--line:#dde3ec;--brand:#0862C5}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151c;--card:#1a202b;--text:#e8edf5;--muted:#9aa6b8;--line:#2c3544}}
+:root[data-theme="dark"]{--bg:#11151c;--card:#1a202b;--text:#e8edf5;--muted:#9aa6b8;--line:#2c3544}
+body{margin:0;padding:16px;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,sans-serif}
+h1{font-size:18px;margin:0 0 4px}p{color:var(--muted);margin:0 0 12px}
+table{border-collapse:collapse;width:100%;background:var(--card);margin-bottom:16px}th,td{border:1px solid var(--line);padding:4px 8px;text-align:left;vertical-align:top}
+td.x{text-align:center}output{display:block;font-weight:600;margin:8px 0 16px}output[data-result=PASS]{color:var(--ok)}output[data-result=FAIL]{color:var(--bad)}
+</style></head><body>
+<h1>State × string table (FO-7s0)</h1>
+<p>Sample firm Maple. ✓ = the string can show in that trust state. q = the trust question's own lines (Owner only). Card account states, empty, loading, refused and two currencies are in each group file's state table.</p>
+<output id="dw1"></output><output id="dw3"></output>
+<table id="strings"><thead><tr><th>Screen</th><th>Element</th><th>String</th><th>U</th><th>Y</th><th>N0</th><th>NH</th></tr></thead><tbody></tbody></table>
+<table id="actions"><thead><tr><th>Trust screen</th><th>Action</th><th>Takes money out of trust</th><th>Into</th></tr></thead><tbody></tbody></table>
+<script>
+// [screen, element, string, flags U Y N0 NH, q]
+const S = [
+["Money menu","item","Invoices","1111"],["Money menu","item","Payments","1111"],["Money menu","item","Exports","1111"],["Money menu","item","Getting paid","1111"],
+["Money menu","item","Trust","0101"],["Money menu","item","To move","0101"],["Money menu","item","Monthly check","0101"],
+["Money area (Owner)","inline question","Do you hold client money in a trust account? Yes · No","1000","q"],
+["Money area (Owner)","inline question","Yes lets you take deposits before the work. No means you bill after the work.","1000","q"],
+["Getting paid (Owner)","trust question","Do you hold client money in a trust account? Yes · No","1111","q"],
+["Getting paid (Owner)","trust question","Yes lets you take deposits before the work. No means you bill after the work.","1111","q"],
+["Getting paid (Owner)","trust question","Last changed 16 Nov 2026 by <Owner>","0111"],
+["Getting paid (Owner)","Yes → No notice","CAD 600.00 is held for 1 case. Trust screens stay visible until it is settled.","0001"],
+["Booking type (not Owner)","ask line","Ask the Owner to answer the trust question","1000","q"],
+["Home (Owner)","home item","Tell ExpatReady whether you hold client money in a trust account","1000","q"],
+["Getting paid","section","Payment details — operating","1111"],["Getting paid","section","Payment details — trust","0101"],
+["Getting paid","notice","Invoice emails wait until you add your payment details","1111"],
+["Getting paid","notice","Trust requests wait until you add your trust payment details","0100"],
+["Getting paid","Advanced","Invoice payments go to: Operating account · Trust first","0100"],
+["Getting paid","tax","Registered for tax","1111"],["Getting paid","tax","Add your tax number to turn this on","1111"],
+["Getting paid","card","Payment account disconnected — Reconnect","1111"],
+["Invoice builder","party hint","Only clients appear here. A prospect is asked for a deposit, not invoiced.","1111"],
+["Invoice builder","line","Government fees are never taxed","1111"],
+["Invoice builder","retainer","<Party>'s retainer isn't signed. Invoice anyway?","1111"],
+["Invoice builder","deposit row","This row is a deposit: request it from trust instead","0100"],
+["Invoice builder","summary","Pay CAD 960.50 from trust at issue","0101"],
+["Issue dialog","notice","Email waits: add your payment details","1111"],
+["Issue dialog","tick","Pay CAD 960.50 from trust now","0101"],
+["Invoice detail","refusal","Issued invoices can't be edited — use a credit note.","1111"],
+["Invoice detail","figure","Paid from trust: CAD 960.50 · Balance due: CAD 0.00","0101"],
+["Invoice detail","action","Pay from trust…","0101"],
+["Credit note","trust return","CAD 282.50 returns to Client B's trust balance","0101"],
+["Credit note","choice","Refund to the client · Move back to trust","0101"],
+["Credit note","choice","Refund · Keep as credit","1010"],
+["Credit note","refusal","Already settled by write-off","1111"],
+["Write off","line","Write off CAD 25.00 (the remaining balance)","1111"],
+["Reverse entry","preview","INV-0005 goes back to CAD 1,186.50 due","1111"],
+["Reverse entry","preview","CAD 1,500.00 must move from operating to trust: reversal of R-0007","0101"],
+["Reverse entry","preview","Trust balance after: CAD 0.00","0101"],
+["Reverse entry","refusal","Use a refund","1111"],
+["Record payment","field","Received into: Operating · Trust","0100"],
+["Record payment","hint","This adds a To move line: move CAD 1,130.00 from operating to trust for Client B","0100"],
+["Record payment","warning","A payment with reference 4471 is already recorded on this invoice. Record anyway?","1111"],
+["Record payment","extra","CAD 200.00 extra","1111"],
+["Record payment","extra","goes to Client B's trust balance","0100"],
+["Record payment","extra","Refund · Keep as credit","1010"],
+["Record payment","success","R-0012 recorded · Receipt emailed to Client B","1111"],
+["Payments list","column","Received into","0100"],
+["Money view","summary","Paid from trust","0101"],["Money view","summary","Trust held: CAD 1,300.00 (2 cases, CAD 150.00 before a case)","0101"],
+["Money view","summary","Not tracked yet","1111"],
+["Money view","action","Pay from trust…","0101"],["Money view","action","Refund to client…","0101"],["Money view","action","Send statement…","1111"],
+["Trust","action","New trust request","0100"],["Trust","action","Record trust deposit","0100"],
+["Trust","request","DR-0001 sent","0100"],["Trust","deposit","CAD 1,500.00 is a cheque not yet cleared. Apply anyway?","0101"],
+["Pay from trust","refusal","Only CAD 130.00 is available.","0101"],
+["To move","total","Trust → operating: CAD 1,130.00 · Operating → trust: CAD 1,500.00","0101"],
+["To move","action","I moved these","0101"],["To move","action","Undo this batch…","0101"],
+["Monthly check","part","Expected bank balance","0101"],["Monthly check","note","Add a short note about the difference","0101"],
+["Statement","line","Held in trust for your work permit: CAD 1,500.00","0101"],
+["Exports","file","Trust ledger","0101"],["Exports","file","Invoices · Payments · Refunds · Credit notes · Write-offs","1111"],
+["Pay page","state","Online payment is temporarily unavailable","1111"],["Pay page","return","Payment received — your receipt is on its way","1111"],
+];
+// [trust screen, action, out of trust?, into]
+const A = [
+["Money view / invoice detail","Pay from trust…",true,"an issued invoice of the same payer (AG-6-68)"],
+["Money view","Refund to client…",true,"the payer (AG-6-23)"],
+["Money view","Send statement…",false,"—"],
+["Trust","New trust request",false,"— (money in)"],["Trust","Record trust deposit",false,"— (money in)"],
+["To move","I moved these",false,"— (records the firm's bank step; balances unchanged)"],["To move","Undo this batch…",false,"—"],
+["Credit note","Move back to trust",false,"— (money in)"],["Reverse entry","Confirm",false,"— (correction; trust never below zero)"],
+["Monthly check","Save",false,"—"],
+];
+const plant = new URLSearchParams(location.search).get("plant");
+if (plant === "dw1") S.push(["Record payment","field","Received into","1000"]);
+if (plant === "dw3") A.push(["Trust","Transfer",true,"operating"]);
+const WORD = /trust|DR-|To move|Monthly check|Pay from trust|Received into/i;
+const bad1 = S.filter(r => WORD.test(r[2]) && (r[3][0] === "1" || r[3][2] === "1") && r[4] !== "q");
+const OUT = new Set(["Pay from trust…","Refund to client…"]);
+const bad3 = A.filter(a => a[2] && !OUT.has(a[1]));
+const out = (id, bad, label) => { const o = document.getElementById(id); o.dataset.result = bad.length ? "FAIL" : "PASS";
+  o.textContent = `${label}: ${bad.length ? "FAIL — " + bad.map(b => b.slice(0,3).join(" / ")).join("; ") : "PASS"}`; };
+out("dw1", bad1, "DW1 trust words only in trust-on states"); out("dw3", bad3, "DW3 two ways out of trust");
+const tb = document.querySelector("#strings tbody");
+for (const r of S) { const tr = tb.insertRow(); [r[0], r[1], r[2]].forEach(t => tr.insertCell().textContent = t);
+  [...r[3]].forEach((f, i) => { const c = tr.insertCell(); c.className = "x"; c.textContent = f === "1" ? (r[4] === "q" && (i === 0 || i === 2) ? "q" : "✓") : ""; }); }
+const ta = document.querySelector("#actions tbody");
+for (const a of A) { const tr = ta.insertRow(); [a[0], a[1], a[2] ? "Yes" : "No", a[3]].forEach(t => tr.insertCell().textContent = t); }
+</script></body></html>

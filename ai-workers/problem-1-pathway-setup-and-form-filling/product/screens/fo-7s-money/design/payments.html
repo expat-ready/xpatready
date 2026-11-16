@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FO-7s0 board — Payments</title>
+<!-- FO-7s0 board, Sample data only (firm Maple, Client B, Pine Bakery). Checks: DW4 every figure (.fig) in one currency;
+     DW7 no negative money anywhere. ?plant=dw4 / ?plant=dw7 add a bad figure: the check must say FAIL. -->
+<style>
+:root{--bg:#f3f5f9;--card:#fff;--text:#1a2233;--muted:#5b667a;--line:#dde3ec;--brand:#0862C5;--ok:#1d7a46;--warn:#9a5b00;--bad:#b42318;--chip:#eef2f8}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151c;--card:#1a202b;--text:#e8edf5;--muted:#9aa6b8;--line:#2c3544;--brand:#5aa2ff;--chip:#253044;--warn:#f0b35a}}
+:root[data-theme="dark"]{--bg:#11151c;--card:#1a202b;--text:#e8edf5;--muted:#9aa6b8;--line:#2c3544;--brand:#5aa2ff;--chip:#253044;--warn:#f0b35a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,sans-serif}
+header{display:flex;gap:12px;align-items:center;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line)}header b{color:var(--brand)}
+main{padding:16px;display:grid;gap:16px;max-width:1440px}section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+h1{font-size:18px;margin:0 0 4px}h2{font-size:16px;margin:0 0 8px}small,.m{color:var(--muted)}.row{display:flex;gap:16px;flex-wrap:wrap}.row>*{flex:1 1 280px}
+table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left}td.n{text-align:right}
+.chip{display:inline-block;padding:1px 8px;border-radius:6px;background:var(--chip);font-size:12px}.warn{color:var(--warn)}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;padding:6px 12px}button.p{background:var(--brand);border-color:var(--brand);color:#fff}
+.note{border-left:3px solid var(--warn);padding:6px 10px;background:var(--chip)}output{display:block;font-weight:600}output[data-result=PASS]{color:var(--ok)}output[data-result=FAIL]{color:var(--bad)}
+</style></head><body><header><b>Maple Immigration</b><span class="m">Money · Payments</span></header><main>
+<div class="row"><section><h1>Record payment — INV-0003</h1>
+<p>Method <b>Cheque</b> (Bank transfer · Wire · Cheque · Cash · e-Transfer · Card terminal · Other)</p>
+<p>Amount <span class="fig">CAD 1,000.00</span> · Date 16 Nov 2026 · Reference 4471 · Paid by Client B</p>
+<p class="m">Trust Yes only: Received into: Operating · Trust</p>
+<p class="note">A payment with reference 4471 is already recorded on this invoice. Record anyway? <button>Record anyway</button></p>
+<p><button>Cancel</button> <button class="p">Record</button></p><p>R-0012 recorded · Receipt emailed to Client B</p></section>
+<section><h2>More than due</h2><p><span class="fig">CAD 1,200.00</span> extra</p><p>Trust Unanswered or No: <button>Refund</button> <button>Keep as credit</button></p><p class="m">Trust Yes: goes to Client B's trust balance.</p></section></div>
+<section><h2>Payments</h2><table><tr><th>Date</th><th>Receipt</th><th>Paid by</th><th>Method</th><th>Amount</th><th>For</th><th>Cleared</th><th>Status</th></tr>
+<tr><td>16 Nov 2026</td><td>R-0012</td><td>Client B</td><td>Cheque</td><td class="n fig">CAD 1,000.00</td><td>INV-0003</td><td class="warn">Not yet cleared</td><td><span class="chip">Recorded</span></td></tr>
+<tr><td>12 Nov 2026</td><td>R-0010</td><td>Pine Bakery</td><td>Wire</td><td class="n fig">USD 600.00</td><td>INV-0004</td><td>Cleared</td><td><span class="chip">Recorded</span></td></tr></table></section>
+<div class="row"><section><h2>Send statement — Client B</h2><p>Period <b>Everything</b> · To Client B (no Cc) · “Your statement”</p><p class="m">No schedule control: statements are sent by a person.</p><p><button class="p">Send</button></p><p>Statement sent to Client B</p></section>
+<section><h2>Exports</h2><p>1 Nov – 30 Nov 2026 · ☑ Payments ☐ Invoices ☐ Refunds ☐ Credit notes ☐ Write-offs</p><p><button class="p">Start export</button></p>
+<p>Payments.csv <button>Download</button> <small>Link expires 17 Nov 2026, 23:10</small></p><p class="m">Refunds.csv — No records in this period</p></section></div>
+<section><output id="dw4"></output><output id="dw7"></output></section></main>
+<script>
+const q = new URLSearchParams(location.search).get("plant"), m = document.querySelector("main");
+if (q === "dw4") m.insertAdjacentHTML("afterbegin", '<p class="fig">Total CAD 100.00 + USD 50.00 = 150.00</p>');
+if (q === "dw7") m.insertAdjacentHTML("afterbegin", '<p class="fig">Trust balance −CAD 1,500.00</p>');
+const b4 = [...document.querySelectorAll(".fig")].filter(e => new Set(e.textContent.match(/CAD|USD/g) || []).size !== 1);
+const b7 = /[−-]\s?(CAD|USD)\s?\d|(CAD|USD)\s?[−-]\d/.test(m.textContent);
+const put = (id, bad, t) => { const o = document.getElementById(id); o.dataset.result = bad ? "FAIL" : "PASS"; o.textContent = t + (bad ? ": FAIL" : ": PASS"); };
+put("dw4", b4.length, "DW4 every figure in one currency"); put("dw7", b7, "DW7 no negative money");
+</script></body></html>
