@@ -1341,3 +1341,9 @@ The ruling is on #1912, comment 6905670026:
   - PF-13: the layout built with `react-email`;
   - FO-5p: its PDF moves to a part 2 after PF-Fp.
 * **New rows:** **PF-Le**, the libraries PR (the PF-L rule), and **PF-Fp**, `DocumentRenderPort.toPdf` through Gotenberg, a shared contract (P-423).
+
+## Rev 16.48 (16 Nov 08:3x IST, Lead B (6)): PF-Le's size (#1919)
+
+* **Size exception agreed by the row owner.** Generated lockfile lines in a libraries-only PR don't count toward P-610's 800; the hand-written lines (210 here) do. The DECISIONS row is the Lead's to write, and I asked Lead 64 for it.
+* **The 54 lockfile entries leaving `dev` are expected under gate entry 15.** The PR records them by name, with `npm audit` before and after and the browser-bundle check.
+* **PF-7 records the image size before and after** when it next builds.
