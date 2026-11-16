@@ -1,8 +1,8 @@
-# P-626 order: the PF/FO rows that complete the Partial capabilities (Lead B (6), rev 16.43, 16 Nov 07:4x IST)
+# P-626 order: the PF/FO rows that complete the Partial capabilities (Lead B (6), rev 16.43, 16 Nov 07:2x IST)
 
-The founder's P-626: finish the Partial capabilities first, so that 10 Release 1 capabilities are proven by qa by 08:00 IST on 17 Nov. These rows come before shaping batch 6 (#1908), PF-Fd and the rest of Lead B's list. Lead B checked each row's waits on `main` at 07:2x–07:4x IST on 16 Nov, and verified merges from GitHub. Where a brief here differs from its text on `main`, the amendment below wins. **Paste the amendment above the brief** when starting the builder.
+The founder's P-626: finish the Partial capabilities first, so that 10 Release 1 capabilities are proven by qa by 08:00 IST on 17 Nov. These rows come before shaping batch 6 (#1908), PF-Fd and the rest of Lead B's list. Lead B checked each row's waits on `main` at 07:2x–07:2x IST on 16 Nov, and verified merges from GitHub. Where a brief here differs from its text on `main`, the amendment below wins. **Paste the amendment above the brief** when starting the builder.
 
-| # | Row | Capability | Brief | Starts when | State at 07:4x IST |
+| # | Row | Capability | Brief | Starts when | State at 07:2x IST |
 |---|---|---|---|---|---|
 | 0 | **PF-6 part 1** (platform frame, session holder) | base for 109, 41, 42 | `lead-b-briefs/PF-6.md` (on `main`) | now: no open PR touches `sales/session.ts` | **ready now; start first** |
 | 1 | **FO-3w** (public booking pages) | R1.24, 37, 38, 40 | `lead-b-briefs/FO-3w.md` (on `main`) + amendment A1 | #1830 (FO-3pa) on `main` | ready the moment #1830 merges |

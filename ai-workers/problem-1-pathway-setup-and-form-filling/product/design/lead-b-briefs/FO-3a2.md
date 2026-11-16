@@ -1,6 +1,6 @@
 # Brief: FO-3a part 2, the consult record, its read port and the staff read feed (map row 42; rows 37, 39) (cloud builder lane; row owner Lead B)
 
-Written 16 Nov 07:4x IST by Lead B (6), rev 16.43, for P-626 (finish the Partial capabilities first). Row: BACKLOG **FO-3a**, whose "part 2" (the consult record and the calendar feed, AG-4-49, -67) the shaping lane left unbriefed for want of a read port (`FO-3a.md`, line 3). Concept: `screens/fo-3-booking/concept.md` r2 (FO-3sc, #1819), BR-14, BR-15, BR-16, §6 and its answers Q3 and Q4. **Model: Opus 5.5, effort: high** (schema, a shared port and a permission read; reviewer and breaker at high, P-605).
+Written 16 Nov 07:2x IST by Lead B (6), rev 16.43, for P-626 (finish the Partial capabilities first). Row: BACKLOG **FO-3a**, whose "part 2" (the consult record and the calendar feed, AG-4-49, -67) the shaping lane left unbriefed for want of a read port (`FO-3a.md`, line 3). Concept: `screens/fo-3-booking/concept.md` r2 (FO-3sc, #1819), BR-14, BR-15, BR-16, §6 and its answers Q3 and Q4. **Model: Opus 5.5, effort: high** (schema, a shared port and a permission read; reviewer and breaker at high, P-605).
 
 **Two PRs, one after the other in this lane or in two lanes:**
 * **2a, the consult record and its read port.** Starts when FO-3a part 1a is on `main`. It may run **beside 1b** (see "Parallel safety").

@@ -1,6 +1,6 @@
 # Brief: FO-3st1, the bookings calendar, booking detail, attendance and the consult record (map row 42; rows 37, 39) (cloud builder lane; row owner Lead B)
 
-Written 16 Nov 07:4x IST by Lead B (6), rev 16.43, for P-626. Row: BACKLOG **FO-3st1** (split of FO-3st, no new scope). Concept: `screens/fo-3-booking/concept.md` r2 (FO-3sc, #1819), approved; mock-up `screens/fo-3-booking/design/staff.html`. **Model: Opus 5.5, effort: high** (new screens with permissions; reviewer and breaker at high, P-605).
+Written 16 Nov 07:2x IST by Lead B (6), rev 16.43, for P-626. Row: BACKLOG **FO-3st1** (split of FO-3st, no new scope). Concept: `screens/fo-3-booking/concept.md` r2 (FO-3sc, #1819), approved; mock-up `screens/fo-3-booking/design/staff.html`. **Model: Opus 5.5, effort: high** (new screens with permissions; reviewer and breaker at high, P-605).
 
 **Two PRs (P-610):**
 * **Part 1, calendar, detail, new booking and attendance** (J-S1 to J-S4, J-S9). Starts when **PF-6 part 1** (the platform frame and session holder) and **FO-3a part 2b** (the feed) are on `main`. FO-3sa and FO-3sr are already there.
