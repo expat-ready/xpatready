@@ -579,7 +579,7 @@ function rFirst(){
     (rest(R.why)?'<p>'+esc(rest(R.why))+'</p>':'')+
     '<p><b>Proven ('+R.proven_ids.length+'):</b></p>'+ul(R.proven_ids.map(capName))+
     '<p><b>Built, waiting for qa ('+R.waiting_ids.length+'):</b></p>'+ul(R.waiting_ids.map(capName))+
-    (R.qa_not_built_ids.length?'<p class="warnline">qa\'s file still reads Not built for '+R.qa_not_built_ids.length+' of these: '+esc(R.qa_not_built_ids.map(function(m){return "R1."+m;}).join(", "))+'. qa re-checks them.</p>':'')+
+    (R.qa_not_built_ids.length?'<p class="warnline">qa tested '+R.qa_not_built_ids.length+' after all their listed parts merged and found them unfinished, so they count as In progress: '+esc(R.qa_not_built_ids.map(function(m){return "R1."+m;}).join(", "))+'.</p>':'')+
     (R.unlisted_ids.length?'<p class="warnline">qa\'s file lists '+(R.planned-R.unlisted_ids.length)+' of '+R.planned+'; not listed yet: '+esc(R.unlisted_ids.map(function(m){return "R1."+m;}).join(", "))+'.</p>':'')+
     '<p><a href="#" data-open="caps">Open every capability and its stage</a></p>',"first.release");
   h+=fcard("today","Today"+(Td.goal?" · goal by "+esc(Td.by_text||hmDay(Td.by)):""),
