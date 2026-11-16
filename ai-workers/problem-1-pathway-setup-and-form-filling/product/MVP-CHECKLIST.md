@@ -284,4 +284,4 @@ The board counts each listed part; a PR title must name it the same way ("runtim
 - R1.70: CS-D7c, CS-D7 parts 1-2
 - R1.64/R1.67: CS-D1 parts 1-3
 - R1.106: CS-106c parts 1-2
-- R1.56/R1.57/R1.58 (R1.96/R1.111): FO-7ts parts 1-3; FO-7t parts 1-3; FO-7c parts 1-3; FO-7g parts 1-2; FO-7r parts 1-3
+- R1.56/R1.57/R1.58 (R1.96/R1.111): FO-7ts parts 1-3; FO-7t parts 1-5; FO-7c parts 1-3; FO-7g parts 1-2; FO-7r parts 1-3
