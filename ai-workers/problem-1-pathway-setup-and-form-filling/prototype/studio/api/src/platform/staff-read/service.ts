@@ -5,9 +5,8 @@ import { HttpException, Inject, Injectable } from "@nestjs/common";
 import { PlatformRole, Prisma } from "@prisma/client";
 import { Db } from "../../core.ts";
 import { catalogueMismatches, type KeyClass, type Scope } from "../identity/catalogue.ts";
-import { FIRM_KEY } from "../identity/keys.ts";
 import { firmScope, notInFirm } from "../firm-scope.ts";
-import type { StaffContext } from "../identity/keys.ts";
+import { FIRM_KEY, type StaffContext } from "../identity/keys.ts";
 import { PlatformIdentity } from "../identity/service.ts";
 import { IDENTITY_ADMIN_PORT, type IdentityAdminPort, type TwoStep } from "../identity/session/provider.ts";
 
