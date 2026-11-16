@@ -1762,5 +1762,48 @@ class InfoIconsInBrowser(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-2000:])
 
 
+class LeadWatchBoard(unittest.TestCase):
+    """B201 + P-639: the 30-minute check prints the board's own Today card and Stuck panel and checks them against the source."""
+    CAPS = ("| ID | Capability | Module | Status | Main |\n|---|---|---|---|---|\n| R1.2 | 2 Database | Platform | Works | x |\n"
+            "| R1.7 | 7 Roles | Platform | Not built | x |\n")
+    TODAY = {"goal": 10, "by_text": "08:00 IST 17 Nov", "proven": 1, "short": 9, "waiting": 1}
+    LQ = {"what": "2 pull requests wait for the Lead's answer", "items": ["#11 a (1 h)", "#12 b (4.5 h)"], "since": "oldest 4.5 h", "next": "answer each"}
+    IDLE = {"what": "3 lanes idle (no push in 90 min)", "items": ["x", "y", "z"], "since": "over 90 min", "next": "wake or close each"}
+
+    def board(self, stuck, today=None):
+        return {"first": {"today": today or self.TODAY, "release": {"waiting_ids": [7]}, "stuck": stuck}}
+
+    def test_two_stuck_entries_two_act_lines_oldest_first(self):
+        out = cd.watch_lines(self.board([self.LQ, self.IDLE]), [{"number": 11}, {"number": 12}], self.CAPS)
+        acts = [x for x in out if x.startswith("ACT   stuck: ")]
+        self.assertEqual(len(acts), 2)
+        self.assertTrue(acts[0].startswith("ACT   stuck: 2 pull requests wait for the Lead's answer — #12 b (4.5 h); #11 a (1 h)"), acts[0])
+        self.assertTrue(acts[1].endswith("— next: wake or close each"), acts[1])
+        self.assertIn("board vs source: 3 checked · 0 disagree · not checked here: 3 lanes idle (no push in 90 min)", out)
+
+    def test_empty_stuck_no_act(self):
+        out = cd.watch_lines(self.board([]), [], self.CAPS)
+        self.assertFalse([x for x in out if x.startswith("ACT")], out)
+
+    def test_today_line_is_the_today_card(self):
+        self.assertEqual(cd.watch_today_line(self.TODAY), "today  1 of 10 Proven by 08:00 IST 17 Nov, 9 short, 1 Built waiting for qa")
+        self.assertIn("no proving goal set", cd.watch_today_line({"goal": None, "proven": 1, "waiting": 0}))
+
+    def test_board_says_waits_source_says_merged(self):
+        out = cd.watch_lines(self.board([self.LQ]), [{"number": 11}], self.CAPS, pr_state=lambda n: {12: "merged"}.get(n))
+        dis = [x for x in out if x.startswith("ACT   board vs source disagree")]
+        self.assertEqual(dis, ["ACT   board vs source disagree: #12 waits for the Lead's answer — board says open and waiting, "
+                               "source says merged — fix the script or the board row"])
+
+    def test_not_built_item_that_qa_reads_works(self):
+        nb = {"what": "1 Built capabilities that qa's file still reads Not built", "items": ["R1.2 Database"], "next": "qa"}
+        out = cd.watch_lines(self.board([nb]), [], self.CAPS)
+        self.assertTrue(any("disagree: R1.2 reads Not built — board says Not built, source says qa reads Works" in x for x in out), out)
+
+    def test_board_without_first_screen(self):
+        self.assertEqual(cd.watch_panels({}), (None, None))
+        self.assertEqual(len(cd.watch_lines({})), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
