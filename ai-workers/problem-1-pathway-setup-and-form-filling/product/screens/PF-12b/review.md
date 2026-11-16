@@ -92,3 +92,14 @@ Runs at c166a1ce9 (the main checkout, clean): `check_pf12b_bypass_audit` **27/0*
   - **Fix:** keep only `^(job:)?<uuid>$`, if pg-boss job ids are uuids. Alternatively, mark the scope's correlation id as server-made (`observability/jobs.ts:20`, the uuid fallback in `correlationOf`), so a client value is never kept. Add a fail test for a `job:`-prefixed header.
 
 **Verdict: Changes needed** (M1).
+
+## Re-review 2: `c166a1ce9..c3539d10` (diff only)
+- **M1: fixed.** `CORRELATION` (`firm-scope.ts:183`) now keeps only `^(job:)?<uuid>$`. `observability/jobs.ts:20` makes `job:<pg-boss id>` and otherwise a uuid, so these are our only shapes.
+  - My repro at c3539d10: `job:Jane.Doe.passport.lost`, `job:Jane-Doe-1990-01-01-client-of-sample-firm` and `Jane.Doe.passport.lost` are now all stored as null.
+  - A caller can still send its own uuid. That carries no free text, so it is accepted.
+- **New fail test:** the `job:`-prefixed free text gives null. `check_pf12b_bypass_audit` gives 27/0.
+- **Nothing else changed in the code.** No open Blocker or Major. m1, m2 and m5 stay as known limits in the PR for the Lead.
+
+**Verdict: Approve.**
+
+Reviewer: Approve c3539d10fb5d4f5fbe1b7fda8bc0ee8fea2359fe
