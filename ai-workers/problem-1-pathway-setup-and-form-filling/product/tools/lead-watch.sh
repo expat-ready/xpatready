@@ -159,4 +159,14 @@ od=$(python3 "$TOOLS/outside-deps-watch.py" 2>&1); echo "$od"; act=$((act + $(gr
 # flagged session (need_input, blocked, failed, idle over 90 min with work left, context over 45%).
 av=$(bash "$TOOLS/app-view-check.sh" 2>&1); echo "$av"; act=$((act + $(grep -c '^ACT' <<<"$av")))
 
+# 11. What the founder's board shows (B201, founder A117 16 Nov: the check missed six stuck items his board showed; P-639:
+# never take the board's word blindly). The board's own Today card and Stuck panel (cockpit-data.py --watch reads the
+# published data.json › first, built by first_screen: no second formula), one ACT per Stuck entry, then each checked against
+# its source with data read above (open PRs of step 2, PRs merged in the window, qa's file on main of step 5). ~0.1 s.
+# The board's data: COCKPIT_DATA, default the refresh's own output ($TMPDIR/cockpit/data.json, cockpit/README.md).
+echo "$prs" > "$STATE_DIR/open-prs.json"; echo "$caps" > "$STATE_DIR/caps-main.md"
+echo "$merged" | python3 -I -c 'import json,re,sys; print(json.dumps({m.group(1): "merged" for m in re.finditer(r"^#(\d+)", sys.stdin.read(), re.M)}))' > "$STATE_DIR/merged.json"
+bw=$(python3 "$TOOLS/cockpit-data.py" --watch "${COCKPIT_DATA:-${TMPDIR:-/tmp}/cockpit/data.json}" --open-prs "$STATE_DIR/open-prs.json" \
+  --caps-main "$STATE_DIR/caps-main.md" --pr-states "$STATE_DIR/merged.json" 2>&1); echo "$bw"; act=$((act + $(grep -c '^ACT' <<<"$bw")))
+
 exit "$act"
