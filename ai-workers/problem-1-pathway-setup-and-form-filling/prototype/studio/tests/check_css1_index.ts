@@ -117,6 +117,9 @@ try {
   ok("CS-S1 DW3 pass (backfill): each row's firm_id is its case's firm (the solo firm's case gets the solo firm's id)",
     bp?.firm_id === b.firm["sample-firm"] && row(BARE, bB1.subject)?.firm_id === b.firm["sample-solo"] && b.firm["sample-firm"] !== b.firm["sample-solo"]);
   ok("CS-S1 DW5 fail: the migration does not apply twice (its table and functions already exist)", /already exists/.test(err(() => psql(urlOf(BARE), ["-f", join(MIG, NEW, "migration.sql")]))));
+  ok("CS-S1 DW5 pass: pg_trgm sits in its own schema (extensions): none of its functions lands among public's (suites that list public's functions stay true)",
+    sql(BARE, "select n.nspname from pg_extension e join pg_namespace n on n.oid = e.extnamespace where e.extname = 'pg_trgm'") === "extensions"
+    && sql(BARE, "select count(*) from pg_proc where pronamespace = 'public'::regnamespace and (proname like '%trgm%' or proname in ('similarity', 'word_similarity'))") === "0");
   ok("CS-S1 DW5 pass: a second CREATE EXTENSION IF NOT EXISTS pg_trgm is harmless (FO-9a's may run before or after)", err(() => sql(BARE, "create extension if not exists pg_trgm")) === "" && sql(BARE, "select count(*) from pg_extension where extname = 'pg_trgm'") === "1");
 
   // -------------------------------------------------------------------------------- the full chain: every migration
@@ -134,7 +137,7 @@ try {
   sql(FULL, "drop index case_party_index_name_norm_trgm_idx");
   const d2 = diff();
   ok("CS-S1 DW5 fail: with the trigram index dropped, migrate diff names it (the schema file declares it)", d2.status === 0 && d2.mine.some((l) => /case_party_index_name_norm_trgm_idx/.test(l) && /gin_trgm_ops/i.test(l)), d2.mine);
-  sql(FULL, `create index case_party_index_name_norm_trgm_idx on case_party_index using gin (name_norm gin_trgm_ops)`);
+  sql(FULL, `create index case_party_index_name_norm_trgm_idx on case_party_index using gin (name_norm extensions.gin_trgm_ops)`);
   const defs = sql(FULL, `select string_agg(p.proname || ':' || p.prosecdef || ':' || pg_get_userbyid(p.proowner), ',' order by p.proname) from pg_proc p where p.proname like 'case_party_index_%'`);
   ok("CS-S1 DW5 pass: the trigger functions run as the caller (SECURITY INVOKER); only the firm lookup is a definer, owned by xr_wall_reader",
     defs.split(",").every((d) => d.startsWith("case_party_index_firm_of:") ? d === "case_party_index_firm_of:true:xr_wall_reader" : d.includes(":false:")) && defs.includes("case_party_index_firm_of:true:xr_wall_reader"), defs);

@@ -53,9 +53,15 @@
 --   DROP TRIGGER case_party_index_participant ON case_participant; DROP TABLE "case_party_index"; DROP FUNCTION case_party_index_on_answer(), case_party_index_on_profile(),
 --   case_party_index_on_participant(), case_party_index_refresh(uuid, boolean), case_party_index_firm_of(uuid),
 --   case_party_index_phone(text, text), case_party_index_norm(text), case_party_index_clean(text); then delete this folder's row from
---   _prisma_migrations. pg_trgm stays (FO-9a uses it too). Nothing else is lost: the index is derived from the answers.
+--   _prisma_migrations. pg_trgm and the extensions schema stay (FO-9a uses it too: it calls pg_trgm's functions
+--   schema-qualified, extensions.similarity(), or puts extensions on its search_path). Nothing else is lost: the index is derived from the answers.
 
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+-- pg_trgm in its own schema, so its functions never land among the areas' own in public (the suites that list public's
+-- functions, e.g. check_fo7a_money_schema.ts, stay true). If it is already installed (FO-9a may land first, in public),
+-- IF NOT EXISTS keeps it where it is, and the trigram index below names the schema it is in. xr_data may use it.
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA extensions;
+GRANT USAGE ON SCHEMA extensions TO xr_data;
 
 -- CreateTable
 CREATE TABLE "case_party_index" (
@@ -79,8 +85,13 @@ CREATE TABLE "case_party_index" (
 -- CreateIndex
 CREATE UNIQUE INDEX "case_party_index_subject_id_key" ON "case_party_index"("subject_id");
 
--- CreateIndex
-CREATE INDEX "case_party_index_name_norm_trgm_idx" ON "case_party_index" USING GIN ("name_norm" gin_trgm_ops);
+-- CreateIndex (the operator class from wherever pg_trgm is installed)
+DO $trgm$
+BEGIN
+  EXECUTE format('CREATE INDEX "case_party_index_name_norm_trgm_idx" ON "case_party_index" USING GIN ("name_norm" %I.gin_trgm_ops)',
+    (SELECT n.nspname FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace WHERE e.extname = 'pg_trgm'));
+END
+$trgm$;
 
 -- CreateIndex
 CREATE INDEX "case_party_index_firm_id_email_norm_idx" ON "case_party_index"("firm_id", "email_norm");
