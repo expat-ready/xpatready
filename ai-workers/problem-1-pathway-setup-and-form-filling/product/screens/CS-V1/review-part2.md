@@ -1,4 +1,4 @@
-# CS-V1 part 2 review: PR #2042 at 52e39187
+# CS-V1 part 2 review: PR #2042 (first pass at 52e39187, re-review at 3b08d781)
 
 The reviewer, in a fresh context (did not build it), on 16 Nov. Branch `claude/runtime-csv1-schemas`, diffed against origin/main (merge base bfac889d). This is an API input-check row with no screen, so D1-D20 and the BIC table are N/A. It was reviewed against Build Lead C's ruling (#2007, comment 6923205608), STANDARDS §6 and the PR body. Journey test: `journey-test-reviewer-part2-2026-11-16.md`, **9.5 / 10, pass**.
 
@@ -65,4 +65,27 @@ None.
 * A real screen reader, or an intended user's unaided walk (D17/D20).
 * `ci` at this commit (skipped).
 
-Verdict: Changes requested
+First-pass verdict at 52e39187: Changes requested (M1).
+
+## Re-review: 52e39187..3b08d781 (P-277), 16 Nov
+The diff covers fill-case.ts, form-additions.ts, contracts/runtime.ts and check_csv1_inputs.ts, plus these two reports committed as they stood. I re-ran everything on a fresh copy on :4494, now stopped.
+
+**Results**
+* `check_csv1_inputs.ts`: **64 passed, 0 failed**, exit 0.
+* `check_csc1_close.ts` 55/0, `check_c76_readiness_api.ts` 34/34, `runtime/check_c78_added_forms.ts` 20/20.
+* `acceptance/C7.8.test.ts` 15/20. Its five failures are among the six that also fail on origin/main's baseline copy, and C7.8-16 now passes. No new failure.
+* The break-it probe, re-run: about 40 requests, nothing stored on any refusal, no 500.
+
+**Each finding**
+* **M1 closed.**
+  * `?original=` over 10 characters, and given twice, answers 400 `errors[].field: "original"` with "Give original once (original=1)." (fill-case.ts:579 renames the field; runtime.ts `CopyFileOriginal` gives the cap words).
+  * `signature` of 41 characters or 4.9 MB answers "signature is NONE (no signature) or left out." on `signature`.
+  * DW4 now expects `original`, and adds an oversized `original` and an oversized `signature`. Both fail and pass as named.
+* **m1 closed.** Both addable GETs look up the filing first (form-additions.ts:134, :170). Over HTTP, a client with `?q=a&q=b` gets 403, and an unknown filing gets 404 "No such filing." before the query is read. (`add` still refuses a body before the filing lookup, as it did on main.)
+* **m2 closed.** `upToTrimmed` caps the review note and the pass reason as the routes read them. A new DW4 pass covers padded text, and 4.9 MB values still answer 400 with the routes' words.
+* **m6 closed.** An over-long filingId says "filingId: at most 200 characters."
+* **m3, m4, m5 and the 15-vs-16 count:** these go to the PR body. m5 (a NUL byte answering 404 via main.ts:213) is a main bug for its own row. None needs code here.
+
+No Blocker, Major or minor is open in code. Not checked, as before: case-close over HTTP (it needs PF-4's staff sign-in), a real screen reader, and `ci` at this commit.
+
+Verdict: Approve 3b08d781a79a2bc3d60cd3680d2c651087b5bfe3
