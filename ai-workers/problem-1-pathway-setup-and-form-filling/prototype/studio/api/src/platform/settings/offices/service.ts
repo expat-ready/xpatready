@@ -61,7 +61,7 @@ const auditView = (r: Row, p = "") => {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const actor = (a: OfficeActor) => `staff:${a.staffId}`;
 /** A write the database refuses for its zone (a name Intl knows and PostgreSQL does not, break B4) is the person's 400. */
-const zoneGuard = <T>(p: Promise<T>) => p.catch((e: unknown) => (/is not a time zone name/.test(String((e as Error)?.message)) ? refused(ZONE_REFUSED, ["timeZone: not a time zone on the list"]) : Promise.reject(e)));
+const zoneGuard = <T>(p: Promise<T>, detail = ZONE_REFUSED) => p.catch((e: unknown) => (/is not a time zone name/.test(String((e as Error)?.message)) ? refused(detail, ["timeZone: not a time zone on the list"]) : Promise.reject(e)));
 export class Offices {
   constructor(private readonly deps: { db: PrismaClient; audit: AuditPort<Tx> }) {}
   async list(a: OfficeActor): Promise<OfficeList> {
@@ -93,10 +93,10 @@ export class Offices {
         const addr = (firm.businessAddress ?? {}) as { province_state?: unknown; country?: unknown };
         const fc = typeof addr.country === "string" && Country.safeParse(addr.country).success ? Country.parse(addr.country) : "CA";
         const fp = fc === "CA" && typeof addr.province_state === "string" && PROVINCES.includes(addr.province_state.trim().toUpperCase()) ? addr.province_state.trim().toUpperCase() : null;
-        first = await tx.platformOffice.create({ data: {
+        first = await zoneGuard(tx.platformOffice.create({ data: {
           firmId, name: firm.operatingName.trim().slice(0, 120) || "Main office", countryCode: fc, province: fp, timeZone: firmZone,
           businessHours: firmHours as Prisma.InputJsonValue, closedDays: firmClosed as Prisma.InputJsonValue, isFirst: true, createdBy: actor(a),
-        } });
+        } }), "The firm's own time zone (Settings → Your firm) is not one on the list: choose another there first.");   // break B4 (round 2)
         names.add(first.name.toLowerCase());
         await this.deps.audit.record(tx, { firmId, actor: actor(a), action: "platform.office.add", entity: "platform_office", entityKey: first.id,
           summary: "First office written from the firm's own settings (a second office is being added)", detail: { ...auditView(first), first: true } });

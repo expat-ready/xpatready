@@ -1,115 +1,92 @@
 # PF-18a part 1, break report (offices: API + schema, no screen)
 
-Breaker, 16 Nov. Head under test: **081df1d** (code; 120e280 adds records only). My first round ran on 6ba0a5e; I restarted the
-isolated copy on 081df1d, ran every finding below again there, and all of them reproduce. Isolated copy `brk18a` on :4547
-(`PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on`), now stopped. Tokens came from `POST /api/platform/session/local`.
-I added a Read only user and an Admin to sample-firm with SQL. Live AI off, US$0.
-Scope is part 1 of the brief only. Not tested: screens (PF-18s), part 2, `hostZone()`.
-**Note:** while I was finishing, the shared checkout gained *uncommitted* edits: `service.ts` `change()` now takes the firm's
-advisory lock ("review m1, m2"), and the contract and test files are edited too. These edits look aimed at B1 and B2, but they
-are not on any commit, so I have not checked them.
+Breaker, 16 Nov. Rounds: 6ba0a5e, then 081df1d (every break below reproduced there), then **9b1dc85** (this update: the
+builder's fixes for B1–B9, on a fresh isolated copy `brk18a` on :4547 with `PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on`,
+now stopped).
 
-## Breaks
+**Set-up:** tokens from `POST /api/platform/session/local`; a Read only user and an Admin added to sample-firm with SQL;
+database checks as xr_app with `app.firm_id` set and as xr_studio; port checks in a tsx script over `OfficeClock`/`Offices`
+with `wallUnscopedQueries()`, as the server does. Live AI off, US$0. Scope: part 1 of the brief only (no screens, no part 2,
+no `hostZone()`).
 
-**B1. Major: two parallel renames create offices whose names differ only by case.** Steps: firm sample-solo has offices
-"Par 2" and "Par 3". Send `PATCH /api/platform/offices/<Par 2> {"name":"Twin1"}` and `PATCH …/<Par 3> {"name":"twin1"}` at
-the same moment (two `curl &`). Expected: one 200 and one 409 "An office with this name already exists." Actual: both 200,
-5 tries out of 5 on 6ba0a5e and 3 out of 3 on 081df1d. The firm ends up with `Twin3` and `twin3`. Why:
-`change()` (service.ts:114-132 at 081df1d) checks the name case-insensitively but does not take the firm lock that `add()`
-takes (:83). The database does not catch it either: `platform_office_firm_id_name_key` (migration.sql:20) is a case-sensitive
-unique index. As xr_app with app.firm_id set, `insert … name 'a2'` beside an existing `A2` succeeds. So the rule is not
-"checked twice" (STANDARDS §3.4) and duplicates by meaning get in (§3.2).
+**Status on 9b1dc85:** 5 fixed, 4 partly fixed (one Minor left in each). No Blocker or Major is open.
 
-**B2. Major: two sessions saving the same office lose an update silently, and the audit trail is wrong.** Steps: send
-`PATCH …/<Par 4> {"timeZone":"America/Regina"}` and `{"timeZone":"America/Halifax"}` at the same moment. Expected: the second
-save gets 409 with what changed (STANDARDS §4 [M]: version column, stale save → 409). Failing that, the saves should at least
-be serialized so each audit "before" is true. Actual: both get 200 and the last one wins. The two audit lines read
-"Office time zone changed from America/Edmonton to America/Halifax" and "…from America/Edmonton to America/Regina". One of
-the two "from" values is false, which breaks AG-1-74 §9's before/after line. There is no version field on the office, in the
-body or in the view.
+## Breaks and their status on 9b1dc85
 
-**B3. Major: the real OfficeClock gives wrong values without any error when it runs outside the firm's database scope; the
-fake does not.** Steps (tsx script, `OfficeClock` over `Db`, after `wallUnscopedQueries()` as in the server; firm B stores
-`platform.time_zone = America/Vancouver`, and staff S is in office OB):
-- With no scope, or inside `withFirm(A)`, `zoneFor(B, null)` returns **"America/Toronto"**. That is the platform default,
-  neither firm B's zone nor a refusal.
-- `officeOfStaff(B, S)` returns **null**, as if S had no office.
-- `zoneFor(B, OB)` throws OfficeNotFound.
+**B1 Major, case-only duplicate names under parallel renames: FIXED (one Minor left).** Each try sends two parallel PATCHes,
+"TwinN" on office A and "twinN" on office B, each with its current `version`. Through the API, 5 of 5 tries gave no duplicate
+(final names `Twin4`, `twin5`); a parallel "Dup"/"dup" pair gave 200 and 409. `change()` now takes the firm lock, and the new
+index `platform_office_firm_name_ci` (firm_id, lower(name)), migration.sql:42, refuses `PAR 1` beside `Par 1` as xr_app.
+- *Left, Minor:* the databases' collation is `C` (pg_database `datctype = C`), so `lower()` folds only A–Z. As xr_app, `ÉCOLE`
+  and `école` insert together; the API still refuses the second (409), so only direct writes get past. Greek final sigma is
+  the reverse case: `ΟΔΟΣ` and `οδοσ` are both 201 through the API, because JS lower-cases a word-final Σ to ς.
 
-Inside `withFirm(B)` all three are correct (Vancouver, the office's zone, OB). `fakeOfficeClock` gives firm B's values
-whatever the caller's scope. So the two adapters disagree, and the shared contract (office-clock-port.contract.ts) never
-tests a caller outside the firm's scope. The port file says the caller gets the firm's own settings or a refusal ("never
-another firm's values"). A job or a cross-firm caller (PF-29c clocks, FO-3st1) would instead get a wrong time zone with no
-sign of it. Source: clock.ts:23-36 (`readSetting` falls back to the default when the row is hidden by PF-12).
+**B2 Major, lost update on parallel PATCH: FIXED.** Two parallel PATCHes with the same `version` give 200 and 409, with one
+audit line whose "from" is true. A stale `version` → 409 "Someone changed this office since you opened it", with `current`
+(a no-op change too). A missing or non-string `version` → 400. After a direct `updated_at = now()` (microseconds), the version
+from GET → 200 (the truncation matches). A cross-firm PATCH with any version → 404, and nothing from `current` leaks.
 
-**B4. Minor: a zone the schema accepts but PostgreSQL rejects gives a 500.** I compared every ICU zone and every
-`pg_timezone_names` entry against `TIME_ZONE.schema`. `US/Pacific-New` passes the schema but fails the trigger
-(migration.sql:48). `POST {"name":"PN","timeZone":"US/Pacific-New"}` and the same `PATCH` both return **500 "Server error"**.
-Expected: 400 `ZONE_REFUSED`. Also, a firm whose stored `platform.time_zone` is that value (`writeSetting` accepts it) could
-never add a second office: the first-office insert fails with a 500 every time.
+**B3 Major, the real OfficeClock answered defaults outside the firm's scope: FIXED.** With no scope or under `withFirm(A)`,
+`zoneFor(B, null)` and `officeOfStaff(B, S)` now throw "OfficeClock: the firm is not readable here", and `zoneFor(B, office)`
+→ OfficeNotFound. Under `withFirm(B)`: Vancouver, the office's zone and the office id, all correct.
+`check-port-contracts.mjs`: 14 ports, 0 problems.
 
-**B5. Minor: the database checks on hours, closed days and zone are weaker than the code's, and one bad row breaks the whole
-list.** As xr_app with app.firm_id set:
-- `update platform_office set business_hours='[1,2]'` is accepted. The only check is "array of at most 7" (migration.sql:34).
-- `closed_days '["nope",5]'` is accepted.
-- `time_zone 'Factory'` is accepted (it is in `pg_timezone_names`, but the schema refuses it).
+**B4 Minor, 500 for `US/Pacific-New`: PARTLY FIXED.** POST and PATCH with that zone → 400 `ZONE_REFUSED` (`zoneGuard`).
+- *Left:* the first-office insert is not wrapped in `zoneGuard` (service.ts:96, unlike :106). A firm whose stored
+  `platform.time_zone` is `US/Pacific-New` (`writeSetting` accepts it; no route today, so I set it with SQL) still gets
+  **500** on its first add, and nothing is written. An office abroad pre-fills that firm zone and gets 400 "Choose a time
+  zone from the list", although the person chose no zone.
 
-After that, `GET /api/platform/offices` returns **500** for every person in the firm, because `view()` (service.ts:50)
-parses each row. `PATCH {"name":…}` on that office also returns 500 and rolls back. The only repair is a PATCH that sends
-`businessHours` again. With `Factory` stored, `OfficeClock.zoneFor` throws a ZodError.
+**B5 Minor, database checks weaker than the code's, and one bad row breaks the list: PARTLY FIXED.** Now refused as xr_app:
+hours `[1,2]`, an unknown day, a missing `closes`, closed days `["nope",5]`, and `Factory` (new `platform_office_zone_check`).
+- *Left:* the jsonpath checks (migration.sql:35-36) still accept, as xr_app: hours with **numbers**
+  (`{"opens":900,"closes":1700}`, because `like_regex` on a non-string is "unknown" and the filter passes); opens after closes;
+  the same day twice; an extra key; closed day `2026-02-30`; a date listed twice. All of these fail the code's schemas. After
+  the numeric-hours update was committed, `GET /api/platform/offices` returned **500** for the whole firm again, until I
+  repaired the row with SQL.
 
-**B6. Minor: names that look the same are stored as different offices.** Each of these returns 201 beside an office that
-looks identical: `"Café"` written NFC and NFD; `"Same​"` (zero-width space) beside `"Same"`; `"abc‮dcba"`
-(right-to-left override); `"a b"` (line separator). Neither the code's control-character check (service.ts:24,
-`\u0000-\u001f\u007f-\u009f`) nor `[[:cntrl:]]` catches them. Separately, 61 emoji (61 characters) are refused with "at most
-120 characters", because the length is counted in UTF-16 units while the database counts characters.
+**B6 Minor, lookalike names: PARTLY FIXED.** Now: NFD `Café` → 409 beside the NFC one; zero-width space, right-to-left
+override and U+2028 → 400; 120 emoji → 201, 121 → 400 (counted as characters).
+- *Left:* 201 beside `Main office`, so it reads the same: spaces `Main office` (no-break), `　` (ideographic),
+  ` ` (en); invisible `᠎`, `͏` (combining grapheme joiner), `ㅤ` (Hangul filler), `⠀` (blank Braille),
+  and a tag character (`󠁁`). I do not count the Cyrillic `Т` as a finding.
 
-**B7. Minor: address input is dropped without telling the person.** `PATCH {"province":"BC"}` on an office whose country is
-US returns 200 with `province:null`, and the value is discarded. `country:"ZZ"` (not an ISO 3166 code) is accepted and
-stored (service.ts:26 checks only "two letters").
+**B7 Minor, address input dropped silently / any two letters accepted as a country: PARTLY FIXED.** Now: a province on an
+office abroad → 400 "A province or territory is for an office in Canada" (POST and PATCH); `ZZ`, `QQ`, `XK` → 400.
+- *Left:* `UK`, `EU`, `UN`, `EZ`, `AC`, `TA`, `DG`, `EA`, `IC`, `CP` → 201, stored as given; none is an assigned ISO 3166-1
+  code, so a person typing `UK` gets `UK`, not `GB`. Cause: `Intl.DisplayNames` names reserved codes too (service.ts:25).
 
-**B8. Minor: an empty change writes an audit line.** `PATCH …/<id> {}` returns 200 and adds an "Office changed" line each
-time. The audit count went from 3 to 4, with nothing changed.
+**B8 Minor, empty change audited: FIXED.** `{version}` alone, `{version, timeZone: <same>}` and `{version, businessHours:
+<same>}` each return 200, and the audit count stays at 2.
 
-**B9. Minor (new at 081df1d): one database rule was dropped.** Removing `platform_staff_office_write` also removed "the
-person and the firm never change". As xr_app, `update platform_staff_office set staff_id=<another staff of the same firm>`
-now succeeds. That moves one person's office record onto someone else with no audit line. The keys still stop a move to
-another firm.
+**B9 Minor, `staff_id` could be repointed: FIXED.** As xr_app, `update … set staff_id` or `firm_id` → permission denied
+(column grants, migration.sql:66); `office_id` can still change. `Offices.setStaffOffice` under `withFirm(B)`: move, clear
+and set again all work with the new grants.
 
-Question, not scored: once offices exist, the first office and the firm's own settings can drift apart. For example, a PATCH
-moves the first office to `Europe/London`, while `zoneFor(firm, null)` still reads `platform.time_zone`. Which of the two is
-meant for a staff member with no office is for Lead B to say.
+Answered, not scored: the first office drifting from the firm's settings is intended (AG-1-74: "case has no office → firm
+time zone"); the builder is putting it to Lead B in the PR.
 
-## What held
-- **Permissions:**
-  - no token → 401; a tampered token → 401; an `x-actor` header without a token → 401.
-  - Case Officer and Read only: POST and PATCH → 403 `MISSING_PERMISSION` (also on their own firm's office); GET → 200.
-  - Admin can edit. Owner can edit.
-- **Across firms:**
-  - Firm A's PATCH on firm B's office → 404, also with the id in capitals; a non-uuid id → 404; there is no `GET /:id`.
-  - Firm A's list never shows firm B's rows.
-  - As xr_app: no insert or update of another firm's row, no moving a row to another firm, no unknown firm.
-  - Staff office: no staff member of another firm, no office of another firm, no unknown staff member (all refused by the keys
-    at 081df1d).
-  - No delete; TRUNCATE is refused; `is_first` cannot be flipped; a second `is_first` is refused.
-  - As xr_studio: deleting an office is refused by the trigger; firm and staff deletes are blocked.
-- **Parallel adds:** 6 parallel POSTs on a firm with no office give exactly one first office and 7 rows. 4 parallel POSTs of
-  the same name give one 201 and three 409. "same " / "Same" → 409.
-- **Zones:**
-  - `America/Toronto ` (trailing space), `america/toronto`, a number, `null`, `Factory` → 400 `ZONE_REFUSED`.
-  - `UTC`, `Etc/GMT+5` and `Asia/Calcutta` are accepted.
-  - The database refuses a trailing space and `posix/…`.
-- **Provinces:** `XX`, `Ontario` → 400 `PROVINCE_REFUSED`; a number → 400; ` qc ` → QC; `CANADA` → CA.
-- **Bodies:**
-  - Unknown keys (`firmId`, `isFirst`), `[]`, `null`, `"x"`, `{}`, a blank name, a control character, 121 characters → 400.
-  - A 2 MB body and nesting 5,000 deep → 400, not 500.
-  - Lone surrogates → U+FFFD, then a clean 409.
-  - Hours: start after end, the same day twice, `24:00`, an object, `null` → 400. Closed days: `2026-02-30`, a duplicate,
-    `null` → 400.
-  - French and CJK names are fine.
-- **Port:** a non-uuid office → OfficeNotFound; a bad firm id is refused; the values handed back are copies;
-  `check-port-contracts.mjs` passes (14 ports, 0 problems).
-- **Budgets:** with 100+ offices, GET takes 9-19 ms (51 KB) and POST about 30 ms. The `pg_timezone_names` lookup in the
-  trigger costs about 11 ms per write.
-- **Builder's suite:** `tests/check_pf18a_offices.ts` passes (71/71 at 6ba0a5e; 77/77 on the working tree at 081df1d plus
-  the uncommitted edits).
+## Things the fixes could have broken: none broken
+- Database checks do not refuse values the code accepts. Each → 201: `America/Argentina/Buenos_Aires`,
+  `America/Port-au-Prince`, `Etc/GMT-14`, `Etc/GMT+12`, `UTC`, `America/North_Dakota/New_Salem`, `Antarctica/DumontDUrville`,
+  `America/Indiana/Knox`, hours `[]`, all 7 days 00:00–23:59, 366 closed days, `2028-02-29`, a heart emoji with its variation
+  selector.
+- PATCH `{"country":"US"}` on an office with a province → 400, saying to clear it; with `"province":null` → 200. A blank
+  province on an office abroad → 200 (read as none).
+
+## What held (all rounds; "3" = checked again on 9b1dc85)
+- **Permissions (3):** no token, a tampered token, or an `x-actor` header without a token → 401. Case Officer and Read only:
+  POST and PATCH → 403, GET → 200. Admin and Owner can edit.
+- **Across firms (3):** firm A's PATCH on firm B's office → 404 (also with the id in capitals or a bad version); a non-uuid id
+  → 404; firm B's rows never appear in firm A's list.
+- **Database walls:** as xr_app, no insert, update or move of another firm's office and no unknown firm; staff office: no staff
+  member or office of another firm (the keys, from 081df1d); no delete; TRUNCATE refused; `is_first` cannot be flipped and a
+  second one is refused. As xr_studio: an office delete is refused; firm and staff deletes are blocked.
+- **Parallel adds (3):** 6 parallel first adds → exactly one first office, 7 rows. 4 parallel adds of one name → one 201,
+  three 409.
+- **Zones and provinces (3):** `America/Toronto ` (trailing space) and `america/toronto` → 400; province `XX` or `Ontario` →
+  400; ` qc ` → QC; `CANADA` → CA.
+- **Bodies:** unknown keys, `[]`, `null`, a blank name, a control character, 121 characters → 400; a 2 MB body and nesting
+  5,000 deep → 400; bad hours and closed days → 400; lone surrogates → a clean 409.
+- **Budgets (3):** with 100+ offices, GET takes 13–14 ms and POST 35–74 ms.
+- **Builder's suite:** `tests/check_pf18a_offices.ts` passes 85/85 on 9b1dc85.

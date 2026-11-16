@@ -1,94 +1,98 @@
 # PF-18a part 1 (offices): independent review
 
-**Final head reviewed: `081df1dc1d6496096004846677840ee8566f9a31`.** It is first review on `6ba0a5e` plus a re-review of `git diff 6ba0a5e 081df1d` (P-277: real keys, as Lead B ruled). Branch `claude/zealous-rubin-lxcmfs`, draft PR #2009 (12 files, 792+/4−, under P-610's 800 lines). The brief is `design/lead-b-briefs/PF-18a.md` on `main`, part 1 only. Requirements: AG-1-74, AG-16-68, AG-16-59 from the trace tool. API and schema only, no screen: the screen-review UI checks, the BIC scorecard (case-side screens only) and D8-D14 are N/A. The journey test is in `journey-test-reviewer-2026-11-16.md`.
+**Final head reviewed: `9b1dc85ab4e6e570a0194a030250fd563625c224`.** Branch `claude/zealous-rubin-lxcmfs`, draft PR #2009.
 
-**Re-run by me on this commit:**
-* `tsx --tsconfig api/tsconfig.json tests/check_pf18a_offices.ts`: **71 passed, 0 failed** (24.7 s, Postgres :54329).
-* `node tools/check-port-contracts.mjs`: 14 ports, OfficeClockPort ×2, **0 problems**.
-* Isolated copy `rv18a` on :4433: API journeys and break pass, then stopped.
-* The branch merges into `origin/main` (f7dde02c8) without conflict. The stamp `20261116190000` is later than main's newest migration (`20261116030000`).
+**Rounds:**
+1. Full review on `6ba0a5e`.
+2. Re-review of `git diff 6ba0a5e 081df1d` (real keys, as Lead B ruled on #2009).
+3. Re-review of `git diff 081df1d 9b1dc85 -- prototype/studio` (P-277: review and break fixes). The records commits in between hold only this folder's files.
 
-**Re-run on 081df1d** (checkout `120e280`, which adds only these records files on top of it):
-* `check_pf18a_offices` 71/0, `check_pf0p_ports` 113/0, `check_pf12_walls` 100/0, `check_pf3_platform_schema` 75/0.
-* check-port-contracts: 0 problems.
-* On a scratch database with every migration: deleting a staff member who has an office row is refused (`platform_staff_office_firm_id_staff_id_fkey` RESTRICT). Deleting a firm is refused too.
+**Scope:**
+* Code size: 790+/4− against `main` (records excluded), under P-610's 800.
+* The brief is `design/lead-b-briefs/PF-18a.md`, part 1 only. Requirements: AG-1-74, AG-16-68, AG-16-59 (trace tool).
+* API and schema only, no screen. The screen-review UI checks, the BIC scorecard (case-side screens only) and D8-D14 are N/A.
+* Journey test: `journey-test-reviewer-2026-11-16.md`. Breaker: `break-report.md`.
+
+**Re-run by me on 9b1dc85** (checkout clean at that SHA, Postgres :54329, never :4400):
+* `check_pf18a_offices` **85/0**, `check_pf0p_ports` 113/0, `check_pf12_walls` 100/0, `check_pf3_platform_schema` 75/0.
+* `check-port-contracts`: OfficeClockPort ×2, 0 problems.
+* Isolated copy `rv18b` on :4433 (PATCH semantics probes below), then stopped.
+* Earlier rounds: 71/0 on 6ba0a5e and on 081df1d, journeys on copy `rv18a`.
+* On 081df1d, on a scratch database: deleting a staff member or firm that an office row names is refused (RESTRICT).
 
 ## Done when (part 1 share)
 | Line | Result | Evidence |
 |---|---|---|
-| DW1 | Met | Alberta gets `America/Edmonton` (201, `timeZoneFrom: province`). The zone can be changed and saved, and is audited before/after. `America/Toronto `, `Mountain`, `america/toronto`, `42`, `""` and `null` each get 400 "Choose a time zone from the list". No province, or abroad, gets the firm's zone. A code not on the list gets 400. The DB trigger refuses names `pg_timezone_names` does not know exactly. All 418 Intl zones are known to PG. |
-| DW2 | Met | One implicit office with no `timeZone` key until a second is added. With none added, the port gives the firm's zone, hours and closed days. The first add writes the first office from the firm's settings in the same transaction (AG-1-74 §7); a later 409 rolls it back. |
-| DW3 | Met | A new office's closed days start `[]` although the firm has a closed day. Office B's day closes neither A nor the firm (test, contract). |
-| DW4 | Met | Firm B's PATCH, port read and staff placement all give 404 / OfficeNotFound. Case Officer and Case Manager POST/PATCH get 403. PF-12 policies and the firm gate are on both tables, and the walls cases pass as `xr_app`. |
-| DW7 | **Partly** | Contract met: it runs on the real adapter and the fake, a broken adapter fails it, and check-port-contracts is green. The stamp check is correct. **Not met: rev 16.7's "measure right after its own migration"** (M2). |
+| DW1 | Met | Alberta gets `America/Edmonton` (`timeZoneFrom: province`); the zone can be changed and saved, audited before/after. `America/Toronto `, `Mountain`, `america/toronto`, `42`, `""`, `null` and `US/Pacific-New` each get 400 "Choose a time zone from the list". No province, or abroad, gets the firm's zone. `ZZ` gets 400. |
+| DW2 | Met | One implicit office with no `timeZone` key until a second exists; with none, the port gives the firm's zone, hours and closed days. The first add writes the first office from the firm's settings in one transaction; a 409 rolls it back. |
+| DW3 | Met | A new office's closed days start `[]` although the firm has one. Office B's day closes neither A nor the firm (route test and contract). |
+| DW4 | Met | Firm B's PATCH, port read and staff placement get 404 / OfficeNotFound. Case Officer and Case Manager writes get 403. PF-12 walls on both tables. OfficeClock refuses under another firm's scope, never the defaults (B3). |
+| DW7 | Met | Contract on the real adapter and the fake, now including "a firm that never saved → defaults"; a broken adapter fails it; check-port-contracts green. The stamp is unique and later than every migration before it. **The demo-copy check runs right after its own migration and before the rest** (`tests/check_pf18a_offices.ts:89-92`, rows rev 16.7). |
 
 ## Design choices asked to judge
-1. **Triggers instead of keys: not accepted on 6ba0a5e; fixed on 081df1d.** Lead B ruled real keys and a slot line (#2009, 16:19Z).
-   * 081df1d adds `platform_office.firm_id → platform_firm` and `(firm_id, staff_id) → platform_staff(firm_id, id)`, both RESTRICT.
-   * The slot `// back-relation slot: offices (PF-18a)` has one line in each model; check_pf0p keeps every slot.
-   * `platform_staff_office_write` and the firm check are gone. `platform_office_write` keeps the zone and immutability rules.
-2. **Staff→office by service method only: accepted.** The brief lists only `/offices`. The method is audited and firm-scoped (404 across firms) and tested by direct call. Lead B accepted it and put `PUT /api/platform/staff/:staffId/office` on PF-18s. The PR body should say so.
-3. **No province stored abroad: accepted as a data rule.** The DB check enforces it, and AG-1-74 §12 needs only "abroad → firm zone". But the given value is dropped silently (m3).
+1. **Triggers instead of keys:** not accepted on 6ba0a5e; fixed on 081df1d. Real keys `platform_office.firm_id → platform_firm` and `(firm_id, staff_id) → platform_staff(firm_id, id)`, RESTRICT. One line under `// back-relation slot: offices (PF-18a)` in each model. The write-check triggers are gone. A test now fails if RESTRICT is removed (m5).
+2. **Staff→office by service method only:** accepted. It is audited, firm-scoped and tested. Lead B put `PUT /api/platform/staff/:staffId/office` on PF-18s; the PR body should say so.
+3. **No province stored abroad:** accepted. A province sent for an office abroad is now a 400, not dropped (m3).
 
-## Findings
-**Major**
-* **M1 (closed on 081df1d).** The finding below was on 6ba0a5e. It is fixed by the real keys; the deletes are now refused, re-run above. The remaining gap, a missing test, is m5. **Firm and staff integrity holds only on insert.** `migration.sql:40-73` (`platform_office_write`, `platform_staff_office_write`). The triggers check that the firm and the staff member exist when a row is written. A later delete of the parent is not blocked.
-  * Failing case, run on the isolated copy inside a rolled-back transaction: put a staff member in "Calgary HQ" (insert a `platform_staff_office` row), then `delete from platform_staff where id = <them>` → `DELETE 1`, and 1 orphan row remains. `OfficeClockPort.officeOfStaff` would still answer an office for a person who does not exist. The same applies to `platform_firm` (no key).
-  * The precedent is FO-1b, FO-13 and PF-21: RESTRICT keys, with tests "a named staff member cannot be deleted".
-  * Fix, as ruled: composite keys `(firm_id) → platform_firm` and `(firm_id, staff_id) → platform_staff(firm_id, id)`, RESTRICT, plus slot and back-relation lines in `platform.prisma`. Drop the write-check triggers. Add a fail test: a staff member or firm with an office row cannot be deleted. Add a pass test: one without such a row can.
-* **M2 (open on 081df1d). The migration test is not "parallel world" (DW7, rows rev 16.7).** `tests/check_pf18a_offices.ts:92-93` on 081df1d (90-91 on 6ba0a5e) applies this migration *and every later one* (`x >= NEW`), then checks that the demo rows are unchanged.
-  * Failing case: any later migration that writes a row in `audit_event`, `platform_firm_setting`, `platform_staff`, `platform_firm` or `runtime_case`. Once this PR merges, its suite goes red on main and on later PRs. That is exactly the PF-25 incident rev 16.7 was written for.
-  * Fix: apply `NEW` only, run the line-91/92 checks, then apply the rest.
+## Findings: status at 9b1dc85
+**Major (both closed)**
+* **M1 (closed on 081df1d).** On 6ba0a5e, firm and staff integrity held only on insert. Failing case: `delete from platform_staff` for a placed person gave `DELETE 1` and left an orphan row. Now refused by RESTRICT, and tested (`check_pf18a_offices`, "review m5" case).
+* **M2 (closed on 9b1dc85).** On 6ba0a5e and 081df1d, the demo-copy check ran after every later migration (`x >= NEW`). Now it applies `NEW`, checks, then applies `x > NEW` (lines 89-92).
 
-**Minor**
-* **m1. Case-insensitive name uniqueness does not hold under a race.**
-  * Where: `service.ts:126` (PATCH checks without the firm lock) and `migration.sql:20` (`(firm_id, name)` is case-sensitive).
-  * Failing case: parallel PATCH of two offices to `Twin<i>` and `twin<i>` → both 200 in 10 of 10 runs.
-  * Fix: a unique index on `(firm_id, lower(name))`, or take the same advisory lock in `change()`.
-* **m2. The audit "before" is wrong under parallel PATCHes.**
-  * Where: `service.ts:121` reads without `FOR UPDATE`, then lines 134-135 record "from" from that read.
-  * Failing case: two zone PATCHes at once on Vancouver → two lines "from America/Vancouver", one of them false. AG-1-74 §9 requires before/after.
-  * `writeSetting` shares this pattern. Fix: lock the row (`SELECT … FOR UPDATE`, or the firm advisory lock) before reading `before`.
-* **m3. Silent drops and a misleading audit summary.**
-  * Where: `service.ts:41`, `service.ts:124`.
-  * Failing case 1: PATCH `{province: "BC"}` on a US office → 200, `province: null`, no field error. The same happens on POST with `{country: "US", province: "AB"}`.
-  * Failing case 2: PATCH `{}` → an audit line "Office changed" for no change, where `writeSetting` writes "saved unchanged".
-  * Fix: a 400 field issue (or an explicit `issues` note), and "saved unchanged" when before equals after.
-* **m4. The fake's own copy of the firm defaults can drift.** `ports/offices.ts:43` `FIRM_DEFAULTS` copies `settings.ts`'s defaults, and no contract case covers "a firm that never saved its settings". Fix: add that contract case, comparing the real adapter's defaults with the fake's.
+**Minor: earlier ones, all closed on 9b1dc85**
+* **m1 closed.** Change takes the firm's advisory lock (`service.ts:125`), and there is a case-blind unique index `platform_office_firm_name_ci` (migration). The parallel `Twin`/`twin` test now gives 200 + 409, and the database refuses `CALGARY` beside `Calgary`.
+* **m2 closed.** The lock plus a required `version`: a stale or missing one gets 409 with `current` (`service.ts:128`, STANDARDS §4). The parallel zone test writes one audit line with the true "from".
+* **m3 closed.** A province abroad gets 400 (`service.ts:43`). A change that changes nothing writes nothing and audits nothing (`service.ts:133-135`).
+* **m4 closed.** New contract case: a firm that never saved its settings gets the settings' defaults, on both adapters.
+* **m5 closed.** "A staff member with an office, or a firm with offices, cannot be deleted; one with no office can."
 
-* **m5. No test fails if the keys' RESTRICT is removed** (081df1d). The suite checks only the insert side (`*_fkey` on insert). Changing the keys to CASCADE, or dropping RESTRICT, would leave it green. Fix, the FO-1b pattern: "a staff member or firm named by an office row cannot be deleted" (fail) and "one with no office row can" (pass).
+**Minor: new on 9b1dc85 (none blocks)**
+* **m6. PATCH changing only `country` away from Canada on an office that has a province gets 400** ("A province or territory is for an office in Canada… leave it empty"), although the caller sent no province.
+  * Where: `service.ts:130`, which carries `before.province` into `provinceOf`.
+  * Failing case (copy `rv18b`): Calgary AB, PATCH `{version, country: "US"}` → 400. `{…, country: "US", province: null}` → 200.
+  * Nothing wrong is stored and the words say what to do. Fix (optional): when the country leaves CA and no province is sent, clear it, or word the issue as "clear the province too".
+* **m7. `version` is `updated_at` to the millisecond** (`service.ts:53`, `:128`). Two committed changes to one office in the same millisecond would share a version, and a client holding the first would not get its 409. This is unlikely under the firm lock and with one person per screen; a counter column would close it. Note only.
+* **Note.** The country rule `X[A-Z]` also refuses `XK` (Kosovo), which `Intl` names (`service.ts:26`). Out of scope, recorded only.
+
+## Breaker items in this diff (`break-report.md`), checked
+* **B2.** Version → 409, tested.
+* **B3.** OfficeClock outside the firm's scope throws (`clock.ts:14-19`), tested.
+* **B4.** A zone PostgreSQL refuses gets 400 through `zoneGuard`, tested: `US/Pacific-New` on add and change.
+* **B5.** JSON-path checks on hours and closed days, plus a zone-shape check, tested (`Factory` refused).
+* **B6.** NFC, invisible and direction characters refused, length counted in code points, tested.
+* **B7.** `ZZ`, `QQ` and user-assigned codes refused, tested.
+* **B9.** `REVOKE UPDATE` then a column `GRANT` on `platform_staff_office` to `xr_data`; `staff_id` cannot be updated as `xr_app`, tested.
 
 ## Checked and holding
-* Firm walls: `firmScope` on every query; PF-12 policy, gate trigger and `xr_wall_reader` functions.
-* First-office materialisation runs under an advisory lock: two parallel adds give 3 rows and 1 `is_first`. A unique partial index holds one first office.
-* Zone validation is the same in the code (`TIME_ZONE.schema`) and the DB. Hours and closed days use the firm settings' own zod schemas.
-* PATCH: province and country are kept when absent; changing the province does not re-pre-fill the zone (AG-1-74: the pre-fill is on add); uppercase ids are accepted.
-* Same-case duplicates get 409 (P2002). Every write is audited in its transaction.
-* The module card: purpose, entry points, invariant, tables and tests are all updated.
-* The pack's `zone1970.tab` quotes match tzdata 2026e on this machine, and our choices are labelled.
-* No case-side or `engine/` import; `ports/` uses zod only.
+* Firm walls.
+* Advisory lock on add and change: two parallel adds give 3 rows and 1 `is_first`; a partial unique index holds one first office.
+* Zone checked alike in code and database. Hours and closed days use the firm settings' schemas.
+* Same-case duplicates get 409. Every write is audited in its transaction.
+* The module card is updated.
+* The `zone1970.tab` quotes match tzdata 2026e, and our choices are labelled.
+* `ports/` uses zod only; no case-side or `engine/` import.
 
 ## D scores (/5; N/A: no screen)
 | D | Score | Evidence |
 |---|---|---|
-| D1 | 4 | Every part-1 rule has a behaviour and a test; DW7 is partly met (M2) |
-| D2 | 4 | Real keys on 081df1d (M1 closed); the case-insensitive name rule fails under a race (m1) |
+| D1 | 5 | Every part-1 rule has a behaviour and a pass and fail test; DW1-DW4 and DW7 met |
+| D2 | 5 | Real RESTRICT keys; case-blind unique names; stale changes get 409; column rights |
 | D3 | 5 | Reuses the firm settings' schemas, `firmScope`, `AuditPort`, the problem shape |
 | D4 | 5 | The pre-fill resolves for all 13 codes; there is no unreachable state |
-| D5 | 5 | Double POST gives 201 + 409; a failed first add rolls back |
-| D6 | 4 | Who and when on every change; the audit "from" can be stale (m2) |
+| D5 | 5 | Double POST gives 201 + 409; a failed first add rolls back; parallel changes give 200 + 409 |
+| D6 | 5 | Who, when and the true before/after; a no-op writes nothing |
 | D7 | N/A | No AI |
 | D8-D14 | N/A | No screen (PF-18s) |
 | D15 | 5 | 7-73 ms per call; one query per list |
-| D16 | 4 | Pass and fail per DW line; contract on both adapters; the M2 ordering is fragile; re-run by me |
+| D16 | 5 | 85 cases, pass and fail per line; contract on both adapters; re-run by me on the exact SHA |
 | D17, D20 | simulated only | No intended user; stays with the founder |
 | D18 | 5 | `timeZoneFrom` says province, firm or chosen; tzdata cited with release and date |
 | D19 | N/A | Part 1 of a runtime row; callers come in part 2 and PF-18s |
 
-**Journey score: 7 of 8 applicable (8.75/10), Pass.**
+**Journey score: 7 of 8 applicable criteria (8.75/10), Pass, no criterion at 0** (scored on 6ba0a5e). On 9b1dc85 the data and feedback findings behind its two ½ scores are closed, except m6.
 
-**Could not check:** a browser walk, axe, widths (no screen); the real callers of OfficeClockPort (part 2, case side); CI on the PR (draft, guard only).
+**Could not check:** a browser walk, axe, widths (no screen); the real callers of OfficeClockPort (part 2, case side); CI on the PR (draft, guard only). Before the label, the builder pastes the suites of the shard that shares the demo database, run on `main` merged in (brief, rows rev 16).
 
-**Fix list (081df1d):** M2. Measure right after this migration: apply `NEW` alone, check, then apply the rest. m1-m5 are recommended in the same push.
+No Blocker or Major is open. m6 and m7 are optional.
 
-Verdict: Changes requested 081df1dc1d6496096004846677840ee8566f9a31
+Verdict: Approve 9b1dc85ab4e6e570a0194a030250fd563625c224

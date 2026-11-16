@@ -37,6 +37,6 @@ Each add writes one row plus one audit line, and the first add writes two rows p
 | Visual quality | N/A | No screen |
 | Trust and sources | 1 | The zone pack cites tzdata 2026e `zone1970.tab`, read 2026-11-16. I checked each quoted comment against `/usr/share/zoneinfo/zone1970.tab` and they match; our own choices are labelled "ours" |
 
-**Score: 7 of 8 applicable criteria (8.75/10 scaled), no criterion at 0: Pass.** On 081df1d the score is unchanged: 7 of 8 applicable, Pass. The most valuable fixes come first: case-insensitive name uniqueness under lock (correct data), and a 400 or explicit drop for a province abroad (feedback).
+**Score: 7 of 8 applicable criteria (8.75/10 scaled), no criterion at 0: Pass.** On 081df1d the score is unchanged: 7 of 8 applicable, Pass. On 9b1dc85 the findings behind the two ½ scores are fixed (keys, case-blind names under lock, version → 409, province abroad → 400, no-op writes nothing; re-run 85/0). The score stays as walked on 6ba0a5e; a re-walk would likely give 8 of 8. The most valuable fixes come first: case-insensitive name uniqueness under lock (correct data), and a 400 or explicit drop for a province abroad (feedback).
 
 **Could not test:** a visible-browser walk, axe, widths and keyboard (no screen). D17 and D20 stay with the founder. The real case-side and booking callers of OfficeClockPort do not exist yet (part 2; contract gap).
