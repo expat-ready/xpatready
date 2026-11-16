@@ -1561,3 +1561,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **Ruling:** start **FO-3w part 2** (the manage page, J-P6 to J-P8 in `FO-3w.md`) **now**. The email links and buttons are not held back. Holding them would mean new code on `service.ts`, in its queue, removed later, and the bookings made meanwhile would never get a self-service link. Part 2 is screens only, with no API.
 * **Folded in:** `/book/:firmKey/manage` is declared before `/:slug`, plus a case that `manage` is a reserved slug.
 * qa's walk line is the acceptance line.
+* Lead 67 accepted rev 16.68. **FO-3w part 2 is owed at the founder's next typed turn** (STATE), with both fold-ins, on the cloud, P-608.
