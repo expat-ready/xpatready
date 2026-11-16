@@ -238,7 +238,34 @@ Re-review 3 verdict: Approve (head `5b06fedf1`), superseded below
 
 The Minors n2–n6 stand as above.
 
-Verdict: Approve (head `40f6f14de`)
+Re-review 4 verdict: Approve (head `40f6f14de`), superseded below
+* Blockers: none.
+* Majors: none.
+* Minors: n2–n6.
+
+## Re-review 5 at `bef00cb6e` (diff only, P-277)
+
+**Scope:** `git diff 132f3e11c bef00cb6e`: 2 files, +5 −6. The row is now +748 −14 on `studio/`, under P-610's cap.
+
+**The change:**
+* **Two lists in `tests/check_forms_qa53.ts`.**
+  * The unsubscribe page joins REVIEWED as "open": its sealed token is the key, and it changes nothing.
+  * The unsubscribe POST and the SNS notice door join PUBLIC_WRITES. Those writes answer 404 to an unknown token and 400 to an unverified notice, both asked in `check_pf19b2_ses.ts`.
+  * **Agree.** These are exactly this row's two public doors. The list stays in sorted order, which the check compares exactly. No other route was added, and no check was loosened.
+* **`public-routes.ts`, written where the scan can read it.**
+  * The page route's decorators now sit on one line, with no parentheses in the reason.
+  * The notice path is the literal `"messages/ses-notices"`, which equals `NOTICE_PATH` minus `/api/public/`. The unused import is gone.
+  * **No change in behaviour** (read line by line).
+
+**What I ran:**
+* `check_forms_qa53` **42/42** on my copy `rvqa53` on :4437, run as its usage line says; stopped and dropped afterwards.
+* `check_pf19b2_ses` **44/44**.
+
+**Note (cosmetic, no action):** the PUBLIC_WRITES line now carries two `//` comments, so PF-4b's note trails ours.
+
+The Minors n2–n6 stand as above.
+
+Verdict: Approve (head `bef00cb6e`)
 * Blockers: none.
 * Majors: none.
 * Minors: n2–n6.
