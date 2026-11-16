@@ -147,6 +147,12 @@ try {
       && (await db.foBooking.count({ where: { firmId: M.id, startsAt: at("2026-10-20 14:00") } })) === 0, after);
     ok("FO-3w J-P6: the address now carries the move's new token, and \"Booking updated\" brought a newer email link", movedKey !== b.key && movedKey.length > 20 && !b.link.endsWith(movedKey) && latestLink(b.email) !== b.link && latestLink(b.email).startsWith(`${BASE}/book/maple/manage#`), { url: p.url().replace(/#.*/, "#…") });
     await axe("updated", p); await shot(p, "updated-1440");
+    // AG-4-36 §11 "V1.5 bug 5": a booking already rescheduled once can be rescheduled again by the newest link.
+    await p.getByRole("button", { name: "Reschedule" }).click(); await p.locator("[data-move] [role=radio]").first().waitFor({ timeout: 15_000 });
+    await p.getByRole("radio", { name: "Wednesday 28 October, 18:00 Asia/Dubai time" }).click(); await p.getByRole("button", { name: "Move to this time" }).click();
+    await p.waitForFunction(() => document.querySelector("[data-when]")?.textContent?.includes("Wednesday 28 October, 18:00"), null, { timeout: 15_000 });
+    const twice = await db.foBooking.findUniqueOrThrow({ where: { id: row.id } });
+    ok("FO-3w J-P6 pass (AG-4-36 §11, bug 5): rescheduled once, the newest link reschedules again", twice.status === "RESCHEDULED" && twice.sequence === 2 && twice.startsAt.toISOString() === at("2026-10-28 10:00").toISOString() && (await p.locator("[data-updated]").count()) === 1, { status: twice.status, sequence: twice.sequence });
     // Cancel on the same page: the new token is used.
     await p.getByRole("button", { name: "Cancel", exact: true }).click(); await p.getByRole("dialog").waitFor();
     ok("FO-3w J-P6: Cancel asks \"Cancel this booking?\" with \"Reason (optional)\", \"Cancel booking\" and \"Keep booking\"", (await p.getByRole("dialog").innerText()).includes("Cancel this booking?") && (await p.getByLabel("Reason (optional)").count()) === 1 && (await p.getByRole("button", { name: "Keep booking" }).count()) === 1);
