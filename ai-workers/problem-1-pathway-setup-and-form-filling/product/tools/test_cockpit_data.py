@@ -1800,6 +1800,12 @@ class LeadWatchBoard(unittest.TestCase):
         out = cd.watch_lines(self.board([nb]), [], self.CAPS)
         self.assertTrue(any("disagree: R1.2 reads Not built — board says Not built, source says qa reads Works" in x for x in out), out)
 
+    def test_stale_board_is_said(self):
+        d = dict(self.board([]), freshness={"generated_at": "2026-11-16T01:00:00Z"})
+        now = datetime(2026, 11, 16, 6, 0, tzinfo=timezone.utc)
+        self.assertIn("warn: over 2 h old", cd.watch_lines(d, [], self.CAPS, now=now)[0])
+        self.assertNotIn("warn", cd.watch_lines(d, [], self.CAPS, now=datetime(2026, 11, 16, 2, 0, tzinfo=timezone.utc))[0])
+
     def test_board_without_first_screen(self):
         self.assertEqual(cd.watch_panels({}), (None, None))
         self.assertEqual(len(cd.watch_lines({})), 1)

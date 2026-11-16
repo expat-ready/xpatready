@@ -3058,6 +3058,7 @@ def write_history(path, hist, line):
 # Usage: python3 tools/cockpit-data.py --watch <data.json> --open-prs <gh pr list json> --caps-main <CAPABILITIES.md>
 WATCH_MAX_LINES = 40                             # B201 cap: at most ~40 lines per check
 WATCH_ITEMS = 5                                  # items named per Stuck line (the rest counted)
+WATCH_STALE_H = 2.0                              # Lead input and board data older than 2 h count as not updated (README)
 WATCH_ITEM_ACTS = 8                              # disagree lines per check before one "and N more"
 AGE_H = re.compile(r"\((\d+(?:\.\d+)?) h\)\s*$")
 PR_NUM = re.compile(r"^#(\d+)\b")
@@ -3211,7 +3212,9 @@ def watch_lines(d, open_prs=None, caps_text=None, pr_state=None, now=None):
     gen = (d.get("freshness") or {}).get("generated_at")
     if gen:
         age = (now or datetime.now(timezone.utc)) - datetime.fromisoformat(gen.replace("Z", "+00:00"))
-        out.append(f"board  as of {_hm(gen)} ({round(age.total_seconds() / 3600, 1)} h old): {len(stuck)} stuck")
+        h = max(0.0, round(age.total_seconds() / 3600, 1))
+        out.append(f"board  as of {_hm(gen)} ({h} h old): {len(stuck)} stuck" +
+                   ("" if h <= WATCH_STALE_H else f"; warn: over {WATCH_STALE_H:g} h old, refresh the board before trusting Today and Stuck"))
     out.append(watch_today_line(today))
     out += watch_stuck_lines(stuck)
     sl, checked, bad, unchecked = watch_source_checks(d, open_prs, caps_text, pr_state)
