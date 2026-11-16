@@ -40,8 +40,12 @@ export const Thanks = z.object({ thankYouText: z.string() });
 /** The permission keys each button needs (concept §6 as ruled on #1813: reads use `agent/prospect:show`). */
 export const KEY = { show: "agent/prospect:show", edit: "agent/prospect:edit", assign: "agent/prospect:assign", viewAll: "agent/prospect:view.all" } as const;
 /** A stored code in plain words (EXPERIENCE §5): the lead's source and state. */
-const WORDS: Record<string, string> = { WEBSITE: "Website form", OPEN: "Open", CLOSED: "Closed" };
-export const words = (code: string) => WORDS[code] ?? (code.charAt(0) + code.slice(1).toLowerCase()).replace(/_/g, " ");
+const WORDS: Record<string, string> = { WEBSITE: "Website form", OPEN: "Open", ENGAGED: "Engaged", CLOSED: "Closed" };
+/** A known stored code in plain words; anything else (a source a person typed: "VIP event", "Event, Toronto") is shown
+ *  exactly as typed (FO-4sf review m6). */
+export const words = (code: string) => WORDS[code] ?? code;
+/** FO-4sf (AG-2-23 rule 1): the Source filter's choices, the stored sources of the leads the person may see (leads.ts). */
+export const LeadSources = z.object({ sources: z.array(z.string()) });
 /** Why a person sees no Take it (BIC-18): their role may read leads but not work them. */
 export const READ_ONLY_REASON = "You can read leads. Taking one needs a role that works leads: ask your firm's Owner or Admin.";
 export const can = (me: Me | undefined, key: string) => !!me?.keys.includes(key);
