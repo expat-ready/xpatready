@@ -21,9 +21,7 @@ Rules: RULES.md + DECISIONS **P-626 to P-628** (finish partials first, target 10
 | A5, A7, A24, A28, A31, A34, A37-A43 | earlier asks | done or superseded (Lead 52, 15 Nov; nothing waits on him); row word for word in `history/STATE-2026-11-15-1045-lead53s2-founder-asks-A5-A43-row.md` |
 | A49-A67 | 14 Nov asks (map, architecture, board A61-A64, private copy, cockpit, Library, PRD, gap scan A65, speed A66, delivery per token A67) | decided or in progress; pointer rows word for word in `history/STATE-2026-11-15-0935-lead51s2-founder-asks-pointer-rows-A49-A67.md` |
 
-| A68-A87 | 15 Nov asks | decided, answered or in progress; the three pointer rows word for word in `history/STATE-2026-11-15-2115-lead61s2-founder-asks-A89-A92-rows.md` |
-| A88 | 15:5x IST 15 Nov: status, "0 of 10", plan use, fix the board end to end, what needs him | done (board fixed and republished; his three non-urgent asks open); row word for word in `history/STATE-2026-11-15-1605-lead59s2-A88-row-and-board-item.md` |
-| A89 | 16:0x IST 15 Nov: the six founder-start steps (outside accounts) | in progress, Lead 56 drives; steps ticked under "Needs you"; row word for word in `history/STATE-2026-11-15-2115-lead61s2-founder-asks-A89-A92-rows.md` |
+| A68-A89 | 15 Nov asks (A89: six founder-start steps, in progress under "Needs you") | rows word for word in `history/STATE-2026-11-16-0950-lead64s2-asks-A68-A89-rows.md` |
 
 | A90-A105 | 15-16 Nov evening and night asks | answered or in progress; rows word for word in `history/STATE-2026-11-16-0925-lead64s2-asks-A90-A105-rows.md` |
 | A106-A108 | 16 Nov morning: clean-up, builders, "finish partials first" (P-626) | done; rows word for word in `history/STATE-2026-11-16-0755-lead64s2-asks-A106-A109.md` |
