@@ -86,4 +86,12 @@ The commit also carries this review and the journey report, which the builder pi
 - **Runs on `e4317a6`** (mine, scratch worktree): `check_fo2v` 13/13, `check_fo2` 113/113, `check_pf6b` 28/28. I did not re-run J-6 or qa's QA-479 line, whose inputs did not change; the builder reports them green.
 - **Journey score:** "correct data" goes to 1, as the J7 leak is fixed and covered by the new test. **9/10**, a pass.
 
-**Verdict: Approve** for `e4317a6bb20c44b969aadc8aff0b17ac275b294f`. No open Blocker or Major. Fix the one Minor test gap or list it in the PR.
+**Verdict at `e4317a6`: Approve** (superseded by the re-review below). No open Blocker or Major. Fix the one Minor test gap or list it in the PR.
+
+## Re-review at `d0bc7b6bba5836b6e39f445b4f522f6db988e1bb` (diff `e4317a6..d0bc7b6` only)
+- **No app code changed:** `git diff e4317a6 d0bc7b6 -- api` is empty. The rest of the diff is this review and the journey report.
+- **The test gap from the last re-review is closed.** New case `DW3 fail (the race through a deactivated owner)`: a deactivated owner's lead is taken by the Case Manager, then the Officer's Take gives 409 "CASE_MANAGER (Sample) already has this lead.", with no `ownerStaffId`. On a scratch worktree, `check_fo2v` gives 14/14. With `fromUnassigned` computed as `l.owner_staff_id === null`, it gives 13/14, failing on exactly this line.
+- **Minor 4 is closed.** The PR body's "Changed tests" names `check_fo2_leads_prospects.ts` and `journeys/j_6.ts`, each with why.
+- No open Blocker, Major or Minor in this PR's scope. The breaker's m3 (lead numbers) predates it and is for the release holder.
+
+**Verdict: Approve d0bc7b6bba5836b6e39f445b4f522f6db988e1bb**
