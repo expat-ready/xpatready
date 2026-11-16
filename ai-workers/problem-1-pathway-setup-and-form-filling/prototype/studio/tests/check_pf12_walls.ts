@@ -33,7 +33,10 @@ const urlOf = (db: string, user = "xr_studio") => `postgresql://${user}@127.0.0.
 /** The families the walls cover (contracts §9) and the named exceptions (brief): catalogues with no firm_id, and our own
  *  registers that only the bypass role reaches. Nothing else may go without a forced policy. */
 const FAMILIES = /^(platform_|fo_|money_|msg_|auto_|plat_complaint)/;
-const EXCEPTIONS = ["platform_plan", "platform_role_permission", "platform_setting_definition", "platform_permission_key", "plat_breach", "plat_data_request", "plat_legal_hold"];
+const CATALOGUES = ["platform_plan", "platform_role_permission", "platform_setting_definition", "platform_permission_key", "platform_terms_version"];
+/** Our own registers: row-level security forced and no policy at all, so only the bypass role reaches them. */
+const OWN = ["platform_signup_pending", "plat_breach", "plat_data_request", "plat_legal_hold"];
+const EXCEPTIONS = [...CATALOGUES, ...OWN];
 
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 500)}` : ""}`); };
@@ -48,7 +51,9 @@ function unwalled(db: string): string[] {
   const rows = sql(db, `select c.relname from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind in ('r','p')
     and (not c.relrowsecurity or not c.relforcerowsecurity or not exists (select 1 from pg_policy p where p.polrelid = c.oid))
     order by 1`).split("\n").filter(Boolean);
-  return rows.filter((t) => FAMILIES.test(t) && !EXCEPTIONS.includes(t));
+  const own = sql(db, `select c.relname from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind in ('r','p')
+    and c.relname = any('{${OWN.join(",")}}') and (not c.relrowsecurity or not c.relforcerowsecurity or exists (select 1 from pg_policy p where p.polrelid = c.oid))`).split("\n").filter(Boolean);
+  return [...rows.filter((t) => FAMILIES.test(t) && !EXCEPTIONS.includes(t)), ...own.map((t) => `${t} (own register: must be forced with no policy)`)];
 }
 const familyTables = (db: string) => sql(db, `select tablename from pg_tables where schemaname = 'public' order by 1`).split("\n").filter((t) => FAMILIES.test(t));
 const count = (db: string, t: string) => Number(sql(db, `select count(*) from "${t}"`));
@@ -77,8 +82,10 @@ try {
   psql(urlOf(BARE), ["-f", join(MIG, NEW, "migration.sql")]);
   const walled = familyTables(BARE).filter((t) => !EXCEPTIONS.includes(t));
   ok(`PF-12 pass: right after the migration every table of the families has its forced policy (${walled.length} tables; exceptions ${EXCEPTIONS.filter((t) => familyTables(BARE).includes(t)).join(", ")})`, unwalled(BARE).length === 0 && walled.length >= 60, unwalled(BARE));
-  ok("PF-12: the catalogues on the exception list stay outside the walls (no firm_id: platform_plan, platform_role_permission, platform_setting_definition, platform_permission_key)",
-    sql(BARE, `select count(*) from pg_class where relname in ('platform_plan','platform_role_permission','platform_setting_definition','platform_permission_key') and not relrowsecurity`) === "4");
+  ok(`PF-12: the catalogues on the exception list stay outside the walls (no firm_id: ${CATALOGUES.join(", ")})`,
+    sql(BARE, `select count(*) from pg_class where relname = any('{${CATALOGUES.join(",")}}') and not relrowsecurity`) === String(CATALOGUES.length));
+  ok("PF-12 pass: a pending sign-up (no firm yet) is forced with no policy: xr_app reads none even naming no firm, the bypass role reads them",
+    sql(BARE, `select relforcerowsecurity and not exists (select 1 from pg_policy where polrelid = 'platform_signup_pending'::regclass) from pg_class where relname = 'platform_signup_pending'`) === "t");
 
   for (const d of all) psql(urlOf(EMPTY), ["-f", join(MIG, d, "migration.sql")]);
   ok("PF-12 pass: every migration applies in order to an empty database", sql(EMPTY, `select count(*) from pg_policy where polname = 'pf12_firm'`) !== "0");
@@ -86,14 +93,15 @@ try {
   ok("PF-12 guard pass: with every migration on main, no platform_*, fo_*, money_*, msg_*, auto_* or plat_complaint* table is without its forced policy", unwalled(EMPTY).length === 0, unwalled(EMPTY));
   // ... and it fails for a table that forgot (the probes are dropped again).
   sql(EMPTY, `create table fo_pf12_probe (id uuid primary key, firm_id uuid not null); create table auto_pf12_probe (id uuid primary key, firm_id uuid not null); create table plat_complaint_pf12_probe (id uuid primary key, firm_id uuid not null);
-    create table money_pf12_probe (id uuid primary key, firm_id uuid not null); alter table money_pf12_probe enable row level security; create policy p on money_pf12_probe using (firm_id = platform_session_firm());`);
+    create table money_pf12_probe (id uuid primary key, firm_id uuid not null); alter table money_pf12_probe enable row level security; create policy p on money_pf12_probe using (firm_id = platform_session_firm());
+    create policy pf12_probe_open on platform_signup_pending using (true);`);
   const probes = unwalled(EMPTY);
-  ok("PF-12 guard fail: a new fo_, auto_ or plat_complaint table with no policy, and a money_ table whose policy is not forced, are each named",
-    ["fo_pf12_probe", "auto_pf12_probe", "plat_complaint_pf12_probe", "money_pf12_probe"].every((t) => probes.includes(t)), probes);
+  ok("PF-12 guard fail: a new fo_, auto_ or plat_complaint table with no policy, a money_ table whose policy is not forced, and our own register given a policy, are each named",
+    ["fo_pf12_probe", "auto_pf12_probe", "plat_complaint_pf12_probe", "money_pf12_probe"].every((t) => probes.includes(t)) && probes.some((p) => p.startsWith("platform_signup_pending (own register")), probes);
   // Default privileges: a later migration's table is open to the app's role (a grant) but walled once it has its policy.
   ok("PF-12: a later migration's table gets the app's table rights by default privileges (xr_app may read it, so the policy is what walls it)",
     asApp(EMPTY, null, "select count(*) from fo_pf12_probe") === "0");
-  sql(EMPTY, "drop table fo_pf12_probe, auto_pf12_probe, plat_complaint_pf12_probe, money_pf12_probe");
+  sql(EMPTY, "drop table fo_pf12_probe, auto_pf12_probe, plat_complaint_pf12_probe, money_pf12_probe; drop policy pf12_probe_open on platform_signup_pending");
 
   // ------------------------------------------------------------------------------------------------------ the roles
   const role = (r: string) => sql(EMPTY, `select rolsuper, rolbypassrls, rolcanlogin, rolcreaterole, rolcreatedb, rolreplication from pg_roles where rolname = '${r}'`);

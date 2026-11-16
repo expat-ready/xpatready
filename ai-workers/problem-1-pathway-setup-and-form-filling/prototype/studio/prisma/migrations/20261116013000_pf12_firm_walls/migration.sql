@@ -19,7 +19,9 @@
 -- Walls: ENABLE + FORCE ROW LEVEL SECURITY and one policy per table, firm_id = the session's firm
 -- (platform_session_firm(): current_setting('app.firm_id', true), '' read as none). With no firm set a query reads nothing
 -- and writes nothing. Exceptions (no policy, row-level security stays off): platform_plan, platform_role_permission,
--- platform_setting_definition, platform_permission_key (catalogues: no firm_id). msg_template and msg_template_version
+-- platform_setting_definition, platform_permission_key, platform_terms_version (catalogues: no firm_id). Our own
+-- registers (platform_signup_pending; plat_breach, plat_data_request, plat_legal_hold once they exist): row-level
+-- security forced and no policy, so only the bypass role reaches them. msg_template and msg_template_version
 -- also let a firm read the platform-owned rows (firm_id null); only the bypass role writes those.
 -- Every later platform_*, fo_*, money_*, msg_*, auto_* and plat_complaint* table ships its own policy in its own migration
 -- (tests/check_pf12_walls.ts fails otherwise).
@@ -228,6 +230,14 @@ CREATE POLICY "pf12_firm" ON "platform_firm_address_history" USING ("firm_id" = 
 ALTER TABLE "platform_firm_setting" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "platform_firm_setting" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "pf12_firm" ON "platform_firm_setting" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
+-- PF-5 (merged before this migration): the terms a firm's staff accepted are the firm's; a pending sign-up has no firm
+-- yet and is our own (row-level security forced, no policy: only the bypass role reaches it, as the brief sets for
+-- plat_breach, plat_data_request and plat_legal_hold); platform_terms_version is our catalogue (no firm_id).
+ALTER TABLE "platform_terms_acceptance" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "platform_terms_acceptance" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "pf12_firm" ON "platform_terms_acceptance" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
+ALTER TABLE "platform_signup_pending" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "platform_signup_pending" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "platform_firm_web_address" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "platform_firm_web_address" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "pf12_firm" ON "platform_firm_web_address" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
