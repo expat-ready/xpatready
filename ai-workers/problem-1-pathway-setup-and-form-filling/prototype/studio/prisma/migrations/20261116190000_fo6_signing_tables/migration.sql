@@ -13,7 +13,7 @@
 --     signer is a person in order 1, the firm signer the one staff member in order 2; no signature without consent; the
 --     firm signs only after every client; SIGNED only with its evidence; moments written once; sha256 and key shapes;
 --     a receipt names its request's own provider document; nothing is deleted or truncated.
--- Rollback (in this order): DROP TABLE "fo_signing_hook_receipt", "fo_signing_evidence", "fo_signer",
+-- Rollback (in this order): DROP POLICY "pf12_firm" and TRIGGER "0_pf12_firm_first" on the four tables; DROP TABLE "fo_signing_hook_receipt", "fo_signing_evidence", "fo_signer",
 --   "fo_signature_request"; DROP FUNCTION fo_signing_request_write(), fo_signing_signer_write(), fo_signing_evidence_write(),
 --   fo_signing_receipt_write(), fo_signing_no_delete(), fo_signing_sha_ok(text), fo_signing_ref_ok(text, integer),
 --   fo_signing_key_ok(text); DROP TYPE "FoSignerRole", "FoSigningCancelReason", "FoSignatureRequestStatus",
@@ -305,7 +305,9 @@ CREATE TRIGGER fo_signing_request_write BEFORE INSERT OR UPDATE ON "fo_signature
 CREATE FUNCTION fo_signing_signer_write() RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
 DECLARE st "FoSignatureRequestStatus";
 BEGIN
-  SELECT r."status" INTO st FROM "fo_signature_request" r WHERE r."firm_id" = NEW."firm_id" AND r."id" = NEW."request_id" FOR UPDATE;
+  -- A no-op update of the request, not only a lock (Devin on #2038): a REPEATABLE READ writer whose snapshot predates
+  -- this change then fails to serialise instead of acting on what it no longer sees.
+  UPDATE "fo_signature_request" r SET "status" = r."status" WHERE r."firm_id" = NEW."firm_id" AND r."id" = NEW."request_id" RETURNING r."status" INTO st;
   IF TG_OP = 'INSERT' THEN
     IF st IS DISTINCT FROM 'SENT' OR NEW."viewed_at" IS NOT NULL OR NEW."consented_at" IS NOT NULL OR NEW."signed_at" IS NOT NULL
        OR NEW."declined_at" IS NOT NULL OR NEW."code_failures" <> 0 OR NEW."code_verified_at" IS NOT NULL THEN
@@ -345,8 +347,9 @@ CREATE TRIGGER fo_signing_signer_write BEFORE INSERT OR UPDATE ON "fo_signer" FO
 CREATE FUNCTION fo_signing_evidence_write() RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
 BEGIN
   IF TG_OP = 'UPDATE' THEN RAISE EXCEPTION 'fo_signing_evidence: evidence never changes' USING ERRCODE = 'restrict_violation'; END IF;
-  -- The request row is locked first, so a cancel waits for the evidence and then sees it (review M3).
-  PERFORM 1 FROM "fo_signature_request" r WHERE r."firm_id" = NEW."firm_id" AND r."id" = NEW."request_id" FOR UPDATE;
+  -- The request row is updated first (a no-op), so a cancel waits for the evidence and then sees it (review M3), and a
+  -- REPEATABLE READ cancel whose snapshot predates the evidence fails to serialise (Devin on #2038).
+  UPDATE "fo_signature_request" r SET "status" = r."status" WHERE r."firm_id" = NEW."firm_id" AND r."id" = NEW."request_id";
   IF NOT EXISTS (SELECT 1 FROM "fo_signature_request" r WHERE r."firm_id" = NEW."firm_id" AND r."id" = NEW."request_id" AND r."status" = 'CLIENT_SIGNED')
      OR EXISTS (SELECT 1 FROM "fo_signer" s WHERE s."firm_id" = NEW."firm_id" AND s."request_id" = NEW."request_id" AND s."signed_at" IS NULL)
      -- The firm signer among them (review R2-1: evidence on a clients-only request would leave it stuck, only SIGNED may follow).
@@ -370,3 +373,30 @@ BEGIN
   RETURN NEW;
 END $$;
 CREATE TRIGGER fo_signing_receipt_write BEFORE INSERT OR UPDATE ON "fo_signing_hook_receipt" FOR EACH ROW EXECUTE FUNCTION fo_signing_receipt_write();
+
+-- ------------------------------------------------------------------------------------------------- PF-12's walls
+-- PF-12's wall on the four tables (forced policy naming the session's firm; the firm-first gate before the area's own
+-- triggers); the trigger functions run as xr_wall_reader, so each sees its request's rows whoever writes (Devin on
+-- #2038; tests/check_pf12_walls.ts). The webhook door, which names no firm, finds its request through a named bypass
+-- use in the API part.
+ALTER TABLE "fo_signature_request" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
+CREATE POLICY "pf12_firm" ON "fo_signature_request" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
+ALTER TABLE "fo_signer" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
+CREATE POLICY "pf12_firm" ON "fo_signer" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
+ALTER TABLE "fo_signing_evidence" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
+CREATE POLICY "pf12_firm" ON "fo_signing_evidence" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
+ALTER TABLE "fo_signing_hook_receipt" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
+CREATE POLICY "pf12_firm" ON "fo_signing_hook_receipt" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
+CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "fo_signature_request" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
+CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "fo_signer" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
+CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "fo_signing_evidence" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
+CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "fo_signing_hook_receipt" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
+DO $readers$
+DECLARE f text;
+BEGIN
+  FOREACH f IN ARRAY ARRAY['fo_signing_no_delete()', 'fo_signing_request_write()', 'fo_signing_signer_write()', 'fo_signing_evidence_write()', 'fo_signing_receipt_write()'] LOOP
+    EXECUTE format('ALTER FUNCTION %s SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp', f);
+    EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
+  END LOOP;
+END
+$readers$;

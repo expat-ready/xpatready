@@ -49,8 +49,9 @@ try {
   const created = [...code.matchAll(/CREATE (?:FUNCTION|TRIGGER) (\w+)/g)].map((m) => m[1]);
   ok("FO-6 (P-600 (3)): every function and trigger the migration creates carries the area prefix fo_signing_",
     created.length >= 10 && created.every((n) => n.startsWith("fo_signing_")), created.filter((n) => !n.startsWith("fo_signing_")));
-  ok("FO-6 (P-600 (2)): the migration only adds — no ALTER, DROP or UPDATE of a table that is not its own",
-    ![...code.matchAll(/ALTER TABLE "(\w+)"/g)].some((m) => !TABLES.includes(m[1])) && !/^\s*(DROP|UPDATE|DELETE|TRUNCATE)\b/im.test(code));
+  ok("FO-6 (P-600 (2)): the migration only adds — no ALTER, DROP or UPDATE of a table that is not its own (its triggers update only its own request row)",
+    ![...code.matchAll(/(?:ALTER TABLE|UPDATE|INSERT INTO|DELETE FROM) "(\w+)"/g)].some((m) => !TABLES.includes(m[1])) && !/^\s*(DROP|DELETE|TRUNCATE)\b/im.test(code)
+    && ![...code.matchAll(/^\s*UPDATE\s+"?(\w+)/gim)].some((m) => !TABLES.includes(m[1])));
   ok("FO-6 (P-564, brief): no column holds an email address, a code or a link token in clear (only their sha256)",
     !/"(email|code|link_token|token)"\s/i.test(code) && /"code_sha256"/.test(code) && /"link_token_sha256"/.test(code));
 
@@ -140,7 +141,7 @@ try {
   })());
   ok("FO-6 fail: a SIGNED request is final: no cancel, no decline, no change to its signers or evidence", refused(DEMO, `update fo_signature_request set status = 'CANCELLED', cancel_reason = 'WITHDRAWN' where id = '${e1.r}'`, /is final/)
     && refused(DEMO, `update fo_signer set viewed_at = now() where id = '${e1.c1}'`, /final|does not change/) && refused(DEMO, `update fo_signing_evidence set audit_sha256 = '${sha("z")}' where request_id = '${e1.r}'`, /never changes/)
-    && refused(DEMO, evidence(e1.r), /every signer of a live request|fo_signing_evidence_firm_id_request_id_key/));
+    && refused(DEMO, evidence(e1.r), /every signer of a live request|fo_signing_evidence_firm_id_request_id_key|is final/));
   ok("FO-6 fail: a status cannot move backward or skip (SENT → SIGNED)", (() => { const e = envelope(); return refused(DEMO, `update fo_signature_request set status = 'SIGNED' where id = '${e.r}'`, /not a signing move/)
     && (sql(DEMO, `update fo_signature_request set status = 'VIEWED' where id = '${e.r}'`), refused(DEMO, `update fo_signature_request set status = 'SENT' where id = '${e.r}'`, /not a signing move/)); })());
   ok("FO-6 fail: who signs, the document and the expiry never change", (() => { const e = envelope(); return refused(DEMO, `update fo_signature_request set expires_at = expires_at + interval '1 day' where id = '${e.r}'`, /only the status/) && refused(DEMO, `update fo_signature_request set document_id = gen_random_uuid() where id = '${e.r}'`, /only the status/) && refused(DEMO, `update fo_signer set person_id = gen_random_uuid() where id = '${e.c1}'`, /never change/); })());
@@ -186,6 +187,20 @@ try {
     const holderExit = await held;
     ok("FO-6 fail (review M3, R2-2, two connections): a cancel racing the evidence waits for it, then is refused; the request keeps its evidence",
       holderExit === 0 && cancelRefused && waited >= 800 && sql(DEMO, `select status || ':' || (select count(*) from fo_signing_evidence where request_id = '${e.r}') from fo_signature_request where id = '${e.r}'`) === "CLIENT_SIGNED:1", { holderExit, cancelRefused, waited });
+  }
+  { // Devin on #2038: a REPEATABLE READ cancel whose snapshot predates the evidence fails to serialise (the evidence
+    // trigger updates the request row, so the stale writer cannot act on what it no longer sees).
+    const e = envelope(); for (const x of [e.c1, e.c2, e.f]) sql(DEMO, sign(x)); sql(DEMO, `update fo_signature_request set status = 'CLIENT_SIGNED' where id = '${e.r}'`);
+    let err = "";
+    const stale = spawn(join(BIN, "psql"), [urlOf(DEMO), "-v", "ON_ERROR_STOP=1", "-q", "-c", `begin isolation level repeatable read; select count(*) from fo_signature_request where id = '${e.r}'; select pg_sleep(1.5);
+      update fo_signature_request set status = 'CANCELLED', cancel_reason = 'WITHDRAWN' where id = '${e.r}'; commit;`], { stdio: ["ignore", "ignore", "pipe"] });
+    stale.stderr.on("data", (d) => { err += String(d); });
+    const done = new Promise<number | null>((res) => stale.on("exit", res));
+    await new Promise((r) => setTimeout(r, 500));
+    sql(DEMO, evidence(e.r));
+    const code = await done;
+    ok("FO-6 fail (Devin on #2038, two connections): a REPEATABLE READ cancel with a snapshot older than the evidence fails to serialise; the request keeps its evidence",
+      code !== 0 && /could not serialize/.test(err) && sql(DEMO, `select status || ':' || (select count(*) from fo_signing_evidence where request_id = '${e.r}') from fo_signature_request where id = '${e.r}'`) === "CLIENT_SIGNED:1", { code, err: err.slice(0, 200) });
   }
   ok("FO-6 fail (review M4): one provider document id names one request across all firms", refused(DEMO, req({ firm: firmB, by: repB, pdid: `fake-${e1.r}` }).q, /fo_signature_request_provider_provider_document_id_key/));
   ok("FO-6 fail (review m6): a sixth wrong code without the lock is refused", (() => { const e = envelope(); return refused(DEMO, `update fo_signer set code_failures = 6 where id = '${e.c1}'`, /code_check/); })());
