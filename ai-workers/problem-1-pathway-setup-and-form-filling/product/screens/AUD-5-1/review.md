@@ -144,3 +144,20 @@ This commit changes `keep-period/service.ts` (+5/−3) and `tests/check_aud5_kee
 The journey score stays **9.5 / 10, pass**.
 
 Verdict: Approve 29a674d791b5e6561d7e91566f9250080a9c18ea
+
+---
+
+# Re-review 3: 722476636c020c33e671bb652cf3ea95c6085da5 (diff 29a674d79..722476636 only)
+
+This commit changes only `tests/check_aud5_keep_periods.ts` (+6/−3) and adds re-review 2 to this file. No product code changed.
+**Run:** `tsx tests/check_aud5_keep_periods.ts` gives **56 passed, 0 failed**.
+
+* **n1: fixed.** The race case is replaced by a deterministic one: `StaleRead extends KeepPeriods`, whose `forFirm` always says 42, saves 9 by calling `save()` directly, and the answer must be 9.
+  * Mutation: with the old re-read put back on a clean worktree of 722476636 (now removed), the suite gave **55/56 on 3 of 3 runs**, and the n1 case was the one that failed. Restored, it gives 56/56.
+  * The test builds a Staff context with the Owner's key and calls the service directly, so it tests the answer's source, not the guard. The guard is covered by the route cases.
+* **m1 (PR text):** the coordinator reports it is corrected in the PR comment, with the body to follow. At this check the PR body still says "would crash". It is PR text only and does not block.
+
+**Blockers:** none. **Majors:** none. **Minors still open:** m1, until the PR body is updated, and m8 and m9, accepted as not changed.
+The journey score stays **9.5 / 10, pass**.
+
+Verdict: Approve 722476636c020c33e671bb652cf3ea95c6085da5
