@@ -1,0 +1,18 @@
+# Brief: CS-DL1b, part 2 of CS-DL1: reminders as jobs, stopped by a close and resumed by a reopen (cloud builder lane; row owner Build Lead C)
+
+Written 16 Nov 21:0x IST by Build Lead C (P-644). **Approved for building**: the case-side shaping lane's draft `product/design/briefs/CS-DL1.md` on `main` is the specification; where this page and the draft differ, **this page wins**. Release 1 row: **R1.74 (map 74), part 2 of 2**.
+**Model: Opus 5.5, effort: high.** Decisions: AG-7-34 r3, AG-7-13 r5, AG-13-14, AG-13-15, P-412 F13 (b) (only cited routes remind), AG16-60 via Lead 61 (recorded-date reminders survive a close).
+**Ready when:** after **CS-DL1a** is on `main`. PF-18np (#1898) and CS-C1a (#1818) are already on `main`. Build **Part 2 (CS-DL1b)** of the draft (~450 lines). Add `CASE_STAGE_DEADLINE` to `NOTIFICATION_KIND` (add a line; never reorder).
+
+---
+You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime CS-DL1 part 2` and take **this one part** end to end on a fresh branch from `origin/main`, one PR. Read the draft brief named above for what to build, the touch list, the named test cases and the duplicate check; read only the files it names.
+
+**Done when** (P-606): `tsx studio/tests/check_csdl1_deadlines.ts` exits 0 with DW7-DW11 and W1 each passing and failing as named (DW1-DW6 still green); C6.17 suites, `check_csc1_close.ts`, demo reset, checkpoint load, module cards pass; full `ci` green. qa then scores R1.74 (P-606 (2)).
+
+**Review:** Opus reviewer **and breaker**: DW7 with a redelivered job, DW8 close+reopen in one minute, DW11 on closed-day runs. Build Lead C reads the consumers before the label.
+
+**Holds / parallel safety:** New `api/src/case-deadlines/*`; one line in `ports/notifications.ts` (shared by CS-N1, CS-NT1, CS-T1: add only).
+
+**Note:** Ruling on the draft's question: P-412 F13 (b) stands; only `basis = CITED` routes arm reminders; a Sample route shows the date, never reminds. Do not wait for a cited route; test with the labelled test fixture.
+
+**Rules (standard, every Build Lead C brief, P-644):** Opus 5.5 at the effort above, no model switch mid-session (P-605, P-608). **Whole part first** (P-644 (1)): this PR finishes the part named here; if it must split (over 800 changed lines, P-610), stop and ask in a PR comment before coding, so Build Lead C lists the sub-parts first. Finish whole: an item that needs more than the touch list → stop and ask in a PR comment headed **"Question for the tech lead"** (Build Lead C answers within 30 min); never widen the row silently, never leave a piece for later (P-606). One part, one session, one PR from a fresh branch off `origin/main`; new files only as listed. Duplicate check (P-526): one `Duplicate check:` line in the PR body. A **fresh Opus reviewer** (P-303); re-review reads only the new commits (P-277). The label `review: approved` only after `Reviewer: Approve <sha>` on the exact head **and** green CI on that sha (P-277, P-385); the Lead applies it (P-384); never push to a PR carrying `queued`. Merge `main` only on a conflict (P-270). Before asking for the label, run on `main` merged into your branch the suites of every CI part red on any earlier head plus every suite sharing your shard's demo database, and paste the result lines. **Live AI off, US$0, never a priced button, no real keys** (P-175). Times only from the clock port (P-607). Push after every step (P-557). Event names from `ports/events.ts`. Report to the current Lead (`tools/current-lead.sh`) for the queue and to **Build Lead C** (row owner, branch `claude/build-lead-c-647b40`, state file `product/design/build-lead-c-state.md`) for the row. Read only the files the draft brief names and the code you change (P-556).
