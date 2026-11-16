@@ -2,7 +2,7 @@
 // agent/prospect:* keys; PF-4's guard refuses the rest, default deny). The concept's `agent/prospect:list` is not a seeded
 // key: the seeded `agent/prospect:show` reads (with view.all/view.own deciding which rows, common.ts visibilityOf). Add a
 // lead creates; Take it, Close and Reopen edit; Assign assigns. The list and the read are marked @OwnOrAll and swept
-// by PF-6b's check with the retainers (FO-2v). `leads/assignees` is declared before `leads/:id`.
+// by PF-6b's check with the retainers (FO-2v). `leads/sources` and `leads/assignees` are declared before `leads/:id`.
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from "@nestjs/common";
 import { OwnOrAll, PermissionKeys, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
 import { Leads } from "./leads.ts";
@@ -15,10 +15,13 @@ export class SalesController {
   constructor(@Inject(Leads) private readonly leads: Leads) {}
 
   @Get("leads") @PermissionKeys("agent/prospect:show") @OwnOrAll("agent/prospect")
-  list(@Req() r: R, @Query("view") view?: string) { return this.leads.list(staffOf(r), view); }
+  list(@Req() r: R, @Query("view") view?: string, @Query("source") source?: string | string[]) { return this.leads.list(staffOf(r), view, source); }
 
   @Post("leads") @PermissionKeys("agent/prospect:create")
   add(@Req() r: R, @Body() b: B) { return this.leads.add(staffOf(r), b ?? {}); }
+
+  @Get("leads/sources") @PermissionKeys("agent/prospect:show") @OwnOrAll("agent/prospect")
+  sources(@Req() r: R) { return this.leads.sources(staffOf(r)); }
 
   @Get("leads/assignees") @PermissionKeys("agent/prospect:show")
   assignees(@Req() r: R) { return this.leads.assignees(staffOf(r)); }
