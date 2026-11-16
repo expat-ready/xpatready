@@ -7,7 +7,7 @@
 import { Body, Controller, Get, Inject, Param, Post, Req, Res } from "@nestjs/common";
 import { OpenRead } from "../../core.ts";
 import { PUBLIC_NOT_FOUND_HTML } from "../web-address/host.ts";
-import { NOTICE_PATH, NoticeRefused, SesNotices } from "./channels/email/bounces.ts";
+import { NoticeRefused, SesNotices } from "./channels/email/bounces.ts";
 import { page, Unsubscribe } from "./channels/email/unsubscribe.ts";
 
 type Req = { on(e: string, f: (c?: Buffer) => void): unknown; readable?: boolean };
@@ -29,9 +29,7 @@ export const rawText = (req: Req) => new Promise<string>((done) => {
 export class MessagesPublicController {
   constructor(@Inject(Unsubscribe) private readonly u: Unsubscribe, @Inject(SesNotices) private readonly n: SesNotices) {}
 
-  @OpenRead("the unsubscribe page a marketing or service email links to (PF-19b): one button, changes nothing")
-  @Get("unsubscribe/:token")
-  async page(@Param("token") t: string, @Res() res: Res) {
+  @OpenRead("PF-19b: the unsubscribe page a marketing or service email links to; one button, changes nothing") @Get("unsubscribe/:token") async page(@Param("token") t: string, @Res() res: Res) {
     const a = this.u.allow(t);
     if (a === "limited") return tooMany(res);
     const p = a === "open" ? await this.u.page(t) : null;
@@ -46,7 +44,7 @@ export class MessagesPublicController {
     return html(res, p ? 200 : 404, p ?? PUBLIC_NOT_FOUND_HTML);
   }
 
-  @Post(NOTICE_PATH.replace("/api/public/", ""))
+  @Post("messages/ses-notices")   // NOTICE_PATH, written out so the route scan (check_forms_qa53.ts) sees it
   async notice(@Body() body: unknown, @Req() req: Req, @Res() res: Res) {
     const parsed = body && typeof body === "object" && Object.keys(body).length ? body : req.readable ? await rawText(req) : "";
     try {
