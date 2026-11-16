@@ -1,0 +1,28 @@
+NOTICE:  database "xr_studio_pf6b_755" does not exist, skipping
+PASS  PF-6b DW8 pass: the migration has its own stamp, later than every one before it and unique (newest before it: 20261115042334_fo7a_client_money_tables)
+PASS  PF-6b DW8 fail: before PF-6b's migration there is no catalogue table
+PASS  PF-6b DW8 pass: right after its own migration, one catalogue row per distinct role-permission key (233), no role-permission row changed
+PASS  PF-6b DW8 pass: after every migration, migrate diff names nothing of the catalogue (schema file and migration agree)
+<claude-code-hint v="1" type="plugin" value="stripe@claude-plugins-official" />
+PASS  PF-6b DW1 pass: every role-permission key (233) and every key a route declares (21, 60 platform routes) has a catalogue row
+PASS  PF-6b DW1 fail: a declared key with no catalogue row is named (shown once with a test route, then removed)
+PASS  PF-6b DW2 pass: every row's scope and class are as ruling 1 (OWN/ALL by suffix; LICENCE = the 3 sign-off keys; MONEY = the money areas + expense:create)
+PASS  PF-6b DW2 fail: a view.all key classed NONE is named by the check
+PASS  PF-6b DW2 fail: the database refuses it too (a scope that does not follow the key's suffix)
+PASS  PF-6b DW3 pass: no duty or bundle in keys.ts hands out a MONEY key, so the app starts
+PASS  PF-6b DW3 fail: a bundle carrying a MONEY key is refused, naming it
+PASS  PF-6b DW3 fail: a test bundle that adds a MONEY key to keys.ts stops the app's start-up (the guard's start-up check)
+PASS  PF-6b DW4 pass: assigning Billing/Finance (with Read-only) writes its own money-keys audit line naming those keys and only the role that brings them (names only), beside the roles line
+PASS  PF-6b DW4 fail: assigning Read-only (no money key) writes no money-keys line
+PASS  PF-6b DW5 fail: an unlicensed Case Manager holding agent/case:form-approve gets 403 NOT_LICENSED, "Only a licensed consultant can do this"
+PASS  PF-6b DW5 pass: once their licence record exists, the same person and route answer 200
+PASS  PF-6b DW5 fail: a catalogue whose sign-off key was edited to GENERAL stops the start-up, naming the key
+PASS  PF-6b DW5 fail: with the catalogue rows gone, the code's own sign-off list still refuses an unlicensed holder (403 NOT_LICENSED)
+PASS  PF-6b DW5 pass: without the key the answer stays 403 MISSING_PERMISSION (licence never replaces the key)
+PASS  PF-6b DW6 pass: RetainersController.read (GET /api/front-office/retainers/:id, agent/prospect): view.all holder sees both, own-only sees their own, the representative always sees theirs, firm B 404; the setting off makes everyone own-only
+PASS  PF-6b DW6 pass: the retainer show route is marked @OwnOrAll("agent/prospect") and swept
+PASS  PF-6b DW6 fail: a test route that returns another person's record to an OWN holder fails the sweep (shown once, then removed)
+PASS  PF-6b DW7 pass: every route marked @OwnOrAll in the app's features has a sweep entry
+PASS  PF-6b DW7: a route marked @OwnOrAll with no sweep entry fails the test, naming it
+
+24 passed, 0 failed
