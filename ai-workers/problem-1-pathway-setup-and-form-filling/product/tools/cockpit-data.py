@@ -1045,13 +1045,13 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     wj("github/main_nightly.json", dict({"conclusion": nl[0]["conclusion"], "created_at": nl[0]["created_at"]},
                                         previous={"conclusion": nl[1]["conclusion"], "created_at": nl[1]["created_at"]} if len(nl) > 1 else None) if nl else {})
     # Flow box (Lead 69, 16 Nov, P-644): how long jobs wait for a test machine. Queued runs now, and each job's wait from
-    # created to started (a job still queued counts its wait so far) for the newest CI_SAMPLE_RUNS runs created in the
-    # last 3 h. Skipped jobs, and jobs held for an approval or another job ("waiting", "pending"), are left out.
+    # created to started (a job still queued counts its wait so far) for the newest CI_SAMPLE_RUNS runs of ci.yml (the test
+    # shards; the many quick checks start at once and would hide the wait) created in the last 3 h. Skipped jobs, and jobs held for an approval or another job ("waiting", "pending"), are left out.
     try:
         qn = gh.get("/actions/runs?status=queued&per_page=1").get("total_count")
         ipn = gh.get("/actions/runs?status=in_progress&per_page=1").get("total_count")
         since = (NOW - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        rg = gh.get(f"/actions/runs?created=%3E%3D{since}&per_page=100")
+        rg = gh.get(f"/actions/workflows/ci.yml/runs?created=%3E%3D{since}&per_page=100")   # the test runs, not the quick checks
         rr = rg.get("workflow_runs", [])
         waits = []
         for x in rr[:CI_SAMPLE_RUNS]:
@@ -2995,10 +2995,10 @@ def flow_box(d, fc, li, li_src, ci):
              "target": f"median {FLOW_MERGE_MIN[0]} min or less; failed batches {FLOW_FAIL_PCT[0]}% or less; a test machine within {FLOW_CI_WAIT_MIN[0]} min",
              "lines": ["Failed merge batches: " + (f"{fp}%" if fp is not None else "not measured"),
                        ("Waiting for a test machine: " + (f"{cq.get('queued_runs')} runs queued now; median job wait {cw} min over the last 3 h "
-                        f"({len(ws)} jobs of the newest {cq.get('runs_sampled')} of {cq.get('runs_in_3h')} runs; {still} still waiting)"
+                        f"({len(ws)} jobs of the newest {cq.get('runs_sampled')} of {cq.get('runs_in_3h')} test runs; {still} still waiting)"
                         if cq and cw is not None else "not measured: " + (
                             "this snapshot has no CI reading" if ci is None else ci.get("error") if isinstance(ci, dict) and ci.get("error")
-                            else "no CI run in the last 3 h" if not (cq or {}).get("runs_in_3h") else "no job waited for a machine (all skipped or held)")))],
+                            else "no test run in the last 3 h" if not (cq or {}).get("runs_in_3h") else "no job waited for a machine (all skipped or held)")))],
              "src": (qw.get("src") or "flow-measure not read") + "; GitHub Actions runs and jobs at the snapshot"}
     # 4 Resources
     lr, ls = (li or {}).get("lanes_running"), (li or {}).get("lane_slots")
