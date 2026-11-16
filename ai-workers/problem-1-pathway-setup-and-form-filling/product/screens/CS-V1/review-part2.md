@@ -88,4 +88,28 @@ The diff covers fill-case.ts, form-additions.ts, contracts/runtime.ts and check_
 
 No Blocker, Major or minor is open in code. Not checked, as before: case-close over HTTP (it needs PF-4's staff sign-in), a real screen reader, and `ci` at this commit.
 
-Verdict: Approve 3b08d781a79a2bc3d60cd3680d2c651087b5bfe3
+Second-pass verdict at 3b08d781: Approve.
+
+## Re-review: 64854180..05abebb3 (P-277, two Devin findings), 16 Nov
+The diff covers assessments.ts, fill-case.ts, form-additions.ts, contracts/eligibility.ts, contracts/runtime.ts and check_csv1_inputs.ts. I ran it on a fresh copy on :4494, with origin/main's code on :4495 as the baseline. Both are now stopped.
+
+**Results**
+* `check_csv1_inputs.ts`: **71 passed, 0 failed**, exit 0.
+* `check_c76_readiness_api.ts` 34/34, `runtime/check_c78_added_forms.ts` 20/20, `C7.2.test.ts` 11/11 (`?original=1`), `check_c69_runs.ts` 94/0 (sends `?person=`), `check_c69_page_browser.cjs` 54/54 (the eligibility page).
+* `C7.8.test.ts` 15/20, the same set as the earlier rounds and within main's failures.
+* `tests/qa/check_qa354_coverage_words.ts` 0/1. It fails **identically on main's code** (panel 49 of 163, copy writes 34): an engine count, not the query. Its addable-detail GET answers 200.
+* The break-it probe and the add-form journey replay, re-run: unchanged. Add by keyboard at 1024, the panel at 400 px, no axe violations, no page errors, nothing stored on any refusal. (I restored the screenshots the browser suite rewrote.)
+
+**Each finding**
+* **Unknown query keys: fixed.**
+  * `AddableQuery`, `AddableDetailQuery`, `AssessmentListQuery` and `CopyFileQuery` are strict over the whole `@Query()`. `?zzz=1`, `q[a]=1`, `person[x]=1` and `original[a]=1` each answer 400 "Not a filter here: … (only …)" on `body`. The values keep their words and fields (`q`, `subject`, `person`, `original`).
+  * The addable GETs still answer 403/404 first, and assessments still reaches the case first.
+  * Callers checked: every screen and suite query to these four GETs uses only their keys. add-form.tsx:51/111 sends `q`/`subject`; eligibility.tsx:94 and forms.tsx:260 send no query; the suites send `?person=`, `?original=1`, `?q=&subject=`, or no query.
+* **Warning keys: fixed.**
+  * `keyOf` (engine/runtime/readiness.ts:154) joins whole fact lists into `part` (:195, :198). The 100,000 cap leaves room for thousands of facts, and the 5 MB body limit still bounds it.
+  * DW4 now passes a 60-fact key and refuses 100,001 characters with the route's words.
+* **minor (not blocking, since 638ecd57).** fill-case parses the query before `copyFor` (fill-case.ts:578 vs :581), so a bad query on a missing copy answers 400, not 404. It is refused either way and nothing leaks. Move the parse after `copyFor` if touched again.
+
+No Blocker or Major is open.
+
+Verdict: Approve 05abebb3bf046f6081c4f57533aaa4a4d71c0ea8
