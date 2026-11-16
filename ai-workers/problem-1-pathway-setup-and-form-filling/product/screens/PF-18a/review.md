@@ -1,11 +1,12 @@
 # PF-18a part 1 (offices): independent review
 
-**Final head reviewed: `9b1dc85ab4e6e570a0194a030250fd563625c224`.** Branch `claude/zealous-rubin-lxcmfs`, draft PR #2009.
+**Final head reviewed: `a83577be394ffb5aafeea84d338c689813b2b072`.** Branch `claude/zealous-rubin-lxcmfs`, draft PR #2009.
 
 **Rounds:**
 1. Full review on `6ba0a5e`.
 2. Re-review of `git diff 6ba0a5e 081df1d` (real keys, as Lead B ruled on #2009).
 3. Re-review of `git diff 081df1d 9b1dc85 -- prototype/studio` (P-277: review and break fixes). The records commits in between hold only this folder's files.
+4. Re-review of `git diff 9b1dc85 a83577b -- prototype/studio` (breaker round 2, B4). The first-office insert is now wrapped in `zoneGuard` (`service.ts:96-99`): a firm whose stored zone PostgreSQL refuses gets 400 naming the firm setting, not 500. The test makes such a firm and expects 400 with "firm's own time zone"; without the guard it would be 500, so the test bites. I re-ran on a83577b: `check_pf18a_offices` 85/0, check-port-contracts 0 problems. Note only: that 400's `issues` line says `timeZone:`, a field the caller did not send; the detail is right.
 
 **Scope:**
 * Code size: 790+/4− against `main` (records excluded), under P-610's 800.
@@ -95,4 +96,4 @@
 
 No Blocker or Major is open. m6 and m7 are optional.
 
-Verdict: Approve 9b1dc85ab4e6e570a0194a030250fd563625c224
+Verdict: Approve a83577be394ffb5aafeea84d338c689813b2b072
