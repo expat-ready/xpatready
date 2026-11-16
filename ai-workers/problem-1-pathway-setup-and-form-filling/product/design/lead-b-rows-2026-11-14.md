@@ -1322,3 +1322,9 @@ Amendments to paste above the briefs are in `lead-b-briefs/P-627-amendments.md`.
 
 Rev 16.44's "no tagline field anywhere" is withdrawn. One reading is for Lead 64 to confirm (P-628): AG-16-2's legal footer, the sender name and the colour stay in emails.
 * Lead 64 confirmed the reading (Lead ruling, P-628, 07:3x IST, listed for the founder's review). Emails keep AG-16-2's legal footer, the sender name and the brand colour. P-629's "only logo and firm name" covers the new extras (banner, tagline, favicon).
+
+## Rev 16.46 (16 Nov 08:0x IST, Lead B (6)): PF-6 part 1 keeps the firm key in the frame; PF-13 part 2 puts the name there (#1912)
+
+The ruling is on #1912, comment 6905670026:
+* PF-6 part 1 adds no API line and shows the firm's key as the frame title for now.
+* PF-13 part 2 replaces the key with the operating name and logo, read from its public branding answer (AG-1-9 "firm-console chrome"; new line `PF-13 DW11` in `P-627-amendments.md`). This puts no `firmName` on `/me`, which would widen `StaffContext`, a type every guarded route shares.

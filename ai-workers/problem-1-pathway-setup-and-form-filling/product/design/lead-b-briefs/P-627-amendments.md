@@ -25,6 +25,9 @@ These come from the founder's seven morning answers (P-627, on `lead/2026-11-07-
   - `PF-13 DW10 pass/fail` (tagline).
     - Pass: "Immigration help, plainly" (25 characters) saves, comes back in both reads, and shows under the firm's name on the client link page and the public booking page.
     - Fail: 81 characters → 400 naming 80; a line break → 400; `<b>x</b>` is shown as those literal characters, not bold; an email and a PDF after a save carry no tagline; firm B's tagline never appears in firm A's answers.
+  - `PF-13 DW11 pass/fail` (rev 16.46, #1912 comment 6905670026; AG-1-9 "firm-console chrome"). Part 2 replaces PF-6 part 1's `PlatformFrame` title (the firm's key) with the firm's operating name and logo, read from the public branding answer by the frame's `firmKey`.
+    - Pass: the frame shows the name and logo; before any branding is saved, it shows the name in ExpatReady's neutral look.
+    - Fail: the key never shows as the title; firm B's name never shows in firm A's frame.
 * **Size (P-610):** the banner and tagline add about 60 and 40 lines, so part 1 stays under 800. If it would pass 800, the tagline moves whole to part 2 (setting, routes, DW10), and part 1 ships without it.
 * Touch list unchanged.
 
