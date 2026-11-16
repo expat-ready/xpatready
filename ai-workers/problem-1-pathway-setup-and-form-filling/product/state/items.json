@@ -245,13 +245,13 @@
     "owner": "lane",
     "branch": "claude/tender-einstein-wpko9j",
     "pr": 1999,
-    "status": "open",
+    "status": "acked",
     "waiting_on": "Lead",
     "next_step": "merge, test, publish",
     "created_at": "2026-11-16T16:12:04Z",
     "updated_at": "2026-11-16T16:12:04Z",
-    "last_ack_by": null,
-    "acked_at": null,
+    "last_ack_by": "Lead 71",
+    "acked_at": "2026-11-16T18:05:56Z",
     "opened_at": "2026-11-16T16:12:04Z",
     "source": "pull/1999#issuecomment-6921919204"
   }
