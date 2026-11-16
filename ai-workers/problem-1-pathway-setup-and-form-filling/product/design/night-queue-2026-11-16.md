@@ -19,6 +19,7 @@ Three hourly cloud routines ("lane starter 1-3", at :05, :25 and :45 UTC past ea
 | PF-19e | runtime | lead-b-front-office:lead-b-briefs/PF-19e.md | #1956, #1961 | medium, no |
 | AUD-1b | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/AUD-1b.md | #2003 | high, yes (audit) |
 | CS-DL1b | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-DL1b.md | #2000 | medium, no |
+| CS-NK1 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-NK1.md (commit ac54fe014; bug F2 from #2017's breaker) | #2017 (one builder at a time on the schema, P-438b) | high, yes; schema: "Ready for Lead read" |
 | AUD-1c part 1 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/AUD-1c-1.md (may run beside AUD-1b) | #2003 | high, yes; schema: "Ready for Lead read" |
 | PF-6 part 2a | runtime | lead-b-front-office:lead-b-briefs/PF-6p2.md | #1945 | high, yes |
 | PF-6m2 | runtime | lead-b-front-office:lead-b-briefs/PF-6m2.md | #1945 | high, yes |
