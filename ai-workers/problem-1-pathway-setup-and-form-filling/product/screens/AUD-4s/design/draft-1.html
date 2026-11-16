@@ -84,7 +84,7 @@ tr.open td{background:#f3f8fe}
     <div class="head">
       <div><h1>Activity log</h1><p class="sub">Who changed what in your firm. Read-only.</p></div>
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-        <button class="integrity ok" type="button" aria-describedby="int-tip">Records intact — last checked 12 min ago</button>
+        <button class="integrity ok" type="button" aria-expanded="false" aria-controls="int-detail">Records intact — last checked 12 min ago</button>
         <button class="btn" type="button">Export CSV</button>
       </div>
     </div>
@@ -103,18 +103,19 @@ tr.open td{background:#f3f8fe}
         </div>
       </details>
     </form>
-    <p class="reads" aria-live="polite">Showing <strong>everyone's</strong> changes in <strong>all areas</strong> from <strong>9 Nov 2026</strong> to <strong>16 Nov 2026</strong> (Toronto time) — 50 shown, more below.</p>
+    <p class="reads" aria-live="polite">Showing <strong>everyone's</strong> changes in <strong>all areas</strong>, any action, from <strong>9 Nov 2026</strong> to <strong>16 Nov 2026</strong> (Toronto time) — 50 shown, more below.</p>
+    <div id="int-detail" hidden>The last check covered every line of your firm up to 16 Nov 10:30 (all areas except the demo cases).</div>
     <div class="tablewrap">
       <table>
         <caption class="sr">Activity log lines, newest first</caption>
         <colgroup><col style="width:150px"><col style="width:190px"><col style="width:150px"><col></colgroup>
         <thead><tr><th scope="col">When</th><th scope="col">Who</th><th scope="col">Area</th><th scope="col">What happened</th></tr></thead>
         <tbody>
-          <tr><td>16 Nov, 10:42</td><td>Owner (Sample)</td><td>Team and settings</td><td class="what">Gave the Admin role to Case Officer (Sample).<br><span class="change">role: Case Officer → Admin</span> <button class="btn link small" type="button" aria-expanded="false">Details</button></td></tr>
-          <tr><td>16 Nov, 09:15</td><td>Admin (Sample)</td><td>Team and settings</td><td class="what">Changed the firm's default currency.<br><span class="change">default_currency: CAD → USD</span> <button class="btn link small" type="button" aria-expanded="false">Details</button></td></tr>
-          <tr><td>15 Nov, 17:03</td><td>ExpatReady support<span class="tag staff">Support session</span></td><td>Team and settings</td><td class="what">Reset two-step sign-in for Admin (Sample) during support session (ticket Sample-1042). <button class="btn link small" type="button" aria-expanded="false">Details</button></td></tr>
-          <tr><td>15 Nov, 08:00</td><td>The system</td><td>Messages</td><td class="what">Stopped marketing email to one address after a hard bounce. <button class="btn link small" type="button" aria-expanded="false">Details</button></td></tr>
-          <tr><td>14 Nov, 16:20</td><td>Owner (Sample)</td><td>Team and settings</td><td class="what">Exported the activity log (9 Nov – 14 Nov, 212 lines). <button class="btn link small" type="button" aria-expanded="false">Details</button></td></tr>
+          <tr><td><button class="btn link" type="button" aria-expanded="false" aria-label="16 Nov, 10:42, show details">16 Nov, 10:42 ▸</button></td><td>Owner (Sample)</td><td>Team and settings</td><td class="what">Gave the Admin role to Case Officer (Sample).<br><span class="change">role: Case Officer → Admin</span></td></tr>
+          <tr><td><button class="btn link" type="button" aria-expanded="false" aria-label="16 Nov, 09:15, show details">16 Nov, 09:15 ▸</button></td><td>Admin (Sample)</td><td>Team and settings</td><td class="what">Changed the firm's default currency.<br><span class="change">default_currency: CAD → USD</span></td></tr>
+          <tr><td><button class="btn link" type="button" aria-expanded="false" aria-label="15 Nov, 17:03, show details">15 Nov, 17:03 ▸</button></td><td>ExpatReady support<span class="tag staff">Support session</span></td><td>Team and settings</td><td class="what">Reset two-step sign-in for Admin (Sample) during a support session.</td></tr>
+          <tr><td><button class="btn link" type="button" aria-expanded="false" aria-label="15 Nov, 08:00, show details">15 Nov, 08:00 ▸</button></td><td>The system</td><td>Messages</td><td class="what">Stopped marketing email to one address after a hard bounce.</td></tr>
+          <tr><td><button class="btn link" type="button" aria-expanded="false" aria-label="14 Nov, 16:20, show details">14 Nov, 16:20 ▸</button></td><td>Owner (Sample)</td><td>Team and settings</td><td class="what">Exported the activity log (9 Nov – 14 Nov, 212 lines).</td></tr>
         </tbody>
       </table>
       <div class="more"><button class="btn" type="button">Show more</button></div>
@@ -126,8 +127,8 @@ tr.open td{background:#f3f8fe}
 <p class="board-title">Board 2 — one line open: the change in words, the raw before and after under Advanced</p>
 <div class="frame"><div class="page">
   <div class="tablewrap"><table><colgroup><col style="width:150px"><col style="width:190px"><col style="width:150px"><col></colgroup>
-    <tbody><tr class="open"><td>16 Nov, 10:42:07</td><td>Owner (Sample)</td><td>Team and settings</td><td>
-      Gave the Admin role to Case Officer (Sample).<br><span class="change">role: Case Officer → Admin</span> <button class="btn link small" type="button" aria-expanded="true">Hide details</button>
+    <tbody><tr class="open"><td><button class="btn link" type="button" aria-expanded="true" aria-label="16 Nov, 10:42:07, hide details">16 Nov, 10:42:07 ▾</button></td><td>Owner (Sample)</td><td>Team and settings</td><td>
+      Gave the Admin role to Case Officer (Sample).<br><span class="change">role: Case Officer → Admin</span>
       <dl style="display:grid;grid-template-columns:140px 1fr;gap:4px 12px;margin:8px 0 0"><dt class="muted">Action</dt><dd style="margin:0">Role given</dd><dt class="muted">Record</dt><dd style="margin:0">Staff member · Case Officer (Sample)</dd><dt class="muted">Done by</dt><dd style="margin:0">Firm staff</dd></dl>
       <details><summary class="small" style="color:var(--link);cursor:pointer;margin-top:8px">Advanced: raw before and after</summary>
         <div class="raw">action: staff.role.granted
@@ -138,14 +139,13 @@ detail: { "role_from": "CASE_OFFICER", "role_to": "ADMIN" }</div></details>
 
 <p class="board-title">Board 3 — "ExpatReady staff access" pressed: only our staff's lines, each with its support session</p>
 <div class="frame"><div class="page">
-  <div class="filters"><div class="field"><span class="small muted" style="font-weight:600">Shortcut</span><button class="btn" type="button" aria-pressed="true">ExpatReady staff access ✓</button></div><span class="chip">ExpatReady staff only <button class="btn link small" type="button" aria-label="Remove the ExpatReady staff only filter">×</button></span></div>
-  <p class="reads">Showing <strong>ExpatReady staff</strong> access from <strong>9 Nov 2026</strong> to <strong>16 Nov 2026</strong> — 3 lines.</p>
+  <div class="filters"><div class="field"><span class="small muted" style="font-weight:600">Shortcut</span><button class="btn" type="button" aria-pressed="true">ExpatReady staff access ✓</button></div><span class="chip">ExpatReady staff only <button class="btn link small" type="button" aria-label="Remove the ExpatReady staff only filter">×</button></span><span class="chip">Record: Staff member · Admin (Sample) <button class="btn link small" type="button" aria-label="Remove the record filter">×</button></span></div>
+  <p class="reads">Showing <strong>ExpatReady staff</strong> changes to <strong>Staff member · Admin (Sample)</strong> (an Advanced filter) from <strong>9 Nov 2026</strong> to <strong>16 Nov 2026</strong> — 2 lines. <span class="small muted">Session start, end, duration and reason show here once support sessions are recorded (AUD-3b).</span></p>
   <div class="tablewrap"><table><colgroup><col style="width:150px"><col style="width:190px"><col style="width:150px"><col></colgroup>
     <thead><tr><th>When</th><th>Who</th><th>Area</th><th>What happened</th></tr></thead>
     <tbody>
-      <tr><td>15 Nov, 16:51</td><td>ExpatReady support<span class="tag staff">Support session</span></td><td>Team and settings</td><td>Started a support session: reason "Owner cannot sign in" (ticket Sample-1042), until 17:21.</td></tr>
-      <tr><td>15 Nov, 17:03</td><td>ExpatReady support<span class="tag staff">Support session</span></td><td>Team and settings</td><td>Reset two-step sign-in for Admin (Sample).</td></tr>
-      <tr><td>15 Nov, 17:09</td><td>ExpatReady support<span class="tag staff">Support session</span></td><td>Team and settings</td><td>Ended the support session after 18 min; 1 change made.</td></tr>
+      <tr><td><button class="btn link" type="button" aria-expanded="false">15 Nov, 17:09 ▸</button></td><td>ExpatReady support<span class="tag staff">Support session</span></td><td>Team and settings</td><td>Ended the old sign-in sessions of Admin (Sample) after the reset.</td></tr>
+      <tr><td><button class="btn link" type="button" aria-expanded="false">15 Nov, 17:03 ▸</button></td><td>ExpatReady support<span class="tag staff">Support session</span></td><td>Team and settings</td><td>Reset two-step sign-in for Admin (Sample).</td></tr>
     </tbody></table></div>
 </div></div>
 
@@ -153,18 +153,21 @@ detail: { "role_from": "CASE_OFFICER", "role_to": "ADMIN" }</div></details>
   <div>
     <p class="board-title" style="margin-left:0">Board 4 — Export confirm (centred yes/no, the only modal)</p>
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="exp-h">
-      <h3 id="exp-h">Export 212 lines as CSV?</h3>
+      <h3 id="exp-h">Export these lines as CSV?</h3>
       <p>This export is recorded in the activity log.</p>
-      <p class="small muted">The file holds the lines shown by your filters (9 Nov – 16 Nov 2026), names and changes in full.</p>
+      <p class="small muted">Everyone's changes in all areas, any action, from 9 Nov 2026 to 16 Nov 2026 (Toronto time). Names and changes in full; times in Toronto time.</p>
       <div class="foot"><button class="btn" type="button">Cancel</button><button class="btn primary" type="button">Export CSV</button></div>
     </div>
   </div>
   <div>
-    <p class="board-title" style="margin-left:0">Board 5 — integrity: broken, and before the first check</p>
+    <p class="board-title" style="margin-left:0">Board 5 — integrity: broken, overdue, and before the first check</p>
     <div class="state" style="text-align:left">
       <button class="integrity bad" type="button" aria-expanded="true">Records could not be confirmed intact</button>
-      <p>A check on 16 Nov at 10:30 found a change in the lines from 3 Nov 09:12 to 3 Nov 09:40. ExpatReady has been told and is looking into it. Nothing you do here changes the log.</p>
+      <p>A check on 16 Nov at 10:30 found a change in the lines from 3 Nov 09:12 to 3 Nov 09:40. ExpatReady's integrity alarm was raised. Nothing you do here changes the log.</p>
       <p class="small muted">Last good check: 16 Nov at 10:00.</p>
+      <hr style="border:0;border-top:1px solid var(--border);margin:12px 0">
+      <span class="integrity unknown" style="border-color:var(--warn);background:var(--warn-bg);color:var(--warn-t)">Last check overdue — last checked 5 h ago</span>
+      <p class="small muted">Checks run every 30 minutes; the last one is late. The lines are still shown.</p>
       <hr style="border:0;border-top:1px solid var(--border);margin:12px 0">
       <span class="integrity unknown">Not checked yet</span>
       <p class="small muted">The first check runs within 30 minutes of the first line.</p>
@@ -178,10 +181,11 @@ detail: { "role_from": "CASE_OFFICER", "role_to": "ADMIN" }</div></details>
   <div class="state"><h3>No changes from 1 Nov 2026 to 2 Nov 2026</h3><p>Nothing matches these dates and filters. Try a wider date range or clear the filters.</p><button class="btn" type="button">Clear filters</button></div>
   <div class="state"><h3>No activity yet</h3><p>When your team changes settings, roles or connections, each change is listed here.</p></div>
   <div class="state" style="text-align:left"><form class="filters" style="margin:0"><div class="field bad"><label for="f2">From</label><input id="f2" type="date" value="2025-01-01" aria-invalid="true" aria-describedby="f2e"><span class="err" id="f2e">Pick dates at most one year apart (this range is 1 year 10 months).</span></div><div class="field"><label for="t2">To</label><input id="t2" type="date" value="2026-11-16"></div></form></div>
-  <div class="state"><h3>You do not have access to the activity log</h3><p>Ask your firm's Owner or an Admin. They can see it under Settings › Security &amp; your data.</p></div>
+  <div class="state"><h3>You do not have access to the activity log</h3><p>Ask your firm's Owner or an Admin.</p></div>
   <div class="state"><h3>This export is too large</h3><p>212,000 lines match; one export holds at most 100,000 <span class="sample">Sample limit</span>. Narrow the dates and export again.</p></div>
   <div class="state"><h3>The activity log could not load</h3><p>Check your connection and try again.</p><button class="btn" type="button">Retry</button></div>
-  <div class="state"><h3>Signed in elsewhere</h3><p>You were signed out because you signed in on another device. Sign in again to continue.</p><button class="btn primary" type="button">Sign in</button></div>
+  <div class="state"><h3>Signed in elsewhere</h3><p class="small muted">PF-6's signed-in-elsewhere screen, reused. Every line on this page is cleared before it shows.</p></div>
+  <div class="state"><span role="status">Showing 100 lines</span><p class="small muted">After "Show more": focus on the first new line.</p></div>
 </div>
 
 </body>
