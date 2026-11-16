@@ -44,3 +44,24 @@ No browser, keyboard, 1024 px or zoom checks: there is no screen. No real Cognit
 
 Verdict: Approve
 Blockers: none · Majors: none · Minors: F2 workspace race on an empty DB, F4 comment and signup door, F1 invitation outlives inviter (older code; BUGS row), DW2 test wording.
+
+## Re-review at 142cefbb6 (P-277: diff only, `ff0ef12a8..142cefbb6`, commits 341e0459e and 142cefbb6)
+* **F2 fixed.** `identity/audit.ts` `platformAuditWorkspaceId` now returns `audit-event.ts`'s race-safe maker: `findUnique` by key, then `createMany skipDuplicates` (INSERT … ON CONFLICT DO NOTHING), then `findUniqueOrThrow`.
+  * The new test line fails 3 runs out of 3 with ff0ef12a8's `audit.ts` (P2002 on one of the two first writers) and passes on this head.
+* **Bare PrismaClient outside a transaction (demo-reset).** `demo-reset.ts:26` and the tests in PF-4, PF-6b and PF-21v call it with a bare PrismaClient. Each of the three statements then commits on its own.
+  * ON CONFLICT DO NOTHING makes a second writer wait for the first and then read its row, so it stays race-safe there.
+  * PrismaClient has every method used, and the same maker was already called with a PrismaClient by the FO-2, FO-4, FO-5 and J-6 tests.
+  * The cast `db as Tx` is structural only.
+* **Nothing lost with the cache.**
+  * With the cache, the old code still ran one `findUnique` (by id) per call. It now runs one `findUnique` (by key) when the row exists, so the query count is the same.
+  * The label string and the key are identical.
+  * The platform-audit row is never reset, so a cached id had no extra value. Dropping it also removes module state that could outlive a rolled-back first writer.
+  * No import cycle: `audit-event.ts` imports only `ports/audit.ts`.
+* **F4:** the `money-line.ts` comment now names the two doors and points the signup question to the PR. **DW2:** the line now also counts `platform_role_grant` rows, which resolves my Minor 4. Neither changes behaviour.
+* **Runs at 142cefbb6 (mine):**
+  * PF-6m 12/12, PF-4b 53/53, PF-6b 24/24, PF-21v 54/54, PF-0p 113/113.
+  * **PF-4 119/119 in full** (isolated `pf4` on :4437, parts A and B). That includes the six demo-reset lines and "the real demo reset keeps every platform audit line". The builder's 110/111 was part B only.
+* **Still open:** F1 (older code; a BUGS row for the row owner) and the signup question in F4. Both are outside this row, so neither blocks.
+
+Verdict: Approve (142cefbb6)
+Blockers: none · Majors: none · Minors: F1 invitation outlives inviter (older code, BUGS row), F4 signup door (question for the row owner).
