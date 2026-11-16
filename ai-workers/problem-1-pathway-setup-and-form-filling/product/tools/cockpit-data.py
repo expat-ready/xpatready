@@ -2689,6 +2689,14 @@ QA_WORKS = re.compile(r"Works(?![A-Za-z])")
 STAGES = ("planned", "in progress", "built", "proven")
 
 
+DECISION_CODE = re.compile(r"\s*\((?:P|A|F|AIW-D|S)-?\d+[^)]*\)|\s*\b(?:P|AIW-D)-\d+\b")
+
+
+def nocode(s):
+    """His view reads plain words: decision codes such as "(P-589)" or "P-626" are dropped; ids like C5 or PF-8 stay."""
+    return DECISION_CODE.sub("", s or "").strip() if s else s
+
+
 def first_screen(d, r1_qa, li, li_src):
     """P-636 (founder 11:0x IST 16 Nov): the first screen in three words. Planned = a Release 1 capability (checklist §A);
     Built = every part merged on main (BACKLOG parts all merged through app PRs), or qa passed it; Proven = qa's verdict
@@ -2777,8 +2785,11 @@ def first_screen(d, r1_qa, li, li_src):
         td = r.get("trigger_date")
         trig = r.get("trigger") if r.get("trigger") and not re.match(r"\d{4}-\d\d-\d\d$", str(r["trigger"])) else None
         it = {"key": f"risk-{r['id']}", "id": r["id"], "what": r.get("mitigation") or r["risk"], "why": r["risk"],
-              "unblocks": trig or "the launch gate (P-589)", "by": td, "src": "cockpit/risks.json (owner founder)"}
+              "unblocks": trig or "the launch gate", "by": td, "src": "cockpit/risks.json (owner founder)"}
         (ny if td and td <= today.isoformat() else later).append(it)
+    for it in ny + later:                               # Lead 65 (A115): no decision codes in his view; the panels keep them
+        for k in ("what", "why", "unblocks"):
+            it[k] = nocode(it.get(k))
     needs = {"items": ny, "later": later, "count": len(ny)}
     # Stuck or at risk: each with owner, since and next step
     stuck = []

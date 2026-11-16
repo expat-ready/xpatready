@@ -1400,7 +1400,8 @@ class Tooltips(unittest.TestCase):
         st = R["stage"]                                                       # A115: one stage per capability, the furthest first
         self.assertEqual((st["2"], st["1"], st["3"], st["4"]), ("proven", "built", "built", "planned"))
         self.assertEqual(sum(R["stage_counts"].values()), R["planned"])
-        self.assertEqual(f["needs"]["items"][1]["unblocks"], "the launch gate (P-589)")             # no trigger in the case: the gate
+        self.assertEqual(f["needs"]["items"][1]["unblocks"], "the launch gate")                     # no trigger in the case: the gate
+        self.assertEqual(cd.nocode("Engage counsel (P-541, founder) before the gate P-589"), "Engage counsel before the gate")
         self.assertNotIn("2026-11-16", f["needs"]["items"][1]["why"])
 
     def test_page_a115_two_views_stages_and_steps(self):
