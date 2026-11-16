@@ -102,15 +102,15 @@ async function press(p: Page, selector: string) {
   for (let i = 0; i < 60; i++) { await p.keyboard.press("Tab"); if (await p.evaluate((s) => document.activeElement?.matches(s) ?? false, selector)) { await p.keyboard.press("Space"); return true; } }
   return false;
 }
-for (const width of [1440, 1024, 375]) {
+try { for (const width of [1440, 1024, 375]) {
   const p = await pageAs(tokens.T, width);
   await p.goto(`${BASE}/front-office/leads?view=all`); await p.getByRole("heading", { name: "Leads" }).waitFor({ timeout: 30_000 });
   await p.locator("[data-source-filter]").waitFor({ timeout: 20_000 });
   const before = await shown(p);
   ok(`FO-4sf DW3 (${width} px) fail: before a choice, no source is pressed and every source shows`, same(before, [tWeb, tMan, tBook, tMan2]) && (await p.locator('[data-source][aria-pressed="true"]').count()) === 0, before.size);
   const reached = await press(p, '[data-source="MANUAL"]');
-  await p.waitForURL(/source=MANUAL/, { timeout: 10_000 }).catch(() => undefined);
-  await p.waitForFunction(() => !!document.querySelector('[data-source="MANUAL"][aria-pressed="true"]'), undefined, { timeout: 10_000 }).catch(() => undefined);
+  await p.waitForURL(/source=MANUAL/, { timeout: 10_000 });
+  await p.waitForFunction(() => !!document.querySelector('[data-source="MANUAL"][aria-pressed="true"]'), undefined, { timeout: 10_000 });
   await p.waitForTimeout(300);
   const after = await shown(p);
   ok(`FO-4sf DW3 (${width} px) pass: chosen by keyboard, "Added by staff" filters the list to manual leads and is kept in the address`,
@@ -122,10 +122,10 @@ for (const width of [1440, 1024, 375]) {
   ok(`FO-4sf DW3 (${width} px) pass: the filter survives a reload`, same(reloaded, [tMan, tMan2]) && (await p.locator('[data-source="MANUAL"]').getAttribute("aria-pressed")) === "true", reloaded.size);
   if (width !== 1440) { await p.context().close(); continue; }
   // 1440 only: a second source adds to the first; Clear source shows every source again; a bad address value is dropped.
-  await press(p, '[data-source="BOOKING"]'); await p.waitForURL(/source=MANUAL%2CBOOKING|source=MANUAL,BOOKING/, { timeout: 10_000 }).catch(() => undefined); await p.waitForTimeout(300);
+  await press(p, '[data-source="BOOKING"]'); await p.waitForURL((u) => u.searchParams.get("source") === "MANUAL,BOOKING", { timeout: 10_000 }); await p.waitForTimeout(300);
   const both = await shown(p);
   ok("FO-4sf DW3 pass: a second source by keyboard shows both, in the address", same(both, [tMan, tMan2, tBook]) && new URL(p.url()).searchParams.get("source") === "MANUAL,BOOKING", { url: p.url(), n: both.size });
-  await press(p, "[data-source-clear]"); await p.waitForFunction(() => !location.search.includes("source="), undefined, { timeout: 10_000 }).catch(() => undefined); await p.waitForTimeout(300);
+  await press(p, "[data-source-clear]"); await p.waitForFunction(() => !location.search.includes("source="), undefined, { timeout: 10_000 }); await p.waitForTimeout(300);
   const cleared = await shown(p);
   ok("FO-4sf DW3 fail: Clear source (keyboard) leaves the address and every source shows again", !new URL(p.url()).searchParams.has("source") && same(cleared, [tWeb, tMan, tBook, tMan2]), { url: p.url(), n: cleared.size });
   await p.goto(`${BASE}/front-office/leads?view=all&source=FAX`); await p.locator("[data-source-filter]").waitFor({ timeout: 20_000 });
@@ -136,7 +136,7 @@ for (const width of [1440, 1024, 375]) {
   const oSeen = await shown(o);
   ok("FO-4sf DW3 fail (DW2 on the screen): the own-only Case Officer filtered to manual sees only their own", same(oSeen, [oMan]), oSeen.size);
   await o.context().close(); await p.context().close();
-}
+} } catch (e) { ok("FO-4sf DW3: the browser walk stopped (a wait timed out)", false, String((e as Error).message ?? e).slice(0, 400)); }
 ok("FO-4sf: no page error in the browser", errors.length === 0, errors);
 await db.$disconnect();
 await browser.close();
