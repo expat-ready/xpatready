@@ -1498,3 +1498,14 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **PF-5v splits.** Item 2, QA-484's words, ships now. Item 1 is PF-5v part 2, on top of PF-19p. The same fix serves PF-5 part 2's Cognito sign-up email. The release holder reads PF-19p (P-423).
 * Order additions: PF-19p is ready now; it must not run beside PF-19b part 2 on the same files (whichever starts second waits). PF-5s part 1 now waits on PF-5v part 2.
 * Lead 66 agreed rev 16.62. **PF-19p starts at the founder's next typed turn**, the first item in STATE. PF-5v ships QA-484's words now. PF-19b part 2 continues. The second of PF-19p and PF-19b part 2 to merge takes `main` in **by a merge, not a rebase** (AGENTS rule 1, P-270).
+
+## Rev 16.63 (16 Nov 12:2x IST, Lead B (6)): qa #1953 answered (comment 6909671971), and new row FO-4sf
+
+1. **Own versus all (QA-478 in #1953):** one rule, built by FO-2v.
+2. **R1.27:**
+   * The source filter is in Release 1 (AG-2-23 rule 1, THIN SLICE), so new row **FO-4sf** (`lead-b-briefs/FO-4sf.md`) builds it, after FO-2v.
+   * Lead import is AG-18's engine (AG-2-7, AG18-D2), so R1.27's text is narrowed to "import when AG-18's engine lands". The Lead copies it.
+3. **QA-481 (#1953):** the case side's link and code emails are in row 47. Moving them onto `MessagePort` is a case-side row, which the release holder shapes. PF-13 part 1 is a part of row 47.
+4. **J-6 part 2** also moves J-6's API checks into `tests/check_j6_api.ts`, run by CI.
+5. **R1.99:** shards 2–8 of run 43801075002 were read on the Mac. All show `retries: 0`, with 445 PASS, 0 FAIL and 19 quarantined (not run). The lines are posted on #1953.
+* **Records clash:** #1929 and #1953 both define QA-477 to QA-481, with different meanings, and Lead 66 has QA-490. This is for the Lead to renumber.
