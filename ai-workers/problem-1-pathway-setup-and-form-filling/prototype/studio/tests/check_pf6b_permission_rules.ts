@@ -53,6 +53,7 @@ const { assertNoBundleHandsOutMoney, catalogueMismatches, readCatalogue, uncatal
 const { buildDocx } = await import("../api/src/front-office/retainers/docx.ts");
 const { Retainers } = await import("../api/src/front-office/retainers/service.ts");
 const { LocalFiles } = await import("../api/src/front-office/files.ts");
+const { Leads } = await import("../api/src/front-office/sales/leads.ts");
 type StaffContext = import("../api/src/platform/identity/keys.ts").StaffContext;
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
@@ -204,16 +205,36 @@ try {
     off: { "view.all holder (user-R)": [X1], "own-only role copy (user-O)": [X2], "representative (user-T)": [X1, X2], "firm B (user-S)": [] },
   };
   const VIEWERS: Record<string, StaffContext> = { "view.all holder (user-R)": ctx(R), "own-only role copy (user-O)": ctx(O), "representative (user-T)": ctx(T), "firm B (user-S)": ctx(S, B) };
-  type Entry = { read: (c: StaffContext, id: string) => Promise<unknown> };
+  type Entry = { read: (c: StaffContext, id: string) => Promise<unknown>; ids?: [string, string]; expect?: typeof EXPECT };
+  // FO-2v: two open leads, L1 owned by user-R and L2 by user-O. The representative of the retainers owns no lead, so
+  // leads expect the plain own-or-all table. Leads read the person's keys from the context (the guard's
+  // req.platform.keys), so the sweep hands them the live grants.
+  const lead = (n: number, owner: string) => {
+    sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values ('${u(n)}', '${A}', 'Client ${n}', 'Sample', 'client${n}@example.com', 'test', now())`);
+    sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values ('${u(n + 1)}', '${A}', '${u(n)}', 'MANUAL', 'WEBSITE', '${owner}', 'test', now())`);
+    return u(n + 1);
+  };
+  const L1 = lead(620, R), L2 = lead(630, O);
+  const live = (c: StaffContext): StaffContext => ({ ...c, keys: sql(`select string_agg(distinct rp.permission_key, ',') from platform_role_grant g join platform_role_permission rp on rp.role = g.role where g.staff_id = '${c.staffId}' and g.ended_at is null`).split(",") });
+  const leads = new Leads(db, {} as never);
+  const LEADS: typeof EXPECT = {
+    on: { "view.all holder (user-R)": [L1, L2], "own-only role copy (user-O)": [L2], "representative (user-T)": [L1, L2], "firm B (user-S)": [] },
+    off: { "view.all holder (user-R)": [L1], "own-only role copy (user-O)": [L2], "representative (user-T)": [], "firm B (user-S)": [] },
+  };
   /** The sweep table: every @OwnOrAll route, with how to read one record through it (DW7 fails a marked route missing here). */
-  const SWEEP: Record<string, Entry> = { "RetainersController.read": { read: (c, id) => svc.read(c, id) } };
+  const SWEEP: Record<string, Entry> = {
+    "RetainersController.read": { read: (c, id) => svc.read(c, id) },
+    "SalesController.read": { read: (c, id) => leads.read(live(c), id), ids: [L1, L2], expect: LEADS },
+    "SalesController.list": { read: async (c, id) => (await leads.list(live(c), "all")).find((l) => l.id === id), ids: [L1, L2], expect: LEADS },
+  };
   const sweep = async (entry: Entry) => {
     const wrong: string[] = [];
+    const [I1, I2] = entry.ids ?? [X1, X2], want_ = entry.expect ?? EXPECT;
     for (const setting of ["on", "off"] as const) {
       await setAll(setting === "on");
-      for (const [who, c] of Object.entries(VIEWERS)) for (const id of [X1, X2]) {
-        const want = EXPECT[setting][who].includes(id), got = await sees(() => entry.read(c, id));
-        if (want !== got) wrong.push(`${setting}: ${who} ${got ? "sees" : "does not see"} ${id === X1 ? "X1" : "X2"}`);
+      for (const [who, c] of Object.entries(VIEWERS)) for (const id of [I1, I2]) {
+        const want = want_[setting][who].includes(id), got = await sees(() => entry.read(c, id));
+        if (want !== got) wrong.push(`${setting}: ${who} ${got ? "sees" : "does not see"} ${id === I1 ? "X1" : "X2"}`);
       }
     }
     await setAll(true);
@@ -221,6 +242,10 @@ try {
   };
   const marked = routes.filter((r) => r.ownOrAll);
   for (const r of marked) if (SWEEP[r.name]) { const w = await sweep(SWEEP[r.name]); ok(`PF-6b DW6 pass: ${r.name} (${r.method} ${r.path}, ${r.ownOrAll}): view.all holder sees both, own-only sees their own, the representative always sees theirs, firm B 404; the setting off makes everyone own-only`, w.length === 0, w); }
+  ok("FO-2v DW2 pass: the leads list and read routes are marked @OwnOrAll(\"agent/prospect\") and swept", ["SalesController.list", "SalesController.read"].every((n) => marked.some((r) => r.name === n && r.ownOrAll === "agent/prospect")), marked);
+  const leakyLeads = await sweep({ read: (_c, id) => db.foLead.findFirst({ where: { id } }), ids: [L1, L2], expect: LEADS });
+  ok("FO-2v DW2 fail: a test leads route that returns another person's lead to an own-only viewer fails the sweep (shown once, then removed)",
+    leakyLeads.includes("on: own-only role copy (user-O) sees X1") && leakyLeads.includes("off: view.all holder (user-R) sees X2"), leakyLeads);
   ok("PF-6b DW6 pass: the retainer show route is marked @OwnOrAll(\"agent/prospect\") and swept", marked.some((r) => r.name === "RetainersController.read" && r.ownOrAll === "agent/prospect"), marked);
   const leaky = await sweep({ read: (_c, id) => db.foRetainer.findFirst({ where: { id } }) });
   ok("PF-6b DW6 fail: a test route that returns another person's record to an OWN holder fails the sweep (shown once, then removed)",

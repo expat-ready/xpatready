@@ -139,7 +139,7 @@ async function ownVersusAll(world: "ROLE" | "SETTING" | "NO RULE", shoot: boolea
 }
 const report = (world: string, rs: [string, boolean, unknown][]) => { for (const [n, v, e] of rs) ok(`J-6 ${n} [own by ${world}]`, v, e); };
 
-// W1: the Owner sees every lead of the firm (Owner and Admin see all: AG-2-13c), never firm B's.
+// W1: the Owner sees every lead of the firm (view.all with "everyone sees all" on: AG-2-64, FO-2v), never firm B's.
 await seesAll(true); officerViewAll(false);   // ROLE world first
 const ownerSees = await leadsOn(owner, "all", L.O2.given); await shot(owner, "P1-W1-owner-all-open-1440");
 ok("J-6 P1-W1: the Owner's All open lists the Owner's, both Case Officers' and the unassigned lead, not firm B's", ownerSees.R && ownerSees.O && ownerSees.O2 && ownerSees.U && !ownerSees.B, ownerSees);
@@ -165,13 +165,15 @@ const noRule = await ownVersusAll("NO RULE", false);
 // Firm B's lead stays 404 with no own rule too (firms apart is not own versus all), so only the in-firm judges must fail.
 for (const [n, v, e] of noRule.filter(([n]) => !n.includes("firm B"))) ok(`J-6 P1-NR ${n} [fails with no own rule]`, !v, e);
 ok("J-6 P1-NR: with no own rule, firms stay apart (firm B's lead is still 404 and \"Lead not found\")", noRule.filter(([n]) => n.includes("firm B")).every(([, v]) => v));
-await seesAll(false);
+// The setting stays on for the Owner's assign below: the Owner sees another person's lead only with view.all and
+// "everyone sees all" on (FO-2v, QA-477: no Owner override).
 
 // ------------------------------------------------------------------------------------ P1-A2..A4: the key classes
 const assign = await api(tok.O, "POST", `/front-office/leads/${L.O.id}/assign`, { staffId: O.id, expectedOwnerStaffId: O.id });
 ok("J-6 P1-A2 GENERAL key fail: a Case Officer (no agent/prospect:assign) assigning a lead by API gets 403 MISSING_PERMISSION", assign.status === 403 && assign.body?.code === "MISSING_PERMISSION", assign);
 const ownerAssign = await api(tok.R, "POST", `/front-office/leads/${L.O2.id}/assign`, { staffId: O.id, expectedOwnerStaffId: O2.id });
 ok("J-6 P1-A2 GENERAL key pass: the Owner (holds agent/prospect:assign) assigns the other Case Officer's lead to the Case Officer (200)", ownerAssign.status === 200 && sql(`select owner_staff_id from fo_lead where id = '${L.O2.id}'`) === O.id, ownerAssign);
+await seesAll(false);
 const count = (action: string) => Number(sql(`select count(*) from audit_event where action = '${action}' and entity_key = '${T.id}'`));
 const MONEY = "platform.staff.money_keys_granted", ROLES = "platform.staff.roles_changed";
 const before = { money: count(MONEY), roles: count(ROLES) };
