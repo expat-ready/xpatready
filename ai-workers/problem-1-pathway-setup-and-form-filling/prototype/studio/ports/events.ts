@@ -12,6 +12,8 @@ export const EVENT = {
   STAFF_ROLES_CHANGED: "staff.roles_changed",
   /** A staff member was deactivated: their sessions ended at once (platform, PF-4; contracts §1.2 events out). */
   STAFF_DEACTIVATED: "staff.deactivated",
+  /** A staff member joined by accepting an invitation (platform, PF-4b; contracts §1.2 events out). */
+  STAFF_JOINED: "staff.joined",
   /** A consultation was booked (front office, FO-3; AG-4-47). Keys: bookingId and bookingId:sequence. */
   BOOKING_SCHEDULED: "booking.scheduled",
   /** A booking moved to a new time or host (FO-3). */
@@ -43,6 +45,15 @@ export const EVENT = {
   LEAD_CREATED: "lead.created",
   /** A lead got an owner: Take it or Assign to (FO-2; AG-2-13c, AG-2-86). */
   LEAD_TAKEN: "lead.taken",
+  /** A lead was closed with a reason (FO-2; AG-2-80). */
+  LEAD_CLOSED: "lead.closed",
+  /** A closed lead was reopened (FO-2; AG-2-80). */
+  LEAD_REOPENED: "lead.reopened",
+
+  /** A case closed: withdrawn, or closed by staff with a reason (case side, CS-C1a; contract v0.1 §4). */
+  CASE_CLOSED: "case.closed",
+  /** A closed case was reopened with a reason, back at the stage it closed from (case side, CS-C1a; AG-7-13). */
+  CASE_REOPENED: "case.reopened",
 } as const;
 export type EventName = (typeof EVENT)[keyof typeof EVENT];
 
@@ -54,6 +65,9 @@ export type FirmCreated = z.infer<typeof FirmCreated>;
  *  licence; a consumer reads the person's current roles from the platform). The firm is the outbox row's firm_id. */
 export const StaffEventPayload = z.object({ staffId: z.string().uuid() }).strict();
 export type StaffEventPayload = z.infer<typeof StaffEventPayload>;
+/** The payload PF-4b writes for `staff.joined`: ids only (the staff member and the invitation accepted). */
+export const StaffJoinedPayload = z.object({ staffId: z.string().uuid(), invitationId: z.string().uuid() }).strict();
+export type StaffJoinedPayload = z.infer<typeof StaffJoinedPayload>;
 /** What a consumer of either staff event needs: the outbox row's type and firm, and the payload's staff id. */
 export const StaffRolesChanged = z.object({ type: z.literal(EVENT.STAFF_ROLES_CHANGED), firmId: z.string().uuid(), payload: StaffEventPayload });
 export type StaffRolesChanged = z.infer<typeof StaffRolesChanged>;
@@ -111,5 +125,26 @@ export const LeadEventPayload = z.object({
   ownerStaffId: z.string().uuid().nullable(),
   /** lead.created only: the person of the firm with the same email or phone, flagged and never linked (AG-2-84). */
   possibleMatchPersonId: z.string().uuid().nullable().optional(),
+  /** lead.closed only: the reason's key (AG-2-80 rule 2; its name for it). */
+  closeReasonKey: z.string().optional(),
 }).strict();
 export type LeadEventPayload = z.infer<typeof LeadEventPayload>;
+
+// CS-C1a (case-side contract v0.1 §4): the case side's close and reopen events, ids and facts only (never the reason's
+// words: a reason is free text and may hold personal data; a consumer reads the case). The firm is the outbox row's
+// firm_id and module_event.subject_id is the case id. clientId stays null until CS-K1 gives every case a client.
+const CaseClientType = z.enum(["INDIVIDUAL", "CORPORATE"]).nullable();
+/** `case.closed`: why (the contract's DECISION | WITHDRAWAL) and the close outcome. */
+export const CaseClosedPayload = z.strictObject({
+  caseId: Uuid, clientId: Uuid.nullable(), clientType: CaseClientType,
+  reason: z.enum(["DECISION", "WITHDRAWAL"]), outcome: z.enum(["WITHDRAWN", "COMPLETED", "CLOSED_BY_STAFF"]),
+  closedAt: z.iso.datetime({ offset: true }),
+});
+export type CaseClosedPayload = z.infer<typeof CaseClosedPayload>;
+/** `case.reopened`: the stage it returned to and the outcome it was closed with. */
+export const CaseReopenedPayload = z.strictObject({
+  caseId: Uuid, clientId: Uuid.nullable(), clientType: CaseClientType,
+  stageId: Uuid.nullable(), previousOutcome: z.enum(["WITHDRAWN", "COMPLETED", "CLOSED_BY_STAFF"]),
+  reopenedAt: z.iso.datetime({ offset: true }),
+});
+export type CaseReopenedPayload = z.infer<typeof CaseReopenedPayload>;

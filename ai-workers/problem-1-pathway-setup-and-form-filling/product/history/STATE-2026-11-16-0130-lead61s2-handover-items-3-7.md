@@ -1,0 +1,7 @@
+# STATE hand-over items 3-7 (Lead 60 → 61) moved word for word by Lead 61, 01:3x IST 16 Nov
+
+3. **Lead 57 (feeding)** cards PF-21v after #1823, CS-C1b after #1818, asks Lead B for PF-6/PF-5s/PF-4bc briefs after #1816; three FO-3 lanes (#1828, #1830, #1831) wait on #1811. Cloud lanes sleep through CI results: wake them in the claude.ai prompt box.
+4. **A89 outside accounts:** Lead 56 `local_119f0fcb…` drives with the founder (he asked 19:1x: the agent does it end to end, he only unblocks; one line per finished step). AWS account created (activating); Stripe sandbox done; next MFA, budget, admin login, BoldSign.
+5. **Owed:** hand-merge PR (`.mergify.yml`, `screens/B119/check-queue-rules.py`, `tools/check-guards.sh` (+ check-sle-watch.sh), `tools/lead-watch.sh`; main newer); BACKLOG rows: CS-C1a's two follow-ups (#1818 body), FO-2's qa53 decorator-call scan (#1813); Library 2 masters behind; disk 11 GB (watch 10).
+6. **Founder, 21:00 batch** (from Lead 59, untouched): R1.11 skeleton.yml run; prompt-log lines 56-57; axe-core 4.10 install; share the board with his other accounts. Plus: size exemption for records PRs (pr-rules size step).
+7. **Sessions:** Lead 57 feeding `local_bef741db…`; Lead B (6) `local_1520b573…` (waits on #1816); desk 07 `local_7e42c0c5…`; Lead 56 (A89); standbys: **Lead 62 `local_be1be806…`, Lead 63 `local_cdb44e83…`** (started 20:4x IST on the founder's "Yes, start both"; Opus medium, P-608).

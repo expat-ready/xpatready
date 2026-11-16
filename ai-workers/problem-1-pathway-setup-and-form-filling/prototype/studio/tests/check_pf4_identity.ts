@@ -130,6 +130,13 @@ try {
     await throwsLike(() => identityConfig({ PLATFORM_IDENTITY: "local", PLATFORM_ENVIRONMENT: "test" }), (e) => /never runs in the test environment or production/.test(String(e)))
     && await throwsLike(() => identityConfig({ PLATFORM_IDENTITY: "local", PLATFORM_ENVIRONMENT: "production" }), (e) => /never runs/.test(String(e))));
   ok("PF-4 pass: PLATFORM_IDENTITY=local is accepted where the environment is local (what this check sets)", identityConfig({ PLATFORM_IDENTITY: "local" }).identity === "local");
+  // QA-476 (UX · Minor, R1.5; words agreed by Lead 61 on #1857): the form asks for a firm key and a work email, so a
+  // refusal names those two, never a "name"; one combined message, so it does not tell which half was wrong.
+  const QA476 = "No staff member signs in with that firm key and work email.";
+  const byMail = (firmKey: string, email: string) => call(L.base, "POST", "/api/platform/session/local", { body: { firmKey, email, secondStep: true } });
+  const wrongFirm = await byMail("no-such-firm", "representative@sample-firm.example.com"), wrongMail = await byMail("sample-firm", "nobody@example.org");
+  ok("QA-476 fail: a wrong firm key and a wrong work email get the same 401 UNKNOWN_STAFF, in the form's words",
+    [wrongFirm, wrongMail].every((r) => r.status === 401 && r.body.code === "UNKNOWN_STAFF" && r.body.detail === QA476), { wrongFirm, wrongMail });
   const noSecond = await signIn("user-R", "sample-firm", false);
   ok("PF-4 fail: two-step is required — a sign-in without the second step is refused (401 TWO_STEP_REQUIRED)", noSecond.status === 401 && noSecond.body.code === "TWO_STEP_REQUIRED", noSecond);
   const halfToken = local.issue(R, { authTimeMs: clock.now(), secondStep: false });
@@ -239,7 +246,7 @@ try {
   ok("PF-4 fail: giving the Owner role without a reason is refused (400 REASON_REQUIRED)", noReason.status === 400 && noReason.body.code === "REASON_REQUIRED", noReason);
   clock.t += 6 * 60 * 1000;
   const stale = await call(L.base, "PATCH", `/api/platform/staff/${T}/roles`, { token: tR, body: { roles: ["CASE_MANAGER", "OWNER"], reason: "second owner" } });
-  ok("PF-4 fail: giving the Owner role with an identity check older than 5 minutes is refused (403 STEP_UP_REQUIRED)", stale.status === 403 && stale.body.code === "STEP_UP_REQUIRED", stale);
+  ok("PF-4 fail: giving the Owner role with an identity check older than 5 minutes is refused (401 STEP_UP_REQUIRED: sign in again, PF-4b)", stale.status === 401 && stale.body.code === "STEP_UP_REQUIRED", stale);
   tR = await tokenOf("user-R");
   const giveOwner = await call(L.base, "PATCH", `/api/platform/staff/${T}/roles`, { token: tR, body: { roles: ["CASE_MANAGER", "OWNER"], reason: "second owner for cover" } });
   ok("PF-4 pass: an Owner gives the Owner role with a reason and a fresh identity check (sign-in under 5 minutes ago); the reason is on the audit line",
@@ -354,14 +361,14 @@ try {
   const deactT = await call(L.base, "POST", `/api/platform/staff/${T}/deactivate`, { token: tR, body: { reason: "on leave" } });
   clock.t += 6 * 60 * 1000;
   const staleReact = await call(L.base, "POST", `/api/platform/staff/${T}/reactivate`, { token: tR, body: { reason: "back" } });
-  ok("PF-4 fail (break M3): reactivating an Owner with an identity check older than 5 minutes → 403 STEP_UP_REQUIRED (deactivating them with a fresh one passed)",
-    deactT.status === 200 && staleReact.status === 403 && staleReact.body.code === "STEP_UP_REQUIRED" && sql(DB, `select status from platform_staff where id = '${T}'`) === "DEACTIVATED", [deactT.status, staleReact]);
+  ok("PF-4 fail (break M3): reactivating an Owner with an identity check older than 5 minutes → 401 STEP_UP_REQUIRED (deactivating them with a fresh one passed)",
+    deactT.status === 200 && staleReact.status === 401 && staleReact.body.code === "STEP_UP_REQUIRED" && sql(DB, `select status from platform_staff where id = '${T}'`) === "DEACTIVATED", [deactT.status, staleReact]);
   tR = await tokenOf("user-R");
   const freshReact = await call(L.base, "POST", `/api/platform/staff/${T}/reactivate`, { token: tR, body: { reason: "back" } });
   clock.t += 6 * 60 * 1000;
   const staleDeact = await call(L.base, "POST", `/api/platform/staff/${T}/deactivate`, { token: tR, body: { reason: "again" } });
-  ok("PF-4 fail (break M3): deactivating an Owner with an identity check older than 5 minutes → 403 STEP_UP_REQUIRED (reactivating with a fresh one passed)",
-    freshReact.status === 200 && staleDeact.status === 403 && staleDeact.body.code === "STEP_UP_REQUIRED" && sql(DB, `select status from platform_staff where id = '${T}'`) === "ACTIVE", [freshReact.status, staleDeact]);
+  ok("PF-4 fail (break M3): deactivating an Owner with an identity check older than 5 minutes → 401 STEP_UP_REQUIRED (reactivating with a fresh one passed)",
+    freshReact.status === 200 && staleDeact.status === 401 && staleDeact.body.code === "STEP_UP_REQUIRED" && sql(DB, `select status from platform_staff where id = '${T}'`) === "ACTIVE", [freshReact.status, staleDeact]);
   tR = await tokenOf("user-R");
   const many = await Promise.all(Array.from({ length: 8 }, () => signIn("user-S", "sample-solo")));
   const live = await Promise.all(many.map((m) => call(L.base, "GET", "/api/platform/me", { token: m.body.token })));

@@ -144,7 +144,8 @@ try {
   // ----------------------------------------------------------------------------------------------- booking: the form
   const ref = async (body: Record<string, unknown>) => (await thrown(async () => S.publicBook(A.key, "free", body, "ip")))?.status;
   const good = await form(S, "free", "2026-10-29 09:00", "form");
-  ok("FO-3 form fail: no consent tick → 400", await ref({ ...good, consent: false }) === 400);
+  // FO-3pa: the tick is optional (AG-4-19 rule 3); a tick without the wording it agreed to is still refused.
+  ok("FO-3 form fail: the consent tick without its wording id → 400", await ref({ ...good, consentWordingId: undefined }) === 400);
   ok("FO-3 form fail: a missing last name → 400", await ref({ ...good, familyName: "" }) === 400);
   ok("FO-3 form fail: phone mode without a phone → 400", await ref({ ...good, mode: "PHONE" }) === 400);
   ok("FO-3 form fail: a mode the type does not offer → 400", await ref({ ...good, mode: "IN_PERSON" }) === 400);
