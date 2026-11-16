@@ -29,8 +29,9 @@ Rules: RULES.md (as of **P-634**) + DECISIONS **P-635 to P-637** word for word (
 
 | A90-A105 | 15-16 Nov evening and night asks | answered or in progress; rows word for word in `history/STATE-2026-11-16-0925-lead64s2-asks-A90-A105-rows.md` |
 | A106-A111 | 16 Nov morning asks (clean-up, research, app view, context diet) | done or answered; rows word for word in `history/STATE-2026-11-16-1100-lead64s2-asks-A106-A111.md` |
-| A112 | 10:1x IST 16 Nov: hooks must not slow us; board stale and untappable; "0 of 10", speed, quality, confidence; a progress gauge for partial work; who keeps board reds green | answered; board fix lane on taps, stale banner, self-refresh; enforcement plan adds no-slowdown rule and health-red owners |
+| A112 | 10:1x IST 16 Nov: board speed, taps, partial-work gauge | answered; row word for word in `history/STATE-2026-11-16-1055-lead65s2-ask-A112-row.md` |
 | A113 | 10:4x IST 16 Nov (typed in Lead 64's session after hand-over): do workflow, document and board work go through the full merge cycle, or is there a lighter path? | answered by Lead 64: records (Markdown under product/) use the Mergify `records` queue with docs checks only; tooling and board scripts use the product queue. **Doing (Lead 65):** a records PR from the Lead branch at least every 3 hours (rebuilt per file, P-505); B200 first in the B199 lane |
+| A114 | 10:4x IST 16 Nov (in Lead 64's session): items waited 7.7-8 h for the Lead; fixing, one-off, or solved by hooks? | answered by Lead 64 (causes: PR questions unread overnight and at hand-overs, product questions before P-628, labels before B200; fixes: P-628, lead-watch question ACT + sle-watch target Q 30 min enforced once #1865's lead-act-check is on, B197, B200). **Doing (Lead 65), every check:** list each waiting item on the board, answer every one that check, report the oldest wait |
 ## For the founder (P-390)
 F2, F8, F14-F19 closed or ruled; word for word in `history/STATE-2026-11-15-2115-lead61s2-founder-asks-A89-A92-rows.md`.
 
