@@ -11,11 +11,14 @@ const KEY = "xr-staff-session";
 type Stored = { token: string; expiresAt: number };
 /** The session in memory too, so a browser that refuses storage keeps it until the page reloads (Devin #1822). */
 let memory: Stored | null = null;
+/** Set once a write to storage is refused (a full quota, a blocked origin): from then on the memory copy is the only one, so a
+ *  stale stored session never shadows a newer sign-in or a sign-out (break M3). */
+let memoryOnly = false;
 /** Why the last session ended: the 401's code (SIGNED_IN_ELSEWHERE, SESSION_REVOKED, TOKEN_EXPIRED, NOT_SIGNED_IN, …), or null. */
 let ended: string | null = null;
 function read(): Stored | null {
   let s: Stored | null = memory;
-  try { const kept = sessionStorage.getItem(KEY); if (kept !== null) s = JSON.parse(kept) as Stored | null; } catch { /* storage refused: memory only */ }
+  if (!memoryOnly) try { const kept = sessionStorage.getItem(KEY); if (kept !== null) s = JSON.parse(kept) as Stored | null; } catch { /* storage refused: memory only */ }
   return s && typeof s.token === "string" && typeof s.expiresAt === "number" && s.expiresAt > Date.now() ? s : null;
 }
 const listeners = new Set<() => void>();
@@ -28,7 +31,7 @@ export function setStaffToken(token: string | null, expiresInSeconds = 3600) {
   try {
     if (memory) sessionStorage.setItem(KEY, JSON.stringify(memory));
     else sessionStorage.removeItem(KEY);
-  } catch { /* storage refused: the session lasts in memory until the page reloads */ }
+  } catch { memoryOnly = true; /* storage refused: the session lasts in memory until the page reloads */ }
   // A new person (or none) never sees the last person's rows (break S2): every staff answer is dropped.
   for (const queryKey of STAFF_KEYS) queryClient.removeQueries({ queryKey });
   changed();
@@ -74,7 +77,8 @@ export async function staffApi<T>(path: string, init: { method?: string; json?: 
     const problem = problemOf(data, res.status);
     // Any 401 ends the session here, also one whose token expired before this call (break S1); a session that was
     // sent keeps the server's reason (AG-1-55: "You signed in on another device").
-    if (res.status === 401) { if (token) endSession(problem.code ?? "NOT_SIGNED_IN"); else setStaffToken(null); }
+    // A late answer for a session already replaced (signed out, then someone signed in) leaves the new one alone (break m2).
+    if (res.status === 401 && staffToken() === token) { if (token) endSession(problem.code ?? "NOT_SIGNED_IN"); else setStaffToken(null); }
     throw new StaffApiError(res.status, problem);
   }
   return data as T;

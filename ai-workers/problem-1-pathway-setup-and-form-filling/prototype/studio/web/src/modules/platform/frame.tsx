@@ -14,13 +14,15 @@ import { endSession, staffApi, StaffApiError, useLocalSignIn, useMe, useSessionE
 import { SignedInElsewhere } from "./signed-in-elsewhere";
 
 /** FO-4's sign-in card (moved here from sales-frame.tsx): PF-4's local stand-in until the provider's sign-in pages. */
-export function SignInCard({ failed }: { failed?: string | null }) {
+export function SignInCard({ failed, focus }: { failed?: string | null; /** Moves focus to the card when it appears in place of a page (break m6). */ focus?: boolean }) {
   const signIn = useLocalSignIn();
   const [firmKey, setFirmKey] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(failed ?? null);
   React.useEffect(() => { setError(failed ?? null); }, [failed]);
+  const heading = React.useRef<HTMLHeadingElement>(null);
+  React.useEffect(() => { if (focus) heading.current?.focus(); }, [focus]);
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setError(null);
@@ -28,8 +30,8 @@ export function SignInCard({ failed }: { failed?: string | null }) {
   };
   return (
     <section aria-labelledby="fo-sign-in" className="mx-auto mt-6 max-w-md rounded-xl border border-border bg-surface-raised p-6 shadow-sm" data-sign-in-card>
-      <h1 id="fo-sign-in" className="text-lg font-semibold">Sign in to your firm</h1>
-      <p className="mt-1 text-sm text-text-muted">The sales screens are for your firm's staff. This is the local stand-in sign-in until the firm sign-in screens are built.</p>
+      <h1 id="fo-sign-in" ref={heading} tabIndex={-1} className="text-lg font-semibold outline-none">Sign in to your firm</h1>
+      <p className="mt-1 text-sm text-text-muted">These pages are for your firm's staff. This is the local stand-in sign-in until the firm sign-in screens are built.</p>
       <form className="mt-4 flex flex-col gap-3" onSubmit={send}>
         <Field label="Firm key"><Input value={firmKey} onChange={(e) => setFirmKey(e.target.value)} autoComplete="organization" required /></Field>
         <Field label="Work email"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required /></Field>
@@ -69,6 +71,9 @@ export function PlatformFrame({ crumbs = [], back = null, children }: { crumbs?:
   const first = React.useRef(true);
   React.useEffect(() => { if (first.current) { first.current = false; return; } if (token) void qc.invalidateQueries({ queryKey: ["fo", "me"] }); }, [loc.key]);   // eslint-disable-line react-hooks/exhaustive-deps -- on each navigation only
   const [leaving, setLeaving] = React.useState(false);
+  // Once a session has been seen here, a sign-in card that replaces it takes the focus (Sign out, Sign in again here).
+  const had = React.useRef(false);
+  if (token) had.current = true;
   const signOut = async () => {
     setLeaving(true);
     try { await staffApi("/platform/session/sign-out", { method: "POST" }); endSession(null); }
@@ -83,7 +88,7 @@ export function PlatformFrame({ crumbs = [], back = null, children }: { crumbs?:
       controls={who ? <><span className="min-w-0 truncate text-sm font-medium" data-staff-name>{who.displayName}</span><Button variant="ghost" size="sm" busy={leaving} onClick={() => void signOut()}>Sign out</Button></> : null}
       menu={who ? <AccountMenu me={who} /> : null}>
       <Place crumbs={crumbs} back={back} />
-      {!token ? (because === "SIGNED_IN_ELSEWHERE" ? <SignedInElsewhere /> : <SignInCard />)
+      {!token ? (because === "SIGNED_IN_ELSEWHERE" ? <SignedInElsewhere /> : <SignInCard focus={had.current} />)
         : me.isError && !who ? <SignInCard failed={refused} />
           : !who ? <p role="status" className="text-sm text-text-muted" data-loading>Checking who is signed in…</p>
             : <MeCtx.Provider value={who}><AccountMenu me={who} small />{children}</MeCtx.Provider>}

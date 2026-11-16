@@ -127,7 +127,12 @@ ok("PF-6a DW2 fail: a TOKEN_EXPIRED end shows the sign-in card, never Signed in 
 
 // ------------------------------------------------------------------------------------------------- DW4 and DW3
 const newEmail = `pf6a-${run}@example.com`;
+// Three invitees: the Sample firm's Team plan holds 5 people, so this run's copy lends it 3 more seats, given back at the end.
+const plan = sql(`select p.id || '|' || p.seats_limit from platform_subscription s join platform_plan p on p.id = s.plan_id join platform_firm f on f.id = s.firm_id where f.key = 'sample-firm' and s.status <> 'ENDED' limit 1`).split("|");
+sql(`update platform_plan set seats_limit = ${Number(plan[1]) + 3} where id = '${plan[0]}'`);
 const link = await handOffLink(rTok, newEmail);
+const link2 = await handOffLink(rTok, `pf6a-b-${run}@example.com`);
+const link3 = await handOffLink(rTok, `pf6a-c-${run}@example.com`);
 ok("PF-6a DW4 setup: PF-4b's hand-off gives /sign-in/callback#code=…", /^\/sign-in\/callback#code=[\w-]{20,}$/.test(link), link);
 // DW3: the tab is signed in as R (My account shows R), then the link signs in the new person in the same tab.
 const sw = await newPage(1440, await apiSignIn(R.email)); await sw.goto(`${BASE}/account`); await profileShown(sw, R.email);
@@ -147,6 +152,34 @@ await again.goto(`${BASE}${link}`); await again.locator("[data-callback-refused]
 ok("PF-6a DW4 fail: the same code again shows the server's refusal words and the sign-in card", (await again.locator("[data-callback-refused]").innerText()) === USED && (await again.locator("[data-sign-in-card]").count()) === 1 && againPosts().length === 1 && againPosts()[0].status === 401);
 await again.reload(); await again.locator("[data-callback-refused]").waitFor({ timeout: 15_000 });
 ok("PF-6a DW4 fail: a reload of the refused callback page makes no second post and keeps no code in the address", againPosts().length === 1 && !again.url().includes("code="), againPosts().length);
+// Break M1: signing in from the card the refused link offers opens My account (the page leaves its refused state).
+await signInByCard(again, O.email); await profileShown(again, O.email);
+ok("PF-6a DW4 (break M1): after a refused link, signing in from its card opens My account", new URL(again.url()).pathname === "/account");
+// Break M2: a second link opened in the same tab while the callback page shows (only the "#" part changes) is taken too.
+const hop = await newPage(); const hopPosts = () => seen.filter((s) => s.page === hop && s.method === "POST" && s.path === "/api/platform/session/callback");
+await hop.goto(`${BASE}/sign-in/callback`); await hop.locator("[data-callback-refused]").waitFor({ timeout: 15_000 });
+await hop.evaluate((h) => { window.location.hash = h; }, link2.split("#")[1]); await profileShown(hop, `pf6a-b-${run}@example.com`);
+ok("PF-6a DW4 (break M2): a code arriving by a hash change on the open callback page is posted once and leaves the address", hopPosts().length === 1 && !hop.url().includes("code="), hopPosts().length);
+// Break M3: storage that refuses writes but still reads an older session: the newer sign-in (and a sign-out) wins.
+const full = await newPage(1440, await apiSignIn(T.email));
+await full.addInitScript(() => { Storage.prototype.setItem = () => { throw new DOMException("full", "QuotaExceededError"); }; Storage.prototype.removeItem = () => { throw new DOMException("full", "QuotaExceededError"); }; });
+await full.goto(`${BASE}${link3}`); await profileShown(full, `pf6a-c-${run}@example.com`);
+ok("PF-6a DW3 (break M3): with storage writes refused, the new person's account shows, never the older stored person", !(await full.locator("main").innerText()).includes(T.email));
+const meCalls = () => seen.filter((s) => s.page === full && s.path === "/api/platform/me").length, m0 = meCalls();
+await full.locator("header").getByRole("button", { name: "Sign out" }).click(); await full.getByRole("heading", { name: "Sign in to your firm" }).waitFor({ timeout: 15_000 }); await full.waitForTimeout(1500);
+ok("PF-6a DW5 (break M3): with storage writes refused, Sign out ends the session with no call loop", meCalls() - m0 < 5 && (await full.locator("[data-staff-name]").count()) === 0, meCalls() - m0);
+// Break m2: a late 401 for a session already replaced leaves the newer session alone.
+const late = await newPage(1440, await apiSignIn(T.email)); await late.goto(`${BASE}/account`); await profileShown(late, T.email);
+const lateOld = await late.evaluate(() => JSON.parse(sessionStorage.getItem("xr-staff-session")!).token as string);
+const newerTok = await apiSignIn(O.email);
+await late.route("**/api/platform/me", async (r) => {
+  if (r.request().headers().authorization !== `Bearer ${lateOld}`) return r.continue();
+  // While the old token's answer is held back, the tab takes a newer session; then the old one is refused.
+  await late.evaluate((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })), newerTok);
+  await r.fulfill({ status: 401, contentType: "application/problem+json", body: JSON.stringify({ status: 401, title: "Sign in again", detail: "You signed in on another device", code: "SIGNED_IN_ELSEWHERE" }) });
+}, { times: 1 });
+await clickProfile(late); await late.waitForTimeout(1500);
+ok("PF-6a DW2 (break m2): a late 401 for a replaced session leaves the newer session (no Signed in elsewhere, the newer token kept)", (await late.locator("[data-signed-in-elsewhere]").count()) === 0 && (await late.evaluate(() => sessionStorage.getItem("xr-staff-session") ?? "")).includes(newerTok));
 // DW3 fail side: the holder's drop is what keeps it out: an answer kept under ["pf"] for R would have shown (checked above by
 // the observer); here the reverse: signing back in as R shows R, never the new person.
 await sw.locator("header").getByRole("button", { name: "Sign out" }).click(); await signInByCard(sw, R.email); await profileShown(sw, R.email);
@@ -183,5 +216,6 @@ for (const w of [375, 1024, 1440]) {
 const actors = seen.filter((s) => s.actor !== null && /^\/api\/(platform|front-office)\//.test(s.path));
 ok("PF-6a DW6: no request from the frame carries the simulated person (x-actor)", actors.length === 0 && seen.length > 20, actors.map((s) => s.path));
 ok("PF-6a: no page error in any browser", errors.length === 0, errors);
+sql(`update platform_plan set seats_limit = ${plan[1]} where id = '${plan[0]}'`);
 await browser.close(); await db.$disconnect();
 process.exit(summary() ? 1 : 0);
