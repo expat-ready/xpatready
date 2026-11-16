@@ -53,7 +53,7 @@ Index and shared rules: `concept.md`. Board: `design/pay-page.html` (375 px firs
 | Plan schedule on the pay page | the pay GET's plan part (FO-7p "the instalment's due part … when a plan is active") | none (token) | FO-7p | — |
 | Autopay consent, Stop (client) | FO-7p part 3 (consent with the hosted payment; Stop by token — path not in FO-7p's brief: **question Q-C10**) | none (token) | FO-7p | — |
 | Plan create, read, cancel, staff Stop | `POST /api/front-office/money/invoices/:id/plan`, `GET …/invoices/:id/plan`, `POST …/plans/:id/cancel`, `POST …/plans/:id/autopay/stop` | `agent/invoice:issue` | FO-7p | 400 "Instalments add up to …"; deposit invoice refused |
-| Firm brand | PF-13 (optional; plain fallback) | — | PF-13 | — |
+| Firm brand | PF-13's brand read (optional; plain fallback: the firm name in text) | none (public, token) | PF-13 | — |
 
 ## 7. Walks (375 px, then 1440 px)
 **W-D1 pay by card.** 1 Open the INV-0003 email link → pay page, "Amount due: CAD 2,655.50", one button. 2 Pay CAD 2,655.50 by card → Stripe's test page (FO-7c's fake). 3 Pay → return page "Payment received — your receipt is on its way.", "INV-0003 is being confirmed." 4 Reload → the same page, still one payment. 5 (Staff) the recorded webhook → INV-0003 Paid in the invoice list. 6 Next step: the receipt email (FO-7c, outside the screens).

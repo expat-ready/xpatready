@@ -50,7 +50,7 @@ Columns: Receipt · Date · Paid by · For (INV-…, DR-… in trust-on states o
 |---|---|---|---|---|
 | Record payment (invoice, case, client) | FO-7b's offline payment route (action named in FO-7b; path read on `main`), idempotency key, confirm flag | `agent/payment:record` | FO-7b | duplicate-reference warning; cancelled invoice refused |
 | Record payment on a trust request | `POST trust/deposits` (FO-7t; `CARD` refused) | `agent/payment:record` | FO-7t | "Add your trust payment details" (request side) |
-| Methods list | FO-7ts methods step (enum on `main`) | — | FO-7ts | — |
+| Methods list | FO-7ts methods step (the enum on `main`, offered by the offline payment route) | `agent/payment:record` | FO-7ts | — |
 | Keep as credit | FO-7b's overpayment correction writing FO-7ts `KEPT` | `agent/payment:record` | FO-7b, FO-7ts | — |
 | Payments list, detail | `GET payments?invoiceId=&trustRequestId=&method=&from=&to=&pageSize=&after=`; `GET payments/:id` | `agent/payment:record` or `agent/invoice:show` | FO-7q | 404 "not found" (C5) |
 | Resend receipt | **question Q-C6** `POST payments/:id/receipt/resend` (a write no brief builds; FO-7s3a proposes FO-7b) | `agent/payment:record` | — | — |

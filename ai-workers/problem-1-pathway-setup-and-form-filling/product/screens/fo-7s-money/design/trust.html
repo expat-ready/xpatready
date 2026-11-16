@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FO-7s0 money — trust (Sample data)</title>
+<style>
+:root{--blue:#0862c5;--blue-50:#e6f4ff;--text:#1d2733;--muted:#5b6b7b;--border:#d8dee6;--bg:#f4f6f9;--white:#fff;--ok:#16794a;--warn:#a35a00;--danger:#b42318;--r:8px}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 Inter,system-ui,sans-serif;color:var(--text);background:var(--bg)}
+h1,h2,h3{font-family:"Proxima Nova",Inter,system-ui,sans-serif;margin:0}h1{font-size:24px}h2{font-size:18px}h3{font-size:16px}
+.note{max-width:1280px;margin:16px auto;padding:12px 16px;background:#fff8e6;border:1px solid #f0d9a0;border-radius:var(--r);font-size:12px}
+nav.tabs{max-width:1280px;margin:0 auto 8px;display:flex;gap:8px;flex-wrap:wrap}nav.tabs a{padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:#fff;color:var(--text);text-decoration:none}
+section.screen{max-width:1280px;margin:0 auto 32px;background:#fff;border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.cap{padding:8px 16px;background:#eef2f6;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}
+.shell{display:grid;grid-template-columns:220px 1fr;min-height:480px}.menu{border-right:1px solid var(--border);padding:16px;background:#fbfcfd}.menu b{display:block;font-size:12px;color:var(--muted);margin:12px 0 4px}.menu a{display:block;padding:6px 8px;border-radius:6px;color:var(--text);text-decoration:none}.menu a.on{background:var(--blue-50);color:var(--blue);font-weight:600}
+.main{padding:20px 24px}.crumb{font-size:12px;color:var(--muted);margin-bottom:8px}.sub{color:var(--muted)}
+.bar{display:flex;align-items:center;gap:8px;margin:16px 0}.bar .grow{flex:1}
+input,select,textarea{font:inherit;border:1px solid var(--border);border-radius:6px;padding:8px 10px;min-height:36px;background:#fff}
+.btn{display:inline-flex;align-items:center;min-height:36px;padding:0 14px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--text);font:inherit;cursor:pointer}.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.link{border:0;background:none;color:var(--blue);padding:0 4px;text-decoration:underline}
+table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);font-weight:600;text-align:left;padding:8px;border-bottom:1px solid var(--border)}td{padding:0 8px;height:44px;border-bottom:1px solid var(--border)}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);font-size:12px}.chip::before{content:"";width:8px;height:8px;border-radius:2px;background:currentColor}.chip.open{color:var(--blue)}.chip.paid{color:var(--ok)}.chip.over{color:var(--warn)}.chip.draft{color:var(--muted)}.chip.part{color:#5b3fb5}.chip.wo{color:#444}
+.stats{display:flex;gap:24px;font-size:14px}.stats span{color:var(--muted)}
+.two{display:grid;grid-template-columns:1fr 340px;gap:20px}.panel{border:1px solid var(--border);border-radius:var(--r);padding:16px}.panel h3{margin-bottom:12px}
+.row{display:flex;justify-content:space-between;padding:4px 0}.row.total{border-top:1px solid var(--border);margin-top:6px;padding-top:8px;font-weight:700}
+.finding{border-left:4px solid var(--blue);background:var(--blue-50);padding:10px 12px;border-radius:6px;margin:10px 0}.finding.warn{border-color:var(--warn);background:#fff4e5}.finding.err{border-color:var(--danger);background:#fdecea}
+.drawer{display:grid;grid-template-columns:1fr 520px}.drawer .dim{background:#e9edf2;padding:20px;color:var(--muted)}.drawer .side{border-left:1px solid var(--border);padding:20px;display:flex;flex-direction:column;gap:12px}.side footer{display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:12px;margin-top:auto}
+.muted{color:var(--muted);font-size:12px}.field{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}.field label{font-weight:600}
+.lines td input{width:100%}.skel{height:14px;border-radius:4px;background:linear-gradient(90deg,#eef2f6,#f7f9fb,#eef2f6)}
+ol.prev{margin:6px 0 0 18px;padding:0}ol.prev li{margin:4px 0}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style></head><body>
+<div class="note"><b>Board for FO-7s0 · groups (e), (f), (h) and the Trust and To move pages</b> — concept: <code>concept-trust.md</code>. Trust states: U Unanswered · Y Yes · N0 No, nothing held · N$ No, money held. Only two actions take money out of trust: Pay from trust (to an issued invoice) and Refund trust to client (P-603). No balance is ever negative (P-607 (1)). Sample data; legal readings Unconfirmed: no counsel. Not for porting: this note and the state tabs.</div>
+<nav class="tabs"><a href="#q-owner">Trust question (Owner, U)</a><a href="#q-other">Non-Owner (U)</a><a href="#tab-off">Money tab (U / N0)</a><a href="#tab-y">Money tab (Y)</a><a href="#pft">Pay from trust</a><a href="#refund">Refund trust to client</a><a href="#held">Held banner (N$)</a><a href="#trustpage">Trust page</a><a href="#tomove">To move</a><a href="#check">Monthly check</a><a href="#check-short">Monthly check with a shortfall</a></nav>
+
+<section class="screen" id="q-owner"><div class="cap">Money area, the Owner (Client C), trust state U · the question inline: the one exception to "no trust word"</div>
+<div class="shell"><nav class="menu"><b>Money</b><a class="on" href="#">Invoices</a><a href="#">Payments</a><a href="#">Exports</a><a href="#">Getting paid</a></nav>
+<div class="main"><div class="finding" role="region" aria-label="Client money question"><h3>Do you hold client money in a trust account?</h3><p class="muted">Yes lets you take deposits before the work. No means you bill after the work.</p><button class="btn">Yes</button> <button class="btn">No</button></div><h1>Invoices</h1><p class="sub">…</p></div></div></section>
+
+<section class="screen" id="q-other"><div class="cap">Same page, the Billing person, trust state U · nothing about trust · FO-3's "When booking" for a non-Owner (F1)</div>
+<div class="shell"><nav class="menu"><b>Money</b><a class="on" href="#">Invoices</a><a href="#">Payments</a><a href="#">Exports</a><a href="#">Getting paid</a></nav>
+<div class="main"><h1>Invoices</h1><div class="panel" style="margin-top:16px"><h3>Booking type · Client pays</h3><select disabled><option>After the consult</option></select><p>Ask the Owner to answer the question about client money. <button class="btn">Ask the Owner</button></p><p class="muted">"When booking" can be chosen once the Owner has answered.</p></div></div></div></section>
+
+<section class="screen" id="tab-off"><div class="cap">Client B · Money tab · trust state U or N0 · summary per currency, no trust rows</div>
+<div class="main"><div class="crumb">Money › People › Client B</div><h1>Client B</h1><div class="bar"><span class="grow"></span><button class="btn primary">Send statement</button></div>
+<table><thead><tr><th></th><th class="n">Work permit (CAD)</th><th class="n">Visitor visa (USD)</th></tr></thead><tbody><tr><td>Billed</td><td class="n">CAD 2,655.50</td><td class="n">USD 900.00</td></tr><tr><td>Paid</td><td class="n">CAD 1,000.00</td><td class="n">USD 0.00</td></tr><tr><td>Credited</td><td class="n">CAD 0.00</td><td class="n">USD 0.00</td></tr><tr><td>Written off</td><td class="n">CAD 0.00</td><td class="n">USD 0.00</td></tr><tr><td>Refunded</td><td class="n">CAD 0.00</td><td class="n">USD 0.00</td></tr><tr><td><b>Owed</b></td><td class="n"><b>CAD 1,655.50</b></td><td class="n"><b>USD 900.00</b></td></tr><tr><td>Oldest overdue</td><td class="n">—</td><td class="n">—</td></tr><tr><td>Credit</td><td class="n muted">Not tracked yet</td><td class="n muted">Not tracked yet</td></tr><tr><td>Unbilled</td><td class="n muted">Not tracked yet</td><td class="n muted">Not tracked yet</td></tr></tbody></table></div></section>
+
+<section class="screen" id="tab-y"><div class="cap">Client B · Money tab · trust state Y · ledger with running balance; the only money-out actions are Pay from trust and Refund trust to client</div>
+<div class="main"><div class="crumb">Money › People › Client B</div><h1>Client B</h1><p>Trust held: CAD 169.50 (1 case, CAD 0.00 before a case)</p>
+<div class="bar"><h3 class="grow">Work permit · trust ledger (CAD)</h3><button class="btn">Refund trust to client</button><button class="btn">Send statement</button><button class="btn primary">Pay from trust</button></div>
+<table><thead><tr><th>Date</th><th>Entry</th><th>Reference</th><th>Payer</th><th class="n">Amount</th><th class="n">Running balance</th></tr></thead><tbody>
+<tr><td>16 Nov</td><td>Paid to <a href="#">INV-0002</a></td><td>INV-0002</td><td>Client B</td><td class="n">CAD 960.50 out</td><td class="n">CAD 169.50</td></tr>
+<tr><td>14 Nov</td><td>Received</td><td>DR-0001 · R-0002</td><td>Client B</td><td class="n">CAD 1,130.00 in</td><td class="n">CAD 1,130.00</td></tr></tbody></table>
+<p class="muted">Balance per payer: Client B CAD 169.50 · Ledger entries add up to the balance shown.</p></div></section>
+
+<section class="screen" id="pft"><div class="cap">Pay from trust (right panel) on an issued invoice · prefilled at the lower of available and due · refusal wins</div>
+<div class="drawer"><div class="dim">Money tab behind.</div><div class="side"><h2>Pay from trust</h2><div class="field"><label>Invoice</label><select><option>INV-0003 · CAD 1,655.50 due</option></select></div><div class="row"><span>Available from Client B</span><span>CAD 169.50</span></div><div class="row"><span>Balance due</span><span>CAD 1,655.50</span></div><div class="field"><label>Amount</label><input value="CAD 169.50"><span class="muted">Pay up to CAD 169.50</span></div>
+<div class="finding err" role="alert">Only CAD 130.00 is available.</div><p class="muted">Shown when someone else applied money at the same moment: the amount is refreshed.</p>
+<footer><button class="btn">Cancel</button><button class="btn primary">Pay CAD 130.00 from trust</button></footer></div></div></section>
+
+<section class="screen" id="refund"><div class="cap">Refund trust to client (right panel) · hidden without agent/refund:create</div>
+<div class="drawer"><div class="dim"></div><div class="side"><h2>Refund trust to client</h2><div class="field"><label>Amount</label><input value="CAD 600.00"><span class="muted">Up to CAD 600.00 held from Client B.</span></div><div class="field"><label>Reason</label><input value="Application withdrawn"></div><div class="field"><label>Method</label><select><option>e-Transfer</option><option>Cheque</option><option>Wire</option><option>Bank transfer</option></select></div><div class="field"><label>Reference</label><input value="88213"></div><div class="field"><label>Pay to</label><select><option>Client B (who paid it)</option><option>Someone else (needs a reason)</option></select></div>
+<footer><button class="btn">Cancel</button><button class="btn primary">Refund CAD 600.00 to Client B</button></footer></div></div></section>
+
+<section class="screen" id="held"><div class="cap">Trust state N$: the Owner said No while CAD 600.00 is held · only refund, Pay from trust, To move and Monthly check stay</div>
+<div class="shell"><nav class="menu"><b>Money</b><a href="#">Invoices</a><a href="#">Payments</a><a class="on" href="#">Trust</a><a href="#">To move</a><a href="#">Monthly check</a><a href="#">Exports</a><a href="#">Getting paid</a></nav>
+<div class="main"><div class="finding warn">CAD 600.00 is held for 1 case. Trust screens stay visible until it is settled.</div><h1>Trust</h1><p class="muted">Request payment and Record trust deposit are not offered while the answer is No.</p></div></div></section>
+
+<section class="screen" id="trustpage"><div class="cap">Money › Trust · trust state Y · requests and deposits · no pay link and no card word on a request</div>
+<div class="main"><div class="bar"><div class="grow"><h1>Trust</h1><div class="sub">Trust held: CAD 3,430.00 · USD 800.00</div></div><button class="btn">Record trust deposit</button><button class="btn primary">Request payment</button></div>
+<table><thead><tr><th>Request</th><th>From</th><th>Case</th><th class="n">Amount</th><th>Status</th></tr></thead><tbody>
+<tr><td>DR-0001</td><td>Client B</td><td>Work permit</td><td class="n">CAD 1,130.00 incl. estimated HST</td><td><span class="chip paid">Paid</span></td></tr>
+<tr><td>DR-0002</td><td>Pine Bakery</td><td>LMIA — cook</td><td class="n">USD 800.00</td><td><span class="chip open">Sent</span></td></tr>
+<tr><td>DR-0003</td><td>Client G</td><td>—</td><td class="n">CAD 1,500.00</td><td><span class="chip part" title="CAD 200.00 more than requested">Paid · CAD 200.00 more than requested</span></td></tr></tbody></table>
+<div class="finding warn">DR-0004 is waiting: Add your trust payment details. <a href="#">Open Getting paid</a></div></div></section>
+
+<section class="screen" id="tomove"><div class="cap">Money › To move · per currency, totals each way · "I moved these" records the firm's bank step and moves nothing</div>
+<div class="main"><h1>To move</h1><p class="muted">ExpatReady moves no money. Record here the transfers you made at your bank.</p>
+<h3>CAD — Trust → operating: CAD 1,130.00 · Operating → trust: CAD 1,500.00</h3>
+<table><thead><tr><th></th><th>Line</th><th>Since</th><th class="n">Amount</th></tr></thead><tbody>
+<tr><td><input type="checkbox" checked aria-label="Tick"></td><td>Move CAD 960.50 from trust to operating — INV-0002, Client B</td><td>16 Nov</td><td class="n">CAD 960.50</td></tr>
+<tr><td><input type="checkbox" checked aria-label="Tick"></td><td>Move CAD 169.50 from trust to operating — INV-0001, Client B</td><td>12 Nov</td><td class="n">CAD 169.50</td></tr>
+<tr><td><input type="checkbox" aria-label="Tick"></td><td>Move CAD 1,500.00 from operating to trust — reversal of R-0007, Client B</td><td>18 Nov</td><td class="n">CAD 1,500.00</td></tr></tbody></table>
+<div class="bar"><label>Bank-transfer date <input value="20 Nov 2026"></label><button class="btn primary">I moved these</button></div>
+<h3>USD — Trust → operating: USD 0.00 · Operating → trust: USD 0.00</h3><p class="muted">Nothing to move in USD.</p>
+<h3>Recorded batches</h3><table><tbody><tr><td>2 Nov</td><td>Trust → operating</td><td class="n">CAD 400.00</td><td>by Client F</td><td><button class="btn">Undo this batch</button></td></tr></tbody></table></div></section>
+
+<section class="screen" id="check"><div class="cap">Money › Monthly check · CAD · difference 0</div>
+<div class="main"><h1>Monthly check</h1><div class="bar"><label>Currency <select><option>CAD</option><option>USD</option></select></label><label>Statement date <input value="30 Nov 2026"></label><label>Bank's trust balance <input value="CAD 164.28"></label></div>
+<div class="panel" style="max-width:640px"><div class="row"><span>Case balances <span class="muted">every case's and pre-case trust balance at 30 Nov</span></span><span>CAD 169.50</span></div><div class="row"><span>Waiting to move <span class="muted">open lines: trust → operating added, operating → trust subtracted</span></span><span>CAD 0.00</span></div><div class="row"><span>Fees not yet covered</span><span>CAD 5.22</span></div><div class="row"><span>In transit <span class="muted">(Advanced)</span></span><span>CAD 0.00</span></div><div class="row total"><span>Expected bank balance</span><span>CAD 164.28</span></div><div class="row total"><span>Difference</span><span>CAD 0.00</span></div></div>
+<div class="bar"><button class="btn primary">Save check</button></div><h3>History</h3><p class="muted">31 Oct · CAD · difference CAD 0.00 · saved by Client F</p></div></section>
+
+<section class="screen" id="check-short"><div class="cap">Monthly check after a returned cheque whose money had moved · DW7: the shortfall is a line to move, the case balance is 0.00, never negative</div>
+<div class="main"><div class="panel" style="max-width:640px"><div class="row"><span>Case balances</span><span>CAD 0.00</span></div><div class="row"><span>Waiting to move</span><span>CAD 1,500.00 operating → trust (subtracted)</span></div><div class="row"><span>Fees not yet covered</span><span>CAD 0.00</span></div><div class="row"><span>In transit</span><span>CAD 0.00</span></div><div class="row total"><span>Expected bank balance</span><span>CAD 0.00 less CAD 1,500.00 to move in</span></div><div class="row"><span>Bank's trust balance (typed)</span><span>CAD 1,500.00 overdrawn</span></div><div class="row total"><span>Difference</span><span>CAD 0.00</span></div>
+<div class="finding warn">CAD 1,500.00 must move from operating to trust: reversal of R-0007</div></div></div></section>
+</body></html>

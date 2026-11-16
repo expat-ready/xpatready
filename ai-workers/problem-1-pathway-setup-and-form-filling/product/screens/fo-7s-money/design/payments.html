@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FO-7s0 money — payments, statements, exports (Sample data)</title>
+<style>
+:root{--blue:#0862c5;--blue-50:#e6f4ff;--text:#1d2733;--muted:#5b6b7b;--border:#d8dee6;--bg:#f4f6f9;--white:#fff;--ok:#16794a;--warn:#a35a00;--danger:#b42318;--r:8px}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 Inter,system-ui,sans-serif;color:var(--text);background:var(--bg)}
+h1,h2,h3{font-family:"Proxima Nova",Inter,system-ui,sans-serif;margin:0}h1{font-size:24px}h2{font-size:18px}h3{font-size:16px}
+.note{max-width:1280px;margin:16px auto;padding:12px 16px;background:#fff8e6;border:1px solid #f0d9a0;border-radius:var(--r);font-size:12px}
+nav.tabs{max-width:1280px;margin:0 auto 8px;display:flex;gap:8px;flex-wrap:wrap}nav.tabs a{padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:#fff;color:var(--text);text-decoration:none}
+section.screen{max-width:1280px;margin:0 auto 32px;background:#fff;border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.cap{padding:8px 16px;background:#eef2f6;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}
+.shell{display:grid;grid-template-columns:220px 1fr;min-height:480px}.menu{border-right:1px solid var(--border);padding:16px;background:#fbfcfd}.menu b{display:block;font-size:12px;color:var(--muted);margin:12px 0 4px}.menu a{display:block;padding:6px 8px;border-radius:6px;color:var(--text);text-decoration:none}.menu a.on{background:var(--blue-50);color:var(--blue);font-weight:600}
+.main{padding:20px 24px}.crumb{font-size:12px;color:var(--muted);margin-bottom:8px}.sub{color:var(--muted)}
+.bar{display:flex;align-items:center;gap:8px;margin:16px 0}.bar .grow{flex:1}
+input,select,textarea{font:inherit;border:1px solid var(--border);border-radius:6px;padding:8px 10px;min-height:36px;background:#fff}
+.btn{display:inline-flex;align-items:center;min-height:36px;padding:0 14px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--text);font:inherit;cursor:pointer}.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.link{border:0;background:none;color:var(--blue);padding:0 4px;text-decoration:underline}
+table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);font-weight:600;text-align:left;padding:8px;border-bottom:1px solid var(--border)}td{padding:0 8px;height:44px;border-bottom:1px solid var(--border)}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);font-size:12px}.chip::before{content:"";width:8px;height:8px;border-radius:2px;background:currentColor}.chip.open{color:var(--blue)}.chip.paid{color:var(--ok)}.chip.over{color:var(--warn)}.chip.draft{color:var(--muted)}.chip.part{color:#5b3fb5}.chip.wo{color:#444}
+.stats{display:flex;gap:24px;font-size:14px}.stats span{color:var(--muted)}
+.two{display:grid;grid-template-columns:1fr 340px;gap:20px}.panel{border:1px solid var(--border);border-radius:var(--r);padding:16px}.panel h3{margin-bottom:12px}
+.row{display:flex;justify-content:space-between;padding:4px 0}.row.total{border-top:1px solid var(--border);margin-top:6px;padding-top:8px;font-weight:700}
+.finding{border-left:4px solid var(--blue);background:var(--blue-50);padding:10px 12px;border-radius:6px;margin:10px 0}.finding.warn{border-color:var(--warn);background:#fff4e5}.finding.err{border-color:var(--danger);background:#fdecea}
+.drawer{display:grid;grid-template-columns:1fr 520px}.drawer .dim{background:#e9edf2;padding:20px;color:var(--muted)}.drawer .side{border-left:1px solid var(--border);padding:20px;display:flex;flex-direction:column;gap:12px}.side footer{display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:12px;margin-top:auto}
+.muted{color:var(--muted);font-size:12px}.field{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}.field label{font-weight:600}
+.lines td input{width:100%}.skel{height:14px;border-radius:4px;background:linear-gradient(90deg,#eef2f6,#f7f9fb,#eef2f6)}
+ol.prev{margin:6px 0 0 18px;padding:0}ol.prev li{margin:4px 0}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style></head><body>
+<div class="note"><b>Board for FO-7s0 · groups (c), (j)</b> — concept: <code>concept-payments.md</code>. Sample data only. Every amount shows its currency; no figure adds CAD and USD. Not for porting: this note and the state tabs.</div>
+<nav class="tabs"><a href="#record-off">Record payment (trust U)</a><a href="#record-y">Record payment (trust Y)</a><a href="#dup">Duplicate reference</a><a href="#extra">Extra money</a><a href="#pdetail">Payment detail</a><a href="#plist">Payments list</a><a href="#statement">Send statement</a><a href="#exports">Exports</a></nav>
+
+<section class="screen" id="record-off"><div class="cap">Record payment (right panel) · trust state U · no "Received into" line exists</div>
+<div class="drawer"><div class="dim">INV-0003 detail behind.</div><div class="side" role="dialog" aria-label="Record payment"><h2>Record payment</h2><div class="muted">For INV-0003 · Client B · CAD 2,655.50 due</div>
+<div class="field"><label for="m1">Method</label><select id="m1"><option>Cheque</option><option>Bank transfer</option><option>Wire</option><option>Cash</option><option>e-Transfer</option><option>Card terminal</option><option>Other</option></select></div>
+<div class="field"><label for="a1">Amount</label><input id="a1" value="CAD 1,000.00"></div><div class="field"><label>Date</label><input value="16 Nov 2026"></div><div class="field"><label>Reference</label><input value="4471"></div><div class="field"><label>Paid by</label><select><option>Client B</option><option>Someone else…</option></select></div><div class="field"><label>Note (optional)</label><input></div>
+<footer><button class="btn">Cancel</button><button class="btn primary">Record CAD 1,000.00 cheque</button></footer></div></div></section>
+
+<section class="screen" id="record-y"><div class="cap">Record payment · trust state Y · "Received into" read-only, as the route decides it (Q-C5)</div>
+<div class="drawer"><div class="dim">INV-0003 detail behind.</div><div class="side"><h2>Record payment</h2><div class="muted">For INV-0003 · Client B · CAD 2,655.50 due</div>
+<div class="field"><label>Method</label><select><option>e-Transfer</option></select></div><div class="field"><label>Amount</label><input value="CAD 1,000.00"></div><div class="field"><label>Reference</label><input value="88301"></div>
+<div class="row"><span>Received into</span><span>Operating</span></div><p class="muted">Invoice payments go to the operating account (Getting paid).</p>
+<footer><button class="btn">Cancel</button><button class="btn primary">Record CAD 1,000.00 e-Transfer</button></footer></div></div></section>
+
+<section class="screen" id="dup"><div class="cap">Duplicate reference: a warning where it happens, never a silent record</div>
+<div class="drawer"><div class="dim"></div><div class="side"><h2>Record payment</h2><div class="field"><label>Reference</label><input value="4471" aria-describedby="dupmsg"></div>
+<div class="finding warn" id="dupmsg">A payment with reference 4471 is already recorded on this invoice. Record anyway?</div>
+<footer><button class="btn">Cancel</button><button class="btn primary">Record anyway</button></footer></div></div></section>
+
+<section class="screen" id="extra"><div class="cap">Extra money is never refused · left: trust Y · right: trust U / N0 / N$</div>
+<div class="main"><div class="two"><div class="panel"><h3>CAD 1,855.50 on CAD 1,655.50 due</h3><div class="finding">CAD 200.00 extra. The extra CAD 200.00 goes into Client B's trust balance.</div></div>
+<div class="panel"><h3>CAD 1,855.50 on CAD 1,655.50 due</h3><div class="finding">CAD 200.00 extra. What should happen to it?</div><label><input type="radio" name="x"> Refund</label><br><label><input type="radio" name="x" checked> Keep as credit</label></div></div></div></section>
+
+<section class="screen" id="pdetail"><div class="cap">Payment detail (side panel) · cheque not yet cleared · trust U</div>
+<div class="drawer"><div class="dim">Payments list behind.</div><div class="side"><h2>R-0004 <span class="chip open">Recorded</span></h2><div class="muted">Cheque · CAD 1,000.00 · 16 Nov</div>
+<div class="row"><span>Paid by</span><span>Client B</span></div><div class="row"><span>Reference</span><span>4471</span></div><div class="row"><span>Applied to</span><a href="#">INV-0003</a></div><div class="row"><span>Recorded</span><span>by Client F on the client's behalf, 16 Nov 10:51</span></div><div class="row"><span>Cleared</span><span>Not yet cleared</span></div><div class="row"><span>Receipt</span><a href="#">R-0004 (PDF)</a></div>
+<footer><span><button class="btn">Refund</button></span><button class="btn">Reverse entry</button></footer></div></div></section>
+
+<section class="screen" id="plist"><div class="cap">Money › Payments · stats per currency</div>
+<div class="main"><div class="crumb">Money › Payments</div><h1>Payments</h1><div class="stats" style="margin:12px 0"><div><span>Recorded this month:</span> CAD 42,000.00 · USD 3,500.00</div></div>
+<table><thead><tr><th>Receipt</th><th>Date</th><th>Paid by</th><th>For</th><th>Method</th><th class="n">Amount</th><th>Status</th></tr></thead><tbody>
+<tr><td>R-0004</td><td>16 Nov</td><td>Client B</td><td>INV-0003</td><td>Cheque</td><td class="n">CAD 1,000.00</td><td><span class="chip open">Recorded</span></td></tr>
+<tr><td>R-0003</td><td>12 Nov</td><td>Pine Bakery</td><td>INV-0001</td><td>Card</td><td class="n">USD 400.00</td><td><span class="chip paid">Recorded</span></td></tr>
+<tr><td>R-0001</td><td>3 Nov</td><td>Client D</td><td>INV-0009</td><td>Wire</td><td class="n">CAD 625.00</td><td><span class="chip part">Part refunded</span></td></tr>
+</tbody></table></div></section>
+
+<section class="screen" id="statement"><div class="cap">Send statement (right panel) from Client B's Money tab · two currencies, two columns, no sum · no schedule control</div>
+<div class="drawer"><div class="dim" style="background:#fff;color:var(--text)"><h3>Preview — Your statement</h3><p class="muted">Client B · Everything to 16 Nov 2026</p>
+<table><thead><tr><th></th><th class="n">CAD</th><th class="n">USD</th></tr></thead><tbody><tr><td>Billed</td><td class="n">3,616.00</td><td class="n">900.00</td></tr><tr><td>Paid</td><td class="n">1,960.50</td><td class="n">0.00</td></tr><tr><td>Owed</td><td class="n">1,655.50</td><td class="n">900.00</td></tr></tbody></table><p class="muted">Trust lines appear here only once trust is on, for example "Held in trust for your work permit: CAD 1,500.00".</p></div>
+<div class="side"><h2>Send statement</h2><div class="field"><label>Period</label><select><option>Everything</option><option>Pick dates…</option></select></div><div class="row"><span>To</span><span>Client B (the Bill to)</span></div><div class="field"><label>Message</label><textarea readonly rows="4">Your statement — the fixed wording from the template.</textarea></div>
+<footer><button class="btn">Cancel</button><button class="btn primary">Send statement to Client B</button></footer></div></div></section>
+
+<section class="screen" id="exports"><div class="cap">Money › Exports · trust state Y (the Trust ledger file shows only while trust shows)</div>
+<div class="main"><div class="crumb">Money › Exports</div><h1>Exports</h1><div class="sub">Files for your bookkeeper, per period. Amounts stay in their own currency.</div>
+<div class="bar"><input value="1 Nov 2026" aria-label="From"><input value="30 Nov 2026" aria-label="To"></div>
+<div class="bar"><label><input type="checkbox"> Invoices</label><label><input type="checkbox" checked> Payments</label><label><input type="checkbox"> Refunds</label><label><input type="checkbox"> Credit notes</label><label><input type="checkbox"> Write-offs</label><label><input type="checkbox" checked> Trust ledger</label><button class="btn primary">Start export</button></div>
+<table><thead><tr><th>Period</th><th>Files</th><th>Started</th><th>State</th></tr></thead><tbody>
+<tr><td>1-30 Nov</td><td>Payments, Trust ledger</td><td>16 Nov 16:05 by Client F</td><td><a href="#">Payments.csv</a> (14 rows) · <a href="#">Trust ledger.csv</a> (6 rows) · <span class="muted">Link expires 17 Nov, 16:05</span></td></tr>
+<tr><td>1-31 Oct</td><td>Write-offs</td><td>1 Nov 09:10 by Client F</td><td><a href="#">Write-offs.csv</a> · <span class="muted">No records in this period</span></td></tr>
+<tr><td>1-15 Nov</td><td>Invoices</td><td>16 Nov 16:20 by Client F</td><td>Still preparing <span class="muted">This can take a few minutes. You can leave this page.</span></td></tr>
+</tbody></table></div></section>
+</body></html>

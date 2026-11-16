@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FO-7s0 money — invoices (Sample data)</title>
+<style>
+:root{--blue:#0862c5;--blue-50:#e6f4ff;--text:#1d2733;--muted:#5b6b7b;--border:#d8dee6;--bg:#f4f6f9;--white:#fff;--ok:#16794a;--warn:#a35a00;--danger:#b42318;--r:8px}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 Inter,system-ui,sans-serif;color:var(--text);background:var(--bg)}
+h1,h2,h3{font-family:"Proxima Nova",Inter,system-ui,sans-serif;margin:0}h1{font-size:24px}h2{font-size:18px}h3{font-size:16px}
+.note{max-width:1280px;margin:16px auto;padding:12px 16px;background:#fff8e6;border:1px solid #f0d9a0;border-radius:var(--r);font-size:12px}
+nav.tabs{max-width:1280px;margin:0 auto 8px;display:flex;gap:8px;flex-wrap:wrap}nav.tabs a{padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:#fff;color:var(--text);text-decoration:none}
+section.screen{max-width:1280px;margin:0 auto 32px;background:#fff;border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.cap{padding:8px 16px;background:#eef2f6;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}
+.shell{display:grid;grid-template-columns:220px 1fr;min-height:480px}.menu{border-right:1px solid var(--border);padding:16px;background:#fbfcfd}.menu b{display:block;font-size:12px;color:var(--muted);margin:12px 0 4px}.menu a{display:block;padding:6px 8px;border-radius:6px;color:var(--text);text-decoration:none}.menu a.on{background:var(--blue-50);color:var(--blue);font-weight:600}
+.main{padding:20px 24px}.crumb{font-size:12px;color:var(--muted);margin-bottom:8px}.sub{color:var(--muted)}
+.bar{display:flex;align-items:center;gap:8px;margin:16px 0}.bar .grow{flex:1}
+input,select,textarea{font:inherit;border:1px solid var(--border);border-radius:6px;padding:8px 10px;min-height:36px;background:#fff}
+.btn{display:inline-flex;align-items:center;min-height:36px;padding:0 14px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--text);font:inherit;cursor:pointer}.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.link{border:0;background:none;color:var(--blue);padding:0 4px;text-decoration:underline}
+table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);font-weight:600;text-align:left;padding:8px;border-bottom:1px solid var(--border)}td{padding:0 8px;height:44px;border-bottom:1px solid var(--border)}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);font-size:12px}.chip::before{content:"";width:8px;height:8px;border-radius:2px;background:currentColor}.chip.open{color:var(--blue)}.chip.paid{color:var(--ok)}.chip.over{color:var(--warn)}.chip.draft{color:var(--muted)}.chip.part{color:#5b3fb5}.chip.wo{color:#444}
+.stats{display:flex;gap:24px;font-size:14px}.stats span{color:var(--muted)}
+.two{display:grid;grid-template-columns:1fr 340px;gap:20px}.panel{border:1px solid var(--border);border-radius:var(--r);padding:16px}.panel h3{margin-bottom:12px}
+.row{display:flex;justify-content:space-between;padding:4px 0}.row.total{border-top:1px solid var(--border);margin-top:6px;padding-top:8px;font-weight:700}
+.finding{border-left:4px solid var(--blue);background:var(--blue-50);padding:10px 12px;border-radius:6px;margin:10px 0}.finding.warn{border-color:var(--warn);background:#fff4e5}.finding.err{border-color:var(--danger);background:#fdecea}
+.drawer{display:grid;grid-template-columns:1fr 520px}.drawer .dim{background:#e9edf2;padding:20px;color:var(--muted)}.drawer .side{border-left:1px solid var(--border);padding:20px;display:flex;flex-direction:column;gap:12px}.side footer{display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:12px;margin-top:auto}
+.muted{color:var(--muted);font-size:12px}.field{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}.field label{font-weight:600}
+.lines td input{width:100%}.skel{height:14px;border-radius:4px;background:linear-gradient(90deg,#eef2f6,#f7f9fb,#eef2f6)}
+ol.prev{margin:6px 0 0 18px;padding:0}ol.prev li{margin:4px 0}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style></head><body>
+<div class="note"><b>Board for FO-7s0 · groups (a), (b), (i)</b> — concept: <code>concept-invoices.md</code>. Sample data only (Maple Immigration is a Sample firm; Client B, Client C, Client F, Pine Bakery are roles). Tax "HST 13%" is <b>Sample</b>, Unconfirmed: no accountant. Every amount shows its currency; no figure adds CAD and USD. Not for porting: this note and the state tabs.</div>
+<nav class="tabs"><a href="#list">Invoice list</a><a href="#empty">List: empty and loading</a><a href="#builder">Builder</a><a href="#issue">Issue panel</a><a href="#detail">Detail</a><a href="#credit">Credit note</a><a href="#writeoff">Write off</a><a href="#reverse">Reverse entry (trust Y, money moved)</a><a href="#reverse-off">Reverse entry (trust off)</a></nav>
+
+<section class="screen" id="list"><div class="cap">Money › Invoices · trust state U (Unanswered), Billing person · 1440 px</div>
+<div class="shell"><nav class="menu" aria-label="Money"><b>Money</b><a class="on" href="#list">Invoices</a><a href="#">Payments</a><a href="#">Exports</a><a href="#">Getting paid</a><p class="muted">Trust, To move and Monthly check are absent: trust is not on.</p></nav>
+<div class="main"><div class="crumb">Money › Invoices</div><div class="bar"><div class="grow"><h1>Invoices</h1><div class="sub">Bills for work done for won clients.</div></div><button class="btn primary">New invoice</button></div>
+<div class="stats" aria-label="Open balance per currency"><div><span>Open:</span> CAD 4,120.00 · USD 900.00</div><div><span>Overdue:</span> CAD 1,655.50</div></div>
+<div class="bar"><input placeholder="Search number or Bill to" aria-label="Search" style="width:280px"><select aria-label="Status"><option>All statuses</option><option>Draft</option><option>Open</option><option>Part paid</option><option>Paid</option><option>Overdue</option><option>Cancelled</option><option>Refunded</option><option>Written off</option></select><select aria-label="Bill to"><option>Any Bill to</option></select><button class="btn link">More filters</button></div>
+<table><thead><tr><th>Number</th><th>Bill to</th><th>Case</th><th>Issued</th><th>Due</th><th class="n">Total</th><th class="n">Balance due</th><th>Status</th><th></th></tr></thead><tbody>
+<tr><td><b>INV-0003</b></td><td>Client B</td><td>Work permit</td><td>16 Nov</td><td>30 Nov</td><td class="n">CAD 2,655.50</td><td class="n">CAD 1,655.50</td><td><span class="chip part" title="Part paid: CAD 1,655.50 still due">Part paid</span></td><td>⋯</td></tr>
+<tr><td><b>INV-0004</b></td><td>Pine Bakery</td><td>LMIA — cook</td><td>10 Nov</td><td>24 Nov</td><td class="n">USD 900.00</td><td class="n">USD 900.00</td><td><span class="chip open" title="Open: issued, nothing paid yet">Open</span></td><td>⋯</td></tr>
+<tr><td><b>INV-0002</b></td><td>Client B</td><td>Work permit</td><td>2 Nov</td><td>16 Nov</td><td class="n">CAD 960.50</td><td class="n">CAD 0.00</td><td><span class="chip paid" title="Paid">Paid</span></td><td>⋯</td></tr>
+<tr><td><b>INV-0009</b></td><td>Client D</td><td>Visitor visa</td><td>1 Oct</td><td>15 Oct</td><td class="n">CAD 650.00</td><td class="n">CAD 0.00</td><td><span class="chip wo" title="Written off: CAD 25.00 settled by a write-off on 3 Dec">Written off</span></td><td>⋯</td></tr>
+<tr><td class="muted">Draft</td><td>Client E — a very long company name that stays on one line with the full name on hover…</td><td>—</td><td>—</td><td>—</td><td class="n">CAD 1,130.00</td><td class="n">—</td><td><span class="chip draft">Draft</span></td><td>⋯</td></tr>
+</tbody></table><p class="muted">No total row: amounts in two currencies are never added. <button class="btn link">Show more</button></p></div></div></section>
+
+<section class="screen" id="empty"><div class="cap">Invoice list states: empty (nothing yet) · nothing matches · loading · error</div>
+<div class="main"><div class="two"><div class="panel"><h3>No invoices yet</h3><p>Invoices you create for won clients appear here.</p><button class="btn primary">New invoice</button></div>
+<div class="panel"><h3>No invoices match these filters.</h3><button class="btn">Clear filters</button></div></div>
+<div class="panel" style="margin-top:12px" aria-busy="true"><span class="sr-only" style="position:absolute;left:-9999px">Loading invoices</span><div class="skel"></div><br><div class="skel"></div><br><div class="skel"></div></div>
+<div class="finding err" role="alert">Invoices could not load. <button class="btn">Retry</button></div></div></section>
+
+<section class="screen" id="builder"><div class="cap">New invoice (builder page) · trust state Y · Workspace pattern: lines left, live totals right</div>
+<div class="main"><div class="crumb">Money › Invoices › New invoice</div><h1>New invoice</h1>
+<div class="two" style="margin-top:16px"><div>
+<div class="bar"><div class="field" style="flex:1"><label for="billto">Bill to</label><input id="billto" value="Client B"><span class="muted">Won people and companies only.</span></div><div class="field" style="flex:1"><label for="case">Case (optional)</label><select id="case"><option>Work permit</option></select><span class="muted">CAD (the case's currency)</span></div></div>
+<div class="bar"><button class="btn">Start from retainer</button><span class="muted">Fills the signed retainer's fee rows.</span></div>
+<table class="lines"><thead><tr><th>Kind</th><th>Description</th><th class="n">Qty</th><th class="n">Unit price</th><th>Tax</th><th class="n">Amount</th></tr></thead><tbody>
+<tr><td><select aria-label="Kind"><option>Fee</option></select></td><td><input value="Work permit — application" aria-label="Description"></td><td class="n">1</td><td class="n">CAD 1,000.00</td><td><select aria-label="Tax"><option>Taxable</option><option>Not taxable</option></select></td><td class="n">CAD 1,000.00</td></tr>
+<tr><td><select aria-label="Kind"><option>Disbursement</option></select></td><td><input value="Courier" aria-label="Description"></td><td class="n">1</td><td class="n">CAD 45.00</td><td><select aria-label="Tax"><option>Taxable</option></select></td><td class="n">CAD 45.00</td></tr>
+<tr><td><select aria-label="Kind"><option>Government fee</option></select></td><td><input value="Work permit processing fee" aria-label="Description"></td><td class="n">1</td><td class="n">CAD 255.00</td><td class="muted">Government fees are never taxed.</td><td class="n">CAD 255.00</td></tr>
+</tbody></table><button class="btn link">Add line</button>
+<p class="muted">Saved · 16 Nov, 10:42</p></div>
+<aside class="panel" aria-label="Totals"><h3>Totals</h3><div class="row"><span>Subtotal</span><span>CAD 1,300.00</span></div><div class="row"><span title="From the firm's province, Ontario (Bill to has no address yet)">HST 13% · Sample</span><span>CAD 135.85</span></div><div class="row total"><span>Total</span><span>CAD 1,435.85</span></div><p class="muted">Will be INV-0008</p>
+<div class="finding"><label><input type="checkbox" checked> Pay CAD 1,130.00 from trust at issue</label><div class="muted">Available from Client B for this case: CAD 1,130.00</div></div>
+<button class="btn primary" style="width:100%;justify-content:center">Issue invoice</button></aside></div></div></section>
+
+<section class="screen" id="issue"><div class="cap">Issue panel (right panel) · operating details empty · trust state Y</div>
+<div class="drawer"><div class="dim">The builder stays behind, scroll kept.</div><div class="side" role="dialog" aria-label="Issue invoice"><h2>Issue invoice</h2>
+<div class="field"><label>Invoice date</label><input value="16 Nov 2026"></div><div class="field"><label>Due date</label><select><option>Due in 14 days (30 Nov)</option><option>Due on receipt</option><option>Pick a date…</option></select></div>
+<label><input type="checkbox" checked> Pay CAD 1,130.00 from trust now</label>
+<div class="finding">Email waits: add your payment details. <a href="#">Open Getting paid</a><div class="muted">The invoice issues now; its email goes once the operating details are filled.</div></div>
+<footer><button class="btn">Cancel</button><button class="btn primary">Issue INV-0008</button></footer></div></div></section>
+
+<section class="screen" id="detail"><div class="cap">Invoice detail (side panel 560 px) · Part paid · actions from allowedActions (Billing person)</div>
+<div class="drawer"><div class="dim">Invoice list behind.</div><div class="side"><div><h2>INV-0003 <span class="chip part">Part paid</span></h2><div class="muted">Client B · Work permit · Owes CAD 1,655.50 · due 30 Nov</div></div>
+<div><h3>Summary</h3><div class="row"><span>Total</span><span>CAD 2,655.50</span></div><div class="row"><span>Paid</span><span>CAD 1,000.00</span></div><div class="row"><span>Credited</span><span>CAD 0.00</span></div><div class="row total"><span>Balance due</span><span>CAD 1,655.50</span></div><button class="btn link">Change due date</button></div>
+<div><h3>Lines</h3><p class="muted">Issued invoices can't be edited — use a credit note. <button class="btn link">Use a credit note</button></p></div>
+<div><h3>Payments</h3><div class="row"><span>R-0004 · Cheque · 16 Nov</span><span>CAD 1,000.00</span></div></div>
+<div><h3>History</h3><p class="muted">Issued 16 Nov by Client F · Payment R-0004 recorded 16 Nov by Client F</p></div>
+<footer><span><button class="btn">Credit note</button> <button class="btn">Write off</button> <button class="btn">⋯</button></span><button class="btn primary">Record payment</button></footer></div></div></section>
+
+<section class="screen" id="credit"><div class="cap">Credit note (right panel)</div>
+<div class="drawer"><div class="dim">INV-0003 behind.</div><div class="side"><h2>Credit note on INV-0003</h2><div class="field"><label>Amount</label><input value="CAD 282.50"><span class="muted">Up to CAD 2,655.50 (the total less earlier credit notes).</span></div><div class="field"><label>Line (optional)</label><select><option>Whole invoice</option></select></div><div class="field"><label>Reason</label><input value="Goodwill"></div>
+<div class="finding">Will issue CN-0001 · the balance falls by CAD 282.50 to CAD 1,373.00.</div>
+<footer><button class="btn">Cancel</button><button class="btn primary">Issue credit note</button></footer></div></div></section>
+
+<section class="screen" id="writeoff"><div class="cap">Write off (right panel) · no amount field</div>
+<div class="drawer"><div class="dim">INV-0009 behind.</div><div class="side"><h2>Write off INV-0009</h2><p>Write off CAD 25.00 (the remaining balance).</p><div class="field"><label>Reason</label><input value="Wire fee"></div><p class="muted">Payment reminders stop. A later payment is extra money.</p>
+<footer><button class="btn">Cancel</button><button class="btn primary">Write off CAD 25.00</button></footer></div></div></section>
+
+<section class="screen" id="reverse"><div class="cap">Reverse entry, trust state Y, money already moved · DW7: the shortfall is an operating → trust line; no negative balance</div>
+<div class="drawer"><div class="dim">Payment R-0007 behind.</div><div class="side"><h2>Reverse R-0007</h2><div class="muted">Cheque · CAD 1,500.00 · Client B · into trust</div>
+<div class="field"><label>Reason</label><select><option>Returned</option><option>Recorded by mistake</option><option>Wrong client</option><option>Other</option></select></div>
+<div class="finding warn"><b>Reversing R-0007 (CAD 1,500.00, Returned) will:</b><ol class="prev"><li>undo CAD 1,500.00 paid from trust to INV-0005 — INV-0005 goes back to CAD 1,500.00 due</li><li>correct the deposit R-0007</li><li>CAD 1,500.00 must move from operating to trust: reversal of R-0007 · the Owner is told once</li></ol><div class="row total"><span>Trust after</span><span>CAD 0.00</span></div></div>
+<footer><button class="btn">Cancel</button><button class="btn primary">Reverse R-0007</button></footer></div></div></section>
+
+<section class="screen" id="reverse-off"><div class="cap">Reverse entry, trust state U · a card payment never offers it</div>
+<div class="drawer"><div class="dim">Payment R-0006 behind.</div><div class="side"><h2>Reverse R-0006</h2><div class="muted">Cheque · CAD 1,000.00 · Client B</div><div class="field"><label>Reason</label><select><option>Recorded by mistake</option></select></div>
+<div class="finding warn"><b>Reversing R-0006 (CAD 1,000.00, Recorded by mistake) will:</b><ol class="prev"><li>put INV-0003 back to CAD 2,655.50 due</li></ol></div>
+<p class="muted">On a card payment this action is absent; the payment shows "Use a refund".</p>
+<footer><button class="btn">Cancel</button><button class="btn primary">Reverse R-0006</button></footer></div></div></section>
+</body></html>

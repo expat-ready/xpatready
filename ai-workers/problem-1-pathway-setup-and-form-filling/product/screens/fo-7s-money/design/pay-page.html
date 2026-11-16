@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FO-7s0 money — the client's pay page (Sample data)</title>
+<style>
+:root{--blue:#0862c5;--blue-50:#e6f4ff;--text:#1d2733;--muted:#5b6b7b;--border:#d8dee6;--bg:#f4f6f9;--white:#fff;--ok:#16794a;--warn:#a35a00;--danger:#b42318;--r:8px}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 Inter,system-ui,sans-serif;color:var(--text);background:var(--bg)}
+h1,h2,h3{font-family:"Proxima Nova",Inter,system-ui,sans-serif;margin:0}h1{font-size:24px}h2{font-size:18px}h3{font-size:16px}
+.note{max-width:1280px;margin:16px auto;padding:12px 16px;background:#fff8e6;border:1px solid #f0d9a0;border-radius:var(--r);font-size:12px}
+nav.tabs{max-width:1280px;margin:0 auto 8px;display:flex;gap:8px;flex-wrap:wrap}nav.tabs a{padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:#fff;color:var(--text);text-decoration:none}
+section.screen{max-width:1280px;margin:0 auto 32px;background:#fff;border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.cap{padding:8px 16px;background:#eef2f6;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}
+.shell{display:grid;grid-template-columns:220px 1fr;min-height:480px}.menu{border-right:1px solid var(--border);padding:16px;background:#fbfcfd}.menu b{display:block;font-size:12px;color:var(--muted);margin:12px 0 4px}.menu a{display:block;padding:6px 8px;border-radius:6px;color:var(--text);text-decoration:none}.menu a.on{background:var(--blue-50);color:var(--blue);font-weight:600}
+.main{padding:20px 24px}.crumb{font-size:12px;color:var(--muted);margin-bottom:8px}.sub{color:var(--muted)}
+.bar{display:flex;align-items:center;gap:8px;margin:16px 0}.bar .grow{flex:1}
+input,select,textarea{font:inherit;border:1px solid var(--border);border-radius:6px;padding:8px 10px;min-height:36px;background:#fff}
+.btn{display:inline-flex;align-items:center;min-height:36px;padding:0 14px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--text);font:inherit;cursor:pointer}.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.link{border:0;background:none;color:var(--blue);padding:0 4px;text-decoration:underline}
+table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);font-weight:600;text-align:left;padding:8px;border-bottom:1px solid var(--border)}td{padding:0 8px;height:44px;border-bottom:1px solid var(--border)}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);font-size:12px}.chip::before{content:"";width:8px;height:8px;border-radius:2px;background:currentColor}.chip.open{color:var(--blue)}.chip.paid{color:var(--ok)}.chip.over{color:var(--warn)}.chip.draft{color:var(--muted)}.chip.part{color:#5b3fb5}.chip.wo{color:#444}
+.stats{display:flex;gap:24px;font-size:14px}.stats span{color:var(--muted)}
+.two{display:grid;grid-template-columns:1fr 340px;gap:20px}.panel{border:1px solid var(--border);border-radius:var(--r);padding:16px}.panel h3{margin-bottom:12px}
+.row{display:flex;justify-content:space-between;padding:4px 0}.row.total{border-top:1px solid var(--border);margin-top:6px;padding-top:8px;font-weight:700}
+.finding{border-left:4px solid var(--blue);background:var(--blue-50);padding:10px 12px;border-radius:6px;margin:10px 0}.finding.warn{border-color:var(--warn);background:#fff4e5}.finding.err{border-color:var(--danger);background:#fdecea}
+.drawer{display:grid;grid-template-columns:1fr 520px}.drawer .dim{background:#e9edf2;padding:20px;color:var(--muted)}.drawer .side{border-left:1px solid var(--border);padding:20px;display:flex;flex-direction:column;gap:12px}.side footer{display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:12px;margin-top:auto}
+.muted{color:var(--muted);font-size:12px}.field{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}.field label{font-weight:600}
+.lines td input{width:100%}.skel{height:14px;border-radius:4px;background:linear-gradient(90deg,#eef2f6,#f7f9fb,#eef2f6)}
+ol.prev{margin:6px 0 0 18px;padding:0}ol.prev li{margin:4px 0}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style></head><body>
+<div class="note"><b>Board for FO-7s0 · group (d)</b> — concept: <code>concept-pay-page.md</code>. 375 px first (the client is on a phone), 1440 centres the card. Card only on invoices for work done, only into operating; never on a trust request or a deposit invoice (P-567 (3)). Plans and autopay only on earned fees, consent recorded (P-578). Consent wording is a draft, Unconfirmed: no counsel. Sample data. Not for porting: this note and the state tabs.</div>
+<nav class="tabs"><a href="#pay">Card offered</a><a href="#down">Account down</a><a href="#down-empty">Account down, no details</a><a href="#done">Return page</a><a href="#paid">Paid</a><a href="#bad">Bad link</a><a href="#plan">Plan with autopay consent</a><a href="#plan-on">Autopay on</a><a href="#nothing">Nothing due today</a><a href="#staffplan">Staff: payment plan panel</a></nav>
+<style>.phone{width:375px;margin:16px auto;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#fff}.firm{padding:14px 16px;border-bottom:3px solid var(--blue);font-weight:700}.pp{padding:16px}.pp .btn{width:100%;justify-content:center;min-height:44px}.big{font-size:24px;font-weight:700}</style>
+
+<section class="screen" id="pay"><div class="cap">Pay page · account Active · no amount field, no saved-card choice, no part payment</div>
+<div class="phone"><div class="firm">Maple Immigration (Sample)</div><div class="pp"><h2>Invoice INV-0003</h2><p class="muted">Issued 16 Nov · Due 30 Nov</p><div class="row"><span>Work permit — application</span><span>CAD 2,300.00</span></div><div class="row"><span>Courier</span><span>CAD 50.00</span></div><div class="row"><span>HST 13% (Sample)</span><span>CAD 305.50</span></div><div class="row total"><span>Amount due</span><span class="big">CAD 2,655.50</span></div>
+<button class="btn primary">Pay CAD 2,655.50 by card</button><p class="muted">You'll pay on Stripe's secure page. Card details never reach Maple Immigration or ExpatReady.</p><a href="#">Download invoice PDF</a></div></div></section>
+
+<section class="screen" id="down"><div class="cap">Account down (Restricted, charges off) · the offline details, no card form, no card button</div>
+<div class="phone"><div class="firm">Maple Immigration (Sample)</div><div class="pp"><h2>Invoice INV-0003</h2><div class="row total"><span>Amount due</span><span class="big">CAD 2,655.50</span></div><div class="finding warn">Online payment is temporarily unavailable.</div><h3>How to pay</h3><p>Bank: Sample Bank · Transit 00011 · Account 1234567 · Payee: Maple Immigration Inc.</p><p>Interac e-Transfer to billing@maple.example</p><p>Interac message: INV-0003 <button class="btn" style="width:auto">Copy</button></p></div></div></section>
+
+<section class="screen" id="down-empty"><div class="cap">Account down and no operating details</div>
+<div class="phone"><div class="firm">Maple Immigration (Sample)</div><div class="pp"><div class="finding warn">Online payment is temporarily unavailable.</div><p>Please contact Maple Immigration, 416-555-0100 (Sample), billing@maple.example to arrange payment.</p></div></div></section>
+
+<section class="screen" id="done"><div class="cap">Return page · the webhook, not the redirect, marks the invoice paid · a reload creates nothing</div>
+<div class="phone"><div class="firm">Maple Immigration (Sample)</div><div class="pp"><h2>Payment received — your receipt is on its way.</h2><p>INV-0003 is being confirmed.</p></div></div></section>
+
+<section class="screen" id="paid"><div class="cap">Paid</div><div class="phone"><div class="firm">Maple Immigration (Sample)</div><div class="pp"><h2>This invoice is paid. Thank you.</h2><a href="#">Receipt R-0005 (PDF)</a></div></div></section>
+
+<section class="screen" id="bad"><div class="cap">Bad, ended, unknown or another firm's link · one sentence for all</div><div class="phone"><div class="firm">ExpatReady</div><div class="pp"><p>This payment link is no longer valid. Please contact Maple Immigration for a new one.</p></div></div></section>
+
+<section class="screen" id="plan"><div class="cap">Plan schedule · consent box unticked by default · pays the amount due today only</div>
+<div class="phone"><div class="firm">Maple Immigration (Sample)</div><div class="pp"><p>Your plan: 3 payments of CAD 400.00 for INV-0011 (CAD 1,200.00)</p>
+<table><thead><tr><th>#</th><th>Due</th><th class="n">Amount</th><th>State</th></tr></thead><tbody><tr><td>1</td><td>15 Dec</td><td class="n">CAD 400.00</td><td><span class="chip open">Due</span></td></tr><tr><td>2</td><td>15 Jan</td><td class="n">CAD 400.00</td><td><span class="chip draft">Upcoming</span></td></tr><tr><td>3</td><td>15 Feb</td><td class="n">CAD 400.00</td><td><span class="chip draft">Upcoming</span></td></tr></tbody></table>
+<label style="display:flex;gap:8px;margin:12px 0"><input type="checkbox"> <span>I allow Maple Immigration to charge this card for the remaining payments of this plan on their due dates: CAD 400.00 on 15 Jan and CAD 400.00 on 15 Feb. I can stop this at any time on this page or by asking Maple Immigration. <span class="muted">Wording version 1</span></span></label>
+<button class="btn primary">Pay CAD 400.00 by card (payment 1 of 3)</button></div></div></section>
+
+<section class="screen" id="plan-on"><div class="cap">Autopay on · Stop by the client</div><div class="phone"><div class="firm">Maple Immigration (Sample)</div><div class="pp"><p>Payment 1 <span class="chip paid">Paid</span></p><p>Autopay is on: we'll charge your saved card on each due date.</p><button class="btn">Stop autopay</button></div></div></section>
+
+<section class="screen" id="nothing"><div class="cap">Plan, nothing due today · a future instalment is never offered early</div><div class="phone"><div class="firm">Maple Immigration (Sample)</div><div class="pp"><p>Your next payment of CAD 400.00 is due 15 Jan. There is nothing to pay today.</p></div></div></section>
+
+<section class="screen" id="staffplan"><div class="cap">Staff: invoice detail → Payment plan (right panel) · Save disabled until the instalments add up exactly · at most 12 (Sample)</div>
+<div class="drawer"><div class="dim">INV-0011 detail behind.</div><div class="side"><h2>Payment plan for INV-0011</h2><p class="muted">Open: CAD 1,200.00</p>
+<table><thead><tr><th>#</th><th>Due date</th><th class="n">Amount</th></tr></thead><tbody><tr><td>1</td><td><input value="15 Dec 2026"></td><td class="n"><input value="400.00"></td></tr><tr><td>2</td><td><input value="15 Jan 2027"></td><td class="n"><input value="400.00"></td></tr><tr><td>3</td><td><input value="15 Feb 2027"></td><td class="n"><input value="370.00"></td></tr></tbody></table>
+<div class="finding warn">Difference: CAD 30.00 left to place.</div><button class="btn link">Add instalment</button><p class="muted">Payment plans are only for invoices for work already done.</p>
+<footer><button class="btn">Cancel</button><button class="btn primary" disabled aria-disabled="true">Save plan</button></footer></div></div></section>
+</body></html>
