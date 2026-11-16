@@ -13,7 +13,7 @@ Rules: RULES.md (as of **P-638**) + DECISIONS **P-639** word for word (board and
 3. **Lead reads done:** #1910 PF-12 (labelled), #1918 FO-3a 1a, #1933 FO-2v (33b11fbbb). Owed reads: #1945 PF-6m (permissions), PF-6r (new PR, permissions), FO-7mv #1924 then FO-7a2 (money, migrations; P-638 order; FO-7mv's body needs "Known gaps" B-10).
 4. **Lanes (cloud):** PF-6r builder (requested 11:3x, high); standby B told PF-6f by message 11:37 (check it pushed; else wake in the prompt box); standby C on #1945; B201 then B202 (one lane: check sees board Today/Stuck + verifies against source, P-639; known-failures table); FO-7b; board fix (local, v13 live; #1932 → #1937 → #1944 labelled). PF-6 part 2a after PF-6r and PF-6m merge (Lead B's PF-6p2.md).
 5. **Every check:** A114 (answer every waiting item, report the oldest wait); board ArtifactData `board` docs `refresh`/`answers` (FORMULAS.md); his steps C5, C21, C23 are "Not now", remind 17 Nov; records PR every 3 h (A113; next by 14:45 IST; size under 800, P-610: split if over, founder 16 Nov).
-6. **Start Lead 67 standby** at the founder's next typed turn (my start was refused by the classifier); Lead 66 then has none.
+6. **Lead 66 started 11:45 IST:** start read done at ~118k (hand-over at ~318k, P-446); 30-min check job 32dc1d1f (:17/:47). **Start Lead 67 standby** at the founder's next typed turn (my start was refused by the classifier); Lead 66 then has none.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 | # | Ask (IST) | Status |
