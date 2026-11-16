@@ -1464,3 +1464,12 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - The licence rule stays proven on PF-6b's test route until FO-6's first licence action lands.
 * **PF-6r** gets a fresh runtime builder at high effort (Lead 65). The J-6 lane declined it: its copy is bound to the evidence lane, at medium effort.
 * **PF-6 part 2a's brief (`PF-6p2.md`) is ready.** It starts after PF-6r and PF-6m merge, PF-6 part 1 being on `main`.
+
+## Rev 16.60 (16 Nov 11:5x IST, Lead B (6)): #1945 PF-6m's questions, and new row PF-6m2
+
+* Ruling on #1945:
+  - **F1** (a deactivated or demoted inviter's invitation still grants roles): fixed in new row **PF-6m2** (`lead-b-briefs/PF-6m2.md`). The accept re-checks that the inviter is active and may still give every role, else 410 "This invitation is no longer valid." PF-6m lists it under "Known gaps", and Lead 66 is asked to log a qa/BUGS row.
+  - **F4:** firm signup writes the money line too (PF-6b rule (2) has no exception), also in PF-6m2.
+  - **F3:** the line counts the role's keys; kept.
+  - **Case Officer and Case Manager** invitations write the line; yes.
+* PF-6m's permissions read at 7d3c079a6 is passed to Lead 66.
