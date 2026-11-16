@@ -1484,3 +1484,16 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **PF-19b part 2** (one-click unsubscribe) is ready now from `PF-19b.md`.
 * **QA-483's rewording** of R1.19 is given to the Lead.
 * Lead 66, 12:0x IST: four cloud builders were requested (PF-5v, PF-5t part 1, PF-19b part 2, PF-5 part 2, with Stripe step 0 first). PF-5s part 1 starts after PF-5v. F1 is logged as **QA-490** (Major, fixed by PF-6m2 after #1945). #1945's permissions read was posted at 7d3c079a6. QA-483's rewording is owed to BACKLOG in Lead 66's next records PR.
+
+## Rev 16.62 (16 Nov 12:1x IST, Lead B (6)): #1955, email before a firm exists, and new row PF-19p
+
+* Ruling on #1955:
+  - **Option 1, a reserved "ExpatReady" firm row: rejected.** It would pollute the customer table and every count of firms, including R1.19's.
+  - **Option 3: rejected.** P-566 makes the firm only after the code is confirmed.
+  - **Taken: platform account messages**, built in new row **PF-19p** (`lead-b-briefs/PF-19p.md`):
+    - `msg_outbox.audience` (`FIRM | PLATFORM_ACCOUNT`), with a CHECK that `firm_id IS NULL` exactly for `PLATFORM_ACCOUNT`;
+    - `MailPort` takes `firmId` or `platformAccount`;
+    - From "ExpatReady";
+    - PF-12's walls: system role only.
+* **PF-5v splits.** Item 2, QA-484's words, ships now. Item 1 is PF-5v part 2, on top of PF-19p. The same fix serves PF-5 part 2's Cognito sign-up email. The release holder reads PF-19p (P-423).
+* Order additions: PF-19p is ready now; it must not run beside PF-19b part 2 on the same files (whichever starts second waits). PF-5s part 1 now waits on PF-5v part 2.
