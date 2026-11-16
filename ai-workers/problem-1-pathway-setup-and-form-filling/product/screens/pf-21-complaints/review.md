@@ -90,3 +90,15 @@ Reviewer (fresh agent) · commit `8ec6c2011` · own isolated copy `screens_pf21s
 * **Collision.** Importing the contract's `Page` as `ComplaintPage` keeps Playwright's `Page` type intact.
 
 **Findings. Blocker:** none. **Major:** none. **Minor:** none new. Earlier r1–r6 and the listed follow-ups stay open as before. **Nit:** J2 in the journey record now reads "type name a multilingual sample name". Drop the first "name".
+
+## Re-review 8d06b5eb8..14a687459 (16 Nov 2026, P-277: the diff only)
+Reviewer (fresh agent) · commit `14a687459` · no server started (the diff is one type-only import line). Diff: `web/src/modules/platform/complaints/contract.ts:6`, `import type { Me } from "@/modules/front-office/sales/contract"` → `"../../front-office/sales/contract.ts"`.
+
+**Verdict: Approve** (no open Blocker or Major). Journey score stays **9/10**: the diff changes no behaviour (`import type` is erased at build).
+
+**What I checked**
+* **Cause and fix match.** `tests/check_pf21s_complaints_browser.ts:15` imports this contract, so the api type-check (`api/tsconfig.json`, `moduleResolution: nodenext`, no `@/*` path) reaches it and cannot resolve the `@/` alias. The relative path names the same file (`web/src/modules/front-office/sales/contract.ts`), which imports only `zod`, so no further alias is pulled in. Both tsconfigs set `allowImportingTsExtensions`, so the `.ts` ending is valid under `nodenext` (api) and `bundler` (web).
+* `NODE_OPTIONS=--max-old-space-size=6144 node product/tools/typecheck.mjs`: **exit 0**. "PASS no new type errors (15 known, 0 fixed)". tsc web 0 errors. The api's 15 known errors include no complaints file and no TS2307.
+* `web`: `npx tsc --noEmit -p .` **exit 0**. `npx vite build` (out to a scratchpad folder, `dist/` untouched) **exit 0**, built in 1.3 s.
+
+**Findings. Blocker:** none. **Major:** none. **Minor:** none new. Earlier r1–r6, the listed follow-ups and the J2 nit stay open as before. **Nit:** this is the only web module file that uses a relative `.ts` import, while the rest use `@/`. The trailing comment explains why. If another web contract is ever imported by a suite, one rule for every contract would be better than single-line exceptions (for example `@/*` in the api tsconfig `paths`). Not for this PR.
