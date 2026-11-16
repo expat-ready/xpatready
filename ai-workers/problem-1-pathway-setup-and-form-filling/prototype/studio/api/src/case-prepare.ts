@@ -157,7 +157,9 @@ export class CasePrepare {
   private async compose(actor: Actor, c: Reached, noWrite: boolean, sink?: (b: ReviewBasis) => void) {
     const s = this.r.snapshotOf(c), pin = c.pins[0];
     // The release must describe the case's own combination (as case-filings.ts): never another combination's filings.
-    const own = await this.db.combination.findUnique({ where: { id: c.combinationId }, select: { combinationKey: true, portalKey: true } });
+    const own = await this.db.combination.findUnique({ where: { id: c.combinationId }, select: { combinationKey: true } });
+    // BK-21 (QA-397, P-137): the IRCC account an open case files through is its pinned release's, never the live draft's.
+    const account = releasedAccount(this.r.releaseSnapshotOf(c));
     if (!own || s?.combination?.key !== own.combinationKey) fail("This case's release does not describe the case's own combination; nothing was worked out. Ask the Lead.", HttpStatus.CONFLICT);
     // #325 break B2: a release row edited underneath its fingerprint is never stored from.
     // C7.8 (M1): the fingerprint is the release's own, never the snapshot with the added forms joined.
@@ -174,7 +176,7 @@ export class CasePrepare {
     const { known } = knownOf(s, people, clean, rows, today);
     const adds = addedFilings(s, known, people);
     const first = deriveFilings(own!.combinationKey, people, undefined, { ages, modes, adds, label: s.combination.label });
-    if (!first.derived) return { case_id: c.id, reference: caseName(c), release_version: pin.release.version, derived: false, why: first.why, portal: own!.portalKey ?? null, filings: [], groups: [], items: [], waiting: [], not_needed: [], fees: [], readiness: [], figures: [], case_figure: null, stage1: [], version: "0" };
+    if (!first.derived) return { case_id: c.id, reference: caseName(c), release_version: pin.release.version, derived: false, why: first.why, portal: account, filings: [], groups: [], items: [], waiting: [], not_needed: [], fees: [], readiness: [], figures: [], case_figure: null, stage1: [], version: "0" };
 
     // Items the release and the case give each filer (forms by who and minimum age, the checklist's documents, biometrics).
     const renderPeople = people.filter((p) => p.role !== "case").map((p) => ({ id: p.subjectId, role: p.role as Role, label: p.label, applies: p.applies }));
@@ -414,7 +416,7 @@ export class CasePrepare {
     const items = stored.items.flatMap((i) => {
       const w = wantedOf(i), base = { id: i.id, kind: i.kind as "form" | "document" | "step", filing: i.filingId, subject: i.subjectId, person: label.get(i.subjectId) ?? "", version: i.version };
       if (i.kind === "form") {
-        const ch = channelOf(lines.get(i.itemKey), accepts.get(i.itemKey), own!.portalKey, i.channel);
+        const ch = channelOf(lines.get(i.itemKey), accepts.get(i.itemKey), account, i.channel);
         // QA-165 (#1318): the item's state waits on facts ("Waiting for N facts…"); a mandatory box left empty is not one: it is
         // its own CRITICAL line on Ready to file (blocksLock, the copy's lock rule too).
         const rd = { missing: formReady(i.itemKey, i.subjectId).missing.filter(blocksLock) };
@@ -715,7 +717,7 @@ export class CasePrepare {
     const questionOf = new Map(view.sections.flatMap((x) => x.questions).map((q) => [q.fact, q.label]));
     const tasks = noWrite ? [] : await recordedOverlay(this.db, { workspaceId: c.workspaceId, caseId: c.id, actor: actor.id, filings, items: items as never, label,
       nowOf: (form, subject) => currentValues(covOf(form, subject)?.boxes ?? []), labelOf: (fact) => questionOf.get(fact) ?? factWords(fact) });
-    return { case_id: c.id, reference: caseName(c), release_version: pin.release.version, derived: true, combination: own!.combinationKey, portal: own!.portalKey ?? null, portal_words: own!.portalKey ? `Filed ${filedThrough(own!.portalKey)}: set by the combination, not on the case` : null,
+    return { case_id: c.id, reference: caseName(c), release_version: pin.release.version, derived: true, combination: own!.combinationKey, portal: account, portal_words: account ? `Filed ${filedThrough(account)}: set by the combination, not on the case` : null,
       // #325's list of people with no filing, each with the reason (kept for its readers and tests).
       not_filing: done.not_filing,
       people: peopleView, filings, groups, items: toFill, waiting, not_needed: notNeeded, fees, stage1, readiness: readiness.map(({ figure: _f, ...x }) => ({ ...x, pin_revision: pin.revision })),
@@ -892,7 +894,7 @@ export class CasePrepare {
     const b = parse(ChannelBody, body);
     if (item!.kind !== "form" || !item!.active) refuse(422, "channel", "Only a form on this application has a channel.");
     const accepts = await acceptsOf(this.db, c.workspaceId);
-    const portal = (await this.db.combination.findUnique({ where: { id: c.combinationId }, select: { portalKey: true } }))?.portalKey ?? null;
+    const portal = releasedAccount(this.r.releaseSnapshotOf(c)); // BK-21: the pinned release's account, never the draft's
     const ok = channelChange(item!.itemKey, b.channel, b.reason, accepts.get(item!.itemKey), portal);
     if (!ok.ok) refuse(ok.status, ok.field, ok.detail);
     const now = await this.build(actor, c);
@@ -924,6 +926,10 @@ export class CasePrepare {
 /** C7.3: one Online form item's answer sheet: the person's boxes for that form (every declared or confirmed answer, each
  *  with its mark and "to confirm", P-242, P-411), in the form's own parts (else the twin's sections), with each entered
  *  tick compared against the answers it froze. */
+/** BK-21 (QA-397; SA-01B v2.1 "Pin: the pack version a filing follows"): the IRCC account written into the case's
+ *  pinned release (engine/snapshot.ts), as workspace.ts reads it; a draft account change reaches a case only by release. */
+const releasedAccount = (s: { combination?: { portal?: string | null } }) => s.combination?.portal ?? null;
+
 function sheetOf(item: { itemKey: string; subjectId: string }, s: ReturnType<Runtime["snapshotOf"]>, people: ReturnType<Runtime["peopleOf"]>, answers: Awaited<ReturnType<Runtime["state"]>>["answers"], rows: Awaited<ReturnType<Runtime["state"]>>["rows"], view: ReturnType<typeof caseView>, entered: { sectionKey: string; enteredAt: Date; enteredBy: string; snapshot: { inputHash: string } }[], parts: Map<string, FormPart[]>, missing: Readiness["missing"], cov = formCoverage(s, people, answers, rows, item.itemKey, item.subjectId)): Sheet {
   const labels = new Map(view.sections.flatMap((x) => x.questions).map((q) => [q.fact, q.label]));
   // QA-392: a box written No because nothing is recorded has no answer of its own: its source and mark are those of the
