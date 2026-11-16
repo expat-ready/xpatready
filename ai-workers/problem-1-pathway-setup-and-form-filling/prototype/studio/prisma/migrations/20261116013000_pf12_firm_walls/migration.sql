@@ -1,40 +1,21 @@
 -- PF-12 (contracts §0 rule 2, §7, §9; map row 3; AG-1-1, AG-1-3, AG-1-45; rows rev 14, rev 16.2, rev 16.34): database walls
 -- between firms. Policies and roles only: no table, column, key or index changes.
 --
--- Roles (cluster-wide, so each is created only when missing; isolated copies share one cluster):
---   * xr_app            LOGIN: the role the API connects as. Owns no table, not a superuser, no BYPASSRLS, cannot create
---                       roles or databases, cannot create in schema public (PostgreSQL 15+ default), so it cannot own a
---                       table, set session_replication_role (superuser-only) or disable a trigger (owner-only).
---                       log_error_verbosity = terse, so a refused row's DETAIL never repeats its values in the log.
---   * xr_data           NOLOGIN: holds the table rights (SELECT, INSERT, UPDATE, DELETE; sequences). xr_app and
---                       xr_staff_bypass inherit them. Later migrations' tables get them by default privileges.
---   * xr_staff_bypass   NOLOGIN, BYPASSRLS: our own staff's audited bypass. xr_app may SET ROLE to it (SET TRUE) but does
---                       not inherit it (INHERIT FALSE); only api/src/platform/firm-scope.ts asBypass() does, for a name on
---                       its named list, and every use writes a log line.
---   * xr_wall_reader    NOLOGIN, BYPASSRLS: owns the firm tables' trigger functions (SECURITY DEFINER, search_path
---                       pinned with pg_temp last) and the one address lookup, so every trigger and check on main sees
---                       every firm's rows as it did before the walls (the app was a superuser) and keeps refusing what it
---                       refused (breaker M1, M2: an invoker trigger could not see the other firm's row it exists to
---                       refuse). Nobody logs in as it or may SET ROLE to it.
---   * xr_case_lookup    NOLOGIN (rev 16.34, #1872 Q10): created here when CS-W1 part 1 has not created it already; PF-12's
---                       from then on. It owns only the case side's firm-lookup definer functions (CS-W1, CS-W3) and gets
---                       no table grant here. xr_app is never a member.
---   The migration role (the role running this file, the tables' owner) is unchanged.
---
--- Walls: ENABLE + FORCE ROW LEVEL SECURITY and one policy per table, firm_id = the session's firm
--- (platform_session_firm(): current_setting('app.firm_id', true), '' read as none). With no firm set a query reads nothing
--- and writes nothing. Exceptions (no policy, row-level security stays off): platform_plan, platform_role_permission,
--- platform_setting_definition, platform_permission_key, platform_terms_version (catalogues: no firm_id). Our own
--- registers (platform_signup_pending; plat_breach, plat_data_request, plat_legal_hold once they exist): row-level
--- security forced and no policy, so only the bypass role reaches them. msg_template and msg_template_version
--- also let a firm read the platform-owned rows (firm_id null); only the bypass role writes those.
--- Every later platform_*, fo_*, money_*, msg_*, auto_* and plat_complaint* table ships its own policy in its own migration
--- (tests/check_pf12_walls.ts fails otherwise).
---
--- Down: DROP FUNCTION platform_web_address_taken(text[], timestamptz, uuid); each trigger function below back to
--- SECURITY INVOKER, RESET search_path, OWNER TO the migration role; DROP POLICY "pf12_firm" (and "pf12_platform_read") ON each table below; ALTER TABLE … NO FORCE ROW LEVEL SECURITY,
--- DISABLE ROW LEVEL SECURITY; DROP FUNCTION platform_session_firm(); REVOKE xr_data, xr_staff_bypass FROM xr_app;
--- ALTER DEFAULT PRIVILEGES … REVOKE …; DROP ROLE only after every database on the cluster has run the same.
+-- Roles (cluster-wide: each created only when missing). xr_app LOGIN: the API's role; owns no table, no superuser, no
+-- BYPASSRLS, no CREATE anywhere, so it cannot own a table, set session_replication_role or disable a trigger; terse
+-- error logs. xr_data NOLOGIN: the table rights (by default privileges for later tables too), inherited by xr_app and
+-- xr_staff_bypass. xr_staff_bypass NOLOGIN BYPASSRLS: xr_app may SET ROLE to it, never inherits it; only firm-scope.ts
+-- asBypass() does, for a use on its named list, each use logged. xr_wall_reader NOLOGIN BYPASSRLS: owns every firm
+-- table's trigger function (SECURITY DEFINER, search_path pinned, pg_temp last) and the address lookup, so each trigger
+-- sees every firm's rows as before the walls (breaker M1, M2); nobody may become it. xr_case_lookup NOLOGIN (rev 16.34):
+-- created only if CS-W1 part 1 has not; owns only the case side's firm-lookup functions; no grant here.
+-- Walls: ENABLE + FORCE row-level security, one policy per table: firm_id = platform_session_firm() (app.firm_id, ''
+-- read as none), so no firm reads and writes nothing. Off (catalogues, no firm_id): platform_plan,
+-- platform_role_permission, platform_setting_definition, platform_permission_key, platform_terms_version. Our own
+-- registers (platform_signup_pending; plat_breach, plat_data_request, plat_legal_hold when they exist): forced, no policy.
+-- Firms also read platform-owned msg_template(_version) rows. Every later firm table ships its policy (tests/check_pf12_walls.ts).
+-- Down: drop the policies and both functions; NO FORCE, DISABLE row-level security; trigger functions back to INVOKER and
+-- the migration role; revoke the grants and default privileges; drop the roles once every database on the cluster has.
 
 DO $$
 BEGIN

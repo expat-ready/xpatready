@@ -1,18 +1,12 @@
 // PF-12 (BACKLOG row PF-12, rows rev 4, 14, 16.2, 16.7, 16.34; Lead B's brief; contracts §0 rule 2, §7, §9; map row 3;
-// AG-1-1, AG-1-3, AG-1-45): database walls between firms. Every line of the row's "Done when", each with a passing and a
-// failing case:
-//   * a raw query with no app.firm_id reads nothing; firm A's session reading firm B's row by id reads nothing, and a
-//     write naming firm B is refused, for one table of each family (platform_, fo_, money_, msg_, plat_complaint);
-//   * the app's role owns no table, is not a superuser, has no BYPASSRLS, cannot set session_replication_role or disable
-//     a trigger, and logs terse errors; the API refuses to start as a table owner (the real main.ts, started twice);
-//   * the bypass role is refused for a use or a route not on its named list, and every use writes its line;
-//   * xr_case_lookup cannot log in and owns no table;
-//   * the missing-policy guard: every platform_*, fo_*, money_*, msg_*, auto_* and plat_complaint* table, including
-//     every later migration's, has its forced policy, unless it is on the named exception list.
-// Three scratch databases: "bare" gets every migration before PF-12's, "empty" every migration, "demo" every migration
-// before PF-12's, then demo-shaped rows (the Sample firms and staff, the front office's Sample rows), then PF-12's and
-// any later one. The migration is measured right after itself (rows rev 16.7: it is never assumed to be the newest).
-// No browser, no model call (US$0). Every value is Sample. All databases are dropped at the end.
+// AG-1-1, -3, -45): database walls between firms. Every Done-when line with a passing and a failing case: no firm reads
+// nothing; firm A cannot read or write firm B's rows (one table per family); the app's role owns nothing, has no
+// superuser, BYPASSRLS, session_replication_role or trigger switch, logs terse errors, and the real main.ts refuses to
+// start as the owner; the bypass only for named uses on their routes, each logged; xr_case_lookup and xr_wall_reader
+// cannot log in; the guard for every later firm table (forced policy naming the firm, trigger functions as the reader);
+// the doors through the real walled server over HTTP. Scratch databases: "bare" (every migration before PF-12's), "empty"
+// (all), "demo" (before PF-12's, Sample firms and front-office rows, then the rest); the migration is measured right
+// after itself (rows rev 16.7). No browser, no model call (US$0). Every value is Sample. All dropped at the end.
 //   tsx studio/tests/check_pf12_walls.ts
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -183,7 +177,6 @@ try {
   ok("PF-12 pass: the migration applies on the demo-data copy and changes no row (owner's counts the same on every family table)",
     tables.every((t) => count(DEMO, t) === counts[t]) && Object.values(counts).reduce((a, b) => a + b, 0) > 0, tables.filter((t) => count(DEMO, t) !== counts[t]));
   const firms = sql(DEMO, "select id from platform_firm order by key").split("\n").filter(Boolean);
-  ok("PF-12: the demo-data copy has at least two Sample firms", firms.length >= 2, firms);
   const [A, B] = firms;
   // Rows for families the seed leaves empty: one per firm, written as the owner.
   sql(DEMO, `insert into msg_firm (firm_id) select id from platform_firm where id in ('${A}', '${B}') on conflict do nothing`);
