@@ -37,6 +37,9 @@ export const SWEEP_PER_FIRM = 50;
 /** Sample (PF-19p, break F1): sends of one platform account row before it is FAILED "send failed". The firm path's retries
  *  are JobPort's; a platform row has no job, so it counts its own tries in state_reason ("send failed: try n of N"). */
 export const PLATFORM_SEND_TRIES = 5;
+/** How long one platform send's transaction may hold its row lock while the adapter answers (a provider call; review m6:
+ *  Prisma's 5 s default would roll back a send the provider had accepted, and the next try would send it again). */
+export const PLATFORM_DELIVER_TX_MS = 60_000;
 /** The wait before a platform row's next try: SWEEP_AFTER_MS, doubled after each failed try (2, 4, 8, 16 minutes). */
 export const platformRetryAfterMs = (tries: number) => SWEEP_AFTER_MS * 2 ** Math.max(0, tries - 1);
 const triesOf = (reason: string | null) => Number(/^send failed: try (\d+) of \d+$/.exec(reason ?? "")?.[1] ?? 0);
@@ -125,8 +128,8 @@ export class Messages implements MessagePort<Tx> {
     for (const id of outboxIds) await this.d.jobs.enqueue(SEND_QUEUE, { firmId, outboxId: id }, { key: `msg.send:${firmId}:${id}`, firmId });
   }
 
-  /** The worker: sends one outbox row at most once. Answers what happened (for logs and tests). */
-  async deliver(firmIdIn: string | null, outboxId: string): Promise<"sent" | "skipped" | "held" | "failed" | "suppressed"> {
+  /** The worker: sends one outbox row at most once. Answers what happened (for logs and tests); "retry": a platform row whose send threw, tried again later (PF-19p). */
+  async deliver(firmIdIn: string | null, outboxId: string): Promise<"sent" | "skipped" | "held" | "failed" | "suppressed" | "retry"> {
     if (firmIdIn === null) return this.deliverPlatform(outboxId);
     const { firmId } = firmScope(firmIdIn);
     let alertDay: string | null = null;
@@ -195,7 +198,7 @@ export class Messages implements MessagePort<Tx> {
       const { providerId } = await adapter.deliver(tx, rendered);
       await tx.msgOutbox.update({ where, data: { state: "SENT", stateReason: null, providerId, sentAt: this.clock.now() } });
       return "sent" as const;
-    });
+    }, { timeout: PLATFORM_DELIVER_TX_MS, maxWait: PLATFORM_DELIVER_TX_MS });
   }
 
   /** Each minute: every QUEUED row older than SWEEP_AFTER_MS gets a job keyed by the hour (a held row tries once an hour);

@@ -49,11 +49,31 @@ const uuid = () => crypto.randomUUID(), box = (w: string) => `pf19p.${w}.${uuid(
 const HASH = "a".repeat(64);
 
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
-for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [URL, "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
+const NEW = "20261116123000_pf19p_platform_account_mail", ALL = readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort();
+const migrate = (d: string) => execFileSync(join(BIN, "psql"), [URL, "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = URL;
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: URL, options: "-c TimeZone=UTC" }) });
 try {
+  // ------------------------------------------------------------------ DW4: the migration in a parallel world (rev 16.7)
+  // Every migration before PF-19p's, demo-shaped rows (the Sample firms, an old-shape outbox row with an event), then
+  // PF-19p's migration, checked right after it, then every later one.
+  const before = ALL.filter((d) => d < NEW);
+  ok(`DW4 pass: the migration has its own stamp, later than every one before it and unique (newest before it: ${before.at(-1)})`,
+    ALL.includes(NEW) && ALL.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1 && before.at(-1)! >= "20261115234500_fo3pa_booking_type_flags");
+  for (const d of before) migrate(d);
   await seedSampleFirms(db);
+  const oldFirm = sql(`select id from platform_firm where key='sample-firm'`), oldId = uuid();
+  sql(`insert into msg_firm (firm_id) values ('${oldFirm}') on conflict do nothing;
+    insert into msg_outbox (id, firm_id, channel, address, rendered_hash, class, state, updated_at) values ('${oldId}', '${oldFirm}', 'EMAIL', 'old.row@example.com', '${HASH}', 'SERVICE', 'SENT', now());
+    insert into msg_event (id, firm_id, outbox_id, kind, occurred_at) values (gen_random_uuid(), '${oldFirm}', '${oldId}', 'SENT', now())`);
+  ok("DW4 fail: before PF-19p's migration there is no audience column and firm_id is required", sql(`select count(*) from information_schema.columns where table_name = 'msg_outbox' and column_name = 'audience'`) === "0"
+    && sql(`select is_nullable from information_schema.columns where table_name = 'msg_outbox' and column_name = 'firm_id'`) === "NO");
+  migrate(NEW);
+  ok("DW4 pass: right after its own migration the old row is FIRM with its firm and its event, and both checks and the index are valid",
+    sql(`select audience || ',' || firm_id from msg_outbox where id = '${oldId}'`) === `FIRM,${oldFirm}` && sql(`select count(*) from msg_event where outbox_id = '${oldId}'`) === "1"
+      && sql(`select count(*) from pg_constraint where conname in ('msg_outbox_audience_check', 'msg_outbox_platform_account_check') and convalidated`) === "2"
+      && sql(`select count(*) from pg_index i join pg_class c on c.oid = i.indexrelid where c.relname = 'msg_outbox_platform_idempotency_key' and i.indisvalid and i.indisunique`) === "1");
+  for (const d of ALL.filter((x) => x > NEW)) migrate(d);
   const firmA = sql(`select id from platform_firm where key='sample-firm'`), firmB = sql(`select id from platform_firm where key='sample-solo'`);
   const senders = Object.fromEntries((await db.platformFirm.findMany({ where: { id: { in: [firmA, firmB] } } })).map((f) => [f.id, { name: f.operatingName, replyTo: f.contactEmail }]));
   const clock = new FakeClock(new Date()), jobs = fakeJobs(clock), files = new LocalFiles(join(WORK, "files"));
@@ -122,6 +142,14 @@ try {
   await messages.dispatch(null, [q3.outboxId]);
   ok("DW1 fail: a platform row whose file no longer matches is FAILED \"content changed\" and nothing is sent", (await db.msgOutbox.findUniqueOrThrow({ where: { id: q3.outboxId } })).stateReason === "content changed" && (await inbox.list(to3, undefined)).messages.length === 0);
 
+  // (review m4) Eight sends of one platform key at once: one row, and every caller answers with it (the advisory lock).
+  const raceKey = uuid(), raceTo = box("race");
+  const race = await Promise.allSettled(Array.from({ length: 8 }, () => tx((t) => messages.send(t, { platformAccount: true, channel: "EMAIL", class: "TRANSACTIONAL", address: raceTo, content: words, idempotencyKey: raceKey }))));
+  const raceIds = new Set(race.map((r) => (r.status === "fulfilled" ? r.value.outboxId : `refused:${String(r.reason)}`)));
+  ok("DW1 pass/fail: eight concurrent sends of one platform key write one row and all eight answer with it (seven repeated)",
+    raceIds.size === 1 && (await db.msgOutbox.count({ where: { audience: "PLATFORM_ACCOUNT", idempotencyKey: raceKey } })) === 1
+      && race.filter((r) => r.status === "fulfilled" && r.value.repeated).length === 7, [...raceIds]);
+
   // ------------------------------------------------------------------------------------- DW1: a provider that refuses
   // (break F1) A platform row whose send throws counts its tries, waits longer each time, and is FAILED after
   // PLATFORM_SEND_TRIES with a log line (ids only); stuck rows never starve a newer one.
@@ -155,6 +183,10 @@ try {
   const v = (cls: string, key: string | null = `'${uuid()}'`) => `'${cls}', now(), ${key}`;
   ok("DW2 fail: a raw PLATFORM_ACCOUNT row that is marketing, service, names a person, or has no idempotency key is refused (23514)",
     [rawPlat("", v("MARKETING")), rawPlat("", v("SERVICE")), rawPlat(", subject_kind, subject_id", `${v("TRANSACTIONAL")}, 'FO_PERSON', gen_random_uuid()`), rawPlat("", v("TRANSACTIONAL", "null"))].every((q) => sqlState(q) === "23514"));
+  const tv = sql(`select id from msg_template_version where firm_id = '${firmA}' limit 1`), cs = uuid();
+  ok("DW2 fail: a raw PLATFORM_ACCOUNT row on WhatsApp, naming a consent, or naming a template version (a firm's) is refused (23514)",
+    [`insert into msg_outbox (id, audience, channel, address, rendered_hash, class, updated_at, idempotency_key) values (gen_random_uuid(), 'PLATFORM_ACCOUNT', 'WHATSAPP', '+14165550100', '${HASH}', 'TRANSACTIONAL', now(), '${uuid()}')`,
+      rawPlat(", consent_id", `${v("TRANSACTIONAL")}, '${cs}'`), rawPlat(", template_version_id", `${v("TRANSACTIONAL")}, '${tv}'`)].every((q) => sqlState(q) === "23514") && tv.length === 36);
   sql(rawPlat("", v("TRANSACTIONAL", "'raw-dup'")));
   ok("DW2 fail: a second raw PLATFORM_ACCOUNT row with the same idempotency key is refused (23505), while the same key in a firm is not",
     sqlState(rawPlat("", v("TRANSACTIONAL", "'raw-dup'"))) === "23505" && sqlState(`insert into msg_outbox (id, firm_id, channel, address, rendered_hash, class, updated_at, idempotency_key) values (gen_random_uuid(), '${firmA}', 'EMAIL', '${box("dupf")}', '${HASH}', 'TRANSACTIONAL', now(), 'raw-dup')`) === "ok");
@@ -166,7 +198,7 @@ try {
   // PF-12's wall (#1910, not on main when this landed): row-level security, firm_id = the session's firm, and a system role
   // that passes it. The same policy is applied here to probe roles, so the rule PF-12 relies on is proved now: a NULL firm
   // matches no firm's session. Where PF-12 is on main, its own roles are probed as well.
-  sql(`create role ${FIRM_ROLE} nologin; create role ${SYSTEM_ROLE} nologin bypassrls; grant select on msg_outbox to ${FIRM_ROLE}, ${SYSTEM_ROLE};
+  sql(`create role ${FIRM_ROLE} nologin; create role ${SYSTEM_ROLE} nologin bypassrls; grant select, insert, update on msg_outbox to ${FIRM_ROLE}, ${SYSTEM_ROLE};
     alter table msg_outbox enable row level security;
     create policy pf19p_probe on msg_outbox to ${FIRM_ROLE} using (firm_id = nullif(current_setting('app.firm_id', true), '')::uuid)`);
   const asRole = (role: string, firm: string, q: string) => sql(`begin; set local role ${role}; select set_config('app.firm_id', '${firm}', true); ${q}; commit`).split("\n").filter(Boolean).at(-1);
@@ -174,6 +206,12 @@ try {
     [firmA, firmB, ""].every((f) => asRole(FIRM_ROLE, f, `select count(*) from msg_outbox where audience = 'PLATFORM_ACCOUNT'`) === "0") && asRole(FIRM_ROLE, firmA, `select count(*) from msg_outbox where firm_id is null`) === "0");
   ok("DW3 pass: the same firm role reads its own firm's rows; the system role reads the PLATFORM_ACCOUNT rows",
     Number(asRole(FIRM_ROLE, firmA, `select count(*) from msg_outbox`)) > 0 && asRole(SYSTEM_ROLE, "", `select count(*) from msg_outbox where audience = 'PLATFORM_ACCOUNT'`) === platformCount);
+  const asRoleState = (role: string, firm: string, q: string) => sqlState(`begin; set local role ${role}; select set_config('app.firm_id', '${firm}', true); ${q}; commit`);
+  const platRow = (key: string) => `insert into msg_outbox (id, audience, channel, address, rendered_hash, class, updated_at, idempotency_key) values (gen_random_uuid(), 'PLATFORM_ACCOUNT', 'EMAIL', '${box("role")}', '${HASH}', 'TRANSACTIONAL', now(), '${key}')`;
+  const touched = (role: string, firm: string) => asRole(role, firm, `with u as (update msg_outbox set state_reason = 'probe' where audience = 'PLATFORM_ACCOUNT' returning 1) select count(*) from u`);
+  ok("DW3 fail: a firm's role behind the wall cannot write a PLATFORM_ACCOUNT row (insert refused 42501) nor change one (0 rows)",
+    asRoleState(FIRM_ROLE, firmA, platRow(uuid())) === "42501" && asRoleState(FIRM_ROLE, "", platRow(uuid())) === "42501" && touched(FIRM_ROLE, firmA) === "0");
+  ok("DW3 pass: the system role writes and changes PLATFORM_ACCOUNT rows", asRoleState(SYSTEM_ROLE, "", platRow(uuid())) === "ok" && Number(touched(SYSTEM_ROLE, "")) > 0);
   sql(`drop policy pf19p_probe on msg_outbox; alter table msg_outbox disable row level security; revoke all on msg_outbox from ${FIRM_ROLE}, ${SYSTEM_ROLE}`);
   if (sql(`select to_regprocedure('platform_session_firm()') is not null`) === "t") {
     ok("DW3 fail (PF-12 on main): xr_app with a firm set reads no PLATFORM_ACCOUNT row", asRole("xr_app", firmA, `select count(*) from msg_outbox where audience = 'PLATFORM_ACCOUNT'`) === "0");
