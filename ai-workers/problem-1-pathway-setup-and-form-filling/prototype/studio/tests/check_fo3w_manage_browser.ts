@@ -153,14 +153,15 @@ try {
     await axe("cancel dialog", p); await shot(p, "cancel-dialog-1440");
     await p.getByRole("button", { name: "Keep booking" }).click();
     ok("FO-3w J-P6 fail side: Keep booking changes nothing", (await db.foBooking.findUniqueOrThrow({ where: { id: row.id } })).status === "RESCHEDULED" && (await p.getByRole("dialog").count()) === 0);
-    const reason = "Moving to another city, Sample reason";
-    await p.getByRole("button", { name: "Cancel", exact: true }).click(); await p.getByLabel("Reason (optional)").fill(reason);
+    // A pasted reason with a tab and a right-to-left mark (break M1): sent as the API takes it, never refused without a word.
+    const typed = "Moving to another city,\tSample reason\u200f", reason = "Moving to another city, Sample reason";
+    await p.getByRole("button", { name: "Cancel", exact: true }).click(); await p.getByLabel("Reason (optional)").fill(typed);
     ok("FO-3w J-P6: the reason box takes at most 500 characters", (await p.getByLabel("Reason (optional)").getAttribute("maxlength")) === "500");
     await p.getByRole("button", { name: "Cancel booking" }).click();
     await p.locator('[data-public-state="cancelled"]').waitFor({ timeout: 15_000 });
     const gone = await db.foBooking.findUniqueOrThrow({ where: { id: row.id } }), done = await mainText(p);
     ok("FO-3w J-P6 pass: Cancel on the same page works with the new token → \"Your booking is cancelled. We have sent you an email.\"", gone.status === "CANCELLED" && done.includes("Your booking is cancelled. We have sent you an email."), done);
-    ok("FO-3w J-P6: the reason was sent and kept on the booking, and is never shown back", (gone as { cancelReason?: string | null }).cancelReason === reason && !done.includes(reason) && !(await p.locator("body").innerText()).includes(reason));
+    ok("FO-3w J-P6 (break M1): the reason, its tab and mark cleaned, was sent and kept on the booking, and is never shown back", (gone as { cancelReason?: string | null }).cancelReason === reason && !done.includes(reason) && !(await p.locator("body").innerText()).includes(reason));
     await axe("cancelled", p); await shot(p, "cancelled-1440");
     await p.evaluate((h) => { window.location.hash = h; }, new globalThis.URL(b.link).hash.slice(1)); await p.locator('[data-public-state="bad-link"]').waitFor({ timeout: 15_000 });
     ok("FO-3w J-P6: an older link opened into the same tab (only the # changes) is read again → the bad-link text", (await mainText(p)) === BAD, await mainText(p));
@@ -197,6 +198,32 @@ try {
       t.includes("This time was just booked.") && t.includes("Please choose another time.") && (await p.getByRole("radio", { name: "Friday 23 October, 22:00 Asia/Dubai time" }).count()) === 0
       && (await db.foBooking.count({ where: { firmId: M.id, startsAt: at("2026-10-23 10:00"), status: "SCHEDULED" } })) === 1, t);
     await axe("time taken", p);
+    await ctx.close();
+  }
+  // Break M2: the answer to a move or a cancel is lost on the way, though the change was made: the page says to check the
+  // email, never "try again" (a retry would only meet the dead link).
+  {
+    await clock.to(at("2026-10-16 09:00"));
+    const b = await booking("free-consultation", "2026-10-19 10:00"), c = await booking("free-consultation", "2026-10-19 15:00");
+    const { p, ctx } = await visitor();
+    await open(p, b.link); await p.getByRole("button", { name: "Reschedule" }).click(); await p.locator("[data-move] [role=radio]").first().waitFor({ timeout: 15_000 });
+    await p.route("**/reschedule", async (rt) => { await rt.fetch(); await rt.abort("failed"); }, { times: 1 });
+    await p.getByRole("radio", { name: "Monday 19 October, 20:00 Asia/Dubai time" }).click(); await p.getByRole("button", { name: "Move to this time" }).click();
+    await p.locator('[data-notice="lost"]').waitFor({ timeout: 15_000 });
+    ok("FO-3w (break M2): a move made but its answer lost → \"We could not confirm your change. Please check your latest email from the firm.\", no buttons, the booking moved",
+      (await mainText(p)).includes("We could not confirm your change. Please check your latest email from the firm.") && !(await mainText(p)).includes("try again") && (await p.locator("main button").count()) === 0
+      && (await db.foBooking.count({ where: { firmId: M.id, startsAt: at("2026-10-19 12:00"), status: "RESCHEDULED" } })) === 1, await mainText(p));
+    await open(p, c.link);
+    await p.route("**/cancel", async (rt) => { await rt.fetch(); await rt.abort("failed"); }, { times: 1 });
+    await p.getByRole("button", { name: "Cancel", exact: true }).click(); await p.getByRole("button", { name: "Cancel booking" }).click();
+    await p.locator('[data-notice="lost"]').waitFor({ timeout: 15_000 });
+    ok("FO-3w (break M2): a cancel made but its answer lost → the same sentence, no buttons", (await p.locator("main button").count()) === 0 && (await db.foBooking.count({ where: { firmId: M.id, startsAt: at("2026-10-19 15:00"), status: "CANCELLED" } })) === 1, await mainText(p));
+    await p.route("**/reschedule", (rt) => rt.abort("failed"), { times: 1 });
+    const d = await booking("free-consultation", "2026-10-19 16:00");
+    await open(p, d.link); await p.getByRole("button", { name: "Reschedule" }).click(); await p.locator("[data-move] [role=radio]").first().waitFor({ timeout: 15_000 });
+    await p.getByRole("radio", { name: "Tuesday 20 October, 17:00 Asia/Dubai time" }).click(); await p.getByRole("button", { name: "Move to this time" }).click();
+    await p.locator('[data-notice="error"]').waitFor({ timeout: 15_000 });
+    ok("FO-3w (break M2) fail side: a move that never reached the firm → \"We could not make this change. Please try again.\", the times still offered", (await mainText(p)).includes("We could not make this change. Please try again.") && (await p.getByRole("button", { name: "Move to this time" }).count()) === 1, await mainText(p));
     await ctx.close();
   }
   // ------------------------------------------------------------------------------------------------------------- J-P7
@@ -248,6 +275,15 @@ try {
     await axe("view (360)", v.p); await shot(v.p, "view-360");
     await v.p.getByRole("button", { name: "Reschedule" }).click(); await v.p.locator("[data-move] [role=radio]").first().waitFor({ timeout: 15_000 });
     ok("FO-3w BR-6: the new-time list fits 360 px", await v.p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)); await shot(v.p, "move-360");
+    // Break M3 (WCAG 2.4.11): Tab through the first 40 times; none is hidden behind the sticky Move bar.
+    const hidden: string[] = [];
+    await v.p.locator("[data-move] [role=radio]").first().focus();
+    for (let i = 0; i < 40; i++) {
+      const r = await v.p.evaluate(() => { const a = document.activeElement as HTMLElement, bar = document.querySelector("[data-move-bar]")!.getBoundingClientRect(), e = a.getBoundingClientRect(); return { radio: a.getAttribute("role") === "radio", label: a.getAttribute("aria-label"), hidden: e.top >= bar.top - 1 }; });
+      if (!r.radio) break; if (r.hidden) hidden.push(r.label ?? "");
+      await v.p.keyboard.press("Tab");
+    }
+    ok("FO-3w (break M3, WCAG 2.4.11): at 360 px no focused time is hidden behind the sticky Move bar", hidden.length === 0, hidden.slice(0, 3));
     await v.ctx.close(); await ctx.close();
   }
   ok("FO-3w AG-4-36 rule 10: the token never travels in a query string (every API call's query is empty or slots' tz)", queries.every((q) => q === "" || /^\?(from=[^&]+&to=[^&]+&)?tz=[^&]+$|^\?from=[^&]+&to=[^&]+$/.test(q)), queries.filter((q) => q !== "").slice(0, 5));

@@ -35,13 +35,26 @@ const limitText = (b: Answer) => b.firm.phone
 const hours = (n: number) => `${Number.isInteger(n) ? n : n.toFixed(1)} ${n === 1 ? "hour" : "hours"}`;
 type Answer = z.infer<typeof Answer>;
 const big = "min-h-11 min-w-11";
-const tokenOf = () => { try { return decodeURIComponent(window.location.hash.slice(1)).trim(); } catch { return ""; } };
+/** The token from the fragment; one far longer than any token FO-3 makes is a bad link, never sent (break m5). */
+const tokenOf = () => { try { const t = decodeURIComponent(window.location.hash.slice(1)).trim(); return t.length > 400 ? "" : t; } catch { return ""; } };
+/** The reason as the API takes it (CancelBody, service.ts): a tab becomes a space; control, bidirectional and invisible
+ *  characters and broken UTF-16 are dropped, so a pasted reason is never refused without a word (break M1). */
+const cleanReason = (v: string) => v.replace(/\t/g, " ")
+  .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069\u200b\u200e\u200f\u061c\ufeff]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, "").trim();
+/** No answer came (status 0): the change may still have been made, which voids this link. Read the booking again: a dead
+ *  link means it was made, so the page says to check the email (break M2), never "try again" on a change already done. */
+async function afterLoss(p: Problem, token: string): Promise<Problem> {
+  if (p.status !== 0) return p;
+  try { await publicCall(path(token), View); return p; } catch (x) { return asProblem(x).status === 404 ? { ...p, slug: "lost" } : p; }
+}
+const LOST = "We could not confirm your change. Please check your latest email from the firm.";
 const asProblem = (x: unknown): Problem => x && typeof x === "object" && !(x instanceof Error) && "issues" in x ? x as Problem : { status: 0, issues: [], slots: [] };
 const path = (token: string, rest = "") => `bookings/${encodeURIComponent(token)}${rest}`;
 
 /** What a refused change says (BR-8..BR-10, BR-6): a bad link, inside the limit, not allowed here, too many, taken. */
-type Notice = { kind: "bad" | "closed" | "off" | "taken" | "error"; text: string };
+type Notice = { kind: "bad" | "closed" | "off" | "taken" | "error" | "lost"; text: string };
 function noticeOf(p: Problem, b: Answer): Notice {
+  if (p.slug === "lost") return { kind: "lost", text: LOST };
   if (p.status === 404) return { kind: "bad", text: BAD_LINK };
   if (p.slug === "too-close-to-meeting") return { kind: "closed", text: limitText(b) };
   if (p.slug === "not-allowed-by-link") return { kind: "off", text: NOT_ONLINE };
@@ -76,8 +89,10 @@ function Manage({ first, opened }: { first: View; opened: string }) {
   const [notice, setNotice] = React.useState<Notice | null>(first.canChange ? null : { kind: "closed", text: first.firm.phone ? limitText(first) : first.message ?? SOON });
   const [step, setStep] = React.useState<"view" | "move">("view");
   const h = React.useRef<HTMLHeadingElement>(null);
-  React.useEffect(() => { if (done || step === "move") h.current?.focus(); }, [done, step]);
-  const shut = notice?.kind === "bad" || notice?.kind === "closed" || done === "cancelled";
+  // After the first draw, every change of step, state or notice puts focus on the heading, never on the page body (break m1).
+  const drawn = React.useRef(false);
+  React.useEffect(() => { if (drawn.current) h.current?.focus(); drawn.current = true; }, [done, step, notice]);
+  const shut = notice?.kind === "bad" || notice?.kind === "closed" || notice?.kind === "lost" || done === "cancelled";
   const canMove = !shut && b.allowReschedule && (done === "moved" || first.canReschedule);
   const canCancel = !shut && b.allowCancel && (done === "moved" || first.canCancel);
   const offline = !shut && first.canChange && (!b.allowReschedule || !b.allowCancel);
@@ -105,7 +120,12 @@ function Manage({ first, opened }: { first: View; opened: string }) {
           </div>
           {step === "move" && canMove ? <Move token={token} b={b} notice={notice?.kind === "taken" ? notice : null}
             onBack={() => { setNotice(null); setStep("view"); }}
-            onMoved={(a) => { const { manageToken, ...rest } = a; setB(rest); setNotice(null); setDone("moved"); setStep("view"); onToken(manageToken); }}
+            onMoved={(a) => {
+              const { manageToken, ...rest } = a;
+              // A move into the self-service window leaves no change by link (break m8): the limit sentence, no buttons.
+              const late = Date.now() >= Date.parse(rest.startsAt) - rest.selfServiceLimitHours * 3_600_000;
+              setB(rest); setNotice(late ? { kind: "closed", text: limitText(rest) } : null); setDone("moved"); setStep("view"); onToken(manageToken);
+            }}
             onRefused={(p) => { const n = noticeOf(p, b); setNotice(n); if (n.kind !== "taken" && n.kind !== "error") setStep("view"); }} /> : null}
         </>}
       </section>
@@ -130,7 +150,7 @@ function Move({ token, b, notice, onBack, onMoved, onRefused }: { token: string;
     if (!pick || sending.current) return;   // a double click moves once
     sending.current = true; setBusy(true);
     try { onMoved(await publicCall(path(token, "/reschedule"), Moved, { method: "POST", body: JSON.stringify({ startsAt: pick.startsAt, timeZone: zone }) })); }
-    catch (x) { const p = asProblem(x); setPick(null); if (p.slug === "slot-taken") await q.refetch(); onRefused(p); }
+    catch (x) { const p = await afterLoss(asProblem(x), token); setPick(null); if (p.slug === "slot-taken") await q.refetch(); onRefused(p); }
     finally { sending.current = false; setBusy(false); }
   };
   return (
@@ -146,13 +166,13 @@ function Move({ token, b, notice, onBack, onMoved, onRefused }: { token: string;
                   <h2 className="text-base font-semibold">{dayWords(new Date(list[0].startsAt), zone)}</h2>
                   <ul className="mt-2 flex flex-wrap gap-2">{list.map((s) => (
                     <li key={s.startsAt}><button type="button" role="radio" aria-checked={pick?.startsAt === s.startsAt} aria-label={whenWords(new Date(s.startsAt), zone)} onClick={() => setPick(s)}
-                      className={cn(big, "rounded-lg border px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", pick?.startsAt === s.startsAt ? "border-primary bg-primary font-semibold text-primary-foreground" : "border-border")}>{hhmm(new Date(s.startsAt), zone)}</button></li>
+                      className={cn(big, "scroll-mb-28 rounded-lg border px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", pick?.startsAt === s.startsAt ? "border-primary bg-primary font-semibold text-primary-foreground" : "border-border")}>{hhmm(new Date(s.startsAt), zone)}</button></li>
                   ))}</ul>
                 </div>
               ))}
             </div>
           ) : <p data-public-state="no-times" className="mt-3 text-sm">No free times in the next two weeks. Please reply to your confirmation email.</p>}
-      <div className="sticky bottom-0 mt-5 flex flex-wrap gap-2 border-t border-border bg-surface py-3">
+      <div data-move-bar className="sticky bottom-0 mt-5 flex flex-wrap gap-2 border-t border-border bg-surface py-3">
         <Button size="lg" className="h-11" disabled={!pick} busy={busy} onClick={move}>Move to this time</Button>
         <Button size="lg" variant="outline" className="h-11" onClick={onBack}>Back</Button>
       </div>
@@ -164,15 +184,21 @@ function CancelDialog({ token, b, onDone, onRefused }: { token: string; b: Answe
   const [open, setOpen] = React.useState(false);
   const [reason, setReason] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [bad, setBad] = React.useState<string | null>(null);
   const sending = React.useRef(false);
   const cancel = async () => {
     if (sending.current) return;
     sending.current = true; setBusy(true);
     try {
-      const r = reason.trim();
+      const r = cleanReason(reason);
       const a = await publicCall(path(token, "/cancel"), Answer, { method: "POST", body: JSON.stringify(r ? { reason: r } : {}) });
       setOpen(false); onDone(a);
-    } catch (x) { setOpen(false); onRefused(asProblem(x)); }
+    } catch (x) {
+      const p = await afterLoss(asProblem(x), token);
+      // A refused reason stays in the dialog, on its field (break M1); anything else closes it and shows on the page.
+      if (p.status === 400) setBad(p.detail ?? "Please check the reason.");
+      else { setOpen(false); onRefused(p); }
+    }
     finally { sending.current = false; setBusy(false); }
   };
   return (
@@ -184,8 +210,8 @@ function CancelDialog({ token, b, onDone, onRefused }: { token: string; b: Answe
           <DialogPrimitive.Title className="text-base font-semibold">Cancel this booking?</DialogPrimitive.Title>
           <DialogPrimitive.Description className="mt-1 text-sm text-text-muted [overflow-wrap:anywhere]">{whenWords(new Date(b.startsAt), b.timeZone)}, with <bdi>{b.firm.name}</bdi>.</DialogPrimitive.Description>
           <form className="mt-4 flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); void cancel(); }}>
-            <Field label="Reason (optional)">
-              <textarea value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={3}
+            <Field label="Reason (optional)" error={bad}>
+              <textarea value={reason} onChange={(e) => { setReason(e.target.value); setBad(null); }} maxLength={500} rows={3}
                 className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" />
             </Field>
             <div className="flex flex-wrap justify-end gap-2">
