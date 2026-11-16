@@ -69,3 +69,31 @@ Setup: scratch database `xr_studio_pf19pbreak_25961` on 127.0.0.1:54329. First m
 * **Unchanged suites pass:** `check_pf19p_platform_mail` 48/0, `check_pf19a_messages_schema` 94/0, `check_pf19b_sending` 42/0, `check_pf19b_mail` 29/0, `check_pf0p_ports` 113/0, `check_pf4b_session_reads` 55/0. `tsc -p api`: the first 12 errors are all in test files that already fail on main (c18, c69, cost_check, vv_checklist); the rest of the list was not read.
 
 Verdict: Changes requested
+
+## Re-break (diff a1b2794e8..8b82dfd2f)
+
+Diff only (P-277): JobOptions firmId XOR `platform: true`, PLATFORM_JOB_QUEUES, the platform job path, try counting, the two BYPASS_USES rows; PF-12's own changes not re-broken. Probe (deleted) on scratch DB `xr_studio_pf19pbreak2_<pid>` (dropped; PF-12 roles kept): the real PgBossJobs with PlatformJobs' `handle` wrapper (withFirm / asJob), Messages and MessagesMail on a WalledPool as xr_app, a spying adapter; plus fakeJobs on a FakeClock.
+
+**R1 Minor: a platform job picks its path from its payload, so it sends a firm's row as the system role.** `api/src/platform/messages/send/messages.ts:239` takes the firm path whenever `payload.platform !== true` and reads `payload.firmId`, even on a job with no firm. Reproduced: (a) `jobs.enqueue("messages.send", { firmId: A, outboxId: <A's QUEUED row> }, { key, platform: true })` is accepted (`queued: true`); the row is then SENT through the firm path under bypass use `job:messages.send` (audit line seen). (b) A hand-written pg-boss row `{ firmId: null, recurring: true, payload: { firmId: A, outboxId } }` on messages.send passes the runner (`pgboss-jobs.ts:284` lets any recurring envelope through without a firm) and does the same. Expected: a job with no firm never reaches the firm path (`ports/jobs.ts`: "never touches a firm's rows"). Reach: code or a hand-made row only. No cross-firm read: deliver filters on `firm_id = payload firm AND id`, and consent and the cap still apply. Fix shape: branch on `j.firmId === null`, not on the payload.
+
+**R2 Minor: a try that fails before it is counted leaves the row QUEUED for good.** `deliverPlatform` counts a try only if its own `findFirst` / `updateMany` work (`messages.ts:182-184`). The sweep then re-queues under `platformJobKey(id, tries)` (`:233`), and that key is already used. Reproduced on fakeJobs, with the database refusing for one try (`$transaction` and `msgOutbox` reject): the job failed, `state_reason` stayed null, and 48 hourly sweeps queued 0 jobs. The row stayed QUEUED with no log line. On pg-boss a used key never queues again (checked: second `enqueue` of the same key gives `queued: false`), so the same happens once all 4 attempts of one job die this way (for example when xr_app's connections are refused while pg-boss's own pool works). The dead-letter list records the job. Expected (header comment): "the sweep queues a row a crash or a failed job left QUEUED". The firm path's hourly sweep key does not have this problem.
+
+**R3 Minor (bounded): the sweep window can still hold back a due row.** The sweep reads the 2000 oldest-`updated_at` QUEUED rows before it filters by wait (`messages.ts:228`). Reproduced: 2100 rows at try 4, tried 10 minutes earlier (not yet due), plus one never-tried row that is due. The sweep queued 0 and skipped the due row. This clears by itself: the backlog falls due within 16 minutes and fails out at 50 a run. It needs more than 2000 stuck sign-up emails, and the sweep only matters when a dispatch was lost. F1's starvation and silence are otherwise fixed (see Held).
+
+**Note, not a finding (ruled "outside"):** `platform.account.mail` with `outside: true` (`firm-scope.ts:108`) is also allowed inside a firm's job (`withFirm(A)`): MessagesMail writes an ExpatReady platform email there. The same goes for `asJob("messages.send")`. No caller does this today; sign-up's routes are requests.
+
+**Held**
+* JobOptions refuses `platform: false`, `"true"`, `1`, both (`firmId` plus `platform`), neither, and `firmId` with `platform: false`. A firm job with `platform: undefined` is accepted. Through the fake, `enqueue` and `schedule` on another queue refuse a platform job and use no key. Through PgBossJobs, `enqueue` and `schedule` on another queue, both, and `"true"` are all JobRefused.
+* Hand-written pg-boss rows: a platform row on another queue (its handler never ran), and `platform: true` with firm A on messages.send, both go to retry with "a platform job on a queue not in PLATFORM_JOB_QUEUES, or naming a firm".
+* Payloads naming the wrong row: a platform job with `{ platform: true, outboxId: <firm row> }` completes and the firm row stays QUEUED; a firm job with no payload `firmId`, or with payload `platform: true`, naming a platform row leaves it QUEUED (0 provider calls).
+* Retries on pg-boss (3 retries) plus the sweep:
+  - one job makes exactly 4 provider calls and ends "try 4 of 5" with 1 dead letter;
+  - a sweep before the 16-minute wait queues 0; after it, two sweeps at once queue 1;
+  - the 5th call ends the row FAILED "send failed", with one log line of ids;
+  - a sweep of the FAILED row queues 0.
+* A dispatch retry racing a sweep try, with the provider accepting the second call: SENT, 2 provider calls (1 refused, 1 accepted), no double send. Nothing ends FAILED early: 5 counted calls give FAILED.
+* Bypass routes: `platform.account.mail` is refused on POST /api/platform/staff/invitations, GET /api/public/signup, /api/public/signupx, and in a firm's request with the firm set. It is allowed on POST /api/public/signup/verify/ (same route). `job:messages.send` is refused inside a request.
+* PF-12 merge: msg_outbox has RLS and FORCE on, with policy `firm_id = platform_session_firm()`. xr_app reads and updates 0 platform rows as firm A, and on the sign-up route without the bypass. The demo inbox through the walled pool lists the platform email on GET (and HEAD/slash) /api/demo/platform-inbox, and gives BypassRefused on another route. The PF-19p migration touches no PF-12 function.
+* `check_pf19p_platform_mail` at 8b82dfd2f: 65/0.
+
+Verdict: Approve 8b82dfd2f1170990519b1daa6d701d1dd5a0b345
