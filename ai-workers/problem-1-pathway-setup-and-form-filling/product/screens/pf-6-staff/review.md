@@ -80,3 +80,34 @@ The suite passed 47/47 on two fresh copies. It cannot rerun on one copy (seat li
 **Verdict: Block**
 1. Major: `callback-page.tsx` — a sign-in on the refused page's card must open My account (with a case).
 2. Major: `callback-page.tsx` — a `#code=` opened in an already-open callback tab must be posted once and removed from the address (with a case).
+
+## Re-review, diff only (P-277): `8028615d4..4e6bb0a2f`, 16 Nov 2026
+Read: the diff under `prototype/studio` (`callback-page.tsx`, `frame.tsx`, `session.ts`, the suite).
+
+Ran:
+* `web/src` equals the head's. A scratch `vite build` gives the same bundle the copies serve (`index-DlyWx1IJ.js`).
+* pf6a passed **52/52 twice on one fresh copy** (:4562); the plan's seats are back to 5 afterwards.
+* FO-4 passed **45/45** on a fresh copy. It shares the changed sign-in card.
+* Web `tsc` is clean on the head.
+* A probe on :4561: m4, m6 and m9 as described; axe finds nothing on both refused states.
+
+| Item | Fix | Case | Held |
+|---|---|---|---|
+| Major 1 / M1 | `callback-page.tsx:19,45`: a new token after a refusal goes to `/account` | "DW4 (break M1)" | ✓ |
+| Major 2 / M2 | `callback-page.tsx:41`: `hashchange` takes the code, posts it once and clears the address | "DW4 (break M2)" | ✓ |
+| M3 | `session.ts` `memoryOnly`: after a refused write, memory is the only copy. The `/me` loop is gone (fewer than 5 calls). | "DW3 (break M3)", "DW5 (break M3)" | ✓ |
+| m2 / m4 (mine) | `session.ts:81`: a 401 ends only the session that is still current | "DW2 (break m2)", which fails without the guard | ✓ |
+| m4 / m1 (mine) | Signed in: "This link was not used" with Open My account, and no card | probe | ✓ |
+| m6 | Focus moves to the card's heading after Sign out or Sign in again here (`frame.tsx` `had`) | probe | ✓ |
+| m9 | "These pages are for your firm's staff." | probe; FO-4 45/45 | ✓ |
+| Suite rerun | Seats are lent and given back | 52/52 twice on one copy | ✓ |
+
+New findings (all Minor or Should; none blocks):
+1. The m4 notice joins the server's "…Sign in again." to " You are still signed in as before." On the network-failure path it also says "or sign in below", but no card is shown while signed in. Should: drop the clashing tail when signed in (`callback-page.tsx:37,52`).
+2. A later in-app mount of the callback page with no code, after a code was taken in the same page lifetime, would stay on "Signing you in…" (`!sent.size`, `:25`). Nothing in the app leads there today: success and the card both replace the history entry. Should: treat it as refused or done.
+3. The seat lend is restored only at the end of the suite, not in a `finally` (`check_pf6a_frame_browser.ts`). This matters only on a crashed local copy, never in CI.
+4. Carried over, not changed, which is acceptable: DW6's browser half (the menu is proved through the pure function); DW3's `["pf"]` drop cannot fail while the keys carry the token (the builder records both in the PR body); "rcic"; the loading text instead of a skeleton; the firm key as the title (Lead B's ruling).
+
+Journey score after the fixes: next step 1, feedback ½, error recovery 1, so **9/10** (plain words stays ½).
+
+**Verdict: Approve** for `4e6bb0a2f1a761cbecf6b68e6267d25d8d6f28b2`. No open Blocker or Major.
