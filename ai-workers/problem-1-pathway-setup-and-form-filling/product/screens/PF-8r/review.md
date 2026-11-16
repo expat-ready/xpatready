@@ -18,6 +18,16 @@ Reviewer (Opus, P-303; I did not build it). Brief: `origin/main:…/design/lead-
 * **Unchanged by this commit:** B1 and M1 (no `SKIP` line, no nightly job), m1, m3 and m4. The tech lead has since given the builder the baton for both files (comment 6922144923). For their condition, "must not hang on `caps == '[]'`": as I read `plan`, the scheduled run has no input, so `caps` is `[]` and the job runs every night. It is skipped only on a capability re-test. The tech lead decides the wording.
 * Trivial: the unknown-argument message still lists only the three old options.
 
+## Re-review at 600be4e0 (`git diff 207ef224..600be4e0`; scratchpad worktrees, never the shared checkout)
+* **Fixes.** d228ceb0 fixes m1: each drill first deletes its old evidence and log. It also fixes m3: `starts_with`, so 66 tables, no `form_*`. The drill test passes **10/10** on b28740a9, whose drill, test and runbook files are identical to 600be4e0; restore times 30-35 s.
+* **Wiring test at b28740a9.** The baton patch was briefly on the branch at b28740a9, and its wiring was sound:
+  * the job has no `needs`, and its `if` is the schedule or a full hand-run;
+  * `check_pf8r_nightly_job.ts` passed 6/6;
+  * it goes red on each of 4 mutations of the real files: the old `needs: plan` wiring, no `SKIP`, no artefact, and a condition that is never true;
+  * a change to `nightly.yml` alone selects it.
+* **At 600be4e0 those two files are undone again**, so B1 and M1 still stand. In this worktree the PR's own `--changed` set picks both `check_pf8r_restore.ts` and `check_pf8r_nightly_job.ts`. The new suite fails **1/6** there because the job and the `SKIP` name are missing. That is expected, and it also turns the PR check red until the Lead's commit lands.
+* **m2** (no fail case for app/smoke) stays a Minor. **m4** (stale PR body) is still open.
+
 ## The two checks the brief asks for
 * **(a) A second, fresh database: yes.** The target is a second compose project (`xr-drill-dst-<tag>`, its own network and anonymous volume) of the same pinned image. Before restoring, the script requires different `pg_control_system()` system ids **and** 0 public tables in the target (`restore-drill.sh:116-119`). A renamed copy, a second database in the same cluster, or the source itself all fail that check (mutation above).
 * **(b) DW2's corruption is after the restore, in the restored copy: yes.** The `--corrupt` block runs on `$DST` after `pass "restore"` (`:125`, block `:126-131`). The source counts and hashes are taken before the dump (`:106`), and the source is never written. The test asserts that the `PASS restore` line comes before the `NOTE corrupt` line (`check_pf8r_restore.ts:50`). Result: `FAIL rows platform_firm: count 2 in the source, 0 in the restored copy`, 71 of 72 tables the same, no `PASS rows`.
@@ -76,6 +86,11 @@ D1 ½ (the drill, runbook and test match the brief; the nightly entry is missing
 ## What I could not check
 A real bash 3.2 or macOS run; the drill on GitHub's runner (DW4's real bound) and a nightly run; the cloud steps (PF-8rc, "not run yet" by design); PF-12 (#1910) roles beyond the 6 roles dumped today.
 
-**Verdict: Block** at 207ef224. Fix B1 and M1: both close when the builder's two-file patch lands on this branch (the baton is now given; I judged the proposal sound), then re-review that diff. The three files are sound at 207ef224, and DW7 meets Lead B's condition. The Minors do not block.
+**Verdict: Block** at 600be4e0 (it was Block at 207ef224 too). The fix is the Lead's one commit with `nightly.yml`'s `restore-drill` job and the `SKIP` name, as they were at b28740a9. Re-review then only needs to confirm those two files and that `check_pf8r_nightly_job.ts` passes 6/6. Everything else is approvable.
+
+
+**Note, eaaa74fd5** (the tech lead's commit, which landed while I wrote this): `git diff b28740a9 eaaa74fd5` outside `screens/` is empty. Its code is therefore exactly the tree I tested at b28740a9, and B1 and M1 are closed there. Once the release holder has read the `.github/` lines (P-423), I would approve eaaa74fd5 on that basis. The coordinator asks for that verdict separately.
+
+Earlier verdict, at 207ef224: Fix B1 and M1: both close when the builder's two-file patch lands on this branch (the baton is now given; I judged the proposal sound), then re-review that diff. The three files are sound at 207ef224, and DW7 meets Lead B's condition. The Minors do not block.
 
 Reviewer: Block
