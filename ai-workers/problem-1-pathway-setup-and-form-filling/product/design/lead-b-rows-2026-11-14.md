@@ -1450,3 +1450,17 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **FO-7mv (#1924) merges first**, shrunk as its lane proposed (comment 6907573264: the cover check and invoice caps go, and the correction kinds are named as FO-7a2's). **FO-7a2 follows in the same lane**, because its tests need FO-7mv's `money_move_*` tables, `money_to_move` and `correction_kind`.
 * `lead-b-briefs/FO-7a2.md` is amended: it starts when FO-7mv is on `main`, with its migration stamp later than FO-7mv's.
 * **Known gap until FO-7a2 merges:** a bounced cheque whose money has already moved cannot be recorded (B-10). FO-7mv's PR body names it under "Known gaps", with FO-7a2 as the fix. This supersedes rev 16.52–16.53's "FO-7a2 goes first".
+
+## Rev 16.59 (16 Nov 11:3x IST, Lead B (6)): new row PF-6f (PF-6 part 1's follow-ups), and the J-6 findings answered on #1914
+
+* **PF-6f: `lead-b-briefs/PF-6f.md`.**
+  - It fixes the sign-in callback page stuck on "Signing you in…" after Back (Devin on #1912, confirmed). On a mount with no code, the page decides from the current session.
+  - It also does the reviewer's three Shoulds (comment 6905937729): one plain refused-while-signed-in notice, axe on that state, and the test's seat given back in a `finally`.
+  - It starts now, beside PF-6 part 2a (no shared file).
+* **#1914 (J-6 part 1), the breaker's findings:**
+  - F2 (an Owner's view differs between leads and retainers): ruled, fixed by **FO-2v** (#1933). There is one rule, from AG-2-64 and SA-6-24 with PF-6b ruling 4's setting.
+  - F3 is fixed by **PF-6m** (#1945, the draft Lead 65 opened).
+  - F5 is fixed by FO-2v.
+  - The licence rule stays proven on PF-6b's test route until FO-6's first licence action lands.
+* **PF-6r** gets a fresh runtime builder at high effort (Lead 65). The J-6 lane declined it: its copy is bound to the evidence lane, at medium effort.
+* **PF-6 part 2a's brief (`PF-6p2.md`) is ready.** It starts after PF-6r and PF-6m merge, PF-6 part 1 being on `main`.
