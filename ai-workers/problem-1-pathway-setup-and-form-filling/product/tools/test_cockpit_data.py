@@ -366,7 +366,7 @@ class TrustAndInvariants(unittest.TestCase):
         t2 = json.loads(json.dumps(theirs))
         plus = lambda n: (date.fromisoformat(k["forecast_p85_date"]) + timedelta(days=n)).isoformat()
         r7 = cd.reconcile_compare(k, theirs, None)
-        self.assertEqual(r7["compared"], 35)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's six + v63's eight
+        self.assertEqual(r7["compared"], 36)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's six + v63's eight + P-636's Proven
         t2["numbers"]["forecast_p85_date"]["value"] = plus(1)                 # +1 day: agrees
         self.assertEqual(cd.reconcile_compare(k, t2, None)["state"], "agree")
         t2["numbers"]["forecast_p85_date"]["value"] = plus(2)                 # +2 days: disagrees
@@ -951,7 +951,7 @@ class Delivery24h(unittest.TestCase):
             out, note = cd.run_reconcile(d, rec)
             self.assertIsNone(note)
             _, c = run(d, rec=out, note=None)
-            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 35, []))
+            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 36, []))
 
 
 BLP = "files/" + cd.REL + "/BACKLOG.md"
@@ -1324,6 +1324,98 @@ class Tooltips(unittest.TestCase):
         self.assertIsNone(E["pipeline.queue_wait_min"]["n"])              # flow-measure not run
         self.assertTrue(E["pipeline.queue_wait_min"]["n_reason"].startswith("tools/flow-measure.py not run yet"))
         self.assertEqual(E["team.front_office.lanes"]["n"], 2)
+
+    def test_counts_above_zero_list_their_items(self):
+        """16 Nov (founder on a phone: a count with nothing behind it): every strip and top-strip count above 0 that is a
+        list of things says what is behind it, and Needs you lists each item it counts."""
+        E, d = self.E, self.d
+        for k in ("strip.release1", "strip.health", "strip.next_date"):
+            self.assertTrue(E[k].get("behind"), k)
+        self.assertEqual(len(E["strip.health"]["behind"]), len(d["health"]["items"]))
+        built = [r for r in d["build_rows"] if r.get("built")]
+        self.assertEqual(sum(1 for z in E["strip.release1"]["behind"] if " — built " in z), min(len(built), 40))
+        ny = d["summary"]["needs_you"]["v"]
+        self.assertEqual(len(E["strip.needs_you"].get("behind") or []), ny)
+        self.assertTrue(E["strip.needs_you"]["todo"])
+        lanes = (d.get("top_numbers") or {}).get("lanes") or {}
+        if (lanes.get("working") or {}).get("value"):
+            self.assertIn("top.lanes", E)
+            self.assertTrue(any(z.startswith("working: ") for z in E["top.lanes"]["behind"]))
+
+    def test_needs_lines_one_per_item(self):
+        ny = {"items": [{"id": "A9", "line": "pick the logo", "by": "2026-11-20"}, {"id": "F3", "line": "sign the lease"}]}
+        self.assertEqual(cd.needs_lines(ny), ["A9: pick the logo — by 2026-11-20", "F3: sign the lease"])
+        self.assertEqual(cd.needs_lines({}), [])
+
+    def test_page_stale_banner_and_panel_order(self):
+        """A view left open says plainly it is old and to reload (amber from 45 min); the strip keeps the data time in IST;
+        a panel shows what to do and what is behind it before the method; an open strip panel survives the minute redraw."""
+        html = open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read()
+        self.assertIn("old: reload</b>", html)
+        self.assertIn('id="fresh"', html)
+        self.assertIn("<b>Data '+g+'</b>", html)
+        self.assertLess(html.index("<b>What to do:</b> '+esc(e.todo)"), html.index("<dt>Counts</dt>"))
+        self.assertIn("if(i>=0){var nb=s.querySelectorAll(\".ib\")[i];if(nb)tipShow(nb);}", html)
+        self.assertIn("flex-wrap:nowrap;overflow-x:auto", html)            # one row of tabs on a phone
+        # page-made counts list their items on tap (data-items)
+        self.assertIn('querySelectorAll("[data-tip],[data-info],[data-nm],[data-items]")', html)
+        self.assertEqual(html.count("mineR.map(riskLine)"), 1)              # "Who must act: You" lists Needs you items and your risks
+
+    def test_first_screen_p636(self):
+        """P-636 (founder 16 Nov): six answers in three words. Proven comes from qa's file on main only, Built = all parts
+        merged or qa passed, and every answer has its explanation with what is behind it."""
+        f = self.d["first"]
+        self.assertEqual(set(f), {"words", "release", "today", "needs", "stuck", "choke", "health", "rule"})
+        self.assertIn("Only Proven counts as delivered", f["words"])
+        R = f["release"]
+        self.assertEqual(R["planned"], 8)                                    # 8 Build rows in the fixture checklist
+        self.assertIsNone(R["proven"])                                       # the fixture's qa file has no R1 rows: not measured, never 0
+        self.assertEqual(R["state"], "not measured")
+        for k in ("first.release", "first.today", "first.needs", "first.stuck", "first.choke"):
+            self.assertIn(k, self.E)
+        self.assertEqual(f["today"]["state"], "not set")                     # no today_goal in the fixture Lead input
+        self.assertTrue(f["choke"]["stage"])
+
+    def test_first_screen_rules_on_a_small_case(self):
+        d = {"freshness": {"generated_at": "2026-11-16T04:48:07Z"}, "capability_table": {"rows": [{"map": m, "cap": f"cap {m}"} for m in (1, 2, 3, 4)]},
+             "build_rows": [{"map": 1, "built": "2026-11-14"}, {"map": 2, "built": None}, {"map": 3, "built": "2026-11-15"}, {"map": 4, "built": None}],
+             "pace": {"committed_date": "2026-11-29"}, "forecast": {"p50": {"value": None}},
+             "needs_you": {"items": [{"id": "A1", "line": "pick", "by": None, "src": "STATE"}]},
+             "risks": {"items": [{"id": "C5", "risk": "no test", "owner": "founder", "trigger_date": "2026-11-16", "mitigation": "book it", "status": "open"},
+                                 {"id": "C12", "risk": "no hosting", "owner": "founder", "trigger_date": None, "mitigation": "open it", "status": "open"},
+                                 {"id": "C2", "risk": "walls", "owner": "tech lead", "trigger_date": "2026-11-10", "mitigation": "x", "status": "open"}]},
+             "health": {"light": "red", "items": []}, "value_stream": {"stages": [{"id": "queue", "name": "Merge queue", "count": {"v": 1}}]},
+             "top_numbers": {}, "lead_queue": {}, "top3": {}}
+        f = cd.first_screen(d, {2: "Works", 3: "Not built", 1: "Partial"}, {"today_goal": {"proven": 3, "by": "2026-11-17T08:00:00+05:30"}}, "Lead input")
+        R = f["release"]
+        self.assertEqual((R["planned"], R["built"], R["proven"], R["waiting"]), (4, 3, 1, 2))   # built 1, 3 by parts + 2 by qa's pass
+        self.assertEqual(R["unlisted_ids"], [4])
+        self.assertEqual(R["qa_not_built_ids"], [3])
+        self.assertEqual((R["days_left"], R["need_per_day"], R["state"]), (13, 0.2, "on track"))  # 3 left in 13 days; 1 proven in 4 days
+        self.assertEqual((f["today"]["short"], f["today"]["state"]), (2, "at risk"))
+        self.assertEqual([x["id"] for x in f["needs"]["items"]], ["A1", "C5"])                   # dated today; C12 later; C2 not the founder's
+        self.assertEqual([x["id"] for x in f["needs"]["later"]], ["C12"])
+        self.assertEqual((f["choke"]["stage"], f["choke"]["count"]), ("Built, waiting for qa", 2))
+        self.assertIsNone(cd.first_screen(d, {}, None, "x")["release"]["proven"])
+        st = R["stage"]                                                       # A115: one stage per capability, the furthest first
+        self.assertEqual((st["2"], st["1"], st["3"], st["4"]), ("proven", "built", "built", "planned"))
+        self.assertEqual(sum(R["stage_counts"].values()), R["planned"])
+        self.assertEqual(f["needs"]["items"][1]["unblocks"], "the launch gate")                     # no trigger in the case: the gate
+        self.assertEqual(cd.nocode("Engage counsel (P-541, founder) before the gate P-589"), "Engage counsel before the gate")
+        self.assertNotIn("2026-11-16", f["needs"]["items"][1]["why"])
+
+    def test_page_a115_two_views_stages_and_steps(self):
+        """A115 (founder 16 Nov): four stage colours defined in light and both dark blocks; his view and a collapsed
+        tech-lead section; info buttons in his view only where data-keep marks them; each step a status he can change."""
+        html = open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read()
+        for tok in ("--st-planned:", "--st-progress:", "--st-built:", "--st-proven:"):
+            self.assertEqual(html.count(tok), 3, tok)                          # light, dark by system, dark by choice
+        self.assertIn('<details class="techsec" id="tech">', html)
+        self.assertIn('if(el.closest("#mine")&&!el.closest("[data-keep]"))return;', html)
+        for opt in ('value="todo">To do', 'value="done">Done', 'value="not_now">Not now', 'value="talk">Talk to the Lead'):
+            self.assertIn(opt, html)
+        self.assertIn('return {status:a.answer==="done"?"done":"not_now",at:a.at};', html)  # old Done / Not today entries still read
+        self.assertNotIn('data-ans="not_today"', html)
 
     def test_page_keys_all_in_explain(self):
         html = open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read()
@@ -1760,6 +1852,105 @@ class InfoIconsInBrowser(unittest.TestCase):
             finally:
                 srv.terminate()
             self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-2000:])
+
+
+class LeadWatchBoard(unittest.TestCase):
+    """B201 + P-639: the 30-minute check prints the board's own Today card and Stuck panel and checks them against the source."""
+    CAPS = ("| ID | Capability | Module | Status | Main |\n|---|---|---|---|---|\n| R1.2 | 2 Database | Platform | Works | x |\n"
+            "| R1.7 | 7 Roles | Platform | Not built | x |\n")
+    TODAY = {"goal": 10, "by_text": "08:00 IST 17 Nov", "proven": 1, "short": 9, "waiting": 1}
+    LQ = {"what": "2 pull requests wait for the Lead's answer", "items": ["#11 a (1 h)", "#12 b (4.5 h)"], "since": "oldest 4.5 h", "next": "answer each"}
+    IDLE = {"what": "3 lanes idle (no push in 90 min)", "items": ["x", "y", "z"], "since": "over 90 min", "next": "wake or close each"}
+
+    NOW = datetime(2026, 11, 16, 6, 0, tzinfo=timezone.utc)
+
+    def board(self, stuck, today=None):
+        return {"freshness": {"generated_at": "2026-11-16T05:30:00Z"},
+                "first": {"today": today or self.TODAY, "release": {"waiting_ids": [7], "proven_ids": [2]}, "stuck": stuck}}
+
+    def lines(self, d, prs=(), caps=CAPS, **kw):
+        return cd.watch_lines(d, list(prs), caps, now=self.NOW, **kw)
+
+    def test_two_stuck_entries_two_act_lines_oldest_first(self):
+        out = self.lines(self.board([self.LQ, self.IDLE]), [{"number": 11}, {"number": 12}], self.CAPS)
+        acts = [x for x in out if x.startswith("ACT   stuck: ")]
+        self.assertEqual(len(acts), 2)
+        self.assertTrue(acts[0].startswith("ACT   stuck: 2 pull requests wait for the Lead's answer — #12 b (4.5 h); #11 a (1 h)"), acts[0])
+        self.assertTrue(acts[1].endswith("— next: wake or close each"), acts[1])
+        self.assertIn("board vs source: 3 checked · 0 disagree · not checked here: 3 lanes idle (no push in 90 min)", out)
+
+    def test_empty_stuck_no_act(self):
+        out = self.lines(self.board([]), [], self.CAPS)
+        self.assertFalse([x for x in out if x.startswith("ACT")], out)
+
+    def test_today_line_is_the_today_card(self):
+        self.assertEqual(cd.watch_today_line(self.TODAY), "today  1 of 10 Proven by 08:00 IST 17 Nov, 9 short, 1 Built waiting for qa")
+        self.assertIn("no proving goal set", cd.watch_today_line({"goal": None, "proven": 1, "waiting": 0}))
+
+    def test_board_says_waits_source_says_merged(self):
+        out = self.lines(self.board([self.LQ]), [{"number": 11}], self.CAPS, pr_state=lambda n: {12: "merged"}.get(n))
+        dis = [x for x in out if x.startswith("ACT   board vs source disagree")]
+        self.assertEqual(dis, ["ACT   board vs source disagree: #12 waits for the Lead's answer — board says open and waiting, "
+                               "source says merged — fix the script or the board row"])
+
+    def test_not_built_item_that_qa_reads_works(self):
+        nb = {"what": "1 Built capabilities that qa's file still reads Not built", "items": ["R1.2 Database"], "next": "qa"}
+        out = self.lines(self.board([nb]), [], self.CAPS)
+        self.assertTrue(any("disagree: R1.2 reads Not built — board says Not built, source says qa reads Works" in x for x in out), out)
+
+    def test_stale_or_undated_board_is_an_act(self):
+        d = dict(self.board([]), freshness={"generated_at": "2026-11-16T01:00:00Z"})
+        self.assertTrue(self.lines(d)[1].startswith("ACT   board data 5.0 h old (over 2 h): refresh the board"), self.lines(d))
+        self.assertFalse([x for x in cd.watch_lines(d, [], self.CAPS, now=datetime(2026, 11, 16, 2, 0, tzinfo=timezone.utc)) if x.startswith("ACT")])
+        self.assertTrue(any(x.startswith("ACT   board data has no generated_at") for x in self.lines(dict(self.board([]), freshness={}))))
+        self.assertTrue(any(x.startswith("ACT   board data has no generated_at") for x in
+                            self.lines(dict(self.board([]), freshness={"generated_at": "2026-11-16T05:30:00"}))))   # no timezone: age not known
+
+    def test_empty_qa_file_is_not_checked_never_a_disagree(self):
+        out = self.lines(self.board([]), caps="\n")
+        self.assertFalse([x for x in out if "disagree:" in x], out)
+        self.assertIn("not checked here: Today (qa/CAPABILITIES.md on main not read)", out[-1])
+
+    def test_proven_ids_checked_not_a_second_count(self):
+        caps = self.CAPS + "| R1.50 | 50 Extra | Platform | Works | x |\n"      # an R1 row outside the plan: not a disagree
+        self.assertFalse([x for x in self.lines(self.board([]), caps=caps) if "disagree" in x and x.startswith("ACT")])
+        d = self.board([]); d["first"]["release"]["proven_ids"] = [7]
+        self.assertTrue(any("Today Proven — board says 1, source says qa does not read Works for R1.7" in x for x in self.lines(d)))
+
+    def test_failed_or_capped_lookup_is_not_checked(self):
+        lq = dict(self.LQ, items=[f"#{n} x (1 h)" for n in range(20, 26)])
+        calls = []
+        out = self.lines(self.board([lq]), pr_state=lambda n: calls.append(n))
+        self.assertEqual(len(calls), cd.WATCH_LOOKUPS)
+        self.assertFalse([x for x in out if "disagree" in x and x.startswith("ACT")], out)
+        self.assertIn("#20, #21, #22, #23, #24, #25 not open and state not read", out[-1])
+
+    def test_by_time_reads_like_the_board(self):
+        self.assertIn("by 17 Nov, 08:00 IST,", cd.watch_today_line({"goal": 10, "by": "2026-11-17T02:30:00Z", "proven": 1, "short": 9, "waiting": 1}))
+
+    def test_real_first_screen_output(self):
+        """The check reads first_screen's own output (now on main, P-636): its Stuck entries become ACT lines one for one,
+        the today line carries the Today card's numbers, and qa's file on main agrees with it."""
+        d = {"freshness": {"generated_at": "2026-11-16T05:30:00Z"}, "capability_table": {"rows": [{"map": m, "cap": f"cap {m}"} for m in (1, 2, 3, 4)]},
+             "build_rows": [{"map": 1, "built": "2026-11-14"}, {"map": 2, "built": None}, {"map": 3, "built": "2026-11-15"}, {"map": 4, "built": None}],
+             "pace": {"committed_date": "2026-11-29"}, "forecast": {"p50": {"value": None}}, "needs_you": {"items": []}, "risks": {"items": []},
+             "health": {"light": "green", "items": []}, "value_stream": {"stages": []}, "top3": {},
+             "top_numbers": {"lanes": {"idle": {"names": ["FO-1 lane"], "src": "x"}}},
+             "lead_queue": {"items": [{"n": 11, "title": "a", "age_h": 1.0}, {"n": 12, "title": "b", "age_h": 3.0}], "src": "x"}}
+        r1 = {2: "Works", 3: "Not built", 1: "Partial"}
+        d["first"] = cd.first_screen(d, r1, {"today_goal": {"proven": 3, "by": "2026-11-17T08:00:00+05:30"}}, "Lead input")
+        caps = "| ID | Capability | Module | Status | Main |\n|---|---|---|---|---|\n" + "".join(f"| R1.{m} | {m} x | P | {st} | x |\n" for m, st in r1.items())
+        out = self.lines(d, [{"number": 11}, {"number": 12}], caps=caps)
+        self.assertEqual(len([x for x in out if x.startswith("ACT   stuck: ")]), len(d["first"]["stuck"]))
+        self.assertGreaterEqual(len(d["first"]["stuck"]), 3)                       # idle lanes, Lead queue, qa reads Not built, unlisted
+        T = d["first"]["today"]
+        self.assertIn(f"today  {T['proven']} of {T['goal']} Proven by 17 Nov, 08:00 IST, {T['short']} short, {T['waiting']} Built waiting for qa", out)
+        self.assertTrue(any(x.startswith("ACT   stuck: 2 pull requests wait for the Lead's answer — #12 b (3.0 h); #11 a (1.0 h)") for x in out), out)
+        self.assertFalse([x for x in out if "disagree:" in x], out)
+
+    def test_board_without_first_screen(self):
+        self.assertEqual(cd.watch_panels({}), (None, None))
+        self.assertEqual(len(cd.watch_lines({})), 1)
 
 
 if __name__ == "__main__":

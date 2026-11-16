@@ -52,6 +52,16 @@ async function main() {
   const mv = await j("POST", `/api/public/bookings/${b.body.manageToken}/reschedule`, { startsAt: "2027-03-15T14:00:00.000Z" });
   ok("move by link across Toronto's change: 200 at 14:00Z", mv.status === 200 && mv.body.startsAt === "2027-03-15T14:00:00.000Z", mv);
   ok("the moved mail reaches the booker's demo inbox before the cancel", (await inbox(booker, 2)).msgs.length === 2);
+  // FO-3pa #1830 (merged 08:07 IST 16 Nov): the booking's calendar file by the self-service link, "the same invite as the email".
+  const dl = await fetch(`${BASE}/api/public/bookings/${mv.body.manageToken}/ics`);
+  const dlText = await dl.text();
+  const moved = (await inbox(booker, 2)).msgs[1];
+  const noStamp = (t: string) => t.replace(/\r?\nDTSTAMP:[^\r\n]*/g, "").replace(/\r\n/g, "\n").trim();
+  console.log(`NOTE  download: ${dl.status} ${dl.headers.get("content-type")} ${dl.headers.get("content-disposition")}`);
+  ok("R1.40 FO-3pa: the self-service link downloads the calendar file (200, text/calendar)", dl.status === 200 && /text\/calendar/.test(dl.headers.get("content-type") ?? ""), [dl.status, dl.headers.get("content-type")]);
+  ok("R1.40 FO-3pa: the download is the moved invite the email carries (same UID, SEQUENCE, METHOD, DTSTART; DTSTAMP aside)", !!moved && icsOf(moved).length > 0 && noStamp(dlText) === noStamp(icsOf(moved)), [noStamp(dlText).slice(0, 300), noStamp(icsOf(moved)).slice(0, 300)]);
+  const dlBad = await fetch(`${BASE}/api/public/bookings/${"x".repeat(String(mv.body.manageToken).length)}/ics`);
+  ok("R1.40 FO-3pa fail case: an unknown link downloads nothing (404)", dlBad.status === 404, dlBad.status);
   const c = await j("POST", `/api/public/bookings/${mv.body.manageToken}/cancel`);
   ok("cancel by link: CANCELLED", c.status === 200 && c.body.status === "CANCELLED", c);
   const row = await db.foBooking.findFirstOrThrow({ where: { firmId: firm.id } });
