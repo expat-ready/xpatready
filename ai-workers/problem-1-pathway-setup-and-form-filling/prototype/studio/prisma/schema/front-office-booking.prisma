@@ -15,10 +15,26 @@
 // person_id and prospect_id name FO-1a's fo_person and fo_prospect; their foreign keys come with whichever of FO-1a and
 // FO-1b merges second (or FO-3), since neither table is on main yet. Every value seeded here is Sample.
 
-/// What a consultation type is for (AG-4-10). Month one has only the free consultation, which is public; case types
-/// come later without a data change.
+/// What a consultation type is for (AG-4-10). FREE_CONSULT and OTHER may be public; FOLLOW_UP and CASE_REVIEW never are
+/// (rule 3). FO-3a: PAID_CONSULT waits on map row 44 (payment at booking). The public page lists FREE_CONSULT and OTHER.
 enum FoConsultationPurpose {
   FREE_CONSULT
+  FOLLOW_UP
+  CASE_REVIEW
+  OTHER
+}
+
+/// FO-3a (AG-4-9 rule 1): a type's colour from the closed palette of eight. Sample values: the team's palette
+/// (appointment-type-types.ts:101-110) is not in a capture readable here.
+enum FoTypeColour {
+  C1
+  C2
+  C3
+  C4
+  C5
+  C6
+  C7
+  C8
 }
 
 /// How a consultation is held (AG-4-11).
@@ -65,12 +81,21 @@ model FoConsultationType {
   showOnBookingPage       Boolean               @default(true) @map("show_on_booking_page")
   allowReschedule         Boolean               @default(true) @map("allow_reschedule")
   allowCancel             Boolean               @default(true) @map("allow_cancel")
+  /// FO-3a (AG-4-9 rules 1, 5, 7, §7): at most 1,000 characters; the optimistic-save counter; a soft delete (hidden
+  /// everywhere, its bookings kept and still changeable, its slug freed: the slug is unique among not-deleted rows, a
+  /// partial index in 20261116090000_fo3a_booking_types; "manage" is reserved); who created it (history only, no key).
+  description             String?
+  colour                  FoTypeColour          @default(C1)
+  version                 Int                   @default(1)
+  deletedAt               DateTime?             @map("deleted_at") @db.Timestamptz
+  createdByStaffId        String?               @map("created_by_staff_id") @db.Uuid
   createdAt               DateTime              @default(now()) @map("created_at") @db.Timestamptz
   updatedAt               DateTime              @updatedAt @map("updated_at") @db.Timestamptz
 
   firm     PlatformFirm @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   bookings FoBooking[]
 
+  /// Among not-deleted rows only (the migration's partial index; Prisma reads it as this unique).
   @@unique([firmId, slug])
   /// The target of fo_booking's (firm_id, type_id) key.
   @@unique([firmId, id])
