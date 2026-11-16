@@ -32,3 +32,4 @@ Refined 16:1x IST from qa #1950's verdict table (open, stacked on #1929): R1.19 
 | 16 Nov 16:4x | 47b00ddae | none | none | wait; batch #1976 (PF-6r #1951 with 5 others) CI run 43848577574 still in shards (2 of 8 done) |
 | 16 Nov 17:0x | 47b00ddae | none | none | wait |
 | 16 Nov 17:3x | 47b00ddae | none | none | wait; batch #1976 closed 11:54Z unmerged (#1952 lost its label, dequeued); PF-6r #1951 back in the queue — no main merge for 3 h |
+| 16 Nov 17:5x | 47b00ddae | none | none | wait |
