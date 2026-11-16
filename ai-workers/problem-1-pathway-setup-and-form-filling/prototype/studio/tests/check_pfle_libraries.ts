@@ -2,8 +2,9 @@
 // the message editor's libraries enter package.json and the lockfile exactly, and stay out of the browser build.
 // (1) package.json pins @react-email/editor 1.7.18, react-email 6.11.6 and every @tiptap/* package the editor's own
 //     package.json names, at 3.32.2, all exact. (2) The lockfile holds no @tiptap/* below 3.30.5 (GHSA-j95f-988m-3j2f,
-//     GHSA-cp6q-959q-f8rh) and every @tiptap/* at 3.32.2. (3) The web build's output (built here into a temporary folder)
-//     contains no code of react-email's preview CLI: socket.io / engine.io, esbuild, chokidar, @babel. (4) Until PF-19s,
+//     GHSA-cp6q-959q-f8rh) and every @tiptap/* at 3.32.2. (3) The web build (built here with source maps into a temporary
+//     folder) bundles no module of react-email's preview CLI — socket.io / engine.io, esbuild, chokidar / readdirp,
+//     @babel, prompts — read from the maps' `sources`, with a text scan as a second net. (4) Until PF-19s,
 //     PF-19c and PF-13 part 1 land, no code imports the packages (this check's own list of allowed importers is empty;
 //     the row that first imports one adds its file here).
 // Builds the web app with vite into a temporary folder (about 2 s); no server, no database, no network.
@@ -42,44 +43,65 @@ ok("no @tiptap/* in the lockfile below 3.30.5", tiptapLocked.every(([, v]) => !b
 ok("every @tiptap/* in the lockfile is 3.32.2 (one version)", tiptapLocked.every(([, v]) => v.version === "3.32.2"), tiptapLocked.filter(([, v]) => v.version !== "3.32.2").map(([k, v]) => `${k}@${v.version}`));
 ok("the self-test of the version compare holds (3.30.4 < 3.30.5, 3.32.2 not)", below("3.30.4", [3, 30, 5]) && !below("3.32.2", [3, 30, 5]) && !below("3.30.5", [3, 30, 5]));
 
-// (3) the browser build carries none of react-email's CLI code
+// (3) the browser build carries none of react-email's CLI code. Read from the build's source maps, not from the
+// minified text: a module's code can be bundled with no tell-tale string in it (chokidar, engine.io-parser and
+// socket.io-parser build that way; reviewer Major 1), but every bundled module is named in its chunk's map `sources`.
+// The text markers stay as a second net for code without a map.
+const CLI_MODULE = /(^|\/)node_modules\/(socket\.io[^/]*|engine\.io[^/]*|@socket\.io\/[^/]+|esbuild|@esbuild\/[^/]+|chokidar|readdirp|@babel\/[^/]+|prompts)\//;
 const MARKERS: Array<[string, RegExp]> = [
   ["socket.io", /socket\.io|engine\.io/],
   ["esbuild", /esbuild/],
   ["chokidar", /chokidar/],
-  ["@babel", /@babel\/|__esModule&&babel|babel-plugin|babelHelpers/],
+  ["@babel", /@babel\/|babel-plugin|babelHelpers/],
 ];
 const scan = (text: string) => MARKERS.filter(([, re]) => re.test(text)).map(([n]) => n);
-ok("the scanner finds each marker in a planted sample (it can fail)", scan('require("socket.io-client");esbuild;chokidar.watch();"@babel/runtime"').length === MARKERS.length);
+const cliSources = (sources: string[]) => sources.filter((s) => CLI_MODULE.test(s.replace(/\\/g, "/")));
+ok("the source-map test names each CLI module in planted map sources (it can fail)", cliSources([
+  "../../node_modules/chokidar/index.js", "../../node_modules/engine.io-parser/build/esm/index.js", "../../node_modules/socket.io-parser/build/esm/index.js",
+  "../../node_modules/socket.io/dist/index.js", "../../node_modules/esbuild/lib/main.js", "../../node_modules/@babel/parser/lib/index.js",
+  "../../node_modules/prompts/index.js", "../../node_modules/readdirp/index.js",
+]).length === 8 && cliSources(["../../node_modules/react/index.js", "../src/main.tsx", "../../node_modules/@tiptap/core/dist/index.js"]).length === 0);
+ok("the text scanner finds each marker in a planted sample (it can fail)", scan('require("socket.io-client");esbuild;chokidar.watch();"@babel/runtime"').length === MARKERS.length);
 const out = mkdtempSync(join(tmpdir(), "pfle-web-"));
 try {
-  execFileSync(join(ROOT, "node_modules/.bin/vite"), ["build", "--config", "web/vite.config.ts", "--outDir", out, "--emptyOutDir", "--logLevel", "error"], { cwd: ROOT, stdio: ["ignore", "ignore", "inherit"] });
+  execFileSync(join(ROOT, "node_modules/.bin/vite"), ["build", "--config", "web/vite.config.ts", "--outDir", out, "--emptyOutDir", "--sourcemap", "--logLevel", "error"], { cwd: ROOT, stdio: ["ignore", "ignore", "inherit"] });
   const files: string[] = [];
   const walk = (d: string) => { for (const f of readdirSync(d)) { const p = join(d, f); statSync(p).isDirectory() ? walk(p) : files.push(p); } };
   walk(out);
   const code = files.filter((f) => /\.(m?js|css|html)$/.test(f));
-  ok("the web build produced JavaScript", code.some((f) => /\.m?js$/.test(f)), files.map((f) => relative(out, f)));
+  const js = code.filter((f) => /\.m?js$/.test(f));
+  ok("the web build produced JavaScript", js.length > 0, files.map((f) => relative(out, f)));
+  const maps = files.filter((f) => f.endsWith(".js.map"));
+  const unmapped = js.filter((f) => !maps.includes(`${f}.map`));
+  ok("every JavaScript file of the build has a source map (so the map test sees every module)", unmapped.length === 0, unmapped.map((f) => relative(out, f)));
+  const sources = maps.flatMap((m) => (JSON.parse(readFileSync(m, "utf8")).sources ?? []) as string[]);
+  ok("the source maps name the app's own modules (the map test reads real maps)", sources.some((s) => s.endsWith("web/src/main.tsx")) && sources.some((s) => s.includes("node_modules/react-dom/")), sources.length);
+  const bundled = [...new Set(cliSources(sources))];
+  ok("the web build bundles no module of socket.io / engine.io, esbuild, chokidar / readdirp, @babel or prompts (source maps)", bundled.length === 0, bundled);
   const hits = code.flatMap((f) => scan(readFileSync(f, "utf8")).map((m) => `${relative(out, f)}: ${m}`));
-  ok("the web build's output contains no socket.io, esbuild, chokidar or @babel code", hits.length === 0, hits);
+  ok("the web build's output text contains no socket.io, esbuild, chokidar or @babel marker", hits.length === 0, hits);
 } finally { rmSync(out, { recursive: true, force: true }); }
 
 // (4) no code uses the packages yet
 const ALLOWED_IMPORTERS: string[] = []; // the row that first imports a package adds its file here (PF-19s, PF-19c, PF-13 part 1)
-const IMPORT = /(from\s+|import\s*\(\s*|require\s*\(\s*|import\s+)["'](@react-email\/[^"']+|react-email(\/[^"']*)?|@tiptap\/[^"']+)["']/;
-const SRC = ["web/src", "api/src", "ports", "engine", "contracts", "tools"];
+const IMPORT = /(from\s+|import\s*\(\s*|require\s*\(\s*|import\s+)["'`](@react-email\/[^"'`]+|react-email(\/[^"'`]*)?|@tiptap\/[^"'`]+)["'`]/;
+const SELF = "tests/check_pfle_libraries.ts";
+// Every code folder of the studio (reviewer Minor 3), plus the prototype's shared contracts/ that the web app imports.
+const SRC = ["web", "api", "ports", "engine", "contracts", "tools", "tests", "deploy", "prisma", "acceptance", "evidence", "samples", "../contracts"];
+const SKIP_DIR = new Set(["node_modules", "dist", "var", ".git"]);
 const users: string[] = [];
 const walkSrc = (d: string) => {
   let entries: string[] = [];
   try { entries = readdirSync(join(ROOT, d)); } catch { return; }
   for (const f of entries) {
     const p = join(d, f);
-    if (f === "node_modules" || f === "dist") continue;
+    if (SKIP_DIR.has(f)) continue;
     if (statSync(join(ROOT, p)).isDirectory()) walkSrc(p);
-    else if (/\.(m?[jt]sx?|cjs)$/.test(f) && IMPORT.test(readFileSync(join(ROOT, p), "utf8")) && !ALLOWED_IMPORTERS.includes(p)) users.push(p);
+    else if (/\.([cm]?[jt]sx?)$/.test(f) && p !== SELF && IMPORT.test(readFileSync(join(ROOT, p), "utf8")) && !ALLOWED_IMPORTERS.includes(p)) users.push(p);
   }
 };
 SRC.forEach(walkSrc);
-ok("the import pattern matches a planted import (it can fail)", IMPORT.test('import { EmailEditor } from "@react-email/editor";') && IMPORT.test("import { Html } from 'react-email';") && IMPORT.test('await import("@tiptap/html")'));
+ok("the import pattern matches planted imports (it can fail)", IMPORT.test('import { EmailEditor } from "@react-email/editor";') && IMPORT.test("import { Html } from 'react-email';") && IMPORT.test('await import("@tiptap/html")') && IMPORT.test("require(`@tiptap/core`)") && IMPORT.test('export { render } from "react-email";') && !IMPORT.test('import x from "react-email-like";'));
 ok(`no code in ${SRC.join(", ")} imports @react-email/*, react-email or @tiptap/* outside the allowed list`, users.length === 0, users);
 
 console.log(`\nPF-Le: ${pass} passed, ${fail} failed`);
