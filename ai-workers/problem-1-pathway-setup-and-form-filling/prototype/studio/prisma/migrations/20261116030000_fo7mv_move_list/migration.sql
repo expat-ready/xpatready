@@ -26,12 +26,12 @@ BEGIN
   SELECT count(*) INTO n FROM "money_trust_entry" c JOIN "money_trust_entry" d ON d.firm_id = c.firm_id AND d.id = c.corrects_entry_id
     WHERE c.kind = 'CORRECTION' AND d.kind = 'DEPOSIT';
   IF n > 0 THEN
-    RAISE EXCEPTION 'fo7mv_move_list: % correction(s) of a deposit have no correction kind (BOUNCED, WRONG_ACCOUNT or ENTRY_ERROR); give each its kind by hand, then run the migration again', n USING ERRCODE = 'check_violation';
+    RAISE EXCEPTION 'fo7mv_move_list: % correction(s) of a deposit have no correction kind (RETURNED, RECORDED_BY_MISTAKE, WRONG_CLIENT, OTHER or WRONG_ACCOUNT); give each its kind by hand, then run the migration again', n USING ERRCODE = 'check_violation';
   END IF;
 END $$;
 
 -- Prisma's DDL (prisma migrate diff), then the rules.
-CREATE TYPE "MoneyCorrectionKind" AS ENUM ('BOUNCED', 'WRONG_ACCOUNT', 'ENTRY_ERROR');
+CREATE TYPE "MoneyCorrectionKind" AS ENUM ('RETURNED', 'RECORDED_BY_MISTAKE', 'WRONG_CLIENT', 'OTHER', 'WRONG_ACCOUNT');
 CREATE TYPE "MoneyMoveKind" AS ENUM ('TRUST_APPLIED', 'WRONG_ACCOUNT', 'CARD_FEE_ON_TRUST');
 CREATE TYPE "MoneyMoveDirection" AS ENUM ('TRUST_TO_OPERATING', 'OPERATING_TO_TRUST');
 ALTER TABLE "money_trust_entry" ADD COLUMN     "correction_kind" "MoneyCorrectionKind";
@@ -141,7 +141,7 @@ CREATE CONSTRAINT TRIGGER money_move_batch_has_lines AFTER INSERT ON "money_move
 --     withdrawal less the money returned to trust from it (B-18: "withdraw 100, move 100, return 100" three times
 --     moved 300.00 for one 100.00 invoice).
 --   * WRONG_ACCOUNT, trust → operating: a correction of a deposit whose kind is WRONG_ACCOUNT (AG-6-69 rule 2), at most
---     that correction's amount. A BOUNCED or ENTRY_ERROR correction never licenses a move (B-19: a bounced cheque or a
+--     that correction's amount. No other correction kind licenses a move (the reversals of AG-6-75 rule 2: "Returned", "Recorded by mistake", "Wrong client", typed) (B-19: a bounced cheque or a
 --     refunded deposit moved other clients' trust money to operating).
 --   * CARD_FEE_ON_TRUST: no source yet. Card money into trust is held (P-567; FO-7a refuses it), and the card fees are
 --     FO-7c's: the kind is kept for AG-6-73 rule 1 (c) and refused here.
@@ -155,7 +155,7 @@ CREATE CONSTRAINT TRIGGER money_move_batch_has_lines AFTER INSERT ON "money_move
 -- refused (23505). Lines are written only in the transaction that records their batch, never after its undo (FO-7a's
 -- B-16 rule; round 3, B-15: an unknown transaction status is not mine).
 CREATE OR REPLACE FUNCTION money_move_line_write() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE b record; s record; party uuid; earlier integer; moved bigint; returned bigint; cap bigint; due bigint; held bigint; to_move bigint; uncleared bigint;
+DECLARE b record; s record; party uuid; earlier integer; moved bigint; returned bigint; cap bigint;
 BEGIN
   SELECT x.undoes_batch_id, x.currency, x.direction, pg_xact_status(((pg_current_xact_id()::text::bigint >> 32 << 32) | x.xmin::text::bigint)::text::xid8) = 'in progress' AS mine
     INTO b FROM "money_move_batch" x WHERE x.firm_id = NEW.firm_id AND x.id = NEW.batch_id;
@@ -220,39 +220,6 @@ BEGIN
     RAISE EXCEPTION 'money_move_line: % % would move more than this entry still holds (% % to move: % less % returned to trust, % moved before)',
       NEW.amount_minor, NEW.currency, cap - moved, NEW.currency, -s.amount_minor, returned, moved USING ERRCODE = 'check_violation';
   END IF;
-  -- Break B-4: a trust application moves at most what trust may keep for its invoice — the total less credit notes and
-  -- the write-off — less what the invoice's applications already moved (the invoice row is touched above, as a credit
-  -- note and a write-off touch it).
-  IF NEW.kind = 'TRUST_APPLIED' THEN
-    due := money_invoice_total(NEW.firm_id, s.invoice_id)
-      - (SELECT coalesce(sum(c.amount_minor), 0) FROM "money_credit_note" c WHERE c.firm_id = NEW.firm_id AND c.invoice_id = s.invoice_id)
-      - (SELECT coalesce(sum(w.amount_minor), 0) FROM "money_write_off" w WHERE w.firm_id = NEW.firm_id AND w.invoice_id = s.invoice_id);
-    SELECT coalesce(sum(l.amount_minor), 0) INTO moved FROM "money_move_line" l WHERE l.firm_id = NEW.firm_id AND l.invoice_id = s.invoice_id AND l.kind = 'TRUST_APPLIED'
-      AND NOT EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = l.firm_id AND u.undoes_batch_id = l.batch_id);
-    IF moved + NEW.amount_minor > due THEN
-      RAISE EXCEPTION 'money_move_line: % % would move more than the invoice keeps after credit notes and the write-off (% due, % moved): return the rest to trust', NEW.amount_minor, NEW.currency, due, moved USING ERRCODE = 'check_violation';
-    END IF;
-  END IF;
-  -- Breaks B-1, B-2 (and the re-review's two Majors): only cleared money leaves trust. A wrong-account line waits for
-  -- its own payment to clear (above). After a trust application's line, the party's ledger balance plus its trust
-  -- applications still to move covers its payments not yet cleared, net of all their corrections; open wrong-account
-  -- money is operating's and never counts as cover. So a bounce never takes another client's money. The firm's
-  -- settings row is touched without changing it (as FO-7a's series row), so two moves of one firm at REPEATABLE READ
-  -- go one at a time (40001).
-  UPDATE "money_payment_settings" x SET updated_at = x.updated_at WHERE x.firm_id = NEW.firm_id;
-  SELECT coalesce((SELECT e.balance_after_minor FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND (e.person_id = party OR e.company_id = party) AND e.currency = s.currency ORDER BY e.seq DESC LIMIT 1), 0) INTO held;
-  SELECT coalesce(sum(-e.amount_minor
-      - CASE WHEN e.kind = 'WITHDRAWAL_TO_INVOICE' THEN (SELECT coalesce(sum(c.amount_minor), 0) FROM "money_trust_entry" c WHERE c.firm_id = e.firm_id AND c.corrects_entry_id = e.id) ELSE 0 END
-      - (SELECT coalesce(sum(l.amount_minor), 0) FROM "money_move_line" l WHERE l.firm_id = e.firm_id AND l.source_entry_id = e.id
-           AND NOT EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = l.firm_id AND u.undoes_batch_id = l.batch_id))), 0) INTO to_move
-    FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND (e.person_id = party OR e.company_id = party) AND e.currency = s.currency
-      AND e.kind = 'WITHDRAWAL_TO_INVOICE';
-  SELECT coalesce(sum(greatest(e.amount_minor + (SELECT coalesce(sum(c.amount_minor), 0) FROM "money_trust_entry" c WHERE c.firm_id = e.firm_id AND c.corrects_entry_id = e.id), 0)), 0)
-    INTO uncleared FROM "money_trust_entry" e JOIN "money_payment" p ON p.firm_id = e.firm_id AND p.id = e.payment_id
-    WHERE e.firm_id = NEW.firm_id AND (e.person_id = party OR e.company_id = party) AND e.currency = s.currency AND e.kind = 'DEPOSIT' AND NOT p.cleared;
-  IF NEW.kind = 'TRUST_APPLIED' AND held + to_move - NEW.amount_minor < uncleared THEN
-    RAISE EXCEPTION 'money_move_line: % % of this party''s trust money rests on payments not yet cleared; it moves once they clear (% held, % to move)', uncleared, NEW.currency, held, to_move USING ERRCODE = 'check_violation';
-  END IF;
   NEW.move_ordinal := earlier + 1;
   NEW.created_at := now();
   RETURN NEW;
@@ -271,7 +238,7 @@ CREATE CONSTRAINT TRIGGER money_move_line_not_undone AFTER INSERT ON "money_move
 
 -- ---------------------------------------------------------------------------------------------- the trust ledger side
 -- After FO-7a's money_trust_entry_write and its checks (so their refusals come first, with their words):
---   * a correction of a deposit says why (B-19): BOUNCED, WRONG_ACCOUNT or ENTRY_ERROR; a correction of a withdrawal
+--   * a correction of a deposit says why (B-19): RETURNED, RECORDED_BY_MISTAKE, WRONG_CLIENT, OTHER or WRONG_ACCOUNT; a correction of a withdrawal
 --     carries no kind;
 --   * money returned to trust from a withdrawal is refused while what is moved of it, net of undone batches, would be
 --     more than the withdrawal less all its returns (B-18): undo the move first. The party's lock is already held
@@ -282,7 +249,7 @@ BEGIN
   IF NEW.kind <> 'CORRECTION' OR NEW.corrects_entry_id IS NULL THEN RETURN NULL; END IF;
   SELECT e.kind, e.amount_minor, e.invoice_id INTO c FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND e.id = NEW.corrects_entry_id;
   IF c.kind = 'DEPOSIT' AND NEW.correction_kind IS NULL THEN
-    RAISE EXCEPTION 'money_trust_entry: a correction of a deposit says why it was made: BOUNCED, WRONG_ACCOUNT or ENTRY_ERROR' USING ERRCODE = 'check_violation';
+    RAISE EXCEPTION 'money_trust_entry: a correction of a deposit says why it was made: RETURNED, RECORDED_BY_MISTAKE, WRONG_CLIENT, OTHER or WRONG_ACCOUNT' USING ERRCODE = 'check_violation';
   END IF;
   IF c.kind <> 'DEPOSIT' AND NEW.correction_kind IS NOT NULL THEN
     RAISE EXCEPTION 'money_trust_entry: only a correction of a deposit has a correction kind (this one names a %)', c.kind USING ERRCODE = 'check_violation';
@@ -326,17 +293,7 @@ CREATE OR REPLACE VIEW "money_to_move" AS
            (SELECT coalesce(sum(l.amount_minor), 0) FROM "money_move_line" l WHERE l.firm_id = s.firm_id AND l.source_entry_id = s.source_entry_id
               AND NOT EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = l.firm_id AND u.undoes_batch_id = l.batch_id))::integer AS moved_minor
       FROM src s
-  ), o AS (
-    -- A trust application shows at most what its invoice still keeps after credit notes, the write-off and the
-    -- invoice's other moves (break B-4).
-    SELECT m.*, CASE WHEN m.kind = 'TRUST_APPLIED' THEN least(m.eligible_minor - m.returned_minor - m.moved_minor, money_invoice_total(m.firm_id, m.invoice_id)
-             - (SELECT coalesce(sum(c.amount_minor), 0) FROM "money_credit_note" c WHERE c.firm_id = m.firm_id AND c.invoice_id = m.invoice_id)
-             - (SELECT coalesce(sum(w.amount_minor), 0) FROM "money_write_off" w WHERE w.firm_id = m.firm_id AND w.invoice_id = m.invoice_id)
-             - (SELECT coalesce(sum(l.amount_minor), 0) FROM "money_move_line" l WHERE l.firm_id = m.firm_id AND l.invoice_id = m.invoice_id AND l.kind = 'TRUST_APPLIED'
-                  AND NOT EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = l.firm_id AND u.undoes_batch_id = l.batch_id)))
-           ELSE m.eligible_minor - m.returned_minor - m.moved_minor END AS open_amount
-      FROM m
   )
   SELECT firm_id, source_entry_id, kind, direction, currency, person_id, company_id, case_id, invoice_id, eligible_minor, returned_minor, moved_minor,
-         open_amount::integer AS open_minor, created_at
-    FROM o WHERE open_amount > 0;
+         eligible_minor - returned_minor - moved_minor AS open_minor, created_at
+    FROM m WHERE eligible_minor - returned_minor - moved_minor > 0;

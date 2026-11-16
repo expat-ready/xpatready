@@ -94,12 +94,16 @@ enum MoneyTrustEntryKind {
   CORRECTION
 }
 
-/// Why a correction of a deposit was made (FO-7mv; B-19 from #1758): only WRONG_ACCOUNT (money received into trust that
-/// belonged in operating, AG-6-69 rule 2) licenses a move out of trust; a BOUNCED cheque or an ENTRY_ERROR never does.
+/// Why a correction of a deposit was made (FO-7mv; B-19 from #1758; Lead 65, P-638): the reversals of AG-6-75 rule 2
+/// ("Returned" a bounced cheque, "Recorded by mistake", "Wrong client", OTHER a typed reason; their ledger rules are
+/// FO-7a2's) and WRONG_ACCOUNT, money received into trust that belonged in operating (AG-6-69 rule 2): only
+/// WRONG_ACCOUNT licenses a move out of trust.
 enum MoneyCorrectionKind {
-  BOUNCED
+  RETURNED
+  RECORDED_BY_MISTAKE
+  WRONG_CLIENT
+  OTHER
   WRONG_ACCOUNT
-  ENTRY_ERROR
 }
 
 /// Why an amount must move between the trust and operating bank accounts (AG-6-73 rule 1 (a)-(c); AG-6-73 §7 names them

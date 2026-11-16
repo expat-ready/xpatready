@@ -57,7 +57,7 @@ try {
   const before = all.filter((d) => d < NEW);
   ok(`FO-7mv DW10 pass: the migration has its own stamp, later than every migration before it (newest before it: ${before.at(-1)}) and after FO-7a's (P-600)`,
     all.includes(NEW) && before.includes(FO7A) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1);
-  for (const db of [T, BAD]) for (const d of before) psql(db, ["-f", join(MIG, d, "migration.sql")]);
+  for (const db of [T, BAD]) for (const d of before) psql(db, ["-1", "-f", join(MIG, d, "migration.sql")]);
   ok("FO-7mv DW10 fail: before its migration there is no move table and migrate diff names money_move_batch", sql(T, `select count(*) from pg_tables where tablename like 'money\\_move%'`) === "0" && moneyDiff(T).some((l) => /money_move_batch/.test(l)));
   const seed = (db: string, key: string) => {
     const f = sql(db, `insert into platform_firm (id, key, operating_name, country_code, contact_email, updated_at) values (gen_random_uuid(), '${key}', '${key}', 'CA', 'office@${key}.example.com', now()) returning id`);
@@ -101,12 +101,12 @@ try {
   ok("FO-7mv DW10 fail: a database holding a correction of a deposit (no kind) refuses the migration with words that say so",
     refused(BAD, readFileSync(join(MIG, NEW, "migration.sql"), "utf8"), /1 correction\(s\) of a deposit have no correction kind .* give each its kind by hand/) && sql(BAD, `select count(*) from pg_tables where tablename like 'money\\_move%'`) === "0");
   const fnBefore = fns(T); last(T, depositQ(100, P4));  // a deposit (not a correction) does not stop it
-  psql(T, ["-f", join(MIG, NEW, "migration.sql")]);
+  psql(T, ["-1", "-f", join(MIG, NEW, "migration.sql")]);
   const added = fns(T).filter((f) => !fnBefore.includes(f));
   ok("FO-7mv DW10 pass: right after its own migration the five functions it adds are all money_ (none of FO-7a's replaced)",
     added.length === 5 && added.every((f) => f.startsWith("money_")) && fnBefore.includes("money_trust_entry_write"), added);
-  for (const d of all.filter((x) => x > NEW)) psql(T, ["-f", join(MIG, d, "migration.sql")]);
-  for (const d of all) psql(EMPTY, ["-f", join(MIG, d, "migration.sql")]);
+  for (const d of all.filter((x) => x > NEW)) psql(T, ["-1", "-f", join(MIG, d, "migration.sql")]);
+  for (const d of all) psql(EMPTY, ["-1", "-f", join(MIG, d, "migration.sql")]);
   ok("FO-7mv DW10 pass: migrate diff names no money table or type, on the copy with rows and on the empty one", moneyDiff(T).length === 0 && moneyDiff(EMPTY).length === 0, [moneyDiff(T), moneyDiff(EMPTY)]);
   ok("FO-7mv pass: firm_id is first in every move index (primary keys aside), and every move key is RESTRICT and starts with firm_id",
     sql(T, `select count(*) from pg_index i join pg_class c on c.oid = i.indrelid left join pg_attribute a on a.attrelid = c.oid and a.attnum = i.indkey[0]
@@ -118,17 +118,17 @@ try {
 
   // ------------------------------------------------------------------------------- correction kinds (B-19)
   const D0 = deposit(500000);  // P1's money, enough for the cases below
-  ok("FO-7mv fail (B-19): a correction of a deposit with no kind is refused; with BOUNCED it is written",
-    refused(T, correctQ(D0, 100, undefined), /a correction of a deposit says why it was made/, "23514") && !!sql(T, correctQ(D0, 100, "BOUNCED")));
+  ok("FO-7mv fail (B-19): a correction of a deposit with no kind is refused; with RETURNED it is written",
+    refused(T, correctQ(D0, 100, undefined), /a correction of a deposit says why it was made/, "23514") && !!sql(T, correctQ(D0, 100, "RETURNED")));
   // Lead B (rev 16.51): a refusal from the AFTER trigger rolls its statement back — no row, no ledger effect.
   const ledger = () => sql(T, `select count(*) || ':' || coalesce((select balance_after_minor || '/' || seq from money_trust_entry where firm_id = '${firmA}' and person_id = '${P1}' order by seq desc limit 1), '0') from money_trust_entry where firm_id = '${firmA}'`);
-  { const was = ledger(), refusedNoKind = refused(T, correctQ(D0, 200, undefined), /says why it was made/, "23514"), after = ledger(); sql(T, correctQ(D0, 200, "ENTRY_ERROR")); const written = ledger();
+  { const was = ledger(), refusedNoKind = refused(T, correctQ(D0, 200, undefined), /says why it was made/, "23514"), after = ledger(); sql(T, correctQ(D0, 200, "RECORDED_BY_MISTAKE")); const written = ledger();
     ok("FO-7mv fail/pass (Lead B rev 16.51): a refused deposit correction (no kind) leaves no row and the balance and seq as they were; the same correction with a kind writes one row and moves the balance",
       refusedNoKind && after === was && written !== was && Number(written.split(":")[0]) === Number(was.split(":")[0]) + 1, [was, after, written]); }
   const inv0 = invoice(T, 10000), W0 = withdraw(inv0, 1000);
   ok("FO-7mv fail: a correction kind on a return from a withdrawal, or on a refund to the client, is refused",
     refused(T, entry("CORRECTION", 100, { corrects: W0, reason: "x", ck: "WRONG_ACCOUNT" }), /only a correction of a deposit has a correction kind/, "23514")
-    && refused(T, entry("REFUND_TO_CLIENT", -100, { reason: "x", ck: "BOUNCED" }), /money_trust_entry_correction_kind_check/, "23514"));
+    && refused(T, entry("REFUND_TO_CLIENT", -100, { reason: "x", ck: "RETURNED" }), /money_trust_entry_correction_kind_check/, "23514"));
 
   // ------------------------------------------------------------------------------- DW1 (B-18)
   {
@@ -167,13 +167,13 @@ try {
 
   // ------------------------------------------------------------------------------- DW3, DW4, DW5 (B-19)
   {
-    const C = deposit(30000, P2, "CHEQUE"), bounced = sql(T, correctQ(C, 30000, "BOUNCED", P2));
-    ok("FO-7mv DW3 fail (B-19 a): a bounced cheque corrected −300.00 (BOUNCED), then a 300.00 wrong-account move of it → refused; not on the list",
-      refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: bounced, amount: 30000 }]), /only a WRONG_ACCOUNT correction of a deposit licenses .* \(this entry is a BOUNCED CORRECTION\)/, "23514") && open(bounced) === "0");
+    const C = deposit(30000, P2, "CHEQUE"), bounced = sql(T, correctQ(C, 30000, "RETURNED", P2));
+    ok("FO-7mv DW3 fail (B-19 a): a bounced cheque corrected −300.00 (RETURNED), then a 300.00 wrong-account move of it → refused; not on the list",
+      refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: bounced, amount: 30000 }]), /only a WRONG_ACCOUNT correction of a deposit licenses .* \(this entry is a RETURNED CORRECTION\)/, "23514") && open(bounced) === "0");
     deposit(50000, P3); const D = deposit(20000, P3);
-    sql(T, entry("REFUND_TO_CLIENT", -20000, { reason: "Returned unused money", pid: P3 })); const err = sql(T, correctQ(D, 20000, "ENTRY_ERROR", P3));
-    ok("FO-7mv DW4 fail (B-19 b): a 200.00 deposit refunded and then corrected −200.00 (ENTRY_ERROR), then a move → refused",
-      refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: err, amount: 20000 }]), /only a WRONG_ACCOUNT correction .*ENTRY_ERROR CORRECTION/, "23514")
+    sql(T, entry("REFUND_TO_CLIENT", -20000, { reason: "Returned unused money", pid: P3 })); const err = sql(T, correctQ(D, 20000, "RECORDED_BY_MISTAKE", P3));
+    ok("FO-7mv DW4 fail (B-19 b): a 200.00 deposit refunded and then corrected −200.00 (RECORDED_BY_MISTAKE), then a move → refused",
+      refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: err, amount: 20000 }]), /only a WRONG_ACCOUNT correction .*RECORDED_BY_MISTAKE CORRECTION/, "23514")
       && refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: D, amount: 100 }]), /only a WRONG_ACCOUNT correction .*\(this entry is a DEPOSIT\)/, "23514"));
     const WD = deposit(15000, P2), wrong = sql(T, correctQ(WD, 15000, "WRONG_ACCOUNT", P2));
     ok("FO-7mv DW5 pass/fail: a WRONG_ACCOUNT correction of 150.00 is on the list, 151.00 is refused, 150.00 moves, then 0.01 more is refused",
@@ -238,35 +238,18 @@ try {
     ok("FO-7mv DW9 pass: after \"I moved these\" the list is empty; firm B sees none of firm A's lines", total() === "0:0" && sql(T, `select count(*) from money_to_move where firm_id = '${firmB}'`) === "0");
   }
 
-  // ------------------------------------------------------------------------------- the breaker's round 1 and the review's Minors
+  // ------------------------------------------------------------------------------- the breaker's rounds 1-2 and the review's Minors
   {
-    const P5 = u(5), P6 = u(6), P7 = u(7), clear = (dep: string) => sql(T, `update money_payment set cleared = true, cleared_at = now(), cleared_by = 'user-R' where id = (select payment_id from money_trust_entry where id = '${dep}')`);
-    const chq = deposit(30000, P5, "CHEQUE", false), i5 = invoice(T, 10000, P5), w5 = withdraw(i5, 10000, P5);
-    ok("FO-7mv fail (break B-1): money resting on a cheque not yet cleared never moves out of trust — the 100.00 applied from it is refused; the bounce can still be recorded",
-      refused(T, moveQ([{ src: w5, amount: 10000, pid: P5 }]), /30000 CAD of this party's trust money rests on payments not yet cleared; it moves once they clear \(20000 held, 10000 to move\)/, "23514")
-      && (sql(T, `begin; ${correctQ(chq, 20000, "BOUNCED", P5)}; rollback;`), true));
-    clear(chq);
-    ok("FO-7mv pass (break B-1): once the cheque is cleared the same 100.00 moves", !!move([{ src: w5, amount: 10000, pid: P5 }]) && open(w5) === "0");
-    const both = (deposit(100000, P6), deposit(30000, P6, "CHEQUE", false)), i6 = invoice(T, 10000, P6), w6 = withdraw(i6, 10000, P6);
-    ok("FO-7mv pass (break B-1): with cleared money beside an uncleared cheque, the cleared part moves", !!both && !!move([{ src: w6, amount: 10000, pid: P6 }]));
+    // The cover check for uncleared payments and the invoice cap after credit notes are FO-7a2's (Lead 65, P-638).
+    const P7 = u(7), clear = (dep: string) => sql(T, `update money_payment set cleared = true, cleared_at = now(), cleared_by = 'user-R' where id = (select payment_id from money_trust_entry where id = '${dep}')`);
     const chq2 = deposit(30000, P7, "CHEQUE", false), wa = sql(T, correctQ(chq2, 30000, "WRONG_ACCOUNT", P7));
     ok("FO-7mv fail/pass (break B-2): a WRONG_ACCOUNT correction of a cheque not yet cleared waits for the cheque; after it clears, it moves",
       open(wa) === "0" && refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: wa, amount: 30000, pid: P7 }]), /is not yet cleared; it moves once it clears/) && (clear(chq2), open(wa) === "30000" && !!move([{ kind: "WRONG_ACCOUNT", src: wa, amount: 30000, pid: P7 }])));
-    // The re-review's two Majors (2abc41df3): cleared money beside the cheque must not let the cheque's own money out.
-    const P8 = u(8), P10 = u(10);
+    // The re-review's Major 1 (2abc41df3): cleared money beside the cheque must not let the cheque's own wrong-account money out.
+    const P8 = u(8);
     deposit(50000, P8); const chq8 = deposit(30000, P8, "CHEQUE", false), wa8 = sql(T, correctQ(chq8, 30000, "WRONG_ACCOUNT", P8));
     ok("FO-7mv fail (re-review Major 1): e-transfer 500.00, an uncleared cheque 300.00 corrected WRONG_ACCOUNT — the 300.00 is not listed and does not move until the cheque clears",
       open(wa8) === "0" && refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: wa8, amount: 30000, pid: P8 }]), /is not yet cleared/, "23514"));
-    const et = deposit(11000, P10); deposit(10000, P10, "CHEQUE", false); const wa10 = sql(T, correctQ(et, 6000, "WRONG_ACCOUNT", P10)), i10 = invoice(T, 10000, P10), w10 = withdraw(i10, 10000, P10);
-    ok("FO-7mv fail/pass (re-review Major 2): e-transfer 110.00, uncleared cheque 100.00, 60.00 of the e-transfer corrected WRONG_ACCOUNT, 100.00 applied — the 100.00 does not move (wrong-account money is no cover); the cleared 60.00 wrong-account money does",
-      refused(T, moveQ([{ src: w10, amount: 10000, pid: P10 }]), /10000 CAD of this party's trust money rests on payments not yet cleared/, "23514") && !!move([{ kind: "WRONG_ACCOUNT", src: wa10, amount: 6000, pid: P10 }]));
-    const i8 = invoice(T, 10000), w8 = withdraw(i8, 10000), i9 = invoice(T, 10000), w9 = withdraw(i9, 10000);
-    sql(T, `insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, "full", reason, created_by) values ('${firmA}', '${i8}', 6000, 'CAD', false, 'Service partly cancelled', 'user-R')`);
-    sql(T, `insert into money_write_off (firm_id, invoice_id, amount_minor, currency, reason, created_by) values ('${firmA}', '${i9}', 10000, 'CAD', 'Fee waived', 'user-R')`);
-    ok("FO-7mv fail (break B-4): after a 60.00 credit note on a 100.00 invoice paid from trust, the list shows 40.00 and a 100.00 move is refused; after a full write-off nothing moves",
-      open(w8) === "4000" && refused(T, moveQ([{ src: w8, amount: 10000 }]), /more than the invoice keeps after credit notes and the write-off \(4000 due, 0 moved\)/, "23514")
-      && open(w9) === "0" && refused(T, moveQ([{ src: w9, amount: 1 }]), /\(0 due, 0 moved\)/));
-    ok("FO-7mv pass (break B-4): the 40.00 the invoice keeps moves", !!move([{ src: w8, amount: 4000 }]) && open(w8) === "0");
     ok("FO-7mv fail (break B-9): a transfer date of infinity or 4713 BC is refused",
       refused(T, moveQ([{ src: W0, amount: 1 }]).replace("'2026-11-20'", "'infinity'"), /money_move_batch_date_check/) && refused(T, moveQ([{ src: W0, amount: 1 }]).replace("'2026-11-20'", "'4713-01-01 BC'"), /money_move_batch_date_check/));
     ok("FO-7mv fail (review m1): a USD line in a USD batch for a CAD entry is refused", refused(T, moveQ([{ src: W0, amount: 1 }], { cur: "USD" }), /a line is in its entry's currency \(CAD\)/));
@@ -306,7 +289,7 @@ try {
         const r = await run(giveBackQ(w.id, a, P)); if (r.ok) { w.returned += a; returnsOk++; } else returnsNo++;
         if (r.ok !== expect) mismatch.push(`${step} return ${a} of ${w.id}: db ${r.ok} model ${expect} ${r.v}`);
       } else if (op === 4 && deps.length) {
-        const d = deps[rnd(deps.length)], ck = ["BOUNCED", "WRONG_ACCOUNT", "ENTRY_ERROR"][rnd(3)], a = amt();
+        const d = deps[rnd(deps.length)], ck = ["RETURNED", "WRONG_ACCOUNT", "RECORDED_BY_MISTAKE"][rnd(3)], a = amt();
         const r = await run(correctQ(d.id, a, ck, P)); if (r.ok) { srcs.push({ id: r.v, kind: "C", ck, eligible: a, returned: 0 }); if (ck !== "WRONG_ACCOUNT") bank -= a; }
       } else if (op === 5) {
         const a = amt(), r = await run(entry("REFUND_TO_CLIENT", -a, { reason: "Returned unused money", pid: P })); if (r.ok) bank -= a;
