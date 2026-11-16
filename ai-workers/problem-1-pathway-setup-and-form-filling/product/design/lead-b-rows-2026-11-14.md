@@ -1602,3 +1602,14 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **Lead 68, 18:44 IST:** FO-4sf is recorded as built in STATE, and #1985 is closed. BACKLOG has no FO-4sf row to tick. Merged between 18:35 and 18:52 IST: #1951 (PF-6r), #1955 (PF-5v part 1), #1952 (PF-6f), #1954, #1929, #1967 and #1943.
   - **What these merges unblock:** PF-6 part 2a now waits only on **PF-6m (#1945, open)**, since PF-6 part 1 and PF-6r are on `main`.
   - PF-5s part 1 still waits on **PF-5v part 2**, the verification email to the inbox. Part 2 waits on PF-19e, and PF-19e waits on #1956 and #1961, which Lead B is watching.
+
+## Rev 16.73 (16 Nov 19:59 IST): FO-7a2 (#1991) touch list widened for rule 2c (Lead 69's ruling 6919227996; Lead B concurs, 6919271763)
+* **Lead 69's ruling:** FO-7a2 may change `money_move_line_write`, `money_trust_entry_moves` and the `money_to_move` view, and add `money_credit_note.overpaid_choice` (OVERPAID_REFUND | OVERPAID_TO_TRUST) with the moved amount.
+  - An operating → trust line is allowed only when it names a credit-note withdrawal, capped at O.
+  - PF-12 walls apply, the money breaker runs, and Lead 69 reads the migration before the label (P-423).
+  - Under 800 changed lines.
+* **Lead B concurs:** the touch-list gap was Lead B's own, from when rule 2c was written.
+* **Lead B adds two lines:**
+  1. The three FO-7mv functions join `money_trust_entry_write` and `money_credit_note_write` as FO-7a2's alone until it merges; FO-7b, FO-7t and FO-7ts do not touch them.
+  2. AG-6-73 rule 1(b) in general (money paid into the wrong account) is not opened. Any operating → trust line naming no credit note → 409, with a test.
+* **Also:** #1945 (PF-6m) is labelled; PF-6 part 2a starts when it merges.
