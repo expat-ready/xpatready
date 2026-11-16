@@ -1636,3 +1636,14 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - PF-13 part 1 now starts after #1956, #1961 and PF-19e are on `main`.
   - The order for the messages files: PF-19e, then PF-13 part 1, then PF-19c. None runs beside another.
 * **The first eight now hold PF-Fd** in lane 3, in place of PF-13 part 1. Lane 2's second brief is PF-0bp. The start list is updated in `design/lead-b-build-lead-a-2026-11-16.md`.
+
+## Rev 16.77 (16 Nov 21:45 IST): FO-13i (#2011): the Code's s. 24(2)(a) read at source; the warning stands (comment 6922009380)
+* **Why Lead B read it:** the cloud lane could not reach laws-lois.justice.gc.ca, because the proxy refused it. Lead B read it from the Mac.
+* **The source:** SOR/2022-128, https://laws-lois.justice.gc.ca/eng/regulations/SOR-2022-128/FullText.html, current to 2026-10-19, read on 16 Nov 2026.
+  - **s. 24(2)(a):** before entering into a service agreement, a licensee must "confirm the following information in respect of the client, seeking corroboration of the information if possible: (i) their full name, (ii) their home address and their personal telephone number and email address, if any, and (iii) their business address, telephone number and email address, if applicable".
+  - **s. 24(3)(b):** the service agreement must include "the information referred to in subparagraphs (2)(a)(i) to (iii)".
+* **Ruling:**
+  - Corroboration is "if possible", so it is a warning on Send and never a block. This is as built.
+  - Confirming the details is a "must". The retainer carries them under s. 24(3)(b), which is FO-5's required items. FO-13i adds the corroboration record and its warning.
+  - The requirements snapshot is not edited. Unconfirmed: no counsel on whether a recorded warning meets s. 24(2)(a) in a review.
+* **Note:** FO-13i was started from the queued list (PR #2011).
