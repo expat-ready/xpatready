@@ -6,7 +6,7 @@ updated: 2026-11-16 23:5x IST by **Lead 71 (series 2, local_0c9cccec)** (took ov
 
 Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
-**09:00 IST batch for the founder:** the provincial streams card (P-607 (9)), text in `design/build-lead-c-briefs/AS-2-streams-proposal.md` on claude/build-lead-c-647b40 (Ontario Workforce Priority, BC Skilled Worker, Saskatchewan International Skilled Worker, Alberta Opportunity Stream eligibility only, Manitoba Skilled Worker; Manitoba's site refuses automated reads, so the founder opens it on his own browser or it stays Sample).
+**09:00 IST batch for the founder:** the provincial streams card (P-607 (9)), text in the AS-2 streams proposal on branch claude/build-lead-c-647b40 (design, build-lead-c-briefs) (Ontario Workforce Priority, BC Skilled Worker, Saskatchewan International Skilled Worker, Alberta Opportunity Stream eligibility only, Manitoba Skilled Worker; Manitoba's site refuses automated reads, so the founder opens it on his own browser or it stays Sample).
 
 ## Lead 71 first check, 23:3x-23:5x IST 16 Nov
 * **CI jam, measured 23:37:** 104 runs queued (oldest 18:53 IST), only 2 ci runs in progress (~11 jobs) against the 40-job account limit; tiny module-cards runs also wait, so runners are scarce, not our job mix alone (cause beyond the 16-job ci run not yet found; GitHub status: all operational). Nothing merged since 21:32. Asked Build Lead C and Lead B (6) by message: PRs without Approve on the current head go back to draft; no pushes to ready PRs except fixes.
