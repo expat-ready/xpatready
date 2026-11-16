@@ -25,3 +25,4 @@ Loop: every 20 minutes read `git log origin/main` for new merges; when a merge c
 | 16 Nov 14:5x | 47b00ddae | #1936 (shaping batch 7), #1939 (Lead records); no app code | none | wait |
 | 16 Nov 15:1x | 47b00ddae | none | none | wait |
 | 16 Nov 15:4x | 47b00ddae | none | none | wait |
+| 16 Nov 16:0x | 47b00ddae | none | none | wait. Queue: #1951 PF-6r in batch #1976; #1956, #1957, #1959 approved+queued; #1945, #1961 approved not queued. Duplicate note: qa #1968/#1967 (another qa session) already re-walk R1.38/R1.40 on FO-3w part 1; this lane takes those two only on J-38 or FO-3st1 merging |
