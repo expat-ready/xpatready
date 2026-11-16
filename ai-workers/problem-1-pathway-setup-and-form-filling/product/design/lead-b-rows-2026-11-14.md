@@ -1483,3 +1483,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - **PF-5s part 1** (`PF-5s1.md`): the four public sign-up pages whose API is on `main`. S4–S8 wait on PF-5 part 2.
 * **PF-19b part 2** (one-click unsubscribe) is ready now from `PF-19b.md`.
 * **QA-483's rewording** of R1.19 is given to the Lead.
+* Lead 66, 12:0x IST: four cloud builders were requested (PF-5v, PF-5t part 1, PF-19b part 2, PF-5 part 2, with Stripe step 0 first). PF-5s part 1 starts after PF-5v. F1 is logged as **QA-490** (Major, fixed by PF-6m2 after #1945). #1945's permissions read was posted at 7d3c079a6. QA-483's rewording is owed to BACKLOG in Lead 66's next records PR.
