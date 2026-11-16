@@ -49,3 +49,6 @@ None of these reaches rows, but "even by id through SQL" is not airtight for exi
 - **Concurrency.** 300 mixed A/B requests (`/me`, `/staff`, `/staff/:id`) and 200 mixed lead list/by-id requests at once, over keep-alive connections: zero firm mix-ups (Prisma batching off outside transactions).
 - **Logs.** Bypass log lines carry the use and method only: no path, token or email. 500s logged the route pattern only.
 - **Jobs.** Jobs carry the firm (non-recurring jobs without one are refused). Sweeps run on named uses.
+
+## Round 2 (against 9db6c475eca5df63bf96c65c0e81cf51ad114ade)
+Not completed. I read the round 2 migration (`xr_wall_reader`, definer trigger functions, the three-argument `platform_web_address_taken` returning addresses only, sequences USAGE and SELECT only), but stopped before any re-test. No copy was started for round 2, and no round 1 break is confirmed fixed or still open from this round. The fixes still need a breaker pass.
