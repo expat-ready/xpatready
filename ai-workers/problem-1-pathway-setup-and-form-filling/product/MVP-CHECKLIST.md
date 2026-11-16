@@ -267,3 +267,21 @@ The board counts each listed part; a PR title must name it the same way ("runtim
 - PF-26 parts 1, 1b and 2
 - FO-3a parts 1a, 1b, 2a and 2b
 - PF-21s parts 3 and 4 (stage 2; stage 1 merged as #1821)
+- From Build Lead C (commit cdcccb52d, 21:1x IST 16 Nov):
+- R1.74: CS-DL1 parts 1-2
+- R1.10: CS-V1 part 1, CS-V1 part 2, CS-V1 part 3a, CS-V1 part 3b
+- R1.76: CS-NT1 parts 1-4
+- R1.8: AUD-1a, AUD-1b, AUD-1m part 1, AUD-1m part 2a, AUD-1m part 2b
+- R1.105: AUD-5 parts 1-2
+- R1.97: AUD-1c parts 1-2, AUD-2 parts 1-2, AUD-2c parts 1-2
+- R1.87: AUD-3 parts 1-3, AUD-3b parts 1-3
+- R1.88: AUD-4, AUD-4s parts 1-2 (1 = concept)
+- R1.102: CS-S1 parts 1-2
+- R1.79: CS-R1 parts 1-2
+- R1.34: CS-X1 parts 1-3
+- R1.68: CS-D5 parts 1-2
+- R1.69: CS-D6 parts 1-3
+- R1.70: CS-D7c, CS-D7 parts 1-2
+- R1.64/R1.67: CS-D1 parts 1-3
+- R1.106: CS-106c parts 1-2
+- R1.56/R1.57/R1.58 (R1.96/R1.111): FO-7ts parts 1-3; FO-7t parts 1-3; FO-7c parts 1-3; FO-7g parts 1-2; FO-7r parts 1-3

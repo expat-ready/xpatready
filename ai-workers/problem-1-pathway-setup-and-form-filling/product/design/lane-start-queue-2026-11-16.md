@@ -25,3 +25,4 @@ Spares: FO-6 (branch; BoldSign sandbox done), PF-0bp (main). Build Lead C's and 
 | 13 | R1.56/57/58/96/111 FO-7s0 | FO-7s0.md (money screens concept, records only; Opus reviewer + fresh challenger; Build Lead C approves the concept and reads its contract before the label) (commit afd3c681a) | medium | FO-7ts part 1 (FO-7ts-1.md; schema, money, high, breaker yes; holds client-money.prisma) only after #1991 merges | queued |
 
 **Gate:** #1991 (FO-7a2) is the single gate for the money chain FO-7ts p1 → p2 → p3 → FO-7b → FO-7c ∥ FO-7t (R1.56-R1.60, R1.96, R1.111). The Lead tells Build Lead C the moment it merges.
+| 14 | R1.105 AUD-5 part 1 | AUD-5-1.md (commit cdcccb52d; source: College Client File Management Regulation 2021-001 s. 7.2, read 16 Nov 2026; Unconfirmed: no counsel) | high, breaker yes; no schema; one line in Lead B's seed-sample-firms.ts (check against Build Lead A's lanes) | AUD-5 part 2 | queued |
