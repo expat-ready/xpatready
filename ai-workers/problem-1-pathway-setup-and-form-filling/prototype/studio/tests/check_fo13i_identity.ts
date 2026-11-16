@@ -154,7 +154,7 @@ try {
   const form = (fields: Record<string, string | string[]>, file?: { bytes: Uint8Array; name: string; type: string }) => {
     const f = new FormData();
     for (const [k, v] of Object.entries(fields)) for (const x of [v].flat()) f.append(k, x);
-    if (file) f.append("copy", new Blob([file.bytes], { type: file.type }), file.name);
+    if (file) f.append("copy", new Blob([file.bytes as Uint8Array<ArrayBuffer>], { type: file.type }), file.name);
     return f;
   };
   const pdf = new TextEncoder().encode(`%PDF-1.4\n% ${BYTES_MARK}\n%%EOF\n`);
@@ -198,14 +198,18 @@ try {
   // Idempotent creates (STANDARDS §4 [M]; Devin on #2011): one requestId is one check.
   const RID = crypto.randomUUID(), before7 = rows(PR), ev = () => Number(sql(`select count(*) from module_event where type = '${EVENT.IDENTITY_CHECKED}'`));
   const ev0 = ev(), withCopy = () => form({ ...docFields, requestId: RID }, { bytes: pdf, name: "p.pdf", type: "application/pdf" });
-  const i1 = await call("POST", `people/${PR}/identity-checks`, R.token, withCopy()), i2 = await call("POST", `people/${PR}/identity-checks`, R.token, withCopy());
+  // Three at once on a fresh id first (the database's unique id decides, review n4), then one after another.
   const i3 = await Promise.all([1, 2, 3].map(() => call("POST", `people/${PR}/identity-checks`, R.token, withCopy())));
+  const i1 = i3.find((r) => r.status === 201) ?? i3[0], i2 = await call("POST", `people/${PR}/identity-checks`, R.token, withCopy());
   ok("FO-13i DW3 pass (idempotent): the same Save replayed, one after another and three at once, is one check (its id is the requestId), one event, one copy on disk",
     i1.status === 201 && i1.body.id === RID && i2.body?.id === RID && i3.every((r) => r.body?.id === RID) && rows(PR) === before7 + 1 && ev() === ev0 + 1 && filesOnDisk() === onDisk + 1, [i1.status, i2.status, i3.map((r) => r.status), rows(PR) - before7, ev() - ev0]);
-  const iOther = await call("POST", `people/${PR}/identity-checks`, R.token, { ...good, requestId: RID }), iNone = await call("POST", `people/${PR}/identity-checks`, R.token, { ...good, requestId: "x" });
+  const iOther = await call("POST", `people/${PR}/identity-checks`, R.token, { ...good, requestId: RID }), iBad = await call("POST", `people/${PR}/identity-checks`, R.token, { ...good, requestId: "x" });
+  const iNone = await fetch(`${BASE}/people/${PR}/identity-checks`, { method: "POST", headers: { authorization: `Bearer ${R.token}`, "content-type": "application/json" }, body: JSON.stringify(good) }).then(async (r) => ({ status: r.status, body: await r.json() }));
+  const otherBytes = new TextEncoder().encode("%PDF-1.4\n% other bytes\n%%EOF\n");
+  const iBytes = await call("POST", `people/${PR}/identity-checks`, R.token, form({ ...docFields, requestId: RID }, { bytes: otherBytes, name: "p.pdf", type: "application/pdf" }));
   const iB = await call("POST", `people/${PB}/identity-checks`, S.token, { ...good, requestId: RID });
-  ok("FO-13i DW3 fail (idempotent): the same requestId with other details → 409 REQUEST_REUSED (also from firm B, which learns nothing else); no requestId → 400; nothing stored",
-    iOther.status === 409 && iOther.body.code === "REQUEST_REUSED" && iNone.status === 400 && iNone.body.fields?.requestId && iB.status === 409 && rows(PR) === before7 + 1 && rows(PB) === 0, [iOther.status, iNone.status, iB.status]);
+  ok("FO-13i DW3 fail (idempotent): the same requestId with other details or another copy → 409 REQUEST_REUSED (also from firm B, which learns nothing else); a missing or malformed requestId → 400; nothing stored",
+    iOther.status === 409 && iOther.body.code === "REQUEST_REUSED" && iBytes.status === 409 && iBytes.body.code === "REQUEST_REUSED" && iBad.status === 400 && iNone.status === 400 && iNone.body.fields?.requestId && iB.status === 409 && rows(PR) === before7 + 1 && rows(PB) === 0, [iOther.status, iBytes.status, iBad.status, iNone.status, iB.status]);
 
   // ---------------------------------------------------------------------------------------------------------- DW4
   const svc = app.get(Retainers), ctxR = { staffId: R.id, firmId: A, firmKey: "sample-firm", roles: [], keys: [], duties: [], authTime: 0, via: "local" as const };

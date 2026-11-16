@@ -98,3 +98,32 @@ The other 5 failures are knock-ons: on the old code the B-1 notes were stored, s
 Nothing else broke. The send path, the event, the audit and the migration are unchanged. Accented text still saves (probe 201). The polyglot copy is still served as an attachment with the sandbox CSP.
 
 **Verdict: Approve** for **89c2b5f706be9f3943c926b1cfb7fb0b22c7916c** (no open Blocker or Major). The two test files outside the touch list wait on the tech lead's answer on the PR, as the builder asked.
+
+## Re-review 2: 422d5122f → f38b7b763 (P-277, the diff only; m4, idempotent creates)
+Reviewer, 16 Nov 2026. The diff touches 2 files, +39/-8 (`service.ts`, `check_fo13i_identity.ts`). **Runs on f38b7b7:** check_fo13i_identity **27/0** · check_fo5_retainers **243/0**.
+
+**How it works.** A required `requestId` uuid becomes the check's id and its copy key (`identity/<person>/<requestId>.<ext>`, the same shape the table accepts). A firm-scoped pre-check, FileKeyTaken and P2002 all lead to `replay()`.
+* **The comparison is complete.** It compares every stored field the request sets: person, checker, method, note, type, country, expiry, last 4, details and copy sha256 (`null === null` when there is no copy). Firm comes from `firmScope`. Expiry compares DATE to UTC midnight on both sides; my probe gave the same body 201, then 201, and expiry changed to `2031-06-01` gave 409. Details are compared in order, so a reordered list is 409, which is acceptable.
+* **It is safe.** A match is returned through `list()`, so visibility is checked again. A mismatch answers 409 with no field of the saved check: another staff member reusing R's id on their own person gets 409 `REQUEST_REUSED`, and firm B gets 409 too (suite). That tells B only that a random uuid it already holds exists. Negligible.
+* **No copy is overwritten or wrongly named.** `LocalFiles.put` claims the key with `link` (EEXIST): the same bytes count as a retry, other bytes raise FileKeyTaken. A row's sha256 is therefore always its file's.
+
+**Races probed on a fresh requestId (3 rounds each), against my scratch copy of the suite's setup:**
+* 4 identical JSON saves at once → 201×4, 1 row, 1 id.
+* 4 identical saves with a copy → 201×4, 1 row, 1 new file.
+* 2 saves with different copy bytes → one 201, one 409, 1 row.
+* A retry with the same requestId after a forced failed insert (500) → **201 with the copy**. The earlier unreferenced copy is now healed rather than orphaned.
+* A missing `requestId` (raw request, no helper) → 400 naming it.
+
+**Orphan copies.** There is no new orphan path in normal use. Only a requestId reused for another person or firm, together with a copy, stores that copy and then answers 409 without the "not attached" note (n3, Minor; it needs a client bug or a deliberate replay).
+
+**The tests.** The auto-requestId helper adds an id only when the case names none, and only to `POST …/identity-checks` (never to `download-link`).
+* "no requestId → 400" in the suite actually sends `"x"`. It is the same branch, and my raw probe covers the missing case.
+* The fail-first evidence is weak, as you note. The two new cases do fail if the id is ignored or replay is removed. But the suite's "three at once" runs after the first save has committed, so the P2002 path, the sha comparison and a same-firm other-person reuse are proven only by my probes (n4, Minor: run the three-at-once on a fresh requestId and add one other-bytes case).
+
+**Minor (Should), not blocking.**
+* n3: the orphan copy described above.
+* n4: the test gaps described above.
+* n5: `requestId` is now a required field of the record route, but `api/src/front-office/MODULE.md`'s entry line does not name it (STANDARDS module card [M]: update the card or say "Card unchanged").
+* m3 and m5 stay open. n1 and n2 from the re-review are unchanged.
+
+**Verdict: Approve** for **f38b7b76387285f48c09d6572ac0fb0a611a45f5** (no open Blocker or Major).
