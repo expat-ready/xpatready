@@ -172,7 +172,26 @@ Reviewer: Opus 5.5, fresh context (P-303). I did not build this.
 
 **Not checked:** a live SES or SNS account (the header fallback assumes "include original headers" is on, which the team sets up once), a real screen reader, and CI on this head.
 
-Verdict: Approve (head `d460651e1`)
+Re-review 1 verdict: Approve (head `d460651e1`), superseded below
 * Blockers: none.
 * Majors: none open. M1 is closed by Lead B's ruling (moved to PF-19e); M2, M3 and M4 are fixed with fail tests.
 * Minors: n1 (close before SES goes live), n2, n3.
+
+## Re-review 2 at `5d4169833` (diff only, P-277)
+
+**Scope:** `git diff 2c502177f..5d4169833`: 4 files, +15 −4.
+* The whole row is +744 −13 on `studio/`, under P-610's cap.
+* Suite **44/44** at this head; both new checks pass.
+
+**What changed:**
+* **`ses.ts`: a `sender` option.** Without one, `deliver` throws "no verified sender is set" before any SES call (the test checks that no request went out). With one, From is `<firm name> <sender>`. This replaces the Sample `PLATFORM_FROM`, which SES would refuse. The app passes no sender, so SES fails closed. **Agree.** At `d460651e1`, the outcome in test or production was the same: SES would refuse the address and the row would stay `QUEUED`. Now it is explicit and costs no SES call.
+* **`bounces.ts` and `platform-messages.ts`: `requireTopics` when `PLATFORM_ENVIRONMENT` is not local.** With no topic list, even a signed notice is refused (400). The check comes before the certificate fetch, so there is no outbound call. **This closes n1:** a notice from another AWS account's topic is never trusted outside local, so the ids in `X-Expatready-Ref` cannot be used to forge a complaint. On a local server the topic list stays optional, as before.
+
+**Notes (Minor, not blocking):**
+* **n4, PR body out of date.** Known gaps does not yet say that on test and production nothing is emailed and every notice is refused until the sender and topic settings exist. Mail there stays `QUEUED` and is retried (part 1's policy). Those settings need a PF-24 follow-up row. The "What and why" text still says "optional topic allowlist" and "with no topic list its URL is logged", which is now true only on a local server.
+* **n2 and n3 stand as written above.**
+
+Verdict: Approve (head `5d4169833`)
+* Blockers: none.
+* Majors: none.
+* Minors: n2, n3, n4 (PR body lines; no code change needed).
