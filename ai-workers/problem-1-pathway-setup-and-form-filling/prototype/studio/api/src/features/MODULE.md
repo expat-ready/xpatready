@@ -18,9 +18,10 @@ The registration seam: one file per feature, and the step folders of growing run
 - A reviewed release is never edited: "later" own questions are asked by release 1, after every other combination (P-598, P-496).
 - The firm's own facts are the case officer's, never the client's (P-486, QA-403).
 - A refused line is named in `refused`, never dropped silently (P-444).
+- `platform-firm-walls.ts` (PF-12) runs every handler in its request's firm scope, and stops the start-up when the API's database role could pass the firm walls.
 
 **Tables.** through the services it registers: sectionQuestion, canonicalField, formEdition, libraryChange, proposalItem, combinationForm, sourceAttachment, formFieldMap.
-**Tests.** `tests/check_features_registry.ts`, `tests/check_b104_checkpoint.ts`, `tests/check_checkpoint_review_order.ts`, `tests/check_checkpoint_sheet_stable.ts`, `tests/check_c73_parts_checkpoint.ts`.
+**Tests.** `tests/check_features_registry.ts`, `tests/check_pf12_walls.ts`, `tests/check_b104_checkpoint.ts`, `tests/check_checkpoint_review_order.ts`, `tests/check_checkpoint_sheet_stable.ts`, `tests/check_c73_parts_checkpoint.ts`.
 
 **Do not.**
 - Edit another feature's step or a shared constructor to add yours; add a numbered file.

@@ -5,6 +5,7 @@ import { PrismaClient } from "@prisma/client";
 import { HttpException, HttpStatus, Inject, Injectable, SetMetadata, type CanActivate, type ExecutionContext } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { PLATFORM_ACCESS, type PlatformAccess } from "./platform/identity/keys.ts";
+import { oneQueryPerCaller, walledPool } from "./platform/firm-scope.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -32,7 +33,7 @@ export const VAR = (ws: string) => join(VAR_ROOT, "workspaces", ws);
 export class Db extends PrismaClient {
   // The driver adapter sends times without a zone; the session time zone is UTC so PostgreSQL stores the real moment,
   // whatever the server's own zone (QA-5: it was Asia/Kolkata, so every write landed 5 h 30 min early).
-  constructor() { super({ adapter: new PrismaPg({ connectionString: DATABASE_URL, options: "-c TimeZone=UTC" }) }); }
+  constructor() { super({ adapter: new PrismaPg(walledPool(DATABASE_URL), { disposeExternalPool: true }) }); oneQueryPerCaller(this); }   // PF-12: as xr_app, each query in its caller's firm (platform/firm-scope.ts)
 }
 
 /** Simulated people (labelled "Simulated" on every screen). Roles follow the team's staff roles; the SME is a duty of

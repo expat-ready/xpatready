@@ -1,0 +1,34 @@
+NOTICE:  database "xr_studio_pf19bm_21205" does not exist, skipping
+PASS  BM1 fail: before the jobs run, nothing is in the demo inbox (the mail is a job after the booking's commit)
+PASS  BM1 pass: the booking confirmation is SENT by the local adapter, TRANSACTIONAL for the booker, in /api/demo/platform-inbox with invite.ics (METHOD:REQUEST, a UID, text/calendar)
+PASS  BM1 fail: another address's inbox does not hold it
+PASS  BM2 pass: the host's copy is SERVICE for the host (STAFF subject), with its own invite.ics of the same UID
+PASS  BM2 fail: a SERVICE email that names no person is refused, and no outbox row is written
+PASS  BM3 fail: mail to a suppressed address throws (the caller's job sees it was not sent), the row is SUPPRESSED, nothing is in the inbox
+PASS  BM3 pass: the same email to an address that is not suppressed is sent
+PASS  BM4 fail: the commit holds, the dispatch fails: send does not throw (no second row from a retry), nothing sent yet, one log line without the address
+PASS  BM4 pass: the sweep sends it, once
+PASS  BM5 pass: moved then cancelled → three mails, newest first: CANCEL then REQUEST then REQUEST, one UID, SEQUENCE rising
+PASS  BM5 fail: the cancellation carries no reschedule link
+[booking] email for booking d7b499f9-a74c-42a7-a634-6bc7054544b5 not sent, final: not sent: SUPPRESSED: COMPLAINT
+[booking] email for booking d7b499f9-a74c-42a7-a634-6bc7054544b5 not sent, final: not sent: SUPPRESSED: COMPLAINT
+PASS  BM7 pass: the 24 h and 1 h reminders go through the outbox as SERVICE for the booker (FO_PERSON) and are SENT; the host's attendance question is shown, not mailed (AG-4-39 rule 2, FO-3m DW6)
+PASS  BM7 fail: a booker suppressed after booking gets no reminder: the rows are SUPPRESSED by the gate, the inbox holds only the confirmation
+PASS  BM8 pass: a job run twice with its key sends once (the second call answers the first row, without throwing)
+PASS  BM8 fail: another key is another email
+PASS  BM8 pass: booking's own mail job run a second time after it sent makes no second row and no second email (it passes its job key)
+PASS  BM9 fail: a subject on two lines is refused as MessageRefused, and no attachment file is stored
+PASS  BM9 pass: the same mail on one line stores its attachment and is accepted
+PASS  BM9 fail: an address the channel refuses (a@b-.example) is MessageRefused, and the error text never quotes the address (break M2)
+PASS  BM9 pass: two names that clean alike and a .meta name are all kept, each with its own bytes (break m3)
+[booking] email for booking d864aeca-b4fe-4fc2-b7cd-d1ed446c1d53 not sent, final: not sent: SUPPRESSED: COMPLAINT
+PASS  BM10 pass: a suppressed booker: one SUPPRESSED record, the mail job ends done (no retry: zero further attempts), the link it made is voided, the booking stays booked
+PASS  BM10 fail: a mail failure that is not a refusal (the mail server away) is still thrown, so the runner retries it
+PASS  PF-0c DW2 MailPort MessagesMail: a checked email is sent with an id and kept for its address (lower case)
+PASS  PF-0c DW2 MailPort MessagesMail: one idempotency key in one firm is one email; another key, or the same key in another firm, is another
+PASS  PF-0c DW2 MailPort MessagesMail: an email the schema refuses throws and nothing is kept
+PASS  PF-0c DW2 MailPort MessagesMail: passes its contract (3 of 3 cases)
+PASS  BM6 pass: GET /api/demo/platform-inbox answers 200 with the three booking mails and the invite text
+PASS  BM6 fail: a client's persona gets 403 from the same route
+
+28 passed, 0 failed

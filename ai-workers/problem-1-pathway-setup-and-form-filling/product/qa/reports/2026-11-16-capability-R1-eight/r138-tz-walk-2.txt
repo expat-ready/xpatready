@@ -1,0 +1,21 @@
+setup (not through the product: no firm, staff, hours or type screens yet): firm qa-r1-18555, one host, firm hours copied, type "free" (window 130 days to reach 14 Mar 2027)
+PASS  R1.38 slots: 200 and the page answers in the visitor's zone (Asia/Dubai)
+PASS  R1.38 DST: Friday 12 Mar's first slot is 09:00 Toronto = 14:00Z (EST)
+PASS  R1.38 DST: Monday 15 Mar's first slot is 09:00 Toronto = 13:00Z (EDT, the hours followed the change)
+PASS  R1.38 fail: no slot on the weekend (13, 14 Mar) when the firm's hours are Monday to Friday
+PASS  R1.38 label: Fri 10:00 Toronto (15:00Z) reads 7:00 p.m. in Dubai, zone named
+PASS  R1.38 label: Mon 10:00 Toronto (14:00Z) reads 6:00 p.m. in Dubai after the change
+PASS  R1.38 default: with no tz the page answers in the firm's zone (America/Toronto) and Fri 15:00Z reads 10:00 a.m.
+PASS  R1.38 fail: an unknown zone → 400 in words, never 500
+PASS  R1.38 book: 201, stored 15:00Z, shown 7:00 p.m. (Asia/Dubai)
+PASS  R1.38 underneath (SQL, zone-free): the stored instant is 2027-03-12T15:00 UTC
+PASS  R1.38 underneath: fo_booking.starts_at is the UTC instant and the booker's zone is kept
+PASS  R1.37 fail: the same host and time again → refused (409), one booking only
+PASS  R1.42 next step: the self-service link opens the booking in the booker's zone and can still change it
+PASS  R1.42 move slots: answered in the booker's zone; Monday 14:00Z is offered
+PASS  R1.38/R1.42 move across the change: RESCHEDULED, 14:00Z, 6:00 p.m. in Dubai, a new link
+PASS  R1.40 underneath: the move raised the invite's SEQUENCE source (fo_booking.sequence 1); same booking id (the invite's UID)
+PASS  R1.42 fail: the old link → the identical not-found an unknown link gets
+PASS  R1.42 cancel by link: CANCELLED
+PASS  R1.37 pass: the freed Monday 14:00Z is offered again
+19 passed, 0 failed

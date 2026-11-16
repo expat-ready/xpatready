@@ -10,7 +10,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { Db } from "../../core.ts";
 import { EVENT, StaffEventPayload } from "../../../../ports/events.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
-import { firmScope, notInFirm } from "../firm-scope.ts";
+import { asBypass, enterFirm, firmScope, notInFirm } from "../firm-scope.ts";
 import { actorWord, auditInvitation, auditStaff } from "./audit.ts";
 import { moneyKeysOfRoles, readCatalogue } from "./catalogue.ts";
 import { CognitoIdentity } from "./cognito.ts";
@@ -139,7 +139,8 @@ export class PlatformIdentity implements OnModuleInit {
   async localSignIn(body: { firmKey?: unknown; email?: unknown; actorId?: unknown; secondStep?: unknown }) {
     if (!(this.port instanceof LocalIdentity)) return problem(403, "Not available", "The local sign-in stand-in is off on this server (PLATFORM_IDENTITY is not local).", { code: "LOCAL_SIGN_IN_OFF" });
     if (typeof body.firmKey !== "string" || !body.firmKey) return problem(400, "Choose the firm", "Give the firm key.", { code: "FIRM_REQUIRED" });
-    const firm = await this.db.platformFirm.findUnique({ where: { key: body.firmKey }, select: { id: true, key: true } });
+    const key = body.firmKey, firm = await asBypass("platform.identity.sign-in", () => this.db.platformFirm.findUnique({ where: { key }, select: { id: true, key: true } }));
+    if (firm) enterFirm(firm.id);   // PF-12: the rest of the sign-in runs as this firm
     const who = typeof body.actorId === "string" && body.actorId ? { actorId: body.actorId } : { email: emailOf(body.email) };
     const staff = firm && await this.db.platformStaff.findFirst({ where: firmScope(firm.id, who) });
     if (!firm || !staff) return unauthorized("No staff member signs in with that firm key and work email.", "UNKNOWN_STAFF");

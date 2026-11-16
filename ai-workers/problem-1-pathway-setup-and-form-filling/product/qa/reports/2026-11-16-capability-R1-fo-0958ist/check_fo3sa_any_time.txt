@@ -1,0 +1,42 @@
+NOTICE:  database "xr_studio_fo3sa_2218" does not exist, skipping
+PASS  FO-3sa DW1 fail: a closed-day time → 409 "Book anyway?" listing "Closed day", nothing saved
+PASS  FO-3sa DW1 pass: Book anyway saves it, the audit entry records the reason (field 9), no overlap confirmer
+PASS  FO-3sa DW3 pass: Sunday 11:00 → the warning "Outside Sample owner's hours", nothing saved
+PASS  FO-3sa DW3 fail: a free time inside the host's hours → saved at once, no warning, no confirmer
+PASS  FO-3sa DW4 pass: Cancel (bookAnyway false or left out) saves nothing: no booking, no audit line, no event
+PASS  FO-3sa DW4 fail: the same body with bookAnyway true saves it (the 409 was the only thing stopping it)
+PASS  FO-3sa DW2 fail: a time over the host's booking → the warning "Overlaps Lee Sample 13:00–13:30", nothing saved
+PASS  FO-3sa DW2 pass: Book anyway keeps both bookings; the second's host row has overlapConfirmedByUserId = the Case Officer, and the audit shows it
+PASS  FO-3sa DW2 fail: an unconfirmed overlapping row is still refused by the database (fo_booking_no_overlap)
+PASS  FO-3sa DW5 pass: the public slots answer still offers free times (Tue 27 Oct 09:00, Thu 29 Oct 13:00)
+PASS  FO-3sa DW5 fail: it never offers the times staff booked anyway (closed Wed 10:00, Sun 11:00, the overlapped Tue 13:00), nor any Sunday or closed-day time
+PASS  FO-3sa DW6 pass: an active host of the type may be chosen (the pick rule would take the Admin first)
+PASS  FO-3sa DW6 fail: a deactivated host → 400 with the field error "hostStaffId: choose an active host" (with Book anyway too), nothing saved
+PASS  FO-3sa DW6 pass: with no host chosen, Book anyway never takes the deactivated host (the pick rule skips it, AG-4-53)
+PASS  FO-3sa DW6 fail: an active staff member who is not a host of the type → 400 field error, nothing saved
+PASS  FO-3sa DW7 fail: a reschedule to Sunday 15:00 → the same warning, the booking unchanged
+PASS  FO-3sa DW7 pass: with Book anyway it moves (RESCHEDULED, same host), and the audit keeps the reason
+PASS  FO-3sa DW7 pass: a move over two bookings lists both overlaps; Book anyway moves it with the Case Manager as confirmer
+PASS  FO-3sa DW7 fail: moved back to a free time, it needs no Book anyway and the confirmer is cleared (the no-overlap rule covers it again)
+PASS  FO-3sa DW7 fail: a time that has passed is refused even with Book anyway
+PASS  FO-3sa DW8 fail: BILLING_FINANCE and READ_ONLY with Book anyway still get 403 (create and reschedule), nothing saved or moved
+PASS  FO-3sa DW8 fail: firm B's host id or type id → 404 (never named), nothing saved
+PASS  FO-3sa DW8 pass: the four roles with the keys may book anyway (OWNER, ADMIN, CASE_MANAGER, CASE_OFFICER)
+PASS  FO-3sa DW9 fail: with a confirmed overlapping booking in place, a forced public post for that time loses under the host lock (409 SLOT_TAKEN), even once it is the only booking there, and sets no confirmer
+PASS  FO-3sa DW9 pass: the same public form books a free time, with no confirmer
+PASS  FO-3sa DW10 pass: two parallel staff Book-anyway posts over the Sunday 11:00 booking both save, each with its own confirmer
+PASS  FO-3sa DW10 fail: the same two posts without Book anyway both get the warning, and nothing is saved
+PASS  FO-3sa M1 fail: a warning that appeared after the person saw the dialog (the Owner booked the time meanwhile) is asked again, and Book anyway with no codes is asked again; nothing saved
+PASS  FO-3sa M1 pass: Book anyway on the new dialog's warnings saves, with the Case Officer as confirmer
+PASS  FO-3sa M2 pass: Thu 14:15 (between the 30-minute starts, inside the host's hours, host free) saves at once, no warning (Rule 7: warn, never block)
+PASS  FO-3sa M2 fail: 14:35, over the 14:15 booking and its 10-minute gap, warns of the overlap and saves nothing
+PASS  FO-3sa break F3/F4 pass: Book anyway over a booking for a 100-character, email-like name saves (no 500), and the audit line holds codes and ids, no name
+PASS  FO-3sa break F3/F4 fail: the dialog itself still names the person it overlaps (shown to the staff member, never stored)
+PASS  FO-3sa Devin-1 fail: a 30-minute meeting at 16:30:30 ends 30 s after the 17:00 close → OUTSIDE_HOURS, nothing saved
+PASS  FO-3sa Devin-1 pass: 16:29:30 ends 16:59:30, inside the hours → saved as asked
+PASS  FO-3sa Devin-2 pass: Fri 11:15 (between starts) with no host chosen, the first host (Admin) busy and the second (Owner) free → saved with the Owner, no warning
+PASS  FO-3sa Devin-2 fail: the same time with the busy Admin chosen → OVERLAP, nothing more saved
+PASS  FO-3sa Devin-3 pass: an upper-case id of an active host is that host (stored in lower case)
+PASS  FO-3sa Devin-3 fail: an upper-case id of a non-host is still refused as not a host
+
+39 passed, 0 failed
