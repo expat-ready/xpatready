@@ -1624,3 +1624,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   1. **FO-7 money:** agreed. Lead B keeps FO-7a2 (#1991) until it merges; the rest of FO-7 goes to Build Lead C, and Lead 69 is telling C.
   2. **Sub-parts:** Lead 69 is first checking with the board session which form the board counts, then adds them to the checklist on lead/2026-11-07-lead31.
   3. **Starts:** the eight starts and their second briefs are queued. Sessions start only in a turn the founder types, so they go out at the founder's next message.
+
+## Rev 16.75 (16 Nov 21:09 IST): the PR title rule; PF-21s stage 2 becomes parts 3 and 4
+* **What Lead 69 did:** added Lead B's sub-parts to MVP-CHECKLIST on lead/2026-11-07-lead31, in the board's form (for example "PF-13 parts 1-2").
+* **The title rule:** every PR title names its part exactly, for example "runtime: PF-13 part 1 — …". A title without "part" counts as the whole row.
+* **PF-21s:** stage 1 merged as #1821, so stage 2 becomes PF-21s part 3 (the list and the drawer) and part 4 (the record page's actions). Updated in `lead-b-briefs/PF-21s.md` and in the start list.

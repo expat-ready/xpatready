@@ -66,7 +66,7 @@ Lead 69 sent P-644 (the four-seat model, `design/release1-operating-model-2026-1
 
 | # | Row | Map row | Brief (paste in this order; amendment blocks win) | Why now |
 |---|---|---|---|---|
-| 1 | **PF-21s stage 2 part 1** (complaints list and record screens) | 109 | `lead-b-briefs/PF-21s.md` (branch) + `P-626-order.md` A5 | PF-6 part 1, PF-21w and PF-21v are on `main`, and the concept is approved |
+| 1 | **PF-21s part 3** (complaints list and record drawer; was "stage 2 part 1") | 109 | `lead-b-briefs/PF-21s.md` (branch) + `P-626-order.md` A5 | PF-6 part 1, PF-21w and PF-21v are on `main`, and the concept is approved |
 | 2 | **PF-21i** (recording a complaint is idempotent) | 109 | `lead-b-briefs/PF-21i.md` (main) | #1848 is on `main`; API only, so no overlap with 1 |
 | 3 | **PF-13 part 1** (branding API with banner and tagline) | 23 | `lead-b-briefs/PF-13.md` (main) + `P-627-amendments.md` PF-13 block + `P-630-amendments.md` PF-13 block | PF-Le is on `main` (#1919) |
 | 4 | **PF-8r** (a nightly tested restore) | 14 | `lead-b-briefs/PF-8r.md` (main) | waits on nothing; no open PR on `nightly.yml` or `deploy/` |
@@ -79,7 +79,7 @@ Lead 69 sent P-644 (the four-seat model, `design/release1-operating-model-2026-1
 
 | Lane | Next row | Brief | Starts when |
 |---|---|---|---|
-| 1 | PF-21s stage 2 part 2 | same as 1 | part 1 is on `main` |
+| 1 | PF-21s part 4 (record page actions) | same as 1 | part 1 is on `main` |
 | 2 | PF-Fd (file delete) | `lead-b-briefs/PF-Fd.md` (main) | now (no open PR on `ports/files.ts`) |
 | 3 | PF-13 part 2 (panel) | same as 3 | part 1 is on `main` |
 | 4 | PF-18b (support tables) | `lead-b-briefs/PF-18b.md` (main) | now |
@@ -112,3 +112,5 @@ Each row above already names its parts in its brief:
 * FO-9b has parts 0, 1 and 2.
 
 The Lead copies these sub-parts into the checklist rows so the board counts them. Lead B can't push to `main`.
+
+**Title rule (Lead 69, rev 16.75):** every PR title names its part exactly, in the form "runtime: PF-13 part 1 — …". A title without "part" counts as the whole row. Lead 69 has put the sub-parts into MVP-CHECKLIST in the board's form, for example "PF-13 parts 1-2". PF-21s stage 2 is now **PF-21s parts 3 and 4**, because stage 1 merged as #1821.

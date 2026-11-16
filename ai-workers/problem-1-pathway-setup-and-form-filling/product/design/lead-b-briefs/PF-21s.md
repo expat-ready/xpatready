@@ -4,6 +4,8 @@ Written 15 Nov by Lead B (6). Row: BACKLOG PF-21s ("concept first"; map row 109)
 
 
 > **Rev 16.28 (15 Nov, Lead B ruling on #1821):** stage 2 waits on PF-21w, **PF-21v** (view fields `businessDaysLeft`, `people`, `firmTimeZone`, and `GET /handlers`) and **PF-6 part 1** (the platform frame and staff session holder). The chip counts are made in the browser from one `view=all` page ("100+" past one page). The full ruling is on PR #1821.
+
+> **Rev 16.75 (16 Nov, Lead 69's board form, P-644 rule 1): the build parts are renamed.** Stage 1 (the concept) merged as #1821, so on the checklist it counts as PF-21s parts 1 and 2. Stage 2's two parts become **PF-21s part 3** (the list and the record drawer: DW1, DW2, DW5, DW6) and **PF-21s part 4** (the record page's actions: DW3, DW4). **The PR title names the part exactly**, for example `screens: PF-21s part 3 — complaints list and record drawer`. A title without "part" counts as the whole row. Wherever this brief or `P-626-order.md` A5 says "stage 2 part 1" or "stage 2 part 2", read part 3 or part 4.
 ---
 You are a builder for the Expat Ready Pathway Configurator. Run `/next screens PF-21s` and take **one row, PF-21s**, end to end.
 
