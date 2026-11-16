@@ -1,0 +1,38 @@
+# PF-6m break report: one money-keys audit line for both doors (PR #1945, head ff0ef12a8)
+
+The breaker did not build this. Scope: the brief's two doors (role change `identity/service.ts` changeRoles, invitation accept `identity/session/service.ts` accept) and the shared helper `identity/money-line.ts`. API only: no screen, so the browser, keyboard, 1024 px and zoom tries do not apply.
+
+**How it was run.** Scratch copies of the builder's harness (`studio/tests/check_pf6m_money_line.ts`): a scratch database with every migration and the Sample firms on 127.0.0.1:54329, and a Nest app of the PF-4/PF-4b identity classes with the local stand-ins. No server on 4400, no browser, live AI off, US$0. The scripts are in the session scratchpad (`brk.mts`, `brk6.mts`, `brkW.mts`), not in the repo, and their databases were dropped. The builder's own check passes 11/11 on this head.
+
+Catalogue money-key counts at this head: READ_ONLY 0, CASE_OFFICER 4, CASE_MANAGER 4, BILLING_FINANCE 12, ADMIN 15, OWNER 16. CASE_OFFICER's 4 are inside CASE_MANAGER's and inside BILLING_FINANCE's; BILLING_FINANCE's 12 are inside ADMIN's.
+
+## Findings
+
+| # | Severity | What I did | Expected | Actual | Where |
+|---|---|---|---|---|---|
+| F1 | Major (older code; PF-6m now writes it into the audit) | T (Case Manager) was made Admin. T invited `by.t@example.com` as Billing/Finance through `POST /api/platform/staff/invitations` (201). The Owner then deactivated T (200). Then the invitee accepted. In a second run, T was cut to Read-only before an Admin invitation of T's was accepted. | Once the inviter has been deactivated or has lost the keys, their open invitation stops handing out money keys, or the accept checks again. At the least, the line should say the grant came from an invitation. | Deactivating T leaves T's invitation open (1 row). The accept answers 200 and grants Billing/Finance (12 money keys). The money line has actor `staff:<T>`, a deactivated person. The second run granted ADMIN (15 money keys) in the name of T, who holds no money key. The line's `detail` has no `invitationId` and is byte-for-byte the role-change line, so it reads as if T changed roles at accept time. The way to reach it: an Admin about to be removed invites a second address of their own, and after being deactivated accepts and has 15 money keys again. | `identity/session/service.ts:97,100` (accept takes `inv.invited_by` without checking it again); `identity/service.ts:249` (deactivate does not end open invitations); `identity/money-line.ts:18` |
+| F2 | Minor (new in this PR) | Deleted the `platform-audit` workspace row and its one line (a new database before any platform line), then sent two Billing/Finance accepts in parallel, one in firm A and one in firm B. Repeated 3 times. Control run: the same race with two Read-only accepts, which write no money line. | Both 200, as in the control. | The control gave 200/200 three times out of three. With money lines, one accept answered 500 three times out of three. Two parallel `writeMoneyKeysGranted` transactions called directly gave `ok` and `P2002`. The cause: the accept transaction now reaches `identity/audit.ts`'s `platformAuditWorkspaceId` (Prisma `upsert` plus a module cache) before PF-0p's race-safe `audit-event.ts` version (`createMany skipDuplicates`). PF-0p's review M1 fixed exactly this race. Today only a new database can reach it, because seeding and signup write a line first. | `identity/audit.ts:16` reached from `identity/money-line.ts:18`, called at `identity/session/service.ts:100` |
+| F3 | Minor (older, frozen as-is by DW3) | O holds CASE_OFFICER. Role change to `[READ_ONLY, CASE_OFFICER, CASE_MANAGER]`. | The line counts only money keys the person did not already hold, or says the keys were already held. | The line reads "money permissions given with CASE_MANAGER: 4 keys". All 4 were already held through CASE_OFFICER (0 new). An Admin given Billing/Finance would get the same over-count (12 of 12 already held). | `identity/money-line.ts:14-16` (counts the added roles' keys, not the person's new keys); `identity/service.ts:232` |
+| F4 | Minor (the helper's comment is wrong) | Searched every writer of `platformRoleGrant` in `api/src`. | The comment in `money-line.ts` says the line is "written by every door that hands out roles". Ruling 2(b): assigning a role that carries a money key writes its own line. | Self-serve signup grants OWNER (16 money keys) and writes `platform.staff.owner_created` but no money-keys line. The Sample seed grants OWNER the same way; the seed is not a door the firm uses. Either signup also calls the helper, or the comment and the row name the two doors only. | `platform/firms/signup.ts:181`; `identity/money-line.ts:1-2` |
+
+## What held
+
+* **Two roles, only one carrying money keys (the required try).** `[READ_ONLY, CASE_OFFICER]` and `[CASE_OFFICER, READ_ONLY]` each wrote 1 line naming CASE_OFFICER only, with its 4 keys. `[CASE_OFFICER, BILLING_FINANCE]` named both, with the 12 distinct keys (not 16). `[BILLING_FINANCE, CASE_OFFICER, READ_ONLY]` named the two money roles in invitation order, with 12 keys. `[OWNER, READ_ONLY]` (planted by SQL, since the route refuses Owner at invite) named OWNER, with 16 keys. Every key list equals `moneyKeysOfRoles` for the money roles.
+* **Replayed accept, in parallel.** 12 accepts of one token at once gave one 200 and eleven 410 `INVITATION_NOT_VALID`. They left 1 money line, 1 staff row and 2 grants. The firm lock comes first, then the invitation `FOR UPDATE`.
+* **Replayed accept, one after another.** Two more replays answered 410 and wrote no line. Expired (410 `INVITATION_EXPIRED`) and revoked (410 `INVITATION_NOT_VALID`) invitations wrote no line.
+* **Provider refusal.** A refused `createUser` on an `[OWNER, BILLING_FINANCE]` invitation answered 500. It left 0 new money lines, no staff row, no joined event, and the invitation unused. An accept of an email already in another firm answered 409 `EMAIL_IN_ANOTHER_FIRM` and left no line.
+* **Duplicate and empty role arrays.**
+  * By the route: 400 `ROLE_TWICE` and 400 `ROLES_REQUIRED`.
+  * By SQL: refused by the `platform_invitation_roles_distinct` and `platform_invitation_has_role` constraints (including a `NULL` element).
+  * So the helper cannot see a doubled or empty role list.
+* **Leaks.** A distinctive licence number was saved on the inviter (`R777777LEAK`) and the Sample licence numbers were present. A full-text scan of every `audit_event` row after an accept found none of: the plain token, the token hash, any licence number, or the invitee's email. The line carries `staffId`, the roles and key names only.
+* **Firms apart.**
+  * A firm B (`sample-solo`) accept wrote its line with firm B's `firmId` and `firmKey` ("Firm sample-solo: …"), and no line with firm A's id.
+  * Role change from firm A on firm B's staff answered 404 and wrote no line.
+  * A Case Officer calling role change answered 403 `MISSING_PERMISSION` and wrote no line.
+  * (An invitation planted by SQL in firm B with a firm A `invited_by` is put on firm B's line under the firm A word. No route can make one, so it is not a finding.)
+* **Re-adding a money role already held.**
+  * The same roles gave `changed: false` and no line. Adding Read-only next to a held CASE_OFFICER gave no line.
+  * Removing a money role and adding it again writes a new line, which is correct: it is a new grant.
+  * 6 identical role changes in parallel gave one `changed: true` and five `changed: false`, 1 line and 1 live Billing/Finance grant.
+* **The role-change door is unchanged.** Its line is byte-for-byte the old one (the builder's DW3, re-run green). An invitation's line has the same shape, and its actor matches the grant rows' `granted_by`.
