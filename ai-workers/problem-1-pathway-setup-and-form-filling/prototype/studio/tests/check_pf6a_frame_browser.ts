@@ -127,9 +127,9 @@ ok("PF-6a DW2 fail: a TOKEN_EXPIRED end shows the sign-in card, never Signed in 
 
 // ------------------------------------------------------------------------------------------------- DW4 and DW3
 const newEmail = `pf6a-${run}@example.com`;
-// Three invitees: the Sample firm's Team plan holds 5 people, so this run's copy lends it 3 more seats, given back at the end.
+// Three invitees: the Sample firm's Team plan holds 5 people, so this run lends it seats (enough for earlier runs on the same copy too), given back at the end.
 const plan = sql(`select p.id || '|' || p.seats_limit from platform_subscription s join platform_plan p on p.id = s.plan_id join platform_firm f on f.id = s.firm_id where f.key = 'sample-firm' and s.status <> 'ENDED' limit 1`).split("|");
-sql(`update platform_plan set seats_limit = ${Number(plan[1]) + 3} where id = '${plan[0]}'`);
+sql(`update platform_plan set seats_limit = ${Number(plan[1]) + 100} where id = '${plan[0]}'`);
 const link = await handOffLink(rTok, newEmail);
 const link2 = await handOffLink(rTok, `pf6a-b-${run}@example.com`);
 const link3 = await handOffLink(rTok, `pf6a-c-${run}@example.com`);
