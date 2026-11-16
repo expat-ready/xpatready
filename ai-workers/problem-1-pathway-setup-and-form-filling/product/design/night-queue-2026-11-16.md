@@ -1,6 +1,6 @@
 # Night queue for the lane-starter routines (Lead 70, 22:1x IST 16 Nov; founder approved "Yes, 3 routines" at 22:1x)
 
-Three hourly cloud routines ("lane starter 1-3", at :05, :25 and :45 UTC past each hour) read this file from branch `lead/2026-11-07-lead31`. Each run takes the **first row from the top** that passes all three tests, then builds it to a labelled PR:
+Three hourly cloud routines ("lane starter 1-3", at :05, :25 and :45 UTC past each hour) read this file from branch `lead/2026-11-07-lead31`. **Test 0, before anything else (CI brake, Lead 70, 23:1x IST):** count Actions runs waiting for a machine (`repos/<owner>/<name>/actions/runs?status=queued&per_page=1`, its `total_count`). Over 30: reply "CI busy" and stop; change nothing. Each run takes the **first row from the top** that passes all three tests, then builds it to a labelled PR:
 1. **Gate:** every item in "After" is merged: a `#n` is a merged PR; a row id is merged when a merged PR's title contains that id (and that part) (the GitHub pulls API for this repository, `repos/<owner>/<name>/pulls/<n>` with owner/name from `git remote get-url origin`, shows `"merged": true`).
 2. **Not taken:** no open PR title contains the row id, and no branch `claim/<row id>` exists (`git ls-remote origin "refs/heads/claim/*"`).
 3. **Claimed:** `git push origin origin/main:refs/heads/claim/<row id>` succeeds. If it fails, someone else took the row: go to the next one.

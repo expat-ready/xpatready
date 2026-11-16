@@ -34,6 +34,14 @@ echo "$idle" > "$prev"
 say "disk  ${free} GB free · test databases ${dbs:-?} · idle at two checks: ${both}"
 [ "$free" -lt 4 ] && ACT "disk under 4 GB: tell Mac builders to pause suite runs, then free space"
 [ "$free" -lt 10 ] && [ "$both" -gt 0 ] && ACT "disk under 10 GB: drop the ${both} test databases idle at two checks (lead-watch skill, step 3)"
+# 1b (Lead 70, 16 Nov: 8.7 GB of interrupted-fetch temp packs filled the disk unseen). Temp packs older than 30 min
+# belong to no running git process: delete them every check, and say how much was freed. Under 10 GB free is an ACT.
+gd=$(git rev-parse --git-common-dir 2>/dev/null)
+if [ -n "$gd" ]; then
+  tp=$(find "$gd/objects/pack" -maxdepth 1 -name 'tmp_pack_*' -mmin +30 2>/dev/null)
+  if [ -n "$tp" ]; then kb=$(du -ck $tp 2>/dev/null | tail -1 | cut -f1); rm -f $tp; say "disk  deleted $(echo "$tp" | grep -c .) stale git temp pack(s), $((kb/1024)) MB"; free=$(df -g / | awk 'NR==2 {print $4}'); fi
+fi
+[ "$free" -lt 10 ] && ACT "disk ${free} GB free, under 10 GB: free space now (temp packs, idle test databases, kept worktrees via get_storage_usage)"
 
 # 2. Merges and the queue.
 since=$(date -u -v-"${SINCE}"M '+%Y-%m-%dT%H:%M:%SZ')
@@ -41,6 +49,15 @@ merged=$(gh pr list --state merged --search "merged:>=$since" --json number,titl
 # P-500: product progress counts only PRs that changed app code (by files changed); the rest are shown apart.
 appm=$( [ -n "$merged" ] && echo "$merged" | bash "$TOOLS/app-code-prs.sh")
 say "merged in ${SINCE} min: $(echo "$appm" | grep -c .) changed app code (P-500) · $(echo "$merged" | grep -c .) in all (records, docs, tooling, tests included)"; [ -n "$appm" ] && echo "$appm" | sed 's/^/      app  /'
+# 2b (Lead 70, 16 Nov: nothing merged 21:32-23:00 while 68 runs waited for test machines, unseen for 90 min).
+# Jam alarms: no merge to main in 60 min while PRs are queued, and Actions runs waiting for machines.
+last_m=$(git log -1 --format=%ct origin/main 2>/dev/null || echo 0); mgap=$(( ($(date +%s) - last_m) / 60 ))
+qd=$(curl -s -H "Authorization: token $(gh auth token 2>/dev/null)" "https://api.github.com/repos/$(git remote get-url origin | sed -E 's#.*github.com[:/]##; s#\.git$##')/actions/runs?status=queued&per_page=1" | python3 -I -c 'import json,sys
+try: print(json.load(sys.stdin).get("total_count","?"))
+except Exception: print("?")')
+say "jam   last merge to main ${mgap} min ago · Actions runs waiting for a machine: ${qd}"
+[ "$mgap" -gt 60 ] && ACT "nothing merged to main for ${mgap} min: read the merge-queue draft's checks, re-run a failed part, split or dequeue the culprit"
+case "$qd" in ''|*[!0-9]*) ;; *) [ "$qd" -gt 30 ] && ACT "CI jam: ${qd} runs waiting for a machine (40 jobs at once): ready PRs still being worked on go back to draft until Approve";; esac
 prs=$(gh pr list --state open --limit 80 --json number,title,labels,isDraft,headRefName,statusCheckRollup)
 echo "$prs" | python3 -I -c '
 import json,sys
