@@ -190,5 +190,37 @@
     "acked_at": "2026-11-16T01:11:59Z",
     "opened_at": "2026-11-16T00:06:30Z",
     "source": "pull/1902#issuecomment-6903651805"
+  },
+  {
+    "id": "qa-2026-11-16-R1.6",
+    "kind": "ready",
+    "owner": "lane",
+    "branch": "claude/tender-einstein-wpko9j",
+    "pr": 1929,
+    "status": "open",
+    "waiting_on": "Lead",
+    "next_step": "merge, test, publish",
+    "created_at": "2026-11-16T04:28:18Z",
+    "updated_at": "2026-11-16T04:28:18Z",
+    "last_ack_by": null,
+    "acked_at": null,
+    "opened_at": "2026-11-16T04:28:18Z",
+    "source": "pull/1929#issuecomment-6907327737"
+  },
+  {
+    "id": "qa-2026-11-16-r1-list",
+    "kind": "ready",
+    "owner": "lane",
+    "branch": "claude/tender-einstein-wpko9j",
+    "pr": 1929,
+    "status": "open",
+    "waiting_on": "Lead",
+    "next_step": "merge, test, publish",
+    "created_at": "2026-11-16T05:02:46Z",
+    "updated_at": "2026-11-16T05:02:46Z",
+    "last_ack_by": null,
+    "acked_at": null,
+    "opened_at": "2026-11-16T05:02:46Z",
+    "source": "pull/1929#issuecomment-6907811435"
   }
 ]
