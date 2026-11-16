@@ -2866,7 +2866,8 @@ def r1_stages(rows, r1_qa):
 
 FLOW_KEYS = ("flow_rows_built_24h", "flow_rows_built_3d", "flow_parts_24h", "flow_parts_3d", "flow_parts_left",
              "flow_works_24h", "flow_works_3d", "flow_prove_lag_h", "flow_awaiting", "flow_awaiting_oldest_h",
-             "flow_forecast", "flow_forecast_best", "flow_forecast_worst")
+             "flow_forecast", "flow_forecast_best", "flow_forecast_worst",
+             "flow_rows_built_today", "flow_parts_today", "flow_works_today", "flow_works_week")
 
 
 def flow_counts(rows, r1_qa, part_at, parts_total, works_since, now):
@@ -2924,12 +2925,25 @@ def flow_counts(rows, r1_qa, part_at, parts_total, works_since, now):
             "rows_total": len(planned),
             "prove_done": None if no_qa else (lambda x: x.isoformat() if x else None)(prove_eta(sum(wd) / 3)),
             "to_prove": to_prove, "no_qa": no_qa,
+            # Lead 70 (A133, 16 Nov): the lights read the IST calendar day; the week is Monday to Sunday IST
+            "flow_rows_built_today": sum(1 for t in b_at.values() if t.astimezone(IST).date() == today),
+            "flow_parts_today": sum(1 for t in p_at if t.astimezone(IST).date() == today),
+            "flow_works_today": nq(sum(1 for t in w_at.values() if t.astimezone(IST).date() == today)),
+            "flow_works_week": nq(sum(1 for t in w_at.values() if today - timedelta(days=today.weekday()) <= t.astimezone(IST).date() <= today)),
+            "week_start": (today - timedelta(days=today.weekday())).isoformat(), "proven_n": len(proven),
+            "built_today_maps": sorted(m for m, t in b_at.items() if t.astimezone(IST).date() == today),
+            "works_today_maps": sorted(m for m, t in w_at.items() if t.astimezone(IST).date() == today),
             "days": [d.isoformat() for d in days], "today": today.isoformat(), "waiting": waiting,
             "today_counts": {"rows": sum(1 for t in b_at.values() if t.astimezone(IST).date() == today),
                              "parts": sum(1 for t in p_at if t.astimezone(IST).date() == today),
                              "works": sum(1 for t in w_at.values() if t.astimezone(IST).date() == today)}, "lag_n": len(lag), "parts_total": parts_total,
             "built_24h_maps": sorted(m for m, t in b_at.items() if cut < t <= now),
             "works_24h_maps": sorted(m for m, t in w_at.items() if cut < t <= now)}
+
+
+def nwords(n, word):
+    """"1 row", "4 rows" (a count is never null here)."""
+    return f"{n} {word if n == 1 else word + 's'}"
 
 
 def flow_light(*states):
@@ -2961,25 +2975,27 @@ def flow_box(d, fc, li, li_src, ci):
     trend = lambda xs, k: " · ".join(f"{a} {b}" for a, b in zip(days, xs)) + f" · today so far {tc[k]}"
     snap_src = f"the snapshot at {ist(parse_iso(taken)) if taken else 'not recorded'}"
     # 1 Build
-    b24 = fc["flow_rows_built_24h"]
-    build = {"name": "Build", "light": flow_band(b24, FLOW_TARGET, FLOW_FLOOR, low_good=False),
-             "big": f"{b24} rows built in 24 h", "target": f"target {FLOW_TARGET} a day, floor {FLOW_FLOOR}",
-             "lines": [f"Parts merged in 24 h: {fc['flow_parts_24h']}; {fc['flow_parts_left']} of {fc['parts_total']} parts left (a part is one Release 1 id; an id split into sub-parts counts when its last one merges)",
+    bt = fc["flow_rows_built_today"]
+    build = {"name": "Build", "light": flow_band(bt, FLOW_TARGET, FLOW_FLOOR, low_good=False),
+             "big": nwords(bt, "row") + " built today", "target": f"target {FLOW_TARGET} a day, floor {FLOW_FLOOR} (today = the IST day)",
+             "lines": [f"Parts merged today: {fc['flow_parts_today']}; {fc['flow_parts_left']} of {fc['parts_total']} parts left (a part is one Release 1 id; an id split into sub-parts counts when its last one merges)",
+                       "Last 24 h: " + nwords(fc["flow_rows_built_24h"], "row") + " built, " + nwords(fc["flow_parts_24h"], "part") + " merged",
                        "Rows built a day: " + trend(fc["flow_rows_built_3d"], "rows"),
                        "Parts merged a day: " + trend(fc["flow_parts_3d"], "parts")],
-             "maps": fc["built_24h_maps"],
+             "maps": fc["built_today_maps"],
              "src": "Release 1 rows whose every checklist part merged through an app PR (P-639, part-aware), and the Release 1 ids "
                     "whose last needed part merged; " + snap_src}
     # 2 Prove
-    w24, lag, aw, old = fc["flow_works_24h"], fc["flow_prove_lag_h"], fc["flow_awaiting"], fc["flow_awaiting_oldest_h"]
+    w24, lag, aw, old = fc["flow_works_today"], fc["flow_prove_lag_h"], fc["flow_awaiting"], fc["flow_awaiting_oldest_h"]
     pc = flow_band(w24, FLOW_TARGET, FLOW_FLOOR, low_good=False)     # None (grey) when qa's file has no R1 rows
     if pc == "green" and (lag is None or lag > FLOW_PROVE_H or (old is not None and old > FLOW_PROVE_H)):
         pc = "amber"                                                   # slower than 12 h, or built to proven not measured
-    prove = {"name": "Prove", "light": pc or "grey", "big": (f"{w24} rows proven in 24 h" if w24 is not None else "not measured: qa's file has no Release 1 rows"), "target": f"target {FLOW_TARGET} a day, floor {FLOW_FLOOR}; built to proven {FLOW_PROVE_H} h or less",
+    prove = {"name": "Prove", "light": pc or "grey", "big": (nwords(w24, "row") + " proven today" if w24 is not None else "not measured: qa's file has no Release 1 rows"), "target": f"target {FLOW_TARGET} a day, floor {FLOW_FLOOR}; built to proven {FLOW_PROVE_H} h or less",
              "lines": [("Built to proven: median " + (f"{lag} h" if lag is not None else "not measured") + f" (n={fc['lag_n']}, rows proven in the last 7 days)"),
                        f"Built, waiting for qa: {aw if aw is not None else 'not measured'}" + (f"; oldest {old} h" if old is not None else ""),
-                       "Rows proven a day: " + (trend(fc["flow_works_3d"], "works") if fc["flow_works_3d"] is not None else "not measured")],
-             "maps": fc["works_24h_maps"],
+                       "Rows proven a day: " + (trend(fc["flow_works_3d"], "works") if fc["flow_works_3d"] is not None else "not measured"),
+                       "Last 24 h: " + (nwords(fc["flow_works_24h"], "row") + " proven" if fc["flow_works_24h"] is not None else "not measured")],
+             "maps": fc["works_today_maps"],
              "src": "qa/CAPABILITIES.md on main: when each R1 row's current run of Works began (a row listed already reading Works "
                     "has no date); waiting = Built (awaiting qa) as on the first screen; " + snap_src}
     # 3 Merge
@@ -3030,6 +3046,46 @@ def flow_box(d, fc, li, li_src, ci):
                  f"Proving: the {fc['to_prove']} rows left, at qa's {rate(sum(w3) / 3, 'rows')}, about " + (dm(fc["prove_done"]) or "no date")) + ". "
               + "Best " + (dm(fc["flow_forecast_best"]) or "no date") + "; worst " + (dm(fc["flow_forecast_worst"]) or "no date (a day with nothing merged or proven)") + ".")
     return {"lights": [build, prove, merge, res], "forecast": fl, "src": "FORMULAS.md › Flow"}
+
+
+def proven_lines(d, fc):
+    """Lead 70 (founder A133, 22:0x IST 16 Nov): "11 of 10 proven" mixed the total with the day's goal. Three plain lines,
+    each with its light: today (IST day) against 10 (floor 7, P-644); this week (Monday to Sunday IST) against 70, the
+    light against 10 (floor 7) for each day so far; overall against 101, with what the committed date needs a day and
+    the date at the current pace (FORMULAS.md › Proven: today, this week, overall)."""
+    rel = (d.get("first") or {}).get("release") or {}
+    taken = (d.get("lineage") or {}).get("taken_at")
+    at = f"qa/CAPABILITIES.md on main; snapshot {ist(parse_iso(taken)) if taken else 'time not recorded'}"
+    today, wk = date.fromisoformat(fc["today"]), date.fromisoformat(fc["week_start"])
+    days_in = (today - wk).days + 1
+    wt, ww, pn, tot = fc["flow_works_today"], fc["flow_works_week"], fc["proven_n"], fc["rows_total"]
+    tgt, need, fct = rel.get("target"), rel.get("need_per_day"), fc["flow_forecast"]
+    dm = lambda x: date.fromisoformat(x).strftime("%d %b") if x else None
+    if fc["no_qa"]:
+        ol = None
+    elif not tgt:
+        ol = None
+    elif not fct:
+        ol = "red"
+    else:
+        late = (date.fromisoformat(fct) - date.fromisoformat(tgt)).days
+        ol = "green" if late <= 0 else "amber" if late <= 7 else "red"
+    nm = "not measured (qa's file has no Release 1 rows)"
+    return [
+        {"key": "today", "light": flow_band(wt, FLOW_TARGET, FLOW_FLOOR, low_good=False) or "grey",
+         "text": f"Today (IST day): {wt} proven of {FLOW_TARGET} (floor {FLOW_FLOOR}, P-644)" if wt is not None else "Today (IST day): " + nm,
+         "src": "R1 rows whose current run of Works began today, IST (FORMULAS.md › Flow, Prove); " + at, "maps": fc["works_today_maps"]},
+        {"key": "week", "light": flow_band(ww, FLOW_TARGET * days_in, FLOW_FLOOR * days_in, low_good=False) or "grey",
+         "text": f"This week (Mon to Sun IST): {ww} proven of {FLOW_TARGET * 7}" if ww is not None else "This week (Mon to Sun IST): " + nm,
+         "src": f"the same rows, from Monday {wk.strftime('%d %b')}; the light compares with {FLOW_TARGET} a day (floor {FLOW_FLOOR}) for the "
+                f"{days_in} day{'s' if days_in != 1 else ''} so far; " + at},
+        {"key": "overall", "light": ol or "grey",
+         "text": (f"Overall: {pn} of {tot} proven; " + (f"{dm(tgt)} needs about {need} a day" if tgt and need is not None else
+                  f"{dm(tgt)}: the date has passed" if tgt else "no committed date")
+                  + "; at the current pace, " + (f"all proven about {dm(fct)}" if fct else "no date yet")) if not fc["no_qa"] else "Overall: " + nm,
+         "src": "proven = qa's verdict Works; the date and what it needs a day from cockpit/plan.json (committed) as on Release 1; "
+                "the pace is the last 3 full IST days' parts merged and rows proven (FORMULAS.md › Flow, Forecast); green when that date "
+                "is on or before the committed date, amber up to 7 days after, red later or with no date; " + at}]
 
 
 def first_screen(d, r1_qa, li, li_src):
@@ -3558,10 +3614,14 @@ def build_explain(d):
                 "Each light is green, amber or red against its target (P-644).", "the 24 h to the snapshot, and the last 3 full IST days",
                 None, "", fl_["forecast"], src="; ".join(f"{L['name']}: {L['src']}" for L in fl_["lights"]), cls="measured",
                 behind=[f"{L['name']} ({L['light']}): {L['big']}; {L['target']}; " + "; ".join(L["lines"]) for L in fl_["lights"]]
-                + [f"{L['name']} in the 24 h: {lb(m)}" for L in fl_["lights"] for m in L.get("maps") or []])
-        put("first.today", "Today's goal", "How many capabilities should be Proven by the goal's time, against how many are Proven now.", "today, to " + str(T_.get("by") or "the goal's time"), T_.get("proven"), "capabilities Proven now",
-            T_["why"], src=str(T_.get("goal_src") or "Lead input (no today_goal)"), cls="reported",
-            todo=T_.get("plan") or None, behind=[f"Built, waiting for qa: {lb(m)}" for m in R_["waiting_ids"]])
+                + [f"{L['name']} today: {lb(m)}" for L in fl_["lights"] for m in L.get("maps") or []])
+        pls = fs.get("proven_lines") or []
+        put("first.today", "Proven: today, this week, overall", "How many capabilities qa proved today and this week against "
+            "P-644's 10 a day, and overall against all of Release 1 with the date at the current pace.", "today (IST), this week "
+            "(Monday to Sunday IST) and all to date", (pls[0].get("maps") and len(pls[0]["maps"])) or 0, "capabilities proven today",
+            " · ".join(x["text"] for x in pls), src="; ".join(f"{x['key']}: {x['src']}" for x in pls), cls="measured",
+            todo=T_.get("plan") or None, behind=[f"{x['text']} ({x['light']})" for x in pls] + [f"proven today: {lb(m)}" for m in (pls[0].get("maps") if pls else []) or []]
+            + [f"Built, waiting for qa: {lb(m)}" for m in R_["waiting_ids"]])
         put("first.needs", "Needs you", "The steps only you can take that are due now. Set each one's status; the Lead's next check reads it.", now_w, N_["count"], "items", "Lower is better.", src="STATE.md › Founder asks; "
             "cockpit/risks.json (owner founder, dated today or earlier)", cls="parsed",
             behind=[f"{x['id']}: {x['what']}" + (f" — by {x['by']}" if x.get("by") else "") for x in N_["items"]] +
@@ -4528,6 +4588,7 @@ def main():
     lineage_fill(data, L)
     data["first"] = first_screen(data, comp["r1_qa"], li, li_src)
     data["flow"] = flow_box(data, comp["flow"], li, li_src, snap.j("github/ci_queue.json"))
+    data["first"]["proven_lines"] = proven_lines(data, comp["flow"])
     data["explain"] = build_explain(data)
     data["run"] = {"seconds": round(time.time() - T0, 1), "api_calls": gh.calls, "errors": ERRORS}
     os.makedirs(out_dir, exist_ok=True)
