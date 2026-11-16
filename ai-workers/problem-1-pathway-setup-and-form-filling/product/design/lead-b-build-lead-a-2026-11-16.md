@@ -79,7 +79,7 @@ Lead 69 sent P-644 (the four-seat model, `design/release1-operating-model-2026-1
 
 | Lane | Next row | Brief | Starts when |
 |---|---|---|---|
-| 1 | PF-21s part 4 (record page actions) | same as 1 | part 1 is on `main` |
+| 1 | PF-21s part 4 (record page actions) | same as 1 | part 3 is on `main` |
 | 2 | PF-Fd (file delete) | `lead-b-briefs/PF-Fd.md` (main) | now (no open PR on `ports/files.ts`) |
 | 3 | PF-13 part 2 (panel) | same as 3 | part 1 is on `main` |
 | 4 | PF-18b (support tables) | `lead-b-briefs/PF-18b.md` (main) | now |
