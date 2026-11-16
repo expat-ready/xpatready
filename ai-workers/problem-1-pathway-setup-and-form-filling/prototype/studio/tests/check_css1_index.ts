@@ -166,6 +166,8 @@ try {
   ok("CS-S1 DW1 pass: a number written with its own +<code> in front is read whole (+442079460000)", row(FULL, N.subject)?.phone_e164 === "+442079460000", row(FULL, N.subject));
   answer(FULL, w, N, "person.phone_number", { country_code: "+001", number: "416-555-0101" });
   ok("CS-S1 DW1 fail (breaker m8): a country code starting 0 gives null, never +001…", row(FULL, N.subject)?.phone_e164 === null);
+  const junk = [{ country_code: "1", number: "-4165550101" }, { country_code: "1", number: 4165550101.5 }, { country_code: "1", number: "(0)-0.0 0" }].map((v) => { answer(FULL, w, N, "person.phone_number", v); return row(FULL, N.subject)?.phone_e164 ?? null; });
+  ok("CS-S1 DW1 fail (breaker round 2): a leading minus, a JSON number with a fraction and a number of only zeros each give null", junk.every((x) => x === null), junk);
   const U = person(FULL, w, A, "child", "Profile Fallback (Sample)");
   answer(FULL, w, U, "person.given_names", "Ñúñez\u00a0\u00a0Ölçer"); answer(FULL, w, U, "person.family_name", "Дмитрий");
   ok("CS-S1 DW1 pass (breaker m6, m7): a no-break space is collapsed and non-ASCII letters are lower-cased whatever the cluster's collation",
@@ -245,6 +247,13 @@ try {
         notBlocked && row(FULL, D.subject)?.name_norm === "gone fone", row(FULL, D.subject));
     } finally { await c1.end().catch(() => undefined); await c2.end().catch(() => undefined); }
   }
+
+  // Breaker round 2: one lock per subject ran out of shared lock memory past ~15 000 people in one transaction.
+  const locks = (lock: boolean) => sql(FULL, `begin; select count(case_party_index_refresh(gen_random_uuid(), ${lock})) from generate_series(1, 2000);
+    select count(*) from pg_locks where locktype = 'advisory' and pid = pg_backend_pid(); commit;`).split("\n").at(-1);
+  const lk = locks(true), lk0 = locks(false);
+  ok(`CS-S1 DW4 pass (breaker round 2): one transaction refreshing 2000 subjects holds at most 256 advisory locks (${lk})`, Number(lk) > 0 && Number(lk) <= 256, lk);
+  ok(`CS-S1 DW4 fail (breaker round 2): the backfill's path (no lock) takes none (${lk0})`, lk0 === "0", lk0);
 
   // ------------------------------------------------------------------------------------------------ DW4: sites, relatives, ids
   const base = spawnSync("git", ["merge-base", "HEAD", "origin/main"], { cwd: STUDIO, encoding: "utf8" }).stdout.trim();

@@ -45,11 +45,13 @@
 --     answer saves fail; today the app's role reads and writes every row of the table (the brief's INVOKER design).
 --   * the EMPLOYER row's party_id is the party the "case" subject sits on (the principal's: runtime.ts, case-stages.ts):
 --     part 2 reads the employer from display_name, never from party_id.
---   * backfill: one refresh per existing participant.
+--   * backfill: one refresh per existing participant (no advisory lock: the triggers' own DDL locks keep writers out).
+--   * two transactions committing many of the same people in opposite orders at the same moment can still deadlock at
+--     commit (one is refused and retried by the caller); the window is the refresh time of their people at commit.
 -- Rollback (in this order): DROP TRIGGER case_party_index_answer ON client_canonical_answer; DROP TRIGGER
 --   case_party_index_answer_gone ON client_canonical_answer; DROP TRIGGER case_party_index_profile ON party_profile;
 --   DROP TRIGGER case_party_index_participant ON case_participant; DROP TABLE "case_party_index"; DROP FUNCTION case_party_index_on_answer(), case_party_index_on_profile(),
---   case_party_index_on_participant(), case_party_index_refresh(uuid), case_party_index_firm_of(uuid),
+--   case_party_index_on_participant(), case_party_index_refresh(uuid, boolean), case_party_index_firm_of(uuid),
 --   case_party_index_phone(text, text), case_party_index_norm(text), case_party_index_clean(text); then delete this folder's row from
 --   _prisma_migrations. pg_trgm stays (FO-9a uses it too). Nothing else is lost: the index is derived from the answers.
 
@@ -104,12 +106,13 @@ CREATE FUNCTION case_party_index_norm(t text) RETURNS text LANGUAGE sql IMMUTABL
   $$ SELECT lower(case_party_index_clean(t) COLLATE pg_unicode_fast) $$;
 
 -- "+" with the country code's digits and the number's digits; null when either is missing, the code is not 1 to 3 digits
--- starting 1-9, the number holds anything but digits, spaces and ( ) . - (a letter: never guessed) or has under 4 digits,
--- or the whole is over E.164's 15 digits. A number written with its own "+<code>" in front is read whole when that code
+-- starting 1-9, the number holds anything but digits, spaces and ( ) . - or starts with anything but a digit or ( (a
+-- letter, a minus: never guessed), has under 4 digits or only zeros, or the whole is outside 7 to 15 digits. A JSON
+-- number counts only when whole. A number written with its own "+<code>" in front is read whole when that code
 -- is the given one (breaker m8).
 CREATE FUNCTION case_party_index_phone(cc text, num text) RETURNS text LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS $$
-  SELECT CASE WHEN c ~ '^[1-9][0-9]{0,2}$' AND btrim(cc) ~ '^\+?[0-9]{1,3}$' AND length(n) >= 4 AND length(c || n) <= 15
-                   AND (btrim(num) ~ '^[0-9 ().-]+$' OR (btrim(num) ~ '^\+[0-9 ().-]+$' AND left(n, length(c)) = c AND length(n) > length(c) + 3))
+  SELECT CASE WHEN c ~ '^[1-9][0-9]{0,2}$' AND btrim(cc) ~ '^\+?[0-9]{1,3}$' AND length(n) >= 4 AND length(c || n) BETWEEN 7 AND 15
+                   AND n !~ '^0+$' AND (btrim(num) ~ '^[0-9(][0-9 ().-]*$' OR (btrim(num) ~ '^\+[0-9 ().-]+$' AND left(n, length(c)) = c AND length(n) > length(c) + 3))
               THEN '+' || c || CASE WHEN btrim(num) LIKE '+%' THEN substr(n, length(c) + 1) ELSE n END END
   FROM (SELECT regexp_replace(coalesce(cc, ''), '[^0-9]', '', 'g') AS c, regexp_replace(coalesce(num, ''), '[^0-9]', '', 'g') AS n) x
 $$;
@@ -123,14 +126,16 @@ ALTER FUNCTION case_party_index_firm_of(uuid) OWNER TO xr_wall_reader;
 REVOKE ALL ON FUNCTION case_party_index_firm_of(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION case_party_index_firm_of(uuid) TO xr_data;
 
-CREATE FUNCTION case_party_index_refresh(p_subject uuid) RETURNS void LANGUAGE plpgsql SECURITY INVOKER
+CREATE FUNCTION case_party_index_refresh(p_subject uuid, p_lock boolean DEFAULT true) RETURNS void LANGUAGE plpgsql SECURITY INVOKER
   SET search_path = pg_catalog, public, pg_temp AS $fn$
 DECLARE
   p record; a jsonb; v jsonb; firm uuid; k text; r text; nm text; em text; ph text; cc text;
 BEGIN
   -- One refresh of a subject at a time (review M1): a second writer waits here until the first commits, then reads the
-  -- committed participant and answers afresh (READ COMMITTED: each statement below takes a new snapshot).
-  PERFORM pg_advisory_xact_lock(hashtextextended('case_party_index:' || p_subject::text, 0));
+  -- committed participant and answers afresh (READ COMMITTED: each statement below takes a new snapshot). The lock is
+  -- one of 256 buckets of subjects, so one transaction holds at most 256 advisory locks however many people it touches
+  -- (breaker round 2: one lock per subject ran out of shared lock memory past ~15 000 people in one transaction).
+  IF p_lock THEN PERFORM pg_advisory_xact_lock(hashtext('case_party_index'), hashtext(p_subject::text) & 255); END IF;
   SELECT cp.case_id, cp.role, s.party_id, s.workspace_id, s.label INTO p
     FROM case_participant cp JOIN answer_subject s ON s.id = cp.subject_id WHERE cp.subject_id = p_subject;
   IF NOT FOUND THEN   -- a relative, or a participant removed: no row
@@ -164,9 +169,9 @@ BEGIN
     cc := CASE WHEN jsonb_typeof(a->'person.phone_country_code') IN ('string', 'number') THEN a->>'person.phone_country_code' END;
     ph := CASE jsonb_typeof(v)
             WHEN 'object' THEN case_party_index_phone(coalesce(NULLIF(btrim(CASE WHEN jsonb_typeof(v->'country_code') IN ('string', 'number') THEN v->>'country_code' END), ''), cc),
-                                                      CASE WHEN jsonb_typeof(v->'number') IN ('string', 'number') THEN v->>'number' END)
+                                                      CASE WHEN jsonb_typeof(v->'number') = 'string' OR (jsonb_typeof(v->'number') = 'number' AND (v->>'number') ~ '^[0-9]+$') THEN v->>'number' END)
             WHEN 'string' THEN case_party_index_phone(cc, v #>> '{}')
-            WHEN 'number' THEN case_party_index_phone(cc, v #>> '{}') END;
+            WHEN 'number' THEN CASE WHEN (v #>> '{}') ~ '^[0-9]+$' THEN case_party_index_phone(cc, v #>> '{}') END END;
   END IF;
   -- role_on_case: upper case letters and _ only (FO-13's pattern); anything else in an open-vocabulary role becomes _.
   r := left(regexp_replace(r, '[^A-Z_]', '_', 'g'), 40);
@@ -219,5 +224,6 @@ END $fn$;
 CREATE CONSTRAINT TRIGGER case_party_index_participant AFTER INSERT OR UPDATE OR DELETE ON "case_participant" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
   EXECUTE FUNCTION case_party_index_on_participant();
 
--- Backfill: one refresh per existing participant.
-SELECT case_party_index_refresh(subject_id) FROM case_participant;
+-- Backfill: one refresh per existing participant, with no advisory lock: CREATE TRIGGER above already holds a lock on
+-- client_canonical_answer, party_profile and case_participant that blocks their writes until this migration commits.
+SELECT case_party_index_refresh(subject_id, false) FROM case_participant;
