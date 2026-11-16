@@ -124,7 +124,8 @@ const view = (t: Row) => ({
   onBookingPage: isPublic(t), version: t.version, createdAt: t.createdAt, updatedAt: t.updatedAt,
 });
 /** The type's own fields an audit line compares (no booking, no person). */
-const AUDITED = ["slug", "name", "description", "colour", "purpose", "minutes", "modes", "hostStaffIds", "active", "showOnBookingPage", "allowReschedule", "allowCancel", "slotIntervalMinutes", "meetingLink", "deletedAt"] as const;
+const AUDITED = ["slug", "name", "description", "colour", "purpose", "minutes", "modes", "hostStaffIds", "active", "showOnBookingPage", "allowReschedule", "allowCancel", "slotIntervalMinutes", "meetingLink", "deletedAt",
+  "gapBeforeMinutes", "gapAfterMinutes", "minNoticeMinutes", "windowDays", "selfServiceLimitMinutes"] as const;   // timings too (review m9)
 const FREE_TEXT = new Set(["description", "meetingLink"]);
 type Scalar = string | number | boolean | null | (string | number | boolean | null)[];
 const EMAILISH = /[^\s@]+@[^\s@]+\.[^\s@]+/;
@@ -228,6 +229,7 @@ export class BookingTypesService {
         const inner = { from: new Date(Math.max(start.getTime(), from.getTime())), to: new Date(Math.min(end.getTime(), to.getTime())) };
         const base = { type: relaxed, busy: new Map(), firmZone, now: inner.from, from: inner.from, to: inner.to };
         if (!hosts.length) reason = WORDS.noHost;
+        else if (inner.to.getTime() <= now.getTime()) reason = "In the past";   // review m5
         else if (closedDays.includes(localDate(new Date(start.getTime() + 12 * 60 * MIN), firmZone).iso)) reason = "Closed day";
         else if (inner.to.getTime() <= now.getTime() + t.minNoticeMinutes * MIN) reason = "Inside the shortest notice";
         else if (inner.from.getTime() > now.getTime() + t.windowDays * DAY) reason = "Beyond the booking window";
@@ -236,7 +238,8 @@ export class BookingTypesService {
       }
       days.push({ date, slots: mine.map((s) => ({ startsAt: s.startsAt.toISOString(), endsAt: s.endsAt.toISOString(), label: wallLabel(s.startsAt, tz) })), reason });
     }
-    return { type: { id: t.id, name: t.name }, timeZone: tz, reason: hosts.length ? null : WORDS.noHost, days };
+    // A switched-off or hidden type is previewed as it would be offered; onBookingPage says visitors do not see it (review).
+    return { type: { id: t.id, name: t.name, onBookingPage: isPublic(t) }, timeZone: tz, reason: hosts.length ? null : WORDS.noHost, days };
   }
 
   // ------------------------------------------------------------------------------------------------------- helpers

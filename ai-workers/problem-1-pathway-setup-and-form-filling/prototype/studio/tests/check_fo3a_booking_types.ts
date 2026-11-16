@@ -184,6 +184,11 @@ try {
   ok("FO-3a DW6 pass: a save with the version read saves and moves the version on", first.status === 200 && first.body.version === v + 1 && first.body.name === "Free consultation call", first);
   ok("FO-3a DW6 fail: a save with an old version → 409 \"Someone else changed this type. Reload to see their changes.\" and nothing changes",
     stale.status === 409 && stale.body.detail === "Someone else changed this type. Reload to see their changes." && JSON.stringify(await db.foConsultationType.findUniqueOrThrow({ where: { id: pub1.id } })) === JSON.stringify(snap), stale);
+  const cur = (await db.foConsultationType.findUniqueOrThrow({ where: { id: pub1.id } })).version;
+  const racers = await Promise.all(Array.from({ length: 6 }, (_, i) => T("PATCH", `/${pub1.id}`, P.OWNER, { description: `Racer ${i}`, version: cur })));
+  ok("FO-3a DW6 fail: six parallel saves with the same version → exactly one 200, five 409, the version up by one (the row lock, review m2)",
+    racers.filter((r) => r.status === 200).length === 1 && racers.filter((r) => r.status === 409).length === 5 && (await db.foConsultationType.findUniqueOrThrow({ where: { id: pub1.id } })).version === cur + 1, racers.map((r) => r.status));
+  first.body.version = cur + 1;
   const noVersion = await T("PATCH", `/${pub1.id}`, P.OWNER, { name: "No version" });
   ok("FO-3a DW6 fail: a save without a version → 400", noVersion.status === 400 && !!noVersion.body.fields?.version, noVersion);
 
@@ -241,6 +246,10 @@ try {
   ok("FO-3a DW9 fail: a preview writes no row (bookings, types, tokens, audit, outbox counted before and after)", await counts() === c1 && c0 !== "", [c1, await counts()]);
   const badRange = await T("GET", `/${solo.id}/preview?from=${encodeURIComponent(iso("2026-10-27 00:00"))}&to=${encodeURIComponent(iso("2027-01-27 00:00"))}`);
   ok("FO-3a DW9 fail: more than 62 days → 400", badRange.status === 400, badRange);
+  const past = await T("GET", `/${solo.id}/preview?from=${encodeURIComponent(iso("2026-10-24 00:00"))}&to=${encodeURIComponent(iso("2026-10-26 00:00"))}`);
+  const offPv = await T("GET", `/${officerOnly.id}/preview${q}`);
+  ok("FO-3a DW9 pass: days before now say \"In the past\"; a preview answer says whether visitors see the type (onBookingPage)",
+    past.body.days.every((x: { reason: string }) => x.reason === "In the past") && pvFull.body.type.onBookingPage === true && (await T("POST", `/${officerOnly.id}/switch-off`)).status === 200 && (await T("GET", `/${officerOnly.id}/preview${q}`)).body.type.onBookingPage === false && offPv.status === 200, [past.body?.days, offPv.body?.type]);
 
   // ------------------------------------------------------------------- breaker's findings (break-report.md, c11de56)
   const race = await Promise.all(Array.from({ length: 12 }, () => T("POST", "", P.OWNER, { name: "Race me", minutes: 30, modes: ["VIDEO"] })));
