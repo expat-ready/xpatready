@@ -5,8 +5,8 @@ Started at the founder's next typed turn (sessions start only in a founder-typed
 | # | Row | Brief | Second ready brief | Status |
 |---|---|---|---|---|
 | 1 | PF-21s part 3 (stage 2 part 1; title "PF-21s part 3") | PF-21s.md (branch) + P-626-order.md A5 (branch) | PF-21s part 4 | queued |
-| 2 | PF-21i | PF-21i.md (main) | PF-Fd (main) | queued |
-| 3 | PF-13 part 1 | PF-13.md (main) + PF-13 blocks of P-627-amendments.md and P-630-amendments.md (branch; the blocks win) | PF-13 part 2 | queued |
+| 2 | PF-21i | PF-21i.md (main) | PF-0bp (main) (rev 16.76) | queued |
+| 3 | PF-Fd (rev 16.76: replaces PF-13 part 1, which overlaps #1956, #1961 and PF-19e on ports/messages.ts and messages/send/messages.ts) | PF-Fd.md (main) | — | queued |
 | 4 | PF-8r | PF-8r.md (main) | PF-18b (main) | queued |
 | 5 | PF-24w | PF-24w.md (main) | PF-4pc, then PF-4s (main), after PF-24w | queued |
 | 6 | FO-13i | FO-13i.md (main) | FO-5p part 1 (main) + its P-630 block, after FO-13i | queued |
@@ -26,3 +26,5 @@ Spares: FO-6 (branch; BoldSign sandbox done), PF-0bp (main). Build Lead C's and 
 
 **Gate:** #1991 (FO-7a2) is the single gate for the money chain FO-7ts p1 → p2 → p3 → FO-7b → FO-7c ∥ FO-7t (R1.56-R1.60, R1.96, R1.111). The Lead tells Build Lead C the moment it merges.
 | 14 | R1.105 AUD-5 part 1 | AUD-5-1.md (commit cdcccb52d; source: College Client File Management Regulation 2021-001 s. 7.2, read 16 Nov 2026; Unconfirmed: no counsel) | high, breaker yes; no schema; one line in Lead B's seed-sample-firms.ts (check against Build Lead A's lanes) | AUD-5 part 2 | queued |
+
+PF-13 part 1 starts after #1956, #1961 and PF-19e are on main; then PF-13 part 2, then PF-19c (Build Lead A rev 16.76, f83884552). AUD-5 part 1 overlaps none of A's lanes.
