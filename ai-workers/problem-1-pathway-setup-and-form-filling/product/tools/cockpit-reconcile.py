@@ -656,7 +656,8 @@ def compute(snap):
                 return ist_day(mt)
         return None
 
-    # P-639 (16 Nov, qa #1950): an id is merged only when no part of it is open. When BACKLOG names parts of it
+    # P-639 (16 Nov, qa #1950): an id is merged only when no part of it is open. An id shipped whole (no merged title
+    # names a part) is merged by its whole-id PR. For an id shipped in parts: when BACKLOG names parts of it
     # ("PF-5 part 2", "parts 2 and 3", "parts 1–2", "(part 1)"), every named part and every part a title names needs a
     # merged app PR, and a PR for the whole id does not stand in for them; when BACKLOG names none, one PR for the whole
     # id, or every part the titles name, merges it. It dates from the last PR it needed. Same pattern as cockpit-data.py.
@@ -691,7 +692,7 @@ def compute(snap):
                 for x in parts_of(pm.group(1)):
                     parts_done.setdefault(x, mt)
         named = named_parts.get(rid, set())
-        if not named and whole:
+        if whole and not parts_done:                     # shipped whole: a mentioned part does not hold it
             return whole
         need = named | set(parts_done)
         if not need or not need <= set(parts_done):

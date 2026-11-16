@@ -1378,7 +1378,8 @@ class Tooltips(unittest.TestCase):
         self.assertEqual(cd.merged_when(p1, set()), (("2026-11-15T10:00:00Z", 101), []))       # pass: no other part named
         whole = [("2026-11-14T09:00:00Z", 99, None)]
         self.assertEqual(cd.merged_when(whole, set()), (("2026-11-14T09:00:00Z", 99), []))     # pass: the whole id, no part named
-        self.assertEqual(cd.merged_when(whole, {"2"}), (None, ["2"]))                           # fail: a whole-id PR does not close part 2
+        self.assertEqual(cd.merged_when(whole, {"2"}), (("2026-11-14T09:00:00Z", 99), []))     # pass: shipped whole, a mentioned part does not hold it
+        self.assertEqual(cd.merged_when(whole + p1, {"2"}), (None, ["2"]))                      # fail: shipped in parts, a whole-id PR does not close part 2
         # the independent check follows the same rule: map 1 (PF-1, PF-2) is built until PF-2 is only merged as part 1
         spec = importlib.util.spec_from_file_location("cockpit_reconcile_p639", os.path.join(HERE, "cockpit-reconcile.py"))
         rc = importlib.util.module_from_spec(spec)
@@ -1395,8 +1396,8 @@ class Tooltips(unittest.TestCase):
         self.assertEqual(built(dict(base, **{"github/pulls.json": json.dumps(pulls), P + "BACKLOG.md": bl2})), 1)   # fail case
         pulls.append(dict(pulls[1], number=40, title="runtime: PF-2 part 2 — rest", merged_at="2026-11-19T22:00:00Z"))
         self.assertEqual(built(dict(base, **{"github/pulls.json": json.dumps(pulls), P + "BACKLOG.md": bl2})), 2)   # pass case
-        whole_only = dict(base, **{P + "BACKLOG.md": bl2})                                     # PF-2 merged whole, part 2 named
-        self.assertEqual(built(whole_only), 1)                                                    # fail: the whole-id PR does not close it
+        whole_only = dict(base, **{P + "BACKLOG.md": bl2})                                     # PF-2 shipped whole, a part 2 mentioned
+        self.assertEqual(built(whole_only), 2)                                                    # pass: shipped whole (PF-4b, FO-3 on 16 Nov)
 
     def test_part_patterns_agree_in_both_scripts(self):
         """P-639: the two scripts read parts with the same pattern (they are written apart, so a test keeps them in step)."""

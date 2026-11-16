@@ -505,9 +505,11 @@ def title_part(title, rid):
 
 
 def merged_when(prs, named):
-    """An id is merged when no part of it is open. When BACKLOG names parts of it, every named part (and every part a
-    title names) needs a merged app PR, and a PR for the whole id does not stand in for them; when BACKLOG names none,
-    one PR for the whole id, or every part the titles name, merges it. It dates from the last PR it needed.
+    """An id is merged when no part of it is open. An id shipped whole (no merged title names a part of it) is merged by
+    its first whole-id PR: a part BACKLOG mentions for it (often conditional, "else they open FO-2 part 2", or another
+    row's alias) does not hold it. An id shipped in parts (some merged title names a part) needs every part BACKLOG or
+    the checklist names and every part a title names merged; a whole-id PR does not stand in for them. It dates from
+    the last PR it needed.
     prs: [(merged_at, number, parts or None)] by time. Returns ((merged_at, number) or None, open parts)."""
     done, whole = {}, None
     for t, n, pts in prs:
@@ -517,7 +519,7 @@ def merged_when(prs, named):
             for x in pts:
                 done.setdefault(x, (t, n))
     named = set(named)
-    if not named and whole:
+    if whole and not done:                               # shipped whole
         return whole, []
     need = named | set(done)
     open_ = sorted(need - set(done))
