@@ -14,3 +14,11 @@ Started at the founder's next typed turn (sessions start only in a founder-typed
 | 8 | PF-18a part 1 | PF-18a.md (main) | PF-18a part 2 | queued |
 
 Spares: FO-6 (branch; BoldSign sandbox done), PF-0bp (main). Build Lead C's and the Prove Lead's start lines are added below as they arrive.
+
+## From Build Lead C (branch claude/build-lead-c-647b40, commit 888b320b9; paths under product/design/build-lead-c-briefs/)
+| # | Row | Brief | Effort, breaker | Second ready brief | Status |
+|---|---|---|---|---|---|
+| 9 | R1.77 CS-C1b | CS-C1b.md (holds runtime.ts createCase) | high, breaker yes | CS-NT1-1 | queued |
+| 10 | R1.74 CS-DL1 part 1 | CS-DL1a.md | high, breaker yes | CS-DL1b | queued |
+| 11 | R1.10 CS-V1 PR 1 | CS-V1-1.md (new test files only) | medium, breaker no | CS-V1-2 | queued |
+| 12 | R1.8 AUD-1a | AUD-1a.md (schema: governance.prisma → audit.prisma + migration; Lead reads the migration, P-423) | high, breaker yes | AUD-1b | queued |
