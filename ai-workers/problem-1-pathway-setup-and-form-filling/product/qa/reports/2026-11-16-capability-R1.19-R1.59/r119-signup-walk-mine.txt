@@ -1,0 +1,6 @@
+1 sign-up (GET plans, wait, POST signup with the stamp and the 3 current terms): {"status":"check-email","message":"If this email can be used, we have sent a message to it. Open it to confirm your sign-up."} 202
+2 pending sign-up stored (email | firm | plan | terms | lifetime): owner.qa19@example.com | QA Nineteen (Sample) | team | 3 terms | 1 day
+3 the platform inbox for that address (the only mail a person can read in the demo): {"address":"owner.qa19@example.com","stand_in":"SI-20","provider":"local","messages":[]}
+4 api log lines naming the verification link: 0
+5 firms in the copy (a firm comes only after verify): 0
+6 verify with a made-up token and code: {"type":"https://expatready.local/problems/not-found","title":"Not found","status":404,"detail":"This link is not valid any more. Sign up again, or sign in.","m
