@@ -2079,12 +2079,23 @@ class Flow(unittest.TestCase):
         g.update({"flow_rows_built_24h": 10, "flow_works_24h": 11, "flow_prove_lag_h": 30.0})
         bb = self.box(g)
         self.assertEqual((bb["Build"]["light"], bb["Prove"]["light"]), ("green", "amber"))   # proving on count, but slower than 12 h
+        g.update({"flow_works_24h": 12, "flow_prove_lag_h": None})
+        self.assertEqual(self.box(g)["Prove"]["light"], "amber")            # review 2 m2: built to proven not measured is not green
+        g.update({"flow_prove_lag_h": 12.0, "flow_awaiting_oldest_h": 3.0})
+        self.assertEqual(self.box(g)["Prove"]["light"], "green")            # 12 h or less
         g.update({"flow_rows_built_24h": 7})
         self.assertEqual(self.box(g)["Build"]["light"], "amber")            # the floor
         self.assertEqual(cd.flow_light(None, None), "grey")
         self.assertEqual(cd.flow_light("green", None), "amber")              # never green while a part is not measured (review m4)
         self.assertEqual(self.box(f, mm=None)["Merge"]["light"], "amber")
         self.assertIn("this snapshot has no CI reading", " ".join(cd.flow_box({"lineage": {}}, f, {}, "x", None)["lights"][2]["lines"]))
+
+    def test_forecast_sentence(self):
+        # review 2 m1: the founder reads one plain sentence; the build date has no lag in it; the total is the planned rows
+        fl = cd.flow_box({"lineage": {}}, self.small(), {}, "x", None)["forecast"]
+        self.assertEqual(fl, "All 5 proven about 23 Nov. Building: the last part merges about 21 Nov (1.3 a day), and rows are "
+                             "proven about 2 days after they are built. Proving: the 2 rows left, at qa's 0.3 a day, about 23 Nov. "
+                             "Best 22 Nov; worst no date (a day with nothing merged or proven).")
 
     def test_no_qa_rows_leaves_build_measured(self):
         # review m6: with no Release 1 row in qa's file, Prove and the forecast are not measured; Build still is, on both sides
@@ -2100,11 +2111,14 @@ class Flow(unittest.TestCase):
     def test_qa_history_rules_in_both_scripts(self):
         # review m7: the history scan, through both scripts. 20 Nov 12:00 IST; days 17, 18, 19 Nov.
         hdr = "\n## Release 1\n\n| # | Map row: capability | Module | Status | Tested on | Done when |\n|---|---|---|---|---|---|\n"
-        row = lambda n, st: f"| R1.{n} | {n} Cap | Platform | {st} | abc | fixture |\n"
+        row = lambda n, st: (f"| R1.{n} | {n} Cap |\n" if st is None else f"| **R1.{n}** | {n} Cap | Platform | {st[2:]} | abc | fixture |\n"
+                             if st.startswith("**") else f"| R1.{n} | {n} Cap | Platform | {st} | abc | fixture |\n")
         base = cd.Snap(FIX).text("files_main/qa/CAPABILITIES.md")
         v = {"r1v1": ("2026-11-15T03:00:00Z", {1: "Works", 2: "Partial", 7: "Not built", 8: "Partial"}),   # row 1: listed already Works
              "r1v2": ("2026-11-18T08:00:00Z", {1: "Works", 2: "Works", 7: "Not built", 8: "Works"}),      # rows 2 and 8 Works
-             "r1v3": ("2026-11-19T01:00:00Z", {1: "Works", 2: "Works", 7: "Not built", 8: "Partial"}),    # row 8 falls back
+             "r1v3": ("2026-11-19T01:00:00Z", {1: "Works", 2: "Works", 7: "Not built", 8: "**Partial"}),  # row 8 falls back (bold id)
+             "r1v3b": ("2026-11-19T02:00:00Z", {1: "Works", 2: "Works", 8: "Partial"}),                   # row 7 not listed: skipped
+             "r1v3c": ("2026-11-19T03:00:00Z", {1: "Works", 2: "Works", 7: "Not built", 8: None}),       # row 8 short line
              "r1v4": ("2026-11-20T00:00:00Z", {1: "Works", 2: "Works", 7: "Not built", 8: "Works"}),      # row 8 again: date resets
              "r1v5": ("2026-11-20T04:00:00Z", {1: "Works", 2: "Works", 7: "Partial (retested)", 8: "Works"})}   # row 7 tested after built
         files = {"git/capabilities_main.jsonl": "\n".join(json.dumps({"sha": k, "date": d}) for k, (d, _) in v.items()) + "\n"}
