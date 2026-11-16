@@ -395,3 +395,25 @@ How I ran `check_fo3w_manage_browser`:
 * naming the FO-3w test edit in the PR body.
 
 Verdict: Approve 6bdaeb715cdf940c619a919b2cb9e4e39f7a455f
+
+## Re-review 8 at `048511e810bd94903f388abfde92090fd406a2a2` (merge of `main` bfac889d7, #1997 PF-Fd; P-270)
+
+**Parents.** First parent `2f4ad0a`, a records commit with no code change from `6bdaeb7` (approved in Re-review 7); second parent `bfac889d7`.
+
+**Resolution.** `git merge-tree` of the parents conflicts only on `front-office/MODULE.md`. The commit differs from the automatic merge in that file alone. A word diff of the card against main shows exactly FO-3a's three additions:
+* the routes sentence;
+* the deleted-type rule;
+* `tests/check_fo3a_booking_types.ts`.
+
+Main's new `files.ts` `LocalFiles` entry (PF-Fd) is kept.
+
+**Since the merge base `f7dde02c8`,** main changed only `front-office/files.ts` and the card under front-office, prisma, firm-scope, core and the FO-3w manage suite. Nothing under `booking/` changed. Against main:
+* `service.ts` is still the three `where` lines;
+* the PR is still 9 files (+777/−12);
+* FO-7mv's `20261116030000` is still before our `20261116090000`.
+
+**Suites on the merged tree** (clean worktree, scratch databases on :54329): `check_fo3a_booking_types` 48/48, FO-3 133/133, FO-3pa 45/45, FO-1b 80/80. I did not re-run FO-3m, FO-3sr or FO-3sa: none of their inputs changed since Re-review 7.
+
+**Blockers:** none. **Majors:** none. **Minors open:** as in Re-review 7 (the description wording question; name the FO-3w test edit in the PR body).
+
+Verdict: Approve 048511e810bd94903f388abfde92090fd406a2a2
