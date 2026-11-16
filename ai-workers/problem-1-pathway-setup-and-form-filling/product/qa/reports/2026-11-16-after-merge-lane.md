@@ -43,3 +43,4 @@ Refined 16:1x IST from qa #1950's verdict table (open, stacked on #1929): R1.19 
 | 16 Nov 21:0x | d66bcfd2d | none | none | wait |
 | 16 Nov 21:2x | d66bcfd2d | none | none | wait |
 | 16 Nov 21:5x | d66bcfd2d | (Lead 69 ask) FO-4sf #1962, PF-5v part 1 #1955 already on main | R1.27: parts missing FO-4b | QA-493 closed, QA-484 fixed on main (row in #1950), QA-500 new Minor; `2026-11-16-after-merge-r127-qa484/report.md` |
+| 16 Nov 21:4x | f7dde02c8 | #1982 FO-3w part 2 (booker manage page; R1.42, QA-496) | none: R1.38/R1.40 still wait on J-38 (R1.38 also FO-3st1); QA-496 is the other qa session's (#1968) | wait; #2006 queued, deferred behind #1950 (conflict in CAPABILITIES.md) |
