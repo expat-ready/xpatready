@@ -1697,3 +1697,7 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **The clash:** the lane recommends an operating → trust To-move line that covers a reversal's shortfall. After #1991, `main` accepts only the credit-note operating → trust line (rev 16.73); every other one gets 409. So the shortfall is shown, but no covering line exists. If the concept needs one, it is a new row for C, with a P-423 migration read. Until then, the screen draws no button or line that `main` refuses.
 * Unconfirmed: no counsel (whether a firm must cover a shortfall from its own funds, and how soon).
 * **Lead 70, 23:17 IST:** passed the facts to Build Lead C. **Ruling on #2016:** the shortfall is shown red and labelled. No covering line that `main` refuses; a covering line would be a new C row after #1991. Build Lead C's full id is `local_d5287293-a27e-4cd2-a533-ca1949bdf430`.
+
+## Rev 16.84 (16 Nov 23:26 IST): Lead 70's network rule posted on the 11 working PF/FO PRs
+* **The rule:** never ask for a network or environment change, and never wait on one. A blocked public page gets `Not verified: <site> blocked on the cloud network`; the lane uses what the repository holds and goes on. Build Lead A reads blocked official pages from the Mac when a claim needs it, as it did for FO-13i.
+* **Posted on 11 PRs** (comments 6924561016 to 6924564927): #2028 (PF-Fp part 1, new), #2025, #2021, #2019, #2014, #2012, #2011, #2009, #2001, #1998 and #1991. The labelled and queued PRs were left alone.
