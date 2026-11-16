@@ -88,3 +88,21 @@ Excluding Node's copy of the environment for a child process is also correct: co
 **Journey score: 8.5 / 10, pass** (`journey-test-reviewer-2026-11-16.md`; error recovery ½ because of M1).
 
 **Verdict: Block** (request changes). Fix M1. Fix m1-m3 or list them in the PR. Re-review reads only the diff.
+
+## Re-review at cc8f6d05e (P-277: diff only)
+I read only `git diff ff64a4d5e..3f461d3b6`, which touches 3 files and 11 lines. `3f461d3b6..cc8f6d05e` adds only this file and the journey-test file, so there is no code change after 3f461d3b6. I ran everything with `PLATFORM_ENVIRONMENT` unset, on my own ports.
+
+| Finding | Fixed? | Evidence |
+|---|---|---|
+| M1 | yes | `check_r16_deny_sweep.ts:22` sets `??= "local"` before the `features.ts` import. Run by its usage line (copy `rvr16b` on :4616): **9/9**. |
+| m1 | yes | The NOTE now says that names, not secrets, are copied. A new fail case asserts that no secret setting (DATABASE_URL aside) reaches a child process's environment; it matches what my own preload saw (6 non-secret names). Small leftover: the preload's comment still says "reported, not asserted". |
+| m2 | yes | The preload records the value main.ts starts with, and a new case asserts `test`. That case would turn red if `isolated.sh`'s `local` won. |
+| m3 | yes | `seed-sample-firms.ts:10` now reads `PLATFORM_ENVIRONMENT=local tsx …`. |
+
+**Runs:** `check_pf24w_environment.ts 4610 rv24w2` gives **25/25**. `typecheck.mjs` passes (15 known errors, 0 new).
+
+**Still open, outside my verdict:** CI's shard, types and skeleton jobs are still `skipped` at this head. Green CI is a separate condition before the label (P-277, P-385), and DW7's CI part has to be pasted once it runs.
+
+No Blocker or Major is open.
+
+**Verdict: Approve** cc8f6d05e4c4a93607cb3ecc25bebce2e2b6446e (code as reviewed at 3f461d3b600dfc708b6442b7bf015a5c3d317866).
