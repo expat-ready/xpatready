@@ -106,6 +106,16 @@ try {
     && refused(`BEGIN; INSERT INTO plat_complaint (id, firm_id, subject_kind, complainant_name, received_at, channel, category, summary, handler_staff_id, acknowledge_by, recorded_by, updated_at, request_key, request_hash)
       VALUES (gen_random_uuid(), '${firmA}', 'OTHER_PERSON', 'X', now(), 'PHONE', 'SERVICE', 'x', '${officer.id}', now() + interval '1 day', 'x', now(), 'a b', repeat('a', 64)); COMMIT;`, /plat_complaint_request_shape/));
 
+  // Devin review: a CHECK passes when it evaluates to NULL, so each half-filled pair is tried as an insert (no trigger
+  // in the way), beside the two pairs that are allowed.
+  const insertWith = (k: string, h: string) => `BEGIN; WITH c AS (INSERT INTO plat_complaint (id, firm_id, subject_kind, complainant_name, received_at, channel, category, summary, handler_staff_id, acknowledge_by, recorded_by, updated_at, request_key, request_hash)
+      VALUES (gen_random_uuid(), '${firmA}', 'OTHER_PERSON', 'X', now() - interval '1 hour', 'PHONE', 'SERVICE', 'x (Sample)', '${officer.id}', now() + interval '1 day', 'staff:${owner.id}', now(), ${k}, ${h}) RETURNING firm_id, id, received_at, recorded_by)
+      INSERT INTO plat_complaint_event (id, firm_id, complaint_id, kind, at, actor) SELECT gen_random_uuid(), firm_id, id, 'RECEIVED', received_at, recorded_by FROM c; ROLLBACK;`;
+  const H = `repeat('a', 64)`;
+  ok("PF-21i DW6 fail (insert): a key with a NULL hash, or a hash with a NULL key, is refused (check)",
+    refused(insertWith(`'pair-k'`, "NULL"), /plat_complaint_request_shape/) && refused(insertWith("NULL", H), /plat_complaint_request_shape/));
+  ok("PF-21i DW6 pass (insert): both NULL, or a valid key with its hash, is accepted", (() => { try { sql(insertWith("NULL", "NULL")); sql(insertWith(`'pair-ok'`, H)); return true; } catch { return false; } })());
+
   const jobs = recorder();
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, PlatformClock, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
     { provide: PlatformJobs, useValue: jobs }, ...feature.providers];

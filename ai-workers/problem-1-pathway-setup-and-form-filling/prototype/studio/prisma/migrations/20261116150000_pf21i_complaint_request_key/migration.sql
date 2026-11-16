@@ -18,7 +18,7 @@ ALTER TABLE "plat_complaint" ADD COLUMN "request_key" TEXT, ADD COLUMN "request_
 
 ALTER TABLE "plat_complaint" ADD CONSTRAINT "plat_complaint_request_shape" CHECK (
   (request_key IS NULL AND request_hash IS NULL)
-  OR (request_key ~ '^[!-~]{1,255}$' AND request_hash ~ '^[0-9a-f]{64}$')
+  OR (request_key IS NOT NULL AND request_hash IS NOT NULL AND request_key ~ '^[!-~]{1,255}$' AND request_hash ~ '^[0-9a-f]{64}$')   -- a NULL half would make the regex NULL, which a CHECK accepts
 );
 
 -- One complaint per firm and key; complaints recorded before PF-21i (no key) are outside the index.
