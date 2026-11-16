@@ -56,3 +56,8 @@ Release 1 at qa Works: **5** (R1.2, R1.9, R1.11, R1.12, R1.99). **The board's "B
 * **R1.38, R1.40: Partial (stay), no regression** on main fd2dee855 (which adds PF-12's firm walls and other app changes since 90ea6cfe6). Twice on one isolated copy: TZ walk 19/19, inbox walk **19/19** (the current check with the `.ics` download by link; this round's earlier 16/16 was the older check, as #1953's reviewer noted), staff move 11/11. Outputs: `2026-11-16-capability-R1-eight/followup/`.
 * **FO-3m's GitHub run:** #1931 cites merge batch ci 43796001718 (tree = main ddc6e919c's). This round's line "no GitHub run read by qa" is superseded.
 * **R1.6:** FO-2v #1933 (#1929's QA-477) is on main; PF-6m #1945 (#1929's QA-478) is not yet. qa re-tests R1.6 when #1945 merges.
+
+## CI retry ratings, 18:3x IST 16 Nov (B122, F5: qa rates each retry-pass)
+* **QA-497 (Major, forms):** `check_forms_qa237_qa239_held.ts` passed only on retry in run 43837309947. qa reproduced it 2 of 4 runs: the people's steps place 155 or 154 questions on the same six, so the question list changes. `…/flaky/qa497-held-run-1..4.txt`.
+* **QA-498 (Major, tech lead):** `check_bk5_start_browser.cjs` BR-6 (double-clicked Try again) passed only on retry in run 43837755074; already auto-quarantined until 18 Nov with no row. Not reproduced.
+* QA-496 is #1968's (front-office qa lane).
