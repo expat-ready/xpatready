@@ -1471,6 +1471,21 @@ class EarlyBandAndLeading(unittest.TestCase):
         v = run(d)[1]["pace"]["leading"]["first_verdict_works_pct"]
         self.assertEqual((v["value"], v["works"], v["n"], v["ids"], v["day_n"], v["day_works"]), (50, 1, 2, ["C9.1", "C9.2"], 1, 0))
 
+    def test_first_verdict_share_r1_apart(self):
+        # Lead 64, 16 Nov: the Release 1 (R) share is its own number beside the C share, never mixed
+        base = os.path.join(FIX, "git/capabilities_main")
+        a, b = open(os.path.join(base, "aaa111.md")).read(), open(os.path.join(base, "bbb222.md")).read()
+        r1 = "\n| # | Map row: capability | Module | Status | Tested on | Done when |\n|---|---|---|---|---|---|\n"
+        a2 = a + r1 + "| R1.2 | 2 Database | Platform | Not built | abc | x |\n| R1.3 | 3 Files | Platform | Not built | abc | x |\n"
+        b2 = b + r1 + "| R1.2 | 2 Database | Platform | Works | abc | x |\n| R1.3 | 3 Files | Platform | Partial | abc | x |\n"
+        jl = '{"sha": "aaa111", "date": "2026-11-15T03:00:00Z"}\n{"sha": "bbb222", "date": "2026-11-18T05:00:00Z"}\n'
+        d = snap_with({"git/capabilities_main.jsonl": jl, "git/capabilities_main/aaa111.md": a2, "git/capabilities_main/bbb222.md": b2})
+        c = run(d)[1]
+        r, cc = c["pace"]["leading"]["first_verdict_works_pct_r1"], c["pace"]["leading"]["first_verdict_works_pct"]
+        self.assertEqual((r["value"], r["works"], r["n"], r["ids"]), (50, 1, 2, ["R1.2", "R1.3"]))
+        self.assertFalse([x for x in (cc.get("ids") or []) if x.startswith("R")])     # never mixed into the C share
+        self.assertIsNone(run()[1]["pace"]["leading"]["first_verdict_works_pct_r1"]["value"])
+
     def test_each_behind_an_explain_entry_with_window_and_n(self):
         E, d = TooltipsData.data()
         self.assertEqual((E["pace.early_band"]["n"], E["pace.early_band"]["window"]), (7, "full IST days 13 Nov to 19 Nov (7 days)"))
