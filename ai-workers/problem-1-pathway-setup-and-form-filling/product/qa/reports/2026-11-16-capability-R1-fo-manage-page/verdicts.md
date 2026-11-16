@@ -1,6 +1,6 @@
 # Verdicts: R1.38, R1.40, QA-496 after FO-3w part 2 (main f7dde02c8)
 
-Fresh reader (Opus 5.5, ran nothing, P-303), 16 Nov 22:4x IST. Main f7dde02c8 = merge of #1982 (FO-3w part 2, 21:32 IST). Evidence: `booking-page-walk-{1,2}.txt` (both 34 passed, 0 failed; run ~22:43 IST, after the merge, on isolated copy qa_fom), `shots/`, `check_r138_r140_booking_page_walk.ts` (untracked in the working copy). Earlier rows: PR #1968 (branch claude/blissful-fermi-d74j7h).
+Fresh reader (Opus 5.5, ran nothing, P-303), 16 Nov 22:4x IST. Main f7dde02c8 = merge of #1982 (FO-3w part 2, 21:32 IST). Evidence: `booking-page-walk-{1,2}.txt` (both 34 passed, 0 failed; run ~22:43 IST, after the merge, on isolated copy qa_fom), `shots/`, `check_r138_r140_booking_page_walk.ts` (on this branch, `prototype/studio/tests/qa/`). Earlier rows: PR #1968 (branch claude/blissful-fermi-d74j7h).
 
 **GitHub run: none read on main f7dde02c8's tree.** P-339 counts a row as Works only with a green pack on main's head on GitHub's runners, its run id in the row, plus a re-run and this reader. With no run read, neither row could move to Works today even if every part were merged. qa's two local runs are the independent re-run only.
 

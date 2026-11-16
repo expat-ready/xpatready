@@ -110,7 +110,9 @@ async function main() {
   // After FO-3w part 2 (#1982, 21:32 IST 16 Nov): R1.40's update and cancel by screens, on the manage page the email link
   // opens. Reschedule → a new time → "Move to this time"; then Cancel → "Cancel booking". The invites read back from the
   // demo inbox must keep one UID, raise SEQUENCE, carry the new DTSTART, and end with METHOD:CANCEL.
-  if ((await p.getByRole("button", { name: "Reschedule" }).count()) > 0) {
+  const canManage = (await p.getByRole("button", { name: "Reschedule" }).count()) > 0;
+  ok("R1.40 by screens: the manage page offers Reschedule (else the steps below cannot run)", canManage);
+  if (canManage) {
     const last = runs[runs.length - 1], email = `client-${last.tag}-${key}@example.com`;
     const row0 = await db.foBooking.findFirst({ where: { firmId: firm.id, bookerTimeZone: "Asia/Dubai" }, orderBy: { createdAt: "desc" } });
     await p.getByRole("button", { name: "Reschedule" }).click();
