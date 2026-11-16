@@ -21,3 +21,5 @@ Evidence (walk lines 29 to 30, both runs): `NOTE next step: Reschedule → /book
 
 ## 4. New findings: **none** (product)
 Evidence limits only, not bugs: no axe check and no 1440 px view of the manage page in qa's walk. The new time is the first slot offered, so it depends on the clock rather than on a fixed daylight-saving case. The host's mails after the screen move are not read.
+
+**Note by qa, 17 Nov 01:3x IST:** the reader rated the 34/34 runs of 16 Nov 22:4x IST (those walk files are in git at 2c0e6e260). After the reviewer's guard check, the walk files were re-run and now hold 35/35 twice. In those runs the moved time is a different first slot, because it depends on the clock: "Move to this time" chose Tuesday 17 November, 18:00 Asia/Dubai time, and the moved invite reads `DTSTART:20261117T140000Z`. The verdicts do not change.
