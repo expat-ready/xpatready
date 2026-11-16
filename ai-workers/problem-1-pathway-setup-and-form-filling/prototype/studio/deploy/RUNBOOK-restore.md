@@ -28,7 +28,7 @@ For the engineer and the release holder. A restore never writes over the databas
    * the **audit chain** verifies end to end, once AUD-1c's verifier is on `main`; until then the step prints `SKIP: AUD-1c's chain verifier is not on main`. AUD-1c's builder turns it into the real check (one step in the script, named in its PR).
 5. **Time and evidence:** the measured restore time (dump start to the last check, seconds) is printed and written with every check's result and the table counts into `restore-drill-evidence.json` (`var/restore-drill/` by default; the nightly run keeps it as the run's artefact).
 
-The nightly job fails red on any FAIL. Its fail cases (the test): `--corrupt <table>` deletes one table's rows in the restored copy after the restore, and the count check must fail and name the table; `--extra-migration` checks against one migration never applied, and `migrate status` must fail and name it.
+The nightly job fails red on any FAIL. Its fail cases (the test): `--corrupt <table>` deletes one table's rows in the restored copy after the restore, and the count check must fail and name the table; `--extra-migration` checks against one migration never applied, and `migrate status` must fail and name it; `--drop-index <index> --drop-policy <table>.<policy>` drops one index and one firm-wall policy in the restored copy after the restore, and the drift check must fail and name both (prisma sees the index, the catalogue both).
 
 ## 3. The cloud restore (PF-8rc; the plan, **not run yet**)
 

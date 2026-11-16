@@ -20,22 +20,26 @@
 #        No row data and no personal data, in the file or in this log: only names of tables, counts and yes/no.
 #   Fail cases (tests/check_pf8r_restore.ts): --corrupt <table> deletes that table's rows in the RESTORED copy after the
 #   restore (simulated corruption); --extra-migration checks the restored database against a copy of prisma/migrations
-#   holding one migration that was never applied to it.
+#   holding one migration that was never applied to it; --drop-index <index> and --drop-policy <table>.<policy> drop
+#   them in the RESTORED copy after the restore (a lost index or firm wall), which the drift check must catch.
 # Needs docker (compose v2) and the image studio-skeleton:test (`docker compose -f deploy/compose.test.yml build`).
 # bash 3.2 compatible (the Mac). Never calls a model; live AI off; US$0. Exit 0 only when every check passed.
 set -uo pipefail
 STUDIO="$(cd "$(dirname "$0")/.." && pwd)"
 COMPOSE="$STUDIO/deploy/compose.test.yml"
 IMAGE="studio-skeleton:test"
-EVIDENCE="$STUDIO/var/restore-drill/restore-drill-evidence.json"; CORRUPT=""; EXTRA=0
+EVIDENCE="$STUDIO/var/restore-drill/restore-drill-evidence.json"; CORRUPT=""; EXTRA=0; DROP_INDEX=""; DROP_POLICY=""
 while [ $# -gt 0 ]; do case "$1" in
   --evidence) EVIDENCE="${2:?--evidence wants a file}"; shift 2;;
   --corrupt) CORRUPT="${2:?--corrupt wants a table}"; shift 2;;
   --extra-migration) EXTRA=1; shift;;
+  --drop-index) DROP_INDEX="${2:?--drop-index wants an index}"; shift 2;;
+  --drop-policy) DROP_POLICY="${2:?--drop-policy wants <table>.<policy>}"; shift 2;;
   *) echo "restore-drill.sh: unknown argument $1 (--evidence <file>, --corrupt <table>, --extra-migration)" >&2; exit 2;;
 esac; done
 case "$CORRUPT" in ""|[a-z]*) ;; *) echo "--corrupt wants a table name" >&2; exit 2;; esac
-printf '%s' "$CORRUPT" | grep -q '[^a-z0-9_]' && { echo "--corrupt wants a table name (a-z, 0-9, _)" >&2; exit 2; }
+for v in "$CORRUPT" "$DROP_INDEX" "${DROP_POLICY//./}"; do printf '%s' "$v" | grep -q '[^a-z0-9_]' && { echo "a table, index or policy name is a-z, 0-9, _ (a policy: <table>.<policy>)" >&2; exit 2; }; done
+case "$DROP_POLICY" in ""|?*.?*) ;; *) echo "--drop-policy wants <table>.<policy>" >&2; exit 2;; esac
 TAG="${RESTORE_DRILL_TAG:-$$}"
 SRC="xr-drill-src-$TAG"; DST="xr-drill-dst-$TAG"
 SRC_PORT="${RESTORE_DRILL_SRC_PORT:-4481}"; DST_PORT="${RESTORE_DRILL_PORT:-4482}"
@@ -69,9 +73,9 @@ TABLES=""; TABLE_JSON=""
 write_evidence() {
   local secs="null"; [ -n "$T0" ] && secs=$(( $(date +%s) - T0 ))
   mkdir -p "$(dirname "$EVIDENCE")"
-  printf '{"drill":"PF-8r restore drill (local, compose.test.yml)","rule":"NFR5-04; P-586","at":"%s","main_sha":"%s","restore_seconds":%s,"result":"%s","failed":%s,"options":{"corrupt":%s,"extra_migration":%s},"checks":[%s],"tables":[%s]}\n' \
+  printf '{"drill":"PF-8r restore drill (local, compose.test.yml)","rule":"NFR5-04; P-586","at":"%s","main_sha":"%s","restore_seconds":%s,"result":"%s","failed":%s,"options":{"corrupt":%s,"extra_migration":%s,"drop_index":%s,"drop_policy":%s},"checks":[%s],"tables":[%s]}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(git -C "$STUDIO" rev-parse HEAD 2>/dev/null || echo unknown)" "$secs" \
-    "$( [ "$fails" = 0 ] && echo pass || echo fail)" "$fails" "$(json_str "$CORRUPT")" "$( [ "$EXTRA" = 1 ] && echo true || echo false)" "$CHECKS" "$TABLE_JSON" > "$EVIDENCE"
+    "$( [ "$fails" = 0 ] && echo pass || echo fail)" "$fails" "$(json_str "$CORRUPT")" "$( [ "$EXTRA" = 1 ] && echo true || echo false)" "$(json_str "$DROP_INDEX")" "$(json_str "$DROP_POLICY")" "$CHECKS" "$TABLE_JSON" > "$EVIDENCE"
 }
 
 docker image inspect "$IMAGE" >/dev/null 2>&1 || { echo "FAIL  image: $IMAGE is not built (docker compose -f deploy/compose.test.yml build)"; exit 1; }
@@ -129,6 +133,10 @@ if [ -n "$CORRUPT" ]; then
   n=$(q "$DST" "set session_replication_role = replica; with d as (delete from public.$CORRUPT returning 1) select count(*) from d") || abort "corrupt" "could not delete from $CORRUPT"
   echo "NOTE  corrupt: $n row(s) deleted from $CORRUPT in the restored copy after the restore (simulated corruption)"
 fi
+if [ -n "$DROP_INDEX" ]; then q "$DST" "drop index public.$DROP_INDEX" >/dev/null || abort "drop" "could not drop index $DROP_INDEX"
+  echo "NOTE  drop: index $DROP_INDEX dropped in the restored copy after the restore (a lost index)"; fi
+if [ -n "$DROP_POLICY" ]; then q "$DST" "drop policy ${DROP_POLICY#*.} on public.${DROP_POLICY%%.*}" >/dev/null || abort "drop" "could not drop policy $DROP_POLICY"
+  echo "NOTE  drop: policy ${DROP_POLICY#*.} on ${DROP_POLICY%%.*} dropped in the restored copy after the restore (a lost firm wall)"; fi
 
 # 4a. migrations: nothing pending or failed, then no drift.
 MIG=()
@@ -168,9 +176,12 @@ sx=$(drift "$SRC"); dx=$(drift "$DST")
 schema "$SRC" > "$TMP/schema.src" 2>/dev/null; schema "$DST" > "$TMP/schema.dst" 2>/dev/null
 said=$(grep -E '^(ALTER|DROP|CREATE)' "$TMP/drift.$SRC" | sed -E 's/ (ALTER COLUMN|ADD COLUMN|DROP COLUMN)/:\1/; s/;$//' | head -6 | paste -sd ';' - | sed 's/;/; /g')
 nst=$(grep -cE '^(ALTER|DROP|CREATE)' "$TMP/drift.$SRC")
+# Both comparisons are always made and both reported: prisma knows indexes but not policies; the catalogue knows both.
+sdiff=""; cdiff=""
+cmp -s "$TMP/drift.$SRC" "$TMP/drift.$DST" || sdiff="the restored copy differs from prisma/schema otherwise than the source does: $(diff "$TMP/drift.$SRC" "$TMP/drift.$DST" | grep -E '^> (CREATE|DROP|ALTER)' | sed 's/^> //; s/;$//' | head -3 | cut -c1-120 | paste -sd ';' -)"
+{ [ -s "$TMP/schema.src" ] && cmp -s "$TMP/schema.src" "$TMP/schema.dst"; } || cdiff="the catalogue differs ($(diff "$TMP/schema.src" "$TMP/schema.dst" | grep -cE '^[<>]') line(s); only in the source: $(diff "$TMP/schema.src" "$TMP/schema.dst" | grep -E '^< ' | sed 's/^< //' | head -3 | cut -c1-120 | paste -sd ';' -); only in the restored copy: $(diff "$TMP/schema.src" "$TMP/schema.dst" | grep -E '^> ' | sed 's/^> //' | head -3 | cut -c1-120 | paste -sd ';' -))"
 if [ "$dx" = 1 ] || [ "$sx" = 1 ]; then fail "migrate diff" "prisma migrate diff did not run (source exit $sx, restored exit $dx): $(grep -i error "$TMP/drift.$DST.err" | head -2 | paste -sd ' ' -)"
-elif ! cmp -s "$TMP/drift.$SRC" "$TMP/drift.$DST"; then fail "migrate diff" "drift: the restored copy differs from prisma/schema otherwise than the source does ($(diff "$TMP/drift.$SRC" "$TMP/drift.$DST" | grep -cE '^[<>]') line(s) differ)"
-elif ! [ -s "$TMP/schema.src" ] || ! cmp -s "$TMP/schema.src" "$TMP/schema.dst"; then fail "migrate diff" "drift: the schemas of the source and the restored copy differ ($(diff "$TMP/schema.src" "$TMP/schema.dst" | grep -cE '^[<>]') line(s)): $(diff "$TMP/schema.src" "$TMP/schema.dst" | grep -E '^[<>]' | head -4 | cut -c1-120 | paste -sd ';' -)"
+elif [ -n "$sdiff$cdiff" ]; then fail "migrate diff" "drift from the restore: ${sdiff:+prisma: $sdiff}${sdiff:+${cdiff:+ | }}${cdiff:+catalogue: $cdiff}"
 elif [ "$sx" = 0 ]; then pass "migrate diff" "no drift: the restored database matches prisma/schema, and its schema is the source's"
 else pass "migrate diff" "no drift from the restore: the restored copy differs from prisma/schema exactly as the source does, and its schema ($(wc -l < "$TMP/schema.dst" | tr -d ' ') catalogue lines: columns, indexes, constraints, triggers, functions, policies, grants) is the source's. NOTE main's own migrations differ from prisma/schema in $nst statement(s): $said"; fi
 

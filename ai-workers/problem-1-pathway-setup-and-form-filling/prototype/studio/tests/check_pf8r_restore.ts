@@ -1,6 +1,6 @@
 // PF-8r (map row 14, first half; NFR5-04 "quarterly restore drill … with recorded evidence"; P-586): runs
-// tools/restore-drill.sh three times on deploy/compose.test.yml's pinned PostgreSQL (a pass, then its two fail cases) and
-// checks its evidence file, its log and the runbook. Needs docker and the image studio-skeleton:test, so run-suites.sh
+// tools/restore-drill.sh four times on deploy/compose.test.yml's pinned PostgreSQL (a pass, then its three fail cases) and
+// checks its evidence file, its log and the runbook (plus DW7, Lead B's condition: a lost index and policy are caught). Needs docker and the image studio-skeleton:test, so run-suites.sh
 // skips it (SKIP list) and nightly.yml's job "restore-drill" runs it. Live AI off, no model call (US$0).
 //   docker compose -f studio/deploy/compose.test.yml build && tsx studio/tests/check_pf8r_restore.ts
 import { spawnSync } from "node:child_process";
@@ -58,13 +58,22 @@ ok("PF-8r DW3 fail: the restored database checked against one extra, never-appli
   m.status === 1 && m.lines.some((l) => /^FAIL  migrate status: .*not applied: 29991231000000_pf8r_drill_never_applied/.test(l)) && res(m.ev, "migrate status") === "FAIL",
   m.lines.filter((l) => l.includes("migrate status")));
 
+// DW7 (Lead B's condition on #2014): the drift check catches a real loss. One index and one firm-wall policy dropped in
+// the restored copy after the restore → migrate diff FAILs and names both (prisma sees the index, the catalogue both).
+const d = drill("dw7-lost-index-and-policy", ["--drop-index", "platform_staff_identity_subject_key", "--drop-policy", "msg_template.pf12_platform_read"]);
+const dl = d.lines.find((l) => l.startsWith("FAIL  migrate diff")) ?? "";
+ok("PF-8r DW7 fail: an index and a firm-wall policy dropped in the restored copy after the restore → the drift check fails and names both",
+  d.status === 1 && res(d.ev, "migrate diff") === "FAIL" && /prisma: .*CREATE UNIQUE INDEX "platform_staff_identity_subject_key"/.test(dl)
+  && /catalogue: .*only in the source: .*platform_staff_identity_subject_key.*policy msg_template pf12_platform_read/.test(dl)
+  && d.lines.findIndex((l) => l.startsWith("PASS  restore")) < d.lines.findIndex((l) => l.startsWith("NOTE  drop")), dl.slice(0, 300));
+
 // DW5: no row values in the evidence files or the logs.
 const firms = JSON.parse(readFileSync(join(studio, "samples", "firms.json"), "utf8")).firms as { name: string; users: { email?: string; name?: string; given_names?: string; family_name?: string; licence?: { number?: string } | null }[] }[];
 const values = [...new Set([...firms.map((f) => f.name), ...firms.flatMap((f) => f.users.flatMap((u) => [u.email, u.name, u.given_names && u.family_name ? `${u.given_names} ${u.family_name}` : undefined, u.licence?.number])), "Sample Drill Client"].filter((v): v is string => !!v && v.length > 5))];
-const files = [p, c, m].flatMap((r) => [r.evidence, r.log]).filter((f) => existsSync(f));
+const files = [p, c, m, d].flatMap((r) => [r.evidence, r.log]).filter((f) => existsSync(f));
 const hits = files.flatMap((f) => { const t = readFileSync(f, "utf8").toLowerCase(); return values.filter((v) => t.includes(v.toLowerCase())).map((v) => `${f.split("/").pop()}: ${v.replace(/^(.{3}).*/, "$1***")}`); });
 ok("PF-8r DW5: the evidence files and the logs hold none of the Sample firms' emails, names or licence numbers, nor the demo case's name",
-  files.length === 6 && values.some((v) => v.includes("@")) && hits.length === 0, { files: files.length, values: values.length, hits });
+  files.length === 8 && values.some((v) => v.includes("@")) && hits.length === 0, { files: files.length, values: values.length, hits });
 
 // DW6: the runbook names every step and the evidence file; check-docs.sh passes.
 const rb = readFileSync(join(studio, "deploy", "RUNBOOK-restore.md"), "utf8");
