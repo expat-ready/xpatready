@@ -1,0 +1,12 @@
+NOTICE:  database "xr_studio_qa477" does not exist, skipping
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.
+isolated qa477 on http://localhost:4478 (xr_studio_qa477), stops itself in 15 min
+PASS  setup: the Case Officer adds a lead and owns it — 201
+PASS  QA-477: setting off, the Owner gets 404 on the Case Officer's lead (one rule, as retainers) — 404
+PASS  QA-477: setting off, the Owner's list does not hold the Case Officer's lead — {"status":200,"has":false}
+PASS  QA-477 pass half: setting on (Owner holds view.all), the Owner reads the Case Officer's lead (200) — 200
+
+4/4 passed
+stopped qa477 (database and files removed; log in var/isolated-logs/qa477-api.log)
