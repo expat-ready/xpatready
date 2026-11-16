@@ -39,3 +39,133 @@ export function inFirm<T extends { firmId: string | null }>(firmId: string, row:
   if (!row || row.firmId !== firmScope(firmId).firmId) return notInFirm(what);
   return row;
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// PF-12 (contracts §0 rule 2, §7; map row 3; AG-1-1, -3, -45): the database walls. Migration 20261116013000_pf12_firm_walls
+// forces row-level security on every platform_*, fo_*, money_* and msg_* table (policy: firm_id = the session's firm). The
+// API connects as xr_app, which owns no table; every query it sends runs with the firm of the context it was called from:
+//   * a staff request: the firm PF-4's guard read from the session (setRequestFirm, then FirmWallsInterceptor runs the
+//     handler in it);
+//   * a job: its JobRun.firmId (withFirm);
+//   * anything else, a public door, a configuration or case request with no platform firm: no firm, so a walled table
+//     reads nothing and takes no write. A door resolves its firm first (asBypass, on the named list), then sets it.
+// A query sets app.firm_id (and the role) on its pooled connection before it runs, so no firm can leak from one checkout
+// to the next. A transaction keeps the firm and role of the context that opened it (as SET LOCAL would).
+import { AsyncLocalStorage } from "node:async_hooks";
+import pg from "pg";
+
+/** The role the API connects as (migration pf12_firm_walls). */
+export const APP_ROLE = "xr_app";
+/** Our own staff's bypass role (BYPASSRLS): only asBypass reaches it, for a use on BYPASS_USES. */
+export const BYPASS_ROLE = "xr_staff_bypass";
+
+type Scope = { firmId?: string; bypass?: string; route?: string };
+const scope = new AsyncLocalStorage<Scope>();
+
+/** The firm the current code runs as (undefined: none, so a walled table reads nothing). */
+export function currentFirm(): string | undefined { return scope.getStore()?.firmId; }
+/** The bypass use the current code runs under, if any. */
+export function currentBypass(): string | undefined { return scope.getStore()?.bypass; }
+
+/** Runs fn as one firm's code (a job's firm; a test). */
+export function withFirm<T>(firmId: string, fn: () => T): T {
+  return scope.run({ ...scope.getStore(), firmId: firmScope(firmId).firmId, bypass: undefined }, fn);
+}
+/** Runs fn with no firm at all (a door before it has resolved its firm). */
+export function withNoFirm<T>(fn: () => T): T { return scope.run({ route: scope.getStore()?.route }, fn); }
+
+/** The named list (brief: "used only by routes on a named list in code"): each use, why it may cross the walls, and the
+ *  routes ("METHOD /path" patterns) it may run in. `outside: true` lets it run where there is no request (start-up, a
+ *  job). Anything not here is refused (BypassRefused) before any query runs. */
+export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonly RegExp[]; outside?: boolean }>> = Object.freeze({
+  "platform.identity.authenticate": { why: "the guard reads the session's staff member and firm before any firm is known (PF-4)", routes: [/^[A-Z]+ \/api\/(platform|front-office)(\/|$)/i] },
+});
+
+/** A bypass use that is not on BYPASS_USES, or not for this route. A programming error: the request stops (500). */
+export class BypassRefused extends Error {}
+
+/** The audit line for a bypass use (the observability logger; no personal value, only the use and the route). */
+let bypassLine: (use: string, route: string | undefined) => void = (use, route) => {
+  process.stdout.write(`${JSON.stringify({ level: "info", event: "platform.bypass", use, route: route ?? null, at: new Date().toISOString() })}\n`);
+};
+/** A test or the logger replaces where bypass lines go. Returns the one before. */
+export function onBypassLine(f: (use: string, route: string | undefined) => void) { const was = bypassLine; bypassLine = f; return was; }
+
+/** Runs fn as our own staff's bypass role: every walled table is readable and writable. Only for a use on BYPASS_USES and
+ *  a route on that use's list; every use writes one audit line (platform.bypass). */
+export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promise<T> {
+  const entry = Object.prototype.hasOwnProperty.call(BYPASS_USES, use) ? BYPASS_USES[use] : undefined;
+  const route = scope.getStore()?.route;
+  if (!entry) throw new BypassRefused(`asBypass: "${use}" is not on the named list (firm-scope.ts BYPASS_USES)`);
+  if (route === undefined ? !entry.outside : !entry.routes.some((r) => r.test(route))) throw new BypassRefused(`asBypass: "${use}" is not allowed ${route === undefined ? "outside a request" : `on ${route}`}`);
+  bypassLine(use, route);
+  return scope.run({ route, bypass: use }, async () => fn());
+}
+
+// ----------------------------------------------------------------------------------------------- the request's firm
+type ScopedReq = { method?: string; path?: string; url?: string; [k: symbol]: unknown };
+const REQ_FIRM = Symbol("pf12.firm");
+/** PF-4's guard: the request's firm, once the session names it. FirmWallsInterceptor runs the handler in it. */
+export function setRequestFirm(req: object, firmId: string) { (req as ScopedReq)[REQ_FIRM] = firmScope(firmId).firmId; }
+const routeOf = (req: ScopedReq) => `${String(req.method ?? "GET").toUpperCase()} ${String(req.path ?? req.url ?? "").split("?")[0]}`;
+/** Runs fn in the request's scope: its route, and its firm when the guard set one. */
+export function inRequest<T>(req: object, fn: () => T): T {
+  const r = req as ScopedReq, firmId = r[REQ_FIRM];
+  return scope.run({ route: routeOf(r), firmId: typeof firmId === "string" ? firmId : undefined }, fn);
+}
+/** A guard's work in the request's scope (route known, no firm yet). */
+export function inGuard<T>(req: object, fn: () => T): T { return scope.run({ route: routeOf(req as ScopedReq) }, fn); }
+
+// ---------------------------------------------------------------------------------------------- the walled connection
+/** The API's database address: APP_DATABASE_URL when set (production gives the app role its own secret), otherwise
+ *  DATABASE_URL with the user changed to xr_app (the local demo, CI and test copies: one cluster, trust sign-in). */
+export function appDatabaseUrl(databaseUrl: string, env: NodeJS.ProcessEnv = process.env): string {
+  if (env.APP_DATABASE_URL) return env.APP_DATABASE_URL;
+  const u = new URL(databaseUrl);
+  u.username = APP_ROLE; u.password = "";
+  return u.toString();
+}
+
+const SET = Symbol("pf12.set");
+type Tagged = pg.PoolClient & { [SET]?: string };
+/** A pg pool whose every checkout first sets the context's firm and role on the connection (once per change). */
+export class WalledPool extends pg.Pool {
+  override connect(): Promise<pg.PoolClient>;
+  override connect(cb: (err: Error | undefined, client: pg.PoolClient | undefined, done: (release?: unknown) => void) => void): void;
+  override connect(cb?: (err: Error | undefined, client: pg.PoolClient | undefined, done: (release?: unknown) => void) => void): Promise<pg.PoolClient> | void {
+    const s = scope.getStore(), firm = s?.bypass ? "" : (s?.firmId ?? ""), role = s?.bypass ? BYPASS_ROLE : "none", want = `${firm}|${role}`;
+    const p = (super.connect() as Promise<pg.PoolClient>).then(async (c: Tagged) => {
+      if (c[SET] === want) return c;
+      try { await c.query("select set_config('app.firm_id', $1, false), set_config('role', $2, false)", [firm, role]); c[SET] = want; return c; }
+      catch (e) { c.release(e as Error); throw e; }
+    });
+    if (!cb) return p;
+    p.then((c) => cb(undefined, c, (r?: unknown) => c.release(r as Error)), (e) => cb(e as Error, undefined, () => undefined));
+  }
+  // pg's Pool.query checks a client out through connect(); the adapter calls query with a config object and values.
+  override query(...a: unknown[]): never {
+    const cb = typeof a[a.length - 1] === "function" ? a.pop() as (e: Error | null, r?: unknown) => void : undefined;
+    const p = this.connect().then(async (c) => { try { return await (c.query as (...x: unknown[]) => Promise<unknown>)(...a); } finally { c.release(); } });
+    if (cb) { p.then((r) => cb(null, r), (e) => cb(e as Error)); return undefined as never; }
+    return p as never;
+  }
+}
+
+/** The API's pool (core.ts Db): xr_app, UTC session time zone. */
+export function walledPool(databaseUrl: string, env: NodeJS.ProcessEnv = process.env): WalledPool {
+  return new WalledPool({ connectionString: appDatabaseUrl(databaseUrl, env), options: "-c TimeZone=UTC" });
+}
+
+// --------------------------------------------------------------------------------------------- the start-up check
+/** The start-up check (api/src/features/platform-firm-walls.ts): what the app's role may not be: a table owner (or a member of one), a superuser, a BYPASSRLS role. One line per
+ *  problem; none means the role is fit to serve. */
+export async function appRoleProblems(query: (sql: string) => Promise<{ rows: Record<string, unknown>[] }>): Promise<string[]> {
+  const { rows: [r] } = await query(`select current_user as role, r.rolsuper as super, r.rolbypassrls as bypass,
+      (select count(*)::int from pg_class c where c.relkind in ('r','p','v','m','f') and c.relnamespace = 'public'::regnamespace and pg_has_role(current_user, c.relowner, 'MEMBER')) as owned
+    from pg_roles r where r.rolname = current_user`);
+  const out: string[] = [];
+  if (r.super) out.push(`${String(r.role)} is a superuser`);
+  if (r.bypass) out.push(`${String(r.role)} has BYPASSRLS`);
+  if (Number(r.owned) > 0) out.push(`${String(r.role)} owns (or may act as the owner of) ${String(r.owned)} table(s)`);
+  return out;
+}
