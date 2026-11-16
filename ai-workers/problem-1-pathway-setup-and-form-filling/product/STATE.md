@@ -1,8 +1,8 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_31c33265-65d0-4e40-b922-652f50cf7e5a Lead 65 · 16 Nov 10:4x IST (series 2; took over from Lead 64 (series 2, local_7cc4b360) at ~500k, P-446)
+current_lead: local_31c33265-65d0-4e40-b922-652f50cf7e5a Lead 65 · 16 Nov 10:41 IST (series 2; took over from Lead 64 (series 2, local_7cc4b360) at ~500k, P-446)
 
-updated: 2026-11-16 10:4x IST by **Lead 64 (series 2, local_7cc4b360)** at hand-over to Lead 65 · weekly 59% at 10:38 (resets 17 Nov 10:30 IST) · milestone: **Works on main 93/98 (M2 60/60, M3 27/29, M4 0/1, T 6/8)**; Release 1: 4 Proven, 18 Partial on qa's file; **target 29 Nov, all 101 (P-609)** · rules: **`RULES.md`** (as of **P-634**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-16 10:44 IST by **Lead 65 (series 2, local_31c33265)**: took over 10:41 IST from Lead 64; check every 30 min at :13/:43 (cron 22063f97) · weekly 59% at 10:38 (resets 17 Nov 10:30 IST) · milestone: **Works on main 93/98 (M2 60/60, M3 27/29, M4 0/1, T 6/8)**; Release 1: 4 Proven, 18 Partial on qa's file; **target 29 Nov, all 101 (P-609)** · rules: **`RULES.md`** (as of **P-634**) · this branch: `lead/2026-11-07-lead31`
 
 Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
@@ -47,5 +47,5 @@ F2, F8, F14-F19 closed or ruled; word for word in `history/STATE-2026-11-15-2115
 **To-do (Lead 11):** word for word in `history/STATE-2026-11-14-0910-lead41s2-founder-asks-pointer-rows.md`.
 
 ## Leads, in order
-**Series 2 (P-433):** current = `current_lead:`; Leads 45-55 and earlier, word for word: `history/STATE-2026-11-15-2035-lead61s2-leads-45-55-lines.md`. **Lead 65 (series 2, local_31c33265) from 10:4x IST 16 Nov**; **Lead 64 (series 2, local_7cc4b360) 07:31-10:4x 16 Nov**; **Lead 63 (series 2, local_cdb44e83) 05:20-07:29 16 Nov**; **Lead 62 (series 2, local_be1be806) 02:30-05:2x 16 Nov**; **Lead 61 (series 2, local_14ad6773) 20:12 15 Nov-02:3x 16 Nov**; Leads 56-60 word for word: `history/STATE-2026-11-16-0745-lead63s2-leads-56-60-lines.md`; Lead 57 is the feeding Lead (P-613 (2)). Standbys: **Lead 66 (local_6e882eeb)**; start Lead 67 at the founder's next typed turn. Builders started 07:5x by Lead 64 (cloud): PF-6 part 1, J-6 part 1.
+**Series 2 (P-433):** current = `current_lead:`; Leads 45-55 and earlier, word for word: `history/STATE-2026-11-15-2035-lead61s2-leads-45-55-lines.md`. **Lead 65 (series 2, local_31c33265) from 10:41 IST 16 Nov**; **Lead 64 (series 2, local_7cc4b360) 07:31-10:4x 16 Nov**; **Lead 63 (series 2, local_cdb44e83) 05:20-07:29 16 Nov**; **Lead 62 (series 2, local_be1be806) 02:30-05:2x 16 Nov**; **Lead 61 (series 2, local_14ad6773) 20:12 15 Nov-02:3x 16 Nov**; Leads 56-60 word for word: `history/STATE-2026-11-16-0745-lead63s2-leads-56-60-lines.md`; Lead 57 is the feeding Lead (P-613 (2)). Standbys: **Lead 66 (local_6e882eeb)**; start Lead 67 at the founder's next typed turn. Builders started 07:5x by Lead 64 (cloud): PF-6 part 1, J-6 part 1.
 **Series 1: Leads 1 to 41, before 9 Nov 17:48 IST**, never renamed or renumbered: the full list, word for word, is in `history/STATE-2026-11-09-2130-lead2s2.md` ("Leads, in order").
