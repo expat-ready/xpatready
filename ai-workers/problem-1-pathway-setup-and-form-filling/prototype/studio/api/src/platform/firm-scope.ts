@@ -154,6 +154,9 @@ export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promis
   // A direct call (no scope at all) only in a suite or tool process: in the API server every request and job has its scope.
   const allowed = route !== undefined ? entry.routes.some((r) => r.test(route)) : store === undefined ? !!(entry.outside || (entry.direct && unscoped === "direct")) : !!entry.outside;
   if (!allowed) throw new BypassRefused(`asBypass: "${use}" is not allowed ${route === undefined ? "outside a request" : `on ${route}`}`);
+  // PF-12b (break M1): one use at a time. A use inside another would cross the walls under the outer use's name, with the
+  // outer use's lines only; it is refused before any query runs.
+  if (store?.bypass) throw new BypassRefused(`asBypass: "${use}" may not run inside "${store.bypass}" (one bypass use at a time)`);
   bypassLine(use, route);
   return scope.run({ route, bypass: use }, async () => await fn());
 }
@@ -174,6 +177,9 @@ export class BypassNotRecorded extends HttpException {
 }
 
 const touched = new WeakMap<object, Set<string>>();
+/** The correlation id kept in an audit line: ours (a uuid, or job:<id>) only. A caller's X-Request-Id can hold any text,
+ *  personal data too, and the trail keeps it for good (break M2): another shape is kept as null. */
+const CORRELATION = /^(job:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^job:[A-Za-z0-9._-]{1,100}$/i;
 /** PF-12b: inside a bypass use, the firm whose rows this transaction reads or writes. Writes one platform.bypass line to
  *  that firm's trail inside `tx` (once per firm and transaction): the use, the method (never the path), the actor
  *  (system:<use>; none of the per-firm uses runs in a staff session) and the correlation id. A failed write throws
@@ -182,22 +188,35 @@ export async function touchFirm(tx: unknown, firmId: string): Promise<void> {
   const s = scope.getStore(), use = s?.bypass;
   if (!use) return;
   const id = firmScope(firmId).firmId;
-  const seen = typeof tx === "object" && tx !== null ? (touched.get(tx) ?? new Set<string>()) : new Set<string>();
+  // A client is not a transaction (break m3): its line would commit on its own. A Prisma transaction has no $disconnect.
+  if (typeof tx !== "object" || tx === null || typeof (tx as { $disconnect?: unknown }).$disconnect === "function") throw new FirmScopeError("touchFirm: give the caller's transaction, not the client");
+  const seen = touched.get(tx) ?? new Set<string>();
+  touched.set(tx, seen);
   if (seen.has(id)) return;
+  seen.add(id);   // before the await: touches of one firm at the same moment in one transaction write one line (break m4)
   const method = s.route ? s.route.slice(0, s.route.indexOf(" ")) : "none";
-  const correlationId = requestScope.getStore()?.correlationId ?? null;
+  const given = requestScope.getStore()?.correlationId, correlationId = given && CORRELATION.test(given) ? given : null;
   try {
     await bypassAudit.record(tx, { firmId: id, actor: `system:${use}`, action: "platform.bypass", entity: "platform_firm", entityKey: id,
       summary: `Our platform read or changed this firm's records across the firm walls (${use}).`, detail: { use, method, correlationId } });
-  } catch (e) { throw new BypassNotRecorded(use, e); }
-  seen.add(id);
-  if (typeof tx === "object" && tx !== null) touched.set(tx, seen);
+  } catch (e) { seen.delete(id); throw new BypassNotRecorded(use, e); }
 }
-/** The same in a transaction of its own, for a use that only reads a firm's rows (a sweep's read, a lookup). */
+/** For a use that only reads firms' rows (a sweep's read, a lookup): each firm's line in a transaction of its own. Returns
+ *  the firms whose line could not be written (their work must not go ahead) and the first such error; never throws. */
+export async function touchEachFirm(db: Pick<PrismaClient, "$transaction">, firmIds: Iterable<string>): Promise<{ failed: Set<string>; error: BypassNotRecorded | null }> {
+  const ids = [...new Set([...firmIds].map((f) => firmScope(f).firmId))], failed = new Set<string>();
+  let error: BypassNotRecorded | null = null;
+  if (!currentBypass()) return { failed, error };
+  for (const f of ids) {
+    try { await db.$transaction(async (tx) => { await touchFirm(tx, f); }); }
+    catch (e) { failed.add(f); error ??= e instanceof BypassNotRecorded ? e : new BypassNotRecorded(currentBypass() ?? "unknown", e); }
+  }
+  return { failed, error };
+}
+/** The same, all or nothing: throws the first failure (the use stops) once every firm has been tried. */
 export async function touchFirms(db: Pick<PrismaClient, "$transaction">, firmIds: Iterable<string>): Promise<void> {
-  const ids = [...new Set([...firmIds].map((f) => firmScope(f).firmId))];
-  if (!ids.length || !currentBypass()) return;
-  await db.$transaction(async (tx) => { for (const f of ids) await touchFirm(tx, f); });
+  const { error } = await touchEachFirm(db, firmIds);
+  if (error) throw error;
 }
 
 // ----------------------------------------------------------------------------------------------- the request's firm

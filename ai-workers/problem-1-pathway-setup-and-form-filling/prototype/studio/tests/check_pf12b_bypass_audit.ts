@@ -20,7 +20,7 @@ import { fakeFiles } from "../ports/files.ts";
 import { fakeJobs } from "../ports/jobs.ts";
 import { fakeMail } from "../ports/mail.ts";
 import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
-import { appDatabaseUrl, asBypass, asJob, BYPASS_USES, BypassNotRecorded, inRequest, onBypassAudit, touchFirm, WalledPool } from "../api/src/platform/firm-scope.ts";
+import { appDatabaseUrl, asBypass, asJob, BYPASS_USES, BypassNotRecorded, BypassRefused, FirmScopeError, inRequest, onBypassAudit, touchFirm, WalledPool } from "../api/src/platform/firm-scope.ts";
 import { FirmSignUp, type SignUpPorts } from "../api/src/platform/firms/signup.ts";
 import { LocalSignUp } from "../api/src/platform/firms/signup-identity.ts";
 import { resetSampleFirmSettings } from "../api/src/platform/identity/demo-reset.ts";
@@ -89,8 +89,8 @@ try {
   ok("PF-12b DW1 pass: the line names the use, the actor (system:<use>), the firm, the method (none outside a request) and the correlation id", line === `system:job:messages.outbox_sweep|platform_firm|${A}|none|job:pf12b-sweep`, line);
   await resetSampleFirmSettings(db);
   ok("PF-12b DW1 pass: the demo reset writes one line per Sample firm, each in its own firm's trail", lines("platform.demo.reset") === [A, B].sort().map((f) => `${f}:1`).join(","), lines("platform.demo.reset"));
-  await requestScope.run({ correlationId: "req-pf12b-inbox", firmId: () => undefined }, () => inRequest(inboxRoute, () => inbox.list(INBOX, undefined)));
-  ok("PF-12b DW1 pass: the demo inbox writes one line per firm whose mail it listed, with the method and the request's correlation id", lines("platform.demo.inbox") === [A, B].sort().map((f) => `${f}:1`).join(",") && sql(`select string_agg(distinct (detail->>'method') || ':' || (detail->>'correlationId'), ',') from audit_event where detail->>'use' = 'platform.demo.inbox'`) === "GET:req-pf12b-inbox");
+  await requestScope.run({ correlationId: "0b12b000-0000-4000-8000-00000000c0de", firmId: () => undefined }, () => inRequest(inboxRoute, () => inbox.list(INBOX, undefined)));
+  ok("PF-12b DW1 pass: the demo inbox writes one line per firm whose mail it listed, with the method and the request's correlation id", lines("platform.demo.inbox") === [A, B].sort().map((f) => `${f}:1`).join(",") && sql(`select string_agg(distinct (detail->>'method') || ':' || (detail->>'correlationId'), ',') from audit_event where detail->>'use' = 'platform.demo.inbox'`) === "GET:0b12b000-0000-4000-8000-00000000c0de");
   ok("PF-12b DW1 pass/fail: firm A's trail shows its own lines only, never firm B's (and B's the same)", sql(`select count(*) from audit_event where action = 'platform.bypass' and detail->>'firmId' = '${A}' and entity_key <> '${A}'`) === "0" && sql(`select count(*) from audit_event where action = 'platform.bypass' and detail->>'firmId' = '${A}'`) === "3" && sql(`select count(*) from audit_event where action = 'platform.bypass' and detail->>'firmId' = '${B}'`) === "3");
   sql(`delete from platform_firm_web_address where firm_id in ('${A}', '${B}')`);
   const catchUp = new WebAddressCatchUp(db as never); catchUp.onApplicationBootstrap(); const caught = await catchUp.done;
@@ -100,6 +100,20 @@ try {
   await touchFirm({}, A);   // outside a bypass use: nothing crossed a wall
   onBypassAudit(was0);
   ok("PF-12b DW1 pass: one line per firm and transaction (a second touch of the same firm adds none); outside a bypass use touchFirm writes nothing", rec.entries.length === 2 && rec.entries.map((e) => e.firmId).join(",") === `${A},${B}`, rec.entries);
+
+  // Break M1, M2, m3, m4 (the breaker's report, screens/PF-12b/break-report.md).
+  const nested = await errOf(() => inRequest(inboxRoute, () => asBypass("platform.demo.inbox", () => asBypass("platform.identity.authenticate", () => db.platformStaff.findMany()))));
+  ok("PF-12b fail (break M1): a bypass use inside another is refused before any query (it would cross under the outer use's lines)", nested instanceof BypassRefused, String(nested));
+  const spoof = fakeAudit(), wasS = onBypassAudit(spoof);
+  await requestScope.run({ correlationId: "Jane.Doe.passport.lost", firmId: () => undefined }, () => asBypass("platform.demo.reset", async () => { await touchFirm({}, A); }));
+  await requestScope.run({ correlationId: "0b12b000-0000-4000-8000-00000000beef", firmId: () => undefined }, () => asBypass("platform.demo.reset", async () => { await touchFirm({}, A); }));
+  const clientErr = await errOf(() => asBypass("platform.demo.reset", () => touchFirm(db, A)));
+  const tx4 = {};
+  await asBypass("platform.demo.reset", () => Promise.all([touchFirm(tx4, A), touchFirm(tx4, A), touchFirm(tx4, A)]));
+  onBypassAudit(wasS);
+  ok("PF-12b fail (break M2): a caller's X-Request-Id that is not our id shape is never kept in the trail (null); a uuid is kept", spoof.entries[0]?.detail.correlationId === null && spoof.entries[1]?.detail.correlationId === "0b12b000-0000-4000-8000-00000000beef", spoof.entries.map((e) => e.detail));
+  ok("PF-12b fail (break m3): touchFirm refuses the client in place of a transaction (its line would commit alone)", clientErr instanceof FirmScopeError, String(clientErr));
+  ok("PF-12b pass (break m4): three touches of one firm at the same moment in one transaction write one line", spoof.entries.length === 3, spoof.entries.length);
 
   // ---------------------------------------------------------------------------------------------------------- DW2
   const refusing = fakeAudit({ failOn: (e) => e.action === "platform.bypass" });
@@ -114,6 +128,12 @@ try {
   onBypassAudit(was);
   ok("PF-12b DW2 fail: a line that cannot be written refuses the demo reset; firm A's setting is unchanged and no setting line is stored (rolled back)", plain(resetErr) && sql(`select value::text from platform_firm_setting where firm_id = '${A}' and key = 'platform.language'`) === '"fr"' && settingLines() === beforeLines, { resetErr: String(resetErr), value: sql(`select value::text from platform_firm_setting where firm_id = '${A}' and key = 'platform.language'`) });
   ok("PF-12b DW2 fail: the sweep is refused and queues nothing (a job fails and is retried)", sweepErr instanceof BypassNotRecorded && (jobs.jobs.length) === beforeJobs, { sweepErr: String(sweepErr) });
+  const onlyB = fakeAudit({ failOn: (e) => e.action === "platform.bypass" && e.firmId === B }), wasB = onBypassAudit(onlyB);
+  await clock.advance({ hours: 1 });
+  const jobsBefore = jobs.jobs.length, partErr = await errOf(() => asJob("messages.outbox_sweep", () => messages.sweep()));
+  onBypassAudit(wasB);
+  const newJobs = jobs.jobs.slice(jobsBefore).map((j) => (j.payload as { firmId: string }).firmId);
+  ok("PF-12b DW2 fail (break m6): when only firm B's line fails, B's rows are not queued, A's are (with A's line), and the sweep then fails", partErr instanceof BypassNotRecorded && JSON.stringify(newJobs) === JSON.stringify([A]) && onlyB.entries.map((e) => e.firmId).join(",") === A, { partErr: String(partErr), newJobs, lines: onlyB.entries.map((e) => e.firmId) });
   ok("PF-12b DW2 fail: a request (the demo inbox) answers 500 in plain words, and no line was stored for it", plain(inboxErr) && lines("platform.demo.inbox") === [A, B].sort().map((f) => `${f}:1`).join(","), String(inboxErr));
   await resetSampleFirmSettings(db);
   ok("PF-12b DW2 pass: with the trail writable again the same reset runs (A's setting back to its default, one more line per firm)", sql(`select value::text from platform_firm_setting where firm_id = '${A}' and key = 'platform.language'`) === '"en"' && lines("platform.demo.reset") === [A, B].sort().map((f) => `${f}:2`).join(","));
