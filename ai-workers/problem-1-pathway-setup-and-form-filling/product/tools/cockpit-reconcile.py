@@ -583,6 +583,118 @@ def monte_carlo(counts, remaining, today, seed=MC_SEED, runs=MC_RUNS, cap=MC_CAP
         runs, seed, cap)
 
 
+# ---------------------------------------------------------------- Flow box (P-644)
+FLOW_NAMES = ("flow_rows_built_24h", "flow_rows_built_3d", "flow_parts_24h", "flow_parts_3d", "flow_parts_left",
+              "flow_works_24h", "flow_works_3d", "flow_prove_lag_h", "flow_awaiting", "flow_awaiting_oldest_h",
+              "flow_forecast", "flow_forecast_best", "flow_forecast_worst")
+
+
+def flow_numbers(N, snap, now, today, rows, backlog, app_merged_at, cap_text, missing):
+    """Flow box counts, written from FORMULAS.md › Flow, not from cockpit-data.py.
+    Windows: (taken_at - 24 h, taken_at], and the 3 IST days before today (oldest first).
+    built_at of a row: shaped, at least one part, every part a BACKLOG id with a merge time; the latest of them.
+    Release 1 ids: the distinct parts of every Build row; an id is merged at app_merged_at (P-639 rule).
+    qa's verdict: the R1.n rows of qa/CAPABILITIES.md on main now; its history git/capabilities_main.
+    works since: the first version of the current run of Works whose previous version listed the row not reading Works
+    (a row first listed already reading Works has no date). qa tested at: the last version whose R1.n line text changed.
+    waiting: rows with a built_at, not reading Works now, unless qa's line last changed at or after built_at and reads
+    Partial or Not built. Prove lag: median hours built_at -> works since, rows proven within 7 days with works since
+    at or after built_at. Forecast: today + ceil(parts left / rate) + ceil(lag / 24) days; rate = the 3 days' mean
+    (forecast), their highest (best), their lowest (worst); no rate -> null; nothing left -> today."""
+    if missing or cap_text is None:
+        why = "not measured: %s missing from the snapshot" % (", ".join(missing) if missing else "qa/CAPABILITIES.md")
+        for k in FLOW_NAMES:
+            N[k] = num(None, why)
+        return
+    days = [today - dt.timedelta(days=k) for k in (3, 2, 1)]
+    cut = now - dt.timedelta(hours=24)
+    caps_now = {int(k[3:]): v[1] for k, v in parse_capabilities(cap_text).items() if re.fullmatch(r"R1\.\d+", k)}
+    maps = []
+    for r in rows:
+        try:
+            maps.append((int(r["map"]), r))
+        except (TypeError, ValueError):
+            continue
+    built_at = {}
+    for m, r in maps:
+        if (r["status"] or "").lower().startswith("not shaped") or not r["parts"] or not all(x in backlog for x in r["parts"]):
+            continue
+        ts = [app_merged_at(x) for x in r["parts"]]
+        if all(ts):
+            built_at[m] = max(ts)
+    ids = sorted({x for _, r in maps for x in r["parts"]})
+    id_at = [t for t in (app_merged_at(x) for x in ids) if t]
+    hist = []
+    for ln in (snap.text("git/capabilities_main.jsonl") or "").splitlines():
+        if ln.strip():
+            e = json.loads(ln)
+            t = snap.text("git/capabilities_main/%s.md" % e.get("sha"))
+            if t is not None and parse_ts(e.get("date")):
+                hist.append((parse_ts(e["date"]), t))
+    hist.sort(key=lambda x: x[0])
+    since, other, tested, line_was = {}, set(), {}, {}
+    for when, t in hist:
+        for k, v in parse_capabilities(t).items():
+            if not re.fullmatch(r"R1\.\d+", k):
+                continue
+            m = int(k[3:])
+            if reads_works(v[1]):
+                if m in other and m not in since:
+                    since[m] = when
+            else:
+                other.add(m)
+                since.pop(m, None)
+        for ln in t.splitlines():
+            g = re.match(r"^\|\s*\**R1\.(\d+)\**\s*\|", ln)
+            if g:
+                m = int(g.group(1))
+                if line_was.get(m) != ln:
+                    tested[m], line_was[m] = when, ln
+    proven = {m for m, s in caps_now.items() if reads_works(s)}
+    works = {m: since[m] for m in proven if m in since}
+    waiting = sorted(m for m in built_at if m not in proven and not (
+        re.match(r"(Partial|Not built)", caps_now.get(m) or "") and m in tested and tested[m] >= built_at[m]))
+
+    def per_day(xs):
+        return [sum(1 for t in xs if ist_day(t) == d) for d in days]
+
+    def in24(xs):
+        return sum(1 for t in xs if cut < t <= now)
+    lag = [(works[m] - built_at[m]).total_seconds() / 3600 for m in works
+           if m in built_at and works[m] >= built_at[m] and now - works[m] <= dt.timedelta(days=7)]
+    lag.sort()
+    lag_h = None
+    if lag:
+        k = len(lag)
+        lag_h = round(lag[k // 2] if k % 2 else (lag[k // 2 - 1] + lag[k // 2]) / 2, 1)
+    left = len(ids) - len(id_at)
+    pd = per_day(id_at)
+
+    def eta(rate):
+        if left <= 0:
+            return today.isoformat()
+        if not rate:
+            return None
+        return (today + dt.timedelta(days=math.ceil(left / rate) + math.ceil((lag_h or 0) / 24))).isoformat()
+    old = [(now - built_at[m]).total_seconds() / 3600 for m in waiting]
+    src = "Flow (FORMULAS.md): "
+    N["flow_rows_built_24h"] = num(in24(built_at.values()), src + "rows whose last part merged in the 24 h",
+                                   detail=sorted(m for m, t in built_at.items() if cut < t <= now))
+    N["flow_rows_built_3d"] = num(per_day(built_at.values()), src + "rows built on each of the 3 days")
+    N["flow_parts_24h"] = num(in24(id_at), src + "Release 1 ids merged in the 24 h")
+    N["flow_parts_3d"] = num(pd, src + "Release 1 ids merged on each of the 3 days")
+    N["flow_parts_left"] = num(left, src + "Release 1 ids not merged (%d ids)" % len(ids))
+    N["flow_works_24h"] = num(in24(works.values()), src + "rows whose run of Works began in the 24 h",
+                              detail=sorted(m for m, t in works.items() if cut < t <= now))
+    N["flow_works_3d"] = num(per_day(works.values()), src + "rows proven on each of the 3 days")
+    N["flow_prove_lag_h"] = num(lag_h, src + "median built -> works hours, n=%d" % len(lag))
+    N["flow_awaiting"] = num(len(waiting), src + "built, waiting for qa", detail=waiting)
+    N["flow_awaiting_oldest_h"] = num(round(max(old), 1) if old else None, src + "oldest waiting row's hours since built")
+    N["flow_forecast"] = num(eta(sum(pd) / 3), src + "at the 3 days' mean rate")
+    N["flow_forecast_best"] = num(eta(max(pd)), src + "at the 3 days' highest rate")
+    N["flow_forecast_worst"] = num(eta(min(pd)), src + "at the 3 days' lowest rate")
+
+
 # ---------------------------------------------------------------- main computation
 def compute(snap):
     meta = snap.json("meta.json")
@@ -987,6 +1099,7 @@ def compute(snap):
         N["works_today"] = num(len(got), "rows at qa Works now, not before today's IST day", detail=got)
         N["works_today_by_size"] = num({k: sum(1 for m in got if sz.get(m) == k) for k in ("S", "M", "L", "not shaped")},
                                        "sizes of those rows")
+    flow_numbers(N, snap, now, today, unique_rows, backlog, app_merged_at, cap_text, missing)
     # capabilities_not_mapped: rows none of whose parts' BACKLOG lines carry a Source: id. A row's text leaves out the
     # column whose header starts "Done when"; a field runs from "Source:" to the next "·" or the cell's end; brackets
     # are removed innermost first until none is left; tokens are runs of letters, digits, "." and "-", trailing "." and "-" cut.
@@ -1160,7 +1273,7 @@ def compute(snap):
              "pct_per_works_row", "rows_done_24h", "rows_needed_per_day",
              "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today", "ci_rule_failures_today",
              "ci_bundle_failures_today", "parts_merged", "parts_total", "founder_asks_day", "rules_changes_day",
-             "target_changes_week", "launch_done", "launch_total", "counsel_open", "r1_proven_qa"]
+             "target_changes_week", "launch_done", "launch_total", "counsel_open", "r1_proven_qa"] + list(FLOW_NAMES)
     return {"version": 1,
             "numbers": {k: N[k] for k in order},
             "mc_inputs": {"daily_counts": r1_counts, "remaining_scope": remaining}}

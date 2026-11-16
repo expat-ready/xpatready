@@ -402,6 +402,15 @@ PARKED_H = 7 * 24                             # §11 R8: no push for 7 days = pa
 LANE_WINDOW_MIN = 90                           # P-326: a lane works when it pushed in the last 90 min
 BURN_LIMIT = 3.0                               # P-440: burn at most 3% of the weekly plan per hour
 BUG_AGE_H = 48                                 # §5 item 6
+# Flow box (Lead 69, 16 Nov 21:3x IST, P-644): targets a day and the light bands (FORMULAS.md › Flow)
+FLOW_TARGET, FLOW_FLOOR = 10, 7                # rows built and rows proven in 24 h (P-644)
+FLOW_PROVE_H = 12                              # built → Works under 12 h (P-644)
+FLOW_MERGE_MIN = (30, 60)                      # approved → merged median: green to 30 min, amber to 60
+FLOW_FAIL_PCT = (10, 20)                       # failed merge batches: green under 10%, amber under 20%
+FLOW_CI_WAIT_MIN = (10, 30)                    # median job wait for a test machine: green to 10 min, amber to 30
+FLOW_LANES_SHARE = (0.8, 0.5)                  # lanes running ÷ slots: green from 80%, amber from 50%
+FLOW_DISK_GB = 7                               # the Mac's disk floor for the Flow box (P-644)
+CI_SAMPLE_RUNS = 20                            # CI runs (newest, last 3 h) whose jobs are read for the wait
 LEAD_B_BRANCH = "lead-b-front-office"          # Lead B's branch holding design/lead-b-briefs/ (Lead input lead_b_branch overrides)
 IDRE = r"[A-Z][A-Za-z0-9]*-[0-9A-Za-z]+(?:-[0-9A-Za-z]+)*"   # BACKLOG row ids: PF-4b, BK-17, B5-filings, DB-SPLIT, PF-L
 NOT_ROW = re.compile(r"^(?:P|QA)-\d+$")      # decision and bug ids are not BACKLOG rows
@@ -1033,6 +1042,28 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     nl = gh.get("/actions/workflows/nightly.yml/runs?branch=main&status=completed&per_page=2").get("workflow_runs", [])
     wj("github/main_nightly.json", dict({"conclusion": nl[0]["conclusion"], "created_at": nl[0]["created_at"]},
                                         previous={"conclusion": nl[1]["conclusion"], "created_at": nl[1]["created_at"]} if len(nl) > 1 else None) if nl else {})
+    # Flow box (Lead 69, 16 Nov, P-644): how long jobs wait for a test machine. Queued runs now, and each job's wait from
+    # created to started (a job still queued counts its wait so far) for the newest CI_SAMPLE_RUNS runs created in the
+    # last 3 h. Skipped jobs never wait for a machine and are left out.
+    try:
+        qn = gh.get("/actions/runs?status=queued&per_page=1").get("total_count")
+        ipn = gh.get("/actions/runs?status=in_progress&per_page=1").get("total_count")
+        since = (NOW - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        rr = gh.get(f"/actions/runs?created=%3E%3D{since}&per_page=100").get("workflow_runs", [])
+        waits = []
+        for x in rr[:CI_SAMPLE_RUNS]:
+            for j in gh.get(f"/actions/runs/{x['id']}/jobs?per_page=100").get("jobs", []):
+                c, s = parse_iso(j.get("created_at")), parse_iso(j.get("started_at"))
+                if not c or j.get("conclusion") == "skipped":
+                    continue
+                if j.get("status") in ("queued", "waiting", "pending"):
+                    waits.append({"min": round((NOW - c).total_seconds() / 60, 1), "still_queued": True})
+                elif s:
+                    waits.append({"min": round(max(0, (s - c).total_seconds()) / 60, 1), "still_queued": False})
+        wj("github/ci_queue.json", {"taken_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"), "queued_runs": qn, "in_progress_runs": ipn,
+                                    "runs_in_3h": len(rr), "runs_sampled": min(len(rr), CI_SAMPLE_RUNS), "job_waits": waits})
+    except Exception as e:                                   # offline or the API failed: the box says not measured
+        wj("github/ci_queue.json", {"error": str(e)[:200]})
     # branches with a push in the last 24 h (GitHub keeps no push time per branch: the head commit's committed date stands in)
     o, r_ = (gh.repo or "/").split("/")
     # every branch is read (GitHub's ref ordering by commit date proved unreliable for branches: 14 Nov, today's lane branches missing)
@@ -1866,6 +1897,20 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
                 n = int(m.group(1))
                 if prev_line.get(n) != line:
                     qa_tested_at[n], prev_line[n] = h["date"], line
+    # Flow box (P-644): when each R1 row's current run of Works began on main. A row whose R1 line read Works the first
+    # time it was listed (the table grew to 101 rows with rows proven in M2/M3) was not proven that day: no date.
+    r1_works_since, r1_seen_other = {}, set()
+    for h in hist_caps:
+        for k, v in parse_caps(h.get("text") or "").items():
+            if not re.fullmatch(r"R1\.\d+", k):
+                continue
+            n = int(k.split(".")[1])
+            if QA_WORKS.match(v.get("status") or ""):
+                if n in r1_seen_other and n not in r1_works_since:
+                    r1_works_since[n] = h["date"]
+            else:
+                r1_seen_other.add(n)
+                r1_works_since.pop(n, None)
     proven_reason = None
     if not ck["has_qa_col"]:
         proven_reason = "not measured: the checklist has no qa id column yet (qa's R1 capabilities, #1748)"
@@ -2520,6 +2565,11 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     keys.update({"parts_merged": PM["value"], "parts_total": len(r1), "founder_asks_day": FA["value"], "rules_changes_day": RC["value"],
                  "target_changes_week": TC["value"], "launch_done": customer["launch_done"]["value"],
                  "launch_total": len(lc_rows), "counsel_open": customer["counsel_open"]["value"]})
+    # Flow box (P-644): the counts the independent check recomputes (FORMULAS.md › Flow)
+    flow_rows = [{"map": r["map"], "built": r["built"], "built_at": r.get("built_at"), "qa_tested_at": qa_tested_at.get(r["map"])} for r in rows]
+    flow = flow_counts(flow_rows, r1_qa, {k: change_at[k] for k in r1 if k in change_at}, len(r1), r1_works_since,
+                       parse_iso(taken) if taken else now)
+    keys.update({k: flow[k] for k in FLOW_KEYS})
 
     trust = reconcile_compare(keys, reconcile_out, reconcile_note)
     trust["invariants"] = invariants
@@ -2546,7 +2596,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             "capability_table": cap_table, "rules_caught": rules, "behaviour": behaviour, "customer": customer,
             "rows": [{"map": r["map"], "built": r["built"], "built_at": r.get("built_at"), "proven": r["proven"], "ids": r["ids"],
                       "size": r["size"], "qa_tested_at": qa_tested_at.get(r["map"])} for r in rows],
-            "r1_qa": r1_qa}
+            "r1_qa": r1_qa, "flow": flow}
 
 
 RECON_TOLERANCE_DAYS = {"forecast_p50_date": 1, "forecast_p85_date": 1}
@@ -2788,20 +2838,14 @@ def nocode(s):
     return DECISION_CODE.sub("", s or "").strip() if s else s
 
 
-def first_screen(d, r1_qa, li, li_src):
-    """P-636 (founder 11:0x IST 16 Nov): the first screen in three words. Planned = a Release 1 capability (checklist §A);
-    Built = every part merged on main (BACKLOG parts all merged through app PRs), or qa passed it; Proven = qa's verdict
-    Works in qa/CAPABILITIES.md on main, nothing else (the checklist's own status is not read). Six answers, each with
-    its items, owner and next step (FORMULAS.md › First screen)."""
-    gen = datetime.fromisoformat(d["freshness"]["generated_at"].replace("Z", "+00:00"))
-    today = gen.astimezone(IST).date()
-    names = {r["map"]: r["cap"] for r in (d.get("capability_table") or {}).get("rows") or []}
-    rows = d.get("build_rows") or []
+def r1_stages(rows, r1_qa):
+    """The Release 1 stages, one rule for the first screen and the Flow box. Proven = qa's verdict Works on main.
+    P-639 (Lead 66, 16 Nov): qa's verdict on main decides. A row whose listed parts all merged is Built (awaiting qa)
+    unless qa tested it after its last part merged and read Partial or Not built: then it is In progress (qa found it
+    unfinished). A row merged after qa's last test stays Built (awaiting qa), so the founder sees what qa owes.
+    rows: [{map, built, built_at, qa_tested_at}]. Returns (planned, proven, qa_unfinished, built, waiting)."""
     planned = [r["map"] for r in rows]
     proven = sorted(m for m in planned if QA_WORKS.match(r1_qa.get(m) or ""))
-    # P-639 (Lead 66, 16 Nov): qa's verdict on main decides. A row whose listed parts all merged is Built (awaiting qa)
-    # unless qa tested it after its last part merged and read Partial or Not built: then it is In progress (qa found it
-    # unfinished). A row merged after qa's last test stays Built (awaiting qa), so the founder sees what qa owes.
     row_of = {r["map"]: r for r in rows}
 
     def qa_after_merge(m):
@@ -2813,6 +2857,154 @@ def first_screen(d, r1_qa, li, li_src):
                            and qa_after_merge(m))
     built = sorted((set(parts_done) - set(qa_unfinished)) | set(proven))
     waiting = [m for m in built if m not in proven]
+    return planned, proven, qa_unfinished, built, waiting
+
+
+FLOW_KEYS = ("flow_rows_built_24h", "flow_rows_built_3d", "flow_parts_24h", "flow_parts_3d", "flow_parts_left",
+             "flow_works_24h", "flow_works_3d", "flow_prove_lag_h", "flow_awaiting", "flow_awaiting_oldest_h",
+             "flow_forecast", "flow_forecast_best", "flow_forecast_worst")
+
+
+def flow_counts(rows, r1_qa, part_at, parts_total, works_since, now):
+    """Flow box counts (Lead 69, 16 Nov, P-644; FORMULAS.md › Flow), all from the snapshot; cockpit-reconcile.py
+    recomputes each one apart. Windows: the 24 h to the snapshot time, and the last 3 full IST days (oldest first).
+    rows: [{map, built, built_at, qa_tested_at}] of the 101 Release 1 rows; part_at: {Release 1 id: when its last needed
+    part merged}; works_since: {R1 map row: when its current run of Works began} (none for a row listed already Works)."""
+    today = now.astimezone(IST).date()
+    days = [today - timedelta(days=k) for k in (3, 2, 1)]
+    cut = now - timedelta(hours=24)
+    planned, proven, _, _, waiting = r1_stages(rows, r1_qa)
+    row_of = {r["map"]: r for r in rows}
+    b_at = {m: parse_iso(row_of[m]["built_at"]) for m in planned if row_of[m].get("built") and row_of[m].get("built_at")}
+    w_at = {m: parse_iso(works_since[m]) for m in proven if works_since.get(m)}
+    p_at = [parse_iso(v) for v in part_at.values() if v]
+
+    def per_day(ts):
+        return [sum(1 for t in ts if t.astimezone(IST).date() == d) for d in days]
+
+    def in24(ts):
+        return sum(1 for t in ts if cut < t <= now)
+    lag = sorted((w_at[m] - b_at[m]).total_seconds() / 3600 for m in w_at
+                 if m in b_at and w_at[m] >= b_at[m] and now - w_at[m] <= timedelta(days=7))
+    lag_h = round(statistics.median(lag), 1) if lag else None
+    oldest = max(((now - b_at[m]).total_seconds() / 3600 for m in waiting if m in b_at), default=None)
+    left = parts_total - len(p_at)
+    pd = per_day(p_at)
+
+    def eta(rate):
+        if left <= 0:
+            return today.isoformat()
+        if not rate:
+            return None
+        return (today + timedelta(days=math.ceil(left / rate) + math.ceil((lag_h or 0) / 24))).isoformat()
+    return {"flow_rows_built_24h": in24(b_at.values()), "flow_rows_built_3d": per_day(b_at.values()),
+            "flow_parts_24h": in24(p_at), "flow_parts_3d": pd, "flow_parts_left": left,
+            "flow_works_24h": in24(w_at.values()), "flow_works_3d": per_day(w_at.values()),
+            "flow_prove_lag_h": lag_h, "flow_awaiting": len(waiting), "flow_awaiting_oldest_h": round(oldest, 1) if oldest is not None else None,
+            "flow_forecast": eta(sum(pd) / 3), "flow_forecast_best": eta(max(pd)), "flow_forecast_worst": eta(min(pd)),
+            "days": [d.isoformat() for d in days], "today": today.isoformat(), "waiting": waiting,
+            "today_counts": {"rows": sum(1 for t in b_at.values() if t.astimezone(IST).date() == today),
+                             "parts": sum(1 for t in p_at if t.astimezone(IST).date() == today),
+                             "works": sum(1 for t in w_at.values() if t.astimezone(IST).date() == today)}, "lag_n": len(lag), "parts_total": parts_total,
+            "built_24h_maps": sorted(m for m, t in b_at.items() if cut < t <= now),
+            "works_24h_maps": sorted(m for m, t in w_at.items() if cut < t <= now)}
+
+
+def flow_light(*states):
+    """The worst of the states; a light with nothing measured is grey."""
+    s = [x for x in states if x]
+    return "red" if "red" in s else "amber" if "amber" in s else "green" if "green" in s else "grey"
+
+
+def flow_band(v, green, amber, low_good=True):
+    """green/amber/red for a value against two limits; None when not measured."""
+    if v is None:
+        return None
+    if low_good:
+        return "green" if v <= green else "amber" if v <= amber else "red"
+    return "green" if v >= green else "amber" if v >= amber else "red"
+
+
+def flow_box(d, fc, li, li_src, ci):
+    """The Flow box on the first screen (founder 21:2x IST 16 Nov via Lead 69: "which is going good: build, or proving,
+    or merging, or resourcing"). Four lights against P-644's targets, each with its numbers and a 3-day trend, and the
+    forecast line. Every number has its source; "not measured" says why (P-596)."""
+    taken = (d.get("lineage") or {}).get("taken_at")
+    pl, rs = d.get("pipeline") or {}, d.get("resources") or {}
+    days = [date.fromisoformat(x).strftime("%d %b") for x in fc["days"]]
+    tc = fc["today_counts"]
+    trend = lambda xs, k: " · ".join(f"{a} {b}" for a, b in zip(days, xs)) + f" · today so far {tc[k]}"
+    snap_src = f"the snapshot at {ist(parse_iso(taken)) if taken else 'not recorded'}"
+    # 1 Build
+    b24 = fc["flow_rows_built_24h"]
+    build = {"name": "Build", "light": flow_band(b24, FLOW_TARGET, FLOW_FLOOR, low_good=False),
+             "big": f"{b24} rows built in 24 h", "target": f"target {FLOW_TARGET} a day, floor {FLOW_FLOOR}",
+             "lines": [f"Parts merged in 24 h: {fc['flow_parts_24h']}; {fc['flow_parts_left']} of {fc['parts_total']} parts left",
+                       "Rows built a day: " + trend(fc["flow_rows_built_3d"], "rows"),
+                       "Parts merged a day: " + trend(fc["flow_parts_3d"], "parts")],
+             "maps": fc["built_24h_maps"],
+             "src": "Release 1 rows whose every checklist part merged through an app PR (P-639, part-aware), and the Release 1 ids "
+                    "whose last needed part merged; " + snap_src}
+    # 2 Prove
+    w24, lag, aw, old = fc["flow_works_24h"], fc["flow_prove_lag_h"], fc["flow_awaiting"], fc["flow_awaiting_oldest_h"]
+    pc = flow_band(w24, FLOW_TARGET, FLOW_FLOOR, low_good=False)
+    if pc == "green" and ((lag is not None and lag > FLOW_PROVE_H) or (old is not None and old > FLOW_PROVE_H)):
+        pc = "amber"
+    prove = {"name": "Prove", "light": pc, "big": f"{w24} rows proven in 24 h", "target": f"target {FLOW_TARGET} a day, floor {FLOW_FLOOR}; built to proven under {FLOW_PROVE_H} h",
+             "lines": [("Built to proven: median " + (f"{lag} h" if lag is not None else "not measured") + f" (n={fc['lag_n']}, rows proven in the last 7 days)"),
+                       f"Built, waiting for qa: {aw}" + (f"; oldest {old} h" if old is not None else ""),
+                       "Rows proven a day: " + trend(fc["flow_works_3d"], "works")],
+             "maps": fc["works_24h_maps"],
+             "src": "qa/CAPABILITIES.md on main: when each R1 row's current run of Works began (a row listed already reading Works "
+                    "has no date); waiting = Built (awaiting qa) as on the first screen; " + snap_src}
+    # 3 Merge
+    qw = pl.get("queue_wait_min") or {}
+    bf = ((pl.get("change_fail") or {}).get("batch_fail") or {})
+    mm, p90, fp = qw.get("v"), qw.get("p90"), bf.get("v")
+    cq = ci if isinstance(ci, dict) and not ci.get("error") else None
+    ws = sorted(w["min"] for w in (cq or {}).get("job_waits") or [])
+    cw = round(statistics.median(ws), 1) if ws else None
+    still = sum(1 for w in (cq or {}).get("job_waits") or [] if w.get("still_queued"))
+    merge = {"name": "Merge", "light": flow_light(flow_band(mm, *FLOW_MERGE_MIN), flow_band(fp, *FLOW_FAIL_PCT), flow_band(cw, *FLOW_CI_WAIT_MIN)),
+             "big": ("approved to merged " + (f"{mm} min" if mm is not None else "not measured") + (f", p90 {p90}" if p90 is not None else "")),
+             "target": f"median under {FLOW_MERGE_MIN[0]} min; failed batches under {FLOW_FAIL_PCT[0]}%; a test machine within {FLOW_CI_WAIT_MIN[0]} min",
+             "lines": ["Failed merge batches: " + (f"{fp}%" if fp is not None else "not measured"),
+                       ("Waiting for a test machine: " + (f"{cq.get('queued_runs')} runs queued now; median job wait {cw} min over the last 3 h "
+                        f"({len(ws)} jobs of the newest {cq.get('runs_sampled')} of {cq.get('runs_in_3h')} runs; {still} still waiting)"
+                        if cq and cw is not None else "not measured: " + ((ci or {}).get("error") or "no CI run in the last 3 h")))],
+             "src": (qw.get("src") or "flow-measure not read") + "; GitHub Actions runs and jobs at the snapshot"}
+    # 4 Resources
+    lr, ls = (li or {}).get("lanes_running"), (li or {}).get("lane_slots")
+    share = round(lr / ls, 2) if isinstance(lr, (int, float)) and isinstance(ls, (int, float)) and ls else None
+    burn, wk = (rs.get("burn_pct_per_h") or {}).get("v"), (rs.get("weekly_pct") or {}).get("v")
+    disk = (rs.get("disk_free_gb") or {}).get("v")
+    res = {"name": "Resources", "light": flow_light(flow_band(share, *FLOW_LANES_SHARE, low_good=False), flow_band(burn, BURN_LIMIT, BURN_LIMIT + 1),
+                                                    None if disk is None else ("green" if disk >= FLOW_DISK_GB else "red")),
+           "big": (f"{lr} of {ls} lanes running" if share is not None else "lanes not measured"),
+           "target": f"lanes at least {int(FLOW_LANES_SHARE[0] * 100)}% of slots; burn {BURN_LIMIT:g}% an hour or less (P-440); disk {FLOW_DISK_GB} GB or more",
+           "lines": ["Weekly plan: " + (f"{wk}% used" if wk is not None else "not reported") + (f", burn {burn}% an hour" if burn is not None else ", burn not reported"),
+                     "Mac disk free: " + (f"{disk} GB" if disk is not None else "not measured")]
+           + ([] if share is not None else ["Lanes: not measured: the Lead input has no lanes_running and lane_slots"]),
+           "src": (li_src + ": lanes_running, lane_slots, weekly_pct, burn_pct_per_h" if li else "Lead input missing") + "; df on the repository's volume"}
+    fct = fc["flow_forecast"]
+    fl = ("All 101 proven about " + (date.fromisoformat(fct).strftime("%d %b") if fct else "no date (no part merged in the last 3 days)")
+          + " at the last 3 days' build rate" + (f" ({round(sum(fc['flow_parts_3d']) / 3, 1)} parts a day)")
+          + "; best " + (date.fromisoformat(fc["flow_forecast_best"]).strftime("%d %b") if fc["flow_forecast_best"] else "no date")
+          + ", worst " + (date.fromisoformat(fc["flow_forecast_worst"]).strftime("%d %b") if fc["flow_forecast_worst"] else "no date (a day with no part merged)")
+          + (f"; includes {math.ceil(lag / 24)} days from built to proven" if lag else ""))
+    return {"lights": [build, prove, merge, res], "forecast": fl, "src": "FORMULAS.md › Flow"}
+
+
+def first_screen(d, r1_qa, li, li_src):
+    """P-636 (founder 11:0x IST 16 Nov): the first screen in three words. Planned = a Release 1 capability (checklist §A);
+    Built = every part merged on main (BACKLOG parts all merged through app PRs), or qa passed it; Proven = qa's verdict
+    Works in qa/CAPABILITIES.md on main, nothing else (the checklist's own status is not read). Six answers, each with
+    its items, owner and next step (FORMULAS.md › First screen)."""
+    gen = datetime.fromisoformat(d["freshness"]["generated_at"].replace("Z", "+00:00"))
+    today = gen.astimezone(IST).date()
+    names = {r["map"]: r["cap"] for r in (d.get("capability_table") or {}).get("rows") or []}
+    rows = d.get("build_rows") or []
+    planned, proven, qa_unfinished, built, waiting = r1_stages(rows, r1_qa)
     unlisted = [m for m in planned if m not in r1_qa]
     qa_not_built = qa_unfinished
     lbl = lambda m: f"R1.{m} {names.get(m, '')}".strip()
@@ -3323,6 +3515,13 @@ def build_explain(d):
             todo=("nothing for you: the builders finish rows and qa proves the Built ones (current Lead)"),
             behind=[f"Proven: {lb(m)}" for m in R_["proven_ids"]] + [f"Built, waiting for qa: {lb(m)}" for m in R_["waiting_ids"]] +
                    [f"not in qa's file yet: {lb(m)}" for m in R_["unlisted_ids"]])
+        fl_ = d.get("flow")
+        if fl_:
+            put("first.flow", "Flow", "Which part of the work is going well: building, proving, merging, or the people and machines behind them. "
+                "Each light is green, amber or red against its target (P-644).", "the 24 h to the snapshot, and the last 3 full IST days",
+                None, "", fl_["forecast"], src="; ".join(f"{L['name']}: {L['src']}" for L in fl_["lights"]), cls="measured",
+                behind=[f"{L['name']} ({L['light']}): {L['big']}; {L['target']}; " + "; ".join(L["lines"]) for L in fl_["lights"]]
+                + [f"{L['name']} in the 24 h: {lb(m)}" for L in fl_["lights"] for m in L.get("maps") or []])
         put("first.today", "Today's goal", "How many capabilities should be Proven by the goal's time, against how many are Proven now.", "today, to " + str(T_.get("by") or "the goal's time"), T_.get("proven"), "capabilities Proven now",
             T_["why"], src=str(T_.get("goal_src") or "Lead input (no today_goal)"), cls="reported",
             todo=T_.get("plan") or None, behind=[f"Built, waiting for qa: {lb(m)}" for m in R_["waiting_ids"]])
@@ -4291,6 +4490,7 @@ def main():
     data["freshness"]["page_age_rule"] = {"amber_min": 45, "red_min": 120, "note": "Health item 2: the page computes the data age (spec §0.5)"}
     lineage_fill(data, L)
     data["first"] = first_screen(data, comp["r1_qa"], li, li_src)
+    data["flow"] = flow_box(data, comp["flow"], li, li_src, snap.j("github/ci_queue.json"))
     data["explain"] = build_explain(data)
     data["run"] = {"seconds": round(time.time() - T0, 1), "api_calls": gh.calls, "errors": ERRORS}
     os.makedirs(out_dir, exist_ok=True)
