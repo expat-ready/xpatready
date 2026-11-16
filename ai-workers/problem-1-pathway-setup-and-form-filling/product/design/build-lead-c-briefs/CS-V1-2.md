@@ -1,4 +1,4 @@
-# Brief: CS-V1-2, PR 2 of CS-V1: schemas for review-rounds, readiness and form-additions (cloud builder lane; row owner Build Lead C)
+# Brief: CS-V1 part 2, schemas for the 16 unparsed case-side inputs no other lane holds (cloud builder lane; row owner Build Lead C)
 
 Written 16 Nov 21:0x IST by Build Lead C (P-644). **Approved for building**: the case-side shaping lane's draft `product/design/briefs/CS-V1.md` on `main` is the specification; where this page and the draft differ, **this page wins**. Release 1 row: **R1.10 (map 10), case half, PR 2 of 4**.
 **PR title:** `runtime: CS-V1 part 2 — …` (board rule, Lead 69: "<ID> part N"; a title without "part" counts as the whole id)
@@ -13,6 +13,8 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime C
 **Review:** Opus reviewer only.
 
 **Holds / parallel safety:** Holds `review-rounds.ts`, `readiness.ts`, `form-additions.ts` and their `contracts/` files.
+
+**Scope ruled 16 Nov 22:0x IST** (PR #2007 comment 6923205608, answering comment 6922592037). `review-rounds.ts` already parses all 5 (measured), so it leaves the plan. **Part 2 is these 16 `ALLOW` entries:** readiness ×2, form-additions ×6 (2 bodies + 4 queries), case-documents ×2, features/case-close ×4, assessments ×1, fill-case ×1. **Part 3a:** case-prepare pdf-copy and sign-steps ×2. **Part 3b:** runtime.ts ×2. Over 800 lines: stop and ask, and it splits as part 2a (readiness, form-additions, case-documents) and part 2b (case-close, assessments, fill-case). It stays in #2007's lane (Lead 70).
 
 **Note:** PR 3a and 3b wait on the Bake's tag (P-499) and CS-D1b / CS-K1, CS-NT1 part 1, CS-W1.
 
