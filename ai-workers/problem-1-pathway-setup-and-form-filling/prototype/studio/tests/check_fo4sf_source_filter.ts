@@ -137,9 +137,11 @@ for (const w of [1440, 375]) {
   if (w === 375) { await p.locator("[data-source-toggle]").click(); await p.locator("#fo-source-list").waitFor(); ok("FO-4sf DW3 pass: the open list fits the 375 px screen", await p.evaluate(() => { const r = document.getElementById("fo-source-list")!.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth + 1 && document.documentElement.scrollWidth <= window.innerWidth + 1; })); await axe("FO-4sf Source list open (375 px)"); await p.screenshot({ path: join(SHOTS, "leads-source-filter-375.png"), fullPage: true }); await p.keyboard.press("Escape"); }
   else await p.screenshot({ path: join(SHOTS, "leads-source-filter-1440.png"), fullPage: true });
 }
-// 200 % zoom (1440×900 → 720×450, review M7): the open panel stays on screen, the page never scrolls sideways.
-await p.setViewportSize({ width: 720, height: 450 });
+// 200 % zoom (1440×900 → 720×450, review M7): the open panel stays on screen, the page never scrolls sideways. It is
+// opened at 1024 px and the window then narrowed, so a panel placed only when it opens would fail here (review m10).
+await p.setViewportSize({ width: 1024, height: 800 });
 await p.locator("[data-source-toggle]").click(); await p.locator("#fo-source-list").waitFor();
+await p.setViewportSize({ width: 720, height: 450 }); await p.waitForTimeout(100);
 const at720 = await p.evaluate(() => { const r = document.getElementById("fo-source-list")!.getBoundingClientRect(); return { left: r.left, right: r.right, sw: document.documentElement.scrollWidth, w: window.innerWidth }; });
 ok("FO-4sf DW3 pass (200 % zoom): at 720 px the open Source panel stays inside the screen and the page has no sideways scroll", at720.left >= 0 && at720.right <= at720.w + 1 && at720.sw <= at720.w + 1, at720);
 await axe("FO-4sf Source list open (720 px, 200 % zoom)");

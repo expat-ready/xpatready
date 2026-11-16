@@ -35,9 +35,10 @@ function SourceFilter({ choices, chosen, toggle, clear, failed, retry }: { choic
   const close = (refocus: boolean) => { setOpen(false); setFind(""); setShift(0); if (refocus) opener.current?.focus(); };
   // The panel never crosses the screen's right edge (review M7: 200 % zoom): it moves left by what would overflow.
   React.useLayoutEffect(() => {
-    if (!open || !box.current || !panel.current) return;
-    const left = box.current.getBoundingClientRect().left, width = panel.current.offsetWidth;
-    setShift(Math.min(0, window.innerWidth - 16 - width - left));
+    if (!open) return;
+    const place = () => { if (!box.current || !panel.current) return; const left = box.current.getBoundingClientRect().left, width = panel.current.offsetWidth; setShift(Math.min(0, window.innerWidth - 16 - width - left)); };
+    place(); window.addEventListener("resize", place);   // again on a resize or zoom while open (review m10)
+    return () => window.removeEventListener("resize", place);
   }, [open]);
   React.useEffect(() => {
     if (!open) return;

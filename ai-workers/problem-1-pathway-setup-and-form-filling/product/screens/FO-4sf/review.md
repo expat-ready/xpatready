@@ -59,40 +59,39 @@ D1 2→4 (the source is right now; chip wall, Major 4) · D2 5 · D3 4 · D4 N/A
 **Verdict: Block** (= Changes requested). Must: Blocker 1. Should: Minors 2 and 3, in the same push or listed in the PR. A re-review reads only the diff.
 
 ## Re-review at `e227799a207a6d270e5565508d3c262d75aef1c8` (diff `036a5a78..e227799a`, P-277; PR #1962; full text in git at `40c11741`)
-- **Fixed:**
-  - Blocker 1: the list filters the stored `source`, never split. Allowed values are the person's visible sources. `GET leads/sources` is behind @OwnOrAll. A booked lead with the source "Phone call" is in the suite. Mutation (choices ignoring visibility) → PF-6b DW6 and FO-4sf DW2 FAIL.
-  - Minor 3: the no-match line names the filter.
-- **Still open:** Minor 2 (the in-app Leads link drops `?source=`, `lead-page.tsx:85`), listed in the PR, acceptable.
-- **New, then:**
-  - Major 4: the chip wall (26 sources at 1024×800: 12 chip rows, table at 726 px, 26 tab stops).
-  - Minor 5: Prisma `distinct` ran in memory (no DISTINCT/LIMIT in SQL; 0.14–0.23 s at 80,045 leads), and `take: 200` hid later sources.
-  - Minor 6: `words()` turned typed "CAPS" into "Caps".
-- **Runs:** `check_fo4sf` 24/24 · `check_fo2` 113/113 · `check_fo2v` 14/14 · `check_pf6b` 29/29 · `check_fo4_sales_browser` 45/45. Journey 8/10.
+- **Fixed:** Blocker 1 (the list filters the stored `source`; allowed = the person's visible sources; `GET leads/sources`; a booked lead with the source "Phone call" in the suite) and Minor 3. **Open:** Minor 2.
+- **New, then:** Major 4 (chip wall), Minor 5 (in-memory distinct, `take: 200`), Minor 6 (`words()` changed typed capitals).
 - **Verdict:** Changes requested for `e227799a` (Major 4).
 
-## Re-review at `40c117414a66654b30785d64d0ad555b52e2357b` (diff `e227799a..40c11741` only, P-277) · Copy `review_fo4sf3` on :4436, never :4400; US$0. Firm with 36 sources (the suite's 34 plus mine: "VIP", "Événement à Montréal (Sample)").
-- **Major 4: fixed.** `SourceFilter` (`leads-page.tsx:29-76`) is one disclosure button, "Source: all" / "Source (n)", with aria-expanded and aria-controls. It opens a Find box (focused on open) and a scrolling checkbox fieldset, and chosen sources show as removable chips.
-  - With 36 sources, the first row starts at 271 px at 1024×800.
-  - Keyboard: 8 Tabs reach the button. Then Enter → type "vip" → Tab → Space filters, focus stays on the checkbox, and the Source column reads only "VIP".
-  - axe is clean with the panel open at 1024. At 375 px the panel sits at x 16–336.
-- **Minor 5: fixed.** `groupBy` sends `SELECT source … WHERE firm_id = $1 GROUP BY source ORDER BY source` (query log). There is no cap.
-- **Minor 6: fixed.** `words()` maps known codes only. "VIP" is shown as typed; every lead state in sales is mapped (OPEN, ENGAGED, CLOSED).
-- **Runs (mine):** `check_fo4sf` 29/29 · `check_fo2` 113/113 · `check_fo2v` 14/14 · `check_pf6b` 29/29 · `check_fo4_sales_browser` 45/45. Rewritten screenshots restored.
+## Re-review at `40c117414a66654b30785d64d0ad555b52e2357b` (diff `e227799a..40c11741`, P-277; full text in git at `1a5d6e85`)
+- **Fixed:**
+  - Major 4: one disclosure "Source" control with Find and a scrolling checkbox list; chosen sources are removable chips. With 36 sources the first row is at 271 px at 1024×800. The keyboard path works, and axe is clean with the panel open.
+  - Minor 5: `groupBy` sends SQL GROUP BY, with no cap.
+  - Minor 6: `words()` maps known codes only.
+- **New, then:**
+  - Major 7: the panel was anchored `left-0`, so at 720×450 (200 %) the open panel ran to x 729 and the page scrolled sideways (`scrollWidth` 938).
+  - Minor 8: removing a chip dropped focus to `<body>`.
+  - Minor 9: the panel stayed open when focus left it.
+- **Runs:** `check_fo4sf` 29/29 · `check_fo2` 113/113 · `check_fo2v` 14/14 · `check_pf6b` 29/29 · `check_fo4_sales_browser` 45/45. Journey 8.5/10.
+- **Verdict:** Changes requested for `40c11741` (Major 7).
+
+## Re-review at `1a5d6e85ec3cb2cdeea9c8b20f49f1db86f3d1f9` (diff `40c11741..1a5d6e85` only, P-277) · copy `review_fo4sf4` on :4436, never :4400; US$0
+- **Major 7: fixed.** On open, a layout effect shifts the panel left by what would cross `innerWidth − 16` (`leads-page.tsx:36-41`). Opened by me:
+  Panel x by width, opened by me: 720×450 (200 %) 384–704 (axe clean) · 720 with two chips 384–704 · 800: 464–784 · 900: 564–884 · 1024: 578–898 · 1280: 706–1026 · 1440: 786–1106. No sideways scroll at any of them. The suite now has the 720 px open case.
+- **Minor 9: fixed.**
+  - `onBlur` with `relatedTarget` outside closes the panel. Tab past the last box closes it and keeps the choice (`source=Phone call` and its chip stay).
+  - Checking a box with the mouse, wheel-scrolling the list, clicking its padding and typing in Find all keep it open (the panel's `tabIndex=-1`).
+  - Escape closes it and returns focus to the button.
+- **Minor 8: fixed.** Enter on "Remove source: …" leaves focus on `[data-source-toggle]`.
+- **Runs (mine):** `check_fo4sf` 32/32 · `check_fo2` 113/113 · `check_fo2v` 14/14 · `check_pf6b` 29/29 · `check_fo4_sales_browser` 45/45. No page errors. Rewritten screenshots restored.
 
 ### New in this diff
-7. **Major (Must): with the panel open at 200 % zoom, the page scrolls sideways.**
-   - At 720×450 (1440×900 at 200 %), the button sits beside the view chips. The panel is anchored `left-0` (`leads-page.tsx:56`) and runs to x 729.
-   - Opening it moves focus into the Find box and the whole page scrolls sideways: `scrollWidth` 938 against 720. The header and the menu are cut off (my screenshot step `r3-zoom200`).
-   - Closed it is fine, and 1024 and 1440 open are fine.
-   - EXPERIENCE [M] line 29 ("1024 px and 200 % zoom work") and BIC-20 (no sideways page scroll) are not met in this state. The suite checks the open panel only at 375 px, where the control wraps to its own line.
-   - **Fix:** keep the panel inside the viewport: anchor it right when it would cross the edge (`right-0` or a measured side), or give the control its own row below `lg`. Add a pass and a fail at 720 px with the panel open, `scrollWidth <= innerWidth`.
-8. **Minor (Should): removing a chosen source loses focus.**
-   - "Remove source: VIP" by keyboard sends focus to `<body>`, because the chip unmounts.
-   - **Fix:** move focus to the Source button (or the next chip).
-9. **Minor (Should): the panel stays open when focus leaves it.**
-   - After Tab past the list, focus is on search and rows (not hidden), but the panel stays over the table, and Escape no longer closes it (the key handler sits on the control).
-   - **Fix:** close it on focus leaving (`onBlur` with `relatedTarget` outside). (Not a finding: Find is accent-sensitive, "evenement" misses "Événement": polish beyond the bar.)
+10. **Minor (Should, not blocking): the shift is measured only on open.**
+   - Open the panel at 1024 and narrow the window to 720 (or zoom to 200 %) while it is open: the panel stays at x 618–938 and the page scrolls sideways (`scrollWidth` 938). Closing and reopening fixes it.
+   - **Fix:** also measure on `resize` while open (one listener in the same effect), or list it in the PR.
 
-**Journey score at this head: 8.5/10** (pass, no 0). Task completed 1 · next step obvious 1 · plain words 1 · feedback and state 1 · correct data 1 · error recovery ½ (Minor 2, Minor 8) · accessibility and screen sizes ½ (Major 7) · speed 1 · visual quality 1 · trust and sources 1.
+**Still open, listed in the PR:** Minor 2 (the in-app Leads link drops `?source=`, `lead-page.tsx:85`) and Minor 10.
 
-**Verdict: Changes requested** for `40c11741`. Must: Major 7 (a one-line placement fix plus its 720 px test). Should: Minors 8 and 9 in the same push, or list them in the PR. Minor 2 stays listed. A re-review reads only the diff.
+**Journey score at this head: 9/10** (pass, no 0). Task completed 1 · next step obvious 1 · plain words 1 · feedback and state 1 · correct data 1 · error recovery ½ (Minor 2) · accessibility and screen sizes ½ (Minor 10) · speed 1 · visual quality 1 · trust and sources 1.
+
+**Verdict: Approve** for `1a5d6e85ec3cb2cdeea9c8b20f49f1db86f3d1f9`. No Blocker or Major is open. Minors 2 and 10 are Should: fix them, or list them in the PR.
