@@ -191,3 +191,27 @@ The one exception is `said()`: making it a no-op still gives 46/46 (m13).
 **Blockers:** none. **Majors:** M4. **Minors:** m13, m14 (m8, m10-m12 are named in the PR).
 
 Verdict: Changes requested
+
+## Re-review 2 at `6ea08284c84bc364102055cacbb3b674fb7a688d` (diff `eff3e4a8..6ea08284` only, P-277)
+
+**Suites at this head.** I ran them in a clean worktree on scratch databases on :54329.
+* `check_fo3a_booking_types`: 48/48
+* `check_fo1b_booking_schema`: 80/80
+
+`service.ts` is unchanged since eff3e4a, so the FO-3, FO-3pa, FO-3sa and FO-3sr results from Re-review 1 still hold.
+
+**M4 is closed.** `insert` (`types.ts:269`) now skips the host check for a duplicate (`fromId` set). The source's hosts were checked in the firm when they were set, and the source is read under `firmScope`, so no other firm's staff can come in this way.
+* Test: "DW3 pass: duplicating a type whose host was suspended since copies its hosts".
+* Putting the check back for duplicates makes that test fail (47/48).
+
+**m13 is closed.** Test: "DW10 fail: an email-shaped type name is kept in neither the audit summary nor its detail". Making `said()` a no-op makes it fail (47/48).
+
+**m14 is withdrawn.** The host order decides which free host takes a slot (AG-4-12 rules 2 and 5, `slots.ts`). So a reorder is a real change, and it is right that it is versioned and audited.
+
+**Words, Minor, not blocking.** The PR's questions to Lead B name "In the past" (in choice 3). The description message "Description cannot hold control or invisible characters." is not in the PR body yet. Add it to the same question before the label.
+
+**Journey score at this head: 10/10.** Correct data goes to 1 now that M4 is closed. As before, accessibility and visual quality are counted as met because they are N/A for an API; FO-3st3 carries them.
+
+**Blockers:** none. **Majors:** none. **Minors open:** the description wording question above. m8, m10, m11 and m12 are named in the PR for later.
+
+Verdict: Approve 6ea08284c84bc364102055cacbb3b674fb7a688d
