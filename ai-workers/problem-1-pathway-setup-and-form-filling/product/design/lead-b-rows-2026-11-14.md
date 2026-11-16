@@ -1302,3 +1302,12 @@ The founder's P-626 (Lead 63, 07:3x): finish the Partial capabilities first. The
 New row for BACKLOG, after FO-5p:
 
 | FO-5cr | runtime + screens (retainer pre-fill) | **The retainer draft is pre-filled from a consult record (AG-4-49, -50; concept FO-3sc BR-16, Q3):** FO-5's draft opened with `?consultRecord=<id>` reads `ConsultRecordPort.read` and pre-fills the party, the recommended items and the quoted fee; nothing is typed twice, nothing is sent. **Touch:** FO-5's retainer draft files only, its test | a pass and a fail: a record's items and fee appear on the draft; another firm's record id → an empty draft with no error leak | AG-4-49, AG-4-50 · **waits on:** FO-3a part 2a · **size:** S |
+
+## Rev 16.44 (16 Nov 07:2x IST, Lead B (6)): the founder's P-627 answers applied to PF-13, FO-3c and calendar sync
+
+Amendments to paste above the briefs are in `lead-b-briefs/P-627-amendments.md`. In short:
+* **PF-13** keeps the banner (P-574 (1) over AG-16-2) as a third image kind, shown on the client portal header only. The tagline is dropped and the favicon stays. New line DW9.
+* **FO-3c** has one signing path. Part 1 is AG-4-15's acceptance, now storing the kind, version, time and who (`accepted_via`, `accepted_by_person_id`; new line DW8). Nothing else is signed in FO-3c. Part 2 is signing through FO-6's `SigningPort` once FO-6 lands, and it never blocks a booking. Its brief follows FO-6. Unconfirmed: no counsel (Code s. 23(3)).
+* **Calendar:** no Calendly. FO-3s2 (our Google adapter) comes first. FO-3s3 (Microsoft) stays shaped, after it. Cronofy is only a dated fallback behind `CalendarPort`; the date is Lead 63's (P-628), and Google's OAuth verification goes in the outside-dependency register now.
+* **Correction to P-626 A1:** FO-3w's agreement tick is FO-3c **part 1**'s line, not part 2's.
+* #1875, #1876 and #1886 are case-side batches, not Lead B rows: P-627 (3) to (5) are for the case-side shaping lane.

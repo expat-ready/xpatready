@@ -23,7 +23,7 @@ The founder's P-626: finish the Partial capabilities first, so that 10 Release 1
 ## A1. FO-3w (Lead B ruling, rev 16.43; settles the brief's "For Lead B" paragraph)
 * **Option (b) is taken.** It **does not wait on PF-13**. The public frame shows the firm's operating name from FO-3pa's answers. PF-13 adds the logo and colour to this frame as its own Done when line (AG-4-16 rule 3, "No separate booking-page branding").
 * The path is `/book/:firmKey`, as the brief already has. It needs no PF-25 host routing.
-* **The agreement link and "I accept" tick (rev 16.40, from FO-3c) are not in FO-3w.** FO-3c part 1 is not on `main`. When it lands, FO-3c part 2 adds the tick to the type page as its own Done when line. FO-3w neither waits for it nor draws it.
+* **The agreement link and "I accept" tick (rev 16.40, from FO-3c) are not in FO-3w.** FO-3c part 1 is not on `main`. FO-3c part 1 (which builds after FO-3w) adds the link and tick to the type page as its own Done when line (rev 16.44 correction: part 2 is now signing, P-627 (7)). FO-3w neither waits for it nor draws it.
 * Part 1 (J-P1 to J-P5, J-P9, DW10, DW11) is what J-38 needs. Part 2 (manage pages) follows in the same lane.
 
 ## A2. FO-3a part 1a
