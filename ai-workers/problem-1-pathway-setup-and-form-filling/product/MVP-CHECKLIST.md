@@ -44,7 +44,7 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 ### B. The firm as our customer (self-serve SaaS)
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
-| 19 | A firm is created once, with plan, trial and owner | Platform | PF-3 merged; PF-5 | Shaped |
+| 19 | A firm is created once, with plan, trial and owner | Platform | PF-3 merged; PF-5; PF-5s (sign-up screens; qa #1950, Lead 66) | Shaped |
 | 20 | One entitlement check; seat and plan limits; downgrade check; invite many at once | Platform | PF-5, PF-15, PF-4c, PF-6 | Shaped |
 | 21 | Our own invoices with sales tax | Platform | PF-5 (Stripe Tax) | Shaped |
 | 22 | Suspend, cancel, failed-payment hold, data download on exit | Platform | PF-5; PF-11, PF-11s, PF-27, PF-11c | Shaped |
@@ -55,14 +55,14 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | 91 | Plans, change, cancel, invoices, card update, yearly plans, refunds, billing emails | Platform | PF-5, PF-5s, PF-16 | Shaped |
 | 92 | Firm profile, offices and time zones, licence-number check | Platform | PF-5s, PF-18a, PF-18s, PF-4c | Shaped |
 | 93 | Our team's console; health per firm; support button | Platform | PF-4s, PF-17, PF-18b, PF-18s | Shaped |
-| 100 | Recorded acceptance of our terms, privacy notice and data agreement | Platform | PF-5 | Shaped |
+| 100 | Recorded acceptance of our terms, privacy notice and data agreement | Platform | PF-5; PF-5t (a new terms version asks again at the next sign-in; to shape, Lead B; qa #1950, Lead 66) | Shaped |
 
 ### C. Enquiries, leads and pipeline
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
 | 26 | Public enquiry form, hardened against abuse | Front office | FO-2, FO-4, FO-4b | Shaped |
 | 27 | Every lead carries a source | Front office | FO-1a (In PR #1742), FO-2 | Shaped |
-| 28 | Consent recorded per purpose | Platform + front office | PF-19a, FO-2 | Shaped |
+| 28 | Consent recorded per purpose | Platform + front office | PF-19a, FO-2; PF-19b part 2 (one-click unsubscribe, first caller of `ConsentPort.withdraw`; qa #1950, Lead 66) | Shaped |
 | 29 | One person record; duplicate warning; safe merge | Front office | FO-1a (In PR #1742), FO-9a, FO-9b, FO-9s | Shaped |
 | 30 | Lead lists, filters and board | Front office | FO-4 | Shaped |
 | 31 | Stage kinds; won by signature; totals per currency | Front office | FO-2, FO-4 | Shaped |
@@ -113,7 +113,7 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | 56 | Client invoices, tax by province, government-fee line | Client money | FO-7a, FO-7b; FO-7s0, FO-7g, FO-7q, FO-7s1 | Shaped |
 | 57 | Card payment of invoiced fees into the firm's operating account | Client money | FO-7c; FO-7s2 | Shaped |
 | 58 | Trust or operating on every payment; per-client ledger; "to move" list | Client money | FO-7a, FO-7t; FO-7s3a, FO-7s3b, FO-7m | Shaped |
-| 59 | Money arithmetic | Client money | FO-7a | Shaped |
+| 59 | Money arithmetic | Client money | FO-7a; FO-7b (tax rounded per line; qa #1950, Lead 66) | Shaped |
 | 60 | Deposit invoice prepared on signature | Client money | FO-7b | Shaped |
 | 96 | Reversals, refunds, credit notes, payment plans, write-offs | Client money | FO-7b, FO-7p, FO-7r; FO-7v, FO-7s4 | Shaped |
 | 111 | Client statement and period exports for the accountant | Client money | FO-7r; FO-7s5 | Shaped |
