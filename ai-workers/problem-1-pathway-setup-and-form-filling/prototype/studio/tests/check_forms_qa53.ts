@@ -48,9 +48,10 @@ const REVIEWED: Record<string, "case" | "open"> = {
   "/api/public/forms/:token": "open", // FO-2: a firm's public enquiry form (contracts §0.6): its words and a fresh stamp only
   "/api/public/invitations/:token": "open", // PF-4b: an invitation's state (its 256-bit token is the key)
   "/api/public/plans": "open", // PF-5: the public pricing page (contracts §0.6): plans, prices and terms, no firm or person data
+  "/api/public/unsubscribe/:token": "open", // PF-19b part 2: the one-click unsubscribe page (its sealed token is the key; changes nothing)
 };
 /** FO-2: public doors that take a write from anyone (contracts §0.6): no person to name; an unknown token answers 404. */
-const PUBLIC_WRITES = ["/api/public/forms/:token/submissions", "/api/public/invitations/:token/accept"];   // PF-4b: accept answers 410 to an unknown token (asked in its own suite)
+const PUBLIC_WRITES = ["/api/public/forms/:token/submissions", "/api/public/invitations/:token/accept", "/api/public/messages/ses-notices", "/api/public/unsubscribe/:token"];   // PF-19b part 2: one-click unsubscribe (unknown token 404) and SNS notices (signature checked first, else 400; asked in check_pf19b2_ses.ts)   // PF-4b: accept answers 410 to an unknown token (asked in its own suite)
 /** PF-5 (contracts §0.6): the public sign-up doors name nobody by design (no account exists yet); each is asked below:
  *  an empty body is refused (400) or the door is shut on a copy without sign-up set up (503), never a 2xx. */
 const PUBLIC_DOOR_WRITES = ["/api/public/signup", "/api/public/signup/verify"];
