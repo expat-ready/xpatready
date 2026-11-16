@@ -58,6 +58,13 @@ try {
   for (const key of ["docs/real.txt.meta", "docs/real.txt.1.ab.tmp", "docs//real.txt", "docs/./real.txt", "docs/real.txt/", "Docs/Real.txt"]) ok(`PF-Fd DW3 fail: the crafted key ${key} is refused by put`, await refused(() => store.put(FIRM, key, new TextEncoder().encode("inside"), "text/plain")));
   ok("PF-Fd DW3 pass: the tombstone keeps the key retired for the same bytes (LocalFiles, a fresh instance on the same folder)", await refused(() => new LocalFiles(root).put(FIRM, "docs/real.txt", new TextEncoder().encode("inside"), "text/plain"), (e) => e instanceof FileKeyTaken) && !existsSync(join(root, FIRM, "docs", "real.txt")));
 
+  // Review m3: a tombstone with the bytes still present (a delete that failed after retiring the key) reads as absent.
+  const planted = new LocalFiles(join(WORK, "planted")), body = new TextEncoder().encode("left behind");
+  const p = await planted.put(FIRM, "docs/left.txt", body, "text/plain");
+  writeFileSync(join(WORK, "planted", FIRM, "docs", "left.txt.meta"), JSON.stringify({ contentType: "text/plain", sha256: p.sha256, deletedAt: "2026-11-16T00:00:00.000Z" }));
+  ok("PF-Fd DW1 fail: a tombstone beside its bytes reads as absent (get null, exists false) and deletes as false", await planted.get(FIRM, "docs/left.txt") === null && await planted.exists(FIRM, "docs/left.txt") === false && (await planted.delete(FIRM, "docs/left.txt")).deleted === false);
+  ok("PF-Fd DW3 fail: a tombstone beside its bytes still refuses put of the same bytes (FileKeyTaken)", await refused(() => planted.put(FIRM, "docs/left.txt", body, "text/plain"), (e) => e instanceof FileKeyTaken));
+
   // DW5: the port-contract guard passes (the FO-5 and PF-0p suites run in their own files, unchanged).
   const guard = spawnSync(process.execPath, [join(STUDIO, "tools/check-port-contracts.mjs")], { encoding: "utf8" });
   ok("PF-Fd DW5 pass: tools/check-port-contracts.mjs exits 0 and lists FilesPort", guard.status === 0 && /FilesPort/.test(guard.stdout), guard.stdout + guard.stderr);

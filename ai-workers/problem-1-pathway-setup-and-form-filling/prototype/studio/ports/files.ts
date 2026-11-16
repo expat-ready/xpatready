@@ -22,8 +22,8 @@ export interface FilesPort {
   /** The firm's file, or null (also for another firm's key). */
   get(firmId: string, key: string): Promise<StoredFile | null>;
   exists(firmId: string, key: string): Promise<boolean>;
-  /** PF-Fd: removes the firm's file. The caller has already asked `LegalHoldPort.isHeld` (PF-21b) in its own transaction
-   *  and been told not held (SA-11 BR-7: a hold beats any deletion); this port does not check holds (it has no
+  /** PF-Fd: removes the firm's file. The caller has already asked `LegalHoldPort.isHeld` (PF-21b) in the same transaction that marks
+   *  its record disposed, and been told not held (SA-11 BR-7: a hold beats any deletion); this port does not check holds (it has no
    *  transaction). The order for callers: commit the record's change first (marked disposed, still naming the key and its
    *  sha256), then call `delete`; a failed or skipped delete leaves bytes with no live record, which a later cleanup
    *  (PF-F2) removes. A caller never deletes and then rolls back. `deleted: false` (no error, nothing changed) when the key

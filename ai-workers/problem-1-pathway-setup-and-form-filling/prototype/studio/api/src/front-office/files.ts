@@ -57,6 +57,8 @@ export class LocalFiles implements FilesPort {
       if (!now || now.deletedAt || now.sha256 !== sha256 || now.contentType !== f.contentType) throw new FileKeyTaken(f.key);
       if (!existsSync(path)) linkSync(tmp, path);
     } finally { for (const t of [tmp, `${tmp}.meta`]) try { unlinkSync(t); } catch { /* already gone */ } }
+    // PF-Fd (review m2): a delete in another process may have retired the key while this retry linked its bytes back.
+    if (this.meta(path)?.deletedAt) { try { unlinkSync(path); } catch { /* already gone */ } throw new FileKeyTaken(f.key); }
     return { key: f.key, sha256 };
   }
 
@@ -80,7 +82,7 @@ export class LocalFiles implements FilesPort {
     const tmp = `${path}.${process.pid}.${randomBytes(6).toString("hex")}.tmp.meta`;
     writeFileSync(tmp, JSON.stringify({ contentType: m.contentType, sha256: m.sha256, deletedAt: new Date().toISOString() } satisfies Meta), { flag: "wx" });
     renameSync(tmp, `${path}.meta`);
-    unlinkSync(path);
+    try { unlinkSync(path); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return { deleted: false }; throw e; }   // review m1: another process won
     return { deleted: true };
   }
 
