@@ -222,5 +222,21 @@
     "acked_at": null,
     "opened_at": "2026-11-16T05:02:46Z",
     "source": "pull/1929#issuecomment-6907811435"
+  },
+  {
+    "id": "qa-2026-11-16-r119-r159",
+    "kind": "ready",
+    "owner": "lane",
+    "branch": "claude/tender-einstein-wpko9j",
+    "pr": 1929,
+    "status": "open",
+    "waiting_on": "Lead",
+    "next_step": "merge, test, publish",
+    "created_at": "2026-11-16T05:16:08Z",
+    "updated_at": "2026-11-16T05:16:08Z",
+    "last_ack_by": null,
+    "acked_at": null,
+    "opened_at": "2026-11-16T05:16:08Z",
+    "source": "pull/1929#issuecomment-6908007978"
   }
 ]
