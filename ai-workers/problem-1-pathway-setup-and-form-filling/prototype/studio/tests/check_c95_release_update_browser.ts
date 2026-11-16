@@ -91,6 +91,10 @@ ok("C9.5 BR-5 fail (conflict): a release published meanwhile makes Move answer \
 await state("conflict", "[role='dialog']");
 // C9.5-fix (review m2): right after Enter on Read the list again, while the list is read, Move stays off (main turned it on
 // at once over the old list); this fails on main whatever the machine's speed. Then focus lands on Move (review m1).
+// Re-review n1: first let the read the 409 started land (Move names the newest release), so the read Enter starts is a fresh
+// one of a second or more and the check below cannot race it. A timeout here fails loudly.
+const newestNow = (await call("GET", `/runtime/cases/${fam}/release-update`, undefined, OFFICER)).body?.target?.label ?? "(none)";
+await p.waitForFunction((w) => document.querySelector("[data-release-move]")?.textContent?.trim() === w, `Move this case to ${newestNow}`, { timeout: 30_000 });
 await p.locator("[data-release-reread]").focus(); await p.keyboard.press("Enter");
 const moveOffWhileReading = await p.locator("[data-release-move]").isDisabled();
 await settle(); await p.waitForTimeout(800);

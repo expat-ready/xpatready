@@ -57,3 +57,28 @@ Independent reviewer (did not build it), 16 Nov 2026. **Commit reviewed: `20494b
 A real screen reader announcement during the busy read. Firefox and Safari focus behaviour on a disabled focused button (Chromium only). Main's code at this commit, which I did not re-run (I rely on the builder's fail-first log and my mid-window screenshot). CI's own run of the suite on this head (it has not run).
 
 Verdict: Approve — Blockers: none · Majors: none · Minors: m1 focus to Move after a successful read (Should); m2 add a timing-independent assertion that Move is off while reread is busy (Should); m3 `cancelRefetch: false` (optional); m4 already on main, no retry in the error notice (note); m5 fix the PR body so `pr-rules` passes (Done when; fill in the 10-run line) before merge.
+
+## Re-review (f2c20eee5)
+**Diff reviewed:** `git diff 8cb41dc5d f2c20eee5 -- prototype/studio` (P-277): `release-update.tsx` +7/−4 and the browser check +8/−2. I read the code at `f2c20eee5` with `git show`, not from the working tree, which holds the builder's fail-first edit. I judged from the code only and started no copy, because the builder's runs on :4462 and :4464 rebuild `web/dist`.
+
+* **m1 (focus on Move): met, with no ordering hole.**
+  * `reread()` calls `setProblem(null)` and `setFocusMove(true)` after the `await`, then `setRereading(false)` in `finally`. These run in the same synchronous continuation, so React 18 batches them into one render.
+  * In that render `problem` is null and `v` is already the new result: `refetch` resolves only after the observer's `updateResult()`, and `useSyncExternalStore` reads the current result. Move's `disabled` (`!v.target || refused || conflict`) is therefore already false in the DOM that commits.
+  * `useEffect` runs after commit, and only when `focusMove && !problem`. So it cannot focus Move while Move is still disabled for the conflict.
+  * If the new read shows no newer release (`!v.target`) or a server refusal, Move stays disabled. `focus()` then does nothing, and Radix's fix-up puts focus on the dialog container, as before. No error results, and the flag is reset.
+  * A failed read sets no flag. `Button` forwards its ref (`controls.tsx:33`).
+  * Accepted trade-off: if the person tabbed elsewhere during the read, focus jumps to Move when the read lands. Move is the next step of the action they started.
+* **m3 (`cancelRefetch: false`): met and correct.**
+  * The read it joins can only have started at or after the 409. `invalidateQueries` cancels any older read and starts a new one, and the reread button exists only after a conflict 409.
+  * A failed joined read gives `r.isError`, so the conflict stays and Move stays off. That is the same as round 1's (d).
+* **m2 (Move off asserted before `settle()`): sound on main; on the fix, true except a narrow race.**
+  * **On main it is false whatever the machine's speed.** Enter fires `click`, a discrete React event. `setProblem(null)` is flushed in the microtask at the end of that event, before Playwright's next round trip, and Move is then enabled whether or not the 409's read has landed.
+  * **With the fix it is true while the read runs.** The race: because the read now joins the 409's read (m3), that read may land between Enter and `isDisabled()`, which is a few CDP round trips (roughly 10–50 ms) against a read of 1–4 s.
+  * When does this happen? `state("conflict")` takes about 2–3 s and the read 1.3–3.9 s, so the 409's read is often still running at Enter. I estimate under 1 % of runs.
+  * In those runs `moveOffWhileReading` is false on correct code. That is a pass-on-retry, which `flaky.mjs` counts toward quarantine.
+  * The focus check (`activeElement === Move` after the read) is sound. It is true with the fix, and on main focus is on the dialog container. Pressing Enter without `.focus()` now really walks the keyboard path.
+* **m5:** body fixed per the coordinator; I have not re-checked `pr-rules`.
+
+**n1 (Minor, Should; no regression in the product).** Remove the race from the check, keeping it deterministic both ways. Before Enter on reread, wait until the 409's read has landed, for example `await p.waitForFunction((l) => document.querySelector("[data-release-move]")?.textContent?.trim().endsWith(l), newestLabel)`, with `newestLabel` read from the API first. Then the reread is a fresh read of at least 1 s, and `isDisabled()` cannot lose the race on the fix. Main still fails at once. Alternatively, accept it and watch the ledger.
+
+Verdict: Approve f2c20eee5ada37bd697a87789b9ebeae83b62d3d — Blockers: none · Majors: none · Minors: n1 (the Move-off check can, rarely, lose a race with the joined 409 read; wait for that read before Enter); m4 is already on main (note).
