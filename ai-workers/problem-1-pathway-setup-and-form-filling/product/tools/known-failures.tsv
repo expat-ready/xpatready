@@ -1,4 +1,4 @@
-# Known failures (B202, founder A119 16 Nov, P-639): one line per failure we have already met; lead-watch.sh step 9b checks every line every time.
+# Known failures (B202, founder A119 16 Nov, P-639): one line per failure we have already met; lead-watch.sh step 12 checks every line every time.
 # Columns (tab-separated): id · test · threshold · ACT text · the incident that taught it. A new failure is one new line; tests are the
 # functions in tools/known-failures.py (size:<file> bytes · records-pr-lines · proving · feeding · reuse:<regex of the ACT lines it
 # reuses>, whose threshold is the regex of a line proving that source ran: reused lines are counted, never printed again).

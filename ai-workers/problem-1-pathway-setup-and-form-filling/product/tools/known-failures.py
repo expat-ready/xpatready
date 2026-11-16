@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Known failures (B202, founder A119 16 Nov: "looking for those problems proactively every time"; P-639).
 
-One table, tools/known-failures.tsv: id, test, threshold, ACT text, the incident that taught it. lead-watch.sh step 9b
+One table, tools/known-failures.tsv: id, test, threshold, ACT text, the incident that taught it. lead-watch.sh step 12
 writes one facts file from what it already read (open PRs, file sizes, the tip subject of each branch pushed in
 90 min, the board's data.json, the lines it printed so far) and this script checks every table line against it.
 Each line prints its count and its oldest item: `ok    known <id>: …` or `ACT   known <id>: <ACT text> — <count>, oldest …`.
@@ -95,9 +95,13 @@ def t_proving(F, row, arg):
     subj = F.get("alive_subjects")
     if subj is None:
         raise NotRead("branches pushed in 90 min not read")
-    branches = sum(1 for t in subj.values() if QA_SUBJECT.match(t or ""))
-    sessions = sum(1 for s_ in board_part(F, "team", "sessions") or [] if s_.get("role") == "qa" and s_.get("chip") == "pushing")
-    qa = max(branches, sessions)                        # one lane is seen both ways (its branch and its session): never add them
+    branches = {b for b, t in subj.items() if QA_SUBJECT.match(t or "")}
+    pushing = [s_ for s_ in board_part(F, "team", "sessions") or [] if s_.get("role") == "qa" and s_.get("chip") == "pushing"]
+    named = {s_["branch"] for s_ in pushing if s_.get("branch")}
+    unnamed = sum(1 for s_ in pushing if not s_.get("branch"))
+    # One lane can be seen both ways (its branch and its session). A session naming its branch is matched by it; a session
+    # with no branch is taken to be one of the qa branches no session names, and counts only beyond them (Devin, #1954).
+    qa = len(branches | named) + max(0, unnamed - len(branches - named))
     short = waiting > int(row["threshold"]) and qa < 2
     ids = rel.get("waiting_ids") or []
     return (waiting if short else 0), (f"R1.{ids[0]} first of {waiting} Built waiting for qa" if ids else f"{waiting} Built waiting for qa") + f", {qa} qa lane(s) pushed in 90 min"

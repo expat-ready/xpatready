@@ -53,6 +53,8 @@ case_ "proving-pipe ok: 9 waiting, 2 qa lanes" proving-pipe ok '{"board":{"first
 case_ "proving-pipe ACT: 9 waiting, 1 qa lane" proving-pipe act '{"board":{"first":{"release":{"waiting":9,"waiting_ids":[4]}}},"alive_subjects":{"claude/q1":"qa: x","claude/x":"tools: y"}}'
 case_ "proving-pipe ok: two pushing qa sessions count" proving-pipe ok '{"board":{"first":{"release":{"waiting":9}},"team":{"sessions":[{"name":"qa1","role":"qa","chip":"pushing"},{"name":"qa2","role":"qa","chip":"pushing"}]}},"alive_subjects":{"claude/q1":"qa: x"}}'
 case_ "proving-pipe ACT: one lane seen as branch and session is one" proving-pipe act '{"board":{"first":{"release":{"waiting":9}},"team":{"sessions":[{"name":"qa R1 lane","role":"qa","chip":"pushing"}]}},"alive_subjects":{"claude/wizardly":"qa: capability R1 eight rows"}}'
+case_ "proving-pipe ok: a branch and another lane's named session are two" proving-pipe ok '{"board":{"first":{"release":{"waiting":9}},"team":{"sessions":[{"name":"qa2","role":"qa","chip":"pushing","branch":"claude/b"}]}},"alive_subjects":{"claude/a":"qa: x"}}'
+case_ "proving-pipe ACT: a session naming the same branch is one lane" proving-pipe act '{"board":{"first":{"release":{"waiting":9}},"team":{"sessions":[{"name":"qa1","role":"qa","chip":"pushing","branch":"claude/a"}]}},"alive_subjects":{"claude/a":"qa: x"}}'
 case_ "proving-pipe: board without first screen is a warn" proving-pipe warn '{"board":{"capacity":{}}}'
 case_ "feeding-pipe ok: 6 ready, 2 builders" feeding-pipe ok '{}'
 case_ "feeding-pipe ACT: 3 ready, 2 builders" feeding-pipe act '{"board":{"capacity":{"ready_rows":{"value":3}},"team":{"sessions":[{"name":"b1","role":"builder","state":"running","chip":"pushing","row":"B1"},{"name":"b2","role":"builder","state":"running","chip":"pushing","row":"B2"}]}}}'
@@ -73,8 +75,8 @@ for id in $(awk -F'\t' '!/^#/ && $1 != "id" {print $1}' "$TOOLS/known-failures.t
   [ "$p" -ge 1 ] && [ "$f" -ge 1 ] && echo "PASS $id has $p pass and $f fail case(s)" || { echo "FAIL $id has $p pass and $f fail case(s), want one of each"; fail=$((fail+1)); }
 done
 
-# The wiring: lead-watch.sh's own step 9b, run with the data the earlier steps hold, adds its ACT lines to the exit count.
-step=$(sed -n '/^# 9b\. Known failures/,/^kf=.*known-failures.py/p' "$TOOLS/lead-watch.sh")
+# The wiring: lead-watch.sh's own step 12, run with the data the earlier steps hold, adds its ACT lines to the exit count.
+step=$(sed -n '/^# 12\. Known failures/,/^kf=.*known-failures.py/p' "$TOOLS/lead-watch.sh")
 mkdir -p "$T/root/p" "$T/st"; head -c 25406 /dev/zero > "$T/root/p/RULES.md"; head -c 100 /dev/zero > "$T/root/p/STATE.md"
 printf '%s' "$BOARD" > "$T/board.json"
 ms_now() { python3 -I -c 'import time; print(time.time_ns() // 1000000)'; }
@@ -83,8 +85,8 @@ w=$(cd "$T/root" && git() { echo "qa: capability rows"; }; act=0; STATE_DIR="$T/
     D=p/DECISIONS.md; COCKPIT_DATA="$T/board.json"; prs='[]'; alive=$'claude/q1\nclaude/q2'; eval "$step"; echo "act=$act")
 ms=$(( $(ms_now) - t0 ))
 grep -q '^ACT   known size-rules: RULES.md is near its 25 KB wall' <<<"$w" && grep -q '^seen  known questions: covered above, 1 ACT' <<<"$w" \
-  && grep -q '^act=1$' <<<"$w" && echo "PASS lead-watch step 9b prints the table and counts its 1 ACT" || { echo "FAIL lead-watch wiring :: $w"; fail=$((fail+1)); }
-[ "$ms" -lt 3000 ] && echo "PASS step 9b ran in ${ms} ms (under 3 s)" || { echo "FAIL run time ${ms} ms"; fail=$((fail+1)); }
+  && grep -q '^act=1$' <<<"$w" && echo "PASS lead-watch step 12 prints the table and counts its 1 ACT" || { echo "FAIL lead-watch wiring :: $w"; fail=$((fail+1)); }
+[ "$ms" -lt 3000 ] && echo "PASS step 12 ran in ${ms} ms (under 3 s)" || { echo "FAIL run time ${ms} ms"; fail=$((fail+1)); }
 
 [ "$fail" = 0 ] && echo "known failures: all cases as expected" || echo "known failures: $fail case(s) failed"
 exit "$fail"

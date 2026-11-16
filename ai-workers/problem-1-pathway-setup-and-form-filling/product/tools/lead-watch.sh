@@ -10,7 +10,7 @@ TOOLS="$(cd "$(dirname "$0")" && pwd)"; gh() { bash "$TOOLS/gh.sh" "$@"; }
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT" || exit 99
 STATE_DIR="/private/tmp/claude-$(id -u)/lead-watch"; mkdir -p "$STATE_DIR"
 act=0; say() { echo "$1"; echo "$1" >> "$SEEN"; }; ACT() { act=$((act+1)); echo "ACT   $1"; echo "ACT   $1" >> "$SEEN"; }
-SEEN="$STATE_DIR/seen.$$"; : > "$SEEN"; seen() { printf '%s\n' "$1" >> "$SEEN"; }; trap 'rm -f "$SEEN"' EXIT   # B202: lines step 9b reuses
+SEEN="$STATE_DIR/seen.$$"; : > "$SEEN"; seen() { printf '%s\n' "$1" >> "$SEEN"; }; trap 'rm -f "$SEEN"' EXIT   # B202: lines step 12 reuses
 
 say "time  $(TZ=Asia/Kolkata date '+%d %b %H:%M IST')"
 
@@ -163,11 +163,21 @@ seen "$od"
 av=$(bash "$TOOLS/app-view-check.sh" 2>&1); echo "$av"; act=$((act + $(grep -c '^ACT' <<<"$av")))
 seen "$av"
 
-# 9b. Known failures (B202, founder A119 16 Nov, P-639): every failure already met is one line of tools/known-failures.tsv,
+# 11. What the founder's board shows (B201, founder A117 16 Nov: the check missed six stuck items his board showed; P-639:
+# never take the board's word blindly). The board's own Today card and Stuck panel (cockpit-data.py --watch reads the
+# published data.json › first, built by first_screen: no second formula), one ACT per Stuck entry, then each checked against
+# its source with data read above (open PRs of step 2, PRs merged in the window, qa's file on main of step 5). ~0.1 s.
+# The board's data: COCKPIT_DATA, default the refresh's own output ($TMPDIR/cockpit/data.json, cockpit/README.md).
+echo "$prs" > "$STATE_DIR/open-prs.json"; echo "$caps" > "$STATE_DIR/caps-main.md"
+echo "$merged" | python3 -I -c 'import json,re,sys; print(json.dumps({m.group(1): "merged" for m in re.finditer(r"^#(\d+)", sys.stdin.read(), re.M)}))' > "$STATE_DIR/merged.json"
+bw=$(python3 "$TOOLS/cockpit-data.py" --watch "${COCKPIT_DATA:-${TMPDIR:-/tmp}/cockpit/data.json}" --open-prs "$STATE_DIR/open-prs.json" \
+  --caps-main "$STATE_DIR/caps-main.md" --pr-states "$STATE_DIR/merged.json" 2>&1); echo "$bw"; act=$((act + $(grep -c '^ACT' <<<"$bw"))); seen "$bw"
+
+# 12. Known failures (B202, founder A119 16 Nov, P-639): every failure already met is one line of tools/known-failures.tsv,
 # checked every time from what this check already read: size walls, records PRs, the proving pipe
 # (Built waiting for qa vs qa lanes pushing) and the feeding pipe (ready rows per running builder, idle builders with no row).
 # Lines already printed above (questions, approved then red, records off main (step 7), sle-watch, local lanes, the board's
-# idle lanes) are counted, not repeated: say() and ACT() record every line in $SEEN. Keep 9b after every step it reuses.
+# idle lanes) are counted, not repeated: say() and ACT() record every line in $SEEN. Keep 12 after every step it reuses.
 kf_subj=$(for b in $alive; do printf '%s\t%s\n' "$b" "$(git log -1 --format=%s "origin/$b" 2>/dev/null)"; done)   # one git call per pushing branch
 P_DIR="${D%/*}" KF_PRS="$prs" KF_ALIVE="$alive" KF_SUBJ="$kf_subj" KF_SEEN="$SEEN" KF_BOARD="${COCKPIT_DATA:-${TMPDIR:-/tmp}/cockpit/data.json}" \
 python3 -I -c '
