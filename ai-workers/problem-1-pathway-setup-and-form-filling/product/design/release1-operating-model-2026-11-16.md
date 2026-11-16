@@ -20,6 +20,7 @@ Sources: `qa/CAPABILITIES.md` on main (d66bcfd2d), `MVP-CHECKLIST.md` (Lead bran
 Outside items (`design/outside-dependencies.md`): AWS account done (domain purchase blocked, fallback Cloudflare Registrar 18 Nov, staging on AWS's own address until then, P-625); BoldSign sandbox done; Google Calendar verification 4-6 weeks (started); Stripe test keys only when PF-5 goes live. These hold a few rows' last step, not the build.
 
 ## 2. Where the time goes (waste, from the data)
+0. **Waiting for test machines (measured 20:58 IST):** 28 GitHub Actions runs queued, 23 in progress; #1961's ci attempt 2 waited about 90 min for runners (shards started 20:23-20:31 IST after the run began at 18:53). More builders without more test capacity lengthen this queue. Fix: fewer test parts per change (B199 part 2, ~26 parts per batch); more runners cost money, so that goes to the founder with a price (P-551).
 1. **Too few builders at once.** At 20:4x IST, 4 of ~30 cloud lanes were running; most had finished or waited on the queue. Volume (178 parts) is the main driver.
 2. **Splitting.** On 16 Nov, 11 of 20 app-code PRs were sub-parts or hardening (PF-6b, PF-6r, PF-6f, FO-3sa, FO-7mv ...), so only 3 checklist parts finished. Sub-parts are real work but are not named in the checklist, so progress is invisible and rows stay Partial.
 3. **Proving is serial and late.** Built → Works ~35 h; 5 rows have every part merged but are not yet proven (R1.4, R1.16, R1.38, R1.40, R1.80).
