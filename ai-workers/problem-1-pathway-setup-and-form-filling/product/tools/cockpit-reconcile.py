@@ -656,6 +656,49 @@ def compute(snap):
                 return ist_day(mt)
         return None
 
+    # P-639 (16 Nov, qa #1950): an id is merged only when no part of it is open. An id shipped whole (no merged title
+    # names a part) is merged by its whole-id PR. For an id shipped in parts: when BACKLOG names parts of it
+    # ("PF-5 part 2", "parts 2 and 3", "parts 1–2", "(part 1)"), every named part and every part a title names needs a
+    # merged app PR, and a PR for the whole id does not stand in for them; when BACKLOG names none, one PR for the whole
+    # id, or every part the titles name, merges it. It dates from the last PR it needed. Same pattern as cockpit-data.py.
+    part_rx = r"\s*\(?\s*[Pp]arts?\s+(\d+[a-z]?(?:\s*(?:,|and|&|to|–|-)\s*\d+[a-z]?)*)"
+
+    def parts_of(txt):
+        toks, got, i = re.findall(r"\d+[a-z]?|to|–|-", txt or ""), [], 0
+        while i < len(toks):
+            if toks[i] in ("to", "–", "-"):
+                i += 1
+            elif i + 2 < len(toks) and toks[i + 1] in ("to", "–", "-") and toks[i].isdigit() and toks[i + 2].isdigit():
+                got += [str(k) for k in range(int(toks[i]), int(toks[i + 2]) + 1)]
+                i += 3
+            else:
+                got.append(toks[i])
+                i += 1
+        return got
+
+    named_parts = {}
+    for m in re.finditer(r"(?<![A-Za-z0-9-])([A-Z]{1,4}-[A-Za-z0-9]+)" + part_rx, (bl_text or "") + "\n" + (ck_text or "")):  # BACKLOG and the checklist's listed parts
+        named_parts.setdefault(m.group(1), set()).update(parts_of(m.group(2)))
+
+    def app_merged_at(rid):
+        parts_done, whole = {}, None
+        for mt, p in merged_app:
+            if not title_matches(p.get("title"), rid):
+                continue
+            pm = re.search(r"(?<![A-Za-z0-9-])" + re.escape(rid) + part_rx, p.get("title") or "")
+            if pm is None:
+                whole = whole or mt
+            else:
+                for x in parts_of(pm.group(1)):
+                    parts_done.setdefault(x, mt)
+        named = named_parts.get(rid, set())
+        if whole and not parts_done:                     # shipped whole: a mentioned part does not hold it
+            return whole
+        need = named | set(parts_done)
+        if not need or not need <= set(parts_done):
+            return None
+        return max(parts_done[x] for x in need)
+
     # --- open app PRs
     if pulls is None:
         N["open_app_prs"] = num(None, "not measured: " + pulls_err)
@@ -699,7 +742,8 @@ def compute(snap):
 
         def md(rid):
             if rid not in merge_date:
-                merge_date[rid] = first_merge(rid, merged_app)
+                at = app_merged_at(rid)
+                merge_date[rid] = ist_day(at) if at else None
             return merge_date[rid]
 
         shaped = [r for r in rows if not r["status"].lower().startswith("not shaped")]
@@ -842,10 +886,10 @@ def compute(snap):
     else:
         chs = []
         for rid in sorted({x for r in rows for x in r["parts"]}):
-            first_t = next((mt for mt, p in merged_app if title_matches(p.get("title"), rid)), None)
+            first_t = app_merged_at(rid)
             if inside(first_t, s_from, s_to):
                 chs.append(rid)
-        N["changes_merged_span"] = num(len(chs), "Release 1 changes first merged (app code) in the span", detail=chs)
+        N["changes_merged_span"] = num(len(chs), "Release 1 changes merged (app code; for an id in parts, its last needed part) in the span", detail=chs)
 
     # qa Works at a time: Status reads "qa Works" in the checklist as it stood then, or the row is proven by then
     unique_rows, seen_maps = [], set()
