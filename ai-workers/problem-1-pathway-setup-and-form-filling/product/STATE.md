@@ -2,7 +2,7 @@
 
 current_lead: local_adb435f1-e7df-4c70-8975-e41f0a26b3f6 Lead 68 · 16 Nov 17:44 IST (series 2; took over from Lead 67 (series 2, local_c94bf60a) at ~340k, P-446)
 
-updated: 2026-11-16 18:00 IST by **Lead 68 (series 2, local_adb435f1)**; Lead 68 started 17:45 IST, check job set (:13, :43) · weekly 76% at 17:41 (resets 17 Nov 10:30 IST) · milestone: **Release 1 (board v14, data 17:43 IST): 5 Proven, 2 Built, 34 In progress, 60 Planned**; **target 29 Nov (P-609); 10 Proven by 08:00 IST 17 Nov (P-626)** · rules: **`RULES.md`** (as of **P-638**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-16 18:44 IST by **Lead 68 (series 2, local_adb435f1)**; Lead 68 started 17:45 IST, check job set (:13, :43) · weekly 76% at 17:41 (resets 17 Nov 10:30 IST) · milestone: **Release 1 (board v14, data 17:43 IST): 5 Proven, 2 Built, 34 In progress, 60 Planned**; **target 29 Nov (P-609); 10 Proven by 08:00 IST 17 Nov (P-626)** · rules: **`RULES.md`** (as of **P-638**) · this branch: `lead/2026-11-07-lead31`
 
 Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
@@ -13,8 +13,7 @@ Rules: RULES.md (as of P-638) + DECISIONS **P-639, P-640** word for word. Lead 6
 2b. **P-641 (founder 18:17): push harder tonight on extra usage.** Cloud lanes requested by Lead 68 at 18:17: `fix-c411-g5` (C4.11-G5 flake), `fix-c95` (C9.5 browser check), `fo-4sf` (R1.27) was a duplicate: **FO-4sf is built, #1962 merged 18:23 IST**; its PR #1985 closed on Lead B's ruling (comment 6917402716); never brief or start FO-4sf again (lesson: check open and merged PRs before any start). **Merged 18:22-18:35 IST:** #1943, #1951, #1955, #1962, #1954, #1929, #1967, #1952. #1865's lane merged main itself at 18:23 (4e8a44d45); it conflicts again with newer main: the lane resolves. #1972 out of draft and labelled (18:43). Founder to switch on extra usage with a cap; report spend each check. Next: B199's four decisions by prompt-box paste (mergify.com hosts = founder's settings).
 3. **Stuck lanes (paste into each prompt box; cloud lanes ignore messages):** B199 (four decisions: B200 by `git am -3`, 26 parts per batch, mergify.com hosts on the allowlist = founder's settings, the approval-line limit); #1950 (merge main after #1929, Approve, label); #1945 (CI, re-review, label; owner?); #1957/#1959 (requeue after #1951/#1955 merge); the shaping draft PR (out of draft, label); PF-6 part 2a (continue). Details in the lane-walk file.
 4. **Fix rows owed (tech lead):** C4.11-G5 `ready:0` intermittent on main (jobs 133164149062, 133239231752; known-failures table meanwhile; never dequeue for it); C9.5 `check_c95_release_update_browser.ts` red on main's code, hidden by quarantine until 20 Nov, plus a qa row.
-5. **Lead B (rulings in force):** #1961 M1 = (A); QA-496: FO-3w part 2 brought forward (cloud lane started 17:41); PF-19e starts once #1956 and #1961 are on main (path: PF-19e → PF-5v part 2 with DW4 → PF-5s part 1); #1955 merged with main by me at fa457c5c4.
-6. **Board:** data from 11:14 IST; the board-fix lane (local_d01fe726) was asked at 17:4x to republish now and again after #1958 (unlabelled, head ed9b2e429). Check the refresh doc and the version.
+5-6. Lead B rulings and the 17:4x board line: word for word in `STATE-2026-11-16-1844-lead68s2-items-5-6.md` (history/). Board now: v15, data 18:01 IST; #1958 labelled.
 7. **Founder, to put to him one at a time:** the board's 8 "talk" items (C5, C12, C17, C18, C21, C23, C25, C31); Stripe TEST keys (outside dependency 8, by 18 Nov); after #1865, the settings paste; the mergify.com allowlist hosts for B199; unpin Leads 64-66 so they can be archived.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
