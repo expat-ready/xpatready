@@ -99,3 +99,41 @@ Judged against: the row FO-2b Done-when line (BACKLOG on main, l.315), the brief
 * **Score: 6.5 of 8 applicable criteria (8.1/10 scaled), no 0.** Raise it by fixing M1 first, then M2.
 * Not tested: any screen, a real e-signature (FO-6 is not on main), and a real Prepare-retainer race (m4 comes from reading the code).
 * No separate journey-test file was written: the task limited me to this file.
+
+## Re-review at c0819939
+
+Read only the diff `1c49b2c97..c08199395`: `corporate/service.ts`, `tests/check_fo2b_corporate.ts` and `qa/built/FO-2b.md`. Ran `tests/check_fo2b_corporate.ts`: **55 passed, 0 failed**. `tsc` on the api project reports no error in `corporate/`.
+
+**Verdict: Approve** for `c081993957463e3ec21a92fb2fc07e70ec264746`. No Blocker or Major is open.
+
+### Earlier findings
+* **M1: accepted as carried; now Minor (follow-up for FO-5).**
+  * FO-5's status trigger confirms there is no in-scope remedy (`fo5_retainer_tables/migration.sql:323-330`): DRAFT can only move to SENT or SIGNED_OFFLINE, and DECLINED only back to DRAFT. A subject changes only through an edit.
+  * Letting Change type through would leave a draft that names the wrong client and can only be sent. Refusing is the safer choice.
+  * The message (`service.ts:315`) now says plainly why it refuses and that Change type waits. It no longer points at a Withdraw that would fail.
+  * The test drives real retainer rows: draft → RETAINER_OPEN, sent → RETAINER_SENT with the card's words, withdrawn → allowed.
+  * The deviation from AG-2-76 rule 2 for DECLINED is raised with the tech lead (PR question 2), not settled silently.
+  * Condition: a follow-up row for FO-5's Discard draft exists before the Corporate panel (FO-4c) offers Change type.
+* **M2: fixed.**
+  * Make primary locks and reads the open prospects that name the old primary. If any of them is hidden from the person, it answers 409 HIDDEN_PROSPECTS, names no prospect, and changes nothing (`:258`).
+  * Each prospect it repoints gets its own `prospect.primary_contact_changed` line, and the role line lists `repointedProspectIds` (`:267`).
+  * Both sides are tested.
+  * Lock order is company, then prospects. Change type locks the prospect and then the company only when the prospect is not yet the company's, so the two never wait on each other.
+* **m1: fixed.** The match key is recorded only when a typed name matches, and `companyPicked` is recorded.
+* **m2: fixed.** The prospect number is named only when the person sees it; this is tested.
+* **m3: fixed.**
+  * Engage writes a `lead.taken` line on the lead when it fills the owner (`fromUnassigned`, `via: ENGAGE`).
+  * A second Engage keeps the first engaged time and person.
+  * Both are tested.
+* **m4: carried** as an FO-5 follow-up.
+* **m5: fixed.** Retainer-state refusals and forced audit failures for Change role and End contact are now tested.
+* **m6: carried.** Cursor paging comes with FO-4c.
+* **m7: fixed.** KNOWN_PERSON names the match when the adder may see that person.
+
+### New (Minor, does not block)
+* **n1. HIDDEN_PROSPECTS asks for a person who may not exist.**
+  * The message says "Ask someone who sees all prospects". But with "everyone sees all" off, nobody sees all: `common.ts:61` requires the setting as well as `view.all`.
+  * Scenario: the setting is off and R and T each have an open prospect naming Lena. Then no one can make another contact primary until an Owner turns the setting on.
+  * Fix: name that way out in the message, or take it to the tech lead with M1's question.
+* **n2. A company with more than 50 repointed prospects cannot change its primary.** The audit detail takes at most 50 array entries (`ports/audit.ts:21`). Beyond that, the audit line fails and the change rolls back (it fails closed). This is unlikely in month one; a count plus the per-prospect lines would avoid it.
+* **Journey score (API):** next step ½ and error recovery ½ (M1 carried, n1); correct data is now 1. **7 of the 8 applicable criteria (8.8/10 scaled), no 0.**

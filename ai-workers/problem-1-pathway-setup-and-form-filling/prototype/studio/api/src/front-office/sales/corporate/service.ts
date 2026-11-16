@@ -255,7 +255,7 @@ export class Corporate {
           select p.id::text, p.number, p.owner_staff_id::text from fo_prospect p join fo_stage s on s.firm_id = p.firm_id and s.id = p.stage_id
            where p.firm_id = ${ctx.firmId}::uuid and p.type = 'CORPORATE' and p.subject_company_id = ${l.companyId}::uuid
              and p.primary_contact_person_id = ${old.personId}::uuid and s.kind in ('ACTIVE', 'NURTURE') order by p.number for update of p`;
-        if (named.some((x) => !see(x.owner_staff_id))) conflict("This company has open prospects you cannot see that name its primary contact. Ask someone who sees all prospects to change it.", "HIDDEN_PROSPECTS");
+        if (named.some((x) => !see(x.owner_staff_id))) conflict("This company has open prospects you cannot see that name its primary contact. Their owner can change it, or an Owner can turn on \"Everyone sees all\" for staff who may see all prospects.", "HIDDEN_PROSPECTS");
         for (const x of named) {
           await tx.foProspect.update({ where: { id: x.id }, data: { primaryContactPersonId: l.personId } });
           await this.audit(tx, ctx, "prospect.primary_contact_changed", x.id, `Staff ${ctx.staffId} made another contact primary for ${x.number}.`, { companyId: l.companyId, fromPersonId: old.personId, toPersonId: l.personId });
