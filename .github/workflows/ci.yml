@@ -30,6 +30,18 @@
 #   PR_SUITES=direct     a builder's PR runs only the suites that import or name its files, never everything
 #                        (select-suites.mjs --direct); the queue still runs every suite;
 #   (BATCH_RUNNER / PR_RUNNER = mac, the founder's Mac, are gone: D1, P-416, 8 Nov; off since 4 Nov. git has them.)
+#   CI_SHARD_RUNNER=<runner label>   overflow runners (CI-RUN, P-648, 16 Nov): the jobs "shard", "packs" and "regression"
+#                        (the long ones; about 330 machine-minutes of parts plus 80 of regression a full batch) run on
+#                        that label instead of GitHub's ubuntu-latest, which is capped at 40 jobs at once (GitHub Pro).
+#                        Every other job stays on ubuntu-latest. Unset (the default) = exactly as before.
+#                        On:  gh variable set CI_SHARD_RUNNER --body namespace-profile-ci-shard   (P-649; needs the
+#                             provider's GitHub app on this repository first, or the jobs wait for a runner, up to 24 h)
+#                        Off: gh variable delete CI_SHARD_RUNNER   (the next run is back on ubuntu-latest; a running job ends
+#                             where it started). Use an x64 Ubuntu 24.04 label (not -arm): cloud-setup.sh's PostgreSQL
+#                             fallback is linux-x64, and ubuntu-latest is 24.04. No service containers are used: PostgreSQL
+#                             is installed and started by cloud-setup.sh, as on ubuntu-latest. Those jobs set
+#                             CI_HOSTED_RUNNER=1: an overflow runner reports itself as self-hosted, and speed_budget.cjs
+#                             must treat it as a hosted CI machine like ubuntu-latest (budgets judged by the nightly only).
 # Base at run time (D6, P-416, founder 8 Nov): every job of a pull request rebuilds the test merge on origin/main as the
 #   job finds it (tools/pr-base.sh) and reads RANGE = "$(git merge-base origin/main HEAD)..<head>", never the event's
 #   base.sha, so "Re-run failed jobs" after a fix on main tests that fix. The parts of one attempt test the main the job
@@ -211,7 +223,7 @@ jobs:
     # Records and code, on GitHub's machines.
     needs: kind
     if: ${{ needs.kind.outputs.shards != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_SHARD_RUNNER || 'ubuntu-latest' }} # overflow switch, see Switches above (CI-RUN, P-648)
     timeout-minutes: 75 # 10 Nov (P-214): parts now reach 44-56 min; 3 of the last 7 full runs had parts stopped at 60 (run 42762001529 lost three, dequeuing #1450 after 1 h of CI). 9 Nov: raised from 45 for the same reason. The lasting fix, 8 shards dealt by refreshed suite times (pipeline row 2, P-436 (7)), puts the longest part at about 32-35 min on the 10 Nov batches; the limit stays 75 until a week of runs shows it.
     permissions: { contents: read, pull-requests: read }
     strategy:
@@ -221,6 +233,7 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.kind.outputs.shards) }}
     env:
+      CI_HOSTED_RUNNER: "1" # a hosted CI machine wherever this job runs (speed_budget.cjs; CI-RUN, P-649)
       P: ai-workers/problem-1-pathway-setup-and-form-filling/product
       S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
       KIND: ${{ needs.kind.outputs.kind }}
@@ -367,7 +380,7 @@ jobs:
     # group, gate B's 3 slots, each row on its scoring data; a red group is run once more (a flaky pack is retried once).
     needs: kind
     if: ${{ needs.kind.outputs.mode != 'same' && needs.kind.outputs.dpacks != '' && needs.kind.outputs.dpacks != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_SHARD_RUNNER || 'ubuntu-latest' }} # overflow switch, see Switches above (CI-RUN, P-648)
     timeout-minutes: 90
     permissions: { contents: read }
     strategy:
@@ -375,6 +388,7 @@ jobs:
       matrix:
         group: ${{ fromJSON(needs.kind.outputs.dpacks) }}
     env:
+      CI_HOSTED_RUNNER: "1" # a hosted CI machine wherever this job runs (speed_budget.cjs; CI-RUN, P-649)
       P: ai-workers/problem-1-pathway-setup-and-form-filling/product
       S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
     steps:
@@ -464,7 +478,7 @@ jobs:
   regression:
     needs: regression-plan
     if: ${{ needs.regression-plan.outputs.groups != '' && needs.regression-plan.outputs.groups != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_SHARD_RUNNER || 'ubuntu-latest' }} # overflow switch, see Switches above (CI-RUN, P-648)
     timeout-minutes: 90
     permissions: { contents: read }
     strategy:
@@ -472,6 +486,7 @@ jobs:
       matrix:
         group: ${{ fromJSON(needs.regression-plan.outputs.groups) }}
     env:
+      CI_HOSTED_RUNNER: "1" # a hosted CI machine wherever this job runs (speed_budget.cjs; CI-RUN, P-649)
       P: ai-workers/problem-1-pathway-setup-and-form-filling/product
       S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
     steps:

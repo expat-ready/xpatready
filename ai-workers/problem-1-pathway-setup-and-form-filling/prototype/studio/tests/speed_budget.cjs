@@ -11,9 +11,13 @@ const os = require("node:os");
  *  judges the budgets (Lead, 1 Nov; the budgets stay, P-184). */
 function machine(env = process.env) {
   const load = os.loadavg()[0], cores = os.cpus().length;
+  // CI-RUN (P-648/P-649): an overflow runner (Namespace, vars.CI_SHARD_RUNNER) reports itself to GitHub as self-hosted,
+  // but it is a shared hosted CI machine like GitHub's: ci.yml sets CI_HOSTED_RUNNER=1 on the jobs that may run there, so
+  // it is treated exactly as github-hosted (run 43941204621: r1c judged there missed at 1237 ms, load 2.3 on 4 cores).
+  const hosted = env.RUNNER_ENVIRONMENT === "github-hosted" || env.CI_HOSTED_RUNNER === "1";
   // T1 (P-228 (6)): the nightly full run on GitHub sets SPEED_JUDGE=1 and is judged like the Mac was, when not busy.
-  if (env.RUNNER_ENVIRONMENT === "github-hosted" && env.SPEED_JUDGE === "1") return { load, cores, busy: load > cores };
-  if (env.RUNNER_ENVIRONMENT === "github-hosted") return { load, cores, busy: true, reason: `CI machine (${cores} cores): judged by the nightly run on the Mac` };
+  if (hosted && env.SPEED_JUDGE === "1") return { load, cores, busy: load > cores };
+  if (hosted) return { load, cores, busy: true, reason: `CI machine (${cores} cores): judged by the nightly run on the Mac` };
   return { load, cores, busy: load > cores };
 }
 

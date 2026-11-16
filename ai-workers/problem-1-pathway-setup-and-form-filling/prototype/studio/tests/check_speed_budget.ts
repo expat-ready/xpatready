@@ -24,6 +24,11 @@ ok("T1 (P-228 (6)): the nightly full run on GitHub (SPEED_JUDGE=1) is judged by 
 ok("T1 fail: a pull-request shard on GitHub (no SPEED_JUDGE) is still never judged", hosted.busy === true && !!hosted.reason && machine({ RUNNER_ENVIRONMENT: "github-hosted", SPEED_JUDGE: "0" }).busy === true);
 const selfHosted = machine({ RUNNER_ENVIRONMENT: "self-hosted" });
 ok("Lead 1 Nov fail: the Mac runner (self-hosted) and a lane copy are judged by load as before, with no CI reason", !selfHosted.reason && selfHosted.busy === selfHosted.load > selfHosted.cores && !machine({}).reason, selfHosted);
+const overflow = machine({ RUNNER_ENVIRONMENT: "self-hosted", CI_HOSTED_RUNNER: "1" });
+const f = speed("first view under 1 s", 1237 < 1000, { agent: [1237, 2943, 2344] }, overflow);
+ok("CI-RUN pass: an overflow runner (self-hosted to GitHub, CI_HOSTED_RUNNER=1 from ci.yml) is a CI machine like github-hosted: not judged, with the reason, the time and the load", overflow.busy === true && /nightly run on the Mac/.test(overflow.reason ?? "") && f.ok && /not judged: CI machine/.test(f.label) && /1237/.test(f.detail), f);
+ok("CI-RUN: the nightly's SPEED_JUDGE=1 still judges on an overflow runner by load, like on GitHub", (() => { const n = machine({ RUNNER_ENVIRONMENT: "self-hosted", CI_HOSTED_RUNNER: "1", SPEED_JUDGE: "1" }); return !n.reason && n.busy === n.load > n.cores; })());
+ok("CI-RUN fail: CI_HOSTED_RUNNER other than \"1\" (unset, 0, empty) leaves a self-hosted machine judged by load", ["0", ""].every((v) => !machine({ RUNNER_ENVIRONMENT: "self-hosted", CI_HOSTED_RUNNER: v }).reason) && !machine({ RUNNER_ENVIRONMENT: "self-hosted" }).reason);
 const m = machine();
 // P-215: speed budgets are judged on the Mac nightly only. On a GitHub-hosted machine this check reports the reading and
 // that it is not judged (busy, with the CI reason); everywhere else the reading is the load against the cores, as before.
