@@ -27,21 +27,23 @@ function TeamBody() {
   const view = (CHIPS.find((c) => c.view === params.get("view"))?.view ?? "active") as View;
   const [q, setQ] = React.useState(""), [inviting, setInviting] = React.useState(false);
   const opener = React.useRef<HTMLElement | null>(null);
+  const inviteButton = React.useRef<HTMLButtonElement>(null);
   const put = (k: string, v: string | null) => { const p = new URLSearchParams(params); for (const x of ["person", "invitation"]) if (k !== "view") p.delete(x); if (v) p.set(k, v); else p.delete(k); setParams(p, { replace: k !== "view" }); };
   if (list.isError) return <Notice tone="danger" title="Not available"><span data-team-refused>{list.error instanceof StaffApiError ? list.error.message : "Could not load your team. Please try again."}</span></Notice>;
   if (!list.data || !roles.data || !invs.data) return <p role="status" className="text-sm text-text-muted" data-loading>{roles.isError || invs.isError ? "Could not load the roles or invitations. Please reload." : "Loading your team…"}</p>;
   const needle = q.trim().toLowerCase(), hit = (...s: string[]) => !needle || s.some((x) => x.toLowerCase().includes(needle));
   const people = list.data.staff.filter((s) => (view === "inactive" ? s.status === "DEACTIVATED" : s.status !== "DEACTIVATED") && hit(s.displayName, s.email));
   const invited = invs.data.filter((i) => (i.status === "PENDING" || i.status === "EXPIRED") && hit(i.email));
-  const person = list.data.staff.find((s) => s.id === params.get("person")) ?? null, invitation = invs.data.find((i) => i.id === params.get("invitation")) ?? null;
+  const person = list.data.staff.find((s) => s.id === params.get("person")) ?? null, invitation = invs.data.find((i) => i.id === params.get("invitation") && (i.status === "PENDING" || i.status === "EXPIRED")) ?? null;   // only a pending or expired one (break m4)
   const open = (k: string, id: string) => (e: React.MouseEvent<HTMLElement>) => { opener.current = e.currentTarget; put(k, id); };
   const s = list.data.seats;
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div><h1 className="text-2xl font-semibold">Team</h1>
-          <p className="mt-1 text-sm text-text-muted" data-seat-line title="Active, suspended and invited people count; deactivated people and expired or revoked invitations do not.">{s.line}{s.plan ? ` on ${s.plan}` : ""}</p></div>
-        <Button onClick={() => setInviting(true)} data-invite-open>Invite people</Button>
+          <p className="mt-1 text-sm text-text-muted" data-seat-line>{s.line}{s.plan ? ` on ${s.plan}` : ""}</p>
+          <p className="text-xs text-text-muted">Active, suspended and invited people use a seat; deactivated people and expired or revoked invitations do not.</p></div>
+        <Button ref={inviteButton} onClick={() => setInviting(true)} data-invite-open>Invite people</Button>
       </header>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div role="group" aria-label="Which people" className="flex flex-wrap gap-2">
@@ -63,7 +65,7 @@ function TeamBody() {
           </tr>)}
         </Table>
       )}
-      <InvitePanel open={inviting} onOpenChange={setInviting} roles={roles.data} me={me} seats={s} />
+      <InvitePanel open={inviting} onOpenChange={setInviting} roles={roles.data} me={me} seats={s} returnFocus={() => inviteButton.current} />
       <PersonPanel open={!!person || !!invitation} onClose={() => put("person", null)} staff={person} invitation={person ? null : invitation} roles={roles.data} me={me} returnFocus={() => opener.current} />
     </div>
   );

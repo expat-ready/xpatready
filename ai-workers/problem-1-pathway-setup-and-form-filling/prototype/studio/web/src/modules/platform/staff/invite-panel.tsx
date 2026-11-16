@@ -15,7 +15,7 @@ type Row = { n: number; email: string; roles: string[]; error: string | null };
 /** Case Officer ticked first (AG-1-69) when the inviter may give it; an Admin may not (SA-06: Admin lacks two of its keys). */
 const fresh = (n: number, offered: readonly string[]): Row => ({ n, email: "", roles: offered.includes("CASE_OFFICER") ? ["CASE_OFFICER"] : [], error: null });
 
-export function InvitePanel({ open, onOpenChange, roles, me, seats }: { open: boolean; onOpenChange: (o: boolean) => void; roles: readonly Role[]; me: { roles: string[]; keys: string[] }; seats: { used: number; limit: number } }) {
+export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus }: { open: boolean; onOpenChange: (o: boolean) => void; roles: readonly Role[]; me: { roles: string[]; keys: string[] }; seats: { used: number; limit: number }; returnFocus: () => HTMLElement | null }) {
   const offered = givable(roles, me, true);
   const [rows, setRows] = React.useState<Row[]>(() => [fresh(1, offered)]);
   const [busy, setBusy] = React.useState(false);
@@ -29,18 +29,18 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats }: { open: bo
   const send = async () => {
     if (over > 0 || rows.some(twice)) return;
     setBusy(true);
-    let sent = 0;
+    let sent = 0, unmailed = 0;
     for (const r of rows) {
-      try { await staffChange("/platform/staff/invitations", { email: r.email.trim(), roles: r.roles }); sent++; setRows((rs) => rs.filter((x) => x.n !== r.n)); }
+      try { const a = await staffChange<{ emailed?: boolean }>("/platform/staff/invitations", { email: r.email.trim(), roles: r.roles }); sent++; if (a?.emailed === false) unmailed++; setRows((rs) => rs.filter((x) => x.n !== r.n)); }
       catch (e) { set(r.n, { error: e instanceof StaffApiError ? e.message : "Could not send this invitation. Please try again." }); }
     }
     setBusy(false);
     await qc.invalidateQueries({ queryKey: ["pf", "staff"] });
-    if (sent) toast.push({ tone: "ok", text: `${sent} ${sent === 1 ? "invitation" : "invitations"} sent.` });
+    if (sent) toast.push(unmailed ? { tone: "danger", text: `${sent} ${sent === 1 ? "invitation" : "invitations"} made; ${unmailed} could not be emailed. Use Resend under Invited.` } : { tone: "ok", text: `${sent} ${sent === 1 ? "invitation" : "invitations"} sent.` });
     if (sent === rows.length) onOpenChange(false);
   };
   return (
-    <Panel open={open} onOpenChange={onOpenChange} title="Invite people" description="Each person gets their own invitation email. It works for 72 hours."
+    <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={() => !rows.some((r) => r.email.trim()) || window.confirm("Discard the people you typed?")} title="Invite people" description="Each person gets their own invitation email. It works for 72 hours."
       footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button><Button busy={busy} disabled={over > 0} onClick={() => void send()} data-send-invites>Send {rows.length === 1 ? "invitation" : `${rows.length} invitations`}</Button></>}>
       <div className="flex flex-col gap-4">
         <p className="text-sm" data-invite-seats>{after} of {seats.limit} seats after these invites</p>

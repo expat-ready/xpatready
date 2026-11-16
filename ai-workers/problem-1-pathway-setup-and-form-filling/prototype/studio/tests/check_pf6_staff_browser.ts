@@ -49,6 +49,7 @@ async function newPage(width = 1440, tok: string | null = null): Promise<Page> {
   const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: "light", reducedMotion: "reduce" }), p = await ctx.newPage();
   if (tok) await ctx.addInitScript((t) => { if (!sessionStorage.getItem("xr-staff-session")) sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })); }, tok);
   p.on("pageerror", (e) => errors.push(String(e)));
+  p.on("dialog", (d) => void d.accept());   // "Discard the people you typed?" when a filled Invite people closes
   p.on("request", (r) => { const u = new URL(r.url()); if (u.pathname.startsWith("/api/")) seen.push({ page: p, method: r.method(), path: u.pathname }); });
   p.on("response", (res) => { const u = new URL(res.url()); const s = [...seen].reverse().find((x) => x.page === p && x.path === u.pathname && x.status === undefined); if (s) s.status = res.status(); });
   return p;
@@ -90,6 +91,12 @@ const invX = sql(`select id from platform_invitation where email = '${X}'`);
 ok("PF-6 DW1 pass: Invite people sends one invitation for the row (Case Officer)", posts(p, /\/staff\/invitations$/).length === 1 && !!invX && sql(`select roles::text from platform_invitation where id = '${invX}'`) === "{CASE_OFFICER}");
 await p.locator('[data-chip="invited"]').click(); await row(p, X).waitFor({ timeout: 10_000 });
 ok("PF-6 DW1 pass: the Invited chip lists the pending invitation", (await row(p, X).innerText()).includes("Invited"));
+const Y = `pf6-y-${run}@example.com`, invY = (await (await staffCall(rTok, "POST", "/platform/staff/invitations", { email: Y, roles: ["READ_ONLY"] })).json() as { id: string }).id;
+await p.goto(`${BASE}/platform/team?view=invited&invitation=${invY}`); await p.locator("[data-revoke]").click(); await p.locator("[data-act-confirm]").waitFor();
+ok("PF-6 DW1 fail: Revoke asks first; Cancel leaves the invitation pending", (await p.locator("[data-act-confirm]").innerText()) === "Revoke invitation" && sql(`select revoked_at is null from platform_invitation where id = '${invY}'`) === "t");
+await p.locator("[data-act-confirm]").click(); await settle(p, /revoke$/, 1);
+await p.goto(`${BASE}/platform/team?view=invited&invitation=${invY}`); await p.locator("[data-seat-line]").waitFor(); await p.waitForTimeout(500);
+ok("PF-6 DW1 pass: Revoke confirmed revokes it; its address no longer opens a live-looking panel", sql(`select revoked_at is not null from platform_invitation where id = '${invY}'`) === "t" && (await p.locator("[data-person-invitation]").count()) === 0);
 const x = await newPage(); await x.goto(`${BASE}${await accept(invX)}`); await x.locator("[data-account]", { hasText: X }).waitFor({ timeout: 20_000 });
 const Xs = staffOf(`email = '${X}'`);
 await team(p); await row(p, X).waitFor({ timeout: 10_000 });
@@ -149,6 +156,13 @@ ok("PF-6 DW2/BR-1 pinned: as Admin, Case Officer is not offered and nothing is p
 await ap.keyboard.press("Escape");
 await openPerson(ap, R.email);
 ok("PF-6 DW2/BR-5 fail: an Admin sees the Owner's Owner role as one it cannot give or remove", (await ap.locator("[data-fixed-roles]").innerText()).includes("Owner") && (await ap.locator('[data-person-roles] [data-role="OWNER"]').count()) === 0);
+ok("PF-6 DW2/BR-10 fail: an Admin sees no Sign out everywhere or Deactivate on an Owner, only why", (await ap.locator("[data-owner-access]").count()) === 1 && (await ap.locator("[data-deactivate], [data-sign-out-everywhere]").count()) === 0);
+// Review MJ-1 / break M1: a panel read before someone else's change saves nothing and shows the roles now.
+await team(p); await openPerson(p, T.email); await p.locator('[data-person-roles] [data-role="BILLING_FINANCE"]').check();
+await staffCall(rTok, "PATCH", `/platform/staff/${T.id}/roles`, { roles: ["CASE_MANAGER", "READ_ONLY"] });
+await p.locator("[data-save-roles]").click(); await p.locator("[data-roles-error]").waitFor({ timeout: 10_000 });
+ok("PF-6 DW2/BR-5 fail (conflict): saving from an older read changes nothing and says someone else changed the roles", (await p.locator("[data-roles-error]").innerText()).startsWith("Someone else changed") && rolesOf(T.id) === "CASE_MANAGER,READ_ONLY" && await p.locator('[data-person-roles] [data-role="READ_ONLY"]').isChecked());
+await staffCall(rTok, "PATCH", `/platform/staff/${T.id}/roles`, { roles: ["CASE_MANAGER"] });
 await team(p); await p.locator("[data-invite-open]").click();
 const ownerOffered = await p.locator('[data-invite-row="1"] [data-role]').evaluateAll((els) => els.map((e) => e.getAttribute("data-role")));
 ok("PF-6 DW2/BR-1 pass: an Owner's invite picker offers every role but Owner", !ownerOffered.includes("OWNER") && ownerOffered.length === 5, ownerOffered);
@@ -206,7 +220,8 @@ for (let i = 0; i < 25 && !reached; i++) { await p.keyboard.press("Tab"); reache
 await p.keyboard.press("Enter"); await p.getByLabel("Email, person 1").waitFor();
 ok("PF-6 DW8 keyboard: Tab reaches Invite people and Enter opens the panel on its first field", reached && (await p.evaluate(() => document.activeElement?.getAttribute("type"))) === "email");
 await axe("PF-6 DW8 Invite people (1440)", p); await shot(p, "invite-people-1440");
-await p.keyboard.press("Escape");
+await p.keyboard.press("Escape"); await p.waitForTimeout(300);
+ok("PF-6 DW8 keyboard (review MJ-2): closing Invite people returns focus to its button", (await p.evaluate(() => document.activeElement?.textContent?.trim())) === "Invite people");
 reached = false;
 for (let i = 0; i < 30 && !reached; i++) { await p.keyboard.press("Tab"); reached = await p.evaluate((n) => document.activeElement?.textContent?.trim() === n, T.name); }
 await p.keyboard.press("Enter"); await p.locator("[data-person-roles]").waitFor({ timeout: 10_000 });

@@ -7,7 +7,6 @@ import { Button, Dialog, Notice } from "@/components/ui/controls";
 import { problemOf } from "@/modules/front-office/sales/contract";
 import { endSession, staffApi, StaffApiError, staffToken, useLocalSignIn } from "../session";
 
-export const CONFIRM_WORDS = "Confirm it's you: sign in again to give or remove the Owner role.";
 /** One staff change: as staffApi, except that a step-up refusal leaves the session open. */
 export async function staffChange<T>(path: string, json: unknown, method = "POST"): Promise<T> {
   const token = staffToken();
@@ -21,7 +20,7 @@ export async function staffChange<T>(path: string, json: unknown, method = "POST
 }
 
 /** A change waiting for the sign-in again. Kept outside React: the new sign-in remounts the page (PlatformFrame). */
-type Waiting = { staffId: string; path: string; json: unknown; method: string; what: string };
+type Waiting = { staffId: string; path: string; json: unknown; method: string; what: string; /** "give or remove the Owner role" */ need: string };
 let waiting: Waiting | null = null;
 export const takeWaiting = (staffId: string) => { const w = waiting?.staffId === staffId ? waiting : null; if (w) waiting = null; return w; };
 
@@ -37,7 +36,7 @@ export function ConfirmItsYou({ ask, onClose }: { ask: Waiting & { detail: strin
     } catch (e) { waiting = null; setError(e instanceof StaffApiError ? e.message : "Could not sign in again. Please try again."); } finally { setBusy(false); }
   };
   return (
-    <Dialog open={!!ask} onOpenChange={(o) => { if (!o) { setError(null); onClose(); } }} title="Confirm it's you" description={CONFIRM_WORDS}
+    <Dialog open={!!ask} onOpenChange={(o) => { if (!o) { setError(null); onClose(); } }} title="Confirm it's you" description={`Confirm it's you: sign in again to ${ask?.need ?? "make this change"}. After you sign in, the change is sent once more for you.`}
       footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button busy={busy} onClick={() => void go()} data-sign-in-again>Sign in again</Button></>}>
       <p className="text-sm" data-step-up-words>{ask?.detail}</p>
       {error ? <Notice tone="danger" title="Not signed in" className="mt-3">{error}</Notice> : null}

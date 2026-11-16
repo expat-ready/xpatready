@@ -21,7 +21,7 @@ function Groups({ role }: { role: Role }) {
 /** Tick one or more roles; only the roles offered can be ticked (the rest are not shown). */
 export function RolePicker({ roles, offered, chosen, onChange, legend }: { roles: readonly Role[]; offered: readonly string[]; chosen: readonly string[]; onChange: (r: string[]) => void; legend: string }) {
   return (
-    <fieldset data-role-picker>
+    <fieldset data-role-picker className="min-w-0 [overflow-wrap:anywhere]">
       <legend className="text-xs font-medium">{legend}</legend>
       <div className="mt-1 flex flex-col gap-2">
         {roles.filter((r) => offered.includes(r.role)).map((r) => (
