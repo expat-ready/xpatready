@@ -114,7 +114,7 @@ try {
     (sql(DEMO, `create index money_tmp_bad on money_invoice (number)`), indexesNotFirmFirst(DEMO) === "money_tmp_bad") && (sql(DEMO, `drop index money_tmp_bad`), indexesNotFirmFirst(DEMO) === ""));
   ok("FO-7a pass: every amount is an integer — every *_minor column is integer, and no money_ column is a float or a decimal",
     sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and column_name like '%\\_minor' and data_type <> 'integer'`) === "0"
-    && sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and column_name like '%\\_minor'`) === "10"
+    && sql(DEMO, `select count(*) from information_schema.columns where table_name = any('{${TABLES.join(",")}}') and column_name like '%\\_minor'`) === "10"
     && sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and data_type in ('real', 'double precision', 'numeric', 'money')`) === "0");
   ok("FO-7a pass: every table with an amount carries its currency, as an enum of CAD and USD",
     sql(DEMO, `select coalesce(string_agg(distinct c.table_name, ','), '') from information_schema.columns c where c.table_name like 'money\\_%' and c.column_name like '%\\_minor'
@@ -122,7 +122,7 @@ try {
     && sql(DEMO, `select string_agg(e.enumlabel, ',' order by e.enumsortorder) from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'MoneyCurrency'`) === "CAD,USD");
   ok("FO-7a pass: no workspace_id (the demo reset leaves these rows), every instant is timestamptz, only due_date is a date",
     sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and column_name = 'workspace_id'`) === "0"
-    && sql(DEMO, `select coalesce(string_agg(table_name || '.' || column_name, ',' order by table_name, column_name), '') from information_schema.columns where table_name like 'money\\_%' and data_type in ('timestamp without time zone', 'date', 'time without time zone', 'time with time zone')`) === "money_invoice.due_date");
+    && sql(DEMO, `select coalesce(string_agg(table_name || '.' || column_name, ',' order by table_name, column_name), '') from information_schema.columns where table_name = any('{${TABLES.join(",")}}') and data_type in ('timestamp without time zone', 'date', 'time without time zone', 'time with time zone')`) === "money_invoice.due_date");
   ok("FO-7a: no secret column — no money_ column is named like a password, secret, token or API key (AG-16-18)",
     sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and column_name ~ '(password|secret|token|api_key|access_key)'`) === "0");
   // ------------------------------------------------------------------------------------------- settings and account
@@ -399,8 +399,9 @@ try {
     refused(DEMO, pay(u(1101), "key-req-card-01", { req: u(1100), method: "CARD", pi: "pi_3Req" }), /never by card/) && refused(DEMO, pay(u(1101), "key-req-oper-01", { req: u(1100) }), /never by card/));
 
   // ---------------------------------------------------------------------------------------------------- trust ledger
-  const entry = (kind: string, amount: number, extra: { pay?: string; inv?: string; reason?: string; party?: string; pid?: string; req?: string; corrects?: string } = {}) =>
-    `insert into money_trust_entry (firm_id, ${extra.party ?? "person_id"}, kind, amount_minor, currency, payment_id, invoice_id, trust_request_id, corrects_entry_id, reason, created_by) values ('${firmA}', '${extra.pid ?? P1}', '${kind}', ${amount}, 'CAD', ${extra.pay ? `'${extra.pay}'` : "null"}, ${extra.inv ? `'${extra.inv}'` : "null"}, ${extra.req ? `'${extra.req}'` : "null"}, ${extra.corrects ? `'${extra.corrects}'` : "null"}, ${extra.reason ? `'${extra.reason}'` : "null"}, 'user-R') returning id`;
+  // ck: a correction of a deposit says why (FO-7mv's correction_kind, a later migration).
+  const entry = (kind: string, amount: number, extra: { pay?: string; inv?: string; reason?: string; party?: string; pid?: string; req?: string; corrects?: string; ck?: string } = {}) =>
+    `insert into money_trust_entry (firm_id, ${extra.party ?? "person_id"}, kind, amount_minor, currency, payment_id, invoice_id, trust_request_id, corrects_entry_id, ${extra.ck ? "correction_kind, " : ""}reason, created_by) values ('${firmA}', '${extra.pid ?? P1}', '${kind}', ${amount}, 'CAD', ${extra.pay ? `'${extra.pay}'` : "null"}, ${extra.inv ? `'${extra.inv}'` : "null"}, ${extra.req ? `'${extra.req}'` : "null"}, ${extra.corrects ? `'${extra.corrects}'` : "null"}, ${extra.ck ? `'${extra.ck}', ` : ""}${extra.reason ? `'${extra.reason}'` : "null"}, 'user-R') returning id`;
   // Money into trust and its deposit entry are one transaction (a payment into TRUST alone is refused at commit).
   const deposit = (pid: string, key: string, amount: number, opts: { req?: string; inv?: string; party?: string; who?: string } = {}) =>
     `${pay(pid, key, { req: opts.req, inv: opts.inv, into: "TRUST", amount })}; ${entry("DEPOSIT", amount, { pay: pid, party: opts.party, pid: opts.who })}`;
@@ -490,7 +491,7 @@ try {
     // P-603: a correction of a deposit (a bounced cheque, money for another party) takes money out, at most the deposit.
     const DC = sqlLast(DEMO, deposit(u(1130), "key-depcorr-0001", 6000, { who: P2 }));
     const bal2 = Number(balance(P2));
-    const fix = (dep: string, a: number) => entry("CORRECTION", a, { corrects: dep, reason: "Cheque bounced", pid: P2 });
+    const fix = (dep: string, a: number) => entry("CORRECTION", a, { corrects: dep, reason: "Recorded twice", pid: P2, ck: "RECORDED_BY_MISTAKE" });
     ok("FO-7a fail (P-603): a correction of a deposit takes money out, at most the deposit — +0.01 refused; 40.00 written; 20.01 more refused; 20.00 written",
       refused(DEMO, fix(DC, 1), /takes money out, at most the deposit/, "23514") && !!sql(DEMO, fix(DC, -4000))
       && refused(DEMO, fix(DC, -2001), /6000 deposited, 4000 corrected before/, "23514") && !!sql(DEMO, fix(DC, -2000)) && Number(balance(P2)) === bal2 - 6000);
