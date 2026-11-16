@@ -44,6 +44,28 @@ export async function seedSampleSettingValues(tx: Tx, firmId: string, values: Re
 
 const SaveBody = z.strictObject({ years: z.unknown(), reason: z.unknown().optional() });
 const REASON_MAX = 500;
+const WARNING_SHORT = COLLEGE_WARNING.replace(" Give a reason to save it.", "");
+
+/** A typed reason: text of at most 500 characters (counted as a person counts them), one line with no control
+ *  characters or broken text, and at least one letter or digit that is seen (an invisible-only "reason" is no reason: break m1).
+ *  Empty when none was given. */
+function reasonOf(raw: unknown): string {
+  if (raw === undefined) return "";
+  if (typeof raw !== "string") problem(400, "Not saved", "The reason is a sentence of text.", { code: "INVALID_REASON" });
+  if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(raw) || /[\u0000-\u001f\u007f-\u009f]/.test(raw)) problem(400, "Not saved", "The reason has characters that cannot be saved: write it as one line of ordinary text.", { code: "INVALID_REASON" });
+  const reason = raw.trim();
+  if ([...reason].length > REASON_MAX) problem(400, "Not saved", `Keep the reason to ${REASON_MAX} characters.`, { code: "INVALID_REASON" });
+  return /[\p{L}\p{N}]/u.test(reason.replace(/[\p{Cf}\u115F\u1160\u3164\uFFA0]/gu, "")) ? reason : "";   // fillers that draw nothing are not letters
+}
+
+/** The firm's closed-file setting as a person reads it. */
+function closedFilesView(y: number | null, s: StaffContext) {
+  return {
+    years: y, source: y === null ? "not set" : "firm setting", canChange: s.keys.includes(LEGAL_SETTINGS_KEY),
+    words: y === null ? "Not set: your firm has not chosen how long to keep closed client files." : `Your firm keeps closed client files for ${y} year${y === 1 ? "" : "s"} after closing. This is a reminder, not a lock: nothing is deleted automatically.`,
+    warning: y !== null && y < COLLEGE_CLIENT_FILE_YEARS ? WARNING_SHORT : null,
+  };
+}
 
 @Injectable()
 export class KeepPeriods implements KeepPeriodPort<Tx> {
@@ -62,32 +84,28 @@ export class KeepPeriods implements KeepPeriodPort<Tx> {
     const firm = await this.forFirm(s.firmId), y = firm.closedClientFilesYears;
     return {
       activityLog: ACTIVITY_LOG_WORDS,
-      closedClientFiles: {
-        years: y, source: firm.source, canChange: s.keys.includes(LEGAL_SETTINGS_KEY),
-        words: y === null ? "Not set: your firm has not chosen how long to keep closed client files." : `Your firm keeps closed client files for ${y} year${y === 1 ? "" : "s"} after closing. This is a reminder, not a lock: nothing is deleted automatically.`,
-        warning: y !== null && y < COLLEGE_CLIENT_FILE_YEARS ? COLLEGE_WARNING.replace(" Give a reason to save it.", "") : null,
-      },
+      closedClientFiles: closedFilesView(y, s),
       college: { words: COLLEGE_WORDS, years: COLLEGE_CLIENT_FILE_YEARS, ...COLLEGE_CITATION, unconfirmed: NO_COUNSEL },
       periods: KEEP_PERIODS.map((r) => ({ class: r.class, years: r.years === FIRM_SETTING ? y : r.years, firmSetting: r.years === FIRM_SETTING, kind: r.kind, from: r.from, words: r.words, sources: r.sources, ...(r.unconfirmed ? { unconfirmed: r.unconfirmed } : {}) })),
     };
   }
 
   /** PUT /api/platform/keep-periods/closed-client-files { years, reason? }: whole years 1-50; below the College's 6 a
-   *  typed reason is needed, and the warning and the reason go on the audit line. */
+   *  typed reason is needed, and the warning and the reason go on the audit line. A reason given at 6 or more is kept on
+   *  the line too (review m4). The answer is built from the value this request saved, never re-read (break m5). */
   async save(s: StaffContext, body: unknown) {
     const b = SaveBody.safeParse(body ?? {});
     if (!b.success) problem(400, "Not saved", "Send the number of years (and a reason when it is below 6); nothing else.", { code: "INVALID_BODY" });
     const years = b.data.years;
     if (typeof years !== "number" || !ClosedClientFilesYears.safeParse(years).success) problem(400, "Not saved", "Enter a whole number of years from 1 to 50.", { code: "INVALID_YEARS" });
     const below = years < COLLEGE_CLIENT_FILE_YEARS;
-    const reason = typeof b.data.reason === "string" ? b.data.reason.trim() : "";
-    if (b.data.reason !== undefined && typeof b.data.reason !== "string") problem(400, "Not saved", "The reason is a sentence of text.", { code: "INVALID_REASON" });
-    if (reason.length > REASON_MAX) problem(400, "Not saved", `Keep the reason to ${REASON_MAX} characters.`, { code: "INVALID_REASON" });
+    const reason = reasonOf(b.data.reason);
     if (below && !reason) problem(400, "A reason is needed", COLLEGE_WARNING, { code: "REASON_NEEDED", warning: COLLEGE_WARNING });
-    await writeSetting(this.db, {
+    const line = [below ? `Below the College's rule: ${WARNING_SHORT}` : "", reason ? `Reason given: ${reason}` : ""].filter(Boolean).join(" ");
+    const saved = await writeSetting(this.db, {
       firmId: s.firmId, key: CLOSED_CLIENT_FILES.key, value: years, by: actorWord(s.staffId), workspaceId: await platformAuditWorkspaceId(this.db),
-      ...(below ? { reason: `Warning shown: ${COLLEGE_WARNING.replace(" Give a reason to save it.", "")} Reason given: ${reason}` } : {}),
+      ...(line ? { reason: line } : {}),
     });
-    return { ...(await this.read(s)).closedClientFiles, saved: true };
+    return { ...closedFilesView(saved.value as number, s), saved: true };
   }
 }

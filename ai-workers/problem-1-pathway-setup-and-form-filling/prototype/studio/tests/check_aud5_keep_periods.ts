@@ -130,15 +130,23 @@ try {
   ok("AUD-5 DW2 fail: saving 5 without a reason (or with an empty one) is refused in words naming s. 7.2; nothing saved",
     noReason.every((b) => b.status === 400 && b.body.code === "REASON_NEEDED" && /s\. 7\.2/.test(b.body.detail) && /Give a reason/.test(b.body.detail)) && await readSetting(db, FIRM_A, KEY) === 8 && lines() === before, noReason.map((b) => b.body));
   ok("AUD-5 DW2 fail: a reason over 500 characters is refused", (await put(tR, { years: 5, reason: "x".repeat(501) })).status === 400 && lines() === before);
+  const oddReasons = await Promise.all(["\u200b", "\u00ad\u2060", "\u3164", "a\u0000b", "line\nbreak", "\ud800", "x\udc00"].map((reason) => put(tR, { years: 5, reason })));
+  ok("AUD-5 DW2 fail (break m1, m2): a reason of invisible characters only, or with a control character or broken text, is refused 400 (never 404/500), nothing saved",
+    oddReasons.every((b) => b.status === 400 && ["REASON_NEEDED", "INVALID_REASON"].includes(b.body.code)) && await readSetting(db, FIRM_A, KEY) === 8 && lines() === before, oddReasons.map((b) => [b.status, b.body.code]));
+  ok("AUD-5 DW2 pass (break m7): the 500-character limit counts characters as a person does (300 emoji are allowed)", (await put(tR, { years: 7, reason: "📁".repeat(300) })).status === 200 && lines() === before + 1);
+  before = lines();
   const withReason = await put(tR, { years: 5, reason: "Files are also kept by our parent firm's records office." });
   const last = JSON.parse(sql(`select detail::text from audit_event where entity_key = '${FIRM_A}:${KEY}' order by at desc, id desc limit 1`));
   ok("AUD-5 DW2 pass: saving 5 with a reason is saved, and the warning (s. 7.2) and the reason are on its one audit line",
     withReason.status === 200 && withReason.body.years === 5 && /s\. 7\.2/.test(withReason.body.warning ?? "") && await readSetting(db, FIRM_A, KEY) === 5 && lines() === before + 1
-    && last.to === 5 && /Warning shown: .*s\. 7\.2/.test(last.reason) && /Reason given: Files are also kept by our parent firm's records office\./.test(last.reason), [withReason.body, last]);
+    && last.to === 5 && /^Below the College's rule: .*s\. 7\.2.* Reason given: /.test(last.reason) && /Reason given: Files are also kept by our parent firm's records office\./.test(last.reason), [withReason.body, last]);
   before = lines();
   const six = await put(tR, { years: 6 });
   const sixLine = JSON.parse(sql(`select detail::text from audit_event where entity_key = '${FIRM_A}:${KEY}' order by at desc, id desc limit 1`));
   ok("AUD-5 DW2 pass: saving 6 gives no warning and needs no reason (no reason on the line)", six.status === 200 && six.body.warning === null && !("reason" in sixLine) && sixLine.to === 6 && lines() === before + 1, [six.body, sixLine]);
+  const sixWhy = await put(tR, { years: 6, reason: "Back to the College's number." });
+  const sixWhyLine = JSON.parse(sql(`select detail::text from audit_event where entity_key = '${FIRM_A}:${KEY}' order by at desc, id desc limit 1`));
+  ok("AUD-5 DW2 pass (review m4): a reason given at 6 or more is kept on the line, with no warning", sixWhy.status === 200 && sixWhy.body.warning === null && sixWhyLine.reason === "Reason given: Back to the College's number.", sixWhyLine);
   ok("AUD-5 DW2 fail: a forced settings refusal through the write path (unregistered value) is a 400, never a save",
     await throwsLike(() => writeSetting(db, { firmId: FIRM_A, key: KEY, value: 0, by: "staff:x", workspaceId: sql("select id from workspace where key = 'platform-audit'") }), (e) => (e as { getStatus?: () => number }).getStatus?.() === 400) && await readSetting(db, FIRM_A, KEY) === 6);
 
@@ -175,6 +183,15 @@ try {
   sql(`delete from platform_firm_setting where firm_id = '${FIRM_A}' and key = '${KEY}'`);
   await seedSampleOnStart({ PLATFORM_SAMPLE_SEED: "on", DATABASE_URL: urlOf(DB) });
   ok("AUD-5 pass (start-up seed): PLATFORM_SAMPLE_SEED=on writes the Sample value a Sample firm lacks (6), keeping firm B's", await readSetting(db, FIRM_A, KEY) === 6 && await readSetting(db, FIRM_B, KEY) === 6);
+
+  // The real adapter on the API's own walled Db (xr_app, PF-12), as a request runs it (review m2).
+  const { withFirm } = await import("../api/src/platform/firm-scope.ts");
+  const walledDb = new Db(), walled = new KeepPeriods(walledDb as never);
+  try {
+    const inA = await withFirm(FIRM_A, () => walled.forFirm(FIRM_A)), crossed = await withFirm(FIRM_B, () => walled.forFirm(FIRM_A));
+    ok("AUD-5 DW3 fail (review m2): on the walled Db, firm A's request reads its 6; firm B's request asking for firm A reads nothing (\"not set\")",
+      inA.closedClientFilesYears === 6 && crossed.closedClientFilesYears === null, { inA, crossed });
+  } finally { await walledDb.$disconnect(); }
 
   // ------------------------------------------------------------------------------------------------ DW5: the contract
   const real = new KeepPeriods(db), ws = sql("select id from workspace where key = 'platform-audit'");

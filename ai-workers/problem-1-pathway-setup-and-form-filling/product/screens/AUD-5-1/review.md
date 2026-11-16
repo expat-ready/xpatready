@@ -1,0 +1,80 @@
+# AUD-5 part 1 review: keep periods as data (PR #2008, R1.105)
+
+Reviewer: independent Opus 5.5. I did not build this. Commit reviewed: **34686f2857049d6cc8b24d42f9adb648053f35ab**. The later commit c4f715405 adds only `break-report.md`.
+Read against: Build Lead C's brief `build-lead-c-briefs/AUD-5-1.md` (it wins), the draft `design/briefs/AUD-5.md` "Part 1", `STANDARDS.md`, `api/src/platform/MODULE.md`, and SA-11-14 and SA-11-33 (requirements 2026-11-02, SA-11 v2.16).
+The diff is `git diff origin/main...34686f285`: 10 files, +531/−11, under P-610's 800. The two-dot diff also shows main's later FO-3w files as deleted; that is base drift, not this PR.
+
+## What I ran (own copies only; never :4400)
+* `tsx tests/check_aud5_keep_periods.ts`: **50 passed, 0 failed**, on the main tree and on a clean worktree of 34686f285.
+* Unchanged suites:
+  * `check_pf3_platform_schema` 75/75
+  * `check_pf6b_permission_rules` 29/29
+  * `check_pf0p_ports` 113/113
+  * `check_case_feed` 39/39
+  * `check_features_registry` 27/27
+  * `check_pf12_walls` 100/100
+  * `check_pf4_identity` 119/119 (isolated `pf4` on :4436)
+  * `check_pf4b_session_reads` 55/55 (:4436)
+* Tools:
+  * `check-port-contracts.mjs`: exit 0
+  * `module-cards.py tree`: PASS
+  * `typecheck.mjs`: no new type errors (15 known)
+* **Mutations** (13, one at a time): 12 were caught by named cases:
+  * the below-6 reason rule
+  * `@PermissionKeys` swapped for `@AnyStaff`
+  * the reason dropped from the audit line
+  * a non-strict body
+  * the range set to 0–51
+  * non-integers allowed
+  * the SA-11-14 sentence changed to "legal obligation"
+  * the warning moved to 6
+  * the reset back to the default
+  * the read using another firm
+  * the REFERENCE row made checkable
+  * a default of 6
+
+  The one survivor ("firm from the body") is still refused, by the strict body. Layered, not a gap.
+* **API walk** on isolated `rvaud5` :4436, with psql underneath: see the journey report. CLI seed on a scratch database: `sampleSettingValues` 2, then 0 on the second run.
+* **Not run:** full CI. The PR is a draft; only module-cards has run on this sha.
+
+## The checks the lead asked for
+* **Firm from the session, not the request.** It comes from `staffOf(r)` (`routes.ts:13-15`). The strict body refuses `firmId` and `firmKey` (`service.ts:45`), and `?firmId=` is ignored. Held.
+* **Permission on PUT.** `@PermissionKeys("agent/legal-settings:manage")` (`routes.ts:14`): the Case Officer gets 403 MISSING_PERMISSION, no session gets 401. Held, and mutation-tested.
+* **Ranges.** 0, -1, 51, 1000, 6.5, "6.5", "6", null, true, [8] and 1e400 all give 400 INVALID_YEARS, with nothing written (`service.ts:81`).
+* **Below 6.** No reason, or only spaces: 400 REASON_NEEDED, with the warning naming s. 7.2. With a reason: saved, and "Warning shown: … Reason given: …" is on its one audit line (`service.ts:86-89`). 6 gives no warning and stores no reason. Held.
+* **Words.** "legal obligation" and "required by law" appear in no answer: read, save or error, in every state. `ACTIVITY_LOG_WORDS` is SA-11-14's sentence word for word (`ports/keep-period.ts:46`; checked against SA-11 v2.16:474).
+* **Citation.** s. 7.2, "page 7 of 9", the quote, read 2026-11-16 and "Unconfirmed: no counsel" all match the brief exactly (`ports/keep-period.ts:51-64`). I could not fetch the PDF: the proxy refused it (CONNECT 403).
+* **Contract and fake parity.** 5 cases each, for both. The fake refuses a bad firm id, as the adapter does.
+* **Walls.** The route runs on PF-12's walled `Db` (xr_app). `readSetting` and `writeSetting` go through `firmScope`. One firm's number never reaches another firm.
+* **Existing suites.** Unchanged and green (above).
+
+## The declared deviations, judged
+1. **`demo-reset.ts:28` (outside the touch list): accept.** Without it, the reset returns this key to its default, null, which wipes the Sample 6 back to "not set". The builder asked a "Question for the tech lead" on the PR, as the brief requires. **But the stated reason (b) is wrong:** I wrote `null` for this key through `writeSetting` and it was stored as JSON null and read back as "not set". Prisma does not reject it, and nothing crashes. See m1.
+2. **`seedSampleSettings` and `sample-seed.ts`: accept.** `check_pf3_platform_schema.ts:180` asserts that PF-3's seed alone stores no setting value, so a separate step is the way to keep check_pf3 unchanged. The start-up seed and the command line both run it, and both are idempotent (verified).
+3. **`check()` as a refusing stub: accept.** The brief says "declared, implemented in part 2". KeepCheckNotBuilt means no caller gets a silent OK. `checkableRows()` (`ports/keep-period.ts:78`) is pinned by a case that catches its mutation. **Part 2 must make `check()` read only `checkableRows()` and add the behavioural DW1 test** (a closed file where the College number plays no part).
+
+## Findings
+**Blockers:** none. **Majors:** none.
+
+**Minors** (none blocks; each is a should-fix, here or in part 2 or the screen row):
+* **m1. The PR body and the PR comment (Question 1) say the reset "would crash" on null. It would not.** Scenario: the Lead rules on a false premise, and a later lane copies "null cannot be stored" into a design. Fix: correct the text; keep the change for reason (a).
+* **m2. `tests/check_aud5_keep_periods.ts:180`: the contract runs the real adapter on the owner-role client (`xr_studio`), not the walled `Db`.** Scenario: a later edit makes `forFirm` read without `firmScope`. The contract still passes, while the app answers 500 (my M11 mutation showed the wall refusing it). Only the route cases catch it. Fix: build `realHarness`'s adapter on `new Db()`.
+* **m3. `service.ts:91`: the PUT's answer re-reads after the commit** (break-report m5). Scenario: two quick saves, and the answer says 8 with `warning: null` while 3 was stored. Fix: answer from the value this request wrote.
+* **m4. `service.ts:89`: a reason sent with 6 or more is dropped silently** (break m3). Scenario: an Owner explains a change from 10 to 7; the trail has no reason. Fix: keep it on the line, or refuse it with INVALID_BODY.
+* **m5. `service.ts:83,86`: a reason made only of invisible characters is accepted** (U+200B, U+00AD, U+2060, U+3164; break m1). Scenario: a below-6 save whose audit reason is blank to the eye, so SA-11-33's "a reason" is empty in effect. Fix: refuse a reason with no visible letter or digit (`/[\p{L}\p{N}]/u`).
+* **m6. `service.ts:83-86`: a NUL in the reason gives 404, and a lone surrogate gives 500** (break m2). Nothing is written, but the words are wrong. Fix: refuse control characters and unpaired surrogates with INVALID_REASON.
+* **m7. `service.ts:89`: "Warning shown" is written even when this caller never saw the warning** (a one-shot `{years:3, reason}`; break m4). Fix: "Below the College's rule (s. 7.2) …", or let the screen send a flag that it showed the warning.
+* **m8. `demo-reset.ts:25`: the reset loops only over rows that exist** (break m6). A Sample firm with no row stays "not set". This is reachable only by a database edit. Fix: also loop over `SAMPLE_SETTING_VALUES`.
+* **m9. `service.ts:67`, with `seed-sample-firms.ts:25`: the seeded 6 reads as the firm's own choice** (`source: "firm setting"`, with no Sample mark). AGENTS rule 4 asks for Sample values to be labelled. The firm is itself a Sample firm and the audit line says "Sample value", so this is minor. Fix: when the newest line's actor is `seed:AUD-5`, say "6 years (Sample)".
+
+**Notes (no finding):**
+* (a) `PUT {years:null}` is refused, while the registered schema allows null (`service.ts:26`). Once a number is set, no product path returns the firm to "not set". The brief's DWs do not ask for one; for the screen row to decide.
+* (b) SA-11 v2.16 SA11-D7 says regulator names are no longer "the reason for anything a firm keeps". The s. 7.2 warning names the College's regulation. That choice comes from P-607 S3 Q10 and Build Lead C's ruling, which this PR follows correctly. The Lead may want the departure recorded; it needs nothing from the builder.
+
+## Screen-review items
+D1–D20 and BIC-01 to BIC-20 are not applicable: API only, no screen in this part. The graph's route test exists: both routes are exercised by `check_aud5_keep_periods.ts`. Scaffolding (P-33): none. The Sample value goes through `writeSetting`, with a trail. The module card is updated: purpose, entry points and test.
+
+## Journey score (the one score for this check)
+**9.5 / 10, pass.** Feedback and state scored ½ (m3, m4). Full report: `journey-test-reviewer-2026-11-16.md`.
+
+Verdict: Approve 34686f2857049d6cc8b24d42f9adb648053f35ab
