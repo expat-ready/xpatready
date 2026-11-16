@@ -4,7 +4,7 @@
 // skips it (SKIP list) and nightly.yml's job "restore-drill" runs it. Live AI off, no model call (US$0).
 //   docker compose -f studio/deploy/compose.test.yml build && tsx studio/tests/check_pf8r_restore.ts
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { recorder } from "./runtime/api.ts";
 
@@ -15,6 +15,7 @@ type Evidence = { restore_seconds: number; main_sha: string; result: string; che
 
 function drill(name: string, args: string[]) {
   const evidence = join(out, `${name}.json`), log = join(out, `${name}.log`);
+  rmSync(evidence, { force: true }); rmSync(log, { force: true }); // review m1: never read an earlier run's file
   const t0 = Date.now();
   const r = spawnSync("bash", [join(studio, "tools", "restore-drill.sh"), "--evidence", evidence, ...args], { encoding: "utf8", timeout: 900_000, env: { ...process.env, RESTORE_DRILL_TAG: `${name}-${process.pid}` } });
   const text = `${r.stdout ?? ""}${r.stderr ?? ""}`; writeFileSync(log, text);

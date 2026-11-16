@@ -96,7 +96,7 @@ firms=$(q "$SRC" "select count(*) from platform_firm"); cases=$(q "$SRC" "select
 { [ "${firms:-0}" -gt 0 ] && [ "${cases:-0}" -gt 0 ]; } || abort "source" "the source holds $firms firm(s) and $cases case(s); the drill needs both"
 pass "source" "migrations applied, $firms Sample firm(s), the demo reset loaded, $cases demo case(s); app stopped before the dump"
 
-for p in $PREFIXES; do TABLES="$TABLES $(q "$SRC" "select string_agg(tablename, ' ' order by tablename) from pg_tables where schemaname = 'public' and tablename like '${p}%'")"; done
+for p in $PREFIXES; do TABLES="$TABLES $(q "$SRC" "select string_agg(tablename, ' ' order by tablename) from pg_tables where schemaname = 'public' and starts_with(tablename, '${p}')")"; done   # not LIKE: its _ would also match form_* (review m3)
 for t in $CASE_TABLES; do
   [ "$(q "$SRC" "select count(*) from pg_tables where schemaname = 'public' and tablename = '$t'")" = 1 ] || abort "tables" "the fixed list names $t, which is not in the database"
   TABLES="$TABLES $t"

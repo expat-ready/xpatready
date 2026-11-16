@@ -1,6 +1,6 @@
-# PF-8r journey test: reviewer, 16 Nov 2026 (commit f90bf637)
+# PF-8r journey test: reviewer, 16 Nov 2026 (commits f90bf637, then 207ef224)
 
-Tooling row, no screen. The "user" is the person running the drill. The persona is the release holder, or the engineer working for them, at a shell (RUNBOOK-restore.md §1). The "screen" is the drill's printed lines and its evidence file. I ran everything on a worktree pinned to f90bf637, on ports 4436-4439 (runtime lane). Not :4400.
+Tooling row, no screen. The "user" is the person running the drill. The persona is the release holder, or the engineer working for them, at a shell (RUNBOOK-restore.md §1). The "screen" is the drill's printed lines and its evidence file. I ran everything on worktrees pinned to f90bf637 (9/9) and then 207ef224 (10/10), on ports 4436-4439 (runtime lane). Not :4400.
 
 ## Journeys (main path first)
 1. **Main path.** The release holder wants proof that last night's database can be restored. They run `restore-drill.sh --evidence …` and expect every check to PASS, a time, and a file.
@@ -10,6 +10,8 @@ Tooling row, no screen. The "user" is the person running the drill. The persona 
    * A second FAIL (`app and smoke`: sign-in 401) follows from the deleted firms. That is honest, but the reader must work out that it is a consequence of the first.
 3. **Error: schema behind.** Run with `--extra-migration`.
    * **Held.** `FAIL migrate status: … not applied: 29991231000000_pf8r_drill_never_applied`, and nothing else fails.
+3b. **Error: lost index or firm wall** (207ef224). Run with `--drop-index platform_staff_identity_subject_key --drop-policy msg_template.pf12_platform_read`.
+   * **Held.** One `FAIL migrate diff` line names both losses: Prisma names the index, and the catalogue names the index and the policy.
 4. **Wrong target** (the restore pointed at the live database). I ran a copy of the script with the restored copy set to the source.
    * **Held.** `FAIL restore: the target is not a fresh, separate cluster (system ids differ: no; tables before restore: 179)`; it stops before any write.
 5. **Bad input.** I passed `--corrupt 'x;drop_table'`, `Platform_firm`, `1abc` and an unknown flag.
@@ -31,7 +33,7 @@ For each table in both copies: the count, plus the hash of the sorted primary ke
 | next step obvious | 1 | each FAIL says what it saw and the fix (e.g. the image line gives the build command) |
 | plain words | 1 | PASS/FAIL/SKIP + plain sentences; main's own drift named in words |
 | feedback and state | 1 | one line per step, restore time printed, `evidence: <path>` |
-| correct data | 1 | counts and hashes equal in J1; the right single table named in J2 |
+| correct data | 1 | counts and hashes equal in J1; the right single table named in J2; both lost objects named in J3b |
 | error recovery | ½ | trap cleanup is reliable; stale evidence read after a crash (J6) |
 | accessibility and screen sizes | 1 | plain text log, no colour-only signal; no UI (N/A beyond that) |
 | speed | 1 | 36–42 s per drill against the 300 s Sample bound (local; GitHub runner not measured) |

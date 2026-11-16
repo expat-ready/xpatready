@@ -1,6 +1,6 @@
 # PF-8r review: the restore drill (PR #2014)
 
-Reviewer (Opus, P-303; I did not build it). Brief: `origin/main:…/design/lead-b-briefs/PF-8r.md` (it wins). First asked at 2a7cd4a2. The coordinator then moved the head to **f90bf637**, which takes `nightly.yml` and `run-suites.sh` out (a hook counts them as the tech lead's files; they are now a proposed patch in a PR comment). **Reviewed commit: f90bf63722410c2232035b144ce593cd5c930805.** `git diff 2a7cd4a2 f90bf637` shows the three remaining files are byte-identical to 2a7cd4a2. The nightly job is judged as a proposal only. Tooling only, no screen: the BIC scorecard (EXPERIENCE §6) is N/A. US$0, no model call, :4400 not touched.
+Reviewer (Opus, P-303; I did not build it). Brief: `origin/main:…/design/lead-b-briefs/PF-8r.md` (it wins). First asked at 2a7cd4a2. The coordinator then moved the head to **f90bf637**, which takes `nightly.yml` and `run-suites.sh` out (a hook counts them as the tech lead's files; they are now a proposed patch in a PR comment). **Reviewed commits: f90bf637 (full review below; line numbers refer to it), then 207ef2246bc14f5b24c50749dabf77cd99931cf6 (re-review of `git diff f90bf637..207ef224`, section "Re-review").** `git diff 2a7cd4a2 f90bf637` shows the three remaining files are byte-identical to 2a7cd4a2. The nightly job is judged as a proposal only. Tooling only, no screen: the BIC scorecard (EXPERIENCE §6) is N/A. US$0, no model call, :4400 not touched.
 
 ## What I ran (on f90bf637, a separate worktree; ports 4436-4439, runtime lane)
 * `tsx tests/check_pf8r_restore.ts`: **9/9 passed**, exit 0. Restore times 36 s, 42 s and 38 s (Sample bound 300 s); evidence `main_sha` = f90bf637.
@@ -9,6 +9,14 @@ Reviewer (Opus, P-303; I did not build it). Brief: `origin/main:…/design/lead-
 * `run-suites.sh --list --changed origin/main..f90bf637` and `--list` (the nightly full set) both select `check_pf8r_restore.ts` (B1).
 * Prisma 7.8 in the image: `migrate diff --help` has no `--from-url` or `--to-schema-datamodel`; `--from-config-datasource` / `--to-schema` exist. Deviation 1 confirmed.
 * Break-it: `--corrupt 'x;drop_table'`, `Platform_firm`, `1abc` and unknown flags are refused (exit 2) before any SQL. `check-docs.sh` reports docs OK. `graph.mjs --check`: G1 0 · G2 0 · G5 0. Every compose project my runs started was removed by the EXIT trap.
+
+## Re-review at 207ef224 (DW7, Lead B's condition, comment 6922124215)
+* **Diff:** 3 files, +32/−12, no `nightly.yml` or `run-suites.sh`. New `--drop-index` and `--drop-policy <table>.<policy>` options run on `$DST` after `pass "restore"`, next to `--corrupt`. The drift check now always makes both comparisons and reports both (`prisma: … | catalogue: …`). DW7 is added to the test, DW5 covers 8 files, and the runbook gains one sentence.
+* **Ran on 207ef224** (scratchpad worktree, not the shared checkout): **10/10 passed**, exit 0, restore times 35-37 s. DW7 prints `FAIL migrate diff: drift from the restore: prisma: … CREATE UNIQUE INDEX "platform_staff_identity_subject_key" … | catalogue: … only in the source: index … ;policy msg_template pf12_platform_read …`.
+* **The fail case bites:** DW7 needs both the `prisma:` part and the `catalogue:` part, and the `PASS restore` line before the `NOTE drop` lines. Removing either comparison, or dropping before the restore, turns it red. Only the catalogue sees the policy, which is why both comparisons are kept. The drift half of m2 is closed.
+* **Break-it:** the input checks hold. These are refused with exit 2 before docker: `--drop-policy nodot`, `t.p;drop`, `.p`, `t.`, and `--drop-index X` / `a;b`. `bash -n` OK. `${v//./}`, `${v#*.}`, `${v%%.*}` and the nested `${a:+${b:+…}}` are all bash 3.2 syntax. The "saw" text holds a policy's expression (schema, not rows); DW5 found 0 hits across the 8 files.
+* **Unchanged by this commit:** B1 and M1 (no `SKIP` line, no nightly job), m1, m3 and m4. The tech lead has since given the builder the baton for both files (comment 6922144923). For their condition, "must not hang on `caps == '[]'`": as I read `plan`, the scheduled run has no input, so `caps` is `[]` and the job runs every night. It is skipped only on a capability re-test. The tech lead decides the wording.
+* Trivial: the unknown-argument message still lists only the three old options.
 
 ## The two checks the brief asks for
 * **(a) A second, fresh database: yes.** The target is a second compose project (`xr-drill-dst-<tag>`, its own network and anonymous volume) of the same pinned image. Before restoring, the script requires different `pg_control_system()` system ids **and** 0 public tables in the target (`restore-drill.sh:116-119`). A renamed copy, a second database in the same cluster, or the source itself all fail that check (mutation above).
@@ -43,31 +51,31 @@ Reviewer (Opus, P-303; I did not build it). Brief: `origin/main:…/design/lead-
 | corruption after restore | DW2 order assert | (order assert) | yes |
 | row count + SHA of ids | DW1 72 tables, 1,600 rows | DW2 names platform_firm | yes |
 | migrate status | DW1 100 migrations | DW3 names `29991231000000_pf8r_drill_never_applied` | yes |
-| no drift | DW1 PASS | **no fail case** | no (m2) |
+| no drift | DW1 PASS | DW7 (207ef224): index + policy dropped after the restore, both named | yes |
 | app + smoke on the restored copy | DW1 4 PASS | only by accident in DW2 (401), not asserted | no (m2) |
 | audit chain SKIP in words | DW1 asserts the line | flips to FAIL once `verify.ts` exists | yes |
 
 ## D1–D20 (tooling row; screen-only dimensions N/A)
-D1 ½ (the drill, runbook and test match the brief; the nightly entry is missing at this sha, M1) · D2 1 (counts plus id hashes in both copies) · D5 ½ (the cleanup trap holds; stale evidence after a crashed run, m1) · D10 1 (each line says what it saw) · D11 1 (PASS/FAIL/SKIP for every step, time printed) · D15 1 (36–42 s) · D16 ½ (re-run on the exact commit 9/9; drift and smoke have no fail case) · D18 1 (NFR5-04 and P-586 quoted; the Sample bound and "not run yet" labelled) · D3, D4, D6–D9, D12–D14, D19 N/A (no screen or content) · D17, D20 simulated only (no intended user walked it).
+D1 ½ (the drill, runbook and test match the brief; the nightly entry is missing at this sha, M1) · D2 1 (counts plus id hashes in both copies) · D5 ½ (the cleanup trap holds; stale evidence after a crashed run, m1) · D10 1 (each line says what it saw) · D11 1 (PASS/FAIL/SKIP for every step, time printed) · D15 1 (36–42 s) · D16 ½ (re-run on the exact commits, 9/9 and 10/10; smoke has no fail case) · D18 1 (NFR5-04 and P-586 quoted; the Sample bound and "not run yet" labelled) · D3, D4, D6–D9, D12–D14, D19 N/A (no screen or content) · D17, D20 simulated only (no intended user walked it).
 
 **Journey score (reviewer, the one score for this check): 9/10, pass** (`journey-test-reviewer-2026-11-16.md`).
 
 ## Findings
 **Blocker**
-* **B1, the PR's own check and the nightly set go red at f90bf637.** Without the `SKIP` entry, `run-suites.sh` selects `check_pf8r_restore.ts` for this PR (`--changed`) and for every nightly and queue part (`--list`). No `ci.yml` shard or nightly `suites` part builds `studio-skeleton:test`, so the drill prints `FAIL image: studio-skeleton:test is not built` and the suite fails. **Fix:** the tech lead's one-line `SKIP` change (as proposed) goes on this branch, or merges to main first.
+* **B1, the PR's own check and the nightly set go red (still true at 207ef224).** Without the `SKIP` entry, `run-suites.sh` selects `check_pf8r_restore.ts` for this PR (`--changed`) and for every nightly and queue part (`--list`). No `ci.yml` shard or nightly `suites` part builds `studio-skeleton:test`, so the drill prints `FAIL image: studio-skeleton:test is not built` and the suite fails. **Fix:** the tech lead's one-line `SKIP` change (as proposed) goes on this branch, or merges to main first.
 
 **Major**
-* **M1, the row's "runs every night" (and DW4's "measured on GitHub's runner") is not in this commit.** The nightly job is only a proposal. **Fix:** land the proposed `restore-drill` job (it is sound, above) after the release holder reads it (P-423). The re-review then reads only that diff.
+* **M1, the row's "runs every night" (and DW4's "measured on GitHub's runner") is not in this commit (still true at 207ef224).** The nightly job is only a proposal. **Fix:** land the proposed `restore-drill` job (it is sound, above) after the release holder reads it (P-423). The re-review then reads only that diff.
 
 **Minor**
 * **m1, the test can pass on a previous run's evidence.** `check_pf8r_restore.ts:22` reads `<name>.json` if it exists, but never deletes it first. In my void run the drill died before writing evidence, and "DW1 pass: the evidence holds main's sha and every table's counts…" still passed on the 16:11 file. CI checkouts start clean, so this only affects local runs. **Fix:** `rmSync(evidence, { force: true })` before the spawn, or require `ev.at` to be after `t0`.
-* **m2, the drift check and the app/smoke check have no fail case.** If either were deleted or always passed, no test would go red. The brief's DW list does not require one. The builder's uncommitted "dw7 lost index and policy" case would close the drift half; if it is pushed, it is a new head to re-review.
+* **m2, the app/smoke check has no asserted fail case** (the drift half was closed by DW7 at 207ef224). If the check were deleted or always passed, no test would go red. The brief's DW list does not require one.
 * **m3, `like 'fo_%'` treats `_` as a wildcard** (`:95`). The set also picks up `form_edition`, `form_instance` and four other `form_*` tables; `platform_` and `msg_` behave the same way. The extra coverage does no harm, but the evidence and runbook say "fo_*". **Fix:** `like 'fo\_%'`, or name the over-match in the comment.
 * **m4, the PR body is stale.** It still says the PR "changes a shared file: nightly.yml … and run-suites.sh" and lists both under "What changed". **Fix:** say they are the proposed patch in the comment.
 
 ## What I could not check
 A real bash 3.2 or macOS run; the drill on GitHub's runner (DW4's real bound) and a nightly run; the cloud steps (PF-8rc, "not run yet" by design); PF-12 (#1910) roles beyond the 6 roles dumped today.
 
-**Verdict: Block.** Fix B1 and M1 (both closed by landing the builder's proposed two-file patch, which I judged sound), then re-review that diff. The three reviewed files are sound at f90bf637. The Minors are not blocking.
+**Verdict: Block** at 207ef224. Fix B1 and M1: both close when the builder's two-file patch lands on this branch (the baton is now given; I judged the proposal sound), then re-review that diff. The three files are sound at 207ef224, and DW7 meets Lead B's condition. The Minors do not block.
 
 Reviewer: Block
