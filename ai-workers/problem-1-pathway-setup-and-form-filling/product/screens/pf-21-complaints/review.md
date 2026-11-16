@@ -102,3 +102,42 @@ Reviewer (fresh agent) · commit `14a687459` · no server started (the diff is o
 * `web`: `npx tsc --noEmit -p .` **exit 0**. `npx vite build` (out to a scratchpad folder, `dist/` untouched) **exit 0**, built in 1.3 s.
 
 **Findings. Blocker:** none. **Major:** none. **Minor:** none new. Earlier r1–r6, the listed follow-ups and the J2 nit stay open as before. **Nit:** this is the only web module file that uses a relative `.ts` import, while the rest use `@/`. The trailing comment explains why. If another web contract is ever imported by a suite, one rule for every contract would be better than single-line exceptions (for example `@/*` in the api tsconfig `paths`). Not for this PR.
+
+## Re-review 14a687459..b15c7376a (16 Nov 2026, P-277: the diff only)
+Reviewer (fresh agent) · commit `b15c7376a` · own isolated copy `screens_pf21sv` on :4577 (never :4400), stopped afterwards. Diff (`review.md` left out): `126a12e13` + `b15c7376a`. Net: `tests/check_pf21s_complaints_browser.ts:79-80` (`chip()`) and `web/src/modules/platform/complaints/list-page.tsx:96-107` (`data-shown-view`, fragment → `div`). The 300 ms delay from `126a12e13` is gone from the net diff.
+
+Suite re-run on my copy: `check_pf21s_complaints_browser.ts 4577 xr_studio_screens_pf21sv` gave **66/66, exit 0**. That is 59 + 7: one new "chip is kept in the address" check for each of the 7 `chip()` calls. I restored the rewritten screenshots with `git checkout`.
+
+**Verdict: Approve** (no open Blocker or Major). Journey score stays **9/10**: nothing a person sees changes (measured below).
+
+**What I checked**
+* **The diagnosis holds, and I measured it.** I clicked the Closed chip with a fresh cache and sampled the page in the same tick, then on every animation frame:
+  * In the same tick: `url=closed loading=false rows=6 shown=open`. The old condition (address changed, no `[data-loading]`, a row on screen) is already true while **Open's 6 rows** are shown.
+  * Next frames: `loading=true rows=0` (the skeleton), then `rows=1 shown=closed`.
+  * React Router 7's `BrowserRouter` writes the address at once and renders in a transition, so the old `listed()` could resolve on the old rows. The count that followed could then land in the skeleton. That fits "0 rows under Closed and All".
+  * It also explains why a 300 ms server delay reproduced nothing. The gap is between the address change and the next render, not in the network, so it is a polling race at frame level.
+* **`data-shown-view` cannot mark the wrong view's rows.**
+  * `view` and `rows` come from the same render. The query key is `["pf","complaints","list", view]`, with no `placeholderData` or `keepPreviousData`, so a view not yet cached is `isPending` and shows the skeleton, which has no mark.
+  * The mark is only on the two branches that show this query's data: the empty state, and the table with its footer.
+  * Probe: a MutationObserver on the page across 90 chip clicks, many without waiting between them. It took 78 snapshots. **None** had a mark that disagreed with the pressed chip or with its rows (Closed rows all `Closed`, Overdue rows all `data-overdue`, Open rows with no `Closed`), and none had a mark during the skeleton.
+* **No assertion weakened.**
+  * The old wait required the address, no skeleton, then any row or empty state. The new wait requires the chosen view's own rows or empty state, and the skeleton can never carry the mark, so it is stricter.
+  * The address condition moved from the wait into an explicit `ok(...)` for each view, so a wrong address is now a named failure rather than a timeout.
+  * The DW1, DW6 and other `ok(...)` conditions are unchanged.
+  * `listed()` is still used after `goto` and `reload`, where no old view is on screen.
+* **The layout is unchanged.**
+  * The new wrapper is `flex flex-col gap-4` inside the page's `flex flex-col gap-4`, and `Table` has a single root.
+  * Measured on All:
+
+    | Width | Chips → table | Table → footer | Footer → "How it works" | Table, wrapper and parent width | Sideways page scroll |
+    |---|---|---|---|---|---|
+    | 1440 | 16 px | 16 px | 16 px | 1152 px each | none |
+    | 375 | 16 px | 16 px | 16 px | 343 px each | none |
+
+    At 375 the table scrolls inside its focusable region, as before.
+  * The comment inside `( … )` is JavaScript, not text in the page.
+  * No other suite selects the list's DOM structure, and `data-shown-view` is used only by this suite.
+
+**Findings. Blocker:** none. **Major:** none. **Minor:** none new. Earlier r1–r6, the listed follow-ups and the J2 nit stay open as before.
+
+**Nit:** `data-shown-view` says which view the rows belong to, not that they are fresh. When a view is opened again within `staleTime` (2 s) or during a background refetch, its cached rows carry the mark at once. The old wait behaved the same way. DW1 and DW6 change nothing between visits, so they are safe. A future check that changes a complaint and then opens a view again should wait for the change itself, not for the mark. A one-line comment at `chip()` would say so.
