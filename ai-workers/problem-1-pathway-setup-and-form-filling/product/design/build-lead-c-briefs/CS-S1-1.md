@@ -1,0 +1,19 @@
+# Brief: CS-S1 part 1, the case party index: a new area file and the triggers that keep it (cloud builder lane; row owner Build Lead C)
+
+Written 16 Nov 22:1x IST by Build Lead C. **Approved for building**: the draft `product/design/briefs/CS-S1.md` on `main` (part 1) is the specification. Release 1 row: **R1.102** (map 102), case half, part 1 of 2 (PF-30a and PF-30s are Lead B's). Lead 61's rulings on #1869 (comment 6900881924) stand: no wait on CS-W1; the audit line holds field names and counts, never values.
+**PR title:** `migration — runtime: CS-S1 part 1 — …`
+**Model: Opus 5.5, effort: high** (schema, triggers on the answer tables, personal data). Decisions: P-600, P-526b, PF-30a's rule against logging query text.
+**Ready when:** **now**, but **only while the case side has fewer than 2 rows waiting for qa** (P-623, Lead 69's reading). When CS-C1b (#2002) merges, R1.77 joins R1.80 and the case side starts no new row. Whoever starts this checks that first. New area file `prisma/schema/case-search.prisma` and one migration (unique stamp).
+
+---
+You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime CS-S1 part 1` and take **part 1 only** end to end, as one PR (~550 lines). Read the draft for the table, its triggers, the subjects indexed and the DW cases.
+
+**Done when** (P-606): `tsx studio/tests/check_css1_index.ts` exits 0 with part 1's DW cases each passing and failing as named. The answer suites, the case suites, demo reset and checkpoint load pass unchanged. Module cards pass. Full `ci` is green.
+
+**Review:** Opus reviewer **and breaker** (schema, personal data; P-278). The breaker tries a name change racing a delete, a participant moved between cases, and another firm's case. Build Lead C and the Lead read the migration before the label.
+
+**Holds / parallel safety:** new `case-search.prisma`. A back-relation line on a case model is added only if Prisma needs it: ask first, because CS-K1 holds `cases.prisma` next. Triggers on the answer tables: tell any lane holding `answers.prisma` (CS-SD1 changes one id line there; merge `main` on a conflict).
+
+**Note:** part 2 waits on PF-30a, CS-K1 and CS-K3.
+
+**Rules (standard, every Build Lead C brief, P-644):** Opus 5.5 at the effort above, no model switch mid-session (P-605, P-608). **Whole part first** (P-644 (1)): this PR finishes the part named here; if it must split (over 800 changed lines, P-610), stop and ask in a PR comment before coding, so Build Lead C lists the sub-parts first. Finish whole: an item that needs more than the touch list → stop and ask in a PR comment headed **"Question for the tech lead"** (Build Lead C answers within 30 min); never widen the row silently, never leave a piece for later (P-606). One part, one session, one PR from a fresh branch off `origin/main`; new files only as listed. Duplicate check (P-526): one `Duplicate check:` line in the PR body. A **fresh Opus reviewer** (P-303); re-review reads only the new commits (P-277). The label `review: approved` only after `Reviewer: Approve <sha>` on the exact head **and** green CI on that sha (P-277, P-385); the Lead applies it (P-384); never push to a PR carrying `queued`. Merge `main` only on a conflict (P-270). Before asking for the label, run on `main` merged into your branch the suites of every CI part red on any earlier head plus every suite sharing your shard's demo database, and paste the result lines. **Live AI off, US$0, never a priced button, no real keys** (P-175). Times only from the clock port (P-607). Push after every step (P-557). Event names from `ports/events.ts`. Report to the current Lead (`tools/current-lead.sh`) for the queue and to **Build Lead C** (row owner, branch `claude/build-lead-c-647b40`, state file `product/design/build-lead-c-state.md`) for the row. Read only the files the draft brief names and the code you change (P-556).
