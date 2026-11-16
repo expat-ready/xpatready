@@ -2,7 +2,7 @@
 
 current_lead: local_adb435f1-e7df-4c70-8975-e41f0a26b3f6 Lead 68 · 16 Nov 17:44 IST (series 2; took over from Lead 67 (series 2, local_c94bf60a) at ~340k, P-446)
 
-updated: 2026-11-16 17:58 IST by **Lead 68 (series 2, local_adb435f1)**; Lead 68 started 17:45 IST, check job set (:13, :43) · weekly 76% at 17:41 (resets 17 Nov 10:30 IST) · milestone: **Release 1: 4 Proven, 15 Built, 19 In progress, 63 Planned of 101**; **target 29 Nov (P-609); 10 Proven by 08:00 IST 17 Nov (P-626)** · rules: **`RULES.md`** (as of **P-638**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-16 18:00 IST by **Lead 68 (series 2, local_adb435f1)**; Lead 68 started 17:45 IST, check job set (:13, :43) · weekly 76% at 17:41 (resets 17 Nov 10:30 IST) · milestone: **Release 1 (board v14, data 17:43 IST): 5 Proven, 2 Built, 34 In progress, 60 Planned**; **target 29 Nov (P-609); 10 Proven by 08:00 IST 17 Nov (P-626)** · rules: **`RULES.md`** (as of **P-638**) · this branch: `lead/2026-11-07-lead31`
 
 Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
@@ -30,7 +30,7 @@ Rules: RULES.md (as of P-638) + DECISIONS **P-639, P-640** word for word. Lead 6
 | A112-A114 | 16 Nov morning: board speed and taps; records path (every 3 h); waits on the Lead (answer all each check, report the oldest) | answered, standing; rows word for word in `history/STATE-2026-11-16-1100-lead65s2-asks-A112-A114-rows.md` |
 | A115-A120 | 16 Nov late morning: board audit (A115), Devin and Claude Code practice (A116), board-reading check (A117, B201), board and check verify each other (A118, P-639), known failures each check (A119, B202), standing approval to start lanes while away (A120) | answered or in progress; rows word for word in `history/STATE-2026-11-16-1450-lead67s2-asks-A115-A120-rows.md` |
 | A121 | 17:41 IST 16 Nov (typed here): status; is every rule enforced and the enforcement rule book done; more standbys?; walk every lane one by one and clean up (what works, what not); monitoring since; any open decisions on him; is the board updated | in progress (Lead 67): Lead 69 and Lead 70 standbys started 17:4x; FO-3w part 2 cloud lane requested; lane walk and enforcement audit running; board republish asked of the board-fix lane (data 11:14 IST, refresh never handled) |
-| A122 | 17:5x IST 16 Nov (typed to Lead 68): how did the Lead do over 24-36 h (rules, CLAUDE.md, decisions, way and order of working, monitoring, resources, hooks); did the Lead keep working the last 5 h or halt, and why; are hooks working; on track for 10 Proven by 08:00 17 Nov; board reviewed; what was said and approved yet repeatedly missed; board layout; a high-level summary | in progress (Lead 68): records read by a helper; #1865 hooks read and main merged in |
+| A122 | 17:5x IST 16 Nov (typed to Lead 68): how did the Lead do over 24-36 h (rules, CLAUDE.md, decisions, way and order of working, monitoring, resources, hooks); did the Lead keep working the last 5 h or halt, and why; are hooks working; on track for 10 Proven by 08:00 17 Nov; board reviewed; what was said and approved yet repeatedly missed; board layout; a high-level summary | answered (Lead 68, 18:00): summary given; #1865 read, main merged at b6626ac99, re-review running; #1924 labelled; #1958 read, pr-rules fix asked of the board lane |
 ## For the founder (P-390)
 F2, F8, F14-F19 closed or ruled; word for word in `history/STATE-2026-11-15-2115-lead61s2-founder-asks-A89-A92-rows.md`.
 
