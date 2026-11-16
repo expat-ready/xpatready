@@ -44,8 +44,8 @@ const errOf = async (f: () => Promise<unknown>) => { try { await f(); return nul
 const plain = (e: unknown) => e instanceof BypassNotRecorded && e.getStatus() === 500 && /could not be written to the firm's activity record, so nothing was done/.test(JSON.stringify(e.getResponse()));
 
 /** DW3's reader: the entries whose audit field is missing or says nothing (also run on a broken copy of the list). */
-export function unaudited(list: Record<string, { audit?: unknown }>): string[] {
-  return Object.entries(list).filter(([, e]) => !(e.audit === "per-firm" || (typeof e.audit === "string" && /^none: .{40,}$/.test(e.audit)))).map(([k]) => k);
+export function unaudited(list: Readonly<Record<string, object>>): string[] {
+  return Object.entries(list as Record<string, { audit?: unknown }>).filter(([, e]) => !(e.audit === "per-firm" || (typeof e.audit === "string" && /^none: .{40,}$/.test(e.audit)))).map(([k]) => k);
 }
 
 // ---------------------------------------------------------------------------------------------------------- DW3 first
