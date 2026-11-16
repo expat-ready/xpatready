@@ -1286,3 +1286,19 @@ Status table:
 | PF-Fd | runtime (platform files: delete) | **`FilesPort.delete(firmId, key)`** (rows rev 16.42; the contract gap from #1901): in `ports/files.ts`, with its fake, the front office's local adapter (`api/src/front-office/files.ts`) and a shared contract case (PF-0c). The port's rule: the caller checks `LegalHoldPort.isHeld` first; the port itself holds no legal-hold logic. Deleting a missing key is a no-op that answers `false`; another firm's key is refused. The S3 adapter's delete is PF-F1's. **Touch:** `ports/files.ts`, `ports/contracts/files-port.contract.ts` (one case), `api/src/front-office/files.ts`, `tests/check_pffd_delete.ts` | a pass and a fail each: a stored file is deleted and `get` then answers not found; a missing key → `false`; firm B's key from firm A → refused, nothing deleted; the contract passes on the fake and on the local adapter | SA-11 §3.5 (callers' order, BR-7) · **waits on:** nothing · brief: shaping lane (next batch), then Lead B · **model:** Opus medium · reviewer only · **size:** under 200 lines · Source: rows rev 16.42 |
 
 | PF-Fd | not built | SA-11 §3.5, BR-7 |
+
+## Rev 16.43 (16 Nov 07:2x IST, Lead B (6)): P-626 order, two new briefs, new row FO-5cr, R1.6 answered
+
+The founder's P-626 (Lead 63, 07:3x): finish the Partial capabilities first. The order, every row's waits checked on `main`, and amendments A1 to A6 are in `lead-b-briefs/P-626-order.md`. In short:
+* **PF-6 part 1 is the critical path** (PF-21s, FO-3st1-3 build in its frame): ready now.
+* **FO-3w** does not wait on PF-13 (option (b) taken). The FO-3c agreement tick is FO-3c part 2's line, not FO-3w's. It is ready on #1830.
+* **FO-3a part 1a** is ready on #1830.
+* **FO-3a part 2** has a brief at last (`FO-3a2.md`): 2a, the consult record and `ConsultRecordPort`, in a new area file `front-office-consult.prisma` (structure ruling: may run beside 1b, the second merges main and re-stamps); 2b, the staff read feed, calls FO-3vr's filter.
+* **FO-3st1** has a brief (`FO-3st1.md`, two parts). It does not wait on PF-18a (the firm's zone until then, concept §6b) or on PF-6 part 2.
+* **J-38** waits only on FO-3w part 1 (PF-23w, #1860 and FO-3h are on `main`).
+* **PF-21s stage 2** waits only on PF-6 part 1.
+* **R1.6:** PF-6b (on `main`), PF-6's two Done when lines and J-6 own it. J-6 is split: part 1 now (API plus FO-4's Leads screen), part 2 the role editor with PF-6 part 2.
+
+New row for BACKLOG, after FO-5p:
+
+| FO-5cr | runtime + screens (retainer pre-fill) | **The retainer draft is pre-filled from a consult record (AG-4-49, -50; concept FO-3sc BR-16, Q3):** FO-5's draft opened with `?consultRecord=<id>` reads `ConsultRecordPort.read` and pre-fills the party, the recommended items and the quoted fee; nothing is typed twice, nothing is sent. **Touch:** FO-5's retainer draft files only, its test | a pass and a fail: a record's items and fee appear on the draft; another firm's record id → an empty draft with no error leak | AG-4-49, AG-4-50 · **waits on:** FO-3a part 2a · **size:** S |
