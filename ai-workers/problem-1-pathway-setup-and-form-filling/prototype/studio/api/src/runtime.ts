@@ -32,6 +32,8 @@ import { Programs } from "./programs.ts";
 import { pinChain } from "../../engine/runtime/release-update.ts";
 import { openingStages } from "../../engine/runtime/stages.ts";
 import { routeOf, routesOf, writeOpeningStages } from "./routes-data.ts";
+import { groupOfCombination, PgCaseCount } from "./case-count.ts"; // CS-C1b
+import { fakeEntitlements, type EntitlementPort } from "../../ports/entitlement.ts"; // CS-C1b
 /** C6.17 (P-78): the channel of an answer written from a stage record (the officer entered it on "Done before we started"). */
 export const STAGE_RECORD = "stage_record";
 import { ASKED_RELATIONS, cellAsked, isListRelation, listWords, relativeKey, relativeOf, SUBJECT_OR_RELATIVE, type Relation } from "../../engine/runtime/relatives.ts";
@@ -133,6 +135,11 @@ export function pleaseCheckWords(documentName: string, changedSince: boolean): s
 @Injectable()
 export class Runtime {
   constructor(@Inject(Db) private readonly db: Db, @Inject(Workspace) private readonly ws: Workspace, @Inject(Audit) private readonly audit: Audit, @Inject(Programs) private readonly programs: Programs) {}
+
+  /** CS-C1b (contract §6): the plan limits; the allow-all fake until PF-15's adapter is bound. */
+  private entitlements: EntitlementPort = fakeEntitlements();
+  /** Binds another EntitlementPort (PF-15's adapter; a test's limits). Returns the one before. */
+  useEntitlements(next: EntitlementPort): EntitlementPort { const was = this.entitlements; this.entitlements = next; return was; }
 
   /** The case, if this person may reach it: the officer any case of the workspace, a client only their own (others are
    *  "not found", as the team's cross-tenant rule). Configuration people hold neither duty. The pin must still match
@@ -289,6 +296,15 @@ export class Runtime {
     let stagesWritten: { stages: number; doneBefore: number } = { stages: 1, doneBefore: 0 };
     try {
       id = await this.db.$transaction(async (tx) => {
+        // CS-C1b (SA-3-4, SA-3-39, SA-3-47; P-588 (3); contract §7): the plan limit, checked in this transaction before
+        // anything is written or a number taken. One opening per firm at a time (the lock is held until this commits),
+        // so two openings at the same moment cannot both pass; a refusal writes nothing and spends no case number.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`case-open:${firm!.key}`}))`;
+        const group = await groupOfCombination(tx, b.combinationId);
+        const used = (await new PgCaseCount(tx, firm!.key).activeCounts(tx))[group];
+        const limit = await this.entitlements.check(firm!.key, group === "corporate" ? "active_corporate_cases" : "active_individual_cases", used);
+        if (!limit.allowed) throw new HttpException({ type: "https://expatready.local/problems/plan-limit", title: "Plan limit reached", status: 409, code: "PLAN_LIMIT_REACHED", metric: limit.metric, limit: limit.limit, used: limit.used,
+          detail: `Your firm's plan allows ${limit.limit} active ${group} case${limit.limit === 1 ? "" : "s"} and ${limit.used} ${limit.used === 1 ? "is" : "are"} active, so this case was not opened. Nothing was created. A case stops counting once every filing has a decision or it is withdrawn.` }, HttpStatus.CONFLICT);
         const party = await tx.party.create({ data: { workspaceId, profile: { create: { workspaceId, displayName: b.principal.displayName } } } });
         // A24-1 (P-492, CS-7, AG-7-3): the firm's next case number for this year, taken in this transaction: an opening
         // made at the same moment waits on the counter row and gets the next one; a refused opening gives its number back.
