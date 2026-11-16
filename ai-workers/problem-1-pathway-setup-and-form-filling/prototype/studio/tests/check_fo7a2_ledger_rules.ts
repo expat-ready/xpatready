@@ -49,10 +49,11 @@ try {
   psql(T, ["-1", "-f", join(MIG, NEW, "migration.sql")]);
   for (const d of all.filter((x) => x > NEW)) psql(T, ["-1", "-f", join(MIG, d, "migration.sql")]);
   const changed = fns(T).filter((f) => !fnBefore.includes(f)).map((f) => f.split(":")[0]).sort();
-  ok("FO-7a2 DW7 pass: right after its migration the functions it adds or replaces are all money_ (three of FO-7a's and two of FO-7mv's replaced for rule 2c, five new)",
-    JSON.stringify(changed) === JSON.stringify(["money_credit_note_owed_back()", "money_credit_note_write()", "money_move_line_write()", "money_moved_live(uuid,uuid,\"MoneyMoveDirection\")", "money_owed_back(uuid,uuid,boolean)", "money_payment_returned_not_cleared()", "money_trust_entry_moves()", "money_trust_entry_write()", "money_trust_paid(uuid,uuid)", "money_write_off_write()"]), changed);
-  ok("FO-7a2 DW7 pass: every one of them runs as PF-12's wall reader (SECURITY DEFINER, owner xr_wall_reader, search_path pinned)",
-    sql(T, `select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader' and array_to_string(p.proconfig, ',') like 'search_path=%') from pg_proc p where p.proname in ('money_credit_note_write','money_payment_returned_not_cleared','money_trust_entry_write','money_trust_paid','money_write_off_write','money_credit_note_owed_back','money_move_line_write','money_trust_entry_moves','money_moved_live','money_owed_back')`) === "t");
+  ok("FO-7a2 DW7 pass: right after its migration the functions it adds or replaces are all money_ (three of FO-7a's and two of FO-7mv's replaced for rule 2c, six new)",
+    JSON.stringify(changed) === JSON.stringify(["money_credit_note_owed_back()", "money_credit_note_write()", "money_move_line_write()", "money_moved_live(uuid,uuid,\"MoneyMoveDirection\")", "money_owed_back(uuid,uuid,boolean)", "money_owed_live(uuid,uuid)", "money_payment_returned_not_cleared()", "money_trust_entry_moves()", "money_trust_entry_write()", "money_trust_paid(uuid,uuid)", "money_write_off_write()"]), changed);
+  ok("FO-7a2 DW7 pass: every trigger function runs as PF-12's wall reader (SECURITY DEFINER, owner xr_wall_reader, search_path pinned); the four helpers keep their caller's rights, so called directly they see only the session's firm (review M1, break B-3)",
+    sql(T, `select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader' and array_to_string(p.proconfig, ',') like 'search_path=%') from pg_proc p where p.proname in ('money_credit_note_write','money_payment_returned_not_cleared','money_trust_entry_write','money_write_off_write','money_credit_note_owed_back','money_move_line_write','money_trust_entry_moves')`) === "t"
+    && sql(T, `select bool_or(p.prosecdef) from pg_proc p where p.proname in ('money_trust_paid','money_moved_live','money_owed_back','money_owed_live')`) === "f");
   ok("FO-7a2 DW7 pass: migrate diff names no money table or type; the shortfall view and the To move list read with the caller's rights (PF-12's walls)",
     moneyDiff(T).length === 0 && sql(T, `select string_agg(coalesce(array_to_string(reloptions, ','), ''), '|' order by relname) from pg_class where relname in ('money_to_move', 'money_trust_shortfall')`) === "security_invoker=true|security_invoker=true", moneyDiff(T));
   ok("FO-7a2 DW7 fail: before its migration a reversal below zero is refused (the old balance check)",
@@ -162,6 +163,31 @@ try {
     ok("FO-7a2 DW5 fail: a choice without its amount or withdrawal, or naming another invoice's application, is refused",
       refused(T, `insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, "full", reason, created_by, overpaid_choice) values ('${firmA}', '${inv}', 100, 'CAD', false, 'x', 'user-R', 'OVERPAID_REFUND')`, /money_credit_note_overpaid_check/)
       && refused(T, `insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, "full", reason, created_by, overpaid_choice, overpaid_minor, overpaid_entry_id) values ('${firmA}', '${invoice(1000, P)}', 100, 'CAD', false, 'x', 'user-R', 'OVERPAID_REFUND', 100, '${w}')`, /names a trust application to this invoice/));
+  }
+
+
+  // ------------------------------------------------------------------------------------------- review and breaker round 1
+  {
+    const P = u(8); deposit(100000, P); const inv = invoice(10000, P), w = sql(T, entry("WITHDRAWAL_TO_INVOICE", -10000, P, { inv }));
+    const b1 = move(w, 10000);
+    const cn = (amount: number, choice: string, cover: number, i = inv, src = w) => `insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, "full", reason, created_by, overpaid_choice, overpaid_minor, overpaid_entry_id) values ('${firmA}', '${i}', ${amount}, 'CAD', false, 'Service cancelled', 'user-R', '${choice}', ${cover}, '${src}') returning number`;
+    ok("FO-7a2 fail (review M2, break B-1): a choice covers at most the part of its credit note that trust paid and that moved: 10.00 credited with 100.00 covered is refused",
+      refused(T, cn(1000, "OVERPAID_TO_TRUST", 10000), /covers only the part of this credit note that trust paid and that has moved \(at most 10\.00 CAD\)/, "23514"));
+    sql(T, cn(10000, "OVERPAID_REFUND", 10000)); sql(T, `insert into money_move_batch (firm_id, currency, direction, undoes_batch_id, reason, recorded_by) values ('${firmA}', 'CAD', 'TRUST_TO_OPERATING', '${b1}', 'Recorded the wrong transfer', 'user-R')`);
+    ok("FO-7a2 fail (review B1): after a full credit note with \"Refund to the client\" and an undo of the move, the same 100.00 is not returned to trust too, and no second credit note credits it again",
+      refused(T, entry("CORRECTION", 10000, P, { corrects: w, reason: "returned" }), /has moved to operating, so only 0 can come back to trust/, "23514")
+      && refused(T, `insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, "full", reason, created_by) values ('${firmA}', '${inv}', 10000, 'CAD', false, 'Again', 'user-R')`, /more than is left to credit on the invoice \(0\)/));
+    const inv2 = invoice(10000, P), w2 = sql(T, entry("WITHDRAWAL_TO_INVOICE", -10000, P, { inv: inv2 })), b2 = move(w2, 5000);
+    sql(T, cn(5000, "OVERPAID_TO_TRUST", 5000, inv2, w2));
+    sql(T, `insert into money_move_batch (firm_id, currency, direction, undoes_batch_id, reason, recorded_by) values ('${firmA}', 'CAD', 'TRUST_TO_OPERATING', '${b2}', 'Recorded the wrong transfer', 'user-R')`);
+    ok("FO-7a2 fail/pass (break B-2): after the move is undone, nothing is owed back from operating any more: no operating → trust line, and the 50.00 still paid from trust is listed once, trust → operating",
+      sql(T, `select coalesce(string_agg(direction || ':' || open_minor, ','), '') from money_to_move where source_entry_id = '${w2}'`) === "TRUST_TO_OPERATING:5000");
+    const P9 = u(9); deposit(50000, P9); const chq = deposit(50000, P9, "CHEQUE", false), inv3 = invoice(10000, P9), w3 = sql(T, entry("WITHDRAWAL_TO_INVOICE", -10000, P9, { inv: inv3 }));
+    sql(T, refund(50000, P9)); sql(T, reverse(chq, 50000, P9));
+    ok("FO-7a2 fail (break B-4; AG-6-75 rule 3): after the cheque bounces and the party is below zero, its unmoved 100.00 application does not move out of trust",
+      balance(P9) === "-10000" && refused(T, `begin; insert into money_move_batch (id, firm_id, currency, direction, transfer_date, recorded_by) values ('${u(90)}', '${firmA}', 'CAD', 'TRUST_TO_OPERATING', '2026-11-20', 'user-R'); insert into money_move_line (firm_id, batch_id, kind, direction, currency, amount_minor, source_entry_id) values ('${firmA}', '${u(90)}', 'TRUST_APPLIED', 'TRUST_TO_OPERATING', 'CAD', 10000, '${w3}'); commit;`, /trust balance is -100\.00 CAD after a reversal; its unmoved trust applications are undone money/, "23514"));
+    ok("FO-7a2 fail (Lead B, #1991): an operating → trust line that names no credit note's move-back is refused",
+      refused(T, `begin; insert into money_move_batch (id, firm_id, currency, direction, transfer_date, recorded_by) values ('${u(91)}', '${firmA}', 'CAD', 'OPERATING_TO_TRUST', '2026-11-20', 'user-R'); insert into money_move_line (firm_id, batch_id, kind, direction, currency, amount_minor, source_entry_id) values ('${firmA}', '${u(91)}', 'TRUST_APPLIED', 'OPERATING_TO_TRUST', 'CAD', 100, '${w3}'); commit;`, /back into trust only what a credit note owes \(0 CAD owed back/, "23514"));
   }
 
   // ------------------------------------------------------------------------------------------- DW6 (B-3)

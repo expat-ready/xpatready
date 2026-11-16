@@ -25,6 +25,11 @@ CREATE OR REPLACE FUNCTION money_moved_live(f uuid, src uuid, dir "MoneyMoveDire
 CREATE OR REPLACE FUNCTION money_owed_back(f uuid, w uuid, only_to_trust boolean) RETURNS bigint LANGUAGE sql STABLE SET search_path = pg_catalog, public, pg_temp AS
   $$ SELECT coalesce(sum(c.overpaid_minor), 0) FROM "money_credit_note" c WHERE c.firm_id = f AND c.overpaid_entry_id = w
        AND (NOT only_to_trust OR c.overpaid_choice = 'OVERPAID_TO_TRUST') $$;
+-- The move-back still owed: the choices, but never more than is still in operating (an undone move takes it back, break B-2).
+CREATE OR REPLACE FUNCTION money_owed_live(f uuid, w uuid) RETURNS bigint LANGUAGE sql STABLE SET search_path = pg_catalog, public, pg_temp AS
+  $$ SELECT least(money_owed_back(f, w, true), money_moved_live(f, w, 'TRUST_TO_OPERATING')) $$;
+-- These helpers keep their caller's rights (as FO-7a's do): inside a trigger they run as the wall reader, called directly
+-- or from a view they see only the session's firm (review M1, break B-3).
 
 -- Trust applied to an invoice and not returned: its withdrawals less the money returned to trust from them (FO-7a's sum).
 CREATE OR REPLACE FUNCTION money_trust_paid(f uuid, inv uuid) RETURNS bigint LANGUAGE sql STABLE SET search_path = pg_catalog, public, pg_temp AS
@@ -177,8 +182,13 @@ BEGIN
     IF NEW.overpaid_minor > freed THEN
       RAISE EXCEPTION 'money_credit_note: only % % of that trust application has moved to operating and has no refund or move-back choice yet', to_char(greatest(freed, 0) / 100.0, 'FM999,999,990.00'), NEW.currency USING ERRCODE = 'check_violation';
     END IF;
+    IF NEW.overpaid_minor > NEW.amount_minor - (open_amount - greatest(trust, 0)) THEN
+      RAISE EXCEPTION 'money_credit_note: a refund or move-back choice covers only the part of this credit note that trust paid and that has moved (at most % %)',
+        to_char(greatest(NEW.amount_minor - (open_amount - greatest(trust, 0)), 0) / 100.0, 'FM999,999,990.00'), NEW.currency USING ERRCODE = 'check_violation';
+    END IF;
     trust := trust - NEW.overpaid_minor;
   END IF;
+  trust := greatest(trust, 0);
   IF NEW.amount_minor > open_amount - trust THEN
     IF NEW.amount_minor <= open_amount THEN
       RAISE EXCEPTION 'money_credit_note: % % of this invoice was paid from trust: return % % to trust first (a correction naming the withdrawal, AG-6-48 rule 4), then credit it; for money already moved to operating, choose Refund to the client or Move back to trust (OVERPAID_REFUND, OVERPAID_TO_TRUST)',
@@ -199,9 +209,10 @@ CREATE OR REPLACE FUNCTION money_write_off_write() RETURNS trigger LANGUAGE plpg
 DECLARE open_amount bigint; trust bigint;
 BEGIN
   open_amount := money_issued_invoice(NEW.firm_id, NEW.invoice_id, NEW.currency, 'money_write_off');
-  trust := money_trust_paid(NEW.firm_id, NEW.invoice_id);
+  trust := greatest(money_trust_paid(NEW.firm_id, NEW.invoice_id) - (SELECT coalesce(sum(c.overpaid_minor), 0) FROM "money_credit_note" c
+    WHERE c.firm_id = NEW.firm_id AND c.invoice_id = NEW.invoice_id AND c.overpaid_choice = 'OVERPAID_REFUND'), 0);
   IF NEW.amount_minor > open_amount - trust AND NEW.amount_minor <= open_amount THEN
-    RAISE EXCEPTION 'money_write_off: % % of this invoice was paid from trust: only what trust has not paid is written off (% left)', to_char(trust / 100.0, 'FM999,999,990.00'), NEW.currency, open_amount - trust USING ERRCODE = 'check_violation';
+    RAISE EXCEPTION 'money_write_off: % % of this invoice was paid from trust: only what trust has not paid is written off (% left)', to_char(trust / 100.0, 'FM999,999,990.00'), NEW.currency, greatest(open_amount - trust, 0) USING ERRCODE = 'check_violation';
   END IF;
   open_amount := open_amount - trust;
   IF NEW.amount_minor > open_amount THEN
@@ -315,7 +326,7 @@ BEGIN
   SELECT count(*) INTO earlier FROM "money_move_line" l WHERE l.firm_id = NEW.firm_id AND l.source_entry_id = NEW.source_entry_id;
   moved := money_moved_live(NEW.firm_id, NEW.source_entry_id, NEW.direction);
   IF NEW.direction = 'OPERATING_TO_TRUST' THEN
-    cap := money_owed_back(NEW.firm_id, NEW.source_entry_id, true);
+    cap := money_owed_live(NEW.firm_id, NEW.source_entry_id);
     IF moved + NEW.amount_minor > cap THEN
       RAISE EXCEPTION 'money_move_line: a TRUST_APPLIED line moves from trust to operating, or back into trust only what a credit note owes (% % owed back, % moved back)', cap, NEW.currency, moved USING ERRCODE = 'check_violation';
     END IF;
@@ -329,10 +340,21 @@ BEGIN
     returned := 0;
   END IF;
   -- What a credit note owes back to trust from this application can move out again only after it is moved back (rule 2c).
-  cap := -s.amount_minor - returned + CASE WHEN NEW.kind = 'TRUST_APPLIED' THEN money_owed_back(NEW.firm_id, NEW.source_entry_id, true) ELSE 0 END;
+  cap := -s.amount_minor - returned + CASE WHEN NEW.kind = 'TRUST_APPLIED' THEN money_owed_live(NEW.firm_id, NEW.source_entry_id) ELSE 0 END;
   IF moved + NEW.amount_minor > cap THEN
     RAISE EXCEPTION 'money_move_line: % % would move more than this entry still holds (% % to move: % less % returned to trust, % moved before)',
       NEW.amount_minor, NEW.currency, cap - moved, NEW.currency, -s.amount_minor, returned, moved USING ERRCODE = 'check_violation';
+  END IF;
+  -- Break B-4 (AG-6-75 rules 3-4): after a reversal took the party below zero, its unmoved trust applications are undone
+  -- money: what moves out never exceeds the party's ledger balance plus what it still has to move, so a shortfall is only
+  -- ever money that had already moved.
+  IF NEW.kind = 'TRUST_APPLIED' THEN
+    SELECT coalesce((SELECT e.balance_after_minor FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND (e.person_id = party OR e.company_id = party)
+      AND e.currency = s.currency ORDER BY e.seq DESC LIMIT 1), 0) INTO returned;
+    IF returned < 0 AND returned + (cap - moved) - NEW.amount_minor < 0 THEN
+      RAISE EXCEPTION 'money_move_line: this party''s trust balance is % % after a reversal; its unmoved trust applications are undone money and do not move (AG-6-75 rule 3)',
+        to_char(returned / 100.0, 'FM999,999,990.00'), s.currency USING ERRCODE = 'check_violation';
+    END IF;
   END IF;
   NEW.move_ordinal := earlier + 1;
   NEW.created_at := now();
@@ -353,7 +375,10 @@ BEGIN
   IF c.kind = 'WITHDRAWAL_TO_INVOICE' THEN
     UPDATE "money_invoice" x SET updated_at = now() WHERE x.firm_id = NEW.firm_id AND x.id = c.invoice_id;
     -- Moved out, less what a credit note owes back (rule 2c: that part comes back to trust now and moves back later).
-    moved := money_moved_live(NEW.firm_id, NEW.corrects_entry_id, 'TRUST_TO_OPERATING') - money_owed_back(NEW.firm_id, NEW.corrects_entry_id, true);
+    -- Every refund or move-back choice counts as moved even after an undo (review B1: a refund choice must never be
+    -- returned to trust as well); a move-back's own return is already in the returns.
+    moved := greatest(money_moved_live(NEW.firm_id, NEW.corrects_entry_id, 'TRUST_TO_OPERATING'), money_owed_back(NEW.firm_id, NEW.corrects_entry_id, false))
+      - money_owed_back(NEW.firm_id, NEW.corrects_entry_id, true);
     SELECT coalesce(sum(r.amount_minor), 0) INTO returned FROM "money_trust_entry" r WHERE r.firm_id = NEW.firm_id AND r.corrects_entry_id = NEW.corrects_entry_id;
     IF moved > -c.amount_minor - returned THEN
       RAISE EXCEPTION 'money_trust_entry: % % of this trust application has moved to operating, so only % can come back to trust: undo that move batch first',
@@ -366,7 +391,7 @@ END $$;
 CREATE OR REPLACE VIEW "money_to_move" WITH (security_invoker = true) AS
   WITH src AS (
     SELECT e.firm_id, e.id AS source_entry_id, 'TRUST_APPLIED'::"MoneyMoveKind" AS kind, 'TRUST_TO_OPERATING'::"MoneyMoveDirection" AS direction, e.currency, e.person_id, e.company_id, e.case_id, e.invoice_id,
-           (-e.amount_minor + money_owed_back(e.firm_id, e.id, true))::integer AS eligible_minor,
+           (-e.amount_minor + money_owed_live(e.firm_id, e.id))::integer AS eligible_minor,
            (SELECT coalesce(sum(c.amount_minor), 0)::integer FROM "money_trust_entry" c WHERE c.firm_id = e.firm_id AND c.corrects_entry_id = e.id) AS returned_minor,
            e.created_at
       FROM "money_trust_entry" e WHERE e.kind = 'WITHDRAWAL_TO_INVOICE'
@@ -381,8 +406,8 @@ CREATE OR REPLACE VIEW "money_to_move" WITH (security_invoker = true) AS
     UNION ALL
     -- Rule 2c: what credit notes owe back to trust from a trust application, operating → trust.
     SELECT e.firm_id, e.id, 'TRUST_APPLIED'::"MoneyMoveKind", 'OPERATING_TO_TRUST'::"MoneyMoveDirection", e.currency, e.person_id, e.company_id, e.case_id, e.invoice_id,
-           money_owed_back(e.firm_id, e.id, true)::integer, 0, e.created_at
-      FROM "money_trust_entry" e WHERE e.kind = 'WITHDRAWAL_TO_INVOICE' AND money_owed_back(e.firm_id, e.id, true) > 0
+           money_owed_live(e.firm_id, e.id)::integer, 0, e.created_at
+      FROM "money_trust_entry" e WHERE e.kind = 'WITHDRAWAL_TO_INVOICE' AND money_owed_live(e.firm_id, e.id) > 0
   ), m AS (
     SELECT s.*, money_moved_live(s.firm_id, s.source_entry_id, s.direction)::integer AS moved_minor FROM src s
   )
@@ -395,7 +420,7 @@ CREATE OR REPLACE VIEW "money_to_move" WITH (security_invoker = true) AS
 DO $readers$
 DECLARE f text;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['money_trust_entry_write()', 'money_credit_note_write()', 'money_write_off_write()', 'money_payment_returned_not_cleared()', 'money_trust_paid(uuid, uuid)', 'money_credit_note_owed_back()', 'money_move_line_write()', 'money_trust_entry_moves()', 'money_moved_live(uuid, uuid, "MoneyMoveDirection")', 'money_owed_back(uuid, uuid, boolean)'] LOOP
+  FOREACH f IN ARRAY ARRAY['money_trust_entry_write()', 'money_credit_note_write()', 'money_write_off_write()', 'money_payment_returned_not_cleared()', 'money_credit_note_owed_back()', 'money_move_line_write()', 'money_trust_entry_moves()'] LOOP
     EXECUTE format('ALTER FUNCTION %s SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp', f);
     EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
   END LOOP;

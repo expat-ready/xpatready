@@ -331,7 +331,7 @@ try {
       if (inv.over !== null || Number(inv.bal) + Number(inv.listed) + frozen() !== bank) mismatch.push(`${step} invariant ${JSON.stringify(inv)} bank ${bank}`);
     }
     await c.end(); conns.splice(conns.indexOf(c), 1);
-    ok(`FO-7mv DW6 pass (P-607 (1)): 240 generated steps (moves ${movesOk} written / ${movesNo} refused, returns ${returnsOk}/${returnsNo}, ${undos} undos) — the database agrees with the model at every step, the balance never goes below zero, no entry moves past what it holds, and ledger + list (+ wrong-account money frozen by a return) = the bank's trust account`,
+    ok(`FO-7mv DW6 pass (P-607 (1)): 240 generated steps (moves ${movesOk} written / ${movesNo} refused, returns ${returnsOk}/${returnsNo}, ${undos} undos) — the database agrees with the model at every step, the balance goes below zero only after a reversal (FO-7a2's check), no entry moves past what it holds, and ledger + list (+ wrong-account money frozen by a return) = the bank's trust account`,
       mismatch.length === 0 && movesOk > 10 && movesNo > 10 && returnsOk > 3 && returnsNo > 3 && undos > 3, mismatch.slice(0, 5));
     ok("FO-7mv DW6 fail: the same invariant query sees a move past its entry (written with the trigger off, inside a rolled-back transaction)",
       sql(T, `begin; alter table money_move_line disable trigger money_move_line_write; insert into money_move_batch (id, firm_id, currency, direction, transfer_date, recorded_by) values ('${u(77)}', '${firmA}', 'CAD', 'TRUST_TO_OPERATING', '2026-11-20', 'user-R');
