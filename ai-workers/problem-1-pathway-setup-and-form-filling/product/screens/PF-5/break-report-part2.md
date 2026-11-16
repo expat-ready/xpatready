@@ -139,3 +139,27 @@ The check passes 81/81. The attacks are in `prototype/studio/var/break_pf5p2_r2.
   * A signed webhook gets 200; changed bytes get 400.
 
 Breaker verdict: 1 Blocker/Major at 97b77db41a9b060580ff3850dff1ff65c1a168b8
+
+## Round 3: the R2 fix at `d04803ca052d3054b8b8a358a13d403d4516ea92`
+
+The attacks are in `prototype/studio/var/break_pf5p2_r3.ts` (git-ignored). It uses its own scratch database (dropped), a wrapper around the fake billing port that turns an outage on and off, and a counting wrapper around `LogAlerts`. No network. The fake clock runs ahead of the database's `received_at`, so one run (X3) sets the receipt times to the clock first.
+
+### What held (the R2 Major is fixed)
+* **25-minute outage (X1).** After 5 failed sweeps the receipt is still open (`retry 5`) and one `job_stuck` alert is raised.
+  * Stripe's redelivery after the outage is handled: `PAYMENT_HOLD → ACTIVE`.
+  * Without a redelivery, the next sweep handles it.
+* **3-day outage (X2).**
+  * The receipt is set aside only after about 72 h (854 sweeps), with 2 alerts: one at the 5th try and one at set-aside.
+  * A resend after set-aside is reset and handled (`ACTIVE`).
+  * A resend while the outage continues reopens the receipt (`redelivered`). It is set aside again after 5 more failed sweeps, and a later resend still handles it.
+* **Backlog (X3b).** 200 receipts reach `retry 9` (the cap) during 200 minutes of outage, and none is set aside. Afterwards they drain at 50 per sweep (`[50,50,50,50]`).
+* **r1, first half (X5).** A failed draft release now says "Saved. Your held invoice could not be released yet: save the address again in a few minutes." Saving again with Stripe back releases it.
+
+### Still Minor (not new)
+* **r1, second half (X5).** When the subscription read in `setAddress` fails, the answer is still `{saved:true, onStripe:true}` with no `next`, and the draft stays held (`account.ts:86`). The `holdDraftInvoice` race after the transaction (`webhook.ts:144`) is unchanged.
+* **r2 (X4).** With 50 new failing receipts before each sweep, a good receipt with `retry 1` is still not picked in 6 sweeps (never-tried first, `webhook.ts:87`). This needs a sustained stream, so it is unlikely.
+
+### New Minor
+* **r4 (X3): an outage pages once per receipt.** 200 receipts failing in one outage raised **200** `job_stuck` alerts at their 5th try. Each alert uses the receipt's id as `entityKey`, so `LogAlerts`' 5-minute repeat key (kind, firm, queue, entityKey; `observability/alerts.ts:34`) never merges them. That module's own rule is "one page per incident, not one per retry". `webhook.ts:95` should raise per queue (no `entityKey`) or once per sweep with a count.
+
+Breaker verdict: no Blocker or Major at d04803ca052d3054b8b8a358a13d403d4516ea92
