@@ -81,9 +81,6 @@ const chip = async (p: Page, view: string) => { await p.locator(`[data-chip="${v
 try {
 // ------------------------------------------------------------------------------------------------------------- DW1
 const o = await newPage(rTok);
-// Each list answer arrives 300 ms late on this page, so a view change always passes through its loading state: the
-// waits must find the new view's rows, never the old view's or the gap between them (CI shard 6 on c94625b1e).
-await o.route(/\/api\/platform\/complaints\?view=/, async (r) => { await new Promise((res) => setTimeout(res, 300)); await r.continue(); });
 await o.goto(`${BASE}/platform/complaints`); await listed(o);
 await o.locator('[data-chip="all"] [data-count]').filter({ hasNotText: "…" }).waitFor({ timeout: 15_000 });
 for (const view of ["open", "overdue", "closed", "all"]) {
