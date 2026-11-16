@@ -86,3 +86,44 @@ Reviewer: Opus 5.5, effort high, fresh context (did not build it). Skill `screen
 - Uncommitted edits to `manage-page.tsx`, the test and screenshots, plus `break-report-fo3w-part2.md`, appeared in the shared copy at 12:42-12:45 UTC. They came from another session, not from me. This review covers 3285d306c only.
 
 Verdict: Approve 3285d306cd94592b24a48f8db3334fa20af8658c
+
+## Re-review at 51c813833 (diff only, P-277; 16 Nov, ~18:45 IST)
+
+**Diff read:** `git diff 3285d306c..51c813833`. Code changed in two files only: `manage-page.tsx` and `check_fo3w_manage_browser.ts`. Everything else is records and screenshots. No API file changed.
+
+**Runs** (copy :4542, held :4842; never :4400 or :4533):
+- **Suite:** `check_fo3w_manage_browser.ts` **49/49, exit 0, twice**, each on a fresh copy. Run from a scratch worktree at 51c813833; the worktree is now removed.
+- **My walk on the real app:**
+  - A reason with Persian text and a ZWNJ, a tab, an RLM, a newline and a BEL was stored as `"می‌خواهم line one line two"`: the ZWNJ kept, the RLM and BEL dropped, the tab and newline made spaces.
+  - Tabbing through every time (153 at 1440, 151 at 512 px, which is 1024 at 200 %): **none** was hidden under the Move bar.
+  - After the cancel, focus is on the heading.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Breaker M1: a pasted reason refused without a word | **Fixed** | `cleanReason` matches `CancelBody`'s refused set (service.ts:151-156); line breaks are left for the server to make spaces. A 400 stays in the dialog on the field (`Field error`). Checked with a tab and an RLM; my walk above |
+| Breaker M2: lost answer → "try again" on a change already made | **Fixed** | `afterLoss` re-reads the link only on status 0, and a 404 then becomes `lost`: no buttons. Three checks: a move made, a cancel made, and a move never sent ("try again", the times kept). The `lost` sentence is **not in §5** (the coordinator raises it with Lead B): a Should, as S3 |
+| Breaker M3: a focused time hidden under the sticky bar | **Fixed** | `scroll-mb-28` on each time. The new check covers 360 px; my walk covered 1440 and 200 % |
+| m1 / my S5: focus lost after a refused change | **Fixed** | The heading takes focus on every change of step, state or notice after the first draw (the `drawn` ref). First draw leaves focus alone (`BODY`), as it should |
+| m5: a token over 400 characters | **Fixed** | Treated as a bad link and never sent. FO-3's tokens are 80 characters, and `parseToken` refuses over 100 |
+| m8: a move into the self-service window | **Fixed** | Shows the limit sentence, with no buttons. It uses the browser's clock; a skewed clock is still refused by the server on the next action (BR-8) |
+| My S6: no second reschedule by the newest link (bug 5) | **Fixed** | New check: sequence 2, the new time stored, "Booking updated" shown once |
+
+**Read and found sound:**
+- `afterLoss` treats a schema failure (status 0) the same way. That is safe: a dead link after a successful change still gives the check-your-email sentence.
+- The lone-surrogate lookbehind in `cleanReason` adds no new browser risk: the bundle already holds the same regex from existing code.
+
+**Still open (Shoulds; none blocks):**
+- S1: 151-153 Tab stops, and `role=radio` without arrow keys.
+- S2 and S3, plus the new `lost` sentence: copy for Lead B to add to §5.
+- S4: a switch turned off mid-session leaves its button on screen.
+- S7: the firm key is not checked (an API question).
+- S8: nits.
+
+**Scores:**
+- D5 4→5 and D16 4→5. Other D scores unchanged.
+- BIC-20 stays Partly (S1).
+- Journey score stays **9/10**: M2's recovery and S5's focus were already scored at their level on my walk.
+
+**Could not check:** CI at 51c813833; a real screen reader. FO-3w part 1's suite (67/67) and `check_pf1_module_routes.ts` (28/28) were not re-run by me. The diff touches neither `routes.tsx` nor part 1's files.
+
+Verdict: Approve 51c8138336c4c5eb5d49b034623ae27632161247
