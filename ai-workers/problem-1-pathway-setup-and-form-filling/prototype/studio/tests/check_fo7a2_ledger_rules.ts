@@ -188,6 +188,16 @@ try {
       && refused(T, `begin; insert into money_move_batch (id, firm_id, currency, direction, transfer_date, recorded_by) values ('${u(92)}', '${firmA}', 'CAD', 'TRUST_TO_OPERATING', '2026-11-22', 'user-R'); insert into money_move_line (firm_id, batch_id, kind, direction, currency, amount_minor, source_entry_id) values ('${firmA}', '${u(92)}', 'TRUST_APPLIED', 'TRUST_TO_OPERATING', 'CAD', 5001, '${w2}'); commit;`, /would move more than this entry still holds/));
     const inv4 = invoice(10000, P), w4 = sql(T, entry("WITHDRAWAL_TO_INVOICE", -10000, P, { inv: inv4 })), b4 = move(w4, 10000);
     ok("FO-7a2 pass: a trust → operating batch no choice covers is still undone, as FO-7mv allows", !!sql(T, undo(b4) + " returning id"));
+    // Devin review on #1991: after a refund choice and a return of the unmoved part, the rest is paid from trust again.
+    const inv5 = invoice(10000, P), w5 = sql(T, entry("WITHDRAWAL_TO_INVOICE", -10000, P, { inv: inv5 })); move(w5, 5000);
+    sql(T, cn(5000, "OVERPAID_REFUND", 5000, inv5, w5)); sql(T, entry("CORRECTION", 5000, P, { corrects: w5, reason: "unmoved part returned" }));
+    ok("FO-7a2 pass/fail (Devin review): after \"Refund to the client\" for the moved 50.00 and the unmoved 50.00 returned, the 50.00 still due is paid from trust again; 50.01 is refused",
+      refused(T, entry("WITHDRAWAL_TO_INVOICE", -5001, P, { inv: inv5 }), /would pay more than is open on the invoice \(5000 open/) && !!sql(T, entry("WITHDRAWAL_TO_INVOICE", -5000, P, { inv: inv5 })));
+    const inv6 = invoice(10000, P), w6 = sql(T, entry("WITHDRAWAL_TO_INVOICE", -4000, P, { inv: inv6 }));
+    const fullQ = (amount: number) => `insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, "full", reason, created_by) values ('${firmA}', '${inv6}', ${amount}, 'CAD', true, 'Cancelled', 'user-R') returning number`;
+    ok("FO-7a2 fail/pass (Devin review; AG-6-48 rule 2): with 40.00 of 100.00 paid from trust, a \"full\" credit of 60.00 is refused; after the 40.00 is returned, the full 100.00 credit is accepted",
+      refused(T, fullQ(6000), /a full credit note credits all that is left \(10000\)/, "23514")
+      && last(T, `begin; ${entry("CORRECTION", 4000, P, { corrects: w6, reason: "Cancelled: trust returned" })}; ${fullQ(10000)}; commit;`).startsWith("CN-"));
     const P9 = u(9); deposit(50000, P9); const chq = deposit(50000, P9, "CHEQUE", false), inv3 = invoice(10000, P9), w3 = sql(T, entry("WITHDRAWAL_TO_INVOICE", -10000, P9, { inv: inv3 }));
     sql(T, refund(50000, P9)); sql(T, reverse(chq, 50000, P9));
     ok("FO-7a2 fail (break B-4; AG-6-75 rule 3): after the cheque bounces and the party is below zero, its unmoved 100.00 application does not move out of trust",

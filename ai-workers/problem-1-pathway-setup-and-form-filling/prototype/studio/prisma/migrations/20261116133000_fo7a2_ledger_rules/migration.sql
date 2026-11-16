@@ -132,6 +132,10 @@ BEGIN
     SELECT coalesce(-sum(e.amount_minor), 0) - coalesce((SELECT sum(c.amount_minor) FROM "money_trust_entry" c JOIN "money_trust_entry" w ON w.firm_id = c.firm_id AND w.id = c.corrects_entry_id
         WHERE c.firm_id = NEW.firm_id AND c.kind = 'CORRECTION' AND w.invoice_id = NEW.invoice_id), 0)
       INTO applied FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND e.invoice_id = NEW.invoice_id;
+    -- FO-7a2 (Devin review on #1991): trust money a credit note's "Refund to the client" sent back from operating no
+    -- longer pays the invoice, as the credit-note and write-off checks count it.
+    applied := greatest(applied - (SELECT coalesce(sum(c.overpaid_minor), 0) FROM "money_credit_note" c
+      WHERE c.firm_id = NEW.firm_id AND c.invoice_id = NEW.invoice_id AND c.overpaid_choice = 'OVERPAID_REFUND'), 0);
     IF applied - NEW.amount_minor > open_amount THEN
       RAISE EXCEPTION 'money_trust_entry: % from trust would pay more than is open on the invoice (% open after credit notes and write-off, % already paid from trust)', -NEW.amount_minor, open_amount, applied USING ERRCODE = 'check_violation';
     END IF;
@@ -157,7 +161,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION money_credit_note_write() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE open_amount bigint; trust bigint; w record; freed bigint := 0;
+DECLARE open_amount bigint; trust bigint; w record; freed bigint := 0; whole bigint;
 BEGIN
   IF NEW.number IS NOT NULL THEN
     RAISE EXCEPTION 'money_credit_note: the number is the database''s' USING ERRCODE = 'check_violation';
@@ -196,9 +200,12 @@ BEGIN
     END IF;
     RAISE EXCEPTION 'money_credit_note: % is more than is left to credit on the invoice (%)', NEW.amount_minor, open_amount - trust USING ERRCODE = 'check_violation';
   END IF;
+  -- A full credit note cancels all that is left (AG-6-48 rule 2), trust-paid part included: that part is returned (or
+  -- chosen) first (Devin review on #1991: a "full" credit of only the unpaid part).
+  whole := open_amount;
   open_amount := open_amount - trust;
-  IF NEW."full" AND NEW.amount_minor <> open_amount THEN
-    RAISE EXCEPTION 'money_credit_note: a full credit note credits all that is left (%)', open_amount USING ERRCODE = 'check_violation';
+  IF NEW."full" AND NEW.amount_minor <> whole THEN
+    RAISE EXCEPTION 'money_credit_note: a full credit note credits all that is left (%)', whole USING ERRCODE = 'check_violation';
   END IF;
   NEW.number := money_take_number(NEW.firm_id, 'CREDIT_NOTE');
   NEW.created_at := now();
