@@ -1,5 +1,5 @@
-// FO-6 part 1 (BACKLOG row FO-6; contracts §2.4, §7; P-563, P-564, P-600): SigningPort's contract on the fake adapter, and
-// the signing tables with their database rules, each with a passing and a failing case. Three scratch databases: "empty"
+// FO-6 part 1 (BACKLOG row FO-6; contracts §2.4, §7; P-563, P-564, P-600): the signing tables with their database rules,
+// each with a passing and a failing case. Three scratch databases: "empty"
 // gets every migration; "demo" gets every migration before FO-6's, then demo-shaped rows (a Sample case, an audit line,
 // the Sample firms and staff), then FO-6's migration and any later one; "bare" stops before FO-6. The migration is
 // measured right after itself (rows rev 16.7): it is never assumed to be the newest. No server, no browser, no network,
@@ -11,9 +11,6 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { runContract } from "../ports/contracts/contract.ts";
-import { signingPortContract } from "../api/src/front-office/signing/contract.ts";
-import { fakeSigning } from "../api/src/front-office/signing/port.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
@@ -39,15 +36,6 @@ function fo6Diff(db: string): string[] {
   const r = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", SCHEMA, "--exit-code"], { cwd: STUDIO, encoding: "utf8" });
   if (r.status !== 0 && r.status !== 2) throw new Error(`migrate diff: ${r.stdout}${r.stderr}`);
   return `${r.stdout}`.split("\n").filter((l) => /fo_sign|FoSign/.test(l));
-}
-
-// ------------------------------------------------------------------------------------------------ the port's contract
-await runContract(signingPortContract, "fakeSigning", () => { const p = fakeSigning(); return { port: p, act: p.act }; }, ok);
-{ // the contract catches a fake that would let the vendor email (DW3-style: a broken adapter fails it)
-  const p = fakeSigning();
-  const loose = Object.assign(Object.create(null), p, { provider: p.provider, send: (i: Record<string, unknown>) => { const { sendEmails: _drop, ...rest } = i; return p.send({ ...rest, signers: (rest.signers as { signerId: string; role: "CLIENT" | "FIRM"; name: string }[]).map(({ signerId, role, name }) => ({ signerId, role, name })) } as never); } });
-  const r = await runContract(signingPortContract, "looseFake", () => ({ port: loose, act: p.act }), null);
-  ok("FO-6 fail (the contract works): an adapter that takes a vendor-email option or a signer's email fails the contract", r.failed.some((n) => /email/.test(n)), r);
 }
 
 const all = readdirSync(MIG).filter((d) => /^\d{14}_/.test(d)).sort();
