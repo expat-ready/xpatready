@@ -1647,3 +1647,11 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - Confirming the details is a "must". The retainer carries them under s. 24(3)(b), which is FO-5's required items. FO-13i adds the corroboration record and its warning.
   - The requirements snapshot is not edited. Unconfirmed: no counsel on whether a recorded warning meets s. 24(2)(a) in a review.
 * **Note:** FO-13i was started from the queued list (PR #2011).
+
+## Rev 16.78 (16 Nov 21:50 IST): PF-18a part 1 (#2009) and PF-8r (#2014) rulings
+* **PF-18a part 1 (comment 6922123850):**
+  1. **Real foreign keys, not triggers.** Back-relation lines go under a new slot line `// back-relation slot: offices (PF-18a)` in `PlatformFirm` and `PlatformStaff` (`platform.prisma`), following the rev 16.6 pattern; `check_pf0p_ports` keeps every slot line. Composite keys are on (firm, …). The write triggers are dropped. This is done in this PR (P-606).
+  2. `Offices.setStaffOffice` has no route. **PF-18s adds `PUT /api/platform/staff/:staffId/office` (`agent/settings:edit`)**, now in PF-18s's row (for the Lead to copy into BACKLOG).
+* **PF-8r (comment 6922124215):**
+  1. **`main`'s schema drift:** the comparison approach is accepted. The 5 statements (`fact_source`, `form_edition_accept`, `person_role`, `validated_copy`, DROP `canonical_field_name`) are a NOTE. The condition: a fail case where one index or policy is dropped after the restore must be FAIL. The drift fix is case-side, so it is a fix row for Build Lead C / the release holder. PF-8r does not wait for it.
+  2. **`nightly.yml` and `run-suites.sh`:** these are the Lead's files, so the Lead decides. The row owner agrees the patch is in scope. The Lead should check the job condition `caps == '[]'` against "runs every night".
