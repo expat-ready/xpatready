@@ -52,6 +52,8 @@ pr other_repo_6 "$S/prisma/migrations/x/migration.sql" ""; pr 6 "$S/web/a.tsx" "
 r=$(guard "gh pr edit https://github.com/other/repo/pull/6 $L"); ok "another repository's PR is read there, not as this repository's #6 (bot finding)" "$([ "$r" = deny ] && echo 1)" "got $r"
 git -C "$T/copy" remote add origin https://github.com/acme/app.git
 r=$(GH_REPO=other/repo guard "gh pr edit 6 $L"); ok "with GH_REPO set, the PR is read where gh acts, not as the origin's #6 (Devin, security)" "$([ "$r" = deny ] && echo 1)" "got $r"
+for c in "GH_REPO=other/repo gh pr edit 6 $L" "export GH_REPO=other/repo; gh pr edit 6 $L" "GH_REPO='other/repo' && gh pr edit 6 $L"; do
+  r=$(guard "$c"); ok "a GH_REPO set in the command is where gh acts, and is read there: $c" "$([ "$r" = deny ] && echo 1)" "got $r"; done
 jq -n --arg h "$H" --arg S "$S" '{headRefOid:$h, files:[{path:($S + "/prisma/migrations/y/migration.sql")}], comments:[{body:("Lead read the diff: " + $h[0:9]), author:{login:"mallory"}}]}' > "$T/f/15.json"
 r=$(guard "gh pr edit 15 $L"); ok "the curl fallback gives no association: an outsider's read line does not count (bot finding)" "$([ "$r" = deny ] && echo 1)" "got $r"
 jq '.comments[0].author.login = "acme"' "$T/f/15.json" > "$T/f/16.json"

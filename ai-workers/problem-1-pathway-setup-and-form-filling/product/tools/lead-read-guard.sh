@@ -42,7 +42,10 @@ case "$tool" in
     SOH=$(printf '\001'); cmd=$(printf '%s' "$raw" | sed "s/\\\\ /$SOH/g; s/\\\\//g")   # review:\ approved keeps its space (as \001) inside one word; a real byte, so BSD sed works too
     printf '%s' "$cmd" | tr '\001' ' ' | grep -qiE "$LABELRE" || exit 0
     here=$(git remote get-url origin 2>/dev/null | sed -nE 's#.*github\.com[:/]([^/]+/[^/.]+)(\.git)?$#\1#p')
+    cmdrepo=""   # a GH_REPO the command sets for later commands (export GH_REPO=x; …), as gh would see it
     while IFS= read -r seg; do
+      g=$(printf '%s' "$seg" | sed -nE "s/.*(^|[[:space:]])GH_REPO=[\"']?([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+).*/\\2/p")
+      if printf '%s' "$seg" | grep -qE '^[[:space:]]*(export[[:space:]]+)?GH_REPO=[^[:space:]]*[[:space:]]*$'; then cmdrepo=$g; continue; fi
       printf '%s' "$seg" | tr '\001' ' ' | grep -qiE "$LABELRE" || continue
       if printf '%s' "$seg" | grep -qE 'gh[[:space:]]+(pr|issue)[[:space:]]+edit'; then
         # each --add-label value is a comma list: compare whole names (a hyphenated label before ours is no cover)
@@ -58,7 +61,7 @@ case "$tool" in
       n=$(printf '%s' "$t" | grep -oE '(pull|pulls|issues)/[0-9]+' | head -1 | grep -oE '[0-9]+$')
       [ -z "$n" ] && n=$(printf '%s' "$t" | sed -E 's/.*[[:space:]]edit[[:space:]]//' | tr -s ' \t' '\n\n' | grep -E '^[0-9]+$' | head -1)
       [ -z "$n" ] && n=$(gh pr list --head "$(git branch --show-current 2>/dev/null)" --state open --json number 2>/dev/null | jq -r '.[0].number // empty' 2>/dev/null)
-      prs="$prs ${r:-${GH_REPO:-$here}}#${n:-unknown}"   # gh itself uses GH_REPO before the origin (Devin, security)
+      prs="$prs ${r:-${g:-${cmdrepo:-${GH_REPO:-$here}}}}#${n:-unknown}"   # as gh: -R/URL, then GH_REPO (inline, set earlier in the command, or the environment), then the origin
     done <<< "$(printf '%s\n' "$cmd" | tr ';&|' '\n\n\n')" ;;
   *)
     prs=$(printf '%s' "$input" | jq -r --arg l "$LABEL" 'select(any((.tool_input.labels // [])[]; . == $l)) | .tool_input | ((if .owner and .repo then .owner + "/" + .repo else "" end) + "#" + ((.issue_number // .pullNumber // .number // "unknown") | tostring))') ;;

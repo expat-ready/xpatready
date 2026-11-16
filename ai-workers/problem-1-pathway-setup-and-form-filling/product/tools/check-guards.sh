@@ -77,7 +77,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 19 own|product/tools/lead-read-guard.sh|s/\$l != "" and (\$l == \$own or \$l == \$me)/true/|check-lead-read-guard.sh
 19 curl|product/tools/lead-read-guard.sh|s/(gh\[\[:space:\]\]+api.curl)/(gh[[:space:]]+api)/|check-lead-read-guard.sh
 19 identity|product/tools/lead-read-guard.sh|s/.platform\/identity\///|check-lead-read-guard.sh
-19 ghrepo|product/tools/lead-read-guard.sh|s/\${r:-\${GH_REPO:-\$here}}/${r:-$here}/|check-lead-read-guard.sh
+19 ghrepo|product/tools/lead-read-guard.sh|s/\${r:-\${g:-\${cmdrepo:-\${GH_REPO:-\$here}}}}/${r:-$here}/|check-lead-read-guard.sh
 20|product/tools/gmail-start-check.sh|s/^\[ "\$state" = ok \] \&\& exit 0/exit 0/|check-gmail-start-check.sh
 21 check|product/tools/lead-act-check.sh|s/-gt "\$CHECK_MIN" \]/-gt 99999 ]/|check-lead-act-check.sh
 21 board|product/tools/lead-act-check.sh|s/-gt "\$BOARD_MIN" \]/-gt 99999 ]/|check-lead-act-check.sh
