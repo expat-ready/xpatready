@@ -97,3 +97,22 @@ Diff only (P-277): JobOptions firmId XOR `platform: true`, PLATFORM_JOB_QUEUES, 
 * `check_pf19p_platform_mail` at 8b82dfd2f: 65/0.
 
 Verdict: Approve 8b82dfd2f1170990519b1daa6d701d1dd5a0b345
+
+## Re-break (diff 8b82dfd2f..f0793beb3)
+
+Scope: `messages.ts` only. The send handler now calls `deliver(j.firmId, …)`, and the platform sweep key ends `:sweep:<hour>`. Probe deleted, scratch DB `xr_studio_pf19pbreak3_<pid>` dropped, PF-12 roles kept. Same harness as before: the real PgBossJobs with PlatformJobs' wrapper, Messages on a WalledPool as xr_app, fakeJobs for the clock cases.
+
+* **R1 fixed.** A `jobs.enqueue("messages.send", { firmId: A, outboxId: <A's row> }, { platform: true })` now leaves A's row QUEUED with 0 provider calls; it runs only the platform path, under `job:messages.send`. The hand-written recurring envelope naming A's row does the same: the job completes and the row stays QUEUED.
+* **Firm sends still work.**
+  - The dispatch-shaped firm job is SENT.
+  - A firm job with no payload `firmId` and an upper-case envelope firm is SENT (it failed before).
+  - Firm A's job naming firm B's row, or naming a platform row, sends nothing.
+  - MessagesMail firm and platform sends through dispatch are both SENT. The firm send writes 1 SENT event, and the counter counts 3 for the 3 firm sends.
+* **R2 fixed.**
+  - One try lost before it was counted is re-queued by the next hour's sweep (`…:sweep:<hour>`) and SENT.
+  - While the database keeps refusing, it gets one uncounted try an hour (7 jobs in 6 hours), stays QUEUED, and is SENT the hour after it comes back. The firm path behaves the same way.
+  - Two sweeps in one hour queue 1 job; the next hour, a row still due queues 1 more. A second job for a row cannot send twice, because of the row lock and the QUEUED check (held in the earlier re-break, 4e).
+* **R3:** accepted as bounded (coordinator); not re-tested.
+* **Suites at f0793beb3:** `check_pf19p_platform_mail` 68/0, `check_pf19b_sending` 42/0, `check_pf19b_mail` 29/0.
+
+Verdict: Approve f0793beb3f87718be3fb30fec0f125849da6332d
