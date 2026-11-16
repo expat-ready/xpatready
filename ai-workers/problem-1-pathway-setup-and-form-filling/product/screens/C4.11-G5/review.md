@@ -67,3 +67,15 @@ No Blocker, no Major.
   Both are the builder's evidence (PR body).
 
 Verdict: Approve 9f2d34cdfa073eee8df8de5d397c9f9e155530b8
+
+## Re-review: diff 9f2d34cd..a7728b469 only (P-277)
+- `pack2.ts:116-122`: only comments changed. No line other than a comment changed, and the SQL order line is byte-identical.
+  The new text says the order is by batch, then the batch's plan, with the file name only a tie-break, and that a job
+  with no batch goes by its start. That matches the query and closes Minor 1 and the Note on jobs with no batch. The
+  comment still gives the why with its numbers (B74, C4.11-G5, P-641) and no status, dates or names.
+- `screens/C4.11-G5/review.md`: committed byte-identical to the review written above.
+- Still open from above, in the PR body and not in the code: the "20 runs in a row" Done-when lines (Minor 2). It does not block.
+
+No new findings. No Blocker, no Major.
+
+Verdict: Approve a7728b4692087364427ab96f0bf3505132ed2574
