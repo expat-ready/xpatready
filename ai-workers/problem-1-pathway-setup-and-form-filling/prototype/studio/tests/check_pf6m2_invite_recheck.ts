@@ -171,11 +171,16 @@ try {
   const tToOwner = await call(base, "PATCH", `/api/platform/staff/${T}/roles`, { token: tR2, body: { roles: ["OWNER"], reason: "a second Owner for cover" } });
   const ownerInv = await (async () => { const r = await call(base, "POST", "/api/platform/staff/invitations", { token: tR2, body: { email: "owner.invited@example.com", roles: ["OWNER"], reason: "a third Owner" } });
     return { status: r.status, id: r.body?.id as string, token: /#t=([A-Za-z0-9_-]{43})/.exec(mail.sent.filter((m) => m.to === "owner.invited@example.com").at(-1)?.text ?? "")?.[1] ?? "" }; })();
+  const coInv = await invite(tR2, "co.stepdown@example.com", ["CASE_OFFICER"]);   // reviewer M1: a non-Owner role an Admin cannot give
   const rDown = await call(base, "PATCH", `/api/platform/staff/${R}/roles`, { token: await signIn("user-T"), body: { roles: ["ADMIN"], reason: "R steps back to Admin" } });
   const oAcc = await accept(ownerInv.token), oLine = refusals(ownerInv.id);
   ok("PF-6m2 DW2 fail: an Owner's invitation into Owner, the inviter then only an Admin (keeps the invite key) → 410 role_no_longer_givable naming OWNER",
     tToOwner.status === 200 && ownerInv.status === 201 && rDown.status === 200 && oAcc.status === 410 && nothingGranted("owner.invited@example.com") && oLine.length === 1 && oLine[0].detail.reason === "role_no_longer_givable" && oLine[0].detail.roles.join() === "OWNER",
     { tToOwner: tToOwner.body, ownerInv: ownerInv.status, rDown: rDown.body, oAcc: oAcc.body, oLine });
+  const adminMissing = Number(sql(`select count(*) from platform_role_permission p where p.role = 'CASE_OFFICER' and p.permission_key not in (select permission_key from platform_role_permission where role = 'ADMIN')`));
+  const coAcc = await accept(coInv.token), coLine = refusals(coInv.id);
+  ok("PF-6m2 DW2 fail (BR-1's key rule): an Owner's Case Officer invitation, the inviter then only an Admin (who lacks some Case Officer keys) → 410 role_no_longer_givable naming CASE_OFFICER",
+    adminMissing > 0 && coInv.status === 201 && coAcc.status === 410 && nothingGranted("co.stepdown@example.com") && coLine.length === 1 && coLine[0].detail.reason === "role_no_longer_givable" && coLine[0].detail.roles.join() === "CASE_OFFICER", { adminMissing, coAcc: coAcc.body, coLine });
 
   // --------------------------------------------------------------------------- DW3: firm signup's first Owner
   const fclock = new FakeClock(new Date()), identity = new LocalSignUp(() => fclock.now());
