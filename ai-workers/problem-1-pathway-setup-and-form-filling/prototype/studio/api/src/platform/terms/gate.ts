@@ -1,6 +1,6 @@
 // PF-5t part 1 (checklist row 100; Lead B's brief rev 16.61): the guard's one question to the terms service, kept apart
 // so guard.ts needs no import of the service (and so of core.ts). The guard asks it after sign-in, once per request.
-import type { StaffContext } from "../identity/keys.ts";
+import { problem, type StaffContext } from "../identity/keys.ts";
 
 export const TERMS_GATE = "platform:terms-gate";
 export interface TermsGate {
@@ -18,3 +18,5 @@ export const TERMS_OPEN_ROUTES: ReadonlySet<string> = new Set([
   "POST /api/platform/session/sign-out",
 ]);
 export const TERMS_PENDING = "Please accept the updated terms to continue.";
+/** The guard's answer while terms are pending: 428 TERMS_PENDING. */
+export const termsPending = (): never => problem(428, "Accept the updated terms", TERMS_PENDING, { code: "TERMS_PENDING" });

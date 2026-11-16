@@ -16,10 +16,10 @@
 import { Inject, Injectable, Optional, type CanActivate, type ExecutionContext, type OnModuleInit } from "@nestjs/common";
 import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants.js";
 import { ModulesContainer, Reflector } from "@nestjs/core";
+import { TERMS_GATE, TERMS_OPEN_ROUTES, termsPending, type TermsGate } from "../terms/gate.ts";
 import { LICENCE_KEYS, assertNoBundleHandsOutMoney, catalogueMismatches } from "./catalogue.ts";
-import { DUTY_KEYS, FIRM_KEY, NOT_LICENSED, OWN_OR_ALL, PLATFORM_ACCESS, PLATFORM_PATH, forbidden, problem, type PlatformAccess, type StaffContext } from "./keys.ts";
+import { DUTY_KEYS, FIRM_KEY, NOT_LICENSED, OWN_OR_ALL, PLATFORM_ACCESS, PLATFORM_PATH, forbidden, type PlatformAccess, type StaffContext } from "./keys.ts";
 import { PlatformIdentity } from "./service.ts";
-import { TERMS_GATE, TERMS_OPEN_ROUTES, TERMS_PENDING, type TermsGate } from "../terms/gate.ts";
 
 const METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "ALL", "OPTIONS", "HEAD", "SEARCH"];
 const join = (...p: string[]) => `/${p.map((s) => s.replace(/^\/+|\/+$/g, "")).filter(Boolean).join("/")}`;
@@ -113,7 +113,7 @@ export class PlatformGuard implements CanActivate, OnModuleInit {
       // permission system never checks licence. Unconfirmed: no counsel.
     }
     // PF-5t: pending terms stop everything but who-am-I, the terms routes and sign-out (Unconfirmed: no counsel).
-    if (this.terms && !this.declared(ctx).every((r) => TERMS_OPEN_ROUTES.has(r)) && (await this.terms.mustAccept(staff))) problem(428, "Accept the updated terms", TERMS_PENDING, { code: "TERMS_PENDING" });
+    if (this.terms && !this.declared(ctx).every((r) => TERMS_OPEN_ROUTES.has(r)) && (await this.terms.mustAccept(staff))) termsPending();
     req.platform = staff;
     return true;
   }

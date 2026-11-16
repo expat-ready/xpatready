@@ -48,7 +48,9 @@ export async function seedSampleFirms(db: PrismaClient, firms: SampleFirm[] = re
   return db.$transaction(async (tx) => {
     const r: SeedResult = { firmsAdded: 0, staffAdded: 0, grantsAdded: 0, credentialsAdded: 0, subscriptionsAdded: 0, settingKeys: 0, unmatchedCaseFirmKeys: [] };
     r.settingKeys = await syncDefinitionsIfChanged(tx);
-    const terms = await tx.$queryRaw<{ id: string; kind: string }[]>`select distinct on (kind) id::text as id, kind::text as kind from platform_terms_version where published_at <= now() order by kind, published_at desc, version desc`;
+    // A database migrated only up to before PF-5 (some checks load part of the migrations) has no terms: none accepted.
+    const [{ has }] = await tx.$queryRaw<{ has: boolean }[]>`select to_regclass('platform_terms_version') is not null as has`;
+    const terms = !has ? [] : await tx.$queryRaw<{ id: string; kind: string }[]>`select distinct on (kind) id::text as id, kind::text as kind from platform_terms_version where published_at <= now() order by kind, published_at desc, version desc`;
     for (const f of firms) {
       const owner = f.users.find((u) => u.duties.includes("firm_admin")) ?? f.users[0];
       const country = COUNTRY[String(f.office?.country ?? "").toLowerCase()];
