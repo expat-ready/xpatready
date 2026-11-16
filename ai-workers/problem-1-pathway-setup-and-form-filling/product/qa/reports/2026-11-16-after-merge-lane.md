@@ -42,3 +42,4 @@ Refined 16:1x IST from qa #1950's verdict table (open, stacked on #1929): R1.19 
 | 16 Nov 20:4x | d66bcfd2d | none | none | wait |
 | 16 Nov 21:0x | d66bcfd2d | none | none | wait |
 | 16 Nov 21:2x | d66bcfd2d | none | none | wait |
+| 16 Nov 21:5x | d66bcfd2d | (Lead 69 ask) FO-4sf #1962, PF-5v part 1 #1955 already on main | R1.27: parts missing FO-4b | QA-493 closed, QA-484 fixed on main (row in #1950), QA-500 new Minor; `2026-11-16-after-merge-r127-qa484/report.md` |
