@@ -24,7 +24,7 @@ PRs = pull requests per the drafts (P-610). "Ready" = every wait in the draft is
 | R1.102 | Find a person or case | CS-S1 (2) | PF-30a, PF-30s | **part 1** | part 2: PF-30a, CS-K1, CS-K3 |
 | R1.79 | Dashboards and reports | CS-R1 (2) | PF-R1, R2fo, R2cm, R3 | no | PF-R1 `MetricRegistry` |
 | R1.88 | Firm reads its own audit log | AUD-4 (1), AUD-4s (concept + build) | — (PF-6 p1 merged) | AUD-4s concept | AUD-1a, AUD-1b; AUD-1c p2 |
-| R1.105 | Keep periods; leaving firm closed | AUD-5 (2) | PF-11c, PF-5 | no | College by-law page/quote/date in repo (Lead); PF-21b |
+| R1.105 | Keep periods; leaving firm closed | AUD-5 (2) | PF-11c, PF-5 | **part 1** (`AUD-5-1.md`) | part 2: PF-21b |
 | R1.76 | Notes; one timeline | **CS-NT1 (4)** | FO-2 rest | p1 after CS-C1b leaves `runtime.ts` | — |
 | R1.8 | Audit trail nobody can edit | **AUD-1a (1), AUD-1b (1), AUD-1m (3)** | — | AUD-1a | series |
 | R1.34 | One person's export | CS-X1 (3) | PF-26, PF-26s | no | PF-26 port |
@@ -59,7 +59,8 @@ Rows proven or Lead-B-only are not listed. R1.77 finishes on CS-C1b + QA-397; R1
 | C3 | `CS-V1-1.md` | `CS-V1-2.md` | start asked 21:0x IST |
 | C4 | `AUD-1a.md` | `AUD-1b.md` | start asked 21:0x IST |
 | C5 | `FO-7s0.md` (concept, now) | `FO-7ts-1.md` (after #1991) | start asked 21:1x IST |
-| C6-C8 | to fill: CS-S1 part 1, CS-W3 part 0 spike, AUD-4s concept, CS-98s1 concept (briefs next) | | |
+| C6 | `AUD-5-1.md` (now) | — | start asked 21:2x IST |
+| C7-C8 | to fill: CS-S1 part 1, CS-W3 part 0 spike, AUD-4s concept, CS-98s1 concept (briefs next) | | |
 
 **Holders (P-438b, P-526b):** C1 holds `api/src/runtime.ts` `createCase`; C4 holds `governance.prisma` / new `audit.prisma`; C2 touches Lead B's `leads.ts`/`open-minutes.ts` import lines only. Nobody in my group holds `prisma/schema/cases.prisma` or `api/src/case-prepare.ts` now.
 
@@ -67,7 +68,11 @@ Rows proven or Lead-B-only are not listed. R1.77 finishes on CS-C1b + QA-397; R1
 1. Briefs for lanes C5-C8 (CS-S1 part 1, CS-W3 part 0, AUD-4s concept, CS-98s1 concept).
 2. Shape QA-397 (R1.77's other half) as a brief.
 3. AS-1 parts (AS-1m, AS-1g, AS-1s, AS-1c): briefs from BACKLOG, values from canada.ca (page, quote, date).
-4. Ask the Lead for the College by-law citation AUD-5 needs.
+4. Done 21:2x IST: the College citation (Client File Management Regulation 2021-001 s. 7.2, page 7, read 16 Nov 2026) is in `build-lead-c-briefs/AUD-5-1.md`; AUD-5 part 1 is ready now.
 5. Each check: read my lanes' PRs and pushes; a lane counts only after a push (P-326); answer "Question for the tech lead" comments within 30 min.
 
-**WIP (P-623):** R1.80 is my group's one row built and waiting for qa; R1.77 makes two once CS-C1b merges.
+**WIP (P-623, Lead 69's reading 21:1x IST): when 2 capabilities of one module group wait for qa, that group starts no new build row.** Per group now:
+* **Case side:** 1 waiting (R1.80). It reaches **2 when CS-C1b merges (R1.77)**. From then until qa clears one, start no new case-side row (CS-NT1, CS-S1, CS-K1, CS-T1, CS-W*, CS-D*, CS-X1, CS-R1, CS-98*). Parts of rows already started (CS-DL1 part 2, CS-V1 part 2) carry on, and stopped lanes fix case-side qa bugs first.
+* **Audit:** 0 waiting (AUD-1a, AUD-1b, AUD-5 part 1 free to start).
+* **Client money:** 0 waiting (FO-7s0 free; FO-7ts part 1 after #1991).
+* **Configurator / assessments (AS-*):** 0 waiting.

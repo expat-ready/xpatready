@@ -1,6 +1,7 @@
 # Brief: CS-V1-1, PR 1 of CS-V1: the input check over every case-side route (the finder and the allow-list) (cloud builder lane; row owner Build Lead C)
 
 Written 16 Nov 21:0x IST by Build Lead C (P-644). **Approved for building**: the case-side shaping lane's draft `product/design/briefs/CS-V1.md` on `main` is the specification; where this page and the draft differ, **this page wins**. Release 1 row: **R1.10 (map 10), case half, PR 1 of 4 (PF-28 is Lead B's half)**.
+**PR title:** `runtime: CS-V1 part 1 — …` (board rule, Lead 69: "<ID> part N"; a title without "part" counts as the whole id)
 **Model: Opus 5.5, effort: medium (tests only; no schema, money or screen).** Decisions: STANDARDS §6, P-606, P-610, P-526.
 **Ready when:** **now**. Build **PR 1** of the draft only (~350 lines): new `tests/lib/routes.ts` and `tests/check_csv1_inputs.ts`, the allow-list of today's unparsed methods (which only shrinks).
 

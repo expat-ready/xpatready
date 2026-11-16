@@ -1,6 +1,7 @@
 # Brief: AUD-1b, every audit line carries firm, actor type and correlation from the request (cloud builder lane; row owner Build Lead C)
 
 Written 16 Nov 21:0x IST by Build Lead C (P-644). **Approved for building**: the case-side shaping lane's draft `product/design/briefs/AUD-1b.md` on `main` is the specification; where this page and the draft differ, **this page wins**. Release 1 row: **R1.8 (map 8), part 2 of 3**.
+**PR title:** `runtime: AUD-1b — …` (board rule, Lead 69: "<ID> part N"; a title without "part" counts as the whole id)
 **Model: Opus 5.5, effort: high (audit, request-context concurrency).** Decisions: SA-11-2, P-278, P-607.
 **Ready when:** after **AUD-1a** is on `main`. One PR, ~450 lines.
 

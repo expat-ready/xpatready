@@ -1,6 +1,7 @@
 # Brief: CS-NT1-1, part 1 of CS-NT1: plain notes on a case, add-only, internal or client-visible (cloud builder lane; row owner Build Lead C)
 
 Written 16 Nov 21:0x IST by Build Lead C (P-644). **Approved for building**: the case-side shaping lane's draft `product/design/briefs/CS-NT1.md` on `main` is the specification; where this page and the draft differ, **this page wins**. Release 1 row: **R1.76 (map 76), case half, part 1 of 4 (FO-2's lead notes are Lead B's)**.
+**PR title:** `migration — runtime: CS-NT1 part 1 — …` (board rule, Lead 69: "<ID> part N"; a title without "part" counts as the whole id)
 **Model: Opus 5.5, effort: high (personal data, portal visibility).** Decisions: Lead 61's sequencing on #1867 (comment 6900282370: plain notes first, rich text and delete next, all inside Release 1); P-600; P-526b.
 **Ready when:** after **CS-C1b** is off review on `api/src/runtime.ts` (merged, or told), because part 1 adds one read hook there. CS-C1a #1818 is on `main`. New area file `prisma/schema/case-notes.prisma` + one migration (unique stamp).
 

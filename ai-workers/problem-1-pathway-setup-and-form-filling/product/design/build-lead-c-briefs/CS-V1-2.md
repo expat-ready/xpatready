@@ -1,6 +1,7 @@
 # Brief: CS-V1-2, PR 2 of CS-V1: schemas for review-rounds, readiness and form-additions (cloud builder lane; row owner Build Lead C)
 
 Written 16 Nov 21:0x IST by Build Lead C (P-644). **Approved for building**: the case-side shaping lane's draft `product/design/briefs/CS-V1.md` on `main` is the specification; where this page and the draft differ, **this page wins**. Release 1 row: **R1.10 (map 10), case half, PR 2 of 4**.
+**PR title:** `runtime: CS-V1 part 2 — …` (board rule, Lead 69: "<ID> part N"; a title without "part" counts as the whole id)
 **Model: Opus 5.5, effort: medium.** Decisions: STANDARDS §6, P-606, P-610.
 **Ready when:** after **CS-V1 PR 1** is on `main`. Not while AUD-1m part 1 or CS-N1 is open on `review-rounds.ts` / `readiness.ts` (one at a time; Build Lead C checks before the start line).
 

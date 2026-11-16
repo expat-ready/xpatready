@@ -1,6 +1,7 @@
 # Brief: FO-7s0, the client-money screens concept (index + five files, fresh challenge) (cloud builder lane; row owner Build Lead C)
 
 Written 16 Nov 21:1x IST by Build Lead C. Client money (FO-7 except FO-7a2) moved to Build Lead C under P-644 (Lead 69's message, 21:1x IST 16 Nov). **Approved for building**: the draft `product/design/briefs/FO-7s0.md` on `main` is the specification; where they differ, this page wins. **Approver of the concept (skill part C) is now Build Lead C**, not Lead B. Release 1 rows: R1.56, R1.57, R1.58, R1.96, R1.111 (the screens' contract).
+**PR title:** `screens: FO-7s0 — … (records)` (board rule, Lead 69: "<ID> part N"; a title without "part" counts as the whole id)
 **Model: Opus 5.5, effort: medium** (records only; the fresh challenger at high). Decisions: P-223 (4), P-392, P-352, P-423, P-567, Lead B rev 16.37 answer 9 (#1881).
 **Ready when:** **now** (no code; reads the money briefs as its contract).
 

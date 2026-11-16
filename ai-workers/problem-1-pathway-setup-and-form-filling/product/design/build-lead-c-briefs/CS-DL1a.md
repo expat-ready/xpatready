@@ -1,6 +1,7 @@
 # Brief: CS-DL1a, part 1 of CS-DL1: the one open-day function and the deadline view (cloud builder lane; row owner Build Lead C)
 
 Written 16 Nov 21:0x IST by Build Lead C (P-644). **Approved for building**: the case-side shaping lane's draft `product/design/briefs/CS-DL1.md` on `main` is the specification; where this page and the draft differ, **this page wins**. Release 1 row: **R1.74 (map 74), part 1 of 2**.
+**PR title:** `runtime: CS-DL1 part 1 — …` (board rule, Lead 69: "<ID> part N"; a title without "part" counts as the whole id)
 **Model: Opus 5.5, effort: high (deadlines a client can lose a case on).** Decisions: AG-7-94, AG-7-96 r2/r5, AG-7-99, P-412 F13 (b), P-607; Lead 61's rulings on #1867 (comment 6900282370); Lead B's OK for `platform/calendar/` (comment 6900265123, rev 16.31).
 **Ready when:** **now**: PF-21v #1848 merged 15 Nov 20:27 IST. Build **Part 1 (CS-DL1a)** of the draft only (~350 lines).
 

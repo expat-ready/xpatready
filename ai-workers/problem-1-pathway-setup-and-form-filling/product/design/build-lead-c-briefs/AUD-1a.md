@@ -1,6 +1,7 @@
 # Brief: AUD-1a, the audit table becomes the audit module's own and insert-only (cloud builder lane; row owner Build Lead C)
 
 Written 16 Nov 21:0x IST by Build Lead C (P-644). **Approved for building**: the case-side shaping lane's draft `product/design/briefs/AUD-1a.md` on `main` is the specification; where this page and the draft differ, **this page wins**. Release 1 row: **R1.8 (map 8), part 1 of 3 (AUD-1a, AUD-1b, AUD-1m); first of the S1 series**.
+**PR title:** `migration — runtime: AUD-1a — …` (board rule, Lead 69: "<ID> part N"; a title without "part" counts as the whole id)
 **Model: Opus 5.5, effort: high (schema, audit, a trigger on the one trail).** Decisions: SA-11-2; P-607; P-600 (5); Lead 61's rulings on #1870 (comment 6900882210): widen the demo delete exception now, keep `SEED`, confirm the move with the screens lane.
 **Ready when:** **now** (no row waits). One PR, ~550 lines. Migration stamp later than every migration on `main` and unique (P-348h).
 

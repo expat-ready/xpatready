@@ -1,6 +1,7 @@
 # Brief: FO-7ts part 1, money settings and request columns (trust answer, tax, "Invoice payments go to", two methods, retainer version, pay-link token hash) (cloud builder lane; row owner Build Lead C)
 
 Written 16 Nov 21:1x IST by Build Lead C (client money moved here under P-644, Lead 69, 21:1x IST). **Approved for building**: the draft `product/design/briefs/FO-7ts.md` on `main` is the specification (part 1 only); where they differ, this page wins. Release 1 rows: R1.56, R1.57, R1.58 (first of the money chain: FO-7ts p1 → p2 → p3 → FO-7b → FO-7c ∥ FO-7t → ...).
+**PR title:** `migration — runtime: FO-7ts part 1 — …` (board rule, Lead 69: "<ID> part N"; a title without "part" counts as the whole id)
 **Model: Opus 5.5, effort: high** (schema, money). Decisions: P-567, P-584 (10), P-600 (d), P-423; Lead B revs 16.33, 16.35 (b), 16.36, 16.37; Lead 61's money rulings on #1881 (comment 6901156791).
 **Ready when:** **#1991 (FO-7a2, Lead B) is merged**: it holds `prisma/schema/client-money.prisma`, and until then no lane touches `money_move_line_write`, `money_trust_entry_moves`, `money_to_move`, `money_move_batch`, `money_trust_entry_write` or `money_credit_note_write` (Lead B's rule, restated by Lead 69). FO-7mv #1924 is already on `main`. Migration stamp later than every migration on `main`; re-stamp on top of `main` before the label.
 

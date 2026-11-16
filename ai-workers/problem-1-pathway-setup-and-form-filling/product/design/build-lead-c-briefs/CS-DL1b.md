@@ -1,6 +1,7 @@
 # Brief: CS-DL1b, part 2 of CS-DL1: reminders as jobs, stopped by a close and resumed by a reopen (cloud builder lane; row owner Build Lead C)
 
 Written 16 Nov 21:0x IST by Build Lead C (P-644). **Approved for building**: the case-side shaping lane's draft `product/design/briefs/CS-DL1.md` on `main` is the specification; where this page and the draft differ, **this page wins**. Release 1 row: **R1.74 (map 74), part 2 of 2**.
+**PR title:** `runtime: CS-DL1 part 2 — …` (board rule, Lead 69: "<ID> part N"; a title without "part" counts as the whole id)
 **Model: Opus 5.5, effort: high.** Decisions: AG-7-34 r3, AG-7-13 r5, AG-13-14, AG-13-15, P-412 F13 (b) (only cited routes remind), AG16-60 via Lead 61 (recorded-date reminders survive a close).
 **Ready when:** after **CS-DL1a** is on `main`. PF-18np (#1898) and CS-C1a (#1818) are already on `main`. Build **Part 2 (CS-DL1b)** of the draft (~450 lines). Add `CASE_STAGE_DEADLINE` to `NOTIFICATION_KIND` (add a line; never reorder).
 

@@ -1,6 +1,7 @@
 # Brief: CS-C1b, the active-case count and the plan-limit check at opening (cloud builder lane; row owner Build Lead C)
 
 Written 16 Nov 21:0x IST by Build Lead C (P-644). **Approved for building**: the case-side shaping lane's draft `product/design/briefs/CS-C1b.md` on `main` is the specification; where this page and the draft differ, **this page wins**. Release 1 row: **R1.77 (map 77); its last checklist part (CS-C1a #1818 merged 15 Nov)**.
+**PR title:** `runtime: CS-C1b — …` (board rule, Lead 69: "<ID> part N"; a title without "part" counts as the whole id)
 **Model: Opus 5.5, effort: high (permissions, plan limits, a hook in `runtime.ts`).** Decisions: P-606, P-607, P-610, P-526b, P-576, P-278; contract §6-§7 (case side).
 **Ready when:** **now**: CS-C1a #1818 is on `main` (15 Nov 21:33 IST). PF-15 is not on `main` and has no open PR (read 21:0x IST): create `ports/entitlement.ts` with PF-15's exact name and signature and the allow-all fake, exactly as the draft says; build no plan table.
 
