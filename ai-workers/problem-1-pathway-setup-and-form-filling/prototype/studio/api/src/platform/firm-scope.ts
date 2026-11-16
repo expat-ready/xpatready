@@ -74,24 +74,28 @@ export function withFirm<T>(firmId: string, fn: () => T | Promise<T>): Promise<T
   const firm = firmScope(firmId).firmId;
   return scope.run({ route: scope.getStore()?.route, firmId: firm }, async () => await fn());
 }
-/** A door (a sign-in, a public page, a link): the firm it resolved through asBypass, for the rest of its request. Refused
- *  outside a request or inside a bypass. */
+/** A door (a sign-in, a public page, a link): the firm it resolved through asBypass, for the rest of its request.
+ *  Refused inside a job's or a bypass's scope; on a direct call with no scope (a suite, a tool) there is nothing to set
+ *  and the caller's own client decides what it reads. */
 export function enterFirm(firmId: string) {
-  const s = scope.getStore();
-  if (!s || s.route === undefined || s.bypass) throw new FirmScopeError("enterFirm: only a request's own scope takes a firm");
-  s.firmId = firmScope(firmId).firmId;
+  const id = firmScope(firmId).firmId, s = scope.getStore();
+  if (!s) return;
+  if (s.route === undefined || s.bypass) throw new FirmScopeError("enterFirm: only a request's own scope takes a firm");
+  s.firmId = id;
 }
 
 /** The named list (brief: "used only by routes on a named list in code"): each use, why it may cross the walls, and the
  *  routes ("METHOD /path" patterns) it may run in. `outside: true` lets it run where there is no request (start-up, a
- *  job). Anything not here is refused (BypassRefused) before any query runs. */
-export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonly RegExp[]; outside?: boolean }>> = Object.freeze({
+ *  job). `direct: true` lets a door's use run on a direct call with no scope at all (a suite or a tool calling the
+ *  service with its own client; never inside a request or a job). Anything else is refused (BypassRefused) before any
+ *  query runs. */
+export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonly RegExp[]; outside?: boolean; direct?: boolean }>> = Object.freeze({
   "platform.identity.authenticate": { why: "PF-4's guard reads the session's staff member and firm before any firm is known, on every route that declares staff access (platform, front office, and the case routes that take a staff session)", routes: [/^[A-Z]+ \/api\//i] },
-  "platform.identity.sign-in": { why: "the sign-in doors find the firm by its key, then run as it (PF-4, PF-4b)", routes: [/^POST \/api\/platform\/session\/(local|callback)$/i] },
-  "platform.identity.invitation": { why: "the invitation link: the token is the only key, and one sign-in account is one firm's staff member across all firms (PF-4b, BR-4)", routes: [/^(GET|POST) \/api\/public\/invitations\/[^/]+(\/accept)?$/i] },
-  "fo.sales.web-form": { why: "the public enquiry form finds its firm by the form's token, then runs as it (FO-2)", routes: [/^(GET|POST) \/api\/public\/forms\/[^/]+(\/submissions)?$/i] },
-  "fo.booking.public-page": { why: "the public booking page finds its firm by key, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/firms\/[^/]+\/book\/[^/]+\/(slots|bookings)$/i] },
-  "fo.booking.self-service": { why: "the booker's own link finds its firm by the link's token, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/bookings\/[^/]+(\/(slots|reschedule|cancel))?$/i] },
+  "platform.identity.sign-in": { why: "the sign-in doors find the firm by its key, then run as it (PF-4, PF-4b)", routes: [/^POST \/api\/platform\/session\/(local|callback)$/i], direct: true },
+  "platform.identity.invitation": { why: "the invitation link: the token is the only key, and one sign-in account is one firm's staff member across all firms (PF-4b, BR-4)", routes: [/^(GET|POST) \/api\/public\/invitations\/[^/]+(\/accept)?$/i], direct: true },
+  "fo.sales.web-form": { why: "the public enquiry form finds its firm by the form's token, then runs as it (FO-2)", routes: [/^(GET|POST) \/api\/public\/forms\/[^/]+(\/submissions)?$/i], direct: true },
+  "fo.booking.public-page": { why: "the public booking page finds its firm by key, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/firms\/[^/]+\/book\/[^/]+\/(slots|bookings)$/i], direct: true },
+  "fo.booking.self-service": { why: "the booker's own link finds its firm by the link's token, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/bookings\/[^/]+(\/(slots|reschedule|cancel))?$/i], direct: true },
   "platform.web-address.host": { why: "the host routing finds the firm a firm address serves, on every request (PF-25)", routes: [/^[A-Z]+ \//] },
   "platform.web-address.catch-up": { why: "at start, every firm with no web address yet gets one (PF-25)", routes: [], outside: true },
   "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i] },
@@ -112,9 +116,10 @@ export function onBypassLine(f: (use: string, route: string | undefined) => void
  *  a route on that use's list; every use writes one audit line (platform.bypass). */
 export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promise<T> {
   const entry = Object.prototype.hasOwnProperty.call(BYPASS_USES, use) ? BYPASS_USES[use] : undefined;
-  const route = scope.getStore()?.route;
+  const store = scope.getStore(), route = store?.route;
   if (!entry) throw new BypassRefused(`asBypass: "${use}" is not on the named list (firm-scope.ts BYPASS_USES)`);
-  if (route === undefined ? !entry.outside : !entry.routes.some((r) => r.test(route))) throw new BypassRefused(`asBypass: "${use}" is not allowed ${route === undefined ? "outside a request" : `on ${route}`}`);
+  const allowed = route !== undefined ? entry.routes.some((r) => r.test(route)) : store === undefined ? !!(entry.outside || entry.direct) : !!entry.outside;
+  if (!allowed) throw new BypassRefused(`asBypass: "${use}" is not allowed ${route === undefined ? "outside a request" : `on ${route}`}`);
   bypassLine(use, route);
   return scope.run({ route, bypass: use }, async () => await fn());
 }
