@@ -366,7 +366,7 @@ class TrustAndInvariants(unittest.TestCase):
         t2 = json.loads(json.dumps(theirs))
         plus = lambda n: (date.fromisoformat(k["forecast_p85_date"]) + timedelta(days=n)).isoformat()
         r7 = cd.reconcile_compare(k, theirs, None)
-        self.assertEqual(r7["compared"], 35)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's six + v63's eight
+        self.assertEqual(r7["compared"], 36)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's six + v63's eight + P-636's Proven
         t2["numbers"]["forecast_p85_date"]["value"] = plus(1)                 # +1 day: agrees
         self.assertEqual(cd.reconcile_compare(k, t2, None)["state"], "agree")
         t2["numbers"]["forecast_p85_date"]["value"] = plus(2)                 # +2 days: disagrees
@@ -951,7 +951,7 @@ class Delivery24h(unittest.TestCase):
             out, note = cd.run_reconcile(d, rec)
             self.assertIsNone(note)
             _, c = run(d, rec=out, note=None)
-            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 35, []))
+            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 36, []))
 
 
 BLP = "files/" + cd.REL + "/BACKLOG.md"
@@ -1357,11 +1357,46 @@ class Tooltips(unittest.TestCase):
         self.assertLess(html.index("<b>What to do:</b> '+esc(e.todo)"), html.index("<dt>Counts</dt>"))
         self.assertIn("if(i>=0){var nb=s.querySelectorAll(\".ib\")[i];if(nb)tipShow(nb);}", html)
         self.assertIn("flex-wrap:nowrap;overflow-x:auto", html)            # one row of tabs on a phone
-        # page-made counts list their items on tap (data-items), and the open items show as words in Needs you
+        # page-made counts list their items on tap (data-items)
         self.assertIn('querySelectorAll("[data-tip],[data-info],[data-nm],[data-items]")', html)
-        self.assertIn("Also yours: '+mine.length+' launch risks</b>", html)
-        self.assertIn("checks not green</b>", html)
         self.assertEqual(html.count("mineR.map(riskLine)"), 1)              # "Who must act: You" lists Needs you items and your risks
+
+    def test_first_screen_p636(self):
+        """P-636 (founder 16 Nov): six answers in three words. Proven comes from qa's file on main only, Built = all parts
+        merged or qa passed, and every answer has its explanation with what is behind it."""
+        f = self.d["first"]
+        self.assertEqual(set(f), {"words", "release", "today", "needs", "stuck", "choke", "health", "rule"})
+        self.assertIn("Only Proven counts as delivered", f["words"])
+        R = f["release"]
+        self.assertEqual(R["planned"], 8)                                    # 8 Build rows in the fixture checklist
+        self.assertIsNone(R["proven"])                                       # the fixture's qa file has no R1 rows: not measured, never 0
+        self.assertEqual(R["state"], "not measured")
+        for k in ("first.release", "first.today", "first.needs", "first.stuck", "first.choke"):
+            self.assertIn(k, self.E)
+        self.assertEqual(f["today"]["state"], "not set")                     # no today_goal in the fixture Lead input
+        self.assertTrue(f["choke"]["stage"])
+
+    def test_first_screen_rules_on_a_small_case(self):
+        d = {"freshness": {"generated_at": "2026-11-16T04:48:07Z"}, "capability_table": {"rows": [{"map": m, "cap": f"cap {m}"} for m in (1, 2, 3, 4)]},
+             "build_rows": [{"map": 1, "built": "2026-11-14"}, {"map": 2, "built": None}, {"map": 3, "built": "2026-11-15"}, {"map": 4, "built": None}],
+             "pace": {"committed_date": "2026-11-29"}, "forecast": {"p50": {"value": None}},
+             "needs_you": {"items": [{"id": "A1", "line": "pick", "by": None, "src": "STATE"}]},
+             "risks": {"items": [{"id": "C5", "risk": "no test", "owner": "founder", "trigger_date": "2026-11-16", "mitigation": "book it", "status": "open"},
+                                 {"id": "C12", "risk": "no hosting", "owner": "founder", "trigger_date": None, "mitigation": "open it", "status": "open"},
+                                 {"id": "C2", "risk": "walls", "owner": "tech lead", "trigger_date": "2026-11-10", "mitigation": "x", "status": "open"}]},
+             "health": {"light": "red", "items": []}, "value_stream": {"stages": [{"id": "queue", "name": "Merge queue", "count": {"v": 1}}]},
+             "top_numbers": {}, "lead_queue": {}, "top3": {}}
+        f = cd.first_screen(d, {2: "Works", 3: "Not built", 1: "Partial"}, {"today_goal": {"proven": 3, "by": "2026-11-17T08:00:00+05:30"}}, "Lead input")
+        R = f["release"]
+        self.assertEqual((R["planned"], R["built"], R["proven"], R["waiting"]), (4, 3, 1, 2))   # built 1, 3 by parts + 2 by qa's pass
+        self.assertEqual(R["unlisted_ids"], [4])
+        self.assertEqual(R["qa_not_built_ids"], [3])
+        self.assertEqual((R["days_left"], R["need_per_day"], R["state"]), (13, 0.2, "on track"))  # 3 left in 13 days; 1 proven in 4 days
+        self.assertEqual((f["today"]["short"], f["today"]["state"]), (2, "at risk"))
+        self.assertEqual([x["id"] for x in f["needs"]["items"]], ["A1", "C5"])                   # dated today; C12 later; C2 not the founder's
+        self.assertEqual([x["id"] for x in f["needs"]["later"]], ["C12"])
+        self.assertEqual((f["choke"]["stage"], f["choke"]["count"]), ("Built, waiting for qa", 2))
+        self.assertIsNone(cd.first_screen(d, {}, None, "x")["release"]["proven"])
 
     def test_page_keys_all_in_explain(self):
         html = open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read()
