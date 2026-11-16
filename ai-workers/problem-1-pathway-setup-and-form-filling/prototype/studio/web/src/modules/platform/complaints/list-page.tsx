@@ -5,6 +5,7 @@
 import * as React from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { FoldOut } from "@/components/fold-out";
 import { Button, Table } from "@/components/ui/controls";
 import { Loading } from "@/modules/front-office/sales/loading";
 import { cn } from "@/lib/utils";
@@ -106,10 +107,9 @@ function ListBody() {
                 </div>
               </div>
             )}
-      <details className="rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm" data-how>
-        <summary className="cursor-pointer font-medium">How it works</summary>
+      <FoldOut className="rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm" data-how summaryClassName="font-medium" summary="How it works">
         <p className="mt-2 text-text-muted">{HOW}</p>
-      </details>
+      </FoldOut>
       {records ? <RecordDrawer open={drawer} onOpenChange={openDrawer} linked={linked} zone={pages[0]?.firmTimeZone} returnFocus={() => opener.current} /> : null}
     </div>
   );
