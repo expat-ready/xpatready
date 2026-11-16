@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-643**, 16 Nov 20:2x IST (P-639 to P-643 added by Lead 69); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-16-2015-lead69s2-as-of-P-638.md`, whose first line lists the older ones)
+# Rule register (the tech lead keeps it; as of **P-644**, 16 Nov 21:0x IST (P-639 to P-644 added by Lead 69); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-16-2015-lead69s2-as-of-P-638.md`, whose first line lists the older ones)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced by** names the hook, CI step or script that blocks or fails a break; `prose` = only the reader enforces it (G-4 candidates, bottom); `(part)` = covers part of the rule. IDs: a letter (`P-611b`) = the decision's 2nd row, not its part (2); `IDX-n` = an index of done, product or integration decisions kept in the side file. **Start read**: this page, then the `DECISIONS.md` rows newer than "as of", word for word (P-314, P-440). Long text word for word: side files under `rules/`. `tools/check-docs.sh` fails a row with no enforced-by, a page over 25 KB, or one over 3 rows behind DECISIONS.
 
@@ -147,8 +147,8 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-639 | The board and the Lead's check verify each other: each check acts on the board's Today and Stuck items against their primary source; a mismatch is an ACT fixed the same day. | script: lead-watch.sh (part: ACT lines; B201's tests) | 16 Nov |
 | P-640 | Halve qa time per row (Built to Proven), gates unchanged; staging-domain fallback Cloudflare Registrar. | prose | 16 Nov |
 | P-641 | Push harder tonight on extra usage: lanes run past the 96% line to 08:00 IST 17 Nov; spend red in US$ each check. | prose | 16 Nov |
-| P-642 | Extra usage cap US$50 tonight; until the founder switches it on, the 96% stop line stands. (replaced by P-643) | prose | 16 Nov |
-| P-643 | No extra usage; lanes run past 96%; at 96% the Lead tells the founder, who resets the account before 98%. | prose | 16 Nov |
+| P-643 | (replaces P-642) No extra usage; lanes run past 96%; at 96% the Lead tells the founder, who resets the account before 98%. | prose | 16 Nov |
+| P-644 | Build 10, prove 10 R1 rows a day (floor 7/7); Lead + Build Leads A, C + Prove Lead; whole parts first; no scope cuts. | prose (plan in design/) | 16 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |
