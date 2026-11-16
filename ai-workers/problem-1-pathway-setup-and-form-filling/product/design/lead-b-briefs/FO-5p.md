@@ -19,7 +19,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime F
 * `FO-5p DW1 pass/fail` (AG-12-89): a preview for a prospect the person may open shows its real values and the "Preview — not sent" mark on every page; for a prospect they may not open → 404.
 * `FO-5p DW2 pass/fail` (AG-12-89): a missing must-fill value (no fee) is listed beside the download; with it filled, the list is empty.
 * `FO-5p DW3 pass/fail` (AG-12-90): no prospect → the Sample record's values, marked Sample.
-* `FO-5p DW4 pass/fail`: after a preview, retainer, version and file counts are unchanged; after "Send me a test", exactly one file under `retainer-previews/` and no other, and `GET files/:token` for that key is refused.
+* `FO-5p DW4 pass/fail`: after a preview, retainer, version and file counts are unchanged; after "Send me a test", exactly one file under `retainer-previews/` and no other, and `GET files/:token` for that key is refused (the test signs that link itself with the files adapter, since no route mints one for a non-retainer key, so the check is not empty).
 * `FO-5p DW5 pass/fail` (AG-12-91): "Send me a test" sends one message to the caller's own staff email with "[Test]" in the subject; a body naming another address is ignored; the template's history gets one line and the prospect's timeline none.
 * `FO-5p DW6`: a sent retainer's document has no preview mark (FO-5's suites unchanged); firm B's template → 404.
 
