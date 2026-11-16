@@ -252,3 +252,35 @@ Verdict: Approve 4847bfca86f558d8ec9d3b31a14d5098e472344b
 **Unchanged:** m4, m5 and m7 are still Minor. B-3 is still with the tech lead.
 
 Verdict: Approve 5ab4043aa21a53fa7af89d3c2168a4bfc0382b0f
+
+## Re-review 5 (diff only, `5ab4043aa..572c324e7`, without the merge of `main`; P-277)
+**Reviewed:** commit `572c324e76875a939718e7e4c188a4d02aa98886`, the head (`git rev-parse HEAD`; the coordinator corrected the earlier `38ab25a47`).
+* **Diff read:** `git diff 5ab4043aa HEAD -- …/studio/prisma …/studio/tests/check_fo7mv_move_list.ts`. Leaving out PF-12's own migration, which came from `main`, that is +20 lines at the end of the FO-7mv migration (`:325-344`); the test is unchanged.
+* **Scratch databases:** `xr_studio_rev_mv6` on :54329, dropped afterwards. I did not use :4400 or the shared databases. Cost: US$0.
+
+**Suites** (`cd prototype && studio/node_modules/.bin/tsx --tsconfig studio/api/tsconfig.json studio/tests/<file>`, clean working tree at HEAD):
+* `check_fo7mv_move_list.ts` **45/45**;
+* `check_pf12_walls.ts` **100/100**;
+* `check_fo7a_money_schema.ts` **123/123**;
+* `check_prisma_schema.ts` **8/8**;
+* studio diff from `origin/main`: +794/−5, under 800.
+
+**Why I ran it as the app:** the FO-7mv suite runs as `xr_studio`, a superuser, so it never meets the walls. I applied all migrations (`psql -1`) to a scratch database, seeded two firms as the owner, and then did every write and read **as `xr_app`** (no BYPASSRLS), with `app.firm_id` set per transaction.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Walls on both tables | met | ENABLE + FORCE (`:329-331`), the `pf12_firm` policy for reads and writes, and the `0_pf12_firm_first` gate, which sorts before every `money_` trigger (`:333-334`). |
+| The five trigger functions run as the reader | met | `money_move_batch_write`, `_has_lines`, `money_move_line_write`, `_not_undone` and `money_trust_entry_moves` are SECURITY DEFINER, owned by `xr_wall_reader`, with `search_path=pg_catalog, public, pg_temp`, as PF-12 set for FO-7a's. |
+| Party advisory lock and invoice touch, as `xr_app` | work | A TRUST_APPLIED move of 100.00 commits (ordinal 1), and the invoice's `updated_at` moves. A second move of 0.01 → 23514 (cap). Two moves of one withdrawal at REPEATABLE READ on two `xr_app` connections → one OK, one **40001**. |
+| `money_trust_entry_moves` as `xr_app` | works | A return of moved money → 23514 "undo that move batch first". |
+| FOR SHARE on `money_payment`, as `xr_app` | works | A WRONG_ACCOUNT move on an uncleared cheque → 23514 "not cleared, or was returned". After `xr_app` ticks it cleared, the move commits. A further 0.01 at RR → 23514 (cap). |
+| Deferred triggers, as `xr_app` | work | An empty batch is refused at commit, and an undo is written. |
+| The view leaks nothing across firms | met | `security_invoker=true` (`:344`). As firm A: only A's `firm_id`, and **0** rows naming B. B sees its own row. With no firm set: 0 rows in the view and 0/0 in both tables. A reads 0/0 of B's lines and batches, before and after B moves. |
+| Cross-firm writes | refused, nothing leaked | A session firm-A batch carrying B's `firm_id` → 42501 (the gate). An A batch with a line naming B's withdrawal → 23503 "not visible to this statement". So does A undoing B's batch, and an A return naming B's withdrawal. The refusal words name only the id the caller gave, never B's amounts or party. Every query inside the definer functions filters by `NEW.firm_id`, so the reader's BYPASSRLS reads only the session's firm, which the gate has already checked. |
+
+### Findings
+**Blockers:** none. **Majors:** none. **New Minors:** none.
+
+**Unchanged:** m4, m5 and m7 are still Minor. The B-22 REPEATABLE READ side and "RETURNED after a wrong-account move" are with FO-7a2 (P-638), and B-3 is still with the tech lead.
+
+Verdict: Approve 572c324e76875a939718e7e4c188a4d02aa98886
