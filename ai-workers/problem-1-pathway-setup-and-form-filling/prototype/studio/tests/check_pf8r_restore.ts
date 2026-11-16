@@ -1,7 +1,7 @@
 // PF-8r (map row 14, first half; NFR5-04 "quarterly restore drill … with recorded evidence"; P-586): runs
 // tools/restore-drill.sh four times on deploy/compose.test.yml's pinned PostgreSQL (a pass, then its three fail cases) and
 // checks its evidence file, its log and the runbook (plus DW7, Lead B's condition: a lost index and policy are caught). Needs docker and the image studio-skeleton:test, so run-suites.sh
-// skips it (SKIP list) and nightly.yml's job "restore-drill" runs it. Live AI off, no model call (US$0).
+// skips it (SKIP list) and the nightly workflow's job "restore-drill" runs it. Live AI off, no model call (US$0).
 //   docker compose -f studio/deploy/compose.test.yml build && tsx studio/tests/check_pf8r_restore.ts
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
