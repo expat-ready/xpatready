@@ -1,0 +1,39 @@
+NOTICE:  database "xr_studio_fo3m_3057" does not exist, skipping
+{"time":"2026-11-16T08:48:17.288Z","level":"info","event":"platform_bypass","use":"direct-process","method":"none"}
+{"time":"2026-11-16T08:48:17.336Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-16T08:48:17.413Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-16T08:48:17.457Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-16T08:48:17.492Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-16T08:48:17.525Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-3m DW2 pass: an active booking before its start still answers 409 too-early
+{"time":"2026-11-16T08:48:17.546Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-16T08:48:17.570Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-3m DW2 fail: a cancelled booking before its start answers 409 not-active ("Cancelled"), not too-early
+{"time":"2026-11-16T08:48:17.590Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"GET"}
+PASS  FO-3m DW4 pass: a good list query → 200 with the firm's bookings
+{"time":"2026-11-16T08:48:17.605Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"GET"}
+{"time":"2026-11-16T08:48:17.617Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"GET"}
+PASS  FO-3m DW4 fail: a refused list (to before from; from missing) is titled "Bookings not listed", never "Not booked"
+{"time":"2026-11-16T08:48:17.736Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-3m DW1 pass: { outcome: COMPLETED } on the host's own started booking → 200 COMPLETED
+{"time":"2026-11-16T08:48:17.753Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-16T08:48:17.760Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-3m DW1 fail: an unknown or missing outcome → 400 whose issues name outcome, none body
+PASS  FO-3m DW4 fail: a refused attendance answer is titled "Attendance not recorded", never "Not booked"
+{"time":"2026-11-16T08:48:17.768Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-3m DW4 pass: a refused booking itself keeps "Not booked" (only the list and attendance titles change)
+{"time":"2026-11-16T08:48:17.775Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-16T08:48:17.781Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-16T08:48:17.788Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-3m DW3 pass: a non-host with agent/booking:edit (CASE_OFFICER) answers another host's booking → 200
+PASS  FO-3m DW3 fail: a non-host without it (READ_ONLY) → the service's 403 "Not allowed" with code MISSING_PERMISSION, like the guard's
+{"time":"2026-11-16T08:48:17.806Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-3m DW5 pass: { outcome: NO_SHOW } alone → 200 NO_SHOW (the answer may be changed)
+{"time":"2026-11-16T08:48:17.825Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-3m DW5 fail: an extra key → 400 naming it, nothing recorded (still NO_SHOW)
+{"time":"2026-11-16T08:48:17.838Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"GET"}
+PASS  FO-3m DW6 fail: 29 minutes after the end it is not yet due and its question has not run
+{"time":"2026-11-16T08:48:17.850Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"GET"}
+PASS  FO-3m DW6 pass: after the attendance job runs no mail with booking.attendance_ask is sent to anyone, and the booking is listed as due, unanswered
+
+14 passed, 0 failed
