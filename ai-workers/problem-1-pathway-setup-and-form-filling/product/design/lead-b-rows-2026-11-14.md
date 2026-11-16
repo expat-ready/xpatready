@@ -1555,3 +1555,9 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **Lead 67's condition:** the verification code must never be stored in clear in the outbox file. So **PF-5v part 2 starts only after PF-19e**, which seals every `TRANSACTIONAL` body, platform account messages included. Its new Done when is `PF-5v DW4`, in `lead-b-briefs/PF-5v.md`.
 * **The path for rows 19 and 100 is now:** #1956 and PF-19p merge, then PF-19e, then PF-5v part 2, then PF-5s part 1. **PF-19e should start as soon as #1956 and #1961 are on `main`.**
 * **#1962:** the C9.5 failure is a real break on `main`, hidden by the quarantine (kind's quarantine list was empty in that run). Lead 67 takes the fix row, before 20 Nov, with a qa row.
+
+## Rev 16.68 (16 Nov 14:5x IST, Lead B (6)): QA-496, FO-3w part 2 brought forward (#1968)
+
+* **Ruling:** start **FO-3w part 2** (the manage page, J-P6 to J-P8 in `FO-3w.md`) **now**. The email links and buttons are not held back. Holding them would mean new code on `service.ts`, in its queue, removed later, and the bookings made meanwhile would never get a self-service link. Part 2 is screens only, with no API.
+* **Folded in:** `/book/:firmKey/manage` is declared before `/:slug`, plus a case that `manage` is a reserved slug.
+* qa's walk line is the acceptance line.
