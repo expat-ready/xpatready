@@ -138,8 +138,8 @@ try {
   for (let h = 0; h < 30; h++) { await clock.advance({ hours: 1 }); await run(); }   // past both reminders and both meetings' ends
   const rem = (await inbox.list("rem@client.example", undefined)).messages, remRows = await db.msgOutbox.findMany({ where: { address: "rem@client.example", class: "SERVICE" } });
   const asks = (await inbox.list(A1.email, undefined)).messages.filter((m) => m.subject === "Did they attend?");
-  ok("BM7 pass: the 24 h and 1 h reminders go through the outbox as SERVICE for the booker (FO_PERSON) and are SENT; the host's attendance question is SENT for the host",
-    rem.filter((m) => m.subject.startsWith("Reminder:")).length === 2 && remRows.length === 2 && remRows.every((r) => r.state === "SENT" && r.subjectKind === "FO_PERSON") && asks.length >= 1, { rem: rem.map((m) => m.subject), remRows: remRows.map((r) => [r.state, r.subjectKind]), asks: asks.length });
+  ok("BM7 pass: the 24 h and 1 h reminders go through the outbox as SERVICE for the booker (FO_PERSON) and are SENT; the host's attendance question is shown, not mailed (AG-4-39 rule 2, FO-3m DW6)",
+    rem.filter((m) => m.subject.startsWith("Reminder:")).length === 2 && remRows.length === 2 && remRows.every((r) => r.state === "SENT" && r.subjectKind === "FO_PERSON") && asks.length === 0, { rem: rem.map((m) => m.subject), remRows: remRows.map((r) => [r.state, r.subjectKind]), asks: asks.length });
   const quietRows = await db.msgOutbox.findMany({ where: { address: "quiet@client.example", class: "SERVICE" } });
   ok("BM7 fail: a booker suppressed after booking gets no reminder: the rows are SUPPRESSED by the gate, the inbox holds only the confirmation",
     quietRows.length >= 2 && quietRows.every((r) => r.state === "SUPPRESSED" && /COMPLAINT/.test(r.stateReason ?? "")) && (await inbox.list("quiet@client.example", undefined)).messages.length === 1, quietRows.map((r) => [r.state, r.stateReason]));
