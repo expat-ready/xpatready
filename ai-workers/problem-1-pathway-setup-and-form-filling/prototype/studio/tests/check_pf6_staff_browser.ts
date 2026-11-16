@@ -142,7 +142,10 @@ const offered = await ap.locator('[data-invite-row="1"] [data-role]').evaluateAl
 const hidden: string[] = [];
 for (const r of apiRoles.map((x) => x.role).filter((x) => !offered.includes(x))) if ((await staffCall(aTok, "POST", "/platform/staff/invitations", { email: `pf6-c-${r.toLowerCase()}-${run}@example.com`, roles: [r] })).status === 403) hidden.push(r);
 ok("PF-6 DW2/BR-1 fail: an Admin's picker offers no Owner and no role holding keys it lacks (Case Manager)", !offered.includes("OWNER") && !offered.includes("CASE_MANAGER") && offered.includes("READ_ONLY"), offered);
-ok("PF-6 DW2/BR-1 fail: every role the Admin's picker hides is refused by the server when crafted (403); nothing is pre-ticked that is not offered", hidden.length === apiRoles.length - offered.length && hidden.includes("OWNER") && (await ap.locator('[data-invite-row="1"] [data-role]:checked').count()) === (offered.includes("CASE_OFFICER") ? 1 : 0), hidden);
+ok("PF-6 DW2/BR-1 fail: every role the Admin's picker hides is refused by the server when crafted (403)", hidden.length === apiRoles.length - offered.length && hidden.includes("OWNER"), hidden);
+// Pinned on purpose (Build Lead A, #2044 comment 6931260376; founder question pending): as Admin, Case Officer is not in the
+// picker (SA-6-29's ceiling: Admin lacks agent/sqr:verify, party:view.own) and nothing is pre-ticked. A later row changes this knowingly.
+ok("PF-6 DW2/BR-1 pinned: as Admin, Case Officer is not offered and nothing is pre-ticked (as Owner it is pre-ticked: DW1)", !offered.includes("CASE_OFFICER") && hidden.includes("CASE_OFFICER") && (await ap.locator('[data-invite-row="1"] [data-role]:checked').count()) === 0);
 await ap.keyboard.press("Escape");
 await openPerson(ap, R.email);
 ok("PF-6 DW2/BR-5 fail: an Admin sees the Owner's Owner role as one it cannot give or remove", (await ap.locator("[data-fixed-roles]").innerText()).includes("Owner") && (await ap.locator('[data-person-roles] [data-role="OWNER"]').count()) === 0);
