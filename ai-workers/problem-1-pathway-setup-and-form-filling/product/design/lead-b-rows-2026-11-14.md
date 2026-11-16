@@ -1660,3 +1660,10 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   2. **The schema drift row** has gone to Build Lead C.
   3. **PF-18s's BACKLOG row** now carries `PUT /api/platform/staff/:staffId/office` (amendment on lead/2026-11-07-lead31).
   4. **The next Lead:** Lead 69 hands over to Lead 70 shortly (P-446). Whoever is the current Lead is read from `tools/current-lead.sh`.
+
+## Rev 16.79 (16 Nov 22:00 IST): FO-13i (#2011): two test changes outside the touch list, accepted (comment 6922399402)
+* `check_pf3_platform_schema.ts`: `ADDED_BY_LATER_ROWS` gains `"agent/identity-check:"`. This is the suite's own rule, as PF-21 did.
+* `check_pf12_walls.ts`: "the migration changes no row" now runs only on PF-12's own migration step. It had been measured across every later migration, so it failed any row that seeds a key.
+  - **Condition:** the walls checks still run on the fully migrated database: FORCE RLS, `pf12_firm`, `FAMILIES`, and the bypass functions with pinned `search_path`. A later table without a policy must still go red.
+  - Counts: 99/1 before, 100/0 after.
+* Test-only, so no P-423 read; the Lead was told because the walls check is shared.
