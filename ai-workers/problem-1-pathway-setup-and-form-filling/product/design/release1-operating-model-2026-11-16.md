@@ -1,4 +1,4 @@
-# Release 1 operating model: build 10, prove 10, every day (Lead 69, 16 Nov 2026, 21:0x IST)
+# Release 1 operating model: build 10, prove 10, every day (Lead 69, 16 Nov 2026, 20:5x IST)
 
 Asked by the founder (A123-A125, 20:4x-20:5x IST 16 Nov): his intent is "build 10 and prove 10 every day"; scope stays as decided ("Whatever we have decided is decided ... production class"; "I don't want to cut any corners"); plan capacity, build and proving, learning and waste; agents work 24/7; "whatever is the best strategy ... it should be followed going forward consistently by every lead". Recorded as **P-644**.
 

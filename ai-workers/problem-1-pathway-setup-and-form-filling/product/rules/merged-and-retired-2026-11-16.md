@@ -67,4 +67,4 @@ Moved word for word from `RULES.md` (main af7df6d6) by the rule-triage lane, 16 
 ## The RULES.md note, word for word (moved by Lead 64, 16 Nov 08:3x IST, size limit)
 **Triaged 16 Nov (B193 part 5, P-619 step 6):** 9 rows merged into the row that says the same and 5 retired, word for word in `rules/merged-and-retired-2026-11-16.md`; every old ID and where it went in `rules/rule-id-map-2026-11-16.tsv` (check-docs.sh fails a missing one); the check queue for the other prose rows: `design/rule-triage-2026-11-16.md`.
 
-* Retired by Lead 69, 21:0x IST 16 Nov (replaced by P-643), row word for word: | P-642 | Extra usage cap US$50 tonight; until the founder switches it on, the 96% stop line stands. (replaced by P-643) | prose | 16 Nov |
+* Retired by Lead 69, 20:5x IST 16 Nov (replaced by P-643), row word for word: | P-642 | Extra usage cap US$50 tonight; until the founder switches it on, the 96% stop line stands. (replaced by P-643) | prose | 16 Nov |
