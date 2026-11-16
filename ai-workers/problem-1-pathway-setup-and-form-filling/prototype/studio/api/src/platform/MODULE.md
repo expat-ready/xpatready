@@ -27,7 +27,7 @@ Firms, staff and sign-in, settings, secrets, jobs, logs, complaints and message 
 
 **Do not.**
 - Query a firm table without `firmScope`.
-- Cross firms without `asBypass` and a named use, or add a firm table without its policy.
+- Cross firms without `asBypass` and a named use, add a firm table without its policy, or set `app.firm_id` or the role on a connection outside `firm-scope.ts`.
 - Log a name, email or other personal value; log record ids.
 - Start a second job runner or logger.
 - Add a package outside STANDARDS §1's gate.
