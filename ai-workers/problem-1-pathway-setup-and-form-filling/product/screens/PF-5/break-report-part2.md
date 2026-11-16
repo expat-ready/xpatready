@@ -87,3 +87,55 @@ Commit `8c21a1e8ed4d695e6d98754734828f4922859d05` (PR #1959). The breaker's run,
 * **Not shown: the database pool.** 10 handlings waiting 4 s each on Stripe inside the advisory-lock transaction did not slow an unrelated query (3 ms, B9). One earlier run measured 3.7 s, which was not reproduced.
 
 Breaker verdict: 3 Blocker/Major at 8c21a1e8ed4d695e6d98754734828f4922859d05
+
+## Round 2: the fixes at `97b77db41a9b060580ff3850dff1ff65c1a168b8`
+
+The check passes 81/81. The attacks are in `prototype/studio/var/break_pf5p2_r2.ts` (git-ignored). It uses its own scratch database (dropped) and no network. It simulates Stripe being unreachable, or one call failing, with a wrapper around the fake billing port.
+
+### R-M1 (Major): a Stripe outage of about 25 minutes sets real events aside for good, and Stripe's later retry is ignored
+* **Steps (R2).**
+  1. Firm H2 is held; its invoice is paid at Stripe.
+  2. `invoice.paid` arrives while our calls to Stripe fail (ETIMEDOUT). The inline handling fails.
+  3. Five sweeps run, 5 minutes apart, still during the outage.
+  4. The outage ends. Stripe redelivers the event, then one more sweep runs.
+* **Actual.**
+  * After step 3 the receipt reads `handled_at` set, outcome `set aside after 5 failed tries: check it in Stripe`.
+  * The redelivery is answered `{duplicate:true}` and not handled (`open` is 0 because `handled_at` is set). The sweep handles 0.
+  * The firm stays `PAYMENT_HOLD` after paying. Every event about that payment (`invoice.paid`, `invoice.payment_succeeded`, `customer.subscription.updated`) arrives in the same window and is set aside the same way. The firm stays held until the subscription's next event, which can be weeks away.
+  * The only alert is a `console.warn`.
+* **Code.**
+  * `webhook.ts:91-93`: 5 tries, one per sweep (about 25 minutes), with no backoff and no clock-time limit.
+  * `webhook.ts:66`: a set-aside receipt counts as handled, so Stripe's own retries (up to 3 days) are thrown away.
+* **Should.**
+  * Set aside only after a time span close to Stripe's own retry window, with backoff.
+  * A receipt that was set aside, not handled, is handled again when Stripe redelivers it.
+  * An alert goes through the observability path, not a console warning.
+
+### Minor (round 2)
+* **r1 (R5b, R5c, R5d): the address-hold release can still be lost.** `account.ts:85-87` swallows a failure of the release or of the subscription read and still answers `{saved:true, onStripe:true}`. The draft stays held (`heldDrafts` still holds the invoice) and the firm stays `PAYMENT_HOLD` after the next `invoice.updated` and a sweep.
+  * A race does the same: an event's `holdDraftInvoice(draft)` call lands after the user's release, because it runs after the transaction (`webhook.ts:144`). The draft ends up held again.
+  * Saving the address again recovers it, and the billing page still says "business address needed". But nothing tells the user to save again, and no job retries the release.
+* **r2 (R3d): a steady stream of new failures can starve a retried receipt.** With 50 new failing receipts before each sweep, a good receipt with `retry 1` was never picked in 6 sweeps (the firm stays held). Never-tried receipts always sort first (`webhook.ts:87`). This needs about 10 failing events a minute, sustained, so it is unlikely.
+* **r3 (R4c): latent, not reachable in part 2.** A firm with an ENDED row (`sub_old`) and a new ACTIVE row (`sub_new`): a late `customer.subscription.deleted` for `sub_old` matches the ENDED row, and `FIRM_OF[ENDED]` puts the paying firm in `PAYMENT_HOLD` (`webhook.ts:131-133`). Part 2 never makes a second row, so it cannot happen today. The firm move should follow the firm's current row only; this becomes Major when part 3 lets a firm subscribe again.
+* **Still open:** m7, m8 and m9 are left open on purpose, as noted. Of m4, the "postal code against province" half is still open (`M5H 1A1` with BC is accepted); the letters half is fixed.
+
+### What held in round 2
+* **M1, the fixed parts.**
+  * A redelivery after a failed inline handling is handled: `PAYMENT_HOLD → ACTIVE` (R1).
+  * Fewest tries first works: 60 bad receipts plus a good one with `retry 1` → the good one is handled on the third sweep (R3b).
+  * The adapter reads `metadata.firm_id: "acme-law"` as `firmId: null` instead of throwing (R8).
+* **M2.**
+  * A second subscription created and then cancelled, even with the firm's id in its metadata, leaves `ACTIVE/ACTIVE/sub_main` (R4a).
+  * Two Checkouts' first events at once link exactly one subscription (R4b).
+  * A cancelled subscription is never linked to an unlinked row (R4d).
+  * A card Checkout on a held firm still finds the linked row, resumes it and ends the hold (R4e).
+* **M3.** Address saved → draft released → invoice paid → `ACTIVE` (R5a).
+* **m5 and m6.** Card, portal and invoices answer 503 when Stripe is down and when it is not set up. The address is saved with `onStripe:null` and no made-up link (R6).
+* **m1 and m4.**
+  * Accepted: a ZWNJ street name, a ZWJ emoji, a lower-case postal code, and a leading BOM (`trim` removes it).
+  * Refused: RLO (U+202E), `D0D 0D0` and `W1A 1A1`.
+* **HTTP.**
+  * A held firm gets 402 on invitations, with or without the trailing slash. `me`, `billing` and the address answer 200. `firm/profile` is gone (404).
+  * A signed webhook gets 200; changed bytes get 400.
+
+Breaker verdict: 1 Blocker/Major at 97b77db41a9b060580ff3850dff1ff65c1a168b8

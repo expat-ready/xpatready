@@ -148,3 +148,59 @@ Fixes that raise the score, most valuable first: M1 (task, recovery), m8 (next s
 * Stripe's real tax recalculation on a draft when the address changes.
 * A browser, a screen reader, or an intended user's unaided walk (D17 and D20 stay with the founder).
 * `graph.mjs`: not run, because it writes `qa/GRAPH.md` and this PR is API only.
+
+## Round 2: diff-only re-review (P-277), head `97b77db41a9b060580ff3850dff1ff65c1a168b8`
+
+I read only `git diff 8c21a1e8..97b77db -- ai-workers/`.
+
+**The check:** I ran `tests/check_pf5_signup_billing.ts` twice and got **81 passed, 0 failed** both times.
+
+**Proof that the new tests fail when their rule is removed** (on a scratch worktree, since removed; repository code unchanged):
+* Without the cross-customer guard (`webhook.ts`, "belongs to another customer"), the check gives 80/81: "review M2" fails with "TRIAL → ACTIVE".
+* Without the draft release in `setAddress`, it gives 80/81: "break M3" fails.
+* Without both subscription pins (the `stripeSubscriptionId: null` filter in `findSubscription` and the "not this firm's live subscription" line in `refresh`), it gives 80/81: "break M2" fails with "ENDED".
+
+**Size:** code changes against `main` are now 782 lines (761 added, 21 removed), not counting `.md` files.
+
+Verdict: Approve 97b77db41a9b060580ff3850dff1ff65c1a168b8
+
+### Findings from round 1
+| Finding | Round 2 |
+|---|---|
+| M1: the address hold had no way out | **Fixed.** `setAddress` releases the latest draft once the address reaches Stripe (`holdDraftInvoice(id, true)`, `auto_advance: true`), and the paid invoice then ends the hold. Tested, and the test fails without the release. |
+| M2: the cross-customer guard had no test | **Fixed.** The new "review M2" check fails with the guard removed. |
+| m1: the subscription id was not pinned | **Fixed.** A subscription id we do not know matches only a row not yet linked, and `refresh` ignores a subscription other than the one stored. An ENDED row still moves its firm to hold, but this stays latent while a firm has one subscription. |
+| m2: a Stripe call inside a 30 s transaction | **Fixed.** The client now times out after 10 s, and only `customer.subscription.*`, `invoice.*` and `checkout.session.*` events are looked up. 10 s × 3 attempts can still go past the 30 s transaction, but that only rolls back. |
+| m3: failing receipts could block the sweep | **Fixed.** Receipts with the fewest tries go first and a receipt is set aside after 5 failed sweeps; the test fills the sweep with 50 that always fail. A redelivered event that was never handled is handled at once. |
+| m4: the card Checkout accepted bank debits | **Fixed.** `allowed_payment_method_types: ["card"]` is a real `SessionCreateParams` field in library 23.1.0 (`Checkout/Sessions.d.ts` l. 2157), so Stripe will not refuse it as unknown. |
+| m6: `firm.activated` claimed a payment | **Fixed.** The comment now says what it means. |
+| m9: the profile route | **Moot.** `GET|PUT firm/profile` is removed and moves to part 3. |
+| m11: no alert on an untaxed invoice | **Fixed.** A finalized invoice that still needs the address logs an `ALERT` warning. |
+| m5, m7, m8, m10, m12, m13 | Not fixed. They go into the PR as open items. |
+
+### Should any unfixed Minor block? No.
+* **m5 (a card added in the portal shows as no card):**
+  * The designed way to add a card is our card Checkout, which is Owner or Admin, tested, and resumes a held subscription.
+  * The portal is Owner-only.
+  * The cost is a wrong "card on file" flag and a held firm adding its card in the wrong place. No money is wrong either way.
+* **m7 (case routes are outside the 402):**
+  * The agreed part 2 scope (`step0.md`) is "the hold in the guard", and that is met.
+  * The row's "a case route" line has to be listed in the PR as an **unmet Done-when line** that needs the case routes on staff sign-in, so it is not claimed.
+* **m8 (402 words do not follow the reason):** wording only, and there is no screen yet. `GET billing` already gives `hold.reason`.
+* **m10 (no booted-app test of the raw-body line):** in round 1 I walked the booted app on :4431 and a signed body with whitespace got 200, so it works today; the risk is only a future regression. List it.
+* **m12 and m13:** robustness and nits.
+
+### New Minors (list in the PR; none blocks)
+* **n1.** `setAddress` swallows a failed subscription read or a failed release, so it still answers `onStripe: true`.
+  * **Problem:** the draft then stays held until the address is saved again. It also releases the latest draft without checking that it was held for the address. If Stripe Tax still cannot place the customer, that draft finalizes untaxed: the webhook re-holds it only if an event lands before it finalizes, and an open untaxed invoice only gives the `ALERT` warning.
+  * **Fix:** return `released: false` with a next step, and release only a draft held for `ADDRESS_NEEDED`.
+* **n2.** Removing only the "not this firm's live subscription" line in `refresh` keeps all 81 green, because the `findSubscription` filter covers that case. It is defence in depth with no test of its own.
+* **n3.** A row not yet linked ignores a `canceled` or `incomplete_expired` subscription. A trial cancelled before any of its events was handled leaves the row in TRIAL. Part 3's trial clock should cover it.
+* **n4 (records only).** `step0.md`'s part 2 bullet still lists `GET|PUT firm/profile`. Move it to the part 3 bullet in the same PR, and list it in the PR as moved, so the row's Done-when stays traceable.
+
+### Journey score
+Re-scored on the harness evidence; I did not re-walk the running app in round 2.
+* Task completed rises from ½ to 1: J8, the address hold, now ends after the address is saved and the invoice is paid.
+* Error recovery rises from ½ to 1: M1, m3 and m4 are fixed.
+* **Total 8/10**, with no criterion at 0: a pass.
+* Still at ½: next step obvious (m8), plain words (raw enum text in the province error), accessibility and visual quality (no screen).

@@ -84,7 +84,7 @@ export class BillingAccount {
     // A draft held for want of the address may finalize now, with its tax; its payment ends the hold (break M3).
     if (onStripe && sub.stripeSubscriptionId) {
       const inv = (await this.ports.billing.subscription(sub.stripeSubscriptionId).catch(() => null))?.latestInvoice;
-      if (inv?.status === "draft") await this.ports.billing.holdDraftInvoice(inv.id, true).catch(() => undefined);
+      if (inv?.status === "draft" && !(await this.ports.billing.holdDraftInvoice(inv.id, true).then(() => true, () => false))) return { saved: true, onStripe, next: "Saved. Your held invoice could not be released yet: save the address again in a few minutes." };   // break r1
     }
     return { saved: true, onStripe, ...(onStripe === false ? { next: "Saved here. We could not update our billing provider yet: save it again in a few minutes." } : {}) };
   }

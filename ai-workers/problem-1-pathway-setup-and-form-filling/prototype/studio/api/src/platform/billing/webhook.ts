@@ -14,6 +14,7 @@ import type { ClockPort } from "../../../../ports/clock.ts";
 import { EVENT } from "../../../../ports/events.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
 import { firmScope } from "../firm-scope.ts";
+import { currentAlerts } from "../observability/alerts.ts";
 
 type Tx = Prisma.TransactionClient;
 export type BillingPorts = { audit: AuditPort<Tx>; billing: BillingPort; clock: ClockPort; jobs?: JobPort | null; appUrl: string; notReady?: string | null };
@@ -61,8 +62,8 @@ export class BillingEvents {
       throw problem(400, "NOT_AN_EVENT", "Not an event", "The body is not a Stripe event.");
     }
     const stored = await this.db.webhookReceipt.createMany({ data: [{ service: "stripe", eventId: ev.id }], skipDuplicates: true });
-    // A repeat of an event already handled is ignored; a repeat of one not yet handled is handled now (Stripe's retry is
-    // the fastest recovery, break M1).
+    // A repeat of a handled event is ignored; one not handled yet, or set aside, is handled now (break M1, R2).
+    if (stored.count === 0) await this.db.webhookReceipt.updateMany({ where: { service: "stripe", eventId: ev.id, outcome: { startsWith: "set aside" } }, data: { handledAt: null, outcome: "redelivered" } });
     const open = stored.count === 0 ? await this.db.webhookReceipt.count({ where: { service: "stripe", eventId: ev.id, handledAt: null } }) : 1;
     if (open) this.later(() => this.handle(ev));
     return stored.count === 0 ? { received: true, duplicate: true } : { received: true };
@@ -82,15 +83,17 @@ export class BillingEvents {
   }
 
   /** Receipts stored over 2 minutes ago and not handled: read again from Stripe and handled (each once). Fewest tries
-   *  first; a receipt that fails 5 sweeps is set aside with a warning, so bad receipts never block good ones (break M1). */
+   *  first, so bad receipts never block good ones (break M1); one still failing after Stripe's 3 days of retries is set
+   *  aside (break R2), with an alert at its 5th try and when set aside. */
   async sweep(): Promise<number> {
     const due = await this.db.webhookReceipt.findMany({ where: { service: "stripe", handledAt: null, receivedAt: { lt: new Date(this.ports.clock.now().getTime() - 120_000) } }, take: 50, orderBy: [{ outcome: { sort: "asc", nulls: "first" } }, { receivedAt: "asc" }] });
     let n = 0;
     for (const r of due) {
       try { await this.handle(await this.ports.billing.event(r.eventId)); n++; } catch (e) {
-        const tries = Number(/^retry (\d)$/.exec(r.outcome ?? "")?.[1] ?? 0) + 1;
-        console.warn(`[billing] sweep: receipt ${r.id} failed (${e instanceof Error ? e.name : "error"}), try ${tries} of 5`);
-        await this.db.webhookReceipt.updateMany({ where: { id: r.id, handledAt: null }, data: tries >= 5 ? { handledAt: this.ports.clock.now(), outcome: "set aside after 5 failed tries: check it in Stripe" } : { outcome: `retry ${tries}` } });
+        const tries = Math.min(9, Number(/^retry (\d)$/.exec(r.outcome ?? "")?.[1] ?? 0) + 1), aside = tries >= 5 && r.receivedAt.getTime() < this.ports.clock.now().getTime() - 72 * 3_600_000;
+        console.warn(`[billing] sweep: receipt ${r.id} failed (${e instanceof Error ? e.name : "error"}), try ${tries}`);
+        if (tries === 5 || aside) await currentAlerts().raise("job_stuck", { rule: "PF-5.webhook", queue: SWEEP_JOB, entity: "webhook_receipt", entityKey: r.id }).catch(() => undefined);
+        await this.db.webhookReceipt.updateMany({ where: { id: r.id, handledAt: null }, data: aside ? { handledAt: this.ports.clock.now(), outcome: "set aside after 3 days of failed tries: check it in Stripe" } : { outcome: `retry ${tries}` } });
       }
     }
     return n;

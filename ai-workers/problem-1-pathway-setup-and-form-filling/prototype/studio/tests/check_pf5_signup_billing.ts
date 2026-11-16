@@ -391,8 +391,12 @@ try {
   const redelivered = await send(p8);
   ok("PF-5 part 2 fail (break M1): Stripe's redelivery of an event not yet handled is handled (never dropped as a repeat)", redelivered === null && firmOf(F8) === "PAYMENT_HOLD", firmOf(F8));
   for (let i = 0; i < 5; i++) await hooks.sweep();
-  ok("PF-5 part 2 fail (break M1): 50 receipts that always fail are set aside after 5 sweeps, never blocking the rest", sql(`select count(*) from webhook_receipt where event_id like 'evt_bad%' and handled_at is null`) === "0"
-    && sql(`select count(*) from webhook_receipt where event_id like 'evt_bad%' and outcome like 'set aside%'`) === "50");
+  const keptRecent = sql(`select count(*) from webhook_receipt where event_id like 'evt_bad%' and handled_at is null`);
+  sql(`update webhook_receipt set received_at = now() - interval '73 hours' where event_id like 'evt_bad%'`); await hooks.sweep();
+  ok("PF-5 part 2 fail (break M1, R2): failing receipts keep being retried within Stripe's 3 days (an outage never drops a payment), then are set aside",
+    keptRecent === "50" && sql(`select count(*) from webhook_receipt where event_id like 'evt_bad%' and outcome like 'set aside%'`) === "50", keptRecent);
+  billing.subs.set("sub_bad1", snap("sub_bad1", { status: "active" })); const bad1 = raw("invoice.paid", {}); sql(`update webhook_receipt set event_id = '${JSON.parse(bad1).id}' where event_id = 'evt_bad1'`);
+  ok("PF-5 part 2 fail (break R2): Stripe's redelivery of a set-aside event is handled again", (await send(bad1)) === null && sql(`select outcome from webhook_receipt where event_id = '${JSON.parse(bad1).id}'`).startsWith("invoice.paid"));
   billing.subs.set("sub_f8x", snap("sub_f8x", { customerId: "cus_f8", status: "canceled" }));
   await send(raw("customer.subscription.deleted", { object: "subscription", id: "sub_f8x", customer: "cus_f8", metadata: { firm_id: F8 } }));
   billing.subs.set("sub_x7", snap("sub_x7", { customerId: "cus_f3", status: "active", latestInvoice: paid("in_x7") }));
