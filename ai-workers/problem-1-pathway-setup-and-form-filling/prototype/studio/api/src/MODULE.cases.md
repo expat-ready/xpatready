@@ -20,12 +20,14 @@ The runtime: a client's case on a released combination, from answers to a record
 - A never-waivable line cannot be marked Not applicable (P-172); a line of an ended stage is history (P-444).
 - A case reads only its current stage's pins and rows (B139).
 - A case is OPEN or CLOSED; a decision needs a recorded submission, `case_decision` is insert-only, close and reopen need a reason and write `case.closed`/`case.reopened` in the same transaction (CS-C1a; AG-7-33, -34, -13, -50).
+- `case_party_index` (area file `case-search.prisma`, CS-S1 part 1) holds one row per participant, kept only by database triggers on the answer, profile and participant tables. No answer-write site writes it. A relative is never indexed, and neither is an employer without a name. A row's id is stable per person. Its firm comes from the case (contract v0.1 §3.1; AG-7-88).
 
-**Tables.** case, caseParticipant, caseTeamMember, clientCanonicalAnswer, filing, filingItem, formInstance, caseDocument, answerCheck, reviewRoundFiling, reviewFinding, personLink, caseDecision, moduleEvent, auditEvent.
-**Tests.** `tests/check_c76_readiness.ts`, `tests/check_c65_document_rules.ts`, `tests/check_m3s4_never_waivable.ts`, `tests/check_c95_release_update.ts`, `tests/check_c81_signing.ts`, `tests/check_a24_case_number_api.ts`, `tests/check_csc1_close.ts`.
+**Tables.** case, caseParticipant, caseTeamMember, clientCanonicalAnswer, filing, filingItem, formInstance, caseDocument, answerCheck, reviewRoundFiling, reviewFinding, personLink, caseDecision, casePartyIndex (triggers only), moduleEvent, auditEvent.
+**Tests.** `tests/check_c76_readiness.ts`, `tests/check_c65_document_rules.ts`, `tests/check_m3s4_never_waivable.ts`, `tests/check_c95_release_update.ts`, `tests/check_c81_signing.ts`, `tests/check_a24_case_number_api.ts`, `tests/check_csc1_close.ts`, `tests/check_css1_index.ts`.
 
 **Do not.**
 - Read the newest release from a case route.
 - Send an identity document to AI, or make a live read.
 - Edit an answer in place; append a new one.
+- Write `case_party_index` from application code; the triggers keep it.
 - Record a filing the representative has not reviewed.
