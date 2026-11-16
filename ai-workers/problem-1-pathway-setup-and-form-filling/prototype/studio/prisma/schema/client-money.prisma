@@ -27,6 +27,11 @@
 //   goes into trust while trust is off; issue, send, cancel and record times are the database's; a row a check names
 //   must be visible to it (never left to the foreign key at the end of the statement). Each holds at READ COMMITTED
 //   and REPEATABLE READ (a unique ordinal or a touched row refuses a stale writer).
+// * FO-7mv (AG-6-73, -69 rule 2, -70, -77, -48; P-603, P-607 (1); migration <stamp>_fo7mv_move_list): the "To move" list
+//   between the trust and operating bank accounts, money_move_batch and money_move_line, with the derived list
+//   money_to_move (a view, no stored status). A move never exceeds what its source still holds; money returned to trust
+//   while it is moved is refused until the move is undone; only a wrong-account correction of a deposit licenses a
+//   wrong-account move. The routes are FO-7t's.
 
 /// The two currencies a firm may bill in (AG-6-46 rule 3; X-6). Never converted, never added together.
 enum MoneyCurrency {
@@ -89,6 +94,31 @@ enum MoneyTrustEntryKind {
   CORRECTION
 }
 
+/// Why a correction of a deposit was made (FO-7mv; B-19 from #1758; Lead 65, P-638): the reversals of AG-6-75 rule 2
+/// ("Returned" a bounced cheque, "Recorded by mistake", "Wrong client", OTHER a typed reason; their ledger rules are
+/// FO-7a2's) and WRONG_ACCOUNT, money received into trust that belonged in operating (AG-6-69 rule 2): only
+/// WRONG_ACCOUNT licenses a move out of trust.
+enum MoneyCorrectionKind {
+  RETURNED
+  RECORDED_BY_MISTAKE
+  WRONG_CLIENT
+  OTHER
+  WRONG_ACCOUNT
+}
+
+/// Why an amount must move between the trust and operating bank accounts (AG-6-73 rule 1 (a)-(c); AG-6-73 §7 names them
+/// APPLIED, MISMATCH, FEE_COVER).
+enum MoneyMoveKind {
+  TRUST_APPLIED
+  WRONG_ACCOUNT
+  CARD_FEE_ON_TRUST
+}
+
+enum MoneyMoveDirection {
+  TRUST_TO_OPERATING
+  OPERATING_TO_TRUST
+}
+
 /// The per-firm number series (AG-6-44): INV-, CN-, R- (payment and trust receipts), DR-.
 enum MoneySeriesKind {
   INVOICE
@@ -122,6 +152,7 @@ model MoneyPaymentSettings {
   payments      MoneyPayment[]
   trustRequests MoneyTrustRequest[]
   trustEntries  MoneyTrustEntry[]
+  moveBatches   MoneyMoveBatch[]
 
   @@map("money_payment_settings")
 }
@@ -190,6 +221,7 @@ model MoneyInvoice {
   payments     MoneyPayment[]
   trustEntries MoneyTrustEntry[]
   writeOff     MoneyWriteOff?
+  moveLines    MoneyMoveLine[]
 
   @@unique([firmId, id])
   @@unique([firmId, number])
@@ -390,6 +422,8 @@ model MoneyTrustEntry {
   paymentId         String?             @map("payment_id") @db.Uuid
   trustRequestId    String?             @map("trust_request_id") @db.Uuid
   correctsEntryId   String?             @map("corrects_entry_id") @db.Uuid
+  /// Why a deposit was corrected (FO-7mv): required on a correction of a deposit, null on every other entry.
+  correctionKind    MoneyCorrectionKind? @map("correction_kind")
   reason            String?
   createdBy         String              @map("created_by")
   createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz
@@ -401,6 +435,7 @@ model MoneyTrustEntry {
   corrects     MoneyTrustEntry?     @relation("MoneyTrustCorrection", fields: [firmId, correctsEntryId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
   correctedBy  MoneyTrustEntry[]    @relation("MoneyTrustCorrection")
   receipt      MoneyReceipt?
+  moveLines    MoneyMoveLine[]
 
   @@unique([firmId, id])
   @@unique([firmId, personId, currency, seq])
@@ -408,6 +443,7 @@ model MoneyTrustEntry {
   @@unique([firmId, paymentId])
   @@index([firmId, invoiceId])
   @@index([firmId, caseId])
+  @@index([firmId, correctsEntryId])
   @@map("money_trust_entry")
 }
 
@@ -427,4 +463,62 @@ model MoneyWriteOff {
 
   @@unique([firmId, invoiceId])
   @@map("money_write_off")
+}
+
+/// "I moved these" (AG-6-73 rule 3; FO-7mv): one batch of bank transfers between trust and operating, in one currency
+/// and one direction, with the transfer date (the firm's bank step, a date with no zone) and who recorded it; the time
+/// is the database's. ExpatReady moves no money. Never changed (rule 6): a mistake is undone by an undo batch that names
+/// the batch it undoes and a reason (its lines go back to the list); one undo per batch; an undo is never undone and
+/// carries no lines. Insert-only.
+model MoneyMoveBatch {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId        String             @map("firm_id") @db.Uuid
+  currency      MoneyCurrency
+  direction     MoneyMoveDirection
+  transferDate  DateTime?          @map("transfer_date") @db.Date
+  undoesBatchId String?            @map("undoes_batch_id") @db.Uuid
+  reason        String?
+  recordedBy    String             @map("recorded_by")
+  recordedAt    DateTime           @default(now()) @map("recorded_at") @db.Timestamptz
+
+  settings MoneyPaymentSettings @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
+  undoes   MoneyMoveBatch?      @relation("MoneyMoveUndo", fields: [firmId, undoesBatchId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  undoneBy MoneyMoveBatch?      @relation("MoneyMoveUndo")
+  lines    MoneyMoveLine[]
+
+  @@unique([firmId, id])
+  @@unique([firmId, undoesBatchId])
+  @@map("money_move_batch")
+}
+
+/// One moved amount in a batch (AG-6-73 rule 1; FO-7mv): its kind, the batch's currency and direction, the amount and
+/// the trust entry it moves (a WITHDRAWAL_TO_INVOICE for TRUST_APPLIED; a WRONG_ACCOUNT correction of a deposit for
+/// WRONG_ACCOUNT); the invoice and party are copied from that entry by the database. The moves of one entry, net of
+/// undone batches, never exceed what it still holds (B-18, B-19); move_ordinal (the database's) is unique per entry, so
+/// two writers at once make one move. Lines are written in the transaction that records their batch, never after its
+/// undo. Insert-only.
+model MoneyMoveLine {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId        String             @map("firm_id") @db.Uuid
+  batchId       String             @map("batch_id") @db.Uuid
+  kind          MoneyMoveKind
+  direction     MoneyMoveDirection
+  currency      MoneyCurrency
+  amountMinor   Int                @map("amount_minor")
+  sourceEntryId String             @map("source_entry_id") @db.Uuid
+  invoiceId     String?            @map("invoice_id") @db.Uuid
+  personId      String?            @map("person_id") @db.Uuid
+  companyId     String?            @map("company_id") @db.Uuid
+  /// The database's (a value the caller gives is replaced).
+  moveOrdinal   Int                @default(0) @map("move_ordinal")
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz
+
+  batch       MoneyMoveBatch  @relation(fields: [firmId, batchId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  sourceEntry MoneyTrustEntry @relation(fields: [firmId, sourceEntryId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  invoice     MoneyInvoice?   @relation(fields: [firmId, invoiceId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([firmId, sourceEntryId, moveOrdinal])
+  @@index([firmId, batchId])
+  @@index([firmId, invoiceId])
+  @@map("money_move_line")
 }
