@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-638**, 16 Nov 11:2x IST (P-635 to P-638 added by Lead 65; the page as of P-634 in `history/RULES-2026-11-16-1120-lead65s2-as-of-P-634.md`; P-626 to P-634 added by Lead 64; the page as of P-630 in `history/RULES-2026-11-16-1025-lead64s2-as-of-P-630.md`; the page as of P-625 is word for word in `history/RULES-2026-11-16-0735-lead64s2-as-of-P-625.md`); the long page as of P-612 is word for word in `history/RULES-2026-11-15-1415-before-register.md`)
+# Rule register (the tech lead keeps it; as of **P-642**, 16 Nov 20:3x IST (P-639 to P-642 added by Lead 69); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-16-2035-lead69s2-as-of-P-638.md`, whose first line lists the older ones)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced by** names the hook, CI step or script that blocks or fails a break; `prose` = only the reader enforces it (G-4 candidates, bottom); `(part)` = covers part of the rule. IDs: a letter (`P-611b`) = the decision's 2nd row, not its part (2); `IDX-n` = an index of done, product or integration decisions kept in the side file. **Start read**: this page, then the `DECISIONS.md` rows newer than "as of", word for word (P-314, P-440). Long text word for word: side files under `rules/`. `tools/check-docs.sh` fails a row with no enforced-by, a page over 25 KB, or one over 3 rows behind DECISIONS.
 
@@ -144,6 +144,10 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-636 | Board words Planned, Built, Proven (+ In progress); only Proven counts as delivered; Refresh on demand. | script: cockpit-data.py (part) | 16 Nov |
 | P-637 | Labels need no founder click: the bot labels on the rules; a Lead-read path also needs "Lead read the diff: <sha>" (B200). | CI: queue-gate.sh label (part) | 16 Nov |
 | P-638 | FO-7mv merges before FO-7a2 (shrunk); P-634's money rules unchanged. | prose | 16 Nov |
+| P-639 | The board and the Lead's check verify each other: each check acts on the board's Today and Stuck items against their primary source; a mismatch is an ACT fixed the same day. | script: lead-watch.sh (part: ACT lines; B201's tests) | 16 Nov |
+| P-640 | Halve qa time per row (Built to Proven), gates unchanged; staging-domain fallback Cloudflare Registrar. | prose | 16 Nov |
+| P-641 | Push harder tonight on extra usage: lanes run past the 96% line to 08:00 IST 17 Nov; spend red in US$ each check. | prose | 16 Nov |
+| P-642 | Extra usage cap US$50 tonight; until the founder switches it on, the 96% stop line stands. | prose | 16 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |
