@@ -112,3 +112,16 @@ Reviewer: Approve c3539d10fb5d4f5fbe1b7fda8bc0ee8fea2359fe
 **Verdict: Approve.**
 
 Reviewer: Approve 3d019b01936e4f4c0758ca4257f9237c542769b7
+
+## Re-review 4: `3b14920..d690067` (diff only)
+- **The change.** The catch-up's inline wrapper becomes `touchingAudit(inner)` (`firm-scope.ts:217-222`). It calls `touchFirm(tx, entry.firmId)`, then `inner.record(tx, entry)` with the entry unchanged. `routes.ts:39` uses `touchingAudit(auditEvent)`.
+- **This is an honest fix, not a dodge.** check_case_feed's sweep exists to read every audit entry's literal entity and summary at its source. Both sources are still read:
+  - the catch-up's entry at `firm-created.ts:55` (`audit.record(tx, {…})`, `platform_firm`);
+  - the bypass line itself at `firm-scope.ts` (`bypassAudit.record(tx, {…})`, literal `platform_firm`).
+  The wrapper adds no entry and changes none. It is the same pass-through role as `audit-event.ts`, which the sweep already allows.
+- **Minor, not blocking.** `inner.record` passes the sweep only because `inner` does not match `/audit\w*$/i`. A later wrapper that rewrote entries under such a name would also pass unseen. Better: list `touchingAudit` beside `audit-event.ts` as a known pass-through in `check_case_feed.ts`.
+- **Runs at d690067:** `check_case_feed` 39/39, `check_pf12b_bypass_audit` 27/0, `check_pf25_web_address` 68/0.
+
+**Verdict: Approve.**
+
+Reviewer: Approve d69006734c01724f28bdb5173991e6f603c048bd
