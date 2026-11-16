@@ -139,7 +139,10 @@ for (const w of [1440, 375]) {
 }
 // 200 % zoom (1440×900 → 720×450, review M7): the open panel stays on screen, the page never scrolls sideways. It is
 // opened at 1024 px and the window then narrowed, so a panel placed only when it opens would fail here (review m10).
+// No source chosen, so the control sits beside the view chips (a chosen chip would wrap it onto its own row and hide
+// the bug: review m11).
 await p.setViewportSize({ width: 1024, height: 800 });
+await p.goto(`${BASE}/front-office/leads?view=all`); await p.locator(`tr[data-lead-row="${numberOf(L.tWeb)}"]`).waitFor({ timeout: 30_000 });
 await p.locator("[data-source-toggle]").click(); await p.locator("#fo-source-list").waitFor();
 await p.setViewportSize({ width: 720, height: 450 }); await p.waitForTimeout(100);
 const at720 = await p.evaluate(() => { const r = document.getElementById("fo-source-list")!.getBoundingClientRect(); return { left: r.left, right: r.right, sw: document.documentElement.scrollWidth, w: window.innerWidth }; });
@@ -150,6 +153,7 @@ const boxes = await p.locator("#fo-source-list input[data-source]").count();
 await p.locator("[data-source-find]").focus(); for (let i = 0; i <= boxes; i++) await p.keyboard.press("Tab");
 ok("FO-4sf DW3 fail: focus leaving the Source control closes the panel", (await p.locator("#fo-source-list").count()) === 0 && !(await p.evaluate(() => document.getElementById("fo-source-list")?.contains(document.activeElement) ?? false)));
 await p.setViewportSize({ width: 1440, height: 900 });
+await p.goto(`${BASE}/front-office/leads?view=all&source=${encodeURIComponent("Phone call")}`); await p.locator('[data-source-chip="Phone call"]').waitFor({ timeout: 30_000 });
 // Keyboard removal (review m8): the × removes that source and focus lands on the Source button, never on the page.
 await p.getByRole("button", { name: "Remove source: Phone call" }).focus(); await p.keyboard.press("Enter"); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ timeout: 15_000 });
 ok("FO-4sf DW3 pass: the chip's × (keyboard) removes that source, clears the address and leaves focus on the Source button", !p.url().includes("source=") && (await shown()).has(numberOf(L.oWeb)) && await p.evaluate(() => document.activeElement?.hasAttribute("data-source-toggle") ?? false), p.url());

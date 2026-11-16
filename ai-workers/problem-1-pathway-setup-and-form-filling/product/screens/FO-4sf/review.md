@@ -64,34 +64,35 @@ D1 2→4 (the source is right now; chip wall, Major 4) · D2 5 · D3 4 · D4 N/A
 - **Verdict:** Changes requested for `e227799a` (Major 4).
 
 ## Re-review at `40c117414a66654b30785d64d0ad555b52e2357b` (diff `e227799a..40c11741`, P-277; full text in git at `1a5d6e85`)
-- **Fixed:**
-  - Major 4: one disclosure "Source" control with Find and a scrolling checkbox list; chosen sources are removable chips. With 36 sources the first row is at 271 px at 1024×800. The keyboard path works, and axe is clean with the panel open.
-  - Minor 5: `groupBy` sends SQL GROUP BY, with no cap.
-  - Minor 6: `words()` maps known codes only.
-- **New, then:**
-  - Major 7: the panel was anchored `left-0`, so at 720×450 (200 %) the open panel ran to x 729 and the page scrolled sideways (`scrollWidth` 938).
-  - Minor 8: removing a chip dropped focus to `<body>`.
-  - Minor 9: the panel stayed open when focus left it.
-- **Runs:** `check_fo4sf` 29/29 · `check_fo2` 113/113 · `check_fo2v` 14/14 · `check_pf6b` 29/29 · `check_fo4_sales_browser` 45/45. Journey 8.5/10.
+- **Fixed:** Major 4 (one disclosure Source control; 36 sources, first row at 271 px at 1024×800), Minor 5 (SQL GROUP BY, no cap), Minor 6 (`words()` maps known codes only).
+- **New, then:** Major 7 (panel anchored `left-0` ran to x 729 at 720×450, `scrollWidth` 938), Minor 8 (chip removal dropped focus), Minor 9 (panel stayed open when focus left).
 - **Verdict:** Changes requested for `40c11741` (Major 7).
 
 ## Re-review at `1a5d6e85ec3cb2cdeea9c8b20f49f1db86f3d1f9` (diff `40c11741..1a5d6e85` only, P-277) · copy `review_fo4sf4` on :4436, never :4400; US$0
 - **Major 7: fixed.** On open, a layout effect shifts the panel left by what would cross `innerWidth − 16` (`leads-page.tsx:36-41`). Opened by me:
   Panel x by width, opened by me: 720×450 (200 %) 384–704 (axe clean) · 720 with two chips 384–704 · 800: 464–784 · 900: 564–884 · 1024: 578–898 · 1280: 706–1026 · 1440: 786–1106. No sideways scroll at any of them. The suite now has the 720 px open case.
-- **Minor 9: fixed.**
-  - `onBlur` with `relatedTarget` outside closes the panel. Tab past the last box closes it and keeps the choice (`source=Phone call` and its chip stay).
-  - Checking a box with the mouse, wheel-scrolling the list, clicking its padding and typing in Find all keep it open (the panel's `tabIndex=-1`).
-  - Escape closes it and returns focus to the button.
+- **Minor 9: fixed.** `onBlur` closes the panel when focus leaves it; Tab past it keeps the choice. Mouse clicks inside, the wheel and Find keep it open. Escape closes it and returns focus to the button.
 - **Minor 8: fixed.** Enter on "Remove source: …" leaves focus on `[data-source-toggle]`.
 - **Runs (mine):** `check_fo4sf` 32/32 · `check_fo2` 113/113 · `check_fo2v` 14/14 · `check_pf6b` 29/29 · `check_fo4_sales_browser` 45/45. No page errors. Rewritten screenshots restored.
 
 ### New in this diff
-10. **Minor (Should, not blocking): the shift is measured only on open.**
-   - Open the panel at 1024 and narrow the window to 720 (or zoom to 200 %) while it is open: the panel stays at x 618–938 and the page scrolls sideways (`scrollWidth` 938). Closing and reopening fixes it.
-   - **Fix:** also measure on `resize` while open (one listener in the same effect), or list it in the PR.
+10. **Minor (Should): the shift was measured only on open.** Narrowing the window from 1024 to 720 while open left the panel at x 618–938 (`scrollWidth` 938). Fix: measure on `resize` too.
 
 **Still open, listed in the PR:** Minor 2 (the in-app Leads link drops `?source=`, `lead-page.tsx:85`) and Minor 10.
 
 **Journey score at this head: 9/10** (pass, no 0). Task completed 1 · next step obvious 1 · plain words 1 · feedback and state 1 · correct data 1 · error recovery ½ (Minor 2) · accessibility and screen sizes ½ (Minor 10) · speed 1 · visual quality 1 · trust and sources 1.
 
 **Verdict: Approve** for `1a5d6e85ec3cb2cdeea9c8b20f49f1db86f3d1f9`. No Blocker or Major is open. Minors 2 and 10 are Should: fix them, or list them in the PR.
+
+## Re-review at `af346f7a15f1e3e72c8293a6c9f15557bb545834` (diff `1a5d6e85..af346f7a` only, P-277) · copy `review_fo4sf5` on :4436; US$0
+- **Minor 10: fixed in the code.** The place effect also runs on `resize` while the panel is open and removes the listener on close (`leads-page.tsx:37-42`). I opened the panel at 1024 and resized it through 720, 1440, 800, 720 and 1024: it stays inside every width with no sideways scroll. Closing and reopening at 720 gives x 384–704.
+- **Runs (mine):** `check_fo4sf` 32/32 · `check_fo2` 113/113 · `check_fo2v` 14/14 · `check_pf6b` 29/29 · `check_fo4_sales_browser` 45/45. Rewritten screenshots restored.
+- **Minor 11 (Should, not blocking): the new 720 px test does not fail when the resize listener is removed.**
+  - With the listener removed and the bundle rebuilt, the suite still passes the 720 px line. By that step a "Phone call" chip is chosen, so the control wraps onto its own row at 720 and the panel fits anyway (mutated bundle with a chip chosen: x 392–712).
+  - Without a chip, the same mutated bundle overflows (x 618–938, `scrollWidth` 938/720). I reverted the change and rebuilt the bundle from clean code.
+  - **Fix:** clear the sources (All sources) before the 1024→720 step, so the button sits beside the view chips. The remaining run of the suite after the mutation also failed "DW2 fail", but only because the suite reuses a database where an earlier run had reassigned a lead; it is not a code fault.
+- **Still open, listed in the PR:** Minor 2 (the in-app Leads link drops `?source=`).
+
+**Journey score at this head: 9.5/10** (pass, no 0). Error recovery ½ (Minor 2); every other criterion 1.
+
+**Verdict: Approve** for `af346f7a15f1e3e72c8293a6c9f15557bb545834`. No Blocker or Major is open. Minor 11 (the test) and Minor 2 are Should: fix them, or list them in the PR.
