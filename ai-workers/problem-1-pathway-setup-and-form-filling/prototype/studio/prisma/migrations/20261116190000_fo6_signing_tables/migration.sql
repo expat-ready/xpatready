@@ -21,19 +21,14 @@
 
 -- CreateEnum
 CREATE TYPE "FoSigningDocumentKind" AS ENUM ('RETAINER', 'CONSULTATION');
-
 -- CreateEnum
 CREATE TYPE "FoSigningProvider" AS ENUM ('FAKE', 'BOLDSIGN');
-
 -- CreateEnum
 CREATE TYPE "FoSignatureRequestStatus" AS ENUM ('SENT', 'VIEWED', 'CLIENT_SIGNED', 'SIGNED', 'DECLINED', 'EXPIRED', 'CANCELLED');
-
 -- CreateEnum
 CREATE TYPE "FoSigningCancelReason" AS ENUM ('UPDATED', 'WITHDRAWN', 'SIGNED_OFFLINE');
-
 -- CreateEnum
 CREATE TYPE "FoSignerRole" AS ENUM ('CLIENT', 'FIRM');
-
 -- CreateTable
 CREATE TABLE "fo_signature_request" (
     "id" UUID NOT NULL,
@@ -54,7 +49,6 @@ CREATE TABLE "fo_signature_request" (
 
     CONSTRAINT "fo_signature_request_pkey" PRIMARY KEY ("id")
 );
-
 -- CreateTable
 CREATE TABLE "fo_signer" (
     "id" UUID NOT NULL,
@@ -78,7 +72,6 @@ CREATE TABLE "fo_signer" (
 
     CONSTRAINT "fo_signer_pkey" PRIMARY KEY ("id")
 );
-
 -- CreateTable
 CREATE TABLE "fo_signing_evidence" (
     "id" UUID NOT NULL,
@@ -93,7 +86,6 @@ CREATE TABLE "fo_signing_evidence" (
 
     CONSTRAINT "fo_signing_evidence_pkey" PRIMARY KEY ("id")
 );
-
 -- CreateTable
 CREATE TABLE "fo_signing_hook_receipt" (
     "id" UUID NOT NULL,
@@ -107,55 +99,38 @@ CREATE TABLE "fo_signing_hook_receipt" (
 
     CONSTRAINT "fo_signing_hook_receipt_pkey" PRIMARY KEY ("id")
 );
-
 -- CreateIndex
 CREATE INDEX "fo_signature_request_firm_id_document_kind_document_id_idx" ON "fo_signature_request"("firm_id", "document_kind", "document_id");
-
 -- CreateIndex
 CREATE INDEX "fo_signature_request_firm_id_status_expires_at_idx" ON "fo_signature_request"("firm_id", "status", "expires_at");
-
 -- CreateIndex
 CREATE UNIQUE INDEX "fo_signature_request_firm_id_document_kind_document_version_key" ON "fo_signature_request"("firm_id", "document_kind", "document_version_id");
-
 -- CreateIndex
 CREATE UNIQUE INDEX "fo_signature_request_provider_provider_document_id_key" ON "fo_signature_request"("provider", "provider_document_id");
-
 -- CreateIndex
 CREATE UNIQUE INDEX "fo_signature_request_firm_id_id_key" ON "fo_signature_request"("firm_id", "id");
-
 -- CreateIndex
 CREATE INDEX "fo_signer_firm_id_request_id_idx" ON "fo_signer"("firm_id", "request_id");
-
 -- CreateIndex
 CREATE INDEX "fo_signer_firm_id_person_id_idx" ON "fo_signer"("firm_id", "person_id");
-
 -- CreateIndex
 CREATE UNIQUE INDEX "fo_signer_firm_id_link_token_sha256_key" ON "fo_signer"("firm_id", "link_token_sha256");
-
 -- CreateIndex
 CREATE UNIQUE INDEX "fo_signing_evidence_firm_id_request_id_key" ON "fo_signing_evidence"("firm_id", "request_id");
-
 -- CreateIndex
 CREATE INDEX "fo_signing_hook_receipt_firm_id_request_id_idx" ON "fo_signing_hook_receipt"("firm_id", "request_id");
-
 -- CreateIndex
 CREATE UNIQUE INDEX "fo_signing_hook_receipt_firm_id_provider_provider_document__key" ON "fo_signing_hook_receipt"("firm_id", "provider", "provider_document_id", "event_id");
-
 -- AddForeignKey
 ALTER TABLE "fo_signature_request" ADD CONSTRAINT "fo_signature_request_firm_id_fkey" FOREIGN KEY ("firm_id") REFERENCES "platform_firm"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
 -- AddForeignKey
 ALTER TABLE "fo_signature_request" ADD CONSTRAINT "fo_signature_request_firm_id_sent_by_fkey" FOREIGN KEY ("firm_id", "sent_by") REFERENCES "platform_staff"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
 -- AddForeignKey
 ALTER TABLE "fo_signer" ADD CONSTRAINT "fo_signer_firm_id_request_id_fkey" FOREIGN KEY ("firm_id", "request_id") REFERENCES "fo_signature_request"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
 -- AddForeignKey
 ALTER TABLE "fo_signer" ADD CONSTRAINT "fo_signer_firm_id_staff_id_fkey" FOREIGN KEY ("firm_id", "staff_id") REFERENCES "platform_staff"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
 -- AddForeignKey
 ALTER TABLE "fo_signing_evidence" ADD CONSTRAINT "fo_signing_evidence_firm_id_request_id_fkey" FOREIGN KEY ("firm_id", "request_id") REFERENCES "fo_signature_request"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
 -- AddForeignKey
 ALTER TABLE "fo_signing_hook_receipt" ADD CONSTRAINT "fo_signing_hook_receipt_firm_id_request_id_fkey" FOREIGN KEY ("firm_id", "request_id") REFERENCES "fo_signature_request"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
