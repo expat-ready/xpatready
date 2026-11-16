@@ -1321,3 +1321,4 @@ Amendments to paste above the briefs are in `lead-b-briefs/P-627-amendments.md`.
 * part 1 stays under 800 lines, or the tagline moves whole to part 2.
 
 Rev 16.44's "no tagline field anywhere" is withdrawn. One reading is for Lead 64 to confirm (P-628): AG-16-2's legal footer, the sender name and the colour stay in emails.
+* Lead 64 confirmed the reading (Lead ruling, P-628, 07:3x IST, listed for the founder's review). Emails keep AG-16-2's legal footer, the sender name and the brand colour. P-629's "only logo and firm name" covers the new extras (banner, tagline, favicon).

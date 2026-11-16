@@ -17,7 +17,7 @@ These come from the founder's seven morning answers (P-627, on `lead/2026-11-07-
   - audited like the other fields.
   - It shows **under the firm's name** on the client portal's header (part 2) and on FO-3w's public booking frame (the DW7 line). It is drawn as text, never as HTML.
 * **Emails and PDFs keep only the logo and the firm's name** (P-629: deliverability, plain legal documents): no banner, no tagline, no favicon there.
-  - Lead B's reading, for Lead 64 to confirm under P-628: AG-16-2's SHALL items in the email (the sender name and the footer with the address, phone and licence text, DW8) and the brand colour (DW5) stay as the brief has them. P-629 is about the new extras, not the legal footer.
+  - Confirmed by Lead 64 (Lead ruling under P-628, 16 Nov 07:3x IST, listed for the founder's review): AG-16-2's SHALL items in the email (the sender name and the footer with the address, phone and licence text, DW8) and the brand colour (DW5) stay as the brief has them. P-629 is about the new extras, not the legal footer.
 * **Added Done when lines:**
   - `PF-13 DW9 pass/fail` (banner).
     - Pass: a banner saves and shows on the client link page's header; its public link answers 200 after 10 minutes.
