@@ -56,7 +56,7 @@ ok("W2 Compare roles shows licence actions in their own group", await licence.co
 await owner.keyboard.press("Escape");
 const invitee = `qa.r16w.${Date.now().toString(36)}@example.com`;
 await owner.getByLabel(/Work email/i).first().fill(invitee);
-await owner.getByLabel(/Role/i).first().selectOption({ label: "Billing/Finance" }).catch(() => owner.getByRole("checkbox", { name: /Billing\/Finance/ }).check());
+await owner.getByLabel(/Role/i).first().selectOption({ label: "Billing/Finance" });
 await owner.getByRole("button", { name: /^Send invitation|^Invite$/i }).click();
 await owner.getByRole("row", { name: new RegExp(invitee.replace(/[.+]/g, "\\$&")) }).first().waitFor({ timeout: 20_000 });
 ok("W3 the invitation shows on Team as pending", (await owner.getByRole("row", { name: new RegExp(invitee.replace(/[.+]/g, "\\$&")) }).first().innerText()).match(/Invited|Pending/i) !== null);
@@ -69,7 +69,8 @@ const body = await officer.locator("main").innerText().catch(() => "");
 ok("W4 a Case Officer typing /platform/team sees no Team and is told why in words", !(await officer.getByRole("heading", { name: "Team", level: 1 }).count()) && /not allowed|permission|can't|cannot/i.test(body), body.slice(0, 160));
 const tok = await officer.evaluate(() => Object.values(sessionStorage).concat(Object.values(localStorage)).find((v) => /^[A-Za-z0-9._-]{20,}$/.test(v)) ?? "");
 const api = await fetch(`${BASE}/api/platform/staff`, { headers: tok ? { authorization: `Bearer ${tok}` } : {} });
-ok("W4 the same person's GET /api/platform/staff answers 403 (401 if no token was found in the page)", api.status === 403 || (!tok && api.status === 401), api.status);
+ok("W4 the Case Officer's own token is found in the page (else the API half below proves nothing)", !!tok);
+ok("W4 the same person's GET /api/platform/staff answers 403", api.status === 403, api.status);
 ok("W5 axe clean on the refusal", (await axeClean(officer)).length === 0);
 for (const w of [400, 1024]) {
   await owner.setViewportSize({ width: w, height: 900 }); await owner.goto(`${BASE}/platform/team`); await team!.waitFor();

@@ -1,0 +1,26 @@
+NOTICE:  database "xr_studio_pf6m_641" does not exist, skipping
+{"time":"2026-11-16T22:05:29.636Z","level":"info","event":"platform_bypass","use":"direct-process","method":"none"}
+PASS  PF-6m break F2 fail→pass: two first audit writers in parallel (no platform-audit row yet) both succeed on one row, never a unique-key failure
+{"time":"2026-11-16T22:05:30.535Z","level":"info","event":"platform_bypass","use":"platform.identity.sign-in","method":"POST"}
+PASS  setup: Billing/Finance carries money keys and Read-only none (the catalogue)
+{"time":"2026-11-16T22:05:30.592Z","level":"info","event":"platform_bypass","use":"platform.identity.invitation","method":"POST"}
+PASS  PF-6m DW1 pass: accepting a Billing/Finance invitation writes one platform.staff.money_keys_granted line naming the 12 money keys, by the inviter
+{"time":"2026-11-16T22:05:30.668Z","level":"info","event":"platform_bypass","use":"platform.identity.invitation","method":"POST"}
+PASS  PF-6m DW1 fail: accepting a Read-only invitation writes no money-keys line
+{"time":"2026-11-16T22:05:30.745Z","level":"info","event":"platform_bypass","use":"platform.identity.invitation","method":"POST"}
+PASS  PF-6m DW2 fail: a refused provider call fails the accept and leaves no money line, no staff row, no role grant, the invitation unused
+{"time":"2026-11-16T22:05:30.851Z","level":"info","event":"platform_bypass","use":"platform.identity.invitation","method":"POST"}
+PASS  PF-6m DW2 pass: once the provider answers, the same kind of accept commits with its one money line
+{"time":"2026-11-16T22:05:30.917Z","level":"info","event":"platform_bypass","use":"platform.identity.invitation","method":"POST"}
+PASS  PF-6m break pass: an invitation with two roles (Read-only, Billing/Finance) writes one line naming only the role that brings money keys, and only money keys
+{"time":"2026-11-16T22:05:30.965Z","level":"info","event":"platform_bypass","use":"platform.identity.invitation","method":"POST"}
+PASS  PF-6m break fail: a replayed accept answers 410 NOT_VALID and writes no second money line
+{"time":"2026-11-16T22:05:31.001Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"PATCH"}
+PASS  PF-6m DW3 pass: the role-change door's line is byte-for-byte the line it wrote before (actor, entity, key, summary, detail)
+PASS  PF-6m DW3 pass: the two doors write the same line shape (same entity, summary words, detail fields)
+{"time":"2026-11-16T22:05:31.089Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"PATCH"}
+PASS  PF-6m DW3 fail: adding a role that brings no money key (Read-only) writes no money line, as before
+{"time":"2026-11-16T22:05:31.157Z","level":"info","event":"platform_bypass","use":"platform.identity.invitation","method":"POST"}
+PASS  PF-6m DW1 pass: an invitation into Case Officer (4 money keys in the catalogue) writes its line too, naming those keys
+
+12 passed, 0 failed

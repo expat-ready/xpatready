@@ -23,3 +23,12 @@ Asked by Lead 69 (Prove Lead plan, P-644; brief `design/prove-lead-briefs/R1.6.m
 
 ## Questions for the Lead
 None new.
+
+## Follow-up, 17 Nov ~03:4x IST (main 37d9d9203, after PF-6m #1945)
+* **QA-478 closed.** `check_qa478_479_r16_breaks.ts` 7/7 (its QA-478 line passes); `check_r16_money_keys_by_invitation.ts` 5/5 twice on fresh copies; `check_pf6m_money_line.ts` 12/12; `check_pf6b_permission_rules.ts` 29/29; `check_r16_deny_sweep.ts` 9/9. Outputs: `2026-11-16-capability-R1.6-retest/after-pf6m/`.
+* **R1.6: Partial; parts missing PF-6 part 2a, PF-6 part 2b, J-6 part 2.** No open bug holds it any more.
+* The reviewer's Minors on #2010 are done:
+  * the money-keys output is fresh;
+  * `check_r16_walk.ts` W4 now fails when the page holds no token, and the role picker's checkbox fallback is gone;
+  * the throwaway set-password codes in the raw outputs are redacted (`#code=[redacted]`).
+* `check_r16_money_keys_by_invitation.ts` now stops cleanly with a message when the invitation is refused. A kept copy reaches the Sample plan's 5-seat limit; use a fresh copy.
