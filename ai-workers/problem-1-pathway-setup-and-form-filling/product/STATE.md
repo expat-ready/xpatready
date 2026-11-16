@@ -14,6 +14,7 @@ Rules: RULES.md (as of **P-644**; "Account facts" line on top: GitHub Pro since 
 4. **A129 (stalls when the founder is away):** plan `design/unattended-running-2026-11-16.md`: a scheduled cloud "lane starter" task (founder creates once at claude.ai/code → Routines) and a separate reviewer identity; present it to the founder as two one-time steps, then record the decision.
 5. **Board:** v17 live; a 21:50 Lead input (27 sessions, who does what) sent; Flow box (A126) specified to the board session; republish and tell the founder the version.
 6. **Founder, one at a time:** reset near 98% (P-643); accept the AWS IAM Identity Center invitation himself; the A129 two steps; the rest of his 21:5x message (cut off after "and also the").
+7. **Build Lead A (Lead B, local_1520b573) at 22:0x to Lead 70:** running FO-13i #2011, PF-8r #2014, PF-18a part 1 #2009; **starts owed at the founder's next typed turn (cloud): PF-21s part 3, PF-21i, PF-Fd, PF-24w, FO-2b**, then each lane's second brief (`design/lead-b-build-lead-a-2026-11-16.md` on branch lead-b-front-office); merge waits: #1945, #1956+#1961, #1959, #1918 (Lead B says when each lands); Stripe test keys from the founder owed before PF-5 goes live.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 | # | Ask (IST) | Status |
