@@ -5,6 +5,13 @@
 // carries one is refused (strict input). No vendor code here: the BoldSign adapter is FO-6v. The fake below is the only
 // adapter for now; both pass signingPortContract (./contract.ts). Every value is Sample. Legal points (e-signature
 // identity, D-6): Unconfirmed: no counsel.
+// For FO-6v (review of #2040): a vendor that needs a signer address to create an envelope or an embedded link gets one
+// the adapter makes from the signer id on a non-routable domain (`<signerId>@signers.invalid`), with every vendor email
+// off; the vendor's audit file then shows that made-up address next to our own record of who signed (Unconfirmed: no
+// counsel). A second send of one request is refused: the adapter finds an envelope it already made by the requestId it
+// put in the vendor's metadata, so a lost answer never leaves a second envelope (our table also allows one send per
+// version, #2038). The adapter's own test runs signingPortContract (./contract.ts); FO-6v's touch list adds this port
+// file to tools/check-port-contracts.mjs's port list (today it reads ports/ and the identity port only).
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
@@ -26,17 +33,20 @@ export const SigningSend = z.strictObject({
 }).superRefine((s, ctx) => {
   const firm = s.signers.filter((x) => x.role === "FIRM").length;
   if (firm !== 1) ctx.addIssue({ code: "custom", message: "exactly one firm signer", path: ["signers"] });
-  if (!s.signers.some((x) => x.role === "CLIENT")) ctx.addIssue({ code: "custom", message: "at least one client", path: ["signers"] });
   if (new Set(s.signers.map((x) => x.signerId)).size !== s.signers.length) ctx.addIssue({ code: "custom", message: "a signer once", path: ["signers"] });
 });
 export type SigningSend = z.input<typeof SigningSend>;
 
-/** What a verified webhook says happened. `eventId` is the provider's, unique per document (stored once by the API part, in fo_signing_hook_receipt, #2038). */
+/** What a verified webhook says happened. `eventId` is the provider's, unique per document (stored once by the API part,
+ *  in fo_signing_hook_receipt, #2038). `type` "other" is a genuine event that changes nothing here (sent, revoked after
+ *  our own cancel, a reminder, the vendor's set-up ping): answered 200 and stored, never refused as unverified.
+ *  `providerType` is the provider's own name for it. */
 export type SigningHookEvent = {
   provider: SigningProviderName;
   providerDocumentId: string;
   eventId: string;
-  type: "viewed" | "signed" | "declined" | "completed";
+  type: "viewed" | "signed" | "declined" | "completed" | "other";
+  providerType: string;
   signerId: string | null;
   at: Date;
 };
@@ -49,11 +59,12 @@ export interface SigningPort {
   send(input: SigningSend): Promise<{ providerDocumentId: string }>;
   /** The signer's embedded signing link (shown inside our page, never emailed by the provider). */
   embeddedLink(firmId: string, providerDocumentId: string, signerId: string): Promise<{ url: string; expiresAt: Date }>;
-  /** Ends a live envelope so it can never be signed. Again on a cancelled one: no change. A completed one: SigningEnded. */
+  /** Ends a live envelope so it can never be signed. Again on a cancelled one: no change. A completed or declined one: SigningEnded. */
   cancel(firmId: string, providerDocumentId: string): Promise<void>;
   /** The sealed document and the provider's audit file, once every signer signed (SigningNotCompleted before). */
   fetchFiles(firmId: string, providerDocumentId: string): Promise<{ sealed: SigningFile; audit: SigningFile }>;
-  /** The event when the call is the provider's own (its signature checks against the raw body), else null. */
+  /** The event when the call is the provider's own (its signature checks against the raw body), else null. Never throws
+   *  on a malformed call (a signature of another length, a missing or repeated header): a hostile call is null, not a 500. */
   verifyWebhook(call: SigningHookCall): Promise<SigningHookEvent | null>;
 }
 
@@ -78,6 +89,8 @@ type Envelope = {
  *  test can force an out-of-order one: the order rule is our server's. */
 export function fakeSigning(opts: { now?: () => Date } = {}): SigningPort & {
   act(firmId: string, providerDocumentId: string, signerId: string, step: "viewed" | "signed" | "declined"): Promise<SigningHookCall[]>;
+  /** A genuine call about the document that changes nothing here (the provider's "sent" event). */
+  other(firmId: string, providerDocumentId: string): Promise<SigningHookCall>;
   readonly calls: ReadonlyArray<{ op: string; providerDocumentId?: string }>;
 } {
   const now = opts.now ?? (() => new Date());
@@ -89,7 +102,7 @@ export function fakeSigning(opts: { now?: () => Date } = {}): SigningPort & {
     if (!e || e.firmId !== String(firmId).toLowerCase()) throw new SigningNotFound();
     return e;
   };
-  const hook = (e: Envelope, type: SigningHookEvent["type"], signerId: string | null): SigningHookCall => {
+  const hook = (e: Envelope, type: string, signerId: string | null): SigningHookCall => {
     const body = new TextEncoder().encode(JSON.stringify({ documentId: e.providerDocumentId, eventId: `${e.providerDocumentId}.${++e.events}`, type, signerId, at: now().toISOString() }));
     return { headers: { [SIG]: mac(body), "content-type": "application/json" }, body };
   };
@@ -129,13 +142,14 @@ export function fakeSigning(opts: { now?: () => Date } = {}): SigningPort & {
       };
     },
     async verifyWebhook(call) {
-      const given = call.headers[SIG] ?? call.headers[SIG.toUpperCase()];
+      const given: unknown = call.headers[SIG] ?? call.headers[SIG.toUpperCase()];
       if (typeof given !== "string" || !/^[0-9a-f]{64}$/.test(given)) return null;
       const want = Buffer.from(mac(call.body), "hex");
       if (!timingSafeEqual(want, Buffer.from(given, "hex"))) return null;
       try {
-        const j = z.strictObject({ documentId: z.string().min(1).max(200), eventId: z.string().min(1).max(200), type: z.enum(["viewed", "signed", "declined", "completed"]), signerId: Uuid.nullable(), at: z.iso.datetime() }).parse(JSON.parse(new TextDecoder().decode(call.body)));
-        return { provider: "FAKE", providerDocumentId: j.documentId, eventId: j.eventId, type: j.type, signerId: j.signerId, at: new Date(j.at) };
+        const j = z.strictObject({ documentId: z.string().min(1).max(200), eventId: z.string().min(1).max(200), type: z.string().regex(/^[a-z][a-z_.]{0,59}$/), signerId: Uuid.nullable(), at: z.iso.datetime() }).parse(JSON.parse(new TextDecoder().decode(call.body)));
+        const known = ["viewed", "signed", "declined", "completed"] as const, type = (known as readonly string[]).includes(j.type) ? j.type as typeof known[number] : "other";
+        return { provider: "FAKE", providerDocumentId: j.documentId, eventId: j.eventId, type, providerType: j.type, signerId: j.signerId, at: new Date(j.at) };
       } catch { return null; }
     },
     async act(firmId, providerDocumentId, signerId, step) {
@@ -151,6 +165,7 @@ export function fakeSigning(opts: { now?: () => Date } = {}): SigningPort & {
       }
       return out;
     },
+    async other(firmId, providerDocumentId) { return hook(find(firmId, providerDocumentId), "sent", null); },
     get calls() { return [...calls]; },
   };
 }

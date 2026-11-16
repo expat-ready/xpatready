@@ -3,7 +3,8 @@
 // takes no email and no vendor option, needs at least one client and exactly one firm signer; a second send of one
 // request is refused; each signer gets an embedded link; another firm's or an unknown document or signer reads as not
 // found; a cancelled envelope gives no link and cancelling again changes nothing; the files come only once all signed,
-// sealed and audit apart; a webhook verifies only with its own signature on the exact body.
+// sealed and audit apart; a webhook verifies only with its own signature on the exact body, a malformed one is null and
+// never a throw, and a genuine event that changes nothing is verified as "other" (not refused).
 import { defineContract, expect, expectRefused } from "../../../../ports/contracts/contract.ts";
 import { SigningEnded, SigningNotCompleted, SigningNotFound, SigningRefused, type SigningHookCall, type SigningPort } from "./port.ts";
 
@@ -18,6 +19,8 @@ const send = (p: SigningPort, requestId = id(1), firmId = FIRM_A) => p.send({ fi
 export type SigningHarness = {
   port: SigningPort;
   act(firmId: string, providerDocumentId: string, signerId: string, step: "viewed" | "signed" | "declined"): Promise<SigningHookCall[]>;
+  /** One genuine provider call about the document that changes nothing here (a vendor's sent or revoked event). */
+  other(firmId: string, providerDocumentId: string): Promise<SigningHookCall>;
 };
 
 export const signingPortContract = defineContract("SigningPort", (make: () => Promise<SigningHarness> | SigningHarness) => [
@@ -32,14 +35,15 @@ export const signingPortContract = defineContract("SigningPort", (make: () => Pr
     },
   },
   {
-    name: "a send with an email address, a vendor-email option, no firm signer, two firm signers or no client is refused",
+    name: "a send with an email address, a vendor-email option, no firm signer, two firm signers, one signer twice or a single signer is refused",
     async run() {
       const { port } = await make(), base = { firmId: FIRM_A, requestId: id(3), title: "Sample", document: doc };
       await expectRefused(() => port.send({ ...base, signers, sendEmails: true } as never), "a vendor-email option");
       await expectRefused(() => port.send({ ...base, signers: signers.map((s) => ({ ...s, email: "a@example.com" })) } as never), "a signer's email address");
       await expectRefused(() => port.send({ ...base, signers: signers.filter((s) => s.role === "CLIENT") }), "no firm signer");
       await expectRefused(() => port.send({ ...base, signers: [...signers, { signerId: id(22), role: "FIRM", name: "Second" }] }), "two firm signers");
-      await expectRefused(() => port.send({ ...base, signers: signers.filter((s) => s.role === "FIRM").concat({ signerId: id(23), role: "FIRM", name: "X" }) }), "no client");
+      await expectRefused(() => port.send({ ...base, signers: [signers[0], signers[0], signers[2]] }), "one signer twice");
+      await expectRefused(() => port.send({ ...base, signers: [signers[2]] }), "a firm signer alone (no client)");
     },
   },
   {
@@ -56,7 +60,18 @@ export const signingPortContract = defineContract("SigningPort", (make: () => Pr
     },
   },
   {
-    name: "a cancelled document gives no link and cannot be signed; cancelling again changes nothing; another firm cannot cancel it",
+    name: "a signer who signed gets no new link (a link reopens only until its signer signs)",
+    async run() {
+      const h = await make(), { providerDocumentId: d } = await send(h.port);
+      await h.act(FIRM_A, d, CLIENT_1, "signed");
+      await expectRefused(() => h.port.embeddedLink(FIRM_A, d, CLIENT_1), "a link for a signer who signed", (e) => e instanceof SigningEnded);
+      const l = await h.port.embeddedLink(FIRM_A, d, CLIENT_2);
+      expect(/^https:\/\//.test(l.url), "the other client still gets theirs", l);
+    },
+  },
+  {
+    // The link refusal is the adapter's evidence; the refused act is the harness's (on recorded vendor responses it shows the recording).
+    name: "a cancelled document gives no link (and the harness cannot sign it); cancelling again changes nothing; another firm cannot cancel it",
     async run() {
       const h = await make(), { providerDocumentId: d } = await send(h.port);
       await expectRefused(() => h.port.cancel(FIRM_B, d), "firm B cancels firm A's document", (e) => e instanceof SigningNotFound);
@@ -95,6 +110,31 @@ export const signingPortContract = defineContract("SigningPort", (make: () => Pr
       expect(await h.port.verifyWebhook({ headers: {}, body: viewed.body }) === null, "no signature is not verified");
       expect(await h.port.verifyWebhook({ headers: Object.fromEntries(Object.keys(viewed.headers).map((k) => [k, "0".repeat(64)])), body: viewed.body }) === null, "a wrong signature is not verified");
       await expectRefused(() => h.port.embeddedLink(FIRM_A, d, CLIENT_1), "a link after a decline", (e) => e instanceof SigningEnded);
+      await expectRefused(() => h.port.cancel(FIRM_A, d), "a cancel after a decline (a withdraw racing the decline)", (e) => e instanceof SigningEnded);
+    },
+  },
+  {
+    name: "a malformed signature (shorter, longer, empty, not hex, a repeated header) is null and never a throw",
+    async run() {
+      const h = await make(), { providerDocumentId: d } = await send(h.port);
+      const [call] = await h.act(FIRM_A, d, CLIENT_1, "viewed");
+      for (const [k, v] of Object.entries(call.headers)) {
+        if (typeof v !== "string") continue;
+        for (const bad of [v.slice(0, -1), `${v}0`, "", "zz", [v, v] as unknown as string]) {
+          let got: unknown = "threw";
+          try { got = await h.port.verifyWebhook({ headers: { ...call.headers, [k]: bad }, body: call.body }); } catch (e) { got = `threw ${e instanceof Error ? e.name : String(e)}`; }
+          if (k.toLowerCase() === "content-type") continue;
+          expect(got === null, `header ${k} set to a malformed value is null`, { value: String(bad).slice(0, 80), got: got && typeof got === "object" ? "an event" : got });
+        }
+      }
+    },
+  },
+  {
+    name: "a genuine event that changes nothing is verified as other (answered, never refused as unverified)",
+    async run() {
+      const h = await make(), { providerDocumentId: d } = await send(h.port);
+      const e = await h.port.verifyWebhook(await h.other(FIRM_A, d));
+      expect(e !== null && e.type === "other" && e.providerDocumentId === d && typeof e.providerType === "string" && e.providerType.length > 0, "a verified other event", e);
     },
   },
 ]);

@@ -9,12 +9,21 @@ import { fakeSigning } from "../api/src/front-office/signing/port.ts";
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 400)}` : ""}`); };
 
-await runContract(signingPortContract, "fakeSigning", () => { const p = fakeSigning(); return { port: p, act: p.act }; }, ok);
+await runContract(signingPortContract, "fakeSigning", () => { const p = fakeSigning(); return { port: p, act: p.act, other: p.other }; }, ok);
 { // the contract catches a fake that would let the vendor email (DW3-style: a broken adapter fails it)
   const p = fakeSigning();
   const loose = Object.assign(Object.create(null), p, { provider: p.provider, send: (i: Record<string, unknown>) => { const { sendEmails: _drop, ...rest } = i; return p.send({ ...rest, signers: (rest.signers as { signerId: string; role: "CLIENT" | "FIRM"; name: string }[]).map(({ signerId, role, name }) => ({ signerId, role, name })) } as never); } });
-  const r = await runContract(signingPortContract, "looseFake", () => ({ port: loose, act: p.act }), null);
+  const r = await runContract(signingPortContract, "looseFake", () => ({ port: loose, act: p.act, other: p.other }), null);
   ok("FO-6 fail (the contract works): an adapter that takes a vendor-email option or a signer's email fails the contract", r.failed.some((n) => /email/.test(n)), r);
+  // An adapter that compares the signature without checking its length first (timingSafeEqual throws RangeError on a
+  // shorter value): a hostile webhook would become a 500. The contract must catch it (review M2 on #2040).
+  const unsafe = { ...p, provider: p.provider, verifyWebhook: async (c: Parameters<typeof p.verifyWebhook>[0]) => {
+    const v = Object.values(c.headers).find((x) => typeof x === "string" && x.length !== 64 && !/json/.test(x));
+    if (v !== undefined) throw new RangeError("Input buffers must have the same byte length");
+    return p.verifyWebhook(c);
+  } };
+  const r2 = await runContract(signingPortContract, "lengthUnsafeFake", () => ({ port: unsafe, act: p.act, other: p.other }), null);
+  ok("FO-6 fail (the contract works): an adapter that throws on a signature of another length fails the contract", r2.failed.some((n) => /malformed/.test(n)), r2);
 }
 
 { // the fake's own promises the contract does not name: the provider never emails, links are short-lived, nothing leaks
