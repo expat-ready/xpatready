@@ -1443,3 +1443,10 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - PF-12 #1910 (migration) at 4c59bc518.
   - FO-3a 1a #1918 (migration) at 8e62f9dcb.
 * **FO-7mv (#1924), from Lead 65:** PF-12's database walls between firms (row-level security) go on the `money_move_*` tables. Read with FO-7a2: FO-7a2's view `money_trust_shortfall` also sits behind PF-12's walls (`security_invoker`, so the reader's firm scope applies), and the same goes for any table FO-7a2 adds.
+
+## Rev 16.58 (16 Nov 11:1x IST, Lead B (6)): P-638's order, FO-7mv first, then FO-7a2
+
+* **P-638** (Lead 65, 11:2x IST) reverses only P-634's order; the money rules are unchanged.
+* **FO-7mv (#1924) merges first**, shrunk as its lane proposed (comment 6907573264: the cover check and invoice caps go, and the correction kinds are named as FO-7a2's). **FO-7a2 follows in the same lane**, because its tests need FO-7mv's `money_move_*` tables, `money_to_move` and `correction_kind`.
+* `lead-b-briefs/FO-7a2.md` is amended: it starts when FO-7mv is on `main`, with its migration stamp later than FO-7mv's.
+* **Known gap until FO-7a2 merges:** a bounced cheque whose money has already moved cannot be recorded (B-10). FO-7mv's PR body names it under "Known gaps", with FO-7a2 as the fix. This supersedes rev 16.52–16.53's "FO-7a2 goes first".

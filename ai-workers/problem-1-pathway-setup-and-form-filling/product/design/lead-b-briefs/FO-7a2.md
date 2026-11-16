@@ -1,8 +1,8 @@
 # Brief: FO-7a2, the trust ledger's reversal and credit-note rules (money; cloud builder lane, the FO-7mv lane; row owner Lead B)
 
-Written 16 Nov 10:1x IST by Lead B (6), rev 16.53. The money rules were confirmed by the release holder, Lead 64 (P-423), on 16 Nov, with one amendment, in rule 2c below, and are recorded as **P-634**. Any table or view this row adds sits behind PF-12's walls between firms (a view uses `security_invoker`), rev 16.57. The row comes from FO-7mv's breaker round 2 (#1924; `screens/FO-7mv/break-report.md` B-1, B-3, B-4, B-10 to B-13, B-17; ruling comment 6907485757). **Model: Opus 5.5, effort: high**: money; reviewer and breaker at high, P-605. **It merges before FO-7mv (#1924), which then shrinks.** Unconfirmed: no counsel.
+Written 16 Nov 10:1x IST by Lead B (6), rev 16.53; order amended by rev 16.58 (P-638). The money rules were confirmed by the release holder, Lead 64 (P-423), on 16 Nov, with one amendment, in rule 2c below, and are recorded as **P-634**. Any table or view this row adds sits behind PF-12's walls between firms (a view uses `security_invoker`), rev 16.57. The row comes from FO-7mv's breaker round 2 (#1924; `screens/FO-7mv/break-report.md` B-1, B-3, B-4, B-10 to B-13, B-17; ruling comment 6907485757). **Model: Opus 5.5, effort: high**: money; reviewer and breaker at high, P-605. **Order (P-638, Lead 65, 11:2x IST 16 Nov, reversing only P-634's order; the money rules are unchanged): FO-7mv (#1924) merges first, shrunk as its lane proposed (comment 6907573264: cover check and invoice caps removed, correction kinds named as FO-7a2's), then this row on top, in the same lane.** The reason: this row's tests need FO-7mv's `money_move_*` tables, `money_to_move` and its `correction_kind` column. Unconfirmed: no counsel.
 
-**Starts when:** now. FO-7a is on `main`, and no open PR replaces `money_trust_entry_write` or `money_credit_note_write`. FO-7mv's draft is held at a45f7d1e3, and FO-7b has not touched them; check at start.
+**Starts when:** FO-7mv (#1924) is on `main` (P-638). Until FO-7a2 merges, `main` has **a known gap**: a bounced cheque whose money has already moved cannot be recorded (B-10). FO-7mv's PR body says so under "Known gaps" with this row's name. No one else edits `money_trust_entry_write` or `money_credit_note_write` meanwhile; FO-7b and FO-7ts must not touch them (check at start).
 
 ---
 You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime FO-7a2` and take **one row, FO-7a2**, end to end on a fresh branch from `origin/main`, one PR.
@@ -52,7 +52,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime F
 
 **Duplicate check (P-526):** BACKLOG (FO-7a2; FO-7mv takes its checks out after this), open PRs (#1924 is held), `main`, BUGS; one `Duplicate check:` line.
 
-**Parallel safety:** these functions are FO-7a's. Nothing else may replace them while this runs: FO-7mv is held, and FO-7b and FO-7ts must not edit them. After this row merges, FO-7mv merges `main` in, re-stamps its migration later than this one, and removes its party cover check, the settings-row touch, the invoice cap and `least()` (lane plan, #1924 comment 6907490951).
+**Parallel safety:** these functions are FO-7a's. Nothing else may replace them while this runs: FO-7b and FO-7ts must not edit them. This row starts from `main` with FO-7mv merged, and its migration stamp is later than FO-7mv's (P-600). FO-7mv's correction kinds are used as named there; a rename would be a stop-and-ask. The view `money_trust_shortfall` reads FO-7mv's tables through `security_invoker` behind PF-12's walls.
 
 **Reviewer and breaker** (P-278, money). The breaker tries:
 * a reversal and a refund at the same moment, from two connections;
