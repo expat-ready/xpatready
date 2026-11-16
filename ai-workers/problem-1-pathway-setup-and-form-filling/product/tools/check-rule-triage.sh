@@ -34,4 +34,6 @@ good; OLD=3 map "P-1	kept	RULES.md	-" "P-2	merged	P-1	$(sha "$L2")" "P-3	dropped
 ok "an outcome other than kept, merged or retired fails" "$([ $r = 1 ] && echo "$out" | grep -q 'RULE MAP: P-3 has outcome "dropped"' && echo 1)" "exit $r: $out"
 good; OLD=3 map "P-1	kept	RULES.md	-" "P-1	kept	RULES.md	-" "P-3	retired	P-1	$(sha "$L3")"; run
 ok "an ID listed twice fails" "$([ $r = 1 ] && echo "$out" | grep -q 'RULE MAP: P-1 is listed twice' && echo 1)" "exit $r: $out"
+good; sed -i 's/^# old_rows=3$/# old_rows=3x/' "$P/rules/rule-id-map-t.tsv"; run
+ok "a map the check cannot read (old_rows=3x) fails, never passes unchecked" "$([ $r = 1 ] && echo "$out" | grep -q 'RULE MAP: the check of rule-id-map-t.tsv stopped with an error' && echo 1)" "exit $r: $out"
 finish
