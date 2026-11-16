@@ -1,8 +1,7 @@
-// FO-3w part 2, J-P6..J-P8 (concept BR-8..BR-10, §5 "Manage"; AG-4-36, -37, -38): /book/:firmKey/manage#<token>, the
-// booker's own page from the link in every booking email (AG-4-36 rule 1). The token is read from the address's fragment
-// only: it is sent in the API's path (FO-3's routes), never in a query string, and never written to the console or a log.
-// After a move the answer's new token replaces the old one in the fragment, so a reload keeps working and the old links
-// stop (rule 3). The reason for a cancel is sent and never shown back. Nothing here carries an id.
+// FO-3w part 2, J-P6..J-P8 (concept BR-8..BR-10, §5 "Manage"; AG-4-36, -37, -38): /book/:firmKey/manage#<token>, the booker's own page from the link in every
+// booking email (AG-4-36 rule 1). The token is read from the address's fragment only: it is sent in the API's path (FO-3's routes), never in a query string,
+// and never written to the console or a log. After a move the answer's new token replaces the old one in the fragment, so a reload keeps working and the old
+// links stop (rule 3). The reason for a cancel is sent and never shown back. Nothing here carries an id.
 import { useQuery } from "@tanstack/react-query";
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
@@ -37,12 +36,10 @@ type Answer = z.infer<typeof Answer>;
 const big = "min-h-11 min-w-11";
 /** The token from the fragment; one far longer than any token FO-3 makes is a bad link, never sent (break m5). */
 const tokenOf = () => { try { const t = decodeURIComponent(window.location.hash.slice(1)).trim(); return t.length > 400 ? "" : t; } catch { return ""; } };
-/** The reason as the API takes it (CancelBody, service.ts): a tab becomes a space; control, bidirectional and invisible
- *  characters and broken UTF-16 are dropped, so a pasted reason is never refused without a word (break M1). */
+/** The reason as CancelBody (service.ts) takes it: a tab → a space; control, bidi, invisible and broken UTF-16 dropped (break M1). */
 const cleanReason = (v: string) => v.replace(/\t/g, " ")
   .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069\u200b\u200e\u200f\u061c\ufeff]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, "").trim();
-/** No answer came (status 0): the change may still have been made, which voids this link. Read the booking again: a dead
- *  link means it was made, so the page says to check the email (break M2), never "try again" on a change already done. */
+/** No answer (status 0): read again; a dead link means the change was made, so "check the email", never "try again" (break M2). */
 async function afterLoss(p: Problem, token: string): Promise<Problem> {
   if (p.status !== 0) return p;
   try { await publicCall(path(token), View); return p; } catch (x) { return asProblem(x).status === 404 ? { ...p, slug: "lost" } : p; }
@@ -71,8 +68,7 @@ export function BookingManagePage() {
     queryFn: () => publicCall(path(token), View) });
   if (!token) return <BadLink />;
   if (!q.isPending && (q.error as Problem | null)?.status === 404) return <BadLink />;
-  // The page keeps the token it opened with as its key; a move's new token lives in Manage and in the address only (a
-  // replaceState fires no hashchange), so the page is not read again. Another link pasted into the address reloads it.
+  // Keyed on the opened token: a move's new token lives in Manage and the address (replaceState fires no hashchange).
   return <Gate pending={q.isPending} error={q.error}>{() => <Manage key={`${n}:${token}`} first={q.data!} opened={token} />}</Gate>;
 }
 

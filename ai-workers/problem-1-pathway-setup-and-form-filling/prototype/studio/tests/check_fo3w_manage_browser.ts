@@ -1,13 +1,11 @@
-// FO-3w part 2 (brief lead-b-briefs/FO-3w.md part 2; Lead B's QA-496 ruling, #1968 rev 16.68; concept screens/fo-3-booking
-// r2 BR-8..BR-10, §5 "Manage"; AG-4-36, -37, -38): the booker's manage page in a real browser: J-P6..J-P8, the route
-// order (/book/:firmKey/manage before /book/:firmKey/:slug) and the reserved slug "manage", axe on every state, 360 and
-// 1440 px. Two servers, as part 1's suite:
+// FO-3w part 2 (brief lead-b-briefs/FO-3w.md part 2; Lead B's QA-496 ruling, #1968 rev 16.68; concept screens/fo-3-booking r2 BR-8..BR-10, §5 "Manage";
+// AG-4-36, -37, -38): the booker's manage page in a real browser: J-P6..J-P8, the route order (/book/:firmKey/manage before /book/:firmKey/:slug) and the
+// reserved slug "manage", axe on every state, 360 and 1440 px. Two servers, as part 1's suite:
 //   * the isolated copy (the real app: its build and its routes) for the route order, through the real router (Q1..Q3);
-//   * a server this test holds, on the copy's database: FO-3's real public controller and service, the same web build,
-//     a clock the test sets (J-P7's "3 h before", J-P8's "expired"), the mail fake (the email's own link is opened) and
-//     no minimum fill time (bookings are made through the public API; the booking form is part 1's).
-// Seeds firm `maple` (Sample) with a phone; a type stored with the slug `manage` stands in for a row from before FO-3a
-// 1a's reserved word (#1918 refuses saving it: its check_fo3a_booking_types.ts DW2). US$0, no model.
+//   * a server this test holds, on the copy's database: FO-3's real public controller and service, the same web build, a clock the test sets (J-P7's
+//     "3 h before", J-P8's "expired"), the mail fake (the email's own link is opened) and no minimum fill time (bookings go through the public API).
+// Seeds firm `maple` (Sample) with a phone; a type stored with the slug `manage` stands in for a row from before FO-3a 1a's reserved word (#1918 refuses
+// saving it: its check_fo3a_booking_types.ts DW2). US$0, no model.
 //   zsh studio/tools/isolated.sh screens_fo3wm 4533 start && tsx studio/tests/check_fo3w_manage_browser.ts 4533 xr_studio_screens_fo3wm
 import "reflect-metadata";
 import { Module } from "@nestjs/common";
@@ -153,7 +151,6 @@ try {
     await p.waitForFunction(() => document.querySelector("[data-when]")?.textContent?.includes("Wednesday 28 October, 18:00"), null, { timeout: 15_000 });
     const twice = await db.foBooking.findUniqueOrThrow({ where: { id: row.id } });
     ok("FO-3w J-P6 pass (AG-4-36 §11, bug 5): rescheduled once, the newest link reschedules again", twice.status === "RESCHEDULED" && twice.sequence === 2 && twice.startsAt.toISOString() === at("2026-10-28 10:00").toISOString() && (await p.locator("[data-updated]").count()) === 1, { status: twice.status, sequence: twice.sequence });
-    // Cancel on the same page: the new token is used.
     await p.getByRole("button", { name: "Cancel", exact: true }).click(); await p.getByRole("dialog").waitFor();
     ok("FO-3w J-P6: Cancel asks \"Cancel this booking?\" with \"Reason (optional)\", \"Cancel booking\" and \"Keep booking\"", (await p.getByRole("dialog").innerText()).includes("Cancel this booking?") && (await p.getByLabel("Reason (optional)").count()) === 1 && (await p.getByRole("button", { name: "Keep booking" }).count()) === 1);
     await axe("cancel dialog", p); await shot(p, "cancel-dialog-1440");
@@ -206,8 +203,7 @@ try {
     await axe("time taken", p);
     await ctx.close();
   }
-  // Break M2: the answer to a move or a cancel is lost on the way, though the change was made: the page says to check the
-  // email, never "try again" (a retry would only meet the dead link).
+  // Break M2: a move's or a cancel's answer is lost, though the change was made: "check the email", never "try again".
   {
     await clock.to(at("2026-10-16 09:00"));
     const b = await booking("free-consultation", "2026-10-19 10:00"), c = await booking("free-consultation", "2026-10-19 15:00");
