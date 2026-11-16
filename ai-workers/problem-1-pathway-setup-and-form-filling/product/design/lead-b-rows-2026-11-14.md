@@ -1497,3 +1497,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
     - PF-12's walls: system role only.
 * **PF-5v splits.** Item 2, QA-484's words, ships now. Item 1 is PF-5v part 2, on top of PF-19p. The same fix serves PF-5 part 2's Cognito sign-up email. The release holder reads PF-19p (P-423).
 * Order additions: PF-19p is ready now; it must not run beside PF-19b part 2 on the same files (whichever starts second waits). PF-5s part 1 now waits on PF-5v part 2.
+* Lead 66 agreed rev 16.62. **PF-19p starts at the founder's next typed turn**, the first item in STATE. PF-5v ships QA-484's words now. PF-19b part 2 continues. The second of PF-19p and PF-19b part 2 to merge takes `main` in **by a merge, not a rebase** (AGENTS rule 1, P-270).
