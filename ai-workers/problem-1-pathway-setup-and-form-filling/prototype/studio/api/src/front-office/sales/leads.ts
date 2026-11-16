@@ -1,14 +1,14 @@
 // FO-2 (contracts §2.1, §7; AG-2-4, -13c, -80, -84, -86): staff leads, firm-scoped (404), visibility by common.ts; a change
 // is one transaction: the row under its lock, one audit line, the outbox row last.
 import { HttpException, Inject, Injectable } from "@nestjs/common";
-import type { FoLeadState, PrismaClient } from "@prisma/client";
+import type { FoDoor, FoLeadState, PrismaClient } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { EVENT, LeadEventPayload, type EventName } from "../../../../ports/events.ts";
 import { Db } from "../../core.ts";
 import { platformAuditWorkspaceId } from "../../platform/audit/audit-event.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import type { FirmCalendar } from "../../platform/complaints/business-days.ts";
-import { forbidden, type StaffContext } from "../../platform/identity/keys.ts";
+import { forbidden, problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts";
 import { arrive, possibleMatch } from "./arrival.ts";
 import { actorOf, conflict, email, notFound, phone, sees, text, unprocessable, UUID, visibilityOf, written, type Tx } from "./common.ts";
@@ -17,6 +17,15 @@ import { SALES_PORTS, type SalesPorts } from "./public.ts";
 
 export const VIEWS = ["unassigned", "mine", "all", "closed"] as const;
 type View = (typeof VIEWS)[number];
+/** FO-4sf (AG-2-23 rule 1): the lead sources the list filters by, the stored way the lead arrived (`FoDoor`). */
+export const SOURCES = ["WEB_FORM", "MANUAL", "BOOKING"] as const satisfies readonly FoDoor[];
+/** `?source=` as one value, a comma list or repeated keys; empty = all sources; an unknown value → 400 naming the allowed. */
+export function sourcesOf(q: unknown): FoDoor[] | null {
+  const asked = [...new Set((Array.isArray(q) ? q : q === undefined || q === null ? [] : [q]).flatMap((x) => String(x).split(",")).map((x) => x.trim()).filter(Boolean))];
+  const bad = asked.filter((x) => !(SOURCES as readonly string[]).includes(x));
+  if (bad.length) return problem(400, "Check the filter", `Unknown source: ${bad.join(", ").slice(0, 200)}. Choose from ${SOURCES.join(", ")}.`, { code: "UNKNOWN_SOURCE", allowed: [...SOURCES] });
+  return asked.length ? (asked as FoDoor[]) : null;
+}
 /** How recent an owner change from Unassigned counts as the race that names the winner (Sample, FO-2v brief). */
 const RACE_MINUTES = 10;
 type Staff = { id: string; displayName: string; status: string };
@@ -35,7 +44,8 @@ export class Leads {
 
   /** Unassigned leads (open, no active owner, oldest first), Mine, All open, Closed; each open row with the time it has
    *  waited in the firm's open hours (BR-4, AG-2-13c rule 6), worked out here. */
-  async list(ctx: StaffContext, view: unknown) {
+  async list(ctx: StaffContext, view: unknown, source?: unknown) {
+    const doors = sourcesOf(source);   // checked first: a bad filter is refused for everyone the same way
     const v = (VIEWS as readonly string[]).includes(String(view ?? "all")) ? (String(view ?? "all") as View) : unprocessable("Choose a view: unassigned, mine, all or closed.", { view: "Unknown view." });
     const vis = await visibilityOf(this.db, ctx);
     if (v === "unassigned" && !vis.seesUnassigned) return forbidden("Unassigned leads are seen by people who may see all leads or assign them.", "MISSING_PERMISSION");
@@ -46,7 +56,7 @@ export class Leads {
       : v === "mine" ? { state, ownerStaffId: ctx.staffId }
       : vis.seesAll ? { state } : { state, OR: [{ ownerStaffId: ctx.staffId }, ...(vis.seesUnassigned ? [{ ownerStaffId: null }, { ownerStaffId: { in: inactive } }] : [])] };   // in the query, before the page cap (review m5)
     const rows = await this.db.foLead.findMany({
-      where: firmScope(ctx.firmId, where), orderBy: v === "unassigned" ? [{ arrivedAt: "asc" }, { id: "asc" }] : [{ arrivedAt: "desc" }, { id: "asc" }], take: 500,
+      where: firmScope(ctx.firmId, doors ? { AND: [where, { door: { in: doors } }] } : where),   // narrows inside the visibility (FO-4sf) orderBy: v === "unassigned" ? [{ arrivedAt: "asc" }, { id: "asc" }] : [{ arrivedAt: "desc" }, { id: "asc" }], take: 500,
       include: { person: { select: { givenNames: true, familyName: true, phoneReadable: true } }, interestedIn: { select: { label: true } } },
     });
     const unowned = (o: string | null) => o === null || inactive.includes(o);

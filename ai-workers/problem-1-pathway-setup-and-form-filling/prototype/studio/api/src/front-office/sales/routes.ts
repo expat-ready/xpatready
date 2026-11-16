@@ -15,7 +15,7 @@ export class SalesController {
   constructor(@Inject(Leads) private readonly leads: Leads) {}
 
   @Get("leads") @PermissionKeys("agent/prospect:show") @OwnOrAll("agent/prospect")
-  list(@Req() r: R, @Query("view") view?: string) { return this.leads.list(staffOf(r), view); }
+  list(@Req() r: R, @Query("view") view?: string, @Query("source") source?: string | string[]) { return this.leads.list(staffOf(r), view, source); }
 
   @Post("leads") @PermissionKeys("agent/prospect:create")
   add(@Req() r: R, @Body() b: B) { return this.leads.add(staffOf(r), b ?? {}); }
