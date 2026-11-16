@@ -2,6 +2,7 @@
 // shown in their own groups, read from PF-6r's `class` for each key, never ticked as a group; the six roles in SA-06
 // Appendix C's plain words (can / cannot).
 import * as React from "react";
+import { FoldOut } from "@/components/fold-out";
 import { Button, Dialog } from "@/components/ui/controls";
 import { keyWords, ROLE_WORDS, roleLabel, type Role } from "./contract";
 
@@ -9,10 +10,9 @@ function Groups({ role }: { role: Role }) {
   const group = (cls: "MONEY" | "LICENCE", title: string) => {
     const keys = role.keys.filter((k) => k.class === cls);
     return (
-      <details data-key-group={cls} className="text-xs">
-        <summary className="min-h-6 w-fit cursor-pointer leading-6 text-text-muted">{title}: {keys.length}</summary>
+      <FoldOut data-key-group={cls} className="text-xs" summaryClassName="min-h-6 w-fit leading-6 text-text-muted" summary={`${title}: ${keys.length}`}>
         {keys.length ? <ul className="mt-1 list-disc pl-5">{keys.map((k) => <li key={k.key}>{keyWords(k.key)}</li>)}</ul> : <p className="mt-1">None.</p>}
-      </details>
+      </FoldOut>
     );
   };
   return <div className="mt-1 flex flex-col gap-1">{group("MONEY", "Money permissions")}{group("LICENCE", "Licence actions")}</div>;
