@@ -142,3 +142,72 @@ The journeys were HTTP calls by persona: staff of firm A and of firm B, a visito
 To raise it, fix B1 then m1.
 
 **Verdict: Block.** Fix B1, M1, M2, M3 and M4 (the Minors are recommended). Then ask for a diff-only re-review at the new head, with main merged and CI green.
+
+---
+
+# Round 2: diff-only re-review at 9db6c475e (P-277)
+
+Verdict: Changes requested
+
+Scope: `git diff 5f22defa4 9db6c475e -- …/studio`, PF-12's lines only, plus the conflict resolution in `front-office/booking/service.ts`. Main's own merged changes were not judged. The studio folder is identical at 2a46946c7, which only adds a breaker records note.
+
+## Round-1 findings: status
+
+| Finding | Status | Evidence |
+|---|---|---|
+| **B1** firm's site 404 | **Fixed** | `host.ts:75` calls `setRequestFirm`; `enterRequest` keeps it (`firm-scope.ts:161-164`). Isolated :4640: `Host: sample-firm.localhost` and `Host: sample-solo.localhost` → 200 `{"webAddress":…}`; unknown address → 404; HEAD → 200. The real-server check in the test passes. |
+| **M1** blind triggers | **Fixed** | Every trigger function on a firm table is SECURITY DEFINER, owned by `xr_wall_reader` (NOLOGIN, BYPASSRLS, no members), `search_path = pg_catalog, public, pg_temp`. Repeated as `xr_app` on :4640: firm A's version on firm B's template → refused by `msg_template_version_in_firm`; firm A's outbox row on B's version → refused; firm B's own version → inserted. 68 functions owned by the reader, 0 invoker triggers left on firm tables. No trigger body uses `current_user`/`session_user`/`setval`, and no trigger function is shared with a case table (grep). The guard also fails a later plain trigger function (probe checks). |
+| **M2** merge, FO-3pa routes | **Fixed** | Merges clean against main 74b0a25fb (`merge-tree`: no conflict). Patterns cover `/book` and `/ics`. Booking service vs main differs only in PF-12's lines: `publicFirm` resolves on its use then `enterFirm`, and `byToken` the same; every caller passes `this.db`, never a transaction. :4640: `/api/public/firms/<key>/book` → 200 per firm; unknown link `/ics` → 404; no 500 in the copy's log. |
+| **M3** gate under the walls | **Fixed** | `check_pf12_walls.ts` now walks the real `main.ts` as `xr_app` on the demo-data copy: site on a firm host, sign-in, own and other staff by id, booking list. |
+| **M4** PR record | **Partly; still open (R2-M1)** | See below. |
+| m1 HEAD / trailing slash | Fixed | `routeOf` normalises both; :4640 form `/` and HEAD → the form's own 404, booking list `/` and HEAD → 200. |
+| m2 direct uses in server | Fixed | `asBypass` allows `direct` only when `unscopedMode()==="direct"`; walling happens at import. No `direct-process` line in any round-2 copy's log (pf4, pf4b, :4640). |
+| m3 any policy passes | Fixed | `unguarded()` requires `platform_session_firm()` in each app-visible permissive policy; the open-policy probe is named. |
+| m4 bypass owns a function | Fixed | The function is owned by `xr_wall_reader`; the start-up check counts functions owned by roles the app may become. `SET ROLE` reachability stays as PR question 3 (accepted as a recorded design question). |
+| m5 setval | Fixed | Grant is `USAGE, SELECT`; the test proves setval is refused and nextval works. |
+| m6 per-connection tag | Open, Minor | Not in the PR's questions. |
+| m7 pg-boss and seeds as owner | Recorded | Listed under "Scripts and suites that rely on the superuser". |
+| m8 invitation accept on bypass | Open, Minor | Not in the PR's questions. |
+
+## Major
+
+**R2-M1. The PR body no longer describes the commit under review.** The brief requires the release holder to read the migration before the label, and the Shared-file lines to carry owners' OKs. At 9db6c475e the body is wrong in four places:
+- **"One function beyond policies and roles only"** still says `platform_web_address_taken(addresses, at)`, owned by `xr_staff_bypass`, returning firm ids. In the commit it takes `self`, returns addresses only, and is owned by `xr_wall_reader`.
+- **The biggest change is missing.** The new role `xr_wall_reader` and the `$readers$` block are not mentioned. That block changes the security mode and owner of 68 trigger functions in other areas' migrations (PF-3, PF-19a, PF-25, FO-1a/1b, FO-13, FO-7a, PF-21 …). It is beyond "policies and roles only", so it needs its owners' OK under Shared-file lines and a line for the release holder.
+- **The named-use table** omits `GET /api/public/firms/:key/book` and `…/bookings/:token/ics`.
+- **"Checks"** reports 82/0 at 5f22/d6c1, not this head's 95 checks or the merged-main suite run.
+
+Also missing from "Questions for the tech lead": the invitation accept's writes on the bypass (m8) and the per-connection tag (m6). The coordinator says both are recorded as questions; the body at this check has only questions 1-4.
+
+**Fix (body only, no code):** bring those sections up to 9db6c475e and paste the suites' result lines from the merged branch. A body-only update needs no further code review; a one-line re-check of the body is enough.
+
+## Minor (new)
+
+- **r2-m1.** The booking-list HTTP check (`check_pf12_walls.ts`, "review M2") accepts 404 as a pass. A door that lost its firm also answers 404, which is the exact failure B1 had. Assert 200 and the firm's name for `sample-solo`'s page. I checked it by hand: 200 with "Sample solo practice".
+- **r2-m2.** The test's server port is `46000 + pid % 1000` with no retry. My first run failed 4 checks on `EADDRINUSE 127.0.0.1:46020`; the rerun passed 95/95. Take a free port (listen on 0 first) or retry, so CI cannot flake on it.
+- **r2-m3 (forward).** `enterFirm` overwrites a firm the host routing already set. Today only `/api/public/site` is registered for firm addresses, so nothing breaks. Once FO-3w registers booking pages there, `firmA.localhost/api/public/firms/<firm B key>/book` would run as firm B, against PF-25's rule that A's address never serves B. **Fix:** `enterFirm` refuses a different firm when the scope already has one.
+
+## Checked in round 2
+
+All results are at 9db6c475e (the studio folder is the same at 2a46946c7). Every copy and scratch database was stopped or dropped.
+
+| Suite | Result |
+|---|---|
+| `check_pf12_walls` | 95/95 (rerun after the port clash above) |
+| fo3pa_public_answers | 45/0 |
+| pf25 | 68/0 |
+| fo3 booking | 133/0 |
+| pf19b sending | 40/0 |
+| pf4, isolated :4641 | 119/119 |
+| pf4b, isolated :4642 | 55/0 |
+
+Live probes on isolated :4640 (Sample seed, `firm-seed.ts`, `booking-seed.ts`): the site, booking-list, form, link, HEAD and trailing-slash results in the table above, and the M1 cross-firm inserts as `xr_app`.
+
+## Journey score, round 2: 9.5 / 10 (pass)
+
+- Task completed: 1. Next step obvious: 1. Plain words: 1. Feedback and state: 1. Error recovery: 1 (HEAD and trailing slash give the door's own answer).
+- Correct data: 1 (cross-firm reads and the template-link inserts refused).
+- Accessibility and screen sizes: 1, and visual quality: 1 (not applicable, API only). Speed: 1.
+- Trust and sources: ½ (the bypass is still reachable by `SET ROLE` outside `asBypass`; recorded as PR question 3).
+
+**Verdict: Block.** One fix: R2-M1, a PR body update only. All round-1 Blockers and code Majors are fixed at 9db6c475e, so once the body matches this head this reviewer approves 9db6c475e without another code pass.

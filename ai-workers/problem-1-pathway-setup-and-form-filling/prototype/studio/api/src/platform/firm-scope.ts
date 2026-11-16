@@ -82,6 +82,7 @@ export function enterFirm(firmId: string) {
   const id = firmScope(firmId).firmId, s = scope.getStore();
   if (!s) return;
   if (s.route === undefined || s.bypass) throw new FirmScopeError("enterFirm: only a request's own scope takes a firm");
+  if (s.firmId && s.firmId !== id) notInFirm();   // on firm A's own address, firm B's door is not found (review R2)
   s.firmId = id;
 }
 

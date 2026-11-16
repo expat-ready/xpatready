@@ -11,13 +11,13 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { execFileSync, spawn } from "node:child_process";
-import { request } from "node:http";
+import { createServer, request } from "node:http";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
-import { appDatabaseUrl, appRoleProblems, asBypass, BypassRefused, currentFirm, inRequest, onBypassLine, oneQueryPerCaller, unscopedMode, setRequestFirm, WalledPool, withFirm } from "../api/src/platform/firm-scope.ts";
+import { appDatabaseUrl, appRoleProblems, asBypass, BypassRefused, currentFirm, enterFirm, inRequest, onBypassLine, oneQueryPerCaller, unscopedMode, setRequestFirm, WalledPool, withFirm } from "../api/src/platform/firm-scope.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const NEW = "20261116013000_pf12_firm_walls";
@@ -297,10 +297,12 @@ try {
   const inReq = await inRequest(req, async () => ({ firm: currentFirm(), rows: await staffOf() }));
   ok("PF-12 pass: a handler runs as the firm the guard set (setRequestFirm, in lower case)", inReq.firm === A && inReq.rows.length > 0 && inReq.rows.every((r) => r.firmId === A));
   ok("PF-12 fail: a request whose guard set no firm reads nothing", (await inRequest({ method: "GET", path: "/api/front-office/leads" }, staffOf)).length === 0);
+  const onA = { method: "GET", path: "/api/public/forms/x" }; setRequestFirm(onA, A);
+  ok("PF-12 fail (review R2): on firm A's own address a door that resolves firm B answers not found", await inRequest(onA, async () => enterFirm(B)).then(() => false, (e) => (e as { getStatus?: () => number }).getStatus?.() === 404));
   ok("PF-12 fail: the guard cannot set a firm id that is not a uuid", refused(() => setRequestFirm({}, "sample-firm"), /not a firm id/));
 
   // ---------------------------------------------------------------------------- the real API: start-up refusal and pass
-  const PORT = 46000 + (process.pid % 1000), BASE = `http://127.0.0.1:${PORT}`;
+  const PORT = await new Promise<number>((res) => { const f = createServer().listen(0, "127.0.0.1", () => { const p = (f.address() as { port: number }).port; f.close(() => res(p)); }); }), BASE = `http://127.0.0.1:${PORT}`;   // a free port (review R2)
   // The real main.ts; `during` runs while it serves, then it is stopped.
   const start = (env: Record<string, string>, during?: () => Promise<void>) => new Promise<{ code: number | null; out: string }>((resolve) => {
     const p = spawn(join(STUDIO, "node_modules", ".bin", "tsx"), ["--tsconfig", join(STUDIO, "api", "tsconfig.json"), join(STUDIO, "api", "src", "main.ts")],
@@ -328,7 +330,7 @@ try {
     seen.signIn = signIn.status;
     seen.own = await http(`/api/platform/staff/${aStaff}`, { token: signIn.body?.token });
     seen.other = await http(`/api/platform/staff/${bStaff}`, { token: signIn.body?.token });
-    seen.page = (await http("/api/public/firms/sample-solo/book")).status;
+    const page = await http("/api/public/firms/sample-solo/book"); seen.page = page.status; seen.pageBody = page.body;
   });
   ok("PF-12 pass: the API starts as xr_app (DATABASE_URL's user changed to xr_app)", /Product Studio on http/.test(asApp1.out) && !/refuses to start/.test(asApp1.out), asApp1.out.slice(-400));
   const site = seen.site as { status: number; body: any }, other = seen.other as { status: number }, mine = seen.own as { status: number };
@@ -336,7 +338,7 @@ try {
     site?.status === 200 && site.body?.webAddress === "pf12-b" && (seen.noSite as { status: number })?.status === 404, seen);
   ok("PF-12 pass: a staff member signs in through the walled server and reads their own firm's staff member; fail: another firm's by id is 404",
     seen.signIn === 200 && mine?.status === 200 && other?.status === 404, seen);
-  ok("PF-12 pass (review M2): the booking page list (FO-3pa) answers through its named use, never 500", seen.page === 200 || seen.page === 404, seen.page);
+  ok("PF-12 pass (review M2): the booking page list (FO-3pa) answers through its named use, with its firm's page", seen.page === 200 && JSON.stringify(seen.pageBody ?? "").includes("Sample"), seen);
 } finally {
   for (const c of clients) await c.$disconnect().catch(() => undefined);
   for (const p of pools) await p.end().catch(() => undefined);
