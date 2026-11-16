@@ -440,6 +440,21 @@ class Rulings(unittest.TestCase):
         self.assertEqual(q["not_ready"], [{"id": "FO-2", "waits_on": [], "non_id": ["contract v0"]},
                                           {"id": "BK-6", "waits_on": ["FO-1"], "non_id": []}])
 
+    def test_bold_first_cell_is_a_backlog_row_in_both_scripts(self):
+        # 16 Nov board 7: "Numbers disagree: ready_rows" board 7, check 8. BACKLOG row FO-7mv is written "| **FO-7mv** |";
+        # the board read only a plain first cell, so it never saw the row; the check removes "**" and "`" (one rule, FORMULAS.md
+        # › BACKLOG rows). A bold or backticked first cell is the same row in both scripts.
+        for mark in ("**", "`"):
+            bl = cd.Snap(FIX).file("BACKLOG.md").replace("| FO-2 | lane |", "| %sFO-2%s | lane |" % (mark, mark))
+            self.assertIn("| %sFO-2%s |" % (mark, mark), bl)
+            self.assertIn("FO-2", cd.parse_backlog(bl)["lines"])
+            d = snap_with({BLP: bl})
+            out, note = cd.run_reconcile(d, os.path.join(HERE, "cockpit-reconcile.py"))
+            self.assertIsNone(note)
+            _, c = run(d, rec=out, note=None)
+            self.assertIn("FO-2", c["capacity"]["ready_rows"]["rows"])
+            self.assertEqual((c["trust"]["state"], c["trust"]["diffs"]), ("agree", []), c["trust"]["diffs"])
+
     def test_r1b_ready_counts_any_merged_pr(self):
         # BK-5's only PR (#112) is not app code: not a change (R1b), but merged for readiness, so a row waiting on it is ready
         bl = cd.Snap(FIX).file("BACKLOG.md").replace("**Row BK-6:** a fixture row; brief: briefs/BK-6 · **waits on:** nothing",

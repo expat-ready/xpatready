@@ -609,11 +609,14 @@ def parse_backlog(text):
         if SEP_LINE.match(line) and prev is not None:
             hdr = cells(prev)
         prev = line
-        m = re.match(r"^\| (" + IDRE + r")" + _END, line)
+        # One rule with cockpit-reconcile.py (16 Nov, board 7 "ready_rows 7 vs 8"): the first cell with "**" and "`" removed
+        # is the row id, so "| **FO-7mv** |" is row FO-7mv (FORMULAS.md › BACKLOG rows).
+        first = cells(line)[1].replace("**", "").replace("`", "").strip() if line.startswith("|") and line.count("|") > 2 else ""
+        m = re.match(r"^(" + IDRE + r")" + _END, first)
         if not m:
             continue
         rid = m.group(1)
-        if re.match(r"^\| " + re.escape(rid) + r" \|", line):
+        if first == rid:
             if rid in lines:
                 dupes.append(rid)
                 continue
