@@ -99,7 +99,9 @@ try {
   ok("CS-SD1 DW3 fail: in a scratch transaction without the unique index, the duplicate is accepted (why the table and index stay)", noIdx === "2", noIdx);
   ok("CS-SD1 DW3: the scratch transaction left the partial unique index in place", /WHERE \(name_key <> ''::text\)/.test(sql(`select indexdef from pg_indexes where indexname = 'canonical_field_name_unique'`)));
 
-  // Through the API on the isolated copy: rename-door.ts answers 409.
+  // Through the API on the isolated copy (the sample loaded first, as the G-CORE B2 suite does): rename-door.ts answers 409.
+  const loaded = await fetch(`http://localhost:${PORT}/api/demo/load`, { method: "POST", headers: { "x-actor": "user-A" } });
+  ok("CS-SD1 DW3 setup: the sample inputs load on the isolated copy", loaded.status === 201, loaded.status);
   const u = Date.now().toString(36), a = seedField(apiSql, { key: `person.cssd1_a_${u}`, meaning: "CS-SD1 test field (Sample)", review: false }), b = seedField(apiSql, { key: `person.cssd1_b_${u}`, meaning: "CS-SD1 test field (Sample)", review: false });
   const taken = `Cssd1 taken ${u}`;
   const r1 = await rename(a, taken);
