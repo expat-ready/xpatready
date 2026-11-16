@@ -82,3 +82,21 @@ Verdict: Approve — Blockers: none · Majors: none · Minors: m1 focus to Move 
 **n1 (Minor, Should; no regression in the product).** Remove the race from the check, keeping it deterministic both ways. Before Enter on reread, wait until the 409's read has landed, for example `await p.waitForFunction((l) => document.querySelector("[data-release-move]")?.textContent?.trim().endsWith(l), newestLabel)`, with `newestLabel` read from the API first. Then the reread is a fresh read of at least 1 s, and `isDisabled()` cannot lose the race on the fix. Main still fails at once. Alternatively, accept it and watch the ledger.
 
 Verdict: Approve f2c20eee5ada37bd697a87789b9ebeae83b62d3d — Blockers: none · Majors: none · Minors: n1 (the Move-off check can, rarely, lose a race with the joined 409 read; wait for that read before Enter); m4 is already on main (note).
+
+## Re-review (2bf10a804)
+**Diff reviewed:** `git diff f2c20eee5 2bf10a804 -- prototype/studio` (P-277). The only change is +4 lines in `check_c95_release_update_browser.ts`. The rest of the commit is records and B145 screenshots.
+
+* **n1: met. The check is now deterministic both ways.**
+  * Before Enter, the check reads the newest label from the API. It then waits (30 s) until Move's `textContent` is exactly `Move this case to <label>`. The spinner span is empty, so it does not change the text.
+  * That wait means the read started by the 409 has landed. No other refetch of this key is in flight: `staleTime` is 2 s, there is no refetch on focus, and nothing else invalidates the key during `state()`.
+  * So on the fix, `refetch({ cancelRefetch: false })` starts a fresh read of 1 s or more, and `isDisabled()` (a few milliseconds after Enter) is true.
+  * On main, the same wait succeeds, because the 409's read updates Move's label on main too. Enter then clears the conflict at once, so `isDisabled()` is false whatever the machine's speed.
+  * A failed or missing read makes `waitForFunction` throw. The unhandled top-level rejection then exits non-zero, so it fails loudly, never silently.
+* **Run:** one fresh copy on :4466, test at `2bf10a804` (screenshots sent to the scratchpad), copy stopped afterwards: **36/36, exit 0** (188 s).
+  * All three conflict-recovery checks pass: Move off while reading, Move names the newest release with the conflict gone, and focus on Move after the read.
+  * This agrees with the builder's 10 in a row, and with the two new checks failing on main's screen.
+* **Notes, not findings:**
+  * Since the 409's read has landed before Enter, the label check ("shows the newest release") would also pass on main. Main is caught by the Move-off and focus checks instead.
+  * The test no longer exercises the joined-read path (Enter while the 409's read is still running). That path is correct by reading the code (re-review f2c20eee5, m3).
+
+Verdict: Approve 2bf10a804ee1d79a654f64cd7fd90617cfbf6cde — Blockers: none · Majors: none · Minors: none open (m4 is already on main, a note).
