@@ -103,3 +103,12 @@ Runs at c166a1ce9 (the main checkout, clean): `check_pf12b_bypass_audit` **27/0*
 **Verdict: Approve.**
 
 Reviewer: Approve c3539d10fb5d4f5fbe1b7fda8bc0ee8fea2359fe
+
+## Re-review 3: `57c5e36..3d019b0` (diff only)
+- **Text only:** the "Jane Doe" placeholders become `Client.A` / `Client-A` in the test, the break report and this review (AGENTS.md rule 5).
+- **The test still checks M1:** the test values are still free text, neither a uuid nor `job:<uuid>`, so they are still stored as null. `check_pf12b_bypass_audit` gives 27/0 at 3d019b0.
+- **No personal names remain** in the PF-12b files.
+
+**Verdict: Approve.**
+
+Reviewer: Approve 3d019b01936e4f4c0758ca4257f9237c542769b7
