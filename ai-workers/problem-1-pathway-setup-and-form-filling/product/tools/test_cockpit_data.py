@@ -2093,8 +2093,8 @@ class Flow(unittest.TestCase):
     def test_forecast_sentence(self):
         # review 2 m1: the founder reads one plain sentence; the build date has no lag in it; the total is the planned rows
         fl = cd.flow_box({"lineage": {}}, self.small(), {}, "x", None)["forecast"]
-        self.assertEqual(fl, "All 5 proven about 23 Nov. Building: the last part merges about 21 Nov (1.3 a day), and rows are "
-                             "proven about 2 days after they are built. Proving: the 2 rows left, at qa's 0.3 a day, about 23 Nov. "
+        self.assertEqual(fl, "All 5 rows proven about 23 Nov. Building: the last part merges about 21 Nov (1.3 parts a day), and rows are "
+                             "proven about 2 days after they are built. Proving: the 2 rows left, at qa's 0.33 rows a day, about 23 Nov. "
                              "Best 22 Nov; worst no date (a day with nothing merged or proven).")
 
     def test_no_qa_rows_leaves_build_measured(self):

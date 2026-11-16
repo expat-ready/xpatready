@@ -3019,10 +3019,14 @@ def flow_box(d, fc, li, li_src, ci):
     if fc["no_qa"]:
         fl = f"All {n_all} proven: not measured (qa's file has no Release 1 rows)"
     else:
-        fl = (f"All {n_all} proven about " + (dm(fct) or "no date yet") + ". "
-              + "Building: the last part merges about " + (dm(fc["parts_done"]) or "no date") + f" ({round(sum(b3) / 3, 1)} a day)"
+        def rate(x, what):                                # 2 decimals under 1 a day, so the rate matches its date
+            return f"{round(x, 2) if x < 1 else round(x, 1):g} {what} a day"
+        built_txt = ("Building: every part has merged" if fc["flow_parts_left"] <= 0 else
+                     "Building: the last part merges about " + (dm(fc["parts_done"]) or "no date") + f" ({rate(sum(b3) / 3, 'parts')})")
+        fl = (f"All {n_all} rows proven about " + (dm(fct) or "no date yet") + ". " + built_txt
               + (f", and rows are proven about {lagd} day{'s' if lagd != 1 else ''} after they are built" if lagd else "") + ". "
-              + f"Proving: the {fc['to_prove']} rows left, at qa's {round(sum(w3) / 3, 1)} a day, about " + (dm(fc["prove_done"]) or "no date") + ". "
+              + (f"Proving: every row is proven" if fc["to_prove"] <= 0 else
+                 f"Proving: the {fc['to_prove']} rows left, at qa's {rate(sum(w3) / 3, 'rows')}, about " + (dm(fc["prove_done"]) or "no date")) + ". "
               + "Best " + (dm(fc["flow_forecast_best"]) or "no date") + "; worst " + (dm(fc["flow_forecast_worst"]) or "no date (a day with nothing merged or proven)") + ".")
     return {"lights": [build, prove, merge, res], "forecast": fl, "src": "FORMULAS.md › Flow"}
 
