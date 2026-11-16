@@ -1,81 +1,68 @@
 # CS-V1 part 1 review: the input check over every case-side route (finder + allow-list)
 
-Reviewer (fresh context, did not build it), 16 Nov. PR #2007, branch `claude/runtime-csv1-check`, **commit 8918577f2** (HEAD checked). Tests only (no screen): screen dimensions D1-D20 and the BIC table are N/A. I reviewed the code against the brief (`build-lead-c-briefs/CS-V1-1.md` on `claude/build-lead-c-647b40`, wins) and the spec (`design/briefs/CS-V1.md`, PR 1). My own copy ran on :4488 (`isolated.sh rev_csv1`, live AI off, US$0, stopped after). Journey report: `journey-test-reviewer-2026-11-16.md`, **7.5/10**.
+Reviewer (fresh context, did not build it), 16 Nov. PR #2007, branch `claude/runtime-csv1-check`. Tests only (no screen): D1-D20 and the BIC table are N/A. Reviewed against the brief (`build-lead-c-briefs/CS-V1-1.md` on `claude/build-lead-c-647b40`, wins) and the spec (`design/briefs/CS-V1.md`, PR 1). Live AI off, US$0, copies on :4488 stopped after each run. Journey report: `journey-test-reviewer-2026-11-16.md`, **8.5/10 on the re-review** (7.5 at the first round).
 
-## Evidence run
-* `npx tsx tests/check_csv1_inputs.ts 4488`: **17 passed, 0 failed, exit 0**, 19 s. Measured 128 case-side routes in 25 files, 87 taking a body or query (88 inputs), 20 unparsed, the same as the PR body. DW3: 116 routes with an id, 232 asks, 196 answered 404, no 500.
-* `tests/check_forms_qa53.ts 4488 xr_studio_rev_csv1`: **42/42**. `check_forms_qa53.ts` and `lib/ts-files.ts` are unchanged against `origin/main`. The diff is the 2 new files only (271 lines).
-* Mutation on a copy of `api/src`: I took out `parse(PutAnswer, body)` (runtime.ts) and `parsed(ReviewDecision, body)` (review-rounds.ts). The finder then reports both runtime answer routes, both `/api/link` answer routes and `reviews/:id/decision` as unparsed, so check 3 fails when the rule is removed.
-* **The PR body's claims, checked by reading each service method:**
-  * All 68 "parsed" inputs parse the **whole** body or query with the file's own zod helper. Every local `parse`/`parsed` is `schema.safeParse` plus `problemFromZod` (case-checklist :49, case-documents :149, person-link :36, runtime :40, review-runs :88, and others).
-  * review-rounds really parses all 5 (`parsed`, `review-rounds.ts:42`). Struck correctly.
-  * person-link really parses all of its inputs: `send`, `takeBack`, `tick`, `linkByToken` ×2, `verify`, and the link answers through `Runtime.saveAnswer/saveRow/saveNoneApply`. Struck correctly.
-  * `putAnswer` parses (`Runtime.saveAnswer`: `parse(PutAnswer, body)`).
-  * The case-close bodies are checked by hand (`case-close.ts:34` `reasonOf`, `:41` `dateOf`) with no zod. Listing them keeps `main` green, and the PR raises a "Question for the tech lead" about it, which is the right way to handle the conflict with the brief.
-  * I spot-read the listed readiness, sign-steps and runtime `list`/`mode` entries: all read by hand, as listed.
+## Re-review (P-277): code diff 8918577f2..1da1a0ac5, head 993c283a2
+Head 993c283a2 adds only my first-round records to 1da1a0ac5 (`git diff --stat 1da1a0ac5 993c283a2`: the two `.md` files). I read only the new diff: `routes.ts` +46/-16, `check_csv1_inputs.ts` +21/-3.
 
-## The reviewer's tries (as the brief asks)
-**(1) A planted unparsed route.** I used `planted()` with the finder's own `routes()` and `follows()`. It **catches**:
-* a two-step delegation (`ctl → Svc.put → this.step2 → this.h.save`), and the parsed variant ends at `Helper.check`;
-* a handler spread over many lines (decorators and arguments on separate lines);
-* the controller prefix `"api/runtime/cases/:id"`;
-* a body passed as `{ ...b }`, both unparsed and parsed;
-* an unparsed `@Query()`;
-* a `parse` of an unrelated value in the same method;
-* a free-function delegation (flagged as unparsed, the safe direction).
+**Runs on a fresh copy (`isolated.sh rev_csv1 4488`):**
+* `check_csv1_inputs.ts 4488`: **24 passed, 0 failed, exit 0**, 18 s.
+* 129 case-side routes (the HEAD route on `main` is now found), 88 inputs, **still 20 unparsed**, the same list. Checks 3 and 5 are green.
+* DW3: 118 routes, 236 asks, 198 answered 404, **no 500**. 19 routes are refused before the id is read; the new one is `HEAD cases/:id/prepare` with 405.
+* `check_forms_qa53.ts`: 42/42. It and `ts-files.ts` are unchanged.
+* My own dump of the finder on `api/src`: still 68 parsed and 20 unparsed. No route moved because of the narrower `whole()`.
 
-It is **fooled into "parsed"** (Major 1 below) by:
-* `parse(z.string().max(9), body.name)` (a partial parse);
-* `parse(S, { name: env.body })`, where the service's parameter is named `body` (a property name matches);
-* `[1].map((body) => parse(S, body))` (a shadowed name);
-* `qs.parse(body)` and `path.parse(body)`;
-* a parse only in a dead branch.
+**M1 (partial parse or property-name match counts as "parsed"): fixed.**
+* `whole()` (`routes.ts:100-106`) accepts only the value itself, or it wrapped in parentheses, `as`, `!`, `satisfies`, a type assertion, the left side of `??`/`||`, or a `{ ...x }` spread. It is used at the parse (`:135`) and at the hand-off (`:147`).
+* My first-round plants now come out right:
+  * `parse(S, body.x)`: unparsed;
+  * `parse(S, { name: env.body })`: unparsed;
+  * a one-field hand-off: unparsed;
+  * `{ ...b, id }` handed on and parsed there: parsed.
+* The new DW1 cases cover each of these, with a pass case that proves the planted text was really replaced.
 
-It **does not see the input at all** (Minor 1) for:
-* a destructured `@Body() { name }`;
-* `@Controller({ path: "api/runtime" })`;
-* `@Controller(PREFIX)`;
-* `@Req() req` read as `req.body`.
+**m1 (inputs that disappeared): mostly fixed.**
+* Fixed: a destructured `@Body()` is kept with an empty name and is unparsed (`:62`, `follows` returns null at `:125`). `@Req()` read as `r.body`/`r.query` is kept as an unparsed input (`:65-66`). Both are caught in my plants and have DW1 fail cases.
+* Still not seen: a non-literal `@Controller({ path })` or `@Controller(PREFIX)`, and `const { body } = r` or `r["body"]` off `@Req()`. None of these is in `api/src`.
 
-None of these patterns is in `api/src` today (grepped): no non-literal controller or route path, no destructured body, no `req.body`, no `qs`/`url`/`path.parse`.
+**m2 (`X.parse` other than JSON/Date/Number counted as zod): fixed for lower-case receivers.**
+* `qs.parse` and `path.parse` are now unparsed.
+* A capitalised receiver, or a receiver that is itself a property access or a call, still counts: `URL.parse(body as string)`, `YAML.parse(…)`, `path.posix.parse(…)` and `require("qs").parse(…)` each pass as "parsed". None of these is in `api/src` (grepped).
 
-**(2) An id with a NUL byte.** DW3 already asks `not-a-uuid%00` in every parameter of all 116 id routes, with no 500. By hand:
-* `review-runs/:run/stop`, the one route DW3's `:…id` pattern skips, answers 404 to both probes.
-* A NUL in queries never answers 500: `cases?q=%00`, `?after=%00`, `?client=%00`, `questionnaire?mode=%00`, `proposals?subject=%00`, `checks?state=%00`, `addable-forms?q=%00`.
+**m3: fixed.** DW3 now asks every route with any path parameter, `:run` included. The ">half 404" threshold is kept on purpose: the per-route rule is "no 500", and the non-404 answers are printed. I accept that as reasoned.
 
-**(3) A 5 MB string.** Against `PUT …/answers/s/f`:
-* 5 MB + 10 bytes as `{value}`, and a bare 5 MB JSON string: **413** Problem Details, "larger than the 5 MB the server takes. Nothing was saved or started.", 8 ms.
-* Just under 5 MB: the route answers 404 "No such question." in 28 ms.
-* The same body under 5 MB to `warnings/:code/pass`, `form-additions/:id/remove`, `filings/:id/form-additions`, `checklist-lines/:id/providers` and `review-runs`: 400 or 404, under 40 ms, no 500.
-* Whether an oversized string is stored on a real record is DW4's job (PR 2-3b), so it is not checked here.
+**m4: fixed.** `Head`, `Options` and `All` are in `VERBS`. HEAD and OPTIONS probes send no body, and `ALL` is asked as POST.
 
-## Issues (ranked)
-**Major 1: a partial parse, or the input's name used as a property name, counts as "parsed".** This is the one way the check turns green without saying so.
-* Where: `tests/lib/routes.ts:81-84`. `mentions()` matches any identifier with the input's name, including a property name (`x.body`, `{ body: … }`) and the object of a field read (`body.name`). `follows()` uses it both on the parse argument (`:113`) and on the hand-off to a service (`:125`, so `this.s.put(b.name)` into `parse(S, name)` also counts).
-* Why it is a Major, not a theoretical gap: the minimal fix for today's hand-checked methods (`case-close`, `readiness pass`, `form-additions remove`) is `parse(z.string().max(n), body.reason)`. Check 5 would then **force** that method off the allow-list while the rest of its body is still read by hand. The list would shrink without the methods being fixed, against STANDARDS §6.
-* Fix (about 10 lines, inside the touch list):
-  * In `mentions`, skip a `PropertyAccessExpression`'s `.name` and a `PropertyAssignment`'s key.
-  * Count a parse, or a hand-off, only when the value itself is passed: the identifier, or it wrapped in `??`, `||`, `as`, `!`, parentheses or `{ ...x }`. A field read (`x.f`, `x[k]`) does not count.
-  * Add DW1 fail cases for `parse(S, body.x)` and `parse(S, { body: y })`.
+**Seen, for the case-close follow-up (not a finding).** The hand-off is now followed only for the whole value. `features/case-close.ts` hands on `body(b)`, a call, which is not followed. So when CaseClose's methods gain `parse(S, b)`, the handler must hand on `b` itself (or parse in the handler) before the line can leave `ALLOW`. Until then the check stays loud, which is the safe direction.
 
-**Minor 1: inputs the finder cannot read disappear instead of failing loudly** (`routes.ts:52,60`). These are a destructured `@Body()`/`@Query()`, a non-literal `@Controller(…)` prefix, and `@Req()` with `req.body`. Fix: fail check 1 when a `@Controller` or a verb decorator has a non-literal argument, or when a `@Body`/`@Query` parameter is not a plain name. A `@Req()` parameter whose `.body` or `.query` is read should be reported as unparsed.
+**Residual Minors (none blocks; all are the static scan's limits, and none occurs in today's code):**
+1. A non-literal `@Controller` prefix, and `@Req()` body reads by destructuring or `r["body"]`, are still not seen (`routes.ts:52,65`). Fix: fail check 1 on a non-literal controller or route path.
+2. A capitalised or property-access/call receiver of `.parse` counts as zod (`routes.ts:94`). Fix: also exclude `URL`/`YAML`, or require the receiver to be declared with `z.`.
+3. A shadowed name or a dead-branch parse counts as "parsed": inherent to the scan, and accepted.
+4. Detail lines are still cut at 600 characters (`check_csv1_inputs.ts:18`), so the refused-before-id list is cut off mid-entry.
 
-**Minor 2: any `X.parse(…)` other than `JSON`, `Date` or `Number` counts as zod** (`routes.ts:77`). `qs.parse` and `path.parse` pass. Fix: also exclude `qs`, `querystring`, `url`, `path`, `URL`, or require the receiver to be a schema (a capitalised name, or one declared with `z.`).
-
-**Minor 3: DW3 is weaker than "expects 404".**
-* 18 routes (36 asks) are refused before the id is read: 401 for case-close without a bearer, 401/400 on `/api/link/*` without a link session, 400 for a body checked before the id, 403 for reconfirm. The 404 rule therefore holds only because of the ">half answer 404" threshold (`check_csv1_inputs.ts:128`).
-* `:run` is not matched by `/:[a-z]*id\b/` (`:111`).
-* Fix: keep a reviewed list of the routes that are refused before the id is read, and require 404 from every other route. Include `:run`, or every parameter that holds a database id.
-
-**Minor 4: `@Head`, `@All` and `@Options` are not in `VERBS`** (`routes.ts:20`), although the file says "every verb". Only `HEAD cases/:id/prepare` uses one today, and it takes no input. Fix: add them, or say in the comment that they are left out.
-
-Seen, not a finding for this PR: `GET /api/runtime/cases?q=%00` and `?after=not-a-uuid` answer 404 "Not found (it may have been removed by a reset)" on a **list**, through the NUL / uuid mapping in `main.ts:213`. That is `Runtime.list`, which is on the allow-list for PR 3b, where a schema would answer 400.
-
-Limits that are inherent to a static scan, not findings: a parse only in a dead branch, or under a shadowed name, counts as parsed. That is acceptable for a guard backed by review.
+## First round (commit 8918577f2), kept for the record
+* **Verdict: Changes requested.** Major 1: `mentions()` matched property names and field reads, so `parse(S, body.x)` and `parse(S, { body: … })` counted as "parsed".
+* Minors:
+  1. destructured, `@Req` and non-literal-prefix inputs disappeared;
+  2. `qs.parse` and `path.parse` counted as zod;
+  3. DW3 skipped `:run` and relied on the ">half 404" threshold;
+  4. `@Head`, `@All` and `@Options` were missing from `VERBS`.
+* **Confirmed then and still true:**
+  * all 68 "parsed" inputs are whole-body parses through each file's zod helper;
+  * review-rounds (5) and person-link really parse, so striking them was right;
+  * `putAnswer` parses in `Runtime.saveAnswer`;
+  * case-close is checked by hand (`case-close.ts:34,41`), so listing it was right, as was the "Question for the tech lead" about it;
+  * removing `parse(PutAnswer, body)` or `parsed(ReviewDecision, body)` makes check 3 fail.
+* **The brief's tries:**
+  * Planted unparsed routes were caught through two-step delegation, a multi-line handler, the `api/runtime/cases/:id` prefix and `{ ...b }`.
+  * NUL-byte ids and NUL bytes in queries: no 500.
+  * A 5 MB body: 413 Problem Details in plain words in 8 ms; just under 5 MB, the routes answer 400 or 404 in under 40 ms, no 500.
+* **Not a finding here:** `GET cases?q=%00` and `?after=not-a-uuid` answer 404 on a list. That is `Runtime.list`, which is on the allow-list for PR 3b.
 
 ## What I could not check
-* The full `ci` on the head: the PR is a draft, so only the guard ran (green). One `pr-rules` run is red and one is green.
-* The suites on `main` merged in.
+* The full `ci` on the head: the PR is a draft. On 993c283a2, guard, module-cards and pr-rules have no result yet; the rest are skipped.
+* The suites with `main` merged in.
 * case-close and `/api/link` id handling with a real bearer or link session. Reading the code instead: case-close casts with `${id}::uuid`, which `main.ts:213` maps to 404.
 
-Verdict: Changes requested. Major 1 (a partial parse or a property-name match counts as "parsed", `routes.ts:81-84,113,125`). Minors 1-4 (inputs that disappear, non-zod `.parse`, DW3's threshold and the skipped `:run`, verbs missing from `VERBS`).
+Verdict: Approve 993c283a28850bad0c73e62f15d9f1ae7ef60a3c (code 1da1a0ac52090d37a61f6aa299460e75a9c376aa)

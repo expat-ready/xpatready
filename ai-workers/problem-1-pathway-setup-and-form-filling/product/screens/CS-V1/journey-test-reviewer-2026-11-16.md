@@ -42,3 +42,16 @@ PR #2007 at commit 8918577f2. Tests only, so there is no screen. The "user" here
 * The full `ci` (the PR is a draft).
 * The id handling on case-close and `/api/link` with a real bearer or link session.
 * An intended user's unaided walk (D17/D20 stay with the founder; not applicable to a test).
+
+## Re-review, head 993c283a2 (code 1da1a0ac5)
+* **Rerun on a fresh :4488 copy:** 24/24 passed, exit 0, 18 s; 118 routes and 236 asks, no 500; qa53 passed 42/42.
+* **Journey 4 now holds.** A partial parse, a property-name match and a one-field hand-off are each reported as unparsed.
+* **Journey 5 mostly holds.** A destructured `@Body()` and `req.body` are now reported as unparsed. A non-literal `@Controller` prefix is still not seen; there is none in today's code.
+
+| criterion | first | now | evidence |
+|---|---|---|---|
+| correct data | ½ | 1 | `whole()` replaces `mentions`; plants and new DW1 cases agree; still 68 parsed / 20 unparsed on `api/src` |
+| error recovery | ½ | ½ | a non-literal controller prefix and `@Req()` destructuring still disappear silently |
+| visual quality | ½ | ½ | detail lines are still cut at 600 characters |
+
+The other seven criteria are unchanged at 1. **8.5 / 10, no criterion at 0: pass.**
