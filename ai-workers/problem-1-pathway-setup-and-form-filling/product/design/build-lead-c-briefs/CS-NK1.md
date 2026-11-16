@@ -3,7 +3,7 @@
 Written 16 Nov 23:0x IST by Build Lead C, at Lead 70's request. **New bug row, shaped here.** Found by CS-SD1's breaker (#2017, `screens/CS-SD1/break-report.md` F2: **Major, on `main`, not caused by #2017**). Configurator group (map row 84, shared-field names; BR-6). It guards R1.84's proven names rule against a race.
 **PR title:** `migration — runtime: CS-NK1 — the shared-field name key in the database equals normalizeLabel for every script`
 **Model: Opus 5.5, effort: high** (schema functions, a backfill of a uniqueness key). Decisions: BR-6 (names equal "ignoring case, spaces and punctuation", `contracts/programs.ts` `normalizeLabel`), P-600 (d), P-278, P-423; the 25 Oct design note in `20261025100000_field_name_unique`: "the database never refuses what the app's own rule allows".
-**Ready when:** **now.** No lane holds `canonical_field_name`'s functions. CS-SD1 (#2017) only adds an `@@ignore` model for the table, with no migration, so stamp this migration later than every one on `main` and merge `main` if #2017 lands first. The configurator group has nothing waiting for qa, so the WIP limit does not stop it.
+**Ready when:** **#2017 (CS-SD1) is on `main`** (Lead 70, 23:0x IST: one builder at a time on the schema and this key, P-438b). Then no lane holds `canonical_field_name`'s functions. Stamp the migration later than every one on `main`. The configurator group has nothing waiting for qa, so the WIP limit does not stop it.
 
 **The defect (break report F2, reproduced there):**
 * The app compares names with `normalizeLabel`: NFKC, then `toLocaleLowerCase("en-CA")`, ignorable code points dropped, then everything but letters, numbers and marks (`[^\p{L}\p{N}\p{M}]+`) removed.
