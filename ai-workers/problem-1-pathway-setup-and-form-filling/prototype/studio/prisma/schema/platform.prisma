@@ -105,6 +105,9 @@ model PlatformFirm {
   webAddress     PlatformFirmWebAddress?      // platform-web-address.prisma
   addressHistory PlatformFirmAddressHistory[]
 
+  // back-relation slot: firms (PF-5)
+  termsAcceptances PlatformTermsAcceptance[]
+
   @@map("platform_firm")
 }
 
@@ -245,6 +248,9 @@ model PlatformStaff {
 
   // back-relation slot: web address (PF-25)
 
+  // back-relation slot: firms (PF-5)
+  termsAcceptances PlatformTermsAcceptance[]
+
   @@unique([firmId, email])
   /// The target of the (firm_id, staff_id) keys below: a row of firm A can never point at firm B's staff (break B-2).
   @@unique([firmId, id])
@@ -375,4 +381,82 @@ model ModuleEvent {
 
   @@index([firmId, seq])
   @@map("module_event")
+}
+
+// PF-5 part 1 (contracts §7 §1.1; P-566; Lead B's rulings on #1815): the terms a firm's Owner accepts at sign-up and the
+// sign-up that waits for its email verification. Rules Prisma cannot say are in the migration
+// 20261115180000_pf5_signup_terms (insert-only terms, the pending row's one change and its purge, one live per email).
+
+/// The documents a person accepts at sign-up (A46 row 100). Their wording is Sample until counsel reads it (Unconfirmed:
+/// no counsel).
+enum PlatformTermsKind {
+  TERMS_OF_SERVICE
+  PRIVACY_NOTICE
+  DATA_PROCESSING
+}
+
+/// The billing period a person picks at sign-up (default monthly).
+enum PlatformBillingPeriod {
+  MONTHLY
+  YEARLY
+}
+
+/// One published version of one document (a catalogue: no firm_id). Insert-only. A kind's current version is its newest
+/// with published_at not in the future.
+model PlatformTermsVersion {
+  id          String            @id @default(uuid()) @db.Uuid
+  kind        PlatformTermsKind
+  version     String
+  url         String
+  publishedAt DateTime          @map("published_at") @db.Timestamptz
+
+  acceptances PlatformTermsAcceptance[]
+
+  @@unique([kind, version])
+  @@index([kind, publishedAt])
+  @@map("platform_terms_version")
+}
+
+/// One acceptance (A46 row 100): who (the staff member), which version (and so which kind), when the person ticked the
+/// box. Written when the sign-up is verified, in the firm's own transaction. Insert-only.
+model PlatformTermsAcceptance {
+  id         String   @id @default(uuid()) @db.Uuid
+  firmId     String   @map("firm_id") @db.Uuid
+  staffId    String   @map("staff_id") @db.Uuid
+  versionId  String   @map("version_id") @db.Uuid
+  acceptedAt DateTime @map("accepted_at") @db.Timestamptz
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz
+
+  firm    PlatformFirm         @relation(fields: [firmId], references: [id], onDelete: Restrict)
+  staff   PlatformStaff        @relation(fields: [firmId, staffId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  version PlatformTermsVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  @@unique([firmId, staffId, versionId])
+  @@map("platform_terms_acceptance")
+}
+
+/// A self-serve sign-up waiting for its email verification (Lead B on #1815): no firm exists yet, so no firm_id, the one
+/// platform table outside PF-12's firm walls. No password or password hash (the password goes to the identity provider
+/// only). One live row per email (lower case; partial unique index); its token is kept only as a hash; used once
+/// (used_at, a trigger), or replaced by a newer sign-up for the email; purged by the sweep once expired (personal data).
+model PlatformSignupPending {
+  id              String                @id @default(uuid()) @db.Uuid
+  email           String
+  firmName        String                @map("firm_name")
+  countryCode     String                @map("country_code") @db.Char(2)
+  planCode        String                @map("plan_code")
+  period          PlatformBillingPeriod @default(MONTHLY)
+  webAddress      String?               @map("web_address")
+  identitySubject String                @map("identity_subject")
+  termsVersionIds String[]              @map("terms_version_ids") @db.Uuid
+  termsAcceptedAt DateTime              @map("terms_accepted_at") @db.Timestamptz
+  tokenHash       String                @unique @map("token_hash")
+  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt       DateTime              @map("expires_at") @db.Timestamptz
+  usedAt          DateTime?             @map("used_at") @db.Timestamptz
+  /// Why it ended: VERIFIED (the firm was made) or REPLACED (a newer sign-up for the email took its place).
+  outcome         String?
+
+  @@index([expiresAt])
+  @@map("platform_signup_pending")
 }
