@@ -24,16 +24,17 @@ const failedOnly = (r: { failed: string[] }, idx: number[]) => idx.every((i) => 
 
 // DW0, DW1, DW2 pass: the fake keeps every case of the contract.
 const good = await runContract(legalHoldPortContract, "fakeLegalHolds", harness, ok);
-ok("PF-21b DW0 pass: five subjects in one call report every matching hold; CATEGORY and DATE_RANGE match exactly; placement and isHeld are serialised by the port's own lock", good.failed.length === 0 && [0, 1, 5, 6].every((i) => good.passed.includes(CASES[i])), good);
+ok("PF-21b DW0 pass: five subjects in one call report every matching hold; CATEGORY and DATE_RANGE match exactly; placement and isHeld are serialised by the port's own lock", good.failed.length === 0 && [0, 1, 6, 7].every((i) => good.passed.includes(CASES[i])), good);
 ok("PF-21b DW1 pass: a person hold holds that person only; a firm hold holds every subject of its firm and none of firm B's", good.passed.includes(CASES[2]));
-ok("PF-21b DW2 pass: a released hold is no longer held; the shared contract passes on the fake", good.passed.includes(CASES[3]) && good.failed.length === 0);
+ok("PF-21b DW1 pass (§3.5 purge): a cancelled firm's purge (ALL_FIRM_DATA) is held by any of its holds, never by firm B's", good.passed.includes(CASES[3]));
+ok("PF-21b DW2 pass: a released hold is no longer held; the shared contract passes on the fake", good.passed.includes(CASES[4]) && good.failed.length === 0);
 
 // DW0 fail: an adapter that reports only the first match, one that skips the lock (reads outside any transaction), one
 // that matches a CATEGORY hold to every category, and one that ignores the range end each break their case.
 const firstOnly = await runContract(legalHoldPortContract, "firstOnly", broken((f) => ({ async isHeld(t, firm, s) { const a = await f.isHeld(t, firm, s); return a.held ? { held: true, holds: a.holds.slice(0, 1) } : a; } })), null);
 ok("PF-21b DW0 fail: an adapter that reports only the first hold fails the every-match case", failedOnly(firstOnly, [0]), firstOnly.failed);
 const noLock = await runContract(legalHoldPortContract, "noLock", broken((f) => ({ isHeld: (_t, firm, s) => f.isHeld(null, firm, s) })), null);
-ok("PF-21b DW0 fail: an adapter whose isHeld does not keep the shared lock for the caller's transaction fails the placement-waits case", failedOnly(noLock, [5]), noLock.failed);
+ok("PF-21b DW0 fail: an adapter whose isHeld does not keep the shared lock for the caller's transaction fails the placement-waits case", failedOnly(noLock, [6]), noLock.failed);
 const anyCategory = await runContract(legalHoldPortContract, "anyCategory", broken((f) => ({ isHeld: (t, firm, s) => f.isHeld(t, firm, s.map((x) => (x.kind === "CATEGORY" ? { kind: "CATEGORY", category: "case_notes" } : x))) })), null);
 ok("PF-21b DW0 fail: an adapter that matches a case_notes hold to a case_tasks delete fails the category case", failedOnly(anyCategory, [1]), anyCategory.failed);
 const rows = (h: HoldMatch & { firmId: string; releasedAt: Date | null }) => h;
@@ -43,13 +44,15 @@ ok("PF-21b DW0 fail: a DATE after a range's end is not held (the matching rule, 
 // DW1 fail: an adapter that never answers held fails every holding case; one that stores a person hold as a firm hold
 // (widening it) fails the person case.
 const never = await runContract(legalHoldPortContract, "neverHeld", broken(() => ({ async isHeld(): Promise<HoldAnswer> { return { held: false }; } })), null);
-ok("PF-21b DW1 fail: an adapter that never answers held fails every holding case", failedOnly(never, [0, 1, 2, 3, 6]), never.failed);
+ok("PF-21b DW1 fail: an adapter that never answers held fails every holding case", failedOnly(never, [0, 1, 2, 3, 4, 7]), never.failed);
+const purgeIgnored = await runContract(legalHoldPortContract, "purgeAsFirm", broken((f) => ({ isHeld: (t, firm, s) => f.isHeld(t, firm, s.map((x) => (x.kind === "ALL_FIRM_DATA" ? { kind: "FIRM" } : x))) })), null);
+ok("PF-21b DW1 fail: an adapter that reads a purge as a FIRM ask (missing a case hold) fails the purge case", failedOnly(purgeIgnored, [3]) && purgeIgnored.failed.length === 1, purgeIgnored.failed);
 const widened = await runContract(legalHoldPortContract, "personWidened", (): LegalHoldHarness => { const h = harness(); return { ...h, place: (i, d) => h.place(i.scope.kind === "PERSON" ? { ...i, scope: { kind: "FIRM" } } : i, d) }; }, null);
 ok("PF-21b DW1 fail: an adapter that widens a person hold to the whole firm fails the person case", failedOnly(widened, [2]), widened.failed);
 
 // DW2 fail: an adapter that still reports released holds fails the release case.
 const staleRun = await runContract(legalHoldPortContract, "releaseIgnored", (): LegalHoldHarness => ({ ...harness(), release: async () => undefined }), null);
-ok("PF-21b DW2 fail: an adapter whose release leaves the hold active fails the release case", failedOnly(staleRun, [3]) && staleRun.failed.length === 1, staleRun.failed);
+ok("PF-21b DW2 fail: an adapter whose release leaves the hold active fails the release case", failedOnly(staleRun, [4]) && staleRun.failed.length === 1, staleRun.failed);
 
 // DW4 (BR-12, BR-7) on the fake: a test-only deleter that asks the port answers HELD with the reason and keeps the row;
 // after release it deletes. Never a success while held.

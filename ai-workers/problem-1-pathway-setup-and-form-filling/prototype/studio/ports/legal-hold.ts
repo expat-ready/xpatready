@@ -10,7 +10,9 @@
 //    taken from a request.
 // 2. Matching: a FIRM hold matches every subject of its firm; a CASE or PERSON hold matches a subject with that id; a
 //    CATEGORY hold matches a subject naming that category; a DATE_RANGE hold matches a DATE subject inside its range, both
-//    ends included (§3.5 "a deletion that intersects the hold is suspended"). Another firm's hold never matches.
+//    ends included (§3.5 "a deletion that intersects the hold is suspended"). An ALL_FIRM_DATA subject (the purge of a
+//    cancelled firm, PF-11: §3.5 "refuses while any active hold exists") is matched by every active hold of its firm.
+//    Another firm's hold never matches.
 // 3. No race (the lock rule): isHeld takes the shared advisory lock LEGAL_HOLD_LOCK.shared on `legalHoldLockKey(firmId)`
 //    ITSELF, through the caller's tx, before it reads, and keeps it until that transaction ends; placing and releasing a
 //    hold take LEGAL_HOLD_LOCK.exclusive on the same key. So a hold placed while a deleter's transaction is open waits for
@@ -30,9 +32,11 @@ export const LEGAL_HOLD_CATEGORY = ["case_documents", "case_answers", "case_note
 export const LegalHoldCategory = z.enum(LEGAL_HOLD_CATEGORY);
 export type LegalHoldCategory = z.infer<typeof LegalHoldCategory>;
 
-/** What a deleter is about to delete: its firm, a case, a person record (SA-11-40), a data category, a record's date. */
+/** What a deleter is about to delete: its firm, a case, a person record (SA-11-40), a data category, a record's date, or
+ *  all of the firm's data at once (the purge of a cancelled firm). */
 export const HoldSubject = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("FIRM") }),
+  z.strictObject({ kind: z.literal("ALL_FIRM_DATA") }),
   z.strictObject({ kind: z.literal("CASE"), id: Uuid }),
   z.strictObject({ kind: z.literal("PERSON"), id: Uuid }),
   z.strictObject({ kind: z.literal("CATEGORY"), category: LegalHoldCategory }),
@@ -70,6 +74,7 @@ export const LEGAL_HOLD_LOCK = {
 
 /** Rule 2: does an active hold of the asking firm with this scope match this subject? */
 export function scopeMatches(scope: HoldScope, s: z.output<typeof HoldSubject>): boolean {
+  if (s.kind === "ALL_FIRM_DATA") return true;
   switch (scope.kind) {
     case "FIRM": return true;
     case "CASE": return s.kind === "CASE" && s.id.toLowerCase() === scope.id.toLowerCase();

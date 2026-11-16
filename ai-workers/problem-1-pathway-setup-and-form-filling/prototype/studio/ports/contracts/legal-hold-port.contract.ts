@@ -1,7 +1,7 @@
 // PF-0c: LegalHoldPort's contract (ports/legal-hold.ts). Run by fakeLegalHolds and (PF-21b part 2) by the real adapter on
 // plat_legal_hold. The port file's rules: every matching active hold is reported, each once, oldest first, with its scope,
 // reason, owner and placedAt; FIRM matches every subject of its firm and never another firm's; CASE and PERSON match their
-// id; CATEGORY matches its category; DATE_RANGE matches a DATE inside it, both ends included; a released hold matches
+// id; CATEGORY matches its category; ALL_FIRM_DATA (a firm's purge) is matched by every hold of its firm; DATE_RANGE matches a DATE inside it, both ends included; a released hold matches
 // nothing; an empty ask and a bad firm id are refused; isHeld takes the shared lock itself, so a placement and a read in
 // another transaction are serialised with no lock call in the caller (SA-11 §3.5, SA-11-40, BR-7, BR-12).
 import { defineContract, expect, expectRefused } from "./contract.ts";
@@ -80,6 +80,17 @@ export const legalHoldPortContract = defineContract("LegalHoldPort", (make: () =
       expect(every.every((x) => x.held), "every subject of firm B held", every);
       const a = await ask(h, h.firmA, [{ kind: "FIRM" }, { kind: "CASE", id: uuid() }]);
       expect(!a.held, "firm A is not held by firm B's hold", a);
+    },
+  },
+  {
+    name: "ALL_FIRM_DATA (the purge of a cancelled firm) is held by any active hold of its firm, a case hold included; never by another firm's",
+    async run() {
+      const h = await make();
+      await place(h, h.firmA, { kind: "CASE", id: uuid() }, "Sample: one case's dispute");
+      const purgeA = await ask(h, h.firmA, [{ kind: "ALL_FIRM_DATA" }]);
+      const firmOnly = await ask(h, h.firmA, [{ kind: "FIRM" }]);
+      const purgeB = await ask(h, h.firmB, [{ kind: "ALL_FIRM_DATA" }]);
+      expect(purgeA.held && purgeA.holds[0].reason === "Sample: one case's dispute" && !firmOnly.held && !purgeB.held, "firm A's purge held by its case hold; a FIRM ask and firm B's purge not", { purgeA, firmOnly, purgeB });
     },
   },
   {
