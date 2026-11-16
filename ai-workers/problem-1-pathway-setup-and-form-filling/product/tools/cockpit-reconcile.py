@@ -656,6 +656,30 @@ def compute(snap):
                 return ist_day(mt)
         return None
 
+    # P-639 (16 Nov, qa #1950): an id is merged only when no part BACKLOG names for it is still unmerged. A title
+    # "PF-5 part 1" merges part 1; the id is merged when every named part (BACKLOG's and the titles') has an app PR,
+    # or when one app PR names the whole id; it dates from the last part it needed.
+    named_parts = {}
+    for m in re.finditer(r"(?<![A-Za-z0-9-])([A-Z]{1,4}-[A-Za-z0-9]+)\s+[Pp]arts?\s+(\d+[a-z]?)((?:\s*(?:,|and|&)\s*\d+[a-z]?)*)", bl_text or ""):
+        named_parts.setdefault(m.group(1), set()).update([m.group(2)] + re.findall(r"\d+[a-z]?", m.group(3) or ""))
+
+    def app_merged_at(rid):
+        parts_done, whole = {}, None
+        for mt, p in merged_app:
+            if not title_matches(p.get("title"), rid):
+                continue
+            pm = re.search(r"(?<![A-Za-z0-9-])" + re.escape(rid) + r"\s+[Pp]arts?\s+(\d+[a-z]?)", p.get("title") or "")
+            if pm is None:
+                whole = whole or mt
+            else:
+                parts_done.setdefault(pm.group(1), mt)
+        if whole:
+            return whole
+        need = named_parts.get(rid, set()) | set(parts_done)
+        if not need or not need <= set(parts_done):
+            return None
+        return max(parts_done[x] for x in need)
+
     # --- open app PRs
     if pulls is None:
         N["open_app_prs"] = num(None, "not measured: " + pulls_err)
@@ -699,7 +723,8 @@ def compute(snap):
 
         def md(rid):
             if rid not in merge_date:
-                merge_date[rid] = first_merge(rid, merged_app)
+                at = app_merged_at(rid)
+                merge_date[rid] = ist_day(at) if at else None
             return merge_date[rid]
 
         shaped = [r for r in rows if not r["status"].lower().startswith("not shaped")]
@@ -842,7 +867,7 @@ def compute(snap):
     else:
         chs = []
         for rid in sorted({x for r in rows for x in r["parts"]}):
-            first_t = next((mt for mt, p in merged_app if title_matches(p.get("title"), rid)), None)
+            first_t = app_merged_at(rid)
             if inside(first_t, s_from, s_to):
                 chs.append(rid)
         N["changes_merged_span"] = num(len(chs), "Release 1 changes first merged (app code) in the span", detail=chs)

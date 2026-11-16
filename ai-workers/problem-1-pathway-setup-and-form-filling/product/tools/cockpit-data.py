@@ -467,6 +467,43 @@ def title_has(title, rid):
     return bool(title) and rx.search(title) is not None
 
 
+# P-639 (16 Nov, qa #1950): a merged "PF-5 part 1" is not PF-5 while BACKLOG still names a later part of it.
+PART_MENTION = re.compile(r"(?<![A-Za-z0-9-])([A-Z]{1,4}-[A-Za-z0-9]+)\s+[Pp]arts?\s+(\d+[a-z]?)((?:\s*(?:,|and|&)\s*\d+[a-z]?)*)")
+
+
+def backlog_parts(text):
+    """{id: {part numbers}} that BACKLOG names anywhere ("PF-5 part 2", "PF-5 parts 2 and 3", "FO-4 part 2")."""
+    out = {}
+    for m in PART_MENTION.finditer(text or ""):
+        ps = out.setdefault(m.group(1), set())
+        ps.add(m.group(2))
+        ps.update(re.findall(r"\d+[a-z]?", m.group(3) or ""))
+    return out
+
+
+def title_part(title, rid):
+    """The part a pull request title names for an id ("PF-5 part 1" gives "1"); None for the whole id."""
+    m = re.search(r"(?<![A-Za-z0-9-])" + re.escape(rid) + r"\s+[Pp]arts?\s+(\d+[a-z]?)", title or "")
+    return m.group(1) if m else None
+
+
+def merged_when(prs, named):
+    """An id is merged when one app PR merged the whole id, or when every part BACKLOG names for it, and every part
+    a PR merged, has a merged app PR; then it dates from its last needed part. prs: [(merged_at, number, part)] by time.
+    Returns (merged_at, number) or None, and the parts still open."""
+    whole = next(((t, n) for t, n, pt in prs if pt is None), None)
+    if whole:
+        return whole, []
+    done = {}
+    for t, n, pt in prs:
+        done.setdefault(pt, (t, n))
+    need = set(named) | set(done)
+    open_ = sorted(need - set(done))
+    if open_:
+        return None, open_
+    return max(done[x] for x in need), []
+
+
 def is_records(p):
     """R1: a records PR has "(records only)" in its title or carries the `records` label; it never counts."""
     return "(records only)" in (p.get("title") or "") or any(l.get("name") == "records" for l in p.get("labels") or [])
@@ -1718,18 +1755,28 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     for r in rows:
         r1 += [x for x in r["ids"] if x not in r1]
     change_at, unclassified, change_pr, nonapp_pr = {}, set(), {}, {}
+    app_prs, bl_named = {}, backlog_parts(bl_text)
     for p in sorted(merged, key=lambda p: p["merged_at"]):
         if is_records(p):
             continue
         for rid in r1:
-            if rid not in change_at and title_has(p["title"], rid):
+            if title_has(p["title"], rid):
                 if p.get("files_app") is True:
-                    change_at[rid], change_pr[rid] = p["merged_at"], p["number"]
+                    app_prs.setdefault(rid, []).append((p["merged_at"], p["number"], title_part(p["title"], rid)))
                 elif p.get("files_app") is False:
                     nonapp_pr.setdefault(rid, p["number"])
                 elif p.get("files_app") is None:
                     unclassified.add(rid)
-    unclassified -= set(change_at)
+    open_parts = {}
+    for rid, prs in app_prs.items():
+        w, op = merged_when(prs, bl_named.get(rid, ()))
+        if w:
+            change_at[rid], change_pr[rid] = w
+        else:
+            open_parts[rid] = op
+    if open_parts:
+        notes.append("Not merged yet, a later part still open (P-639): " + ", ".join(f"{k} part {', '.join(v)}" for k, v in sorted(open_parts.items())))
+    unclassified -= set(change_at) | set(open_parts)
     if unclassified:
         notes.append("App-code check missing for the PRs of " + ", ".join(sorted(unclassified)) + " (not counted)")
     change_day = {k: ist_day(v) for k, v in change_at.items()}

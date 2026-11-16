@@ -1361,6 +1361,36 @@ class Tooltips(unittest.TestCase):
         self.assertIn('querySelectorAll("[data-tip],[data-info],[data-nm],[data-items]")', html)
         self.assertEqual(html.count("mineR.map(riskLine)"), 1)              # "Who must act: You" lists Needs you items and your risks
 
+    def test_later_open_part_is_not_merged_p639(self):
+        """P-639 (16 Nov, qa #1950): a merged "PF-5 part 1" is not PF-5 while BACKLOG names a later part of it. Pass
+        case: every named part merged (or one PR for the whole id). Fail case: a later part still open."""
+        bl = "| PF-5 | api | sign-up | b | c |\nThe trial end moves to PF-5 part 2; invoices are PF-5 parts 3 and 4.\n"
+        self.assertEqual(cd.backlog_parts(bl), {"PF-5": {"2", "3", "4"}})
+        self.assertEqual(cd.title_part("runtime: PF-5 part 1 — sign-up", "PF-5"), "1")
+        self.assertIsNone(cd.title_part("runtime: PF-5 — sign-up", "PF-5"))
+        p1 = [("2026-11-15T10:00:00Z", 101, "1")]
+        self.assertEqual(cd.merged_when(p1, {"2", "3", "4"}), (None, ["2", "3", "4"]))           # fail: later parts open
+        allp = p1 + [("2026-11-16T10:00:00Z", 102, "2"), ("2026-11-16T11:00:00Z", 103, "3"), ("2026-11-16T12:00:00Z", 104, "4")]
+        self.assertEqual(cd.merged_when(allp, {"2", "3", "4"}), (("2026-11-16T12:00:00Z", 104), []))  # pass: dated by the last part
+        self.assertEqual(cd.merged_when(p1, set()), (("2026-11-15T10:00:00Z", 101), []))       # pass: no other part named
+        self.assertEqual(cd.merged_when([("2026-11-14T09:00:00Z", 99, None)], {"2"}), (("2026-11-14T09:00:00Z", 99), []))  # whole id
+        # the independent check follows the same rule: map 1 (PF-1, PF-2) is built until PF-2 is only merged as part 1
+        spec = importlib.util.spec_from_file_location("cockpit_reconcile_p639", os.path.join(HERE, "cockpit-reconcile.py"))
+        rc = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rc)
+        P = "files/ai-workers/problem-1-pathway-setup-and-form-filling/product/"
+        base = rc._fixture("2026-11-20T12:00:00+05:30")
+        built = lambda mem: rc.compute(rc.Snapshot(mem=mem))["numbers"]["built_rows"]["value"]
+        self.assertEqual(built(base), 2)
+        pulls = json.loads(base["github/pulls.json"])
+        for p in pulls:
+            if p["number"] in (2, 3):
+                p["title"] = p["title"].replace("PF-2", "PF-2 part 1")
+        bl2 = base[P + "BACKLOG.md"] + "\nPF-2 part 2 is the rest.\n"
+        self.assertEqual(built(dict(base, **{"github/pulls.json": json.dumps(pulls), P + "BACKLOG.md": bl2})), 1)   # fail case
+        pulls.append(dict(pulls[1], number=40, title="runtime: PF-2 part 2 — rest", merged_at="2026-11-19T22:00:00Z"))
+        self.assertEqual(built(dict(base, **{"github/pulls.json": json.dumps(pulls), P + "BACKLOG.md": bl2})), 2)   # pass case
+
     def test_first_screen_p636(self):
         """P-636 (founder 16 Nov): six answers in three words. Proven comes from qa's file on main only, Built = all parts
         merged or qa passed, and every answer has its explanation with what is behind it."""
