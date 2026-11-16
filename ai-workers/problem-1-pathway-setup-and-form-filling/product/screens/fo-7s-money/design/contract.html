@@ -52,7 +52,7 @@ const C = [
 ["c","Cheque Cleared tick","Question: cleared route (G7)","agent/payment:record","FO-7b","—"],
 ["c","Payments list / detail","GET /payments?invoiceId=&trustRequestId=&method=&from=&to=&pageSize=&after=, GET /payments/:id","agent/payment:record or agent/invoice:show","FO-7q","404 other firm"],
 ["c","Resend receipt","FO-7q addition: POST /payments/:id/receipt/resend (G3)","agent/payment:record","FO-7q","—"],
-["c","Overpayment: Refund · Keep as credit","FO-7b route (overpayment choice, amendment 1; writes the credit ledger KEPT)","FO-7b's (read on main)","FO-7b","—"],
+["c","Overpayment: Refund · Keep as credit","Question: FO-7b amendment 1 vs main for extra into operating (Q5); trust off: FO-7b route, credit ledger KEPT","FO-7b's (read on main)","FO-7b","—"],
 ["j","Send statement (party / case)","POST /parties/:kind/:id/statements, POST /cases/:id/statements {from?, to?}","agent/invoice:issue","FO-7r p2","403 without the key"],
 ["j","Statement preview","FO-7q addition: POST …/statements/preview (G11)","agent/invoice:issue","FO-7q","—"],
 ["j","Start export","POST /exports {from, to, kinds}","agent/billing:export","FO-7r p3","400 TRUST_LEDGER while trust is off; 403 \"You do not have access to exports\""],

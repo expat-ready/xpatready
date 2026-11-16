@@ -75,7 +75,8 @@ Drafter's response (16 Nov, for Build Lead C, who approves). Every Blocker and M
 * **M5 fixed:** (a) the builder hint is "Only clients appear here; a prospect can't be invoiced."; DW1's words now include "deposit"; (b) G17: FO-7r part 3 leaves "received into" out of the Payments file while trust is off (to confirm).
 * **Minors:** m1 DW3 also fails on an action's name (transfer, withdraw, move out, adjust, edit balance) and lists Refund to client on a trust deposit's detail; m2 the exemption is the four exact AG-6-59 strings; m3 Refund · Keep as credit shows in No with money held; m4 reasons by method; m5 figures (Billed CAD 3,616.00; per payer 850 + 300 + 150 before a case = 1,300; INV-0003 issued 10 Nov, due 24 Nov; pay page on INV-0008 CAD 1,385.00; INV-0006 back to due in the preview; Stop autopay only once on); m6 walks chained invoices → payments → Getting paid → pay page → trust → statement, trust receipt R-0015; m7 FO-7a2 in the contract; m8 an operating-paid credit under Yes follows FO-7b's overpayment answer; m10 the government line is "Government fee (Sample)"; m11 kept Unverified, noted in §4b.
 * **Kept, m9 (Not built, edge):** after Yes → settled → No, an old trust-paid invoice reads Paid without "from trust" (FO-7q strips trust fields). Correct money, less context; follow-up row if qa finds it confusing.
-* **Founder questions:** none (B1 ruled by the row owner under P-634).
+* **Reviewer and breaker, rounds 1-2** (reports summarised on the PR): every Blocker and Major fixed in the files or raised as Q2, Q4-Q6 and gaps G19-G24 (where money arrived, choices by money source, shortfall visible from any state, panel guards, write-off re-read, actions by keys).
+* **Founder questions:** none (B1 ruled by the row owner under P-634); Q6 goes to the founder only if Build Lead C judges the AG-6-75 r3 departure his.
 
 ## Agreement
 

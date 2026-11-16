@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FO-7s0 state × string table</title>
 <!-- FO-7s0 DW1 and DW3 (concept.md). Every visible money string per trust state, and every action on a trust screen.
-     U = Unanswered, Y = Yes, N0 = No with nothing held, NH = No with money held or To move not empty (AG-6-59 r6).
+     U = Unanswered, Y = Yes, N0 = No with nothing held, NH = No while any balance is not zero (a shortfall included) or To move not empty (AG-6-59 r6, P-634 (1)).
      DW1: no trust word in U or N0 except the trust question itself (Owner only, AG-6-59 r2-r3), marked q.
      DW3: only "Pay from trust" (to an issued invoice) and "Refund to client" take money out of trust (P-603).
      Open with ?plant=dw1 (a "Received into" in U) or ?plant=dw3 (a "Transfer" action): the check must say FAIL. -->
@@ -54,11 +54,11 @@ const S = [
 ["Credit note","choice (paid into operating)","Refund · Keep as credit","1111"],
 ["Credit note","choice (trust-paid, No, nothing held)","Refund to the client","0010"],
 ["Credit note","refusal","Already settled by write-off","1111"],
-["Write off","line","Write off CAD 25.00 (the remaining balance)","1111"],
+["Write off","line","Write off the remaining balance: CAD 25.00 when you opened this","1111"],
 ["Reverse entry","preview","INV-0005 goes back to CAD 1,186.50 due","1111"],
 ["Reverse entry","preview","INV-0006 stays paid (its money already moved to operating)","0111"],
 ["Reverse entry","preview","Trust balance after: −CAD 1,500.00 · Trust shortfall after a reversal","0111","r"],
-["Reverse entry","preview","Your firm needs to put CAD 1,500 of its own money into trust for this client.","0111","r"],
+["Reverse entry","preview","Your firm needs to put CAD 1,500 of its own money into trust for this client. Client B has not paid this CAD 1,500: invoice it again or ask for a new payment.","0111","r"],
 ["Home (Owner)","shortfall item","Client B's case trust is short CAD 1,500.00","0111","r"],
 ["Trust ledger","shortfall row","Trust shortfall after a reversal","0101"],
 ["Monthly check","shortfall list","Client B — Work permit: −CAD 1,500.00 · Trust shortfall after a reversal","0101"],
@@ -104,7 +104,7 @@ const WORD = /trust|deposit|DR-|To move|Monthly check|Pay from trust|Received in
 // The only exemption (Q3): the trust question's own lines, exactly as AG-6-59 r2-r3 word them, Owner only (the ask line: the booking screen).
 const Q = new Set(["Do you hold client money in a trust account? Yes · No", "Yes lets you take deposits before the work. No means you bill after the work.", "Ask the Owner to answer the trust question", "Tell ExpatReady whether you hold client money in a trust account"]);
 // Q4: a reversal's shortfall is shown, never hidden (AG16-60, P-634 (1)), even when it is reached from No with nothing held.
-const R = new Set(["Trust balance after: −CAD 1,500.00 · Trust shortfall after a reversal", "Your firm needs to put CAD 1,500 of its own money into trust for this client.", "Client B's case trust is short CAD 1,500.00"]);
+const R = new Set(["Trust balance after: −CAD 1,500.00 · Trust shortfall after a reversal", "Your firm needs to put CAD 1,500 of its own money into trust for this client. Client B has not paid this CAD 1,500: invoice it again or ask for a new payment.", "Client B's case trust is short CAD 1,500.00"]);
 const bad1 = S.filter(r => WORD.test(r[2]) && (r[3][0] === "1" || r[3][2] === "1") && !(r[4] === "q" && Q.has(r[2])) && !(r[4] === "r" && R.has(r[2]) && r[3][0] === "0"));
 const OUT = new Set(["Pay from trust…","Refund to client…"]);
 const bad3 = A.filter(a => (a[2] && !OUT.has(a[1])) || /transfer|withdraw|move out|adjust|edit balance/i.test(a[1]));
