@@ -20,10 +20,10 @@ Expected per the row: a line or a refusal. Actual: neither.
 **M2 (Major): an attacker-chosen X-Request-Id is written into a firm's permanent trail, from an unauthenticated door.**
 `correlationOf` (observability/hook.ts:23-25) accepts any `[A-Za-z0-9_.:-]{1,128}` that `redactText` leaves alone; names and
 dates pass. touchFirm copies it into `detail.correlationId` (firm-scope.ts:188-191); AuditDetail's floor only stops emails
-(ports/audit.ts, "ids only, never personal data"). Repro 1: demo inbox with id `Jane.Doe.DOB.1990-01-01.client-of-firm`:
+(ports/audit.ts, "ids only, never personal data"). Repro 1: demo inbox with id `Client.A.DOB.1990-01-01.client-of-firm`:
 stored verbatim. Repro 2: `POST /api/public/signup` with an existing staff email of FIRST and X-Request-Id
-`Jane.Doe.passport.lost` → the background step (it inherits the request scope) wrote FIRST's line with `"correlationId":
-"Jane.Doe.passport.lost"`. Anyone who knows one staff email can put free text in that firm's audit trail (3 per email per hour).
+`Client.A.passport.lost` → the background step (it inherits the request scope) wrote FIRST's line with `"correlationId":
+"Client.A.passport.lost"`. Anyone who knows one staff email can put free text in that firm's audit trail (3 per email per hour).
 Holds: an email-shaped id is refused (randomUUID instead).
 
 **m1 (Minor): the demo reset, SECOND's line failing: FIRST stays reset, SECOND is not, and the demo is half-reset.**

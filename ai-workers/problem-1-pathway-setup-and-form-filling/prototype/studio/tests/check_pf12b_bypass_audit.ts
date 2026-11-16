@@ -107,8 +107,8 @@ try {
   const nested = await errOf(() => inRequest(inboxRoute, () => asBypass("platform.demo.inbox", () => asBypass("platform.identity.authenticate", () => db.platformStaff.findMany()))));
   ok("PF-12b fail (break M1): a bypass use inside another is refused before any query (it would cross under the outer use's lines)", nested instanceof BypassRefused, String(nested));
   const spoof = fakeAudit(), wasS = onBypassAudit(spoof);
-  await requestScope.run({ correlationId: "Jane.Doe.passport.lost", firmId: () => undefined }, () => asBypass("platform.demo.reset", async () => { await touchFirm({}, A); }));
-  await requestScope.run({ correlationId: "job:Jane.Doe.passport.lost", firmId: () => undefined }, () => asBypass("platform.demo.reset", async () => { await touchFirm({}, B); }));
+  await requestScope.run({ correlationId: "Client.A.passport.lost", firmId: () => undefined }, () => asBypass("platform.demo.reset", async () => { await touchFirm({}, A); }));
+  await requestScope.run({ correlationId: "job:Client.A.passport.lost", firmId: () => undefined }, () => asBypass("platform.demo.reset", async () => { await touchFirm({}, B); }));
   await requestScope.run({ correlationId: "0b12b000-0000-4000-8000-00000000beef", firmId: () => undefined }, () => asBypass("platform.demo.reset", async () => { await touchFirm({}, A); }));
   const clientErr = await errOf(() => asBypass("platform.demo.reset", () => touchFirm(db, A)));
   const tx4 = {};
