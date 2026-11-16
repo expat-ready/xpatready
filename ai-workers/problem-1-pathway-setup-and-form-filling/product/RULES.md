@@ -1,6 +1,6 @@
 # Rule register (the tech lead keeps it; as of **P-634**, 16 Nov 10:2x IST (P-626 to P-634 added by Lead 64; the page as of P-630 in `history/RULES-2026-11-16-1025-lead64s2-as-of-P-630.md`; the page as of P-625 is word for word in `history/RULES-2026-11-16-0735-lead64s2-as-of-P-625.md`); the long page as of P-612 is word for word in `history/RULES-2026-11-15-1415-before-register.md`)
 
-One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced by** names the hook, CI step or script that blocks or fails a break; `prose` = only the reader enforces it (G-4 candidates, bottom); `(part)` = covers part of the rule. IDs: a letter (`P-611b`) = the decision's 2nd row, not its part (2); `IDX-n` = an index of done, product or integration decisions kept in the side file. **Start read**: this page, then the `DECISIONS.md` rows newer than "as of", word for word (P-314, P-440). Long text word for word: side files under `rules/`. `tools/check-docs.sh` fails a row with no enforced-by, a page over 25 KB, or one over 3 rows behind DECISIONS.
+One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced by** names the hook, CI step or script that blocks or fails a break; `prose` = only the reader enforces it (G-4 candidates, bottom); `(part)` = covers part of the rule. IDs: a letter (`P-611b`) = the decision's 2nd row, not its part (2); `IDX-n` = an index of done, product or integration decisions kept in the side file. **Start read**: this page, then the `DECISIONS.md` rows newer than "as of", word for word (P-314, P-440). Long text word for word: side files under `rules/`. `*` = B193 hook, on once its settings line is added (P-387). `tools/check-docs.sh` fails a row with no enforced-by, a page over 25 KB, or one over 3 rows behind DECISIONS.
 
 **Triaged 16 Nov (B193 part 5):** the note, merged and retired rows and the ID map: `rules/merged-and-retired-2026-11-16.md`.
 
@@ -109,7 +109,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-486b | Lane briefs: context limit ~400k tokens; confirm the sent bubble; sessions are not started over Remote Control. | prose | 11 Nov |
 | P-384 | The founder gives product direction only; the Lead owns the pipeline, paid runs included. | hook: merge-guard.sh (part: only the Lead copy merges, closes or reviews) | 7 Nov |
 | P-402 | Standing approvals: label on Approve and green, own records PRs, requeue, retarget, draft toggle, re-run failed parts, dispatch nightly (P-410, P-434). | hook: merge-guard.sh (part: only the Lead copy merges) | P-612 |
-| P-423 | The Lead reads the diff before labelling money, permissions, schema, a migration, .github/ or .mergify.yml. | prose | P-612 |
+| P-423 | The Lead reads the diff before labelling money, permissions, schema, a migration, .github/ or .mergify.yml. | hook: lead-read-guard.sh* | P-612 |
 | P-294 | Product questions that decisions, canada.ca or best practice settle are ruled by the Lead and recorded. | prose | P-612 |
 | P-390 | Preference questions go to the founder one at a time with a recommendation, listed in STATE; while away, proceed when reversible. | prose | P-612 |
 | P-254 | Impact on time, cost and quality is stated before recording a choice. | prose | P-612 |
@@ -119,22 +119,22 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-338 | Every report: Works, merged, blocked, next three with IST times, on time or late and why; hourly to the founder (P-434). | prose | P-612 |
 | P-348e | Sessions start only in a founder-typed turn, cloud first; the Mac runs the Lead, demo, qa and at most two builders. | hook: lane-preflight.sh --hook (part: Mac disk, load, copy cap) | P-612 |
 | P-286 | Two idle standby Leads; numbering in series 2 (P-433). | prose | P-612 |
-| P-388 | No prompt-waiting call while the founder is away; no hand-over with an in-process subagent running (P-409). | prose | P-612 |
+| P-388 | No prompt-waiting call while the founder is away; no hand-over with an in-process subagent running (P-409). | hook: lead-act-check.sh (part)*; script: lead-heartbeat.sh (part) | P-612 |
 | F-7Nov | Never run guard or test suites in the main copy: use a scratch clone. | prose | 7 Nov |
 | P-363 | GitHub through curl with `gh auth token`. | prose | P-612 |
 | P-387 | .claude/settings.json stays as on main; only the founder widens permissions; a refused write is never rerouted through a lane or split. | hook: stop-check.sh (part: lane edits); sandbox denies settings writes | 7 Nov |
-| P-302 | Times only from `TZ=Asia/Kolkata date`. | prose (check-docs.sh warns on STATE times, never fails) | P-612 |
+| P-302 | Times only from `TZ=Asia/Kolkata date`. | hook: ist-time-guard.py*; check-docs.sh warns | P-612 |
 | P-336 | Records by the Lead alone; STATE one page ≤ 12 KB; DECISIONS appended newest first; records daily and at hand-over; records PRs merge when the queue is empty (P-436 (3)). | script: check-docs.sh (part: STATE 12 KB); CI: records-label.yml | P-612 |
 | P-440 | This page is refreshed at every hand-over and lags DECISIONS by at most 3 rows. | script: check-docs.sh (RULES LAG; test check-rules-lag.sh) | 9 Nov |
 | P-371 | Never cancel a CI run; re-run the failed part alone (P-384); product code only through the queue; check fixes may land ahead on green (P-214). | prose | P-612 |
 | P-616 | A capability with no screen passes gate A by API; map row 99's model choice is launch condition C26. | prose | 15 Nov |
 | P-617 | Size exception for #1815 only; rows briefed from now stay under 800 lines. | CI: pr-rules size step (pr-size.sh reads the row) | 15 Nov |
 | P-618 | Outside dependencies in `design/outside-dependencies.md`: start at need − lead time − 2× buffer; 🔴 when due or stuck 48 h; fallback and date on a block. | script: outside-deps-watch.py, run by lead-watch.sh step 9 (part: start date reached, stuck 48 h, blocked without decision date or fallback; the start-date formula is not checked) (test check-outside-deps-watch.sh) | 15 Nov |
-| P-619 | Enforcement steps 3-8 approved; alarms for a stale board (45 min) and outside items. | prose (B193 builds them) | 15 Nov |
-| P-620 | Each Claude account checks the company Gmail connector at start and after a switch; missing → ask the founder. | prose (B193 part 6) | 16 Nov |
+| P-619 | Enforcement steps 3-8 approved; alarms for a stale board (45 min) and outside items. | hook: lead-act-check.sh (part)*; script: sle-watch.py (part) | 15 Nov |
+| P-620 | Each Claude account checks the company Gmail connector at start and after a switch; missing → ask the founder. | hook: gmail-start-check.sh* | 16 Nov |
 | P-621 | Google only (Gmail, Calendar) for now; Microsoft deferred; ports stay provider-neutral. | prose | 16 Nov |
-| P-622 | Theory of Constraints: finish before starting (WIP per group), hot files split, one full run per change, fewer Leads; gates unchanged. | prose (B193, B194) | 16 Nov |
-| P-623 | WIP: 2 waiting per group or 24 h; stopped builders fix qa bugs first; release Lead orders qa's queue; board leads with qa verdicts a day. | prose (B193, B194) | 16 Nov |
+| P-622 | Theory of Constraints: finish before starting (WIP per group), hot files split, one full run per change, fewer Leads; gates unchanged. | hook: wip-guard.py (part)* | 16 Nov |
+| P-623 | WIP: 2 waiting per group or 24 h; stopped builders fix qa bugs first; release Lead orders qa's queue; board leads with qa verdicts a day. | hook: wip-guard.py (part)* | 16 Nov |
 | P-624 | Virus scan by AWS GuardDuty for S3 behind ScanPort, after a ca-central-1 console check. | prose | 16 Nov |
 | P-625 | Staging on AWS's own address until a domain is needed; base domain is a setting; no second host. | prose | 16 Nov |
 | P-626 | Finish the Partial R1 capabilities first; 10 proven by qa by 08:00 IST 17 Nov. | prose | 16 Nov |
