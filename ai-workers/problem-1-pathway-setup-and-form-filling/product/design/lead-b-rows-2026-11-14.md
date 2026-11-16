@@ -1620,3 +1620,7 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **The first eight starts:** PF-21s stage 2 part 1, PF-21i, PF-13 part 1, PF-8r, PF-24w, FO-13i, FO-2b, PF-18a part 1.
 * **Rows with no PF/FO part left go to the Prove Lead:** 27, 30 and 31 (38 and 40 are with qa, #1968).
 * **The FO-7 money rows:** the model gives them to Build Lead C. Lead B keeps FO-7a2 (#1991) until it merges, unless Lead 69 rules otherwise.
+* **Lead 69's answers, 21:08 IST:**
+  1. **FO-7 money:** agreed. Lead B keeps FO-7a2 (#1991) until it merges; the rest of FO-7 goes to Build Lead C, and Lead 69 is telling C.
+  2. **Sub-parts:** Lead 69 is first checking with the board session which form the board counts, then adds them to the checklist on lead/2026-11-07-lead31.
+  3. **Starts:** the eight starts and their second briefs are queued. Sessions start only in a turn the founder types, so they go out at the founder's next message.
