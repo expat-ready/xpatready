@@ -16,8 +16,9 @@ Firms, staff and sign-in, settings, secrets, jobs, logs, complaints and message 
 - The audit trail is append-only; demo reset deletes only demo lines, never a platform line (P-571 (1)).
 - Personal data never reaches a system log: redaction at the logger (PF-23, NFR5-14).
 - A job's key is its pg-boss id: one key never queues a second job (PF-14).
+- Every job names its firm, or is a platform job (`platform: true`, no firm) on a queue in `PLATFORM_JOB_QUEUES` (`ports/jobs.ts`; today `messages.send` for PLATFORM_ACCOUNT messages only); any other job without a firm is refused by the port and the runner (PF-14, PF-19p).
 - The consent store is the only writer of the `msg_` tables, inside the caller's transaction (PF-19a, P-584).
-- A platform account message (sign-up's verification, before any firm) is a `msg_outbox` row with audience `PLATFORM_ACCOUNT` and no firm (a check): TRANSACTIONAL email only, from "ExpatReady" at `platform.account_mail_from`, no consent gate, no daily cap; no firm's role reads it (PF-19p; PF-12's walls).
+- A platform account message (sign-up's verification, before any firm) is a `msg_outbox` row with audience `PLATFORM_ACCOUNT` and no firm (a check): TRANSACTIONAL email only, from "ExpatReady" at `platform.account_mail_from`, no consent gate, no daily cap; sent by a platform job, never inside a request; no firm's role reads it (PF-19p; PF-12's walls).
 - Values for experts to set are labelled Sample, never guessed (P-170).
 - A sign-up's password goes to the identity provider only: never in a table, log, audit line or answer; the sign-up door answers the same whether or not an email is known (PF-5, P-566).
 - Firms' billing goes through BillingPort only; CI and lanes use its fake or recorded Stripe answers, never a live call (PF-5, contracts §0.3).

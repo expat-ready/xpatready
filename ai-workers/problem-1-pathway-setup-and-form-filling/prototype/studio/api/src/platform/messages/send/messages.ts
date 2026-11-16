@@ -11,9 +11,10 @@
 // PF-19p (Lead B rev 16.62, #1955): a platform account message (no firm) writes a PLATFORM_ACCOUNT row with no firm read,
 // no consent gate (the person asked for it: sign-up's verification) and no daily cap, From "ExpatReady" at
 // platform.account_mail_from. Its rendered file is kept in the file store's platform space (PLATFORM_FILES_SPACE: a
-// folder name, not a firm: no table holds it). JobPort's jobs belong to a firm, so dispatch(null, …) delivers platform
-// rows right after the caller's commit, and the sweep delivers any a crash or a failed send left QUEUED (each minute).
-// They have no msg_event (events key on a firm). Every platform query names firm_id IS NULL and audience PLATFORM_ACCOUNT.
+// folder name, not a firm: no table holds it). dispatch(null, …) queues a platform job (JobPort's `platform: true`,
+// Lead B rev 16.66: never sent inside the caller's request) on SEND_QUEUE; the runner retries a send that throws, each
+// try is counted on the row, the 5th failure ends it FAILED, and the sweep queues a row a crash or a failed job left
+// QUEUED once per try, after a growing wait. They have no msg_event (events key on a firm). Every platform query names firm_id IS NULL and audience PLATFORM_ACCOUNT.
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { AlertPort } from "../../../../../ports/alert.ts";
@@ -42,6 +43,9 @@ export const PLATFORM_SEND_TRIES = 5;
 export const PLATFORM_DELIVER_TX_MS = 60_000;
 /** The wait before a platform row's next try: SWEEP_AFTER_MS, doubled after each failed try (2, 4, 8, 16 minutes). */
 export const platformRetryAfterMs = (tries: number) => SWEEP_AFTER_MS * 2 ** Math.max(0, tries - 1);
+/** A platform row's job key for its next try (the first is the dispatch's; each later try its own, so the sweep queues
+ *  each try once). */
+export const platformJobKey = (outboxId: string, tries: number) => `msg.send:platform:${outboxId}${tries ? `:try:${tries}` : ""}`;
 const triesOf = (reason: string | null) => Number(/^send failed: try (\d+) of \d+$/.exec(reason ?? "")?.[1] ?? 0);
 
 /** A channel's sending adapter: it gets the stored message and answers the provider's id (or throws: not sent). */
@@ -120,16 +124,16 @@ export class Messages implements MessagePort<Tx> {
   }
 
   async dispatch(firmIdIn: string | null, outboxIds: string[]): Promise<void> {
-    if (firmIdIn === null) {   // PF-19p: platform account rows, sent now (a failure stays QUEUED for the sweep)
-      for (const id of outboxIds) await this.deliverPlatform(id).catch((e: unknown) => this.d.log?.(`messages: platform account outbox ${id} not sent (${e instanceof Error ? e.name : "error"}); the sweep tries it`));
+    if (firmIdIn === null) {   // PF-19p: platform account rows, one platform job each (no firm)
+      for (const id of outboxIds) await this.d.jobs.enqueue(SEND_QUEUE, { outboxId: id, platform: true }, { key: platformJobKey(id, 0), platform: true });
       return;
     }
     const { firmId } = firmScope(firmIdIn);
     for (const id of outboxIds) await this.d.jobs.enqueue(SEND_QUEUE, { firmId, outboxId: id }, { key: `msg.send:${firmId}:${id}`, firmId });
   }
 
-  /** The worker: sends one outbox row at most once. Answers what happened (for logs and tests); "retry": a platform row whose send threw, tried again later (PF-19p). */
-  async deliver(firmIdIn: string | null, outboxId: string): Promise<"sent" | "skipped" | "held" | "failed" | "suppressed" | "retry"> {
+  /** The worker: sends one outbox row at most once. Answers what happened (for logs and tests); `null`: a platform account row (PF-19p). */
+  async deliver(firmIdIn: string | null, outboxId: string): Promise<"sent" | "skipped" | "held" | "failed" | "suppressed"> {
     if (firmIdIn === null) return this.deliverPlatform(outboxId);
     const { firmId } = firmScope(firmIdIn);
     let alertDay: string | null = null;
@@ -169,16 +173,17 @@ export class Messages implements MessagePort<Tx> {
   }
 
   /** PF-19p: sends one platform account row at most once (the row lock and QUEUED, as deliver); no gate, no cap, no event.
-   *  A send that throws (the provider refused, the network) leaves the row QUEUED with its try counted, or FAILED "send
-   *  failed" at PLATFORM_SEND_TRIES, and writes one log line of ids (break F1). */
-  async deliverPlatform(outboxId: string): Promise<"sent" | "skipped" | "failed" | "retry"> {
+   *  A send that throws (the provider refused, the network) counts its try on the row and writes one log line of ids
+   *  (break F1), then throws on, so the job runner retries it; at PLATFORM_SEND_TRIES the row is FAILED "send failed". */
+  async deliverPlatform(outboxId: string): Promise<"sent" | "skipped" | "failed"> {
     try { return await this.sendPlatformRow(outboxId); } catch (e) {
       const row = await this.d.db.msgOutbox.findFirst({ where: { id: outboxId, audience: "PLATFORM_ACCOUNT", firmId: null, state: "QUEUED" }, select: { stateReason: true } });
       if (!row) throw e;
       const tries = triesOf(row.stateReason) + 1, last = tries >= PLATFORM_SEND_TRIES;
       await this.d.db.msgOutbox.updateMany({ where: { id: outboxId, state: "QUEUED", stateReason: row.stateReason }, data: last ? { state: "FAILED", stateReason: "send failed", updatedAt: this.clock.now() } : { stateReason: `send failed: try ${tries} of ${PLATFORM_SEND_TRIES}`, updatedAt: this.clock.now() } });
       this.d.log?.(`messages: platform account outbox ${outboxId} send failed (${e instanceof Error ? e.name : "error"}), try ${tries} of ${PLATFORM_SEND_TRIES}${last ? ": FAILED" : ""}`);
-      return last ? "failed" : "retry";
+      if (!last) throw e;
+      return "failed";
     }
   }
 
@@ -202,7 +207,7 @@ export class Messages implements MessagePort<Tx> {
   }
 
   /** Each minute: every QUEUED row older than SWEEP_AFTER_MS gets a job keyed by the hour (a held row tries once an hour);
-   *  PF-19p: platform account rows (no firm, so no job) are delivered here, SWEEP_PER_FIRM a run, each once its wait
+   *  PF-19p: a QUEUED platform account row gets a platform job for its next try, SWEEP_PER_FIRM a run, once its wait
    *  (platformRetryAfterMs) is over: never-tried rows first, so rows that keep failing never hold back a new one. */
   async sweep(): Promise<number> {
     const now = this.clock.now(), hour = now.toISOString().slice(0, 13);
@@ -223,13 +228,13 @@ export class Messages implements MessagePort<Tx> {
     // A row never tried goes first, then the fewest tries, then the least recently tried (break F1: stuck rows never starve a new one).
     const platform = due.filter((r) => r.updatedAt.getTime() <= now.getTime() - platformRetryAfterMs(triesOf(r.stateReason)))
       .sort((x, y) => triesOf(x.stateReason) - triesOf(y.stateReason) || x.updatedAt.getTime() - y.updatedAt.getTime()).slice(0, SWEEP_PER_FIRM);
-    for (const r of platform) if ((await this.deliverPlatform(r.id).catch(() => "failed" as const)) === "sent") n++;
+    for (const r of platform) if ((await this.d.jobs.enqueue(SEND_QUEUE, { outboxId: r.id, platform: true }, { key: platformJobKey(r.id, triesOf(r.stateReason)), platform: true })).queued) n++;
     return n;
   }
 
   /** Registers the worker, the sweep and the cap alert on the job runner. */
   async register(): Promise<void> {
-    await this.d.jobs.handle(SEND_QUEUE, async (j) => { await this.deliver(String(j.payload.firmId), String(j.payload.outboxId)); });
+    await this.d.jobs.handle(SEND_QUEUE, async (j) => { await this.deliver(j.payload.platform === true && j.firmId === null ? null : String(j.payload.firmId), String(j.payload.outboxId)); });
     await this.d.jobs.handle(SWEEP_QUEUE, async () => { await this.sweep(); });
     await this.d.jobs.handle(CAP_ALERT_QUEUE, async (j) => { await this.d.alerts().raise("send_cap_reached", { rule: "PF-19b.daily_cap", firmId: String(j.payload.firmId), entity: "msg_send_counter", entityKey: String(j.payload.day) }); });
     await this.d.jobs.recurring(SWEEP_QUEUE, "* * * * *", "UTC");
