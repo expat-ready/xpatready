@@ -269,3 +269,41 @@ The PR still touches the same 8 files compared with main (+769/−7). Its migrat
 **Blockers:** none. **Majors:** none. **Minors open:** as in Re-review 2 (the description wording question for Lead B).
 
 Verdict: Approve 27749b65ae280d5f268c978cbac2e4a3046b31ea
+
+## Re-review 5 at `1d66488c529665dfa8094dab3e9a1088498b5df3` (merge of `main` b1161b4df, FO-2v #1933; P-270)
+
+**Parents.**
+* First parent: `8e62f9d`, a records commit with no code change from `27749b6`, which I approved in Re-review 4.
+* Second parent: `b1161b4df`.
+
+**Was the resolution right?** I re-merged the two parents mechanically with `git merge-tree`.
+* Only `front-office/MODULE.md` conflicts.
+* The committed merge differs from that automatic merge in `MODULE.md` alone: the conflict block is resolved and nothing else changes.
+* The **Tests.** line keeps main's `check_fo2v_lead_visibility.ts` and this branch's `check_fo3a_booking_types.ts`.
+* Main's new FO-2v invariant (lead visibility) and FO-3a's deleted-type line are both kept.
+* Compared with main, the card differs only by FO-3a's entry points, its invariant and its test.
+
+**`service.ts` compared with main** (`git diff b1161b4df 1d66488c`): still exactly the three `where` lines. Between `ddc6e919c` and `b1161b4df`, main changed nothing under `api/src/front-office/booking/`, `prisma/` or `ports/`; its changes are FO-2v sales, the web modules, packages and tests. The PR still touches the same 8 files compared with main (+769/−7), and `20261116090000` is still the newest migration.
+
+**Suites on the merged tree** (clean worktree, scratch databases on :54329, never :4400):
+
+| Suite | Result |
+|---|---|
+| `check_fo3a_booking_types` | 48/48 |
+| `check_fo3m_answers` | 14/14 |
+| `check_fo2v_lead_visibility` | 14/14 |
+| FO-3 | 133/133 |
+| FO-3pa | 45/45 |
+| FO-3sa | 39/39 |
+| FO-3sr | 29/29 |
+| FO-1b | 80/80, migrate diff clean |
+
+**FO-3w browser suite: not re-run by me.**
+* In a worktree, the sandbox refuses the path to the database's data folder, which `isolated.sh` checks.
+* In this working copy, the suite would rewrite tracked screenshots in `screens/fo-3-booking/screenshots`, and I am not to edit other files.
+* So 67/67 at :4531 is the builder's evidence, not mine. CI's run is the one that counts.
+* The suite builds its types by direct database writes and does not depend on the purpose filter. Its header comment ("The schema has one purpose (FREE_CONSULT) … a retired type stands in", `check_fo3w_booking_browser.ts:9`) is out of date now that CASE_REVIEW exists. That is a follow-up for FO-3w's row, not this PR's.
+
+**Blockers:** none. **Majors:** none. **Minors open:** as in Re-review 2 (the description wording question for Lead B).
+
+Verdict: Approve 1d66488c529665dfa8094dab3e9a1088498b5df3
