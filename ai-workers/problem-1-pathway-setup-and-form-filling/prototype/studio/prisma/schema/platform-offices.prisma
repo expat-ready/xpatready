@@ -1,9 +1,8 @@
-// platform-offices.prisma — a firm's offices, each with its own time zone, business hours and closed days, and which office
-// a staff member works in (PF-18a part 1; AG-1-74, AG-16-68, AG-16-59). Owner: Lead B (platform). Its own file (P-600):
-// platform_firm and platform_staff get only their back-relation lines, under the slot `offices (PF-18a)` in platform.prisma
-// (Lead B on #2009, rows rev 16.6). Real keys on (firm, …); the rules Prisma cannot say are in 20261116190000_pf18a_offices. Read and written only
-// through api/src/platform/settings/offices/; other modules read the clock through OfficeClockPort (ports/offices.ts).
-// PF-18a part 2 adds platform_notification_preference to this file.
+// platform-offices.prisma — a firm's offices, each with its own time zone, business hours and closed days, and which office a staff member works in (PF-18a part 1;
+// AG-1-74, AG-16-68, AG-16-59). Owner: Lead B (platform). Its own file (P-600): platform_firm and platform_staff get only their back-relation lines, under the slot
+// `offices (PF-18a)` in platform.prisma (Lead B on #2009, rows rev 16.6). Real keys on (firm, …); the rules Prisma cannot say are in 20261116190000_pf18a_offices. Read
+// and written only through api/src/platform/settings/offices/; other modules read the clock through OfficeClockPort (ports/offices.ts). PF-18a part 2 adds
+// platform_notification_preference to this file.
 
 /// One office of a firm (AG-16-68, AG-1-74). A firm with no row has one implicit office: its own settings
 /// (platform.time_zone, platform.business_hours, platform.closed_days). Rows exist only once a second office is added;
