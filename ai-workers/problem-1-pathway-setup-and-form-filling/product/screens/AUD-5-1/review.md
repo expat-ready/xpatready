@@ -118,3 +118,29 @@ Every code Minor from the first review and from the breaker that was meant to be
 It stays **9.5 / 10, pass**. Feedback and state now holds (m3 and m4 are fixed). The new strictness on line breaks (n2) keeps that criterion from rising to a clean 1 for a multi-line reason. So the score is unchanged.
 
 Verdict: Approve e838c2f6ad4f52777ed3158a9a5ba89cb232b636
+
+---
+
+# Re-review 2: 29a674d791b5e6561d7e91566f9250080a9c18ea (diff e838c2f6a..29a674d79 only)
+
+This commit changes `keep-period/service.ts` (+5/−3) and `tests/check_aud5_keep_periods.ts` (+8/−1), and adds the earlier re-review text unchanged.
+**Run:** `tsx tests/check_aud5_keep_periods.ts` gives **56 passed, 0 failed**, on two runs. Mutations were run on a clean worktree of 29a674d79, which is now removed.
+
+* **n2 (line breaks): fixed, and pinned by a test.** `service.ts:55-58` trims first. It keeps `\t`, `\n` and `\r` inside the reason, and refuses every other C0/C1 character and any lone surrogate.
+  * The new case gives "\tFirst line.\nSecond line. \n" → "Reason given: First line.\nSecond line.".
+  * Mutation 1: refusing `\n` and `\t` again makes that case fail.
+  * Mutation 2: removing the control-character check makes the "bell\u0007" case fail.
+* **n1 (m3's test): not discriminating; it stays open as a Minor.** I put the old re-read back (`return { ...(await this.read(s)).closedClientFiles, saved: true }`) and ran the suite **12 times: 56/56 every time, caught 0 of 12.**
+  * Two parallel PUTs on one connection pool rarely interleave between one save's commit and its re-read, so this race does not catch the regression reliably. The m3 code fix itself holds: 0 of 24 mismatches on :4437 in the first re-review.
+  * Scenario: a later refactor brings the re-read back, CI stays green, and parallel saves report another request's value again.
+  * Fix (deterministic, no timing involved): call `save()` on a `KeepPeriods` whose `forFirm` (or `read`) is overridden to return a different number, for example `class X extends KeepPeriods { override forFirm = async () => ({ closedClientFilesYears: 42, source: "firm setting" as const }) }`. Then assert the answer's `years` is the value sent.
+  * Until then, the case named "(break m5, re-review n1)" should not be read as proof.
+
+**Blockers:** none. **Majors:** none. **Minors still open:**
+* n1 (above).
+* m1, the PR text, if not yet corrected.
+* m8 and m9, accepted as not changed.
+
+The journey score stays **9.5 / 10, pass**.
+
+Verdict: Approve 29a674d791b5e6561d7e91566f9250080a9c18ea

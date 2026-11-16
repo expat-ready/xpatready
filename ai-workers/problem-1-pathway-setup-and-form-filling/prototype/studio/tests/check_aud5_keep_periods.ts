@@ -150,9 +150,12 @@ try {
   const sixWhy = await put(tR, { years: 6, reason: "Back to the College's number." });
   const sixWhyLine = JSON.parse(sql(`select detail::text from audit_event where entity_key = '${FIRM_A}:${KEY}' order by at desc, id desc limit 1`));
   ok("AUD-5 DW2 pass (review m4): a reason given at 6 or more is kept on the line, with no warning", sixWhy.status === 200 && sixWhy.body.warning === null && sixWhyLine.reason === "Reason given: Back to the College's number.", sixWhyLine);
-  const [p3, p9] = await Promise.all([put(tR, { years: 3, reason: "Parallel save." }), put(tR, { years: 9 })]);
-  ok("AUD-5 DW2 pass (break m5, re-review n1): two saves at once each answer with their own value and warning, never the other's",
-    p3.status === 200 && p9.status === 200 && p3.body.years === 3 && /s\. 7\.2/.test(p3.body.warning ?? "") && p9.body.years === 9 && p9.body.warning === null, [p3.body, p9.body]);
+  // Re-review n1: the answer is built from the value this save wrote, never re-read (a re-read under parallel saves can
+  // answer with another request's value). A read that always says 42 must not reach the answer.
+  class StaleRead extends KeepPeriods { override async forFirm() { return { closedClientFilesYears: 42, source: "firm setting" as const }; } }
+  const ctxR = { staffId: (await db.platformStaff.findFirstOrThrow({ where: { actorId: "user-R" } })).id, firmId: FIRM_A, firmKey: "sample-firm", roles: ["OWNER"], keys: ["agent/legal-settings:manage"], duties: [], authTime: 0, via: "local" as const };
+  const own = await new StaleRead(db).save(ctxR as never, { years: 9 });
+  ok("AUD-5 DW2 fail (break m5, re-review n1): the save's answer is the value it wrote (9), never a later read (42)", own.years === 9 && own.warning === null && own.saved === true && await readSetting(db, FIRM_A, KEY) === 9, own);
   await put(tR, { years: 6 });
   ok("AUD-5 DW2 fail: a forced settings refusal through the write path (unregistered value) is a 400, never a save",
     await throwsLike(() => writeSetting(db, { firmId: FIRM_A, key: KEY, value: 0, by: "staff:x", workspaceId: sql("select id from workspace where key = 'platform-audit'") }), (e) => (e as { getStatus?: () => number }).getStatus?.() === 400) && await readSetting(db, FIRM_A, KEY) === 6);
