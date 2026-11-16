@@ -10,20 +10,21 @@ let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 400)}` : ""}`); };
 
 await runContract(signingPortContract, "fakeSigning", () => { const p = fakeSigning(); return { port: p, act: p.act, other: p.other }; }, ok);
-{ // the contract catches a fake that would let the vendor email (DW3-style: a broken adapter fails it)
-  const p = fakeSigning();
-  const loose = Object.assign(Object.create(null), p, { provider: p.provider, send: (i: Record<string, unknown>) => { const { sendEmails: _drop, ...rest } = i; return p.send({ ...rest, signers: (rest.signers as { signerId: string; role: "CLIENT" | "FIRM"; name: string }[]).map(({ signerId, role, name }) => ({ signerId, role, name })) } as never); } });
-  const r = await runContract(signingPortContract, "looseFake", () => ({ port: loose, act: p.act, other: p.other }), null);
-  ok("FO-6 fail (the contract works): an adapter that takes a vendor-email option or a signer's email fails the contract", r.failed.some((n) => /email/.test(n)), r);
+{ // the contract catches broken adapters (DW3-style). Each case gets a fresh adapter, as the contract asks, so a case fails
+  // only for its own reason (review m9 on #2040); each proof names exactly the cases that must fail.
+  const loose = () => { const p = fakeSigning(); return { port: { ...p, provider: p.provider, send: (i: Record<string, unknown>) => { const { sendEmails: _drop, ...rest } = i;
+    return p.send({ ...rest, signers: (rest.signers as { signerId: string; role: "CLIENT" | "FIRM"; name: string }[]).map(({ signerId, role, name }) => ({ signerId, role, name })) } as never); } }, act: p.act, other: p.other }; };
+  const r = await runContract(signingPortContract, "looseFake", loose, null);
+  ok("FO-6 fail (the contract works): an adapter that takes a vendor-email option or a signer's email fails exactly the email case", r.failed.length === 1 && /email/.test(r.failed[0]), r);
   // An adapter that compares the signature without checking its length first (timingSafeEqual throws RangeError on a
   // shorter value): a hostile webhook would become a 500. The contract must catch it (review M2 on #2040).
-  const unsafe = { ...p, provider: p.provider, verifyWebhook: async (c: Parameters<typeof p.verifyWebhook>[0]) => {
+  const unsafe = () => { const p = fakeSigning(); return { port: { ...p, provider: p.provider, verifyWebhook: async (c: Parameters<typeof p.verifyWebhook>[0]) => {
     const v = Object.values(c.headers).find((x) => typeof x === "string" && x.length !== 64 && !/json/.test(x));
     if (v !== undefined) throw new RangeError("Input buffers must have the same byte length");
     return p.verifyWebhook(c);
-  } };
-  const r2 = await runContract(signingPortContract, "lengthUnsafeFake", () => ({ port: unsafe, act: p.act, other: p.other }), null);
-  ok("FO-6 fail (the contract works): an adapter that throws on a signature of another length fails the contract", r2.failed.some((n) => /malformed/.test(n)), r2);
+  } }, act: p.act, other: p.other }; };
+  const r2 = await runContract(signingPortContract, "lengthUnsafeFake", unsafe, null);
+  ok("FO-6 fail (the contract works): an adapter that throws on a signature of another length fails exactly the malformed case", r2.failed.length === 1 && /malformed/.test(r2.failed[0]), r2);
 }
 
 { // the fake's own promises the contract does not name: the provider never emails, links are short-lived, nothing leaks
