@@ -63,3 +63,7 @@ Only the diff `51fb031e6..e3632f97b` (`identity/session/service.ts`, plus its te
 - Neither is a Blocker or a Major.
 
 Verdict: Approve e3632f97b04791c41ff0cea1e0e3a2dd91abee0c
+
+Re-check at 32804de86: `git diff e3632f97b..32804de86 -- '*.ts'` touches only `tests/check_pf6m2_invite_recheck.ts`, adding the reviewer M1 case (an Owner's Case Officer invitation, the Owner then made Admin → 410 `role_no_longer_givable` [CASE_OFFICER]). No code changed. The suite passes 19/0 on this head.
+
+Verdict: Approve 32804de869c02fa59cbfb2b530ae34e5ee839871 (test-only diff since e3632f97b)
