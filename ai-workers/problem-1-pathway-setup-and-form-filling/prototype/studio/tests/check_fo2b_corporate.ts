@@ -65,7 +65,7 @@ try {
   const ports: SalesPorts = { audit: auditEvent, consent: new ConsentStore(auditEvent), publicOrigin: "http://localhost:4400" };
   const leads = new Leads(db, ports), corp = new Corporate(db, ports);
   let n = 0;
-  const lead = async (given: string) => (await leads.add(R, { requestId: randomUUID(), givenNames: given, familyName: "Sample", email: `${given.toLowerCase()}${++n}@pinebakery.example`, source: "Phone call" })) as { id: string; person: { id: string } };
+  const lead = async (given: string, who: StaffContext = R) => (await leads.add(who, { requestId: randomUUID(), givenNames: given, familyName: "Sample", email: `${given.toLowerCase()}${++n}@pinebakery.example`, source: "Phone call" })) as { id: string; person: { id: string } };
 
   // ------------------------------------------------------------------------------------- Engage as Corporate
   const lena = await lead("Lena");
@@ -78,6 +78,13 @@ try {
       && sql(`select s.pipeline from fo_prospect p join fo_stage s on s.id = p.stage_id where p.id = '${p1.id}'`) === "CORPORATE", p1);
   ok("FO-2b pass: the enquirer is linked as PRIMARY, is the prospect's primary contact and stays labelled Lead; the lead reads as Lead",
     p1.contacts.length === 1 && p1.contacts[0].personId === lena.person.id && p1.contacts[0].role === "PRIMARY" && p1.contacts[0].primaryContact && p1.contacts[0].label === "Lead" && (await leads.read(R, lena.id)).label === "Lead", p1.contacts);
+  const unowned = await lead("Una");
+  sql(`update fo_lead set owner_staff_id = null where id = '${unowned.id}'`);
+  const pu = await corp.engage(R, unowned.id, { companyName: "Una Works" });
+  ok("FO-2b pass (review m3): Engage on an Unassigned lead makes the clicker its owner and writes the take line on the lead (FO-2v's race answer reads it)",
+    pu.ownerStaffId === R.staffId && audits(unowned.id, "lead.taken") === 1 && count("audit_event", `entity_key = '${unowned.id}' and action = 'lead.taken' and detail->>'fromUnassigned' = 'true'`) === 1);
+  const firstAt = sql(`select engaged_at || '|' || engaged_by from fo_lead where id = '${lena.id}'`);
+  ok("FO-2b fail (review m3): Engage on an owned lead writes no take line", audits(lena.id, "lead.taken") === 0);
   ok("FO-2b pass: lead.engaged is in the outbox with the company (ids only), one stage move from nowhere",
     count("module_event", `type = '${EVENT.LEAD_ENGAGED}' and subject_id = '${p1.id}' and payload->>'subjectCompanyId' = '${p1.company!.id}' and payload->>'type' = 'CORPORATE'`) === 1 && count("fo_stage_move", `prospect_id = '${p1.id}' and from_stage_id is null`) === 1);
   const closed = await lead("Closed");
@@ -95,12 +102,17 @@ try {
   ok("FO-2b fail: Engage with a matching name and no pick → 409 COMPANY_MATCH with the offer; nothing links by itself (no company, no link, lead OPEN)",
     m?.body.code === "COMPANY_MATCH" && (m.body.offers as { companyId: string }[])[0]?.companyId === p1.company!.id && count("fo_company") === companiesBefore && count("fo_company_contact") === linksBefore && sql(`select state from fo_lead where id = '${tomas.id}'`) === "OPEN", m);
   const p2 = await corp.engage(R, tomas.id, { companyId: p1.company!.id });
+  ok("FO-2b pass (review m1): a pick by id with no name typed records no match key, and says it was picked", count("audit_event", `entity_key = '${p2.id}' and action = 'lead.engaged' and detail->>'matchedOn' is null and detail->>'companyPicked' = 'true'`) === 1
+    && count("audit_event", `entity_key = '${p1.id}' and action = 'lead.engaged' and detail->>'companyPicked' = 'false'`) === 1);
   ok("FO-2b pass: picking the offered company links the enquirer to it; the company keeps one live PRIMARY (the second enquirer is OTHER)",
     p2.company?.id === p1.company!.id && p2.primaryContactPersonId === tomas.person.id && count("fo_company_contact", `company_id = '${p1.company!.id}' and role = 'PRIMARY' and valid_to is null`) === 1
       && p2.contacts.find((c) => c.personId === tomas.person.id)?.role === "OTHER", p2.contacts);
   const ana = await lead("Ana");
   const p3 = await corp.engage(R, ana.id, { companyName: "Pine Bakery Ltd", newCompany: true });
   ok("FO-2b pass: \"New company\" despite the offer makes a second company on purpose (AG-2-79 rule 7)", p3.company!.id !== p1.company!.id && count("fo_company", `normalised_name = 'pine bakery'`) === 2);
+
+  const again = await corp.engage(R, lena.id, { companyId: p1.company!.id });
+  ok("FO-2b pass (review m3): a second Engage on the same lead makes a second prospect and keeps the first engaged time and person", again.id !== p1.id && sql(`select engaged_at || '|' || engaged_by from fo_lead where id = '${lena.id}'`) === firstAt);
 
   // ------------------------------------------------------------------------------------- contacts and roles
   const twoRoles = await corp.addContact(R, p1.company!.id, { personId: lena.person.id, role: "SIGNATORY" });
@@ -112,6 +124,8 @@ try {
   const hr = await corp.addContact(R, p1.company!.id, { givenNames: "Raj", familyName: "Sample", email: "raj@pinebakery.example", role: "HR" });
   ok("FO-2b pass: a new person added as HR gets a person record and a link", hr.contacts.some((c) => c.name === "Raj Sample" && c.role === "HR"), hr.contacts);
   ok("FO-2b fail: the same new person again → 409 KNOWN_PERSON (checked against people first, AG-2-77 rule 5)", (await refusal(() => corp.addContact(R, p1.company!.id, { givenNames: "Raj", email: "raj@pinebakery.example", role: "BILLING" })))?.body.code === "KNOWN_PERSON");
+  const known = await refusal(() => corp.addContact(R, p1.company!.id, { givenNames: "Raj", email: "raj@pinebakery.example", role: "BILLING" }));
+  ok("FO-2b pass (review m7): KNOWN_PERSON names the person on file the adder may see (a contact here), so they can be picked", (known?.body.matches as { personId: string | null }[])?.[0]?.personId === hr.contacts.find((c) => c.name === "Raj Sample")?.personId, known);
   const lenaPrimary = twoRoles.contacts.find((c) => c.personId === lena.person.id && c.role === "PRIMARY")!;
   ok("FO-2b fail: ending the PRIMARY link → 409 PRIMARY_NEEDED, the link stays", (await refusal(() => corp.endContact(R, lenaPrimary.id)))?.body.code === "PRIMARY_NEEDED" && count("fo_company_contact", `id = '${lenaPrimary.id}' and valid_to is null`) === 1);
   const tomasOther = p2.contacts.find((c) => c.personId === tomas.person.id)!;
@@ -142,6 +156,20 @@ try {
   ok("FO-2b fail: Change type to the type it has → 409 SAME_TYPE", (await refusal(() => corp.changeType(R, iv, { type: "INDIVIDUAL" })))?.body.code === "SAME_TYPE");
   ok("FO-2b fail: Change type to Corporate without a company name → refused at the field, nothing changed", (await refusal(() => corp.changeType(R, iv, { type: "CORPORATE" })))?.status === 422 && sql(`select type from fo_prospect where id = '${iv}'`) === "INDIVIDUAL");
 
+  // A real retainer on the Individual prospect (FO-5's tables): a draft, then sent, then withdrawn.
+  const TPL = randomUUID(), RET = randomUUID(), VER = randomUUID(), hex = (k: number) => k.toString(16).padStart(64, "0");
+  sql(`insert into fo_retainer_template (id, firm_id, name, kind, file_key, file_sha256, placeholders, created_by, updated_by, updated_at) values ('${TPL}', '${A}', 'Retainer (Sample)', 'RETAINER', 'retainer-templates/${TPL}/v1.docx', '${hex(1)}', '{client.name,fees}', 'seed:FO-2b-test', 'seed:FO-2b-test', now())`);
+  sql(`insert into fo_retainer (id, firm_id, kind, prospect_id, subject, signer_person_id, representative_staff_id, template_id, template_version, template_file_key, created_by, updated_at) values ('${RET}', '${A}', 'RETAINER', '${iv}', 'PERSON', '${ivo.person.id}', '${R.staffId}', '${TPL}', 1, 'retainer-templates/${TPL}/v1.docx', 'staff:${R.staffId}', now()); insert into fo_retainer_version (id, firm_id, retainer_id, n, merge_values, file_key, original_sha256, created_by) values ('${VER}', '${A}', '${RET}', 1, '{"client.name":"Ivo Sample"}', 'retainers/${RET}/v1.docx', '${hex(11)}', 'staff:${R.staffId}')`);
+  const onDraft = await refusal(() => corp.changeType(R, iv, { type: "CORPORATE", companyId: toCorp.company!.id }));
+  ok("FO-2b fail (review M1): a draft retainer for the current client → 409 RETAINER_OPEN naming it (FO-5 cannot discard a draft); nothing changed", onDraft?.body.code === "RETAINER_OPEN" && onDraft.body.retainerId === RET && sql(`select type from fo_prospect where id = '${iv}'`) === "INDIVIDUAL", onDraft);
+  sql(`update fo_retainer_version set sent_at = now() where id = '${VER}'; update fo_retainer set status = 'SENT' where id = '${RET}'`);
+  const onSent = await refusal(() => corp.changeType(R, iv, { type: "CORPORATE", companyId: toCorp.company!.id }));
+  ok("FO-2b fail: a retainer out for signing → 409 \"Void the retainer in Agreements first.\"", onSent?.body.code === "RETAINER_SENT" && onSent.body.detail === "Void the retainer in Agreements first.", onSent);
+  sql(`update fo_retainer_version set ended_at = now(), end_reason = 'WITHDRAWN' where id = '${VER}'; update fo_retainer set status = 'WITHDRAWN', withdrawn_reason = 'Wrong client type (Sample)', withdrawn_at = now(), withdrawn_by = 'staff:${R.staffId}' where id = '${RET}'`);
+  const afterWithdraw = await corp.changeType(R, iv, { type: "CORPORATE", companyId: toCorp.company!.id });
+  ok("FO-2b pass: once the retainer is withdrawn, Change type goes ahead", afterWithdraw.type === "CORPORATE");
+  await corp.changeType(R, iv, { type: "INDIVIDUAL" });
+
   // A signature exists: P1 won by Signed offline (as FO-5's Signed offline moves it).
   const won = sql(`select id from fo_stage where firm_id = '${A}' and pipeline = 'CORPORATE' and kind = 'WON'`);
   sql(`update fo_prospect set stage_id = '${won}', won_via = 'SIGNED_OFFLINE', won_at = now() where id = '${p1.id}'`);
@@ -163,6 +191,24 @@ try {
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: ws });
   ok("FO-2b fail: firm B's staff reading firm A's prospect or company → 404", (await refusal(() => corp.read(SOLO, p2.id)))?.status === 404 && (await refusal(() => corp.addContact(SOLO, p1.company!.id, { personId: lena.person.id, role: "HR" })))?.status === 404);
 
+  // ------------------------------------------------------------------------------------- Make primary never touches a hidden prospect (review M2)
+  const xa = await lead("Xena"), ya = await lead("Yuri", T);
+  const px = await corp.engage(R, xa.id, { companyName: "Hidden Hollow Ltd" });
+  const py = await corp.engage(T, ya.id, { companyId: px.company!.id });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: ws });
+  const yLink = py.contacts.find((c) => c.personId === ya.person.id)!;
+  const hidden = await refusal(() => corp.changeRole(T, yLink.id, { role: "PRIMARY" }));
+  ok("FO-2b fail (review M2): with \"everyone sees all\" off, T's Make primary that would repoint R's prospect → 409 HIDDEN_PROSPECTS, naming no prospect; nothing changed",
+    hidden?.body.code === "HIDDEN_PROSPECTS" && !String(hidden.body.detail).includes(px.number) && sql(`select primary_contact_person_id from fo_prospect where id = '${px.id}'`) === xa.person.id && count("fo_company_contact", `id = '${yLink.id}' and valid_to is null`) === 1, hidden);
+  const endHidden = await refusal(() => corp.endContact(R, yLink.id));
+  ok("FO-2b fail (review m2): R ending Yuri's only link (the primary contact of T's prospect, unseen with the setting off) → 409 PRIMARY_NEEDED that never names T's prospect",
+    endHidden?.body.code === "PRIMARY_NEEDED" && !JSON.stringify(endHidden.body).includes(py.number) && count("fo_company_contact", `id = '${yLink.id}' and valid_to is null`) === 1, endHidden);
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: ws });
+  const made2 = await corp.changeRole(R, yLink.id, { role: "PRIMARY" });
+  ok("FO-2b pass (review M2): a Make primary by someone who sees both prospects repoints R's prospect with its own audit line and lists it on the role line",
+    made2.contacts.find((c) => c.role === "PRIMARY")?.personId === ya.person.id && sql(`select primary_contact_person_id from fo_prospect where id = '${px.id}'`) === ya.person.id
+      && audits(px.id, "prospect.primary_contact_changed") === 1 && count("audit_event", `action = 'company_contact.role_changed' and detail->'repointedProspectIds' ? '${px.id}'`) === 1, made2.contacts);
+
   // ------------------------------------------------------------------------------------- the won payload's subject
   const subject = await wonSubjectOf(db, A, p1.id);
   ok("FO-2b pass: prospect.won's subject is COMPANY with the company's name and its live contacts with their roles (Tomas PRIMARY and the primary contact; Lena OTHER and SIGNATORY)",
@@ -174,17 +220,22 @@ try {
     && !ProspectWonSubject.safeParse({ subject: "COMPANY", company: { id: p1.company!.id, name: "" }, contacts: subject.subject === "COMPANY" ? subject.contacts : [] }).success);
 
   // ------------------------------------------------------------------------------------- one audit line per change
-  ok("FO-2b pass: every change wrote one audit line through AuditPort (Engage, Change type twice, add, role change, end)",
-    audits(p1.id, "lead.engaged") === 1 && audits(iv, "prospect.type_changed") === 2 && count("audit_event", `action = 'company_contact.added'`) === 2 && count("audit_event", `action = 'company_contact.role_changed'`) === 1 && audits(raj.id, "company_contact.ended") === 1);
+  ok("FO-2b pass: every change wrote one audit line through AuditPort (Engage, Change type four times, add, role change, end)",
+    audits(p1.id, "lead.engaged") === 1 && audits(iv, "prospect.type_changed") === 4 && count("audit_event", `action = 'company_contact.added'`) === 2 && count("audit_event", `action = 'company_contact.role_changed'`) === 2 && audits(raj.id, "company_contact.ended") === 1);
   const failing = new Corporate(db, { ...ports, audit: fakeAudit({ failOn: () => true }) });
   const dora = await lead("Dora");
   const [pBefore, cBefore, lBefore, eBefore] = [count("fo_prospect"), count("fo_company"), count("fo_company_contact"), count("module_event")];
   const e1 = await refusal(() => failing.engage(R, dora.id, { companyName: "Dora Design Corp" }));
   ok("FO-2b fail: a forced audit failure rolls Engage back (no prospect, company, link or event; the lead OPEN)", e1 !== null && count("fo_prospect") === pBefore && count("fo_company") === cBefore && count("fo_company_contact") === lBefore && count("module_event") === eBefore && sql(`select state from fo_lead where id = '${dora.id}'`) === "OPEN", e1);
   const e2 = await refusal(() => failing.changeType(R, iv, { type: "CORPORATE", companyId: toCorp.company!.id }));
-  ok("FO-2b fail: a forced audit failure rolls Change type back", e2 !== null && sql(`select type from fo_prospect where id = '${iv}'`) === "INDIVIDUAL" && count("fo_stage_move", `prospect_id = '${iv}'`) === 3);
+  ok("FO-2b fail: a forced audit failure rolls Change type back", e2 !== null && sql(`select type from fo_prospect where id = '${iv}'`) === "INDIVIDUAL" && count("fo_stage_move", `prospect_id = '${iv}'`) === 5);
   const e3 = await refusal(() => failing.addContact(R, p2.company!.id, { personId: dora.person.id, role: "BILLING" }));
   ok("FO-2b fail: a forced audit failure rolls Add contact back", e3 !== null && count("fo_company_contact") === lBefore);
+  const liveNow = count("fo_company_contact", "valid_to is null"), lena2 = (await corp.contacts(R, p1.company!.id)).contacts.find((c) => c.personId === lena.person.id && c.role === "SIGNATORY")!;
+  const e4 = await refusal(() => failing.changeRole(R, lena2.id, { role: "BILLING" }));
+  ok("FO-2b fail: a forced audit failure rolls Change role back (the link still live, no new link)", e4 !== null && count("fo_company_contact") === lBefore && count("fo_company_contact", "valid_to is null") === liveNow && count("fo_company_contact", `id = '${lena2.id}' and valid_to is null`) === 1);
+  const e5 = await refusal(() => failing.endContact(R, lena2.id));
+  ok("FO-2b fail: a forced audit failure rolls End contact back", e5 !== null && count("fo_company_contact", `id = '${lena2.id}' and valid_to is null`) === 1);
 
   // ------------------------------------------------------------------------------------- the routes' keys
   const keysOf = (m: string) => (Reflect.getMetadata(PLATFORM_ACCESS, (CorporateController.prototype as unknown as Record<string, object>)[m]) as { keys?: string[] } | undefined)?.keys?.join(",");

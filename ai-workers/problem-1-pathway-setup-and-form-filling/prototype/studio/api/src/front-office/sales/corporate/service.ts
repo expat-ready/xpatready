@@ -69,12 +69,15 @@ export class Corporate {
   private async company(tx: Tx, ctx: StaffContext, b: B, name: string | null, see: (o: string | null) => boolean) {
     if (b.companyId !== undefined && b.companyId !== null) {
       const c = await tx.foCompany.findFirst({ where: firmScope(ctx.firmId, { id: idOf(b.companyId, "companyId", "Company") }), select: { id: true } });
-      return c ? { id: c.id, created: false, offered: 1 } : unprocessable("Company: choose one from the list.", { companyId: "Choose one from the list." });
+      // A pick is the decision (AG-2-79 rule 9); the key it matched on is known only when a name was typed with it (review m1).
+      const typed = typeof b.companyName === "string" && b.companyName.trim() ? normaliseCompanyName(b.companyName) : null;
+      const matchedOn = typed && c && typed === (await tx.foCompany.findFirst({ where: firmScope(ctx.firmId, { id: c.id }), select: { normalisedName: true } }))?.normalisedName ? "ORG_NAME" : null;
+      return c ? { id: c.id, created: false, picked: true, matchedOn, offered: matchedOn ? 1 : 0 } : unprocessable("Company: choose one from the list.", { companyId: "Choose one from the list." });
     }
     const offers = await companyMatches(tx, ctx.firmId, name!, see);
     if (offers.length && b.newCompany !== true) conflict("A company with this name is already on file. Pick it, or choose New company.", "COMPANY_MATCH", { offers });
     const c = await tx.foCompany.create({ data: { firmId: ctx.firmId, operatingName: name!, normalisedName: normaliseCompanyName(name!), createdBy: actorOf(ctx) } });
-    return { id: c.id, created: true, offered: offers.length };
+    return { id: c.id, created: true, picked: false, matchedOn: offers.length ? "ORG_NAME" : null, offered: offers.length };
   }
 
   /** The enquirer's link (AG-2-77 rule 4): their live link if they have one, else PRIMARY, or OTHER when the company
@@ -109,14 +112,17 @@ export class Corporate {
       if (l.state === "CLOSED") return conflict("This lead is closed. Reopen it first (AG-2-80).", "LEAD_CLOSED");
       const company = await this.company(tx, ctx, b, name, see);
       const owner = active ?? ctx.staffId;
-      await tx.foLead.update({ where: { id: l.id }, data: { state: "ENGAGED", engagedAt: new Date(), engagedBy: actorOf(ctx), ownerStaffId: owner } });
+      // The first Engage's time and person stay (a second Engage on an ENGAGED lead keeps them; review m3).
+      await tx.foLead.update({ where: { id: l.id }, data: { state: "ENGAGED", ownerStaffId: owner, ...(l.state === "OPEN" ? { engagedAt: new Date(), engagedBy: actorOf(ctx) } : {}) } });
       const role = await this.link(tx, ctx, company.id, l.person_id);
       const stage = await this.firstStage(tx, ctx.firmId, "CORPORATE");
       const p = await tx.foProspect.create({ data: { firmId: ctx.firmId, leadId: l.id, type: "CORPORATE", stageId: stage.id, subjectCompanyId: company.id, primaryContactPersonId: l.person_id, ownerStaffId: owner, createdBy: actorOf(ctx) } });
       await tx.foStageMove.create({ data: { firmId: ctx.firmId, prospectId: p.id, toStageId: stage.id, cause: "PERSON", byActor: actorOf(ctx) } });
       await this.audit(tx, ctx, EVENT.LEAD_ENGAGED, p.id, `Staff ${ctx.staffId} engaged lead ${l.number} as Corporate.`, {
-        leadId: l.id, type: "CORPORATE", companyId: company.id, companyCreated: company.created, matchedOn: company.offered ? "ORG_NAME" : null, offered: company.offered, enquirerRole: role, ownerStaffId: owner, ownerFilled: active === null,
+        leadId: l.id, type: "CORPORATE", companyId: company.id, companyCreated: company.created, companyPicked: company.picked, matchedOn: company.matchedOn, offered: company.offered, enquirerRole: role, ownerStaffId: owner, ownerFilled: active === null,
       });
+      // An owner filled by Engage is a take (AG-2-75 rule 5c): its line on the lead, as Take it writes, so FO-2v's race answer reads it (review m3).
+      if (active === null) await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.LEAD_TAKEN, entity: "fo_lead", entityKey: l.id, summary: `Staff ${ctx.staffId} took lead ${l.number} by engaging it.`, detail: { ownerStaffId: owner, previousOwnerStaffId: l.owner_staff_id, fromUnassigned: true, via: "ENGAGE" } });
       if (active === null) await this.event(tx, ctx.firmId, EVENT.LEAD_TAKEN, l.id, LeadEventPayload.parse({ leadId: l.id, personId: l.person_id, door: l.door, state: "ENGAGED", ownerStaffId: owner }));
       await this.event(tx, ctx.firmId, EVENT.LEAD_ENGAGED, p.id, ProspectEventPayload.parse({ prospectId: p.id, leadId: l.id, type: "CORPORATE", stageKey: stage.key, subjectPersonId: null, subjectCompanyId: company.id, primaryContactPersonId: l.person_id, ownerStaffId: owner }));
       return p.id;
@@ -191,7 +197,18 @@ export class Corporate {
       personId = (await this.db.foPerson.findFirst({ where: firmScope(ctx.firmId, { id: idOf(b.personId, "personId", "Person") }), select: { id: true } }))?.id ?? notFound("person");
     } else {
       newPerson = { givenNames: text(b.givenNames, { field: "givenNames", what: "First name", max: 100, required: true })!, familyName: text(b.familyName, { field: "familyName", what: "Last name", max: 100 }), email: email(b.email), phone: phone(b.phone) };
-      if (b.confirmedNew !== true && (await possibleMatch(this.db, ctx.firmId, newPerson))) conflict("This person may already be on file. Pick them, or say it is someone new.", "KNOWN_PERSON");
+      const match = b.confirmedNew === true ? null : await possibleMatch(this.db, ctx.firmId, newPerson);
+      if (match) {
+        // Named only when the person may see them: one of their leads is visible, or they are a contact of this company (review m7).
+        const { vis } = await this.seer(ctx);
+        const [theirLeads, here, p] = await Promise.all([
+          this.db.foLead.findMany({ where: firmScope(ctx.firmId, { personId: match }), select: { ownerStaffId: true } }),
+          this.db.foCompanyContact.count({ where: firmScope(ctx.firmId, { companyId: c.id, personId: match }) }),
+          this.db.foPerson.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: match }) }),
+        ]);
+        const seen = here > 0 || theirLeads.some((x) => sees(vis, ctx, x.ownerStaffId));
+        conflict("This person may already be on file. Pick them, or say it is someone new.", "KNOWN_PERSON", { matches: [seen ? { personId: match, name: nameOf(p) } : { personId: null, name: "A person you cannot see" }] });
+      }
     }
     const linkId = await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`select 1 from fo_company where firm_id = ${ctx.firmId}::uuid and id = ${c.id}::uuid for update`;
@@ -221,6 +238,8 @@ export class Corporate {
     const l = await this.liveLink(ctx, linkId), role = roleOf(b.role);
     if (l.role === role) conflict("This contact already has this role.", "SAME_ROLE");
     if (l.role === "PRIMARY") conflict("Make another person primary first (AG-2-77 rule 6).", "PRIMARY_NEEDED");
+    const { see } = await this.seer(ctx);
+    let repointed: string[] = [];
     await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`select 1 from fo_company where firm_id = ${ctx.firmId}::uuid and id = ${l.companyId}::uuid for update`;
       const live = await tx.foCompanyContact.findMany({ where: firmScope(ctx.firmId, { companyId: l.companyId, validTo: null }) });
@@ -230,11 +249,22 @@ export class Corporate {
       if (old) {
         await tx.foCompanyContact.update({ where: { id: old.id }, data: { validTo: now } });
         if (!live.some((x) => x.personId === old.personId && x.role === "OTHER")) await tx.foCompanyContact.create({ data: { firmId: ctx.firmId, companyId: l.companyId, personId: old.personId, role: "OTHER", createdBy: actorOf(ctx) } });
-        await tx.foProspect.updateMany({ where: firmScope(ctx.firmId, { type: "CORPORATE" as const, subjectCompanyId: l.companyId, primaryContactPersonId: old.personId, stage: { kind: { in: ["ACTIVE" as const, "NURTURE" as const] } } }), data: { primaryContactPersonId: l.personId } });
+        // The company's open prospects that named the old primary: every one must be the person's to see, or nothing
+        // changes (review M2: never a silent change to another person's prospect); each repoint gets its own line.
+        const named = await tx.$queryRaw<{ id: string; number: string; owner_staff_id: string | null }[]>`
+          select p.id::text, p.number, p.owner_staff_id::text from fo_prospect p join fo_stage s on s.firm_id = p.firm_id and s.id = p.stage_id
+           where p.firm_id = ${ctx.firmId}::uuid and p.type = 'CORPORATE' and p.subject_company_id = ${l.companyId}::uuid
+             and p.primary_contact_person_id = ${old.personId}::uuid and s.kind in ('ACTIVE', 'NURTURE') order by p.number for update of p`;
+        if (named.some((x) => !see(x.owner_staff_id))) conflict("This company has open prospects you cannot see that name its primary contact. Ask someone who sees all prospects to change it.", "HIDDEN_PROSPECTS");
+        for (const x of named) {
+          await tx.foProspect.update({ where: { id: x.id }, data: { primaryContactPersonId: l.personId } });
+          await this.audit(tx, ctx, "prospect.primary_contact_changed", x.id, `Staff ${ctx.staffId} made another contact primary for ${x.number}.`, { companyId: l.companyId, fromPersonId: old.personId, toPersonId: l.personId });
+        }
+        repointed = named.map((x) => x.id);
       }
       await tx.foCompanyContact.update({ where: { id: l.id }, data: { validTo: now } });
       const n = await tx.foCompanyContact.create({ data: { firmId: ctx.firmId, companyId: l.companyId, personId: l.personId, role, createdBy: actorOf(ctx) } });
-      await this.auditLink(tx, ctx, "company_contact.role_changed", n.id, `Staff ${ctx.staffId} changed a contact's role from ${l.role} to ${role}.`, { companyId: l.companyId, personId: l.personId, fromRole: l.role, toRole: role, endedLinkId: l.id, previousPrimaryPersonId: old?.personId ?? null });
+      await this.auditLink(tx, ctx, "company_contact.role_changed", n.id, `Staff ${ctx.staffId} changed a contact's role from ${l.role} to ${role}.`, { companyId: l.companyId, personId: l.personId, fromRole: l.role, toRole: role, endedLinkId: l.id, previousPrimaryPersonId: old?.personId ?? null, repointedProspectIds: repointed });
     });
     return this.contacts(ctx, l.companyId);
   }
@@ -244,11 +274,12 @@ export class Corporate {
   async endContact(ctx: StaffContext, linkId: string) {
     const l = await this.liveLink(ctx, linkId);
     if (l.role === "PRIMARY") conflict("Make another person primary first (AG-2-77 rule 6).", "PRIMARY_NEEDED");
+    const { see } = await this.seer(ctx);
     await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`select 1 from fo_company where firm_id = ${ctx.firmId}::uuid and id = ${l.companyId}::uuid for update`;
       const others = await tx.foCompanyContact.count({ where: firmScope(ctx.firmId, { companyId: l.companyId, personId: l.personId, validTo: null, id: { not: l.id } }) });
-      const named = await tx.foProspect.findFirst({ where: firmScope(ctx.firmId, { type: "CORPORATE" as const, subjectCompanyId: l.companyId, primaryContactPersonId: l.personId, stage: { kind: { in: ["ACTIVE" as const, "NURTURE" as const] } } }), select: { number: true } });
-      if (!others && named) conflict(`This person is the primary contact of ${named.number}. Make another person primary first.`, "PRIMARY_NEEDED");
+      const named = await tx.foProspect.findFirst({ where: firmScope(ctx.firmId, { type: "CORPORATE" as const, subjectCompanyId: l.companyId, primaryContactPersonId: l.personId, stage: { kind: { in: ["ACTIVE" as const, "NURTURE" as const] } } }), select: { number: true, ownerStaffId: true } });
+      if (!others && named) conflict(`This person is the primary contact of ${see(named.ownerStaffId) ? named.number : "an open prospect"}. Make another person primary first.`, "PRIMARY_NEEDED");
       const n = await tx.foCompanyContact.updateMany({ where: firmScope(ctx.firmId, { id: l.id, validTo: null }), data: { validTo: new Date() } });
       if (n.count !== 1) conflict("This contact changed. Reload it.", "CHANGED");
       await this.auditLink(tx, ctx, "company_contact.ended", l.id, `Staff ${ctx.staffId} ended a ${l.role} contact of company ${l.companyId}.`, { companyId: l.companyId, personId: l.personId, role: l.role });
@@ -275,10 +306,13 @@ export class Corporate {
       if (cur.kind === "WON") conflict("This prospect is signed: its type is fixed (AG-2-76).", "SIGNED");
       if (cur.kind === "LOST") conflict("A lost prospect keeps its type. Start a new prospect instead.", "PROSPECT_CLOSED");
       if (p.type === to) conflict(`This prospect is already ${to === "CORPORATE" ? "Corporate" : "Individual"}.`, "SAME_TYPE");
-      const r = await tx.foRetainer.findFirst({ where: firmScope(ctx.firmId, { prospectId: id, kind: "RETAINER" as const, status: { notIn: ["WITHDRAWN", "EXPIRED"] as never } }), select: { status: true } });
+      const r = await tx.foRetainer.findFirst({ where: firmScope(ctx.firmId, { prospectId: id, kind: "RETAINER" as const, status: { notIn: ["WITHDRAWN", "EXPIRED"] as never } }), select: { id: true, status: true } });
       if (r && ["SIGNED", "SIGNED_OFFLINE", "CLIENT_SIGNED"].includes(r.status)) conflict("This prospect was just signed: its type is fixed.", "SIGNED");
       if (r && ["SENT", "VIEWED"].includes(r.status)) conflict("Void the retainer in Agreements first.", "RETAINER_SENT");
-      if (r) conflict("This prospect has an agreement being prepared. Withdraw it in Agreements first.", "RETAINER_OPEN");
+      // A DRAFT or DECLINED retainer's subject was fixed at Prepare and FO-5 cannot re-subject or discard it (its status
+      // moves: DRAFT → SENT | SIGNED_OFFLINE, DECLINED → DRAFT), so changing the type would leave an agreement naming the
+      // wrong client that can only be sent. Refused, saying so plainly (review M1; stricter than AG-2-76 rule 2, PR question 2).
+      if (r) conflict("This prospect has an agreement being prepared for the current client, and it cannot be discarded yet. Change type waits until it can (Agreements has no Discard draft yet).", "RETAINER_OPEN", { retainerId: r.id, retainerStatus: r.status });
       const stages = await tx.foStage.findMany({ where: firmScope(ctx.firmId, { pipeline: to, active: true }), orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
       const same = stages.find((s) => s.key === cur.key && (s.kind === "ACTIVE" || s.kind === "NURTURE"));
       const earlier = stages.filter((s) => s.kind === "ACTIVE" && s.sortOrder < cur.sortOrder).at(-1);
@@ -288,7 +322,7 @@ export class Corporate {
         const company = await this.company(tx, ctx, b, name, see);
         const role = await this.link(tx, ctx, company.id, p.subject_person_id!);
         subject = { subjectPersonId: null, subjectCompanyId: company.id, primaryContactPersonId: p.subject_person_id! };
-        extra = { companyCreated: company.created, matchedOn: company.offered ? "ORG_NAME" : null, enquirerRole: role };
+        extra = { companyCreated: company.created, companyPicked: company.picked, matchedOn: company.matchedOn, enquirerRole: role };
       } else {
         const person = b.personId === undefined || b.personId === null ? p.primary_contact_person_id : idOf(b.personId, "personId", "Person");
         const linked = await tx.foCompanyContact.findFirst({ where: firmScope(ctx.firmId, { companyId: p.subject_company_id!, personId: person, validTo: null }), select: { id: true } });
