@@ -54,6 +54,8 @@ Rows proven or Lead-B-only are not listed. R1.77 finishes on CS-C1b + QA-397; R1
 **New row CS-SD1 (16 Nov 21:5x IST, Lead 69):** main's schema drifts on 5 statements (PF-8r #2014). The schema is behind the database: the four `id` fields get `dbgenerated("gen_random_uuid()")`, because migrations insert rows without an id. `canonical_field_name` is kept as an `@@ignore` model, because it is the live guard for unique shared-field names. Its group is the configurator, so the WIP limit does not stop it.
 
 ## 2. Lanes (8 slots; two ready briefs each, P-599)
+**Running (pushed, read 21:56 IST 16 Nov):** #2002 CS-C1b (`claude/runtime-csc1b`) · #2000 CS-DL1 part 1 (`claude/runtime-csdl1a`) · #2007 CS-V1 part 1 (`claude/runtime-csv1-check`) · #2003 AUD-1a (`claude/upbeat-planck-5h4zoh`; its title says "AUD-1a part 1", which is wrong because AUD-1a is a whole id) · #2008 AUD-5 part 1 (`claude/upbeat-bardeen-k2tdqn`). Not yet pushed: FO-7s0, CS-SD1.
+
 | Lane | Now | Next | Status |
 |---|---|---|---|
 | C1 | `build-lead-c-briefs/CS-C1b.md` | `CS-NT1-1.md` (after CS-C1b leaves `runtime.ts`) | start asked 21:0x IST |
