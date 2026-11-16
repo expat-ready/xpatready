@@ -1421,3 +1421,7 @@ New row for BACKLOG, before FO-7t:
   - When J-6 part 2 is on `main`, qa re-scores R1.6 with the full walk.
 * **Order for R1.6:** PF-6r, PF-6m and FO-2v now, at once. Then PF-6 part 2a once #1912 merges, then J-6 part 2. 2b runs after 2a and is not on R1.6's path.
 * Lead 64 agreed rev 16.54. PF-6r goes to the J-6 lane, followed by J-6 part 2 there. PF-6 part 2a goes to the PF-6 part 1 lane once #1912 merges. Custom roles stay X-1, with no scope change.
+
+## Rev 16.55 (16 Nov 10:3x IST, Lead B (6)): FO-2v race time from the audit line (#1933)
+
+The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lead's latest take or assign audit line (written in the same transaction, carrying `previousOwnerStaffId`) in the same lock, so no `owner_set_at` column is added. It shows only when the line is under 10 minutes old (Sample), the lead was Unassigned and the person sees Unassigned leads; anything else answers 404. An added case checks that firm B never reads firm A's lines.
