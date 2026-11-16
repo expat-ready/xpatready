@@ -1562,3 +1562,14 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **Folded in:** `/book/:firmKey/manage` is declared before `/:slug`, plus a case that `manage` is a reserved slug.
 * qa's walk line is the acceptance line.
 * Lead 67 accepted rev 16.68. **FO-3w part 2 is owed at the founder's next typed turn** (STATE), with both fold-ins, on the cloud, P-608.
+
+## Rev 16.69 (16 Nov 17:27 IST): #1952 (PF-6f) is not the C4.11-G5 cause; requeue (Lead 67's question, P-214)
+* **Lead 67's guess, checked against the CI evidence:** the new `callback-page.tsx` changes how the C4.11 pack's sign-in lands. The guess does not hold:
+  - Batches #1965 (head 9527992aa5) and #1966 (head 10be3d72a1) were stacked on #1952, and their tested `callback-page.tsx` has PF-6f's `let latest`. Both passed the C4.11 regression part, at 08:56 and 09:19 UTC.
+  - `acceptance/C4.11.test.ts` uses the API only (`call()` with x-actor; no browser or sign-in page), and gate B gives each pack its own copy, port and database (`tools/gate-b.mjs` lines 22–23).
+  - The two red batches, #1964 at 08:26 UTC and #1976 at 11:37 UTC, both show `{"ready":0,"nobody":0}`: the saved run gave no Ready band at all, and the same-job retry was red too. Between them, seven batches passed C4.11 (#1970, #1971, #1973 to #1975, #1977, #1978).
+  - **Verdict:** C4.11-G5 fails intermittently; the cause is not found.
+* **Ruling (PR comment 6915752025):**
+  - #1952 is requeued as it is, with its approval and label standing; the requeue is the Lead's word.
+  - The C4.11-G5 `ready:0` failure needs a fix row for the C4.11 owner (not PF/FO). It starts from jobs 133164149062 and 133239231752.
+  - Until that fix lands, `ready:0` is a known failure for B202's table, never a reason to take a PR out.
