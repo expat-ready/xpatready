@@ -120,6 +120,11 @@ try {
   const D0 = deposit(500000);  // P1's money, enough for the cases below
   ok("FO-7mv fail (B-19): a correction of a deposit with no kind is refused; with BOUNCED it is written",
     refused(T, correctQ(D0, 100, undefined), /a correction of a deposit says why it was made/, "23514") && !!sql(T, correctQ(D0, 100, "BOUNCED")));
+  // Lead B (rev 16.51): a refusal from the AFTER trigger rolls its statement back — no row, no ledger effect.
+  const ledger = () => sql(T, `select count(*) || ':' || coalesce((select balance_after_minor || '/' || seq from money_trust_entry where firm_id = '${firmA}' and person_id = '${P1}' order by seq desc limit 1), '0') from money_trust_entry where firm_id = '${firmA}'`);
+  { const was = ledger(), refusedNoKind = refused(T, correctQ(D0, 200, undefined), /says why it was made/, "23514"), after = ledger(); sql(T, correctQ(D0, 200, "ENTRY_ERROR")); const written = ledger();
+    ok("FO-7mv fail/pass (Lead B rev 16.51): a refused deposit correction (no kind) leaves no row and the balance and seq as they were; the same correction with a kind writes one row and moves the balance",
+      refusedNoKind && after === was && written !== was && Number(written.split(":")[0]) === Number(was.split(":")[0]) + 1, [was, after, written]); }
   const inv0 = invoice(T, 10000), W0 = withdraw(inv0, 1000);
   ok("FO-7mv fail: a correction kind on a return from a withdrawal, or on a refund to the client, is refused",
     refused(T, entry("CORRECTION", 100, { corrects: W0, reason: "x", ck: "WRONG_ACCOUNT" }), /only a correction of a deposit has a correction kind/, "23514")
@@ -142,8 +147,9 @@ try {
       refused(T, moveQ([{ src: W1, amount: 10000 }, { src: W2, amount: 10000 }]), /would move more than this entry still holds \(0 CAD to move: 10000 less 10000 returned/) && !!move([{ src: W2, amount: 10000 }]) && open(W2) === "0");
     // Undo first, then the return is accepted (rule 2's words).
     const inv3 = invoice(T, 10000), W3 = withdraw(inv3, 10000), B3 = move([{ src: W3, amount: 6000 }]);
-    ok("FO-7mv DW1 pass: with 60.00 of a 100.00 application moved, 40.00 comes back to trust; 0.01 more is refused; after the undo the rest comes back",
-      !!sql(T, giveBackQ(W3, 4000)) && refused(T, giveBackQ(W3, 1), /6000 CAD of this trust application has moved to operating, so only 0 can come back/) && !!sql(T, undoQ(B3)) && !!sql(T, giveBackQ(W3, 6000)) && open(W3) === "0");
+    const l0 = ledger(), back40 = !!sql(T, giveBackQ(W3, 4000)), l1 = ledger(), no1 = refused(T, giveBackQ(W3, 1), /6000 CAD of this trust application has moved to operating, so only 0 can come back/), l2 = ledger();
+    ok("FO-7mv DW1 pass/fail (Lead B rev 16.51): with 60.00 of a 100.00 application moved, 40.00 comes back to trust (one row, +40.00); 0.01 more is refused and leaves no row and no ledger effect; after the undo the rest comes back",
+      back40 && l1 !== l0 && no1 && l2 === l1 && sql(T, `select count(*) from money_trust_entry where corrects_entry_id = '${W3}'`) === "1" && !!sql(T, undoQ(B3)) && !!sql(T, giveBackQ(W3, 6000)) && open(W3) === "0", [l0, l1, l2]);
   }
 
   // ------------------------------------------------------------------------------- DW2: parallel moves
