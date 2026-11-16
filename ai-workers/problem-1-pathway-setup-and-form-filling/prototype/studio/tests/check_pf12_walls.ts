@@ -81,7 +81,7 @@ try {
   ok("PF-12 (brief): policies and roles only — no CREATE/DROP TABLE, no column, key or index change; every ALTER TABLE only enables or forces row-level security", altered.length > 0 && altered.every((a) => /^(ENABLE|FORCE) ROW LEVEL SECURITY$/.test(a)) && !/\b(CREATE|DROP)\s+(TABLE|INDEX|TYPE)\b|\bADD\s+COLUMN\b|^\s*(UPDATE|DELETE|INSERT|TRUNCATE)\b/im.test(code), altered.filter((a) => !/ROW LEVEL SECURITY/.test(a)));
   const fns = [...code.matchAll(/CREATE (?:OR REPLACE )?FUNCTION (\w+)/g)].map((m) => m[1]);
   ok("PF-12 (rows rev 15.2): every function the migration creates carries the area prefix platform_", fns.length >= 1 && fns.every((f) => f.startsWith("platform_")), fns);
-  ok("PF-12 (rev 16.34): xr_case_lookup is created only when missing (CS-W1 part 1 may have created it), and NOLOGIN", /IF NOT EXISTS \(SELECT 1 FROM pg_roles WHERE rolname = 'xr_case_lookup'\) THEN CREATE ROLE xr_case_lookup NOLOGIN/.test(code) && /ALTER ROLE xr_case_lookup NOLOGIN/.test(code));
+  ok("PF-12 (rev 16.34): xr_case_lookup is created only when missing (CS-W1 part 1 may have created it), and NOLOGIN", /'CREATE ROLE xr_case_lookup NOLOGIN'/.test(code) && /WHEN duplicate_object THEN EXIT/.test(code) && /'ALTER ROLE xr_case_lookup NOLOGIN/.test(code));
   // Right after its own migration (rows rev 16.7): bare gets every migration before it, then it, then is measured.
   for (const d of before) psql(urlOf(BARE), ["-f", join(MIG, d, "migration.sql")]);
   const bareUnwalled = unwalled(BARE);
@@ -155,6 +155,7 @@ try {
   // Idempotent: the roles part again (as when CS-W1 part 1 or another database on the cluster ran it first) changes nothing.
   const rolesPart = text.slice(text.indexOf("DO $$"), text.indexOf("GRANT USAGE ON SCHEMA"));
   psql(urlOf(EMPTY), ["-c", rolesPart]);
+  const together = await Promise.all(Array.from({ length: 4 }, () => new Promise<number | null>((res) => spawn(join(BIN, "psql"), [urlOf(EMPTY), "-X", "-q", "-v", "ON_ERROR_STOP=1", "-c", rolesPart], { stdio: "ignore" }).on("exit", res)))); ok("PF-12 pass (CI packs): four sessions run the roles part at the same moment, and each succeeds (no tuple concurrently updated)", together.every((c) => c === 0), together);
   ok("PF-12: the roles part runs again with every role already there, changing nothing", role("xr_app") === "f|f|t|f|f|f" && lookup === sql(EMPTY, `select rolcanlogin, (select count(*) from pg_class where relowner = r.oid), (select count(*) from information_schema.role_table_grants where grantee = 'xr_case_lookup') from pg_roles r where rolname = 'xr_case_lookup'`));
 
   // ----------------------------------------------------------------------------------- the walls on demo-shaped data
@@ -226,8 +227,8 @@ try {
   // ------------------------------------------------------------------- the app's pool, the named list and the request
   ok("PF-12 pass: in a suite or tool process a query with no scope runs on the bypass (the process holds the owner's address anyway)", unscopedMode() === "direct");
   const directPool = new WalledPool({ connectionString: appDatabaseUrl(urlOf(DEMO), {}), max: 1 }); pools.push(directPool);
-  ok("PF-12 pass: so a suite seeding through the app's client still reads every firm", Number((await directPool.query("select count(distinct firm_id) as n from platform_staff")).rows[0].n) >= 2);
-  ok("PF-12 pass: in a suite or tool process a door's use runs on a direct call with no scope (a suite calling the service with its own client)", Number((await asBypass("fo.sales.web-form", () => directPool.query("select count(distinct firm_id) as n from platform_staff"))).rows[0].n) >= 2);
+  ok("PF-12 pass: so a suite seeding through the app's client still reads every firm", Number((await (directPool as pg.Pool).query("select count(distinct firm_id) as n from platform_staff")).rows[0].n) >= 2);
+  ok("PF-12 pass: in a suite or tool process a door's use runs on a direct call with no scope (a suite calling the service with its own client)", Number((await asBypass("fo.sales.web-form", () => (directPool as pg.Pool).query("select count(distinct firm_id) as n from platform_staff"))).rows[0].n) >= 2);
   const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm-walls.ts");
   await new FirmWallsInterceptor({ $queryRawUnsafe: async (q: string) => (await appPool.query(q)).rows } as never).onModuleInit();
   ok("PF-12 pass: the API server's start-up (FirmWallsInterceptor, registered by api/src/features/platform-firm-walls.ts) walls every unscoped query from then on", unscopedMode() === "walled" && existsSync(join(STUDIO, "api", "src", "features", "platform-firm-walls.ts")));

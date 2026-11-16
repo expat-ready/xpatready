@@ -17,28 +17,27 @@
 -- Down: drop the policies and both functions; NO FORCE, DISABLE row-level security; trigger functions back to INVOKER and
 -- the migration role; revoke the grants and default privileges; drop the roles once every database on the cluster has.
 
+-- Roles are the cluster's; databases on it may run this at once (isolated copies, CI packs), so each statement is retried
+-- on "tuple concurrently updated" and a role already made (another run, CS-W1 for xr_case_lookup) counts as done. The reader
+-- holds the migration role's rights by membership (owner-only helpers such as money_take_number keep their access lists).
 DO $$
+DECLARE s text; n int;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'xr_data') THEN CREATE ROLE xr_data NOLOGIN; END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'xr_app') THEN CREATE ROLE xr_app LOGIN; END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'xr_staff_bypass') THEN CREATE ROLE xr_staff_bypass NOLOGIN BYPASSRLS; END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'xr_wall_reader') THEN CREATE ROLE xr_wall_reader NOLOGIN BYPASSRLS; END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'xr_case_lookup') THEN CREATE ROLE xr_case_lookup NOLOGIN; END IF;
-END
-$$;
--- The attributes are set again every time, so a role that existed with others is brought back to these.
-ALTER ROLE xr_data NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
-ALTER ROLE xr_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT;
-ALTER ROLE xr_staff_bypass NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
-ALTER ROLE xr_wall_reader NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
-ALTER ROLE xr_case_lookup NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
-ALTER ROLE xr_app SET log_error_verbosity = 'terse';
-GRANT xr_data TO xr_app WITH INHERIT TRUE, SET FALSE;
-GRANT xr_data TO xr_staff_bypass WITH INHERIT TRUE, SET FALSE;
-GRANT xr_data TO xr_wall_reader WITH INHERIT TRUE, SET FALSE;
--- Trigger functions call the owner's helpers closed to PUBLIC (money_take_number): the reader holds the migration role's rights by membership, so no function's access list changes; nobody may become the reader.
-DO $own$ BEGIN EXECUTE format('GRANT %I TO xr_wall_reader WITH INHERIT TRUE, SET FALSE', current_user); END $own$;
-GRANT xr_staff_bypass TO xr_app WITH INHERIT FALSE, SET TRUE;
+  FOREACH s IN ARRAY ARRAY['CREATE ROLE xr_data NOLOGIN', 'CREATE ROLE xr_app LOGIN', 'CREATE ROLE xr_staff_bypass NOLOGIN BYPASSRLS',
+    'CREATE ROLE xr_wall_reader NOLOGIN BYPASSRLS', 'CREATE ROLE xr_case_lookup NOLOGIN',
+    'ALTER ROLE xr_data NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS', 'ALTER ROLE xr_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT',
+    'ALTER ROLE xr_staff_bypass NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS', 'ALTER ROLE xr_wall_reader NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS',
+    'ALTER ROLE xr_case_lookup NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS', 'ALTER ROLE xr_app SET log_error_verbosity = ''terse''',
+    'GRANT xr_data TO xr_app WITH INHERIT TRUE, SET FALSE', 'GRANT xr_data TO xr_staff_bypass WITH INHERIT TRUE, SET FALSE',
+    'GRANT xr_data TO xr_wall_reader WITH INHERIT TRUE, SET FALSE', format('GRANT %I TO xr_wall_reader WITH INHERIT TRUE, SET FALSE', current_user),
+    'GRANT xr_staff_bypass TO xr_app WITH INHERIT FALSE, SET TRUE'] LOOP
+    n := 0; LOOP
+      BEGIN EXECUTE s; EXIT;
+      EXCEPTION WHEN duplicate_object THEN EXIT;
+        WHEN internal_error OR unique_violation THEN n := n + 1; IF n > 200 THEN RAISE; END IF; PERFORM pg_sleep(0.02 + random() * 0.1);
+      END; END LOOP;
+  END LOOP;
+END $$;
 
 GRANT USAGE ON SCHEMA public TO xr_data;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO xr_data;
