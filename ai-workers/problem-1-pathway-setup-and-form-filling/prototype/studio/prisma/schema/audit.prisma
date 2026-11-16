@@ -1,4 +1,4 @@
-// audit.prisma: the one audit trail. Owner: the release Lead (audit module).
+// audit.prisma — the one audit trail. Owner: the release Lead (audit module).
 // One file per area (DB-SPLIT, studio/DEVELOPING.md): the S1 rows edit it in series (AUD-1a, then AUD-1c part 1), never two at once.
 // AUD-1a (SA-11-1, SA-11-2, SA-11-3, AG-13-41): insert-only at the database. The migration's triggers fill actor_type
 // from the actor word when a writer leaves it out (aud_event_fill), and refuse every UPDATE and TRUNCATE and every DELETE
