@@ -41,6 +41,8 @@ export const EVENT = {
    *  the ended version, `reason` UPDATED). FO-6 cancels the signing request on it. */
   RETAINER_REQUEST_ENDED: "retainer.request_ended",
 
+  /** A client identity check was recorded (front office, FO-13i; Code s. 24(2)(a)). Ids, the method and the detail names only. */
+  IDENTITY_CHECKED: "identity.checked",
   /** A lead arrived: by the web form or added by hand (front office, FO-2; AG-2-84). */
   LEAD_CREATED: "lead.created",
   /** A lead got an owner: Take it or Assign to (FO-2; AG-2-13c, AG-2-86). */
@@ -115,6 +117,16 @@ export const RetainerEventPayload = z.object({
 }).strict();
 export type RetainerEventPayload = z.infer<typeof RetainerEventPayload>;
 
+/** The payload FO-13i writes for `identity.checked`: ids, the method and the names of the corroborated details only
+ *  (never the document's number, its last 4 characters, its type or country, the copy's key or a link; a consumer reads
+ *  the check). The firm is the outbox row's firm_id; module_event.subject_id is the check's id. */
+export const IdentityCheckedPayload = z.strictObject({
+  checkId: Uuid, personId: Uuid, checkedBy: Uuid,
+  method: z.enum(["IN_PERSON", "VIDEO", "DOCUMENT_COPY", "OTHER"]),
+  details: z.array(z.enum(["NAME", "HOME_ADDRESS", "PHONE", "EMAIL", "BUSINESS_DETAILS"])).min(1).max(5),
+  copyKept: z.boolean(),
+});
+export type IdentityCheckedPayload = z.infer<typeof IdentityCheckedPayload>;
 /** The payload FO-2 writes for every lead.* event: ids and facts only (no name, email or phone; a consumer reads the lead
  *  itself). The firm is the outbox row's firm_id; module_event.subject_id is the lead's id. */
 export const LeadEventPayload = z.object({
