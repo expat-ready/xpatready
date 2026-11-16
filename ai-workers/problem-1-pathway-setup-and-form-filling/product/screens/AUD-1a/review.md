@@ -95,3 +95,51 @@ The report is `screens/AUD-1a/journey-test-reviewer-2026-11-16.md`.
 * **m4.** `governance.prisma:1` and `DEVELOPING.md:16` still name the audit log in `governance.prisma` (see above). This is for the row owner.
 
 Verdict: Changes needed
+
+---
+
+## Re-review round 2: the diff `061823ebc..1bf3608a6` only (P-277). Head 1bf3608a6807893e183d02b7b20848ae6020bcf9
+
+I read the diff of five commits: 25c67eeb6, 420d740a5, b146acb8d, 35d3b53e5 and 1bf3608a6.
+
+I did not re-run the suites:
+* `batch.done` was absent. The shared Prisma client is generated from main's schema, and checking out the head would change files the coordinator's runs use.
+* Instead I applied the head's migrations, from `git archive`, to a scratch database (`xr_studio_rev_aud1a_r2`, dropped afterwards).
+* I probed the triggers there as `xr_app`. The builder reports `check_aud1a_insert_only` 34/34 at 35d3b53 and the eight touched suites green.
+
+**Earlier findings**
+* **B1 closed.** The test words in the 7 files are now word-only (`system:test`, `system:check`, `system:check-pf21v`, `system:force-audit-failure` in both places in pf3), as Build Lead C ruled in comment 6924926768.
+  * fo2v:101 and fo2v:105 back-date with `session_replication_role = replica` on the suite's own scratch database, then go back to `origin`, with the one-line comment.
+  * `check_screen01_api.ts:222` uses the same pattern on the suite's own isolated copy (argv `DB`). It is the same kind of UPDATE, in a file on the touch list. Accepted.
+* **M1 closed** (`migration.sql:104-106`). The firm is `coalesce(firm_id, detail->>'firmId')`, matched to a Sample firm by id (lower-cased) or by key. Probed as `xr_app`: delete the `platform-audit` workspace row, set the reset setting, then delete. A line whose `detail.firmId` is a real firm (upper-case uuid) is **refused**.
+  * Every writer of platform lines on main writes `detail.firmId`: AuditPort (its schema requires it), `identity/audit.ts` and `settings.ts`.
+  * Demo deletes still go through: a line with a Sample firm id, a key-valued firm, a JSON-array detail, and the case-close line (`case-close.ts:93` writes `detail.firmId`).
+  * DW3b's new case (the "gonePlat" line) fails if the fix is taken out.
+  * DW2b (1bf3608) passes on the workspace-key rule alone, so it does not guard M1. DW3b does.
+* **M2 closed in substance.** The departures are word for word (SA-11-3, BR-1, SA-11-14), with "Unconfirmed: no counsel". The SEED departure, both measurements, the back-fill counts, the contract gap and "Done when" are in the body.
+* **M3 closed.** The body has a `Card unchanged:` line for `MODULE.forms.md`.
+* **m3 closed.** The index and the test trigger are put back in `finally`.
+* **Breaker items:**
+  * An explicit `actor_type` that is not the word's own type is refused (probe: `user-P` as OUR_STAFF).
+  * The id after a prefix must have AuditPort's shape (`^(staff|system|seed):[A-Za-z0-9][A-Za-z0-9._:/-]*$`, and the same for `person:`).
+  * Every actor word on main fits: `staff:<uuid>`, `person:<uuid>`, `system:sign-up`, `system:firm-created`, `system:complaint-ack-reminder`, `system:web-form`, `system:invitation-accept`, `seed:*`.
+  * The new DW5 cases fail against the old code.
+
+**Still open (Minor; none blocks)**
+* **m1, m2, m4:** unchanged, as stated. They are Build Lead C's call and outside the touch list.
+* **m5, new.** The orphan branch still lets a platform line be deleted, but only one with no firm at all or a Sample firm's.
+  * Failure scenario: someone deletes the `platform-audit` workspace row and sets the setting. Then a Sample firm's settings lines, which reset writes on every run, can be deleted. My probe deleted exactly that line.
+  * P-571 (1) says platform lines are never deleted. No path on main deletes that workspace row, and no writer on main writes a platform line without a firm.
+  * Fix: AUD-1b fills `firm_id`, or a later row refuses deleting the `platform-audit` workspace row.
+* **m6, the PR body is stale against the head** (read at 18:19 UTC). Update it before the label:
+  * The delete-exception and departure text still say "`firm_id` null or Sample". The code now reads `detail.firmId` too, which is stricter.
+  * The section Build Lead C requires is missing: "Outside the touch list (row owner's OK, comment 6924926768)", with the 7 files and their line counts.
+  * The Question is still marked "(open)".
+  * "Checks" is at 25c67eeb6, and the breaker changes and DW2b are not described.
+  * I could not find the note the coordinator mentions recording m1, m2 and m4 as not changed.
+
+**Could not check:** a run of `check_aud1a_insert_only` at 1bf3608 on my own copy (see above), and CI at the head (`module-cards` queued; `pr-rules` cancelled).
+
+Reviewer: Approve 1bf3608a6807893e183d02b7b20848ae6020bcf9
+
+Verdict: Approve
