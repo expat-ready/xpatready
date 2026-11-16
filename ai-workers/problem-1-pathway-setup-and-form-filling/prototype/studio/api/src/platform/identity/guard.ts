@@ -9,12 +9,17 @@
 // PF-6b (rulings 2, 3): at start-up no duty or bundle may hand out a MONEY key (catalogue.ts); a route that declares a
 // LICENCE-class key also needs the person's licence record, otherwise 403 NOT_LICENSED. Each route also reports its
 // @OwnOrAll area (keys.ts), which the PF-6b check sweeps.
-import { Inject, Injectable, type CanActivate, type ExecutionContext, type OnModuleInit } from "@nestjs/common";
+// PF-5t (checklist row 100): after every other rule, a person with current terms to accept (terms/service.ts, one read)
+// gets 428 TERMS_PENDING on every guarded route but the four in TERMS_OPEN_ROUTES, matched on the route's declared method
+// and path. Wired by features/platform-terms.ts (TERMS_GATE); an app that serves the terms routes without the gate stops
+// at start-up.
+import { Inject, Injectable, Optional, type CanActivate, type ExecutionContext, type OnModuleInit } from "@nestjs/common";
 import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants.js";
 import { ModulesContainer, Reflector } from "@nestjs/core";
 import { LICENCE_KEYS, assertNoBundleHandsOutMoney, catalogueMismatches } from "./catalogue.ts";
-import { DUTY_KEYS, FIRM_KEY, NOT_LICENSED, OWN_OR_ALL, PLATFORM_ACCESS, PLATFORM_PATH, forbidden, type PlatformAccess, type StaffContext } from "./keys.ts";
+import { DUTY_KEYS, FIRM_KEY, NOT_LICENSED, OWN_OR_ALL, PLATFORM_ACCESS, PLATFORM_PATH, forbidden, problem, type PlatformAccess, type StaffContext } from "./keys.ts";
 import { PlatformIdentity } from "./service.ts";
+import { TERMS_GATE, TERMS_OPEN_ROUTES, TERMS_PENDING, type TermsGate } from "../terms/gate.ts";
 
 const METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "ALL", "OPTIONS", "HEAD", "SEARCH"];
 const join = (...p: string[]) => `/${p.map((s) => s.replace(/^\/+|\/+$/g, "")).filter(Boolean).join("/")}`;
@@ -58,7 +63,8 @@ type Req = { method: string; path?: string; url?: string; headers: Record<string
 
 @Injectable()
 export class PlatformGuard implements CanActivate, OnModuleInit {
-  constructor(@Inject(Reflector) private readonly reflector: Reflector, @Inject(ModulesContainer) private readonly modules: ModulesContainer, @Inject(PlatformIdentity) private readonly identity: PlatformIdentity) {}
+  constructor(@Inject(Reflector) private readonly reflector: Reflector, @Inject(ModulesContainer) private readonly modules: ModulesContainer, @Inject(PlatformIdentity) private readonly identity: PlatformIdentity,
+    @Optional() @Inject(TERMS_GATE) private readonly terms?: TermsGate) {}
 
   /** The LICENCE-class keys, read once from the catalogue (it changes only by migration), always with the code's own list:
    *  a catalogue row edited by hand can never switch the check off (break m1, review m2), and a catalogue that disagrees
@@ -74,7 +80,19 @@ export class PlatformGuard implements CanActivate, OnModuleInit {
     return this.licence;
   }
 
-  async onModuleInit() { assertEveryRouteDeclared(platformRoutes(this.modules, this.reflector)); await this.licenceKeys(); }
+  async onModuleInit() {
+    const routes = platformRoutes(this.modules, this.reflector);
+    assertEveryRouteDeclared(routes);
+    if (!this.terms && routes.some((r) => r.path === "/api/platform/me/terms")) throw new Error("The terms routes are served but the guard has no TERMS_GATE (features/platform-terms.ts): pending terms would never be asked.");
+    await this.licenceKeys();
+  }
+
+  /** The handler's declared method and path(s), as platformRoutes reads them. */
+  private declared(ctx: ExecutionContext): string[] {
+    const handler = ctx.getHandler(), method = METHODS[Reflect.getMetadata(METHOD_METADATA, handler) as number] ?? "?";
+    const bases = ([] as string[]).concat(Reflect.getMetadata(PATH_METADATA, ctx.getClass()) ?? ""), paths = ([] as string[]).concat(Reflect.getMetadata(PATH_METADATA, handler) ?? "");
+    return bases.flatMap((b) => paths.map((p) => `${method} ${join(b, p)}`));
+  }
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<Req>();
@@ -94,6 +112,8 @@ export class PlatformGuard implements CanActivate, OnModuleInit {
       // PF-6b ruling 3, P-612 (founder, 15 Nov: "Yes, keep the check"): a recorded departure from SA-6-27, which says the
       // permission system never checks licence. Unconfirmed: no counsel.
     }
+    // PF-5t: pending terms stop everything but who-am-I, the terms routes and sign-out (Unconfirmed: no counsel).
+    if (this.terms && !this.declared(ctx).every((r) => TERMS_OPEN_ROUTES.has(r)) && (await this.terms.mustAccept(staff))) problem(428, "Accept the updated terms", TERMS_PENDING, { code: "TERMS_PENDING" });
     req.platform = staff;
     return true;
   }

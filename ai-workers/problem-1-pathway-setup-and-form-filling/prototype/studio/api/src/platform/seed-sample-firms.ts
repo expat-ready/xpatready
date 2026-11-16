@@ -7,7 +7,10 @@
 // file → one platform_staff_credential. So user-R and user-S are Owner + Case Manager with a licence, user-T (the second
 // representative, BR-20) Case Manager with a licence, user-O Case Officer.
 // Idempotent: one transaction that only adds what is missing and never changes a row that is there, so a second run
-// changes nothing and a person's later changes are kept. Every value is Sample. Run: tsx api/src/platform/seed-sample-firms.ts
+// changes nothing and a person's later changes are kept. Every value is Sample.
+// PF-5t (checklist row 100): a staff member the seed adds accepts the current privacy notice, and the firm's Owner also the
+// current terms of service and data-processing terms for the firm (Sample acceptances, so the Sample firms have none
+// pending and the acceptances list has rows to show). Unconfirmed: no counsel. Run: tsx api/src/platform/seed-sample-firms.ts
 import type { PlatformRole, Prisma, PrismaClient } from "@prisma/client";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -45,6 +48,7 @@ export async function seedSampleFirms(db: PrismaClient, firms: SampleFirm[] = re
   return db.$transaction(async (tx) => {
     const r: SeedResult = { firmsAdded: 0, staffAdded: 0, grantsAdded: 0, credentialsAdded: 0, subscriptionsAdded: 0, settingKeys: 0, unmatchedCaseFirmKeys: [] };
     r.settingKeys = await syncDefinitionsIfChanged(tx);
+    const terms = await tx.$queryRaw<{ id: string; kind: string }[]>`select distinct on (kind) id::text as id, kind::text as kind from platform_terms_version where published_at <= now() order by kind, published_at desc, version desc`;
     for (const f of firms) {
       const owner = f.users.find((u) => u.duties.includes("firm_admin")) ?? f.users[0];
       const country = COUNTRY[String(f.office?.country ?? "").toLowerCase()];
@@ -71,6 +75,8 @@ export async function seedSampleFirms(db: PrismaClient, firms: SampleFirm[] = re
           familyName: u.family_name ?? null, givenNames: u.given_names ?? null, status: "ACTIVE",
         } });
         r.staffAdded++;
+        const accepts = terms.filter((t) => t.kind === "PRIVACY_NOTICE" || u === owner);
+        if (accepts.length) await tx.platformTermsAcceptance.createMany({ data: accepts.map((t) => ({ firmId: firm.id, staffId: staff.id, versionId: t.id, acceptedAt: new Date() })), skipDuplicates: true });
         for (const role of rolesOf(u)) { await tx.platformRoleGrant.create({ data: { firmId: firm.id, staffId: staff.id, role, grantedBy: SEED_ACTOR } }); r.grantsAdded++; }
         if (u.licence) {
           await tx.platformStaffCredential.create({ data: { firmId: firm.id, staffId: staff.id, representativeType: u.licence.category, licensingBody: u.licence.body, licenceNumber: u.licence.number, updatedBy: SEED_ACTOR } });
