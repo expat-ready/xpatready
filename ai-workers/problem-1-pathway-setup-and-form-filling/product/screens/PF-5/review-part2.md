@@ -241,3 +241,11 @@ Verdict: Approve d04803ca052d3054b8b8a358a13d403d4516ea92
 m5, m7 (the case-route 402: list it in the PR as an unmet Done-when line), m8, m10, m12, m13, n1 (second half), n2, n3.
 
 **Journey score: 8/10, unchanged** (a pass). The R2 fix and the n1 message improve error recovery and feedback, both already at 1.
+
+## Round 4: records only, head `2ac62cf73cac91ca1062798658f27143a9c5f251`
+
+`git diff d04803ca..2ac62cf7` changes only `review-part2.md` (round 3) and `break-report-part2.md` (the breaker's round 3). There is no code change, so the check result from round 3 (82 passed) stands.
+
+I agree with the breaker's new Minor r4: in an outage, the sweep pages once per failing receipt, because `entityKey` is the receipt id and so the 5-minute repeat key never merges the alerts. Raise the alert per queue, or once per sweep with a count. List it in the PR beside n5. It does not block.
+
+Verdict: Approve 2ac62cf73cac91ca1062798658f27143a9c5f251
