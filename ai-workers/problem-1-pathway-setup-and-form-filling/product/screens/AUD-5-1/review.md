@@ -161,3 +161,26 @@ This commit changes only `tests/check_aud5_keep_periods.ts` (+6/−3) and adds r
 The journey score stays **9.5 / 10, pass**.
 
 Verdict: Approve 722476636c020c33e671bb652cf3ea95c6085da5
+
+---
+
+# Re-review 4: e3ed724b03e02a9cb75f2f749bbb30342b3cc9d9 (diff bcb3c9150..e3ed724b0 only)
+
+This commit changes only `tests/check_aud5_keep_periods.ts` (+5/−1). Build Lead C's ruling (PR comment 6924927144) keeps `demo-reset.ts` and `sample-seed.ts` and asks for a test of both branches of the reset. This commit adds that test.
+**Run:** `tsx tests/check_aud5_keep_periods.ts` gives **57 passed, 0 failed**.
+
+Both branches are now tested, and each test is discriminating. I ran mutations on a clean worktree of e3ed724b0, now removed:
+* **Reset forced to the registered default** (`seedValue = def.default`): **55/57**. The "Sample firm's number set to 3 is 6 again" case fails, and so does the start-up-seed case. This matches the coordinator's result.
+* **Reset leaving keys with no Sample value untouched** (`: row.value` in place of `: def.default`): **56/57**. The case "platform.language fr → en" fails.
+* **Restored:** 57/57.
+
+The new pass case also asserts that `platform.language` has no Sample value, so the branch it claims to test is the one it reaches.
+
+**Blockers:** none. **Majors:** none.
+**Minors still open:**
+* m1: the PR body's crash text, until the PR body is updated. The coordinator reports the PR comment is corrected.
+* m8 and m9: accepted as not changed.
+
+The journey score stays **9.5 / 10, pass**.
+
+Verdict: Approve e3ed724b03e02a9cb75f2f749bbb30342b3cc9d9
