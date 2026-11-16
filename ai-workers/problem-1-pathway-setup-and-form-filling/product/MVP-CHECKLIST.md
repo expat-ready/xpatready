@@ -61,7 +61,7 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
 | 26 | Public enquiry form, hardened against abuse | Front office | FO-2, FO-4, FO-4b | Shaped |
-| 27 | Every lead carries a source | Front office | FO-1a (In PR #1742), FO-2 | Shaped |
+| 27 | Every lead carries a source (lead import comes when AG-18's import engine lands, AG-2-7, AG18-D2: no row yet; Lead B rev 16.63, Lead 66) | Front office | FO-1a (In PR #1742), FO-2; FO-4sf (source filter on the leads list, after FO-2v #1933) | Shaped |
 | 28 | Consent recorded per purpose | Platform + front office | PF-19a, FO-2; PF-19b part 2 (one-click unsubscribe, first caller of `ConsentPort.withdraw`; qa #1950, Lead 66) | Shaped |
 | 29 | One person record; duplicate warning; safe merge | Front office | FO-1a (In PR #1742), FO-9a, FO-9b, FO-9s | Shaped |
 | 30 | Lead lists, filters and board | Front office | FO-4 | Shaped |
