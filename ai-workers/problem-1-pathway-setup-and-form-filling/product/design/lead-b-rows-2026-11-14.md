@@ -1574,3 +1574,9 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - The C4.11-G5 `ready:0` failure needs a fix row for the C4.11 owner (not PF/FO). It starts from jobs 133164149062 and 133239231752.
   - Until that fix lands, `ready:0` is a known failure for B202's table, never a reason to take a PR out.
 * **Lead 67 accepted, 17:28 IST:** its call is withdrawn. #1952 is labelled and requeued as it is, with the correction posted. C4.11-G5 `ready:0` is now Lead 67's fix row, in STATE beside C9.5. Until it lands it sits in B202's known-failures table, and no PR is dequeued for it.
+
+## Rev 16.70 (16 Nov 18:17 IST): starts under Lead 68 (P-641)
+* **P-641:** founder decision to push harder tonight on extra usage.
+* **FO-4sf:** Lead 68 asked for its cloud lane at 18:2x IST (name `fo-4sf`), with Lead B's brief word for word. #1933 is merged.
+* **FO-3w part 2:** Lead 67 started its cloud lane at 17:41 IST, with both of Lead B's additions (QA-496 ruling, rev 16.68).
+* **PF-19e:** waits on #1956 and #1961, both queued. Lead B watches both and tells Lead 68 the moment both are on main, and Lead 68 then starts it.
