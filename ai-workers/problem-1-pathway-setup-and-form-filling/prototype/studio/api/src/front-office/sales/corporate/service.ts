@@ -11,7 +11,7 @@ import type { StaffContext } from "../../../platform/identity/keys.ts";
 import { possibleMatch } from "../arrival.ts";
 import { actorOf, conflict, email, notFound, phone, sees, text, unprocessable, UUID, visibilityOf, type Tx } from "../common.ts";
 import { SALES_PORTS, type SalesPorts } from "../public.ts";
-import { companyMatches, normaliseCompanyName } from "./match.ts";
+import { companyMatches, normaliseCompanyName, seesCompany, type Seer } from "./match.ts";
 
 export const ROLES = ["PRIMARY", "SIGNATORY", "HR", "BILLING", "OTHER"] as const;
 const TYPES = ["INDIVIDUAL", "CORPORATE"] as const;
@@ -44,7 +44,8 @@ export class Corporate {
   /** Who sees a prospect (AG-2-64, the retainers' rule): all with view.all and "everyone sees all", else their own. */
   private async seer(ctx: StaffContext) {
     const vis = await visibilityOf(this.db, ctx);
-    return { vis, see: (owner: string | null) => vis.seesAll || owner === ctx.staffId };
+    const see = (owner: string | null) => vis.seesAll || owner === ctx.staffId;
+    return { vis, see, company: { see, seesAll: vis.seesAll, actor: actorOf(ctx) } satisfies Seer };
   }
 
   /** One audit line on a prospect, or on a company contact link (entities named literally, for check_case_feed's sweep). */
@@ -61,20 +62,22 @@ export class Corporate {
   /** The company match (AG-2-79): offered, never linked. */
   async match(ctx: StaffContext, name: unknown) {
     const n = text(name, { field: "name", what: "Company name", max: 200, required: true })!;
-    return { offers: await companyMatches(this.db, ctx.firmId, n, (await this.seer(ctx)).see) };
+    return { offers: await companyMatches(this.db, ctx.firmId, n, (await this.seer(ctx)).company) };
   }
 
   /** The company picked (`companyId`) or a new one (`companyName`): a name that matches one on file is refused with the
    *  offers (409 COMPANY_MATCH) until the body picks one or says `newCompany: true` (AG-2-79 rules 7, 9). */
-  private async company(tx: Tx, ctx: StaffContext, b: B, name: string | null, see: (o: string | null) => boolean) {
+  private async company(tx: Tx, ctx: StaffContext, b: B, name: string | null, seer: Seer) {
     if (b.companyId !== undefined && b.companyId !== null) {
-      const c = await tx.foCompany.findFirst({ where: firmScope(ctx.firmId, { id: idOf(b.companyId, "companyId", "Company") }), select: { id: true } });
+      // Only a company the person sees (one of its prospects is theirs to see): an unseen one is the same refusal as an unknown id (Devin).
+      const found = await tx.foCompany.findFirst({ where: firmScope(ctx.firmId, { id: idOf(b.companyId, "companyId", "Company") }), select: { id: true, createdBy: true, prospects: { select: { ownerStaffId: true } } } });
+      const c = found && seesCompany(seer, found) ? found : null;
       // A pick is the decision (AG-2-79 rule 9); the key it matched on is known only when a name was typed with it (review m1).
       const typed = typeof b.companyName === "string" && b.companyName.trim() ? normaliseCompanyName(b.companyName) : null;
       const matchedOn = typed && c && typed === (await tx.foCompany.findFirst({ where: firmScope(ctx.firmId, { id: c.id }), select: { normalisedName: true } }))?.normalisedName ? "ORG_NAME" : null;
       return c ? { id: c.id, created: false, picked: true, matchedOn, offered: matchedOn ? 1 : 0 } : unprocessable("Company: choose one from the list.", { companyId: "Choose one from the list." });
     }
-    const offers = await companyMatches(tx, ctx.firmId, name!, see);
+    const offers = await companyMatches(tx, ctx.firmId, name!, seer);
     if (offers.length && b.newCompany !== true) conflict("A company with this name is already on file. Pick it, or choose New company.", "COMPANY_MATCH", { offers });
     const c = await tx.foCompany.create({ data: { firmId: ctx.firmId, operatingName: name!, normalisedName: normaliseCompanyName(name!), createdBy: actorOf(ctx) } });
     return { id: c.id, created: true, picked: false, matchedOn: offers.length ? "ORG_NAME" : null, offered: offers.length };
@@ -102,7 +105,7 @@ export class Corporate {
   async engage(ctx: StaffContext, leadId: string, b: B) {
     if (typeof leadId !== "string" || !UUID.test(leadId)) return notFound();
     const name = b.companyId === undefined || b.companyId === null ? text(b.companyName, { field: "companyName", what: "Company name", max: 200, required: true }) : null;
-    const { vis, see } = await this.seer(ctx);
+    const seer = await this.seer(ctx), { vis } = seer;
     const staff = new Map((await this.db.platformStaff.findMany({ where: firmScope(ctx.firmId), select: { id: true, status: true } })).map((s) => [s.id, s.status]));
     const id = await this.db.$transaction(async (tx) => {
       const [l] = await tx.$queryRaw<{ id: string; state: string; owner_staff_id: string | null; person_id: string; door: "WEB_FORM" | "MANUAL" | "BOOKING"; number: string }[]>`
@@ -110,7 +113,7 @@ export class Corporate {
       const active = l?.owner_staff_id && staff.get(l.owner_staff_id) === "ACTIVE" ? l.owner_staff_id : null;
       if (!l || !sees(vis, ctx, active)) return notFound();
       if (l.state === "CLOSED") return conflict("This lead is closed. Reopen it first (AG-2-80).", "LEAD_CLOSED");
-      const company = await this.company(tx, ctx, b, name, see);
+      const company = await this.company(tx, ctx, b, name, seer.company);
       const owner = active ?? ctx.staffId;
       // The first Engage's time and person stay (a second Engage on an ENGAGED lead keeps them; review m3).
       await tx.foLead.update({ where: { id: l.id }, data: { state: "ENGAGED", ownerStaffId: owner, ...(l.state === "OPEN" ? { engagedAt: new Date(), engagedBy: actorOf(ctx) } : {}) } });
@@ -121,6 +124,8 @@ export class Corporate {
       await this.audit(tx, ctx, EVENT.LEAD_ENGAGED, p.id, `Staff ${ctx.staffId} engaged lead ${l.number} as Corporate.`, {
         leadId: l.id, type: "CORPORATE", companyId: company.id, companyCreated: company.created, companyPicked: company.picked, matchedOn: company.matchedOn, offered: company.offered, enquirerRole: role, ownerStaffId: owner, ownerFilled: active === null,
       });
+      // The lead's own line (AG-2-75 §7: "Engaged by … as Corporate" on the lead and the prospect; FO-2's one line per lead change; Devin).
+      await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.LEAD_ENGAGED, entity: "fo_lead", entityKey: l.id, summary: `Staff ${ctx.staffId} engaged lead ${l.number} as Corporate.`, detail: { prospectId: p.id, type: "CORPORATE", fromState: l.state } });
       // An owner filled by Engage is a take (AG-2-75 rule 5c): its line on the lead, as Take it writes, so FO-2v's race answer reads it (review m3).
       if (active === null) await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.LEAD_TAKEN, entity: "fo_lead", entityKey: l.id, summary: `Staff ${ctx.staffId} took lead ${l.number} by engaging it.`, detail: { ownerStaffId: owner, previousOwnerStaffId: l.owner_staff_id, fromUnassigned: true, via: "ENGAGE" } });
       if (active === null) await this.event(tx, ctx.firmId, EVENT.LEAD_TAKEN, l.id, LeadEventPayload.parse({ leadId: l.id, personId: l.person_id, door: l.door, state: "ENGAGED", ownerStaffId: owner }));
@@ -173,9 +178,9 @@ export class Corporate {
 
   /** A company the person may work on: one of its prospects is theirs to see (404 otherwise). */
   private async seenCompany(ctx: StaffContext, companyId: string) {
-    const { see } = await this.seer(ctx);
+    const { company } = await this.seer(ctx);
     const c = await this.db.foCompany.findFirst({ where: firmScope(ctx.firmId, { id: companyId }), include: { prospects: { select: { ownerStaffId: true } } } });
-    if (!c || !c.prospects.some((p) => see(p.ownerStaffId))) return notFound("company");
+    if (!c || !seesCompany(company, c)) return notFound("company");
     return c;
   }
 
@@ -194,7 +199,13 @@ export class Corporate {
     const role = roleOf(b.role);
     let personId: string | null = null, newPerson: { givenNames: string; familyName: string | null; email: string | null; phone: { phone: string; readable: boolean } | null } | null = null;
     if (b.personId !== undefined && b.personId !== null) {
-      personId = (await this.db.foPerson.findFirst({ where: firmScope(ctx.firmId, { id: idOf(b.personId, "personId", "Person") }), select: { id: true } }))?.id ?? notFound("person");
+      // Only a person the adder may see: one of their leads is visible, or they are (or were) a contact of this company (Devin; as Add a lead, AG-2-4 rule 6).
+      const want = idOf(b.personId, "personId", "Person"), { vis } = await this.seer(ctx);
+      const [theirs, here] = await Promise.all([
+        this.db.foLead.findMany({ where: firmScope(ctx.firmId, { personId: want }), select: { ownerStaffId: true } }),
+        this.db.foCompanyContact.count({ where: firmScope(ctx.firmId, { companyId: c.id, personId: want }) }),
+      ]);
+      personId = here > 0 || theirs.some((x) => sees(vis, ctx, x.ownerStaffId)) ? want : notFound("person");
     } else {
       newPerson = { givenNames: text(b.givenNames, { field: "givenNames", what: "First name", max: 100, required: true })!, familyName: text(b.familyName, { field: "familyName", what: "Last name", max: 100 }), email: email(b.email), phone: phone(b.phone) };
       const match = b.confirmedNew === true ? null : await possibleMatch(this.db, ctx.firmId, newPerson);
@@ -264,7 +275,7 @@ export class Corporate {
       }
       await tx.foCompanyContact.update({ where: { id: l.id }, data: { validTo: now } });
       const n = await tx.foCompanyContact.create({ data: { firmId: ctx.firmId, companyId: l.companyId, personId: l.personId, role, createdBy: actorOf(ctx) } });
-      await this.auditLink(tx, ctx, "company_contact.role_changed", n.id, `Staff ${ctx.staffId} changed a contact's role from ${l.role} to ${role}.`, { companyId: l.companyId, personId: l.personId, fromRole: l.role, toRole: role, endedLinkId: l.id, previousPrimaryPersonId: old?.personId ?? null, repointedProspectIds: repointed });
+      await this.auditLink(tx, ctx, "company_contact.role_changed", n.id, `Staff ${ctx.staffId} changed a contact's role from ${l.role} to ${role}.`, { companyId: l.companyId, personId: l.personId, fromRole: l.role, toRole: role, endedLinkId: l.id, previousPrimaryPersonId: old?.personId ?? null, repointedCount: repointed.length, repointedProspectIds: repointed.slice(0, 50) });   // each repoint has its own line; the list is capped at the audit detail's 50 (Devin)
     });
     return this.contacts(ctx, l.companyId);
   }
@@ -295,7 +306,7 @@ export class Corporate {
     if (typeof prospectId !== "string" || !UUID.test(prospectId)) return notFound("prospect");
     const to = typeOf(b.type);
     const name = to === "CORPORATE" && (b.companyId === undefined || b.companyId === null) ? text(b.companyName, { field: "companyName", what: "Company name", max: 200, required: true }) : null;
-    const { see } = await this.seer(ctx);
+    const seer = await this.seer(ctx), { see } = seer;
     const id = prospectId.toLowerCase();
     await this.db.$transaction(async (tx) => {
       const [p] = await tx.$queryRaw<{ type: FoPipeline; stage_id: string; owner_staff_id: string | null; lead_id: string; subject_person_id: string | null; subject_company_id: string | null; primary_contact_person_id: string; number: string }[]>`
@@ -319,7 +330,7 @@ export class Corporate {
       const stage = same ?? earlier ?? stages.find((s) => s.kind === "ACTIVE")!;
       let subject: { subjectPersonId: string | null; subjectCompanyId: string | null; primaryContactPersonId: string }, extra: Detail = {};
       if (to === "CORPORATE") {
-        const company = await this.company(tx, ctx, b, name, see);
+        const company = await this.company(tx, ctx, b, name, seer.company);
         const role = await this.link(tx, ctx, company.id, p.subject_person_id!);
         subject = { subjectPersonId: null, subjectCompanyId: company.id, primaryContactPersonId: p.subject_person_id! };
         extra = { companyCreated: company.created, companyPicked: company.picked, matchedOn: company.matchedOn, enquirerRole: role };

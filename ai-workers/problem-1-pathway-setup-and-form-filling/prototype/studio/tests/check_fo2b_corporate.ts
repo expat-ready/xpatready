@@ -93,6 +93,7 @@ try {
 
   // ------------------------------------------------------------------------------------- the company match
   ok("FO-2b pass: the normalised name drops case, punctuation and ltd/inc/corp…", normaliseCompanyName("pine bakery, ltd.") === "pine bakery" && normaliseCompanyName("PINE BAKERY INC") === "pine bakery" && normaliseCompanyName("Co. Inc.") === "co inc");
+  ok("FO-2b fail (Devin): vowel marks are kept, so two different Devanagari names never match", normaliseCompanyName("रामा ट्रेडर्स") !== normaliseCompanyName("रीमा ट्रेडर्स"));
   const offered = await corp.match(R, "pine bakery, ltd.");
   ok("FO-2b pass: a near-identical name is offered as a match, with its open prospect", offered.offers.length === 1 && offered.offers[0].companyId === p1.company!.id && offered.offers[0].matchedOn === "ORG_NAME" && offered.offers[0].openProspects[0]?.number === p1.number, offered);
   ok("FO-2b fail: a different name is not offered (no fuzzy match, AG-2-79 §13)", (await corp.match(R, "Pine Bakeries")).offers.length === 0);
@@ -113,6 +114,9 @@ try {
 
   const again = await corp.engage(R, lena.id, { companyId: p1.company!.id });
   ok("FO-2b pass (review m3): a second Engage on the same lead makes a second prospect and keeps the first engaged time and person", again.id !== p1.id && sql(`select engaged_at || '|' || engaged_by from fo_lead where id = '${lena.id}'`) === firstAt);
+
+  ok("FO-2b pass (Devin): Engage writes its line on the lead too (lead.engaged on fo_lead, naming the prospect), once per Engage", count("audit_event", `entity = 'fo_lead' and entity_key = '${lena.id}' and action = 'lead.engaged'`) === 2
+    && count("audit_event", `entity = 'fo_lead' and entity_key = '${lena.id}' and action = 'lead.engaged' and detail->>'prospectId' = '${p1.id}'`) === 1);
 
   // ------------------------------------------------------------------------------------- contacts and roles
   const twoRoles = await corp.addContact(R, p1.company!.id, { personId: lena.person.id, role: "SIGNATORY" });
@@ -209,6 +213,32 @@ try {
     made2.contacts.find((c) => c.role === "PRIMARY")?.personId === ya.person.id && sql(`select primary_contact_person_id from fo_prospect where id = '${px.id}'`) === ya.person.id
       && audits(px.id, "prospect.primary_contact_changed") === 1 && count("audit_event", `action = 'company_contact.role_changed' and detail->'repointedProspectIds' ? '${px.id}'`) === 1, made2.contacts);
 
+  // Devin: no hidden company or person through a pick (setting off: T sees only T's own prospects).
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: ws });
+  const zed = await lead("Zed", T);
+  const pickHidden = await refusal(() => corp.engage(T, zed.id, { companyId: p3.company!.id }));
+  const tOffers = await corp.match(T, "Pine Bakery Ltd");
+  ok("FO-2b fail (Devin): T cannot pick a company none of whose prospects T sees (422, as an unknown id), and the match says only that one exists, with no id",
+    pickHidden?.status === 422 && sql(`select state from fo_lead where id = '${zed.id}'`) === "OPEN" && tOffers.offers.length === 2 && tOffers.offers.every((o) => o.companyId === null && !o.name.includes("Pine")), [pickHidden, tOffers]);
+  const hiddenPerson = await refusal(() => corp.addContact(T, py.company!.id, { personId: lena.person.id, role: "HR" }));
+  ok("FO-2b fail (Devin): T cannot add a person T may not see (R's Lena) as a contact by id → 404, no link", hiddenPerson?.status === 404 && count("fo_company_contact", `company_id = '${py.company!.id}' and person_id = '${lena.person.id}'`) === 0, hiddenPerson);
+  const tSees = await corp.addContact(T, py.company!.id, { personId: zed.person.id, role: "HR" });
+  ok("FO-2b pass: T may add a person whose lead T sees", tSees.contacts.some((c) => c.personId === zed.person.id && c.role === "HR"));
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: ws });
+
+  // Devin: a Make primary over more than 50 prospects still writes its lines (each prospect its own; the list capped, the count whole).
+  const engaged = sql(`select id from fo_stage where firm_id = '${A}' and pipeline = 'CORPORATE' and key = 'ENGAGED'`);
+  sql(`with l as (insert into fo_lead (firm_id, person_id, door, source, state, engaged_at, engaged_by, owner_staff_id, created_by, updated_at)
+         select '${A}', '${ya.person.id}', 'MANUAL', 'Phone call', 'ENGAGED', now(), 'test', '${R.staffId}', 'test', now() from generate_series(1, 51) returning id)
+       insert into fo_prospect (firm_id, lead_id, type, stage_id, subject_company_id, primary_contact_person_id, owner_staff_id, created_by, updated_at)
+         select '${A}', id, 'CORPORATE', '${engaged}', '${px.company!.id}', '${ya.person.id}', '${R.staffId}', 'test', now() from l`);
+  const xOther = (await corp.contacts(R, px.company!.id)).contacts.find((c) => c.personId === xa.person.id && c.role === "OTHER")!;
+  const many = await refusal(() => corp.changeRole(R, xOther.id, { role: "PRIMARY" }));
+  ok("FO-2b pass (Devin): Make primary over 53 open prospects succeeds with the real audit adapter: 53 prospect lines, the role line's count 53 and its id list capped at 50",
+    many === null && count("fo_prospect", `subject_company_id = '${px.company!.id}' and primary_contact_person_id = '${xa.person.id}'`) === 53
+      && count("audit_event", `action = 'prospect.primary_contact_changed' and detail->>'toPersonId' = '${xa.person.id}'`) === 53
+      && count("audit_event", `action = 'company_contact.role_changed' and detail->>'repointedCount' = '53' and jsonb_array_length(detail->'repointedProspectIds') = 50`) === 1, many);
+
   // ------------------------------------------------------------------------------------- the won payload's subject
   const subject = await wonSubjectOf(db, A, p1.id);
   ok("FO-2b pass: prospect.won's subject is COMPANY with the company's name and its live contacts with their roles (Tomas PRIMARY and the primary contact; Lena OTHER and SIGNATORY)",
@@ -221,7 +251,7 @@ try {
 
   // ------------------------------------------------------------------------------------- one audit line per change
   ok("FO-2b pass: every change wrote one audit line through AuditPort (Engage, Change type four times, add, role change, end)",
-    audits(p1.id, "lead.engaged") === 1 && audits(iv, "prospect.type_changed") === 4 && count("audit_event", `action = 'company_contact.added'`) === 2 && count("audit_event", `action = 'company_contact.role_changed'`) === 2 && audits(raj.id, "company_contact.ended") === 1);
+    audits(p1.id, "lead.engaged") === 1 && audits(iv, "prospect.type_changed") === 4 && count("audit_event", `action = 'company_contact.added'`) === 3 && count("audit_event", `action = 'company_contact.role_changed'`) === 3 && audits(raj.id, "company_contact.ended") === 1);
   const failing = new Corporate(db, { ...ports, audit: fakeAudit({ failOn: () => true }) });
   const dora = await lead("Dora");
   const [pBefore, cBefore, lBefore, eBefore] = [count("fo_prospect"), count("fo_company"), count("fo_company_contact"), count("module_event")];

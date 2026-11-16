@@ -4,4 +4,4 @@ FO-2b (API only, no schema change; map row 98): Corporate prospects.
 * Change type (`POST prospects/:id/change-type`, Individual ↔ Corporate) keeps the number, owner, lead, notes and history and the same stage key (else the nearest earlier stage); refused once a signature exists (409 `SIGNED`), while a retainer is out (409 `RETAINER_SENT`) or while one is being prepared for the current client (409 `RETAINER_OPEN`: Agreements cannot discard a draft yet).
 * The boards: `GET pipelines/corporate/board` lists only Corporate prospects, `GET pipelines/individual/board` only Individual ones, each with its eight stages in order.
 * `prospect.won`'s subject part (`ports/events.ts` `ProspectWonSubject`, built by `wonSubjectOf`): `COMPANY` with the company's name and its live contacts with their roles, or `PERSON`.
-* Every change writes one audit line in its transaction; a failed audit line rolls the change back. Test: `tests/check_fo2b_corporate.ts` (55 checks).
+* Every change writes one audit line in its transaction; a failed audit line rolls the change back. Test: `tests/check_fo2b_corporate.ts` (61 checks).
