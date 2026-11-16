@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FO-7s0 board — Getting paid</title>
 <!-- FO-7s0 board, Sample data only (firm Maple, Client B, Pine Bakery). Checks: DW4 every figure (.fig) in one currency;
-     DW7 no negative money anywhere. ?plant=dw4 / ?plant=dw7 add a bad figure: the check must say FAIL. -->
+     DW7 a negative trust figure only inside a labelled reversal shortfall (.shortfall) or a typed bank figure (.bank). ?plant=dw4 / ?plant=dw7 add a bad figure: the check must say FAIL. -->
 <style>
 :root{--bg:#f3f5f9;--card:#fff;--text:#1a2233;--muted:#5b667a;--line:#dde3ec;--brand:#0862C5;--ok:#1d7a46;--warn:#9a5b00;--bad:#b42318;--chip:#eef2f8}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151c;--card:#1a202b;--text:#e8edf5;--muted:#9aa6b8;--line:#2c3544;--brand:#5aa2ff;--chip:#253044;--warn:#f0b35a}}
@@ -14,7 +14,7 @@ h1{font-size:18px;margin:0 0 4px}h2{font-size:16px;margin:0 0 8px}small,.m{color
 table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left}td.n{text-align:right}
 .chip{display:inline-block;padding:1px 8px;border-radius:6px;background:var(--chip);font-size:12px}.warn{color:var(--warn)}
 button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;padding:6px 12px}button.p{background:var(--brand);border-color:var(--brand);color:#fff}
-.note{border-left:3px solid var(--warn);padding:6px 10px;background:var(--chip)}output{display:block;font-weight:600}output[data-result=PASS]{color:var(--ok)}output[data-result=FAIL]{color:var(--bad)}
+.shortfall{color:var(--bad)}.note{border-left:3px solid var(--warn);padding:6px 10px;background:var(--chip)}output{display:block;font-weight:600}output[data-result=PASS]{color:var(--ok)}output[data-result=FAIL]{color:var(--bad)}
 </style></head><body><header><b>Maple Immigration</b><span class="m">Money · Getting paid</span></header><main>
 <section><h1>Getting paid</h1><small>Everyone can read this page; each section edits with its own key.</small></section>
 <div class="row"><section><h2>Trust (Owner)</h2><p>Do you hold client money in a trust account? <button class="p">Yes</button> <button>No</button></p><small>Last changed 16 Nov 2026 by &lt;Owner&gt;</small>
@@ -23,7 +23,7 @@ button{font:inherit;border:1px solid var(--line);background:var(--card);color:va
 <section><h2>Payment details — trust <span class="m">(trust shows)</span></h2><p class="note">Trust requests wait until you add your trust payment details</p><p><button class="p">Save</button></p></section></div>
 <div class="row"><section><h2>Tax</h2><p>Registered for tax ◯ · Tax number ▢</p><p class="warn">Add your tax number to turn this on</p><small>Tax on invoices comes from the client's province (ExpatReady's table).</small></section>
 <section><h2>Card payments</h2><table><tr><td>Not connected</td><td>Clients can't pay by card yet.</td><td><button class="p">Connect with Stripe</button></td></tr>
-<tr><td>Pending</td><td>Stripe is checking your details.</td><td><button>Continue set-up</button></td></tr><tr><td>Active</td><td>Clients can pay invoices by card.</td><td>—</td></tr>
+<tr><td>Pending</td><td>Stripe is checking your details.</td><td><button>Continue set-up</button></td></tr><tr><td>Active</td><td>Clients can pay invoices by card.</td><td>—</td></tr><tr><td>Restricted</td><td>Stripe needs more details. Until you finish, clients see your payment details instead of a card button.</td><td><button>Update details on Stripe</button></td></tr>
 <tr><td>Disconnected</td><td class="warn">Payment account disconnected — Reconnect</td><td><button>Reconnect</button></td></tr></table><small>Confirm it's you: sign in again, then try once more.</small></section>
 <section><h2>Advanced ▸</h2><p>Prices include tax ◯ · Due in <b>14</b> days</p><p>Invoice payments go to: <b>Operating account</b> · Trust first <span class="m">(Yes only, Owner)</span></p></section></div>
 <section><output id="dw4"></output><output id="dw7"></output></section></main>
@@ -32,7 +32,8 @@ const q = new URLSearchParams(location.search).get("plant"), m = document.queryS
 if (q === "dw4") m.insertAdjacentHTML("afterbegin", '<p class="fig">Total CAD 100.00 + USD 50.00 = 150.00</p>');
 if (q === "dw7") m.insertAdjacentHTML("afterbegin", '<p class="fig">Trust balance −CAD 1,500.00</p>');
 const b4 = [...document.querySelectorAll(".fig")].filter(e => new Set(e.textContent.match(/CAD|USD/g) || []).size !== 1);
-const b7 = /[−-]\s?(CAD|USD)\s?\d|(CAD|USD)\s?[−-]\d/.test(m.textContent);
+const c = m.cloneNode(true); c.querySelectorAll(".shortfall, .bank").forEach(e => e.remove());
+const b7 = /[−-]\s?(CAD|USD)\s?\d|(CAD|USD)\s?[−-]\d/.test(c.textContent) || [...m.querySelectorAll(".shortfall")].some(e => !/Trust shortfall after a reversal/.test(e.textContent));
 const put = (id, bad, t) => { const o = document.getElementById(id); o.dataset.result = bad ? "FAIL" : "PASS"; o.textContent = t + (bad ? ": FAIL" : ": PASS"); };
-put("dw4", b4.length, "DW4 every figure in one currency"); put("dw7", b7, "DW7 no negative money");
+put("dw4", b4.length, "DW4 every figure in one currency"); put("dw7", b7, "DW7 negative trust only in a labelled reversal shortfall");
 </script></body></html>

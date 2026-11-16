@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FO-7s0 board — Pay page (client)</title>
 <!-- FO-7s0 board, Sample data only (firm Maple, Client B, Pine Bakery). Checks: DW4 every figure (.fig) in one currency;
-     DW7 no negative money anywhere. ?plant=dw4 / ?plant=dw7 add a bad figure: the check must say FAIL. -->
+     DW7 a negative trust figure only inside a labelled reversal shortfall (.shortfall) or a typed bank figure (.bank). ?plant=dw4 / ?plant=dw7 add a bad figure: the check must say FAIL. -->
 <style>
 :root{--bg:#f3f5f9;--card:#fff;--text:#1a2233;--muted:#5b667a;--line:#dde3ec;--brand:#0862C5;--ok:#1d7a46;--warn:#9a5b00;--bad:#b42318;--chip:#eef2f8}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151c;--card:#1a202b;--text:#e8edf5;--muted:#9aa6b8;--line:#2c3544;--brand:#5aa2ff;--chip:#253044;--warn:#f0b35a}}
@@ -14,14 +14,14 @@ h1{font-size:18px;margin:0 0 4px}h2{font-size:16px;margin:0 0 8px}small,.m{color
 table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left}td.n{text-align:right}
 .chip{display:inline-block;padding:1px 8px;border-radius:6px;background:var(--chip);font-size:12px}.warn{color:var(--warn)}
 button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;padding:6px 12px}button.p{background:var(--brand);border-color:var(--brand);color:#fff}
-.note{border-left:3px solid var(--warn);padding:6px 10px;background:var(--chip)}output{display:block;font-weight:600}output[data-result=PASS]{color:var(--ok)}output[data-result=FAIL]{color:var(--bad)}
+.shortfall{color:var(--bad)}.note{border-left:3px solid var(--warn);padding:6px 10px;background:var(--chip)}output{display:block;font-weight:600}output[data-result=PASS]{color:var(--ok)}output[data-result=FAIL]{color:var(--bad)}
 </style></head><body><header><b>Maple Immigration</b><span class="m">Money · Pay page (client)</span></header><main>
-<div class="row"><section><h1>Account Active</h1><p>Invoice INV-0003 · Due 30 Nov 2026</p><p>Amount due <b class="fig">CAD 2,655.50</b></p><p><button class="p">Pay CAD 2,655.50 by card</button></p><small>No amount field · PDF</small></section>
-<section><h1>Account down</h1><p>Online payment is temporarily unavailable</p><p class="note">Pay by e-Transfer to billing@maple.example · Interac message: INV-0003 <button>Copy</button></p><small>No card form, no card button.</small><p class="m">No details filled: Please contact Maple Immigration, +1 416 555 0100, billing@maple.example to arrange payment</p></section>
-<section><h1>Returned from card</h1><p>Payment received — your receipt is on its way</p><p class="m">INV-0003 is being confirmed.</p></section></div>
+<div class="row"><section><h1>Card offered (Active, charges on)</h1><p>Invoice INV-0008 · Due 30 Nov 2026</p><p>Amount due <b class="fig">CAD 1,385.00</b></p><p><button class="p">Pay CAD 1,385.00 by card</button></p><small>No amount field · PDF</small></section>
+<section><h1>Card not offered (Not connected, Pending, Restricted, Disconnected)</h1><p>Online payment is temporarily unavailable</p><p class="note">Pay by e-Transfer to billing@maple.example · Interac message: INV-0008 <button>Copy</button></p><small>No card form, no card button.</small><p class="m">No details filled: Please contact Maple Immigration, +1 416 555 0100, billing@maple.example to arrange payment</p></section>
+<section><h1>Returned from card</h1><p>Payment received — your receipt is on its way</p><p class="m">INV-0008 is being confirmed.</p></section></div>
 <div class="row"><section><h1>Plan — INV-0011</h1><table><tr><th>Date</th><th>Amount</th><th>Status</th></tr>
 <tr><td>16 Nov 2026</td><td class="n fig">CAD 400.00</td><td>Due</td></tr><tr><td>1 Dec 2026</td><td class="n fig">CAD 400.00</td><td>Upcoming</td></tr><tr><td>1 Jan 2027</td><td class="n fig">CAD 400.00</td><td>Upcoming</td></tr></table>
-<p>Amount due today <b class="fig">CAD 400.00</b></p><p>☐ Save my card and pay each instalment on its date. <small>(Wording v1, Sample, Unconfirmed: no counsel)</small></p><p><button class="p">Pay CAD 400.00 by card</button> <button>Stop autopay</button></p></section>
+<p>Amount due today <b class="fig">CAD 400.00</b></p><p>☐ Save my card and pay each instalment on its date. <small>(Wording v1, Sample, Unconfirmed: no counsel)</small></p><p><button class="p">Pay CAD 400.00 by card</button></p><small>Stop autopay shows once autopay is on.</small></section>
 <section><h1>Nothing due today</h1><p>Nothing is due today. Your next payment is CAD 400.00 on 1 Dec 2026.</p><small>No button.</small></section>
 <section><h1>Link no longer valid</h1><p>This payment link is no longer valid. Please contact Maple Immigration for a new one.</p></section></div>
 <section><output id="dw4"></output><output id="dw7"></output></section></main>
@@ -30,7 +30,8 @@ const q = new URLSearchParams(location.search).get("plant"), m = document.queryS
 if (q === "dw4") m.insertAdjacentHTML("afterbegin", '<p class="fig">Total CAD 100.00 + USD 50.00 = 150.00</p>');
 if (q === "dw7") m.insertAdjacentHTML("afterbegin", '<p class="fig">Trust balance −CAD 1,500.00</p>');
 const b4 = [...document.querySelectorAll(".fig")].filter(e => new Set(e.textContent.match(/CAD|USD/g) || []).size !== 1);
-const b7 = /[−-]\s?(CAD|USD)\s?\d|(CAD|USD)\s?[−-]\d/.test(m.textContent);
+const c = m.cloneNode(true); c.querySelectorAll(".shortfall, .bank").forEach(e => e.remove());
+const b7 = /[−-]\s?(CAD|USD)\s?\d|(CAD|USD)\s?[−-]\d/.test(c.textContent) || [...m.querySelectorAll(".shortfall")].some(e => !/Trust shortfall after a reversal/.test(e.textContent));
 const put = (id, bad, t) => { const o = document.getElementById(id); o.dataset.result = bad ? "FAIL" : "PASS"; o.textContent = t + (bad ? ": FAIL" : ": PASS"); };
-put("dw4", b4.length, "DW4 every figure in one currency"); put("dw7", b7, "DW7 no negative money");
+put("dw4", b4.length, "DW4 every figure in one currency"); put("dw7", b7, "DW7 negative trust only in a labelled reversal shortfall");
 </script></body></html>

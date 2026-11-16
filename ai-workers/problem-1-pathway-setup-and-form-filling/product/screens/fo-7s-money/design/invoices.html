@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FO-7s0 board — Invoices</title>
 <!-- FO-7s0 board, Sample data only (firm Maple, Client B, Pine Bakery). Checks: DW4 every figure (.fig) in one currency;
-     DW7 no negative money anywhere. ?plant=dw4 / ?plant=dw7 add a bad figure: the check must say FAIL. -->
+     DW7 a negative trust figure only inside a labelled reversal shortfall (.shortfall) or a typed bank figure (.bank). ?plant=dw4 / ?plant=dw7 add a bad figure: the check must say FAIL. -->
 <style>
 :root{--bg:#f3f5f9;--card:#fff;--text:#1a2233;--muted:#5b667a;--line:#dde3ec;--brand:#0862C5;--ok:#1d7a46;--warn:#9a5b00;--bad:#b42318;--chip:#eef2f8}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151c;--card:#1a202b;--text:#e8edf5;--muted:#9aa6b8;--line:#2c3544;--brand:#5aa2ff;--chip:#253044;--warn:#f0b35a}}
@@ -14,19 +14,19 @@ h1{font-size:18px;margin:0 0 4px}h2{font-size:16px;margin:0 0 8px}small,.m{color
 table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left}td.n{text-align:right}
 .chip{display:inline-block;padding:1px 8px;border-radius:6px;background:var(--chip);font-size:12px}.warn{color:var(--warn)}
 button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;padding:6px 12px}button.p{background:var(--brand);border-color:var(--brand);color:#fff}
-.note{border-left:3px solid var(--warn);padding:6px 10px;background:var(--chip)}output{display:block;font-weight:600}output[data-result=PASS]{color:var(--ok)}output[data-result=FAIL]{color:var(--bad)}
+.shortfall{color:var(--bad)}.note{border-left:3px solid var(--warn);padding:6px 10px;background:var(--chip)}output{display:block;font-weight:600}output[data-result=PASS]{color:var(--ok)}output[data-result=FAIL]{color:var(--bad)}
 </style></head><body><header><b>Maple Immigration</b><span class="m">Money · Invoices</span></header><main>
 <section><h1>Invoices</h1><small>Status · Issued · More filters</small> <button class="p">New invoice</button>
 <table><tr><th>Number</th><th>Bill to</th><th>Case</th><th>Issued</th><th>Due</th><th>Total</th><th>Balance due</th><th>Status</th></tr>
-<tr><td>INV-0003</td><td>Client B</td><td>Work permit</td><td>1 Nov 2026</td><td>15 Nov 2026</td><td class="n fig">CAD 2,655.50</td><td class="n fig">CAD 1,655.50</td><td><span class="chip">◐ Part paid</span></td></tr>
+<tr><td>INV-0003</td><td>Client B</td><td>Work permit</td><td>10 Nov 2026</td><td>24 Nov 2026</td><td class="n fig">CAD 2,655.50</td><td class="n fig">CAD 1,655.50</td><td><span class="chip">◐ Part paid</span></td></tr>
 <tr><td>INV-0004</td><td>Pine Bakery</td><td>LMIA</td><td>3 Nov 2026</td><td>17 Nov 2026</td><td class="n fig">USD 1,200.00</td><td class="n fig">USD 1,200.00</td><td><span class="chip">○ Open</span></td></tr>
 <tr><td>Draft</td><td>Client B</td><td>Work permit</td><td>—</td><td>—</td><td class="n fig">CAD 1,385.00</td><td class="n">—</td><td><span class="chip">✎ Draft</span></td></tr></table>
 <small>No total row: CAD and USD are never added (AG-6-27).</small></section>
 <div class="row"><section><h2>New invoice — builder</h2><p>Bill to <b>Client B</b> · Case Work permit · <button>Start from retainer</button></p>
-<small>Only clients appear here. A prospect is asked for a deposit, not invoiced.</small>
+<small>Only clients appear here; a prospect can't be invoiced.</small>
 <table><tr><th>Kind</th><th>Description</th><th>Amount</th><th>Tax</th></tr>
 <tr><td>Fee</td><td>Work permit — LMIA-based</td><td class="n fig">CAD 1,000.00</td><td>Taxable ☑</td></tr>
-<tr><td>Government fee</td><td>Work permit processing fee</td><td class="n fig">CAD 255.00</td><td class="m">Government fees are never taxed</td></tr></table></section>
+<tr><td>Government fee</td><td>Government fee (Sample)</td><td class="n fig">CAD 255.00</td><td class="m">Government fees are never taxed</td></tr></table></section>
 <section><h2>Summary</h2><table><tr><td>Subtotal</td><td class="n fig">CAD 1,255.00</td></tr><tr><td>HST 13% (Sample)</td><td class="n fig">CAD 130.00</td></tr><tr><td><b>Total</b></td><td class="n fig"><b>CAD 1,385.00</b></td></tr></table>
 <small>Will be numbered when you issue it.</small><p><button>Save draft</button> <button class="p">Issue invoice…</button></p></section></div>
 <div class="row"><section><h2>Issue dialog (right panel)</h2><p>Invoice date 16 Nov 2026 · Due in 14 days → 30 Nov 2026 · <button>Due on receipt</button></p>
@@ -35,15 +35,16 @@ button{font:inherit;border:1px solid var(--line);background:var(--card);color:va
 <p><button class="p">Record payment…</button> <button>Copy pay link</button> <button>Credit note…</button> <button>Write off…</button> <button>Change due date</button></p>
 <p class="note">Issued invoices can't be edited — use a credit note. <button>Use a credit note</button></p></section></div>
 <div class="row"><section><h2>Credit note… (panel)</h2><p>Part · <span class="fig">CAD 100.00</span> · reason “Goodwill”</p><p>Balance due falls from <span class="fig">CAD 1,385.00</span> to <span class="fig">CAD 1,285.00</span>.</p><p>After a write-off: <span class="warn">Already settled by write-off</span></p></section>
-<section><h2>Reverse entry… (panel) — R-0007, cheque, “Returned”</h2><ul><li>INV-0005 goes back to <span class="fig">CAD 1,186.50</span> due</li><li>Paid from trust to INV-0006 is undone</li>
-<li><b>CAD 1,500.00 must move from operating to trust: reversal of R-0007</b></li><li>Trust balance after: <span class="fig">CAD 0.00</span></li></ul><p><button>Cancel</button> <button class="p">Reverse entry</button></p><small>Not offered on a card payment: Use a refund.</small></section></div>
+<section><h2>Reverse entry… (panel) — R-0007, cheque, “Returned”</h2><ul><li>INV-0005 goes back to <span class="fig">CAD 1,186.50</span> due</li><li>INV-0006 goes back to <span class="fig">CAD 1,500.00</span> due (its Paid from trust is undone)</li>
+<li class="shortfall"><b>Trust balance after: <span class="fig">−CAD 1,500.00</span> · Trust shortfall after a reversal</b></li><li>Your firm needs to put CAD 1,500 of its own money into trust for this client. Record it when done. <small>(Sample, Unconfirmed: no counsel)</small></li></ul><p><button>Cancel</button> <button class="p">Reverse entry</button></p><small>Reasons by method: Returned only on a cheque. Not offered on a card payment: Use a refund.</small></section></div>
 <section><output id="dw4"></output><output id="dw7"></output></section></main>
 <script>
 const q = new URLSearchParams(location.search).get("plant"), m = document.querySelector("main");
 if (q === "dw4") m.insertAdjacentHTML("afterbegin", '<p class="fig">Total CAD 100.00 + USD 50.00 = 150.00</p>');
 if (q === "dw7") m.insertAdjacentHTML("afterbegin", '<p class="fig">Trust balance −CAD 1,500.00</p>');
 const b4 = [...document.querySelectorAll(".fig")].filter(e => new Set(e.textContent.match(/CAD|USD/g) || []).size !== 1);
-const b7 = /[−-]\s?(CAD|USD)\s?\d|(CAD|USD)\s?[−-]\d/.test(m.textContent);
+const c = m.cloneNode(true); c.querySelectorAll(".shortfall, .bank").forEach(e => e.remove());
+const b7 = /[−-]\s?(CAD|USD)\s?\d|(CAD|USD)\s?[−-]\d/.test(c.textContent) || [...m.querySelectorAll(".shortfall")].some(e => !/Trust shortfall after a reversal/.test(e.textContent));
 const put = (id, bad, t) => { const o = document.getElementById(id); o.dataset.result = bad ? "FAIL" : "PASS"; o.textContent = t + (bad ? ": FAIL" : ": PASS"); };
-put("dw4", b4.length, "DW4 every figure in one currency"); put("dw7", b7, "DW7 no negative money");
+put("dw4", b4.length, "DW4 every figure in one currency"); put("dw7", b7, "DW7 negative trust only in a labelled reversal shortfall");
 </script></body></html>

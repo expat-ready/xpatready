@@ -1,7 +1,7 @@
 # FO-7s0 — one concept for every money screen (index)
 
 **Status:** draft for the fresh challenge, then Build Lead C's approval (P-223 (4), P-644). Records only. Every figure **Sample**; every legal reading **Unconfirmed: no counsel**. Brief: `design/build-lead-c-briefs/FO-7s0.md` (wins) over `design/briefs/FO-7s0.md`.
-**Requirements (`trace-requirements.py --cite`, exit 0):** AG-6-1@2483b583 (with -2, -3, -5 to -8), AG-6-4@374fb7a9, AG-6-14@fa1493ed, AG-6-19@22fd5859, AG-6-23@d660d88f, AG-6-25@77cda9c7 (with -26, -27), AG-6-28@58f2a8ef, AG-6-31@c963bccc, AG-6-42@84f6f455, AG-6-46@7fae2559, AG-6-48@207b4d8a, AG-6-49@4a3520dd, AG-6-59@682faf5c, AG-6-60@e7a7709d, AG-6-68@c6344607, AG-6-69@bb310f02, AG-6-71@c482c1db, AG-6-73@bf454be3, AG-6-74@3bc6f3d7, AG-6-75@fb763ef8, AG-6-76@575112a7. Decisions P-223 (4), P-392, P-352, P-592, P-504, P-567 (3), P-568 (1), P-578, P-603, P-607 (1) (7), P-634.
+**Requirements (`trace-requirements.py --cite`, exit 0):** AG-6-1@2483b583 (with -2, -3, -5 to -8), AG-6-4@374fb7a9, AG-6-14@fa1493ed, AG-6-19@22fd5859, AG-6-23@d660d88f, AG-6-25@77cda9c7 (with -26, -27), AG-6-28@58f2a8ef, AG-6-31@c963bccc, AG-6-42@84f6f455, AG-6-46@7fae2559, AG-6-48@207b4d8a, AG-6-49@4a3520dd, AG-6-59@682faf5c, AG-6-60@e7a7709d, AG-6-68@c6344607, AG-6-69@bb310f02, AG-6-71@c482c1db, AG-6-73@bf454be3, AG-6-74@3bc6f3d7, AG-6-75@fb763ef8, AG-6-76@575112a7. Decisions P-223 (4), P-392, P-352, P-592, P-504, P-567 (3), P-568 (1), P-578, P-603, P-607 (7), P-634 (1) (2).
 
 ## The five files and the design folder (DW8: these five and no other concept file)
 | File | Groups | Built by |
@@ -22,13 +22,13 @@ Masters and links: the money tables of FO-7a/FO-7ts/FO-7mv (`client-money.prisma
 ## 3. Business rules the screens show (each tested by its row)
 * **BR-1 Trust words only while trust shows** (AG-6-59 r5-r6): Yes, or No with money held or To move not empty; never while Unanswered. Exception: the trust question's own lines, Owner only (Q3). DW1.
 * **BR-2 Two ways out of trust** (P-603): Pay from trust to an issued invoice of the same payer, Refund to client. DW3.
-* **BR-3 Never negative** (P-607 (1)): a shortfall is an operating → trust To move line and one Owner item; trust shows CAD 0.00. Departs from AG-6-60 r7, AG-6-74 r5, AG-6-75 r4's red "−CAD 1,500". DW7.
+* **BR-3 Below zero only after a reversal** (P-634 (1), Build Lead C's ruling on this PR; supersedes P-607 (1) and FO-7v's "never below"): no outflow takes trust below the balance ("Only CAD X is available."); a reversal is always accepted and may leave the party **negative, red, labelled "Trust shortfall after a reversal"** (`money_trust_shortfall`, FO-7a2) in the ledger, the monthly check and the Owner's item. **No operating → trust line or button for it** (main refuses all but the credit-note line, P-634 (2)). DW7.
 * **BR-4 One total per currency** (AG-6-25 to -27): no figure adds CAD and USD; lists have no total row. DW4.
 * **BR-5 No card into trust** (P-567 (3)): no pay link or card on a trust request or deposit; no trust card account in R1.
 * **BR-6 Number at issue**, frozen after; edits refused with "use a credit note" (AG-6-1 r4-r6, AG-6-44).
 * **BR-7 Government fee lines** typed, never taxed, no tax control (AG-6-4 r3, P-607 (7)).
 * **BR-8 Plans and autopay** only on an issued invoice for services given, consent versioned and unticked (P-578, FO-7p); the pay page's only part payment is a plan's due part.
-* **BR-9 Account down** → no card form; offline details or the firm's contact line (AG-6-49).
+* **BR-9 Card only when FO-7c offers it** (its pay read's "card payment offered": Active with charges on); any other status → no card form; offline details or the firm's contact line (AG-6-49).
 * **BR-10 Actions only from `allowedActions`** (FO-7q); a missing route means a missing button, never a disabled one.
 * **BR-11 Refusals in the API's words**, on the panel that caused them; money with two decimals and its currency, one formatter.
 * **BR-12 Tax:** registered switch needs a number; no rate list or editing; "Prices include tax" under Advanced; QST hidden (AG-6-4, P-568 (1)).
@@ -48,8 +48,8 @@ BIC-01 Ask once: Bill to, currency, tax default and payer come from the case and
 ## 5. Copy
 In each file: empty states, refusals, notices, the plan schedule wording and the autopay consent draft for FO-7p's `samples/fo7p-autopay-consent-v1.txt` (Sample, Unconfirmed: no counsel).
 
-## 6. Contract (full table: `design/contract.html`, 66 elements)
-Built by FO-7b, FO-7c, FO-7g, FO-7m, FO-7p, FO-7q, FO-7r, FO-7t, FO-7ts (fields), FO-7v. **Gaps (reads → FO-7q additions; writes → questions):** G1 Getting paid writes (operating and trust details blocks, tax fields, due days): no brief names one · G2 party search (won only) · G3 resend receipt · G4 send pay link · G5 trust requests list · G6 trust available · G7 cheque Cleared · G8 payer per ledger entry · G9 To move batches list · G10 credit-note email and pending card refund read · G11 statement preview · G12 staff lookup by role ("Ask <Owner>") · G13 exports list and row counts · G14 deposit evidence upload. Also: the client's Stop autopay route (FO-7p names none), Keep as credit (credit ledger write, FO-7ts gap 4), FO-7b's own paths (behaviours named, paths read on main).
+## 6. Contract (full table: `design/contract.html`, 70 elements)
+Built by FO-7a2 (the shortfall view), FO-7b, FO-7c, FO-7g, FO-7m, FO-7p, FO-7q, FO-7r, FO-7t, FO-7ts (fields), FO-7v. **Gaps (reads → FO-7q additions; writes → questions):** G1 Getting paid writes (operating and trust details blocks, tax fields, due days): no brief names one · G2 party search (won only) · G3 resend receipt · G4 send pay link · G5 trust requests list · G6 trust available · G7 cheque Cleared · G8 payer per ledger entry · G9 To move batches list · G10 credit-note email and pending card refund read · G11 statement preview · G12 staff lookup by role ("Ask <Owner>") · G13 exports list and row counts · G14 deposit evidence upload · G15 **trust state for every staff member** (`GET /trust/answer` is Owner only; a 404 cannot tell Yes from No with money held) · G16 Change due date and Delete draft (no brief names a path: questions) · G17 the Payments export's "received into" column while trust is off (FO-7r part 3 to confirm it is left out) · G18 the shortfall read for the ledger and Owner item (FO-7a2's view through FO-7q). Also: the client's Stop autopay route (FO-7p names none); FO-7b's own paths (behaviours named, paths read on main). **Not in Release 1 yet:** "Cover from operating" for a reversal's shortfall (a row to be shaped after #1991).
 
 ## 7. Questions (for Build Lead C; none for the founder)
 * **Q1 (G1):** who builds the Getting paid writes? **Recommend** FO-7g part 2 takes tax fields and due days, FO-7t part 1 the trust details block, and FO-7b the operating details block (it owns the email that waits on it).
@@ -58,7 +58,7 @@ Built by FO-7b, FO-7c, FO-7g, FO-7m, FO-7p, FO-7q, FO-7r, FO-7t, FO-7ts (fields)
 
 ## 8. Definition of ready — named checks (each a pass and a planted fail)
 Run: `node <runner> screens/fo-7s-money/design` opens each board headless and reads its result (results in the PR).
-* **DW1** `state-strings.html`: PASS; `?plant=dw1` ("Received into" in Unanswered) FAIL. · **DW2** `contract.html`: PASS; `?plant=dw2` FAIL. · **DW3** `state-strings.html` action list: PASS; `?plant=dw3` ("Transfer") FAIL.
-* **DW4** every board: PASS; `?plant=dw4` (CAD + USD) FAIL. · **DW7** every board: PASS; `?plant=dw7` ("−CAD 1,500.00") FAIL; the reverse-entry (invoices) and monthly-check (trust) boards show the shortfall line.
+* **DW1** `state-strings.html` (trust words incl. "deposit"; the only exemption is the exact trust-question strings): PASS; `?plant=dw1` ("Received into" in Unanswered) FAIL. · **DW2** `contract.html`: PASS; `?plant=dw2` FAIL. · **DW3** `state-strings.html` action list: PASS; `?plant=dw3` ("Transfer") FAIL.
+* **DW4** every board: PASS; `?plant=dw4` (CAD + USD) FAIL. · **DW7** every board: a negative trust figure appears only inside a labelled reversal shortfall (`.shortfall`, red, "Trust shortfall after a reversal"); PASS; `?plant=dw7` (a negative trust balance elsewhere) FAIL; the reverse-entry (invoices) and monthly-check (trust) boards show the shortfall and no operating → trust line for it.
 * **DW5** §4b: three products, each with a URL and date, none the team's app. · **DW6** each group file's walk. · **DW8** this file under 100 lines, naming the five files.
 * Row text: BACKLOG FO-7s0 as narrowed by the brief; decisions answered except Q1-Q3 (not blocking the concept; each screen row waits on its own routes).

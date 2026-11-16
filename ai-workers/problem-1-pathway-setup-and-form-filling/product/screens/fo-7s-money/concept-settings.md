@@ -22,7 +22,7 @@ Part of the money concept; index in `concept.md`. Figures **Sample**; legal read
 | `NOT_CONNECTED` | "Clients can't pay by card yet." | **Connect with Stripe** |
 | `PENDING` | "Stripe is checking your details." | **Continue set-up** |
 | `ACTIVE` | "Clients can pay invoices by card. Money goes to your own Stripe account." | — |
-| `RESTRICTED` (charges on) | "Stripe needs more details; card payments still work." | **Update details on Stripe** |
+| `RESTRICTED` (charges on) | "Stripe needs more details. Until you finish, clients see your payment details instead of a card button." (FO-7c offers card only when Active) | **Update details on Stripe** |
 | `RESTRICTED` (charges off) / `DISCONNECTED` | "Payment account disconnected — Reconnect" (break alert; clients see offline details, AG-6-49) | **Reconnect** |
 Codes never show. The button asks for step-up first: "Confirm it's you: sign in again, then try once more." (401 `STEP_UP_REQUIRED`). A non-Owner opening the section sees "Only the Owner manages card payments". No trust card account in R1 (P-567 (3)): no "Connect your trust payment account" line.
 

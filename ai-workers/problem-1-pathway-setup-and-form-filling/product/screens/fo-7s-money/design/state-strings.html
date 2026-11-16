@@ -39,7 +39,7 @@ const S = [
 ["Getting paid","Advanced","Invoice payments go to: Operating account · Trust first","0100"],
 ["Getting paid","tax","Registered for tax","1111"],["Getting paid","tax","Add your tax number to turn this on","1111"],
 ["Getting paid","card","Payment account disconnected — Reconnect","1111"],
-["Invoice builder","party hint","Only clients appear here. A prospect is asked for a deposit, not invoiced.","1111"],
+["Invoice builder","party hint","Only clients appear here; a prospect can't be invoiced.","1111"],
 ["Invoice builder","line","Government fees are never taxed","1111"],
 ["Invoice builder","retainer","<Party>'s retainer isn't signed. Invoice anyway?","1111"],
 ["Invoice builder","deposit row","This row is a deposit: request it from trust instead","0100"],
@@ -51,19 +51,21 @@ const S = [
 ["Invoice detail","action","Pay from trust…","0101"],
 ["Credit note","trust return","CAD 282.50 returns to Client B's trust balance","0101"],
 ["Credit note","choice","Refund to the client · Move back to trust","0101"],
-["Credit note","choice","Refund · Keep as credit","1010"],
+["Credit note","choice","Refund · Keep as credit","1011"],
 ["Credit note","refusal","Already settled by write-off","1111"],
 ["Write off","line","Write off CAD 25.00 (the remaining balance)","1111"],
 ["Reverse entry","preview","INV-0005 goes back to CAD 1,186.50 due","1111"],
-["Reverse entry","preview","CAD 1,500.00 must move from operating to trust: reversal of R-0007","0101"],
-["Reverse entry","preview","Trust balance after: CAD 0.00","0101"],
+["Reverse entry","preview","Trust balance after: −CAD 1,500.00 · Trust shortfall after a reversal","0101"],
+["Reverse entry","preview","Your firm needs to put CAD 1,500 of its own money into trust for this client. Record it when done.","0101"],
+["Trust ledger","shortfall row","Trust shortfall after a reversal","0101"],
+["Monthly check","shortfall list","Client B — Work permit: −CAD 1,500.00 · Trust shortfall after a reversal","0101"],
 ["Reverse entry","refusal","Use a refund","1111"],
 ["Record payment","field","Received into: Operating · Trust","0100"],
 ["Record payment","hint","This adds a To move line: move CAD 1,130.00 from operating to trust for Client B","0100"],
 ["Record payment","warning","A payment with reference 4471 is already recorded on this invoice. Record anyway?","1111"],
 ["Record payment","extra","CAD 200.00 extra","1111"],
 ["Record payment","extra","goes to Client B's trust balance","0100"],
-["Record payment","extra","Refund · Keep as credit","1010"],
+["Record payment","extra","Refund · Keep as credit","1011"],
 ["Record payment","success","R-0012 recorded · Receipt emailed to Client B","1111"],
 ["Payments list","column","Received into","0100"],
 ["Money view","summary","Paid from trust","0101"],["Money view","summary","Trust held: CAD 1,300.00 (2 cases, CAD 150.00 before a case)","0101"],
@@ -72,7 +74,8 @@ const S = [
 ["Trust","action","New trust request","0100"],["Trust","action","Record trust deposit","0100"],
 ["Trust","request","DR-0001 sent","0100"],["Trust","deposit","CAD 1,500.00 is a cheque not yet cleared. Apply anyway?","0101"],
 ["Pay from trust","refusal","Only CAD 130.00 is available.","0101"],
-["To move","total","Trust → operating: CAD 1,130.00 · Operating → trust: CAD 1,500.00","0101"],
+["To move","total","Trust → operating: CAD 1,130.00 · Operating → trust: CAD 282.50","0101"],
+["To move","credit-note line","Move CAD 282.50 back to trust — CN-0001, Client B","0101"],
 ["To move","action","I moved these","0101"],["To move","action","Undo this batch…","0101"],
 ["Monthly check","part","Expected bank balance","0101"],["Monthly check","note","Add a short note about the difference","0101"],
 ["Statement","line","Held in trust for your work permit: CAD 1,500.00","0101"],
@@ -84,18 +87,21 @@ const A = [
 ["Money view / invoice detail","Pay from trust…",true,"an issued invoice of the same payer (AG-6-68)"],
 ["Money view","Refund to client…",true,"the payer (AG-6-23)"],
 ["Money view","Send statement…",false,"—"],
+["Payment detail (trust deposit)","Refund to client…",true,"the payer (AG-6-23)"],
 ["Trust","New trust request",false,"— (money in)"],["Trust","Record trust deposit",false,"— (money in)"],
 ["To move","I moved these",false,"— (records the firm's bank step; balances unchanged)"],["To move","Undo this batch…",false,"—"],
-["Credit note","Move back to trust",false,"— (money in)"],["Reverse entry","Confirm",false,"— (correction; trust never below zero)"],
+["Credit note","Move back to trust",false,"— (money in)"],["Reverse entry","Confirm",false,"— (correction; may leave a labelled shortfall, P-634 (1))"],
 ["Monthly check","Save",false,"—"],
 ];
 const plant = new URLSearchParams(location.search).get("plant");
 if (plant === "dw1") S.push(["Record payment","field","Received into","1000"]);
 if (plant === "dw3") A.push(["Trust","Transfer",true,"operating"]);
-const WORD = /trust|DR-|To move|Monthly check|Pay from trust|Received into/i;
-const bad1 = S.filter(r => WORD.test(r[2]) && (r[3][0] === "1" || r[3][2] === "1") && r[4] !== "q");
+const WORD = /trust|deposit|DR-|To move|Monthly check|Pay from trust|Received into/i;
+// The only exemption (Q3): the trust question's own lines, exactly as AG-6-59 r2-r3 word them, Owner only (the ask line: the booking screen).
+const Q = new Set(["Do you hold client money in a trust account? Yes · No", "Yes lets you take deposits before the work. No means you bill after the work.", "Ask the Owner to answer the trust question", "Tell ExpatReady whether you hold client money in a trust account"]);
+const bad1 = S.filter(r => WORD.test(r[2]) && (r[3][0] === "1" || r[3][2] === "1") && !(r[4] === "q" && Q.has(r[2])));
 const OUT = new Set(["Pay from trust…","Refund to client…"]);
-const bad3 = A.filter(a => a[2] && !OUT.has(a[1]));
+const bad3 = A.filter(a => (a[2] && !OUT.has(a[1])) || /transfer|withdraw|move out|adjust|edit balance/i.test(a[1]));
 const out = (id, bad, label) => { const o = document.getElementById(id); o.dataset.result = bad.length ? "FAIL" : "PASS";
   o.textContent = `${label}: ${bad.length ? "FAIL — " + bad.map(b => b.slice(0,3).join(" / ")).join("; ") : "PASS"}`; };
 out("dw1", bad1, "DW1 trust words only in trust-on states"); out("dw3", bad3, "DW3 two ways out of trust");
