@@ -576,7 +576,7 @@ export class CaseForms implements OnModuleInit {
    *  check is refused, never answered with the unbarcoded copy. `original` asks for the copy as the product made it. */
   async file(actor: Actor, id: string, originalIn: unknown = false) {
     const one = CopyFileOriginal.safeParse(originalIn); // CS-V1 part 2: ?original=1, given once
-    if (!one.success) throw new HttpException(problemFromZod(one.error), HttpStatus.BAD_REQUEST);
+    if (!one.success) { const p = problemFromZod(one.error); throw new HttpException({ ...p, errors: (p.errors ?? []).map((e) => ({ ...e, field: "original" })) }, HttpStatus.BAD_REQUEST); }
     const original = one.data;
     const { x, c } = await this.copyFor(actor, id);
     if (x.status !== "GENERATED" || !x.path) fail("This copy has no file.", HttpStatus.NOT_FOUND);

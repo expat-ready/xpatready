@@ -462,17 +462,19 @@ export type ReviewRound = { id: string; case_id: string; number: number; kind: "
 // before is still accepted, and the checks a route already made keep their words (they stay in the route, after this).
 /** A value that is not text passes (the route's own check says what it must be); text is capped at `max` characters. */
 const upTo = (max: number, words: string) => z.unknown().refine((v) => typeof v !== "string" || v.length <= max, words);
+/** The same, counting the text as the route reads it (trimmed): padding a short text with spaces stays accepted. */
+const upToTrimmed = (max: number, words: string) => z.unknown().refine((v) => typeof v !== "string" || v.trim().length <= max, words);
 const notHere = (what: string) => ({ error: (i: { code: string; keys?: string[] }) => i.code === "unrecognized_keys" ? `Not part of ${what}: ${(i.keys ?? []).join(", ")}.` : `Send ${what} as an object.` });
 /** POST /runtime/filings/:id/review (readiness.ts). */
 export const FilingReviewBody = z.strictObject({
   facts_hash: upTo(64, "The facts_hash you read (Reload).").optional(),
   pin_revision: z.number({ error: "The pin revision you read (Reload)." }).int("The pin revision you read (Reload).").optional(),
-  note: upTo(4000, "Keep the note to 400 characters.").optional(),
+  note: upToTrimmed(4000, "Keep the note to 400 characters.").optional(),
   self: z.boolean({ error: "self is true or false, or leave it out." }).optional(),
 }, notHere("a review"));
 /** POST /runtime/filings/:id/warnings/:code/pass (readiness.ts). */
 export const WarningPassBody = z.strictObject({
-  reason: upTo(3000, "Keep it to 300 characters.").optional(),
+  reason: upToTrimmed(3000, "Keep it to 300 characters.").optional(),
   key: upTo(500, "Send key as the warning line's key (text), or leave it out to pass every open line of this kind.").optional(),
 }, notHere("passing a warning"));
 const optText = (field: string, max: number) => z.union([z.string(), z.null()], { error: `Write ${field} as text, or leave it out.` }).refine((v) => v == null || v.length <= max, `Keep ${field} to ${max} characters.`).optional();
@@ -481,7 +483,7 @@ export const FormAdditionBody = z.strictObject({
   form: upTo(100, "Name the form to add, by its number.").optional(),
   subject: optText("subject", 100),
   channel: optText("channel", 40),
-  signature: z.union([z.string().max(40), z.boolean(), z.null()], { error: "signature is NONE (no signature) or left out." }).optional(),
+  signature: z.union([z.string().max(40, "signature is NONE (no signature) or left out."), z.boolean(), z.null()], { error: "signature is NONE (no signature) or left out." }).optional(),
   signature_reason: optText("signature_reason", 5000),
   reason: optText("reason", 5000),
   idempotency_key: optText("idempotency_key", 200),
@@ -492,7 +494,7 @@ export const FormRemovalBody = z.strictObject({ reason: upTo(5000, "Keep the rea
 export const AddableSearch = z.string({ error: "Give q once, as text." }).max(200, "Keep the search to 200 characters.").optional();
 export const AddableSubject = z.string({ error: "Give subject once, as text." }).max(100, "Keep subject to 100 characters.").optional();
 /** ?original= on /runtime/form-copies/:id/file (fill-case.ts): "1" is the original; anything else, or none, the copy. */
-export const CopyFileOriginal = z.union([z.boolean(), z.string().max(10)], { error: "Give original once (original=1)." }).optional().transform((v) => v === true || v === "1");
+export const CopyFileOriginal = z.union([z.boolean(), z.string().max(10, "Give original once (original=1).")], { error: "Give original once (original=1)." }).optional().transform((v) => v === true || v === "1");
 
 // CS-C1a's case decision, withdrawal, close and reopen (case-close.ts): its checks and words exactly, moved into zod.
 // A failed check carries its own code (params.code), so the route answers as before.
@@ -534,7 +536,7 @@ export const CaseDecisionBody = z.strictObject({
     if (typeof n === "string" && n.trim().length <= NOTE_MAX && !BAD_TEXT.test(n)) return n.trim() || null;
     ctx.addIssue({ code: "custom", message: `Plain text, at most ${NOTE_MAX} characters.` }); return z.NEVER;
   }).optional(),
-  filingId: upTo(200, "No such filing on this case in your firm.").optional(),
+  filingId: upTo(200, "filingId: at most 200 characters.").optional(),
 }, notHere("a decision"));
 /** POST /runtime/cases/:id/withdraw. */
 export const CaseWithdrawBody = z.strictObject({ reason: caseReason, withdrawnOn: caseDate }, notHere("a withdrawal"));

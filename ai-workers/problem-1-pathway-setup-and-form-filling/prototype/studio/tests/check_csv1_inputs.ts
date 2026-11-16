@@ -178,6 +178,7 @@ if (reached) {
   await dw4("form-additions.ts", "POST", () => `/runtime/filings/${fid}/form-additions`, officer, [
     { why: "an unknown field", body: { form, extra: 1 }, field: "body" },
     { why: "a wrong type (channel: 5)", body: { form, channel: 5 }, field: "channel" },
+    { why: "an oversized signature", body: { form, signature: big }, field: "signature" },
     { why: "an oversized form number", body: { form: big }, field: "form" },
   ], { body: { form, subject }, expect: (s) => s === 201 || s === 409 || s === 422 });
   const added = m3.sql(`select id from filing_form_addition where filing_id = '${fid}' and removed_at is null limit 1`);
@@ -199,7 +200,8 @@ if (reached) {
     { why: "an oversized person", q: `?person=${"x".repeat(300)}`, field: "person" },
   ], { q: "", expect: (s) => s === 200 });
   await dw4("fill-case.ts", "GET", (q) => `/runtime/form-copies/00000000-0000-4000-8000-000000000000/file${q}`, officer, [
-    { why: "original given twice", q: "?original=1&original=1", field: "body" },
+    { why: "original given twice", q: "?original=1&original=1", field: "original" },
+    { why: "an oversized original", q: `?original=${"1".repeat(50)}`, field: "original" },
   ], { q: "?original=1", expect: (s) => s === 404 });   // no such copy: the flag passes the schema, the copy is not found, as before
 }
 { // case-close.ts (CS-C1a): its checks and words, now in zod (contracts/runtime.ts).
@@ -218,6 +220,11 @@ if (reached) {
   for (const [why, got, field, message] of cases) ok(`CS-V1 DW4 fail (case-close.ts): ${why} is refused on ${field} with its words`, got?.field === field && got?.message === message, got);
   const blankReason = first(CaseReasonBody.safeParse({ reason: " ​ " }));
   ok("CS-V1 DW4 fail (case-close.ts): a blank reason keeps its own code (REASON_REQUIRED, \"Give a reason.\")", blankReason?.code === "REASON_REQUIRED" && blankReason.message === "Give a reason." && blankReason.field === "reason", blankReason);
+}
+{ // Review of #2042 m2: the review note and the pass reason are capped as the route reads them (trimmed), so a short
+  // text padded with spaces is still taken, as before.
+  const { FilingReviewBody, WarningPassBody } = await import("../contracts/runtime.ts");
+  ok("CS-V1 DW4 pass (readiness.ts): a short note or reason padded with spaces is still taken", FilingReviewBody.safeParse({ facts_hash: "0".repeat(64), note: `Fine${" ".repeat(5000)}` }).success && WarningPassBody.safeParse({ reason: `Passport arrives tomorrow${" ".repeat(5000)}` }).success);
 }
 function big2() { return "y".repeat(6000); }
 

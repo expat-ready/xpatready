@@ -131,8 +131,8 @@ export class FormAdditions {
   /** GET …/addable-forms: the library's forms (number or title matching `q`), each addable with its kind, or shown with
    *  why it is not. Coverage is never worked out here (BR-3: only for the form picked). */
   async addable(actor: Actor, filingId: string, qIn: unknown, subjectIn: unknown) {
+    const { f, c } = await this.filing(actor, filingId);   // who may read it, and is it there, first (403, 404)
     const q = parsed(AddableSearch, qIn, "q"), subject = parsed(AddableSubject, subjectIn, "subject");
-    const { f, c } = await this.filing(actor, filingId);
     const who = this.personOn(c, f, subject);
     const words = typeof q === "string" ? q.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 80) : "";
     const lib = (await this.library(c.workspaceId)).filter((x) => x.formKind !== "guide" && x.formKind !== "document" && x.formKind !== "checklist");
@@ -167,8 +167,8 @@ export class FormAdditions {
   /** GET …/addable-forms/:form: one form for one person: its coverage on this case (fills), or why it is blank; the
    *  channel and signature it would take. */
   async detail(actor: Actor, filingId: string, formIn: string, subjectIn: unknown) {
-    const subject = parsed(AddableSubject, subjectIn, "subject");
     const { f, c } = await this.filing(actor, filingId);
+    const subject = parsed(AddableSubject, subjectIn, "subject");
     const who = this.personOn(c, f, subject);
     const x = (await this.library(c.workspaceId, String(formIn ?? ""))).find((l) => l.formKind !== "guide" && l.formKind !== "document" && l.formKind !== "checklist");
     if (!x) fail("No such form in the firm's library.", HttpStatus.NOT_FOUND);
