@@ -353,3 +353,45 @@ Verdict: Approve 1d66488c529665dfa8094dab3e9a1088498b5df3
 **Blockers:** none. **Majors:** none. **Minors open:** as in Re-review 2 (the description wording question for Lead B).
 
 Verdict: Approve 4941dc7aa4211982a2f30f56250eba6ff6fe9584
+
+## Re-review 7 at `6bdaeb715cdf940c619a919b2cb9e4e39f7a455f` (diff `0017341a..6bdaeb71`: merge of `main` f7dde02c8 plus one test edit)
+
+**The merge (`ea5a08e`) is clean.** `git merge-tree` of its parents gives a tree identical to the commit, with no hand edits.
+* `0017341` is a records commit with no code change from `4941dc7`, which I approved in Re-review 6.
+* Against main, the PR is the same 8 files plus the FO-3w test edit (9 files, +777/−12).
+* `service.ts` still differs from main only by the three `where` lines.
+* Main brought `20261116030000_fo7mv_move_list`. Our `20261116090000` still comes after it and is still the newest migration.
+* No product code in this PR changed.
+
+**The edit to `check_fo3w_manage_browser.ts` (`6bdaeb7`): it keeps QA-496's intent ("the manage route beats a type slug"). Accepted.**
+* Before this PR, a type could be stored under the slug `manage`, and the suite seeded one to show the router still opened the manage page there. This PR's CHECK (`fo_consultation_type_slug_reserved`) now makes such a row impossible. A database holding one could not even run the migration, and no seed or tool makes one (`git grep`). So the seed had to change. Weakening the CHECK would have been wrong.
+* The route-order proof still stands:
+  * routes.tsx declares `/book/:firmKey/manage` before `/:slug`;
+  * on the real app, `/book/maple/manage#<token>` opens the manage page;
+  * `/book/maple/manage` with no token must show the manage page's bad-link text.
+* That last case still tells the two routes apart: if the type route won, the page would ask for slug `manage`, get the API's 404, and show "This page is not available.", not the bad-link text.
+* Its new type, "Manage" at `manage-2`, and the "Choose a time" check add little but do no harm.
+* The new fail-side case, "the database refuses a type stored under the slug manage", moves the old premise onto the rule that now carries it.
+* The header comment now says why.
+* One request: this edits FO-3w's suite, which is outside this PR's touch list. The edit is forced by this PR's database rule, so name it in the PR body and tell FO-3w's row owner (P-606: never widen silently).
+
+**Suites on the merged tree** (scratch databases on :54329, never :4400):
+
+| Suite | Result |
+|---|---|
+| `check_fo3a_booking_types` | 48/48 |
+| FO-3 | 133/133 |
+| FO-3pa | 45/45 |
+| FO-1b | 80/80 |
+| `check_fo3w_manage_browser` | 50/50, all five QA-496 checks passing |
+
+How I ran `check_fo3w_manage_browser`:
+* The isolated copy ran on :4439, started from this working copy at 6bdaeb7.
+* The suite itself ran from a scratch worktree at the same commit, using that copy's web build, so its screenshots did not touch tracked files.
+* I did not re-run `check_fo3w_booking_browser`; its 67/67 is the builder's evidence.
+
+**Blockers:** none. **Majors:** none. **Minors open:**
+* the description wording question for Lead B (Re-review 2);
+* naming the FO-3w test edit in the PR body.
+
+Verdict: Approve 6bdaeb715cdf940c619a919b2cb9e4e39f7a455f
