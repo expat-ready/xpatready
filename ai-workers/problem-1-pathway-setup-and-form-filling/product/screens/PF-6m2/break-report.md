@@ -34,3 +34,32 @@ No Blocker or Major found.
 - **Signup double submit.** Six parallel `verify` calls with one token and code: one firm, one Owner, **one** `money_keys_granted` line.
 - **Signup rollback.** A forced failure of `platform.subscription.created`, after the money line was written, leaves no firm and no money line (49 before and after). A retry of the same link then succeeds with exactly one line.
 - **Status codes.** A refused accept is committed and answers 410 `INVITATION_NOT_VALID`, never 5xx (except F2). The second try writes no second line.
+
+## Re-break at e3632f97b
+
+Only the diff `51fb031e6..e3632f97b` (`identity/session/service.ts`, plus its test) was re-broken, using the same scratch-database harness (`/tmp/claude-0/breaker/attack3.ts`), whose databases were dropped afterwards. No live copy was started. Suites on this head:
+`check_pf6m2_invite_recheck` 18/0, `check_pf6m_money_line` 12/0, `check_pf4b_session_reads` 53/0, `check_pf5_signup_billing` 53/0, `check_pf6b_permission_rules` 29/0.
+
+**F1: closed.**
+- Admin T sends a Billing/Finance invitation, then is changed to Billing/Finance, which does not hold `agent/staff:manage`. The accept answers 410, with no grant and no money line. The line has reason `may_no_longer_invite` and `invitedBy` `staff:<T>`.
+- The same holds for Admin → Read-only with a Read-only invitation.
+- An Owner demoted to Case Manager: both the Billing/Finance invitation and the OWNER invitation are refused with `may_no_longer_invite`.
+- Admin → Billing/Finance → Admin again before the accept: 200 with one money line.
+- Catalogue edits by SQL: removing `agent/staff:manage` from ADMIN refuses an Admin's invitation. Giving the key to CASE_MANAGER lets a Case Manager's invitation through. Both follow the invite door's rule exactly.
+
+**F2: closed.** Each of these `invited_by` values gives 410 `inviter_not_found`, revokes the invitation, writes one line and grants nothing: `staff:someone@example.com`, a bare email, `staff:` plus 240 characters, `staff:` plus 1000 characters, a trailing newline, a leading space, `staff:staff:<uuid>`, and non-English text. None gives a 500. The line has no `invitedBy` field. An upper-case staff uuid still matches (200).
+
+**F3: closed.** Another firm's active Owner, written as `staff:<id>` or as the bare id, gives 410 `inviter_not_found`. The summary reads "its inviter is not a staff member of this firm".
+
+**What the new key check opens: nothing found.**
+- I ran 30 races of a demotion to Billing/Finance against the accept, in both orders: 25 accepted (with one money line each) and 5 refused (`may_no_longer_invite`, nothing granted). There were 0 5xx and 0 mixed outcomes. The firm lock serialises the two.
+- Across all 20 refusal lines: no `@`, no `agent/` key name, and every `invitedBy` is `staff:<uuid>`. Two reasons appeared: `may_no_longer_invite` and `inviter_not_found`.
+- `role_no_longer_givable` (an Owner who becomes only an Admin, with an OWNER invitation) is covered by the row's own test, which passes.
+- Precedence is not-found, then inactive, then the invite key, then the roles. So an Owner demoted to Case Manager is logged as "may no longer invite" without naming OWNER. That is acceptable, and not a finding.
+
+**Still open:**
+- F4 stays with Lead B.
+- F5 is outside the touch list (a known gap).
+- Neither is a Blocker or a Major.
+
+Verdict: Approve e3632f97b04791c41ff0cea1e0e3a2dd91abee0c

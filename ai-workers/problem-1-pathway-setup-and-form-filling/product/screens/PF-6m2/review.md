@@ -89,3 +89,34 @@ Three mutations survive, and none of them hides a defect today:
 
 Verdict: Approve 51fb031e6ca23df0cdd9a4bf50b1fdb006bfe131
 Blockers: none · Majors: none · Minors: m1 door key not re-checked (ruling), m2 raw `invited_by` in the line (500 on planted data), m3 `inactive` label too wide, m4 two signup actor words, m5 GET VALID before the refusal plus the PR body wording, m6 comment slips.
+
+## Re-review at e3632f97b (P-277: diff only, `51fb031e6..e3632f97b -- prototype`; service.ts, money-line.ts, the test)
+* **Fixed, as asked:**
+  * **m1:** the re-check now requires the door key `agent/staff:manage` (only OWNER and ADMIN hold it).
+  * **m2:** the line carries `staff:<uuid read from the database>`, or nothing, never the raw column.
+  * **m3:** a new reason, `inviter_not_found`.
+  * **m6:** both comments are fixed.
+  * Each fix has a fail line, and each line bites. With the key check off, 2 lines fail. With the raw `invited_by` back, 3 fail. With `inviter_not_found` labelled `inactive`, 3 fail. With firmScope dropped, 1 fails; it was a surviving mutation before and is now caught. With the inactive check off, 3 fail.
+* **Suites, my runs at e3632f97b:**
+
+  | Suite | Result |
+  |---|---|
+  | pf6m2 | 18/0 |
+  | pf6m | 12/0 |
+  | pf4b | 53/0 |
+  | pf6b | 29/0 |
+  | pf5 signup | 53/0 |
+  | pf12 walls | 100/0 |
+
+* **Major M1 · the role-key rule for every role except Owner is no longer tested (a regression of the test, not of the code).**
+  * The new door-key check now answers the old DW2 fail (Admin demoted to Case Manager) first, as `may_no_longer_invite`. The only remaining `role_no_longer_givable` line is the Owner-into-Owner case. There the OWNER clause refuses as well.
+  * As a result, deleting `|| needed.some(…)` at `session/service.ts:142` leaves **18/18 green**. Before this commit, mutation M2 failed DW2.
+  * This is reachable, not equivalent. Admin lacks 2 Case Officer keys and 5 Case Manager keys (counted on a fresh migrated database). So an Owner's Case Officer or Case Manager invitation, after the Owner steps down to Admin, depends on this check alone.
+  * The code is correct. In the scratch copy I changed the Owner case's invitation to `["CASE_OFFICER"]`, and the head answered 410 `role_no_longer_givable` [CASE_OFFICER], 18/0. With the key check removed, the variant fails.
+  * **Fix:** add that line to `check_pf6m2_invite_recheck.ts`: an Owner's Case Officer invitation, the Owner then Admin → 410 `role_no_longer_givable` naming CASE_OFFICER. It is BR-1's core rule (DW2), so a regression of it must not pass CI.
+* **Minor:** `INVITE_KEY` copies the literal in `identity/routes.ts:22` (no change is needed now; if the door's key ever changes, both places must change).
+* **Not changed, accepted:** m4 stays with Lead B as Question 3. m5 is outside the touch list: correct the PR body's Accept-page line and list it as a known gap.
+* **Not mine, untouched:** the working tree shows `break-report.md` modified after this commit.
+
+Verdict: Request changes
+Blockers: none · Majors: M1 the non-Owner role-key check has no biting test (add the Owner→Admin Case Officer line) · Minors: `INVITE_KEY` duplicated literal; m4 (Lead B, Question 3); m5 (known gap, PR body).
