@@ -17,3 +17,4 @@ Loop: every 20 minutes read `git log origin/main` for new merges; when a merge c
 | IST | main head | New merges | Row completed? | Action |
 |---|---|---|---|---|
 | 16 Nov 12:4x | b1161b4df | #1921 FO-3w part 1, #1933 FO-2v, #1919 PF-Le (+ records) | none: R1.40 still waits on J-38 | baseline |
+| 16 Nov 13:0x | (07:16Z batch) | #1928, #1931 (qa records), #1935, #1940 (records); no app code | none | wait; #1945, #1951, #1956, #1957, #1959, #1961 still open |
