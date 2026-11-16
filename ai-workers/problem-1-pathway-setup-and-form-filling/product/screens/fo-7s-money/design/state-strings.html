@@ -51,21 +51,25 @@ const S = [
 ["Invoice detail","action","Pay from trust…","0101"],
 ["Credit note","trust return","CAD 282.50 returns to Client B's trust balance","0101"],
 ["Credit note","choice","Refund to the client · Move back to trust","0101"],
-["Credit note","choice","Refund · Keep as credit","1011"],
+["Credit note","choice (paid into operating)","Refund · Keep as credit","1111"],
+["Credit note","choice (trust-paid, No, nothing held)","Refund to the client","0010"],
 ["Credit note","refusal","Already settled by write-off","1111"],
 ["Write off","line","Write off CAD 25.00 (the remaining balance)","1111"],
 ["Reverse entry","preview","INV-0005 goes back to CAD 1,186.50 due","1111"],
-["Reverse entry","preview","Trust balance after: −CAD 1,500.00 · Trust shortfall after a reversal","0101"],
-["Reverse entry","preview","Your firm needs to put CAD 1,500 of its own money into trust for this client. Record it when done.","0101"],
+["Reverse entry","preview","INV-0006 stays paid (its money already moved to operating)","0111"],
+["Reverse entry","preview","Trust balance after: −CAD 1,500.00 · Trust shortfall after a reversal","0111","r"],
+["Reverse entry","preview","Your firm needs to put CAD 1,500 of its own money into trust for this client.","0111","r"],
+["Home (Owner)","shortfall item","Client B's case trust is short CAD 1,500.00","0111","r"],
 ["Trust ledger","shortfall row","Trust shortfall after a reversal","0101"],
 ["Monthly check","shortfall list","Client B — Work permit: −CAD 1,500.00 · Trust shortfall after a reversal","0101"],
 ["Reverse entry","refusal","Use a refund","1111"],
-["Record payment","field","Received into: Operating · Trust","0100"],
-["Record payment","hint","This adds a To move line: move CAD 1,130.00 from operating to trust for Client B","0100"],
+["Record payment","field (Trust first)","Where did this money arrive? Operating account · Trust account","0100"],
+["Record payment","trust request","Move it to your trust account at the bank first, then record it","0100"],
+["Record payment","card in flight","A card payment may be in progress on this invoice","1111"],
 ["Record payment","warning","A payment with reference 4471 is already recorded on this invoice. Record anyway?","1111"],
 ["Record payment","extra","CAD 200.00 extra","1111"],
 ["Record payment","extra","goes to Client B's trust balance","0100"],
-["Record payment","extra","Refund · Keep as credit","1011"],
+["Record payment","extra","Refund · Keep as credit","1111"],
 ["Record payment","success","R-0012 recorded · Receipt emailed to Client B","1111"],
 ["Payments list","column","Received into","0100"],
 ["Money view","summary","Paid from trust","0101"],["Money view","summary","Trust held: CAD 1,300.00 (2 cases, CAD 150.00 before a case)","0101"],
@@ -99,7 +103,9 @@ if (plant === "dw3") A.push(["Trust","Transfer",true,"operating"]);
 const WORD = /trust|deposit|DR-|To move|Monthly check|Pay from trust|Received into/i;
 // The only exemption (Q3): the trust question's own lines, exactly as AG-6-59 r2-r3 word them, Owner only (the ask line: the booking screen).
 const Q = new Set(["Do you hold client money in a trust account? Yes · No", "Yes lets you take deposits before the work. No means you bill after the work.", "Ask the Owner to answer the trust question", "Tell ExpatReady whether you hold client money in a trust account"]);
-const bad1 = S.filter(r => WORD.test(r[2]) && (r[3][0] === "1" || r[3][2] === "1") && !(r[4] === "q" && Q.has(r[2])));
+// Q4: a reversal's shortfall is shown, never hidden (AG16-60, P-634 (1)), even when it is reached from No with nothing held.
+const R = new Set(["Trust balance after: −CAD 1,500.00 · Trust shortfall after a reversal", "Your firm needs to put CAD 1,500 of its own money into trust for this client.", "Client B's case trust is short CAD 1,500.00"]);
+const bad1 = S.filter(r => WORD.test(r[2]) && (r[3][0] === "1" || r[3][2] === "1") && !(r[4] === "q" && Q.has(r[2])) && !(r[4] === "r" && R.has(r[2]) && r[3][0] === "0"));
 const OUT = new Set(["Pay from trust…","Refund to client…"]);
 const bad3 = A.filter(a => (a[2] && !OUT.has(a[1])) || /transfer|withdraw|move out|adjust|edit balance/i.test(a[1]));
 const out = (id, bad, label) => { const o = document.getElementById(id); o.dataset.result = bad.length ? "FAIL" : "PASS";
@@ -107,7 +113,7 @@ const out = (id, bad, label) => { const o = document.getElementById(id); o.datas
 out("dw1", bad1, "DW1 trust words only in trust-on states"); out("dw3", bad3, "DW3 two ways out of trust");
 const tb = document.querySelector("#strings tbody");
 for (const r of S) { const tr = tb.insertRow(); [r[0], r[1], r[2]].forEach(t => tr.insertCell().textContent = t);
-  [...r[3]].forEach((f, i) => { const c = tr.insertCell(); c.className = "x"; c.textContent = f === "1" ? (r[4] === "q" && (i === 0 || i === 2) ? "q" : "✓") : ""; }); }
+  [...r[3]].forEach((f, i) => { const c = tr.insertCell(); c.className = "x"; c.textContent = f === "1" ? (r[4] && (i === 0 || i === 2) ? r[4] : "✓") : ""; }); }
 const ta = document.querySelector("#actions tbody");
 for (const a of A) { const tr = ta.insertRow(); [a[0], a[1], a[2] ? "Yes" : "No", a[3]].forEach(t => tr.insertCell().textContent = t); }
 </script></body></html>

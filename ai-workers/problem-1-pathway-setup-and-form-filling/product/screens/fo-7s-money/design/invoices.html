@@ -32,11 +32,11 @@ button{font:inherit;border:1px solid var(--line);background:var(--card);color:va
 <div class="row"><section><h2>Issue dialog (right panel)</h2><p>Invoice date 16 Nov 2026 · Due in 14 days → 30 Nov 2026 · <button>Due on receipt</button></p>
 <p class="note">Email waits: add your payment details — <a href="#">Getting paid</a></p><p><button>Cancel</button> <button class="p">Issue</button></p></section>
 <section><h2>Invoice detail — INV-0008</h2><p><span class="chip">○ Open</span> Balance due <span class="fig">CAD 1,385.00</span></p>
-<p><button class="p">Record payment…</button> <button>Copy pay link</button> <button>Credit note…</button> <button>Write off…</button> <button>Change due date</button></p>
+<p><button class="p">Record payment…</button> <button>Copy pay link</button> <button>Credit note…</button> <button>Write off…</button></p>
 <p class="note">Issued invoices can't be edited — use a credit note. <button>Use a credit note</button></p></section></div>
 <div class="row"><section><h2>Credit note… (panel)</h2><p>Part · <span class="fig">CAD 100.00</span> · reason “Goodwill”</p><p>Balance due falls from <span class="fig">CAD 1,385.00</span> to <span class="fig">CAD 1,285.00</span>.</p><p>After a write-off: <span class="warn">Already settled by write-off</span></p></section>
-<section><h2>Reverse entry… (panel) — R-0007, cheque, “Returned”</h2><ul><li>INV-0005 goes back to <span class="fig">CAD 1,186.50</span> due</li><li>INV-0006 goes back to <span class="fig">CAD 1,500.00</span> due (its Paid from trust is undone)</li>
-<li class="shortfall"><b>Trust balance after: <span class="fig">−CAD 1,500.00</span> · Trust shortfall after a reversal</b></li><li>Your firm needs to put CAD 1,500 of its own money into trust for this client. Record it when done. <small>(Sample, Unconfirmed: no counsel)</small></li></ul><p><button>Cancel</button> <button class="p">Reverse entry</button></p><small>Reasons by method: Returned only on a cheque. Not offered on a card payment: Use a refund.</small></section></div>
+<section><h2>Reverse entry… (panel) — R-0007, trust deposit cheque, “Returned”</h2><ul><li>INV-0006 stays paid (its money already moved to operating)</li>
+<li class="shortfall"><b>Trust balance after: <span class="fig">−CAD 1,500.00</span> · Trust shortfall after a reversal</b></li><li>Your firm needs to put CAD 1,500 of its own money into trust for this client. <small>(Sample, Unconfirmed: no counsel)</small></li></ul><p><button>Cancel</button> <button class="p">Reverse entry</button></p><small>Reasons by method: Returned never on e-Transfer, card terminal or cash. Not offered on a card payment: Use a refund.</small></section></div>
 <section><output id="dw4"></output><output id="dw7"></output></section></main>
 <script>
 const q = new URLSearchParams(location.search).get("plant"), m = document.querySelector("main");

@@ -15,7 +15,7 @@ h1{font-size:18px;margin:0 0 4px}p{color:var(--muted);margin:0 0 12px}
 td.gap{color:var(--warn);font-weight:600}output{display:block;font-weight:600;margin:8px 0 16px}output[data-result=PASS]{color:var(--ok)}output[data-result=FAIL]{color:var(--bad)}
 </style></head><body>
 <h1>Contract table (FO-7s0)</h1>
-<p>Paths after <code>/api/front-office/money</code> unless they start with <code>/api/</code>. "FO-7b route" = FO-7b names the behaviour but no path; the builder reads the path on <code>main</code>. Gaps G1-G14 and questions Q1-Q3 are listed in <code>concept.md</code>.</p>
+<p>Paths after <code>/api/front-office/money</code> unless they start with <code>/api/</code>. "FO-7b route" = FO-7b names the behaviour but no path; the builder reads the path on <code>main</code>. Gaps G1-G23 and questions Q1-Q4 are listed in <code>concept.md</code>.</p>
 <output id="dw2"></output>
 <div class="wrap"><table><thead><tr><th>Group</th><th>Element</th><th>Route</th><th>Key</th><th>Row</th><th>Refusal words shown</th></tr></thead><tbody id="rows"></tbody></table></div>
 <script>
@@ -43,7 +43,12 @@ const C = [
 ["i","Reverse entry preview","GET /payments/:id/reverse-preview","agent/payment:record","FO-7v p2-3","—"],
 ["i","Reverse entry confirm","POST /payments/:id/reverse {reasonCode, reason?, previewHash}","agent/payment:record","FO-7v p2-3","409 \"Use a refund\"; 409 \"Changed since the preview\""],
 ["c","Record payment","FO-7b route (offline payment, idempotency key)","agent/payment:record","FO-7b","duplicate reference warning; API words for the rest"],
-["c","Received into chosen by staff","Question: FO-7b's payment route field receivedInto (Q2)","agent/payment:record","FO-7b","—"],
+["c","Where the money arrived (Trust first)","Question: FO-7b's payment route field receivedInto (Q2)","agent/payment:record","FO-7b","—"],
+["c","Card session open on an invoice","FO-7q addition: open card session on the invoice read (G19)","agent/invoice:show","FO-7q","—"],
+["c","Idempotency on trust applications, refunds, credit notes","Question: Idempotency-Key on FO-7t and FO-7b routes (G20)","as each route","FO-7t, FO-7b","—"],
+["i","Write-off amount guard","Question: expected amount on the write-off route (G21)","agent/invoice:void","FO-7r","—"],
+["e","Actions on payment detail and Money view","FO-7q addition: allowedActions there (G22); until then GET /api/platform/me keys","as each action","FO-7q, PF-4","—"],
+["g","Getting paid values","FO-7q addition: Getting paid read (G23, with G1)","any staff","FO-7q","—"],
 ["c","Cheque Cleared tick","Question: cleared route (G7)","agent/payment:record","FO-7b","—"],
 ["c","Payments list / detail","GET /payments?invoiceId=&trustRequestId=&method=&from=&to=&pageSize=&after=, GET /payments/:id","agent/payment:record or agent/invoice:show","FO-7q","404 other firm"],
 ["c","Resend receipt","FO-7q addition: POST /payments/:id/receipt/resend (G3)","agent/payment:record","FO-7q","—"],
