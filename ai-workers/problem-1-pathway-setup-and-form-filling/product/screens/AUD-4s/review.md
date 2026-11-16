@@ -94,3 +94,39 @@ N/A. This is a firm-settings screen, outside the P-407 §6 scope for case screen
 * GitHub's quotes were not re-read: vendor and docs hosts are unreachable from this copy, as instructed.
 * The team-code names (`audit-read.controller.ts:90,100`, `FilterLayout` and the others) stay Unverified, as the challenge says: there is no `code/` here.
 * D17 and D20 stay with the founder.
+
+## Round 2 (diff `cd3ea6709..61a6399340`, P-277)
+I read only the new commit's changes to `concept-draft.md`, `design/draft-1.html` and the two screenshots. My own committed files were ignored.
+
+**Round-1 Majors**
+* **Major 1: fixed.** Person now lists "Case Officer B (Sample) — left the firm" (`draft-1.html:96`). Board 2's open line has "Show only this person's changes" next to Done by (`:134`). BR-14 now says the leaver is marked "left the firm" (`concept-draft.md:32`). The 1024 screenshot shows both.
+* **Major 2: fixed.** The walk now has a seed of 151 lines with named authors (`concept-draft.md:72`).
+  * Step 3 turns the shortcut off again.
+  * Step 6 names the page's and the confirm's "Export CSV" buttons, and the export line is now visible.
+  * Step 7 resets From.
+  * Step 8 has 152 lines in range (the seed plus the export), so "Showing 150 lines" holds.
+  * Two wording slips remain (Minors 2 and 3 below). Neither stops a builder from replaying the walk.
+
+**Round-1 Minors:** 1 to 8 are applied.
+* The board 3 sentence names the time zone, and Advanced is drawn open with the Record field (`draft-1.html:144-145`).
+* Overdue has its own class and a ⏱ mark (`:41-42,170`).
+* "Last good check" is removed.
+* The definition of ready lists every case (`:91`).
+* Q1 now uses AG-13-43's own words (`:85`).
+* BR-4 covers Person plus the shortcut (`:22`).
+* §4b now says "part 2's label" (`:40`).
+
+**New in this diff**
+* Blocker: none.
+* Major: none.
+* Minor 1: the edit to BR-7 garbled the sentence (`concept-draft.md:25`). The bold part now reads "… overdue … + 'Checks run …' · not checked: 'The first check runs …' when over 60 minutes have passed". As written, the 60-minute trigger attaches to the not-checked text. Move "when over 60 minutes have passed" back after the overdue label, and drop the not-checked text from BR-7.
+* Minor 2: §5 now has the not-checked help sentence twice (`concept-draft.md:60`). Remove the "· not checked: …" copy.
+* Minor 3: walk step 5 contradicts itself (`concept-draft.md:77`). "On that open line" refers to the Owner's line from step 4, but the button there filters the Owner, not the departed Case Officer. Its "or pick them in Person" also gives the test two paths. The seed does not place the Case Officer's 5 lines on the first page of 50 either. Use one path: "pick 'Case Officer B (Sample) — left the firm' in Person → the five lines".
+* Minor 4: step 4 (`:76`) assumes the Owner's 600-character line is on the first page. Put that line first in the seed's order, for example "the newest line".
+* Minor 5: BR-4's new empty-state words "No ExpatReady staff changes by <person>" (`:22`) are not in §5's copy. Add them there.
+
+**Unchanged and still sound:** sources, Sample labels, no legal-duty wording, no added scope. The longer Person option makes the Shortcut wrap at 1024 px, still with no sideways scroll.
+
+**Journey score:** 9.4 / 10 on the paper walk, 7½ of 8 scorable. "Task completed" is now 1, because the Admin's leaver journey can be walked on the board. "Accessibility" stays ½ until Minor 3 is fixed.
+
+Verdict: Approve 61a6399340c66039c98977f6a22a762d0e9c018f
