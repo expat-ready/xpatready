@@ -16,7 +16,7 @@ import type { FilesPort } from "../../../../../ports/files.ts";
 import { normaliseAddress } from "../../../../../ports/consent.ts";
 import { MailMessage, type MailPort } from "../../../../../ports/mail.ts";
 import { MessageRefused, MessageSend, PlatformAccountSend, type MessagePort } from "../../../../../ports/messages.ts";
-import { firmScope } from "../../firm-scope.ts";
+import { asBypass, firmScope } from "../../firm-scope.ts";
 
 /** The key a mailed attachment is stored under (never under msg/, which MessagePort keeps for rendered messages). */
 /** Each attachment has its own folder (its place in the email), so two names that clean alike never collide; a name the
@@ -41,7 +41,8 @@ export class MessagesMail implements MailPort {
         content: { subject: m.subject, text: m.text, ...(m.html ? { html: m.html } : {}) }, idempotencyKey: `mail:${m.idempotencyKey ?? mailId}`,
       });
       if (!checked.success) throw new MessageRefused(`not sent: ${checked.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
-      const r = await this.d.db.$transaction((tx) => this.d.messages.send(tx, checked.data));
+      // PF-12: the row has no firm, so it is written as the system role (BYPASS_USES "platform.account.mail").
+      const r = await asBypass("platform.account.mail", () => this.d.db.$transaction((tx) => this.d.messages.send(tx, checked.data)));
       await this.d.messages.dispatch(null, [r.outboxId]).catch((e: unknown) => this.d.log?.(`messages: dispatch of ${r.outboxId} failed (${e instanceof Error ? e.name : "error"}); the sweep sends it`));
       return { messageId: r.outboxId };
     }

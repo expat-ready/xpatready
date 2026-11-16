@@ -1,0 +1,6 @@
+PASS  Q1 the Owner invites a new person as Billing/Finance (201) — {"status":201,"body":{"id":"74fff730-fa79-4f57-aa8b-986739627012","email":"qa477.85fc4035@example.com","roles":["BILLING_FINANCE"],"status":"PENDING","expiresAt":"2026-11-19T07:01:47.519Z","emailed":true}}
+PASS  Q1 the invitation row is pending, for Billing/Finance
+PASS  Q2 the invitee accepts (200) and is a staff member with Billing/Finance — {"staffId":"aceead44-3fc3-4e95-98cf-dbbf349e206a","firmKey":"sample-firm","roles":["BILLING_FINANCE"],"handOff":{"kind":"set-password","url":"/sign-in/callback#code=LMAKgBh-S0u6ea4mWQM_wk7cd1GMtGaw6dNiWukV2qA"}}
+PASS  Q2 the accepted role carries money-class keys — 12
+FAIL  Q3 a money-keys audit line names the new person (PF-6b ruling 2 (b)) — fails today (#1929's QA-478 (money line)) — {"lines":0}
+4/5 passed

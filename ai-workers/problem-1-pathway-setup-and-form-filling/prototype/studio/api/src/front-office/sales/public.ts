@@ -12,6 +12,7 @@ import type { AuditPort } from "../../../../ports/audit.ts";
 import type { ConsentPort } from "../../../../ports/consent.ts";
 import { Db, OpenRead } from "../../core.ts";
 import { problem } from "../../platform/identity/keys.ts";
+import { asBypass, enterFirm } from "../../platform/firm-scope.ts";
 import { arrive, type Attribution } from "./arrival.ts";
 import { email, phone, text, UUID, type Tx } from "./common.ts";
 
@@ -127,7 +128,8 @@ export class PublicForms {
 
   private async form(token: unknown) {
     if (typeof token !== "string" || !/^[A-Za-z0-9_-]{22,100}$/.test(token)) return unavailable();
-    const f = await this.db.foWebForm.findUnique({ where: { publicToken: token } });
+    const f = await asBypass("fo.sales.web-form", () => this.db.foWebForm.findUnique({ where: { publicToken: token } }));
+    if (f) enterFirm(f.firmId);   // PF-12: the form's firm, for the rest of the request
     const firm = f?.enabled ? await this.db.platformFirm.findUnique({ where: { id: f.firmId }, select: { status: true } }) : null;
     return f && firm && ["TRIAL", "ACTIVE"].includes(firm.status) ? f : unavailable();
   }

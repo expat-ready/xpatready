@@ -109,7 +109,9 @@ export class Messages implements MessagePort<Tx> {
     return { outboxId: id, state, reason, repeated: false };
   }
 
-  /** PF-19p: a platform account message, through the same outbox, file and idempotency (no firm, no gate). */
+  /** PF-19p: a platform account message, through the same outbox, file and idempotency (no firm, no gate). Under PF-12's
+   *  walls its NULL-firm row is written only as the system role: the caller's transaction runs inside asBypass (MessagesMail
+   *  uses "platform.account.mail"; a door already on its own bypass use, such as sign-up, passes its transaction). */
   private async sendPlatform(tx: Tx, m: z.output<typeof PlatformAccountSend>): Promise<SendResult> {
     const address = normaliseAddress("EMAIL", m.address), where = { audience: "PLATFORM_ACCOUNT" as const, firmId: null, idempotencyKey: m.idempotencyKey };
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`msg_outbox:platform:${m.idempotencyKey}`}))`;

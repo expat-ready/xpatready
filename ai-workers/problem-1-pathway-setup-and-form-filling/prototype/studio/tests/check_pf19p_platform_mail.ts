@@ -15,7 +15,7 @@ import { ZodError } from "zod";
 import type { Db } from "../api/src/core.ts";
 import { LocalFiles } from "../api/src/front-office/files.ts";
 import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
-import { firmScope } from "../api/src/platform/firm-scope.ts";
+import { appDatabaseUrl, asJob, BypassRefused, firmScope, inRequest, WalledPool, withFirm } from "../api/src/platform/firm-scope.ts";
 import { localEmail } from "../api/src/platform/messages/channels/email/local.ts";
 import { ConsentStore } from "../api/src/platform/messages/consent/consent-store.ts";
 import { PlatformInbox } from "../api/src/platform/messages/demo-inbox.ts";
@@ -205,6 +205,7 @@ try {
   // PF-12's wall (#1910, not on main when this landed): row-level security, firm_id = the session's firm, and a system role
   // that passes it. The same policy is applied here to probe roles, so the rule PF-12 relies on is proved now: a NULL firm
   // matches no firm's session. Where PF-12 is on main, its own roles are probed as well.
+  const hadRls = sql(`select relrowsecurity from pg_class where relname = 'msg_outbox'`) === "t";   // PF-12's own wall, when on main
   sql(`create role ${FIRM_ROLE} nologin; create role ${SYSTEM_ROLE} nologin bypassrls; grant select, insert, update on msg_outbox to ${FIRM_ROLE}, ${SYSTEM_ROLE};
     alter table msg_outbox enable row level security;
     create policy pf19p_probe on msg_outbox to ${FIRM_ROLE} using (firm_id = nullif(current_setting('app.firm_id', true), '')::uuid)`);
@@ -219,11 +220,28 @@ try {
   ok("DW3 fail: a firm's role behind the wall cannot write a PLATFORM_ACCOUNT row (insert refused 42501) nor change one (0 rows)",
     asRoleState(FIRM_ROLE, firmA, platRow(uuid())) === "42501" && asRoleState(FIRM_ROLE, "", platRow(uuid())) === "42501" && touched(FIRM_ROLE, firmA) === "0");
   ok("DW3 pass: the system role writes and changes PLATFORM_ACCOUNT rows", asRoleState(SYSTEM_ROLE, "", platRow(uuid())) === "ok" && Number(touched(SYSTEM_ROLE, "")) > 0);
-  sql(`drop policy pf19p_probe on msg_outbox; alter table msg_outbox disable row level security; revoke all on msg_outbox from ${FIRM_ROLE}, ${SYSTEM_ROLE}`);
-  if (sql(`select to_regprocedure('platform_session_firm()') is not null`) === "t") {
-    ok("DW3 fail (PF-12 on main): xr_app with a firm set reads no PLATFORM_ACCOUNT row", asRole("xr_app", firmA, `select count(*) from msg_outbox where audience = 'PLATFORM_ACCOUNT'`) === "0");
-    ok("DW3 pass (PF-12 on main): xr_staff_bypass reads them", asRole("xr_staff_bypass", "", `select count(*) from msg_outbox where audience = 'PLATFORM_ACCOUNT'`) === platformCount);
-  } else console.log("NOTE  DW3: PF-12's walls (#1910) are not on main: the probe policy above stands in; whichever lands second runs its roles here");
+  sql(`drop policy pf19p_probe on msg_outbox;${hadRls ? "" : " alter table msg_outbox disable row level security;"} revoke all on msg_outbox from ${FIRM_ROLE}, ${SYSTEM_ROLE}`);
+  // PF-12's own walls (on main since #1910): its roles, and the app's real path through the walled pool (xr_app).
+  const nowPlatform = sql(`select count(*) from msg_outbox where audience = 'PLATFORM_ACCOUNT'`);
+  ok("DW3 fail (PF-12): xr_app with a firm set, or with none, reads no PLATFORM_ACCOUNT row and cannot insert one (42501)",
+    asRole("xr_app", firmA, `select count(*) from msg_outbox where audience = 'PLATFORM_ACCOUNT'`) === "0" && asRole("xr_app", "", `select count(*) from msg_outbox where audience = 'PLATFORM_ACCOUNT'`) === "0"
+      && asRoleState("xr_app", firmA, platRow(uuid())) === "42501");
+  ok("DW3 pass (PF-12): xr_staff_bypass reads them all", asRole("xr_staff_bypass", "", `select count(*) from msg_outbox where audience = 'PLATFORM_ACCOUNT'`) === nowPlatform);
+  {
+    const wpool = new WalledPool({ connectionString: appDatabaseUrl(URL, {}), max: 2, options: "-c TimeZone=UTC" }), wdb = new PrismaClient({ adapter: new PrismaPg(wpool) });
+    try {
+      const wjobs = fakeJobs(clock), wm = new Messages({ db: wdb, consent, files, jobs: wjobs, alerts: () => fakeAlerts(), channels: channelsOf([["EMAIL", localEmail]]), clock });
+      const wmail = new MessagesMail({ db: wdb, messages: wm, files }), signup = { method: "POST", path: "/api/public/signup" }, toW = box("walled");
+      const sentW = await inRequest(signup, () => wmail.send(platformMail(toW, { idempotencyKey: `signup:${uuid()}` })));
+      const rowW = await db.msgOutbox.findUnique({ where: { id: sentW.messageId } });
+      ok("DW3 pass (PF-12): on the sign-up door, MessagesMail writes the platform row through the walled pool as the system role (platform.account.mail)", rowW?.audience === "PLATFORM_ACCOUNT" && rowW.firmId === null);
+      const direct = await rejects(() => inRequest(signup, () => wdb.$transaction((t) => wm.send(t, { platformAccount: true, channel: "EMAIL", class: "TRANSACTIONAL", address: box("nobypass"), content: words, idempotencyKey: uuid() }))));
+      const elsewhere = await rejects(() => inRequest({ method: "POST", path: "/api/platform/staff/invitations" }, () => wmail.send(platformMail(box("otherroute")))));
+      ok("DW3 fail (PF-12): the same write without the bypass is refused by the wall, and platform.account.mail is refused on another route", /row-level security|42501/.test(String(direct)) && elsewhere instanceof BypassRefused, { direct: String(direct).slice(0, 160), elsewhere: String(elsewhere).slice(0, 160) });
+      ok("DW3 fail (PF-12): a firm's job never sees the platform row (firm A's deliver of its id is skipped)", (await withFirm(firmA, () => wm.deliver(firmA, sentW.messageId))) === "skipped" && (await db.msgOutbox.findUniqueOrThrow({ where: { id: sentW.messageId } })).state === "QUEUED");
+      ok("DW3 pass (PF-12): the platform job runs as the system role (job:messages.send) and sends it", (await asJob("messages.send", () => wm.deliver(null, sentW.messageId))) === "sent" && (await db.msgOutbox.findUniqueOrThrow({ where: { id: sentW.messageId } })).state === "SENT");
+    } finally { await wdb.$disconnect().catch(() => undefined); await wpool.end().catch(() => undefined); }
+  }
 
   // ------------------------------------------------------------------------------------- DW4: shared contracts
   await runContract(mailPortContract, "fakeMail", () => fakeMail(), ok);

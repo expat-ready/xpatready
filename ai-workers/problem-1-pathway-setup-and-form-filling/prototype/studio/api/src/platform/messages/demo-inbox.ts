@@ -9,6 +9,7 @@ import type { Rendered } from "../../../../ports/messages.ts";
 import { Db, fail, isDemoWorkspace, OpenRead, RUNTIME_ACTORS } from "../../core.ts";
 import { LOCAL_PROVIDER } from "./channels/email/local.ts";
 import { fileKeyOf, filesSpaceOf } from "./send/messages.ts";
+import { asBypass } from "../firm-scope.ts";
 
 type H = string | undefined;
 /** A text attachment longer than this is listed without its text (review m4; an invite is about 1 KB). */
@@ -20,6 +21,9 @@ export class PlatformInbox {
 
   async list(address: H, xActor: H) {
     if (!this.demo()) fail("Not found.", HttpStatus.NOT_FOUND);
+    return asBypass("platform.demo.inbox", () => this.listAll(address, xActor));   // PF-12: every demo firm's mail
+  }
+  private async listAll(address: H, xActor: H) {
     if (RUNTIME_ACTORS.some((a) => (a.id === xActor || a.persona === xActor) && (a.duties as readonly string[]).includes("answer"))) fail(LINK_WORDS.inboxClient, HttpStatus.FORBIDDEN);
     let a = "";
     try { a = normaliseAddress("EMAIL", address ?? ""); } catch { fail("Enter an email address like name@example.com.", HttpStatus.BAD_REQUEST); }

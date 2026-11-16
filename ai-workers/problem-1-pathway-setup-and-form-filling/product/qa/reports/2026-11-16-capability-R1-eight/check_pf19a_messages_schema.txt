@@ -1,0 +1,99 @@
+NOTICE:  database "xr_studio_pf19a_empty_19695" does not exist, skipping
+NOTICE:  database "xr_studio_pf19a_demo_19695" does not exist, skipping
+NOTICE:  database "xr_studio_pf19a_bare_19695" does not exist, skipping
+PASS  PF-19a: the migration has its own stamp, later than every one before it (newest before it: 20261114234500_pf21_complaints; P-348 (8), P-600 (4))
+PASS  PF-19a (P-600 (3), rows rev 15.2): every function and trigger the migration creates is prefixed msg_ (7 functions, 13 triggers)
+PASS  PF-19a (P-600 (2)): the migration alters or drops no table that is not msg_ (additive on its own tables)
+PASS  PF-19a fail: before its migration there is no msg_ table and the schema differs (diff names msg_consent)
+PASS  PF-19a pass: every migration applies to an empty database; the ten msg_ tables exist
+PASS  PF-19a pass: migrate diff from the migrated empty database to the schema names no msg_ table or type
+PASS  PF-19a fail: the migration does not apply twice (it is never re-run silently)
+PASS  PF-19a pass: the migration applies to a demo-data copy (cases, audit, the Sample firms and staff) and leaves its rows as they were
+PASS  PF-19a pass: migrate diff after it on the demo-data copy names no msg_ table or type
+PASS  PF-19a: no msg_ row exists until the messages code writes one (the migration writes no data)
+PASS  PF-19a pass: firm_id is first in every msg_ index (primary keys aside) but the platform's own template indexes
+PASS  PF-19a: the only msg_ indexes not led by firm_id are the two partial ones over rows with no firm (the platform's templates)
+PASS  PF-19a fail: the index check catches an index not led by firm_id (a probe index on msg_consent(subject_id))
+PASS  PF-19a pass: every msg_ time is timestamptz (the send counter's day is a date, the one non-time)
+PASS  PF-19a pass: publishWording gives version 1 then 2 for a firm, channel, purpose and language, with the SHA-256 of the text
+PASS  PF-19a pass: publishing wrote one audit line per version through AuditPort (audit_event, the platform's audit workspace; no wording text in it)
+PASS  PF-19a fail: a consent wording version refuses edit (its text) and delete
+PASS  PF-19a fail: a wording whose hash is not its text's, a second version 1, or a SERVICE wording for email is refused
+PASS  PF-19a pass: versions count per firm (firm B's first wording is version 1) and the WhatsApp opt-in is its own key
+PASS  PF-19a pass: record writes the consent with its evidence (source, reference, wording, language, recorder system:web-form) and one audit line
+PASS  PF-19a fail: a consent naming firm B's wording is refused by the store (and by the composite key underneath: 23503)
+PASS  PF-19a fail: a consent naming the firm's own wording of another channel or purpose is refused (23503: the WhatsApp opt-in wording on an email marketing consent)
+PASS  PF-19a fail: a consent without a wording (not an import), an ip hash off the web form, or a recorder that is not staff:/system:/seed: is refused
+PASS  PF-19a pass: an importer's declaration is recorded without a wording (AG-2-83 rule 5)
+PASS  PF-19a pass: the first write for a firm makes its msg_firm row (firm C had none); a firm id that is no firm is refused (P2003)
+PASS  PF-19a fail (RESTRICT): a firm with messages rows cannot be deleted
+PASS  PF-19a fail: a forced audit failure rolls the record back (AuditFailure thrown, no consent row written)
+PASS  PF-19a fail: a forced audit failure rolls a wording publish back (no version 3)
+PASS  PF-19a pass: the same record with a working audit is written
+PASS  PF-19a fail: allows for marketing without a consent row → false (NO_CONSENT)
+PASS  PF-19a pass: allows for a transactional class without any consent → true (TRANSACTIONAL); service email → true (SERVICE_EMAIL)
+PASS  PF-19a pass: allows for marketing with a live consent → true, naming the consent that allows it (AG-10-27)
+PASS  PF-19a fail: a WhatsApp service message without the opt-in → false; marketing email consent never counts for WhatsApp (channel only, AG-2-83 rule 2)
+PASS  PF-19a fail (review m3): a transactional WhatsApp message without the opt-in → false (every business-initiated WhatsApp message needs it); transactional email needs none
+PASS  PF-19a pass: after the opt-in reply, a WhatsApp service message is allowed; WhatsApp marketing still is not (the opt-in is never marketing)
+PASS  PF-19a fail: a withdrawn consent makes allows false at once (WITHDRAWN); the withdrawal is its own row and its audit line names the consent it ended
+PASS  PF-19a fail: a withdrawal row refuses update, delete and truncate
+PASS  PF-19a pass: the withdrawal leaves the person's other consents (the WhatsApp opt-in) and transactional mail as they were
+PASS  PF-19a fail: a withdrawn_at is never cleared, changed again, or set with any other column; a consent is never deleted
+PASS  PF-19a pass: setting the withdrawal once on a live consent is accepted (the one change a consent takes)
+PASS  PF-19a fail: a withdrawal before the consent was given, or without who and how, is refused (check)
+PASS  PF-19a fail (break 1): a Link copy of the withdrawn consent onto the same person keeps the original's time and its withdrawal: still WITHDRAWN
+PASS  PF-19a fail (break 14): a copy that changes channel, purpose, wording or time is refused
+PASS  PF-19a fail (review M1): a Merge copy of a withdrawn consent is written withdrawn (who and how copied) and never makes the target allowed
+PASS  PF-19a fail (review M2): an unsubscribe by a person with no consent writes a withdrawal row and an audit line (AG-10-24)
+PASS  PF-19a fail (review M2): a Link copy of an older live grant, after that unsubscribe, leaves the person WITHDRAWN
+PASS  PF-19a pass (review m1): a late-processed withdrawal from an hour ago leaves a consent given since live
+PASS  PF-19a fail (break R2-1): an older import recorded after the person's unsubscribe is stored withdrawn, and its Merge copy leaves the other person WITHDRAWN
+PASS  PF-19a fail (review R3-m2): a copy of a raced row (live, but its person withdrew after it) is written withdrawn, via STOP
+PASS  PF-19a pass (break R2-2): a consent stamped four minutes ahead is kept at the clock's now, so a withdrawal a moment later ends it
+PASS  PF-19a pass (break R2-4): a withdrawal stamped four minutes ahead is kept at now, so a real consent a second later is live
+PASS  PF-19a fail (break R2-6): a wording of only Hangul fillers, bidi isolates or combining accents is refused
+PASS  PF-19a fail (review m2): a consent given, or a withdrawal made, more than five minutes in the future is refused
+PASS  PF-19a fail (break 8-10): a bare client in place of the transaction, a time that is not a time (true, 0, year 1500, infinity), a NUL character, or an invisible-only wording is refused cleanly
+PASS  PF-19a pass/fail (review m5): a consent keeps its jurisdiction (CA); one that is not a country code is refused
+PASS  PF-19a pass: giving consent again (a new row after the withdrawal) makes allows true, naming the new row
+PASS  PF-19a fail: a suppressed address → false for every class, transactional included (SUPPRESSED, HARD_BOUNCE)
+PASS  PF-19a pass: the address is kept once in lower case (a second suppression changes nothing) and the audit line carries no address
+PASS  PF-19a pass: the same person at another address is still reachable for transactional mail; firm B's copy of the address is not suppressed
+PASS  PF-19a fail: an address not in its kept form is refused by the database (upper case email; a WhatsApp number not in E.164)
+PASS  PF-19a fail (break 5): a suppressed email cannot come back as <…>, with a trailing dot, or with a zero-width space; the database refuses those forms
+PASS  PF-19a fail (break 4): a STOPped UK number cannot come back with its trunk (0): +44 (0)7700 900123 is suppressed too
+PASS  PF-19a fail: firm A never reads firm B's consent (the same person id has consent in B; A's gate says NO_CONSENT, B's says CONSENT)
+PASS  PF-19a fail: firm A cannot withdraw firm B's consent (withdraw in A changes nothing in B) nor copy it (refused)
+PASS  PF-19a fail: a malformed firm id is refused before any query (firmScope)
+PASS  PF-19a pass: a PLATFORM template has no firm, a FIRM template has one
+PASS  PF-19a fail: a PLATFORM template with a firm, a FIRM template without one, or a second platform template with the same key is refused
+PASS  PF-19a fail: template versions refuse edit and delete; a version in another firm than its template's, or a second platform version 1, is refused
+PASS  PF-19a pass: an outbox row names its own firm's version or the platform's, and the consent that allowed it (state QUEUED)
+PASS  PF-19a fail: an outbox row naming firm A's template version from firm B, or firm B naming firm A's consent, is refused
+PASS  PF-19a pass: a delivery event is written for its outbox row
+PASS  PF-19a fail: delivery events refuse update, delete and truncate; an event of firm B on firm A's outbox row is refused (23503)
+PASS  PF-19a pass/fail: the send counter keeps one row per firm and day and never goes below zero
+PASS  PF-19a pass: fakeConsent gives the store's answers in the same story (CONSENT, other firm NO_CONSENT, WITHDRAWN, TRANSACTIONAL, SUPPRESSED, a merge copy after an unsubscribe WITHDRAWN); its wording hash is the database's
+PASS  PF-19a fail: fakeConsent refuses another firm's wording, as the store does
+PASS  PF-0c DW2 ConsentPort ConsentStore: marketing email: no consent is refused (NO_CONSENT); after record() it is allowed and names that consent
+PASS  PF-0c DW2 ConsentPort ConsentStore: a withdrawn purpose is refused (WITHDRAWN) until a new consent is given after the withdrawal
+PASS  PF-0c DW2 ConsentPort ConsentStore: a late-processed withdrawal never ends a consent given after its time
+PASS  PF-0c DW2 ConsentPort ConsentStore: service and transactional email need no consent; a WhatsApp service message needs the opt-in
+PASS  PF-0c DW2 ConsentPort ConsentStore: a suppressed address stops every class (in any spelling); a second suppression changes nothing
+PASS  PF-0c DW2 ConsentPort ConsentStore: a consent naming another firm's wording is refused; firm A's consent never allows for firm B
+PASS  PF-0c DW2 ConsentPort ConsentStore: wording versions count up from the last, with the text's SHA-256
+PASS  PF-0c DW2 ConsentPort ConsentStore: a consent given in the future, or a SERVICE consent for email, is refused
+PASS  PF-0c DW2 ConsentPort ConsentStore: passes its contract (8 of 8 cases)
+PASS  PF-0c DW2 ConsentPort fakeConsent: marketing email: no consent is refused (NO_CONSENT); after record() it is allowed and names that consent
+PASS  PF-0c DW2 ConsentPort fakeConsent: a withdrawn purpose is refused (WITHDRAWN) until a new consent is given after the withdrawal
+PASS  PF-0c DW2 ConsentPort fakeConsent: a late-processed withdrawal never ends a consent given after its time
+PASS  PF-0c DW2 ConsentPort fakeConsent: service and transactional email need no consent; a WhatsApp service message needs the opt-in
+PASS  PF-0c DW2 ConsentPort fakeConsent: a suppressed address stops every class (in any spelling); a second suppression changes nothing
+PASS  PF-0c DW2 ConsentPort fakeConsent: a consent naming another firm's wording is refused; firm A's consent never allows for firm B
+PASS  PF-0c DW2 ConsentPort fakeConsent: wording versions count up from the last, with the text's SHA-256
+PASS  PF-0c DW2 ConsentPort fakeConsent: a consent given in the future, or a SERVICE consent for email, is refused
+PASS  PF-0c DW2 ConsentPort fakeConsent: passes its contract (8 of 8 cases)
+PASS  PF-19a: no secret column — no msg_ column is named like a password, secret, token or key
+
+94 passed, 0 failed
