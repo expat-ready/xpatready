@@ -119,6 +119,17 @@ function ReleasePanel({ caseId, close, returnFocus }: { caseId: string; close: (
   const [error, setError] = React.useState<string | null>(null);
   const [problem, setProblem] = React.useState<{ kind: "refused" | "conflict"; words: string } | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [rereading, setRereading] = React.useState(false);
+  const moveRef = React.useRef<HTMLButtonElement>(null), [focusMove, setFocusMove] = React.useState(false);
+  // C9.5-fix (P-641): "Read the list again" keeps the conflict state (Move off) until the new read has landed. Clearing it
+  // first left the old list and an enabled Move on screen for the ~2 s the read takes (its refetch also dropped the read
+  // the 409 started), so a Move pressed then sent the old release and was refused "read the list again" once more. It joins
+  // that read (cancelRefetch: false), then puts focus on Move, now naming the newest release (review m1, m3).
+  async function reread() {
+    setRereading(true);
+    try { const r = await q.refetch({ cancelRefetch: false }); if (!r.isError) { setProblem(null); setFocusMove(true); } } finally { setRereading(false); }
+  }
+  React.useEffect(() => { if (focusMove && !problem) { moveRef.current?.focus(); setFocusMove(false); } }, [focusMove, problem]);
   const refused = v?.refused ? v.refused.reason : problem?.kind === "refused" ? problem.words : null;
   async function move() {
     if (!v?.target) return;
@@ -147,7 +158,7 @@ function ReleasePanel({ caseId, close, returnFocus }: { caseId: string; close: (
       </Field>
       <div className="flex items-center justify-between gap-2">
         <Button variant="ghost" onClick={close} data-release-later>Not now</Button>
-        {v?.can_move ? <Button busy={busy} disabled={!v?.target || !!refused || problem?.kind === "conflict"} onClick={() => void move()} data-release-move>Move this case to {v?.target?.label ?? "the new release"}</Button>
+        {v?.can_move ? <Button ref={moveRef} busy={busy} disabled={!v?.target || !!refused || problem?.kind === "conflict"} onClick={() => void move()} data-release-move>Move this case to {v?.target?.label ?? "the new release"}</Button>
           : <p className="text-[13px] text-text-muted">Only case staff move a case.</p>}
       </div>
     </div>
@@ -162,7 +173,7 @@ function ReleasePanel({ caseId, close, returnFocus }: { caseId: string; close: (
             {problem?.kind === "conflict" ? <Notice tone="warn" title="Nothing was changed" className="mb-3"><span data-release-conflict>This case was moved while you read the list: it is on {v?.current.label} now.</span></Notice> : null}
             <Notice tone="ok" title="This case is on the newest release">Nothing to move to.</Notice></> : <>
           {refused ? <Notice tone="danger" title="Nothing was changed"><span data-release-refused>{refused}</span></Notice> : null}
-          {problem?.kind === "conflict" ? <Notice tone="warn" title="Nothing was changed" action={<Button size="sm" variant="secondary" onClick={() => { setProblem(null); void q.refetch(); }} data-release-reread><RefreshCw aria-hidden />Read the list again</Button>}>
+          {problem?.kind === "conflict" ? <Notice tone="warn" title="Nothing was changed" action={<Button size="sm" variant="secondary" busy={rereading} onClick={() => void reread()} data-release-reread><RefreshCw aria-hidden />Read the list again</Button>}>
             <span data-release-conflict>This case or its release changed while you read the list.</span></Notice> : null}
           <section aria-labelledby="ru-changes" className="space-y-3">
             <h3 id="ru-changes" className="text-sm font-semibold">What changes</h3>
