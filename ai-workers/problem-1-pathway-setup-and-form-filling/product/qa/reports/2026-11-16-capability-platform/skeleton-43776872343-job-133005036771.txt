@@ -1,0 +1,19 @@
+# skeleton.yml run 43776872343 (workflow_dispatch by the Lead on main 6ee7a8056), job 133005036771, conclusion success; lines read by qa 16 Nov
+full run ()
+migrate-1  | All migrations have been successfully applied.
+PASS  health: GET /api/health 200, status ok
+PASS  first page: GET / 200 with the web app's root
+PASS  first page: its bundle /assets/index-COZSTyKR.js 200 (text/javascript; charset=utf-8)
+PASS  me: GET /api/platform/me 200 with firmId
+PASS  non-root: the image runs as 'node' (uid 1000)
+PASS  no secret: environment (7 names) and history (17 layers) hold nothing secret-shaped
+skeleton smoke: all steps passed (http://127.0.0.1:4480)
+FAIL  health: GET /api/health answered 503 — The database does not answer: Raw query failed. Code: `N/A`. Message: `Can't reach database server at db`
+PASS  first page: GET / 200 with the web app's root
+PASS  first page: its bundle /assets/index-COZSTyKR.js 200 (text/javascript; charset=utf-8)
+SKIP  me: GET /api/platform/me waits for PF-4 on main (PLATFORM_ME=required runs it)
+skeleton smoke: 1 step(s) failed (http://127.0.0.1:4480)
+seeded fail caught: the smoke script failed on health with the database stopped
+FAIL  non-root: the image's user is 'root'
+FAIL  no secret: secret-shaped text in the image's environment or history: ://u:***@,SEEDED_SIGNING_KEY=***
+seeded fail caught: root user and a key in the environment
