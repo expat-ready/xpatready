@@ -211,3 +211,72 @@ Live probes on isolated :4640 (Sample seed, `firm-seed.ts`, `booking-seed.ts`): 
 - Trust and sources: ½ (the bypass is still reachable by `SET ROLE` outside `asBypass`; recorded as PR question 3).
 
 **Verdict: Block.** One fix: R2-M1, a PR body update only. All round-1 Blockers and code Majors are fixed at 9db6c475e, so once the body matches this head this reviewer approves 9db6c475e without another code pass.
+
+---
+
+# Round 3: diff-only re-review at 0b9e1e8b4 (P-277)
+
+Verdict: Approve
+
+Scope: `git diff 9db6c475e e0f29f575` plus the addendum `git diff e0f29f575 0b9e1e8b4`, studio folder, PF-12's lines only.
+
+## Round-2 findings: status
+
+| Finding | Status | Evidence |
+|---|---|---|
+| **R2-M1** PR body stale | **Fixed** | The body now describes `xr_wall_reader` and the 68 trigger functions (release holder named first), the new `platform_web_address_taken(addresses, at, self)` (addresses only), the FO-3pa `/book` and `/ics` routes, the invitation accept (question 6) and the per-connection tag (question 8). Two small gaps remain: r3-m1 below. |
+| r2-m1 booking list may be 404 | Fixed | The test requires 200 and the firm's page. |
+| r2-m2 fixed port | Fixed | The test's server takes a free port (listen on 0). |
+| r2-m3 `enterFirm` overrides the address's firm | Fixed | `firm-scope.ts:85` answers not found when the scope already has another firm; a fail check covers it. |
+
+## The new gate, `0_pf12_firm_first`, and the no-firm line
+
+`platform_firm_first(col)` is an invoker trigger that fires first on every forced table. It refuses a row whose firm column is not the session's firm, or any row when no firm is set, unless the current role has BYPASSRLS or is a superuser. Its refusal reuses the row-level security message and code 42501, so no values leak.
+
+Why it is sound:
+- **Firing order.** Triggers fire in name order, so `0_` comes first. The guard fails any forced table where it is not the first trigger.
+- **Triggers that write.** A reader-owned trigger that writes into another walled table runs as `xr_wall_reader`, which has BYPASSRLS, so the inner gate passes.
+- **The bypass role** passes, as before.
+- **The no-firm line changes nothing for a correct caller.** WITH CHECK already refused a write with no firm, because `NULL` never passes.
+- **UPDATE and DELETE.** The gate checks only `NEW`; UPDATE and DELETE still see only the session's own rows through `USING`.
+
+Exercised through the real walled server on isolated :4643 at e0f29f575 (Sample seed, `firm-seed.ts`, `booking-seed.ts`):
+- Staff *Add lead* → 201 (person, lead, receipt and attribution rows).
+- Close the lead → 200.
+- Invite a staff member → 201 (invitation and mail).
+- Public booking page: slots → 200; booking → `SCHEDULED` (person, lead, booking, link, consent and mail).
+- No 500 in the copy's log.
+
+Probes as `xr_app` on the same copy:
+- Firm A's invoice line naming firm B → only the wall's refusal.
+- A line naming firm A on firm B's invoice → `money_invoice_line_write`'s "not visible" answer, the same as for an unknown invoice.
+
+## Minor (new; neither blocks)
+
+- **r3-m1 (record, fix before asking for the label; no re-review needed).** The PR body says "two functions" and does not describe `platform_firm_first` or the `0_pf12_firm_first` trigger it adds to all 63 forced tables of the other areas. Name it under Shared-file lines for the release holder. "Checks" still quotes `cc8268d36` (96 checks); paste this head's lines (98) and the suite run, as the brief requires before the label.
+- **r3-m2.** A reader trigger can still reveal another firm's id when the row names the session's own firm.
+  - Firm A inserts a `msg_template_version` (firm A) on firm B's template id. The answer is `msg_template_version: firm_id <A> is not its template's firm (<B's firm id>)`. An unknown id gives a foreign-key error instead.
+  - So the template's existence and its firm's uuid leak through raw SQL. This is the same class as the existence oracles the breaker accepted in round 1 (unique and foreign keys), and the ids are unguessable uuids.
+  - **Fix (later row or follow-up):** look up the referenced row by `(NEW.firm_id, id)`, as `money_invoice_line_write` does, or stop printing the referenced row's values.
+
+## Checked in round 3
+
+Every copy was stopped and its database dropped.
+
+| Suite or probe | Result |
+|---|---|
+| `check_pf12_walls` at e0f29f575 | 97/97 |
+| `check_pf12_walls` at 0b9e1e8b4 | 98/98 |
+| `check_pf4_identity` (:4641) | 119/119 |
+| `check_pf4b_session_reads` (:4642) | 55/0 |
+| `check_d1_reset_to_six` (:4644) | 25/0 |
+| `check_c10_1_configured` (:4645) | 48/0 |
+| Live probes (:4643) | as above |
+
+The checkout moved from e0f29f575 to 0b9e1e8b4 while the four isolated suites ran. The only difference is the gate's no-firm condition and one test line.
+
+## Journey score, round 3: 9.5 / 10 (pass)
+
+As round 2. Every criterion scores 1 except trust and sources, ½, because the bypass is still reachable by `SET ROLE` outside `asBypass`; that is recorded as a PR question.
+
+**Verdict: Approve** for `0b9e1e8b49cc83187aa3c0449c3ac1c92b0e2766`: no open Blocker or Major. Fix r3-m1 in the PR body before asking for the label. r3-m2 is for a follow-up.
