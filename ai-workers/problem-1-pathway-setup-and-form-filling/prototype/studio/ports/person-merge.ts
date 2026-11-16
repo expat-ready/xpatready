@@ -16,7 +16,8 @@ export const MERGE_KEY = "agent/prospect:merge";
 export const MergeKind = z.enum(["PERSON", "COMPANY"]);
 export type MergeKind = z.infer<typeof MergeKind>;
 
-/** The fields a merge chooses between, per kind (fo_person's and fo_company's own columns, by their Prisma names). */
+/** The fields a merge chooses between, per kind (fo_person's and fo_company's own columns, by their Prisma names).
+ *  Companion columns travel with their field: `phone` carries `phoneReadable`, `operatingName` carries `normalisedName`. */
 export const MERGE_FIELDS = {
   PERSON: ["givenNames", "familyName", "email", "phone", "language", "timeZone"],
   COMPANY: ["operatingName"],
@@ -73,7 +74,10 @@ export interface PersonMergePort<Tx = unknown> {
    *  copied, the loser tombstoned (never deleted), audit, then `person.merged`. Refuses with PersonMergeRefused. */
   mergePersons(tx: Tx, ctx: StaffContext, input: MergePersonsInput): Promise<MergeResult>;
   /** Undoes one merge in `tx`: both records and exactly the moved rows restored, then `person.unmerged`. Refused once
-   *  anything reached the survivor from the loser's channel after the merge, or when it was undone already. */
+   *  anything reached the survivor from the loser's channel after the merge, while a later merge naming either record
+   *  stands (undo that one first; else a tombstone would come back live, AG-2-16 rule 5), or when it was undone already.
+   *  Restoring both records exactly means the merge record keeps the survivor's replaced values too, not only the
+   *  loser's snapshot (part 1's fo_dup_merge). */
   unmergePersons(tx: Tx, ctx: StaffContext, merge_ref: string): Promise<UnmergeResult>;
 }
 
@@ -82,10 +86,11 @@ export type FieldSide = { value: unknown; updatedAt: Date };
 const present = (v: unknown) => v !== null && v !== undefined && !(typeof v === "string" && v.trim() === "") && !(Array.isArray(v) && v.length === 0);
 
 /** AG-2-16 rule 1's default: a value beats no value (most complete); with both, the more recently changed record's
- *  (most recent); a tie keeps the survivor's. */
+ *  (most recent: the record's updated_at, as there are no per-field times, so any write, an earlier merge included,
+ *  makes a record the newer one); a tie keeps the survivor's. */
 export function defaultPick(survivor: FieldSide, loser: FieldSide): FieldPick {
   if (present(survivor.value) !== present(loser.value)) return present(survivor.value) ? "SURVIVOR" : "LOSER";
-  return loser.updatedAt.getTime() > survivor.updatedAt.getTime() && present(loser.value) ? "LOSER" : "SURVIVOR";
+  return loser.updatedAt.getTime() > survivor.updatedAt.getTime() ? "LOSER" : "SURVIVOR";
 }
 
 /** Every field of `kind` with its pick: the caller's choice, else the default. */
@@ -100,7 +105,7 @@ export type FakePersonMerge = PersonMergePort<unknown> & {
   /** Adds a record to the fake's store (committed), returns its id. */
   seed(firmId: string, kind: MergeKind, fields: Record<string, unknown>, updatedAt?: Date): string;
   read(id: string): { fields: Record<string, unknown>; mergedIntoId: string | null } | null;
-  /** The events written by committed transactions, in order. */
+  /** The events written so far, in order (a transaction's own drop out when it is discarded). */
   events(): { type: string; payload: { mergeRef: string; kind: MergeKind; survivorId: string; loserId: string } }[];
   /** Stands in for a new note on the survivor from the loser's email (it makes the Undo refuse). */
   addFromLoserChannel(merge_ref: string): void;
@@ -143,9 +148,12 @@ export function fakePersonMerge(): FakePersonMerge {
     },
     async unmergePersons(tx, ctx, ref) {
       allowed(ctx);
-      const m = merges.get(ref);
+      const m = Uuid.safeParse(ref).success ? merges.get(ref) : undefined;
       if (!m || m.firmId !== ctx.firmId) throw new PersonMergeRefused("NOT_FOUND", "No such merge.");
       if (m.undone) throw new PersonMergeRefused("ALREADY_UNDONE", "This merge was already undone.");
+      const ids = [m.survivor.id, m.loser.id];
+      const later = [...merges.values()].some((o) => o !== m && o.at > m.at && !o.undone && (ids.includes(o.survivor.id) || ids.includes(o.loser.id)));
+      if (later) throw new PersonMergeRefused("UNDO_REFUSED", "A later merge involves one of these records; undo that one first.");
       if (m.touchedAfter) throw new PersonMergeRefused("UNDO_REFUSED", "Something reached the merged record from the other record's contact details after the merge; it cannot be undone.");
       save(tx, copy(m.survivor));
       save(tx, copy(m.loser));

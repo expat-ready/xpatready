@@ -66,6 +66,7 @@ export const personMergePortContract = defineContract("PersonMergePort", (make: 
     async run() {
       const h = await make(), { s, l } = await pair(h);
       const co = await h.seed("COMPANY", { operatingName: "Sample Co" }, OLD), far = await h.seed("PERSON", { givenNames: "Other", familyName: "Firm", email: null, phone: null, language: null, timeZone: null }, OLD, true);
+      const before = { s: await h.read(s), l: await h.read(l), co: await h.read(co) };
       const tryMerge = (input: Parameters<PersonMergePort["mergePersons"]>[2], ctx = h.ctx) => h.tx((t) => h.port.mergePersons(t, ctx, input));
       await expectRefused(() => tryMerge({ kind: "PERSON", survivor_fo_id: s, loser_fo_id: s }), "self-merge", refusedAs("SELF_MERGE"));
       await expectRefused(() => tryMerge({ kind: "PERSON", survivor_fo_id: s, loser_fo_id: co }), "person with company", refusedAs("KIND_MISMATCH"));
@@ -73,8 +74,18 @@ export const personMergePortContract = defineContract("PersonMergePort", (make: 
       await expectRefused(() => tryMerge({ kind: "PERSON", survivor_fo_id: s, loser_fo_id: far }), "another firm's loser", refusedAs("NOT_FOUND"));
       await expectRefused(() => tryMerge({ kind: "PERSON", survivor_fo_id: s, loser_fo_id: l, choices: { operatingName: "LOSER" } }), "a company field on persons", refusedAs("INVALID_INPUT"));
       await expectRefused(() => tryMerge({ kind: "PERSON", survivor_fo_id: s, loser_fo_id: l }, { ...h.ctx, keys: h.ctx.keys.filter((k) => k !== "agent/prospect:merge") }), "no merge key", refusedAs("MISSING_PERMISSION"));
-      const sv = await h.read(s), lv = await h.read(l);
-      expect(sv?.fields.email === null && lv?.mergedIntoId === null && (await mine(h, [s, l, co, far])).length === 0, "nothing changed, no event", { sv, lv });
+      const after = { s: await h.read(s), l: await h.read(l), co: await h.read(co) };
+      expect(JSON.stringify(after) === JSON.stringify(before) && (await mine(h, [s, l, co, far])).length === 0, "nothing changed, no event", { before, after });
+    },
+  },
+  {
+    name: "two companies merge (AG-2-16 rule 8): the newer name on the survivor, the loser a tombstone, one person.merged of kind COMPANY",
+    async run() {
+      const h = await make(), s = await h.seed("COMPANY", { operatingName: "Sample Co" }, OLD), l = await h.seed("COMPANY", { operatingName: "Sample Company Ltd" }, NEW);
+      const { merge_ref } = await h.tx((t) => h.port.mergePersons(t, h.ctx, { kind: "COMPANY", survivor_fo_id: s, loser_fo_id: l }));
+      const sv = await h.read(s), lv = await h.read(l), ev = await mine(h, [s, l]);
+      expect(sv?.fields.operatingName === "Sample Company Ltd" && sv.mergedIntoId === null && lv?.mergedIntoId === s, "newer name kept, loser tombstoned", { sv, lv });
+      expect(ev.length === 1 && JSON.stringify(ev[0].payload) === JSON.stringify({ mergeRef: merge_ref, kind: "COMPANY", survivorId: s, loserId: l }), "one person.merged of kind COMPANY", ev);
     },
   },
   {
@@ -103,11 +114,13 @@ export const personMergePortContract = defineContract("PersonMergePort", (make: 
       const before = { s: await h.read(s), l: await h.read(l) };
       const { merge_ref } = await h.tx((t) => h.port.mergePersons(t, h.ctx, { kind: "PERSON", survivor_fo_id: s, loser_fo_id: l }));
       await expectRefused(() => h.tx((t) => h.port.unmergePersons(t, { ...h.ctx, firmId: "00000000-0000-4000-8000-0000000f0999" }, merge_ref)), "another firm's merge", refusedAs("NOT_FOUND"));
+      await expectRefused(() => h.tx((t) => h.port.unmergePersons(t, h.ctx, "not-a-merge-ref")), "a merge_ref that is no id", refusedAs("NOT_FOUND"));
+      await expectRefused(() => h.tx((t) => h.port.unmergePersons(t, { ...h.ctx, keys: h.ctx.keys.filter((k) => k !== "agent/prospect:merge") }, merge_ref)), "Undo without the key", refusedAs("MISSING_PERMISSION"));
       const out = await h.tx((t) => h.port.unmergePersons(t, h.ctx, merge_ref));
       const after = { s: await h.read(s), l: await h.read(l) };
       expect(out.restored === true && JSON.stringify(after) === JSON.stringify(before), "both records as before the merge", { before, after });
       const ev = await mine(h, [s, l]);
-      expect(ev.length === 2 && ev[1].type === EVENT.PERSON_UNMERGED && PersonMergePayload.safeParse(ev[1].payload).success, "person.unmerged last, ids only", ev);
+      expect(ev.length === 2 && ev[1].type === EVENT.PERSON_UNMERGED && JSON.stringify(ev[1].payload) === JSON.stringify({ mergeRef: merge_ref, kind: "PERSON", survivorId: s, loserId: l }), "person.unmerged last, ids only, naming this merge", ev);
       await expectRefused(() => h.tx((t) => h.port.unmergePersons(t, h.ctx, merge_ref)), "second Undo", refusedAs("ALREADY_UNDONE"));
     },
   },
@@ -119,6 +132,26 @@ export const personMergePortContract = defineContract("PersonMergePort", (make: 
       await h.addFromLoserChannel(merge_ref);
       await expectRefused(() => h.tx((t) => h.port.unmergePersons(t, h.ctx, merge_ref)), "Undo after new activity", refusedAs("UNDO_REFUSED"));
       expect((await h.read(l))?.mergedIntoId === s && (await mine(h, [s, l])).length === 1, "still merged, no unmerge event");
+    },
+  },
+  {
+    name: "Undo is refused (409 UNDO_REFUSED) while a later merge names either record (survivor merged on, or another record merged in); after that one is undone it runs",
+    async run() {
+      const h = await make(), { s, l } = await pair(h);
+      const t3 = await h.seed("PERSON", { givenNames: "Client", familyName: "B", email: null, phone: null, language: null, timeZone: null }, OLD);
+      const c = await h.seed("PERSON", { givenNames: "Client", familyName: "B", email: "third@example.com", phone: null, language: null, timeZone: null }, OLD);
+      const first = await h.tx((t) => h.port.mergePersons(t, h.ctx, { kind: "PERSON", survivor_fo_id: s, loser_fo_id: l }));
+      const onward = await h.tx((t) => h.port.mergePersons(t, h.ctx, { kind: "PERSON", survivor_fo_id: t3, loser_fo_id: s }));
+      await expectRefused(() => h.tx((t) => h.port.unmergePersons(t, h.ctx, first.merge_ref)), "Undo while the survivor is merged on", refusedAs("UNDO_REFUSED"));
+      expect((await h.read(s))?.mergedIntoId === t3, "the survivor stays a tombstone");
+      await h.tx((t) => h.port.unmergePersons(t, h.ctx, onward.merge_ref));
+      const into = await h.tx((t) => h.port.mergePersons(t, h.ctx, { kind: "PERSON", survivor_fo_id: s, loser_fo_id: c }));
+      const before = await h.read(s);
+      await expectRefused(() => h.tx((t) => h.port.unmergePersons(t, h.ctx, first.merge_ref)), "Undo while another record was merged in later", refusedAs("UNDO_REFUSED"));
+      expect(JSON.stringify(await h.read(s)) === JSON.stringify(before) && (await h.read(c))?.mergedIntoId === s, "nothing changed");
+      await h.tx((t) => h.port.unmergePersons(t, h.ctx, into.merge_ref));
+      await h.tx((t) => h.port.unmergePersons(t, h.ctx, first.merge_ref));
+      expect((await h.read(l))?.mergedIntoId === null && (await h.read(s))?.mergedIntoId === null, "undone in reverse order, both live");
     },
   },
 ]);
