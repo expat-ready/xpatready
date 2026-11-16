@@ -51,3 +51,8 @@ Release 1 at qa Works: **5** (R1.2, R1.9, R1.11, R1.12, R1.99). **The board's "B
 ## Suggestions
 * The board's built rule should not count a PR titled "<id> part 1" as the whole part. *Needed for the proof* · *Scaffolding*.
 * #1929's QA-478 (money line)'s fix is small (one audit write on accept); with it and #1929's QA-477 (own versus all)'s ruling, R1.6 is the next likely Works. *Needed for the proof* · *Capability*.
+
+## Follow-up, 14:1x IST 16 Nov (main fd2dee855, after #1953 merged)
+* **R1.38, R1.40: Partial (stay), no regression** on main fd2dee855 (which adds PF-12's firm walls and other app changes since 90ea6cfe6). Twice on one isolated copy: TZ walk 19/19, inbox walk **19/19** (the current check with the `.ics` download by link; this round's earlier 16/16 was the older check, as #1953's reviewer noted), staff move 11/11. Outputs: `2026-11-16-capability-R1-eight/followup/`.
+* **FO-3m's GitHub run:** #1931 cites merge batch ci 43796001718 (tree = main ddc6e919c's). This round's line "no GitHub run read by qa" is superseded.
+* **R1.6:** FO-2v #1933 (#1929's QA-477) is on main; PF-6m #1945 (#1929's QA-478) is not yet. qa re-tests R1.6 when #1945 merges.
