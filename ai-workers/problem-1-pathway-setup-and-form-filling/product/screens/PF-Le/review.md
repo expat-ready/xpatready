@@ -69,3 +69,40 @@ Independent reviewer (P-303), 16 Nov 2026. PR #1919 (draft), branch `claude/runt
 * Blockers: none.
 * Majors: 1 (the bundle check misses chokidar and socket.io's parsers; switch to sourcemap sources) and 2 (pr-rules size gate red; add `Size exception: P-631` once #1917 merges).
 * Minors: 1 (the dev-flag changes are not stated), 2 (wording: "above", glob), 3 (the import scan's reach).
+
+## Round 2 (diff-only, P-277): `git diff c2e67a341..bde51e6b0`
+Two commits:
+* 1ef23c832: the gate file's PF-Le addendum.
+* bde51e6b0: `check_pfle_libraries.ts`, one more addendum edit, and this review.md. The review.md is byte-identical to my round-1 text.
+
+`package.json` and `package-lock.json` are byte-identical to c2e67a341. So every round-1 result for the lockfile, age rule, integrity, audit, `npm ci` and types still holds. The check now gives **20/20 PASS** on the head (2.3 s).
+
+* **Major 1: closed.** Section (3) now builds with `--sourcemap` and tests every map's `sources` against `node_modules/(socket.io*|engine.io*|@socket.io/*|esbuild|@esbuild/*|chokidar|readdirp|@babel/*|prompts)/`.
+  * Three guards keep the maps honest: every `.js` must have a map, the maps must name `web/src/main.tsx` and `react-dom`, and a self-test plants sources (8 hits, 0 for react, main.tsx and @tiptap).
+  * I re-ran my planted imports in a scratch `main.tsx` against the new file. Each of chokidar, engine.io-parser, socket.io-parser, prompts, readdirp, @babel/parser, esbuild and socket.io now gives a FAIL from the source-map check.
+  * @babel/parser, esbuild and socket.io also trip the text net.
+  * The unchanged `main.tsx` passes 20/20. With `EmailEditor` imported, only the import check fails (19/20), so the editor bundles none of these packages.
+* **Major 2: closed on the builder's side; the merge gate is still open.** The PR body now carries `Size exception: P-631`.
+  * `pr-rules` on bde51e6b0 is still red: "P-631 is not a size row of DECISIONS.md". Records PR #1917, which brings P-631, is still open, and P-631 is not on `origin/main`.
+  * It turns green when #1917 merges and `pr-rules` is re-run. No code change is needed. The label waits for green CI anyway.
+* **Minor 1: closed.** The addendum names the 54 entries: 42 lose `dev` (the 26 `@esbuild/*` 0.28.2, esbuild, 4 @jridgewell, balanced-match, brace-expansion, glob, lru-cache, minimatch, minipass, path-scurry, picocolors, semver, source-map-js, tailwindcss) and 12 lose `devOptional`. I compared every name and version with my own diff of the two lockfiles: they match exactly. "No version changed" is correct.
+* **Minor 2: closed.** "below (and their table rows)"; glob is now "only its CLI (`dist/cli/index.mjs`) imports `glob`".
+* **Minor 3: closed.** The scan now covers web, api, ports, engine, contracts, tools, tests, deploy, prisma, acceptance, evidence, samples and `../contracts`. It skips node_modules, dist, var and .git, and the test's own file.
+  * Files are matched with `/\.([cm]?[jt]sx?)$/`, and the regex accepts backticks. The self-test adds `` require(`@tiptap/core`) ``, `export … from` and a `react-email-like` negative case.
+  * I planted 5 imports and all were found: a backtick `import()` in `tests/`, `export type … from` in `../contracts`, a `.cts` `require` in `deploy/`, a side-effect import in `web/*.mts`, and `import type` in `evidence/*.tsx`. Removing them gives a clean pass.
+
+**New Minor 4 (wording, in the sentence Lead B asked for in comment 6906117371):** "the production image (PF-7) now installs `esbuild` and its platform binary" is not right for today's image.
+* The Dockerfile runs a full `npm ci` and keeps dev packages ("Dev packages stay in the image", `studio/Dockerfile` lines 17–18 and 36).
+* `tsx`, which runs the API, depends on `esbuild ~0.28.0`. So esbuild 0.28.2 and its binary were already in the image.
+* What changes is that esbuild, chokidar, tailwindcss, glob and the others would survive a future `--omit=dev` image (PF-8's pruned image).
+* **Fix (optional, the row owner's wording):** "today's image already holds them (full `npm ci`; tsx needs esbuild); a pruned image (PF-8) would now keep them".
+* No version, check or decision depends on it.
+
+Still open on the PR, not on this commit:
+* the draft status;
+* the suites, types and packs jobs, which were skipped on bde51e6b0;
+* `pr-rules`, which is red until #1917 merges.
+
+The label applies only to green CI on the reviewed head (P-277, P-385). A new head needs another diff-only round.
+
+**Verdict: Approve** (commit bde51e6b0). No open Blocker or Major. Minor 4 is optional wording.
