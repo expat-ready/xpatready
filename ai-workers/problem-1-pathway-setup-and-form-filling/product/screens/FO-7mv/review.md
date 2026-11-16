@@ -224,3 +224,31 @@ Verdict: Approve 9e2230aede9875383362925d1ab6069a5f92506a
 **Unchanged:** m4, m5 and m7 are still Minor. B-3 is still with the tech lead, as the breaker notes.
 
 Verdict: Approve 4847bfca86f558d8ec9d3b31a14d5098e472344b
+
+## Re-review 4 (diff only, `4847bfca8..5ab4043aa`; P-277)
+**Reviewed:** commit `5ab4043aa21a53fa7af89d3c2168a4bfc0382b0f`. I read only `git diff 4847bfca8 5ab4043aa -- …/studio`: the migration (+14/−11) and the test (+9/−1). I ran everything from a `git archive` copy of that commit. FO-7a's suite ran in the working tree, which was clean at `5ab4043aa`.
+* **Scratch databases:** `xr_studio_rev_*` on :54329, all dropped afterwards. I did not use :4400 or the shared databases. Cost: US$0.
+* **Line numbers** refer to `migration.sql` at `5ab4043aa`.
+
+**Suites:**
+* `check_fo7mv_move_list.ts` **45/45** on seeds 7301, 11 and 222. The new race test was stable all three times.
+* `check_fo7a_money_schema.ts` **123/123**.
+* `check_prisma_schema.ts` **8/8**.
+* Studio diff from `origin/main`: +774/−5, under 800.
+
+| Item | Result | Evidence |
+|---|---|---|
+| m13 / B-22 at READ COMMITTED | closed | The party lock (`:184`) is now taken right after the source entry is read: before every check, before the "arrived" read and before the invoice touch (`:218`). "Arrived" is re-read after the lock with the payment row `FOR SHARE` (`:196-201`). My m13 repro run three times (cheque cleared; T2's RETURNED −200.00 held open; T1 moves the WRONG_ACCOUNT 100.00; T2 commits): **move 23514**, RETURNED committed. The new test is the same case. |
+| Lock order | unchanged, no new cycle | Party lock, then invoice row (trust application) or payment row FOR SHARE (wrong account). A "Cleared" tick updates only the payment row and takes no party lock. A RETURNED takes the party lock and touches no payment row. So neither can wait on the other in a cycle. Before the lock, the function reads only insert-only rows: the batch, which is its own transaction's, and the source entry. |
+| B-20, B-21, B-18, B-19 | hold | B-20 serial: listed 0, refused. B-21: stale RR after a tick → 40001. DW1, DW2 (RC and RR), DW3-DW6 and the P7, P8, P9 and P12 clearing cases all pass. |
+| m14 | closed | Both guards now say the rows "cannot be given one: ask the tech lead (restore without them, or a reviewed one-off)". That routes the half-applied case to the tech lead rather than telling the operator to re-run. |
+| Dead code | none | `deposit_cleared` is gone. `arrived` and `deposit_payment_id` are used. `party` is set once, before the lock. |
+
+### Findings
+**Blockers:** none. **Majors:** none. **New Minors:** none.
+
+**At REPEATABLE READ (noted, out of scope here).** The same race still commits both writes: a RETURNED commit after the snapshot is invisible to the move, and it touches no row the move locks. That is reproduced three times. The end state equals the serial order "tick, move, then RETURNED", which commits too. Per P-638 both belong to FO-7a2 as reversal-after-move shortfall cases. The coordinator will say so in the PR.
+
+**Unchanged:** m4, m5 and m7 are still Minor. B-3 is still with the tech lead.
+
+Verdict: Approve 5ab4043aa21a53fa7af89d3c2168a4bfc0382b0f
