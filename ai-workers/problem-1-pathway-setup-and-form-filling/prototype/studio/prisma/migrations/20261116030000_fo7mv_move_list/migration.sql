@@ -175,8 +175,9 @@ BEGIN
   IF NEW.kind = 'CARD_FEE_ON_TRUST' THEN
     RAISE EXCEPTION 'money_move_line: card fees on the trust account wait for card payments into trust (held, P-567; FO-7c)' USING ERRCODE = 'check_violation';
   END IF;
-  SELECT e.kind, e.amount_minor, e.currency, e.person_id, e.company_id, e.invoice_id, e.correction_kind, d.kind AS corrected_kind
+  SELECT e.kind, e.amount_minor, e.currency, e.person_id, e.company_id, e.invoice_id, e.correction_kind, d.kind AS corrected_kind, p.cleared AS deposit_cleared
     INTO s FROM "money_trust_entry" e LEFT JOIN "money_trust_entry" d ON d.firm_id = e.firm_id AND d.id = e.corrects_entry_id
+      LEFT JOIN "money_payment" p ON p.firm_id = d.firm_id AND p.id = d.payment_id
     WHERE e.firm_id = NEW.firm_id AND e.id = NEW.source_entry_id;
   IF NOT FOUND THEN PERFORM money_missing('money_move_line', 'trust entry', NEW.source_entry_id); END IF;
   IF NEW.kind = 'TRUST_APPLIED' AND s.kind IS DISTINCT FROM 'WITHDRAWAL_TO_INVOICE' THEN
@@ -185,6 +186,9 @@ BEGIN
   IF NEW.kind = 'WRONG_ACCOUNT' AND (s.kind IS DISTINCT FROM 'CORRECTION' OR s.corrected_kind IS DISTINCT FROM 'DEPOSIT' OR s.correction_kind IS DISTINCT FROM 'WRONG_ACCOUNT') THEN
     RAISE EXCEPTION 'money_move_line: only a WRONG_ACCOUNT correction of a deposit licenses a wrong-account move out of trust (this entry is a %): a bounced cheque or an entry error never reached the trust account as money to move',
       coalesce(s.correction_kind::text || ' ', '') || s.kind USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.kind = 'WRONG_ACCOUNT' AND s.deposit_cleared IS NOT TRUE THEN
+    RAISE EXCEPTION 'money_move_line: the payment this wrong-account correction names is not yet cleared; it moves once it clears (re-review Major 1)' USING ERRCODE = 'check_violation';
   END IF;
   IF NEW.direction <> 'TRUST_TO_OPERATING' THEN
     RAISE EXCEPTION 'money_move_line: a % line moves from trust to operating (money into trust waits for its own ledger entry)', NEW.kind USING ERRCODE = 'check_violation';
@@ -229,22 +233,24 @@ BEGIN
       RAISE EXCEPTION 'money_move_line: % % would move more than the invoice keeps after credit notes and the write-off (% due, % moved): return the rest to trust', NEW.amount_minor, NEW.currency, due, moved USING ERRCODE = 'check_violation';
     END IF;
   END IF;
-  -- Breaks B-1, B-2: only cleared money leaves trust. After this line, the party's money in the trust bank account
-  -- (what it holds in the ledger plus what is still to move) covers its cheques not yet cleared, net of their BOUNCED
-  -- and ENTRY_ERROR corrections; so a bounce can always be recorded and never takes another client's money. The
-  -- firm's settings row is touched, so two moves of one party at REPEATABLE READ go one at a time (40001).
-  UPDATE "money_payment_settings" x SET updated_at = now() WHERE x.firm_id = NEW.firm_id;
+  -- Breaks B-1, B-2 (and the re-review's two Majors): only cleared money leaves trust. A wrong-account line waits for
+  -- its own payment to clear (above). After a trust application's line, the party's ledger balance plus its trust
+  -- applications still to move covers its payments not yet cleared, net of all their corrections; open wrong-account
+  -- money is operating's and never counts as cover. So a bounce never takes another client's money. The firm's
+  -- settings row is touched without changing it (as FO-7a's series row), so two moves of one firm at REPEATABLE READ
+  -- go one at a time (40001).
+  UPDATE "money_payment_settings" x SET updated_at = x.updated_at WHERE x.firm_id = NEW.firm_id;
   SELECT coalesce((SELECT e.balance_after_minor FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND (e.person_id = party OR e.company_id = party) AND e.currency = s.currency ORDER BY e.seq DESC LIMIT 1), 0) INTO held;
   SELECT coalesce(sum(-e.amount_minor
       - CASE WHEN e.kind = 'WITHDRAWAL_TO_INVOICE' THEN (SELECT coalesce(sum(c.amount_minor), 0) FROM "money_trust_entry" c WHERE c.firm_id = e.firm_id AND c.corrects_entry_id = e.id) ELSE 0 END
       - (SELECT coalesce(sum(l.amount_minor), 0) FROM "money_move_line" l WHERE l.firm_id = e.firm_id AND l.source_entry_id = e.id
            AND NOT EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = l.firm_id AND u.undoes_batch_id = l.batch_id))), 0) INTO to_move
     FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND (e.person_id = party OR e.company_id = party) AND e.currency = s.currency
-      AND (e.kind = 'WITHDRAWAL_TO_INVOICE' OR (e.kind = 'CORRECTION' AND e.correction_kind = 'WRONG_ACCOUNT'));
-  SELECT coalesce(sum(greatest(e.amount_minor + (SELECT coalesce(sum(c.amount_minor), 0) FROM "money_trust_entry" c WHERE c.firm_id = e.firm_id AND c.corrects_entry_id = e.id AND c.correction_kind IN ('BOUNCED', 'ENTRY_ERROR')), 0)), 0)
+      AND e.kind = 'WITHDRAWAL_TO_INVOICE';
+  SELECT coalesce(sum(greatest(e.amount_minor + (SELECT coalesce(sum(c.amount_minor), 0) FROM "money_trust_entry" c WHERE c.firm_id = e.firm_id AND c.corrects_entry_id = e.id), 0)), 0)
     INTO uncleared FROM "money_trust_entry" e JOIN "money_payment" p ON p.firm_id = e.firm_id AND p.id = e.payment_id
     WHERE e.firm_id = NEW.firm_id AND (e.person_id = party OR e.company_id = party) AND e.currency = s.currency AND e.kind = 'DEPOSIT' AND NOT p.cleared;
-  IF held + to_move - NEW.amount_minor < uncleared THEN
+  IF NEW.kind = 'TRUST_APPLIED' AND held + to_move - NEW.amount_minor < uncleared THEN
     RAISE EXCEPTION 'money_move_line: % % of this party''s trust money rests on payments not yet cleared; it moves once they clear (% held, % to move)', uncleared, NEW.currency, held, to_move USING ERRCODE = 'check_violation';
   END IF;
   NEW.move_ordinal := earlier + 1;
@@ -312,6 +318,9 @@ CREATE OR REPLACE VIEW "money_to_move" AS
     SELECT e.firm_id, e.id, 'WRONG_ACCOUNT'::"MoneyMoveKind", e.currency, e.person_id, e.company_id, e.case_id, NULL::uuid,
            -e.amount_minor, 0, e.created_at
       FROM "money_trust_entry" e WHERE e.kind = 'CORRECTION' AND e.correction_kind = 'WRONG_ACCOUNT'
+        -- shown once its payment has cleared (it moves only then)
+        AND EXISTS (SELECT 1 FROM "money_trust_entry" d JOIN "money_payment" p ON p.firm_id = d.firm_id AND p.id = d.payment_id
+                     WHERE d.firm_id = e.firm_id AND d.id = e.corrects_entry_id AND p.cleared)
   ), m AS (
     SELECT s.*, 'TRUST_TO_OPERATING'::"MoneyMoveDirection" AS direction,
            (SELECT coalesce(sum(l.amount_minor), 0) FROM "money_move_line" l WHERE l.firm_id = s.firm_id AND l.source_entry_id = s.source_entry_id

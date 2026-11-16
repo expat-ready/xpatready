@@ -79,3 +79,70 @@ These are the firm's bookkeeper journeys, as FO-7t will drive them through these
 * another firm's entry: 23503.
 
 Verdict: Approve 194128ddb7d2de31acd30e5d23b62abe46953c14
+
+## Re-review (diff only, `194128ddb..2abc41df3`; P-277)
+**Reviewed:** commit `2abc41df32e8df1d80d02126db850fe29b4fe3e7`. I read only `git diff 194128ddb 2abc41df3 -- …/studio`, which covers the migration, `client-money.prisma` and the test file. The only other change is the records (this review and `break-report.md`). Line numbers below refer to `migration.sql` at `2abc41df3`.
+* **Scratch databases:** `xr_studio_rev_*` on :54329, all dropped afterwards. I did not use :4400 or the shared databases. Cost: US$0.
+* **Suites:** `check_fo7mv_move_list.ts` **47/47** (run from a `git archive` copy of `2abc41df3`). `check_fo7a_money_schema.ts` **123/123** (run in the working tree, whose HEAD is `2abc41df3`).
+* **Size:** the studio diff from `origin/main` is +775/−5, under 800.
+
+### What the fixes close
+| Item | Result | Evidence |
+|---|---|---|
+| d24724c21 (rev 16.51) | closed | A refused correction or return leaves no row and no ledger effect, with a pass and a fail. |
+| B-4 credit note or write-off | closed | `:220-231` caps a move at the invoice total less credit notes, the write-off and the invoice's live moves. The view takes the same cap with `least()` (`:320-330`). A credit note goes through `money_issued_invoice`, which takes the party lock and then touches the invoice, as the move does, so the cap holds at READ COMMITTED and REPEATABLE READ. A move first, then a credit note, is not a trust breach: the ledger and the bank still agree, and the firm owes the client from operating. |
+| B-6 the guard | closed | `LOCK … SHARE ROW EXCLUSIVE` (`:25`) waits for a write still in flight. Under Prisma the whole file is one implicit transaction. |
+| B-7 / my m6 | closed | `@@index([firmId, correctsEntryId])`; `migrate diff` stays empty (DW10). |
+| B-9 | closed | `money_move_batch_date_check` (`:95`), tested. |
+| My m1, m2, m3 | closed | Tests for a USD line on a CAD entry, the WRONG_ACCOUNT race at RC and RR, and "line, undo, commit". |
+| B-1 exact repro | closed | Refused with the cheque's words. The move commits once the cheque is cleared. |
+| B-2 | **not closed** | Major 1 below. |
+
+### Findings
+**Major 1. B-2 is still open in the breaker's own repro: an uncleared cheque labelled WRONG_ACCOUNT still moves out of trust.**
+* Repro on `xr_studio_rev_mv2` (all migrations at `2abc41df3`):
+  1. `dep(:P, 50000, 'E_TRANSFER')`
+  2. `dep(:P, 30000, 'CHEQUE')` → `:C` (`cleared = false`)
+  3. `corr(:P, :C, 30000, 'WRONG_ACCOUNT')` → `:X`
+* Results: `money_to_move` shows 30000 for `:X`, and `move([:X],[30000])` → **OK**. The bounce `corr(:P, :C, 30000, 'BOUNCED')` is then refused (23514, "30000 deposited, 30000 corrected before"), so it can never be recorded. The ledger still says 500.00 is held.
+* If the cheque bounces, the bank holds 200.00 for this client, so 300.00 comes out of other clients' money.
+* Why: the new check (`:247`) is `held + to_move − line ≥ uncleared`, here 500 + 300 − 300 = 500 ≥ 300. It never asks whether *this* line's own deposit has cleared, and the WRONG_ACCOUNT kind check (`:185`) does not ask either.
+* The new test (`check_fo7mv_move_list.ts`, "break B-2") uses a party whose only money is the cheque (held 0). That is why it passes.
+
+**Major 2. B-1 in a new order: open WRONG_ACCOUNT money counts as cover for a trust application.**
+* `to_move` (`:238-243`) adds open WRONG_ACCOUNT amounts. That is operating's money: it can never come back to the ledger, so it cannot absorb a bounce.
+* Repro:
+  1. `dep(:P, 11000, 'E_TRANSFER')` → `:E`
+  2. `dep(:P, 10000, 'CHEQUE')` (uncleared)
+  3. `corr(:P, :E, 6000, 'WRONG_ACCOUNT')` → `:X`
+  4. `inv(:P, 10000)` → `:I`; `wd(:P, :I, 10000)` → `:W` (held is now 50.00)
+  5. `move([:W],[10000])` → **OK**, because 50 + (60 + 100) − 100 = 110 ≥ 100.
+* After that, a return of `:W` is refused ("undo that move batch first"), so a bounce of the 100.00 cheque can never be recorded (held 50.00 < 100.00).
+* If the cheque bounces, this client's real money in the bank is 110 − 100 = 10.00, against a ledger of 50.00. Other clients' money covers the 40.00 gap.
+* Suggested fix (the builder chooses the form):
+  * refuse a WRONG_ACCOUNT line, and keep it off the list, while its deposit's payment is uncleared (the breaker's B-2 "Should");
+  * count only the TRUST_APPLIED amounts still open as cover, net of the line: held + open TRUST_APPLIED − line ≥ uncleared;
+  * net the uncleared amount of all of that cheque's corrections.
+* Add both repros above as fail tests.
+
+**Minor m9. The list still shows money that rests on an uncleared cheque.**
+* On the B-1 repro, `money_to_move` gives `open_minor = 10000` while the move is refused.
+* The list is the bookkeeper's instruction for the bank transfer (ExpatReady moves no money), so the transfer can happen at the bank and then fail to record.
+* The breaker asked for it to be "kept off the list"; this could reasonably be graded Major. Fix: apply the same cover rule in the view, or flag those rows, and test the list before and after the cheque clears.
+
+**Minor m10. The firm-wide settings touch rewrites a field that is shown.**
+* `:236` sets `money_payment_settings.updated_at = now()` on every move, so the settings' "last updated" time changes while `updated_by` still names the last person who edited the settings.
+* FO-7a touches the same row with `SET updated_at = updated_at` (`fo7a …:743`). That still locks the row and still gives 40001 at RR, without changing the value. Use the same form here.
+* Side effect, accepted: all of a firm's moves now go one at a time (at RR the later one gets 40001). Batches are rare, so this is fine.
+
+**Notes, not findings:**
+* B-3 (a refund names no deposit) correctly goes to a ruling.
+* B-5 deadlocks and B-8 (wrong words, safe) stay notes for FO-7t.
+* m4, m5 and m7 from my first pass are unchanged and still Minor.
+
+**To fix before Approve:**
+* **Major 1:** a WRONG_ACCOUNT line on a deposit whose payment is uncleared must be refused (and kept off the list) until it clears. Test it with the breaker's B-2 repro: a 500.00 e-transfer beside the cheque.
+* **Major 2:** open WRONG_ACCOUNT amounts must not count as cover for an uncleared cheque. Test it with the 110/100/60/100 repro above.
+* **m9 and m10:** fix in the same commit if cheap.
+
+Verdict: Block

@@ -251,7 +251,15 @@ try {
     ok("FO-7mv pass (break B-1): with cleared money beside an uncleared cheque, the cleared part moves", !!both && !!move([{ src: w6, amount: 10000, pid: P6 }]));
     const chq2 = deposit(30000, P7, "CHEQUE", false), wa = sql(T, correctQ(chq2, 30000, "WRONG_ACCOUNT", P7));
     ok("FO-7mv fail/pass (break B-2): a WRONG_ACCOUNT correction of a cheque not yet cleared waits for the cheque; after it clears, it moves",
-      refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: wa, amount: 30000, pid: P7 }]), /rests on payments not yet cleared/) && (clear(chq2), !!move([{ kind: "WRONG_ACCOUNT", src: wa, amount: 30000, pid: P7 }])));
+      open(wa) === "0" && refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: wa, amount: 30000, pid: P7 }]), /is not yet cleared; it moves once it clears/) && (clear(chq2), open(wa) === "30000" && !!move([{ kind: "WRONG_ACCOUNT", src: wa, amount: 30000, pid: P7 }])));
+    // The re-review's two Majors (2abc41df3): cleared money beside the cheque must not let the cheque's own money out.
+    const P8 = u(8), P10 = u(10);
+    deposit(50000, P8); const chq8 = deposit(30000, P8, "CHEQUE", false), wa8 = sql(T, correctQ(chq8, 30000, "WRONG_ACCOUNT", P8));
+    ok("FO-7mv fail (re-review Major 1): e-transfer 500.00, an uncleared cheque 300.00 corrected WRONG_ACCOUNT — the 300.00 is not listed and does not move until the cheque clears",
+      open(wa8) === "0" && refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: wa8, amount: 30000, pid: P8 }]), /is not yet cleared/, "23514"));
+    const et = deposit(11000, P10); deposit(10000, P10, "CHEQUE", false); const wa10 = sql(T, correctQ(et, 6000, "WRONG_ACCOUNT", P10)), i10 = invoice(T, 10000, P10), w10 = withdraw(i10, 10000, P10);
+    ok("FO-7mv fail/pass (re-review Major 2): e-transfer 110.00, uncleared cheque 100.00, 60.00 of the e-transfer corrected WRONG_ACCOUNT, 100.00 applied — the 100.00 does not move (wrong-account money is no cover); the cleared 60.00 wrong-account money does",
+      refused(T, moveQ([{ src: w10, amount: 10000, pid: P10 }]), /10000 CAD of this party's trust money rests on payments not yet cleared/, "23514") && !!move([{ kind: "WRONG_ACCOUNT", src: wa10, amount: 6000, pid: P10 }]));
     const i8 = invoice(T, 10000), w8 = withdraw(i8, 10000), i9 = invoice(T, 10000), w9 = withdraw(i9, 10000);
     sql(T, `insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, "full", reason, created_by) values ('${firmA}', '${i8}', 6000, 'CAD', false, 'Service partly cancelled', 'user-R')`);
     sql(T, `insert into money_write_off (firm_id, invoice_id, amount_minor, currency, reason, created_by) values ('${firmA}', '${i9}', 10000, 'CAD', 'Fee waived', 'user-R')`);
