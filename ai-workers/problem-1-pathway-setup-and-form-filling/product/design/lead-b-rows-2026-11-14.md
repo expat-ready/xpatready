@@ -1520,3 +1520,10 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - account and security mail is exempt from the firm's daily cap of 50, with a platform per-address limit of 5 an hour (Sample);
   - a suppressed staff address on an invitation or reset answers 409 with a plain sentence, never 500.
 * The release holder reads it (P-423). It starts after #1956, and not beside PF-19p.
+
+## Rev 16.65 (16 Nov 12:5x IST, Lead B (6)): PF-5 part 2 (#1959)
+
+* **Keys accepted:** `subscription:pay`, `:update-card`, `:cancel` (Owner) and `subscription-invoice:view`.
+* **The firm profile moves to part 3.**
+* **Condition:** part 2 must store the trial end (R1.19), proven by a named case.
+* **For the release holder (P-423):** the `main.ts` raw-body line, which must be limited to `/api/hooks/*`; the money and public-door read; and the case side's 402.
