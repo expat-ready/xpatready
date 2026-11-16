@@ -9,7 +9,7 @@
 --   * the key and its hash come together, the key 1-255 visible ASCII characters, the hash 64 lowercase hex;
 --   * the key and its hash are set when the complaint is recorded and never change (a trigger, as the facts in PF-21).
 -- Rollback (in this order): DROP TRIGGER "plat_complaint_request_kept" ON "plat_complaint"; DROP FUNCTION
---   plat_complaint_request_kept(); DROP INDEX "plat_complaint_firm_request_key"; ALTER TABLE "plat_complaint" DROP
+--   plat_complaint_request_kept() (its owner and SECURITY DEFINER go with it); DROP INDEX "plat_complaint_firm_request_key"; ALTER TABLE "plat_complaint" DROP
 --   CONSTRAINT "plat_complaint_request_shape", DROP COLUMN "request_hash", DROP COLUMN "request_key"; delete this
 --   folder's row from _prisma_migrations.
 
@@ -33,3 +33,6 @@ BEGIN
   RETURN NEW;
 END $$;
 CREATE TRIGGER "plat_complaint_request_kept" BEFORE UPDATE ON "plat_complaint" FOR EACH ROW EXECUTE FUNCTION plat_complaint_request_kept();
+-- PF-12's wall (tests/check_pf12_walls.ts): a trigger function on a firm table runs as xr_wall_reader, search_path pinned.
+ALTER FUNCTION plat_complaint_request_kept() SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp;
+ALTER FUNCTION plat_complaint_request_kept() OWNER TO xr_wall_reader;
