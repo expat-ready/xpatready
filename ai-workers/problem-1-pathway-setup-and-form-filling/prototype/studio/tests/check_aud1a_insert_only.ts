@@ -178,6 +178,18 @@ try {
   ok("AUD-1a DW3b pass: the next reset's orphan sweep removes the ghost line; a line of an existing non-demo workspace is never removed",
     n(COPY, `select count(*) from audit_event where workspace_id = '${ghost}'`) === 0 && n(COPY, `select count(*) from audit_event where workspace_id = '${other}'`) === 1);
 
+  // DW2b (Build Lead A, comment 6925011408; Build Lead C, 6925061060): app.audit_sample_reset opens only the demo
+  // workspace's lines. On the running copy, as the app's connection, in one transaction with the setting on each time.
+  const newDemo = sql(COPY, "select id from workspace where key = 'demo'"), demoOwn = randomUUID(), platReal = randomUUID(), platDetail = randomUUID();
+  sql(COPY, line(newDemo, "user-A", { id: `'${demoOwn}'` }));
+  sql(COPY, line(P_WS, `staff:${UUID}`, { id: `'${platReal}'`, firm_id: `'${FIRM_REAL}'` }));
+  sql(COPY, line(P_WS, "system:check", { id: `'${platDetail}'`, detail: `'{"firmId": "${FIRM_REAL}"}'` }));
+  ok("AUD-1a DW2b fail: with the setting on, a platform audit line is refused (a real firm's firm_id; a firm only in detail.firmId), as the app's connection",
+    refused(() => tx(COPY, `delete from audit_event where id = '${platReal}'`, true, "xr_app"), NEVER) && refused(() => tx(COPY, `delete from audit_event where id = '${platDetail}'`, true, "xr_app"), NEVER)
+    && n(COPY, `select count(*) from audit_event where id in ('${platReal}', '${platDetail}')`) === 2);
+  tx(COPY, `delete from audit_event where id = '${demoOwn}'`, true, "xr_app");
+  ok("AUD-1a DW2b pass: with the setting on, a demo-workspace line deletes (as the app's connection)", n(COPY, `select count(*) from audit_event where id = '${demoOwn}'`) === 0);
+
   // DW4: two simultaneous form-role proposals. The race is made certain by a test trigger on the copy: as the later
   // proposal is written, an earlier one (and its line) is put in first, as a second person's at the same moment would be.
   // The database's own guard (library_change_one_open, one open change per form) already refuses the second writer, so
