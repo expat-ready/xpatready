@@ -38,6 +38,8 @@ a{color:var(--link)}
 .integrity.bad::before{content:"!";font-weight:700}
 .integrity.unknown{border-color:var(--border-strong);color:var(--muted)}
 .integrity.unknown::before{content:"–";font-weight:700}
+.integrity.overdue{border-color:var(--warn);background:var(--warn-bg);color:var(--warn-t)}
+.integrity.overdue::before{content:"⏱";font-weight:700}
 .filters{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px}
 .field{display:flex;flex-direction:column;gap:4px}
 .field label{font-size:12px;color:var(--muted);font-weight:600}
@@ -91,7 +93,7 @@ tr.open td{background:#f3f8fe}
     <form class="filters" aria-label="Filter the activity log">
       <div class="field"><label for="from">From</label><input id="from" type="date" value="2026-11-09"></div>
       <div class="field"><label for="to">To</label><input id="to" type="date" value="2026-11-16"></div>
-      <div class="field"><label for="who">Person</label><select id="who"><option>Everyone</option><option>Owner (Sample)</option><option>Admin (Sample)</option><option>Case Officer (Sample)</option></select></div>
+      <div class="field"><label for="who">Person</label><select id="who"><option>Everyone</option><option>Owner (Sample)</option><option>Admin (Sample)</option><option>Case Officer (Sample)</option><option>Case Officer B (Sample) — left the firm</option></select></div>
       <div class="field"><label for="area">Area</label><select id="area"><option>All areas</option><option>Team and settings</option><option>Front office</option><option>Money</option><option>Messages</option><option>Cases</option></select></div>
       <div class="field"><span class="small muted" style="font-weight:600">Shortcut</span><button class="btn" type="button" aria-pressed="false">ExpatReady staff access</button></div>
       <details class="adv"><summary>Advanced filters</summary>
@@ -129,7 +131,7 @@ tr.open td{background:#f3f8fe}
   <div class="tablewrap"><table><colgroup><col style="width:150px"><col style="width:190px"><col style="width:150px"><col></colgroup>
     <tbody><tr class="open"><td><button class="btn link" type="button" aria-expanded="true" aria-label="16 Nov, 10:42:07, hide details">16 Nov, 10:42:07 ▾</button></td><td>Owner (Sample)</td><td>Team and settings</td><td>
       Gave the Admin role to Case Officer (Sample).<br><span class="change">role: Case Officer → Admin</span>
-      <dl style="display:grid;grid-template-columns:140px 1fr;gap:4px 12px;margin:8px 0 0"><dt class="muted">Action</dt><dd style="margin:0">Role given</dd><dt class="muted">Record</dt><dd style="margin:0">Staff member · Case Officer (Sample)</dd><dt class="muted">Done by</dt><dd style="margin:0">Firm staff</dd></dl>
+      <dl style="display:grid;grid-template-columns:140px 1fr;gap:4px 12px;margin:8px 0 0"><dt class="muted">Action</dt><dd style="margin:0">Role given</dd><dt class="muted">Record</dt><dd style="margin:0">Staff member · Case Officer (Sample)</dd><dt class="muted">Done by</dt><dd style="margin:0">Firm staff · <button class="btn link small" type="button">Show only this person's changes</button></dd></dl>
       <details><summary class="small" style="color:var(--link);cursor:pointer;margin-top:8px">Advanced: raw before and after</summary>
         <div class="raw">action: staff.role.granted
 entity: platform_staff_role
@@ -139,8 +141,8 @@ detail: { "role_from": "CASE_OFFICER", "role_to": "ADMIN" }</div></details>
 
 <p class="board-title">Board 3 — "ExpatReady staff access" pressed: only our staff's lines, each with its support session</p>
 <div class="frame"><div class="page">
-  <div class="filters"><div class="field"><span class="small muted" style="font-weight:600">Shortcut</span><button class="btn" type="button" aria-pressed="true">ExpatReady staff access ✓</button></div><span class="chip">ExpatReady staff only <button class="btn link small" type="button" aria-label="Remove the ExpatReady staff only filter">×</button></span><span class="chip">Record: Staff member · Admin (Sample) <button class="btn link small" type="button" aria-label="Remove the record filter">×</button></span></div>
-  <p class="reads">Showing <strong>ExpatReady staff</strong> changes to <strong>Staff member · Admin (Sample)</strong> (an Advanced filter) from <strong>9 Nov 2026</strong> to <strong>16 Nov 2026</strong> — 2 lines. <span class="small muted">Session start, end, duration and reason show here once support sessions are recorded (AUD-3b).</span></p>
+  <div class="filters"><div class="field"><span class="small muted" style="font-weight:600">Shortcut</span><button class="btn" type="button" aria-pressed="true">ExpatReady staff access ✓</button></div><span class="chip">ExpatReady staff only <button class="btn link small" type="button" aria-label="Remove the ExpatReady staff only filter">×</button></span><details class="adv" open><summary>Advanced filters (1 set)</summary><div class="field" style="margin-top:8px"><label for="key3">Record</label><input id="key3" value="Staff member · Admin (Sample)"></div></details><span class="chip">Record: Staff member · Admin (Sample) <button class="btn link small" type="button" aria-label="Remove the record filter">×</button></span></div>
+  <p class="reads">Showing <strong>ExpatReady staff</strong> changes to <strong>Staff member · Admin (Sample)</strong> (an Advanced filter) from <strong>9 Nov 2026</strong> to <strong>16 Nov 2026</strong> (Toronto time) — 2 lines. <span class="small muted">Session start, end, duration and reason show here once support sessions are recorded (AUD-3b).</span></p>
   <div class="tablewrap"><table><colgroup><col style="width:150px"><col style="width:190px"><col style="width:150px"><col></colgroup>
     <thead><tr><th>When</th><th>Who</th><th>Area</th><th>What happened</th></tr></thead>
     <tbody>
@@ -164,9 +166,8 @@ detail: { "role_from": "CASE_OFFICER", "role_to": "ADMIN" }</div></details>
     <div class="state" style="text-align:left">
       <button class="integrity bad" type="button" aria-expanded="true">Records could not be confirmed intact</button>
       <p>A check on 16 Nov at 10:30 found a change in the lines from 3 Nov 09:12 to 3 Nov 09:40. ExpatReady's integrity alarm was raised. Nothing you do here changes the log.</p>
-      <p class="small muted">Last good check: 16 Nov at 10:00.</p>
-      <hr style="border:0;border-top:1px solid var(--border);margin:12px 0">
-      <span class="integrity unknown" style="border-color:var(--warn);background:var(--warn-bg);color:var(--warn-t)">Last check overdue — last checked 5 h ago</span>
+            <hr style="border:0;border-top:1px solid var(--border);margin:12px 0">
+      <span class="integrity overdue">Last check overdue — last checked 5 h ago</span>
       <p class="small muted">Checks run every 30 minutes; the last one is late. The lines are still shown.</p>
       <hr style="border:0;border-top:1px solid var(--border);margin:12px 0">
       <span class="integrity unknown">Not checked yet</span>
