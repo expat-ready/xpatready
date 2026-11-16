@@ -1,8 +1,8 @@
-# Rule register (the tech lead keeps it; as of **P-647**, 16 Nov 23:3x IST (P-639 to P-644 added by Lead 69; P-645 to P-647 by Lead 70); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-16-2015-lead69s2-as-of-P-638.md`, whose first line lists the older ones)
+# Rule register (the tech lead keeps it; as of **P-651**, 17 Nov 01:0x IST (P-648 to P-651 added by Lead 71); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-17-0100-lead71s2-as-of-P-647.md`, whose first line lists the older ones)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced by** names the hook, CI step or script that blocks or fails a break; `prose` = only the reader enforces it (G-4 candidates, bottom); `(part)` = covers part of the rule. IDs: a letter (`P-611b`) = the decision's 2nd row, not its part (2); `IDX-n` = an index of done, product or integration decisions kept in the side file. **Start read**: this page, then the `DECISIONS.md` rows newer than "as of", word for word (P-314, P-440). Long text word for word: side files under `rules/`. `tools/check-docs.sh` fails a row with no enforced-by, a page over 25 KB, or one over 3 rows behind DECISIONS.
 
-**Account facts (founder, 21:4x IST 16 Nov):** GitHub **Pro** (P-282) = 40 concurrent Actions jobs; repo **public** (P-263), so Actions minutes cost nothing; private at the gate on own runners (P-589). The limit is 40 jobs at once, not minutes: never propose buying Pro. Quote word for word: `rules/tokens-money-account.md`.
+**Account facts:** GitHub Pro, 40 Actions jobs at once, public repo (Actions minutes free): word for word in `rules/tokens-money-account.md`.
 
 **Retired and moved rows** (B193 part 5; P-312, P-611c, P-641 since): `rules/merged-and-retired-2026-11-16.md`.
 
@@ -152,6 +152,8 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-645 | Hourly cloud routines take the first free row of the night queue; only the Lead edits it. | prose (routine prompt) | 16 Nov |
 | P-646 | Jam alarms each check (disk, no merge 60 min, CI queue over 30); drafts until Approve; act unasked. | script: lead-watch.sh (1b, 2b) | 16 Nov |
 | P-647 | Each check reads claude.ai/code statuses and acts on waiting lanes; no lane waits on a network change. | prose (built-in browser script) | 16 Nov |
+| P-651 | (with P-648, P-649) CI overflow on the Namespace trial; full tests once, in the merge queue. | prose | 17 Nov |
+| P-650 | Express Entry stays end to end; five provincial streams assessment only in R1. | prose | 17 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |
