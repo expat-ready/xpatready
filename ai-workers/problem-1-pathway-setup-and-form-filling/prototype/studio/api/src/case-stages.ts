@@ -60,9 +60,20 @@ async function writeSameEveryStage(tx: Tx, c: Reached, snap: Snapshot, defs: { f
 export type DeadlineShown = NonNullable<CaseStageView["deadline"]> & { weekday: string | null; mark: "weekend" | "closed day" | null; shown: string | null; missed: boolean };
 export function showDeadline(d: CaseStageView["deadline"], cal: FirmCalendar, today: string): DeadlineShown | null {
   if (!d) return null;
-  if (!d.due) return { ...d, weekday: null, mark: null, shown: null, missed: false };
-  const { weekday, mark } = dayMark(d.due, cal);
+  const day = d.due ? (() => { try { return dayMark(d.due, cal); } catch { return null; } })() : null;
+  // A date the calendar refuses (a stored value outside its years: breaker m1) shows as no date, never a 500 of the case.
+  if (!d.due || !day) return { ...d, weekday: null, mark: null, shown: null, missed: false };
+  const { weekday, mark } = day;
   return { ...d, weekday, mark, shown: `${weekday} ${fmtDate(d.due)}${mark ? ` (${mark})` : ""}`, missed: d.due < today };
+}
+
+/** The firm's calendar (AG-7-99: one office → the firm's) for the platform firm the request runs as (PF-12's walls), and
+ *  today in its zone from the clock port (P-607). A request with no platform firm in scope (x-actor) reads no setting, so
+ *  the settings' defaults apply (Mon-Fri 09:00-17:00, no closed days, America/Toronto); the firm is never looked up
+ *  across the wall. */
+export async function deadlineDay(db: Parameters<typeof readFirmCalendar>[0], clock: ClockPort): Promise<{ cal: FirmCalendar; today: string }> {
+  const cal = await readFirmCalendar(db, currentFirm() ?? NO_ID);
+  return { cal, today: localDate(cal.zone, clock.now()) };
 }
 
 @Injectable()
@@ -74,7 +85,6 @@ export class CaseStagesService {
   /** The firm's calendar (AG-7-99: one office → the firm's), for the platform firm the request runs as (PF-12's walls).
    *  A request with no platform firm in scope (x-actor) reads no setting, so the settings' defaults apply (Mon-Fri,
    *  09:00-17:00, no closed days, America/Toronto); the firm is never looked up across the wall. */
-  private calendar(): Promise<FirmCalendar> { return readFirmCalendar(this.db, currentFirm() ?? NO_ID); }
 
   private reach(actor: Actor, caseId: string) { return this.r.reach(actor, UUID.test(caseId) ? caseId : NO_ID, "officer"); }
 
@@ -93,7 +103,7 @@ export class CaseStagesService {
     const labels = new Map((await this.db.combination.findMany({ where: { id: { in: c.stages.map((s) => s.combinationId) } }, select: { id: true, label: true } })).map((x) => [x.id, x.label]));
     const all = c.stages.map((s) => ({ stage_key: s.stageKey, staff_name: s.staffName, key_details: s.keyDetails as Record<string, StoredDetail>, defs: readSpec(s.spec).key_details }));
     const { next } = nextOf(c.stages.map((s) => ({ ...s, stage_key: s.stageKey, state: s.state as StageState })));
-    const cal = await this.calendar(), today = localDate(cal.zone, this.clock.now());
+    const { cal, today } = await deadlineDay(this.db, this.clock);
     return Promise.all(c.stages.map(async (s): Promise<CaseStageView> => {
       const spec = readSpec(s.spec), stored = s.keyDetails as Record<string, StoredDetail>;
       const why = s.state === "NOT_STARTED" ? (await this.startability(s.combinationId)).why : null;

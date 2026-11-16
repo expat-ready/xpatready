@@ -10,13 +10,15 @@
 //   tsx studio/tests/check_csdl1_deadlines.ts
 import { businessClose, businessDaysBetween, BusinessDayTally, calendarDate, countBack, dayMark, isOpenDay, localDate, NO_SUCH_DATE, zonedInstant, type FirmCalendar } from "../api/src/platform/calendar/working-days.ts";
 import * as complaintDays from "../api/src/platform/complaints/business-days.ts";
-import { showDeadline } from "../api/src/case-stages.ts";
+import * as calendarModule from "../api/src/platform/calendar/working-days.ts";
+import { withFirm } from "../api/src/platform/firm-scope.ts";
+import { deadlineDay, showDeadline } from "../api/src/case-stages.ts";
 import { deadlineOf, type KeyDetailDef } from "../engine/runtime/stages.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { recorder } from "./runtime/api.ts";
 
 const { ok, summary } = recorder();
-const WEEK = (["MON", "TUE", "WED", "THU", "FRI"] as const).map((day) => ({ day, opens: "09:00", closes: "17:00" }));
+const WEEK: FirmCalendar["hours"] = ["MON", "TUE", "WED", "THU", "FRI"].map((day) => ({ day, opens: "09:00", closes: "17:00" }));
 const cal = (closedDays: string[] = [], hours = WEEK, zone = "America/Toronto"): FirmCalendar => ({ zone, hours, closedDays });
 const refused = (fn: () => unknown, words = NO_SUCH_DATE) => { try { fn(); return false; } catch (e) { return e instanceof RangeError && e.message === words; } };
 
@@ -41,8 +43,15 @@ ok("CS-DL1 DW2 fail (breaker: a run of closed days): two closed weeks' days and 
 // AG-7-94's own example (rule 5's lead): 1 Jan 2027 on the closed list, "2 working days before" → Wed 30 Dec 2026.
 ok("CS-DL1 DW2 pass (AG-7-94 example): Fri 1 Jan 2027, closed that day, 2 working days before → Wed 30 Dec 2026, across the year", countBack("2027-01-01", 2, cal(["2027-01-01"])) === "2026-12-30");
 const shut = cal([], []);
-ok("CS-DL1 DW2 fail (\"duplicate beats a miss\"): a firm with no open day at all falls back to n calendar days before, never later, never an endless walk",
-  countBack("2027-03-08", 2, shut) === "2027-03-06" && countBack("2027-03-08", 0, shut) === "2027-03-08");
+ok("CS-DL1 DW2 fail (\"duplicate beats a miss\", breaker m4): a firm open on no weekday counts Monday-Friday weekdays, never calendar days: 2 before Mon 8 Mar → Thu 4 Mar; 5 → Mon 1 Mar; on the day of Sun 7 Mar → Fri 5 Mar",
+  countBack("2027-03-08", 2, shut) === "2027-03-04" && countBack("2027-03-08", 5, shut) === "2027-03-01" && countBack("2027-03-07", 0, shut) === "2027-03-05" && countBack("2027-03-08", 1, cal([], [{ day: "SAT", opens: "10:00", closes: "12:00" }])) === "2027-03-05");
+const long = cal(Array.from({ length: 400 }, (_, i) => new Date(Date.parse("2027-03-05T00:00:00Z") - i * 86_400_000).toISOString().slice(0, 10)).filter((d) => isOpenDay(d, cal())).slice(0, 262));
+const longFirst = [...long.closedDays].sort()[0];
+ok("CS-DL1 DW2 fail (breaker M1): 262 closed weekdays in a row before Mon 8 Mar 2027 (a list the settings accept): the count walks past them all to the open day before, never a weekend, never the closed run",
+  (() => { const r1 = countBack("2027-03-08", 1, long), r0 = countBack("2027-03-07", 0, long); return long.closedDays.length === 262 && r1 < longFirst && r0 === r1 && isOpenDay(r1, long) && countBack("2027-03-08", 2, long) < r1; })(), { first: longFirst, r1: countBack("2027-03-08", 1, long) });
+const fridays = cal([], [{ day: "FRI", opens: "09:00", closes: "17:00" }]), monWed = cal([], WEEK.filter((h) => ["MON", "TUE", "WED"].includes(h.day)));
+ok("CS-DL1 DW2 fail (breaker M1): a firm open only on Fridays, 70 working days before Mon 8 Mar 2027 → Fri 7 Nov 2025; open Mon-Wed, 400 before → Wed 14 Aug 2024",
+  countBack("2027-03-08", 70, fridays) === "2025-11-07" && countBack("2027-03-08", 400, monWed) === "2024-08-14", [countBack("2027-03-08", 70, fridays), countBack("2027-03-08", 400, monWed)]);
 ok("CS-DL1 DW2 fail: a count of working days that is not a whole number from 0 to 2600 is refused", [-1, 1.5, Number.NaN, 2601].every((n) => refused(() => countBack("2027-03-08", n, cal()), "Count back a whole number of working days from 0 to 2600")));
 
 // ---------------------------------------------------------------- DW3 a stage deadline stays the calendar date (AG-7-96 r2)
@@ -74,11 +83,23 @@ ok("CS-DL1 DW4 fail: today is the firm's local date, not UTC's: at 03:30 UTC on 
 ok("CS-DL1 DW4 pass: in a firm in Tokyo (+9) at the same instant it is Mon 8 Mar, so the same deadline is Missed",
   showDeadline(due("2027-03-07"), cal([], WEEK, "Asia/Tokyo"), todayIn(cal([], WEEK, "Asia/Tokyo")))?.missed === true);
 
+// The view's wiring (review m1): the calendar of the firm in scope, today in its zone from the clock. A stand-in for the
+// settings table answers firm A's rows only (as PF-12's wall does); the real reader (readFirmCalendar) runs over it.
+const FIRM_A = "0a0a0a0a-0000-4000-8000-00000000000a";
+const rows: Record<string, unknown> = { "platform.time_zone": "Asia/Tokyo", "platform.closed_days": ["2027-03-08"] };
+const fakeDb = { platformFirmSetting: { findFirst: async (q: { where: { firmId: string; key: string } }) => (q.where.firmId === FIRM_A && q.where.key in rows ? { value: rows[q.where.key] } : null) } } as unknown as Parameters<typeof deadlineDay>[0];
+await clock.set("2027-03-07T16:00:00.000Z");   // Sun 7 Mar 11:00 in Toronto; Mon 8 Mar 01:00 in Tokyo
+const inA = await withFirm(FIRM_A, () => deadlineDay(fakeDb, clock)), none = await deadlineDay(fakeDb, clock);
+ok("CS-DL1 DW4 pass (wiring): in firm A's scope the view reads A's zone and closed days: today is Mon 8 Mar in Tokyo, a Sun 7 Mar deadline is Missed and Mon 8 Mar shows \"(closed day)\"",
+  inA.today === "2027-03-08" && inA.cal.zone === "Asia/Tokyo" && showDeadline(due("2027-03-07"), inA.cal, inA.today)?.missed === true && showDeadline(due("2027-03-08"), inA.cal, inA.today)?.shown === "Mon 8 Mar 2027 (closed day)", inA);
+ok("CS-DL1 DW4 fail (wiring): with no firm in scope nothing is read across the wall: the defaults (Toronto, no closed days), so today is Sun 7 Mar and Mon 8 Mar carries no mark",
+  none.today === "2027-03-07" && none.cal.zone === "America/Toronto" && none.cal.closedDays.length === 0 && showDeadline(due("2027-03-08"), none.cal, none.today)?.mark === null, none);
+
 // ---------------------------------------------------------------- DW5 PF-21's clock after the move
-ok("CS-DL1 DW5 pass: complaints/business-days.ts gives the moved names from calendar/ (one function, not a copy)",
-  complaintDays.localDate === localDate && complaintDays.zonedInstant === zonedInstant && complaintDays.businessDaysBetween === businessDaysBetween && complaintDays.BusinessDayTally === BusinessDayTally);
+ok("CS-DL1 DW5 pass: complaints/business-days.ts gives PF-21v's count from calendar/ (one function, not a copy) and nothing else moved",
+  complaintDays.businessDaysBetween === businessDaysBetween && complaintDays.BusinessDayTally === BusinessDayTally && !("localDate" in complaintDays) && !("zonedInstant" in complaintDays) && !("businessClose" in complaintDays));
 ok("CS-DL1 DW5 pass: the acknowledge-by period stays a complaint rule there (ACK_BUSINESS_DAYS = 2, Sample) and is not in calendar/",
-  complaintDays.ACK_BUSINESS_DAYS === 2 && typeof complaintDays.acknowledgeBy === "function");
+  complaintDays.ACK_BUSINESS_DAYS === 2 && typeof complaintDays.acknowledgeBy === "function" && !("acknowledgeBy" in calendarModule) && !("ACK_BUSINESS_DAYS" in calendarModule));
 // Received Fri 13 Nov 2026 15:00 Toronto, Mon 16 closed: Tue 17 is day 1, Wed 18 day 2 → 17:00 Wed 18 Nov (22:00 UTC).
 const ack = complaintDays.acknowledgeBy(new Date("2026-11-13T20:00:00.000Z"), cal(["2026-11-16"]));
 ok("CS-DL1 DW5 pass: the complaint clock is unchanged: received Fri 13 Nov, Mon 16 closed → acknowledge by Wed 18 Nov 17:00 Toronto", ack.toISOString() === "2026-11-18T22:00:00.000Z", ack.toISOString());
@@ -86,7 +107,10 @@ ok("CS-DL1 DW5 fail: the business-day test still skips the weekend and a closed 
 
 // ---------------------------------------------------------------- DW6 a date that does not exist (AG-7-94 failure test)
 ok("CS-DL1 DW6 pass: \"2027-02-31\" is refused with \"That date does not exist\" by every calendar function",
-  [() => countBack("2027-02-31", 1, cal()), () => isOpenDay("2027-02-31", cal()), () => dayMark("2027-02-31", cal()), () => calendarDate("2027-02-31"), () => showDeadline(due("2027-02-31"), cal(), "2027-01-01")].every((f) => refused(f)));
+  [() => countBack("2027-02-31", 1, cal()), () => isOpenDay("2027-02-31", cal()), () => dayMark("2027-02-31", cal()), () => calendarDate("2027-02-31")].every((f) => refused(f)));
+ok("CS-DL1 DW6 fail (breaker m1, m2): a deadline the calendar refuses (31 Feb, year 0000, a year past 9999) shows no weekday and no mark and is never Missed: the case view never answers 500",
+  ["2027-02-31", "0000-01-01", "+010000-01-01"].every((v) => { const x = showDeadline(due(v), cal(), "2027-01-01"); return x?.shown === null && x.mark === null && x.missed === false && x.due === v; }));
+ok("CS-DL1 DW6 fail (breaker m3): near the first year the walk stops at 0001-01-01 and never refuses a date that exists", countBack("0001-01-03", 5, cal()) === "0001-01-01" && refused(() => calendarDate("0000-12-31")));
 ok("CS-DL1 DW6 fail: real dates pass, 29 Feb only in a leap year (2028), not 2027",
   calendarDate("2027-02-28") === "2027-02-28" && calendarDate("2028-02-29") === "2028-02-29" && refused(() => calendarDate("2027-02-29")));
 ok("CS-DL1 DW6 fail (breaker: bad dates): 2027-13-01, 2027-04-31, 2027-00-10, 2027-3-7, an empty string, a time stamp, a number and null are all refused",

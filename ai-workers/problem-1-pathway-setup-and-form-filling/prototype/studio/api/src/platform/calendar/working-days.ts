@@ -106,36 +106,47 @@ export const NO_SUCH_DATE = "That date does not exist";
 /** The longest count back (ten years of working days); a longer one is refused, never an endless walk. */
 export const MAX_COUNT_BACK = 2600;
 
-/** A calendar date YYYY-MM-DD that exists (2027-02-31 does not), or a RangeError with NO_SUCH_DATE. */
+/** A calendar date YYYY-MM-DD that exists, from 0001-01-01 (2027-02-31 and year 0000 do not), or a RangeError with
+ *  NO_SUCH_DATE. */
 export function calendarDate(date: unknown): string {
-  const ok = typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date) && (() => { const t = Date.parse(`${date}T00:00:00Z`); return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === date; })();
+  const ok = typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= "0001-01-01" && (() => { const t = Date.parse(`${date}T00:00:00Z`); return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === date; })();
   if (!ok) throw new RangeError(NO_SUCH_DATE);
   return date as string;
 }
 
+const isWeekday = (date: string) => { const w = weekdayOf(date); return w !== "SAT" && w !== "SUN"; };
+const openDay = (date: string, cal: FirmCalendar) => isWeekday(date) && businessClose(cal, date) !== null;
+
 /** AG-7-94 r4: an open day is a weekday (Monday to Friday) inside the firm's business hours, not on its closed-days list
  *  (and not a day the zone skipped). A Saturday with hours is not an open day for a reminder (earlier, never later). */
 export function isOpenDay(date: string, cal: FirmCalendar): boolean {
-  const d = calendarDate(date), w = weekdayOf(d);
-  return w !== "SAT" && w !== "SUN" && businessClose(cal, d) !== null;
+  return openDay(calendarDate(date), cal);
+}
+
+/** The nth day before `date` (n = 0: on or before it) that passes `counts`, walking at most `limit` days back and never
+ *  before 0001-01-01; null when the walk ends first. */
+function walkBack(date: string, n: number, counts: (d: string) => boolean, limit: number): string | null {
+  let at = date, counted = 0;
+  if (n === 0 && counts(at)) return at;
+  for (let i = 0; i < limit && at > "0001-01-01"; i++) {
+    at = prevDate(at);
+    if (counts(at) && (n === 0 || ++counted === n)) return at;
+  }
+  return null;
 }
 
 /** AG-7-94 r5, r6: the day a reminder set "n working days before" `date` lands on: the nth open day before the date
- *  (n = 0, "on the day": the last open day on or before it). Never later than that, never after the date. A calendar
- *  with no open day in reach falls back to n calendar days before (earlier, never a miss: AG16-60). */
+ *  (n = 0, "on the day": the last open day on or before it). Never later than that, never after the date. The walk goes
+ *  as far back as the count needs: a week holds an open weekday unless the firm opens on no weekday, and the closed-days
+ *  list holds at most 366 dates (settings.ts), so 7 × (n + 368) days always reach it. A firm open on no weekday at all
+ *  counts Monday-to-Friday weekdays instead (AG-7-94 test 4's "every weekday counts"; earlier, never a miss: AG16-60). */
 export function countBack(date: string, n: number, cal: FirmCalendar): string {
   const d = calendarDate(date);
   if (!Number.isInteger(n) || n < 0 || n > MAX_COUNT_BACK) throw new RangeError(`Count back a whole number of working days from 0 to ${MAX_COUNT_BACK}`);
-  let at = d;
-  if (n === 0) {
-    for (let i = 0; i <= 366; i++, at = prevDate(at)) if (isOpenDay(at, cal)) return at;
-    return d;
-  }
-  for (let i = 0, counted = 0; i < 366 + Math.ceil(n * 7 / 5); i++) {
-    at = prevDate(at);
-    if (isOpenDay(at, cal) && ++counted === n) return at;
-  }
-  for (let i = 0, back = d; ; i++) { if (i === n) return back; back = prevDate(back); }
+  const limit = 7 * (n + 368);
+  const anyWeekday = cal.hours.some((h) => h.day !== "SAT" && h.day !== "SUN");
+  const hit = anyWeekday ? walkBack(d, n, (x) => openDay(x, cal), limit + 7 * cal.closedDays.length) : null;
+  return hit ?? walkBack(d, n, isWeekday, limit) ?? "0001-01-01";
 }
 
 /** AG-7-94 r3: how a calendar date shows: its weekday, and a mark when it falls on a weekend or a day the firm is closed.
@@ -143,7 +154,7 @@ export function countBack(date: string, n: number, cal: FirmCalendar): string {
 export function dayMark(date: string, cal: FirmCalendar): { weekday: string; mark: "weekend" | "closed day" | null } {
   const d = calendarDate(date), w = weekdayOf(d);
   const weekday = w.charAt(0) + w.slice(1).toLowerCase();
-  return { weekday, mark: w === "SAT" || w === "SUN" ? "weekend" : isOpenDay(d, cal) ? null : "closed day" };
+  return { weekday, mark: w === "SAT" || w === "SUN" ? "weekend" : openDay(d, cal) ? null : "closed day" };
 }
 
 /** The firm's calendar: its time zone, business hours and closed days (PF-1's settings, defaults when unset). AG-7-99:

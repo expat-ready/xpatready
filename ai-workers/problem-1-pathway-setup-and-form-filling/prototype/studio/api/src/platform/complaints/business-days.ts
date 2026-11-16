@@ -3,11 +3,11 @@
 // closing time of the Nth business day after the day the complaint was received, in the firm's time zone, where a business
 // day is a day with opening hours (platform.business_hours) that is not a closed day (platform.closed_days). The general
 // calendar logic (zone helpers, the business-day test, PF-21v's count) moved to platform/calendar/working-days.ts (CS-DL1
-// part 1, Lead B's OK on #1867); the acknowledge-by period is a complaint rule and stays here. The moved names are also
-// exported here, so PF-21's, PF-21w's and PF-21v's callers and suites read them unchanged.
+// part 1, Lead B's OK on #1867); the acknowledge-by period is a complaint rule and stays here. PF-21v's count is also
+// exported here, so PF-21v's suite reads it unchanged.
 import { businessClose, localDate, nextDate, zonedInstant, type FirmCalendar } from "../calendar/working-days.ts";
 
-export { BusinessDayTally, businessDaysBetween, localDate, zonedInstant, type FirmCalendar } from "../calendar/working-days.ts";
+export { BusinessDayTally, businessDaysBetween } from "../calendar/working-days.ts";
 
 /** Sample (FO-13k rev 12): 2 business days, to set from the by-laws once read. */
 export const ACK_BUSINESS_DAYS = 2;
