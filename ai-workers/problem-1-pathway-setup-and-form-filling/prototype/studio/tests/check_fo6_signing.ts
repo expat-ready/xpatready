@@ -7,7 +7,7 @@
 //   tsx studio/tests/check_fo6_signing.ts
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -156,12 +156,15 @@ try {
   })());
   ok("FO-6 fail: an evidence file key outside signing/ or with .. is refused", (() => { const e = envelope(); for (const s of [e.c1, e.c2, e.f]) sql(DEMO, sign(s)); sql(DEMO, `update fo_signature_request set status = 'CLIENT_SIGNED' where id = '${e.r}'`);
     return refused(DEMO, evidence(e.r).replace(`'signing/${e.r}/sealed.pdf'`, `'retainers/x.pdf'`), /files_check/) && refused(DEMO, evidence(e.r).replace(`'signing/${e.r}/audit.pdf'`, `'signing/../x.pdf'`), /files_check/); })());
-  ok("FO-6 fail (review M1): CLIENT_SIGNED needs a client, SIGNED needs the firm signer: a request with no signers, or clients only, never reaches SIGNED", (() => {
+  ok("FO-6 fail (review M1, R2-1): CLIENT_SIGNED needs a client; evidence and SIGNED need the firm signer: a request with no signers, or clients only, never reaches SIGNED and can still be cancelled", (() => {
     const bare = req(); sql(DEMO, bare.q);
     const noClient = refused(DEMO, `update fo_signature_request set status = 'CLIENT_SIGNED' where id = '${bare.id}'`, /every client/);
     const r = req(); sql(DEMO, r.q); const c = signer(r.id, "CLIENT"); sql(DEMO, c.q); sql(DEMO, sign(c.id)); sql(DEMO, `update fo_signature_request set status = 'CLIENT_SIGNED' where id = '${r.id}'`);
-    sql(DEMO, evidence(r.id));
-    return noClient && refused(DEMO, `update fo_signature_request set status = 'SIGNED' where id = '${r.id}'`, /every signature and the stored evidence/);
+    // Review R2-1: evidence on a clients-only request is refused too, so the request is never stuck (it can still be cancelled).
+    const noEvidence = refused(DEMO, evidence(r.id), /every signer of a live request/);
+    const noSigned = refused(DEMO, `update fo_signature_request set status = 'SIGNED' where id = '${r.id}'`, /every signature and the stored evidence/);
+    sql(DEMO, `update fo_signature_request set status = 'CANCELLED', cancel_reason = 'WITHDRAWN' where id = '${r.id}'`);
+    return noClient && noEvidence && noSigned;
   })());
   ok("FO-6 fail (review M2, m9): no signer is added once anyone acted, and none to a VIEWED request", (() => {
     const e = envelope(); sql(DEMO, `update fo_signer set viewed_at = now() where id = '${e.c1}'`);
@@ -173,8 +176,17 @@ try {
     const e = envelope(); for (const s of [e.c1, e.c2, e.f]) sql(DEMO, sign(s)); sql(DEMO, `update fo_signature_request set status = 'CLIENT_SIGNED' where id = '${e.r}'`); sql(DEMO, evidence(e.r));
     return refused(DEMO, `update fo_signature_request set status = 'CANCELLED', cancel_reason = 'WITHDRAWN' where id = '${e.r}'`, /only SIGNED follows/);
   })());
-  ok("FO-6 fail (review M3): the evidence trigger locks the request first, so a cancel waits for it (FOR UPDATE in fo_signing_evidence_write)",
-    /fo_signing_evidence_write\(\)[\s\S]*?FOR UPDATE[\s\S]*?END \$\$/.test(code));
+  { // Review M3, R2-2: two connections. One stores the evidence and holds its transaction open; a cancel from another waits
+    // for it (the evidence trigger locks the request row first), then sees the evidence and is refused.
+    const e = envelope(); for (const x of [e.c1, e.c2, e.f]) sql(DEMO, sign(x)); sql(DEMO, `update fo_signature_request set status = 'CLIENT_SIGNED' where id = '${e.r}'`);
+    const holder = spawn(join(BIN, "psql"), [urlOf(DEMO), "-v", "ON_ERROR_STOP=1", "-q", "-c", `begin; ${evidence(e.r)}; select pg_sleep(2); commit;`], { stdio: "ignore" });
+    const held = new Promise<number | null>((res) => holder.on("exit", res));
+    await new Promise((r) => setTimeout(r, 700));
+    const t0 = Date.now(), cancelRefused = refused(DEMO, `update fo_signature_request set status = 'CANCELLED', cancel_reason = 'WITHDRAWN' where id = '${e.r}'`, /only SIGNED follows/), waited = Date.now() - t0;
+    const holderExit = await held;
+    ok("FO-6 fail (review M3, R2-2, two connections): a cancel racing the evidence waits for it, then is refused; the request keeps its evidence",
+      holderExit === 0 && cancelRefused && waited >= 800 && sql(DEMO, `select status || ':' || (select count(*) from fo_signing_evidence where request_id = '${e.r}') from fo_signature_request where id = '${e.r}'`) === "CLIENT_SIGNED:1", { holderExit, cancelRefused, waited });
+  }
   ok("FO-6 fail (review M4): one provider document id names one request across all firms", refused(DEMO, req({ firm: firmB, by: repB, pdid: `fake-${e1.r}` }).q, /fo_signature_request_provider_provider_document_id_key/));
   ok("FO-6 fail (review m6): a sixth wrong code without the lock is refused", (() => { const e = envelope(); return refused(DEMO, `update fo_signer set code_failures = 6 where id = '${e.c1}'`, /code_check/); })());
   ok("FO-6 fail (review m7): evidence names the consent text the signers agreed to", (() => {

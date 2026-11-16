@@ -348,7 +348,9 @@ BEGIN
   -- The request row is locked first, so a cancel waits for the evidence and then sees it (review M3).
   PERFORM 1 FROM "fo_signature_request" r WHERE r."firm_id" = NEW."firm_id" AND r."id" = NEW."request_id" FOR UPDATE;
   IF NOT EXISTS (SELECT 1 FROM "fo_signature_request" r WHERE r."firm_id" = NEW."firm_id" AND r."id" = NEW."request_id" AND r."status" = 'CLIENT_SIGNED')
-     OR EXISTS (SELECT 1 FROM "fo_signer" s WHERE s."firm_id" = NEW."firm_id" AND s."request_id" = NEW."request_id" AND s."signed_at" IS NULL) THEN
+     OR EXISTS (SELECT 1 FROM "fo_signer" s WHERE s."firm_id" = NEW."firm_id" AND s."request_id" = NEW."request_id" AND s."signed_at" IS NULL)
+     -- The firm signer among them (review R2-1: evidence on a clients-only request would leave it stuck, only SIGNED may follow).
+     OR NOT EXISTS (SELECT 1 FROM "fo_signer" s WHERE s."firm_id" = NEW."firm_id" AND s."request_id" = NEW."request_id" AND s."role" = 'FIRM' AND s."signed_at" IS NOT NULL) THEN
     RAISE EXCEPTION 'fo_signing_evidence: stored only when every signer of a live request signed' USING ERRCODE = 'check_violation';
   END IF;
   IF EXISTS (SELECT 1 FROM "fo_signer" s WHERE s."firm_id" = NEW."firm_id" AND s."request_id" = NEW."request_id" AND s."consent_text_version" IS DISTINCT FROM NEW."consent_text_version") THEN
