@@ -30,7 +30,7 @@ const R = sql(`select email from platform_staff where actor_id = 'user-R'`), T =
 async function apiSignIn(email: string): Promise<string> {
   const r = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", email, secondStep: true }) });
   const b = await r.json() as { token?: string; detail?: string }; if (b.token) return b.token;
-  console.error(`STOP  local sign-in refused for ${email} (start the copy with PLATFORM_IDENTITY=local): ${b.detail}`); process.exit(2);
+  throw new Error(`STOP  local sign-in refused for ${email} (start the copy with PLATFORM_IDENTITY=local): ${b.detail}`);   // a throw, so the seat finally runs (PF-6f review m2)
 }
 const staffCall = (tok: string, method: string, path: string, body?: unknown) => fetch(`${BASE}/api${path}`, { method, headers: { authorization: `Bearer ${tok}`, ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
 async function handOffLink(ownerToken: string, email: string): Promise<string> {
@@ -96,6 +96,22 @@ try {
   ok("PF-6f DW1 fail: the same path signed out → the refusal and the sign-in card, never left on \"Signing you in…\"",
     !outStuck && (await p.locator("[data-callback-refused]").count()) === 1 && (await p.locator("[data-sign-in-card]").count()) === 1, { url: p.url(), outStuck });
   ok("PF-6f DW1: a second post of the same code is never sent (the network log)", posts(p) === 2, posts(p));   // one per address visit, none on Back
+  // Breaker M1: an earlier link's late answer never replaces a later sign-in (the newest code decides).
+  const L1 = await handOffLink(rTok, `pf6f-a-${run}@example.com`), L2 = await handOffLink(rTok, `pf6f-b-${run}@example.com`);
+  const race = await newPage(); let held = 0;
+  await race.route("**/api/platform/session/callback", async (r) => { if (held++ === 0) await new Promise((res) => setTimeout(res, 4000)); await r.continue(); });
+  await race.goto(`${BASE}${L1}`); await race.waitForTimeout(300);
+  await race.evaluate((h) => { window.location.hash = h; }, L2.split("#")[1]); await profileShown(race, `pf6f-b-${run}@example.com`);
+  await race.waitForTimeout(5000);
+  ok("PF-6f (breaker M1): a held earlier link answers after a later one → the tab stays the later person",
+    (await race.locator("[data-account]", { hasText: `pf6f-b-${run}@example.com` }).count()) > 0 && !(await race.locator("main").innerText()).includes(`pf6f-a-${run}@example.com`) && posts(race) === 2, posts(race));
+  // Breaker m3: a post that never reached the server can be sent again from the same tab.
+  const L3 = await handOffLink(rTok, `pf6f-c-${run}@example.com`);
+  const flaky = await newPage(); let tries = 0;
+  await flaky.route("**/api/platform/session/callback", async (r) => { if (tries++ === 0) return r.abort("failed"); await r.continue(); });
+  await flaky.goto(`${BASE}${L3}`); await flaky.getByText("Could not reach the server").waitFor({ timeout: 15_000 });
+  await flaky.evaluate((h) => { window.location.hash = h; }, L3.split("#")[1]); await profileShown(flaky, `pf6f-c-${run}@example.com`);
+  ok("PF-6f (breaker m3): after a send that never reached the server, the same link opened again in the tab signs in", posts(flaky) === 2, posts(flaky));
   ok("PF-6f: no page error in any browser", errors.length === 0, errors);
 } finally {
   sql(`update platform_plan set seats_limit = ${plan[1]} where id = '${plan[0]}'`);

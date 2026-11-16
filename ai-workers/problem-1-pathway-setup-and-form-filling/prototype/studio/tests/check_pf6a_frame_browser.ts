@@ -32,7 +32,7 @@ ok("PF-6a setup: the Sample firm's staff are seeded", !!R.id && !!O.id && !!T.id
 async function apiSignIn(email: string): Promise<string> {
   const r = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", email, secondStep: true }) });
   const b = await r.json() as { token?: string; detail?: string }; if (b.token) return b.token;
-  console.error(`STOP  local sign-in refused for ${email} (start the copy with PLATFORM_IDENTITY=local): ${b.detail}`); process.exit(2);
+  throw new Error(`STOP  local sign-in refused for ${email} (start the copy with PLATFORM_IDENTITY=local): ${b.detail}`);   // a throw, so the seat finally runs (PF-6f review m2)
 }
 const staffCall = (tok: string, method: string, path: string, body?: unknown) => fetch(`${BASE}/api${path}`, { method, headers: { authorization: `Bearer ${tok}`, ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
 /** A real hand-off link: an invitation made by the Owner, its token set to one this test knows (the mail is in memory), accepted. */
