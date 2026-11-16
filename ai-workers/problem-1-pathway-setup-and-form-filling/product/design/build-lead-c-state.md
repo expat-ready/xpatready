@@ -51,6 +51,8 @@ PRs = pull requests per the drafts (P-610). "Ready" = every wait in the draft is
 
 Rows proven or Lead-B-only are not listed. R1.77 finishes on CS-C1b + QA-397; R1.74 on CS-DL1b.
 
+**New row CS-SD1 (16 Nov 21:3x IST, Lead 69):** main's schema drifts on 5 statements (PF-8r #2014). The schema is behind the database: the four `id` fields get `dbgenerated("gen_random_uuid()")`, because migrations insert rows without an id. `canonical_field_name` is kept as an `@@ignore` model, because it is the live guard for unique shared-field names. Its group is the configurator, so the WIP limit does not stop it.
+
 ## 2. Lanes (8 slots; two ready briefs each, P-599)
 | Lane | Now | Next | Status |
 |---|---|---|---|
@@ -60,7 +62,8 @@ Rows proven or Lead-B-only are not listed. R1.77 finishes on CS-C1b + QA-397; R1
 | C4 | `AUD-1a.md` | `AUD-1b.md` | start asked 21:0x IST |
 | C5 | `FO-7s0.md` (concept, now) | `FO-7ts-1.md` (after #1991) | start asked 21:1x IST |
 | C6 | `AUD-5-1.md` (now) | — | start asked 21:2x IST |
-| C7-C8 | to fill: CS-S1 part 1, CS-W3 part 0 spike, AUD-4s concept, CS-98s1 concept (briefs next) | | |
+| C7 | `CS-SD1.md` (schema drift, now; Lead reads the diff) | — | start asked 21:3x IST |
+| C8 | to fill: CS-S1 part 1, CS-W3 part 0 spike, AUD-4s concept, CS-98s1 concept (briefs next) | | |
 
 **Holders (P-438b, P-526b):** C1 holds `api/src/runtime.ts` `createCase`; C4 holds `governance.prisma` / new `audit.prisma`; C2 touches Lead B's `leads.ts`/`open-minutes.ts` import lines only. Nobody in my group holds `prisma/schema/cases.prisma` or `api/src/case-prepare.ts` now.
 
