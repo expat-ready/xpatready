@@ -122,7 +122,57 @@ Reviewer: Opus 5.5, fresh context (P-303). I did not build this.
 * CI on this head: the PR is still a draft.
 * The builder's uncommitted fixes.
 
-**Verdict: Block, changes needed**
+**First review, at `4ffd69132`: Block, changes needed** (superseded by the re-review below)
 * Blockers: none.
 * Majors: M1, M2, M3, M4.
 * Minors: m1–m7.
+
+## Re-review at `d460651e1` (diff only, P-277)
+
+**Scope:** `git diff 4ffd69132..d460651e1` on `studio/`: 7 files, plus the test.
+* The whole row is now +733 −13 against main, still under P-610's cap.
+* The checkout was clean at `d460651e1`.
+
+**What I ran:**
+* Suite **42/42**.
+* Neighbour suites, all passing: `check_pf19b_sending` 40/0, `check_pf19b_mail` 28/0, `check_pf4b_session_reads` 53/0, `check_fo3_booking` 133/0, `check_pf23w_jobs_wired` 31/0.
+* The `--app` walk passed **6/6** on my copy `rvpf19b2b` on :4437 (with the reference header in place), which I stopped and dropped afterwards.
+* Mutations in a worktree at `d460651e1`, each reverted. **Every one fails a named test:**
+  * no 60 s transaction → DW4 slow
+  * decoding chunk by chunk → M4
+  * no unsubscribe lock → DW12 race (5×200)
+  * no notice lock → DW9 race
+  * `named` removed → DW9 "neither address"
+  * class filter removed → DW12 forged
+  * SubscribeURL taken from any host → M3
+
+**Findings, one by one:**
+| Finding | Status | Evidence |
+|---|---|---|
+| M1 tokens at rest | **Closed by ruling** | `platform-staff-read.ts` matches main exactly. Live: an invite writes 0 outbox rows and 0 files containing `invitation#t=`. Lead B's ruling (PR comment, rev 16.64) moves the switch and sealed TRANSACTIONAL bodies to PF-19e. The PR body has the "Known gaps" line. DW13 tests MessagesMail and holds the binding. |
+| M2(a) confirmation | Fixed | `bounces.ts`: a verified confirmation from our topic visits `SubscribeURL` (SNS's https host only); with no topic list the URL is logged; any other host gives 400. Tested both ways; live, an unsigned confirmation gives 400. |
+| M2(b) tags only | Fixed | `ses.ts` adds `X-Expatready-Ref: <firm>/<outbox>`. `bounces.ts` falls back to `mail.headers` (SES "include original headers"). It still needs `ses:<messageId>` on the row. Tested with and without the header. |
+| M2(c) chunk decoding | Fixed | `public-routes.ts` `rawText` joins the buffers and decodes once (300 KB cap; `error`/`aborted`/`close` settle it). Split inside "é" → 200. |
+| M3 slow SES double send | Fixed | `DELIVER_TX_MS` is 60 s, above the SDK's 20 s request and 5 s connect timeouts. A 6 s answer gives one call and SENT; a rerun is skipped. At-least-once after a crash stays as a Lead B note. |
+| M4 shared IP bucket | Fixed | The limit is per link (outbox id). A token that does not open answers 404 with no query and is not counted; brute force is infeasible against the 128-bit GCM tag. Map pruning keeps live entries. |
+| m1 raw JSON | Fixed | 404 and 429 are HTML. Live: reload after pressing, and a revisit, show "This page is not available. Check the address, or contact the firm that sent it to you." |
+| m3, m4 (PF-4b side effects) | Gone with M1 | Live: a two-step reset of a suppressed staff address → 200. Lead B set PF-19e's rules (exempt from the cap; 409, never 500). |
+| m5 tests | Fixed | Mutations above. |
+| m6, m7 | Fixed, or open as notes | 300 KB cap, abort handling, uuid check, certificate fetch error → 400, pruning, walk comment fixed. The PR body now lists DW9–DW14 first, with "On the demo" and Questions. |
+
+**Still open, Minor (not blocking):**
+* **n1, ids in a header plus no topic list (raises m2).** Every SES email now carries the firm and outbox ids in clear (`ses.ts`, `REF_HEADER`), and its `Message-ID` carries the SES id. With no topic setting (`platform-messages.ts` builds `SesNotices` without `topics`), anyone holding one of the firm's emails (a forward, for example) can use their own AWS topic to get a genuinely signed complaint. That suppresses the address the email went to, at that firm. Close this before SES is switched on in test or production: add the topic setting and refuse notices outside `local` when no topic list is set. Lead B already has m2 as a note; this raises its priority.
+* **n2, a used link does not say "done".** It shows the generic not-found words, so a person cannot tell they are already unsubscribed. The status (404) is the brief's rule. A sentence such as "If you pressed Unsubscribe, it is done" would close it.
+* **n3, notes for Lead B, as the builder lists them:** permanent SES refusals are retried hourly (part 1's policy), and delivery is at least once after a crash.
+
+**Journey re-score: 9/10, pass.**
+* Each criterion scores 1 except **feedback ½** (n2) and **visual ½** (a bare page with a browser-default button).
+* Changes from 7.5: plain words, error recovery and accessibility each go from ½ to 1. The reasons are the HTML 404 and 429, no 500 on a reset, and `overflow-wrap`.
+* axe found 0 violations at 400 and 1440 px and on the done page, with no sideways scroll at 200 %. Keyboard only works. The page loads in 36–41 ms. Ten concurrent clicks give one withdrawal.
+
+**Not checked:** a live SES or SNS account (the header fallback assumes "include original headers" is on, which the team sets up once), a real screen reader, and CI on this head.
+
+Verdict: Approve (head `d460651e1`)
+* Blockers: none.
+* Majors: none open. M1 is closed by Lead B's ruling (moved to PF-19e); M2, M3 and M4 are fixed with fail tests.
+* Minors: n1 (close before SES goes live), n2, n3.
