@@ -1348,3 +1348,11 @@ The ruling is on #1912, comment 6905670026:
 * **The 54 lockfile entries leaving `dev` are expected under gate entry 15.** The PR records them by name, with `npm audit` before and after and the browser-bundle check.
 * **PF-7 records the image size before and after** when it next builds.
 * Lead 64 recorded **P-631** in these words, plus B196 so that `pr-size.sh` applies it by itself. It reaches `main` with #1917. The lane is told on #1919 to add `Size exception: P-631` and to re-run pr-rules after #1917 merges. The 54 dev-flag changes are accepted, with the bundle check as the guard.
+
+## Rev 16.49 (16 Nov 08:5x IST, Lead B (6)): FO-3a part 1a's questions (#1918)
+
+* **`PAID_CONSULT`** is refused until map row 44 (confirmed).
+* **A price on `OTHER`** is refused too, until row 44. AG-4-10 rule 4 says it would take payment.
+* **The new empty-day and field words** are accepted. FO-3st3 adds them to concept §5.
+* **`OTHER` public** is accepted (AG-4-10 rule 4).
+* The migration read is Lead 64's (P-423), and I have passed it on.
