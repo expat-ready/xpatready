@@ -14,7 +14,7 @@ PRs = pull requests per the drafts (P-610). "Ready" = every wait in the draft is
 | R1 row | Capability | My parts left (PRs) | Lead B parts left | Ready now | Waits on |
 |---|---|---|---|---|---|
 | R1.80 | IRCC forms per applicant | 0 (BK-10, BK-16, BK-22..24 merged) | — | — | qa (Prove Lead) only |
-| R1.77 | Submission number, UCI; decide, close, reopen | **CS-C1b (1)**; QA-397 fix (C8.2, Major, not shaped) | — | CS-C1b | QA-397 to shape (me) |
+| R1.77 | Submission number, UCI; decide, close, reopen | **CS-C1b (1, #2002)**; **BK-21** (fixes QA-397) | — | both | BK-21: the Lead names the `case-prepare.ts` holder |
 | R1.74 | Deadlines that remind; working days | **CS-DL1a, CS-DL1b (2)** | — | CS-DL1a | b after a |
 | R1.68 | Preview for staff review | CS-D5 (2) | — | no | CS-D1 parts 1-2 (which wait on PF-F rail) |
 | R1.10 | Checking every input | **CS-V1 PR 1, 2, 3a, 3b (4)** | PF-28 | PR 1 | PR 3a/3b: Bake tag (P-499), CS-D1b, CS-K1, CS-NT1 p1, CS-W1 |
@@ -83,7 +83,7 @@ Rows proven or Lead-B-only are not listed. R1.77 finishes on CS-C1b + QA-397; R1
 
 ## 3. To do next (me)
 1. Briefs for lanes C5-C8 (CS-S1 part 1, CS-W3 part 0, AUD-4s concept, CS-98s1 concept).
-2. Shape QA-397 (R1.77's other half) as a brief.
+2. Done 23:5x IST: QA-397 is BACKLOG row BK-21; brief `build-lead-c-briefs/BK-21.md`.
 3. AS-1 parts (AS-1m, AS-1g, AS-1s, AS-1c): briefs from BACKLOG, values from canada.ca (page, quote, date).
 4. Done 21:2x IST: the College citation (Client File Management Regulation 2021-001 s. 7.2, page 7, read 16 Nov 2026) is in `build-lead-c-briefs/AUD-5-1.md`; AUD-5 part 1 is ready now.
 5. Each check: read my lanes' PRs and pushes; a lane counts only after a push (P-326); answer "Question for the tech lead" comments within 30 min.
