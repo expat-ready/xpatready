@@ -1,0 +1,28 @@
+# Paths that keep the Lead's read (P-423): queue-gate.sh never puts `review: approved` on a PR touching one of them.
+# One extended regex per line, matched against each changed path, case-insensitive; # starts a comment.
+# Workflows and the merge queue (P-214, P-423)
+^\.github/
+^\.mergify\.yml$
+# The guards themselves: the scripts main's workflows run (this list, the queue gate, label guard and sweep, the write-
+# token audit, the push guard, CI's tools), git hooks and the agents' skills and settings (review M1: a PR loosening
+# them must not be labelled by them)
+/product/tools/
+/product/screens/B119/
+^\.githooks/
+^\.claude/
+^(CLAUDE|AGENTS)\.md$
+# CI's gates that ci.yml runs from the PR's own copy (gate-b.mjs, works-set.mjs, check-port-contracts.mjs)
+/prototype/studio/tools/
+# The schema and its migrations (P-423)
+/prisma/migrations/
+/prisma/schema/
+# Money paths: fees, prices, client money, invoices, paid model runs and their ledger (P-277, P-295)
+money
+(^|[^a-z])fees?([^a-z]|$)
+pric
+billing
+payment
+stripe
+invoice
+ledger
+/api/src/(ai|rounds|review-runs|review-run-shapes|finder-cost|people-ai)\.ts$
