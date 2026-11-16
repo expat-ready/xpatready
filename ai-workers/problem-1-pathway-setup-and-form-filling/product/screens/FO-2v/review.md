@@ -2,7 +2,7 @@
 
 Reviewer (Opus, did not build it), 16 Nov. **Commit reviewed: `87a811e983c8c8241be879727144e152720b355c`** (diff `origin/main...87a811e`: 8 files, +191 −22). The concept is the brief (`lead-b-briefs/FO-2v.md` rev 16.53 on `lead-b-front-office`); there is no `concept.md`. Read against the requirement text: AG-2-64 rules 1–5 (`AG-02 v2.6`), AG-2-13c rule 6, AG-2-86 rule 3 and edge cases, SA-6-24 / SA6-D1 (`SA-06 v3.15`). Also Lead B's ruling on the PR (comment 2, 05:01 UTC, rev 16.55). It came **after** this head (04:58 UTC), so its conditions were checked against the head. Isolated copy `review_fo2v` on :4437 (runtime lane), never :4400. Live AI off, US$0. The breaker's `break-report.md` was read after my own runs. Its m1 and m2 match my J7 and code finding 1.
 
-**Verdict (screen-review scale): Ship after fixes.**
+**Verdict (screen-review scale): Ship after fixes at `87a811e`; Ship at `e4317a6` (re-review at the end).**
 
 ## Requirement fit
 - **AG-2-64 rule 2a / SA-6-24: met.** `visibilityOf` (`sales/common.ts:59-64`) drops `admin ||`. All = `agent/prospect:view.all` and "everyone sees all" on. This matches retainers' `seesAll` (`retainers/service.ts:166-168`). No text in AG-2-64 or SA-6-24 backs a role that sees all regardless.
@@ -74,4 +74,16 @@ Not findings: the breaker's m3 (lead numbers reveal the firm's count) predates t
 
 **Not checked:** a real screen reader; 200 % zoom (stood in by the 400 px width); J-6 50/50 and the FO-4 browser 45/45 (the builder's runs; my J1–J8 cover the FO-4 Take and list flows on this head).
 
-**Verdict: Changes needed** (the skill's "Block"). Fix Major 1 (firm-scoped race read plus the firm-B 404 test) before the label. Fix Minors 2–4 in the same push, or list them in the PR. A re-review reads only the diff.
+**Verdict at `87a811e`: Changes needed** (the skill's "Block"; superseded by the re-review below). Fix Major 1 (firm-scoped race read plus the firm-B 404 test) before the label. Fix Minors 2–4 in the same push, or list them in the PR. A re-review reads only the diff.
+
+## Re-review at `e4317a6bb20c44b969aadc8aff0b17ac275b294f` (diff `0be67b3c7..e4317a6` only, P-277)
+The commit also carries this review and the journey report, which the builder picked up from the shared tree.
+- **Major 1: closed.** `leads.ts:211-218` now filters `workspace_id = platformAuditWorkspaceId(tx)` and `detail->>'firmId' = firmId`, inside the take's transaction and after the row lock. New test `FO-2v DW3 fail (firm B)`: a forged line with firm B's `firmId` gives 404. With the firm filter removed, it fails (409); I checked this on a scratch worktree. The index plan from the first pass applies (backward scan on `(workspace_id, at)`).
+- **Minor 2: closed.** `change()` writes `fromUnassigned: activeOf(previous owner) === null` on every `lead.taken` line, whether Take or Assign, at the change. The race reads only `fromUnassigned === "true"`. Lines from before this PR lack the field and fail closed to 404. New test `breaker m1`: moved owner to owner, previous owner deactivated afterwards → 404. With `fromUnassigned` forced to true, it fails along with the owner-to-owner line.
+- **Minor 3: closed.** MODULE.md carries Lead B's sentence word for word.
+- **Minor 4:** the builder says it goes into the PR body now. Tick it there.
+- **New, Minor (Should), a test gap, not a bug:** the real race through a **deactivated** previous owner (Lead B condition 2, "or a deactivated person"; AG-2-13c rule 6) has no test. With `activeOf(...) === null` mutated to `l.owner_staff_id === null`, `check_fo2v` stays 13/13 and `check_fo2` 113/113. The code is right on reading, and a regression would fail closed (404, no leak). Fix: one `check_fo2v` case (owner deactivated, someone takes, a second taker gets 409 naming who), or list it in the PR.
+- **Runs on `e4317a6`** (mine, scratch worktree): `check_fo2v` 13/13, `check_fo2` 113/113, `check_pf6b` 28/28. I did not re-run J-6 or qa's QA-479 line, whose inputs did not change; the builder reports them green.
+- **Journey score:** "correct data" goes to 1, as the J7 leak is fixed and covered by the new test. **9/10**, a pass.
+
+**Verdict: Approve** for `e4317a6bb20c44b969aadc8aff0b17ac275b294f`. No open Blocker or Major. Fix the one Minor test gap or list it in the PR.

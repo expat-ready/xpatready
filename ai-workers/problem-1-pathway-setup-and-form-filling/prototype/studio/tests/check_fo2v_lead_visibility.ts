@@ -105,6 +105,14 @@ try {
   sql(`update audit_event set at = at - interval '11 minutes' where entity = 'fo_lead' and entity_key = '${moved}' and action = 'lead.taken'`);
   await leads.assign(manager.c, moved, { staffId: owner.c.staffId, expectedOwnerStaffId: manager.c.staffId });   // owner to owner, just now
   ok("FO-2v DW3 pass: a lead moved from one owner to another just now (not from Unassigned) → 404, no name", (await refusal(() => leads.take(officer.c, moved)))?.status === 404);
+  // Lead B rev 16.55 condition 2 "or a deactivated person": a deactivated owner's lead is Unassigned (AG-2-13c rule 6),
+  // so someone taking it a moment ago is the real race too.
+  const gone = staffOf("GONE"), orphan = lead(gone);
+  sql(`update platform_staff set status = 'DEACTIVATED' where id = '${gone}'`);
+  await leads.take(manager.c, orphan);
+  const late2 = await refusal(() => leads.take(officer.c, orphan));
+  ok("FO-2v DW3 fail (the race through a deactivated owner): their lead, taken a second earlier by someone else → 409 naming who, no ownerStaffId",
+    late2?.status === 409 && late2.body.detail === "CASE_MANAGER (Sample) already has this lead." && !("ownerStaffId" in late2.body), late2);
   // Breaker m1 / review Minor 2: a lead moved owner to owner, then its previous owner deactivated → still 404 (the line
   // says whether it left Unassigned as it was at the change).
   const moved2 = lead(manager.c.staffId);

@@ -40,3 +40,5 @@ Commit `87a811e983c8c8241be879727144e152720b355c`. Isolated copy `review_fo2v` o
 **8.5 / 10, pass** (8 or more, no 0). To raise it: fix J7 (correct data → 1). Plain words stays ½ by the brief's choice.
 
 **Not tested:** a real screen reader; 200 % zoom (the 400 px width stood in); an intended user's unaided walk (D17 and D20 stay with the founder).
+
+**Re-check at `e4317a6` (16 Nov):** J7 is fixed. The case is in `check_fo2v` ("breaker m1"), which passes on this head and fails with the fix removed. Correct data → 1, so the score is **9/10, a pass**. Plain words stays ½ (J4, by the brief).
