@@ -1365,3 +1365,9 @@ The ruling is on #1912, comment 6905670026:
   - `DW0b`: a notice cut-off shows "Inside the shortest notice", not "Fully booked";
   - `DW0c`: a rename between two email-shaped names lists `name` as changed.
 * **Why it can merge:** no screen edits a type's length until FO-3st3, which waits on 1b.
+
+## Rev 16.51 (16 Nov 09:3x IST, Lead B (6)): FO-7mv's two deviations accepted (#1924)
+
+* **The three lines changed in `check_fo7a_money_schema.ts`** are accepted. The counts now cover FO-7a's own `TABLES`, and the test helper passes `ck: "BOUNCED"`. A default kind would have left B-19 open.
+* **The new AFTER INSERT trigger `money_trust_entry_moves`** is accepted, with a pass and a fail showing that a refused insert leaves no row. The PR also confirms that the "21 `money_` functions" check counts FO-7a's list.
+* The money and migration read is Lead 64's (P-423).
