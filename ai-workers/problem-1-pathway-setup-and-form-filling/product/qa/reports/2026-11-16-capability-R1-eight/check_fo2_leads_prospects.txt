@@ -1,0 +1,116 @@
+NOTICE:  database "xr_studio_fo2_12704" does not exist, skipping
+PASS  FO-2 setup: both Sample firms have a front office
+PASS  FO-2 pass: the open read gives the form's words, a submissionId and a load stamp, never cached
+PASS  FO-2 pass: the served form carries frame-ancestors naming the allowed site, and no-store
+PASS  FO-2 fail: the honeypot filled → answered like any other (the thank-you text), nothing stored
+PASS  FO-2 fail: a fill 1 second after the form was drawn → answered like any other, nothing stored
+PASS  FO-2 fail: an altered load stamp → "reload" (400 RELOAD), nothing stored
+PASS  FO-2 fail: after a restart, or a day later, a person's post is told to reload (never a silent thank-you), nothing stored
+PASS  FO-2 fail (Devin): the form's wording changed after the page was drawn → reload; no consent for wording the visitor never saw
+PASS  FO-2 fail (break m1): a bad body is refused at the field whether sent fast or slow (a bot learns nothing from the order)
+PASS  FO-2 pass: a fill 3 seconds after → one lead, one receipt CREATED, the answer is the thank-you text
+PASS  FO-2 pass: the same submissionId twice → one lead
+PASS  FO-2 pass: the lead is Unassigned (no owner) with source WEBSITE and the form's name, no stage, type or value
+PASS  FO-2 pass: the web form's message is the lead's first note, INTERNAL, stored as plain text
+PASS  FO-2 pass: the tick writes one consent row through ConsentPort (FO_PERSON, the form's wording, an address hash, no address)
+PASS  FO-2 pass: the phone is kept in E.164
+PASS  FO-2 fail: no tick → the lead with no consent row
+PASS  FO-2 fail: no email and no phone → refused at the field
+PASS  FO-2 fail (break m4): a name with a direction override or a zero-width space → refused at the field
+PASS  FO-2 fail: an unknown field in the body → refused with no internal detail
+PASS  FO-2 fail: a body over 32 KB → 413 and nothing saved
+PASS  FO-2 fail: a 33 KB body → 413 before the handler (the spy saw nothing), also sent in chunks
+PASS  FO-2 pass: a small body reaches the handler, parsed once
+PASS  FO-2 pass: the answer never says whether the person is known (known and new get the same answer)
+PASS  FO-2 pass: a repeat enquiry → a new lead flagged as a possible match of the earlier person
+PASS  FO-2 fail: the repeat is never linked or merged (its own person record)
+PASS  FO-2 fail: a page outside the allowed sites → refused
+PASS  FO-2 fail: no Origin at all → refused
+PASS  FO-2 pass: our own hosted page is allowed
+PASS  FO-2 pass: a form that is off → "This form is not available" (read and post)
+PASS  FO-2 fail: an unknown token gives the very same answer
+PASS  FO-2 pass: 30 posts a minute from one address are taken
+PASS  FO-2 fail (review M1): oversized posts count toward the address limit: 30 × 413, then the 31st → 429
+PASS  FO-2 fail: the 31st post a minute from one address → 429 and no lead
+PASS  FO-2 fail: the 61st post a minute for one form token from many addresses → 429
+PASS  FO-2 pass: a minute later the form takes posts again
+PASS  FO-2 pass: attribution present on a form lead (campaign and landing page), one write-once row
+PASS  FO-2 fail: a lead that arrived with no campaign facts has no attribution (nothing guessed)
+PASS  FO-2 pass (Devin): a captured landing page over 2,000 characters is cut to length, the enquiry kept
+PASS  FO-2 fail: an attribution field outside the list → refused
+PASS  FO-2 pass: Unassigned leads lists the open leads with no owner, oldest first
+PASS  FO-2 fail: a person who may neither see all nor assign → 403 on Unassigned leads
+PASS  FO-2 fail: an unknown view → refused
+PASS  FO-2 pass: Take it on an unowned lead → the taker owns it, one audit line, one lead.taken event
+PASS  FO-2 fail: Take it on an owned lead → 409 with the owner's name
+PASS  FO-2 fail: the match line names no one the viewer may not see
+PASS  FO-2 pass: an Owner sees the matched person's name
+PASS  FO-2 fail: with everyone-sees-all off, another person's lead is not found (404) and not listed
+PASS  FO-2 pass: with everyone-sees-all off, a person still sees their own lead
+PASS  FO-2 fail (break M2, review m6): 6 races of two Take it: exactly one wins each, the other gets 409 naming the owner
+PASS  FO-2 DWn fail: everyone-sees-all off, a Case Officer's Take it after a Case Manager's → 409 naming the Case Manager
+PASS  FO-2 DWn pass: someone who could never see it unowned (no view.all, no assign) → 404, no name
+PASS  FO-2 DWn fail: the same with everyone-sees-all on → 409 naming the Case Manager
+PASS  FO-2 fail: firm A's staff reading firm B's lead → 404
+PASS  FO-2 fail: firm B's lists never show firm A's leads (firm B has none)
+PASS  FO-2 p2 pass: arrived Fri 16:30, read Mon 09:30 in Sample hours → 60 open minutes
+PASS  FO-2 p2 fail: arrived on a closed day before opening → counted from the next opening
+PASS  FO-2 p2 pass: arrived and read inside one open day → the plain difference
+PASS  FO-2 p2 fail: across the clock change (1 Nov 2026, open 00:30-03:30 local) → 240 real minutes, not 180
+PASS  FO-2 p2 pass: every open list row carries waitedOpenMinutes, exactly the firm's open minutes since arrival (review m7)
+PASS  FO-2 p2 fail (break m8): a wait longer than 400 days still counts the latest open days
+PASS  FO-2 p2 fail (review M4): 500 rows up to 300 days old are counted from one walk in well under a second
+PASS  FO-2 p2 pass: a Case Manager gets every active staff member, READ_ONLY included (AG-2-13c rule 11)
+PASS  FO-2 p2 fail: no suspended or deactivated person is offered
+PASS  FO-2 p2 fail: a Case Officer (no assign key) gets assignees: []
+PASS  FO-2 p2 pass: sample-solo gives oneUser: true
+PASS  FO-2 p2 fail: firm A's list never names firm B's staff
+PASS  FO-2 p2 fail: Assign to a suspended person → refused at the field
+PASS  FO-2 p2 fail: Assign to someone outside the firm → refused at the field
+PASS  FO-2 p2 pass: Assign to an active person who works leads; the audit line names the previous owner (none)
+PASS  FO-2 p2 fail: Assign to the person who already has it → 409
+PASS  FO-2 p2 pass: Assign to a READ_ONLY member → done (any role, AG-2-13c rule 11)
+PASS  FO-2 p2 fail (break M2): a stale Assign (the list showed it Unassigned) after a Take → 409, the taker keeps it
+PASS  FO-2 p2 fail (break M2): Assign without the owner the list showed → refused at the field
+PASS  FO-2 p2 fail (break M1): assigning on a lead the assigner then cannot see → done (not 404), and saved
+PASS  FO-2 p2 fail (Devin, break m9): a deactivated owner's lead (shown Unassigned) assigns with expectedOwnerStaffId null
+PASS  FO-2 p2 pass: in a one-user firm the form lead is owned by its one user (X-4)
+PASS  FO-2 p2 fail: in a firm of several the form lead stays Unassigned
+PASS  FO-2 p2 pass: Add a lead checks for a known person first (409 KNOWN_PERSON with the match)
+PASS  FO-2 p2 fail: the known-person answer names no one the adder may not see
+PASS  FO-2 p2 pass: picking the known person makes a lead on that person (no new person), owned by the adder
+PASS  FO-2 p2 fail: picking another firm's person → 404
+PASS  FO-2 p2 pass: a lead added by hand is owned by its adder, with no attribution
+PASS  FO-2 p2 fail: the same Add request twice → one lead
+PASS  FO-2 p2 fail (review M1): the same Add retried (no confirmedNew) returns its own lead, not 409 KNOWN_PERSON
+PASS  FO-2 p2 fail (review m4): the same request id with other details → 409 REQUEST_REUSED
+PASS  FO-2 p2 fail (Devin): one request id sent twice at once with other details → one lead, the other REQUEST_REUSED
+PASS  FO-2 p2 fail (review m6): Add with no source → refused at the field (AG-2-4 rule 1)
+PASS  FO-2 p2 fail (review M2): picking a person the adder may not see → 404 (AG-2-4 rule 6)
+PASS  FO-2 p2 fail (review m2): Close by someone who cannot see the lead → 404, no owner named (the 409 is Take it's only)
+PASS  FO-2 p2 pass (break m6): personId null counts as absent (a new person)
+PASS  FO-2 p2 fail: Add with no email and no phone → refused at the field
+PASS  FO-2 p2 fail: Close without a reason, or with a system reason, or with firm B's → refused at the field
+PASS  FO-2 p2 pass: Close with a reason → CLOSED, listed under Closed, one lead.closed event with the reason key
+PASS  FO-2 p2 fail: Close twice → 409
+PASS  FO-2 p2 fail: Reopen without a reason → refused at the field
+PASS  FO-2 p2 pass: Reopen → OPEN with its owner, the reason kept as an INTERNAL note, one lead.reopened event
+PASS  FO-2 p2 fail (Devin): the closing note survives Reopen (kept as an INTERNAL note)
+PASS  FO-2 p2 fail: Reopen an open lead → 409
+PASS  FO-2 p2 fail (review M3): a campaign of 150 emoji and U+2028 in a referrer → the lead kept, both stored cleaned and cut whole
+PASS  FO-2 p2 fail (break M4): a captured value that grows when normalised is cut after, the lead kept
+PASS  FO-2 p2 pass (break m3): a 61-character name with emoji is taken (limits count characters)
+PASS  FO-2 p2 fail (break n3): an invisible mark inside a captured value is dropped, the lead kept
+PASS  FO-2 p2 fail (break n4): the cut never splits a character (no lone half of an emoji)
+PASS  FO-2 p2 fail (break m4): a name with U+061C, U+3164 or a tag character → refused at the field
+PASS  FO-2 p2 fail (Devin): two first enquiries at once with one new email → the later is flagged as a possible match
+PASS  FO-2 pass: every lead made wrote one audit line and one lead.created event
+PASS  FO-2 pass: the events carry ids, never a name, email or phone
+PASS  FO-2 fail: a forced audit failure rolls the arrival back (no person, lead, receipt, consent or event)
+PASS  FO-2 fail: a forced audit failure rolls Take it back
+PASS  FO-2 pass: every staff route declares its seeded agent/prospect:* key (default deny)
+PASS  FO-2 DWn fail: a Read-only person cannot Take it, add, assign, close or reopen (403 at the guard)
+PASS  FO-2 pass: PF-4's start-up rule accepts every route
+PASS  FO-2 pass: the public door is outside the guarded paths and its read is an open read
+
+FO-2 leads (parts 1-2): 113 passed, 0 failed

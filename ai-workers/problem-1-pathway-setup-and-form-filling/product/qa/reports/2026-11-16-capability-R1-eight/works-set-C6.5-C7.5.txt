@@ -1,0 +1,13 @@
+**Pooled packs** (D5): C6.5 on the checkpoint (its evidence), C7.5 on the checkpoint (its evidence).
+  data: C6.5 on the checkpoint, C7.5 on the checkpoint (GATE_B_DATA_OF)
+Gate B: the PR names C6.5, C7.5; claims Works for none (no bug check).
+  packs: C6.5-counts.test.ts, C6.5-screen.test.ts, C6.5.test.ts, C7.5.test.ts
+    C6.5-counts.test.ts on the checkpoint: exit 0, 13/13 passed (170 s: copy 8, Load the configured checkpoint 159, run 4)
+    C6.5-screen.test.ts on the checkpoint: exit 0, 33/33 passed (202 s: copy 8, Load the configured checkpoint 159, run 35)
+    C6.5.test.ts on the checkpoint: exit 0, 57/57 passed (174 s: copy 8, Load the configured checkpoint 161, run 6)
+    C7.5.test.ts on the checkpoint: exit 0, 16/16 passed (180 s: copy 8, Load the configured checkpoint 142, run 30)
+  packs took 352 s in all
+Gate B: passed.
+  C6.5 (checkpoint): green — C6.5-counts.test.ts on the checkpoint, C6.5-screen.test.ts on the checkpoint, C6.5.test.ts on the checkpoint
+  C7.5 (checkpoint): green — C7.5.test.ts on the checkpoint
+Pooled packs: 2 green, 0 green on their own fixture only (NOT TESTED on their data), 0 red twice, 0 could not run.
