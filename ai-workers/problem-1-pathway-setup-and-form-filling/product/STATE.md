@@ -2,7 +2,7 @@
 
 current_lead: local_cdb44e83-07bc-4f9a-aa9c-01a9b403a7a8 Lead 63 · 16 Nov 05:2x IST (series 2; took over from Lead 62 (series 2, local_be1be806) at ~300k, P-446)
 
-updated: 2026-11-16 05:2x IST by **Lead 63 (series 2, local_cdb44e83-…)** (took over 05:20; check every 30 min set at :07/:37; nightly 15 Nov green) · weekly 0% at 13:41 (new account, Ultra; resets 17 Nov 10:29 IST) · milestone: **Works on main 93/98 (M2 60/60, M3 27/29, M4 0/1, T 6/8)**; Release 1 6/101 at qa Works; **target 29 Nov, all 101 (P-609)** · rules: **`RULES.md`** (as of P-610) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-16 05:2x IST by **Lead 63 (series 2, local_cdb44e83-…)** (took over 05:20; check every 30 min set at :07/:37; nightly 15 Nov green) · weekly 0% at 13:41 (new account, Ultra; resets 17 Nov 10:29 IST) · milestone: **Works on main 93/98 (M2 60/60, M3 27/29, M4 0/1, T 6/8)**; Release 1 6/101 at qa Works; **target 29 Nov, all 101 (P-609)** · rules: **`RULES.md`** (as of P-610; **P-626 newest**) · this branch: `lead/2026-11-07-lead31`
 
 Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
@@ -28,7 +28,7 @@ Rules: RULES.md (register, as of **P-625**); DECISIONS newest P-625; nothing new
 | A90-A92 | 18:1x-18:3x IST 15 Nov: lanes and systems, rules enforced, who enforces | answered; A92 steps 1-2 done; rows word for word in `history/STATE-2026-11-15-2115-lead61s2-founder-asks-A89-A92-rows.md` |
 | A93-A99 | 15-16 Nov night asks (portability, recovery, outside items early, board, enforcement, Gmail, qa speed, merge queue) | answered; P-618 to P-620, B192 to B194, registers; rows word for word in `history/STATE-2026-11-16-0055-lead61s2-founder-asks-A93-A99.md` |
 | A100-A105 | 16 Nov night asks (qa lanes, buy-not-build, pipeline, overnight goal; hooks for every rule, seamless staging on AWS, built vs specified vs proven) | answered or in progress (P-621 to P-625; B193 parts 2, 5, 8; two shaping lanes); rows word for word in `history/STATE-2026-11-16-0735-lead63s2-founder-asks-A100-A105.md` |
-| A108 | 07:2x IST 16 Nov (spoken): archive finished claude.ai sessions for him; biggest learning; qa split and qa as the problem, my experience; plan for today; suggestions; how it is going; "can we make it 28 by tomorrow morning?" | answered in chat; "28" asked back (qa on main: R1 4 Works, 18 Partial, 59 Not built) |
+| A108 | 07:2x IST 16 Nov (spoken): archive finished claude.ai sessions for him; biggest learning; qa split and qa as the problem, my experience; plan for today; suggestions; how it is going; "can we make it 28 by tomorrow morning?" | answered; he chose **finish partials first, 10 proven by 08:00 IST 17 Nov (P-626)** |
 | A107 | 07:1x IST 16 Nov: "Yes, add two" builders for ready rows | started (cloud, Opus high, P-608): **FO-7b** invoices and payments (task_38a897ae) and **PF-12** database walls (task_c0e61d61); briefs from `lead-b-front-office`; the Lead reads ClientMoneyPort and PF-12's migration before labels. Other ready rows: FO-1k, FO-2b, FO-9a, PF-23m |
 | A106 | 06:5x IST 16 Nov: clean up lanes, disk and everything; take Lead 62's analysis; progress view | done 07:1x: disk 11 → 32 GB, Leads 56/60/61/62 and mail check archived, standbys 64/65, #1830 and #1815 labelled, branches kept (unique work), nightly re-run; **desk 07 needs restoring from Archived**; row word for word in `history/STATE-2026-11-16-0715-lead63s2-A106-row.md` |
 ## For the founder (P-390)
