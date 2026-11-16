@@ -154,7 +154,8 @@ export class BookingTypesService {
 
   async create(ctx: StaffContext, body: unknown) {
     const b = parse(CreateBody, body);
-    return view(await this.insert(ctx, b.slug, { ...b, name: b.name }, "booking_type.created", `Booking type "${b.name}" created.`));
+    const { slug: asked, ...fields } = b;
+    return view(await this.insert(ctx, asked, { ...fields, hostStaffIds: fields.hostStaffIds ?? [] }, "booking_type.created", `Booking type "${b.name}" created.`));
   }
 
   async update(ctx: StaffContext, id: string, body: unknown) {
