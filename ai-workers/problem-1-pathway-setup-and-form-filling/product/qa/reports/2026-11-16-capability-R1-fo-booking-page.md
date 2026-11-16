@@ -11,7 +11,7 @@
 The booking API packs were not selected in that batch. Their last counted run is 43796001718 (main ddc6e919c); since then `booking/service.ts` changed by 8 lines (PF-12 walls). qa's re-runs on fd2dee855: fo3 133/0, fo3pa 45/0, fo3m 14/0, pf19b 28/0.
 
 ## 2. Walk by screens
-`tests/qa/check_r138_r140_booking_page_walk.ts` is headless Chromium on the running copy, with the browser zone set to Asia/Dubai. It ran twice at 14:1x IST and, after the reviewer tightened the email check (the exact "7:00 p.m." or "6:00 p.m." next to "(Asia/Dubai)" in the body), twice again at 14:3x IST, with **27/28 every time** (`…/booking-page-walk-{1,2}.txt`, `…/shots/`).
+`tests/qa/check_r138_r140_booking_page_walk.ts` is headless Chromium on the running copy, with the browser zone set to Asia/Dubai. It ran twice at 14:1x IST and, after the reviewer tightened the email check (the exact "7:00 p.m." or "6:00 p.m." next to "(Asia/Dubai)" in the body), twice again at 14:2x IST, with **27/28 every time** (`…/booking-page-walk-{1,2}.txt`, `…/shots/`).
 
 A person's path: the firm's list (`/book/<firm>`) → Choose Free consultation → Next month to March 2027 → a day → a time → Your details → Book this time → **You are booked**.
 
