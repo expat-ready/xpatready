@@ -2,7 +2,7 @@
 
 current_lead: local_9ae95739-227d-49dc-a332-03c706a6d512 Lead 70 · 16 Nov 21:52 IST (series 2; took over from Lead 69 (series 2, local_28bf6046) at ~330k beyond start, P-446)
 
-updated: 2026-11-16 21:58 IST by **Lead 70 (series 2, local_9ae95739)**: took over 21:53 (start read ~121k, hand over ~321k, P-446); check cron ea1bd7ac at :13/:43 · weekly 90% at 21:57 (resets 17 Nov 10:30 IST) · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-644**) · this branch: `lead/2026-11-07-lead31`; Lead 69 handed over at 21:52 (took over 19:24; its check cron d99a740d); check notes 19:26-20:25 word for word in `history/STATE-2026-11-16-2052-lead69s2-check-notes-asks-A121-A122-leads-line.md`
+updated: 2026-11-16 21:58 IST by **Lead 70 (series 2, local_9ae95739)**: took over 21:53 (start read ~121k, hand over ~321k, P-446); check cron ea1bd7ac at :13/:43 · weekly 90% at 21:57 (resets 17 Nov 10:30 IST) · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-644**; DECISIONS P-645 newer) · this branch: `lead/2026-11-07-lead31`; Lead 69 handed over at 21:52 (took over 19:24; its check cron d99a740d); check notes 19:26-20:25 word for word in `history/STATE-2026-11-16-2052-lead69s2-check-notes-asks-A121-A122-leads-line.md`
 
 Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
@@ -16,6 +16,7 @@ Rules: RULES.md (as of **P-644**; "Account facts" line on top: GitHub Pro since 
 6. **Founder, one at a time:** reset near 98% (P-643); accept the AWS IAM Identity Center invitation himself; the A129 two steps; the rest of his 21:5x message (cut off after "and also the").
 7. **Build Lead A (Lead B, local_1520b573) at 22:0x to Lead 70:** running FO-13i #2011, PF-8r #2014, PF-18a part 1 #2009; **starts owed at the founder's next typed turn (cloud): PF-21s part 3, PF-21i, PF-Fd, PF-24w, FO-2b**, then each lane's second brief (Build Lead A's plan file lead-b-build-lead-a-2026-11-16 in its design folder, on branch lead-b-front-office, not on this branch); merge waits: #1945, #1956+#1961, #1959, #1918 (Lead B says when each lands); Stripe test keys from the founder owed before PF-5 goes live.
 8. **Build Lead C (local_d5287293), 22:1x to Lead 70 (from GitHub, 21:56):** running with PRs: #2002 CS-C1b, #2000 CS-DL1 part 1, #2007 CS-V1 part 1, #2003 AUD-1a (C has the builder retitle it, as AUD-1a has no parts), #2008 AUD-5 part 1. **Not started, waiting for the founder's next typed turn: FO-7s0 (lane 13) and CS-SD1 (row 15).** Owed by the Lead: tell C when #1991 merges; read CS-SD1's schema diff before the label; the checklist fix "FO-7t parts 1-5" (from Lead 69).
+9. **Night set-up (Lead 70, 22:0x, P-645):** FO-2b, FO-7s0 (both chain their second row) and CS-SD1 started as cloud sessions by the founder at 22:0x. Build Lead A's PF-21s part 3 (#1998), PF-21i (#2012), PF-Fd (#1997) and PF-24w (#2001) were already running. **Lane starter routines 1-3** read `design/night-queue-2026-11-16.md`; every check reads their runs (RemoteTrigger list_runs) and adds rows Build Leads send. The Mac stays awake (session hold). **Lead 72 standby not started:** disk 5.6 GB, under the 7 GB preflight; the founder frees disk or Lead 71 stays the only standby.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 | # | Ask (IST) | Status |
