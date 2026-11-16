@@ -1674,3 +1674,9 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - The lines are in `design/lead-b-build-lead-a-2026-11-16.md` §5.
   - Chains on shared files are ordered, never side by side (P-526): booking/service.ts runs FO-3a 1b, then FO-3vr, then FO-3v; the messages files run PF-19e, PF-13 part 1, PF-19c, then PF-19ad.
 * **Lead 70, 22:09 IST:** all 18 night lines and both chain rules are in the night queue (7c1560e76, Lead branch). The routines skip a row until its gate is merged. Lead 70 will check the FO-13i walls condition at its P-423 read of #2011.
+
+## Rev 16.81 (16 Nov 22:12 IST): PF-8r (#2014) waits on the founder (P-387)
+* **The builder's copy refuses the write:** its own block refuses changes to `nightly.yml` and `run-suites.sh`, despite the baton, so it asked the Lead to push the patch (comment 6922705548).
+* **Lead 70 read the patch:** the job is read-only (persist-credentials false, no secrets, no `needs`, runs on every scheduled night), with one SKIP name. The content is fine.
+* **Lead 70 will not push it:** a write one copy refused is not routed through another session without the founder's named word (P-387). Lead 70 has asked the founder, and #2014 stays a draft until he answers.
+* **Lead B's correction:** forwarding the builder's ask was right, but Lead B should have named P-387 instead of saying "this one is yours". Rule from now on: a refused write goes to the founder through the Lead, never to another session to do.
