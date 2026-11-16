@@ -289,7 +289,7 @@ try {
   // The real main.ts; `during` runs while it serves, then it is stopped.
   const start = (env: Record<string, string>, during?: () => Promise<void>) => new Promise<{ code: number | null; out: string }>((resolve) => {
     const p = spawn(join(STUDIO, "node_modules", ".bin", "tsx"), ["--tsconfig", join(STUDIO, "api", "tsconfig.json"), join(STUDIO, "api", "src", "main.ts")],
-      { cwd: STUDIO, env: { ...process.env, DATABASE_URL: urlOf(EMPTY), STUDIO_PORT: String(PORT), STUDIO_VAR: join(STUDIO, "var", `pf12-check-${process.pid}`), ...env }, stdio: ["ignore", "pipe", "pipe"] });
+      { cwd: STUDIO, env: { ...process.env, PLATFORM_ENVIRONMENT: "local", DATABASE_URL: urlOf(EMPTY), STUDIO_PORT: String(PORT), STUDIO_VAR: join(STUDIO, "var", `pf12-check-${process.pid}`), ...env }, stdio: ["ignore", "pipe", "pipe"] });
     let out = "", up = false;
     const done = (code: number | null) => { clearTimeout(t); resolve({ code, out }); };
     const t = setTimeout(() => { p.kill("SIGKILL"); done(-1); }, 180_000);
