@@ -1,0 +1,17 @@
+NOTICE:  database "xr_studio_fo3m_1751" does not exist, skipping
+PASS  FO-3m DW2 pass: an active booking before its start still answers 409 too-early
+PASS  FO-3m DW2 fail: a cancelled booking before its start answers 409 not-active ("Cancelled"), not too-early
+PASS  FO-3m DW4 pass: a good list query → 200 with the firm's bookings
+PASS  FO-3m DW4 fail: a refused list (to before from; from missing) is titled "Bookings not listed", never "Not booked"
+PASS  FO-3m DW1 pass: { outcome: COMPLETED } on the host's own started booking → 200 COMPLETED
+PASS  FO-3m DW1 fail: an unknown or missing outcome → 400 whose issues name outcome, none body
+PASS  FO-3m DW4 fail: a refused attendance answer is titled "Attendance not recorded", never "Not booked"
+PASS  FO-3m DW4 pass: a refused booking itself keeps "Not booked" (only the list and attendance titles change)
+PASS  FO-3m DW3 pass: a non-host with agent/booking:edit (CASE_OFFICER) answers another host's booking → 200
+PASS  FO-3m DW3 fail: a non-host without it (READ_ONLY) → the service's 403 "Not allowed" with code MISSING_PERMISSION, like the guard's
+PASS  FO-3m DW5 pass: { outcome: NO_SHOW } alone → 200 NO_SHOW (the answer may be changed)
+PASS  FO-3m DW5 fail: an extra key → 400 naming it, nothing recorded (still NO_SHOW)
+PASS  FO-3m DW6 fail: 29 minutes after the end it is not yet due and its question has not run
+PASS  FO-3m DW6 pass: after the attendance job runs no mail with booking.attendance_ask is sent to anyone, and the booking is listed as due, unanswered
+
+14 passed, 0 failed
