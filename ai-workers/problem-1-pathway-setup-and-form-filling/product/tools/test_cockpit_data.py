@@ -366,7 +366,7 @@ class TrustAndInvariants(unittest.TestCase):
         t2 = json.loads(json.dumps(theirs))
         plus = lambda n: (date.fromisoformat(k["forecast_p85_date"]) + timedelta(days=n)).isoformat()
         r7 = cd.reconcile_compare(k, theirs, None)
-        self.assertEqual(r7["compared"], 36)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's six + v63's eight + P-636's Proven
+        self.assertEqual(r7["compared"], 49)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's six + v63's eight + P-636's Proven + P-644's 13 Flow counts
         t2["numbers"]["forecast_p85_date"]["value"] = plus(1)                 # +1 day: agrees
         self.assertEqual(cd.reconcile_compare(k, t2, None)["state"], "agree")
         t2["numbers"]["forecast_p85_date"]["value"] = plus(2)                 # +2 days: disagrees
@@ -951,7 +951,7 @@ class Delivery24h(unittest.TestCase):
             out, note = cd.run_reconcile(d, rec)
             self.assertIsNone(note)
             _, c = run(d, rec=out, note=None)
-            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 36, []))
+            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 49, []))   # 36 + P-644's 13 Flow counts
 
 
 BLP = "files/" + cd.REL + "/BACKLOG.md"
@@ -2004,6 +2004,93 @@ class LeadWatchBoard(unittest.TestCase):
     def test_board_without_first_screen(self):
         self.assertEqual(cd.watch_panels({}), (None, None))
         self.assertEqual(len(cd.watch_lines({})), 1)
+
+
+class Flow(unittest.TestCase):
+    """P-644 (Lead 69, 16 Nov): the Flow box's counts, lights and forecast (FORMULAS.md › Flow)."""
+    IST_ = cd.IST
+
+    def at(self, s):
+        return datetime.fromisoformat(s).replace(tzinfo=self.IST_).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def small(self, parts=None):
+        a = self.at
+        rows = [{"map": 1, "built": "2026-11-17", "built_at": a("2026-11-17T08:00"), "qa_tested_at": a("2026-11-17T10:00")},
+                {"map": 2, "built": "2026-11-15", "built_at": a("2026-11-15T10:00"), "qa_tested_at": a("2026-11-16T09:00")},
+                {"map": 3, "built": "2026-11-16", "built_at": a("2026-11-16T20:00"), "qa_tested_at": a("2026-11-16T10:00")},
+                {"map": 4, "built": None, "built_at": None, "qa_tested_at": a("2026-11-14T10:00")},
+                {"map": 5, "built": "2026-11-14", "built_at": a("2026-11-14T13:00"), "qa_tested_at": a("2026-11-16T13:00")}]
+        qa = {1: "Works", 2: "Partial", 3: "Not built", 4: "Works", 5: "Works"}
+        part_at = parts if parts is not None else {
+            "A-1": a("2026-11-17T09:00"), "B-1": a("2026-11-16T11:00"), "C-1": a("2026-11-15T11:00"),
+            "D-1": a("2026-11-14T11:00"), "E-1": a("2026-11-14T12:00")}
+        since = {1: a("2026-11-17T10:00"), 5: a("2026-11-16T13:00")}       # row 4 was listed already reading Works: no date
+        now = datetime(2026, 11, 17, 6, 30, tzinfo=timezone.utc)           # 12:00 IST
+        return cd.flow_counts(rows, qa, part_at, 10, since, now)
+
+    def test_counts_pass_and_fail_cases(self):
+        f = self.small()
+        self.assertEqual(f["days"], ["2026-11-14", "2026-11-15", "2026-11-16"])
+        self.assertEqual((f["flow_rows_built_24h"], f["flow_rows_built_3d"]), (2, [1, 1, 1]))     # rows 1 and 3 (20:00 the evening before)
+        self.assertEqual(f["built_24h_maps"], [1, 3])
+        self.assertEqual((f["flow_parts_24h"], f["flow_parts_3d"], f["flow_parts_left"]), (1, [2, 1, 1], 5))   # B-1 is 25 h old
+        self.assertEqual((f["flow_works_24h"], f["flow_works_3d"]), (2, [0, 0, 1]))   # row 4 (listed already Works) never counts as new
+        self.assertEqual(f["works_24h_maps"], [1, 5])
+        self.assertEqual(f["flow_prove_lag_h"], 25.0)                       # median of 2 h (row 1) and 48 h (row 5)
+        # fail case: row 2 was tested by qa after its parts merged and reads Partial: In progress, not waiting
+        # pass case: row 3 merged after qa's last test: Built, waiting for qa, 16 h old
+        self.assertEqual((f["waiting"], f["flow_awaiting"], f["flow_awaiting_oldest_h"]), ([3], 1, 16.0))
+        # 5 ids left; rates 4/3 (mean), 2 (best), 1 (worst); plus ceil(25 / 24) = 2 days from built to proven
+        self.assertEqual((f["flow_forecast"], f["flow_forecast_best"], f["flow_forecast_worst"]), ("2026-11-23", "2026-11-22", "2026-11-24"))
+        self.assertEqual(f["today_counts"], {"rows": 1, "parts": 1, "works": 1})
+
+    def test_a_day_without_a_part_gives_no_worst_date(self):
+        a = self.at
+        f = self.small({"A-1": a("2026-11-14T09:00"), "B-1": a("2026-11-16T11:00")})
+        self.assertEqual((f["flow_parts_3d"], f["flow_forecast_worst"]), ([1, 0, 1], None))
+        self.assertIsNotNone(f["flow_forecast"])
+        self.assertIsNone(self.small({})["flow_forecast"])                  # no part merged in 3 days: no date
+
+    def box(self, fc, mm=25, fp=5.0, waits=(4, 5, 6), lanes=(18, 20), burn=2.4, disk=12, ci_error=None):
+        d = {"lineage": {"taken_at": "2026-11-17T06:30:00Z"},
+             "pipeline": {"queue_wait_min": {"v": mm, "p90": 70, "src": "flow-measure"}, "change_fail": {"batch_fail": {"v": fp}}},
+             "resources": {"burn_pct_per_h": {"v": burn}, "weekly_pct": {"v": 80}, "disk_free_gb": {"v": disk}}}
+        li = {"lanes_running": lanes[0], "lane_slots": lanes[1]} if lanes else {}
+        ci = {"error": ci_error} if ci_error else {"queued_runs": 3, "runs_sampled": 2, "runs_in_3h": 2,
+                                                  "job_waits": [{"min": w, "still_queued": False} for w in waits]}
+        return {L["name"]: L for L in cd.flow_box(d, fc, li, "Lead input", ci)["lights"]}
+
+    def test_lights_against_their_targets(self):
+        f = self.small()
+        b = self.box(f)
+        self.assertEqual((b["Build"]["light"], b["Prove"]["light"], b["Merge"]["light"], b["Resources"]["light"]), ("red", "red", "green", "green"))
+        self.assertEqual(self.box(f, mm=45)["Merge"]["light"], "amber")     # median over 30 min
+        self.assertEqual(self.box(f, fp=25.0)["Merge"]["light"], "red")     # failed batches 20% or more
+        self.assertEqual(self.box(f, waits=(40, 50))["Merge"]["light"], "red")   # a test machine after 30 min
+        self.assertEqual(self.box(f, disk=5)["Resources"]["light"], "red")  # under P-644's 7 GB floor
+        self.assertEqual(self.box(f, lanes=(12, 20))["Resources"]["light"], "amber")
+        nm = self.box(f, ci_error="offline", lanes=None)
+        self.assertIn("not measured: offline", " ".join(nm["Merge"]["lines"]))
+        self.assertIn("Lanes: not measured", " ".join(nm["Resources"]["lines"]))
+        g = {k: v for k, v in f.items()}
+        g.update({"flow_rows_built_24h": 10, "flow_works_24h": 11, "flow_prove_lag_h": 30.0})
+        bb = self.box(g)
+        self.assertEqual((bb["Build"]["light"], bb["Prove"]["light"]), ("green", "amber"))   # proving on count, but slower than 12 h
+        g.update({"flow_rows_built_24h": 7})
+        self.assertEqual(self.box(g)["Build"]["light"], "amber")            # the floor
+        self.assertEqual(cd.flow_light(None, None), "grey")
+
+    def test_both_scripts_agree_on_the_fixture(self):
+        out, note = cd.run_reconcile(FIX, os.path.join(HERE, "cockpit-reconcile.py"))
+        self.assertIsNone(note)
+        _, c = run(FIX, rec=out, note=None)
+        for k in cd.FLOW_KEYS:
+            self.assertIn(k, out["numbers"], k)
+            self.assertIn(k, c["keys"], k)
+        self.assertEqual((c["trust"]["state"], c["trust"]["diffs"]), ("agree", []), c["trust"]["diffs"])
+        t = json.loads(json.dumps(out))
+        t["numbers"]["flow_awaiting"]["value"] = (t["numbers"]["flow_awaiting"]["value"] or 0) + 1
+        self.assertEqual(cd.reconcile_compare(c["keys"], t, None)["diffs"][0]["name"], "flow_awaiting")   # a one-off difference is caught
 
 
 if __name__ == "__main__":

@@ -1386,7 +1386,7 @@ def self_test():
         "pct_per_works_row", "rows_done_24h", "rows_needed_per_day",
         "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today", "ci_rule_failures_today",
         "ci_bundle_failures_today", "parts_merged", "parts_total", "founder_asks_day", "rules_changes_day",
-        "target_changes_week", "launch_done", "launch_total", "counsel_open", "r1_proven_qa", "daily_counts", "remaining_scope"])
+        "target_changes_week", "launch_done", "launch_total", "counsel_open", "r1_proven_qa"] + list(FLOW_NAMES) + ["daily_counts", "remaining_scope"])
     # P-602 (4), no log: the span is the whole 24 h to 20 Nov 06:30Z; PF-2's first app merge 19 Nov 20:00Z is inside.
     eq("changes_merged_span", (v["changes_merged_span"], n["changes_merged_span"]["detail"]), (1, ["PF-2"]))
     eq("works_rows_span no history", v["works_rows_span"], None)
