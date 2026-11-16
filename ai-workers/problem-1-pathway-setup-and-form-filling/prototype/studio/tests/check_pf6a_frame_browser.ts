@@ -130,6 +130,8 @@ const newEmail = `pf6a-${run}@example.com`;
 // Three invitees: the Sample firm's Team plan holds 5 people, so this run lends it seats (enough for earlier runs on the same copy too), given back at the end.
 const plan = sql(`select p.id || '|' || p.seats_limit from platform_subscription s join platform_plan p on p.id = s.plan_id join platform_firm f on f.id = s.firm_id where f.key = 'sample-firm' and s.status <> 'ENDED' limit 1`).split("|");
 sql(`update platform_plan set seats_limit = ${Number(plan[1]) + 100} where id = '${plan[0]}'`);
+// The lend is given back in the finally, whatever fails below, so the suite reruns on one copy (PF-6f DW3).
+try {
 const link = await handOffLink(rTok, newEmail);
 const link2 = await handOffLink(rTok, `pf6a-b-${run}@example.com`);
 const link3 = await handOffLink(rTok, `pf6a-c-${run}@example.com`);
@@ -216,6 +218,8 @@ for (const w of [375, 1024, 1440]) {
 const actors = seen.filter((s) => s.actor !== null && /^\/api\/(platform|front-office)\//.test(s.path));
 ok("PF-6a DW6: no request from the frame carries the simulated person (x-actor)", actors.length === 0 && seen.length > 20, actors.map((s) => s.path));
 ok("PF-6a: no page error in any browser", errors.length === 0, errors);
-sql(`update platform_plan set seats_limit = ${plan[1]} where id = '${plan[0]}'`);
-await browser.close(); await db.$disconnect();
+} finally {
+  sql(`update platform_plan set seats_limit = ${plan[1]} where id = '${plan[0]}'`);
+  await browser.close(); await db.$disconnect();
+}
 process.exit(summary() ? 1 : 0);
