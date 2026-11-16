@@ -94,7 +94,7 @@ await axe("FO-4sf Leads with the Source filter (1440 px)");
 let reached = false;
 for (let i = 0; i < 40 && !reached; i++) { await p.keyboard.press("Tab"); reached = await p.evaluate(() => document.activeElement?.getAttribute("data-source") === "MANUAL"); }
 await p.keyboard.press("Enter");
-await p.waitForURL(/source=MANUAL/, { timeout: 10_000 }); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ state: "detached", timeout: 15_000 });
+await p.waitForURL(/source=MANUAL/, { timeout: 10_000 }); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ state: "detached", timeout: 15_000 }); await p.locator(`tr[data-lead-row="${numberOf(L.tMan)}"]`).waitFor({ timeout: 15_000 });
 const afterPick = await shown();
 ok("FO-4sf DW3 pass (keyboard only): Tab reaches \"Added by hand\", Enter filters the list to the manual leads", reached && afterPick.has(numberOf(L.tMan)) && afterPick.has(numberOf(L.oMan)) && ![L.tWeb, L.tBook, L.oWeb, L.oBook].some((x) => afterPick.has(numberOf(x))), [...afterPick]);
 await p.reload(); await p.locator(`tr[data-lead-row="${numberOf(L.tMan)}"]`).waitFor({ timeout: 30_000 });
@@ -114,9 +114,9 @@ ok("FO-4sf DW3 pass: All sources clears the filter and the address", !p.url().in
 await p.goto(`${BASE}/front-office/leads?view=all&source=FAX`); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ timeout: 30_000 });
 ok("FO-4sf DW3 fail: an unknown ?source= in the address is ignored: no chip pressed, every source listed, no error", (await p.locator('[data-source][aria-pressed="true"]').count()) === 0 && (await p.getByRole("alert").count()) === 0);
 // Fail side: a source with no lead in this view says so and offers All sources.
-sql(`update fo_lead set state = 'CLOSED' where firm_id = '${A}' and door = 'BOOKING' and state = 'OPEN'`);
-await p.goto(`${BASE}/front-office/leads?view=all&source=BOOKING`); await p.locator("[data-empty]").waitFor({ timeout: 30_000 });
-ok("FO-4sf DW3 fail: a source with no open lead says so in plain words and offers All sources", /No leads from Booking here/.test(await p.locator("[data-empty]").innerText()) && (await p.locator("[data-source-clear]").count()) === 1);
+sql(`update fo_lead set owner_staff_id = '${O.id}' where id = '${L.tBook}'`);   // the Case Manager now owns no booking lead
+await p.goto(`${BASE}/front-office/leads?view=mine&source=BOOKING`); await p.locator("[data-empty]").waitFor({ timeout: 30_000 });
+ok("FO-4sf DW3 fail: a source with none of the person's own leads (Mine) says so in plain words and offers All sources", /No leads from Booking here/.test(await p.locator("[data-empty]").innerText()) && (await p.locator("[data-source-clear]").count()) === 1);
 ok("FO-4sf: no page error in the browser", errors.length === 0, errors);
 await db.$disconnect();
 await browser.close();
