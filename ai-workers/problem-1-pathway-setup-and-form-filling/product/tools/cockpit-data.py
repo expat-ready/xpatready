@@ -2627,7 +2627,7 @@ def health(snap, now, comp, li):
     # board v57: each check's sample, for its tooltip (null = not measured, with the reason)
     nmap = {1: (len(mc) if mc is not None else None, "check runs on main's head"),
             2: (None, "computed by the page"),
-            3: (n_ahead, "commits on STATE's this branch: that main lacks"),
+            3: (n_ahead, "record files on STATE's this branch: whose version main never had"),
             4: (len(gr) if gr else None, "guard runs read (label guard, push guard)"),
             5: (1 if burn is not None else None, "Lead-reported reading"),
             6: (len(bugs), "open Critical or Major bugs on Works capabilities (exceptions left out)"),
@@ -2842,7 +2842,7 @@ def build_explain(d):
     windows = {1: now_w + " (main's head)", 2: "now, by your clock", 3: now_w, 4: "the newest guard runs on main", 5: "the Lead's latest reading",
                6: "bugs open now; age from the first main commit naming them", 7: now_w}
     reads = {1: "Red when a check on main's head or the newest nightly failed.", 2: "Amber at 45 min, red at 2 h.",
-             3: "Red when the oldest records commit not on main is over 24 h old.", 4: "Red when a guard's newest run failed.",
+             3: "Red when the oldest record change not on main is over 24 h old.", 4: "Red when a guard's newest run failed.",
              5: "Red above the limit.", 6: "Red when such a bug is over 48 h old.", 7: "Red when numbers disagree or an invariant breaks."}
     bands = {5: "3% or less an hour (" + COMPASS + ", P-440)", 2: "under 45 min (the board's rule)",
              6: "about 0 Major or Critical found after merge (" + COMPASS + "); this check counts every open one on a Works capability"}
