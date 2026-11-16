@@ -491,7 +491,7 @@ try {
     // P-603: a correction of a deposit (a bounced cheque, money for another party) takes money out, at most the deposit.
     const DC = sqlLast(DEMO, deposit(u(1130), "key-depcorr-0001", 6000, { who: P2 }));
     const bal2 = Number(balance(P2));
-    const fix = (dep: string, a: number) => entry("CORRECTION", a, { corrects: dep, reason: "Cheque bounced", pid: P2, ck: "RECORDED_BY_MISTAKE" });
+    const fix = (dep: string, a: number) => entry("CORRECTION", a, { corrects: dep, reason: "Recorded twice", pid: P2, ck: "RECORDED_BY_MISTAKE" });
     ok("FO-7a fail (P-603): a correction of a deposit takes money out, at most the deposit — +0.01 refused; 40.00 written; 20.01 more refused; 20.00 written",
       refused(DEMO, fix(DC, 1), /takes money out, at most the deposit/, "23514") && !!sql(DEMO, fix(DC, -4000))
       && refused(DEMO, fix(DC, -2001), /6000 deposited, 4000 corrected before/, "23514") && !!sql(DEMO, fix(DC, -2000)) && Number(balance(P2)) === bal2 - 6000);

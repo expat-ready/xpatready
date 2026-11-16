@@ -15,10 +15,9 @@
 --   DROP TYPE "MoneyMoveDirection", "MoneyMoveKind", "MoneyCorrectionKind"; delete this folder's row from
 --   _prisma_migrations.
 
--- A correction of a deposit written before this migration says nothing about why it was made, so it can never be read
--- as licensing a move or not (B-19). None exists outside test databases (no route writes trust entries yet). The
--- guard locks the table first, so it waits for a correction written in a transaction still open and counts it (break
--- B-6).
+
+-- A correction of a deposit written before this migration says nothing about why it was made (B-19): the migration
+-- stops before changing anything. The same guard runs again at the end of the file (below).
 DO $$
 DECLARE n integer;
 BEGIN
@@ -175,7 +174,8 @@ BEGIN
   IF NEW.kind = 'CARD_FEE_ON_TRUST' THEN
     RAISE EXCEPTION 'money_move_line: card fees on the trust account wait for card payments into trust (held, P-567; FO-7c)' USING ERRCODE = 'check_violation';
   END IF;
-  SELECT e.kind, e.amount_minor, e.currency, e.person_id, e.company_id, e.invoice_id, e.correction_kind, d.kind AS corrected_kind, p.cleared AS deposit_cleared
+  SELECT e.kind, e.amount_minor, e.currency, e.person_id, e.company_id, e.invoice_id, e.correction_kind, d.kind AS corrected_kind, p.id AS deposit_payment_id,
+      p.cleared AND NOT EXISTS (SELECT 1 FROM "money_trust_entry" r WHERE r.firm_id = d.firm_id AND r.corrects_entry_id = d.id AND r.correction_kind = 'RETURNED') AS deposit_cleared
     INTO s FROM "money_trust_entry" e LEFT JOIN "money_trust_entry" d ON d.firm_id = e.firm_id AND d.id = e.corrects_entry_id
       LEFT JOIN "money_payment" p ON p.firm_id = d.firm_id AND p.id = d.payment_id
     WHERE e.firm_id = NEW.firm_id AND e.id = NEW.source_entry_id;
@@ -187,8 +187,14 @@ BEGIN
     RAISE EXCEPTION 'money_move_line: only a WRONG_ACCOUNT correction of a deposit licenses a wrong-account move out of trust (this entry is a %): a bounced cheque or an entry error never reached the trust account as money to move',
       coalesce(s.correction_kind::text || ' ', '') || s.kind USING ERRCODE = 'check_violation';
   END IF;
+  -- A wrong-account line moves only money that arrived: its payment is cleared and was never "Returned" (break B-20: a
+  -- bounced cheque ticked cleared afterwards). The payment row is share-locked, so a "Cleared" tick written after this
+  -- snapshot fails to serialise (40001) at REPEATABLE READ instead of being missed.
+  IF NEW.kind = 'WRONG_ACCOUNT' THEN
+    PERFORM 1 FROM "money_payment" x WHERE x.firm_id = NEW.firm_id AND x.id = s.deposit_payment_id FOR SHARE;
+  END IF;
   IF NEW.kind = 'WRONG_ACCOUNT' AND s.deposit_cleared IS NOT TRUE THEN
-    RAISE EXCEPTION 'money_move_line: the payment this wrong-account correction names is not yet cleared; it moves once it clears (re-review Major 1)' USING ERRCODE = 'check_violation';
+    RAISE EXCEPTION 'money_move_line: the payment this wrong-account correction names is not cleared, or was returned; it moves only once it has cleared' USING ERRCODE = 'check_violation';
   END IF;
   IF NEW.direction <> 'TRUST_TO_OPERATING' THEN
     RAISE EXCEPTION 'money_move_line: a % line moves from trust to operating (money into trust waits for its own ledger entry)', NEW.kind USING ERRCODE = 'check_violation';
@@ -287,7 +293,8 @@ CREATE OR REPLACE VIEW "money_to_move" AS
       FROM "money_trust_entry" e WHERE e.kind = 'CORRECTION' AND e.correction_kind = 'WRONG_ACCOUNT'
         -- shown once its payment has cleared (it moves only then)
         AND EXISTS (SELECT 1 FROM "money_trust_entry" d JOIN "money_payment" p ON p.firm_id = d.firm_id AND p.id = d.payment_id
-                     WHERE d.firm_id = e.firm_id AND d.id = e.corrects_entry_id AND p.cleared)
+                     WHERE d.firm_id = e.firm_id AND d.id = e.corrects_entry_id AND p.cleared
+                       AND NOT EXISTS (SELECT 1 FROM "money_trust_entry" r WHERE r.firm_id = d.firm_id AND r.corrects_entry_id = d.id AND r.correction_kind = 'RETURNED'))
   ), m AS (
     SELECT s.*, 'TRUST_TO_OPERATING'::"MoneyMoveDirection" AS direction,
            (SELECT coalesce(sum(l.amount_minor), 0) FROM "money_move_line" l WHERE l.firm_id = s.firm_id AND l.source_entry_id = s.source_entry_id
@@ -297,3 +304,18 @@ CREATE OR REPLACE VIEW "money_to_move" AS
   SELECT firm_id, source_entry_id, kind, direction, currency, person_id, company_id, case_id, invoice_id, eligible_minor, returned_minor, moved_minor,
          eligible_minor - returned_minor - moved_minor AS open_minor, created_at
     FROM m WHERE eligible_minor - returned_minor - moved_minor > 0;
+
+-- A correction of a deposit written before this migration says nothing about why it was made, so it can never be read
+-- as licensing a move or not (B-19). None exists outside test databases (no route writes trust entries yet). The
+-- guard locks the table and runs last, after money_trust_entry_moves exists, so a correction written while the file
+-- runs is counted or refused, under one transaction or statement by statement (break B-6; review m11).
+DO $$
+DECLARE n integer;
+BEGIN
+  LOCK TABLE "money_trust_entry" IN SHARE ROW EXCLUSIVE MODE;
+  SELECT count(*) INTO n FROM "money_trust_entry" c JOIN "money_trust_entry" d ON d.firm_id = c.firm_id AND d.id = c.corrects_entry_id
+    WHERE c.kind = 'CORRECTION' AND d.kind = 'DEPOSIT' AND c.correction_kind IS NULL;
+  IF n > 0 THEN
+    RAISE EXCEPTION 'fo7mv_move_list: % correction(s) of a deposit have no correction kind (RETURNED, RECORDED_BY_MISTAKE, WRONG_CLIENT, OTHER or WRONG_ACCOUNT); give each its kind by hand, then run the migration again', n USING ERRCODE = 'check_violation';
+  END IF;
+END $$;

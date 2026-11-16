@@ -244,15 +244,18 @@ try {
     const P7 = u(7), clear = (dep: string) => sql(T, `update money_payment set cleared = true, cleared_at = now(), cleared_by = 'user-R' where id = (select payment_id from money_trust_entry where id = '${dep}')`);
     const chq2 = deposit(30000, P7, "CHEQUE", false), wa = sql(T, correctQ(chq2, 30000, "WRONG_ACCOUNT", P7));
     ok("FO-7mv fail/pass (break B-2): a WRONG_ACCOUNT correction of a cheque not yet cleared waits for the cheque; after it clears, it moves",
-      open(wa) === "0" && refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: wa, amount: 30000, pid: P7 }]), /is not yet cleared; it moves once it clears/) && (clear(chq2), open(wa) === "30000" && !!move([{ kind: "WRONG_ACCOUNT", src: wa, amount: 30000, pid: P7 }])));
+      open(wa) === "0" && refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: wa, amount: 30000, pid: P7 }]), /not cleared, or was returned; it moves only once it has cleared/) && (clear(chq2), open(wa) === "30000" && !!move([{ kind: "WRONG_ACCOUNT", src: wa, amount: 30000, pid: P7 }])));
     // The re-review's Major 1 (2abc41df3): cleared money beside the cheque must not let the cheque's own wrong-account money out.
     const P8 = u(8);
     deposit(50000, P8); const chq8 = deposit(30000, P8, "CHEQUE", false), wa8 = sql(T, correctQ(chq8, 30000, "WRONG_ACCOUNT", P8));
     ok("FO-7mv fail (re-review Major 1): e-transfer 500.00, an uncleared cheque 300.00 corrected WRONG_ACCOUNT — the 300.00 is not listed and does not move until the cheque clears",
-      open(wa8) === "0" && refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: wa8, amount: 30000, pid: P8 }]), /is not yet cleared/, "23514"));
+      open(wa8) === "0" && refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: wa8, amount: 30000, pid: P8 }]), /not cleared, or was returned/, "23514"));
     ok("FO-7mv fail (break B-9): a transfer date of infinity or 4713 BC is refused",
       refused(T, moveQ([{ src: W0, amount: 1 }]).replace("'2026-11-20'", "'infinity'"), /money_move_batch_date_check/) && refused(T, moveQ([{ src: W0, amount: 1 }]).replace("'2026-11-20'", "'4713-01-01 BC'"), /money_move_batch_date_check/));
     ok("FO-7mv fail (review m1): a USD line in a USD batch for a CAD entry is refused", refused(T, moveQ([{ src: W0, amount: 1 }], { cur: "USD" }), /a line is in its entry's currency \(CAD\)/));
+    { const P9 = u(11); deposit(100000, P9); const chq9 = deposit(30000, P9, "CHEQUE", false), wa9 = sql(T, correctQ(chq9, 10000, "WRONG_ACCOUNT", P9)); sql(T, correctQ(chq9, 20000, "RETURNED", P9)); clear(chq9);
+      ok("FO-7mv fail (break B-20): a cheque returned and then ticked cleared — its wrong-account 100.00 is not listed and does not move",
+        open(wa9) === "0" && refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: wa9, amount: 10000, pid: P9 }]), /not cleared, or was returned/, "23514")); }
     const B3 = randomUUID();
     ok("FO-7mv fail (review m3): a line, then the batch's undo, then commit — refused at commit (an undone batch never gains a line)",
       refused(T, `begin; insert into money_move_batch (id, firm_id, currency, direction, transfer_date, recorded_by) values ('${B3}', '${firmA}', 'CAD', 'TRUST_TO_OPERATING', '2026-11-20', 'user-R'); insert into money_move_line (firm_id, batch_id, kind, direction, currency, amount_minor, source_entry_id) values ('${firmA}', '${B3}', 'TRUST_APPLIED', 'TRUST_TO_OPERATING', 'CAD', 1, '${W0}'); ${undoQ(B3)}; commit;`, /an undone batch never gains a line/));
@@ -272,11 +275,13 @@ try {
       catch (e) { await c.query("rollback").catch(() => undefined); return { ok: false, v: String((e as Error).message) }; } };
     const invs = [invoice(T, 300000, P), invoice(T, 300000, P), invoice(T, 300000, P)];
     // The model: each source's eligible, returned and moved (net of undone); each batch's lines; the bank's trust account.
-    type Src = { id: string; kind: "W" | "C"; ck?: string; eligible: number; returned: number };
+    type Src = { id: string; kind: "W" | "C"; ck?: string; dep?: string; eligible: number; returned: number };
+    const returnedDeps = new Set<string>();  // a deposit "Returned" freezes its wrong-account money (B-20)
     const srcs: Src[] = [], deps: { id: string; amount: number }[] = [], batches: { id: string; lines: { src: string; amount: number }[]; undone: boolean; isUndo: boolean }[] = [];
     let bank = 0, steps = 0, mismatch: string[] = [], movesOk = 0, movesNo = 0, returnsOk = 0, returnsNo = 0, undos = 0;
     const movedOf = (s: string) => batches.filter((b) => !b.undone && !b.isUndo).flatMap((b) => b.lines).filter((l) => l.src === s).reduce((a, l) => a + l.amount, 0);
-    const cap = (s: Src) => s.kind === "W" ? s.eligible - s.returned : s.ck === "WRONG_ACCOUNT" ? s.eligible : 0;
+    const cap = (s: Src) => s.kind === "W" ? s.eligible - s.returned : s.ck === "WRONG_ACCOUNT" && !returnedDeps.has(s.dep ?? "") ? s.eligible : 0;
+    const frozen = () => srcs.filter((s) => s.kind === "C" && s.ck === "WRONG_ACCOUNT" && returnedDeps.has(s.dep ?? "")).reduce((a, s) => a + s.eligible - movedOf(s.id), 0);
     const amt = () => [1, 100, 2500, 10000, 40000][rnd(5)] + rnd(3);
     for (let step = 0; steps < 240; step++) {
       const op = rnd(10), ws = srcs.filter((s) => s.kind === "W"), w = ws[rnd(Math.max(ws.length, 1))];
@@ -290,7 +295,7 @@ try {
         if (r.ok !== expect) mismatch.push(`${step} return ${a} of ${w.id}: db ${r.ok} model ${expect} ${r.v}`);
       } else if (op === 4 && deps.length) {
         const d = deps[rnd(deps.length)], ck = ["RETURNED", "WRONG_ACCOUNT", "RECORDED_BY_MISTAKE"][rnd(3)], a = amt();
-        const r = await run(correctQ(d.id, a, ck, P)); if (r.ok) { srcs.push({ id: r.v, kind: "C", ck, eligible: a, returned: 0 }); if (ck !== "WRONG_ACCOUNT") bank -= a; }
+        const r = await run(correctQ(d.id, a, ck, P)); if (r.ok) { srcs.push({ id: r.v, kind: "C", ck, dep: d.id, eligible: a, returned: 0 }); if (ck !== "WRONG_ACCOUNT") bank -= a; if (ck === "RETURNED") returnedDeps.add(d.id); }
       } else if (op === 5) {
         const a = amt(), r = await run(entry("REFUND_TO_CLIENT", -a, { reason: "Returned unused money", pid: P })); if (r.ok) bank -= a;
       } else if (op <= 8 && srcs.length) {
@@ -315,10 +320,10 @@ try {
           (select count(*) from money_move_line l join money_trust_entry e on e.id = l.source_entry_id where l.person_id = '${P}' group by l.source_entry_id, e.amount_minor, e.id
              having sum(l.amount_minor) filter (where not exists (select 1 from money_move_batch u where u.undoes_batch_id = l.batch_id))
                > -e.amount_minor - (select coalesce(sum(r.amount_minor), 0) from money_trust_entry r where r.corrects_entry_id = e.id) limit 1) as over`)).rows[0];
-      if (Number(inv.low) < 0 || inv.over !== null || Number(inv.bal) + Number(inv.listed) !== bank) mismatch.push(`${step} invariant ${JSON.stringify(inv)} bank ${bank}`);
+      if (Number(inv.low) < 0 || inv.over !== null || Number(inv.bal) + Number(inv.listed) + frozen() !== bank) mismatch.push(`${step} invariant ${JSON.stringify(inv)} bank ${bank}`);
     }
     await c.end(); conns.splice(conns.indexOf(c), 1);
-    ok(`FO-7mv DW6 pass (P-607 (1)): 240 generated steps (moves ${movesOk} written / ${movesNo} refused, returns ${returnsOk}/${returnsNo}, ${undos} undos) — the database agrees with the model at every step, the balance never goes below zero, no entry moves past what it holds, and ledger + list = the bank's trust account`,
+    ok(`FO-7mv DW6 pass (P-607 (1)): 240 generated steps (moves ${movesOk} written / ${movesNo} refused, returns ${returnsOk}/${returnsNo}, ${undos} undos) — the database agrees with the model at every step, the balance never goes below zero, no entry moves past what it holds, and ledger + list (+ wrong-account money frozen by a return) = the bank's trust account`,
       mismatch.length === 0 && movesOk > 10 && movesNo > 10 && returnsOk > 3 && returnsNo > 3 && undos > 3, mismatch.slice(0, 5));
     ok("FO-7mv DW6 fail: the same invariant query sees a move past its entry (written with the trigger off, inside a rolled-back transaction)",
       sql(T, `begin; alter table money_move_line disable trigger money_move_line_write; insert into money_move_batch (id, firm_id, currency, direction, transfer_date, recorded_by) values ('${u(77)}', '${firmA}', 'CAD', 'TRUST_TO_OPERATING', '2026-11-20', 'user-R');
