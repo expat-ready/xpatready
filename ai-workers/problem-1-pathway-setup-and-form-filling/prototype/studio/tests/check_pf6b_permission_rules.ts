@@ -209,12 +209,15 @@ try {
   // FO-2v: two open leads, L1 owned by user-R and L2 by user-O. The representative of the retainers owns no lead, so
   // leads expect the plain own-or-all table. Leads read the person's keys from the context (the guard's
   // req.platform.keys), so the sweep hands them the live grants.
-  const lead = (n: number, owner: string) => {
+  // Each lead has its own source, so the sources route (FO-4sf) is swept by whose source a person is shown.
+  const SOURCE_OF: Record<string, string> = {};
+  const lead = (n: number, owner: string, source: string) => {
     sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values ('${u(n)}', '${A}', 'Client ${n}', 'Sample', 'client${n}@example.com', 'test', now())`);
-    sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values ('${u(n + 1)}', '${A}', '${u(n)}', 'MANUAL', 'WEBSITE', '${owner}', 'test', now())`);
+    sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values ('${u(n + 1)}', '${A}', '${u(n)}', 'MANUAL', '${source}', '${owner}', 'test', now())`);
+    SOURCE_OF[u(n + 1)] = source;
     return u(n + 1);
   };
-  const L1 = lead(620, R), L2 = lead(630, O);
+  const L1 = lead(620, R, "Event (PF-6b)"), L2 = lead(630, O, "Referral (PF-6b)");
   const live = (c: StaffContext): StaffContext => ({ ...c, keys: sql(`select string_agg(distinct rp.permission_key, ',') from platform_role_grant g join platform_role_permission rp on rp.role = g.role where g.staff_id = '${c.staffId}' and g.ended_at is null`).split(",") });
   const leads = new Leads(db, {} as never);
   const LEADS: typeof EXPECT = {
@@ -226,6 +229,7 @@ try {
     "RetainersController.read": { read: (c, id) => svc.read(c, id) },
     "SalesController.read": { read: (c, id) => leads.read(live(c), id), ids: [L1, L2], expect: LEADS },
     "SalesController.list": { read: async (c, id) => (await leads.list(live(c), "all")).find((l) => l.id === id), ids: [L1, L2], expect: LEADS },
+    "SalesController.sources": { read: async (c, id) => (await leads.sources(live(c))).sources.includes(SOURCE_OF[id]), ids: [L1, L2], expect: LEADS },
   };
   const sweep = async (entry: Entry) => {
     const wrong: string[] = [];
