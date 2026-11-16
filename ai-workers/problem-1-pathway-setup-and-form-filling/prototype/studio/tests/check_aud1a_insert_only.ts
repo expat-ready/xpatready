@@ -52,6 +52,7 @@ const all = readdirSync(MIG).filter((d) => /^\d{14}_/.test(d)).sort();
 const before = all.filter((d) => d < NEW), after = all.filter((d) => d > NEW);
 for (const db of [BARE, EMPTY, FORCED]) { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", db]); execFileSync(join(BIN, "createdb"), [...PG, db]); }
 const clients: PrismaClient[] = [];
+let restoreIndex = "";   // DW4's dropped index, put back in finally if the step stops midway (review m3)
 try {
   // ------------------------------------------------------------------------------------------- DW6: the migration
   const code = readFileSync(join(MIG, NEW, "migration.sql"), "utf8").replace(/^\s*--.*$/gm, "");
@@ -166,6 +167,11 @@ try {
   ok(`AUD-1a DW3 pass: the demo reset empties the demo workspace's lines (${demoBefore} before) and leaves every platform-audit line (${platBefore} before = after; P-571 (1))`,
     R.status < 300 && demoBefore > 0 && n(COPY, `select count(*) from audit_event where workspace_id = '${demoWs}'`) === 0 && n(COPY, `select count(*) from audit_event where workspace_id = '${P_WS}'`) === platBefore, R.body);
   ok("AUD-1a DW3 pass: after the reset the new demo workspace has only the reset's own line", n(COPY, `select count(*) from audit_event where workspace_id = '${newWs}'`) === 1 && sql(COPY, `select action || ':' || actor_type from audit_event where workspace_id = '${newWs}'`) === "reset:FIRM_STAFF");
+  // Review M1: a firm's platform line (the firm in detail.firmId only, as the adapter writes it until AUD-1b) under a
+  // workspace row that is deleted first still cannot be deleted, even with the setting on.
+  const gonePlat = randomUUID();
+  sql(COPY, line(gonePlat, `staff:${UUID}`, { detail: `'{"firmId": "${FIRM_REAL}"}'` }));
+  ok("AUD-1a DW3b fail (review M1): a firm's line whose workspace row is gone (firm only in detail.firmId) is refused even with the setting on", refused(() => tx(COPY, `delete from audit_event where workspace_id = '${gonePlat}'`, true, "xr_app"), NEVER) && n(COPY, `select count(*) from audit_event where workspace_id = '${gonePlat}'`) === 1);
   ok("AUD-1a DW3b pass: the next reset's orphan sweep removes the ghost line; a line of an existing non-demo workspace is never removed",
     n(COPY, `select count(*) from audit_event where workspace_id = '${ghost}'`) === 0 && n(COPY, `select count(*) from audit_event where workspace_id = '${other}'`) === 1);
 
@@ -175,7 +181,7 @@ try {
   // the code's withdraw branch runs only without it: the copy drops that index for this step and puts it back after.
   const L2 = await call("POST", "/demo/load", {});
   const ONE_OPEN = sql(COPY, "select indexdef from pg_indexes where indexname = 'library_change_one_open'");
-  sql(COPY, "drop index library_change_one_open");
+  sql(COPY, "drop index library_change_one_open"); restoreIndex = ONE_OPEN;
   const form = sql(COPY, "select form_key from gov_form_def where form_kind = 'data_form' and form_role is null and retired_at is null order by form_key limit 1");
   sql(COPY, `create function aud1a_check_race() returns trigger language plpgsql as $$ begin
       if NEW.kind = 'form_role' and NEW.key = '${form}' and NEW.proposed_by = 'user-A' then
@@ -187,7 +193,7 @@ try {
   const lines = () => sql(COPY, `select coalesce(string_agg(actor || ':' || action, ',' order by at, actor), '') from audit_event where entity = 'form' and entity_key = '${form}'`);
   const P = await call("POST", `/library/forms/${encodeURIComponent(form)}/role`, { role: "family_information", reason: "Sample: two people at once" });
   sql(COPY, "drop trigger aud1a_check_race on library_change; drop function aud1a_check_race()");
-  sql(COPY, `update library_change set status = 'RETURNED' where key = '${form}' and proposed_by = 'user-C'; ${ONE_OPEN}`);
+  sql(COPY, `update library_change set status = 'RETURNED' where key = '${form}' and proposed_by = 'user-C'; ${ONE_OPEN}`); restoreIndex = "";
   const after4 = lines();
   ok(`AUD-1a DW4 pass: the later of two simultaneous proposals is refused (409), its change row goes, and its audit line stays with one reversing "withdrawn" line (AG-13-41); ${form}`,
     L2.status < 300 && P.status === 409 && n(COPY, `select count(*) from library_change where key = '${form}' and proposed_by = 'user-A'`) === 0
@@ -197,6 +203,7 @@ try {
 } catch (e) {
   if (String((e as Error).message) !== "setup") ok("AUD-1a: the check ran to the end", false, String((e as Error).stack ?? e).slice(0, 600));
 } finally {
+  if (restoreIndex) { try { sql(COPY, `drop trigger if exists aud1a_check_race on library_change; drop function if exists aud1a_check_race(); update library_change set status = 'RETURNED' where proposed_by = 'user-C' and label = 'the other proposal'; ${restoreIndex}`); } catch { /* the copy is dropped at its stop */ } }
   for (const c of clients) await c.$disconnect();
   for (const db of [BARE, EMPTY, FORCED]) execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", db]);
   rmSync(WORK, { recursive: true, force: true });

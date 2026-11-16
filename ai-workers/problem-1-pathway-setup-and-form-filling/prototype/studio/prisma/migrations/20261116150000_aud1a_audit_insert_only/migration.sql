@@ -82,8 +82,9 @@ END $fn$;
 CREATE TRIGGER "aud_event_fill" BEFORE INSERT ON "audit_event" FOR EACH ROW EXECUTE FUNCTION aud_event_fill();
 
 -- Insert-only trigger (SA-11-3, AG-13-41): an UPDATE is refused always; a DELETE only inside the demo reset (setting on)
--- and only for a Sample line: in the demo workspace, or in a workspace that no longer exists (the orphan sweep), and with
--- firm_id null or a Sample firm's. Runs as xr_wall_reader (PF-12's pattern) so it sees the workspace and every firm row.
+-- and only for a Sample line: in the demo workspace, or in a workspace that no longer exists (the orphan sweep), and whose
+-- firm (firm_id, else detail.firmId, where platform lines keep it until AUD-1b) is none or a Sample firm's. So a firm's
+-- platform-audit line stays even if its workspace row were deleted first (review M1). Runs as xr_wall_reader (PF-12's pattern) so it sees the workspace and every firm row.
 CREATE FUNCTION aud_event_no_change() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $fn$
@@ -95,8 +96,9 @@ BEGIN
   IF coalesce(current_setting('app.audit_sample_reset', true), '') = 'on'
      AND (NOT EXISTS (SELECT 1 FROM "workspace" w WHERE w."id" = OLD."workspace_id")
           OR EXISTS (SELECT 1 FROM "workspace" w WHERE w."id" = OLD."workspace_id" AND w."key" = 'demo'))
-     AND (OLD."firm_id" IS NULL
-          OR EXISTS (SELECT 1 FROM "platform_firm" f WHERE f."id" = OLD."firm_id" AND f."key" IN ('sample-firm', 'sample-solo'))) THEN
+     AND (coalesce(OLD."firm_id"::text, OLD."detail"->>'firmId') IS NULL
+          OR EXISTS (SELECT 1 FROM "platform_firm" f WHERE f."key" IN ('sample-firm', 'sample-solo')
+                       AND (f."id"::text = lower(coalesce(OLD."firm_id"::text, OLD."detail"->>'firmId')) OR f."key" = OLD."detail"->>'firmId'))) THEN
     RETURN OLD;
   END IF;
   RAISE EXCEPTION 'audit lines are never changed or deleted (DELETE refused): only the demo reset removes the demo workspace''s Sample lines'
