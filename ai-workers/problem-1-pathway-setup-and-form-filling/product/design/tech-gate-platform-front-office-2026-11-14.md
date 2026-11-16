@@ -8,6 +8,8 @@ Row PF-2 (`lead-b-rows-2026-11-14.md`), STANDARDS §1 ("a new tool only for a co
 
 **PF-Lc addendum (15 Nov 2026, 14:3x IST, runtime lane, cloud; rows rev 16.20, P-576 (4)):** entry 14 added for PF-4bc (the `cognito` side of PF-4b's `IdentityAdminPort`), checked the same way, and put into `package.json` and the lockfile in its own PR. **Age rule:** at least 14 days old on 15 Nov, so published on or before 1 Nov 2026. Installed with npm 11.19.0 (the npm of the pinned Node 24.21.0) and `--before=2026-11-01T23:59:59Z`: one lockfile entry added (the client itself), none changed or removed; every package it needs was already in the lockfile through entry 13. `npm audit`: 17 before and after, none in the added package.
 
+**PF-Le addendum (16 Nov 2026, runtime lane, cloud; rows rev 16.47, P-630, P-576 (4)):** entries 15 and 16 put into `package.json` and the lockfile in their own PR; entries 15–17 below (and their table rows) are Lead B's text, copied whole from `lead-b-front-office` (595ba8f74). **Age rule:** published on or before 2 Nov 2026. Installed with npm 11.19.0 on Node 24.21.0 and `--before=2026-11-02T23:59:59Z`, `--save-exact`: `@react-email/editor` 1.7.18, `react-email` 6.11.6, and the 26 `@tiptap/*` packages the editor's own `package.json` names (it asks `^3.32.0` of each), all at 3.32.2 exactly, `@tiptap/html` among them (so PF-19c needs no further install). **Lockfile:** 179 entries added (37 of them nested copies), none removed, no version changed; 33 `@tiptap/*` entries, all 3.32.2, none below 3.30.5. 55 existing entries change only in their flags: the root entry's dependency list gains the 28 packages, and 54 entries lose `dev` or `devOptional` because `react-email`, a runtime dependency, now needs them (accepted by Lead B under this entry, #1919 comment 6906158629). Losing `dev` (42): the 26 `@esbuild/*` platform packages 0.28.2, `esbuild` 0.28.2, `@jridgewell/gen-mapping` 0.3.13, `@jridgewell/resolve-uri` 3.1.2, `@jridgewell/sourcemap-codec` 1.6.0, `@jridgewell/trace-mapping` 0.3.31, `balanced-match` 4.0.4, `brace-expansion` 5.0.12, `glob` 13.0.6, `lru-cache` 11.5.3, `minimatch` 10.2.6, `minipass` 7.1.3, `path-scurry` 2.0.2, `picocolors` 1.1.1, `semver` 7.8.5, `source-map-js` 1.2.2, `tailwindcss` 4.3.1. Losing `devOptional` (12): `@types/react` 19.3.0, `@types/react-dom` 19.3.0, `ajv` 8.20.0, `chokidar` 5.0.0, `csstype` 3.2.3, `env-paths` 3.0.0, `fast-deep-equal` 3.1.3, `fast-uri` 3.1.9, `json-schema-traverse` 1.0.0, `pathe` 2.0.3, `readdirp` 5.1.1, `require-from-string` 2.0.2. **The production image:** today's image already holds these packages (its Dockerfile runs a full `npm ci` and keeps dev packages, and `tsx`, which runs the API, already needs `esbuild ~0.28.0`); a pruned image (PF-7/PF-8) would now keep `esbuild` and its platform binary, which no code of ours runs; PF-7 records the image size before and after when it next builds (no change in PF-Le; reviewer Minor 4). Size: P-631 (the generated lockfile lines do not count toward P-610's 800). Among the added are react-email's preview CLI's dependencies: `socket.io` 4.8.4 with `engine.io` 6.6.11 and their parsers, `prompts` 2.4.2, 11 `@babel/*` entries (7.29.x); `esbuild` (0.28.2), `chokidar` and `tailwindcss` were already there and are reused; `prismjs` 1.30.0 (past its last advisory). **`npm audit`:** before 17 (8 moderate, 9 high), after 19 (10 moderate, 9 high). The 2 new rows are `react-email` and `@react-email/editor` themselves, both moderate and both only **through `glob`**: `react-email` asks `glob ^13.0.6`, which resolves to the lockfile's existing `glob` 13.0.6, already flagged before (GHSA-3g3m-2fjr-6pw4, moderate, "AbortSignal cancellation bypass allows post-timeout filesystem traversal", glob 9.0.0–14.0.1). No advisory names any added package directly; no new high. npm's suggested fix is `@react-email/editor` 1.8.7 (13 Nov), too new under the age rule; in `react-email` only its CLI (`dist/cli/index.mjs`) imports `glob`, which we never run, and no code of ours uses the package until PF-19c. **Browser build:** `tests/check_pfle_libraries.ts` builds the web app with source maps into a temporary folder and finds no module of `socket.io`/`engine.io` (and their parsers), `esbuild`, `chokidar`/`readdirp`, `@babel/*` or `prompts` among the maps' `sources`, nor their names in the output text (20/20; the map test catches `chokidar`, `engine.io-parser`, `socket.io-parser` and `prompts` imported into a scratch `main.tsx`, which a text-only scan missed, reviewer Major 1; with a trial import of `EmailEditor` in `web/src/main.tsx`, not committed, the output was still clean). The same check pins the versions above, reads the lockfile for Tiptap below 3.30.5, and keeps an empty list of files allowed to import the packages, which PF-19s, PF-19c and PF-13 part 1 extend.
+
 **Licences: Unconfirmed: no counsel.** "Read at source" means the licence file was opened and read on the date given; it is not a legal opinion.
 
 **Could not be reached from this cloud lane (host not allowed):** `stripe.com`, `support.boldsign.com`, unpkg, `api.github.com`, `api.releases.hashicorp.com`, `get.opentofu.org`. Data-location statements for Stripe and BoldSign are therefore from search results quoting those pages, marked **"to confirm on the Mac"**; the evidence lane or Lead B opens the two pages and adds the quote before PF-5 and FO-6 go live (not before they are built: both build on `fake` adapters).
@@ -30,8 +32,13 @@ Row PF-2 (`lead-b-rows-2026-11-14.md`), STANDARDS §1 ("a new tool only for a co
 | 12 | Sending email through Amazon SES (`MessagePort`, PF-19b; map row 48) | `nodemailer` with its SES transport | 10.3.1 (29 Oct 2026) | MIT-0 | the message and its recipients to Amazon SES, ca-central-1 | PF-L (used by PF-19b) |
 | 13 | Nodemailer's SES transport client (PF-19b; map row 48) | `@aws-sdk/client-sesv2` | 3.1161.0 (30 Oct 2026) | Apache-2.0 | as row 12 (the same call) | PF-L (used by PF-19b) |
 | 14 | Cognito admin calls for staff sign-in (`IdentityAdminPort`, PF-4b/PF-4bc) | `@aws-sdk/client-cognito-identity-provider` | 3.1161.0 (30 Oct 2026) | Apache-2.0 | staff email, name and sign-in state to Amazon Cognito, ca-central-1 | PF-Lc (used by PF-4bc) |
+| 15 | Message editor with a field picker (PF-19s; P-630) | `@react-email/editor` (Tiptap 3 underneath), with Tiptap's mention extension as our field chip | 1.7.18 (30 Oct 2026); Tiptap 3.32.2 (30 Oct 2026) | MIT + MIT | nothing (in the browser) | PF-Le (used by PF-19s) |
+| 16 | Branded email layout that works in Outlook and Gmail (PF-19b/PF-19c/PF-13; P-630) | `react-email` (components and `render` in one package since v6), **not** `@react-email/components` (deprecated on npm) | 6.11.6 (29 Oct 2026), the exact version entry 15 requires | MIT | nothing (in-process) | PF-Le (used by PF-13 part 1 and PF-19c) |
+| 17 | Word to PDF (FO-5p's PDF, through `DocumentRenderPort`; P-630) | Gotenberg, self-hosted container, LibreOffice route only | **8.40.0 (5 Nov 2026)**, image `gotenberg/gotenberg:8.40.0@sha256:53073e798c8ef39ea2187e44cb67bab77894ea2509100b94c4fe3b461f7b2996`; a security exception to the 14-day rule (see entry) | MIT | nothing: our private network only, outbound blocked | PF-Fp (new row) |
 
 New runtime libraries in the API: 4 (`stripe`, `aws-jwt-verify`, `docxtemplater`, `pizzip`) with 2 transitive ones (`pako`, and `@xmldom/xmldom`, which our XFA engine already uses at 0.9.12). Rows 10–13 (added by PF-L, 14 Nov) add 4 more to the API: `pg-boss`, `libphonenumber-js`, `nodemailer`, `@aws-sdk/client-sesv2` (transitive ones in each entry). Row 14 (added by PF-Lc, 15 Nov) adds 1 more to the API, `@aws-sdk/client-cognito-identity-provider`, with no new transitive package (it shares entry 13's). In the web app: 3 (`react-day-picker`, `date-fns`, `@date-fns/tz`; the API shares the last two). Tooling outside the app: AWS CDK and the base image. Three needs are met with no library (BoldSign, `.ics`, the staff calendar view).
+
+Rows 15–17 (Lead B, 16 Nov, rows rev 16.47; P-630) add the following. **Rows 15 and 16** add `@react-email/editor`, the `@tiptap/*` family at 3.32.2, and `react-email` 6.11.6; `react-email` also installs its preview CLI's dependencies, which are never run or bundled (entry 15). **Row 17** is a container image, not a library, so `package.json` gains nothing for it. All three enter through **PF-Le**, the one lane that edits `package.json` and the lockfile (P-576 (4)), and only after Lead B's approval line in each entry.
 
 ---
 
@@ -194,6 +201,95 @@ New runtime libraries in the API: 4 (`stripe`, `aws-jwt-verify`, `docxtemplater`
 * **Data: where and which country:** staff email addresses, names, MFA settings and sign-in state go to Amazon Cognito in ca-central-1 (Canada), in the founder's AWS account (P-558 (5)). No client (applicant) data goes to Cognito. The SDK sends no separate telemetry; its requests carry a user-agent string naming the SDK and Node versions.
 * **Version:** 3.1161.0, published 30 Oct 2026 18:46 UTC (16 days on 15 Nov), the newest release on or before 1 Nov and the same as entry 13; engines Node 20 or later. 3.1162.0 (4 Nov) and later are too new.
 * **Reconsider when:** we leave Cognito for another identity provider, or AWS ends the Cognito user pools API.
+
+## 15. Message editor: `@react-email/editor` (row PF-19s; P-630, Lead 64's adoption)
+**Added 16 Nov 2026, 08:0x IST, by Lead B (6) on the Mac (rows rev 16.47).** Checked the same way as entries 1–14, read only, nothing installed: npm registry, the package tarball, the GitHub advisory database (`api.github.com/advisories`), and licence texts at source.
+* **Problem (row PF-19s, AG-12 §3.1–3.8):** a firm admin edits each message's body, with fields inserted from a list and never typed as code. A hand-built rich editor (links, lists, headings, insert at cursor, paste cleaning, keyboard) takes about 5–8 days to reach today's bar (`research-templates-2026-11-16.md` §5).
+* **Options:**
+  - (a) `@react-email/editor`, on Tiptap 3;
+  - (b) Tiptap 3 directly with our own toolbar;
+  - (c) a plain text box with the field picker (the row's old plan);
+  - (d) Unlayer, GrapesJS or Easy Email: hosted, pre-1.0 or partly paid (research §2.1).
+* **Pick: (a), with conditions.**
+  - Tiptap's mention extension (already a dependency of (a)) is our field chip: a node `{ type: "field", attrs: { key } }`.
+  - **We store the editor's JSON, never its HTML.**
+  - **The server makes the HTML** from that JSON, with `@tiptap/html` and our own allow-listed extension list (paragraph, heading, bold, italic, underline, link, bullet and ordered list, hard break, field). So an unknown node, mark or attribute is dropped by the schema.
+  - Field nodes are filled by PF-19c's allow-list with HTML escaping.
+  - Links are only `https:` or `mailto:`.
+  - The editor's own "export HTML" is never sent or stored.
+  - Because the stored format is plain Tiptap JSON, (b) stays a one-row swap if (a) is abandoned.
+* **Maturity (checked hard, as Lead 64 asked):**
+  - **First published 18 Feb 2026, so under nine months old.** 133 releases in the last 365 days, which is nearly one every two days. 1.8.7 is the latest (13 Nov).
+  - It lives in the React Email repository (Resend; 19,939 stars per the research note), so it is not a lone project. But its API is young and moves fast.
+  - **Rule:** pin exactly. Upgrades come only in their own PR, with the editor suite re-run.
+  - Our use is the core editor plus mention, nothing exotic.
+* **Safety:**
+  - No advisory names `@react-email/editor`, `react-email` or `@tiptap/extension-mention` (GitHub advisory database, 16 Nov).
+  - **`@tiptap/core` had two in 2026:**
+    - GHSA-j95f-988m-3j2f (high, 8 Sep): `mergeAttributes()` turns an own `__proto__` key into executable DOM attributes; fixed in 3.30.5.
+    - GHSA-cp6q-959q-f8rh (medium, 2 Sep): ReDoS in Markdown attribute parsing; fixed in 3.30.4.
+    - **3.32.2 is past both.** The lockfile must hold no Tiptap package below 3.30.5. A check in PF-19s's suite reads the lockfile.
+  - `prismjs` (a dependency of (a), for code blocks) is at `^1.30.0`, past its last advisory (fixed in 1.30.0, Mar 2025). We do not enable code blocks.
+  - **The editor pulls in the whole `react-email` package (entry 16), whose own dependencies include its preview CLI:** `socket.io`, `esbuild`, `chokidar`, `tailwindcss`, `@babel/*`, `prompts`. The editor imports only `Img`, `Link`, `Body`, `Head`, `Html`, `Preview`, `render`, `pretty` and `toPlainText` from it (read in the 1.7.18 tarball). The CLI is reached only through the package's `email` bin, which we never run. **These packages are installed but not bundled.** The web build's bundle check must show none of `socket.io`, `esbuild`, `chokidar` or `@babel` in the browser output, and `npm audit` must be read for them at PF-Le.
+* **Integration cost:** about 2–3 days in PF-19s (research §5): the editor component, the field chip and our extension list. The server-side JSON → HTML renderer is about 80 lines, in PF-19c.
+* **Licence (read at source):** the tarball's `license.md`, read 16 Nov 2026: MIT, "Copyright 2026 Plus Five Five, Inc". Tiptap's `LICENSE.md` (`raw.githubusercontent.com/ueberdosis/tiptap/HEAD/LICENSE.md`), read 16 Nov: MIT, "Copyright (c) 2025, Tiptap GmbH". npm fields: MIT. Tiptap's paid "Pro" extensions are not used. Unconfirmed: no counsel.
+* **Data:** none leaves; the editor runs in the browser.
+* **Versions** (14-day rule: published on or before 2 Nov 2026):
+  - `@react-email/editor` 1.7.18 (30 Oct);
+  - the `@tiptap/*` packages 3.32.2 (30 Oct), all at one version;
+  - `react-email` 6.11.6 (29 Oct), the exact version 1.7.18 requires.
+  - Peer `react` and `react-dom` `^18 || ^19`: ours is 19.2.7. Engines: Node 20 or later; ours is 24.21.0.
+* **Reconsider when:**
+  - the editor goes six weeks without a release, or changes licence;
+  - a 2.0 changes its JSON;
+  - or any Tiptap advisory lands. Patch within 7 days; the age rule gives way to a security fix, as Question 2 below has it for Node.
+
+## 16. Email layout: `react-email` (rows PF-13 part 1, PF-19c; P-630)
+* **Problem:** one branded outer layout (logo, colour, footer, sender name; P-629 and the PF-13 ruling of rev 16.45) that renders correctly in Outlook and Gmail. Today's `layout()` in `ports/messages.ts:85` is a hand-written string.
+* **Options:**
+  - (a) `react-email` 6.11.6 components with `render`;
+  - (b) MJML, a second layout language with two past include advisories;
+  - (c) hand-written HTML tables, about 3–5 days (research §5).
+* **Pick: (a).**
+  - `@react-email/components` is **deprecated on npm** ("Package no longer supported", read 16 Nov). Since v6 the components and `render` ship inside `react-email` itself, the same package and version entry 15 requires. So the browser and server share one copy.
+  - **Where it lives:** the adapter side, `api/src/platform/messages/layout/` (with `React.createElement`, so no `tsconfig` change). **Never `ports/`**: ports are zod only, so `ports/messages.ts` keeps `layout()`'s signature and its plain fake.
+  - The layout takes only our own values (branding settings, and body HTML already made by PF-19c's renderer). Nothing a firm types reaches it unescaped.
+* **Maturity:** published since 2016; 82 releases in the last 365 days; latest 6.11.13 (13 Nov).
+* **Safety:**
+  - No advisory names `react-email` or `@react-email/render`.
+  - `render` 2.2.0 (28 Oct) needs Node 20.19 or later; ours is 24.21.0.
+  - The CLI dependencies are as in entry 15: installed, never run or bundled.
+* **Integration cost:** about 1 day, inside PF-13 part 1, the one row that already rewrites `layout()`.
+* **Licence (read at source):** MIT, the same `license.md` as entry 15 (one repository, `resend/react-email`), read 16 Nov 2026. Unconfirmed: no counsel.
+* **Data:** in-process.
+* **Version:** 6.11.6 (29 Oct 2026), exact.
+* **Reconsider when:** Resend changes the licence, or a new major moves the components out again.
+
+## 17. Word to PDF: Gotenberg (new row PF-Fp; FO-5p's PDF; P-630)
+* **Problem:** retainer and consultation agreements are filled as `.docx` (entry 4, `docxtemplater`). AG-12-89's preview, and the signing hand-off, are easier to read as PDF, so Word must become PDF faithfully. Only LibreOffice does this well without a paid API.
+* **Options:**
+  - (a) Gotenberg, which wraps LibreOffice and Chromium behind an HTTP API in one container;
+  - (b) our own container with LibreOffice only (`soffice --headless --convert-to pdf`) behind a small HTTP wrapper;
+  - (c) a paid API (Carbone Cloud, Docmosis; research §3), which sends client documents to another processor.
+* **Pick: (a), with hard conditions. (b) is the named fallback.**
+* **Safety, checked hard. This is the riskiest of the three:**
+  - Gotenberg's own advisory list (`api.github.com/repos/gotenberg/gotenberg/security-advisories`, read 16 Nov) has **40 advisories, 9 of them critical, almost all in 2026.**
+  - The critical ones include unauthenticated OS command execution through ExifTool (GHSA-gpf4-wmvf-cgjw, fixed 8.39.0; GHSA-rqgh-gxv4-6657 and GHSA-q7r4-hc83-hf2q, fixed 8.31.0) and SSRF through `downloadFrom`, webhooks and Chromium.
+  - The high ones include arbitrary file read through QPDF (GHSA-r77c-ghhj-665p, fixed 8.40.0) and **"File leak and GET SSRF via LibreOffice"** (GHSA-wwc9-3q69-2vrm, fixed 8.37.0). The last matters to us: a **firm uploads its own Word template**, so a hostile document is a real input.
+  - **Every release that passes the 14-day rule (8.39.0, 27 Oct, or older) still has critical or high advisories fixed only in 8.40.0** (5 Nov; GHSA-cfqv-cv4g-hw85 critical, compromised eMudhra intermediates; GHSA-r77c-ghhj-665p). So the age rule gives way to the security fix, as Question 2 has it for Node: **8.40.0, pinned by digest.** The 9.x line (9.0.0 on 5 Nov; 9.5.1 on 14 Nov) is a new major and gets its own row once it is 14 days old.
+* **Conditions (all in PF-Fp's Done when):**
+  1. **Only the LibreOffice route is enabled**, with `--chromium-disable-routes`, `--webhook-disable` and `--api-disable-download-from` (flags read in the repository's `pkg/modules/chromium/chromium.go`, `webhook/webhook.go` and `api/api.go`). Chromium is not started. Our adapter calls only `/forms/libreoffice/convert`.
+  2. The container is reachable only from our API, on the private network, with **no outbound network** at all, no secrets, and no shared volume. It is one replica, replaced on every image update.
+  3. Each request has a size cap (10 MB, Sample) and a timeout (30 s). The adapter treats any failure as "no PDF" and keeps the `.docx`. A PDF never blocks a send.
+  4. The `DocumentRenderPort` gets a `toPdf(docx) → pdf` method with its fake (zod only, in `ports/`). The real adapter lives in `api/src/front-office/render/`. The demo and CI use the fake, so CI runs no container.
+  5. **Patch within 7 days** of any Gotenberg advisory: a security release overrides the age rule.
+* **Maturity:** created 23 Mar 2018; 13,598 stars; 25 releases in 2026; very active (last push 14 Nov).
+* **Licence (read at source):** `raw.githubusercontent.com/gotenberg/gotenberg/main/LICENSE`, read 16 Nov 2026: MIT, "Copyright (c) Julien Neuhart". The image bundles LibreOffice (MPL-2.0) and other programs under their own licences; we run them unchanged and do not distribute them. Unconfirmed: no counsel.
+* **Data:** the filled agreement goes to our own container on our network; nothing leaves.
+* **Version:** 8.40.0, `sha256:53073e798c8ef39ea2187e44cb67bab77894ea2509100b94c4fe3b461f7b2996` (Docker Hub, last updated 5 Nov 2026).
+* **Reconsider when:**
+  - another critical advisory lands that the flags in condition 1 would not have closed; then switch to (b), our own LibreOffice-only container;
+  - or the project changes licence.
 
 ## Questions for Lead B (each with a recommendation)
 1. **Raw request body for webhooks (blocks PF-5's and FO-6's signature checks; not in contracts §5).** Stripe's and BoldSign's signature checks need the exact bytes received; `main.ts` parses JSON globally and keeps no raw copy. **Recommendation:** add hook 6 to contracts §5, "`api/src/main.ts`: `rawBody: true` in `NestFactory.create` options, one line" (Nest then keeps `req.rawBody` alongside the parsed body; no route changes), with Lead 37's OK, landed with PF-5.
