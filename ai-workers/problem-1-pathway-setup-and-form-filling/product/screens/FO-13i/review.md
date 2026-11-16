@@ -63,3 +63,38 @@ m6 Minor. retainers/service.ts:503: cite the Code's s. 24(2)(a) "if possible" (n
 I did not boot the real app (the suite mounts the two features with PF-4's guard). The QA lane's `check_r16_permission_sweep` needs a running copy and was not run. There was no CI run to read, because the PR is a draft. The legal reading is **Unconfirmed: no counsel**.
 
 **Verdict: Block** (open Majors, so no `review: approved` for 29d6dd498). To fix: **M1** pf3 later-keys list · **M2** pf12 demo-copy count · **M3** note control and visible-character rule → 400 · **M4** company contacts in person visibility. Minors m1-m6 at the builder's choice.
+
+## Re-review: 29d6dd498 → 89c2b5f (P-277, the diff only)
+Reviewer, 16 Nov 2026. I read `git diff 29d6dd498 89c2b5f70` (commits 197b010 and 89c2b5f: 5 code and test files, plus the records).
+
+**Runs on 89c2b5f:** check_fo13i_identity **25/0** · check_pf3_platform_schema **75/0** · check_pf12_walls **100/0** · check_fo5_retainers **243/0**.
+
+**The new tests fail on the old code for the right reason.** I put the new `check_fo13i_identity.ts` in a scratch worktree at 29d6dd498 and got 16/9:
+* B-1: every spelled-out number answers 201.
+* B-2: `[500,500,500,500,500]`.
+* B-3: the warning names "Signatory Sample", then list, record and RO answer `404,404,404`.
+
+The other 5 failures are knock-ons: on the old code the B-1 notes were stored, so the later `rows(PR)` counts are off.
+
+| Finding | Status | Evidence |
+|---|---|---|
+| M1 pf3 later-keys list | Closed | `agent/identity-check:` added to `ADDED_BY_LATER_ROWS`, as the suite's own rule says; 75/0 |
+| M2 pf12 "changes no row" | Closed | PF-12's migration is applied and compared alone, then the later ones (`check_pf12_walls.ts:167-170`); the check still covers PF-12; 100/0 |
+| M3 note gave 500 | Closed | `oneLine()` mirrors `fo_compliance_text_ok` before the copy is stored (`service.ts:53-54, 79`). My probes give 400 naming `methodDetail` for newline, tab and `U+200B`. Suite: no new file on disk. A remaining database check refusal is now 400, never "Try again" |
+| M4 company signatory 404 | Closed | `person()` also counts current contacts of a company prospect the reader owns, and a retainer signer whose retainer the reader represents or owns (`service.ts:126-135`). My no-lead signatory probe now gives 201 and list 200; a reader with neither still gets 404 (suite) |
+| m1 spelled numbers | Closed | NFKC fold, digits of any script, hidden characters dropped; 12 spellings → 400 (suite) |
+| m2 multipart limits | Closed | `fields 20, fieldSize 2048, parts 21` (`routes.ts:23`); 500 four-byte characters fit in 2048 bytes |
+| m6 source comment | Closed | `retainers/service.ts:503-505` cites s. 24(2)(a) with date; "Unconfirmed: no counsel" |
+| m3, m4, m5 | Open, Minor | unchanged (multer's raw refusals; double submit; graph tool) |
+
+**New, Minor (Should), not blocking:**
+* **n1.** The note now refuses any 6 or more digits in all, so ordinary notes are refused:
+  * "Video call on 16 Nov 2026" → 400
+  * "Seen 2026-11-16" → 400
+  * "Called back on 416 555 0199" → 400
+
+  FO-13's table comment says "Dates (2026-11-14) and phone groups pass". The refusal is a clear 400 naming `methodDetail` ("at most 5 digits in all"), so the user can recover, and it errs toward keeping numbers out. Either let a date shape through or tell Lead B and FO-13s that notes carry no dates (the check's own `checkedAt` records the time).
+* **n2.** The database-refusal fallback 400 (`service.ts:169`) names the constraint in `detail` but has no `fields` key. It is a backstop only.
+Nothing else broke. The send path, the event, the audit and the migration are unchanged. Accented text still saves (probe 201). The polyglot copy is still served as an attachment with the sandbox CSP.
+
+**Verdict: Approve** for **89c2b5f706be9f3943c926b1cfb7fb0b22c7916c** (no open Blocker or Major). The two test files outside the touch list wait on the tech lead's answer on the PR, as the builder asked.
