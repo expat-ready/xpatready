@@ -214,6 +214,12 @@ export async function touchEachFirm(db: Pick<PrismaClient, "$transaction">, firm
   }
   return { failed, error };
 }
+/** An AuditPort that writes the firm's platform.bypass line first, in the same transaction, then the caller's own line
+ *  (the web-address catch-up, whose lines are written by firm-created.ts). The entries pass through unchanged: their
+ *  literal objects stay where check_case_feed's sweep reads them, at their source. */
+export function touchingAudit<Tx>(inner: AuditPort<Tx>): AuditPort<Tx> {
+  return { record: async (tx, entry) => { await touchFirm(tx, entry.firmId); await inner.record(tx, entry); } };
+}
 /** The same, all or nothing: throws the first failure (the use stops) once every firm has been tried. */
 export async function touchFirms(db: Pick<PrismaClient, "$transaction">, firmIds: Iterable<string>): Promise<void> {
   const { error } = await touchEachFirm(db, firmIds);
