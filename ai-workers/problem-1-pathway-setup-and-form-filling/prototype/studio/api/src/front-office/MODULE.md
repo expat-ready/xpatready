@@ -16,7 +16,7 @@ The firm's front office: public booking and retainer agreements, with their file
 - A self-service token is `<selector>.<verifier>`: looked up by id, verifier checked (FO-3, BR-10).
 - A web-form post makes nothing on a refusal; its answer never says whether the person is known; a stamp not ours asks for a reload (FO-2, AG-2-49).
 - A lead change is seen again under the row's lock; one audit line (entity named literally), the outbox row last (FO-2).
-- Leads follow the one own-versus-all rule (`sales/common.ts` `visibilityOf`, as retainers): all = `agent/prospect:view.all` and "everyone sees all" on, else own; no role override. Take on an unseen lead is the GET 404, except a lead taken from Unassigned within 10 minutes (409 naming who, no id) (FO-2v).
+- Leads follow the one own-versus-all rule (`sales/common.ts` `visibilityOf`, as retainers): all = `agent/prospect:view.all` and "everyone sees all" on, else own; no role override. Take on an unseen lead is the GET 404, except a lead taken from Unassigned within 10 minutes (409 naming who, no id) (FO-2v). Take's race answer reads the latest take/assign audit line (AG-2-86 rule 3); no owner-set column.
 - Rate limits are rolling windows per key, sized for about 100 firms in one process (P-562).
 - Every file belongs to one firm and lives under the firm's own folder (FO-5, contracts §0.3).
 - Platform rules apply: `firmScope` on every table, platform guard on every staff route (P-559).

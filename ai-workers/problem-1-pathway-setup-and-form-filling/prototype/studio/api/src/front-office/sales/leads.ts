@@ -5,6 +5,7 @@ import type { FoLeadState, PrismaClient } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { EVENT, LeadEventPayload, type EventName } from "../../../../ports/events.ts";
 import { Db } from "../../core.ts";
+import { platformAuditWorkspaceId } from "../../platform/audit/audit-event.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import type { FirmCalendar } from "../../platform/complaints/business-days.ts";
 import { forbidden, type StaffContext } from "../../platform/identity/keys.ts";
@@ -202,15 +203,19 @@ export class Leads {
     });
   }
 
-  /** The real race of AG-2-86 rule 3 (FO-2v): the lead's latest owner change (its lead.taken audit line, written in the
-   *  same transaction as the owner) moved it from Unassigned (no owner, or a deactivated one) within RACE_MINUTES. The
-   *  lead stores no owner-set time; the audit line is the record of it (Question for the tech lead on the PR). */
-  private async justTakenFromUnassigned(tx: Tx, id: string, staff: Map<string, Staff>) {
-    const [a] = await tx.$queryRaw<{ previous: string | null }[]>`
-      select detail->>'previousOwnerStaffId' as previous from audit_event
-      where entity = 'fo_lead' and entity_key = ${id} and action = ${EVENT.LEAD_TAKEN} and at > now() - make_interval(mins => ${RACE_MINUTES})
+  /** The real race of AG-2-86 rule 3 (FO-2v; Lead B rev 16.55): the lead's latest take or assign audit line (written in
+   *  the same transaction as the owner change, fail-closed) is under RACE_MINUTES old and moved the lead from Unassigned
+   *  as it was then (`fromUnassigned`, written at the change, so a later deactivation changes nothing). One query under
+   *  the firm's scope (the platform audit workspace and the line's firm), inside the take's transaction and row lock.
+   *  The lead stores no owner-set column: the audit line holds that fact. */
+  private async justTakenFromUnassigned(tx: Tx, firmId: string, id: string) {
+    const workspaceId = await platformAuditWorkspaceId(tx);
+    const [a] = await tx.$queryRaw<{ fromUnassigned: string | null }[]>`
+      select detail->>'fromUnassigned' as "fromUnassigned" from audit_event
+      where workspace_id = ${workspaceId}::uuid and detail->>'firmId' = ${firmId.toLowerCase()} and entity = 'fo_lead' and entity_key = ${id}
+        and action = ${EVENT.LEAD_TAKEN} and at > now() - make_interval(mins => ${RACE_MINUTES})
       order by at desc limit 1`;
-    return !!a && (a.previous === null || staff.get(a.previous)?.status !== "ACTIVE");
+    return a?.fromUnassigned === "true";
   }
 
   /** One lead change: the row locked, then seen (404, or 409 naming the owner), the change, audit, outbox row last. */
@@ -230,13 +235,13 @@ export class Leads {
       const owner = l?.owner_staff_id ? staff.get(l.owner_staff_id) : undefined;
       if (!l) return notFound();
       if (!sees(vis, ctx, activeOf(l.owner_staff_id))) {
-        const race = namesLoser && vis.seesUnassigned && owner?.status === "ACTIVE" && (await this.justTakenFromUnassigned(tx, id, staff));
+        const race = namesLoser && vis.seesUnassigned && owner?.status === "ACTIVE" && (await this.justTakenFromUnassigned(tx, ctx.firmId, id));
         return race ? conflict(`${owner.displayName} already has this lead.`, "ALREADY_TAKEN") : notFound();
       }
       const r = await fn(tx, l, staff);
       await written(tx, this.ports.audit, {
         firmId: ctx.firmId, actor: actorOf(ctx), action, entityKey: id, summary: `Staff ${ctx.staffId} ${r.summary}: ${l.number}.`,
-        detail: { ownerStaffId: r.owner, previousOwnerStaffId: l.owner_staff_id, ...(r.reasonKey ? { reasonKey: r.reasonKey } : {}), ...(r.via ? { via: r.via } : {}) },
+        detail: { ownerStaffId: r.owner, previousOwnerStaffId: l.owner_staff_id, ...(action === EVENT.LEAD_TAKEN ? { fromUnassigned: activeOf(l.owner_staff_id) === null } : {}), ...(r.reasonKey ? { reasonKey: r.reasonKey } : {}), ...(r.via ? { via: r.via } : {}) },
         event: { type, subjectId: id, payload: LeadEventPayload.parse({ leadId: id, personId: l.person_id, door: l.door, state: r.state ?? l.state, ownerStaffId: r.owner, ...(r.reasonKey ? { closeReasonKey: r.reasonKey } : {}) }) },
       });
     });

@@ -105,6 +105,20 @@ try {
   sql(`update audit_event set at = at - interval '11 minutes' where entity = 'fo_lead' and entity_key = '${moved}' and action = 'lead.taken'`);
   await leads.assign(manager.c, moved, { staffId: owner.c.staffId, expectedOwnerStaffId: manager.c.staffId });   // owner to owner, just now
   ok("FO-2v DW3 pass: a lead moved from one owner to another just now (not from Unassigned) → 404, no name", (await refusal(() => leads.take(officer.c, moved)))?.status === 404);
+  // Breaker m1 / review Minor 2: a lead moved owner to owner, then its previous owner deactivated → still 404 (the line
+  // says whether it left Unassigned as it was at the change).
+  const moved2 = lead(manager.c.staffId);
+  await leads.assign(manager.c, moved2, { staffId: viewers.find((v) => v.role === "ADMIN")!.c.staffId, expectedOwnerStaffId: manager.c.staffId });
+  sql(`update platform_staff set status = 'DEACTIVATED' where id = '${manager.c.staffId}'`);
+  const m1 = await refusal(() => leads.take(officer.c, moved2));
+  sql(`update platform_staff set status = 'ACTIVE' where id = '${manager.c.staffId}'`);
+  ok("FO-2v DW3 pass (breaker m1): moved owner to owner, the previous owner deactivated afterwards → 404, no name", m1?.status === 404, m1);
+  // Lead B rev 16.55 condition 3 (review Major 1): a race line in firm B's scope with firm A's lead id is never read.
+  const B = sql(`select id from platform_firm where key = 'sample-solo'`), ws = await platformAuditWorkspaceId(db as never);
+  const forged = owner.own;
+  sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, detail) values (gen_random_uuid(), '${ws}', 'test', 'lead.taken', 'fo_lead', '${forged}', 'forged', '{"firmId": "${B}", "previousOwnerStaffId": null, "fromUnassigned": true}')`);
+  const fb = await refusal(() => leads.take(officer.c, forged));
+  ok("FO-2v DW3 fail (firm B): a take line in firm B's scope naming firm A's lead → 404, firm A's race never reads it", fb?.status === 404 && !JSON.stringify(fb.body).includes("already has"), fb);
   await setAll(true);
   const seen = await refusal(() => leads.take(officer.c, ownersLead));
   ok("FO-2v DW3 pass: with the setting on, a view.all holder who sees the lead hears who has it, with no ownerStaffId", seen?.status === 409 && seen.body.code === "ALREADY_TAKEN" && !("ownerStaffId" in seen.body), seen);
