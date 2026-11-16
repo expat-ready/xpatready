@@ -25,11 +25,10 @@ Rules: RULES.md + DECISIONS **P-626 to P-628** (finish partials first, target 10
 | A88 | 15:5x IST 15 Nov: status, "0 of 10", plan use, fix the board end to end, what needs him | done (board fixed and republished; his three non-urgent asks open); row word for word in `history/STATE-2026-11-15-1605-lead59s2-A88-row-and-board-item.md` |
 | A89 | 16:0x IST 15 Nov: the six founder-start steps (outside accounts) | in progress, Lead 56 drives; steps ticked under "Needs you"; row word for word in `history/STATE-2026-11-15-2115-lead61s2-founder-asks-A89-A92-rows.md` |
 
-| A90-A92 | 18:1x-18:3x IST 15 Nov: lanes and systems, rules enforced, who enforces | answered; A92 steps 1-2 done; rows word for word in `history/STATE-2026-11-15-2115-lead61s2-founder-asks-A89-A92-rows.md` |
-| A93-A99 | 15-16 Nov night asks (portability, recovery, outside items early, board, enforcement, Gmail, qa speed, merge queue) | answered; P-618 to P-620, B192 to B194, registers; rows word for word in `history/STATE-2026-11-16-0055-lead61s2-founder-asks-A93-A99.md` |
-| A100-A105 | 16 Nov night asks (qa lanes, buy-not-build, pipeline, overnight goal; hooks for every rule, seamless staging on AWS, built vs specified vs proven) | answered or in progress (P-621 to P-625; B193 parts 2, 5, 8; two shaping lanes); rows word for word in `history/STATE-2026-11-16-0735-lead63s2-founder-asks-A100-A105.md` |
+| A90-A105 | 15-16 Nov evening and night asks | answered or in progress; rows word for word in `history/STATE-2026-11-16-0925-lead64s2-asks-A90-A105-rows.md` |
 | A106-A108 | 16 Nov morning: clean-up, builders, "finish partials first" (P-626) | done; rows word for word in `history/STATE-2026-11-16-0755-lead64s2-asks-A106-A109.md` |
 | A109 | 07:4x IST 16 Nov: templates and booking, then one final research round (booking/calendar API or open source, cost for 50-100 firms; open-source templates) | two research agents running (Lead 64), reports in the shared notes folder of Lead 63; recommendation next; row word for word in the same history file |
+| A110 | 09:1x IST 16 Nov: every 30-min check reads claude.ai (sign-in asked if needed), all lanes, unblock/clean; make it a hook, the Lead keeps forgetting | done once at 09:2x (FO-7b blocked 114 min answered; #1865 conflict step re-sent; Leads 57, 63 archived); **B197** makes it enforced (script + lead-watch ACT + Stop hook) |
 ## For the founder (P-390)
 F2, F8, F14-F19 closed or ruled; word for word in `history/STATE-2026-11-15-2115-lead61s2-founder-asks-A89-A92-rows.md`.
 
