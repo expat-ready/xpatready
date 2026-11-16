@@ -1044,24 +1044,25 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
                                         previous={"conclusion": nl[1]["conclusion"], "created_at": nl[1]["created_at"]} if len(nl) > 1 else None) if nl else {})
     # Flow box (Lead 69, 16 Nov, P-644): how long jobs wait for a test machine. Queued runs now, and each job's wait from
     # created to started (a job still queued counts its wait so far) for the newest CI_SAMPLE_RUNS runs created in the
-    # last 3 h. Skipped jobs never wait for a machine and are left out.
+    # last 3 h. Skipped jobs, and jobs held for an approval or another job ("waiting", "pending"), are left out.
     try:
         qn = gh.get("/actions/runs?status=queued&per_page=1").get("total_count")
         ipn = gh.get("/actions/runs?status=in_progress&per_page=1").get("total_count")
         since = (NOW - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        rr = gh.get(f"/actions/runs?created=%3E%3D{since}&per_page=100").get("workflow_runs", [])
+        rg = gh.get(f"/actions/runs?created=%3E%3D{since}&per_page=100")
+        rr = rg.get("workflow_runs", [])
         waits = []
         for x in rr[:CI_SAMPLE_RUNS]:
             for j in gh.get(f"/actions/runs/{x['id']}/jobs?per_page=100").get("jobs", []):
                 c, s = parse_iso(j.get("created_at")), parse_iso(j.get("started_at"))
-                if not c or j.get("conclusion") == "skipped":
-                    continue
-                if j.get("status") in ("queued", "waiting", "pending"):
+                if not c or j.get("conclusion") == "skipped" or j.get("status") in ("waiting", "pending", "requested"):
+                    continue                                 # skipped, or held for an approval or a dependency: not a machine wait
+                if j.get("status") == "queued":
                     waits.append({"min": round((NOW - c).total_seconds() / 60, 1), "still_queued": True})
                 elif s:
                     waits.append({"min": round(max(0, (s - c).total_seconds()) / 60, 1), "still_queued": False})
         wj("github/ci_queue.json", {"taken_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"), "queued_runs": qn, "in_progress_runs": ipn,
-                                    "runs_in_3h": len(rr), "runs_sampled": min(len(rr), CI_SAMPLE_RUNS), "job_waits": waits})
+                                    "runs_in_3h": rg.get("total_count", len(rr)), "runs_sampled": min(len(rr), CI_SAMPLE_RUNS), "job_waits": waits})
     except Exception as e:                                   # offline or the API failed: the box says not measured
         wj("github/ci_queue.json", {"error": str(e)[:200]})
     # branches with a push in the last 24 h (GitHub keeps no push time per branch: the head commit's committed date stands in)
@@ -1897,8 +1898,9 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
                 n = int(m.group(1))
                 if prev_line.get(n) != line:
                     qa_tested_at[n], prev_line[n] = h["date"], line
-    # Flow box (P-644): when each R1 row's current run of Works began on main. A row whose R1 line read Works the first
-    # time it was listed (the table grew to 101 rows with rows proven in M2/M3) was not proven that day: no date.
+    # Flow box (P-644): when each R1 row's current run of Works began on main (versions that do not list the row are
+    # skipped). A row that read Works in every version listing it (the table grew to 101 rows with rows proven in M2/M3)
+    # was not proven on any of those days: no date.
     r1_works_since, r1_seen_other = {}, set()
     for h in hist_caps:
         for k, v in parse_caps(h.get("text") or "").items():
@@ -2890,18 +2892,34 @@ def flow_counts(rows, r1_qa, part_at, parts_total, works_since, now):
     oldest = max(((now - b_at[m]).total_seconds() / 3600 for m in waiting if m in b_at), default=None)
     left = parts_total - len(p_at)
     pd = per_day(p_at)
+    wd = per_day(w_at.values())
+    to_prove = len(planned) - len(proven)
+    no_qa = not any(m in r1_qa for m in planned)            # qa's file missing or without R1 rows: Prove is not measured
 
-    def eta(rate):
+    def build_eta(rate):                                  # the day every Release 1 id has merged, plus the built-to-proven lag
         if left <= 0:
-            return today.isoformat()
-        if not rate:
-            return None
-        return (today + timedelta(days=math.ceil(left / rate) + math.ceil((lag_h or 0) / 24))).isoformat()
+            return today
+        return today + timedelta(days=math.ceil(left / rate - 1e-9) + math.ceil((lag_h or 0) / 24)) if rate else None
+
+    def prove_eta(rate):                                  # the day qa has proven every row left, at its own rate
+        if to_prove <= 0:
+            return today
+        return today + timedelta(days=math.ceil(to_prove / rate - 1e-9)) if rate else None
+
+    def eta(b_rate, p_rate):                              # all 101 proven: the later of the two (review 16 Nov, M1)
+        b, p = build_eta(b_rate), prove_eta(p_rate)
+        return None if no_qa or b is None or p is None else max(b, p).isoformat()
+    nq = (lambda v: None if no_qa else v)
     return {"flow_rows_built_24h": in24(b_at.values()), "flow_rows_built_3d": per_day(b_at.values()),
             "flow_parts_24h": in24(p_at), "flow_parts_3d": pd, "flow_parts_left": left,
-            "flow_works_24h": in24(w_at.values()), "flow_works_3d": per_day(w_at.values()),
-            "flow_prove_lag_h": lag_h, "flow_awaiting": len(waiting), "flow_awaiting_oldest_h": round(oldest, 1) if oldest is not None else None,
-            "flow_forecast": eta(sum(pd) / 3), "flow_forecast_best": eta(max(pd)), "flow_forecast_worst": eta(min(pd)),
+            "flow_works_24h": nq(in24(w_at.values())), "flow_works_3d": nq(wd),
+            "flow_prove_lag_h": nq(lag_h), "flow_awaiting": nq(len(waiting)),
+            "flow_awaiting_oldest_h": nq(round(oldest, 1) if oldest is not None else None),
+            "flow_forecast": eta(sum(pd) / 3, sum(wd) / 3), "flow_forecast_best": eta(max(pd), max(wd)),
+            "flow_forecast_worst": eta(min(pd), min(wd)),
+            "build_done": (lambda x: x.isoformat() if x else None)(build_eta(sum(pd) / 3)),
+            "prove_done": None if no_qa else (lambda x: x.isoformat() if x else None)(prove_eta(sum(wd) / 3)),
+            "to_prove": to_prove, "no_qa": no_qa,
             "days": [d.isoformat() for d in days], "today": today.isoformat(), "waiting": waiting,
             "today_counts": {"rows": sum(1 for t in b_at.values() if t.astimezone(IST).date() == today),
                              "parts": sum(1 for t in p_at if t.astimezone(IST).date() == today),
@@ -2911,9 +2929,12 @@ def flow_counts(rows, r1_qa, part_at, parts_total, works_since, now):
 
 
 def flow_light(*states):
-    """The worst of the states; a light with nothing measured is grey."""
+    """The worst of the states; grey when nothing is measured; never green while a part is not measured (amber)."""
     s = [x for x in states if x]
-    return "red" if "red" in s else "amber" if "amber" in s else "green" if "green" in s else "grey"
+    if not s:
+        return "grey"
+    w = "red" if "red" in s else "amber" if "amber" in s else "green"
+    return "amber" if w == "green" and len(s) < len(states) else w
 
 
 def flow_band(v, green, amber, low_good=True):
@@ -2939,7 +2960,7 @@ def flow_box(d, fc, li, li_src, ci):
     b24 = fc["flow_rows_built_24h"]
     build = {"name": "Build", "light": flow_band(b24, FLOW_TARGET, FLOW_FLOOR, low_good=False),
              "big": f"{b24} rows built in 24 h", "target": f"target {FLOW_TARGET} a day, floor {FLOW_FLOOR}",
-             "lines": [f"Parts merged in 24 h: {fc['flow_parts_24h']}; {fc['flow_parts_left']} of {fc['parts_total']} parts left",
+             "lines": [f"Parts merged in 24 h: {fc['flow_parts_24h']}; {fc['flow_parts_left']} of {fc['parts_total']} parts left (a part is one Release 1 id; an id split into sub-parts counts when its last one merges)",
                        "Rows built a day: " + trend(fc["flow_rows_built_3d"], "rows"),
                        "Parts merged a day: " + trend(fc["flow_parts_3d"], "parts")],
              "maps": fc["built_24h_maps"],
@@ -2947,13 +2968,13 @@ def flow_box(d, fc, li, li_src, ci):
                     "whose last needed part merged; " + snap_src}
     # 2 Prove
     w24, lag, aw, old = fc["flow_works_24h"], fc["flow_prove_lag_h"], fc["flow_awaiting"], fc["flow_awaiting_oldest_h"]
-    pc = flow_band(w24, FLOW_TARGET, FLOW_FLOOR, low_good=False)
+    pc = flow_band(w24, FLOW_TARGET, FLOW_FLOOR, low_good=False)     # None (grey) when qa's file has no R1 rows
     if pc == "green" and ((lag is not None and lag > FLOW_PROVE_H) or (old is not None and old > FLOW_PROVE_H)):
         pc = "amber"
-    prove = {"name": "Prove", "light": pc, "big": f"{w24} rows proven in 24 h", "target": f"target {FLOW_TARGET} a day, floor {FLOW_FLOOR}; built to proven under {FLOW_PROVE_H} h",
+    prove = {"name": "Prove", "light": pc or "grey", "big": (f"{w24} rows proven in 24 h" if w24 is not None else "not measured: qa's file has no Release 1 rows"), "target": f"target {FLOW_TARGET} a day, floor {FLOW_FLOOR}; built to proven under {FLOW_PROVE_H} h",
              "lines": [("Built to proven: median " + (f"{lag} h" if lag is not None else "not measured") + f" (n={fc['lag_n']}, rows proven in the last 7 days)"),
-                       f"Built, waiting for qa: {aw}" + (f"; oldest {old} h" if old is not None else ""),
-                       "Rows proven a day: " + trend(fc["flow_works_3d"], "works")],
+                       f"Built, waiting for qa: {aw if aw is not None else 'not measured'}" + (f"; oldest {old} h" if old is not None else ""),
+                       "Rows proven a day: " + (trend(fc["flow_works_3d"], "works") if fc["flow_works_3d"] is not None else "not measured")],
              "maps": fc["works_24h_maps"],
              "src": "qa/CAPABILITIES.md on main: when each R1 row's current run of Works began (a row listed already reading Works "
                     "has no date); waiting = Built (awaiting qa) as on the first screen; " + snap_src}
@@ -2966,12 +2987,14 @@ def flow_box(d, fc, li, li_src, ci):
     cw = round(statistics.median(ws), 1) if ws else None
     still = sum(1 for w in (cq or {}).get("job_waits") or [] if w.get("still_queued"))
     merge = {"name": "Merge", "light": flow_light(flow_band(mm, *FLOW_MERGE_MIN), flow_band(fp, *FLOW_FAIL_PCT), flow_band(cw, *FLOW_CI_WAIT_MIN)),
-             "big": ("approved to merged " + (f"{mm} min" if mm is not None else "not measured") + (f", p90 {p90}" if p90 is not None else "")),
-             "target": f"median under {FLOW_MERGE_MIN[0]} min; failed batches under {FLOW_FAIL_PCT[0]}%; a test machine within {FLOW_CI_WAIT_MIN[0]} min",
+             "big": ("approved to merged " + (f"{mm} min" if mm is not None else "not measured") + (f", p90 {p90} min" if p90 is not None else "")),
+             "target": f"median {FLOW_MERGE_MIN[0]} min or less; failed batches {FLOW_FAIL_PCT[0]}% or less; a test machine within {FLOW_CI_WAIT_MIN[0]} min",
              "lines": ["Failed merge batches: " + (f"{fp}%" if fp is not None else "not measured"),
                        ("Waiting for a test machine: " + (f"{cq.get('queued_runs')} runs queued now; median job wait {cw} min over the last 3 h "
                         f"({len(ws)} jobs of the newest {cq.get('runs_sampled')} of {cq.get('runs_in_3h')} runs; {still} still waiting)"
-                        if cq and cw is not None else "not measured: " + ((ci or {}).get("error") or "no CI run in the last 3 h")))],
+                        if cq and cw is not None else "not measured: " + (
+                            "this snapshot has no CI reading" if ci is None else ci.get("error") if isinstance(ci, dict) and ci.get("error")
+                            else "no CI run in the last 3 h" if not (cq or {}).get("runs_in_3h") else "no job waited for a machine (all skipped)")))],
              "src": (qw.get("src") or "flow-measure not read") + "; GitHub Actions runs and jobs at the snapshot"}
     # 4 Resources
     lr, ls = (li or {}).get("lanes_running"), (li or {}).get("lane_slots")
@@ -2986,12 +3009,16 @@ def flow_box(d, fc, li, li_src, ci):
                      "Mac disk free: " + (f"{disk} GB" if disk is not None else "not measured")]
            + ([] if share is not None else ["Lanes: not measured: the Lead input has no lanes_running and lane_slots"]),
            "src": (li_src + ": lanes_running, lane_slots, weekly_pct, burn_pct_per_h" if li else "Lead input missing") + "; df on the repository's volume"}
-    fct = fc["flow_forecast"]
-    fl = ("All 101 proven about " + (date.fromisoformat(fct).strftime("%d %b") if fct else "no date (no part merged in the last 3 days)")
-          + " at the last 3 days' build rate" + (f" ({round(sum(fc['flow_parts_3d']) / 3, 1)} parts a day)")
-          + "; best " + (date.fromisoformat(fc["flow_forecast_best"]).strftime("%d %b") if fc["flow_forecast_best"] else "no date")
-          + ", worst " + (date.fromisoformat(fc["flow_forecast_worst"]).strftime("%d %b") if fc["flow_forecast_worst"] else "no date (a day with no part merged)")
-          + (f"; includes {math.ceil(lag / 24)} days from built to proven" if lag else ""))
+    dm = lambda x: date.fromisoformat(x).strftime("%d %b") if x else None
+    fct, b3, w3 = fc["flow_forecast"], fc["flow_parts_3d"], fc["flow_works_3d"]
+    if fc["no_qa"]:
+        fl = "All 101 proven: not measured (qa's file has no Release 1 rows)"
+    else:
+        fl = ("All 101 proven about " + (dm(fct) or "no date at the last 3 days' rates (no part merged or no row proven)")
+              + f": the later of all parts merged about {dm(fc['build_done']) or 'no date'} ({round(sum(b3) / 3, 1)} parts a day"
+              + (f", plus {math.ceil(lag / 24)} days from built to proven" if lag else "") + ")"
+              + f" and {fc['to_prove']} rows proven about {dm(fc['prove_done']) or 'no date'} ({round(sum(w3) / 3, 1)} rows a day)"
+              + "; best " + (dm(fc["flow_forecast_best"]) or "no date") + ", worst " + (dm(fc["flow_forecast_worst"]) or "no date (a day with nothing merged or proven)"))
     return {"lights": [build, prove, merge, res], "forecast": fl, "src": "FORMULAS.md › Flow"}
 
 

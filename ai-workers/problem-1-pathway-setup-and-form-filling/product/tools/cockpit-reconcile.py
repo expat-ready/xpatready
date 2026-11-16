@@ -594,21 +594,23 @@ def flow_numbers(N, snap, now, today, rows, backlog, app_merged_at, cap_text, mi
     Windows: (taken_at - 24 h, taken_at], and the 3 IST days before today (oldest first).
     built_at of a row: shaped, at least one part, every part a BACKLOG id with a merge time; the latest of them.
     Release 1 ids: the distinct parts of every Build row; an id is merged at app_merged_at (P-639 rule).
-    qa's verdict: the R1.n rows of qa/CAPABILITIES.md on main now; its history git/capabilities_main.
-    works since: the first version of the current run of Works whose previous version listed the row not reading Works
-    (a row first listed already reading Works has no date). qa tested at: the last version whose R1.n line text changed.
-    waiting: rows with a built_at, not reading Works now, unless qa's line last changed at or after built_at and reads
-    Partial or Not built. Prove lag: median hours built_at -> works since, rows proven within 7 days with works since
-    at or after built_at. Forecast: today + ceil(parts left / rate) + ceil(lag / 24) days; rate = the 3 days' mean
-    (forecast), their highest (best), their lowest (worst); no rate -> null; nothing left -> today."""
-    if missing or cap_text is None:
-        why = "not measured: %s missing from the snapshot" % (", ".join(missing) if missing else "qa/CAPABILITIES.md")
+    qa: the R1.n rows of qa/CAPABILITIES.md on main now, and each row's own status series over git/capabilities_main.
+    A row proven now has a "since" time when its series (only the versions that list it), read backwards from now, holds
+    Works back to a version whose predecessor read something else; that version's time is "since". Listed already Works
+    in every version: no since.
+    tested: the last version in which the row's line text differs from the version before it (or its first version).
+    waiting: rows with a built_at, not reading Works now, unless qa's status reads Partial or Not built and tested is at
+    or after built_at. Prove lag: median hours built_at -> since, rows whose since is within 7 days and at or after
+    built_at. Forecast: the later of (a) today + ceil(ids left / build rate) + ceil(lag / 24) days and (b) today +
+    ceil(rows not proven / prove rate) days; rates = the 3 days' mean, highest (best) or lowest (worst) of ids merged
+    and of rows proven; a rate of 0 -> no date; none left -> today. Build counts need no qa file; Prove counts and the
+    forecast are not measured when qa's file has no R1 row of the checklist."""
+    if missing:
         for k in FLOW_NAMES:
-            N[k] = num(None, why)
+            N[k] = num(None, "not measured: %s missing from the snapshot" % ", ".join(missing))
         return
     days = [today - dt.timedelta(days=k) for k in (3, 2, 1)]
     cut = now - dt.timedelta(hours=24)
-    caps_now = {int(k[3:]): v[1] for k, v in parse_capabilities(cap_text).items() if re.fullmatch(r"R1\.\d+", k)}
     maps = []
     for r in rows:
         try:
@@ -624,75 +626,93 @@ def flow_numbers(N, snap, now, today, rows, backlog, app_merged_at, cap_text, mi
             built_at[m] = max(ts)
     ids = sorted({x for _, r in maps for x in r["parts"]})
     id_at = [t for t in (app_merged_at(x) for x in ids) if t]
-    hist = []
+    left = len(ids) - len(id_at)
+    count_days = lambda xs: [len([t for t in xs if ist_day(t) == d]) for d in days]
+    window = lambda xs: len([t for t in xs if cut < t <= now])
+    src = "Flow (FORMULAS.md): "
+    N["flow_rows_built_24h"] = num(window(built_at.values()), src + "rows whose last part merged in the 24 h",
+                                   detail=sorted(m for m, t in built_at.items() if cut < t <= now))
+    N["flow_rows_built_3d"] = num(count_days(built_at.values()), src + "rows built on each of the 3 days")
+    N["flow_parts_24h"] = num(window(id_at), src + "Release 1 ids merged in the 24 h")
+    ids_days = count_days(id_at)
+    N["flow_parts_3d"] = num(ids_days, src + "Release 1 ids merged on each of the 3 days")
+    N["flow_parts_left"] = num(left, src + "Release 1 ids not merged (%d ids)" % len(ids))
+    caps_now = {int(k[3:]): v[1] for k, v in parse_capabilities(cap_text).items() if re.fullmatch(r"R1\.\d+", k)} if cap_text else {}
+    mine = {m for m, _ in maps}
+    prove_keys = ("flow_works_24h", "flow_works_3d", "flow_prove_lag_h", "flow_awaiting", "flow_awaiting_oldest_h",
+                  "flow_forecast", "flow_forecast_best", "flow_forecast_worst")
+    if not (mine & set(caps_now)):
+        for k in prove_keys:
+            N[k] = num(None, "not measured: qa's file has no Release 1 row of the checklist")
+        return
+    versions = []
     for ln in (snap.text("git/capabilities_main.jsonl") or "").splitlines():
         if ln.strip():
             e = json.loads(ln)
             t = snap.text("git/capabilities_main/%s.md" % e.get("sha"))
             if t is not None and parse_ts(e.get("date")):
-                hist.append((parse_ts(e["date"]), t))
-    hist.sort(key=lambda x: x[0])
-    since, other, tested, line_was = {}, set(), {}, {}
-    for when, t in hist:
-        for k, v in parse_capabilities(t).items():
-            if not re.fullmatch(r"R1\.\d+", k):
-                continue
-            m = int(k[3:])
-            if reads_works(v[1]):
-                if m in other and m not in since:
-                    since[m] = when
-            else:
-                other.add(m)
-                since.pop(m, None)
+                versions.append((parse_ts(e["date"]), t))
+    versions.sort(key=lambda x: x[0])
+    series = {}                                  # map -> [(time, status or None when not listed, line text)]
+    for when, t in versions:
+        st = {int(k[3:]): v[1] for k, v in parse_capabilities(t).items() if re.fullmatch(r"R1\.\d+", k)}
+        lines = {}
         for ln in t.splitlines():
             g = re.match(r"^\|\s*\**R1\.(\d+)\**\s*\|", ln)
             if g:
-                m = int(g.group(1))
-                if line_was.get(m) != ln:
-                    tested[m], line_was[m] = when, ln
-    proven = {m for m, s in caps_now.items() if reads_works(s)}
-    works = {m: since[m] for m in proven if m in since}
+                lines[int(g.group(1))] = ln
+        for m in mine:
+            if m in st:                           # a version that does not list the row is skipped
+                series.setdefault(m, []).append((when, st[m], lines.get(m)))
+    proven = {m for m in mine if reads_works(caps_now.get(m))}
+    since, tested = {}, {}
+    for m in mine:
+        ser = series.get(m, [])
+        i = len(ser) - 1
+        while i >= 0 and reads_works(ser[i][1]):
+            i -= 1                                # back over the run of Works that ends now
+        if m in proven and 0 <= i < len(ser) - 1:
+            since[m] = ser[i + 1][0]              # the run's first version; its predecessor listed the row, not Works
+        listed = [(w, ln) for w, _, ln in ser if ln is not None]
+        for j in range(len(listed) - 1, -1, -1):
+            if j == 0 or listed[j][1] != listed[j - 1][1]:
+                tested[m] = listed[j][0]
+                break
     waiting = sorted(m for m in built_at if m not in proven and not (
         re.match(r"(Partial|Not built)", caps_now.get(m) or "") and m in tested and tested[m] >= built_at[m]))
-
-    def per_day(xs):
-        return [sum(1 for t in xs if ist_day(t) == d) for d in days]
-
-    def in24(xs):
-        return sum(1 for t in xs if cut < t <= now)
-    lag = [(works[m] - built_at[m]).total_seconds() / 3600 for m in works
-           if m in built_at and works[m] >= built_at[m] and now - works[m] <= dt.timedelta(days=7)]
-    lag.sort()
+    hrs = sorted((since[m] - built_at[m]).total_seconds() / 3600 for m in since
+                 if m in built_at and since[m] >= built_at[m] and now - since[m] <= dt.timedelta(days=7))
     lag_h = None
-    if lag:
-        k = len(lag)
-        lag_h = round(lag[k // 2] if k % 2 else (lag[k // 2 - 1] + lag[k // 2]) / 2, 1)
-    left = len(ids) - len(id_at)
-    pd = per_day(id_at)
+    if hrs:
+        mid = len(hrs) // 2
+        lag_h = round(hrs[mid] if len(hrs) % 2 else (hrs[mid - 1] + hrs[mid]) / 2, 1)
+    works_days = count_days(since.values())
+    not_proven = len(mine) - len(proven)
 
-    def eta(rate):
-        if left <= 0:
-            return today.isoformat()
-        if not rate:
+    def done_by(n_left, rate, extra):     # day-by-day: the first day the cumulative rate covers what is left
+        if n_left <= 0:
+            return today
+        if rate <= 0:
             return None
-        return (today + dt.timedelta(days=math.ceil(left / rate) + math.ceil((lag_h or 0) / 24))).isoformat()
+        k = 0
+        while k * rate < n_left - 1e-9:
+            k += 1
+        return today + dt.timedelta(days=k + extra)
+
+    def forecast(b_rate, p_rate):
+        extra = 0 if lag_h is None else -(-lag_h // 24)
+        a, b = done_by(left, b_rate, int(extra)), done_by(not_proven, p_rate, 0)
+        return None if a is None or b is None else (a if a > b else b).isoformat()
     old = [(now - built_at[m]).total_seconds() / 3600 for m in waiting]
-    src = "Flow (FORMULAS.md): "
-    N["flow_rows_built_24h"] = num(in24(built_at.values()), src + "rows whose last part merged in the 24 h",
-                                   detail=sorted(m for m, t in built_at.items() if cut < t <= now))
-    N["flow_rows_built_3d"] = num(per_day(built_at.values()), src + "rows built on each of the 3 days")
-    N["flow_parts_24h"] = num(in24(id_at), src + "Release 1 ids merged in the 24 h")
-    N["flow_parts_3d"] = num(pd, src + "Release 1 ids merged on each of the 3 days")
-    N["flow_parts_left"] = num(left, src + "Release 1 ids not merged (%d ids)" % len(ids))
-    N["flow_works_24h"] = num(in24(works.values()), src + "rows whose run of Works began in the 24 h",
-                              detail=sorted(m for m, t in works.items() if cut < t <= now))
-    N["flow_works_3d"] = num(per_day(works.values()), src + "rows proven on each of the 3 days")
-    N["flow_prove_lag_h"] = num(lag_h, src + "median built -> works hours, n=%d" % len(lag))
+    N["flow_works_24h"] = num(window(since.values()), src + "rows whose run of Works began in the 24 h",
+                              detail=sorted(m for m, t in since.items() if cut < t <= now))
+    N["flow_works_3d"] = num(works_days, src + "rows proven on each of the 3 days")
+    N["flow_prove_lag_h"] = num(lag_h, src + "median built -> works hours, n=%d" % len(hrs))
     N["flow_awaiting"] = num(len(waiting), src + "built, waiting for qa", detail=waiting)
     N["flow_awaiting_oldest_h"] = num(round(max(old), 1) if old else None, src + "oldest waiting row's hours since built")
-    N["flow_forecast"] = num(eta(sum(pd) / 3), src + "at the 3 days' mean rate")
-    N["flow_forecast_best"] = num(eta(max(pd)), src + "at the 3 days' highest rate")
-    N["flow_forecast_worst"] = num(eta(min(pd)), src + "at the 3 days' lowest rate")
+    N["flow_forecast"] = num(forecast(sum(ids_days) / 3, sum(works_days) / 3), src + "at the 3 days' mean rates")
+    N["flow_forecast_best"] = num(forecast(max(ids_days), max(works_days)), src + "at the 3 days' highest rates")
+    N["flow_forecast_worst"] = num(forecast(min(ids_days), min(works_days)), src + "at the 3 days' lowest rates")
 
 
 # ---------------------------------------------------------------- main computation
