@@ -19,3 +19,4 @@ Loop: every 20 minutes read `git log origin/main` for new merges; when a merge c
 | 16 Nov 12:4x | b1161b4df | #1921 FO-3w part 1, #1933 FO-2v, #1919 PF-Le (+ records) | none: R1.40 still waits on J-38 | baseline |
 | 16 Nov 13:0x | 3b08111de (07:16Z batch) | #1928, #1931 (qa records), #1935, #1940 (records); no app code | none | wait; #1945, #1951, #1956, #1957, #1959, #1961 still open |
 | 16 Nov 13:2x | 3b08111de | none | none | wait |
+| 16 Nov 13:5x | c0896290d | #1910 PF-12 database walls (map row 3, not a watched row), #1944 (records) | none | wait; PF-12 touches every table: regression left to its merge batch CI and gate B (brief: re-test only completed rows) |
