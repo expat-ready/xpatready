@@ -321,3 +321,19 @@ What it fixes:
 - Round 3's findings stand unchanged (r3-m1: the PR body should name the gate and this head's result lines before the label; r3-m2: follow-up).
 
 **Verdict: Approve** for `b74860dd381b98f1c17a2d828e872e4562edab00`: no open Blocker or Major. Before asking for the label: r3-m1, and r4-m2 as a line in PR question 2. r4-m1 is recommended.
+
+---
+
+# Round 5: diff-only re-review at c95ba35ed (P-277)
+
+Verdict: Approve
+
+Since the Approve at b74860dd3 there are two commits: a49b7a78d (records only) and c95ba35ed (a merge of origin/main, FO-3m #1831).
+
+- **PF-12's own lines are unchanged.** PF-12's net diff against main is identical, line for line, before the merge (`merge-base…b74860dd3`) and after it (`main parent → c95ba35ed`): the same files and the same added and removed lines.
+- **The merge resolution is right.** `front-office/MODULE.md` keeps both invariant lines: PF-12's walls line and FO-3m's attendance-question line. The tests list takes main's version, which adds `check_fo3m_answers.ts`.
+- **Main brought nothing new to wall.** There is no new migration; PF-12's stamp is still the newest. There is no new table, trigger or public door. FO-3m's code changes are a staff route behind the guard, so it already runs as the session's firm, plus a job that now makes fewer walled reads.
+- **The PR body is now final.** It names the gate `0_pf12_firm_first` and the three functions (r3-m1), shows this head's 98/0, carries r4-m2 in question 2, and has r4-m1 as question 9.
+- **Runs:** at c95ba35ed (studio folder identical at HEAD), `check_pf12_walls` 98/0 and `check_fo3m_answers` 14/0. The builder reports `check_fo3_booking`, `check_pf19b_mail` and `check_pf23w_jobs_wired` green.
+
+**Verdict: Approve** for `c95ba35ed72afc14b941ee63492b949612ce4732`: no open Blocker or Major. r3-m2 and r4-m1 remain follow-ups, recorded in the PR.
