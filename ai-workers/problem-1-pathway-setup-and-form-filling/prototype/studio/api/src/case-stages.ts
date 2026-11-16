@@ -16,7 +16,7 @@ import type { Snapshot } from "../../engine/snapshot.ts";
 import { systemClock, type ClockPort } from "../../ports/clock.ts";
 import { actorOf, Audit, CaseRead, Db, fail, type Actor } from "./core.ts";
 import { dayMark, localDate, NO_SUCH_DATE, readFirmCalendar, type FirmCalendar } from "./platform/calendar/working-days.ts";
-import { currentFirm } from "./platform/firm-scope.ts";
+import { asBypass, BypassRefused, currentFirm, withFirm } from "./platform/firm-scope.ts";
 import { Programs } from "./programs.ts";
 import { readSpec } from "./routes-data.ts";
 import { Runtime, STAGE_RECORD, type Reached } from "./runtime.ts";
@@ -56,8 +56,8 @@ async function writeSameEveryStage(tx: Tx, c: Reached, snap: Snapshot, defs: { f
 
 /** CS-DL1 part 1 (AG-7-94 r1-r3): a deadline as the case shows it: the calendar date the rule gives, never moved, with
  *  its weekday, a mark when it falls on a weekend or a day the firm is closed, and Missed once it is before today in the
- *  firm's zone. Added to the contract's deadline (fields only added). */
-export type DeadlineShown = NonNullable<CaseStageView["deadline"]> & { weekday: string | null; mark: "weekend" | "closed day" | null; shown: string | null; missed: boolean };
+ *  firm's zone (the contract's optional fields, always set here). */
+export type DeadlineShown = Required<NonNullable<CaseStageView["deadline"]>>;
 export function showDeadline(d: CaseStageView["deadline"], cal: FirmCalendar, today: string): DeadlineShown | null {
   if (!d) return null;
   const day = d.due ? (() => { try { return dayMark(d.due, cal); } catch (e) { if (e instanceof RangeError && e.message === NO_SUCH_DATE) return null; throw e; } })() : null;
@@ -71,9 +71,20 @@ export function showDeadline(d: CaseStageView["deadline"], cal: FirmCalendar, to
  *  today in its zone from the clock port (P-607). A request with no platform firm in scope (x-actor) reads no setting, so
  *  the settings' defaults apply (Mon-Fri 09:00-17:00, no closed days, America/Toronto); the firm is never looked up
  *  across the wall. */
-export async function deadlineDay(db: Parameters<typeof readFirmCalendar>[0], clock: ClockPort): Promise<{ cal: FirmCalendar; today: string }> {
-  const cal = await readFirmCalendar(db, currentFirm() ?? NO_ID);
+export async function deadlineDay(db: Db, clock: ClockPort, firmKey?: string): Promise<{ cal: FirmCalendar; today: string }> {
+  const cal = await (currentFirm() ? readFirmCalendar(db, currentFirm()!) : firmKey ? caseFirmCalendar(db, firmKey) : readFirmCalendar(db, NO_ID));
   return { cal, today: localDate(cal.zone, clock.now()) };
+}
+/** Build Lead C's ruling on #2000 (Q1): the case's own firm's calendar on the GET stage routes, through the one named use
+ *  "case.stages.calendar" (firm-scope.ts): find the platform firm by the case's key, then read its three calendar
+ *  settings as that firm. Anywhere else (a write route, a suite with no request) the use is refused before any query, and
+ *  a firm that cannot be found gives the defaults, never another firm's calendar. CS-W3 part 1 replaces this. */
+async function caseFirmCalendar(db: Db, firmKey: string): Promise<FirmCalendar> {
+  try {
+    const firm = await asBypass("case.stages.calendar", () => db.platformFirm.findUnique({ where: { key: firmKey }, select: { id: true } }));
+    if (firm) return await withFirm(firm.id, () => readFirmCalendar(db, firm.id));
+  } catch (e) { if (!(e instanceof BypassRefused)) throw e; }
+  return readFirmCalendar(db, NO_ID);
 }
 
 @Injectable()
@@ -99,7 +110,7 @@ export class CaseStagesService {
     const labels = new Map((await this.db.combination.findMany({ where: { id: { in: c.stages.map((s) => s.combinationId) } }, select: { id: true, label: true } })).map((x) => [x.id, x.label]));
     const all = c.stages.map((s) => ({ stage_key: s.stageKey, staff_name: s.staffName, key_details: s.keyDetails as Record<string, StoredDetail>, defs: readSpec(s.spec).key_details }));
     const { next } = nextOf(c.stages.map((s) => ({ ...s, stage_key: s.stageKey, state: s.state as StageState })));
-    const { cal, today } = await deadlineDay(this.db, this.clock);
+    const { cal, today } = await deadlineDay(this.db, this.clock, c.firmKey);
     return Promise.all(c.stages.map(async (s): Promise<CaseStageView> => {
       const spec = readSpec(s.spec), stored = s.keyDetails as Record<string, StoredDetail>;
       const why = s.state === "NOT_STARTED" ? (await this.startability(s.combinationId)).why : null;

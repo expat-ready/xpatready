@@ -23,7 +23,7 @@ The runtime: a client's case on a released combination, from answers to a record
 - A case is OPEN or CLOSED; a decision needs a recorded submission, `case_decision` is insert-only, close and reopen need a reason and write `case.closed`/`case.reopened` in the same transaction (CS-C1a; AG-7-33, -34, -13, -50).
 
 **Tables.** case, caseParticipant, caseTeamMember, clientCanonicalAnswer, filing, filingItem, formInstance, caseDocument, answerCheck, reviewRoundFiling, reviewFinding, personLink, caseDecision, moduleEvent, auditEvent.
-**Tests.** `tests/check_c76_readiness.ts`, `tests/check_c65_document_rules.ts`, `tests/check_m3s4_never_waivable.ts`, `tests/check_c95_release_update.ts`, `tests/check_c81_signing.ts`, `tests/check_a24_case_number_api.ts`, `tests/check_csc1_close.ts`, `tests/check_csdl1_deadlines.ts`.
+**Tests.** `tests/check_c76_readiness.ts`, `tests/check_c65_document_rules.ts`, `tests/check_m3s4_never_waivable.ts`, `tests/check_c95_release_update.ts`, `tests/check_c81_signing.ts`, `tests/check_a24_case_number_api.ts`, `tests/check_csc1_close.ts`, `tests/check_csdl1_deadlines.ts`, `tests/check_csdl1_deadlines_browser.ts`.
 
 **Do not.**
 - Read the newest release from a case route.
