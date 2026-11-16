@@ -163,3 +163,34 @@ No new finding in the diff.
 **Journey score (reviewer), re-scored:** correct data rises to 1, so **7.5/10**. That is still below 8, held back by the two Minors and the N/A halves. Under P-26 it does not block, since no Blocker or Major is open.
 
 Verdict: Approve b302fe3df71e775e3e76346b92c36938e0ebcca7
+
+## Re-review (P-277), 16 Nov: `fd95b3c..7151e4e103016248224237486225ab5f702cf8bb`, the diff only
+The diff touches the migration's CHECK (+1/-1) and `check_pf21i_idempotent.ts` (+10).
+
+**Devin's finding was real, and I missed it in my first review.**
+* The old populated branch was `request_key ~ … AND request_hash ~ …`. With one column NULL, that expression is NULL, and a CHECK accepts NULL.
+* So an INSERT of a key without its hash, or a hash without its key, passed `plat_complaint_request_shape`.
+* The trigger covers only UPDATE, so nothing else stopped it.
+* My first review cited "the check" as holding, but its test (`check_pf21i:105`) tried that pair only as an UPDATE, which the trigger refuses first.
+
+**The fix is correct.** Requiring `IS NOT NULL` on both columns makes the populated branch false, never NULL, for a half-filled pair.
+
+**The new DW6 insert lines:**
+* They refuse both half-NULL pairs on INSERT.
+* They accept both-NULL and a full pair. That accept test ends in ROLLBACK, so it proves the CHECK accepts the pair, not the deferred event trigger.
+* **Fail-first, checked by me:** I put fd95b3c's migration under 7151e4e's test in a scratch worktree. The result was 29/30, with only "DW6 fail (insert)" red. The worktree is removed.
+
+**Re-run on 7151e4e, all exit 0:**
+
+| Suite | Result |
+|---|---|
+| `check_pf21i_idempotent` | 30/0 |
+| `check_pf12_walls` | 100/0 |
+| `check_pf3_platform_schema` | 75/0 |
+| `check_pf21_complaints` | 107/0 |
+
+**Note:** the migration file was edited in place. That is fine, because it is not on `main`. Any local copy that already applied the earlier version needs a reset, since Prisma would see a changed checksum.
+
+**Still open:** the Minors m1, m2 and m3 as listed. No new finding.
+
+Verdict: Approve 7151e4e103016248224237486225ab5f702cf8bb
