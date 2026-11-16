@@ -1,5 +1,6 @@
-// PF-6m (QA-478; PF-6b ruling 2 (b)): the one money-keys audit line, written by every door that hands out roles: the
-// role-change door (service.ts) and the invitation accept (session/service.ts), so the two can never differ again. It
+// PF-6m (QA-478; PF-6b ruling 2 (b)): the one money-keys audit line, written by the two doors that give staff roles: the
+// role-change door (service.ts) and the invitation accept (session/service.ts), so the two can never differ again (firm
+// signup's first Owner writes none: a question on PR #1945, break F4). It
 // names only the roles that bring a money key (break m2) and the key names only, and is written in the caller's
 // transaction (a failed line, or a later refusal, rolls the whole change back).
 import type { Prisma } from "@prisma/client";

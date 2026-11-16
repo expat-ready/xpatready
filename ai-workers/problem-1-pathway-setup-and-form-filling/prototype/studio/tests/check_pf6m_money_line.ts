@@ -48,6 +48,7 @@ const { PlatformSession } = await import("../api/src/platform/identity/session/s
 const { PlatformSessionController, PublicInvitationController } = await import("../api/src/platform/identity/session/routes.ts");
 const { moneyKeysOfRoles } = await import("../api/src/platform/identity/catalogue.ts");
 const { MONEY_KEYS_GRANTED } = await import("../api/src/platform/identity/money-line.ts");
+const { platformAuditWorkspaceId } = await import("../api/src/platform/identity/audit.ts");
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 const clock = new (class extends PlatformClock { t = Date.now(); override now() { return this.t; } })();
@@ -64,6 +65,13 @@ try {
   @Module({ controllers: [PlatformIdentityController, PlatformSessionController, PublicInvitationController] as never[], providers: providers as never[] }) class TestApp {}
   const nest = await NestFactory.create(TestApp, { logger: false }); await nest.listen(0, "127.0.0.1"); app = nest;
   const base = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}`;
+
+  // Break F2: the money line now reaches the accept through identity/audit.ts, so its audit-workspace maker must be the
+  // race-safe one: two first writers at once (no row yet) both succeed with the same row, neither fails on the unique key.
+  const absent = sql(`select count(*) from workspace where key = 'platform-audit'`) === "0";
+  const firsts = await Promise.allSettled([1, 2].map(() => db.$transaction(async (tx) => { const id = await platformAuditWorkspaceId(tx); await tx.$executeRaw`select pg_sleep(0.3)`; return id; })));
+  ok("PF-6m break F2 fail→pass: two first audit writers in parallel (no platform-audit row yet) both succeed on one row, never a unique-key failure",
+    absent && firsts.every((f) => f.status === "fulfilled") && new Set(firsts.map((f) => (f as PromiseFulfilledResult<string>).value)).size === 1 && sql(`select count(*) from workspace where key = 'platform-audit'`) === "1", { absent, firsts: firsts.map((f) => f.status === "rejected" ? String(f.reason).slice(0, 120) : f.value) });
 
   await seedSampleFirms(db);
   const FIRM_A = sql(`select id from platform_firm where key = 'sample-firm'`), R = sql(`select id from platform_staff where actor_id = 'user-R'`), O = sql(`select id from platform_staff where actor_id = 'user-O'`);
