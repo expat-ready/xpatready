@@ -94,10 +94,10 @@ try {
   ok("PF-6m DW1 fail: accepting a Read-only invitation writes no money-keys line", ro.status === 200 && linesOf(ro.body.staffId).length === 0, ro.body);
 
   // ---------------------------------------------------------------------- DW2: a refused provider call rolls back
-  const before = allLines(); refuseFor = "refused.person@example.com";
+  const before = allLines(), grantsBefore = sql(`select count(*) from platform_role_grant`); refuseFor = "refused.person@example.com";
   const refused = await accept(invite(refuseFor, ["BILLING_FINANCE"])); refuseFor = "";
   ok("PF-6m DW2 fail: a refused provider call fails the accept and leaves no money line, no staff row, no role grant, the invitation unused",
-    refused.status >= 500 && allLines() === before && sql(`select count(*) from platform_staff where email = 'refused.person@example.com'`) === "0"
+    refused.status >= 500 && allLines() === before && sql(`select count(*) from platform_staff where email = 'refused.person@example.com'`) === "0" && sql(`select count(*) from platform_role_grant`) === grantsBefore
     && sql(`select count(*) from platform_invitation where email = 'refused.person@example.com' and accepted_at is null`) === "1", { status: refused.status, before, after: allLines() });
   const retried = await accept(invite("refused.later@example.com", ["BILLING_FINANCE"]));
   ok("PF-6m DW2 pass: once the provider answers, the same kind of accept commits with its one money line", retried.status === 200 && linesOf(retried.body.staffId).length === 1 && allLines() === before + 1, retried.body);
