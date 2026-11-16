@@ -32,3 +32,5 @@
 * R1.4 is **Partial** on finding 1 (Gap, Major) alone. The walls, the no-firm fail case, the session-only firm and the named list hold.
 * Send finding 1 to Lead B with its expected behaviour. If Lead B or the founder rules the doors log-only instead, reword R1.4's Done when in the same ruling; do not leave the clause silently unmet.
 * Rule finding 2's wording, and post the second lane's re-run before any Works.
+
+_Logged by qa (16 Nov): finding 1 → **QA-499**, finding 2 → **QA-500** (`qa/BUGS.md`)._
