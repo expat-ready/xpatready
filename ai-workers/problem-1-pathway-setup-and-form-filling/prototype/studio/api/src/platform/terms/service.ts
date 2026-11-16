@@ -7,9 +7,11 @@
 //     until one Owner has, each Owner is asked. A non-Owner is never blocked by them;
 //   * the privacy notice is about each person: every staff member accepts each new version once; one person's
 //     acceptance never clears another's.
-// "New" is measured against when the person (privacy notice) or the firm (firm terms) joined: a version published after
-// that, and not yet accepted, is pending. A version that was already current when the person or firm joined is not
-// asked again by this row (sign-up accepts it for the Owner, PF-5); see the PR's question on invited staff.
+// Pending: the current version of a kind, not accepted (by the person; for firm terms by the firm), when either an older
+// version of that kind was accepted (so this one is new to them: also a version published while a sign-up waited for its
+// email check, break M2), or none was and it was published after the person (privacy notice) or the firm (firm terms)
+// joined. A version already current when a person joined and never accepted is not asked by this row (sign-up accepts
+// it for the Owner, PF-5); see the PR's question on invited staff.
 // "Current" is the newest version of each kind published at or before now (the same rule as PF-5's currentTerms).
 import { Inject, Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
@@ -33,7 +35,8 @@ export const SAMPLE_NOTE = "Wording Sample. Unconfirmed: no counsel.";
 type Row = { id: string; kind: TermsKind; version: string; url: string; published_at: Date };
 const view = (r: Row) => ({ id: r.id, kind: r.kind, version: r.version, url: r.url, publishedAt: r.published_at.toISOString() });
 
-const AcceptBody = z.strictObject({ versionIds: z.array(z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "versionIds: version ids (uuid)")).min(1, "versionIds: at least one version").max(10, "versionIds: at most 10") });
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const AcceptBody = z.strictObject({ versionIds: z.array(z.string().regex(UUID, "versionIds: version ids (uuid)")).min(1, "versionIds: at least one version").max(10, "versionIds: at most 10") });
 const isOwner = (s: StaffContext) => s.roles.includes("OWNER");
 
 @Injectable()
@@ -55,8 +58,10 @@ export class PlatformTerms implements TermsGate {
         join platform_staff p on p.id = ${s.staffId}::uuid and p.firm_id = ${firmId}::uuid
         join platform_firm f on f.id = p.firm_id
       where case when c.kind = 'PRIVACY_NOTICE'
-          then c.published_at > p.created_at and not exists (select 1 from platform_terms_acceptance a where a.firm_id = p.firm_id and a.staff_id = p.id and a.version_id = c.id)
-          else ${isOwner(s)} and c.published_at > f.created_at and not exists (select 1 from platform_terms_acceptance a where a.firm_id = f.id and a.version_id = c.id) end
+          then not exists (select 1 from platform_terms_acceptance a where a.firm_id = p.firm_id and a.staff_id = p.id and a.version_id = c.id)
+            and (c.published_at > p.created_at or exists (select 1 from platform_terms_acceptance a join platform_terms_version v on v.id = a.version_id where a.firm_id = p.firm_id and a.staff_id = p.id and v.kind::text = c.kind))
+          else ${isOwner(s)} and not exists (select 1 from platform_terms_acceptance a where a.firm_id = f.id and a.version_id = c.id)
+            and (c.published_at > f.created_at or exists (select 1 from platform_terms_acceptance a join platform_terms_version v on v.id = a.version_id where a.firm_id = f.id and v.kind::text = c.kind)) end
       order by c.kind`;
   }
 
@@ -94,12 +99,20 @@ export class PlatformTerms implements TermsGate {
   }
 
   /** GET /api/platform/terms/acceptances: the firm's acceptances, newest first: who, when and which version. */
-  async acceptances(s: StaffContext) {
-    const rows = await this.db.platformTermsAcceptance.findMany({
-      where: firmScope(s.firmId), orderBy: [{ acceptedAt: "desc" }, { id: "asc" }],
+  async acceptances(s: StaffContext, q: { cursor?: unknown; limit?: unknown } = {}) {
+    const limit = q.limit === undefined ? 50 : Number(q.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) return problem(400, "Check the request", "limit: a whole number from 1 to 200.", { code: "CHECK_FIELDS" });
+    const cursor = q.cursor === undefined || q.cursor === "" ? null : String(q.cursor);
+    if (cursor !== null && !UUID.test(cursor)) return problem(400, "Check the request", "cursor: the nextCursor of the page before.", { code: "CHECK_FIELDS" });
+    const from = cursor ? await this.db.platformTermsAcceptance.findFirst({ where: firmScope(s.firmId, { id: cursor.toLowerCase() }), select: { id: true } }) : null;
+    if (cursor && !from) return problem(400, "Check the request", "cursor: the nextCursor of the page before.", { code: "CHECK_FIELDS" });
+    const page = await this.db.platformTermsAcceptance.findMany({
+      where: firmScope(s.firmId), orderBy: [{ acceptedAt: "desc" }, { id: "asc" }], take: limit + 1, ...(from ? { cursor: { id: from.id }, skip: 1 } : {}),
       include: { staff: { select: { id: true, displayName: true } }, version: { select: { id: true, kind: true, version: true, url: true } } },
     });
+    const rows = page.slice(0, limit);
     return {
+      nextCursor: page.length > limit ? rows[rows.length - 1].id : null,
       acceptances: rows.map((r) => ({ id: r.id, staffId: r.staff.id, staffName: r.staff.displayName, versionId: r.version.id, kind: r.version.kind, version: r.version.version, url: r.version.url, acceptedAt: r.acceptedAt.toISOString(), forFirm: FIRM_KINDS.has(r.version.kind) })),
       note: SAMPLE_NOTE,
     };

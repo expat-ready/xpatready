@@ -1,6 +1,6 @@
 // PF-5t part 1 routes (checklist row 100). Each declares its access (keys.ts); the platform guard does the rest, and lets
 // the two /me/terms routes through while terms are pending (gate.ts TERMS_OPEN_ROUTES).
-import { Body, Controller, Get, HttpCode, Inject, Post, Req } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Inject, Post, Query, Req } from "@nestjs/common";
 import { AnyStaff, PermissionKeys, staffOf, type StaffContext } from "../identity/keys.ts";
 import { PlatformTerms } from "./service.ts";
 
@@ -17,7 +17,7 @@ export class PlatformTermsController {
   @Post("me/terms/accept") @HttpCode(200) @AnyStaff("a person accepts terms; firm terms need an Owner (checked in the service)")
   accept(@Req() r: R, @Body() b: unknown) { return this.t.accept(staffOf(r), b); }
 
-  /** The firm's acceptances: who, when and which version. */
+  /** The firm's acceptances: who, when and which version, newest first, a page at a time (?limit=1..200, ?cursor=). */
   @Get("terms/acceptances") @PermissionKeys("agent/settings:list")
-  acceptances(@Req() r: R) { return this.t.acceptances(staffOf(r)); }
+  acceptances(@Req() r: R, @Query("cursor") cursor?: string, @Query("limit") limit?: string) { return this.t.acceptances(staffOf(r), { cursor, limit }); }
 }

@@ -175,6 +175,46 @@ try {
   const noKey = await call(base, "GET", "/api/platform/terms/acceptances", { token: tS2 });
   ok("PF-5t DW4 fail: firm B's Owner sees only firm B's acceptances (none of firm A's)", noKey.status === 200 && noKey.body.acceptances.length > 0 && noKey.body.acceptances.every((x: any) => x.staffId === S), noKey.body);
   void FIRM_B;
+  // Pagination (STANDARDS §6; review m1, break m1): newest first, a page at a time, no row twice.
+  const p1 = await call(base, "GET", "/api/platform/terms/acceptances?limit=2", { token: tO }), p2 = await call(base, "GET", `/api/platform/terms/acceptances?limit=2&cursor=${p1.body.nextCursor}`, { token: tO });
+  const pageIds = [...(p1.body.acceptances ?? []), ...(p2.body.acceptances ?? [])].map((x: any) => x.id);
+  ok("PF-5t DW4 pass: the list pages (limit 2, then the cursor): the next page follows on, no row twice, in the full list's order",
+    p1.body.acceptances?.length === 2 && !!p1.body.nextCursor && p2.body.acceptances?.length === 2 && new Set(pageIds).size === 4 && JSON.stringify(pageIds) === JSON.stringify(a.slice(0, 4).map((x: any) => x.id)), [p1.body, p2.body]);
+  const badPage = await Promise.all(["?limit=0", "?limit=201", "?limit=x", "?cursor=nope", `?cursor=${listC?.acceptances[0]?.id}`].map((q) => call(base, "GET", `/api/platform/terms/acceptances${q}`, { token: tO })));
+  ok("PF-5t DW4 fail: a bad limit, a malformed cursor or another firm's row as cursor → 400 (never another firm's page)", badPage.every((b) => b.status === 400), badPage.map((b) => b.status));
+
+  // ------------------------------------- the "new version" rule (review M1, break M2) and older databases (break M1)
+  // A version published while a sign-up waits for its email check is pending for the new Owner (they accepted an older one).
+  const plans2 = await signup.plans(); await fclock.advance({ seconds: 5 });
+  await signup.signUp({ email: "late@pf5t.example.com", password: "a long sample pass 2", firmName: "PF5t Late Firm", countryCode: "CA", acceptedTerms: plans2.terms.map((t) => t.id), formStamp: plans2.formStamp }, "10.5.0.3"); await signup.settled();
+  const between = publish("TERMS_OF_SERVICE", "sample-2026-12-07"), betweenPn = publish("PRIVACY_NOTICE", "sample-2026-12-07");
+  await fclock.set(new Date(clock.t));
+  const link2 = identity.sent.find((m) => m.to === "late@pf5t.example.com")?.text ?? "";
+  await signup.verify({ token: /token=([A-Za-z0-9_-]{43})/.exec(link2)?.[1], code: /code=(\d{6})/.exec(link2)?.[1] }, "10.5.0.4").catch(() => undefined);
+  const late = sql(`select p.firm_id || ' ' || p.id from platform_staff p where p.email = 'late@pf5t.example.com'`).split(" ");
+  const latePending = late[1] ? (await terms.pending({ firmId: late[0], staffId: late[1], firmKey: "", roles: ["OWNER"], keys: [], duties: [], authTime: 0, via: "local" })).map((x) => x.id).sort() : null;
+  ok("PF-5t rule pass (review M1, break M2): a version published between sign-up and its email check is asked of the new Owner (both kinds)", JSON.stringify(latePending) === JSON.stringify([between, betweenPn].sort()), latePending);
+  // A person who joined after the current version and never accepted one of its kind is not asked by this row (Question 1).
+  const mk = (actor: string, created: string) => sql(`with s as (insert into platform_staff (id, firm_id, actor_id, email, display_name, status, created_at, updated_at) values (gen_random_uuid(), '${FIRM_A}', '${actor}', '${actor}@pf5t.example.com', 'Sample ${actor}', 'ACTIVE', ${created}, now()) returning id, firm_id)
+    insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) select gen_random_uuid(), firm_id, id, 'CASE_OFFICER', 'seed:PF-5t-check' from s returning staff_id`);
+  mk("user-new", "now()"); mk("user-old", "now() - interval '40 days'");
+  const [joinedAfter, joinedBefore] = await Promise.all(["user-new", "user-old"].map(async (x) => call(base, "GET", "/api/platform/me/account", { token: await signIn(x) })));
+  ok("PF-5t rule fail: a person who joined after the current privacy notice, with none accepted, is not stopped (200)", joinedAfter.status === 200, joinedAfter.status);
+  ok("PF-5t rule pass: a person who joined before the current privacy notice, with none accepted, is asked (428)", joinedBefore.status === 428, joinedBefore.status);
+  // An older database (break M1): a firm and its people from before the Sample versions, never accepted; the seed then
+  // gives each Sample person their first acceptance of each kind, and never a later new version.
+  const oldFirm = await db.platformFirm.create({ data: { key: "pf5t-old", operatingName: "PF5t Old Firm", countryCode: "CA", status: "ACTIVE", ownerName: "Sample Old Owner", ownerEmail: "old@pf5t-old.example.com", billingEmail: "old@pf5t-old.example.com", contactEmail: "old@pf5t-old.example.com", createdAt: new Date("2026-11-14T00:00:00Z") } });
+  const oldOwner = await db.platformStaff.create({ data: { firmId: oldFirm.id, actorId: "user-OLDO", email: "old@pf5t-old.example.com", displayName: "Sample Old Owner", status: "ACTIVE", createdAt: new Date("2026-11-14T00:00:00Z") } });
+  await db.platformRoleGrant.create({ data: { firmId: oldFirm.id, staffId: oldOwner.id, role: "OWNER", grantedBy: "seed:PF-5t-check" } });
+  const oldCtx = { firmId: oldFirm.id, staffId: oldOwner.id, firmKey: "pf5t-old", roles: ["OWNER"], keys: [], duties: [], authTime: 0, via: "local" as const };
+  const beforeSeed = (await terms.pending(oldCtx)).length;
+  const sampleOld = [{ key: "pf5t-old", name: "PF5t Old Firm", solo: true, office: { country: "Canada" }, users: [{ id: "user-OLDO", name: "Sample Old Owner", email: "old@pf5t-old.example.com", duties: ["firm_admin"], licence: null }] }];
+  await seedSampleFirms(db, sampleOld as never);
+  const afterSeed = (await terms.pending(oldCtx)).length, oldRows = rows(`staff_id = '${oldOwner.id}'`);
+  ok("PF-5t DW5 pass (break M1): on an older database the seed accepts the current Sample versions for its people (3 pending → 0)", beforeSeed === 3 && afterSeed === 0 && oldRows === 3, [beforeSeed, afterSeed, oldRows]);
+  const oldNew = publish("DATA_PROCESSING", "sample-2026-12-08");
+  await seedSampleFirms(db, sampleOld as never);
+  ok("PF-5t DW5 fail: a second seed after a new version accepts nothing more: the new version stays pending for the Owner", rows(`staff_id = '${oldOwner.id}'`) === 3 && (await terms.pending(oldCtx)).some((x) => x.id === oldNew), rows(`staff_id = '${oldOwner.id}'`));
 
   // --------------------------------------------- DW5: the open routes while pending; the other rules unchanged
   publish("PRIVACY_NOTICE", "sample-2026-12-05");

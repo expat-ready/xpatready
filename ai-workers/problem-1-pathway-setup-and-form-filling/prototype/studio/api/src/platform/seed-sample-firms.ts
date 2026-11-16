@@ -8,9 +8,11 @@
 // representative, BR-20) Case Manager with a licence, user-O Case Officer.
 // Idempotent: one transaction that only adds what is missing and never changes a row that is there, so a second run
 // changes nothing and a person's later changes are kept. Every value is Sample.
-// PF-5t (checklist row 100): a staff member the seed adds accepts the current privacy notice, and the firm's Owner also the
-// current terms of service and data-processing terms for the firm (Sample acceptances, so the Sample firms have none
-// pending and the acceptances list has rows to show). Unconfirmed: no counsel. Run: tsx api/src/platform/seed-sample-firms.ts
+// PF-5t (checklist row 100): a Sample person with no acceptance yet of the privacy notice accepts its current version, and
+// the Sample Owner, for a firm with no acceptance yet of the terms of service or the data-processing terms, accepts their
+// current versions (Sample acceptances, also for people a database kept from before PF-5 already holds: break M1). Only a
+// first acceptance of each kind: a later new version stays pending for the person to accept (PF-5t). Unconfirmed: no
+// counsel. Run: tsx api/src/platform/seed-sample-firms.ts
 import type { PlatformRole, Prisma, PrismaClient } from "@prisma/client";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -71,14 +73,14 @@ export async function seedSampleFirms(db: PrismaClient, firms: SampleFirm[] = re
       }
       for (const u of f.users) {
         // There (by its actor id, or by its email in the firm when a person cleared the actor id): never changed by the seed.
-        if (await tx.platformStaff.findFirst({ where: { OR: [{ actorId: u.id }, { firmId: firm.id, email: emailOf(u, f.key) }] } })) continue;
+        const there = await tx.platformStaff.findFirst({ where: { OR: [{ actorId: u.id }, { firmId: firm.id, email: emailOf(u, f.key) }] } });
+        if (there) { if (there.firmId === firm.id) await firstAcceptances(tx, terms, firm.id, there.id, u === owner); continue; }
         const staff = await tx.platformStaff.create({ data: {
           firmId: firm.id, actorId: u.id, email: emailOf(u, f.key), displayName: u.name,
           familyName: u.family_name ?? null, givenNames: u.given_names ?? null, status: "ACTIVE",
         } });
         r.staffAdded++;
-        const accepts = terms.filter((t) => t.kind === "PRIVACY_NOTICE" || u === owner);
-        if (accepts.length) await tx.platformTermsAcceptance.createMany({ data: accepts.map((t) => ({ firmId: firm.id, staffId: staff.id, versionId: t.id, acceptedAt: new Date() })), skipDuplicates: true });
+        await firstAcceptances(tx, terms, firm.id, staff.id, u === owner);
         for (const role of rolesOf(u)) { await tx.platformRoleGrant.create({ data: { firmId: firm.id, staffId: staff.id, role, grantedBy: SEED_ACTOR } }); r.grantsAdded++; }
         if (u.licence) {
           await tx.platformStaffCredential.create({ data: { firmId: firm.id, staffId: staff.id, representativeType: u.licence.category, licensingBody: u.licence.body, licenceNumber: u.licence.number, updatedBy: SEED_ACTOR } });
@@ -89,6 +91,18 @@ export async function seedSampleFirms(db: PrismaClient, firms: SampleFirm[] = re
     r.unmatchedCaseFirmKeys = await unmatchedCaseFirmKeys(tx);
     return r;
   });
+}
+
+/** PF-5t: a Sample person's first acceptance of each kind they accept (see the header); never a second one. */
+async function firstAcceptances(tx: Prisma.TransactionClient, terms: { id: string; kind: string }[], firmId: string, staffId: string, isOwner: boolean) {
+  const data: { firmId: string; staffId: string; versionId: string; acceptedAt: Date }[] = [];
+  for (const t of terms) {
+    if (t.kind !== "PRIVACY_NOTICE" && !isOwner) continue;
+    const who = t.kind === "PRIVACY_NOTICE" ? { firmId, staffId } : { firmId };
+    if (await tx.platformTermsAcceptance.findFirst({ where: { ...who, version: { kind: t.kind as never } }, select: { id: true } })) continue;
+    data.push({ firmId, staffId, versionId: t.id, acceptedAt: new Date() });
+  }
+  if (data.length) await tx.platformTermsAcceptance.createMany({ data, skipDuplicates: true });
 }
 
 /** The firm keys cases carry that no platform_firm has (empty after the seed on the demo data). */
