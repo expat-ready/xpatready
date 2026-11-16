@@ -7,6 +7,9 @@ Moved word for word from `RULES.md` (main af7df6d6) by the rule-triage lane, 16 
 | ID | Rule | Enforced by | As of |
 |---|---|---|---|
 | P-550 | 2-3 tech leads for the four weeks from 13 Nov, each owning named modules and lanes; one holds the release; then back to one (amends P-511). | prose | 13 Nov |
+| P-547 | The document system is approved with seven folds (its check never reds a product PR). | prose | 13 Nov |
+| P-583 | GitHub's free safety settings on in the checked order; the founder clicks, the Lead guides and verifies. | prose | 14 Nov |
+| P-589 | A private backup now; cut CI minutes first (B190); private at the gate before real firm data (P-590: option C). | prose | 14 Nov |
 | P-515 | Every step rests on a framework chosen after comparing the top options; the cto-review skill measures DORA and flow. | prose | 13 Nov |
 | P-536 | Small fixes the desk and the Lead both recommend need no founder word, except money, a lower bar, a day or more, permissions, security. | prose | 13 Nov |
 | P-541 | No immigration expert is booked: a value leaves Sample only with an official citation (page, quote, date). | prose | 13 Nov |
