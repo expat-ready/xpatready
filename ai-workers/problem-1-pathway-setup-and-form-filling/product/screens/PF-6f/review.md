@@ -71,3 +71,41 @@ Copy: my own isolated `rv_pf6f` on :4563 (`PLATFORM_IDENTITY=local`, `web/dist` 
 * Note on shared state: my two mutations each rebuilt the shared `studio/web/dist` for a few minutes during this review (before 06:20 UTC). Another session's isolated copy was running in the same folder then. Its results from that window should be treated as unreliable. I also sent one refused callback post to :4564 (another copy) by mistake. That post was harmless.
 
 **Verdict: Approve** for `0c5ff13c96722a70ac5f7ec04bae686de4cefeca`. No open Blocker or Major.
+
+---
+
+## Re-review (P-277): only `git diff a7d1ede..c2294bf`, 16 Nov 2026, 06:43 UTC
+Head **`c2294bfb3b5841b53a6d995609088ff72e87db24`**. It changes three files: `callback-page.tsx` (`latest`, `pending` and `posts`, `sent.delete` on a network failure, the title "Sign-in link"), and the two tests (a throw instead of `process.exit`, plus two new pf6f cases). The copy was `rv_pf6f` on :4563, plus the StrictMode dev server on :4568. For the mutations I ran an API from a scratch worktree on :4563 against my own database. The shared `web/dist` was only ever rebuilt from committed code. Everything is stopped, and the worktree is removed.
+
+**Runs at the head:**
+* pf6f **11/11** ×3: twice on the first copy, once on a fresh copy.
+* pf6a **52/52** on the same copy.
+* Seats back at 5 after every run. Web `tsc` clean. FO-4 not rerun: no file it uses changed.
+
+**Mutations (scratch worktree):**
+* Drop `if (code !== latest) return;` (try branch): "breaker M1" fails, 10/11.
+* Drop `sent.delete(code)`: the m3 case times out. The run fails, and the seats still come back to 5.
+* Drop `while (pending) await pending;`: **11/11 still pass** (Minor A).
+
+**My earlier findings:**
+* **m1 (a), fixed.** Probe P4: with the post held 4 s, an in-app move away and then Back now decides. It lands on `/account` when the post ends (it was stuck at 9 s before).
+* **m1 (b), fixed.** An already-sent code now goes through `decide()` (`:36`). P6c now shows the notice, never loading.
+* **m2, fixed.** Both `apiSignIn` functions throw inside the `try`, so the `finally` runs.
+* **m3, carried over.** It predates the PR, as the builder says. P5 is unchanged.
+
+**The new code, by reading and probing:**
+* **The `pending` loop cannot spin.** `pending` is assigned before the IIFE's first `await` yields. Only the newest post clears it (`posts === mine`), and every new post replaces it.
+* **The sending mount's own answer wins.** The waiting mount's functional `setState` keeps a state that is no longer "working". In dev StrictMode, a mocked 401 detail still shows as sent, with the card. A fresh link posts once, and a 2.5 s slow post lands on `/account`.
+* **The newest code decides (breaker M1).** The new case covers a held earlier answer: it is ignored, and the later person stays.
+* **A network failure can be retried in-tab (breaker m3).** If the post reached the server and only the answer was lost, the retry gets the server's refusal and nothing is used twice.
+* **Other paths still hold.** P3 Back/Forward ×8 always land on `/account`; two tabs give one sign-in; axe is clean on both refusal states; there is no sideways scroll at 400, 1024, 1440 or 200 %.
+* **A hash with no code on the notice now keeps the notice.** Before, it went to `/account`. Either is acceptable.
+
+**New issues (Minor, Should; none blocks):**
+* **A. The wait for a pending post is untested.** Removing `while (pending) await pending;` still passes 11/11 (`callback-page.tsx:31`). In production it only matters for a remount during a post, and without it the page shows the refusal briefly, then goes to My account on the answer. Add a case, or record it as covered by the dev probe only.
+* **B. The place line under the header still reads "Sign in" when the title reads "Sign-in link".** That line comes from the address, `frame.tsx` `whereFromAddress` (screenshot at 1024 px). Cosmetic.
+* **Breaker m4 (two `/account` entries after Back) is left, with a reason.** `replace` on "Open My account" would break DW1's signed-out Back path. I accept that, since the brief's DW1 needs that entry.
+
+**Journey score 9.5/10 (was 9).** Feedback and state rises to 1, because no reachable or synthetic path is left stuck. Plain words stays ½ (m3, carried over). Trust holds at 1, because the dev check confirms the server's words still win.
+
+**Verdict: Approve c2294bfb3b5841b53a6d995609088ff72e87db24**
