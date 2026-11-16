@@ -1629,3 +1629,10 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **What Lead 69 did:** added Lead B's sub-parts to MVP-CHECKLIST on lead/2026-11-07-lead31, in the board's form (for example "PF-13 parts 1-2").
 * **The title rule:** every PR title names its part exactly, for example "runtime: PF-13 part 1 — …". A title without "part" counts as the whole row.
 * **PF-21s:** stage 1 merged as #1821, so stage 2 becomes PF-21s part 3 (the list and the drawer) and part 4 (the record page's actions). Updated in `lead-b-briefs/PF-21s.md` and in the start list.
+
+## Rev 16.76 (16 Nov 21:14 IST): seed-sample-firms.ts check; PF-13 part 1 out of the first eight (overlap found)
+* **Lead 69's question (Build Lead C's AUD-5 part 1 adds a line to `seed-sample-firms.ts`):** no queued PF/FO lane touches that file. Every queued brief was checked. PF-24w only reads `identity/sample-seed.ts`.
+* **An overlap Lead B found in its own start list (P-526):** PF-13 part 1's touch list holds `ports/messages.ts` and `platform/messages/send/messages.ts`. Open PRs #1956 (PF-19b part 2) and #1961 (PF-19p) both change those files, and PF-19e will too.
+  - PF-13 part 1 now starts after #1956, #1961 and PF-19e are on `main`.
+  - The order for the messages files: PF-19e, then PF-13 part 1, then PF-19c. None runs beside another.
+* **The first eight now hold PF-Fd** in lane 3, in place of PF-13 part 1. Lane 2's second brief is PF-0bp. The start list is updated in `design/lead-b-build-lead-a-2026-11-16.md`.

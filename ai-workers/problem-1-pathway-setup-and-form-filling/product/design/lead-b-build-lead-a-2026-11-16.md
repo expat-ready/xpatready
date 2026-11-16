@@ -68,7 +68,7 @@ Lead 69 sent P-644 (the four-seat model, `design/release1-operating-model-2026-1
 |---|---|---|---|---|
 | 1 | **PF-21s part 3** (complaints list and record drawer; was "stage 2 part 1") | 109 | `lead-b-briefs/PF-21s.md` (branch) + `P-626-order.md` A5 | PF-6 part 1, PF-21w and PF-21v are on `main`, and the concept is approved |
 | 2 | **PF-21i** (recording a complaint is idempotent) | 109 | `lead-b-briefs/PF-21i.md` (main) | #1848 is on `main`; API only, so no overlap with 1 |
-| 3 | **PF-13 part 1** (branding API with banner and tagline) | 23 | `lead-b-briefs/PF-13.md` (main) + `P-627-amendments.md` PF-13 block + `P-630-amendments.md` PF-13 block | PF-Le is on `main` (#1919) |
+| 3 | **PF-Fd** (file delete; rev 16.76 replaces PF-13 part 1 here) | enabler (PF-11, PF-26, PF-15) | `lead-b-briefs/PF-Fd.md` (main) | now; no open PR on `ports/files.ts` |
 | 4 | **PF-8r** (a nightly tested restore) | 14 | `lead-b-briefs/PF-8r.md` (main) | waits on nothing; no open PR on `nightly.yml` or `deploy/` |
 | 5 | **PF-24w** (identity settings in the secrets store) | 15, then 5 | `lead-b-briefs/PF-24w.md` (main) | now; it must come before PF-4bc and PF-4pc |
 | 6 | **FO-13i** (client identity check) | 110 | `lead-b-briefs/FO-13i.md` (main) | now; never beside FO-5b, FO-5p or FO-3c |
@@ -80,8 +80,8 @@ Lead 69 sent P-644 (the four-seat model, `design/release1-operating-model-2026-1
 | Lane | Next row | Brief | Starts when |
 |---|---|---|---|
 | 1 | PF-21s part 4 (record page actions) | same as 1 | part 3 is on `main` |
-| 2 | PF-Fd (file delete) | `lead-b-briefs/PF-Fd.md` (main) | now (no open PR on `ports/files.ts`) |
-| 3 | PF-13 part 2 (panel) | same as 3 | part 1 is on `main` |
+| 2 | PF-0bp (body-parser errors in `main.ts`; then PF-28) | `lead-b-briefs/PF-0bp.md` (main) | now |
+| 3 | PF-13 part 1, then part 2 | `lead-b-briefs/PF-13.md` (main) + `P-627-amendments.md` PF-13 block + `P-630-amendments.md` PF-13 block | **part 1 after #1956, #1961 and PF-19e are on `main`**: its touch list holds `ports/messages.ts` and `platform/messages/send/messages.ts`, which all three change (P-526, rev 16.76). Part 2 follows part 1 |
 | 4 | PF-18b (support tables) | `lead-b-briefs/PF-18b.md` (main) | now |
 | 5 | PF-4pc, then PF-4s | `lead-b-briefs/PF-4pc.md`, `PF-4s.md` (main) | PF-24w is on `main` (CS-C1a #1818 is merged) |
 | 6 | FO-5p part 1 | `lead-b-briefs/FO-5p.md` (main) + `P-630-amendments.md` FO-5p block | FO-13i is on `main` (never beside it) |
@@ -90,7 +90,8 @@ Lead 69 sent P-644 (the four-seat model, `design/release1-operating-model-2026-1
 
 **Waiting on in-flight PRs (Lead B tells Lead 69 when each is on `main`):**
 * PF-6 part 2a starts when #1945 merges. PF-4c part 1 waits on #1945 too, because both touch `identity/service.ts`.
-* PF-19e waits on #1956 and #1961. PF-19c and PF-19ad wait on the same two, because they share the messages files.
+* PF-19e waits on #1956 and #1961. PF-19c, PF-19ad and **PF-13 part 1** wait on the same two, because they share the messages files. The order after those two merge is PF-19e first (it is on rows 19 and 100's path), then PF-13 part 1, then PF-19c. None of the four runs beside another, because each touches `send/messages.ts` or `ports/messages.ts`.
+* **`seed-sample-firms.ts` (Build Lead C's AUD-5 part 1):** no queued PF/FO lane touches it. Checked in every queued brief's touch list on 16 Nov; PF-24w only reads `identity/sample-seed.ts`.
 * PF-11 part 1 waits on #1959.
 * FO-3vr, FO-3a 1b and FO-3v part 1 wait on #1918.
 
