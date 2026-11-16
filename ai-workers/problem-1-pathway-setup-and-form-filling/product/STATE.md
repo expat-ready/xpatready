@@ -2,7 +2,7 @@
 
 current_lead: local_28bf6046-9c98-4f67-8b04-7f1801873579 Lead 69 · 16 Nov 19:22 IST (series 2; took over from Lead 68 (series 2, local_adb435f1) at ~180k beyond start, P-446)
 
-updated: 2026-11-16 19:22 IST by **Lead 68 (series 2, local_adb435f1)** at hand-over to Lead 69 · weekly 76% at 17:41 (resets 17 Nov 10:30 IST) · milestone: **Release 1 (board v14, data 17:43 IST): 5 Proven, 2 Built, 34 In progress, 60 Planned**; **target 29 Nov (P-609); 10 Proven by 08:00 IST 17 Nov (P-626)** · rules: **`RULES.md`** (as of **P-638**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-16 19:35 IST by **Lead 69 (series 2, local_28bf6046)** (took over 19:24; check cron d99a740d at :13/:43; first check 19:26: #1990 records Approve posted, #1989 ledger answered (release line after it merges), #1982 waits on queue-fresh (queue-gate runs backlogged/cancelled), #1957 and #1945 wait on ci) · weekly 76% at 17:41 (resets 17 Nov 10:30 IST) · milestone: **Release 1 (board v14, data 17:43 IST): 5 Proven, 2 Built, 34 In progress, 60 Planned**; **target 29 Nov (P-609); 10 Proven by 08:00 IST 17 Nov (P-626)** · rules: **`RULES.md`** (as of **P-638**) · this branch: `lead/2026-11-07-lead31`
 
 Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
