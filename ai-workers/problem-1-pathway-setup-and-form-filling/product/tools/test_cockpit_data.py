@@ -440,6 +440,31 @@ class Rulings(unittest.TestCase):
         self.assertEqual(q["not_ready"], [{"id": "FO-2", "waits_on": [], "non_id": ["contract v0"]},
                                           {"id": "BK-6", "waits_on": ["FO-1"], "non_id": []}])
 
+    def test_release1_capability_rows_read_by_both_scripts(self):
+        # 16 Nov board: invariant "every qa Works row names a qa capability that reads Works on main" failed on rows 2 and 9,
+        # proven by R1.2 and R1.9, because both parsers read only C rows; the R1 table has a Status column and no M column
+        r1 = ("\n## Release 1\n\n| # | Map row: capability | Module | Status | Tested on | Done when |\n|---|---|---|---|---|---|\n"
+              "| R1.2 | 2 Database | Platform | Works | abc | fixture |\n| R1.3 | 3 Files | Platform | Not built | abc | fixture |\n")
+        caps = cd.Snap(FIX).text("files_main/qa/CAPABILITIES.md") + r1
+        spec_r = importlib.util.spec_from_file_location("cockpit_reconcile_t", os.path.join(HERE, "cockpit-reconcile.py"))
+        rc = importlib.util.module_from_spec(spec_r)
+        spec_r.loader.exec_module(rc)
+        board = {k: v["status"] for k, v in cd.parse_caps(caps).items()}
+        check = {k: v[1] for k, v in rc.parse_capabilities(caps).items()}
+        self.assertEqual(board, check)
+        self.assertEqual((board["R1.2"], board["R1.3"], cd.parse_caps(caps)["R1.2"]["m"]), ("Works", "Not built", ""))
+        self.assertEqual(cd.works_count(cd.parse_caps(caps)), cd.works_count(cd.parse_caps(caps[:-len(r1)])))   # Works count unchanged
+        ck = cd.Snap(FIX).file("MVP-CHECKLIST.md").replace("| 6 | Cap six | Case side | C6.2 Works | qa Works\\* |",
+                                                            "| 6 | Cap six | Case side | R1.2 Works | qa Works\\* |")
+        self.assertIn("R1.2 Works", ck)
+        d = snap_with({"files_main/qa/CAPABILITIES.md": caps, CKP: ck})
+        out, note = cd.run_reconcile(d, os.path.join(HERE, "cockpit-reconcile.py"))
+        self.assertIsNone(note)
+        _, c = run(d, rec=out, note=None)
+        inv = [i for i in c["trust"]["invariants"] if i["name"].startswith("Every qa Works row")][0]
+        self.assertTrue(inv["ok"], inv)
+        self.assertEqual((c["trust"]["state"], c["trust"]["diffs"]), ("agree", []), c["trust"]["diffs"])
+
     def test_bold_first_cell_is_a_backlog_row_in_both_scripts(self):
         # 16 Nov board 7: "Numbers disagree: ready_rows" board 7, check 8. BACKLOG row FO-7mv is written "| **FO-7mv** |";
         # the board read only a plain first cell, so it never saw the row; the check removes "**" and "`" (one rule, FORMULAS.md
@@ -580,6 +605,16 @@ class Health(unittest.TestCase):
         gr[1]["conclusion"] = "failure"
         _, st = self.states(snap_with({"meta.json": meta, "github/guard_runs.json": gr}))
         self.assertEqual((st[3], st[4]), ("red", "red"))
+
+    def test_item_6_reads_main_bugs_not_the_records_copy(self):
+        # 16 Nov: the Lead's records copy of qa/BUGS.md was 6 days old and listed bugs closed on main (QA-383, QA-162) as open;
+        # the qa lane writes bugs on main, so item 6 reads files_main/qa/BUGS.md when the snapshot has it
+        rec = cd.Snap(FIX).file("qa/BUGS.md")
+        self.assertEqual(self.states()[1][6], "red")                       # records copy: QA-9 open, 74 h old
+        closed_on_main = "\n".join(ln for ln in rec.splitlines() if "| QA-9 |" not in ln) + "\n"
+        h, st = self.states(snap_with({"files_main/qa/BUGS.md": closed_on_main}))
+        self.assertEqual(st[6], "green")
+        self.assertIsNone(h["items"][5]["action"])
 
     def test_every_item_not_green_says_what_to_do_and_who(self):
         # 16 Nov (founder: "a lot of red health stuff ... it doesn't show me anything"): amber items carry an action too

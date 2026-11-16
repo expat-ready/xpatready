@@ -667,13 +667,25 @@ def req_section(rid):
 
 
 def parse_caps(text):
-    """qa/CAPABILITIES.md rows: id, milestone, status (progress.sh's row rule, all four milestones)."""
-    out = {}
-    for line in (text or "").splitlines():
+    """qa/CAPABILITIES.md rows: id, milestone, status (progress.sh's row rule, all four milestones).
+    16 Nov: also the Release 1 rows (R1.2 …), whose table has no M column: status from that table's Status column, m "" (so
+    they never enter the M2/T/M3/M4 Works count). Same rule in cockpit-reconcile.py parse_capabilities. Until then a checklist
+    row proven by R1.2 failed the invariant "every qa Works row names a qa capability that reads Works on main"."""
+    out, si = {}, None
+    lines = (text or "").splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("|") and i + 1 < len(lines) and SEP_LINE.match(lines[i + 1]):
+            low = [x.replace("*", "").strip().lower() for x in cells(line)]
+            si = low.index("status") if "status" in low else None
+            continue
         if re.match(r"^\| C\d", line):
             c = cells(line)
             if len(c) > 5:
                 out[c[1]] = {"m": c[4], "status": c[5].replace("*", "").strip()}
+        elif re.match(r"^\| R\d+\.\d+ \|", line) and si is not None:
+            c = cells(line)
+            if si < len(c) and c[1] not in out:
+                out[c[1]] = {"m": "", "status": c[si].replace("*", "").strip()}
     return out
 
 
@@ -1084,8 +1096,13 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
         wt(f"git/capabilities_main/{sha}.md", txt)
         lines.append(json.dumps({"sha": sha, "date": c["commit"]["committer"]["date"]}))
     wt("git/capabilities_main.jsonl", "\n".join(lines) + ("\n" if lines else ""))
+    # qa/BUGS.md on main (16 Nov): the qa lane records bugs on main; the Lead's records copy can be days old (its BUGS.md was
+    # last touched 10 Nov and still listed QA-383 and QA-162, closed on main), so Health item 6 reads main's, as Quality does
+    bugs_main = safe("qa/BUGS.md on main", lambda: gh.get(f"/contents/{REL}/qa/BUGS.md?ref={msha}", raw=True))
+    if bugs_main is not None:
+        wt("files_main/qa/BUGS.md", bugs_main)
     # first main commit adding each open Critical/Major bug (git log -S on the table cell, so QA-44 never matches QA-449)
-    bugs = parse_bugs(git_out("show", f"{rsha}:{REL}/qa/BUGS.md") or "")
+    bugs = parse_bugs(bugs_main if bugs_main is not None else (git_out("show", f"{rsha}:{REL}/qa/BUGS.md") or ""))
     first = {}
     for b in bugs:
         if b["sev"] in ("Critical", "Major") and b["open"] and main_ref:
@@ -1985,6 +2002,8 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     first_v, seen = {}, {}
     for i, hh in enumerate(hist_caps):
         for cid, cv in parse_caps(hh["text"]).items():
+            if not cid.startswith("C"):              # the first-verdict share keeps to the C capabilities (as before 16 Nov)
+                continue
             if cid in first_v or cid in seen and seen[cid] == "known":
                 continue
             if verdict(cv["status"]):
@@ -2556,7 +2575,8 @@ def health(snap, now, comp, li):
              "slow the lanes or stop paid work until burn is under 3%/h", "current Lead", cls="reported")
     caps = parse_caps(snap.text("files_main/qa/CAPABILITIES.md"))
     first = snap.j("git/bug_first_seen.json") or {}
-    bugs = [b for b in parse_bugs(snap.file("qa/BUGS.md") or "") if b["open"] and b["sev"] in ("Critical", "Major")
+    bugs_txt = snap.text("files_main/qa/BUGS.md")         # main's copy (16 Nov); older snapshots fall back to the records copy
+    bugs = [b for b in parse_bugs(bugs_txt if bugs_txt is not None else (snap.file("qa/BUGS.md") or "")) if b["open"] and b["sev"] in ("Critical", "Major")
             and any(caps.get(c, {}).get("status", "").startswith("Works") for c in b["caps"])]
     # R6: Majors a decision rules as not holding their capability (Lead-kept cockpit/health-exceptions.json) are shown, not counted
     exc_text = snap.file("cockpit/health-exceptions.json")
@@ -2642,7 +2662,8 @@ def build_explain(d):
     def val(x):
         return None if not isinstance(x, dict) else x.get("value", x.get("v"))
 
-    def put(key, label, what, window, n, n_of, read, x=None, band=None, n_reason=None, src=None, cls=None, n_override=None):
+    def put(key, label, what, window, n, n_of, read, x=None, band=None, n_reason=None, src=None, cls=None, n_override=None,
+            todo=None, behind=None):
         n = n_override if n_override is not None else n
         x = x if isinstance(x, dict) else {}
         n = n if isinstance(n, int) and not isinstance(n, bool) else None
@@ -2653,6 +2674,10 @@ def build_explain(d):
              "sha": x.get("sha"), "as_of": x.get("as_of") or taken}
         if band:
             e["band"] = band
+        if todo:                                         # 16 Nov: what to do and who, shown in the panel a click opens
+            e["todo"] = todo
+        if behind:                                       # the rows, PRs, files or bugs behind the number (at most 40)
+            e["behind"] = [str(z) for z in behind[:40]] + ([f"… and {len(behind) - 40} more"] if len(behind) > 40 else [])
         if n is None:
             e["n_reason"] = n_reason or x.get("reason") or "not measured: the data holds no sample size for this number"
         E[key] = e
@@ -2782,7 +2807,10 @@ def build_explain(d):
     put("capacity.lanes_working", "Lanes working", "Branches with a push (head commit) in the last 90 min, not main, the queue or the Leads' records branches.",
         "the 90 min to " + t_ist, C["lanes_working"].get("n"), "lane branches with a push in 24 h", "Compare with free lane slots and rows ready.", C["lanes_working"])
     put("capacity.ready_rows", "Rows ready with a brief", "BACKLOG rows with a brief, not merged, no open PR, every dependency merged.", now_w,
-        C["ready_rows"].get("n"), "rows with a brief", "Rows ready with nobody on them mean a lane could start.", C["ready_rows"])
+        C["ready_rows"].get("n"), "rows with a brief", "Rows ready with nobody on them mean a lane could start.", C["ready_rows"],
+        todo="the Lead starts a lane on a ready row when there is room (current Lead)",
+        behind=[f"{r} ready" for r in C["ready_rows"].get("rows") or []] +
+               [f"{x['id']} not ready: waits on " + ", ".join(x["waits_on"] + x["non_id"]) for x in C["ready_rows"].get("not_ready") or []])
     put("capacity.room", "Free lane slots", "The Lead's lane limit (max_lanes) minus lanes working.", now_w + "; max_lanes as the Lead reported it",
         1 if val(C["room"]) is not None else None, "Lead-reported limit", "Above 0 with rows ready: add a lane.", C["room"],
         n_reason="not measured: the Lead input has no max_lanes")
@@ -2821,7 +2849,10 @@ def build_explain(d):
     for it in d["health"]["items"]:
         put(f"health.{it['id']}", it["name"], it["name"] + ": " + (it.get("detail") or ""), windows[it["id"]], it.get("n"), it.get("n_of") or "",
             reads[it["id"]], band=bands.get(it["id"]), src="FORMULAS.md §5 item " + str(it["id"]), cls=it.get("class") or "measured",
-            n_reason="computed by the page from generated_at" if it["id"] == 2 else None)
+            n_reason="computed by the page from generated_at" if it["id"] == 2 else None,
+            todo=(it["action"] + " (" + it["owner"] + ")") if it.get("action") else "nothing: this check is green",
+            behind=[f"{f['path'].replace(REL + '/', '')} — changed {ist(parse_iso(f['since']))}, commit {f['sha']}" for f in it.get("files") or []] +
+                   [f"{b_['id']} ({b_['sev']}) on " + ", ".join(b_["caps"]) for b_ in it.get("bugs") or []])
     # ---- Factory
     lq = d["lead_queue"]
     put("factory.lead_queue", "Questions waiting on the tech lead", "Open PRs whose newest 'Question for the tech lead' has no later answer.",
