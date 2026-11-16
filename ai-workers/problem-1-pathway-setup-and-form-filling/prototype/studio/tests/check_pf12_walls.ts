@@ -61,8 +61,10 @@ function unguarded(db: string): string[] {
            or (p.polcmd in ('*', 'a', 'w') and coalesce(pg_get_expr(p.polwithcheck, p.polrelid), pg_get_expr(p.polqual, p.polrelid)) !~ 'platform_session_firm\\(\\)'))`).split("\n").filter(Boolean);
   const trg = sql(db, `select distinct c.relname || ' trigger function ' || f.proname from pg_trigger t join pg_class c on c.oid = t.tgrelid join pg_proc f on f.oid = t.tgfoid
     where not t.tgisinternal and c.relnamespace = 'public'::regnamespace
-      and (not f.prosecdef or pg_get_userbyid(f.proowner) <> 'xr_wall_reader' or not coalesce(f.proconfig::text, '') ~ 'search_path=pg_catalog, public, pg_temp')`).split("\n").filter(Boolean);
-  return [...pol, ...trg].filter((l) => FAMILIES.test(l));
+      and f.proname <> 'platform_firm_first' and (not f.prosecdef or pg_get_userbyid(f.proowner) <> 'xr_wall_reader' or not coalesce(f.proconfig::text, '') ~ 'search_path=pg_catalog, public, pg_temp')`).split("\n").filter(Boolean);
+  const gate = sql(db, `select c.relname || ' has no first gate' from pg_class c where c.relnamespace = 'public'::regnamespace and c.relforcerowsecurity
+    and not exists (select 1 from pg_trigger t where t.tgrelid = c.oid and t.tgname = '0_pf12_firm_first' and t.tgname = (select min(u.tgname) from pg_trigger u where u.tgrelid = c.oid and not u.tgisinternal))`).split("\n").filter(Boolean);
+  return [...pol, ...trg, ...gate].filter((l) => FAMILIES.test(l));
 }
 const familyTables = (db: string) => sql(db, `select tablename from pg_tables where schemaname = 'public' order by 1`).split("\n").filter((t) => FAMILIES.test(t));
 const count = (db: string, t: string) => Number(sql(db, `select count(*) from "${t}"`));
@@ -74,16 +76,12 @@ const pools: pg.Pool[] = [];
 try {
   // ------------------------------------------------------------------------------------------------- the migration
   const before = all.filter((d) => d < NEW), text = readFileSync(join(MIG, NEW, "migration.sql"), "utf8"), code = text.replace(/^\s*--.*$/gm, "");
-  ok(`PF-12: the migration has its own stamp, later than every one before it and unique (newest before it: ${before.at(-1)}; P-348 (8), P-600 (4))`,
-    all.includes(NEW) && before.every((d) => d < NEW) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1, all.slice(-3));
+  ok(`PF-12: the migration has its own stamp, later than every one before it and unique (newest before it: ${before.at(-1)}; P-348 (8), P-600 (4))`, all.includes(NEW) && before.every((d) => d < NEW) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1, all.slice(-3));
   const altered = [...code.matchAll(/ALTER TABLE "\w+" ([^;]+);/g)].map((m) => m[1]);
-  ok("PF-12 (brief): policies and roles only — no CREATE/DROP TABLE, no column, key or index change; every ALTER TABLE only enables or forces row-level security",
-    altered.length > 0 && altered.every((a) => /^(ENABLE|FORCE) ROW LEVEL SECURITY$/.test(a)) && !/\b(CREATE|DROP)\s+(TABLE|INDEX|TYPE)\b|\bADD\s+COLUMN\b|^\s*(UPDATE|DELETE|INSERT|TRUNCATE)\b/im.test(code), altered.filter((a) => !/ROW LEVEL SECURITY/.test(a)));
+  ok("PF-12 (brief): policies and roles only — no CREATE/DROP TABLE, no column, key or index change; every ALTER TABLE only enables or forces row-level security", altered.length > 0 && altered.every((a) => /^(ENABLE|FORCE) ROW LEVEL SECURITY$/.test(a)) && !/\b(CREATE|DROP)\s+(TABLE|INDEX|TYPE)\b|\bADD\s+COLUMN\b|^\s*(UPDATE|DELETE|INSERT|TRUNCATE)\b/im.test(code), altered.filter((a) => !/ROW LEVEL SECURITY/.test(a)));
   const fns = [...code.matchAll(/CREATE (?:OR REPLACE )?FUNCTION (\w+)/g)].map((m) => m[1]);
   ok("PF-12 (rows rev 15.2): every function the migration creates carries the area prefix platform_", fns.length >= 1 && fns.every((f) => f.startsWith("platform_")), fns);
-  ok("PF-12 (rev 16.34): xr_case_lookup is created only when missing (CS-W1 part 1 may have created it), and NOLOGIN",
-    /IF NOT EXISTS \(SELECT 1 FROM pg_roles WHERE rolname = 'xr_case_lookup'\) THEN CREATE ROLE xr_case_lookup NOLOGIN/.test(code) && /ALTER ROLE xr_case_lookup NOLOGIN/.test(code));
-
+  ok("PF-12 (rev 16.34): xr_case_lookup is created only when missing (CS-W1 part 1 may have created it), and NOLOGIN", /IF NOT EXISTS \(SELECT 1 FROM pg_roles WHERE rolname = 'xr_case_lookup'\) THEN CREATE ROLE xr_case_lookup NOLOGIN/.test(code) && /ALTER ROLE xr_case_lookup NOLOGIN/.test(code));
   // Right after its own migration (rows rev 16.7): bare gets every migration before it, then it, then is measured.
   for (const d of before) psql(urlOf(BARE), ["-f", join(MIG, d, "migration.sql")]);
   const bareUnwalled = unwalled(BARE);
@@ -91,10 +89,8 @@ try {
   psql(urlOf(BARE), ["-f", join(MIG, NEW, "migration.sql")]);
   const walled = familyTables(BARE).filter((t) => !EXCEPTIONS.includes(t));
   ok(`PF-12 pass: right after the migration every table of the families has its forced policy (${walled.length} tables; exceptions ${EXCEPTIONS.filter((t) => familyTables(BARE).includes(t)).join(", ")})`, unwalled(BARE).length === 0 && walled.length >= 60, unwalled(BARE));
-  ok(`PF-12: the catalogues on the exception list stay outside the walls (no firm_id: ${CATALOGUES.join(", ")})`,
-    sql(BARE, `select count(*) from pg_class where relname = any('{${CATALOGUES.join(",")}}') and not relrowsecurity`) === String(CATALOGUES.length));
-  ok("PF-12 pass: a pending sign-up (no firm yet) is forced with no policy: xr_app reads none even naming no firm, the bypass role reads them",
-    sql(BARE, `select relforcerowsecurity and not exists (select 1 from pg_policy where polrelid = 'platform_signup_pending'::regclass) from pg_class where relname = 'platform_signup_pending'`) === "t");
+  ok(`PF-12: the catalogues on the exception list stay outside the walls (no firm_id: ${CATALOGUES.join(", ")})`, sql(BARE, `select count(*) from pg_class where relname = any('{${CATALOGUES.join(",")}}') and not relrowsecurity`) === String(CATALOGUES.length));
+  ok("PF-12 pass: a pending sign-up (no firm yet) is forced with no policy: xr_app reads none even naming no firm, the bypass role reads them", sql(BARE, `select relforcerowsecurity and not exists (select 1 from pg_policy where polrelid = 'platform_signup_pending'::regclass) from pg_class where relname = 'platform_signup_pending'`) === "t");
 
   for (const d of all) psql(urlOf(EMPTY), ["-f", join(MIG, d, "migration.sql")]);
   ok("PF-12 pass: every migration applies in order to an empty database", sql(EMPTY, `select count(*) from pg_policy where polname = 'pf12_firm'`) !== "0");
@@ -105,19 +101,16 @@ try {
     create function fo_pf12_probe_fn() returns trigger language plpgsql as $$ begin return new; end $$;
     create trigger fo_pf12_probe_trg before insert on fo_note for each row execute function fo_pf12_probe_fn();`);
   const ung = unguarded(EMPTY);
-  ok("PF-12 guard fail: an open policy added to a walled table, and a plain trigger function on a firm table, are each named",
-    ung.some((l) => /fo_lead policy pf12_probe_open/.test(l)) && ung.some((l) => /fo_note trigger function fo_pf12_probe_fn/.test(l)), ung);
+  ok("PF-12 guard fail: an open policy added to a walled table, and a plain trigger function on a firm table, are each named", ung.some((l) => /fo_lead policy pf12_probe_open/.test(l)) && ung.some((l) => /fo_note trigger function fo_pf12_probe_fn/.test(l)), ung);
   sql(EMPTY, "drop policy pf12_probe_open on fo_lead; drop trigger fo_pf12_probe_trg on fo_note; drop function fo_pf12_probe_fn()");
   // ... and it fails for a table that forgot (the probes are dropped again).
   sql(EMPTY, `create table fo_pf12_probe (id uuid primary key, firm_id uuid not null); create table auto_pf12_probe (id uuid primary key, firm_id uuid not null); create table plat_complaint_pf12_probe (id uuid primary key, firm_id uuid not null);
     create table money_pf12_probe (id uuid primary key, firm_id uuid not null); alter table money_pf12_probe enable row level security; create policy p on money_pf12_probe using (firm_id = platform_session_firm());
     create policy pf12_probe_open on platform_signup_pending using (true);`);
   const probes = unwalled(EMPTY);
-  ok("PF-12 guard fail: a new fo_, auto_ or plat_complaint table with no policy, a money_ table whose policy is not forced, and our own register given a policy, are each named",
-    ["fo_pf12_probe", "auto_pf12_probe", "plat_complaint_pf12_probe", "money_pf12_probe"].every((t) => probes.includes(t)) && probes.some((p) => p.startsWith("platform_signup_pending (own register")), probes);
+  ok("PF-12 guard fail: a new fo_, auto_ or plat_complaint table with no policy, a money_ table whose policy is not forced, and our own register given a policy, are each named", ["fo_pf12_probe", "auto_pf12_probe", "plat_complaint_pf12_probe", "money_pf12_probe"].every((t) => probes.includes(t)) && probes.some((p) => p.startsWith("platform_signup_pending (own register")), probes);
   // Default privileges: a later migration's table is open to the app's role (a grant) but walled once it has its policy.
-  ok("PF-12: a later migration's table gets the app's table rights by default privileges (xr_app may read it, so the policy is what walls it)",
-    asApp(EMPTY, null, "select count(*) from fo_pf12_probe") === "0");
+  ok("PF-12: a later migration's table gets the app's table rights by default privileges (xr_app may read it, so the policy is what walls it)", asApp(EMPTY, null, "select count(*) from fo_pf12_probe") === "0");
   sql(EMPTY, "drop table fo_pf12_probe, auto_pf12_probe, plat_complaint_pf12_probe, money_pf12_probe; drop policy pf12_probe_open on platform_signup_pending");
 
   // ------------------------------------------------------------------------------------------------------ the roles
@@ -146,17 +139,14 @@ try {
   ok("PF-12 (FO-13 break 4) fail: xr_app cannot disable a trigger (owner only)", refused(() => asAppRaw(`alter table "fo_lead" disable trigger all`), /must be owner/i));
   ok("PF-12 fail: xr_app cannot create a table, so it can never own one", refused(() => asAppRaw("create table pf12_mine (id int)"), /permission denied/i));
   ok("PF-12 fail: xr_app cannot become the owner, the case lookup role or the wall reader (SET ROLE refused)", refused(() => asAppRaw("set role xr_studio"), /permission denied/i) && refused(() => asAppRaw("set role xr_case_lookup"), /permission denied/i) && refused(() => asAppRaw("set role xr_wall_reader"), /permission denied/i));
-  ok("PF-12 fail (breaker m7): xr_app cannot setval a shared sequence (every firm's next write would fail); nextval still works",
-    refused(() => asAppRaw("select setval('module_event_seq_seq', 1)"), /permission denied/i) && /^\d+$/.test(asAppRaw("select nextval('module_event_seq_seq')")));
-  ok("PF-12: xr_wall_reader cannot log in; it owns the firm tables' trigger functions and the address lookup, no table", refused(() => sql(EMPTY, "select 1", "xr_wall_reader"), /not permitted to log in/i)
-    && sql(EMPTY, `select (select count(*) from pg_class where relowner = r.oid) || '|' || (select count(*) > 60 from pg_proc where proowner = r.oid) from pg_roles r where rolname = 'xr_wall_reader'`) === "0|true");
+  ok("PF-12 fail (breaker m7): xr_app cannot setval a shared sequence (every firm's next write would fail); nextval still works", refused(() => asAppRaw("select setval('module_event_seq_seq', 1)"), /permission denied/i) && /^\d+$/.test(asAppRaw("select nextval('module_event_seq_seq')")));
+  ok("PF-12: xr_wall_reader cannot log in; it owns the firm tables' trigger functions and the address lookup, no table", refused(() => sql(EMPTY, "select 1", "xr_wall_reader"), /not permitted to log in/i) && sql(EMPTY, `select (select count(*) from pg_class where relowner = r.oid) || '|' || (select count(*) > 60 from pg_proc where proowner = r.oid) from pg_roles r where rolname = 'xr_wall_reader'`) === "0|true");
   sql(EMPTY, "alter function platform_session_firm() owner to xr_staff_bypass");
   const viaBypassFn = await appRoleProblems(viaPool(appPool));
   sql(EMPTY, "alter function platform_session_firm() owner to xr_studio");
   ok("PF-12 start-up check fail (breaker m6): a function owned by a role xr_app may become (the bypass role) is named", viaBypassFn.some((p) => /function/.test(p)), viaBypassFn);
   ok("PF-12 fail: xr_app cannot turn row-level security off for itself (row_security = off is refused for a policied table)", refused(() => asAppRaw(`set row_security = off; select count(*) from "platform_staff"`), /row-level security/i));
-  ok("PF-12 pass: xr_app may SET ROLE to the bypass role only (SET, not inherited: without it xr_app has no BYPASSRLS)",
-    asAppRaw("set role xr_staff_bypass; select current_user") === "xr_staff_bypass" && sql(EMPTY, `select count(*) from pg_auth_members m join pg_roles r on r.oid = m.roleid join pg_roles u on u.oid = m.member where u.rolname = 'xr_app' and r.rolname = 'xr_staff_bypass' and m.inherit_option = false and m.set_option = true`) === "1");
+  ok("PF-12 pass: xr_app may SET ROLE to the bypass role only (SET, not inherited: without it xr_app has no BYPASSRLS)", asAppRaw("set role xr_staff_bypass; select current_user") === "xr_staff_bypass" && sql(EMPTY, `select count(*) from pg_auth_members m join pg_roles r on r.oid = m.roleid join pg_roles u on u.oid = m.member where u.rolname = 'xr_app' and r.rolname = 'xr_staff_bypass' and m.inherit_option = false and m.set_option = true`) === "1");
   const terse = sql(EMPTY, `select coalesce(string_agg(c, ','), '') from pg_db_role_setting s join pg_roles r on r.oid = s.setrole, unnest(s.setconfig) c where r.rolname = 'xr_app'`);
   ok("PF-12 (FO-13 break 11): xr_app logs terse errors, so a refused row's DETAIL never repeats its values in the log", /log_error_verbosity=terse/.test(terse) && asAppRaw("show log_error_verbosity") === "terse", terse);
   const lookup = sql(EMPTY, `select rolcanlogin, (select count(*) from pg_class where relowner = r.oid), (select count(*) from information_schema.role_table_grants where grantee = 'xr_case_lookup') from pg_roles r where rolname = 'xr_case_lookup'`);
@@ -174,8 +164,7 @@ try {
   await seedSampleFirmsFrontOffice(seedDb);
   const tables = familyTables(DEMO), counts = Object.fromEntries(tables.map((t) => [t, count(DEMO, t)]));
   for (const d of all.filter((d) => d >= NEW)) psql(urlOf(DEMO), ["-f", join(MIG, d, "migration.sql")]);
-  ok("PF-12 pass: the migration applies on the demo-data copy and changes no row (owner's counts the same on every family table)",
-    tables.every((t) => count(DEMO, t) === counts[t]) && Object.values(counts).reduce((a, b) => a + b, 0) > 0, tables.filter((t) => count(DEMO, t) !== counts[t]));
+  ok("PF-12 pass: the migration applies on the demo-data copy and changes no row (owner's counts the same on every family table)", tables.every((t) => count(DEMO, t) === counts[t]) && Object.values(counts).reduce((a, b) => a + b, 0) > 0, tables.filter((t) => count(DEMO, t) !== counts[t]));
   const firms = sql(DEMO, "select id from platform_firm order by key").split("\n").filter(Boolean);
   const [A, B] = firms;
   // Rows for families the seed leaves empty: one per firm, written as the owner.
@@ -186,8 +175,7 @@ try {
   const withRows = tables.filter((t) => !EXCEPTIONS.includes(t) && count(DEMO, t) > 0);
   const noFirm = withRows.filter((t) => asApp(DEMO, null, `select count(*) from "${t}"`) !== "0");
   ok(`PF-12 pass: a raw query with no app.firm_id reads nothing from any walled table that has rows (${withRows.length} tables)`, withRows.length >= 5 && noFirm.length === 0, noFirm);
-  ok("PF-12 fail: the same tables do have rows (the owner reads them), and a catalogue outside the walls still reads with no firm",
-    withRows.every((t) => count(DEMO, t) > 0) && Number(asApp(DEMO, null, `select count(*) from "platform_permission_key"`)) > 0);
+  ok("PF-12 fail: the same tables do have rows (the owner reads them), and a catalogue outside the walls still reads with no firm", withRows.every((t) => count(DEMO, t) > 0) && Number(asApp(DEMO, null, `select count(*) from "platform_permission_key"`)) > 0);
   const own = (t: string, f: string) => Number(asApp(DEMO, f, `select count(*) from "${t}" where ${t === "platform_firm" ? "id" : "firm_id"} = '${f}'`));
   const theirs = (t: string, f: string, other: string) => asApp(DEMO, f, `select count(*) from "${t}" where ${t === "platform_firm" ? "id" : "firm_id"} = '${other}'`);
   // One table of each family that has rows for both firms (or the closest the Sample data gives).
@@ -204,25 +192,19 @@ try {
   }
   ok(`PF-12: one table of each family was found with both firms' rows (${picks.join(", ")})`, picks.length === 5, picks);
   const KEY = `'${sql(DEMO, "select key from platform_setting_definition order by key limit 1")}'`;
-  ok("PF-12 fail: firm A's session cannot write a row naming firm B (WITH CHECK refuses it)",
-    refused(() => asApp(DEMO, A, `insert into platform_firm_setting (firm_id, key, value, changed_by, changed_at) values ('${B}', ${KEY}, '1', 'test', now())`), /row-level security/i)
-    && refused(() => asApp(DEMO, A, `update platform_firm_setting set firm_id = '${B}' where firm_id = '${A}'`), /row-level security/i));
+  ok("PF-12 fail: firm A's session cannot write a row naming firm B (WITH CHECK refuses it)", refused(() => asApp(DEMO, A, `insert into platform_firm_setting (firm_id, key, value, changed_by, changed_at) values ('${B}', ${KEY}, '1', 'test', now())`), /row-level security/i) && refused(() => asApp(DEMO, A, `update platform_firm_setting set firm_id = '${B}' where firm_id = '${A}'`), /row-level security/i));
   ok("PF-12 pass: firm A's session changes its own rows", Number(asApp(DEMO, A, `with u as (update platform_firm_setting set changed_by = changed_by where firm_id = '${A}' returning 1) select count(*) from u`)) > 0);
   ok("PF-12 fail: with no firm a write is refused", refused(() => asApp(DEMO, null, `insert into platform_firm_setting (firm_id, key, value, changed_by, changed_at) values ('${A}', ${KEY}, '1', 'test', now())`), /row-level security/i));
   ok("PF-12 fail: an app.firm_id that is not a uuid is an error, never a match", refused(() => sql(DEMO, `begin; select set_config('app.firm_id', 'x', true); select count(*) from platform_staff; commit;`, "xr_app"), /invalid input syntax for type uuid/i));
   // Platform-owned templates (firm_id null): firms read them; nobody but the bypass role writes them.
   sql(DEMO, `insert into msg_template (id, firm_id, owner, key, kind, channel, language, updated_at) values ('00000000-0000-4000-8000-00000000f012', null, 'PLATFORM', 'pf12.probe', 'probe', 'EMAIL', 'en', now())`);
   ok("PF-12 pass: a firm reads a platform-owned template (firm_id null)", asApp(DEMO, A, `select count(*) from msg_template where id = '00000000-0000-4000-8000-00000000f012'`) === "1");
-  ok("PF-12 fail: with no firm the platform template reads nothing; a firm cannot change or add one",
-    asApp(DEMO, null, `select count(*) from msg_template where id = '00000000-0000-4000-8000-00000000f012'`) === "0"
-    && asApp(DEMO, A, `with u as (update msg_template set key = 'x' where id = '00000000-0000-4000-8000-00000000f012' returning 1) select count(*) from u`) === "0"
-    && refused(() => asApp(DEMO, A, `insert into msg_template (id, firm_id, owner, key, kind, channel, language, updated_at) values (gen_random_uuid(), null, 'PLATFORM', 'pf12.probe3', 'probe', 'EMAIL', 'en', now())`), /row-level security/i));
+  ok("PF-12 fail: with no firm the platform template reads nothing; a firm cannot change or add one", asApp(DEMO, null, `select count(*) from msg_template where id = '00000000-0000-4000-8000-00000000f012'`) === "0" && asApp(DEMO, A, `with u as (update msg_template set key = 'x' where id = '00000000-0000-4000-8000-00000000f012' returning 1) select count(*) from u`) === "0" && refused(() => asApp(DEMO, A, `insert into msg_template (id, firm_id, owner, key, kind, channel, language, updated_at) values (gen_random_uuid(), null, 'PLATFORM', 'pf12.probe3', 'probe', 'EMAIL', 'en', now())`), /row-level security/i));
   // Breaker M1: firm A links its row to firm B's template (the trigger could not see B's row; the key ignores the walls).
   sql(DEMO, `insert into msg_template (id, firm_id, owner, key, kind, channel, language, updated_at) values ('00000000-0000-4000-8000-0000000b0012', '${B}', 'FIRM', 'pf12.b', 'probe', 'EMAIL', 'en', now())`);
   const vcols = "id, firm_id, template_id, version, subject, body, published_by";
   const hasVcols = sql(DEMO, `select count(*) from information_schema.columns where table_name = 'msg_template_version' and column_name in ('version','subject','body','published_by')`) === "4";
-  ok("PF-12 fail (breaker M1): firm A cannot add a template version on firm B's template (msg_template_version_in_firm sees B's row again)",
-    hasVcols && refused(() => asApp(DEMO, A, `insert into msg_template_version (${vcols}) values (gen_random_uuid(), '${A}', '00000000-0000-4000-8000-0000000b0012', 1, 's', 'b', 'system:pf12-test')`), /is not its template's firm/i));
+  ok("PF-12 fail (breaker M1): firm A cannot add a template version on firm B's template (msg_template_version_in_firm sees B's row again)", hasVcols && refused(() => asApp(DEMO, A, `insert into msg_template_version (${vcols}) values (gen_random_uuid(), '${A}', '00000000-0000-4000-8000-0000000b0012', 1, 's', 'b', 'system:pf12-test')`), /is not its template's firm/i));
   ok("PF-12 pass: firm B adds a version on its own template", hasVcols && asApp(DEMO, B, `with i as (insert into msg_template_version (${vcols}) values ('00000000-0000-4000-8000-0000000b0013', '${B}', '00000000-0000-4000-8000-0000000b0012', 1, 's', 'b', 'system:pf12-test') returning 1) select count(*) from i`) === "1");
   // Breaker M2: firm B takes the address firm A holds for its redirect (the held-by-other check could not see A's history).
   sql(DEMO, `insert into platform_firm_web_address (firm_id, address, set_by, updated_at) values ('${A}', 'pf12-a', 'system:pf12-test', now()), ('${B}', 'pf12-b', 'system:pf12-test', now()) on conflict do nothing`);
@@ -230,23 +212,24 @@ try {
   // As the owner, firm A moves to a new address the way the app does (its redirect record first): its old one is held 90 days.
   sql(DEMO, `begin; insert into platform_firm_address_history (id, firm_id, old_address, new_address, until, reason, changed_by, changed_at) values (gen_random_uuid(), '${A}', '${aAddr}', 'pf12-a-new', now() + interval '2160 hours', 'pf12 test move', 'system:pf12-test', now());
     update platform_firm_web_address set address = 'pf12-a-new' where firm_id = '${A}'; commit;`);
-  ok("PF-12 fail (breaker M2): firm B cannot take the address firm A holds for its redirect (platform_web_address_held_by_other sees A's row again)", !!aAddr && !!bAddr &&
-    refused(() => asApp(DEMO, B, `insert into platform_firm_address_history (id, firm_id, old_address, new_address, until, reason, changed_by, changed_at) values (gen_random_uuid(), '${B}', '${bAddr}', '${aAddr}', now() + interval '2160 hours', 'pf12 test move', 'system:pf12-test', now()); update platform_firm_web_address set address = '${aAddr}' where firm_id = '${B}'`), /held for another firm/i));
-  ok("PF-12 pass: the address lookup tells a firm which addresses another firm has or holds, never a firm id, and not its own",
-    asApp(DEMO, B, `select string_agg(a, ',' order by a) from platform_web_address_taken(array['${aAddr}', '${bAddr}', 'pf12-free'], now(), '${B}') a`) === aAddr
-    && sql(DEMO, `select pg_get_function_result('platform_web_address_taken(text[], timestamptz, uuid)'::regprocedure)`) === "SETOF text");
+  ok("PF-12 fail (breaker M2): firm B cannot take the address firm A holds for its redirect (platform_web_address_held_by_other sees A's row again)", !!aAddr && !!bAddr && refused(() => asApp(DEMO, B, `insert into platform_firm_address_history (id, firm_id, old_address, new_address, until, reason, changed_by, changed_at) values (gen_random_uuid(), '${B}', '${bAddr}', '${aAddr}', now() + interval '2160 hours', 'pf12 test move', 'system:pf12-test', now()); update platform_firm_web_address set address = '${aAddr}' where firm_id = '${B}'`), /held for another firm/i));
+  // Breaker R2-1: a row naming firm B reached B-reading triggers before the wall's check; the gate refuses it first.
+  const bPerson = sql(DEMO, `insert into fo_person (firm_id, created_by, updated_at) values ('${B}', 'staff:pf12', now()) returning id`).split("\n")[0];
+  const bInv = sql(DEMO, `insert into money_invoice (firm_id, person_id, created_by, updated_at) values ('${B}', '${bPerson}', 'staff:pf12', now()) returning id`).split("\n")[0];
+  const line = (f: string, cur: string) => `insert into money_invoice_line (firm_id, invoice_id, position, kind, description, unit_amount_minor, amount_minor, currency) values ('${f}', '${bInv}', 1, (enum_range(null::"MoneyLineKind"))[1], 'x', 1, 1, '${cur}')`;
+  const otherCur = sql(DEMO, `select (array_remove(enum_range(null::"MoneyCurrency")::text[], (select currency::text from money_invoice where id = '${bInv}')))[1]`);
+  ok("PF-12 fail (breaker R2-1): firm A's row naming firm B's invoice gets the wall's refusal only, never B's currency from its trigger (the bypass role still gets the trigger's)", refused(() => asApp(DEMO, A, line(B, otherCur)), /^(?![\s\S]*currency)[\s\S]*row-level security policy for table "money_invoice_line"/) && refused(() => sql(DEMO, `begin; set local role xr_staff_bypass; ${line(B, otherCur)}; commit;`, "xr_app"), /currency/i));
+  ok("PF-12 pass: the address lookup tells a firm which addresses another firm has or holds, never a firm id, and not its own", asApp(DEMO, B, `select string_agg(a, ',' order by a) from platform_web_address_taken(array['${aAddr}', '${bAddr}', 'pf12-free'], now(), '${B}') a`) === aAddr && sql(DEMO, `select pg_get_function_result('platform_web_address_taken(text[], timestamptz, uuid)'::regprocedure)`) === "SETOF text");
   ok("PF-12 pass: the bypass role reads both firms' rows", Number(sql(DEMO, `begin; set local role xr_staff_bypass; select count(distinct firm_id) from platform_staff where firm_id in ('${A}','${B}'); commit;`, "xr_app")) === 2);
 
   // ------------------------------------------------------------------- the app's pool, the named list and the request
   ok("PF-12 pass: in a suite or tool process a query with no scope runs on the bypass (the process holds the owner's address anyway)", unscopedMode() === "direct");
   const directPool = new WalledPool({ connectionString: appDatabaseUrl(urlOf(DEMO), {}), max: 1 }); pools.push(directPool);
   ok("PF-12 pass: so a suite seeding through the app's client still reads every firm", Number((await directPool.query("select count(distinct firm_id) as n from platform_staff")).rows[0].n) >= 2);
-  ok("PF-12 pass: in a suite or tool process a door's use runs on a direct call with no scope (a suite calling the service with its own client)",
-    Number((await asBypass("fo.sales.web-form", () => directPool.query("select count(distinct firm_id) as n from platform_staff"))).rows[0].n) >= 2);
+  ok("PF-12 pass: in a suite or tool process a door's use runs on a direct call with no scope (a suite calling the service with its own client)", Number((await asBypass("fo.sales.web-form", () => directPool.query("select count(distinct firm_id) as n from platform_staff"))).rows[0].n) >= 2);
   const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm-walls.ts");
   await new FirmWallsInterceptor({ $queryRawUnsafe: async (q: string) => (await appPool.query(q)).rows } as never).onModuleInit();
-  ok("PF-12 pass: the API server's start-up (FirmWallsInterceptor, registered by api/src/features/platform-firm-walls.ts) walls every unscoped query from then on",
-    unscopedMode() === "walled" && existsSync(join(STUDIO, "api", "src", "features", "platform-firm-walls.ts")));
+  ok("PF-12 pass: the API server's start-up (FirmWallsInterceptor, registered by api/src/features/platform-firm-walls.ts) walls every unscoped query from then on", unscopedMode() === "walled" && existsSync(join(STUDIO, "api", "src", "features", "platform-firm-walls.ts")));
   const { asJob } = await import("../api/src/platform/firm-scope.ts");
   const pool = new WalledPool({ connectionString: appDatabaseUrl(urlOf(DEMO), {}), max: 1, options: "-c TimeZone=UTC" }); pools.push(pool);
   const db = new PrismaClient({ adapter: new PrismaPg(pool) }); clients.push(db);
@@ -281,13 +264,10 @@ try {
   ok("PF-12 pass: a sweep job on the named list (job:messages.outbox_sweep) reads every firm's rows", new Set((await asJob("messages.outbox_sweep", staffOf)).map((r) => r.firmId)).size >= 2);
   ok("PF-12 fail: a job with no firm and no named use reads no firm's rows", (await asJob("platform.stuck_jobs", staffOf)).length === 0);
   ok("PF-12 fail (breaker m8): in the API server a door's use is refused on a call with no scope", await asBypass("fo.sales.web-form", staffOf).then(() => false, (e) => e instanceof BypassRefused));
-  ok("PF-12 pass (breaker m3): a door's use also runs on HEAD and with a trailing slash (the router's own matching)",
-    (await inRequest({ method: "HEAD", path: "/api/public/forms/abc/" }, () => asBypass("fo.sales.web-form", staffOf))).length >= 2);
+  ok("PF-12 pass (breaker m3): a door's use also runs on HEAD and with a trailing slash (the router's own matching)", (await inRequest({ method: "HEAD", path: "/api/public/forms/abc/" }, () => asBypass("fo.sales.web-form", staffOf))).length >= 2);
   const caseRoute = { method: "GET", path: "/runtime/cases" }, staffRoute = { method: "GET", path: "/api/platform/me" };
   ok("PF-12 fail: the bypass role is refused on a route not on its list (a page outside /api/)", await inRequest(caseRoute, () => asBypass("platform.identity.authenticate", staffOf)).then(() => false, (e) => e instanceof BypassRefused));
-  ok("PF-12 fail: the sign-in door's bypass is refused on a staff route, and the web form's on the booking page (each use only on its own routes)",
-    await inRequest({ method: "GET", path: "/api/front-office/leads" }, () => asBypass("platform.identity.sign-in", staffOf)).then(() => false, (e) => e instanceof BypassRefused)
-    && await inRequest({ method: "GET", path: "/api/public/firms/sample-firm/book/free/slots" }, () => asBypass("fo.sales.web-form", staffOf)).then(() => false, (e) => e instanceof BypassRefused));
+  ok("PF-12 fail: the sign-in door's bypass is refused on a staff route, and the web form's on the booking page (each use only on its own routes)", await inRequest({ method: "GET", path: "/api/front-office/leads" }, () => asBypass("platform.identity.sign-in", staffOf)).then(() => false, (e) => e instanceof BypassRefused) && await inRequest({ method: "GET", path: "/api/public/firms/sample-firm/book/free/slots" }, () => asBypass("fo.sales.web-form", staffOf)).then(() => false, (e) => e instanceof BypassRefused));
   const both = await inRequest(staffRoute, () => asBypass("platform.identity.authenticate", staffOf));
   ok("PF-12 pass: on a route on its list the bypass reads both firms", new Set(both.map((r) => r.firmId)).size >= 2);
   ok("PF-12 pass: every bypass use writes one line with the use and the route; a refused one writes none", lines.join("|") === "job:messages.outbox_sweep -|fo.sales.web-form GET /api/public/forms/abc|platform.identity.authenticate GET /api/platform/me", lines);
@@ -334,10 +314,8 @@ try {
   });
   ok("PF-12 pass: the API starts as xr_app (DATABASE_URL's user changed to xr_app)", /Product Studio on http/.test(asApp1.out) && !/refuses to start/.test(asApp1.out), asApp1.out.slice(-400));
   const site = seen.site as { status: number; body: any }, other = seen.other as { status: number }, mine = seen.own as { status: number };
-  ok("PF-12 pass (review B1): a firm's own web address answers its public site through the walls; fail: an unknown address is 404",
-    site?.status === 200 && site.body?.webAddress === "pf12-b" && (seen.noSite as { status: number })?.status === 404, seen);
-  ok("PF-12 pass: a staff member signs in through the walled server and reads their own firm's staff member; fail: another firm's by id is 404",
-    seen.signIn === 200 && mine?.status === 200 && other?.status === 404, seen);
+  ok("PF-12 pass (review B1): a firm's own web address answers its public site through the walls; fail: an unknown address is 404", site?.status === 200 && site.body?.webAddress === "pf12-b" && (seen.noSite as { status: number })?.status === 404, seen);
+  ok("PF-12 pass: a staff member signs in through the walled server and reads their own firm's staff member; fail: another firm's by id is 404", seen.signIn === 200 && mine?.status === 200 && other?.status === 404, seen);
   ok("PF-12 pass (review M2): the booking page list (FO-3pa) answers through its named use, with its firm's page", seen.page === 200 && JSON.stringify(seen.pageBody ?? "").includes("Sample"), seen);
 } finally {
   for (const c of clients) await c.$disconnect().catch(() => undefined);

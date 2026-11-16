@@ -122,3 +122,25 @@ BEGIN
   END LOOP;
 END
 $readers$;
+
+-- A BEFORE trigger runs before the wall's WITH CHECK, and the reader's triggers see every firm, so a row naming another
+-- firm would reach them and their refusal could tell its values (breaker R2-1). One gate fires first on every walled
+-- table: a row that is not the session's firm is refused before any other trigger, unless the role passes the walls.
+CREATE FUNCTION platform_firm_first() RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $fn$
+BEGIN
+  IF (SELECT r.rolbypassrls OR r.rolsuper FROM pg_roles r WHERE r.rolname = current_user) THEN RETURN NEW; END IF;
+  IF TG_ARGV[0] = '' OR (to_jsonb(NEW) ->> TG_ARGV[0])::uuid IS DISTINCT FROM platform_session_firm() THEN
+    RAISE EXCEPTION 'new row violates row-level security policy for table "%"', TG_TABLE_NAME USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END $fn$;
+DO $gate$
+DECLARE c record;
+BEGIN
+  FOR c IN SELECT k.relname, CASE WHEN k.relname = 'platform_firm' THEN 'id' WHEN EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = k.oid AND a.attname = 'firm_id') THEN 'firm_id' ELSE '' END AS col
+           FROM pg_class k WHERE k.relnamespace = 'public'::regnamespace AND k.relforcerowsecurity AND k.relname ~ '^(platform_|fo_|money_|msg_|auto_|plat_complaint)'
+  LOOP
+    EXECUTE format('CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION platform_firm_first(%L)', c.relname, c.col);
+  END LOOP;
+END
+$gate$;
