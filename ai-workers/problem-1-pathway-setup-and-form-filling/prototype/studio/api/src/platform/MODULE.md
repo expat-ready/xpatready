@@ -11,7 +11,7 @@ Firms, staff and sign-in, settings, secrets, jobs, logs, complaints and message 
 
 **Invariants (set by).**
 - Every read and write of a platform or front-office table goes through `firmScope(firmId)`; another firm's row is "not found" (PF-3, contracts §0.2; P-559).
-- The database walls it (PF-12): the API connects as `xr_app` (owns no table; it refuses to start otherwise), each query runs as its caller's firm (`firm-scope.ts`: the guard's firm, a door's resolved firm, a job's firm; none reads nothing); crossing firms only through `asBypass(use)` for a use on `BYPASS_USES`, each use logged. `case.stages.calendar` (CS-DL1, until CS-W3 part 1): the GET case stage routes read the case's firm's three calendar settings, nothing else. Every new `platform_*`, `fo_*`, `money_*`, `msg_*`, `auto_*`, `plat_complaint*` table ships its forced policy in its own migration.
+- The database walls it (PF-12): the API connects as `xr_app` (owns no table; it refuses to start otherwise), each query runs as its caller's firm (`firm-scope.ts`: the guard's firm, a door's resolved firm, a job's firm; none reads nothing); crossing firms only through `asBypass(use)` for a use on `BYPASS_USES`, each use logged. One narrow definer lookup outside it: `platform_firm_calendar(firm key)` (CS-DL1, until CS-W3 part 1) returns a firm's three calendar settings only, for the case stage views. Every new `platform_*`, `fo_*`, `money_*`, `msg_*`, `auto_*`, `plat_complaint*` table ships its forced policy in its own migration.
 - Sized for about 100 firms in one process (P-562).
 - Two-step sign-in is required for every staff member (P-567).
 - The audit trail is append-only; demo reset deletes only demo lines, never a platform line (P-571 (1)).

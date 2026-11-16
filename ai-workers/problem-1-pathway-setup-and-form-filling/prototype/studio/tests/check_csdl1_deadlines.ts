@@ -11,7 +11,7 @@
 import { businessClose, businessDaysBetween, BusinessDayTally, calendarDate, countBack, dayMark, isOpenDay, localDate, NO_SUCH_DATE, zonedInstant, type FirmCalendar } from "../api/src/platform/calendar/working-days.ts";
 import * as complaintDays from "../api/src/platform/complaints/business-days.ts";
 import * as calendarModule from "../api/src/platform/calendar/working-days.ts";
-import { asBypass, BypassRefused, enterRequest, withFirm } from "../api/src/platform/firm-scope.ts";
+import { withFirm } from "../api/src/platform/firm-scope.ts";
 import { deadlineDay, showDeadline } from "../api/src/case-stages.ts";
 import { deadlineOf, type KeyDetailDef } from "../engine/runtime/stages.ts";
 import { FakeClock } from "../ports/clock.ts";
@@ -94,17 +94,6 @@ ok("CS-DL1 DW4 pass (wiring): in firm A's scope the view reads A's zone and clos
   inA.today === "2027-03-08" && inA.cal.zone === "Asia/Tokyo" && showDeadline(due("2027-03-07"), inA.cal, inA.today)?.missed === true && showDeadline(due("2027-03-08"), inA.cal, inA.today)?.shown === "Mon 8 Mar 2027 (closed day)", inA);
 ok("CS-DL1 DW4 fail (wiring): with no firm in scope nothing is read across the wall: the defaults (Toronto, no closed days), so today is Sun 7 Mar and Mon 8 Mar carries no mark",
   none.today === "2027-03-07" && none.cal.zone === "America/Toronto" && none.cal.closedDays.length === 0 && showDeadline(due("2027-03-08"), none.cal, none.today)?.mark === null, none);
-
-// DW8 (Build Lead C's Q1 ruling): the named use "case.stages.calendar" runs only inside a GET stage route's request; any
-// other route, a write route included, is refused before its query runs (the query here never runs: it would say "ran").
-const onRoute = async (method: string, path: string) => {
-  try { return await (async () => { enterRequest({ method, path }); return asBypass("case.stages.calendar", () => "ran"); })(); } catch (e) { return e instanceof BypassRefused ? "refused" : String(e); }
-};
-const C = "/api/runtime/cases/3b0f0538-05ea-48d2-969e-7108c6615f35";
-ok("CS-DL1 DW8 pass: the use runs on the three GET stage routes (the stages, one stage, the next stage's preview)",
-  (await Promise.all([onRoute("GET", `${C}/stages`), onRoute("GET", `${C}/stages/abc`), onRoute("GET", `${C}/stages/next`)])).every((r) => r === "ran"));
-const refusedOn = await Promise.all([onRoute("POST", `${C}/stages/next`), onRoute("PUT", `${C}/stages/abc/key-details`), onRoute("GET", `${C}/checklist`), onRoute("GET", `${C}/stages/abc/more`), onRoute("GET", "/api/platform/complaints"), onRoute("DELETE", `${C}/stages`)]);
-ok("CS-DL1 DW8 fail: it is refused on a write route (start next stage, key details), on any other case route and on a platform route", refusedOn.every((r) => r === "refused"), refusedOn);
 
 // ---------------------------------------------------------------- DW5 PF-21's clock after the move
 ok("CS-DL1 DW5 pass: complaints/business-days.ts gives PF-21v's count from calendar/ (one function, not a copy) and nothing else moved",

@@ -1,8 +1,9 @@
 // CS-DL1 part 1, by screens and through the API (Build Lead C's rulings on #2000): DW7 the stage strip and the stage
 // panel show the deadline with its weekday and "(weekend)" / "(closed day)" mark, never moved, and a "Missed" tag once
 // the date is past (AG-7-94 r3), at 1440 and 375 px, by keyboard, axe WCAG 2.2 A/AA, no sideways scroll; DW8 the case's
-// own firm's calendar through the one named use "case.stages.calendar": firm A's closed day shows on firm A's case, firm
-// B's never does, a case whose firm cannot be found gets the defaults, never another firm's calendar. On the configured
+// own firm's calendar through the database's narrow lookup (Build Lead C's ruling after Build Lead A's): firm A's closed day shows on firm A's case, firm
+// B's never does, a case whose firm cannot be found gets the defaults, never another firm's calendar; DW9 the one narrow
+// lookup platform_firm_calendar (migration csdl1_firm_calendar) from the catalogue. On the configured
 // checkpoint's Sample route "Study, then work"; the two Sample firms are seeded here (PF-1's seed) with test closed days
 // (labelled test data, no immigration value). Today is the server's clock. No model call (US$0).
 // Screenshots (deviceScaleFactor 1) in product/screens/CS-DL1/screenshots/.
@@ -97,6 +98,16 @@ try {
   const other = await current(caseId);
   ok("CS-DL1 DW8 fail: firm B's closed day (Tue 9 Mar 2027) never shows on firm A's case, nor B's Tokyo zone", other?.shown === "Tue 9 Mar 2027" && other.mark === null, other);
   setDate(caseId, "2027-03-08");
+
+  // ---------------------------------------------------------------- DW9 the lookup, from the catalogue
+  const fn = sql(`select r.rolname || '|' || p.prosecdef || '|' || array_to_string(p.proconfig, ',') || '|' || pg_get_function_result(p.oid) || '|' || has_function_privilege('public', p.oid, 'EXECUTE') || '|' || has_function_privilege('xr_app', p.oid, 'EXECUTE') from pg_proc p join pg_roles r on r.oid = p.proowner where p.proname = 'platform_firm_calendar'`);
+  ok("CS-DL1 DW9 pass: platform_firm_calendar is owned by xr_wall_reader, SECURITY DEFINER, search_path pinned (pg_temp last), returns only the time zone, hours and closed days; xr_app may run it",
+    fn === "xr_wall_reader|true|search_path=pg_catalog, public, pg_temp|TABLE(time_zone jsonb, business_hours jsonb, closed_days jsonb)|false|true", fn);
+  ok("CS-DL1 DW9 fail: PUBLIC cannot run it, and it is the only function of that name (no overload)", fn?.split("|")[4] === "false" && sql("select count(*) from pg_proc where proname = 'platform_firm_calendar'") === "1");
+  const odd = ["", "x' OR '1'='1", "sample-solo'--", "SAMPLE-FIRM", "sample-firm "].map((k) => sql(`select count(*) from platform_firm_calendar('${k.replace(/'/g, "''")}')`));
+  ok("CS-DL1 DW9 fail: an empty key, a key with SQL in it, another case of letters or a trailing space returns no row", odd.every((n) => n === "0"), odd);
+  ok("CS-DL1 DW9 pass: firm A's key returns one row, its closed day as stored, its unset zone as null (the app reads the default)",
+    sql("select closed_days::text || '|' || coalesce(time_zone::text, 'null') from platform_firm_calendar('sample-firm')") === '["2027-03-08"]|null');
 
   // ---------------------------------------------------------------- DW7 the words on the screen
   await p.reload(); await p.locator("[data-stage-strip]").waitFor(); await settle();

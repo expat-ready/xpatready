@@ -16,7 +16,8 @@ import type { Snapshot } from "../../engine/snapshot.ts";
 import { systemClock, type ClockPort } from "../../ports/clock.ts";
 import { actorOf, Audit, CaseRead, Db, fail, type Actor } from "./core.ts";
 import { dayMark, localDate, NO_SUCH_DATE, readFirmCalendar, type FirmCalendar } from "./platform/calendar/working-days.ts";
-import { asBypass, BypassRefused, currentFirm, withFirm } from "./platform/firm-scope.ts";
+import { currentFirm } from "./platform/firm-scope.ts";
+import { BUSINESS_HOURS, CLOSED_DAYS, TIME_ZONE } from "./platform/settings.ts";
 import { Programs } from "./programs.ts";
 import { readSpec } from "./routes-data.ts";
 import { Runtime, STAGE_RECORD, type Reached } from "./runtime.ts";
@@ -75,16 +76,17 @@ export async function deadlineDay(db: Db, clock: ClockPort, firmKey?: string): P
   const cal = await (currentFirm() ? readFirmCalendar(db, currentFirm()!) : firmKey ? caseFirmCalendar(db, firmKey) : readFirmCalendar(db, NO_ID));
   return { cal, today: localDate(cal.zone, clock.now()) };
 }
-/** Build Lead C's ruling on #2000 (Q1): the case's own firm's calendar on the GET stage routes, through the one named use
- *  "case.stages.calendar" (firm-scope.ts): find the platform firm by the case's key, then read its three calendar
- *  settings as that firm. Anywhere else (a write route, a suite with no request) the use is refused before any query, and
- *  a firm that cannot be found gives the defaults, never another firm's calendar. CS-W3 part 1 replaces this. */
+/** Build Lead C's ruling on #2000 (Q1, after Build Lead A's): the case's own firm's calendar through the database's one
+ *  narrow lookup, platform_firm_calendar(firm key) (migration csdl1_firm_calendar: the three calendar settings and nothing
+ *  else). An unset setting reads its default; an unknown key gives the defaults, never another firm's calendar. Used by
+ *  the stage views only. CS-W3 part 1 replaces this: case requests carry their firm. */
 async function caseFirmCalendar(db: Db, firmKey: string): Promise<FirmCalendar> {
-  try {
-    const firm = await asBypass("case.stages.calendar", () => db.platformFirm.findUnique({ where: { key: firmKey }, select: { id: true } }));
-    if (firm) return await withFirm(firm.id, () => readFirmCalendar(db, firm.id));
-  } catch (e) { if (!(e instanceof BypassRefused)) throw e; }
-  return readFirmCalendar(db, NO_ID);
+  const [row] = await db.$queryRaw<{ time_zone: unknown; business_hours: unknown; closed_days: unknown }[]>`SELECT time_zone, business_hours, closed_days FROM platform_firm_calendar(${firmKey})`;
+  const read = <T>(def: { schema: { safeParse(v: unknown): { success: boolean; data?: unknown } }; default: T }, v: unknown): T => {
+    const p = v === null || v === undefined ? null : def.schema.safeParse(v);
+    return p?.success ? (p.data as T) : def.default;
+  };
+  return row ? { zone: read(TIME_ZONE, row.time_zone), hours: read(BUSINESS_HOURS, row.business_hours), closedDays: read(CLOSED_DAYS, row.closed_days) } : { zone: TIME_ZONE.default, hours: BUSINESS_HOURS.default, closedDays: CLOSED_DAYS.default };
 }
 
 @Injectable()
