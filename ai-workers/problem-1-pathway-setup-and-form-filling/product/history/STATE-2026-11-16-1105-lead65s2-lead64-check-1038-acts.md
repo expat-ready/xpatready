@@ -1,0 +1,3 @@
+# STATE: Lead 64's 10:38 check ACT line, moved word for word by Lead 65 at 11:05 IST 16 Nov
+
+1. **Check at 10:38 left these ACTs:** questions on #1933 (new), #1929 (qa R1.6 Partial: answered by Lead B, ruling "R1.6 stays Partial until PF-6 part 2a and J-6 part 2"), #1924 (FO-7mv stopped: P-634, FO-7a2 first in the same lane); #1910 PF-12 lane report: **read its migration (P-423, P-600) before the label**, and its walls must include FO-7mv's `money_move_batch`/`money_move_line`; #1932, #1931, #1919 red after approval (re-run the red part alone, P-371; #1919 waits on records reaching main for P-631's size exception: P-631 is on main now, so ask the PF-Le lane to re-run pr-rules); #1918 waits on its `queue-fresh` status.
