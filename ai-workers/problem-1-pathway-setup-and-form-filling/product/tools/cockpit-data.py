@@ -1299,6 +1299,38 @@ def open_f_ids(line):
     return out
 
 
+def needs_lines(ny):
+    """16 Nov (founder on a phone saw a count and nothing behind it): one line per Needs you item, id, what and by when."""
+    return [f"{i['id']}: {i['line']}" + (f" — by {i['by']}" if i.get("by") else "") for i in (ny or {}).get("items") or []]
+
+
+def built_lines(d):
+    """Release 1 rows built (newest first) with their names, then one line for the rest."""
+    names = {r["map"]: r["cap"] for r in (d.get("capability_table") or {}).get("rows") or []}
+    rows = d.get("build_rows") or []
+    b = sorted([r for r in rows if r.get("built")], key=lambda r: (r["built"], r["map"]), reverse=True)
+    out = [f"{r['map']}. {names.get(r['map'], '')} — built {r['built']}" for r in b]
+    if len(rows) > len(b):
+        out.append(f"{len(rows) - len(b)} rows not built yet: the Capabilities tab lists each")
+    return out
+
+
+def poc_lines(d):
+    """Proof-of-concept capabilities not yet at Works: the gap behind 'n of m'."""
+    q = val_of((d.get("capabilities") or {}).get("qa")) or []
+    return [f"not yet Works: {c['id']} ({c.get('m') or ''}) {c.get('status') or ''} — {c.get('name') or ''}"
+            for c in q if str(c.get("id", "")).startswith("C") and c.get("status") != "Works"]
+
+
+def works_today_lines(d, W):
+    names = {r["map"]: r["cap"] for r in (d.get("capability_table") or {}).get("rows") or []}
+    return [f"{m}. {names.get(m, '')}" for m in W.get("maps") or []]
+
+
+def val_of(x):
+    return x.get("value", x.get("v")) if isinstance(x, dict) else x
+
+
 def needs_split(asks, forf, waitline, questions, prs_ok, st_src, prs_src, lin=None, today=None):
     """P-602 (1): Needs you counts only the founder's own items: open founder asks (one per table row), plus each F id the
     "For the founder" line marks open, plus each A or F id the "Waiting on the founder" line names that is not already
@@ -2705,26 +2737,53 @@ def build_explain(d):
         "tech lead are on the Factory tab.", now_w + " (STATE.md at the records commit)",
         val(sm["needs_you"]), "items counted (" + str(len(ny.get("asks") or [])) + " asks, " + str(len((ny.get("for_founder") or {}).get("open_ids") or [])) +
         " F ids, " + str(len((ny.get("waiting_line") or {}).get("new_ids") or [])) + " Waiting ids)", "Lower is better; each item waits on your word.", sm["needs_you"],
-        band="0 open items")
+        band="0 open items", todo=("decide or do each item below (you, the founder); the Lead closes it in STATE.md once done"
+                                   if val(sm["needs_you"]) else "nothing: no item waits on you"),
+        behind=needs_lines(ny))
     put("strip.release1", "Release 1 built", "Release 1 capabilities (Build rows of MVP-CHECKLIST.md §A) whose every BACKLOG part has merged through an "
         "app-code PR; proven = qa's Works verdict for the row.", "all time, from 13 Nov to " + t_ist, rows_n, "Build rows in the checklist",
-        up + f" Release 1 is done when all {rows_n} rows are built and proven.", P["built"])
+        up + f" Release 1 is done when all {rows_n} rows are built and proven.", P["built"],
+        todo="nothing for you: the Lead and the builders finish the rows not built yet (Capabilities tab)",
+        behind=built_lines(d))
     w = val(sm["works"]) or [None, None]
     put("strip.poc", "Proof of concept", "Proof-of-concept capabilities that read Works in qa/CAPABILITIES.md on main (milestones M2, T, M3, M4).",
-        now_w + " (main's qa/CAPABILITIES.md)", w[1], "proof capabilities", up + " A separate number from Release 1, never mixed (P-592).", sm["works"])
+        now_w + " (main's qa/CAPABILITIES.md)", w[1], "proof capabilities", up + " A separate number from Release 1, never mixed (P-592).", sm["works"],
+        behind=poc_lines(d))
     nd = val(sm["next_date"])
     dated = [x for x in d["plan"]["dates"] if x.get("date")]
     put("strip.next_date", "Next date", "The next dated row of the hand-kept plan (cockpit/plan.json); committed dates are the founder's, forecasts are estimates.",
-        "dates from today on", len(dated), "dated plan rows", "Days left counts calendar days; a forecast is not a promise.", sm["next_date"])
+        "dates from today on", len(dated), "dated plan rows", "Days left counts calendar days; a forecast is not a promise.", sm["next_date"],
+        behind=[f"{x['date']} · {x.get('kind') or ''} · {x.get('what') or ''}" for x in sorted(dated, key=lambda x: x["date"])])
     put("strip.health", "Health", "One light from seven checks: main CI, board data age, records on main, guards, burn, Major bugs on Works capabilities, "
         "data trust.", now_w + "; data age by your clock", None, "checks", "Green: all pass. Amber: one is not measured or near its limit. Red: one fails "
-        "(its action and owner show on tap).", src="health.items (seven checks) + the page's data age", cls="measured", n_override=len(d["health"]["items"]))
+        "(its action and owner show on tap).", src="health.items (seven checks) + the page's data age", cls="measured", n_override=len(d["health"]["items"]),
+        todo="tap Health for each check; a red or amber check says what to do and who",
+        behind=[f"{i['id']} {i['name']}: " + ("by your clock (board data age)" if i["state"] == "page" else i["state"]) +
+                (f" — {i['action']} ({i.get('owner') or ''})" if i["state"] in ("red", "amber") and i.get("action") else "")
+                for i in d["health"]["items"]])
     R = d["resources"]
     put("strip.plan_use", "Plan use", "Share of the weekly Claude plan used, as the Lead typed it; burn = percent used per hour; paid US$ today.",
         "the current weekly plan (resets " + str(val(R["weekly_resets"]) or "not reported") + "); reading as of " + str(R["weekly_pct"].get("as_of") or "not reported"),
         1 if val(R["weekly_pct"]) is not None else None, "Lead-reported reading", "The big number has no band: it grows through the week. "
         "Lower burn (the small line) is better; paid stays US$0 with live AI off.", R["weekly_pct"],
         band="for the burn on the small line: 3% or less an hour (" + COMPASS + ", P-440)", n_reason="not measured: the Lead input has no weekly_pct")
+    # ---- the three top numbers (16 Nov, founder on a phone: every count lists what is behind it)
+    tn = d.get("top_numbers") or {}
+    W_ = tn.get("works_today") or {}
+    if W_:
+        put("top.works_today", "Works today", "Release 1 capabilities (MVP-CHECKLIST.md §A) that reached qa Works since 00:00 IST today.",
+            "today from 00:00 IST to " + t_ist, val(W_), "capabilities at Works today", up + f" Target {W_.get('target')} a day ({W_.get('target_src') or ''}).",
+            W_, n_reason=W_.get("reason"), behind=works_today_lines(d, W_),
+            todo=None if val(W_) else "nothing for you: qa scores the built rows; the Lead keeps qa fed (current Lead)")
+    LN = tn.get("lanes") or {}
+    if LN.get("working"):
+        wk_, st_, id_ = LN.get("working") or {}, LN.get("started") or {}, LN.get("idle") or {}
+        put("top.lanes", "Lanes working", "Builder and qa branches with a push in the last 90 min (measured), of the lanes the Lead says are started "
+            "(Lead-reported); idle = started with no push in 90 min.", "the last 90 min to " + t_ist, val(wk_), "branches with a push in 90 min",
+            up + " Idle lanes are the Lead's to wake or close.", wk_, n_reason=wk_.get("reason"),
+            todo=("the Lead wakes or closes the idle lanes (current Lead)" if (id_.get("names") or []) else None),
+            behind=[f"working: {x}" for x in wk_.get("names") or []] + [f"idle: {x}" for x in id_.get("names") or []] +
+                   [f"started (Lead): {x}" for x in st_.get("names") or []])
     # ---- Plan and pace
     Y = P["changes_per_day"]
     last = datetime.fromisoformat(F["days"][-1]).strftime("%-d %b") if F.get("days") else "today"

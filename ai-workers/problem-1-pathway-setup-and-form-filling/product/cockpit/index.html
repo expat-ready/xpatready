@@ -182,11 +182,18 @@ details.inline>summary{cursor:pointer;color:var(--accent);font-size:12.5px;displ
 .hasib{position:relative;padding-right:26px}
 .hasib>.ib{position:absolute;top:4px;right:3px;margin:0}
 .grpib{margin:2px 0 0}
+.fresh{max-width:1120px;margin:0 auto 4px;font-size:13px;color:var(--ink2)}
+.fresh b{color:var(--ink)} .fresh.fr-amber b,.fresh.fr-red b{color:var(--bad)}
+.stale{max-width:1120px;margin:0 auto 6px;padding:8px 12px;border-radius:8px;font-size:15px;line-height:1.35;border:2px solid var(--wait);background:var(--wait-soft);color:var(--ink)}
+.stale.fr-red{border-color:var(--bad);background:var(--bad-soft)}
+.stale b{font-size:17px}
 .clk{cursor:pointer}.clk:hover{outline:1px solid var(--accent);outline-offset:1px;border-radius:4px}
 .hlbtn{all:unset;display:block;cursor:pointer;width:100%;box-sizing:border-box}
 .hlbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
 .hlbtn>span{display:block}
 #tip .glist{margin:0;max-height:40vh;overflow:auto}
+#tip .todo{margin:4px 0}
+#needs .also{margin:6px 0 0;color:var(--ink2)}
 #tip .glist div{padding:1px 0;border-top:1px dashed var(--line)}
 /* board v57: Team tab, the org view by component */
 .orgv{display:grid;gap:10px}
@@ -227,11 +234,17 @@ details.inline>summary{cursor:pointer;color:var(--accent);font-size:12.5px;displ
   .strip-top{gap:4px}.strip-top .tile .v{font-size:16px}.strip-top .tile .s2,.strip-top .rep{display:none}.strip-top .tile .s{display:block;font-size:10px}
   .strip-in{gap:4px}.tile{padding:4px 5px}.tile .v{font:600 15px/1.2 var(--sans)}.tile .k{font-size:10px;text-transform:none;letter-spacing:0}.tile .s{display:none}
   section{padding:12px 10px 14px}
+  /* 16 Nov, phone: the sticky strip and three rows of tabs took 338 of 812 px; one row of tabs that scrolls sideways */
+  .tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;margin:10px 0 4px}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs{-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}
+  .tabs button{flex:none;padding:8px 12px}
+  .lineage{display:none}
   th,td{padding:5px 6px}
 }
 </style>
 
-<div class="strip" id="strip"><div class="strip-top" id="stripTop">
+<div class="strip" id="strip"><div id="fresh"></div><div class="strip-top" id="stripTop">
   <div class="tile"><div class="k">Works today</div><div class="v">&#x2026;</div></div>
   <div class="tile"><div class="k">Plan % per capability</div><div class="v">&#x2026;</div></div>
   <div class="tile"><div class="k">Lanes</div><div class="v">&#x2026;</div></div>
@@ -260,6 +273,9 @@ function src(x){return x&&typeof x==="object"&&x.src?x.src:"";}
 /* board v61: S marks a block whose info is a plain source line; T marks a number by its key(s) in data.json's explain block
    (window and n come from the data). Neither shows anything on hover: addIcons() puts one ⓘ button beside each. */
 function S(s){return s?' data-info="'+esc(s)+'"':"";}
+/* 16 Nov (founder on a phone: a count with nothing behind it): a count the page makes from data.json lists its items on tap */
+function LI(todo,lines){return ' data-items="'+esc(JSON.stringify({todo:todo||"",lines:lines||[]}))+'"';}
+function riskLine(r){return r.id+": "+r.risk+(r.trigger_date?" — by "+r.trigger_date:"")+" · do: "+r.mitigation+" · owner: "+r.owner;}
 function T(k){return k?' data-tip="'+esc(k)+'"':"";}
 function nz(x,suf){return x==null?'<span class="nm" data-nm="no value in data.json">not measured</span>':esc(x)+(suf||"");}
 function fmtDate(iso){if(!iso)return "not dated";var d=new Date(iso+"T00:00:00");return d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});}
@@ -303,12 +319,16 @@ function oneHTML(el){
   if(nx)h+='<p class="nmline"><b>Not measured:</b> '+esc(nx.getAttribute("data-nm"))+'</p>';
   keys.forEach(function(k,i){var e=E[k];if(i)h+='<div class="sep"></div>';
     if(!e){h+='<span class="l">'+esc(k)+'</span><p style="margin:0">not measured: data.json has no explanation for this number.</p>';return;}
-    h+='<span class="l">'+esc(e.label)+'</span><dl><dt>Counts</dt><dd>'+esc(e.what)+'</dd><dt>Window</dt><dd>'+esc(e.window)+'</dd>'+
+    /* 16 Nov, phone: what to do and the items behind the number come first, the method after */
+    var bh=e.behind&&e.behind.length?'<span class="l">Behind it ('+esc(e.behind.length)+')</span><div class="glist">'+e.behind.map(function(z){return '<div>'+esc(z)+'</div>';}).join("")+'</div><div class="sep"></div>':'';
+    h+='<span class="l">'+esc(e.label)+'</span>'+(e.todo?'<p class="todo"><b>What to do:</b> '+esc(e.todo)+'</p>':'')+(bh?'<div class="sep"></div>'+bh:'')+'<dl><dt>Counts</dt><dd>'+esc(e.what)+'</dd><dt>Window</dt><dd>'+esc(e.window)+'</dd>'+
       '<dt>Sample</dt><dd>'+(e.n==null?'<i>not measured</i> ('+esc(e.n_reason||"no sample in the data")+')':'n = '+esc(e.n)+(e.n_of?' '+esc(e.n_of):""))+'</dd>'+
       '<dt>Read it</dt><dd>'+esc(e.read||"")+(e.band?' <b>Healthy:</b> '+esc(e.band)+'.':"")+'</dd>'+
       '<dt>Source</dt><dd>'+esc(e.src)+'</dd><dt>Class</dt><dd>'+esc(e["class"])+(e["class"]==="reported"?" (Lead-reported)":"")+(e.sha?' · sha '+esc(e.sha):"")+(e.as_of?' · as of '+esc(e.as_of):"")+'</dd>'+
-      (e.todo?'<dt>What to do</dt><dd><b>'+esc(e.todo)+'</b></dd>':'')+'</dl>'+
-      (e.behind&&e.behind.length?'<div class="sep"></div><span class="l">Behind it ('+esc(e.behind.length)+')</span><div class="glist">'+e.behind.map(function(z){return '<div>'+esc(z)+'</div>';}).join("")+'</div>':'');});
+      '</dl>';});
+  var it=el.getAttribute("data-items");if(it){try{it=JSON.parse(it);}catch(x){it=null;}}
+  if(it){h=(h?h+'<div class="sep"></div>':'')+(it.todo?'<p class="todo"><b>What to do:</b> '+esc(it.todo)+'</p>':'')+
+    '<span class="l">Behind it ('+esc(it.lines.length)+')</span>'+(it.lines.length?'<div class="glist">'+it.lines.map(function(z){return '<div>'+esc(z)+'</div>';}).join("")+'</div>':'<p style="margin:0">Nothing open.</p>');}
   var info=el.getAttribute("data-info");
   if(info)h+=(keys.length?'<div class="sep"></div>':'')+'<dl><dt>About</dt><dd>'+esc(info)+'</dd></dl>';
   if(el.hasAttribute("data-wn"))h+=wnList();
@@ -353,7 +373,7 @@ function mkBtn(label){var b=document.createElement("button");b.type="button";b.c
   b.setAttribute("aria-label","About: "+label);b.setAttribute("aria-expanded","false");b.setAttribute("aria-controls","tip");return b;}
 function addIcons(root){
   var groups=[];
-  (root||document).querySelectorAll("[data-tip],[data-info],[data-nm]").forEach(function(el){
+  (root||document).querySelectorAll("[data-tip],[data-info],[data-nm],[data-items]").forEach(function(el){
     if(el.hasAttribute("data-ib"))return;
     el.setAttribute("data-ib","1");
     if(el.hasAttribute("data-nm")&&el.parentElement&&el.parentElement.closest("[data-tip],[data-info]"))return;  /* a "not measured" inside a marked block: its reason shows in that block's panel */
@@ -387,6 +407,17 @@ var LIGHTWORD={green:"green",amber:"amber",red:"red",grey:"grey",page:"page"};
 function srcN(n){if(!n)return "";return [n.src,n.sha?"sha "+n.sha:"",n.as_of?"as of "+n.as_of:"",n["class"]||"",n.reason?"reason: "+n.reason:""].filter(Boolean).join(" · ");}
 function nm(reason,key){return '<span class="nm" data-nm="'+esc(reason||"not measured")+'"'+(key?T(key):S(reason||"not measured"))+'>not measured</span>';}
 function N(n,suf,fmt,key){if(!n)return nm("missing from data.json",key);if(n.value==null)return nm(n.reason,key);var t=fmt?fmt(n.value):esc(n.value)+(suf||"");return '<span'+(key?T(key):S(srcN(n)))+'>'+t+'</span>'+(n["class"]==="reported"?'<span class="rep">Lead-reported</span>':"");}
+/* renderTop names its data T, so it marks a number with TT */
+function TT(k){return k?' data-tip="'+esc(k)+'"':"";}
+function XK(k){return !!(D&&D.explain&&D.explain[k]);}
+/* 16 Nov (founder on a phone read a view 1.6 h old): the page is fixed to one published version, so a view left open never
+   gets newer numbers. The data time (IST) and its age stay on the strip; from 45 min a banner says to reload, red from 2 h. */
+function freshHTML(age){var st=ageState(age),g=esc(D.freshness.generated_ist||"");
+  var line='<div class="fresh fr-'+st+'" role="status"><b>Data '+g+'</b> · '+esc(ageText(age))+' old'+
+    (st==="green"?"":' · <b>reload this page</b> for newer numbers')+'</div>';
+  if(st==="green")return line;
+  return '<div class="stale fr-'+st+'" role="status"><b>This view is '+esc(ageText(age))+' old: reload</b><br>Numbers are from '+g+
+    '. Reload the page (on a phone, pull down or close and reopen it) to see the newest board.</div>';}
 function dshort(x){return x&&/^\d{4}-/.test(x)?short(x):esc(x);}
 
 /* lineage of a legacy {v,src,sha,as_of,class} value, for hover and the source bar (principle 3) */
@@ -418,9 +449,9 @@ function renderTop(){
   var ls=st&&st.value!=null?"started \u00b7 "+esc(id.value)+" idle"+(id.names&&id.names.length?": "+esc(id.names.join(", ")):""):'started: <span class="nm"'+S(st&&st.reason)+'>not measured</span>';
   var rep='<span class="rep">Lead-reported</span>';
   el.innerHTML=
-   '<div class="tile"'+S(srcN(W)+(W.maps&&W.maps.length?" · capabilities (map numbers): "+W.maps.join(", "):"")+" · size: "+(W.size_rule||""))+'><div class="k">Works today</div><div class="v">'+wv+'</div><div class="s">'+ws+'</div></div>'+
+   '<div class="tile"'+(XK("top.works_today")?TT("top.works_today"):S(srcN(W)+(W.maps&&W.maps.length?" · capabilities (map numbers): "+W.maps.join(", "):"")+" · size: "+(W.size_rule||"")))+'><div class="k">Works today</div><div class="v">'+wv+'</div><div class="s">'+ws+'</div></div>'+
    '<div class="tile"'+S(srcN(P)+" | "+srcN(C))+'><div class="k">Plan % per capability at Works</div><div class="v">'+pv+rep+'</div><div class="s">'+ps+'</div><div class="s2">'+cs+'</div></div>'+
-   '<div class="tile"'+S(srcN(wk)+" | started: "+srcN(st)+(st&&st.names?" ("+st.names.join(", ")+")":"")+" | idle: "+srcN(id))+'><div class="k">Lanes working</div><div class="v">'+lv+(st&&st.value!=null?rep:"")+'</div><div class="s">'+ls+'</div></div>';
+   '<div class="tile"'+(XK("top.lanes")?TT("top.lanes"):S(srcN(wk)+" | started: "+srcN(st)+(st&&st.names?" ("+st.names.join(", ")+")":"")+" | idle: "+srcN(id)))+'><div class="k">Lanes working</div><div class="v">'+lv+(st&&st.value!=null?rep:"")+'</div><div class="s">'+ls+'</div></div>';
   var sh=document.getElementById("strip");if(sh)document.documentElement.style.setProperty("--striph",sh.offsetHeight+"px");
 }
 function renderStrip(){
@@ -429,6 +460,7 @@ function renderStrip(){
   var ny=v(s.needs_you),bu=v(s.burnup_pct),w=v(s.works)||[null,null],nd=v(s.next_date),age=dataAgeH();
   var H=D.health||{light:"amber"},ast=ageState(age),light=worst(worst(H.light,ast),leadInputStale()&&H.light==="green"?"amber":"green"),R=D.resources||{};
   var wk=v(R.weekly_pct),bn=v(R.burn_pct_per_h),pd=v(R.paid_usd_today);
+  document.getElementById("fresh").innerHTML=freshHTML(age);
   el.innerHTML=
    '<div class="tile'+(ny>0?" alert":"")+'"'+T("strip.needs_you")+'><div class="k">Needs you</div><div class="v">'+nz(ny)+'</div><div class="s">'+(ny===0?"nothing from you":"for you to decide or do")+'</div></div>'+
    relTile()+
@@ -440,6 +472,7 @@ function renderStrip(){
   document.getElementById("lineage").innerHTML='Records from <span class="mono">'+esc(L.records_branch||"?")+' @'+esc((L.records_sha||"").slice(0,9))+'</span>, '+
     (ah&&ah.value!=null?esc(ah.value)+' record files not yet on <span class="mono">main</span>':nm(ah&&ah.reason))+' · main <span class="mono">@'+esc((L.main_sha||"").slice(0,9))+'</span> · snapshot '+esc(L.taken_at||"");
   renderHealth(ast,age);
+  document.documentElement.style.setProperty("--striph",document.getElementById("strip").offsetHeight+"px");
   var t=document.getElementById("healthTile");
   t.onclick=function(){var p=document.getElementById("healthPanel");p.hidden=!p.hidden;t.setAttribute("aria-expanded",String(!p.hidden));};
   addIcons(document.getElementById("strip"));
@@ -684,6 +717,11 @@ function rNeeds(){
   var items=its.map(function(i){return '<li'+S(i.src)+'><span class="tag">'+esc(i.id)+'</span><div><div>'+esc(i.line)+'</div>'+(i.by?'<div class="small"><b>By '+esc(fmtDate(i.by))+'</b></div>':'')+'</div></li>';});
   var cnt=v(D.summary.needs_you);if(cnt==null)cnt=items.length;
   var h='<section id="needs" class="ovsec" style="margin:12px 0 0"><h2>Needs you <span class="mono"'+T("strip.needs_you")+'>'+esc(cnt)+'</span></h2><ul class="items">'+(items.join("")||'<li class="muted">Nothing needed from you.</li>')+'</ul>';
+  /* 16 Nov: the open items in words on the first screen too, for a view that cannot be tapped (a preview card) */
+  var mine=((D.risks||{}).items||[]).filter(function(r){return r.status!=="closed"&&r.owner==="founder";});
+  if(mine.length)h+='<p class="small also"'+LI("these are yours before the launch gate; the Launch readiness tab has each",mine.map(riskLine))+'><b>Also yours: '+mine.length+' launch risks</b> — '+esc(mine.map(function(r){return r.id+" "+r.risk;}).join("; "))+'</p>';
+  var bad=((D.health||{}).items||[]).filter(function(i){return i.state==="red"||i.state==="amber";});
+  if(bad.length)h+='<p class="small also"'+LI("each check names what to do and who",bad.map(function(i){return i.id+" "+i.name+" ("+i.state+"): "+i.detail+(i.action?" — do: "+i.action+" · who: "+(i.owner||""):"");}))+'><b>Health: '+bad.length+' checks not green</b> (the Lead\'s to fix) — '+esc(bad.map(function(i){return i.name+" ("+i.state+")";}).join("; "))+'</p>';
   return h+'</section>';
 }
 
@@ -976,8 +1014,10 @@ function rGlance(){
   h+='<h3>Delivery stages of the '+tot+' must-have capabilities (the checklist\'s status)</h3><div class="kpis">';
   stages.forEach(function(st){h+=kpi(st[1],esc(c[st[0]]||0)+'<span class="muted" style="font-size:13px"> / '+tot+'</span>',esc(st[2]),src(C.counts));});
   h+=kpi("Released to production","0","no production yet: it opens after the launch gate (P-589)","P-589 (3), P-590 (1)")+'</div>';
-  h+='<h3>Who must act</h3><div class="kpis">'+kpi("You",esc(ny),"open items in Needs you, at the top",src(D.summary.needs_you),ny?"alert":"");
-  delete byOwner["founder"];var mine=risks.filter(function(r){return r.owner==="founder";}).length;h=h.replace("open items in Needs you, at the top","open items in Needs you, plus "+mine+" launch risks you own");Object.keys(byOwner).sort().forEach(function(o){h+=kpi(esc(o),esc(byOwner[o]),"open launch risks they own","risks.json")});
+  var mineR=risks.filter(function(r){return r.owner==="founder";}),nyL=(D.needs_you.items||[]).map(function(i){return "Needs you "+i.id+": "+i.line+(i.by?" — by "+i.by:"");});
+  h+='<h3>Who must act</h3><div class="kpis">'+kpi("You",esc(ny),"open items in Needs you, plus "+mineR.length+" launch risks you own",null,ny?"alert":"").replace('<div class="kpi','<div'+LI(ny||mineR.length?"decide or do each item; the launch risks are due before the launch gate":"",nyL.concat(mineR.map(riskLine)))+' class="kpi');
+  delete byOwner["founder"];Object.keys(byOwner).sort().forEach(function(o){var mr=risks.filter(function(r){return r.owner===o;});
+    h+=kpi(esc(o),esc(byOwner[o]),"open launch risks they own",null).replace('<div class="kpi','<div'+LI("the owner works each risk before its date (risks.json)",mr.map(riskLine))+' class="kpi');});
   h+='</div><p class="small muted">Terms: "specified" = has acceptance criteria; "built" = all its parts merged into the main line; "proven" = qa\'s independent Works verdict with a recorded test run; "released" = live for a real firm. The proof of concept\'s own count (qa Works on its 98 capabilities) is a separate number in "On track?".</p>';
   return section("","glance","Release 1 at a glance","How much we must build, how far it has got in the standard delivery stages, and who must act.",h);
 }
@@ -1035,7 +1075,9 @@ function render(){
 }
 function drawAll(){[drawVSM,drawArch,drawBurnup,drawTimeline].forEach(function(f){try{f();}catch(e){}});addIcons(document.getElementById("body"));}
 var rt=null;window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(function(){if(D){drawAll();renderTop();}},150);});
-setInterval(function(){if(D)renderStrip();},60000);
+/* the strip redraws each minute for the data age; a panel opened from the strip stays open (16 Nov: it used to close) */
+setInterval(function(){if(!D)return;var s=document.getElementById("strip"),bs=s.querySelectorAll(".ib"),i=tipBtn?Array.prototype.indexOf.call(bs,tipBtn):-1;
+  renderStrip();if(i>=0){var nb=s.querySelectorAll(".ib")[i];if(nb)tipShow(nb);}},60000);
 
 fetch("data.json",{cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
 .then(function(d){D=d;render();})
