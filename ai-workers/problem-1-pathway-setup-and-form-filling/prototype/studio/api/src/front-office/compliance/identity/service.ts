@@ -11,10 +11,9 @@
 // they are on is the viewer's own (or an Unassigned lead the viewer may see). Another firm's or an unseen person is 404.
 import { HttpException, Injectable } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { randomUUID } from "node:crypto";
 import type { AuditPort } from "../../../../../ports/audit.ts";
 import { EVENT, IdentityCheckedPayload } from "../../../../../ports/events.ts";
-import type { FilesPort } from "../../../../../ports/files.ts";
+import { FileKeyTaken, sha256Hex, type FilesPort } from "../../../../../ports/files.ts";
 import { auditEvent } from "../../../platform/audit/audit-event.ts";
 import { firmScope } from "../../../platform/firm-scope.ts";
 import { problem, type StaffContext } from "../../../platform/identity/keys.ts";
@@ -31,7 +30,7 @@ const METHODS = ["IN_PERSON", "VIDEO", "DOCUMENT_COPY", "OTHER"] as const;
 const DOCUMENT_TYPES = ["PASSPORT", "NATIONAL_IDENTITY_CARD", "DRIVERS_LICENCE", "PERMANENT_RESIDENT_CARD", "OTHER_GOVERNMENT_PHOTO_ID"] as const;
 /** s. 24(2)(a): the details a check corroborates. */
 const DETAILS = ["NAME", "HOME_ADDRESS", "PHONE", "EMAIL", "BUSINESS_DETAILS"] as const;
-const FIELDS = new Set(["method", "methodDetail", "documentType", "issuingCountry", "documentExpiry", "documentNumberLast4", "details"]);
+const FIELDS = new Set(["requestId", "method", "methodDetail", "documentType", "issuingCountry", "documentExpiry", "documentNumberLast4", "details"]);
 /** ISO 3166-1 alpha-2, the 249 officially assigned codes (ISO 3166 Maintenance Agency list; no user-assigned or reserved code). */
 const ISO_ALPHA2 = new Set(("AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD " +
   "CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN " +
@@ -135,16 +134,30 @@ export class IdentityChecks {
     return notFound();
   }
 
-  /** Records one check (201), with its optional copy in the same insert. */
+  /** Records one check (201), with its optional copy in the same insert. Idempotent (STANDARDS §4 [M]; Devin on #2011):
+   *  the screen makes one `requestId` (a uuid) per Save and it becomes the check's id and its copy's key, so a replay after
+   *  a lost answer returns the saved check (one row, one audit line, one event, one copy), and the same id with other
+   *  details is refused (409 REQUEST_REUSED). A correction is a new Save, with a new requestId. */
   async record(ctx: StaffContext, personId: string, body: Record<string, unknown>, copy: CopyUpload | undefined) {
-    const p = await this.person(ctx, personId), c = parse(body ?? {}), id = randomUUID();
+    const p = await this.person(ctx, personId), b = body ?? {};
+    const id = typeof b.requestId === "string" && UUID.test(b.requestId.trim()) ? b.requestId.trim().toLowerCase() : bad("requestId", "requestId: a uuid the screen makes once per Save.");
+    const c = parse(b);
+    const sha = copy ? await sha256Hex(copy.bytes) : null;
+    const replay = async () => {
+      const had = await this.db.foIdentityCheck.findFirst({ where: firmScope(ctx.firmId, { id }) });
+      const same = had && had.personId === p.id && had.checkedBy === ctx.staffId && had.method === c.method && had.methodDetail === c.methodDetail && had.documentType === c.documentType
+        && had.issuingCountry === c.issuingCountry && (had.documentExpiry?.toISOString() ?? null) === (c.documentExpiry?.toISOString() ?? null) && had.documentNumberLast4 === c.documentNumberLast4
+        && JSON.stringify(had.detailsCorroborated) === JSON.stringify(c.details) && had.copySha256 === sha;
+      return same ? (await this.list(ctx, p.id)).checks.find((x) => x.id === id)! : problem(409, "Already used", "This request was already used with other details. Start a new Save.", { code: "REQUEST_REUSED" });
+    };
+    if (await this.db.foIdentityCheck.findFirst({ where: firmScope(ctx.firmId, { id }), select: { id: true } })) return replay();
     let stored: { key: string; sha256: string } | null = null;
     if (copy) {
       if (copy.size > COPY_MAX_BYTES || copy.bytes.length > COPY_MAX_BYTES) problem(413, "Too large", "The copy is at most 10 MB.", { code: "TOO_LARGE", fields: { copy: "At most 10 MB." } });
       const kind = kindOf(copy.bytes);
       if (!kind) problem(415, "Not a PDF, JPEG or PNG", "The copy must be a PDF, JPEG or PNG file (checked by its content, not its name).", { code: "UNSUPPORTED_TYPE", fields: { copy: "A PDF, JPEG or PNG." } });
       if (c.documentType === null) bad("documentType", "A copy needs the document it is a copy of.");
-      stored = await this.files.put(ctx.firmId, `identity/${p.id}/${randomUUID()}.${kind!.ext}`, copy.bytes, kind!.contentType);
+      try { stored = await this.files.put(ctx.firmId, `identity/${p.id}/${id}.${kind!.ext}`, copy.bytes, kind!.contentType); } catch (e) { if (e instanceof FileKeyTaken) return replay(); throw e; }
     }
     const payload = IdentityCheckedPayload.parse({ checkId: id, personId: p.id, checkedBy: ctx.staffId, method: c.method, details: c.details, copyKept: !!stored });
     try {
@@ -158,6 +171,7 @@ export class IdentityChecks {
       });
     } catch (e) {
       if (e instanceof HttpException) throw e;
+      if ((e as { code?: unknown })?.code === "P2002") return replay();   // a concurrent replay won the id (one row)
       // Only the error code and the constraint's name are logged (FO-5f item 10): a failing row's values are personal data.
       const m = String((e as Error)?.message ?? ""), meta = (e as { meta?: { code?: unknown; constraint?: unknown } })?.meta, nm = /^[A-Za-z0-9_]{1,63}$/;
       const code = [(e as { code?: unknown })?.code, meta?.code].find((x) => typeof x === "string" && nm.test(x)) ?? "none";

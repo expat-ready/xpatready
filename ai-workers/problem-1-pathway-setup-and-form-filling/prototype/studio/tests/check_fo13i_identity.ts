@@ -94,6 +94,11 @@ try {
   const BASE = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}/api/front-office`;
   type Res = { status: number; body: any; text: string; headers: Headers };
   const call = async (method: string, path: string, tok: string, body?: Record<string, unknown> | FormData): Promise<Res> => {
+    // Each Save makes its own requestId unless the case names one (the idempotency cases do).
+    if (method === "POST" && /identity-checks$/.test(path) && body) {
+      if (body instanceof FormData) { if (!body.has("requestId")) body.append("requestId", crypto.randomUUID()); }
+      else if (!("requestId" in body)) body = { requestId: crypto.randomUUID(), ...body };
+    }
     const headers: Record<string, string> = { authorization: `Bearer ${tok}` };
     if (body && !(body instanceof FormData)) headers["content-type"] = "application/json";
     const r = await fetch(`${path.startsWith("/") ? BASE.replace("/api/front-office", "") : `${BASE}/`}${path}`, { method, headers, body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined });
@@ -165,7 +170,7 @@ try {
   ok("FO-13i DW3 fail: a text file renamed .pdf → 415; a copy with no document named → 400; nothing stored", txt.status === 415 && noDoc.status === 400 && noDoc.body.fields?.documentType && rows(PR) === 3, [txt.body, noDoc.body]);
   const failing = new IdentityChecks(db, new LocalFiles(), { now: () => nowMs }, fakeAudit({ failOn: (e) => e.action === "identity.checked" }) as never);
   const ctxR0 = { staffId: R.id, firmId: A, firmKey: "sample-firm", roles: [], keys: [], duties: [], authTime: 0, via: "local" as const };
-  const lost = await failing.record(ctxR0, PR, docFields, { bytes: pdf, size: pdf.length }).then(() => null, (e) => ({ status: e.getStatus?.(), body: e.getResponse?.() }));
+  const lost = await failing.record(ctxR0, PR, { ...docFields, requestId: crypto.randomUUID() }, { bytes: pdf, size: pdf.length }).then(() => null, (e) => ({ status: e.getStatus?.(), body: e.getResponse?.() }));
   ok("FO-13i DW3 fail: when the insert fails (a forced audit failure) no check is stored, nothing names the stored copy, and the answer says so",
     lost?.status === 500 && lost.body.copyReferenced === false && /not attached to any record/.test(lost.body.detail) && rows(PR) === 3 && sql(`select count(*) from fo_identity_check where copy_file_key is not null`) === "1", lost);
   const filesOnDisk = () => { const d = join(WORK, "files", A.toLowerCase(), "identity"); try { return readdirSync(d, { recursive: true }).filter((f) => !String(f).endsWith(".meta") && /\./.test(String(f))).length; } catch { return 0; } };
@@ -189,6 +194,18 @@ try {
   const late = await call("GET", link.body.url, R.token);
   ok("FO-13i DW3 fail: the link is refused after its lifetime (410), and the retainers' files/:token does not serve it (404)", late.status === 410 && retainerRoute.status === 404, [late.status, retainerRoute.status]);
   nowMs = Date.now();
+
+  // Idempotent creates (STANDARDS §4 [M]; Devin on #2011): one requestId is one check.
+  const RID = crypto.randomUUID(), before7 = rows(PR), ev = () => Number(sql(`select count(*) from module_event where type = '${EVENT.IDENTITY_CHECKED}'`));
+  const ev0 = ev(), withCopy = () => form({ ...docFields, requestId: RID }, { bytes: pdf, name: "p.pdf", type: "application/pdf" });
+  const i1 = await call("POST", `people/${PR}/identity-checks`, R.token, withCopy()), i2 = await call("POST", `people/${PR}/identity-checks`, R.token, withCopy());
+  const i3 = await Promise.all([1, 2, 3].map(() => call("POST", `people/${PR}/identity-checks`, R.token, withCopy())));
+  ok("FO-13i DW3 pass (idempotent): the same Save replayed, one after another and three at once, is one check (its id is the requestId), one event, one copy on disk",
+    i1.status === 201 && i1.body.id === RID && i2.body?.id === RID && i3.every((r) => r.body?.id === RID) && rows(PR) === before7 + 1 && ev() === ev0 + 1 && filesOnDisk() === onDisk + 1, [i1.status, i2.status, i3.map((r) => r.status), rows(PR) - before7, ev() - ev0]);
+  const iOther = await call("POST", `people/${PR}/identity-checks`, R.token, { ...good, requestId: RID }), iNone = await call("POST", `people/${PR}/identity-checks`, R.token, { ...good, requestId: "x" });
+  const iB = await call("POST", `people/${PB}/identity-checks`, S.token, { ...good, requestId: RID });
+  ok("FO-13i DW3 fail (idempotent): the same requestId with other details → 409 REQUEST_REUSED (also from firm B, which learns nothing else); no requestId → 400; nothing stored",
+    iOther.status === 409 && iOther.body.code === "REQUEST_REUSED" && iNone.status === 400 && iNone.body.fields?.requestId && iB.status === 409 && rows(PR) === before7 + 1 && rows(PB) === 0, [iOther.status, iNone.status, iB.status]);
 
   // ---------------------------------------------------------------------------------------------------------- DW4
   const svc = app.get(Retainers), ctxR = { staffId: R.id, firmId: A, firmKey: "sample-firm", roles: [], keys: [], duties: [], authTime: 0, via: "local" as const };
@@ -236,7 +253,7 @@ try {
   const oLink = await call("POST", `identity-checks/${c3.body.id}/copy/download-link`, O.token), bList = await call("GET", `people/${PR}/identity-checks`, S.token);
   const oOwn = await call("GET", `people/${PO}/identity-checks`, O.token), bOwn = await call("GET", `people/${PB}/identity-checks`, R.token);
   ok("FO-13i DW5 fail: a reader who cannot see the person → 404 on list, record and the copy's link (the Case Officer on another's lead; firm B; firm A on firm B's person)",
-    oSeesR.status === 404 && oRecR.status === 404 && oLink.status === 404 && bList.status === 404 && bOwn.status === 404 && rows(PR) === 3, [oSeesR.status, oRecR.status, oLink.status, bList.status, bOwn.status]);
+    oSeesR.status === 404 && oRecR.status === 404 && oLink.status === 404 && bList.status === 404 && bOwn.status === 404 && rows(PR) === 4, [oSeesR.status, oRecR.status, oLink.status, bList.status, bOwn.status]);
   ok("FO-13i DW5 pass: the Case Officer lists their own person's checks", oOwn.status === 200 && oOwn.body.checks.length === 2, oOwn.body);
 
   // ---------------------------------------------------------------------------------------------------------- DW6
