@@ -23,7 +23,7 @@ cat > "$T/caps.md" <<'EOF'
 | R1.9 | 9 Audit | Platform | Built, awaiting qa | x | — | x | x |
 EOF
 echo '[{"number":1901,"title":"a"},{"number":1902,"title":"b"}]' > "$T/prs.json"
-TODAY='"today":{"goal":10,"by":"2026-11-17T02:30:00Z","by_text":"08:00 IST 17 Nov","proven":2,"short":8,"waiting":2,"state":"off track"}'
+TODAY='"today":{"goal":10,"by":"2026-11-17T02:30:00Z","proven":2,"short":8,"waiting":2,"state":"off track"}'
 REL='"release":{"proven_ids":[2,5],"waiting_ids":[7,9]}'
 FR='"freshness":{"generated_at":"2026-11-16T05:30:00Z"}'
 S_LQ='{"what":"2 pull requests wait for the Lead'"'"'s answer","items":["#1901 row a (2 h)","#1902 row b (5 h)"],"owner":"current Lead","since":"oldest 5 h","next":"answer each"}'
@@ -43,12 +43,11 @@ run "{$FR,\"first\":{$TODAY,$REL,\"stuck\":[]}}"
 grep -q '^ACT   stuck' <<<"$out" && no "empty Stuck prints no ACT" "$out" || ok "empty Stuck prints no ACT"
 
 # 3. The today line equals the board's Today card (proven, goal, by, short, waiting).
-grep -qx 'today  2 of 10 Proven by 08:00 IST 17 Nov, 8 short, 2 Built waiting for qa' <<<"$out" \
+grep -qx 'today  2 of 10 Proven by 17 Nov, 08:00 IST, 8 short, 2 Built waiting for qa' <<<"$out" \
   && ok "today line equals the Today card" || no "today line" "$out"
 
 # 4. P-639: the board says a PR waits for the Lead, but GitHub shows it merged: one disagree ACT naming both sides.
 echo '{"1902":"merged"}' > "$T/states.json"
-run "{$FR,\"first\":{$TODAY,$REL,\"stuck\":[$S_LQ]}}" --pr-states "$T/states.json"
 echo '[{"number":1901,"title":"a"}]' > "$T/prs.json"
 run "{$FR,\"first\":{$TODAY,$REL,\"stuck\":[$S_LQ]}}" --pr-states "$T/states.json"
 [ "$(grep -c '^ACT   board vs source disagree' <<<"$out")" = 1 ] \
@@ -61,13 +60,25 @@ grep -q '^ACT   board vs source disagree: Today Proven — board says 3, source 
   && grep -q '^ACT   board vs source disagree: R1.5 Built waiting for qa — board says waiting for qa, source says qa reads Works' <<<"$out" \
   && ok "Today numbers checked against qa's file" || no "today vs qa's file" "$out"
 
+# 5b. P-639 cost: a PR the board lists that is neither open nor known merged, with its state not read, is "not checked", never a disagree.
+run "{$FR,\"first\":{$TODAY,$REL,\"stuck\":[$S_LQ]}}"
+! grep -q 'disagree:' <<<"$out" && grep -q 'not checked here: #1902 not open and state not read' <<<"$out" \
+  && ok "an unread PR state is not checked, not a disagree" || no "unread PR state" "$out"
+
+# 5c. M1 (review): the check never passes blind. A missing board file and a board over 2 h old are each an ACT.
+out=$(python3 -I "$TOOLS/cockpit-data.py" --watch "$T/none.json" --no-lookup); grep -q '^ACT   board data not read' <<<"$out" \
+  && ok "missing board data is an ACT" || no "missing board" "$out"
+run "{\"freshness\":{\"generated_at\":\"2026-11-16T01:00:00Z\"},\"first\":{$TODAY,$REL,\"stuck\":[]}}"
+grep -q '^ACT   board data 5.0 h old (over 2 h): refresh the board' <<<"$out" && ok "a board over 2 h old is an ACT" || no "stale board" "$out"
+
 # 6. A board older than P-636 (no first screen): one plain line, no ACT, exit 0.
 run '{"freshness":{"generated_at":"2026-11-16T05:30:00Z"}}'
 [ "$rc" = 0 ] && ! grep -q '^ACT' <<<"$out" && grep -q 'no first screen' <<<"$out" && ok "old board: said, no ACT" || no "old board" "$out"
 
 # 7. Cap: 40 Stuck entries stay within 40 lines, the cut is said as an ACT; and the step runs under 3 s.
 many=$(for i in $(seq 1 40); do printf '{"what":"idle %s","items":["x"],"since":"1 h","next":"wake"},' "$i"; done)
-t0=$(date +%s%N); run "{$FR,\"first\":{$TODAY,$REL,\"stuck\":[${many%,}]}}"; ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+ms_now() { python3 -I -c 'import time; print(time.time_ns() // 1000000)'; }   # macOS date has no %N
+t0=$(ms_now); run "{$FR,\"first\":{$TODAY,$REL,\"stuck\":[${many%,}]}}"; ms=$(( $(ms_now) - t0 ))
 [ "$(wc -l <<<"$out")" -le 40 ] && grep -q '^ACT   board: .* more lines cut' <<<"$out" && ok "40 entries capped at 40 lines" || no "cap" "$(wc -l <<<"$out") lines"
 [ "$ms" -lt 3000 ] && ok "board step ran in ${ms} ms (under 3 s)" || no "run time" "${ms} ms"
 

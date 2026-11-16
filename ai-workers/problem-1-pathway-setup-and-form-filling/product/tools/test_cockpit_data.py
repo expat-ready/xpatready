@@ -1770,11 +1770,17 @@ class LeadWatchBoard(unittest.TestCase):
     LQ = {"what": "2 pull requests wait for the Lead's answer", "items": ["#11 a (1 h)", "#12 b (4.5 h)"], "since": "oldest 4.5 h", "next": "answer each"}
     IDLE = {"what": "3 lanes idle (no push in 90 min)", "items": ["x", "y", "z"], "since": "over 90 min", "next": "wake or close each"}
 
+    NOW = datetime(2026, 11, 16, 6, 0, tzinfo=timezone.utc)
+
     def board(self, stuck, today=None):
-        return {"first": {"today": today or self.TODAY, "release": {"waiting_ids": [7]}, "stuck": stuck}}
+        return {"freshness": {"generated_at": "2026-11-16T05:30:00Z"},
+                "first": {"today": today or self.TODAY, "release": {"waiting_ids": [7], "proven_ids": [2]}, "stuck": stuck}}
+
+    def lines(self, d, prs=(), caps=CAPS, **kw):
+        return cd.watch_lines(d, list(prs), caps, now=self.NOW, **kw)
 
     def test_two_stuck_entries_two_act_lines_oldest_first(self):
-        out = cd.watch_lines(self.board([self.LQ, self.IDLE]), [{"number": 11}, {"number": 12}], self.CAPS)
+        out = self.lines(self.board([self.LQ, self.IDLE]), [{"number": 11}, {"number": 12}], self.CAPS)
         acts = [x for x in out if x.startswith("ACT   stuck: ")]
         self.assertEqual(len(acts), 2)
         self.assertTrue(acts[0].startswith("ACT   stuck: 2 pull requests wait for the Lead's answer — #12 b (4.5 h); #11 a (1 h)"), acts[0])
@@ -1782,7 +1788,7 @@ class LeadWatchBoard(unittest.TestCase):
         self.assertIn("board vs source: 3 checked · 0 disagree · not checked here: 3 lanes idle (no push in 90 min)", out)
 
     def test_empty_stuck_no_act(self):
-        out = cd.watch_lines(self.board([]), [], self.CAPS)
+        out = self.lines(self.board([]), [], self.CAPS)
         self.assertFalse([x for x in out if x.startswith("ACT")], out)
 
     def test_today_line_is_the_today_card(self):
@@ -1790,21 +1796,43 @@ class LeadWatchBoard(unittest.TestCase):
         self.assertIn("no proving goal set", cd.watch_today_line({"goal": None, "proven": 1, "waiting": 0}))
 
     def test_board_says_waits_source_says_merged(self):
-        out = cd.watch_lines(self.board([self.LQ]), [{"number": 11}], self.CAPS, pr_state=lambda n: {12: "merged"}.get(n))
+        out = self.lines(self.board([self.LQ]), [{"number": 11}], self.CAPS, pr_state=lambda n: {12: "merged"}.get(n))
         dis = [x for x in out if x.startswith("ACT   board vs source disagree")]
         self.assertEqual(dis, ["ACT   board vs source disagree: #12 waits for the Lead's answer — board says open and waiting, "
                                "source says merged — fix the script or the board row"])
 
     def test_not_built_item_that_qa_reads_works(self):
         nb = {"what": "1 Built capabilities that qa's file still reads Not built", "items": ["R1.2 Database"], "next": "qa"}
-        out = cd.watch_lines(self.board([nb]), [], self.CAPS)
+        out = self.lines(self.board([nb]), [], self.CAPS)
         self.assertTrue(any("disagree: R1.2 reads Not built — board says Not built, source says qa reads Works" in x for x in out), out)
 
-    def test_stale_board_is_said(self):
+    def test_stale_or_undated_board_is_an_act(self):
         d = dict(self.board([]), freshness={"generated_at": "2026-11-16T01:00:00Z"})
-        now = datetime(2026, 11, 16, 6, 0, tzinfo=timezone.utc)
-        self.assertIn("warn: over 2 h old", cd.watch_lines(d, [], self.CAPS, now=now)[0])
-        self.assertNotIn("warn", cd.watch_lines(d, [], self.CAPS, now=datetime(2026, 11, 16, 2, 0, tzinfo=timezone.utc))[0])
+        self.assertTrue(self.lines(d)[1].startswith("ACT   board data 5.0 h old (over 2 h): refresh the board"), self.lines(d))
+        self.assertFalse([x for x in cd.watch_lines(d, [], self.CAPS, now=datetime(2026, 11, 16, 2, 0, tzinfo=timezone.utc)) if x.startswith("ACT")])
+        self.assertTrue(any(x.startswith("ACT   board data has no generated_at") for x in self.lines(dict(self.board([]), freshness={}))))
+
+    def test_empty_qa_file_is_not_checked_never_a_disagree(self):
+        out = self.lines(self.board([]), caps="\n")
+        self.assertFalse([x for x in out if "disagree:" in x], out)
+        self.assertIn("not checked here: Today (qa/CAPABILITIES.md on main not read)", out[-1])
+
+    def test_proven_ids_checked_not_a_second_count(self):
+        caps = self.CAPS + "| R1.50 | 50 Extra | Platform | Works | x |\n"      # an R1 row outside the plan: not a disagree
+        self.assertFalse([x for x in self.lines(self.board([]), caps=caps) if "disagree" in x and x.startswith("ACT")])
+        d = self.board([]); d["first"]["release"]["proven_ids"] = [7]
+        self.assertTrue(any("Today Proven — board says 1, source says qa does not read Works for R1.7" in x for x in self.lines(d)))
+
+    def test_failed_or_capped_lookup_is_not_checked(self):
+        lq = dict(self.LQ, items=[f"#{n} x (1 h)" for n in range(20, 26)])
+        calls = []
+        out = self.lines(self.board([lq]), pr_state=lambda n: calls.append(n))
+        self.assertEqual(len(calls), cd.WATCH_LOOKUPS)
+        self.assertFalse([x for x in out if "disagree" in x and x.startswith("ACT")], out)
+        self.assertIn("#20, #21, #22, #23, #24, #25 not open and state not read", out[-1])
+
+    def test_by_time_reads_like_the_board(self):
+        self.assertIn("by 17 Nov, 08:00 IST,", cd.watch_today_line({"goal": 10, "by": "2026-11-17T02:30:00Z", "proven": 1, "short": 9, "waiting": 1}))
 
     def test_board_without_first_screen(self):
         self.assertEqual(cd.watch_panels({}), (None, None))

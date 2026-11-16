@@ -3059,6 +3059,7 @@ def write_history(path, hist, line):
 WATCH_MAX_LINES = 40                             # B201 cap: at most ~40 lines per check
 WATCH_ITEMS = 5                                  # items named per Stuck line (the rest counted)
 WATCH_STALE_H = 2.0                              # Lead input and board data older than 2 h count as not updated (README)
+WATCH_LOOKUPS = 3                                # B201 cap: at most 3 GitHub reads per check (8 s timeout each is the worst case)
 WATCH_ITEM_ACTS = 8                              # disagree lines per check before one "and N more"
 AGE_H = re.compile(r"\((\d+(?:\.\d+)?) h\)\s*$")
 PR_NUM = re.compile(r"^#(\d+)\b")
@@ -3079,8 +3080,8 @@ def _hm(iso, text=None):
     if not iso:
         return "not set"
     try:
-        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).astimezone(IST).strftime("%H:%M IST")
-    except ValueError:
+        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).astimezone(IST).strftime("%-d %b, %H:%M IST")
+    except (ValueError, TypeError):
         return str(iso)
 
 
@@ -3123,15 +3124,15 @@ def _map_of(label):
     return int(m.group(1)) if m else None
 
 
-def watch_source_checks(d, open_prs, caps_text, pr_state=None):
+def watch_source_checks(d, open_prs, caps_text, pr_state=None, known_states=()):
     """P-639: never take the board's word blindly. Each Stuck entry and the Today numbers are checked against the primary
     source the board cites, with data the check already holds: open PRs (GitHub) and qa/CAPABILITIES.md on main.
     pr_state(n) -> "merged" / "closed" / "open" / None answers only for a PR the board names that is not in the open list.
     Returns (lines, checked, disagree, unchecked names)."""
     today, stuck = watch_panels(d)
-    lines, checked, bad, unchecked = [], 0, 0, []
+    lines, checked, bad, unchecked, lookups = [], 0, 0, [], [0]
     is_open = {int(p["number"]) for p in open_prs or []} if open_prs is not None else None
-    r1 = _r1_status(caps_text) if caps_text else None
+    r1 = (_r1_status(caps_text) or None) if caps_text and caps_text.strip() else None
     works = lambda st: bool(QA_WORKS_W.match(st or ""))
 
     def disagree(item, x, y):
@@ -3147,12 +3148,21 @@ def watch_source_checks(d, open_prs, caps_text, pr_state=None):
 
     rel = (d.get("first") or {}).get("release") or {}
     if today and r1 is not None:
-        n_works = sum(1 for st in r1.values() if works(st))
         checked += 1
-        if today.get("proven") == n_works:
-            lines.append(f"ok    board agrees: Today {n_works} Proven (qa/CAPABILITIES.md on main: {n_works} R1 rows read Works)")
+        pids = rel.get("proven_ids")
+        if pids is None:                             # older board data: the count only, against every R1 row at Works
+            n_works = sum(1 for st in r1.values() if works(st))
+            ok_ = today.get("proven") == n_works
+            src_y = f"{n_works} R1 rows read Works in qa/CAPABILITIES.md on main"
         else:
-            disagree("Today Proven", today.get("proven"), f"{n_works} R1 rows read Works in qa/CAPABILITIES.md on main")
+            notw = [m for m in pids if not works(r1.get(m))]
+            ok_ = not notw and today.get("proven") == len(pids)
+            src_y = (f"qa does not read Works for {', '.join(f'R1.{m}' for m in notw)}" if notw else
+                     f"{len(pids)} proven ids for a Today of {today.get('proven')}")
+        if ok_:
+            lines.append(f"ok    board agrees: Today {today.get('proven')} Proven (each reads Works in qa/CAPABILITIES.md on main)")
+        else:
+            disagree("Today Proven", today.get("proven"), src_y)
         wids = rel.get("waiting_ids")
         if wids is not None:
             checked += 1
@@ -3172,16 +3182,22 @@ def watch_source_checks(d, open_prs, caps_text, pr_state=None):
                 unchecked.append(what + " (open PRs not read)")
                 continue
             checked += 1
-            rows = []
+            rows, lost = [], []
             for n in nums:
                 if n in is_open:
                     continue
-                st = (pr_state(n) if pr_state else None) or "not open"
-                if st != "open":
+                st = pr_state(n) if pr_state and (lookups[0] < WATCH_LOOKUPS or n in known_states) else None
+                if pr_state and n not in known_states:
+                    lookups[0] += 1
+                if not st:
+                    lost.append(f"#{n}")
+                elif st != "open":
                     rows.append((f"#{n} waits for the Lead's answer", "open and waiting", st))
+            if lost:
+                unchecked.append(f"{', '.join(lost)} not open and state not read")
             if rows:
                 capped(rows)
-            else:
+            elif not lost:
                 lines.append(f"ok    board agrees: {what} (all {len(nums)} open on GitHub)")
         elif "reads Not built" in what and maps:
             if r1 is None:
@@ -3203,21 +3219,27 @@ def watch_source_checks(d, open_prs, caps_text, pr_state=None):
     return lines, checked, bad, unchecked
 
 
-def watch_lines(d, open_prs=None, caps_text=None, pr_state=None, now=None):
+def watch_lines(d, open_prs=None, caps_text=None, pr_state=None, now=None, known_states=()):
     """Every line the check prints for the board (B201 + P-639), at most WATCH_MAX_LINES."""
     today, stuck = watch_panels(d)
     if today is None:
         return ["board  data.json has no first screen (board older than P-636): Today and Stuck not read"]
     out = []
     gen = (d.get("freshness") or {}).get("generated_at")
+    try:
+        age = (now or datetime.now(timezone.utc)) - datetime.fromisoformat(str(gen).replace("Z", "+00:00")) if gen else None
+    except ValueError:
+        gen = None
     if gen:
-        age = (now or datetime.now(timezone.utc)) - datetime.fromisoformat(gen.replace("Z", "+00:00"))
         h = max(0.0, round(age.total_seconds() / 3600, 1))
-        out.append(f"board  as of {_hm(gen)} ({h} h old): {len(stuck)} stuck" +
-                   ("" if h <= WATCH_STALE_H else f"; warn: over {WATCH_STALE_H:g} h old, refresh the board before trusting Today and Stuck"))
+        out.append(f"board  as of {_hm(gen)} ({h} h old): {len(stuck)} stuck")
+        if h > WATCH_STALE_H:
+            out.append(f"ACT   board data {h} h old (over {WATCH_STALE_H:g} h): refresh the board (cockpit/README.md) before trusting Today and Stuck")
+    else:
+        out.append("ACT   board data has no generated_at: its age is not known; refresh the board (cockpit/README.md)")
     out.append(watch_today_line(today))
     out += watch_stuck_lines(stuck)
-    sl, checked, bad, unchecked = watch_source_checks(d, open_prs, caps_text, pr_state)
+    sl, checked, bad, unchecked = watch_source_checks(d, open_prs, caps_text, pr_state, known_states)
     out += sl
     out.append(f"board vs source: {checked} checked · {bad} disagree" + (f" · not checked here: {'; '.join(unchecked)}" if unchecked else ""))
     if len(out) > WATCH_MAX_LINES:
@@ -3241,7 +3263,8 @@ def watch_main(argv):
     try:
         d = json.loads(slurp(a.watch))
     except (OSError, ValueError) as e:
-        print(f"warn  board data not read ({a.watch}: {e.__class__.__name__}): refresh the board; Today and Stuck not checked")
+        print(f"ACT   board data not read ({a.watch}: {e.__class__.__name__}): refresh the board (cockpit/README.md); "
+              "Today and Stuck are not seen by this check")
         return 0
     prs = None
     if a.open_prs:
@@ -3270,7 +3293,7 @@ def watch_main(argv):
             return None
         return (r.stdout.strip() or None) if r.returncode == 0 else None
     now = datetime.fromisoformat(a.now.replace("Z", "+00:00")) if a.now else None
-    for line in watch_lines(d, prs, caps, pr_state, now):
+    for line in watch_lines(d, prs, caps, pr_state, now, known_states=set(known)):
         print(line)
     return 0
 
