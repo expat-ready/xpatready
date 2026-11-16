@@ -58,7 +58,7 @@ case "$tool" in
       n=$(printf '%s' "$t" | grep -oE '(pull|pulls|issues)/[0-9]+' | head -1 | grep -oE '[0-9]+$')
       [ -z "$n" ] && n=$(printf '%s' "$t" | sed -E 's/.*[[:space:]]edit[[:space:]]//' | tr -s ' \t' '\n\n' | grep -E '^[0-9]+$' | head -1)
       [ -z "$n" ] && n=$(gh pr list --head "$(git branch --show-current 2>/dev/null)" --state open --json number 2>/dev/null | jq -r '.[0].number // empty' 2>/dev/null)
-      prs="$prs ${r:-$here}#${n:-unknown}"
+      prs="$prs ${r:-${GH_REPO:-$here}}#${n:-unknown}"   # gh itself uses GH_REPO before the origin (Devin, security)
     done <<< "$(printf '%s\n' "$cmd" | tr ';&|' '\n\n\n')" ;;
   *)
     prs=$(printf '%s' "$input" | jq -r --arg l "$LABEL" 'select(any((.tool_input.labels // [])[]; . == $l)) | .tool_input | ((if .owner and .repo then .owner + "/" + .repo else "" end) + "#" + ((.issue_number // .pullNumber // .number // "unknown") | tostring))') ;;

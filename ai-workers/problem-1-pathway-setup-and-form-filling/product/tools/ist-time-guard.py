@@ -11,7 +11,7 @@ expires or ends just before it ("by", "until", "till", "before" directly; the ot
 at most: "next 30-minute check 01:3x"). One minute of grace. Also by hand:
   python3 ist-time-guard.py --scan FILE    prints each time ahead of now; exit 1 when there is one
 Env (tests): NOW (epoch seconds). Test: check-ist-time-guard.sh."""
-import json, os, re, sys, time
+import difflib, json, os, re, sys, time
 from datetime import datetime, timedelta, timezone
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -70,7 +70,7 @@ def ahead(text, now):
                     gap = when.date() > now.date() and (when - now.replace(hour=0, minute=0, second=0, microsecond=0))
                 else:
                     gap = when - now
-                    if kind == "t" and rowday and rowday.date() != now.date():
+                    if kind == "t" and rowday and (rowday.date() != now.date() or gap <= timedelta(0)):
                         pass
                     elif kind == "t" and gap > timedelta(hours=6):
                         gap = None   # yesterday's evening, written after midnight
@@ -105,17 +105,20 @@ def changes(hook):
         text = open(path, encoding="utf-8").read()
     except OSError:
         text = ""
-    out = []
+    work = text   # every edit applied in order (replace_all honoured), then the changed lines judged whole
     for e in (ti.get("edits") or [ti]):
         old, new = str(e.get("old_string") or ""), str(e.get("new_string") or "")
-        i = text.find(old) if old else -1
-        if i < 0:
-            out.append((new, old))
-            continue
-        a, b = text.rfind("\n", 0, i) + 1, text.find("\n", i + len(old))
-        b = len(text) if b < 0 else b
-        out.append((text[a:i] + new + text[i + len(old):b], text[a:b]))   # the whole lines, before and after
-    return out
+        if not old or old not in work:
+            return [(new, old)] if work == text else _hunks(text, work) + [(new, old)]
+        work = work.replace(old, new) if e.get("replace_all") else work.replace(old, new, 1)
+    return _hunks(text, work)
+
+
+def _hunks(before, after):
+    """[(changed lines after, the lines they replaced)], each hunk whole, so a DECISIONS row keeps its date."""
+    a, b = before.splitlines(), after.splitlines()
+    return [("\n".join(b[j1:j2]), "\n".join(a[i1:i2]))
+            for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes() if op != "equal"]
 
 
 def main():

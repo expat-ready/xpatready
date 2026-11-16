@@ -30,6 +30,13 @@ r=$(edit "$D" "x" "| P-630 | 16 Nov | the 19:13 IST reset broke it |"); ok "toda
 printf '| P-500 | 12 Nov | rule (founder 02:50 IST) |\n| P-631 | 16 Nov | rule (founder 00:50 IST) |\n' > "$D"
 r=$(edit "$D" "02:50 IST" "03:00 IST"); ok "editing only an old row's time keeps the row's date (12 Nov 03:00 is past)" "$([ "$r" = allow ] && echo 1)" "got $r"
 r=$(edit "$D" "00:50 IST" "03:00 IST"); ok "... and on today's row a later time is refused" "$([ "$r" = deny ] && echo 1)" "got $r"
+printf '| P-500 | 12 Nov | rule (founder 00:30 IST) |\n| P-632 | 16 Nov | rule (founder 00:30 IST) |\n' > "$D"
+out=$(jq -n --arg f "$D" '{tool_name:"Edit", tool_input:{file_path:$f, old_string:"00:30 IST", new_string:"03:00 IST", replace_all:true}}' | NOW=$NOW python3 -I "$G")
+ok "replace_all: every changed row is judged, so today's row with a later time is refused (Devin)" "$(echo "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null 2>&1 && echo 1)" "$out"
+out=$(jq -n --arg f "$D" '{tool_name:"MultiEdit", tool_input:{file_path:$f, edits:[{old_string:"| P-500 | 12 Nov |", new_string:"| P-500 | 16 Nov |"}, {old_string:"rule (founder 00:30 IST) |\n| P-632", new_string:"rule (founder 03:00 IST) |\n| P-632"}]}}' | NOW=$NOW python3 -I "$G")
+ok "MultiEdit: edits apply in order, so a row moved to today with a later time is refused (Devin)" "$(echo "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null 2>&1 && echo 1)" "$out"
+out=$(jq -n --arg f "$D" '{tool_name:"Edit", tool_input:{file_path:$f, old_string:"x", new_string:"| P-640 | 16 Nov | founder confirmed at 00:50 IST |"}}' | NOW=1794850200 python3 -I "$G")   # 16 Nov 23:00 IST
+ok "late evening: an early-morning time on today's row is past, not tomorrow (Devin)" "$([ -z "$out" ] && echo 1)" "$out"
 rm -f "$D"
 r=$(edit "$S" "a 05:00 IST b" "a 05:00 IST b, c"); ok "a time the edit only keeps is not re-judged" "$([ "$r" = allow ] && echo 1)" "got $r"
 r=$(edit "$T/$PRODREL/BACKLOG.md" "x" "merged at 05:00 IST"); ok "other files are not guarded" "$([ "$r" = allow ] && echo 1)" "got $r"
