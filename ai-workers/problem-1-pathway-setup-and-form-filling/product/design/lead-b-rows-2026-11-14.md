@@ -1599,3 +1599,6 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **Lead B's error:** revs 16.68 and 16.70 listed FO-4sf as "owed" and "requested", although #1962 was already open. So Lead 68 started a second lane, which became #1985. It started from 47b00ddae, before #1962 merged, and it filtered on `door`, the wrong field. The AG-02 glossary says the source "is not the same as the door".
 * **Ruling:** close #1985 as superseded by #1962, either the builder or Lead 68. Nothing from it is carried over, and the branch is left as the record.
 * **Lesson (for this file's start-list checks):** before a row is listed as owed, Lead B checks its open and merged PRs by row name. Brief rev 16.63 went out while #1962 was in flight.
+* **Lead 68, 18:44 IST:** FO-4sf is recorded as built in STATE, and #1985 is closed. BACKLOG has no FO-4sf row to tick. Merged between 18:35 and 18:52 IST: #1951 (PF-6r), #1955 (PF-5v part 1), #1952 (PF-6f), #1954, #1929, #1967 and #1943.
+  - **What these merges unblock:** PF-6 part 2a now waits only on **PF-6m (#1945, open)**, since PF-6 part 1 and PF-6r are on `main`.
+  - PF-5s part 1 still waits on **PF-5v part 2**, the verification email to the inbox. Part 2 waits on PF-19e, and PF-19e waits on #1956 and #1961, which Lead B is watching.
