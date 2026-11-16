@@ -4,8 +4,7 @@
 //   S1 no token on each route (except the sign-in doors)              → 401, never data;
 //   S2 a Case Officer (user-O) on each route whose declared keys they lack → 403 with a reason in words, never 2xx;
 //   S3 the same routes as the Owner (user-R) are never 401/403 for a key the Owner holds (the sweep is not vacuous);
-//   S4 money and licence keys: no duty hands out a money-class key, none of the Case Officer's money keys comes from a duty,
-//      and the Case Officer holds no licence-class key. It does NOT prove the NOT_LICENSED refusal (PF-6b DW5 does, on a
+//   S4 money and licence keys: no duty hands out a money-class key, and the Case Officer holds no licence-class key. It does NOT prove the NOT_LICENSED refusal (PF-6b DW5 does, on a
 //      test route: no running route declares a licence-class key yet). Scope: the 60 platform and front-office routes only,
 //      not the case side's routes.
 // Path parameters get a random uuid; bodies are {} (the guard runs before validation, so the status is the guard's).
@@ -55,10 +54,10 @@ const leaksO: string[] = [], vague: string[] = [];
 for (const r of lacking) {
   const a = await call(r.method, r.url, tO);
   if (a.status !== 403) leaksO.push(`${r.method} ${r.path} → ${a.status}`);
-  else if (!/[a-z]/.test(String(a.body?.detail ?? a.body?.message ?? ""))) vague.push(`${r.method} ${r.path}`);
+  else { const why = String(a.body?.detail ?? a.body?.message ?? ""); if (a.body?.code !== "MISSING_PERMISSION" || why.split(/\s+/).length < 5) vague.push(`${r.method} ${r.path}: ${a.body?.code ?? "no code"} "${why}"`); }
 }
 check(`R1.6 S2: a Case Officer on every route whose keys they lack (${lacking.length}) → 403, never data`, lacking.length >= 5 && leaksO.length === 0, leaksO);
-check("R1.6 S2: each of those refusals says why in words (Problem Details detail)", vague.length === 0, vague);
+check("R1.6 S2: each of those refusals is MISSING_PERMISSION with a sentence of at least five words (Problem Details detail)", vague.length === 0, vague);
 const ownerHeld = lacking.filter((r) => r.access?.kind === "keys" && r.access.keys.every((k) => keysR.has(k)));
 const ownerRefused: string[] = [];
 for (const r of ownerHeld) { const a = await call(r.method, r.url, tR); if (a.status === 401 || (a.status === 403 && a.body?.code === "MISSING_PERMISSION")) ownerRefused.push(`${r.method} ${r.path} → ${a.status} ${a.body?.code ?? ""}`); }
@@ -71,9 +70,6 @@ const { classOf, LICENCE_KEYS } = await import("../../api/src/platform/identity/
 const { DUTY_KEYS } = await import("../../api/src/platform/identity/keys.ts");
 const dutyMoney = Object.entries(DUTY_KEYS as Record<string, readonly string[]>).flatMap(([d, ks]) => ks.filter((k) => classOf(k) === "MONEY").map((k) => `${d}: ${k}`));
 check("R1.6 S4: no duty hands out a money key (money comes only with a role that names it)", dutyMoney.length === 0, dutyMoney);
-const dutiesO: string[] = meO.body?.duties ?? [];
-const fromDutiesO = dutiesO.flatMap((d) => [...((DUTY_KEYS as Record<string, readonly string[]>)[d] ?? [])]);
-check("R1.6 S4: none of the Case Officer's money keys comes from a duty", [...keysO].filter((k) => classOf(k) === "MONEY" && fromDutiesO.includes(k)).length === 0, { duties: dutiesO });
 check("R1.6 S4: the Case Officer (no licence record) holds no licence-class key", [...keysO].filter((k) => LICENCE_KEYS.includes(k)).length === 0, [...keysO].filter((k) => LICENCE_KEYS.includes(k)));
 const licenceRoutes = routes.filter((r) => r.access?.kind === "keys" && r.access.keys.some((k) => LICENCE_KEYS.includes(k)));
 console.log(`note: routes declaring a licence-class key in the running app: ${licenceRoutes.length} ${licenceRoutes.map((r) => r.path).join(", ")} (PF-6b DW5 proves the NOT_LICENSED refusal on a test route)`);

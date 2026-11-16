@@ -9,7 +9,7 @@ qa's fresh reader (P-303, P-339): I ran nothing. I read `tester-notes.md`, every
 * **F2 is real.** `sales/common.ts:57-62`: `seesAll = admin || (everyone && view.all)`. `retainers/service.ts:166-168`: `seesAll = setting on && holds view.all`, with no exception for admins. With the setting off, the Owner sees every lead but only their own retainers. The leads routes carry no `@OwnOrAll`, so PF-6b's DW7 sweep never compares the two areas.
 * **Layout and gate.** `ports/messages.ts:84-90` `layout()` is applied only in `render()`, i.e. only to mail through MessagePort. These paths bypass both the layout and the consent gate: `identity/session/mail.ts` (LocalMail), `firms/signup.ts:131` (MAIL_PORT), and `person-link.ts:168,177` plus **`:285`** (the one-time code email; the tester missed this one). They write `demo_message` directly. "unsubscribe" appears 0 times in `api/src` and `web/src`.
 * **qa's new checks.**
-  * `check_qa477_money_keys_by_invitation.ts` is sound and not vacuous. It goes through the real routes, sets the token the way PF-4b's suite does, and counts the same table and action that J-6's A3 counts.
+  * `check_r16_money_keys_by_invitation.ts` is sound and not vacuous. It goes through the real routes, sets the token the way PF-4b's suite does, and counts the same table and action that J-6's A3 counts.
   * `check_r16_deny_sweep.ts` S1 to S3 are sound: the route list comes from the app's own feature list, and S3 is the positive control.
   * Its header overclaims twice. S2 says "the key named", but the code only checks that the detail contains a lowercase letter. S4 says a licence route "answers NOT_LICENSED", but the code only counts such routes (0).
   * S4's second line cannot fail once the first passes.
@@ -24,10 +24,10 @@ qa's fresh reader (P-303, P-339): I ran nothing. I read `tester-notes.md`, every
   * Wrong role by URL: J-6.
   * So under A6 I score part 1 and do not wait for J-6 part 2.
 * **What holds it.** Two open Majors (P-305):
-  * **QA-477 · Bug · Major** (PF-6b ruling 2 (b); R1.6). An invitation that grants a money role writes no money-keys line. `qa477-mine-*.txt` show 4/5 twice: role BILLING_FINANCE, 12 money-class keys, 0 lines.
+  * **#1929's QA-478 (money line) · Bug · Major** (PF-6b ruling 2 (b); R1.6). An invitation that grants a money role writes no money-keys line. `r16-money-keys-*.txt` show 4/5 twice: role BILLING_FINANCE, 12 money-class keys, 0 lines.
     * It is Major, not Minor. The invitation is the normal way a new money holder arrives. The ruling's control (a separate line that a reviewer can filter on) is missing at that door, and J-6 A3 calls the money audit proven while testing only `PATCH /roles`.
     * One thing softens it: `invitation.accepted` still names the role, so nothing is lost for good.
-  * **QA-478 · Conflict · Major** (AG-2-13c / FO-2 against SA-6-24 / PF-6b DW6; R1.6). With the setting off, one viewer in one area (agent/prospect) gets "all" for leads and "own" for retainers. Both packs pass, and they contradict each other.
+  * **#1929's QA-477 (own versus all) · Conflict · Major** (AG-2-13c / FO-2 against SA-6-24 / PF-6b DW6; R1.6). With the setting off, one viewer in one area (agent/prospect) gets "all" for leads and "own" for retainers. Both packs pass, and they contradict each other.
     * The capability's "'all' returns the firm's" cannot be judged until the tech lead rules which rule is right.
     * It is Major because it decides who reads other staff's retainers, which carry money terms.
 * **Also not proven on GitHub.**
@@ -35,8 +35,8 @@ qa's fresh reader (P-303, P-339): I ran nothing. I read `tester-notes.md`, every
   * No running route declares a licence-class key, so "licence apart" is proven only on PF-6b's test route.
   * Gate A is headless only in this copy.
 * **To reach Works:**
-  1. Fix QA-477 so both invitation doors write the line. Add a test that fails without the fix.
-  2. Get the tech lead's ruling on QA-478. Make the losing side match, and either mark the leads routes `@OwnOrAll` or add them to DW6's sweep.
+  1. Fix #1929's QA-478 (money line) so both invitation doors write the line. Add a test that fails without the fix.
+  2. Get the tech lead's ruling on #1929's QA-477 (own versus all). Make the losing side match, and either mark the leads routes `@OwnOrAll` or add them to DW6's sweep.
   3. Get a GitHub run id of main's head with PF-6b and the fixes green.
   4. Get J-6, or its API halves, into a `tests/check_*` suite, or have the Lead accept qa's local walk as gate A by P-616.
   5. Have a new fresh reader score it.
@@ -50,7 +50,7 @@ qa's fresh reader (P-303, P-339): I ran nothing. I read `tester-notes.md`, every
   * The embed-with-campaign door is FO-4b. It is shaped but not built.
   * **Gap: "lists filter by source".** No BACKLOG row shapes it. FO-4's row, its Done when and the API have no source parameter. The requirement nearest to it is the dashboard's "leads by source and campaign" (Doc 3 l.773).
   * **Gap: "import".** AG-2-7 (bulk lead import) appears in no BACKLOG row or checklist row.
-* Proposed: **QA-479 · Gap · Major** for the source filter (R1.27 text; owner: the Lead, to shape or to narrow the text by decision, P-70). **QA-480 · Gap · Major** for lead import (AG-2-7; the same choice). Until a row exists, P-606 cannot be met, so the row stays Partial and is not "Built".
+* Proposed: **QA-493 · Gap · Major** for the source filter (R1.27 text; owner: the Lead, to shape or to narrow the text by decision, P-70). **QA-494 · Gap · Major** for lead import (AG-2-7; the same choice). Until a row exists, P-606 cannot be met, so the row stays Partial and is not "Built".
 
 ## R1.38 Time zones · **Partial** (parts missing: FO-3w part 1, FO-3st1, J-38)
 * Re-runs after #1830 and #1831 equal the last score: the TZ walk 19/19, the inbox walk 16/16 and the staff move 11/11, each twice. There is no regression.
@@ -69,11 +69,11 @@ qa's fresh reader (P-303, P-339): I ran nothing. I read `tester-notes.md`, every
   * No pack checks the layout on every send path, which is what the text asks for.
 * This is "parts missing", not a Gap, for those mails, because PF-19b shapes them.
 * **Gap: the case side's link emails** (`person-link.ts:168,177,285`). No row sends them through MessagePort. PF-19b only keeps the demo inbox working.
-  * Proposed: **QA-481 · Gap · Major** (R1.47, R1.49; "every email on both sides"). The Lead either shapes a row or rules the case side's link mail out of Release 1.
+  * Proposed: **QA-495 · Gap · Major** (R1.47, R1.49; "every email on both sides"). The Lead either shapes a row or rules the case side's link mail out of Release 1.
 * "The firm's branding" today is the name only. The logo and colour are PF-13's, and PF-13 is not listed among row 47's parts (a question below).
 * The CAPABILITIES row's "Not built" is also wrong now. Partial is right.
 
-## R1.49 Consent gate before every send; unsubscribe · **Partial** (parts missing: PF-19b part 2, PF-19b's MailPort routing; QA-481)
+## R1.49 Consent gate before every send; unsubscribe · **Partial** (parts missing: PF-19b part 2, PF-19b's MailPort routing; QA-495)
 * The gate works on MessagePort (pf19b 40/40: marketing without consent is SUPPRESSED and nothing is sent; a suppressed address gets nothing, per firm), and pf19a 94/94.
 * "On every path" fails on the same bypass paths as R1.47.
 * "One-click unsubscribe" is not built: no code at all; it is PF-19b part 2.
@@ -105,11 +105,11 @@ qa's fresh reader (P-303, P-339): I ran nothing. I read `tester-notes.md`, every
 2. The tester did not say that J-6 and `tests/qa/*` have no GitHub run. P-339 for R1.6 needs a pack in CI.
 3. The tester missed `person-link.ts:285` (the code email) as a fourth bypass path.
 4. The sweep's header overclaims S2 and S4 (see above). Reword it before it is cited as proof of "licence apart".
-5. Two counts of money keys disagree for Billing/Finance: qa's role-table count is 12 and the breaker's `/me` count is 15. The finding stands either way. Find out why before writing QA-477's steps.
+5. Two counts of money keys disagree for Billing/Finance: qa's role-table count is 12 and the breaker's `/me` count is 15. The finding stands either way. Find out why before writing #1929's QA-478 (money line)'s steps.
 6. Staleness in the records: MVP-CHECKLIST rows 6 and 27 still say "In PR #1744" and "In PR #1742", and rows 38 and 40 say "Merged". The board's "Built" for 47 and 49 rests on a PR title.
 
 ## Questions for the tech lead
-1. QA-478: with "everyone sees all" off, does the Owner or Admin see the firm's prospects and retainers (FO-2's `admin ||`), or only their own (SA-6-24, PF-6b DW6)? One rule for both areas.
+1. #1929's QA-477 (own versus all): with "everyone sees all" off, does the Owner or Admin see the firm's prospects and retainers (FO-2's `admin ||`), or only their own (SA-6-24, PF-6b DW6)? One rule for both areas.
 2. R1.27: shape "lists filter by source" and lead import (AG-2-7), or narrow the row's text by decision?
 3. R1.47 and R1.49: are the case side's link and code emails in "every email on both sides"? If they are, which row sends them through MessagePort? Is PF-13 (logo, colour) a part of row 47?
 4. R1.6: can a GitHub-run `tests/check_*` carry J-6's API halves, or is qa's local walk enough for gate A (P-616)?

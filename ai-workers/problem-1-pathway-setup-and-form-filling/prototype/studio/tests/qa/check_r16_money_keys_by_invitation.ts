@@ -1,4 +1,4 @@
-// qa, QA-477 (R1.6, PF-6b ruling 2 (b): "a role grant that brings MONEY keys writes its own audit line"): the J-6
+// qa, #1929's QA-478 (money line) (R1.6, PF-6b ruling 2 (b): "a role grant that brings MONEY keys writes its own audit line"): the J-6
 // breaker's F3, replayed by qa through the running app. A role change writes `platform.staff.money_keys_granted`
 // (J-6 P1-A3 proves it); an invitation that gives a money role, once accepted, writes none.
 //   Q1 the Owner invites a new person as Billing/Finance (201) through the real route;
@@ -7,7 +7,7 @@
 // Run from prototype/ (never :4400):
 //   zsh studio/tools/isolated.sh qa477 4474 start --ttl 15 PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on \
 //     && trap 'zsh studio/tools/isolated.sh qa477 4474 stop' EXIT \
-//     && tsx --tsconfig studio/api/tsconfig.json studio/tests/qa/check_qa477_money_keys_by_invitation.ts 4474 qa477
+//     && tsx --tsconfig studio/api/tsconfig.json studio/tests/qa/check_r16_money_keys_by_invitation.ts 4474 qa477
 // US$0, no model call.
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -32,13 +32,13 @@ check("Q1 the Owner invites a new person as Billing/Finance (201)", inv.status =
 const token = randomBytes(32).toString("base64url");
 sql(`update platform_invitation set token_hash = '${createHash("sha256").update(token).digest("hex")}' where id = '${inv.body?.id}'`);
 check("Q1 the invitation row is pending, for Billing/Finance", sql(`select roles::text from platform_invitation where id = '${inv.body?.id}'`) === "{BILLING_FINANCE}");
-const acc = token ? await call("POST", `/api/public/invitations/${token}/accept`, undefined, {}) : { status: 0, body: null };
+const acc = await call("POST", `/api/public/invitations/${token}/accept`, undefined, {});
 const staffId: string | undefined = acc.body?.staffId;
 check("Q2 the invitee accepts (200) and is a staff member with Billing/Finance", acc.status === 200 && !!staffId && sql(`select string_agg(role::text, ',') from platform_role_grant where staff_id = '${staffId}'`) === "BILLING_FINANCE", acc.body);
 const moneyKeys = staffId ? sql(`select string_agg(distinct rp.permission_key, ',') from platform_role_grant g join platform_role_permission rp on rp.role = g.role where g.staff_id = '${staffId}'`).split(",").filter((k) => classOf(k) === "MONEY") : [];
 check("Q2 the accepted role carries money-class keys", moneyKeys.length > 0, moneyKeys.length);
 const lines = staffId ? Number(sql(`select count(*) from audit_event where action = 'platform.staff.money_keys_granted' and (entity_key = '${staffId}' or detail::text like '%${staffId}%')`)) : -1;
-check("Q3 a money-keys audit line names the new person (PF-6b ruling 2 (b)) — fails today (QA-477)", lines >= 1, { lines });
+check("Q3 a money-keys audit line names the new person (PF-6b ruling 2 (b)) — fails today (#1929's QA-478 (money line))", lines >= 1, { lines });
 
 console.log(`${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);
