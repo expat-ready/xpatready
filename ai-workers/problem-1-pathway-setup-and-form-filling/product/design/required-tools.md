@@ -4,7 +4,7 @@ Every check compares this list with the session's connectors (B198). A row that 
 
 | Tool | Kind | Needed for | Rule | If missing: the founder's fix |
 |---|---|---|---|---|
-| Gmail (company mailbox, read-only) | claude.ai connector | outside-account mail: AWS, BoldSign, Google verification, Meta | P-620, P-618 | claude.ai › Settings › Connectors › Gmail: connect, read-only |
+| Gmail (company mailbox, read-only) | claude.ai connector | **on demand (P-633)**: only when a task needs an outside account's mail (AWS, BoldSign, Google verification, Meta); the Lead names the task and asks | P-633, P-618 | claude.ai › Settings › Connectors › Gmail: connect, read-only, when asked |
 | Google Drive (read-only) | claude.ai connector | the team's requirement snapshots (`sources/drive-snapshot-*`) | AGENTS rule 2 | claude.ai › Settings › Connectors › Google Drive: connect |
 | GitHub access (gh token on the Mac; cloud GitHub connection) | account | every PR, label, merge and check | P-82 | `gh auth login` on the Mac; claude.ai › Settings › GitHub for cloud |
 | Built-in browser, signed in to claude.ai | desktop app | the app view every check (lanes on claude.ai/code) | P-326, B197 | sign in to claude.ai in the browser pane |
