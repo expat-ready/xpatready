@@ -34,3 +34,4 @@ Refined 16:1x IST from qa #1950's verdict table (open, stacked on #1929): R1.19 
 | 16 Nov 17:3x | 47b00ddae | none | none | wait; batch #1976 closed 11:54Z unmerged (#1952 lost its label, dequeued); PF-6r #1951 back in the queue — no main merge for 3 h |
 | 16 Nov 17:5x | 47b00ddae | none | none | wait |
 | 16 Nov 18:1x | 47b00ddae | none | none | wait |
+| 16 Nov 18:4x | 39d4c831b | #1951 PF-6r, #1955 PF-5v part 1, #1952 PF-6f, #1962 FO-4sf; records #1943, #1954, #1929, #1967 | none: R1.6 still needs PF-6m #1945 (open, no approve), J-6 part 2 (CI-run suite) per its row; R1.19 still PF-5 part 2 #1959 (approve lost), PF-5s, QA-481; R1.100 PF-5t #1957 (approve lost) | wait. #1961 PF-19p dequeued; #1956 approved not queued |
