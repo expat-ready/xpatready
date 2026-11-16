@@ -3443,7 +3443,7 @@ def watch_lines(d, open_prs=None, caps_text=None, pr_state=None, now=None, known
     gen = (d.get("freshness") or {}).get("generated_at")
     try:
         age = (now or datetime.now(timezone.utc)) - datetime.fromisoformat(str(gen).replace("Z", "+00:00")) if gen else None
-    except ValueError:
+    except (ValueError, TypeError):                  # a non-ISO or timezone-less time: its age is not known (an ACT below)
         gen = None
     if gen:
         h = max(0.0, round(age.total_seconds() / 3600, 1))

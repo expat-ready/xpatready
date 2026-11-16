@@ -82,14 +82,15 @@ t0=$(ms_now); run "{$FR,\"first\":{$TODAY,$REL,\"stuck\":[${many%,}]}}"; ms=$(( 
 [ "$(wc -l <<<"$out")" -le 40 ] && grep -q '^ACT   board: .* more lines cut' <<<"$out" && ok "40 entries capped at 40 lines" || no "cap" "$(wc -l <<<"$out") lines"
 [ "$ms" -lt 3000 ] && ok "board step ran in ${ms} ms (under 3 s)" || no "run time" "${ms} ms"
 
-# 8. The wiring: lead-watch.sh's own step 10, run with the data steps 2 and 5 hold, adds its ACT lines to the exit count
+# 8. The wiring: lead-watch.sh's own step 11, run with the data steps 2 and 5 hold, adds its ACT lines to the exit count
 # (a merged PR the board still lists comes from step 2's merged list, so no GitHub call is needed).
 step=$(sed -n '/^# 11\. What the founder/,/^exit/p' "$TOOLS/lead-watch.sh" | grep -v '^exit')
-printf '%s' "{$FR,\"first\":{$TODAY,$REL,\"stuck\":[$S_LQ]}}" > "$T/board.json"; mkdir -p "$T/st"
+FRESH="\"freshness\":{\"generated_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"   # step 11 reads the real clock: the board is fresh now
+printf '%s' "{$FRESH,\"first\":{$TODAY,$REL,\"stuck\":[$S_LQ]}}" > "$T/board.json"; mkdir -p "$T/st"
 w=$(act=0; STATE_DIR="$T/st"; COCKPIT_DATA="$T/board.json"; prs='[{"number":1901,"title":"a"}]'; caps=$(cat "$T/caps.md")
     merged=$'#1902 row b merged\n#1500 other'; eval "$step"; echo "act=$act")
 grep -q '^ACT   stuck: 2 pull requests' <<<"$w" && grep -q 'disagree: #1902 .* source says merged' <<<"$w" && grep -q '^act=2$' <<<"$w" \
-  && ok "lead-watch step 10 prints the board and counts its 2 ACT lines" || no "lead-watch wiring" "$w"
+  && ok "lead-watch step 11 prints the board and counts its 2 ACT lines" || no "lead-watch wiring" "$w"
 
 [ "$fail" = 0 ] && echo "lead-watch board: all cases as expected" || echo "lead-watch board: $fail case(s) failed"
 exit "$fail"

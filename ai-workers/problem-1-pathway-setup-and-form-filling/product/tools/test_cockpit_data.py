@@ -1884,6 +1884,8 @@ class LeadWatchBoard(unittest.TestCase):
         self.assertTrue(self.lines(d)[1].startswith("ACT   board data 5.0 h old (over 2 h): refresh the board"), self.lines(d))
         self.assertFalse([x for x in cd.watch_lines(d, [], self.CAPS, now=datetime(2026, 11, 16, 2, 0, tzinfo=timezone.utc)) if x.startswith("ACT")])
         self.assertTrue(any(x.startswith("ACT   board data has no generated_at") for x in self.lines(dict(self.board([]), freshness={}))))
+        self.assertTrue(any(x.startswith("ACT   board data has no generated_at") for x in
+                            self.lines(dict(self.board([]), freshness={"generated_at": "2026-11-16T05:30:00"}))))   # no timezone: age not known
 
     def test_empty_qa_file_is_not_checked_never_a_disagree(self):
         out = self.lines(self.board([]), caps="\n")
