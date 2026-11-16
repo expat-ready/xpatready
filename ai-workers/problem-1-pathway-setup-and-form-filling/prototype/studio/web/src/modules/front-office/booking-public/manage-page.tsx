@@ -51,23 +51,26 @@ function noticeOf(p: Problem, b: Answer): Notice {
 }
 
 export function BookingManagePage() {
-  const [token, setToken] = React.useState(tokenOf);
-  React.useEffect(() => { const on = () => setToken(tokenOf()); window.addEventListener("hashchange", on); return () => window.removeEventListener("hashchange", on); }, []);
-  const q = useQuery({ queryKey: ["public-manage", token], enabled: !!token, retry: false, staleTime: Infinity, refetchOnWindowFocus: false, gcTime: 0,
+  // A link opened into this tab (only the # changes, so no page load) reads the booking again, even its first token.
+  const [{ token, n }, setOpened] = React.useState(() => ({ token: tokenOf(), n: 0 }));
+  React.useEffect(() => { const on = () => setOpened((o) => ({ token: tokenOf(), n: o.n + 1 })); window.addEventListener("hashchange", on); return () => window.removeEventListener("hashchange", on); }, []);
+  const q = useQuery({ queryKey: ["public-manage", token, n], enabled: !!token, retry: false, staleTime: Infinity, refetchOnWindowFocus: false, gcTime: 0,
     queryFn: () => publicCall(path(token), View) });
   if (!token) return <BadLink />;
   if (!q.isPending && (q.error as Problem | null)?.status === 404) return <BadLink />;
-  return <Gate pending={q.isPending} error={q.error}>{() => <Manage key={token} first={q.data!} token={token} onToken={(t) => {
-    // The new token takes the old one's place in the address (no new history entry: Back never reopens a dead link).
-    window.history.replaceState(window.history.state, "", `${window.location.pathname}#${t}`); setToken(t);
-  }} />}</Gate>;
+  // The page keeps the token it opened with as its key; a move's new token lives in Manage and in the address only (a
+  // replaceState fires no hashchange), so the page is not read again. Another link pasted into the address reloads it.
+  return <Gate pending={q.isPending} error={q.error}>{() => <Manage key={`${n}:${token}`} first={q.data!} opened={token} />}</Gate>;
 }
 
 function BadLink() {
   return <PublicFrame title="Your booking"><h1 className="text-xl font-semibold" data-public-state="bad-link">{BAD_LINK}</h1></PublicFrame>;
 }
 
-function Manage({ first, token, onToken }: { first: View; token: string; onToken: (t: string) => void }) {
+function Manage({ first, opened }: { first: View; opened: string }) {
+  const [token, setToken] = React.useState(opened);
+  /** The new token takes the old one's place in the address (no new history entry: Back never reopens a dead link). */
+  const onToken = (t: string) => { window.history.replaceState(window.history.state, "", `${window.location.pathname}#${t}`); setToken(t); };
   const [b, setB] = React.useState<Answer>(first);
   const [done, setDone] = React.useState<"moved" | "cancelled" | null>(null);
   const [notice, setNotice] = React.useState<Notice | null>(first.canChange ? null : { kind: "closed", text: first.firm.phone ? limitText(first) : first.message ?? SOON });
@@ -149,7 +152,7 @@ function Move({ token, b, notice, onBack, onMoved, onRefused }: { token: string;
               ))}
             </div>
           ) : <p data-public-state="no-times" className="mt-3 text-sm">No free times in the next two weeks. Please reply to your confirmation email.</p>}
-      <div className="mt-5 flex flex-wrap gap-2">
+      <div className="sticky bottom-0 mt-5 flex flex-wrap gap-2 border-t border-border bg-surface py-3">
         <Button size="lg" className="h-11" disabled={!pick} busy={busy} onClick={move}>Move to this time</Button>
         <Button size="lg" variant="outline" className="h-11" onClick={onBack}>Back</Button>
       </div>
