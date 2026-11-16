@@ -77,6 +77,7 @@ try {
   @Module({ controllers: controllers as never[], providers: [...base_providers, ...(feature.providers as never[])] as never[] }) class TestApp {}
   const nest = await NestFactory.create(TestApp, { logger: false }); await nest.listen(0, "127.0.0.1"); app = nest;
   const base = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}`;
+  const terms = nest.get(PlatformTerms);
   ok("PF-5t pass: the feature registers the terms controller, the service and the guard's TERMS_GATE; the app starts (every route declared)",
     feature.controllers.includes(PlatformTermsController) && (feature.providers as any[]).some((p) => p?.provide === TERMS_GATE));
 
@@ -144,6 +145,15 @@ try {
   const replay = await call(base, "POST", "/api/platform/me/terms/accept", { token: tR, body: { versionIds: [dpa2] } });
   ok("PF-5t DW3 pass: the Owner accepts the new data-processing terms (200, one row)", first.status === 200 && rows(`version_id = '${dpa2}'`) === 1, first.body);
   ok("PF-5t DW3 fail: a replay answers the same and writes no second row and no second audit line", replay.status === 200 && JSON.stringify(replay.body) === JSON.stringify(first.body) && rows(`version_id = '${dpa2}'`) === 1 && sql(`select count(*) from audit_event where action = 'platform.terms.accepted'`) === audits, [first.body, replay.body]);
+  // Checked again under the firm lock (Devin review on #1957): a session context gone stale while it waited saves nothing.
+  const dpaStale = publish("DATA_PROCESSING", "sample-2026-12-03b");
+  const ctxR = { firmId: FIRM_A, staffId: R, firmKey: "sample-firm", roles: (await db.platformRoleGrant.findMany({ where: { staffId: R, endedAt: null } })).map((g) => g.role as string), keys: [], duties: [], authTime: Math.floor(clock.t / 1000) - 1, via: "local" as const };
+  const tryStale = (c: unknown) => terms.accept(c as never, { versionIds: [dpaStale] }).then(() => 200, (e: any) => e.getStatus?.() ?? 500);
+  const stale = [await tryStale({ ...ctxR, roles: [...ctxR.roles, "ADMIN"] })];
+  sql(`update platform_staff set status = 'DEACTIVATED' where id = '${R}'`); stale.push(await tryStale(ctxR)); sql(`update platform_staff set status = 'ACTIVE' where id = '${R}'`);
+  ok("PF-5t DW3 fail (Devin review): under the lock, roles changed meanwhile → 409, deactivated meanwhile → 401; nothing written", stale[0] === 409 && stale[1] === 401 && rows(`version_id = '${dpaStale}'`) === 0, stale);
+  const fresh = await call(base, "POST", "/api/platform/me/terms/accept", { token: tR, body: { versionIds: [dpaStale] } });
+  ok("PF-5t DW3 pass: the same person with a current session accepts it", fresh.status === 200 && rows(`version_id = '${dpaStale}'`) === 1, fresh.body);
   // Two Owners at once (break): firm A gets a second Owner; both accept a new version together → one firm row.
   sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${FIRM_A}', '${T}', 'OWNER', 'seed:PF-5t-check')`);
   const tos3 = publish("TERMS_OF_SERVICE", "sample-2026-12-04");
@@ -161,7 +171,6 @@ try {
   const link = identity.sent.find((m) => m.to === "owner@pf5t.example.com")?.text ?? "";
   await signup.verify({ token: /token=([A-Za-z0-9_-]{43})/.exec(link)?.[1], code: /code=(\d{6})/.exec(link)?.[1] }, "10.5.0.2").catch(() => undefined);   // Checkout after the commit is not this row's
   const FIRM_C = sql(`select id from platform_firm where contact_email = 'owner@pf5t.example.com'`);
-  const terms = nest.get(PlatformTerms);
   const listC = FIRM_C ? await terms.acceptances({ firmId: FIRM_C, staffId: "", firmKey: "", roles: [], keys: [], duties: [], authTime: 0, via: "local" }) : null;
   ok("PF-5t DW4 pass: a sign-up's own acceptances (PF-5) appear in its firm's list: the Owner, the three current versions", !!listC && listC.acceptances.length === 3 && new Set(listC.acceptances.map((a) => a.staffId)).size === 1 && plans.terms.every((t) => listC.acceptances.some((a) => a.versionId === t.id)), listC);
   const list = await call(base, "GET", "/api/platform/terms/acceptances", { token: tO });

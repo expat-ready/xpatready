@@ -20,7 +20,7 @@ import { Db } from "../../core.ts";
 import { auditEvent } from "../audit/audit-event.ts";
 import { firmScope } from "../firm-scope.ts";
 import { actorWord } from "../identity/audit.ts";
-import { forbidden, problem, type StaffContext } from "../identity/keys.ts";
+import { forbidden, problem, unauthorized, type StaffContext } from "../identity/keys.ts";
 import { PlatformClock } from "../identity/port.ts";
 import type { TermsGate } from "./gate.ts";
 
@@ -80,6 +80,12 @@ export class PlatformTerms implements TermsGate {
     const firmId = firmScope(s.firmId).firmId;
     return this.db.$transaction(async (tx) => {
       await tx.$queryRaw`select id from platform_firm where id = ${firmId}::uuid for update`;
+      // The person is checked again under the lock, as PlatformSession.inFirm does (Devin review on #1957): a deactivation,
+      // a revoked session or a role change committed while this waited is never accepted past.
+      const me = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: s.staffId }), select: { status: true, grants: { where: { endedAt: null }, select: { role: true } } } });
+      const rev = await tx.platformSessionRevocation.findFirst({ where: firmScope(firmId, { staffId: s.staffId }), orderBy: { revokedAt: "desc" }, select: { revokedAt: true } });
+      if (me?.status !== "ACTIVE" || (rev && s.authTime * 1000 <= rev.revokedAt.getTime())) unauthorized("Your session ended before this was saved. Sign in again.", "SESSION_REVOKED");
+      if (me.grants.map((g) => g.role).sort().join() !== [...s.roles].sort().join()) problem(409, "Your roles changed", "Your roles changed while this was being sent. Nothing was saved; try again.", { code: "ROLES_CHANGED" });
       const current = new Map((await this.current(tx)).map((r) => [r.id, r] as const));
       const asked = ids.map((id) => current.get(id));
       if (asked.some((r) => !r)) return problem(400, "Not a current version", NOT_CURRENT, { code: "TERMS_NOT_CURRENT" });
