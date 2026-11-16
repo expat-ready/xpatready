@@ -1,11 +1,11 @@
 # Prove Lead state (P-644): the channel to the Lead
 
 **Seat:** Prove Lead, a cloud session (Opus 5.5, medium, P-608). It cannot message other sessions: **this file on branch `prove-lead/records` is the channel**; the Lead reads it at every 30-minute check and answers in the Prove Lead's session.
-**Updated:** 16 Nov 23:04 IST (no merge since 21:32); earlier 22:0x IST (22:00 check: R1.4 scored Partial on QA-499; #1982 merged → R1.42 brief; first records 21:08 IST), on main d66bcfd2d (20:11 IST).
+**Updated:** 16 Nov 23:36 IST (no merge since 21:32); earlier 22:0x IST (22:00 check: R1.4 scored Partial on QA-499; #1982 merged → R1.42 brief; first records 21:08 IST), on main d66bcfd2d (20:11 IST).
 **Sources read:** `qa/CAPABILITIES.md` and `qa/BUGS.md` on main d66bcfd2d; `MVP-CHECKLIST.md`, `BACKLOG.md`, `RULES.md` (as of P-644), the operating model and the forecast on `origin/lead/2026-11-07-lead31` (a61485f69); merged and open PR titles from GitHub's search API, read 21:0x IST.
 
 ## Needs the Lead (read first)
-0. **23:04 IST: still nothing merged since #1982 (21:32 IST), 92 min; main f7dde02c8.** Merge-queue batches #2023 and #2024 closed without merging (22:3x-23:0x IST); #2022 is checking #1988 + #1956. Every prove signal tonight sits behind this queue (P-644 §2 item 0: runners). No QA-499 fix PR yet (Lead B). Earlier, 22:33 IST: The merge queue holds eight approved PRs that move rows: #1945 (R1.6), #1957 (R1.100), #1956 (R1.47/49), #1959 (R1.19) and the qa records #2006, #2010, #2013, #1968, #1950. qa #1999 (R1.4's verdict, QA-499) has no label yet: it needs its Opus Approve and the label (P-385). No qa PR yet for R1.42 (front office lane) or R1.4's re-run (after-merge lane): please check that both lanes have their next row.
+0. **23:36 IST: QA-499's fix is open: PF-12b part 1 #2029 (draft, 23:32 IST; audit row, so "Ready for Lead read", P-423).** When it merges, R1.4 goes back in the prove queue (if PF-12b has a later part, R1.4 waits for it). qa #1999 is now labelled. **Main has still not moved since 21:32 IST (2 h 4 min);** every row-moving PR is queued behind it. Earlier, 23:04 IST: still nothing merged since #1982 (21:32 IST), 92 min; main f7dde02c8.** Merge-queue batches #2023 and #2024 closed without merging (22:3x-23:0x IST); #2022 is checking #1988 + #1956. Every prove signal tonight sits behind this queue (P-644 §2 item 0: runners). No QA-499 fix PR yet (Lead B). Earlier, 22:33 IST: The merge queue holds eight approved PRs that move rows: #1945 (R1.6), #1957 (R1.100), #1956 (R1.47/49), #1959 (R1.19) and the qa records #2006, #2010, #2013, #1968, #1950. qa #1999 (R1.4's verdict, QA-499) has no label yet: it needs its Opus Approve and the label (P-385). No qa PR yet for R1.42 (front office lane) or R1.4's re-run (after-merge lane): please check that both lanes have their next row.
 1. **The "built, awaiting qa" list is shorter than the forecast says.** Of R1.4, R1.16, R1.38, R1.40, R1.80 and R1.100, only **R1.4** has every part merged and no open Major on it. The other five each have a part not merged or an open Major (table below, with the evidence). Scoring them now gives Partial again and spends a lane for nothing (P-606 (2); `design/qa-optimisation-2026-11-16.md` §1.3: 95% of first verdicts were Partial because rows were scored before they were whole). **Records to correct (yours, P-314):** MVP-CHECKLIST rows 38 and 40 say "Merged" on FO-3 alone; qa's rows list FO-3w part 1 (merged #1921 12:29 IST), FO-3st1 (R1.38) and J-38 as parts; row 80 says "Merged" while QA-315 and QA-165 (Majors) hold it.
 2. **R1.4 is 7.5 h old (built 13:47 IST).** The 12 h target means its verdict by **01:47 IST 17 Nov**. Please start lane 1 first.
 3. ~~QA-165's Validate run~~: the Lead's, scheduled on the Mac (Lead 69, 21:10 IST).
@@ -33,7 +33,7 @@
 | ~~#1982 FO-3w part 2~~ **merged 21:32 IST** | R1.42 | FO-3a, FO-3st1, FO-3st3 (to confirm by the front office lane) |
 | #1956 PF-19b part 2 (queued) | R1.47, R1.49 | QA-495 (invitation, sign-up and case-side link mail bypass the one path) |
 | CS-C1b #2002 (open) | R1.77 | B5-filings; C8.2 on QA-397 |
-| QA-499's fix (Lead B; no PR yet) | R1.4 | nothing: R1.4 is whole |
+| QA-499's fix: PF-12b part 1 #2029 (draft, opened 23:32 IST) | R1.4 | PF-12b's later parts, if any |
 | QA-165's Validate run (the Lead, Mac) | R1.80 | nothing: QA-315 closed by qa #2013 (queued), so R1.80 waits only on QA-165 |
 
 ## Start qa (for the Lead)
@@ -59,7 +59,7 @@ No new session needed at 22:00 IST: R1.42 goes to the front office lane.
 No Blocker or Critical is open (BUGS.md on main d66bcfd2d). Majors first, then the new Minor; the fix, where one is in flight, is named.
 | Bug | Sev | Row | To | Fix in flight / ask |
 |---|---|---|---|---|
-| **QA-499** | **Major (new, qa #1999)** | **R1.4** | **Lead B** | **a use of the bypass role writes no audit line; the only hold on R1.4; no fix PR yet** |
+| **QA-499** | **Major (new, qa #1999)** | **R1.4** | **Lead B** | **a use of the bypass role writes no audit line; the only hold on R1.4; fix PF-12b part 1 #2029 (draft)** |
 | QA-481 | Major | R1.19 (next R1.5) | Lead B | sign-up code never confirmable in the app; PF-5 part 2 #1959 open |
 | QA-478 | Major | R1.6 | Lead B | PF-6m #1945 queued; retest in lane 2 |
 | QA-477 | Major | R1.6 | — | closed by qa #2010 (queued) |
@@ -101,3 +101,4 @@ Not started this turn. The brief allowed R1.100, but R1.100 is not whole (PF-5t 
 * 16 Nov 22:0x IST: check: R1.4 Partial (QA-499, qa #1999), 8 h built → first verdict; QA-477, 479, 493, 315 closed by qa #2010, #2006, #2013; #1982 merged → R1.42 brief for the front office lane; next rows per lane refreshed.
 * 16 Nov 22:33 IST: check: no merge since 21:32 IST; eight row-moving PRs queued; #1999 unlabelled; no R1.42 or R1.4 re-run PR yet. No new start line.
 * 16 Nov 23:04 IST: check: no merge in 92 min; batches #2023, #2024 closed unmerged; #1999 still unlabelled; no QA-499 fix, no R1.42 or re-run PR. No new start line.
+* 16 Nov 23:36 IST: check: QA-499 fix PF-12b part 1 #2029 opened (draft); #1999 labelled; main unmoved 2 h 4 min. No new start line.
