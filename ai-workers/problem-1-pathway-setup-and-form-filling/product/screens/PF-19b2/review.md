@@ -191,7 +191,36 @@ Re-review 1 verdict: Approve (head `d460651e1`), superseded below
 * **n4, PR body out of date.** Known gaps does not yet say that on test and production nothing is emailed and every notice is refused until the sender and topic settings exist. Mail there stays `QUEUED` and is retried (part 1's policy). Those settings need a PF-24 follow-up row. The "What and why" text still says "optional topic allowlist" and "with no topic list its URL is logged", which is now true only on a local server.
 * **n2 and n3 stand as written above.**
 
-Verdict: Approve (head `5d4169833`)
+Re-review 2 verdict: Approve (head `5d4169833`), superseded below
 * Blockers: none.
 * Majors: none.
 * Minors: n2, n3, n4 (PR body lines; no code change needed).
+
+## Re-review 3 at `5b06fedf1` (diff only, P-277)
+
+**The merge (`390ba87f9`, origin/main `c0896290d`; P-270, made because of a conflict).** Against main, `api/src/platform/MODULE.md` changes only by this row's additions: the Entry points text, one invariant, and `check_pf19b2_ses.ts` on the Tests line. Main's `check_pf12_walls.ts` is kept, and nothing of main's is lost (word diff). The row is still +744 −13 on `studio/`.
+
+**`5b06fedf1` (+6 −2): PF-12's walls.**
+* `unsubscribe.ts` `find()` calls `enterFirm` with the firm from the sealed token (the GCM tag means it cannot be forged) before its first query. `confirm()` calls it before `$transaction`, so the transaction opens as that firm.
+* `bounces.ts` calls `enterFirm` with the firm from the verified notice, after `verify()` (signature, plus a topic list required outside local) and before the transaction. The outbox row must still match firm, id and `ses:<id>`, and suppression is still that row's own address.
+* No bypass and no new `BYPASS_USES` entry. **Agree:** each door runs as the firm its proof names, which is the least it can have.
+
+**What I ran:**
+* `check_pf19b2_ses` **44/44**; `check_pf12_walls` **100/100**.
+* Walk on my copy `rvpf19b2c` on :4437, with the walls on: **6/6**.
+* Live probe on that copy, under the walls:
+  * 10 concurrent one-click POSTs on one link: 200 ×1, 404 ×9, 1 withdrawal.
+  * A service email's link: page 200, POST 200, 1 withdrawal.
+  * A junk notice: 400.
+* The copy was stopped and dropped afterwards.
+* I trust the builder's "walk fails without `enterFirm`" as stated; I did not re-run that mutation.
+
+**Notes (Minor, not blocking):**
+* **n5, the notice door's `enterFirm` is untested in a request.** It runs only outside a request scope in the suite, and a live signed notice needs a real SNS certificate fetch. By reading, the order is right: verify, then `enterFirm`, then the transaction.
+* **n6, an edge case on a firm's own web address.** If a request already scoped to firm A (that firm's web address) carries firm B's link, `enterFirm` throws `notInFirm()` from inside `find()`. That likely answers the JSON not-found rather than the HTML page. This is unlikely in practice: the links use ExpatReady's own `STUDIO_PUBLIC_URL` host, never a firm address.
+* **n2, n3, n4** stand as above.
+
+Verdict: Approve (head `5b06fedf1`)
+* Blockers: none.
+* Majors: none.
+* Minors: n2–n6.
