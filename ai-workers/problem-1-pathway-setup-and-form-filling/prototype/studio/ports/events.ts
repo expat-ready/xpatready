@@ -8,7 +8,7 @@ import { z } from "zod";
 export const EVENT = {
   /** A firm was created (platform, contracts §1.1). Front office seeds the firm's pipelines on it (FO-1a). */
   FIRM_CREATED: "firm.created",
-  /** A firm's subscription became paid and active (platform, PF-5 part 2; contracts §1.1). */
+  /** A firm became Active (Stripe `active`: after a paid invoice, or at trial end with a card while the first invoice is due; PF-5 part 2). */
   FIRM_ACTIVATED: "firm.activated",
   /** A firm's subscription status changed; payload old, new, reason (platform, PF-5 part 2). */
   FIRM_SUBSCRIPTION_CHANGED: "firm.subscription_changed",

@@ -5,6 +5,7 @@
 import Stripe from "stripe";
 // Part 2: events are read with the library's own signature check (constructEvent: HMAC SHA-256 over `t.payload`, 300
 // seconds' tolerance, Webhooks.js DEFAULT_TOLERANCE); the portal's one configuration is found by its metadata or made once.
+import { FirmId } from "../../../../ports/audit.ts";
 import { BillingAddress, BillingInvoice, BillingPrice, BillingSignatureError, BillingSubscription, CardCheckoutInput, CustomerId, CustomerInput, InvoiceId, PORTAL_FEATURES, PortalInput, PriceId, SetupIntentId, SubscriptionId, TrialCheckoutInput, eventFacts, type BillingPort } from "../../../../ports/billing.ts";
 
 const idOf = (v: string | { id: string } | null | undefined) => (typeof v === "string" ? v : v?.id ?? null);
@@ -17,7 +18,7 @@ export class StripeBilling implements BillingPort {
 
   /** From a secret key; `fetchFn` replaces the network (recorded answers in CI). */
   static fromKey(secretKey: string, fetchFn?: typeof fetch, webhookSecret: string | null = null): StripeBilling {
-    return new StripeBilling(new Stripe(secretKey, { maxNetworkRetries: 2, ...(fetchFn ? { httpClient: Stripe.createFetchHttpClient(fetchFn) } : {}) }), webhookSecret);
+    return new StripeBilling(new Stripe(secretKey, { maxNetworkRetries: 2, timeout: 10_000, ...(fetchFn ? { httpClient: Stripe.createFetchHttpClient(fetchFn) } : {}) }), webhookSecret);
   }
 
   readEvent(rawBody: string, signature: string | undefined) {
@@ -34,7 +35,7 @@ export class StripeBilling implements BillingPort {
     const inv = s.latest_invoice && typeof s.latest_invoice === "object" ? s.latest_invoice : null;
     const ends = s.items.data.map((i) => i.current_period_end).filter((n) => typeof n === "number");
     return BillingSubscription.parse({
-      id: s.id, customerId: idOf(s.customer), firmId: s.metadata?.firm_id?.toLowerCase() ?? null, status: s.status,
+      id: s.id, customerId: idOf(s.customer), firmId: FirmId.safeParse(s.metadata?.firm_id?.toLowerCase()).data ?? null, status: s.status,
       trialEnd: at(s.trial_end), periodEnd: ends.length ? at(Math.max(...ends)) : null, cancelAtPeriodEnd: s.cancel_at_period_end, hasCard: !!s.default_payment_method,
       latestInvoice: inv?.id ? { id: inv.id, status: inv.status, taxNeedsAddress: inv.automatic_tax?.status === "requires_location_inputs" } : null,
     });
@@ -50,7 +51,7 @@ export class StripeBilling implements BillingPort {
     if (s.status === "paused") await this.stripe.subscriptions.resume(sub, { billing_cycle_anchor: { type: "now" }, payment_behavior: "resume_on_payment_success" }, { idempotencyKey: `pf5-resume-${sub}-${si.id}` });
   }
 
-  async holdDraftInvoice(invoiceId: string) { await this.stripe.invoices.update(InvoiceId.parse(invoiceId), { auto_advance: false }); }
+  async holdDraftInvoice(invoiceId: string, release = false) { await this.stripe.invoices.update(InvoiceId.parse(invoiceId), { auto_advance: release }); }
 
   async invoices(customerId: string) {
     const list = await this.stripe.invoices.list({ customer: CustomerId.parse(customerId), limit: 24 });
@@ -64,7 +65,7 @@ export class StripeBilling implements BillingPort {
 
   async cardCheckout(input: CardCheckoutInput) {
     const c = CardCheckoutInput.parse(input), firmId = c.firmId.toLowerCase();
-    const s = await this.stripe.checkout.sessions.create({ mode: "setup", customer: c.customerId, currency: "cad", client_reference_id: firmId, metadata: { firm_id: firmId }, success_url: c.successUrl, cancel_url: c.cancelUrl });
+    const s = await this.stripe.checkout.sessions.create({ mode: "setup", customer: c.customerId, currency: "cad", allowed_payment_method_types: ["card"], client_reference_id: firmId, metadata: { firm_id: firmId }, success_url: c.successUrl, cancel_url: c.cancelUrl });
     if (!s.url) throw new Error("Stripe answered a Checkout session without a url");
     return { url: s.url };
   }

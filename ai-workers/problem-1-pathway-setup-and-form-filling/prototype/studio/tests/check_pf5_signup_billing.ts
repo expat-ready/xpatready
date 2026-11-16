@@ -382,10 +382,38 @@ try {
   billing.invoiceList.set(cust1, [{ id: "in_d1", number: null, status: "draft", amountDueCents: 4900, currency: "cad", createdAt: clock.now(), hostedUrl: null }, { id: "in_p1", number: "A-0001", status: "paid", amountDueCents: 4900, currency: "cad", createdAt: clock.now(), hostedUrl: "https://invoice.stripe.com/i/in_p1" }]);
   const inv = await acct.invoices(who(firmId, ["BILLING_FINANCE"]));
   ok("PF-5 part 2 pass/fail: GET billing/invoices lists our invoices with Stripe's hosted links, never a draft", inv.invoices.length === 1 && inv.invoices[0].id === "in_p1" && !!inv.invoices[0].hostedUrl, inv);
-  const legal = await problemOf(() => acct.setProfile(who(firmId, ["ADMIN"]), { legalName: "Maple Immigration Inc." })), country = await problemOf(() => acct.setProfile(who(firmId, ["OWNER"]), { countryCode: "US" }));
-  const prof = await acct.setProfile(who(firmId, ["OWNER"]), { legalName: "Maple Immigration Inc.", ownerName: "Owner (Sample)" });
-  ok("PF-5 part 2 pass/fail (AG-1-65, SA-2-24): the legal name only by the Owner, the country never changes; the Owner's change is saved with its audit line",
-    legal?.status === 403 && country?.status === 400 && prof.legalName === "Maple Immigration Inc." && sql(`select count(*) from audit_event where action = 'platform.firm.profile_changed' and detail->>'firmId' = '${firmId}'`) === "1", [legal, country]);
+
+  // ------------------------------------------------------------------------------- part 2: the breaker's Majors (8c21a1e8)
+  const F8 = await mkFirm("f8"), p8 = subEv("sub_f8", "customer.subscription.paused");
+  billing.subs.set("sub_f8", snap("sub_f8", { status: "paused" }));
+  sql(`insert into webhook_receipt (id, service, event_id, received_at) select gen_random_uuid(), 'stripe', 'evt_bad' || g, now() - interval '1 hour' from generate_series(1, 50) g`);
+  failAudit = "platform.subscription.synced"; await send(p8); failAudit = null;
+  const redelivered = await send(p8);
+  ok("PF-5 part 2 fail (break M1): Stripe's redelivery of an event not yet handled is handled (never dropped as a repeat)", redelivered === null && firmOf(F8) === "PAYMENT_HOLD", firmOf(F8));
+  for (let i = 0; i < 5; i++) await hooks.sweep();
+  ok("PF-5 part 2 fail (break M1): 50 receipts that always fail are set aside after 5 sweeps, never blocking the rest", sql(`select count(*) from webhook_receipt where event_id like 'evt_bad%' and handled_at is null`) === "0"
+    && sql(`select count(*) from webhook_receipt where event_id like 'evt_bad%' and outcome like 'set aside%'`) === "50");
+  billing.subs.set("sub_f8x", snap("sub_f8x", { customerId: "cus_f8", status: "canceled" }));
+  await send(raw("customer.subscription.deleted", { object: "subscription", id: "sub_f8x", customer: "cus_f8", metadata: { firm_id: F8 } }));
+  billing.subs.set("sub_x7", snap("sub_x7", { customerId: "cus_f3", status: "active", latestInvoice: paid("in_x7") }));
+  const F10 = await mkFirm("f10"), x7 = await hooks.handle(eventFacts(JSON.parse(raw("checkout.session.completed", { object: "checkout.session", client_reference_id: F10, customer: "cus_f3", subscription: "sub_x7" }))));
+  ok("PF-5 part 2 fail (review M2): an event naming a firm with another customer's subscription moves neither firm", x7.includes("another customer") && subOf(F10).startsWith("TRIAL") && subOf(F3).startsWith("ACTIVE"), x7);
+  ok("PF-5 part 2 fail (break M2): an event about another subscription of the same customer never takes over the firm's own", subOf(F8).startsWith("PAYMENT_HOLD") && sql(`select stripe_subscription_id from platform_subscription where firm_id = '${F8}'`) === "sub_f8", subOf(F8));
+  const F9 = await mkFirm("f9");
+  await db.platformFirm.update({ where: { id: F9 }, data: { status: "ACTIVE" } });
+  await billing.ensureCustomer({ firmId: F9, email: "f9@p2.example.com", name: "F9" });
+  sql(`update platform_subscription set stripe_customer_id = '${billing.customers.at(-1)!.customerId}' where firm_id = '${F9}'`);
+  billing.subs.set("sub_f9", snap("sub_f9", { customerId: billing.customers.at(-1)!.customerId, status: "active", hasCard: true, latestInvoice: { id: "in_f9", status: "draft", taxNeedsAddress: true } }));
+  await send(raw("invoice.created", { object: "invoice", customer: billing.customers.at(-1)!.customerId, parent: { subscription_details: { subscription: "sub_f9", metadata: {} } } }));
+  const heldBefore = billing.heldDrafts.includes("in_f9");
+  await acct.setAddress(who(F9, ["OWNER"]), addr);
+  billing.subs.set("sub_f9", snap("sub_f9", { customerId: billing.customers.at(-1)!.customerId, status: "active", hasCard: true, latestInvoice: paid("in_f9") })); await send(paidEv("sub_f9"));
+  ok("PF-5 part 2 pass/fail (break M3): saving the address releases the held draft, and its payment ends the \"business address needed\" hold",
+    heldBefore && !billing.heldDrafts.includes("in_f9") && subOf(F9).startsWith("ACTIVE") && firmOf(F9) === "ACTIVE", [heldBefore, subOf(F9)]);
+  const shutAcct = new BillingAccount(db, { ...bp, notReady: "Stripe is not set up on this server (PLATFORM_STRIPE_SECRET_KEY)" });
+  const shutCard = await problemOf(() => shutAcct.card(who(firmId, ["OWNER"]))), badD = await problemOf(() => acct.setAddress(who(firmId, ["OWNER"]), { ...addr, postal_code: "D0D 0D0" }));
+  ok("PF-5 part 2 fail (break m5, m6, m4): a server without Stripe answers 503 on the card Checkout (never a made-up link); a postal code Canada never uses is refused",
+    shutCard?.status === 503 && badD?.status === 400, [shutCard, badD]);
 
   // ------------------------------------------------------------------- part 2 over HTTP: the raw-body door and the 402
   await seedSampleFirms(db);
@@ -408,8 +436,8 @@ try {
     sql(`update platform_firm set status = 'ACTIVE' where key = 'sample-firm'`);
     ok("PF-5 part 2 pass/fail: a held firm's staff get 402 on other routes and 200 on billing (address too) and their own identity; Active again → 200",
       before.join() === "200,200,200" && held.join() === "402,200,200" && words?.code === "PAYMENT_HOLD" && words.detail === HOLD_WORDS && addrHeld === 200, { before, held, addrHeld });
-    const officer = [(await call("GET", "/api/platform/billing", { token: tO })).status, (await call("POST", "/api/platform/billing/portal", { token: tO })).status, (await call("PUT", "/api/platform/firm/profile", { token: tO, body: "{}" })).status];
-    ok("PF-5 part 2 fail: a Case Officer gets 403 on billing, the portal and the profile change", officer.join() === "403,403,403", officer);
+    const officer = [(await call("GET", "/api/platform/billing", { token: tO })).status, (await call("POST", "/api/platform/billing/portal", { token: tO })).status];
+    ok("PF-5 part 2 fail: a Case Officer gets 403 on billing and the portal", officer.join() === "403,403", officer);
   } finally { await nest.close(); }
 } catch (e) {
   ok("PF-5 the check ran to the end", false, e instanceof Error ? e.stack : String(e));

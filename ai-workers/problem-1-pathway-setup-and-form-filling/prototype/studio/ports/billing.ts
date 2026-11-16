@@ -104,8 +104,9 @@ export interface BillingPort {
   /** The card saved by a card Checkout becomes the subscription's; a paused subscription is resumed (a new period from
    *  now; Stripe finalizes the resumption invoice, step 0 fact 2). */
   useCardAndResume(subscriptionId: string, setupIntentId: string): Promise<void>;
-  /** A draft invoice is kept from finalizing (auto_advance off): never an invoice without its tax. */
-  holdDraftInvoice(invoiceId: string): Promise<void>;
+  /** A draft invoice is kept from finalizing (auto_advance off): never an invoice without its tax. `release` lets it
+   *  finalize again once the address is on the customer (break M3). */
+  holdDraftInvoice(invoiceId: string, release?: boolean): Promise<void>;
   invoices(customerId: string): Promise<BillingInvoice[]>;
   updateCustomerAddress(customerId: string, address: BillingAddress): Promise<void>;
   /** A Checkout that saves a card (setup mode); its completion is a `checkout.session.completed` event. */
@@ -189,7 +190,7 @@ export function fakeBilling(opts: { prices?: BillingPrice[]; failOn?: (call: Cal
       if (s.status === "paused") resumed.push(id);
       subs.set(id, { ...s, hasCard: true, ...(back ? { status: "active" as const } : {}) });
     },
-    async holdDraftInvoice(id) { gate("holdDraftInvoice"); heldDrafts.push(InvoiceId.parse(id)); },
+    async holdDraftInvoice(id, release = false) { gate("holdDraftInvoice"); InvoiceId.parse(id); const i = heldDrafts.indexOf(id); if (!release) heldDrafts.push(id); else if (i >= 0) heldDrafts.splice(i, 1); },
     async invoices(customerId) { gate("invoices"); return (invoiceList.get(CustomerId.parse(customerId)) ?? []).map((i) => BillingInvoice.parse(i)); },
     async updateCustomerAddress(customerId, address) {
       gate("updateCustomerAddress"); const a = BillingAddress.parse(address), i = customers.findIndex((c) => c.customerId === CustomerId.parse(customerId));

@@ -1,9 +1,6 @@
 // PF-5 part 2 (contracts §0.4, §7 §1.1; SA-4-11, -20, -21, -22, -25, -79; SA-3-46): Stripe's events and the moves they make.
-//   * receive: the signature first (400 without it, nothing stored), then the event stored once in webhook_receipt by
-//     Stripe's own id (a repeat is answered 200 and ignored), then the answer; handling runs after it, so the request never
-//     calls Stripe back (contracts §0.4). A receipt whose handling did not finish is read again by the sweep job.
-//   * handling reads the subscription as Stripe has it now, under a per-subscription lock, so events that arrive out of
-//     order or twice converge on Stripe's state (paid-before-created ends Active either way).
+//   * receive: the signature first (400, nothing stored), stored once in webhook_receipt by Stripe's id, answered; handling
+//     runs after the answer (contracts §0.4) and reads Stripe's subscription now, under a per-firm lock, so any order converges.
 //   * the moves: Stripe's status → ours (§7), refused moves kept and audited; the trial end and period end stored as Stripe
 //     has them; the hold ends only on a paid invoice (Stripe also activates on "uncollectible", step 0 fact 2); an invoice
 //     waiting for an address under Stripe Tax holds the firm ("business address needed") and a draft is kept from
@@ -64,14 +61,16 @@ export class BillingEvents {
       throw problem(400, "NOT_AN_EVENT", "Not an event", "The body is not a Stripe event.");
     }
     const stored = await this.db.webhookReceipt.createMany({ data: [{ service: "stripe", eventId: ev.id }], skipDuplicates: true });
-    if (stored.count === 0) return { received: true, duplicate: true };
-    this.later(() => this.handle(ev));
-    return { received: true };
+    // A repeat of an event already handled is ignored; a repeat of one not yet handled is handled now (Stripe's retry is
+    // the fastest recovery, break M1).
+    const open = stored.count === 0 ? await this.db.webhookReceipt.count({ where: { service: "stripe", eventId: ev.id, handledAt: null } }) : 1;
+    if (open) this.later(() => this.handle(ev));
+    return stored.count === 0 ? { received: true, duplicate: true } : { received: true };
   }
 
   /** Handles one stored event; a failure leaves its receipt unhandled for the sweep. Returns the outcome. */
   async handle(ev: BillingEvent): Promise<string> {
-    const row = await this.findSubscription(ev);
+    const row = /^(customer\.subscription|invoice|checkout\.session)\./.test(ev.type) ? await this.findSubscription(ev) : null;   // other events change nothing here (review m2)
     let outcome = "no firm matched";
     if (row) {
       if (ev.type === "checkout.session.completed" && ev.setupIntentId && row.stripeSubscriptionId) await this.ports.billing.useCardAndResume(row.stripeSubscriptionId, ev.setupIntentId);
@@ -82,18 +81,26 @@ export class BillingEvents {
     return outcome;
   }
 
-  /** Receipts stored over 2 minutes ago and not handled: read again from Stripe and handled (each once). */
+  /** Receipts stored over 2 minutes ago and not handled: read again from Stripe and handled (each once). Fewest tries
+   *  first; a receipt that fails 5 sweeps is set aside with a warning, so bad receipts never block good ones (break M1). */
   async sweep(): Promise<number> {
-    const due = await this.db.webhookReceipt.findMany({ where: { service: "stripe", handledAt: null, receivedAt: { lt: new Date(this.ports.clock.now().getTime() - 120_000) } }, take: 50, orderBy: { receivedAt: "asc" } });
+    const due = await this.db.webhookReceipt.findMany({ where: { service: "stripe", handledAt: null, receivedAt: { lt: new Date(this.ports.clock.now().getTime() - 120_000) } }, take: 50, orderBy: [{ outcome: { sort: "asc", nulls: "first" } }, { receivedAt: "asc" }] });
     let n = 0;
-    for (const r of due) { try { await this.handle(await this.ports.billing.event(r.eventId)); n++; } catch (e) { console.warn(`[billing] sweep: ${e instanceof Error ? e.name : "error"}`); } }
+    for (const r of due) {
+      try { await this.handle(await this.ports.billing.event(r.eventId)); n++; } catch (e) {
+        const tries = Number(/^retry (\d)$/.exec(r.outcome ?? "")?.[1] ?? 0) + 1;
+        console.warn(`[billing] sweep: receipt ${r.id} failed (${e instanceof Error ? e.name : "error"}), try ${tries} of 5`);
+        await this.db.webhookReceipt.updateMany({ where: { id: r.id, handledAt: null }, data: tries >= 5 ? { handledAt: this.ports.clock.now(), outcome: "set aside after 5 failed tries: check it in Stripe" } : { outcome: `retry ${tries}` } });
+      }
+    }
     return n;
   }
 
-  /** Our subscription an event is about: by Stripe's subscription id, else the firm's live one (Checkout's first event
-   *  names the firm), else the customer's. */
+  /** Our subscription an event is about: by Stripe's subscription id, else the firm's or the customer's live one. An event
+   *  naming a subscription we do not know matches only a row not linked yet (Checkout's first event), so another
+   *  subscription of a linked customer never takes over (break M2); a card Checkout names none and finds the linked row. */
   private async findSubscription(ev: BillingEvent) {
-    const live = { status: { not: "ENDED" as const } };
+    const live = { status: { not: "ENDED" as const }, ...(ev.subscriptionId ? { stripeSubscriptionId: null } : {}) };
     if (ev.subscriptionId) { const s = await this.db.platformSubscription.findUnique({ where: { stripeSubscriptionId: ev.subscriptionId } }); if (s) return s; }
     if (ev.firmId) { const s = await this.db.platformSubscription.findFirst({ where: firmScope(ev.firmId, live), orderBy: { createdAt: "desc" } }); if (s) return s; }
     if (ev.customerId) return this.db.platformSubscription.findFirst({ where: { stripeCustomerId: ev.customerId, ...live }, orderBy: { createdAt: "desc" } });
@@ -110,9 +117,10 @@ export class BillingEvents {
       const firm = await tx.platformFirm.findUniqueOrThrow({ where: { id: firmId } });
       const snap = await this.ports.billing.subscription(stripeSubId);
       if ((row.stripeCustomerId && snap.customerId !== row.stripeCustomerId) || (snap.firmId && snap.firmId !== firmId)) return "subscription belongs to another customer: ignored";
+      if (row.stripeSubscriptionId ? row.stripeSubscriptionId !== snap.id : snap.status === "canceled" || snap.status === "incomplete_expired") return "not this firm's live subscription: ignored";   // break M2
       let next = SUB_OF[snap.status] ?? row.status, reason = `stripe ${snap.status}`;
       const inv = snap.latestInvoice;
-      if (inv?.taxNeedsAddress && (inv.status === "draft" || inv.status === "open")) { next = "PAYMENT_HOLD"; reason = ADDRESS_NEEDED; if (inv.status === "draft") draft = inv.id; }
+      if (inv?.taxNeedsAddress && (inv.status === "draft" || inv.status === "open")) { next = "PAYMENT_HOLD"; reason = ADDRESS_NEEDED; if (inv.status === "draft") draft = inv.id; else console.warn(`[billing] ALERT: invoice ${inv.id} finalized without its tax (address needed)`); }
       else if (row.status === "PAYMENT_HOLD" && next !== "ENDED" && next !== "PAYMENT_HOLD" && inv?.status !== "paid") { next = "PAYMENT_HOLD"; reason = "hold ends only on a paid invoice"; }
       const notes: string[] = [];
       if (!canMove(SUB_MOVES, row.status, next)) { notes.push(`subscription ${row.status} → ${next} refused`); next = row.status; }

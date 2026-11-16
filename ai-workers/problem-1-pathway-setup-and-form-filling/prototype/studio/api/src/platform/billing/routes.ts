@@ -9,7 +9,7 @@ import { PATH_METADATA } from "@nestjs/common/constants.js";
 import { Reflector } from "@nestjs/core";
 import express from "express";
 import { Db } from "../../core.ts";
-import { AnyStaff, PermissionKeys, staffOf, type StaffContext } from "../identity/keys.ts";
+import { PermissionKeys, staffOf, type StaffContext } from "../identity/keys.ts";
 import { PlatformJobs } from "../jobs/platform-jobs.ts";
 import { BillingAccount } from "./account.ts";
 import { BillingEvents, type BillingPorts } from "./webhook.ts";
@@ -60,7 +60,7 @@ export class StripeHookController {
 }
 
 /** Keys (PF-3's catalogue): Owner and Admin hold subscription:pay and :update-card; invoices add Billing / Finance; the
- *  portal (which can cancel) is subscription:cancel, Owner only; the profile is firm-profile:manage, Owner only. */
+ *  portal (which can cancel) is subscription:cancel, Owner only. */
 @Controller("api/platform")
 export class BillingController {
   constructor(@Inject(PlatformBillingAccount) private readonly a: PlatformBillingAccount) {}
@@ -79,10 +79,4 @@ export class BillingController {
 
   @Post("billing/portal") @HttpCode(200) @HoldOpen() @PermissionKeys("agent/subscription:cancel")
   portal(@Req() r: R) { return this.a.portal(staffOf(r)); }
-
-  @Get("firm/profile") @AnyStaff("the firm's own record, read by its staff")
-  profile(@Req() r: R) { return this.a.profile(staffOf(r)); }
-
-  @Put("firm/profile") @PermissionKeys("agent/firm-profile:manage")
-  setProfile(@Req() r: R, @Body() b: unknown) { return this.a.setProfile(staffOf(r), b); }
 }
