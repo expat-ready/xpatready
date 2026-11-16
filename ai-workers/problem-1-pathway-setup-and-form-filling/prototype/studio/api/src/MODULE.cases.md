@@ -19,10 +19,11 @@ The runtime: a client's case on a released combination, from answers to a record
 - The only hard stop on Ready to file is a barcode form failing its own Validate; the rest are warnings passed with a reason (P-237).
 - A never-waivable line cannot be marked Not applicable (P-172); a line of an ended stage is history (P-444).
 - A case reads only its current stage's pins and rows (B139).
+- A stage deadline is the calendar date its rule gives, never moved by hours or closed days; the view adds its weekday, "(weekend)" / "(closed day)" and Missed (before today in the firm's zone, clock port), from `platform/calendar/` (CS-DL1 part 1; AG-7-94, AG-7-96 r2).
 - A case is OPEN or CLOSED; a decision needs a recorded submission, `case_decision` is insert-only, close and reopen need a reason and write `case.closed`/`case.reopened` in the same transaction (CS-C1a; AG-7-33, -34, -13, -50).
 
 **Tables.** case, caseParticipant, caseTeamMember, clientCanonicalAnswer, filing, filingItem, formInstance, caseDocument, answerCheck, reviewRoundFiling, reviewFinding, personLink, caseDecision, moduleEvent, auditEvent.
-**Tests.** `tests/check_c76_readiness.ts`, `tests/check_c65_document_rules.ts`, `tests/check_m3s4_never_waivable.ts`, `tests/check_c95_release_update.ts`, `tests/check_c81_signing.ts`, `tests/check_a24_case_number_api.ts`, `tests/check_csc1_close.ts`.
+**Tests.** `tests/check_c76_readiness.ts`, `tests/check_c65_document_rules.ts`, `tests/check_m3s4_never_waivable.ts`, `tests/check_c95_release_update.ts`, `tests/check_c81_signing.ts`, `tests/check_a24_case_number_api.ts`, `tests/check_csc1_close.ts`, `tests/check_csdl1_deadlines.ts`.
 
 **Do not.**
 - Read the newest release from a case route.

@@ -13,7 +13,9 @@ import { caseView, checkValue, knownOf, shapeOf, type Participant } from "../../
 import { caseChecklist } from "../../engine/runtime/case-checklist.ts";
 import { checkKeyDetails, deadlineOf, fmtDate, nextOf, STAGE_WORDS, type StageState, type StoredDetail } from "../../engine/runtime/stages.ts";
 import type { Snapshot } from "../../engine/snapshot.ts";
+import { systemClock, type ClockPort } from "../../ports/clock.ts";
 import { actorOf, Audit, CaseRead, Db, fail, type Actor } from "./core.ts";
+import { dayMark, localDate, readFirmCalendar, type FirmCalendar } from "./platform/calendar/working-days.ts";
 import { Programs } from "./programs.ts";
 import { readSpec } from "./routes-data.ts";
 import { Runtime, STAGE_RECORD, type Reached } from "./runtime.ts";
@@ -51,9 +53,29 @@ async function writeSameEveryStage(tx: Tx, c: Reached, snap: Snapshot, defs: { f
   }
 }
 
+/** CS-DL1 part 1 (AG-7-94 r1-r3): a deadline as the case shows it: the calendar date the rule gives, never moved, with
+ *  its weekday, a mark when it falls on a weekend or a day the firm is closed, and Missed once it is before today in the
+ *  firm's zone. Added to the contract's deadline (fields only added). */
+export type DeadlineShown = NonNullable<CaseStageView["deadline"]> & { weekday: string | null; mark: "weekend" | "closed day" | null; shown: string | null; missed: boolean };
+export function showDeadline(d: CaseStageView["deadline"], cal: FirmCalendar, today: string): DeadlineShown | null {
+  if (!d) return null;
+  if (!d.due) return { ...d, weekday: null, mark: null, shown: null, missed: false };
+  const { weekday, mark } = dayMark(d.due, cal);
+  return { ...d, weekday, mark, shown: `${weekday} ${fmtDate(d.due)}${mark ? ` (${mark})` : ""}`, missed: d.due < today };
+}
+
 @Injectable()
 export class CaseStagesService {
+  /** P-607: today comes from the clock port (a suite sets a FakeClock here). */
+  clock: ClockPort = systemClock;
   constructor(@Inject(Runtime) private readonly r: Runtime, @Inject(Db) private readonly db: Db, @Inject(Audit) private readonly audit: Audit, @Inject(Programs) private readonly programs: Programs) {}
+
+  /** The case's firm calendar (AG-7-99: one office → the firm's). A request with no platform firm in scope (PF-12's
+   *  walls) reads no firm row, so the settings' defaults apply (Mon-Fri, no closed days, America/Toronto). */
+  private async calendarOf(firmKey: string): Promise<FirmCalendar> {
+    const firm = await this.db.platformFirm.findFirst({ where: { key: firmKey }, select: { id: true } });
+    return readFirmCalendar(this.db, firm?.id ?? NO_ID);
+  }
 
   private reach(actor: Actor, caseId: string) { return this.r.reach(actor, UUID.test(caseId) ? caseId : NO_ID, "officer"); }
 
@@ -72,10 +94,11 @@ export class CaseStagesService {
     const labels = new Map((await this.db.combination.findMany({ where: { id: { in: c.stages.map((s) => s.combinationId) } }, select: { id: true, label: true } })).map((x) => [x.id, x.label]));
     const all = c.stages.map((s) => ({ stage_key: s.stageKey, staff_name: s.staffName, key_details: s.keyDetails as Record<string, StoredDetail>, defs: readSpec(s.spec).key_details }));
     const { next } = nextOf(c.stages.map((s) => ({ ...s, stage_key: s.stageKey, state: s.state as StageState })));
+    const cal = await this.calendarOf(c.firmKey), today = localDate(cal.zone, this.clock.now());
     return Promise.all(c.stages.map(async (s): Promise<CaseStageView> => {
       const spec = readSpec(s.spec), stored = s.keyDetails as Record<string, StoredDetail>;
       const why = s.state === "NOT_STARTED" ? (await this.startability(s.combinationId)).why : null;
-      const deadline = s.state === "CURRENT" || s.state === "NOT_STARTED" ? deadlineOf(spec.deadline, all) : null;
+      const deadline = showDeadline(s.state === "CURRENT" || s.state === "NOT_STARTED" ? deadlineOf(spec.deadline, all) : null, cal, today);
       return { id: s.id, key: s.stageKey, name: s.staffName, client_name: s.clientName, combination_id: s.combinationId, combination: labels.get(s.combinationId) ?? s.staffName, ord: s.ord,
         state: s.state as StageState, words: why ? "Cannot start yet" : STAGE_WORDS[s.state as StageState], cannot_start_why: why, started_from: s.startedFrom as CaseStageView["started_from"],
         started_at: s.startedAt?.toISOString() ?? null, ended_at: s.endedAt?.toISOString() ?? null, version: s.version,
