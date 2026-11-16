@@ -1,4 +1,4 @@
-# qa · capability, front office: rows 40 and 38 re-checked after FO-3pa and FO-3m (16 Nov 2026, 10:3x IST)
+# qa · capability, front office: rows 40 and 38 re-checked after FO-3pa and FO-3m (16 Nov 2026, 10:0x IST)
 
 **Mode:** `/qa capability`. FO-3pa #1830 (merged 08:07 IST, 16 Nov) and FO-3m #1831 (merged 09:28 IST) change the booking service, and FO-3pa adds the calendar file by link (row 40), so both rows were re-checked within 4 h (P-613 (4)). This is a cloud qa lane on Opus 5.5 at high effort. **Tested on main ddc6e919c.** Live AI was off, spend was US$0, and no priced button was pressed. The isolated copy was `qa_fon` on :4472; :4400 was not touched. All times are IST (P-338; Devin's finding on #1903, carried).
 **Verdict (fresh Opus 5.5 reader that ran nothing, P-303; `2026-11-16-capability-R1-fo-0958ist/verdicts.md`):** **R1.40 Partial · R1.38 Partial**, with no regression. Bugs: none new, none closed.
