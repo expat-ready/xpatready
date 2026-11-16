@@ -78,3 +78,34 @@ Part 2's touch list does not include the contract file, so this has to be right 
 
 Verdict: Block
 To fix: M1 (atomic check-and-take in the fake, plus a three-party test), M2 (fresh firms per `make()` in the harness contract). Minors m1-m5 are optional; m1 and m3 are worth doing while the file is open.
+
+## Round 2: diff only (P-277), `git diff 8272b685..62405674`
+Reviewed code head **62405674b7e1c751e5b2800ba8a6bb03090cee79**. The diff changes 3 code files: `ports/legal-hold.ts` (+15/-9), the contract (+43/-10) and `tests/check_pf21b_port.ts` (+34/-10). It also adds this folder's two review files, unchanged from round 1, which I ignored.
+
+**Runs (this container):**
+- `tsx tests/check_pf21b_port.ts`: 32 passed, 0 failed, twice.
+- `check-port-contracts.mjs`: 0 problems, 763 ms.
+- `tsc --strict`: exit 0.
+- My round-1 probes, re-run against the new fake: `race.mts` A gives 1 and B gives false. `probe3.mts` J-a refused, J-b refused with no leak (the next placement completes), and three placements behind P1 never overlap (max inside 1).
+
+| Round-1 item | Round 2 | Evidence |
+|---|---|---|
+| M1 fake wake race | **Fixed** | `acquire(l, free, take)` runs `take()` in the same synchronous step as the last `free()` check (`legal-hold.ts:127-130`). Probes A and B are now correct. New case 9 (`contract.ts:159-176`) proves the deleter-vs-placement half in Postgres terms: a lock on the root client lets P2 commit within the reader's 300 ms. The `lateTake` store fails it. |
+| M2 fresh firms | **Fixed** | The harness doc now states that each `make()` gives two fresh firms. `fresh()` asks `ALL_FIRM_DATA` on both firms and fails with a plain message, so a shared database now fails loudly instead of failing at random. |
+| m1 non-transaction | Fixed | `isHeld` refuses a `tx` this store did not open (`:157-158`). `noLock` now runs in its own short transaction and fails exactly cases 6 and 8. |
+| m2 leaked lock | Fixed | `take()` throws when the transaction ended during the wait, so nothing is added (`:134-137`). Probe J-b confirms it. The new rule-3 test covers the entry path only, not the mid-wait path; my probe covers that. |
+| m3 isolation case | Fixed | The contract header says part 2's own test proves it. |
+| m4 fail-test precision | Fixed | `failedOnly` checks the exact set. `anyCategory` gives [1, 5] (an unknown category mapped to `case_notes` is no longer refused) and `never` gives all 9: both correct. The DATE line is relabelled as a rule-2 check. |
+| m5 reader overtakes | Noted | Comment at `:117-118`. |
+
+**New in this diff, Minor (non-blocking):**
+- **r2-m1. Case 9's first assertion, "placements queued behind an open one never run together" (`most === 1`), cannot fail as the case is built.** Only one placement queues behind P1, and P1 calls `leave()` before it releases.
+  - Mutant (scratch `mut-run.mts`): the fake with only the *writer* side taking its lock in two steps passes all 9 cases. Probe A on the same mutant gives max inside 2.
+  - The shipped fake is correct (A and A' give 1), and in Postgres the exclusive lock itself guarantees this. A placement that skips the lock fails case 7. So no real adapter can slip through this gap; it is a vacuous half-assertion.
+  - Fix, when next in the file: queue two placements behind the open reader, or behind P1, so that `most` can reach 2.
+
+**Journey score (re-walked on the fake):** **9.4/10**, 7.5 of 8 applicable criteria. Task completed and error recovery move from ½ to 1 (J6-J9 now hold). J10 now fails loudly at `fresh()`, which is by design. Correct data stays at ½ for r2-m1 (one half of case 9 is unproven); every other criterion is 1.
+
+**Not checked:** the real adapter and Postgres (part 2), and CI on this head.
+
+Verdict: Approve 62405674b7e1c751e5b2800ba8a6bb03090cee79
