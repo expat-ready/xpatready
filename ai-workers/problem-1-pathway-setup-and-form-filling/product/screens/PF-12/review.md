@@ -337,3 +337,35 @@ Since the Approve at b74860dd3 there are two commits: a49b7a78d (records only) a
 - **Runs:** at c95ba35ed (studio folder identical at HEAD), `check_pf12_walls` 98/0 and `check_fo3m_answers` 14/0. The builder reports `check_fo3_booking`, `check_pf19b_mail` and `check_pf23w_jobs_wired` green.
 
 **Verdict: Approve** for `c95ba35ed72afc14b941ee63492b949612ce4732`: no open Blocker or Major. r3-m2 and r4-m1 remain follow-ups, recorded in the PR.
+
+---
+
+# Round 6: diff-only re-review at 76b81fb3e (P-277)
+
+Verdict: Approve
+
+Scope: `git diff 2a56733a1 76b81fb3e -- …/studio`. The commit fixes the two bugs the automated reviewer found: an unhandled `'error'` on a checked-out client, and `Db.$disconnect` not closing its pool.
+
+## Can the always-on `swallow` listener hide an error that should surface? No
+
+1. **The query in flight still fails.** When a connection errors, pg's client first fails every query in flight or queued, then emits `'error'`. The caller still gets the rejection; the listener only stops the event from crashing Node. Any later query on that client fails with "not queryable".
+2. **A dead client is never reused, so its firm tag cannot go stale.** pg-pool removes a returned client that is not queryable or is ending (`pg-pool/index.js:392`), even on a plain `release()`. `WalledPool.query` now releases with the error, as pg's own `Pool.query` does.
+3. **Idle clients behave as before.** They keep pg-pool's own idle listener, which removes them and emits the pool's `'error'`; Prisma's adapter listens to that (`onIdleClientError`). Inside a transaction, Prisma's adapter adds its own `onError`. The swallow covers only the gap: `WalledPool.query` and the `set_config` round trip, where no one else listened.
+4. **No listener leak.** The listener is attached once per client (`listeners('error').includes(swallow)`).
+5. **Behaviour matches pg's own pool.** A failed query now drops its connection, so a WITH CHECK or unique refusal costs a reconnect and a re-set. That is exactly what pg-pool's `Pool.query` does, and it was the behaviour on main.
+
+**Live proof (isolated :4646).** Three rounds of 20 concurrent `/api/platform/staff` requests while every `xr_app` backend was terminated (28 terminated in total):
+- The server stayed up: 51 × 200, and 9 × 500 for the requests whose queries were killed.
+- The next requests all returned 200, and `/api/health` returned 200.
+- The copy was stopped.
+
+The new check (`pg_terminate_backend` during `pg_sleep`) passes. `check_pf12_walls` is 99/0 at 76b81fb3e.
+
+`disposeExternalPool: true` is a real option in `@prisma/adapter-pg` 7.8.0 (`dist/index.mjs:760`). Each `Db` owns its `walledPool`, so ending it on `$disconnect` closes nothing shared.
+
+## Minor (new; neither blocks)
+
+- **r6-m1.** The swallowed error is not logged. A connection dropped between two queries of a transaction shows up only as the next query's "not queryable". **Fix:** have `swallow` write one terse `logPort.warn("db_connection_error", { code })`, without the message (PF-23 redaction).
+- **r6-m2.** After `$disconnect`, the adapter sets `externalPool = null`. A `Db` used again reconnects through a plain `pg.Pool` built from the walled pool's options: still `xr_app`, but with no per-checkout firm or bypass. That fails closed (walled tables read nothing, and doors answer 404), so it is not a hole. No code reuses a `Db` after `$disconnect` today (grep: `api/src` disconnects only owner clients at a tool's end). Add one line to the module card: a `Db` is not used after `$disconnect`.
+
+**Verdict: Approve** for `76b81fb3e0da41a7f3d80d9473c5469e08c527e3`: no open Blocker or Major.
