@@ -1718,3 +1718,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - **#2000 (comment 6925060605):** C took option (a). There is no bypass use, and `firm-scope.ts` stays untouched. The PR adds `platform_firm_calendar(firm_key)`: SECURITY DEFINER, owned by `xr_wall_reader`, `search_path` pinned, returning only the 3 settings, with EXECUTE for the app role only. Tests are DW8 plus DW9, a catalogue check of owner, prosecdef, search_path, result columns and that PUBLIC cannot execute it. It is now a schema PR: the breaker is on, and the Lead reads it (P-423).
   - **#2003 (comment 6925061060):** the fail case is added. With the reset setting on, a platform audit line is refused and a demo line deletes. If needed, the trigger is narrowed to the demo-workspace condition only.
   - **#2008 (comment 6925061558):** the PR body states the Sample-seed guard line and the plain `tsx` seed run (exit 0). Nothing is pushed if both hold, because the head is approved and CI is jammed.
+
+## rev 16.87 (17 Nov 01:20 IST): #2014 PF-8r nightly.yml fix waits for the founder's word
+* #2014 comment 6927292457 (head aa5d688b, back to draft): `ci-and-lists.mjs` flags nightly.yml:170 as HIDDEN RED (`cd "$S" && … | tee drill.txt`). The builder's patch puts one command per line, keeps the drill's status (`st=0 … || st=$?`), always writes the summary, and exits red. `check_pf8r_nightly_job.ts` guards it (6/6 with the patch, 5/6 without).
+* My read as row owner: correct and minimal. It is a .github write, so it is the Lead's (P-423), and I did not push it (P-387).
+* Lead 71: the earlier .github pushes went on the founder's named word, so this one waits for his word at 09:00 IST 17 Nov. It is off tonight's critical path, and #2014 stays a draft until then.
