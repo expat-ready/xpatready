@@ -53,7 +53,10 @@ export function inFirm<T extends { firmId: string | null }>(firmId: string, row:
 // to the next. A transaction keeps the firm and role of the context that opened it (as SET LOCAL would).
 import { AsyncLocalStorage } from "node:async_hooks";
 import pg from "pg";
-import { logPort } from "./observability/log.ts";
+import { logPort, requestScope } from "./observability/log.ts";
+import { auditEvent } from "./audit/audit-event.ts";
+import type { AuditPort } from "../../../ports/audit.ts";
+import type { PrismaClient } from "@prisma/client";
 
 /** The role the API connects as (migration pf12_firm_walls). */
 export const APP_ROLE = "xr_app";
@@ -90,22 +93,28 @@ export function enterFirm(firmId: string) {
  *  routes ("METHOD /path" patterns) it may run in. `outside: true` lets it run where there is no request (start-up, a
  *  job). `direct: true` lets a door's use run on a direct call with no scope at all (a suite or a tool calling the
  *  service with its own client; never inside a request or a job). Anything else is refused (BypassRefused) before any
- *  query runs. */
-export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonly RegExp[]; outside?: boolean; direct?: boolean }>> = Object.freeze({
-  "platform.identity.authenticate": { why: "PF-4's guard reads the session's staff member and firm before any firm is known, on every route that declares staff access (platform, front office, and the case routes that take a staff session)", routes: [/^[A-Z]+ \/api\//i] },
-  "platform.identity.sign-in": { why: "the sign-in doors find the firm by its key, then run as it (PF-4, PF-4b)", routes: [/^POST \/api\/platform\/session\/(local|callback)$/i], direct: true },
-  "platform.identity.invitation": { why: "the invitation link: the token is the only key, and one sign-in account is one firm's staff member across all firms (PF-4b, BR-4)", routes: [/^(GET|POST) \/api\/public\/invitations\/[^/]+(\/accept)?$/i], direct: true },
-  "fo.sales.web-form": { why: "the public enquiry form finds its firm by the form's token, then runs as it (FO-2)", routes: [/^(GET|POST) \/api\/public\/forms\/[^/]+(\/submissions)?$/i], direct: true },
-  "fo.booking.public-page": { why: "the public booking page finds its firm by key, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/firms\/[^/]+\/book(\/[^/]+\/(slots|bookings))?$/i], direct: true },
-  "fo.booking.self-service": { why: "the booker's own link finds its firm by the link's token, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/bookings\/[^/]+(\/(slots|reschedule|cancel|ics))?$/i], direct: true },
-  "platform.web-address.host": { why: "the host routing finds the firm a firm address serves, on every request (PF-25)", routes: [/^[A-Z]+ \//] },
-  "platform.web-address.catch-up": { why: "at start, every firm with no web address yet gets one (PF-25)", routes: [], outside: true },
-  "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i], direct: true },
-  "platform.firms.signup": { why: "the sign-up door makes a firm that does not exist yet, checking the email across every firm (PF-5)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], direct: true },
-  "job:platform.signup.purge": { why: "pending sign-ups past their 24 hours are deleted (PF-5; no firm yet)", routes: [], outside: true },
-  "job:messages.outbox_sweep": { why: "the outbox sweep picks up every firm's stuck rows, each firm its own share (PF-19b)", routes: [], outside: true },
-  "job:platform.secret_box.reencrypt": { why: "the secret store re-encrypts every firm's secrets under the new key (PF-24)", routes: [], outside: true },
-  "platform.demo.reset": { why: "the demo reset puts every Sample firm's settings back (P-571 (1)); demo routes, and the reset tools outside a request", routes: [/^POST \/api\/demo\//i], outside: true },
+ *  query runs.
+ *  PF-12b part 1 (QA-499; R1.4 "every use writes an audit line"; P-607, P-571 (1), AG-1-45): `audit` says how each use
+ *  is audited. "per-firm": the use calls touchFirm(tx, firmId) for each firm whose rows it reads or writes, in that
+ *  firm's transaction, and touchFirm writes one `platform.bypass` line to that firm's trail (fail-closed). "none: …":
+ *  why the use writes no line (it touches no firm's rows, or it is an own-firm door that PF-12b part 2 moves off the
+ *  bypass). A use added without `audit` does not compile, and tests/check_pf12b_bypass_audit.ts reads the list. */
+export type BypassAudit = "per-firm" | `none: ${string}`;
+export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonly RegExp[]; outside?: boolean; direct?: boolean; audit: BypassAudit }>> = Object.freeze({
+  "platform.identity.authenticate": { why: "PF-4's guard reads the session's staff member and firm before any firm is known, on every route that declares staff access (platform, front office, and the case routes that take a staff session)", routes: [/^[A-Z]+ \/api\//i], audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
+  "platform.identity.sign-in": { why: "the sign-in doors find the firm by its key, then run as it (PF-4, PF-4b)", routes: [/^POST \/api\/platform\/session\/(local|callback)$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
+  "platform.identity.invitation": { why: "the invitation link: the token is the only key, and one sign-in account is one firm's staff member across all firms (PF-4b, BR-4)", routes: [/^(GET|POST) \/api\/public\/invitations\/[^/]+(\/accept)?$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
+  "fo.sales.web-form": { why: "the public enquiry form finds its firm by the form's token, then runs as it (FO-2)", routes: [/^(GET|POST) \/api\/public\/forms\/[^/]+(\/submissions)?$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
+  "fo.booking.public-page": { why: "the public booking page finds its firm by key, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/firms\/[^/]+\/book(\/[^/]+\/(slots|bookings))?$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
+  "fo.booking.self-service": { why: "the booker's own link finds its firm by the link's token, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/bookings\/[^/]+(\/(slots|reschedule|cancel|ics))?$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
+  "platform.web-address.host": { why: "the host routing finds the firm a firm address serves, on every request (PF-25)", routes: [/^[A-Z]+ \//], audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
+  "platform.web-address.catch-up": { why: "at start, every firm with no web address yet gets one (PF-25)", routes: [], outside: true, audit: "per-firm" },
+  "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i], direct: true, audit: "per-firm" },
+  "platform.firms.signup": { why: "the sign-up door makes a firm that does not exist yet, checking the email across every firm (PF-5)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], direct: true, audit: "per-firm" },
+  "job:platform.signup.purge": { why: "pending sign-ups past their 24 hours are deleted (PF-5; no firm yet)", routes: [], outside: true, audit: "none: it deletes expired pending sign-ups only, our own register with no firm_id (platform_signup_pending, forced with no policy); it reads no firm table" },
+  "job:messages.outbox_sweep": { why: "the outbox sweep picks up every firm's stuck rows, each firm its own share (PF-19b)", routes: [], outside: true, audit: "per-firm" },
+  "job:platform.secret_box.reencrypt": { why: "the secret store re-encrypts every firm's secrets under the new key (PF-24)", routes: [], outside: true, audit: "none: every re-encrypt job is queued with its firm and runs as that firm (withFirm, not this use); a job of this queue with no firm is refused before any read (reencrypt.ts)" },
+  "platform.demo.reset": { why: "the demo reset puts every Sample firm's settings back (P-571 (1)); demo routes, and the reset tools outside a request", routes: [/^POST \/api\/demo\//i], outside: true, audit: "per-firm" },
 });
 
 /** A job with no firm (a platform-wide sweep): on the named list as "job:<queue>" it runs on the bypass; otherwise with no
@@ -126,8 +135,9 @@ let saidDirect = false;
 /** A bypass use that is not on BYPASS_USES, or not for this route. A programming error: the request stops (500). */
 export class BypassRefused extends Error {}
 
-/** The audit line for a bypass use: one platform_bypass line through the one logger (PF-23: redacted, with the request's
- *  correlation id), naming the use and the method only. Never the path: a link's token or a typed value can be in it. */
+/** The operations line for a bypass use (PF-23): one platform_bypass line through the one logger (redacted, with the
+ *  request's correlation id), naming the use and the method only. Never the path: a link's token or a typed value can be
+ *  in it. Since PF-12b it is the operations line only; the audit is touchFirm's platform.bypass line. */
 let bypassLine: (use: string, route: string | undefined) => void = (use, route) => {
   logPort.info("platform_bypass", { use, method: route ? route.slice(0, route.indexOf(" ")) : "none" });
 };
@@ -135,7 +145,8 @@ let bypassLine: (use: string, route: string | undefined) => void = (use, route) 
 export function onBypassLine(f: (use: string, route: string | undefined) => void) { const was = bypassLine; bypassLine = f; return was; }
 
 /** Runs fn as our own staff's bypass role: every walled table is readable and writable. Only for a use on BYPASS_USES and
- *  a route on that use's list; every use writes one audit line (platform.bypass). */
+ *  a route on that use's list; every use writes its operations line, and a "per-firm" use one platform.bypass audit line
+ *  per firm it touches (touchFirm). */
 export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promise<T> {
   const entry = Object.prototype.hasOwnProperty.call(BYPASS_USES, use) ? BYPASS_USES[use] : undefined;
   const store = scope.getStore(), route = store?.route;
@@ -145,6 +156,48 @@ export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promis
   if (!allowed) throw new BypassRefused(`asBypass: "${use}" is not allowed ${route === undefined ? "outside a request" : `on ${route}`}`);
   bypassLine(use, route);
   return scope.run({ route, bypass: use }, async () => await fn());
+}
+
+// ------------------------------------------------------------------------------------- PF-12b: the bypass audit line
+/** Where touchFirm records (the one trail, audit_event through AuditPort; P-571 (1)). A test replaces it. */
+let bypassAudit: AuditPort<unknown> = auditEvent;
+/** A test replaces the port bypass lines are recorded through. Returns the one before. */
+export function onBypassAudit(port: AuditPort<unknown>) { const was = bypassAudit; bypassAudit = port; return was; }
+
+/** A bypass use's audit line could not be written, so the use did not happen (P-607): its transaction rolls back. A
+ *  request answers 500 in plain words; a job fails and is retried by the job runner. */
+export class BypassNotRecorded extends HttpException {
+  constructor(readonly use: string, cause: unknown) {
+    super({ type: "https://expatready.local/problems/not-recorded", title: "Not done", status: 500, detail: "This could not be written to the firm's activity record, so nothing was done. Try again in a minute." }, HttpStatus.INTERNAL_SERVER_ERROR, { cause });
+    this.name = "BypassNotRecorded";
+  }
+}
+
+const touched = new WeakMap<object, Set<string>>();
+/** PF-12b: inside a bypass use, the firm whose rows this transaction reads or writes. Writes one platform.bypass line to
+ *  that firm's trail inside `tx` (once per firm and transaction): the use, the method (never the path), the actor
+ *  (system:<use>; none of the per-firm uses runs in a staff session) and the correlation id. A failed write throws
+ *  BypassNotRecorded, so `tx` rolls back. Outside a bypass use it does nothing: nothing crossed a wall. */
+export async function touchFirm(tx: unknown, firmId: string): Promise<void> {
+  const s = scope.getStore(), use = s?.bypass;
+  if (!use) return;
+  const id = firmScope(firmId).firmId;
+  const seen = typeof tx === "object" && tx !== null ? (touched.get(tx) ?? new Set<string>()) : new Set<string>();
+  if (seen.has(id)) return;
+  const method = s.route ? s.route.slice(0, s.route.indexOf(" ")) : "none";
+  const correlationId = requestScope.getStore()?.correlationId ?? null;
+  try {
+    await bypassAudit.record(tx, { firmId: id, actor: `system:${use}`, action: "platform.bypass", entity: "platform_firm", entityKey: id,
+      summary: `Our platform read or changed this firm's records across the firm walls (${use}).`, detail: { use, method, correlationId } });
+  } catch (e) { throw new BypassNotRecorded(use, e); }
+  seen.add(id);
+  if (typeof tx === "object" && tx !== null) touched.set(tx, seen);
+}
+/** The same in a transaction of its own, for a use that only reads a firm's rows (a sweep's read, a lookup). */
+export async function touchFirms(db: Pick<PrismaClient, "$transaction">, firmIds: Iterable<string>): Promise<void> {
+  const ids = [...new Set([...firmIds].map((f) => firmScope(f).firmId))];
+  if (!ids.length || !currentBypass()) return;
+  await db.$transaction(async (tx) => { for (const f of ids) await touchFirm(tx, f); });
 }
 
 // ----------------------------------------------------------------------------------------------- the request's firm

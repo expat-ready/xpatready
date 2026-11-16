@@ -11,7 +11,7 @@ Firms, staff and sign-in, settings, secrets, jobs, logs, complaints and message 
 
 **Invariants (set by).**
 - Every read and write of a platform or front-office table goes through `firmScope(firmId)`; another firm's row is "not found" (PF-3, contracts §0.2; P-559).
-- The database walls it (PF-12): the API connects as `xr_app` (owns no table; it refuses to start otherwise), each query runs as its caller's firm (`firm-scope.ts`: the guard's firm, a door's resolved firm, a job's firm; none reads nothing); crossing firms only through `asBypass(use)` for a use on `BYPASS_USES`, each use logged. Every new `platform_*`, `fo_*`, `money_*`, `msg_*`, `auto_*`, `plat_complaint*` table ships its forced policy in its own migration.
+- The database walls it (PF-12): the API connects as `xr_app` (owns no table; it refuses to start otherwise), each query runs as its caller's firm (`firm-scope.ts`: the guard's firm, a door's resolved firm, a job's firm; none reads nothing); crossing firms only through `asBypass(use)` for a use on `BYPASS_USES`, each use logged. Every bypass use writes `platform.bypass` to the touched firm's trail, or is refused (PF-12b: `touchFirm(tx, firmId)` in that firm's transaction; a line that cannot be written rolls the work back, 500 in plain words or a failed job; each entry's `audit` says `per-firm` or `none: <why>`). Every new `platform_*`, `fo_*`, `money_*`, `msg_*`, `auto_*`, `plat_complaint*` table ships its forced policy in its own migration.
 - Sized for about 100 firms in one process (P-562).
 - Two-step sign-in is required for every staff member (P-567).
 - The audit trail is append-only; demo reset deletes only demo lines, never a platform line (P-571 (1)).
@@ -23,7 +23,7 @@ Firms, staff and sign-in, settings, secrets, jobs, logs, complaints and message 
 - Firms' billing goes through BillingPort only; CI and lanes use its fake or recorded Stripe answers, never a live call (PF-5, contracts §0.3).
 
 **Tables.** platformFirm, platformStaff, platformStaffCredential, platformRoleGrant, platformSessionRevocation, platformFirmSetting, platformFirmWebAddress, platComplaint, platComplaintEvent, msgConsent, msgConsentWording, platformTermsVersion, platformTermsAcceptance, platformSignupPending, moduleEvent, auditEvent.
-**Tests.** `tests/check_pf12_walls.ts`, `tests/check_pf3_platform_schema.ts`, `tests/check_pf4_identity.ts`, `tests/check_pf4b_session_reads.ts`, `tests/check_pf14_jobs.ts`, `tests/check_pf21_complaints.ts`, `tests/check_pf21w_routes.ts`, `tests/check_pf21v_views.ts`, `tests/check_pf23_observability.ts`, `tests/check_pf24_secrets.ts`, `tests/check_pf25_web_address.ts`, `tests/check_pf5_signup_billing.ts`, `tests/check_pf5v_signup_mail.ts` (PF-5v: the empty fields' plain words), `tests/check_pf19b_sending.ts`, `tests/check_pf19b_mail.ts`.
+**Tests.** `tests/check_pf12_walls.ts`, `tests/check_pf12b_bypass_audit.ts`, `tests/check_pf3_platform_schema.ts`, `tests/check_pf4_identity.ts`, `tests/check_pf4b_session_reads.ts`, `tests/check_pf14_jobs.ts`, `tests/check_pf21_complaints.ts`, `tests/check_pf21w_routes.ts`, `tests/check_pf21v_views.ts`, `tests/check_pf23_observability.ts`, `tests/check_pf24_secrets.ts`, `tests/check_pf25_web_address.ts`, `tests/check_pf5_signup_billing.ts`, `tests/check_pf5v_signup_mail.ts` (PF-5v: the empty fields' plain words), `tests/check_pf19b_sending.ts`, `tests/check_pf19b_mail.ts`.
 
 **Do not.**
 - Query a firm table without `firmScope`.
