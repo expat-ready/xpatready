@@ -21,3 +21,4 @@ owner	check_runtime_*	runtime
 owner	check_case_engine.ts	runtime
 owner	check_p2_*	forms
 owner	*	tech-lead
+release	check_c95_release_update_browser.ts	2026-11-16

@@ -90,7 +90,11 @@ await p.locator("[data-release-conflict]").waitFor({ timeout: 30_000 }).catch(()
 ok("C9.5 BR-5 fail (conflict): a release published meanwhile makes Move answer \"read the list again\"; nothing changed", !!newer.version && await p.locator("[data-release-conflict]").isVisible() && pins() === 1, newer.steps);
 await state("conflict", "[role='dialog']");
 await press(p.locator("[data-release-reread]")); await p.waitForTimeout(800);
-ok("conflict recovery: Read the list again shows the newest release on the button", new RegExp(`Release \\d+$`).test((await p.locator("[data-release-move]").innerText()).trim()) && !(await p.locator("[data-release-conflict]").count()));
+// C9.5-fix (P-641): the button must name the release the server now answers as newest, not any release (main failed here:
+// the old list and an enabled Move showed for ~2 s while the read ran, so Move sent the old release and was refused again).
+const moveWords = (await p.locator("[data-release-move]").innerText()).trim(), noConflict = !(await p.locator("[data-release-conflict]").count());
+const newestLabel = (await call("GET", `/runtime/cases/${fam}/release-update`, undefined, OFFICER)).body?.target?.label ?? "(none)";
+ok("conflict recovery: Read the list again shows the newest release on the button, and the conflict is gone", moveWords === `Move this case to ${newestLabel}` && noConflict, { moveWords, newestLabel, noConflict });
 await p.locator("[data-release-move]").focus(); await p.keyboard.press("Enter");
 await p.locator("[data-release-moved]").waitFor({ timeout: 60_000 });
 const toast = await p.getByText(/^Moved to Release \d+\./).first().innerText({ timeout: 5_000 }).catch(() => "");
