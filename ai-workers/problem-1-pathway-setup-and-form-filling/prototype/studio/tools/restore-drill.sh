@@ -50,7 +50,9 @@ cleanup() {
   rm -rf "$TMP"
 }
 trap cleanup EXIT
-fails=0; CHECKS=""; T0=""
+# Devin review: a TERM or INT (the test's timeout, Ctrl-C) still removes both projects: exit runs the EXIT trap.
+trap 'exit 143' TERM; trap 'exit 130' INT
+fails=0; CHECKS=""; T0=""; SECS=""
 # json_str <text>: a JSON string (only the drill's own words reach it: table names, counts, prisma's migration names).
 json_str() { local s; s=$(printf '%s' "$1" | tr '\n\t' '  ' | sed 's/\\/\\\\/g; s/"/\\"/g'); printf '"%s"' "$s"; }
 record() { CHECKS="$CHECKS${CHECKS:+,}{\"check\":$(json_str "$2"),\"result\":\"$1\",\"saw\":$(json_str "$3")}"; }
@@ -71,7 +73,8 @@ CASE_TABLES="module_event runtime_case firm_case_counter case_team_member case_s
 TABLES=""; TABLE_JSON=""
 
 write_evidence() {
-  local secs="null"; [ -n "$T0" ] && secs=$(( $(date +%s) - T0 ))
+  # The time printed is the time written (Devin review): SECS once set at the end, else measured now (an early stop).
+  local secs="null"; [ -n "${SECS:-}" ] && secs=$SECS; [ "$secs" = null ] && [ -n "$T0" ] && secs=$(( $(date +%s) - T0 ))
   mkdir -p "$(dirname "$EVIDENCE")"
   printf '{"drill":"PF-8r restore drill (local, compose.test.yml)","rule":"NFR5-04; P-586","at":"%s","main_sha":"%s","restore_seconds":%s,"result":"%s","failed":%s,"options":{"corrupt":%s,"extra_migration":%s,"drop_index":%s,"drop_policy":%s},"checks":[%s],"tables":[%s]}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(git -C "$STUDIO" rev-parse HEAD 2>/dev/null || echo unknown)" "$secs" \
@@ -180,7 +183,8 @@ nst=$(grep -cE '^(ALTER|DROP|CREATE)' "$TMP/drift.$SRC")
 sdiff=""; cdiff=""
 cmp -s "$TMP/drift.$SRC" "$TMP/drift.$DST" || sdiff="the restored copy differs from prisma/schema otherwise than the source does: $(diff "$TMP/drift.$SRC" "$TMP/drift.$DST" | grep -E '^> (CREATE|DROP|ALTER)' | sed 's/^> //; s/;$//' | head -3 | cut -c1-120 | paste -sd ';' -)"
 { [ -s "$TMP/schema.src" ] && cmp -s "$TMP/schema.src" "$TMP/schema.dst"; } || cdiff="the catalogue differs ($(diff "$TMP/schema.src" "$TMP/schema.dst" | grep -cE '^[<>]') line(s); only in the source: $(diff "$TMP/schema.src" "$TMP/schema.dst" | grep -E '^< ' | sed 's/^< //' | head -3 | cut -c1-120 | paste -sd ';' -); only in the restored copy: $(diff "$TMP/schema.src" "$TMP/schema.dst" | grep -E '^> ' | sed 's/^> //' | head -3 | cut -c1-120 | paste -sd ';' -))"
-if [ "$dx" = 1 ] || [ "$sx" = 1 ]; then fail "migrate diff" "prisma migrate diff did not run (source exit $sx, restored exit $dx): $(grep -i error "$TMP/drift.$DST.err" | head -2 | paste -sd ' ' -)"
+# Only prisma's own answers count (0 no difference, 2 a difference); anything else (docker could not start it: 125) is a FAIL.
+if { [ "$dx" != 0 ] && [ "$dx" != 2 ]; } || { [ "$sx" != 0 ] && [ "$sx" != 2 ]; }; then fail "migrate diff" "prisma migrate diff did not run (source exit $sx, restored exit $dx): $(grep -i error "$TMP/drift.$DST.err" | head -2 | paste -sd ' ' -)"
 elif [ -n "$sdiff$cdiff" ]; then fail "migrate diff" "drift from the restore: ${sdiff:+prisma: $sdiff}${sdiff:+${cdiff:+ | }}${cdiff:+catalogue: $cdiff}"
 elif [ "$sx" = 0 ]; then pass "migrate diff" "no drift: the restored database matches prisma/schema, and its schema is the source's"
 else pass "migrate diff" "no drift from the restore: the restored copy differs from prisma/schema exactly as the source does, and its schema ($(wc -l < "$TMP/schema.dst" | tr -d ' ') catalogue lines: columns, indexes, constraints, triggers, functions, policies, grants) is the source's. NOTE main's own migrations differ from prisma/schema in $nst statement(s): $said"; fi
@@ -213,9 +217,9 @@ if [ -f "$STUDIO/api/src/platform/audit/chain/verify.ts" ]; then
 else skip "audit chain" "AUD-1c's chain verifier is not on main (api/src/platform/audit/chain/verify.ts); the step runs once it is"; fi
 
 # 5. the time and the evidence.
-secs=$(( $(date +%s) - T0 ))
-echo "restore time: ${secs} s (dump start to the last check)"
-write_evidence
+SECS=$(( $(date +%s) - T0 ))
+echo "restore time: ${SECS} s (dump start to the last check)"
+write_evidence || { echo "FAIL  evidence: could not write $EVIDENCE"; exit 1; }
 echo "evidence: $EVIDENCE"
 [ "$fails" = 0 ] && { echo "restore drill: every check passed"; exit 0; }
 echo "restore drill: $fails check(s) failed"; exit 1
