@@ -178,7 +178,7 @@
                   "items": {"type": "object", "required": ["id", "name", "state", "detail", "action", "owner"],
                             "properties": {"id": {"type": "integer", "minimum": 1, "maximum": 7},
                                            "state": {"enum": ["green", "amber", "red", "page"]}},
-                            "if": {"properties": {"state": {"const": "red"}}},
+                            "if": {"properties": {"state": {"enum": ["red", "amber"]}}},
                             "then": {"properties": {"action": {"type": "string", "minLength": 3}, "owner": {"type": "string", "minLength": 3}}}}}
       }
     },
