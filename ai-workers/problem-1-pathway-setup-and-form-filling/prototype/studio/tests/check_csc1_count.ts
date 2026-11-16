@@ -92,7 +92,7 @@ try {
       ${filings.map((f) => `insert into filing (id, workspace_id, case_id, submission_group_id, subject_id, combination_key, mode, stage_id) values ('${f}', '${W}', '${id}', '${group}', '${randomUUID()}', '${cmb.key}', 'files_own', '${stage}');`).join("\n")}
       insert into filing_record (id, workspace_id, case_id, filing_id, submission_group_id, our_reference, submitted_on, application_number, prepared_by, recorded_by, filed_facts)
         select gen_random_uuid(), workspace_id, case_id, id, submission_group_id, 'SAMPLE-REF', current_date, 'V3000' || substr(md5(id::text), 1, 5), 'user-O', 'user-O', '[]' from filing where case_id = '${id}'`);
-    return { id, filings, firmKey };
+    return { id, filings, firmKey, stage };
   };
   const closer = new CaseClose(db);
   const ctxOf = (firmKey: string) => ({ staffId: `csc1b-${firmKey}`, firmId: firmKey === "sample-solo" ? FB : FA, firmKey, roles: ["OWNER"], keys: [], duties: [], authTime: Date.now(), via: "local" as const });
@@ -123,12 +123,31 @@ try {
   const a6 = await A.activeCounts();
   ok("CS-C1 DW9 pass: after the reopen it ends again only when every filing has a new decision (one new: still counts; both: -1)", a5.individual === a0.individual && a6.individual === a0.individual - 1, { a0, a5, a6 });
 
+  // Breaker M3: a case on its next stage counts by that stage's filings; the ended stage's filings are history.
+  const nextStage = (c: { id: string; stage: string }) => { const s2 = randomUUID();
+    sql(`set session_replication_role = replica; update case_stage set state = 'ENDED_NEXT_STARTED' where id = '${c.stage}';
+      insert into case_stage (id, workspace_id, case_id, firm_key, ord, stage_key, staff_name, client_name, combination_id, state, application_subject_id, started_from) select '${s2}', workspace_id, case_id, firm_key, 2, 'next', 'Next', 'Next', '${FAM.id}', 'CURRENT', '${randomUUID()}', 'BEGIN' from case_stage where id = '${c.stage}'`); return s2; };
+  const cs = newCase({ filings: 1 }), cu = newCase({ filings: 2 });
+  await decide(cs, cs.filings[0]); await decide(cu, cu.filings[0]);
+  const m0 = await A.activeCounts();
+  nextStage(cs); nextStage(cu);
+  const m1 = await A.activeCounts();
+  ok("CS-C1 DW9 pass (breaker M3): a decided case whose next stage has started counts again (its new stage has no decision)", m1.individual === m0.individual + 1, { m0, m1 });
+  const csStage2 = sql(`select id from case_stage where case_id = '${cs.id}' and state = 'CURRENT'`)!, f2 = randomUUID();
+  sql(`set session_replication_role = replica; insert into filing (id, workspace_id, case_id, submission_group_id, subject_id, combination_key, mode, stage_id) select '${f2}', workspace_id, case_id, submission_group_id, '${randomUUID()}', combination_key, mode, '${csStage2}' from filing where id = '${cs.filings[0]}';
+    insert into filing_record (id, workspace_id, case_id, filing_id, submission_group_id, our_reference, submitted_on, application_number, prepared_by, recorded_by, filed_facts) select gen_random_uuid(), workspace_id, case_id, id, submission_group_id, 'SAMPLE-REF', current_date, 'V3001' || substr(md5(id::text), 1, 5), 'user-O', 'user-O', '[]' from filing where id = '${f2}'`);
+  await decide(cs, f2);
+  const m2 = await A.activeCounts();
+  ok("CS-C1 DW9 fail (breaker M3): the ended stage's decided filing alone never ends the new stage: only a decision on the current stage's filing does (-1); the other case, on its new stage with no filing, still counts", m2.individual === m1.individual - 1, { m1, m2 });
+
   // ------------------------------------------------------------------------------------------------ DW10: the group
   const b0 = await A.activeCounts();
-  newCase({ cmb: CORP }); newCase({ cmb: IND }); newCase({ cmb: FAM });
+  newCase({ cmb: CORP });
   const b1 = await A.activeCounts();
-  ok("CS-C1 DW10 pass: a case on a CORPORATE pathway counts as corporate", b1.corporate === b0.corporate + 1, { b0, b1 });
-  ok("CS-C1 DW10 fail: an individual and a family case count as individual, never corporate", b1.individual === b0.individual + 2 && b1.corporate !== b0.corporate + 3, { b0, b1 });
+  ok("CS-C1 DW10 pass: a case on a CORPORATE pathway counts as corporate (and not as individual)", b1.corporate === b0.corporate + 1 && b1.individual === b0.individual, { b0, b1 });
+  newCase({ cmb: IND }); newCase({ cmb: FAM });
+  const b2 = await A.activeCounts();
+  ok("CS-C1 DW10 fail: an individual and a family case count as individual, never corporate", b2.individual === b1.individual + 2 && b2.corporate === b1.corporate, { b1, b2 });
 
   // ------------------------------------------------------------------------------------------------ DW14: withdrawal
   const c14 = newCase({ cmb: CORP });
@@ -199,12 +218,20 @@ try {
   const third = await open();
   ok("CS-C1 DW11 fail: with N active, one opening → 409 PLAN_LIMIT_REACHED", third.status === 409 && third.body?.code === "PLAN_LIMIT_REACHED" && third.body?.limit === N, [third.status, third.body]);
   ok("CS-C1 DW11 fail: the refused openings leave no case, no party and no case number (the counter and the party rows unchanged)", p1 === p0 + 1 && parties() === p1 && counter() === cnt0 && (await A.activeCounts()).individual === N, { p0, p1, now: parties(), cnt0, cnt: counter() });
-  ok("CS-C1 DW11 pass: the check ran with the opener's firm key, the individual metric and the count read in the opening's transaction", t1.asked.length === 3 && t1.asked.every((x) => x.firm === "sample-firm" && x.metric === "active_individual_cases") && t1.asked.map((x) => x.used).sort().join() === [N - 1, N, N].join(), t1.asked);
+  ok("CS-C1 DW11 pass: the check ran with the opener's firm key, the individual metric and the count read in the opening's transaction", t1.asked.length === 3 && t1.asked.every((x) => x.firm === "sample-firm" && x.metric === "active_individual_cases") && t1.asked.map((x) => x.used).sort((x, y) => (x ?? 0) - (y ?? 0)).join() === [N - 1, N, N].join(), t1.asked);
   // Ten openings at once from N−1 active (the breaker's case): one passes.
   const t10 = plan({ "sample-firm": { active_individual_cases: N + 1 } });
   runtime.useEntitlements(t10.port);
   const ten = await Promise.all(Array.from({ length: 10 }, () => open()));
   ok("CS-C1 DW11 pass: ten openings at once from N−1 active → one 201, nine 409 PLAN_LIMIT_REACHED", ten.filter((r) => r.status === 201).length === 1 && ten.filter((r) => r.status === 409 && r.body?.code === "PLAN_LIMIT_REACHED").length === 9, ten.map((r) => r.status));
+  // Review M1: a retry with the same idempotency key at the same moment, from N−1 active, answers the one case made.
+  const tk = plan({ "sample-firm": { active_individual_cases: (await A.activeCounts()).individual + 1 } });
+  runtime.useEntitlements(tk.port);
+  const key = `csc1b-retry-${tag}`, twins = await Promise.all([open("user-O", { idempotencyKey: key }), open("user-O", { idempotencyKey: key })]);
+  ok("CS-C1 DW11 pass (review M1): two openings with the same idempotency key at once, one below the limit → both 201 with the same case (one created, one replayed), never a 409",
+    twins.every((r) => r.status === 201) && twins[0].body?.id === twins[1].body?.id && twins.map((r) => r.body?.created).sort().join() === "false,true" && sql(`select count(*) from runtime_case where idempotency_key = '${key}'`) === "1", twins.map((r) => [r.status, r.body?.code, r.body?.created, r.body?.id]));
+  const third2 = await open("user-O", { idempotencyKey: key }), fresh = await open();
+  ok("CS-C1 DW11 fail (review M1): now full, the same key again still replays its case (201), while a new opening is refused (409)", third2.status === 201 && third2.body?.created === false && third2.body?.id === twins[0].body?.id && fresh.status === 409, [third2.status, fresh.status]);
   // A corporate opening is checked against the corporate metric (the group comes from the combination's Pathway). The
   // checkpoint releases no corporate combination, so for this one opening Visitor visa's chain hangs under a Sample
   // CORPORATE pathway in its own workspace (the node just under its Pathway re-parented), then is put back.
@@ -218,13 +245,14 @@ try {
   sql(`set session_replication_role = replica; update program_def set parent_node_key = '${under[1]}' where id = '${under[0]}'; delete from program_def where program_node_key = '${corpKey}'`);
   ok("CS-C1 DW11 fail: on a CORPORATE pathway the opening is checked against active_corporate_cases (full → 409)", corp.status === 409 && corp.body?.metric === "active_corporate_cases" && tc.asked[0]?.metric === "active_corporate_cases", [corp.status, corp.body, tc.asked]);
   // DW12 through the API: firm A full, firm B (the solo firm) still opens.
-  const tb = plan({ "sample-firm": { active_individual_cases: 0 }, "sample-solo": { active_individual_cases: (await B.activeCounts()).individual + 1 } });
+  const soloUsed = (await B.activeCounts()).individual;
+  const tb = plan({ "sample-firm": { active_individual_cases: 0 }, "sample-solo": { active_individual_cases: soloUsed + 1 } });
   runtime.useEntitlements(tb.port);
   const [aFull, bOpen] = [await open(), await open("user-S")];
-  ok("CS-C1 DW12 pass (API): firm A at its limit does not stop firm B: firm A 409, firm B 201 on its own count", aFull.status === 409 && bOpen.status === 201 && tb.asked.some((x) => x.firm === "sample-solo" && x.used === (tb.asked.find((y) => y.firm === "sample-solo")!.used)), [aFull.status, bOpen.status, bOpen.body?.detail, tb.asked]);
+  ok("CS-C1 DW12 pass (API): firm A at its limit does not stop firm B: firm A 409, firm B 201 on its own count", aFull.status === 409 && bOpen.status === 201 && tb.asked.some((x) => x.firm === "sample-solo" && x.used === soloUsed) && tb.asked.some((x) => x.firm === "sample-firm"), [aFull.status, bOpen.status, bOpen.body?.detail, tb.asked]);
   runtime.useEntitlements(was);
   const after = await open();
-  ok("CS-C1 DW11 pass: back on the allow-all fake, the next opening takes the next number with no gap", after.status === 201 && caseNo(after) === caseNo(won[0]) + 2, [after.status, after.body?.case_number, won[0].body?.case_number]);
+  ok("CS-C1 DW11 pass: back on the allow-all fake, the next opening takes the next number with no gap", after.status === 201 && caseNo(after) === caseNo(won[0]) + 3, [after.status, after.body?.case_number, won[0].body?.case_number]);
   ok("CS-C1 DW11 fail: the allow-all fake refuses nothing, at any count", (await fakeEntitlements().check("sample-firm", "active_individual_cases", 1_000_000)).allowed === true && (await fakeEntitlements({ active_individual_cases: 2 }).check("sample-firm", "active_individual_cases", 2)).allowed === false);
 } finally {
   await app.close().catch(() => undefined);

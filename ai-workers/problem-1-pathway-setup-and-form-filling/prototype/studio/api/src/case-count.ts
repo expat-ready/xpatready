@@ -2,8 +2,8 @@
 // runtime_case. Bound to one firm by its caller (Runtime.createCase: the opener's firm), never by a client's argument.
 // The firm is the case side's firm key (runtime_case.firm_key) until CS-W1: the case-opening route takes no staff
 // session, so platform_firm (behind PF-12's walls) reads nothing there.
-// Active (SA-3-47): the case is OPEN, and it is not the case that it has an active filing and every active filing has a
-// DECISION row recorded since the case was last reopened (case.reopened in the outbox, CS-C1a). So a withdrawn or closed
+// Active (SA-3-47): the case is OPEN, and it is not the case that its CURRENT stage has an active filing and every such
+// filing has a DECISION row recorded since the case was last reopened (case.reopened in the outbox, CS-C1a). So a withdrawn or closed
 // case does not count, a case with one of two filings decided still counts, a freshly opened case (no filing until
 // Prepare) counts, and a reopened case counts again until every filing has a new decision. "Stream changed" (SA-3-47)
 // has no close outcome yet. The group: the client type of the PATHWAY node above the case's combination in
@@ -23,15 +23,22 @@ export class PgCaseCount implements CaseCountPort {
   async activeCounts(tx?: unknown): Promise<ActiveCounts> {
     const q = (tx as Reader | undefined) ?? this.db;
     const rows = await q.$queryRaw<{ corporate: boolean; n: number }[]>`
-      with recursive active as (
-        select c.id, c.combination_id from runtime_case c
-        where c.firm_key = ${this.firmKey} and c.status = 'OPEN'
-          and not (
-            exists (select 1 from filing f where f.case_id = c.id and f.active)
+      with recursive open_cases as (
+        select c.id, c.combination_id from runtime_case c where c.firm_key = ${this.firmKey} and c.status = 'OPEN'
+      ), filings as (   -- breaker M3: the current stage's active filings only (an ended stage's filings are history)
+        select f.id, f.case_id from filing f join case_stage s on s.id = f.stage_id and s.case_id = f.case_id and s.state = 'CURRENT'
+        where f.active and f.case_id in (select id from open_cases)
+      ), reopened as (   -- review m2: each decided case's last reopen, read once per count (module_event has no subject index)
+        select e.subject_id, max(e.occurred_at) as at from module_event e
+        where e.type = ${EVENT.CASE_REOPENED} and e.subject_id in (select distinct d.case_id::text from case_decision d where d.case_id in (select case_id from filings)) group by e.subject_id
+      ), active as (
+        select c.id, c.combination_id from open_cases c left join reopened r on r.subject_id = c.id::text
+        where not (
+            exists (select 1 from filings f where f.case_id = c.id)
             and not exists (
-              select 1 from filing f where f.case_id = c.id and f.active and not exists (
+              select 1 from filings f where f.case_id = c.id and not exists (
                 select 1 from case_decision d where d.filing_id = f.id and d.case_id = c.id and d.kind = 'DECISION'
-                  and d.recorded_at > coalesce((select max(e.occurred_at) from module_event e where e.subject_id = c.id::text and e.type = ${EVENT.CASE_REOPENED}), '-infinity'::timestamptz))))
+                  and d.recorded_at > coalesce(r.at, '-infinity'::timestamptz))))
       ), up as (
         select x.id as combination_id, p.workspace_id, p.parent_node_key, p.node_kind, p.client_type, 0 as depth
           from combination x join program_def p on p.id = x.program_def_id where x.id in (select combination_id from active)

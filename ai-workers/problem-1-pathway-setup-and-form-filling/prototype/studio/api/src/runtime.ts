@@ -293,6 +293,7 @@ export class Runtime {
       if (def?.same_every_stage && typeof v === "string" && v.trim() && shapeOf(releaseSnapshot, field)) { const p = checkValue(releaseSnapshot, field, v.trim(), new Date()); if (p.length) fieldError(`earlier.${i}.key_details.${field}`, `${def.label}: ${p[0]}`); }
     }
     let id: string;
+    const REPLAYED = "replayed";   // CS-C1b review M1: the transaction found the key's case and wrote nothing
     let stagesWritten: { stages: number; doneBefore: number } = { stages: 1, doneBefore: 0 };
     try {
       id = await this.db.$transaction(async (tx) => {
@@ -300,6 +301,8 @@ export class Runtime {
         // anything is written or a number taken. One opening per firm at a time (the lock is held until this commits),
         // so two openings at the same moment cannot both pass; a refusal writes nothing and spends no case number.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`case-open:${firm!.key}`}))`;
+        // Review M1: a retry with the same key that waited on this lock answers the case its twin made, never the limit.
+        if (b.idempotencyKey && await tx.case.findFirst({ where: { workspaceId, firmKey: firm!.key, idempotencyKey: b.idempotencyKey }, select: { id: true } })) return REPLAYED;
         const group = await groupOfCombination(tx, b.combinationId);
         const used = (await new PgCaseCount(tx, firm!.key).activeCounts(tx))[group];
         const limit = await this.entitlements.check(firm!.key, group === "corporate" ? "active_corporate_cases" : "active_individual_cases", used);
@@ -329,6 +332,7 @@ export class Runtime {
         }
         return c.id;
       }, { timeout: 15_000, maxWait: 10_000 }); // With the connections busy Prisma's default 2 s and 5 s answered a 500 (P2028)
+      if (id === REPLAYED) { const same = await replay(); if (same) return same; }
     } catch (e) {
       if (!unique(e)) throw e;
       const same = await replay(); // a simultaneous create with the same key won: answer with its case
