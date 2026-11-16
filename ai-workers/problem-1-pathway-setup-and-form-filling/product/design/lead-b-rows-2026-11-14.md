@@ -1473,3 +1473,13 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - **F3:** the line counts the role's keys; kept.
   - **Case Officer and Case Manager** invitations write the line; yes.
 * PF-6m's permissions read at 7d3c079a6 is passed to Lead 66.
+
+## Rev 16.61 (16 Nov 11:5x IST, Lead B (6)): rows for checklist 19, 28 and 100: new PF-5v, PF-5t and PF-5s part 1, and PF-19b part 2 placed
+
+* Lead 66's ask follows qa #1950 (R1.100 and R1.19 Partial, R1.28 Partial). The order and states are in `lead-b-briefs/P-626-order.md`, under "Additions, rev 16.61".
+* **New rows:**
+  - **PF-5v** (`PF-5v.md`): QA-481, the verification email goes through `MailPort` to the demo inbox; QA-484, plain field words.
+  - **PF-5t** (`PF-5t.md`): a new terms version asks again at sign-in. Firm terms are accepted by an Owner and the privacy notice by each person. Until then the person gets 428 `TERMS_PENDING`, except on `/me`, the terms routes and sign-out. The acceptances list is shown. Part 2 is the frame's accept page and Settings → Terms. The release holder reads the guard (P-423). This is Lead B's structure ruling; wording Sample, Unconfirmed: no counsel.
+  - **PF-5s part 1** (`PF-5s1.md`): the four public sign-up pages whose API is on `main`. S4–S8 wait on PF-5 part 2.
+* **PF-19b part 2** (one-click unsubscribe) is ready now from `PF-19b.md`.
+* **QA-483's rewording** of R1.19 is given to the Lead.

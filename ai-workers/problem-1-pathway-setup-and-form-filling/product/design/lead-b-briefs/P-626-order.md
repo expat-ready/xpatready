@@ -76,3 +76,18 @@ The founder's P-626: finish the Partial capabilities first, so that 10 Release 1
 * Touch: FO-5's retainer draft files only.
 * Waits on FO-3a part 2a.
 * Not on the P-626 path: J-42's walk reaches the draft through FO-3st1's button.
+
+## Additions, rev 16.61 (16 Nov 11:5x IST): checklist rows 19, 28 and 100 (qa #1950, Lead 66)
+
+| # | Row | Capability | Brief | Starts when | State |
+|---|---|---|---|---|---|
+| 7 | **PF-5v** (the sign-up email reaches the inbox; plain field words; QA-481, QA-484) | 19, 100 | `lead-b-briefs/PF-5v.md` | now | **ready now** |
+| 8 | **PF-5s part 1** (Pricing, Sign up, Check your email, Confirm) | 19, 100 | `lead-b-briefs/PF-5s1.md` | PF-5v on `main` | waits on 7 |
+| 9 | **PF-5t part 1** (a new terms version asks again at sign-in; acceptances listed) | 100 | `lead-b-briefs/PF-5t.md` | now (no open PR on `identity/guard.ts`) | **ready now** |
+| 9' | PF-5t part 2 (the frame's accept page; Settings → Terms) | 100 | same | part 1 on `main` | waits |
+| 10 | **PF-19b part 2** (SES, bounces, **one-click unsubscribe**) | 28, 48 | `lead-b-briefs/PF-19b.md` §"Part 2" | now (PF-4b is on `main`) | **ready now** |
+
+* Rows 7, 9 and 10 share no file, so they may run at once.
+* Row 19 also needs the trial end stored, which is PF-5 part 2 (Stripe Checkout, profile and billing; brief `PF-5.md`, step 0 first). It is not briefed apart. If the Lead wants R1.19 Proven by 17 Nov, PF-5 part 2 starts now too, in its own lane.
+* Row 28's "withdrawing one keeps the others" is PF-19b part 2's unsubscribe for the marketing purpose, plus PF-19a's store, already on `main`.
+* QA-483 (records): R1.19's Done when should read "the same verified email again is refused; firm, subscription and Owner stored as entered, with audit lines". Self-serve sign-up generates the firm key and has no invitation (P-566). This is for the Lead to copy.
