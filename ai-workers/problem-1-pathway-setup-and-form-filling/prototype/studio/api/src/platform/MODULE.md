@@ -14,7 +14,7 @@ Firms, staff and sign-in, settings, secrets, jobs, logs, complaints and message 
 - The database walls it (PF-12): the API connects as `xr_app` (owns no table; it refuses to start otherwise), each query runs as its caller's firm (`firm-scope.ts`: the guard's firm, a door's resolved firm, a job's firm; none reads nothing); crossing firms only through `asBypass(use)` for a use on `BYPASS_USES`, each use logged. Every new `platform_*`, `fo_*`, `money_*`, `msg_*`, `auto_*`, `plat_complaint*` table ships its forced policy in its own migration.
 - Sized for about 100 firms in one process (P-562).
 - Two-step sign-in is required for every staff member (P-567).
-- The audit trail is append-only; demo reset deletes only demo lines, never a platform line (P-571 (1)).
+- The audit trail is append-only, enforced at the database since AUD-1a (UPDATE, TRUNCATE and any DELETE outside the demo reset's Sample lines refused); demo reset deletes only demo lines, never a platform line (P-571 (1)).
 - Personal data never reaches a system log: redaction at the logger (PF-23, NFR5-14).
 - A job's key is its pg-boss id: one key never queues a second job (PF-14).
 - The consent store is the only writer of the `msg_` tables, inside the caller's transaction (PF-19a, P-584).
