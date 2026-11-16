@@ -369,3 +369,44 @@ The new check (`pg_terminate_backend` during `pg_sleep`) passes. `check_pf12_wal
 - **r6-m2.** After `$disconnect`, the adapter sets `externalPool = null`. A `Db` used again reconnects through a plain `pg.Pool` built from the walled pool's options: still `xr_app`, but with no per-checkout firm or bypass. That fails closed (walled tables read nothing, and doors answer 404), so it is not a hole. No code reuses a `Db` after `$disconnect` today (grep: `api/src` disconnects only owner clients at a tool's end). Add one line to the module card: a `Db` is not used after `$disconnect`.
 
 **Verdict: Approve** for `76b81fb3e0da41a7f3d80d9473c5469e08c527e3`: no open Blocker or Major.
+
+---
+
+# Round 7: diff-only re-review at 48e21ab57 (P-277)
+
+Verdict: Approve
+
+Scope: `git diff 76b81fb3e 48e21ab57 -- …/studio` (c5b7680e3 is the review file only). It fixes the three CI failures: the test's typing, concurrent role DDL on one cluster, and the word "box" in a named-use text.
+
+## The retry block: is retrying on `internal_error` safe, and can a real error be retried into success?
+
+It is safe.
+
+- **A failed attempt leaves nothing behind.** Each attempt is a PL/pgSQL `BEGIN … EXCEPTION` block, that is, a savepoint. A failed attempt is rolled back whole, so a retry never stacks on a partial change.
+- **Success can only mean the intended state.** Every statement in the list is idempotent role DDL: `CREATE ROLE` (an existing role counts as done), `ALTER ROLE` setting attributes absolutely, and membership `GRANT`s with absolute options. A retry that succeeds has applied exactly the statement's own effect, so no wrong state can be "retried into success".
+- **A real error still surfaces.**
+  - Codes other than `internal_error` (XX000) and `unique_violation` (23505) are never retried. Permission, syntax and `insufficient_privilege` errors fail at once, and so does a deadlock (40P01). All sessions take the roles in the same order, so a deadlock is not expected.
+  - A deterministic XX000 is retried at most 200 times, about 14 s, and then re-raised by the bare `RAISE` in the handler. I simulated this: a forced XX000 in the same loop shape re-raised "probe".
+- **XX000 is broad, which is the one cost.** It is PostgreSQL's code for any uncoded internal error, so a genuine internal fault would cost about 14 s before failing. It cannot cost a wrong result.
+- **`unique_violation`** covers two sessions racing to insert the same `pg_authid` or `pg_auth_members` row. The next attempt finds the role (the `duplicate_object` exit) or the membership (a NOTICE).
+- **`duplicate_object` → done** is equivalent to the old `IF NOT EXISTS` guard for `xr_case_lookup` (rev 16.34: whichever of CS-W1 and PF-12 lands first creates it). The `ALTER ROLE` lines still bring an existing role back to the required attributes, so the semantics are unchanged.
+
+**Measured.** On a scratch database, I ran the migration's roles block in 3 rounds of 10 concurrent sessions: 30/30 succeeded, with no error in any output. The roles afterwards:
+- `xr_app`: login, no BYPASSRLS, not a superuser;
+- `xr_data`, `xr_case_lookup`: NOLOGIN, no BYPASSRLS;
+- `xr_staff_bypass`, `xr_wall_reader`: NOLOGIN, BYPASSRLS.
+
+The database was dropped.
+
+## The other two fixes
+
+- **Types.** `(directPool as pg.Pool).query` changes the test only. `product/tools/typecheck.mjs` reports "no new type errors (15 known, 0 fixed)", api and web. (It needs `NODE_OPTIONS=--max-old-space-size=6144` in this sandbox; the default heap ran out on the api part.)
+- **Words.** The secret-store wording change is in a named-use `why` text only.
+
+**Run.** `check_pf12_walls` 100/0 at 48e21ab57, including the new check that runs the roles part in 4 sessions at once.
+
+## Minor (new; does not block)
+
+- **r7-m1.** XX000 is a catch-all. Retry only when the message is the known race, for example `WHEN internal_error THEN IF SQLERRM <> 'tuple concurrently updated' THEN RAISE; END IF; …`. A genuine internal fault would then surface at once instead of after about 14 s.
+
+**Verdict: Approve** for `48e21ab576e2e29056ee9853cb2222b7c421ccda`: no open Blocker or Major.
