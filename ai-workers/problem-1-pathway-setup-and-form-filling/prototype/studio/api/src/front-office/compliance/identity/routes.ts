@@ -18,8 +18,9 @@ export class IdentityChecksController {
   constructor(@Inject(IdentityChecks) private readonly svc: IdentityChecks, @Inject(LocalFiles) private readonly files: LocalFiles,
     @Inject(FileLinks) private readonly links: FileLinks, @Inject(PlatformClock) private readonly clock: PlatformClock) {}
 
-  // The upload layer stops at twice the limit (memory); the service answers the limit itself in plain words up to there.
-  @Post("people/:personId/identity-checks") @UseInterceptors(FileInterceptor("copy", { limits: { fileSize: 2 * COPY_MAX_BYTES, files: 1 } }))
+  // The upload layer stops at twice the limit (memory) and at 20 short text fields (break B-4); the service answers the
+  // copy's limit itself in plain words up to there.
+  @Post("people/:personId/identity-checks") @UseInterceptors(FileInterceptor("copy", { limits: { fileSize: 2 * COPY_MAX_BYTES, files: 1, fields: 20, fieldSize: 2048, parts: 21 } }))
   @PermissionKeys("agent/identity-check:record")
   record(@Req() r: R, @Param("personId") personId: string, @Body() b: Record<string, unknown>, @UploadedFile() f: F) {
     return this.svc.record(staffOf(r), personId, b ?? {}, f ? { bytes: new Uint8Array(f.buffer), size: f.size } : undefined);

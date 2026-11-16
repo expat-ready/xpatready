@@ -40,8 +40,18 @@ const ISO_ALPHA2 = new Set(("AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA 
   "PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO " +
   "TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW").split(" "));
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** The migration's fo_compliance_no_document_number: a run of 6+ digits, or a 6+ word with a letter and 3+ digits. */
-const looksLikeNumber = (t: string) => (t.match(/[A-Za-z0-9-]{6,}/g) ?? []).some((w) => /[0-9]{6,}/.test(w) || (/[A-Za-z]/.test(w) && /[0-9][^0-9]*[0-9][^0-9]*[0-9]/.test(w)));
+/** No document number in the note (break B-1): the text is folded first (NFKC, a digit of any script counts as a digit,
+ *  invisible and format characters dropped), then refused when it holds 6 or more digits in all (a number spaced, dotted
+ *  or split across words is still a number) or the database's own shape (fo_compliance_no_document_number: a 6+ word
+ *  with a letter and 3+ digits). Stricter than the database on purpose: a note says how the check was done. */
+const fold = (t: string) => t.normalize("NFKC").replace(/\p{Nd}/gu, "0").replace(/[\p{Cf}\u00ad\u034f\u115f\u1160\u3164\uffa0]/gu, "");
+const looksLikeNumber = (raw: string) => {
+  const t = fold(raw);
+  return (t.match(/[0-9]/g) ?? []).length >= 6 || (t.match(/[A-Za-z0-9-]{6,}/g) ?? []).some((w) => /[0-9]{6,}/.test(w) || (/[A-Za-z]/.test(w) && /[0-9][^0-9]*[0-9][^0-9]*[0-9]/.test(w)));
+};
+/** The database's fo_compliance_text_ok (break B-2): one line, no control or direction character, something visible. */
+const INVISIBLE = /[\s\u00a0\u00ad\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180e\u2000-\u200f\u2028-\u202f\u205f-\u206f\u2800\u3000\u3164\ufe00-\ufe0f\ufeff\uffa0\u0300-\u036f]/gu;
+const oneLine = (t: string) => !/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069\u061c]/.test(t) && t.replace(INVISIBLE, "").length > 0;
 
 const bad = (field: string, detail: string): never => problem(400, "Check the details", detail, { code: "INVALID", fields: { [field]: detail } });
 const notFound = (what = "person"): never => problem(404, "Not found", `No such ${what} in your firm.`, { code: "NOT_FOUND" });
@@ -63,10 +73,11 @@ function parse(body: Record<string, unknown>) {
   for (const k of Object.keys(body)) if (!FIELDS.has(k)) bad(k, k === "documentNumber" ? "Send only the last 4 characters of the document number (documentNumberLast4)." : `${k} is not a field of an identity check.`);
   const method = oneOf(body.method, METHODS, "method", "The method");
   const md = text(body.methodDetail);
-  if (md !== null && (typeof md !== "string" || md.trim().length > 500)) bad("methodDetail", "The note is text, at most 500 characters.");
+  // Characters as the database counts them (code points, break B-8), not UTF-16 units.
+  if (md !== null && (typeof md !== "string" || [...md.trim()].length > 500)) bad("methodDetail", "The note is text, at most 500 characters.");
   const methodDetail = md === null ? null : (md as string).trim();
-  if (methodDetail !== null && (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩؜]/.test(methodDetail) || looksLikeNumber(methodDetail)))
-    bad("methodDetail", "The note says how the check was done; it never holds a document number or hidden characters.");
+  if (methodDetail !== null && !oneLine(methodDetail)) bad("methodDetail", "The note is one line of visible text: no line break, tab or hidden character.");
+  if (methodDetail !== null && looksLikeNumber(methodDetail)) bad("methodDetail", "The note says how the check was done; it never holds a document number (at most 5 digits in all).");
   if (method === "OTHER" && methodDetail === null) bad("methodDetail", "Say what the other method was.");
   const dt = text(body.documentType), country = text(body.issuingCountry), last4 = text(body.documentNumberLast4), expiry = text(body.documentExpiry);
   const documentType = dt === null ? null : oneOf(dt, DOCUMENT_TYPES, "documentType", "The document type");
@@ -90,8 +101,8 @@ function parse(body: Record<string, unknown>) {
   if (named === 0 && documentExpiry) bad("documentType", "An expiry needs the document it belongs to.");
   if (method === "DOCUMENT_COPY" && documentType === null) bad("documentType", "A check by document copy names the document.");
   // Multipart sends a repeated field as a list, once as text; JSON sends a list. A comma list is accepted too.
-  const raw = Array.isArray(body.details) ? body.details : typeof body.details === "string" ? body.details.split(",") : [];
-  const details = raw.map((d) => (typeof d === "string" ? d.trim() : d));
+  const raw = Array.isArray(body.details) ? body.details : body.details === undefined ? [] : [body.details];
+  const details = raw.flatMap((d) => (typeof d === "string" ? d.split(",").map((x) => x.trim()) : [d]));   // a comma list in any part (break B-8)
   if (!details.length) bad("details", "Name at least one corroborated detail (NAME, HOME_ADDRESS, PHONE, EMAIL, BUSINESS_DETAILS).");
   for (const d of details) oneOf(d, DETAILS, "details", "Each corroborated detail");
   if (new Set(details).size !== details.length) bad("details", "Each detail once.");
@@ -112,7 +123,16 @@ export class IdentityChecks {
     const leads = await this.db.foLead.findMany({ where: firmScope(ctx.firmId, { personId: p.id }), select: { ownerStaffId: true } });
     if (leads.some((l) => sees(vis, ctx, l.ownerStaffId && active.has(l.ownerStaffId) ? l.ownerStaffId : null))) return p;
     const own = await this.db.foProspect.count({ where: firmScope(ctx.firmId, { ownerStaffId: ctx.staffId, OR: [{ subjectPersonId: p.id }, { primaryContactPersonId: p.id }] }) });
-    return own ? p : notFound();
+    if (own) return p;
+    // A current contact of a company whose prospect the reader owns, and a retainer's signer the reader sends (its
+    // representative, or the prospect's owner): Send warns about them, so the same person can record the check (break B-3).
+    const mine = (await this.db.foProspect.findMany({ where: firmScope(ctx.firmId, { ownerStaffId: ctx.staffId, subjectCompanyId: { not: null } }), select: { subjectCompanyId: true } })).map((x) => x.subjectCompanyId!);
+    if (mine.length && (await this.db.foCompanyContact.count({ where: firmScope(ctx.firmId, { personId: p.id, validTo: null, companyId: { in: mine } }) }))) return p;
+    const signs = await this.db.foRetainer.findMany({ where: firmScope(ctx.firmId, { signerPersonId: p.id }), select: { representativeStaffId: true, prospectId: true } });
+    if (signs.some((r) => r.representativeStaffId === ctx.staffId)) return p;
+    const pids = signs.map((r) => r.prospectId).filter((x): x is string => !!x);
+    if (pids.length && (await this.db.foProspect.count({ where: firmScope(ctx.firmId, { id: { in: pids }, ownerStaffId: ctx.staffId }) }))) return p;
+    return notFound();
   }
 
   /** Records one check (201), with its optional copy in the same insert. */
@@ -145,6 +165,8 @@ export class IdentityChecks {
       console.error(`[fo-identity] check not saved: code=${code} constraint=${constraint}`);
       const kept = stored ? " The uploaded copy is not attached to any record and can never be opened." : "";
       if (/not active/.test(m)) problem(409, "Not possible now", `Your account is not active, so the check was not saved.${kept}`, { code: "NOT_ACTIVE", copyReferenced: false });
+      // A rule the service missed (the database checks again): a refusal with the constraint's name, never "Try again".
+      if ([code, meta?.code].includes("23514") || /violates check constraint/.test(m)) problem(400, "Check the details", `The database refused the check (${constraint}).${kept}`, { code: "INVALID", copyReferenced: false });
       problem(500, "Not saved", `The check was not saved. Try again.${kept}`, { code: "NOT_SAVED", copyReferenced: false });
     }
     return (await this.list(ctx, p.id)).checks.find((x) => x.id === id)!;

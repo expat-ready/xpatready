@@ -125,6 +125,11 @@ try {
   ok("FO-13i DW1 fail: a 5-character or full number → 400 naming documentNumberLast4; a full `documentNumber` → 400 naming it; a number in the note → 400 naming methodDetail; nothing stored",
     r5.status === 400 && r5.body.fields?.documentNumberLast4 && rFull.status === 400 && rFull.body.fields?.documentNumberLast4 && rNum.status === 400 && rNum.body.fields?.documentNumber
     && rNote.status === 400 && rNote.body.fields?.methodDetail && rows(PR) === 1, [r5.body, rNum.body, rNote.body]);
+  const spaced = ["Seen passport AB 123 4567", "AB12 3456", "AB\u00a0123\u00a04567", "AB.123.456.7", "AB/123/4567", "AB_123_4567", "ＡＢ１２３４５６７", "AB ١٢٣٤٥٦٧", "AB १२३४५६७", "AB123\u200b4567", "AB12\u20603456", "AB12\u00ad34567"];
+  const sp = await Promise.all(spaced.map((d) => call("POST", `people/${PR}/identity-checks`, R.token, { method: "OTHER", methodDetail: d, details: ["NAME"] })));
+  const fine = await call("POST", `people/${PO}/identity-checks`, O.token, { method: "OTHER", methodDetail: "Seen at the office on video, 2 people present", details: ["NAME"] });
+  ok("FO-13i DW1 fail (break B-1): a number spaced, dotted, slashed, full-width, in Arabic-Indic or Devanagari digits, or split by a hidden character → 400 naming methodDetail, nothing stored; a note with a few digits saves",
+    sp.every((r) => r.status === 400 && r.body.fields?.methodDetail) && rows(PR) === 1 && fine.status === 201, sp.map((r, i) => `${spaced[i]}: ${r.status}`).filter((x) => !x.endsWith("400")));
   const rXX = await call("POST", `people/${PR}/identity-checks`, R.token, { ...good, issuingCountry: "XX" });
   ok("FO-13i DW1 fail: an issuing country XX → 400 naming issuingCountry, nothing stored", rXX.status === 400 && rXX.body.fields?.issuingCountry && rows(PR) === 1, rXX.body);
 
@@ -163,6 +168,12 @@ try {
   const lost = await failing.record(ctxR0, PR, docFields, { bytes: pdf, size: pdf.length }).then(() => null, (e) => ({ status: e.getStatus?.(), body: e.getResponse?.() }));
   ok("FO-13i DW3 fail: when the insert fails (a forced audit failure) no check is stored, nothing names the stored copy, and the answer says so",
     lost?.status === 500 && lost.body.copyReferenced === false && /not attached to any record/.test(lost.body.detail) && rows(PR) === 3 && sql(`select count(*) from fo_identity_check where copy_file_key is not null`) === "1", lost);
+  const filesOnDisk = () => { const d = join(WORK, "files", A.toLowerCase(), "identity"); try { return readdirSync(d, { recursive: true }).filter((f) => !String(f).endsWith(".meta") && /\./.test(String(f))).length; } catch { return 0; } };
+  const onDisk = filesOnDisk();
+  const lines2 = await Promise.all(["Seen in person\nat the office", "Seen\tin person", "\u200b\u200b", "\u3164", "\u0301"].map((d) =>
+    call("POST", `people/${PR}/identity-checks`, R.token, form({ ...docFields, method: "OTHER", methodDetail: d }, { bytes: pdf, name: "p.pdf", type: "application/pdf" }))));
+  ok("FO-13i DW3 fail (break B-2): a note with a line break or tab, or only hidden characters, with a copy → 400 naming methodDetail before the copy is stored (no new file on disk, no row)",
+    lines2.every((r) => r.status === 400 && r.body.fields?.methodDetail) && filesOnDisk() === onDisk && rows(PR) === 3, lines2.map((r) => r.status));
   const link = await call("POST", `identity-checks/${c3.body.id}/copy/download-link`, R.token);
   const got = await call("GET", link.body.url, R.token);
   ok("FO-13i DW3 pass: the copy's link works within its lifetime: the same bytes, as an attachment, not cached, not sniffed",
@@ -201,25 +212,41 @@ try {
   ok("FO-13i DW4 fail: with a check recorded for the signer → 200 and no warning (answer and audit line)",
     sYes.status === 200 && sYes.body.status === "SENT" && Array.isArray(sYes.body.warnings) && sYes.body.warnings.length === 0 && sql(`select coalesce(detail->>'warning', 'none') from audit_event where action = 'retainer.sent' and entity_key = '${rYes}'`) === "none", sYes.body?.warnings);
 
+  // Break B-3: a company's signatory (their lead is user-O's) is warned about on R's Send, so R may record their check.
+  const CO = u(), SIG = person(O.id, "Signatory"), PC = person(R.id, "Primary"), PCO = u();
+  sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values ('${CO}', '${A}', 'Sample Bakery Ltd', 'sample bakery', 'test', now());
+    insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${A}', '${CO}', '${PC}', 'PRIMARY', 'test'), ('${A}', '${CO}', '${SIG}', 'SIGNATORY', 'test');
+    update fo_lead set state = 'ENGAGED', engaged_at = now(), engaged_by = 'test' where person_id = '${PC}';
+    insert into fo_prospect (id, firm_id, lead_id, type, stage_id, subject_company_id, primary_contact_person_id, owner_staff_id, created_by, updated_at)
+      select '${PCO}', '${A}', l.id, 'CORPORATE', (select id from fo_stage where firm_id = '${A}' and pipeline = 'CORPORATE' and key = 'ENGAGED'), '${CO}', '${PC}', '${R.id}', 'test', now() from fo_lead l where l.person_id = '${PC}';
+    insert into fo_stage_move (firm_id, prospect_id, to_stage_id, cause, by_actor) select firm_id, id, stage_id, 'PERSON', 'test' from fo_prospect where id = '${PCO}'`);
+  const rCo = (await svc.draft(ctxR, PCO, { templateId: tpl.id, fees: [{ label: "Fee", amountMinor: 100000, when: "ON_SIGNING" }] })).id;
+  const sCo = await call("POST", `retainers/${rCo}/send`, R.token, { expectedVersion: 1 });
+  const coList = await call("GET", `people/${SIG}/identity-checks`, R.token), coRec = await call("POST", `people/${SIG}/identity-checks`, R.token, { method: "VIDEO", details: ["NAME"] });
+  const oCo = await call("GET", `people/${SIG}/identity-checks`, RO.token);
+  ok("FO-13i DW4 pass (break B-3): a company's signatory warned about on Send can be listed and checked by the prospect's owner (the signatory's lead is another's); a reader with neither still gets 404",
+    sCo.status === 200 && /Signatory Sample/.test(JSON.stringify(sCo.body.warnings)) && coList.status === 200 && coRec.status === 201 && oCo.status === 404, [sCo.body?.warnings, coList.status, coRec.status, oCo.status]);
+
   // ---------------------------------------------------------------------------------------------------------- DW5
   const o1 = await call("POST", `people/${PO}/identity-checks`, O.token, { method: "IN_PERSON", details: ["NAME"] });
   const ro = await call("POST", `people/${PO}/identity-checks`, RO.token, { method: "IN_PERSON", details: ["NAME"] });
   ok("FO-13i DW5 pass/fail: a Case Officer records on their own lead's person (201); a person without agent/identity-check:record → 403, nothing stored",
-    o1.status === 201 && ro.status === 403 && rows(PO) === 1, [o1.status, ro.status]);
+    o1.status === 201 && ro.status === 403 && rows(PO) === 2, [o1.status, ro.status]);
   const oSeesR = await call("GET", `people/${PR}/identity-checks`, O.token), oRecR = await call("POST", `people/${PR}/identity-checks`, O.token, { method: "IN_PERSON", details: ["NAME"] });
   const oLink = await call("POST", `identity-checks/${c3.body.id}/copy/download-link`, O.token), bList = await call("GET", `people/${PR}/identity-checks`, S.token);
   const oOwn = await call("GET", `people/${PO}/identity-checks`, O.token), bOwn = await call("GET", `people/${PB}/identity-checks`, R.token);
   ok("FO-13i DW5 fail: a reader who cannot see the person → 404 on list, record and the copy's link (the Case Officer on another's lead; firm B; firm A on firm B's person)",
     oSeesR.status === 404 && oRecR.status === 404 && oLink.status === 404 && bList.status === 404 && bOwn.status === 404 && rows(PR) === 3, [oSeesR.status, oRecR.status, oLink.status, bList.status, bOwn.status]);
-  ok("FO-13i DW5 pass: the Case Officer lists their own person's checks", oOwn.status === 200 && oOwn.body.checks.length === 1, oOwn.body);
+  ok("FO-13i DW5 pass: the Case Officer lists their own person's checks", oOwn.status === 200 && oOwn.body.checks.length === 2, oOwn.body);
 
   // ---------------------------------------------------------------------------------------------------------- DW6
+  const allRows = Number(sql(`select count(*) from fo_identity_check`));
   const outbox = sql(`select coalesce(string_agg(payload::text, ' '), '') from module_event where type = '${EVENT.IDENTITY_CHECKED}'`);
   const audit = sql(`select coalesce(string_agg(summary || ' ' || coalesce(detail::text, ''), ' '), '') from audit_event where entity = 'fo_identity_check' or action like 'retainer.%'`);
   const secrets = [FULL, "Q7R2", "Q7R2X", "q7r2", "Z9K1", "Z9k1", BYTES_MARK, link.body.url.split("/").pop(), row3[0], row3[1]];
   const where = (s: string) => secrets.filter((x) => s.includes(x));
-  ok(`FO-13i DW6 pass: one identity.checked event and one audit line per saved check (${rows(PR) + rows(PO)}), ids, method and detail names only`,
-    Number(sql(`select count(*) from module_event where type = '${EVENT.IDENTITY_CHECKED}'`)) === rows(PR) + rows(PO) && Number(sql(`select count(*) from audit_event where entity = 'fo_identity_check'`)) === rows(PR) + rows(PO) && /"method": ?"DOCUMENT_COPY"/.test(outbox), outbox.slice(0, 300));
+  ok(`FO-13i DW6 pass: one identity.checked event and one audit line per saved check (${allRows}), ids, method and detail names only`,
+    Number(sql(`select count(*) from module_event where type = '${EVENT.IDENTITY_CHECKED}'`)) === allRows && Number(sql(`select count(*) from audit_event where entity = 'fo_identity_check'`)) === allRows && /"method": ?"DOCUMENT_COPY"/.test(outbox), outbox.slice(0, 300));
   ok("FO-13i DW6 fail: the captured log lines, the outbox payloads and the audit details hold no document number (full or last 4), no copy key, sha256 or link, and no copy bytes",
     where(logged.join("\n")).length === 0 && where(outbox).length === 0 && where(audit).length === 0, { log: where(logged.join("\n")), outbox: where(outbox), audit: where(audit) });
 } catch (e) {
