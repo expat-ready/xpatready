@@ -184,3 +184,36 @@ The new pass case also asserts that `platform.language` has no Sample value, so 
 The journey score stays **9.5 / 10, pass**.
 
 Verdict: Approve e3ed724b03e02a9cb75f2f749bbb30342b3cc9d9
+
+---
+
+# Re-review 5: 74a239433c79e6f83c0868815788358941917473 (diff ea41d0ecd..74a239433 only)
+
+This commit changes only `tests/check_b164_no_engine_keys.ts` (+5/−1). "legal" joins `NOT_KEYS`, with a comment, a pass case and a fail case. The shrink-only `ALLOW` block is untouched.
+**Run:**
+* `check_b164_no_engine_keys.ts`: **65 passed, 0 failed**.
+* `check_aud5_keep_periods.ts`: **57 passed, 0 failed**.
+
+Postgres on :54329 was down again after the container restart. I started the existing cluster with cloud-setup.sh's own `pg_ctl … start` line and changed nothing else.
+**Mutation:** removing "legal" from `NOT_KEYS` fails both the repository scan (`keep-period/service.ts:24`, `seed-sample-firms.ts:25`) and the new pass case (63/65).
+
+**(1) Does widening `NOT_KEYS` weaken the guard? No, not in any way that matters.** In `keyLike` (`:145-155`), known keys and every known program prefix from `samples/*.json` and the fee table return true *before* `NOT_KEYS` is consulted. So no existing program's key can hide behind "legal". The entry only switches off the fallback heuristic (an unknown 2-5-letter head with one dot) for the single head "legal". No IRCC program is coded "legal", and the fail case shows that `lexus.open` is still caught. It follows FO-5's precedent (2a36d6952: "firm", "fees").
+
+**(2) Would renaming the key be better? No.**
+* The brief names `legal.closed_client_files_years`, and the key matches the permission `agent/legal-settings:manage`.
+* CS-D6 reads this row's port, and its brief was told the key.
+* A rename to dodge a lint heuristic would itself need a head of 6 or more letters, which is a test-driven name.
+* Keeping the brief's key and exempting its head is the smaller, honest change.
+
+**Notes (no finding):**
+* (a) `check_b164_no_engine_keys.ts` is outside AUD-5's touch list. It is a CI-forced, one-line, precedent-following fix; the B164 owner should be told in the PR body.
+* (b) Each future firm setting with a short module head will need the same line. A sturdier rule, for the B164 owner and not this PR, would exempt the keys in the settings registry (`registerSetting`).
+
+**Blockers:** none. **Majors:** none.
+**Minors still open:**
+* m1: PR body text, as before.
+* m8 and m9: accepted.
+
+The journey score stays **9.5 / 10, pass**.
+
+Verdict: Approve 74a239433c79e6f83c0868815788358941917473
