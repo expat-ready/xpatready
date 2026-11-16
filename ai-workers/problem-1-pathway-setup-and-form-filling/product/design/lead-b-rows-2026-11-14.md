@@ -1705,3 +1705,12 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 ## Rev 16.85 (16 Nov 23:41 IST): CI jam check for Lead 71
 * **Lead 71's figures:** no merge since 21:32 IST, 104 runs queued, about 11–16 jobs at once, and about 16 jobs per full ci run. Lead 71's rule: a PR whose head has no `Reviewer: Approve <head>` stays a draft, and nobody pushes to a ready PR except a fix. The label-guard and records-label start-up failures (16:42–18:00 UTC) were a scheduled GitHub brownout of `pull_request_target`, now over. Lead 71 read #2012's migration (cbf6bebd3: additive, later stamp); it waits only on ci.
 * **Lead B's check:** all 11 working PF/FO PRs, by head sha against their comments. All 11 have `Reviewer: Approve` on their current head: #2028, #2025, #2021, #2019, #2014, #2012, #2011, #2001, #1998, #1991 are ready, and #2009 is a draft. None breaks the rule, so no draft change was needed.
+
+## Rev 16.86 (16 Nov 23:45 IST): Build Lead C's three asks on files Lead B owns
+* **#2000 CS-DL1 part 1 (comment 6925010919): no new `BYPASS_USES` entry `case.stages.calendar`.** QA-499 makes every bypass use write `audit_event`, so a GET on every case's stages would write a row per view. PF-12b part 2 moves own-firm doors off the bypass anyway.
+  - **Either (a), preferred:** a narrow definer, `platform_firm_calendar(firm_key)`. It is owned by `xr_wall_reader` with `search_path` pinned, and returns only time zone, hours and closed days. It needs a P-423 read, keeps DW8, and adds a catalogue check of its return columns.
+  - **Or (b):** ship option 2's fallback, with the lookup in CS-W3 part 1.
+* **#2003 AUD-1a (comment 6925011408): the PF/FO test-file changes are confirmed.** These are the `system:` actor prefixes, the pf0p workspace-only delete and the pf3 forced failure; no assertion is weakened.
+  - **The question raised:** `app.audit_sample_reset` must open only the demo workspace's lines. Platform audit lines stay undeletable, with a fail case. That is C's row and the release holder's read.
+* **#2008 AUD-5 part 1 (comment 6925011807): `demo-reset.ts`, `sample-seed.ts` and `seed-sample-firms.ts` are confirmed.** The seed writes only where no value exists, through `writeSetting`.
+  - **Two checks to state:** it runs only with the Sample seed, never for a real firm; and the plain `tsx` seed still loads with the new dynamic import.
