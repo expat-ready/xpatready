@@ -2,10 +2,12 @@
 // a sweep of EVERY route the running app serves under /api/platform/* and /api/front-office/* (read from the app's own
 // feature list, the way PF-4's start-up rule reads it), called over HTTP on an isolated copy:
 //   S1 no token on each route (except the sign-in doors)              → 401, never data;
-//   S2 a Case Officer (user-O) on each route whose declared keys they lack → 403 with the key named, never 2xx;
+//   S2 a Case Officer (user-O) on each route whose declared keys they lack → 403 with a reason in words, never 2xx;
 //   S3 the same routes as the Owner (user-R) are never 401/403 for a key the Owner holds (the sweep is not vacuous);
-//   S4 money and licence keys: no seeded role's /me hands a money key to a person without a money role, and a licence-class
-//      key route answers NOT_LICENSED for a person with no licence record (read from the catalogue).
+//   S4 money and licence keys: no duty hands out a money-class key, none of the Case Officer's money keys comes from a duty,
+//      and the Case Officer holds no licence-class key. It does NOT prove the NOT_LICENSED refusal (PF-6b DW5 does, on a
+//      test route: no running route declares a licence-class key yet). Scope: the 60 platform and front-office routes only,
+//      not the case side's routes.
 // Path parameters get a random uuid; bodies are {} (the guard runs before validation, so the status is the guard's).
 // Run from prototype/ (never :4400):
 //   zsh studio/tools/isolated.sh qar16 4473 start --ttl 20 PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on \
