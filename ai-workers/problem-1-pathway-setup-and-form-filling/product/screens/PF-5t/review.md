@@ -87,3 +87,11 @@ A real identity provider (Cognito) sign-in; behaviour under PF-12's row-level se
 At 3fa6b36: Verdict: Block (Changes needed, M1). Fixed at 67b384e; the re-review above found no open Blocker or Major.
 
 **Verdict: Approve 67b384e1ad01fe3fdb1ee1c939a03fac741cd15c**
+
+## Re-review (P-277, diff only): `b83ed6f..e9ae9010126f93b10990f6a943cd25ce4c87c40a`
+The fix answers Devin's finding on #1957 (accept never re-checked the person under the firm lock).
+* **The change:** accept now repeats `PlatformSession.inFirm`'s re-check, line for line (`service.ts:83-88`), right after the firm lock and before anything is read or written. A person no longer active, or one whose session was revoked meanwhile, gets 401 SESSION_REVOKED. A person whose roles changed meanwhile gets 409 ROLES_CHANGED. Both answers throw, so the transaction rolls back and nothing is written.
+* **Tests:** `check_pf5t_terms.ts` 42/42. Removing the role check fails the new test, and so does removing the active-and-revocation check.
+* **New Minor m6:** the test covers deactivation and a role change, not a session revoked meanwhile. That branch is the same code as `inFirm`, which PF-4b tests. Optional fix: add a revocation row in the same test.
+
+**Verdict: Approve e9ae9010126f93b10990f6a943cd25ce4c87c40a**
