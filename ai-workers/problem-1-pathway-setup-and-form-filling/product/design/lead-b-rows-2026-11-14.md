@@ -1396,3 +1396,27 @@ New row for BACKLOG, before FO-7t:
 * **QA-478 → PF-6m (`lead-b-briefs/PF-6m.md`).** One shared money-line helper serves both doors (role change and invitation accept).
 * **QA-480 (records):** PF-6b's row (2) is reworded to "**no duty bundle implies a money key; starter roles hold money keys only as SA-06 Appendix C lists (MS-D21(10))**", replacing "No starter-role bundle hands out a money key". SA-06 wins (AGENTS rule 2). The same words go into R1.6's Done when.
 * FO-2v and PF-6m share no file and may run at once. After both merge, qa re-scores R1.6. Whether R1.6 can be Works without J-6 part 2 (the role editor, PF-6 part 2) is the Lead's ruling (qa #1929; my P-626 A6).
+
+## Rev 16.54 (16 Nov 10:1x IST, Lead B (6)): PF-6 part 2, new row PF-6r and J-6 part 2, so that R1.6 can close (Lead 64's ruling: Partial until the role screens and J-6 part 2 are on `main`)
+
+* qa is told on #1929 (comment 6907568335).
+* **PF-6 part 2: `lead-b-briefs/PF-6p2.md`.**
+  - **2a**, the R1.6 half: Team, Invite people with Compare roles, and the Person panel (Roles, Access, Invitation). It waits on PF-6 part 1 (#1912, queued), PF-6r and PF-6m.
+  - **2b**: Licences, My account's licence, the Security line and Accept invitation. It comes after 2a.
+* **Correction (row owner):** PF-6's rev 16.10 Done when line about "the role editor … a custom role copied from a starter role" assumed custom roles, which are X-1 (concept §2 "Not month one"; PF-6b row, Lead 53). The line is now met by the role picker and Compare roles, as PF-6 DW3:
+  - money permissions and licence actions are shown in their own groups, from the catalogue's `class`, never by a group tick;
+  - giving a money-bearing role shows its own confirmation line naming the count, and writes PF-6m's audit line.
+
+  The custom-role half moves to X-1.
+* **New row PF-6r: `lead-b-briefs/PF-6r.md`.** It adds `GET /api/platform/roles` (`agent/staff:manage`): the six starter roles with each key's `class` and `scope`, and money and licence counts. It starts now, beside PF-6m and FO-2v (no shared file).
+* **J-6 part 2 (amendment to the J-rows brief for J-6; waits on PF-6 part 2a, FO-2v and PF-6m):**
+  - `J-6 DW1`: PF-6m's money line is shown real, through the audit read.
+  - `J-6 DW2`: FO-2v's single rule is shown on the Leads screen. With `everyone_sees_all` off, the Owner sees only their own leads.
+  - **Walk `J-6 W1`**, in a visible browser and as a scripted check:
+    - The Owner opens Team, then Compare roles, which shows the money and licence groups.
+    - The Owner invites a Billing and finance person. The money confirmation line shows, and is saved with its audit line.
+    - The new person signs in, and opening `/platform/team` is refused on screen and by the API.
+    - A Case Officer with "own" sees only their own leads.
+    - It ends at the next capability's first step: My account (row 5).
+  - When J-6 part 2 is on `main`, qa re-scores R1.6 with the full walk.
+* **Order for R1.6:** PF-6r, PF-6m and FO-2v now, at once. Then PF-6 part 2a once #1912 merges, then J-6 part 2. 2b runs after 2a and is not on R1.6's path.
