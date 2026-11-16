@@ -29,7 +29,7 @@ Rules: RULES.md + DECISIONS **P-626 to P-628** (finish partials first, target 10
 | A106-A108 | 16 Nov morning: clean-up, builders, "finish partials first" (P-626) | done; rows word for word in `history/STATE-2026-11-16-0755-lead64s2-asks-A106-A109.md` |
 | A109 | 07:4x IST 16 Nov: templates and booking, then one final research round (booking/calendar API or open source, cost for 50-100 firms; open-source templates) | two research agents running (Lead 64), reports in the shared notes folder of Lead 63; recommendation next; row word for word in the same history file |
 | A110 | 09:1x IST 16 Nov: every 30-min check reads claude.ai (sign-in asked if needed), all lanes, unblock/clean; make it a hook, the Lead keeps forgetting | done once at 09:2x (FO-7b blocked 114 min answered; #1865 conflict step re-sent; Leads 57, 63 archived); **B197** makes it enforced (script + lead-watch ACT + Stop hook) |
-| A111 | 09:3x IST 16 Nov: context diet: disable unused connectors, MCPs, plugins, skills, permissions; project vs global; study docs and forums; questions one at a time | research agent running (Lead 64), report `design/context-diet-research-2026-11-16.md`; baseline 72k fixed tokens per turn (tools 21k, MCP 20k, prompt 13k, skills 10k, memory 9k) |
+| A111 | 09:3x IST 16 Nov: context diet: disable unused connectors, MCPs, plugins, skills, permissions; project vs global; study docs and forums; questions one at a time | research agent running (Lead 64), report to the design folder when done; baseline 72k fixed tokens per turn (tools 21k, MCP 20k, prompt 13k, skills 10k, memory 9k) |
 ## For the founder (P-390)
 F2, F8, F14-F19 closed or ruled; word for word in `history/STATE-2026-11-15-2115-lead61s2-founder-asks-A89-A92-rows.md`.
 
