@@ -45,6 +45,9 @@ Moved word for word from `RULES.md` (main af7df6d6) by the rule-triage lane, 16 
 | P-602 | retired | P-557 | Goal and order | A one-night plan for 14 Nov; its standing half (lanes push, STATE says where to resume) is P-557. |
 | P-479 | retired | P-480 | The tech lead | Parked by P-480 ("let's park it"); nothing to do or enforce while parked; DECISIONS keeps both rows. |
 | P-436a | retired | P-446, P-446f | Tokens, money, account | A finding (where spend goes), not a rule; the rules acting on it are P-446 and P-446f. |
+| P-547 | merged | IDX-2 | Goal and order | One-time process direction folded into IDX-2 by #1943 (RULES under 25 KB); its row is word for word in `rules/goal-and-order.md` › Index lists (Lead 66, 16 Nov). |
+| P-583 | merged | IDX-2 | Goal and order | One-time process direction folded into IDX-2 by #1943 (RULES under 25 KB); its row is word for word in `rules/goal-and-order.md` › Index lists (Lead 66, 16 Nov). |
+| P-589 | merged | IDX-2 | Goal and order | One-time process direction folded into IDX-2 by #1943 (RULES under 25 KB); its row is word for word in `rules/goal-and-order.md` › Index lists (Lead 66, 16 Nov). |
 
 ## The RULES.md note, word for word (moved by Lead 64, 16 Nov 08:3x IST, size limit)
 **Triaged 16 Nov (B193 part 5, P-619 step 6):** 9 rows merged into the row that says the same and 5 retired, word for word in `rules/merged-and-retired-2026-11-16.md`; every old ID and where it went in `rules/rule-id-map-2026-11-16.tsv` (check-docs.sh fails a missing one); the check queue for the other prose rows: `design/rule-triage-2026-11-16.md`.
