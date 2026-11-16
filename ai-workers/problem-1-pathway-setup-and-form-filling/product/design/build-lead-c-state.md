@@ -4,7 +4,7 @@ updated: 16 Nov 2026 21:0x IST by Build Lead C (local_d5287293, Opus 5.5 medium;
 
 **Sources read:** RULES.md as of P-644 and MVP-CHECKLIST.md on `origin/lead/2026-11-07-lead31`; `qa/CAPABILITIES.md` R1 table on `main` d66bcfd2d; merged and open PRs from the GitHub API (21:0x IST); the case-side shaping lane's draft briefs `design/briefs/*.md` on `main` (#1867-#1877, #1882, #1883, #1886).
 
-**Split rule used:** a row is in my group when it has a non-PF/FO part; I own those parts only. PF-* and FO-* parts (including FO-7 money and PF-F files) are Lead B's (P-558). Mixed rows are finished only when Lead B's parts merge too.
+**Split rule used:** a row is in my group when it has a non-PF/FO part; I own those parts only. PF-* and FO-* parts are Lead B's (P-558), **except client money**: FO-7 (all but FO-7a2 #1991, which Lead B keeps until it merges) is mine (Lead 69, 21:1x IST 16 Nov). PF-F file parts stay Lead B's. Mixed rows are finished only when Lead B's parts merge too.
 
 **Today's target (P-644):** at least 5 of my group's rows fully built a day.
 
@@ -37,6 +37,18 @@ PRs = pull requests per the drafts (P-610). "Ready" = every wait in the draft is
 | R1.107 | Assessment AS-2 | AS-2c, AS-2cs, AS-2e, AS-2d1, AS-2d2 (no briefs) | — | no | founder card on streams (P-607 (9)) |
 | R1.98 | Corporate clients, LMIA | CS-98r (2), 98a, 98b (2), 98c (2), 98d, 98e, 98s1 (concept + 2), 98s2 (2), 98s3 (proposed) | FO-2b, FO-8 | CS-98s1 concept | P-607 (5): last; CS-98r step 0 on the Mac |
 
+**Client money (mine since 21:1x IST):** merged FO-7a #1758, FO-7mv #1924; FO-7a2 #1991 open (Lead B). One chain on `client-money.prisma`: FO-7ts p1 → p2 → p3 → FO-7b → FO-7c ∥ FO-7t (3) → FO-7v, FO-7m, FO-7p, FO-7g (2), FO-7r (3), FO-7q; screens FO-7s0 (concept, **ready now**) → FO-7s1, s2, s3a, s3b, s4, s5. No lane touches `money_move_line_write`, `money_trust_entry_moves`, `money_to_move`, `money_move_batch`, `money_trust_entry_write`, `money_credit_note_write` until #1991 merges.
+
+| R1 row | Capability | My parts left | Ready now |
+|---|---|---|---|
+| R1.59 | Money arithmetic | FO-7b (tax per line) | no (after FO-7ts p1-2) |
+| R1.60 | Deposit invoice on signature | FO-7b | no |
+| R1.56 | Invoices, tax, government fee | FO-7b, FO-7g, FO-7q, FO-7s0, FO-7s1 | FO-7s0 |
+| R1.57 | Card payment into operating | FO-7c, FO-7s2 | no (FO-7c also needs PF-5's Stripe hook) |
+| R1.58 | Trust or operating; ledger; to move | FO-7ts (3), FO-7t (3), FO-7s3a, FO-7s3b, FO-7m | FO-7ts p1 after #1991 |
+| R1.96 | Reversals, refunds, credit notes, plans | FO-7p, FO-7r, FO-7v, FO-7s4 | no |
+| R1.111 | Statement and exports | FO-7r, FO-7s5 | no |
+
 Rows proven or Lead-B-only are not listed. R1.77 finishes on CS-C1b + QA-397; R1.74 on CS-DL1b.
 
 ## 2. Lanes (8 slots; two ready briefs each, P-599)
@@ -46,7 +58,8 @@ Rows proven or Lead-B-only are not listed. R1.77 finishes on CS-C1b + QA-397; R1
 | C2 | `CS-DL1a.md` | `CS-DL1b.md` | start asked 21:0x IST |
 | C3 | `CS-V1-1.md` | `CS-V1-2.md` | start asked 21:0x IST |
 | C4 | `AUD-1a.md` | `AUD-1b.md` | start asked 21:0x IST |
-| C5-C8 | to fill: CS-S1 part 1, CS-W3 part 0 spike, AUD-4s concept, CS-98s1 concept (briefs next) | | |
+| C5 | `FO-7s0.md` (concept, now) | `FO-7ts-1.md` (after #1991) | start asked 21:1x IST |
+| C6-C8 | to fill: CS-S1 part 1, CS-W3 part 0 spike, AUD-4s concept, CS-98s1 concept (briefs next) | | |
 
 **Holders (P-438b, P-526b):** C1 holds `api/src/runtime.ts` `createCase`; C4 holds `governance.prisma` / new `audit.prisma`; C2 touches Lead B's `leads.ts`/`open-minutes.ts` import lines only. Nobody in my group holds `prisma/schema/cases.prisma` or `api/src/case-prepare.ts` now.
 
