@@ -1,0 +1,32 @@
+NOTICE:  database "xr_studio_fo3sr_2637" does not exist, skipping
+PASS  FO-3sr DW9 pass: the app starts with PF-4's guard, and the feature lists the controller
+PASS  FO-3sr DW9 pass: all seven new routes are found under /api/front-office/bookings and each declares its access
+PASS  FO-3sr DW9 fail: the route list with BookingStaffController.list stripped of its declaration is refused, naming it
+PASS  FO-3sr: GET /attendance-due is registered before GET /:id
+PASS  FO-3sr DW1 pass: OWNER, ADMIN, CASE_MANAGER and CASE_OFFICER create a booking → 201
+PASS  FO-3sr DW1 fail: BILLING_FINANCE and READ_ONLY → 403 Not allowed (the guard's MISSING_PERMISSION), nothing saved
+PASS  FO-3sr DW10 pass: the create answer carries the booking (id, host, times)
+PASS  FO-3sr DW10 fail: the create answer carries no booking-link token (FO-3f item 3, review m7)
+PASS  FO-3sr DW2 pass: the four roles with agent/booking:edit reschedule → 200
+PASS  FO-3sr DW2 fail: BILLING_FINANCE and READ_ONLY reschedule or cancel → 403 from the guard (MISSING_PERMISSION: the routes' own declaration, not only the service's check), the booking unchanged
+PASS  FO-3sr DW2 pass: the four roles with agent/booking:edit cancel → 200
+PASS  FO-3sr DW3 pass: with agent/booking:list (OWNER; READ_ONLY too) the list is the firm's, and staff= filters it to one host
+PASS  FO-3sr DW3 fail: BILLING_FINANCE (no list key) → 403 MISSING_PERMISSION on the list, also asking for their own bookings with staff= (AG-4-67 rule 4: the key opens lists at all)
+PASS  FO-3sr DW4 pass: a host without the list key (BILLING_FINANCE) opens their own booking by id (AG-4-67 rule 2); a role with the list key reads another host's
+PASS  FO-3sr DW4 fail: another host's booking without the list key → 404 (never 403), the same answer as an unknown id, so the id is not confirmed
+PASS  FO-3sr DW7 fail: no token → 401 NOT_SIGNED_IN on all seven routes
+PASS  FO-3sr DW7 pass: the same routes answer with a token (o1 still active, nothing created at 11:00)
+PASS  FO-3sr DW8 fail: firm B's token on firm A's booking → 404 on get, reschedule, cancel and attendance, the same answer as an unknown id
+PASS  FO-3sr DW8 pass: firm A's booking is unchanged, and firm B's list does not show it
+PASS  FO-3sr DW6 fail: a booking that ended 29 minutes ago is not due (one that ended 89 minutes ago is)
+PASS  FO-3sr DW6 fail: BILLING_FINANCE (no list key) → 403 MISSING_PERMISSION on attendance-due, even as the host of a due booking
+PASS  FO-3sr DW6 pass: 31 minutes after the end it is due; with the list key the due list is the firm's (another host's included)
+PASS  FO-3sr DW5 fail: before the start → 409 (the service's too-early answer)
+PASS  FO-3sr DW5 fail: a non-host without agent/booking:edit (READ_ONLY) → 403, nothing recorded
+PASS  FO-3sr DW5 pass: the host without agent/booking:edit (BILLING_FINANCE) records their own → 200
+PASS  FO-3sr DW5 fail: on a cancelled booking → 409 (its not-active answer once it has started)
+PASS  FO-3sr DW5 fail: an outcome that is not COMPLETED or NO_SHOW → 400
+PASS  FO-3sr W1 pass: create → in the list → reschedule → past the start → attendance Attended → booking.completed in the outbox; a second cancelled → booking.cancelled
+PASS  FO-3sr W1 fail: the cancelled booking has no booking.completed, and the completed one no booking.cancelled
+
+29 passed, 0 failed
