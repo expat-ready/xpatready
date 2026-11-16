@@ -266,7 +266,7 @@ export class BookingTypesService {
     for (let attempt = 0; ; attempt++) {
       try {
         return await this.db.$transaction(async (tx) => {
-          await this.checkHosts(tx, ctx.firmId, data.hostStaffIds as string[] | undefined);
+          if (!fromId) await this.checkHosts(tx, ctx.firmId, data.hostStaffIds as string[] | undefined);   // a copy keeps its source's hosts, as an edit does (review M4)
           await slugLock(tx, ctx.firmId);   // one slug choice at a time per firm, so parallel creates of one name all succeed (break M1)
           const slug = asked ?? await this.freeSlug(tx, ctx.firmId, slugOf(String(data.name)));
           const row = await tx.foConsultationType.create({ data: { ...data, firmId: firmScope(ctx.firmId).firmId, slug, createdByStaffId: ctx.staffId } });

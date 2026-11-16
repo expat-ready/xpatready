@@ -275,6 +275,11 @@ try {
   await db.platformStaff.update({ where: { id: P.READ_ONLY.id }, data: { status: "SUSPENDED" } });
   const susp = [await T("POST", "", P.OWNER, { name: "Suspended host", minutes: 30, modes: ["VIDEO"], hostStaffIds: [P.READ_ONLY.id] }), await T("PATCH", `/${other.id}`, P.OWNER, { hostStaffIds: [P.OWNER.id, P.READ_ONLY.id], version: v0 })];
   ok("FO-3a break m6 fail: a suspended staff member cannot be added as a host (create and edit → 400 on hostStaffIds)", susp.every((r) => r.status === 400 && !!r.body.fields?.hostStaffIds), susp.map((r) => [r.status, r.body?.fields]));
+  const withSusp = await make({ name: "Two hosts", hostStaffIds: [P.OWNER.id, P.ADMIN.id] });
+  await db.platformStaff.update({ where: { id: P.ADMIN.id }, data: { status: "SUSPENDED" } });
+  const dupSusp = await T("POST", `/${withSusp.id}/duplicate`);
+  await db.platformStaff.update({ where: { id: P.ADMIN.id }, data: { status: "ACTIVE" } });
+  ok("FO-3a DW3 pass: duplicating a type whose host was suspended since copies its hosts (review M4)", dupSusp.status === 201 && JSON.stringify(dupSusp.body.hostStaffIds) === JSON.stringify([P.OWNER.id, P.ADMIN.id]), dupSusp);
   await db.platformStaff.update({ where: { id: P.READ_ONLY.id }, data: { status: "ACTIVE" } });
 
   // ------------------------------------------------------------------------------------- DW10: audit and the wall
@@ -287,6 +292,9 @@ try {
       && of(gone.id, "booking_type.deleted").length === 1 && lenEdit?.minutes_before === 30 && lenEdit?.minutes_after === 45 && JSON.stringify(lenEdit?.fields) === JSON.stringify(["minutes"]) && lines.every((l) => l.actor.startsWith("staff:")), { ed, n: lines.length });
   ok("FO-3a DW10 fail: refused writes (stale version, Case Manager, PAID_CONSULT) wrote no line; a description is kept as its length only",
     !lines.some((l) => /Overwritten|CM edit|CM type|Strategy session/.test(JSON.stringify(l))) && (of(okSaves[2].body.id, "booking_type.created")[0]?.detail as Record<string, unknown>)?.description_after === "1000 characters", lines.length);
+  const mailName = await make({ name: "ask@firm.example call" });
+  const mailLines = await db.auditEvent.findMany({ where: { entityKey: mailName.id } });
+  ok("FO-3a DW10 fail: an email-shaped type name is kept in neither the audit summary nor its detail (review m13)", mailLines.length === 1 && !JSON.stringify(mailLines).includes("ask@firm.example"), mailLines);
   const bType = await db.foConsultationType.create({ data: { firmId: B.id, slug: "b-free", name: "B free", modes: ["VIDEO"], hostStaffIds: [BO.id], minutes: 30 } });
   const cross = [await T("GET", `/${bType.id}`), await T("GET", `/${bType.id}/preview`), await T("PATCH", `/${bType.id}`, P.OWNER, { name: "Taken", version: 1 }), await T("DELETE", `/${bType.id}`), await T("POST", `/${bType.id}/duplicate`), await T("POST", `/${bType.id}/switch-off`)];
   const bRow = await db.foConsultationType.findUniqueOrThrow({ where: { id: bType.id } });

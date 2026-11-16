@@ -137,3 +137,57 @@ None.
 * I did not run graph.mjs in this folder, because it rewrites `qa/GRAPH.md`. It ran in a scratch worktree.
 
 Verdict: Changes requested
+
+## Re-review at `eff3e4a8ad88cf3881d4154d7072ff65f32bb2db` (diff `c11de564..eff3e4a8` only, P-277)
+
+**Suites at this head.** I ran each one in a clean worktree on scratch databases on :54329 (never :4400).
+* `check_fo3a_booking_types`: 46/46
+* FO-1b: 80/80
+* FO-3: 133/133
+* FO-3pa: 45/45
+* FO-3sa: 39/39
+* FO-3sr: 29/29
+
+**Mutations.** Each fix's test fails when the fix is removed:
+* `FOR UPDATE` → DW6, the 6-way race test
+* `slugLock` in insert → "break M1 pass"
+* OTHER in the door's `where` → "break M3 pass"
+* `TEXT_CONTROL` → "break M2 fail"
+* the ACTIVE host check → "break m6 fail"
+* the no-op return → "break m5 fail"
+
+The one exception is `said()`: making it a no-op still gives 46/46 (m13).
+
+**My first-pass findings**
+* **M1 is closed.** `service.ts:213, 231` and `isPublic` accept FREE_CONSULT and OTHER, and the schema comment matches. My probe: an OTHER type is listed and bookable; changed to FOLLOW_UP it leaves the list at once.
+* **M2 is closed.** A description refuses control characters (line breaks and tabs are kept), bidirectional and invisible characters, and lone surrogates, answering 400 on the field. Names do the same, and lengths count code points, as the database's `char_length` does.
+* **M3 is closed.** The PR body now has:
+  * the Done-when list first;
+  * the checks;
+  * colours named Sample;
+  * the choices named;
+  * questions to Lead B (PAID_CONSULT, the empty-day reasons).
+* **m1-m7 and m9 are closed.** The probes behind that:
+  * a slug edit racing 4 same-name creates gives 200 / 409 `SLUG_USED` / four 201s (no deadlock: row lock, then the firm lock, never the other way round);
+  * a no-op save with a stale version still answers 409;
+  * an email-shaped name is masked in both summaries.
+* **Named in the PR for later:** m8 (1b or FO-3vr), m10 (FO-3st3), m11 (known limit), m12 (graph). Accepted.
+
+**New in this diff**
+* **M4 (Major). A type with a suspended host can no longer be duplicated.**
+  * Cause: `duplicate` (`types.ts:191`) sends every copied host through `insert` → `checkHosts` (`types.ts:269`), which now counts only ACTIVE staff (`types.ts:259`).
+  * Probe: a type with hosts [Owner, Admin]; Admin suspended; `POST /:id/duplicate` → 400 "Choose hosts from your firm's staff." on `hostStaffIds`. That field is not in the request, since the route takes no body.
+  * Why it is Major: AG-4-9 rule 3 and DW3 say a duplicate copies every field and child row. A suspended host is a normal state, and the edit path already keeps existing hosts (break m6's own rule: "a host already on the type stays").
+  * Fix: copied hosts skip the ACTIVE check (check only hosts not on the source), with a DW3 pass case "duplicate of a type with a suspended host copies its hosts".
+* m13 (Minor). No test fails when `said()` is removed. Add an email-shaped name to the DW10 audit case.
+* m14 (Minor). Reordering the same hosts counts as an edit: the version goes up and an audit line is written. This is harmless, but FO-3st3 should send hosts in a stable order.
+* **The new words** "In the past" and "Description cannot hold control or invisible characters." are not concept words. "In the past" is already put to Lead B in the PR. The description message should join that question.
+
+**Journey score at this head: 9½/10.**
+* Correct data stays ½, because of M4.
+* Next step obvious, plain words, error recovery and trust each go to 1.
+* Plain words is 1 only on the condition that Lead B rules on the words.
+
+**Blockers:** none. **Majors:** M4. **Minors:** m13, m14 (m8, m10-m12 are named in the PR).
+
+Verdict: Changes requested
