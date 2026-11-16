@@ -20,6 +20,11 @@ const CERT_HOST = /^sns\.[a-z]{2}-[a-z]+-[0-9]\.amazonaws\.com$/;
 export class NoticeRefused extends Error { constructor(m: string) { super(m); this.name = "NoticeRefused"; } }
 export type CertFetch = (url: string) => Promise<string>;
 const fetchCert: CertFetch = async (url) => { const r = await fetch(url, { redirect: "error" }); if (!r.ok) throw new NoticeRefused("certificate not fetched"); return r.text(); };
+/** Visits a verified SubscribeURL (SNS's own address only): the one call that confirms the subscription. */
+export type Confirm = (url: string) => Promise<void>;
+const confirmUrl: Confirm = async (url) => { const r = await fetch(url, { redirect: "error" }); if (!r.ok) throw new Error(`SNS confirmation answered ${r.status}`); };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const snsUrl = (s: unknown) => { try { const u = new URL(String(s)); return u.protocol === "https:" && CERT_HOST.test(u.hostname) && !u.port && !u.username ? u : null; } catch { return null; } };
 
 const FIELDS: Record<string, string[]> = {
   Notification: ["Message", "MessageId", "Subject", "Timestamp", "TopicArn", "Type"],
@@ -36,20 +41,23 @@ export function snsStringToSign(n: Record<string, unknown>): string {
 
 export class SesNotices {
   private readonly certs = new Map<string, string>();
-  constructor(private readonly d: { db: PrismaClient; consent: ConsentPort<Tx>; fetchCert?: CertFetch; topics?: string[] }) {}
+  constructor(private readonly d: { db: PrismaClient; consent: ConsentPort<Tx>; fetchCert?: CertFetch; topics?: string[]; confirm?: Confirm; log?: (line: string) => void }) {}
 
   /** Throws NoticeRefused unless SNS signed this notice. */
   async verify(n: Record<string, unknown>): Promise<void> {
     const url = typeof n.SigningCertURL === "string" ? n.SigningCertURL : "";
-    let u: URL;
-    try { u = new URL(url); } catch { throw new NoticeRefused("no signing certificate"); }
-    if (u.protocol !== "https:" || !CERT_HOST.test(u.hostname) || u.port || u.username || !u.pathname.endsWith(".pem")) throw new NoticeRefused("certificate not from Amazon SNS");
+    const u = snsUrl(url);
+    if (!u || !u.pathname.endsWith(".pem")) throw new NoticeRefused("certificate not from Amazon SNS");
     const alg = n.SignatureVersion === "1" ? "RSA-SHA1" : n.SignatureVersion === "2" ? "RSA-SHA256" : null;
     if (!alg || typeof n.Signature !== "string") throw new NoticeRefused("no signature");
     if (this.d.topics?.length && !this.d.topics.includes(String(n.TopicArn))) throw new NoticeRefused("not our topic");
     const text = snsStringToSign(n);
     let cert = this.certs.get(u.href);
-    if (!cert) { cert = await (this.d.fetchCert ?? fetchCert)(u.href); if (this.certs.size < 20) this.certs.set(u.href, cert); }
+    if (!cert) {
+      // A certificate that cannot be fetched is a notice we cannot verify (400), never a server error (break m4).
+      try { cert = await (this.d.fetchCert ?? fetchCert)(u.href); } catch { throw new NoticeRefused("certificate not fetched"); }
+      if (this.certs.size < 20) this.certs.set(u.href, cert);
+    }
     let good = false;
     try { good = createVerify(alg).update(text, "utf8").verify(cert, n.Signature, "base64"); } catch { good = false; }
     if (!good) throw new NoticeRefused("signature does not verify");
@@ -60,7 +68,15 @@ export class SesNotices {
     const n = (typeof raw === "string" ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : raw) as Record<string, unknown> | null;
     if (!n || typeof n !== "object" || Array.isArray(n)) throw new NoticeRefused("not a notice");
     await this.verify(n);
-    // Subscribing a topic is done once by our team in the AWS console; a confirmation request is never followed from here.
+    // Break M3: SNS sends notices only after its SubscribeURL is visited. A verified confirmation for one of our topics is
+    // confirmed here (SNS's own address only); with no topic list set, the URL is logged for our team to visit once.
+    if (n.Type === "SubscriptionConfirmation") {
+      const sub = snsUrl(n.SubscribeURL);
+      if (!sub) throw new NoticeRefused("subscribe address not from Amazon SNS");
+      if (this.d.topics?.length) await (this.d.confirm ?? confirmUrl)(sub.href);
+      else (this.d.log ?? console.warn)(`messages: SNS subscription for ${String(n.TopicArn).slice(0, 256)} waits for confirmation: visit ${sub.href.slice(0, 2048)}`);
+      return "confirmation";
+    }
     if (n.Type !== "Notification") return "confirmation";
     let m: { notificationType?: string; eventType?: string; mail?: { messageId?: string; tags?: Record<string, string[]> }; bounce?: { bounceType?: string; bounceSubType?: string; bouncedRecipients?: { emailAddress?: string }[] }; complaint?: { complainedRecipients?: { emailAddress?: string }[]; complaintFeedbackType?: string } };
     try { m = JSON.parse(String(n.Message)); } catch { return "ignored"; }
@@ -68,7 +84,7 @@ export class SesNotices {
     if ((kind !== "Bounce" && kind !== "Complaint") || !firm || !outbox || !sesId) return "ignored";
     let firmId: string;
     try { firmId = firmScope(firm).firmId; } catch { return "ignored"; }
-    if (!/^[0-9a-f-]{36}$/i.test(outbox)) return "ignored";
+    if (!UUID.test(outbox)) return "ignored";
     return this.d.db.$transaction(async (tx) => {
       const row = await tx.msgOutbox.findFirst({ where: firmScope(firmId, { id: outbox.toLowerCase(), providerId: `${SES_PROVIDER}:${sesId}` }), select: { id: true, channel: true, address: true } });
       if (!row) return "ignored" as const;

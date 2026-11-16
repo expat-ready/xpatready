@@ -13,6 +13,8 @@ import type { ChannelAdapter } from "../../send/messages.ts";
 import { unsubscribeHeaders, type UnsubscribeTokens } from "./unsubscribe.ts";
 
 export const SES_PROVIDER = "ses";
+/** An SES call gives up after this (connect 5 s), well inside the worker's transaction (DELIVER_TX_MS). */
+export const SES_TIMEOUT_MS = 20_000;
 export type SesOptions = {
   region: string; files: FilesPort; tokens: UnsubscribeTokens; publicBase: string;
   credentials?: { accessKeyId: Secret; secretAccessKey: Secret };
@@ -25,7 +27,7 @@ export function sesEmail(o: SesOptions): ChannelAdapter {
   const client = new SESv2Client({
     region: o.region, maxAttempts: 1,
     ...(o.credentials ? { credentials: async () => ({ accessKeyId: o.credentials!.accessKeyId.reveal(), secretAccessKey: o.credentials!.secretAccessKey.reveal() }) } : {}),
-    ...(o.requestHandler ? { requestHandler: o.requestHandler } : {}),
+    requestHandler: o.requestHandler ?? { requestTimeout: SES_TIMEOUT_MS, connectionTimeout: 5_000 },
   });
   const transport = createTransport({ SES: { sesClient: client, SendEmailCommand } });
   return {

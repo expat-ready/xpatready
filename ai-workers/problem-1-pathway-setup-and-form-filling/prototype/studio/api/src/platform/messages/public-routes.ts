@@ -2,19 +2,28 @@
 //   GET  /api/public/unsubscribe/:token  the page with one button (changes nothing)
 //   POST /api/public/unsubscribe/:token  one click (RFC 8058, or the button): withdraws email marketing once
 //   POST /api/public/messages/ses-notices SNS's bounce and complaint notices (text/plain JSON), signature checked first
-// A token that does not work, whatever the reason, answers the public side's one 404; too many tries from one IP, 429.
+// A link that does not work, whatever the reason, answers the public side's one not-found page (HTML: a person reads it);
+// too many tries of one link in a minute, 429.
 import { Body, Controller, Get, Inject, Param, Post, Req, Res } from "@nestjs/common";
 import { OpenRead } from "../../core.ts";
-import { sendPublicNotFound } from "../web-address/host.ts";
+import { PUBLIC_NOT_FOUND_HTML } from "../web-address/host.ts";
 import { NOTICE_PATH, NoticeRefused, SesNotices } from "./channels/email/bounces.ts";
-import { Unsubscribe } from "./channels/email/unsubscribe.ts";
+import { page, Unsubscribe } from "./channels/email/unsubscribe.ts";
 
-type Req = { ip?: string; path: string; headers: Record<string, string | string[] | undefined>; on(e: string, f: (c?: Buffer) => void): unknown; readable?: boolean };
+type Req = { on(e: string, f: (c?: Buffer) => void): unknown; readable?: boolean };
 type Res = { status(c: number): Res; setHeader(k: string, v: string): unknown; end(b?: string): unknown };
 const html = (res: Res, status: number, body: string) => { res.status(status); res.setHeader("Content-Type", "text/html; charset=utf-8"); res.setHeader("Cache-Control", "no-store"); res.end(body); };
-const tooMany = (res: Res) => { res.status(429); res.setHeader("Content-Type", "application/problem+json; charset=utf-8"); res.end(JSON.stringify({ type: "https://expatready.local/problems/too-many", title: "Please wait", status: 429, detail: "Too many tries from here. Wait a minute and try again." })); };
-/** SNS posts text/plain, which the JSON parser leaves unread: read it here (64 KB at most). */
-const rawText = (req: Req) => new Promise<string>((done) => { let s = "", n = 0; req.on("data", (c) => { n += c!.length; if (n <= 65_536) s += c!.toString("utf8"); }); req.on("end", () => done(n <= 65_536 ? s : "")); });
+const tooMany = (res: Res) => html(res, 429, page("Please wait", "<p>This link was tried many times in the last minute. Wait a minute and try again.</p>"));
+/** SNS's largest message (256 KB) and its envelope. */
+export const NOTICE_MAX_BYTES = 300 * 1024;
+/** SNS posts text/plain, which the JSON parser leaves unread: read it here, decoded once at the end (break M4: a
+ *  character split across two chunks), at most NOTICE_MAX_BYTES; a client that goes away gives "" (break m3). */
+export const rawText = (req: Req) => new Promise<string>((done) => {
+  const parts: Buffer[] = []; let n = 0;
+  req.on("data", (c) => { n += c!.length; if (n <= NOTICE_MAX_BYTES) parts.push(c!); });
+  req.on("end", () => done(n <= NOTICE_MAX_BYTES ? Buffer.concat(parts).toString("utf8") : ""));
+  for (const e of ["error", "aborted", "close"]) req.on(e, () => done(""));
+});
 
 @Controller("api/public")
 export class MessagesPublicController {
@@ -22,17 +31,19 @@ export class MessagesPublicController {
 
   @OpenRead("the unsubscribe page a marketing or service email links to (PF-19b): one button, changes nothing")
   @Get("unsubscribe/:token")
-  async page(@Param("token") t: string, @Req() req: Req, @Res() res: Res) {
-    if (!this.u.allow(String(req.ip ?? "unknown"))) return tooMany(res);
-    const p = await this.u.page(t);
-    return p ? html(res, 200, p) : sendPublicNotFound(req, res);
+  async page(@Param("token") t: string, @Res() res: Res) {
+    const a = this.u.allow(t);
+    if (a === "limited") return tooMany(res);
+    const p = a === "open" ? await this.u.page(t) : null;
+    return html(res, p ? 200 : 404, p ?? PUBLIC_NOT_FOUND_HTML);
   }
 
   @Post("unsubscribe/:token")
-  async confirm(@Param("token") t: string, @Req() req: Req, @Res() res: Res) {
-    if (!this.u.allow(String(req.ip ?? "unknown"))) return tooMany(res);
-    const p = await this.u.confirm(t);
-    return p ? html(res, 200, p) : sendPublicNotFound(req, res);
+  async confirm(@Param("token") t: string, @Res() res: Res) {
+    const a = this.u.allow(t);
+    if (a === "limited") return tooMany(res);
+    const p = a === "open" ? await this.u.confirm(t) : null;
+    return html(res, p ? 200 : 404, p ?? PUBLIC_NOT_FOUND_HTML);
   }
 
   @Post(NOTICE_PATH.replace("/api/public/", ""))

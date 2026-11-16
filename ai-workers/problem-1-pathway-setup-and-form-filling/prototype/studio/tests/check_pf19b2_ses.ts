@@ -18,16 +18,17 @@ import { Db } from "../api/src/core.ts";
 import { LocalFiles } from "../api/src/front-office/files.ts";
 import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
 import { Secret } from "../api/src/platform/config/secret.ts";
-import { NoticeRefused, SesNotices, snsStringToSign } from "../api/src/platform/messages/channels/email/bounces.ts";
+import { NoticeRefused, SesNotices, snsStringToSign, type Confirm } from "../api/src/platform/messages/channels/email/bounces.ts";
 import { localEmail } from "../api/src/platform/messages/channels/email/local.ts";
 import { SES_PROVIDER, sesEmail } from "../api/src/platform/messages/channels/email/ses.ts";
 import { UNSUBSCRIBE_PER_MINUTE, Unsubscribe, UnsubscribeTokens } from "../api/src/platform/messages/channels/email/unsubscribe.ts";
 import { ConsentStore } from "../api/src/platform/messages/consent/consent-store.ts";
 import { PlatformInbox } from "../api/src/platform/messages/demo-inbox.ts";
-import { MessagesPublicController } from "../api/src/platform/messages/public-routes.ts";
+import { MessagesPublicController, rawText } from "../api/src/platform/messages/public-routes.ts";
+import { EventEmitter } from "node:events";
 import { channelsOf, emailAdapter } from "../api/src/platform/messages/send/channels.ts";
 import { MessagesMail } from "../api/src/platform/messages/send/mail.ts";
-import { Messages } from "../api/src/platform/messages/send/messages.ts";
+import { DELIVER_TX_MS, Messages } from "../api/src/platform/messages/send/messages.ts";
 import { scanText } from "../api/src/platform/observability/scan-logs.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { fakeAlerts } from "../ports/alert.ts";
@@ -96,12 +97,13 @@ for (const k of ["log", "warn", "error", "info", "debug"] as const) { const was 
 
 // Recorded SES answers: the SDK's own request handler, so signing, the endpoint and the transport all run for real.
 type Seen = { host: string; headers: Record<string, string>; body: { FromEmailAddress?: string; Destination?: { ToAddresses?: string[] }; Content: { Raw: { Data: string } }; EmailTags?: { Name: string; Value: string }[] } };
-const seen: Seen[] = []; let reject: string | null = null;
+const seen: Seen[] = []; let reject: string | null = null, slowMs = 0;
 const recorded = {
   metadata: { handlerProtocol: "http/1.1" },
   async handle(req: { hostname: string; headers: Record<string, string>; body: string | Uint8Array }) {
     const body = JSON.parse(typeof req.body === "string" ? req.body : new TextDecoder().decode(req.body));
     seen.push({ host: req.hostname, headers: req.headers, body });
+    if (slowMs) await new Promise((r) => setTimeout(r, slowMs));
     const r = reject ? { statusCode: 400, headers: { "content-type": "application/json", "x-amzn-errortype": reject }, body: Readable.from([Buffer.from(JSON.stringify({ message: "Email address is not verified (recorded)." }))]) }
       : { statusCode: 200, headers: { "content-type": "application/json" }, body: Readable.from([Buffer.from(JSON.stringify({ MessageId: `0101019a-rec-${randomBytes(6).toString("hex")}-000000` }))]) };
     return { response: r };
@@ -115,8 +117,8 @@ const rawOf = (s: Seen) => Buffer.from(s.body.Content.Raw.Data, "base64").toStri
 const sns = generateKeyPairSync("rsa", { modulusLength: 2048 }), CERT_URL = "https://sns.ca-central-1.amazonaws.com/SimpleNotificationService-rec.pem";
 let certFetches = 0;
 const fetchCert = async (url: string) => { certFetches++; if (url !== CERT_URL) throw new Error("unexpected certificate"); return sns.publicKey.export({ type: "spki", format: "pem" }).toString(); };
-const signed = (message: object, o: { id?: string; version?: "1" | "2" } = {}) => {
-  const n: Record<string, string> = { Type: "Notification", MessageId: o.id ?? uuid(), TopicArn: "arn:aws:sns:ca-central-1:000000000000:ses-notices", Message: JSON.stringify(message), Timestamp: new Date().toISOString(), SignatureVersion: o.version ?? "2", SigningCertURL: CERT_URL };
+const signed = (message: object, o: { id?: string; version?: "1" | "2"; extra?: Record<string, string> } = {}) => {
+  const n: Record<string, string> = { Type: "Notification", ...o.extra, MessageId: o.id ?? uuid(), TopicArn: "arn:aws:sns:ca-central-1:000000000000:ses-notices", Message: JSON.stringify(message), Timestamp: new Date().toISOString(), SignatureVersion: o.version ?? "2", SigningCertURL: CERT_URL };
   n.Signature = createSign(n.SignatureVersion === "1" ? "RSA-SHA1" : "RSA-SHA256").update(snsStringToSign(n)).sign(sns.privateKey, "base64");
   return n;
 };
@@ -173,6 +175,15 @@ try {
   ok("SES1 fail: SES refuses (recorded MessageRejected) → not SENT (stays QUEUED for a retry), the error names the outbox id and the SES error only",
     (await db.msgOutbox.findUniqueOrThrow({ where: { id: r1.outboxId } })).state === "QUEUED" && err1 === `messages: SES did not take ${r1.outboxId} (MessageRejected 400)`, err1);
 
+  // Break M1 (DW4 with a slow SES): an answer after 6 s (past Prisma's 5 s default) is still one send, kept SENT.
+  slowMs = 6_000;
+  const m1 = await db.$transaction((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: box("slow"), content: words, idempotencyKey: uuid() }));
+  const callsM1 = seen.length, first = await messages.deliver(firmA, m1.outboxId).catch((e: Error) => e.message);
+  slowMs = 0;
+  const again = await messages.deliver(firmA, m1.outboxId);
+  ok("DW4 (break M1): SES answering after 6 s → SENT once; the job run again sends nothing (one SES call); the worker's transaction outlives the SES timeout",
+    first === "sent" && again === "skipped" && seen.length === callsM1 + 1 && (await db.msgOutbox.findUniqueOrThrow({ where: { id: m1.outboxId } })).state === "SENT" && DELIVER_TX_MS > 20_000, { first, again });
+
   // ------------------------------------------------------------------------------------------ DW9 a hard bounce suppresses once
   const x9 = box("dw9"), s9 = await sendNow({ firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: x9, content: words });
   const sesId9 = s9.row.providerId!.slice(4), n9 = signed(notice("Bounce", firmA, s9.outboxId, sesId9, x9));
@@ -219,15 +230,39 @@ try {
   const topics = new SesNotices({ db, consent, fetchCert, topics: ["arn:aws:sns:ca-central-1:000000000000:other"] });
   ok("DW10 fail: with topics configured, a signed notice from another topic is refused", await topics.receive(good10).then(() => false, (e) => e instanceof NoticeRefused));
 
+  // Break M3: a verified subscription confirmation is confirmed (our topic) or its address logged (no topic list); one
+  // naming a SubscribeURL off SNS's own host is refused and never visited.
+  const confirmed: string[] = [], logged: string[] = [], TOPIC = "arn:aws:sns:ca-central-1:000000000000:ses-notices";
+  const confirm: Confirm = async (u) => { confirmed.push(u); };
+  const subUrl = "https://sns.ca-central-1.amazonaws.com/?Action=ConfirmSubscription&TopicArn=x&Token=abc";
+  const conf = (url: string) => signed({}, { extra: { Type: "SubscriptionConfirmation", SubscribeURL: url, Token: "abc" } });
+  const withTopic = new SesNotices({ db, consent, fetchCert, topics: [TOPIC], confirm }), noTopic = new SesNotices({ db, consent, fetchCert, confirm, log: (l) => logged.push(l) });
+  const c1 = await withTopic.receive(conf(subUrl)), c2 = await noTopic.receive(conf(subUrl));
+  const c3 = await withTopic.receive(conf("https://evil.example/confirm")).then(() => "taken", (e) => e instanceof NoticeRefused ? "refused" : String(e));
+  ok("M3 pass: a signed confirmation for our topic visits its SubscribeURL once; with no topic list the URL is logged for our team", c1 === "confirmation" && c2 === "confirmation" && confirmed.length === 1 && confirmed[0] === subUrl && logged.length === 1 && logged[0].includes(subUrl), { confirmed, logged });
+  ok("M3 fail: a confirmation whose SubscribeURL is not SNS's own address is refused and never visited", c3 === "refused" && confirmed.length === 1, c3);
+  // Break M4: a notice in chunks split inside a character reads whole.
+  const x4 = box("m4"), s4 = await sendNow({ firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: x4, content: words });
+  const n4 = signed({ ...notice("Bounce", firmA, s4.outboxId, s4.row.providerId!.slice(4), x4), mail: { messageId: s4.row.providerId!.slice(4), commonHeaders: { subject: "Séminaire d'été" }, tags: { firm: [firmA], outbox: [s4.outboxId] } } });
+  const bytes = Buffer.from(JSON.stringify(n4), "utf8"), cut = bytes.indexOf(Buffer.from("é", "utf8")) + 1;
+  const stream = Object.assign(new EventEmitter(), { readable: true });
+  setImmediate(() => { stream.emit("data", bytes.subarray(0, cut)); stream.emit("data", bytes.subarray(cut)); stream.emit("end"); });
+  const { r: r4, res: res4 } = fakeRes(); await routes.notice({}, stream as never, res4 as never);
+  ok("M4 pass: a signed notice in two chunks split inside 'é' → 200 and the address suppressed", r4.code === 200 && (await db.msgSuppression.count({ where: { address: x4 } })) === 1, r4);
+  const gone = Object.assign(new EventEmitter(), { readable: true }); setImmediate(() => { gone.emit("data", bytes.subarray(0, 10)); gone.emit("aborted"); });
+  ok("M4 fail (break m3): a client that goes away mid-notice settles as empty (then 400), never hangs", (await rawText(gone as never)) === "");
+  const noCert = new SesNotices({ db, consent, fetchCert: async () => { throw new Error("network down"); } });
+  ok("m4: a certificate that cannot be fetched → refused (400), not a server error", await noCert.receive(good10).then(() => false, (e) => e instanceof NoticeRefused));
+
   // ------------------------------------------------------------------------------------------ DW11 + R28 one-click unsubscribe keeps the other consents
   const p11 = person(), x11 = box("dw11");
   await give(p11, [["EMAIL", "MARKETING"], ["WHATSAPP", "SERVICE"], ["WHATSAPP", "MARKETING"]]);
   const s11 = await sendNow({ firmId: firmA, person: p11, channel: "EMAIL", class: "MARKETING", address: x11, content: words });
   const tok11 = tokenOf(/List-Unsubscribe: (<[^>]+>)/.exec(rawOf(s11.sent))?.[1]);
   const withdrawals = () => db.msgConsentWithdrawal.count({ where: { subjectId: p11.id } });
-  const { r: g11, res: rg11 } = fakeRes(); await routes.page(tok11, req() as never, rg11 as never);
+  const { r: g11, res: rg11 } = fakeRes(); await routes.page(tok11, rg11 as never);
   ok("DW11 pass: the link's page (GET) shows one button and records nothing", g11.code === 200 && /<button[^>]*>Unsubscribe<\/button>/.test(g11.body) && g11.body.includes(firmRow.operatingName) && (await withdrawals()) === 0, g11);
-  const { r: p11r, res: rp11 } = fakeRes(); await routes.confirm(tok11, req() as never, rp11 as never);
+  const { r: p11r, res: rp11 } = fakeRes(); await routes.confirm(tok11, rp11 as never);
   const w11 = await db.msgConsentWithdrawal.findMany({ where: { subjectId: p11.id } });
   ok("DW11 pass: one click (POST) records the withdrawal through ConsentPort (via UNSUBSCRIBE, email marketing), by the message's id",
     p11r.code === 200 && w11.length === 1 && w11[0].via === "UNSUBSCRIBE" && w11[0].channel === "EMAIL" && w11[0].purpose === "MARKETING" && w11[0].withdrawnBy === `system:unsubscribe:${s11.outboxId}`, w11);
@@ -246,18 +281,25 @@ try {
   const otherRing = new UnsubscribeTokens({ current: 3, keys: new Map([[3, new Secret("other", randomBytes(32).toString("base64"))]]) });
   const forged = [flip(tok12, 10), flip(tok12, 50), flip(tok12, 80), otherRing.mint(firmA, s12.outboxId), tokens.mint(firmA, t1.outboxId), tokens.mint(firmB, s12.outboxId), "x", tok12 + "A"];
   let all404 = true;
-  for (const t of forged) { const { r, res } = fakeRes(); await routes.confirm(t, req("198.51.100.1") as never, res as never); if (r.code !== 404) all404 = false; }
+  for (const t of forged) { const { r, res } = fakeRes(); await routes.confirm(t, res as never); if (r.code !== 404) all404 = false; }
   ok("DW12 fail: a forged token (changed bytes, another key, a transactional message's, another firm's, malformed) → 404 and nothing recorded",
     all404 && (await db.msgConsentWithdrawal.count({ where: { subjectId: p12.id } })) === 0);
-  const { r: u12, res: ru12 } = fakeRes(); await routes.confirm(tok12, req("198.51.100.2") as never, ru12 as never);
-  const { r: v12, res: rv12 } = fakeRes(); await routes.confirm(tok12, req("198.51.100.2") as never, rv12 as never);
-  const { r: g12, res: rg12 } = fakeRes(); await routes.page(tok12, req("198.51.100.2") as never, rg12 as never);
+  const { r: u12, res: ru12 } = fakeRes(); await routes.confirm(tok12, ru12 as never);
+  const { r: v12, res: rv12 } = fakeRes(); await routes.confirm(tok12, rv12 as never);
+  const { r: g12, res: rg12 } = fakeRes(); await routes.page(tok12, rg12 as never);
   ok("DW12 fail: a reused token → 404 (POST and page), still one withdrawal", u12.code === 200 && v12.code === 404 && g12.code === 404 && (await db.msgConsentWithdrawal.count({ where: { subjectId: p12.id } })) === 1, [u12.code, v12.code, g12.code]);
   ok("DW12 pass: the token names no firm or person in clear", ![firmA, firmA.replace(/-/g, ""), p12.id, p12.id.replace(/-/g, ""), s12.outboxId.replace(/-/g, "")].some((v) => tok12.includes(v) || Buffer.from(tok12, "base64url").toString("hex").includes(v)));
-  let last = 200; for (let i = 0; i <= UNSUBSCRIBE_PER_MINUTE; i++) { const { r, res } = fakeRes(); await routes.page("nope", req("192.0.2.77") as never, res as never); last = r.code; }
-  ok("DW12 fail: one IP's tries are rate limited (429 after the limit in a minute)", last === 429);
+  // Break M2: the limit is per link, not per IP (behind the load balancer every caller has one address).
+  const p12b = person(), x12b = box("dw12b"); await give(p12b, [["EMAIL", "MARKETING"]]);
+  const s12b = await sendNow({ firmId: firmA, person: p12b, channel: "EMAIL", class: "MARKETING", address: x12b, content: words });
+  const tok12b = tokenOf(/List-Unsubscribe: (<[^>]+>)/.exec(rawOf(s12b.sent))?.[1]);
+  for (let i = 0; i <= UNSUBSCRIBE_PER_MINUTE + 5; i++) { const { res } = fakeRes(); await routes.page(flip(tok12b, 20 + (i % 40)), res as never); }
+  const { r: one, res: rOne } = fakeRes(); await routes.page(tok12b, rOne as never);
+  ok("DW12 pass (break M2): many junk tries from the same address never block a real link (200)", one.code === 200, one.code);
+  let last = 200; for (let i = 0; i < UNSUBSCRIBE_PER_MINUTE; i++) { const { r, res } = fakeRes(); await routes.page(tok12b, res as never); last = r.code; }
+  ok("DW12 fail: one link tried more than the limit in a minute → 429 (a page, not JSON)", last === 429);
   await clock.advance(61_000);
-  { const { r, res } = fakeRes(); await routes.page("nope", req("192.0.2.77") as never, res as never); ok("DW12 pass: after a minute the same IP may try again (404, not 429)", r.code === 404); }
+  { const { r, res } = fakeRes(); await routes.confirm(tok12b, res as never); ok("DW12 pass: after a minute the link works again (one click → 200)", r.code === 200 && r.headers["content-type"]?.startsWith("text/html")); }
 
   // ------------------------------------------------------------------------------------------ DW13 MailPort over MessagePort
   const mail = new MessagesMail({ db, messages, files });

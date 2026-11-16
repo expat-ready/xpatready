@@ -5,7 +5,8 @@
 // scanner never unsubscribes anyone); the POST records the withdrawal through ConsentPort.withdraw (via UNSUBSCRIBE) for
 // email marketing only: the person's other consents (WhatsApp opt-in, WhatsApp marketing) stay as they are, and service
 // email needs no consent (PF-19a). A token is used once: its withdrawal is written `by system:unsubscribe:<outbox id>`, so
-// a second POST, a forged token or one for a transactional message answers 404 and records nothing. Rate limited per IP.
+// a second POST, a forged token or one for a transactional message answers 404 and records nothing. Rate limited per link
+// (break M2: behind the load balancer every caller has one IP); a token that does not open costs no query.
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
 import type { ConsentPort } from "../../../../../../ports/consent.ts";
@@ -15,7 +16,7 @@ import { firmScope } from "../../../firm-scope.ts";
 
 type Tx = Prisma.TransactionClient;
 export const UNSUBSCRIBE_PATH = "/api/public/unsubscribe";
-/** Sample: unsubscribe tries one IP may make in a minute. */
+/** Sample: tries one link may take in a minute. */
 export const UNSUBSCRIBE_PER_MINUTE = 20;
 const INFO = "pf19b.unsubscribe.v1";
 
@@ -60,19 +61,22 @@ export function unsubscribeHeaders(r: Pick<Rendered, "firmId" | "outboxId" | "cl
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-const page = (title: string, body: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title></head><body style="font-family:system-ui,sans-serif;margin:4rem auto;max-width:32rem;padding:0 1rem;color:#1f2937"><h1 style="font-size:1.5rem">${esc(title)}</h1>${body}</body></html>`;
+export const page = (title: string, body: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title></head><body style="font-family:system-ui,sans-serif;margin:4rem auto;max-width:32rem;padding:0 1rem;color:#1f2937;overflow-wrap:anywhere"><h1 style="font-size:1.5rem">${esc(title)}</h1>${body}</body></html>`;
 
 export class Unsubscribe {
   private readonly hits = new Map<string, number[]>();
   constructor(private readonly d: { db: PrismaClient; consent: ConsentPort<Tx>; tokens: UnsubscribeTokens; now?: () => number }) {}
 
-  /** True when this IP may try again now (each try counts, found or not). */
-  allow(ip: string): boolean {
-    const now = this.d.now?.() ?? Date.now(), list = (this.hits.get(ip) ?? []).filter((t) => t > now - 60_000);
-    if (list.length >= UNSUBSCRIBE_PER_MINUTE) { this.hits.set(ip, list); return false; }
-    list.push(now); this.hits.set(ip, list);
-    if (this.hits.size > 50_000) this.hits.clear();
-    return true;
+  /** "open" when the link may be tried now, "limited" after UNSUBSCRIBE_PER_MINUTE tries of it, "unknown" for a token
+   *  that is not ours (no query, nothing counted). */
+  allow(token: string): "open" | "limited" | "unknown" {
+    const ids = this.d.tokens.open(token);
+    if (!ids) return "unknown";
+    const now = this.d.now?.() ?? Date.now(), key = ids.outboxId, list = (this.hits.get(key) ?? []).filter((t) => t > now - 60_000);
+    if (list.length >= UNSUBSCRIBE_PER_MINUTE) { this.hits.set(key, list); return "limited"; }
+    list.push(now); this.hits.set(key, list);
+    if (this.hits.size > 50_000) for (const [k, v] of this.hits) if (!v.some((t) => t > now - 60_000)) this.hits.delete(k);   // break m5: only spent entries go
+    return "open";
   }
 
   /** The message a token is for, while its link still works; else null (the route answers 404). */
