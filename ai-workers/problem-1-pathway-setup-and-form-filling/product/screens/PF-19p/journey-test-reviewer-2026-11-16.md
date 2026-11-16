@@ -57,3 +57,28 @@ No browser walk was possible: there are no pages. Measured on clean worktrees of
 * Real SES.
 * PF-12's roles on this commit (the breaker ran that check).
 * An intended user's unaided walk (D17 and D20 stay with the founder).
+
+## Re-score at 8b82dfd2f (diff-only re-review, P-277)
+I re-walked only the journeys the diff touches, on scratch databases with the real `Messages`, `MessagesMail` and `PlatformInbox`. Suites: pf19p 65/0, pf14 95/0, pf12 100/0. There is still no screen and no browser walk.
+* **5. Provider failure: Held.**
+  - Each try is counted ("send failed: try n of 5"), with one log line of ids, and the row ends FAILED "send failed" after 5 tries.
+  - A new row is never starved: DW1, 51 stuck rows and one fresh row.
+  - On pg-boss: 4 attempts, then the sweep's 5th try (breaker's probe).
+  - Edge: a try whose own bookkeeping fails leaves the row QUEUED forever, with no log line (my probe, 2 h of sweeps; review m-r2).
+* **10. Across the boundary: Held.** `MessagesMail.send` answers with the row QUEUED and one platform job. No provider call is made in the request (DW1).
+* **8. Wrong role: Held, and writes are now proven.** `xr_app` and a firm role get 42501 on insert. A write without the bypass is refused through the walled pool, and `platform.account.mail` is refused on another route.
+* **1, 2, 6, 7: still held** (DW1 now runs the job, then reads the row).
+
+| Criterion | Was | Now | Evidence |
+|---|---|---|---|
+| Task completed | 1 | 1 | journeys 1, 2, 6 |
+| Plain words | ½ | ½ | unchanged: a port refusal is a raw ZodError |
+| Feedback and state | ½ | 1 | try count in the reason, then FAILED with a reason, plus a log line (5) |
+| Correct data | 1 | 1 | 8-way race gives 1 row; CHECK clauses tested; parallel-world migration |
+| Error recovery | ½ | ½ | crash and provider failure recover or end; an uncounted try stalls for good (m-r2) |
+| Speed | ½ | 1 | the request only queues a job (10) |
+| Trust and sources | 1 | 1 | From address labelled Sample |
+
+**6 / 7 applicable, which gives 8.5 / 10 (pass; no 0).** To raise it, most valuable first:
+1. Count the try before the send (m-r2): raises error recovery.
+2. Plain words for port refusals in PF-5v (the caller's job).

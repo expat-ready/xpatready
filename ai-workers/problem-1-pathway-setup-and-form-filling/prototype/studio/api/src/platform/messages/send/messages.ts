@@ -41,7 +41,9 @@ export const PLATFORM_SEND_TRIES = 5;
 /** How long one platform send's transaction may hold its row lock while the adapter answers (a provider call; review m6:
  *  Prisma's 5 s default would roll back a send the provider had accepted, and the next try would send it again). */
 export const PLATFORM_DELIVER_TX_MS = 60_000;
-/** The wait before a platform row's next try: SWEEP_AFTER_MS, doubled after each failed try (2, 4, 8, 16 minutes). */
+/** The wait before the sweep queues a platform row's next try: SWEEP_AFTER_MS, doubled after each counted failed try (2, 4,
+ *  8, 16 minutes). With pg-boss the runner's own retries (its retry policy) usually make tries 2 to 4 first; the sweep
+ *  then queues what is left, and the 5th counted failure ends the row FAILED (review m-r3). */
 export const platformRetryAfterMs = (tries: number) => SWEEP_AFTER_MS * 2 ** Math.max(0, tries - 1);
 /** A platform row's job key for its next try (the first is the dispatch's; each later try its own, so the sweep queues
  *  each try once). */
@@ -230,13 +232,16 @@ export class Messages implements MessagePort<Tx> {
     // A row never tried goes first, then the fewest tries, then the least recently tried (break F1: stuck rows never starve a new one).
     const platform = due.filter((r) => r.updatedAt.getTime() <= now.getTime() - platformRetryAfterMs(triesOf(r.stateReason)))
       .sort((x, y) => triesOf(x.stateReason) - triesOf(y.stateReason) || x.updatedAt.getTime() - y.updatedAt.getTime()).slice(0, SWEEP_PER_FIRM);
-    for (const r of platform) if ((await this.d.jobs.enqueue(SEND_QUEUE, { outboxId: r.id, platform: true }, { key: platformJobKey(r.id, triesOf(r.stateReason)), platform: true })).queued) n++;
+    // The hour is in the key (as the firm rows'), so a try that failed before it was counted is queued again next hour
+    // instead of waiting on a key already used (break R2, review m-r2).
+    for (const r of platform) if ((await this.d.jobs.enqueue(SEND_QUEUE, { outboxId: r.id, platform: true }, { key: `${platformJobKey(r.id, triesOf(r.stateReason))}:sweep:${hour}`, platform: true })).queued) n++;
     return n;
   }
 
   /** Registers the worker, the sweep and the cap alert on the job runner. */
   async register(): Promise<void> {
-    await this.d.jobs.handle(SEND_QUEUE, async (j) => { await this.deliver(j.payload.platform === true && j.firmId === null ? null : String(j.payload.firmId), String(j.payload.outboxId)); });
+    // The job's own firm picks the path, never its payload: a job with no firm only ever sends a platform row (break R1, review m-r1).
+    await this.d.jobs.handle(SEND_QUEUE, async (j) => { await this.deliver(j.firmId, String(j.payload.outboxId)); });
     await this.d.jobs.handle(SWEEP_QUEUE, async () => { await this.sweep(); });
     await this.d.jobs.handle(CAP_ALERT_QUEUE, async (j) => { await this.d.alerts().raise("send_cap_reached", { rule: "PF-19b.daily_cap", firmId: String(j.payload.firmId), entity: "msg_send_counter", entityKey: String(j.payload.day) }); });
     await this.d.jobs.recurring(SWEEP_QUEUE, "* * * * *", "UTC");

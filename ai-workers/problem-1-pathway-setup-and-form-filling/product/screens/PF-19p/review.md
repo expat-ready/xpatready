@@ -92,3 +92,104 @@ Note: while I reviewed, another agent changed the shared checkout (uncommitted b
 **Fix list:** M1 (Lead B's ruling, or the job path); M2 (backoff, a limit, FAILED with a reason, a log line, and a test). The Minors are recommended for the same PR.
 
 Verdict: Changes requested
+
+## Re-review (diff a1b2794e8..8b82dfd2f)
+
+Diff only (P-277), 16 Nov 2026: the branch's own commits `208074c6f` (break F1, F2), `92fb36576` (m2-m6) and `7b2be8e02` (Lead B's ruling A on M1), plus the merge `8b82dfd2f`'s resolutions in `demo-inbox.ts` and `platform/MODULE.md` and its two new BYPASS_USES rows. PF-12's own code is not re-reviewed. Lead B's ruling: PR comment 6911266709 (rev 16.66). No live AI, no live email, US$0. Code not edited.
+Note: the PR head is now `148894cc4`. That commit adds only the breaker's re-break notes to `break-report.md`, so this verdict covers its code too.
+
+### What I ran (checkout at 8b82dfd2f, clean tree, Postgres on :54329)
+* `check_pf19p_platform_mail` 65/0 (it was 48), `check_pf14_jobs` 95/0, `check_pf0p_ports` 114/0, `check_pf12_walls` 100/0, `check_pf19b_sending` 42/0, `check_pf19b_mail` 29/0.
+* `product/tools/typecheck.mjs`: PASS, no new type errors (15 known, 0 fixed). It needs `NODE_OPTIONS=--max-old-space-size=6144` in this sandbox; with the default heap, tsc api runs out of memory.
+* One probe on a scratch database (dropped afterwards; the probe file is deleted): the real `Messages` and `MessagesMail` with fakeJobs. The provider and the try's own bookkeeping read fail once, then both work again. Result after 120 sweeps (2 h): the row is `QUEUED`, its reason is null, the sweep queued 0 jobs, and 0 log lines were written (m-r2 below).
+
+### Lead B's four conditions
+1. **Either `firmId` or `platform: true`, never both, never neither: met.** `ports/jobs.ts:26` is a zod discriminated union of two strict objects.
+   - Neither is refused as a firm job without `firmId`, and both are refused by the strict object.
+   - The contract case (c) and the breaker's probe also cover `platform: false`, `"true"` and `1`.
+2. **`platform: true` only on PLATFORM_JOB_QUEUES (`messages.send`), refused by the port and the runner: met.**
+   - The constant is one frozen array at `ports/jobs.ts:23`.
+   - The fake refuses through `jobFirmOf` (`:34`), on both enqueue and schedule.
+   - PgBossJobs refuses before anything is queued (`pgboss-jobs.ts:240`) and again at run, a hand-written envelope included (`:283`, the new PF-14 line in `check_pf14_jobs.ts`).
+   - "Only for PLATFORM_ACCOUNT messages" holds because `sendPlatformRow` selects only `firm_id IS NULL AND audience = 'PLATFORM_ACCOUNT'`. A platform job naming a firm's row is skipped (breaker, Held).
+3. **A platform job runs as the system role and never touches a firm's rows: met for every caller in the code, but the handler does not enforce it (m-r1).**
+   - `PlatformJobs.handle` runs a job with no firm through `asJob`, which uses `asBypass("job:messages.send")` (`firm-scope.ts:107`). `check_pf14_jobs` logs `platform_bypass use job:messages.send`, and DW3's last line sends through the walled pool.
+   - A firm's send job still runs `withFirm`.
+4. **The shared contract case on every adapter: met.**
+   - Case (a) runs, (b) refuses an unlisted queue, (c) refuses a job naming neither. It runs on fakeJobs (pf0p), PgBossJobs and PlatformJobs (pf14).
+   - On the fake, (a)'s "retried as a firm's job is" compares `[1]` with `[1]`, because the fake never retries. PgBossJobs and PlatformJobs prove a real second attempt.
+
+### The earlier findings
+* **M1: resolved.**
+  - `MessagesMail.send` writes the row under `asBypass("platform.account.mail")` (`send/mail.ts:45`) and then only queues a job: `dispatch(null)` does one `enqueue` (`send/messages.ts:130`).
+  - The first DW1 line proves the answer comes back with the row `QUEUED` and one waiting platform job on `messages.send`, and no provider call is made.
+  - The sign-up answer no longer waits on the provider. STANDARDS:28 is met.
+* **M2: resolved.**
+  - A failed try is counted in `state_reason` (`send failed: try n of 5`), with one log line of ids and the error name only (`:186`). Then the error is thrown on, so the runner retries.
+  - At try 5 the row is `FAILED "send failed"`.
+  - The sweep waits longer after each failed try, puts never-tried rows first, and queues each try once under its own key.
+  - DW1 has a pass/fail test: 51 stuck rows, one fresh row sent on the first sweep, and all 51 rows FAILED after exactly 5 × 51 log lines.
+  - The breaker's pg-boss probe: one job makes 4 provider calls and ends "try 4 of 5" with one dead letter; the sweep's 5th call ends it FAILED.
+* **m1** (setting wording): resolved (`settings.ts:205-209`).
+* **m2** (CHECK clauses): resolved. A new DW2 line covers WhatsApp, `consent_id` and `template_version_id` (23514).
+* **m3** (role writes): resolved.
+  - With the probe roles, a firm role's insert gives 42501, it updates 0 rows, and the system role writes.
+  - With PF-12's roles, `xr_app` gets 42501.
+  - Through the real `WalledPool`, a write without the bypass is refused, and `platform.account.mail` is refused on another route.
+  - The DW3 probe no longer switches PF-12's row security off (`hadRls`).
+* **m4** (key race): resolved. Eight concurrent sends give 1 row and 7 `repeated`.
+* **m5** (parallel world): resolved.
+  - DW4 checks the stamp.
+  - It migrates up to the migration before PF-19p's, writes an old-shape SENT row with its event, applies PF-19p's migration and checks right after it: the row is FIRM, its event is kept, both CHECKs are validated, and the index is valid and unique. Then it runs the later migrations.
+* **m6** (#1956 landing notes, 60 s transaction): resolved.
+  - `PLATFORM_DELIVER_TX_MS` (60 s) is set as both `timeout` and `maxWait` (`:43`, the transaction at `sendPlatformRow`).
+  - The PR body's "Landing notes" covers the `ses.ts` null firm tag and bounces.
+* **m7** (merge): resolved.
+  - `demo-inbox.ts` keeps PF-12's `asBypass("platform.demo.inbox")` around `listAll` and uses `filesSpaceOf` for both reads.
+  - `platform/MODULE.md` keeps both test lists, so both `check_pf12_walls` and `check_pf19p_platform_mail` are listed.
+  - BYPASS_USES has `job:messages.send` (`outside`, no routes) and `platform.account.mail` (the sign-up routes, `outside`, `direct`).
+
+### Nothing else broken
+* **PF-14's "no job without a firm":** still holds for every queue except `messages.send` with an explicit `platform: true`.
+* **PF-12's walls:** 100/0. The two new bypass uses are the only change in `firm-scope.ts`.
+* **Firm sends unchanged:**
+  - The firm path's dispatch key, sweep query, hourly sweep key and `deliver(firm, …)` are unchanged in the diff;
+  - the firm handler branch gets `String(j.payload.firmId)` as before;
+  - pf19b sending and mail pass.
+* **`JobOptions`:** its type is now `z.input`, and `cancel` uses `JobKey`. tsc finds no new error, and nothing else read `JobOptions.shape`.
+
+### Findings
+**Blocker:** none. **Major:** none.
+
+**Minor**
+* **m-r1 `send/messages.ts:239`: the send handler picks the platform or firm path from the payload, not from the job's firm.** (This is the breaker's R1; I confirm it by reading.)
+  - What happens: a platform job (`j.firmId === null`) whose payload has `firmId: A` and no `platform: true` takes the firm path, `deliver(A, …)`, inside the bypass scope. A firm's row is then sent by a job with no firm, as the system role.
+  - Failure scenario: a later caller writes `enqueue("messages.send", { firmId, outboxId }, { key, platform: true })` by mistake. Firm A's message goes out under `job:messages.send`, past the wall, and nothing refuses it.
+  - Why it is not higher: no caller does this today. `dispatch(null)` and the sweep always set `platform: true` (`:130`, `:233`). Consent and the cap still apply.
+  - Condition 3 is therefore held by its callers, not by the code.
+  - Fix (one token, recommended in this PR): branch on `j.firmId === null` alone, and refuse a payload `firmId` on a job with no firm.
+* **m-r2 `send/messages.ts:181-187, :233`: a try that fails before it is counted leaves the row QUEUED for good.** (This is the breaker's R2; my probe reproduces it independently.)
+  - What happens: the try is counted only if the catch's own `findFirst` and `updateMany` succeed. The sweep re-offers the row under `platformJobKey(id, tries)`, and a key that is already used never queues again (`job-key.ts`: no job row is ever deleted).
+  - Failure scenario: all 4 pg-boss attempts of one job die uncounted. For example, the API's Prisma pool is exhausted (`maxWait` 60 s, then the catch's read also times out) while pg-boss's own pool works, for the few minutes of its 30 s, 60 s and 120 s backoff.
+  - Result: a sign-up verification email stays QUEUED forever. It never becomes FAILED, and no row log line is written; only the dead-letter list shows the job.
+  - The firm path's hourly sweep key does not have this hole.
+  - Fix: count the try before the provider call (claim it in its own statement), or let the sweep key also carry the hour once a row is far past its wait.
+* **m-r3 `send/messages.ts:44` and the PR's "2/4/8/16 min": the wait schedule described is only the fake's.**
+  - In production, tries 2-4 are pg-boss's retries (`DEFAULT_RETRY`: 30 s base with jitter, so about 30-60 s, 60-120 s and 120-240 s). Only try 5 waits for the sweep's 16 minutes.
+  - pg-boss's third retry can wait up to 240 s, which matches the sweep's 4-minute wait after try 2, so the two may overlap. The row lock and the cap of 5 keep it bounded (the breaker measured no double send).
+  - Fix: correct the comment and the PR text. Optionally, set the platform queue's retry policy to match.
+* **m-r4 (STANDARDS:48): "a failing send rethrows so the runner retries" has no test that fails without it.**
+  - DW1 runs on fakeJobs, which never retries. If `if (!last) throw e` (`:187`) were removed, every DW1 line would still pass, because the sweep makes all 5 tries.
+  - The breaker's pg-boss probe shows that the rethrow works, but that probe is not committed.
+  - Fix: add one assertion that the platform job's fake status is `failed` after a refused send, or a small PgBossJobs case in pf14.
+* **m-r5 (breaker R3, bounded): the platform sweep reads the 2000 oldest-`updated_at` rows before it filters by wait (`:228`).**
+  - With more than 2000 stuck rows that are not yet due, a due row can wait up to 16 minutes.
+  - I accept it as the breaker rated it: it clears by itself, and the sweep only matters when a dispatch was lost.
+* **Note:** `outside: true` on `platform.account.mail` also allows it inside a firm's job (breaker's note). No caller does this. Accepted, as I recommended in m7.
+
+### Journey re-score
+Journeys 5 (provider failure) and 10 (across the boundary) now hold, with m-r2 as the remaining recovery gap. The re-score is in `journey-test-reviewer-2026-11-16.md` ("Re-score at 8b82dfd2f"): **8.5/10** (6/7 applicable), no criterion at 0, so it passes.
+
+**Fix list (recommended, not blocking):** m-r1 (branch on the job's firm), m-r2 (count before the send), m-r3 (wording), m-r4 (one assertion).
+
+Verdict: Approve 8b82dfd2f1170990519b1daa6d701d1dd5a0b345

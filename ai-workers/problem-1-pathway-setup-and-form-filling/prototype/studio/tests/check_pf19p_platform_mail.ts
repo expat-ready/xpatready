@@ -21,7 +21,7 @@ import { ConsentStore } from "../api/src/platform/messages/consent/consent-store
 import { PlatformInbox } from "../api/src/platform/messages/demo-inbox.ts";
 import { channelsOf } from "../api/src/platform/messages/send/channels.ts";
 import { MessagesMail } from "../api/src/platform/messages/send/mail.ts";
-import { fileKeyOf, Messages, PLATFORM_FILES_SPACE, PLATFORM_SEND_TRIES, platformRetryAfterMs, SWEEP_AFTER_MS, SWEEP_PER_FIRM } from "../api/src/platform/messages/send/messages.ts";
+import { fileKeyOf, Messages, PLATFORM_FILES_SPACE, PLATFORM_SEND_TRIES, platformJobKey, platformRetryAfterMs, SWEEP_AFTER_MS, SWEEP_PER_FIRM } from "../api/src/platform/messages/send/messages.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { ACCOUNT_MAIL_FROM } from "../api/src/platform/settings.ts";
 import { fakeAlerts } from "../ports/alert.ts";
@@ -162,12 +162,14 @@ try {
   const clock2 = new FakeClock(clock.now()), jobs2 = fakeJobs(clock2);   // its own runner: the first instance's sweep never sees these rows
   const m2 = new Messages({ db, consent, files, jobs: jobs2, alerts: () => fakeAlerts(), channels: channelsOf([["EMAIL", flaky]]), clock: clock2, log: (l) => lines.push(l) });
   await m2.register();
-  const stuck = [];
+  const stuck: string[] = [];
   for (let i = 0; i < SWEEP_PER_FIRM + 1; i++) { const r = await tx((t) => m2.send(t, { platformAccount: true, channel: "EMAIL", class: "TRANSACTIONAL", address: box(`stuck${i}`), content: words, idempotencyKey: uuid() })); await m2.dispatch(null, [r.outboxId]); stuck.push(r.outboxId); }
   await jobs2.runDue();
   const fresh = await tx((t) => m2.send(t, { platformAccount: true, channel: "EMAIL", class: "TRANSACTIONAL", address: box("fresh"), content: words, idempotencyKey: uuid() }));
   sql(`update msg_outbox set updated_at = '${new Date(clock2.now().getTime() + 1000).toISOString()}' where id = '${fresh.outboxId}'`);   // newer than every stuck row's try
   const after1 = await db.msgOutbox.findUniqueOrThrow({ where: { id: stuck[0] } });
+  ok("DW1 fail (review m-r4): a send that throws fails its job, so the job runner retries it (the dispatch's job ends failed, not done)",
+    jobs2.jobs.find((j) => j.key === platformJobKey(stuck[0], 0))?.status === "failed", jobs2.jobs.find((j) => j.key === platformJobKey(stuck[0], 0)));
   ok("DW1 fail: a platform send the provider refuses stays QUEUED with its try counted and a log line naming only ids",
     after1.state === "QUEUED" && after1.stateReason === `send failed: try 1 of ${PLATFORM_SEND_TRIES}` && lines.length === stuck.length && lines.every((l) => !l.includes("@") && /outbox [0-9a-f-]{36}/.test(l)), { after1, line: lines[0] });
   await clock2.advance(platformRetryAfterMs(1) + 2000); await m2.sweep(); await jobs2.runDue();
@@ -176,6 +178,20 @@ try {
   const states = await db.msgOutbox.findMany({ where: { id: { in: stuck } }, select: { state: true, stateReason: true } });
   ok(`DW1 fail: after ${PLATFORM_SEND_TRIES} tries with growing waits each stuck row is FAILED "send failed" and is tried no more`,
     states.every((r) => r.state === "FAILED" && r.stateReason === "send failed") && lines.length === stuck.length * PLATFORM_SEND_TRIES, { states: states.slice(0, 3), lines: lines.length });
+  // (break R2, review m-r2) A try that failed before it was counted (its job's key used, the row's reason still empty) is
+  // queued again by a later sweep, never left QUEUED for good.
+  const lost = await tx((t) => m2.send(t, { platformAccount: true, channel: "EMAIL", class: "TRANSACTIONAL", address: box("stuckuncounted"), content: words, idempotencyKey: uuid() }));
+  await m2.dispatch(null, [lost.outboxId]); await jobs2.runDue();
+  sql(`update msg_outbox set state_reason = null where id = '${lost.outboxId}'`);   // as if the count itself had failed
+  await clock2.advance(60 * 60_000); await m2.sweep(); await jobs2.runDue();
+  ok("DW1 fail→pass: a platform try that was never counted is queued again by the sweep and counted (its first key is already used)",
+    (await db.msgOutbox.findUniqueOrThrow({ where: { id: lost.outboxId } })).stateReason === `send failed: try 1 of ${PLATFORM_SEND_TRIES}`
+      && jobs2.jobs.filter((j) => j.payload.outboxId === lost.outboxId).length >= 2);
+  // (break R1, review m-r1) A job with no firm only ever sends a platform row: one whose payload names a firm's row sends nothing.
+  const firmRow = await tx((t) => messages.send(t, { firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: box("firmrow"), content: words, idempotencyKey: uuid() }));
+  await jobs.enqueue("messages.send", { firmId: firmA, outboxId: firmRow.outboxId }, { key: `pf19p:forged:${uuid()}`, platform: true }); await jobs.runDue();
+  ok("DW3 fail (break R1): a platform job (no firm) whose payload names a firm's QUEUED row never sends it (the job's own firm picks the path)",
+    (await db.msgOutbox.findUniqueOrThrow({ where: { id: firmRow.outboxId } })).state === "QUEUED");
 
   // ------------------------------------------------------------------------------------- DW2: the database's checks
   const ins = (firm: string | null, audience: string) => `insert into msg_outbox (id, firm_id, audience, channel, address, rendered_hash, class, idempotency_key, updated_at)
