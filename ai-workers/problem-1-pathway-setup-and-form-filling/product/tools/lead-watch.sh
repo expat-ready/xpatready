@@ -9,7 +9,7 @@ SINCE="${1:-30}"
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; gh() { bash "$TOOLS/gh.sh" "$@"; }
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT" || exit 99
 STATE_DIR="/private/tmp/claude-$(id -u)/lead-watch"; mkdir -p "$STATE_DIR"
-act=0; say() { echo "$1"; }; ACT() { act=$((act+1)); echo "ACT   $1"; echo "ACT   $1" >> "$SEEN"; }
+act=0; say() { echo "$1"; echo "$1" >> "$SEEN"; }; ACT() { act=$((act+1)); echo "ACT   $1"; echo "ACT   $1" >> "$SEEN"; }
 SEEN="$STATE_DIR/seen.$$"; : > "$SEEN"; seen() { printf '%s\n' "$1" >> "$SEEN"; }; trap 'rm -f "$SEEN"' EXIT   # B202: lines step 9b reuses
 
 say "time  $(TZ=Asia/Kolkata date '+%d %b %H:%M IST')"
@@ -158,12 +158,12 @@ od=$(python3 "$TOOLS/outside-deps-watch.py" 2>&1); echo "$od"; act=$((act + $(gr
 seen "$od"
 
 # 9b. Known failures (B202, founder A119 16 Nov, P-639): every failure already met is one line of tools/known-failures.tsv,
-# checked every time from what this check already read: size walls, records PRs, records off main, the proving pipe
+# checked every time from what this check already read: size walls, records PRs, the proving pipe
 # (Built waiting for qa vs qa lanes pushing) and the feeding pipe (ready rows per running builder, idle builders with no row).
-# Lines already printed above (questions, approved then red, sle-watch, the board's idle lanes) are counted, not repeated.
-kf_off=$(for f in $(git diff --name-only origin/main HEAD -- "$D" "${D%/*}/BACKLOG.md" "${D%/*}/STATE.md" "${D%/*}/RULES.md" .claude/skills 2>/dev/null); do
-  tm=$(git log -1 --format=%ct origin/main -- "$f" 2>/dev/null); git log --format="%H %ct $f" HEAD -- "$f" 2>/dev/null | awk -v tm="${tm:-0}" '$2 > tm' | tail -1; done)
-P_DIR="${D%/*}" KF_PRS="$prs" KF_ALIVE="$alive" KF_OFF="$kf_off" KF_SEEN="$SEEN" KF_BOARD="${COCKPIT_DATA:-${TMPDIR:-/tmp}/cockpit/data.json}" \
+# Lines already printed above (questions, approved then red, records off main (step 7), sle-watch, local lanes, the board's
+# idle lanes) are counted, not repeated: say() and ACT() record every line in $SEEN. Keep 9b after every step it reuses.
+kf_subj=$(for b in $alive; do printf '%s\t%s\n' "$b" "$(git log -1 --format=%s "origin/$b" 2>/dev/null)"; done)   # one git call per pushing branch
+P_DIR="${D%/*}" KF_PRS="$prs" KF_ALIVE="$alive" KF_SUBJ="$kf_subj" KF_SEEN="$SEEN" KF_BOARD="${COCKPIT_DATA:-${TMPDIR:-/tmp}/cockpit/data.json}" \
 python3 -I -c '
 import json, os, time
 from datetime import datetime, timezone
@@ -173,9 +173,9 @@ try: prs = json.loads(E["KF_PRS"] or "null")
 except ValueError: prs = None
 try: board = json.load(open(E["KF_BOARD"]))
 except (OSError, ValueError): board = None
-off = [{"sha": l.split()[0], "at": datetime.fromtimestamp(int(l.split()[1]), timezone.utc).isoformat(), "file": l.split()[2]} for l in E["KF_OFF"].splitlines() if l.strip()]
+subj = dict(l.split("\t", 1) for l in E["KF_SUBJ"].splitlines() if "\t" in l)
 print(json.dumps({"now": datetime.now(timezone.utc).isoformat(), "files": {"RULES.md": size(P + "/RULES.md"), "STATE.md": size(P + "/STATE.md")},
-  "prs": prs, "records_off_main": off, "alive": [a for a in E["KF_ALIVE"].splitlines() if a.strip()], "board": board,
+  "prs": prs, "alive_subjects": subj, "board": board,
   "seen": open(E["KF_SEEN"]).read().splitlines()}))' > "$STATE_DIR/known-facts.json"
 kf=$(python3 -I "$TOOLS/known-failures.py" --facts "$STATE_DIR/known-facts.json" 2>&1); echo "$kf"; act=$((act + $(grep -c '^ACT' <<<"$kf")))
 

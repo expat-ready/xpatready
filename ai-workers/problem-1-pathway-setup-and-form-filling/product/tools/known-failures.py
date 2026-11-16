@@ -2,7 +2,7 @@
 """Known failures (B202, founder A119 16 Nov: "looking for those problems proactively every time"; P-639).
 
 One table, tools/known-failures.tsv: id, test, threshold, ACT text, the incident that taught it. lead-watch.sh step 9b
-writes one facts file from what it already read (open PRs, file sizes, records commits off main, branches pushed in
+writes one facts file from what it already read (open PRs, file sizes, the tip subject of each branch pushed in
 90 min, the board's data.json, the lines it printed so far) and this script checks every table line against it.
 Each line prints its count and its oldest item: `ok    known <id>: …` or `ACT   known <id>: <ACT text> — <count>, oldest …`.
 A line whose source lead-watch or sle-watch already prints (test reuse:<regex>) is counted from those lines and never
@@ -15,8 +15,19 @@ import argparse, json, os, re, sys
 from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-RECORDS_TITLE = re.compile(r"^(lead|qa):")              # cockpit-data.py's records PR rule
-QA_BRANCH = re.compile(r"(^|/)qa[-/_]|(^|/)qa$")
+RECORDS_TITLE = re.compile(r"^(lead|qa|records)\b[:\s]")   # cockpit-data.py's RECORDS_TITLE, plus its is_records() below
+QA_SUBJECT = re.compile(r"^qa\b[:(]")                    # a qa lane's commits start "qa:" (its branch name is any claude/…)
+
+
+class NotRead(Exception):
+    """A fact this check could not read. board=True: the board step owns saying so (a warn here, never a second ACT)."""
+    def __init__(self, why, board=False):
+        super().__init__(why); self.why, self.board = why, board
+
+
+def is_records(p):
+    return (bool(RECORDS_TITLE.match(p.get("title") or "")) or "(records only)" in (p.get("title") or "")
+            or any((l.get("name") if isinstance(l, dict) else l) == "records" for l in p.get("labels") or []))
 
 
 def read_table(path):
@@ -47,71 +58,75 @@ def val(x):
     return x.get("value") if isinstance(x, dict) else x
 
 
-# Each test returns (count, oldest item text or None, None) when measured, or (None, None, reason) when not.
+# Each test returns (count, oldest item text) or raises NotRead.
 def t_size(F, row, arg):
     b = (F.get("files") or {}).get(arg)
     if b is None:
-        return None, None, f"{arg} not read"
-    return (1 if b > int(row["threshold"]) else 0), f"{arg} {b} B of {int(row['threshold'])} B", None
+        raise NotRead(f"{arg} not read")
+    return (1 if b > int(row["threshold"]) else 0), f"{arg} {b} B of {int(row['threshold'])} B"
 
 
 def t_records_pr(F, row, arg):
     prs = F.get("prs")
     if prs is None:
-        return None, None, "open PRs not read"
+        raise NotRead("open PRs not read")
     if prs and not any("additions" in p for p in prs):
-        return None, None, "open PRs read without additions and deletions"
-    big = [p for p in prs if RECORDS_TITLE.match(p.get("title") or "")
-           and (p.get("additions") or 0) + (p.get("deletions") or 0) > int(row["threshold"])]
-    big.sort(key=lambda p: p.get("createdAt") or "")
-    worst = max(big, key=lambda p: p["additions"] + p["deletions"]) if big else None
-    return len(big), (f"#{worst['number']} {worst['additions'] + worst['deletions']} lines" if worst else None), None
+        raise NotRead("open PRs read without additions and deletions")
+    big = sorted((p for p in prs if is_records(p) and (p.get("additions") or 0) + (p.get("deletions") or 0) > int(row["threshold"])),
+                 key=lambda p: p.get("createdAt") or "")
+    return len(big), (f"#{big[0]['number']} {big[0]['additions'] + big[0]['deletions']} lines" if big else "none")
 
 
-def t_records_age(F, row, arg, now):
-    offs = F.get("records_off_main")
-    if offs is None:
-        return None, None, "records commits off main not read"
-    old = sorted((c for c in offs if age_h(now, c["at"]) > float(row["threshold"])), key=lambda c: c["at"])
-    return len(old), (f"{old[0]['sha'][:9]} {age_h(now, old[0]['at'])} h off main" if old else None), None
+def board_part(F, *path):
+    b = F.get("board")
+    if not isinstance(b, dict):
+        raise NotRead("the board's data.json not read", board=True)
+    x = b
+    for k in path:
+        x = x.get(k) if isinstance(x, dict) else None
+    return x
 
 
 def t_proving(F, row, arg):
-    b = F.get("board") or {}
-    waiting = val(((b.get("first") or {}).get("release") or {}).get("waiting"))
-    if waiting is None:
-        return None, None, "the board's Built-waiting-for-qa count not read (data.json › first.release)"
-    alive = F.get("alive")
-    if alive is None:
-        return None, None, "branches pushed in 90 min not read"
-    qa = [a for a in alive if QA_BRANCH.search(a)]
+    rel = board_part(F, "first", "release")
+    if not isinstance(rel, dict) or val(rel.get("waiting")) is None:
+        raise NotRead("the board has no Built-waiting-for-qa count (data.json › first.release, P-636)", board=True)
+    waiting = val(rel["waiting"])
+    subj = F.get("alive_subjects")
+    if subj is None:
+        raise NotRead("branches pushed in 90 min not read")
+    qa = {b for b, t in subj.items() if QA_SUBJECT.match(t or "")}
+    for s_ in board_part(F, "team", "sessions") or []:
+        if s_.get("role") == "qa" and s_.get("chip") == "pushing":
+            qa.add(s_.get("branch") or s_.get("name") or "qa session")
     short = waiting > int(row["threshold"]) and len(qa) < 2
-    return (waiting if short else 0), f"{waiting} Built waiting for qa, {len(qa)} qa lane(s) pushed in 90 min", None
+    ids = rel.get("waiting_ids") or []
+    return (waiting if short else 0), (f"R1.{ids[0]} of {waiting} Built waiting for qa" if ids else f"{waiting} Built waiting for qa") + f", {len(qa)} qa lane(s) pushed in 90 min"
 
 
 def t_feeding(F, row, arg):
-    b = F.get("board") or {}
-    ready = val((b.get("capacity") or {}).get("ready_rows"))
-    sessions = (b.get("team") or {}).get("sessions")
-    if ready is None or sessions is None:
-        return None, None, "the board's ready rows or sessions not read (data.json › capacity, team; Lead input)"
-    builders = [s for s in sessions if s.get("role") == "builder" and (s.get("state") or "").lower() != "done"]
+    ready = val(board_part(F, "capacity", "ready_rows"))
+    sessions = board_part(F, "team", "sessions")
+    if ready is None:
+        raise NotRead("the board has no ready-rows count (data.json › capacity.ready_rows)", board=True)
+    builders = [s for s in sessions or [] if s.get("role") == "builder" and (s.get("state") or "").lower() != "done"]
+    if not builders:                                     # cockpit-data writes [] when the Lead input has no sessions
+        raise NotRead("no builder sessions in the board's Lead input (data.json › team.sessions): the feeding pipe cannot be measured", board=True)
     running = [s for s in builders if s.get("chip") == "pushing" or (s.get("state") or "").lower() in ("running", "working", "pushing")]
     idle = [s for s in builders if s not in running and not s.get("row")]
-    per = int(row["threshold"])
-    short = ready < per * len(running)
-    item = f"{ready} ready rows for {len(running)} running builder(s)" + (f"; idle with no row: {', '.join(s.get('name') or '?' for s in idle)}" if idle else "")
-    return (1 if short else 0) + len(idle), item, None
+    short = ready < int(row["threshold"]) * len(running)
+    item = (f"idle with no row: {', '.join(s.get('name') or '?' for s in idle)}; " if idle else "") + f"{ready} ready rows for {len(running)} running builder(s)"
+    return (1 if short else 0) + len(idle), item
 
 
 def t_reuse(F, row, arg):
     seen = F.get("seen")
     if seen is None:
-        return None, None, "lead-watch's lines not passed"
+        raise NotRead("lead-watch's lines not passed")
     if not any(re.search(row["threshold"], s) for s in seen):
-        return None, None, "its source did not run in this check"
+        raise NotRead("its source did not run in this check", board=True)
     hits = [s for s in seen if re.search(arg, s)]
-    return len(hits), (hits[0][6:90] if hits else None), None
+    return len(hits), (hits[0][6:90] if hits else "none")
 
 
 def check(F, rows, now=None):
@@ -121,33 +136,34 @@ def check(F, rows, now=None):
         kind, _, arg = r["test"].partition(":")
         try:
             if kind == "size":
-                n, item, why = t_size(F, r, arg)
+                n, item = t_size(F, r, arg)
             elif kind == "records-pr-lines":
-                n, item, why = t_records_pr(F, r, arg)
-            elif kind == "records-age-h":
-                n, item, why = t_records_age(F, r, arg, now)
+                n, item = t_records_pr(F, r, arg)
             elif kind == "proving":
-                n, item, why = t_proving(F, r, arg)
+                n, item = t_proving(F, r, arg)
             elif kind == "feeding":
-                n, item, why = t_feeding(F, r, arg)
+                n, item = t_feeding(F, r, arg)
             elif kind == "reuse":
-                n, item, why = t_reuse(F, r, arg)
+                n, item = t_reuse(F, r, arg)
             else:
-                n, item, why = None, None, f"unknown test {r['test']!r}"
-        except (KeyError, TypeError, ValueError, re.error) as e:      # a broken fact or table line is said, never a silent pass
-            n, item, why = None, None, f"check failed ({e.__class__.__name__}: {str(e)[:60]})"
-        if n is None and kind == "reuse":            # the source owns its ACTs; that it did not run is said, not counted
+                raise NotRead(f"unknown test {r['test']!r}")
+            why = None
+        except NotRead as e:
+            n, item, why, owned = None, None, e.why, e.board
+        except (KeyError, TypeError, ValueError, AttributeError, re.error) as e:   # a broken fact or table line is said, never a silent pass
+            n, item, why, owned = None, None, f"check failed ({e.__class__.__name__}: {str(e)[:60]})", False
+        if n is None and owned:                      # the board step or the reused source says it; counted once, there
             out.append(f"warn  known {r['id']}: not measured here: {why}")
         elif n is None:
             acts += 1
             out.append(f"ACT   known {r['id']}: not measured: {why} — fix the facts or the table line")
         elif kind == "reuse":
-            out.append(f"{'seen ' if n else 'ok   '} known {r['id']}: " + (f"covered above, {n} ACT line(s); first: {item}" if n else "none"))
+            out.append(f"seen  known {r['id']}: covered above, {n} ACT line(s); first: {item}" if n else f"ok    known {r['id']}: 0")
         elif n:
             acts += 1
             out.append(f"ACT   known {r['id']}: {r['act']} — {n}, oldest: {item} ({r['incident']})")
         else:
-            out.append(f"ok    known {r['id']}: 0 ({item})" if item else f"ok    known {r['id']}: 0")
+            out.append(f"ok    known {r['id']}: 0 ({item})")
     return out, acts
 
 
