@@ -58,3 +58,5 @@ ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/requirements-n
 packages/xfa-engine/dist/
 # A30 (13 Nov): the reference folder's private part (team-app details, P-504) stays on the Mac
 ai-workers/problem-1-pathway-setup-and-form-filling/product/reference/private/
+# B197: the Lead's latest app view (claude.ai/code session list), one per copy, rewritten every check
+ai-workers/problem-1-pathway-setup-and-form-filling/product/state/app-view-latest.txt
