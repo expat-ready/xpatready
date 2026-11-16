@@ -25,11 +25,11 @@ PATTERNS = [  # (regex, kind) — tried in order; a match is masked before the n
     (re.compile(T + r"(?: IST)?,? (\d{1,2}) " + M + r"\b"), "t-dmy"),
     (re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b"), "iso-d"),
     (re.compile(r"\b(\d{1,2}) " + M + r"\b"), "dmy"),
-    (re.compile(r"(?<![\d:.\u2013-])" + T + r"(?![\dx:])(?: IST\b)?(?!\s*(?:UTC|GMT|Z\b))"), "t"),   # a bare time; not a UTC one, not a range's end
+    (re.compile(r"(?<![\d:.\u2013+-])" + T + r"(?![\dx:])(?: IST\b)?(?!\s*(?:UTC|GMT|Z\b|h\b|hours?\b|min))"), "t"),   # a bare time; not a UTC offset or time, a duration or a range's end
 ]
-STAMP = re.compile(r"(\|\s*|updated:?\s*|as of\s*)$", re.I)   # where a date alone is a stamp: a table cell, updated:, as of
+STAMP = re.compile(r"(^\|\s*P-\d+[a-z]?\s*\|\s*|updated:?\s*|as of\s*)$", re.I)   # where a date alone is a stamp: a DECISIONS row's date cell, updated:, as of
 ROWDATE = re.compile(r"^\|[^|]*\|\s*(\d{1,2}) " + M + r"\s*\|")
-PLAN_END = re.compile(r"(\b(by|until|till|before)\s*|\b(due|next|target|reset|resets|planned|scheduled|eta|expires?|ends?|deadline|at the latest)\b(\s+[\w-]+){0,2}\s*)[:~]?\s*$", re.I)   # "by 01:30" directly; "next 30-minute check 01:3x" (two words between)
+PLAN_END = re.compile(r"(\b(by|until|till|before)\s*|\b(due|next|target|reset|resets|planned|scheduled|eta|expires?|ends?|deadline|at the latest|after|expected|check at)\b(\s+[\w-]+){0,2}\s*)[:~]?\s*$", re.I)   # "by 01:30" directly; "next 30-minute check 01:3x" (two words between)
 
 
 def now_ist():
@@ -70,7 +70,7 @@ def ahead(text, now):
                     gap = when.date() > now.date() and (when - now.replace(hour=0, minute=0, second=0, microsecond=0))
                 else:
                     gap = when - now
-                    if kind == "t" and rowday:
+                    if kind == "t" and rowday and rowday.date() != now.date():
                         pass
                     elif kind == "t" and gap > timedelta(hours=6):
                         gap = None   # yesterday's evening, written after midnight
@@ -101,7 +101,21 @@ def changes(hook):
         except OSError:
             old = ""
         return [(str(ti["content"]), old)]
-    return [(str(e.get("new_string") or ""), str(e.get("old_string") or "")) for e in (ti.get("edits") or [ti])]
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError:
+        text = ""
+    out = []
+    for e in (ti.get("edits") or [ti]):
+        old, new = str(e.get("old_string") or ""), str(e.get("new_string") or "")
+        i = text.find(old) if old else -1
+        if i < 0:
+            out.append((new, old))
+            continue
+        a, b = text.rfind("\n", 0, i) + 1, text.find("\n", i + len(old))
+        b = len(text) if b < 0 else b
+        out.append((text[a:i] + new + text[i + len(old):b], text[a:b]))   # the whole lines, before and after
+    return out
 
 
 def main():

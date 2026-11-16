@@ -8,7 +8,7 @@ set -u
 command -v jq >/dev/null || { echo "jq is missing; nothing was checked"; exit 2; }
 T=$(mktemp -d "${TMPDIR:-/tmp}/lr.XXXXXXXX"); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/bin" "$T/f"; git init -q "$T/copy"
-printf '#!/bin/bash\n[ -n "${FAKE_FAIL:-}" ] && exit 1\n[ "$2" = list ] && { echo "[{\"number\":1}]"; exit 0; }\ncat "$FAKE/$3.json"\n' > "$T/bin/gh"; chmod +x "$T/bin/gh"   # pr list --head: the current branch's PR is number 1
+printf '#!/bin/bash\n[ -n "${FAKE_FAIL:-}" ] && exit 1\n[ "$2" = list ] && { echo "[{\\"number\\":1}]"; exit 0; }\nf="$FAKE/${GH_REPO//\\//_}_$3.json"; [ -n "${GH_REPO:-}" ] && [ -f "$f" ] || f="$FAKE/$3.json"; cat "$f"\n' > "$T/bin/gh"; chmod +x "$T/bin/gh"   # pr list --head: the current branch's PR is number 1; owner_repo_N.json answers for GH_REPO
 H=abcdef1234567890abcdef1234567890abcdef12; OLD=1111111222222233333334444444555555566666
 pr() {  # $1 number, $2 files (space separated), $3 comment body or "", $4 association
   jq -n --arg f "$2" --arg c "$3" --arg a "${4:-OWNER}" --arg h "$H" '{headRefOid:$h, files:[$f|split(" ")[]|{path:.}],
@@ -43,6 +43,18 @@ for c in 'gh pr edit --add-label "review: approved" 1' 'gh pr edit -R o/r 1 --ad
 r=$(guard 'gh pr edit 1 --add-label queued --remove-label "review: approved"'); ok "adding another label while removing review: approved passes" "$([ "$r" = allow ] && echo 1)" "got $r"
 pr 11 ".mergify.yml" "Lead read the diff: ${H:0:9}"; H2=$(echo "${H:0:9}" | tr a-f A-F); pr 12 ".mergify.yml" "Lead read the diff: $H2"
 r=$(guard "gh pr edit 12 $L"); ok "an uppercase SHA in the read line counts" "$([ "$r" = allow ] && echo 1)" "got $r"
+r=$(guard 'gh pr edit 1 --add-label "do-not-merge,review: approved"'); ok "a label list with a hyphenated label first is still read (bot finding)" "$([ "$r" = deny ] && echo 1)" "got $r"
+pr 14 "$S/api/src/platform/identity/guard.ts" ""
+r=$(guard "gh pr edit 14 $L"); ok "permission enforcement under platform/identity/ needs the read (bot finding)" "$([ "$r" = deny ] && echo 1)" "got $r"
+r=$(guard "curl -sS -X POST -H 'Authorization: Bearer x' https://api.github.com/repos/o/r/issues/1/labels -d '{\"labels\":[\"review: approved\"]}'"); ok "a label added with curl to the REST API is guarded (Lead 64, L1)" "$([ "$r" = deny ] && echo 1)" "got $r"
+r=$(guard "curl -sS -X DELETE https://api.github.com/repos/o/r/issues/1/labels/review%3A%20approved"); ok "... and removing it with curl passes" "$([ "$r" = allow ] && echo 1)" "got $r"
+pr other_repo_6 "$S/prisma/migrations/x/migration.sql" ""; pr 6 "$S/web/a.tsx" ""   # this repository's #6 is harmless
+r=$(guard "gh pr edit https://github.com/other/repo/pull/6 $L"); ok "another repository's PR is read there, not as this repository's #6 (bot finding)" "$([ "$r" = deny ] && echo 1)" "got $r"
+git -C "$T/copy" remote add origin https://github.com/acme/app.git
+jq -n --arg h "$H" --arg S "$S" '{headRefOid:$h, files:[{path:($S + "/prisma/migrations/y/migration.sql")}], comments:[{body:("Lead read the diff: " + $h[0:9]), author:{login:"mallory"}}]}' > "$T/f/15.json"
+r=$(guard "gh pr edit 15 $L"); ok "the curl fallback gives no association: an outsider's read line does not count (bot finding)" "$([ "$r" = deny ] && echo 1)" "got $r"
+jq '.comments[0].author.login = "acme"' "$T/f/15.json" > "$T/f/16.json"
+r=$(guard "gh pr edit 16 $L"); ok "... the repository owner's own line does" "$([ "$r" = allow ] && echo 1)" "got $r"
 r=$(guard "gh api -X DELETE 'repos/o/r/issues/1/labels/review%3A%20approved'"); ok "removing the label through gh api passes" "$([ "$r" = allow ] && echo 1)" "got $r"
 pr 9 "$S/web/a.tsx" ""; jq '.changedFiles = 140' "$T/f/9.json" > "$T/f/9b" && mv "$T/f/9b" "$T/f/9.json"
 r=$(guard "gh pr edit 9 $L"); ok "a PR over 100 files counts as sensitive (a migration may be past the list)" "$([ "$r" = deny ] && echo 1)" "got $r"
