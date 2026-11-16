@@ -46,8 +46,8 @@
 --   * the EMPLOYER row's party_id is the party the "case" subject sits on (the principal's: runtime.ts, case-stages.ts):
 --     part 2 reads the employer from display_name, never from party_id.
 --   * backfill: one refresh per existing participant (no advisory lock: the triggers' own DDL locks keep writers out).
---   * two transactions committing many of the same people in opposite orders at the same moment can still deadlock at
---     commit (one is refused and retried by the caller); the window is the refresh time of their people at commit.
+--   * two transactions committing at the same moment whose people fall in the same lock buckets in crossed order can
+--     still deadlock at commit (one is refused; the caller retries); the window is the refresh time of their people.
 -- Rollback (in this order): DROP TRIGGER case_party_index_answer ON client_canonical_answer; DROP TRIGGER
 --   case_party_index_answer_gone ON client_canonical_answer; DROP TRIGGER case_party_index_profile ON party_profile;
 --   DROP TRIGGER case_party_index_participant ON case_participant; DROP TABLE "case_party_index"; DROP FUNCTION case_party_index_on_answer(), case_party_index_on_profile(),
@@ -109,12 +109,15 @@ CREATE FUNCTION case_party_index_norm(t text) RETURNS text LANGUAGE sql IMMUTABL
 -- starting 1-9, the number holds anything but digits, spaces and ( ) . - or starts with anything but a digit or ( (a
 -- letter, a minus: never guessed), has under 4 digits or only zeros, or the whole is outside 7 to 15 digits. A JSON
 -- number counts only when whole. A number written with its own "+<code>" in front is read whole when that code
--- is the given one (breaker m8).
+-- is the given one (breaker m8); the length and all-zero checks read the subscriber digits after that code.
 CREATE FUNCTION case_party_index_phone(cc text, num text) RETURNS text LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS $$
-  SELECT CASE WHEN c ~ '^[1-9][0-9]{0,2}$' AND btrim(cc) ~ '^\+?[0-9]{1,3}$' AND length(n) >= 4 AND length(c || n) BETWEEN 7 AND 15
-                   AND n !~ '^0+$' AND (btrim(num) ~ '^[0-9(][0-9 ().-]*$' OR (btrim(num) ~ '^\+[0-9 ().-]+$' AND left(n, length(c)) = c AND length(n) > length(c) + 3))
-              THEN '+' || c || CASE WHEN btrim(num) LIKE '+%' THEN substr(n, length(c) + 1) ELSE n END END
-  FROM (SELECT regexp_replace(coalesce(cc, ''), '[^0-9]', '', 'g') AS c, regexp_replace(coalesce(num, ''), '[^0-9]', '', 'g') AS n) x
+  SELECT CASE WHEN c ~ '^[1-9][0-9]{0,2}$' AND btrim(coalesce(cc, '')) ~ '^\+?[0-9]{1,3}$' AND shape_ok
+                   AND length(sub) >= 4 AND sub !~ '^0+$' AND length(c || sub) BETWEEN 7 AND 15
+              THEN '+' || c || sub END
+  FROM (SELECT c, CASE WHEN plus THEN substr(n, length(c) + 1) ELSE n END AS sub,   -- the subscriber digits (Devin review)
+               CASE WHEN plus THEN left(n, length(c)) = c ELSE btrim(coalesce(num, '')) ~ '^[0-9(][0-9 ().-]*$' END AS shape_ok
+        FROM (SELECT regexp_replace(coalesce(cc, ''), '[^0-9]', '', 'g') AS c, regexp_replace(coalesce(num, ''), '[^0-9]', '', 'g') AS n,
+                     btrim(coalesce(num, '')) ~ '^\+[0-9 ().-]+$' AS plus) x) y
 $$;
 
 -- One case's firm id, read past PF-12's wall on platform_firm; nothing else. Owned by xr_wall_reader (BYPASSRLS),

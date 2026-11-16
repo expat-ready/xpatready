@@ -33,7 +33,7 @@ const j = (v: unknown) => `${q(JSON.stringify(v))}::jsonb`;
 /** The fixtures every database starts from: one workspace with its roles and fields, two Sample firms. */
 type World = { W: string; field: Record<string, string>; firm: Record<string, string> };
 function world(db: string): World {
-  const W = randomUUID(), field = Object.fromEntries(KEYS.map((k) => [k, randomUUID()])), firm = { "sample-firm": randomUUID(), "sample-solo": randomUUID() };
+  const W = randomUUID(), field = Object.fromEntries(KEYS.map((k) => [k, randomUUID()])), firm: Record<string, string> = { "sample-firm": randomUUID(), "sample-solo": randomUUID() };
   sql(db, `insert into workspace (id, key, label) values ('${W}', 'css1-${W.slice(0, 8)}', 'CS-S1 (Sample)');
     insert into person_role (id, workspace_id, role_key, label, meaning, takes_part_in_case, may_be_applicant) values
       ('${randomUUID()}', '${W}', 'principal', 'Principal', 'Sample', true, true), ('${randomUUID()}', '${W}', 'spouse_or_partner', 'Spouse', 'Sample', true, true),
@@ -42,7 +42,7 @@ function world(db: string): World {
     ${KEYS.map((k) => `insert into canonical_field (id, workspace_id, canonical_field_key, data_type, value_type, meaning, status, updated_by, version, subject_kind, scope, origin)
       values ('${field[k]}', '${W}', '${k}', 'STRING', 'text', 'Sample', 'PUBLISHED', 'css1', 1, 'person', 'CLIENT_LEVEL', 'HUMAN');`).join("\n")}
     ${Object.entries(firm).map(([k, id]) => `insert into platform_firm (id, key, operating_name, country_code, contact_email, updated_at) values ('${id}', '${k}', '${k} (Sample)', 'CA', '${k}@example.com', now()) on conflict (key) do nothing;`).join("\n")}`);
-  for (const k of Object.keys(firm)) firm[k as keyof typeof firm] = sql(db, `select id from platform_firm where key = '${k}'`);
+  for (const k of Object.keys(firm)) firm[k] = sql(db, `select id from platform_firm where key = '${k}'`);
   return { W, field, firm };
 }
 let caseNo = 0;
@@ -167,6 +167,9 @@ try {
   answer(FULL, w, N, "person.phone_number", { country_code: "+001", number: "416-555-0101" });
   ok("CS-S1 DW1 fail (breaker m8): a country code starting 0 gives null, never +001…", row(FULL, N.subject)?.phone_e164 === null);
   const junk = [{ country_code: "1", number: "-4165550101" }, { country_code: "1", number: 4165550101.5 }, { country_code: "1", number: "(0)-0.0 0" }].map((v) => { answer(FULL, w, N, "person.phone_number", v); return row(FULL, N.subject)?.phone_e164 ?? null; });
+  const pair = [{ country_code: "358", number: "40 12345678" }, { country_code: "358", number: "+358 40 12345678" }, { country_code: "1", number: "+1 0000000000" }].map((v) => { answer(FULL, w, N, "person.phone_number", v); return row(FULL, N.subject)?.phone_e164 ?? null; });
+  ok("CS-S1 DW1 pass (Devin review): a number in national and in +<code> form gives the same phone (+3584012345678)", pair[0] === "+3584012345678" && pair[1] === pair[0], pair);
+  ok("CS-S1 DW1 fail (Devin review): a +<code> number of only zeros gives null (the check reads the digits after the code)", pair[2] === null, pair);
   ok("CS-S1 DW1 fail (breaker round 2): a leading minus, a JSON number with a fraction and a number of only zeros each give null", junk.every((x) => x === null), junk);
   const U = person(FULL, w, A, "child", "Profile Fallback (Sample)");
   answer(FULL, w, U, "person.given_names", "Ñúñez\u00a0\u00a0Ölçer"); answer(FULL, w, U, "person.family_name", "Дмитрий");
