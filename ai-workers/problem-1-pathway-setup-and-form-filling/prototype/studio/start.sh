@@ -13,4 +13,5 @@ cd "$STUDIO"
 ./node_modules/.bin/prisma migrate deploy >/dev/null && ./node_modules/.bin/prisma generate >/dev/null && echo "database schema up to date"
 bash tools/web-fresh.sh build || echo "web build failed: isolated copies will refuse to start until it builds"   # builds web/dist and stamps what it was built from (QA-181: isolated.sh checks the stamp)
 mkdir -p var
+export PLATFORM_ENVIRONMENT=local   # PF-24w: required, no default in the app; the Mac demo is local
 zsh tools/restart-api.sh >/dev/null && echo "Product Studio: http://localhost:${STUDIO_PORT:-4400}"

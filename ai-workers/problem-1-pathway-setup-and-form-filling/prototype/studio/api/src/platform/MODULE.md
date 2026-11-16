@@ -21,9 +21,10 @@ Firms, staff and sign-in, settings, secrets, jobs, logs, complaints and message 
 - Values for experts to set are labelled Sample, never guessed (P-170).
 - A sign-up's password goes to the identity provider only: never in a table, log, audit line or answer; the sign-up door answers the same whether or not an email is known (PF-5, P-566).
 - Firms' billing goes through BillingPort only; CI and lanes use its fake or recorded Stripe answers, never a live call (PF-5, contracts §0.3).
+- `PLATFORM_ENVIRONMENT` is required; no default: unset or blank stops the start-up, naming it (PF-24w, rev 16.5). Every setting, sign-in's and the Sample seed's included, is read by the one loader `config/settings.ts` once per process; `identityConfig` and `sample-seed.ts` read no variable themselves.
 
 **Tables.** platformFirm, platformStaff, platformStaffCredential, platformRoleGrant, platformSessionRevocation, platformFirmSetting, platformFirmWebAddress, platComplaint, platComplaintEvent, msgConsent, msgConsentWording, platformTermsVersion, platformTermsAcceptance, platformSignupPending, moduleEvent, auditEvent.
-**Tests.** `tests/check_pf12_walls.ts`, `tests/check_pf3_platform_schema.ts`, `tests/check_pf4_identity.ts`, `tests/check_pf4b_session_reads.ts`, `tests/check_pf14_jobs.ts`, `tests/check_pf21_complaints.ts`, `tests/check_pf21w_routes.ts`, `tests/check_pf21v_views.ts`, `tests/check_pf23_observability.ts`, `tests/check_pf24_secrets.ts`, `tests/check_pf25_web_address.ts`, `tests/check_pf5_signup_billing.ts`, `tests/check_pf5v_signup_mail.ts` (PF-5v: the empty fields' plain words), `tests/check_pf19b_sending.ts`, `tests/check_pf19b_mail.ts`.
+**Tests.** `tests/check_pf12_walls.ts`, `tests/check_pf3_platform_schema.ts`, `tests/check_pf4_identity.ts`, `tests/check_pf4b_session_reads.ts`, `tests/check_pf14_jobs.ts`, `tests/check_pf21_complaints.ts`, `tests/check_pf21w_routes.ts`, `tests/check_pf21v_views.ts`, `tests/check_pf23_observability.ts`, `tests/check_pf24_secrets.ts`, `tests/check_pf24w_environment.ts`, `tests/check_pf25_web_address.ts`, `tests/check_pf5_signup_billing.ts`, `tests/check_pf5v_signup_mail.ts` (PF-5v: the empty fields' plain words), `tests/check_pf19b_sending.ts`, `tests/check_pf19b_mail.ts`.
 
 **Do not.**
 - Query a firm table without `firmScope`.
