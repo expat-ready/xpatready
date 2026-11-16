@@ -22,6 +22,15 @@ export interface FilesPort {
   /** The firm's file, or null (also for another firm's key). */
   get(firmId: string, key: string): Promise<StoredFile | null>;
   exists(firmId: string, key: string): Promise<boolean>;
+  /** PF-Fd: removes the firm's file. The caller has already asked `LegalHoldPort.isHeld` (PF-21b) in its own transaction
+   *  and been told not held (SA-11 BR-7: a hold beats any deletion); this port does not check holds (it has no
+   *  transaction). The order for callers: commit the record's change first (marked disposed, still naming the key and its
+   *  sha256), then call `delete`; a failed or skipped delete leaves bytes with no live record, which a later cleanup
+   *  (PF-F2) removes. A caller never deletes and then rolls back. `deleted: false` (no error, nothing changed) when the key
+   *  is absent, already deleted or another firm's (the firm wall: a refusal would tell firm B the key exists). A deleted
+   *  key is retired: a later `put` of it is refused (FileKeyTaken) even with the same bytes and type, so a sha256 kept
+   *  as proof never points at other bytes. A bad key or firm id is refused as in `put`. */
+  delete(firmId: string, key: string): Promise<{ deleted: boolean }>;
 }
 
 /** Refused: the key already holds other bytes or another content type. */
@@ -34,20 +43,27 @@ export async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return Array.from(d, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** The fake: in memory, per firm, write-once like the real store. */
+/** The fake: in memory, per firm, write-once like the real store; a deleted key is retired. */
 export function fakeFiles(): FilesPort & { readonly count: number } {
-  const store = new Map<string, StoredFile>();
+  const store = new Map<string, StoredFile>(), retired = new Set<string>();
   const id = (firmId: string, key: string) => `${FirmId.parse(firmId).toLowerCase()}|${FileKey.parse(key)}`;
   return {
     async put(firmId, key, bytes, contentType) {
       const p = FilePut.parse({ firmId, key, bytes, contentType });
       const sha256 = await sha256Hex(p.bytes), at = id(p.firmId, p.key), had = store.get(at);
+      if (retired.has(at)) throw new FileKeyTaken(p.key);
       if (had && (had.sha256 !== sha256 || had.contentType !== p.contentType)) throw new FileKeyTaken(p.key);
       if (!had) store.set(at, { key: p.key, bytes: new Uint8Array(p.bytes), contentType: p.contentType, sha256 });
       return { key: p.key, sha256 };
     },
     async get(firmId, key) { const f = store.get(id(firmId, key)); return f ? { ...f, bytes: new Uint8Array(f.bytes) } : null; },
     async exists(firmId, key) { return store.has(id(firmId, key)); },
+    async delete(firmId, key) {
+      const at = id(firmId, key);
+      if (!store.delete(at)) return { deleted: false };
+      retired.add(at);
+      return { deleted: true };
+    },
     get count() { return store.size; },
   };
 }
