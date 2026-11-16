@@ -198,7 +198,7 @@ function pdf(title: string, text: string) {
   sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, combination_id) select gen_random_uuid(), workspace_id, 'user-B', 'updated', 'combination', combination_key, 'test edit', id from combination where id='${ss.combinationId}'`);
   r = await call("POST", "/pack/release", { expectedChanges: d.changes }, "user-B");
   ok("BR-14 fail: someone who changed the draft cannot release it (self-approval refused)", r.status === 403 && /different person/.test(r.body.title), r.body.detail);
-  sql(`delete from audit_event where summary='test edit'`);
+  sql(`begin; select set_config('app.audit_sample_reset', 'on', true); delete from audit_event where summary='test edit'; commit`);   // AUD-1a: a demo line, removed as the demo reset may (the setting)
   // The submitter cannot release either: the submission is recorded as the approver persona's for this one try.
   sql(`update review_submission set submitted_by='user-B' where combination_id='${ss.combinationId}' and status='SUBMITTED'`);
   const asB = (await call("GET", "/draft", undefined, "user-B")).body;

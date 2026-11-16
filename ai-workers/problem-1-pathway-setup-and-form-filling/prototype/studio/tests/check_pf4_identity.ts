@@ -473,7 +473,7 @@ try {
   // platform step. (Part B runs the real reset on the copy.)
   const demoWs = await db.workspace.upsert({ where: { key: "demo" }, update: {}, create: { key: "demo", label: "demo (check)" } });
   await db.auditEvent.create({ data: { workspaceId: demoWs.id, actor: "user-A", action: "check", entity: "demo workspace", summary: "a demo line" } });
-  await db.auditEvent.deleteMany({ where: { workspaceId: demoWs.id } });
+  await db.$transaction(async (tx) => { await tx.$executeRaw`select set_config('app.audit_sample_reset', 'on', true)`; await tx.auditEvent.deleteMany({ where: { workspaceId: demoWs.id } }); });   // AUD-1a: as Demo.wipe, with the reset setting
   const reset = await resetSampleFirmSettings(db);
   ok("PF-4 pass (P-571 (1)): the reset returns the Sample firms' settings to their seed values through the settings write path (a value already at its seed value is left alone)",
     reset.changed.length >= 2 && await readSetting(db, FIRM_A, "platform.language") === "en" && await readSetting(db, FIRM_B, "platform.currency") === "CAD" && await readSetting(db, FIRM_A, "platform.time_zone") === "America/Toronto", reset);

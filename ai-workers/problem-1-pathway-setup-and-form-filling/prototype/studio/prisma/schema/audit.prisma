@@ -1,0 +1,47 @@
+// audit.prisma: the one audit trail. Owner: the release Lead (audit module).
+// One file per area (DB-SPLIT, studio/DEVELOPING.md): the S1 rows edit it in series (AUD-1a, then AUD-1c part 1), never two at once.
+// AUD-1a (SA-11-1, SA-11-2, SA-11-3, AG-13-41): insert-only at the database. The migration's triggers fill actor_type
+// from the actor word when a writer leaves it out (aud_event_fill), and refuse every UPDATE and TRUNCATE and every DELETE
+// outside the demo reset's Sample lines (aud_event_no_change). A correction is a new reversing line, never an edit.
+
+/// Who wrote an audit line (SA-11-2; SA-11 BR-3: never inferred from a null user). SEED is a demo loader (a narrow
+/// departure from SA-11-2's four types, ruled by Lead 61 on #1870).
+enum AuditActorType {
+  FIRM_STAFF
+  OUR_STAFF
+  CLIENT
+  SYSTEM
+  SEED
+}
+
+model AuditEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  at          DateTime @default(now()) @db.Timestamptz
+  actor       String
+  action      String
+  entity      String
+  entityKey   String?  @map("entity_key")
+  summary     String
+  detail      Json?
+  /// The configuration row an edit belongs to (finding 2 of the 21 Oct grounding audit): review uses these events to
+  /// know every author of a draft, including edits that leave no draft row (people, section selection, removals).
+  combinationId String?  @map("combination_id") @db.Uuid
+  /// AUD-1a (SA-11-2): the firm a line belongs to; null for a global or configuration line. No foreign key: the trail
+  /// outlives what it names (SA-11 BR-8).
+  firmId           String?        @map("firm_id") @db.Uuid
+  /// AUD-1a (case-side contract §2.5): the case a line is about, when its entity key names one; no foreign key.
+  caseId           String?        @map("case_id") @db.Uuid
+  /// AUD-1a (SA-11-2, BR-3): never null. A writer may leave it out: the insert trigger aud_event_fill fills it from the
+  /// actor word, and refuses a word it does not know (dbgenerated(): no database default, the trigger's value).
+  actorType        AuditActorType @default(dbgenerated()) @map("actor_type")
+  /// AUD-1a (SA-11-2): one request's or job's lines share it; null until a writer passes one (AUD-1b).
+  correlationId    String?        @map("correlation_id")
+  /// AUD-1a (AUD-3b): the support session a line was written under; null otherwise.
+  supportSessionId String?        @map("support_session_id") @db.Uuid
+
+  @@index([workspaceId, at])
+  @@index([combinationId, at])
+  @@index([firmId, at])
+  @@map("audit_event")
+}

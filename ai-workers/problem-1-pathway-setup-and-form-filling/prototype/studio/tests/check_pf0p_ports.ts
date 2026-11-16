@@ -288,7 +288,7 @@ try {
   ok("adapter fail: an entry without firmId is refused and the change rolls back", refused && lines() === before && sql("select count(*) from workspace where key = 'pf0p-change-2'") === "0");
 
   // The first line ever, in a transaction that rolls back: the workspace it made goes too, and the next write remakes it.
-  sql(`delete from audit_event where workspace_id in (select id from workspace where key = '${PLATFORM_AUDIT_WORKSPACE}'); delete from workspace where key = '${PLATFORM_AUDIT_WORKSPACE}'`);
+  sql(`delete from workspace where key = '${PLATFORM_AUDIT_WORKSPACE}'`);   // AUD-1a: audit lines are never deleted; a line of a gone workspace is no longer counted (lines() joins the workspace)
   await rejects(() => db.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: "r-13" })); throw new Error("roll back"); }));
   const wsGone = sql(`select count(*) from workspace where key = '${PLATFORM_AUDIT_WORKSPACE}'`) === "0";
   await db.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: "r-14" })); });
@@ -296,7 +296,7 @@ try {
 
   // Review M1: two first writers at once on a database with no audit workspace yet. The second waits for the first's
   // commit and then uses its row; both lines land, one workspace. Then the same with the first rolling back.
-  const reset = () => sql(`delete from audit_event where workspace_id in (select id from workspace where key = '${PLATFORM_AUDIT_WORKSPACE}'); delete from workspace where key = '${PLATFORM_AUDIT_WORKSPACE}'`);
+  const reset = () => sql(`delete from workspace where key = '${PLATFORM_AUDIT_WORKSPACE}'`);   // AUD-1a: the lines stay (insert-only); only the workspace row goes
   const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const db2 = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
   try {
