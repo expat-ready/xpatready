@@ -5,7 +5,7 @@ Prisma schema loaded from prisma/schema.
 isolated qa478 on http://localhost:4479 (xr_studio_qa478), stops itself in 20 min
 PASS  setup: the Owner and a Case Officer sign in
 PASS  QA-478 setup: a pending invitation into Billing/Finance exists — "3ff510a5-837c-4641-aa9a-3d7261fd5eac"
-PASS  QA-478 setup: the invitee accepts and joins as Billing/Finance — {"staffId":"ac600380-da1a-4f9b-a707-d4895c835d36","firmKey":"sample-firm","roles":["BILLING_FINANCE"],"handOff":{"kind":"set-password","url":"/sign-in/callback#code=t_21WpUGL9JHciocG1OEYK0hZHer4PCSTHJrlBNSLLs"}}
+PASS  QA-478 setup: the invitee accepts and joins as Billing/Finance — {"staffId":"ac600380-da1a-4f9b-a707-d4895c835d36","firmKey":"sample-firm","roles":["BILLING_FINANCE"],"handOff":{"kind":"set-password","url":"/sign-in/callback#code=[redacted: one-time code of a deleted test database]"}}
 FAIL  QA-478: the accepted invitation that hands out 12 money keys writes its own money-keys audit line (PF-6b ruling 2 (b), as the role-change door does) — {"moneyKeys":12,"before":0,"after":0}
 PASS  QA-479 setup: the Owner adds a lead and owns it (AG-2-4) — {"id":"7403b236-45bd-47ef-95a4-711bfe50f089","number":"L-00001","label":"Lead","state":"OPEN","door":"MANUAL","source":"Phone call (Sample)","sourceDetail":null,"interestedIn":null,"ownerStaffId":"2d0e4c57-f7d2-49df-8ee0-8bf43acc56d8","owner":"Representative (
 PASS  QA-479 setup: the Case Officer cannot see another person's lead (GET 404) — {"otherLead":"7403b236-45bd-47ef-95a4-711bfe50f089","get":404}
