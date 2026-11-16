@@ -41,12 +41,10 @@ export const Thanks = z.object({ thankYouText: z.string() });
 export const KEY = { show: "agent/prospect:show", edit: "agent/prospect:edit", assign: "agent/prospect:assign", viewAll: "agent/prospect:view.all" } as const;
 /** A stored code in plain words (EXPERIENCE §5): the lead's source and state. */
 const WORDS: Record<string, string> = { WEBSITE: "Website form", OPEN: "Open", CLOSED: "Closed" };
-export const words = (code: string) => WORDS[code] ?? (code.charAt(0) + code.slice(1).toLowerCase()).replace(/_/g, " ");
-/** FO-4sf (AG-2-23 rule 1): the sources the Leads list filters by (the API's SOURCES, leads.ts), in plain words. */
-export const SOURCES = [{ code: "WEB_FORM", label: "Web form" }, { code: "MANUAL", label: "Added by hand" }, { code: "BOOKING", label: "Booking" }] as const;
-export type SourceCode = (typeof SOURCES)[number]["code"];
-/** `?source=` in the address: known codes only, in the list's order; anything else is dropped (empty = all). */
-export const sourcesIn = (v: string | null): SourceCode[] => { const asked = (v ?? "").split(","); return SOURCES.map((s) => s.code).filter((c) => asked.includes(c)); };
+/** A stored code (capitals and _) in plain words; a source a person typed ("Event, Toronto") is shown as typed (FO-4sf). */
+export const words = (code: string) => WORDS[code] ?? (/^[A-Z0-9_]+$/.test(code) ? (code.charAt(0) + code.slice(1).toLowerCase()).replace(/_/g, " ") : code);
+/** FO-4sf (AG-2-23 rule 1): the Source filter's choices, the stored sources of the leads the person may see (leads.ts). */
+export const LeadSources = z.object({ sources: z.array(z.string()) });
 /** Why a person sees no Take it (BIC-18): their role may read leads but not work them. */
 export const READ_ONLY_REASON = "You can read leads. Taking one needs a role that works leads: ask your firm's Owner or Admin.";
 export const can = (me: Me | undefined, key: string) => !!me?.keys.includes(key);

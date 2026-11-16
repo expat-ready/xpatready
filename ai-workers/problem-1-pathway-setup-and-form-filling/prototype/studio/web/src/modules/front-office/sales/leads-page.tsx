@@ -6,7 +6,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Input, Pill, Table } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
-import { can, KEY, LeadRows, READ_ONLY_REASON, seesUnassigned, SOURCES, sourcesIn, words, type LeadRow, type SourceCode } from "./contract";
+import { can, KEY, LeadRows, LeadSources, READ_ONLY_REASON, seesUnassigned, words, type LeadRow } from "./contract";
 import { Loading } from "./loading";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
@@ -19,22 +19,26 @@ const EMPTY: Record<View, string> = {
   mine: "You have no open leads. Take one from Unassigned leads, or ask to be assigned one.",
   all: "No open leads.",
 };
-export function useLeads(view: View, sources: SourceCode[] = []) {
-  const q = sources.length ? `&source=${sources.join(",")}` : "";
-  return useQuery({ queryKey: ["fo", "leads", view, ...(sources.length ? [sources.join(",")] : [])], queryFn: async () => LeadRows.parse(await staffApi(`/front-office/leads?view=${view}${q}`)) });
+export function useLeads(view: View, sources: string[] = [], enabled = true) {
+  const q = sources.map((x) => `&source=${encodeURIComponent(x)}`).join("");
+  return useQuery({ enabled, queryKey: ["fo", "leads", view, ...(sources.length ? [sources] : [])], queryFn: async () => LeadRows.parse(await staffApi(`/front-office/leads?view=${view}${q}`)) });
 }
+const useSources = () => useQuery({ queryKey: ["fo", "lead-sources"], queryFn: async () => LeadSources.parse(await staffApi("/front-office/leads/sources")).sources });
 function LeadsBody() {
   const me = useStaff();
   const [params, setParams] = useSearchParams();
   const chips = CHIPS.filter((c) => c.view !== "unassigned" || seesUnassigned(me));
   const asked = params.get("view") as View | null;
   const view: View = chips.some((c) => c.view === asked) ? asked! : chips[0].view;
-  const sources = sourcesIn(params.get("source"));
-  // The chip and the sources live in the address (?view=, ?source=), so a reload or Back keeps both (FO-4sf).
-  const go = (next: View, src: SourceCode[]) => setParams({ ...(next === chips[0].view ? {} : { view: next }), ...(src.length ? { source: src.join(",") } : {}) }, { replace: true });
-  const toggle = (c: SourceCode) => go(view, sources.includes(c) ? sources.filter((x) => x !== c) : SOURCES.map((s) => s.code).filter((x) => x === c || sources.includes(x)));
+  // The chip and the sources live in the address (?view=, ?source= once per source), so a reload or Back keeps both
+  // (FO-4sf). Only sources the person has are kept: one typed into the address that they have not is dropped.
+  const known = useSources();
+  const choices = known.data ?? [];
+  const sources = known.isPending ? [] : params.getAll("source").filter((x, i, all) => choices.includes(x) && all.indexOf(x) === i);
+  const go = (next: View, src: string[]) => { const p = new URLSearchParams(); if (next !== chips[0].view) p.set("view", next); for (const x of src) p.append("source", x); setParams(p, { replace: true }); };
+  const toggle = (c: string) => go(view, sources.includes(c) ? sources.filter((x) => x !== c) : choices.filter((x) => x === c || sources.includes(x)));
   const [q, setQ] = React.useState("");
-  const rows = useLeads(view, sources);
+  const rows = useLeads(view, sources, !known.isPending);
   const empty = view === "mine" && !can(me, KEY.edit) ? "You have no open leads." : EMPTY[view];
   const take = useTakeIt();
   const canTake = can(me, KEY.edit);
@@ -61,12 +65,13 @@ function LeadsBody() {
         </div>
         <div role="group" aria-label="Source" data-source-filter className="flex flex-wrap items-center gap-2">
           <span aria-hidden className="text-sm text-text-muted">Source</span>
-          {SOURCES.map((s) => (
-            <button key={s.code} type="button" aria-pressed={sources.includes(s.code)} data-source={s.code} onClick={() => toggle(s.code)}
-              className={cn("min-h-8 rounded-full border px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", sources.includes(s.code) ? "border-primary bg-primary/10 font-medium text-text-link" : "border-border bg-surface-raised text-text hover:bg-text/5")}>
-              {s.label}
+          {choices.map((c) => (
+            <button key={c} type="button" aria-pressed={sources.includes(c)} data-source={c} onClick={() => toggle(c)}
+              className={cn("min-h-8 rounded-full border px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [overflow-wrap:anywhere]", sources.includes(c) ? "border-primary bg-primary/10 font-medium text-text-link" : "border-border bg-surface-raised text-text hover:bg-text/5")}>
+              {words(c)}
             </button>
           ))}
+          {known.isError ? <span role="alert" className="text-sm text-text-danger">Could not load the sources. <Button variant="link" size="sm" onClick={() => known.refetch()}>Try again</Button></span> : null}
           {sources.length ? <Button variant="link" size="sm" data-source-clear onClick={() => go(view, [])}>All sources</Button> : null}
         </div>
         <label className="w-full sm:w-72">
@@ -74,11 +79,11 @@ function LeadsBody() {
           <Input type="search" placeholder="Search by name or number" value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
       </div>
-      {rows.isPending ? <Loading label="Loading leads" />
+      {rows.isPending || known.isPending ? <Loading label="Loading leads" />
         : rows.isError ? <p role="alert" className="text-sm text-text-danger">{rows.error instanceof StaffApiError ? rows.error.message : "Could not load the leads."} <Button variant="link" size="sm" onClick={() => rows.refetch()}>Try again</Button></p>
-          : !rows.data.length && sources.length ? <p data-empty role="status" className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">No leads from {sources.map((c) => SOURCES.find((s) => s.code === c)!.label).join(" or ")} here. Choose All sources to see every lead.</p>
+          : !rows.data.length && sources.length ? <p data-empty role="status" className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">No leads from {sources.map(words).join(" or ")} here. Choose All sources to see every lead.</p>
           : !rows.data.length ? <p data-empty className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">{empty}</p>
-            : !shown.length ? <p role="status" className="text-sm text-text-muted">No lead matches “{q.trim()}”.</p>
+            : !shown.length ? <p role="status" className="text-sm text-text-muted">No lead matches “{q.trim()}”{sources.length ? ` among ${sources.map(words).join(" or ")}` : ""}.</p>
               : (
                 <Table label={`Leads: ${CHIPS.find((c) => c.view === view)!.label}`} head={["Lead", "Interested in", "Source", "Owner", view === "unassigned" ? "Waited" : "Arrived", ""]}>
                   {shown.map((l) => (

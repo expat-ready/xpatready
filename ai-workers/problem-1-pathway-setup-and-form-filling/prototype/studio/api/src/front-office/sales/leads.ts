@@ -1,7 +1,7 @@
 // FO-2 (contracts §2.1, §7; AG-2-4, -13c, -80, -84, -86): staff leads, firm-scoped (404), visibility by common.ts; a change
 // is one transaction: the row under its lock, one audit line, the outbox row last.
 import { HttpException, Inject, Injectable } from "@nestjs/common";
-import type { FoDoor, FoLeadState, PrismaClient } from "@prisma/client";
+import type { FoLeadState, PrismaClient } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { EVENT, LeadEventPayload, type EventName } from "../../../../ports/events.ts";
 import { Db } from "../../core.ts";
@@ -11,20 +11,16 @@ import type { FirmCalendar } from "../../platform/complaints/business-days.ts";
 import { forbidden, problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts";
 import { arrive, possibleMatch } from "./arrival.ts";
-import { actorOf, conflict, email, notFound, phone, sees, text, unprocessable, UUID, visibilityOf, written, type Tx } from "./common.ts";
+import { actorOf, conflict, email, notFound, phone, sees, text, unprocessable, UUID, visibilityOf, written, type Tx, type Visibility } from "./common.ts";
 import { openMinutesIn, openWindows } from "./open-minutes.ts";
 import { SALES_PORTS, type SalesPorts } from "./public.ts";
 
 export const VIEWS = ["unassigned", "mine", "all", "closed"] as const;
 type View = (typeof VIEWS)[number];
-/** FO-4sf (AG-2-23 rule 1): the lead sources the list filters by, the stored way the lead arrived (`FoDoor`). */
-export const SOURCES = ["WEB_FORM", "MANUAL", "BOOKING"] as const satisfies readonly FoDoor[];
-/** `?source=` as one value, a comma list or repeated keys; empty = all sources; an unknown value → 400 naming the allowed. */
-export function sourcesOf(q: unknown): FoDoor[] | null {
-  const asked = [...new Set((Array.isArray(q) ? q : q === undefined || q === null ? [] : [q]).flatMap((x) => String(x).split(",")).map((x) => x.trim()).filter(Boolean))];
-  const bad = asked.filter((x) => !(SOURCES as readonly string[]).includes(x));
-  if (bad.length) return problem(400, "Check the filter", `Unknown source: ${bad.join(", ").slice(0, 200)}. Choose from ${SOURCES.join(", ")}.`, { code: "UNKNOWN_SOURCE", allowed: [...SOURCES] });
-  return asked.length ? (asked as FoDoor[]) : null;
+/** FO-4sf (AG-2-23 rule 1): `?source=` is the lead's stored source (AG-02 glossary: "where a lead came from … not the
+ *  door"), given once or repeated (`source=A&source=B`; a source may hold a comma, so values are never split). Empty = all. */
+export function sourcesAsked(q: unknown): string[] {
+  return [...new Set((Array.isArray(q) ? q : q === undefined || q === null ? [] : [q]).map((x) => String(x).trim()).filter(Boolean))];
 }
 /** How recent an owner change from Unassigned counts as the race that names the winner (Sample, FO-2v brief). */
 const RACE_MINUTES = 10;
@@ -45,19 +41,24 @@ export class Leads {
   /** Unassigned leads (open, no active owner, oldest first), Mine, All open, Closed; each open row with the time it has
    *  waited in the firm's open hours (BR-4, AG-2-13c rule 6), worked out here. */
   async list(ctx: StaffContext, view: unknown, source?: unknown) {
-    const doors = sourcesOf(source);   // checked first: a bad filter is refused for everyone the same way
     const v = (VIEWS as readonly string[]).includes(String(view ?? "all")) ? (String(view ?? "all") as View) : unprocessable("Choose a view: unassigned, mine, all or closed.", { view: "Unknown view." });
     const vis = await visibilityOf(this.db, ctx);
     if (v === "unassigned" && !vis.seesUnassigned) return forbidden("Unassigned leads are seen by people who may see all leads or assign them.", "MISSING_PERMISSION");
     const staff = await this.staffOf(ctx.firmId);
     const inactive = [...staff.values()].filter((s) => s.status !== "ACTIVE").map((s) => s.id);
+    const asked = sourcesAsked(source);
+    if (asked.length) {
+      // Only the sources of leads this person may see are known to them (FO-2v): another person's free-text source is never named.
+      const allowed = await this.sourcesSeen(ctx, vis, inactive), bad = asked.filter((x) => !allowed.includes(x));
+      if (bad.length) return problem(400, "Check the filter", `Unknown source: ${bad.join(", ").slice(0, 200)}. Choose from: ${allowed.join(", ").slice(0, 500) || "no source yet"}.`, { code: "UNKNOWN_SOURCE", allowed });
+    }
     const state: FoLeadState = v === "closed" ? "CLOSED" : "OPEN";
     const where = v === "unassigned" ? { state, OR: [{ ownerStaffId: null }, { ownerStaffId: { in: inactive } }] }
       : v === "mine" ? { state, ownerStaffId: ctx.staffId }
-      : vis.seesAll ? { state } : { state, OR: [{ ownerStaffId: ctx.staffId }, ...(vis.seesUnassigned ? [{ ownerStaffId: null }, { ownerStaffId: { in: inactive } }] : [])] };   // in the query, before the page cap (review m5)
+      : { state, ...this.seenWhere(ctx, vis, inactive) };   // in the query, before the page cap (review m5)
     const rows = await this.db.foLead.findMany({
       // The source filter narrows inside the visibility, never widens it (FO-4sf).
-      where: firmScope(ctx.firmId, doors ? { AND: [where, { door: { in: doors } }] } : where), orderBy: v === "unassigned" ? [{ arrivedAt: "asc" }, { id: "asc" }] : [{ arrivedAt: "desc" }, { id: "asc" }], take: 500,
+      where: firmScope(ctx.firmId, asked.length ? { AND: [where, { source: { in: asked } }] } : where), orderBy: v === "unassigned" ? [{ arrivedAt: "asc" }, { id: "asc" }] : [{ arrivedAt: "desc" }, { id: "asc" }], take: 500,
       include: { person: { select: { givenNames: true, familyName: true, phoneReadable: true } }, interestedIn: { select: { label: true } } },
     });
     const unowned = (o: string | null) => o === null || inactive.includes(o);
@@ -71,6 +72,23 @@ export class Leads {
       possibleMatch: l.possibleMatchPersonId !== null, fixNumber: !l.person.phoneReadable,
       waitedOpenMinutes: l.state === "OPEN" && windows ? openMinutesIn(windows, l.arrivedAt, now) : null,
     }));
+  }
+
+  /** The leads a person may see, as a query (FO-2v): all, else their own and, when Unassigned is visible, those with no active owner. */
+  private seenWhere(ctx: StaffContext, vis: Visibility, inactive: string[]) {
+    return vis.seesAll ? {} : { OR: [{ ownerStaffId: ctx.staffId }, ...(vis.seesUnassigned ? [{ ownerStaffId: null }, { ownerStaffId: { in: inactive } }] : [])] };
+  }
+
+  private async sourcesSeen(ctx: StaffContext, vis: Visibility, inactive: string[]): Promise<string[]> {
+    const rows = await this.db.foLead.findMany({ where: firmScope(ctx.firmId, this.seenWhere(ctx, vis, inactive)), distinct: ["source"], select: { source: true }, orderBy: { source: "asc" }, take: 200 });
+    return rows.map((r) => r.source);
+  }
+
+  /** The Source filter's choices (FO-4sf, AG-2-23 rule 1): the stored sources of the leads this person may see, A to Z. */
+  async sources(ctx: StaffContext) {
+    const vis = await visibilityOf(this.db, ctx);
+    const inactive = [...(await this.staffOf(ctx.firmId)).values()].filter((s) => s.status !== "ACTIVE").map((s) => s.id);
+    return { sources: await this.sourcesSeen(ctx, vis, inactive) };
   }
 
   /** Who a lead can be assigned to (AG-2-13c rule 11, AG1-D6; Lead B rev 16.29 on #1843): every active staff member of

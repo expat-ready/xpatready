@@ -1,5 +1,5 @@
 // FO-4sf (brief lead-b-briefs/FO-4sf.md rev 16.63; AG-2-23 rule 1 "Filters on leads: … source …"; R1.27): the Leads
-// list filters by source, the stored way the lead arrived (web form, added by hand, booking), inside FO-2v's visibility.
+// list filters by the lead's stored source (AG-02 glossary: where it came from, not the door), inside FO-2v's visibility.
 // Against the real routes (no fake API) and in a real browser: DW1 the API filter, DW2 an own-only Case Officer, DW3 the
 // screen (keyboard only, kept in the address over a reload, axe-core, 375/1024/1440 px). A pass and a fail each. US$0.
 //   zsh studio/tools/isolated.sh screens_fo4sf 4531 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo4sf_source_filter.ts 4531 xr_studio_screens_fo4sf
@@ -32,14 +32,20 @@ const ws = await platformAuditWorkspaceId(db);
 const seesAll = (value: boolean) => writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value, by: "seed:FO-4sf-test", workspaceId: ws, reason: "FO-4sf test" });
 const staffOf = (actor: string) => { const [id, email] = sql(`select id || '|' || email from platform_staff where actor_id = '${actor}'`).split("|"); return { id, email }; };
 const T = staffOf("user-T"), O = staffOf("user-O");   // Case Manager (sees all when the setting is on), Case Officer
-// Six leads: each source owned by the Case Manager and by the Case Officer (Sample people, made for this run).
+// Seven leads (Sample people, made for this run). The source is the stored "where it came from", not the door (AG-02
+// glossary): oBook arrived by booking with the source "Phone call", so a filter on the door would miss it. tComma is a
+// typed source with a comma (never split) that only the Case Manager has.
 let n = 0;
-const lead = (door: string, owner: string) => {
-  const p = sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Src${door.replace("_", "")}${++n}${run}', 'Sample', 'fo4sf${n}.${run}@example.org', 'test', now()) returning id`);
-  return sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values (gen_random_uuid(), '${A}', '${p}', '${door}', '${door === "WEB_FORM" ? "WEBSITE" : door === "MANUAL" ? "Phone call" : "Booking"}', '${owner}', 'test', now()) returning id`);
+const lead = (door: string, source: string, owner: string) => {
+  const p = sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Src${++n}${run}', 'Sample', 'fo4sf${n}.${run}@example.org', 'test', now()) returning id`);
+  return sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values (gen_random_uuid(), '${A}', '${p}', '${door}', '${source}', '${owner}', 'test', now()) returning id`);
 };
-const L = { tWeb: lead("WEB_FORM", T.id), tMan: lead("MANUAL", T.id), tBook: lead("BOOKING", T.id), oWeb: lead("WEB_FORM", O.id), oMan: lead("MANUAL", O.id), oBook: lead("BOOKING", O.id) };
+const L = {
+  tWeb: lead("WEB_FORM", "WEBSITE", T.id), tMan: lead("MANUAL", "Phone call", T.id), tBook: lead("BOOKING", "Referral", T.id), tComma: lead("MANUAL", "Event, Toronto", T.id),
+  oWeb: lead("WEB_FORM", "WEBSITE", O.id), oMan: lead("MANUAL", "Phone call", O.id), oBook: lead("BOOKING", "Phone call", O.id),
+};
 const ours = new Set(Object.values(L));
+const enc = (...v: string[]) => v.map((x) => `&source=${encodeURIComponent(x)}`).join("");
 async function signIn(email: string): Promise<string> {
   const r = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", email, secondStep: true }) });
   const b = await r.json() as { token?: string; detail?: string }; if (b.token) return b.token;
@@ -53,27 +59,33 @@ const list = async (t: string, qs: string) => {
 };
 const same = (a: Set<string>, b: string[]) => a.size === b.length && b.every((x) => a.has(x));
 
+const sourcesOf = async (t: string) => ((await fetch(`${BASE}/api/front-office/leads/sources`, { headers: { authorization: `Bearer ${t}` } }).then((r) => r.json())) as { sources: string[] }).sources;
+
 // ------------------------------------------------------------------------------------------- DW1: the API filter
 await seesAll(true);
-const man = await list(tok.T, "&source=MANUAL");
-ok("FO-4sf DW1 pass: source=MANUAL returns only the leads added by hand", man.status === 200 && same(man.ids, [L.tMan, L.oMan]), [man.status, [...man.ids]]);
-const two = await list(tok.T, "&source=MANUAL,BOOKING"), rep = await list(tok.T, "&source=WEB_FORM&source=BOOKING");
-ok("FO-4sf DW1 pass: two values return both (a comma list or the key twice)", same(two.ids, [L.tMan, L.oMan, L.tBook, L.oBook]) && same(rep.ids, [L.tWeb, L.oWeb, L.tBook, L.oBook]), [[...two.ids], [...rep.ids]]);
+const phone = await list(tok.T, enc("Phone call"));
+ok("FO-4sf DW1 pass: source=Phone call returns only those leads, the one that arrived by booking included (the source, not the door)", phone.status === 200 && same(phone.ids, [L.tMan, L.oMan, L.oBook]), [phone.status, [...phone.ids]]);
+const two = await list(tok.T, enc("Phone call", "Referral")), comma = await list(tok.T, enc("Event, Toronto"));
+ok("FO-4sf DW1 pass: two values return both; a source holding a comma is one value, never split", same(two.ids, [L.tMan, L.oMan, L.oBook, L.tBook]) && same(comma.ids, [L.tComma]), [[...two.ids], [...comma.ids]]);
 const none = await list(tok.T, ""), blank = await list(tok.T, "&source=");
 ok("FO-4sf DW1 pass: no value (or an empty one) → every source, as before", same(none.ids, Object.values(L)) && same(blank.ids, Object.values(L)), [none.ids.size, blank.ids.size]);
-const bad = await list(tok.T, "&source=MANUAL,FAX"), lower = await list(tok.T, "&source=manual");
+const tSources = await sourcesOf(tok.T);
+ok("FO-4sf DW1 pass: the choices are the stored sources, A to Z", ["Event, Toronto", "Phone call", "Referral", "WEBSITE"].every((x) => tSources.includes(x)) && [...tSources].sort().join("|") === tSources.join("|"), tSources);
+const bad = await list(tok.T, enc("Phone call", "MANUAL")), lower = await list(tok.T, enc("phone call"));
 const badBody = bad.body as { detail?: string; code?: string; allowed?: string[] };
-ok("FO-4sf DW1 fail: an unknown value → 400 naming the allowed ones, and no rows", bad.status === 400 && badBody.code === "UNKNOWN_SOURCE" && /WEB_FORM, MANUAL, BOOKING/.test(badBody.detail ?? "") && /FAX/.test(badBody.detail ?? "") && badBody.allowed?.length === 3, bad.body);
+ok("FO-4sf DW1 fail: an unknown value (here a door, MANUAL) → 400 naming the allowed ones, and no rows", bad.status === 400 && badBody.code === "UNKNOWN_SOURCE" && /Unknown source: MANUAL/.test(badBody.detail ?? "") && /Phone call/.test(badBody.detail ?? "") && badBody.allowed?.includes("Referral") === true, bad.body);
 ok("FO-4sf DW1 fail: a value in the wrong case is unknown too (400), never a silent match", lower.status === 400, lower.status);
 
 // ------------------------------------------------------------------------------------------- DW2: inside FO-2v's visibility
 await seesAll(false);   // own-only: FO-2v, all = view.all AND the setting on
-const oMan = await list(tok.O, "&source=MANUAL"), oAll = await list(tok.O, "&source=MANUAL,WEB_FORM,BOOKING");
-ok("FO-4sf DW2 pass: an own-only Case Officer filtering by MANUAL sees only their own manual lead", oMan.status === 200 && same(oMan.ids, [L.oMan]), [...oMan.ids]);
-ok("FO-4sf DW2 fail: no filter widens it: every source chosen still shows none of the Case Manager's leads", same(oAll.ids, [L.oMan, L.oWeb, L.oBook]) && ![L.tWeb, L.tMan, L.tBook].some((x) => oAll.ids.has(x)), [...oAll.ids]);
-const tOwn = await list(tok.T, "&source=BOOKING");
-ok("FO-4sf DW2 pass: the setting off narrows the Case Manager too: only their own booking lead", same(tOwn.ids, [L.tBook]), [...tOwn.ids]);
-const mine = await fetch(`${BASE}/api/front-office/leads?view=mine&source=WEB_FORM`, { headers: { authorization: `Bearer ${tok.O}` } }).then((r) => r.json()) as { id: string }[];
+const oPhone = await list(tok.O, enc("Phone call")), oAll = await list(tok.O, enc("Phone call", "WEBSITE"));
+ok("FO-4sf DW2 pass: an own-only Case Officer filtering by Phone call sees only their own leads of that source", oPhone.status === 200 && same(oPhone.ids, [L.oMan, L.oBook]), [...oPhone.ids]);
+ok("FO-4sf DW2 fail: no filter widens it: the sources the Case Manager shares still show none of their leads", same(oAll.ids, [L.oMan, L.oBook, L.oWeb]) && ![L.tWeb, L.tMan].some((x) => oAll.ids.has(x)), [...oAll.ids]);
+const oSources = await sourcesOf(tok.O), oHidden = await list(tok.O, enc("Event, Toronto"));
+ok("FO-4sf DW2 fail: another person's source is never named: not in the choices, and asking for it is the same 400 as any unknown value", !oSources.includes("Event, Toronto") && !oSources.includes("Referral") && oHidden.status === 400 && !((oHidden.body as { allowed?: string[] }).allowed ?? []).includes("Event, Toronto"), [oSources, oHidden.status]);
+const tOwn = await list(tok.T, enc("Phone call"));
+ok("FO-4sf DW2 pass: the setting off narrows the Case Manager too: only their own Phone call lead", same(tOwn.ids, [L.tMan]), [...tOwn.ids]);
+const mine = await fetch(`${BASE}/api/front-office/leads?view=mine${enc("WEBSITE")}`, { headers: { authorization: `Bearer ${tok.O}` } }).then((r) => r.json()) as { id: string }[];
 ok("FO-4sf DW2 pass: Mine with a source is the person's own leads of that source", same(new Set(mine.map((x) => x.id).filter((id) => ours.has(id))), [L.oWeb]));
 
 // ------------------------------------------------------------------------------------------- DW3: the screen
@@ -88,19 +100,20 @@ const numberOf = (id: string) => sql(`select number from fo_lead where id = '${i
 const axe = async (name: string) => { const r = await new AxeBuilder({ page: p }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
   ok(`${name}: axe finds no WCAG A/AA violation`, r.violations.length === 0, r.violations.map((v) => `${v.id}: ${v.nodes[0]?.target?.join(" ")}`).join(" | ") || undefined); };
 await p.goto(`${BASE}/front-office/leads?view=all`); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ timeout: 30_000 });
-ok("FO-4sf DW3 pass: the Source filter sits beside the view chips with plain labels, none chosen", (await p.locator('[role="group"][aria-label="Source"] button').allInnerTexts()).join("|") === "Web form|Added by hand|Booking" && (await p.locator('[data-source][aria-pressed="true"]').count()) === 0);
+const chipTexts = await p.locator('[role="group"][aria-label="Source"] button[data-source]').allInnerTexts();
+ok("FO-4sf DW3 pass: the Source filter sits beside the view chips with the stored sources in plain words, none chosen", ["Website form", "Phone call", "Referral", "Event, Toronto"].every((x) => chipTexts.includes(x)) && !chipTexts.includes("WEBSITE") && (await p.locator('[data-source][aria-pressed="true"]').count()) === 0, chipTexts);
 await axe("FO-4sf Leads with the Source filter (1440 px)");
-// Keyboard only: Tab to "Added by hand", Enter.
+// Keyboard only: Tab to "Phone call", Enter.
 let reached = false;
-for (let i = 0; i < 40 && !reached; i++) { await p.keyboard.press("Tab"); reached = await p.evaluate(() => document.activeElement?.getAttribute("data-source") === "MANUAL"); }
+for (let i = 0; i < 40 && !reached; i++) { await p.keyboard.press("Tab"); reached = await p.evaluate(() => document.activeElement?.getAttribute("data-source") === "Phone call"); }
 await p.keyboard.press("Enter");
-await p.waitForURL(/source=MANUAL/, { timeout: 10_000 }); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ state: "detached", timeout: 15_000 }); await p.locator(`tr[data-lead-row="${numberOf(L.tMan)}"]`).waitFor({ timeout: 15_000 });
+await p.waitForURL(/source=Phone/, { timeout: 10_000 }); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ state: "detached", timeout: 15_000 }); await p.locator(`tr[data-lead-row="${numberOf(L.tMan)}"]`).waitFor({ timeout: 15_000 });
 const afterPick = await shown();
-ok("FO-4sf DW3 pass (keyboard only): Tab reaches \"Added by hand\", Enter filters the list to the manual leads", reached && afterPick.has(numberOf(L.tMan)) && afterPick.has(numberOf(L.oMan)) && ![L.tWeb, L.tBook, L.oWeb, L.oBook].some((x) => afterPick.has(numberOf(x))), [...afterPick]);
+ok("FO-4sf DW3 pass (keyboard only): Tab reaches \"Phone call\", Enter filters the list to those leads, the booked one included", reached && [L.tMan, L.oMan, L.oBook].every((x) => afterPick.has(numberOf(x))) && ![L.tWeb, L.tBook, L.oWeb, L.tComma].some((x) => afterPick.has(numberOf(x))), [...afterPick]);
 await p.reload(); await p.locator(`tr[data-lead-row="${numberOf(L.tMan)}"]`).waitFor({ timeout: 30_000 });
 const afterReload = await shown();
-ok("FO-4sf DW3 pass: the choice survives a reload (?source= in the address, the chip still pressed)", (await p.locator('[data-source="MANUAL"][aria-pressed="true"]').count()) === 1 && !afterReload.has(numberOf(L.tBook)) && p.url().includes("view=all"), p.url());
-await axe("FO-4sf Leads filtered by Added by hand");
+ok("FO-4sf DW3 pass: the choice survives a reload (?source= in the address, the chip still pressed)", (await p.locator('[data-source="Phone call"][aria-pressed="true"]').count()) === 1 && !afterReload.has(numberOf(L.tBook)) && p.url().includes("view=all"), p.url());
+await axe("FO-4sf Leads filtered by Phone call");
 await p.screenshot({ path: join(SHOTS, "leads-source-filter-1440.png"), fullPage: true });
 for (const w of [1024, 375]) {
   await p.setViewportSize({ width: w, height: 800 });
@@ -114,9 +127,9 @@ ok("FO-4sf DW3 pass: All sources clears the filter and the address", !p.url().in
 await p.goto(`${BASE}/front-office/leads?view=all&source=FAX`); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ timeout: 30_000 });
 ok("FO-4sf DW3 fail: an unknown ?source= in the address is ignored: no chip pressed, every source listed, no error", (await p.locator('[data-source][aria-pressed="true"]').count()) === 0 && (await p.getByRole("alert").count()) === 0);
 // Fail side: a source with no lead in this view says so and offers All sources.
-sql(`update fo_lead set owner_staff_id = '${O.id}' where id = '${L.tBook}'`);   // the Case Manager now owns no booking lead
-await p.goto(`${BASE}/front-office/leads?view=mine&source=BOOKING`); await p.locator("[data-empty]").waitFor({ timeout: 30_000 });
-ok("FO-4sf DW3 fail: a source with none of the person's own leads (Mine) says so in plain words and offers All sources", /No leads from Booking here/.test(await p.locator("[data-empty]").innerText()) && (await p.locator("[data-source-clear]").count()) === 1);
+sql(`update fo_lead set owner_staff_id = '${O.id}' where id = '${L.tBook}'`);   // the Case Manager now owns no Referral lead
+await p.goto(`${BASE}/front-office/leads?view=mine&source=Referral`); await p.locator("[data-empty]").waitFor({ timeout: 30_000 });
+ok("FO-4sf DW3 fail: a source with none of the person's own leads (Mine) says so in plain words and offers All sources", /No leads from Referral here/.test(await p.locator("[data-empty]").innerText()) && (await p.locator("[data-source-clear]").count()) === 1);
 ok("FO-4sf: no page error in the browser", errors.length === 0, errors);
 await db.$disconnect();
 await browser.close();
