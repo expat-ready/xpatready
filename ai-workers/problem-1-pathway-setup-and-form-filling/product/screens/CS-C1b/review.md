@@ -71,4 +71,38 @@ None.
 * `graph.mjs`, because it writes `qa/GRAPH.md`, which is outside this review's single file.
 * Reopening above the limit, which SA-3-62 allows; it is not in this row's scope.
 
-Verdict: Changes requested
+Round 1 result on 41afe0364: Changes requested (M1). Round 2 follows.
+
+## Re-review on c224b4f6e (P-277: only `git diff 41afe0364..c224b4f6e`)
+
+The new diff touches `api/src/runtime.ts` (+4), `api/src/case-count.ts` and `tests/check_csc1_count.ts`; 9cb96c6e1 between them only adds `product/qa/built/CS-C1.md`. The PR is now 474 changed lines in `prototype/`, still on the touch list.
+
+**What I ran.** On copy `csc1b_rev`, port 4591 (stopped afterwards):
+* `check_csc1_count.ts`: **40/40 passed**, twice on the same copy.
+* `check-port-contracts.mjs`: exit 0.
+* **Spot-check that the new test fails when the fix is removed:** in a scratch mirror of `api/` I disabled the new in-transaction key check (`runtime.ts:305`). Result: **39/40**. The DW11 (review M1) line went red with `[201 created] [409 PLAN_LIMIT_REACHED]`, which is exactly the round-1 failure. The new line discriminates.
+
+**Round-1 findings**
+* **M1: fixed.**
+  * `runtime.ts:305` now looks up the same key's case after the lock and before the count, so the plan limit can no longer answer a retry. `:335` answers it through `replay()`, which keeps the fingerprint check: the same key with a different request is still 409.
+  * In READ COMMITTED, the waiting twin's lookup sees its twin's committed case.
+  * New DW11 lines: both twins get 201 with the same id (one created, one replayed), and one row carries the key; when the firm is full, the same key still replays while a new opening is 409.
+* **m2: fixed enough for this row.** The last reopen is now read once per count (the `reopened` CTE), not once per case. The outbox is still read once per opening, filtered by type: an index needs a migration, which is off this touch list. The builder measured 53 ms with 300k extra rows; I did not re-measure.
+* **m3: fixed** (numeric sort).
+* **m4: fixed for DW10 and DW12.**
+  * DW10 now has two discriminating checks: corporate does not add to individual, and individual or family does not add to corporate.
+  * DW12 compares firm B's `used` with its count read before the opening.
+  * The contract's fourth case is left as a stated limit. It is covered end to end by DW11 and the lock mutation from round 1.
+* **m1 (two clocks): open as Minor, accepted as a known limit.** It is raised in the PR. Closing it needs an ordering column on CS-C1a's `case_decision`, which is outside this touch list. The window is narrow and it is not a Blocker.
+
+**New code (the breaker's M3: the CURRENT stage's filings only), `case-count.ts`.**
+* The `filings` CTE joins `case_stage` on `state = 'CURRENT'`. `filing.stage_id` is NOT NULL and was backfilled to the CURRENT stage (C6.17 migration `20261109130000:90,95`), so no older filing drops out of the count.
+* A decided case whose next stage has started counts again until that stage's filings have decisions. That is consistent with SA-3-47. The new DW9 pass and fail lines hold.
+* CS-C1a's close still checks every active filing, on any stage. That rule is unchanged and stricter, so the two do not conflict.
+
+**Notes (not findings).**
+* If `replay()` returned null after `REPLAYED`, `runtime.ts:335` would fall through with `id = "replayed"`. This cannot happen: the key's case was read as committed and cases are never deleted. A `fail(...)` there would make it explicit.
+
+**Not checked:** full CI on c224b4f6e, and the other Done-when suites (A24, C6.11, C6.17, the demo reset, C10.1). Under P-385, CI must be green on this sha before the label.
+
+Verdict: Approve c224b4f6edd983e909211610b375db39c0a2812f
