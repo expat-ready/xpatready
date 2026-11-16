@@ -1690,3 +1690,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - **Part 2 (after part 1):** the seven own-firm doors move to narrow `xr_wall_reader` definer lookups and leave `BYPASS_USES`. It splits into 2a and 2b past 800 lines, and never runs beside the `identity/` rows.
   - DW1 to DW7. Opus high, breaker yes, and the release holder reads the SQL.
 * **Lead 70, 23:04 IST:** PF-12b part 1 is now the night queue's top row, because it frees R1.4 to be proven. Part 2 waits on part 1, with the `identity/` exclusions kept. The QA-500 rewording is held until part 2 lands.
+* **PF-8r, the third Lead file (23:13 IST):** on the founder's word (23:2x), Lead 70 put the `check-select-suites.sh` change on #2014 as 2aa9949e1. It was applied by hand, because the comment's patch text was cut short; the PR comment says so. The nightly check passes in a scratch clone. Next: the builder runs both tests on this head, and the reviewer reads only this commit.
