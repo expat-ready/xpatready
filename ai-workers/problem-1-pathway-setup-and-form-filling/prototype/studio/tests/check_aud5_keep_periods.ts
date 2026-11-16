@@ -130,9 +130,12 @@ try {
   ok("AUD-5 DW2 fail: saving 5 without a reason (or with an empty one) is refused in words naming s. 7.2; nothing saved",
     noReason.every((b) => b.status === 400 && b.body.code === "REASON_NEEDED" && /s\. 7\.2/.test(b.body.detail) && /Give a reason/.test(b.body.detail)) && await readSetting(db, FIRM_A, KEY) === 8 && lines() === before, noReason.map((b) => b.body));
   ok("AUD-5 DW2 fail: a reason over 500 characters is refused", (await put(tR, { years: 5, reason: "x".repeat(501) })).status === 400 && lines() === before);
-  const oddReasons = await Promise.all(["\u200b", "\u00ad\u2060", "\u3164", "a\u0000b", "line\nbreak", "\ud800", "x\udc00"].map((reason) => put(tR, { years: 5, reason })));
+  const oddReasons = await Promise.all(["\u200b", "\u00ad\u2060", "\u3164", "a\u0000b", "bell\u0007", "\ud800", "x\udc00"].map((reason) => put(tR, { years: 5, reason })));
   ok("AUD-5 DW2 fail (break m1, m2): a reason of invisible characters only, or with a control character or broken text, is refused 400 (never 404/500), nothing saved",
     oddReasons.every((b) => b.status === 400 && ["REASON_NEEDED", "INVALID_REASON"].includes(b.body.code)) && await readSetting(db, FIRM_A, KEY) === 8 && lines() === before, oddReasons.map((b) => [b.status, b.body.code]));
+  const multi = await put(tR, { years: 7, reason: "\tFirst line.\nSecond line. \n" });
+  ok("AUD-5 DW2 pass (re-review n2): a reason on several lines (line breaks, tabs) is trimmed and kept", multi.status === 200 && JSON.parse(sql(`select detail::text from audit_event where entity_key = '${FIRM_A}:${KEY}' order by at desc, id desc limit 1`)).reason === "Reason given: First line.\nSecond line.", multi.body);
+  before = lines();
   ok("AUD-5 DW2 pass (break m7): the 500-character limit counts characters as a person does (300 emoji are allowed)", (await put(tR, { years: 7, reason: "📁".repeat(300) })).status === 200 && lines() === before + 1);
   before = lines();
   const withReason = await put(tR, { years: 5, reason: "Files are also kept by our parent firm's records office." });
@@ -147,6 +150,10 @@ try {
   const sixWhy = await put(tR, { years: 6, reason: "Back to the College's number." });
   const sixWhyLine = JSON.parse(sql(`select detail::text from audit_event where entity_key = '${FIRM_A}:${KEY}' order by at desc, id desc limit 1`));
   ok("AUD-5 DW2 pass (review m4): a reason given at 6 or more is kept on the line, with no warning", sixWhy.status === 200 && sixWhy.body.warning === null && sixWhyLine.reason === "Reason given: Back to the College's number.", sixWhyLine);
+  const [p3, p9] = await Promise.all([put(tR, { years: 3, reason: "Parallel save." }), put(tR, { years: 9 })]);
+  ok("AUD-5 DW2 pass (break m5, re-review n1): two saves at once each answer with their own value and warning, never the other's",
+    p3.status === 200 && p9.status === 200 && p3.body.years === 3 && /s\. 7\.2/.test(p3.body.warning ?? "") && p9.body.years === 9 && p9.body.warning === null, [p3.body, p9.body]);
+  await put(tR, { years: 6 });
   ok("AUD-5 DW2 fail: a forced settings refusal through the write path (unregistered value) is a 400, never a save",
     await throwsLike(() => writeSetting(db, { firmId: FIRM_A, key: KEY, value: 0, by: "staff:x", workspaceId: sql("select id from workspace where key = 'platform-audit'") }), (e) => (e as { getStatus?: () => number }).getStatus?.() === 400) && await readSetting(db, FIRM_A, KEY) === 6);
 

@@ -46,14 +46,16 @@ const SaveBody = z.strictObject({ years: z.unknown(), reason: z.unknown().option
 const REASON_MAX = 500;
 const WARNING_SHORT = COLLEGE_WARNING.replace(" Give a reason to save it.", "");
 
-/** A typed reason: text of at most 500 characters (counted as a person counts them), one line with no control
- *  characters or broken text, and at least one letter or digit that is seen (an invisible-only "reason" is no reason: break m1).
+/** A typed reason: text of at most 500 characters (counted as a person counts them), with no control character
+ *  but line breaks and tabs, no broken text, and at least one letter or digit that is seen (an invisible-only "reason" is no reason: break m1).
  *  Empty when none was given. */
 function reasonOf(raw: unknown): string {
   if (raw === undefined) return "";
   if (typeof raw !== "string") problem(400, "Not saved", "The reason is a sentence of text.", { code: "INVALID_REASON" });
-  if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(raw) || /[\u0000-\u001f\u007f-\u009f]/.test(raw)) problem(400, "Not saved", "The reason has characters that cannot be saved: write it as one line of ordinary text.", { code: "INVALID_REASON" });
   const reason = raw.trim();
+  // Line breaks and tabs inside a reason are kept (a reason box may have several lines: re-review n2); any other control
+  // character, or broken text (a lone surrogate), cannot be stored and is refused in words (break m2).
+  if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(reason) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(reason)) problem(400, "Not saved", "The reason has characters that cannot be saved: write it as ordinary text.", { code: "INVALID_REASON" });
   if ([...reason].length > REASON_MAX) problem(400, "Not saved", `Keep the reason to ${REASON_MAX} characters.`, { code: "INVALID_REASON" });
   return /[\p{L}\p{N}]/u.test(reason.replace(/[\p{Cf}\u115F\u1160\u3164\uFFA0]/gu, "")) ? reason : "";   // fillers that draw nothing are not letters
 }

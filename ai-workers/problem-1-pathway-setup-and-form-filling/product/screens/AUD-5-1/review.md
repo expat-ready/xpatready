@@ -78,3 +78,43 @@ D1–D20 and BIC-01 to BIC-20 are not applicable: API only, no screen in this pa
 **9.5 / 10, pass.** Feedback and state scored ½ (m3, m4). Full report: `journey-test-reviewer-2026-11-16.md`.
 
 Verdict: Approve 34686f2857049d6cc8b24d42f9adb648053f35ab
+
+---
+
+# Re-review: e838c2f6ad4f52777ed3158a9a5ba89cb232b636 (P-277: only the new commits)
+
+I read `git diff 34686f285..e838c2f6a`. c4f715405 adds `break-report.md`. e838c2f6a changes `keep-period/service.ts` (+29/−13) and `tests/check_aud5_keep_periods.ts` (+19), and adds this review and the journey report unchanged. Nothing outside AUD-5's own files changed.
+
+## What I ran (own copies; never :4400)
+* `tsx tests/check_aud5_keep_periods.ts`: **54 passed, 0 failed**, run twice.
+* `check-port-contracts.mjs`: exit 0. `typecheck.mjs`: no new type errors (15 known).
+* An isolated copy `rvaud5b` on :4437 (stopped afterwards). Five mutations on a clean worktree of e838c2f6a.
+
+## The Minors, one by one
+| # | Fixed? | Evidence |
+|---|---|---|
+| m1 (crash claim) | **Open: PR text only** | The PR body's Question 1 still says "Prisma rejects, so the reset would crash" at e838c2f6a. The coordinator is correcting it. No code is involved, so it does not block |
+| m2 (contract not on the wall) | **Fixed** | Test `:187-194`: the real adapter on `new Db()` inside `withFirm`. A request in firm A reads 6; a request in firm B asking for firm A reads "not set" |
+| m3 (answer re-read) | **Fixed** | `service.ts:108` builds the answer from `writeSetting`'s saved value. 24 parallel PUTs on :4437 gave **0 mismatches** (before: 10 of 24). **No test pins it** (n1) |
+| m4 (reason dropped at 6 or more) | **Fixed** | `service.ts:103`. Test `:146-149` passes; the mutation that drops the reason is caught |
+| m5 (invisible-only reason) | **Fixed** | `reasonOf` (`service.ts:52-59`). U+200B, U+3164 and U+115F give 400 REASON_NEEDED; "-----" gives REASON_NEEDED. A ZWJ after a letter is accepted, which is correct. The mutation is caught |
+| m6 (NUL 404, surrogate 500) | **Fixed** | A NUL, lone high and low surrogates, and BEL all give 400 INVALID_REASON, never 404 or 500. The mutation is caught |
+| m7 ("Warning shown") | **Fixed** | The line now reads "Below the College's rule: …". Cosmetic note: it then repeats "This is less than the College's rule …" |
+| break m7 (UTF-16 count) | **Fixed** | `[...reason].length`. 300 emoji are allowed; the mutation is caught |
+| m8 (reset over existing rows) | Not changed; **accepted** | Reachable only by a database edit; the start-up seed gives every Sample firm a row |
+| m9 (Sample label) | Not changed; **accepted** | The read's shape follows the brief, and the audit line carries "Sample value". It stays a Minor for the screen row |
+
+## New findings in e838c2f6a
+**Blockers:** none. **Majors:** none.
+
+**Minors:**
+* **n1. `tests/check_aud5_keep_periods.ts`: m3's fix has no test.** Putting back the re-read (`return { ...(await this.read(s)).closedClientFiles, saved: true }`) still gives 54/54. Scenario: a later refactor brings the re-read back, and parallel saves report another request's value again. Fix: two parallel PUTs (for example 3 and 9) and assert each answer's `years` equals its own request.
+* **n2. `service.ts:55`: control characters are checked on the raw text before `trim()`.** So "ok\n" (a textarea's trailing newline), "\t ok \t" and any two-line reason now give 400 INVALID_REASON; before this commit they were trimmed and accepted. Scenario: the screen row gives the reason a multi-line box; an Owner types two lines below 6 years, and the save is refused. The words do say "write it as one line", so this is minor. Fix: trim first, and allow `\n` and `\t`, refusing only the other C0 and C1 characters. Or the screen row keeps the reason to one line.
+
+## Re-review verdict
+Every code Minor from the first review and from the breaker that was meant to be fixed is fixed and tested, except m3's test (n1). m8 and m9 are accepted as not changed. m1 is PR text in progress. n1 and n2 are Minor. No Blocker or Major is open.
+
+## Journey score
+It stays **9.5 / 10, pass**. Feedback and state now holds (m3 and m4 are fixed). The new strictness on line breaks (n2) keeps that criterion from rising to a clean 1 for a multi-line reason. So the score is unchanged.
+
+Verdict: Approve e838c2f6ad4f52777ed3158a9a5ba89cb232b636
