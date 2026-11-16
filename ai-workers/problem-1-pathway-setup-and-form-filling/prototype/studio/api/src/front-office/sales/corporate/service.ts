@@ -16,7 +16,8 @@ import { companyMatches, normaliseCompanyName, seesCompany, type Seer } from "./
 export const ROLES = ["PRIMARY", "SIGNATORY", "HR", "BILLING", "OTHER"] as const;
 const TYPES = ["INDIVIDUAL", "CORPORATE"] as const;
 type B = Record<string, unknown>;
-type Detail = Record<string, string | number | boolean | null>;
+type Scalar = string | number | boolean | null;
+type Detail = Record<string, Scalar | Scalar[]>;   // as AuditPort's AuditDetail (flat values or a list of at most 50)
 const nameOf = (p: { givenNames: string | null; familyName: string | null }) => [p.givenNames, p.familyName].filter(Boolean).join(" ") || "(no name)";
 const idOf = (v: unknown, field: string, what: string) => (typeof v === "string" && UUID.test(v) ? v.toLowerCase() : unprocessable(`${what}: choose one from the list.`, { [field]: "Choose one from the list." }));
 const roleOf = (v: unknown) => ((ROLES as readonly unknown[]).includes(v) ? (v as FoContactRole) : unprocessable("Role: PRIMARY, SIGNATORY, HR, BILLING or OTHER (AG-2-77 rule 3).", { role: "Choose a role from the list." }));
