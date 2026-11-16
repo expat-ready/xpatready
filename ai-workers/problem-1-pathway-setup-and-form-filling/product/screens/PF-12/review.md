@@ -280,3 +280,44 @@ The checkout moved from e0f29f575 to 0b9e1e8b4 while the four isolated suites ra
 As round 2. Every criterion scores 1 except trust and sources, ½, because the bypass is still reachable by `SET ROLE` outside `asBypass`; that is recorded as a PR question.
 
 **Verdict: Approve** for `0b9e1e8b49cc83187aa3c0449c3ac1c92b0e2766`: no open Blocker or Major. Fix r3-m1 in the PR body before asking for the label. r3-m2 is for a follow-up.
+
+---
+
+# Round 4: diff-only re-review at b74860dd3 (P-277)
+
+Verdict: Approve
+
+Scope: `git diff 0b9e1e8b4 b74860dd3 -- …/studio`, a single change in the migration: `GRANT EXECUTE ON ALL FUNCTIONS … TO xr_wall_reader` and its default privilege are replaced by `GRANT <migration role> TO xr_wall_reader WITH INHERIT TRUE, SET FALSE`.
+
+## Is giving the reader the owner's rights by membership acceptable? Yes, with two notes
+
+What the reader gains:
+- It now acts with the table owner's object rights. That includes owner-only operations: altering any table, its row-level security and its policies, and disabling user triggers.
+- It gains no attributes. A scratch database at b74860dd3 showed `SET ROLE xr_wall_reader` refused for `CREATE ROLE` and `SET session_replication_role`. BYPASSRLS was already its own.
+- Nobody may become it: it has 0 members, `xr_app` is a member of neither the reader nor `xr_studio`, and `SET FALSE` means the reader cannot become the owner either.
+
+Why that is acceptable:
+- The only code that ever runs as the reader is the 68 fixed trigger bodies and the address lookup.
+- No migration has dynamic SQL in a function body: no `EXECUTE` other than `EXECUTE FUNCTION` (grep). None of the reader-owned functions contains `EXECUTE` (`pg_proc.prosrc` on the scratch database).
+- Every one pins `search_path = pg_catalog, public, pg_temp`, and `xr_app` cannot create in `public`.
+- So nothing a caller sends can steer what runs with these rights.
+
+What it fixes:
+- No function's access list changes. `money_take_number` keeps exactly `{xr_studio=X/xr_studio}`, which FO-7a's B-13 pins.
+- **Proved end to end as `xr_app`** on the scratch database. Firm A's draft invoice with one line was issued, and the trigger running as the reader called the owner-only helper: number `INV-0001`, with the series row made and counted. A direct `select money_take_number(…)` by `xr_app` is still `permission denied`.
+- At 5f22 this path could not have worked: the invoker trigger as `xr_app` had no EXECUTE on the helper. Round 2's reader closed that gap, and this round keeps it closed without touching an access list.
+
+## Minor (new; neither blocks)
+
+- **r4-m1.** Because the reader now holds owner-level rights, a later reader-owned function with dynamic SQL would be an owner-level hole. Extend `check_pf12_walls.ts`'s guard: fail when any function owned by `xr_wall_reader` contains `EXECUTE` (other than `EXECUTE FUNCTION`), or lacks the pinned `search_path` (that part is already checked).
+- **r4-m2 (production, add to the PR's question 2).** `INHERIT TRUE` passes on, link by link, every role the migration role inherits. On a managed database the migration role is often the admin user, a member of the provider's admin role, so the reader would inherit those privileges too. **Fix:** in production, make the reader a member of a dedicated owner role that holds only the tables, never the cluster admin.
+
+## Checked in round 4
+
+- The studio folder at HEAD is identical to b74860dd3.
+- `check_pf12_walls` 98/0.
+- `check_fo7a_money_schema` 123/0, including B-13's access-list check.
+- Scratch database with every migration at b74860dd3: membership options `xr_studio` and `xr_data` (inherit, no set, no admin); 0 members of the reader; the helper's ACL unchanged; the reader cannot create a role or set `session_replication_role`; the invoice issue as `xr_app` → `INV-0001`. The database was dropped.
+- Round 3's findings stand unchanged (r3-m1: the PR body should name the gate and this head's result lines before the label; r3-m2: follow-up).
+
+**Verdict: Approve** for `b74860dd381b98f1c17a2d828e872e4562edab00`: no open Blocker or Major. Before asking for the label: r3-m1, and r4-m2 as a line in PR question 2. r4-m1 is recommended.
