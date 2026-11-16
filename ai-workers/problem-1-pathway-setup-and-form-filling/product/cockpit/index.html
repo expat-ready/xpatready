@@ -502,7 +502,8 @@ function rEarly(B){
   h+='<div class="kpis" style="margin:6px 0">'+
     kpi("Parts merged",nv(lp,""),lp.day?"on "+esc(short(lp.day))+" · today so far "+esc(lp.today_so_far):"today so far "+esc(lp.today_so_far),"","","pace.leading_parts")+
     kpi("Capabilities with all parts merged",nv(lc,"")+'<span class="muted" style="font-size:13px"> / '+esc(lc.rows_total)+'</span>',(lc.day?"+"+esc(lc.new_on_day)+" on "+esc(short(lc.day))+" · ":"")+"+"+esc(lc.today_so_far)+" today","","","pace.leading_caps")+
-    kpi("Works at the first qa verdict",nv(lv,"%"),esc(lv.works)+" of "+esc(lv.n)+" first verdicts since 13 Nov","","","pace.leading_fv")+'</div>';
+    kpi("Works at the first qa verdict",nv(lv,"%"),"proof of concept: "+esc(lv.works)+" of "+esc(lv.n)+" first verdicts since 13 Nov","","","pace.leading_fv")+
+    (L.first_verdict_works_pct_r1?kpi("Release 1: Works at the first qa verdict",nv(L.first_verdict_works_pct_r1,"%"),esc(L.first_verdict_works_pct_r1.works)+" of "+esc(L.first_verdict_works_pct_r1.n)+" first verdicts since 13 Nov","","","pace.leading_fv_r1"):"")+'</div>';
   return h;
 }
 /* P-602 (4): delivery per use over the last 24 h; the divisions use deliveries over the same hours as the readings.
