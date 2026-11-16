@@ -19,6 +19,7 @@ Rules: RULES.md (as of **P-634**) + DECISIONS **P-635 to P-637** word for word (
 9. **Board v12 live (P-636):** https://claude.ai/artifact/LceYQnmEWNpqBoUUp4hBbW; PR #1937 (stacked on #1932: #1932 first) needs Reviewer Approve then label. **Every check:** ArtifactData on that url, collection `board`: doc `refresh` (state requested and newer than data → rebuild, publish, set {state: done, done_at} with if_version); doc `answers` (risk-<id>/ask-<id>: done → close in risks.json or STATE; not_today → ask again next day). Lead input needs `today_goal` (FORMULAS.md › First screen, › Refresh).
 10. **Lead 65 check 10:45 IST:** Lead read #1910 PF-12 migration (comment on 4c59bc518; label when ci green) and #1918 FO-3a 1a (8e62f9dcb); FO-7mv told on #1924 to add PF-12 walls to its money_move tables; #1929 acked. Board answers: C5, C21, C23 'Not today' at 10:48 IST: ask again 17 Nov.
 11. **Merge queue unblock 11:13 IST:** RULES.md over 25 KB failed batch #1930 (#1921, #1865, #1925, #1919, #1928); fix #1943 (records-9) labelled; re-queue those after it merges. #1939's check-docs/size red until #1940 merges (re-run then).
+12. **10 Proven by 08:00 17 Nov (P-626), 11:21 IST:** bottleneck = 15 Built waiting for qa. Two cloud qa sessions requested 11:21 (founder-typed turn): A = maps 19, 21, 100, 28, 30, 31, 59; B = maps 6, 27, 38, 40, 47, 49, 80, 99; verdicts on main by 06:00 IST 17 Nov. Watch their pushes each check; replace if silent 90 min.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 | # | Ask (IST) | Status |
