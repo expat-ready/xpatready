@@ -1593,3 +1593,9 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   6. The size cap is checked while each file is added, never after; DW5 adds a small-cap case.
 * PF-15's Minors are approved. Starts are unchanged: PF-11 part 1 after #1959; PF-26 part 1 after PF-11 part 1, FO-9b part 1 and PF-Fp (for the PDF).
 * Legal points are Unconfirmed: no counsel.
+
+## Rev 16.72 (16 Nov 18:43 IST): FO-4sf is built by #1962; #1985 closed as a duplicate (comment 6917402716)
+* **#1962 (FO-4sf, the leads list filtered by source) merged on 16 Nov at 12:53 UTC (18:23 IST).** FO-4sf is done. It must never be briefed or started again.
+* **Lead B's error:** revs 16.68 and 16.70 listed FO-4sf as "owed" and "requested", although #1962 was already open. So Lead 68 started a second lane, which became #1985. It started from 47b00ddae, before #1962 merged, and it filtered on `door`, the wrong field. The AG-02 glossary says the source "is not the same as the door".
+* **Ruling:** close #1985 as superseded by #1962, either the builder or Lead 68. Nothing from it is carried over, and the branch is left as the record.
+* **Lesson (for this file's start-list checks):** before a row is listed as owed, Lead B checks its open and merged PRs by row name. Brief rev 16.63 went out while #1962 was in flight.
