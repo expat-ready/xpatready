@@ -37,6 +37,14 @@ queue_rules:
       - or:
           - check-success = xfa-engine
           - -files ~= ^(packages/xfa-engine/|tsconfig\.base\.json$|\.nvmrc$|\.github/workflows/xfa-engine\.yml$)
+      # B194 (founder 16 Nov, measured in product/design/merge-queue-causes-2026-11-16.md): a PR touching the app also
+      # needs the status queue-fresh (queue-gate.yml, product/tools/queue-gate.sh). It is "failure" while main has merged
+      # a PR touching one of the same app files, or a second migration, since the PR's green ci started (35% of such
+      # PRs failed in the queue, 60% for two migrations, against 17%); the PR's ci is re-run on today's main first.
+      # A queued PR keeps success. To switch it off, delete these four lines.
+      - or:
+          - check-success = queue-fresh
+          - -files ~= /prototype/
     merge_conditions:
       - check-success = ci
     merge_method: merge
