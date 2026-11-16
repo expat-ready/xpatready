@@ -141,6 +141,9 @@ try {
     await p.getByRole("button", { name: "(change) time zone" }).click();
     await p.getByLabel("Search for a city or zone").fill("Nowhere/Atlantis"); await p.getByRole("button", { name: "Use this zone" }).click();
     ok("FO-3w J-P2 fail: a zone that is not one is refused on the field, the zone unchanged", (await p.getByText("Choose a time zone from the list.").count()) === 1);
+    const refusedZones: string[] = [];
+    for (const z of ["Factory", "+05:30"]) { await p.getByLabel("Search for a city or zone").fill(z); await p.getByRole("button", { name: "Use this zone" }).click(); if ((await p.getByText("Choose a time zone from the list.").count()) === 1) refusedZones.push(z); }
+    ok("FO-3w J-P2 fail (break M2): zones the browser knows but the server refuses (Factory, +05:30) are refused on the field", refusedZones.length === 2, refusedZones);
     await axe("zone dialog", p);
     await p.getByLabel("Search for a city or zone").fill("Europe/London"); await p.getByRole("button", { name: "Use this zone" }).click();
     await p.getByRole("button", { name: "Tuesday 20 October", exact: true }).click();
@@ -151,6 +154,16 @@ try {
     ok("FO-3w J-P2 pass: the booked UTC instant is 14:00 Toronto (18:00 UTC), kept with the visitor's chosen zone", row?.startsAt.toISOString() === "2026-10-20T18:00:00.000Z" && row?.bookerTimeZone === "Europe/London", row);
     ok("FO-3w J-P2: the confirmation says the time in the visitor's zone", (await mainText(p)).includes("Tuesday 20 October, 19:00 Europe/London time, with Maple Immigration"), await mainText(p));
     await ctx.close();
+  }
+  // Break M1: a zone change reads the month in the new zone, so no day loses its times at the month's edge.
+  {
+    await clock.to(at("2026-11-20 09:00"));
+    const { p, ctx } = await visitor("Asia/Dubai", 1440, clock.now());
+    await open(p, "/book/maple/free-consultation");
+    await p.getByRole("button", { name: "(change) time zone" }).click(); await p.getByLabel("Search for a city or zone").fill("America/Toronto"); await p.getByRole("button", { name: "Use this zone" }).click();
+    await p.getByRole("button", { name: "Monday 30 November", exact: true }).click();
+    ok("FO-3w J-P2 (break M1): Dubai switched to Toronto still shows Mon 30 Nov's last times (16:30), read in the new zone", (await p.getByRole("button", { name: "Monday 30 November, 16:30 America/Toronto time" }).count()) === 1, await p.locator("[data-day-times]").innerText());
+    await ctx.close(); await clock.to(at("2026-10-16 09:00"));
   }
   // ------------------------------------------------------------------------------------------------------------- J-P3
   {
@@ -205,6 +218,12 @@ try {
     ok("FO-3w J-P4: a next free time is taken into the form, which keeps its answers", /^\w+ \d+ \w+, \d\d:\d\d America\/Toronto time$/.test(await p.locator("[data-chosen]").innerText()) && !(await p.locator("[data-chosen]").innerText()).startsWith("Thursday 22 October, 09:00") && (await p.getByLabel("Given names").inputValue()) === "Client P");
     await book(p);
     ok("FO-3w J-P4: … and books", (await p.locator('[data-public-state="booked"]').count()) === 1 && (await bookings(`taken.${run}@example.org`)).length === 1);
+    await open(p, "/book/maple/free-consultation"); await p.getByRole("button", { name: "Thursday 22 October", exact: true }).click(); await p.getByRole("button", { name: /^Thursday 22 October, 14:00/ }).click();
+    // Break M3: the answer is lost on the way (network): a sentence, no page error, the answers kept.
+    await p.route("**/bookings", (rt) => rt.abort("failed"), { times: 1 });
+    const errs = errors.length;
+    await fill(p, { email: `twice.${run}@example.org` }); await book(p);
+    ok("FO-3w J-P4 fail (break M3): a lost answer shows \"We could not take this booking. Please try again.\", answers kept, no page error", (await p.locator("[data-summary]").innerText()).includes("We could not take this booking. Please try again.") && (await p.getByLabel("Email").inputValue()) === `twice.${run}@example.org` && errors.length === errs);
     await open(p, "/book/maple/free-consultation"); await p.getByRole("button", { name: "Thursday 22 October", exact: true }).click(); await p.getByRole("button", { name: /^Thursday 22 October, 14:00/ }).click();
     await fill(p, { email: `twice.${run}@example.org` }); await p.getByRole("button", { name: "Book this time" }).dblclick(); await p.locator('[data-public-state="booked"]').waitFor({ timeout: 20_000 }); await p.waitForTimeout(1500);
     ok("FO-3w J-P4 fail side: a double click books once", (await bookings(`twice.${run}@example.org`)).length === 1);

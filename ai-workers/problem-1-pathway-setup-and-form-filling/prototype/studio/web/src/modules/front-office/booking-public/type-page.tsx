@@ -29,7 +29,7 @@ export function BookingTypePage() {
   const [month, setMonth] = React.useState<Month>(() => monthOf(Date.now(), browserZone() ?? "UTC"));
   const [chosen, setChosen] = React.useState<Slot | null>(null);
   const [booked, setBooked] = React.useState<{ answer: Booked; email: string; phone: string } | null>(null);
-  const key = ["public-slots", firmKey, slug, month.y, month.m] as const;
+  const key = ["public-slots", firmKey, slug, zone, month.y, month.m] as const;   // M1: a zone change reads the month in that zone
   const q = useQuery({
     queryKey: key, retry: false, staleTime: Infinity, refetchOnWindowFocus: false, placeholderData: (prev) => prev,
     queryFn: () => {
@@ -38,22 +38,32 @@ export function BookingTypePage() {
     },
   });
   // BR-3: no browser zone → the zone the answer returns (the firm's), labelled the same way.
-  const shown = zone ?? q.data?.timeZone ?? "UTC";
-  const first = q.isPending && !q.data;
+  // m8: once the page has drawn, a later refusal (a month, a zone) shows above the grid, never in place of the page.
+  const last = React.useRef<Slots | undefined>(undefined);
+  if (q.data) last.current = q.data;
+  const shown = zone ?? last.current?.timeZone ?? "UTC";
   return (
-    <Gate pending={first} error={q.data ? null : q.error}>{() => {
-      const d = q.data!;
+    <Gate pending={!last.current && q.isPending} error={last.current ? null : q.error}>{() => {
+      const d = q.data ?? last.current!;
       return (
         <PublicFrame firm={d.firm.name} title={`${d.type.name} · ${d.firm.name}`}>
           {booked ? <Confirmation firmKey={firmKey} {...booked} />
             : chosen ? <Details d={d} zone={shown} slot={chosen} stampedAt={q.dataUpdatedAt} firmKey={firmKey} slug={slug}
                 onBack={() => setChosen(null)} onPick={setChosen} onBooked={(answer, email, phone) => setBooked({ answer, email, phone })}
                 onStale={() => qc.invalidateQueries({ queryKey: ["public-slots", firmKey, slug] })} />
-              : <Times d={d} loading={q.isFetching && q.isPlaceholderData} error={q.error as Problem | null} zone={shown} month={month} onMonth={setMonth} onZone={setZone} onPick={setChosen} />}
+              : <Times d={d} loading={q.isFetching && (q.isPlaceholderData || !q.data)} error={q.error as Problem | null} zone={shown} month={month} onMonth={setMonth} onZone={setZone} onPick={setChosen} />}
         </PublicFrame>
       );
     }}</Gate>
   );
+}
+
+/** m7: a step that replaces another takes focus on its heading (not on the first page load). */
+let drawn = false;
+function useHeadingFocus() {
+  const h = React.useRef<HTMLHeadingElement>(null);
+  React.useEffect(() => { if (drawn) h.current?.focus(); drawn = true; return () => { drawn = true; }; }, []);
+  return h;
 }
 
 function ZoneLine({ zone, onZone }: { zone: string; onZone?: (z: string) => void }) {
@@ -90,8 +100,8 @@ function Times({ d, loading, error, zone, month, onMonth, onZone, onPick }: { d:
   const daySlots = shownDay ? byDay.get(shownDay)! : [];
   return (
     <section aria-labelledby="fo3w-times">
-      <h1 id="fo3w-times" className="text-2xl font-semibold">Choose a time</h1>
-      <p className="mt-1 text-sm text-text-muted">{d.type.name} · {d.type.minutes} minutes</p>
+      <h1 id="fo3w-times" ref={useHeadingFocus()} tabIndex={-1} className="text-2xl font-semibold outline-none">Choose a time</h1>
+      <p className="mt-1 text-sm text-text-muted [overflow-wrap:anywhere]"><bdi>{d.type.name}</bdi> · {d.type.minutes} minutes</p>
       <ZoneLine zone={zone} onZone={onZone} />
       {error ? <p role="alert" className="mt-3 text-sm">{error.status === 429 ? TRY_LATER : error.detail ?? "We could not load the times. Please try again."}</p> : null}
       <div className="mt-4 grid gap-6 sm:grid-cols-[1fr_16rem]">
@@ -157,7 +167,8 @@ function Details({ d, zone, slot, stampedAt, firmKey, slug, onBack, onPick, onBo
       const r = await publicCall(`firms/${encodeURIComponent(firmKey)}/book/${encodeURIComponent(slug)}/bookings`, Booked, { method: "POST", body: JSON.stringify(body) });
       onBooked(r, v.email.trim(), v.phone);
     } catch (x) {
-      const p = x as Problem;
+      // M3: a lost answer or one we cannot read is a refusal like any other, never a crash with nothing shown.
+      const p: Problem = x && typeof x === "object" && "issues" in x ? x as Problem : { status: 0, issues: [], slots: [] };
       const fields = Object.fromEntries(p.issues.map((i) => i.split(":")[0]).filter((f) => FIELD_WORDS[f]).map((f) => [f, FIELD_WORDS[f]]));
       if (p.status === 429) setRefused({ text: TRY_LATER });
       else if (p.slug === "slot-taken") { setRefused({ text: "This time was just booked.", next: p.slots.slice(0, 4) }); onStale(); }
@@ -170,7 +181,7 @@ function Details({ d, zone, slot, stampedAt, firmKey, slug, onBack, onPick, onBo
   const list = Object.values(errors);
   return (
     <section aria-labelledby="fo3w-details" className="max-w-lg">
-      <h1 id="fo3w-details" className="text-2xl font-semibold">Your details</h1>
+      <h1 id="fo3w-details" ref={useHeadingFocus()} tabIndex={-1} className="text-2xl font-semibold outline-none">Your details</h1>
       <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm"><span data-chosen>{whenWords(new Date(slot.startsAt), zone)}</span><button type="button" className={cn(big, "px-1 text-text-link underline")} onClick={onBack}>Back to times</button></p>
       <form noValidate onSubmit={send} className="relative mt-4 flex flex-col gap-4">
         {list.length || refused ? (
@@ -225,8 +236,8 @@ function Confirmation({ firmKey, answer: b, email, phone }: { firmKey: string; a
     <section aria-labelledby="fo3w-done" data-public-state="booked" className="max-w-lg">
       <h1 id="fo3w-done" ref={h} tabIndex={-1} className="text-2xl font-semibold text-text-ok outline-none">You are booked</h1>
       <div className="mt-4 flex flex-col gap-2 rounded-xl border border-border bg-surface-raised p-5 text-sm">
-        <p className="font-semibold">{whenWords(new Date(b.startsAt), b.timeZone)}, with {b.firm.name}</p>
-        <p>{b.typeName}, {minutes} minutes, {MODE_WORDS[b.mode]}</p>
+        <p className="font-semibold [overflow-wrap:anywhere]">{whenWords(new Date(b.startsAt), b.timeZone)}, with <bdi>{b.firm.name}</bdi></p>
+        <p className="[overflow-wrap:anywhere]"><bdi>{b.typeName}</bdi>, {minutes} minutes, {MODE_WORDS[b.mode]}</p>
         <p data-join>{join}</p>
         <p className="text-text-muted">We have sent the details to {email}.</p>
         <div className="mt-2 flex flex-wrap gap-2">

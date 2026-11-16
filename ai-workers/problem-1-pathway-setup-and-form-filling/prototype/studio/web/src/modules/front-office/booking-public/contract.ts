@@ -39,7 +39,9 @@ export function problemOf(data: unknown, status: number): Problem {
   };
 }
 export async function publicCall<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api/public/${path}`, { ...init, credentials: "omit", headers: { accept: "application/json", ...(init?.body ? { "content-type": "application/json" } : {}) } });
+  let res: Response;
+  try { res = await fetch(`/api/public/${path}`, { ...init, credentials: "omit", headers: { accept: "application/json", ...(init?.body ? { "content-type": "application/json" } : {}) } }); }
+  catch { throw { status: 0, issues: [], slots: [] } satisfies Problem; }   // no answer (network lost): status 0
   const text = await res.text();
   let data: unknown = null; try { data = text ? JSON.parse(text) : null; } catch { data = text; }
   if (!res.ok) throw problemOf(data, res.status);
