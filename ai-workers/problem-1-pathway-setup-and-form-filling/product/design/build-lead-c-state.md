@@ -49,6 +49,8 @@ PRs = pull requests per the drafts (P-610). "Ready" = every wait in the draft is
 | R1.96 | Reversals, refunds, credit notes, plans | FO-7p, FO-7r, FO-7v, FO-7s4 | no |
 | R1.111 | Statement and exports | FO-7r, FO-7s5 | no |
 
+**Money rulings (23:1x IST, on #2016):** P-634 (1) supersedes FO-7v's "never below zero": a reversal may go below zero, shown red and labelled in `money_trust_shortfall`. **To do:** refresh FO-7v's brief to P-634 before it starts. **New row to shape after #1991 merges:** covering a trust shortfall from operating (AG-6-73 r1(b)). Its migration amends #1991's operating → trust refusal; the Lead reads it (P-423). Legal: Unconfirmed: no counsel.
+
 Rows proven or Lead-B-only are not listed. R1.77 finishes on CS-C1b + QA-397; R1.74 on CS-DL1b.
 
 **New row CS-SD1 (16 Nov 21:5x IST, Lead 69):** main's schema drifts on 5 statements (PF-8r #2014). The schema is behind the database: the four `id` fields get `dbgenerated("gen_random_uuid()")`, because migrations insert rows without an id. `canonical_field_name` is kept as an `@@ignore` model, because it is the live guard for unique shared-field names. Its group is the configurator, so the WIP limit does not stop it.
