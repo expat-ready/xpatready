@@ -1,0 +1,12 @@
+PASS  setup: a Study permit case is opened and its answers filled by the case officer — {"case":"9092a2e7-2e63-4d19-a36f-0fc4b06dba5f"}
+PASS  pass: the person's filled forms on this Study permit case include one its release maps with its official text — {"mine":["IMM 1294","IMM 5476","IMM 5707"],"maps":["IMM 1294","IMM 1295","IMM 5257","IMM 5409","IMM 5475","IMM 5476","IMM 5646","IMM 5707"]}
+PASS  pass (BK-14): the run card of the Study permit's IMM 1294 reads its edition from the case's release, with what each box prints — {"status":200,"body":{"form":"IMM 1294","edition":"IMM 1294 (06-2026)","boxes":75,"sheet":"prototype/p2/review-sheets/imm-1294-06-2026-9f50680bde7c.sheet.json","sheet_sha256":"9f50680bde7c7b5130d575e74e7a69d9460a38c2c3d5c2385a8ccf8e6a590972","saved":{"availabl
+PASS  pass: cost first; Saved not offered before a review of these values is recorded; Live off; the stand-in names no form family — {"est":{"live_usd":1.08,"live_worst_usd":4.8,"replay_usd":0,"remaining_usd":60,"job_cap_usd":5},"words":"Stand-in SI-6: severities are Sample until the immigration expert confirms them. Any form the case's release names with its official text can be reviewed; 
+PASS  fail: Saved with no recorded review of these values is refused (409), nothing added, US$0 — {"status":409,"body":"No saved review"}
+PASS  fail: Live is refused while live AI is off (409), nothing added, no AI batch — {"status":409,"body":"Live is off"}
+PASS  fail: a form that is not this person's on the case is refused in words (422) — {"status":422,"words":"IMM 1295 is not one of Sample Student S14's forms on this case."}
+PASS  pass: with a review of these values recorded (made up here, said on the card), Saved is offered — {"status":200,"why":null}
+PASS  pass (BK-14): the Saved review of the Study permit's IMM 1294 adds its findings to that form, Replayed, High where both rounds agree, US$0 — {"status":201,"body":"Saved (made-up test run): 2 new findings. US$0.00. Each finding is a warning: decide it here, or pass it with a reason on Ready to file.","rows":[{"form":"IMM 1294","field":"person.current_residence_country","agreement":"low","replayed":t
+PASS  pass: no AI batch and no spend from any of it (US$0)
+
+10/10 passed
