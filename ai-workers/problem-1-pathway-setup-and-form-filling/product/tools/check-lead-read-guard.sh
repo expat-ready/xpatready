@@ -8,7 +8,7 @@ set -u
 command -v jq >/dev/null || { echo "jq is missing; nothing was checked"; exit 2; }
 T=$(mktemp -d "${TMPDIR:-/tmp}/lr.XXXXXXXX"); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/bin" "$T/f"; git init -q "$T/copy"
-printf '#!/bin/bash\n[ -n "${FAKE_FAIL:-}" ] && exit 1\n[ "$2" = list ] && { echo "[{\\"number\\":1}]"; exit 0; }\nf="$FAKE/${GH_REPO//\\//_}_$3.json"; [ -n "${GH_REPO:-}" ] && [ -f "$f" ] || f="$FAKE/$3.json"; cat "$f"\n' > "$T/bin/gh"; chmod +x "$T/bin/gh"   # pr list --head: the current branch's PR is number 1; owner_repo_N.json answers for GH_REPO
+printf '#!/bin/bash\n[ -n "${FAKE_FAIL:-}" ] && exit 1\n[ "$2" = list ] && { echo "[{\\"number\\":1}]"; exit 0; }\n[ "$1 $2" = "api user" ] && { [ -n "${FAKE_ME:-}" ] && echo "$FAKE_ME" || exit 1; exit 0; }\nf="$FAKE/${GH_REPO//\\//_}_$3.json"; [ -n "${GH_REPO:-}" ] && [ -f "$f" ] || f="$FAKE/$3.json"; cat "$f"\n' > "$T/bin/gh"; chmod +x "$T/bin/gh"   # pr list --head: the current branch's PR is number 1; owner_repo_N.json answers for GH_REPO
 H=abcdef1234567890abcdef1234567890abcdef12; OLD=1111111222222233333334444444555555566666
 pr() {  # $1 number, $2 files (space separated), $3 comment body or "", $4 association
   jq -n --arg f "$2" --arg c "$3" --arg a "${4:-OWNER}" --arg h "$H" '{headRefOid:$h, files:[$f|split(" ")[]|{path:.}],
@@ -55,6 +55,9 @@ jq -n --arg h "$H" --arg S "$S" '{headRefOid:$h, files:[{path:($S + "/prisma/mig
 r=$(guard "gh pr edit 15 $L"); ok "the curl fallback gives no association: an outsider's read line does not count (bot finding)" "$([ "$r" = deny ] && echo 1)" "got $r"
 jq '.comments[0].author.login = "acme"' "$T/f/15.json" > "$T/f/16.json"
 r=$(guard "gh pr edit 16 $L"); ok "... the repository owner's own line does" "$([ "$r" = allow ] && echo 1)" "got $r"
+jq '.comments[0].author.login = "lead-acct"' "$T/f/15.json" > "$T/f/17.json"
+r=$(FAKE_ME=lead-acct guard "gh pr edit 17 $L"); ok "... and so does the account this copy runs as (an organisation's repository has no owner login)" "$([ "$r" = allow ] && echo 1)" "got $r"
+r=$(FAKE_ME=someone-else guard "gh pr edit 17 $L"); ok "... but not another account's" "$([ "$r" = deny ] && echo 1)" "got $r"
 r=$(guard "gh api -X DELETE 'repos/o/r/issues/1/labels/review%3A%20approved'"); ok "removing the label through gh api passes" "$([ "$r" = allow ] && echo 1)" "got $r"
 pr 9 "$S/web/a.tsx" ""; jq '.changedFiles = 140' "$T/f/9.json" > "$T/f/9b" && mv "$T/f/9b" "$T/f/9.json"
 r=$(guard "gh pr edit 9 $L"); ok "a PR over 100 files counts as sensitive (a migration may be past the list)" "$([ "$r" = deny ] && echo 1)" "got $r"

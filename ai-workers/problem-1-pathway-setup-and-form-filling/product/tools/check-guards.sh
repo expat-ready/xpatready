@@ -74,7 +74,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 18 bulk|product/tools/queued-push-guard.sh|s/--all.--branches.--mirror) bulk=all;;//|check-queued-push-guard.sh
 19|product/tools/lead-read-guard.sh|s/^  \[ -z "\$files" \] \&\& return 0/  return 0/|check-lead-read-guard.sh
 19 head|product/tools/lead-read-guard.sh|s/case "\$head" in "\$s"\*)/case "\$head" in *)/|check-lead-read-guard.sh
-19 own|product/tools/lead-read-guard.sh|s/(.author.login \/\/ "") == \$own and \$own != ""/true/|check-lead-read-guard.sh
+19 own|product/tools/lead-read-guard.sh|s/\$l != "" and (\$l == \$own or \$l == \$me)/true/|check-lead-read-guard.sh
 19 curl|product/tools/lead-read-guard.sh|s/(gh\[\[:space:\]\]+api.curl)/(gh[[:space:]]+api)/|check-lead-read-guard.sh
 19 identity|product/tools/lead-read-guard.sh|s/.platform\/identity\///|check-lead-read-guard.sh
 20|product/tools/gmail-start-check.sh|s/^\[ "\$state" = ok \] \&\& exit 0/exit 0/|check-gmail-start-check.sh

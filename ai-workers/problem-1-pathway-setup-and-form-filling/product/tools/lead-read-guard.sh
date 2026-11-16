@@ -22,8 +22,10 @@ verdict() {  # $1 PR number → prints the reason and returns 1 when the label n
   head=$(printf '%s' "$j" | jq -r '.headRefOid | ascii_downcase')
   # A comment counts when GitHub names its author a writer; the curl fallback (P-363) gives no association, so there
   # only the repository owner's own login counts (Devin review: an outsider's line must never unlock the label).
+  # An organisation's repository has no owner login, so the account this copy runs as (the Lead's) counts too.
   local own=${GH_REPO%%/*}; [ -n "$own" ] || own=$(git remote get-url origin 2>/dev/null | sed -nE 's#.*github\.com[:/]([^/]+)/.*#\1#p')
-  printf '%s' "$j" | jq -r --arg own "$own" '.comments[] | select(if (.authorAssociation // "") == "" then ((.author.login // "") == $own and $own != "") else (.authorAssociation | test("OWNER|MEMBER|COLLABORATOR")) end) | .body' \
+  local me; me=$(printf '%s' "$j" | jq -e '[.comments[] | select((.authorAssociation // "") == "")] | length > 0' >/dev/null 2>&1 && gh api user --jq .login 2>/dev/null)
+  printf '%s' "$j" | jq -r --arg own "$own" --arg me "${me:-}" '.comments[] | select(if (.authorAssociation // "") == "" then ((.author.login // "") as $l | $l != "" and ($l == $own or $l == $me)) else (.authorAssociation | test("OWNER|MEMBER|COLLABORATOR")) end) | .body' \
     | grep -oiE 'Lead read the diff:? +[0-9a-f]{7,40}' | grep -oiE '[0-9a-f]{7,40}$' | tr 'A-F' 'a-f' \
     | while read -r s; do case "$head" in "$s"*) echo yes;; esac; done | grep -q yes && return 0
   echo "#$1 touches $(printf '%s' "$files" | tr '\n' ' ')and has no comment \"Lead read the diff: ${head:0:9}\" for its head ${head:0:9}"
@@ -37,7 +39,7 @@ prs=""
 case "$tool" in
   Bash|"")
     raw=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
-    cmd=$(printf '%s' "$raw" | sed 's/\\ /\x01/g; s/\\//g')   # review:\ approved keeps its space (as \x01) inside one word
+    SOH=$(printf '\001'); cmd=$(printf '%s' "$raw" | sed "s/\\\\ /$SOH/g; s/\\\\//g")   # review:\ approved keeps its space (as \001) inside one word; a real byte, so BSD sed works too
     printf '%s' "$cmd" | tr '\001' ' ' | grep -qiE "$LABELRE" || exit 0
     here=$(git remote get-url origin 2>/dev/null | sed -nE 's#.*github\.com[:/]([^/]+/[^/.]+)(\.git)?$#\1#p')
     while IFS= read -r seg; do
