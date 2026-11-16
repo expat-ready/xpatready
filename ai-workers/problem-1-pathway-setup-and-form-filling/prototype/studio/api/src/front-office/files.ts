@@ -10,7 +10,7 @@
 // Nest's decorators are applied as calls (identity/keys.ts says why).
 import { Injectable } from "@nestjs/common";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync, linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { FileKey, FileKeyTaken, FilePut, sha256Hex, type FilesPort, type StoredFile } from "../../../ports/files.ts";
 import { FirmId } from "../../../ports/audit.ts";
@@ -19,7 +19,8 @@ const STUDIO = resolve(import.meta.dirname, "..", "..", "..");
 /** Sample: how long a download link works (BR-15 "short-lived links"). */
 export const LINK_SECONDS = 5 * 60;
 
-type Meta = { contentType: string; sha256: string };
+/** `deletedAt` is the tombstone (PF-Fd): the bytes are gone and the key is retired, never written again. */
+type Meta = { contentType: string; sha256: string; deletedAt?: string };
 
 /** The local-folder adapter. `root` defaults to FO_FILES_DIR or studio/var/front-office-files. */
 export class LocalFiles implements FilesPort {
@@ -40,6 +41,7 @@ export class LocalFiles implements FilesPort {
     const f = FilePut.parse({ firmId, key, bytes, contentType });
     const sha256 = await sha256Hex(f.bytes), path = this.pathOf(f.firmId, f.key);
     const had = this.meta(path);
+    if (had?.deletedAt) throw new FileKeyTaken(f.key);   // PF-Fd: a deleted key is retired, even for the same bytes
     if (had && (had.sha256 !== sha256 || had.contentType !== f.contentType)) throw new FileKeyTaken(f.key);   // the port's rule (m6)
     if (had && existsSync(path)) return { key: f.key, sha256 };   // the same bytes again: a retry
     mkdirSync(dirname(path), { recursive: true });
@@ -52,19 +54,37 @@ export class LocalFiles implements FilesPort {
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
       const now = this.meta(path);
-      if (!now || now.sha256 !== sha256 || now.contentType !== f.contentType) throw new FileKeyTaken(f.key);
+      if (!now || now.deletedAt || now.sha256 !== sha256 || now.contentType !== f.contentType) throw new FileKeyTaken(f.key);
       if (!existsSync(path)) linkSync(tmp, path);
     } finally { for (const t of [tmp, `${tmp}.meta`]) try { unlinkSync(t); } catch { /* already gone */ } }
+    // PF-Fd (review m2): a delete in another process may have retired the key while this retry linked its bytes back.
+    if (this.meta(path)?.deletedAt) { try { unlinkSync(path); } catch { /* already gone */ } throw new FileKeyTaken(f.key); }
     return { key: f.key, sha256 };
   }
 
   async get(firmId: string, key: string): Promise<StoredFile | null> {
     const path = this.pathOf(firmId, key), m = this.meta(path);
-    if (!m || !existsSync(path)) return null;
+    if (!m || m.deletedAt || !existsSync(path)) return null;
     return { key, bytes: new Uint8Array(readFileSync(path)), contentType: m.contentType, sha256: m.sha256 };
   }
 
-  async exists(firmId: string, key: string): Promise<boolean> { const p = this.pathOf(firmId, key); return !!this.meta(p) && existsSync(p); }
+  async exists(firmId: string, key: string): Promise<boolean> { const p = this.pathOf(firmId, key), m = this.meta(p); return !!m && !m.deletedAt && existsSync(p); }
+
+  /** PF-Fd: the tombstone is written first (so the key is retired even if removing the bytes fails), then the bytes go.
+   *  Only inside the firm's folder: a folder or file on the way that is a symlink out of it is refused. */
+  async delete(firmId: string, key: string): Promise<{ deleted: boolean }> {
+    const path = this.pathOf(firmId, key), firmDir = join(this.root, firmId.toLowerCase());
+    const m = this.meta(path);
+    if (!m || m.deletedAt || !existsSync(path)) return { deleted: false };
+    const firmReal = realpathSync(firmDir);
+    if (firmReal !== join(realpathSync(this.root), firmId.toLowerCase()) || !`${realpathSync(dirname(path))}/`.startsWith(`${firmReal}/`)
+      || lstatSync(path).isSymbolicLink() || lstatSync(`${path}.meta`).isSymbolicLink()) throw new Error("file key leaves its firm's folder");
+    const tmp = `${path}.${process.pid}.${randomBytes(6).toString("hex")}.tmp.meta`;
+    writeFileSync(tmp, JSON.stringify({ contentType: m.contentType, sha256: m.sha256, deletedAt: new Date().toISOString() } satisfies Meta), { flag: "wx" });
+    renameSync(tmp, `${path}.meta`);
+    try { unlinkSync(path); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return { deleted: false }; throw e; }   // review m1: another process won
+    return { deleted: true };
+  }
 
   private meta(path: string): Meta | null {
     try { return JSON.parse(readFileSync(`${path}.meta`, "utf8")) as Meta; } catch { return null; }

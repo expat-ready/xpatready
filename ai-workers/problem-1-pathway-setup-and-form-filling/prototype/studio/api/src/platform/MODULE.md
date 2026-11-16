@@ -15,6 +15,7 @@ Firms, staff and sign-in, settings, secrets, jobs, logs, complaints and message 
 - Sized for about 100 firms in one process (P-562).
 - Two-step sign-in is required for every staff member (P-567).
 - The audit trail is append-only; demo reset deletes only demo lines, never a platform line (P-571 (1)).
+- A role that brings money keys writes one `platform.staff.money_keys_granted` line, from role change and invitation accept alike, through `identity/money-line.ts` only, in the caller's transaction (PF-6b ruling 2 (b), PF-6m).
 - Personal data never reaches a system log: redaction at the logger (PF-23, NFR5-14).
 - A job's key is its pg-boss id: one key never queues a second job (PF-14).
 - The consent store is the only writer of the `msg_` tables, inside the caller's transaction (PF-19a, P-584).
@@ -24,7 +25,7 @@ Firms, staff and sign-in, settings, secrets, jobs, logs, complaints and message 
 - `PLATFORM_ENVIRONMENT` is required; no default: unset or blank stops the start-up, naming it (PF-24w, rev 16.5). Every setting, sign-in's and the Sample seed's included, is read by the one loader `config/settings.ts` once per process; `identityConfig` and `sample-seed.ts` read no variable themselves.
 
 **Tables.** platformFirm, platformStaff, platformStaffCredential, platformRoleGrant, platformSessionRevocation, platformFirmSetting, platformFirmWebAddress, platComplaint, platComplaintEvent, msgConsent, msgConsentWording, platformTermsVersion, platformTermsAcceptance, platformSignupPending, moduleEvent, auditEvent.
-**Tests.** `tests/check_pf12_walls.ts`, `tests/check_pf3_platform_schema.ts`, `tests/check_pf4_identity.ts`, `tests/check_pf4b_session_reads.ts`, `tests/check_pf14_jobs.ts`, `tests/check_pf21_complaints.ts`, `tests/check_pf21w_routes.ts`, `tests/check_pf21v_views.ts`, `tests/check_pf23_observability.ts`, `tests/check_pf24_secrets.ts`, `tests/check_pf24w_environment.ts`, `tests/check_pf25_web_address.ts`, `tests/check_pf5_signup_billing.ts`, `tests/check_pf5v_signup_mail.ts` (PF-5v: the empty fields' plain words), `tests/check_pf19b_sending.ts`, `tests/check_pf19b_mail.ts`.
+**Tests.** `tests/check_pf12_walls.ts`, `tests/check_pf3_platform_schema.ts`, `tests/check_pf4_identity.ts`, `tests/check_pf4b_session_reads.ts`, `tests/check_pf6m_money_line.ts`, `tests/check_pf14_jobs.ts`, `tests/check_pf21_complaints.ts`, `tests/check_pf21w_routes.ts`, `tests/check_pf21v_views.ts`, `tests/check_pf23_observability.ts`, `tests/check_pf24_secrets.ts`, `tests/check_pf24w_environment.ts`, `tests/check_pf25_web_address.ts`, `tests/check_pf5_signup_billing.ts`, `tests/check_pf5v_signup_mail.ts` (PF-5v: the empty fields' plain words), `tests/check_pf19b_sending.ts`, `tests/check_pf19b_mail.ts`.
 
 **Do not.**
 - Query a firm table without `firmScope`.
