@@ -123,9 +123,27 @@ try {
   const demoted = await invite(tO, "bf.demoted@example.com", ["BILLING_FINANCE"]);
   const down = await call(base, "PATCH", `/api/platform/staff/${O}/roles`, { token: tR, body: { roles: ["CASE_MANAGER"] } });
   const demAcc = await accept(demoted.token), demLine = refusals(demoted.id);
-  ok("PF-6m2 DW2 fail: the Admin demoted to Case Manager after inviting → 410, nothing granted, one refusal line naming the role no longer givable",
+  ok("PF-6m2 DW2 fail: the Admin demoted to Case Manager after inviting → 410, nothing granted, one refusal line (a Case Manager may no longer invite: break F1)",
     demoted.status === 201 && down.status === 200 && demAcc.status === 410 && demAcc.body.code === "INVITATION_NOT_VALID" && nothingGranted("bf.demoted@example.com") && revoked(demoted.id)
-    && demLine.length === 1 && demLine[0].detail.reason === "role_no_longer_givable" && demLine[0].detail.roles.join() === "BILLING_FINANCE" && !JSON.stringify(demLine[0]).includes("agent/"), { down: down.body, demAcc: demAcc.body, demLine });
+    && demLine.length === 1 && demLine[0].detail.reason === "may_no_longer_invite" && demLine[0].detail.invitedBy === `staff:${O}` && !JSON.stringify(demLine[0]).includes("agent/"), { down: down.body, demAcc: demAcc.body, demLine });
+  // Break F1: even a role the demoted person still holds the keys of (Read-only) is refused: they lost the invite door's key.
+  const upAgain = await call(base, "PATCH", `/api/platform/staff/${O}/roles`, { token: tR, body: { roles: ["ADMIN"] } });
+  const roInv = await invite(await signIn("user-O"), "ro.demoted@example.com", ["READ_ONLY"]);
+  const down2 = await call(base, "PATCH", `/api/platform/staff/${O}/roles`, { token: tR, body: { roles: ["CASE_MANAGER"] } });
+  const roAcc = await accept(roInv.token), roLine = refusals(roInv.id);
+  ok("PF-6m2 break F1 fail: an Admin's Read-only invitation, the Admin then demoted to Case Manager (no invite key) → 410 may_no_longer_invite, nothing granted",
+    upAgain.status === 200 && roInv.status === 201 && down2.status === 200 && roAcc.status === 410 && nothingGranted("ro.demoted@example.com") && roLine.length === 1 && roLine[0].detail.reason === "may_no_longer_invite", { roAcc: roAcc.body, roLine });
+
+  // Break F2 and F3: an invited_by that is no staff member of this firm (another firm's Owner, or a malformed value) → 410
+  // with reason inviter_not_found, never a 500, and the line never copies the raw value.
+  const FIRM_A = sql(`select firm_id from platform_staff where id = '${R}'`), otherOwner = sql(`select s.id from platform_staff s join platform_role_grant g on g.staff_id = s.id and g.role = 'OWNER' and g.ended_at is null where s.firm_id <> '${FIRM_A}' and s.status = 'ACTIVE' limit 1`);
+  const raw = async (email: string, invitedBy: string) => { const { randomBytes, createHash } = await import("node:crypto"); const token = randomBytes(32).toString("base64url");
+    const id = sql(`insert into platform_invitation (id, firm_id, email, roles, token_hash, invited_by, created_at, expires_at) values (gen_random_uuid(), '${FIRM_A}', '${email}', '{READ_ONLY}', '${createHash("sha256").update(token).digest("hex")}', '${invitedBy}', now(), now() + interval '72 hours') returning id`); return { id, token }; };
+  for (const [email, by, what] of [["x.firm@example.com", `staff:${otherOwner}`, "another firm's active Owner"], ["x.mail@example.com", "someone@example.com", "an email"], ["x.long@example.com", `staff:${"z".repeat(240)}`, "a 246-character value"]] as const) {
+    const r = await raw(email, by), a = await accept(r.token), line = refusals(r.id);
+    ok(`PF-6m2 break F2/F3 fail: invited_by is ${what} → 410 (never 500), nothing granted, one line with reason inviter_not_found and no raw invited_by`,
+      (what !== "another firm's active Owner" || otherOwner !== "") && a.status === 410 && nothingGranted(email) && revoked(r.id) && line.length === 1 && line[0].detail.reason === "inviter_not_found" && !("invitedBy" in line[0].detail) && !JSON.stringify(line[0]).includes("@"), { a: a.body, line });
+  }
   const own = await invite(tR, "bf.owner@example.com", ["BILLING_FINANCE"]), ownAcc = await accept(own.token);
   ok("PF-6m2 DW2 pass: an Owner's invitation, the Owner still Owner → accepted, with one money line by the Owner",
     own.status === 201 && ownAcc.status === 200 && moneyLines("bf.owner@example.com") === 1 && sql(`select actor from audit_event where action = '${MONEY_KEYS_GRANTED}' and entity_key = '${ownAcc.body.staffId}'`) === `staff:${R}`, ownAcc.body);
@@ -147,6 +165,17 @@ try {
   const replays = await Promise.all(Array.from({ length: 8 }, () => accept(rep.token)));
   ok("PF-6m2 DW4 pass: 8 parallel accepts of one invitation → one 200, the rest 410, one staff member and one money line",
     replays.filter((r) => r.status === 200).length === 1 && replays.filter((r) => r.status === 410).length === 7 && sql(`select count(*) from platform_staff where email = 'bf.replay@example.com'`) === "1" && moneyLines("bf.replay@example.com") === 1 && refusals(rep.id).length === 0, replays.map((r) => r.status));
+
+  // ------------------------- the role no longer givable: an Owner's Owner invitation, the Owner then only an Admin
+  const tR2 = await signIn("user-R");
+  const tToOwner = await call(base, "PATCH", `/api/platform/staff/${T}/roles`, { token: tR2, body: { roles: ["OWNER"], reason: "a second Owner for cover" } });
+  const ownerInv = await (async () => { const r = await call(base, "POST", "/api/platform/staff/invitations", { token: tR2, body: { email: "owner.invited@example.com", roles: ["OWNER"], reason: "a third Owner" } });
+    return { status: r.status, id: r.body?.id as string, token: /#t=([A-Za-z0-9_-]{43})/.exec(mail.sent.filter((m) => m.to === "owner.invited@example.com").at(-1)?.text ?? "")?.[1] ?? "" }; })();
+  const rDown = await call(base, "PATCH", `/api/platform/staff/${R}/roles`, { token: await signIn("user-T"), body: { roles: ["ADMIN"], reason: "R steps back to Admin" } });
+  const oAcc = await accept(ownerInv.token), oLine = refusals(ownerInv.id);
+  ok("PF-6m2 DW2 fail: an Owner's invitation into Owner, the inviter then only an Admin (keeps the invite key) → 410 role_no_longer_givable naming OWNER",
+    tToOwner.status === 200 && ownerInv.status === 201 && rDown.status === 200 && oAcc.status === 410 && nothingGranted("owner.invited@example.com") && oLine.length === 1 && oLine[0].detail.reason === "role_no_longer_givable" && oLine[0].detail.roles.join() === "OWNER",
+    { tToOwner: tToOwner.body, ownerInv: ownerInv.status, rDown: rDown.body, oAcc: oAcc.body, oLine });
 
   // --------------------------------------------------------------------------- DW3: firm signup's first Owner
   const fclock = new FakeClock(new Date()), identity = new LocalSignUp(() => fclock.now());

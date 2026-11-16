@@ -21,9 +21,13 @@ import { requireStepUp } from "./step-up.ts";
 type Tx = Prisma.TransactionClient;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
-/** The Accept page's words (BR-4), fixed. */
 /** PF-6m2: the audit line of an invitation refused at accept because its inviter may no longer give it. */
 export const INVITER_REFUSED = "platform.invitation.refused_inviter";
+/** The refusal line's words per reason (role names follow the last one). */
+const REFUSAL_WORDS = { inviter_not_found: "its inviter is not a staff member of this firm", inactive: "its inviter is no longer active", may_no_longer_invite: "its inviter may no longer invite people", role_no_longer_givable: "its inviter may no longer give" } as const;
+/** The invite door's key (identity/routes.ts, POST staff/invitations): an inviter who lost it may no longer invite. */
+const INVITE_KEY = "agent/staff:manage";
+/** The Accept page's words (BR-4), fixed. */
 export const INVITE_WORDS = { expired: (firm: string) => `This invitation has expired. Ask ${firm} to send a new one.`, notValid: "This invitation is no longer valid." };
 
 type InvRow = { id: string; firm_id: string; email: string; roles: PlatformRole[]; invited_by: string; accepted_at: Date | null; revoked_at: Date | null; expired: boolean; firm_name: string; firm_key: string };
@@ -100,8 +104,9 @@ export class PlatformSession {
       if (refused) {
         await tx.$executeRaw`update platform_invitation set revoked_at = now() where id = ${inv.id}::uuid`;
         await auditEvent.record(tx, { firmId: inv.firm_id, actor: "system:invitation-accept", action: INVITER_REFUSED, entity: "platform_invitation", entityKey: inv.id,
-          summary: refused.reason === "inactive" ? "an invitation was refused at accept: its inviter is no longer active" : `an invitation was refused at accept: its inviter may no longer give ${refused.roles.join(", ")}`,
-          detail: { invitationId: inv.id, invitedBy: inv.invited_by, reason: refused.reason, roles: refused.roles } });
+          summary: `an invitation was refused at accept: ${REFUSAL_WORDS[refused.reason]}${refused.roles.length ? ` ${refused.roles.join(", ")}` : ""}`,
+          // The inviter only as a staff word (break F2: never a raw invited_by, which could be anything the column holds).
+          detail: { invitationId: inv.id, ...(refused.by ? { invitedBy: `staff:${refused.by}` } : {}), reason: refused.reason, roles: refused.roles } });
         return { refused };   // committed: the invitation stays no longer valid, and the line stays
       }
       if (await tx.platformStaff.findFirst({ where: firmScope(inv.firm_id, { email: inv.email }), select: { id: true } })) problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" });
@@ -123,17 +128,19 @@ export class PlatformSession {
   }
 
   /** PF-6m2: why the inviter (`invited_by`) may no longer hand this invitation out, else null. The same rule as invite
-   *  time (identity/service.ts roleRules): an active staff member of the same firm, holding every key of every role
-   *  invited (the guard's firm keys), and the Owner role only from an Owner. Role names only, never a key or a person. */
-  private async inviterRefusal(tx: Tx, inv: InvRow): Promise<{ reason: "inactive"; roles: PlatformRole[] } | { reason: "role_no_longer_givable"; roles: PlatformRole[] } | null> {
-    const id = /^staff:(.+)$/.exec(inv.invited_by)?.[1] ?? "";
-    const by = UUID.test(id) ? await tx.platformStaff.findFirst({ where: firmScope(inv.firm_id, { id: id.toLowerCase() }), select: { status: true, grants: { where: { endedAt: null }, select: { role: true } } } }) : null;
-    if (by?.status !== "ACTIVE") return { reason: "inactive", roles: [] };
+   *  time: a staff member of the same firm, active, still holding the invite door's key, and every key of every role
+   *  invited (identity/service.ts roleRules; the guard's firm keys), the Owner role only from an Owner. Role names only. */
+  private async inviterRefusal(tx: Tx, inv: InvRow): Promise<{ reason: keyof typeof REFUSAL_WORDS; by: string | null; roles: PlatformRole[] } | null> {
+    const id = (/^staff:(.+)$/.exec(inv.invited_by)?.[1] ?? "").toLowerCase();
+    const by = UUID.test(id) ? await tx.platformStaff.findFirst({ where: firmScope(inv.firm_id, { id }), select: { id: true, status: true, grants: { where: { endedAt: null }, select: { role: true } } } }) : null;
+    if (!by) return { reason: "inviter_not_found", by: null, roles: [] };   // break F3: not "inactive" when there is nobody
+    if (by.status !== "ACTIVE") return { reason: "inactive", by: by.id, roles: [] };
     const held = by.grants.map((g) => g.role);
     const keys = new Set((await tx.platformRolePermission.findMany({ where: { role: { in: held } }, select: { permissionKey: true } })).map((k) => k.permissionKey).filter((k) => FIRM_KEY.test(k)));
+    if (!keys.has(INVITE_KEY)) return { reason: "may_no_longer_invite", by: by.id, roles: [] };   // break F1: the invite door's own key
     const needed = await tx.platformRolePermission.findMany({ where: { role: { in: inv.roles } }, select: { role: true, permissionKey: true } });
     const beyond = inv.roles.filter((r) => (r === "OWNER" && !held.includes("OWNER")) || needed.some((k) => k.role === r && !keys.has(k.permissionKey)));
-    return beyond.length ? { reason: "role_no_longer_givable", roles: beyond } : null;
+    return beyond.length ? { reason: "role_no_longer_givable", by: by.id, roles: beyond } : null;
   }
 
   // ---------------------------------------------------------------------------------------------------- the session
