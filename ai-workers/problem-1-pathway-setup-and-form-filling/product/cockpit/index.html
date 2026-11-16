@@ -182,6 +182,7 @@ details.inline>summary{cursor:pointer;color:var(--accent);font-size:12.5px;displ
 .hasib{position:relative;padding-right:26px}
 .hasib>.ib{position:absolute;top:4px;right:3px;margin:0}
 .grpib{margin:2px 0 0}
+.clk{cursor:pointer}.clk:hover{outline:1px solid var(--accent);outline-offset:1px;border-radius:4px}
 .hlbtn{all:unset;display:block;cursor:pointer;width:100%;box-sizing:border-box}
 .hlbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
 .hlbtn>span{display:block}
@@ -243,7 +244,7 @@ details.inline>summary{cursor:pointer;color:var(--accent);font-size:12.5px;displ
   <div class="tile"><div class="k">Plan use</div><div class="v">&#x2026;</div></div>
 </div><div class="lineage" id="lineage"></div><div id="healthPanel" hidden></div></div>
 <div class="wrap" id="app">
-  <header class="top"><h1>Founder's Progress Board</h1><p>Pathway Configurator, Release 1. Every number comes from the data script; press the ⓘ beside a number to see what it counts, its time window and sample, how to read it and its source.</p></header>
+  <header class="top"><h1>Founder's Progress Board</h1><p>Pathway Configurator, Release 1. Every number comes from the data script; click any number, card or check (or the ⓘ beside it) to see what it counts, what is behind it, its source and time, and what to do.</p></header>
   <div id="body"><p class="muted">Loading data.json&#x2026;</p></div>
 </div>
 <div id="tip" role="region" aria-live="polite" aria-label="About this number"></div>
@@ -280,6 +281,10 @@ function kpi(label,val,sub,s,cls,key){return '<div class="kpi'+(cls?" "+cls:"")+
 document.addEventListener("click",function(e){
   var b=e.target.closest&&e.target.closest(".ib");
   if(b){e.preventDefault();if(tipBtn===b)tipHide();else tipShow(b);return;}
+  /* 16 Nov (founder: "when you click, it doesn't show me anything"): a click anywhere on a marked item opens its panel,
+     as its ⓘ does; links, buttons, tabs and the module map keep their own action */
+  if(!e.target.closest("a,button,summary,input,select,textarea,label,[data-mod],[data-go],.tabs,#tip")){
+    var m=e.target.closest(".clk");if(m&&m._ib){e.preventDefault();if(tipBtn===m._ib)tipHide();else tipShow(m._ib);return;}}
   if(tipBtn&&!tip.contains(e.target))tipHide();
   var go=e.target.closest("[data-go]");
   if(go){e.preventDefault();var tb=document.querySelector('.tabs button[data-tab="'+go.getAttribute("data-go")+'"]');if(tb){tb.click();var tg=document.getElementById("trust");if(tg)tg.scrollIntoView();}return;}
@@ -301,7 +306,9 @@ function oneHTML(el){
     h+='<span class="l">'+esc(e.label)+'</span><dl><dt>Counts</dt><dd>'+esc(e.what)+'</dd><dt>Window</dt><dd>'+esc(e.window)+'</dd>'+
       '<dt>Sample</dt><dd>'+(e.n==null?'<i>not measured</i> ('+esc(e.n_reason||"no sample in the data")+')':'n = '+esc(e.n)+(e.n_of?' '+esc(e.n_of):""))+'</dd>'+
       '<dt>Read it</dt><dd>'+esc(e.read||"")+(e.band?' <b>Healthy:</b> '+esc(e.band)+'.':"")+'</dd>'+
-      '<dt>Source</dt><dd>'+esc(e.src)+'</dd><dt>Class</dt><dd>'+esc(e["class"])+(e["class"]==="reported"?" (Lead-reported)":"")+(e.sha?' · sha '+esc(e.sha):"")+(e.as_of?' · as of '+esc(e.as_of):"")+'</dd></dl>';});
+      '<dt>Source</dt><dd>'+esc(e.src)+'</dd><dt>Class</dt><dd>'+esc(e["class"])+(e["class"]==="reported"?" (Lead-reported)":"")+(e.sha?' · sha '+esc(e.sha):"")+(e.as_of?' · as of '+esc(e.as_of):"")+'</dd>'+
+      (e.todo?'<dt>What to do</dt><dd><b>'+esc(e.todo)+'</b></dd>':'')+'</dl>'+
+      (e.behind&&e.behind.length?'<div class="sep"></div><span class="l">Behind it ('+esc(e.behind.length)+')</span><div class="glist">'+e.behind.map(function(z){return '<div>'+esc(z)+'</div>';}).join("")+'</div>':'');});
   var info=el.getAttribute("data-info");
   if(info)h+=(keys.length?'<div class="sep"></div>':'')+'<dl><dt>About</dt><dd>'+esc(info)+'</dd></dl>';
   if(el.hasAttribute("data-wn"))h+=wnList();
@@ -354,7 +361,7 @@ function addIcons(root){
     if(svg){while(svg.parentElement&&svg.parentElement.closest("svg"))svg=svg.parentElement.closest("svg");}
     var host=svg||sq;
     if(host){var g=groups.filter(function(x){return x.host===host;})[0];if(!g){g={host:host,els:[]};groups.push(g);}g.els.push(el);return;}
-    var b=mkBtn(ibLabel(el));b._els=[el];var tag=el.tagName;
+    var b=mkBtn(ibLabel(el));b._els=[el];var tag=el.tagName;el._ib=b;el.classList.add("clk");
     if(tag==="TR"&&el.lastElementChild)el.lastElementChild.appendChild(b);
     else if(tag==="TABLE"){var th=el.querySelector("th");(th||el).appendChild(b);}
     else if(tag==="LI"){var lt=el.lastElementChild||el;(lt.firstElementChild&&lt.firstElementChild.tagName==="DIV"?lt.firstElementChild:lt).appendChild(b);}
@@ -365,7 +372,8 @@ function addIcons(root){
   groups.forEach(function(g){var nxt=g.host.nextElementSibling;
     if(nxt&&nxt.classList.contains("grpib")){nxt._els=nxt._els.concat(g.els);return;}
     var lab=g.host.getAttribute("aria-label")||(g.host.classList.contains("sq")?"these squares":"this chart");
-    var b=mkBtn(lab);b.classList.add("grpib");b._els=g.els;b._group=g.host.classList.contains("sq")?"Each square":"Details";g.host.insertAdjacentElement("afterend",b);});
+    var b=mkBtn(lab);b.classList.add("grpib");b._els=g.els;b._group=g.host.classList.contains("sq")?"Each square":"Details";g.host.insertAdjacentElement("afterend",b);
+    if(g.host.classList.contains("sq")){g.host._ib=b;g.host.classList.add("clk");}});
   if(tipBtn&&!document.body.contains(tipBtn))tipHide();
 }
 
@@ -430,7 +438,7 @@ function renderStrip(){
    '<div class="tile"'+T("strip.plan_use")+'><div class="k">Plan use</div><div class="v">'+(wk==null?'<span class="nm" data-nm="'+esc(src(R.weekly_pct))+'">not measured</span>':esc(wk)+"%")+'</div><div class="s">'+(bn==null?"burn not measured":esc(bn)+" %/h")+' · '+(pd==null?"paid not measured":"US$"+esc(pd)+" today")+'</div></div>';
   var L=D.lineage||{},ah=L.ahead_of_main;
   document.getElementById("lineage").innerHTML='Records from <span class="mono">'+esc(L.records_branch||"?")+' @'+esc((L.records_sha||"").slice(0,9))+'</span>, '+
-    (ah&&ah.value!=null?esc(ah.value)+' commits not on <span class="mono">main</span>':nm(ah&&ah.reason))+' · main <span class="mono">@'+esc((L.main_sha||"").slice(0,9))+'</span> · snapshot '+esc(L.taken_at||"");
+    (ah&&ah.value!=null?esc(ah.value)+' record files not yet on <span class="mono">main</span>':nm(ah&&ah.reason))+' · main <span class="mono">@'+esc((L.main_sha||"").slice(0,9))+'</span> · snapshot '+esc(L.taken_at||"");
   renderHealth(ast,age);
   var t=document.getElementById("healthTile");
   t.onclick=function(){var p=document.getElementById("healthPanel");p.hidden=!p.hidden;t.setAttribute("aria-expanded",String(!p.hidden));};
@@ -442,8 +450,8 @@ function renderHealth(ast,age){
   H.items.forEach(function(i){var st=i.state==="page"?ast:i.state,det=i.state==="page"?"Board data "+ageText(age)+" old (amber at 45 min, red at 2 h); generated "+esc(D.freshness.generated_ist):esc(i.detail);
     if(i.id===5&&st==="green"&&leadInputStale()){st="amber";det+=" \u2014 the Lead input is now over 2 h old";}
     h+='<li'+T("health."+i.id)+'><span class="tag">'+i.id+'</span><div>'+dot(st)+'<b>'+esc(i.name)+'</b>'+(i["class"]==="reported"?'<span class="rep">Lead-reported</span>':"")+' — '+det+
-      ((st==="red")?'<div><b>Action:</b> '+esc(i.action||"")+' · <b>Owner:</b> '+esc(i.owner||"")+'</div>':"")+'</div></li>';});
-  p.innerHTML=h+'</ul><p class="small muted">Red if any check fails, amber if any is not measured, else green. Token use and paid US$ are Lead-reported numbers in the strip.</p>';
+      ((st==="red"||st==="amber")&&i.action?'<div><b>What to do:</b> '+esc(i.action)+' · <b>Who:</b> '+esc(i.owner||"")+'</div>':"")+'</div></li>';});
+  p.innerHTML=h+'</ul><p class="small muted">Red if any check fails, amber if any is not measured, else green. Click a check to see what it counts, what is behind it and its source. Token use and paid US$ are Lead-reported numbers in the strip.</p>';
 }
 
 /* banners (§6.6) */
@@ -576,7 +584,7 @@ function rTop3(){
   var stale=leadInputStale(),nm_={today:"Today",week:"This week",month:"This month"},h='<div class="cards3">';
   ["today","week","month"].forEach(function(k){var c=T.cards[k];
     if(c.state!=="ok"||stale){h+='<div class="card miss"'+S(T.src+" · "+(c.why||"Lead input over 2 h old now"))+'><div class="k">'+nm_[k]+'</div><div class="w">Lead has not updated this</div><div class="small muted">'+esc(c.state!=="ok"?c.why:"the Lead input is now over 2 h old")+'</div></div>';return;}
-    h+='<div class="card"'+S(c.what+" — "+c.why+" — Lead recommends: "+c.rec+" — owner "+c.owner+" | "+T.src+" · "+T.sha+" · as of "+T.as_of+" · reported")+'><div class="k">'+nm_[k]+'<span class="rep">Lead-reported</span>'+(T.example?'<span class="example">example data</span>':"")+'</div><div class="w">'+esc(c.what)+'</div><div class="small">'+esc(c.why)+'</div><div class="small rec"><b>Lead recommends:</b> '+esc(c.rec)+'</div><div class="small muted">Owner: '+esc(c.owner)+(c.needs_you?' · <a href="#needs">needs you: '+esc(c.needs_you)+'</a>':"")+'</div></div>';});
+    h+='<div class="card"'+S("What: "+c.what+". Why: "+c.why+". What to do (Lead recommends): "+c.rec+". Who: "+c.owner+(c.needs_you?". Needs you: "+c.needs_you:"")+". Source: "+T.src+" · sha "+T.sha+" · as of "+T.as_of+" (Lead-reported).")+'><div class="k">'+nm_[k]+'<span class="rep">Lead-reported</span>'+(T.example?'<span class="example">example data</span>':"")+'</div><div class="w">'+esc(c.what)+'</div><div class="small">'+esc(c.why)+'</div><div class="small rec"><b>Lead recommends:</b> '+esc(c.rec)+'</div><div class="small muted">Owner: '+esc(c.owner)+(c.needs_you?' · <a href="#needs">needs you: '+esc(c.needs_you)+'</a>':"")+'</div></div>';});
   return '<section class="ovsec" id="top3"><h2>Top 3, with the Lead\'s recommendation</h2>'+h+'</div></section>';
 }
 /* board v63 (P-615): the founder's own behaviour numbers and the Customer box; records only, "not measured" where no source */
