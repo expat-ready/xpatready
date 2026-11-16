@@ -210,7 +210,7 @@ export class BookingService {
     if (typeof firmKey !== "string" || typeof slug !== "string" || !FIRM_KEY.test(firmKey) || !SLUG.test(slug)) throw notFound();
     const firm = await this.publicFirm(db, firmKey);
     // A type not shown on the booking page answers like an unknown slug (FO-3pa DW2).
-    const type = await db.foConsultationType.findFirst({ where: firmScope(firm.id, { slug, active: true, showOnBookingPage: true, purpose: "FREE_CONSULT" as const }) });
+    const type = await db.foConsultationType.findFirst({ where: firmScope(firm.id, { slug, active: true, deletedAt: null, showOnBookingPage: true, purpose: "FREE_CONSULT" as const }) });
     if (!type) throw notFound();
     return { firm, type };
   }
@@ -228,7 +228,7 @@ export class BookingService {
   async publicList(firmKey: string, ip: string) {
     this.limit(`slots:ip:${ip}`, this.limits.slotsPerIp);
     const firm = await this.publicFirm(this.db, firmKey);
-    const types = await this.db.foConsultationType.findMany({ where: firmScope(firm.id, { active: true, showOnBookingPage: true, purpose: "FREE_CONSULT" as const }), orderBy: [{ name: "asc" }, { slug: "asc" }], select: { name: true, slug: true, minutes: true, modes: true } });
+    const types = await this.db.foConsultationType.findMany({ where: firmScope(firm.id, { active: true, deletedAt: null, showOnBookingPage: true, purpose: "FREE_CONSULT" as const }), orderBy: [{ name: "asc" }, { slug: "asc" }], select: { name: true, slug: true, minutes: true, modes: true } });
     return { firm: firmContact(firm), types };
   }
 
@@ -341,7 +341,7 @@ export class BookingService {
   async staffCreate(ctx: StaffContext, body: unknown) {
     need(ctx, "agent/booking:create");
     const b = parse(StaffBookingBody, body);
-    const type = await this.db.foConsultationType.findFirst({ where: firmScope(ctx.firmId, { id: b.typeId, active: true }) });
+    const type = await this.db.foConsultationType.findFirst({ where: firmScope(ctx.firmId, { id: b.typeId, active: true, deletedAt: null }) });
     if (!type) throw notInFirm("consultation type");
     if (!type.modes.includes(b.mode)) throw refused("Please choose one of the ways to meet offered.", ["mode: not offered for this consultation"]);
     const contact = await this.ports.arrival.contactOf(this.db, ctx.firmId, b.personId);
