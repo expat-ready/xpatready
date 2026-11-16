@@ -11,6 +11,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import pg from "pg";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
 const NEW = "20261117004500_css1_case_party_index";
@@ -62,15 +63,14 @@ function person(db: string, w: World, caseId: string | null, role: string | null
   return { party, subject };
 }
 /** An answer, as the write sites store one: the current version superseded by the new one, in one transaction. */
-function answer(db: string, w: World, who: { party: string; subject: string }, key: string, value: unknown, extra = "") {
+function answerSql(w: World, who: { party: string; subject: string }, key: string, value: unknown) {
   const id = randomUUID();
-  sql(db, `begin;
-    update client_canonical_answer set superseded_by_id = '${id}' where subject_id = '${who.subject}' and canonical_field_key = '${key}' and row_key is null and superseded_by_id is null;
+  return `update client_canonical_answer set superseded_by_id = '${id}' where subject_id = '${who.subject}' and canonical_field_key = '${key}' and row_key is null and superseded_by_id is null;
     insert into client_canonical_answer (id, workspace_id, party_id, subject_id, canonical_field_id, canonical_field_key, value_json, status, source_json)
-      values ('${id}', '${w.W}', '${who.party}', '${who.subject}', '${w.field[key]}', '${key}', ${j(value)}, 'DECLARED', '{"channel":"questionnaire"}');
-    ${extra}
-    commit;`);
-  return id;
+      values ('${id}', '${w.W}', '${who.party}', '${who.subject}', '${w.field[key]}', '${key}', ${j(value)}, 'DECLARED', '{"channel":"questionnaire"}');`;
+}
+function answer(db: string, w: World, who: { party: string; subject: string }, key: string, value: unknown, extra = "") {
+  sql(db, `begin; ${answerSql(w, who, key, value)} ${extra} commit;`);
 }
 const row = (db: string, subject: string) => {
   const r = sql(db, `select row_to_json(x) from case_party_index x where subject_id = '${subject}'`);
@@ -101,8 +101,10 @@ try {
   const bNoE = person(BARE, b, bA, "case", "Case A stage 2 (Sample)");   // a "case" participant with no employer name
   const bRel = person(BARE, b, null, null, "Marie Dupont (Sample)", bP.party); answer(BARE, b, bRel, "person.given_names", "Parent");
   const bB1 = person(BARE, b, bB, "principal", "Solo Client (Sample)");
+  // The brief's count, with the refresh's own reading of "an employer name": a current single answer, a non-blank string.
   const expected = sql(BARE, `select count(*) from case_participant cp where cp.role <> 'case' or exists (select 1 from client_canonical_answer a
-    where a.subject_id = cp.subject_id and a.superseded_by_id is null and a.canonical_field_key in ('organisation.employer_name', 'organisation.name'))`);
+    where a.subject_id = cp.subject_id and a.superseded_by_id is null and a.row_key is null and a.canonical_field_key in ('organisation.employer_name', 'organisation.name')
+      and jsonb_typeof(a.value_json) = 'string' and btrim(a.value_json #>> '{}') <> '')`);
   ok("CS-S1 DW4 fail: before the migration there is no index (the table does not exist)", /does not exist/.test(err(() => sql(BARE, "select count(*) from case_party_index"))));
   psql(urlOf(BARE), ["-f", join(MIG, NEW, "migration.sql")]);
   const got = sql(BARE, "select count(*) from case_party_index");
@@ -156,6 +158,21 @@ try {
   ok("CS-S1 DW1 fail: a number holding letters gives phone_e164 null (the parts are never parsed or guessed)", row(FULL, N.subject)?.phone_e164 === null, row(FULL, N.subject));
   answer(FULL, w, N, "person.email_address", "Jean@Example.com");
   ok("CS-S1 DW1 pass: person.email_address stands in when person.email is not answered (lower case)", row(FULL, N.subject)?.email_norm === "jean@example.com");
+  // Breaker B1: an email of 1000 CJK characters (3000 bytes) once overflowed the btree on (firm_id, email_norm) and failed the save.
+  const long = `${"王".repeat(1000)}@example.com`;
+  ok("CS-S1 DW1 fail (breaker B1): an email over 254 characters is not indexed, and its answer save still succeeds",
+    err(() => answer(FULL, w, N, "person.email_address", long)) === "" && row(FULL, N.subject)?.email_norm === null);
+  answer(FULL, w, N, "person.phone_number", { country_code: "44", number: "+44 20 7946 0000" });
+  ok("CS-S1 DW1 pass: a number written with its own +<code> in front is read whole (+442079460000)", row(FULL, N.subject)?.phone_e164 === "+442079460000", row(FULL, N.subject));
+  answer(FULL, w, N, "person.phone_number", { country_code: "+001", number: "416-555-0101" });
+  ok("CS-S1 DW1 fail (breaker m8): a country code starting 0 gives null, never +001…", row(FULL, N.subject)?.phone_e164 === null);
+  const U = person(FULL, w, A, "child", "Profile Fallback (Sample)");
+  answer(FULL, w, U, "person.given_names", "Ñúñez\u00a0\u00a0Ölçer"); answer(FULL, w, U, "person.family_name", "Дмитрий");
+  ok("CS-S1 DW1 pass (breaker m6, m7): a no-break space is collapsed and non-ASCII letters are lower-cased whatever the cluster's collation",
+    row(FULL, U.subject)?.name_norm === "ñúñez ölçer дмитрий" && row(FULL, U.subject)?.display_name === "Ñúñez Ölçer Дмитрий", row(FULL, U.subject));
+  answer(FULL, w, U, "person.given_names", "\t\u200b"); answer(FULL, w, U, "person.family_name", "\u3000");
+  ok("CS-S1 DW1 fail (breaker m7): a name of only tabs, zero-width and ideographic spaces is no name: the profile's name stands in",
+    row(FULL, U.subject)?.display_name === "Profile Fallback (Sample)", row(FULL, U.subject));
 
   // ------------------------------------------------------------------------------------------------ DW2: later answers
   const id0 = p1!.id, at0 = sql(FULL, `select updated_at from case_party_index where subject_id = '${P.subject}'`);
@@ -187,6 +204,47 @@ try {
   ok("CS-S1 DW3 pass: as the app's role (xr_app, no firm set, platform_firm walled) an answer write keeps the row with its firm",
     asApp === "" && row(FULL, S.subject)?.name_norm === "solene" && row(FULL, S.subject)?.firm_id === w.firm["sample-solo"], asApp || row(FULL, S.subject));
   ok("CS-S1 DW3 fail: xr_app still reads no platform_firm row itself (the lookup is the one narrow door)", sql(FULL, "select count(*) from platform_firm", "xr_app") === "0");
+
+  // ------------------------------------- DW2 (review M1, breaker M2-M5): two writers at once, as the API writes (xr_app)
+  {
+    const c1 = new pg.Client({ connectionString: urlOf(FULL, "xr_app") }), c2 = new pg.Client({ connectionString: urlOf(FULL, "xr_app") });
+    await c1.connect(); await c2.connect();
+    const nap = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    /** c1 opens a transaction, writes, and makes its refresh run now (holding the subject's lock); c2 writes and commits
+     *  meanwhile. Returns whether c2 was still waiting while c1 was open. */
+    const race = async (first: string, second: string) => {
+      await c1.query("begin"); await c1.query(first); await c1.query("set constraints all immediate");
+      let done = false;
+      const p2 = c2.query(`begin; ${second} commit;`).then(() => { done = true; });
+      await nap(400); const waited = !done;
+      await c1.query("commit"); await p2;
+      return waited;
+    };
+    try {
+      const G = person(FULL, w, A, "spouse_or_partner", "Ghost Before (Sample)");
+      const wG = await race(`delete from case_participant where subject_id = '${G.subject}'`, answerSql(w, G, "person.given_names", "Ghost"));
+      ok("CS-S1 DW2 pass (race): a name written while the participant is removed leaves no row (the person is off the case)",
+        row(FULL, G.subject) === null && sql(FULL, `select count(*) from case_participant where subject_id = '${G.subject}'`) === "0", row(FULL, G.subject));
+      ok("CS-S1 DW2 fail (race): the second writer waited for the first (one refresh of a subject at a time)", wG);
+      const M = person(FULL, w, A, "child", "Mover (Sample)"); answer(FULL, w, M, "person.given_names", "Mover");
+      const m0 = row(FULL, M.subject);
+      const wM = await race(`update case_participant set case_id = '${B}', "order" = 98 where subject_id = '${M.subject}'`, answerSql(w, M, "person.email", "mover@example.com"));
+      const m1 = row(FULL, M.subject);
+      ok("CS-S1 DW2 pass (race): a participant moved to another firm's case while its email is written is indexed on the new case, firm and email, same id",
+        m1?.case_id === B && m1.firm_id === w.firm["sample-solo"] && m1.email_norm === "mover@example.com" && m1.id === m0?.id, { m0, m1 });
+      ok("CS-S1 DW2 fail (race): no row is left on the old firm", wM && sql(FULL, `select count(*) from case_party_index where subject_id = '${M.subject}' and firm_id = '${w.firm["sample-firm"]}'`) === "0");
+      // Two keys in one transaction against one key in another (breaker M5: a deadlock before the refresh was deferred).
+      const D = person(FULL, w, A, "child", "Two Keys (Sample)");
+      await c1.query("begin"); await c1.query(answerSql(w, D, "person.family_name", "Fone"));
+      let d2 = false; const q2 = c2.query(`begin; ${answerSql(w, D, "person.given_names", "Gtwo")} commit;`).then(() => { d2 = true; });
+      await nap(400); const notBlocked = d2;
+      const q1 = c1.query(answerSql(w, D, "person.given_names", "Gone")).then(() => c1.query("commit"));
+      const res = await Promise.allSettled([q1, q2]);
+      ok("CS-S1 DW2 pass (breaker M5): a transaction writing two keys and another writing one key both commit (no deadlock)", res.every((r) => r.status === "fulfilled"), res.map((r) => r.status === "rejected" ? String(r.reason) : "ok"));
+      ok("CS-S1 DW2 fail (breaker M2): the row holds both writers' committed answers (no lost update), and the one-key writer was never blocked by the open one",
+        notBlocked && row(FULL, D.subject)?.name_norm === "gone fone", row(FULL, D.subject));
+    } finally { await c1.end().catch(() => undefined); await c2.end().catch(() => undefined); }
+  }
 
   // ------------------------------------------------------------------------------------------------ DW4: sites, relatives, ids
   const base = spawnSync("git", ["merge-base", "HEAD", "origin/main"], { cwd: STUDIO, encoding: "utf8" }).stdout.trim();

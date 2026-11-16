@@ -21,17 +21,36 @@
 --     xr_wall_reader (the PF-12 pattern of platform_web_address_taken): one case's firm id, nothing else. A case whose firm
 --     has no platform_firm row (firms are seeded by the API at start) gets no row, and the answer write still succeeds.
 --   * the triggers are SECURITY INVOKER (they write as the caller; xr_data holds the table rights by PF-12's default
---     privileges), AFTER, row level, on client_canonical_answer (the listed keys only), party_profile (display name) and
+--     privileges), AFTER, row level (deferred: below), on client_canonical_answer (the listed keys only), party_profile (display name) and
 --     case_participant (insert, role or case change, removal). Each calls case_party_index_refresh(subject), which rebuilds
 --     that subject's row from the current answers. They fire on any write of a listed key (also the UPDATE that sets
 --     superseded_by_id), because the write sites supersede the old version and insert the new one in either order; the
 --     refresh itself reads only the current versions. A rolled-back write rolls back its index change with it.
+--   * the triggers are constraint triggers, DEFERRABLE INITIALLY DEFERRED: the refresh runs at commit, after every write
+--     of the transaction (review M1, breaker M2-M5). There it first takes a transaction advisory lock on the subject, so
+--     two writers (a name change and the participant's removal or move, two first answers, two keys) never leave a
+--     stale, orphan or wrong-firm row, and no writer holds that lock while it still writes answers (no deadlock with the
+--     answer rows' own locks). This relies on READ COMMITTED (the database default, and the API's): the waiter re-reads
+--     the committed state after the lock. A transaction that runs SET CONSTRAINTS ALL IMMEDIATE refreshes at once.
+--   * values: names and emails have every kind of space collapsed and trimmed, and are lower-cased by PostgreSQL 18's
+--     built-in Unicode rules (pg_unicode_fast), whatever the cluster's collation; a blank name falls back as above. An
+--     email over 254 characters, or with no "@", is not indexed. A role's digits become _ (FO-13's pattern has none).
+--   * not covered by a trigger (no app path does any today): an answer_subject label edit (the last name fallback), a
+--     runtime_case.firm_key change, and a platform_firm row added after its firm's cases (platform_ tables are PF-12's);
+--     the next write of the person refreshes the row.
+--   * hand-over to CS-W1/CS-W4: (1) the firm lookup should move to xr_case_lookup's ownership when CS-W1 gives that role
+--     its platform_firm read, and once runtime_case is walled it must check the case is the session's firm's (it reads
+--     runtime_case past the walls today, where every firm reads runtime_case anyway); (2) a forced policy on
+--     case_party_index must let these INVOKER triggers write when the API saves an answer with no app.firm_id set, or
+--     answer saves fail; today the app's role reads and writes every row of the table (the brief's INVOKER design).
+--   * the EMPLOYER row's party_id is the party the "case" subject sits on (the principal's: runtime.ts, case-stages.ts):
+--     part 2 reads the employer from display_name, never from party_id.
 --   * backfill: one refresh per existing participant.
--- Rollback (in this order): DROP TRIGGER case_party_index_answer, case_party_index_answer_gone ON client_canonical_answer
---   (one statement each); DROP TRIGGER case_party_index_profile ON party_profile; DROP TRIGGER case_party_index_participant ON case_participant; DROP TABLE
---   "case_party_index"; DROP FUNCTION case_party_index_on_answer(), case_party_index_on_profile(),
+-- Rollback (in this order): DROP TRIGGER case_party_index_answer ON client_canonical_answer; DROP TRIGGER
+--   case_party_index_answer_gone ON client_canonical_answer; DROP TRIGGER case_party_index_profile ON party_profile;
+--   DROP TRIGGER case_party_index_participant ON case_participant; DROP TABLE "case_party_index"; DROP FUNCTION case_party_index_on_answer(), case_party_index_on_profile(),
 --   case_party_index_on_participant(), case_party_index_refresh(uuid), case_party_index_firm_of(uuid),
---   case_party_index_phone(text, text), case_party_index_norm(text); then delete this folder's row from
+--   case_party_index_phone(text, text), case_party_index_norm(text), case_party_index_clean(text); then delete this folder's row from
 --   _prisma_migrations. pg_trgm stays (FO-9a uses it too). Nothing else is lost: the index is derived from the answers.
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -76,14 +95,22 @@ ALTER TABLE "case_party_index"
   ADD CONSTRAINT "case_party_index_name_check" CHECK (btrim("display_name") <> '' AND "name_norm" <> ''),
   ADD CONSTRAINT "case_party_index_phone_check" CHECK ("phone_e164" IS NULL OR "phone_e164" ~ '^\+[0-9]{2,15}$');
 
-CREATE FUNCTION case_party_index_norm(t text) RETURNS text LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS
-  $$ SELECT NULLIF(lower(regexp_replace(btrim(t), '\s+', ' ', 'g')), '') $$;
+-- Spaces of every kind (tab, newline, no-break, the U+2000 block, zero width, ideographic) collapsed to one and trimmed;
+-- null when nothing is left (breaker m7). Lower case by PostgreSQL 18's built-in Unicode rules, whatever the cluster's
+-- collation (breaker m6: a C cluster lower-cases ASCII only).
+CREATE FUNCTION case_party_index_clean(t text) RETURNS text LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS
+  $$ SELECT NULLIF(btrim(regexp_replace(t, '[\s\u0085\u00A0\u1680\u180E\u2000-\u200D\u2028\u2029\u202F\u205F\u2060\u3000\uFEFF]+', ' ', 'g'), ' '), '') $$;
+CREATE FUNCTION case_party_index_norm(t text) RETURNS text LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, public AS
+  $$ SELECT lower(case_party_index_clean(t) COLLATE pg_unicode_fast) $$;
 
--- "+" with the country code's digits and the number's digits; null when either is missing, the number holds anything but
--- digits, spaces and ( ) . - (a letter: never guessed), or the whole is outside E.164's 15 digits.
+-- "+" with the country code's digits and the number's digits; null when either is missing, the code is not 1 to 3 digits
+-- starting 1-9, the number holds anything but digits, spaces and ( ) . - (a letter: never guessed) or has under 4 digits,
+-- or the whole is over E.164's 15 digits. A number written with its own "+<code>" in front is read whole when that code
+-- is the given one (breaker m8).
 CREATE FUNCTION case_party_index_phone(cc text, num text) RETURNS text LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS $$
-  SELECT CASE WHEN c <> '' AND n <> '' AND btrim(num) ~ '^[0-9 ().-]+$' AND btrim(cc) ~ '^\+?[0-9]{1,3}$' AND length(c || n) <= 15
-              THEN '+' || c || n END
+  SELECT CASE WHEN c ~ '^[1-9][0-9]{0,2}$' AND btrim(cc) ~ '^\+?[0-9]{1,3}$' AND length(n) >= 4 AND length(c || n) <= 15
+                   AND (btrim(num) ~ '^[0-9 ().-]+$' OR (btrim(num) ~ '^\+[0-9 ().-]+$' AND left(n, length(c)) = c AND length(n) > length(c) + 3))
+              THEN '+' || c || CASE WHEN btrim(num) LIKE '+%' THEN substr(n, length(c) + 1) ELSE n END END
   FROM (SELECT regexp_replace(coalesce(cc, ''), '[^0-9]', '', 'g') AS c, regexp_replace(coalesce(num, ''), '[^0-9]', '', 'g') AS n) x
 $$;
 
@@ -101,6 +128,9 @@ CREATE FUNCTION case_party_index_refresh(p_subject uuid) RETURNS void LANGUAGE p
 DECLARE
   p record; a jsonb; v jsonb; firm uuid; k text; r text; nm text; em text; ph text; cc text;
 BEGIN
+  -- One refresh of a subject at a time (review M1): a second writer waits here until the first commits, then reads the
+  -- committed participant and answers afresh (READ COMMITTED: each statement below takes a new snapshot).
+  PERFORM pg_advisory_xact_lock(hashtextextended('case_party_index:' || p_subject::text, 0));
   SELECT cp.case_id, cp.role, s.party_id, s.workspace_id, s.label INTO p
     FROM case_participant cp JOIN answer_subject s ON s.id = cp.subject_id WHERE cp.subject_id = p_subject;
   IF NOT FOUND THEN   -- a relative, or a participant removed: no row
@@ -117,23 +147,26 @@ BEGIN
   r := upper(p.role);
   IF p.role = 'case' THEN
     k := 'EMPLOYER'; r := 'EMPLOYER';
-    nm := coalesce(CASE WHEN jsonb_typeof(a->'organisation.employer_name') = 'string' THEN NULLIF(btrim(a->>'organisation.employer_name'), '') END,
-                   CASE WHEN jsonb_typeof(a->'organisation.name') = 'string' THEN NULLIF(btrim(a->>'organisation.name'), '') END);
+    nm := coalesce(CASE WHEN jsonb_typeof(a->'organisation.employer_name') = 'string' THEN case_party_index_clean(a->>'organisation.employer_name') END,
+                   CASE WHEN jsonb_typeof(a->'organisation.name') = 'string' THEN case_party_index_clean(a->>'organisation.name') END);
   ELSE
     k := CASE p.role WHEN 'principal' THEN 'CLIENT' WHEN 'spouse_or_partner' THEN 'FAMILY_MEMBER' WHEN 'child' THEN 'FAMILY_MEMBER' ELSE 'OTHER_PARTY' END;
-    nm := NULLIF(btrim(concat_ws(' ', CASE WHEN jsonb_typeof(a->'person.given_names') = 'string' THEN NULLIF(btrim(a->>'person.given_names'), '') END,
-                                      CASE WHEN jsonb_typeof(a->'person.family_name') = 'string' THEN NULLIF(btrim(a->>'person.family_name'), '') END)), '');
-    IF nm IS NULL THEN SELECT NULLIF(btrim(pp.display_name), '') INTO nm FROM party_profile pp WHERE pp.party_id = p.party_id; END IF;
-    IF nm IS NULL THEN nm := NULLIF(btrim(p.label), ''); END IF;
-    em := CASE WHEN jsonb_typeof(a->'person.email') = 'string' AND btrim(a->>'person.email') <> '' THEN a->>'person.email'
-               WHEN jsonb_typeof(a->'person.email_address') = 'string' THEN a->>'person.email_address' END;
-    em := NULLIF(lower(btrim(em)), '');
+    nm := case_party_index_clean(concat_ws(' ', CASE WHEN jsonb_typeof(a->'person.given_names') = 'string' THEN a->>'person.given_names' END,
+                                                CASE WHEN jsonb_typeof(a->'person.family_name') = 'string' THEN a->>'person.family_name' END));
+    IF nm IS NULL THEN SELECT case_party_index_clean(pp.display_name) INTO nm FROM party_profile pp WHERE pp.party_id = p.party_id; END IF;
+    IF nm IS NULL THEN nm := case_party_index_clean(p.label); END IF;
+    em := coalesce(CASE WHEN jsonb_typeof(a->'person.email') = 'string' THEN case_party_index_norm(a->>'person.email') END,
+                   CASE WHEN jsonb_typeof(a->'person.email_address') = 'string' THEN case_party_index_norm(a->>'person.email_address') END);
+    -- At most 254 characters (an address's limit): a longer value is not an email and is not indexed, so it can never
+    -- overflow the btree on (firm_id, email_norm) and fail the answer save (breaker B1).
+    IF length(em) > 254 OR em !~ '^[^ ]+@[^ ]+$' THEN em := NULL; END IF;
     v := a->'person.phone_number';
     cc := CASE WHEN jsonb_typeof(a->'person.phone_country_code') IN ('string', 'number') THEN a->>'person.phone_country_code' END;
     ph := CASE jsonb_typeof(v)
-            WHEN 'object' THEN case_party_index_phone(coalesce(NULLIF(btrim(CASE WHEN jsonb_typeof(v->'country_code') = 'string' THEN v->>'country_code' END), ''), cc),
-                                                      CASE WHEN jsonb_typeof(v->'number') = 'string' THEN v->>'number' END)
-            WHEN 'string' THEN case_party_index_phone(cc, v #>> '{}') END;
+            WHEN 'object' THEN case_party_index_phone(coalesce(NULLIF(btrim(CASE WHEN jsonb_typeof(v->'country_code') IN ('string', 'number') THEN v->>'country_code' END), ''), cc),
+                                                      CASE WHEN jsonb_typeof(v->'number') IN ('string', 'number') THEN v->>'number' END)
+            WHEN 'string' THEN case_party_index_phone(cc, v #>> '{}')
+            WHEN 'number' THEN case_party_index_phone(cc, v #>> '{}') END;
   END IF;
   -- role_on_case: upper case letters and _ only (FO-13's pattern); anything else in an open-vocabulary role becomes _.
   r := left(regexp_replace(r, '[^A-Z_]', '_', 'g'), 40);
@@ -155,11 +188,11 @@ BEGIN
   RETURN NULL;
 END $fn$;
 -- Only the listed keys (the same list as the refresh's); a removed answer (a subject's cascade) by its own trigger.
-CREATE TRIGGER case_party_index_answer AFTER INSERT OR UPDATE ON "client_canonical_answer" FOR EACH ROW
+CREATE CONSTRAINT TRIGGER case_party_index_answer AFTER INSERT OR UPDATE ON "client_canonical_answer" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
   WHEN (NEW.canonical_field_key IN ('person.given_names', 'person.family_name', 'person.email', 'person.email_address',
     'person.phone_number', 'person.phone_country_code', 'organisation.employer_name', 'organisation.name'))
   EXECUTE FUNCTION case_party_index_on_answer();
-CREATE TRIGGER case_party_index_answer_gone AFTER DELETE ON "client_canonical_answer" FOR EACH ROW
+CREATE CONSTRAINT TRIGGER case_party_index_answer_gone AFTER DELETE ON "client_canonical_answer" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
   WHEN (OLD.canonical_field_key IN ('person.given_names', 'person.family_name', 'person.email', 'person.email_address',
     'person.phone_number', 'person.phone_country_code', 'organisation.employer_name', 'organisation.name'))
   EXECUTE FUNCTION case_party_index_on_answer();
@@ -168,10 +201,11 @@ CREATE FUNCTION case_party_index_on_profile() RETURNS trigger LANGUAGE plpgsql S
 BEGIN
   IF TG_OP = 'UPDATE' AND NEW.display_name IS NOT DISTINCT FROM OLD.display_name AND NEW.party_id IS NOT DISTINCT FROM OLD.party_id THEN RETURN NULL; END IF;
   PERFORM case_party_index_refresh(cp.subject_id) FROM case_participant cp JOIN answer_subject s ON s.id = cp.subject_id
-    WHERE s.party_id IN (NEW.party_id, CASE WHEN TG_OP = 'UPDATE' THEN OLD.party_id END);
+    WHERE s.party_id IN (CASE WHEN TG_OP <> 'DELETE' THEN NEW.party_id END, CASE WHEN TG_OP <> 'INSERT' THEN OLD.party_id END)
+    ORDER BY cp.subject_id;   -- one order everywhere, so two refreshes of one party never wait on each other in a circle
   RETURN NULL;
 END $fn$;
-CREATE TRIGGER case_party_index_profile AFTER INSERT OR UPDATE ON "party_profile" FOR EACH ROW
+CREATE CONSTRAINT TRIGGER case_party_index_profile AFTER INSERT OR UPDATE OR DELETE ON "party_profile" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
   EXECUTE FUNCTION case_party_index_on_profile();
 
 CREATE FUNCTION case_party_index_on_participant() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $fn$
@@ -182,7 +216,7 @@ BEGIN
   IF TG_OP = 'INSERT' OR (TG_OP = 'UPDATE' AND NEW.subject_id IS DISTINCT FROM OLD.subject_id) THEN PERFORM case_party_index_refresh(NEW.subject_id); END IF;
   RETURN NULL;
 END $fn$;
-CREATE TRIGGER case_party_index_participant AFTER INSERT OR UPDATE OR DELETE ON "case_participant" FOR EACH ROW
+CREATE CONSTRAINT TRIGGER case_party_index_participant AFTER INSERT OR UPDATE OR DELETE ON "case_participant" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
   EXECUTE FUNCTION case_party_index_on_participant();
 
 -- Backfill: one refresh per existing participant.
