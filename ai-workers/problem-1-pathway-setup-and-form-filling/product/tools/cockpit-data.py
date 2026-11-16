@@ -2629,7 +2629,7 @@ def health(snap, now, comp, li):
             unk.append(b["id"])
         elif (cutoff - parse_iso(first[b["id"]])).total_seconds() / 3600 > BUG_AGE_H:
             old_b.append(b["id"])
-    item(6, "Major bugs on Works capabilities", "red" if old_b else "amber" if unk else "green",
+    item(6, "Major bugs on proof-of-concept capabilities qa passed", "red" if old_b else "amber" if unk else "green",
          ("open Major or Critical bugs on capabilities marked proven, older than 48 h: " + ", ".join(old_b)) if old_b else
          ("age not measured: " + ", ".join(unk)) if unk else
          f"{len(bugs)} open Critical/Major on Works capabilities, none older than 48 h",
@@ -2793,9 +2793,10 @@ def first_screen(d, r1_qa, li, li_src):
                       "since": f"oldest {max(q['age_h'] for q in lq['items'])} h", "next": "answer each", "src": lq.get("src")})
     for h in (d.get("health") or {}).get("items") or []:
         if h["state"] == "red":
-            stuck.append({"what": h["name"] + ": " + h["detail"], "items": [str(x) for x in (h.get("bugs") or [])] or
-                          [f.get("path", "") for f in (h.get("files") or [])][:40], "owner": h.get("owner") or "current Lead",
-                          "since": "see the detail", "next": h.get("action") or "", "src": "Health check " + str(h["id"])})
+            bl = [f"{b['id']} ({b.get('sev', '')}) on {', '.join(b.get('caps') or [])}" for b in h.get("bugs") or [] if isinstance(b, dict)]
+            stuck.append({"what": h["name"] + (f": {len(bl)}" if bl else f": {len(h.get('files') or [])} files" if h.get("files") else ""),
+                          "items": bl or [f.get("path", "") for f in (h.get("files") or [])][:40], "owner": h.get("owner") or "current Lead",
+                          "since": "over 48 h" if bl else "see Health", "next": h.get("action") or "", "src": "Health check " + str(h["id"])})
     if qa_not_built:
         stuck.append({"what": f"{len(qa_not_built)} Built capabilities that qa's file still reads Not built",
                       "items": [lbl(m) for m in qa_not_built], "owner": "qa (through the current Lead)",
@@ -2806,15 +2807,17 @@ def first_screen(d, r1_qa, li, li_src):
                       "next": "qa adds each as Not built, Partial or Proven", "src": qa_src})
     # The choke: the stage holding most work now (records and backlog left out)
     st = {s["id"]: s for s in (d.get("value_stream") or {}).get("stages") or []}
-    cand = [(st[k]["name"], (st[k]["count"] or {}).get("v")) for k in ("building", "review", "ci", "queue") if k in st]
+    plain = {"building": "Being built", "review": "Being reviewed", "ci": "Automatic checks", "queue": "Waiting to merge"}
+    cand = [(plain[k], (st[k]["count"] or {}).get("v")) for k in ("building", "review", "ci", "queue") if k in st]
     cand.append(("Built, waiting for qa", len(waiting)))
     cand = [c for c in cand if c[1] is not None]
     ch = max(cand, key=lambda c: c[1]) if cand else (None, None)
     t3 = ((d.get("top3") or {}).get("cards") or {}).get("today") or {}
     choke = {"stage": ch[0], "count": ch[1], "stages": [{"name": a, "count": b} for a, b in cand],
              "doing": (li or {}).get("choke_action") or t3.get("what") or "not reported by the Lead",
-             "doing_class": "reported", "not_started": (st.get("shaped", {}).get("count") or {}).get("v"),
+             "doing_class": "reported", "not_started": None,
              "src": "open pull requests by station (factory-board rules) and Built minus Proven"}
+    choke["not_started"] = release["stage_counts"]["planned"] if r1_qa else None   # the same 'Planned' as the stage bar
     reds = [h for h in (d.get("health") or {}).get("items") or [] if h["state"] in ("red", "amber")]
     health = {"light": (d.get("health") or {}).get("light"), "items": [{"name": h["name"], "state": h["state"], "owner": h.get("owner")} for h in reds]}
     return {"words": "Planned = not started yet · In progress = someone is building it, or qa found part of it working · Built = all its code "
@@ -3213,7 +3216,7 @@ def build_explain(d):
         C_ = fs["choke"]
         put("first.choke", "The choke", "The step of the work where the most items are waiting right now.", now_w, C_["count"], "items in that stage", "Work flows when the "
             "biggest stage shrinks.", src=C_["src"], cls="measured", todo="being done (Lead-reported): " + str(C_["doing"]),
-            behind=[f"{s['name']}: {s['count']}" for s in C_["stages"]] + [f"specified, not started: {C_['not_started']}"])
+            behind=[f"{s['name']}: {s['count']}" for s in C_["stages"]] + ([f"Planned (not started): {C_['not_started']}"] if C_["not_started"] is not None else []))
     return E
 
 

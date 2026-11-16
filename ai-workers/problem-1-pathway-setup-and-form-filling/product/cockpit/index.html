@@ -10,8 +10,9 @@
   --good:#17703f; --good-soft:#dcf0e3; --prog:#1d5fa8; --prog-soft:#dde8f6;
   --wait:#9a5b00; --wait-soft:#fbeccf; --bad:#b3261e; --bad-soft:#f8dcd9; --none:#5e6a75; --none-soft:#e7ebee;
   /* A115: one colour per capability stage, used on every page */
-  --st-planned:#6b7f93; --st-planned-soft:#e3e9ef; --st-progress:#c47d0e; --st-progress-soft:#fbecd2;
-  --st-built:#6d4bc4; --st-built-soft:#ebe4fa; --st-proven:#17803f; --st-proven-soft:#dbf1e3;
+  --st-planned:#4a5b6c; --st-planned-soft:#e3e9ef; --st-progress:#8a5300; --st-progress-soft:#fbecd2;
+  --st-built:#5a37b0; --st-built-soft:#ebe4fa; --st-proven:#0f6a33; --st-proven-soft:#dbf1e3;
+  --sb-planned:#8597a8; --sb-progress:#d9901c;
   --hot:#c2410c;
   --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
@@ -198,7 +199,7 @@ details.inline>summary{cursor:pointer;color:var(--accent);font-size:12.5px;displ
 [hidden]{display:none!important}
 .firstsec{margin:10px 0 0}
 .first{display:grid;gap:10px;grid-template-columns:1fr}
-@media(min-width:900px){.first{grid-template-columns:1fr 1fr}.first>#fc-release{grid-column:1/-1}}
+@media(min-width:900px){.first{grid-template-columns:1fr 1fr}.first>#fc-release,.first>#fc-needs{grid-column:1/-1}}
 .fcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:0}
 .fcard>summary{list-style:none;cursor:pointer;padding:12px 14px;display:grid;grid-template-columns:1fr auto;gap:2px 10px}
 .fcard>summary::-webkit-details-marker{display:none}
@@ -230,7 +231,7 @@ details.more{margin-top:14px}details.more>summary{cursor:pointer;font-weight:600
 .stn{background:none!important;font-weight:600}
 .stbar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line);margin:6px 0 4px}
 .stbar span{display:block;height:100%}
-.sb-planned{background:var(--st-planned)}.sb-progress{background:var(--st-progress)}.sb-built{background:var(--st-built)}.sb-proven{background:var(--st-proven)}
+.sb-planned{background:var(--sb-planned,var(--st-planned))}.sb-progress{background:var(--sb-progress,var(--st-progress))}.sb-built{background:var(--st-built)}.sb-proven{background:var(--st-proven)}
 .stleg{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12.5px;color:var(--ink2)}
 .stleg b{color:var(--ink)}
 .grow{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;padding:8px 0;border-top:1px solid var(--line)}
@@ -495,11 +496,19 @@ function rfHTML(){if(!DB)return "";
 function paintFresh(){if(D){var f=document.getElementById("fresh");if(f)f.innerHTML=freshHTML(dataAgeH());}}
 var STEPW={todo:"To do",done:"Done",not_now:"Not now",talk:"Talk to the Lead"};
 function stepOf(a){if(!a)return {status:"todo"};if(a.status)return a;return {status:a.answer==="done"?"done":"not_now",at:a.at};}  /* old {answer} entries still read */
+/* the Needs you count follows his statuses: a step counts while it is To do, Talk to the Lead, or Not now past its date */
+function stepOpen(a){if(a.status==="done")return false;if(a.status==="not_now")return !a.remind_on||a.remind_on<=new Date().toISOString().slice(0,10);return true;}
+function paintNeeds(){var F=D&&D.first;if(!F)return;var open=F.needs.items.filter(function(x){return stepOpen(stepOf(ANS[x.key]));});
+  var b=document.getElementById("needsBig"),l=document.getElementById("needsLine");if(b)b.textContent=open.length?open.length+" to do":"Nothing now";
+  if(l)l.textContent=open.length?open.map(function(x){return x.id;}).join(", "):"Nothing waits on you now";
+  document.querySelectorAll("[data-rstatus]").forEach(function(s){var a=stepOf(ANS[s.getAttribute("data-rstatus")]);s.textContent=a.at?"your status: "+STEPW[a.status]:"";});}
 function paintAnswers(){document.querySelectorAll("[data-akey]").forEach(function(r){var k=r.getAttribute("data-akey"),a=stepOf(ANS[k]),s=r.querySelector(".astate"),bs=r.querySelector(".abtn"),sel=r.querySelector(".stepsel"),rm=r.querySelector(".remind"),dt=r.querySelector(".stepdate");
   if(bs)bs.hidden=!DB;if(sel&&document.activeElement!==sel)sel.value=a.status;if(rm)rm.hidden=a.status!=="not_now";if(dt&&document.activeElement!==dt)dt.value=a.remind_on||"";
+  paintNeeds();
   if(s)s.textContent=!DB?"Your status is saved only on the board owner's own view.":a.at?"Last change: "+STEPW[a.status]+(a.status==="not_now"&&a.remind_on?" (remind on "+a.remind_on+")":"")+" at "+hmIST(a.at)+". The Lead's next check reads it; change it any time.":"Not set yet: To do.";});}
 function saveStep(row){if(!DB)return;var k=row.getAttribute("data-akey"),sel=row.querySelector(".stepsel"),dt=row.querySelector(".stepdate"),old=ANS[k]||{},nx={};
   Object.keys(ANS).forEach(function(x){nx[x]=ANS[x];});var now=new Date().toISOString(),hist=(old.history||[]).slice(-9);hist.push({status:sel.value,at:now});
+  if(sel.value==="not_now"&&!dt.value){var w=new Date(Date.now()+7*86400000);dt.value=w.toISOString().slice(0,10);}
   nx[k]={status:sel.value,remind_on:sel.value==="not_now"?(dt.value||null):null,at:now,what:row.getAttribute("data-what")||"",history:hist};ANS=nx;paintAnswers();
   dbWrite("board/answers",nx,function(m){var s=row.querySelector(".astate");if(s)s.textContent=m;});}
 document.addEventListener("change",function(e){var row=e.target.closest&&e.target.closest("[data-akey]");if(row&&(e.target.classList.contains("stepsel")||e.target.classList.contains("stepdate")))saveStep(row);});
@@ -573,39 +582,42 @@ function rFirst(){
     '<p><a href="#" data-open="caps">Open every capability and its stage</a></p>',"first.release");
   h+=fcard("today","Today"+(Td.goal?" · goal by "+esc(Td.by_text||hmDay(Td.by)):""),
     Td.goal?esc(Td.proven)+' of '+esc(Td.goal)+' Proven':'No proving goal set',pill(Td.state)+esc(Td.why),
-    (Td.plan?'<p><b>The Lead\'s plan today:</b> '+esc(Td.plan)+' <span class="rep">Lead-reported</span></p>':'')+(Td.goal_src?'<p class="small muted">Goal: '+esc(Td.goal_src)+'</p>':''),"first.today");
-  var nrows=N.items.map(function(x){return '<div class="arow" data-akey="'+esc(x.key)+'" data-what="'+esc(x.id+": "+x.what)+'"><b>'+esc(x.what)+' ('+esc(x.id)+')</b><span class="small">Why it matters: '+esc(x.why)+'. Unblocks: '+esc(x.unblocks||"")+(x.by?' · due '+esc(short(x.by)):'')+'</span>'+
+    (Td.plan?'<p><b>The Lead\'s plan today:</b> '+esc(Td.plan)+' <span class="rep">Lead-reported</span></p>':''),"first.today");
+  var stepRow=function(x){return '<div class="arow" data-akey="'+esc(x.key)+'" data-what="'+esc(x.id+": "+x.what)+'"><b>'+esc(x.what)+' ('+esc(x.id)+')</b><span class="small">Why it matters: '+esc(x.why)+'. Unblocks: '+esc(x.unblocks||"")+(x.by?' · due '+esc(short(x.by)):'')+'</span>'+
     '<span class="abtn steprow"><label class="small" for="st-'+esc(x.key)+'">Status</label><select class="stepsel" id="st-'+esc(x.key)+'"><option value="todo">To do</option><option value="done">Done</option><option value="not_now">Not now</option><option value="talk">Talk to the Lead</option></select>'+
-    '<span class="remind" hidden><label class="small" for="rd-'+esc(x.key)+'">remind me on</label> <input type="date" class="stepdate" id="rd-'+esc(x.key)+'"></span></span><span class="astate small muted" role="status"></span></div>';}).join("");
-  h+=fcard("needs","Needs you",N.count?esc(N.count)+' to do':'Nothing now',N.count?esc(N.items.map(function(x){return x.id;}).join(", "))+(N.later.length?' · '+N.later.length+' more later':''):'Nothing waits on you today'+(N.later.length?'; '+N.later.length+' launch steps of yours have no date yet.':'.'),
-    nrows+(N.later.length?'<p><b>Yours later ('+N.later.length+'):</b></p>'+ul(N.later.map(function(x){return x.id+": "+x.what+(x.by?" (by "+x.by+")":"");})):''),"first.needs",N.count>0);
+    '<span class="remind" hidden><label class="small" for="rd-'+esc(x.key)+'">remind me on</label> <input type="date" class="stepdate" id="rd-'+esc(x.key)+'"></span></span><span class="astate small muted" role="status"></span></div>';};
+  var nrows=N.items.map(stepRow).join("");
+  h+=fcard("needs","Needs you",'<span id="needsBig">'+(N.count?esc(N.count)+' to do':'Nothing now')+'</span>','<span id="needsLine">'+(N.count?esc(N.items.map(function(x){return x.id;}).join(", ")):'Nothing waits on you today')+'</span>'+(N.later.length?' · '+N.later.length+' more later':''),
+    nrows+(N.later.length?'<details class="sub"><summary>Yours later ('+N.later.length+'): no date yet</summary>'+N.later.map(stepRow).join("")+'</details>':''),"first.needs",N.count>0);
   var S=F.stuck;
   h+=fcard("stuck","Stuck or at risk",S.length?esc(S.length)+' items':'Nothing stuck',esc(S.map(function(s){return s.what.split(":")[0];}).join(" · ")),
-    S.map(function(s){return '<div class="srow"><b>'+esc(s.what)+'</b><span class="small">Owner: '+esc(s.owner)+' · since: '+esc(s.since)+' · next: '+esc(s.next)+'</span>'+(s.items&&s.items.length?'<details class="sub"><summary>'+s.items.length+' behind it</summary>'+ul(s.items,40)+'</details>':'')+'</div>';}).join(""),"first.stuck");
+    S.map(function(s){return '<div class="srow"><b>'+esc(s.what)+'</b><span class="small">Owner: '+esc(s.owner)+' · since: '+esc(s.since)+' · next: '+esc(s.next)+'</span></div>';}).join("")+'<p class="small muted">The names behind each line are under the source line below.</p>',"first.stuck");
   h+=fcard("choke","The choke right now",C.stage?esc(C.stage)+': '+esc(C.count):'not measured','Most work sits here. Being done: '+esc(C.doing)+' <span class="rep">Lead-reported</span>',
-    ul(C.stages.map(function(s){return s.name+": "+s.count;}))+(C.not_started!=null?'<p class="small muted">'+esc(C.not_started)+' more are specified and not started.</p>':'')+'<p><a href="#" data-open="factory">Open the factory detail (for the tech lead)</a></p>',"first.choke");
+    ul(C.stages.map(function(s){return s.name+": "+s.count;}))+(C.not_started!=null?'<p class="small muted">'+esc(C.not_started)+' more are Planned (not started), as on the stage bar.</p>':'')+'<p><a href="#" data-open="factory">Open the factory detail (for the tech lead)</a></p>',"first.choke");
   var age=dataAgeH(),hl=worst(H.light||"grey",ageState(age)),its=H.items||[];
   var nr=its.filter(function(i){return i.state==="red";}).length,na=its.filter(function(i){return i.state==="amber";}).length;
   h+=fcard("health","Health",hl==="green"?pill("green"):(nr?'<span class="pill p-bad">'+nr+' red</span>':'')+(na?'<span class="pill p-wait">'+na+' amber</span>':''),
     nr?'Red: '+esc(its.filter(function(i){return i.state==="red";}).map(function(i){return i.name+" ("+i.owner+")";}).join("; ")):(na?'Amber only; nothing failing.':'All checks pass.'),
-    '<ul class="flist">'+(D.health.items||[]).map(function(i){var st=i.state==="page"?ageState(age):i.state;return '<li data-keep'+T("health."+i.id)+'>'+dot(st)+'<b>'+esc(i.name)+'</b> — '+(i.state==="page"?"board data "+esc(ageText(age))+" old":esc(i.detail.length>200?i.detail.slice(0,200)+"… (tap for all)":i.detail))+((st==="red"||st==="amber")&&i.action?' <b>Do:</b> '+esc(i.action)+' · <b>Who:</b> '+esc(i.owner||""):'')+'</li>';}).join("")+'</ul>',"strip.health");
+    '<ul class="flist">'+(D.health.items||[]).map(function(i){var st=i.state==="page"?ageState(age):i.state;return '<li data-keep'+T("health."+i.id)+'><div>'+dot(st)+'<b>'+esc(i.name)+'</b> — '+(i.state==="page"?"board data "+esc(ageText(age))+" old":(st==="red"||st==="amber")&&i.action?esc(i.action)+' · <b>Who:</b> '+esc(i.owner||""):"fine")+'</div></li>';}).join("")+'</ul>',"strip.health");
   return '<div class="firstsec" role="region" aria-label="First screen">'+h+'</div></div>';
 }
 function hmDay(iso){try{return new Date(iso).toLocaleString("en-GB",{timeZone:"Asia/Kolkata",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})+" IST";}catch(e){return iso||"";}}
 /* A115: Capabilities in his view: each business function with a four-colour bar, then each capability with its stage */
 function rStages(){var R=D.first&&D.first.release;if(!R||!R.groups)return "";
-  var h='<p class="small">Release 1 is the '+esc(R.planned)+' must-have capabilities. Optional, held and deferred items sit outside it (Library › capability map).</p>'+stbar(R.stage_counts,R.planned)+stleg(R.stage_counts);
+  var h='<p class="small">Release 1 is '+esc(R.planned)+' capabilities; anything else comes after it (Library).</p>'+stbar(R.stage_counts,R.planned)+stleg(R.stage_counts);
   h+='<div class="grows">'+R.groups.map(function(g){var n=STO.reduce(function(a,s){return a+(g.counts[s]||0);},0);
     return '<div class="grow"><div class="gh"><span>'+esc(g.id)+'. '+esc(g.name)+'</span><span class="mono small">'+(g.counts.proven||0)+' of '+n+' Proven</span></div>'+stbar(g.counts,n)+
       '<details class="sub"><summary>'+n+' capabilities</summary>'+g.rows.map(function(r){return '<div class="caprow"><span class="cid">R1.'+esc(r.map)+'</span>'+stchip(r.stage)+'<span>'+esc(r.cap)+'</span></div>';}).join("")+'</details></div>';}).join("")+'</div>';
   return section("","stages","Every capability and its stage","Planned, In progress, Built (all its code merged) and Proven (qa passed it): the same colours as the first screen.",h);}
 /* A115: who is doing what: each lane, the capabilities it works on with their stage, and its last push */
-function rWho(){var C=((D.org||{}).components||{}).items||[],st=(D.first&&D.first.release.stage)||{},rows=[];
-  C.forEach(function(c){(c.lanes||[]).forEach(function(l){rows.push({c:c.name,l:l});});});
+function rWho(){var C=((D.org||{}).components||{}).items||[],st=(D.first&&D.first.release.stage)||{},rows=[],other=[];
+  var idle=((((D.top_numbers||{}).lanes||{}).idle||{}).names||[]).map(function(n){return n.replace(/ \(no branch found\)$/,"");});
+  C.forEach(function(c){(c.lanes||[]).forEach(function(l){if((l.maps||[]).length)rows.push({c:c.name,l:l});else other.push(l.name);});});
   if(!rows.length)return section("","who","Who is doing what","Each lane and what it works on.",'<p class="muted">No lane reported.</p>');
-  var h=rows.map(function(x){var l=x.l,ms=l.maps||[];var when=l.last_push_at?"last push "+hmIST(l.last_push_at):(l.state==="running"?"running, no push seen yet":esc(l.state||""));
-    return '<div class="srow"><b>'+esc(l.name)+'</b><span class="small">'+esc(x.c)+' · '+esc(l.role||"")+' · '+when+(l.behind?' · <span class="pill p-bad">behind</span>':'')+'</span>'+
+  var h=rows.map(function(x){var l=x.l,ms=l.maps||[],isIdle=idle.indexOf(l.name)>=0;var when=isIdle?"idle: no push in 90 min (the Lead follows up)":l.last_push_at?"last push "+hmIST(l.last_push_at):"working";
+    return '<div class="srow"><b>'+esc(l.name)+'</b><span class="small">'+esc(x.c)+' · '+when+'</span>'+
       (ms.length?ms.map(function(m){return '<div class="caprow"><span class="cid">R1.'+esc(m.map)+'</span>'+stchip(st[String(m.map)]||"planned")+'<span>'+esc(m.cap)+'</span></div>';}).join(""):'<span class="small muted">Not tied to a Release 1 capability (pipeline or tooling work).</span>')+'</div>';}).join("");
+  if(other.length)h+='<p class="small muted">'+other.length+' more lanes work on tools and checks, not on a Release 1 capability (Team detail, for the tech lead).</p>';
   return section("","who","Who is doing what","Each lane, the capabilities it works on (with their stage) and when it last pushed.",h);}
 /* banners (§6.6) */
 function rBanner(){
@@ -1042,7 +1054,7 @@ function rRes(){
 /* 11 risks */
 function rRisks(){
   var K=D.risks,h='<div class="box"><table><thead><tr><th>ID</th><th>Risk</th><th>Owner</th><th>By</th><th>Status</th></tr></thead><tbody>';
-  K.items.forEach(function(r){h+='<tr'+S(K.src+" \u00b7 "+r.source+" \u00b7 mitigation: "+r.mitigation)+'><td class="mono">'+esc(r.id)+'</td><td>'+esc(r.risk)+'<div class="small muted">'+esc(r.mitigation)+'</div></td><td class="small">'+esc(r.owner)+'</td><td class="small mono" style="white-space:nowrap">'+(r.trigger_date?esc(short(r.trigger_date)):'<span class="muted">gate</span>')+'</td><td>'+pill(r.status,r.status==="closed"?"good":r.status==="watching"?"wait":"bad")+'</td></tr>';});
+  K.items.forEach(function(r){h+='<tr'+S(K.src+" \u00b7 "+r.source+" \u00b7 mitigation: "+r.mitigation)+'><td class="mono">'+esc(r.id)+'</td><td>'+esc(r.risk)+'<div class="small muted">'+esc(r.mitigation)+'</div>'+(r.owner==="founder"?'<div class="small"><b data-rstatus="risk-'+esc(r.id)+'"></b></div>':'')+'</td><td class="small">'+esc(r.owner)+'</td><td class="small mono" style="white-space:nowrap">'+(r.trigger_date?esc(short(r.trigger_date)):'<span class="muted">gate</span>')+'</td><td>'+pill(r.status,r.status==="closed"?"good":r.status==="watching"?"wait":"bad")+'</td></tr>';});
   h+='</tbody></table></div>';
   var un=v(K.unlisted)||[];
   if(un.length)h+='<p class="small"'+S(src(K.unlisted))+'>'+pill(un.length+" launch items not in this list","wait")+' '+esc(un.map(function(x){return x.id;}).join(", "))+'</p>';
@@ -1186,7 +1198,7 @@ function render(){
   var out='<div id="mine">'+one(rBanner)+one(rFirst)+'<details class="more" id="more"><summary>More: every capability, who is doing what, launch readiness, library</summary>'+group("mine",MINE)+'</details></div>';
   out+='<details class="techsec" id="tech"><summary>For the tech lead: plan and pace, capability detail, team detail, factory, data trust</summary><p class="small muted">The machine room: how each number is counted, with its sources. The checklist\'s hand-kept marks appear here under their own name; Proven always comes from qa\'s file.</p>'+group("tech",TECH)+'</details>';
   document.getElementById("body").innerHTML=out;
-  provenWords(document.getElementById("tech"));provenWords(document.getElementById("mine"));paintAnswers();
+  paintAnswers();
   addIcons(document.getElementById("body"));
   /* axe scrollable-region-focusable: a table that scrolls sideways can be reached by keyboard */
   document.querySelectorAll(".box").forEach(function(b){b.tabIndex=0;b.setAttribute("role","region");var h=b.closest("section");var t=h&&h.querySelector("h2");b.setAttribute("aria-label",(t?t.textContent:"table")+" (scrolls sideways)");});
@@ -1198,7 +1210,7 @@ function render(){
   document.querySelectorAll("details").forEach(function(dd){dd.addEventListener("toggle",drawAll);});
   drawAll();
 }
-function drawAll(){[drawVSM,drawArch,drawBurnup,drawTimeline].forEach(function(f){try{f();}catch(e){}});addIcons(document.getElementById("body"));["tech","mine"].forEach(function(id){var m=document.getElementById(id);if(m)provenWords(m);});}
+function drawAll(){[drawVSM,drawArch,drawBurnup,drawTimeline].forEach(function(f){try{f();}catch(e){}});addIcons(document.getElementById("body"));}
 var rt=null;window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(function(){if(D){drawAll();}},150);});
 /* P-636: one word per stage everywhere on the page: qa's "Works" reads Proven (panels keep the source words) */
 function provenWords(root){if(!root)return;var w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null),n,L=[];while((n=w.nextNode()))L.push(n);
