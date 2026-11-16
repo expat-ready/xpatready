@@ -8,11 +8,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Field, Input, Notice, Panel, Select, Textarea } from "@/components/ui/controls";
 import { useToast } from "@/lib/api";
 import { usePlatformStaff } from "../frame";
-import { staffApi, StaffApiError } from "../session";
+import { staffApi, StaffApiError, staffToken } from "../session";
 import { CATEGORY, CHANNEL, Handlers, has, KEY, KIND, nowLocal, Recorded, zonedToIso, zoneName } from "./contract";
 
 export type Linked = { kind: "FRONT_OFFICE_PERSON" | "CASE_PARTY"; id: string; name: string };
 type Form = { subjectKind: string; complainantName: string; complainantContact: string; receivedAt: string; channel: string; category: string; summary: string; handlerStaffId: string };
+/** What the person typed, kept in this tab's memory while the drawer is open (never stored): a session that ends
+ *  mid-drawer unmounts the page, and signing in again as the same person brings the drawer back with it (break M3). */
+let kept: { staffId: string; form: Form } | null = null;
+export const hasKept = (staffId: string) => kept?.staffId === staffId;
 const LABEL: Record<string, string> = { subjectKind: "Who made it", subjectId: "Who made it", complainantName: "Their name", complainantContact: "How to reach them", receivedAt: "Received", channel: "How it came", category: "About", summary: "What it is about", handlerStaffId: "Handler" };
 
 export function RecordDrawer({ open, onOpenChange, linked, zone, returnFocus }: { open: boolean; onOpenChange: (o: boolean) => void; linked: Linked | null; zone: string | undefined; returnFocus: () => HTMLElement | null }) {
@@ -21,10 +25,19 @@ export function RecordDrawer({ open, onOpenChange, linked, zone, returnFocus }: 
   const handlers = useQuery({ queryKey: ["pf", "complaints", "handlers"], enabled: open, queryFn: async () => Handlers.parse(await staffApi("/platform/complaints/handlers")).items });
   const blank = React.useCallback((): Form => ({ subjectKind: linked?.kind ?? "OTHER_PERSON", complainantName: linked?.name ?? "", complainantContact: "", receivedAt: zone ? nowLocal(zone) : "", channel: "", category: "", summary: "", handlerStaffId: me.staffId }), [linked, zone, me.staffId]);
   const [f, setF] = React.useState<Form>(blank);
-  const touched = React.useRef(false);
-  React.useEffect(() => { if (open) { setF(blank()); touched.current = false; save.reset(); } }, [open]);   // eslint-disable-line react-hooks/exhaustive-deps -- a fresh form each time it opens
+  const [restored, setRestored] = React.useState(false);
+  // Leaving the page while still signed in drops the draft; only an ended session keeps it for the next sign-in.
+  React.useEffect(() => () => { if (staffToken()) kept = null; }, []);
+  const touched = React.useRef(false), sending = React.useRef(false), summary = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const back = kept?.staffId === me.staffId ? kept.form : null;
+    if (kept && !back) kept = null;   // another person's draft is never shown
+    setF(back ?? blank()); setRestored(!!back); touched.current = !!back; save.reset();
+  }, [open]);   // eslint-disable-line react-hooks/exhaustive-deps -- a fresh form each time it opens
   React.useEffect(() => { if (zone && !f.receivedAt) setF((x) => ({ ...x, receivedAt: nowLocal(zone) })); }, [zone]);   // eslint-disable-line react-hooks/exhaustive-deps -- the zone arrives once
-  const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => { touched.current = true; const v = e.target.value; setF((x) => ({ ...x, [k]: v })); };
+  const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => { touched.current = true; const v = e.target.value; setF((x) => { const next = { ...x, [k]: v }; kept = { staffId: me.staffId, form: next }; return next; }); };
+  const discard = () => { if (touched.current && !window.confirm("Discard the complaint you started?")) return false; kept = null; return true; };
   const save = useMutation({
     mutationFn: async () => {
       const body: Record<string, unknown> = { subjectKind: f.subjectKind, receivedAt: f.receivedAt && zone ? zonedToIso(f.receivedAt, zone) : "", channel: f.channel || undefined, category: f.category || undefined, summary: f.summary, handlerStaffId: f.handlerStaffId };
@@ -33,7 +46,10 @@ export function RecordDrawer({ open, onOpenChange, linked, zone, returnFocus }: 
       if (linked && f.subjectKind === linked.kind) body.subjectId = linked.id;
       return Recorded.parse(await staffApi("/platform/complaints", { method: "POST", json: body }));
     },
+    onSettled: () => { sending.current = false; },
+    onError: () => setTimeout(() => summary.current?.focus(), 0),
     onSuccess: (c) => {
+      kept = null;
       void qc.invalidateQueries({ queryKey: ["pf", "complaints"] });
       onOpenChange(false);
       const handler = handlers.data?.find((h) => h.id === c.handlerStaffId)?.displayName ?? "The handler";
@@ -50,11 +66,12 @@ export function RecordDrawer({ open, onOpenChange, linked, zone, returnFocus }: 
   const Sample = <span className="ml-1 font-normal text-text-muted">Sample list</span>;
   return (
     <Panel open={open} onOpenChange={onOpenChange} title="Record a complaint" description="It goes on the firm's complaints record and is never deleted." returnFocus={returnFocus}
-      confirmClose={() => !touched.current || window.confirm("Discard the complaint you started?")}
-      footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit" form="pf-complaint-record" busy={save.isPending} disabled={!zone}>Record the complaint</Button></>}>
-      <form id="pf-complaint-record" noValidate className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); save.mutate(); }} data-record-drawer>
-        {err ? <Notice tone="danger" title="Not recorded">{Object.keys(fields).length ? <ul className="list-disc pl-4">{Object.entries(fields).map(([k, v]) => <li key={k}>{LABEL[k] ?? k}: {v}</li>)}</ul> : err.message}</Notice>
-          : save.error ? <Notice tone="danger" title="Not recorded">Could not record the complaint. Please try again.</Notice> : null}
+      confirmClose={discard}
+      footer={<><Button variant="ghost" onClick={() => { if (discard()) onOpenChange(false); }}>Cancel</Button><Button type="submit" form="pf-complaint-record" busy={save.isPending} disabled={!zone}>Record the complaint</Button></>}>
+      <form id="pf-complaint-record" noValidate className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); if (sending.current) return; sending.current = true; save.mutate(); }} data-record-drawer>
+        {restored ? <Notice tone="info" title="Your session ended">We kept what you typed. It was not recorded yet: check it and record it.</Notice> : null}
+        <div ref={summary} tabIndex={-1} className="outline-none">{err ? <Notice tone="danger" title="There is a problem">{Object.keys(fields).length ? <ul className="list-disc pl-4">{Object.entries(fields).map(([k, v]) => <li key={k}>{LABEL[k] ?? k}: {v}</li>)}</ul> : err.message}</Notice>
+          : save.error ? <Notice tone="danger" title="There is a problem">Could not record the complaint. Please try again.</Notice> : null}</div>
         <fieldset className="flex flex-col gap-1.5">
           <legend className="text-xs font-medium text-text">Who made it</legend>
           {kinds.map((k) => <label key={k} className="flex items-center gap-2 text-sm"><input type="radio" name="pf-kind" value={k} checked={f.subjectKind === k} onChange={set("subjectKind")} />{KIND[k]}</label>)}

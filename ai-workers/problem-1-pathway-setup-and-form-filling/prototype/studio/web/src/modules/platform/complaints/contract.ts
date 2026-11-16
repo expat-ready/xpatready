@@ -50,8 +50,9 @@ export const fromOf = (c: Complaint) => c.complainantName ?? word(KIND, c.subjec
 /** Dates in the firm's zone (m1): the day alone, or the day and time. */
 export const day = (iso: string, zone: string) => new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeZone: zone }).format(new Date(iso));
 export const dayTime = (iso: string, zone: string) => new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short", timeZone: zone }).format(new Date(iso));
-/** The zone's own short name for the label line ("EST"), else the zone id. */
-export const zoneName = (zone: string, at = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: zone, timeZoneName: "short" }).formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? zone;
+/** The firm's zone for the label line, named once: "America/Toronto" → "America/Toronto" (not today's EST/EDT, which a
+ *  date in the other half of the year would contradict; break m2). */
+export const zoneName = (zone: string) => zone.replace(/_/g, " ");
 /** G2: the business days left, as the server counted them (never worked out here). */
 export function daysLeftWords(c: Complaint): { text: string; late: boolean } | null {
   const n = c.businessDaysLeft;
@@ -64,10 +65,14 @@ export const statusOf = (c: Complaint) => (c.status === "CLOSED" ? { mark: "✓"
 
 /** A "datetime-local" value typed in the firm's zone, as the instant it names (cut to the minute). */
 export function zonedToIso(local: string, zone: string): string {
-  const guess = Date.parse(`${local}:00Z`);
-  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(guess)).map((p) => [p.type, p.value]));
-  const shown = Date.parse(`${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:00Z`);
-  return new Date(guess - (shown - guess)).toISOString();
+  const wall = Date.parse(`${local}:00Z`);
+  // The zone's offset at an instant, as wall time minus the instant (break m1: taken at the answer, not at the guess,
+  // so a time near a clock change keeps its wall time; a time the clock skips, e.g. 02:30 on spring-forward day, is read an hour earlier).
+  const offset = (at: number) => { const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(at)).map((x) => [x.type, x.value]));
+    return Date.parse(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:00Z`) - at; };
+  let at = wall - offset(wall);
+  at = wall - offset(at);
+  return new Date(at).toISOString();
 }
 /** Now, in the firm's zone, as a "datetime-local" value. */
 export function nowLocal(zone: string, now = new Date()): string {

@@ -3,6 +3,7 @@
 // "What happened" (every event, newest first) on the right; below 768 px the facts sit above the timeline. Not found has
 // one wording for another firm's, someone else's and a bad id (BR-4). The next-step bar and the action drawers are
 // PF-21s part 4; until then a person who may not act sees the read-only reason.
+import * as React from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Notice } from "@/components/ui/controls";
@@ -37,16 +38,22 @@ export function NotFound() {
 
 function RecordBody({ id }: { id: string }) {
   const me = usePlatformStaff();
-  const q = useQuery({ queryKey: ["pf", "complaints", "one", id], retry: false, queryFn: async () => Detail.parse(await staffApi(`/platform/complaints/${encodeURIComponent(id)}`)) });
+  // Only an id can name a complaint: anything else ("handlers", a typo) is Not found without asking (break m8, BR-4).
+  const isId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+  const q = useQuery({ queryKey: ["pf", "complaints", "one", id], retry: false, enabled: isId, queryFn: async () => Detail.parse(await staffApi(`/platform/complaints/${encodeURIComponent(id)}`)) });
+  // The page opens on its heading, so a keyboard or screen reader starts at the complaint (review m3, break m11).
+  const heading = React.useRef<HTMLHeadingElement>(null);
+  React.useEffect(() => { heading.current?.focus(); }, [q.data?.id]);
+  if (!isId) return <NotFound />;
   if (q.isPending) return <Loading label="Loading the complaint" rows={4} />;
-  if (q.isError) return q.error instanceof StaffApiError && q.error.status === 404 ? <NotFound />
+  if (q.isError) return q.error instanceof StaffApiError && (q.error.status === 404 || q.error.status === 403) ? <NotFound />
     : <p role="alert" className="text-sm text-text-danger">{q.error instanceof StaffApiError ? q.error.message : "Could not load the complaint."} <Button variant="link" size="sm" onClick={() => q.refetch()}>Try again</Button></p>;
   const c = q.data, zone = c.firmTimeZone, s = statusOf(c), left = daysLeftWords(c), from = fromOf(c);
   const events = [...c.events].reverse();
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4" data-complaint={c.id}>
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold text-text [overflow-wrap:anywhere]">{from}</h1>
+        <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold text-text outline-none [overflow-wrap:anywhere]">{from}</h1>
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted">
           <span className={cn("inline-flex items-center gap-1", c.overdue ? "font-semibold text-text-warn" : c.status === "OPEN" ? "text-text" : "")} data-status={s.text}><span aria-hidden="true">{s.mark}</span>{s.text}</span>
           <span>Handler: <span className="text-text" data-handler>{nameOf(c.people, c.handlerStaffId)}</span></span>
@@ -54,14 +61,14 @@ function RecordBody({ id }: { id: string }) {
         </p>
       </header>
       {c.overdue && left ? <Notice tone="warn" title="Needs you">This complaint was due to be acknowledged by {day(c.acknowledgeBy, zone)} ({left.text}).</Notice> : null}
-      {c.status === "CLOSED" ? <Notice tone="info" title={`Closed on ${c.closedAt ? day(c.closedAt, zone) : "—"} · outcome: ${word(OUTCOME, c.outcome)}`}>A closed complaint is kept as it is; add a note if something more happens.</Notice> : null}
+      {c.status === "CLOSED" ? <Notice tone="info" title={`Closed on ${c.closedAt ? day(c.closedAt, zone) : "—"} · outcome: ${word(OUTCOME, c.outcome)}`}>A closed complaint is kept as it is; add a note if something more happens. <span className="text-[11px]">Outcomes are a Sample list.</span></Notice> : null}
       {c.status === "OPEN" && !canAct(me, c) ? <p className="text-sm text-text-muted" data-read-only>{READ_ONLY}</p> : null}
       <div className="grid gap-4 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
         <section aria-labelledby="pf-facts" className="rounded-xl border border-border bg-surface-raised px-4 py-3">
           <h2 id="pf-facts" className="text-sm font-semibold">Facts</h2>
           <p className="text-xs text-text-muted">Dates and times in the firm's time ({zoneName(zone)}).</p>
           <dl className="mt-1">
-            <Fact label="From">{from}<span className="block text-xs text-text-muted">{word(KIND, c.subjectKind)}{c.complainantContact ? ` · ${c.complainantContact}` : ""}</span></Fact>
+            <Fact label="From">{c.complainantName ?? ""}<span className="block text-xs text-text-muted">{word(KIND, c.subjectKind)}{c.complainantContact ? ` · ${c.complainantContact}` : ""}</span></Fact>
             <Fact label="Received">{dayTime(c.receivedAt, zone)}</Fact>
             <Fact label="How it came">{word(CHANNEL, c.channel)}<Sample /></Fact>
             <Fact label="About">{word(CATEGORY, c.category)}<Sample /></Fact>
