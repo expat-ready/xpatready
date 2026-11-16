@@ -179,7 +179,6 @@ export function inRequest<T>(req: object, fn: () => T): T {
     return (out && typeof (out as { then?: unknown }).then === "function" ? (async () => await out)() : out) as T;
   });
 }
-
 // ---------------------------------------------------------------------------------------------- the walled connection
 /** The API's database address: APP_DATABASE_URL when set (production gives the app role its own secret), otherwise
  *  DATABASE_URL with the user changed to xr_app (the local demo, CI and test copies: one cluster, trust sign-in). */
@@ -190,7 +189,7 @@ export function appDatabaseUrl(databaseUrl: string, env: NodeJS.ProcessEnv = pro
   return u.toString();
 }
 
-const SET = Symbol("pf12.set");
+const SET = Symbol("pf12.set"), swallow = () => undefined;   // swallow: pg rejects the query in flight and drops the client; this only stops a late 'error' killing the API
 type Tagged = pg.PoolClient & { [SET]?: string };
 /** A pg pool whose every checkout first sets the context's firm and role on the connection (once per change). */
 export class WalledPool extends pg.Pool {
@@ -201,6 +200,7 @@ export class WalledPool extends pg.Pool {
     if (direct && !saidDirect) { saidDirect = true; logPort.info("platform_bypass", { use: "direct-process", method: "none" }); }
     const firm = s?.bypass || direct ? "" : (s?.firmId ?? ""), role = s?.bypass || direct ? BYPASS_ROLE : "none", want = `${firm}|${role}`;
     const p = (super.connect() as Promise<pg.PoolClient>).then(async (c: Tagged) => {
+      if (!c.listeners("error").includes(swallow)) c.on("error", swallow);   // a dropped socket fails its query, never the process (Devin review)
       if (c[SET] === want) return c;
       try { await c.query("select set_config('app.firm_id', $1, false), set_config('role', $2, false)", [firm, role]); c[SET] = want; return c; }
       catch (e) { c.release(e as Error); throw e; }
@@ -211,7 +211,7 @@ export class WalledPool extends pg.Pool {
   // pg's Pool.query checks a client out through connect(); the adapter calls query with a config object and values.
   override query(...a: unknown[]): never {
     const cb = typeof a[a.length - 1] === "function" ? a.pop() as (e: Error | null, r?: unknown) => void : undefined;
-    const p = this.connect().then(async (c) => { try { return await (c.query as (...x: unknown[]) => Promise<unknown>)(...a); } finally { c.release(); } });
+    const p = this.connect().then(async (c) => { try { const r = await (c.query as (...x: unknown[]) => Promise<unknown>)(...a); c.release(); return r; } catch (e) { c.release(e as Error); throw e; } });   // a failed query drops its client, as pg's own Pool.query does
     if (cb) { p.then((r) => cb(null, r), (e) => cb(e as Error)); return undefined as never; }
     return p as never;
   }

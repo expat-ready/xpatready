@@ -239,6 +239,7 @@ try {
   const aRows = await withFirm(A, staffOf);
   ok("PF-12 pass: the API's pool as firm A reads only firm A's staff", aRows.length > 0 && aRows.every((r) => r.firmId === A), aRows.length);
   ok("PF-12 fail: the next query on the same connection with no firm reads nothing again (no firm leaks from one checkout to the next)", (await staffOf()).length === 0);
+  const killed = await Promise.allSettled([pool.query("select pg_sleep(5)"), (async () => { await new Promise((r) => setTimeout(r, 300)); sql(DEMO, "select pg_terminate_backend(pid) from pg_stat_activity where usename = 'xr_app' and query = 'select pg_sleep(5)'"); })()]); ok("PF-12 fail (Devin review): a connection dropped mid-query fails that query only; the process and the pool carry on", killed[0].status === "rejected" && (await withFirm(A, staffOf)).length > 0);
   const bStaff = sql(DEMO, `select id from platform_staff where firm_id = '${B}' limit 1`), aStaff = sql(DEMO, `select id from platform_staff where firm_id = '${A}' limit 1`);
   ok("PF-12 fail: firm A's pool reads firm B's staff member by id as not found", (await withFirm(A, () => db.platformStaff.findUnique({ where: { id: bStaff } }))) === null);
   const inTx = await withFirm(A, () => db.$transaction(async (tx) => (await tx.platformStaff.findMany({ select: { firmId: true } })).map((r) => r.firmId)));
