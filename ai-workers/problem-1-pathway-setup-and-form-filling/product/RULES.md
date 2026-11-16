@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-630**, 16 Nov 08:3x IST (P-626 to P-630 added by Lead 64; the page as of P-625 is word for word in `history/RULES-2026-11-16-0735-lead64s2-as-of-P-625.md`); the long page as of P-612 is word for word in `history/RULES-2026-11-15-1415-before-register.md`)
+# Rule register (the tech lead keeps it; as of **P-634**, 16 Nov 10:2x IST (P-626 to P-634 added by Lead 64; the page as of P-630 in `history/RULES-2026-11-16-1025-lead64s2-as-of-P-630.md`; the page as of P-625 is word for word in `history/RULES-2026-11-16-0735-lead64s2-as-of-P-625.md`); the long page as of P-612 is word for word in `history/RULES-2026-11-15-1415-before-register.md`)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced by** names the hook, CI step or script that blocks or fails a break; `prose` = only the reader enforces it (G-4 candidates, bottom); `(part)` = covers part of the rule. IDs: a letter (`P-611b`) = the decision's 2nd row, not its part (2); `IDX-n` = an index of done, product or integration decisions kept in the side file. **Start read**: this page, then the `DECISIONS.md` rows newer than "as of", word for word (P-314, P-440). Long text word for word: side files under `rules/`. `tools/check-docs.sh` fails a row with no enforced-by, a page over 25 KB, or one over 3 rows behind DECISIONS.
 
@@ -7,20 +7,17 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 ## Goal and order (detail: `rules/goal-and-order.md`)
 | ID | Rule | Enforced by | As of |
 |---|---|---|---|
-| IDX-1 | Milestone plans stand as recorded (M3 done 29/29 10 Nov; the Bake; the Chrome extension, 40 sessions), detail in the side file: P-434, P-438, P-450, P-459, P-460, P-463, P-466, P-469, P-471, P-472, P-474, P-475, P-481, P-489, P-494, P-499; with P-435, P-447 to P-449, P-451 to P-457, P-476, P-482 to P-484, P-495. | prose | 12 Nov |
+| IDX-1 | Milestone plans stand as recorded (M3 done 29/29 10 Nov; the Bake; the Chrome extension, 40 sessions); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 12 Nov |
 | P-418 | Pick order each check: red on main, merged work awaiting qa, blockers freeing several rows, Partials in journey order, drafted rows, new work; warm rows to the lane with the context (P-348, P-413). | prose (lead-watch skill) | P-612 |
 | P-464 | XFA reuse: ours and theirs head to head per functionality, the better wins, a tie keeps ours; adopt and improve theirs when it is the better base (P-465, P-467). | prose | 11 Nov |
 | P-470 | The XFA code is ours: small fixes in PATCHES.md, extended only where our pathways use the form; never read the ER v2 repository. | prose | 11 Nov |
 | P-462 | A cloud lane for every ready independent row; lanes push after each step; Mac starts under the preflight caps (P-468). | hook: lane-preflight.sh --hook (part: Mac caps) | 11 Nov |
 | P-468 | Stale copies are deleted only when the work is on GitHub, nothing is uncommitted, untracked files are in `archive/`, no session uses them; databases via prune-test-dbs.sh. | prose | 11 Nov |
-| IDX-2 | One-time or time-boxed directions, done or standing as recorded in the side file: P-485, P-506, P-507, P-533, P-537, P-545, P-569 (integration stopped). | prose | 14 Nov |
+| IDX-2 | One-time or time-boxed directions, done or standing (with P-547 document system, P-583 GitHub safety settings, P-589 private backup); the list and rows word for word in `rules/goal-and-order.md` › Index lists. | prose | 16 Nov |
 | P-473 | UX style: calm work app, plain second-person client questions with "Why we ask", quiet surfaces, no motion library. | prose | 11 Nov |
 | P-558 | Two Leads: Lead B holds platform and front office in fenced modules; the release Lead holds release, Bake, case side, join, DB-SPLIT, firm walls, shared records (P-559). | prose | 13 Nov |
-| P-547 | The document system is approved with seven folds (its check never reds a product PR). | prose | 13 Nov |
-| P-583 | GitHub's free safety settings on in the checked order; the founder clicks, the Lead guides and verifies. | prose | 14 Nov |
-| P-589 | A private backup now; cut CI minutes first (B190); private at the gate before real firm data (P-590: option C). | prose | 14 Nov |
-| IDX-5 | Product and Release 1 scope rulings stand as recorded (read the row when its capability is touched): P-477, P-492, P-493, P-540, P-560 to P-562, P-564, P-567, P-568, P-570 to P-572, P-575, P-577 to P-579, P-581, P-584, P-585, P-598, P-603, P-612; with P-573, P-574, P-586. | prose | 15 Nov |
-| IDX-4 | Product rulings stand in their DECISIONS rows (read one when its capability is touched): P-441, P-443, P-444, P-487, P-490, P-491, P-496 to P-498, P-510, P-525, P-538, P-548, P-588; with P-72, P-78, P-148, P-154, P-242, P-411; holds P-235 to P-248 lifted (P-316). | prose | 14 Nov |
+| IDX-5 | Product and Release 1 scope rulings stand as recorded (read the row when its capability is touched); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 15 Nov |
+| IDX-4 | Product rulings stand in their DECISIONS rows (read one when its capability is touched); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 14 Nov |
 | P-488 | Gate B on a PR runs the REGRESSION-HELD checkpoint packs; records never claim Works that an open Major contradicts. | CI: ci.yml gate B (part) | 12 Nov |
 | F-12Nov | Every change is judged on value against cost; no over-engineering; never compromise compliance, money or quality (founder, 12 Nov). | prose | 12 Nov |
 | P-500 | The right sample for the purpose in every analysis, named beside the number; speed = app-code PRs or qa-confirmed Works. | script: cockpit-data.py (part: board numbers carry source and class, P-596) | 12 Nov |
@@ -145,6 +142,10 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-628 | While the founder is away the Lead decides product questions, records each ruling and its reason for his review. | prose | 16 Nov |
 | P-629 | PF-13 branding adds favicon, banner and an 80-character tagline; emails and PDFs keep logo, name and footer. | prose | 16 Nov |
 | P-630 | The Lead chooses build or adopt through the STANDARDS §1 gate; templates on React Email, Gotenberg with conditions. | prose | 16 Nov |
+| P-631 | Lockfile lines in a libraries-only PR do not count toward 800; hand-written lines do. | prose (B196) | 16 Nov |
+| P-632 | A needed tool that is off goes to the founder at once with the best fix, never a workaround (`design/required-tools.md`). | prose (B198) | 16 Nov |
+| P-633 | Gmail stays off until a task needs it; the Lead asks then, naming the task (amends P-620). | prose | 16 Nov |
+| P-634 | Trust reversals always accepted (red shortfall view); credited trust money never stays in operating. | prose | 16 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |
@@ -163,17 +164,8 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-458 | On an account switch: get_usage first, then `RESUME-ON-NEW-ACCOUNT.md`. | prose | 11 Nov |
 | P-312 | Process freeze until 10 Nov 22:30 IST (expired); changes on a measured number, checked after a fixed period, kept or undone. | prose | 10 Nov |
 
-## The compass (P-312): judged daily from tools, never from prose
-| Number | Healthy |
-|---|---|
-| Capabilities confirmed per day | 10 or more |
-| Works on qa's first re-score after merge | 80% or more |
-| Major or Critical bugs found after merge | about 0 |
-| Works → Partial demotions per day | at most 1 |
-| Capabilities in progress | no more than builders |
-| Notes PRs as a share of merges | 20% or less |
-| Merge batches thrown away | 15% or less (conflicts at most 5 a day) |
-| Weekly plan burn per hour (P-440) | 3% or less |
+## The compass (P-312)
+Word for word in `rules/tech-lead.md` (judged daily from tools, never from prose).
 
 ## Prose-only rows: G-4 candidates (P-611)
 The list, word for word: `rules/prose-only-g4-candidates.md`. Each prose row's outcome (check, merge, retire) and the check queue by breaks: `design/rule-triage-2026-11-16.md` (16 Nov).

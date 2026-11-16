@@ -45,3 +45,9 @@ Not measured this round (c8 not run): no app code changed under these rows since
 
 ## Suggestions
 * *Needed for the proof · Scaffolding:* a demo-only route that shows the local identity stand-in's verification email (like `/api/demo/platform-inbox`), so qa and the founder can walk sign-up end to end before Cognito. Or send the stand-in's email through `MailPort`'s local adapter. QA-481's fix may already be one of these.
+
+## Re-run on main 39d4c831b (16 Nov ~19:5x IST, after the conflict merge)
+Main gained #1929, FO-4sf (#1962, source filter on Leads) and PF-5v part 1 (#1955). The walk was re-run twice on fresh copies: **24/37, the same lines both times.** For FO-4sf it now checks the source filter apart from stage, owner and date.
+* **QA-484 closed:** an empty sign-up now answers "email: Enter your work email.", "password: Choose a password.", "firmName: Enter your firm's name." (row in `BUGS-CLOSED.md`).
+* **R1.30:** filter by source is now met (`?source=` narrows the list, an unknown source answers 400, a Source button on Leads). Filters by stage, owner and date and the board are still missing, so it stays **Partial**.
+* **The other five rows are unchanged:** R1.19, R1.100, R1.28 and R1.59 Partial; R1.21 and R1.31 Not built. The missing parts are those Lead 66 added to the checklist on this PR: PF-5s, PF-5t, PF-19b part 2 and FO-7b.

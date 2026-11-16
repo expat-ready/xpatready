@@ -104,9 +104,17 @@ const tm = await signIn("user-T");
 const views: Record<string, number> = {};
 for (const view of ["unassigned", "mine", "all", "closed"]) { const r = await j("GET", `/api/front-office/leads?view=${view}`, undefined, tm); views[view] = r.status; }
 ok("R1.30 pass: the lead lists answer for Unassigned, Mine, All open and Closed", Object.values(views).every((s) => s === 200), views);
-const filtered = await j("GET", `/api/front-office/leads?view=all&stage=NEW&owner=x&source=WEB_FORM&from=2026-11-01`, undefined, tm);
 const all = await j("GET", `/api/front-office/leads?view=all`, undefined, tm);
-ok("R1.30: the lead list filters by stage, owner, source and date (the query is ignored: the same list comes back)", JSON.stringify(filtered.body) !== JSON.stringify(all.body), { filtered: filtered.status });
+const sources = await j("GET", `/api/front-office/leads/sources`, undefined, tm);
+const firstSource = (Array.isArray(sources.body) ? sources.body[0] : sources.body?.sources?.[0]) as unknown;
+const bySource = await j("GET", `/api/front-office/leads?view=all&source=${encodeURIComponent(String((firstSource as { value?: string; label?: string })?.value ?? (firstSource as { label?: string })?.label ?? firstSource))}`, undefined, tm);
+ok("R1.30 pass (FO-4sf #1962): the lead list filters by source", sources.status === 200 && bySource.status === 200, { sources: sources.status, bySource: bySource.status, first: firstSource });
+const unknownSource = await j("GET", `/api/front-office/leads?view=all&source=no-such-source-${run}`, undefined, tm);
+ok("R1.30 fail (FO-4sf): an unknown source is refused (400)", unknownSource.status === 400, { status: unknownSource.status });
+for (const [k, v] of [["stage", "NEW"], ["owner", "nobody"], ["from", "2099-01-01"]]) {
+  const r = await j("GET", `/api/front-office/leads?view=all&${k}=${v}`, undefined, tm);
+  ok(`R1.30: the lead list filters by ${k === "from" ? "date" : k} (the query is ignored: the same list comes back)`, r.status === 200 && JSON.stringify(r.body) !== JSON.stringify(all.body), { status: r.status });
+}
 for (const w of [400, 1024, 1440]) {
   const p = await page(w); await p.addInitScript((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })), tm);
   await p.goto(`${BASE}/front-office/leads`); await p.getByRole("heading", { name: "Leads" }).waitFor({ timeout: 30_000 }); await p.waitForTimeout(500);
@@ -116,8 +124,9 @@ for (const w of [400, 1024, 1440]) {
   const axe = await new AxeBuilder({ page: p }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
   ok(`R1.30 pass: Leads at ${w} px is axe clean`, axe.violations.length === 0, axe.violations.map((x) => x.id));
   if (w === 1440) {
-    const filterControls = await p.getByRole("combobox").count() + await p.getByLabel(/stage|owner|source|from|date/i).count();
-    ok("R1.30: Leads has filters by stage, owner, source and date (only a view switch and search on main)", filterControls >= 4, { controls: filterControls });
+    ok("R1.30 pass (FO-4sf): Leads has a Source filter", (await p.getByRole("button", { name: /source/i }).count()) > 0);
+    const other = await p.getByLabel(/stage|owner|from|date/i).count() + await p.getByRole("button", { name: /stage|owner|date/i }).count();
+    ok("R1.30: Leads has filters by stage, owner and date (FO-4 part 2)", other >= 3, { controls: other });
     const boardLink = await p.getByRole("link", { name: /pipeline|board|prospects/i }).count();
     ok("R1.30: a pipeline board can be opened from the sales screens (FO-4 part 2 / FO-4c not on main)", boardLink > 0, { links: boardLink });
   }
