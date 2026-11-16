@@ -82,3 +82,12 @@ R2-1. **A clients-only request with evidence is stuck forever and blocks its doc
 R2-2. `tests/check_fo6_signing.ts:176` "proves" the M3 lock by matching the migration's text against a regex. It would not catch a wrong lock mode or a lock taken after the checks. *Fix:* replace it with a two-connection check (as above: hold the evidence insert in one transaction, run the cancel from another, assert it is refused after waiting), or record it as a known limit.
 
 Journey re-score (data layer): correct data is still ½ (R2-1), the rest is unchanged. **8.6/10 scaled, no 0; blocked on R2-1.**
+
+## Round 3 (diff only, P-277): `fb8a57065..cc5e2ea14a4be7debc81b9e43694bde364738693`
+**Reviewer: Approve cc5e2ea14a4be7debc81b9e43694bde364738693.** **Verdict: Approve.** No open Blocker or Major. (7938d7d4c in between is this file only.)
+* Suite, run twice: **46 passed, 0 failed** both times. The two-connection race line passed both runs.
+* **R2-1 closed.** `fo_signing_evidence_write` now also needs a FIRM signer with `signed_at` (migration.sql:351-353). I re-probed P2 on a fresh copy (every migration plus the Sample firms; dropped afterwards). The evidence on a clients-only CLIENT_SIGNED request is refused, and that request then cancels (it is not stuck). Every state that has evidence can now reach SIGNED, because the evidence gate holds the same conditions SIGNED needs. Round-1 probes P1, P3, P4, P10 and P11 are still refused.
+* **R2-2 closed.** `tests/check_fo6_signing.ts:179-189` now uses two connections. It would go red if the lock were removed: in round 1 the cancel did not wait and succeeded. It would also go red if the "only SIGNED follows" check were removed: the cancel would wait, then succeed. My own two-session race, both orders, agrees: evidence then cancel ends CLIENT_SIGNED with 1 evidence row; cancel then evidence ends CANCELLED with 0.
+* Note, not blocking: the race test gives the holder 700 ms to insert. On a very slow runner the cancel could run first and the line goes red. That would be a false red, never a false green, so I am not asking for a change.
+
+Journey score (data layer): correct data back to 1. **7/7 applicable = 10/10 scaled, no 0.** Not checked: CI at this sha, the API (part 2), and the fail tests part 2 owes for the plain uuids (firm A naming firm B's retainer, version or person).
