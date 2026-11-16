@@ -1325,6 +1325,39 @@ class Tooltips(unittest.TestCase):
         self.assertTrue(E["pipeline.queue_wait_min"]["n_reason"].startswith("tools/flow-measure.py not run yet"))
         self.assertEqual(E["team.front_office.lanes"]["n"], 2)
 
+    def test_counts_above_zero_list_their_items(self):
+        """16 Nov (founder on a phone: a count with nothing behind it): every strip and top-strip count above 0 that is a
+        list of things says what is behind it, and Needs you lists each item it counts."""
+        E, d = self.E, self.d
+        for k in ("strip.release1", "strip.health", "strip.next_date"):
+            self.assertTrue(E[k].get("behind"), k)
+        self.assertEqual(len(E["strip.health"]["behind"]), len(d["health"]["items"]))
+        built = [r for r in d["build_rows"] if r.get("built")]
+        self.assertEqual(sum(1 for z in E["strip.release1"]["behind"] if " — built " in z), min(len(built), 40))
+        ny = d["summary"]["needs_you"]["v"]
+        self.assertEqual(len(E["strip.needs_you"].get("behind") or []), ny)
+        self.assertTrue(E["strip.needs_you"]["todo"])
+        lanes = (d.get("top_numbers") or {}).get("lanes") or {}
+        if (lanes.get("working") or {}).get("value"):
+            self.assertIn("top.lanes", E)
+            self.assertTrue(any(z.startswith("working: ") for z in E["top.lanes"]["behind"]))
+
+    def test_needs_lines_one_per_item(self):
+        ny = {"items": [{"id": "A9", "line": "pick the logo", "by": "2026-11-20"}, {"id": "F3", "line": "sign the lease"}]}
+        self.assertEqual(cd.needs_lines(ny), ["A9: pick the logo — by 2026-11-20", "F3: sign the lease"])
+        self.assertEqual(cd.needs_lines({}), [])
+
+    def test_page_stale_banner_and_panel_order(self):
+        """A view left open says plainly it is old and to reload (amber from 45 min); the strip keeps the data time in IST;
+        a panel shows what to do and what is behind it before the method; an open strip panel survives the minute redraw."""
+        html = open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read()
+        self.assertIn("old: reload</b>", html)
+        self.assertIn('id="fresh"', html)
+        self.assertIn("<b>Data '+g+'</b>", html)
+        self.assertLess(html.index("<b>What to do:</b> '+esc(e.todo)"), html.index("<dt>Counts</dt>"))
+        self.assertIn("if(i>=0){var nb=s.querySelectorAll(\".ib\")[i];if(nb)tipShow(nb);}", html)
+        self.assertIn("flex-wrap:nowrap;overflow-x:auto", html)            # one row of tabs on a phone
+
     def test_page_keys_all_in_explain(self):
         html = open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read()
         import re
