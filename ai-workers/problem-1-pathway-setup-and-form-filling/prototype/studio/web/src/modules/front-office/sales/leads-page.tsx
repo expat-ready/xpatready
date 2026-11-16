@@ -24,6 +24,56 @@ export function useLeads(view: View, sources: string[] = [], enabled = true) {
   return useQuery({ enabled, queryKey: ["fo", "leads", view, ...(sources.length ? [sources] : [])], queryFn: async () => LeadRows.parse(await staffApi(`/front-office/leads?view=${view}${q}`)) });
 }
 const useSources = () => useQuery({ queryKey: ["fo", "lead-sources"], queryFn: async () => LeadSources.parse(await staffApi("/front-office/leads/sources")).sources });
+/** FO-4sf (AG-2-23 rule 1): one Source control for an open-ended list. A button opens a checkbox list with type-to-find;
+ *  each chosen source shows as a removable chip beside it. Escape or a click outside closes it and focus returns. */
+function SourceFilter({ choices, chosen, toggle, clear, failed, retry }: { choices: string[]; chosen: string[]; toggle: (c: string) => void; clear: () => void; failed: boolean; retry: () => void }) {
+  const [open, setOpen] = React.useState(false);
+  const [find, setFind] = React.useState("");
+  const box = React.useRef<HTMLDivElement>(null), opener = React.useRef<HTMLButtonElement>(null), finder = React.useRef<HTMLInputElement>(null);
+  const close = (refocus: boolean) => { setOpen(false); setFind(""); if (refocus) opener.current?.focus(); };
+  React.useEffect(() => {
+    if (!open) return;
+    finder.current?.focus();
+    const away = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) close(false); };
+    document.addEventListener("mousedown", away); return () => document.removeEventListener("mousedown", away);
+  }, [open]);
+  const needle = find.trim().toLowerCase();
+  const listed = choices.filter((c) => !needle || words(c).toLowerCase().includes(needle) || c.toLowerCase().includes(needle));
+  return (
+    <div ref={box} data-source-filter className="relative flex flex-wrap items-center gap-2" onKeyDown={(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); close(true); } }}>
+      <Button ref={opener} variant="outline" size="sm" aria-expanded={open} aria-controls="fo-source-list" data-source-toggle onClick={() => (open ? close(true) : setOpen(true))}>
+        {chosen.length ? `Source (${chosen.length})` : "Source: all"}
+      </Button>
+      {chosen.map((c) => (
+        <span key={c} data-source-chip={c} className="inline-flex min-h-8 items-center gap-1 rounded-full border border-primary bg-primary/10 pl-3 pr-1 text-sm font-medium text-text-link [overflow-wrap:anywhere]">
+          {words(c)}
+          <button type="button" aria-label={`Remove source: ${words(c)}`} onClick={() => toggle(c)} className="rounded-full px-1.5 outline-none hover:bg-text/10 focus-visible:ring-[3px] focus-visible:ring-ring/50">×</button>
+        </span>
+      ))}
+      {chosen.length ? <Button variant="link" size="sm" data-source-clear onClick={clear}>All sources</Button> : null}
+      {failed ? <span role="alert" className="text-sm text-text-danger">Could not load the sources. <Button variant="link" size="sm" onClick={retry}>Try again</Button></span> : null}
+      {open ? (
+        <div id="fo-source-list" className="absolute left-0 top-full z-20 mt-1 w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface-raised p-2 shadow-lg">
+          <label className="block">
+            <span className="sr-only">Find a source</span>
+            <Input ref={finder} type="search" placeholder="Find a source" value={find} onChange={(e) => setFind(e.target.value)} data-source-find />
+          </label>
+          <fieldset className="mt-2 max-h-64 overflow-y-auto">
+            <legend className="sr-only">Show leads from these sources</legend>
+            {!choices.length ? <p className="px-2 py-1 text-sm text-text-muted">No sources yet.</p>
+              : !listed.length ? <p role="status" className="px-2 py-1 text-sm text-text-muted">No source matches “{find.trim()}”.</p>
+                : listed.map((c) => (
+                  <label key={c} className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 text-sm text-text hover:bg-text/5 [overflow-wrap:anywhere]">
+                    <input type="checkbox" data-source={c} checked={chosen.includes(c)} onChange={() => toggle(c)} className="size-4 accent-[var(--color-primary,currentColor)]" />
+                    {words(c)}
+                  </label>
+                ))}
+          </fieldset>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 function LeadsBody() {
   const me = useStaff();
   const [params, setParams] = useSearchParams();
@@ -63,17 +113,7 @@ function LeadsBody() {
             </button>
           ))}
         </div>
-        <div role="group" aria-label="Source" data-source-filter className="flex flex-wrap items-center gap-2">
-          <span aria-hidden className="text-sm text-text-muted">Source</span>
-          {choices.map((c) => (
-            <button key={c} type="button" aria-pressed={sources.includes(c)} data-source={c} onClick={() => toggle(c)}
-              className={cn("min-h-8 rounded-full border px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [overflow-wrap:anywhere]", sources.includes(c) ? "border-primary bg-primary/10 font-medium text-text-link" : "border-border bg-surface-raised text-text hover:bg-text/5")}>
-              {words(c)}
-            </button>
-          ))}
-          {known.isError ? <span role="alert" className="text-sm text-text-danger">Could not load the sources. <Button variant="link" size="sm" onClick={() => known.refetch()}>Try again</Button></span> : null}
-          {sources.length ? <Button variant="link" size="sm" data-source-clear onClick={() => go(view, [])}>All sources</Button> : null}
-        </div>
+        <SourceFilter choices={choices} chosen={sources} toggle={toggle} clear={() => go(view, [])} failed={known.isError} retry={() => known.refetch()} />
         <label className="w-full sm:w-72">
           <span className="sr-only">Search leads by name or number</span>
           <Input type="search" placeholder="Search by name or number" value={q} onChange={(e) => setQ(e.target.value)} />

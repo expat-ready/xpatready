@@ -80,7 +80,8 @@ export class Leads {
   }
 
   private async sourcesSeen(ctx: StaffContext, vis: Visibility, inactive: string[]): Promise<string[]> {
-    const rows = await this.db.foLead.findMany({ where: firmScope(ctx.firmId, this.seenWhere(ctx, vis, inactive)), distinct: ["source"], select: { source: true }, orderBy: { source: "asc" }, take: 200 });
+    // GROUP BY in the database (review m5): one row per source, never every lead, and no cap that would hide a source.
+    const rows = await this.db.foLead.groupBy({ by: ["source"], where: firmScope(ctx.firmId, this.seenWhere(ctx, vis, inactive)), orderBy: { source: "asc" } });
     return rows.map((r) => r.source);
   }
 

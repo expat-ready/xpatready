@@ -99,33 +99,53 @@ const shown = async () => new Set(await p.locator("tr[data-lead-row]").evaluateA
 const numberOf = (id: string) => sql(`select number from fo_lead where id = '${id}'`);
 const axe = async (name: string) => { const r = await new AxeBuilder({ page: p }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
   ok(`${name}: axe finds no WCAG A/AA violation`, r.violations.length === 0, r.violations.map((v) => `${v.id}: ${v.nodes[0]?.target?.join(" ")}`).join(" | ") || undefined); };
+// Scale (review M4): 30 more sources the Case Manager has, so the control must hold an open-ended list.
+for (let i = 1; i <= 30; i++) lead("MANUAL", `Sample source ${String(i).padStart(2, "0")}`, T.id);
+await p.setViewportSize({ width: 1024, height: 800 });
 await p.goto(`${BASE}/front-office/leads?view=all`); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ timeout: 30_000 });
-const chipTexts = await p.locator('[role="group"][aria-label="Source"] button[data-source]').allInnerTexts();
-ok("FO-4sf DW3 pass: the Source filter sits beside the view chips with the stored sources in plain words, none chosen", ["Website form", "Phone call", "Referral", "Event, Toronto"].every((x) => chipTexts.includes(x)) && !chipTexts.includes("WEBSITE") && (await p.locator('[data-source][aria-pressed="true"]').count()) === 0, chipTexts);
-await axe("FO-4sf Leads with the Source filter (1440 px)");
-// Keyboard only: Tab to "Phone call", Enter.
+const firstRowTop = async () => (await p.locator("tr[data-lead-row]").first().boundingBox())?.y ?? 9999;
+ok("FO-4sf DW3 pass (scale): with 34 sources at 1024 px the Source filter is one control and the table starts in the first screen", (await p.locator("[data-source-toggle]").count()) === 1 && (await p.locator("[data-source-toggle]").innerText()).trim() === "Source: all" && (await firstRowTop()) < 800, await firstRowTop());
+await axe("FO-4sf Leads with the Source filter (1024 px)");
+// Keyboard only: Tab to the Source button, Enter opens it with the cursor in Find, type, Tab to the box, Space ticks it.
 let reached = false;
-for (let i = 0; i < 40 && !reached; i++) { await p.keyboard.press("Tab"); reached = await p.evaluate(() => document.activeElement?.getAttribute("data-source") === "Phone call"); }
+for (let i = 0; i < 40 && !reached; i++) { await p.keyboard.press("Tab"); reached = await p.evaluate(() => document.activeElement?.hasAttribute("data-source-toggle") ?? false); }
 await p.keyboard.press("Enter");
+await p.locator("#fo-source-list").waitFor({ timeout: 5_000 });
+const inFind = await p.evaluate(() => document.activeElement?.hasAttribute("data-source-find") ?? false);
+const listTexts = await p.locator('#fo-source-list label:has(input[data-source])').allInnerTexts();
+ok("FO-4sf DW3 pass: the list holds the stored sources in plain words, none ticked, and scrolls inside itself", ["Website form", "Phone call", "Referral", "Event, Toronto"].every((x) => listTexts.map((t) => t.trim()).includes(x)) && !listTexts.some((t) => t.trim() === "WEBSITE") && (await p.locator("#fo-source-list input:checked").count()) === 0
+  && await p.locator("#fo-source-list fieldset").evaluate((f) => f.scrollHeight > f.clientHeight) && (await firstRowTop()) < 800, listTexts.length);
+await axe("FO-4sf Source list open (1024 px)");
+await p.keyboard.type("zzz");
+ok("FO-4sf DW3 fail: Find with no match says so, and nothing is chosen", (await p.locator("#fo-source-list [role=status]").innerText()).includes("No source matches") && !p.url().includes("source="));
+await p.keyboard.press("Control+a"); await p.keyboard.type("phone");
+await p.keyboard.press("Tab"); const onBox = await p.evaluate(() => document.activeElement?.getAttribute("data-source"));
+await p.keyboard.press("Space");
 await p.waitForURL(/source=Phone/, { timeout: 10_000 }); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ state: "detached", timeout: 15_000 }); await p.locator(`tr[data-lead-row="${numberOf(L.tMan)}"]`).waitFor({ timeout: 15_000 });
+await p.keyboard.press("Escape");
 const afterPick = await shown();
-ok("FO-4sf DW3 pass (keyboard only): Tab reaches \"Phone call\", Enter filters the list to those leads, the booked one included", reached && [L.tMan, L.oMan, L.oBook].every((x) => afterPick.has(numberOf(x))) && ![L.tWeb, L.tBook, L.oWeb, L.tComma].some((x) => afterPick.has(numberOf(x))), [...afterPick]);
+ok("FO-4sf DW3 pass (keyboard only): Tab, Enter, type \"phone\", Tab, Space filters to Phone call, the booked lead included; Escape closes and returns to the button", reached && inFind && onBox === "Phone call" && [L.tMan, L.oMan, L.oBook].every((x) => afterPick.has(numberOf(x))) && ![L.tWeb, L.tBook, L.oWeb, L.tComma].some((x) => afterPick.has(numberOf(x)))
+  && (await p.locator("#fo-source-list").count()) === 0 && await p.evaluate(() => document.activeElement?.hasAttribute("data-source-toggle") ?? false), { reached, inFind, onBox, rows: [...afterPick] });
 await p.reload(); await p.locator(`tr[data-lead-row="${numberOf(L.tMan)}"]`).waitFor({ timeout: 30_000 });
 const afterReload = await shown();
-ok("FO-4sf DW3 pass: the choice survives a reload (?source= in the address, the chip still pressed)", (await p.locator('[data-source="Phone call"][aria-pressed="true"]').count()) === 1 && !afterReload.has(numberOf(L.tBook)) && p.url().includes("view=all"), p.url());
-await axe("FO-4sf Leads filtered by Phone call");
-await p.screenshot({ path: join(SHOTS, "leads-source-filter-1440.png"), fullPage: true });
-for (const w of [1024, 375]) {
-  await p.setViewportSize({ width: w, height: 800 });
+ok("FO-4sf DW3 pass: the choice survives a reload (?source= in the address, shown as a chip and on the button)", (await p.locator('[data-source-chip="Phone call"]').count()) === 1 && (await p.locator("[data-source-toggle]").innerText()).trim() === "Source (1)" && !afterReload.has(numberOf(L.tBook)) && p.url().includes("view=all"), p.url());
+await axe("FO-4sf Leads filtered by Phone call (1024 px)");
+await p.screenshot({ path: join(SHOTS, "leads-source-filter-1024.png"), fullPage: true });
+for (const w of [1440, 375]) {
+  await p.setViewportSize({ width: w, height: w === 375 ? 800 : 900 });
   ok(`FO-4sf DW3 pass: no sideways page scroll at ${w} px`, await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
-  await p.screenshot({ path: join(SHOTS, `leads-source-filter-${w}.png`), fullPage: true });
+  if (w === 375) { await p.locator("[data-source-toggle]").click(); await p.locator("#fo-source-list").waitFor(); ok("FO-4sf DW3 pass: the open list fits the 375 px screen", await p.evaluate(() => { const r = document.getElementById("fo-source-list")!.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth + 1 && document.documentElement.scrollWidth <= window.innerWidth + 1; })); await axe("FO-4sf Source list open (375 px)"); await p.screenshot({ path: join(SHOTS, "leads-source-filter-375.png"), fullPage: true }); await p.keyboard.press("Escape"); }
+  else await p.screenshot({ path: join(SHOTS, "leads-source-filter-1440.png"), fullPage: true });
 }
-await axe("FO-4sf Leads filtered (375 px)"); await p.setViewportSize({ width: 1440, height: 900 });
-await p.locator('[data-source-clear]').click(); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ timeout: 15_000 });
-ok("FO-4sf DW3 pass: All sources clears the filter and the address", !p.url().includes("source=") && (await shown()).has(numberOf(L.oWeb)), p.url());
+await p.setViewportSize({ width: 1440, height: 900 });
+await p.getByRole("button", { name: "Remove source: Phone call" }).click(); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ timeout: 15_000 });
+ok("FO-4sf DW3 pass: the chip's × removes that source and clears the address", !p.url().includes("source=") && (await shown()).has(numberOf(L.oWeb)), p.url());
+await p.goto(`${BASE}/front-office/leads?view=all&source=Referral&source=WEBSITE`); await p.locator(`tr[data-lead-row="${numberOf(L.tWeb)}"]`).waitFor({ timeout: 30_000 });
+await p.locator("[data-source-clear]").click(); await p.locator(`tr[data-lead-row="${numberOf(L.tMan)}"]`).waitFor({ timeout: 15_000 });
+ok("FO-4sf DW3 pass: All sources clears every chosen source and the address", !p.url().includes("source=") && (await p.locator("[data-source-chip]").count()) === 0, p.url());
 // Fail side: a hand-edited address with an unknown source is dropped (all sources shown), never an error page.
 await p.goto(`${BASE}/front-office/leads?view=all&source=FAX`); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ timeout: 30_000 });
-ok("FO-4sf DW3 fail: an unknown ?source= in the address is ignored: no chip pressed, every source listed, no error", (await p.locator('[data-source][aria-pressed="true"]').count()) === 0 && (await p.getByRole("alert").count()) === 0);
+ok("FO-4sf DW3 fail: an unknown ?source= in the address is ignored: no chip, every source listed, no error", (await p.locator("[data-source-chip]").count()) === 0 && (await p.getByRole("alert").count()) === 0);
 // Fail side: a source with no lead in this view says so and offers All sources.
 sql(`update fo_lead set owner_staff_id = '${O.id}' where id = '${L.tBook}'`);   // the Case Manager now owns no Referral lead
 await p.goto(`${BASE}/front-office/leads?view=mine&source=Referral`); await p.locator("[data-empty]").waitFor({ timeout: 30_000 });

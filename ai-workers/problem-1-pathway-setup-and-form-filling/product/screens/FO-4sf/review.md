@@ -48,29 +48,8 @@ Reviewer (Opus, did not build it), 16 Nov, 07:3x UTC. **Commit reviewed: `036a5a
   - `check_fo4_sales_browser` 45/45
   - `graph.mjs --check`: G1 0 · G3 93 · G6 17, unchanged from FO-2v's review. The PR adds no element without a capability.
 
-## D1–D20 (a filter on an existing screen)
-| D | Score | Evidence |
-|---|---|---|
-| D1 | 2 | The mechanics are right, but the field is the door, not AG-2-23's source (Blocker 1) |
-| D2 | 5 | Read only; nothing changed underneath (J-data) |
-| D3 | 4 | One `sourcesOf`, one query; API and web lists kept in step by hand (`contract.ts:46`, `leads.ts:21`) |
-| D4 | N/A | No question rules |
-| D5 | 4 | Reload and browser Back keep it; the in-app Leads link drops it (Minor 2) |
-| D6 | N/A | Reads write no audit line, correctly |
-| D7 | N/A | No AI |
-| D8 | 5 | Sales › Leads, unchanged |
-| D9 | 5 | The empty state offers All sources |
-| D10 | 4 | 400 names the allowed values; a bad `?source=` in the address is ignored on screen |
-| D11 | 4 | Pressed chips, the address, empty state; the search line is silent about the filter (Minor 3) |
-| D12 | 5 | Same chip look as the view chips (J1 screenshot) |
-| D13 | 5 | axe clean at 1440, 1024 and 720 px (200 %); keyboard Tab/Space/Enter; focus ring; no sideways scroll |
-| D14 | 2 | "Source" means two things on one screen (Blocker 1) |
-| D15 | 5 | Filtered list in about 0.37 s from the click |
-| D16 | 4 | A pass and a fail for each DW; no test separates source from door |
-| D17 | simulated only | No intended-user walk |
-| D18 | 3 | The filter's label contradicts the origin the row shows |
-| D19 | N/A | Not a closure row |
-| D20 | simulated only | No intended-user walk |
+## D1–D20 (first score at `036a5a78` → at `e227799a`; the first full table with its evidence lines is in git at `e227799a`)
+D1 2→4 (the source is right now; chip wall, Major 4) · D2 5 · D3 4 · D4 N/A · D5 4 (Leads link, Minor 2) · D6 N/A · D7 N/A · D8 5 · D9 5 · D10 4 · D11 4→5 · D12 5 · D13 5→4 (26 tab stops at scale) · D14 2→4 · D15 5→4 (in-memory distinct, Minor 5) · D16 4→5 (door≠source case) · D17 simulated only · D18 3→5 · D19 N/A · D20 simulated only.
 
 **BIC-01 to BIC-20: N/A.** `EXPERIENCE.md` §6 scopes them to case-side screens; this is a front-office list filter.
 **Retrofit mapping (item 6):** N/A. This is a new filter on FO-4's Leads screen, with no team screen to map.
@@ -78,3 +57,32 @@ Reviewer (Opus, did not build it), 16 Nov, 07:3x UTC. **Commit reviewed: `036a5a
 **Not checked:** a real screen reader; an intended user's unaided walk (D17/D20); a live Lead B ruling on the brief's intent. I found no PR for the branch through the REST API.
 
 **Verdict: Block** (= Changes requested). Must: Blocker 1. Should: Minors 2 and 3, in the same push or listed in the PR. A re-review reads only the diff.
+
+## Re-review at `e227799a207a6d270e5565508d3c262d75aef1c8` (diff `036a5a78..e227799a` only, P-277; PR #1962)
+Copy `review_fo4sf2` on :4436, never :4400; US$0.
+- **Blocker 1: fixed.**
+  - `list` filters the stored `source` (`leads.ts:61`). Values come repeated and are never split. Allowed = the distinct sources of leads the person may see (`seenWhere`). `GET leads/sources` (@OwnOrAll) gives the chips, and `words()` shows them as the Source column does.
+  - J1 again: "Referral" pressed → the Source column reads only "Referral".
+  - The suite has a booked lead whose source is "Phone call", and a door filter fails DW1 and DW3.
+  - Unknown values (or another person's) → 400 naming only the person's own sources, so a source cannot be used to probe for another person's leads.
+  - Mutation: choices ignoring visibility → PF-6b DW6 FAIL and FO-4sf "DW2 fail" FAIL (reverted).
+- **Minor 3: fixed.** The no-match line now reads "No lead matches “Bo…” among Referral."
+- **Minor 2: still open, recorded in the PR.** The app's Leads link goes to `?view=all`. Acceptable as a Minor.
+- **Runs (mine):** `check_fo4sf` 24/24 · `check_fo2` 113/113 · `check_fo2v` 14/14 · `check_pf6b` 29/29 · `check_fo4_sales_browser` 45/45. axe is clean at 1024 and 720 px, with no sideways scroll. Rewritten screenshots restored.
+
+### New in this diff
+4. **Major (Must): the filter is a row of chips over an open-ended list, so it does not scale.**
+   - The brief asks for "a multi-select". Every typed source becomes a chip.
+   - With 26 sources at 1024×800, the chips take 12 rows and the table starts at 726 px, below the fold. A keyboard user tabs through 26 stops to reach search (my run; screenshot step `re-1024`).
+   - AG-2-2 rule 3 alone seeds 15 sources. EXPERIENCE [M] line 7 (scalability first) and line 29 (keyboard path) apply.
+   - **Fix:** one "Source" control on the app's existing dropdown/popover: a checkbox list with type-to-find, the chosen sources shown as removable chips, `?source=` and the keyboard path kept. A pass and a fail at 30 sources: the table in the first screen at 1024 px.
+5. **Minor (Should): the distinct runs in memory.**
+   - Prisma sends `SELECT id, source FROM fo_lead WHERE … ORDER BY source OFFSET $2` with no DISTINCT and no LIMIT (query log), and dedups in the engine. It reads every visible lead, open and closed, on each page load and each filtered call.
+   - At 80,045 leads: `leads/sources` 0.14–0.23 s, list+source 0.13–0.16 s; SQL DISTINCT takes 0.03 s. That is within budget but grows with history.
+   - The `take: 200` applies after the dedup, so a source past the 200th (A to Z) can be neither chosen nor asked for (400).
+   - **Fix:** `groupBy({ by: ["source"] })` or `$queryRaw … SELECT DISTINCT`, and drop or raise the cap together with fix 4.
+6. **Minor (Should): `words()` rewords typed text in capitals.** A typed "CAPS" shows as "Caps", and "VIP" would show as "Vip" (`contract.ts:45`). Map only the known codes in `WORDS` and show other text as typed.
+
+**Journey score at this head: 8/10** (pass, no 0). Task completed 1 · next step obvious ½ (chip wall) · plain words 1 · feedback and state 1 · correct data 1 · error recovery ½ (Leads link drops the filter) · accessibility and screen sizes ½ (26 tab stops; list below the fold at 1024) · speed 1 · visual quality ½ (chip wall) · trust and sources 1.
+
+**Verdict: Changes requested** for `e227799a`. Must: Major 4. Should: Minors 5 and 6 in the same push, or list them in the PR. Minor 2 stays listed. A re-review reads only the diff.
