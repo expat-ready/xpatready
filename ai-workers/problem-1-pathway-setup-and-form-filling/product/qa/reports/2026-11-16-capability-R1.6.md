@@ -52,3 +52,11 @@ Suites come from the CI batch above, and qa re-ran the three R1.6 packs. c8 cove
 ## Suggestions
 * Make `@OwnOrAll` required on every list route that returns an owned area, so the sweep cannot miss a route. *Needed for the proof* · *Capability*.
 * Run `tests/journeys/` on GitHub (nightly is enough), so a walk's verdict has a runner's run id. *Later* · *Scaffolding*.
+
+## Rulings (Lead B on #1929, 10:1x IST 16 Nov; Lead 64's ruling)
+* **R1.6 stays Partial** until PF-6 part 2 (the role editor) and J-6 part 2 are on main (P-606). The two Major fixes alone do not move it.
+* **QA-477 → FO-2v.** One rule: all leads only with `view.all` and the setting on, else own. The Owner/Admin override goes, and the leads routes get `@OwnOrAll`.
+* **QA-479 → FO-2v.** 404; `ownerStaffId` is never in the body.
+* **QA-478 → PF-6m.** One money-keys audit helper for both doors.
+* **QA-480 accepted.** BACKLOG wording to follow.
+* **Next for qa:** re-score R1.6 with the full J-6 walk once FO-2v, PF-6m, PF-6 part 2 and J-6 part 2 have merged.
