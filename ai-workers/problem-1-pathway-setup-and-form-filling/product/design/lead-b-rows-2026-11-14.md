@@ -1750,3 +1750,14 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - AG-01 AG01-18 asks for "Case Officer pre-selected per row", with the Admin as inviter.
   - The screen follows the server's ceiling (Case Officer hidden, nothing pre-ticked for an Admin); a DW line pins that behaviour.
   - **For the founder** (through the Lead, AGENTS rule 2): (a) Admin gains `agent/sqr:verify` (and `party:view.own`); (b) the ceiling check skips own-scope keys; or (c) the pre-select applies to Owners only. My recommendation is (c) for Release 1. It keeps the SA-06 counts and the SA-6-29 guardrail as written, and the Admin ticks a role it can give.
+
+## rev 16.92 (17 Nov 05:29 IST): #2012 PF-21i widened by three web/test files
+* #2012 comment 6933077319: shard 2 is red for a real reason.
+  - PF-21s merged first, so on `main` the Record drawer posts `/platform/complaints` without an `Idempotency-Key`.
+  - Once PF-21i lands, Record would answer 400 `IDEMPOTENCY_KEY_MISSING`.
+* Ruling (comment 6933156196): this PR takes the three changes, about 10 lines.
+  - `staffApi` gains an optional `headers` only.
+  - The drawer sends one key per opening, and a retry reuses it.
+  - The PF-21s test helper adds a fresh key, plus a DW line: a double-pressed Record stores one complaint.
+* No open PR touches those files (P-526, checked). Diff-only re-review, then ready once.
+* The label is still on from the earlier head. Flagged to Lead 71 (P-385).
