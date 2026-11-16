@@ -118,7 +118,7 @@ CREATE INDEX "fo_signature_request_firm_id_status_expires_at_idx" ON "fo_signatu
 CREATE UNIQUE INDEX "fo_signature_request_firm_id_document_kind_document_version_key" ON "fo_signature_request"("firm_id", "document_kind", "document_version_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "fo_signature_request_firm_id_provider_provider_document_id_key" ON "fo_signature_request"("firm_id", "provider", "provider_document_id");
+CREATE UNIQUE INDEX "fo_signature_request_provider_provider_document_id_key" ON "fo_signature_request"("provider", "provider_document_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "fo_signature_request_firm_id_id_key" ON "fo_signature_request"("firm_id", "id");
@@ -179,7 +179,9 @@ ALTER TABLE "fo_signature_request"
     AND ("ended_at" IS NULL OR (isfinite("ended_at") AND "ended_at" >= "sent_at"))),
   -- Ended exactly when final; a cancel reason exactly when CANCELLED (IS NOT DISTINCT FROM: a NULL check passes).
   ADD CONSTRAINT "fo_signature_request_ended_check" CHECK (("ended_at" IS NOT NULL) = ("status" IN ('SIGNED', 'DECLINED', 'EXPIRED', 'CANCELLED'))),
-  ADD CONSTRAINT "fo_signature_request_cancel_reason_check" CHECK (("cancel_reason" IS NOT NULL) = ("status" IS NOT DISTINCT FROM 'CANCELLED'));
+  ADD CONSTRAINT "fo_signature_request_cancel_reason_check" CHECK (("cancel_reason" IS NOT NULL) = ("status" IS NOT DISTINCT FROM 'CANCELLED')),
+  -- Expired only once its time has come (review m5).
+  ADD CONSTRAINT "fo_signature_request_expired_check" CHECK ("status" IS DISTINCT FROM 'EXPIRED' OR "ended_at" >= "expires_at");
 
 -- One live request per document (AG-5-65 r2-r4: Send updated version leaves exactly one).
 CREATE UNIQUE INDEX "fo_signature_request_one_live" ON "fo_signature_request" ("firm_id", "document_kind", "document_id")
@@ -193,7 +195,7 @@ ALTER TABLE "fo_signer"
   ADD CONSTRAINT "fo_signer_link_check" CHECK (fo_signing_sha_ok("link_token_sha256")),
   ADD CONSTRAINT "fo_signer_code_check" CHECK (
     (("code_sha256" IS NULL) = ("code_expires_at" IS NULL)) AND ("code_sha256" IS NULL OR fo_signing_sha_ok("code_sha256"))
-    AND "code_failures" BETWEEN 0 AND 6 AND ("code_expires_at" IS NULL OR isfinite("code_expires_at"))
+    AND "code_failures" BETWEEN 0 AND 6 AND ("code_failures" < 6 OR "locked_until" IS NOT NULL) AND ("code_expires_at" IS NULL OR isfinite("code_expires_at"))
     AND ("locked_until" IS NULL OR isfinite("locked_until")) AND ("code_verified_at" IS NULL OR isfinite("code_verified_at"))),
   ADD CONSTRAINT "fo_signer_consent_check" CHECK (
     ("consented_at" IS NULL AND "consent_text_version" IS NULL)
@@ -237,7 +239,8 @@ CREATE TRIGGER fo_signing_receipt_no_truncate BEFORE TRUNCATE ON "fo_signing_hoo
 -- A request: born SENT; its identity, document, provider, sender and expiry never change; status moves only forward
 -- along the signing path; CLIENT_SIGNED once every client signed, SIGNED once every signer signed and the evidence is
 -- stored, EXPIRED only while no client signed (BR-16); a final request never changes again. The end time is the
--- caller's (the injected clock), else the database's.
+-- caller's (the injected clock), else the database's. Lock order for writers (review m10): the request row first, then
+-- its signers (the signer trigger locks the request too), so two writers never wait on each other in a circle.
 CREATE FUNCTION fo_signing_request_write() RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
 DECLARE live constant text[] := ARRAY['SENT', 'VIEWED', 'CLIENT_SIGNED'];
 BEGIN
@@ -262,23 +265,34 @@ BEGIN
     END IF;
     RETURN NEW;
   END IF;
+  -- Once the evidence is stored only SIGNED may follow (review M3: a fully signed request is never cancelled or declined).
+  IF EXISTS (SELECT 1 FROM "fo_signing_evidence" e WHERE e."firm_id" = NEW."firm_id" AND e."request_id" = NEW."id") AND NEW."status" <> 'SIGNED' THEN
+    RAISE EXCEPTION 'fo_signature_request: the evidence is stored; only SIGNED follows' USING ERRCODE = 'check_violation';
+  END IF;
   IF NOT ((OLD."status" = 'SENT' AND NEW."status" IN ('VIEWED', 'CLIENT_SIGNED', 'EXPIRED'))
        OR (OLD."status" = 'VIEWED' AND NEW."status" IN ('CLIENT_SIGNED', 'EXPIRED'))
        OR (OLD."status" = 'CLIENT_SIGNED' AND NEW."status" = 'SIGNED')
        OR NEW."status" IN ('DECLINED', 'CANCELLED')) THEN
     RAISE EXCEPTION 'fo_signature_request: % → % is not a signing move', OLD."status", NEW."status" USING ERRCODE = 'check_violation';
   END IF;
-  IF NEW."status" IN ('CLIENT_SIGNED', 'SIGNED') AND EXISTS (SELECT 1 FROM "fo_signer" s WHERE s."firm_id" = NEW."firm_id"
-      AND s."request_id" = NEW."id" AND s."role" = 'CLIENT' AND s."signed_at" IS NULL) THEN
+  IF NEW."status" IN ('CLIENT_SIGNED', 'SIGNED') AND (EXISTS (SELECT 1 FROM "fo_signer" s WHERE s."firm_id" = NEW."firm_id"
+      AND s."request_id" = NEW."id" AND s."role" = 'CLIENT' AND s."signed_at" IS NULL)
+      OR NOT EXISTS (SELECT 1 FROM "fo_signer" s WHERE s."firm_id" = NEW."firm_id" AND s."request_id" = NEW."id" AND s."role" = 'CLIENT')) THEN
     RAISE EXCEPTION 'fo_signature_request: % needs every client''s signature', NEW."status" USING ERRCODE = 'check_violation';
   END IF;
+  -- SIGNED: every signer signed, the one firm signer among them (review M1: an empty set of signers proves nothing).
   IF NEW."status" = 'SIGNED' AND (EXISTS (SELECT 1 FROM "fo_signer" s WHERE s."firm_id" = NEW."firm_id" AND s."request_id" = NEW."id" AND s."signed_at" IS NULL)
+      OR NOT EXISTS (SELECT 1 FROM "fo_signer" s WHERE s."firm_id" = NEW."firm_id" AND s."request_id" = NEW."id" AND s."role" = 'FIRM' AND s."signed_at" IS NOT NULL)
       OR NOT EXISTS (SELECT 1 FROM "fo_signing_evidence" e WHERE e."firm_id" = NEW."firm_id" AND e."request_id" = NEW."id")) THEN
     RAISE EXCEPTION 'fo_signature_request: SIGNED needs every signature and the stored evidence' USING ERRCODE = 'check_violation';
   END IF;
   IF NEW."status" = 'EXPIRED' AND EXISTS (SELECT 1 FROM "fo_signer" s WHERE s."firm_id" = NEW."firm_id" AND s."request_id" = NEW."id"
       AND s."role" = 'CLIENT' AND s."signed_at" IS NOT NULL) THEN
     RAISE EXCEPTION 'fo_signature_request: a request a client signed never expires' USING ERRCODE = 'check_violation';
+  END IF;
+  -- DECLINED is a signer's answer (review m8): a firm that stops a request withdraws it (CANCELLED).
+  IF NEW."status" = 'DECLINED' AND NOT EXISTS (SELECT 1 FROM "fo_signer" s WHERE s."firm_id" = NEW."firm_id" AND s."request_id" = NEW."id" AND s."declined_at" IS NOT NULL) THEN
+    RAISE EXCEPTION 'fo_signature_request: DECLINED needs a signer who declined' USING ERRCODE = 'check_violation';
   END IF;
   IF NEW."status" IN ('SIGNED', 'DECLINED', 'EXPIRED', 'CANCELLED') THEN NEW."ended_at" := coalesce(NEW."ended_at", now()); END IF;
   RETURN NEW;
@@ -296,6 +310,11 @@ BEGIN
     IF st IS DISTINCT FROM 'SENT' OR NEW."viewed_at" IS NOT NULL OR NEW."consented_at" IS NOT NULL OR NEW."signed_at" IS NOT NULL
        OR NEW."declined_at" IS NOT NULL OR NEW."code_failures" <> 0 OR NEW."code_verified_at" IS NOT NULL THEN
       RAISE EXCEPTION 'fo_signer: a signer is added to a SENT request, before any step' USING ERRCODE = 'check_violation';
+    END IF;
+    -- Signers are added only before anyone acted (review M2: a late signer would sign after the firm).
+    IF EXISTS (SELECT 1 FROM "fo_signer" s WHERE s."firm_id" = NEW."firm_id" AND s."request_id" = NEW."request_id"
+        AND (s."viewed_at" IS NOT NULL OR s."consented_at" IS NOT NULL OR s."signed_at" IS NOT NULL OR s."declined_at" IS NOT NULL OR s."code_verified_at" IS NOT NULL)) THEN
+      RAISE EXCEPTION 'fo_signer: a signer is added only before anyone acted' USING ERRCODE = 'check_violation';
     END IF;
     RETURN NEW;
   END IF;
@@ -326,9 +345,14 @@ CREATE TRIGGER fo_signing_signer_write BEFORE INSERT OR UPDATE ON "fo_signer" FO
 CREATE FUNCTION fo_signing_evidence_write() RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
 BEGIN
   IF TG_OP = 'UPDATE' THEN RAISE EXCEPTION 'fo_signing_evidence: evidence never changes' USING ERRCODE = 'restrict_violation'; END IF;
+  -- The request row is locked first, so a cancel waits for the evidence and then sees it (review M3).
+  PERFORM 1 FROM "fo_signature_request" r WHERE r."firm_id" = NEW."firm_id" AND r."id" = NEW."request_id" FOR UPDATE;
   IF NOT EXISTS (SELECT 1 FROM "fo_signature_request" r WHERE r."firm_id" = NEW."firm_id" AND r."id" = NEW."request_id" AND r."status" = 'CLIENT_SIGNED')
      OR EXISTS (SELECT 1 FROM "fo_signer" s WHERE s."firm_id" = NEW."firm_id" AND s."request_id" = NEW."request_id" AND s."signed_at" IS NULL) THEN
     RAISE EXCEPTION 'fo_signing_evidence: stored only when every signer of a live request signed' USING ERRCODE = 'check_violation';
+  END IF;
+  IF EXISTS (SELECT 1 FROM "fo_signer" s WHERE s."firm_id" = NEW."firm_id" AND s."request_id" = NEW."request_id" AND s."consent_text_version" IS DISTINCT FROM NEW."consent_text_version") THEN
+    RAISE EXCEPTION 'fo_signing_evidence: the consent text version is the one every signer agreed to' USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;
 END $$;

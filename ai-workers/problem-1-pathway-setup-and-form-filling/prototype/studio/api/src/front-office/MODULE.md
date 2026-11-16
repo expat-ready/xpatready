@@ -30,5 +30,5 @@ The firm's front office: public booking and retainer agreements, with their file
 **Do not.**
 - Serve a file without a checked short-lived link, or from another firm's folder.
 - Open a staff route without the platform guard.
-- Store a signing code, link token or email address in clear in the signing tables (only their sha256, FO-6).
+- Store a signing code or link token in clear, or any email address, in the signing tables (codes and tokens as sha256 only, FO-6).
 - Store a token's verifier unhashed (it is kept as a SHA-256, `hashVerifier` in tokens.ts).

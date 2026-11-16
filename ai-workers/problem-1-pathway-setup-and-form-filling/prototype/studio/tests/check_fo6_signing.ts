@@ -76,8 +76,8 @@ try {
   ok("FO-6 pass: right after its own migration, a demo-data copy (cases, audit, the Sample firms and staff) keeps its rows", sql(DEMO, demoRows) === was, was);
   for (const d of all.filter((x) => x > NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
   ok("FO-6 pass: migrate diff after every migration on the demo-data copy names no signing table or type", fo6Diff(DEMO).length === 0, fo6Diff(DEMO));
-  ok("FO-6 pass: firm_id is first in every index of the four tables (contracts §0)", sql(DEMO, `select coalesce(string_agg(ic.relname, ','), '') from pg_index i join pg_class c on c.oid = i.indrelid join pg_class ic on ic.oid = i.indexrelid
-    left join pg_attribute a on a.attrelid = c.oid and a.attnum = i.indkey[0] where c.relname = any('{${TABLES.join(",")}}') and not i.indisprimary and coalesce(a.attname, '') <> 'firm_id'`) === "");
+  ok("FO-6 pass: firm_id is first in every index of the four tables but the provider's document id, unique across firms (contracts §0; review M4)", sql(DEMO, `select coalesce(string_agg(ic.relname, ','), '') from pg_index i join pg_class c on c.oid = i.indrelid join pg_class ic on ic.oid = i.indexrelid
+    left join pg_attribute a on a.attrelid = c.oid and a.attnum = i.indkey[0] where c.relname = any('{${TABLES.join(",")}}') and not i.indisprimary and coalesce(a.attname, '') <> 'firm_id'`) === "fo_signature_request_provider_provider_document_id_key");
 
   // -------------------------------------------------------------------------------------------------- the rules
   const [firmA, firmB] = sql(DEMO, `select string_agg(id::text, ',' order by key) from platform_firm`).split(",");
@@ -127,7 +127,8 @@ try {
   ok("FO-6 fail: CLIENT_SIGNED and evidence wait for every client", refused(DEMO, `update fo_signature_request set status = 'CLIENT_SIGNED' where id = '${e1.r}'`, /every client/)
     && refused(DEMO, evidence(e1.r), /every signer of a live request/));
   ok("FO-6 fail: a request a client signed never expires (BR-16)", refused(DEMO, `update fo_signature_request set status = 'EXPIRED' where id = '${e1.r}'`, /never expires/));
-  ok("FO-6 pass: a request with no client signature expires", (() => { const e = envelope(); sql(DEMO, `update fo_signature_request set status = 'EXPIRED' where id = '${e.r}'`); return sql(DEMO, `select status || ':' || (ended_at is not null) from fo_signature_request where id = '${e.r}'`) === "EXPIRED:true"; })());
+  ok("FO-6 pass and fail: a request with no client signature expires on its day, never before it (review m5)", (() => { const e = envelope(); const early = refused(DEMO, `update fo_signature_request set status = 'EXPIRED' where id = '${e.r}'`, /fo_signature_request_expired_check/);
+    sql(DEMO, `update fo_signature_request set status = 'EXPIRED', ended_at = expires_at where id = '${e.r}'`); return early && sql(DEMO, `select status || ':' || (ended_at is not null) from fo_signature_request where id = '${e.r}'`) === "EXPIRED:true"; })());
   ok("FO-6 fail: a signer who signed does not change, and consent is written once", refused(DEMO, `update fo_signer set declined_at = now() where id = '${e1.c1}'`, /signed or declined does not change|signed_check/)
     && (() => { const e = envelope(); sql(DEMO, `update fo_signer set consent_text_version = 'esign-consent-v1', consented_at = now() where id = '${e.c1}'`);
       return refused(DEMO, `update fo_signer set consent_text_version = 'esign-consent-v2' where id = '${e.c1}'`, /written once/); })());
@@ -142,8 +143,7 @@ try {
     && refused(DEMO, evidence(e1.r), /every signer of a live request|fo_signing_evidence_firm_id_request_id_key/));
   ok("FO-6 fail: a status cannot move backward or skip (SENT → SIGNED)", (() => { const e = envelope(); return refused(DEMO, `update fo_signature_request set status = 'SIGNED' where id = '${e.r}'`, /not a signing move/)
     && (sql(DEMO, `update fo_signature_request set status = 'VIEWED' where id = '${e.r}'`), refused(DEMO, `update fo_signature_request set status = 'SENT' where id = '${e.r}'`, /not a signing move/)); })());
-  ok("FO-6 fail: who signs, the document and the expiry never change", refused(DEMO, `update fo_signature_request set expires_at = expires_at + interval '1 day' where id = '${e1.r}'`, /final|only the status/)
-    && (() => { const e = envelope(); return refused(DEMO, `update fo_signature_request set document_id = gen_random_uuid() where id = '${e.r}'`, /only the status/) && refused(DEMO, `update fo_signer set person_id = gen_random_uuid() where id = '${e.c1}'`, /never change/); })());
+  ok("FO-6 fail: who signs, the document and the expiry never change", (() => { const e = envelope(); return refused(DEMO, `update fo_signature_request set expires_at = expires_at + interval '1 day' where id = '${e.r}'`, /only the status/) && refused(DEMO, `update fo_signature_request set document_id = gen_random_uuid() where id = '${e.r}'`, /only the status/) && refused(DEMO, `update fo_signer set person_id = gen_random_uuid() where id = '${e.c1}'`, /never change/); })());
   ok("FO-6 fail: a declined request ends for all: no signer changes after it", (() => { const e = envelope(); sql(DEMO, `update fo_signer set declined_at = now() where id = '${e.c1}'`); sql(DEMO, `update fo_signature_request set status = 'DECLINED' where id = '${e.r}'`);
     return refused(DEMO, sign(e.c2), /final/); })());
   ok("FO-6 fail: the email code's tries stop at 6, and a code needs its expiry", (() => { const e = envelope(); return refused(DEMO, `update fo_signer set code_failures = 7 where id = '${e.c1}'`, /code_check/) && refused(DEMO, `update fo_signer set code_sha256 = '${sha("1")}' where id = '${e.c1}'`, /code_check/)
@@ -156,6 +156,38 @@ try {
   })());
   ok("FO-6 fail: an evidence file key outside signing/ or with .. is refused", (() => { const e = envelope(); for (const s of [e.c1, e.c2, e.f]) sql(DEMO, sign(s)); sql(DEMO, `update fo_signature_request set status = 'CLIENT_SIGNED' where id = '${e.r}'`);
     return refused(DEMO, evidence(e.r).replace(`'signing/${e.r}/sealed.pdf'`, `'retainers/x.pdf'`), /files_check/) && refused(DEMO, evidence(e.r).replace(`'signing/${e.r}/audit.pdf'`, `'signing/../x.pdf'`), /files_check/); })());
+  ok("FO-6 fail (review M1): CLIENT_SIGNED needs a client, SIGNED needs the firm signer: a request with no signers, or clients only, never reaches SIGNED", (() => {
+    const bare = req(); sql(DEMO, bare.q);
+    const noClient = refused(DEMO, `update fo_signature_request set status = 'CLIENT_SIGNED' where id = '${bare.id}'`, /every client/);
+    const r = req(); sql(DEMO, r.q); const c = signer(r.id, "CLIENT"); sql(DEMO, c.q); sql(DEMO, sign(c.id)); sql(DEMO, `update fo_signature_request set status = 'CLIENT_SIGNED' where id = '${r.id}'`);
+    sql(DEMO, evidence(r.id));
+    return noClient && refused(DEMO, `update fo_signature_request set status = 'SIGNED' where id = '${r.id}'`, /every signature and the stored evidence/);
+  })());
+  ok("FO-6 fail (review M2, m9): no signer is added once anyone acted, and none to a VIEWED request", (() => {
+    const e = envelope(); sql(DEMO, `update fo_signer set viewed_at = now() where id = '${e.c1}'`);
+    const late = refused(DEMO, signer(e.r, "CLIENT").q, /only before anyone acted/);
+    sql(DEMO, `update fo_signature_request set status = 'VIEWED' where id = '${e.r}'`);
+    return late && refused(DEMO, signer(e.r, "CLIENT").q, /added to a SENT request/);
+  })());
+  ok("FO-6 fail (review M3): a fully signed request with its evidence can only become SIGNED: no cancel, no decline", (() => {
+    const e = envelope(); for (const s of [e.c1, e.c2, e.f]) sql(DEMO, sign(s)); sql(DEMO, `update fo_signature_request set status = 'CLIENT_SIGNED' where id = '${e.r}'`); sql(DEMO, evidence(e.r));
+    return refused(DEMO, `update fo_signature_request set status = 'CANCELLED', cancel_reason = 'WITHDRAWN' where id = '${e.r}'`, /only SIGNED follows/);
+  })());
+  ok("FO-6 fail (review M3): the evidence trigger locks the request first, so a cancel waits for it (FOR UPDATE in fo_signing_evidence_write)",
+    /fo_signing_evidence_write\(\)[\s\S]*?FOR UPDATE[\s\S]*?END \$\$/.test(code));
+  ok("FO-6 fail (review M4): one provider document id names one request across all firms", refused(DEMO, req({ firm: firmB, by: repB, pdid: `fake-${e1.r}` }).q, /fo_signature_request_provider_provider_document_id_key/));
+  ok("FO-6 fail (review m6): a sixth wrong code without the lock is refused", (() => { const e = envelope(); return refused(DEMO, `update fo_signer set code_failures = 6 where id = '${e.c1}'`, /code_check/); })());
+  ok("FO-6 fail (review m7): evidence names the consent text the signers agreed to", (() => {
+    const e = envelope(); for (const s of [e.c1, e.c2, e.f]) sql(DEMO, sign(s)); sql(DEMO, `update fo_signature_request set status = 'CLIENT_SIGNED' where id = '${e.r}'`);
+    return refused(DEMO, evidence(e.r).replace(/'esign-consent-v1'\)$/, "'esign-consent-v2')"), /consent text version is the one/);
+  })());
+  ok("FO-6 fail (review m8): DECLINED needs a signer who declined", (() => { const e = envelope(); return refused(DEMO, `update fo_signature_request set status = 'DECLINED' where id = '${e.r}'`, /signer who declined/); })());
+  ok("FO-6 fail (review m9): viewed is written once, and a signed signer of a live request does not change", (() => {
+    const e = envelope(); sql(DEMO, `update fo_signer set viewed_at = now() where id = '${e.c1}'`);
+    const once = refused(DEMO, `update fo_signer set viewed_at = now() + interval '1 minute' where id = '${e.c1}'`, /written once/);
+    sql(DEMO, sign(e.c2));
+    return once && refused(DEMO, `update fo_signer set code_failures = 1 where id = '${e.c2}'`, /signed or declined does not change/);
+  })());
   ok("FO-6 fail: nothing is deleted or truncated (all four tables)", TABLES.every((t) => refused(DEMO, `delete from ${t}`, /signing records are kept/) && refused(DEMO, `truncate ${t} cascade`, /signing records are kept/)));
   ok("FO-6 fail: a staff member who sent a request cannot be deleted (RESTRICT)", refused(DEMO, `delete from platform_staff where id = '${repA}'`, /fo_signature_request_firm_id_sent_by_fkey|fo_signer_firm_id_staff_id_fkey|violates/));
   ok("FO-6: every date-time column is timestamptz", sql(DEMO, `select count(*) from information_schema.columns where table_name = any('{${TABLES.join(",")}}') and data_type in ('timestamp without time zone', 'date')`) === "0");

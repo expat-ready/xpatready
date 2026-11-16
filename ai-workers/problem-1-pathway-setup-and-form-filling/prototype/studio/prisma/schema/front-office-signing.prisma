@@ -81,8 +81,9 @@ model FoSignatureRequest {
 
   /// A version is sent once.
   @@unique([firmId, documentKind, documentVersionId])
-  /// A webhook names the provider's document: it finds one request.
-  @@unique([firmId, provider, providerDocumentId])
+  /// A webhook names the provider's document and no firm: it finds one request across all firms (review M4), so this is
+  /// the one index not led by firm_id.
+  @@unique([provider, providerDocumentId])
   /// The target of the (firm_id, request_id) keys below.
   @@unique([firmId, id])
   @@index([firmId, documentKind, documentId])
