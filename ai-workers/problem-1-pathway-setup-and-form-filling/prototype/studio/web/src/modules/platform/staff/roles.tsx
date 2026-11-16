@@ -10,7 +10,7 @@ function Groups({ role }: { role: Role }) {
     const keys = role.keys.filter((k) => k.class === cls);
     return (
       <details data-key-group={cls} className="text-xs">
-        <summary className="cursor-pointer text-text-muted">{title}: {keys.length}</summary>
+        <summary className="min-h-6 w-fit cursor-pointer leading-6 text-text-muted">{title}: {keys.length}</summary>
         {keys.length ? <ul className="mt-1 list-disc pl-5">{keys.map((k) => <li key={k.key}>{keyWords(k.key)}</li>)}</ul> : <p className="mt-1">None.</p>}
       </details>
     );

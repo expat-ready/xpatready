@@ -12,15 +12,16 @@ import { CompareRoles, RolePicker } from "./roles";
 import { staffChange } from "./step-up";
 
 type Row = { n: number; email: string; roles: string[]; error: string | null };
-const fresh = (n: number): Row => ({ n, email: "", roles: ["CASE_OFFICER"], error: null });
+/** Case Officer ticked first (AG-1-69) when the inviter may give it; an Admin may not (SA-06: Admin lacks two of its keys). */
+const fresh = (n: number, offered: readonly string[]): Row => ({ n, email: "", roles: offered.includes("CASE_OFFICER") ? ["CASE_OFFICER"] : [], error: null });
 
 export function InvitePanel({ open, onOpenChange, roles, me, seats }: { open: boolean; onOpenChange: (o: boolean) => void; roles: readonly Role[]; me: { roles: string[]; keys: string[] }; seats: { used: number; limit: number } }) {
-  const [rows, setRows] = React.useState<Row[]>([fresh(1)]);
+  const offered = givable(roles, me, true);
+  const [rows, setRows] = React.useState<Row[]>(() => [fresh(1, offered)]);
   const [busy, setBusy] = React.useState(false);
   const next = React.useRef(2);
   const qc = useQueryClient(), toast = useToast();
-  React.useEffect(() => { if (open) { setRows([fresh(1)]); next.current = 2; } }, [open]);
-  const offered = givable(roles, me, true);
+  React.useEffect(() => { if (open) { setRows([fresh(1, offered)]); next.current = 2; } }, [open]);   // eslint-disable-line react-hooks/exhaustive-deps -- a fresh form on each opening
   const set = (n: number, p: Partial<Row>) => setRows((rs) => rs.map((r) => (r.n === n ? { ...r, ...p } : r)));
   const after = seats.used + rows.length, over = after - seats.limit;
   // BR-3: the same email twice on this form is flagged on the later row (the server flags staff and pending invitations).
@@ -59,7 +60,7 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats }: { open: bo
           );
         })}
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => setRows((rs) => [...rs, fresh(next.current++)])} data-add-row>+ Add another person</Button>
+          <Button variant="outline" size="sm" onClick={() => setRows((rs) => [...rs, fresh(next.current++, offered)])} data-add-row>+ Add another person</Button>
           <CompareRoles roles={roles} />
         </div>
       </div>
