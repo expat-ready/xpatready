@@ -69,144 +69,31 @@ GRANT EXECUTE ON FUNCTION platform_web_address_taken(text[], timestamptz) TO xr_
 CREATE FUNCTION platform_session_firm() RETURNS uuid LANGUAGE sql STABLE PARALLEL SAFE SET search_path = pg_catalog
   AS $fn$ SELECT nullif(current_setting('app.firm_id', true), '')::uuid $fn$;
 
-ALTER TABLE "fo_arrival_receipt" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_arrival_receipt" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_arrival_receipt" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_availability" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_availability" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_availability" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_booking" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_booking" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_booking" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_booking_token" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_booking_token" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_booking_token" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_call" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_call" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_call" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_company" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_company" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_company" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_company_contact" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_company_contact" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_company_contact" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_conflict_check" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_conflict_check" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_conflict_check" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_consultation_type" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_consultation_type" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_consultation_type" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_identity_check" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_identity_check" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_identity_check" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_lead" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_lead" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_lead" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_lead_attribution" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_lead_attribution" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_lead_attribution" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_note" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_note" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_note" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_person" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_person" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_person" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_prospect" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_prospect" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_prospect" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_reason" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_reason" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_reason" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_retainer" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_retainer" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_retainer" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_retainer_fee_row" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_retainer_fee_row" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_retainer_fee_row" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_retainer_template" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_retainer_template" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_retainer_template" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_retainer_version" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_retainer_version" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_retainer_version" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_sales_setup" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_sales_setup" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_sales_setup" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_service" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_service" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_service" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_stage" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_stage" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_stage" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_stage_move" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_stage_move" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_stage_move" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_time_off" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_time_off" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_time_off" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "fo_web_form" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fo_web_form" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "fo_web_form" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "money_credit_note" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "money_credit_note" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "money_credit_note" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "money_invoice" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "money_invoice" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "money_invoice" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "money_invoice_line" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "money_invoice_line" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "money_invoice_line" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "money_number_series" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "money_number_series" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "money_number_series" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "money_payment" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "money_payment" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "money_payment" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "money_payment_account" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "money_payment_account" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "money_payment_account" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "money_payment_settings" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "money_payment_settings" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "money_payment_settings" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "money_receipt" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "money_receipt" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "money_receipt" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "money_refund" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "money_refund" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "money_refund" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "money_trust_entry" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "money_trust_entry" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "money_trust_entry" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "money_trust_request" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "money_trust_request" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "money_trust_request" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "money_write_off" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "money_write_off" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "money_write_off" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "msg_consent" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "msg_consent" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "msg_consent" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "msg_consent_withdrawal" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "msg_consent_withdrawal" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "msg_consent_withdrawal" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "msg_consent_wording" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "msg_consent_wording" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "msg_consent_wording" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "msg_event" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "msg_event" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "msg_event" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "msg_firm" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "msg_firm" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "msg_firm" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "msg_outbox" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "msg_outbox" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "msg_outbox" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "msg_send_counter" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "msg_send_counter" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "msg_send_counter" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "msg_suppression" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "msg_suppression" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "msg_suppression" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
+-- The firm tables (every platform_*, fo_*, money_*, msg_* and plat_complaint* table on main, except those below):
+-- ENABLE + FORCE row-level security and one policy, firm_id = the session's firm, for reads and writes.
+DO $walls$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'fo_arrival_receipt', 'fo_availability', 'fo_booking', 'fo_booking_token', 'fo_call', 'fo_company', 'fo_company_contact',
+    'fo_conflict_check', 'fo_consultation_type', 'fo_identity_check', 'fo_lead', 'fo_lead_attribution', 'fo_note',
+    'fo_person', 'fo_prospect', 'fo_reason', 'fo_retainer', 'fo_retainer_fee_row', 'fo_retainer_template',
+    'fo_retainer_version', 'fo_sales_setup', 'fo_service', 'fo_stage', 'fo_stage_move', 'fo_time_off', 'fo_web_form',
+    'money_credit_note', 'money_invoice', 'money_invoice_line', 'money_number_series', 'money_payment', 'money_payment_account',
+    'money_payment_settings', 'money_receipt', 'money_refund', 'money_trust_entry', 'money_trust_request',
+    'money_write_off', 'msg_consent', 'msg_consent_withdrawal', 'msg_consent_wording', 'msg_event', 'msg_firm',
+    'msg_outbox', 'msg_send_counter', 'msg_suppression', 'plat_complaint', 'plat_complaint_event', 'platform_firm_address_history',
+    'platform_firm_setting', 'platform_firm_web_address', 'platform_invitation', 'platform_role_grant', 'platform_session_revocation',
+    'platform_signup_link', 'platform_staff', 'platform_staff_credential', 'platform_subscription'
+  ] LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
+    EXECUTE format('CREATE POLICY "pf12_firm" ON %I USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm())', t);
+  END LOOP;
+END
+$walls$;
+
+-- Platform-owned templates (firm_id null): any firm reads them, only the bypass role writes them.
 ALTER TABLE "msg_template" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "msg_template" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "pf12_firm" ON "msg_template" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
@@ -215,21 +102,10 @@ ALTER TABLE "msg_template_version" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "msg_template_version" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "pf12_firm" ON "msg_template_version" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
 CREATE POLICY "pf12_platform_read" ON "msg_template_version" FOR SELECT USING ("firm_id" IS NULL AND platform_session_firm() IS NOT NULL);
-ALTER TABLE "plat_complaint" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "plat_complaint" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "plat_complaint" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "plat_complaint_event" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "plat_complaint_event" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "plat_complaint_event" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
+-- A firm's own row: its id is the firm id.
 ALTER TABLE "platform_firm" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "platform_firm" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "pf12_firm" ON "platform_firm" USING ("id" = platform_session_firm()) WITH CHECK ("id" = platform_session_firm());
-ALTER TABLE "platform_firm_address_history" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "platform_firm_address_history" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "platform_firm_address_history" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "platform_firm_setting" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "platform_firm_setting" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "platform_firm_setting" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
 -- PF-5 (merged before this migration): the terms a firm's staff accepted are the firm's; a pending sign-up has no firm
 -- yet and is our own (row-level security forced, no policy: only the bypass role reaches it, as the brief sets for
 -- plat_breach, plat_data_request and plat_legal_hold); platform_terms_version is our catalogue (no firm_id).
@@ -238,27 +114,3 @@ ALTER TABLE "platform_terms_acceptance" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "pf12_firm" ON "platform_terms_acceptance" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
 ALTER TABLE "platform_signup_pending" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "platform_signup_pending" FORCE ROW LEVEL SECURITY;
-ALTER TABLE "platform_firm_web_address" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "platform_firm_web_address" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "platform_firm_web_address" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "platform_invitation" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "platform_invitation" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "platform_invitation" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "platform_role_grant" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "platform_role_grant" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "platform_role_grant" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "platform_session_revocation" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "platform_session_revocation" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "platform_session_revocation" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "platform_signup_link" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "platform_signup_link" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "platform_signup_link" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "platform_staff" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "platform_staff" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "platform_staff" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "platform_staff_credential" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "platform_staff_credential" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "platform_staff_credential" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "platform_subscription" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "platform_subscription" FORCE ROW LEVEL SECURITY;
-CREATE POLICY "pf12_firm" ON "platform_subscription" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());

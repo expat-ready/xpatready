@@ -17,6 +17,7 @@ The firm's front office: public booking and retainer agreements, with their file
 - Rate limits are rolling windows per key, sized for about 100 firms in one process (P-562).
 - Every file belongs to one firm and lives under the firm's own folder (FO-5, contracts §0.3).
 - Platform rules apply: `firmScope` on every table, platform guard on every staff route (P-559).
+- The database walls these tables (PF-12): a public door finds its firm through its named bypass use (`fo.sales.web-form`, `fo.booking.public-page`, `fo.booking.self-service`), then runs as that firm (`enterFirm`).
 - The database's no-overlap rule skips only a booking a staff member confirmed with Book anyway over an overlap (`overlapConfirmedByUserId`, FO-3sa, AG-4-63 rule 4); the public door never sets it, every writer checks overlaps under the host locks, and a move clears it unless the move is itself confirmed.
 
 **Tables.** foLead, foPerson, foArrivalReceipt, foLeadAttribution, foNote, foReason, foService, msgConsent (through ConsentPort), foBooking, foBookingToken, foAvailability, foConsultationType, foProspect, foRetainer, foRetainerTemplate, foRetainerVersion, foSalesSetup, foStage, foWebForm, platformFirm, platformStaff, moduleEvent.
