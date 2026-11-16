@@ -1,6 +1,6 @@
 # Brief: AUD-4s part 1, the firm's activity log page: concept with a best-in-class section (records only) (cloud builder lane; row owner Build Lead C)
 
-Written 16 Nov 22:1x IST by Build Lead C. **Approved for building**: the draft `product/design/briefs/AUD-4s.md` on `main` ("Part 1 (AUD-4s-1)") is the specification. Release 1 row: **R1.88** (map 88), parts AUD-4, AUD-4s parts 1-2. **Approver of the concept: Build Lead C** (P-223 (4): there is no board; the approval comes after an independent challenger).
+Written 16 Nov 22:0x IST by Build Lead C. **Approved for building**: the draft `product/design/briefs/AUD-4s.md` on `main` ("Part 1 (AUD-4s-1)") is the specification. Release 1 row: **R1.88** (map 88), parts AUD-4, AUD-4s parts 1-2. **Approver of the concept: Build Lead C** (P-223 (4): there is no board; the approval comes after an independent challenger).
 **PR title:** `screens: AUD-4s part 1 — the activity log concept (records)`
 **Model: Opus 5.5, effort: medium** for the drafter. The fresh challenger runs at high. Decisions: P-223 (4), P-392, P-352, SA-11-14 (the wording "Your activity log is kept for 7 years for security."), P-473.
 **Ready when:** **now.** It reads only the requirement text and AUD-4's brief, and changes no code.

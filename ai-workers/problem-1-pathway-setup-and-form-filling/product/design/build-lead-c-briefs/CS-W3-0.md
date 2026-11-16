@@ -1,6 +1,6 @@
 # Brief: CS-W3 part 0, the walls spike on the case-side tables (records only, no product code) (cloud builder lane; row owner Build Lead C)
 
-Written 16 Nov 22:1x IST by Build Lead C. **Approved for building**: the draft `product/design/briefs/CS-W3.md` on `main` ("Part 0, the spike") is the specification. Release 1 row: **R1.3** (map 3, walls on the case-side tables). PF-12 #1910 is on `main`. CS-W2 waits on this spike's report.
+Written 16 Nov 22:0x IST by Build Lead C. **Approved for building**: the draft `product/design/briefs/CS-W3.md` on `main` ("Part 0, the spike") is the specification. Release 1 row: **R1.3** (map 3, walls on the case-side tables). PF-12 #1910 is on `main`. CS-W2 waits on this spike's report.
 **PR title:** `records: CS-W3 part 0 — the case-side walls spike (contract §8)`
 **Model: Opus 5.5, effort: medium** (a measured spike on a scratch copy). Decisions: P-575, P-584, contract §8, Lead B's ruling on #1872 (the `xr_case_lookup` NOLOGIN role).
 **Ready when:** **now.** It is a records PR, so the case side's WIP limit does not stop it. It changes no product code and no schema on `main`. Everything runs on a scratch copy of the demo data.

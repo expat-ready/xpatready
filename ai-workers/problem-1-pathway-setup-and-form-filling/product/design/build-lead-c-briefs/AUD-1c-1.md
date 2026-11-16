@@ -1,6 +1,6 @@
 # Brief: AUD-1c part 1, the chain columns, the insert trigger and the canonical form (cloud builder lane; row owner Build Lead C)
 
-Written 16 Nov 22:1x IST by Build Lead C. **Approved for building**: the draft `product/design/briefs/AUD-1c.md` on `main` ("Part 1 (AUD-1c-1)") is the specification; where they differ, this page wins. Release 1 row: **R1.97** (map 97), the first of AUD-1c parts 1-2, AUD-2 parts 1-2 and AUD-2c parts 1-2.
+Written 16 Nov 22:0x IST by Build Lead C. **Approved for building**: the draft `product/design/briefs/AUD-1c.md` on `main` ("Part 1 (AUD-1c-1)") is the specification; where they differ, this page wins. Release 1 row: **R1.97** (map 97), the first of AUD-1c parts 1-2, AUD-2 parts 1-2 and AUD-2c parts 1-2.
 **PR title:** `migration — runtime: AUD-1c part 1 — …`
 **Model: Opus 5.5, effort: high** (schema, a trigger on every audit insert, integrity). Decisions: SA-11-2, SA-11-14, P-571, P-600 (d), P-278.
 **Ready when:** **AUD-1a (#2003) is merged** (`audit.prisma` exists; series on that file: AUD-1a → this part). It may run **beside AUD-1b**: AUD-1b adds no migration, and its `audit-event.ts` / `context.ts` are only read here. The one shared file is `api/src/platform/MODULE.md` (one sentence each); merge `main` on a conflict. Migration stamp later than every one on `main`.

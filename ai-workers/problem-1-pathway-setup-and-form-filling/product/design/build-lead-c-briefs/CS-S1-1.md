@@ -1,6 +1,6 @@
 # Brief: CS-S1 part 1, the case party index: a new area file and the triggers that keep it (cloud builder lane; row owner Build Lead C)
 
-Written 16 Nov 22:1x IST by Build Lead C. **Approved for building**: the draft `product/design/briefs/CS-S1.md` on `main` (part 1) is the specification. Release 1 row: **R1.102** (map 102), case half, part 1 of 2 (PF-30a and PF-30s are Lead B's). Lead 61's rulings on #1869 (comment 6900881924) stand: no wait on CS-W1; the audit line holds field names and counts, never values.
+Written 16 Nov 22:0x IST by Build Lead C. **Approved for building**: the draft `product/design/briefs/CS-S1.md` on `main` (part 1) is the specification. Release 1 row: **R1.102** (map 102), case half, part 1 of 2 (PF-30a and PF-30s are Lead B's). Lead 61's rulings on #1869 (comment 6900881924) stand: no wait on CS-W1; the audit line holds field names and counts, never values.
 **PR title:** `migration — runtime: CS-S1 part 1 — …`
 **Model: Opus 5.5, effort: high** (schema, triggers on the answer tables, personal data). Decisions: P-600, P-526b, PF-30a's rule against logging query text.
 **Ready when:** **now**, but **only while the case side has fewer than 2 rows waiting for qa** (P-623, Lead 69's reading). When CS-C1b (#2002) merges, R1.77 joins R1.80 and the case side starts no new row. Whoever starts this checks that first. New area file `prisma/schema/case-search.prisma` and one migration (unique stamp).
