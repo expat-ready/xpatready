@@ -1509,3 +1509,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 4. **J-6 part 2** also moves J-6's API checks into `tests/check_j6_api.ts`, run by CI.
 5. **R1.99:** shards 2–8 of run 43801075002 were read on the Mac. All show `retries: 0`, with 445 PASS, 0 FAIL and 19 quarantined (not run). The lines are posted on #1953.
 * **Records clash:** #1929 and #1953 both define QA-477 to QA-481, with different meanings, and Lead 66 has QA-490. This is for the Lead to renumber.
+* Lead 66 settled rev 16.63's three items: #1929 keeps QA-477 to QA-481, and #1953 renumbers to QA-491 to QA-495 (or points to #1929's row for the same bug); row 27 is narrowed and FO-4sf added on the Lead branch; the case side's person-link email row is in STATE after PF-19b part 2. FO-4sf starts after #1933, at the founder's next typed turn. **Rev 16.63's references to "QA-477" to "QA-481 (#1953)" read as #1953's new numbers once renumbered.**
