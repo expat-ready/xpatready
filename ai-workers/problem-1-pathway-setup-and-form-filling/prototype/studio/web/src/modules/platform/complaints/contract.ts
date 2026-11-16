@@ -3,7 +3,7 @@
 // The words for every stored code (EXPERIENCE §5) and the two keys. Every list and period is Sample until the College's
 // by-laws are read (Unconfirmed: no counsel).
 import { z } from "zod";
-import type { Me } from "@/modules/front-office/sales/contract";
+import type { Me } from "../../front-office/sales/contract.ts";   // relative: the api type-check reaches this file through the browser suite
 
 export const KEY = { record: "agent/complaint:record", read: "agent/complaint:read" } as const;
 export const has = (me: Me, key: string) => me.keys.includes(key);
