@@ -1,4 +1,4 @@
-# qa · capability, front office: rows 38 and 40 walked on the new booking page (16 Nov 2026, 14:3x IST)
+# qa · capability, front office: rows 38 and 40 walked on the new booking page (16 Nov 2026, 14:1x IST)
 
 **Mode:** `/qa capability`. FO-3w part 1 (#1921, merged 12:29 IST, 16 Nov) brought the public booking pages, the screen that rows 38 and 40 start from, and this round lands inside its 4 h window (P-613 (4)). The other qa round (11:5x IST, main 90ea6cfe6) scored before it merged, and no open qa PR covered it. This is a cloud qa lane on Opus 5.5 at high effort. **Tested on main fd2dee855.** Live AI was off, spend was US$0, and no priced button was pressed. The isolated copy was `qa_fon` on :4472, started and stopped in one command; :4400 was not touched. All times are IST.
 **Verdict (fresh Opus 5.5 reader that ran nothing, P-303; `2026-11-16-capability-R1-fo-booking-page/verdicts.md`):** **R1.38 Partial · R1.40 Partial.** Bugs: **QA-496 new (Gap · Minor, R1.42)**.
@@ -11,7 +11,7 @@
 The booking API packs were not selected in that batch. Their last counted run is 43796001718 (main ddc6e919c); since then `booking/service.ts` changed by 8 lines (PF-12 walls). qa's re-runs on fd2dee855: fo3 133/0, fo3pa 45/0, fo3m 14/0, pf19b 28/0.
 
 ## 2. Walk by screens
-`tests/qa/check_r138_r140_booking_page_walk.ts` is headless Chromium on the running copy, with the browser zone set to Asia/Dubai. It ran twice, with **27/28 both times** (`…/booking-page-walk-{1,2}.txt`, `…/shots/`).
+`tests/qa/check_r138_r140_booking_page_walk.ts` is headless Chromium on the running copy, with the browser zone set to Asia/Dubai. It ran twice at 14:1x IST and, after the reviewer tightened the email check (the exact "7:00 p.m." or "6:00 p.m." next to "(Asia/Dubai)" in the body), twice again at 14:3x IST, with **27/28 every time** (`…/booking-page-walk-{1,2}.txt`, `…/shots/`).
 
 A person's path: the firm's list (`/book/<firm>`) → Choose Free consultation → Next month to March 2027 → a day → a time → Your details → Book this time → **You are booked**.
 
@@ -29,7 +29,7 @@ Each run checks:
 - the email reads the Dubai time;
 - axe is clean on the list and the times page at each width.
 
-**The next step fails.** On "You are booked", **Reschedule**, which is map row 42's first step, opens `/book/<firm>/manage#<token>`, and that shows "This page is not available." (`shots/next-step-reschedule-400.png`). The page is FO-3w part 2 (`web/src/modules/front-office/routes.tsx`). The same link is in every booking email (`service.ts:598`, `:809`) → **QA-496**.
+**The next step fails.** On "You are booked", **Reschedule**, which is map row 42's first step, opens `/book/<firm>/manage#<token>`, and that shows "This page is not available." (`shots/next-step-reschedule-400.png`). The page is FO-3w part 2 (`web/src/modules/front-office/routes.tsx`). The same link is in the booked and moved emails (`service.ts:598`, `:809`; a cancellation email has none) → **QA-496**.
 
 ## 3. Verdicts
 | Row | Verdict | Why |

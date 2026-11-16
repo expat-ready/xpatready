@@ -94,7 +94,9 @@ async function main() {
     const mailIcs = mails[0]?.attachments.find((a) => /\.ics$/.test(a.filename))?.text ?? "";
     const strip = (t: string) => t.replace(/\r?\nDTSTAMP:[^\r\n]*/g, "").replace(/\r\n/g, "\n").trim();
     ok(`R1.40 ${r.tag}: the emailed invite (demo inbox) is the same invite as "Add to calendar" (DTSTAMP aside)`, mailIcs.length > 0 && strip(mailIcs) === strip(ics), [mails.map((m) => m.subject), mailIcs.slice(0, 120)]);
-    ok(`R1.38 ${r.tag}: the email reads ${r.time} (Asia/Dubai)`, mails.length > 0 && JSON.stringify(mails[0]).includes(r.time.replace(/^(\d+):(\d+)$/, (_m, h, mi) => `${((Number(h) + 11) % 12) + 1}:${mi}`)) && JSON.stringify(mails[0]).includes("Asia/Dubai"), mails[0]?.subject);
+    const h = Number(r.time.slice(0, 2)), mailTime = `${((h + 11) % 12) + 1}:${r.time.slice(3)} ${h < 12 ? "a.m." : "p.m."}`;   // en-CA short time (wallLabel)
+    const body = (mails[0] as unknown as { body?: string })?.body ?? "";
+    ok(`R1.38 ${r.tag}: the email body reads "${mailTime} (Asia/Dubai)"`, mails.length > 0 && new RegExp(`${mailTime.replace(/\./g, "\\.").replace(" ", "\\s?")}\\s*\\(Asia/Dubai\\)`).test(body), body.slice(0, 200));
   }
   // The next capability's first step (map row 42: reschedule or cancel by link): the confirmation's Reschedule link.
   const resched = await p.getByRole("link", { name: "Reschedule" }).getAttribute("href");
