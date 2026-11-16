@@ -1580,3 +1580,16 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **FO-4sf:** Lead 68 asked for its cloud lane at 18:2x IST (name `fo-4sf`), with Lead B's brief word for word. #1933 is merged.
 * **FO-3w part 2:** Lead 67 started its cloud lane at 17:41 IST, with both of Lead B's additions (QA-496 ruling, rev 16.68).
 * **PF-19e:** waits on #1956 and #1961, both queued. Lead B watches both and tells Lead 68 the moment both are on main, and Lead 68 then starts it.
+
+## Rev 16.71 (16 Nov 18:24 IST): #1972 shaping batch 8 (PF-11, PF-26, PF-15 Minors) approved with corrections (comment 6916991708)
+* All ten drafted rulings are confirmed: PF-11 in three parts, the `platform_*` table names, the list key, the release door, client money's own exporter, `pizzip`, the PDF through PF-Fp, the English and French template, and the Sample values (7 days, 72 hours, 500 MB).
+* **PF-26 visibility (Lead B reading under P-628, listed for the founder):** the export follows the same visibility rule as every read. `visibilityOf` and `sees` apply FO-2v: all = `view.all` AND `platform.everyone_sees_all`. An export never shows more than the screens do. A person with no lead or prospect needs `view.all` alone.
+* **Six binding corrections** (the shaping lane pushes them before the label, or each builder applies them at start):
+  1. The list key needs both its catalogue row and its role rows; DW1 adds an Admin 200 case and a Case Officer 403 case.
+  2. `system/firm:investigate` goes in PF-4s's system key table, never the `agent/`-only catalogue.
+  3. PF-26 cites PF-Fp in P-630-amendments.md and uses `toPdf`; if PF-Fp is late, the JSON half ships first and the PDF follows as part 1b.
+  4. The link table is `platform_firm_export_link`, read through a named bypass use.
+  5. Both exporters open their read-only transaction inside `withFirm`; DW6 adds this case.
+  6. The size cap is checked while each file is added, never after; DW5 adds a small-cap case.
+* PF-15's Minors are approved. Starts are unchanged: PF-11 part 1 after #1959; PF-26 part 1 after PF-11 part 1, FO-9b part 1 and PF-Fp (for the PDF).
+* Legal points are Unconfirmed: no counsel.
