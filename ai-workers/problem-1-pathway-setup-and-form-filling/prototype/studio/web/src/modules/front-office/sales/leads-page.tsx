@@ -30,7 +30,15 @@ function SourceFilter({ choices, chosen, toggle, clear, failed, retry }: { choic
   const [open, setOpen] = React.useState(false);
   const [find, setFind] = React.useState("");
   const box = React.useRef<HTMLDivElement>(null), opener = React.useRef<HTMLButtonElement>(null), finder = React.useRef<HTMLInputElement>(null);
-  const close = (refocus: boolean) => { setOpen(false); setFind(""); if (refocus) opener.current?.focus(); };
+  const panel = React.useRef<HTMLDivElement>(null);
+  const [shift, setShift] = React.useState(0);
+  const close = (refocus: boolean) => { setOpen(false); setFind(""); setShift(0); if (refocus) opener.current?.focus(); };
+  // The panel never crosses the screen's right edge (review M7: 200 % zoom): it moves left by what would overflow.
+  React.useLayoutEffect(() => {
+    if (!open || !box.current || !panel.current) return;
+    const left = box.current.getBoundingClientRect().left, width = panel.current.offsetWidth;
+    setShift(Math.min(0, window.innerWidth - 16 - width - left));
+  }, [open]);
   React.useEffect(() => {
     if (!open) return;
     finder.current?.focus();
@@ -40,20 +48,21 @@ function SourceFilter({ choices, chosen, toggle, clear, failed, retry }: { choic
   const needle = find.trim().toLowerCase();
   const listed = choices.filter((c) => !needle || words(c).toLowerCase().includes(needle) || c.toLowerCase().includes(needle));
   return (
-    <div ref={box} data-source-filter className="relative flex flex-wrap items-center gap-2" onKeyDown={(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); close(true); } }}>
+    <div ref={box} data-source-filter className="relative flex flex-wrap items-center gap-2" onKeyDown={(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); close(true); } }}
+      onBlur={(e) => { if (open && !box.current?.contains(e.relatedTarget as Node | null)) close(false); }}>   {/* focus leaving closes it (review m9) */}
       <Button ref={opener} variant="outline" size="sm" aria-expanded={open} aria-controls="fo-source-list" data-source-toggle onClick={() => (open ? close(true) : setOpen(true))}>
         {chosen.length ? `Source (${chosen.length})` : "Source: all"}
       </Button>
       {chosen.map((c) => (
         <span key={c} data-source-chip={c} className="inline-flex min-h-8 items-center gap-1 rounded-full border border-primary bg-primary/10 pl-3 pr-1 text-sm font-medium text-text-link [overflow-wrap:anywhere]">
           {words(c)}
-          <button type="button" aria-label={`Remove source: ${words(c)}`} onClick={() => toggle(c)} className="rounded-full px-1.5 outline-none hover:bg-text/10 focus-visible:ring-[3px] focus-visible:ring-ring/50">×</button>
+          <button type="button" aria-label={`Remove source: ${words(c)}`} onClick={() => { toggle(c); opener.current?.focus(); }} className="rounded-full px-1.5 outline-none hover:bg-text/10 focus-visible:ring-[3px] focus-visible:ring-ring/50">×</button>
         </span>
       ))}
       {chosen.length ? <Button variant="link" size="sm" data-source-clear onClick={clear}>All sources</Button> : null}
       {failed ? <span role="alert" className="text-sm text-text-danger">Could not load the sources. <Button variant="link" size="sm" onClick={retry}>Try again</Button></span> : null}
       {open ? (
-        <div id="fo-source-list" className="absolute left-0 top-full z-20 mt-1 w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface-raised p-2 shadow-lg">
+        <div id="fo-source-list" ref={panel} tabIndex={-1} style={{ left: shift }} className="absolute top-full outline-none z-20 mt-1 w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface-raised p-2 shadow-lg">
           <label className="block">
             <span className="sr-only">Find a source</span>
             <Input ref={finder} type="search" placeholder="Find a source" value={find} onChange={(e) => setFind(e.target.value)} data-source-find />

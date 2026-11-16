@@ -137,9 +137,20 @@ for (const w of [1440, 375]) {
   if (w === 375) { await p.locator("[data-source-toggle]").click(); await p.locator("#fo-source-list").waitFor(); ok("FO-4sf DW3 pass: the open list fits the 375 px screen", await p.evaluate(() => { const r = document.getElementById("fo-source-list")!.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth + 1 && document.documentElement.scrollWidth <= window.innerWidth + 1; })); await axe("FO-4sf Source list open (375 px)"); await p.screenshot({ path: join(SHOTS, "leads-source-filter-375.png"), fullPage: true }); await p.keyboard.press("Escape"); }
   else await p.screenshot({ path: join(SHOTS, "leads-source-filter-1440.png"), fullPage: true });
 }
+// 200 % zoom (1440×900 → 720×450, review M7): the open panel stays on screen, the page never scrolls sideways.
+await p.setViewportSize({ width: 720, height: 450 });
+await p.locator("[data-source-toggle]").click(); await p.locator("#fo-source-list").waitFor();
+const at720 = await p.evaluate(() => { const r = document.getElementById("fo-source-list")!.getBoundingClientRect(); return { left: r.left, right: r.right, sw: document.documentElement.scrollWidth, w: window.innerWidth }; });
+ok("FO-4sf DW3 pass (200 % zoom): at 720 px the open Source panel stays inside the screen and the page has no sideways scroll", at720.left >= 0 && at720.right <= at720.w + 1 && at720.sw <= at720.w + 1, at720);
+await axe("FO-4sf Source list open (720 px, 200 % zoom)");
+// Fail side (review m9): Tab out of the last box leaves the control, and the panel closes rather than lying over the table.
+const boxes = await p.locator("#fo-source-list input[data-source]").count();
+await p.locator("[data-source-find]").focus(); for (let i = 0; i <= boxes; i++) await p.keyboard.press("Tab");
+ok("FO-4sf DW3 fail: focus leaving the Source control closes the panel", (await p.locator("#fo-source-list").count()) === 0 && !(await p.evaluate(() => document.getElementById("fo-source-list")?.contains(document.activeElement) ?? false)));
 await p.setViewportSize({ width: 1440, height: 900 });
-await p.getByRole("button", { name: "Remove source: Phone call" }).click(); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ timeout: 15_000 });
-ok("FO-4sf DW3 pass: the chip's × removes that source and clears the address", !p.url().includes("source=") && (await shown()).has(numberOf(L.oWeb)), p.url());
+// Keyboard removal (review m8): the × removes that source and focus lands on the Source button, never on the page.
+await p.getByRole("button", { name: "Remove source: Phone call" }).focus(); await p.keyboard.press("Enter"); await p.locator(`tr[data-lead-row="${numberOf(L.tBook)}"]`).waitFor({ timeout: 15_000 });
+ok("FO-4sf DW3 pass: the chip's × (keyboard) removes that source, clears the address and leaves focus on the Source button", !p.url().includes("source=") && (await shown()).has(numberOf(L.oWeb)) && await p.evaluate(() => document.activeElement?.hasAttribute("data-source-toggle") ?? false), p.url());
 await p.goto(`${BASE}/front-office/leads?view=all&source=Referral&source=WEBSITE`); await p.locator(`tr[data-lead-row="${numberOf(L.tWeb)}"]`).waitFor({ timeout: 30_000 });
 await p.locator("[data-source-clear]").click(); await p.locator(`tr[data-lead-row="${numberOf(L.tMan)}"]`).waitFor({ timeout: 15_000 });
 ok("FO-4sf DW3 pass: All sources clears every chosen source and the address", !p.url().includes("source=") && (await p.locator("[data-source-chip]").count()) === 0, p.url());

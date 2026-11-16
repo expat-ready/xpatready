@@ -58,31 +58,41 @@ D1 2→4 (the source is right now; chip wall, Major 4) · D2 5 · D3 4 · D4 N/A
 
 **Verdict: Block** (= Changes requested). Must: Blocker 1. Should: Minors 2 and 3, in the same push or listed in the PR. A re-review reads only the diff.
 
-## Re-review at `e227799a207a6d270e5565508d3c262d75aef1c8` (diff `036a5a78..e227799a` only, P-277; PR #1962)
-Copy `review_fo4sf2` on :4436, never :4400; US$0.
-- **Blocker 1: fixed.**
-  - `list` filters the stored `source` (`leads.ts:61`). Values come repeated and are never split. Allowed = the distinct sources of leads the person may see (`seenWhere`). `GET leads/sources` (@OwnOrAll) gives the chips, and `words()` shows them as the Source column does.
-  - J1 again: "Referral" pressed → the Source column reads only "Referral".
-  - The suite has a booked lead whose source is "Phone call", and a door filter fails DW1 and DW3.
-  - Unknown values (or another person's) → 400 naming only the person's own sources, so a source cannot be used to probe for another person's leads.
-  - Mutation: choices ignoring visibility → PF-6b DW6 FAIL and FO-4sf "DW2 fail" FAIL (reverted).
-- **Minor 3: fixed.** The no-match line now reads "No lead matches “Bo…” among Referral."
-- **Minor 2: still open, recorded in the PR.** The app's Leads link goes to `?view=all`. Acceptable as a Minor.
-- **Runs (mine):** `check_fo4sf` 24/24 · `check_fo2` 113/113 · `check_fo2v` 14/14 · `check_pf6b` 29/29 · `check_fo4_sales_browser` 45/45. axe is clean at 1024 and 720 px, with no sideways scroll. Rewritten screenshots restored.
+## Re-review at `e227799a207a6d270e5565508d3c262d75aef1c8` (diff `036a5a78..e227799a`, P-277; PR #1962; full text in git at `40c11741`)
+- **Fixed:**
+  - Blocker 1: the list filters the stored `source`, never split. Allowed values are the person's visible sources. `GET leads/sources` is behind @OwnOrAll. A booked lead with the source "Phone call" is in the suite. Mutation (choices ignoring visibility) → PF-6b DW6 and FO-4sf DW2 FAIL.
+  - Minor 3: the no-match line names the filter.
+- **Still open:** Minor 2 (the in-app Leads link drops `?source=`, `lead-page.tsx:85`), listed in the PR, acceptable.
+- **New, then:**
+  - Major 4: the chip wall (26 sources at 1024×800: 12 chip rows, table at 726 px, 26 tab stops).
+  - Minor 5: Prisma `distinct` ran in memory (no DISTINCT/LIMIT in SQL; 0.14–0.23 s at 80,045 leads), and `take: 200` hid later sources.
+  - Minor 6: `words()` turned typed "CAPS" into "Caps".
+- **Runs:** `check_fo4sf` 24/24 · `check_fo2` 113/113 · `check_fo2v` 14/14 · `check_pf6b` 29/29 · `check_fo4_sales_browser` 45/45. Journey 8/10.
+- **Verdict:** Changes requested for `e227799a` (Major 4).
+
+## Re-review at `40c117414a66654b30785d64d0ad555b52e2357b` (diff `e227799a..40c11741` only, P-277) · Copy `review_fo4sf3` on :4436, never :4400; US$0. Firm with 36 sources (the suite's 34 plus mine: "VIP", "Événement à Montréal (Sample)").
+- **Major 4: fixed.** `SourceFilter` (`leads-page.tsx:29-76`) is one disclosure button, "Source: all" / "Source (n)", with aria-expanded and aria-controls. It opens a Find box (focused on open) and a scrolling checkbox fieldset, and chosen sources show as removable chips.
+  - With 36 sources, the first row starts at 271 px at 1024×800.
+  - Keyboard: 8 Tabs reach the button. Then Enter → type "vip" → Tab → Space filters, focus stays on the checkbox, and the Source column reads only "VIP".
+  - axe is clean with the panel open at 1024. At 375 px the panel sits at x 16–336.
+- **Minor 5: fixed.** `groupBy` sends `SELECT source … WHERE firm_id = $1 GROUP BY source ORDER BY source` (query log). There is no cap.
+- **Minor 6: fixed.** `words()` maps known codes only. "VIP" is shown as typed; every lead state in sales is mapped (OPEN, ENGAGED, CLOSED).
+- **Runs (mine):** `check_fo4sf` 29/29 · `check_fo2` 113/113 · `check_fo2v` 14/14 · `check_pf6b` 29/29 · `check_fo4_sales_browser` 45/45. Rewritten screenshots restored.
 
 ### New in this diff
-4. **Major (Must): the filter is a row of chips over an open-ended list, so it does not scale.**
-   - The brief asks for "a multi-select". Every typed source becomes a chip.
-   - With 26 sources at 1024×800, the chips take 12 rows and the table starts at 726 px, below the fold. A keyboard user tabs through 26 stops to reach search (my run; screenshot step `re-1024`).
-   - AG-2-2 rule 3 alone seeds 15 sources. EXPERIENCE [M] line 7 (scalability first) and line 29 (keyboard path) apply.
-   - **Fix:** one "Source" control on the app's existing dropdown/popover: a checkbox list with type-to-find, the chosen sources shown as removable chips, `?source=` and the keyboard path kept. A pass and a fail at 30 sources: the table in the first screen at 1024 px.
-5. **Minor (Should): the distinct runs in memory.**
-   - Prisma sends `SELECT id, source FROM fo_lead WHERE … ORDER BY source OFFSET $2` with no DISTINCT and no LIMIT (query log), and dedups in the engine. It reads every visible lead, open and closed, on each page load and each filtered call.
-   - At 80,045 leads: `leads/sources` 0.14–0.23 s, list+source 0.13–0.16 s; SQL DISTINCT takes 0.03 s. That is within budget but grows with history.
-   - The `take: 200` applies after the dedup, so a source past the 200th (A to Z) can be neither chosen nor asked for (400).
-   - **Fix:** `groupBy({ by: ["source"] })` or `$queryRaw … SELECT DISTINCT`, and drop or raise the cap together with fix 4.
-6. **Minor (Should): `words()` rewords typed text in capitals.** A typed "CAPS" shows as "Caps", and "VIP" would show as "Vip" (`contract.ts:45`). Map only the known codes in `WORDS` and show other text as typed.
+7. **Major (Must): with the panel open at 200 % zoom, the page scrolls sideways.**
+   - At 720×450 (1440×900 at 200 %), the button sits beside the view chips. The panel is anchored `left-0` (`leads-page.tsx:56`) and runs to x 729.
+   - Opening it moves focus into the Find box and the whole page scrolls sideways: `scrollWidth` 938 against 720. The header and the menu are cut off (my screenshot step `r3-zoom200`).
+   - Closed it is fine, and 1024 and 1440 open are fine.
+   - EXPERIENCE [M] line 29 ("1024 px and 200 % zoom work") and BIC-20 (no sideways page scroll) are not met in this state. The suite checks the open panel only at 375 px, where the control wraps to its own line.
+   - **Fix:** keep the panel inside the viewport: anchor it right when it would cross the edge (`right-0` or a measured side), or give the control its own row below `lg`. Add a pass and a fail at 720 px with the panel open, `scrollWidth <= innerWidth`.
+8. **Minor (Should): removing a chosen source loses focus.**
+   - "Remove source: VIP" by keyboard sends focus to `<body>`, because the chip unmounts.
+   - **Fix:** move focus to the Source button (or the next chip).
+9. **Minor (Should): the panel stays open when focus leaves it.**
+   - After Tab past the list, focus is on search and rows (not hidden), but the panel stays over the table, and Escape no longer closes it (the key handler sits on the control).
+   - **Fix:** close it on focus leaving (`onBlur` with `relatedTarget` outside). (Not a finding: Find is accent-sensitive, "evenement" misses "Événement": polish beyond the bar.)
 
-**Journey score at this head: 8/10** (pass, no 0). Task completed 1 · next step obvious ½ (chip wall) · plain words 1 · feedback and state 1 · correct data 1 · error recovery ½ (Leads link drops the filter) · accessibility and screen sizes ½ (26 tab stops; list below the fold at 1024) · speed 1 · visual quality ½ (chip wall) · trust and sources 1.
+**Journey score at this head: 8.5/10** (pass, no 0). Task completed 1 · next step obvious 1 · plain words 1 · feedback and state 1 · correct data 1 · error recovery ½ (Minor 2, Minor 8) · accessibility and screen sizes ½ (Major 7) · speed 1 · visual quality 1 · trust and sources 1.
 
-**Verdict: Changes requested** for `e227799a`. Must: Major 4. Should: Minors 5 and 6 in the same push, or list them in the PR. Minor 2 stays listed. A re-review reads only the diff.
+**Verdict: Changes requested** for `40c11741`. Must: Major 7 (a one-line placement fix plus its 720 px test). Should: Minors 8 and 9 in the same push, or list them in the PR. Minor 2 stays listed. A re-review reads only the diff.
