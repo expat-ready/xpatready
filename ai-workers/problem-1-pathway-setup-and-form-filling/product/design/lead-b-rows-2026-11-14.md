@@ -1728,3 +1728,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * #2021 comment 6927914399: shard 1 red on `check_bk5_start_browser.cjs` BR-6 (the start page's heading after reset and load) on all 4 tries. The calls are right each time.
 * The PR changes four files only: `ports/person-merge.ts`, its contract, `ports/events.ts` (16 lines) and `tests/check_fo9b_port.ts`. No web, route or demo code. Changing `ports/events.ts` selects every browser suite, so this fits QA-498's shared demo database order fault.
 * Ruling (comment 6928001109): not this PR's. Option 1 is the right call, and the quarantine is Lead 71's (P-205). Asked Lead 71: quarantine BR-6 under QA-498 on main, then `/rerun failed`, then label on green on bdb8484.
+
+## rev 16.89 (17 Nov 01:47 IST): QA-498q and QA-498 briefed (Lead 71's rulings)
+* Lead 71 ruled on #2021 (P-205): a whole-suite entry for `check_bk5_start_browser.cjs` in `run-suites.sh` QUARANTINE, with a comment block naming QA-498, the ruling, "remove by 18 Nov or when the QA-498 fix lands", and that the nightly full set still runs it. No per-line skip. Cloud builder, one PR, Ready for Lead read, Opus reviewer, no breaker; the Lead labels it and it lands ahead (P-214).
+* Briefs: `lead-b-briefs/QA-498q.md` (the quarantine: start now) and `lead-b-briefs/QA-498.md` (the fix: root cause first, P-502; it starts after QA-498q merges; it takes the name off the list; first among the night lines).
+* Until QA-498 lands, BK-5 stays Partial (P-305), and qa does not count the demo doors as Works.
