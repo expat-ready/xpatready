@@ -16,6 +16,7 @@ import type { Snapshot } from "../../engine/snapshot.ts";
 import { systemClock, type ClockPort } from "../../ports/clock.ts";
 import { actorOf, Audit, CaseRead, Db, fail, type Actor } from "./core.ts";
 import { dayMark, localDate, readFirmCalendar, type FirmCalendar } from "./platform/calendar/working-days.ts";
+import { currentFirm } from "./platform/firm-scope.ts";
 import { Programs } from "./programs.ts";
 import { readSpec } from "./routes-data.ts";
 import { Runtime, STAGE_RECORD, type Reached } from "./runtime.ts";
@@ -70,12 +71,10 @@ export class CaseStagesService {
   clock: ClockPort = systemClock;
   constructor(@Inject(Runtime) private readonly r: Runtime, @Inject(Db) private readonly db: Db, @Inject(Audit) private readonly audit: Audit, @Inject(Programs) private readonly programs: Programs) {}
 
-  /** The case's firm calendar (AG-7-99: one office → the firm's). A request with no platform firm in scope (PF-12's
-   *  walls) reads no firm row, so the settings' defaults apply (Mon-Fri, no closed days, America/Toronto). */
-  private async calendarOf(firmKey: string): Promise<FirmCalendar> {
-    const firm = await this.db.platformFirm.findFirst({ where: { key: firmKey }, select: { id: true } });
-    return readFirmCalendar(this.db, firm?.id ?? NO_ID);
-  }
+  /** The firm's calendar (AG-7-99: one office → the firm's), for the platform firm the request runs as (PF-12's walls).
+   *  A request with no platform firm in scope (x-actor) reads no setting, so the settings' defaults apply (Mon-Fri,
+   *  09:00-17:00, no closed days, America/Toronto); the firm is never looked up across the wall. */
+  private calendar(): Promise<FirmCalendar> { return readFirmCalendar(this.db, currentFirm() ?? NO_ID); }
 
   private reach(actor: Actor, caseId: string) { return this.r.reach(actor, UUID.test(caseId) ? caseId : NO_ID, "officer"); }
 
@@ -94,7 +93,7 @@ export class CaseStagesService {
     const labels = new Map((await this.db.combination.findMany({ where: { id: { in: c.stages.map((s) => s.combinationId) } }, select: { id: true, label: true } })).map((x) => [x.id, x.label]));
     const all = c.stages.map((s) => ({ stage_key: s.stageKey, staff_name: s.staffName, key_details: s.keyDetails as Record<string, StoredDetail>, defs: readSpec(s.spec).key_details }));
     const { next } = nextOf(c.stages.map((s) => ({ ...s, stage_key: s.stageKey, state: s.state as StageState })));
-    const cal = await this.calendarOf(c.firmKey), today = localDate(cal.zone, this.clock.now());
+    const cal = await this.calendar(), today = localDate(cal.zone, this.clock.now());
     return Promise.all(c.stages.map(async (s): Promise<CaseStageView> => {
       const spec = readSpec(s.spec), stored = s.keyDetails as Record<string, StoredDetail>;
       const why = s.state === "NOT_STARTED" ? (await this.startability(s.combinationId)).why : null;
