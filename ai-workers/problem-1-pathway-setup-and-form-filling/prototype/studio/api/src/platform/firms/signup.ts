@@ -48,12 +48,21 @@ const problem = (status: number, code: string, title: string, detail: string, ex
 const notFound = () => problem(404, "NOT_FOUND", "Not found", "This link is not valid any more. Sign up again, or sign in.");
 const fields = (errors: string[]) => problem(400, "CHECK_FIELDS", "Check the form", "Some answers need changing.", { errors });
 
+/** QA-484: an empty field answers in plain words on its field, never the validator's. */
+export const EMPTY = { email: "email: Enter your work email.", password: "password: Choose a password.", firmName: "firmName: Enter your firm's name." } as const;
+const filled = (words: string, blank = (s: string) => s.trim() === "") => z.string({ error: words }).check(z.refine((s) => !blank(s), { error: words, abort: true }));
 const Body = z.strictObject({
-  email: z.string(), password: z.string().min(12, "password: at least 12 characters").regex(/\S/, "password: not only spaces").max(256, "password: at most 256 characters"),
-  firmName: z.string().trim().min(2, "firmName: 2 to 120 characters").max(120, "firmName: 2 to 120 characters").refine((s) => !/[\p{Cc}\p{Cf}]/u.test(s), "firmName: no control characters"),
+  email: filled(EMPTY.email), password: filled(EMPTY.password, (s) => s === "").check(z.minLength(12, "password: at least 12 characters"), z.regex(/\S/, "password: not only spaces"), z.maxLength(256, "password: at most 256 characters")),
+  firmName: filled(EMPTY.firmName).transform((s) => s.trim()).pipe(z.string().min(2, "firmName: 2 to 120 characters").max(120, "firmName: 2 to 120 characters").refine((s) => !/[\p{Cc}\p{Cf}]/u.test(s), "firmName: no control characters")),
   countryCode: z.literal("CA", { error: "countryCode: CA only for now" }), planCode: z.string().default("team"), period: z.enum(["MONTHLY", "YEARLY"]).default("MONTHLY"),
   acceptedTerms: z.array(z.string()).default([]), website: z.string().optional(), formStamp: z.string().max(200).default(""),
 });
+/** A refusal in the door's words: ours as written, any other (a wrong type, an unknown key) without the validator's text. */
+const words = (i: z.core.$ZodIssue) => {
+  if (i.code === "unrecognized_keys") return `${i.keys.join(", ")}: not a field of this form`;
+  const f = i.path.join(".") || "body";
+  return i.message.startsWith(`${f}:`) ? i.message : `${f}: check this answer`;
+};
 const VerifyBody = z.strictObject({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/), code: z.string().regex(/^\d{6}$/) });
 /** Pending lifetimes are measured with the database's clock, as the migration's rules are (PF-3 review m6). */
 const dbNow = async (db: Tx | PrismaClient) => (await db.$queryRaw<{ now: Date }[]>`select now() as now`)[0].now;
@@ -104,7 +113,7 @@ export class FirmSignUp {
     this.ready();
     this.limit(`signup:${ip}`, this.limits.signupPerIp);
     const parsed = Body.safeParse(body ?? {});
-    if (!parsed.success) throw fields(parsed.error.issues.map((i) => { const f = i.path.join(".") || "body"; return i.message.startsWith(`${f}:`) ? i.message : `${f}: ${i.message}`; }));
+    if (!parsed.success) throw fields([...new Set(parsed.error.issues.map(words))]);
     const b = parsed.data;
     let email: string;
     try { email = emailOf(b.email); } catch { throw fields(["email: give your work email (name@example.com)"]); }
