@@ -1357,6 +1357,11 @@ class Tooltips(unittest.TestCase):
         self.assertLess(html.index("<b>What to do:</b> '+esc(e.todo)"), html.index("<dt>Counts</dt>"))
         self.assertIn("if(i>=0){var nb=s.querySelectorAll(\".ib\")[i];if(nb)tipShow(nb);}", html)
         self.assertIn("flex-wrap:nowrap;overflow-x:auto", html)            # one row of tabs on a phone
+        # page-made counts list their items on tap (data-items), and the open items show as words in Needs you
+        self.assertIn('querySelectorAll("[data-tip],[data-info],[data-nm],[data-items]")', html)
+        self.assertIn("Also yours: '+mine.length+' launch risks</b>", html)
+        self.assertIn("checks not green</b>", html)
+        self.assertEqual(html.count("mineR.map(riskLine)"), 1)              # "Who must act: You" lists Needs you items and your risks
 
     def test_page_keys_all_in_explain(self):
         html = open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read()

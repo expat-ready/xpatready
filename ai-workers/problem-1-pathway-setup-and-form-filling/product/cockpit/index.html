@@ -193,6 +193,7 @@ details.inline>summary{cursor:pointer;color:var(--accent);font-size:12.5px;displ
 .hlbtn>span{display:block}
 #tip .glist{margin:0;max-height:40vh;overflow:auto}
 #tip .todo{margin:4px 0}
+#needs .also{margin:6px 0 0;color:var(--ink2)}
 #tip .glist div{padding:1px 0;border-top:1px dashed var(--line)}
 /* board v57: Team tab, the org view by component */
 .orgv{display:grid;gap:10px}
@@ -272,6 +273,9 @@ function src(x){return x&&typeof x==="object"&&x.src?x.src:"";}
 /* board v61: S marks a block whose info is a plain source line; T marks a number by its key(s) in data.json's explain block
    (window and n come from the data). Neither shows anything on hover: addIcons() puts one ⓘ button beside each. */
 function S(s){return s?' data-info="'+esc(s)+'"':"";}
+/* 16 Nov (founder on a phone: a count with nothing behind it): a count the page makes from data.json lists its items on tap */
+function LI(todo,lines){return ' data-items="'+esc(JSON.stringify({todo:todo||"",lines:lines||[]}))+'"';}
+function riskLine(r){return r.id+": "+r.risk+(r.trigger_date?" — by "+r.trigger_date:"")+" · do: "+r.mitigation+" · owner: "+r.owner;}
 function T(k){return k?' data-tip="'+esc(k)+'"':"";}
 function nz(x,suf){return x==null?'<span class="nm" data-nm="no value in data.json">not measured</span>':esc(x)+(suf||"");}
 function fmtDate(iso){if(!iso)return "not dated";var d=new Date(iso+"T00:00:00");return d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});}
@@ -322,6 +326,9 @@ function oneHTML(el){
       '<dt>Read it</dt><dd>'+esc(e.read||"")+(e.band?' <b>Healthy:</b> '+esc(e.band)+'.':"")+'</dd>'+
       '<dt>Source</dt><dd>'+esc(e.src)+'</dd><dt>Class</dt><dd>'+esc(e["class"])+(e["class"]==="reported"?" (Lead-reported)":"")+(e.sha?' · sha '+esc(e.sha):"")+(e.as_of?' · as of '+esc(e.as_of):"")+'</dd>'+
       '</dl>';});
+  var it=el.getAttribute("data-items");if(it){try{it=JSON.parse(it);}catch(x){it=null;}}
+  if(it){h=(h?h+'<div class="sep"></div>':'')+(it.todo?'<p class="todo"><b>What to do:</b> '+esc(it.todo)+'</p>':'')+
+    '<span class="l">Behind it ('+esc(it.lines.length)+')</span>'+(it.lines.length?'<div class="glist">'+it.lines.map(function(z){return '<div>'+esc(z)+'</div>';}).join("")+'</div>':'<p style="margin:0">Nothing open.</p>');}
   var info=el.getAttribute("data-info");
   if(info)h+=(keys.length?'<div class="sep"></div>':'')+'<dl><dt>About</dt><dd>'+esc(info)+'</dd></dl>';
   if(el.hasAttribute("data-wn"))h+=wnList();
@@ -366,7 +373,7 @@ function mkBtn(label){var b=document.createElement("button");b.type="button";b.c
   b.setAttribute("aria-label","About: "+label);b.setAttribute("aria-expanded","false");b.setAttribute("aria-controls","tip");return b;}
 function addIcons(root){
   var groups=[];
-  (root||document).querySelectorAll("[data-tip],[data-info],[data-nm]").forEach(function(el){
+  (root||document).querySelectorAll("[data-tip],[data-info],[data-nm],[data-items]").forEach(function(el){
     if(el.hasAttribute("data-ib"))return;
     el.setAttribute("data-ib","1");
     if(el.hasAttribute("data-nm")&&el.parentElement&&el.parentElement.closest("[data-tip],[data-info]"))return;  /* a "not measured" inside a marked block: its reason shows in that block's panel */
@@ -709,6 +716,11 @@ function rNeeds(){
   var items=its.map(function(i){return '<li'+S(i.src)+'><span class="tag">'+esc(i.id)+'</span><div><div>'+esc(i.line)+'</div>'+(i.by?'<div class="small"><b>By '+esc(fmtDate(i.by))+'</b></div>':'')+'</div></li>';});
   var cnt=v(D.summary.needs_you);if(cnt==null)cnt=items.length;
   var h='<section id="needs" class="ovsec" style="margin:12px 0 0"><h2>Needs you <span class="mono"'+T("strip.needs_you")+'>'+esc(cnt)+'</span></h2><ul class="items">'+(items.join("")||'<li class="muted">Nothing needed from you.</li>')+'</ul>';
+  /* 16 Nov: the open items in words on the first screen too, for a view that cannot be tapped (a preview card) */
+  var mine=((D.risks||{}).items||[]).filter(function(r){return r.status!=="closed"&&r.owner==="founder";});
+  if(mine.length)h+='<p class="small also"'+LI("these are yours before the launch gate; the Launch readiness tab has each",mine.map(riskLine))+'><b>Also yours: '+mine.length+' launch risks</b> — '+esc(mine.map(function(r){return r.id+" "+r.risk;}).join("; "))+'</p>';
+  var bad=((D.health||{}).items||[]).filter(function(i){return i.state==="red"||i.state==="amber";});
+  if(bad.length)h+='<p class="small also"'+LI("each check names what to do and who",bad.map(function(i){return i.id+" "+i.name+" ("+i.state+"): "+i.detail+(i.action?" — do: "+i.action+" · who: "+(i.owner||""):"");}))+'><b>Health: '+bad.length+' checks not green</b> (the Lead\'s to fix) — '+esc(bad.map(function(i){return i.name+" ("+i.state+")";}).join("; "))+'</p>';
   return h+'</section>';
 }
 
@@ -1001,8 +1013,10 @@ function rGlance(){
   h+='<h3>Delivery stages of the '+tot+' must-have capabilities (the checklist\'s status)</h3><div class="kpis">';
   stages.forEach(function(st){h+=kpi(st[1],esc(c[st[0]]||0)+'<span class="muted" style="font-size:13px"> / '+tot+'</span>',esc(st[2]),src(C.counts));});
   h+=kpi("Released to production","0","no production yet: it opens after the launch gate (P-589)","P-589 (3), P-590 (1)")+'</div>';
-  h+='<h3>Who must act</h3><div class="kpis">'+kpi("You",esc(ny),"open items in Needs you, at the top",src(D.summary.needs_you),ny?"alert":"");
-  delete byOwner["founder"];var mine=risks.filter(function(r){return r.owner==="founder";}).length;h=h.replace("open items in Needs you, at the top","open items in Needs you, plus "+mine+" launch risks you own");Object.keys(byOwner).sort().forEach(function(o){h+=kpi(esc(o),esc(byOwner[o]),"open launch risks they own","risks.json")});
+  var mineR=risks.filter(function(r){return r.owner==="founder";}),nyL=(D.needs_you.items||[]).map(function(i){return "Needs you "+i.id+": "+i.line+(i.by?" — by "+i.by:"");});
+  h+='<h3>Who must act</h3><div class="kpis">'+kpi("You",esc(ny),"open items in Needs you, plus "+mineR.length+" launch risks you own",null,ny?"alert":"").replace('<div class="kpi','<div'+LI(ny||mineR.length?"decide or do each item; the launch risks are due before the launch gate":"",nyL.concat(mineR.map(riskLine)))+' class="kpi');
+  delete byOwner["founder"];Object.keys(byOwner).sort().forEach(function(o){var mr=risks.filter(function(r){return r.owner===o;});
+    h+=kpi(esc(o),esc(byOwner[o]),"open launch risks they own",null).replace('<div class="kpi','<div'+LI("the owner works each risk before its date (risks.json)",mr.map(riskLine))+' class="kpi');});
   h+='</div><p class="small muted">Terms: "specified" = has acceptance criteria; "built" = all its parts merged into the main line; "proven" = qa\'s independent Works verdict with a recorded test run; "released" = live for a real firm. The proof of concept\'s own count (qa Works on its 98 capabilities) is a separate number in "On track?".</p>';
   return section("","glance","Release 1 at a glance","How much we must build, how far it has got in the standard delivery stages, and who must act.",h);
 }
