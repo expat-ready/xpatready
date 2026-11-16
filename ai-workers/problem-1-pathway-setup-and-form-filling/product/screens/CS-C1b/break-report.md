@@ -58,3 +58,32 @@ The only thing keeping two parallel openings from both passing (P-588 (3)) is th
 * **Wrong actors.** `user-P` (client) and `user-A` (configuration) get 403. An unknown actor, an empty actor and `USER-O` get 401.
 * **Malformed `combinationId`.** Not a uuid, `""`, 10,000 characters, SQL text, `null`, `42` or an array all get 400. The nil uuid gets 404. Broken JSON gets 400. No 500.
 * **Count rules.** Reopen-then-decide, a correction (a second DECISION row), withdrawn and closed cases, and a case with one of two filings decided all behave as DW9 and DW14 name them.
+
+## Re-check on c224b4f6e
+
+Diff read: `git diff 41afe0364..c224b4f6e`, covering `case-count.ts` and `runtime.ts` (plus the test and the qa note). New isolated copy `csc1b_brk` on :4592, using the same harness. Scratch scripts are `/tmp/claude-0/brk/brk2.mts`, `brk3.mts`, `brk6.mts`, `brk7.mts` and `brk8.mts`. The copy is stopped and removed. The working tree stayed on `claude/runtime-csc1b`, whose code is the same as c224b4f6e.
+
+**M1: fixed.**
+* 6 parallel openings with the same key at N−1: one 201 and five `201 created:false`, all one case. This is the same result as on a free plan.
+* The same key with two different bodies, 3 requests each, 3 runs: the winning body gets one 201 plus two replays, and the other body gets 409 "This idempotency key was already used…" every time.
+* 4 requests with key K plus 4 with no key at N−1, 3 runs. When K wins, the other K requests replay (`K201r K201 K201r K201r`). When a keyless request wins, all four K requests get 409. There is always exactly one case.
+* With the firm full, 5 parallel retries of a key whose case already exists: all `201 created:false` with the same id.
+* No regressions: 10 and 50 parallel openings from N−1 each give one 201 and add one party. DW12 through the API is unchanged: firm A 10×409; firm B one 201 and nine 409; body fields asking for the other firm are still ignored.
+
+**M2: the outbox part is fixed.** With 350k extra `module_event` rows (50k of them `case.reopened`), `activeCounts()` takes a median of 37 ms (49 ms max), against 3 ms before the rows were added. 10 and 50 parallel openings were all 201 (0.7 s and 3.2 s).
+
+**M3: fixed for the count.**
+* (a) Stage 1 is decided and stage 2 started before Prepare: the count goes 17 → 18, so the case counts again.
+* (b) Stage 1 ended with an unrecorded filing, then stage 2 was filed and decided: the count goes 18 → 17, so the case stops counting.
+
+**New**
+* **m4 Minor: the count's cost now grows with the square of the firm's OPEN cases.** The `filings` CTE is materialized and has no index. Two lines scan the whole CTE once for every open case: `exists (select 1 from filings f where f.case_id = c.id)` and the `not exists` beside it (`case-count.ts:37-39`). EXPLAIN shows a CTE scan with `loops=2031` over 2031 rows.
+  * Cases that are decided but not closed stay OPEN (closing is a manual staff step), so they are counted in this cost.
+  * Measured: 2133 OPEN cases → 0.3 s per count. 6133 → 2.2 s.
+  * At 6133, 5 parallel openings were all 201 but took 10.7 s. 10 parallel openings gave six 201 and **four 500**. The 500 is `P2028` "expired transaction… timeout 15000 ms, 15248 ms passed" at `party.create`.
+  * At 2133, 50 parallel openings gave 42×201 and 8×500.
+  * This is beyond the sample data (STANDARDS §9), so it is Minor. It can be fixed without a migration, for example with a per-case aggregate join instead of scanning the CTE for each case.
+* **Still open, not in this diff:** m1 (timestamp order: decision recorded at 11:46:08.640, reopen at 11:46:08.958, count 18 → 19), m2 (the case group read live from configuration) and m3 (the port signature).
+* **Note for CS-C1a, not a CS-C1b finding:** CS-C1a's close still reads every stage's active filings (`case-close.ts:66`), so close and the count now disagree.
+  * In (a), close accepted a case on stage 2 before Prepare.
+  * In (b), the case cannot be closed or withdrawn. It stops counting correctly, but it stays OPEN for good.

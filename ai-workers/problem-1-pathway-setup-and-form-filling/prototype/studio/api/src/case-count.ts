@@ -31,14 +31,13 @@ export class PgCaseCount implements CaseCountPort {
       ), reopened as (   -- review m2: each decided case's last reopen, read once per count (module_event has no subject index)
         select e.subject_id, max(e.occurred_at) as at from module_event e
         where e.type = ${EVENT.CASE_REOPENED} and e.subject_id in (select distinct d.case_id::text from case_decision d where d.case_id in (select case_id from filings)) group by e.subject_id
+      ), per_case as (   -- breaker m4 on c224b4f6e: one pass over the filings, grouped per case (linear in the firm's cases)
+        select f.case_id, count(*) filter (where not exists (
+            select 1 from case_decision d where d.filing_id = f.id and d.case_id = f.case_id and d.kind = 'DECISION'
+              and d.recorded_at > coalesce(r.at, '-infinity'::timestamptz))) as undecided
+          from filings f left join reopened r on r.subject_id = f.case_id::text group by f.case_id
       ), active as (
-        select c.id, c.combination_id from open_cases c left join reopened r on r.subject_id = c.id::text
-        where not (
-            exists (select 1 from filings f where f.case_id = c.id)
-            and not exists (
-              select 1 from filings f where f.case_id = c.id and not exists (
-                select 1 from case_decision d where d.filing_id = f.id and d.case_id = c.id and d.kind = 'DECISION'
-                  and d.recorded_at > coalesce(r.at, '-infinity'::timestamptz))))
+        select c.id, c.combination_id from open_cases c left join per_case p on p.case_id = c.id where p.case_id is null or p.undecided > 0
       ), up as (
         select x.id as combination_id, p.workspace_id, p.parent_node_key, p.node_kind, p.client_type, 0 as depth
           from combination x join program_def p on p.id = x.program_def_id where x.id in (select combination_id from active)
