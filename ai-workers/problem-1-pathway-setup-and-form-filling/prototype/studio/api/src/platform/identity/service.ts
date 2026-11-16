@@ -12,10 +12,11 @@ import { EVENT, StaffEventPayload } from "../../../../ports/events.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
 import { firmScope, notInFirm } from "../firm-scope.ts";
 import { actorWord, auditInvitation, auditStaff } from "./audit.ts";
-import { moneyKeysOfRoles, readCatalogue } from "./catalogue.ts";
+import { readCatalogue } from "./catalogue.ts";
 import { CognitoIdentity } from "./cognito.ts";
 import { FIRM_KEY, dutiesOf, forbidden, problem, unauthorized, type StaffContext } from "./keys.ts";
 import { LocalIdentity } from "./local.ts";
+import { writeMoneyKeysGranted } from "./money-line.ts";
 import { IdentityRefused, PlatformClock, identityConfig, type IdentityPort } from "./port.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./session/mail.ts";
 import { requireStepUp } from "./session/step-up.ts";
@@ -236,12 +237,8 @@ export class PlatformIdentity implements OnModuleInit {
       for (const g of t.grants.filter((g) => removed.includes(g.role))) await tx.platformRoleGrant.update({ where: { id: g.id }, data: { endedAt: now, endedBy: actorWord(actor.staffId), endReason: reason ?? "roles changed" } });
       for (const role of added) await tx.platformRoleGrant.create({ data: { firmId: actor.firmId, staffId: t.id, role, grantedBy: actorWord(actor.staffId), grantedAt: now } });
       await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.roles_changed", entityKey: t.id, summary: `roles changed: ${from.join(", ") || "none"} → ${to.join(", ")}`, detail: { staffId: t.id, before: from, after: to, reason } });
-      // PF-6b ruling 2 (b): a role that brings money keys writes its own line, naming the keys (key names only).
-      // Only the roles that bring a money key are named (break m2).
-      const moneyRoles: string[] = [];
-      for (const role of added) if ((await moneyKeysOfRoles(tx, [role])).length) moneyRoles.push(role);
-      const money = await moneyKeysOfRoles(tx, moneyRoles);
-      if (money.length) await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.money_keys_granted", entityKey: t.id, summary: `money permissions given with ${moneyRoles.join(", ")}: ${money.length} keys`, detail: { staffId: t.id, roles: moneyRoles, moneyKeys: money } });
+      // PF-6b ruling 2 (b): a role that brings money keys writes its own line (the one shared helper, PF-6m).
+      await writeMoneyKeysGranted(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), staffId: t.id, roles: added });
       await tx.moduleEvent.create({ data: { firmId: actor.firmId, type: EVENT.STAFF_ROLES_CHANGED, subjectId: t.id, payload: StaffEventPayload.parse({ staffId: t.id }) } });   // last (m8)
       return { staffId: t.id, roles: to, changed: true };
     });

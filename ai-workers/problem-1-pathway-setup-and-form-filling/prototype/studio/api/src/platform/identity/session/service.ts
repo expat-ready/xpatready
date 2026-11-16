@@ -10,6 +10,7 @@ import { Db } from "../../../core.ts";
 import { auditEvent } from "../../audit/audit-event.ts";
 import { firmScope, notInFirm } from "../../firm-scope.ts";
 import { actorWord } from "../audit.ts";
+import { writeMoneyKeysGranted } from "../money-line.ts";
 import { forbidden, problem, unauthorized, type StaffContext } from "../keys.ts";
 import { PlatformClock } from "../port.ts";
 import { PlatformIdentity } from "../service.ts";
@@ -94,6 +95,9 @@ export class PlatformSession {
       if (await tx.platformStaff.findFirst({ where: { email: inv.email }, select: { id: true } })) problem(409, "Use another email", `This email already signs in to another firm. Ask ${inv.firm_name} to invite another address.`, { code: "EMAIL_IN_ANOTHER_FIRM" });
       const staff = await tx.platformStaff.create({ data: { firmId: inv.firm_id, email: inv.email, displayName: inv.email.split("@")[0].slice(0, 100), status: "ACTIVE" } });
       for (const role of inv.roles) await tx.platformRoleGrant.create({ data: { firmId: inv.firm_id, staffId: staff.id, role, grantedBy: inv.invited_by } });
+      // PF-6m (QA-478; PF-6b ruling 2 (b)): money keys given by an invitation write the same line as the role-change door,
+      // by the inviter (as the grant rows record), before the provider call so a refusal rolls it back too.
+      await writeMoneyKeysGranted(tx, { firmId: inv.firm_id, firmKey: inv.firm_key, actor: inv.invited_by, staffId: staff.id, roles: inv.roles });
       await tx.$executeRaw`update platform_invitation set accepted_at = now() where id = ${inv.id}::uuid`;
       await auditEvent.record(tx, { firmId: inv.firm_id, actor: "system:invitation-accept", action: "platform.invitation.accepted", entity: "platform_invitation", entityKey: inv.id, summary: `an invitation was accepted; a staff member joined (${inv.roles.join(", ")})`, detail: { invitationId: inv.id, staffId: staff.id, roles: inv.roles } });
       // Last, so a refused provider call rolls everything back (AdminCreateUser with MessageAction SUPPRESS).
