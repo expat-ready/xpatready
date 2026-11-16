@@ -187,6 +187,33 @@ details.inline>summary{cursor:pointer;color:var(--accent);font-size:12.5px;displ
 .stale{max-width:1120px;margin:0 auto 6px;padding:8px 12px;border-radius:8px;font-size:15px;line-height:1.35;border:2px solid var(--wait);background:var(--wait-soft);color:var(--ink)}
 .stale.fr-red{border-color:var(--bad);background:var(--bad-soft)}
 .stale b{font-size:17px}
+.gloss{font-size:13.5px;color:var(--ink2);margin:2px 0 4px}
+.first{display:grid;gap:10px;grid-template-columns:1fr}
+@media(min-width:900px){.first{grid-template-columns:1fr 1fr}.first>#fc-release{grid-column:1/-1}}
+.fcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:0}
+.fcard>summary{list-style:none;cursor:pointer;padding:12px 14px;display:grid;grid-template-columns:1fr auto;gap:2px 10px}
+.fcard>summary::-webkit-details-marker{display:none}
+.fcard>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.fcard .fk{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink2)}
+.fcard .chev{color:var(--accent);font-size:13px}.fcard .chev::after{content:" ▾"}.fcard[open] .chev::after{content:" ▴"}
+.fcard .fbig{grid-column:1/-1;font-size:22px;font-weight:600;min-width:0}
+.fcard .fbig .sep{color:var(--ink3);font-weight:400;padding:0 5px}
+.fcard .fline{grid-column:1/-1;min-width:0}
+.fbody{border-top:1px solid var(--line);padding:10px 14px 12px;background:var(--panel2);display:flex;flex-direction:column;gap:6px;font-size:14px;border-radius:0 0 10px 10px}
+.fbody p{margin:0}.fsrc{font-size:12.5px;color:var(--accent)}
+.flist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+.pill{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:1px 9px;margin-right:6px;vertical-align:1px}
+.p-bad{background:var(--bad-soft);color:var(--bad)}.p-wait{background:var(--wait-soft);color:var(--wait)}.p-good{background:var(--good-soft);color:var(--good)}.p-none{background:var(--none-soft);color:var(--none)}
+.warnline{color:var(--wait)}
+.arow,.srow{display:flex;flex-direction:column;gap:2px;padding:6px 0;border-top:1px dashed var(--line)}
+.arow:first-child,.srow:first-child{border-top:0;padding-top:0}
+.abtn{display:flex;gap:6px;margin-top:3px}
+.ab,.rf{font:600 13px var(--sans);border-radius:6px;padding:4px 10px;cursor:pointer;border:1px solid var(--accent);background:var(--panel);color:var(--accent)}
+.ab:first-child{background:var(--accent);color:var(--bg)}
+.ab:focus-visible,.rf:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.rqline{font-size:12.5px;color:var(--ink)}
+details.sub>summary{cursor:pointer;color:var(--accent);font-size:13px}
+details.more{margin-top:14px}details.more>summary{cursor:pointer;font-weight:600;color:var(--accent);padding:10px 0}
 .clk{cursor:pointer}.clk:hover{outline:1px solid var(--accent);outline-offset:1px;border-radius:4px}
 .hlbtn{all:unset;display:block;cursor:pointer;width:100%;box-sizing:border-box}
 .hlbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
@@ -244,20 +271,9 @@ details.inline>summary{cursor:pointer;color:var(--accent);font-size:12.5px;displ
 }
 </style>
 
-<div class="strip" id="strip"><div id="fresh"></div><div class="strip-top" id="stripTop">
-  <div class="tile"><div class="k">Works today</div><div class="v">&#x2026;</div></div>
-  <div class="tile"><div class="k">Plan % per capability</div><div class="v">&#x2026;</div></div>
-  <div class="tile"><div class="k">Lanes</div><div class="v">&#x2026;</div></div>
-</div><div class="strip-in" id="stripIn">
-  <div class="tile"><div class="k">Needs you</div><div class="v">&#x2026;</div></div>
-  <div class="tile"><div class="k">Release 1</div><div class="v">&#x2026;</div></div>
-  <div class="tile"><div class="k">Proof of concept</div><div class="v">&#x2026;</div></div>
-  <div class="tile"><div class="k">Next date</div><div class="v">&#x2026;</div></div>
-  <div class="tile"><div class="k">Health</div><div class="v">&#x2026;</div></div>
-  <div class="tile"><div class="k">Plan use</div><div class="v">&#x2026;</div></div>
-</div><div class="lineage" id="lineage"></div><div id="healthPanel" hidden></div></div>
+<div class="strip" id="strip"><div id="fresh"></div></div>
 <div class="wrap" id="app">
-  <header class="top"><h1>Founder's Progress Board</h1><p>Pathway Configurator, Release 1. Every number comes from the data script; click any number, card or check (or the ⓘ beside it) to see what it counts, what is behind it, its source and time, and what to do.</p></header>
+  <header class="top"><h1>Founder's Progress Board</h1><p class="gloss" id="gloss"></p><p class="small muted">Pathway Configurator, Release 1. Every number comes from the data script; click any number, card or check (or the ⓘ beside it) to see what it counts, what is behind it, its source and time, and what to do.</p></header>
   <div id="body"><p class="muted">Loading data.json&#x2026;</p></div>
 </div>
 <div id="tip" role="region" aria-live="polite" aria-label="About this number"></div>
@@ -295,6 +311,14 @@ function kpi(label,val,sub,s,cls,key){return '<div class="kpi'+(cls?" "+cls:"")+
 
 /* board v61: clicks. Only a ⓘ button opens its panel; tapping a number does nothing; a second click, Esc or a click outside closes */
 document.addEventListener("click",function(e){
+  if(e.target.closest&&e.target.closest("#rf")&&DB&&D){var now=new Date().toISOString();DBMSG="";RQ={state:"requested",at:now,data_at:D.freshness.generated_at};paintFresh();
+    dbWrite("board/refresh",{state:"requested",at:now,data_at:D.freshness.generated_at},function(m){RQ=null;DBMSG=m;paintFresh();});return;}
+  var ab=e.target.closest&&e.target.closest("[data-ans]");
+  if(ab&&DB){var row=ab.closest("[data-akey]"),k=row.getAttribute("data-akey"),nx={};Object.keys(ANS).forEach(function(x){nx[x]=ANS[x];});
+    nx[k]={answer:ab.getAttribute("data-ans"),at:new Date().toISOString(),what:row.getAttribute("data-what")||""};ANS=nx;paintAnswers();
+    dbWrite("board/answers",nx,function(m){var s=row.querySelector(".astate");if(s)s.textContent=m;});return;}
+  var op=e.target.closest&&e.target.closest("[data-open]");
+  if(op){e.preventDefault();var mo=document.getElementById("more");if(mo)mo.open=true;var tb2=document.querySelector('.tabs button[data-tab="'+op.getAttribute("data-open")+'"]');if(tb2){tb2.click();tb2.scrollIntoView({block:"start"});}return;}
   var b=e.target.closest&&e.target.closest(".ib");
   if(b){e.preventDefault();if(tipBtn===b)tipHide();else tipShow(b);return;}
   /* 16 Nov (founder: "when you click, it doesn't show me anything"): a click anywhere on a marked item opens its panel,
@@ -413,8 +437,7 @@ function XK(k){return !!(D&&D.explain&&D.explain[k]);}
 /* 16 Nov (founder on a phone read a view 1.6 h old): the page is fixed to one published version, so a view left open never
    gets newer numbers. The data time (IST) and its age stay on the strip; from 45 min a banner says to reload, red from 2 h. */
 function freshHTML(age){var st=ageState(age),g=esc(D.freshness.generated_ist||"");
-  var line='<div class="fresh fr-'+st+'" role="status"><b>Data '+g+'</b> · '+esc(ageText(age))+' old'+
-    (st==="green"?"":' · <b>reload this page</b> for newer numbers')+'</div>';
+  var line='<div class="fresh fr-'+st+'"><b>Data '+g+'</b> · '+esc(ageText(age))+' old'+rfHTML()+'</div>';
   if(st==="green")return line;
   return '<div class="stale fr-'+st+'" role="status"><b>This view is '+esc(ageText(age))+' old: reload</b><br>Numbers are from '+g+
     '. Reload the page (on a phone, pull down or close and reopen it) to see the newest board.</div>';}
@@ -433,6 +456,23 @@ function plain(k){return PLAIN[k]||k.replace(/_/g," ");}
    "not measured" with its reason, never a guess. Rules caught stay internal (Health item 4). */
 var SIZES=["S","M","L"];
 function sizeMix(b){if(!b)return "";var t=SIZES.map(function(k){return k+" "+(b[k]||0);}).join(" \u00b7 ");return t+(b["not shaped"]?" \u00b7 not shaped "+b["not shaped"]:"");}
+/* P-636 Refresh (founder 16 Nov, option b): the button writes board/refresh in the page's database (owner only); the Lead's
+   30-min check reads it, has the board rebuilt and published; open views update by themselves (FORMULAS.md › Refresh) */
+var DB=null,ANS={},RQ=null,DBMSG="";
+function hmIST(iso){try{return new Date(iso).toLocaleTimeString("en-GB",{timeZone:"Asia/Kolkata",hour:"2-digit",minute:"2-digit"})+" IST";}catch(e){return iso;}}
+function rqOpen(){return RQ&&RQ.state==="requested"&&Date.parse(RQ.at)>Date.parse(D.freshness.generated_at);}
+function rfHTML(){if(!DB)return "";
+  if(rqOpen())return ' <span class="rqline" role="status">Refresh requested at '+esc(hmIST(RQ.at))+'; the Lead\'s next check (at most 30 min) rebuilds the board and this page updates by itself.</span>';
+  return ' <button type="button" class="rf" id="rf">Refresh</button>'+(DBMSG?' <span class="rqline">'+esc(DBMSG)+'</span>':'');}
+function paintFresh(){if(D){var f=document.getElementById("fresh");if(f)f.innerHTML=freshHTML(dataAgeH());}}
+function paintAnswers(){document.querySelectorAll("[data-akey]").forEach(function(r){var k=r.getAttribute("data-akey"),a=ANS[k],s=r.querySelector(".astate"),bs=r.querySelector(".abtn");
+  if(bs)bs.hidden=!DB;if(s)s.textContent=a?(a.answer==="done"?"You marked this Done at ":"You marked this Not today at ")+hmIST(a.at)+"; the Lead's next check reads it.":(DB?"":"Answers are saved only for the board's owner.");});}
+function dbInit(){try{if(!window.claude||!window.claude.use)return;}catch(e){return;}
+  window.claude.use("db").then(function(db){if(!db)return;DB=db;
+    db.doc("board/answers").onSnapshot(function(s){ANS=(s.exists&&s.data())||{};paintAnswers();},function(){});
+    db.doc("board/refresh").onSnapshot(function(s){RQ=s.exists?s.data():null;paintFresh();},function(){});
+    paintFresh();paintAnswers();}).catch(function(){});}
+function dbWrite(path,body,onFail){if(!DB)return;DB.doc(path).set(body).catch(function(e){onFail((e&&e.code)==="invalid_argument"?"Only the board's owner can do this here.":"Not saved: "+((e&&e.message)||"the page's database did not answer")+". Try again.");});}
 function renderTop(){
   var T=D.top_numbers,el=document.getElementById("stripTop");
   if(!T){el.innerHTML='<div class="tile" style="grid-column:1/-1"><div class="k">Top numbers</div><div class="v">'+nm("missing from data.json")+'</div></div>';return;}
@@ -455,26 +495,9 @@ function renderTop(){
   var sh=document.getElementById("strip");if(sh)document.documentElement.style.setProperty("--striph",sh.offsetHeight+"px");
 }
 function renderStrip(){
-  renderTop();
-  var s=D.summary,el=document.getElementById("stripIn");
-  var ny=v(s.needs_you),bu=v(s.burnup_pct),w=v(s.works)||[null,null],nd=v(s.next_date),age=dataAgeH();
-  var H=D.health||{light:"amber"},ast=ageState(age),light=worst(worst(H.light,ast),leadInputStale()&&H.light==="green"?"amber":"green"),R=D.resources||{};
-  var wk=v(R.weekly_pct),bn=v(R.burn_pct_per_h),pd=v(R.paid_usd_today);
-  document.getElementById("fresh").innerHTML=freshHTML(age);
-  el.innerHTML=
-   '<div class="tile'+(ny>0?" alert":"")+'"'+T("strip.needs_you")+'><div class="k">Needs you</div><div class="v">'+nz(ny)+'</div><div class="s">'+(ny===0?"nothing from you":"for you to decide or do")+'</div></div>'+
-   relTile()+
-   '<div class="tile"'+T("strip.poc")+'><div class="k">Proof of concept</div><div class="v">'+nz(w[0])+'<span class="muted">/'+nz(w[1])+'</span></div><div class="s">capabilities proven by qa</div></div>'+
-   '<div class="tile"'+T("strip.next_date")+'><div class="k">Next date</div><div class="v">'+(nd?esc(short(nd.date)):"none")+'</div><div class="s">'+(nd?esc(nd.kind)+", in "+nd.days_left+" d":"")+'</div></div>'+
-   '<div class="tile hl'+(light==="red"?" alert":light==="amber"?" warn":"")+'"'+T("strip.health")+'><button type="button" class="hlbtn" id="healthTile" aria-controls="healthPanel" aria-expanded="'+String(!document.getElementById("healthPanel").hidden)+'" aria-label="Health: '+esc(LIGHTWORD[light])+'; press for the seven checks"><span class="k">Health</span><span class="v">'+dot(light)+esc(LIGHTWORD[light])+'</span><span class="s">data '+ageText(age)+' old</span></button></div>'+
-   '<div class="tile"'+T("strip.plan_use")+'><div class="k">Plan use</div><div class="v">'+(wk==null?'<span class="nm" data-nm="'+esc(src(R.weekly_pct))+'">not measured</span>':esc(wk)+"%")+'</div><div class="s">'+(bn==null?"burn not measured":esc(bn)+" %/h")+' · '+(pd==null?"paid not measured":"US$"+esc(pd)+" today")+'</div></div>';
-  var L=D.lineage||{},ah=L.ahead_of_main;
-  document.getElementById("lineage").innerHTML='Records from <span class="mono">'+esc(L.records_branch||"?")+' @'+esc((L.records_sha||"").slice(0,9))+'</span>, '+
-    (ah&&ah.value!=null?esc(ah.value)+' record files not yet on <span class="mono">main</span>':nm(ah&&ah.reason))+' · main <span class="mono">@'+esc((L.main_sha||"").slice(0,9))+'</span> · snapshot '+esc(L.taken_at||"");
-  renderHealth(ast,age);
+  /* P-636 (16 Nov): the old key-number strip is gone; the sticky line keeps the data time, its age, Refresh and the stale banner */
+  document.getElementById("fresh").innerHTML=freshHTML(dataAgeH());
   document.documentElement.style.setProperty("--striph",document.getElementById("strip").offsetHeight+"px");
-  var t=document.getElementById("healthTile");
-  t.onclick=function(){var p=document.getElementById("healthPanel");p.hidden=!p.hidden;t.setAttribute("aria-expanded",String(!p.hidden));};
   addIcons(document.getElementById("strip"));
 }
 function renderHealth(ast,age){
@@ -487,6 +510,45 @@ function renderHealth(ast,age){
   p.innerHTML=h+'</ul><p class="small muted">Red if any check fails, amber if any is not measured, else green. Click a check to see what it counts, what is behind it and its source. Token use and paid US$ are Lead-reported numbers in the strip.</p>';
 }
 
+/* P-636 (founder 16 Nov): the first screen, six answers in three words (Planned, Built, Proven); each opens its items */
+function pill(st){var c={"off track":"p-bad",late:"p-bad",red:"p-bad","at risk":"p-wait",amber:"p-wait","on track":"p-good",done:"p-good",green:"p-good"}[st]||"p-none";return '<span class="pill '+c+'">'+esc(st)+'</span>';}
+function fcard(k,label,big,line,body,key,open){return '<details class="fcard" id="fc-'+k+'"'+(open?' open':'')+'><summary><span class="fk">'+esc(label)+'</span><span class="chev" aria-hidden="true">Detail</span><span class="fbig">'+big+'</span><span class="fline">'+line+'</span></summary><div class="fbody">'+body+'<p class="fsrc"'+T(key)+'>Source, time and every item behind this</p></div></details>';}
+function capName(m){var r=(D.capability_table.rows||[]).filter(function(x){return x.map===m;})[0];return "R1."+m+(r?" "+r.cap:"");}
+function ul(a,max){max=max||12;return a.length?'<ul class="flist">'+a.slice(0,max).map(function(x){return '<li>'+esc(x)+'</li>';}).join("")+(a.length>max?'<li class="muted">and '+(a.length-max)+' more (tap the source line below)</li>':'')+'</ul>':'';}
+function nmv(x){return x==null?'<span class="nm">not measured</span>':esc(x);}
+function rFirst(){
+  var F=D.first;if(!F)return '<section><p class="err">The first screen is missing from data.json (first).</p></section>';
+  var R=F.release,Td=F.today,N=F.needs,C=F.choke,H=F.health,h='<div class="first">';
+  var first=function(s){var i=(s||"").indexOf(". ");return i>0?s.slice(0,i+1):s;},rest=function(s){var i=(s||"").indexOf(". ");return i>0?s.slice(i+2):"";};
+  h+=fcard("release","Release 1"+(R.target?" · target "+short(R.target):""),
+    nmv(R.planned)+' Planned<span class="sep">→</span>'+nmv(R.built)+' Built<span class="sep">→</span>'+nmv(R.proven)+' Proven',
+    pill(R.state)+esc(first(R.why)),
+    (rest(R.why)?'<p>'+esc(rest(R.why))+'</p>':'')+
+    '<p><b>Proven ('+R.proven_ids.length+'):</b></p>'+ul(R.proven_ids.map(capName))+
+    '<p><b>Built, waiting for qa ('+R.waiting_ids.length+'):</b></p>'+ul(R.waiting_ids.map(capName))+
+    (R.qa_not_built_ids.length?'<p class="warnline">qa\'s file still reads Not built for '+R.qa_not_built_ids.length+' of these: '+esc(R.qa_not_built_ids.map(function(m){return "R1."+m;}).join(", "))+'. qa re-checks them.</p>':'')+
+    (R.unlisted_ids.length?'<p class="warnline">qa\'s file lists '+(R.planned-R.unlisted_ids.length)+' of '+R.planned+'; not listed yet: '+esc(R.unlisted_ids.map(function(m){return "R1."+m;}).join(", "))+'.</p>':'')+
+    '<p><a href="#" data-open="caps">Open every capability and its stage</a></p>',"first.release");
+  h+=fcard("today","Today"+(Td.goal?" · goal by "+esc(Td.by_text||hmDay(Td.by)):""),
+    Td.goal?esc(Td.proven)+' of '+esc(Td.goal)+' Proven':'No proving goal set',pill(Td.state)+esc(Td.why),
+    (Td.plan?'<p><b>The Lead\'s plan today:</b> '+esc(Td.plan)+' <span class="rep">Lead-reported</span></p>':'')+(Td.goal_src?'<p class="small muted">Goal: '+esc(Td.goal_src)+'</p>':''),"first.today");
+  var nrows=N.items.map(function(x){return '<div class="arow" data-akey="'+esc(x.key)+'" data-what="'+esc(x.id+": "+x.what)+'"><b>'+esc(x.what)+' ('+esc(x.id)+')</b><span class="small">Why: '+esc(x.why)+(x.by?' · due '+esc(short(x.by)):'')+'</span>'+
+    '<span class="abtn"><button type="button" class="ab" data-ans="done">Done</button><button type="button" class="ab" data-ans="not_today">Not today</button></span><span class="astate small muted"></span></div>';}).join("");
+  h+=fcard("needs","Needs you",N.count?esc(N.count)+' to do':'Nothing now',N.count?esc(N.items.map(function(x){return x.id;}).join(", "))+(N.later.length?' · '+N.later.length+' more later':''):'Nothing waits on you today'+(N.later.length?'; '+N.later.length+' launch steps of yours have no date yet.':'.'),
+    nrows+(N.later.length?'<p><b>Yours later ('+N.later.length+'):</b></p>'+ul(N.later.map(function(x){return x.id+": "+x.what+(x.by?" (by "+x.by+")":"");})):''),"first.needs",N.count>0);
+  var S=F.stuck;
+  h+=fcard("stuck","Stuck or at risk",S.length?esc(S.length)+' items':'Nothing stuck',esc(S.map(function(s){return s.what.split(":")[0];}).join(" · ")),
+    S.map(function(s){return '<div class="srow"><b>'+esc(s.what)+'</b><span class="small">Owner: '+esc(s.owner)+' · since: '+esc(s.since)+' · next: '+esc(s.next)+'</span>'+(s.items&&s.items.length?'<details class="sub"><summary>'+s.items.length+' behind it</summary>'+ul(s.items,40)+'</details>':'')+'</div>';}).join(""),"first.stuck");
+  h+=fcard("choke","The choke right now",C.stage?esc(C.stage)+': '+esc(C.count):'not measured','Most work sits here. Being done: '+esc(C.doing)+' <span class="rep">Lead-reported</span>',
+    ul(C.stages.map(function(s){return s.name+": "+s.count;}))+(C.not_started!=null?'<p class="small muted">'+esc(C.not_started)+' more are specified and not started.</p>':'')+'<p><a href="#" data-open="factory">Open the factory detail</a></p>',"first.choke");
+  var age=dataAgeH(),hl=worst(H.light||"grey",ageState(age)),its=H.items||[];
+  var nr=its.filter(function(i){return i.state==="red";}).length,na=its.filter(function(i){return i.state==="amber";}).length;
+  h+=fcard("health","Health",hl==="green"?pill("green"):(nr?'<span class="pill p-bad">'+nr+' red</span>':'')+(na?'<span class="pill p-wait">'+na+' amber</span>':''),
+    nr?'Red: '+esc(its.filter(function(i){return i.state==="red";}).map(function(i){return i.name+" ("+i.owner+")";}).join("; ")):(na?'Amber only; nothing failing.':'All checks pass.'),
+    '<ul class="flist">'+(D.health.items||[]).map(function(i){var st=i.state==="page"?ageState(age):i.state;return '<li'+T("health."+i.id)+'>'+dot(st)+'<b>'+esc(i.name)+'</b> — '+(i.state==="page"?"board data "+esc(ageText(age))+" old":esc(i.detail))+((st==="red"||st==="amber")&&i.action?' <b>Do:</b> '+esc(i.action)+' · <b>Who:</b> '+esc(i.owner||""):'')+'</li>';}).join("")+'</ul>',"strip.health");
+  return '<section class="ovsec firstsec" aria-label="First screen">'+h+'</div></section>';
+}
+function hmDay(iso){try{return new Date(iso).toLocaleString("en-GB",{timeZone:"Asia/Kolkata",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})+" IST";}catch(e){return iso||"";}}
 /* banners (§6.6) */
 function rBanner(){
   var T=D.trust;if(!T)return '<div class="banner amber"><b>Numbers not checked</b>: the trust block is missing.</div>';
@@ -1057,10 +1119,13 @@ function render(){
   var TABS=[["overview","Overview",[rOverview]],["caps","Capabilities",[rHeat,rCaps,rCapTable,rArch]],["team","Team",[rTeamTab]],["factory","Factory",[rLeadQueue,rSystem,rBuilding,rQuality,rDevops,rHeal,rImprove,rRes]],["launch","Launch readiness",[rRisks]],["library","Library",[rLibrary]],["details","Details",[rTrust,rLearn,rBacklog,rFresh]]];
   var one=function(f){try{return f();}catch(e){return '<section><p class="err">This block could not be drawn: '+esc(e.message)+'</p></section>';}};
   var cur="overview";try{var sv=localStorage.getItem("board-tab");if(sv&&TABS.some(function(t){return t[0]===sv;}))cur=sv;}catch(e){}
-  var out=one(rBanner)+'<p class="goal">Goal: Release 1 (production grade), complete and end to end, ready for the first real firm\'s data after the launch gate (P-570, P-589, P-594).</p>'+one(rNeeds);
+  document.getElementById("gloss").textContent=(D.first&&D.first.words)||"";
+  var out=one(rBanner)+one(rFirst)+'<details class="more" id="more"><summary>All the detail: capabilities, team, factory, launch readiness, library and data trust</summary>';
   out+='<div class="tabs" role="tablist">'+TABS.map(function(t){return '<button role="tab" type="button" data-tab="'+t[0]+'" aria-selected="'+(t[0]===cur)+'">'+esc(t[1])+'</button>';}).join("")+'</div>';
   TABS.forEach(function(t){out+='<div class="tabpanel" role="tabpanel" data-panel="'+t[0]+'"'+(t[0]===cur?'':' hidden')+'>';t[2].forEach(function(f){out+=one(f);});out+='</div>';});
+  out+='</details>';
   document.getElementById("body").innerHTML=out;
+  provenWords(document.getElementById("more"));paintAnswers();
   addIcons(document.getElementById("body"));
   /* axe scrollable-region-focusable: a table that scrolls sideways can be reached by keyboard */
   document.querySelectorAll(".box").forEach(function(b){b.tabIndex=0;b.setAttribute("role","region");var h=b.closest("section");var t=h&&h.querySelector("h2");b.setAttribute("aria-label",(t?t.textContent:"table")+" (scrolls sideways)");});
@@ -1072,16 +1137,19 @@ function render(){
   document.querySelectorAll("details").forEach(function(dd){dd.addEventListener("toggle",drawAll);});
   drawAll();
 }
-function drawAll(){[drawVSM,drawArch,drawBurnup,drawTimeline].forEach(function(f){try{f();}catch(e){}});addIcons(document.getElementById("body"));}
-var rt=null;window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(function(){if(D){drawAll();renderTop();}},150);});
+function drawAll(){[drawVSM,drawArch,drawBurnup,drawTimeline].forEach(function(f){try{f();}catch(e){}});addIcons(document.getElementById("body"));var m=document.getElementById("more");if(m)provenWords(m);}
+var rt=null;window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(function(){if(D){drawAll();}},150);});
+/* P-636: one word per stage everywhere on the page: qa's "Works" reads Proven (panels keep the source words) */
+function provenWords(root){if(!root)return;var w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null),n,L=[];while((n=w.nextNode()))L.push(n);
+  L.forEach(function(x){var s=x.nodeValue;if(/Works/.test(s)){var r=s.replace(/\bqa Works\b/g,"Proven").replace(/\bWorks\b/g,"Proven");if(r!==s)x.nodeValue=r;}});}
 /* the strip redraws each minute for the data age; a panel opened from the strip stays open (16 Nov: it used to close) */
 setInterval(function(){if(!D)return;var s=document.getElementById("strip"),bs=s.querySelectorAll(".ib"),i=tipBtn?Array.prototype.indexOf.call(bs,tipBtn):-1;
   renderStrip();if(i>=0){var nb=s.querySelectorAll(".ib")[i];if(nb)tipShow(nb);}},60000);
 
 fetch("data.json",{cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
-.then(function(d){D=d;render();})
+.then(function(d){D=d;render();dbInit();})
 .catch(function(e){
-  document.getElementById("stripIn").innerHTML='<div class="tile alert" style="grid-column:1/-1"><div class="k">Data</div><div class="v">not loaded</div></div>';
+  document.getElementById("fresh").innerHTML='<div class="stale fr-red" role="alert"><b>Data not loaded</b></div>';
   document.getElementById("body").innerHTML='<div class="err"><b>The board could not load its data (data.json).</b><br>'+esc(e.message)+'<br>Run <span class="mono">python3 product/tools/cockpit-data.py --out &lt;folder&gt;/data.json</span> and publish data.json next to this page. Nothing on this page is shown without it.</div>';
 });
 })();
