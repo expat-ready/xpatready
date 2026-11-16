@@ -24,6 +24,9 @@ export type SesOptions = {
   /** Recorded answers (tests, lanes): the SDK's request handler. */
   requestHandler?: SESv2ClientConfig["requestHandler"];
   configurationSet?: string;
+  /** The SES-verified sending address (the firm's name stays the display name). None set → nothing is sent (review:
+   *  PLATFORM_FROM is a Sample address SES would refuse); a later PF-24 setting supplies it. */
+  sender?: string;
 };
 
 export function sesEmail(o: SesOptions): ChannelAdapter {
@@ -36,6 +39,7 @@ export function sesEmail(o: SesOptions): ChannelAdapter {
   return {
     provider: SES_PROVIDER,
     async deliver(_tx, r) {
+      if (!o.sender) throw new Error(`messages: SES did not take ${r.outboxId} (no verified sender is set)`);
       const attachments = [];
       for (const k of r.attachments) {
         const f = await o.files.get(r.firmId, k);
@@ -44,7 +48,7 @@ export function sesEmail(o: SesOptions): ChannelAdapter {
       }
       try {
         const info = await transport.sendMail({
-          from: { name: r.from.name, address: r.from.address }, to: r.to, replyTo: r.replyTo, subject: r.subject, text: r.text, html: r.html, attachments,
+          from: { name: r.from.name, address: o.sender }, to: r.to, replyTo: r.replyTo, subject: r.subject, text: r.text, html: r.html, attachments,
           headers: { ...unsubscribeHeaders(r, o.tokens, o.publicBase), [REF_HEADER]: `${r.firmId}/${r.outboxId}` },
           ses: { EmailTags: [{ Name: "firm", Value: r.firmId }, { Name: "outbox", Value: r.outboxId }], ...(o.configurationSet ? { ConfigurationSetName: o.configurationSet } : {}) },
         });

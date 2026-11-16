@@ -41,7 +41,7 @@ export function snsStringToSign(n: Record<string, unknown>): string {
 
 export class SesNotices {
   private readonly certs = new Map<string, string>();
-  constructor(private readonly d: { db: PrismaClient; consent: ConsentPort<Tx>; fetchCert?: CertFetch; topics?: string[]; confirm?: Confirm; log?: (line: string) => void }) {}
+  constructor(private readonly d: { db: PrismaClient; consent: ConsentPort<Tx>; fetchCert?: CertFetch; topics?: string[]; confirm?: Confirm; log?: (line: string) => void; requireTopics?: boolean }) {}
 
   /** Throws NoticeRefused unless SNS signed this notice. */
   async verify(n: Record<string, unknown>): Promise<void> {
@@ -50,6 +50,8 @@ export class SesNotices {
     if (!u || !u.pathname.endsWith(".pem")) throw new NoticeRefused("certificate not from Amazon SNS");
     const alg = n.SignatureVersion === "1" ? "RSA-SHA1" : n.SignatureVersion === "2" ? "RSA-SHA256" : null;
     if (!alg || typeof n.Signature !== "string") throw new NoticeRefused("no signature");
+    // Outside a local server a notice must come from one of our topics: any AWS account can sign its own (review n1).
+    if (this.d.requireTopics && !this.d.topics?.length) throw new NoticeRefused("no notice topic is set");
     if (this.d.topics?.length && !this.d.topics.includes(String(n.TopicArn))) throw new NoticeRefused("not our topic");
     const text = snsStringToSign(n);
     let cert = this.certs.get(u.href);

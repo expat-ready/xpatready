@@ -30,6 +30,6 @@ export default {
     { provide: MESSAGES_MAIL, useFactory: (db: Db, messages: Messages) => new MessagesMail({ db, messages, files, log: (l) => console.warn(l) }), inject: [Db, MESSAGE_PORT] },
     { provide: PlatformInbox, useFactory: (db: Db) => new PlatformInbox(db, files, undefined, { tokens, publicBase }), inject: [Db] },
     { provide: Unsubscribe, useFactory: (db: Db) => new Unsubscribe({ db, consent: consentStore, tokens }), inject: [Db] },
-    { provide: SesNotices, useFactory: (db: Db) => new SesNotices({ db, consent: consentStore }), inject: [Db] },
+    { provide: SesNotices, useFactory: (db: Db) => new SesNotices({ db, consent: consentStore, requireTopics: config.environment !== "local" }), inject: [Db] },
   ],
 } satisfies Feature;

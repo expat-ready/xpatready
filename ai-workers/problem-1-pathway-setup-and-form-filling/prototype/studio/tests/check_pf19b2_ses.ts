@@ -137,7 +137,7 @@ try {
   const clock = new FakeClock(new Date()), jobs = fakeJobs(clock), files = new LocalFiles(join(WORK, "files")), consent = new ConsentStore(auditEvent, clock);
   const ringKey = randomBytes(32).toString("base64"), tokens = new UnsubscribeTokens({ current: 3, keys: new Map([[3, new Secret("PLATFORM_SECRET_BOX_KEYS v3", ringKey)]]) });
   const creds = { accessKeyId: new Secret("SES_ACCESS_KEY_ID", `AKIA${randomBytes(8).toString("hex").toUpperCase()}`), secretAccessKey: new Secret("SES_SECRET_ACCESS_KEY", randomBytes(30).toString("base64")) };
-  const ses = sesEmail({ region: "ca-central-1", files, tokens, publicBase: "https://app.expatready.example", credentials: creds, requestHandler: recorded as never });
+  const ses = sesEmail({ region: "ca-central-1", files, tokens, publicBase: "https://app.expatready.example", sender: "messages@mail.expatready.example", credentials: creds, requestHandler: recorded as never });
   const messages = new Messages({ db, consent, files, jobs, alerts: () => fakeAlerts(), channels: channelsOf([["EMAIL", ses]]), clock });
   await messages.register();
   const unsub = new Unsubscribe({ db, consent, tokens, now: () => clock.now().getTime() });
@@ -241,6 +241,11 @@ try {
   const { r: ok10, res: res10b } = fakeRes(); await routes.notice(good10, req() as never, res10b as never);
   ok("DW10 pass: the same notice, signed, → 200 and the address is suppressed", ok10.code === 200 && (await db.msgSuppression.count({ where: { address: x10 } })) === 1, ok10);
   const topics = new SesNotices({ db, consent, fetchCert, topics: ["arn:aws:sns:ca-central-1:000000000000:other"] });
+  const strict = new SesNotices({ db, consent, fetchCert, requireTopics: true });
+  ok("DW10 fail (review n1): outside local with no topic list set, even a signed notice is refused (no AWS account's topic is trusted)", await strict.receive(good10).then(() => false, (e) => e instanceof NoticeRefused));
+  const noSender = sesEmail({ region: "ca-central-1", files, tokens, publicBase: "x", requestHandler: recorded as never }), callsNS = seen.length;
+  const ns = await noSender.deliver(undefined as never, { outboxId: uuid(), firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", to: box("ns"), from: { name: "F", address: "messages@mail.expatready.example" }, replyTo: "r@example.com", subject: "s", text: "t", html: "<p>t</p>", attachments: [] }).then(() => "sent", (e: Error) => e.message);
+  ok("SES1 fail (review): with no verified sender set, the SES adapter sends nothing and says why", /no verified sender is set/.test(ns) && seen.length === callsNS, ns);
   ok("DW10 fail: with topics configured, a signed notice from another topic is refused", await topics.receive(good10).then(() => false, (e) => e instanceof NoticeRefused));
 
   // Break M3: a verified subscription confirmation is confirmed (our topic) or its address logged (no topic list); one
