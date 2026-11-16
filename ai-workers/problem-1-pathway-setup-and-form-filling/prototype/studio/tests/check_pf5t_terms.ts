@@ -147,7 +147,11 @@ try {
   ok("PF-5t DW3 fail: a replay answers the same and writes no second row and no second audit line", replay.status === 200 && JSON.stringify(replay.body) === JSON.stringify(first.body) && rows(`version_id = '${dpa2}'`) === 1 && sql(`select count(*) from audit_event where action = 'platform.terms.accepted'`) === audits, [first.body, replay.body]);
   // Checked again under the firm lock (Devin review on #1957): a session context gone stale while it waited saves nothing.
   const dpaStale = publish("DATA_PROCESSING", "sample-2026-12-03b");
-  const ctxR = { firmId: FIRM_A, staffId: R, firmKey: "sample-firm", roles: (await db.platformRoleGrant.findMany({ where: { staffId: R, endedAt: null } })).map((g) => g.role as string), keys: [], duties: [], authTime: Math.floor(clock.t / 1000) - 1, via: "local" as const };
+  const ctxR = { firmId: FIRM_A, staffId: R, firmKey: "sample-firm", roles: (await db.platformRoleGrant.findMany({ where: { staffId: R, endedAt: null } })).map((g) => g.role as string), keys: [], duties: [], authTime: 0, via: "local" as const };
+  // A current session: signed in after the person's latest revocation (every sign-in ends the one before, 1 ms earlier), so
+  // only the change under test can refuse it (a clock-based time could fall before that revocation on a fast machine).
+  const lastRev = sql(`select coalesce(floor(extract(epoch from max(revoked_at))), 0) from platform_session_revocation where staff_id = '${R}'`);
+  ctxR.authTime = Math.max(Number(lastRev) + 1, Math.ceil(clock.t / 1000));
   const tryStale = (c: unknown) => terms.accept(c as never, { versionIds: [dpaStale] }).then(() => 200, (e: any) => e.getStatus?.() ?? 500);
   const stale = [await tryStale({ ...ctxR, roles: [...ctxR.roles, "ADMIN"] })];
   sql(`update platform_staff set status = 'DEACTIVATED' where id = '${R}'`); stale.push(await tryStale(ctxR)); sql(`update platform_staff set status = 'ACTIVE' where id = '${R}'`);
