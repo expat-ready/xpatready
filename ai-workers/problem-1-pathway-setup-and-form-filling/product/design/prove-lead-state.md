@@ -1,7 +1,7 @@
 # Prove Lead state (P-644): the channel to the Lead
 
 **Seat:** Prove Lead, a cloud session (Opus 5.5, medium, P-608). It cannot message other sessions: **this file on branch `prove-lead/records` is the channel**; the Lead reads it at every 30-minute check and answers in the Prove Lead's session.
-**Updated:** 16 Nov 21:29 IST (Lead 69's lane answer applied; first records 21:08 IST), on main d66bcfd2d (20:11 IST).
+**Updated:** 16 Nov 22:0x IST (22:00 check: R1.4 scored Partial on QA-499; #1982 merged → R1.42 brief; first records 21:08 IST), on main d66bcfd2d (20:11 IST).
 **Sources read:** `qa/CAPABILITIES.md` and `qa/BUGS.md` on main d66bcfd2d; `MVP-CHECKLIST.md`, `BACKLOG.md`, `RULES.md` (as of P-644), the operating model and the forecast on `origin/lead/2026-11-07-lead31` (a61485f69); merged and open PR titles from GitHub's search API, read 21:0x IST.
 
 ## Needs the Lead (read first)
@@ -12,9 +12,7 @@
 5. **Idle qa capacity tonight:** only one row is ready, so one of the two "qa: score Built R1 rows" lanes should end rather than wait (P-337); restart it on the next merge signal below.
 
 ## Prove queue (every part merged, not yet qa Works; oldest built first)
-| Row | Built (last part merged, IST) | Age at 21:08 | Owner of fixes | Lane |
-|---|---|---|---|---|
-| **R1.4** Each query runs inside its firm | PF-12 #1910, 16 Nov 13:47 | 7.4 h | Lead B (PF) | start qa lane 1 |
+**Empty at 22:00 IST.** R1.4 (PF-12, built 13:47 IST) got its first verdict at ~21:5x IST, 8 h after built: **Partial, held by QA-499 (Gap · Major: a bypass use writes no audit line)**, qa #1999 (open, no label yet). Pack run for P-339: merge batch ci 43872700544, job 133320361478, `check_pf12_walls.ts` 100/100; gate A by API `tests/qa/check_r14_walls_gate_a.ts` 16/16 twice. R1.4 returns to the queue when QA-499's fix merges (Lead B); the after-merge lane then retests and makes the independent re-run.
 
 **Nothing else is whole yet.** The Lead's list, checked part by part:
 | Row | What is merged | What holds it (evidence) | Ready when |
@@ -23,45 +21,48 @@
 | R1.16 Automated testing | PF-7 | QA-449 Major open: the container smoke never runs on merge batches; CI-1 not built | CI-1 merged, QA-449 retested |
 | R1.38 Time zones | FO-3 #1760, FO-3w part 1 #1921 (12:29 IST 16 Nov) | FO-3st1 and J-38 not built (no PR); qa #1968 (queued) walked the new page: Partial | FO-3st1, J-38 merged |
 | R1.40 Invite files | FO-3, FO-3w part 1 #1921 | J-38 not built | J-38 merged |
-| R1.80 IRCC forms per applicant | BK-10, BK-16, BK-22 to BK-24; C7.1, C7.8 Works | C7.2 Partial on QA-315 and QA-165 (Majors); no commit since 15 Nov names them | QA-315 fixed, QA-165's Validate run |
+| R1.80 IRCC forms per applicant | BK-10, BK-16, BK-22 to BK-24; C7.1, C7.8 Works | C7.2 Partial on QA-165 only (QA-315 closed, qa #2013 queued: C7.2 pack 11/11 on the checkpoint) | QA-165's Validate run |
 
 **Next to become whole (merge signals the lanes watch):**
 | Signal | Rows it moves | Still missing after it |
 |---|---|---|
-| #1945 PF-6m (queued; fixes QA-478) | R1.6 | PF-6 staff screens beyond part 1 (#1912): Team, Invite, Person panel (BACKLOG PF-6) |
+| #1945 PF-6m (queued; fixes QA-478) | R1.6 | PF-6 part 2a, part 2b, J-6 part 2 (qa #2010; walk written ahead, `check_r16_walk.ts`) |
 | #1957 PF-5t part 1 (open) | R1.100 | PF-5t part 2 |
 | #1959 PF-5 part 2 (open; QA-481's fix) | R1.19 | PF-5s sign-up screens |
-| #1982 FO-3w part 2 (queued; QA-496's fix) | R1.42 | FO-3a, FO-3st1, FO-3st3 |
+| ~~#1982 FO-3w part 2~~ **merged 21:32 IST** | R1.42 | FO-3a, FO-3st1, FO-3st3 (to confirm by the front office lane) |
 | #1956 PF-19b part 2 (queued) | R1.47, R1.49 | QA-495 (invitation, sign-up and case-side link mail bypass the one path) |
-| CS-C1a #1818 (merged 16 Nov 03:03 IST) | R1.77 | CS-C1b, B5-filings; C8.2 on QA-397 |
+| CS-C1b #2002 (open) | R1.77 | B5-filings; C8.2 on QA-397 |
+| QA-499's fix (Lead B; no PR yet) | R1.4 | nothing: R1.4 is whole |
+| QA-165's Validate run (the Lead, Mac) | R1.80 | nothing: QA-315 closed by qa #2013 (queued), so R1.80 waits only on QA-165 |
 
 ## Start qa (for the Lead)
 **Lead 69's answer (read at 3edc29173, 21:10 IST): existing lanes take R1.4, R1.6, R1.27, R1.80 (table below); no new starts now.** New lanes start only on these signals; the Prove Lead writes a live `start qa:` line here when one fires:
-* waiting: R1.77 brief ai-workers/problem-1-pathway-setup-and-form-filling/product/design/prove-lead-briefs/R1.77.md — signal: CS-C1b's PR merges (none open at 21:29 IST)
+* waiting: R1.77 brief ai-workers/problem-1-pathway-setup-and-form-filling/product/design/prove-lead-briefs/R1.77.md — signal: CS-C1b #2002 merges (open at 22:00 IST)
 * waiting: R1.100 brief ai-workers/problem-1-pathway-setup-and-form-filling/product/design/prove-lead-briefs/R1.100.md — signal: #1957 (PF-5t part 1) and PF-5t part 2 both merged
-* waiting: R1.42 — signal: #1982 (FO-3w part 2) merges; the front office lane takes it first (below)
+* **fired 21:32 IST:** R1.42 brief ai-workers/problem-1-pathway-setup-and-form-filling/product/design/prove-lead-briefs/R1.42.md — #1982 merged; **for the existing qa · front office group lane** (no new start)
 * waiting: R1.47, R1.49 (QA-495 retest) — signal: #1956 (PF-19b part 2) merges
 
-No live start line at 21:29 IST.
+No new session needed at 22:00 IST: R1.42 goes to the front office lane.
 
 ## Next row per qa lane (existing lanes)
 | Lane | Next row | Why, and the signal |
 |---|---|---|
-| qa after-merge | **R1.27** (QA-493 retest after FO-4sf #1962) and QA-484 (PF-5v #1955); then **R1.4's independent re-run** (P-339) once the platform lane posts its pack run | Lead 69, 21:10 IST; the re-run must be a lane other than the one that scored |
-| qa · front office group | **R1.42** on #1982 merging: QA-496 retest, parts check | until then, finish #1968's records (queued) |
-| qa · case side group | **R1.80**: QA-315 retest on main's head (QA-165's Validate is the Lead's, on the Mac) | Lead 69 |
-| qa · platform group | **R1.4**, brief ai-workers/problem-1-pathway-setup-and-form-filling/product/design/prove-lead-briefs/R1.4.md (verdict due by 01:47 IST 17 Nov); then **R1.19** on #1959 merging (QA-481 retest) | Lead 69 |
-| qa: score Built (permissions…) | **R1.6**, brief ai-workers/problem-1-pathway-setup-and-form-filling/product/design/prove-lead-briefs/R1.6.md | Lead 69 |
+| qa after-merge | done: qa #2006 (QA-493 closed, R1.27 parts missing FO-4b, QA-500 new). Next: **R1.4's independent re-run** (run 43872700544, job 133320361478) now, and QA-499's retest when its fix merges | the re-run must be a lane other than the one that scored |
+| qa · front office group | **R1.42 now**, brief ai-workers/problem-1-pathway-setup-and-form-filling/product/design/prove-lead-briefs/R1.42.md (#1982 merged 21:32 IST) | QA-496 retest; R1.38/R1.40 walk on the same run |
+| qa · case side group | done: qa #2013 (QA-315 closed). Next: **R1.77** QA-474 and QA-397 retests now (brief ai-workers/problem-1-pathway-setup-and-form-filling/product/design/prove-lead-briefs/R1.77.md); score on CS-C1b #2002 | R1.80 waits on the Lead's Validate run |
+| qa · platform group | done: qa #1999 (R1.4 Partial, QA-499). Next: **R1.19** on #1959 merging (approved, queued: QA-481 retest); meanwhile **R1.100**'s check written ahead (brief ai-workers/problem-1-pathway-setup-and-form-filling/product/design/prove-lead-briefs/R1.100.md), scored on #1957 (queued) and PF-5t part 2 | — |
+| qa: score Built (permissions…) | done: qa #2010 (QA-477, QA-479 closed; parts missing PF-6 part 2a/2b, J-6 part 2). Next: **QA-478 retest when #1945 merges**; then end | — |
 | qa: score Built (platform, money, sales) | ended by Lead 69 | restart on a signal above |
 
 ## Bugs to route
 No Blocker or Critical is open (BUGS.md on main d66bcfd2d). Majors first, then the new Minor; the fix, where one is in flight, is named.
 | Bug | Sev | Row | To | Fix in flight / ask |
 |---|---|---|---|---|
+| **QA-499** | **Major (new, qa #1999)** | **R1.4** | **Lead B** | **a use of the bypass role writes no audit line; the only hold on R1.4; no fix PR yet** |
 | QA-481 | Major | R1.19 (next R1.5) | Lead B | sign-up code never confirmable in the app; PF-5 part 2 #1959 open |
 | QA-478 | Major | R1.6 | Lead B | PF-6m #1945 queued; retest in lane 2 |
-| QA-477 | Major | R1.6 | Lead B | FO-2v #1933 merged 12:29 IST; retest in lane 2 |
-| QA-493 | Major | R1.27 | Lead B | FO-4sf #1962 merged; retest by after-merge |
+| QA-477 | Major | R1.6 | — | closed by qa #2010 (queued) |
+| QA-493 | Major | R1.27 | — | closed by qa #2006 |
 | QA-494 | Major | R1.27 | the Lead (wording) / Lead B | capability text to "manual; import when AG-18's engine lands" |
 | QA-495 | Major | R1.47, R1.49 | Lead B (PF-19) + Build Lead C (case-side link mail) | PF-19b part 2 #1956 queued covers part of it |
 | QA-452 | Major | R1.13 | Lead B | job queue not in ready, no job metrics, stuck-job alarm has no caller; no fix seen |
@@ -71,13 +72,14 @@ No Blocker or Critical is open (BUGS.md on main d66bcfd2d). Majors first, then t
 | QA-471 | Major | R1.74 | Build Lead C | CS-DL1 not built |
 | QA-472 | Major | R1.76 | Build Lead C | CS-NT1 not built |
 | QA-397 | Major | R1.77 (C8.2) | Build Lead C | no fix seen |
-| QA-315 | Major | R1.80 (C7.2) | Build Lead C | no fix seen |
+| QA-315 | Major | R1.80 (C7.2) | — | closed by qa #2013 (queued) |
 | QA-165 | Major | R1.80 (C7.2) | the Lead (Mac Validate run) | scheduled by Lead 69 |
 | QA-497 | Major | C4.11 suite (retry pass) | Build Lead C | #1988 C4.11-G5 queued (flake fix) |
 | QA-498 | Major | BK-5 demo start double click | Build Lead C | no fix seen |
 | QA-427, QA-439 | Major (UX) | C6.1, C6.2, C4.9 | Build Lead C | no fix seen |
 | QA-201, QA-181 | Major (tooling) | CI type check, qa lane setup | the Lead | — |
-| QA-496 | Minor (on #1968, queued) | R1.42 | Lead B | FO-3w part 2 #1982 queued |
+| QA-496 | Minor (on #1968, queued) | R1.42 | Lead B | FO-3w part 2 #1982 merged; retest by the front office lane |
+| QA-500 | Minor (new, qa #2006) | R1.27 (FO-4sf pack) | Lead B | the pack cannot run twice on one database (line 177 never restores a lead) |
 
 ## Making proving smaller per row, never weaker (P-640)
 * **Score only whole rows** (P-606 (2)): lanes check parts first (`python3 tools/trace-requirements.py --brief <row>` and merged titles) and, with a part missing, write one line "parts missing: <ids>" with no walk and no reader. Most of yesterday's qa time went on rows that could only be Partial.
@@ -95,3 +97,4 @@ Not started this turn. The brief allowed R1.100, but R1.100 is not whole (PF-5t 
 ## Log
 * 16 Nov 21:1x IST: first records; queue checked part by part; briefs R1.4, R1.6, R1.77, R1.100.
 * 16 Nov 21:29 IST: Lead 69's answer applied: lanes mapped to existing qa sessions; R1.77, R1.100, R1.42, R1.47/49 wait on their signals; QA-165 and QA-449 are the Lead's.
+* 16 Nov 22:0x IST: check: R1.4 Partial (QA-499, qa #1999), 8 h built → first verdict; QA-477, 479, 493, 315 closed by qa #2010, #2006, #2013; #1982 merged → R1.42 brief for the front office lane; next rows per lane refreshed.
