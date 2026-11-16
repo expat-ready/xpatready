@@ -439,6 +439,7 @@ model MoneyTrustEntry {
   @@unique([firmId, paymentId])
   @@index([firmId, invoiceId])
   @@index([firmId, caseId])
+  @@index([firmId, correctsEntryId])
   @@map("money_trust_entry")
 }
 

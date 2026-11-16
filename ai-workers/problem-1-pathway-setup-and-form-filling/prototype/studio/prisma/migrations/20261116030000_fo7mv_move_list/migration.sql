@@ -9,16 +9,20 @@
 --     AFTER trigger beside FO-7a's money_trust_entry_write.
 -- Rollback (in this order): DROP VIEW "money_to_move"; DROP TABLE "money_move_line", "money_move_batch"; DROP TRIGGER
 --   money_trust_entry_moves ON "money_trust_entry"; ALTER TABLE "money_trust_entry" DROP CONSTRAINT
---   "money_trust_entry_correction_kind_check", DROP COLUMN "correction_kind"; DROP FUNCTION money_move_batch_write(),
+--   "money_trust_entry_correction_kind_check", DROP COLUMN "correction_kind"; DROP INDEX
+--   "money_trust_entry_firm_id_corrects_entry_id_idx"; DROP FUNCTION money_move_batch_write(),
 --   money_move_batch_has_lines(), money_move_line_write(), money_move_line_not_undone(), money_trust_entry_moves();
 --   DROP TYPE "MoneyMoveDirection", "MoneyMoveKind", "MoneyCorrectionKind"; delete this folder's row from
 --   _prisma_migrations.
 
 -- A correction of a deposit written before this migration says nothing about why it was made, so it can never be read
--- as licensing a move or not (B-19). None exists outside test databases (no route writes trust entries yet).
+-- as licensing a move or not (B-19). None exists outside test databases (no route writes trust entries yet). The
+-- guard locks the table first, so it waits for a correction written in a transaction still open and counts it (break
+-- B-6).
 DO $$
 DECLARE n integer;
 BEGIN
+  LOCK TABLE "money_trust_entry" IN SHARE ROW EXCLUSIVE MODE;
   SELECT count(*) INTO n FROM "money_trust_entry" c JOIN "money_trust_entry" d ON d.firm_id = c.firm_id AND d.id = c.corrects_entry_id
     WHERE c.kind = 'CORRECTION' AND d.kind = 'DEPOSIT';
   IF n > 0 THEN
@@ -26,19 +30,12 @@ BEGIN
   END IF;
 END $$;
 
--- CreateEnum
+-- Prisma's DDL (prisma migrate diff), then the rules.
 CREATE TYPE "MoneyCorrectionKind" AS ENUM ('BOUNCED', 'WRONG_ACCOUNT', 'ENTRY_ERROR');
-
--- CreateEnum
 CREATE TYPE "MoneyMoveKind" AS ENUM ('TRUST_APPLIED', 'WRONG_ACCOUNT', 'CARD_FEE_ON_TRUST');
-
--- CreateEnum
 CREATE TYPE "MoneyMoveDirection" AS ENUM ('TRUST_TO_OPERATING', 'OPERATING_TO_TRUST');
-
--- AlterTable
 ALTER TABLE "money_trust_entry" ADD COLUMN     "correction_kind" "MoneyCorrectionKind";
 
--- CreateTable
 CREATE TABLE "money_move_batch" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "firm_id" UUID NOT NULL,
@@ -53,7 +50,6 @@ CREATE TABLE "money_move_batch" (
     CONSTRAINT "money_move_batch_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
 CREATE TABLE "money_move_line" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "firm_id" UUID NOT NULL,
@@ -71,37 +67,17 @@ CREATE TABLE "money_move_line" (
 
     CONSTRAINT "money_move_line_pkey" PRIMARY KEY ("id")
 );
-
--- CreateIndex
+CREATE INDEX "money_trust_entry_firm_id_corrects_entry_id_idx" ON "money_trust_entry"("firm_id", "corrects_entry_id");
 CREATE UNIQUE INDEX "money_move_batch_firm_id_id_key" ON "money_move_batch"("firm_id", "id");
-
--- CreateIndex
 CREATE UNIQUE INDEX "money_move_batch_firm_id_undoes_batch_id_key" ON "money_move_batch"("firm_id", "undoes_batch_id");
-
--- CreateIndex
 CREATE INDEX "money_move_line_firm_id_batch_id_idx" ON "money_move_line"("firm_id", "batch_id");
-
--- CreateIndex
 CREATE INDEX "money_move_line_firm_id_invoice_id_idx" ON "money_move_line"("firm_id", "invoice_id");
-
--- CreateIndex
 CREATE UNIQUE INDEX "money_move_line_firm_id_source_entry_id_move_ordinal_key" ON "money_move_line"("firm_id", "source_entry_id", "move_ordinal");
-
--- AddForeignKey
 ALTER TABLE "money_move_batch" ADD CONSTRAINT "money_move_batch_firm_id_fkey" FOREIGN KEY ("firm_id") REFERENCES "money_payment_settings"("firm_id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
--- AddForeignKey
 ALTER TABLE "money_move_batch" ADD CONSTRAINT "money_move_batch_firm_id_undoes_batch_id_fkey" FOREIGN KEY ("firm_id", "undoes_batch_id") REFERENCES "money_move_batch"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
--- AddForeignKey
 ALTER TABLE "money_move_line" ADD CONSTRAINT "money_move_line_firm_id_batch_id_fkey" FOREIGN KEY ("firm_id", "batch_id") REFERENCES "money_move_batch"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
--- AddForeignKey
 ALTER TABLE "money_move_line" ADD CONSTRAINT "money_move_line_firm_id_source_entry_id_fkey" FOREIGN KEY ("firm_id", "source_entry_id") REFERENCES "money_trust_entry"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
--- AddForeignKey
 ALTER TABLE "money_move_line" ADD CONSTRAINT "money_move_line_firm_id_invoice_id_fkey" FOREIGN KEY ("firm_id", "invoice_id") REFERENCES "money_invoice"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
 -- ------------------------------------------------------------------------------------------------ rules Prisma cannot say
 -- As FO-7a: SQLSTATE 23514 (check_violation) for a broken rule, 42501 for a change to an insert-only row.
 
@@ -115,6 +91,8 @@ ALTER TABLE "money_move_batch"
   ADD CONSTRAINT "money_move_batch_kind_check" CHECK (
     ("undoes_batch_id" IS NULL AND "transfer_date" IS NOT NULL AND "reason" IS NULL)
     OR ("undoes_batch_id" IS NOT NULL AND "undoes_batch_id" <> "id" AND money_text_ok("reason", 200))),
+  -- A real bank date (break B-9: 'infinity', 4713 BC).
+  ADD CONSTRAINT "money_move_batch_date_check" CHECK ("transfer_date" IS NULL OR "transfer_date" BETWEEN '2000-01-01' AND '2999-12-31'),
   ADD CONSTRAINT "money_move_batch_by_check" CHECK (money_text_ok("recorded_by", 200));
 ALTER TABLE "money_move_line"
   ADD CONSTRAINT "money_move_line_amount_check" CHECK ("amount_minor" > 0 AND "move_ordinal" >= 1),
@@ -177,7 +155,7 @@ CREATE CONSTRAINT TRIGGER money_move_batch_has_lines AFTER INSERT ON "money_move
 -- refused (23505). Lines are written only in the transaction that records their batch, never after its undo (FO-7a's
 -- B-16 rule; round 3, B-15: an unknown transaction status is not mine).
 CREATE OR REPLACE FUNCTION money_move_line_write() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE b record; s record; party uuid; earlier integer; moved bigint; returned bigint; cap bigint;
+DECLARE b record; s record; party uuid; earlier integer; moved bigint; returned bigint; cap bigint; due bigint; held bigint; to_move bigint; uncleared bigint;
 BEGIN
   SELECT x.undoes_batch_id, x.currency, x.direction, pg_xact_status(((pg_current_xact_id()::text::bigint >> 32 << 32) | x.xmin::text::bigint)::text::xid8) = 'in progress' AS mine
     INTO b FROM "money_move_batch" x WHERE x.firm_id = NEW.firm_id AND x.id = NEW.batch_id;
@@ -237,6 +215,37 @@ BEGIN
   IF moved + NEW.amount_minor > cap THEN
     RAISE EXCEPTION 'money_move_line: % % would move more than this entry still holds (% % to move: % less % returned to trust, % moved before)',
       NEW.amount_minor, NEW.currency, cap - moved, NEW.currency, -s.amount_minor, returned, moved USING ERRCODE = 'check_violation';
+  END IF;
+  -- Break B-4: a trust application moves at most what trust may keep for its invoice — the total less credit notes and
+  -- the write-off — less what the invoice's applications already moved (the invoice row is touched above, as a credit
+  -- note and a write-off touch it).
+  IF NEW.kind = 'TRUST_APPLIED' THEN
+    due := money_invoice_total(NEW.firm_id, s.invoice_id)
+      - (SELECT coalesce(sum(c.amount_minor), 0) FROM "money_credit_note" c WHERE c.firm_id = NEW.firm_id AND c.invoice_id = s.invoice_id)
+      - (SELECT coalesce(sum(w.amount_minor), 0) FROM "money_write_off" w WHERE w.firm_id = NEW.firm_id AND w.invoice_id = s.invoice_id);
+    SELECT coalesce(sum(l.amount_minor), 0) INTO moved FROM "money_move_line" l WHERE l.firm_id = NEW.firm_id AND l.invoice_id = s.invoice_id AND l.kind = 'TRUST_APPLIED'
+      AND NOT EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = l.firm_id AND u.undoes_batch_id = l.batch_id);
+    IF moved + NEW.amount_minor > due THEN
+      RAISE EXCEPTION 'money_move_line: % % would move more than the invoice keeps after credit notes and the write-off (% due, % moved): return the rest to trust', NEW.amount_minor, NEW.currency, due, moved USING ERRCODE = 'check_violation';
+    END IF;
+  END IF;
+  -- Breaks B-1, B-2: only cleared money leaves trust. After this line, the party's money in the trust bank account
+  -- (what it holds in the ledger plus what is still to move) covers its cheques not yet cleared, net of their BOUNCED
+  -- and ENTRY_ERROR corrections; so a bounce can always be recorded and never takes another client's money. The
+  -- firm's settings row is touched, so two moves of one party at REPEATABLE READ go one at a time (40001).
+  UPDATE "money_payment_settings" x SET updated_at = now() WHERE x.firm_id = NEW.firm_id;
+  SELECT coalesce((SELECT e.balance_after_minor FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND (e.person_id = party OR e.company_id = party) AND e.currency = s.currency ORDER BY e.seq DESC LIMIT 1), 0) INTO held;
+  SELECT coalesce(sum(-e.amount_minor
+      - CASE WHEN e.kind = 'WITHDRAWAL_TO_INVOICE' THEN (SELECT coalesce(sum(c.amount_minor), 0) FROM "money_trust_entry" c WHERE c.firm_id = e.firm_id AND c.corrects_entry_id = e.id) ELSE 0 END
+      - (SELECT coalesce(sum(l.amount_minor), 0) FROM "money_move_line" l WHERE l.firm_id = e.firm_id AND l.source_entry_id = e.id
+           AND NOT EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = l.firm_id AND u.undoes_batch_id = l.batch_id))), 0) INTO to_move
+    FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND (e.person_id = party OR e.company_id = party) AND e.currency = s.currency
+      AND (e.kind = 'WITHDRAWAL_TO_INVOICE' OR (e.kind = 'CORRECTION' AND e.correction_kind = 'WRONG_ACCOUNT'));
+  SELECT coalesce(sum(greatest(e.amount_minor + (SELECT coalesce(sum(c.amount_minor), 0) FROM "money_trust_entry" c WHERE c.firm_id = e.firm_id AND c.corrects_entry_id = e.id AND c.correction_kind IN ('BOUNCED', 'ENTRY_ERROR')), 0)), 0)
+    INTO uncleared FROM "money_trust_entry" e JOIN "money_payment" p ON p.firm_id = e.firm_id AND p.id = e.payment_id
+    WHERE e.firm_id = NEW.firm_id AND (e.person_id = party OR e.company_id = party) AND e.currency = s.currency AND e.kind = 'DEPOSIT' AND NOT p.cleared;
+  IF held + to_move - NEW.amount_minor < uncleared THEN
+    RAISE EXCEPTION 'money_move_line: % % of this party''s trust money rests on payments not yet cleared; it moves once they clear (% held, % to move)', uncleared, NEW.currency, held, to_move USING ERRCODE = 'check_violation';
   END IF;
   NEW.move_ordinal := earlier + 1;
   NEW.created_at := now();
@@ -308,7 +317,17 @@ CREATE OR REPLACE VIEW "money_to_move" AS
            (SELECT coalesce(sum(l.amount_minor), 0) FROM "money_move_line" l WHERE l.firm_id = s.firm_id AND l.source_entry_id = s.source_entry_id
               AND NOT EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = l.firm_id AND u.undoes_batch_id = l.batch_id))::integer AS moved_minor
       FROM src s
+  ), o AS (
+    -- A trust application shows at most what its invoice still keeps after credit notes, the write-off and the
+    -- invoice's other moves (break B-4).
+    SELECT m.*, CASE WHEN m.kind = 'TRUST_APPLIED' THEN least(m.eligible_minor - m.returned_minor - m.moved_minor, money_invoice_total(m.firm_id, m.invoice_id)
+             - (SELECT coalesce(sum(c.amount_minor), 0) FROM "money_credit_note" c WHERE c.firm_id = m.firm_id AND c.invoice_id = m.invoice_id)
+             - (SELECT coalesce(sum(w.amount_minor), 0) FROM "money_write_off" w WHERE w.firm_id = m.firm_id AND w.invoice_id = m.invoice_id)
+             - (SELECT coalesce(sum(l.amount_minor), 0) FROM "money_move_line" l WHERE l.firm_id = m.firm_id AND l.invoice_id = m.invoice_id AND l.kind = 'TRUST_APPLIED'
+                  AND NOT EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = l.firm_id AND u.undoes_batch_id = l.batch_id)))
+           ELSE m.eligible_minor - m.returned_minor - m.moved_minor END AS open_amount
+      FROM m
   )
   SELECT firm_id, source_entry_id, kind, direction, currency, person_id, company_id, case_id, invoice_id, eligible_minor, returned_minor, moved_minor,
-         eligible_minor - returned_minor - moved_minor AS open_minor, created_at
-    FROM m WHERE eligible_minor - returned_minor - moved_minor > 0;
+         open_amount::integer AS open_minor, created_at
+    FROM o WHERE open_amount > 0;

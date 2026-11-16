@@ -77,9 +77,9 @@ try {
   };
   const entry = (kind: string, amount: number, x: { inv?: string; pay?: string; corrects?: string; reason?: string; ck?: string; pid?: string; f?: string } = {}) =>
     `insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, payment_id, invoice_id, corrects_entry_id, ${x.ck ? "correction_kind, " : ""}reason, created_by) values ('${x.f ?? firmA}', '${x.pid ?? P1}', '${kind}', ${amount}, 'CAD', ${x.pay ? `'${x.pay}'` : "null"}, ${x.inv ? `'${x.inv}'` : "null"}, ${x.corrects ? `'${x.corrects}'` : "null"}, ${x.ck ? `'${x.ck}', ` : ""}${x.reason ? `'${x.reason}'` : "null"}, 'user-R') returning id`;
-  const depositQ = (amount: number, pid = P1, f = firmA, method = "E_TRANSFER") => { const p = randomUUID();
-    return `insert into money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) values ('${p}', '${f}', '${method}', ${amount}, 'CAD', 'TRUST', now(), '${key()}', 'user-R'); ${entry("DEPOSIT", amount, { pay: p, pid, f })}`; };
-  const deposit = (amount: number, pid = P1, method = "E_TRANSFER") => last(T, depositQ(amount, pid, firmA, method));
+  const depositQ = (amount: number, pid = P1, f = firmA, method = "E_TRANSFER", cleared = true) => { const p = randomUUID();
+    return `insert into money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by, cleared) values ('${p}', '${f}', '${method}', ${amount}, 'CAD', 'TRUST', now(), '${key()}', 'user-R', ${cleared}); ${entry("DEPOSIT", amount, { pay: p, pid, f })}`; };
+  const deposit = (amount: number, pid = P1, method = "E_TRANSFER", cleared = true) => last(T, depositQ(amount, pid, firmA, method, cleared));
   const withdraw = (inv: string, amount: number, pid = P1) => sql(T, entry("WITHDRAWAL_TO_INVOICE", -amount, { inv, pid }));
   const giveBackQ = (w: string, amount: number, pid = P1) => entry("CORRECTION", amount, { corrects: w, reason: "Returned before moving: invoice disputed", pid });
   const correctQ = (dep: string, amount: number, ck: string | undefined, pid = P1) => entry("CORRECTION", -amount, { corrects: dep, reason: "Deposit corrected", ck, pid });
@@ -236,6 +236,41 @@ try {
       total() === "16950:1" && open(w2) === "0" && refused(T, moveQ([{ src: w2, amount: 96050, pid: P4 }]), /0 CAD to move: 96050 less 96050 returned/));
     move([{ src: w1, amount: 16950 }]);
     ok("FO-7mv DW9 pass: after \"I moved these\" the list is empty; firm B sees none of firm A's lines", total() === "0:0" && sql(T, `select count(*) from money_to_move where firm_id = '${firmB}'`) === "0");
+  }
+
+  // ------------------------------------------------------------------------------- the breaker's round 1 and the review's Minors
+  {
+    const P5 = u(5), P6 = u(6), P7 = u(7), clear = (dep: string) => sql(T, `update money_payment set cleared = true, cleared_at = now(), cleared_by = 'user-R' where id = (select payment_id from money_trust_entry where id = '${dep}')`);
+    const chq = deposit(30000, P5, "CHEQUE", false), i5 = invoice(T, 10000, P5), w5 = withdraw(i5, 10000, P5);
+    ok("FO-7mv fail (break B-1): money resting on a cheque not yet cleared never moves out of trust — the 100.00 applied from it is refused; the bounce can still be recorded",
+      refused(T, moveQ([{ src: w5, amount: 10000, pid: P5 }]), /30000 CAD of this party's trust money rests on payments not yet cleared; it moves once they clear \(20000 held, 10000 to move\)/, "23514")
+      && (sql(T, `begin; ${correctQ(chq, 20000, "BOUNCED", P5)}; rollback;`), true));
+    clear(chq);
+    ok("FO-7mv pass (break B-1): once the cheque is cleared the same 100.00 moves", !!move([{ src: w5, amount: 10000, pid: P5 }]) && open(w5) === "0");
+    const both = (deposit(100000, P6), deposit(30000, P6, "CHEQUE", false)), i6 = invoice(T, 10000, P6), w6 = withdraw(i6, 10000, P6);
+    ok("FO-7mv pass (break B-1): with cleared money beside an uncleared cheque, the cleared part moves", !!both && !!move([{ src: w6, amount: 10000, pid: P6 }]));
+    const chq2 = deposit(30000, P7, "CHEQUE", false), wa = sql(T, correctQ(chq2, 30000, "WRONG_ACCOUNT", P7));
+    ok("FO-7mv fail/pass (break B-2): a WRONG_ACCOUNT correction of a cheque not yet cleared waits for the cheque; after it clears, it moves",
+      refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: wa, amount: 30000, pid: P7 }]), /rests on payments not yet cleared/) && (clear(chq2), !!move([{ kind: "WRONG_ACCOUNT", src: wa, amount: 30000, pid: P7 }])));
+    const i8 = invoice(T, 10000), w8 = withdraw(i8, 10000), i9 = invoice(T, 10000), w9 = withdraw(i9, 10000);
+    sql(T, `insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, "full", reason, created_by) values ('${firmA}', '${i8}', 6000, 'CAD', false, 'Service partly cancelled', 'user-R')`);
+    sql(T, `insert into money_write_off (firm_id, invoice_id, amount_minor, currency, reason, created_by) values ('${firmA}', '${i9}', 10000, 'CAD', 'Fee waived', 'user-R')`);
+    ok("FO-7mv fail (break B-4): after a 60.00 credit note on a 100.00 invoice paid from trust, the list shows 40.00 and a 100.00 move is refused; after a full write-off nothing moves",
+      open(w8) === "4000" && refused(T, moveQ([{ src: w8, amount: 10000 }]), /more than the invoice keeps after credit notes and the write-off \(4000 due, 0 moved\)/, "23514")
+      && open(w9) === "0" && refused(T, moveQ([{ src: w9, amount: 1 }]), /\(0 due, 0 moved\)/));
+    ok("FO-7mv pass (break B-4): the 40.00 the invoice keeps moves", !!move([{ src: w8, amount: 4000 }]) && open(w8) === "0");
+    ok("FO-7mv fail (break B-9): a transfer date of infinity or 4713 BC is refused",
+      refused(T, moveQ([{ src: W0, amount: 1 }]).replace("'2026-11-20'", "'infinity'"), /money_move_batch_date_check/) && refused(T, moveQ([{ src: W0, amount: 1 }]).replace("'2026-11-20'", "'4713-01-01 BC'"), /money_move_batch_date_check/));
+    ok("FO-7mv fail (review m1): a USD line in a USD batch for a CAD entry is refused", refused(T, moveQ([{ src: W0, amount: 1 }], { cur: "USD" }), /a line is in its entry's currency \(CAD\)/));
+    const B3 = randomUUID();
+    ok("FO-7mv fail (review m3): a line, then the batch's undo, then commit — refused at commit (an undone batch never gains a line)",
+      refused(T, `begin; insert into money_move_batch (id, firm_id, currency, direction, transfer_date, recorded_by) values ('${B3}', '${firmA}', 'CAD', 'TRUST_TO_OPERATING', '2026-11-20', 'user-R'); insert into money_move_line (firm_id, batch_id, kind, direction, currency, amount_minor, source_entry_id) values ('${firmA}', '${B3}', 'TRUST_APPLIED', 'TRUST_TO_OPERATING', 'CAD', 1, '${W0}'); ${undoQ(B3)}; commit;`, /an undone batch never gains a line/));
+    for (const iso of ["read committed", "repeatable read"]) {
+      const d = deposit(15000, P2), c = sql(T, correctQ(d, 15000, "WRONG_ACCOUNT", P2)), q = () => moveQ([{ kind: "WRONG_ACCOUNT", src: c, amount: 15000, pid: P2 }]).replace(/^begin;|commit; select .*$/g, "");
+      const r = await race([q(), q()], iso);
+      ok(`FO-7mv fail (review m2; parallel, ${iso}): two wrong-account moves of one 150.00 correction at once — one commits, 150.00 moved`,
+        r.filter((x) => x.ok).length === 1 && sql(T, `select sum(amount_minor) from money_move_line where source_entry_id = '${c}'`) === "15000", r);
+    }
   }
 
   // ------------------------------------------------------------------------------- DW6: a generated sequence against a model
