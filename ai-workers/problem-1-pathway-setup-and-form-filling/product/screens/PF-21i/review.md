@@ -1,0 +1,125 @@
+# PF-21i review: a complaint create is idempotent by Idempotency-Key (PR #2012)
+
+Reviewer (Opus 5.5, did not build it), 16 Nov.
+
+**What I reviewed:** head **44f28ba6fd25b73de3f9c59e0dd1847d06d8d350** on `claude/dazzling-feynman-x03cc8`.
+* It is 010579b6b plus three migration lines: `plat_complaint_request_kept()` becomes SECURITY DEFINER, with its path pinned and owned by `xr_wall_reader`.
+* The studio working tree equals 44f28ba6f, so every run below is that head's code.
+* I did not run the walls suite at 010579b6b. "It failed there" is the builder's word.
+
+**The bar:** the brief `lead-b-briefs/PF-21i.md` on `origin/main`, STANDARDS §4 "[M] Idempotent creates", and the "Who" lines in `complaints.ts:8-10`.
+* **No screen** (that is PF-21s), so D1–D20 and BIC-01–20, keyboard, 1024 px and 200 % zoom are N/A.
+* I did not re-run the graph (`graph.mjs` rewrites GRAPH.md). The PR reports `--check` exit 0.
+* US$0, live AI off. :4400 was never touched.
+
+## What I ran
+| Suite | Result |
+|---|---|
+| `check_pf21i_idempotent` | 25/0 |
+| `check_pf21_complaints` | 107/0 (unchanged file) |
+| `check_pf21w_routes` | 83/0 |
+| `check_pf21v_views` | 54/0 |
+| `check_pf12_walls` | 100/0 |
+| `check_pf3_platform_schema` | 75/0 |
+
+All six exited 0, each on its own scratch database on :54329.
+
+**Probes** (a scratch copy of the suite with the probes added; see the journey report):
+* Raw-socket repeated headers.
+* 5-way and different-body races.
+* NFC/NFD, whitespace and number forms.
+* The read rule (journey 9).
+
+I also queried `pg_proc` on a scratch database with every migration applied.
+
+## Done when (P-606)
+- [x] **DW1.** Three posts → 201, 200, 200 with one id. Exactly one row, event, audit line, outbox row and job (`check_pf21i:133-137`). The key-order case is also covered (`:141-143`). Removing the lookup gives a 500 from the unique index, so the test goes red (reasoned).
+- [x] **DW2.** 422 with the brief's words and code, nothing written (`:151-154`). Removing the hash comparison turns it into a 200, so red.
+- [x] **DW3.** 20 of 20 parallel pairs gave one 201 and one 200 (`:164-170`). My 5-way runs gave `200×4,201` in 5 of 5. Without the lock, both transactions miss the row and the index refuses the second insert (500), so red (reasoned, not mutated).
+- [x] **DW4.** No key → 400 `IDEMPOTENCY_KEY_MISSING` with the brief's sentence; 256 characters → 400; 255 → 201; nothing written (`:175-191`).
+- [x] **DW5.** One complaint per firm; firm B never sees A's id (`:198-204`). Making the index `(request_key)` alone would give B a 500, so red.
+- [x] **DW6.** Up-migration over a held complaint (it keeps NULL), a partial index, no second apply, the trigger and the check (`:89-107`). PF-21, 21w and 21v pass; the only test edits are the header lines in 21w and 21v (diff).
+
+## The five differences from the brief
+1. **Key optional in the service, required at the route: accepted.**
+   * HTTP is the only outside door, and `routes.ts:32` always passes a key.
+   * PF-21's 41 direct calls stay unchanged, as DW6 asks. The record comment says so (`complaints.ts:243-247`).
+2. **Same key and body from another recorder → 422: accepted.** It is stricter than the brief, and it is the right instinct: one person's complaint is never handed to another. Two caveats:
+   * The wording is wrong for this case (m3).
+   * It does not close the read gap on its own (M1).
+3. **The view hides `requestKey`/`requestHash`: accepted.**
+   * `view()` strips them (`complaints.ts:143`), and every answer (list, detail, steps) goes through `view`.
+   * The outbox and audit payloads name their fields one by one (`:274-275`), so neither carries the key.
+4. **Check order 403 → field errors → key lookup: accepted.**
+   * The full order is: guard 403, route 400 for no key, service 403, `.strict()` field 422, then the lock and lookup.
+   * A repeat of a body that was valid stays valid, so this costs nothing.
+5. **No `reminderScheduled` on a repeat: not a Blocker, but m1.**
+   * A client retries exactly when it lost the first answer, so the repeat should say what the first one did.
+
+**IETF draft not read:** the PR says so plainly, quotes nothing from memory, and asks the tech lead. That is correct conduct under P-170, but the brief's "quote it" is still open (m2). The brief's own answers stand either way, including "wait, then 200" for concurrent requests.
+
+## Looked at hard
+**Concurrency under READ COMMITTED: holds.**
+* `commit()` sets no isolation level (`complaints.ts:232-236`), and nothing in `api/src` sets a default, so it is READ COMMITTED.
+* `pg_advisory_xact_lock` is the first statement. The loser waits until the winner commits, and its `findFirst` takes a fresh snapshot, so it sees the committed row.
+* The index is the backstop.
+* Fragile point: under RepeatableRead the snapshot would be taken at the lock statement itself, and the loser would get a 500. That is never a second row. Note only.
+
+**Canonical hash (`idempotency.ts:45-53`): holds.**
+* Keys are sorted at every depth; arrays keep their order.
+* `undefined` is dropped from objects and becomes `null` in arrays.
+* Numbers are normalised by `JSON.parse`, and `.strict()` refuses extra fields anyway.
+* NFD against NFC → 422, which is correct, because the stored text would differ.
+* It hashes the raw body, not the parsed one (breaker m2): accepted, since the brief names key order only.
+
+**Header parsing: holds in effect, but the comment is wrong (m4).**
+* Node joins a repeated `idempotency-key` with ", ". The array branch the comment at `idempotency.ts:25` describes never comes from HTTP.
+* The join is refused only because the ", " contains a space (both raw-socket probes → 400).
+* The suite's `twice` case (`check_pf21i:187`) tests the array, not the route.
+
+**Walls and RLS: hold.**
+* `plat_complaint` was already forced with `pf12_firm`, and the new columns inherit the policy.
+* The lookup is `firmScope` plus RLS.
+* The trigger function reads only OLD and NEW, and is now `prosecdef=t`, owner `xr_wall_reader`, path pinned (checked in `pg_proc`).
+* `0_pf12_firm_first` still fires first.
+
+**Migration: additive and data-keeping.** The rollback is listed in order, including the `_prisma_migrations` row.
+
+**Leaks:** none across firms. Within one firm: M1.
+
+## Findings
+**Blockers: none.**
+
+**M1 (Major, server authorisation): a repeat lets a recorder without the read key read the complaint's current state, which the read rule refuses.**
+* Where: `complaints.ts:261-263` answers `view(first, …)`, the row as it is now.
+* The rule (`complaints.ts:8-10`, Lead 47): Case Manager holds record but not read, and anyone who is neither a reader nor the handler gets 404.
+* Scenario (journey 9):
+  1. A Case Manager records a complaint with key K; the handler is the Case Officer.
+  2. The officer acknowledges it.
+  3. The manager's `GET /:id` answers 404.
+  4. The manager re-POSTs K with the same body and gets 200, with `acknowledgedAt` and `status`.
+* The same answer would also show a later `responseSentAt`, `outcome`, `closedAt` and a changed `handlerStaffId`.
+* Fix:
+  * On a repeat, answer the complaint as it was recorded, not as it is now. Build the view from `first` with the later fields reset: `handlerStaffId: v.handlerStaffId`, `acknowledgedAt`, `responseSentAt`, `outcome` and `closedAt` null, `status: "OPEN"`, `updatedAt: first.createdAt`. This is also the draft's "same answer" meaning.
+  * Or give the current view only when `this.canRead(ctx, first)`.
+  * Either way, add a DW line built from journey 9 that goes red without the fix.
+
+**Minors (Should):**
+* **m1.** The repeat drops `reminderScheduled` (`complaints.ts:279`). Fix: send it (true on a repeat, since the first post's job is keyed by the complaint), or document that it is absent for PF-21s.
+* **m2.** The IETF quotes are still missing (P-170). A session that can reach datatracker adds them as a PR comment, as the PR already asks.
+* **m3.** The 422 sentence is untrue when only the person differs (`complaints.ts:178,261`). Use a second sentence, or one neutral one such as "This request key was already used."
+* **m4.** Correct the comment at `idempotency.ts:25` (Node joins repeated headers with ", "), and add a route-level repeated-header case to DW4.
+* **m5.** Breaker m4: `"k";p=1` and a lone `"` become literal keys. Harmless with UUID keys; note in the helper.
+
+## Could not check
+* An IETF reading.
+* A mutation run of the lock and the index (reasoned only).
+* CI on the head.
+* A real screen (PF-21s).
+* An intended user's walk (D17 and D20 stay with the founder).
+
+**Journey score (reviewer): 7/10, below the pass mark, no criterion at 0** (`journey-test-reviewer-2026-11-16.md`). M1 and m1 together would bring it to 8.
+
+**To fix before Approve:** M1, with its test.
+
+Verdict: Block
