@@ -28,6 +28,7 @@ Three hourly cloud routines ("lane starter 1-3", at :05, :25 and :45 UTC past ea
 | PF-6 part 2a | runtime | lead-b-front-office:lead-b-briefs/PF-6p2.md | #1945 merged 03:37 IST: free now (touch lists checked by Build Lead A; PF-4c part 1 merges main on a MODULE.md conflict, P-270) | high, yes |
 | PF-6m2 | runtime | lead-b-front-office:lead-b-briefs/PF-6m2.md | #1945 merged 03:37 IST: free now (touch lists checked by Build Lead A; PF-4c part 1 merges main on a MODULE.md conflict, P-270) | high, yes |
 | PF-4c part 1 | runtime | main:lead-b-briefs/PF-4c.md | #1945 merged 03:37 IST: free now (touch lists checked by Build Lead A; PF-4c part 1 merges main on a MODULE.md conflict, P-270) | high, yes |
+| PF-4dn | runtime | lead-b-front-office:lead-b-briefs/PF-4dn.md (invite carries an optional displayName, AG-01 §3.2) | #2044; never beside PF-4c part 1 or PF-6m2 (identity) | medium, no |
 | PF-11 part 1 | runtime | main:lead-b-briefs/PF-11.md + the corrections in #1972 comment 6916991708 | #1959 | high, yes; migration: "Ready for Lead read" |
 | FO-3a part 1b | runtime | main:lead-b-briefs/FO-3a.md + lead-b-front-office:lead-b-briefs/P-626-order.md A2 | #1918 | high, no |
 | FO-3a part 2a | runtime | lead-b-front-office:lead-b-briefs/FO-3a2.md (may run beside 1b) | #1918 | high, no |
