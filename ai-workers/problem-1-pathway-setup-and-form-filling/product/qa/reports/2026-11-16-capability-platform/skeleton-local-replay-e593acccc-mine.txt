@@ -1,0 +1,59 @@
+== commit e593accccfcb3bd71129c0c54d5adfc15098d4f5
+== build (scratch Dockerfile.qa: proxy CA as a build secret only)
+build exit 0
+#17 unpacking to docker.io/library/studio-skeleton:test
+#17 unpacking to docker.io/library/studio-skeleton:test 6.3s done
+#17 DONE 30.8s
+== up
+ Network studio-skeleton_default Creating 
+ Network studio-skeleton_default Creating 
+ Network studio-skeleton_default Created 
+ Network studio-skeleton_default Created 
+ Container studio-skeleton-db-1 Creating 
+ Container studio-skeleton-db-1 Created 
+ Container studio-skeleton-migrate-1 Creating 
+ Container studio-skeleton-migrate-1 Created 
+ Container studio-skeleton-app-1 Creating 
+ Container studio-skeleton-app-1 Created 
+ Container studio-skeleton-db-1 Starting 
+ Container studio-skeleton-db-1 Started 
+ Container studio-skeleton-db-1 Healthy 
+ Container studio-skeleton-migrate-1 Starting 
+ Container studio-skeleton-migrate-1 Started 
+ Container studio-skeleton-db-1 Healthy 
+ Container studio-skeleton-migrate-1 Exited 
+ Container studio-skeleton-app-1 Starting 
+ Container studio-skeleton-app-1 Started 
+ Container studio-skeleton-migrate-1 Exited 
+ Container studio-skeleton-db-1 Healthy 
+ Container studio-skeleton-app-1 Healthy 
+up exit 0
+migrate-1  | 
+migrate-1  | All migrations have been successfully applied.
+NAME                        IMAGE                                                                                            COMMAND                  SERVICE   CREATED          STATUS                     PORTS
+studio-skeleton-app-1       studio-skeleton:test                                                                             "docker-entrypoint.s…"   app       13 seconds ago   Up 5 seconds (healthy)     127.0.0.1:4480->8080/tcp
+studio-skeleton-db-1        postgres:18.3-bookworm@sha256:80630f83606d8db77d30b3851b16a9f78be2d0d4dda6f7b82a1fdca5ebe3acba   "docker-entrypoint.s…"   db        14 seconds ago   Up 12 seconds (healthy)    5432/tcp
+studio-skeleton-migrate-1   studio-skeleton:test                                                                             "docker-entrypoint.s…"   migrate   13 seconds ago   Exited (0) 6 seconds ago   
+== smoke
+PASS  health: GET /api/health 200, status ok
+PASS  first page: GET / 200 with the web app's root
+PASS  first page: its bundle /assets/index-COZSTyKR.js 200 (text/javascript; charset=utf-8)
+PASS  me: GET /api/platform/me 200 with firmId
+PASS  non-root: the image runs as 'node' (uid 1000)
+PASS  no secret: environment (7 names) and history (17 layers) hold nothing secret-shaped
+skeleton smoke: all steps passed (http://127.0.0.1:4480)
+smoke exit 0
+== seeded db stop
+ Container studio-skeleton-db-1 Stopping 
+ Container studio-skeleton-db-1 Stopped 
+FAIL  health: GET /api/health answered 503 — The database does not answer: Raw query failed. Code: `N/A`. Message: `Can't reach database server at db`
+PASS  first page: GET / 200 with the web app's root
+PASS  first page: its bundle /assets/index-COZSTyKR.js 200 (text/javascript; charset=utf-8)
+SKIP  me: GET /api/platform/me waits for PF-4 on main (PLATFORM_ME=required runs it)
+skeleton smoke: 1 step(s) failed (http://127.0.0.1:4480)
+seeded smoke exit 1 (must be non-zero, FAIL health)
+== seeded image
+FAIL  non-root: the image's user is 'root'
+FAIL  no secret: secret-shaped text in the image's environment or history: ://u:***@,SEEDED_SIGNING_KEY=***
+== down
+ Network studio-skeleton_default Removed 
