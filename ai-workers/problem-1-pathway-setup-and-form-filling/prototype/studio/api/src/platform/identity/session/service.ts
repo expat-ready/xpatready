@@ -11,7 +11,7 @@ import { auditEvent } from "../../audit/audit-event.ts";
 import { asBypass, firmScope, notInFirm } from "../../firm-scope.ts";
 import { actorWord } from "../audit.ts";
 import { writeMoneyKeysGranted } from "../money-line.ts";
-import { forbidden, problem, unauthorized, type StaffContext } from "../keys.ts";
+import { FIRM_KEY, forbidden, problem, unauthorized, type StaffContext } from "../keys.ts";
 import { PlatformClock } from "../port.ts";
 import { PlatformIdentity } from "../service.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./mail.ts";
@@ -22,6 +22,8 @@ type Tx = Prisma.TransactionClient;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 /** The Accept page's words (BR-4), fixed. */
+/** PF-6m2: the audit line of an invitation refused at accept because its inviter may no longer give it. */
+export const INVITER_REFUSED = "platform.invitation.refused_inviter";
 export const INVITE_WORDS = { expired: (firm: string) => `This invitation has expired. Ask ${firm} to send a new one.`, notValid: "This invitation is no longer valid." };
 
 type InvRow = { id: string; firm_id: string; email: string; roles: PlatformRole[]; invited_by: string; accepted_at: Date | null; revoked_at: Date | null; expired: boolean; firm_name: string; firm_key: string };
@@ -92,6 +94,16 @@ export class PlatformSession {
       if (state === "EXPIRED") problem(410, "Invitation expired", INVITE_WORDS.expired(i!.firm_name), { code: "INVITATION_EXPIRED", state });
       if (state !== "VALID") problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state });
       const inv = i!;
+      // PF-6m2 (break F1; BR-1, BR-4): the inviter is checked again here, under the firm's lock (the lock deactivation and
+      // role change take first), so an inviter who has since left or lost the keys hands nothing out.
+      const refused = await this.inviterRefusal(tx, inv);
+      if (refused) {
+        await tx.$executeRaw`update platform_invitation set revoked_at = now() where id = ${inv.id}::uuid`;
+        await auditEvent.record(tx, { firmId: inv.firm_id, actor: "system:invitation-accept", action: INVITER_REFUSED, entity: "platform_invitation", entityKey: inv.id,
+          summary: refused.reason === "inactive" ? "an invitation was refused at accept: its inviter is no longer active" : `an invitation was refused at accept: its inviter may no longer give ${refused.roles.join(", ")}`,
+          detail: { invitationId: inv.id, invitedBy: inv.invited_by, reason: refused.reason, roles: refused.roles } });
+        return { refused };   // committed: the invitation stays no longer valid, and the line stays
+      }
       if (await tx.platformStaff.findFirst({ where: firmScope(inv.firm_id, { email: inv.email }), select: { id: true } })) problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" });
       // One sign-in account is one firm's staff member (identity_subject is unique): the invitee, who holds the link, is told plainly.
       if (await tx.platformStaff.findFirst({ where: { email: inv.email }, select: { id: true } })) problem(409, "Use another email", `This email already signs in to another firm. Ask ${inv.firm_name} to invite another address.`, { code: "EMAIL_IN_ANOTHER_FIRM" });
@@ -107,7 +119,21 @@ export class PlatformSession {
       await tx.platformStaff.update({ where: { id: staff.id }, data: { identitySubject: subject } });
       await tx.moduleEvent.create({ data: { firmId: inv.firm_id, type: EVENT.STAFF_JOINED, subjectId: staff.id, payload: StaffJoinedPayload.parse({ staffId: staff.id, invitationId: inv.id }) } });   // last (PF-3 m8)
       return { staffId: staff.id, firmKey: inv.firm_key, roles: inv.roles, handOff: await this.admin.handOff(inv.firm_key, inv.email) };
-    }));
+    }).then((out) => "refused" in out ? problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" }) : out));
+  }
+
+  /** PF-6m2: why the inviter (`invited_by`) may no longer hand this invitation out, else null. The same rule as invite
+   *  time (identity/service.ts roleRules): an active staff member of the same firm, holding every key of every role
+   *  invited (the guard's firm keys), and the Owner role only from an Owner. Role names only, never a key or a person. */
+  private async inviterRefusal(tx: Tx, inv: InvRow): Promise<{ reason: "inactive"; roles: PlatformRole[] } | { reason: "role_no_longer_givable"; roles: PlatformRole[] } | null> {
+    const id = /^staff:(.+)$/.exec(inv.invited_by)?.[1] ?? "";
+    const by = UUID.test(id) ? await tx.platformStaff.findFirst({ where: firmScope(inv.firm_id, { id: id.toLowerCase() }), select: { status: true, grants: { where: { endedAt: null }, select: { role: true } } } }) : null;
+    if (by?.status !== "ACTIVE") return { reason: "inactive", roles: [] };
+    const held = by.grants.map((g) => g.role);
+    const keys = new Set((await tx.platformRolePermission.findMany({ where: { role: { in: held } }, select: { permissionKey: true } })).map((k) => k.permissionKey).filter((k) => FIRM_KEY.test(k)));
+    const needed = await tx.platformRolePermission.findMany({ where: { role: { in: inv.roles } }, select: { role: true, permissionKey: true } });
+    const beyond = inv.roles.filter((r) => (r === "OWNER" && !held.includes("OWNER")) || needed.some((k) => k.role === r && !keys.has(k.permissionKey)));
+    return beyond.length ? { reason: "role_no_longer_givable", roles: beyond } : null;
   }
 
   // ---------------------------------------------------------------------------------------------------- the session
