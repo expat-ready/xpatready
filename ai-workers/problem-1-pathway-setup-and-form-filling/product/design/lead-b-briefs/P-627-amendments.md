@@ -1,4 +1,4 @@
-# P-627 amendments to the PF/FO briefs (Lead B (6), rev 16.44, 16 Nov 07:3x IST)
+# P-627 amendments to the PF/FO briefs (Lead B (6), rev 16.44, 16 Nov 07:2x IST)
 
 These come from the founder's seven morning answers (P-627, on `lead/2026-11-07-lead31`) and P-628 (the Lead decides product questions while the founder is away). Answers (3), (4) and (5) are case-side batches (#1875, #1876, #1886), which are not Lead B rows. **Paste each block above its brief when starting the builder.** Where a block differs from the brief's text, the block wins.
 
