@@ -158,6 +158,28 @@ try {
     ok("PF-21i DW2 pass: after the refusal the first body still answers the first complaint (200)", again.status === 200 && again.body.id === first.body.id);
   }
 
+  // ---------------------------------------------------------------------------------------------------------- DW2b
+  // Review M1: a repeat answers the complaint as it was recorded, never its later state: a recorder without the read key
+  // who is not the handler (a case manager) must not learn of the handler's acknowledgement, response, close or change.
+  {
+    const key = randomUUID(), body = complaint("Recorded by a case manager (Sample)");
+    const first = await post(manager.token, body, key);
+    const id = first.body.id as string, at = (h: number) => new Date(Date.parse(AT) + h * 3_600_000).toISOString();
+    const steps = [
+      await fetch(`${BASE}/api/platform/complaints/${id}/acknowledge`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${officer.token}` }, body: JSON.stringify({ at: at(1) }) }),
+      await fetch(`${BASE}/api/platform/complaints/${id}/response-sent`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${officer.token}` }, body: JSON.stringify({ at: at(2) }) }),
+      await fetch(`${BASE}/api/platform/complaints/${id}/handler`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${owner.token}` }, body: JSON.stringify({ handlerStaffId: owner.id }) }),
+      await fetch(`${BASE}/api/platform/complaints/${id}/close`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${owner.token}` }, body: JSON.stringify({ at: at(3), outcome: "RESOLVED", note: "Resolved (Sample)" }) }),
+    ];
+    const cannotRead = (await fetch(`${BASE}/api/platform/complaints/${id}`, { headers: { authorization: `Bearer ${manager.token}` } })).status;
+    const again = await post(manager.token, body, key);
+    const asRecorded = again.status === 200 && again.body.id === id && again.body.status === "OPEN" && again.body.acknowledgedAt === null && again.body.responseSentAt === null
+      && again.body.outcome === null && again.body.closedAt === null && again.body.handlerStaffId === officer.id && again.body.updatedAt === again.body.createdAt;
+    ok(`PF-21i DW2b ${asRecorded ? "pass" : "fail"}: a repeat by a recorder who cannot read the complaint (404 on GET) answers it as recorded: open, not acknowledged, no response, no outcome, the first handler`,
+      steps.every((x) => x.status === 200) && first.status === 201 && cannotRead === 404 && asRecorded, { steps: steps.map((x) => x.status), cannotRead, again: again.body });
+    ok("PF-21i DW2b: the repeat's answer is the first answer (apart from reminderScheduled), field by field", JSON.stringify({ ...first.body, reminderScheduled: undefined, updatedAt: undefined }) === JSON.stringify({ ...again.body, reminderScheduled: undefined, updatedAt: undefined, overdue: first.body.overdue, businessDaysLeft: first.body.businessDaysLeft }), { first: first.body, again: again.body });
+  }
+
   // ---------------------------------------------------------------------------------------------------------- DW3
   {
     let good = 0; const bad: unknown[] = [];
@@ -184,11 +206,19 @@ try {
     const quoted = randomUUID(), q1 = await post(owner.token, complaint("Quoted (Sample)"), `"${quoted}"`), q2 = await post(owner.token, complaint("Quoted (Sample)"), quoted);
     ok("PF-21i DW4 pass: a quoted key (the draft's string form) is the same key without its quotes", q1.status === 201 && q2.status === 200 && q2.body.id === q1.body.id, { q1: q1.status, q2: q2.status });
     const shapes = { space: () => readIdempotencyKey("a b", "m"), tab: () => readIdempotencyKey("a\tb", "m"), nul: () => readIdempotencyKey("a\u0000b", "m"), del: () => readIdempotencyKey("a\u007fb", "m"), nonAscii: () => readIdempotencyKey("clé", "m"),
-      twice: () => readIdempotencyKey(["a", "b"], "m"), bareQuote: () => readIdempotencyKey("\"a\"b\"", "m"), emptyQuoted: () => readIdempotencyKey("\"\"", "m"), badEscape: () => readIdempotencyKey("\"a\\b\"", "m") };
+      twice: () => readIdempotencyKey(["a", "b"], "m"), loneQuote: () => readIdempotencyKey("\"", "m"), params: () => readIdempotencyKey("\"k\";p=1", "m"), openQuote: () => readIdempotencyKey("\"abc", "m"), bareQuote: () => readIdempotencyKey("\"a\"b\"", "m"), emptyQuoted: () => readIdempotencyKey("\"\"", "m"), badEscape: () => readIdempotencyKey("\"a\\b\"", "m") };
     const refusedShapes = Object.entries(shapes).filter(([, f]) => { try { f(); return false; } catch (e) { return (e as { getStatus?: () => number }).getStatus?.() === 400; } }).map(([k]) => k);
     ok("PF-21i DW4 fail: control characters, spaces, non-ASCII, a repeated header and a broken quoted string → 400", refusedShapes.length === Object.keys(shapes).length, refusedShapes);
     const ctl = await fetch(`${BASE}/api/platform/complaints`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${owner.token}`, "idempotency-key": "a b" }, body: JSON.stringify(complaint()) });
     ok("PF-21i DW4 fail: through the route, a key with a space → 400 IDEMPOTENCY_KEY_INVALID", ctl.status === 400 && (await ctl.json()).code === "IDEMPOTENCY_KEY_INVALID");
+    // A repeated header line, as a client sends it on the wire (fetch would merge it): Node joins the two values with ", ".
+    const { request } = await import("node:http");
+    const twiceStatus = await new Promise<number>((done, failed) => {
+      const u = new URL(`${BASE}/api/platform/complaints`), payload = JSON.stringify(complaint());
+      const rq = request({ host: u.hostname, port: u.port, path: u.pathname, method: "POST", headers: [["content-type", "application/json"], ["authorization", `Bearer ${owner.token}`], ["idempotency-key", "k1"], ["idempotency-key", "k1"], ["content-length", String(Buffer.byteLength(payload))]].flat() }, (rs) => { rs.resume(); done(rs.statusCode ?? 0); });
+      rq.on("error", failed); rq.end(payload);
+    });
+    ok("PF-21i DW4 fail: two Idempotency-Key header lines on one request → 400 (not one key)", twiceStatus === 400, twiceStatus);
     const officerTry = await post(officer.token, complaint(), randomUUID());
     ok("PF-21i DW4: the permission still comes first (a case officer with a key → 403)", officerTry.status === 403);
   }

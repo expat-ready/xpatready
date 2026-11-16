@@ -22,13 +22,16 @@ const problem = (status: number, code: string, title: string, detail: string): n
   throw new HttpException({ type: `https://expatready.local/problems/${code}`, title, status, detail, code: code.toUpperCase().replace(/-/g, "_") }, status as HttpStatus);
 };
 
-/** The key from the header's raw value (Node gives a string, or an array when a client repeats an unknown header). */
+/** The key from the header's raw value. Node joins a repeated header into one string with ", ", which the space
+ *  refuses; an array (any other caller) is refused too. A value that starts with a quote must be one whole quoted
+ *  string (no parameters such as `;p=1`, no lone quote). */
 export function readIdempotencyKey(raw: unknown, missing: string): string {
   if (raw === undefined || raw === null || raw === "") return problem(400, "idempotency-key-missing", "Idempotency-Key needed", missing);
   const invalid = () => problem(400, "idempotency-key-invalid", "Idempotency-Key not valid", `The Idempotency-Key header is one value of 1 to ${MAX} visible characters (letters, digits and punctuation, no spaces).`);
   if (typeof raw !== "string") return invalid();
   let key = raw;
-  if (key.length >= 2 && key.startsWith("\"") && key.endsWith("\"")) {
+  if (key.startsWith("\"")) {
+    if (key.length < 2 || !key.endsWith("\"")) return invalid();
     let out = "";
     const inner = key.slice(1, -1);
     for (let i = 0; i < inner.length; i++) {

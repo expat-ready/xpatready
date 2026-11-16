@@ -241,8 +241,8 @@ export class ComplaintsService {
    *  once committed: a job queue that fails afterwards is answered with `reminderScheduled: false` (never a 500 that
    *  would make the person record it twice); the overdue list still shows the complaint when its date passes.
    *  PF-21i: with `key` (the route's Idempotency-Key, required at the door), the key is locked for the transaction and
-   *  looked up in the firm: found with the same body (canonical SHA-256) and the same recorder → that complaint's view,
-   *  marked REPEATED, and nothing is written (no event, audit line, outbox row or reminder job); found with another body,
+   *  looked up in the firm: found with the same body (canonical SHA-256) and the same recorder → that complaint as it
+   *  was recorded (open, not acknowledged, the first handler: never its later state), marked REPEATED, and nothing is written (no event, audit line, outbox row or reminder job); found with another body,
    *  or recorded by someone else → 422 IDEMPOTENCY_KEY_REUSED; not found → recorded as before, keeping the key and hash.
    *  Without `key` (in-process callers only, e.g. PF-21's suite) it records as before. */
   async record(ctx: StaffContext, input: unknown, key?: string): Promise<ComplaintView & { reminderScheduled?: boolean; [REPEATED]?: true }> {
@@ -260,7 +260,10 @@ export class ComplaintsService {
         if (first) {
           if (first.requestHash !== hash || first.recordedBy !== this.actor(ctx)) keyReused();
           repeated = true;
-          return view(first, now, await this.days(tx, firmId));
+          // The answer to the first request, never the complaint's later state (review M1): a recorder who may not read
+          // it learns nothing of an acknowledgement, response, close or handler change made since.
+          const asRecorded: PlatComplaint = { ...first, handlerStaffId: v.handlerStaffId, acknowledgedAt: null, responseSentAt: null, status: "OPEN", outcome: null, closedAt: null, updatedAt: first.createdAt };
+          return view(asRecorded, now, await this.days(tx, firmId));
         }
       }
       if (!(await this.activeStaff(tx, firmId, v.handlerStaffId))) fieldErrors({ handlerStaffId: "choose an active staff member of your firm" });
