@@ -84,7 +84,7 @@ t0=$(ms_now); run "{$FR,\"first\":{$TODAY,$REL,\"stuck\":[${many%,}]}}"; ms=$(( 
 
 # 8. The wiring: lead-watch.sh's own step 11, run with the data steps 2 and 5 hold, adds its ACT lines to the exit count
 # (a merged PR the board still lists comes from step 2's merged list, so no GitHub call is needed).
-step=$(sed -n '/^# 11\. What the founder/,/^\(# 12\. \|exit\)/p' "$TOOLS/lead-watch.sh" | grep -v '^\(# 12\. \|exit\)')
+step=$(awk '/^# 11\. What the founder/ {f=1} f && (/^# 12\. / || /^exit/) {exit} f' "$TOOLS/lead-watch.sh")   # awk: same on BSD (Mac) and GNU
 FRESH="\"freshness\":{\"generated_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"   # step 11 reads the real clock: the board is fresh now
 printf '%s' "{$FRESH,\"first\":{$TODAY,$REL,\"stuck\":[$S_LQ]}}" > "$T/board.json"; mkdir -p "$T/st"
 w=$(act=0; seen() { :; }; STATE_DIR="$T/st"; COCKPIT_DATA="$T/board.json"; prs='[{"number":1901,"title":"a"}]'; caps=$(cat "$T/caps.md")
