@@ -114,7 +114,8 @@ export type FakeLegalHolds = LegalHoldPort<FakeHoldTx | unknown> & {
   release(input: ReleaseHoldInput, during?: () => Promise<void>): Promise<void>;
 };
 
-/** An in-memory store with one reader-writer lock per firm, modelling Postgres' advisory locks (rule 3). */
+/** An in-memory store with one reader-writer lock per firm, modelling Postgres' advisory locks (rule 3). One difference:
+ *  a new reader may overtake a queued placement (Postgres queues it behind); both orders are serialisable. */
 export function fakeLegalHolds(opts: { now?: () => Date } = {}): FakeLegalHolds {
   const now = opts.now ?? (() => new Date());
   const rows: (HoldMatch & { firmId: string; releasedAt: Date | null })[] = [];
@@ -122,17 +123,23 @@ export function fakeLegalHolds(opts: { now?: () => Date } = {}): FakeLegalHolds 
   const held = new Map<FakeHoldTx, Set<string>>();
   const lockOf = (key: string) => { let l = locks.get(key); if (!l) locks.set(key, (l = { shared: new Set(), exclusive: false, waiters: [] })); return l; };
   const wake = (l: ReturnType<typeof lockOf>) => { const w = l.waiters.splice(0); w.forEach((f) => f()); };
-  const until = async (l: ReturnType<typeof lockOf>, free: () => boolean) => { while (!free()) await new Promise<void>((r) => l.waiters.push(r)); };
+  /** Waits until `free()` and then runs `take()` in the same synchronous step, so two woken waiters never both take it. */
+  const acquire = async (l: ReturnType<typeof lockOf>, free: () => boolean, take: () => void) => {
+    while (!free()) await new Promise<void>((r) => l.waiters.push(r));
+    take();
+  };
   async function share(tx: FakeHoldTx, key: string) {
     const l = lockOf(key);
     if (l.shared.has(tx)) return;
-    await until(l, () => !l.exclusive);
-    l.shared.add(tx); held.get(tx)?.add(key);
+    await acquire(l, () => !l.exclusive, () => {
+      const mine = held.get(tx);
+      if (!mine) throw new Error("fakeLegalHolds: the transaction ended before isHeld got its lock");
+      l.shared.add(tx); mine.add(key);
+    });
   }
   async function exclusively<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const l = lockOf(key);
-    await until(l, () => !l.exclusive && l.shared.size === 0);
-    l.exclusive = true;
+    await acquire(l, () => !l.exclusive && l.shared.size === 0, () => { l.exclusive = true; });
     try { return await fn(); } finally { l.exclusive = false; wake(l); }
   }
   return {
@@ -147,8 +154,9 @@ export function fakeLegalHolds(opts: { now?: () => Date } = {}): FakeLegalHolds 
     async isHeld(tx, firmId, subjects) {
       const q = IsHeldQuery.parse({ firmId, subjects });
       const key = legalHoldLockKey(q.firmId);
-      if (tx && typeof tx === "object" && held.has(tx as FakeHoldTx)) await share(tx as FakeHoldTx, key);
-      else await until(lockOf(key), () => !lockOf(key).exclusive);   // no open transaction: the lock lasts the one read
+      // Rule 3: only inside a transaction this store opened and that is still open (a root client or an ended one is refused).
+      if (!tx || typeof tx !== "object" || !held.has(tx as FakeHoldTx)) throw new Error("fakeLegalHolds: isHeld needs the caller's open transaction (rule 3)");
+      await share(tx as FakeHoldTx, key);
       return answer(rows, q);
     },
     async place(input, during) {
