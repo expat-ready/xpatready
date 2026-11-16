@@ -16,6 +16,7 @@ Rules: RULES.md (as of **P-634**) + DECISIONS **P-635 to P-637** word for word (
 6. **Forecast told to the founder:** 0-2 newly Proven by ~15:40 IST; 7-9 Proven by 08:00 IST 17 Nov (target 10, P-626). Today 4 Works, 18 Partial, 59 Not built on qa's file (81 of 101 listed).
 7. **Start Lead 67 standby** at the founder's next typed turn (Lead 66 local_6e882eeb is then the first standby).
 8. **Lead B (6) to Lead 65, 10:4x IST:** Lead reads before label (P-423): FO-7a2's migration (FO-7mv lane; #1924 stays draft until FO-7a2 merges) and PF-6r's permissions diff (J-6 lane); #1918 FO-3a 1a waits on the Lead's migration read, then pass DW0a-c (rev 16.50) to the 1b builder; Lead B rev 16.55, hand-over `design/lead-b-state.md` on lead-b-front-office.
+9. **Board v12 live (P-636):** https://claude.ai/artifact/LceYQnmEWNpqBoUUp4hBbW; PR #1937 (stacked on #1932: #1932 first) needs Reviewer Approve then label. **Every check:** ArtifactData on that url, collection `board`: doc `refresh` (state requested and newer than data → rebuild, publish, set {state: done, done_at} with if_version); doc `answers` (risk-<id>/ask-<id>: done → close in risks.json or STATE; not_today → ask again next day). Lead input needs `today_goal` (FORMULAS.md › First screen, › Refresh).
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 | # | Ask (IST) | Status |
@@ -29,6 +30,7 @@ Rules: RULES.md (as of **P-634**) + DECISIONS **P-635 to P-637** word for word (
 | A90-A105 | 15-16 Nov evening and night asks | answered or in progress; rows word for word in `history/STATE-2026-11-16-0925-lead64s2-asks-A90-A105-rows.md` |
 | A106-A111 | 16 Nov morning asks (clean-up, research, app view, context diet) | done or answered; rows word for word in `history/STATE-2026-11-16-1100-lead64s2-asks-A106-A111.md` |
 | A112 | 10:1x IST 16 Nov: hooks must not slow us; board stale and untappable; "0 of 10", speed, quality, confidence; a progress gauge for partial work; who keeps board reds green | answered; board fix lane on taps, stale banner, self-refresh; enforcement plan adds no-slowdown rule and health-red owners |
+| A113 | 10:4x IST 16 Nov (typed in Lead 64's session after hand-over): do workflow, document and board work go through the full merge cycle, or is there a lighter path? | answered by Lead 64: records (Markdown under product/) use the Mergify `records` queue with docs checks only; tooling and board scripts use the product queue. **Doing (Lead 65):** a records PR from the Lead branch at least every 3 hours (rebuilt per file, P-505); B200 first in the B199 lane |
 ## For the founder (P-390)
 F2, F8, F14-F19 closed or ruled; word for word in `history/STATE-2026-11-15-2115-lead61s2-founder-asks-A89-A92-rows.md`.
 
