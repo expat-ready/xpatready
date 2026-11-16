@@ -190,8 +190,8 @@ try {
 
   // ------------------------------------------------------------------------------------------------ DW4: sites, relatives, ids
   const base = spawnSync("git", ["merge-base", "HEAD", "origin/main"], { cwd: STUDIO, encoding: "utf8" }).stdout.trim();
-  const stat = base ? spawnSync("git", ["diff", "--stat", base, "--", "api/src"], { cwd: STUDIO, encoding: "utf8" }).stdout.trim() : "(no origin/main)";
-  ok(`CS-S1 DW4 pass: the answer-write sites are unchanged (git diff --stat on api/src against origin/main is empty)`, base !== "" && stat === "", stat);
+  const stat = base ? spawnSync("git", ["diff", "--stat", base, "--", ":(glob)api/src/**/*.ts"], { cwd: STUDIO, encoding: "utf8" }).stdout.trim() : "(no origin/main)";
+  ok(`CS-S1 DW4 pass: the answer-write sites are unchanged (git diff --stat of api/src's code against origin/main is empty; the module card is not code)`, base !== "" && stat === "", stat);
   const before4 = sql(FULL, "select count(*) from case_party_index");
   const R = person(FULL, w, null, null, "Profile Name (Sample)", P.party);
   answer(FULL, w, R, "person.given_names", "Parent"); answer(FULL, w, R, "person.family_name", "Dupont");
