@@ -95,13 +95,12 @@ def t_proving(F, row, arg):
     subj = F.get("alive_subjects")
     if subj is None:
         raise NotRead("branches pushed in 90 min not read")
-    qa = {b for b, t in subj.items() if QA_SUBJECT.match(t or "")}
-    for s_ in board_part(F, "team", "sessions") or []:
-        if s_.get("role") == "qa" and s_.get("chip") == "pushing":
-            qa.add(s_.get("branch") or s_.get("name") or "qa session")
-    short = waiting > int(row["threshold"]) and len(qa) < 2
+    branches = sum(1 for t in subj.values() if QA_SUBJECT.match(t or ""))
+    sessions = sum(1 for s_ in board_part(F, "team", "sessions") or [] if s_.get("role") == "qa" and s_.get("chip") == "pushing")
+    qa = max(branches, sessions)                        # one lane is seen both ways (its branch and its session): never add them
+    short = waiting > int(row["threshold"]) and qa < 2
     ids = rel.get("waiting_ids") or []
-    return (waiting if short else 0), (f"R1.{ids[0]} of {waiting} Built waiting for qa" if ids else f"{waiting} Built waiting for qa") + f", {len(qa)} qa lane(s) pushed in 90 min"
+    return (waiting if short else 0), (f"R1.{ids[0]} first of {waiting} Built waiting for qa" if ids else f"{waiting} Built waiting for qa") + f", {qa} qa lane(s) pushed in 90 min"
 
 
 def t_feeding(F, row, arg):
@@ -123,9 +122,9 @@ def t_reuse(F, row, arg):
     seen = F.get("seen")
     if seen is None:
         raise NotRead("lead-watch's lines not passed")
-    if not any(re.search(row["threshold"], s) for s in seen):
-        raise NotRead("its source did not run in this check", board=True)
     hits = [s for s in seen if re.search(arg, s)]
+    if not hits and not any(re.search(row["threshold"], s) for s in seen):   # a hit proves its source ran; else its "ran" line must
+        raise NotRead("its source did not run in this check", board=True)
     return len(hits), (hits[0][6:90] if hits else "none")
 
 
