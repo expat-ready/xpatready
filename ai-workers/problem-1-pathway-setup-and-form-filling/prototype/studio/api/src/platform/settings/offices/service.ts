@@ -31,8 +31,7 @@ export const AddOffice = z.strictObject(Fields);
 export const ChangeOffice = z.strictObject({ ...Fields, name: Name.optional(), version: z.string() });
 const parse = <T extends z.ZodType>(schema: T, body: unknown): z.output<T> => {
   const r = schema.safeParse(body ?? {});
-  if (!r.success) refused("Please check the highlighted details.", r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`));
-  return r.data;
+  return r.success ? r.data : refused("Please check the highlighted details.", r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`));
 };
 const zoneOf = (v: unknown): string => { const r = TIME_ZONE.schema.safeParse(v); return r.success ? r.data : refused(ZONE_REFUSED, ["timeZone: not a time zone on the list"]); };
 const hoursOf = (v: unknown): Hours => { const r = BUSINESS_HOURS.schema.safeParse(v); return r.success ? r.data : refused("Please check the opening hours.", r.error.issues.map((i) => `businessHours.${i.path.join(".")}: ${i.message}`)); };
@@ -56,8 +55,9 @@ const view = (r: Row): OfficeView => ({
 const auditView = (r: Row, p = "") => {
   const hours = (r.businessHours as Hours).map((h) => `${h.day} ${h.opens}-${h.closes}`), closed = r.closedDays as string[];
   const k = (n: string) => (p ? `${p}${n[0].toUpperCase()}${n.slice(1)}` : n);
-  return { [k("name")]: r.name.slice(0, 200), [k("countryCode")]: r.countryCode, [k("province")]: r.province, [k("timeZone")]: r.timeZone, [k("hours")]: hours, [k("closedDays")]: closed.slice(0, 50), [k("closedDayCount")]: closed.length };
+  return { [k("nameLength")]: [...r.name].length, [k("countryCode")]: r.countryCode, [k("province")]: r.province, [k("timeZone")]: r.timeZone, [k("hours")]: hours, [k("closedDays")]: closed.slice(0, 50), [k("closedDayCount")]: closed.length };
 };
+const closedDelta = (from: string[], to: string[]) => ({ closedDaysAdded: to.filter((d) => !from.includes(d)).slice(0, 50), closedDaysRemoved: from.filter((d) => !to.includes(d)).slice(0, 50) });   // a date past the snapshots' first 50 is never lost (Devin on #2009)
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const actor = (a: OfficeActor) => `staff:${a.staffId}`;
 /** A write the database refuses for its zone (a name Intl knows and PostgreSQL does not, break B4) is the person's 400. */
@@ -141,7 +141,7 @@ export class Offices {
       } }));
       const zoneChanged = before.timeZone !== after.timeZone;
       await this.deps.audit.record(tx, { firmId, actor: actor(a), action: zoneChanged ? "platform.office.time_zone_change" : "platform.office.change", entity: "platform_office", entityKey: after.id,
-        summary: zoneChanged ? `Office time zone changed from ${before.timeZone} to ${after.timeZone}` : "Office changed", detail: { ...auditView(before, "from"), ...auditView(after, "to") } });
+        summary: zoneChanged ? `Office time zone changed from ${before.timeZone} to ${after.timeZone}` : "Office changed", detail: { ...auditView(before, "from"), ...auditView(after, "to"), ...closedDelta(before.closedDays as string[], after.closedDays as string[]) } });
       return view(after);
     });
   }
@@ -153,7 +153,7 @@ export class Offices {
     return this.deps.db.$transaction(async (tx) => {
       const staff = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: staffId.toLowerCase() }), select: { id: true } });
       if (!staff) return notInFirm("staff member");
-      const before = await tx.platformStaffOffice.findUnique({ where: { staffId: staff.id } });
+      await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended('platform_office:' || ${firmId}, 0))`; const before = await tx.platformStaffOffice.findUnique({ where: { staffId: staff.id } });
       if (officeId === null) {
         if (before) await tx.platformStaffOffice.delete({ where: { staffId: staff.id } });
       } else {
