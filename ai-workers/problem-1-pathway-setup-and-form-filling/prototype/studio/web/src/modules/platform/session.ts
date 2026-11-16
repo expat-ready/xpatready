@@ -1,0 +1,95 @@
+// PF-6 part 1 (brief lead-b-briefs/PF-6.md; was FO-4 part 1's sales/session.ts, moved here unchanged in behaviour): the
+// firm staff member's session. The platform and front-office routes take a bearer token (PF-4's guard), not the Studio's
+// simulated person, so firm-staff pages call them through `staffApi`, never `api`. The token is kept for this browser tab
+// only (sessionStorage, with an in-memory fallback): AG1-D20 (6)'s "not readable by page script" is the client portal's
+// rule (CP-1-91), not staff's. New here: why the session ended (`useSessionEnd`, AG-1-55's "Signed in elsewhere").
+import * as React from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryClient } from "@/lib/api";
+import { Me, problemOf, type Problem } from "@/modules/front-office/sales/contract";
+const KEY = "xr-staff-session";
+type Stored = { token: string; expiresAt: number };
+/** The session in memory too, so a browser that refuses storage keeps it until the page reloads (Devin #1822). */
+let memory: Stored | null = null;
+/** Why the last session ended: the 401's code (SIGNED_IN_ELSEWHERE, SESSION_REVOKED, TOKEN_EXPIRED, NOT_SIGNED_IN, …), or null. */
+let ended: string | null = null;
+function read(): Stored | null {
+  let s: Stored | null = memory;
+  try { const kept = sessionStorage.getItem(KEY); if (kept !== null) s = JSON.parse(kept) as Stored | null; } catch { /* storage refused: memory only */ }
+  return s && typeof s.token === "string" && typeof s.expiresAt === "number" && s.expiresAt > Date.now() ? s : null;
+}
+const listeners = new Set<() => void>();
+function changed() { for (const l of listeners) l(); }
+/** Every answer a staff page keeps: front office ["fo", …] and platform ["pf", …]. */
+const STAFF_KEYS = [["fo"], ["pf"]] as const;
+export function setStaffToken(token: string | null, expiresInSeconds = 3600) {
+  memory = token ? { token, expiresAt: Date.now() + expiresInSeconds * 1000 } : null;
+  if (token) ended = null;   // a new sign-in clears the last end reason
+  try {
+    if (memory) sessionStorage.setItem(KEY, JSON.stringify(memory));
+    else sessionStorage.removeItem(KEY);
+  } catch { /* storage refused: the session lasts in memory until the page reloads */ }
+  // A new person (or none) never sees the last person's rows (break S2): every staff answer is dropped.
+  for (const queryKey of STAFF_KEYS) queryClient.removeQueries({ queryKey });
+  changed();
+}
+/** Ends the session here and says why (null: no reason to show, e.g. the person signed out or chose to sign in again). */
+export function endSession(because: string | null) { ended = because; setStaffToken(null); }
+/** Forgets the end reason (the "Sign in again here" button opens the sign-in card). */
+export function clearSessionEnd() { if (ended !== null) { ended = null; changed(); } }
+/** The token, or null when signed out or expired. */
+export const staffToken = () => read()?.token ?? null;
+function useChanges() {
+  const [, force] = React.useState(0);
+  React.useEffect(() => { const l = () => force((n) => n + 1); listeners.add(l); return () => { listeners.delete(l); }; }, []);
+}
+export function useStaffToken() {
+  useChanges();
+  // The session ends at its expiry even when nothing is clicked (break S1): the sign-in card shows then.
+  const s = read();
+  React.useEffect(() => {
+    if (!s) return;
+    const t = setTimeout(() => endSession("TOKEN_EXPIRED"), Math.min(s.expiresAt - Date.now(), 2_147_000_000));
+    return () => clearTimeout(t);
+  }, [s?.token, s?.expiresAt]);   // eslint-disable-line react-hooks/exhaustive-deps -- keyed on the stored session
+  return s?.token ?? null;
+}
+/** Why the last session ended (the 401's code), until a new sign-in or `clearSessionEnd`. */
+export function useSessionEnd() { useChanges(); return ended; }
+/** A refused call: the server's plain reason (Problem Details `detail`), its code and field errors. */
+export class StaffApiError extends Error {
+  constructor(readonly status: number, readonly problem: Problem) { super(problem.detail ?? problem.title ?? `${status}`); }
+  field(name: string) { return this.problem.fields?.[name] ?? null; }
+}
+/** One call to a staff route with the bearer token. A 401 ends the session here (the sign-in card shows again). */
+export async function staffApi<T>(path: string, init: { method?: string; json?: unknown } = {}): Promise<T> {
+  const token = staffToken();
+  const headers: Record<string, string> = { accept: "application/json" };
+  if (token) headers.authorization = `Bearer ${token}`;
+  if (init.json !== undefined) headers["content-type"] = "application/json";
+  const res = await fetch(`/api${path}`, { method: init.method ?? "GET", headers, body: init.json === undefined ? undefined : JSON.stringify(init.json) });
+  const text = await res.text();
+  const data: unknown = text ? (() => { try { return JSON.parse(text); } catch { return text; } })() : null;
+  if (!res.ok) {
+    const problem = problemOf(data, res.status);
+    // Any 401 ends the session here, also one whose token expired before this call (break S1); a session that was
+    // sent keeps the server's reason (AG-1-55: "You signed in on another device").
+    if (res.status === 401) { if (token) endSession(problem.code ?? "NOT_SIGNED_IN"); else setStaffToken(null); }
+    throw new StaffApiError(res.status, problem);
+  }
+  return data as T;
+}
+/** Who is signed in: roles, permission keys and duties (`GET /api/platform/me`). */
+export function useMe() {
+  const token = useStaffToken();
+  return useQuery({ queryKey: ["fo", "me", token], enabled: !!token, retry: false, queryFn: async () => Me.parse(await staffApi("/platform/me")) });
+}
+/** PF-4's local stand-in sign-in (the server refuses it unless PLATFORM_IDENTITY=local). */
+export function useLocalSignIn() {
+  const qc = useQueryClient();
+  return async (firmKey: string, email: string) => {
+    const r = await staffApi<{ token: string; expiresIn: number }>("/platform/session/local", { method: "POST", json: { firmKey, email, secondStep: true } });
+    setStaffToken(r.token, r.expiresIn);
+    for (const queryKey of STAFF_KEYS) await qc.invalidateQueries({ queryKey });
+  };
+}
