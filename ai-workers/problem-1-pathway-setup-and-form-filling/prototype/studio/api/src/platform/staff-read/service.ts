@@ -2,13 +2,17 @@
 // = active + suspended + pending invitations (database clock) of the plan's limit (BR-2). A licence number only on the
 // Licences list and the person's own account; never in a log line, event or email.
 import { HttpException, Inject, Injectable } from "@nestjs/common";
+import { PlatformRole, Prisma } from "@prisma/client";
 import { Db } from "../../core.ts";
+import { catalogueMismatches, type KeyClass, type Scope } from "../identity/catalogue.ts";
 import { firmScope, notInFirm } from "../firm-scope.ts";
-import type { StaffContext } from "../identity/keys.ts";
+import { FIRM_KEY, type StaffContext } from "../identity/keys.ts";
 import { PlatformIdentity } from "../identity/service.ts";
 import { IDENTITY_ADMIN_PORT, type IdentityAdminPort, type TwoStep } from "../identity/session/provider.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** The six starter roles in the order the role picker and Compare roles show them (PF-6r). */
+export const STARTER_ROLES = ["OWNER", "ADMIN", "CASE_MANAGER", "CASE_OFFICER", "BILLING_FINANCE", "READ_ONLY"] as const satisfies readonly PlatformRole[];
 export const TWO_STEP_WORDS = "Required for all staff";
 const include = { grants: { where: { endedAt: null }, select: { role: true }, orderBy: { grantedAt: "asc" as const } }, credential: { select: { representativeType: true, licensingBody: true } } };
 
@@ -53,6 +57,29 @@ export class StaffReads {
   async licences(actor: StaffContext) {
     const rows = await this.db.platformStaffCredential.findMany({ where: firmScope(actor.firmId), include: { staff: { select: { displayName: true, status: true } } }, orderBy: { staff: { displayName: "asc" } } });
     return { licences: rows.map((r) => ({ staffId: r.staffId, displayName: r.staff.displayName, status: r.staff.status, representativeType: r.representativeType, licensingBody: r.licensingBody, licenceNumber: r.licenceNumber, updatedAt: r.updatedAt })) };
+  }
+
+  /** GET /api/platform/roles (PF-6r): what each of the six starter roles gives, in a fixed order, each key with its class
+   *  and scope from the catalogue (PF-6b), and the money and licence counts. platform_role_permission has no firm column:
+   *  the starter roles are the same for every firm, so the answer carries no firm, staff or label (the screen's words come
+   *  from SA-06 Appendix C). A key with no catalogue row, a class or scope that disagrees with PF-6b's rules, or a seventh role is a 500,
+   *  never a key shown with a wrong or missing class. Keys sort in byte order (collate C) on every database. */
+  async roles() {
+    const all = await this.db.$queryRaw<{ role: string; key: string; class: KeyClass | null; scope: Scope | null }[]>(Prisma.sql`
+      select rp.role::text as role, rp.permission_key as key, k.class::text as class, k.scope::text as scope
+        from platform_role_permission rp left join platform_permission_key k on k.key = rp.permission_key
+       order by rp.permission_key collate "C"`);
+    const rows = all.filter((r) => FIRM_KEY.test(r.key));   // the keys the guard gives (identity service)
+    const lost = rows.filter((r) => !r.class || !r.scope).map((r) => `${r.role}: ${r.key}`);
+    if (lost.length) throw new Error(`Role keys with no catalogue row (PF-6b DW1): ${lost.join(", ")}`);
+    const wrong = catalogueMismatches(rows as { key: string; class: KeyClass; scope: Scope }[]);
+    if (wrong.length) throw new Error(`The permission-key catalogue disagrees with PF-6b's rules: ${[...new Set(wrong)].join("; ")}`);
+    const other = [...new Set(rows.map((r) => r.role))].filter((r) => !(STARTER_ROLES as readonly string[]).includes(r));
+    if (other.length) throw new Error(`Roles outside the six starter roles (PF-6r): ${other.join(", ")}`);
+    return { roles: STARTER_ROLES.map((role) => {
+      const keys = rows.filter((r) => r.role === role).map((r) => ({ key: r.key, class: r.class!, scope: r.scope! }));
+      return { role, keys, moneyKeys: keys.filter((k) => k.class === "MONEY").length, licenceKeys: keys.filter((k) => k.class === "LICENCE").length };
+    }) };
   }
 
   /** GET /api/platform/me/account: everyone's own account: roles, own licence, own two-step state. */

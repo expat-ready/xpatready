@@ -3292,6 +3292,256 @@ def write_history(path, hist, line):
     os.replace(path + ".tmp", path)
 
 
+# ---------------------------------------------------------------- lead watch (B201, A117, P-639)
+# The 30-minute check reads what the founder's board shows: the Today card and the Stuck panel exactly as first_screen built
+# them into the published data.json (same rules, same source: no second formula), and checks each against its primary
+# source with data lead-watch.sh already holds (open PRs, qa/CAPABILITIES.md on main). The founder's view is not changed.
+# Usage: python3 tools/cockpit-data.py --watch <data.json> --open-prs <gh pr list json> --caps-main <CAPABILITIES.md>
+WATCH_MAX_LINES = 40                             # B201 cap: at most ~40 lines per check
+WATCH_ITEMS = 5                                  # items named per Stuck line (the rest counted)
+WATCH_STALE_H = 2.0                              # Lead input and board data older than 2 h count as not updated (README)
+WATCH_LOOKUPS = 3                                # B201 cap: at most 3 GitHub reads per check (8 s timeout each is the worst case)
+WATCH_ITEM_ACTS = 8                              # disagree lines per check before one "and N more"
+AGE_H = re.compile(r"\((\d+(?:\.\d+)?) h\)\s*$")
+PR_NUM = re.compile(r"^#(\d+)\b")
+
+
+def watch_panels(d):
+    """The board's Today card and Stuck panel, as published (data.json › first, built by first_screen). (None, None) when the
+    board data has no first screen (a board older than P-636)."""
+    f = (d or {}).get("first") or {}
+    if "today" not in f and "stuck" not in f:
+        return None, None
+    return f.get("today") or {}, f.get("stuck") or []
+
+
+def _hm(iso, text=None):
+    if text:
+        return text
+    if not iso:
+        return "not set"
+    try:
+        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).astimezone(IST).strftime("%-d %b, %H:%M IST")
+    except (ValueError, TypeError):
+        return str(iso)
+
+
+def watch_today_line(t):
+    """One line equal to the board's Today card: proven of goal, by when, short, Built waiting for qa."""
+    if not t:
+        return "today  board has no Today card"
+    if t.get("goal") is None:
+        return f"today  {t.get('proven')} Proven, no proving goal set (Lead input today_goal), {t.get('waiting')} Built waiting for qa"
+    return (f"today  {t.get('proven')} of {t.get('goal')} Proven by {_hm(t.get('by'), t.get('by_text'))}, "
+            f"{t.get('short', 0)} short, {t.get('waiting')} Built waiting for qa")
+
+
+def _oldest_first(items):
+    """Items carrying their own age "(N h)" go oldest first; items without one keep the board's order after them."""
+    aged = [(float(m.group(1)), i) for i, x in enumerate(items) for m in [AGE_H.search(str(x))] if m]
+    if not aged:
+        return list(items)
+    order = [i for _, i in sorted(aged, key=lambda a: (-a[0], a[1]))]
+    return [items[i] for i in order] + [x for i, x in enumerate(items) if i not in set(order)]
+
+
+def watch_stuck_lines(stuck):
+    """One ACT line per Stuck panel entry: what, its items oldest first with age, the next step."""
+    out = []
+    for s in stuck or []:
+        items = _oldest_first(s.get("items") or [])
+        named = "; ".join(str(x) for x in items[:WATCH_ITEMS]) + (f"; +{len(items) - WATCH_ITEMS} more" if len(items) > WATCH_ITEMS else "")
+        out.append(f"ACT   stuck: {s.get('what')} — {named or 'no items named'} ({s.get('since') or 'not dated'}) — next: {s.get('next') or 'not named'}")
+    return out
+
+
+def _r1_status(caps_text):
+    """R1.n -> status from qa/CAPABILITIES.md (parse_caps, the board's own parse)."""
+    return {int(k.split(".")[1]): v["status"] for k, v in parse_caps(caps_text).items() if re.fullmatch(r"R1\.\d+", k)}
+
+
+def _map_of(label):
+    m = re.match(r"R1\.(\d+)\b", str(label))
+    return int(m.group(1)) if m else None
+
+
+def watch_source_checks(d, open_prs, caps_text, pr_state=None, known_states=()):
+    """P-639: never take the board's word blindly. Each Stuck entry and the Today numbers are checked against the primary
+    source the board cites, with data the check already holds: open PRs (GitHub) and qa/CAPABILITIES.md on main.
+    pr_state(n) -> "merged" / "closed" / "open" / None answers only for a PR the board names that is not in the open list.
+    Returns (lines, checked, disagree, unchecked names)."""
+    today, stuck = watch_panels(d)
+    lines, checked, bad, unchecked, lookups = [], 0, 0, [], [0]
+    is_open = {int(p["number"]) for p in open_prs or []} if open_prs is not None else None
+    r1 = (_r1_status(caps_text) or None) if caps_text and caps_text.strip() else None
+    works = lambda st: bool(QA_WORKS_W.match(st or ""))
+
+    def disagree(item, x, y):
+        nonlocal bad
+        bad += 1
+        lines.append(f"ACT   board vs source disagree: {item} — board says {x}, source says {y} — fix the script or the board row")
+
+    def capped(rows):                                # rows: (item, board, source) mismatches of one check
+        for item, x, y in rows[:WATCH_ITEM_ACTS]:
+            disagree(item, x, y)
+        if len(rows) > WATCH_ITEM_ACTS:
+            disagree(f"{len(rows) - WATCH_ITEM_ACTS} more", "as above", "as above")
+
+    rel = (d.get("first") or {}).get("release") or {}
+    if today and r1 is not None:
+        checked += 1
+        pids = rel.get("proven_ids")
+        if pids is None:                             # older board data: the count only, against every R1 row at Works
+            n_works = sum(1 for st in r1.values() if works(st))
+            ok_ = today.get("proven") == n_works
+            src_y = f"{n_works} R1 rows read Works in qa/CAPABILITIES.md on main"
+        else:
+            notw = [m for m in pids if not works(r1.get(m))]
+            ok_ = not notw and today.get("proven") == len(pids)
+            src_y = (f"qa does not read Works for {', '.join(f'R1.{m}' for m in notw)}" if notw else
+                     f"{len(pids)} proven ids for a Today of {today.get('proven')}")
+        if ok_:
+            lines.append(f"ok    board agrees: Today {today.get('proven')} Proven (each reads Works in qa/CAPABILITIES.md on main)")
+        else:
+            disagree("Today Proven", today.get("proven"), src_y)
+        wids = rel.get("waiting_ids")
+        if wids is not None:
+            checked += 1
+            rows = [(f"R1.{m} Built waiting for qa", "waiting for qa", f"qa reads {r1.get(m)}") for m in wids if works(r1.get(m))]
+            if rows:
+                capped(rows)
+            else:
+                lines.append(f"ok    board agrees: Today {today.get('waiting')} Built waiting for qa (none reads Works on main)")
+    elif today:
+        unchecked.append("Today (qa/CAPABILITIES.md on main not read)")
+    for s in stuck or []:
+        what = str(s.get("what") or "")
+        nums = [int(m.group(1)) for x in s.get("items") or [] for m in [PR_NUM.match(str(x))] if m]
+        maps = [m for m in (_map_of(x) for x in s.get("items") or []) if m is not None]
+        if "wait for the Lead" in what and nums:
+            if is_open is None:
+                unchecked.append(what + " (open PRs not read)")
+                continue
+            checked += 1
+            rows, lost = [], []
+            for n in nums:
+                if n in is_open:
+                    continue
+                st = pr_state(n) if pr_state and (lookups[0] < WATCH_LOOKUPS or n in known_states) else None
+                if pr_state and n not in known_states:
+                    lookups[0] += 1
+                if not st:
+                    lost.append(f"#{n}")
+                elif st != "open":
+                    rows.append((f"#{n} waits for the Lead's answer", "open and waiting", st))
+            if lost:
+                unchecked.append(f"{', '.join(lost)} not open and state not read")
+            if rows:
+                capped(rows)
+            elif not lost:
+                lines.append(f"ok    board agrees: {what} (all {len(nums)} open on GitHub)")
+        elif "reads Not built" in what and maps:
+            if r1 is None:
+                unchecked.append(what + " (qa's file not read)")
+                continue
+            checked += 1
+            rows = [(f"R1.{m} reads Not built", "Not built", f"qa reads {r1.get(m) or 'no row'}") for m in maps
+                    if not (r1.get(m) or "").startswith("Not built")]
+            capped(rows) if rows else lines.append(f"ok    board agrees: {what} (each reads Not built on main)")
+        elif "missing from qa" in what and maps:
+            if r1 is None:
+                unchecked.append(what + " (qa's file not read)")
+                continue
+            checked += 1
+            rows = [(f"R1.{m} missing from qa's file", "missing", f"qa has a row: {r1[m]}") for m in maps if m in r1]
+            capped(rows) if rows else lines.append(f"ok    board agrees: {what} (none has a row on main)")
+        else:
+            unchecked.append(what.split(":")[0])
+    return lines, checked, bad, unchecked
+
+
+def watch_lines(d, open_prs=None, caps_text=None, pr_state=None, now=None, known_states=()):
+    """Every line the check prints for the board (B201 + P-639), at most WATCH_MAX_LINES."""
+    today, stuck = watch_panels(d)
+    if today is None:
+        return ["board  data.json has no first screen (board older than P-636): Today and Stuck not read"]
+    out = []
+    gen = (d.get("freshness") or {}).get("generated_at")
+    try:
+        age = (now or datetime.now(timezone.utc)) - datetime.fromisoformat(str(gen).replace("Z", "+00:00")) if gen else None
+    except (ValueError, TypeError):                  # a non-ISO or timezone-less time: its age is not known (an ACT below)
+        gen = None
+    if gen:
+        h = max(0.0, round(age.total_seconds() / 3600, 1))
+        out.append(f"board  as of {_hm(gen)} ({h} h old): {len(stuck)} stuck")
+        if h > WATCH_STALE_H:
+            out.append(f"ACT   board data {h} h old (over {WATCH_STALE_H:g} h): refresh the board (cockpit/README.md) before trusting Today and Stuck")
+    else:
+        out.append("ACT   board data has no generated_at: its age is not known; refresh the board (cockpit/README.md)")
+    out.append(watch_today_line(today))
+    out += watch_stuck_lines(stuck)
+    sl, checked, bad, unchecked = watch_source_checks(d, open_prs, caps_text, pr_state, known_states)
+    out += sl
+    out.append(f"board vs source: {checked} checked · {bad} disagree" + (f" · not checked here: {'; '.join(unchecked)}" if unchecked else ""))
+    if len(out) > WATCH_MAX_LINES:
+        cut = len(out) - WATCH_MAX_LINES + 1
+        keep = out[:WATCH_MAX_LINES - 1]
+        acts = sum(1 for x in out[WATCH_MAX_LINES - 1:] if x.startswith("ACT"))
+        out = keep + [f"ACT   board: {cut} more lines cut ({acts} of them ACT): read data.json › first.stuck" if acts else
+                      f"warn  board: {cut} more lines cut"]
+    return out
+
+
+def watch_main(argv):
+    ap = argparse.ArgumentParser(prog="cockpit-data.py --watch")
+    ap.add_argument("--watch", required=True, help="the board's data.json")
+    ap.add_argument("--open-prs", help="gh pr list --json number,... output (the open PRs lead-watch.sh already read)")
+    ap.add_argument("--caps-main", help="qa/CAPABILITIES.md as on origin/main")
+    ap.add_argument("--now")
+    ap.add_argument("--no-lookup", action="store_true", help="never ask GitHub about a PR that is not in the open list")
+    ap.add_argument("--pr-states", help='JSON {"<n>": "merged"|"closed"|"open"} already known (tests; PRs merged in the window)')
+    a = ap.parse_args(argv)
+    try:
+        d = json.loads(slurp(a.watch))
+    except (OSError, ValueError) as e:
+        print(f"ACT   board data not read ({a.watch}: {e.__class__.__name__}): refresh the board (cockpit/README.md); "
+              "Today and Stuck are not seen by this check")
+        return 0
+    prs = None
+    if a.open_prs:
+        try:
+            prs = json.loads(slurp(a.open_prs))
+        except (OSError, ValueError):
+            prs = None
+    caps = slurp(a.caps_main) if a.caps_main and os.path.exists(a.caps_main) else None
+
+    known = {}
+    if a.pr_states:
+        try:
+            known = {int(k): v for k, v in json.loads(slurp(a.pr_states)).items()}
+        except (OSError, ValueError):
+            known = {}
+
+    def pr_state(n):
+        if n in known:
+            return known[n]
+        if a.no_lookup:
+            return None
+        try:
+            r = subprocess.run(["bash", os.path.join(HERE, "gh.sh"), "api", f"repos/{{owner}}/{{repo}}/pulls/{n}", "-q",
+                                '(if .merged then "merged" else .state end)'], capture_output=True, text=True, timeout=8, cwd=ROOT)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return (r.stdout.strip() or None) if r.returncode == 0 else None
+    now = datetime.fromisoformat(a.now.replace("Z", "+00:00")) if a.now else None
+    for line in watch_lines(d, prs, caps, pr_state, now, known_states=set(known)):
+        print(line)
+    return 0
+
+
+QA_WORKS_W = re.compile(r"Works(?![A-Za-z])")     # the board's QA_WORKS rule (first_screen, P-636)
+
+
 # ---------------------------------------------------------------- main
 def main():
     ap = argparse.ArgumentParser()
@@ -3967,4 +4217,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(watch_main(sys.argv[1:])) if "--watch" in sys.argv[1:] else main()

@@ -73,3 +73,14 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 * **P-609 (15 Nov, founder): Release 1 = all 101 together, committed date 29 Nov** (was 24 Nov, P-599); 17 Nov day-3 check re-forecasts; under 50% → options to him at once.
 * **P-608 (15 Nov, founder): model and effort at every start:** Opus 5.5 medium for Leads, standbys, builders and qa; Opus 5.5 high only for reviewers, breakers, qa's fresh reader and money, schema, permissions or security rows; Fable 5.2 medium for specifying lanes, challenges and planning reads (desk Fable high, P-597); every local start passes `effort`; cloud starts name effort in the brief.
 * **P-557 (13 Nov, hard rule): always committed, always resumable.** Every session commits and pushes at every step; the repository is the memory (STATE "Start here" + hand-over block say what is true, in flight and next, updated with every change of state); private material moves to a private GitHub home (proposed `ours/notes` of his private API copy); local notes, auto-memory, cron checks and account-bound artifacts are never the only record (AGENTS.md rule 10).
+
+## Index lists (moved word for word from RULES.md, 11:07 IST 16 Nov, to keep it under 25 KB; P-611, P-188)
+| IDX-1 | Milestone plans stand as recorded (M3 done 29/29 10 Nov; the Bake; the Chrome extension, 40 sessions), detail in the side file: P-434, P-438, P-450, P-459, P-460, P-463, P-466, P-469, P-471, P-472, P-474, P-475, P-481, P-489, P-494, P-499; with P-435, P-447 to P-449, P-451 to P-457, P-476, P-482 to P-484, P-495. | prose | 12 Nov |
+| IDX-5 | Product and Release 1 scope rulings stand as recorded (read the row when its capability is touched): P-477, P-492, P-493, P-540, P-560 to P-562, P-564, P-567, P-568, P-570 to P-572, P-575, P-577 to P-579, P-581, P-584, P-585, P-598, P-603, P-612; with P-573, P-574, P-586. | prose | 15 Nov |
+| IDX-4 | Product rulings stand in their DECISIONS rows (read one when its capability is touched): P-441, P-443, P-444, P-487, P-490, P-491, P-496 to P-498, P-510, P-525, P-538, P-548, P-588; with P-72, P-78, P-148, P-154, P-242, P-411; holds P-235 to P-248 lifted (P-316). | prose | 14 Nov |
+
+Folded into IDX-2 by Lead 65 at 11:08 IST 16 Nov (one-time directions; rows word for word):
+| IDX-2 | One-time or time-boxed directions, done or standing as recorded in the side file: P-485, P-506, P-507, P-533, P-537, P-545, P-569 (integration stopped). | prose | 14 Nov |
+| P-547 | The document system is approved with seven folds (its check never reds a product PR). | prose | 13 Nov |
+| P-583 | GitHub's free safety settings on in the checked order; the founder clicks, the Lead guides and verifies. | prose | 14 Nov |
+| P-589 | A private backup now; cut CI minutes first (B190); private at the gate before real firm data (P-590: option C). | prose | 14 Nov |
