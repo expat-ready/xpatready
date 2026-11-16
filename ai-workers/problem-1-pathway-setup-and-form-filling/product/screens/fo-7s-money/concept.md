@@ -1,3 +1,64 @@
 # FO-7s0 — one concept for every money screen (index)
 
-Draft in progress (records only). Plan in the PR body.
+**Status:** draft for the fresh challenge, then Build Lead C's approval (P-223 (4), P-644). Records only. Every figure **Sample**; every legal reading **Unconfirmed: no counsel**. Brief: `design/build-lead-c-briefs/FO-7s0.md` (wins) over `design/briefs/FO-7s0.md`.
+**Requirements (`trace-requirements.py --cite`, exit 0):** AG-6-1@2483b583 (with -2, -3, -5 to -8), AG-6-4@374fb7a9, AG-6-14@fa1493ed, AG-6-19@22fd5859, AG-6-23@d660d88f, AG-6-25@77cda9c7 (with -26, -27), AG-6-28@58f2a8ef, AG-6-31@c963bccc, AG-6-42@84f6f455, AG-6-46@7fae2559, AG-6-48@207b4d8a, AG-6-49@4a3520dd, AG-6-59@682faf5c, AG-6-60@e7a7709d, AG-6-68@c6344607, AG-6-69@bb310f02, AG-6-71@c482c1db, AG-6-73@bf454be3, AG-6-74@3bc6f3d7, AG-6-75@fb763ef8, AG-6-76@575112a7. Decisions P-223 (4), P-392, P-352, P-592, P-504, P-567 (3), P-568 (1), P-578, P-603, P-607 (1) (7), P-634.
+
+## The five files and the design folder (DW8: these five and no other concept file)
+| File | Groups | Built by |
+|---|---|---|
+| `concept-invoices.md` | (a) Money area · (b) builder, issue dialog, invoice detail · (i) credit note, refund, write-off, reverse entry | FO-7s1, FO-7s4 part 1 |
+| `concept-payments.md` | (c) Record payment, payments list and detail · (j) Send statement, Exports | FO-7s3a part 1, FO-7s5 |
+| `concept-trust.md` | (e) Money view, ledger, Pay from trust, Refund to client, **To move** (moved here from (a): it exists only while trust shows) · (f) the trust question · (h) monthly check | FO-7s3a part 2, FO-7s3b, FO-7m part 3 |
+| `concept-pay-page.md` | (d) public pay page, account down, plan schedule, autopay consent and Stop | FO-7s2 part 2, FO-7s4p |
+| `concept-settings.md` | (g) Getting paid: trust, payment details, tax, card payments, Advanced | FO-7s1 part 3, FO-7s2 part 1, FO-7s3a part 2 |
+`design/`: one board per file (`invoices.html`, `payments.html`, `trust.html`, `pay-page.html`, `settings.html`), the **state × string table** and trust action list (`state-strings.html`, DW1, DW3) and the **contract table** (`contract.html`, DW2). Each board checks itself (DW4, DW7). `challenge.md`: the fresh challenge.
+
+## 1. Job and journey
+Staff (Owner, Admin, Billing and finance, case roles within C5) bill a client for a case, get paid by card or offline, hold advance money in trust only when the firm says it does, and correct mistakes by new records, never edits; the client pays from a no-login link. Journey: retainer signed → invoice → issue → paid (card, offline, or from trust) → To move → monthly check → statement and exports. Each group file ends with its walk (P-352), numbered steps with the screen after each, replayable by qa (P-592); each walk ends at the next capability's first step.
+
+## 2. Ten layers
+Masters and links: the money tables of FO-7a/FO-7ts/FO-7mv (`client-money.prisma`, on main or in flight). Rules: the database and the API rows (FO-7b, c, g, m, p, q, r, t, v). Engine: none on screen (statuses and balances are derived server-side). Contract: `design/contract.html`. Screen: these files. AI assist: **none** (money; live AI off, P-175). Governance: audit lines are the API rows'.
+
+## 3. Business rules the screens show (each tested by its row)
+* **BR-1 Trust words only while trust shows** (AG-6-59 r5-r6): Yes, or No with money held or To move not empty; never while Unanswered. Exception: the trust question's own lines, Owner only (Q3). DW1.
+* **BR-2 Two ways out of trust** (P-603): Pay from trust to an issued invoice of the same payer, Refund to client. DW3.
+* **BR-3 Never negative** (P-607 (1)): a shortfall is an operating → trust To move line and one Owner item; trust shows CAD 0.00. Departs from AG-6-60 r7, AG-6-74 r5, AG-6-75 r4's red "−CAD 1,500". DW7.
+* **BR-4 One total per currency** (AG-6-25 to -27): no figure adds CAD and USD; lists have no total row. DW4.
+* **BR-5 No card into trust** (P-567 (3)): no pay link or card on a trust request or deposit; no trust card account in R1.
+* **BR-6 Number at issue**, frozen after; edits refused with "use a credit note" (AG-6-1 r4-r6, AG-6-44).
+* **BR-7 Government fee lines** typed, never taxed, no tax control (AG-6-4 r3, P-607 (7)).
+* **BR-8 Plans and autopay** only on an issued invoice for services given, consent versioned and unticked (P-578, FO-7p); the pay page's only part payment is a plan's due part.
+* **BR-9 Account down** → no card form; offline details or the firm's contact line (AG-6-49).
+* **BR-10 Actions only from `allowedActions`** (FO-7q); a missing route means a missing button, never a disabled one.
+* **BR-11 Refusals in the API's words**, on the panel that caused them; money with two decimals and its currency, one formatter.
+* **BR-12 Tax:** registered switch needs a number; no rate list or editing; "Prices include tax" under Advanced; QST hidden (AG-6-4, P-568 (1)).
+
+## 4. Layout and states
+Patterns (EXPERIENCE §3): list pages (Catalogue), invoice builder (Workspace), every value-collecting step a right panel (TEAM-PATTERNS), the pay page its own plain frame. Menu and paths: `concept-invoices.md` (a). **Trust states** Unanswered · Yes · No with nothing held · No with money held: `state-strings.html`. **Card account** Active · down (Restricted with charges off, Disconnected, Not connected): `concept-pay-page.md`, `concept-settings.md`. **Empty, loading, refused (403), not visible (C5: plain not-found, never "CAD 0"), two currencies:** each file's list and section notes.
+
+## 4b. Best in class (P-392; public pages only, never the team's app, P-504)
+Read 16 Nov 2026 through web search results; this session's network refused opening the pages themselves, so each claim is from the page's indexed text (Unverified in full; a Mac re-read can confirm).
+* **Clio** — trust (help.clio.com/hc/en-us/articles/53067844736923 "Apply Trust Funds to Bills"; …/51554190645659 "Create Trust Requests"; …/21058568234267 "Operating and Trust Reconciliation"): applies trust at bill approval or after ("Approve & apply trust"); trust short of the bill leaves the rest unpaid; reconciliation compares bank, client ledgers and the firm ledger. **We copy** pay-from-trust inside issue and the parts-based reconciliation. **We beat**: no bulk apply across clients, a never-negative balance with the shortfall as a line, and a check that names each part in words.
+* **Stripe** — hosted invoice page and credit notes (docs.stripe.com/invoicing/hosted-invoice-page; docs.stripe.com/api/credit_notes): one private link per invoice to view, pay and download; 3-D Secure handled by the page; post-payment credit notes must be split into refund or customer credit. **We copy** one link per invoice, paid by the webhook, and the forced choice after a paid credit (Refund to the client · Move back to trust / Keep as credit). **We beat**: no card form when the account is down, offline details instead.
+* **QuickBooks Online** — write off bad debt (quickbooks.intuit.com/learn-support/en-us/manage-customers-and-income/write-off-bad-debt/00/239632): a credit memo against a bad-debt item, then applied to the invoice, may land on the wrong invoice. **We beat** with one "Write off" on the invoice itself: the amount is the remaining balance, a reason, no typing twice.
+
+## 4c. Scorecard (EXPERIENCE §6; front-office money screens)
+BIC-01 Ask once: Bill to, currency, tax default and payer come from the case and FO-7g; nothing retyped. · BIC-02 Asked for a reason: "Received into" and trust fields absent unless trust shows. · BIC-03 N/A (no dependent answers). · BIC-04 incomplete normal: a draft saves partial; amounts refused at the field. · BIC-05/06/07 N/A (no AI, no documents). · BIC-08 N/A (no applications). · BIC-09 N/A (no roles change). · BIC-10 N/A (no task list). · BIC-11 one primary per panel, named (Issue invoice…, Record, Pay from trust, I moved these). · BIC-12 check before it leaves: the issue dialog and every correction preview. · BIC-13 errors on the panel in the API's words. · BIC-14 tooltips on status chips and figures (e.g. "Paid from trust"). · BIC-15/16/17 N/A (no filing or review). · BIC-18 states drawn per file. · BIC-19 one heading and one primary per panel; no ids on the main path except document numbers. · BIC-20 keyboard path and 375/1024/1440 in every screen row's test.
+
+## 5. Copy
+In each file: empty states, refusals, notices, the plan schedule wording and the autopay consent draft for FO-7p's `samples/fo7p-autopay-consent-v1.txt` (Sample, Unconfirmed: no counsel).
+
+## 6. Contract (full table: `design/contract.html`, 66 elements)
+Built by FO-7b, FO-7c, FO-7g, FO-7m, FO-7p, FO-7q, FO-7r, FO-7t, FO-7ts (fields), FO-7v. **Gaps (reads → FO-7q additions; writes → questions):** G1 Getting paid writes (operating and trust details blocks, tax fields, due days): no brief names one · G2 party search (won only) · G3 resend receipt · G4 send pay link · G5 trust requests list · G6 trust available · G7 cheque Cleared · G8 payer per ledger entry · G9 To move batches list · G10 credit-note email and pending card refund read · G11 statement preview · G12 staff lookup by role ("Ask <Owner>") · G13 exports list and row counts · G14 deposit evidence upload. Also: the client's Stop autopay route (FO-7p names none), Keep as credit (credit ledger write, FO-7ts gap 4), FO-7b's own paths (behaviours named, paths read on main).
+
+## 7. Questions (for Build Lead C; none for the founder)
+* **Q1 (G1):** who builds the Getting paid writes? **Recommend** FO-7g part 2 takes tax fields and due days, FO-7t part 1 the trust details block, and FO-7b the operating details block (it owns the email that waits on it).
+* **Q2:** may staff choose "Received into" (AG-6-69 r1 says yes)? **Recommend** yes, Yes-state only, with the To move hint; FO-7b's payment route takes `receivedInto`. Until then read-only text.
+* **Q3:** DW1's exception: the trust question's two lines (Owner) and "Ask the Owner…" are trust words shown while Unanswered (AG-6-59 r2-r3). **Recommend** accept as the one declared exception (marked q in the table).
+
+## 8. Definition of ready — named checks (each a pass and a planted fail)
+Run: `node <runner> screens/fo-7s-money/design` opens each board headless and reads its result (results in the PR).
+* **DW1** `state-strings.html`: PASS; `?plant=dw1` ("Received into" in Unanswered) FAIL. · **DW2** `contract.html`: PASS; `?plant=dw2` FAIL. · **DW3** `state-strings.html` action list: PASS; `?plant=dw3` ("Transfer") FAIL.
+* **DW4** every board: PASS; `?plant=dw4` (CAD + USD) FAIL. · **DW7** every board: PASS; `?plant=dw7` ("−CAD 1,500.00") FAIL; the reverse-entry (invoices) and monthly-check (trust) boards show the shortfall line.
+* **DW5** §4b: three products, each with a URL and date, none the team's app. · **DW6** each group file's walk. · **DW8** this file under 100 lines, naming the five files.
+* Row text: BACKLOG FO-7s0 as narrowed by the brief; decisions answered except Q1-Q3 (not blocking the concept; each screen row waits on its own routes).
