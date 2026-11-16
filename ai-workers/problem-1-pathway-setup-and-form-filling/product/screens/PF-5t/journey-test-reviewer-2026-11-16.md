@@ -46,3 +46,6 @@ I checked rows by SQL after each journey: one acceptance per person per version 
 
 ## Could not test
 A real screen reader and an intended user's unaided walk (D17 and D20 stay with the founder); screens (part 2); Cognito sign-in.
+
+## Re-check at 67b384e (diff only)
+Journey 9 now holds: a version published between the sign-up form and its email check is asked of the new Owner, for both kinds (test "PF-5t rule pass (review M1, break M2)", 40/40). Correct data rises to 1. **8 of the 8 criteria that apply: 10/10, pass.**

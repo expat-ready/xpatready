@@ -2,26 +2,24 @@
 
 Reviewed commit `3fa6b36fd3305e76bc25cd3122d5ecdcdca86cb3` (branch `claude/runtime-terms-reask`, `git rev-parse HEAD` matched), against Lead B's brief `lead-b-briefs/PF-5t.md` part 1 (rev 16.61), `STANDARDS.md`, `QUALITY.md`. Reviewer: Opus, high effort (shared guard, P-278). This part is API and guard only, so the UI dimensions and the BIC scorecard are N/A. Wording and versions are Sample. **Unconfirmed: no counsel.**
 
+## Re-review (P-277, diff only): `3fa6b36..67b384e1ad01fe3fdb1ee1c939a03fac741cd15c`
+I read only the diff: `terms/service.ts`, `terms/routes.ts`, `seed-sample-firms.ts`, `tests/check_pf5t_terms.ts`. The branch head is `72f8ce0`, which adds only the three record files in this folder, not code.
+
+**Result: M1 fixed, m1 fixed, nothing new found.**
+* **M1 (sign-up straddling a new version): fixed.** A version is now pending when it is current and not accepted (by the person; for firm terms, by the firm) and either an older version of that kind was accepted, or none was and it was published after joining (`service.ts:60-64`). The "older version" check is scoped to the person (privacy notice) or the firm (firm terms), and every value is bound.
+* **m1 (no cursor pagination): fixed.** `GET terms/acceptances` now pages with `?limit=1..200` (default 50) and `?cursor=`. A bad limit, a malformed cursor, a repeated query value, or a cursor from another firm all answer 400 CHECK_FIELDS. The cursor is looked up inside the firm, and paging uses `take limit+1` with `skip 1`.
+* **Breaker's M1 (seed): sound.** The seed now gives an existing Sample person a first acceptance of each kind they have none of, only inside their own firm, and never a second one, so a later version stays pending.
+* **m2, m3, m4:** answered in the PR. I accept those answers: they are not defects.
+
+**Tests at this head:**
+* `check_pf5t_terms.ts`: **40 passed, 0 failed**.
+* Neighbouring suites: PF-4b 53/53, PF-5 53/53, PF-6b 24/24, PF-3 75/75, PF-21w 83/83.
+* Mutation pass on a scratch copy: each new clause, removed or loosened, fails the suite. That covers both "older version" checks, both "published after joining" checks (the created-at rule I flagged is now tested), the older-version check ignoring who accepted, the cursor's firm scope, the limit bounds, `skip 1`, the seed's "never a second" rule and its existing-person path.
+
+## First review at 3fa6b36 (kept for the record)
 ## What I ran
 * `tests/check_pf5t_terms.ts`: **33 passed, 0 failed** (6 s). Neighbouring suites at this head: PF-4b 53/53, PF-5 53/53, PF-6b 24/24, PF-21w 83/83, features registry 27/27, PF-19b sending 40/40, PF-4 110/111 (the 1 is part B, which needs its isolated copy on :4541, the same as the PR body says).
-* **Mutation pass** on a scratch copy (repo untouched). I removed each rule and ran the suite again:
-
-| Removed or changed | Suite |
-|---|---|
-| the guard's terms check | 7 fail |
-| the `for update` firm lock in accept | 1 fail (3 of 3 runs) |
-| `isOwner` in the firm-terms branch of `pending` | 2 fail |
-| the Owner check in accept | 2 fail |
-| `a.staff_id = p.id` (privacy notice, per person) | 1 fail |
-| `a.firm_id = f.id` (firm terms, per firm) | 1 fail |
-| `firmScope` on the acceptances list | 3 fail |
-| the start-up TERMS_GATE check | 1 fail |
-| the audit line | 1 fail |
-| the replay filter | 2 fail |
-| the current-version check | 1 fail |
-| `every` changed to `some` in the exemption match | **survives** (harmless: every handler declares one path) |
-| the "published after joining" clause (`c.published_at > p.created_at`) | **survives** (the deviation's own rule has no test) |
-
+* **Mutation pass** on a scratch copy (repo untouched): removing each of 11 rules fails the suite (the guard's terms check, the firm lock (3 of 3 runs), `isOwner` in `pending`, the Owner check in accept, per-person and per-firm acceptance, `firmScope` on the list, the start-up check, the audit line, the replay filter, the current-version check). Two changes **survive**: `every` changed to `some` in the exemption match (harmless, one path per handler) and the created-at clause (untested then).
 * **Break attempts:** a version published between the sign-up form and email verification (below, M1). I timed the gate: about 0.6 ms more per guarded request (200 calls: 7.5 ms on a gated route, 6.9 ms on exempt `/me`).
 * CI at review time: pr-rules green after the body edit, guard green, module-cards being re-run (the PR body now has `Card unchanged:` for `features/MODULE.md`).
 
@@ -42,14 +40,14 @@ Measuring "new" from when the person or firm was created avoids blocking invited
 None.
 
 ## Majors
-* **M1: a firm whose sign-up straddles a new version is never asked to accept it.** `signup.ts:183` (PF-5) records the versions named on the sign-up form, at verification, up to 24 h later. The firm and Owner rows are created at verification, after the new version's `published_at`. So `c.published_at > f.created_at` / `> p.created_at` is false (`service.ts:80-81`), and the new current version is never pending, even though the Owner accepted only the older one.
+* **M1 (fixed at 67b384e): a firm whose sign-up straddles a new version is never asked to accept it.** `signup.ts:183` (PF-5) records the versions named on the sign-up form, at verification, up to 24 h later. The firm and Owner rows are created at verification, after the new version's `published_at`. So `c.published_at > f.created_at` / `> p.created_at` is false (`service.ts:80-81`), and the new current version is never pending, even though the Owner accepted only the older one.
   * Reproduced on a scratch copy: I published a new terms of service and a new privacy notice between `signUp` and `verify`. Afterwards the new Owner's `pending` was `[]` while their acceptances were the older versions only.
   * This is exactly the case row 100 names ("a new version asks again"), and the brief's literal rule would catch it.
   * **Fix (inside the touch list):** a version is also pending when the person (privacy notice) or the firm (firm terms) has accepted an *earlier* version of the same kind but not this one. That is `(c.published_at > p.created_at or exists (acceptance of this kind with an older version))`, and the same for the firm.
   * Add a test that publishes mid-sign-up, plus a test of the created-at clause, which survives mutation today.
 
 ## Minors
-* m1: the acceptances list has no cursor pagination. STANDARDS §6 [M] ("cursor pagination") is not met. `GET staff` sets the same precedent, and the list is bounded by staff × versions. Fix: a cursor like complaints (`complaints.ts:159`), or record the gap.
+* m1 (fixed at 67b384e): the acceptances list has no cursor pagination. STANDARDS §6 [M] ("cursor pagination") is not met. `GET staff` sets the same precedent, and the list is bounded by staff × versions. Fix: a cursor like complaints (`complaints.ts:159`), or record the gap.
 * m2: accept also takes a *current but not pending* version, for example a privacy notice that was current when the person joined. The brief says "only pending versions". This is harmless and arguably useful for the invited-staff gap, but it is an undocumented deviation: say so in the PR body, or answer 400.
 * m3: `for update` on `platform_firm` conflicts with the `FOR KEY SHARE` lock that every foreign-key insert in that firm takes, so the firm's writes queue behind an accept for its few milliseconds. `for no key update` serialises accepts just as well without that.
 * m4: `every` versus `some` in the exemption match cannot be told apart by any test (each handler declares one path). Either works. Keep `every`, which fails closed for a handler with several paths.
@@ -81,9 +79,11 @@ None.
 
 BIC-01–BIC-20: N/A (not a case-side screen).
 
-**Journey score (reviewer, the one score for this check): 9/10, pass.** 7.5 of the 8 criteria that apply; accessibility and visual quality are N/A until part 2. See `journey-test-reviewer-2026-11-16.md`.
+**Journey score (reviewer):** 9/10 pass at 3fa6b36. At 67b384e correct data rises to 1 (M1 fixed): 8 of the 8 criteria that apply, **10/10**. See `journey-test-reviewer-2026-11-16.md`.
 
 ## Could not check
 A real identity provider (Cognito) sign-in; behaviour under PF-12's row-level security (#1910 is not on main yet; the builder's Question 2 covers it); the full CI run on this head (the ready check had not run yet); screens (part 2).
 
-**Verdict: Block**: Changes needed. Fix M1 (with its tests), then re-review the diff only.
+At 3fa6b36: Verdict: Block (Changes needed, M1). Fixed at 67b384e; the re-review above found no open Blocker or Major.
+
+**Verdict: Approve 67b384e1ad01fe3fdb1ee1c939a03fac741cd15c**

@@ -1,12 +1,8 @@
 # PF-5t part 1: break report (PR #1957, head 3fa6b36fd)
 
-Breaker, 16 Nov. API and guard only (part 1); part 2's screens are not built, so no screen, keyboard, zoom or 1024 px
-attempts (the brief's part 2). Upload, rule, catalogue-scale and long-text attempts do not apply to this row: `versionIds`
-are uuids and the version words come from the catalogue, not from a person. Nothing was edited or committed.
-
-How it was run: an isolated full app (`tools/isolated.sh pf5tbrk 4591 … PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on`,
-stopped afterwards) for the route sweep and the HTTP attacks, plus two scratch tsx harnesses on 127.0.0.1:54329 (their
-own databases, dropped) for the kept-database and sign-up cases. The scripts were scratch files, not committed.
+Breaker, 16 Nov. API and guard only; part 2's screens are not built, so no screen, keyboard or zoom attempts, and
+upload, rule, scale and long-text attempts do not apply (`versionIds` are uuids). Run on an isolated app (:4591, stopped)
+and scratch tsx harnesses on 127.0.0.1:54329 (databases dropped). Nothing edited or committed.
 
 ## Findings
 
@@ -77,10 +73,27 @@ a test where a pending person still gets 428 under RLS.
 * **Malformed bodies:** invalid JSON, `null`, text/plain, an array body, `versionIds: null`, numbers, 11 ids, an extra
   key, a 2 MB string and a uuid with `'--` all gave 400 (Problem Details), nothing written. `__proto__` gave 400
   TERMS_NOT_CURRENT. An old version gives 400 TERMS_NOT_CURRENT.
-* **Future `published_at`** (+1 day): blocks nobody, and accepting it gives 400 (not current).
-* **Cost:** with nothing pending, the guard's added read takes 0.27 ms in the database (EXPLAIN ANALYZE).
-  `GET /me/account` was 7.5–8.3 ms per request against 6.7 ms for the open `GET /me` (200 requests each, local).
+* **Future `published_at`** (+1 day): blocks nobody; accepting it gives 400. **Cost:** the guard's read takes 0.27 ms
+  (EXPLAIN ANALYZE); `GET /me/account` 7.5–8.3 ms against 6.7 ms for the open `GET /me` (200 requests each).
 
 Not findings: the invited-staff gap (PR Question 1, raised already). Not tested: the accept path trusts the roles the
 guard read rather than re-reading them inside its transaction (`ROLES_CHANGED` elsewhere), so a demotion landing in the
 same milliseconds is not caught; the race was not run.
+
+## Re-check at 67b384e (code identical at 72f8ce0; same harnesses, isolated :4591 started and stopped)
+* **M1 fixed.** Kept-database repro: the second seed run now writes 8 acceptances, and none of user-R, T, O, S is pending.
+* **M2 fixed.** Sign-up straddle repro: the Owner who accepted ToS `sample-2026-11-15` now has ToS `brk-between` pending.
+* **m1 fixed.** Cursor paging tested at limits 1, 2, 3 and 4 through the API, then 1, 5 and 7 on 41 rows with tied
+  `accepted_at`, with a row added between pages. Every pass returned each row once, in the one-page order.
+  - Refused with 400 CHECK_FIELDS: another firm's acceptance id as cursor (both ways), an unknown uuid, a non-uuid, an
+    SQL-ish cursor, two cursors, `limit` 0, -1, 201, 1.5, abc, empty, space or twice (`1e2`, `0x10` pass via `Number()`).
+* **Re-sweep:** all 61 guarded routes still answer 428 while pending. `/me`, `/me/terms` and accept stay open, and the
+  unguarded doors are unchanged. Under the new rule a new ToS blocks the Owner only, never the Case Officer or Case
+  Manager, and a Case Officer accepting it still gets 403.
+* **m3 (Minor, new):** two versions of one kind with the same `published_at` (allowed: the only unique key is kind +
+  version). Sign-up's `currentTerms` (`signup.ts:82`, ordered by `published_at` only) picked `brk-a`, while the gate
+  (`service.ts`, `published_at desc, version desc`) treats `brk-z` as current. Under the new "older version accepted"
+  rule, a firm that has just signed up is asked again at once for the privacy notice (`pending: ["PRIVACY_NOTICE
+  brk-z"]`). The fix would be to use one ordering for "current" in both places, or a unique key on kind + `published_at`.
+* Still open: m2 (PF-12 row-level security could make the gate fail open) and the untested role race. **No Blocker or
+  Major at 67b384e.**
