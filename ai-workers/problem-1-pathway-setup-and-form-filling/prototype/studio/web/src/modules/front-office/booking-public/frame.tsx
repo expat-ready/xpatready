@@ -9,8 +9,8 @@ export function PublicFrame({ firm, title, children }: { firm?: string; title: s
   React.useEffect(() => { document.title = title; }, [title]);
   return (
     <div className="min-h-full bg-surface">
-      <header className="border-b border-border bg-surface-raised px-4 py-3">
-        <div className="mx-auto w-full max-w-4xl">
+      <header className="border-b border-border bg-surface-raised py-3">
+        <div className="mx-auto w-full max-w-4xl px-4">
           <p className="min-h-6 text-base font-semibold [overflow-wrap:anywhere]" data-firm-name>{firm ?? ""}</p>
           <div data-brand-slot />
         </div>

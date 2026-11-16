@@ -4,7 +4,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 import { useParams } from "react-router-dom";
-import { Button, buttonVariants, Dialog, Field, Input } from "@/components/ui/controls";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { X } from "lucide-react";
+import { Button, buttonVariants, Field, Input } from "@/components/ui/controls";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Booked, MODE_WORDS, publicCall, Slots, TRY_LATER, type Mode, type Problem, type Slot } from "./contract";
@@ -75,14 +77,26 @@ function ZoneLine({ zone, onZone }: { zone: string; onZone?: (z: string) => void
   return (
     <p className="mt-2 flex flex-wrap items-center gap-1 text-sm text-text-muted" title={ZONE_TIP} data-zone-line>
       Times shown in <span className="font-medium text-text">{zone}</span>
-      {onZone ? <button type="button" className={cn(big, "px-1 text-text-link underline")} aria-haspopup="dialog" onClick={() => { setText(zone); setBad(null); setOpen(true); }}>(change)<span className="sr-only"> time zone</span></button> : null}
-      <Dialog open={open} onOpenChange={setOpen} title="Your time zone" description={ZONE_TIP}
-        footer={<Button size="lg" onClick={use}>Use this zone</Button>}>
-        <form onSubmit={(e) => { e.preventDefault(); use(); }}>
-          <Field label="Search for a city or zone" error={bad}><Input list="fo3w-zones" value={text} onChange={(e) => { setText(e.target.value); setBad(null); }} className="h-11" autoComplete="off" /></Field>
-          <datalist id="fo3w-zones">{zones.map((z) => <option key={z} value={z} />)}</datalist>
-        </form>
-      </Dialog>
+      {/* The picker's own dialog on Radix (as controls.tsx's): 44 px targets on a public page (BR-6, review R1), and its
+          Trigger takes focus back to "(change)" when it closes (review m1). */}
+      {onZone ? <DialogPrimitive.Root open={open} onOpenChange={(o) => { if (o) { setText(zone); setBad(null); } setOpen(o); }}>
+        <DialogPrimitive.Trigger className={cn(big, "px-1 text-text-link underline")}>(change)<span className="sr-only"> time zone</span></DialogPrimitive.Trigger>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40" />
+          <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-surface-raised p-5 shadow-xl outline-none">
+            <div className="flex items-start justify-between gap-3">
+              <DialogPrimitive.Title className="text-base font-semibold">Your time zone</DialogPrimitive.Title>
+              <DialogPrimitive.Close className={cn(big, "-mr-2 -mt-2 grid place-items-center rounded-md text-text-muted hover:bg-text/5")} aria-label="Close"><X className="size-4" /></DialogPrimitive.Close>
+            </div>
+            <DialogPrimitive.Description className="mt-1 text-xs text-text-muted">{ZONE_TIP}</DialogPrimitive.Description>
+            <form className="mt-4 flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); use(); }}>
+              <Field label="Search for a city or zone" error={bad}><Input list="fo3w-zones" value={text} onChange={(e) => { setText(e.target.value); setBad(null); }} className="h-11" autoComplete="off" /></Field>
+              <datalist id="fo3w-zones">{zones.map((z) => <option key={z} value={z} />)}</datalist>
+              <Button type="submit" size="lg" className="h-11 self-end">Use this zone</Button>
+            </form>
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root> : null}
     </p>
   );
 }

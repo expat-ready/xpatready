@@ -140,7 +140,7 @@ try {
     await axe("times (1440)", p); await shot(p, "times-dubai-1440");
     await p.getByRole("button", { name: "(change) time zone" }).click();
     await p.getByLabel("Search for a city or zone").fill("Nowhere/Atlantis"); await p.getByRole("button", { name: "Use this zone" }).click();
-    ok("FO-3w J-P2 fail: a zone that is not one is refused on the field, the zone unchanged", (await p.getByText("Choose a time zone from the list.").count()) === 1);
+    ok("FO-3w J-P2 fail: a zone that is not one is refused on the field, the zone unchanged", (await p.getByText("Choose a time zone from the list.").count()) === 1 && (await p.locator("[data-zone-line] span").first().innerText()) === "Asia/Dubai");
     const refusedZones: string[] = [];
     for (const z of ["Factory", "+05:30"]) { await p.getByLabel("Search for a city or zone").fill(z); await p.getByRole("button", { name: "Use this zone" }).click(); if ((await p.getByText("Choose a time zone from the list.").count()) === 1) refusedZones.push(z); }
     ok("FO-3w J-P2 fail (break M2): zones the browser knows but the server refuses (Factory, +05:30) are refused on the field", refusedZones.length === 2, refusedZones);
@@ -270,7 +270,7 @@ try {
     await ctx.close();
     // Every step at 360 px with 44 × 44 px targets, no sideways scroll; screenshots at 360, 375, 1024 (1440 above).
     const small = async (p: Page, step: string) => {
-      const tiny = await p.evaluate(() => [...document.querySelectorAll<HTMLElement>("main button, main a, main input:not([type=radio]):not([type=checkbox]):not([name=website]), main label:has(input[type=radio])")]
+      const tiny = await p.evaluate(() => [...document.querySelectorAll<HTMLElement>(["main", "[role=dialog]"].flatMap((w) => ["button", "a", "input:not([type=radio]):not([type=checkbox]):not([name=website])", "label:has(input[type=radio])"].map((t) => `${w} ${t}`)).join(", "))]
         .filter((e) => e.offsetParent && !(e.tagName === "A" && e.closest("p")?.querySelector("a") === e && e.parentElement?.tagName === "P" && (e.parentElement.textContent ?? "").length > (e.textContent ?? "").length))
         .map((e) => { const r = e.getBoundingClientRect(); return { t: (e.textContent || e.getAttribute("aria-label") || e.tagName).trim().slice(0, 30), w: Math.round(r.width), h: Math.round(r.height) }; }).filter((r) => r.w < 44 || r.h < 44));
       ok(`FO-3w J-P9 ${step} at ${p.viewportSize()!.width} px: every target is at least 44 × 44 px, no sideways scroll`, tiny.length === 0 && await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), tiny);
@@ -280,6 +280,11 @@ try {
       await open(v.p, "/book/maple"); await small(v.p, "list"); await shot(v.p, `list-${width}`);
       await v.p.getByRole("link", { name: "Choose Free consultation" }).click(); await v.p.getByRole("button", { name: "Monday 26 October", exact: true }).click();
       await small(v.p, "times"); await shot(v.p, `times-${width}`); if (width === 360) await axe("times (360)", v.p);
+      if (width === 360) {   // review R1, m1: the zone picker's targets, and focus back on "(change)" when it closes
+        await v.p.getByRole("button", { name: "(change) time zone" }).click(); await v.p.getByRole("dialog").waitFor();
+        await small(v.p, "zone dialog"); await shot(v.p, "zone-dialog-360"); await v.p.keyboard.press("Escape");
+        ok("FO-3w J-P9 (review m1): closing the zone picker puts focus back on \"(change)\"", await v.p.waitForFunction(() => (document.activeElement as HTMLElement | null)?.innerText?.startsWith("(change)"), null, { timeout: 3_000 }).then(() => true, () => false), await v.p.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)));
+      }
       await v.p.getByRole("button", { name: new RegExp(`^Monday 26 October, ${["09", "10", "11"][[360, 375, 1024].indexOf(width)]}:00`) }).click();
       await small(v.p, "details"); await shot(v.p, `details-${width}`); if (width === 360) await axe("details (360)", v.p);
       await fill(v.p, { email: `w${width}.${run}@example.org`, phone: "+971 50 000 0000" }); await book(v.p);
