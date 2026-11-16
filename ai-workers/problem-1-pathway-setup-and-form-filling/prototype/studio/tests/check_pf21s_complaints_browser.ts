@@ -12,7 +12,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
-import { zonedToIso } from "../web/src/modules/platform/complaints/contract.ts";
+import { Complaint, Page as ComplaintPage, zonedToIso } from "../web/src/modules/platform/complaints/contract.ts";
 import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 const PORT = Number(process.argv[2] ?? 4571), DBNAME = process.argv[3] ?? "xr_studio_screens_pf21s";
@@ -36,14 +36,14 @@ async function signIn(firmKey: string, email: string): Promise<string> {
 }
 const call = async (tok: string, method: string, path: string, body?: unknown) => {
   const r = await fetch(`${BASE}/api/platform/complaints${path}`, { method, headers: { authorization: `Bearer ${tok}`, ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
-  return { status: r.status, body: await r.json().catch(() => null) as any };
+  return { status: r.status, body: await r.json().catch(() => null) as unknown };
 };
 const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
 const rTok = await signIn("sample-firm", R.email), sTok = await signIn("sample-solo", S.email);
 const record = async (tok: string, name: string, handler: string, receivedAt: string) => {
   const r = await call(tok, "POST", "", { subjectKind: "OTHER_PERSON", complainantName: name, receivedAt, channel: "EMAIL", category: "FEES", summary: `Sample complaint ${name}.`, handlerStaffId: handler });
   if (r.status !== 201 && r.status !== 200) throw new Error(`record refused: ${JSON.stringify(r.body)}`);
-  return r.body.id as string;
+  return Complaint.parse(r.body).id;
 };
 const late = await record(rTok, `Person Late ${run}`, R.id, ago(10));
 const fresh = await record(rTok, `Person Fresh ${run}`, T.id, ago(0.01));
@@ -85,9 +85,9 @@ await o.locator('[data-chip="all"] [data-count]').filter({ hasNotText: "…" }).
 for (const view of ["open", "overdue", "closed", "all"]) {
   if (view !== "open") await chip(o, view);
   const shown = await o.locator(`[data-chip="${view}"] [data-count]`).innerText();
-  const api = (await call(rTok, "GET", `?view=${view}`)).body;
+  const api = ComplaintPage.parse((await call(rTok, "GET", `?view=${view}`)).body);
   const rows = await o.locator("[data-complaint-row]").count();
-  const partial = !!(await call(rTok, "GET", "?view=all")).body.next;
+  const partial = !!ComplaintPage.parse((await call(rTok, "GET", "?view=all")).body).next;
   ok(`PF-21s DW1 pass: Owner's ${view} chip count equals the rows under the view (${shown || "no number: past one page"})`, partial ? (view === "all" ? shown === "100+" : shown === "") : shown === String(rows) && rows === api.items.length && !api.next, { shown, rows, api: api.items.length, partial });
 }
 await chip(o, "open");
@@ -188,7 +188,7 @@ await d.locator("[data-record-open]").click(); await d.locator("[data-record-dra
 const before = posts();
 await d.getByRole("button", { name: "Record the complaint" }).dblclick();
 await d.waitForURL(/\/platform\/complaints\/[0-9a-f-]{36}$/, { timeout: 15_000 }); await d.waitForTimeout(800);
-const doubles = (await call(rTok, "GET", "?view=all&limit=100")).body.items.filter((x: { complainantName: string }) => x.complainantName === `Person Double ${run}`).length;
+const doubles = ComplaintPage.parse((await call(rTok, "GET", "?view=all&limit=100")).body).items.filter((x) => x.complainantName === `Person Double ${run}`).length;
 ok("PF-21s break M1: a double click on Record the complaint sends one POST and records one complaint", posts() - before === 1 && doubles === 1, { posts: posts() - before, doubles });
 // M2: past one page (`next` set), no chip says "0+"; All reads "100+" (concept G1).
 const m2 = await newPage(rTok);
@@ -213,7 +213,7 @@ ok("PF-21s break M3: after the session ends mid-drawer and the person signs in a
 // ------------------------------------------------------------------------------------------- empty, read-only, widths
 const oTok = await signIn("sample-firm", O.email), c = await newPage(oTok);
 await c.goto(`${BASE}/platform/complaints`); await listed(c);
-const oHas = (await call(oTok, "GET", "?view=open")).body.items.length;   // a reused copy may give O one
+const oHas = ComplaintPage.parse((await call(oTok, "GET", "?view=open")).body).items.length;   // a reused copy may give O one
 ok("PF-21s empty: a Case Officer who handles none sees the empty words, and no Record button either way", (oHas > 0 || (await c.getByText("No open complaints that you handle.").count()) === 1) && (await c.locator("[data-record-open]").count()) === 0, { oHas });
 await axe("PF-21s list, empty (1440)", c); await shot(c, "list-empty-1440");
 const tr = await newPage(await signIn("sample-firm", T.email)); await tr.goto(`${BASE}/platform/complaints/${fresh}`); await tr.locator("[data-complaint]").waitFor();
