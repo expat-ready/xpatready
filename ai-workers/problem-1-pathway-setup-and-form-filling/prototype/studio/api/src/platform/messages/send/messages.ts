@@ -8,6 +8,12 @@
 // checks the file against rendered_hash (a change: FAILED "content changed", nothing sent), asks the gate again, counts the
 // firm's day (DAILY_CAP; the 51st trial message stays QUEUED, reason "daily limit", one alert per firm per day) and hands
 // the rendered message to its channel's adapter. Every query is scoped by firmScope; nothing here writes demo_message.
+// PF-19p (Lead B rev 16.62, #1955): a platform account message (no firm) writes a PLATFORM_ACCOUNT row with no firm read,
+// no consent gate (the person asked for it: sign-up's verification) and no daily cap, From "ExpatReady" at
+// platform.account_mail_from. Its rendered file is kept in the file store's platform space (PLATFORM_FILES_SPACE: a
+// folder name, not a firm: no table holds it). JobPort's jobs belong to a firm, so dispatch(null, …) delivers platform
+// rows right after the caller's commit, and the sweep delivers any a crash or a failed send left QUEUED (each minute).
+// They have no msg_event (events key on a firm). Every platform query names firm_id IS NULL and audience PLATFORM_ACCOUNT.
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { AlertPort } from "../../../../../ports/alert.ts";
@@ -15,9 +21,10 @@ import { systemClock, type ClockPort } from "../../../../../ports/clock.ts";
 import { normaliseAddress, type Channel, type ConsentPort } from "../../../../../ports/consent.ts";
 import { sha256Hex, type FilesPort } from "../../../../../ports/files.ts";
 import type { JobPort } from "../../../../../ports/jobs.ts";
-import { DAILY_CAP, HELD_DAILY_LIMIT, MessageRefused, MessageRepeated, MessageSend, fillFields, gateReason, render, type MessagePort, type Rendered, type SendResult } from "../../../../../ports/messages.ts";
+import { DAILY_CAP, HELD_DAILY_LIMIT, AnyMessageSend, MessageRefused, MessageRepeated, fillFields, gateReason, isPlatformAccount, render, type MessageSend, type MessagePort, type PlatformAccountSend, type PlatformAccountSendInput, type Rendered, type SendResult } from "../../../../../ports/messages.ts";
+import type { z } from "zod";
 import { firmScope } from "../../firm-scope.ts";
-import { readSetting, TIME_ZONE } from "../../settings.ts";
+import { ACCOUNT_MAIL_FROM, readSetting, TIME_ZONE } from "../../settings.ts";
 import { ensureMessagesFirm } from "../consent/messages-firm.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -32,7 +39,11 @@ export const SWEEP_PER_FIRM = 50;
 export type ChannelAdapter = { provider: string; deliver(tx: Tx, r: Rendered): Promise<{ providerId: string }> };
 export type MessagesDeps = { db: PrismaClient; consent: ConsentPort<Tx>; files: FilesPort; jobs: JobPort; alerts: () => AlertPort; channels: Map<Channel, ChannelAdapter>; clock?: ClockPort };
 
-export const fileKeyOf = (firmId: string, outboxId: string) => `msg/${firmId}/outbox/${outboxId}.json`;
+export const fileKeyOf = (firmId: string | null, outboxId: string) => `msg/${firmId ?? "platform"}/outbox/${outboxId}.json`;
+/** PF-19p: the file store space of platform account messages (FilesPort keys files by a uuid; this one is no firm's). */
+export const PLATFORM_FILES_SPACE = "00000000-0000-0000-0000-000000000000";
+/** The file store space of an outbox row: its firm, or the platform's (PF-19p). */
+export const filesSpaceOf = (firmId: string | null) => firmId ?? PLATFORM_FILES_SPACE;
 const dayIn = (zone: string, at: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
 
 function inTransaction(tx: Tx): Tx {
@@ -44,9 +55,10 @@ export class Messages implements MessagePort<Tx> {
   private readonly clock: ClockPort;
   constructor(private readonly d: MessagesDeps) { this.clock = d.clock ?? systemClock; }
 
-  async send(txIn: Tx, input: MessageSend): Promise<SendResult> {
+  async send(txIn: Tx, input: MessageSend | PlatformAccountSendInput): Promise<SendResult> {
     const tx = inTransaction(txIn);
-    const m = MessageSend.parse(input);
+    const m = AnyMessageSend.parse(input);
+    if (isPlatformAccount(m)) return this.sendPlatform(tx, m);
     const { firmId } = firmScope(m.firmId);
     const address = normaliseAddress(m.channel, m.address);
     const firm = await tx.platformFirm.findUnique({ where: { id: firmId }, select: { operatingName: true, contactEmail: true } });
@@ -84,13 +96,32 @@ export class Messages implements MessagePort<Tx> {
     return { outboxId: id, state, reason, repeated: false };
   }
 
-  async dispatch(firmIdIn: string, outboxIds: string[]): Promise<void> {
+  /** PF-19p: a platform account message, through the same outbox, file and idempotency (no firm, no gate). */
+  private async sendPlatform(tx: Tx, m: z.output<typeof PlatformAccountSend>): Promise<SendResult> {
+    const address = normaliseAddress("EMAIL", m.address), where = { audience: "PLATFORM_ACCOUNT" as const, firmId: null, idempotencyKey: m.idempotencyKey };
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`msg_outbox:platform:${m.idempotencyKey}`}))`;
+    const had = await tx.msgOutbox.findFirst({ where, select: { id: true, state: true, stateReason: true } });
+    if (had) return { outboxId: had.id, state: had.state, reason: had.stateReason, repeated: true };
+    const id = randomUUID(), rendered = render(id, m, ACCOUNT_MAIL_FROM.default, m.content);
+    const put = await this.d.files.put(PLATFORM_FILES_SPACE, fileKeyOf(null, id), new TextEncoder().encode(JSON.stringify(rendered)), "application/json");
+    await tx.msgOutbox.create({
+      data: { id, firmId: null, audience: "PLATFORM_ACCOUNT", channel: "EMAIL", address, renderedHash: put.sha256, class: "TRANSACTIONAL", state: "QUEUED", idempotencyKey: m.idempotencyKey },
+    }).catch((e: { code?: string; meta?: { target?: unknown } }) => { throw e?.code === "P2002" && /idempotency/.test(JSON.stringify(e.meta ?? {})) ? new MessageRepeated(m.idempotencyKey) : e; });
+    return { outboxId: id, state: "QUEUED", reason: null, repeated: false };
+  }
+
+  async dispatch(firmIdIn: string | null, outboxIds: string[]): Promise<void> {
+    if (firmIdIn === null) {   // PF-19p: platform account rows, sent now (a failure stays QUEUED for the sweep)
+      for (const id of outboxIds) await this.deliverPlatform(id).catch(() => undefined);
+      return;
+    }
     const { firmId } = firmScope(firmIdIn);
     for (const id of outboxIds) await this.d.jobs.enqueue(SEND_QUEUE, { firmId, outboxId: id }, { key: `msg.send:${firmId}:${id}`, firmId });
   }
 
   /** The worker: sends one outbox row at most once. Answers what happened (for logs and tests). */
-  async deliver(firmIdIn: string, outboxId: string): Promise<"sent" | "skipped" | "held" | "failed" | "suppressed"> {
+  async deliver(firmIdIn: string | null, outboxId: string): Promise<"sent" | "skipped" | "held" | "failed" | "suppressed"> {
+    if (firmIdIn === null) return this.deliverPlatform(outboxId);
     const { firmId } = firmScope(firmIdIn);
     let alertDay: string | null = null;
     const out = await this.d.db.$transaction(async (tx) => {
@@ -128,7 +159,28 @@ export class Messages implements MessagePort<Tx> {
     return out;
   }
 
-  /** Each minute: every QUEUED row older than SWEEP_AFTER_MS gets a job keyed by the hour (a held row tries once an hour). */
+  /** PF-19p: sends one platform account row at most once (the row lock and QUEUED, as deliver); no gate, no cap, no event. */
+  async deliverPlatform(outboxId: string): Promise<"sent" | "skipped" | "failed"> {
+    return this.d.db.$transaction(async (tx) => {
+      const [row] = await tx.$queryRaw<{ state: string; channel: Channel; address: string; rendered_hash: string }[]>`
+        SELECT "state"::text AS state, "channel"::text AS channel, "address", "rendered_hash" FROM "msg_outbox"
+        WHERE "firm_id" IS NULL AND "audience" = 'PLATFORM_ACCOUNT' AND "id" = ${outboxId}::uuid FOR UPDATE`;
+      if (!row || row.state !== "QUEUED") return "skipped" as const;
+      const where = { id: outboxId }, fail = async (reason: string) => { await tx.msgOutbox.update({ where, data: { state: "FAILED", stateReason: reason } }); return "failed" as const; };
+      const file = await this.d.files.get(PLATFORM_FILES_SPACE, fileKeyOf(null, outboxId));
+      if (!file || (await sha256Hex(file.bytes)) !== row.rendered_hash) return fail("content changed");
+      const rendered = JSON.parse(new TextDecoder().decode(file.bytes)) as Rendered;
+      if (rendered.outboxId !== outboxId || rendered.firmId !== null || rendered.to !== row.address) return fail("content changed");
+      const adapter = this.d.channels.get(row.channel);
+      if (!adapter) return fail(`no ${row.channel.toLowerCase()} channel registered`);
+      const { providerId } = await adapter.deliver(tx, rendered);
+      await tx.msgOutbox.update({ where, data: { state: "SENT", stateReason: null, providerId, sentAt: this.clock.now() } });
+      return "sent" as const;
+    });
+  }
+
+  /** Each minute: every QUEUED row older than SWEEP_AFTER_MS gets a job keyed by the hour (a held row tries once an hour);
+   *  PF-19p: platform account rows (no firm, so no job) are delivered here, SWEEP_PER_FIRM a run, oldest first. */
   async sweep(): Promise<number> {
     const now = this.clock.now(), hour = now.toISOString().slice(0, 13);
     // Each firm gets its own share (SWEEP_PER_FIRM rows a crash left, and as many held by the cap, oldest first), so one
@@ -136,11 +188,16 @@ export class Messages implements MessagePort<Tx> {
     const rows = await this.d.db.$queryRaw<{ id: string; firmId: string }[]>`
       SELECT "id"::text AS id, "firm_id"::text AS "firmId" FROM (
         SELECT "id", "firm_id", "created_at", "state_reason", row_number() OVER (PARTITION BY "firm_id", "state_reason" IS NULL ORDER BY "created_at", "id") AS rn
-        FROM "msg_outbox" WHERE "state" = 'QUEUED' AND "created_at" < ${new Date(now.getTime() - SWEEP_AFTER_MS)}::timestamptz
+        FROM "msg_outbox" WHERE "firm_id" IS NOT NULL AND "state" = 'QUEUED' AND "created_at" < ${new Date(now.getTime() - SWEEP_AFTER_MS)}::timestamptz
           AND ("state_reason" IS NULL OR "state_reason" = ${HELD_DAILY_LIMIT})) x
       WHERE rn <= ${SWEEP_PER_FIRM} ORDER BY ("state_reason" IS NOT NULL), rn, "created_at" LIMIT 2000`;
     let n = 0;
     for (const r of rows) if ((await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
+    const platform = await this.d.db.msgOutbox.findMany({
+      where: { audience: "PLATFORM_ACCOUNT", firmId: null, state: "QUEUED", createdAt: { lt: new Date(now.getTime() - SWEEP_AFTER_MS) } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: SWEEP_PER_FIRM, select: { id: true },
+    });
+    for (const r of platform) if ((await this.deliverPlatform(r.id).catch(() => "failed" as const)) === "sent") n++;
     return n;
   }
 

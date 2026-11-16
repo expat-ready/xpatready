@@ -8,12 +8,14 @@
 // is left to the sweep (SWEEP_AFTER_MS), never retried here, so one email is never two rows. The caller's idempotencyKey
 // (a job key) makes a job run twice send once; without one, each call is its own email. On this path the Reply-To is the
 // firm's contact address (row 47) and MailMessage.replyTo and templateKey are not used (the words are the caller's).
+// PF-19p: a platform account email (`platformAccount: true`) becomes a platform account message (no firm, From
+// "ExpatReady" at platform.account_mail_from), dispatched with no firm.
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { FilesPort } from "../../../../../ports/files.ts";
 import { normaliseAddress } from "../../../../../ports/consent.ts";
 import { MailMessage, type MailPort } from "../../../../../ports/mail.ts";
-import { MessageRefused, MessageSend, type MessagePort } from "../../../../../ports/messages.ts";
+import { MessageRefused, MessageSend, PlatformAccountSend, type MessagePort } from "../../../../../ports/messages.ts";
 import { firmScope } from "../../firm-scope.ts";
 
 /** The key a mailed attachment is stored under (never under msg/, which MessagePort keeps for rendered messages). */
@@ -31,14 +33,25 @@ export class MessagesMail implements MailPort {
     const m = MailMessage.parse(message);
     // MessagePort's gate judges a service or marketing message by its person's consent: the caller names the person.
     if (m.class !== "TRANSACTIONAL" && !m.person) throw new MessageRefused(`a ${m.class.toLowerCase()} email names its person (MailMessage.person)`);
-    const { firmId } = firmScope(m.firmId), mailId = randomUUID();
+    const mailId = randomUUID();
+    try { normaliseAddress("EMAIL", m.to); } catch { throw new MessageRefused("not sent: the address is not a valid email address"); }
+    if (!("firmId" in m)) {   // PF-19p: a platform account email
+      const checked = PlatformAccountSend.safeParse({
+        platformAccount: true, channel: "EMAIL", class: "TRANSACTIONAL", address: m.to,
+        content: { subject: m.subject, text: m.text, ...(m.html ? { html: m.html } : {}) }, idempotencyKey: `mail:${m.idempotencyKey ?? mailId}`,
+      });
+      if (!checked.success) throw new MessageRefused(`not sent: ${checked.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
+      const r = await this.d.db.$transaction((tx) => this.d.messages.send(tx, checked.data));
+      await this.d.messages.dispatch(null, [r.outboxId]).catch((e: unknown) => this.d.log?.(`messages: dispatch of ${r.outboxId} failed (${e instanceof Error ? e.name : "error"}); the sweep sends it`));
+      return { messageId: r.outboxId };
+    }
+    const { firmId } = firmScope(m.firmId);
     const input = {
       firmId, ...(m.person ? { person: m.person } : {}), channel: "EMAIL" as const, class: m.class, address: m.to,
       content: { subject: m.subject, text: m.text, ...(m.html ? { html: m.html } : {}) }, idempotencyKey: `mail:${m.idempotencyKey ?? mailId}`,
     };
-    // An address MailPort's schema takes and the channel does not (`a@b-.example`): a refusal that never quotes the
-    // address, since a job runner keeps the error text (break M2).
-    try { normaliseAddress("EMAIL", m.to); } catch { throw new MessageRefused("not sent: the address is not a valid email address"); }
+    // (Above: an address MailPort's schema takes and the channel does not (`a@b-.example`) is refused without quoting the
+    // address, since a job runner keeps the error text: break M2.)
     // Checked before any file is stored (review m5): a message MessagePort refuses leaves nothing behind.
     const checked = MessageSend.safeParse(input);
     if (!checked.success) throw new MessageRefused(`not sent: ${checked.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
