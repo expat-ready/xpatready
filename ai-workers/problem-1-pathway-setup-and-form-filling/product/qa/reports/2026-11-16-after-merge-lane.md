@@ -13,6 +13,8 @@ Loop: every 20 minutes read `git log origin/main` for new merges; when a merge c
 | R1.19 | PF-5 part 2 (#1959, draft), PF-5v part 2, PF-19p (#1961) | #1959, #1955, #1961 |
 | R1.100 | PF-5t (#1957), PF-5 part 2 | #1957 |
 
+Refined 16:1x IST from qa #1950's verdict table (open, stacked on #1929): R1.19 also waits on QA-481 (the code reaches no inbox) and the sign-up page PF-5s; R1.100 on QA-481 and PF-5t; R1.28 on withdraw (PF-19b part 2 #1956, FO-2 part 3). #1950's walk `check_qa_r1_platform_fo_walk.ts` (20/32, 12 FAILs = missing parts) is the check this lane re-runs for those rows once it is on main.
+
 ## Checks
 | IST | main head | New merges | Row completed? | Action |
 |---|---|---|---|---|
