@@ -1,0 +1,4 @@
+#17 exporting attestation manifest sha256:e5d6e98eacb7bfbfa2747cded414a63d83624b05fea8364956c3ef862b177b98 0.0s done
+#17 exporting manifest list sha256:a7059a2c6635542942d66368ddcc53e8e0e874a5bde89d849d400f76a2416164 done
+#17 naming to docker.io/library/studio-skeleton:test done
+#17 DONE 30.8s

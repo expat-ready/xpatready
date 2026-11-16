@@ -49,6 +49,11 @@ export const EVENT = {
   LEAD_CLOSED: "lead.closed",
   /** A closed lead was reopened (FO-2; AG-2-80). */
   LEAD_REOPENED: "lead.reopened",
+
+  /** A case closed: withdrawn, or closed by staff with a reason (case side, CS-C1a; contract v0.1 §4). */
+  CASE_CLOSED: "case.closed",
+  /** A closed case was reopened with a reason, back at the stage it closed from (case side, CS-C1a; AG-7-13). */
+  CASE_REOPENED: "case.reopened",
 } as const;
 export type EventName = (typeof EVENT)[keyof typeof EVENT];
 
@@ -124,3 +129,22 @@ export const LeadEventPayload = z.object({
   closeReasonKey: z.string().optional(),
 }).strict();
 export type LeadEventPayload = z.infer<typeof LeadEventPayload>;
+
+// CS-C1a (case-side contract v0.1 §4): the case side's close and reopen events, ids and facts only (never the reason's
+// words: a reason is free text and may hold personal data; a consumer reads the case). The firm is the outbox row's
+// firm_id and module_event.subject_id is the case id. clientId stays null until CS-K1 gives every case a client.
+const CaseClientType = z.enum(["INDIVIDUAL", "CORPORATE"]).nullable();
+/** `case.closed`: why (the contract's DECISION | WITHDRAWAL) and the close outcome. */
+export const CaseClosedPayload = z.strictObject({
+  caseId: Uuid, clientId: Uuid.nullable(), clientType: CaseClientType,
+  reason: z.enum(["DECISION", "WITHDRAWAL"]), outcome: z.enum(["WITHDRAWN", "COMPLETED", "CLOSED_BY_STAFF"]),
+  closedAt: z.iso.datetime({ offset: true }),
+});
+export type CaseClosedPayload = z.infer<typeof CaseClosedPayload>;
+/** `case.reopened`: the stage it returned to and the outcome it was closed with. */
+export const CaseReopenedPayload = z.strictObject({
+  caseId: Uuid, clientId: Uuid.nullable(), clientType: CaseClientType,
+  stageId: Uuid.nullable(), previousOutcome: z.enum(["WITHDRAWN", "COMPLETED", "CLOSED_BY_STAFF"]),
+  reopenedAt: z.iso.datetime({ offset: true }),
+});
+export type CaseReopenedPayload = z.infer<typeof CaseReopenedPayload>;

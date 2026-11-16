@@ -3,5 +3,7 @@ import type { Feature } from "../features.ts";
 import { Booking, BOOKING_PORTS, BookingPublicController } from "../front-office/booking/public.controller.ts";
 import { runtimeBookingPorts } from "../front-office/booking/runtime-ports.ts";
 import { BookingStaffController } from "../front-office/booking/staff.controller.ts";
+import type { MailPort } from "../../../ports/mail.ts";
+import { MESSAGES_MAIL } from "./platform-messages.ts";
 
-export default { controllers: [BookingPublicController, BookingStaffController], providers: [Booking, { provide: BOOKING_PORTS, useFactory: runtimeBookingPorts }] } satisfies Feature;
+export default { controllers: [BookingPublicController, BookingStaffController], providers: [Booking, { provide: BOOKING_PORTS, useFactory: (mail: MailPort) => runtimeBookingPorts(mail), inject: [MESSAGES_MAIL] }] } satisfies Feature;

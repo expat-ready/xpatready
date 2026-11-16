@@ -12,6 +12,11 @@
 // FO-3f (rows rev 16.8): the emails are keyed jobs too (a failed send is retried by PF-14's runner, m3); staff never get
 // the visitor's link (m7); one form stamp books once (B-8); the firm's cap is counted under a per-firm transaction lock
 // (the cap race); a name may hold U+200C/U+200D between letters (m10).
+// FO-3sa (rows rev 16.23; AG-4-63, AG-4-53): staff may book or move at a time the public page would not offer. The first
+// answer lists every warning and saves nothing; the same body with `bookAnyway: true` saves, the audit line keeps the
+// reasons, and an overlap keeps the staff member on the row (overlapConfirmedByUserId), so the no-overlap rule skips it.
+// The host may be chosen among the type's active hosts. The public door never offers those times.
+import { tzOffset } from "@date-fns/tz";
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -22,11 +27,12 @@ import type { ClockPort } from "../../../../ports/clock.ts";
 import { BookingEvent, EVENT } from "../../../../ports/events.ts";
 import type { JobPort, JobRun } from "../../../../ports/jobs.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
+import { MessageRefused } from "../../../../ports/messages.ts";
 import type { StaffContext } from "../../../../ports/staff.ts";
 import { firmScope, notInFirm } from "../../platform/firm-scope.ts";
 import { CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts";
 import { bookingIcs, type InviteMethod } from "./ics.ts";
-import { computeSlots, type HostWindow, type Range, type Slot } from "./slots.ts";
+import { computeSlots, localDate, type HostWindow, type Range, type Slot } from "./slots.ts";
 import { issueToken, liveToken } from "./tokens.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -75,10 +81,19 @@ const refused = (detail: string, issues: string[] = []) => problem(400, "booking
 /** The time asked is not free (taken a moment ago, or never offered): one neutral answer with fresh times (AG-4-27). */
 const slotTaken = (slots: PublicSlot[]) => problem(409, "slot-taken", "That time is not available", "That time is not available any more. Please choose another time.", { code: "SLOT_TAKEN", slots });
 const tooLate = () => problem(409, "too-close-to-meeting", "Too close to the meeting", "Your meeting starts soon, so it can no longer be changed here. Please reply to your confirmation email or call the firm.", { code: "SELF_SERVICE_CLOSED" });
+/** The type does not allow this change by link (AG-4-36..38 rule 4; FO-3pa). */
+const notByLink = (what: "rescheduled" | "cancelled") => problem(409, "not-allowed-by-link", "Not available here", `This booking can't be ${what} here. Please reply to your confirmation email or call the firm.`, { code: "NOT_ALLOWED_BY_LINK" });
 const forbidden = (key: string) => problem(403, "forbidden", "Not allowed", `This needs the permission ${key}.`);
 const tooMany = () => problem(429, "too-many-requests", "Too many requests", "Please wait a few minutes and try again.");
 /** A form stamp that already made a booking (FO-3f item 4, break B-8). */
 const formUsed = () => problem(409, "form-already-sent", "Already sent", "This form was already sent. Reload the page to book again.", { code: "FORM_ALREADY_SENT" });
+/** FO-3sa (AG-4-63 rule 3): one answer with every reason; nothing was saved. The same body with bookAnyway: true saves. */
+const WARNING_CODES = ["CLOSED_DAY", "OUTSIDE_HOURS", "INSIDE_NOTICE", "BEYOND_WINDOW", "OVERLAP"] as const;
+export type Warning = { code: (typeof WARNING_CODES)[number]; label: string; bookingId?: string };
+/** The audit's words for each code (AG-4-63 field 9: "booked with warnings: closed day, overlap"; no person's name, m2). */
+const WARNING_WORDS: Record<Warning["code"], string> = { CLOSED_DAY: "closed day", OUTSIDE_HOURS: "outside hours", INSIDE_NOTICE: "inside notice", BEYOND_WINDOW: "beyond window", OVERLAP: "overlap" };
+const needsConfirm = (hostStaffId: string, warnings: Warning[]) => problem(409, "book-anyway", "Book anyway?", "This time is not one the booking page offers. Book anyway, or cancel to save nothing.", { code: "WARNINGS", hostStaffId, warnings });
+const inactiveHost = () => refused("Please choose an active host.", ["hostStaffId: choose an active host"]);
 
 // -------------------------------------------------------------------------------------------------------------- inputs
 // The database's zone shape (FO-1b's fo_zone_ok), so a zone the API takes is one the database takes; the spelling is the
@@ -108,8 +123,9 @@ export const PublicBookingBody = z.strictObject({
   mode: z.enum(MODES),
   startsAt: Instant,
   timeZone: Zone,
-  consent: z.literal(true, "Please tick the box to agree."),
-  consentWordingId: z.uuid(),
+  /** The marketing tick: optional, booking never needs it (AG-4-19 rule 3; FO-3pa). With it, the wording id it agreed to. */
+  consent: z.boolean().optional(),
+  consentWordingId: z.uuid().optional(),
   /** The honeypot: people leave it empty (AG-4-20 rule 3). */
   website: z.string().max(200).optional(),
   /** The stamp the slots answer gave when the form was drawn (minimum fill time). */
@@ -117,8 +133,22 @@ export const PublicBookingBody = z.strictObject({
 });
 export const StaffBookingBody = z.strictObject({
   typeId: z.uuid(), personId: z.uuid(), mode: z.enum(MODES), startsAt: Instant, timeZone: Zone,
+  /** FO-3sa: one of the type's active hosts; else the pick rule (the first free host, else the first active one). */
+  hostStaffId: z.uuid().transform((s) => s.toLowerCase()).optional(),   // ids are stored in lower case (Devin review)
+  /** FO-3sa (AG-4-63 rule 4): save despite the warnings the first answer listed. */
+  bookAnyway: z.boolean().optional(),
+  /** FO-3sa (review M1): the warning codes the person was shown; a warning not among them gives a fresh answer. */
+  acceptedWarnings: z.array(z.enum(WARNING_CODES)).max(10).optional(),
 });
 export const RescheduleBody = z.strictObject({ startsAt: Instant, timeZone: Zone.optional() });
+export const StaffRescheduleBody = RescheduleBody.extend({ bookAnyway: z.boolean().optional(), acceptedWarnings: z.array(z.enum(WARNING_CODES)).max(10).optional() });
+/** The booker's reason for a cancel by link: kept on the booking only (cancel_reason), never shown back (FO-3pa). */
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+/** Line breaks become spaces (one line on the booking); control, bidirectional and invisible characters and
+ *  broken UTF-16 are refused, as in names (break B1, M1, m2). At most 500 UTF-16 units (the column's check counts
+ *  characters, so every reason taken here fits it). */
+export const CancelBody = z.strictObject({ reason: z.string().transform((v) => v.replace(/\r\n|[\r\n\u2028\u2029]/g, " ").trim()).pipe(z.string().max(500)
+  .refine((v) => !LONE_SURROGATE.test(v) && !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069\u200b\u200e\u200f\u061c\ufeff]/.test(v), "no control or invisible characters")).optional() });
 export const SlotsQuery = z.object({ from: Instant.optional(), to: Instant.optional(), tz: Zone.optional() });
 
 const parse = <T extends z.ZodType>(schema: T, body: unknown): z.output<T> => {
@@ -131,6 +161,9 @@ export type PublicSlot = { startsAt: string; endsAt: string; label: string };
 type TypeRow = Awaited<ReturnType<Tx["foConsultationType"]["findFirstOrThrow"]>>;
 type BookingRow = Awaited<ReturnType<Tx["foBooking"]["findFirstOrThrow"]>>;
 type Actor = { word: string; staffId?: string };
+/** FO-3sa: how a staff write places its time (the public door never passes one). */
+type AnyTime = { hostStaffId?: string; bookAnyway: boolean; accepted: string[]; by: string };
+type Placed = { startsAt: Date; endsAt: Date; staffId: string; warnings: Warning[] };
 type MailKind = "booked" | "moved" | "cancelled";
 type AfterCommit = { booking: BookingRow; kind: MailKind; oldSequence?: number };
 /** The email job's payload: ids and facts only (JobPort's rule); the link's token is issued when the email is sent. */
@@ -175,11 +208,28 @@ export class BookingService {
   /** The type a public page names: an ACTIVE or TRIAL firm's active free-consultation type, by slug; else the one 404. */
   private async publicType(db: Tx | PrismaClient, firmKey: unknown, slug: unknown) {
     if (typeof firmKey !== "string" || typeof slug !== "string" || !FIRM_KEY.test(firmKey) || !SLUG.test(slug)) throw notFound();
-    const firm = await db.platformFirm.findUnique({ where: { key: firmKey }, select: { id: true, key: true, status: true, operatingName: true, contactEmail: true } });
-    if (!firm || !["ACTIVE", "TRIAL"].includes(firm.status)) throw notFound();
-    const type = await db.foConsultationType.findFirst({ where: firmScope(firm.id, { slug, active: true, purpose: "FREE_CONSULT" as const }) });
+    const firm = await this.publicFirm(db, firmKey);
+    // A type not shown on the booking page answers like an unknown slug (FO-3pa DW2).
+    const type = await db.foConsultationType.findFirst({ where: firmScope(firm.id, { slug, active: true, showOnBookingPage: true, purpose: "FREE_CONSULT" as const }) });
     if (!type) throw notFound();
     return { firm, type };
+  }
+
+  /** An ACTIVE or TRIAL firm by its key, else the one 404. */
+  private async publicFirm(db: Tx | PrismaClient, firmKey: unknown) {
+    if (typeof firmKey !== "string" || !FIRM_KEY.test(firmKey)) throw notFound();
+    const firm = await db.platformFirm.findUnique({ where: { key: firmKey }, select: FIRM_SELECT });
+    if (!firm || !["ACTIVE", "TRIAL"].includes(firm.status)) throw notFound();
+    return firm;
+  }
+
+  /** GET the firm's booking page list (FO-3pa; AG-4-16 rules 1-2, BR-1): its active free-consultation types shown on the
+   *  page, by name; names, web addresses, lengths and ways to meet only (no id, BR-2). */
+  async publicList(firmKey: string, ip: string) {
+    this.limit(`slots:ip:${ip}`, this.limits.slotsPerIp);
+    const firm = await this.publicFirm(this.db, firmKey);
+    const types = await this.db.foConsultationType.findMany({ where: firmScope(firm.id, { active: true, showOnBookingPage: true, purpose: "FREE_CONSULT" as const }), orderBy: [{ name: "asc" }, { slug: "asc" }], select: { name: true, slug: true, minutes: true, modes: true } });
+    return { firm: firmContact(firm), types };
   }
 
   /** GET slots: the type's page data, the free start times in [from, to) shown in the visitor's zone, the firm's consent
@@ -196,8 +246,9 @@ export class BookingService {
     const slots = await this.slotsFor(this.db, firm.id, type, from, to);
     const consent = await this.ports.arrival.bookingConsentWording(this.db, firm.id);
     return {
-      firm: { name: firm.operatingName },
-      type: { name: type.name, minutes: type.minutes, modes: type.modes, phoneNeededFor: ["PHONE"], meetingLink: null },
+      firm: firmContact(firm),
+      // The join link is never on the type page; it comes with the confirmation (FO-3pa DW8).
+      type: { name: type.name, minutes: type.minutes, modes: type.modes, phoneNeededFor: ["PHONE"], meetingLink: null, ...typeRules(type) },
       timeZone: tz,
       consent: consent ? { wordingId: consent.wordingId, text: consent.text } : null,
       slots: slots.map((s) => this.publicSlot(s, tz)),
@@ -219,25 +270,31 @@ export class BookingService {
     this.limit(`book:firm:${firm.id}`, this.limits.bookPerFirm, false);
     if (!type.modes.includes(b.mode)) throw refused("Please choose one of the ways to meet offered.", ["mode: not offered for this consultation"]);
     if (b.mode === "PHONE" && !b.phone) throw refused("Please give a phone number for a phone call.", ["phone: required for a phone call"]);
-    const wording = await this.ports.arrival.bookingConsentWording(this.db, firm.id);
-    if (!wording) throw notFound();
-    if (wording.wordingId.toLowerCase() !== b.consentWordingId.toLowerCase()) throw problem(409, "consent-wording-changed", "Please reload", "The firm's agreement text has changed. Please reload the page and tick the box again.");
+    // The tick is optional (AG-4-19 rule 3): left empty, the booking carries no consent; ticked, it must name the
+    // firm's sentence as it is now (a firm with no sentence shows no tick, rule 4).
+    let consent: { wordingId: string; givenAt: Date } | undefined;
+    if (b.consent) {
+      if (!b.consentWordingId) throw refused("Please check the highlighted details.", ["consentWordingId: required with the tick"]);
+      const wording = await this.ports.arrival.bookingConsentWording(this.db, firm.id);
+      if (!wording || wording.wordingId.toLowerCase() !== b.consentWordingId.toLowerCase()) throw problem(409, "consent-wording-changed", "Please reload", "The firm's agreement text has changed. Please reload the page and tick the box again.");
+      consent = { wordingId: wording.wordingId, givenAt: this.ports.clock.now() };
+    }
     const person = { givenNames: b.givenNames, familyName: b.familyName, email: b.email, ...(b.phone ? { phone: b.phone } : {}) };
     const out = await this.create(firm.id, type, { startsAt: b.startsAt, mode: b.mode, timeZone: b.timeZone }, { word: "system:booking-page" },
-      async (tx, bookingId) => this.ports.arrival.bookingArrived(tx, { firmId: firm.id, person, consent: { wordingId: wording.wordingId, givenAt: this.ports.clock.now() }, bookingId }),
+      async (tx, bookingId) => this.ports.arrival.bookingArrived(tx, { firmId: firm.id, person, ...(consent ? { consent } : {}), bookingId }),
       { gate: () => this.gate(firm.id, b.formStamp), token: true });
-    return { ...this.publicView(out.booking), manageToken: out.token as string };
+    return { ...this.publicAnswer(out.booking, type, firm), manageToken: out.token as string };
   }
 
   /** GET the self-service view by token: what, when, and whether it can still be changed here. */
   async manageView(token: string, ip: string) {
     this.limit(`token:ip:${ip}`, this.limits.tokenPerIp);
-    const { booking, type } = await this.byToken(this.db, token);
+    const { booking, type, firm } = await this.byToken(this.db, token);
     const open = this.selfServiceOpen(booking, type);
     return {
-      status: booking.status, typeName: type.name, mode: booking.mode, startsAt: booking.startsAt.toISOString(), endsAt: booking.endsAt.toISOString(),
-      timeZone: booking.bookerTimeZone, label: wallLabel(booking.startsAt, booking.bookerTimeZone),
-      canChange: open, message: open ? null : "Your meeting starts soon, so it can no longer be changed here. Please reply to your confirmation email or call the firm.",
+      ...this.publicAnswer(booking, type, firm),
+      canChange: open, canReschedule: open && type.allowReschedule, canCancel: open && type.allowCancel,
+      message: open ? null : "Your meeting starts soon, so it can no longer be changed here. Please reply to your confirmation email or call the firm.",
     };
   }
 
@@ -245,6 +302,7 @@ export class BookingService {
   async manageSlots(token: string, query: unknown, ip: string) {
     this.limit(`token:ip:${ip}`, this.limits.tokenPerIp);
     const { booking, type } = await this.byToken(this.db, token);
+    if (!type.allowReschedule) throw notByLink("rescheduled");
     if (!this.selfServiceOpen(booking, type)) throw tooLate();
     const q = parse(SlotsQuery, query);
     const now = this.ports.clock.now(), from = q.from ?? now, to = q.to ?? new Date(from.getTime() + 14 * DAY);
@@ -256,15 +314,27 @@ export class BookingService {
   async selfReschedule(token: string, body: unknown, ip: string) {
     this.limit(`token:ip:${ip}`, this.limits.tokenPerIp);
     const b = parse(RescheduleBody, body);
-    const { booking } = await this.byToken(this.db, token);
+    const { booking, type, firm } = await this.byToken(this.db, token);
     const out = await this.move(booking.firmId, booking.id, b.startsAt, b.timeZone, { word: "system:booking-link" }, token);
-    return { ...this.publicView(out.booking), manageToken: out.token ?? token };
+    return { ...this.publicAnswer(out.booking, type, firm), manageToken: out.token ?? token };
   }
 
-  async selfCancel(token: string, ip: string) {
+  /** POST a cancel by link, with the booker's optional reason (kept on the booking, FO-3pa DW7, DW10). */
+  async selfCancel(token: string, ip: string, body?: unknown) {
     this.limit(`token:ip:${ip}`, this.limits.tokenPerIp);
-    const { booking } = await this.byToken(this.db, token);
-    return this.publicView(await this.cancelBooking(booking.firmId, booking.id, { word: "system:booking-link" }, token));
+    const c = parse(CancelBody, body);
+    const { booking, type, firm } = await this.byToken(this.db, token);
+    return this.publicAnswer(await this.cancelBooking(booking.firmId, booking.id, { word: "system:booking-link" }, token, c.reason || undefined), type, firm);
+  }
+
+  /** GET the booking's calendar file by link: the invite the confirmation email carries (same UID, SEQUENCE and times;
+   *  FO-3pa DW6). */
+  async publicIcs(token: string, ip: string): Promise<string> {
+    this.limit(`token:ip:${ip}`, this.limits.tokenPerIp);
+    const { booking, type, firm } = await this.byToken(this.db, token);
+    const person = booking.personId ? await this.ports.arrival.contactOf(this.db, booking.firmId, booking.personId) : null;
+    if (!person) throw notFound();
+    return this.inviteIcs(booking, type, firm, "REQUEST", { name: `${person.givenNames} ${person.familyName}`, email: person.email });
   }
 
   // ========================================================================================= staff (services until PF-4)
@@ -276,21 +346,30 @@ export class BookingService {
     if (!type.modes.includes(b.mode)) throw refused("Please choose one of the ways to meet offered.", ["mode: not offered for this consultation"]);
     const contact = await this.ports.arrival.contactOf(this.db, ctx.firmId, b.personId);
     if (!contact) throw notInFirm("person");
+    if (b.hostStaffId) {
+      // Another firm's person is 404 (never named); a deactivated one is never offered (AG-4-53).
+      const host = await this.db.platformStaff.findFirst({ where: firmScope(ctx.firmId, { id: b.hostStaffId }), select: { status: true } });
+      if (!host) throw notInFirm("host");
+      if (host.status !== "ACTIVE") throw inactiveHost();
+      if (!type.hostStaffIds.includes(b.hostStaffId)) throw refused("Please choose one of this consultation's hosts.", ["hostStaffId: not a host of this consultation"]);
+    }
+    if (b.startsAt.getTime() <= this.ports.clock.now().getTime()) throw refused("Please choose a time that has not started yet.", ["startsAt: in the past"]);
     // The prospect is the port's to find and move (AG-2-26), never taken from the body: a person of another firm is 404.
     const out = await this.create(ctx.firmId, type, { startsAt: b.startsAt, mode: b.mode, timeZone: b.timeZone }, staffActor(ctx), async (tx, bookingId) => {
       const r = await this.ports.arrival.bookingForPerson(tx, { firmId: ctx.firmId, personId: b.personId, bookingId });
       if (!r) return notInFirm("person");
       return { personId: b.personId, ...(r.prospectId ? { prospectId: r.prospectId } : {}) };
-    });
+    }, undefined, { hostStaffId: b.hostStaffId, ...anyTime(b), by: ctx.staffId });
     // The visitor's link is the person's, sent to them by email; staff never get it (FO-3f item 3, review m7).
     return this.view(out.booking);
   }
 
   async staffReschedule(ctx: StaffContext, bookingId: string, body: unknown) {
     need(ctx, "agent/booking:edit");
-    const b = parse(RescheduleBody, body);
+    const b = parse(StaffRescheduleBody, body);
     await this.staffBooking(ctx, bookingId);
-    return this.view((await this.move(ctx.firmId, bookingId, b.startsAt, b.timeZone, staffActor(ctx))).booking);
+    if (b.startsAt.getTime() <= this.ports.clock.now().getTime()) throw refused("Please choose a time that has not started yet.", ["startsAt: in the past"]);
+    return this.view((await this.move(ctx.firmId, bookingId, b.startsAt, b.timeZone, staffActor(ctx), undefined, { ...anyTime(b), by: ctx.staffId })).booking);
   }
 
   async staffCancel(ctx: StaffContext, bookingId: string) {
@@ -349,7 +428,7 @@ export class BookingService {
    *  firm's lock before the hosts' locks and nobody takes it after them, so no two writers wait on each other.
    *  `pub.token`: issue a link in the transaction for the answer (the public door only). */
   private async create(firmId: string, type: TypeRow, at: { startsAt: Date; mode: Mode; timeZone: string }, actor: Actor,
-    arrive: (tx: Tx, bookingId: string) => Promise<{ personId: string; prospectId?: string }>, pub?: { gate: () => Held; token: true }) {
+    arrive: (tx: Tx, bookingId: string) => Promise<{ personId: string; prospectId?: string }>, pub?: { gate: () => Held; token: true }, any?: AnyTime) {
     for (let attempt = 0; ; attempt++) {
       const bookingId = randomUUID();
       let held: Held | undefined;
@@ -360,13 +439,13 @@ export class BookingService {
             held = pub.gate();
           }
           try {
-            const slot = await this.freeSlot(tx, firmId, type, at.startsAt);
-            const row = await tx.foBooking.create({ data: { id: bookingId, firmId, typeId: type.id, staffId: slot.staffIds[0], mode: at.mode, startsAt: slot.startsAt, endsAt: slot.endsAt, bookerTimeZone: at.timeZone } });
+            const slot = any ? await this.place(tx, firmId, type, at.startsAt, any) : await this.freeSlot(tx, firmId, type, at.startsAt).then((s) => ({ ...s, staffId: s.staffIds[0], warnings: [] as Warning[] }));
+            const row = await tx.foBooking.create({ data: { id: bookingId, firmId, typeId: type.id, staffId: slot.staffId, mode: at.mode, startsAt: slot.startsAt, endsAt: slot.endsAt, bookerTimeZone: at.timeZone, overlapConfirmedByUserId: confirmer(slot, any) } });
             const who = await arrive(tx, bookingId);
             const booking = await tx.foBooking.update({ where: { id: row.id }, data: { personId: who.personId, prospectId: who.prospectId ?? null } });
             const token = pub?.token ? await issueToken(tx, firmId, booking.id, booking.endsAt) : undefined;
             await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.scheduled", entity: "fo_booking", entityKey: booking.id,
-              summary: `Consultation booked (${type.name}).`, detail: { bookingId: booking.id, typeId: type.id, staffId: booking.staffId, personId: who.personId, prospectId: who.prospectId ?? null, startsAt: booking.startsAt.toISOString(), sequence: booking.sequence } });
+              summary: `Consultation booked (${type.name})${withWarnings(slot.warnings)}.`, detail: { bookingId: booking.id, typeId: type.id, staffId: booking.staffId, personId: who.personId, prospectId: who.prospectId ?? null, startsAt: booking.startsAt.toISOString(), sequence: booking.sequence, ...warningDetail(slot.warnings, booking.overlapConfirmedByUserId) } });
             await this.outbox(tx, booking, EVENT.BOOKING_SCHEDULED);
             return { booking, token };
           } catch (e) { held?.release(); throw e; }   // given back before the rollback lets the firm's lock go
@@ -389,14 +468,14 @@ export class BookingService {
     }
   }
 
-  private async move(firmId: string, bookingId: string, startsAt: Date, zone: string | undefined, actor: Actor, token?: string) {
+  private async move(firmId: string, bookingId: string, startsAt: Date, zone: string | undefined, actor: Actor, token?: string, any?: AnyTime) {
     let attempt = 0;
     for (;;) {
       try {
         const done = await this.db.$transaction(async (tx) => {
           const b = await this.lock(tx, firmId, bookingId);
           const type = await tx.foConsultationType.findFirstOrThrow({ where: firmScope(firmId, { id: b.typeId }) });
-          if (token) await this.recheckToken(tx, token, b, type);
+          if (token) await this.recheckToken(tx, token, b, type, "rescheduled");
           if (!ACTIVE.includes(b.status)) throw problem(409, "not-active", "Not changed", "This booking is no longer active.");
           // The same time is no move: nothing is written, no event, the links and reminders stay (only a new zone for
           // the messages is kept, with its audit line).
@@ -406,13 +485,15 @@ export class BookingService {
             await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.zone_changed", entity: "fo_booking", entityKey: b.id, summary: "The time zone for this booking's messages changed.", detail: { bookingId: b.id, sequence: z2.sequence } });
             return { booking: z2, type, token: undefined, oldSequence: undefined };
           }
-          const slot = await this.freeSlot(tx, firmId, type, startsAt, b.id);
-          const staffId = slot.staffIds.includes(b.staffId) ? b.staffId : slot.staffIds[0];
-          const after = await tx.foBooking.update({ where: { id: b.id }, data: { startsAt: slot.startsAt, endsAt: slot.endsAt, staffId, status: "RESCHEDULED", ...(zone ? { bookerTimeZone: zone } : {}) } });
+          const slot = any ? await this.place(tx, firmId, type, startsAt, { ...any, current: b.staffId }, b.id)
+            : await this.freeSlot(tx, firmId, type, startsAt, b.id).then((s) => ({ ...s, staffId: s.staffIds.includes(b.staffId) ? b.staffId : s.staffIds[0], warnings: [] as Warning[] }));
+          const staffId = slot.staffId;
+          // A move clears an earlier overlap confirmation unless this move is itself confirmed over an overlap.
+          const after = await tx.foBooking.update({ where: { id: b.id }, data: { startsAt: slot.startsAt, endsAt: slot.endsAt, staffId, status: "RESCHEDULED", overlapConfirmedByUserId: confirmer(slot, any), ...(zone ? { bookerTimeZone: zone } : {}) } });
           // A new link for the self-service answer only; the emails issue their own (staff never get one, m7).
           const newToken = token ? await issueToken(tx, firmId, after.id, after.endsAt) : undefined;
           await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.rescheduled", entity: "fo_booking", entityKey: b.id,
-            summary: "Consultation moved to a new time.", detail: { bookingId: b.id, fromStartsAt: b.startsAt.toISOString(), toStartsAt: after.startsAt.toISOString(), fromStaffId: b.staffId, toStaffId: staffId, sequence: after.sequence } });
+            summary: `Consultation moved to a new time${withWarnings(slot.warnings)}.`, detail: { bookingId: b.id, fromStartsAt: b.startsAt.toISOString(), toStartsAt: after.startsAt.toISOString(), fromStaffId: b.staffId, toStaffId: staffId, sequence: after.sequence, ...warningDetail(slot.warnings, after.overlapConfirmedByUserId) } });
           await this.outbox(tx, after, EVENT.BOOKING_RESCHEDULED);
           return { booking: after, type, token: newToken, oldSequence: b.sequence };
         }, TX);
@@ -431,15 +512,17 @@ export class BookingService {
     }
   }
 
-  private async cancelBooking(firmId: string, bookingId: string, actor: Actor, token?: string) {
+  private async cancelBooking(firmId: string, bookingId: string, actor: Actor, token?: string, reason?: string) {
     const done = await this.db.$transaction(async (tx) => {
       const b = await this.lock(tx, firmId, bookingId);
       const type = await tx.foConsultationType.findFirstOrThrow({ where: firmScope(firmId, { id: b.typeId }) });
-      if (token) await this.recheckToken(tx, token, b, type);
+      if (token) await this.recheckToken(tx, token, b, type, "cancelled");
       if (!ACTIVE.includes(b.status)) throw problem(409, "not-active", "Not changed", "This booking is no longer active.");
-      const after = await tx.foBooking.update({ where: { id: b.id }, data: { status: "CANCELLED" } });
+      // The booker's reason is kept on the booking (AG-04 v2.1 Booking.cancelReason; Lead B rev 16.30), never in the audit
+      // entry, which holds ids and facts (AuditPort's rule): it says only that a reason was given (FO-3pa DW7, DW10).
+      const after = await tx.foBooking.update({ where: { id: b.id }, data: { status: "CANCELLED", ...(reason ? { cancelReason: reason } : {}) } });
       await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.cancelled", entity: "fo_booking", entityKey: b.id,
-        summary: "Consultation cancelled.", detail: { bookingId: b.id, from: b.status, sequence: after.sequence } });
+        summary: token ? `Consultation cancelled by the booker.${reason ? " A reason was given." : ""}` : "Consultation cancelled.", detail: { bookingId: b.id, from: b.status, sequence: after.sequence } });
       await this.outbox(tx, after, EVENT.BOOKING_CANCELLED);
       return { booking: after, type, oldSequence: b.sequence };
     }, TX);
@@ -489,20 +572,16 @@ export class BookingService {
     const type = await this.db.foConsultationType.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.typeId }) });
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: b.firmId }, select: { key: true, operatingName: true, contactEmail: true } });
     const zone = b.bookerTimeZone, when = wallLabel(b.startsAt, zone), how = MODE_WORDS[b.mode as Mode], method = METHOD[p.kind];
-    const where = b.mode === "VIDEO" ? (type.meetingLink ?? "Your join link will follow.") : b.mode === "PHONE" ? "The firm will call you." : "At the firm's office.";
-    const invite = (attendee: { name: string; email: string }) => ({ filename: "invite.ics", contentType: `text/calendar; charset=utf-8; method=${method}`, bytes: new TextEncoder().encode(bookingIcs({
-      bookingId: b.id, sequence: b.sequence, method, startsAt: b.startsAt, endsAt: b.endsAt, stamp: this.ports.clock.now(),
-      summary: `${type.name} with ${firm.operatingName}`, description: `${how}. ${where}`, location: b.mode === "VIDEO" ? (type.meetingLink ?? undefined) : undefined,
-      organizer: { name: firm.operatingName, email: firm.contactEmail }, attendee,
-    })) });
+    const where = meetWhere(b, type);
+    const invite = (attendee: { name: string; email: string }) => ({ filename: "invite.ics", contentType: `text/calendar; charset=utf-8; method=${method}`, bytes: new TextEncoder().encode(this.inviteIcs(b, type, firm, method, attendee)) });
     const verb = p.kind === "booked" ? "is booked" : p.kind === "moved" ? "has moved" : "is cancelled";
     if (p.to === "host") {
       // The host's copy holds only what runs the meeting (AG-4-42).
       // The host's own office time, with the zone named (FO-3h, QA-470); the booker's zone is for the booker's mails.
       const host = await this.db.platformStaff.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.staffId }), select: { email: true, displayName: true } });
       const hostWhen = wallLabel(b.startsAt, await hostZone(this.db, b.firmId, b.staffId));
-      await this.ports.mail.send({ firmId: b.firmId, to: host.email, replyTo: firm.contactEmail, class: "SERVICE", templateKey: `booking.host_${p.kind}`,
-        subject: `Consultation ${verb}: ${hostWhen}`, text: `${type.name} ${verb}: ${hostWhen}. ${how}.`, attachments: [invite({ name: host.displayName, email: host.email })] });
+      await this.ports.mail.send({ firmId: b.firmId, to: host.email, replyTo: firm.contactEmail, class: "SERVICE", person: { kind: "STAFF", id: b.staffId }, idempotencyKey: job.key, templateKey: `booking.host_${p.kind}`,
+        subject: `Consultation ${verb}: ${hostWhen}`, text: `${type.name} ${verb}: ${hostWhen}. ${how}.`, attachments: [invite({ name: host.displayName, email: host.email })]  }).catch((e) => this.refusedIsFinal(e, b.id));
       return;
     }
     const person = b.personId ? await this.ports.arrival.contactOf(this.db, b.firmId, b.personId) : null;
@@ -511,13 +590,20 @@ export class BookingService {
     if (p.kind !== "cancelled" && !token) return;   // changed since the check above: the newer state's email follows
     const link = token ? `\n\nTo reschedule or cancel: ${this.manageLink(firm.key, token)}` : "";
     try {
-      await this.ports.mail.send({ firmId: b.firmId, to: person.email, replyTo: firm.contactEmail, class: "TRANSACTIONAL", templateKey: `booking.${p.kind}`,
+      await this.ports.mail.send({ firmId: b.firmId, to: person.email, replyTo: firm.contactEmail, class: "TRANSACTIONAL", person: { kind: "FO_PERSON", id: b.personId! }, idempotencyKey: job.key, templateKey: `booking.${p.kind}`,
         subject: `Your ${type.name} ${verb}`, text: `Hello ${person.givenNames},\n\nYour ${type.name} with ${firm.operatingName} ${verb}${p.kind === "cancelled" ? "" : `: ${when}. ${how}. ${where}`}${link}\n\nReplies to this email reach the firm.`,
         attachments: [invite({ name: `${person.givenNames} ${person.familyName}`, email: person.email })] });
     } catch (e) {
       if (token) await this.db.foBookingToken.update({ where: { id: token.split(".")[0] }, data: { voidedAt: new Date() } }).catch(() => undefined);
-      throw e;
+      this.refusedIsFinal(e, b.id);
     }
+  }
+
+  /** A refused email (suppressed, no consent, an address the channel refuses) is final: the job ends without a retry, as a
+   *  retry would only try again to mail someone we must not mail (Lead B, #1860). Any other failure is thrown and retried. */
+  private refusedIsFinal(e: unknown, bookingId: string): void {
+    if (!(e instanceof MessageRefused)) throw e;
+    this.warn(`email for booking ${bookingId} not sent, final: ${e.message}`);
   }
 
   /** A link for the email, issued under the booking's row lock while it is still active at `sequence`; else null. */
@@ -538,8 +624,8 @@ export class BookingService {
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: b.firmId }, select: { operatingName: true, contactEmail: true } });
     const person = await this.ports.arrival.contactOf(this.db, b.firmId, b.personId);
     if (!person) return;
-    await this.ports.mail.send({ firmId: b.firmId, to: person.email, replyTo: firm.contactEmail, class: "SERVICE", templateKey: `booking.reminder_${p.kind}`,
-      subject: `Reminder: your ${type.name} ${p.kind === "24h" ? "tomorrow" : "in one hour"}`, text: `Hello ${person.givenNames},\n\nThis is a reminder of your ${type.name} with ${firm.operatingName}: ${wallLabel(b.startsAt, b.bookerTimeZone)}. ${MODE_WORDS[b.mode as Mode]}.\n\nReplies to this email reach the firm.` });
+    await this.ports.mail.send({ firmId: b.firmId, to: person.email, replyTo: firm.contactEmail, class: "SERVICE", person: { kind: "FO_PERSON", id: b.personId }, idempotencyKey: job.key, templateKey: `booking.reminder_${p.kind}`,
+      subject: `Reminder: your ${type.name} ${p.kind === "24h" ? "tomorrow" : "in one hour"}`, text: `Hello ${person.givenNames},\n\nThis is a reminder of your ${type.name} with ${firm.operatingName}: ${wallLabel(b.startsAt, b.bookerTimeZone)}. ${MODE_WORDS[b.mode as Mode]}.\n\nReplies to this email reach the firm.` }).catch((e) => this.refusedIsFinal(e, b.id));
   }
 
   /** The attendance question: the host is asked; nothing is recorded until a person answers (AG-4-39 rules 1-4). */
@@ -550,8 +636,8 @@ export class BookingService {
     if (!b || !ACTIVE.includes(b.status) || b.sequence !== p.sequence) return;
     const host = await this.db.platformStaff.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.staffId }), select: { email: true } });
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: b.firmId }, select: { contactEmail: true } });
-    await this.ports.mail.send({ firmId: b.firmId, to: host.email, replyTo: firm.contactEmail, class: "SERVICE", templateKey: "booking.attendance_ask",
-      subject: "Did they attend?", text: `Your consultation of ${wallLabel(b.startsAt, await hostZone(this.db, b.firmId, b.staffId))} has ended. Please record whether the person attended (Attended or No-show).` });
+    await this.ports.mail.send({ firmId: b.firmId, to: host.email, replyTo: firm.contactEmail, class: "SERVICE", person: { kind: "STAFF", id: b.staffId }, idempotencyKey: job.key, templateKey: "booking.attendance_ask",
+      subject: "Did they attend?", text: `Your consultation of ${wallLabel(b.startsAt, await hostZone(this.db, b.firmId, b.staffId))} has ended. Please record whether the person attended (Attended or No-show).` }).catch((e) => this.refusedIsFinal(e, b.id));
   }
 
   // ========================================================================================================= helpers
@@ -583,10 +669,64 @@ export class BookingService {
    *  second then sees the first's booking and answers 409 instead of meeting it in the no-overlap rule, which stays the
    *  database's last word (BR-3). */
   private async freeSlot(tx: Tx, firmId: string, type: TypeRow, startsAt: Date, ignoreBookingId?: string): Promise<Slot> {
-    for (const staffId of [...type.hostStaffIds].sort()) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fo-booking-host:${staffId}`}))`;
+    await lockHosts(tx, type.hostStaffIds);
     const slot = (await this.slotsFor(tx, firmId, type, startsAt, new Date(startsAt.getTime() + 1), ignoreBookingId)).find((s) => s.startsAt.getTime() === startsAt.getTime());
     if (!slot) throw new NoSlot();
     return slot;
+  }
+
+  /** FO-3sa: a staff write's time. A free slot (for the chosen host, when one is chosen) is taken as on the public door;
+   *  else the chosen host (or the booking's own, or the first active host of the type) gets the warnings, under the same
+   *  host locks: none saved without bookAnyway (409 with every reason), all kept in the audit with it (AG-4-63 rules 2-4). */
+  private async place(tx: Tx, firmId: string, type: TypeRow, startsAt: Date, any: AnyTime & { current?: string }, ignoreBookingId?: string): Promise<Placed> {
+    await lockHosts(tx, [...type.hostStaffIds, ...(any.current ? [any.current] : [])]);
+    const free = (await this.slotsFor(tx, firmId, type, startsAt, new Date(startsAt.getTime() + 1), ignoreBookingId)).find((s) => s.startsAt.getTime() === startsAt.getTime());
+    const want = any.hostStaffId;
+    if (free && (!want || free.staffIds.includes(want)))
+      return { startsAt: free.startsAt, endsAt: free.endsAt, staffId: want ?? (any.current && free.staffIds.includes(any.current) ? any.current : free.staffIds[0]), warnings: [] };
+    const active = new Set((await tx.platformStaff.findMany({ where: firmScope(firmId, { id: { in: [...type.hostStaffIds, ...(any.current ? [any.current] : [])] }, status: "ACTIVE" as const }), select: { id: true } })).map((h) => h.id));
+    const fallback = want ?? (any.current && active.has(any.current) ? any.current : type.hostStaffIds.find((id) => active.has(id)));
+    if (!fallback || !active.has(fallback))   // deactivated since the check, or no active host at all (AG-4-53; break F6)
+      throw want ? inactiveHost() : refused("No active host can take this time. Please choose an active host.", ["hostStaffId: choose an active host"]);
+    // No host chosen: the first active host (the booking's own first) with no warning takes it; else the pick rule's
+    // host and its warnings (a time between the page's starts may suit a second host; Devin review).
+    let staffId = fallback, warnings = await this.warningsFor(tx, firmId, type, fallback, startsAt, ignoreBookingId);
+    if (!want && warnings.length) for (const id of type.hostStaffIds.filter((h) => active.has(h) && h !== fallback)) {
+      const w = await this.warningsFor(tx, firmId, type, id, startsAt, ignoreBookingId);
+      if (!w.length) { staffId = id; warnings = w; break; }
+    }
+    // No warning (a time between the page's starts, inside the host's hours): staff take it as asked (Rule 7, review M2).
+    // Book anyway covers only the warnings the person was shown: one that appeared since is asked again (review M1).
+    if (warnings.length && (!any.bookAnyway || warnings.some((w) => !any.accepted.includes(w.code)))) throw needsConfirm(staffId, warnings);
+    return { startsAt, endsAt: new Date(startsAt.getTime() + type.minutes * MIN), staffId, warnings };
+  }
+
+  /** Every reason the time is not one the public page offers for this host (AG-4-63 rule 3; the same rules as slots.ts). */
+  private async warningsFor(tx: Tx, firmId: string, type: TypeRow, staffId: string, startsAt: Date, ignoreBookingId?: string): Promise<Warning[]> {
+    const s = startsAt.getTime(), e = s + type.minutes * MIN, now = this.ports.clock.now().getTime();
+    const [host, windows, offs, closedDays, firmZone, zone] = await Promise.all([
+      tx.platformStaff.findFirstOrThrow({ where: firmScope(firmId, { id: staffId }), select: { displayName: true } }),
+      tx.foAvailability.findMany({ where: firmScope(firmId, { staffId }) }),
+      tx.foTimeOff.findMany({ where: firmScope(firmId, { staffId, startsAt: { lt: new Date(e) }, endsAt: { gt: startsAt } }) }),
+      readSetting<string[]>(tx, firmId, CLOSED_DAYS.key), readSetting<string>(tx, firmId, TIME_ZONE.key), hostZone(tx, firmId, staffId),
+    ]);
+    const out: Warning[] = [];
+    if (closedDays.includes(localDate(startsAt, firmZone).iso) || closedDays.includes(localDate(new Date(e - 1), firmZone).iso)) out.push({ code: "CLOSED_DAY", label: "Closed day" });
+    const inHours = windows.some((w) => { const m = wallMinute(startsAt, w.timeZone); return localDate(startsAt, w.timeZone).weekday === w.weekday && m >= w.startMinute && m + type.minutes <= w.endMinute; });
+    if (!inHours) out.push({ code: "OUTSIDE_HOURS", label: `Outside ${host.displayName}'s hours` });
+    if (offs.length) out.push({ code: "OUTSIDE_HOURS", label: `In ${host.displayName}'s time off` });
+    if (s < now + type.minNoticeMinutes * MIN) out.push({ code: "INSIDE_NOTICE", label: "Inside the shortest notice" });
+    if (s > now + type.windowDays * DAY) out.push({ code: "BEYOND_WINDOW", label: "Beyond the booking window" });
+    const clash = await tx.$queryRaw<{ id: string; person_id: string | null; starts_at: Date; ends_at: Date }[]>`SELECT id::text, person_id::text, starts_at, ends_at FROM fo_booking
+      WHERE firm_id = ${firmScope(firmId).firmId}::uuid AND staff_id = ${staffId}::uuid AND status IN ('SCHEDULED', 'RESCHEDULED')
+        AND block_range && tstzrange(${new Date(s - type.gapBeforeMinutes * MIN)}::timestamptz, ${new Date(e + type.gapAfterMinutes * MIN)}::timestamptz)
+        AND (${ignoreBookingId ?? null}::uuid IS NULL OR id <> ${ignoreBookingId ?? null}::uuid) ORDER BY starts_at`;
+    const hm = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: zone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
+    for (const c of clash) {
+      const p = c.person_id ? await this.ports.arrival.contactOf(tx, firmId, c.person_id) : null;
+      out.push({ code: "OVERLAP", label: `Overlaps ${p ? `${p.givenNames} ${p.familyName}` : "another booking"} ${hm(c.starts_at)}–${hm(c.ends_at)}`, bookingId: c.id });
+    }
+    return out;
   }
 
   private async nextSlots(firmId: string, type: TypeRow, at: { startsAt: Date; timeZone: string }, ignore?: string): Promise<PublicSlot[]> {
@@ -608,19 +748,21 @@ export class BookingService {
     const t = await liveToken(db, token, this.ports.clock.now());
     if (!t) throw notFound();
     // A firm on hold or locked answers its links like its page: not found (break B-5).
-    const firm = await db.platformFirm.findUnique({ where: { id: t.firmId }, select: { status: true } });
+    const firm = await db.platformFirm.findUnique({ where: { id: t.firmId }, select: FIRM_SELECT });
     if (!firm || !["ACTIVE", "TRIAL"].includes(firm.status)) throw notFound();
     const booking = await db.foBooking.findFirst({ where: firmScope(t.firmId, { id: t.bookingId }) });
     if (!booking || !ACTIVE.includes(booking.status)) throw notFound();
     const type = await db.foConsultationType.findFirstOrThrow({ where: firmScope(t.firmId, { id: booking.typeId }) });
-    return { booking, type, token: t };
+    return { booking, type, firm, token: t };
   }
 
   /** Inside the change's transaction, after the row lock: the token is still live for this booking, and the self-service
    *  limit has not passed (AG-4-37 rule 5). */
-  private async recheckToken(tx: Tx, token: string, b: BookingRow, type: TypeRow) {
+  private async recheckToken(tx: Tx, token: string, b: BookingRow, type: TypeRow, what: "rescheduled" | "cancelled") {
     const t = await liveToken(tx, token, this.ports.clock.now());
     if (!t || t.bookingId !== b.id || !ACTIVE.includes(b.status)) throw notFound();
+    // The type's switch is read here, under the row lock, so a type changed a moment ago is obeyed (FO-3pa DW5, DW9).
+    if (!(what === "cancelled" ? type.allowCancel : type.allowReschedule)) throw notByLink(what);
     if (!this.selfServiceOpen(b, type)) throw tooLate();
   }
 
@@ -637,6 +779,23 @@ export class BookingService {
   /** What the public door answers about a booking: no host, person, prospect or type id (contracts §0.6). */
   private publicView(b: BookingRow) {
     return { status: b.status as Status, mode: b.mode, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), timeZone: b.bookerTimeZone, label: wallLabel(b.startsAt, b.bookerTimeZone) };
+  }
+
+  /** The public answer about a booking (book, manage, reschedule, cancel; FO-3pa DW4, DW8): the booking, its type's name
+   *  and switches, the firm's contact details and the limit in hours; the join link once the booking is confirmed and
+   *  active by video. No staff, firm, person or type id. */
+  private publicAnswer(b: BookingRow, type: TypeRow, firm: FirmRow) {
+    const live = ACTIVE.includes(b.status as Status);
+    return { ...this.publicView(b), typeName: type.name, ...typeRules(type), firm: firmContact(firm), joinLink: live && b.mode === "VIDEO" ? type.meetingLink ?? null : null };
+  }
+
+  /** The booking's invite, as the emails attach it and the link downloads it (one writer: same UID, SEQUENCE, times). */
+  private inviteIcs(b: BookingRow, type: TypeRow, firm: { operatingName: string; contactEmail: string }, method: InviteMethod, attendee: { name: string; email: string }) {
+    return bookingIcs({
+      bookingId: b.id, sequence: b.sequence, method, startsAt: b.startsAt, endsAt: b.endsAt, stamp: this.ports.clock.now(),
+      summary: `${type.name} with ${firm.operatingName}`, description: `${MODE_WORDS[b.mode as Mode]}. ${meetWhere(b, type)}`, location: b.mode === "VIDEO" ? (type.meetingLink ?? undefined) : undefined,
+      organizer: { name: firm.operatingName, email: firm.contactEmail }, attendee,
+    });
   }
 
   private view(b: BookingRow) {
@@ -712,11 +871,41 @@ export class BookingService {
   }
 }
 
+const FIRM_SELECT = { id: true, key: true, status: true, operatingName: true, contactEmail: true, businessAddress: true } as const;
+type FirmRow = { operatingName: string; contactEmail: string; businessAddress: Prisma.JsonValue | null };
+const ADDRESS_PARTS = [["unit", "unit"], ["streetNumber", "street_number"], ["streetName", "street_name"], ["city", "city"], ["provinceState", "province_state"], ["postalCode", "postal_code"], ["country", "country"]] as const;
+/** The firm's public contact details (FO-3pa DW4; AG-4-37 rule 5's phone): operating name, email, phone and address from
+ *  the business address (PF-1's shape, platform.prisma), known parts only, strings only. No id. */
+export function firmContact(firm: FirmRow) {
+  const a = firm.businessAddress && typeof firm.businessAddress === "object" && !Array.isArray(firm.businessAddress) ? firm.businessAddress as Record<string, unknown> : {};
+  // Control and bidirectional characters dropped: the firm's own data, shown on a public page (break m3).
+  const str = (v: unknown) => { const t = typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200) : ""; return t || null; };
+  const parts = ADDRESS_PARTS.map(([k, src]) => [k, str(a[src])] as const).filter(([, v]) => v !== null);
+  return { name: firm.operatingName, email: firm.contactEmail, phone: str(a.phone), address: parts.length ? Object.fromEntries(parts) as Record<string, string> : null };
+}
+/** The type's switches for the booker (FO-3pa): reschedule and cancel by link, and the self-service limit in hours. */
+const typeRules = (t: TypeRow) => ({ allowReschedule: t.allowReschedule, allowCancel: t.allowCancel, selfServiceLimitHours: t.selfServiceLimitMinutes / 60 });
+/** Where the meeting is, in the invite's and email's words. */
+const meetWhere = (b: BookingRow, t: TypeRow) => b.mode === "VIDEO" ? (t.meetingLink ?? "Your join link will follow.") : b.mode === "PHONE" ? "The firm will call you." : "At the firm's office.";
+
 /** No free host at the asked time, found inside the write; the caller answers 409 with fresh times once the transaction
  *  has ended (reading them inside it would hold a second connection). */
 class NoSlot extends Error {}
 /** A place held under the firm's cap and for the form stamp, while a public booking is in flight. */
 type Held = { keep: () => void; release: () => void };
+
+/** One transaction lock per host, in id order, so two writers never wait on each other. */
+async function lockHosts(tx: Tx, staffIds: string[]) {
+  for (const staffId of [...new Set(staffIds)].sort()) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fo-booking-host:${staffId}`}))`;
+}
+/** The minute of the local day a moment falls on in `zone`, with its seconds as a fraction (16:30:30 is 990.5; Devin review). */
+const wallMinute = (at: Date, zone: string) => { const t = new Date(at.getTime() + tzOffset(zone, at) * MIN); return (t.getTime() - Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())) / MIN; };
+/** The staff member who chose Book anyway over an overlap; null for every other write (public and self-service ones). */
+const confirmer = (p: { warnings: Warning[] }, any?: AnyTime) => (any && p.warnings.some((w) => w.code === "OVERLAP") ? any.by : null);
+const withWarnings = (w: Warning[]) => (w.length ? ` with warnings: ${[...new Set(w.map((x) => WARNING_WORDS[x.code]))].join(", ")}` : "");
+const anyTime = (b: { bookAnyway?: boolean; acceptedWarnings?: string[] }) => ({ bookAnyway: b.bookAnyway === true, accepted: b.acceptedWarnings ?? [] });
+/** AG-4-63 field 9: the reasons shown are kept in the audit entry only. */
+const warningDetail = (w: Warning[], confirmedBy: string | null): Record<string, boolean | string[] | string | null> => (w.length ? { bookedAnyway: true, warnings: [...new Set(w.map((x) => x.code))], overlapBookingIds: w.flatMap((x) => (x.bookingId ? [x.bookingId] : [])).slice(0, 50), overlapConfirmedByUserId: confirmedBy } : {});
 
 export const staffActor = (ctx: StaffContext): Actor => ({ word: `staff:${ctx.staffId}`, staffId: ctx.staffId });
 function need(ctx: StaffContext, key: string) { if (!ctx.keys.includes(key)) throw forbidden(key); }

@@ -1,0 +1,20 @@
+# Verdicts: R1.40 and R1.38 after PF-19b (16 Nov, main fecf52a2b)
+
+Fresh qa reader (P-303): ran nothing, judged only from the files in this folder, the test source `prototype/studio/tests/qa/check_r140_inbox_walk.ts` and `api/src/front-office/booking/service.ts` (runMail). Main fecf52a2b differs from PF-19b's merge b54c2cd4b only in `product/` records, so the merge-batch run ci 43768047575 counts for main's code.
+
+## R1.40 Calendar invite files: Partial
+- **Reason:** every clause of Done when is now shown in the running app over HTTP, but the walk is not by screens (no booking page) and J-38 is not merged (P-606 (2): qa scores Works only when all parts are merged).
+- **Newly proven:** booking mail goes through the outbox and the local adapter, not in-memory `fakeMail`. ci 43768047575: pf19b 28/0 (BM5: moved then cancelled gives CANCEL, REQUEST, REQUEST, one UID, SEQUENCE rising; BM6: `GET /api/demo/platform-inbox` gives 200 with the invite text, a client persona gets 403), fo3 133/0, fo3sr 29/0, fo3sa 39/0; local re-runs are the same. qa's inbox walk on an isolated copy over HTTP gives 16/16 twice: three mails each for the booker and the host, each with an .ics; one UID across all six; METHOD REQUEST, REQUEST, then CANCEL; DTSTART 15:00Z then 14:00Z across Toronto's 14 Mar 2027 change; the moved invite does not keep the old time. Staff move 11/11 twice (FO-3sr's staff calls give the same UID and SEQUENCE).
+- **Missing:** FO-3w (public booking page, so no walk by screens), J-38 (join and walk; no j_38 test in the repo). The demo inbox is an API with no screen (stand-in SI-20 for real delivery). A person cannot open an invite in a mail client yet. This is expected under the stand-in and is not a Done-when gap.
+- **Gate A:** not met. P-616 (gate A by API) covers only capabilities with no screen. R1.40 starts on the booking page (FO-3w), which is a screen.
+
+## R1.38 Time zones from booking page to invite: Partial
+- **Reason:** the API and the mails show the right zone end to end across a daylight-saving change, but there is still no booking page, no staff calendar view and no J-38.
+- **Newly proven:** the invite in the running app carries the same UTC instant as the stored booking (15:00Z, then 14:00Z after the change), read from the demo inbox, not from a fake. The booker's mails read 7:00 then 6:00 p.m. (Asia/Dubai); the host's mails read 10:00 a.m. (America/Toronto) both times, never 9:00 or 11:00. TZ walk 19/19 twice; staff move 11/11 twice.
+- **Missing:** FO-3w (the "booking page" end of the row), FO-3st (FO-3st1 bookings calendar: the staff zone exists only in the host's email, and the staff read gives UTC plus the booker's zone), J-38.
+- **Gate A:** not met (no screens to walk). This matches the tech lead's ruling on #1855: R1.38 waits on FO-3w, FO-3st and J-38.
+
+## Ruling on the unpaced walk (7/14: book, move, cancel within seconds; only the cancel mail arrived)
+- **Intended. Not a bug.** runMail returns when `b.sequence !== p.sequence` ("a newer state has its own email, so an older one is not sent"). This collapses the mails to the newest state. The one mail that is sent carries the current SEQUENCE and the correct METHOD and time, so the calendar ends in the right state: a moved invite (REQUEST, SEQUENCE 1) creates the event at the new time, and a lone CANCEL removes an event that was never added. A person or a host acting at human speed gets every mail, as the paced walk shows 16/16 twice.
+- **Done-when reading:** "each booking and change sends an .ics" holds for every change the outbox sees before the next one. Changes made within the job's delay are collapsed, never sent with a wrong time. Not a Done-when failure.
+- **Residual UX point, not logged as a finding:** a fast booker can get "has moved" or "is cancelled" with no earlier "is booked" mail. If the founder wants it recorded: UX · Minor, map row 40 (FO-3 mail wording: "has moved" could read "is booked for <new time>" when no earlier mail went out). The walk's pacing comment (lines 48-50) documents the behaviour. Keep it.
