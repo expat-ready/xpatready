@@ -13,6 +13,8 @@ import { setStaffToken, staffToken, useStaffToken } from "./session";
 const USED = "This sign-in link has been used or has expired. Sign in again.";
 /** Codes this page has sent already (React's development double effect, a second mount): each is posted once. */
 const sent = new Set<string>();
+/** Posts still waiting for their answer: a mount with no code waits only for these, never for an older finished one (PF-6f). */
+let inFlight = 0;
 
 export function CallbackPage() {
   const [state, setState] = React.useState<{ step: "working" | "done" | "refused"; words?: string; tokenThen?: string | null }>({ step: "working" });
@@ -22,10 +24,12 @@ export function CallbackPage() {
     const take = () => {
       const code = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("code");
       if (window.location.hash) window.history.replaceState(window.history.state, "", window.location.pathname);
-      if (!code) { if (!sent.size) setState(staffToken() ? { step: "done" } : { step: "refused", words: USED, tokenThen: null }); return; }
+      // No code (Back, a reload, a bare visit): decide from the session now, unless a post is still on its way (PF-6f DW1).
+      if (!code) { if (!inFlight) setState(staffToken() ? { step: "done" } : { step: "refused", words: USED, tokenThen: null }); return; }
       if (sent.has(code)) return;
       sent.add(code);
       setState({ step: "working" });
+      inFlight++;
       void (async () => {
         try {
           const res = await fetch("/api/platform/session/callback", { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ code }) });
@@ -35,6 +39,7 @@ export function CallbackPage() {
           if (res.ok && typeof r?.token === "string") { setStaffToken(r.token, typeof r.expiresIn === "number" ? r.expiresIn : undefined); setState({ step: "done" }); return; }
           setState({ step: "refused", words: problemOf(data, res.status).detail ?? USED, tokenThen: staffToken() });
         } catch { setState({ step: "refused", words: "Could not reach the server, so this link was not used. Open the link from your email again, or sign in below.", tokenThen: staffToken() }); }
+        finally { inFlight--; }
       })();
     };
     take();
@@ -47,10 +52,12 @@ export function CallbackPage() {
   return (
     <Frame area="outside" title="Sign in">
       {state.step === "working" ? <p role="status" className="text-sm text-text-muted" data-loading>Signing you in…</p>
-        : <><Notice tone={signedIn ? "warn" : "danger"} title={signedIn ? "This link was not used" : "Not signed in"} className="mx-auto mt-6 max-w-md"
-            action={signedIn ? <Link className="whitespace-nowrap text-text-link underline" to="/account">Open My account</Link> : undefined}>
-            <span data-callback-refused>{state.words}</span>{signedIn ? " You are still signed in as before." : null}</Notice>
-          {signedIn ? null : <SignInCard />}</>}
+        // Signed in: one plain notice, never the refusal's "Sign in again" or "Not signed in" beside it (PF-6f DW2).
+        : signedIn ? <div data-callback-notice className="mx-auto mt-6 max-w-md"><Notice tone="warn" title="This link was not used."
+            action={<Link className="whitespace-nowrap text-text-link underline" to="/account">Open My account</Link>}>
+            <span data-callback-refused>You are still signed in.</span></Notice></div>
+        : <><Notice tone="danger" title="Not signed in" className="mx-auto mt-6 max-w-md"><span data-callback-refused>{state.words}</span></Notice>
+          <SignInCard /></>}
     </Frame>
   );
 }
