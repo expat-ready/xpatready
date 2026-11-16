@@ -105,4 +105,25 @@ The new diff touches `api/src/runtime.ts` (+4), `api/src/case-count.ts` and `tes
 
 **Not checked:** full CI on c224b4f6e, and the other Done-when suites (A24, C6.11, C6.17, the demo reset, C10.1). Under P-385, CI must be green on this sha before the label.
 
-Verdict: Approve c224b4f6edd983e909211610b375db39c0a2812f
+Round 2 result on c224b4f6e: Approve. Round 3 follows.
+
+## Round 3 on c8b53e584 (P-277: only `git diff c224b4f6e..c8b53e584 -- '*.ts'`)
+
+**The change.** One change, in `api/src/case-count.ts` (the breaker's m4). A new `per_case` CTE groups the current stage's active filings once per case, with `count(*) filter (where not exists <a DECISION after the last reopen>)` as `undecided`. `active` is then `p.case_id is null or p.undecided > 0`.
+* This is the same rule as before. Cases with no current-stage filing (`p.case_id is null`) still count. A case with any undecided filing counts. A case whose filings all have a decision after the last reopen does not.
+* The reopen boundary, the firm filter and the group read are unchanged. The other commits in the range are only review and break reports.
+
+**What I ran.** On copy `csc1b_rev`, port 4591 (stopped afterwards):
+* `check_csc1_count.ts`: **40/40 passed**.
+* `check-port-contracts.mjs`: 0 problems.
+
+The DW9 lines would go red if `undecided` or the `is null` branch were wrong: one of two filings decided, all decided, a reopen, and the next stage with no filing.
+
+**The first-plan case: it does not block this row. Recorded as a Minor known limit.** The builder measured 27 s for the first count right after a bulk insert of 6000 cases, before autoanalyze, and 180 ms after ANALYZE.
+* **Where it cannot happen.** Openings through `createCase` add one case at a time. Autoanalyze runs after 50 + 10 % changed rows, so normal use never meets a table with stale statistics. The Sample data (checkpoint, demo reset) is tens of cases, and the 40/40 run starts on a fresh copy straight after the checkpoint load.
+* **Where it can happen.** A future bulk import of a firm's cases, followed at once by an opening. That opening would wait on `case-open:<firm>`, and so would every other opening of that firm. Prisma's 15 s transaction timeout would then answer 500 (P2028), not a wrong count. Nothing is written, so no data is harmed.
+* **Who owns the fix.** The row that adds the bulk loader: run `ANALYZE` on `runtime_case`, `filing`, `case_stage` and `case_decision` after its insert. That row is not built yet, and it is not this touch list.
+
+Record it in the PR as a known limit beside m1 (two clocks).
+
+Verdict: Approve c8b53e584b071edc820da33dcdb0e76d3090cde9
