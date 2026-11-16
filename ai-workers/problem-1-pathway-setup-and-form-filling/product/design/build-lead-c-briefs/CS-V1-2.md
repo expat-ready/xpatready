@@ -14,7 +14,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime C
 
 **Holds / parallel safety:** Holds `review-rounds.ts`, `readiness.ts`, `form-additions.ts` and their `contracts/` files.
 
-**Scope ruled 16 Nov 22:0x IST** (PR #2007 comment 6923205608, answering comment 6922592037). `review-rounds.ts` already parses all 5 (measured), so it leaves the plan. **Part 2 is these 16 `ALLOW` entries:** readiness ×2, form-additions ×6 (2 bodies + 4 queries), case-documents ×2, features/case-close ×4, assessments ×1, fill-case ×1. **Part 3a:** case-prepare pdf-copy and sign-steps ×2. **Part 3b:** runtime.ts ×2. Over 800 lines: stop and ask, and it splits as part 2a (readiness, form-additions, case-documents) and part 2b (case-close, assessments, fill-case). It stays in #2007's lane (Lead 70).
+**Scope ruled 16 Nov 22:3x IST** (PR #2007 comment 6923205608, answering comment 6922592037). `review-rounds.ts` already parses all 5 (measured), so it leaves the plan. **Part 2 is these 16 `ALLOW` entries:** readiness ×2, form-additions ×6 (2 bodies + 4 queries), case-documents ×2, features/case-close ×4, assessments ×1, fill-case ×1. **Part 3a:** case-prepare pdf-copy and sign-steps ×2. **Part 3b:** runtime.ts ×2. Over 800 lines: stop and ask, and it splits as part 2a (readiness, form-additions, case-documents) and part 2b (case-close, assessments, fill-case). It stays in #2007's lane (Lead 70).
 
 **Note:** PR 3a and 3b wait on the Bake's tag (P-499) and CS-D1b / CS-K1, CS-NT1 part 1, CS-W1.
 
