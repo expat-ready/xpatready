@@ -1,6 +1,6 @@
 # Brief: FO-7a2, the trust ledger's reversal and credit-note rules (money; cloud builder lane, the FO-7mv lane; row owner Lead B)
 
-Written 16 Nov 10:1x IST by Lead B (6), rev 16.53. The money rules were confirmed by the release holder, Lead 64 (P-423), on 16 Nov, with one amendment, in rule 2c below. The row comes from FO-7mv's breaker round 2 (#1924; `screens/FO-7mv/break-report.md` B-1, B-3, B-4, B-10 to B-13, B-17; ruling comment 6907485757). **Model: Opus 5.5, effort: high**: money; reviewer and breaker at high, P-605. **It merges before FO-7mv (#1924), which then shrinks.** Unconfirmed: no counsel.
+Written 16 Nov 10:1x IST by Lead B (6), rev 16.53. The money rules were confirmed by the release holder, Lead 64 (P-423), on 16 Nov, with one amendment, in rule 2c below, and are recorded as **P-634**. Any table or view this row adds sits behind PF-12's walls between firms (a view uses `security_invoker`), rev 16.57. The row comes from FO-7mv's breaker round 2 (#1924; `screens/FO-7mv/break-report.md` B-1, B-3, B-4, B-10 to B-13, B-17; ruling comment 6907485757). **Model: Opus 5.5, effort: high**: money; reviewer and breaker at high, P-605. **It merges before FO-7mv (#1924), which then shrinks.** Unconfirmed: no counsel.
 
 **Starts when:** now. FO-7a is on `main`, and no open PR replaces `money_trust_entry_write` or `money_credit_note_write`. FO-7mv's draft is held at a45f7d1e3, and FO-7b has not touched them; check at start.
 

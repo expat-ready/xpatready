@@ -1431,3 +1431,15 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * Sequential lead numbers (breaker m3): accepted as AG-02 numbering, with no row.
 * With the setting off, an `assign` holder reassigns only Unassigned leads and their own. AG-2-13c rule 1's "every mode" keeps the action on in every mode; it does not widen what a person sees (AG-2-64 is the one home of visibility). This reading goes in the module card.
 * The permissions read at e767d9c80 is passed to Lead 65.
+
+## Rev 16.57 (16 Nov 10:5x IST, Lead B (6)): P-634 folded in; Lead 65's reads
+
+* **P-634** (Lead 64's ruling under P-628, for the founder's review) records rev 16.52–16.53's trust rules as a decision. BACKLOG on the Lead branch now has the **FO-7a2** row and P-634's reversal exception on FO-7a and FO-7mv.
+  - Read with P-634, `lead-b-briefs/FO-7a2.md` is unchanged. Its rules 1a–1d and 2a–2d are P-634 (1) and (2), word for word in substance.
+  - The brief's source line now cites **P-634** as the confirmation.
+  - FO-7mv's brief, and FO-7a's row in BACKLOG, read "a reversal may go below zero (P-634)" wherever they said the ledger "never goes below zero".
+* **Lead 65's reads are done:**
+  - FO-2v #1933 (permissions) at 33b11fbbb. The lane marks it ready once CI is green on that head.
+  - PF-12 #1910 (migration) at 4c59bc518.
+  - FO-3a 1a #1918 (migration) at 8e62f9dcb.
+* **FO-7mv (#1924), from Lead 65:** PF-12's database walls between firms (row-level security) go on the `money_move_*` tables. Read with FO-7a2: FO-7a2's view `money_trust_shortfall` also sits behind PF-12's walls (`security_invoker`, so the reader's firm scope applies), and the same goes for any table FO-7a2 adds.
