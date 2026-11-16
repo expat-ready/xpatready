@@ -1,9 +1,10 @@
 // FO-2 staff routes for leads (contracts §2.1; concept fo-4-sales r2 §6). Each declares its permission keys (PF-3's seeded
 // agent/prospect:* keys; PF-4's guard refuses the rest, default deny). The concept's `agent/prospect:list` is not a seeded
 // key: the seeded `agent/prospect:show` reads (with view.all/view.own deciding which rows, common.ts visibilityOf). Add a
-// lead creates; Take it, Close and Reopen edit; Assign assigns. `leads/assignees` is declared before `leads/:id`.
+// lead creates; Take it, Close and Reopen edit; Assign assigns. The list and the read are marked @OwnOrAll and swept
+// by PF-6b's check with the retainers (FO-2v). `leads/assignees` is declared before `leads/:id`.
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from "@nestjs/common";
-import { PermissionKeys, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
+import { OwnOrAll, PermissionKeys, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
 import { Leads } from "./leads.ts";
 
 type R = { platform?: StaffContext };
@@ -13,7 +14,7 @@ type B = Record<string, unknown>;
 export class SalesController {
   constructor(@Inject(Leads) private readonly leads: Leads) {}
 
-  @Get("leads") @PermissionKeys("agent/prospect:show")
+  @Get("leads") @PermissionKeys("agent/prospect:show") @OwnOrAll("agent/prospect")
   list(@Req() r: R, @Query("view") view?: string) { return this.leads.list(staffOf(r), view); }
 
   @Post("leads") @PermissionKeys("agent/prospect:create")
@@ -22,7 +23,7 @@ export class SalesController {
   @Get("leads/assignees") @PermissionKeys("agent/prospect:show")
   assignees(@Req() r: R) { return this.leads.assignees(staffOf(r)); }
 
-  @Get("leads/:id") @PermissionKeys("agent/prospect:show")
+  @Get("leads/:id") @PermissionKeys("agent/prospect:show") @OwnOrAll("agent/prospect")
   read(@Req() r: R, @Param("id") id: string) { return this.leads.read(staffOf(r), id); }
 
   @Post("leads/:id/take") @HttpCode(200) @PermissionKeys("agent/prospect:edit")

@@ -14,3 +14,18 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 * No prompt-waiting call while the founder is away (P-388); no hand-over with an in-process subagent running (P-409). Never run guard or test suites in the main copy: use a scratch clone (7 Nov). GitHub through curl with `gh auth token` (P-363). `.claude/settings.json` stays as on `main`; only the founder widens permissions, and a refused write is never routed through a lane or split to retry (P-387, 7 Nov). Times only from `TZ=Asia/Kolkata date` (P-302).
 * **Records:** by the Lead alone; STATE one page, at most 12 KB, earlier pages in `history/`; DECISIONS appended, newest first, never rewritten; records once a day and at each hand-over (P-336); records PRs merge only when the queue is empty (P-436 (3)). This page is refreshed at every hand-over (P-440).
 * **Merging:** never cancel a CI run; re-run the failed part alone (P-371, P-384); product code only through the queue, never by hand; fixes to the checks or merge flow may land ahead of the queue on green (P-214).
+
+
+## The compass, word for word from RULES.md (moved by Lead 64, 16 Nov 10:2x IST, size limit)
+## The compass (P-312): judged daily from tools, never from prose
+| Number | Healthy |
+|---|---|
+| Capabilities confirmed per day | 10 or more |
+| Works on qa's first re-score after merge | 80% or more |
+| Major or Critical bugs found after merge | about 0 |
+| Works → Partial demotions per day | at most 1 |
+| Capabilities in progress | no more than builders |
+| Notes PRs as a share of merges | 20% or less |
+| Merge batches thrown away | 15% or less (conflicts at most 5 a day) |
+| Weekly plan burn per hour (P-440) | 3% or less |
+

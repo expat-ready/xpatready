@@ -37,5 +37,5 @@ export class BookingStaffController {
   read(@Req() r: R, @Param("id") id: string) { return this.b.staffGet(staffOf(r), id); }
 
   @Post(":id/attendance") @HttpCode(200) @AnyStaff("the host answers their own, AG-4-39; others need agent/booking:edit, checked by the service")
-  attendance(@Req() r: R, @Param("id") id: string, @Body() body: B) { return this.b.recordAttendance(staffOf(r), id, (body ?? {}).outcome); }
+  attendance(@Req() r: R, @Param("id") id: string, @Body() body: B) { return this.b.recordAttendance(staffOf(r), id, body); }
 }

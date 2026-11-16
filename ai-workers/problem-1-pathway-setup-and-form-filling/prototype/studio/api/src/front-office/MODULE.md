@@ -16,13 +16,16 @@ The firm's front office: public booking and retainer agreements, with their file
 - A self-service token is `<selector>.<verifier>`: looked up by id, verifier checked (FO-3, BR-10).
 - A web-form post makes nothing on a refusal; its answer never says whether the person is known; a stamp not ours asks for a reload (FO-2, AG-2-49).
 - A lead change is seen again under the row's lock; one audit line (entity named literally), the outbox row last (FO-2).
+- Leads follow the one own-versus-all rule (`sales/common.ts` `visibilityOf`, as retainers): all = `agent/prospect:view.all` and "everyone sees all" on, else own; no role override. Take on an unseen lead is the GET 404, except a lead taken from Unassigned within 10 minutes (409 naming who, no id) (FO-2v). Take's race answer reads the latest take/assign audit line (AG-2-86 rule 3); no owner-set column. `assign` never widens what a person sees: with the setting off an `assign` holder reassigns only Unassigned leads and their own (AG-2-13c rule 1 keeps the action in every mode; AG-2-64 is the one home of visibility; Lead B rev 16.56).
 - Rate limits are rolling windows per key, sized for about 100 firms in one process (P-562).
 - Every file belongs to one firm and lives under the firm's own folder (FO-5, contracts §0.3).
 - Platform rules apply: `firmScope` on every table, platform guard on every staff route (P-559).
+- The database walls these tables (PF-12): a public door finds its firm through its named bypass use (`fo.sales.web-form`, `fo.booking.public-page`, `fo.booking.self-service`), then runs as that firm (`enterFirm`).
+- The attendance question (30 min after the end) is shown, not pushed: its job mails no one; the booking is the due item until a person answers (AG-4-39 rule 2, FO-3m). The answer's body is `{ outcome }` only.
 - The database's no-overlap rule skips only a booking a staff member confirmed with Book anyway over an overlap (`overlapConfirmedByUserId`, FO-3sa, AG-4-63 rule 4); the public door never sets it, every writer checks overlaps under the host locks, and a move clears it unless the move is itself confirmed.
 
 **Tables.** foLead, foPerson, foArrivalReceipt, foLeadAttribution, foNote, foReason, foService, msgConsent (through ConsentPort), foBooking, foBookingToken, foAvailability, foConsultationType, foProspect, foRetainer, foRetainerTemplate, foRetainerVersion, foSalesSetup, foStage, foWebForm, platformFirm, platformStaff, moduleEvent.
-**Tests.** `tests/check_fo2_leads_prospects.ts`, `tests/check_fo3_booking.ts`, `tests/check_fo3sr_routes.ts`, `tests/check_fo3sa_any_time.ts`, `tests/check_fo3pa_public_answers.ts`, `tests/check_fo5_retainers.ts`, `tests/check_fo1a_sales_schema.ts`, `tests/check_fo1b_booking_schema.ts`, `tests/check_fo13_compliance_schema.ts`.
+**Tests.** `tests/check_fo2_leads_prospects.ts`, `tests/check_fo2v_lead_visibility.ts`, `tests/check_fo3_booking.ts`, `tests/check_fo3sr_routes.ts`, `tests/check_fo3m_answers.ts`, `tests/check_fo3sa_any_time.ts`, `tests/check_fo3pa_public_answers.ts`, `tests/check_fo5_retainers.ts`, `tests/check_fo1a_sales_schema.ts`, `tests/check_fo1b_booking_schema.ts`, `tests/check_fo13_compliance_schema.ts`.
 
 **Do not.**
 - Serve a file without a checked short-lived link, or from another firm's folder.
