@@ -169,6 +169,14 @@ One box on the first screen, under Release 1: four lights and one forecast line.
 - **Trust.** The 17 counts (rows built today, in 24 h and on each of the 3 days, ids today, in 24 h and on each day, rows proven today and this week, ids left, rows proven in 24 h and on each day, built to proven, waiting and the oldest wait, and the three forecast dates) are recomputed apart by cockpit-reconcile.py from the same snapshot and must agree exactly (P-639). The merge, test-machine and resource numbers are readings (flow-measure, the GitHub API, the Lead input, df), shown with their source, not recomputed.
 - **Limits.** Built rows need every part named in the checklist or BACKLOG (P-644 rule 1); an id whose parts are not written in the form the scripts read ("PF-13 parts 1-2") counts as one part. Rows proven when listed have no date, so a row qa proved on the day it was added to the table is not counted as new.
 
+## Stuck now (founder A134, 23:3x IST 16 Nov via Lead 70: one place to see what is stuck)
+The first card on the first screen, four lines, each with its light, with the source and time under each:
+- **Last merge to main: N min ago.** N = whole minutes from main's newest commit (GitHub commits/main, taken into the snapshot as meta.main_at) to the snapshot time: lead-watch's jam number (P-646). Green to 30 min, amber to 60, red over 60.
+- **Actions runs waiting for a machine: N.** GitHub Actions runs with status queued (total_count), at the snapshot: lead-watch's jam number (P-646). Green to 15, amber to 30, red over 30.
+- **Sessions awaiting input or failed: N, by title.** From the Lead's check of claude.ai/code (P-647), written into the Lead input as `stuck_sessions` ([{title, state}]) and `stuck_sessions_at`; shown "per the Lead's check at HH:MM", Lead-reported. Red when any, green when none, grey when the Lead input has no `stuck_sessions`.
+- **Approved, not merged for over 60 min: N.** Open PRs labelled `review: approved` whose newest "labeled" event for that label is more than 60 minutes before the snapshot (GitHub issue events; up to 40 PRs read). Red when any, green when none; a PR with no such event is not counted.
+- The checker recomputes the first and the last from the same snapshot (stuck_main_gap_min, stuck_approved_over_60); the queue and the sessions are readings.
+
 ## Proven: today, this week, overall (founder A133, 22:0x IST 16 Nov via Lead 70: "11 of 10 proven" mixed the total with the day's goal)
 The first screen's second card shows three plain lines, each with its light; the source and time sit under each line.
 - **Today (IST day): X proven of 10 (floor 7, P-644).** X = rows whose current run of Works began today (the Flow box's rule). Green at 10 or more, amber at 7-9, red under 7.

@@ -366,7 +366,7 @@ class TrustAndInvariants(unittest.TestCase):
         t2 = json.loads(json.dumps(theirs))
         plus = lambda n: (date.fromisoformat(k["forecast_p85_date"]) + timedelta(days=n)).isoformat()
         r7 = cd.reconcile_compare(k, theirs, None)
-        self.assertEqual(r7["compared"], 53)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's six + v63's eight + P-636's Proven + P-644's 13 Flow counts + A133's 4
+        self.assertEqual(r7["compared"], 55)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's six + v63's eight + P-636's Proven + P-644's 13 Flow counts + A133's 4
         t2["numbers"]["forecast_p85_date"]["value"] = plus(1)                 # +1 day: agrees
         self.assertEqual(cd.reconcile_compare(k, t2, None)["state"], "agree")
         t2["numbers"]["forecast_p85_date"]["value"] = plus(2)                 # +2 days: disagrees
@@ -951,7 +951,7 @@ class Delivery24h(unittest.TestCase):
             out, note = cd.run_reconcile(d, rec)
             self.assertIsNone(note)
             _, c = run(d, rec=out, note=None)
-            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 53, []))   # 36 + P-644's 13 Flow counts + A133's 4
+            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 55, []))   # 36 + P-644's 13 Flow counts + A133's 4 + A134's 2
 
 
 BLP = "files/" + cd.REL + "/BACKLOG.md"
@@ -1409,7 +1409,7 @@ class Tooltips(unittest.TestCase):
         """P-636 (founder 16 Nov): six answers in three words. Proven comes from qa's file on main only, Built = all parts
         merged or qa passed, and every answer has its explanation with what is behind it."""
         f = self.d["first"]
-        self.assertEqual(set(f), {"words", "release", "today", "needs", "stuck", "choke", "health", "rule", "proven_lines"})   # A133
+        self.assertEqual(set(f), {"words", "release", "today", "needs", "stuck", "choke", "health", "rule", "proven_lines", "stuck_now"})   # A133, A134
         self.assertIn("Only Proven counts as delivered", f["words"])
         R = f["release"]
         self.assertEqual(R["planned"], 8)                                    # 8 Build rows in the fixture checklist
@@ -2209,6 +2209,51 @@ class Flow(unittest.TestCase):
         t = json.loads(json.dumps(out))
         t["numbers"]["flow_awaiting"]["value"] = (t["numbers"]["flow_awaiting"]["value"] or 0) + 1
         self.assertEqual(cd.reconcile_compare(c["keys"], t, None)["diffs"][0]["name"], "flow_awaiting")   # a one-off difference is caught
+
+
+class StuckNow(unittest.TestCase):
+    """A134 (founder 23:3x IST 16 Nov via Lead 70): four lines that say what is stuck right now (FORMULAS.md › Stuck now)."""
+    META = {"taken_at": "2026-11-20T12:00:00+05:30", "main_at": "2026-11-20T05:15:00Z"}      # 75 min before taken_at
+    AP = [{"number": 11, "title": "a", "labeled_at": "2026-11-20T05:00:00Z"},                   # 90 min: over 60
+          {"number": 12, "title": "b", "labeled_at": "2026-11-20T05:45:00Z"},                   # 45 min: not yet
+          {"number": 13, "title": "c", "labeled_at": None}]                                     # no label event: not counted
+
+    def test_counts(self):
+        c = cd.stuck_counts(self.META, self.AP)
+        self.assertEqual((c["stuck_main_gap_min"], c["stuck_approved_over_60"]), (75, 1))
+        self.assertEqual(c["approved_old"], [{"number": 11, "title": "a", "min": 90}])
+        n = cd.stuck_counts({"taken_at": self.META["taken_at"]}, {"error": "offline"})
+        self.assertEqual((n["stuck_main_gap_min"], n["stuck_approved_over_60"], n["approved_reason"]), (None, None, "not measured: offline"))
+
+    def lines(self, ci=None, li=None, meta=None, ap=None):
+        sc = cd.stuck_counts(meta or self.META, self.AP if ap is None else ap)
+        return {x["key"]: x for x in cd.stuck_now({"lineage": {"taken_at": "2026-11-20T06:30:00Z"}}, sc, ci, li or {}, "Lead input")["lines"]}
+
+    def test_lines_and_lights(self):
+        L = self.lines(ci={"queued_runs": 31}, li={"stuck_sessions": [{"title": "next forms", "state": "Awaiting input"}], "stuck_sessions_at": "2026-11-20T06:00:00Z"})
+        self.assertEqual(list(L), ["merge", "queue", "sessions", "approved"])                  # four lines, in the asked order
+        self.assertEqual((L["merge"]["text"], L["merge"]["light"]), ("Last merge to main: 75 min ago", "red"))   # over 60
+        self.assertEqual((L["queue"]["text"], L["queue"]["light"]), ("Actions runs waiting for a machine: 31", "red"))   # over 30
+        self.assertEqual((L["sessions"]["text"], L["sessions"]["light"]), ("Sessions awaiting input or failed: 1: next forms (Awaiting input)", "red"))
+        self.assertIn("per the Lead's check of claude.ai/code at 11:30 IST", L["sessions"]["src"])
+        self.assertEqual((L["approved"]["text"], L["approved"]["light"]), ("Approved, not merged for over 60 min: 1: #11 (90 min)", "red"))
+        ok = self.lines(ci={"queued_runs": 4}, li={"stuck_sessions": [], "stuck_sessions_at": "2026-11-20T06:00:00Z"},
+                        meta={"taken_at": "2026-11-20T12:00:00+05:30", "main_at": "2026-11-20T06:20:00Z"}, ap=[])
+        self.assertEqual([x["light"] for x in ok.values()], ["green", "green", "green", "green"])
+        nm = self.lines()
+        self.assertEqual((nm["queue"]["light"], nm["sessions"]["light"], nm["sessions"]["text"]), ("grey", "grey", "Sessions awaiting input or failed: not reported"))
+        self.assertEqual(self.lines(ci={"queued_runs": 20})["queue"]["light"], "amber")
+
+    def test_both_scripts_agree(self):
+        meta = json.loads(cd.Snap(FIX).text("meta.json"))
+        meta["main_at"] = "2026-11-20T05:15:00Z"
+        d = snap_with({"meta.json": meta, "github/approved_open.json": self.AP})
+        out, note = cd.run_reconcile(d, os.path.join(HERE, "cockpit-reconcile.py"))
+        self.assertIsNone(note)
+        _, c = run(d, rec=out, note=None)
+        self.assertEqual((c["keys"]["stuck_main_gap_min"], c["keys"]["stuck_approved_over_60"]), (75, 1))
+        self.assertEqual((out["numbers"]["stuck_main_gap_min"]["value"], out["numbers"]["stuck_approved_over_60"]["value"]), (75, 1))
+        self.assertFalse([x for x in c["trust"]["diffs"] if x["name"].startswith("stuck_")], c["trust"]["diffs"])
 
 
 if __name__ == "__main__":
