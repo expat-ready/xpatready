@@ -210,9 +210,12 @@ try {
   sql(`update fo_lead set owner_staff_id = '${T.staffId}' where id = '${newer}'`);   // owned by T (Assign is part 2)
   sql(`update fo_lead set owner_staff_id = '${R.staffId}' where person_id = '${matched}'`);
   const tView = await leads.read(T, newer) as { possibleMatch: { line: string } };
+  // FO-2v (QA-477): the Owner sees another person's lead only with view.all and everyone-sees-all on (no Owner override).
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
   const rView = await leads.read(R, newer) as { possibleMatch: { line: string } };
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
   ok("FO-2 fail: the match line names no one the viewer may not see", tView.possibleMatch.line === "Possible match with a person you cannot see", tView.possibleMatch);
-  ok("FO-2 pass: an Owner sees the matched person's name", /^Possible match: Lena Park \(L-\d{5}\)$/.test(rView.possibleMatch.line), rView.possibleMatch);
+  ok("FO-2 pass: an Owner (view.all, everyone-sees-all on) sees the matched person's name", /^Possible match: Lena Park \(L-\d{5}\)$/.test(rView.possibleMatch.line), rView.possibleMatch);
   ok("FO-2 fail: with everyone-sees-all off, another person's lead is not found (404) and not listed", (await refusal(() => leads.read(O, newer)))?.status === 404 && !(await leads.list(O, "all")).some((l) => l.id === newer));
   ok("FO-2 pass: with everyone-sees-all off, a person still sees their own lead", (await leads.list(T, "mine")).some((l) => l.id === newer));
   // Break M2 and review m6, with everyone-sees-all off: two people racing Take it: one wins, the other hears who has it.

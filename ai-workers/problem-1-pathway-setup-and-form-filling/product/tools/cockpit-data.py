@@ -1299,6 +1299,38 @@ def open_f_ids(line):
     return out
 
 
+def needs_lines(ny):
+    """16 Nov (founder on a phone saw a count and nothing behind it): one line per Needs you item, id, what and by when."""
+    return [f"{i['id']}: {i['line']}" + (f" — by {i['by']}" if i.get("by") else "") for i in (ny or {}).get("items") or []]
+
+
+def built_lines(d):
+    """Release 1 rows built (newest first) with their names, then one line for the rest."""
+    names = {r["map"]: r["cap"] for r in (d.get("capability_table") or {}).get("rows") or []}
+    rows = d.get("build_rows") or []
+    b = sorted([r for r in rows if r.get("built")], key=lambda r: (r["built"], r["map"]), reverse=True)
+    out = [f"{r['map']}. {names.get(r['map'], '')} — built {r['built']}" for r in b]
+    if len(rows) > len(b):
+        out.append(f"{len(rows) - len(b)} rows not built yet: the Capabilities tab lists each")
+    return out
+
+
+def poc_lines(d):
+    """Proof-of-concept capabilities not yet at Works: the gap behind 'n of m'."""
+    q = val_of((d.get("capabilities") or {}).get("qa")) or []
+    return [f"not yet Works: {c['id']} ({c.get('m') or ''}) {c.get('status') or ''} — {c.get('name') or ''}"
+            for c in q if str(c.get("id", "")).startswith("C") and c.get("status") != "Works"]
+
+
+def works_today_lines(d, W):
+    names = {r["map"]: r["cap"] for r in (d.get("capability_table") or {}).get("rows") or []}
+    return [f"{m}. {names.get(m, '')}" for m in W.get("maps") or []]
+
+
+def val_of(x):
+    return x.get("value", x.get("v")) if isinstance(x, dict) else x
+
+
 def needs_split(asks, forf, waitline, questions, prs_ok, st_src, prs_src, lin=None, today=None):
     """P-602 (1): Needs you counts only the founder's own items: open founder asks (one per table row), plus each F id the
     "For the founder" line marks open, plus each A or F id the "Waiting on the founder" line names that is not already
@@ -1659,6 +1691,8 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     bl = parse_backlog(bl_text)
     plan = json.loads(plan_text) if plan_text else {"dates": []}
     caps_main = parse_caps(snap.text("files_main/qa/CAPABILITIES.md"))
+    # P-636 (16 Nov): Proven = qa's verdict in qa/CAPABILITIES.md on main only; R1.n is checklist map row n
+    r1_qa = {int(k.split(".")[1]): v["status"] for k, v in caps_main.items() if re.fullmatch(r"R1\.\d+", k)}
     pulls = [p for p in (snap.j("github/pulls.json") or []) if not p["head"]["ref"].startswith("mergify/")]
     cutoff = now.astimezone(timezone.utc)
     merged = [p for p in pulls if p.get("merged_at") and parse_iso(p["merged_at"]) <= cutoff]
@@ -2343,6 +2377,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             "mc_daily_counts": counts, "mc_remaining_scope": remaining,
             "plan_pct_used_24h": pct_used, "span_hours": span_h if pct_used is not None else None,
             "changes_merged_span": len(ch_span), "works_rows_span": D_wk["value"],
+            "r1_proven_qa": sum(1 for s in r1_qa.values() if re.match(r"Works(?![A-Za-z])", s or "")) if r1_qa else None,
             "pct_per_change": delivery["pct_per_change"]["value"], "pct_per_works_row": delivery["pct_per_works_row"]["value"],
             "rows_done_24h": D_done["value"], "rows_needed_per_day": RN["value"],
             "works_today": W_today["value"], "works_today_by_size": wt_by, "capabilities_not_mapped": len(not_mapped),
@@ -2425,7 +2460,8 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             "top_numbers": {"works_today": W_today, "pct_per_works": delivery["pct_per_works_row"], "pct_per_change": delivery["pct_per_change"],
                             "lanes": lanes_top},
             "capability_table": cap_table, "rules_caught": rules, "behaviour": behaviour, "customer": customer,
-            "rows": [{"map": r["map"], "built": r["built"], "proven": r["proven"], "ids": r["ids"], "size": r["size"]} for r in rows]}
+            "rows": [{"map": r["map"], "built": r["built"], "proven": r["proven"], "ids": r["ids"], "size": r["size"]} for r in rows],
+            "r1_qa": r1_qa}
 
 
 RECON_TOLERANCE_DAYS = {"forecast_p50_date": 1, "forecast_p85_date": 1}
@@ -2599,7 +2635,7 @@ def health(snap, now, comp, li):
             unk.append(b["id"])
         elif (cutoff - parse_iso(first[b["id"]])).total_seconds() / 3600 > BUG_AGE_H:
             old_b.append(b["id"])
-    item(6, "Major bugs on Works capabilities", "red" if old_b else "amber" if unk else "green",
+    item(6, "Major bugs on proof-of-concept capabilities qa passed", "red" if old_b else "amber" if unk else "green",
          ("open Major or Critical bugs on capabilities marked proven, older than 48 h: " + ", ".join(old_b)) if old_b else
          ("age not measured: " + ", ".join(unk)) if unk else
          f"{len(bugs)} open Critical/Major on Works capabilities, none older than 48 h",
@@ -2655,6 +2691,158 @@ def nn(x):
     return "not measured" if x is None else str(x)
 
 
+QA_WORKS = re.compile(r"Works(?![A-Za-z])")
+STAGES = ("planned", "in progress", "built", "proven")
+
+
+DECISION_CODE = re.compile(r"\s*\((?:P|A|F|AIW-D|S)-?\d+[^)]*\)|\s*\b(?:P|AIW-D)-\d+\b")
+
+
+def nocode(s):
+    """His view reads plain words: decision codes such as "(P-589)" or "P-626" are dropped; ids like C5 or PF-8 stay."""
+    return DECISION_CODE.sub("", s or "").strip() if s else s
+
+
+def first_screen(d, r1_qa, li, li_src):
+    """P-636 (founder 11:0x IST 16 Nov): the first screen in three words. Planned = a Release 1 capability (checklist §A);
+    Built = every part merged on main (BACKLOG parts all merged through app PRs), or qa passed it; Proven = qa's verdict
+    Works in qa/CAPABILITIES.md on main, nothing else (the checklist's own status is not read). Six answers, each with
+    its items, owner and next step (FORMULAS.md › First screen)."""
+    gen = datetime.fromisoformat(d["freshness"]["generated_at"].replace("Z", "+00:00"))
+    today = gen.astimezone(IST).date()
+    names = {r["map"]: r["cap"] for r in (d.get("capability_table") or {}).get("rows") or []}
+    rows = d.get("build_rows") or []
+    planned = [r["map"] for r in rows]
+    proven = sorted(m for m in planned if QA_WORKS.match(r1_qa.get(m) or ""))
+    built = sorted(set(m for m in planned if any(r["map"] == m and r.get("built") for r in rows)) | set(proven))
+    waiting = [m for m in built if m not in proven]
+    unlisted = [m for m in planned if m not in r1_qa]
+    qa_not_built = [m for m in waiting if (r1_qa.get(m) or "").startswith("Not built")]
+    lbl = lambda m: f"R1.{m} {names.get(m, '')}".strip()
+    qa_src = "qa/CAPABILITIES.md on main (R1 rows; R1.n = checklist map row n)"
+    # Release 1 against the committed date
+    P, F = d["pace"], d["forecast"]
+    target = P.get("committed_date")
+    tdate = date.fromisoformat(target) if target else None
+    days_left = (tdate - today).days if tdate else None
+    left = len(planned) - len(proven)
+    need = round(left / days_left, 1) if days_left and days_left > 0 else None
+    p50 = (F.get("p50") or {}).get("value")
+    if not tdate:
+        state, why = "not measured", "no committed date in cockpit/plan.json"
+    elif p50:
+        late = (date.fromisoformat(p50) - tdate).days
+        state = "on track" if late <= 0 else "late"
+        why = (f"measured forecast {p50} (half the runs finish by then) against {target}" +
+               ("" if late <= 0 else f": late by {late} days"))
+    else:
+        start = date(2026, 11, 13)
+        rate = round(len(proven) / max(1, (today - start).days + 1), 1)
+        state = "on track" if need is not None and rate >= need else "off track"
+        why = (f"{left} to prove in {days_left} days is {need} a day; {len(proven)} proven so far "
+               f"(about {rate} a day since 13 Nov). The measured forecast date starts after 5 days of history (17 Nov).")
+    # A115 (founder 16 Nov): one stage per capability, the same colour everywhere: Proven > Built > In progress > Planned.
+    # In progress = an open pull request or a started lane names it (working_today), or qa reads it Partial.
+    wt = ((d.get("working_today") or {}).get("rows") or {})
+    stage = {}
+    for m in planned:
+        stage[m] = ("proven" if m in proven else "built" if m in built else
+                    "in progress" if str(m) in wt or (r1_qa.get(m) or "").startswith("Partial") else "planned")
+    groups = []
+    gname = {g["id"]: g["name"] for g in (d.get("capabilities") or {}).get("groups") or []}
+    grp_of = {r["map"]: r.get("group") for r in (d.get("capability_table") or {}).get("rows") or []}
+    for gid in sorted(set(v for v in grp_of.values() if v)):
+        ms = [m for m in planned if grp_of.get(m) == gid]
+        groups.append({"id": gid, "name": gname.get(gid, gid), "counts": {s: sum(1 for m in ms if stage[m] == s) for s in STAGES},
+                       "rows": [{"map": m, "cap": names.get(m, ""), "stage": stage[m], "qa": r1_qa.get(m)} for m in ms]})
+    release = {"planned": len(planned), "built": len(built), "proven": len(proven), "waiting": len(waiting),
+               "stage": {str(m): s for m, s in stage.items()}, "stage_counts": {s: sum(1 for v in stage.values() if v == s) for s in STAGES},
+               "groups": groups,
+               "proven_ids": proven, "built_ids": built, "waiting_ids": waiting, "unlisted_ids": unlisted,
+               "qa_not_built_ids": qa_not_built, "target": target, "days_left": days_left, "need_per_day": need,
+               "state": state, "why": why,
+               "src": f"Planned: MVP-CHECKLIST.md §A; Built: BACKLOG parts all merged (app PRs) or qa passed; Proven: {qa_src}; target: plan.json (P-609)"}
+    if not r1_qa:                                        # qa's file unreadable or without R1 rows: not measured, never 0
+        release.update({"proven": None, "built": None, "waiting": None, "state": "not measured",
+                        "why": "qa/CAPABILITIES.md on main has no Release 1 rows (or was not read)"})
+    # Today's proving goal (Lead input today_goal, reported)
+    g = (li or {}).get("today_goal") or {}
+    if g.get("proven"):
+        short = int(g["proven"]) - len(proven)
+        tstate = "done" if short <= 0 else ("at risk" if short <= len(waiting) else "off track")
+        today_b = {"goal": int(g["proven"]), "by": g.get("by"), "goal_src": g.get("src") or li_src, "proven": len(proven),
+                   "short": max(0, short), "waiting": len(waiting), "state": tstate,
+                   "why": ("goal met" if short <= 0 else
+                           f"needs {short} more qa passes by {g.get('by_text') or g.get('by')}; {len(waiting)} are Built and waiting for qa" +
+                           ("" if short <= len(waiting) else ": fewer than needed, so not reachable today")),
+                   "plan": g.get("plan"), "class": "reported"}
+    else:
+        today_b = {"goal": None, "state": "not set", "why": "no proving goal in the Lead input (today_goal)", "proven": len(proven),
+                   "waiting": len(waiting), "class": "reported"}
+    # Needs you: the founder's open items, plus launch steps he owns that are dated today or earlier (founder, 16 Nov: "Yes, show them")
+    ny = []
+    for i in (d.get("needs_you") or {}).get("items") or []:
+        ny.append({"key": f"ask-{i['id']}", "id": i["id"], "what": i["line"], "why": "waits on your word (STATE.md)", "unblocks": "the Lead's next step on it",
+                   "by": i.get("by"), "src": i.get("src")})
+    later = []
+    for r in (d.get("risks") or {}).get("items") or []:
+        if r.get("owner") != "founder" or r.get("status") == "closed":
+            continue
+        td = r.get("trigger_date")
+        trig = r.get("trigger") if r.get("trigger") and not re.match(r"\d{4}-\d\d-\d\d$", str(r["trigger"])) else None
+        it = {"key": f"risk-{r['id']}", "id": r["id"], "what": r.get("mitigation") or r["risk"], "why": r["risk"],
+              "unblocks": trig or "the launch gate", "by": td, "src": "cockpit/risks.json (owner founder)"}
+        (ny if td and td <= today.isoformat() else later).append(it)
+    for it in ny + later:                               # Lead 65 (A115): no decision codes in his view; the panels keep them
+        for k in ("what", "why", "unblocks"):
+            it[k] = nocode(it.get(k))
+    needs = {"items": ny, "later": later, "count": len(ny)}
+    # Stuck or at risk: each with owner, since and next step
+    stuck = []
+    lanes = ((d.get("top_numbers") or {}).get("lanes") or {}).get("idle") or {}
+    if lanes.get("names"):
+        stuck.append({"what": f"{len(lanes['names'])} lanes idle (no push in 90 min)", "items": lanes["names"], "owner": "current Lead",
+                      "since": "over 90 min", "next": "wake or close each", "src": lanes.get("src")})
+    lq = d.get("lead_queue") or {}
+    if lq.get("items"):
+        stuck.append({"what": f"{len(lq['items'])} pull requests wait for the Lead's answer",
+                      "items": [f"#{q['n']} {q['title']} ({q['age_h']} h)" for q in lq["items"]], "owner": "current Lead",
+                      "since": f"oldest {max(q['age_h'] for q in lq['items'])} h", "next": "answer each", "src": lq.get("src")})
+    for h in (d.get("health") or {}).get("items") or []:
+        if h["state"] == "red":
+            bl = [f"{b['id']} ({b.get('sev', '')}) on {', '.join(b.get('caps') or [])}" for b in h.get("bugs") or [] if isinstance(b, dict)]
+            stuck.append({"what": h["name"] + (f": {len(bl)}" if bl else f": {len(h.get('files') or [])} files" if h.get("files") else ""),
+                          "items": bl or [f.get("path", "") for f in (h.get("files") or [])][:40], "owner": h.get("owner") or "current Lead",
+                          "since": "over 48 h" if bl else "see Health", "next": h.get("action") or "", "src": "Health check " + str(h["id"])})
+    if qa_not_built:
+        stuck.append({"what": f"{len(qa_not_built)} Built capabilities that qa's file still reads Not built",
+                      "items": [lbl(m) for m in qa_not_built], "owner": "qa (through the current Lead)",
+                      "since": "since their parts merged", "next": "qa re-checks each and records Proven, Partial or Not built", "src": qa_src})
+    if unlisted:
+        stuck.append({"what": f"{len(unlisted)} Release 1 capabilities missing from qa's file",
+                      "items": [lbl(m) for m in unlisted], "owner": "qa (through the current Lead)", "since": "not listed yet",
+                      "next": "qa adds each as Not built, Partial or Proven", "src": qa_src})
+    # The choke: the stage holding most work now (records and backlog left out)
+    st = {s["id"]: s for s in (d.get("value_stream") or {}).get("stages") or []}
+    plain = {"building": "Being built", "review": "Being reviewed", "ci": "Automatic checks", "queue": "Waiting to merge"}
+    cand = [(plain[k], (st[k]["count"] or {}).get("v")) for k in ("building", "review", "ci", "queue") if k in st]
+    cand.append(("Built, waiting for qa", len(waiting)))
+    cand = [c for c in cand if c[1] is not None]
+    ch = max(cand, key=lambda c: c[1]) if cand else (None, None)
+    t3 = ((d.get("top3") or {}).get("cards") or {}).get("today") or {}
+    choke = {"stage": ch[0], "count": ch[1], "stages": [{"name": a, "count": b} for a, b in cand],
+             "doing": (li or {}).get("choke_action") or t3.get("what") or "not reported by the Lead",
+             "doing_class": "reported", "not_started": None,
+             "src": "open pull requests by station (factory-board rules) and Built minus Proven"}
+    choke["not_started"] = release["stage_counts"]["planned"] if r1_qa else None   # the same 'Planned' as the stage bar
+    reds = [h for h in (d.get("health") or {}).get("items") or [] if h["state"] in ("red", "amber")]
+    health = {"light": (d.get("health") or {}).get("light"), "items": [{"name": h["name"], "state": h["state"], "owner": h.get("owner")} for h in reds]}
+    return {"words": "Planned = not started yet · In progress = someone is building it, or qa found part of it working · Built = all its code "
+                     "merged, waiting for qa · Proven = qa tested it like a person and it passed. Only Proven counts as delivered.",
+            "release": release, "today": today_b, "needs": needs, "stuck": stuck, "choke": choke, "health": health,
+            "rule": "P-636"}
+
+
 def build_explain(d):
     """Board v57 (founder 15 Nov 10:2x IST): one tooltip entry per number on the page: what it counts, its time window and
     sample (n), how to read it (direction, the compass band where one exists), source and class. Window and n are read
@@ -2705,26 +2893,53 @@ def build_explain(d):
         "tech lead are on the Factory tab.", now_w + " (STATE.md at the records commit)",
         val(sm["needs_you"]), "items counted (" + str(len(ny.get("asks") or [])) + " asks, " + str(len((ny.get("for_founder") or {}).get("open_ids") or [])) +
         " F ids, " + str(len((ny.get("waiting_line") or {}).get("new_ids") or [])) + " Waiting ids)", "Lower is better; each item waits on your word.", sm["needs_you"],
-        band="0 open items")
+        band="0 open items", todo=("decide or do each item below (you, the founder); the Lead closes it in STATE.md once done"
+                                   if val(sm["needs_you"]) else "nothing: no item waits on you"),
+        behind=needs_lines(ny))
     put("strip.release1", "Release 1 built", "Release 1 capabilities (Build rows of MVP-CHECKLIST.md §A) whose every BACKLOG part has merged through an "
         "app-code PR; proven = qa's Works verdict for the row.", "all time, from 13 Nov to " + t_ist, rows_n, "Build rows in the checklist",
-        up + f" Release 1 is done when all {rows_n} rows are built and proven.", P["built"])
+        up + f" Release 1 is done when all {rows_n} rows are built and proven.", P["built"],
+        todo="nothing for you: the Lead and the builders finish the rows not built yet (Capabilities tab)",
+        behind=built_lines(d))
     w = val(sm["works"]) or [None, None]
     put("strip.poc", "Proof of concept", "Proof-of-concept capabilities that read Works in qa/CAPABILITIES.md on main (milestones M2, T, M3, M4).",
-        now_w + " (main's qa/CAPABILITIES.md)", w[1], "proof capabilities", up + " A separate number from Release 1, never mixed (P-592).", sm["works"])
+        now_w + " (main's qa/CAPABILITIES.md)", w[1], "proof capabilities", up + " A separate number from Release 1, never mixed (P-592).", sm["works"],
+        behind=poc_lines(d))
     nd = val(sm["next_date"])
     dated = [x for x in d["plan"]["dates"] if x.get("date")]
     put("strip.next_date", "Next date", "The next dated row of the hand-kept plan (cockpit/plan.json); committed dates are the founder's, forecasts are estimates.",
-        "dates from today on", len(dated), "dated plan rows", "Days left counts calendar days; a forecast is not a promise.", sm["next_date"])
+        "dates from today on", len(dated), "dated plan rows", "Days left counts calendar days; a forecast is not a promise.", sm["next_date"],
+        behind=[f"{x['date']} · {x.get('kind') or ''} · {x.get('what') or ''}" for x in sorted(dated, key=lambda x: x["date"])])
     put("strip.health", "Health", "One light from seven checks: main CI, board data age, records on main, guards, burn, Major bugs on Works capabilities, "
         "data trust.", now_w + "; data age by your clock", None, "checks", "Green: all pass. Amber: one is not measured or near its limit. Red: one fails "
-        "(its action and owner show on tap).", src="health.items (seven checks) + the page's data age", cls="measured", n_override=len(d["health"]["items"]))
+        "(its action and owner show on tap).", src="health.items (seven checks) + the page's data age", cls="measured", n_override=len(d["health"]["items"]),
+        todo="each red or amber check says what to do and who (the Health card lists them)",
+        behind=[f"{i['id']} {i['name']}: " + ("by your clock (board data age)" if i["state"] == "page" else i["state"]) +
+                (f" — {i['action']} ({i.get('owner') or ''})" if i["state"] in ("red", "amber") and i.get("action") else "")
+                for i in d["health"]["items"]])
     R = d["resources"]
     put("strip.plan_use", "Plan use", "Share of the weekly Claude plan used, as the Lead typed it; burn = percent used per hour; paid US$ today.",
         "the current weekly plan (resets " + str(val(R["weekly_resets"]) or "not reported") + "); reading as of " + str(R["weekly_pct"].get("as_of") or "not reported"),
         1 if val(R["weekly_pct"]) is not None else None, "Lead-reported reading", "The big number has no band: it grows through the week. "
         "Lower burn (the small line) is better; paid stays US$0 with live AI off.", R["weekly_pct"],
         band="for the burn on the small line: 3% or less an hour (" + COMPASS + ", P-440)", n_reason="not measured: the Lead input has no weekly_pct")
+    # ---- the three top numbers (16 Nov, founder on a phone: every count lists what is behind it)
+    tn = d.get("top_numbers") or {}
+    W_ = tn.get("works_today") or {}
+    if W_:
+        put("top.works_today", "Works today", "Release 1 capabilities (MVP-CHECKLIST.md §A) that reached qa Works since 00:00 IST today.",
+            "today from 00:00 IST to " + t_ist, val(W_), "capabilities at Works today", up + f" Target {W_.get('target')} a day ({W_.get('target_src') or ''}).",
+            W_, n_reason=W_.get("reason"), behind=works_today_lines(d, W_),
+            todo=None if val(W_) else "nothing for you: qa scores the built rows; the Lead keeps qa fed (current Lead)")
+    LN = tn.get("lanes") or {}
+    if LN.get("working"):
+        wk_, st_, id_ = LN.get("working") or {}, LN.get("started") or {}, LN.get("idle") or {}
+        put("top.lanes", "Lanes working", "Builder and qa branches with a push in the last 90 min (measured), of the lanes the Lead says are started "
+            "(Lead-reported); idle = started with no push in 90 min.", "the last 90 min to " + t_ist, val(wk_), "branches with a push in 90 min",
+            up + " Idle lanes are the Lead's to wake or close.", wk_, n_reason=wk_.get("reason"),
+            todo=("the Lead wakes or closes the idle lanes (current Lead)" if (id_.get("names") or []) else None),
+            behind=[f"working: {x}" for x in wk_.get("names") or []] + [f"idle: {x}" for x in id_.get("names") or []] +
+                   [f"started (Lead): {x}" for x in st_.get("names") or []])
     # ---- Plan and pace
     Y = P["changes_per_day"]
     last = datetime.fromisoformat(F["days"][-1]).strftime("%-d %b") if F.get("days") else "today"
@@ -2999,6 +3214,32 @@ def build_explain(d):
     put("customer.launch", "Launch conditions done", "Rows of the checklist section C (production readiness) whose status starts with Done.",
         "the checklist at " + t_ist, ld.get("total"), "launch conditions", up + " All must be Done before the first real firm's data (P-589).",
         ld, n_override=ld.get("total"))
+    # ---- P-636 first screen: each answer opens its items, source and time
+    fs = d.get("first")
+    if fs:
+        R_, T_, N_ = fs["release"], fs["today"], fs["needs"]
+        nm_ = {r["map"]: r["cap"] for r in (d.get("capability_table") or {}).get("rows") or []}
+        lb = lambda m: f"R1.{m} {nm_.get(m, '')}".strip()
+        put("first.release", "Release 1", "Where each of the 101 capabilities stands: Planned, In progress, Built (all its code merged) "
+            "or Proven (qa tested it like a person and it passed).", now_w, R_["planned"], "Release 1 capabilities",
+            "Only Proven counts as delivered (P-636). " + R_["why"], src=R_["src"], cls="parsed",
+            todo=("nothing for you: the builders finish rows and qa proves the Built ones (current Lead)"),
+            behind=[f"Proven: {lb(m)}" for m in R_["proven_ids"]] + [f"Built, waiting for qa: {lb(m)}" for m in R_["waiting_ids"]] +
+                   [f"not in qa's file yet: {lb(m)}" for m in R_["unlisted_ids"]])
+        put("first.today", "Today's goal", "How many capabilities should be Proven by the goal's time, against how many are Proven now.", "today, to " + str(T_.get("by") or "the goal's time"), T_.get("proven"), "capabilities Proven now",
+            T_["why"], src=str(T_.get("goal_src") or "Lead input (no today_goal)"), cls="reported",
+            todo=T_.get("plan") or None, behind=[f"Built, waiting for qa: {lb(m)}" for m in R_["waiting_ids"]])
+        put("first.needs", "Needs you", "The steps only you can take that are due now. Set each one's status; the Lead's next check reads it.", now_w, N_["count"], "items", "Lower is better.", src="STATE.md › Founder asks; "
+            "cockpit/risks.json (owner founder, dated today or earlier)", cls="parsed",
+            behind=[f"{x['id']}: {x['what']}" + (f" — by {x['by']}" if x.get("by") else "") for x in N_["items"]] +
+                   [f"later (no date or a later date): {x['id']}: {x['what']}" for x in N_["later"]])
+        put("first.stuck", "Stuck or at risk", "Work that is not moving, each with who owns it and the next step.", now_w, len(fs["stuck"]), "items", "Lower is better.",
+            src="the board's own measures, each named in its line", cls="measured",
+            behind=[f"{s['what']} · owner {s['owner']} · next: {s['next']}" for s in fs["stuck"]])
+        C_ = fs["choke"]
+        put("first.choke", "The choke", "The step of the work where the most items are waiting right now.", now_w, C_["count"], "items in that stage", "Work flows when the "
+            "biggest stage shrinks.", src=C_["src"], cls="measured", todo="being done (Lead-reported): " + str(C_["doing"]),
+            behind=[f"{s['name']}: {s['count']}" for s in C_["stages"]] + ([f"Planned (not started): {C_['not_started']}"] if C_["not_started"] is not None else []))
     return E
 
 
@@ -3049,6 +3290,256 @@ def write_history(path, hist, line):
         for d in sorted(days):
             f.write(json.dumps(days[d], ensure_ascii=False, sort_keys=True) + "\n")
     os.replace(path + ".tmp", path)
+
+
+# ---------------------------------------------------------------- lead watch (B201, A117, P-639)
+# The 30-minute check reads what the founder's board shows: the Today card and the Stuck panel exactly as first_screen built
+# them into the published data.json (same rules, same source: no second formula), and checks each against its primary
+# source with data lead-watch.sh already holds (open PRs, qa/CAPABILITIES.md on main). The founder's view is not changed.
+# Usage: python3 tools/cockpit-data.py --watch <data.json> --open-prs <gh pr list json> --caps-main <CAPABILITIES.md>
+WATCH_MAX_LINES = 40                             # B201 cap: at most ~40 lines per check
+WATCH_ITEMS = 5                                  # items named per Stuck line (the rest counted)
+WATCH_STALE_H = 2.0                              # Lead input and board data older than 2 h count as not updated (README)
+WATCH_LOOKUPS = 3                                # B201 cap: at most 3 GitHub reads per check (8 s timeout each is the worst case)
+WATCH_ITEM_ACTS = 8                              # disagree lines per check before one "and N more"
+AGE_H = re.compile(r"\((\d+(?:\.\d+)?) h\)\s*$")
+PR_NUM = re.compile(r"^#(\d+)\b")
+
+
+def watch_panels(d):
+    """The board's Today card and Stuck panel, as published (data.json › first, built by first_screen). (None, None) when the
+    board data has no first screen (a board older than P-636)."""
+    f = (d or {}).get("first") or {}
+    if "today" not in f and "stuck" not in f:
+        return None, None
+    return f.get("today") or {}, f.get("stuck") or []
+
+
+def _hm(iso, text=None):
+    if text:
+        return text
+    if not iso:
+        return "not set"
+    try:
+        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).astimezone(IST).strftime("%-d %b, %H:%M IST")
+    except (ValueError, TypeError):
+        return str(iso)
+
+
+def watch_today_line(t):
+    """One line equal to the board's Today card: proven of goal, by when, short, Built waiting for qa."""
+    if not t:
+        return "today  board has no Today card"
+    if t.get("goal") is None:
+        return f"today  {t.get('proven')} Proven, no proving goal set (Lead input today_goal), {t.get('waiting')} Built waiting for qa"
+    return (f"today  {t.get('proven')} of {t.get('goal')} Proven by {_hm(t.get('by'), t.get('by_text'))}, "
+            f"{t.get('short', 0)} short, {t.get('waiting')} Built waiting for qa")
+
+
+def _oldest_first(items):
+    """Items carrying their own age "(N h)" go oldest first; items without one keep the board's order after them."""
+    aged = [(float(m.group(1)), i) for i, x in enumerate(items) for m in [AGE_H.search(str(x))] if m]
+    if not aged:
+        return list(items)
+    order = [i for _, i in sorted(aged, key=lambda a: (-a[0], a[1]))]
+    return [items[i] for i in order] + [x for i, x in enumerate(items) if i not in set(order)]
+
+
+def watch_stuck_lines(stuck):
+    """One ACT line per Stuck panel entry: what, its items oldest first with age, the next step."""
+    out = []
+    for s in stuck or []:
+        items = _oldest_first(s.get("items") or [])
+        named = "; ".join(str(x) for x in items[:WATCH_ITEMS]) + (f"; +{len(items) - WATCH_ITEMS} more" if len(items) > WATCH_ITEMS else "")
+        out.append(f"ACT   stuck: {s.get('what')} — {named or 'no items named'} ({s.get('since') or 'not dated'}) — next: {s.get('next') or 'not named'}")
+    return out
+
+
+def _r1_status(caps_text):
+    """R1.n -> status from qa/CAPABILITIES.md (parse_caps, the board's own parse)."""
+    return {int(k.split(".")[1]): v["status"] for k, v in parse_caps(caps_text).items() if re.fullmatch(r"R1\.\d+", k)}
+
+
+def _map_of(label):
+    m = re.match(r"R1\.(\d+)\b", str(label))
+    return int(m.group(1)) if m else None
+
+
+def watch_source_checks(d, open_prs, caps_text, pr_state=None, known_states=()):
+    """P-639: never take the board's word blindly. Each Stuck entry and the Today numbers are checked against the primary
+    source the board cites, with data the check already holds: open PRs (GitHub) and qa/CAPABILITIES.md on main.
+    pr_state(n) -> "merged" / "closed" / "open" / None answers only for a PR the board names that is not in the open list.
+    Returns (lines, checked, disagree, unchecked names)."""
+    today, stuck = watch_panels(d)
+    lines, checked, bad, unchecked, lookups = [], 0, 0, [], [0]
+    is_open = {int(p["number"]) for p in open_prs or []} if open_prs is not None else None
+    r1 = (_r1_status(caps_text) or None) if caps_text and caps_text.strip() else None
+    works = lambda st: bool(QA_WORKS_W.match(st or ""))
+
+    def disagree(item, x, y):
+        nonlocal bad
+        bad += 1
+        lines.append(f"ACT   board vs source disagree: {item} — board says {x}, source says {y} — fix the script or the board row")
+
+    def capped(rows):                                # rows: (item, board, source) mismatches of one check
+        for item, x, y in rows[:WATCH_ITEM_ACTS]:
+            disagree(item, x, y)
+        if len(rows) > WATCH_ITEM_ACTS:
+            disagree(f"{len(rows) - WATCH_ITEM_ACTS} more", "as above", "as above")
+
+    rel = (d.get("first") or {}).get("release") or {}
+    if today and r1 is not None:
+        checked += 1
+        pids = rel.get("proven_ids")
+        if pids is None:                             # older board data: the count only, against every R1 row at Works
+            n_works = sum(1 for st in r1.values() if works(st))
+            ok_ = today.get("proven") == n_works
+            src_y = f"{n_works} R1 rows read Works in qa/CAPABILITIES.md on main"
+        else:
+            notw = [m for m in pids if not works(r1.get(m))]
+            ok_ = not notw and today.get("proven") == len(pids)
+            src_y = (f"qa does not read Works for {', '.join(f'R1.{m}' for m in notw)}" if notw else
+                     f"{len(pids)} proven ids for a Today of {today.get('proven')}")
+        if ok_:
+            lines.append(f"ok    board agrees: Today {today.get('proven')} Proven (each reads Works in qa/CAPABILITIES.md on main)")
+        else:
+            disagree("Today Proven", today.get("proven"), src_y)
+        wids = rel.get("waiting_ids")
+        if wids is not None:
+            checked += 1
+            rows = [(f"R1.{m} Built waiting for qa", "waiting for qa", f"qa reads {r1.get(m)}") for m in wids if works(r1.get(m))]
+            if rows:
+                capped(rows)
+            else:
+                lines.append(f"ok    board agrees: Today {today.get('waiting')} Built waiting for qa (none reads Works on main)")
+    elif today:
+        unchecked.append("Today (qa/CAPABILITIES.md on main not read)")
+    for s in stuck or []:
+        what = str(s.get("what") or "")
+        nums = [int(m.group(1)) for x in s.get("items") or [] for m in [PR_NUM.match(str(x))] if m]
+        maps = [m for m in (_map_of(x) for x in s.get("items") or []) if m is not None]
+        if "wait for the Lead" in what and nums:
+            if is_open is None:
+                unchecked.append(what + " (open PRs not read)")
+                continue
+            checked += 1
+            rows, lost = [], []
+            for n in nums:
+                if n in is_open:
+                    continue
+                st = pr_state(n) if pr_state and (lookups[0] < WATCH_LOOKUPS or n in known_states) else None
+                if pr_state and n not in known_states:
+                    lookups[0] += 1
+                if not st:
+                    lost.append(f"#{n}")
+                elif st != "open":
+                    rows.append((f"#{n} waits for the Lead's answer", "open and waiting", st))
+            if lost:
+                unchecked.append(f"{', '.join(lost)} not open and state not read")
+            if rows:
+                capped(rows)
+            elif not lost:
+                lines.append(f"ok    board agrees: {what} (all {len(nums)} open on GitHub)")
+        elif "reads Not built" in what and maps:
+            if r1 is None:
+                unchecked.append(what + " (qa's file not read)")
+                continue
+            checked += 1
+            rows = [(f"R1.{m} reads Not built", "Not built", f"qa reads {r1.get(m) or 'no row'}") for m in maps
+                    if not (r1.get(m) or "").startswith("Not built")]
+            capped(rows) if rows else lines.append(f"ok    board agrees: {what} (each reads Not built on main)")
+        elif "missing from qa" in what and maps:
+            if r1 is None:
+                unchecked.append(what + " (qa's file not read)")
+                continue
+            checked += 1
+            rows = [(f"R1.{m} missing from qa's file", "missing", f"qa has a row: {r1[m]}") for m in maps if m in r1]
+            capped(rows) if rows else lines.append(f"ok    board agrees: {what} (none has a row on main)")
+        else:
+            unchecked.append(what.split(":")[0])
+    return lines, checked, bad, unchecked
+
+
+def watch_lines(d, open_prs=None, caps_text=None, pr_state=None, now=None, known_states=()):
+    """Every line the check prints for the board (B201 + P-639), at most WATCH_MAX_LINES."""
+    today, stuck = watch_panels(d)
+    if today is None:
+        return ["board  data.json has no first screen (board older than P-636): Today and Stuck not read"]
+    out = []
+    gen = (d.get("freshness") or {}).get("generated_at")
+    try:
+        age = (now or datetime.now(timezone.utc)) - datetime.fromisoformat(str(gen).replace("Z", "+00:00")) if gen else None
+    except (ValueError, TypeError):                  # a non-ISO or timezone-less time: its age is not known (an ACT below)
+        gen = None
+    if gen:
+        h = max(0.0, round(age.total_seconds() / 3600, 1))
+        out.append(f"board  as of {_hm(gen)} ({h} h old): {len(stuck)} stuck")
+        if h > WATCH_STALE_H:
+            out.append(f"ACT   board data {h} h old (over {WATCH_STALE_H:g} h): refresh the board (cockpit/README.md) before trusting Today and Stuck")
+    else:
+        out.append("ACT   board data has no generated_at: its age is not known; refresh the board (cockpit/README.md)")
+    out.append(watch_today_line(today))
+    out += watch_stuck_lines(stuck)
+    sl, checked, bad, unchecked = watch_source_checks(d, open_prs, caps_text, pr_state, known_states)
+    out += sl
+    out.append(f"board vs source: {checked} checked · {bad} disagree" + (f" · not checked here: {'; '.join(unchecked)}" if unchecked else ""))
+    if len(out) > WATCH_MAX_LINES:
+        cut = len(out) - WATCH_MAX_LINES + 1
+        keep = out[:WATCH_MAX_LINES - 1]
+        acts = sum(1 for x in out[WATCH_MAX_LINES - 1:] if x.startswith("ACT"))
+        out = keep + [f"ACT   board: {cut} more lines cut ({acts} of them ACT): read data.json › first.stuck" if acts else
+                      f"warn  board: {cut} more lines cut"]
+    return out
+
+
+def watch_main(argv):
+    ap = argparse.ArgumentParser(prog="cockpit-data.py --watch")
+    ap.add_argument("--watch", required=True, help="the board's data.json")
+    ap.add_argument("--open-prs", help="gh pr list --json number,... output (the open PRs lead-watch.sh already read)")
+    ap.add_argument("--caps-main", help="qa/CAPABILITIES.md as on origin/main")
+    ap.add_argument("--now")
+    ap.add_argument("--no-lookup", action="store_true", help="never ask GitHub about a PR that is not in the open list")
+    ap.add_argument("--pr-states", help='JSON {"<n>": "merged"|"closed"|"open"} already known (tests; PRs merged in the window)')
+    a = ap.parse_args(argv)
+    try:
+        d = json.loads(slurp(a.watch))
+    except (OSError, ValueError) as e:
+        print(f"ACT   board data not read ({a.watch}: {e.__class__.__name__}): refresh the board (cockpit/README.md); "
+              "Today and Stuck are not seen by this check")
+        return 0
+    prs = None
+    if a.open_prs:
+        try:
+            prs = json.loads(slurp(a.open_prs))
+        except (OSError, ValueError):
+            prs = None
+    caps = slurp(a.caps_main) if a.caps_main and os.path.exists(a.caps_main) else None
+
+    known = {}
+    if a.pr_states:
+        try:
+            known = {int(k): v for k, v in json.loads(slurp(a.pr_states)).items()}
+        except (OSError, ValueError):
+            known = {}
+
+    def pr_state(n):
+        if n in known:
+            return known[n]
+        if a.no_lookup:
+            return None
+        try:
+            r = subprocess.run(["bash", os.path.join(HERE, "gh.sh"), "api", f"repos/{{owner}}/{{repo}}/pulls/{n}", "-q",
+                                '(if .merged then "merged" else .state end)'], capture_output=True, text=True, timeout=8, cwd=ROOT)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return (r.stdout.strip() or None) if r.returncode == 0 else None
+    now = datetime.fromisoformat(a.now.replace("Z", "+00:00")) if a.now else None
+    for line in watch_lines(d, prs, caps, pr_state, now, known_states=set(known)):
+        print(line)
+    return 0
+
+
+QA_WORKS_W = re.compile(r"Works(?![A-Za-z])")     # the board's QA_WORKS rule (first_screen, P-636)
 
 
 # ---------------------------------------------------------------- main
@@ -3702,6 +4193,7 @@ def main():
     data["summary"]["health"] = {"light": hl["light"]}
     data["freshness"]["page_age_rule"] = {"amber_min": 45, "red_min": 120, "note": "Health item 2: the page computes the data age (spec §0.5)"}
     lineage_fill(data, L)
+    data["first"] = first_screen(data, comp["r1_qa"], li, li_src)
     data["explain"] = build_explain(data)
     data["run"] = {"seconds": round(time.time() - T0, 1), "api_calls": gh.calls, "errors": ERRORS}
     os.makedirs(out_dir, exist_ok=True)
@@ -3725,4 +4217,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(watch_main(sys.argv[1:])) if "--watch" in sys.argv[1:] else main()
