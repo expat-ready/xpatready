@@ -88,8 +88,19 @@ t = lambda s: datetime.fromisoformat(s.replace("Z", "+00:00"))
 key = lambda p: os.path.join(C, re.sub(r"[^A-Za-z0-9]+", "_", p)[:180] + ".json")
 def get(p):
     k = key(p)
-    if not os.path.exists(k): open(k, "w").write(subprocess.run(["curl", "-sSL", "--fail", "https://api.github.com/" + p], capture_output=True, text=True).stdout)
-    s = open(k).read(); return json.loads(s) if s else {}
+    if os.path.exists(k): s = open(k).read()
+    else:
+        s = subprocess.run(["curl", "-sSL", "--fail", "https://api.github.com/" + p], capture_output=True, text=True).stdout
+        if s: open(k, "w").write(s)   # an empty answer (a failed call) is never cached
+    return json.loads(s) if s else {}
+def files(n):  # every page of a PR's files
+    out, pg = [], 1
+    while pg <= 30:
+        one = get(f"repos/{R}/pulls/{n}/files?per_page=100" + (f"&page={pg}" if pg > 1 else "")) or []
+        out += [f["filename"] for f in one]
+        if len(one) < 100: return out
+        pg += 1
+    return out
 prs = []
 for p in range(1, 7): prs += get(f"repos/{R}/pulls?state=closed&per_page=100&page={p}&sort=created&direction=desc") or []
 ok = sorted([x for x in prs if x["head"]["ref"].startswith("mergify/merge-queue/") and x["title"].startswith("merge queue: merged")], key=lambda x: x["created_at"], reverse=True)
@@ -110,7 +121,7 @@ for i, n in enumerate(("longest part", "wait for a runner after kind", "run wall
 P = "ai-workers/problem-1-pathway-setup-and-form-filling/product"
 for b in json.load(open(os.path.join(C, "last-failed.json"))):
     fs = set()
-    for p in b["members"] + b["ahead"]: fs |= {f["filename"] for f in get(f"repos/{R}/pulls/{p}/files?per_page=100") or []}
+    for p in b["members"] + b["ahead"]: fs |= set(files(p))
     out = subprocess.run(["node", P + "/tools/select-suites.mjs"], input="\n".join(sorted(fs)) + "\n", capture_output=True, text=True).stdout.splitlines()
     sel = {l.split("\t")[0] for l in out}; full = bool(out) and out[0].startswith("ALL")
     hit = ["ALL" if full else ("yes" if s in sel else "NO") for s in b["suites"] if s.startswith("check_")]

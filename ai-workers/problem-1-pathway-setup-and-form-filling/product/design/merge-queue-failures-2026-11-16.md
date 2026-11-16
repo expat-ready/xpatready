@@ -59,13 +59,13 @@ broken commits, so it takes the cause of its root.
 | #1766 | 14 Nov 15:12 | #1761 (#1751 #1755) | check_fo1a_sales_schema.ts | clash (cascade of #1765) | same failure | 406 |
 | #1765 | 14 Nov 15:00 | #1755 (#1751) | check_fo1a_sales_schema.ts | **clash** with FO-1a (#1742) on main and PF-L (#1751) ahead (migration pair) | #1755 c841df3f4 re-stamp "migration 20261114190000 → 20261114223000", after 136b87f96 merged FO-1a and PF-L in | 410 |
 | #1735 | 14 Nov 05:21 | #1733 (#1728) | check_c95_release_update_browser.ts | **flaky** | TimeoutError on both tries; members merged unchanged | 404 |
-| #1724 | 13 Nov 20:54 | #1692 (#1691 #1722) | regression (Works packs) | real break (cascade of #1720, which holds #1691) | same failure as #1720's regression job | 412 |
+| #1724 | 13 Nov 20:54 | #1692 (#1691) | regression (Works packs) | real break (cascade of #1723, the batch holding #1691) | same failure as #1723 | 412 |
 | #1723 | 13 Nov 20:54 | #1691 | regression (Works packs) | **real break** | #1691 471f34fc2 "C8.3's re-approval: the reviewer's own typing since the round's base is judged form by form" | 439 |
 | #1722 | 13 Nov 20:00 | #1691 #1692 #1713 | regression (Works packs) | **real break** | the same #1691 fix | 423 |
-| #1721 | 13 Nov 19:56 | #1695 (#1711 #1709 #1706 #1720) | check_bk13_zero_code_run.ts | **clash** with BK-23 on main (note 1) | #1695 6a64089c5 "the spouse's current country of residence in the Sample answers (BK-23 now asks it)" | 421 |
+| #1721 | 13 Nov 19:56 | #1695 (#1711 #1709 #1706) | check_bk13_zero_code_run.ts | **clash** with BK-23 on main (note 1) | #1695 6a64089c5 "the spouse's current country of residence in the Sample answers (BK-23 now asks it)" | 421 |
 | #1720 | 13 Nov 19:04 | #1695 #1691 (#1711 #1709 #1706) | check_bk13_zero_code_run.ts and regression | **clash** (#1695 with BK-23), and the #1691 real break | both fixes above | 407 |
 | #1715 | 13 Nov 17:19 | #1706 (#1698 #1702) | check_bk5_start_browser.cjs | **flaky** | "BR-6 pass: Try again (double clicked)" on both tries; members merged unchanged | 455 |
-| #1707 | 13 Nov 16:39 | #1702 (#1695 #1698) | check_bk13_zero_code_run.ts | clash (cascade of #1704) | same failure | 421 |
+| #1707 | 13 Nov 16:39 | #1702 (#1695 #1698) | check_bk13_zero_code_run.ts | clash (cascade of #1705, open until 16:49) | same failure | 421 |
 | #1705 | 13 Nov 15:54 | #1695 #1698 | check_bk13_zero_code_run.ts | **clash** with BK-22 in the same batch | #1695 a87d2cdee "merge-queue batch #1705 with BK-22 (#1698)" | 441 |
 | #1704 | 13 Nov 15:51 | #1698 (#1692 #1695) | check_bk13_zero_code_run.ts | **clash**: BK-22 (#1698) against #1695 ahead | the same #1695 fix | 397 |
 | #1701 | 13 Nov 15:00 | #1692 (#1694) | check_b151_unpriced_browser.ts | **flaky** (weak: see note 2) | `name: 'Error'` on both tries; #1692 merged unchanged | 431 |
@@ -78,14 +78,17 @@ broken commits, so it takes the cause of its root.
 | #1629 | 12 Nov 06:44 | #1612 (#1552 #1566) | check_bk17_recorded_filing_api.ts | **clash** with BK-15 and BK-16 on main | #1612 af157ce4d "test set-up follows main's filings (BK-15, BK-16: everyone files their own)" | 397 |
 | #1619 | 12 Nov 04:40 | #1617 (#1591) | check_bk9_shared_filing_api.ts | clash (cascade of #1618) | same failure | 356 |
 | #1618 | 12 Nov 04:19 | #1591 (#1580) | check_bk9_shared_filing_api.ts | **clash** with BK-9 on main | #1591 6be6e17d7 "BK-15 × BK-9: the shared-filing check finds a child on the principal's application by data" | 359 |
-| #1610 | 12 Nov 02:32 | #1569 (#1580) | check_bk4a.ts | clash (cascade of #1607) | same failure | 355 |
+| #1610 | 12 Nov 02:32 | #1569 (#1580) | check_bk4a.ts | clash (cascade of #1608) | same failure | 355 |
 | #1608 | 12 Nov 01:53 | #1580 | check_bk4a.ts | **clash** with BK-4b (#1582) on main, merged 01:27 | #1580 3b847fabb "check_bk4a BR-1 lists BK-4b's reviewed hand-offs" | 325 |
 | #1607 | 12 Nov 01:52 | #1580 #1569 | check_bk4a.ts | **clash** with BK-4b on main (#1569 is qa records) | the same #1580 fix | 318 |
 | #1604 | 11 Nov 23:34 | #1582 (#1575 #1557 #1549 #1600) | check_bk4b_handoffs.ts | **clash** with BK-5's start page (#1581) on main | #1582 45bf8271f "BR-1's page check allows the sign-in places: BK-5's start page (P-484) and BK-4a's sign-in page (#1580)" | 318 |
 
 Notes on the table:
-1. #1721 was stacked on the failing #1720 and carried the same unfixed #1695 commit. It is counted as its own root
-   because its fix commit came after it, so 2 of the 13 clash roots are one commit.
+1. Some roots carried the same unfixed commit: #1720 and #1721 (#1695, Mergify's re-check of #1695 after #1720 closed),
+   #1704 and #1705 (#1695), and #1607 and #1608 (#1580). The real-break pair #1722 and #1723 share #1691's commit. Each
+   is counted as a root because it was checked before the fix, so the 13 clash roots have about 10 distinct causes.
+   Cascade links follow the batch open ahead at creation (a correction to `merge-queue-causes.py`'s matching for
+   #1707, #1610 and #1724; no total changes).
 2. Both b151 failures were on one PR (#1692). #1706, which merged at 19:50 13 Nov, fixed a race in that browser check
    before #1692 merged at 22:41. So these two may be a fix landing on main in between, not a flake.
 
@@ -119,7 +122,8 @@ reason to quarantine". The evidence for each suite:
 * **`check_bk5_start_browser.cjs`** has independent repeated evidence. It failed in batch #1715 (13 Nov), and again
   in the scheduled nightly on main, which never retries: run 43777966873, attempt 1, 00:01–00:58 UTC 16 Nov, job
   133008504101. Both times it failed "BR-6 pass: Try again (double clicked)". That nightly attempt failed. Only
-  attempt 2, the re-run, passed. A failure on main's own code, in a run that changes nothing, has no code cause.
+  attempt 2, the re-run, passed. No code change caused it: main's own code failed in a run that changed nothing. The race may be in the app,
+  not only in the check, so its fix row decides which before it leaves the quarantine.
 * **`check_c95_release_update_browser.ts`** failed twice in a run with TimeoutError 5 times, in the batch runs of
   8 Nov (2), 11 Nov, 12 Nov and 14 Nov. The 12 Nov one is the #1643 clash, so 4 are independent. The nightly
   attempt above passed it.
@@ -174,7 +178,9 @@ longest of the 8 parallel parts, the shards: median 48.7 min, maximum 54.1. The 
 * the first job (`kind`): about 3 min;
 * set-up: about 2 min per part.
 
-`suite-times.tsv` holds 498 suites totalling 339 machine minutes, so 8 parts give 42 min each on average. The parts
+`suite-times.tsv` holds 498 suites totalling 339 machine minutes. That includes the quarantined
+`check_b78_section_names.ts` (20.5 min), so batches run about 317. 8 parts give about 42 min each on average, on the
+same base as the ratio below. The parts
 are uneven: the longest is 1.16 times the mean. The longest single suite, `check_b78_section_names.ts` at 1,230 s,
 is quarantined and runs only nightly.
 
@@ -202,7 +208,7 @@ and ahead PRs' files (the batch's change against main) to `select-suites.mjs`, w
 * 20 chose between 304 and 519 suites. Some of these counts exceed 513 because the smoke set and its helpers are
   listed by name.
 * 1, the infrastructure batch #1634, chose 24.
-* In every one of the 30, the failing suite was chosen.
+* In all 26 batches with a failing suite, it was chosen. The other 4 failed the regression job or a runner.
 
 So selection would have missed no failure, but it would have saved almost no minutes. Our PRs touch shared files
 (the schema and its migrations, `core.ts`, `main.ts`, the checkpoint feature steps), so a module's batch would still
@@ -226,10 +232,12 @@ Every item below changes `product/tools/` or `.github/`, which this evidence cop
 Each one is a proposal for the Lead, with a patch in the PR. P-623 (4) says "no further pipeline change until P-622
 runs to its numbers". The Lead decides whether these come under P-622 or wait.
 
-1. **Flaky: quarantine `check_bk5_start_browser.cjs` now (P-205)**, with its own fix row: the BR-6 double-click race. Its owner is the tech lead, by `flaky-ledger.tsv`'s catch-all, until the
-   Lead names BK-5's area. Main's own nightly failed it with no code cause. It goes on `run-suites.sh`'s quarantine
+1. **Flaky: quarantine `check_bk5_start_browser.cjs` now (P-205)**, with its own fix row: the BR-6 double-click race,
+   in the app or the check. Its owner is the tech lead, by `flaky-ledger.tsv`'s catch-all, until the Lead names
+   BK-5's area. Main's own nightly failed it with no code cause. It goes on `run-suites.sh`'s quarantine
    list, and the nightly full set still runs it.
-   * `check_c95_release_update_browser.ts`: quarantine with a fix row (owner: the tech lead, by the ledger's catch-all) on 4 independent
+   * `check_c95_release_update_browser.ts`: quarantine with a fix row (owner: the tech lead, by the ledger's
+     catch-all) on 4 independent
      TimeoutErrors in 7 days. The Lead may prefer to wait for one more failure, since the 16 Nov nightly passed it.
    * `check_b151_unpriced_browser.ts` stays in the check (note 2).
    * **No change to B122's rule.** Counting "failed twice" toward automatic quarantine would reverse
