@@ -25,7 +25,7 @@ BEGIN
   SELECT count(*) INTO n FROM "money_trust_entry" c JOIN "money_trust_entry" d ON d.firm_id = c.firm_id AND d.id = c.corrects_entry_id
     WHERE c.kind = 'CORRECTION' AND d.kind = 'DEPOSIT';
   IF n > 0 THEN
-    RAISE EXCEPTION 'fo7mv_move_list: % correction(s) of a deposit have no correction kind (RETURNED, RECORDED_BY_MISTAKE, WRONG_CLIENT, OTHER or WRONG_ACCOUNT); give each its kind by hand, then run the migration again', n USING ERRCODE = 'check_violation';
+    RAISE EXCEPTION 'fo7mv_move_list: % correction(s) of a deposit have no correction kind (RETURNED, RECORDED_BY_MISTAKE, WRONG_CLIENT, OTHER or WRONG_ACCOUNT); they were written before correction kinds existed and, being insert-only, cannot be given one: ask the tech lead (restore without them, or a reviewed one-off)', n USING ERRCODE = 'check_violation';
   END IF;
 END $$;
 
@@ -154,7 +154,7 @@ CREATE CONSTRAINT TRIGGER money_move_batch_has_lines AFTER INSERT ON "money_move
 -- refused (23505). Lines are written only in the transaction that records their batch, never after its undo (FO-7a's
 -- B-16 rule; round 3, B-15: an unknown transaction status is not mine).
 CREATE OR REPLACE FUNCTION money_move_line_write() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE b record; s record; party uuid; earlier integer; moved bigint; returned bigint; cap bigint;
+DECLARE b record; s record; party uuid; earlier integer; moved bigint; returned bigint; cap bigint; arrived boolean;
 BEGIN
   SELECT x.undoes_batch_id, x.currency, x.direction, pg_xact_status(((pg_current_xact_id()::text::bigint >> 32 << 32) | x.xmin::text::bigint)::text::xid8) = 'in progress' AS mine
     INTO b FROM "money_move_batch" x WHERE x.firm_id = NEW.firm_id AND x.id = NEW.batch_id;
@@ -174,12 +174,14 @@ BEGIN
   IF NEW.kind = 'CARD_FEE_ON_TRUST' THEN
     RAISE EXCEPTION 'money_move_line: card fees on the trust account wait for card payments into trust (held, P-567; FO-7c)' USING ERRCODE = 'check_violation';
   END IF;
-  SELECT e.kind, e.amount_minor, e.currency, e.person_id, e.company_id, e.invoice_id, e.correction_kind, d.kind AS corrected_kind, p.id AS deposit_payment_id,
-      p.cleared AND NOT EXISTS (SELECT 1 FROM "money_trust_entry" r WHERE r.firm_id = d.firm_id AND r.corrects_entry_id = d.id AND r.correction_kind = 'RETURNED') AS deposit_cleared
+  SELECT e.kind, e.amount_minor, e.currency, e.person_id, e.company_id, e.invoice_id, e.correction_kind, d.kind AS corrected_kind, p.id AS deposit_payment_id
     INTO s FROM "money_trust_entry" e LEFT JOIN "money_trust_entry" d ON d.firm_id = e.firm_id AND d.id = e.corrects_entry_id
       LEFT JOIN "money_payment" p ON p.firm_id = d.firm_id AND p.id = d.payment_id
     WHERE e.firm_id = NEW.firm_id AND e.id = NEW.source_entry_id;
   IF NOT FOUND THEN PERFORM money_missing('money_move_line', 'trust entry', NEW.source_entry_id); END IF;
+  -- The party's lock first, before anything that can change is read (break B-22: a "Returned" still open was missed).
+  party := coalesce(s.person_id, s.company_id);
+  PERFORM pg_advisory_xact_lock(hashtextextended('money_trust:' || NEW.firm_id || ':' || party || ':' || s.currency, 0));
   IF NEW.kind = 'TRUST_APPLIED' AND s.kind IS DISTINCT FROM 'WITHDRAWAL_TO_INVOICE' THEN
     RAISE EXCEPTION 'money_move_line: a trust application moves a withdrawal to an invoice, not a %', s.kind USING ERRCODE = 'check_violation';
   END IF;
@@ -188,12 +190,15 @@ BEGIN
       coalesce(s.correction_kind::text || ' ', '') || s.kind USING ERRCODE = 'check_violation';
   END IF;
   -- A wrong-account line moves only money that arrived: its payment is cleared and was never "Returned" (break B-20: a
-  -- bounced cheque ticked cleared afterwards). The payment row is share-locked, so a "Cleared" tick written after this
-  -- snapshot fails to serialise (40001) at REPEATABLE READ instead of being missed.
+  -- bounced cheque ticked cleared afterwards), read after the party's lock (a "Returned" takes it too) and with the
+  -- payment row share-locked, so a "Cleared" tick written after this snapshot fails to serialise (40001) at REPEATABLE
+  -- READ instead of being missed.
   IF NEW.kind = 'WRONG_ACCOUNT' THEN
-    PERFORM 1 FROM "money_payment" x WHERE x.firm_id = NEW.firm_id AND x.id = s.deposit_payment_id FOR SHARE;
+    SELECT x.cleared AND NOT EXISTS (SELECT 1 FROM "money_trust_entry" r JOIN "money_trust_entry" c ON c.firm_id = r.firm_id AND c.id = NEW.source_entry_id
+             WHERE r.firm_id = NEW.firm_id AND r.corrects_entry_id = c.corrects_entry_id AND r.correction_kind = 'RETURNED')
+      INTO arrived FROM "money_payment" x WHERE x.firm_id = NEW.firm_id AND x.id = s.deposit_payment_id FOR SHARE;
   END IF;
-  IF NEW.kind = 'WRONG_ACCOUNT' AND s.deposit_cleared IS NOT TRUE THEN
+  IF NEW.kind = 'WRONG_ACCOUNT' AND arrived IS NOT TRUE THEN
     RAISE EXCEPTION 'money_move_line: the payment this wrong-account correction names is not cleared, or was returned; it moves only once it has cleared' USING ERRCODE = 'check_violation';
   END IF;
   IF NEW.direction <> 'TRUST_TO_OPERATING' THEN
@@ -209,8 +214,6 @@ BEGIN
   IF (NEW.invoice_id, NEW.person_id, NEW.company_id) IS DISTINCT FROM (s.invoice_id, s.person_id, s.company_id) THEN
     RAISE EXCEPTION 'money_move_line: a line''s invoice and party are its trust entry''s' USING ERRCODE = 'check_violation';
   END IF;
-  party := coalesce(s.person_id, s.company_id);
-  PERFORM pg_advisory_xact_lock(hashtextextended('money_trust:' || NEW.firm_id || ':' || party || ':' || s.currency, 0));
   IF NEW.kind = 'TRUST_APPLIED' THEN
     UPDATE "money_invoice" x SET updated_at = now() WHERE x.firm_id = NEW.firm_id AND x.id = s.invoice_id;
   END IF;
@@ -316,6 +319,6 @@ BEGIN
   SELECT count(*) INTO n FROM "money_trust_entry" c JOIN "money_trust_entry" d ON d.firm_id = c.firm_id AND d.id = c.corrects_entry_id
     WHERE c.kind = 'CORRECTION' AND d.kind = 'DEPOSIT' AND c.correction_kind IS NULL;
   IF n > 0 THEN
-    RAISE EXCEPTION 'fo7mv_move_list: % correction(s) of a deposit have no correction kind (RETURNED, RECORDED_BY_MISTAKE, WRONG_CLIENT, OTHER or WRONG_ACCOUNT); give each its kind by hand, then run the migration again', n USING ERRCODE = 'check_violation';
+    RAISE EXCEPTION 'fo7mv_move_list: % correction(s) of a deposit have no correction kind (RETURNED, RECORDED_BY_MISTAKE, WRONG_CLIENT, OTHER or WRONG_ACCOUNT); they were written before correction kinds existed and, being insert-only, cannot be given one: ask the tech lead (restore without them, or a reviewed one-off)', n USING ERRCODE = 'check_violation';
   END IF;
 END $$;

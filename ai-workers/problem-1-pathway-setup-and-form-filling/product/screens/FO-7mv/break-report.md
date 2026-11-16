@@ -115,3 +115,36 @@ Scope: what FO-7mv keeps (B-18, B-19, the `WRONG_ACCOUNT` clearing rule, undo, B
 - **B-16, currency and dates:** a line, an undo and a line in one transaction are refused at commit; an undo of an undo is refused; a USD `WRONG_ACCOUNT` source in a CAD batch is refused, and so is a CAD source in a USD batch; an `'infinity'` transfer date is refused.
 - **View vs moves:** 338 random committed operations over 6 people (withdrawals, returns, cheques, ticks, every kind, moves, undos), then every source probed in a rolled-back subtransaction. All 104 listed sources (52 withdrawals, 52 `WRONG_ACCOUNT`) move exactly `open_minor`. Not one of the 167 sources moves `open_minor + 0.01`. Unlisted sources move nothing.
 - **Guard under `psql -1`:** a deposit correction queued behind the migration is refused by the new trigger once it commits (round-2 B-16 does not arise with `-1`).
+
+## Round 4 (B-20 fix, at `4847bfca86f558d8ec9d3b31a14d5098e472344b`)
+Scratch `xr_studio_brk_8` (all 99 folders, `psql -1 -f`); `_9` and `_10` (before FO-7mv, for the guard: `_9` statement by statement, `_10` with `-1`); all dropped. `clear(:C)` as in round 3; `bounce` = `corr(:P,:C,20000,'RETURNED')`; the cheque is 300.00 with a 100.00 `WRONG_ACCOUNT` correction `:X`. Each race was run twice per order.
+
+**B-20 holds when run in order:** bounce, then `clear(:C)` → the list does not show `:X`, and `move([:X],[10000])` → 23514 "not cleared, or was returned".
+
+**B-22 Major: B-20's race still passes.** The bounce runs in T1; T2 runs `clear(:C); move([:X],[10000])`.
+- At RC, while T1 is still open, T2's move reads "cleared, no RETURNED" (line 178). It then takes the party lock (line 213, after the check), waits for T1, and commits. Only the order where T1 has already committed is refused.
+- At RR and SERIALIZABLE, both commit in both orders (stale snapshot and waiting).
+- Result: a bounced cheque is ticked cleared and 100.00 leaves trust, at every level.
+- Cause: the share lock on the payment (line 194) catches a concurrent tick (T3 below), but a bounce never touches the payment row, so nothing conflicts. SSI finds no cycle either.
+- Should: take the party lock before reading cleared and RETURNED (that fixes RC). A `RETURNED` correction should also touch the payment row, so that a move holding a stale snapshot fails with 40001 at RR and SERIALIZABLE.
+
+**The known case (a bounce against a move on a cheque already cleared): what I see is not limited to RC, and it needs no race.**
+- In order: `clear(:C)`; `move([:X],[10000])`; bounce → all committed.
+- Race at RC: T1 bounce then T2 move commits both while T1 is open (refused once T1 has committed). RR and SERIALIZABLE commit both in every order.
+- No side refuses a `RETURNED` after a `WRONG_ACCOUNT` move. The bank reverses 300.00 while the ledger can take only 200.00 (cap: 300.00 less the 100.00 `WRONG_ACCOUNT`), so trust is 100.00 short until operating pays it back, which is not built.
+- A B-18-style "undo the move first" on the bounce side would close it.
+
+**B-23 Minor: a new lock order deadlocks.** T2 writes a batch: a `TRUST_APPLIED` line for P (takes P's party lock), then a `WRONG_ACCOUNT` line, whose `FOR SHARE` waits on the payment row. Meanwhile T1 runs `clear(:C)` and then `refund(:P,100)`, which waits for P's lock. T2 gets 40P01 at RC and RR. Should: share-lock the payment after the party lock, or take the party lock first (the same change as B-22).
+
+**B-24 Minor: when the file is applied statement by statement, the end guard leaves a half-migrated database that cannot be repaired.**
+- Repro: `_9`, without `-1`, with the round-2 race (a reader holds the table, and a deposit correction is queued behind the ALTER).
+- The insert commits with no kind, and the final guard (line 310 onward) stops the file with exit 3 and the right words. By then both move tables and all five functions exist and are committed.
+- "Give each its kind by hand" is impossible: `UPDATE money_trust_entry SET correction_kind=…` → 42501 "rows are never changed or removed".
+- Running the file again stops at the first guard. With `-1` (`_10`) the same race is refused by the new trigger and nothing is left behind.
+- Should: the words name the way out (a new correction row, or the steps for a test database), or the file refuses to run outside one transaction.
+
+**Held in round 4:**
+- **Tick vs move:** ticking cleared racing a move (T3) is refused at RC while the tick is uncommitted, and fails with 40001 at RR and SERIALIZABLE. This means round-3 B-21 now gets 40001.
+- **Bounce before a move:** a bounce that commits before a move on an already-cleared cheque is refused at RC.
+- **Words:** the refusal now says "not cleared, or was returned".
+- **Guard:** the round-2 guard race is refused under `-1`.

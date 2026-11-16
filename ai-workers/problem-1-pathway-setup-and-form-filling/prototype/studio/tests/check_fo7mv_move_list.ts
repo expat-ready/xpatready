@@ -99,7 +99,7 @@ try {
   const dx = sql(BAD, `select id from money_trust_entry where kind = 'DEPOSIT'`);
   sql(BAD, `insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, corrects_entry_id, reason, created_by) values ('${firmX}', '${P1}', 'CORRECTION', -5000, 'CAD', '${dx}', 'Cheque bounced', 'user-R')`);
   ok("FO-7mv DW10 fail: a database holding a correction of a deposit (no kind) refuses the migration with words that say so",
-    refused(BAD, readFileSync(join(MIG, NEW, "migration.sql"), "utf8"), /1 correction\(s\) of a deposit have no correction kind .* give each its kind by hand/) && sql(BAD, `select count(*) from pg_tables where tablename like 'money\\_move%'`) === "0");
+    refused(BAD, readFileSync(join(MIG, NEW, "migration.sql"), "utf8"), /1 correction\(s\) of a deposit have no correction kind .* cannot be given one: ask the tech lead/) && sql(BAD, `select count(*) from pg_tables where tablename like 'money\\_move%'`) === "0");
   const fnBefore = fns(T); last(T, depositQ(100, P4));  // a deposit (not a correction) does not stop it
   psql(T, ["-1", "-f", join(MIG, NEW, "migration.sql")]);
   const added = fns(T).filter((f) => !fnBefore.includes(f));
@@ -256,6 +256,14 @@ try {
     { const P9 = u(11); deposit(100000, P9); const chq9 = deposit(30000, P9, "CHEQUE", false), wa9 = sql(T, correctQ(chq9, 10000, "WRONG_ACCOUNT", P9)); sql(T, correctQ(chq9, 20000, "RETURNED", P9)); clear(chq9);
       ok("FO-7mv fail (break B-20): a cheque returned and then ticked cleared — its wrong-account 100.00 is not listed and does not move",
         open(wa9) === "0" && refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: wa9, amount: 10000, pid: P9 }]), /not cleared, or was returned/, "23514")); }
+    { // break B-22 (READ COMMITTED): a "Returned" still open while a wrong-account move waits on the party's lock.
+      const P12 = u(12); deposit(100000, P12); const chq = deposit(30000, P12, "CHEQUE", false), wa = sql(T, correctQ(chq, 10000, "WRONG_ACCOUNT", P12)); clear(chq);
+      const c1 = new pg.Client({ connectionString: urlOf(T) }), c2 = new pg.Client({ connectionString: urlOf(T) }); await c1.connect(); await c2.connect(); conns.push(c1, c2);
+      await c1.query("begin"); await c1.query(correctQ(chq, 20000, "RETURNED", P12));
+      const mv = c2.query(moveQ([{ kind: "WRONG_ACCOUNT", src: wa, amount: 10000, pid: P12 }])).then(() => "moved", async (e: { message?: string }) => { await c2.query("rollback").catch(() => undefined); return String(e.message); });
+      await new Promise((r) => setTimeout(r, 300)); await c1.query("commit"); const out = await mv;
+      for (const c of [c1, c2]) { await c.end(); conns.splice(conns.indexOf(c), 1); }
+      ok("FO-7mv fail (break B-22, parallel, READ COMMITTED): a move waiting on an open \"Returned\" reads it after the lock and is refused", /not cleared, or was returned/.test(out), out); }
     const B3 = randomUUID();
     ok("FO-7mv fail (review m3): a line, then the batch's undo, then commit — refused at commit (an undone batch never gains a line)",
       refused(T, `begin; insert into money_move_batch (id, firm_id, currency, direction, transfer_date, recorded_by) values ('${B3}', '${firmA}', 'CAD', 'TRUST_TO_OPERATING', '2026-11-20', 'user-R'); insert into money_move_line (firm_id, batch_id, kind, direction, currency, amount_minor, source_entry_id) values ('${firmA}', '${B3}', 'TRUST_APPLIED', 'TRUST_TO_OPERATING', 'CAD', 1, '${W0}'); ${undoQ(B3)}; commit;`, /an undone batch never gains a line/));

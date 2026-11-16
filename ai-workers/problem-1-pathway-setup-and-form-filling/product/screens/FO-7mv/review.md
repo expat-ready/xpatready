@@ -185,3 +185,42 @@ Verdict: Block
 **Unchanged from earlier passes:** m4, m5 and m7 are still Minor and still not blocking. B-3, B-5, B-8, B-14 and B-17 stay questions or notes, or go to FO-7a2.
 
 Verdict: Approve 9e2230aede9875383362925d1ab6069a5f92506a
+
+## Re-review 3 (diff only, `9e2230aed..4847bfca8`; P-277)
+**Reviewed:** commit `4847bfca86f558d8ec9d3b31a14d5098e472344b`. I read only `git diff 9e2230aed 4847bfca8 -- …/studio` and ran everything from a `git archive` copy of that commit.
+* **Not reviewed:** while I worked, the shared working tree gained uncommitted edits to `migration.sql`, the test and `break-report.md`. They are someone else's work.
+* **Scratch databases:** `xr_studio_rev_*` on :54329, all dropped afterwards. I did not use :4400 or the shared databases. Cost: US$0.
+* **Line numbers** refer to `migration.sql` at `4847bfca8`.
+
+**Suites:**
+* `check_fo7mv_move_list.ts` **44/44** on seeds 7301, 11, 222 and 4242;
+* `check_fo7a_money_schema.ts` **123/123**;
+* `check_prisma_schema.ts` **8/8**;
+* studio diff from `origin/main`: +763/−5, under 800.
+
+| Item | Result | Evidence |
+|---|---|---|
+| B-20 (serial) | closed | `:178` treats a deposit with a RETURNED correction as not cleared, and the view does the same (`:297`). Repro: e-transfer 500.00; cheque 300.00; WRONG_ACCOUNT −100.00; RETURNED −200.00; then the cheque is ticked cleared. Result: listed 0, move 23514 "not cleared, or was returned". The new fail test is the same case. |
+| B-21 (stale tick) | closed | The payment row is share-locked (`:194`). Repro: a REPEATABLE READ snapshot is taken, then the cheque is ticked cleared, then a move runs: **40001** (retryable), no longer 23514. |
+| m11 | closed | The guard runs first (`:19-30`) and again last (`:311-321`), after `money_trust_entry_moves` exists, counting only corrections with no kind. So a correction written while the file runs is refused by the trigger or counted by the last guard, under `-1` and statement by statement alike. |
+| m12 | closed | The words carry no process note. FO-7a's helper now gives "Recorded twice" for RECORDED_BY_MISTAKE on an e-transfer deposit, which is consistent. |
+| DW6 model | accept | Wrong-account money of a returned deposit is frozen, and the equation is now ledger + list + frozen = bank. "Agrees with the model at every step" holds on four seeds. |
+| B-18, B-19, the clearing rule | hold | Code unchanged apart from the RETURNED condition. DW1, DW2, DW3, DW4, DW5 and DW6 pass, and so do the P7, P8 and P9 clearing cases. |
+
+### Findings
+**Blockers:** none. **Majors:** none.
+
+**Minor m13. A RETURNED racing a move is not serialised, but it reduces to an order the rulings accept. Record it for FO-7a2 and FO-7v.**
+* Where: the RETURNED check (`:178`) runs before the party lock (`:213`). The payment share-lock does not conflict with a RETURNED correction, which writes no payment row.
+* Repro at RC and at RR: the cheque is cleared. T2 writes a RETURNED −200.00 and holds it open. T1 moves the WRONG_ACCOUNT 100.00. T2 commits. Result: **both commit**.
+* Why it is not a Major here: the same end state is reachable serially. Tick, then move, then a RETURNED of the cheque: all three commit. That is a reversal after money left trust, which P-607 (1) and the P-638 rulings send to FO-7a2 and FO-7v (the shortfall line), like B-10 and B-13.
+* Suggested fix (cheap; optional here): take the party lock before reading the source's clearing state. That is also the brief's "the party trust lock …, first". It closes the RC race. RR still needs FO-7a2's ledger rule.
+* FO-7a2 and FO-7v should list "RETURNED after a wrong-account move" among the shortfall cases.
+
+**Minor m14. If the last guard fires on a statement-by-statement runner (Prisma), the migration is already half applied.**
+* Its words say "then run the migration again", but after a failed `prisma migrate deploy` a rerun stops at `CREATE TYPE`. The migration first has to be resolved (`prisma migrate resolve`) and undone by the header's rollback steps.
+* It is practically unreachable: no route writes trust entries yet. Fix: add "after undoing it (header) and `prisma migrate resolve`" to the last guard's words (`:319`).
+
+**Unchanged:** m4, m5 and m7 are still Minor. B-3 is still with the tech lead, as the breaker notes.
+
+Verdict: Approve 4847bfca86f558d8ec9d3b31a14d5098e472344b
