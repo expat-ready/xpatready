@@ -28,3 +28,4 @@ Refined 16:1x IST from qa #1950's verdict table (open, stacked on #1929): R1.19 
 | 16 Nov 15:1x | 47b00ddae | none | none | wait |
 | 16 Nov 15:4x | 47b00ddae | none | none | wait |
 | 16 Nov 16:0x | 47b00ddae | none | none | wait. Queue: #1951 PF-6r in batch #1976; #1956, #1957, #1959 approved+queued; #1945, #1961 approved not queued. Duplicate note: qa #1968/#1967 (another qa session) already re-walk R1.38/R1.40 on FO-3w part 1; this lane takes those two only on J-38 or FO-3st1 merging |
+| 16 Nov 16:2x | 47b00ddae | none | none | wait |
