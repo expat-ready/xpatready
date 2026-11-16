@@ -1420,3 +1420,4 @@ New row for BACKLOG, before FO-7t:
     - It ends at the next capability's first step: My account (row 5).
   - When J-6 part 2 is on `main`, qa re-scores R1.6 with the full walk.
 * **Order for R1.6:** PF-6r, PF-6m and FO-2v now, at once. Then PF-6 part 2a once #1912 merges, then J-6 part 2. 2b runs after 2a and is not on R1.6's path.
+* Lead 64 agreed rev 16.54. PF-6r goes to the J-6 lane, followed by J-6 part 2 there. PF-6 part 2a goes to the PF-6 part 1 lane once #1912 merges. Custom roles stay X-1, with no scope change.
