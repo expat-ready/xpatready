@@ -64,6 +64,7 @@ Rows proven or Lead-B-only are not listed. R1.77 finishes on CS-C1b + QA-397; R1
 * **#2000:** add `web/src/runtime/stages.tsx` (weekday, mark, Missed; DW7 browser). ~~bypass~~ **Changed after Build Lead A refused the bypass (rev 16.86; QA-499: every bypass use writes an audit line):** a SECURITY DEFINER function `platform_firm_calendar(firm_key)`, owned by `xr_wall_reader`, returning only the three settings; DW8 + DW9 (catalogue check). It is now a schema PR: breaker on, and the Lead reads the migration.
 * **#2003:** test-word fixes accepted in 7 PF/FO test files (`system:` prefixes; `session_replication_role` on the scratch copy for the FO-2v back-dating). The mapping is not widened.
 * **#2008:** keep `demo-reset.ts` and `sample-seed.ts` (Lead B's files). My extra test ask is withdrawn so the approved head bcb3c9150 is not voided.
+* **Lead 71 (23:5x IST):** BK-21 is named the `case-prepare.ts` holder and the walk-2 condition is met. AS-1g gets the baton when #2017 merges, never alongside CS-NK1. Tell Lead 71 when #2000's head is approved, for its migration read.
 * **Draft rule:** the ready PRs #2002, #2008 and #2017 each have a Reviewer Approve on their exact head, so they correctly stay ready. #2007 is queued. Everything else is a draft (#2000, #2003, #2016, #2027, #2031).
 * **#2003 (added):** with `app.audit_sample_reset` on, platform audit lines stay undeletable (a fail case). **#2008 (added):** the PR body states that the seed runs only under the Sample seed and that the tsx dynamic import loads; no push if both hold.
 **Running (pushed, read 21:56 IST 16 Nov):** #2002 CS-C1b (`claude/runtime-csc1b`) · #2000 CS-DL1 part 1 (`claude/runtime-csdl1a`) · #2007 CS-V1 part 1 (`claude/runtime-csv1-check`) · #2003 AUD-1a (`claude/upbeat-planck-5h4zoh`; its title says "AUD-1a part 1", which is wrong because AUD-1a is a whole id) · #2008 AUD-5 part 1 (`claude/upbeat-bardeen-k2tdqn`). Since 22:0x: #2016 FO-7s0 (draft), #2017 CS-SD1 (ready; the test change stays by Lead 70's ruling). #2003's title is fixed. #2007 is labelled and queued.
@@ -84,7 +85,7 @@ Rows proven or Lead-B-only are not listed. R1.77 finishes on CS-C1b + QA-397; R1
 ## 3. To do next (me)
 1. Briefs for lanes C5-C8 (CS-S1 part 1, CS-W3 part 0, AUD-4s concept, CS-98s1 concept).
 2. Done 23:4x IST: QA-397 is BACKLOG row BK-21; brief `build-lead-c-briefs/BK-21.md`.
-3. Done 23:4x IST: briefs AS-1m and AS-1g. Still to write: AS-1s (waits on both) and AS-1c (cited canada.ca values; waits on AS-1g, AS-1s and Question 3, which I check before writing it).
+3. Done 23:4x IST: briefs AS-1m and AS-1g. Still to write: AS-1s (waits on both) and AS-1c (cited canada.ca values; waits on AS-1g, AS-1s and Question 3). **Question 3 is not in DECISIONS (checked 23:5x IST). Sent to Lead 71 as a founder question; I recommend "assessment only for Release 1, no form lines".** `engine/channels.ts` already has a "No forms yet" state, so a release with no form lines looks supported; AS-1c step 0 confirms it.
 4. Done 21:2x IST: the College citation (Client File Management Regulation 2021-001 s. 7.2, page 7, read 16 Nov 2026) is in `build-lead-c-briefs/AUD-5-1.md`; AUD-5 part 1 is ready now.
 5. Each check: read my lanes' PRs and pushes; a lane counts only after a push (P-326); answer "Question for the tech lead" comments within 30 min.
 
