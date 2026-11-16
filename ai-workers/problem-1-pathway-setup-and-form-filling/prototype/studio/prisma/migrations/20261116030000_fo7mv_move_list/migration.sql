@@ -205,8 +205,8 @@ BEGIN
     RAISE EXCEPTION 'money_move_line: a trust application moves a withdrawal to an invoice, not a %', s.kind USING ERRCODE = 'check_violation';
   END IF;
   IF NEW.kind = 'WRONG_ACCOUNT' AND (s.kind IS DISTINCT FROM 'CORRECTION' OR s.corrected_kind IS DISTINCT FROM 'DEPOSIT' OR s.correction_kind IS DISTINCT FROM 'WRONG_ACCOUNT') THEN
-    RAISE EXCEPTION 'money_move_line: only a WRONG_ACCOUNT correction of a deposit licenses a wrong-account move out of trust (this entry is a % %): a bounced cheque or an entry error never reached the trust account as money to move',
-      coalesce(s.correction_kind::text, ''), s.kind USING ERRCODE = 'check_violation';
+    RAISE EXCEPTION 'money_move_line: only a WRONG_ACCOUNT correction of a deposit licenses a wrong-account move out of trust (this entry is a %): a bounced cheque or an entry error never reached the trust account as money to move',
+      coalesce(s.correction_kind::text || ' ', '') || s.kind USING ERRCODE = 'check_violation';
   END IF;
   IF NEW.direction <> 'TRUST_TO_OPERATING' THEN
     RAISE EXCEPTION 'money_move_line: a % line moves from trust to operating (money into trust waits for its own ledger entry)', NEW.kind USING ERRCODE = 'check_violation';
