@@ -500,8 +500,9 @@ export class Retainers {
     if (r.status !== "DRAFT") conflict("Only a draft is sent. Edit it to make a new version first.", "NOT_DRAFT");
     const page = await this.read(ctx, id);   // its blockers include the representative's eligibility now (B-4)
     if (Object.keys(page.blockers).length) unprocessable(Object.values(page.blockers).join(" "), page.blockers, { code: "SEND_BLOCKED" });
-    // FO-13i (Code s. 24(2)(a), corroboration "if possible", the row's words): a signer with no identity check is a
-    // warning on the answer and the audit line, never a block.
+    // FO-13i (Code SOR/2022-128 s. 24(2)(a): "seeking corroboration of the information if possible", current to
+    // 2026-10-19, read 16 Nov 2026 by Lead B): a signer with no identity check is a warning on the answer and the audit
+    // line, never a block. Unconfirmed: no counsel.
     const signer = r.signerPersonId ? await this.db.foPerson.findFirst({ where: { firmId: ctx.firmId, id: r.signerPersonId }, select: { id: true, givenNames: true, familyName: true } }) : null;
     const noCheck = !!signer && (await this.db.foIdentityCheck.count({ where: { firmId: ctx.firmId, personId: signer.id } })) === 0;
     const warnings = noCheck ? [`No identity check is recorded for ${nameOf(signer!) || "the signer"}.`] : [];
