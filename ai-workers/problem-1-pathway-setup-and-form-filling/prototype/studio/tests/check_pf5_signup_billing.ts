@@ -3,6 +3,8 @@
 // client: no network), and the sign-up service, each "Done when" line of part 1 with a pass and a fail. One scratch
 // database with every migration; the clock is a FakeClock; the identity side is the local stand-in; mail is fakeMail;
 // audit is the real interim adapter (a wrapper forces its failure). No browser, no model call, no Stripe call (US$0).
+// Part 2: Stripe's events (signed by the fake, or by Stripe's library on recorded answers), the moves, the hold and the
+// billing routes, the last through a small Nest app of PF-4's guard and these routes (raw body, 402).
 //   tsx studio/tests/check_pf5_signup_billing.ts
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -12,7 +14,10 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants.js";
-import { fakeBilling, type BillingPrice } from "../ports/billing.ts";
+import { Module } from "@nestjs/common";
+import { APP_GUARD, APP_INTERCEPTOR, NestFactory } from "@nestjs/core";
+import Stripe from "stripe";
+import { eventFacts, fakeBilling, type BillingPrice, type BillingSubscription } from "../ports/billing.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { runContract } from "../ports/contracts/contract.ts";
 import { billingPortContract } from "../ports/contracts/billing-port.contract.ts";
@@ -24,6 +29,16 @@ import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
 import { StripeBilling } from "../api/src/platform/billing/stripe.ts";
 import { PlatformSignUpController } from "../api/src/platform/firms/routes.ts";
 import { LocalSignUp } from "../api/src/platform/firms/signup-identity.ts";
+import { BillingEvents, ADDRESS_NEEDED } from "../api/src/platform/billing/webhook.ts";
+import { BillingAccount } from "../api/src/platform/billing/account.ts";
+import { BILLING_PORTS, BillingController, HOLD_WORDS, PaymentHoldGate, PlatformBillingAccount, PlatformBillingEvents, StripeHookController, stripeRawBody } from "../api/src/platform/billing/routes.ts";
+import { ConfigReadGuard, Db } from "../api/src/core.ts";
+import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
+import { PlatformClock } from "../api/src/platform/identity/port.ts";
+import { LocalIdentity } from "../api/src/platform/identity/local.ts";
+import { IDENTITY_PORT, PlatformIdentity } from "../api/src/platform/identity/service.ts";
+import { PlatformGuard } from "../api/src/platform/identity/guard.ts";
+import { PlatformIdentityController } from "../api/src/platform/identity/routes.ts";
 import { ACCEPTED, ALREADY, FirmSignUp, PURGE_JOB, TAX_NOTE, type SignUpPorts } from "../api/src/platform/firms/signup.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
@@ -32,6 +47,7 @@ const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p"
 const DB = `xr_studio_pf5_${process.pid}`, URL = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
 const WORK = join(STUDIO, "var", `pf5-check-${process.pid}`);
 const PASSWORD = "correct horse battery staple 77";
+const TRIAL_END = new Date(1_764_000_000_000), WHSEC = "whsec_recordedOnly0000";
 const PRICES: BillingPrice[] = [{ id: "price_teamMonthly", unitAmount: 4900, currency: "cad", interval: "month", active: true }, { id: "price_teamYearly", unitAmount: 49000, currency: "cad", interval: "year", active: true }];
 
 let pass = 0, fail = 0;
@@ -45,7 +61,7 @@ const sha = (s: string) => createHash("sha256").update(s).digest("hex");
  *  fetch client: idempotency keys give the same answer, as Stripe does within 24 hours. */
 function recordedStripe() {
   const byKey = new Map<string, { status: number; body: unknown }>();
-  let n = 0, lastCheckout: URLSearchParams | null = null;
+  let n = 0, lastCheckout: URLSearchParams | null = null, portalConfig: URLSearchParams | null = null;
   const fetchFn = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = new globalThis.URL(String(input)), method = init?.method ?? "GET";
     const headers = new Headers(init?.headers), key = headers.get("idempotency-key");
@@ -63,12 +79,17 @@ function recordedStripe() {
       lastCheckout = form;
       const id = `cs_test_rec${String(++n).padStart(6, "0")}`;
       out = { status: 200, body: { id, object: "checkout.session", mode: form.get("mode"), url: `https://checkout.stripe.com/c/pay/${id}` } };
-    } else out = { status: 404, body: { error: { type: "invalid_request_error", message: `unrecorded ${method} ${url.pathname}` } } };
+    } else if (method === "GET" && url.pathname === "/v1/subscriptions/sub_c1") out = { status: 200, body: { id: "sub_c1", object: "subscription", customer: "cus_c1", status: "trialing", trial_end: TRIAL_END.getTime() / 1000, cancel_at_period_end: false, default_payment_method: null, metadata: {}, latest_invoice: null, items: { data: [{ current_period_end: TRIAL_END.getTime() / 1000 }] } } };
+    else if (method === "GET" && url.pathname === "/v1/billing_portal/configurations") out = { status: 200, body: { object: "list", data: [], has_more: false } };
+    else if (method === "POST" && url.pathname === "/v1/billing_portal/configurations") { portalConfig = form; out = { status: 200, body: { id: "bpc_rec1", object: "billing_portal.configuration" } }; }
+    else if (method === "POST" && url.pathname === "/v1/billing_portal/sessions") out = { status: 200, body: { id: "bps_rec1", object: "billing_portal.session", url: "https://billing.stripe.com/p/session/rec1", configuration: form.get("configuration") } };
+    else out = { status: 404, body: { error: { type: "invalid_request_error", message: `unrecorded ${method} ${url.pathname}` } } };
     if (key) byKey.set(`${url.pathname}:${key}`, out);
     return answer(out.status, out.body);
   }) as typeof fetch;
   return {
-    port: StripeBilling.fromKey("sk_test_recordedOnly000000", fetchFn), priceId: PRICES[0].id,
+    port: StripeBilling.fromKey("sk_test_recordedOnly000000", fetchFn, WHSEC), priceId: PRICES[0].id, subscriptionId: "sub_c1", trialEnd: TRIAL_END,
+    sign: (payload: string) => Stripe.webhooks.generateTestHeaderString({ payload, secret: WHSEC }), portalConfig: () => portalConfig,
     lastCheckoutParams: () => lastCheckout && { mode: lastCheckout.get("mode"), payment_method_collection: lastCheckout.get("payment_method_collection"),
       missing_payment_method: lastCheckout.get("subscription_data[trial_settings][end_behavior][missing_payment_method]"), trial_period_days: Number(lastCheckout.get("subscription_data[trial_period_days]")),
       automatic_tax: lastCheckout.get("automatic_tax[enabled]"), customer_update_address: lastCheckout.get("customer_update[address]") },
@@ -112,12 +133,16 @@ try {
   sql(`update platform_plan set stripe_monthly_price_id = 'price_teamMonthly', stripe_yearly_price_id = 'price_teamYearly' where code = 'team'`);
 
   // ------------------------------------------------------------------------------------------------ BillingPort contract
-  await runContract(billingPortContract, "fakeBilling", () => { const f = fakeBilling({ prices: PRICES }); return { port: f, priceId: PRICES[0].id, lastCheckoutParams: () => { const c = f.checkouts.at(-1); return c ? { mode: "subscription", payment_method_collection: c.paymentMethodCollection, missing_payment_method: c.missingPaymentMethod, trial_period_days: c.input.trialDays } : null; } }; }, ok);
+  await runContract(billingPortContract, "fakeBilling", () => { const f = fakeBilling({ prices: PRICES }); f.subs.set("sub_c1", { id: "sub_c1", customerId: "cus_c1", firmId: null, status: "trialing", trialEnd: TRIAL_END, periodEnd: TRIAL_END, cancelAtPeriodEnd: false, hasCard: false, latestInvoice: null });
+    return { port: f, priceId: PRICES[0].id, sign: (raw: string) => f.sign(raw), subscriptionId: "sub_c1", trialEnd: TRIAL_END, lastCheckoutParams: () => { const c = f.checkouts.at(-1); return c ? { mode: "subscription", payment_method_collection: c.paymentMethodCollection, missing_payment_method: c.missingPaymentMethod, trial_period_days: c.input.trialDays } : null; } }; }, ok);
   await runContract(billingPortContract, "StripeBilling", recordedStripe, ok);
   const rec = recordedStripe();
   const { customerId: cust } = await rec.port.ensureCustomer({ firmId: "0f5a0000-0000-4000-8000-000000000009", email: "a@b.example.com", name: "A" });
   await rec.port.startTrialCheckout({ firmId: "0f5a0000-0000-4000-8000-000000000009", customerId: cust, priceId: PRICES[0].id, trialDays: 14, successUrl: "https://a.example.com/ok", cancelUrl: "https://a.example.com/no" });
   ok("PF-5 (Lead B, fact 3): the trial's Checkout turns Stripe Tax on and saves the address to the customer", rec.lastCheckoutParams()?.automatic_tax === "true" && rec.lastCheckoutParams()?.customer_update_address === "auto", rec.lastCheckoutParams());
+  const portal = await rec.port.portal({ customerId: "cus_c1", returnUrl: "https://a.example.com/billing" }), pc = rec.portalConfig();
+  ok("PF-5 part 2 pass/fail (rows rev 13): the Customer Portal has plan switching off, card, invoices and cancel at period end on",
+    !!portal.url && pc?.get("features[subscription_update][enabled]") === "false" && pc.get("features[payment_method_update][enabled]") === "true" && pc.get("features[invoice_history][enabled]") === "true" && pc.get("features[subscription_cancel][mode]") === "at_period_end", pc && Object.fromEntries(pc));
 
   // ------------------------------------------------------------------------------------------------------ the service
   const clock = new FakeClock(new Date());
@@ -269,6 +294,123 @@ try {
     return `${["GET", "POST"][Reflect.getMetadata(METHOD_METADATA, h) as number] ?? "?"} ${Reflect.getMetadata(PATH_METADATA, h)}`;
   });
   ok("PF-5 fail: the verification is POST only (opening the email's link changes nothing)", routes.includes("POST signup/verify") && !routes.some((r) => r.startsWith("GET signup")), routes);
+
+  // ----------------------------------------------------------------------------- part 2: Stripe's events and the moves
+  const bp = { audit: ports.audit, billing, clock, appUrl: ports.appUrl }, hooks = new BillingEvents(db, bp), acct = new BillingAccount(db, bp);
+  let evn = 0;
+  const raw = (type: string, object: Record<string, unknown>) => JSON.stringify({ id: `evt_t${++evn}`, object: "event", type, created: Math.floor(clock.now().getTime() / 1000), data: { object } });
+  const send = async (body: string, sig: string | null = billing.sign(body)) => { const r = await problemOf(() => hooks.receive(Buffer.from(body), sig ?? undefined)); await hooks.settled(); return r; };
+  const subOf = (f: string) => sql(`select status || ' ' || coalesce(to_char(trial_ends_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI'), '-') || ' ' || coalesce(to_char(current_period_end at time zone 'UTC', 'YYYY-MM-DD'), '-') from platform_subscription where firm_id = '${f}'`);
+  const firmOf = (f: string) => sql(`select status from platform_firm where id = '${f}'`);
+  const evs = (f: string, type: string) => Number(sql(`select count(*) from module_event where firm_id = '${f}' and type = '${type}'`));
+  const snap = (id: string, over: Partial<BillingSubscription> = {}): BillingSubscription => ({ id, customerId: `cus_${id.slice(4)}`, firmId: null, status: "trialing", trialEnd: TRIAL_END, periodEnd: TRIAL_END, cancelAtPeriodEnd: false, hasCard: false, latestInvoice: null, ...over });
+  const subEv = (id: string, type = "customer.subscription.updated") => raw(type, { object: "subscription", id, customer: `cus_${id.slice(4)}`, metadata: {} });
+  const paidEv = (id: string) => raw("invoice.paid", { object: "invoice", customer: `cus_${id.slice(4)}`, parent: { subscription_details: { subscription: id, metadata: {} } } });
+  const paid = (id: string) => ({ id, status: "paid" as const, taxNeedsAddress: false });
+  const teamPlan = await db.platformPlan.findFirstOrThrow({ where: { code: "team" } });
+  const mkFirm = async (k: string) => { const f = await db.platformFirm.create({ data: { key: `pf5p2-${k}`, operatingName: `Firm ${k}`, countryCode: "CA", status: "TRIAL", contactEmail: `${k}@p2.example.com` } });
+    await db.platformSubscription.create({ data: { firmId: f.id, planId: teamPlan.id, status: "TRIAL", stripeCustomerId: `cus_${k}`, trialEndsAt: TRIAL_END } }); return f.id; };
+  const P1 = new Date("2027-01-10T00:00:00Z"), P2 = new Date("2027-03-01T00:00:00Z");
+
+  ok("PF-5 part 2 pass (QA-481): the sign-up stores the trial end, the plan's 14 days from the verification",
+    sql(`select abs(extract(epoch from s.trial_ends_at - f.created_at) - 14 * 86400) < 120 from platform_subscription s join platform_firm f on f.id = s.firm_id where f.id = '${firmId}'`) === "t");
+  const cust1 = co!.input.customerId, done1 = raw("checkout.session.completed", { object: "checkout.session", mode: "subscription", client_reference_id: firmId, customer: cust1, subscription: "sub_t1" });
+  const unsigned = await send(done1, null), changed = await send(done1.replace(`"sub_t1"`, `"sub_t9"`), billing.sign(done1));
+  ok("PF-5 part 2 fail: an unsigned or changed webhook → 400, nothing stored", unsigned?.status === 400 && changed?.status === 400 && sql(`select count(*) from webhook_receipt`) === "0", [unsigned, changed]);
+  billing.subs.set("sub_t1", snap("sub_t1", { customerId: cust1 }));
+  await send(done1);
+  ok("PF-5 part 2 pass (A46's weak point): the trial's Checkout completing → Stripe's trial end stored, the firm in TRIAL, no card",
+    subOf(firmId) === `TRIAL ${TRIAL_END.toISOString().slice(0, 16)} ${TRIAL_END.toISOString().slice(0, 10)}` && firmOf(firmId) === "TRIAL" && !billing.subs.get("sub_t1")!.hasCard, subOf(firmId));
+  const synced = sql(`select count(*) from audit_event where action = 'platform.subscription.synced'`), dup = await hooks.receive(Buffer.from(done1), billing.sign(done1)); await hooks.settled();
+  ok("PF-5 part 2 fail: the same event twice → answered, handled once", dup.duplicate === true && sql(`select count(*) from audit_event where action = 'platform.subscription.synced'`) === synced && sql(`select count(*) from webhook_receipt where handled_at is not null`) === "1");
+
+  const F2 = await mkFirm("f2"), F3 = await mkFirm("f3");
+  billing.subs.set("sub_f2", snap("sub_f2", { status: "active", hasCard: true, periodEnd: P1, latestInvoice: paid("in_f2") }));
+  await send(paidEv("sub_f2")); await send(subEv("sub_f2", "customer.subscription.created"));
+  billing.subs.set("sub_f3", snap("sub_f3")); await send(subEv("sub_f3", "customer.subscription.created"));
+  const f3mid = subOf(F3).split(" ")[0];
+  billing.subs.set("sub_f3", snap("sub_f3", { status: "active", hasCard: true, periodEnd: P1, latestInvoice: paid("in_f3") })); await send(paidEv("sub_f3"));
+  ok("PF-5 part 2 pass/fail: paid-before-created and created-before-paid both end Active (a later trialing event never moves it back)",
+    subOf(F2).startsWith("ACTIVE") && subOf(F3).startsWith("ACTIVE") && f3mid === "TRIAL" && firmOf(F2) === "ACTIVE" && evs(F2, EVENT.FIRM_ACTIVATED) === 1 && evs(F3, EVENT.FIRM_ACTIVATED) === 1, [subOf(F2), subOf(F3)]);
+  billing.subs.set("sub_f2", snap("sub_f2", { status: "past_due", hasCard: true, periodEnd: P1, latestInvoice: { id: "in_f2b", status: "open", taxNeedsAddress: false } })); await send(subEv("sub_f2"));
+  const overdue = `${subOf(F2).split(" ")[0]}/${firmOf(F2)}`;
+  billing.subs.set("sub_f2", snap("sub_f2", { status: "active", hasCard: true, periodEnd: P1, latestInvoice: paid("in_f2b") })); await send(paidEv("sub_f2"));
+  ok("PF-5 part 2 pass/fail: overdue is an indicator (firm stays Active); paid within grace → Active with the billing date unchanged",
+    overdue === "OVERDUE/ACTIVE" && subOf(F2).startsWith("ACTIVE") && subOf(F2).endsWith(P1.toISOString().slice(0, 10)), [overdue, subOf(F2)]);
+
+  const F4 = await mkFirm("f4");
+  billing.subs.set("sub_f4", snap("sub_f4", { status: "paused" })); await send(subEv("sub_f4", "customer.subscription.paused"));
+  ok("PF-5 part 2 pass: a trial ending with no card (Stripe pauses) → Payment hold that day, firm.payment_hold and the change in the outbox",
+    subOf(F4).startsWith("PAYMENT_HOLD") && firmOf(F4) === "PAYMENT_HOLD" && evs(F4, EVENT.FIRM_PAYMENT_HOLD) === 1
+    && sql(`select payload->>'old' || '>' || (payload->>'new') from module_event where firm_id = '${F4}' and type = '${EVENT.FIRM_SUBSCRIPTION_CHANGED}'`) === "TRIAL>PAYMENT_HOLD", subOf(F4));
+  billing.subs.set("sub_f4", snap("sub_f4", { status: "paused", periodEnd: P2, latestInvoice: { id: "in_f4", status: "uncollectible", taxNeedsAddress: false } }));
+  await send(raw("checkout.session.completed", { object: "checkout.session", mode: "setup", client_reference_id: F4, customer: "cus_f4", setup_intent: "seti_t4" }));
+  const stillHeld = subOf(F4).split(" ")[0];
+  billing.subs.set("sub_f4", snap("sub_f4", { status: "active", hasCard: true, periodEnd: P2, latestInvoice: paid("in_f4") })); await send(paidEv("sub_f4"));
+  ok("PF-5 part 2 pass/fail: a card added to the held subscription resumes it; the hold ends only on a paid invoice (not uncollectible) and starts a new period",
+    billing.resumed.includes("sub_f4") && stillHeld === "PAYMENT_HOLD" && subOf(F4).startsWith("ACTIVE") && subOf(F4).endsWith(P2.toISOString().slice(0, 10)) && firmOf(F4) === "ACTIVE" && billing.subs.get("sub_f4")!.hasCard, [stillHeld, subOf(F4)]);
+
+  const F5 = await mkFirm("f5"); sql(`update platform_firm set status = 'DELETED' where id = '${F5}'`);
+  billing.subs.set("sub_f5", snap("sub_f5", { status: "active", hasCard: true, latestInvoice: paid("in_f5") })); await send(subEv("sub_f5"));
+  sql(`update platform_subscription set status = 'ENDED' where firm_id = '${F5}'`); await send(subEv("sub_f5"));
+  ok("PF-5 part 2 fail: a refused move (DELETED → ACTIVE, ENDED → ACTIVE) changes nothing and is audited",
+    firmOf(F5) === "DELETED" && subOf(F5).startsWith("ENDED") && evs(F5, EVENT.FIRM_ACTIVATED) === 0 && Number(sql(`select count(*) from audit_event where action = 'platform.subscription.move_refused' and detail->>'firmId' = '${F5}'`)) === 2);
+  const F6 = await mkFirm("f6");
+  billing.subs.set("sub_f6", snap("sub_f6", { status: "active", hasCard: true, latestInvoice: { id: "in_f6", status: "draft", taxNeedsAddress: true } })); await send(subEv("sub_f6"));
+  ok("PF-5 part 2 pass/fail (Lead B, PF-5 DWn): an invoice whose tax needs the address → held \"business address needed\", the draft kept from finalizing; a taxed one is not",
+    firmOf(F6) === "PAYMENT_HOLD" && billing.heldDrafts.join() === "in_f6" && sql(`select payload->>'reason' from module_event where firm_id = '${F6}' and type = '${EVENT.FIRM_PAYMENT_HOLD}'`) === ADDRESS_NEEDED && firmOf(F3) === "ACTIVE");
+
+  const F7 = await mkFirm("f7"), p7 = subEv("sub_f7", "customer.subscription.paused");
+  billing.subs.set("sub_f7", snap("sub_f7", { status: "paused" })); billing.events.set(JSON.parse(p7).id, eventFacts(JSON.parse(p7)));
+  failAudit = "platform.subscription.synced"; await send(p7); failAudit = null;
+  const rolledBack = `${subOf(F7).split(" ")[0]}/${firmOf(F7)}/${evs(F7, EVENT.FIRM_PAYMENT_HOLD)}/${sql(`select count(*) from webhook_receipt where event_id = '${JSON.parse(p7).id}' and handled_at is null`)}`;
+  await clock.advance({ minutes: 3 }); const sweptN = await hooks.sweep();
+  ok("PF-5 part 2 pass/fail: a forced audit failure rolls the change and its event back (the receipt stays unhandled); the sweep handles it once",
+    rolledBack === "TRIAL/TRIAL/0/1" && sweptN === 1 && firmOf(F7) === "PAYMENT_HOLD" && evs(F7, EVENT.FIRM_PAYMENT_HOLD) === 1 && (await hooks.sweep()) === 0, rolledBack);
+
+  // ----------------------------------------------------------------------------------------- part 2: billing and profile
+  const who = (f: string, roles: string[]) => ({ staffId: "0f5a0000-0000-4000-8000-0000000000aa", firmId: f, firmKey: "k", roles, keys: [], duties: [], authTime: 0, via: "local" as const });
+  const v1 = await acct.view(who(firmId, ["OWNER"])), v7 = await acct.view(who(F7, ["OWNER"])), v6 = await acct.view(who(F6, ["OWNER"]));
+  ok("PF-5 part 2 pass: GET billing shows plan, status, trial end, seats used of the limit and the card; a held firm its reason and deletion date (90 days)",
+    v1.plan.code === "team" && v1.status === "TRIAL" && v1.trialEndsAt?.getTime() === TRIAL_END.getTime() && v1.seatsUsed === 1 && v1.seatsLimit === teamPlan.seatsLimit && v1.cardOnFile === false && v1.hold === null
+    && v7.hold?.reason === "payment needed" && v7.hold.deletionDate.getTime() - v7.hold.since.getTime() === 90 * 86_400_000 && v6.hold?.reason === ADDRESS_NEEDED, { v1, v7: v7.hold });
+  const addr = { unit: "4", street_number: "100", street_name: "Main Street", city: "Toronto", province_state: "ON", postal_code: "m5v 1a1" };
+  const saved = await acct.setAddress(who(firmId, ["ADMIN"]), addr), badAddr = await problemOf(() => acct.setAddress(who(firmId, ["ADMIN"]), { ...addr, postal_code: "12345" }));
+  ok("PF-5 part 2 pass/fail: PUT billing/address saves the business address and puts it on the Stripe customer; a bad postal code is refused at the field",
+    saved.onStripe === true && billing.customers.find((c) => c.customerId === cust1)?.address?.postalCode === "M5V 1A1" && sql(`select business_address->>'postal_code' from platform_firm where id = '${firmId}'`) === "M5V 1A1"
+    && badAddr?.status === 400 && JSON.stringify(badAddr.body.errors).includes("postal_code"), badAddr);
+  billing.invoiceList.set(cust1, [{ id: "in_d1", number: null, status: "draft", amountDueCents: 4900, currency: "cad", createdAt: clock.now(), hostedUrl: null }, { id: "in_p1", number: "A-0001", status: "paid", amountDueCents: 4900, currency: "cad", createdAt: clock.now(), hostedUrl: "https://invoice.stripe.com/i/in_p1" }]);
+  const inv = await acct.invoices(who(firmId, ["BILLING_FINANCE"]));
+  ok("PF-5 part 2 pass/fail: GET billing/invoices lists our invoices with Stripe's hosted links, never a draft", inv.invoices.length === 1 && inv.invoices[0].id === "in_p1" && !!inv.invoices[0].hostedUrl, inv);
+  const legal = await problemOf(() => acct.setProfile(who(firmId, ["ADMIN"]), { legalName: "Maple Immigration Inc." })), country = await problemOf(() => acct.setProfile(who(firmId, ["OWNER"]), { countryCode: "US" }));
+  const prof = await acct.setProfile(who(firmId, ["OWNER"]), { legalName: "Maple Immigration Inc.", ownerName: "Owner (Sample)" });
+  ok("PF-5 part 2 pass/fail (AG-1-65, SA-2-24): the legal name only by the Owner, the country never changes; the Owner's change is saved with its audit line",
+    legal?.status === 403 && country?.status === 400 && prof.legalName === "Maple Immigration Inc." && sql(`select count(*) from audit_event where action = 'platform.firm.profile_changed' and detail->>'firmId' = '${firmId}'`) === "1", [legal, country]);
+
+  // ------------------------------------------------------------------- part 2 over HTTP: the raw-body door and the 402
+  await seedSampleFirms(db);
+  @Module({ controllers: [PlatformIdentityController, StripeHookController, BillingController] as never[], providers: [{ provide: Db, useValue: db }, { provide: APP_GUARD, useClass: ConfigReadGuard }, PlatformClock,
+    { provide: IDENTITY_PORT, useValue: new LocalIdentity("pf5-part2-check-signing-key-0123456789", () => Date.now()) }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
+    { provide: BILLING_PORTS, useValue: bp }, PlatformBillingEvents, PlatformBillingAccount, PaymentHoldGate, { provide: APP_INTERCEPTOR, useExisting: PaymentHoldGate }] as never[] }) class BillingApp {}
+  const nest = await NestFactory.create(BillingApp, { logger: false }); stripeRawBody(nest); await nest.listen(0, "127.0.0.1");
+  try {
+    const base = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}`;
+    const call = async (method: string, path: string, o: { token?: string; body?: string; headers?: Record<string, string> } = {}) => { const r = await fetch(`${base}${path}`, { method, headers: { "content-type": "application/json", ...(o.token ? { authorization: `Bearer ${o.token}` } : {}), ...o.headers }, body: o.body }); return { status: r.status, body: await r.json().catch(() => null) as Record<string, unknown> | null }; };
+    const signIn = async (actorId: string) => (await call("POST", "/api/platform/session/local", { body: JSON.stringify({ firmKey: "sample-firm", actorId, secondStep: true }) })).body?.token as string;
+    const tR = await signIn("user-R"), tO = await signIn("user-O");
+    const ev3 = subEv("sub_f3"), hookOk = await call("POST", "/api/hooks/stripe", { body: ev3, headers: { "stripe-signature": billing.sign(ev3) } }), hookBad = await call("POST", "/api/hooks/stripe", { body: "{}" });
+    ok("PF-5 part 2 pass/fail: POST /api/hooks/stripe checks the signature on the raw bytes (200 signed, 400 unsigned)", hookOk.status === 200 && hookOk.body?.received === true && hookBad.status === 400, [hookOk, hookBad]);
+    const open = async () => [(await call("GET", "/api/platform/staff/invitations", { token: tR })).status, (await call("GET", "/api/platform/billing", { token: tR })).status, (await call("GET", "/api/platform/me", { token: tR })).status];
+    const before = await open();
+    sql(`update platform_firm set status = 'PAYMENT_HOLD' where key = 'sample-firm'`);
+    const held = await open(), words = (await call("GET", "/api/platform/staff/invitations", { token: tR })).body;
+    const addrHeld = (await call("PUT", "/api/platform/billing/address", { token: tR, body: JSON.stringify(addr) })).status;
+    sql(`update platform_firm set status = 'ACTIVE' where key = 'sample-firm'`);
+    ok("PF-5 part 2 pass/fail: a held firm's staff get 402 on other routes and 200 on billing (address too) and their own identity; Active again → 200",
+      before.join() === "200,200,200" && held.join() === "402,200,200" && words?.code === "PAYMENT_HOLD" && words.detail === HOLD_WORDS && addrHeld === 200, { before, held, addrHeld });
+    const officer = [(await call("GET", "/api/platform/billing", { token: tO })).status, (await call("POST", "/api/platform/billing/portal", { token: tO })).status, (await call("PUT", "/api/platform/firm/profile", { token: tO, body: "{}" })).status];
+    ok("PF-5 part 2 fail: a Case Officer gets 403 on billing, the portal and the profile change", officer.join() === "403,403,403", officer);
+  } finally { await nest.close(); }
 } catch (e) {
   ok("PF-5 the check ran to the end", false, e instanceof Error ? e.stack : String(e));
 } finally {

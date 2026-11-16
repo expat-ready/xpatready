@@ -184,7 +184,10 @@ export function fakeBilling(opts: { prices?: BillingPrice[]; failOn?: (call: Cal
     async subscription(id) { gate("subscription"); return BillingSubscription.parse(sub(id)); },
     async useCardAndResume(id, seti) {
       gate("useCardAndResume"); SetupIntentId.parse(seti);
-      const s = sub(id); subs.set(id, { ...s, hasCard: true }); if (s.status === "paused") resumed.push(id);
+      // Like Stripe: a resumed subscription is active once its invoice is paid or marked uncollectible (step 0 fact 2).
+      const s = sub(id), back = s.status === "paused" && (s.latestInvoice?.status === "paid" || s.latestInvoice?.status === "uncollectible");
+      if (s.status === "paused") resumed.push(id);
+      subs.set(id, { ...s, hasCard: true, ...(back ? { status: "active" as const } : {}) });
     },
     async holdDraftInvoice(id) { gate("holdDraftInvoice"); heldDrafts.push(InvoiceId.parse(id)); },
     async invoices(customerId) { gate("invoices"); return (invoiceList.get(CustomerId.parse(customerId)) ?? []).map((i) => BillingInvoice.parse(i)); },
