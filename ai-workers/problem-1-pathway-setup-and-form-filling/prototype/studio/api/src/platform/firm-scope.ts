@@ -86,7 +86,7 @@ export function enterFirm(firmId: string) {
  *  routes ("METHOD /path" patterns) it may run in. `outside: true` lets it run where there is no request (start-up, a
  *  job). Anything not here is refused (BypassRefused) before any query runs. */
 export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonly RegExp[]; outside?: boolean }>> = Object.freeze({
-  "platform.identity.authenticate": { why: "the guard reads the session's staff member and firm before any firm is known (PF-4)", routes: [/^[A-Z]+ \/api\/(platform|front-office)(\/|$)/i] },
+  "platform.identity.authenticate": { why: "PF-4's guard reads the session's staff member and firm before any firm is known, on every route that declares staff access (platform, front office, and the case routes that take a staff session)", routes: [/^[A-Z]+ \/api\//i] },
   "platform.identity.sign-in": { why: "the sign-in doors find the firm by its key, then run as it (PF-4, PF-4b)", routes: [/^POST \/api\/platform\/session\/(local|callback)$/i] },
   "platform.identity.invitation": { why: "the invitation link: the token is the only key, and one sign-in account is one firm's staff member across all firms (PF-4b, BR-4)", routes: [/^(GET|POST) \/api\/public\/invitations\/[^/]+(\/accept)?$/i] },
   "fo.sales.web-form": { why: "the public enquiry form finds its firm by the form's token, then runs as it (FO-2)", routes: [/^(GET|POST) \/api\/public\/forms\/[^/]+(\/submissions)?$/i] },

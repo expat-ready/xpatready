@@ -217,8 +217,11 @@ try {
   const was = onBypassLine((use, route) => lines.push(`${use} ${route ?? "-"}`));
   ok("PF-12 fail: a bypass use that is not on the named list is refused before any query", await asBypass("platform.everything", staffOf).then(() => false, (e) => e instanceof BypassRefused));
   ok("PF-12 fail: the guard's bypass use is refused outside a request (start-up, a job)", await asBypass("platform.identity.authenticate", staffOf).then(() => false, (e) => e instanceof BypassRefused));
-  const caseRoute = { method: "GET", path: "/api/runtime/cases" }, staffRoute = { method: "GET", path: "/api/platform/me" };
-  ok("PF-12 fail: the bypass role is refused on a route not on its list (a case route)", await inRequest(caseRoute, () => asBypass("platform.identity.authenticate", staffOf)).then(() => false, (e) => e instanceof BypassRefused));
+  const caseRoute = { method: "GET", path: "/runtime/cases" }, staffRoute = { method: "GET", path: "/api/platform/me" };
+  ok("PF-12 fail: the bypass role is refused on a route not on its list (a page outside /api/)", await inRequest(caseRoute, () => asBypass("platform.identity.authenticate", staffOf)).then(() => false, (e) => e instanceof BypassRefused));
+  ok("PF-12 fail: the sign-in door's bypass is refused on a staff route, and the web form's on the booking page (each use only on its own routes)",
+    await inRequest({ method: "GET", path: "/api/front-office/leads" }, () => asBypass("platform.identity.sign-in", staffOf)).then(() => false, (e) => e instanceof BypassRefused)
+    && await inRequest({ method: "GET", path: "/api/public/firms/sample-firm/book/free/slots" }, () => asBypass("fo.sales.web-form", staffOf)).then(() => false, (e) => e instanceof BypassRefused));
   const both = await inRequest(staffRoute, () => asBypass("platform.identity.authenticate", staffOf));
   ok("PF-12 pass: on a route on its list the bypass reads both firms", new Set(both.map((r) => r.firmId)).size >= 2);
   ok("PF-12 pass: every bypass use writes one line with the use and the route; a refused one writes none", lines.length === 1 && lines[0] === "platform.identity.authenticate GET /api/platform/me", lines);

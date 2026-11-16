@@ -11,6 +11,7 @@ Firms, staff and sign-in, settings, secrets, jobs, logs, complaints and message 
 
 **Invariants (set by).**
 - Every read and write of a platform or front-office table goes through `firmScope(firmId)`; another firm's row is "not found" (PF-3, contracts §0.2; P-559).
+- The database walls it (PF-12): the API connects as `xr_app` (owns no table; it refuses to start otherwise), each query runs as its caller's firm (`firm-scope.ts`: the guard's firm, a door's resolved firm, a job's firm; none reads nothing); crossing firms only through `asBypass(use)` for a use on `BYPASS_USES`, each use logged. Every new `platform_*`, `fo_*`, `money_*`, `msg_*`, `auto_*`, `plat_complaint*` table ships its forced policy in its own migration.
 - Sized for about 100 firms in one process (P-562).
 - Two-step sign-in is required for every staff member (P-567).
 - The audit trail is append-only; demo reset deletes only demo lines, never a platform line (P-571 (1)).
@@ -20,10 +21,11 @@ Firms, staff and sign-in, settings, secrets, jobs, logs, complaints and message 
 - Values for experts to set are labelled Sample, never guessed (P-170).
 
 **Tables.** platformFirm, platformStaff, platformStaffCredential, platformRoleGrant, platformSessionRevocation, platformFirmSetting, platformFirmWebAddress, platComplaint, platComplaintEvent, msgConsent, msgConsentWording, moduleEvent, auditEvent.
-**Tests.** `tests/check_pf3_platform_schema.ts`, `tests/check_pf4_identity.ts`, `tests/check_pf4b_session_reads.ts`, `tests/check_pf14_jobs.ts`, `tests/check_pf21_complaints.ts`, `tests/check_pf21w_routes.ts`, `tests/check_pf21v_views.ts`, `tests/check_pf23_observability.ts`, `tests/check_pf24_secrets.ts`, `tests/check_pf25_web_address.ts`, `tests/check_pf19b_sending.ts`, `tests/check_pf19b_mail.ts`.
+**Tests.** `tests/check_pf12_walls.ts`, `tests/check_pf3_platform_schema.ts`, `tests/check_pf4_identity.ts`, `tests/check_pf4b_session_reads.ts`, `tests/check_pf14_jobs.ts`, `tests/check_pf21_complaints.ts`, `tests/check_pf21w_routes.ts`, `tests/check_pf21v_views.ts`, `tests/check_pf23_observability.ts`, `tests/check_pf24_secrets.ts`, `tests/check_pf25_web_address.ts`, `tests/check_pf19b_sending.ts`, `tests/check_pf19b_mail.ts`.
 
 **Do not.**
 - Query a firm table without `firmScope`.
+- Cross firms without `asBypass` and a named use, or add a firm table without its policy.
 - Log a name, email or other personal value; log record ids.
 - Start a second job runner or logger.
 - Add a package outside STANDARDS §1's gate.
