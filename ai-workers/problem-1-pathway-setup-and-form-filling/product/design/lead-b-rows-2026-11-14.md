@@ -1723,3 +1723,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * #2014 comment 6927292457 (head aa5d688b, back to draft): `ci-and-lists.mjs` flags nightly.yml:170 as HIDDEN RED (`cd "$S" && … | tee drill.txt`). The builder's patch puts one command per line, keeps the drill's status (`st=0 … || st=$?`), always writes the summary, and exits red. `check_pf8r_nightly_job.ts` guards it (6/6 with the patch, 5/6 without).
 * My read as row owner: correct and minimal. It is a .github write, so it is the Lead's (P-423), and I did not push it (P-387).
 * Lead 71: the earlier .github pushes went on the founder's named word, so this one waits for his word at 09:00 IST 17 Nov. It is off tonight's critical path, and #2014 stays a draft until then.
+
+## rev 16.88 (17 Nov 01:44 IST): #2021 FO-9b part 0, the BR-6 red is QA-498, not the PR
+* #2021 comment 6927914399: shard 1 red on `check_bk5_start_browser.cjs` BR-6 (the start page's heading after reset and load) on all 4 tries. The calls are right each time.
+* The PR changes four files only: `ports/person-merge.ts`, its contract, `ports/events.ts` (16 lines) and `tests/check_fo9b_port.ts`. No web, route or demo code. Changing `ports/events.ts` selects every browser suite, so this fits QA-498's shared demo database order fault.
+* Ruling (comment 6928001109): not this PR's. Option 1 is the right call, and the quarantine is Lead 71's (P-205). Asked Lead 71: quarantine BR-6 under QA-498 on main, then `/rerun failed`, then label on green on bdb8484.
