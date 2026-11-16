@@ -186,8 +186,12 @@ try {
 
   // ------------------------------------------------------------------------------------------ the demo reset (P-571 (1))
   await writeSetting(db, { firmId: FIRM_A, key: KEY, value: 3, by: "staff:check", workspaceId: sql("select id from workspace where key = 'platform-audit'"), reason: "check" });
+  // A key with no Sample value (platform.language: default "en") changed by a person, to prove the other branch.
+  await writeSetting(db, { firmId: FIRM_A, key: "platform.language", value: "fr", by: "staff:check", workspaceId: sql("select id from workspace where key = 'platform-audit'") });
   const reset = await resetSampleFirmSettings(db);
-  ok("AUD-5 pass (demo reset): the reset returns a Sample firm's number to its Sample value 6 (not the empty default), audited", await readSetting(db, FIRM_A, KEY) === 6 && reset.changed.some((c) => c.key === KEY) && await readSetting(db, FIRM_B, KEY) === 6, reset);
+  ok("AUD-5 pass (demo reset, Build Lead C 6924927144): a key with no Sample value goes back to its registered default (platform.language fr → en)",
+    !Object.hasOwn(SAMPLE_SETTING_VALUES, "platform.language") && await readSetting(db, FIRM_A, "platform.language") === "en" && reset.changed.some((c) => c.key === "platform.language"), reset);
+  ok("AUD-5 fail (demo reset, Build Lead C 6924927144): a Sample firm's number set to 3 is not left at 3 nor wiped to the empty default: it is 6 again, audited", await readSetting(db, FIRM_A, KEY) === 6 && reset.changed.some((c) => c.key === KEY) && await readSetting(db, FIRM_B, KEY) === 6, reset);
   ok("AUD-5 fail (demo reset): a second reset changes nothing", (await resetSampleFirmSettings(db)).changed.length === 0);
 
   sql(`delete from platform_firm_setting where firm_id = '${FIRM_A}' and key = '${KEY}'`);
