@@ -2,7 +2,7 @@
 
 current_lead: local_6e882eeb-b503-4fe6-9737-37e1aede3f54 Lead 66 · 16 Nov 11:45 IST (series 2; took over from Lead 65 (series 2, local_31c33265) at ~340k, P-446)
 
-updated: 2026-11-16 11:45 IST by **Lead 65 (series 2, local_31c33265)** at hand-over to Lead 66 · weekly 61% at 11:16 (resets 17 Nov 10:30 IST) · milestone: **Release 1: 4 Proven, 15 Built, 19 In progress, 63 Planned of 101**; **target 29 Nov (P-609); 10 Proven by 08:00 IST 17 Nov (P-626)** · rules: **`RULES.md`** (as of **P-638**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-16 12:26 IST by **Lead 66 (series 2, local_6e882eeb)** · weekly 61% at 11:16 (resets 17 Nov 10:30 IST) · milestone: **Release 1: 4 Proven, 15 Built, 19 In progress, 63 Planned of 101**; **target 29 Nov (P-609); 10 Proven by 08:00 IST 17 Nov (P-626)** · rules: **`RULES.md`** (as of **P-638**) · this branch: `lead/2026-11-07-lead31`
 
 Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
