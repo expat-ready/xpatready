@@ -1425,3 +1425,9 @@ New row for BACKLOG, before FO-7t:
 ## Rev 16.55 (16 Nov 10:3x IST, Lead B (6)): FO-2v race time from the audit line (#1933)
 
 The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lead's latest take or assign audit line (written in the same transaction, carrying `previousOwnerStaffId`) in the same lock, so no `owner_set_at` column is added. It shows only when the line is under 10 minutes old (Sample), the lead was Unassigned and the person sees Unassigned leads; anything else answers 404. An added case checks that firm B never reads firm A's lines.
+
+## Rev 16.56 (16 Nov 10:5x IST, Lead B (6)): FO-2v open items (#1933)
+
+* Sequential lead numbers (breaker m3): accepted as AG-02 numbering, with no row.
+* With the setting off, an `assign` holder reassigns only Unassigned leads and their own. AG-2-13c rule 1's "every mode" keeps the action on in every mode; it does not widen what a person sees (AG-2-64 is the one home of visibility). This reading goes in the module card.
+* The permissions read at e767d9c80 is passed to Lead 65.
