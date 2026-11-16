@@ -1,6 +1,6 @@
 # Proposal: the five provincial streams for Release 1 assessment (P-607 (9); for the founder's card)
 
-Drafted 17 Nov 00:1x IST by Build Lead C, for Lead 71 to put to the founder as one card in the 09:00 IST batch (P-613).
+Drafted 17 Nov 00:0x IST by Build Lead C, for Lead 71 to put to the founder as one card in the 09:00 IST batch (P-613).
 * **Rule used (P-607 (9)):** per province, the stream whose **own official page publishes its own grid or points**, read on the province's site only.
 * **Scope (P-650 (2)):** each is **assessment only** in Release 1, labelled "Assessment only: no forms".
 * **How each page was read, on 17 Nov 2026:**
