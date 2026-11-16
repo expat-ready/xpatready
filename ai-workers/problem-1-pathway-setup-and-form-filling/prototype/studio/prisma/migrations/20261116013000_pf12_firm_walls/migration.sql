@@ -24,7 +24,7 @@
 -- Every later platform_*, fo_*, money_*, msg_*, auto_* and plat_complaint* table ships its own policy in its own migration
 -- (tests/check_pf12_walls.ts fails otherwise).
 --
--- Down: DROP POLICY "pf12_firm" (and "pf12_platform_read") ON each table below; ALTER TABLE … NO FORCE ROW LEVEL SECURITY,
+-- Down: DROP FUNCTION platform_web_address_taken(text[], timestamptz); DROP POLICY "pf12_firm" (and "pf12_platform_read") ON each table below; ALTER TABLE … NO FORCE ROW LEVEL SECURITY,
 -- DISABLE ROW LEVEL SECURITY; DROP FUNCTION platform_session_firm(); REVOKE xr_data, xr_staff_bypass FROM xr_app;
 -- ALTER DEFAULT PRIVILEGES … REVOKE …; DROP ROLE only after every database on the cluster has run the same.
 
@@ -51,6 +51,17 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO xr_data;
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO xr_data;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO xr_data;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO xr_data;
+
+-- PF-25's address check reads every firm's addresses (a web address is public; one firm's choice must not take another's),
+-- also inside a firm's own transaction, so it is one narrow definer function: addresses and their firm ids only, owned
+-- by the bypass role (BYPASSRLS), callable by xr_app only.
+CREATE FUNCTION platform_web_address_taken(addresses text[], at timestamptz) RETURNS TABLE (address text, firm_id uuid)
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+  AS $fn$ SELECT w.address, w.firm_id FROM platform_firm_web_address w WHERE w.address = ANY (addresses)
+          UNION ALL SELECT h.old_address, h.firm_id FROM platform_firm_address_history h WHERE h.old_address = ANY (addresses) AND h.until > at $fn$;
+ALTER FUNCTION platform_web_address_taken(text[], timestamptz) OWNER TO xr_staff_bypass;
+REVOKE ALL ON FUNCTION platform_web_address_taken(text[], timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION platform_web_address_taken(text[], timestamptz) TO xr_app;
 
 -- The session's firm: set by api/src/platform/firm-scope.ts for each query (set_config('app.firm_id', …)); none → null.
 CREATE FUNCTION platform_session_firm() RETURNS uuid LANGUAGE sql STABLE PARALLEL SAFE SET search_path = pg_catalog

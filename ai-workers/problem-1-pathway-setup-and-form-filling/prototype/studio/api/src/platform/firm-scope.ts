@@ -44,8 +44,8 @@ export function inFirm<T extends { firmId: string | null }>(firmId: string, row:
 // PF-12 (contracts §0 rule 2, §7; map row 3; AG-1-1, -3, -45): the database walls. Migration 20261116013000_pf12_firm_walls
 // forces row-level security on every platform_*, fo_*, money_* and msg_* table (policy: firm_id = the session's firm). The
 // API connects as xr_app, which owns no table; every query it sends runs with the firm of the context it was called from:
-//   * a staff request: the firm PF-4's guard read from the session (setRequestFirm, then FirmWallsInterceptor runs the
-//     handler in it);
+//   * a staff request: the firm PF-4's guard read from the session (enterRequest, setRequestFirm; FirmWallsInterceptor
+//     runs the handler in it again);
 //   * a job: its JobRun.firmId (withFirm);
 //   * anything else, a public door, a configuration or case request with no platform firm: no firm, so a walled table
 //     reads nothing and takes no write. A door resolves its firm first (asBypass, on the named list), then sets it.
@@ -67,18 +67,35 @@ export function currentFirm(): string | undefined { return scope.getStore()?.fir
 /** The bypass use the current code runs under, if any. */
 export function currentBypass(): string | undefined { return scope.getStore()?.bypass; }
 
+// Each helper awaits fn inside its scope: a Prisma query is lazy (it runs on its first then), so one handed back
+// unawaited would otherwise run in the caller's scope.
 /** Runs fn as one firm's code (a job's firm; a test). */
-export function withFirm<T>(firmId: string, fn: () => T): T {
-  return scope.run({ ...scope.getStore(), firmId: firmScope(firmId).firmId, bypass: undefined }, fn);
+export function withFirm<T>(firmId: string, fn: () => T | Promise<T>): Promise<T> {
+  const firm = firmScope(firmId).firmId;
+  return scope.run({ route: scope.getStore()?.route, firmId: firm }, async () => await fn());
 }
-/** Runs fn with no firm at all (a door before it has resolved its firm). */
-export function withNoFirm<T>(fn: () => T): T { return scope.run({ route: scope.getStore()?.route }, fn); }
+/** A door (a sign-in, a public page, a link): the firm it resolved through asBypass, for the rest of its request. Refused
+ *  outside a request or inside a bypass. */
+export function enterFirm(firmId: string) {
+  const s = scope.getStore();
+  if (!s || s.route === undefined || s.bypass) throw new FirmScopeError("enterFirm: only a request's own scope takes a firm");
+  s.firmId = firmScope(firmId).firmId;
+}
 
 /** The named list (brief: "used only by routes on a named list in code"): each use, why it may cross the walls, and the
  *  routes ("METHOD /path" patterns) it may run in. `outside: true` lets it run where there is no request (start-up, a
  *  job). Anything not here is refused (BypassRefused) before any query runs. */
 export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonly RegExp[]; outside?: boolean }>> = Object.freeze({
   "platform.identity.authenticate": { why: "the guard reads the session's staff member and firm before any firm is known (PF-4)", routes: [/^[A-Z]+ \/api\/(platform|front-office)(\/|$)/i] },
+  "platform.identity.sign-in": { why: "the sign-in doors find the firm by its key, then run as it (PF-4, PF-4b)", routes: [/^POST \/api\/platform\/session\/(local|callback)$/i] },
+  "platform.identity.invitation": { why: "the invitation link: the token is the only key, and one sign-in account is one firm's staff member across all firms (PF-4b, BR-4)", routes: [/^(GET|POST) \/api\/public\/invitations\/[^/]+(\/accept)?$/i] },
+  "fo.sales.web-form": { why: "the public enquiry form finds its firm by the form's token, then runs as it (FO-2)", routes: [/^(GET|POST) \/api\/public\/forms\/[^/]+(\/submissions)?$/i] },
+  "fo.booking.public-page": { why: "the public booking page finds its firm by key, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/firms\/[^/]+\/book\/[^/]+\/(slots|bookings)$/i] },
+  "fo.booking.self-service": { why: "the booker's own link finds its firm by the link's token, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/bookings\/[^/]+(\/(slots|reschedule|cancel))?$/i] },
+  "platform.web-address.host": { why: "the host routing finds the firm a firm address serves, on every request (PF-25)", routes: [/^[A-Z]+ \//] },
+  "platform.web-address.catch-up": { why: "at start, every firm with no web address yet gets one (PF-25)", routes: [], outside: true },
+  "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i] },
+  "platform.demo.reset": { why: "the demo reset puts every Sample firm's settings back (P-571 (1)); demo routes, and the reset tools outside a request", routes: [/^POST \/api\/demo\//i], outside: true },
 });
 
 /** A bypass use that is not on BYPASS_USES, or not for this route. A programming error: the request stops (500). */
@@ -99,22 +116,33 @@ export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promis
   if (!entry) throw new BypassRefused(`asBypass: "${use}" is not on the named list (firm-scope.ts BYPASS_USES)`);
   if (route === undefined ? !entry.outside : !entry.routes.some((r) => r.test(route))) throw new BypassRefused(`asBypass: "${use}" is not allowed ${route === undefined ? "outside a request" : `on ${route}`}`);
   bypassLine(use, route);
-  return scope.run({ route, bypass: use }, async () => fn());
+  return scope.run({ route, bypass: use }, async () => await fn());
 }
 
 // ----------------------------------------------------------------------------------------------- the request's firm
 type ScopedReq = { method?: string; path?: string; url?: string; [k: symbol]: unknown };
 const REQ_FIRM = Symbol("pf12.firm");
-/** PF-4's guard: the request's firm, once the session names it. FirmWallsInterceptor runs the handler in it. */
-export function setRequestFirm(req: object, firmId: string) { (req as ScopedReq)[REQ_FIRM] = firmScope(firmId).firmId; }
 const routeOf = (req: ScopedReq) => `${String(req.method ?? "GET").toUpperCase()} ${String(req.path ?? req.url ?? "").split("?")[0]}`;
-/** Runs fn in the request's scope: its route, and its firm when the guard set one. */
+/** PF-4's guard, first thing in every request, before any await: a fresh scope (its route, no firm) for the rest of the
+ *  request. PF-4's guard is reached synchronously from Nest's router (core.ts's ConfigReadGuard returns a boolean), so
+ *  the handler, its pipes and every query it makes continue in this scope; nothing of an earlier request survives. */
+export function enterRequest(req: object) { scope.enterWith({ route: routeOf(req as ScopedReq) }); }
+/** PF-4's guard: the request's firm, once the session names it (the scope enterRequest opened, and the request itself
+ *  for FirmWallsInterceptor). */
+export function setRequestFirm(req: object, firmId: string) {
+  const id = firmScope(firmId).firmId;
+  (req as ScopedReq)[REQ_FIRM] = id;
+  const s = scope.getStore();
+  if (s && !s.bypass && s.route === routeOf(req as ScopedReq)) s.firmId = id;
+}
+/** Runs fn in the request's scope: its route, and its firm when the guard set one (FirmWallsInterceptor; a test). */
 export function inRequest<T>(req: object, fn: () => T): T {
   const r = req as ScopedReq, firmId = r[REQ_FIRM];
-  return scope.run({ route: routeOf(r), firmId: typeof firmId === "string" ? firmId : undefined }, fn);
+  return scope.run({ route: routeOf(r), firmId: typeof firmId === "string" ? firmId : undefined }, () => {
+    const out = fn();
+    return (out && typeof (out as { then?: unknown }).then === "function" ? (async () => await out)() : out) as T;
+  });
 }
-/** A guard's work in the request's scope (route known, no firm yet). */
-export function inGuard<T>(req: object, fn: () => T): T { return scope.run({ route: routeOf(req as ScopedReq) }, fn); }
 
 // ---------------------------------------------------------------------------------------------- the walled connection
 /** The API's database address: APP_DATABASE_URL when set (production gives the app role its own secret), otherwise
@@ -149,6 +177,18 @@ export class WalledPool extends pg.Pool {
     if (cb) { p.then((r) => cb(null, r), (e) => cb(e as Error)); return undefined as never; }
     return p as never;
   }
+}
+
+/** Prisma merges findUnique calls made in the same tick into one query, sent from the first caller's scope: two firms'
+ *  lookups would run as one firm, and the other's row would read "not found" (tests/check_pf12_walls.ts shows it). Outside
+ *  a transaction each call is sent on its own, in its own caller's firm; a transaction's batch is one caller's and stays
+ *  as it is. Stops the start-up if Prisma's batching is not where this expects it (a Prisma upgrade). */
+export function oneQueryPerCaller(client: object): void {
+  type Loader = { batchBy?: (r: { transaction?: unknown }) => string | undefined };
+  const o = (client as { _requestHandler?: { dataloader?: { options?: Loader } } })._requestHandler?.dataloader?.options;
+  if (typeof o?.batchBy !== "function") throw new Error("PF-12: Prisma's request batching was not found, so firms' lookups could be merged (firm-scope.ts oneQueryPerCaller; the Prisma client changed)");
+  const by = o.batchBy;
+  o.batchBy = (r) => (r.transaction ? by(r) : undefined);
 }
 
 /** The API's pool (core.ts Db): xr_app, UTC session time zone. */

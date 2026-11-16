@@ -15,6 +15,7 @@ import type { JobHandler, JobOptions, JobPayload, JobPort, JobRun } from "../../
 import { DATABASE_URL } from "../../core.ts";
 import type { JobQueueProbe } from "../observability/health.ts";
 import { observeJob } from "../observability/jobs.ts";
+import { withFirm } from "../firm-scope.ts";
 import { PgBossJobs, type DeadLetter } from "./pgboss-jobs.ts";
 import { STUCK_CHECK_CRON, STUCK_CHECK_QUEUE, StuckCheck } from "./stuck-check.ts";
 
@@ -64,7 +65,7 @@ export class PlatformJobs implements JobPort, JobQueueProbe, OnApplicationBootst
     return { ok: true, words: "The job queue runs." };
   }
 
-  handle(name: string, handler: JobHandler) { return this.runner.handle(name, observed(name, handler, () => this.runner.now())); }
+  handle(name: string, handler: JobHandler) { return this.runner.handle(name, observed(name, (job) => (job.firmId ? withFirm(job.firmId, () => handler(job)) : handler(job)), () => this.runner.now())); }   // PF-12: a job runs as its firm
   enqueue(name: string, payload: JobPayload, opts: JobOptions) { return this.runner.enqueue(name, payload, opts); }
   schedule(name: string, at: Date, payload: JobPayload, opts: JobOptions) { return this.runner.schedule(name, at, payload, opts); }
   cancel(key: string) { return this.runner.cancel(key); }
