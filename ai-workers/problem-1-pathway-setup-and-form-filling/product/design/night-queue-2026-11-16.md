@@ -9,6 +9,7 @@ Three hourly cloud routines ("lane starter 1-3", at :05, :25 and :45 UTC past ea
 
 | Row id | Area | Brief (branch:path under product/design/) | After | Effort, breaker |
 |---|---|---|---|---|
+| PF-12b part 1 | runtime | lead-b-front-office:lead-b-briefs/PF-12b.md (QA-499: every bypass use that crosses firms writes one platform.bypass audit_event row per firm it touches, in that firm's transaction, or is refused; adds an `audit` field to every BYPASS_USES entry) — **first: it frees R1.4 to be proven** | — | high, yes |
 | FO-9b part 0 | runtime | main:lead-b-briefs/FO-9b.md (port only) | — | high, no |
 | PF-21b part 1 | runtime | main:lead-b-briefs/PF-21b.md (port only) | — | high, no |
 | PF-Fp part 1 | runtime | lead-b-front-office:lead-b-briefs/P-630-amendments.md PF-Fp row + tech-gate-platform-front-office-2026-11-14.md entry 17 (toPdf port, fake, Gotenberg adapter; the container line comes with PF-8) | — | high, yes; shared port: "Ready for Lead read" |
@@ -19,6 +20,7 @@ Three hourly cloud routines ("lane starter 1-3", at :05, :25 and :45 UTC past ea
 | PF-19e | runtime | lead-b-front-office:lead-b-briefs/PF-19e.md | #1956, #1961 | medium, no |
 | AUD-1b | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/AUD-1b.md | #2003 | high, yes (audit) |
 | CS-DL1b | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-DL1b.md | #2000 | medium, no |
+| PF-12b part 2 | runtime | lead-b-front-office:lead-b-briefs/PF-12b.md (the 7 own-firm doors move to narrow xr_wall_reader definer lookups); never beside PF-4c part 1, PF-6m2, PF-4pc or PF-4s (skip while an open PR names one) | PF-12b part 1 | high, yes; migration: "Ready for Lead read" |
 | CS-NK1 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-NK1.md (commit ac54fe014; bug F2 from #2017's breaker) | #2017 (one builder at a time on the schema, P-438b) | high, yes; schema: "Ready for Lead read" |
 | AUD-1c part 1 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/AUD-1c-1.md (may run beside AUD-1b) | #2003 | high, yes; schema: "Ready for Lead read" |
 | PF-6 part 2a | runtime | lead-b-front-office:lead-b-briefs/PF-6p2.md | #1945 | high, yes |
