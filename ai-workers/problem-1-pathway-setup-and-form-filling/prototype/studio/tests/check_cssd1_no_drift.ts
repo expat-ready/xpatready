@@ -11,7 +11,7 @@
 // A scratch database (xr_studio_cssd1_<pid>) and folder are made and dropped. No browser, no model call (US$0).
 //   zsh studio/tools/isolated.sh runtime_cssd1 4631 start && tsx studio/tests/check_cssd1_no_drift.ts 4631 xr_studio_runtime_cssd1
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { seedField } from "./seed_library.cjs";
@@ -61,6 +61,12 @@ const rename = async (key: string, name: string): Promise<Res> => {
   return { status: r.status, body: j };
 };
 
+// Leftovers of an earlier run killed while prisma ran (a signal cannot be handled during spawnSync), as check_prisma_schema
+// does: its scratch database and folder go first, when its process is gone.
+const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const left = spawnSync(bin("psql"), [...PG, "-d", "postgres", "-Atc", "select datname from pg_database where datname like 'xr\\_studio\\_cssd1\\_%'"], { encoding: "utf8" }).stdout ?? "";
+for (const db of left.split("\n").filter(Boolean)) { const pid = Number(db.split("_").pop()); if (pid && !alive(pid)) spawnSync(bin("dropdb"), [...PG, "--if-exists", "--force", db], { stdio: "ignore" }); }
+if (existsSync(join(STUDIO, "var"))) for (const d of readdirSync(join(STUDIO, "var"), { withFileTypes: true })) { const m = d.name.match(/^cssd1-check-(\d+)$/); if (d.isDirectory() && m && !alive(Number(m[1]))) rmSync(join(STUDIO, "var", d.name), { recursive: true, force: true }); }
 const cleanup = () => { spawnSync(bin("dropdb"), [...PG, "--if-exists", "--force", SCRATCH], { stdio: "ignore" }); rmSync(WORK, { recursive: true, force: true }); };
 for (const sig of ["SIGTERM", "SIGINT"] as const) process.on(sig, () => { cleanup(); process.exit(1); });
 mkdirSync(WORK, { recursive: true });
