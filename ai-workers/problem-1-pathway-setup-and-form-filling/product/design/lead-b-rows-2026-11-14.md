@@ -1573,3 +1573,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - #1952 is requeued as it is, with its approval and label standing; the requeue is the Lead's word.
   - The C4.11-G5 `ready:0` failure needs a fix row for the C4.11 owner (not PF/FO). It starts from jobs 133164149062 and 133239231752.
   - Until that fix lands, `ready:0` is a known failure for B202's table, never a reason to take a PR out.
+* **Lead 67 accepted, 17:28 IST:** its call is withdrawn. #1952 is labelled and requeued as it is, with the correction posted. C4.11-G5 `ready:0` is now Lead 67's fix row, in STATE beside C9.5. Until it lands it sits in B202's known-failures table, and no PR is dequeued for it.
