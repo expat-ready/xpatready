@@ -203,7 +203,7 @@ try {
   ok("FO-2 fail: Take it on an owned lead → 409 with the owner's name", again?.status === 409 && again.body.detail === "Case officer (Sample) already has this lead.", again);
 
   // The match line names no one the viewer may not see (everyone-sees-all off).
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: await platformAuditWorkspaceId(db as never) });
   await post({ ...lena, consent: false });
   const newer = sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'lena@example.org' order by l.created_at desc limit 1`);
   const matched = sql(`select possible_match_person_id from fo_lead where id = '${newer}'`);
@@ -211,9 +211,9 @@ try {
   sql(`update fo_lead set owner_staff_id = '${R.staffId}' where person_id = '${matched}'`);
   const tView = await leads.read(T, newer) as { possibleMatch: { line: string } };
   // FO-2v (QA-477): the Owner sees another person's lead only with view.all and everyone-sees-all on (no Owner override).
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: await platformAuditWorkspaceId(db as never) });
   const rView = await leads.read(R, newer) as { possibleMatch: { line: string } };
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: await platformAuditWorkspaceId(db as never) });
   ok("FO-2 fail: the match line names no one the viewer may not see", tView.possibleMatch.line === "Possible match with a person you cannot see", tView.possibleMatch);
   ok("FO-2 pass: an Owner (view.all, everyone-sees-all on) sees the matched person's name", /^Possible match: Lena Park \(L-\d{5}\)$/.test(rView.possibleMatch.line), rView.possibleMatch);
   ok("FO-2 fail: with everyone-sees-all off, another person's lead is not found (404) and not listed", (await refusal(() => leads.read(O, newer)))?.status === 404 && !(await leads.list(O, "all")).some((l) => l.id === newer));
@@ -234,7 +234,7 @@ try {
   const late = await refusal(() => leads.take(O, lateLead)), hidden = await refusal(() => leads.take(nobody, lateLead));
   ok("FO-2 DWn fail: everyone-sees-all off, a Case Officer's Take it after a Case Manager's → 409 naming the Case Manager", late?.status === 409 && late.body.detail === "Second representative (Sample) already has this lead.", late);
   ok("FO-2 DWn pass: someone who could never see it unowned (no view.all, no assign) → 404, no name", hidden?.status === 404 && !JSON.stringify(hidden.body).includes("Second representative"), hidden);
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: await platformAuditWorkspaceId(db as never) });
 
   const late2 = await takenByT("late2");
   ok("FO-2 DWn fail: the same with everyone-sees-all on → 409 naming the Case Manager", (await refusal(() => leads.take(O, late2)))?.body.detail === "Second representative (Sample) already has this lead.");
@@ -283,13 +283,13 @@ try {
   const stale = await refusal(() => leads.assign(R, staleLead, { staffId: T.staffId, expectedOwnerStaffId: null }));
   ok("FO-2 p2 fail (break M2): a stale Assign (the list showed it Unassigned) after a Take → 409, the taker keeps it", stale?.body.code === "STALE_OWNER" && sql(`select owner_staff_id from fo_lead where id = '${staleLead}'`) === O.staffId, stale);
   ok("FO-2 p2 fail (break M2): Assign without the owner the list showed → refused at the field", (await refusal(() => leads.assign(R, staleLead, { staffId: T.staffId })))?.status === 422);
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: await platformAuditWorkspaceId(db as never) });
   await post({ givenNames: "Hand", email: "handover@example.org" });
   const handover = sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'handover@example.org'`);
   await leads.take(T, handover);
   const given = await leads.assign(T, handover, { staffId: O.staffId, expectedOwnerStaffId: T.staffId }) as { done?: boolean };
   ok("FO-2 p2 fail (break M1): assigning on a lead the assigner then cannot see → done (not 404), and saved", given.done === true && sql(`select owner_staff_id from fo_lead where id = '${handover}'`) === O.staffId, given);
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: await platformAuditWorkspaceId(db as never) });
 
   const goneId = addStaff("Gone", "CASE_OFFICER", "ACTIVE");
   await post({ givenNames: "Orphan", email: "orphan@example.org" });
@@ -327,12 +327,12 @@ try {
   const raced = await Promise.allSettled([leads.add(R, { requestId: raceRid, source: "Phone call", givenNames: "Ra", email: "ra1@example.org", confirmedNew: true }), leads.add(R, { requestId: raceRid, source: "Phone call", givenNames: "Rb", email: "ra2@example.org", confirmedNew: true })]);
   ok("FO-2 p2 fail (Devin): one request id sent twice at once with other details → one lead, the other REQUEST_REUSED", raced.filter((x) => x.status === "fulfilled").length === 1 && raced.some((x) => x.status === "rejected" && /REQUEST_REUSED/.test(JSON.stringify((x.reason as { getResponse?: () => unknown }).getResponse?.()))), raced.map((x) => x.status));
   ok("FO-2 p2 fail (review m6): Add with no source → refused at the field (AG-2-4 rule 1)", (await refusal(() => leads.add(R, { requestId: rid(), givenNames: "Src", email: "src@example.org", confirmedNew: true })))?.status === 422);
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: await platformAuditWorkspaceId(db as never) });
   const tPerson = sql(`select person_id from fo_lead where firm_id = '${A}' and owner_staff_id = '${T.staffId}' and state = 'OPEN' limit 1`);
   ok("FO-2 p2 fail (review M2): picking a person the adder may not see → 404 (AG-2-4 rule 6)", (await refusal(() => leads.add(O, { requestId: rid(), source: "Phone call", personId: tPerson })))?.status === 404);
   const tLead = sql(`select id from fo_lead where firm_id = '${A}' and owner_staff_id = '${T.staffId}' and state = 'OPEN' limit 1`);
   ok("FO-2 p2 fail (review m2): Close by someone who cannot see the lead → 404, no owner named (the 409 is Take it's only)", (await refusal(() => leads.close(O, tLead, { reasonId: sql(`select id from fo_reason where firm_id = '${A}' and key = 'NOT_INTERESTED'`) })))?.status === 404);
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: await platformAuditWorkspaceId(db as never) });
   ok("FO-2 p2 pass (break m6): personId null counts as absent (a new person)", ((await leads.add(R, { requestId: rid(), source: "Phone call", personId: null, givenNames: "Nell", email: "nell@example.org" })) as { person: { givenNames: string } }).person.givenNames === "Nell");
   ok("FO-2 p2 fail: Add with no email and no phone → refused at the field", (await refusal(() => leads.add(R, { requestId: rid(), source: "Phone call", givenNames: "Nobody", confirmedNew: true })))?.status === 422);
 
