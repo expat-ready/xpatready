@@ -9,6 +9,7 @@ import "reflect-metadata";
 import { Module } from "@nestjs/common";
 import { APP_GUARD, ModulesContainer, NestFactory, Reflector } from "@nestjs/core";
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { JobHandler, JobPort } from "../ports/jobs.ts";
@@ -68,6 +69,7 @@ let BASE = "";
 const call = async (method: string, path: string, token?: string, body?: unknown): Promise<Res> => {
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (token) headers.authorization = `Bearer ${token}`;
+  if (method === "POST" && path === "") headers["idempotency-key"] = randomUUID();   // PF-21i: a fresh key per create
   const r = await fetch(`${BASE}/api/platform/complaints${path}`, { method, headers, body: body === undefined || method === "GET" ? undefined : JSON.stringify(body) });
   const text = await r.text(); let b: any = text; try { b = JSON.parse(text); } catch { /* text */ }
   return { status: r.status, body: b };

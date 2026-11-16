@@ -24,6 +24,7 @@ import type { MailPort } from "../../../../ports/mail.ts";
 import { ComplaintClosed, ComplaintReceived, EVENT } from "../../../../ports/events.ts";
 import type { StaffContext } from "../../../../ports/staff.ts";
 import { firmScope } from "../firm-scope.ts";
+import { lockRequestKey, requestHash } from "../idempotency.ts";
 import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE } from "../settings.ts";
 import { acknowledgeBy, BusinessDayTally, businessDaysBetween, type FirmCalendar } from "./business-days.ts";
 
@@ -125,7 +126,7 @@ function parse<T extends z.ZodType>(schema: T, input: unknown): z.output<T> {
  *  closed. `people`: the display name of every staff id in the answer (handler, recorder, event actors, a handler
  *  change's from and to; staff of any status; names only), keyed by the bare id (an actor "staff:<id>" is <id>).
  *  `firmTimeZone`: the firm's zone setting. */
-export type ComplaintView = Omit<PlatComplaint, "firmId"> & { overdue: boolean; businessDaysLeft: number | null; events?: Omit<PlatComplaintEvent, "firmId" | "seq">[]; reminderScheduled?: boolean };
+export type ComplaintView = Omit<PlatComplaint, "firmId" | "requestKey" | "requestHash"> & { overdue: boolean; businessDaysLeft: number | null; events?: Omit<PlatComplaintEvent, "firmId" | "seq">[]; reminderScheduled?: boolean };
 export type People = Record<string, string>;
 export type ComplaintPage = { items: ComplaintView[]; next: string | null; people: People; firmTimeZone: string };
 export type ComplaintDetail = ComplaintView & { people: People; firmTimeZone: string };
@@ -139,7 +140,7 @@ function daysLeft(c: PlatComplaint, now: Date, d: Days): number | null {
   return businessDaysBetween(d.cal, now, c.acknowledgeBy, d.tally);
 }
 const view = (c: PlatComplaint, now: Date, d: Days, events?: PlatComplaintEvent[]): ComplaintView => {
-  const { firmId: _f, ...rest } = c;
+  const { firmId: _f, requestKey: _k, requestHash: _h, ...rest } = c;   // PF-21i: the request key stays inside
   return { ...rest, overdue: isOverdue(c, now), businessDaysLeft: daysLeft(c, now, d), ...(events ? { events: events.map(({ firmId: _ef, seq: _s, ...e }) => e) } : {}) };
 };
 /** The staff ids an answer names: the handler, the recorder and each staff actor ("staff:<id>"), and a handler
@@ -169,6 +170,12 @@ function readCursor(s: unknown): { at: Date; id: string } {
  *  complaint; the payload is the event's own ids-only shape (ports/events.ts). */
 const outbox = (tx: Tx, c: PlatComplaint, e: ComplaintReceived | ComplaintClosed) =>
   tx.moduleEvent.create({ data: { firmId: c.firmId, type: e.type, subjectId: c.id, payload: e } });
+
+/** PF-21i: set (not sent: a symbol is no JSON key) on record's answer when it repeats an earlier request with the same
+ *  Idempotency-Key and body, so the route answers 200 instead of 201. */
+export const REPEATED = Symbol("complaint.repeated");
+export const KEY_LOCK = "plat-complaint-key";
+const keyReused = (): never => problem(422, "idempotency-key-reused", "Request key already used", "This request key was already used for a different complaint.");
 
 /** Work to run after the transaction commits (job and mail calls). */
 type After = (() => Promise<unknown>)[];
@@ -232,20 +239,36 @@ export class ComplaintsService {
   /** Records a complaint (key agent/complaint:record): the row, its RECEIVED event, one audit line, the outbox event;
    *  after the commit, the reminder job (keyed by the complaint, so it never queues twice). The complaint is recorded
    *  once committed: a job queue that fails afterwards is answered with `reminderScheduled: false` (never a 500 that
-   *  would make the person record it twice); the overdue list still shows the complaint when its date passes. */
-  async record(ctx: StaffContext, input: unknown): Promise<ComplaintView> {
+   *  would make the person record it twice); the overdue list still shows the complaint when its date passes.
+   *  PF-21i: with `key` (the route's Idempotency-Key, required at the door), the key is locked for the transaction and
+   *  looked up in the firm: found with the same body (canonical SHA-256) and the same recorder → that complaint's view,
+   *  marked REPEATED, and nothing is written (no event, audit line, outbox row or reminder job); found with another body,
+   *  or recorded by someone else → 422 IDEMPOTENCY_KEY_REUSED; not found → recorded as before, keeping the key and hash.
+   *  Without `key` (in-process callers only, e.g. PF-21's suite) it records as before. */
+  async record(ctx: StaffContext, input: unknown, key?: string): Promise<ComplaintView & { reminderScheduled?: boolean; [REPEATED]?: true }> {
     if (!this.has(ctx, COMPLAINT_KEYS.record)) problem(403, "not-allowed", "Not allowed", "Recording a complaint needs the permission to record complaints.");
     const v = parse(RecordComplaint, input);
     this.notFuture({ receivedAt: v.receivedAt });
     const firmId = firmScope(ctx.firmId).firmId, now = this.d.clock.now();
     let reminderScheduled = true;
+    const hash = key === undefined ? null : requestHash(input);
+    let repeated = false;
     const recorded = await this.commit(async (tx, after) => {
+      if (key !== undefined) {
+        await lockRequestKey(tx, KEY_LOCK, firmId, key);
+        const first = await tx.platComplaint.findFirst({ where: firmScope(firmId, { requestKey: key }) });
+        if (first) {
+          if (first.requestHash !== hash || first.recordedBy !== this.actor(ctx)) keyReused();
+          repeated = true;
+          return view(first, now, await this.days(tx, firmId));
+        }
+      }
       if (!(await this.activeStaff(tx, firmId, v.handlerStaffId))) fieldErrors({ handlerStaffId: "choose an active staff member of your firm" });
       const days = await this.days(tx, firmId), due = acknowledgeBy(v.receivedAt, days.cal);
       const c = await tx.platComplaint.create({ data: {
         firmId, subjectKind: v.subjectKind, subjectId: v.subjectId ?? null, complainantName: v.complainantName ?? null, complainantContact: v.complainantContact ?? null,
         receivedAt: v.receivedAt, channel: v.channel, category: v.category, summary: v.summary, handlerStaffId: v.handlerStaffId,
-        acknowledgeBy: due, recordedBy: this.actor(ctx),
+        acknowledgeBy: due, recordedBy: this.actor(ctx), requestKey: key ?? null, requestHash: hash,
       } });
       await tx.platComplaintEvent.create({ data: { firmId, complaintId: c.id, kind: "RECEIVED", at: v.receivedAt, actor: this.actor(ctx), detail: { channel: v.channel, category: v.category, handlerStaffId: v.handlerStaffId } } });
       await this.d.audit.record(tx, { firmId, actor: this.actor(ctx), action: "complaint.record", entity: "plat_complaint", entityKey: c.id, summary: `Complaint recorded (${v.category.toLowerCase()}, by ${v.subjectKind.toLowerCase().replace(/_/g, " ")}); acknowledge by ${due.toISOString()}`, detail: { complaintId: c.id, subjectKind: v.subjectKind, subjectId: v.subjectId ?? null, handlerStaffId: v.handlerStaffId } });
@@ -253,7 +276,7 @@ export class ComplaintsService {
       after.push(() => this.d.jobs.schedule(ACK_REMINDER_JOB, due, { firmId, complaintId: c.id }, { key: ackReminderKey(c.id), firmId }).then(() => undefined, () => { reminderScheduled = false; }));
       return view(c, now, days);
     });
-    return { ...recorded, reminderScheduled };
+    return repeated ? { ...recorded, [REPEATED]: true as const } : { ...recorded, reminderScheduled };
   }
 
   /** One complaint with its events in order, for a person who may read it; otherwise the same 404 as another firm's. */
