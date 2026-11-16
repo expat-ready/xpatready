@@ -16,7 +16,7 @@
 // FO-1b merges second (or FO-3), since neither table is on main yet. Every value seeded here is Sample.
 
 /// What a consultation type is for (AG-4-10). FREE_CONSULT and OTHER may be public; FOLLOW_UP and CASE_REVIEW never are
-/// (rule 3). FO-3a: PAID_CONSULT waits on map row 44 (payment at booking). The public page lists FREE_CONSULT only.
+/// (rule 3). FO-3a: PAID_CONSULT waits on map row 44 (payment at booking). The public page lists FREE_CONSULT and OTHER.
 enum FoConsultationPurpose {
   FREE_CONSULT
   FOLLOW_UP

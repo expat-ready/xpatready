@@ -242,6 +242,32 @@ try {
   const badRange = await T("GET", `/${solo.id}/preview?from=${encodeURIComponent(iso("2026-10-27 00:00"))}&to=${encodeURIComponent(iso("2027-01-27 00:00"))}`);
   ok("FO-3a DW9 fail: more than 62 days → 400", badRange.status === 400, badRange);
 
+  // ------------------------------------------------------------------- breaker's findings (break-report.md, c11de56)
+  const race = await Promise.all(Array.from({ length: 12 }, () => T("POST", "", P.OWNER, { name: "Race me", minutes: 30, modes: ["VIDEO"] })));
+  const raceSlugs = race.map((r) => r.body?.slug);
+  ok("FO-3a break M1 pass: 12 parallel creates of one name all save (201), each with its own slug", race.every((r) => r.status === 201) && new Set(raceSlugs).size === 12 && raceSlugs.includes("race-me") && raceSlugs.includes("race-me-12"), race.map((r) => [r.status, r.body?.slug ?? r.body?.detail]));
+  const before0 = await typeRows();
+  const nul = [await T("POST", "", P.OWNER, { name: "Nul text", minutes: 30, modes: ["VIDEO"], description: "a\u0000b" }), await T("PATCH", `/${solo.id}`, P.OWNER, { description: "bidi \u202e here", version: solo.version }),
+    await T("POST", "", P.OWNER, { name: "Joined\u2060name", minutes: 30, modes: ["VIDEO"] }), await T("POST", "", P.OWNER, { name: "Lone \ud800 half", minutes: 30, modes: ["VIDEO"] })];
+  ok("FO-3a break M2 fail: a NUL byte or bidi override in a description, a word joiner or a lone surrogate in a name → 400 on that field, nothing saved",
+    nul[0].status === 400 && !!nul[0].body.fields?.description && nul[1].status === 400 && !!nul[1].body.fields?.description && nul[2].status === 400 && !!nul[2].body.fields?.name && nul[3].status === 400 && await typeRows() === before0, nul.map((r) => [r.status, r.body?.fields]));
+  const lines2 = await T("POST", "", P.OWNER, { name: "Multi line", minutes: 30, modes: ["VIDEO"], description: "Line one\nLine two\tend" });
+  const emoji = await T("POST", "", P.OWNER, { name: "🙂".repeat(80), minutes: 30, modes: ["VIDEO"] });
+  ok("FO-3a break M2/m3 pass: a description with line breaks and tabs saves; a name of 80 emoji counts 80 characters and saves", lines2.status === 201 && emoji.status === 201, [lines2.status, emoji.body?.detail]);
+  const emDup = await T("POST", `/${emoji.body.id}/duplicate`);
+  ok("FO-3a break m2 pass: duplicating it keeps whole emoji (73 and \" (copy)\", no U+FFFD)", emDup.status === 201 && !emDup.body.name.includes("\ufffd") && [...emDup.body.name].length === 80, emDup.body?.name);
+  const other = await make({ name: "Other chat", purpose: "OTHER" });
+  const otherBook = await pubBook(other.slug, "2026-10-29 16:00", "p5");
+  ok("FO-3a break M3 pass: an OTHER type is public (AG-4-10 rule 4): listed, bookable, marked on the booking page", (await listedSlugs()).includes(other.slug) && otherBook.status === 201 && other.onBookingPage === true, otherBook);
+  const v0 = (await db.foConsultationType.findUniqueOrThrow({ where: { id: other.id } })).version, a0 = await db.auditEvent.count({ where: { entityKey: other.id } });
+  const noop = [await T("PATCH", `/${other.id}`, P.OWNER, { version: v0 }), await T("PATCH", `/${other.id}`, P.OWNER, { name: "Other chat", version: v0 }), await T("POST", `/${other.id}/switch-on`)];
+  ok("FO-3a break m5 fail: a save that changes nothing (only the version, the same name, switching on a type that is on) moves no version and writes no line",
+    noop.every((r) => r.status === 200 && r.body.version === v0) && await db.auditEvent.count({ where: { entityKey: other.id } }) === a0, noop.map((r) => [r.status, r.body?.version]));
+  await db.platformStaff.update({ where: { id: P.READ_ONLY.id }, data: { status: "SUSPENDED" } });
+  const susp = [await T("POST", "", P.OWNER, { name: "Suspended host", minutes: 30, modes: ["VIDEO"], hostStaffIds: [P.READ_ONLY.id] }), await T("PATCH", `/${other.id}`, P.OWNER, { hostStaffIds: [P.OWNER.id, P.READ_ONLY.id], version: v0 })];
+  ok("FO-3a break m6 fail: a suspended staff member cannot be added as a host (create and edit → 400 on hostStaffIds)", susp.every((r) => r.status === 400 && !!r.body.fields?.hostStaffIds), susp.map((r) => [r.status, r.body?.fields]));
+  await db.platformStaff.update({ where: { id: P.READ_ONLY.id }, data: { status: "ACTIVE" } });
+
   // ------------------------------------------------------------------------------------- DW10: audit and the wall
   const lines = await db.auditEvent.findMany({ where: { entity: "fo_consultation_type" }, orderBy: { at: "asc" } });
   const of = (id: string, action: string) => lines.filter((l) => l.entityKey === id && l.action === action);

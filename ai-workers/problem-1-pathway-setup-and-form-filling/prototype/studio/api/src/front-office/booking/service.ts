@@ -210,7 +210,7 @@ export class BookingService {
     if (typeof firmKey !== "string" || typeof slug !== "string" || !FIRM_KEY.test(firmKey) || !SLUG.test(slug)) throw notFound();
     const firm = await this.publicFirm(db, firmKey);
     // A type not shown on the booking page answers like an unknown slug (FO-3pa DW2).
-    const type = await db.foConsultationType.findFirst({ where: firmScope(firm.id, { slug, active: true, deletedAt: null, showOnBookingPage: true, purpose: "FREE_CONSULT" as const }) });
+    const type = await db.foConsultationType.findFirst({ where: firmScope(firm.id, { slug, active: true, deletedAt: null, showOnBookingPage: true, purpose: { in: ["FREE_CONSULT", "OTHER"] as ("FREE_CONSULT" | "OTHER")[] } }) });
     if (!type) throw notFound();
     return { firm, type };
   }
@@ -228,7 +228,7 @@ export class BookingService {
   async publicList(firmKey: string, ip: string) {
     this.limit(`slots:ip:${ip}`, this.limits.slotsPerIp);
     const firm = await this.publicFirm(this.db, firmKey);
-    const types = await this.db.foConsultationType.findMany({ where: firmScope(firm.id, { active: true, deletedAt: null, showOnBookingPage: true, purpose: "FREE_CONSULT" as const }), orderBy: [{ name: "asc" }, { slug: "asc" }], select: { name: true, slug: true, minutes: true, modes: true } });
+    const types = await this.db.foConsultationType.findMany({ where: firmScope(firm.id, { active: true, deletedAt: null, showOnBookingPage: true, purpose: { in: ["FREE_CONSULT", "OTHER"] as ("FREE_CONSULT" | "OTHER")[] } }), orderBy: [{ name: "asc" }, { slug: "asc" }], select: { name: true, slug: true, minutes: true, modes: true } });
     return { firm: firmContact(firm), types };
   }
 

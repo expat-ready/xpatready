@@ -56,9 +56,16 @@ export const WORDS = {
 // ------------------------------------------------------------------------------------------------------------- inputs
 const RESERVED = new Set(["manage"]);
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200b\u200e\u200f\u061c\ufeff]/;
-const Name = z.string({ error: WORDS.name }).trim().min(1, WORDS.name).max(80, WORDS.name)
-  .refine((v) => !CONTROL.test(v) && /[\p{L}\p{N}]/u.test(v), WORDS.nameChars);
+// Control, bidirectional and invisible characters (word joiner, soft hyphen, tag characters), and broken UTF-16 (break m4).
+const INVISIBLE = "\\u2028\\u2029\\u202a-\\u202e\\u2066-\\u2069\\u200b\\u200e\\u200f\\u2060-\\u2064\\u00ad\\u061c\\ufeff\\u{e0000}-\\u{e007f}";
+const CONTROL = new RegExp(`[\\u0000-\\u001f\\u007f-\\u009f${INVISIBLE}]`, "u");
+/** A description may hold line breaks and tabs, nothing else of these (break M2: a NUL byte reached the database). */
+const TEXT_CONTROL = new RegExp(`[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f-\\u009f${INVISIBLE}]`, "u");
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+/** Characters as people count them (code points), so an emoji is one (break m3). */
+const chars = (v: string) => [...v].length;
+const Name = z.string({ error: WORDS.name }).trim().refine((v) => chars(v) >= 1 && chars(v) <= 80, WORDS.name)
+  .refine((v) => !CONTROL.test(v) && !LONE_SURROGATE.test(v) && /[\p{L}\p{N}\p{So}]/u.test(v), WORDS.nameChars);
 const Minutes = z.number({ error: WORDS.minutes }).int(WORDS.minutes).min(5, WORDS.minutes).max(480, WORDS.minutes);
 const MODES = ["VIDEO", "PHONE", "IN_PERSON"] as const;
 export const PURPOSES = ["FREE_CONSULT", "FOLLOW_UP", "CASE_REVIEW", "OTHER"] as const;
@@ -66,7 +73,7 @@ export const COLOURS = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"] as const
 const distinct = <T,>(a: T[]) => new Set(a).size === a.length;
 const Fields = {
   name: Name,
-  description: z.string().max(1000, WORDS.description).nullable(),
+  description: z.string().refine((v) => chars(v) <= 1000, WORDS.description).refine((v) => !TEXT_CONTROL.test(v) && !LONE_SURROGATE.test(v), "Description cannot hold control or invisible characters.").nullable(),
   colour: z.enum(COLOURS, "Choose one of the eight colours."),
   purpose: z.enum(PURPOSES, "Choose a purpose: Free consultation, Follow-up, Case review or Other."),
   minutes: Minutes,
@@ -105,7 +112,9 @@ export function slugOf(name: string): string {
 }
 
 // -------------------------------------------------------------------------------------------------------------- views
-const isPublic = (t: Row) => t.active && t.showOnBookingPage && t.purpose === "FREE_CONSULT" && !t.deletedAt;
+/** AG-4-10 rules 1, 4: FREE_CONSULT and OTHER are public (no price exists yet, so OTHER takes no payment). */
+export const PUBLIC_PURPOSES = ["FREE_CONSULT", "OTHER"] as const;
+const isPublic = (t: Row) => t.active && t.showOnBookingPage && (PUBLIC_PURPOSES as readonly string[]).includes(t.purpose) && !t.deletedAt;
 const view = (t: Row) => ({
   id: t.id, slug: t.slug, name: t.name, description: t.description, colour: t.colour, purpose: t.purpose, minutes: t.minutes, modes: t.modes,
   hostStaffIds: t.hostStaffIds, active: t.active, showOnBookingPage: t.showOnBookingPage, allowReschedule: t.allowReschedule, allowCancel: t.allowCancel,
@@ -119,6 +128,8 @@ const AUDITED = ["slug", "name", "description", "colour", "purpose", "minutes", 
 const FREE_TEXT = new Set(["description", "meetingLink"]);
 type Scalar = string | number | boolean | null | (string | number | boolean | null)[];
 const EMAILISH = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+/** A type's name as the audit summary says it (an email-shaped name is not kept, break m1). */
+const said = (name: string) => EMAILISH.test(name) ? "(a name shaped like an email address)" : `"${name}"`;
 const auditValue = (k: string, v: unknown): Scalar => {
   if (v instanceof Date) return v.toISOString();
   if (FREE_TEXT.has(k)) return v == null ? null : `${String(v).length} characters`;
@@ -138,6 +149,9 @@ function diff(before: Row | null, after: Row | null): Record<string, Scalar> {
   return { fields: changed, ...out };
 }
 
+/** The per-firm transaction lock that slug choices take (the same firm's other types are read after it). */
+const slugLock = (tx: Tx, firmId: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fo-booking-type-slug:${firmScope(firmId).firmId}`}))`;
+
 // ------------------------------------------------------------------------------------------------------------ service
 export class BookingTypesService {
   constructor(private readonly db: PrismaClient, private readonly booking: BookingService, private readonly ports: TypesPorts) {}
@@ -155,7 +169,7 @@ export class BookingTypesService {
   async create(ctx: StaffContext, body: unknown) {
     const b = parse(CreateBody, body);
     const { slug: asked, ...fields } = b;
-    return view(await this.insert(ctx, asked, { ...fields, hostStaffIds: fields.hostStaffIds ?? [] }, "booking_type.created", `Booking type "${b.name}" created.`));
+    return view(await this.insert(ctx, asked, { ...fields, hostStaffIds: fields.hostStaffIds ?? [] }, "booking_type.created", `Booking type ${said(b.name)} created.`));
   }
 
   async update(ctx: StaffContext, id: string, body: unknown) {
@@ -175,11 +189,11 @@ export class BookingTypesService {
 
   async duplicate(ctx: StaffContext, id: string) {
     const t = await this.find(this.db, ctx.firmId, id);
-    const name = `${t.name.slice(0, 73).trimEnd()} (copy)`;
+    const name = `${[...t.name].slice(0, 73).join("").trimEnd()} (copy)`;
     const copy = { name, description: t.description, colour: t.colour, purpose: t.purpose, minutes: t.minutes, modes: t.modes, hostStaffIds: t.hostStaffIds, active: t.active,
       showOnBookingPage: t.showOnBookingPage, allowReschedule: t.allowReschedule, allowCancel: t.allowCancel, slotIntervalMinutes: t.slotIntervalMinutes, meetingLink: t.meetingLink,
       gapBeforeMinutes: t.gapBeforeMinutes, gapAfterMinutes: t.gapAfterMinutes, minNoticeMinutes: t.minNoticeMinutes, windowDays: t.windowDays, selfServiceLimitMinutes: t.selfServiceLimitMinutes };
-    return view(await this.insert(ctx, undefined, copy, "booking_type.duplicated", `Booking type "${t.name}" duplicated as "${name}".`, t.id));
+    return view(await this.insert(ctx, undefined, copy, "booking_type.duplicated", `Booking type ${said(t.name)} duplicated as ${said(name)}.`, t.id));
   }
 
   /** AG-4-8: the slots a visitor would see, in `tz` (the firm's zone by default), and per empty day one reason. Reads only. */
@@ -236,9 +250,10 @@ export class BookingTypesService {
     return db.foBooking.count({ where: firmScope(firmId, { typeId, status: { in: ["SCHEDULED", "RESCHEDULED"] as const }, startsAt: { gt: this.ports.clock.now() } }) });
   }
 
+  /** Hosts being added are active staff of the firm (a host already on the type stays, even if suspended since; break m6). */
   private async checkHosts(tx: Tx, firmId: string, ids: string[] | undefined) {
     if (!ids?.length) return;
-    const n = await tx.platformStaff.count({ where: firmScope(firmId, { id: { in: ids } }) });
+    const n = await tx.platformStaff.count({ where: firmScope(firmId, { id: { in: ids }, status: "ACTIVE" as const }) });
     if (n !== ids.length) throw fieldError(400, "hostStaffIds", WORDS.hosts);
   }
 
@@ -249,6 +264,7 @@ export class BookingTypesService {
       try {
         return await this.db.$transaction(async (tx) => {
           await this.checkHosts(tx, ctx.firmId, data.hostStaffIds as string[] | undefined);
+          await slugLock(tx, ctx.firmId);   // one slug choice at a time per firm, so parallel creates of one name all succeed (break M1)
           const slug = asked ?? await this.freeSlug(tx, ctx.firmId, slugOf(String(data.name)));
           const row = await tx.foConsultationType.create({ data: { ...data, firmId: firmScope(ctx.firmId).firmId, slug, createdByStaffId: ctx.staffId } });
           await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action, entity: "fo_consultation_type", entityKey: row.id, summary,
@@ -258,7 +274,7 @@ export class BookingTypesService {
       } catch (e) {
         if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")) throw e;
         if (asked !== undefined) throw fieldError(409, "slug", WORDS.slugUsed, "SLUG_USED");
-        if (attempt >= 2) throw e;   // a made slug lost a race: try the next free one
+        if (attempt >= 2) throw fieldError(409, "slug", WORDS.slugUsed, "SLUG_USED");   // not reached under the lock; never a raw database error
       }
     }
   }
@@ -275,11 +291,14 @@ export class BookingTypesService {
         const t = await this.find(tx, ctx.firmId, id);
         await tx.$queryRaw`SELECT 1 FROM fo_consultation_type WHERE firm_id = ${firmScope(ctx.firmId).firmId}::uuid AND id = ${t.id}::uuid FOR UPDATE`;
         const before = await this.find(tx, ctx.firmId, t.id);
+        if (data.slug !== undefined) await slugLock(tx, ctx.firmId);
         if (version !== undefined && before.version !== version) throw problem(409, "stale-version", "Changed by someone else", WORDS.stale, { code: "STALE_VERSION", version: before.version });
-        if (Array.isArray(data.hostStaffIds)) await this.checkHosts(tx, ctx.firmId, data.hostStaffIds as string[]);
+        if (Array.isArray(data.hostStaffIds)) await this.checkHosts(tx, ctx.firmId, (data.hostStaffIds as string[]).filter((h) => !before.hostStaffIds.includes(h)));
+        const asked = Object.entries(data).filter(([k]) => k !== "deletedAt");
+        if (!("deletedAt" in data) && asked.every(([k, v]) => JSON.stringify(v) === JSON.stringify(before[k as keyof Row]))) return before;   // nothing to change (break m5)
         const after = await tx.foConsultationType.update({ where: { id: before.id }, data: { ...data, version: { increment: 1 } } });
         await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action, entity: "fo_consultation_type", entityKey: after.id,
-          summary: `Booking type "${after.name}" ${word}.`, detail: diff(before, after) });
+          summary: `Booking type ${said(after.name)} ${word}.`, detail: diff(before, after) });
         return after;
       });
     } catch (e) {
