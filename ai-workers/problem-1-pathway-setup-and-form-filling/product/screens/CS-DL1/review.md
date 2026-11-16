@@ -37,3 +37,45 @@ Deadlines a client can lose a case on, and part 2's DW11 builds on this. **Fix:*
 
 ## Could not check
 Full `ci` and the DB suites (PF-21 ×3, C6.17 migration/acceptance, demo reset, checkpoint load): I relied on the PR's pasted results. No screen to walk (D17/D20 stay with the founder). There was no firm in the isolated DB (`platform_firm` is empty), so I could not show a live closed day.
+
+## Re-review of 08ec00e46
+Reviewer, fresh Opus 5.5 context, 16 Nov. P-277: read only `git diff a5f25f46e..08ec00e46 -- prototype` (4 files: `case-stages.ts`, `calendar/working-days.ts`, `complaints/business-days.ts`, `tests/check_csdl1_deadlines.ts`). Probes and mutations ran on a scratch export of 08ec00e46 (`git archive`; the four files `cmp`-identical to the checkout).
+
+**Run.** `check_csdl1_deadlines.ts` **34/34**, exit 0, 2.3 s. `check_c617_stages.ts` **32/32**. `tsc -p api/tsconfig.json`: no error in any changed file or caller. Only two importers of `complaints/business-days.ts` remain (`check_pf21_complaints.ts:18` takes `acknowledgeBy`, `check_pf21v_views.ts:40` takes `acknowledgeBy`, `BusinessDayTally`, `businessDaysBetween`), and both are served by the trimmed file. I relied on the builder's PF-21 107, PF-21w 83, PF-21v 54 and FO-2 113 (they need a DB).
+
+**Reference check of `countBack`.** I compared it with an unbounded open-day walk over 450 cases: hours Fri / Mon / Mon-Wed / Mon-Fri / Wed+Sat; closed days none, a 366-weekday run, or 366 spread; n = 0, 1, 2, 7, 52, 70, 100, 400, 1000, 2600; from 8 Mar, 7 Mar and 31 Dec. **0 mismatches.** The worst case (n=2600, Friday-only, 366 closed days) takes 82-113 ms.
+
+### The fixes
+| Finding | Closed? | Evidence (mutation → suite) |
+|---|---|---|
+| **M1** walk bound (AG-7-94 r5/r6) | **Yes** | The bound `7 × (n + 368)` + 7 per closed day is sound: each week holds an open-weekday slot, and the list has at most 366 dates. The 366-run repro and Friday-only n=70 now match the reference. Old bound + no closed term: **2 FAIL** (262-run, Friday n=70). Old bound alone: 1 FAIL. `7(n+1)`, no closed term: 2 FAIL. Removing the n=0 date check: 1 FAIL. |
+| breaker m4 / review m3, no-open-weekday fallback | **Yes** | It now counts Mon-Fri weekdays: n=5 before Mon 8 Mar gives Mon 1 Mar, earlier than calendar days, as "duplicate beats a miss" asks. DW2's fail case asserts this and a Saturday-only firm. Calendar-day fallback: 1 FAIL. `?? d`: 2 FAIL. |
+| breaker m1, 500 on a refused stored date | **Yes** | `showDeadline` catches and shows no weekday, no mark, not Missed. Without the catch the suite crashes with a RangeError (exit 1). |
+| breaker m2, year 0000 | **Yes** | `calendarDate` refuses anything before 0001-01-01. Removing the bound: 2 FAIL. |
+| breaker m3, walk into year −1 | **Yes** | `walkBack` stops at 0001-01-01. Removing the guard: 1 FAIL. |
+| review m1, the view's wiring | **Yes, mostly** | `deadlineDay` runs the real `readFirmCalendar` over a fake reader that answers only firm A, inside `withFirm`. `NO_ID`: 1 FAIL. UTC today: 1 FAIL. `new Date()`: 2 FAIL. Residual: the service's one call site is not covered (n2). |
+| review m2, re-exports trimmed | **Yes** | Only `BusinessDayTally` and `businessDaysBetween` are re-exported. DW5 asserts the other names are absent. Re-adding `localDate`: 1 FAIL. Review m5's untested "not in calendar/" claim is now asserted too. |
+
+### M2 (the firm's calendar on x-actor routes): still open, no ruling on the PR
+The PR's "Question for the tech lead" (comment of 16:01Z) has no answer yet. **On its own terms the code is acceptable as written.** The fallback never crosses the wall and leaks nothing. The defaults are documented (`case-stages.ts:70-73`), and the firm path is now proven by the wiring test whenever a firm is in scope. Option 1 needs `firm-scope.ts`, which is outside the touch list, so the builder was right to ask and not add it.
+
+**It still blocks approval until the ruling is recorded.** The first review set the condition: Major until a written ruling, Minor once option 2 is recorded. The bar is Approve only with no open Major. The brief's "Missed … in the firm's zone" and AG-7-94 r3's "(closed day)" are not met on the running route. That is a scope call for the Lead (P-628), not the reviewer's to make.
+* **Option 2 recorded:** no code change is needed. This review becomes **Approve for 08ec00e46** (M2 drops to a Minor that names the follow-up row).
+* **Option 1:** a new commit, and a re-review of only that diff.
+
+This is review round 2. Per P-277 the Lead decides from here.
+
+### Remaining Minors (none block)
+* **n1:** the old `calendar()` JSDoc is now orphaned at `case-stages.ts:85-87` and attaches to `reach`. Delete it, since `deadlineDay` carries the same words.
+* **n2:** `views()` calling `deadlineDay` is not under test. Replacing the call with `readFirmCalendar(this.db, NO_ID)` and UTC today passes 34/34. It is one line and visible in a grep, so this is acceptable. A service-level case with `service.clock = FakeClock` would pin it.
+* **n3:** `showDeadline`'s bare `catch {}` swallows any error from `dayMark`, not only `NO_SUCH_DATE`. Consider `catch (e) { if (e instanceof RangeError && e.message === NO_SUCH_DATE) return null; throw e; }` so a future calendar bug is not shown as "no date".
+* **n4:** the `7 × closedDays.length` term is redundant under the 366 cap (dropping it passes 34/34, and the reference check still matches). It is harmless as cover for lists stored before validation. The 262-run test does not sit at the 366 maximum (a `7(n+260)` bound passes the suite), but my 366-run reference cases pass.
+* **n5:** the PR body is stale. It still says "28/28" and "re-exports the moved names". It should say 34/34 and two names.
+* Still open from the first review: `open-minutes.ts:3`'s comment (Lead B's file).
+
+### Could not check
+A live walk of 08ec00e46. The :4471 process started at 16:09, before the 16:29 commit, and is not in watch mode, so it serves the earlier code. Starting a second reviewer copy on another qa port was refused by the session's permission check. The changed code is view-only and covered by the function and wiring tests above. The DB suites and full `ci` were not run here (I relied on the builder's results).
+
+**Journey (re-score):** 7.5/10, fail. The two low criteria wait on the PR's Questions 1 and 2 (`journey-test-reviewer-2026-11-16.md`, re-run section).
+
+**Verdict: Changes requested** for 08ec00e46. Only M2 is open, pending the tech lead's written ruling on Question 1. The code needs no change for option 2; on that ruling this becomes Approve for 08ec00e46.

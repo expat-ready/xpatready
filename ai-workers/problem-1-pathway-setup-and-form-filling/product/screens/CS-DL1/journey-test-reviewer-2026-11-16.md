@@ -38,3 +38,17 @@ Read-only view: nothing written. The calendar is read once per view through `rea
 
 ## Not tested
 A visible-browser walk, axe and the 400/1024/1440 widths (no changed page). A real screen reader. An intended user's unaided walk (D17/D20 stay with the founder). Full CI and the DB suites (I relied on the PR's results).
+
+## Re-run on 08ec00e46 (16 Nov)
+I walked the journeys again through the functions and the new wiring test. The live :4471 process predates the commit (started 16:09, commit 16:29), and a second copy could not be started here. So there was no live walk of the new head.
+* **J4, past date shows Missed:** `deadlineDay` inside firm A's scope (fake settings reader) gives today = Mon 8 Mar in Tokyo, so Sun 7 Mar is Missed and Mon 8 Mar shows "(closed day)". With no firm in scope it uses Toronto and no mark. **Held at the wiring.** On the x-actor route it is still the defaults (M2, waiting on Question 1).
+* **J5, a stored refused date (31 Feb, 0000-01-01, +010000):** no weekday, no mark, not Missed, never a 500. **Held** (previously a 500 path).
+* **J6, count back:** 450 cases match an unbounded reference walk (sparse hours, 366 closed days, n up to 2600; ≤113 ms). A firm open on no weekday counts Mon-Fri. **Held** (previously broken).
+* J2 (a firm closed day on the route) and J9 (the strip) are unchanged: **open**, waiting on Questions 1 and 2.
+
+| Criterion | Was | Now | Why |
+|---|---|---|---|
+| Correct data | ½ | 1 | M1 fixed; reference check 0/450 mismatches |
+| Error recovery | 1 | 1 | Also no 500 on a refused stored date |
+| All others | as above | unchanged | Task ½ and feedback ½ (M2); next step ½, visual ½, accessibility ½ (no screen yet, Question 2) |
+| **Total** | 7 | **7.5 / 10** | **Fail (below 8; no 0).** The rest is held by the two open Questions, not by code in this diff |

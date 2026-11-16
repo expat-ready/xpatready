@@ -15,7 +15,7 @@ import { checkKeyDetails, deadlineOf, fmtDate, nextOf, STAGE_WORDS, type StageSt
 import type { Snapshot } from "../../engine/snapshot.ts";
 import { systemClock, type ClockPort } from "../../ports/clock.ts";
 import { actorOf, Audit, CaseRead, Db, fail, type Actor } from "./core.ts";
-import { dayMark, localDate, readFirmCalendar, type FirmCalendar } from "./platform/calendar/working-days.ts";
+import { dayMark, localDate, NO_SUCH_DATE, readFirmCalendar, type FirmCalendar } from "./platform/calendar/working-days.ts";
 import { currentFirm } from "./platform/firm-scope.ts";
 import { Programs } from "./programs.ts";
 import { readSpec } from "./routes-data.ts";
@@ -60,7 +60,7 @@ async function writeSameEveryStage(tx: Tx, c: Reached, snap: Snapshot, defs: { f
 export type DeadlineShown = NonNullable<CaseStageView["deadline"]> & { weekday: string | null; mark: "weekend" | "closed day" | null; shown: string | null; missed: boolean };
 export function showDeadline(d: CaseStageView["deadline"], cal: FirmCalendar, today: string): DeadlineShown | null {
   if (!d) return null;
-  const day = d.due ? (() => { try { return dayMark(d.due, cal); } catch { return null; } })() : null;
+  const day = d.due ? (() => { try { return dayMark(d.due, cal); } catch (e) { if (e instanceof RangeError && e.message === NO_SUCH_DATE) return null; throw e; } })() : null;
   // A date the calendar refuses (a stored value outside its years: breaker m1) shows as no date, never a 500 of the case.
   if (!d.due || !day) return { ...d, weekday: null, mark: null, shown: null, missed: false };
   const { weekday, mark } = day;
@@ -81,10 +81,6 @@ export class CaseStagesService {
   /** P-607: today comes from the clock port (a suite sets a FakeClock here). */
   clock: ClockPort = systemClock;
   constructor(@Inject(Runtime) private readonly r: Runtime, @Inject(Db) private readonly db: Db, @Inject(Audit) private readonly audit: Audit, @Inject(Programs) private readonly programs: Programs) {}
-
-  /** The firm's calendar (AG-7-99: one office → the firm's), for the platform firm the request runs as (PF-12's walls).
-   *  A request with no platform firm in scope (x-actor) reads no setting, so the settings' defaults apply (Mon-Fri,
-   *  09:00-17:00, no closed days, America/Toronto); the firm is never looked up across the wall. */
 
   private reach(actor: Actor, caseId: string) { return this.r.reach(actor, UUID.test(caseId) ? caseId : NO_ID, "officer"); }
 
