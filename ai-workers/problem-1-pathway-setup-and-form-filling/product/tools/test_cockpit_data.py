@@ -554,7 +554,9 @@ class Health(unittest.TestCase):
         self.assertEqual(st, {1: "green", 2: "page", 3: "green", 4: "green", 5: "green", 6: "red", 7: "amber"})
         self.assertEqual(h["light"], "red")
         six = h["items"][5]
-        self.assertEqual((six["detail"], six["owner"]), ("older than 48 h: QA-9", "qa lane via the current Lead"))
+        self.assertEqual((six["detail"], six["owner"]), ("open Major or Critical bugs on capabilities marked proven, older than 48 h: QA-9",
+                                                  "current Lead (builders and qa fix)"))
+        self.assertEqual(six["bugs"][0]["id"], "QA-9")
 
     def test_lead_input_missing_stale_hot(self):
         _, st = self.states(snap_with(drop=["lead-input.json"]))
@@ -578,6 +580,48 @@ class Health(unittest.TestCase):
         gr[1]["conclusion"] = "failure"
         _, st = self.states(snap_with({"meta.json": meta, "github/guard_runs.json": gr}))
         self.assertEqual((st[3], st[4]), ("red", "red"))
+
+    def test_every_item_not_green_says_what_to_do_and_who(self):
+        # 16 Nov (founder: "a lot of red health stuff ... it doesn't show me anything"): amber items carry an action too
+        for d in (FIX, snap_with(drop=["lead-input.json", "github/guard_runs.json"])):
+            h, _ = self.states(d)
+            for i in h["items"]:
+                if i["state"] in ("red", "amber"):
+                    self.assertTrue(i["action"] and i["owner"], i)
+                if i["state"] == "green":
+                    self.assertIsNone(i["action"], i)
+
+    def test_records_lag_counts_files_main_never_had_not_commits(self):
+        # 16 Nov: board 7 said "1,114 commits on lead/… not on main" although records reach main as one rebuilt commit on a
+        # fresh branch (P-505). Old rule: rev-list main..branch. New rule: files whose branch version main never had.
+        g = tempfile.mkdtemp(prefix="cockpit-git-")
+        def git(*a, at="2026-11-10T10:00:00+05:30"):
+            env = dict(os.environ, GIT_AUTHOR_DATE=at, GIT_COMMITTER_DATE=at, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@e",
+                       GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@e", GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+            return subprocess.run(["git", "-C", g, *a], capture_output=True, text=True, env=env, check=True).stdout.strip()
+        def put(name, text):
+            with open(os.path.join(g, name), "w") as f:
+                f.write(text)
+        git("init", "-q", "-b", "main")
+        put("STATE.md", "s0\n"); put("BACKLOG.md", "b0\n"); git("add", "-A"); git("commit", "-qm", "base")
+        git("checkout", "-qb", "lead")
+        put("STATE.md", "s1\n"); git("commit", "-qam", "lead 1", at="2026-11-11T10:00:00+05:30")
+        put("BACKLOG.md", "b1\n"); git("commit", "-qam", "lead 2", at="2026-11-12T10:00:00+05:30")
+        git("checkout", "-q", "main")                         # records rebuilt on main: same content, a different commit
+        put("STATE.md", "s1\n"); put("BACKLOG.md", "b1\n"); git("commit", "-qam", "records rebuilt on main", at="2026-11-13T10:00:00+05:30")
+        put("app.ts", "x\n"); git("add", "-A"); git("commit", "-qm", "app change", at="2026-11-13T11:00:00+05:30")
+        git("checkout", "-q", "lead")
+        put("STATE.md", "s2\n"); git("commit", "-qam", "lead 3", at="2026-11-14T10:00:00+05:30")
+        old_root, cd.ROOT = cd.ROOT, g
+        try:
+            self.assertEqual(git("rev-list", "--count", "main..lead"), "3")          # what the old rule reported
+            n, oldest, files = cd.records_lag("lead", "main")
+            self.assertEqual((n, [f["path"] for f in files]), (1, ["STATE.md"]))   # BACKLOG's b1 is on main; STATE's s2 is not
+            self.assertEqual(cd.parse_iso(oldest), cd.parse_iso("2026-11-14T10:00:00+05:30"))
+            put("STATE.md", "s1\n"); git("commit", "-qam", "lead 4: back to main's version", at="2026-11-14T12:00:00+05:30")
+            self.assertEqual(cd.records_lag("lead", "main")[:2], (0, None))
+        finally:
+            cd.ROOT = old_root
 
 
 class Contract(unittest.TestCase):
