@@ -92,3 +92,33 @@ All five hold, except that the hostile-input surface is wider than the gate allo
 * `run-suites.sh --changed`: there is no Postgres here. The change to `ports/render.ts` only adds exports.
 * A real firm template (only the `buildDocx` sample was converted).
 * D17 and D20 stay with the founder.
+
+## Re-review: commit 4d4a3673 (diff 42ba3563..4d4a3673, `prototype/` only)
+**What I ran:**
+* CI part: **41 passed, 0 failed**.
+* Live part, on `pffp-got` with the four flags: **53 passed, 0 failed**.
+* `check-port-contracts.mjs`: 0 problems.
+
+**Each live check fails when its flag is removed.** I ran the live part against throwaway containers from the same digest, each with one flag left out:
+* Without `--api-disable-download-from`: **52/1**. The downloadFrom check fails with "Unable to download file from…".
+* Without `--webhook-disable`: **52/1**. The webhook check fails with status 204.
+* The builder's own run with the old three flags gave 52/1 on the pdfengines 404 check.
+
+**Status of each finding:**
+| Finding | Status |
+|---|---|
+| M1 | **Fixed.** `gotenberg.ts:19` sets four flags, and the test checks the exact set. A live 404 check covers 4 Chromium routes and 8 pdfengines routes. |
+| m1 | **Fixed.** The constructor (`gotenberg.ts:53-54`) refuses -1, NaN, 0 and 1.5 (tested), so `toPdf` cannot reach a bad `AbortSignal.timeout`. |
+| m2 | **Fixed.** A dribbled body gives TIMEOUT in under 1.5 s. The output cap gives FAILED when over and the PDF when under. Webhooks off is checked live (200 `%PDF-`, never 204). |
+| m3 | **Fixed.** The check requires the 400 "no form file found" answer. It fails when downloadFrom is on (above). |
+| Break F1 | **Fixed.** `plainBytes` copies by the array's real length. A 20 MB array that reports 4 bytes gets TOO_LARGE and is never sent, on both adapters. |
+| Break F2 | **Fixed.** `CI !== undefined`, so `""`, `"false"` and `"true"` are all refused (tested). |
+| m4 | Open, as a note for PF-8's Done when (agreed). |
+
+**New Minors (non-blocking, no re-review needed):**
+* **n1.** `gotenberg.ts:25`: `pdfOutputCap` is an exported, mutable, module-wide test hook. Any importer can change the production cap. Prefer a `maxOutputBytes` constructor option, validated like the other limits.
+* **n2.** `ports/render.ts:69`: `plainBytes` copies the whole input before the size check, so a very large input is copied once before it is refused. The input comes only from our own API, so the impact is low.
+
+**Verdict on 4d4a3673: Approve.** No Blocker or Major is open. The journey score rises to 10/10: error recovery and trust and sources are now 1 each.
+
+Reviewer: Approve 4d4a367358dd2c453102bd477be63df3b709dcfe
