@@ -9,7 +9,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { createVerify } from "node:crypto";
 import { normaliseAddress, type ConsentPort } from "../../../../../../ports/consent.ts";
-import { firmScope } from "../../../firm-scope.ts";
+import { enterFirm, firmScope } from "../../../firm-scope.ts";
 import { REF_HEADER, SES_PROVIDER } from "./ses.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -89,6 +89,7 @@ export class SesNotices {
     let firmId: string;
     try { firmId = firmScope(firm).firmId; } catch { return "ignored"; }
     if (!UUID.test(outbox)) return "ignored";
+    enterFirm(firmId);   // PF-12: a verified notice names its firm (tags or reference header); the outbox row must still match
     return this.d.db.$transaction(async (tx) => {
       const row = await tx.msgOutbox.findFirst({ where: firmScope(firmId, { id: outbox.toLowerCase(), providerId: `${SES_PROVIDER}:${sesId}` }), select: { id: true, channel: true, address: true } });
       if (!row) return "ignored" as const;

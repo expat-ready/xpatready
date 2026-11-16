@@ -12,7 +12,7 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:cr
 import type { ConsentPort } from "../../../../../../ports/consent.ts";
 import type { Rendered } from "../../../../../../ports/messages.ts";
 import type { Secret } from "../../../config/secret.ts";
-import { firmScope } from "../../../firm-scope.ts";
+import { enterFirm, firmScope } from "../../../firm-scope.ts";
 
 type Tx = Prisma.TransactionClient;
 export const UNSUBSCRIBE_PATH = "/api/public/unsubscribe";
@@ -84,6 +84,7 @@ export class Unsubscribe {
     const ids = this.d.tokens.open(token);
     if (!ids) return null;
     const { firmId } = firmScope(ids.firmId);
+    enterFirm(firmId);   // PF-12: the sealed token names the firm; the door runs as it (no bypass needed)
     const row = await db.msgOutbox.findFirst({ where: firmScope(firmId, { id: ids.outboxId, channel: "EMAIL" as const, class: { in: ["MARKETING" as const, "SERVICE" as const] }, state: { in: ["SENT" as const, "DELIVERED" as const, "BOUNCED" as const] } }), select: { id: true, subjectKind: true, subjectId: true } });
     if (!row?.subjectKind || !row.subjectId) return null;
     const by = `system:unsubscribe:${row.id}`;
@@ -101,6 +102,8 @@ export class Unsubscribe {
 
   /** POST (the button, or the mail client's one click): withdraws email marketing once; null when the link does not work. */
   async confirm(token: string): Promise<string | null> {
+    const opened = this.d.tokens.open(token);
+    if (opened) enterFirm(opened.firmId);   // PF-12: before the transaction, which keeps the firm it opens with
     const done = await this.d.db.$transaction(async (tx) => {
       const ids = this.d.tokens.open(token);
       if (!ids) return null;
