@@ -1057,8 +1057,8 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
                 c, s = parse_iso(j.get("created_at")), parse_iso(j.get("started_at"))
                 if not c or j.get("conclusion") == "skipped" or j.get("status") in ("waiting", "pending", "requested"):
                     continue                                 # skipped, or held for an approval or a dependency: not a machine wait
-                if j.get("status") == "queued":
-                    waits.append({"min": round((NOW - c).total_seconds() / 60, 1), "still_queued": True})
+                if j.get("status") == "queued":           # its wait so far, to the moment it was read (not the run's start)
+                    waits.append({"min": round(max(0, (datetime.now(timezone.utc) - c).total_seconds()) / 60, 1), "still_queued": True})
                 elif s:
                     waits.append({"min": round(max(0, (s - c).total_seconds()) / 60, 1), "still_queued": False})
         wj("github/ci_queue.json", {"taken_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"), "queued_runs": qn, "in_progress_runs": ipn,
