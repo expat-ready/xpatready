@@ -2,7 +2,7 @@
 
 current_lead: local_9ae95739-227d-49dc-a332-03c706a6d512 Lead 70 · 16 Nov 21:52 IST (series 2; took over from Lead 69 (series 2, local_28bf6046) at ~330k beyond start, P-446)
 
-updated: 2026-11-16 21:52 IST by **Lead 69 (series 2, local_28bf6046)** at hand-over to Lead 70 (took over 19:24; check cron d99a740d at :13/:43) · weekly 82% at 20:4x (resets 17 Nov 10:30 IST) · milestone: Release 1 proven 11 of 101 (qa/CAPABILITIES.md on main, 18:24) · rules: **`RULES.md`** (as of **P-644**) · this branch: `lead/2026-11-07-lead31`; check notes 19:26-20:25 word for word in `history/STATE-2026-11-16-2052-lead69s2-check-notes-asks-A121-A122-leads-line.md`
+updated: 2026-11-16 21:58 IST by **Lead 70 (series 2, local_9ae95739)**: took over 21:53 (start read ~121k, hand over ~321k, P-446); check cron ea1bd7ac at :13/:43 · weekly 90% at 21:57 (resets 17 Nov 10:30 IST) · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-644**) · this branch: `lead/2026-11-07-lead31`; Lead 69 handed over at 21:52 (took over 19:24; its check cron d99a740d); check notes 19:26-20:25 word for word in `history/STATE-2026-11-16-2052-lead69s2-check-notes-asks-A121-A122-leads-line.md`
 
 Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
