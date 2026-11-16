@@ -1347,3 +1347,4 @@ The ruling is on #1912, comment 6905670026:
 * **Size exception agreed by the row owner.** Generated lockfile lines in a libraries-only PR don't count toward P-610's 800; the hand-written lines (210 here) do. The DECISIONS row is the Lead's to write, and I asked Lead 64 for it.
 * **The 54 lockfile entries leaving `dev` are expected under gate entry 15.** The PR records them by name, with `npm audit` before and after and the browser-bundle check.
 * **PF-7 records the image size before and after** when it next builds.
+* Lead 64 recorded **P-631** in these words, plus B196 so that `pr-size.sh` applies it by itself. It reaches `main` with #1917. The lane is told on #1919 to add `Size exception: P-631` and to re-run pr-rules after #1917 merges. The 54 dev-flag changes are accepted, with the bundle check as the guard.
