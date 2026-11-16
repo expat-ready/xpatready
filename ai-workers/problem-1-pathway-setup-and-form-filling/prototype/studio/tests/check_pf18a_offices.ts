@@ -16,14 +16,12 @@ import { join } from "node:path";
 import { runContract } from "../ports/contracts/contract.ts";
 import { officeClockPortContract, type OfficeClockHarness } from "../ports/contracts/office-clock-port.contract.ts";
 import { fakeOfficeClock, type OfficeClockValues } from "../ports/offices.ts";
-
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
 const NEW = "20261116190000_pf18a_offices";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const EMPTY = `xr_studio_pf18a_empty_${process.pid}`, DEMO = `xr_studio_pf18a_demo_${process.pid}`, BARE = `xr_studio_pf18a_bare_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
 const WORK = join(STUDIO, "var", `pf18a-check-${process.pid}`);
-
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 500)}` : ""}`); };
 const psql = (db: string, args: string[], user = "xr_studio") => execFileSync(join(BIN, "psql"), [`postgresql://${user}@127.0.0.1:54329/${db}`, "-v", "ON_ERROR_STOP=1", "-q", ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -31,7 +29,6 @@ const sql = (db: string, q: string, user?: string) => psql(db, ["-Atc", q], user
 const refused = (db: string, q: string, re: RegExp, user?: string) => { try { sql(db, q, user); return false; } catch (e) { return re.test(String((e as { stderr?: string }).stderr ?? e)); } };
 /** As the API's role with a session firm (or none), as PF-12's own check does. */
 const asApp = (db: string, firm: string | null, q: string) => sql(db, `begin; ${firm ? `select set_config('app.firm_id', '${firm}', true);` : ""} ${q}; commit;`, "xr_app").split("\n").filter((l) => l !== "" && l !== firm).join("\n");
-
 function officesDiff(db: string): string[] {
   mkdirSync(WORK, { recursive: true });
   const cfg = join(WORK, `prisma.${db}.config.ts`);
@@ -40,13 +37,11 @@ function officesDiff(db: string): string[] {
   if (r.status !== 0) throw new Error(`migrate diff: ${r.stdout}${r.stderr}`);
   return `${r.stdout}`.split("\n").filter((l) => /platform_office|platform_staff_office/.test(l));
 }
-
 const all = readdirSync(MIG).filter((d) => /^\d{14}_/.test(d)).sort();
 for (const db of [EMPTY, DEMO, BARE]) { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", db]); execFileSync(join(BIN, "createdb"), [...PG, db]); }
 for (const d of all) psql(EMPTY, ["-f", join(MIG, d, "migration.sql")]);
 process.env.DATABASE_URL = urlOf(EMPTY);
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED"]) delete process.env[k];
-
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
 const { PlatformClock } = await import("../api/src/platform/identity/port.ts");
@@ -60,7 +55,6 @@ const { OfficeClock } = await import("../api/src/platform/settings/offices/clock
 const { Offices, ZONE_REFUSED, PROVINCE_REFUSED } = await import("../api/src/platform/settings/offices/service.ts");
 const { zoneForProvince, prefillZone, PROVINCES } = await import("../api/src/platform/settings/offices/zones.ts");
 const feature = (await import("../api/src/features/platform-settings-personal.ts")).default;
-
 const db = new Db();
 const apps: { close(): Promise<void> }[] = [];
 const local = new LocalIdentity("pf18a-check-signing-key-0123456789abcdef", () => Date.now());
@@ -73,9 +67,7 @@ const call = async (method: string, path: string, token?: string, body?: unknown
   const text = await r.text(); let b: any = text; try { b = JSON.parse(text); } catch { /* text */ }
   return { status: r.status, body: b };
 };
-
 try {
-  // ------------------------------------------------------------------------------------- DW7: the migration, parallel world
   const before = all.filter((d) => d < NEW);
   ok(`PF-18a DW7: the migration has its own stamp, later than every migration before it (P-600 (4), rows rev 16.7; newest before it: ${before.at(-1)})`,
     all.includes(NEW) && (before.at(-1) ?? "") < NEW && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1, all.slice(-3));
@@ -98,8 +90,6 @@ try {
   for (const d of all.filter((x) => x >= NEW)) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
   ok("PF-18a DW7 pass: on a demo-data copy the migration leaves every row as it was and writes no office (nothing seeded)", sql(DEMO, demoRows) === demoBefore && sql(DEMO, "select count(*) from platform_office") === "0", [demoBefore, sql(DEMO, demoRows)]);
   ok("PF-18a DW7 pass: migrate diff after it on the demo-data copy names no office table", officesDiff(DEMO).length === 0, officesDiff(DEMO));
-
-  // ------------------------------------------------------------------------------------------- the pre-fill list (pure)
   const pack = JSON.parse(readFileSync(join(STUDIO, "samples", "province-time-zones-ca.json"), "utf8"));
   const tzNames = new Set(sql(EMPTY, "select name from pg_timezone_names").split("\n"));
   ok("PF-18a DW1: the pack list has the 13 provinces and territories, each one zone this runtime and PostgreSQL know; it cites tzdata 2026e zone1970.tab and the date read",
@@ -111,8 +101,6 @@ try {
   ok("PF-18a DW1 fail: a code not on the list, no code, or a code abroad gives no province zone (the firm's zone is the pre-fill)",
     zoneForProvince("ZZ") === null && zoneForProvince(null) === null && zoneForProvince("") === null
     && JSON.stringify(prefillZone("America/Toronto", "US", "AB")) === JSON.stringify({ zone: "America/Toronto", from: "firm" }) && prefillZone("America/Halifax", "CA", null).zone === "America/Halifax");
-
-  // --------------------------------------------------------------------------------------------------- the app and people
   await seedSampleFirms(db);
   const firmA = (await db.platformFirm.findFirstOrThrow({ where: { key: "sample-firm" } })).id;
   const firmB = (await db.platformFirm.findFirstOrThrow({ where: { key: "sample-solo" } })).id;
@@ -135,22 +123,16 @@ try {
   const FIRM_HOURS = [{ day: "MON", opens: "08:30", closes: "16:30" }, { day: "TUE", opens: "08:30", closes: "16:30" }];
   for (const [key, value] of [[TIME_ZONE.key, "America/Toronto"], [BUSINESS_HOURS.key, FIRM_HOURS], [CLOSED_DAYS.key, ["2026-12-25"]]] as const)
     await writeSetting(db, { firmId: firmA, key, value, by: `staff:${owner.id}`, workspaceId: ws });
-
-  // ------------------------------------------------------------------------------------------------------------- DW2
   const one = await call("GET", "", owner.token);
   ok("PF-18a DW2 pass: a firm with one office lists one implicit office, the firm's name, with no zone field", one.status === 200 && one.body.multipleOffices === false && one.body.offices.length === 1
     && one.body.offices[0].implicit === true && one.body.offices[0].id === null && !("timeZone" in one.body.offices[0]) && !("businessHours" in one.body.offices[0]), one);
   ok("PF-18a DW2 pass: with one office OfficeClockPort gives the firm's zone, hours and closed days",
     (await clock.zoneFor(firmA, null)) === "America/Toronto" && JSON.stringify(await clock.hoursFor(firmA, null)) === JSON.stringify(FIRM_HOURS) && JSON.stringify(await clock.closedDaysFor(firmA, null)) === JSON.stringify(["2026-12-25"]));
   ok("PF-18a DW2 fail: a staff member with no office has none (the caller then uses the firm's zone)", (await clock.officeOfStaff(firmA, officer.id)) === null);
-
-  // ------------------------------------------------------------------------------------------------------------- DW4
   const coAdd = await call("POST", "", officer.token, { name: "Calgary", province: "AB" });
   ok("PF-18a DW4 fail: a Case Officer adding an office → 403, nothing written", coAdd.status === 403 && sql(EMPTY, "select count(*) from platform_office") === "0", coAdd);
   ok("PF-18a DW4 pass: a Read only person may read the list (agent/settings:list)", (await call("GET", "", reader.token)).status === 200);
   ok("PF-18a DW4 fail: no token → 401", (await call("GET", "")).status === 401);
-
-  // ------------------------------------------------------------------------------------------------------------- DW1
   const ab = await call("POST", "", admin.token, { name: "Calgary", province: "AB", country: "Canada" });
   const calgary = ab.body?.office?.id as string;
   ok("PF-18a DW1 pass: an office in Alberta is pre-filled America/Edmonton (201)", ab.status === 201 && ab.body.office.timeZone === "America/Edmonton" && ab.body.timeZoneFrom === "province" && ab.body.office.province === "AB", ab);
@@ -178,8 +160,6 @@ try {
   ok("PF-18a DW1 pass: a zone the person chose wins over the pre-fill", chosen.status === 201 && chosen.body.office.timeZone === "America/Halifax" && chosen.body.timeZoneFrom === "chosen", chosen.body);
   ok("PF-18a fail: a second office with the same name (any case) → 409", (await call("POST", "", owner.token, { name: "calgary", province: "AB" })).status === 409);
   ok("PF-18a fail: an unknown field or a missing name → 400", (await call("POST", "", owner.token, { name: "X", isFirst: true })).status === 400 && (await call("POST", "", owner.token, { province: "AB" })).status === 400);
-
-  // ------------------------------------------------------------------------------------------------------------- DW3
   const vancouver = (await call("POST", "", owner.token, { name: "Vancouver", province: "BC" })).body.office;
   ok("PF-18a DW3 pass: a new office's closed-days list starts empty, though the firm has a closed day (nothing seeded)", JSON.stringify(vancouver.closedDays) === "[]" && JSON.stringify(vancouver.businessHours) === JSON.stringify(FIRM_HOURS), vancouver);
   const closeB = await call("PATCH", `/${vancouver.id}`, owner.token, { closedDays: ["2026-12-26"] });
@@ -189,8 +169,6 @@ try {
     && (await call("PATCH", `/${vancouver.id}`, owner.token, { businessHours: [{ day: "MON", opens: "17:00", closes: "09:00" }] })).status === 400 && (await call("PATCH", `/${vancouver.id}`, owner.token, { closedDays: ["2026-12-26", "2026-12-26"] })).status === 400);
   await new Offices({ db, audit: auditEvent }).setStaffOffice({ firmId: firmA, staffId: owner.id }, officer.id, calgary);
   ok("PF-18a DW2 pass: a staff member put in an office is that office's (officeOfStaff)", (await clock.officeOfStaff(firmA, officer.id)) === calgary);
-
-  // ------------------------------------------------------------------------------------------------------------- DW4
   const bList = await call("GET", "", ownerB.token);
   ok("PF-18a DW4 pass: firm B's list is its own one implicit office, never firm A's", bList.status === 200 && bList.body.multipleOffices === false && bList.body.offices[0].name !== two.body.offices[0].name, bList.body);
   const bPatch = await call("PATCH", `/${calgary}`, ownerB.token, { timeZone: "America/Vancouver" });
@@ -203,8 +181,6 @@ try {
   // Two adds at once on a firm with none (the breaker's two parallel writes): both land, one first office.
   const [p1, p2] = await Promise.all([call("POST", "", ownerB.token, { name: "Montreal", province: "QC" }), call("POST", "", ownerB.token, { name: "Ottawa", province: "ON" })]);
   ok("PF-18a pass: two adds at once on a firm with no office both land, with exactly one first office", p1.status === 201 && p2.status === 201 && sql(EMPTY, `select count(*) || ':' || count(*) filter (where is_first) from platform_office where firm_id = '${firmB}'`) === "3:1", [p1.status, p2.status]);
-
-  // ------------------------------------------------------------------------------------------- the database's own rules
   const ins = (cols: string) => `insert into platform_office (firm_id, name, time_zone, business_hours, closed_days, created_by, updated_at${cols ? ", " + cols.split("=")[0] : ""}) values ('${firmA}', 'Db ${Math.random()}', `;
   ok("PF-18a DB fail: a zone PostgreSQL does not know by that exact name ('America/Toronto ' with a space) is refused", refused(EMPTY, `${ins("")}'America/Toronto ', '[]', '[]', 'seed:pf18a', now())`, /not a time zone name/));
   ok("PF-18a DB fail: a Canadian province not on the list, or a province abroad, is refused", refused(EMPTY, `insert into platform_office (firm_id, name, province, time_zone, business_hours, closed_days, created_by, updated_at) values ('${firmA}', 'Db p', 'ZZ', 'America/Toronto', '[]', '[]', 'seed:pf18a', now())`, /province_check/)
@@ -218,15 +194,11 @@ try {
     refused(EMPTY, `insert into platform_staff_office (staff_id, firm_id, office_id, set_by, updated_at) values ('${ownerB.id}', '${firmA}', '${calgary}', 'seed:pf18a', now())`, /no such staff member/)
     && refused(EMPTY, `insert into platform_staff_office (staff_id, firm_id, office_id, set_by, updated_at) values (gen_random_uuid(), '${firmA}', '${calgary}', 'seed:pf18a', now())`, /no such staff member/));
   ok("PF-18a DB fail: a person's row naming another firm's office breaks the (firm, office) key", refused(EMPTY, `insert into platform_staff_office (staff_id, firm_id, office_id, set_by, updated_at) values ('${owner.id}', '${firmA}', '${p1.body.office.id}', 'seed:pf18a', now())`, /foreign key|fkey/));
-
-  // --------------------------------------------------------------------------------------------------- PF-12's walls
   ok("PF-18a walls pass: as xr_app with no firm, both tables read nothing", asApp(EMPTY, null, "select count(*) from platform_office") === "0" && asApp(EMPTY, null, "select count(*) from platform_staff_office") === "0");
   ok("PF-18a walls pass: firm A's session reads its own offices only; firm B's rows read nothing", asApp(EMPTY, firmA, `select count(*) from platform_office where firm_id = '${firmA}'`) === sql(EMPTY, `select count(*) from platform_office where firm_id = '${firmA}'`)
     && asApp(EMPTY, firmA, `select count(*) from platform_office where firm_id = '${firmB}'`) === "0");
   ok("PF-18a walls fail: firm A's session writing an office of firm B is refused", refused(EMPTY, `begin; select set_config('app.firm_id', '${firmA}', true); insert into platform_office (firm_id, name, time_zone, business_hours, closed_days, created_by, updated_at) values ('${firmB}', 'W', 'America/Toronto', '[]', '[]', 'seed:pf18a', now()); commit;`, /row-level security/, "xr_app"));
   ok("PF-18a walls pass: firm A's session adds its own office through the triggers (they read platform_firm as the wall reader)", /^[0-9a-f-]{36}$/.test(asApp(EMPTY, firmA, `insert into platform_office (firm_id, name, time_zone, business_hours, closed_days, created_by, updated_at) values ('${firmA}', 'As app', 'America/Toronto', '[]', '[]', 'seed:pf18a', now()) returning id`)));
-
-  // ------------------------------------------------------------------------------------------------ DW7: the contract
   let k = 0;
   const realHarness = async (): Promise<OfficeClockHarness> => {
     const mk = async () => (await db.platformFirm.create({ data: { key: `pf18a-c-${++k}`, operatingName: `Contract ${k}`, countryCode: "CA", status: "ACTIVE", contactEmail: `c${k}@pf18a-c.example.com` } })).id;

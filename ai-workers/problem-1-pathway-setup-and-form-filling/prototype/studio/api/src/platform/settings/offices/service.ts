@@ -13,35 +13,21 @@ import type { AuditPort } from "../../../../../ports/audit.ts";
 import { firmScope, notInFirm } from "../../firm-scope.ts";
 import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE } from "../../settings.ts";
 import { prefillZone, PROVINCES } from "./zones.ts";
-
 type Tx = Prisma.TransactionClient;
 type Hours = z.infer<typeof BUSINESS_HOURS.schema>;
 /** Who asks: the guard's staff context (only these fields are read). */
 export type OfficeActor = { firmId: string; staffId: string };
-
 export const ZONE_REFUSED = "Choose a time zone from the list";
 export const PROVINCE_REFUSED = "Choose a province or territory from the list";
-
-function refused(detail: string, issues: string[] = []): never {
-  throw new HttpException({ type: "https://expatready.local/problems/office-refused", title: "Office not saved", status: 400, detail, issues }, HttpStatus.BAD_REQUEST);
-}
+const refused = (detail: string, issues: string[] = []): never => { throw new HttpException({ type: "https://expatready.local/problems/office-refused", title: "Office not saved", status: 400, detail, issues }, HttpStatus.BAD_REQUEST); };
 const conflict = (detail: string): never => { throw new HttpException({ type: "https://expatready.local/problems/office-conflict", title: "Office not saved", status: 409, detail }, HttpStatus.CONFLICT); };
-
 const Name = z.string().transform((s) => s.trim()).pipe(z.string().min(1, "a name").max(120, "at most 120 characters").refine((s) => !/[\u0000-\u001f\u007f-\u009f]/.test(s), "no control characters"));
 /** "CA", "Canada" (any case) → CA; any other two-letter code → that code in capitals. */
 const Country = z.string().transform((s) => s.trim()).pipe(z.string().regex(/^([A-Za-z]{2}|canada)$/i, "a two-letter country code")).transform((s) => (/^canada$/i.test(s) ? "CA" : s.toUpperCase()));
 const Province = z.string().max(40).nullable();
-const Fields = {
-  name: Name,
-  country: Country.optional(),
-  province: Province.optional(),
-  timeZone: z.unknown().optional(),
-  businessHours: z.unknown().optional(),
-  closedDays: z.unknown().optional(),
-};
+const Fields = { name: Name, country: Country.optional(), province: Province.optional(), timeZone: z.unknown().optional(), businessHours: z.unknown().optional(), closedDays: z.unknown().optional() };
 export const AddOffice = z.strictObject(Fields);
 export const ChangeOffice = z.strictObject({ ...Fields, name: Name.optional() });
-
 const parse = <T extends z.ZodType>(schema: T, body: unknown): z.output<T> => {
   const r = schema.safeParse(body ?? {});
   if (!r.success) refused("Please check the highlighted details.", r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`));
@@ -52,19 +38,14 @@ const hoursOf = (v: unknown): Hours => { const r = BUSINESS_HOURS.schema.safePar
 const closedOf = (v: unknown): string[] => { const r = CLOSED_DAYS.schema.safeParse(v); return r.success ? r.data : refused("Please check the closed days.", r.error.issues.map((i) => `closedDays.${i.path.join(".")}: ${i.message}`)); };
 /** The stored province of an address: in Canada a code on the list (or none); abroad none (the column is Canada's). */
 function provinceOf(country: string, raw: string | null | undefined): string | null {
-  if (country !== "CA") return null;
-  if (raw == null || raw.trim() === "") return null;
+  if (country !== "CA" || raw == null || raw.trim() === "") return null;
   const code = raw.trim().toUpperCase();
   return PROVINCES.includes(code) ? code : refused(PROVINCE_REFUSED, [`province: "${raw.slice(0, 40)}" is not a Canadian province or territory code`]);
 }
-
 type Row = Awaited<ReturnType<Tx["platformOffice"]["findFirstOrThrow"]>>;
 export type OfficeView = { id: string; name: string; countryCode: string; province: string | null; timeZone: string; businessHours: Hours; closedDays: string[]; isFirst: boolean; createdAt: string };
 /** The list a person sees: one implicit office (no zone field) until a second office exists (AG-16-68). */
-export type OfficeList =
-  | { multipleOffices: false; offices: [{ id: null; implicit: true; name: string }] }
-  | { multipleOffices: true; offices: OfficeView[] };
-
+export type OfficeList = { multipleOffices: false; offices: [{ id: null; implicit: true; name: string }] } | { multipleOffices: true; offices: OfficeView[] };
 const view = (r: Row): OfficeView => ({
   id: r.id, name: r.name, countryCode: r.countryCode, province: r.province, timeZone: r.timeZone,
   businessHours: BUSINESS_HOURS.schema.parse(r.businessHours), closedDays: CLOSED_DAYS.schema.parse(r.closedDays), isFirst: r.isFirst, createdAt: r.createdAt.toISOString(),
@@ -77,10 +58,8 @@ const auditView = (r: Row, p = "") => {
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const actor = (a: OfficeActor) => `staff:${a.staffId}`;
-
 export class Offices {
   constructor(private readonly deps: { db: PrismaClient; audit: AuditPort<Tx> }) {}
-
   async list(a: OfficeActor): Promise<OfficeList> {
     const rows = await this.deps.db.platformOffice.findMany({ where: firmScope(a.firmId), orderBy: [{ isFirst: "desc" }, { createdAt: "asc" }, { name: "asc" }] });
     if (rows.length === 0) {
@@ -90,7 +69,6 @@ export class Offices {
     }
     return { multipleOffices: true, offices: rows.map(view) };
   }
-
   /** Adds an office (the second, when the firm had none, also writes the first). Two adds at once queue on the firm. */
   async add(a: OfficeActor, body: unknown): Promise<{ office: OfficeView; first: OfficeView | null; timeZoneFrom: "province" | "firm" | "chosen" }> {
     const b = parse(AddOffice, body);
@@ -131,7 +109,6 @@ export class Offices {
       return { office: view(office), first: first ? view(first) : null, timeZoneFrom: from };
     });
   }
-
   /** Changes an office's name, address, zone, hours or closed days. The zone is not pre-filled again on a new province. */
   async change(a: OfficeActor, officeId: string, body: unknown): Promise<OfficeView> {
     const b = parse(ChangeOffice, body);
@@ -159,7 +136,6 @@ export class Offices {
       return view(after);
     });
   }
-
   /** Puts a staff member in one of the firm's offices, or in none (null). No route yet: PF-18s's screen wires it. */
   async setStaffOffice(a: OfficeActor, staffId: string, officeId: string | null): Promise<{ staffId: string; officeId: string | null }> {
     const firmId = firmScope(a.firmId).firmId;

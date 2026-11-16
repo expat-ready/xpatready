@@ -28,11 +28,9 @@ export class OfficeNotFound extends Error {
 }
 
 export interface OfficeClockPort {
-  /** The IANA zone of the office, or of the firm when `officeId` is null. */
+  /** The office's IANA zone, open hours and closed days; the firm's own when `officeId` is null. */
   zoneFor(firmId: string, officeId: string | null): Promise<string>;
-  /** The open hours of the office (or the firm's). */
   hoursFor(firmId: string, officeId: string | null): Promise<OpenHours>;
-  /** The closed days of the office (or the firm's). */
   closedDaysFor(firmId: string, officeId: string | null): Promise<ClosedDays>;
   /** The office a staff member works in, or null. */
   officeOfStaff(firmId: string, staffId: string): Promise<string | null>;
@@ -50,12 +48,10 @@ export const FIRM_DEFAULTS: OfficeClockValues = {
 
 const copy = (v: OfficeClockValues): OfficeClockValues => ({ zone: v.zone, hours: v.hours.map((h) => ({ ...h })), closedDays: [...v.closedDays] });
 
+/** The fake's own handles: set a firm's values, add an office (its id), place a staff member (null: none). */
 export type FakeOfficeClock = OfficeClockPort & {
-  /** Sets the firm's own settings. */
   setFirm(firmId: string, v: OfficeClockValues): void;
-  /** Adds an office to a firm; its id. */
   addOffice(firmId: string, v: OfficeClockValues): string;
-  /** Puts a staff member in an office (null: none). */
   assign(firmId: string, staffId: string, officeId: string | null): void;
 };
 

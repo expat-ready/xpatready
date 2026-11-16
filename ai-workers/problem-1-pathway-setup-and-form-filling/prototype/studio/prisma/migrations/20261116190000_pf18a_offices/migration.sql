@@ -7,40 +7,19 @@
 --   * every function is platform_office_ / platform_staff_office_ (area prefix, rows rev 15.2).
 -- Rollback (in this order): DROP TABLE "platform_staff_office", "platform_office"; DROP FUNCTION platform_office_write(),
 --   platform_office_no_delete(), platform_staff_office_write(); delete this folder's row from _prisma_migrations.
-
 -- Prisma's DDL (prisma migrate diff), then the rules.
 CREATE TABLE "platform_office" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "firm_id" UUID NOT NULL,
-    "name" TEXT NOT NULL,
-    "province" TEXT,
-    "country_code" CHAR(2) NOT NULL DEFAULT 'CA',
-    "time_zone" TEXT NOT NULL,
-    "business_hours" JSONB NOT NULL,
-    "closed_days" JSONB NOT NULL,
-    "is_first" BOOLEAN NOT NULL DEFAULT false,
-    "created_by" TEXT NOT NULL,
-    "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMPTZ NOT NULL,
-
-    CONSTRAINT "platform_office_pkey" PRIMARY KEY ("id")
+  "id" UUID NOT NULL DEFAULT gen_random_uuid(), "firm_id" UUID NOT NULL, "name" TEXT NOT NULL, "province" TEXT, "country_code" CHAR(2) NOT NULL DEFAULT 'CA', "time_zone" TEXT NOT NULL, "business_hours" JSONB NOT NULL, "closed_days" JSONB NOT NULL, "is_first" BOOLEAN NOT NULL DEFAULT false, "created_by" TEXT NOT NULL, "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, "updated_at" TIMESTAMPTZ NOT NULL,
+  CONSTRAINT "platform_office_pkey" PRIMARY KEY ("id")
 );
-
 CREATE TABLE "platform_staff_office" (
-    "staff_id" UUID NOT NULL,
-    "firm_id" UUID NOT NULL,
-    "office_id" UUID NOT NULL,
-    "set_by" TEXT NOT NULL,
-    "updated_at" TIMESTAMPTZ NOT NULL,
-
-    CONSTRAINT "platform_staff_office_pkey" PRIMARY KEY ("staff_id")
+  "staff_id" UUID NOT NULL, "firm_id" UUID NOT NULL, "office_id" UUID NOT NULL, "set_by" TEXT NOT NULL, "updated_at" TIMESTAMPTZ NOT NULL,
+  CONSTRAINT "platform_staff_office_pkey" PRIMARY KEY ("staff_id")
 );
-
 CREATE UNIQUE INDEX "platform_office_firm_id_id_key" ON "platform_office"("firm_id", "id");
 CREATE UNIQUE INDEX "platform_office_firm_id_name_key" ON "platform_office"("firm_id", "name");
 CREATE INDEX "platform_staff_office_firm_id_office_id_idx" ON "platform_staff_office"("firm_id", "office_id");
 ALTER TABLE "platform_staff_office" ADD CONSTRAINT "platform_staff_office_firm_id_office_id_fkey" FOREIGN KEY ("firm_id", "office_id") REFERENCES "platform_office"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
 -- ------------------------------------------------------------------------------------------------ rules Prisma cannot say
 -- SQLSTATE 23514 (check_violation) for a broken rule, 23503 (foreign_key_violation) for a firm or person that is not there.
 ALTER TABLE "platform_office"
@@ -56,7 +35,6 @@ ALTER TABLE "platform_staff_office"
   ADD CONSTRAINT "platform_staff_office_by_check" CHECK ("set_by" ~ '^(staff|system|seed):[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$');
 -- One first office per firm (the one the firm's own settings were copied into).
 CREATE UNIQUE INDEX "platform_office_one_first" ON "platform_office"("firm_id") WHERE "is_first";
-
 -- An office belongs to a firm that exists; its zone is one PostgreSQL knows by that exact name (no space, no other case:
 -- the code checks the same with the firm setting's schema); the firm, the first flag, who made it and when never change.
 CREATE FUNCTION platform_office_write() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -81,7 +59,6 @@ BEGIN
 END $$;
 CREATE TRIGGER platform_office_no_delete BEFORE DELETE ON "platform_office" FOR EACH ROW EXECUTE FUNCTION platform_office_no_delete();
 CREATE TRIGGER platform_office_no_truncate BEFORE TRUNCATE ON "platform_office" FOR EACH STATEMENT EXECUTE FUNCTION platform_office_no_delete();
-
 -- The person is a staff member of the same firm; the person and the firm never change on the row.
 CREATE FUNCTION platform_staff_office_write() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -94,7 +71,6 @@ BEGIN
   RETURN NEW;
 END $$;
 CREATE TRIGGER platform_staff_office_write BEFORE INSERT OR UPDATE ON "platform_staff_office" FOR EACH ROW EXECUTE FUNCTION platform_staff_office_write();
-
 -- ------------------------------------------------------------------------------------------------------ PF-12's walls
 -- PF-12's wall on both tables (forced policy, the firm gate first); the trigger functions run as xr_wall_reader, so they
 -- see platform_firm and platform_staff whatever the session's firm (tests/check_pf12_walls.ts).

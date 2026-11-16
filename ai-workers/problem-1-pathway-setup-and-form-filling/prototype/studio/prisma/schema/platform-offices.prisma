@@ -26,9 +26,7 @@ model PlatformOffice {
   createdBy     String   @map("created_by")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
-
   staff PlatformStaffOffice[]
-
   @@unique([firmId, id])
   @@unique([firmId, name])
   @@map("platform_office")
@@ -41,9 +39,7 @@ model PlatformStaffOffice {
   officeId  String   @map("office_id") @db.Uuid
   setBy     String   @map("set_by")
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
-
   office PlatformOffice @relation(fields: [firmId, officeId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
-
   @@index([firmId, officeId])
   @@map("platform_staff_office")
 }
