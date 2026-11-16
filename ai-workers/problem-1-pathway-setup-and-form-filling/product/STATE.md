@@ -2,7 +2,7 @@
 
 current_lead: local_0c9cccec-fb2c-47bd-a1b1-9be666c60657 Lead 71 · 16 Nov 23:3x IST (series 2; took over from Lead 70 (series 2, local_9ae95739) at ~336k, P-446)
 
-updated: 2026-11-16 23:5x IST by **Lead 71 (series 2, local_0c9cccec)** (took over 23:31 from Lead 70; check cron b696e0aa at :02/:32; start read ~129k, hand over near 330k) · weekly 4% at 23:35 (resets 17 Nov 10:30 IST) · milestone: Release 1 proven 11 of 101; **founder target 21 Proven by ~09:45 IST 17 Nov (A134)** · rules: **`RULES.md`** (as of **P-647**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-16 23:5x IST by **Lead 71 (series 2, local_0c9cccec)** (took over 23:31 from Lead 70; check cron b696e0aa at :02/:32; start read ~129k, hand over near 330k) · weekly 4% at 23:35 (resets 17 Nov 10:30 IST) · milestone: Release 1 proven 11 of 101; **founder target 21 Proven by ~09:45 IST 17 Nov (A134)** · rules: **`RULES.md`** (as of **P-651**) · this branch: `lead/2026-11-07-lead31`
 
 Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
