@@ -322,3 +322,27 @@ BEGIN
     RAISE EXCEPTION 'fo7mv_move_list: % correction(s) of a deposit have no correction kind (RETURNED, RECORDED_BY_MISTAKE, WRONG_CLIENT, OTHER or WRONG_ACCOUNT); they were written before correction kinds existed and, being insert-only, cannot be given one: ask the tech lead (restore without them, or a reviewed one-off)', n USING ERRCODE = 'check_violation';
   END IF;
 END $$;
+
+-- ------------------------------------------------------------------------------------------- PF-12's walls (#1910)
+-- Both new firm tables get PF-12's wall: ENABLE + FORCE row-level security, the one policy naming the session's firm,
+-- and the gate that fires first; every trigger function this migration adds on a firm table runs as xr_wall_reader
+-- (SECURITY DEFINER, search_path pinned), as PF-12 did for FO-7a's (tests/check_pf12_walls.ts). The derived list reads
+-- with the caller's rights (security_invoker), so it shows only the session's firm.
+ALTER TABLE "money_move_batch" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "money_move_batch" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "pf12_firm" ON "money_move_batch" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
+ALTER TABLE "money_move_line" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "money_move_line" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "pf12_firm" ON "money_move_line" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
+CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "money_move_batch" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
+CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "money_move_line" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
+DO $readers$
+DECLARE f text;
+BEGIN
+  FOREACH f IN ARRAY ARRAY['money_move_batch_write()', 'money_move_batch_has_lines()', 'money_move_line_write()', 'money_move_line_not_undone()', 'money_trust_entry_moves()'] LOOP
+    EXECUTE format('ALTER FUNCTION %s SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp', f);
+    EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
+  END LOOP;
+END
+$readers$;
+ALTER VIEW "money_to_move" SET (security_invoker = true);
