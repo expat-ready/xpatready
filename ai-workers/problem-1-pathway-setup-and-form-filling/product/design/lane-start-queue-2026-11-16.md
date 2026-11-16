@@ -28,3 +28,6 @@ Spares: FO-6 (branch; BoldSign sandbox done), PF-0bp (main). Build Lead C's and 
 | 14 | R1.105 AUD-5 part 1 | AUD-5-1.md (commit cdcccb52d; source: College Client File Management Regulation 2021-001 s. 7.2, read 16 Nov 2026; Unconfirmed: no counsel) | high, breaker yes; no schema; one line in Lead B's seed-sample-firms.ts (check against Build Lead A's lanes) | AUD-5 part 2 | started 21:2x (cloud) |
 
 PF-13 part 1 starts after #1956, #1961 and PF-19e are on main; then PF-13 part 2, then PF-19c (Build Lead A rev 16.76, f83884552). AUD-5 part 1 overlaps none of A's lanes.
+
+**Added by Lead 70, 22:0x IST 16 Nov (relayed by Lead 69):** | 15 | CS-SD1 (schema drift) | design/build-lead-c-briefs/CS-SD1.md (commit 6b8c5227e on claude/build-lead-c-647b40) | Opus 5.5 medium, breaker yes; the Lead reads the schema diff before the label; no migration folder, ~100 lines, group configurator | on merge: tell Build Lead A (PF-8r drill drops its "main drifts" NOTE) | start at the founder's next typed turn |
+**Mismatch to check (Lead 70, 22:0x):** rows 9 (CS-C1b) and 14 (AUD-5 part 1) say "started 21:2x (cloud)", but Build Lead C says at 22:0x that none of its seven has pushed yet and all seven wait for the founder's next typed turn. Lead 70 checks for the cloud sessions at the 22:27 check.
