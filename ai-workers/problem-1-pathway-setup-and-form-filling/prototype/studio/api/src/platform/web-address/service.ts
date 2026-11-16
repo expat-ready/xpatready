@@ -76,11 +76,10 @@ export class WebAddresses {
    *  free). Two lookups whatever the number. */
   private async takenOf(db: PrismaClient | Tx, addresses: string[], forFirmId?: string): Promise<Set<string>> {
     const self = forFirmId?.toLowerCase();
-    const [own, held] = await Promise.all([
-      db.platformFirmWebAddress.findMany({ where: { address: { in: addresses } }, select: { address: true, firmId: true } }),
-      db.platformFirmAddressHistory.findMany({ where: { oldAddress: { in: addresses }, until: { gt: this.deps.clock.now() } }, select: { oldAddress: true, firmId: true } }),
-    ]);
-    return new Set([...own.filter((r) => r.firmId !== self).map((r) => r.address), ...held.filter((r) => r.firmId !== self).map((r) => r.oldAddress!)]);
+    // PF-12: across every firm, inside a firm's own transaction too, through the one narrow definer function (the
+    // addresses another firm has or holds, nothing else; migration pf12_firm_walls).
+    const rows = await db.$queryRaw<{ a: string }[]>`select a from platform_web_address_taken(${addresses}::text[], ${this.deps.clock.now()}::timestamptz, ${self ?? null}::uuid) a`;
+    return new Set(rows.map((r) => r.a));
   }
 
   /** Whether `input` can be a firm's address (exactly as typed). Refused: the plain reason, and a suggestion when one can
