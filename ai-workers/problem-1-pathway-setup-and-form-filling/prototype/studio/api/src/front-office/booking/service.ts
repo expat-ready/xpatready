@@ -29,7 +29,7 @@ import type { JobPort, JobRun } from "../../../../ports/jobs.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
 import { MessageRefused } from "../../../../ports/messages.ts";
 import type { StaffContext } from "../../../../ports/staff.ts";
-import { firmScope, notInFirm } from "../../platform/firm-scope.ts";
+import { asBypass, enterFirm, firmScope, notInFirm } from "../../platform/firm-scope.ts";
 import { CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts";
 import { bookingIcs, type InviteMethod } from "./ics.ts";
 import { computeSlots, localDate, type HostWindow, type Range, type Slot } from "./slots.ts";
@@ -223,7 +223,8 @@ export class BookingService {
   /** An ACTIVE or TRIAL firm by its key, else the one 404. */
   private async publicFirm(db: Tx | PrismaClient, firmKey: unknown) {
     if (typeof firmKey !== "string" || !FIRM_KEY.test(firmKey)) throw notFound();
-    const firm = await db.platformFirm.findUnique({ where: { key: firmKey }, select: FIRM_SELECT });
+    const firm = await asBypass("fo.booking.public-page", () => db.platformFirm.findUnique({ where: { key: firmKey }, select: FIRM_SELECT }));
+    if (firm) enterFirm(firm.id);   // PF-12: the page's firm, for the rest of the request
     if (!firm || !["ACTIVE", "TRIAL"].includes(firm.status)) throw notFound();
     return firm;
   }
@@ -746,8 +747,9 @@ export class BookingService {
   }
 
   private async byToken(db: Tx | PrismaClient, token: string) {
-    const t = await liveToken(db, token, this.ports.clock.now());
+    const t = await asBypass("fo.booking.self-service", () => liveToken(db, token, this.ports.clock.now()));
     if (!t) throw notFound();
+    enterFirm(t.firmId);   // PF-12: the link's firm, for the rest of the request
     // A firm on hold or locked answers its links like its page: not found (break B-5).
     const firm = await db.platformFirm.findUnique({ where: { id: t.firmId }, select: FIRM_SELECT });
     if (!firm || !["ACTIVE", "TRIAL"].includes(firm.status)) throw notFound();

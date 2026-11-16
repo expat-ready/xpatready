@@ -5,6 +5,7 @@ import type { FoLeadState, PrismaClient } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { EVENT, LeadEventPayload, type EventName } from "../../../../ports/events.ts";
 import { Db } from "../../core.ts";
+import { platformAuditWorkspaceId } from "../../platform/audit/audit-event.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import type { FirmCalendar } from "../../platform/complaints/business-days.ts";
 import { forbidden, type StaffContext } from "../../platform/identity/keys.ts";
@@ -16,6 +17,8 @@ import { SALES_PORTS, type SalesPorts } from "./public.ts";
 
 export const VIEWS = ["unassigned", "mine", "all", "closed"] as const;
 type View = (typeof VIEWS)[number];
+/** How recent an owner change from Unassigned counts as the race that names the winner (Sample, FO-2v brief). */
+const RACE_MINUTES = 10;
 type Staff = { id: string; displayName: string; status: string };
 const nameOf = (p: { givenNames: string | null; familyName: string | null }) => [p.givenNames, p.familyName].filter(Boolean).join(" ") || "(no name)";
 /** BR-4: a deactivated owner shows "(Inactive) Name" and their open leads count as Unassigned. */
@@ -102,7 +105,7 @@ export class Leads {
   take(ctx: StaffContext, id: string) {
     return this.change(ctx, id, EVENT.LEAD_TAKEN, EVENT.LEAD_TAKEN, async (tx, l, staff) => {
       const owner = l.owner_staff_id ? staff.get(l.owner_staff_id) : undefined;   // (Take it: the loser hears who has it)
-      if (owner?.status === "ACTIVE") return conflict(`${owner.displayName} already has this lead.`, "ALREADY_TAKEN", { ownerStaffId: owner.id });
+      if (owner?.status === "ACTIVE") return conflict(`${owner.displayName} already has this lead.`, "ALREADY_TAKEN");   // no ownerStaffId in the body (FO-2v)
       if (l.state !== "OPEN") return conflict("Only an open lead can be taken.");
       await tx.foLead.update({ where: { id }, data: { ownerStaffId: ctx.staffId } });
       return { owner: ctx.staffId, summary: "took the lead" };
@@ -200,6 +203,21 @@ export class Leads {
     });
   }
 
+  /** The real race of AG-2-86 rule 3 (FO-2v; Lead B rev 16.55): the lead's latest take or assign audit line (written in
+   *  the same transaction as the owner change, fail-closed) is under RACE_MINUTES old and moved the lead from Unassigned
+   *  as it was then (`fromUnassigned`, written at the change, so a later deactivation changes nothing). One query under
+   *  the firm's scope (the platform audit workspace and the line's firm), inside the take's transaction and row lock.
+   *  The lead stores no owner-set column: the audit line holds that fact. */
+  private async justTakenFromUnassigned(tx: Tx, firmId: string, id: string) {
+    const workspaceId = await platformAuditWorkspaceId(tx);
+    const [a] = await tx.$queryRaw<{ fromUnassigned: string | null }[]>`
+      select detail->>'fromUnassigned' as "fromUnassigned" from audit_event
+      where workspace_id = ${workspaceId}::uuid and detail->>'firmId' = ${firmId.toLowerCase()} and entity = 'fo_lead' and entity_key = ${id}
+        and action = ${EVENT.LEAD_TAKEN} and at > now() - make_interval(mins => ${RACE_MINUTES})
+      order by at desc limit 1`;
+    return a?.fromUnassigned === "true";
+  }
+
   /** One lead change: the row locked, then seen (404, or 409 naming the owner), the change, audit, outbox row last. */
   private async change(ctx: StaffContext, id: string, action: string, type: EventName,
     fn: (tx: Tx, l: { state: FoLeadState; owner_staff_id: string | null; person_id: string; door: "WEB_FORM" | "MANUAL" | "BOOKING"; number: string }, staff: Map<string, Staff>) =>
@@ -211,15 +229,19 @@ export class Leads {
     await this.db.$transaction(async (tx) => {
       const [l] = await tx.$queryRaw<{ state: FoLeadState; owner_staff_id: string | null; person_id: string; door: "WEB_FORM" | "MANUAL" | "BOOKING"; number: string }[]>`
         select state, owner_staff_id::text, person_id::text, door, number from fo_lead where firm_id = ${ctx.firmId}::uuid and id = ${id}::uuid for update`;
-      // Seen under the lock: a change never lands on a lead the person may not see (break M2). Someone who could see it
-      // unowned (Unassigned leads) hears who got there first, whatever the timing (AG-2-86 rule 3, Lead B); else 404.
+      // Seen under the lock: a change never lands on a lead the person may not see (break M2): the same 404 as GET, no
+      // owner named (QA-479, AG-2-86 rule 3 edge case). The one exception is the real race of rule 3 (FO-2v): someone who
+      // sees Unassigned leads, on a lead that was unowned until someone else took or assigned it moments ago, hears who.
       const owner = l?.owner_staff_id ? staff.get(l.owner_staff_id) : undefined;
       if (!l) return notFound();
-      if (!sees(vis, ctx, activeOf(l.owner_staff_id))) return namesLoser && vis.seesUnassigned && owner?.status === "ACTIVE" ? conflict(`${owner.displayName} already has this lead.`, "ALREADY_TAKEN", { ownerStaffId: owner.id }) : notFound();
+      if (!sees(vis, ctx, activeOf(l.owner_staff_id))) {
+        const race = namesLoser && vis.seesUnassigned && owner?.status === "ACTIVE" && (await this.justTakenFromUnassigned(tx, ctx.firmId, id));
+        return race ? conflict(`${owner.displayName} already has this lead.`, "ALREADY_TAKEN") : notFound();
+      }
       const r = await fn(tx, l, staff);
       await written(tx, this.ports.audit, {
         firmId: ctx.firmId, actor: actorOf(ctx), action, entityKey: id, summary: `Staff ${ctx.staffId} ${r.summary}: ${l.number}.`,
-        detail: { ownerStaffId: r.owner, previousOwnerStaffId: l.owner_staff_id, ...(r.reasonKey ? { reasonKey: r.reasonKey } : {}), ...(r.via ? { via: r.via } : {}) },
+        detail: { ownerStaffId: r.owner, previousOwnerStaffId: l.owner_staff_id, ...(action === EVENT.LEAD_TAKEN ? { fromUnassigned: activeOf(l.owner_staff_id) === null } : {}), ...(r.reasonKey ? { reasonKey: r.reasonKey } : {}), ...(r.via ? { via: r.via } : {}) },
         event: { type, subjectId: id, payload: LeadEventPayload.parse({ leadId: id, personId: l.person_id, door: l.door, state: r.state ?? l.state, ownerStaffId: r.owner, ...(r.reasonKey ? { closeReasonKey: r.reasonKey } : {}) }) },
       });
     });

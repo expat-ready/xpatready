@@ -8,7 +8,7 @@ import { EVENT, StaffJoinedPayload } from "../../../../../ports/events.ts";
 import type { MailPort } from "../../../../../ports/mail.ts";
 import { Db } from "../../../core.ts";
 import { auditEvent } from "../../audit/audit-event.ts";
-import { firmScope, notInFirm } from "../../firm-scope.ts";
+import { asBypass, firmScope, notInFirm } from "../../firm-scope.ts";
 import { actorWord } from "../audit.ts";
 import { writeMoneyKeysGranted } from "../money-line.ts";
 import { forbidden, problem, unauthorized, type StaffContext } from "../keys.ts";
@@ -74,7 +74,7 @@ export class PlatformSession {
 
   /** GET /api/public/invitations/:token: valid (firm, email), expired, or no longer valid (used, revoked or unknown: one answer). */
   async invitationState(token: string) {
-    const i = await this.invitation(this.db, token, false), state = PlatformSession.stateOf(i);
+    const i = await asBypass("platform.identity.invitation", () => this.invitation(this.db, token, false)), state = PlatformSession.stateOf(i);   // PF-12: the token is the only key
     if (state === "VALID") return { state, firmName: i!.firm_name, email: i!.email, next: "Continue to set your password" };
     if (state === "EXPIRED") return { state, firmName: i!.firm_name, words: INVITE_WORDS.expired(i!.firm_name) };
     return { state, words: INVITE_WORDS.notValid };
@@ -83,7 +83,9 @@ export class PlatformSession {
   /** POST …/accept: one staff member and one provider user (its own email suppressed), the invitation used, the hand-off
    *  to set a password. The invitation row is locked, so a second accept (parallel or later) finds it used. */
   async accept(token: string) {
-    return this.db.$transaction(async (tx) => {
+    // PF-12: the token is the only key, and the email is checked across every firm (one account, one firm), so the door
+    // runs on the named bypass (BYPASS_USES "platform.identity.invitation").
+    return asBypass("platform.identity.invitation", () => this.db.$transaction(async (tx) => {
       const pre = await this.invitation(tx, token, false);   // one lock order with PF-4's resend and revoke: firm, then invitation
       if (pre) await tx.$queryRaw`select id from platform_firm where id = ${pre.firm_id}::uuid for update`;
       const i = await this.invitation(tx, token, true), state = PlatformSession.stateOf(i);
@@ -105,7 +107,7 @@ export class PlatformSession {
       await tx.platformStaff.update({ where: { id: staff.id }, data: { identitySubject: subject } });
       await tx.moduleEvent.create({ data: { firmId: inv.firm_id, type: EVENT.STAFF_JOINED, subjectId: staff.id, payload: StaffJoinedPayload.parse({ staffId: staff.id, invitationId: inv.id }) } });   // last (PF-3 m8)
       return { staffId: staff.id, firmKey: inv.firm_key, roles: inv.roles, handOff: await this.admin.handOff(inv.firm_key, inv.email) };
-    });
+    }));
   }
 
   // ---------------------------------------------------------------------------------------------------- the session
