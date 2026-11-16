@@ -1397,6 +1397,25 @@ class Tooltips(unittest.TestCase):
         self.assertEqual([x["id"] for x in f["needs"]["later"]], ["C12"])
         self.assertEqual((f["choke"]["stage"], f["choke"]["count"]), ("Built, waiting for qa", 2))
         self.assertIsNone(cd.first_screen(d, {}, None, "x")["release"]["proven"])
+        st = R["stage"]                                                       # A115: one stage per capability, the furthest first
+        self.assertEqual((st["2"], st["1"], st["3"], st["4"]), ("proven", "built", "built", "planned"))
+        self.assertEqual(sum(R["stage_counts"].values()), R["planned"])
+        self.assertEqual(f["needs"]["items"][1]["unblocks"], "the launch gate")                     # no trigger in the case: the gate
+        self.assertEqual(cd.nocode("Engage counsel (P-541, founder) before the gate P-589"), "Engage counsel before the gate")
+        self.assertNotIn("2026-11-16", f["needs"]["items"][1]["why"])
+
+    def test_page_a115_two_views_stages_and_steps(self):
+        """A115 (founder 16 Nov): four stage colours defined in light and both dark blocks; his view and a collapsed
+        tech-lead section; info buttons in his view only where data-keep marks them; each step a status he can change."""
+        html = open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read()
+        for tok in ("--st-planned:", "--st-progress:", "--st-built:", "--st-proven:"):
+            self.assertEqual(html.count(tok), 3, tok)                          # light, dark by system, dark by choice
+        self.assertIn('<details class="techsec" id="tech">', html)
+        self.assertIn('if(el.closest("#mine")&&!el.closest("[data-keep]"))return;', html)
+        for opt in ('value="todo">To do', 'value="done">Done', 'value="not_now">Not now', 'value="talk">Talk to the Lead'):
+            self.assertIn(opt, html)
+        self.assertIn('return {status:a.answer==="done"?"done":"not_now",at:a.at};', html)  # old Done / Not today entries still read
+        self.assertNotIn('data-ans="not_today"', html)
 
     def test_page_keys_all_in_explain(self):
         html = open(os.path.join(cd.P, "cockpit", "index.html"), encoding="utf-8").read()
