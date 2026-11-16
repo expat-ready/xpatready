@@ -7,16 +7,18 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { seedSampleFirms, seedSampleSettings, type SeedResult } from "../seed-sample-firms.ts";
-import { identityConfig } from "./port.ts";
+import { loadPlatformConfig, platformConfig, type PlatformConfig } from "../config/settings.ts";
 
 export type SeedDecision = { run: boolean; why: string };
 
+/** This process's configuration (read once at start) or, given another `env`, that one's: PF-24's loader reads and checks
+ *  the settings (PF-24w), so an unknown PLATFORM_SAMPLE_SEED stops the start-up with its name. */
+const configOf = (env: NodeJS.ProcessEnv): PlatformConfig => (env === process.env ? platformConfig() : loadPlatformConfig(env));
+
 /** Whether this configuration seeds the Sample firms at start-up. */
 export function sampleSeedDecision(env: NodeJS.ProcessEnv = process.env): SeedDecision {
-  const v = (env.PLATFORM_SAMPLE_SEED ?? "").trim() || "off";
-  if (!["on", "off"].includes(v)) throw new Error(`PLATFORM_SAMPLE_SEED "${v}": use on or off`);
-  const { environment } = identityConfig({ ...env, PLATFORM_IDENTITY: "" });
-  if (v === "off") return { run: false, why: "PLATFORM_SAMPLE_SEED is off (the default)" };
+  const { environment, sampleSeed } = configOf(env);
+  if (!sampleSeed) return { run: false, why: "PLATFORM_SAMPLE_SEED is off (the default)" };
   if (environment === "production") return { run: false, why: "refused: PLATFORM_ENVIRONMENT=production never seeds Sample firms" };
   return { run: true, why: `PLATFORM_SAMPLE_SEED=on (${environment})` };
 }
@@ -28,7 +30,7 @@ const seedFirmsAndValues = async (db: PrismaClient): Promise<SeedResult> => { co
 export async function seedSampleOnStart(env: NodeJS.ProcessEnv = process.env, seed: (db: PrismaClient) => Promise<SeedResult> = seedFirmsAndValues): Promise<SeedResult | null> {
   const d = sampleSeedDecision(env);
   if (!d.run) { if (d.why.startsWith("refused")) console.warn(`platform: Sample seed ${d.why}`); return null; }
-  const url = env.DATABASE_URL ?? "postgresql://xr_studio@127.0.0.1:54329/xr_studio_demo";   // as core.ts DATABASE_URL
+  const url = configOf(env).databaseUrl.reveal();   // the demo database locally, as core.ts DATABASE_URL
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: url, options: "-c TimeZone=UTC" }) });
   try { return await seed(db); } finally { await db.$disconnect(); }
 }
