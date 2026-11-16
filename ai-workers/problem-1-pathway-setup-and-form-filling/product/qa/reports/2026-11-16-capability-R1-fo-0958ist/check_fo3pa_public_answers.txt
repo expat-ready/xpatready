@@ -1,0 +1,48 @@
+NOTICE:  database "xr_studio_fo3pa_1502" does not exist, skipping
+PASS  FO-3pa routes: the list and the calendar file are open reads (the read guard admits a visitor; contracts §0.6)
+PASS  FO-3pa DW1 pass: the list shows the firm's active types shown on the page, by name (Assessment, Business, Free), as name, slug, length and modes only
+PASS  FO-3pa DW1 fail: a hidden and a retired type are not listed, and the answer carries no id
+PASS  FO-3pa DW1 fail: an unknown firm, a key in capitals and a firm id give the one not-found, identical to an unknown slug's (BR-2)
+PASS  FO-3pa DW2 pass: a shown type's page answers with its times
+PASS  FO-3pa DW2 fail: a hidden type's page and its booking form give exactly the unknown slug's not-found; nothing saved
+PASS  FO-3pa DW3 pass: booking with the tick left empty succeeds and records no marketing consent (AG-4-19 rule 3)
+PASS  FO-3pa DW3 pass: with the tick, the booking carries one consent with the firm's wording id and the time it was given
+PASS  FO-3pa DW3 fail: consent false sent with a wording id books with no consent (the id alone never makes one; review m)
+PASS  FO-3pa DW3 pass: a firm with no consent sentence shows no box (consent null) and books without the tick (BR-5)
+PASS  FO-3pa DW3 fail: at a firm with no consent sentence, a tick → 409 consent-wording-changed, nothing booked
+PASS  FO-3pa DW3 fail: a tick naming another wording → 409 consent-wording-changed, a tick with no wording id → 400; neither books nor arrives
+PASS  FO-3pa DW4 pass: the list, type page, booking and manage answers carry the firm's operating name, email, phone and address
+PASS  FO-3pa DW4 pass: the type page, booking and manage answers carry the self-service limit in hours (4) and the type's switches
+PASS  FO-3pa DW4 fail: no answer carries a staff, firm, type or person id, nor the business address's other keys
+PASS  FO-3pa DW4 fail: line breaks and bidirectional characters in the firm's address are dropped, a blank phone is null (break m3)
+PASS  FO-3pa DW4 fail: a firm with no business address answers phone and address null, never an error
+PASS  FO-3pa DW9 pass: a type that allows cancelling shows the cancel action on its manage answer
+PASS  FO-3pa DW9 fail: a type with allowCancel false shows no cancel action (reschedule still offered)
+PASS  FO-3pa DW5 fail: allowCancel false gives a cancel attempt by link the refusal (409 NOT_ALLOWED_BY_LINK), the booking unchanged
+PASS  FO-3pa DW5 fail: allowReschedule false refuses a move and its times by link (409 NOT_ALLOWED_BY_LINK), the booking unchanged
+PASS  FO-3pa DW5 fail: cancelling switched off after the manage page loaded (it showed Cancel) is still refused, booking unchanged
+PASS  FO-3pa DW5 fail: rescheduling switched off after the manage page loaded (it showed Reschedule) is still refused, booking unchanged
+PASS  FO-3pa DW5 pass: a type that allows it is cancelled by link (200 CANCELLED)
+PASS  FO-3pa DW6 pass: the .ics download equals the mailed invite (UID, SEQUENCE, UTC start and end, summary, organizer, attendee)
+PASS  FO-3pa DW6 pass: it downloads as a calendar file (text/calendar, an attachment named invite.ics, not cached)
+PASS  FO-3pa DW6 fail: after a move the old link's download is the one not-found; the new link's has SEQUENCE raised and the new time
+PASS  FO-3pa DW6 fail: a voided token and a garbage token give 404, identical to every other not-found
+PASS  FO-3pa DW6 fail: the not-found is JSON, never a calendar download (break M2)
+PASS  FO-3pa DW10 fail: a reason over 500 characters or with a control character → 400, the booking unchanged and no reason stored
+PASS  FO-3pa DW10 pass: the reason (trimmed) is stored on the booking (cancel_reason) in the cancel's own write
+PASS  FO-3pa DW10 pass: the audit entry says a reason was given and holds no part of its text
+PASS  FO-3pa DW7 fail: the reason is never shown back: not in the cancel answer, its events or mails, and the cancelled link is the one not-found
+PASS  FO-3pa DW10 pass: a cancel with no body still works, stores NULL and its audit sentence names no reason
+PASS  FO-3pa DW10 pass: a reason with 500 characters cancels (200) and is stored whole on the booking, not in the audit (break B1, B2)
+PASS  FO-3pa DW10 pass: a reason with an email address in it cancels (200) and is stored whole on the booking, not in the audit (break B1, B2)
+PASS  FO-3pa DW10 pass: a reason with two lines cancels (200) and is stored whole on the booking, not in the audit (break B1, B2)
+PASS  FO-3pa DW10 fail: a reason with broken UTF-16, a bidirectional override or only invisible characters → 400, never a 500; the booking unchanged (break M1, m2)
+PASS  FO-3pa DW10 fail: the database refuses a reason on a booking that is not cancelled, and one over 500 characters
+PASS  FO-3pa DW8 fail: the type page never carries the join link (its meetingLink is null, the link nowhere in the answer)
+PASS  FO-3pa DW8 pass: the confirmation and the manage answer of a confirmed video booking carry the join link
+PASS  FO-3pa DW8 fail: a phone booking, and a type with no link, answer joinLink null
+PASS  FO-3pa DW8 fail: a cancelled booking's answer carries no join link
+PASS  FO-3pa door pass: the list and the calendar file answer within the per-IP limit, and another address is not held back
+PASS  FO-3pa door fail: past the per-IP limit the list and the calendar file answer 429 (contracts §0.6)
+
+45 passed, 0 failed

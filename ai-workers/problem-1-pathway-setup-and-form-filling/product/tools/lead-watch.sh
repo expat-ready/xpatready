@@ -157,6 +157,12 @@ else say "library: every living master current"; fi
 od=$(python3 "$TOOLS/outside-deps-watch.py" 2>&1); echo "$od"; act=$((act + $(grep -c '^ACT' <<<"$od")))   # 9. Outside dependencies (B192, P-618): start window, stuck 48 h, blocked without decision date or fallback
 seen "$od"
 
+# 10. The app view (B197, founder A110, 16 Nov: "lead keep forgetting"; P-326, P-339): every lane on claude.ai/code, read in
+# the built-in browser with tools/app-view.js and saved by tools/app-view-save.sh. Over 35 min old = ACT; else one ACT per
+# flagged session (need_input, blocked, failed, idle over 90 min with work left, context over 45%).
+av=$(bash "$TOOLS/app-view-check.sh" 2>&1); echo "$av"; act=$((act + $(grep -c '^ACT' <<<"$av")))
+seen "$av"
+
 # 9b. Known failures (B202, founder A119 16 Nov, P-639): every failure already met is one line of tools/known-failures.tsv,
 # checked every time from what this check already read: size walls, records PRs, the proving pipe
 # (Built waiting for qa vs qa lanes pushing) and the feeding pipe (ready rows per running builder, idle builders with no row).
@@ -179,6 +185,5 @@ print(json.dumps({"now": datetime.now(timezone.utc).isoformat(), "files": {"RULE
   "seen": open(E["KF_SEEN"]).read().splitlines()}))' > "$STATE_DIR/known-facts.json"
 kf=$(python3 -I "$TOOLS/known-failures.py" --facts "$STATE_DIR/known-facts.json" 2>&1); echo "$kf"; act=$((act + $(grep -c '^ACT' <<<"$kf")))
 
-exit "$act"
 
 exit "$act"
