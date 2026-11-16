@@ -114,10 +114,11 @@ export function pack2(id: string) {
       if (!done) out.refused.push(`replay ${item.file}: not finished in 180 s`);
     }
     // B74: the first map applied decides the library's fields and labels, and a saved AI answer replays only on the exact
-    // question list, so the maps take a fixed order (a form before its schedule, by file name).
-    // C4.11-G5 (P-641): a batch's jobs start a millisecond or two apart in either order (Reset to the six starts Visitor
-    // visa's 7 maps in one batch), so they are taken as the batch's plan lists them, as the configured checkpoint's
-    // reviewOrder (040-field-map-review.ts) does, never by when each job started: IMM 5257's Schedule 1 applied first
+    // question list, so the maps take a fixed order: by batch, then the batch's plan; the file name (a form before its
+    // schedule) only breaks a tie. C4.11-G5 (P-641): a batch's jobs start a millisecond or two apart in either order
+    // (Reset to the six starts Visitor visa's 7 maps in one batch), so they are taken as the batch's plan lists them, as
+    // the configured checkpoint's reviewOrder (040-field-map-review.ts) does for batched jobs, never by when each job
+    // started (a job with no batch still goes by its start): IMM 5257's Schedule 1 applied first
     // renamed the library's fields and added person.uci_number, so the PQR picks found no saved run and none was Ready.
     const atPlan = `(select min(t.o) from jsonb_array_elements(b.plan->'targets') with ordinality t(v, o) where t.v->>'attachmentId' = a.id::text)`;
     for (const j of ids(`select j.id from drafting_job j join source_attachment a on a.id=j.attachment_id left join ai_batch b on b.id=j.batch_id where j.combination_id='${comboId}' and j.kind='field_map' and j.status='COMPLETED' order by coalesce(b.started_at, j.started_at), ${atPlan} nulls last, a.file_name desc, j.started_at, j.id`)) {
