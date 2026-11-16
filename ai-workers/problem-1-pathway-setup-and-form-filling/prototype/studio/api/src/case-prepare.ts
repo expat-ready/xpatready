@@ -923,13 +923,13 @@ export class CasePrepare {
   }
 }
 
-/** C7.3: one Online form item's answer sheet: the person's boxes for that form (every declared or confirmed answer, each
- *  with its mark and "to confirm", P-242, P-411), in the form's own parts (else the twin's sections), with each entered
- *  tick compared against the answers it froze. */
 /** BK-21 (QA-397; SA-01B v2.1 "Pin: the pack version a filing follows"): the IRCC account written into the case's
  *  pinned release (engine/snapshot.ts), as workspace.ts reads it; a draft account change reaches a case only by release. */
 const releasedAccount = (s: { combination?: { portal?: string | null } }) => s.combination?.portal ?? null;
 
+/** C7.3: one Online form item's answer sheet: the person's boxes for that form (every declared or confirmed answer, each
+ *  with its mark and "to confirm", P-242, P-411), in the form's own parts (else the twin's sections), with each entered
+ *  tick compared against the answers it froze. */
 function sheetOf(item: { itemKey: string; subjectId: string }, s: ReturnType<Runtime["snapshotOf"]>, people: ReturnType<Runtime["peopleOf"]>, answers: Awaited<ReturnType<Runtime["state"]>>["answers"], rows: Awaited<ReturnType<Runtime["state"]>>["rows"], view: ReturnType<typeof caseView>, entered: { sectionKey: string; enteredAt: Date; enteredBy: string; snapshot: { inputHash: string } }[], parts: Map<string, FormPart[]>, missing: Readiness["missing"], cov = formCoverage(s, people, answers, rows, item.itemKey, item.subjectId)): Sheet {
   const labels = new Map(view.sections.flatMap((x) => x.questions).map((q) => [q.fact, q.label]));
   // QA-392: a box written No because nothing is recorded has no answer of its own: its source and mark are those of the
