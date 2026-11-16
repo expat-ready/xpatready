@@ -31,6 +31,7 @@ Rules: RULES.md (as of **P-634**) + DECISIONS **P-635 to P-637** word for word (
 | A116 | ~11:1x IST 16 Nov (typed here): Devin's role and whether he pays for it; should we keep using Claude Code; research how Claude Code is used for DevOps, platform, forward-deployed and end-to-end engineering; are we following those practices, and how to fix gaps | answered 11:2x IST from `design/claude-code-devops-research-2026-11-16.md` (keep Devin, narrow it; founder checks the Devin plan; trial a Claude reviewer workflow) |
 | A117 | 11:23 IST 16 Nov: a hook so the 30-min check reads the board's stuck items itself (he pointed at six); some tokens fine if justified by speed | row B201 (lead-watch prints the board's Today and Stuck as ACT lines, same code as the board); cloud builder started 11:23 |
 | A118 | 11:26 IST 16 Nov: never trust the board blindly; script and board keep each other right; the board stays his view; the Lead keeps monitoring, unblocking, resourcing, rotating | P-639 recorded; B201 lane told (verify each item against its source, mismatch = ACT) |
+| A119 | 11:31 IST 16 Nov: the check hunts today's known failures every time; feeding and building keep a full proving pipe; walk claude.ai end to end in the browser and unblock everything | B202 row; cloud builder; browser walk 11:31 |
 ## For the founder (P-390)
 F2, F8, F14-F19 closed or ruled; word for word in `history/STATE-2026-11-15-2115-lead61s2-founder-asks-A89-A92-rows.md`.
 
