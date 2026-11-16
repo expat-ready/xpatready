@@ -21,22 +21,7 @@ const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++
  *  goes when its method parses (CS-V1 PR 2: review-rounds/readiness/form-additions; PR 3a: person-link, case-prepare,
  *  sign-steps; PR 3b: runtime.ts). Measured on main by this check (16 Nov); each confirmed by reading its service method. */
 export const ALLOW = new Set([
-  "assessments.ts GET /api/runtime/cases/:id/assessments query(person)",   // Assessments.list: the string compared as is
-  "case-documents.ts GET /api/runtime/cases/:id/proposals query",          // CaseDocuments.proposals: q.subject read by hand
-  "case-documents.ts GET /api/runtime/cases/:id/checks query",             // CaseDocuments.checks: q.subject, q.state by hand
   "case-prepare.ts POST /api/runtime/items/:id/pdf-copy body",             // CasePrepare.pdfCopy: fields read by hand
-  "features/case-close.ts POST /api/runtime/cases/:id/decisions body",     // CaseClose.decide: checked by hand (reasonOf, dateOf), no zod
-  "features/case-close.ts POST /api/runtime/cases/:id/withdraw body",      // CaseClose.withdraw: the same
-  "features/case-close.ts POST /api/runtime/cases/:id/close body",         // CaseClose.close: the same
-  "features/case-close.ts POST /api/runtime/cases/:id/reopen body",        // CaseClose.reopen: the same
-  "fill-case.ts GET /api/runtime/form-copies/:id/file query(original)",    // FillCase.file: only `o === "1"` is read
-  "form-additions.ts GET /api/runtime/filings/:id/addable-forms query(q)", // FormAdditions.addable: q read by hand
-  "form-additions.ts GET /api/runtime/filings/:id/addable-forms query(subject)",
-  "form-additions.ts GET /api/runtime/filings/:id/addable-forms/:form query(subject)", // FormAdditions.detail
-  "form-additions.ts POST /api/runtime/filings/:id/form-additions body",   // FormAdditions.add: `body as {…}`, checked by hand
-  "form-additions.ts POST /api/runtime/form-additions/:id/remove body",    // FormAdditions.remove: reason read by hand
-  "readiness.ts POST /api/runtime/filings/:id/review body",                // FilingReadinessRoutes.review
-  "readiness.ts POST /api/runtime/filings/:id/warnings/:code/pass body",   // FilingReadinessRoutes.pass: `body as {…}`
   "runtime.ts GET /api/runtime/cases query",                               // Runtime.list: take/after/client/q by hand
   "runtime.ts GET /api/runtime/cases/:id/questionnaire query(mode)",       // the handler compares m to "pqr"/"agent"
   "sign-steps.ts POST /api/runtime/items/:id/sign-steps/:key body",        // SignSteps.step

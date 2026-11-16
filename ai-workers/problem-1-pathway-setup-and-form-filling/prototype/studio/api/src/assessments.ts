@@ -8,7 +8,7 @@
 import { Body, Controller, Get, Headers, HttpCode, HttpException, HttpStatus, Inject, Injectable, Param, Post, Query } from "@nestjs/common";
 import type { Assessment as Row, AssessmentOverride, AssessmentReview } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { AssessmentOverrideBody, AssessmentReviewBody, AssessmentRunBody } from "../../contracts/eligibility.ts";
+import { AssessmentListPerson, AssessmentOverrideBody, AssessmentReviewBody, AssessmentRunBody } from "../../contracts/eligibility.ts";
 import { CASE_CHECK_SHORT, outcomeWord } from "../../contracts/case-check-words.ts";
 import { problemFromZod } from "../../contracts/programs.ts";
 import { checkValue, knownOf } from "../../engine/runtime/case.ts";
@@ -90,8 +90,11 @@ export class Assessments {
 
   /** GET the list (BR-13): every run on the case, or one person's, newest first; out of date worked out now. Two
    *  queries for the runs (with their overrides and review) and one read of today's answers. */
-  async list(actor: Actor, caseId: string, person?: string) {
+  async list(actor: Actor, caseId: string, personIn?: unknown) {
     const c = await this.r.reach(actor, caseId, "officer");
+    const one = AssessmentListPerson.safeParse(personIn); // CS-V1 part 2: one value, as text
+    if (!one.success) fieldError("person", one.error.issues[0].message);
+    const person = one.data;
     if (person !== undefined) { if (!c.participants.some((p) => p.subjectId === person && p.role !== "case")) fieldError("person", "That person is not on this case."); }
     const rows = await this.db.assessment.findMany({ where: { caseId: c.id, configReleaseId: { in: c.pins.map((p) => p.configReleaseId) }, ...(person ? { subjectId: person } : {}) }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], include: { overrides: { orderBy: { createdAt: "asc" } }, review: true } });
     const { known } = await this.knownNow(c);

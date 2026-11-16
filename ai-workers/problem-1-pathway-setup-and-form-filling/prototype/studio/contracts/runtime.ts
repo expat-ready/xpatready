@@ -455,3 +455,88 @@ export type ReviewRoundFiling = { filing: string; label: string; filing_round: n
   history: { round: number; filing_round: number; status: ReviewRowStatus; at: string; by: string | null; reasons: { text: string }[] | null }[] };
 export type ReviewRound = { id: string; case_id: string; number: number; kind: "send" | "review_now" | "one_step" | "reapprove"; sent: { by: string; name: string; at: string };
   representative: { id: string | null; name: string | null }; can_decide: boolean; read_only_words: string | null; solo: boolean; filings: ReviewRoundFiling[]; rounds: { id: string; number: number; kind: string; at: string }[] };
+
+// ------------------------------------------------------------------ CS-V1 part 2: the case-side bodies read by hand until now
+// STANDARDS §6 (contract first): every body and query of these routes is read through a strict schema. A field that is
+// not part of the request, a wrong type and an over-long value answer 400 naming the field; every request accepted
+// before is still accepted, and the checks a route already made keep their words (they stay in the route, after this).
+/** A value that is not text passes (the route's own check says what it must be); text is capped at `max` characters. */
+const upTo = (max: number, words: string) => z.unknown().refine((v) => typeof v !== "string" || v.length <= max, words);
+const notHere = (what: string) => ({ error: (i: { code: string; keys?: string[] }) => i.code === "unrecognized_keys" ? `Not part of ${what}: ${(i.keys ?? []).join(", ")}.` : `Send ${what} as an object.` });
+/** POST /runtime/filings/:id/review (readiness.ts). */
+export const FilingReviewBody = z.strictObject({
+  facts_hash: upTo(64, "The facts_hash you read (Reload).").optional(),
+  pin_revision: z.number({ error: "The pin revision you read (Reload)." }).int("The pin revision you read (Reload).").optional(),
+  note: upTo(4000, "Keep the note to 400 characters.").optional(),
+  self: z.boolean({ error: "self is true or false, or leave it out." }).optional(),
+}, notHere("a review"));
+/** POST /runtime/filings/:id/warnings/:code/pass (readiness.ts). */
+export const WarningPassBody = z.strictObject({
+  reason: upTo(3000, "Keep it to 300 characters.").optional(),
+  key: upTo(500, "Send key as the warning line's key (text), or leave it out to pass every open line of this kind.").optional(),
+}, notHere("passing a warning"));
+const optText = (field: string, max: number) => z.union([z.string(), z.null()], { error: `Write ${field} as text, or leave it out.` }).refine((v) => v == null || v.length <= max, `Keep ${field} to ${max} characters.`).optional();
+/** POST /runtime/filings/:id/form-additions (form-additions.ts). Reasons longer than 500 characters are kept to 500 as before. */
+export const FormAdditionBody = z.strictObject({
+  form: upTo(100, "Name the form to add, by its number.").optional(),
+  subject: optText("subject", 100),
+  channel: optText("channel", 40),
+  signature: z.union([z.string().max(40), z.boolean(), z.null()], { error: "signature is NONE (no signature) or left out." }).optional(),
+  signature_reason: optText("signature_reason", 5000),
+  reason: optText("reason", 5000),
+  idempotency_key: optText("idempotency_key", 200),
+}, notHere("adding a form"));
+/** POST /runtime/form-additions/:id/remove (form-additions.ts). */
+export const FormRemovalBody = z.strictObject({ reason: upTo(5000, "Keep the reason to 5000 characters.").optional() }, notHere("removing a form"));
+/** ?q= and ?subject= on /runtime/filings/:id/addable-forms[/:form] (form-additions.ts): one value each, as text. */
+export const AddableSearch = z.string({ error: "Give q once, as text." }).max(200, "Keep the search to 200 characters.").optional();
+export const AddableSubject = z.string({ error: "Give subject once, as text." }).max(100, "Keep subject to 100 characters.").optional();
+/** ?original= on /runtime/form-copies/:id/file (fill-case.ts): "1" is the original; anything else, or none, the copy. */
+export const CopyFileOriginal = z.union([z.boolean(), z.string().max(10)], { error: "Give original once (original=1)." }).optional().transform((v) => v === true || v === "1");
+
+// CS-C1a's case decision, withdrawal, close and reopen (case-close.ts): its checks and words exactly, moved into zod.
+// A failed check carries its own code (params.code), so the route answers as before.
+/** Sample until cited (AG-7-33 rules 3-4: APPROVED, REFUSED, or another value from the pack). */
+export const DECISION_OUTCOMES = ["APPROVED", "REFUSED"] as const;
+export const REASON_MAX = 1000, NOTE_MAX = 2000;
+/** Words a person reads: no NUL or other control character but tab and new line (break m1). */
+const BAD_TEXT = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
+/** Spaces and invisible characters only count as empty (break m4). */
+const blank = (t: string) => !t.replace(/[\s​-‍⁠﻿]/g, "");
+type Ctx = { addIssue: (i: { code: "custom"; message: string; params?: Record<string, unknown> }) => void };
+const caseReason = z.unknown().transform((v, ctx: Ctx) => {
+  const r = typeof v === "string" ? v.trim() : "";
+  if (BAD_TEXT.test(r)) { ctx.addIssue({ code: "custom", message: "Plain text only." }); return z.NEVER; }
+  if (blank(r)) { ctx.addIssue({ code: "custom", message: "Give a reason.", params: { code: "REASON_REQUIRED" } }); return z.NEVER; }
+  if (r.length > REASON_MAX) { ctx.addIssue({ code: "custom", message: `At most ${REASON_MAX} characters.` }); return z.NEVER; }
+  return r;
+});
+const caseDate = z.unknown().transform((d, ctx: Ctx) => {
+  if (typeof d !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(`${d}T00:00:00Z`)) || new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) !== d || d < "1900-01-01" || d > "2200-12-31") {
+    ctx.addIssue({ code: "custom", message: "A real date as YYYY-MM-DD." }); return z.NEVER;
+  }
+  return new Date(`${d}T00:00:00Z`);
+});
+/** POST /runtime/cases/:id/decisions. filingId stays a lookup (a missing or unknown one is "No such filing", 404). */
+export const CaseDecisionBody = z.strictObject({
+  idempotencyKey: z.unknown().transform((k, ctx: Ctx) => {
+    if (k == null) return null;
+    if (typeof k === "string" && /^[A-Za-z0-9._:-]{1,100}$/.test(k)) return k;
+    ctx.addIssue({ code: "custom", message: "1-100 letters, digits, . _ : -" }); return z.NEVER;
+  }).optional(),
+  outcome: z.unknown().transform((o, ctx: Ctx) => {
+    if (typeof o === "string" && (DECISION_OUTCOMES as readonly string[]).includes(o)) return o as (typeof DECISION_OUTCOMES)[number];
+    ctx.addIssue({ code: "custom", message: `One of ${DECISION_OUTCOMES.join(", ")} (Sample list).` }); return z.NEVER;
+  }),
+  decidedOn: caseDate,
+  note: z.unknown().transform((n, ctx: Ctx) => {
+    if (n == null || n === "") return null;
+    if (typeof n === "string" && n.trim().length <= NOTE_MAX && !BAD_TEXT.test(n)) return n.trim() || null;
+    ctx.addIssue({ code: "custom", message: `Plain text, at most ${NOTE_MAX} characters.` }); return z.NEVER;
+  }).optional(),
+  filingId: upTo(200, "No such filing on this case in your firm.").optional(),
+}, notHere("a decision"));
+/** POST /runtime/cases/:id/withdraw. */
+export const CaseWithdrawBody = z.strictObject({ reason: caseReason, withdrawnOn: caseDate }, notHere("a withdrawal"));
+/** POST /runtime/cases/:id/close and /reopen: a reason. */
+export const CaseReasonBody = z.strictObject({ reason: caseReason }, notHere("this request"));
