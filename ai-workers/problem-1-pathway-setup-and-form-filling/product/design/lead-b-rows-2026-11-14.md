@@ -1328,3 +1328,16 @@ Rev 16.44's "no tagline field anywhere" is withdrawn. One reading is for Lead 64
 The ruling is on #1912, comment 6905670026:
 * PF-6 part 1 adds no API line and shows the firm's key as the frame title for now.
 * PF-13 part 2 replaces the key with the operating name and logo, read from its public branding answer (AG-1-9 "firm-console chrome"; new line `PF-13 DW11` in `P-627-amendments.md`). This puts no `firmName` on `/me`, which would widen `StaffContext`, a type every guarded route shares.
+
+## Rev 16.47 (16 Nov 08:0x IST, Lead B (6)): P-630 adoptions through the gate; PF-19s, PF-19c, PF-13 and FO-5p amended; new rows PF-Le and PF-Fp
+
+* **Gate entries 15–17** are in `design/tech-gate-platform-front-office-2026-11-14.md` (`main`'s file plus three entries; the Lead copies it whole). They were checked at source on the Mac: npm registry, tarball, GitHub advisories, licence files. Lead B's approval line is in `lead-b-briefs/P-630-amendments.md`.
+* **Entry 15, `@react-email/editor` 1.7.18:** approved, with conditions. It is under nine months old, with 133 releases in a year, so it is pinned exactly. We store our own JSON and the server makes the HTML; no Tiptap package below 3.30.5 (GHSA-j95f-988m-3j2f); the editor pulls in `react-email`'s CLI dependencies, which must never be bundled.
+* **Entry 16, `react-email` 6.11.6:** approved. `@react-email/components` is deprecated, so it is not used. The layout lives on the adapter side, never in `ports/`.
+* **Entry 17, Gotenberg 8.40.0 by digest:** approved only with five conditions. It has 40 advisories, 9 of them critical; every release that passes the 14-day rule is still exposed, so this is a security exception. Only the LibreOffice route is enabled, with no outbound network.
+* **Briefs amended** (paste-above blocks in `P-630-amendments.md`):
+  - PF-19s: the editor with field chips;
+  - PF-19c: a JSON body, the server-side renderer, and WhatsApp's Meta template status stored and checked in `send()` (submission is FO-11's);
+  - PF-13: the layout built with `react-email`;
+  - FO-5p: its PDF moves to a part 2 after PF-Fp.
+* **New rows:** **PF-Le**, the libraries PR (the PF-L rule), and **PF-Fp**, `DocumentRenderPort.toPdf` through Gotenberg, a shared contract (P-423).
