@@ -19,7 +19,6 @@ Only the tech lead edits this file. Build Leads send rows to the Lead; the Lead 
 | PF-19e | runtime | lead-b-front-office:lead-b-briefs/PF-19e.md | #1956, #1961 | medium, no |
 | AUD-1b | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/AUD-1b.md | #2003 | high, yes (audit) |
 | CS-DL1b | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-DL1b.md | #2000 | medium, no |
-| CS-V1-2 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-V1-2.md | #2007 | medium, no |
 | AUD-1c part 1 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/AUD-1c-1.md (may run beside AUD-1b) | #2003 | high, yes; schema: "Ready for Lead read" |
 | PF-6 part 2a | runtime | lead-b-front-office:lead-b-briefs/PF-6p2.md | #1945 | high, yes |
 | PF-6m2 | runtime | lead-b-front-office:lead-b-briefs/PF-6m2.md | #1945 | high, yes |
@@ -38,3 +37,5 @@ Only the tech lead edits this file. Build Leads send rows to the Lead; the Lead 
 | PF-19ad | runtime | main:lead-b-briefs/PF-19ad.md | PF-19c part 1 | high, no |
 
 Chains on shared files run one after another, never side by side (Build Lead A, rev 16.80): booking/service.ts: FO-3a part 1b → FO-3vr → FO-3v; the messages files: PF-19e → PF-13 part 1 → PF-19c → PF-19ad. Sources: Build Lead A rev 16.80 (1671fb76e), Build Lead C 93004803b, 22:2x IST 16 Nov.
+
+Removed 22:3x (Lead 70): CS-V1-2. The CS-V1 lane (#2007) takes it warm after #2007 merges, once Build Lead C confirms the scope.
