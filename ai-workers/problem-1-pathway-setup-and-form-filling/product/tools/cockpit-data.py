@@ -468,38 +468,60 @@ def title_has(title, rid):
 
 
 # P-639 (16 Nov, qa #1950): a merged "PF-5 part 1" is not PF-5 while BACKLOG still names a later part of it.
-PART_MENTION = re.compile(r"(?<![A-Za-z0-9-])([A-Z]{1,4}-[A-Za-z0-9]+)\s+[Pp]arts?\s+(\d+[a-z]?)((?:\s*(?:,|and|&)\s*\d+[a-z]?)*)")
+# Same pattern in cockpit-reconcile.py (test_part_patterns_agree_on_real_backlog_wording keeps them in step).
+PART_MENTION = re.compile(r"(?<![A-Za-z0-9-])([A-Z]{1,4}-[A-Za-z0-9]+)\s*\(?\s*[Pp]arts?\s+(\d+[a-z]?(?:\s*(?:,|and|&|to|–|-)\s*\d+[a-z]?)*)")
+
+
+def part_list(text):
+    """"2", "2 and 3", "2, 3", "1–2", "1 to 3" → the part numbers; a range of plain numbers is expanded."""
+    toks, out = re.findall(r"\d+[a-z]?|to|–|-", text or ""), []
+    i = 0
+    while i < len(toks):
+        if toks[i] in ("to", "–", "-"):
+            i += 1
+            continue
+        if i + 2 < len(toks) and toks[i + 1] in ("to", "–", "-") and toks[i].isdigit() and toks[i + 2].isdigit():
+            out += [str(k) for k in range(int(toks[i]), int(toks[i + 2]) + 1)]
+            i += 3
+            continue
+        out.append(toks[i])
+        i += 1
+    return out
 
 
 def backlog_parts(text):
-    """{id: {part numbers}} that BACKLOG names anywhere ("PF-5 part 2", "PF-5 parts 2 and 3", "FO-4 part 2")."""
+    """{id: {part numbers}} that BACKLOG names anywhere ("PF-5 part 2", "PF-5 parts 2 and 3", "FO-7ts parts 1–2", "FO-7mv (part 1)")."""
     out = {}
     for m in PART_MENTION.finditer(text or ""):
-        ps = out.setdefault(m.group(1), set())
-        ps.add(m.group(2))
-        ps.update(re.findall(r"\d+[a-z]?", m.group(3) or ""))
+        out.setdefault(m.group(1), set()).update(part_list(m.group(2)))
     return out
 
 
 def title_part(title, rid):
-    """The part a pull request title names for an id ("PF-5 part 1" gives "1"); None for the whole id."""
-    m = re.search(r"(?<![A-Za-z0-9-])" + re.escape(rid) + r"\s+[Pp]arts?\s+(\d+[a-z]?)", title or "")
-    return m.group(1) if m else None
+    """The parts a pull request title names for an id ("PF-5 part 1" gives ["1"], "PF-5 parts 1 and 2" gives ["1", "2"]);
+    None for the whole id."""
+    m = re.search(r"(?<![A-Za-z0-9-])" + re.escape(rid) + r"\s*\(?\s*[Pp]arts?\s+(\d+[a-z]?(?:\s*(?:,|and|&|to|–|-)\s*\d+[a-z]?)*)", title or "")
+    return part_list(m.group(1)) if m else None
 
 
 def merged_when(prs, named):
-    """An id is merged when one app PR merged the whole id, or when every part BACKLOG names for it, and every part
-    a PR merged, has a merged app PR; then it dates from its last needed part. prs: [(merged_at, number, part)] by time.
-    Returns (merged_at, number) or None, and the parts still open."""
-    whole = next(((t, n) for t, n, pt in prs if pt is None), None)
-    if whole:
+    """An id is merged when no part of it is open. When BACKLOG names parts of it, every named part (and every part a
+    title names) needs a merged app PR, and a PR for the whole id does not stand in for them; when BACKLOG names none,
+    one PR for the whole id, or every part the titles name, merges it. It dates from the last PR it needed.
+    prs: [(merged_at, number, parts or None)] by time. Returns ((merged_at, number) or None, open parts)."""
+    done, whole = {}, None
+    for t, n, pts in prs:
+        if pts is None:
+            whole = whole or (t, n)
+        else:
+            for x in pts:
+                done.setdefault(x, (t, n))
+    named = set(named)
+    if not named and whole:
         return whole, []
-    done = {}
-    for t, n, pt in prs:
-        done.setdefault(pt, (t, n))
-    need = set(named) | set(done)
+    need = named | set(done)
     open_ = sorted(need - set(done))
-    if open_:
+    if open_ or not need:
         return None, open_
     return max(done[x] for x in need), []
 
@@ -1769,6 +1791,8 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
                     unclassified.add(rid)
     open_parts = {}
     for rid, prs in app_prs.items():
+        if rid in unclassified:              # a part's app-code check is missing: reported as such, not as an open part
+            continue
         w, op = merged_when(prs, bl_named.get(rid, ()))
         if w:
             change_at[rid], change_pr[rid] = w
@@ -1802,7 +1826,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     shaped_ids = []
     for r in shaped:
         shaped_ids += [x for x in r["ids"] if x not in shaped_ids]
-    rem_shaped = sum(1 for x in shaped_ids if x not in change_at)
+    rem_shaped = sum(1 for x in shaped_ids if x not in change_at and x in bl["ids"])   # R4: an id BACKLOG lacks is an invariant failure, not scope
     rem_unshaped = sum(max(0, UNSHAPED_FACTOR - sum(1 for x in r["ids"] if x in change_at)) for r in unshaped)
     remaining = rem_shaped + rem_unshaped
     R = num(remaining, f"unmerged ids of shaped capabilities ({rem_shaped}) + {UNSHAPED_FACTOR} × each capability not shaped, "
@@ -1914,7 +1938,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     in_span = lambda iso: iso is not None and s_from < parse_iso(iso) <= s_to
     span_txt = f"{hm(s_from)} to {hm(s_to)} IST"
     ch_span = sorted(rid for rid, at in change_at.items() if in_span(at))
-    D_ch = num(len(ch_span), f"Release 1 changes whose first app-code merge falls between {span_txt} (the same changes as the pace line); "
+    D_ch = num(len(ch_span), f"Release 1 changes whose app-code merge (for an id in parts, its last needed part, P-639) falls between {span_txt} (the same changes as the pace line); "
                f"{gh_src}; {ck_src}", "mixed", L, ids=ch_span)
 
     # qa Works, one rule for done and needed (the qa queue's): the row's checklist Status reads "qa Works" or the row is proven
@@ -2070,7 +2094,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     lf_txt = last_full.strftime("%-d %b") if last_full else None
     series = [{"day": d.isoformat(), "count": per_day.get(d, 0)} for d in win]
     LD_parts = num(per_day.get(last_full, 0) if last_full else None,
-                   f"Release 1 changes (BACKLOG parts) whose first app-code merge fell on the IST day {lf_txt or 'not over yet'}; {gh_src}; {ck_src}",
+                   f"Release 1 changes (BACKLOG parts) whose app-code merge (for an id in parts, its last needed part, P-639) fell on the IST day {lf_txt or 'not over yet'}; {gh_src}; {ck_src}",
                    "mixed", L, "not measured: no full IST day since 13 Nov yet", day=last_full.isoformat() if last_full else None,
                    today_so_far=per_day.get(today, 0), series=series)
     built_on = lambda d: sum(1 for r in built_rows if r["built"] == d.isoformat())
@@ -3016,7 +3040,7 @@ def build_explain(d):
         "); a high date past it means the pace must rise.", EB, n_override=EB.get("n"))  # days measured is a real sample even when the band is retired
     LD = P.get("leading") or {}
     lp, lc, lv = LD.get("parts_merged") or {}, LD.get("caps_all_parts") or {}, LD.get("first_verdict_works_pct") or {}
-    put("pace.leading_parts", "Parts merged a day", "Release 1 changes (BACKLOG parts) whose first app-code merge fell on the last full IST day.",
+    put("pace.leading_parts", "Parts merged a day", "Release 1 changes (BACKLOG parts) whose app-code merge (for an id in parts, its last needed part) fell on the last full IST day.",
         "IST day " + str(lp.get("day") or "none yet") + " (00:00 to 24:00); today so far: " + str(lp.get("today_so_far")), val(lp),
         "parts merged that day", up + " A leading number: parts merge before capabilities are built.", lp)
     put("pace.leading_caps", "Capabilities with all parts merged", "Build rows whose BACKLOG parts have all merged (built), cumulative.",
