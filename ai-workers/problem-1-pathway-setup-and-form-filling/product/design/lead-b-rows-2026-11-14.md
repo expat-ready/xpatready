@@ -1547,3 +1547,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
     - the features half of SA-3-58 is a named gap on part 2 until PF-17's feature list.
   - **FO-9b's Minors:** accepted.
 * **Told to Lead 67:** #1956 merges `main` in its own lane (P-270).
+* #1959: the trial-end condition is met ("PF-5 part 2 pass (QA-481)"). Lead 67's re-read was done at e9eae0b40. **Owed by Lead B before PF-5 goes live, not before the merge:** the live Stripe test-mode run on the Mac, which waits on the founder's Stripe test keys.
