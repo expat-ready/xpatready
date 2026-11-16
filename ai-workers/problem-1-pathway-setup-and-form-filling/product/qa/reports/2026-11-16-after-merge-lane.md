@@ -40,3 +40,4 @@ Refined 16:1x IST from qa #1950's verdict table (open, stacked on #1929): R1.19 
 | 16 Nov 19:5x | f255a85e8 | #1924 FO-7mv (To move list, not a watched row), #1958 (records) | none | wait |
 | 16 Nov 20:1x | d66bcfd2d | #1983 (qa records), #1972 (shaping batch 8); no app code | none | wait |
 | 16 Nov 20:4x | d66bcfd2d | none | none | wait |
+| 16 Nov 21:0x | d66bcfd2d | none | none | wait |
