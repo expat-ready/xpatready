@@ -54,3 +54,26 @@ Server decides access: the screen only reads `/me` keys to hide or show, and eve
 
 ## Could not check
 A real screen reader. An intended user's unaided walk (D17/D20 stay with the founder). `reminderScheduled: false` (needs a failing job port). A real front-office or case-party id in the address. Outside this diff, noted for PF-21's owner: the service accepted a made-up `frontOfficePerson` id. CI on the PR (draft; GraphQL unavailable here; the builder reports touched suites green).
+
+## Re-review e47fa19fc..e80bd9c08 (16 Nov 2026, P-277: the diff only)
+Reviewer (fresh agent) · commit `e80bd9c08bc382ac4170a8f2c53bead302dd4529` · copy :4571 (built `web/dist` holds this commit's strings). Suite re-run: `check_pf21s_complaints_browser.ts 4571 xr_studio_screens_pf21s` **59/59, exit 0**; screenshots restored afterwards. Web `tsc --noEmit` clean. My probes (scratchpad only) on :4571, and one on a Vite dev server (React StrictMode) on :4573 proxying to :4571, stopped afterwards.
+
+**Verdict: Approve** (no open Blocker or Major). Journey score **9/10**, pass (re-score appended to `journey-test-reviewer-2026-11-16.md`).
+
+**Breaker Majors**
+| | Fix | Proof it works | Test fails on the old code? |
+|---|---|---|---|
+| M1 double submit | `sending` ref in `onSubmit`, released `onSettled` (`record-drawer.tsx:49,71`) | suite `dblclick` 1 POST / 1 row; mine: three `click()`s in one tick → 1 row; `requestSubmit()` ×2 → 1 row; a 422 then a valid submit still goes (guard released) | Yes: the breaker's `dblclick` gave 2 POSTs on `e47fa19fc` |
+| M2 "0+" | past one page, All "100+" and no number on Open/Overdue/Closed; orange only on a real non-zero count (`list-page.tsx:24-28,89-90`) | suite with `next` forced: `["Open","Overdue","Closed","All 100+"]` | Yes: old All read "N+" from the page (≠ "100+") |
+| M3 draft lost | `kept` in tab memory keyed by `staffId`, restored with "Your session ended … not recorded yet" (`record-drawer.tsx:18-19,30-36,72`; `list-page.tsx:64`) | suite (signed in elsewhere); mine: expiry path (25 s session) brings the draft back too; Escape on it asks; nothing was recorded (0 rows) | Yes: the old drawer never reopened |
+
+**Regressions checked.** Privacy across people: T's draft, session ends, R signs in on the same tab → no drawer, R's drawer blank, no notice, no T text on the page; T's text stays only in tab memory and is dropped on R's open or on leaving the page signed in. Focus: Cancel/Escape return to "Record a complaint"; field errors focus the summary; recording opens the record with focus on its `h1`. Hooks order: every new hook in `record-page.tsx` and `record-drawer.tsx` runs before any early return. BR-4: `handlers`, `zzz`, `..%2F..%2Fme` → "Complaint not found" without a call; all-zero uuid → one GET, 404, same words; 403 now shows the same Not found too. m7: Cancel on `?view=closed&frontOfficePerson=…` leaves `?view=closed`, reload opens no drawer. m12: row links read "Person …, received Nov 16, 2026" (visible date is in the name).
+
+**Findings. Blocker:** none. **Major:** none. **Minor:**
+* r1 `record-drawer.tsx:30`: the draft is cleared in an unmount cleanup (`if (staffToken()) kept = null`). Under React StrictMode (on in `main.tsx`; dev only) the simulated unmount runs after re-sign-in, so the drawer reopens **blank with no notice**. Measured on the Vite dev server: `[back true, name "", notice 0]`. Built copies (demo, isolated, CI) are fine. Fix: never clear in a cleanup with a live token. Save the draft in the cleanup only when the token is gone, and clear it only on record, discard or another person's open.
+* r2 `tests/check_pf21s_complaints_browser.ts:200-211`: M3 has no fail case for the privacy branch ("another person's draft is never shown", `record-drawer.tsx:34`). It also does not assert that nothing was recorded. Add: sign in as R on that tab, then expect a blank drawer and no notice. Both hold by my probe.
+* r3 `list-page.tsx:24-26` vs concept §4/G1 ("100+" when `next` is set): showing no number on three chips is the honest reading, but it changes the concept's words. Say so in the PR (the body still describes `e47fa19fc`). The M2 check (`tests/check_pf21s_complaints_browser.ts:193-199`) would also pass with "4+" on Overdue. Assert that the three chips show no number.
+* r4 `record-drawer.tsx:72`: the restored "Your session ended" notice is `role=status` present at open, and focus goes to the first field. A screen-reader user may not hear that the complaint was not recorded. Fix: focus the notice, or reference it from the drawer's description.
+* r5 `contract.ts:67-76`: a time the clock skips moves in a different direction per zone. Toronto 02:30 → 1:30 a.m.; Paris 02:30 → 3:30 a.m. The comment says "an hour earlier". Every real time round-trips (checked: Toronto, Paris, Lord Howe, Kolkata). Make one rule (forward, like `Temporal` "compatible") or fix the comment.
+* r6 The two focus fixes (h1 after recording, summary after errors) have no assertion in the suite. I measured both by hand. Add `document.activeElement` checks.
+* Still open from before, not in this diff: review m1 (where-line), m2 (`title` tooltips), m6 (read-only pass case); breaker m3, m4, m5, m9, m10. List them in the PR as follow-ups.

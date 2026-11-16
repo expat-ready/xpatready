@@ -39,3 +39,13 @@ To raise it: move focus to the record's heading after navigation, and use the te
 
 ## Could not test
 A real screen reader. An intended user's unaided walk (D17/D20 stay with the founder). `reminderScheduled: false`. A real front-office or case-party id. Two tabs saving the same record: there are no edits in this part.
+
+## Re-score after e80bd9c08 (16 Nov 2026, the diff only)
+| # | Journey | Result |
+|---|---|---|
+| J3 | Double click / three clicks in one tick / two `requestSubmit` | 1 row each (was 2 at 0 ms) |
+| J9 | Past one page (`next` forced) | Chips `Open · Overdue · Closed · All 100+`, no "0+" |
+| J11 | Case Manager types a complaint, session ends (signed in elsewhere; and expiry), signs in again | Drawer back with what was typed, "not recorded yet", 0 rows recorded; Escape asks |
+| J12 | Same tab, a different person signs in after J11 | No drawer, blank form, no notice, no earlier text (held) |
+| J2/J4 | Focus after recording / after field errors | `h1` / the error summary (was `<body>` / the button) |
+Correct data now 1 (zero-gap duplicate gone). Accessibility and screen sizes stays ½: `title`-only tooltips (m2), and the restored notice is not announced (r4). Next step obvious stays ½ (part 4). **Total 9/10, Pass.** Dev-only StrictMode loss of the draft: review r1.
