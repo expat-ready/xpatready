@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, 
 import { join } from "node:path";
 import { scriptRulesOf } from "./own-yes-no.ts";
 import type { z } from "zod";
-import { CopyFileOriginal, GenerateCopy, LockCopy, LOCK_KINDS, notReady, type AddedTag, type CaseForm, type CaseOnlineForm, type FormCopy, caseName } from "../../contracts/runtime.ts";
+import { CopyFileQuery, GenerateCopy, LockCopy, LOCK_KINDS, notReady, type AddedTag, type CaseForm, type CaseOnlineForm, type FormCopy, caseName } from "../../contracts/runtime.ts";
 import { problemFromZod } from "../../contracts/programs.ts";
 import { pdfMapInUse } from "../../engine/programs.ts";
 import { factWords } from "../../engine/sources.ts";
@@ -574,10 +574,10 @@ export class CaseForms implements OnModuleInit {
    *  C-9 (P-144, a reviewer on PR #121): a barcode form with a current validated copy downloads that validated file (the one
    *  with Adobe's barcode, the one that is filed), checked the same way against its own recorded checksum; a failed
    *  check is refused, never answered with the unbarcoded copy. `original` asks for the copy as the product made it. */
-  async file(actor: Actor, id: string, originalIn: unknown = false) {
-    const one = CopyFileOriginal.safeParse(originalIn); // CS-V1 part 2: ?original=1, given once
-    if (!one.success) { const p = problemFromZod(one.error); throw new HttpException({ ...p, errors: (p.errors ?? []).map((e) => ({ ...e, field: "original" })) }, HttpStatus.BAD_REQUEST); }
-    const original = one.data;
+  async file(actor: Actor, id: string, queryIn: unknown = {}) {
+    const one = CopyFileQuery.safeParse(queryIn ?? {}); // CS-V1 part 2: only ?original=1, given once
+    if (!one.success) { const p = problemFromZod(one.error); throw new HttpException({ ...p, errors: (p.errors ?? []).map((e) => ({ ...e, field: e.field === "body" ? "body" : "original" })) }, HttpStatus.BAD_REQUEST); }
+    const original = one.data.original;
     const { x, c } = await this.copyFor(actor, id);
     if (x.status !== "GENERATED" || !x.path) fail("This copy has no file.", HttpStatus.NOT_FOUND);
     const form = x.formNumber.replace(/\s+/g, ""), s = this.runtime.snapshotOf(c);
@@ -607,6 +607,6 @@ export class CaseFormsController {
   @Get("form-copies/:id") copy(@Headers("x-actor") a: H, @Param("id") id: string) { return this.f.copy(actorOf(a), id); }
   @Post("form-copies/:id/validated") @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: MAX_VALIDATED_BYTES, files: 1 } })) validated(@Headers("x-actor") a: H, @Param("id") id: string, @UploadedFiles() files: { originalname?: string; buffer?: Buffer }[]) { return this.f.validated(actorOf(a), id, files); }
   @Post("form-copies/:id/lock") lock(@Headers("x-actor") a: H, @Param("id") id: string, @Body() b: unknown) { return this.f.lock(actorOf(a), id, b); }
-  @Get("form-copies/:id/file") async file(@Headers("x-actor") a: H, @Param("id") id: string, @Query("original") o: unknown, @Res() res: Response) { const d = await this.f.file(actorOf(a), id, o); res.setHeader("content-type", "application/pdf"); res.setHeader("content-disposition", `attachment; filename="${d.name}"`); res.end(d.bytes); }
+  @Get("form-copies/:id/file") async file(@Headers("x-actor") a: H, @Param("id") id: string, @Query() q: unknown, @Res() res: Response) { const d = await this.f.file(actorOf(a), id, q); res.setHeader("content-type", "application/pdf"); res.setHeader("content-disposition", `attachment; filename="${d.name}"`); res.end(d.bytes); }
 }
 

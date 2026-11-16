@@ -168,13 +168,18 @@ if (reached) {
   ], { body: { facts_hash: "0".repeat(64) }, expect: (s) => s === 409 });   // the schema takes it; the facts it names are stale, as before (409)
   await dw4("readiness.ts", "POST", () => `/runtime/filings/${fid}/warnings/missing_document/pass`, officer, [
     { why: "an unknown field", body: { reason: "Passport arrives tomorrow (Sample)", extra: 1 }, field: "body" },
-    { why: "an oversized key", body: { reason: "Passport arrives tomorrow (Sample)", key: big }, field: "key" },
+    { why: "an oversized key", body: { reason: "Passport arrives tomorrow (Sample)", key: "k".repeat(100_001) }, field: "key" },
   ], { body: { reason: "Passport arrives tomorrow (Sample)" }, expect: (s) => s === 200 || s === 409 });
   const list = await dw4("form-additions.ts", "GET", (q) => `/runtime/filings/${fid}/addable-forms${q}`, officer, [
     { why: "q given twice", q: "?q=a&q=b", field: "q" },
     { why: "an oversized q", q: `?q=${"x".repeat(300)}`, field: "q" },
+    { why: "an unknown filter", q: "?q=&extra=1", field: "body" },
   ], { q: "?q=", expect: (s) => s === 200 });
   const form = (list.body?.forms ?? []).find((x: { addable?: boolean; why_not?: unknown }) => x.addable !== false && !x.why_not)?.form;
+  await dw4("form-additions.ts", "GET", (q) => `/runtime/filings/${fid}/addable-forms/${encodeURIComponent(form ?? "")}${q}`, officer, [
+    { why: "an unknown filter", q: `?subject=${subject}&extra=1`, field: "body" },
+    { why: "subject given twice", q: `?subject=${subject}&subject=${subject}`, field: "subject" },
+  ], { q: `?subject=${subject}`, expect: (s) => s === 200 });
   await dw4("form-additions.ts", "POST", () => `/runtime/filings/${fid}/form-additions`, officer, [
     { why: "an unknown field", body: { form, extra: 1 }, field: "body" },
     { why: "a wrong type (channel: 5)", body: { form, channel: 5 }, field: "channel" },
@@ -198,10 +203,12 @@ if (reached) {
   await dw4("assessments.ts", "GET", (q) => `/runtime/cases/${c.id}/assessments${q}`, officer, [
     { why: "person given twice", q: "?person=a&person=b", field: "person" },
     { why: "an oversized person", q: `?person=${"x".repeat(300)}`, field: "person" },
+    { why: "an unknown filter", q: "?extra=1", field: "body" },
   ], { q: "", expect: (s) => s === 200 });
   await dw4("fill-case.ts", "GET", (q) => `/runtime/form-copies/00000000-0000-4000-8000-000000000000/file${q}`, officer, [
     { why: "original given twice", q: "?original=1&original=1", field: "original" },
     { why: "an oversized original", q: `?original=${"1".repeat(50)}`, field: "original" },
+    { why: "an unknown filter", q: "?original=1&extra=1", field: "body" },
   ], { q: "?original=1", expect: (s) => s === 404 });   // no such copy: the flag passes the schema, the copy is not found, as before
 }
 { // case-close.ts (CS-C1a): its checks and words, now in zod (contracts/runtime.ts).
@@ -224,6 +231,7 @@ if (reached) {
 { // Review of #2042 m2: the review note and the pass reason are capped as the route reads them (trimmed), so a short
   // text padded with spaces is still taken, as before.
   const { FilingReviewBody, WarningPassBody } = await import("../contracts/runtime.ts");
+  ok("CS-V1 DW4 pass (readiness.ts): a long warning key (a whole fact list, as readiness builds it) is still taken", WarningPassBody.safeParse({ reason: "Passport arrives tomorrow (Sample)", key: `item|client|${Array.from({ length: 60 }, (_, i) => `person.fact_number_${i}`).join(",")}` }).success);
   ok("CS-V1 DW4 pass (readiness.ts): a short note or reason padded with spaces is still taken", FilingReviewBody.safeParse({ facts_hash: "0".repeat(64), note: `Fine${" ".repeat(5000)}` }).success && WarningPassBody.safeParse({ reason: `Passport arrives tomorrow${" ".repeat(5000)}` }).success);
 }
 function big2() { return "y".repeat(6000); }

@@ -475,7 +475,7 @@ export const FilingReviewBody = z.strictObject({
 /** POST /runtime/filings/:id/warnings/:code/pass (readiness.ts). */
 export const WarningPassBody = z.strictObject({
   reason: upToTrimmed(3000, "Keep it to 300 characters.").optional(),
-  key: upTo(500, "Send key as the warning line's key (text), or leave it out to pass every open line of this kind.").optional(),
+  key: upTo(100_000, "Send key as the warning line's key (text), or leave it out to pass every open line of this kind.").optional(),
 }, notHere("passing a warning"));
 const optText = (field: string, max: number) => z.union([z.string(), z.null()], { error: `Write ${field} as text, or leave it out.` }).refine((v) => v == null || v.length <= max, `Keep ${field} to ${max} characters.`).optional();
 /** POST /runtime/filings/:id/form-additions (form-additions.ts). Reasons longer than 500 characters are kept to 500 as before. */
@@ -494,6 +494,8 @@ export const FormRemovalBody = z.strictObject({ reason: upTo(5000, "Keep the rea
 export const AddableSearch = z.string({ error: "Give q once, as text." }).max(200, "Keep the search to 200 characters.").optional();
 export const AddableSubject = z.string({ error: "Give subject once, as text." }).max(100, "Keep subject to 100 characters.").optional();
 /** ?original= on /runtime/form-copies/:id/file (fill-case.ts): "1" is the original; anything else, or none, the copy. */
+/** The whole query of those GETs: a key that is not one of theirs is refused, naming it (review of #2042). */
+const onlyFilters = (keys: string) => ({ error: (i: { code: string; keys?: string[] }) => i.code === "unrecognized_keys" ? `Not a filter here: ${(i.keys ?? []).join(", ")} (only ${keys}).` : "Give the filters as a query." });
 export const CopyFileOriginal = z.union([z.boolean(), z.string().max(10, "Give original once (original=1).")], { error: "Give original once (original=1)." }).optional().transform((v) => v === true || v === "1");
 
 // CS-C1a's case decision, withdrawal, close and reopen (case-close.ts): its checks and words exactly, moved into zod.
@@ -542,3 +544,6 @@ export const CaseDecisionBody = z.strictObject({
 export const CaseWithdrawBody = z.strictObject({ reason: caseReason, withdrawnOn: caseDate }, notHere("a withdrawal"));
 /** POST /runtime/cases/:id/close and /reopen: a reason. */
 export const CaseReasonBody = z.strictObject({ reason: caseReason }, notHere("this request"));
+export const AddableQuery = z.strictObject({ q: AddableSearch, subject: AddableSubject }, onlyFilters("q, subject"));
+export const AddableDetailQuery = z.strictObject({ subject: AddableSubject }, onlyFilters("subject"));
+export const CopyFileQuery = z.strictObject({ original: CopyFileOriginal }, onlyFilters("original"));

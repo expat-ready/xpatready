@@ -28,7 +28,7 @@ import { render } from "../../engine/render.ts";
 import type { Role } from "../../engine/resolver.ts";
 import { ADDED_TAG, dayWords, frozenHash, KIND_WORDS, kindOf, refusalOf, withAdditions, type AddedKind, type Addition, type Frozen } from "../../engine/runtime/added-forms.ts";
 import { isBarcodeForm, CHANNEL_WORDS, type Channel } from "../../contracts/forms.ts";
-import { AddableSearch, AddableSubject, FormAdditionBody, FormRemovalBody } from "../../contracts/runtime.ts"; // CS-V1 part 2
+import { AddableDetailQuery, AddableQuery, FormAdditionBody, FormRemovalBody } from "../../contracts/runtime.ts"; // CS-V1 part 2
 import type { z } from "zod";
 import { minorFromAnswers, signersOf } from "../../engine/runtime/signing.ts";
 
@@ -130,9 +130,9 @@ export class FormAdditions {
 
   /** GET …/addable-forms: the library's forms (number or title matching `q`), each addable with its kind, or shown with
    *  why it is not. Coverage is never worked out here (BR-3: only for the form picked). */
-  async addable(actor: Actor, filingId: string, qIn: unknown, subjectIn: unknown) {
+  async addable(actor: Actor, filingId: string, queryIn: unknown) {
     const { f, c } = await this.filing(actor, filingId);   // who may read it, and is it there, first (403, 404)
-    const q = parsed(AddableSearch, qIn, "q"), subject = parsed(AddableSubject, subjectIn, "subject");
+    const { q, subject } = parsed(AddableQuery, queryIn ?? {}); // only ?q= and ?subject=, each once
     const who = this.personOn(c, f, subject);
     const words = typeof q === "string" ? q.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 80) : "";
     const lib = (await this.library(c.workspaceId)).filter((x) => x.formKind !== "guide" && x.formKind !== "document" && x.formKind !== "checklist");
@@ -166,9 +166,9 @@ export class FormAdditions {
 
   /** GET …/addable-forms/:form: one form for one person: its coverage on this case (fills), or why it is blank; the
    *  channel and signature it would take. */
-  async detail(actor: Actor, filingId: string, formIn: string, subjectIn: unknown) {
+  async detail(actor: Actor, filingId: string, formIn: string, queryIn: unknown) {
     const { f, c } = await this.filing(actor, filingId);
-    const subject = parsed(AddableSubject, subjectIn, "subject");
+    const { subject } = parsed(AddableDetailQuery, queryIn ?? {}); // only ?subject=, once
     const who = this.personOn(c, f, subject);
     const x = (await this.library(c.workspaceId, String(formIn ?? ""))).find((l) => l.formKind !== "guide" && l.formKind !== "document" && l.formKind !== "checklist");
     if (!x) fail("No such form in the firm's library.", HttpStatus.NOT_FOUND);
@@ -315,8 +315,8 @@ function officialPath(name: string | null): string | null {
 @Controller("api/runtime")
 export class FormAdditionsController {
   constructor(@Inject(FormAdditions) private readonly s: FormAdditions) {}
-  @Get("filings/:id/addable-forms") addable(@Headers("x-actor") a: H, @Param("id") id: string, @Query("q") q: unknown, @Query("subject") subject: unknown) { return this.s.addable(actorOf(a), id, q, subject); }
-  @Get("filings/:id/addable-forms/:form") detail(@Headers("x-actor") a: H, @Param("id") id: string, @Param("form") form: string, @Query("subject") subject: unknown) { return this.s.detail(actorOf(a), id, form, subject); }
+  @Get("filings/:id/addable-forms") addable(@Headers("x-actor") a: H, @Param("id") id: string, @Query() q: unknown) { return this.s.addable(actorOf(a), id, q); }
+  @Get("filings/:id/addable-forms/:form") detail(@Headers("x-actor") a: H, @Param("id") id: string, @Param("form") form: string, @Query() q: unknown) { return this.s.detail(actorOf(a), id, form, q); }
   @Post("filings/:id/form-additions") @HttpCode(HttpStatus.CREATED) add(@Headers("x-actor") a: H, @Param("id") id: string, @Body() b: unknown) { return this.s.add(actorOf(a), id, b); }
   @Post("form-additions/:id/remove") @HttpCode(HttpStatus.OK) remove(@Headers("x-actor") a: H, @Param("id") id: string, @Body() b: unknown) { return this.s.remove(actorOf(a), id, b); }
   @Get("form-additions/:id/blank") blank(@Headers("x-actor") a: H, @Param("id") id: string, @Res() res: Response) { return this.s.blank(actorOf(a), id, res); }
