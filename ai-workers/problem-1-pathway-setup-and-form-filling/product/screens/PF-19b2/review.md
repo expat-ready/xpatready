@@ -220,7 +220,25 @@ Re-review 2 verdict: Approve (head `5d4169833`), superseded below
 * **n6, an edge case on a firm's own web address.** If a request already scoped to firm A (that firm's web address) carries firm B's link, `enterFirm` throws `notInFirm()` from inside `find()`. That likely answers the JSON not-found rather than the HTML page. This is unlikely in practice: the links use ExpatReady's own `STUDIO_PUBLIC_URL` host, never a firm address.
 * **n2, n3, n4** stand as above.
 
-Verdict: Approve (head `5b06fedf1`)
+Re-review 3 verdict: Approve (head `5b06fedf1`), superseded below
+* Blockers: none.
+* Majors: none.
+* Minors: n2–n6.
+
+## Re-review 4 at `40f6f14de` (a merge only, P-277)
+
+**The merge** (`ca328fbe7` + origin/main `5932cf516`; P-270, made because of a conflict) is a clean resolution.
+* `git diff 5932cf516 40f6f14de -- '*api/src/platform/MODULE.md'` (word diff) shows only this row's own additions: the PF-19b part 2 Entry-points text, one invariant line, and `check_pf19b2_ses.ts` on the Tests line.
+* Main's lines are all kept. `PF-6r: GET roles (the six starter roles, …)` and `check_pf5v_signup_mail.ts` are both in the file.
+* This row's code is identical to `5b06fedf1`: no difference in `messages/`, `features/platform-messages.ts` or the suite.
+* Main brought in PF-6r, PF-5v and FO-4sf code. None of it touches the sending path (`signup.ts` changes field checks only).
+* The row is +748 −13 against main on `studio/`, under P-610's cap.
+
+**What I ran on the merged head:** `check_pf19b2_ses` 44/44, `check_pf5v_signup_mail` 7/7, `check_pf19b_mail` 28/28.
+
+The Minors n2–n6 stand as above.
+
+Verdict: Approve (head `40f6f14de`)
 * Blockers: none.
 * Majors: none.
 * Minors: n2–n6.
