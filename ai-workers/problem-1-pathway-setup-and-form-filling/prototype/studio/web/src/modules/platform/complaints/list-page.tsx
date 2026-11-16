@@ -93,9 +93,10 @@ function ListBody() {
       </div>
       {rows.isPending ? <Loading label="Loading complaints" />
         : rows.isError ? <p role="alert" className="text-sm text-text-danger">{rows.error instanceof StaffApiError ? rows.error.message : "Could not load the complaints."} <Button variant="link" size="sm" onClick={() => rows.refetch()}>Try again</Button></p>
-          : !items.length ? <div data-empty className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">{empty}</div>
+          : !items.length ? <div data-empty data-shown-view={view} className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">{empty}</div>
             : (
-              <>
+              // data-shown-view: the view these rows belong to (a test waits for it, not for the address alone).
+              <div data-shown-view={view} className="flex flex-col gap-4">
                 <Table label={`Complaints: ${VIEWS.find((v) => v.view === view)!.label}`} head={["Received", "From", <>About<Sample /></>, <>How it came<Sample /></>, "Handler", <>Acknowledge by<Sample /></>, "Status"]}>
                   {items.map((c) => <Row key={c.id} c={c} people={people} zone={zone} />)}
                 </Table>
@@ -103,7 +104,7 @@ function ListBody() {
                   <span>Showing {items.length}{rows.hasNextPage ? "+" : ""}. Dates are in the firm's time ({zoneName(zone)}).</span>
                   {rows.hasNextPage ? <Button variant="outline" size="sm" busy={rows.isFetchingNextPage} onClick={() => void rows.fetchNextPage()}>Show more</Button> : null}
                 </div>
-              </>
+              </div>
             )}
       <details className="rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm" data-how>
         <summary className="cursor-pointer font-medium">How it works</summary>

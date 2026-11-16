@@ -76,10 +76,14 @@ const listed = (p: Page) => p.locator("[data-complaint-row], [data-empty]").firs
 const rowOf = (p: Page, id: string) => p.locator(`[data-complaint-row="${id}"]`);
 /** The row, after Show more until it is loaded (a reused copy may hold more than one page). */
 const findRow = async (p: Page, id: string) => { while (!(await rowOf(p, id).count()) && await p.getByRole("button", { name: "Show more" }).count()) { const n = await p.locator("[data-complaint-row]").count(); await p.getByRole("button", { name: "Show more" }).click(); await p.waitForFunction((k) => document.querySelectorAll("[data-complaint-row]").length > k, n); } return rowOf(p, id); };
-const chip = async (p: Page, view: string) => { await p.locator(`[data-chip="${view}"]`).click(); await p.waitForFunction((v) => new URL(location.href).searchParams.get("view") === (v === "open" ? null : v) && !document.querySelector("[data-loading]"), view); await listed(p); };
+const chip = async (p: Page, view: string) => { await p.locator(`[data-chip="${view}"]`).click(); await p.locator(`[data-shown-view="${view}"]`).waitFor({ timeout: 30_000 });   // the rows of that view, not the last view's or a gap between them (CI shard 6, c94625b1e)
+  ok(`PF-21s: the ${view} chip is kept in the address`, new URL(p.url()).searchParams.get("view") === (view === "open" ? null : view)); };
 try {
 // ------------------------------------------------------------------------------------------------------------- DW1
 const o = await newPage(rTok);
+// Each list answer arrives 300 ms late on this page, so a view change always passes through its loading state: the
+// waits must find the new view's rows, never the old view's or the gap between them (CI shard 6 on c94625b1e).
+await o.route(/\/api\/platform\/complaints\?view=/, async (r) => { await new Promise((res) => setTimeout(res, 300)); await r.continue(); });
 await o.goto(`${BASE}/platform/complaints`); await listed(o);
 await o.locator('[data-chip="all"] [data-count]').filter({ hasNotText: "…" }).waitFor({ timeout: 15_000 });
 for (const view of ["open", "overdue", "closed", "all"]) {
