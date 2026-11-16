@@ -1740,3 +1740,13 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * New hold: #2029 touches `messages/send/messages.ts`, so PF-19e now waits on #2029 as well as #1956 and #1961.
 * PF-12b part 2 waits on #2029, and must never run beside PF-6m2 or PF-4c part 1 (both touch identity).
 * Merge watch: #1956, #1961, #1959, #1918, #2029.
+
+## rev 16.91 (17 Nov 03:57 IST): #2044 PF-6 part 2a, both decisions confirmed; PF-4dn briefed; one founder question
+* #2044 comment 6931207847, ruled in comment 6931260376.
+* (1) No name on the invite rows: confirmed, because the server discards it. New row **PF-4dn** (`lead-b-briefs/PF-4dn.md`): optional `displayName` on the invite, stored at accept, plus one field on the screen. It starts after #2044, and never beside PF-4c part 1 or PF-6m2.
+* (2) An Admin cannot give Case Officer: this is a conflict between requirements.
+  - SA-6-29 says an Admin gives a role only if it holds every permission in it.
+  - SA-06 v3.15 seeds `agent/sqr:verify` on Owner, Case Manager and Case Officer, not Admin.
+  - AG-01 AG01-18 asks for "Case Officer pre-selected per row", with the Admin as inviter.
+  - The screen follows the server's ceiling (Case Officer hidden, nothing pre-ticked for an Admin); a DW line pins that behaviour.
+  - **For the founder** (through the Lead, AGENTS rule 2): (a) Admin gains `agent/sqr:verify` (and `party:view.own`); (b) the ceiling check skips own-scope keys; or (c) the pre-select applies to Owners only. My recommendation is (c) for Release 1. It keeps the SA-06 counts and the SA-6-29 guardrail as written, and the Admin ticks a role it can give.
