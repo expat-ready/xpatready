@@ -120,3 +120,21 @@ Blockers: none · Majors: none · Minors: m1 door key not re-checked (ruling), m
 
 Verdict: Request changes
 Blockers: none · Majors: M1 the non-Owner role-key check has no biting test (add the Owner→Admin Case Officer line) · Minors: `INVITE_KEY` duplicated literal; m4 (Lead B, Question 3); m5 (known gap, PR body).
+
+## Re-review at 32804de86 (P-277: diff only, `e3632f97b..32804de86`)
+* **The change is to the test only.** No file under `studio/api` changed (checked with `git diff --quiet`). The other commit, 076ccf2a8, holds records only.
+* **M1 is fixed.** The new line works like this:
+  * The Owner R invites `co.stepdown@example.com` as Case Officer through the real door.
+  * R is then made Admin.
+  * The line asserts that Admin lacks at least one Case Officer key (counted from `platform_role_permission`, so the case cannot become vacuous unnoticed).
+  * The accept must then answer 410 `role_no_longer_givable` [CASE_OFFICER], with nothing granted and one refusal line.
+* **My runs at 32804de86:**
+  * The suite gives 19/0.
+  * With `|| needed.some(…)` deleted, that line fails (18/1).
+  * With the door-key check removed, 2 lines fail.
+  * With the OWNER clause removed, the suite still passes 19/0. That mutation is equivalent: OWNER holds 12 keys no other role holds, so the key rule already refuses an ex-Owner's OWNER invitation.
+  * The other suites' results at e3632f97b stand, since no code changed.
+* **Still open, and not blocking:** the duplicated `INVITE_KEY` literal; m4 (Lead B, Question 3); m5 (a known gap; the PR body is to be corrected).
+
+Verdict: Approve 32804de869c02fa59cbfb2b530ae34e5ee839871
+Blockers: none · Majors: none · Minors: `INVITE_KEY` duplicated literal; m4 (Lead B, Question 3); m5 (known gap, PR body).
