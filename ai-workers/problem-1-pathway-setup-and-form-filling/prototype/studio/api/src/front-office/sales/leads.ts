@@ -56,7 +56,8 @@ export class Leads {
       : v === "mine" ? { state, ownerStaffId: ctx.staffId }
       : vis.seesAll ? { state } : { state, OR: [{ ownerStaffId: ctx.staffId }, ...(vis.seesUnassigned ? [{ ownerStaffId: null }, { ownerStaffId: { in: inactive } }] : [])] };   // in the query, before the page cap (review m5)
     const rows = await this.db.foLead.findMany({
-      where: firmScope(ctx.firmId, doors ? { AND: [where, { door: { in: doors } }] } : where),   // narrows inside the visibility (FO-4sf) orderBy: v === "unassigned" ? [{ arrivedAt: "asc" }, { id: "asc" }] : [{ arrivedAt: "desc" }, { id: "asc" }], take: 500,
+      // The source filter narrows inside the visibility, never widens it (FO-4sf).
+      where: firmScope(ctx.firmId, doors ? { AND: [where, { door: { in: doors } }] } : where), orderBy: v === "unassigned" ? [{ arrivedAt: "asc" }, { id: "asc" }] : [{ arrivedAt: "desc" }, { id: "asc" }], take: 500,
       include: { person: { select: { givenNames: true, familyName: true, phoneReadable: true } }, interestedIn: { select: { label: true } } },
     });
     const unowned = (o: string | null) => o === null || inactive.includes(o);
