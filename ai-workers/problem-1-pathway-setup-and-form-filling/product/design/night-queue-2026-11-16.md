@@ -5,7 +5,7 @@ Three hourly cloud routines ("lane starter 1-3", at :05, :25 and :45 UTC past ea
 2. **Not taken:** no open PR title contains the row id, and no branch `claim/<row id>` exists (`git ls-remote origin "refs/heads/claim/*"`).
 3. **Claimed:** `git push origin origin/main:refs/heads/claim/<row id>` succeeds. If it fails, someone else took the row: go to the next one.
 
-Only the tech lead edits this file. Build Leads send rows to the Lead; the Lead adds them here at each check. Rows that a warm lane takes as its second brief are not listed here.
+**CI rule for every run (Lead 70, 22:5x IST; 68 runs were queued):** open the PR as a **draft**, and mark it ready only after the reviewer approves the head, so there is one full ci run per row. Only the tech lead edits this file. Build Leads send rows to the Lead; the Lead adds them here at each check. Rows that a warm lane takes as its second brief are not listed here.
 
 | Row id | Area | Brief (branch:path under product/design/) | After | Effort, breaker |
 |---|---|---|---|---|
