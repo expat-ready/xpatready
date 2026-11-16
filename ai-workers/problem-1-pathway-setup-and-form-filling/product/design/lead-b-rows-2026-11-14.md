@@ -1673,3 +1673,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **The night lines Lead B sent:** 18 rows. Three can start now: FO-9b part 0, PF-21b part 1 and PF-Fp part 1. The other 15 each name the PR they wait on.
   - The lines are in `design/lead-b-build-lead-a-2026-11-16.md` §5.
   - Chains on shared files are ordered, never side by side (P-526): booking/service.ts runs FO-3a 1b, then FO-3vr, then FO-3v; the messages files run PF-19e, PF-13 part 1, PF-19c, then PF-19ad.
+* **Lead 70, 22:09 IST:** all 18 night lines and both chain rules are in the night queue (7c1560e76, Lead branch). The routines skip a row until its gate is merged. Lead 70 will check the FO-13i walls condition at its P-423 read of #2011.
