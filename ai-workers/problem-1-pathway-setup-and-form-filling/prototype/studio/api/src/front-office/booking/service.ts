@@ -77,13 +77,16 @@ const problem = (status: number, slug: string, title: string, detail: string, ex
 /** The one answer for an unknown firm, an unknown or inactive type, and a bad, used, voided or expired link (AG-4-17, -21
  *  rule 3; AG-4-36): nothing in it tells which. */
 export const notFound = () => problem(404, "not-found", "Not found", "This booking page or link is not available.");
-const refused = (detail: string, issues: string[] = []) => problem(400, "booking-refused", "Not booked", detail, issues.length ? { issues } : {});
+const refused = (detail: string, issues: string[] = [], title = "Not booked") => problem(400, "booking-refused", title, detail, issues.length ? { issues } : {});
+/** The 400 titles say what was refused (FO-3m DW4): a list or an attendance answer is not a booking. */
+const NOT_LISTED = "Bookings not listed", NOT_RECORDED = "Attendance not recorded";
 /** The time asked is not free (taken a moment ago, or never offered): one neutral answer with fresh times (AG-4-27). */
 const slotTaken = (slots: PublicSlot[]) => problem(409, "slot-taken", "That time is not available", "That time is not available any more. Please choose another time.", { code: "SLOT_TAKEN", slots });
 const tooLate = () => problem(409, "too-close-to-meeting", "Too close to the meeting", "Your meeting starts soon, so it can no longer be changed here. Please reply to your confirmation email or call the firm.", { code: "SELF_SERVICE_CLOSED" });
 /** The type does not allow this change by link (AG-4-36..38 rule 4; FO-3pa). */
 const notByLink = (what: "rescheduled" | "cancelled") => problem(409, "not-allowed-by-link", "Not available here", `This booking can't be ${what} here. Please reply to your confirmation email or call the firm.`, { code: "NOT_ALLOWED_BY_LINK" });
-const forbidden = (key: string) => problem(403, "forbidden", "Not allowed", `This needs the permission ${key}.`);
+/** The service's own 403 carries the guard's code (FO-3m DW3; PF-4's guard answers MISSING_PERMISSION). */
+const forbidden = (key: string) => problem(403, "forbidden", "Not allowed", `This needs the permission ${key}.`, { code: "MISSING_PERMISSION" });
 const tooMany = () => problem(429, "too-many-requests", "Too many requests", "Please wait a few minutes and try again.");
 /** A form stamp that already made a booking (FO-3f item 4, break B-8). */
 const formUsed = () => problem(409, "form-already-sent", "Already sent", "This form was already sent. Reload the page to book again.", { code: "FORM_ALREADY_SENT" });
@@ -140,6 +143,8 @@ export const StaffBookingBody = z.strictObject({
   /** FO-3sa (review M1): the warning codes the person was shown; a warning not among them gives a fresh answer. */
   acceptedWarnings: z.array(z.enum(WARNING_CODES)).max(10).optional(),
 });
+/** The attendance answer's body: only `outcome`, so an extra key is refused (FO-3m DW5) and a bad value names it (DW1). */
+export const AttendanceBody = z.strictObject({ outcome: z.enum(["COMPLETED", "NO_SHOW"]) });
 export const RescheduleBody = z.strictObject({ startsAt: Instant, timeZone: Zone.optional() });
 export const StaffRescheduleBody = RescheduleBody.extend({ bookAnyway: z.boolean().optional(), acceptedWarnings: z.array(z.enum(WARNING_CODES)).max(10).optional() });
 /** The booker's reason for a cancel by link: kept on the booking only (cancel_reason), never shown back (FO-3pa). */
@@ -151,9 +156,9 @@ export const CancelBody = z.strictObject({ reason: z.string().transform((v) => v
   .refine((v) => !LONE_SURROGATE.test(v) && !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069\u200b\u200e\u200f\u061c\ufeff]/.test(v), "no control or invisible characters")).optional() });
 export const SlotsQuery = z.object({ from: Instant.optional(), to: Instant.optional(), tz: Zone.optional() });
 
-const parse = <T extends z.ZodType>(schema: T, body: unknown): z.output<T> => {
+const parse = <T extends z.ZodType>(schema: T, body: unknown, title?: string): z.output<T> => {
   const r = schema.safeParse(body ?? {});
-  if (!r.success) throw refused("Please check the highlighted details.", r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`));
+  if (!r.success) throw refused("Please check the highlighted details.", r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`), title);
   return r.data;
 };
 
@@ -379,16 +384,17 @@ export class BookingService {
   }
 
   /** The attendance answer (AG-4-39): COMPLETED or NO_SHOW, by a person, once the meeting has started; it may be changed
-   *  later. The host answers their own; others need agent/booking:edit. */
-  async recordAttendance(ctx: StaffContext, bookingId: string, outcome: unknown) {
-    const o = parse(z.enum(["COMPLETED", "NO_SHOW"]), outcome);
+   *  later. The host answers their own; others need agent/booking:edit. A cancelled booking is not-active before and
+   *  after its start (FO-3m DW2: checked first). */
+  async recordAttendance(ctx: StaffContext, bookingId: string, body: unknown) {
+    const o = parse(AttendanceBody, body, NOT_RECORDED).outcome;
     const own = await this.staffBooking(ctx, bookingId);
     if (own.staffId !== ctx.staffId) need(ctx, "agent/booking:edit");
     const now = this.ports.clock.now();
     const done = await this.db.$transaction(async (tx) => {
       const b = await this.lock(tx, ctx.firmId, bookingId);
-      if (b.startsAt > now) throw problem(409, "too-early", "Not yet", "Attendance is recorded once the meeting has started.");
       if (!["SCHEDULED", "RESCHEDULED", "COMPLETED", "NO_SHOW"].includes(b.status)) throw problem(409, "not-active", "Cancelled", "A cancelled booking has no attendance.");
+      if (b.startsAt > now) throw problem(409, "too-early", "Not yet", "Attendance is recorded once the meeting has started.");
       if (b.status === o) return b;
       const after = await tx.foBooking.update({ where: { id: b.id }, data: { status: o } });
       await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: staffActor(ctx).word, action: o === "COMPLETED" ? "booking.completed" : "booking.no_show", entity: "fo_booking", entityKey: b.id,
@@ -409,8 +415,8 @@ export class BookingService {
 
   /** The staff list (AG-4-67): the firm's bookings with agent/booking:list, else the person's own as host. */
   async staffList(ctx: StaffContext, query: unknown) {
-    const q = parse(z.object({ from: Instant, to: Instant, staff: z.uuid().optional() }), query);
-    if (!(q.from < q.to) || q.to.getTime() - q.from.getTime() > 92 * DAY) throw refused("Ask for at most 92 days, from before to.");
+    const q = parse(z.object({ from: Instant, to: Instant, staff: z.uuid().optional() }), query, NOT_LISTED);
+    if (!(q.from < q.to) || q.to.getTime() - q.from.getTime() > 92 * DAY) throw refused("Ask for at most 92 days, from before to.", [], NOT_LISTED);
     const all = ctx.keys.includes("agent/booking:list");
     const staffId = all ? q.staff : ctx.staffId;
     const rows = await this.db.foBooking.findMany({ where: firmScope(ctx.firmId, { startsAt: { lt: q.to }, endsAt: { gt: q.from }, ...(staffId ? { staffId } : {}) }), orderBy: { startsAt: "asc" } });
@@ -628,16 +634,11 @@ export class BookingService {
       subject: `Reminder: your ${type.name} ${p.kind === "24h" ? "tomorrow" : "in one hour"}`, text: `Hello ${person.givenNames},\n\nThis is a reminder of your ${type.name} with ${firm.operatingName}: ${wallLabel(b.startsAt, b.bookerTimeZone)}. ${MODE_WORDS[b.mode as Mode]}.\n\nReplies to this email reach the firm.` }).catch((e) => this.refusedIsFinal(e, b.id));
   }
 
-  /** The attendance question: the host is asked; nothing is recorded until a person answers (AG-4-39 rules 1-4). */
+  /** The attendance question, 30 min after the end: it is shown, not pushed (AG-4-39 rule 2, "no email, no alert"; FO-3m
+   *  DW6). The booking itself is the due item: `attendanceDue` lists it until a person answers. The job stays keyed and
+   *  scheduled so the question's time is on JobPort's record; it sends nothing and records nothing. */
   private async runAttendanceAsk(job: JobRun) {
-    const p = z.object({ bookingId: z.uuid(), sequence: z.number().int() }).parse(job.payload);
-    if (!job.firmId) return;
-    const b = await this.db.foBooking.findFirst({ where: firmScope(job.firmId, { id: p.bookingId }) });
-    if (!b || !ACTIVE.includes(b.status) || b.sequence !== p.sequence) return;
-    const host = await this.db.platformStaff.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.staffId }), select: { email: true } });
-    const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: b.firmId }, select: { contactEmail: true } });
-    await this.ports.mail.send({ firmId: b.firmId, to: host.email, replyTo: firm.contactEmail, class: "SERVICE", person: { kind: "STAFF", id: b.staffId }, idempotencyKey: job.key, templateKey: "booking.attendance_ask",
-      subject: "Did they attend?", text: `Your consultation of ${wallLabel(b.startsAt, await hostZone(this.db, b.firmId, b.staffId))} has ended. Please record whether the person attended (Attended or No-show).` }).catch((e) => this.refusedIsFinal(e, b.id));
+    z.object({ bookingId: z.uuid(), sequence: z.number().int() }).parse(job.payload);
   }
 
   // ========================================================================================================= helpers

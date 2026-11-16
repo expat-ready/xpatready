@@ -513,20 +513,21 @@ def dependencies(row_text, backlog_ids=()):
 
 
 def parse_capabilities(text):
-    """{cap id: (M, status)} for capability rows C<n>.<n> of tables with M and Status columns."""
+    """{cap id: (M, status)} for capability rows C<n>.<n> of tables with M and Status columns, and R<n>.<n> rows of tables with a Status column (M "")."""
     out = {}
     if text is None:
         return out
+    # 16 Nov: also the Release 1 rows (R1.2 …) of tables with a Status column and no M column; their M is "" (never tracked)
     for _, header, body in tables(text):
         low = [h.lower() for h in header]
-        if "m" not in low or "status" not in low:
+        if "status" not in low:
             continue
-        mi, si = low.index("m"), low.index("status")
+        mi, si = (low.index("m") if "m" in low else None), low.index("status")
         for rc in body:
             cid = clean(rc[0]) if rc else ""
-            if not re.fullmatch(r"C\d+\.\d+", cid) or cid in out:
+            if not (re.fullmatch(r"C\d+\.\d+", cid) and mi is not None or re.fullmatch(r"R\d+\.\d+", cid)) or cid in out:
                 continue
-            out[cid] = (clean(rc[mi]) if mi < len(rc) else "", clean(rc[si]) if si < len(rc) else "")
+            out[cid] = (clean(rc[mi]) if mi is not None and mi < len(rc) else "", clean(rc[si]) if si < len(rc) else "")
     return out
 
 
