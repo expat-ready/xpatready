@@ -1356,3 +1356,12 @@ The ruling is on #1912, comment 6905670026:
 * **The new empty-day and field words** are accepted. FO-3st3 adds them to concept §5.
 * **`OTHER` public** is accepted (AG-4-10 rule 4).
 * The migration read is Lead 64's (P-423), and I have passed it on.
+
+## Rev 16.50 (16 Nov 09:0x IST, Lead B (6)): #1918's Devin findings go first into FO-3a part 1b
+
+* **Ruling:** #1918 keeps its label, subject to Lead 64's migration read. It merges as it is, with a "Known gaps" line in the PR body.
+* **FO-3a part 1b starts with three new cases:**
+  - `DW0a`: a reschedule keeps the booking's own length, per AG-4-9 rule 6 (`endsAt − startsAt` in `move`, `manageSlots`, `place`/`warningsFor` and `nextSlots`; staff and self-service; a 30 → 45 edit);
+  - `DW0b`: a notice cut-off shows "Inside the shortest notice", not "Fully booked";
+  - `DW0c`: a rename between two email-shaped names lists `name` as changed.
+* **Why it can merge:** no screen edits a type's length until FO-3st3, which waits on 1b.
