@@ -1613,3 +1613,10 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   1. The three FO-7mv functions join `money_trust_entry_write` and `money_credit_note_write` as FO-7a2's alone until it merges; FO-7b, FO-7t and FO-7ts do not touch them.
   2. AG-6-73 rule 1(b) in general (money paid into the wrong account) is not opened. Any operating → trust line naming no credit note → 409, with a test.
 * **Also:** #1945 (PF-6m) is labelled; PF-6 part 2a starts when it merges.
+
+## Rev 16.74 (16 Nov 21:06 IST): P-644, Lead B is Build Lead A; rows-left list and the first eight starts
+* **P-644 (founder, 21:0x IST, through Lead 69):** the four-seat model. Lead B is Build Lead A for the PF/FO rows: up to 8 cloud builders, 5 rows fully built a day, fewest parts left first, two ready briefs per lane. Lead 69 starts the lanes from "start:" lines.
+* The rows-left list, the first eight starts and each lane's second brief are in `design/lead-b-build-lead-a-2026-11-16.md`. They were measured against 1,200 PR titles and checked by row name (the #1985 lesson).
+* **The first eight starts:** PF-21s stage 2 part 1, PF-21i, PF-13 part 1, PF-8r, PF-24w, FO-13i, FO-2b, PF-18a part 1.
+* **Rows with no PF/FO part left go to the Prove Lead:** 27, 30 and 31 (38 and 40 are with qa, #1968).
+* **The FO-7 money rows:** the model gives them to Build Lead C. Lead B keeps FO-7a2 (#1991) until it merges, unless Lead 69 rules otherwise.
