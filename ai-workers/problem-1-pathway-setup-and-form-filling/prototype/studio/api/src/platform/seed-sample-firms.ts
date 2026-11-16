@@ -21,6 +21,8 @@ type SampleFirm = { key: string; name: string; solo: boolean; office?: Office; u
 /** The studio folder (as core.ts's STUDIO; not imported, so plain tsx scripts and checks can load this file). */
 const STUDIO = join(import.meta.dirname, "..", "..", "..");
 export const SEED_ACTOR = "seed:PF-3";
+/** AUD-5 part 1: the Sample firms' setting values (Sample; the demo reset returns them, not the registered default). */
+export const SAMPLE_SETTING_VALUES: Record<string, unknown> = { "legal.closed_client_files_years": 6 };
 const COUNTRY: Record<string, string> = { canada: "CA" };
 
 export function readSampleFirms(file = join(STUDIO, "samples", "firms.json")): SampleFirm[] {
@@ -63,6 +65,7 @@ export async function seedSampleFirms(db: PrismaClient, firms: SampleFirm[] = re
         await tx.platformSubscription.create({ data: { firmId: firm.id, planId: plan.id, status: "ACTIVE" } });
         r.subscriptionsAdded++;
       }
+      await (await import("./keep-period/service.ts")).seedSampleSettingValues(tx, firm.id, SAMPLE_SETTING_VALUES);   // AUD-5: Sample values a firm lacks
       for (const u of f.users) {
         // There (by its actor id, or by its email in the firm when a person cleared the actor id): never changed by the seed.
         if (await tx.platformStaff.findFirst({ where: { OR: [{ actorId: u.id }, { firmId: firm.id, email: emailOf(u, f.key) }] } })) continue;

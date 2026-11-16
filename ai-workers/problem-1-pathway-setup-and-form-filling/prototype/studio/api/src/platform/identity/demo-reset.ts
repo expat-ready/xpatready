@@ -1,12 +1,12 @@
 // PF-4 (P-571 (1), B-6; PF-3 review m3): the demo reset's one platform step. The reset deletes the demo workspace's rows
 // and never platform rows or platform audit lines (those carry the platform's own audit workspace, audit.ts). This step
 // returns the Sample firms' settings to their seed values through the settings write path (writeSetting), so each change
-// leaves its own audit line (actor "system", reason "demo reset") and no value is ever left without a trail. PF-3's seed
-// stores no setting values, so a Sample firm's seed value of each key is its registered default. Only the demo calls it
+// leaves its own audit line (actor "system", reason "demo reset") and no value is ever left without a trail. A Sample
+// firm's seed value of a key is its Sample value (SAMPLE_SETTING_VALUES, AUD-5) or else its registered default. Only the demo calls it
 // (Demo.wipe, one line); a firm that is not seeded is skipped.
 import type { PrismaClient } from "@prisma/client";
 import { asBypass, firmScope } from "../firm-scope.ts";
-import { readSampleFirms } from "../seed-sample-firms.ts";
+import { SAMPLE_SETTING_VALUES, readSampleFirms } from "../seed-sample-firms.ts";
 import { registeredSettings, writeSetting } from "../settings.ts";
 import { platformAuditWorkspaceId } from "./audit.ts";
 
@@ -25,8 +25,9 @@ async function resetSettings(db: PrismaClient, firmKeys: string[]): Promise<{ ch
     for (const row of await db.platformFirmSetting.findMany({ where: firmScope(firm.id), orderBy: { key: "asc" } })) {
       const def = defs.get(row.key);
       if (!def) { unregistered.push(`${firmKey}:${row.key}`); continue; }   // another module's key, not loaded here: left as it is
-      if (JSON.stringify(row.value) === JSON.stringify(def.default)) continue;
-      await writeSetting(db, { firmId: firm.id, key: row.key, value: def.default, by: RESET_ACTOR, workspaceId: await platformAuditWorkspaceId(db), reason: RESET_REASON });
+      const seedValue = Object.hasOwn(SAMPLE_SETTING_VALUES, row.key) ? SAMPLE_SETTING_VALUES[row.key] : def.default;
+      if (JSON.stringify(row.value) === JSON.stringify(seedValue)) continue;
+      await writeSetting(db, { firmId: firm.id, key: row.key, value: seedValue, by: RESET_ACTOR, workspaceId: await platformAuditWorkspaceId(db), reason: RESET_REASON });
       changed.push({ firmKey, key: row.key });
     }
   }
