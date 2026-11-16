@@ -1,0 +1,47 @@
+setup (not through the product: no firm, staff, hours or type screens yet): firm qa-r140-1115, one host, type "free"
+PASS  book: 201 at 15:00Z
+PASS  the booked mail reaches the booker's demo inbox before the move
+PASS  move by link across Toronto's change: 200 at 14:00Z
+PASS  the moved mail reaches the booker's demo inbox before the cancel
+NOTE  download: 200 text/calendar; charset=utf-8; method=REQUEST attachment; filename="invite.ics"
+PASS  R1.40 FO-3pa: the self-service link downloads the calendar file (200, text/calendar)
+PASS  R1.40 FO-3pa: the download is the moved invite the email carries (same UID, SEQUENCE, METHOD, DTSTART; DTSTAMP aside)
+PASS  R1.40 FO-3pa fail case: an unknown link downloads nothing (404)
+PASS  cancel by link: CANCELLED
+NOTE  booker inbox: Your Free consultation is booked | Your Free consultation has moved | Your Free consultation is cancelled
+NOTE  host inbox: Consultation is booked: Friday, March 12, 2027 at 10:00 a.m. (America/Toronto) | Consultation has moved: Monday, March 15, 2027 at 10:00 a.m. (America/Toronto) | Consultation is cancelled: Monday, March 15, 2027 at 10:00 a.m. (America/Toronto)
+NOTE  first invite as read from the demo inbox:
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Expat Ready//Booking//EN
+CALSCALE:GREGORIAN
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:fdba1779-9fb9-4bfa-b102-49bfca0406bf@booking.expatready.com
+SEQUENCE:0
+DTSTAMP:20261116T043200Z
+DTSTART:20270312T150000Z
+DTEND:20270312T153000Z
+SUMMARY:Free consultation with Sample qa firm
+DESCRIPTION:Video call. Your join link will follow.
+ORGANIZER;CN="Sample qa firm":mailto:qa-r140-1115@firm.example
+ATTENDEE;CN="Client A";ROLE=REQ-PARTICIPANT;RSVP=FALSE:mailto:client-qa-r14
+ 0-1115@example.com
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+END:VEVENT
+END:VCALENDAR
+
+PASS  R1.40 running app: the booker's demo inbox holds three mails (booked, moved, cancelled), each with an invite .ics
+PASS  R1.40 running app: the host's demo inbox holds three mails, each with an invite .ics
+PASS  R1.40 one UID across all six invites (an update replaces the event)
+NOTE  SEQUENCE booker 0,1,2 · host 0,1,2
+PASS  R1.40 SEQUENCE present and rising (book, move, cancel), booker and host alike
+PASS  R1.40 METHOD REQUEST, REQUEST, then CANCEL (a cancel removes it), booker and host alike
+PASS  R1.40 / R1.38 DTSTART in UTC: 15:00Z, then 14:00Z after the change (the same time as the booking)
+PASS  R1.40 fail case: the moved invite does not still carry the old time
+PASS  R1.38 the booker's mails read 7:00 p.m., then 6:00 p.m., each naming Asia/Dubai
+PASS  R1.38 the host's mails read 10:00 a.m., each naming America/Toronto
+PASS  R1.38 fail case: the host's moved mail does not read 9:00 or 11:00 a.m. (an offset not shifted)
+PASS  fail case: a malformed address → 400 in words
+19 passed, 0 failed

@@ -3,7 +3,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { EventName } from "../../../../ports/events.ts";
-import { DUTY_KEYS, problem, type StaffContext } from "../../platform/identity/keys.ts";
+import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { EVERYONE_SEES_ALL, readSetting } from "../../platform/settings.ts";
 
 export type Tx = Prisma.TransactionClient;
@@ -52,12 +52,13 @@ export function phone(v: unknown, field = "phone"): { phone: string; readable: b
 
 export const actorOf = (ctx: StaffContext) => `staff:${ctx.staffId}`;
 
-/** Who sees which leads (contracts §2.1; AG-2-13c rules 6, 9): Owners and Admins all; others all with "everyone sees
- *  all" and view.all, else their own; Unassigned leads with view.all or assign. */
+/** Who sees which leads (AG-2-64 rules 2-3, SA-6-24, PF-6b ruling 4; FO-2v): the one own-versus-all rule retainers
+ *  follow too: all with agent/prospect:view.all AND the firm's "everyone sees all" on, else their own; no role sees all
+ *  regardless (no requirement backs an Owner/Admin override, QA-477). Unassigned leads with view.all or assign
+ *  (AG-2-13c rule 6). One function serves the list, the read, the counts and every change path (AG-2-64 rule 3). */
 export async function visibilityOf(db: Tx | PrismaClient, ctx: StaffContext) {
-  const admin = DUTY_KEYS.firm_admin.every((k) => ctx.keys.includes(k));
   const everyone = (await readSetting<boolean>(db, ctx.firmId, EVERYONE_SEES_ALL.key)) === true;
-  const seesAll = admin || (everyone && ctx.keys.includes("agent/prospect:view.all"));
+  const seesAll = everyone && ctx.keys.includes("agent/prospect:view.all");
   const seesUnassigned = seesAll || ctx.keys.includes("agent/prospect:view.all") || ctx.keys.includes("agent/prospect:assign");
   return { seesAll, seesUnassigned };
 }
