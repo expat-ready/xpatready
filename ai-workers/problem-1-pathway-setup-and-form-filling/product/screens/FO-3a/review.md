@@ -307,3 +307,49 @@ Verdict: Approve 27749b65ae280d5f268c978cbac2e4a3046b31ea
 **Blockers:** none. **Majors:** none. **Minors open:** as in Re-review 2 (the description wording question for Lead B).
 
 Verdict: Approve 1d66488c529665dfa8094dab3e9a1088498b5df3
+
+## Re-review 6 at `4941dc7aa4211982a2f30f56250eba6ff6fe9584` (merge of `main` 5932cf516: FO-4sf #1962, PF-12 firm walls and others; P-270)
+
+**Parents.**
+* First parent: `c739039`, a records commit with no code change from `1d66488`, which I approved in Re-review 5.
+* Second parent: `5932cf516`.
+
+**Was the resolution right?** I re-merged the two parents mechanically with `git merge-tree`.
+* Only `front-office/MODULE.md` conflicts; `service.ts` merges by itself.
+* The committed merge differs from that automatic merge in `MODULE.md` alone.
+* A word diff of the card against main shows exactly FO-3a's three additions, and nothing of main's is dropped:
+  * the booking-type routes sentence, after "create takes `hostStaffId` (an active host of the type).";
+  * the deleted-type invariant line;
+  * `tests/check_fo3a_booking_types.ts` on the **Tests.** line.
+* Main's new FO-4sf `source` filter, `GET leads/sources`, the PF-12 walls invariant line and `check_fo4sf_source_filter.ts` are all kept.
+
+**Correction to the request: main did change `booking/service.ts`.**
+* PF-12 changed it: `publicFirm` and `byToken` now find their firm through `asBypass` and then `enterFirm`.
+* It merged by itself, and against main the file still differs only by the three `where` lines (A2).
+* The PR still touches the same 8 files compared with main (+769/−7).
+* PF-12's `20261116013000_pf12_firm_walls` comes before `20261116090000_fo3a_booking_types`, so ours is still the newest migration.
+
+**The PF-12 walls and this PR.**
+* PF-12 forces row-level security on `fo_consultation_type`. The API now connects as `xr_app`, with the firm taken from PF-4's guard for each request.
+* This PR adds no table; it only alters the columns of an already-walled one. So no new policy is owed (`check_pf12_walls`: "every later firm table ships its policy").
+* The proof the new routes run behind the walls: I removed `firmScope` from the service's `find` and `list` (`types.ts:248`, the list's `where`). The cross-firm DW10 cases still passed, 48/48, because the database hid firm B's rows. At c11de564 the same mutation failed DW10.
+* Raw `FOR UPDATE`, the advisory slug lock and the preview's shared `slotsFor` all run in the request's firm (a transaction keeps the firm of the context that opened it, as `firm-scope.ts` says).
+
+**Suites on the merged tree** (scratch databases on :54329, never :4400):
+
+| Suite | Result |
+|---|---|
+| `check_fo3a_booking_types` | 48/48 |
+| `check_fo3m_answers` | 14/14 |
+| FO-3 | 133/133 |
+| FO-3pa | 45/45 |
+| FO-3sa | 39/39 |
+| FO-3sr | 29/29 |
+| FO-1b | 80/80, migrate diff clean |
+| `check_pf12_walls` | 100/100 |
+
+`check_pf12_walls` was run from this working copy, which is at 4941dc7 and writes no tracked file. In a scratch worktree, its five checks that start their own server stop with a module-path error from the symlinked `node_modules`; that is an environment fault, not the code.
+
+**Blockers:** none. **Majors:** none. **Minors open:** as in Re-review 2 (the description wording question for Lead B).
+
+Verdict: Approve 4941dc7aa4211982a2f30f56250eba6ff6fe9584
