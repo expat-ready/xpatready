@@ -12,7 +12,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildDocx } from "../api/src/front-office/retainers/docx.ts";
-import { GOTENBERG_FLAGS, GOTENBERG_IMAGE, GOTENBERG_ROUTE, GOTENBERG_VERSION, GotenbergPdf, gotenbergBase, isPinned, pdfFromEnv } from "../api/src/front-office/render/gotenberg.ts";
+import { GOTENBERG_FLAGS, GOTENBERG_IMAGE, GOTENBERG_ROUTE, GOTENBERG_VERSION, GotenbergPdf, gotenbergBase, isPinned, pdfFromEnv, pdfOutputCap } from "../api/src/front-office/render/gotenberg.ts";
 import { runContract } from "../ports/contracts/contract.ts";
 import { documentPdfPortContract, type PdfHarness } from "../ports/contracts/document-pdf-port.contract.ts";
 import { DOCX } from "../api/src/front-office/retainers/docx.ts";
@@ -84,7 +84,8 @@ const s1 = await standIn(); stands.push(s1);
 await new GotenbergPdf({ baseUrl: s1.url }).toPdf(DOC);
 await new GotenbergPdf({ baseUrl: `${s1.url}/` }).toPdf(DOC);
 ok("PF-Fp C1 pass: the adapter calls only POST /forms/libreoffice/convert, with the file as document.docx", s1.paths.length === 2 && s1.paths.every((p) => p === `POST ${GOTENBERG_ROUTE}`) && s1.bodies.every((b) => b.includes('filename="document.docx"') && b.includes(DOCX)), s1.paths);
-ok("PF-Fp C1 pass: the container's flags switch off the Chromium routes, webhooks and downloadFrom", ["--chromium-disable-routes=true", "--webhook-disable=true", "--api-disable-download-from=true"].every((f) => (GOTENBERG_FLAGS as readonly string[]).includes(f)));
+const FLAGS = ["--api-disable-download-from=true", "--chromium-disable-routes=true", "--pdfengines-disable-routes=true", "--webhook-disable=true"];
+ok("PF-Fp C1 pass: the container's flags are exactly these four: no Chromium routes, no PDF engine routes (review M1), no webhooks, no downloadFrom", JSON.stringify([...GOTENBERG_FLAGS].sort()) === JSON.stringify(FLAGS), GOTENBERG_FLAGS);
 const pathRefused = ["/forms/chromium/convert/url", "/forms/libreoffice", "/?route=chromium", "/#x"].every((p) => { try { gotenbergBase(`http://127.0.0.1:3000${p}`); return false; } catch { return true; } });
 ok("PF-Fp C1 fail: a base URL carrying a path, query or fragment (another route) is refused", pathRefused);
 const s1b = await standIn(); stands.push(s1b);
@@ -122,12 +123,35 @@ const rnp = await new GotenbergPdf({ baseUrl: `http://127.0.0.1:${(notPdf.addres
 notPdf.close();
 ok("PF-Fp C3 fail: an answer that is not a PDF is FAILED, never offered", rnp.failure === "FAILED" && rnp.pdf === null, rnp);
 
+// Break F1: a Uint8Array subclass whose length lies is checked on its real bytes, so the cap holds.
+class Lying extends Uint8Array { override get length() { return 4; } }
+const lie = new Lying(PDF_MAX_INPUT_BYTES * 2); lie.set(DOC);
+const sF1 = await standIn(); stands.push(sF1);
+const rF1 = await new GotenbergPdf({ baseUrl: sF1.url }).toPdf(lie), fF1 = fakePdf(), rF1f = await fF1.toPdf(lie);
+ok("PF-Fp C3 fail (break F1): a 20 MB array that says it is 4 bytes is TOO_LARGE and never sent (both adapters)", rF1.failure === "TOO_LARGE" && sF1.paths.length === 0 && rF1f.failure === "TOO_LARGE" && fF1.calls === 0, { rF1: rF1.failure, rF1f: rF1f.failure, sent: sF1.paths.length });
+// Review m1: a bad limit is refused when the adapter is made, so toPdf never throws.
+const badLimits = [{ timeoutMs: -1 }, { timeoutMs: Number.NaN }, { timeoutMs: 0 }, { maxBytes: -5 }, { maxBytes: 1.5 }].every((o) => { try { new GotenbergPdf({ baseUrl: "http://127.0.0.1:1", ...o }); return false; } catch { return true; } });
+ok("PF-Fp C3 fail (review m1): a time limit or cap that is not a positive whole number is refused when the adapter is made", badLimits);
+// Review m2: the time limit covers the body read; the answer cap stops the read.
+const dribble = createServer((_q, r) => { r.writeHead(200, { "content-type": PDF }); r.write("%PDF-1.4\n"); const t = setInterval(() => r.write("x"), 100); r.on("close", () => clearInterval(t)); });
+await new Promise<void>((r) => dribble.listen(0, "127.0.0.1", r));
+const td = Date.now(), rd = await new GotenbergPdf({ baseUrl: `http://127.0.0.1:${(dribble.address() as { port: number }).port}`, timeoutMs: 400 }).toPdf(DOC), tookD = Date.now() - td;
+dribble.closeAllConnections(); dribble.close();
+ok("PF-Fp C3 fail (review m2): an answer whose body dribbles past the limit is TIMEOUT, close to the limit", rd.failure === "TIMEOUT" && tookD < 1500, { rd: rd.failure, tookD });
+const sCap = await standIn(); stands.push(sCap);
+pdfOutputCap.bytes = 100;
+const rCap = await new GotenbergPdf({ baseUrl: sCap.url }).toPdf(DOC);
+pdfOutputCap.bytes = 1 << 30;
+const rCapOk = await new GotenbergPdf({ baseUrl: sCap.url }).toPdf(DOC);
+pdfOutputCap.bytes = 50 * 1024 * 1024;
+ok("PF-Fp C3 fail (review m2): an answer over the output cap is FAILED and never offered; under the cap it is the PDF", rCap.failure === "FAILED" && rCap.pdf === null && /over 100 bytes/.test(rCap.detail) && rCapOk.failure === null, { rCap, rCapOk: rCapOk.failure });
+
 // ------------------------------------------------------------------------------------------- C4: CI and the demo fake
 const def = pdfFromEnv({}), ci = pdfFromEnv({ CI: "true" });
 ok("PF-Fp C4 pass: with no setting, and under CI, the port is the fake", !(def instanceof GotenbergPdf) && !(ci instanceof GotenbergPdf) && (await def.toPdf(DOC)).failure === null);
 ok("PF-Fp C4 pass: DOCUMENT_PDF=gotenberg with GOTENBERG_URL outside CI is GotenbergPdf", pdfFromEnv({ DOCUMENT_PDF: "gotenberg", GOTENBERG_URL: "http://gotenberg:3000" }) instanceof GotenbergPdf);
-const envRefused = [{ CI: "true", DOCUMENT_PDF: "gotenberg", GOTENBERG_URL: "http://gotenberg:3000" }, { DOCUMENT_PDF: "gotenberg" }, { DOCUMENT_PDF: "libreoffice" }].every((env) => { try { pdfFromEnv(env); return false; } catch { return true; } });
-ok("PF-Fp C4 fail: Gotenberg under CI, without GOTENBERG_URL, or an unknown DOCUMENT_PDF is refused", envRefused);
+const envRefused = [{ CI: "", DOCUMENT_PDF: "gotenberg", GOTENBERG_URL: "http://gotenberg:3000" }, { CI: "false", DOCUMENT_PDF: "gotenberg", GOTENBERG_URL: "http://gotenberg:3000" }, { CI: "true", DOCUMENT_PDF: "gotenberg", GOTENBERG_URL: "http://gotenberg:3000" }, { DOCUMENT_PDF: "gotenberg" }, { DOCUMENT_PDF: "libreoffice" }].every((env) => { try { pdfFromEnv(env); return false; } catch { return true; } });
+ok("PF-Fp C4 fail: Gotenberg while CI is set at all (true, false, empty: break F2), without GOTENBERG_URL, or an unknown DOCUMENT_PDF is refused", envRefused);
 const walk = (d: string): string[] => readdirSync(d).flatMap((n) => { const p = join(d, n); return n === "node_modules" ? [] : statSync(p).isDirectory() ? walk(p) : /\.(ts|tsx|sh|mjs|ya?ml)$/.test(n) ? [p] : []; });
 const users = [...walk(join(STUDIO, "api/src")), ...walk(join(STUDIO, "web")), join(STUDIO, "start.sh")].filter((p) => { try { const t = readFileSync(p, "utf8"); return /render\/gotenberg|DOCUMENT_PDF|GOTENBERG_URL/.test(t) && !p.endsWith("render/gotenberg.ts"); } catch { return false; } });
 ok("PF-Fp C4 pass: no app file and not start.sh wires Gotenberg (the demo runs no container; FO-5p part 2 wires pdfFromEnv)", users.length === 0, users);
@@ -151,12 +175,19 @@ if (!LIVE) console.log("NOT RUN  PF-Fp live: GOTENBERG_URL is not set (the conta
 else {
   const live = await runContract(documentPdfPortContract, "GotenbergPdf (live 8.40.0)", () => gotenbergHarness(LIVE), ok);
   ok("PF-Fp live: the pinned container keeps the contract", live.failed.length === 0, live);
-  const routes = ["/forms/chromium/convert/url", "/forms/chromium/convert/html", "/forms/chromium/convert/markdown", "/forms/chromium/screenshot/url"];
-  const codes = await Promise.all(routes.map(async (p) => { const f = new FormData(); f.append("url", "http://127.0.0.1/"); return (await fetch(new URL(p, LIVE), { method: "POST", body: f })).status; }));
-  ok("PF-Fp C1 fail (live): every Chromium route answers 404 from the container", codes.every((c) => c === 404), Object.fromEntries(routes.map((p, i) => [p, codes[i]])));
+  const routes = ["/forms/chromium/convert/url", "/forms/chromium/convert/html", "/forms/chromium/convert/markdown", "/forms/chromium/screenshot/url", "/forms/pdfengines/merge", "/forms/pdfengines/split", "/forms/pdfengines/flatten", "/forms/pdfengines/convert", "/forms/pdfengines/metadata/read", "/forms/pdfengines/metadata/write", "/forms/pdfengines/encrypt", "/forms/pdfengines/embed"];
+  const codes = await Promise.all(routes.map(async (p) => { const f = new FormData(); f.append("url", "http://127.0.0.1/"); f.append("files", new Blob([fakeOut as Uint8Array<ArrayBuffer>], { type: PDF }), "a.pdf"); return (await fetch(new URL(p, LIVE), { method: "POST", body: f })).status; }));
+  ok("PF-Fp C1 fail (live): every Chromium and PDF engine route (ExifTool, QPDF; review M1) answers 404 from the container", codes.every((c) => c === 404), Object.fromEntries(routes.map((p, i) => [p, codes[i]])));
+  // Review m3: with downloadFrom on, the container would try the URL (a download error); off, the field is ignored and it
+  // says no file was sent.
   const dl = new FormData(); dl.append("downloadFrom", JSON.stringify([{ url: "http://127.0.0.1:9/x.docx" }]));
-  const dlr = await fetch(new URL(GOTENBERG_ROUTE, LIVE), { method: "POST", body: dl });
-  ok("PF-Fp C1 fail (live): downloadFrom is switched off (no PDF from a URL)", dlr.status !== 200, dlr.status);
+  const dlr = await fetch(new URL(GOTENBERG_ROUTE, LIVE), { method: "POST", body: dl }), dlText = await dlr.text();
+  ok("PF-Fp C1 fail (live): downloadFrom is ignored (400 'no form file found', never a download attempt)", dlr.status === 400 && /no form file found/.test(dlText), { status: dlr.status, dlText: dlText.slice(0, 120) });
+  // Review m2: with webhooks on, a webhook header makes the answer 204 and the PDF goes to the URL; off, the PDF comes back.
+  const wh = new FormData(); wh.append("files", new Blob([DOC as Uint8Array<ArrayBuffer>], { type: DOCX }), "document.docx");
+  const whr = await fetch(new URL(GOTENBERG_ROUTE, LIVE), { method: "POST", body: wh, headers: { "Gotenberg-Webhook-Url": "http://127.0.0.1:9/", "Gotenberg-Webhook-Error-Url": "http://127.0.0.1:9/" } });
+  const whHead = new TextDecoder().decode(new Uint8Array(await whr.arrayBuffer()).subarray(0, 5));
+  ok("PF-Fp C1 fail (live): webhooks are off (a webhook header still gets the PDF back, 200, never 204)", whr.status === 200 && whHead === "%PDF-", { status: whr.status, whHead });
   const r6 = await new GotenbergPdf({ baseUrl: LIVE }).toPdf(DOC);
   const dir = mkdtempSync(join(tmpdir(), "pffp-")), file = join(dir, "out.pdf");
   let text = "";

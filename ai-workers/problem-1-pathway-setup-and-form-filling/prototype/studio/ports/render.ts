@@ -64,7 +64,12 @@ export interface DocumentPdfPort {
 export function looksLikeDocx(bytes: unknown): bytes is Uint8Array {
   return bytes instanceof Uint8Array && bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
 }
-/** The checks every adapter runs before sending: null when the file may be sent. */
+/** A plain copy of the bytes (break F1: a Uint8Array subclass can lie about its length; the copy is made from the
+ *  array's own length, so the bytes checked are the bytes sent). Anything else is returned as it is. */
+export function plainBytes<T>(docx: T): T | Uint8Array {
+  return docx instanceof Uint8Array ? new Uint8Array(docx) : docx;
+}
+/** The checks every adapter runs before sending, on plainBytes' copy: null when the file may be sent. */
 export function refuseBeforeSending(docx: unknown, maxBytes = PDF_MAX_INPUT_BYTES): PdfResult | null {
   if (docx instanceof Uint8Array && docx.length > maxBytes) return { pdf: null, failure: "TOO_LARGE", detail: `${docx.length} bytes is over the ${maxBytes}-byte limit` };
   if (!looksLikeDocx(docx)) return { pdf: null, failure: "NOT_DOCX", detail: "not a Word file" };
@@ -106,8 +111,8 @@ export function fakePdf(opts: { maxBytes?: number; timeoutMs?: number; delayMs?:
   const hasWord = (b: Uint8Array) => { for (let i = 0; i + 5 <= b.length; i++) if (b[i] === 0x77 && b[i + 1] === 0x6f && b[i + 2] === 0x72 && b[i + 3] === 0x64 && b[i + 4] === 0x2f) return true; return false; };
   const unreadable = opts.unreadable ?? ((b: Uint8Array) => !hasWord(b));
   return {
-    async toPdf(docx) {
-      const refused = refuseBeforeSending(docx, opts.maxBytes);
+    async toPdf(input) {
+      const docx = plainBytes(input) as Uint8Array, refused = refuseBeforeSending(docx, opts.maxBytes);
       if (refused) return refused;
       calls++;
       const limit = opts.timeoutMs ?? PDF_TIMEOUT_MS;
