@@ -467,6 +467,67 @@ def title_has(title, rid):
     return bool(title) and rx.search(title) is not None
 
 
+# P-639 (16 Nov, qa #1950): a merged "PF-5 part 1" is not PF-5 while BACKLOG still names a later part of it.
+# Same pattern in cockpit-reconcile.py (test_part_patterns_agree_on_real_backlog_wording keeps them in step).
+PART_MENTION = re.compile(r"(?<![A-Za-z0-9-])([A-Z]{1,4}-[A-Za-z0-9]+)\s*\(?\s*[Pp]arts?\s+(\d+[a-z]?(?:\s*(?:,|and|&|to|–|-)\s*\d+[a-z]?)*)")
+
+
+def part_list(text):
+    """"2", "2 and 3", "2, 3", "1–2", "1 to 3" → the part numbers; a range of plain numbers is expanded."""
+    toks, out = re.findall(r"\d+[a-z]?|to|–|-", text or ""), []
+    i = 0
+    while i < len(toks):
+        if toks[i] in ("to", "–", "-"):
+            i += 1
+            continue
+        if i + 2 < len(toks) and toks[i + 1] in ("to", "–", "-") and toks[i].isdigit() and toks[i + 2].isdigit():
+            out += [str(k) for k in range(int(toks[i]), int(toks[i + 2]) + 1)]
+            i += 3
+            continue
+        out.append(toks[i])
+        i += 1
+    return out
+
+
+def backlog_parts(text):
+    """{id: {part numbers}} that BACKLOG names anywhere ("PF-5 part 2", "PF-5 parts 2 and 3", "FO-7ts parts 1–2", "FO-7mv (part 1)")."""
+    out = {}
+    for m in PART_MENTION.finditer(text or ""):
+        out.setdefault(m.group(1), set()).update(part_list(m.group(2)))
+    return out
+
+
+def title_part(title, rid):
+    """The parts a pull request title names for an id ("PF-5 part 1" gives ["1"], "PF-5 parts 1 and 2" gives ["1", "2"]);
+    None for the whole id."""
+    m = re.search(r"(?<![A-Za-z0-9-])" + re.escape(rid) + r"\s*\(?\s*[Pp]arts?\s+(\d+[a-z]?(?:\s*(?:,|and|&|to|–|-)\s*\d+[a-z]?)*)", title or "")
+    return part_list(m.group(1)) if m else None
+
+
+def merged_when(prs, named):
+    """An id is merged when no part of it is open. An id shipped whole (no merged title names a part of it) is merged by
+    its first whole-id PR: a part BACKLOG mentions for it (often conditional, "else they open FO-2 part 2", or another
+    row's alias) does not hold it. An id shipped in parts (some merged title names a part) needs every part BACKLOG or
+    the checklist names and every part a title names merged; a whole-id PR does not stand in for them. It dates from
+    the last PR it needed.
+    prs: [(merged_at, number, parts or None)] by time. Returns ((merged_at, number) or None, open parts)."""
+    done, whole = {}, None
+    for t, n, pts in prs:
+        if pts is None:
+            whole = whole or (t, n)
+        else:
+            for x in pts:
+                done.setdefault(x, (t, n))
+    named = set(named)
+    if whole and not done:                               # shipped whole
+        return whole, []
+    need = named | set(done)
+    open_ = sorted(need - set(done))
+    if open_ or not need:
+        return None, open_
+    return max(done[x] for x in need), []
+
+
 def is_records(p):
     """R1: a records PR has "(records only)" in its title or carries the `records` label; it never counts."""
     return "(records only)" in (p.get("title") or "") or any(l.get("name") == "records" for l in p.get("labels") or [])
@@ -1718,18 +1779,32 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     for r in rows:
         r1 += [x for x in r["ids"] if x not in r1]
     change_at, unclassified, change_pr, nonapp_pr = {}, set(), {}, {}
+    app_prs, bl_named = {}, backlog_parts(bl_text)
+    for k, v in backlog_parts(ck_text).items():          # Lead 66 (16 Nov): the parts a checklist row lists count too
+        bl_named.setdefault(k, set()).update(v)
     for p in sorted(merged, key=lambda p: p["merged_at"]):
         if is_records(p):
             continue
         for rid in r1:
-            if rid not in change_at and title_has(p["title"], rid):
+            if title_has(p["title"], rid):
                 if p.get("files_app") is True:
-                    change_at[rid], change_pr[rid] = p["merged_at"], p["number"]
+                    app_prs.setdefault(rid, []).append((p["merged_at"], p["number"], title_part(p["title"], rid)))
                 elif p.get("files_app") is False:
                     nonapp_pr.setdefault(rid, p["number"])
                 elif p.get("files_app") is None:
                     unclassified.add(rid)
-    unclassified -= set(change_at)
+    open_parts = {}
+    for rid, prs in app_prs.items():
+        if rid in unclassified:              # a part's app-code check is missing: reported as such, not as an open part
+            continue
+        w, op = merged_when(prs, bl_named.get(rid, ()))
+        if w:
+            change_at[rid], change_pr[rid] = w
+        else:
+            open_parts[rid] = op
+    if open_parts:
+        notes.append("Not merged yet, a later part still open (P-639): " + ", ".join(f"{k} part {', '.join(v)}" for k, v in sorted(open_parts.items())))
+    unclassified -= set(change_at) | set(open_parts)
     if unclassified:
         notes.append("App-code check missing for the PRs of " + ", ".join(sorted(unclassified)) + " (not counted)")
     change_day = {k: ist_day(v) for k, v in change_at.items()}
@@ -1755,7 +1830,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     shaped_ids = []
     for r in shaped:
         shaped_ids += [x for x in r["ids"] if x not in shaped_ids]
-    rem_shaped = sum(1 for x in shaped_ids if x not in change_at)
+    rem_shaped = sum(1 for x in shaped_ids if x not in change_at and x in bl["ids"])   # R4: an id BACKLOG lacks is an invariant failure, not scope
     rem_unshaped = sum(max(0, UNSHAPED_FACTOR - sum(1 for x in r["ids"] if x in change_at)) for r in unshaped)
     remaining = rem_shaped + rem_unshaped
     R = num(remaining, f"unmerged ids of shaped capabilities ({rem_shaped}) + {UNSHAPED_FACTOR} × each capability not shaped, "
@@ -1775,6 +1850,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             continue
         if all(x in change_at for x in r["ids"]):
             r["built"] = max(change_day[x] for x in r["ids"]).isoformat()
+            r["built_at"] = max(change_at[x] for x in r["ids"])
     built_rows = [r for r in rows if r["built"]]
     pre = [r["map"] for r in rows if r.get("pre_baseline")]
     B = num(len(built_rows), f"shaped capabilities whose BACKLOG parts all merged through app PRs (built date = the latest part's merge date); "
@@ -1782,6 +1858,14 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             built_before=num(len(pre), "capabilities with no BACKLOG part that the checklist marks Merged or qa Works (built in the proof of concept, "
                              "before 13 Nov; no date)", "parsed", L, maps=pre))
     hist_caps = snap.cap_history()
+    qa_tested_at, prev_line = {}, {}
+    for h in hist_caps:                                   # oldest first
+        for line in (h.get("text") or "").splitlines():
+            m = re.match(r"^\|\s*\**R1\.(\d+)\**\s*\|", line)
+            if m:
+                n = int(m.group(1))
+                if prev_line.get(n) != line:
+                    qa_tested_at[n], prev_line[n] = h["date"], line
     proven_reason = None
     if not ck["has_qa_col"]:
         proven_reason = "not measured: the checklist has no qa id column yet (qa's R1 capabilities, #1748)"
@@ -1867,7 +1951,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     in_span = lambda iso: iso is not None and s_from < parse_iso(iso) <= s_to
     span_txt = f"{hm(s_from)} to {hm(s_to)} IST"
     ch_span = sorted(rid for rid, at in change_at.items() if in_span(at))
-    D_ch = num(len(ch_span), f"Release 1 changes whose first app-code merge falls between {span_txt} (the same changes as the pace line); "
+    D_ch = num(len(ch_span), f"Release 1 changes whose app-code merge (for an id in parts, its last needed part, P-639) falls between {span_txt} (the same changes as the pace line); "
                f"{gh_src}; {ck_src}", "mixed", L, ids=ch_span)
 
     # qa Works, one rule for done and needed (the qa queue's): the row's checklist Status reads "qa Works" or the row is proven
@@ -2023,7 +2107,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     lf_txt = last_full.strftime("%-d %b") if last_full else None
     series = [{"day": d.isoformat(), "count": per_day.get(d, 0)} for d in win]
     LD_parts = num(per_day.get(last_full, 0) if last_full else None,
-                   f"Release 1 changes (BACKLOG parts) whose first app-code merge fell on the IST day {lf_txt or 'not over yet'}; {gh_src}; {ck_src}",
+                   f"Release 1 changes (BACKLOG parts) whose app-code merge (for an id in parts, its last needed part, P-639) fell on the IST day {lf_txt or 'not over yet'}; {gh_src}; {ck_src}",
                    "mixed", L, "not measured: no full IST day since 13 Nov yet", day=last_full.isoformat() if last_full else None,
                    today_so_far=per_day.get(today, 0), series=series)
     built_on = lambda d: sum(1 for r in built_rows if r["built"] == d.isoformat())
@@ -2460,7 +2544,8 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             "top_numbers": {"works_today": W_today, "pct_per_works": delivery["pct_per_works_row"], "pct_per_change": delivery["pct_per_change"],
                             "lanes": lanes_top},
             "capability_table": cap_table, "rules_caught": rules, "behaviour": behaviour, "customer": customer,
-            "rows": [{"map": r["map"], "built": r["built"], "proven": r["proven"], "ids": r["ids"], "size": r["size"]} for r in rows],
+            "rows": [{"map": r["map"], "built": r["built"], "built_at": r.get("built_at"), "proven": r["proven"], "ids": r["ids"],
+                      "size": r["size"], "qa_tested_at": qa_tested_at.get(r["map"])} for r in rows],
             "r1_qa": r1_qa}
 
 
@@ -2714,10 +2799,22 @@ def first_screen(d, r1_qa, li, li_src):
     rows = d.get("build_rows") or []
     planned = [r["map"] for r in rows]
     proven = sorted(m for m in planned if QA_WORKS.match(r1_qa.get(m) or ""))
-    built = sorted(set(m for m in planned if any(r["map"] == m and r.get("built") for r in rows)) | set(proven))
+    # P-639 (Lead 66, 16 Nov): qa's verdict on main decides. A row whose listed parts all merged is Built (awaiting qa)
+    # unless qa tested it after its last part merged and read Partial or Not built: then it is In progress (qa found it
+    # unfinished). A row merged after qa's last test stays Built (awaiting qa), so the founder sees what qa owes.
+    row_of = {r["map"]: r for r in rows}
+
+    def qa_after_merge(m):
+        r = row_of.get(m) or {}
+        ta, ba = r.get("qa_tested_at"), r.get("built_at")
+        return bool(ta and ba and parse_iso(ta) >= parse_iso(ba))
+    parts_done = [m for m in planned if (row_of.get(m) or {}).get("built")]
+    qa_unfinished = sorted(m for m in parts_done if m not in proven and re.match(r"(Partial|Not built)", r1_qa.get(m) or "")
+                           and qa_after_merge(m))
+    built = sorted((set(parts_done) - set(qa_unfinished)) | set(proven))
     waiting = [m for m in built if m not in proven]
     unlisted = [m for m in planned if m not in r1_qa]
-    qa_not_built = [m for m in waiting if (r1_qa.get(m) or "").startswith("Not built")]
+    qa_not_built = qa_unfinished
     lbl = lambda m: f"R1.{m} {names.get(m, '')}".strip()
     qa_src = "qa/CAPABILITIES.md on main (R1 rows; R1.n = checklist map row n)"
     # Release 1 against the committed date
@@ -2747,7 +2844,7 @@ def first_screen(d, r1_qa, li, li_src):
     stage = {}
     for m in planned:
         stage[m] = ("proven" if m in proven else "built" if m in built else
-                    "in progress" if str(m) in wt or (r1_qa.get(m) or "").startswith("Partial") else "planned")
+                    "in progress" if m in qa_unfinished or str(m) in wt or (r1_qa.get(m) or "").startswith("Partial") else "planned")
     groups = []
     gname = {g["id"]: g["name"] for g in (d.get("capabilities") or {}).get("groups") or []}
     grp_of = {r["map"]: r.get("group") for r in (d.get("capability_table") or {}).get("rows") or []}
@@ -2815,9 +2912,9 @@ def first_screen(d, r1_qa, li, li_src):
                           "items": bl or [f.get("path", "") for f in (h.get("files") or [])][:40], "owner": h.get("owner") or "current Lead",
                           "since": "over 48 h" if bl else "see Health", "next": h.get("action") or "", "src": "Health check " + str(h["id"])})
     if qa_not_built:
-        stuck.append({"what": f"{len(qa_not_built)} Built capabilities that qa's file still reads Not built",
-                      "items": [lbl(m) for m in qa_not_built], "owner": "qa (through the current Lead)",
-                      "since": "since their parts merged", "next": "qa re-checks each and records Proven, Partial or Not built", "src": qa_src})
+        stuck.append({"what": f"{len(qa_not_built)} capabilities qa found unfinished after all their listed parts merged",
+                      "items": [f"{lbl(m)}: qa reads {r1_qa.get(m)}" for m in qa_not_built], "owner": "current Lead (a builder takes the missing part)",
+                      "since": "qa's last test", "next": "name the missing part in BACKLOG and the checklist row, then build it", "src": qa_src})
     if unlisted:
         stuck.append({"what": f"{len(unlisted)} Release 1 capabilities missing from qa's file",
                       "items": [lbl(m) for m in unlisted], "owner": "qa (through the current Lead)", "since": "not listed yet",
@@ -2975,7 +3072,7 @@ def build_explain(d):
         "); a high date past it means the pace must rise.", EB, n_override=EB.get("n"))  # days measured is a real sample even when the band is retired
     LD = P.get("leading") or {}
     lp, lc, lv = LD.get("parts_merged") or {}, LD.get("caps_all_parts") or {}, LD.get("first_verdict_works_pct") or {}
-    put("pace.leading_parts", "Parts merged a day", "Release 1 changes (BACKLOG parts) whose first app-code merge fell on the last full IST day.",
+    put("pace.leading_parts", "Parts merged a day", "Release 1 changes (BACKLOG parts) whose app-code merge (for an id in parts, its last needed part) fell on the last full IST day.",
         "IST day " + str(lp.get("day") or "none yet") + " (00:00 to 24:00); today so far: " + str(lp.get("today_so_far")), val(lp),
         "parts merged that day", up + " A leading number: parts merge before capabilities are built.", lp)
     put("pace.leading_caps", "Capabilities with all parts merged", "Build rows whose BACKLOG parts have all merged (built), cumulative.",
