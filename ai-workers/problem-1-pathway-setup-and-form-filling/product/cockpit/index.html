@@ -188,6 +188,8 @@ details.inline>summary{cursor:pointer;color:var(--accent);font-size:12.5px;displ
 .stale.fr-red{border-color:var(--bad);background:var(--bad-soft)}
 .stale b{font-size:17px}
 .gloss{font-size:13.5px;color:var(--ink2);margin:2px 0 4px}
+[hidden]{display:none!important}
+.firstsec{margin:10px 0 0}
 .first{display:grid;gap:10px;grid-template-columns:1fr}
 @media(min-width:900px){.first{grid-template-columns:1fr 1fr}.first>#fc-release{grid-column:1/-1}}
 .fcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:0}
@@ -273,7 +275,7 @@ details.more{margin-top:14px}details.more>summary{cursor:pointer;font-weight:600
 
 <div class="strip" id="strip"><div id="fresh"></div></div>
 <div class="wrap" id="app">
-  <header class="top"><h1>Founder's Progress Board</h1><p class="gloss" id="gloss"></p><p class="small muted">Pathway Configurator, Release 1. Every number comes from the data script; click any number, card or check (or the ⓘ beside it) to see what it counts, what is behind it, its source and time, and what to do.</p></header>
+  <header class="top"><h1>Founder's Progress Board</h1><p class="gloss" id="gloss"></p><p class="small muted">Tap a card to see what is behind it; tap its source line for where each number comes from and when.</p></header>
   <div id="body"><p class="muted">Loading data.json&#x2026;</p></div>
 </div>
 <div id="tip" role="region" aria-live="polite" aria-label="About this number"></div>
@@ -545,8 +547,8 @@ function rFirst(){
   var nr=its.filter(function(i){return i.state==="red";}).length,na=its.filter(function(i){return i.state==="amber";}).length;
   h+=fcard("health","Health",hl==="green"?pill("green"):(nr?'<span class="pill p-bad">'+nr+' red</span>':'')+(na?'<span class="pill p-wait">'+na+' amber</span>':''),
     nr?'Red: '+esc(its.filter(function(i){return i.state==="red";}).map(function(i){return i.name+" ("+i.owner+")";}).join("; ")):(na?'Amber only; nothing failing.':'All checks pass.'),
-    '<ul class="flist">'+(D.health.items||[]).map(function(i){var st=i.state==="page"?ageState(age):i.state;return '<li'+T("health."+i.id)+'>'+dot(st)+'<b>'+esc(i.name)+'</b> — '+(i.state==="page"?"board data "+esc(ageText(age))+" old":esc(i.detail))+((st==="red"||st==="amber")&&i.action?' <b>Do:</b> '+esc(i.action)+' · <b>Who:</b> '+esc(i.owner||""):'')+'</li>';}).join("")+'</ul>',"strip.health");
-  return '<section class="ovsec firstsec" aria-label="First screen">'+h+'</div></section>';
+    '<ul class="flist">'+(D.health.items||[]).map(function(i){var st=i.state==="page"?ageState(age):i.state;return '<li'+T("health."+i.id)+'>'+dot(st)+'<b>'+esc(i.name)+'</b> — '+(i.state==="page"?"board data "+esc(ageText(age))+" old":esc(i.detail.length>200?i.detail.slice(0,200)+"… (tap for all)":i.detail))+((st==="red"||st==="amber")&&i.action?' <b>Do:</b> '+esc(i.action)+' · <b>Who:</b> '+esc(i.owner||""):'')+'</li>';}).join("")+'</ul>',"strip.health");
+  return '<div class="firstsec" role="region" aria-label="First screen">'+h+'</div></div>';
 }
 function hmDay(iso){try{return new Date(iso).toLocaleString("en-GB",{timeZone:"Asia/Kolkata",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})+" IST";}catch(e){return iso||"";}}
 /* banners (§6.6) */

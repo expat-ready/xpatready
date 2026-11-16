@@ -2759,7 +2759,7 @@ def first_screen(d, r1_qa, li, li_src):
             continue
         td = r.get("trigger_date")
         it = {"key": f"risk-{r['id']}", "id": r["id"], "what": r.get("mitigation") or r["risk"], "why": r["risk"] +
-              (f" ({r['trigger']})" if r.get("trigger") else ""), "by": td, "src": "cockpit/risks.json (owner founder)"}
+              (f" ({r['trigger']})" if r.get("trigger") and not re.match(r"\d{4}-\d\d-\d\d$", str(r["trigger"])) else ""), "by": td, "src": "cockpit/risks.json (owner founder)"}
         (ny if td and td <= today.isoformat() else later).append(it)
     needs = {"items": ny, "later": later, "count": len(ny)}
     # Stuck or at risk: each with owner, since and next step
@@ -2875,7 +2875,7 @@ def build_explain(d):
     put("strip.health", "Health", "One light from seven checks: main CI, board data age, records on main, guards, burn, Major bugs on Works capabilities, "
         "data trust.", now_w + "; data age by your clock", None, "checks", "Green: all pass. Amber: one is not measured or near its limit. Red: one fails "
         "(its action and owner show on tap).", src="health.items (seven checks) + the page's data age", cls="measured", n_override=len(d["health"]["items"]),
-        todo="tap Health for each check; a red or amber check says what to do and who",
+        todo="each red or amber check says what to do and who (the Health card lists them)",
         behind=[f"{i['id']} {i['name']}: " + ("by your clock (board data age)" if i["state"] == "page" else i["state"]) +
                 (f" — {i['action']} ({i.get('owner') or ''})" if i["state"] in ("red", "amber") and i.get("action") else "")
                 for i in d["health"]["items"]])
