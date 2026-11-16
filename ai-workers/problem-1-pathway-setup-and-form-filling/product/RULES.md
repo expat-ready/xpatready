@@ -1,8 +1,8 @@
-# Rule register (the tech lead keeps it; as of **P-625**, 15 Nov 21:5x IST (P-616 to P-619 added by Lead 61); the long page as of P-612 is word for word in `history/RULES-2026-11-15-1415-before-register.md`)
+# Rule register (the tech lead keeps it; as of **P-630**, 16 Nov 08:3x IST (P-626 to P-630 added by Lead 64; the page as of P-625 is word for word in `history/RULES-2026-11-16-0735-lead64s2-as-of-P-625.md`); the long page as of P-612 is word for word in `history/RULES-2026-11-15-1415-before-register.md`)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced by** names the hook, CI step or script that blocks or fails a break; `prose` = only the reader enforces it (G-4 candidates, bottom); `(part)` = covers part of the rule. IDs: a letter (`P-611b`) = the decision's 2nd row, not its part (2); `IDX-n` = an index of done, product or integration decisions kept in the side file. **Start read**: this page, then the `DECISIONS.md` rows newer than "as of", word for word (P-314, P-440). Long text word for word: side files under `rules/`. `tools/check-docs.sh` fails a row with no enforced-by, a page over 25 KB, or one over 3 rows behind DECISIONS.
 
-**Triaged 16 Nov (B193 part 5, P-619 step 6):** 9 rows merged into the row that says the same and 5 retired, word for word in `rules/merged-and-retired-2026-11-16.md`; every old ID and where it went in `rules/rule-id-map-2026-11-16.tsv` (check-docs.sh fails a missing one); the check queue for the other prose rows: `design/rule-triage-2026-11-16.md`.
+**Triaged 16 Nov (B193 part 5):** the note, merged and retired rows and the ID map: `rules/merged-and-retired-2026-11-16.md`.
 
 ## Goal and order (detail: `rules/goal-and-order.md`)
 | ID | Rule | Enforced by | As of |
@@ -140,6 +140,11 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-623 | WIP: 2 waiting per group or 24 h; stopped builders fix qa bugs first; release Lead orders qa's queue; board leads with qa verdicts a day. | prose (B193, B194) | 16 Nov |
 | P-624 | Virus scan by AWS GuardDuty for S3 behind ScanPort, after a ca-central-1 console check. | prose | 16 Nov |
 | P-625 | Staging on AWS's own address until a domain is needed; base domain is a setting; no second host. | prose | 16 Nov |
+| P-626 | Finish the Partial R1 capabilities first; 10 proven by qa by 08:00 IST 17 Nov. | prose | 16 Nov |
+| P-627 | The founder's seven morning answers (16 Nov) stand as recorded in DECISIONS; (6) amended by P-629. | prose | 16 Nov |
+| P-628 | While the founder is away the Lead decides product questions, records each ruling and its reason for his review. | prose | 16 Nov |
+| P-629 | PF-13 branding adds favicon, banner and an 80-character tagline; emails and PDFs keep logo, name and footer. | prose | 16 Nov |
+| P-630 | The Lead chooses build or adopt through the STANDARDS §1 gate; templates on React Email, Gotenberg with conditions. | prose | 16 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |
