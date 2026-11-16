@@ -15,6 +15,7 @@ import { ModulesContainer, Reflector } from "@nestjs/core";
 import { LICENCE_KEYS, assertNoBundleHandsOutMoney, catalogueMismatches } from "./catalogue.ts";
 import { DUTY_KEYS, FIRM_KEY, NOT_LICENSED, OWN_OR_ALL, PLATFORM_ACCESS, PLATFORM_PATH, forbidden, type PlatformAccess, type StaffContext } from "./keys.ts";
 import { PlatformIdentity } from "./service.ts";
+import { asBypass, enterRequest, setRequestFirm, withFirm } from "../firm-scope.ts";
 
 const METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "ALL", "OPTIONS", "HEAD", "SEARCH"];
 const join = (...p: string[]) => `/${p.map((s) => s.replace(/^\/+|\/+$/g, "")).filter(Boolean).join("/")}`;
@@ -78,6 +79,7 @@ export class PlatformGuard implements CanActivate, OnModuleInit {
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<Req>();
+    enterRequest(req);   // PF-12: this request's scope (no firm yet), before any await
     const access = this.reflector.getAllAndOverride<PlatformAccess>(PLATFORM_ACCESS, [ctx.getHandler(), ctx.getClass()]);
     // A declared platform route is guarded whatever the path's letter case (break M1); an undeclared one on these paths is refused.
     if (!access && !PLATFORM_PATH.test(req.path ?? req.url ?? "")) return true;
@@ -85,12 +87,13 @@ export class PlatformGuard implements CanActivate, OnModuleInit {
     if (access.kind === "sign-in") return true;
     const h = req.headers.authorization, auth = Array.isArray(h) ? h[0] : h;
     const m = typeof auth === "string" ? /^Bearer\s+(\S+)$/i.exec(auth.trim()) : null;
-    const staff = await this.identity.authenticate(m?.[1]);
+    const staff = await asBypass("platform.identity.authenticate", () => this.identity.authenticate(m?.[1]));   // PF-12: the firm is not known yet
+    setRequestFirm(req, staff.firmId);   // PF-12: the handler runs as this firm
     if (access.kind === "keys") {
       const missing = access.keys.filter((k) => !staff.keys.includes(k));
       if (missing.length) forbidden(`Your roles do not include the permission this needs (${missing.join(", ")}).`, "MISSING_PERMISSION");
       const licence = await this.licenceKeys();
-      if (access.keys.some((k) => licence.has(k)) && !(await this.identity.isLicensed(staff.firmId, staff.staffId))) forbidden(NOT_LICENSED, "NOT_LICENSED");
+      if (access.keys.some((k) => licence.has(k)) && !(await withFirm(staff.firmId, () => this.identity.isLicensed(staff.firmId, staff.staffId)))) forbidden(NOT_LICENSED, "NOT_LICENSED");
       // PF-6b ruling 3, P-612 (founder, 15 Nov: "Yes, keep the check"): a recorded departure from SA-6-27, which says the
       // permission system never checks licence. Unconfirmed: no counsel.
     }

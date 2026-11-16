@@ -1,0 +1,473 @@
+# ci 43801075002, shards 2-8, per-suite lines copied by Lead B from GitHub's job logs on the Mac (#1953 comment 6909671971, 16 Nov)
+   * **All seven shards report `retries: 0`.**
+**Shard 2** (retries: 0 (one retry per failed suite, at most 2 a run; never in the nightly full set))
+| check_b107_representative_copies.ts | PASS | 98 s | 28/28 passed |
+| check_b112_merge_supplies_about.ts | PASS | 6 s | 10 passed, 0 failed |
+| check_b162_no_copy_api.ts | PASS | 33 s | 7/7 passed |
+| check_b83_own_question_screen_browser.cjs | PASS | 52 s | 56/56 passed |
+| check_b83_undo_withdraw.ts | PASS | 138 s | 173/173 passed |
+| check_bk19_validate_browser.ts | PASS | 41 s | 15/15 passed |
+| check_bk4c_browser.cjs | PASS | 292 s | 46 passed, 0 failed |
+| check_c101_release_two_words.ts | PASS | 0 s | 8/8 passed |
+| check_c1112_filing_browser.cjs | PASS | 15 s | 17 passed, 0 failed |
+| check_c116_item_channel_forms.ts | PASS | 23 s | 16/16 passed |
+| check_c117_intake_edition.ts | PASS | 21 s | 20/20 passed |
+| check_c16_portal_browser.cjs | PASS | 49 s | 31 passed, 0 failed |
+| check_c313_search_browser.cjs | PASS | 11 s | 12/12 passed |
+| check_c3_11_signed_scan.ts | PASS | 10 s | 32/32 passed |
+| check_c41_section_order_browser.cjs | PASS | 23 s | 29/29 passed |
+| check_c42_still_asked_browser.cjs | PASS | 12 s | 13 passed, 0 failed |
+| check_c617_stages_browser.ts | PASS | 126 s | 42/42 passed |
+| check_c82_record_browser.ts | PASS | 90 s | 40/40 passed |
+| check_checkpoint_review_order.ts | PASS | 1 s | 11/11 passed |
+| check_cost_check.ts | PASS | 18 s | 109/109 passed |
+| check_edition_in_use.ts | PASS | 2 s | 20/20 passed |
+| check_f8_empty_release.ts | PASS | 7 s | 16/16 passed |
+| check_fo3pa_public_answers.ts | PASS | 7 s | 45 passed, 0 failed |
+| check_focus_ring_browser.cjs | PASS | 95 s | 31 passed, 0 failed |
+| check_forms_c212_queue_forms.ts | PASS | 93 s | 45 passed, 0 failed |
+| check_forms_c33_failed_run_browser.ts | PASS | 13 s | 22 passed, 0 failed (C3.3 failed run, as a person; US$0) |
+| check_forms_c411_draft_qd.ts | PASS | 59 s | 77/77 passed |
+| check_forms_d2_live_fails_offer_saved.ts | PASS | 10 s | 7 passed, 0 failed |
+| check_forms_pd_apply_replayed.ts | PASS | 24 s | 8 passed, 0 failed |
+| check_forms_qa144_numbered_headings.ts | PASS | 1 s | 15/15 passed |
+| check_forms_qa237_qa239_held.ts | PASS | 37 s | 23/23 passed |
+| check_forms_qa276_section_move.ts | PASS | 43 s | 27/27 passed |
+| check_forms_slice2.ts | PASS | 49 s | 41/41 passed |
+| check_grounding_db.ts | PASS | 7 s | 35/35 passed |
+| check_m1_health.ts | PASS | 1 s | 19/19 passed |
+| check_m3s4_blocking_api.ts | PASS | 120 s | 20/20 passed |
+| check_p319_family_role.ts | PASS | 7 s | 28/28 passed |
+| check_pf18np_port.ts | PASS | 2 s | 11 passed, 0 failed |
+| check_pf23_observability.ts | PASS | 101 s | 100/100 passed |
+| check_pf5_signup_billing.ts | PASS | 7 s | 53 passed, 0 failed |
+| check_qa119_next_step_browser.cjs | PASS | 16 s | 30 passed, 0 failed |
+| check_qa145_clean_clone.ts | PASS | 116 s | 8/8 passed |
+| check_qa207_previous_editions.ts | PASS | 0 s | 8/8 passed |
+| check_qa309_online_done.ts | PASS | 116 s | 12/12 passed |
+| check_s5_leadcheck_browser.cjs | PASS | 16 s | 21 passed, 0 failed |
+| check_s5_live_approval_browser.cjs | PASS | 8 s | 5 passed, 0 failed |
+| check_s6_library_sources.ts | PASS | 7 s | 41 checks passed |
+| check_screen01_release_race.ts | PASS | 10 s | 1 checks passed |
+| check_studio_browser.cjs | PASS | 190 s | 54/54 passed, 164 clicks, 189 s |
+| check_uxa2_to_review_browser.cjs | PASS | 30 s | 56 passed, 0 failed |
+| check_uxa4_details_browser.cjs | PASS | 20 s | 47 passed, 0 failed |
+| check_vv_prepare.ts | PASS | 0 s | 32/32 passed |
+| check_w115_slice2_browser.cjs | PASS | 46 s | 58 passed, 0 failed |
+| check_w1_qa51_52_54.cjs | PASS | 14 s | 21/21 passed |
+| check_w1_structure_path.ts | PASS | 6 s | 28/28 passed |
+**Shard 3** (retries: 0 (one retry per failed suite, at most 2 a run; never in the nightly full set))
+| check_a24_case_number_migration.ts | PASS | 6 s | 28 passed, 0 failed |
+| check_ai_launch_paths.ts | PASS | 41 s | 44/44 passed |
+| check_b104_stage_one.ts | PASS | 0 s | all passed |
+| check_b152_recorded_fees_api.ts | PASS | 267 s | 20/20 passed |
+| check_b154_section_background.ts | PASS | 98 s | 56/56 passed |
+| check_b155_siblings.ts | PASS | 175 s | 33/33 passed |
+| check_b157_relative_subject_unique.ts | PASS | 100 s | 11/11 passed |
+| check_b52_own_yes_no.ts | PASS | 107 s | 67 passed, 0 failed |
+| check_b84_fill_intact.ts | PASS | 1 s | 10/10 passed |
+| check_bk11_release_fill_trials_api.ts | PASS | 7 s | 8/8 passed |
+| check_bk19_barcode_check.ts | PASS | 9 s | 23/23 passed |
+| check_c10_1_browser.cjs | PASS | 123 s | 12 passed, 0 failed |
+| check_c10_1_configured.ts | PASS | 93 s | 48 passed, 0 failed |
+| check_c119_library_items.ts | PASS | 11 s | 70 passed, 0 failed |
+| check_c314_rules_browser.cjs | PASS | 19 s | 31 passed, 0 failed |
+| check_c46_preview_channels.ts | PASS | 8 s | 31/31 passed |
+| check_c46_preview_channels_browser.cjs | PASS | 17 s | 25/25 passed |
+| check_c616_privacy_browser.cjs | PASS | 32 s | 50/50 passed |
+| check_c65_document_rules.ts | PASS | 1 s | 45/45 passed |
+| check_c69_page_browser.cjs | PASS | 39 s | 55/55 passed |
+| check_c72_imm5257_fill.ts | PASS | 30 s | 57/57 passed |
+| check_contract_seams.ts | PASS | 0 s | 116 passed, 0 failed |
+| check_fill_duty.ts | PASS | 7 s | 12 passed, 0 failed |
+| check_fo1b_booking_schema.ts | PASS | 18 s | 80 passed, 0 failed |
+| check_fo3sa_any_time.ts | PASS | 5 s | 39 passed, 0 failed |
+| check_fo5_retainers.ts | PASS | 26 s | FO-5 retainers: 243 passed, 0 failed |
+| check_forms_b81_browser.cjs | PASS | 17 s | 34 passed, 0 failed |
+| check_forms_b86_panel_browser.cjs | PASS | 39 s | 40/40 passed |
+| check_forms_c118_acceptance.ts | PASS | 25 s | 22 passed, 0 failed |
+| check_forms_c411_contract.ts | PASS | 13 s | 35 passed, 0 failed |
+| check_forms_c47_v2_jobs.ts | PASS | 17 s | 14/14 passed |
+| check_forms_p80_guard.ts | PASS | 13 s | 44 passed, 0 failed |
+| check_forms_qa162_fact_words.ts | PASS | 1 s | 61/61 passed |
+| check_forms_qa162_run_reasons_browser.cjs | PASS | 21 s | 11 passed, 0 failed |
+| check_forms_qa75_job_page_browser.cjs | PASS | 9 s | 21 passed, 0 failed |
+| check_forms_saved_parts.ts | PASS | 50 s | 14 passed, 0 failed |
+| check_k13_names_browser.cjs | PASS | 107 s | 125 passed, 0 failed |
+| check_m3s5_sheet_only.ts | PASS | 0 s | 29/29 passed |
+| check_pf19a_messages_schema.ts | PASS | 15 s | 94 passed, 0 failed |
+| check_pf4_identity.ts | PASS | 7 s | 119/119 passed |
+| check_pf6a_frame_browser.ts | PASS | 17 s | 52/52 passed |
+| check_qa117_person_sections.ts | PASS | 7 s | 3 passed, 0 failed |
+| check_qa219_merge_alias_browser.cjs | PASS | 33 s | C3.5 (QA-219): 42/42 passed |
+| check_qa317_sheet_browser.ts | PASS | 143 s | 34 passed, 0 failed |
+| check_qa395_counted.ts | PASS | 0 s | 22/22 passed |
+| check_qa421_release_submit_first_browser.cjs | PASS | 97 s | 19 passed, 0 failed |
+| check_runtime_r1a.ts | PASS | 13 s | 99/99 passed |
+| check_runtime_r1c.cjs | PASS | 142 s | 141/141 passed |
+| check_runtime_r1d.ts | PASS | 28 s | 97/97 passed |
+| check_s6_p149.ts | PASS | 9 s | 91 checks passed |
+| check_s7_reset.ts | PASS | 7 s | 4 passed, 0 failed |
+| check_uxa3_status_words_browser.cjs | PASS | 17 s | 24 passed, 0 failed |
+| check_vv_prepare_store_api.ts | PASS | 33 s | 35/35 passed |
+| check_w1_programs_r3.cjs | PASS | 22 s | 26 passed, 0 failed |
+| check_w1_start_setup_browser.cjs | PASS | 33 s | 43 passed, 0 failed |
+| check_who_can_be_qa.ts | PASS | 1 s | 9 passed, 0 failed |
+| check_x1_tabs_focus_browser.cjs | PASS | 120 s | 48/48 passed |
+| check_x2b_bulk_preview.ts | PASS | 7 s | 67/67 passed |
+**Shard 4** (retries: 0 (one retry per failed suite, at most 2 a run; never in the nightly full set))
+| check_a24_2_case_list_browser.ts | PASS | 100 s | 39/39 passed |
+| check_ai_drafting.ts | PASS | 0 s | 48 passed, 0 failed |
+| check_ai_orchestration.ts | PASS | 41 s | 22/22 passed |
+| check_b106_gates_browser.cjs | quarantined | | passed only on retry in 2+ runs in 7 days (runs 43366296305, 43739772931): owner tech-lead, back on 2026-11-22 unless fixed sooner; nightly still runs it (B122) |
+| check_b107_form_field_gates.ts | PASS | 1 s | all passed |
+| check_b115_add_sponsor.cjs | quarantined | | passed only on retry in 2+ runs in 7 days (runs 43397586822, 43627811422): owner tech-lead, back on 2026-11-21 unless fixed sooner; nightly still runs it (B122) |
+| check_b124_rests_on.ts | PASS | 0 s | 12/12 passed |
+| check_b124_unconfirmed_browser.cjs | quarantined | | passed only on retry in 2+ runs in 7 days (runs 43038271313, 43061718097, 43082969671): owner tech-lead, back on 2026-11-18 unless fixed sooner; nightly still runs it (B122) |
+| check_b148_words.ts | PASS | 0 s | 13/13 passed |
+| check_b151_unpriced_browser.ts | quarantined | | passed only on retry in 2+ runs in 7 days (runs 43408132620, 43466670477, 43472176160, 43474148260): owner tech-lead, back on 2026-11-20 unless fixed sooner; nightly still runs it (B122) |
+| check_b170c_xfa_adapter.ts | PASS | 15 s | 44 passed, 0 failed |
+| check_b171_account_words.ts | PASS | 102 s | 14/14 passed |
+| check_b1_release_unmapped.ts | PASS | 30 s | 14/14 passed |
+| check_b78_section_names.ts | quarantined | | fails at random: nightly only until its fix merges (P-205) |
+| check_bk10_form_rules_data.ts | PASS | 0 s | 20 passed, 0 failed |
+| check_bk11_release_fill_trials.ts | PASS | 0 s | 21/21 passed |
+| check_bk16_family_forms_api.ts | PASS | 81 s | 30 passed, 0 failed |
+| check_bk22_filler_steps.ts | PASS | 0 s | 41 passed, 0 failed |
+| check_bk25_own_statement.ts | PASS | 0 s | 28/28 passed |
+| check_bk2_fold_outs.ts | PASS | 1 s | 16/16 passed |
+| check_bk3_frame.ts | PASS | 0 s | 151/151 passed |
+| check_bk3_frame_browser.cjs | quarantined | | passed only on retry in 2+ runs in 7 days (runs 43429935125, 43529755382): owner tech-lead, back on 2026-11-21 unless fixed sooner; nightly still runs it (B122) |
+| check_bk3_links_browser.cjs | quarantined | | passed only on retry in 2+ runs in 7 days (runs 43466670477, 43471653802): owner tech-lead, back on 2026-11-20 unless fixed sooner; nightly still runs it (B122) |
+| check_bk4a.ts | PASS | 0 s | 22/22 passed |
+| check_bk4b_handoffs.ts | PASS | 0 s | 15 passed, 0 failed |
+| check_bk4c.ts | PASS | 0 s | 16 passed, 0 failed |
+| check_bk5_start_browser.cjs | quarantined | | passed only on retry in 2+ runs in 7 days (runs 43067811816, 43079399583): owner tech-lead, back on 2026-11-18 unless fixed sooner; nightly still runs it (B122) |
+| check_bk8_biometrics_ages.ts | PASS | 0 s | 19/19 passed |
+| check_bk9_shared_filing.ts | PASS | 1 s | 18/18 passed |
+| check_c101_row_ten.ts | PASS | 0 s | 6 passed, 0 failed |
+| check_c102_copy_values.ts | PASS | 138 s | 19 passed, 0 failed |
+| check_c102_story_validated_match.ts | PASS | 0 s | 15 passed, 0 failed |
+| check_c1112_modes.ts | PASS | 0 s | 49/49 passed |
+| check_c1113_draft_fields_browser.ts | PASS | 12 s | 14 passed, 0 failed |
+| check_c1113_near_release_browser.cjs | PASS | 9 s | 19/19 passed |
+| check_c18_age_case.ts | PASS | 5 s | 12/12 passed |
+| check_c18_copies.ts | PASS | 8 s | 28/28 passed |
+| check_c316_field_scope.ts | PASS | 0 s | 40/40 passed |
+| check_c38_completeness.ts | PASS | 0 s | 24/24 passed |
+| check_c42_marking_browser.cjs | quarantined | | passed only on retry in 2+ runs in 7 days (runs 42452883363, 42626548399): owner tech-lead, back on 2026-11-16 unless fixed sooner; nightly still runs it (B122) |
+| check_c44_question_types_browser.cjs | PASS | 34 s | 33/33 passed |
+| check_c613_filing_changes_browser.cjs | quarantined | | fails at random: nightly only until its fix merges (P-205) |
+| check_c614_providers.ts | PASS | 1 s | 27/27 passed |
+| check_c615_document_sets.ts | PASS | 0 s | 34/34 passed |
+| check_c616_privacy.ts | PASS | 0 s | 48/48 passed |
+| check_c617_stages.ts | PASS | 1 s | 32/32 passed |
+| check_c65_mrz_reader.ts | PASS | 0 s | 36/36 passed |
+| check_c69_gates.ts | PASS | 20 s | 87/87 passed |
+| check_c710_figure.ts | PASS | 1 s | 37/37 passed |
+| check_c79_must_verify.ts | PASS | 0 s | 22/22 passed |
+| check_c81_signing.ts | PASS | 0 s | 18/18 passed |
+| check_c82_filing_numbers.ts | PASS | 1 s | 13/13 passed |
+| check_c82_record_api.ts | PASS | 116 s | 71/71 passed |
+| check_c83_review_browser.cjs | quarantined | | passed only on retry in 2+ runs in 7 days (runs 42641068821, 42671972909): owner tech-lead, back on 2026-11-16 unless fixed sooner; nightly still runs it (B122) |
+| check_c92_out_of_date.ts | PASS | 0 s | 29/29 passed |
+| check_c92_undo_api.ts | PASS | 32 s | 27/27 passed |
+| check_c95_release_update_browser.ts | quarantined | | passed only on retry in 2+ runs in 7 days (runs 43101886177, 43306206932, 43471653802): owner tech-lead, back on 2026-11-20 unless fixed sooner; nightly still runs it (B122) |
+| check_cost_warning_browser.cjs | PASS | 27 s | 33 passed, 0 failed |
+| check_d1_reset_to_six_browser.cjs | quarantined | | fails at random: nightly only until its fix merges (P-205) |
+| check_dv_backbone_browser.cjs | PASS | 8 s | 8 passed, 0 failed |
+| check_engine.ts | PASS | 1 s | 44/44 passed |
+| check_finder_long_page_browser.cjs | PASS | 39 s | 61 passed, 0 failed |
+| check_finder_long_page_key.ts | PASS | 6 s | 29 passed, 0 failed |
+| check_fo3sr_routes.ts | PASS | 3 s | 29 passed, 0 failed |
+| check_forms_ai_errors.ts | PASS | 1 s | 24 passed, 0 failed |
+| check_forms_b86_fill.ts | PASS | 0 s | 35/35 passed |
+| check_forms_b88_panel_browser.cjs | PASS | 61 s | 47/47 passed |
+| check_forms_b99_same_as.ts | PASS | 0 s | 9/9 passed |
+| check_forms_c118_words.ts | PASS | 1 s | 7 passed, 0 failed |
+| check_forms_c31_acceptance.ts | PASS | 10 s | 17 passed, 0 failed |
+| check_forms_c34_masters.ts | PASS | 16 s | 29/29 passed |
+| check_forms_c34_masters_browser.cjs | PASS | 17 s | 9 passed, 0 failed |
+| check_forms_c36_rule_facts_browser.cjs | quarantined | | fails at random: nightly only until its fix merges (P-205) |
+| check_forms_c47_pqr_picks_browser.cjs | PASS | 39 s | 63/63 passed |
+| check_forms_channels_browser.cjs | PASS | 16 s | 26 passed, 0 failed |
+| check_forms_f3a0.ts | PASS | 0 s | 7/7 passed |
+| check_forms_focus_landings_browser.cjs | PASS | 22 s | 26 passed, 0 failed |
+| check_forms_held_conditions_pure.ts | PASS | 0 s | 26/26 passed |
+| check_forms_k11_words.ts | PASS | 0 s | 13 passed, 0 failed |
+| check_forms_proposal_contract.ts | PASS | 1 s | 22 passed, 0 failed |
+| check_forms_qa193_batch_mark.ts | PASS | 10 s | 18 checks passed |
+| check_forms_qa206_name_browser.cjs | quarantined | | passed only on retry in 2+ runs in 7 days (runs 43726580835, 43732924855): owner forms, back on 2026-11-22 unless fixed sooner; nightly still runs it (B122) |
+| check_forms_qa53.ts | quarantined | | passed only on retry in 2+ runs in 7 days (runs 43753299440, 43793952103): owner forms, back on 2026-11-23 unless fixed sooner; nightly still runs it (B122) |
+| check_forms_rounds.ts | PASS | 1 s | 78 passed, 0 failed |
+| check_forms_schema_lint.ts | PASS | 0 s | 24 passed, 0 failed |
+| check_g1_source_register.ts | PASS | 1 s | 53/53 passed |
+| check_gcore_b2_door.ts | PASS | 7 s | 52 checks passed |
+| check_m3s4_never_waivable.ts | PASS | 0 s | 32/32 passed |
+| check_m4_demo_smoke.ts | PASS | 225 s | 13/13 passed |
+| check_p121_rating.ts | PASS | 1 s | PASS  P-121 pass: both rounds read and agree, the rules ran and passed: Ready, no reason |
+| check_p154_words.ts | PASS | 0 s | 4 checks passed |
+| check_pf19b_mail.ts | PASS | 4 s | 28 passed, 0 failed |
+| check_pf3_platform_schema.ts | PASS | 10 s | 75 passed, 0 failed |
+| check_pf6b_permission_rules.ts | PASS | 6 s | 24 passed, 0 failed |
+| check_prisma_schema.ts | PASS | 4 s | 8 passed, 0 failed |
+| check_qa144_fs_release.ts | PASS | 77 s | 28/28 passed |
+| check_qa144_lmia_release.ts | PASS | 78 s | 23/23 passed |
+| check_qa165_readiness_paths_api.ts | PASS | 95 s | 9/9 passed |
+| check_qa184_live_state_browser.cjs | PASS | 7 s | 16/16 passed |
+| check_qa196_check_landers.ts | PASS | 19 s | 24/24 passed |
+| check_qa221_who_age.ts | PASS | 1 s | 8/8 passed |
+| check_qa285_validated_files.ts | PASS | 0 s | 15/15 passed |
+| check_qa295_recorded_people.ts | PASS | 0 s | 10/10 passed |
+| check_qa329_filing_change_order.ts | quarantined | | passed only on retry in 2+ runs in 7 days (runs 42984140618, 43273626282): owner tech-lead, back on 2026-11-19 unless fixed sooner; nightly still runs it (B122) |
+| check_qa392_nothing_recorded_sheet.ts | PASS | 1 s | 17/17 passed |
+| check_qa415_application_kind.ts | PASS | 0 s | 33/33 passed |
+| check_qa417_counts_browser.cjs | PASS | 161 s | 56 passed, 0 failed |
+| check_qa427_client_card.ts | PASS | 0 s | 15 passed, 0 failed |
+| check_qa439_deciders_first.ts | PASS | 1 s | 13 passed, 0 failed |
+| check_r146_whole_form_output.ts | PASS | 0 s | 7 passed, 0 failed |
+| check_r2_fee_table.ts | PASS | 0 s | 86/86 passed |
+| check_readiness_pass_codes.ts | PASS | 0 s | 4/4 passed |
+| check_review_item_words.ts | PASS | 0 s | 7 passed, 0 failed |
+| check_s5_slice3_browser.cjs | quarantined | | passed only on retry in 2+ runs in 7 days (runs 42746020337, 43383637673): owner tech-lead, back on 2026-11-20 unless fixed sooner; nightly still runs it (B122) |
+| check_s6_field_drafts.ts | PASS | 3 s | 26 checks passed |
+| check_screen01_api.ts | quarantined | | fails at random: nightly only until its fix merges (P-205) |
+| check_setup_card_browser.cjs | PASS | 25 s | 44 passed, 0 failed |
+| check_setup_checklist.ts | PASS | 8 s | 71/71 passed |
+| check_sh2_where_used.ts | PASS | 0 s | 24/24 passed |
+| check_speed_budget.ts | PASS | 0 s | 9 passed, 0 failed |
+| check_stand_ins.ts | PASS | 1 s | 9 checks passed |
+| check_uxa1_counts_rules.ts | PASS | 0 s | 20 passed, 0 failed |
+| check_uxa3_words_rules.ts | PASS | 0 s | 5 passed, 0 failed |
+| check_vv_checklist.ts | PASS | 1 s | 76/76 passed |
+| check_vv_prepare_store.ts | PASS | 0 s | 28/28 passed |
+| check_w115_slice3.ts | PASS | 7 s | 34 passed, 0 failed |
+| check_w115_slice3_browser.cjs | PASS | 80 s | 35 passed, 0 failed |
+| check_w1_level_tokens.ts | PASS | 0 s | 31 passed, 0 failed |
+| check_w1_start_setup.ts | PASS | 3 s | 26/26 passed |
+| check_w1_visual_system.cjs | PASS | 20 s | 24 passed, 0 failed |
+| check_who_fills_browser.cjs | PASS | 25 s | 27 passed, 0 failed |
+| check_x9b_ai_now_refused.ts | PASS | 5 s | 6/6 passed |
+**Shard 5** (retries: 0 (one retry per failed suite, at most 2 a run; never in the nightly full set))
+| check_a24_record_reference_browser.ts | PASS | 111 s | 5/5 passed |
+| check_ai_live_switch.ts | PASS | 253 s | 9 passed, 0 failed |
+| check_bk13_zero_code_run.ts | PASS | 109 s | 45/45 passed |
+| check_bk9_shared_filing_api.ts | PASS | 80 s | 16/16 passed |
+| check_c1110_view_per_person_browser.cjs | PASS | 36 s | 14 passed, 0 failed |
+| check_c1113_draft_fields.ts | PASS | 6 s | 42 passed, 0 failed |
+| check_c1117_field_messages_browser.ts | PASS | 35 s | 32/32 passed |
+| check_c13_employer_link_browser.cjs | PASS | 83 s | 29/29 passed |
+| check_c18_copies_browser.cjs | PASS | 10 s | 13/13 passed |
+| check_c313_reuse_browser.cjs | PASS | 16 s | 24 passed, 0 failed |
+| check_c313_words_filters.ts | PASS | 5 s | 32/32 passed |
+| check_c38_background_forms_api.ts | PASS | 23 s | 36/36 passed |
+| check_c41_questionnaire_roles.ts | PASS | 6 s | 9/9 passed |
+| check_c42_section_titles.ts | PASS | 17 s | 12/12 passed |
+| check_c44_question_types.ts | PASS | 13 s | 44/44 passed |
+| check_c64_storage_api.ts | PASS | 18 s | 48/48 passed |
+| check_c75_cross_checks.ts | PASS | 0 s | 20/20 passed |
+| check_c81_signing_api.ts | PASS | 94 s | 48/48 passed |
+| check_c91_impact_api.ts | PASS | 85 s | 34/34 passed |
+| check_features_registry.ts | PASS | 1 s | 27 passed, 0 failed |
+| check_fo3_booking.ts | PASS | 7 s | 133 passed, 0 failed |
+| check_fo4_sales_browser.ts | PASS | 32 s | 45/45 passed |
+| check_forms_b116_own_unmapped.ts | PASS | 77 s | 18/18 passed |
+| check_forms_b86_door.ts | PASS | 30 s | 45/45 passed |
+| check_forms_b88_spread.ts | PASS | 51 s | 37/37 passed |
+| check_forms_c212_progress.ts | PASS | 9 s | 54 passed, 0 failed |
+| check_forms_c24_same_and_new.ts | PASS | 10 s | 19 passed, 0 failed |
+| check_forms_c34_ai.ts | PASS | 26 s | 87/87 passed |
+| check_forms_c36_requirement_type.ts | PASS | 17 s | 34 passed, 0 failed |
+| check_forms_c36_requirement_type_browser.cjs | PASS | 31 s | 13 passed, 0 failed |
+| check_forms_c47_pqr_picks.ts | PASS | 19 s | 60/60 passed |
+| check_forms_channels_migration.ts | PASS | 2 s | 18/18 passed |
+| check_forms_qa162_saved_matching.ts | PASS | 13 s | 39/39 passed |
+| check_forms_s4_canada.ts | PASS | 0 s | 80 passed, 0 failed |
+| check_forms_slice2b.ts | PASS | 9 s | 36/36 passed |
+| check_forms_tab_refresh_browser.cjs | PASS | 57 s | 7 passed, 0 failed |
+| check_gcore_b5_field_map_bulk.ts | PASS | 8 s | PASS  P-288 (2) pass: a Ready field-map item with both rounds agreeing and its rules passe |
+| check_official_pages.ts | PASS | 11 s | 42 passed, 0 failed |
+| check_p2_guard.ts | PASS | 2 s | 88/88 passed |
+| check_p2_launch.ts | PASS | 14 s | 60/60 passed  (copy: /tmp/p2-launch-gNYsMw; run files: 12) |
+| check_pf19b_sending.ts | PASS | 3 s | 40 passed, 0 failed |
+| check_qa144_vv_release.ts | PASS | 81 s | 36/36 passed |
+| check_qa172_plain_titles_browser.cjs | PASS | 21 s | 10 passed, 0 failed |
+| check_qa270_file_route.ts | PASS | 6 s | 13 passed, 0 failed |
+| check_qa275_fill_files.ts | PASS | 6 s | 9 passed, 0 failed |
+| check_qa318_sch1.ts | PASS | 151 s | 19/19 passed |
+| check_qa401_person_rights_browser.cjs | PASS | 48 s | 14/14 passed |
+| check_qa441_next_not_done_browser.cjs | PASS | 134 s | 13 passed, 0 failed |
+| check_s2_fill_trials.ts | PASS | 0 s | 14 passed, 0 failed |
+| check_s6_library_pages_browser.cjs | PASS | 26 s | PASS  G-CORE BR-3: the rename dialog shows what the change touches (checks, tier in words, |
+| check_s7_load.ts | PASS | 20 s | 23 passed, 0 failed |
+| check_sh2b_doc_type_uses.ts | PASS | 5 s | 17/17 passed |
+| check_w115_slice1.ts | PASS | 7 s | 47 passed, 0 failed |
+| check_w1_structure.ts | PASS | 7 s | 81/81 passed |
+**Shard 6** (retries: 0 (one retry per failed suite, at most 2 a run; never in the nightly full set))
+| check_b164_no_engine_keys.ts | PASS | 5 s | 63 passed, 0 failed |
+| check_b78_sp_case_browser.cjs | PASS | 78 s | 8 passed, 0 failed |
+| check_bk12_sample_case.ts | PASS | 117 s | 34/34 passed |
+| check_bk14_review_any_form.ts | PASS | 1 s | 15 passed, 0 failed |
+| check_bk17_recorded_filing_api.ts | PASS | 176 s | 26/26 passed |
+| check_bk19_upload_api.ts | PASS | 34 s | 10/10 passed |
+| check_bk26_dependent_lists.ts | PASS | 1 s | 22 checks passed |
+| check_bk2_fold_outs_browser.cjs | PASS | 96 s | 51/51 passed |
+| check_bk4b_handoffs_browser.cjs | PASS | 94 s | 45 passed, 0 failed |
+| check_c1116_one_way_in_browser.cjs | PASS | 18 s | 31 passed, 0 failed |
+| check_c113_full_trail.ts | PASS | 5 s | 12 passed, 0 failed |
+| check_c3_11_browser.cjs | PASS | 15 s | 21/21 passed |
+| check_c41_section_order.ts | PASS | 6 s | 32/32 passed |
+| check_c69_runs.ts | PASS | 20 s | 98/98 passed |
+| check_c75_findings_api.ts | PASS | 30 s | 55/55 passed |
+| check_c75_findings_browser.cjs | PASS | 28 s | 28/28 passed |
+| check_c75_form_review_engine.ts | PASS | 1 s | 67/67 passed |
+| check_c75_review_page_browser.cjs | PASS | 37 s | 37/37 passed |
+| check_c76_readiness_api.ts | PASS | 40 s | 34/34 passed |
+| check_c76_ready_browser.ts | PASS | 140 s | 53/53 passed |
+| check_cost_override.ts | PASS | 12 s | 72 passed, 0 failed |
+| check_csc1_close.ts | PASS | 6 s | 55 passed, 0 failed |
+| check_fo5f2_template_safety.ts | PASS | 11 s | FO-5f2 template safety: 72 passed, 0 failed |
+| check_forms_b81_not_on_form.ts | PASS | 0 s | 41 passed, 0 failed |
+| check_forms_b81_routes.ts | PASS | 5 s | 18 passed, 0 failed |
+| check_forms_c1113_acceptance.ts | PASS | 16 s | 41/41 passed |
+| check_forms_c212_complete.ts | PASS | 5 s | 6 passed, 0 failed |
+| check_forms_c312_field_map.ts | PASS | 7 s | 61 passed, 0 failed |
+| check_forms_c411_draft_qd_browser.cjs | PASS | 43 s | 50/50 passed |
+| check_forms_qa101_103.cjs | PASS | 11 s | 22 passed, 0 failed |
+| check_forms_qa206_section_headings.ts | PASS | 16 s | 47/47 passed |
+| check_g1_source_entry_db.ts | PASS | 1 s | 19/19 passed |
+| check_g1_source_entry_points_browser.cjs | PASS | 26 s | 26/26 passed |
+| check_g1_sources_api.ts | PASS | 28 s | 55/55 passed |
+| check_g3_demo_release_browser.cjs | PASS | 7 s | 11 passed, 0 failed |
+| check_g4_tests_tab_browser.ts | PASS | 97 s | 54/54 passed |
+| check_m3_c1_expected_lines.ts | PASS | 158 s | 13/13 passed |
+| check_m3s5_online_only_api.ts | PASS | 82 s | 29/29 passed |
+| check_pf14_jobs.ts | PASS | 105 s | 92 passed, 0 failed |
+| check_pf21_complaints.ts | PASS | 12 s | 107 passed, 0 failed |
+| check_pf21v_views.ts | PASS | 18 s | 54 passed, 0 failed |
+| check_pqr_browser.cjs | PASS | 18 s | 20 passed, 0 failed |
+| check_qa165_gate_follow_ups.ts | PASS | 1 s | 38/38 passed |
+| check_qa392b_recorded_yes_no.ts | PASS | 111 s | 14/14 passed |
+| check_qa439_question_order_api.ts | PASS | 78 s | 32 passed, 0 failed |
+| check_qa77_names_browser.cjs | PASS | 8 s | 18/18 passed |
+| check_qa78_words_browser.cjs | PASS | 6 s | QA-78 words: 4/4 passed |
+| check_qa91_who_can_be_run_browser.cjs | PASS | 13 s | 10 passed, 0 failed |
+| check_s7_dialogs_browser.cjs | PASS | 21 s | 12 passed, 0 failed |
+| check_screen01_rules.ts | PASS | 1 s | 72 passed, 0 failed |
+| check_screen02_slice1.cjs | PASS | 17 s | all passed |
+| check_vv_checklist_api.ts | PASS | 15 s | 29/29 passed |
+| check_w115_slice2.ts | PASS | 7 s | 35 passed, 0 failed |
+| check_w1_s1s2_fix.cjs | PASS | 20 s | 30 passed, 0 failed |
+| check_w1_structure_r3.ts | PASS | 6 s | 41/41 passed |
+**Shard 7** (retries: 0 (one retry per failed suite, at most 2 a run; never in the nightly full set))
+| check_bk14_sp_review_api.ts | PASS | 93 s | 10/10 passed |
+| check_bk15_fees_by_role.ts | PASS | 0 s | 38/38 passed |
+| check_bk15_study_family_api.ts | PASS | 79 s | 15 passed, 0 failed |
+| check_bk3_client_browser.cjs | PASS | 98 s | 75/75 passed |
+| check_c1113_near_release.ts | PASS | 5 s | 22/22 passed |
+| check_c16_header_browser.cjs | PASS | 8 s | 11/11 passed |
+| check_c314_rules.ts | PASS | 5 s | 23 passed, 0 failed |
+| check_c44_part2.ts | PASS | 13 s | 31/31 passed |
+| check_c617_stages_migration.ts | PASS | 1 s | 23 passed, 0 failed |
+| check_c618_officer_background.ts | PASS | 14 s | 29/29 passed |
+| check_c73_parts_checkpoint.ts | PASS | 108 s | 6/6 passed |
+| check_c76_readiness.ts | PASS | 1 s | 91/91 passed |
+| check_d1_reset_to_six.ts | PASS | 74 s | 25 passed, 0 failed |
+| check_fo13_compliance_schema.ts | PASS | 12 s | 76 passed, 0 failed |
+| check_fo1a_sales_schema.ts | PASS | 16 s | 124 passed, 0 failed |
+| check_fo7a_money_schema.ts | PASS | 19 s | 123 passed, 0 failed |
+| check_forms_b114_condition_other_combination.ts | PASS | 75 s | 65/65 passed |
+| check_forms_b88_fill.ts | PASS | 1 s | 34/34 passed |
+| check_forms_c1115_download_link.cjs | PASS | 11 s | 16 passed, 0 failed |
+| check_forms_c212_rail_browser.cjs | PASS | 33 s | 31 passed, 0 failed |
+| check_forms_c212_to_review_browser.cjs | PASS | 18 s | 30 passed, 0 failed |
+| check_forms_c26_checklist.ts | PASS | 7 s | 58 passed, 0 failed |
+| check_forms_c26_queue_breaks.ts | PASS | 15 s | 20 passed, 0 failed |
+| check_forms_c31_formats_browser.cjs | PASS | 10 s | 15 checks passed |
+| check_forms_c36_acceptance.ts | PASS | 5 s | 17/17 passed |
+| check_forms_c36_answer_values.ts | PASS | 7 s | 50 passed, 0 failed |
+| check_forms_channels.ts | PASS | 13 s | 107/107 passed |
+| check_forms_demo.ts | PASS | 39 s | 23/23 passed |
+| check_forms_pa_track_a_jobs.ts | PASS | 18 s | 28/28 passed |
+| check_forms_qa218_saved_masters_browser.cjs | PASS | 18 s | 22 passed, 0 failed |
+| check_forms_s4_library_browser.cjs | PASS | 66 s | 114 passed, 0 failed |
+| check_forms_s4_runs.ts | PASS | 10 s | 91 passed, 0 failed |
+| check_forms_x5_finder_baseline.ts | PASS | 36 s | 8 passed, 0 failed |
+| check_g2_answer_key_gate_firm.ts | PASS | 29 s | 27/27 passed |
+| check_g4_answer_keys.ts | PASS | 16 s | 93/93 passed |
+| check_gcore_engine.ts | PASS | 0 s | 137/137 passed |
+| check_pf1_module_routes.ts | PASS | 28 s | 28/28 passed |
+| check_pf21w_routes.ts | PASS | 3 s | 83 passed, 0 failed |
+| check_pf24_secrets.ts | PASS | 7 s | 84 passed, 0 failed |
+| check_preview_sets.ts | PASS | 8 s | 29 passed, 0 failed |
+| check_qa144_sp_release.ts | PASS | 77 s | 27/27 passed |
+| check_qa165_mandatory.ts | PASS | 1 s | 40/40 passed |
+| check_qa391_kept_forms_browser.cjs | PASS | 138 s | all passed |
+| check_qa400_principal_per_person.ts | PASS | 82 s | 20 passed, 0 failed |
+| check_qa445_every_part_browser.cjs | PASS | 161 s | 24 passed, 0 failed |
+| check_qa446_confirm_counts_browser.ts | PASS | 176 s | 45/45 passed |
+| check_qa99_who_can_be_trail.ts | PASS | 5 s | 3 passed, 0 failed |
+| check_runtime_n7.cjs | PASS | 11 s | 32/32 passed |
+| check_s5_slice1.ts | PASS | 9 s | 61/61 passed |
+| check_s6_queue_browser.cjs | PASS | 23 s | 35 checks passed |
+| check_screen02_slice2_browser.cjs | PASS | 45 s | all passed |
+| check_screens_qa_1029_browser.cjs | PASS | 29 s | 64 checks passed |
+| check_sh3_resolver.ts | PASS | 1 s | 85/85 passed |
+| check_who_fills.ts | PASS | 6 s | 28 passed, 0 failed |
+| check_x2b_dialog_browser.cjs | PASS | 42 s | 43/43 passed |
+**Shard 8** (retries: 0 (one retry per failed suite, at most 2 a run; never in the nightly full set))
+| check_b104_checkpoint.ts | PASS | 89 s | all passed |
+| check_bk16_children_when.ts | PASS | 1 s | 21/21 passed |
+| check_bk24_required_boxes.ts | PASS | 129 s | 29/29 passed |
+| check_bk4a_browser.cjs | PASS | 112 s | 48/48 passed |
+| check_c116_channels_browser.ts | PASS | 51 s | 54/54 passed |
+| check_c119_acceptance.ts | PASS | 14 s | 23/23 passed |
+| check_c119_library_items_browser.cjs | PASS | 22 s | 30 passed, 0 failed |
+| check_c313_reuse.ts | PASS | 5 s | 21 passed, 0 failed |
+| check_c38_completeness_api.ts | PASS | 5 s | 9/9 passed |
+| check_c45_supplies_release.ts | PASS | 7 s | 10/10 passed |
+| check_c75_live_fake.ts | PASS | 78 s | 19/19 passed |
+| check_c75_saved_run_tripwire.ts | PASS | 31 s | 22/22 passed |
+| check_c81_sign_browser.ts | PASS | 158 s | 58/58 passed |
+| check_c91_impact_ai.ts | PASS | 2 s | 29/29 passed |
+| check_c92_out_of_date_browser.ts | PASS | 41 s | 19/19 passed |
+| check_c95_release_update.ts | PASS | 1 s | 34/34 passed |
+| check_checkpoint_sheet_stable.ts | PASS | 214 s | 7/7 passed |
+| check_fo2_leads_prospects.ts | PASS | 6 s | FO-2 leads (parts 1-2): 113 passed, 0 failed |
+| check_forms_b82_case_lines.ts | PASS | 32 s | 40/40 passed |
+| check_forms_b88_qa263.ts | PASS | 86 s | 18/18 passed |
+| check_forms_b99_family_hash.ts | PASS | 0 s | 8/8 passed |
+| check_forms_c31_formats.ts | PASS | 10 s | 107 passed, 0 failed (C3.1 field formats; US$0) |
+| check_forms_c33_acceptance.ts | PASS | 9 s | 14 passed, 0 failed |
+| check_forms_c34_ai_live.ts | PASS | 17 s | 8/8 passed |
+| check_forms_c36_rule_facts.ts | PASS | 7 s | 42 passed, 0 failed |
+| check_forms_f1p.ts | PASS | 5 s | 18 passed, 0 failed |
+| check_forms_f3a1c.ts | PASS | 6 s | 33/33 passed |
+| check_forms_k11_minors_browser.cjs | PASS | 20 s | 22 passed, 0 failed |
+| check_forms_s4_finder.ts | PASS | 15 s | 145 passed, 0 failed |
+| check_forms_w102_fix.ts | PASS | 17 s | 23/23 passed |
+| check_g1_source_register_browser.cjs | PASS | 29 s | 60/60 passed |
+| check_irm_editions.ts | PASS | 1 s | 13/13 passed |
+| check_open_cases_at_once.ts | PASS | 36 s | 11/11 passed |
+| check_pf23w_jobs_wired.ts | PASS | 21 s | 31 passed, 0 failed |
+| check_preview_sets_browser.cjs | PASS | 18 s | 24 passed, 0 failed |
+| check_qa165_form_validation.ts | PASS | 8 s | 30/30 passed |
+| check_qa165_taiwan_israel_api.ts | PASS | 118 s | 11/11 passed |
+| check_qa180_one_rule.ts | PASS | 0 s | 27/27 passed |
+| check_qa395_q8a_counts.ts | PASS | 109 s | 9/9 passed |
+| check_qa402_case_condition.ts | PASS | 85 s | 12/12 passed |
+| check_qa427_client_card_browser.cjs | PASS | 177 s | 17 passed, 0 failed |
+| check_s4_startable.ts | PASS | 18 s | 10/10 passed |
+| check_s5_leadcheck.ts | PASS | 14 s | 49 passed, 0 failed |
+| check_s5_people_ai.ts | PASS | 7 s | 15/15 passed |
+| check_s5_slice1_browser.cjs | PASS | 36 s | 52/52 passed |
+| check_s5_slice2.ts | PASS | 9 s | 31/31 passed |
+| check_s5_slice3.ts | PASS | 8 s | 23/23 passed |
+| check_screen01_browser.cjs | PASS | 88 s | 116 passed, 0 failed · {"cold_first_view_ms":1098,"first_view_ms":142,"filter_ms":26} |
+| check_screen01_smallfix.cjs | PASS | 29 s | all passed |
+| check_screen02_slice2.ts | PASS | 12 s | 56 passed, 0 failed |
+| check_uxa1_counts_browser.cjs | PASS | 23 s | 47 passed, 0 failed |
+| check_uxa2_row_words_rules.ts | PASS | 1 s | 5 passed, 0 failed |
+| check_w1_programs_s2.cjs | PASS | 41 s | 90 passed, 0 failed |
+| check_workspace_first_calls.ts | PASS | 25 s | 9/9 passed |
+| check_x2b_bulk_apply.ts | PASS | 9 s | 97/97 passed |
