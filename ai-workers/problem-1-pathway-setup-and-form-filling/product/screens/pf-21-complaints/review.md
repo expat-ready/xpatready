@@ -77,3 +77,16 @@ Reviewer (fresh agent) · commit `e80bd9c08bc382ac4170a8f2c53bead302dd4529` · c
 * r5 `contract.ts:67-76`: a time the clock skips moves in a different direction per zone. Toronto 02:30 → 1:30 a.m.; Paris 02:30 → 3:30 a.m. The comment says "an hour earlier". Every real time round-trips (checked: Toronto, Paris, Lord Howe, Kolkata). Make one rule (forward, like `Temporal` "compatible") or fix the comment.
 * r6 The two focus fixes (h1 after recording, summary after errors) have no assertion in the suite. I measured both by hand. Add `document.activeElement` checks.
 * Still open from before, not in this diff: review m1 (where-line), m2 (`title` tooltips), m6 (read-only pass case); breaker m3, m4, m5, m9, m10. List them in the PR as follow-ups.
+
+## Re-review e80bd9c08..8ec6c2011 (16 Nov 2026, P-277: the diff only)
+Reviewer (fresh agent) · commit `8ec6c2011` · own isolated copy `screens_pf21sr` on :4574 (never :4400), stopped afterwards. Suite re-run: `check_pf21s_complaints_browser.ts 4574 xr_studio_screens_pf21sr` **59/59, exit 0**; rewritten screenshots restored with `git checkout`. Diff: `c94625b1e` (review records only) and `8ec6c2011` (Devin's two comments on #1998).
+
+**Verdict: Approve** (no open Blocker or Major). Journey score stays **9/10**: the diff changes no product code.
+
+**What I checked**
+* **No assertion weakened.** All five `ok(...)` conditions in the changed lines are word for word the same (DW1 chip counts, M1 doubles, empty view). Only how `body` is read changed. `call()` now returns `body: unknown`. Every read goes through the web contract's zod schemas: `Complaint.parse` for the POST answer and `ComplaintPage.parse` for the four GETs. A parse throws on a wrong shape: a missing `items`, `next`, `people` or `firmTimeZone`, or a bad row field. A wrong shape used to give `undefined` reads, so the suite is now **stricter**. Default zod `object` strips unknown keys, so `Complaint.parse` accepts the POST's `Recorded` answer (`reminderScheduled` extra). The filter's `x` gets its type from the schema now, not a hand-written `{ complainantName: string }`.
+* **No `any` left.** `grep -nE '\bany\b'` on the suite finds only the words "in any browser" in a check name. CI's type check covers only api and web, so I also ran strict `tsc --noEmit` (`noImplicitAny`) on the suite file from a scratchpad tsconfig. The suite file has no errors. The only errors are in imported api files outside this diff.
+* **No personal name left.** The made-up full name in `journey-test-reviewer-2026-11-16.md` J2 became "a multilingual sample name (accents, a hyphen and CJK characters)". A search of the three changed files at `8ec6c2011` for that name or its parts found nothing. The suite's own names are role labels (`Person Late …`, `Person Double …`). The `c94625b1e` re-score block names roles only.
+* **Collision.** Importing the contract's `Page` as `ComplaintPage` keeps Playwright's `Page` type intact.
+
+**Findings. Blocker:** none. **Major:** none. **Minor:** none new. Earlier r1–r6 and the listed follow-ups stay open as before. **Nit:** J2 in the journey record now reads "type name a multilingual sample name". Drop the first "name".
