@@ -19,7 +19,8 @@ if [ "$(printf '%s' "$input" | jq -r '.hook_event_name // empty' 2>/dev/null)" =
   cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null); tp=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
   ROOT=$([ -n "$cwd" ] && git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || exit 0
   [ "$(cd "$ROOT" && bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane.sh whoami 2>/dev/null)" = lead ] || exit 0
-  # The turn's prompt: the newest user text in the transcript that is not a tool result, a meta line or a hook's feedback.
+  # The turn's prompt: the newest user text in the transcript that is not a tool result, a meta line, a hook's feedback or
+  # a background task's notification (one arriving mid-check must not end the check unread: review on #1925).
   turn=$([ -f "$tp" ] && python3 -I -c 'import json,sys
 last=""
 for l in open(sys.argv[1], encoding="utf-8"):
@@ -29,7 +30,7 @@ for l in open(sys.argv[1], encoding="utf-8"):
     c=(e.get("message") or {}).get("content")
     t=c if isinstance(c,str) else " ".join(x.get("text","") for x in (c or []) if isinstance(x,dict) and x.get("type")=="text")
     t=t.strip()
-    if t and not t.startswith(("Stop hook feedback","<system-reminder>")): last=t
+    if t and not t.startswith(("Stop hook feedback","<system-reminder>","<task-notification","[SYSTEM NOTIFICATION")): last=t
 print(last)' "$tp" 2>/dev/null)
   case "$(norm "$turn")" in *"$(norm "$CANON")"*) ;; *) exit 0;; esac
   out=$(bash "$(dirname "$0")/app-view-check.sh" --stale-only 2>&1)

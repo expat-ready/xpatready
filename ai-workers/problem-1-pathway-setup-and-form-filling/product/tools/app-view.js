@@ -19,7 +19,8 @@
     return null;
   }
   function one(s, now) {
-    const m = (s && s.external_metadata) || {};
+    s = s || {};
+    const m = s.external_metadata || {};
     const pts = m.post_turn_summary || {};
     const cu = m.context_usage || {};
     const cat = clean(pts.status_category) || clean(s.status) || 'unknown';

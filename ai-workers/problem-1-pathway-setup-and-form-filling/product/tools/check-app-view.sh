@@ -36,10 +36,10 @@ echo "UNREADABLE app view: HTTP 401 (signed out? ask the founder to sign in to c
 o=$(check $NOW); ok "a saved UNREADABLE line is an ACT, never a silent pass" "$(grep -q '^rc=1' <<< "$o" && grep -q 'ACT   app view: UNREADABLE' <<< "$o" && echo 1)" "$o"
 printf '%s\n' "$view" | NOW=$NOW bash "$TOOLS/app-view-save.sh" >/dev/null
 G="$TOOLS/lead-check-guard.sh"
-transcript() {  # $1 the turn's prompt → a transcript: the prompt, a tool result, a meta line, and a hook's feedback after it
+transcript() {  # $1 the turn's prompt → a transcript: the prompt, then a tool result, a meta line, a hook's feedback and a task notification
   jq -cn --arg p "$1" '{type:"user", message:{role:"user", content:$p}}, {type:"assistant", message:{content:[{type:"text",text:"ok"}]}},
     {type:"user", message:{content:[{type:"tool_result", content:"run lead-watch; read STATE Start here"}]}}, {type:"user", isMeta:true, message:{content:"x"}},
-    {type:"user", message:{content:"Stop hook feedback: stale"}}' > "$T/t.jsonl"; }
+    {type:"user", message:{content:"Stop hook feedback: stale"}}, {type:"user", message:{content:"<task-notification>agent done</task-notification>"}}' > "$T/t.jsonl"; }
 stop() {  # $1 lane, $2 clock, $3 prompt → block | pass
   transcript "$3"; local out; out=$(jq -n --arg d "$T/copy" --arg t "$T/t.jsonl" '{hook_event_name:"Stop", cwd:$d, transcript_path:$t, stop_hook_active:true}' | NOW=$2 FAKE_LANE="$1" bash "$G")
   if printf '%s' "$out" | jq -e '.decision == "block" and (.reason | test("app view not read in"))' >/dev/null 2>&1; then echo block; else echo pass; fi; }

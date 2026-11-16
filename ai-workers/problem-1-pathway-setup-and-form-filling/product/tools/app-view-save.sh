@@ -8,7 +8,7 @@
 # Env (tests): APP_VIEW_FILE, NOW (epoch seconds). Test: check-app-view.sh.
 TOOLS="$(cd "$(dirname "$0")" && pwd)"
 f="${APP_VIEW_FILE:-$TOOLS/../state/app-view-latest.txt}"; now="${NOW:-$(date +%s)}"
-body=$(cat | sed -e 's/\r$//' -e '/./,$!d')   # drop leading blank lines
+body=$(tr -d '\r' | sed -e '/./,$!d')   # drop leading blank lines
 first=$(printf '%s\n' "$body" | head -1)
 case "$first" in
   "app view "*|UNREADABLE*) ;;
