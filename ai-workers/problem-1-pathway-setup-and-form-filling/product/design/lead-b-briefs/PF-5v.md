@@ -33,3 +33,11 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime P
 
 **P-605/P-606 (every Lead B brief from 15 Nov):** Opus 5.5; no model switch mid-session. Finish whole: if an item turns out to need more than its touch list, stop and ask in a PR comment. Never widen the row silently, and never leave a part for later. Read only the requirement text named here.
 **Rules (standard, every PF/FO brief):** P-559; one row, one session, one PR; new files only outside the touch list; Opus reviewer (P-303); re-review reads only the diff (P-277); label `review: approved` only after `Reviewer: Approve <sha>` and green CI (P-277, P-385); merge `main` only on a conflict (P-270); before asking for the label, run the suites of every CI part red on an earlier head plus the shard that shares your demo database, and paste the result lines; live AI off, US$0, never a priced button (P-175); no real keys; push after every step (P-557); questions as a PR comment headed "Question for the tech lead"; report to the current Lead (`tools/current-lead.sh`) for the queue and to **Lead B** (row owner, branch `lead-b-front-office`) for the row; every token earns its outcome (P-556).
+
+---
+## PF-5v part 2 (rev 16.67, 14:5x IST 16 Nov; the #1955 split of rev 16.62 and Lead 67's condition on #1961)
+
+**Part 2 is item 1 of this brief**, the verification email (and "already have an account" when the address is in no firm), sent as a PF-19p `platformAccount` message through `MailPort`.
+* **Starts when:** **PF-19p (#1961)** and **PF-19e** are on `main`. PF-19e stores every `TRANSACTIONAL` body sealed, platform account messages included (under the platform's key). **The code in the email must never sit unsealed in the stored outbox file**, per Lead 67's condition (P-423) and the #1956 ruling.
+* **Added Done when:** `PF-5v DW4`. The stored outbox file for a verification email holds no 6-digit code and no confirm-link token in clear: its bytes are sealed. The demo inbox still shows the code to its address. This fails if sealing is skipped (shown once).
+* Item 2 (QA-484's words) is part 1, on #1955.

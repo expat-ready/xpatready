@@ -1548,3 +1548,10 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - **FO-9b's Minors:** accepted.
 * **Told to Lead 67:** #1956 merges `main` in its own lane (P-270).
 * #1959: the trial-end condition is met ("PF-5 part 2 pass (QA-481)"). Lead 67's re-read was done at e9eae0b40. **Owed by Lead B before PF-5 goes live, not before the merge:** the live Stripe test-mode run on the Mac, which waits on the founder's Stripe test keys.
+
+## Rev 16.67 (16 Nov 14:5x IST, Lead B (6)): PF-5v part 2 waits on PF-19e (Lead 67's condition on #1961)
+
+* Lead 67's read of #1961 is posted at 79248d7d1. The migration, `ports/jobs.ts` (A) and `ports/mail.ts` are all OK.
+* **Lead 67's condition:** the verification code must never be stored in clear in the outbox file. So **PF-5v part 2 starts only after PF-19e**, which seals every `TRANSACTIONAL` body, platform account messages included. Its new Done when is `PF-5v DW4`, in `lead-b-briefs/PF-5v.md`.
+* **The path for rows 19 and 100 is now:** #1956 and PF-19p merge, then PF-19e, then PF-5v part 2, then PF-5s part 1. **PF-19e should start as soon as #1956 and #1961 are on `main`.**
+* **#1962:** the C9.5 failure is a real break on `main`, hidden by the quarantine (kind's quarantine list was empty in that run). Lead 67 takes the fix row, before 20 Nov, with a qa row.
