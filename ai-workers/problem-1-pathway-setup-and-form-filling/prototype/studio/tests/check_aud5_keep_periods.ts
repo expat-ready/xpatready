@@ -65,7 +65,8 @@ process.env.DATABASE_URL = urlOf(DB);
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED", "PLATFORM_LOCAL_SECRET"]) delete process.env[k];
 
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
-const { seedSampleFirms, SAMPLE_SETTING_VALUES } = await import("../api/src/platform/seed-sample-firms.ts");
+const { seedSampleFirms, seedSampleSettings, SAMPLE_SETTING_VALUES } = await import("../api/src/platform/seed-sample-firms.ts");
+const { seedSampleOnStart } = await import("../api/src/platform/identity/sample-seed.ts");
 const { resetSampleFirmSettings } = await import("../api/src/platform/identity/demo-reset.ts");
 const { PlatformClock } = await import("../api/src/platform/identity/port.ts");
 const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
@@ -91,13 +92,15 @@ try {
   ok("setup: the feature registers the keep-period controller and its service", feature.controllers.length === 1 && feature.controllers[0] === KeepPeriodController && (feature.providers as unknown[]).includes(KeepPeriods));
 
   await seedSampleFirms(db);
+  ok("AUD-5 fail (seed): PF-3's seed alone stores no setting value (check_pf3 unchanged)", sql(`select count(*) from platform_firm_setting`) === "0");
+  await seedSampleSettings(db);
   const FIRM_A = (await db.platformFirm.findUniqueOrThrow({ where: { key: "sample-firm" } })).id;
   const FIRM_B = (await db.platformFirm.findUniqueOrThrow({ where: { key: "sample-solo" } })).id;
   const lines = () => Number(sql(`select count(*) from audit_event where entity = 'platform_firm_setting' and entity_key like '%:${KEY}'`));
   ok("AUD-5 pass (seed): each Sample firm is seeded with the Sample value 6 years, through the settings write path (one audit line each)",
     SAMPLE_SETTING_VALUES[KEY] === 6 && await readSetting(db, FIRM_A, KEY) === 6 && await readSetting(db, FIRM_B, KEY) === 6 && lines() === 2
     && sql(`select count(*) from audit_event where entity_key like '%:${KEY}' and actor = 'seed:AUD-5' and detail->>'reason' = 'Sample value'`) === "2");
-  await seedSampleFirms(db);
+  await seedSampleFirms(db); await seedSampleSettings(db);
   ok("AUD-5 fail (seed): a second seed writes nothing (no second line, the value kept)", lines() === 2 && await readSetting(db, FIRM_A, KEY) === 6);
 
   const signIn = async (actorId: string, firmKey = "sample-firm") => { const r = await call(base, "POST", "/api/platform/session/local", { body: { firmKey, actorId, secondStep: true } }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.token as string; };
@@ -168,6 +171,10 @@ try {
   const reset = await resetSampleFirmSettings(db);
   ok("AUD-5 pass (demo reset): the reset returns a Sample firm's number to its Sample value 6 (not the empty default), audited", await readSetting(db, FIRM_A, KEY) === 6 && reset.changed.some((c) => c.key === KEY) && await readSetting(db, FIRM_B, KEY) === 6, reset);
   ok("AUD-5 fail (demo reset): a second reset changes nothing", (await resetSampleFirmSettings(db)).changed.length === 0);
+
+  sql(`delete from platform_firm_setting where firm_id = '${FIRM_A}' and key = '${KEY}'`);
+  await seedSampleOnStart({ PLATFORM_SAMPLE_SEED: "on", DATABASE_URL: urlOf(DB) });
+  ok("AUD-5 pass (start-up seed): PLATFORM_SAMPLE_SEED=on writes the Sample value a Sample firm lacks (6), keeping firm B's", await readSetting(db, FIRM_A, KEY) === 6 && await readSetting(db, FIRM_B, KEY) === 6);
 
   // ------------------------------------------------------------------------------------------------ DW5: the contract
   const real = new KeepPeriods(db), ws = sql("select id from workspace where key = 'platform-audit'");
