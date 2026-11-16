@@ -333,18 +333,18 @@ try {
   await clock.set(at("2026-11-06 13:01"));
   ok("FO-3 reminders pass: the new 1 h reminder (13:00) is sent once", oneHour().length === 1 && moved2.sequence === 1);
   await clock.set(at("2026-11-06 15:01"));
-  ok("FO-3 attendance: 30 min after the end the host is asked \"Did they attend?\"", rem.mail.inbox("a1@staff.example").some((m) => m.templateKey === "booking.attendance_ask"));
+  ok("FO-3 attendance: 30 min after the end the question is shown, not mailed (AG-4-39 rule 2; FO-3m DW6)", !rem.mail.inbox("a1@staff.example").some((m) => m.templateKey === "booking.attendance_ask"));
   ok("FO-3 attendance: the question is due on the host's list", (await rem.svc.attendanceDue(ctxA)).some((b) => b.id === rb.id));
   await clock.set(at("2026-11-10 12:00"));
   ok("FO-3 attendance fail: four days later nothing has marked it (still RESCHEDULED, no no-show event)",
     (await db.foBooking.findUniqueOrThrow({ where: { id: rb.id } })).status === "RESCHEDULED" && await db.moduleEvent.count({ where: { subjectId: rb.id, type: EVENT.BOOKING_NO_SHOW } }) === 0);
-  const att = await rem.svc.recordAttendance(ctxA, rb.id, "COMPLETED");
-  const ns = await rem.svc.recordAttendance(ctxA, rb.id, "NO_SHOW");
+  const att = await rem.svc.recordAttendance(ctxA, rb.id, { outcome: "COMPLETED" });
+  const ns = await rem.svc.recordAttendance(ctxA, rb.id, { outcome: "NO_SHOW" });
   ok("FO-3 attendance pass: a person answers Attended (booking.completed), then changes it to No-show (booking.no_show)",
     att.status === "COMPLETED" && ns.status === "NO_SHOW" && await db.moduleEvent.count({ where: { subjectId: rb.id, type: { in: [EVENT.BOOKING_COMPLETED, EVENT.BOOKING_NO_SHOW] } } }) === 2);
   await clock.set(back);
   const early = await book(S, "free", "2026-11-09 10:00", "early");
-  ok("FO-3 attendance fail: before the meeting has started → 409", (await thrown(() => S.recordAttendance(ctxA, early.id, "COMPLETED")))?.status === 409);
+  ok("FO-3 attendance fail: before the meeting has started → 409", (await thrown(() => S.recordAttendance(ctxA, early.id, { outcome: "COMPLETED" })))?.status === 409);
 
   // ---------------------------------------------------------------------------------- staff services and the firm wall
   const ctxA2 = fakeStaff({ firmId: A.id, firmKey: A.key, staffId: A2.id, keys: [] });
@@ -372,7 +372,7 @@ try {
   for (const [action, run, check] of [
     ["booking.rescheduled", (svc: BookingService) => svc.staffReschedule(ctxA, kb.id, { startsAt: iso("2026-11-09 15:00") }), async () => (await db.foBooking.findUniqueOrThrow({ where: { id: kb.id } })).startsAt.getTime() === at("2026-11-09 13:00").getTime()],
     ["booking.cancelled", (svc: BookingService) => svc.staffCancel(ctxA, kb.id), async () => (await db.foBooking.findUniqueOrThrow({ where: { id: kb.id } })).status !== "CANCELLED"],
-    ["booking.completed", (svc: BookingService) => svc.recordAttendance(ctxA, susp.id, "COMPLETED"), async () => (await db.foBooking.findUniqueOrThrow({ where: { id: susp.id } })).status === "SCHEDULED"],
+    ["booking.completed", (svc: BookingService) => svc.recordAttendance(ctxA, susp.id, { outcome: "COMPLETED" }), async () => (await db.foBooking.findUniqueOrThrow({ where: { id: susp.id } })).status === "SCHEDULED"],
   ] as const) {
     const id = action === "booking.completed" ? susp.id : kb.id;
     if (action === "booking.completed") await clock.set(at("2026-10-27 15:31"));   // after the meeting began
@@ -586,9 +586,9 @@ try {
     // DW4: the attendance question, 30 min after b1 ends (15:30Z), to the host in the host's zone.
     await hz.set(new Date("2026-11-17T16:01:00Z"));
     await jobs.runDue();
+    // FO-3m DW6: the question is shown, not pushed (AG-4-39 rule 2), so no host mail is sent at all.
     const ask = hostMail("booking.attendance_ask");
-    ok("FO-3h DW4: the attendance question to the host reads the host's zone (\"10:00 a.m. (America/Toronto)\", never Asia/Dubai)",
-      !!ask && TOR10.test(ask.text) && !said(ask).includes("Asia/Dubai") && ask.to === "fo3h-host@staff.example", ask && said(ask));
+    ok("FO-3h DW4 (as FO-3m DW6): 30 min after the end no attendance mail goes to the host", !ask, ask && said(ask));
 
     // hostZone reads the firm's own setting, not a fixed default (review m1): the firm moves to America/Regina (UTC-6 all year).
     await writeSetting(db, { firmId: D.id, key: TIME_ZONE.key, value: "America/Regina", by: "seed:fo3h", workspaceId: ws.id });

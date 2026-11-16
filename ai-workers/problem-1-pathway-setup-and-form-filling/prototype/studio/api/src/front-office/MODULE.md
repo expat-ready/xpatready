@@ -19,10 +19,11 @@ The firm's front office: public booking and retainer agreements, with their file
 - Rate limits are rolling windows per key, sized for about 100 firms in one process (P-562).
 - Every file belongs to one firm and lives under the firm's own folder (FO-5, contracts §0.3).
 - Platform rules apply: `firmScope` on every table, platform guard on every staff route (P-559).
+- The attendance question (30 min after the end) is shown, not pushed: its job mails no one; the booking is the due item until a person answers (AG-4-39 rule 2, FO-3m). The answer's body is `{ outcome }` only.
 - The database's no-overlap rule skips only a booking a staff member confirmed with Book anyway over an overlap (`overlapConfirmedByUserId`, FO-3sa, AG-4-63 rule 4); the public door never sets it, every writer checks overlaps under the host locks, and a move clears it unless the move is itself confirmed.
 
 **Tables.** foLead, foPerson, foArrivalReceipt, foLeadAttribution, foNote, foReason, foService, msgConsent (through ConsentPort), foBooking, foBookingToken, foAvailability, foConsultationType, foProspect, foRetainer, foRetainerTemplate, foRetainerVersion, foSalesSetup, foStage, foWebForm, platformFirm, platformStaff, moduleEvent.
-**Tests.** `tests/check_fo2_leads_prospects.ts`, `tests/check_fo3_booking.ts`, `tests/check_fo3sr_routes.ts`, `tests/check_fo3sa_any_time.ts`, `tests/check_fo3pa_public_answers.ts`, `tests/check_fo5_retainers.ts`, `tests/check_fo1a_sales_schema.ts`, `tests/check_fo1b_booking_schema.ts`, `tests/check_fo13_compliance_schema.ts`.
+**Tests.** `tests/check_fo2_leads_prospects.ts`, `tests/check_fo3_booking.ts`, `tests/check_fo3sr_routes.ts`, `tests/check_fo3m_answers.ts`, `tests/check_fo3sa_any_time.ts`, `tests/check_fo3pa_public_answers.ts`, `tests/check_fo5_retainers.ts`, `tests/check_fo1a_sales_schema.ts`, `tests/check_fo1b_booking_schema.ts`, `tests/check_fo13_compliance_schema.ts`.
 
 **Do not.**
 - Serve a file without a checked short-lived link, or from another firm's folder.
