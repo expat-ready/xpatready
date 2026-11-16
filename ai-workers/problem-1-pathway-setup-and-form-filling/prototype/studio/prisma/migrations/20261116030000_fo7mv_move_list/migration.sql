@@ -324,15 +324,11 @@ BEGIN
 END $$;
 
 -- ------------------------------------------------------------------------------------------- PF-12's walls (#1910)
--- Both new firm tables get PF-12's wall: ENABLE + FORCE row-level security, the one policy naming the session's firm,
--- and the gate that fires first; every trigger function this migration adds on a firm table runs as xr_wall_reader
--- (SECURITY DEFINER, search_path pinned), as PF-12 did for FO-7a's (tests/check_pf12_walls.ts). The derived list reads
--- with the caller's rights (security_invoker), so it shows only the session's firm.
-ALTER TABLE "money_move_batch" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "money_move_batch" FORCE ROW LEVEL SECURITY;
+-- PF-12's wall on both tables (forced policy, gate first); trigger functions run as xr_wall_reader; the list reads with
+-- the caller's rights, so it shows only the session's firm (tests/check_pf12_walls.ts).
+ALTER TABLE "money_move_batch" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
 CREATE POLICY "pf12_firm" ON "money_move_batch" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
-ALTER TABLE "money_move_line" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "money_move_line" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "money_move_line" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
 CREATE POLICY "pf12_firm" ON "money_move_line" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
 CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "money_move_batch" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
 CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "money_move_line" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
