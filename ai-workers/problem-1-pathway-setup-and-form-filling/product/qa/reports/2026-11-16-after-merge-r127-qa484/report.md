@@ -1,4 +1,4 @@
-# qa after-merge — QA-493 (R1.27) and QA-484 retest, main d66bcfd2d, 16 Nov 21:5x IST
+# qa after-merge — QA-493 (R1.27) and QA-484 retest, main d66bcfd2d, 16 Nov 21:3x IST
 
 Asked by Lead 69 (Prove Lead plan, P-644) after FO-4sf #1962 (18:23 IST) and PF-5v part 1 #1955 merged. Lane: cloud qa after-merge (`2026-11-16-after-merge-lane.md`). Live AI off, US$0. Verdicts by a fresh Opus reader at high effort who ran nothing (P-303).
 
