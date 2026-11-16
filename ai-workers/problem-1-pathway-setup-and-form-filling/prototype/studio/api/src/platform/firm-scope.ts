@@ -53,6 +53,7 @@ export function inFirm<T extends { firmId: string | null }>(firmId: string, row:
 // to the next. A transaction keeps the firm and role of the context that opened it (as SET LOCAL would).
 import { AsyncLocalStorage } from "node:async_hooks";
 import pg from "pg";
+import { logPort } from "./observability/log.ts";
 
 /** The role the API connects as (migration pf12_firm_walls). */
 export const APP_ROLE = "xr_app";
@@ -99,15 +100,33 @@ export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonl
   "platform.web-address.host": { why: "the host routing finds the firm a firm address serves, on every request (PF-25)", routes: [/^[A-Z]+ \//] },
   "platform.web-address.catch-up": { why: "at start, every firm with no web address yet gets one (PF-25)", routes: [], outside: true },
   "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i] },
+  "job:messages.outbox_sweep": { why: "the outbox sweep picks up every firm's stuck rows, each firm its own share (PF-19b)", routes: [], outside: true },
+  "job:platform.secret_box.reencrypt": { why: "the secret box re-encrypts every firm's secrets under the new key (PF-24)", routes: [], outside: true },
   "platform.demo.reset": { why: "the demo reset puts every Sample firm's settings back (P-571 (1)); demo routes, and the reset tools outside a request", routes: [/^POST \/api\/demo\//i], outside: true },
 });
+
+/** A job with no firm (a platform-wide sweep): on the named list as "job:<queue>" it runs on the bypass; otherwise with no
+ *  firm, so it reads no firm's rows (platform-jobs.ts). */
+export function asJob<T>(queue: string, fn: () => Promise<T>): Promise<T> {
+  return Object.prototype.hasOwnProperty.call(BYPASS_USES, `job:${queue}`) ? asBypass(`job:${queue}`, fn) : fn();
+}
+
+/** What a query with no scope at all runs as. In the API server (FirmWallsInterceptor at start-up: wallUnscopedQueries)
+ *  it has no firm, so it reads nothing: every request has its scope (PF-4's guard), every job its firm or its named use,
+ *  the start-up its named uses. Any other process (a suite seeding its scratch database, a tool) already holds the
+ *  owner's address in DATABASE_URL, so there it runs on the bypass role, said once in its log. */
+let unscoped: "walled" | "direct" = "direct";
+export function wallUnscopedQueries() { unscoped = "walled"; }
+export const unscopedMode = () => unscoped;
+let saidDirect = false;
 
 /** A bypass use that is not on BYPASS_USES, or not for this route. A programming error: the request stops (500). */
 export class BypassRefused extends Error {}
 
-/** The audit line for a bypass use (the observability logger; no personal value, only the use and the route). */
+/** The audit line for a bypass use: one platform_bypass line through the one logger (PF-23: redacted, with the request's
+ *  correlation id), naming the use and the method only. Never the path: a link's token or a typed value can be in it. */
 let bypassLine: (use: string, route: string | undefined) => void = (use, route) => {
-  process.stdout.write(`${JSON.stringify({ level: "info", event: "platform.bypass", use, route: route ?? null, at: new Date().toISOString() })}\n`);
+  logPort.info("platform_bypass", { use, method: route ? route.slice(0, route.indexOf(" ")) : "none" });
 };
 /** A test or the logger replaces where bypass lines go. Returns the one before. */
 export function onBypassLine(f: (use: string, route: string | undefined) => void) { const was = bypassLine; bypassLine = f; return was; }
@@ -166,7 +185,9 @@ export class WalledPool extends pg.Pool {
   override connect(): Promise<pg.PoolClient>;
   override connect(cb: (err: Error | undefined, client: pg.PoolClient | undefined, done: (release?: unknown) => void) => void): void;
   override connect(cb?: (err: Error | undefined, client: pg.PoolClient | undefined, done: (release?: unknown) => void) => void): Promise<pg.PoolClient> | void {
-    const s = scope.getStore(), firm = s?.bypass ? "" : (s?.firmId ?? ""), role = s?.bypass ? BYPASS_ROLE : "none", want = `${firm}|${role}`;
+    const s = scope.getStore(), direct = !s && unscoped === "direct";
+    if (direct && !saidDirect) { saidDirect = true; logPort.info("platform_bypass", { use: "direct-process", method: "none" }); }
+    const firm = s?.bypass || direct ? "" : (s?.firmId ?? ""), role = s?.bypass || direct ? BYPASS_ROLE : "none", want = `${firm}|${role}`;
     const p = (super.connect() as Promise<pg.PoolClient>).then(async (c: Tagged) => {
       if (c[SET] === want) return c;
       try { await c.query("select set_config('app.firm_id', $1, false), set_config('role', $2, false)", [firm, role]); c[SET] = want; return c; }

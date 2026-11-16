@@ -22,7 +22,7 @@ import { join } from "node:path";
 import pg from "pg";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
-import { appDatabaseUrl, appRoleProblems, asBypass, BypassRefused, currentFirm, inRequest, onBypassLine, oneQueryPerCaller, setRequestFirm, WalledPool, withFirm } from "../api/src/platform/firm-scope.ts";
+import { appDatabaseUrl, appRoleProblems, asBypass, BypassRefused, currentFirm, inRequest, onBypassLine, oneQueryPerCaller, unscopedMode, setRequestFirm, WalledPool, withFirm } from "../api/src/platform/firm-scope.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const NEW = "20261116013000_pf12_firm_walls";
@@ -188,6 +188,14 @@ try {
   ok("PF-12 pass: the bypass role reads both firms' rows", Number(sql(DEMO, `begin; set local role xr_staff_bypass; select count(distinct firm_id) from platform_staff where firm_id in ('${A}','${B}'); commit;`, "xr_app")) === 2);
 
   // ------------------------------------------------------------------- the app's pool, the named list and the request
+  ok("PF-12 pass: in a suite or tool process a query with no scope runs on the bypass (the process holds the owner's address anyway)", unscopedMode() === "direct");
+  const directPool = new WalledPool({ connectionString: appDatabaseUrl(urlOf(DEMO), {}), max: 1 }); pools.push(directPool);
+  ok("PF-12 pass: so a suite seeding through the app's client still reads every firm", Number((await directPool.query("select count(distinct firm_id) as n from platform_staff")).rows[0].n) >= 2);
+  const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm-walls.ts");
+  await new FirmWallsInterceptor({ $queryRawUnsafe: async (q: string) => (await appPool.query(q)).rows } as never).onModuleInit();
+  ok("PF-12 pass: the API server's start-up (FirmWallsInterceptor, registered by api/src/features/platform-firm-walls.ts) walls every unscoped query from then on",
+    unscopedMode() === "walled" && existsSync(join(STUDIO, "api", "src", "features", "platform-firm-walls.ts")));
+  const { asJob } = await import("../api/src/platform/firm-scope.ts");
   const pool = new WalledPool({ connectionString: appDatabaseUrl(urlOf(DEMO), {}), max: 1, options: "-c TimeZone=UTC" }); pools.push(pool);
   const db = new PrismaClient({ adapter: new PrismaPg(pool) }); clients.push(db);
   const staffOf = () => db.platformStaff.findMany({ select: { firmId: true } });
@@ -218,6 +226,8 @@ try {
   ok("PF-12 fail: a bypass use that is not on the named list is refused before any query", await asBypass("platform.everything", staffOf).then(() => false, (e) => e instanceof BypassRefused));
   ok("PF-12 fail: the guard's bypass use is refused outside a request (start-up, a job)", await asBypass("platform.identity.authenticate", staffOf).then(() => false, (e) => e instanceof BypassRefused));
   ok("PF-12 fail: a door's use is refused inside a job's scope (a job runs as its firm, never on a door's bypass)", await withFirm(A, () => asBypass("fo.sales.web-form", staffOf)).then(() => false, (e) => e instanceof BypassRefused));
+  ok("PF-12 pass: a sweep job on the named list (job:messages.outbox_sweep) reads every firm's rows", new Set((await asJob("messages.outbox_sweep", staffOf)).map((r) => r.firmId)).size >= 2);
+  ok("PF-12 fail: a job with no firm and no named use reads no firm's rows", (await asJob("platform.stuck_jobs", staffOf)).length === 0);
   ok("PF-12 pass: a door's use runs on a direct call with no scope (a suite calling the service with its own client)", (await asBypass("fo.sales.web-form", staffOf)).length >= 2);
   const caseRoute = { method: "GET", path: "/runtime/cases" }, staffRoute = { method: "GET", path: "/api/platform/me" };
   ok("PF-12 fail: the bypass role is refused on a route not on its list (a page outside /api/)", await inRequest(caseRoute, () => asBypass("platform.identity.authenticate", staffOf)).then(() => false, (e) => e instanceof BypassRefused));
@@ -226,7 +236,7 @@ try {
     && await inRequest({ method: "GET", path: "/api/public/firms/sample-firm/book/free/slots" }, () => asBypass("fo.sales.web-form", staffOf)).then(() => false, (e) => e instanceof BypassRefused));
   const both = await inRequest(staffRoute, () => asBypass("platform.identity.authenticate", staffOf));
   ok("PF-12 pass: on a route on its list the bypass reads both firms", new Set(both.map((r) => r.firmId)).size >= 2);
-  ok("PF-12 pass: every bypass use writes one line with the use and the route; a refused one writes none", lines.length === 2 && lines[0] === "fo.sales.web-form -" && lines[1] === "platform.identity.authenticate GET /api/platform/me", lines);
+  ok("PF-12 pass: every bypass use writes one line with the use and the route; a refused one writes none", lines.join("|") === "job:messages.outbox_sweep -|fo.sales.web-form -|platform.identity.authenticate GET /api/platform/me", lines);
   onBypassLine(was);
   const req = { method: "GET", path: "/api/front-office/leads" };
   setRequestFirm(req, A.toUpperCase());
