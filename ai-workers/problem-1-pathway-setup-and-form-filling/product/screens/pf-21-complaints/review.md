@@ -141,3 +141,24 @@ Suite re-run on my copy: `check_pf21s_complaints_browser.ts 4577 xr_studio_scree
 **Findings. Blocker:** none. **Major:** none. **Minor:** none new. Earlier r1–r6, the listed follow-ups and the J2 nit stay open as before.
 
 **Nit:** `data-shown-view` says which view the rows belong to, not that they are fresh. When a view is opened again within `staleTime` (2 s) or during a background refetch, its cached rows carry the mark at once. The old wait behaved the same way. DW1 and DW6 change nothing between visits, so they are safe. A future check that changes a complaint and then opens a view again should wait for the change itself, not for the mark. A one-line comment at `chip()` would say so.
+
+## Re-review b15c7376a..a2ee2e183 (2026-11-16)
+
+Scope (P-277): only `git diff b15c7376a..a2ee2e183 -- ':!**/review.md'`, one file, `web/src/modules/platform/complaints/list-page.tsx` (+3/-3). It fixes CI shard 8: `tests/check_bk2_fold_outs.ts` failed "no raw <details> or <summary> outside the shared fold-out" on the complaints list's "How it works".
+
+What changed: the raw `<details data-how>`/`<summary>` is now `<FoldOut … data-how summaryClassName="font-medium" summary="How it works">` from `@/components/fold-out`. The body `<p>` is the same as before.
+
+Judgement:
+- **Correct use of FoldOut.** `FoldOut` renders native `<details data-fold>` and passes `...rest` to it, so `data-how` and the container classes stay on the `<details>` element. Anything that finds the section by `[data-how]` still finds the same element. The summary keeps `cursor-pointer` (the component adds it) and `font-medium` (passed in).
+- **Arrow.** The summary now starts with the shared `FoldArrow`. It points right when closed and turns down when open, which is the BK-2 standard. Before this change the section had no arrow, so this is the one visible difference, and BK-2 requires it.
+- **Keyboard and screen readers.** The element is still a native `<details>`/`<summary>`. Tab reaches it, Enter and Space toggle it, and it is announced as expanded or collapsed, the same as before. No script is added.
+- **Nothing visible broken.** The text, the classes and the place on the page are the same. Closed by default, as before. The drawer and the rest of `ListBody` are not touched.
+
+Evidence (run by me at a2ee2e183):
+- `npx tsx tests/check_bk2_fold_outs.ts`: 16/16 passed (FoldOut 35, FoldArrow 12, listed non-fold-outs 9). The builder reported 15/16 before the fix.
+- `web`: `npx tsc --noEmit -p .` exit 0.
+- `check_pf21s_complaints_browser.ts` 66/66 exit 0 on a fresh isolated copy: the builder's evidence, not rerun here. A one-line swap of a static fold-out does not need a new journey score. The journey score from the earlier review stands.
+
+**Findings. Blocker:** none. **Major:** none. **Minor:** none new. Earlier r1–r6, the listed follow-ups and the J2 nit stay open as before.
+
+**Verdict: Approve** (for commit a2ee2e183541938d32e0dad86226ce85cd1125d2)
