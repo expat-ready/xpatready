@@ -1,0 +1,17 @@
+PASS  BK-14: pass: a Study permit-shaped release's form is picked from its release: its printed edition, its field map's official text
+PASS  BK-14: pass: the sheet the two rounds read is that form's own edition, box by box as a copy prints it
+PASS  BK-14: pass: its saved run is keyed on that edition (a replay of one form never answers another)
+PASS  BK-14: pass: the Visitor visa's IMM 5257 is picked as before: same edition, same official text, same saved-run key
+PASS  BK-14: pass: the same values give the same rows on either form (only the edition differs): one review, any form
+PASS  BK-14: fail: no edition in use (the coverage names none) is refused, never guessed
+PASS  BK-14: fail: an edition in use of another form is refused (a map never reviews a form it is not)
+PASS  BK-14: fail: an edition that is not a printed edition is refused
+PASS  BK-14: fail: the release has no field map of the edition in use: no official text
+PASS  BK-14: fail: the field map names no official text
+PASS  BK-14: fail: an official text outside p1's inventories is never read
+PASS  BK-14: fail: an official text the release names but this computer lacks is not reviewed
+PASS  BK-14: pass: the review's code names no form number, program or pathway (comments aside)
+PASS  BK-14: pass: the stand-in's words no longer limit the review to one form family
+PASS  BK-14: pass: SI-6 is gone from B164's allow-list (its row BK-14 removes it)
+
+15 passed, 0 failed
