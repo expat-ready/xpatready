@@ -146,3 +146,42 @@ Verdict: Approve 194128ddb7d2de31acd30e5d23b62abe46953c14
 * **m9 and m10:** fix in the same commit if cheap.
 
 Verdict: Block
+
+## Re-review 2 (diff only, `2abc41df3..9e2230aed`; P-277)
+**Reviewed:** commit `9e2230aede9875383362925d1ab6069a5f92506a`. I read only `git diff 2abc41df3 9e2230aed -- …/studio`. It contains `a45f7d1e3` (my two Majors) and `9e2230aed` (the shrink under Lead 65's P-638).
+* **Scope I applied:** the rulings on #1924 (Lead B rev 16.52, Lead 64, P-638). They move the cleared-money cover check and the invoice cap after credit notes to FO-7a2. B-1, B-4, B-10 and B-13 reproducing here is expected, and I do not count it.
+* **Scratch databases:** `xr_studio_rev_*` on :54329, all dropped afterwards. I did not use :4400 or the shared databases. Cost: US$0.
+* **Line numbers** refer to `migration.sql` at `9e2230aed`.
+
+**Suites:**
+* `check_fo7mv_move_list.ts` **43/43**, from a `git archive` copy of `9e2230aed`;
+* `check_fo7a_money_schema.ts` **123/123**, in the working tree with HEAD at `9e2230aed`;
+* `check_prisma_schema.ts` **8/8**;
+* studio diff from `origin/main`: +736/−5, under 800.
+
+### What I checked
+| Check | Result | Evidence |
+|---|---|---|
+| No dead code after the shrink | met | `money_move_line_write` declares only `b s party earlier moved returned cap`, and all are used. No `due`, `held`, `to_move` or `uncleared` is left, no settings touch and no `least()`. The view is back to `m` with `open_minor = eligible − returned − moved`. The only remaining text about cover or credit notes is the test comment naming FO-7a2 (`test:243`). `migrate diff` is empty. |
+| The wrong-account clearing rule | holds | Line `:190-192` uses `deposit_cleared IS NOT TRUE`; the view uses `EXISTS … p.cleared` (`:288-290`). Repro on the breaker's B-2, which was my re-review Major 1 (e-transfer 500.00, an uncleared 300.00 cheque corrected WRONG_ACCOUNT): listed 0, move 23514 "not yet cleared". After "Cleared": listed 300.00, the move commits. An un-clear is refused (42501), so `cleared` only ever goes from false to true. A stale snapshot is therefore only stricter at REPEATABLE READ. Tests (`test:244-251`) cover both the P7 case and the P8 case with cleared money beside the cheque. |
+| B-18 | holds | Unchanged code. In repro, after move 100 of 100: a return gives 23514, a second withdrawal gives 23514, and a second move gives 23514. DW1, DW2 (RC and RR) and DW6 pass. |
+| B-19 with the new kinds | holds | Repro: RETURNED, RECORDED_BY_MISTAKE, WRONG_CLIENT and OTHER corrections are each listed 0, and their move is refused (`:185-188`). DW3, DW4 and DW6 use the new names. |
+| My re-review Majors | Major 1 closed; Major 2 moot | Major 2 (cover counting wrong-account money) belonged to the cover check, which P-638 moves to FO-7a2. My m9 (the list shows money resting on a cheque) also goes to FO-7a2 under the same ruling, and m10 is gone with the settings touch. |
+| Renamed kinds | accept | P-638 is the ruling. The guard and the "says why" messages list all five kinds, and `client-money.prisma` explains each one. |
+
+### Findings
+**Blockers:** none. **Majors:** none.
+
+**Minor m11. The harness change does not close B-16 on the real deploy path, and I correct my re-review wording.**
+* The test now applies each migration with `psql -1`. The app applies them with `prisma migrate deploy` (`studio/start.sh:13`).
+* I checked that path on a scratch database. A migration of `CREATE TABLE t1; SELECT 1/0;` failed, and `t1` was still there afterwards. So Prisma does **not** run a migration file as one transaction, and my re-review line "Under Prisma the whole file is one implicit transaction" was wrong.
+* Under Prisma, the guard's `LOCK` (`:25`) ends with its DO block. A deposit correction queued behind the following `ALTER` can therefore land with no kind, which is B-16.
+* The risk is nil today: no route writes trust entries yet, and the migration runs once. A cheap fix that works under any runner is the breaker's: run the guard after `CREATE TRIGGER money_trust_entry_moves`, so a new kindless deposit correction is refused by the trigger and the guard counts only what came before.
+
+**Minor m12. Wording.**
+* The refusal at `:191` ends "(re-review Major 1)", which is a process note inside the words a person will read. Drop it.
+* The FO-7a helper writes reason "Cheque bounced" with kind `RECORDED_BY_MISTAKE` (`check_fo7a_money_schema.ts:494`). Per the new enum comment, a bounced cheque is `RETURNED`. The assertions do not change either way.
+
+**Unchanged from earlier passes:** m4, m5 and m7 are still Minor and still not blocking. B-3, B-5, B-8, B-14 and B-17 stay questions or notes, or go to FO-7a2.
+
+Verdict: Approve 9e2230aede9875383362925d1ab6069a5f92506a
