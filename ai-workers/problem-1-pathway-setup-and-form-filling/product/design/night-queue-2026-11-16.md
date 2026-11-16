@@ -43,6 +43,9 @@ Three hourly cloud routines ("lane starter 1-3", at :05, :25 and :45 UTC past ea
 | AS-1g | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/AS-1g.md (R1.106; schema) | #2017 merged, then the Lead names it the configurator schema-baton holder; never with CS-NK1 | high, yes; schema: "Ready for Lead read" |
 | AS-1s | engine | claude/build-lead-c-647b40:build-lead-c-briefs/AS-1s.md (R1.106; pure rules) | AS-1m and AS-1g merged | high, no |
 | AS-1c | data | claude/build-lead-c-647b40:build-lead-c-briefs/AS-1c.md (R1.106; P-650: gates and grids added to the existing Express Entry combination; forms, answer sheet, hard stop byte-equal) | AS-1g and AS-1s merged | high, no; reviewer checks every citation |
+| AS-2e | engine | claude/build-lead-c-647b40:build-lead-c-briefs/AS-2e.md (gates-only stream, no score line; migration) | AS-1s and AS-1g merged, then the Lead names the schema baton; never with AS-1c or CS-NK1 | high, no; Lead reads the migration |
+| AS-2d1 | data | claude/build-lead-c-647b40:build-lead-c-briefs/AS-2d1.md (Ontario, BC) | AS-2e merged and the founder's streams card (P-607 (9)) | high, no |
+| AS-2d2 | data | claude/build-lead-c-647b40:build-lead-c-briefs/AS-2d2.md (Alberta, Saskatchewan, Manitoba) | AS-2e merged and the founder's streams card | high, no |
 
 Chains on shared files run one after another, never side by side (Build Lead A, rev 16.80): booking/service.ts: FO-3a part 1b → FO-3vr → FO-3v; the messages files: PF-19e → PF-13 part 1 → PF-19c → PF-19ad. Sources: Build Lead A rev 16.80 (1671fb76e), Build Lead C 93004803b, 22:2x IST 16 Nov.
 
