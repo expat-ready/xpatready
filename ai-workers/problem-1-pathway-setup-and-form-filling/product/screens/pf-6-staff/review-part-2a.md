@@ -51,3 +51,23 @@ DW1 ✓ (accept via the API plus the hand-off page; the Accept page is 2b) · DW
 
 ## Could not check
 A real screen reader. An intended user's unaided walk (D17, D20). The Cognito step-up. The DW9 suites.
+
+## Re-review (P-277: only the diff 1e2522371..4bb056d09), 16 Nov 2026
+**Verdict: Approve for commit 4bb056d0957fb0d7ded70264864ceebd3cbb5e51.** No Blocker or Major is open. The suite on :4581 (rev_pf6s, fresh copy) gave **49/49**. I re-walked the fixes in the browser at 1024 px.
+* **MJ-1 closed.** Same steps as before (panel open, Billing and finance given elsewhere, then tick Read only and Save):
+  - Nothing is saved. The roles stay `CASE_OFFICER, BILLING_FINANCE`, and the panel shows "Someone else changed … Nothing was saved" with the current ticks.
+  - The next Save keeps both roles. The new DW2 conflict line fails if the re-read is removed.
+  - A small window between the re-read and the PATCH remains. The server-side precondition stays a PF-4 matter.
+* **MJ-2 closed.** Escape on Invite people returns focus to the "Invite people" button (new DW8 check).
+* Minors:
+  - m1 fixed ("Nothing to save: the roles are as they were.").
+  - m2 fixed (danger toast on `emailed:false`; read in code, not triggered).
+  - m3 fixed (Revoke asks; a revoked invitation's address opens no panel).
+  - m6 fixed (the seat rule is visible text).
+  - m8 fixed (the step-up names the change and says it is sent again).
+  - The breaker's fixes read correctly: one-line reasons with a 200 limit, the Owner-access line for an Admin, and wrapping.
+* **m4 half fixed (Minor, open):** Escape and the X ask "Discard the people you typed?", but the footer **Close** button (invite-panel.tsx:44 calls `onOpenChange(false)` directly) discards typed rows without asking.
+  - Steps: type an email, then click Close. The panel shuts and no prompt appears.
+  - Fix: route Close through the same check.
+* **New edge (Minor):** the change replayed after "Confirm it's you" (person-panel.tsx:48) skips the new re-read. A role change made by someone else during the sign-in could still be overwritten by that one resend.
+* m5 and m7 stay open as Minors, as the builder states. The journey score stays at 9/10; accessibility and feedback would now score 1 each.
