@@ -154,8 +154,12 @@ lib=$(python3 "$TOOLS/library-freshness.py" 2>&1); nb=$?
 if [ "$nb" -gt 0 ]; then ACT "library: ${nb} master(s) behind: $(echo "$lib" | grep '^behind' | sed -E 's/^behind +//; s/: .*first [0-9a-f]+ at / since /; s/; refresh.*//' | paste -sd ';' -)"
 else say "library: every living master current"; fi
 od=$(python3 "$TOOLS/outside-deps-watch.py" 2>&1); echo "$od"; act=$((act + $(grep -c '^ACT' <<<"$od")))   # 9. Outside dependencies (B192, P-618): start window, stuck 48 h, blocked without decision date or fallback
+# 10. The app view (B197, founder A110, 16 Nov: "lead keep forgetting"; P-326, P-339): every lane on claude.ai/code, read in
+# the built-in browser with tools/app-view.js and saved by tools/app-view-save.sh. Over 35 min old = ACT; else one ACT per
+# flagged session (need_input, blocked, failed, idle over 90 min with work left, context over 45%).
+av=$(bash "$TOOLS/app-view-check.sh" 2>&1); echo "$av"; act=$((act + $(grep -c '^ACT' <<<"$av")))
 
-# 10. What the founder's board shows (B201, founder A117 16 Nov: the check missed six stuck items his board showed; P-639:
+# 11. What the founder's board shows (B201, founder A117 16 Nov: the check missed six stuck items his board showed; P-639:
 # never take the board's word blindly). The board's own Today card and Stuck panel (cockpit-data.py --watch reads the
 # published data.json › first, built by first_screen: no second formula), one ACT per Stuck entry, then each checked against
 # its source with data read above (open PRs of step 2, PRs merged in the window, qa's file on main of step 5). ~0.1 s.
@@ -164,7 +168,5 @@ echo "$prs" > "$STATE_DIR/open-prs.json"; echo "$caps" > "$STATE_DIR/caps-main.m
 echo "$merged" | python3 -I -c 'import json,re,sys; print(json.dumps({m.group(1): "merged" for m in re.finditer(r"^#(\d+)", sys.stdin.read(), re.M)}))' > "$STATE_DIR/merged.json"
 bw=$(python3 "$TOOLS/cockpit-data.py" --watch "${COCKPIT_DATA:-${TMPDIR:-/tmp}/cockpit/data.json}" --open-prs "$STATE_DIR/open-prs.json" \
   --caps-main "$STATE_DIR/caps-main.md" --pr-states "$STATE_DIR/merged.json" 2>&1); echo "$bw"; act=$((act + $(grep -c '^ACT' <<<"$bw")))
-
-exit "$act"
 
 exit "$act"
