@@ -10,6 +10,8 @@ export class StaffReadController {
   constructor(@Inject(StaffReads) private readonly s: StaffReads) {}
   @Get("staff") @PermissionKeys("agent/staff:manage")
   list(@Req() r: R) { return this.s.list(staffOf(r)); }
+  @Get("roles") @PermissionKeys("agent/staff:manage")
+  roles() { return this.s.roles(); }
   @Get("staff/:id") @PermissionKeys("agent/staff:manage")
   one(@Req() r: R, @Param("id") id: string) { return this.s.one(staffOf(r), id); }
   @Get("licences") @PermissionKeys("agent/firm-credential:manage")
