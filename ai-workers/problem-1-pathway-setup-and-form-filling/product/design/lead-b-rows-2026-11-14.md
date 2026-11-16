@@ -1527,3 +1527,23 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **The firm profile moves to part 3.**
 * **Condition:** part 2 must store the trial end (R1.19), proven by a named case.
 * **For the release holder (P-423):** the `main.ts` raw-body line, which must be limited to `/api/hooks/*`; the money and public-door read; and the case side's 402.
+
+## Rev 16.66 (16 Nov 13:5x IST, Lead B (6)): #1961 (PF-19p) and #1936 (shaping batch 7)
+
+* **#1961, PF-19p's M1: (A).**
+  - JobPort takes `firmId` or `platform: true`, never both and never neither.
+  - `platform: true` is accepted only for an allow-listed set of queues (today `messages.send`, for `PLATFORM_ACCOUNT` messages).
+  - Platform jobs run as the system role.
+  - It has a shared contract case.
+* **#1936, batch 7, approved with corrections:**
+  - **PF-8r:** as is.
+  - **FO-3v:**
+    - FO-3v part 1 comes after FO-3a 1b and FO-3vr on `service.ts` (not on the P-626 path);
+    - the booking type's own link is **dropped as a fallback** (AG-4-29 order; AG-16-73), and the demo seed gives the Sample hosts a My meeting link;
+    - Zoom's gate entry goes in the gate file as entry 18;
+    - new row **FO-3vm** (paste a link on a booking, AG-4-30) after part 1.
+  - **PF-15:**
+    - the area file and the `platform_plan_limit` table are confirmed; `seats_limit` is read by nothing after part 1 and its removal is a later item;
+    - the features half of SA-3-58 is a named gap on part 2 until PF-17's feature list.
+  - **FO-9b's Minors:** accepted.
+* **Told to Lead 67:** #1956 merges `main` in its own lane (P-270).
