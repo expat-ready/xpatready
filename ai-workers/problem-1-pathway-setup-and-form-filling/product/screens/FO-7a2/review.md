@@ -163,3 +163,15 @@ Verdict: Block
 No Blocker or Major is open.
 
 Verdict: Approve 6138ac80c92ff0a783e26a5f62fcf8da2d77f146
+
+## Re-review 3 at `3fb235245f53ee40490dc81c61a62c049b31860d` (diff `-M` since 6138ac80c only)
+* **Re-stamp: correct.** The rename to `20261116133000_fo7a2_ledger_rules` is 100 % similar (no SQL change), the test's `NEW` matches, and the stamp is later than `main`'s newest (FO-7mv, 030000) and than open #1918 and #1961. FO-7a2 33/0 and prisma 8/0 on this head.
+* **Blocker R3-1: commit 3fb235245 adds `prototype/studio/node_modules` to git.** It is a symlink (mode 120000) to this machine's absolute path `/home/user/xpatready/…/studio/node_modules`. `.gitignore`'s `node_modules/` matches only directories, so the symlink got through. The coordinator's summary ("no SQL change") does not mention it.
+  * AGENTS.md rule 1 forbids committing local tools.
+  * On any other copy (CI, the Mac's copies, `main` after merge) the path is dangling. Where a real `node_modules` directory exists, checkout collides with it.
+  * **Fix:** `git rm --cached ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/node_modules` in a new commit (no history rewrite). Optionally make the ignore line `node_modules` (no slash) so a link is ignored too.
+* n2 goes to the tech lead in the migration-read request, as agreed.
+
+**To fix before Approve:** R3-1 only. The SQL and tests are unchanged from the Approve at 6138ac80c.
+
+Verdict: Block
