@@ -80,6 +80,7 @@ function recordedStripe() {
       const id = `cs_test_rec${String(++n).padStart(6, "0")}`;
       out = { status: 200, body: { id, object: "checkout.session", mode: form.get("mode"), url: `https://checkout.stripe.com/c/pay/${id}` } };
     } else if (method === "GET" && url.pathname === "/v1/subscriptions/sub_c1") out = { status: 200, body: { id: "sub_c1", object: "subscription", customer: "cus_c1", status: "trialing", trial_end: TRIAL_END.getTime() / 1000, cancel_at_period_end: false, default_payment_method: null, metadata: {}, latest_invoice: null, items: { data: [{ current_period_end: TRIAL_END.getTime() / 1000 }] } } };
+    else if (method === "GET" && url.pathname === "/v1/subscriptions/sub_c2") out = { status: 200, body: { id: "sub_c2", object: "subscription", customer: "cus_c1", status: "active", trial_end: null, cancel_at_period_end: false, default_payment_method: "pm_1", metadata: {}, items: { data: [] }, latest_invoice: { id: "in_c2", object: "invoice", status: "open", automatic_tax: { enabled: false, status: null, disabled_reason: "finalization_requires_location_inputs" } } } };
     else if (method === "GET" && url.pathname === "/v1/billing_portal/configurations") out = { status: 200, body: { object: "list", data: [], has_more: false } };
     else if (method === "POST" && url.pathname === "/v1/billing_portal/configurations") { portalConfig = form; out = { status: 200, body: { id: "bpc_rec1", object: "billing_portal.configuration" } }; }
     else if (method === "POST" && url.pathname === "/v1/billing_portal/sessions") out = { status: 200, body: { id: "bps_rec1", object: "billing_portal.session", url: "https://billing.stripe.com/p/session/rec1", configuration: form.get("configuration") } };
@@ -141,6 +142,7 @@ try {
   await rec.port.startTrialCheckout({ firmId: "0f5a0000-0000-4000-8000-000000000009", customerId: cust, priceId: PRICES[0].id, trialDays: 14, successUrl: "https://a.example.com/ok", cancelUrl: "https://a.example.com/no" });
   ok("PF-5 (Lead B, fact 3): the trial's Checkout turns Stripe Tax on and saves the address to the customer", rec.lastCheckoutParams()?.automatic_tax === "true" && rec.lastCheckoutParams()?.customer_update_address === "auto", rec.lastCheckoutParams());
   const portal = await rec.port.portal({ customerId: "cus_c1", returnUrl: "https://a.example.com/billing" }), pc = rec.portalConfig();
+  ok("PF-5 part 2 fail (Devin on #1959): tax switched off for want of the address (disabled_reason) also reads as \"address needed\"", (await rec.port.subscription("sub_c2")).latestInvoice?.taxNeedsAddress === true);
   ok("PF-5 part 2 pass/fail (rows rev 13): the Customer Portal has plan switching off, card, invoices and cancel at period end on",
     !!portal.url && pc?.get("features[subscription_update][enabled]") === "false" && pc.get("features[payment_method_update][enabled]") === "true" && pc.get("features[invoice_history][enabled]") === "true" && pc.get("features[subscription_cancel][mode]") === "at_period_end", pc && Object.fromEntries(pc));
 

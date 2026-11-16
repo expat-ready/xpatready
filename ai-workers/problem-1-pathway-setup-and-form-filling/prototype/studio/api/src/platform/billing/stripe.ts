@@ -37,7 +37,7 @@ export class StripeBilling implements BillingPort {
     return BillingSubscription.parse({
       id: s.id, customerId: idOf(s.customer), firmId: FirmId.safeParse(s.metadata?.firm_id?.toLowerCase()).data ?? null, status: s.status,
       trialEnd: at(s.trial_end), periodEnd: ends.length ? at(Math.max(...ends)) : null, cancelAtPeriodEnd: s.cancel_at_period_end, hasCard: !!s.default_payment_method,
-      latestInvoice: inv?.id ? { id: inv.id, status: inv.status, taxNeedsAddress: inv.automatic_tax?.status === "requires_location_inputs" } : null,
+      latestInvoice: inv?.id ? { id: inv.id, status: inv.status, taxNeedsAddress: inv.automatic_tax?.status === "requires_location_inputs" || inv.automatic_tax?.disabled_reason === "finalization_requires_location_inputs" } : null,
     });
   }
 
