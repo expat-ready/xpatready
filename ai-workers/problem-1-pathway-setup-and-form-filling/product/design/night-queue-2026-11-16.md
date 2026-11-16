@@ -9,6 +9,8 @@ Three hourly cloud routines ("lane starter 1-3", at :05, :25 and :45 UTC past ea
 
 | Row id | Area | Brief (branch:path under product/design/) | After | Effort, breaker |
 |---|---|---|---|---|
+| QA-498q | runtime | lead-b-front-office:lead-b-briefs/QA-498q.md (one file, tools/run-suites.sh: check_bk5_start_browser.cjs on QUARANTINE with the QA-498 comment; Lead 71 ruling 17 Nov) — **first: it unblocks #2021**; "Ready for Lead read"; the Lead labels, lands ahead (P-214) | — | medium, no |
+| QA-498 | runtime | lead-b-front-office:lead-b-briefs/QA-498.md (root cause first, never loosen BR-6, 5 green runs alone and after shard 1's order, takes the suite off QUARANTINE) | QA-498q merged | high, no |
 | PF-12b part 1 | runtime | lead-b-front-office:lead-b-briefs/PF-12b.md (QA-499: every bypass use that crosses firms writes one platform.bypass audit_event row per firm it touches, in that firm's transaction, or is refused; adds an `audit` field to every BYPASS_USES entry) — **first: it frees R1.4 to be proven** | — | high, yes |
 | FO-9b part 0 | runtime | main:lead-b-briefs/FO-9b.md (port only) | — | high, no |
 | PF-21b part 1 | runtime | main:lead-b-briefs/PF-21b.md (port only) | — | high, no |
