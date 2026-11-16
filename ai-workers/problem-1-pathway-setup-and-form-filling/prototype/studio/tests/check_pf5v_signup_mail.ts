@@ -1,5 +1,6 @@
-// PF-5v (QA-481, QA-484; R1.19, R1.100): the sign-up's verification email reaches the demo inbox through MailPort, and
-// an empty sign-up answers in plain words on each field. DW2 needs no database (the fields are checked before any read).
+// PF-5v part 1 (QA-484; R1.19, R1.100's sign-up door): an empty sign-up answers in plain words on each field, and no
+// validator text reaches an answer. DW2 needs no database (the fields are checked before any read). The verification
+// email through MailPort (QA-481, DW1, DW3) is part 2, after PF-19p (Lead B's ruling rev 16.62 on #1955).
 //   tsx studio/tests/check_pf5v_signup_mail.ts
 import type { PrismaClient } from "@prisma/client";
 import { fakeBilling } from "../ports/billing.ts";
@@ -24,9 +25,11 @@ const blank = await errorsOf(() => door.signUp({ email: "  ", password: "", firm
 ok("PF-5v DW2 pass: blank answers get the same words, one per field", JSON.stringify(blank) === JSON.stringify([EMPTY.email, EMPTY.password, EMPTY.firmName]), blank);
 const typed = await errorsOf(() => door.signUp({ email: 5, password: true, firmName: [], countryCode: "CA", extra: 1, period: "WEEKLY" }, "10.0.0.3"));
 ok("PF-5v DW2 pass: a wrong type or an unknown key never answers in the validator's words", !!typed && typed.length > 0 && !typed.some((e) => VALIDATOR.test(e)), typed);
+ok("PF-5v DW2 pass: an unknown key is named as not a field of this form; a wrong type of email, password or firm name answers as empty",
+  !!typed && typed.includes("extra: not a field of this form") && [EMPTY.email, EMPTY.password, EMPTY.firmName].every((w) => typed.includes(w)) && typed.includes("period: check this answer"), typed);
 // DW2 fail: a bad email and other refusals keep the door's existing words (never the empty words).
 const bad = await errorsOf(() => door.signUp({ email: "not-an-email", password: "short", firmName: "A", countryCode: "US" }, "10.0.0.4"));
-ok("PF-5v DW2 fail: a bad email keeps its words; a short password, a 1-letter firm and a non-CA country keep theirs",
+ok("PF-5v DW2 fail: a short password, a 1-letter firm and a non-CA country keep their words (never the empty words)",
   !!bad && bad.includes("password: at least 12 characters") && bad.includes("firmName: 2 to 120 characters") && bad.includes("countryCode: CA only for now") && !bad.some((e) => Object.values(EMPTY).includes(e as never)), bad);
 const badEmail = await errorsOf(() => door.signUp({ email: "not-an-email", password: "correct horse battery staple 77", firmName: "Maple Law", countryCode: "CA" }, "10.0.0.5"));
 ok("PF-5v DW2 fail: a bad email answers \"give your work email\", not the empty words", JSON.stringify(badEmail) === JSON.stringify(["email: give your work email (name@example.com)"]), badEmail);
