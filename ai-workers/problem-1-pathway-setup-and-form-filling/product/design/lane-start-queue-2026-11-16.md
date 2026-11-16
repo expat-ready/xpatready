@@ -22,3 +22,6 @@ Spares: FO-6 (branch; BoldSign sandbox done), PF-0bp (main). Build Lead C's and 
 | 10 | R1.74 CS-DL1 part 1 | CS-DL1a.md | high, breaker yes | CS-DL1b | queued |
 | 11 | R1.10 CS-V1 PR 1 | CS-V1-1.md (new test files only) | medium, breaker no | CS-V1-2 | queued |
 | 12 | R1.8 AUD-1a | AUD-1a.md (schema: governance.prisma → audit.prisma + migration; Lead reads the migration, P-423) | high, breaker yes | AUD-1b | queued |
+| 13 | R1.56/57/58/96/111 FO-7s0 | FO-7s0.md (money screens concept, records only; Opus reviewer + fresh challenger; Build Lead C approves the concept and reads its contract before the label) (commit afd3c681a) | medium | FO-7ts part 1 (FO-7ts-1.md; schema, money, high, breaker yes; holds client-money.prisma) only after #1991 merges | queued |
+
+**Gate:** #1991 (FO-7a2) is the single gate for the money chain FO-7ts p1 → p2 → p3 → FO-7b → FO-7c ∥ FO-7t (R1.56-R1.60, R1.96, R1.111). The Lead tells Build Lead C the moment it merges.
