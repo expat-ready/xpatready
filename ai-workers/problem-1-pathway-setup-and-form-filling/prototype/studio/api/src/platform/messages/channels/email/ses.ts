@@ -13,6 +13,9 @@ import type { ChannelAdapter } from "../../send/messages.ts";
 import { unsubscribeHeaders, type UnsubscribeTokens } from "./unsubscribe.ts";
 
 export const SES_PROVIDER = "ses";
+/** Ids only (firm/outbox): SES returns it in a notice's `mail.headers` (our team turns on "include original headers"),
+ *  so a bounce finds its message when no configuration set adds tags (review M2(b)). */
+export const REF_HEADER = "X-Expatready-Ref";
 /** An SES call gives up after this (connect 5 s), well inside the worker's transaction (DELIVER_TX_MS). */
 export const SES_TIMEOUT_MS = 20_000;
 export type SesOptions = {
@@ -42,7 +45,7 @@ export function sesEmail(o: SesOptions): ChannelAdapter {
       try {
         const info = await transport.sendMail({
           from: { name: r.from.name, address: r.from.address }, to: r.to, replyTo: r.replyTo, subject: r.subject, text: r.text, html: r.html, attachments,
-          headers: unsubscribeHeaders(r, o.tokens, o.publicBase),
+          headers: { ...unsubscribeHeaders(r, o.tokens, o.publicBase), [REF_HEADER]: `${r.firmId}/${r.outboxId}` },
           ses: { EmailTags: [{ Name: "firm", Value: r.firmId }, { Name: "outbox", Value: r.outboxId }], ...(o.configurationSet ? { ConfigurationSetName: o.configurationSet } : {}) },
         });
         const id = String((info as { response?: unknown }).response ?? "");

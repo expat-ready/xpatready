@@ -10,7 +10,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { createVerify } from "node:crypto";
 import { normaliseAddress, type ConsentPort } from "../../../../../../ports/consent.ts";
 import { firmScope } from "../../../firm-scope.ts";
-import { SES_PROVIDER } from "./ses.ts";
+import { REF_HEADER, SES_PROVIDER } from "./ses.ts";
 
 type Tx = Prisma.TransactionClient;
 export const NOTICE_PATH = "/api/public/messages/ses-notices";
@@ -78,9 +78,11 @@ export class SesNotices {
       return "confirmation";
     }
     if (n.Type !== "Notification") return "confirmation";
-    let m: { notificationType?: string; eventType?: string; mail?: { messageId?: string; tags?: Record<string, string[]> }; bounce?: { bounceType?: string; bounceSubType?: string; bouncedRecipients?: { emailAddress?: string }[] }; complaint?: { complainedRecipients?: { emailAddress?: string }[]; complaintFeedbackType?: string } };
+    let m: { notificationType?: string; eventType?: string; mail?: { messageId?: string; tags?: Record<string, string[]>; headers?: { name?: string; value?: string }[] }; bounce?: { bounceType?: string; bounceSubType?: string; bouncedRecipients?: { emailAddress?: string }[] }; complaint?: { complainedRecipients?: { emailAddress?: string }[]; complaintFeedbackType?: string } };
     try { m = JSON.parse(String(n.Message)); } catch { return "ignored"; }
-    const kind = m.notificationType ?? m.eventType, firm = m.mail?.tags?.firm?.[0], outbox = m.mail?.tags?.outbox?.[0], sesId = m.mail?.messageId;
+    // The firm and outbox ids: a configuration set's tags, else our reference header in the original headers.
+    const ref = /^([0-9a-f-]{36})\/([0-9a-f-]{36})$/i.exec(String(m.mail?.headers?.find((h) => String(h.name).toLowerCase() === REF_HEADER.toLowerCase())?.value ?? ""));
+    const kind = m.notificationType ?? m.eventType, firm = m.mail?.tags?.firm?.[0] ?? ref?.[1], outbox = m.mail?.tags?.outbox?.[0] ?? ref?.[2], sesId = m.mail?.messageId;
     if ((kind !== "Bounce" && kind !== "Complaint") || !firm || !outbox || !sesId) return "ignored";
     let firmId: string;
     try { firmId = firmScope(firm).firmId; } catch { return "ignored"; }

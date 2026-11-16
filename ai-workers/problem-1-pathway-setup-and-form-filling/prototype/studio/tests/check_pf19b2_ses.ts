@@ -51,7 +51,8 @@ if (process.argv[2] === "--app") {
     const person = { kind: "FO_PERSON" as const, id: uuid() }, address = box("walk");
     const kinds = [["EMAIL", "MARKETING"], ["WHATSAPP", "SERVICE"], ["WHATSAPP", "MARKETING"]] as const;
     await db.$transaction(async (tx) => { for (const [channel, purpose] of kinds) { const w = await consent.publishWording(tx, { firmId, channel, purpose, locale: "en", text: `Sample: ${channel} ${purpose} yes (walk)`, by: "seed:pf19b2" }); await consent.record(tx, { firmId, subject: person, channel, purpose, wordingId: w.id, source: "WEB_FORM", locale: "en", recordedKind: "SELF_SERVICE", recordedBy: "system:web-form" }); } });
-    // The running app's own MessagePort sends it: a booking-style marketing note through the demo inbox's local adapter.
+    // The walk writes one marketing email through MessagePort with the local adapter, into the copy's own database and
+    // files; the running app's demo inbox, unsubscribe page and POST then read and act on it.
     const allowed = async (channel: "EMAIL" | "WHATSAPP", cls: "MARKETING" | "SERVICE") => (await consent.allows(db, { firmId, subject: person, channel, address: channel === "EMAIL" ? address : "+15145550123", class: cls })).allowed;
     const send = await fetch(`${base}/api/demo/platform-inbox?address=${encodeURIComponent(address)}`);
     ok("R28 walk: the running copy's demo inbox answers for a new address (empty)", send.status === 200 && (await send.json()).messages.length === 0);
@@ -208,7 +209,19 @@ try {
     other === "ignored" && wrongId === "ignored" && (await db.msgSuppression.count({ where: { address: { in: [x9o, x9s] } } })) === 0);
   const x9n = box("dw9n"), s9n = await sendNow({ firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: x9n, content: words });
   await notices.receive(signed(notice("Bounce", firmA, s9n.outboxId, s9n.row.providerId!.slice(4), box("someone.else"))));
-  ok("DW9 fail: a hard bounce naming an address the message was not sent to suppresses nothing", (await db.msgSuppression.count({ where: { firmId: firmA, address: { contains: "someone.else" } } })) === 0);
+  ok("DW9 fail: a hard bounce naming an address the message was not sent to suppresses neither address", (await db.msgSuppression.count({ where: { firmId: firmA, OR: [{ address: x9n }, { address: { contains: "someone.else" } }] } })) === 0);
+  // Review m5: the notice lock under race: the same notice three times at once → one applied, one event.
+  const x9r = box("dw9r"), s9r = await sendNow({ firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: x9r, content: words });
+  const n9r = signed(notice("Bounce", firmA, s9r.outboxId, s9r.row.providerId!.slice(4), x9r));
+  const r9r = await Promise.all([1, 2, 3].map(() => notices.receive(n9r)));
+  ok("DW9 fail (race): the same notice three times at once → one applied, two repeated, one event", r9r.filter((x) => x === "applied").length === 1 && r9r.filter((x) => x === "repeated").length === 2 && (await db.msgEvent.count({ where: { outboxId: s9r.outboxId, kind: "BOUNCED" } })) === 1, r9r);
+  // Review M2(b): a real SES notice has tags only with a configuration set; without, our reference header finds the message.
+  const x9h = box("dw9h"), s9h = await sendNow({ firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: x9h, content: words });
+  const ref9 = /X-Expatready-Ref: (\S+)/.exec(rawOf(s9h.sent))?.[1] ?? "", bare = (headers: { name: string; value: string }[]) => ({ notificationType: "Bounce", mail: { messageId: s9h.row.providerId!.slice(4), headers }, bounce: { bounceType: "Permanent", bouncedRecipients: [{ emailAddress: x9h }] } });
+  const noRef = await notices.receive(signed(bare([{ name: "Subject", value: "x" }])));
+  ok("DW9 fail (review M2(b)): a notice with neither tags nor our reference header is ignored", noRef === "ignored" && (await db.msgSuppression.count({ where: { address: x9h } })) === 0);
+  const byRef = await notices.receive(signed(bare([{ name: "X-Expatready-Ref", value: ref9 }])));
+  ok("DW9 pass (review M2(b)): a notice without tags is matched by the X-Expatready-Ref original header (ids only) and suppresses once", ref9 === `${firmA}/${s9h.outboxId}` && byRef === "applied" && (await db.msgSuppression.count({ where: { address: x9h } })) === 1, { ref9, byRef });
 
   // ------------------------------------------------------------------------------------------ DW10 unverified → 400, nothing stored
   const x10 = box("dw10"), s10 = await sendNow({ firmId: firmA, channel: "EMAIL", class: "TRANSACTIONAL", address: x10, content: words });
@@ -279,15 +292,21 @@ try {
   const s12 = await sendNow({ firmId: firmA, person: p12, channel: "EMAIL", class: "MARKETING", address: x12, content: words });
   const tok12 = tokenOf(/List-Unsubscribe: (<[^>]+>)/.exec(rawOf(s12.sent))?.[1]);
   const otherRing = new UnsubscribeTokens({ current: 3, keys: new Map([[3, new Secret("other", randomBytes(32).toString("base64"))]]) });
-  const forged = [flip(tok12, 10), flip(tok12, 50), flip(tok12, 80), otherRing.mint(firmA, s12.outboxId), tokens.mint(firmA, t1.outboxId), tokens.mint(firmB, s12.outboxId), "x", tok12 + "A"];
+  const forged = [flip(tok12, 10), flip(tok12, 50), flip(tok12, 80), otherRing.mint(firmA, s12.outboxId), tokens.mint(firmA, t1.outboxId), tokens.mint(firmA, (await sendNow({ firmId: firmA, person: p12, channel: "EMAIL", class: "TRANSACTIONAL", address: x12, content: words })).outboxId), tokens.mint(firmB, s12.outboxId), "x", tok12 + "A"];
   let all404 = true;
   for (const t of forged) { const { r, res } = fakeRes(); await routes.confirm(t, res as never); if (r.code !== 404) all404 = false; }
-  ok("DW12 fail: a forged token (changed bytes, another key, a transactional message's, another firm's, malformed) → 404 and nothing recorded",
+  ok("DW12 fail: a forged token (changed bytes, another key, a transactional message's with or without its person, another firm's, malformed) → 404 and nothing recorded",
     all404 && (await db.msgConsentWithdrawal.count({ where: { subjectId: p12.id } })) === 0);
   const { r: u12, res: ru12 } = fakeRes(); await routes.confirm(tok12, ru12 as never);
   const { r: v12, res: rv12 } = fakeRes(); await routes.confirm(tok12, rv12 as never);
   const { r: g12, res: rg12 } = fakeRes(); await routes.page(tok12, rg12 as never);
   ok("DW12 fail: a reused token → 404 (POST and page), still one withdrawal", u12.code === 200 && v12.code === 404 && g12.code === 404 && (await db.msgConsentWithdrawal.count({ where: { subjectId: p12.id } })) === 1, [u12.code, v12.code, g12.code]);
+  // Review m5: the lock under race: five one-clicks at once on a fresh link → one 200, one withdrawal.
+  const p12r = person(), x12r = box("dw12r"); await give(p12r, [["EMAIL", "MARKETING"]]);
+  const s12r = await sendNow({ firmId: firmA, person: p12r, channel: "EMAIL", class: "MARKETING", address: x12r, content: words });
+  const tok12r = tokenOf(/List-Unsubscribe: (<[^>]+>)/.exec(rawOf(s12r.sent))?.[1]);
+  const raced = await Promise.all([0, 1, 2, 3, 4].map(async () => { const { r, res } = fakeRes(); await routes.confirm(tok12r, res as never); return r.code; }));
+  ok("DW12 fail (race): five one-clicks at once → one 200, four 404, one withdrawal", raced.filter((c) => c === 200).length === 1 && raced.filter((c) => c === 404).length === 4 && (await db.msgConsentWithdrawal.count({ where: { subjectId: p12r.id } })) === 1, raced);
   ok("DW12 pass: the token names no firm or person in clear", ![firmA, firmA.replace(/-/g, ""), p12.id, p12.id.replace(/-/g, ""), s12.outboxId.replace(/-/g, "")].some((v) => tok12.includes(v) || Buffer.from(tok12, "base64url").toString("hex").includes(v)));
   // Break M2: the limit is per link, not per IP (behind the load balancer every caller has one address).
   const p12b = person(), x12b = box("dw12b"); await give(p12b, [["EMAIL", "MARKETING"]]);
@@ -307,9 +326,11 @@ try {
   await jobs.runDue();
   const row13 = await db.msgOutbox.findUniqueOrThrow({ where: { id: m13.messageId } });
   ok("DW13 pass: staff and system mail sent through MailPort lands in the outbox as TRANSACTIONAL and is sent", row13.class === "TRANSACTIONAL" && row13.address === x13 && row13.state === "SENT", row13);
+  // Held (review M1, question to Lead B): the outbox stores every body (Lead B's ruling), and staff mail carries invitation
+  // tokens and codes PF-4b never stores; until a ruling on such bodies, the app keeps PF-4b's LocalMail for MAIL_PORT.
   const staffRead = (await import("../api/src/features/platform-staff-read.ts")).default, { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts");
-  const bound = (staffRead.providers as { provide?: unknown; useExisting?: unknown }[]).find((p) => p.provide === MAIL_PORT);
-  ok("DW13 pass: the app's MAIL_PORT (PF-4b's staff and system mail) is MESSAGES_MAIL, MailPort over MessagePort", bound?.useExisting === Symbol.for("platform.MessagesMail"), bound);
+  const bound = (staffRead.providers as { provide?: unknown; useExisting?: unknown; useFactory?: unknown }[]).find((p) => p.provide === MAIL_PORT);
+  ok("DW13 held (review M1): the app's MAIL_PORT stays PF-4b's own adapter, so no invitation token or code is stored in the outbox until Lead B rules", !!bound?.useFactory && bound?.useExisting === undefined, bound);
   const refused13 = await mail.send({ firmId: firmA, to: box("dw13s"), replyTo: "no-reply@expatready.example", class: "SERVICE", subject: "Reminder", text: "x" }).then(() => "sent", (e: Error) => e.name);
   ok("DW13 fail: a service email without its person is refused, nothing in the outbox", refused13 === "MessageRefused" && (await db.msgOutbox.count({ where: { address: { contains: "dw13s" } } })) === 0, refused13);
 
