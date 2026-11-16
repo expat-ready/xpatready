@@ -115,3 +115,28 @@ Each row above already names its parts in its brief:
 The Lead copies these sub-parts into the checklist rows so the board counts them. Lead B can't push to `main`.
 
 **Title rule (Lead 69, rev 16.75):** every PR title names its part exactly, in the form "runtime: PF-13 part 1 — …". A title without "part" counts as the whole row. Lead 69 has put the sub-parts into MVP-CHECKLIST in the board's form, for example "PF-13 parts 1-2". PF-21s stage 2 is now **PF-21s parts 3 and 4**, because stage 1 merged as #1821.
+
+## 5. Night-queue lines (P-645; rev 16.80): every ready row that no warm lane takes as its second
+
+The warm lanes' second briefs (section 3) are left out: PF-21s part 4, PF-0bp, PF-13 part 1, PF-18b, PF-4pc then PF-4s, FO-5p part 1, FO-9a (the FO-2b lane), and PF-18a part 2. FO-6 and PF-19e are already in the night queue.
+
+```
+night: FO-9b part 0 (port only, PersonMergePort) | main:design/lead-b-briefs/FO-9b.md | waits: none | Opus high, reviewer only (port file, no breaker)
+night: PF-21b part 1 (port only, LegalHoldPort) | main:design/lead-b-briefs/PF-21b.md | waits: none | Opus high, reviewer only
+night: PF-Fp part 1 (DocumentRenderPort.toPdf, its fake, the Gotenberg adapter; container line later with PF-8) | lead-b-front-office:design/lead-b-briefs/P-630-amendments.md (PF-Fp row) + design/tech-gate-platform-front-office-2026-11-14.md entry 17 | waits: none | Opus high, breaker yes; shared port, Lead reads (P-423)
+night: PF-6 part 2a (Team, Invite with Compare roles, Person panel) | lead-b-front-office:design/lead-b-briefs/PF-6p2.md | waits: #1945 | Opus high, breaker yes
+night: PF-6m2 (re-check on invitation accept) | lead-b-front-office:design/lead-b-briefs/PF-6m2.md | waits: #1945 | Opus high, breaker yes
+night: PF-4c part 1 (batch invite) | main:design/lead-b-briefs/PF-4c.md | waits: #1945 (identity/service.ts) | Opus high, breaker yes
+night: PF-11 part 1 (firm export: port, job, routes, platform sections) | main:design/lead-b-briefs/PF-11.md + the corrections in #1972 comment 6916991708 | waits: #1959 | Opus high, breaker yes; Lead reads migration and key rows (P-423)
+night: FO-3a part 1b (named hours, time off, timings) | main:design/lead-b-briefs/FO-3a.md + lead-b-front-office:design/lead-b-briefs/P-626-order.md A2 | waits: #1918 | Opus high, breaker per brief
+night: FO-3a part 2a (consult record, read port) | lead-b-front-office:design/lead-b-briefs/FO-3a2.md | waits: #1918 (may run beside 1b) | Opus high, breaker per brief
+night: FO-3vr (booking visibility) | main:design/lead-b-briefs/FO-3vr.md | waits: #1918, then FO-3a part 1b (both edit booking/service.ts, P-526) | Opus high, breaker yes
+night: FO-3st2 (Availability, Time off screens) | main:design/lead-b-briefs/FO-3st2.md + P-626-order.md A3 | waits: FO-3a part 1b | Opus high, breaker per brief
+night: FO-3st3 (Booking types, Timings screens) | main:design/lead-b-briefs/FO-3st3.md + P-626-order.md A3 | waits: FO-3a part 1b (1a is #1918) | Opus high, breaker per brief
+night: FO-3v part 1 (video meeting links) | main:design/lead-b-briefs/FO-3v.md | waits: #1918, FO-3a part 1b, FO-3vr (booking/service.ts) | Opus high, breaker per brief
+night: FO-3c part 1 (consultation agreement accept) | main:design/lead-b-briefs/FO-3c.md + P-627-amendments.md FO-3c block | waits: FO-3a part 1b; never beside FO-5b or FO-5p (FO-5p is lane 6's second, after FO-13i) | Opus high, breaker per brief
+night: FO-5cr (retainer pre-filled from a consult record) | lead-b-front-office:design/lead-b-briefs/P-626-order.md "New row FO-5cr" | waits: FO-3a part 2a | Opus high, reviewer only
+night: PF-15 part 1 (plan limits, downgrade check) | main:design/lead-b-briefs/PF-15.md | waits: PF-Fd #1997, PF-4c part 1 | Opus high, breaker yes
+night: PF-19c part 1 (template registry) | main:design/lead-b-briefs/PF-19c.md + P-630-amendments.md PF-19c block | waits: #1956, #1961, PF-19e, PF-13 part 1 (messages files, one at a time) | Opus high, breaker per brief
+night: PF-19ad | main:design/lead-b-briefs/PF-19ad.md | waits: PF-19c part 1 (same messages files) | Opus high, breaker per brief
+```

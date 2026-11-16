@@ -1667,3 +1667,9 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - **Condition:** the walls checks still run on the fully migrated database: FORCE RLS, `pf12_firm`, `FAMILIES`, and the bypass functions with pinned `search_path`. A later table without a policy must still go red.
   - Counts: 99/1 before, 100/0 after.
 * Test-only, so no P-423 read; the Lead was told because the walls check is shared.
+
+## Rev 16.80 (16 Nov 22:07 IST): night-queue lines for Lead 70 (P-645)
+* **Lead 70's news:** four queued starts are already running: PF-21s part 3 (#1998), PF-21i (#2012), PF-Fd (#1997) and PF-24w (#2001). FO-2b started at 22:0x and chains FO-9a. Three hourly cloud routines take rows from `design/night-queue-2026-11-16.md` (Lead branch).
+* **The night lines Lead B sent:** 18 rows. Three can start now: FO-9b part 0, PF-21b part 1 and PF-Fp part 1. The other 15 each name the PR they wait on.
+  - The lines are in `design/lead-b-build-lead-a-2026-11-16.md` §5.
+  - Chains on shared files are ordered, never side by side (P-526): booking/service.ts runs FO-3a 1b, then FO-3vr, then FO-3v; the messages files run PF-19e, PF-13 part 1, PF-19c, then PF-19ad.
