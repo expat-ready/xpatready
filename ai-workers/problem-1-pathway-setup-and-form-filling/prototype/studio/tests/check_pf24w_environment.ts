@@ -132,16 +132,16 @@ const startBare = (env: Record<string, string>, port: number) => new Promise<{ c
 const out = ${JSON.stringify(counts)}, names = ${JSON.stringify(COUNTED)};
 if (/api[\\\\/]src[\\\\/]main\\.ts$/.test(process.argv[1] ?? "")) {
   const n = Object.fromEntries(names.map((k) => [k, 0])), stack = Object.fromEntries(names.map((k) => [k, []]));
-  writeFileSync(out, JSON.stringify({ n, stack }));
-  const target = process.env;
+  const target = process.env, seen = target.PLATFORM_ENVIRONMENT ?? null;   // the value main.ts starts with (the caller's, not isolated.sh's local)
+  writeFileSync(out, JSON.stringify({ n, stack, seen }));
   // Node copying the whole environment for a child process (child_process normalizeSpawnArguments) is not a read of a
   // setting by the app: counted apart, as copies (reported, not asserted).
-  let copies = 0;
-  process.env = new Proxy(target, { get(o, k) { if (typeof k === "string" && k in n) { const at = new Error().stack ?? ""; if (at.includes("normalizeSpawnArguments")) { copies++; writeFileSync(out, JSON.stringify({ n, stack, copies })); return Reflect.get(o, k); } n[k]++; if (stack[k].length < 3) stack[k].push(at.split("\\n").slice(2, 6).join(" | ")); writeFileSync(out, JSON.stringify({ n, stack, copies })); } return Reflect.get(o, k); } });
+  let copies = 0; const copied = [];
+  process.env = new Proxy(target, { get(o, k) { if (typeof k === "string" && k in n) { const at = new Error().stack ?? ""; if (at.includes("normalizeSpawnArguments")) { copies++; if (!copied.includes(k)) copied.push(k); writeFileSync(out, JSON.stringify({ n, stack, copies, copied, seen })); return Reflect.get(o, k); } n[k]++; if (stack[k].length < 3) stack[k].push(at.split("\\n").slice(2, 6).join(" | ")); writeFileSync(out, JSON.stringify({ n, stack, copies, copied, seen })); } return Reflect.get(o, k); } });
 }
 `);
   const T = `${NAME}_t`, TP = PORT + 1;
-  const read = () => JSON.parse(readFileSync(counts, "utf8")) as { n: Record<string, number>; stack: Record<string, string[]>; copies?: number };
+  const read = () => JSON.parse(readFileSync(counts, "utf8")) as { n: Record<string, number>; stack: Record<string, string[]>; copies?: number; copied?: string[]; seen?: string | null };
   try {
     const started = iso(T, TP, "start", ["--ttl", "15", "PLATFORM_ENVIRONMENT=test", `NODE_OPTIONS=--import=${preload}`, ...Object.entries(env).map(([k, v]) => `${k}=${v}`)]);
     const ready = await get(TP, "/api/health/ready").then((r) => r.status, () => 0);
@@ -149,7 +149,10 @@ if (/api[\\\\/]src[\\\\/]main\\.ts$/.test(process.argv[1] ?? "")) {
     const atStart = read();
     const notOnce = COUNTED.filter((k) => atStart.n[k] !== 1).map((k) => `${k}=${atStart.n[k]} ${atStart.stack[k]?.join(" || ").replaceAll(STUDIO + "/", "").slice(0, 900)}`);
     ok(`PF-24w J-15 W1 pass: at start each of the ${COUNTED.length} settings' names (every secret but DATABASE_URL, plus PLATFORM_ENVIRONMENT) is read exactly once: loadPlatformConfig ran once`, notOnce.length === 0, notOnce);
-    if (atStart.copies) console.log(`NOTE  J-15 W1: ${atStart.copies} setting values were copied into a child process's environment at start, before the loader scrubs them (on main today: api/src/health.ts gitSha, a git spawn at module load); not a read by the app, reported for the tech lead`);
+    ok("PF-24w J-15 W1 pass: the copy ran as PLATFORM_ENVIRONMENT=test (the caller's value won over isolated.sh's local)", atStart.seen === "test", atStart.seen);
+    if (atStart.copies) console.log(`NOTE  J-15 W1: ${atStart.copies} setting names were copied into a child process's environment by Node (a spawn), not read by the app; the case below checks none was a secret`);
+    const scrubbed = SECRET_SETTING_NAMES.filter((n) => n !== "DATABASE_URL"), toChild = (atStart.copied ?? []).filter((n) => scrubbed.includes(n));
+    ok("PF-24w J-15 W1 fail: no secret setting (DATABASE_URL aside) reaches a child process's environment at start (the loader scrubs them first)", toChild.length === 0, toChild);
     const paths = ["/api/health/ready", "/api/health/live", "/api/session", "/api/platform/me", "/api/platform/staff", "/api/public/plans", "/api/no-such-route", "/", "/api/health", "/api/platform/session/local"];
     const answered = (await Promise.all(paths.map((p) => get(TP, p).then((r) => r.status, () => 0)))).filter((s) => s > 0).length;
     const later = read();

@@ -7,7 +7,7 @@
 // file → one platform_staff_credential. So user-R and user-S are Owner + Case Manager with a licence, user-T (the second
 // representative, BR-20) Case Manager with a licence, user-O Case Officer.
 // Idempotent: one transaction that only adds what is missing and never changes a row that is there, so a second run
-// changes nothing and a person's later changes are kept. Every value is Sample. Run: tsx api/src/platform/seed-sample-firms.ts
+// changes nothing and a person's later changes are kept. Every value is Sample. Run: PLATFORM_ENVIRONMENT=local tsx api/src/platform/seed-sample-firms.ts
 import type { PlatformRole, Prisma, PrismaClient } from "@prisma/client";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
