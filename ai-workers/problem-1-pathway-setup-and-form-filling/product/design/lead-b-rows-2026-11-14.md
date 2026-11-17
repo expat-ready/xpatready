@@ -1890,3 +1890,6 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 ### Rev 17.14 (18:40 IST 17 Nov): #1956 merged
 * **#1956 PF-19b part 2 merged** at 18:39 IST. PF-19e still waits on #1961 and #2029, and nothing starts under P-663 or the B1 freeze, so there is nothing to send now.
 * **#1918 FO-3a part 1a merged** at 18:40 IST. It unblocks FO-3a part 1b and part 2a, which start only after the move is verified and P-663 clears. Lead 79 told.
+
+### Rev 17.15 (19:29 IST 17 Nov): PF-15 claim branch
+* On #2103 (FO-3a 1b-i), the lane claimed PF-15 part 1 (`claim/PF-15-part-1` at main, no work), then stopped because its context was full. Its delete was refused. Ruling: leave the branch, never delete it through another session (P-387), and the Lead decides after the move. PF-15 part 1 is held (B1 freeze, P-663). The lane's notes went into `lead-b-briefs/PF-15.md`.
