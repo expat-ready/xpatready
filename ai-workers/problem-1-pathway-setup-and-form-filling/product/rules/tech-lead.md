@@ -37,3 +37,17 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-617 | Size exception for #1815 only; rows briefed from now stay under 800 lines. | CI: pr-rules size step (pr-size.sh reads the row) | 15 Nov |
 | P-652 | One-time P-371 exception for #2032's run 43929287134; org move on GitHub Team decided (A137). | prose | 17 Nov |
 | P-654 | Size exception for #2064 (PF-18b) only; new rows stay under 800 lines. | script: pr-size.sh | 17 Nov |
+
+## Dated rulings (moved word for word from RULES.md, 17 Nov 12:1x IST, Lead 76)
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| P-626 | Finish the Partial R1 capabilities first; 10 proven by qa by 08:00 IST 17 Nov. | prose | 16 Nov |
+| P-627 | The founder's seven morning answers (16 Nov) stand as recorded in DECISIONS; (6) amended by P-629. | prose | 16 Nov |
+| P-638 | FO-7mv merges before FO-7a2 (shrunk); P-634's money rules unchanged. | prose | 16 Nov |
+| P-640 | Halve qa time per row (Built to Proven), gates unchanged; staging-domain fallback Cloudflare Registrar. | prose | 16 Nov |
+| P-645 | Hourly cloud routines take the first free row of the night queue; only the Lead edits it. | prose (routine prompt) | 16 Nov |
+| P-650 | Express Entry stays end to end; five provincial streams assessment only in R1. | prose | 17 Nov |
+| P-653 | Founder's 17 Nov morning answers stand as recorded in DECISIONS (Owner-only Case Officer invites; reversal stays paid, red shortfall; Manitoba Sample until read). | prose | 17 Nov |
+| P-655 | Board rebuilds once a day (09:00 IST) and on the founder's ask. | prose | 17 Nov |
+| P-658 | Enterprise paid, monthly; Pro kept until a week after the move. | prose | 17 Nov |
+| P-659 | Org expat-ready; the repository moves only by the org-move checklist. | prose | 17 Nov |
