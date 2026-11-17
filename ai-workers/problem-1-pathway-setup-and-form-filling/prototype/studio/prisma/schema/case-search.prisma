@@ -1,0 +1,33 @@
+// case-search.prisma — the find index over case people. Owner: the release Lead (case side).
+// One file per area (DB-SPLIT, studio/DEVELOPING.md): a new module adds its own file here; never edit another area's file without its owner.
+// CS-S1 part 1 (map row 102, the case half; design/briefs/CS-S1.md; contract v0.1 §3.1): one row per case participant,
+// kept by database triggers on the answer and case tables (migration 20261117004500_css1_case_party_index), so no
+// answer-write site changes. No relation fields: the rows follow their participant through the triggers, so no
+// back-relation line is needed on a cases.prisma or answers.prisma model.
+
+/// One case participant as the case finder and PartySearchPort read it (CS-S1 part 2). `id` is stable per subject: a
+/// refresh updates the row in place, so a recordId FO-13c stored keeps pointing at the same person; the row goes only
+/// with its participant. kind and role_on_case: the mapping in the migration (CHECKs there). firm_id: the case's firm
+/// (platform_firm by runtime_case.firm_key). name_norm: lower case, trimmed, spaces collapsed (unaccent is not enabled on
+/// main). phone_e164: "+" with the country code's and the number's digits, null when either part is missing.
+model CasePartyIndex {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId      String   @map("firm_id") @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  caseId      String   @map("case_id") @db.Uuid
+  subjectId   String   @unique @map("subject_id") @db.Uuid
+  partyId     String   @map("party_id") @db.Uuid
+  kind        String
+  roleOnCase  String   @map("role_on_case")
+  displayName String   @map("display_name")
+  nameNorm    String   @map("name_norm")
+  emailNorm   String?  @map("email_norm")
+  phoneE164   String?  @map("phone_e164")
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@index([nameNorm(ops: raw("gin_trgm_ops"))], type: Gin, map: "case_party_index_name_norm_trgm_idx")
+  @@index([firmId, emailNorm])
+  @@index([firmId, phoneE164])
+  @@index([caseId])
+  @@map("case_party_index")
+}
