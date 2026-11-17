@@ -2,7 +2,7 @@
 
 current_lead: local_25aa8878-18f2-40b9-bc08-42a65019ef5f Lead 79 · 17 Nov 18:32 IST (series 2; took over from Lead 78 (series 2, local_68613e56) at ~437k, P-446)
 
-updated: 2026-11-17 19:1x IST by **Lead 79 (series 2, local_25aa8878)** (took over 18:36; check cron 0607f018, :07 and :37) · B1 freeze sent to every lane; move order (c); 18:43 queue 6; 19:0x lanes and disk audit (founder restores founder-setup from Archived; worktree removal is his command): word for word in `history/STATE-2026-11-17-1910-lead79s2-updated-line-takeover-to-audit.md` · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-690**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-17 19:1x IST by **Lead 79 (series 2, local_25aa8878)** (took over 18:36; check cron 0607f018, :07 and :37) · B1 freeze sent to every lane; move order (c); 18:43 queue 6; 19:0x lanes and disk audit (founder restores founder-setup from Archived); 19:1x the founder removed worktree agent-afd32a5dd8172f466, and the board keeper deleted sl, fl, cockpit, old and snapshot (keeps lc and ck for the 09:00 rebuild): disk 19 GB free: word for word in `history/STATE-2026-11-17-1910-lead79s2-updated-line-takeover-to-audit.md` · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-690**) · this branch: `lead/2026-11-07-lead31`
 
 
 
