@@ -26,6 +26,8 @@ type SampleFirm = { key: string; name: string; solo: boolean; office?: Office; u
 /** The studio folder (as core.ts's STUDIO; not imported, so plain tsx scripts and checks can load this file). */
 const STUDIO = join(import.meta.dirname, "..", "..", "..");
 export const SEED_ACTOR = "seed:PF-3";
+/** AUD-5 part 1: the Sample firms' setting values (Sample; the demo reset returns them, not the registered default). */
+export const SAMPLE_SETTING_VALUES: Record<string, unknown> = { "legal.closed_client_files_years": 6 };
 const COUNTRY: Record<string, string> = { canada: "CA" };
 
 export function readSampleFirms(file = join(STUDIO, "samples", "firms.json")): SampleFirm[] {
@@ -111,6 +113,19 @@ export async function unmatchedCaseFirmKeys(db: PrismaClient | Prisma.Transactio
   return rows.map((x) => x.firm_key);
 }
 
+/** AUD-5: writes the Sample setting values a Sample firm does not have yet, through the settings write path (one audit
+ *  line each); a value that is there is never changed. Run after seedSampleFirms by the start-up seed and the command
+ *  line (seedSampleFirms itself stores no setting values, PF-3). */
+export async function seedSampleSettings(db: PrismaClient, firms: SampleFirm[] = readSampleFirms()): Promise<number> {
+  const { seedSampleSettingValues } = await import("./keep-period/service.ts");
+  let n = 0;
+  for (const f of firms) {
+    const firm = await db.platformFirm.findUnique({ where: { key: f.key }, select: { id: true } });
+    if (firm) n += await db.$transaction((tx) => seedSampleSettingValues(tx, firm.id, SAMPLE_SETTING_VALUES));
+  }
+  return n;
+}
+
 // The definitions are written only when a registered key is missing or differs, so a second run changes nothing.
 async function syncDefinitionsIfChanged(tx: Prisma.TransactionClient): Promise<number> {
   const have = new Map((await tx.platformSettingDefinition.findMany()).map((d) => [d.key, d]));
@@ -127,5 +142,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const { platformConfig } = await import("./config/settings.ts");
   const url = platformConfig().databaseUrl.reveal();   // PF-24: the one loader (the demo database locally, as core.ts DATABASE_URL)
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: url, options: "-c TimeZone=UTC" }) });
-  try { console.log(JSON.stringify(await seedSampleFirms(db))); } finally { await db.$disconnect(); }
+  try { console.log(JSON.stringify({ ...(await seedSampleFirms(db)), sampleSettingValues: await seedSampleSettings(db) })); } finally { await db.$disconnect(); }
 }
