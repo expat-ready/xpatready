@@ -119,9 +119,9 @@ Verdicts: **Keep** (stays where it is) · **Move** (`git mv` to the target layou
 | `P1/prototype/p2/prompts`, `jobs`, `parts`, `screen-inventories`, `question-lists`, `review-sheets` | ~150 | Data folders that `policy.ts` names (`PROMPTS_DIR`, `JOBS_DIR`, …) | **Live (read at run time)** | `policy.ts` | **Move** with the package (data under `packages/ai-spend/data/`) |
 | `P1/prototype/p2/runs`, `scores`, `stubs`, `config`, `ledger`, `*.json` | ~450 (21 MB) | POC P2 run records (Oct) | No (the ledger now lives in `.tools/p2-ledger`) | records only; check `stubs` before archiving (tests may use them) | **Archive** after a grep in stage 2 |
 | `P1/prototype/p5/transforms.ts`, `p5/reader/` | ~36 | Document reader and value transforms | **Live** | 28 + 3 imports from studio; `transforms.ts` itself imports `../studio/engine/options.ts` (a loop) | **Move** into `apps/studio/engine/reader/` (it belongs to the app; this breaks the loop) |
-| `P1/prototype/p5/evidence`, `ui`, `drafts`, `server.ts`, `release_d30.ts` … | ~50 | POC P5 demo and evidence | No | none | **Archive** |
-| `P1/prototype/p1/inventory/*.json` | 2 of 127 | Form inventories that 2 tests read; `policy.ts` names `INVENTORY` | **2 files live** | studio tests, `policy.ts` | **Move** the inventory → `reference/form-inventories/`; **Archive** the rest of p1 |
-| `P1/prototype/p3`, `p4`, `evidence-lane`, `expected`, `tests`, `env`, root `*-manifest.sha256`, `*-handoff-*.md`, `package.json`, `trace.csv` | ~360 | POC P0–P4 code, manifests and hand-overs | No (launch.json's `p3-review` is dead) | Dockerfile.dockerignore excludes them; one journey doc mentions evidence-lane | **Archive** (POC evidence stays in git history, P-188) |
+| `P1/prototype/p5/evidence`, `ui`, `drafts`, `server.ts`, `release_d30.ts` … | ~50 | POC P5 demo and evidence | No, **except `p5/fill.py` and `p5/reader/`** (read at run time; corrected 17 Nov, §7) | `p2/policy.ts`, studio | **Archive** the rest after a run-time grep; `fill.py` and `reader/` move with the app |
+| `P1/prototype/p1/inventory/*.json` | 2 of 127 | Form inventories; **the engine reads them at run time, and database rows store their paths** (`inventory_file`, corrected 17 Nov, §7) | **Live** | engine, `policy.ts`, `p5/engine.ts`, tests | **Move** the inventory → `reference/form-inventories/`; **Archive** the rest of p1 |
+| `P1/prototype/p3`, `p4`, `evidence-lane`, `expected`, `tests`, `env`, root `*-manifest.sha256`, `*-handoff-*.md`, `package.json`, `trace.csv` | ~360 | POC P0–P4 code, manifests and hand-overs. **Corrected 17 Nov (§7): `p3/releases/c1-v3` (the demo's sample release), `expected/` (read by `own-yes-no.ts` and the AI guard) and `tests/check_p2_shared_ledger.ts` are live** | Mostly no (launch.json's `p3-review` is dead) | Dockerfile.dockerignore excludes them; one journey doc mentions evidence-lane | **Archive** (POC evidence stays in git history, P-188) |
 | `P1/official-sources/` | 95 (48 MB) | Official IRCC/ESDC files + `fetch_official_sources.py` | **Live** | ci.yml (fetch step), push guard, `policy.ts` (`OFFICIAL`) | **Move** → `reference/official-sources/` |
 | `P1/domain/requirements-2026-11-02`, `-10-19` | 133 (28 MB) | Name-free requirement snapshots (read-only, P-82) | **Live (read)** | `sync-requirements.sh` | **Move** → `reference/requirements/`; the older 10-19 snapshot is **Archived** ("newest only", CLAUDE.md) |
 | `P1/product/tools/` | 153 | Guards, hooks, board builder, merge tools, `check-docs.sh`, `current-lead.sh` | **Live** | 8 hook commands, 10+ workflow steps, skills | **Move** → `tools/` |
@@ -338,3 +338,46 @@ Founder rulings respected: **P-668 T17: no comment ban** (why-comments stay, P-6
 | R9 | **Dead code** | remove the 2 files and 20 exports (each checked), then knip's list | <300 lines | full CI |
 
 **Cost (estimate):** R0–R5 take ~3–4 working days of agent time and ~3–4 M tokens. R6–R7 are spread over the Release 1 work (one module per quiet window). There are no paid AI runs.
+
+---
+
+## 7. Corrections and preparation (17 Nov, afternoon; branches local, nothing pushed to main)
+
+### 7.1 Corrections to sections 1 and 3 (measured on `499bf07ef`)
+1. **The POC folders are partly live at run time**, not only through imports:
+   - `p3/releases/c1-v3` is the demo's sample release (`demo.ts`, `p5/engine.ts`).
+   - `expected/` is read by `own-yes-no.ts` and by the AI guard (`p2/guard.ts`).
+   - `p1/inventory` is read by the engine.
+   - `p5/fill.py` and `p5/reader/` run.
+   - `prototype/tests/check_p2_shared_ledger.ts` is the shared-ledger test.
+
+   These move as data with the app (stage 2b/3) and are never archived. Section 1b now says so.
+2. **Database rows store repository paths.** `form_inventory.inventory_file` and its twin hold paths relative to problem 1 (`prototype/p1/inventory/…`, `official-sources/…`). The engine joins them onto `SOLUTION`. Seeds and released configurations hold about 4,600 `official-sources/…` and 440 `prototype/p1/inventory…` strings.
+   - **Rule for every move stage:** a stored path is never rewritten in place. `repo-paths` gets a `fromStored(path)` map from the old prefix to the new one, used wherever the code reads a stored path, together with a test that loads a seeded row.
+   - A data migration, if ever needed, is a separate reviewed PR (no schema change).
+3. **Folder counting is everywhere, not in two files.** About 400 lines in about 340 files work out a folder by counting `..`. About 300 of them reach outside their own folder: 265 in studio tests, 19 product tools, 15 acceptance files, 13 API files, 9 studio tools.
+   - "ROOT" means three different folders in different files (the repository, problem 1, the prototype).
+   - In tests, a wrong path fails loudly. In production code and tools it can fail quietly: the spend ledger, the official sources and the hooks.
+4. **The Docker image** copies only problem 1's `prototype/` and `official-sources/`. It now also copies `AGENTS.md` and `packages/repo-paths` (stage 2a).
+5. **Other hidden folder counts:** `check-module-cards.sh`, `check-docs.sh` and 14 more tools did the same. They are covered by stage 2a or 2c.
+
+### 7.2 What is ready (local branches in the clean-up copy, from `origin/main` `499bf07ef`; each passes its own checks)
+| Branch | Commit | What | Proof run here |
+|---|---|---|---|
+| `cleanup/stage-0-safety-net` | `e986a1336` | `packages/repo-paths` + `repo-root.sh` (root by AGENTS.md, `REPO_ROOT` override with refusals), `check-pure-move.sh`, `check-stale-paths.sh` + `stale-paths.txt`, `docs/PATHS-MOVED.md`, tests | `check-cleanup-checks.sh` 14/14; `check_repo_paths.ts` 18/18 (against the **old** spend-guard code: the finder gives the same paths) |
+| `cleanup/stage-1-archive-october` (on stage 0) | `86802739a` | 1,083 October files removed, `ai-workers/decisions.md` kept (PRODUCT.md cites it), CLAUDE.md folder line, stale list (23 paths), path map rows | `check-pure-move.sh --delete`: 1,103 D (with 1b), 3 allowed, 0 other; `check-stale-paths.sh` 0 hits; `check-docs.sh` OK |
+| same branch | `afd4d2e2c` (**held**) | 1b: `commercial/` (20 files) removed | only after the private copy is checked (P-677); SHA-256 list in the Lead's notes folder |
+| `cleanup/stage-2a-root-finder` (on stage 0) | `89792d68d`+amend | 33 callers switched: `p2/policy.ts`, `core.ts`, `canada.ts`, `field-format.ts`, `validate.ts`, `sample-validated.ts`, `own-yes-no.ts`, `files.ts`, `scan-logs.ts`, 6 studio tools, 16 product tools (3 hooks), Dockerfile + ignore | `check_repo_paths.ts` 18/18 (ledger = `.tools/p2-ledger`, as before); runtime probe of `core.ts` and `canada.ts` 7/7; typecheck error list **identical** to main's (80 known-environment lines in both); 8 of 10 changed tool tests pass, and `check-isolated-ttl` and `check-comment-run` give **the same results as main** here (they need the demo database or GitHub); `bash -n` on all 15 shell files |
+
+**Not run here (CI or the Lead):** the full suites, the Docker build, `start.sh` on :4400 with the demo smoke test (the demo database is not running in this copy, and the main copy is never used for tests).
+
+### 7.3 Revised order (Lead 78, P-688, P-674)
+- **18 Nov, after the move is verified and the first merges land:**
+  1. Stage 0. The tag `history/pre-cleanup-2026-11` is made on main right after stage 0 merges.
+  2. Stage 2a. It touches no file any of the 44 open PRs edit.
+  3. Stage 1, without 1b.
+  4. Stage 1b once the private copy is checked.
+- **Stage 2c (new), in an empty window:** the files open PRs edit (`check-docs.sh`, `check-g4-rules.sh`, `check-guards.sh`, `retainers/service.ts`, `seed-sample-firms.ts`, `compose.test.yml`, `restart-api.sh`) and the ~250 tests that count folders switch to the finder, in 2–3 PRs under 800 lines.
+- **Then stages 2b to 8** as in section 3, with `fromStored()` and the live POC data (7.1) added to stage 2b/3.
+- **Stage 7 (the rename)** stays separate (P-675).
+
