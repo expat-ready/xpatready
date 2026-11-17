@@ -28,6 +28,10 @@ export const AssessmentRunBody = z.object({
   reason: z.string({ error: "Give the reason as text." }).trim().refine((x) => [...x].length <= 300, "Keep the reason to 300 characters.").refine(oneLine, "Write the reason as one line of plain text.").refine((x) => !x || /[\p{L}\p{N}]/u.test(x), "Give a reason in words, such as 'Passport renewed'.").optional(),
 });
 
+/** CS-V1 part 2: ?person= on GET /runtime/cases/:id/assessments, one value, as text. */
+export const AssessmentListPerson = z.string({ error: "Give person once, as text." }).max(100, "Keep person to 100 characters.").optional();
+export const AssessmentListQuery = z.strictObject({ person: AssessmentListPerson }, { error: (i: { code: string; keys?: string[] }) => i.code === "unrecognized_keys" ? `Not a filter here: ${(i.keys ?? []).join(", ")} (only person).` : "Give the filters as a query." });
+
 // ------------------------------------------------------------------ part 3: override and review (BR-15, BR-16)
 // Break m5 on 2572b9b0: as the run reason, lengths count characters (an emoji is one) and text needs a letter or digit.
 const text = (field: string, max: number) => z.string({ error: `Give ${field}.` }).trim().min(1, `Give ${field}.`).refine((x) => [...x].length <= max, `Keep ${field} to ${max} characters.`).refine(oneLine, "Write it as one line of plain text.").refine((x) => !x || /[\p{L}\p{N}]/u.test(x), `Give ${field} in words.`);
