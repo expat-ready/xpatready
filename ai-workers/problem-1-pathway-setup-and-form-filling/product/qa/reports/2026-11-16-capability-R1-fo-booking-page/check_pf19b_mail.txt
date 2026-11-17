@@ -1,0 +1,64 @@
+NOTICE:  database "xr_studio_pf19bm_3297" does not exist, skipping
+{"time":"2026-11-16T08:48:22.700Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:22.749Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:22.819Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  BM1 fail: before the jobs run, nothing is in the demo inbox (the mail is a job after the booking's commit)
+{"time":"2026-11-16T08:48:22.918Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  BM1 pass: the booking confirmation is SENT by the local adapter, TRANSACTIONAL for the booker, in /api/demo/platform-inbox with invite.ics (METHOD:REQUEST, a UID, text/calendar)
+{"time":"2026-11-16T08:48:22.922Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  BM1 fail: another address's inbox does not hold it
+{"time":"2026-11-16T08:48:22.923Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  BM2 pass: the host's copy is SERVICE for the host (STAFF subject), with its own invite.ics of the same UID
+PASS  BM2 fail: a SERVICE email that names no person is refused, and no outbox row is written
+{"time":"2026-11-16T08:48:22.947Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  BM3 fail: mail to a suppressed address throws (the caller's job sees it was not sent), the row is SUPPRESSED, nothing is in the inbox
+{"time":"2026-11-16T08:48:22.972Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  BM3 pass: the same email to an address that is not suppressed is sent
+{"time":"2026-11-16T08:48:22.983Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  BM4 fail: the commit holds, the dispatch fails: send does not throw (no second row from a retry), nothing sent yet, one log line without the address
+{"time":"2026-11-16T08:48:23.006Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  BM4 pass: the sweep sends it, once
+{"time":"2026-11-16T08:48:23.009Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+{"time":"2026-11-16T08:48:23.094Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+{"time":"2026-11-16T08:48:23.161Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  BM5 pass: moved then cancelled → three mails, newest first: CANCEL then REQUEST then REQUEST, one UID, SEQUENCE rising
+PASS  BM5 fail: the cancellation carries no reschedule link
+{"time":"2026-11-16T08:48:23.163Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:23.182Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:23.215Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:23.295Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+[booking] email for booking 9e36a813-245d-4e1f-a610-ff80c1cf40b5 not sent, final: not sent: SUPPRESSED: COMPLAINT
+[booking] email for booking 9e36a813-245d-4e1f-a610-ff80c1cf40b5 not sent, final: not sent: SUPPRESSED: COMPLAINT
+{"time":"2026-11-16T08:48:25.252Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+{"time":"2026-11-16T08:48:25.256Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  BM7 pass: the 24 h and 1 h reminders go through the outbox as SERVICE for the booker (FO_PERSON) and are SENT; the host's attendance question is shown, not mailed (AG-4-39 rule 2, FO-3m DW6)
+{"time":"2026-11-16T08:48:25.259Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  BM7 fail: a booker suppressed after booking gets no reminder: the rows are SUPPRESSED by the gate, the inbox holds only the confirmation
+PASS  BM8 pass: a job run twice with its key sends once (the second call answers the first row, without throwing)
+{"time":"2026-11-16T08:48:25.304Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  BM8 fail: another key is another email
+PASS  BM8 pass: booking's own mail job run a second time after it sent makes no second row and no second email (it passes its job key)
+PASS  BM9 fail: a subject on two lines is refused as MessageRefused, and no attachment file is stored
+PASS  BM9 pass: the same mail on one line stores its attachment and is accepted
+PASS  BM9 fail: an address the channel refuses (a@b-.example) is MessageRefused, and the error text never quotes the address (break M2)
+{"time":"2026-11-16T08:48:25.355Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  BM9 pass: two names that clean alike and a .meta name are all kept, each with its own bytes (break m3)
+{"time":"2026-11-16T08:48:25.359Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:25.376Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+[booking] email for booking a48f2021-8ed5-44ce-beb2-dfde9d16f341 not sent, final: not sent: SUPPRESSED: COMPLAINT
+PASS  BM10 pass: a suppressed booker: one SUPPRESSED record, the mail job ends done (no retry: zero further attempts), the link it made is voided, the booking stays booked
+{"time":"2026-11-16T08:48:25.480Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:25.503Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  BM10 fail: a mail failure that is not a refusal (the mail server away) is still thrown, so the runner retries it
+{"time":"2026-11-16T08:48:25.576Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  PF-0c DW2 MailPort MessagesMail: a checked email is sent with an id and kept for its address (lower case)
+{"time":"2026-11-16T08:48:25.638Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+{"time":"2026-11-16T08:48:25.640Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  PF-0c DW2 MailPort MessagesMail: one idempotency key in one firm is one email; another key, or the same key in another firm, is another
+{"time":"2026-11-16T08:48:25.642Z","level":"info","event":"platform_bypass","use":"platform.demo.inbox","method":"none"}
+PASS  PF-0c DW2 MailPort MessagesMail: an email the schema refuses throws and nothing is kept
+PASS  PF-0c DW2 MailPort MessagesMail: passes its contract (3 of 3 cases)
+PASS  BM6 pass: GET /api/demo/platform-inbox answers 200 with the three booking mails and the invite text
+PASS  BM6 fail: a client's persona gets 403 from the same route
+
+28 passed, 0 failed
