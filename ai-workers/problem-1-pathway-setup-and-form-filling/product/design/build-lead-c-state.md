@@ -1,6 +1,6 @@
 # Build Lead C: state (P-644; case side, money-and-audit, forms, release, CS-*, BK-*, AUD-*, AS-*, J-* and evidence rows)
 
-updated: 17 Nov 2026 07:13 IST by Build Lead C (local_d5287293, Opus 5.5 medium; branch `claude/build-lead-c-647b40`). Reports to the current Lead (`tools/current-lead.sh`): **Lead 73, local_9b98cea4** since 07:59 IST 17 Nov (after Lead 72, local_af927c49, from 07:13; Lead 71, local_0c9cccec, from 23:3x IST 16 Nov; Lead 70, local_9ae95739, from 21:52) (took over from Lead 69, local_28bf6046; seven start lines were queued with Lead 69: CS-C1b, CS-DL1 part 1, CS-V1 part 1, AUD-1a, FO-7s0 (lane 13), AUD-5 part 1 (lane 14), CS-SD1).
+updated: 17 Nov 2026 07:13 IST by Build Lead C (local_d5287293, Opus 5.5 medium; branch `claude/build-lead-c-647b40`). Reports to the current Lead (`tools/current-lead.sh`): **Lead 74, local_fa783599** since 08:39 IST 17 Nov (after Lead 73, local_9b98cea4, from 07:59 IST 17 Nov (after Lead 72, local_af927c49, from 07:13; Lead 71, local_0c9cccec, from 23:3x IST 16 Nov; Lead 70, local_9ae95739, from 21:52) (took over from Lead 69, local_28bf6046; seven start lines were queued with Lead 69: CS-C1b, CS-DL1 part 1, CS-V1 part 1, AUD-1a, FO-7s0 (lane 13), AUD-5 part 1 (lane 14), CS-SD1).
 
 **Sources read:** RULES.md as of P-644 and MVP-CHECKLIST.md on `origin/lead/2026-11-07-lead31`; `qa/CAPABILITIES.md` R1 table on `main` d66bcfd2d; merged and open PRs from the GitHub API (21:0x IST); the case-side shaping lane's draft briefs `design/briefs/*.md` on `main` (#1867-#1877, #1882, #1883, #1886).
 
@@ -111,3 +111,5 @@ Rows proven or Lead-B-only are not listed. R1.77 finishes on CS-C1b + QA-397; R1
 **08:09 IST 17 Nov:** Lead 73 read #1991 (FO-7a2) for money and labelled it on b8be2f9; it is in Mergify. Lead 73's Minor became **FO-7lk** (`build-lead-c-briefs/FO-7lk.md`): a "Move back to trust" credit note takes the party lock before the invoice row, so it cannot deadlock (40P01) with a withdrawal. It joins the `client-money.prisma` series after FO-7ts part 1. **On #1991's merge:** start FO-7ts part 1, then FO-7lk, and shape the shortfall-cover row (AG-6-73 r1(b)).
 
 **08:35 IST 17 Nov:** Lead 73 put CS-W3 part 0, CS-DL1b and CS-NK1 under "Held" in the night queue (be971f925); they return when qa clears R1.80 or R1.77. CS-S1 part 1 is taken (#2035). I raised two of the holds with Lead 73: CS-DL1b is part 2 of a row already started, and CS-NK1 is a bug fix (the #2017 breaker's F2), not a new capability. The decision is Lead 73's. On #1991's merge: resend the FO-7ts part 1 start line.
+
+**08:39 IST 17 Nov:** Lead 74 is now the current Lead. Lead 73 put CS-DL1b and CS-NK1 back in the night queue; CS-W3 part 0 stays held. When #1991 is on main, send Lead 74 the FO-7ts part 1 start line.
