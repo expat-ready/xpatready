@@ -1441,6 +1441,13 @@ class Tooltips(unittest.TestCase):
         w = cd.first_screen(d, {2: "Works", 3: "Not built", 1: "Partial"}, {"today_goal": "30 Proven by 08:00 IST 18 Nov"}, "Lead input")["today"]
         self.assertEqual((w["state"], w["goal"]), ("not set", None))
         self.assertIn("30 Proven by 08:00 IST 18 Nov", w["why"])
+        # review #2099: a number, a list, or a dict whose proven is words: not set with what was sent, never a crash
+        for tg, shown in ((30, "30"), (["30"], "['30']"), ({"proven": "30 by 08:00"}, "30 by 08:00"), ({"proven": True}, "True")):
+            w = cd.first_screen(d, {2: "Works", 3: "Not built", 1: "Partial"}, {"today_goal": tg}, "Lead input")["today"]
+            self.assertEqual((w["state"], w["goal"]), ("not set", None), tg)
+            self.assertIn(shown, w["why"], tg)
+        w = cd.first_screen(d, {2: "Works", 3: "Not built", 1: "Partial"}, {"today_goal": {"proven": "3", "by": "2026-11-17T08:00:00+05:30"}}, "Lead input")["today"]
+        self.assertEqual(w["goal"], 3)                                                         # a number sent as digits still counts
         self.assertEqual([x["id"] for x in f["needs"]["items"]], ["A1", "C5"])                   # dated today; C12 later; C2 not the founder's
         self.assertEqual([x["id"] for x in f["needs"]["later"]], ["C12"])
         self.assertEqual((f["choke"]["stage"], f["choke"]["count"]), ("Built, waiting for qa", 2))
@@ -2291,6 +2298,12 @@ class StuckNow(unittest.TestCase):
         nm = self.lines()
         self.assertEqual((nm["queue"]["light"], nm["sessions"]["light"], nm["sessions"]["text"]), ("grey", "grey", "Sessions stuck (awaiting input, failed, blocked, or idle with work left and no push for 90 min): not reported"))
         self.assertEqual(self.lines(ci={"queued_runs": 20})["queue"]["light"], "amber")
+        # review #2099: a red queue adds no reason when no approved PR is over 60 min, or when the approved reading is missing
+        none_old = self.lines(ci={"queued_runs": 31}, ap=[])["approved"]
+        self.assertNotIn("waiting for CI machines", none_old["text"])
+        miss = self.lines(ci={"queued_runs": 31}, ap={"error": "offline"})["approved"]
+        self.assertEqual(miss["light"], "grey")
+        self.assertNotIn("waiting for CI machines", miss["text"])
         # review m2, m3: an empty list from an old check, or with a time that has no zone or does not parse, is amber, never green
         for at in ("2026-11-20T04:00:00Z", "2026-11-20T11:00:00", "23:40 IST", "2026-11-20T11:20:00+05:30"):
             got = self.lines(li={"stuck_sessions": [], "stuck_sessions_at": at})["sessions"]["light"]
@@ -2299,8 +2312,8 @@ class StuckNow(unittest.TestCase):
         r = self.lines(li={"stuck_sessions": [{"title": "Manitoba read", "state": "blocked", "reason": "Claude in Chrome not connected"}, {"title": "PF-8r", "state": "Awaiting input"}],
                            "stuck_sessions_at": 1763358000})["sessions"]
         self.assertEqual((r["text"], r["light"], r["items"]), ("Sessions stuck (awaiting input, failed, blocked, or idle with work left and no push for 90 min): 2: "
-                          "Manitoba read (blocked; Claude in Chrome not connected); PF-8r (Awaiting input)", "red",
-                          ["Manitoba read (blocked; Claude in Chrome not connected)", "PF-8r (Awaiting input)"]))
+                          "Manitoba read (blocked: Claude in Chrome not connected); PF-8r (Awaiting input)", "red",
+                          ["Manitoba read (blocked: Claude in Chrome not connected)", "PF-8r (Awaiting input)"]))
         self.assertIn("a time not given", r["src"])
         self.assertEqual(self.lines(li={"stuck_sessions": [], "stuck_sessions_at": ["x"]})["sessions"]["light"], "amber")
         # the reason goes only with a red queue line (20 queued is amber: no reason)

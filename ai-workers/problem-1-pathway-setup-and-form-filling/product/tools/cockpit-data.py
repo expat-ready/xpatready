@@ -420,8 +420,8 @@ FLOW_DISK_GB = 7                               # the Mac's disk floor for the Fl
 STUCK_MAX_PRS = 40                             # open approved PRs whose label time is read (one call each)
 STUCK_MERGE_MIN = (30, 60)                     # Stuck now: last merge to main, green to 30 min, red over 60 (P-646)
 STUCK_QUEUE = (15, 30)                         # Stuck now: Actions runs waiting for a machine, red over 30 (P-646)
-STUCK_SESSIONS_FRESH_MIN = 60
-STUCK_SESSIONS_LABEL = "Sessions stuck (awaiting input, failed, blocked, or idle with work left and no push for 90 min)"  # Lead 73, P-339b; the Lead filters                  # Stuck now: an empty session list older than this reads amber, not green
+STUCK_SESSIONS_FRESH_MIN = 60                  # Stuck now: an empty session list older than this reads amber, not green
+STUCK_SESSIONS_LABEL = "Sessions stuck (awaiting input, failed, blocked, or idle with work left and no push for 90 min)"  # Lead 73, P-339b; the Lead filters
 STUCK_APPROVED_MIN = 60                        # Stuck now: approved and not merged for over 60 min
 CI_SAMPLE_RUNS = 20                            # CI runs (newest, last 3 h) whose jobs are read for the wait
 LEAD_B_BRANCH = "lead-b-front-office"          # Lead B's branch holding design/lead-b-briefs/ (Lead input lead_b_branch overrides)
@@ -3174,7 +3174,7 @@ def stuck_now(d, sc, ci, li, li_src):
          "text": (f"Actions runs waiting for a machine: {q}" if q is not None else "Actions runs waiting for a machine: not measured"),
          "src": f"GitHub Actions runs with status queued (total_count), as lead-watch's jam line (P-646); green to {STUCK_QUEUE[0]}, red over {STUCK_QUEUE[1]}; " + at}]
     if isinstance(ss, list):
-        names = [f"{x.get('title') or 'untitled'} ({'; '.join(str(v) for v in (x.get('state') or 'state not given', x.get('reason')) if v)})"
+        names = [f"{x.get('title') or 'untitled'} ({': '.join(str(v) for v in (x.get('state') or 'state not given', x.get('reason')) if v)})"
                  for x in ss if isinstance(x, dict)]
         try:
             sa = parse_iso(ss_at) if ss_at else None
@@ -3304,8 +3304,11 @@ def first_screen(d, r1_qa, li, li_src):
                         "why": "qa/CAPABILITIES.md on main has no Release 1 rows (or was not read)"})
     # Today's proving goal (Lead input today_goal, reported)
     g = (li or {}).get("today_goal") or {}
-    g_text = g if isinstance(g, str) else None              # a goal sent as words, not {proven, by}: shown, not counted
-    g = g if isinstance(g, dict) else {}
+    g_text = None                                           # a goal not sent as {proven: number, by}: shown, not counted
+    if not isinstance(g, dict):
+        g_text, g = str(g), {}
+    elif g.get("proven") is not None and (isinstance(g["proven"], bool) or not str(g["proven"]).strip().isdigit()):
+        g_text, g = str(g.get("proven")), {}
     if g.get("proven"):
         short = int(g["proven"]) - len(proven)
         tstate = "done" if short <= 0 else ("at risk" if short <= len(waiting) else "off track")
@@ -3316,7 +3319,7 @@ def first_screen(d, r1_qa, li, li_src):
                            ("" if short <= len(waiting) else ": fewer than needed, so not reachable today")),
                    "plan": g.get("plan"), "class": "reported"}
     else:
-        today_b = {"goal": None, "state": "not set", "why": (f"the Lead's goal is words, not a number and a time (today_goal: {g_text})" if g_text else
+        today_b = {"goal": None, "state": "not set", "why": (f"the Lead's goal is not a number and a time (today_goal: {g_text})" if g_text else
                                                             "no proving goal in the Lead input (today_goal)"), "proven": len(proven),
                    "waiting": len(waiting), "class": "reported"}
     # Needs you: the founder's open items, plus launch steps he owns that are dated today or earlier (founder, 16 Nov: "Yes, show them")
