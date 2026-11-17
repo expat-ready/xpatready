@@ -4,6 +4,7 @@ export type AccountSection = { label: string; path: string; /** The permission k
 
 export const ACCOUNT_SECTIONS: AccountSection[] = [
   { label: "Profile", path: "/account", key: null },
+  { label: "Team", path: "/platform/team", key: "agent/staff:manage" },   // PF-6 part 2a
 ];
 
 /** The entries this person sees: those with no key, or whose key they hold. */

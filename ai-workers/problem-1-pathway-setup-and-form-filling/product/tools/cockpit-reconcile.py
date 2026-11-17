@@ -586,7 +586,8 @@ def monte_carlo(counts, remaining, today, seed=MC_SEED, runs=MC_RUNS, cap=MC_CAP
 # ---------------------------------------------------------------- Flow box (P-644)
 FLOW_NAMES = ("flow_rows_built_24h", "flow_rows_built_3d", "flow_parts_24h", "flow_parts_3d", "flow_parts_left",
               "flow_works_24h", "flow_works_3d", "flow_prove_lag_h", "flow_awaiting", "flow_awaiting_oldest_h",
-              "flow_forecast", "flow_forecast_best", "flow_forecast_worst")
+              "flow_forecast", "flow_forecast_best", "flow_forecast_worst",
+              "flow_rows_built_today", "flow_parts_today", "flow_works_today", "flow_works_week")
 
 
 def flow_numbers(N, snap, now, today, rows, backlog, app_merged_at, cap_text, missing):
@@ -637,10 +638,15 @@ def flow_numbers(N, snap, now, today, rows, backlog, app_merged_at, cap_text, mi
     ids_days = count_days(id_at)
     N["flow_parts_3d"] = num(ids_days, src + "Release 1 ids merged on each of the 3 days")
     N["flow_parts_left"] = num(left, src + "Release 1 ids not merged (%d ids)" % len(ids))
+    # Lead 70 (A133): today = the IST calendar day of taken_at; the week = Monday to that day, IST
+    on_day = lambda xs, d: len([t for t in xs if ist_day(t) == d])
+    monday = today - dt.timedelta(days=today.weekday())
+    N["flow_rows_built_today"] = num(on_day(built_at.values(), today), src + "rows whose last part merged today (IST)")
+    N["flow_parts_today"] = num(on_day(id_at, today), src + "Release 1 ids merged today (IST)")
     caps_now = {int(k[3:]): v[1] for k, v in parse_capabilities(cap_text).items() if re.fullmatch(r"R1\.\d+", k)} if cap_text else {}
     mine = {m for m, _ in maps}
     prove_keys = ("flow_works_24h", "flow_works_3d", "flow_prove_lag_h", "flow_awaiting", "flow_awaiting_oldest_h",
-                  "flow_forecast", "flow_forecast_best", "flow_forecast_worst")
+                  "flow_forecast", "flow_forecast_best", "flow_forecast_worst", "flow_works_today", "flow_works_week")
     if not (mine & set(caps_now)):
         for k in prove_keys:
             N[k] = num(None, "not measured: qa's file has no Release 1 row of the checklist")
@@ -707,6 +713,9 @@ def flow_numbers(N, snap, now, today, rows, backlog, app_merged_at, cap_text, mi
     N["flow_works_24h"] = num(window(since.values()), src + "rows whose run of Works began in the 24 h",
                               detail=sorted(m for m, t in since.items() if cut < t <= now))
     N["flow_works_3d"] = num(works_days, src + "rows proven on each of the 3 days")
+    N["flow_works_today"] = num(on_day(since.values(), today), src + "rows whose run of Works began today (IST)")
+    N["flow_works_week"] = num(len([t for t in since.values() if monday <= ist_day(t) <= today]),
+                               src + "rows whose run of Works began this week, Monday %s to today (IST)" % monday.isoformat())
     N["flow_prove_lag_h"] = num(lag_h, src + "median built -> works hours, n=%d" % len(hrs))
     N["flow_awaiting"] = num(len(waiting), src + "built, waiting for qa", detail=waiting)
     N["flow_awaiting_oldest_h"] = num(round(max(old), 1) if old else None, src + "oldest waiting row's hours since built")
