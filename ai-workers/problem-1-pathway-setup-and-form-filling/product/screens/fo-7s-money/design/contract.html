@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FO-7s0 contract table</title>
+<!-- FO-7s0 DW2 (concept.md): one line per screen element: route under /api/front-office/money/* (public pay: /api/public/pay/*),
+     permission key, the row that builds it, the refusal words the screen shows. A route no brief names is an "FO-7q addition"
+     (a read) or a "Question" (a write), never invented. Open with ?plant=dw2 (an element with no route): the check must say FAIL.
+     Sources: the money briefs FO-7b (lead-b-front-office), FO-7c, g, m, mv, p, q, r, t, ts, v on main, rows rev 16.33-16.53. -->
+<style>
+:root{--bg:#f5f7fa;--card:#fff;--text:#1a2233;--muted:#5b667a;--ok:#1d7a46;--bad:#b42318;--line:#dde3ec;--warn:#9a5b00}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151c;--card:#1a202b;--text:#e8edf5;--muted:#9aa6b8;--line:#2c3544;--warn:#f0b35a}}
+:root[data-theme="dark"]{--bg:#11151c;--card:#1a202b;--text:#e8edf5;--muted:#9aa6b8;--line:#2c3544;--warn:#f0b35a}
+body{margin:0;padding:16px;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,sans-serif}
+h1{font-size:18px;margin:0 0 4px}p{color:var(--muted);margin:0 0 12px}
+.wrap{overflow-x:auto}table{border-collapse:collapse;min-width:900px;width:100%;background:var(--card)}th,td{border:1px solid var(--line);padding:4px 8px;text-align:left;vertical-align:top}
+td.gap{color:var(--warn);font-weight:600}output{display:block;font-weight:600;margin:8px 0 16px}output[data-result=PASS]{color:var(--ok)}output[data-result=FAIL]{color:var(--bad)}
+</style></head><body>
+<h1>Contract table (FO-7s0)</h1>
+<p>Paths after <code>/api/front-office/money</code> unless they start with <code>/api/</code>. "FO-7b route" = FO-7b names the behaviour but no path; the builder reads the path on <code>main</code>. Gaps G1-G23 and questions Q1-Q4 are listed in <code>concept.md</code>.</p>
+<output id="dw2"></output>
+<div class="wrap"><table><thead><tr><th>Group</th><th>Element</th><th>Route</th><th>Key</th><th>Row</th><th>Refusal words shown</th></tr></thead><tbody id="rows"></tbody></table></div>
+<script>
+// [group, element, route, key, row, refusal]; route "FO-7q addition: …" or "Question: …" marks a gap
+const C = [
+["a","Invoice list, filters, paging","GET /invoices?status=&partyKind=&partyId=&caseId=&issuedFrom=&issuedTo=&overdue=&pageSize=&after=","agent/invoice:list","FO-7q","400 on pageSize > 200 (plain message); C5: empty page"],
+["a","Menu: Trust, To move, Monthly check shown or not","GET /trust/answer (+ held amounts)","Owner (service); others: menu follows the reads' 404","FO-7t p1","—"],
+["a","Trust state for every staff member","FO-7q addition: trust-state read (shows / takes new money) (G15)","any money key","FO-7q","—"],
+["a","Menu: Exports shown or not","GET /api/platform/me (keys)","agent/billing:export","PF-4","—"],
+["b","Bill to search (won people and companies)","FO-7q addition: GET /parties?q=&won=true (G2)","agent/invoice:create","FO-7q","—"],
+["b","Start from retainer / draft","FO-7b route (draft)","agent/invoice:create","FO-7b","409 \"<Party>'s retainer isn't signed. Invoice anyway?\""],
+["b","Edit draft lines (Fee, Disbursement, Government fee)","FO-7b route (edit)","agent/invoice:edit","FO-7b","\"Issued invoices can't be edited — use a credit note.\""],
+["b","Tax default per line","GET /tax-default?partyKind=&partyId=","agent/invoice:create","FO-7g p1","rate on a Government fee line refused (no control shown)"],
+["b","Issue (number, due date, email waits)","FO-7b route (issue)","agent/invoice:issue","FO-7b","\"Email waits: add your payment details\" (notice, not a refusal)"],
+["b","Delete draft","Question: delete-draft route (G16; AG-6-1 §8 key)","agent/invoice:void","FO-7b","—"],
+["b","Invoice detail + allowedActions","GET /invoices/:id","agent/invoice:show","FO-7q","404 (other firm, unknown, not visible)"],
+["b","Change due date","Question: due-date change route (G16; AG-6-46 r2)","agent/invoice:issue","FO-7b","—"],
+["b","Copy pay link","POST /invoices/:id/pay-link","agent/payment:online","FO-7c p2","refused on deposit invoice; trust request id 404; PF-27 neutral words"],
+["b","Send pay link","FO-7q addition: POST /invoices/:id/pay-link/send (G4)","agent/payment:online","FO-7q","—"],
+["i","Credit note / Cancel invoice","FO-7b route (credit note)","agent/invoice:void","FO-7b, FO-7r p1","409 \"Already settled by write-off\"; over remaining refused"],
+["i","Credit note email","FO-7q addition: send credit note (G10)","agent/invoice:void","FO-7q","—"],
+["i","Refund (offline) on a payment","FO-7b route (refund)","agent/refund:create","FO-7b","403 without the key; over refundable refused"],
+["i","Refund (card)","POST /payments/:id/card-refund","agent/refund:create","FO-7c p3","409 \"Record an offline refund instead\"; state \"Refund requested\""],
+["i","Write off","POST /invoices/:id/write-off {reason}","agent/invoice:void","FO-7r p1","\"Only an issued invoice with a balance can be written off.\""],
+["i","Reverse entry preview","GET /payments/:id/reverse-preview","agent/payment:record","FO-7v p2-3","—"],
+["i","Reverse entry confirm","POST /payments/:id/reverse {reasonCode, reason?, previewHash}","agent/payment:record","FO-7v p2-3","409 \"Use a refund\"; 409 \"Changed since the preview\""],
+["c","Record payment","FO-7b route (offline payment, idempotency key)","agent/payment:record","FO-7b","duplicate reference warning; API words for the rest"],
+["c","Where the money arrived (Trust first)","Question: FO-7b's payment route field receivedInto (Q2)","agent/payment:record","FO-7b","—"],
+["c","Card session open on an invoice","FO-7q addition: open card session on the invoice read (G19)","agent/invoice:show","FO-7q","—"],
+["c","Idempotency on trust applications, refunds, credit notes","Question: Idempotency-Key on FO-7t and FO-7b routes (G20)","as each route","FO-7t, FO-7b","—"],
+["i","Write-off amount guard","Question: expected amount on the write-off route (G21)","agent/invoice:void","FO-7r","—"],
+["e","Actions on payment detail and Money view","FO-7q addition: allowedActions there (G22); until then GET /api/platform/me keys","as each action","FO-7q, PF-4","—"],
+["g","Getting paid values","FO-7q addition: Getting paid read (G23, with G1)","any staff","FO-7q","—"],
+["c","Cheque Cleared tick","Question: cleared route (G7)","agent/payment:record","FO-7b","—"],
+["c","Payments list / detail","GET /payments?invoiceId=&trustRequestId=&method=&from=&to=&pageSize=&after=, GET /payments/:id","agent/payment:record or agent/invoice:show","FO-7q","404 other firm"],
+["c","Resend receipt","FO-7q addition: POST /payments/:id/receipt/resend (G3)","agent/payment:record","FO-7q","—"],
+["c","Overpayment: Refund · Keep as credit","Question: FO-7b amendment 1 vs main for extra into operating (Q5); trust off: FO-7b route, credit ledger KEPT","FO-7b's (read on main)","FO-7b","—"],
+["j","Send statement (party / case)","POST /parties/:kind/:id/statements, POST /cases/:id/statements {from?, to?}","agent/invoice:issue","FO-7r p2","403 without the key"],
+["j","Statement preview","FO-7q addition: POST …/statements/preview (G11)","agent/invoice:issue","FO-7q","—"],
+["j","Start export","POST /exports {from, to, kinds}","agent/billing:export","FO-7r p3","400 TRUST_LEDGER while trust is off; 403 \"You do not have access to exports\""],
+["j","Payments file without received into while trust is off","Question: FO-7r p3 column rule (G17)","agent/billing:export","FO-7r","—"],
+["j","Export state and download","GET /exports/:id, GET /exports/:id/:kind.csv","agent/billing:export","FO-7r p3","\"This link has expired. Start the export again.\""],
+["j","Past exports, row counts","FO-7q addition: GET /exports, rowCount (G13)","agent/billing:export","FO-7q","—"],
+["d","Pay page read","GET /api/public/pay/:token","token (no login)","FO-7c p2","\"This payment link is no longer valid. Please contact <firm> for a new one.\""],
+["d","Pay by card","POST /api/public/pay/:token/session","token","FO-7c p2","account down: offline details or contact line, no card form"],
+["d","Plan schedule","GET /invoices/:id/plan (staff); the pay page read (client)","agent/invoice:issue; token","FO-7p p2","—"],
+["d","Create plan","POST /invoices/:id/plan {instalments}","agent/invoice:issue","FO-7p p2","400 \"Instalments add up to CAD 1,100.00; the invoice has CAD 1,130.00 open\""],
+["d","Cancel plan","POST /plans/:id/cancel {reason}","agent/invoice:issue","FO-7p p2","400 without reason"],
+["d","Autopay consent and Stop (staff)","POST /plans/:id/autopay/stop","agent/invoice:issue","FO-7p p3","—"],
+["d","Stop autopay (client)","Question: client Stop route by token (FO-7p names no path)","token","FO-7p p3","—"],
+["e","Money summary per currency","GET /parties/:kind/:id/money, GET /cases/:id/money","agent/invoice:show","FO-7r p2","C5: not-found page, never CAD 0"],
+["e","Trust balances","GET /trust/balances?party=","agent/invoice:show","FO-7t p1","404 while trust is off and nothing held"],
+["e","Trust ledger","GET /trust/ledger?party=&case=&currency=","agent/invoice:show","FO-7t p1","404 while trust is off and nothing held"],
+["e","Payer per ledger entry","FO-7q addition: payer on each ledger entry (G8)","agent/invoice:show","FO-7q","—"],
+["e","Shortfall after a reversal (ledger, Owner item)","FO-7q addition: read of FO-7a2's money_trust_shortfall (G18)","agent/invoice:show","FO-7a2, FO-7q","—"],
+["e","Credit-note operating → trust line","written by FO-7b's credit-note route; listed by GET /trust/to-move","agent/invoice:void","FO-7a2, FO-7b","409 for any other operating → trust line"],
+["e","Pay from trust (issued)","POST /trust/applications {invoiceId, amountMinor, otherFundsPick?}","agent/invoice:issue","FO-7t p2","\"Only CAD 169.50 is available.\""],
+["e","Available from trust","FO-7q addition: GET /invoices/:id/trust-available (G6)","agent/invoice:issue","FO-7q","—"],
+["e","Pay from trust at issue","FO-7b route (issue) + FO-7t applyTrust","agent/invoice:issue","FO-7t p2","a failed withdrawal rolls the issue back"],
+["e","Refund trust to client","POST /trust/refunds {party, case?, currency, amountMinor, reason, method, reference, payee?}","agent/refund:create","FO-7t p2","400 without reason; over the payer's balance refused"],
+["e","To move list","GET /trust/to-move","agent/payment:record","FO-7t p3","404 while trust is off and nothing held"],
+["e","I moved these","POST /trust/to-move/batches {currency, direction, transferDate, lines}","agent/payment:record","FO-7t p3","409 MOVE_REFUSED (database words); 400 two currencies"],
+["e","Undo this batch","POST /trust/to-move/batches/:id/undo {reason}","agent/payment:record","FO-7t p3","400 without reason"],
+["e","Past batches","FO-7q addition: GET /trust/to-move/batches (G9)","agent/payment:record","FO-7q","—"],
+["f","Trust question","GET /trust/answer, PUT /trust/answer {answer}","Owner (service check)","FO-7t p1","403 for a non-Owner"],
+["f","Ask the Owner (name)","FO-7q addition: staff lookup by role (G12)","—","FO-7q","—"],
+["f","Trust requests create / cancel / read","POST /trust/requests, POST /trust/requests/:id/cancel, GET /trust/requests/:id","agent/payment:record","FO-7t p1","\"Client B's retainer isn't signed. Request anyway?\" (p5)"],
+["f","Trust requests list","FO-7q addition: GET /trust/requests (G5)","agent/payment:record","FO-7q","—"],
+["f","Record trust deposit","POST /trust/deposits","agent/payment:record","FO-7t p1","CARD refused"],
+["f","Deposit evidence file","FO-7q addition: upload route (G14)","agent/payment:record","FO-7q","—"],
+["h","Monthly check parts","GET /monthly-check/parts?currency=&statementDate=","agent/payment:record","FO-7m p2","400 without currency"],
+["h","Save monthly check","POST /monthly-check {currency, statementDate, bankBalanceMinor, inTransitMinor, note?}","agent/payment:record","FO-7m p2","400 \"Add a short note about the difference\""],
+["h","History","GET /monthly-check/history?currency=&pageSize=&after=","agent/payment:record","FO-7m p2","—"],
+["g","Payment account status","GET /payment-account","agent/payment-rail:connect","FO-7c p1","non-Owner: \"Only the Owner manages card payments\""],
+["g","Connect / Continue / Reconnect","POST /payment-account/onboarding","agent/payment-rail:connect + step-up","FO-7c p1","401 STEP_UP_REQUIRED → \"Confirm it's you: sign in again, then try once more.\""],
+["g","Operating details block","Question: write route (Q1, G1)","agent/billing-config:terms","—","—"],
+["g","Trust details block","Question: write route (G1; recommended FO-7t p1)","agent/billing-config:terms","FO-7t","—"],
+["g","Registered for tax, tax number, Prices include tax","Question: write route (G1; recommended FO-7g p2)","agent/billing-config:tax","FO-7g","—"],
+["g","Due in N days","Question: write route (G1)","agent/billing-config:terms","—","—"],
+["g","Invoice payments go to","FO-7b route (Owner only)","Owner","FO-7b","not shown unless trust Yes"],
+];
+if (new URLSearchParams(location.search).get("plant") === "dw2") C.push(["b","Planted element","","","",""]);
+const gap = r => /^(FO-7q addition|Question):/.test(r[2]);
+const bad = C.filter(r => !r[2] || !r[4] || (!gap(r) && (!r[3] || r[4] === "—")));
+const o = document.getElementById("dw2"); o.dataset.result = bad.length ? "FAIL" : "PASS";
+o.textContent = "DW2 every element has a route, key and row, or is a named gap: " + (bad.length ? "FAIL — " + bad.map(b => b[1]).join("; ") : "PASS");
+const tb = document.getElementById("rows");
+for (const r of C) { const tr = tb.insertRow(); r.forEach((t, i) => { const c = tr.insertCell(); c.textContent = t; if (i === 2 && gap(r)) c.className = "gap"; }); }
+</script></body></html>
