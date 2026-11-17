@@ -287,31 +287,31 @@ try {
   }), zodSays("firmId"));
   ok("adapter fail: an entry without firmId is refused and the change rolls back", refused && lines() === before && sql("select count(*) from workspace where key = 'pf0p-change-2'") === "0");
 
-  // The first line ever, in a transaction that rolls back: the workspace it made goes too, and the next write remakes it.
-  sql(`delete from workspace where key = '${PLATFORM_AUDIT_WORKSPACE}'`);   // AUD-1a: audit lines are never deleted; a line of a gone workspace is no longer counted (lines() joins the workspace)
-  await rejects(() => db.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: "r-13" })); throw new Error("roll back"); }));
-  const wsGone = sql(`select count(*) from workspace where key = '${PLATFORM_AUDIT_WORKSPACE}'`) === "0";
-  await db.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: "r-14" })); });
-  ok("adapter pass: a rolled-back first line leaves no workspace and no stale id; the next line remakes it", wsGone && lines() === 1);
+  // AUD-1a (review m1, Lead 78 ruling 6946256175): the platform-audit workspace row is never deleted (aud_event_workspace_guard)
+  // and its lines never are, so these cases use keys unique to this run and count the change, on the row that exists.
+  const K = `${process.pid}`, ws = () => sql(`select count(*) from workspace where key = '${PLATFORM_AUDIT_WORKSPACE}'`);
+  const l0 = lines();
+  await rejects(() => db.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: `r-13-${K}` })); throw new Error("roll back"); }));
+  const rolledBack = lines() === l0 && sql(`select count(*) from audit_event where entity_key = 'r-13-${K}'`) === "0";
+  await db.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: `r-14-${K}` })); });
+  ok("adapter pass: a rolled-back line leaves no line; the next line lands (one more line, still one workspace)", rolledBack && lines() === l0 + 1 && ws() === "1");
 
-  // Review M1: two first writers at once on a database with no audit workspace yet. The second waits for the first's
-  // commit and then uses its row; both lines land, one workspace. Then the same with the first rolling back.
-  const reset = () => sql(`delete from workspace where key = '${PLATFORM_AUDIT_WORKSPACE}'`);   // AUD-1a: the lines stay (insert-only); only the workspace row goes
+  // Review M1: two writers at once both commit, one workspace; then the same with the first rolling back.
   const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const db2 = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
   try {
-    reset();
+    const l1 = lines();
     const both = await Promise.allSettled([
-      db.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: "race-a" })); await pause(800); }, { timeout: 20_000 }),
-      pause(200).then(() => db2.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: "race-b" })); }, { timeout: 20_000 })),
+      db.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: `race-a-${K}` })); await pause(800); }, { timeout: 20_000 }),
+      pause(200).then(() => db2.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: `race-b-${K}` })); }, { timeout: 20_000 })),
     ]);
-    ok("adapter pass: two first writers at once both commit, one workspace (review M1)", both.every((r) => r.status === "fulfilled") && lines() === 2 && sql(`select count(*) from workspace where key = '${PLATFORM_AUDIT_WORKSPACE}'`) === "1", both.map((r) => r.status === "rejected" ? String(r.reason).slice(0, 200) : "ok"));
-    reset();
+    ok("adapter pass: two writers at once both commit (two more lines), one workspace (review M1)", both.every((r) => r.status === "fulfilled") && lines() === l1 + 2 && ws() === "1", both.map((r) => r.status === "rejected" ? String(r.reason).slice(0, 200) : "ok"));
+    const l2 = lines();
     const firstFails = await Promise.allSettled([
-      db.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: "race-c" })); await pause(800); throw new Error("first writer rolls back"); }, { timeout: 20_000 }),
-      pause(200).then(() => db2.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: "race-d" })); }, { timeout: 20_000 })),
+      db.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: `race-c-${K}` })); await pause(800); throw new Error("first writer rolls back"); }, { timeout: 20_000 }),
+      pause(200).then(() => db2.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: `race-d-${K}` })); }, { timeout: 20_000 })),
     ]);
-    ok("adapter fail: when the first writer rolls back, the waiting second still commits its line (one line, one workspace)", firstFails[0].status === "rejected" && firstFails[1].status === "fulfilled" && lines() === 1 && sql(`select count(*) from audit_event where entity_key = 'race-d'`) === "1", firstFails.map((r) => r.status === "rejected" ? String(r.reason).slice(0, 200) : "ok"));
+    ok("adapter fail: when the first writer rolls back, the waiting second still commits its line (one more line, one workspace)", firstFails[0].status === "rejected" && firstFails[1].status === "fulfilled" && lines() === l2 + 1 && sql(`select count(*) from audit_event where entity_key = 'race-d-${K}'`) === "1" && sql(`select count(*) from audit_event where entity_key = 'race-c-${K}'`) === "0", firstFails.map((r) => r.status === "rejected" ? String(r.reason).slice(0, 200) : "ok"));
   } finally { await db2.$disconnect(); }
 
   // PF-0c: the interim adapter runs AuditPort's shared contract (lines read back from audit_event by detail.firmId).

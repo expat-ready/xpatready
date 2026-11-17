@@ -1,7 +1,7 @@
 -- AUD-1a (map row 8, R1.8 part 1; SA-11-1@73e32bad, SA-11-2@1deac028, SA-11-3@9126708a, AG-13-41@47af563a, SA-11 BR-3,
 -- NFR5-08; P-571 (1), P-600; case-side contract §2.5): the one audit trail becomes the audit module's own
 -- (prisma/schema/audit.prisma) and insert-only at the database. Additive: five nullable columns, one enum, one index, three
--- functions and three triggers; nothing dropped, no foreign key (the trail outlives what it names, SA-11 BR-8).
+-- functions and three triggers on the trail, plus one guard on the workspace rows it reads; nothing dropped, no foreign key (the trail outlives what it names, SA-11 BR-8).
 --
 -- Order: columns; the actor words checked (an unknown word fails the migration, naming it); the back-fill (actor_type,
 -- firm_id, case_id); actor_type NOT NULL; the triggers last, so the back-fill is not refused; then the grant step.
@@ -10,7 +10,7 @@
 -- the demo reset (one path, transaction setting app.audit_sample_reset = 'on') deletes the demo workspace's lines whose
 -- firm_id is null or a Sample firm's, and its orphan sweep deletes lines whose workspace no longer exists (same firm
 -- rule); nothing else, never a firm's production line or a platform-audit line (P-571 (1)).
--- Down (by hand): drop the three triggers and functions, the index, the five columns and the enum; grant UPDATE back.
+-- Down (by hand): drop the four triggers and functions (aud_event_workspace_guard on workspace too), the index, the five columns and the enum; grant UPDATE back.
 
 -- CreateEnum
 CREATE TYPE "AuditActorType" AS ENUM ('FIRM_STAFF', 'OUR_STAFF', 'CLIENT', 'SYSTEM', 'SEED');
@@ -119,6 +119,32 @@ BEGIN
   RAISE EXCEPTION 'audit lines are never changed or deleted (TRUNCATE refused)' USING ERRCODE = 'insufficient_privilege';
 END $fn$;
 CREATE TRIGGER "aud_event_no_truncate" BEFORE TRUNCATE ON "audit_event" FOR EACH STATEMENT EXECUTE FUNCTION aud_event_no_truncate();
+
+-- The workspace rows the delete rule reads (Lead 78's ruling on Devin's finding, comment 6946256175): the platform-audit
+-- row is never deleted and its id never changes, and no workspace takes or gives up the key demo or platform-audit, for
+-- every role (the app's xr_app included; only an owner on a scratch copy can switch triggers off, which xr_app cannot,
+-- PF-12). So a platform line can never be made to look like a demo or orphan line. Demo.wipe deleting the demo row and
+-- a new demo row being made stay allowed.
+CREATE FUNCTION aud_event_workspace_guard() RETURNS trigger
+  LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp
+  AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF OLD."key" = 'platform-audit' THEN
+      RAISE EXCEPTION 'the platform audit workspace is never deleted (its lines are the audit trail)' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN OLD;
+  END IF;
+  IF NEW."key" IS DISTINCT FROM OLD."key" AND (OLD."key" IN ('demo', 'platform-audit') OR NEW."key" IN ('demo', 'platform-audit')) THEN
+    RAISE EXCEPTION 'a workspace never takes or gives up the key % (the audit trail''s delete rule reads it)', quote_literal(CASE WHEN OLD."key" IN ('demo', 'platform-audit') THEN OLD."key" ELSE NEW."key" END)
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF OLD."key" = 'platform-audit' AND NEW."id" IS DISTINCT FROM OLD."id" THEN
+    RAISE EXCEPTION 'the platform audit workspace keeps its id (its lines point at it)' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  RETURN NEW;
+END $fn$;
+CREATE TRIGGER "aud_event_workspace_guard" BEFORE UPDATE OR DELETE ON "workspace" FOR EACH ROW EXECUTE FUNCTION aud_event_workspace_guard();
 
 -- The grant step (SA-11-3, with the DELETE departure): PF-12's app role (xr_app, its table rights through xr_data) loses
 -- UPDATE and TRUNCATE on the trail. DELETE stays granted while the demo reset runs as the app; the trigger refuses every

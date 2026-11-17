@@ -58,7 +58,7 @@ try {
   const code = readFileSync(join(MIG, NEW, "migration.sql"), "utf8").replace(/^\s*--.*$/gm, "");
   ok(`AUD-1a DW6 pass: the migration has its own stamp, later than every one before it and unique (newest before it: ${before.at(-1)}; P-348 (8))`, all.includes(NEW) && before.every((d) => d < NEW) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1, all.slice(-3));
   const named = [...code.matchAll(/CREATE (?:OR REPLACE )?(?:FUNCTION|TRIGGER) "?(\w+)"?/g)].map((m) => m[1]);
-  ok("AUD-1a DW6 pass: every function and trigger it creates is aud_event_* (three functions of rules, three triggers)", named.length >= 6 && named.every((f) => f.startsWith("aud_event_")), named);
+  ok("AUD-1a DW6 pass: every function and trigger it creates is aud_event_* (four functions and four triggers, the workspace guard included)", named.length >= 8 && named.every((f) => f.startsWith("aud_event_")), named);
   ok("AUD-1a DW6 pass: additive only — nothing dropped, no foreign key, no DELETE or UPDATE outside the back-fill", !/\bDROP\b|REFERENCES|FOREIGN KEY/i.test(code) && [...code.matchAll(/^\s*(UPDATE|DELETE)\b[^;]*/gim)].every((m) => /^UPDATE "audit_event"/.test(m[0].trim())));
 
   for (const d of before) psql(urlOf(BARE), ["-f", join(MIG, d, "migration.sql")]);
@@ -149,6 +149,32 @@ try {
   tx(BARE, `delete from audit_event where id in ('${demoLine}', '${sampleDemo}')`, true, "xr_app");
   ok("AUD-1a DW2 pass: with the setting on in the same transaction, a demo line (firm null) and a demo line of a Sample firm go (app's connection)", rows() === r1 - 2 && n(BARE, `select count(*) from audit_event where id in ('${demoLine}', '${sampleDemo}')`) === 0);
   ok("AUD-1a DW2 fail: the platform-audit firm line is still there after all of it", n(BARE, `select count(*) from audit_event where id = '${platLine}'`) === 1);
+
+  // ------------------------------------------------------------------------------------------- DW7: the workspace rows the rule reads
+  // Lead 78's ruling on Devin's finding (comment 6946256175): no role deletes the platform-audit row, changes its id, or
+  // moves the key demo or platform-audit onto or off a workspace, so a platform line never looks like a demo or orphan line.
+  const wsKeys = () => sql(BARE, "select string_agg(key || '=' || id, ',' order by key) from workspace");
+  const k0 = wsKeys(), GUARD = /never deleted|never takes or gives up the key|keeps its id/;
+  const guarded = [
+    ["delete the platform-audit row (app)", () => tx(BARE, "delete from workspace where key = 'platform-audit'", true, "xr_app")],
+    ["delete the platform-audit row (owner)", () => tx(BARE, "delete from workspace where key = 'platform-audit'", true)],
+    ["rename platform-audit (app)", () => tx(BARE, "update workspace set key = 'pa-moved' where key = 'platform-audit'", false, "xr_app")],
+    ["rename demo away (app)", () => tx(BARE, "update workspace set key = 'demo-x' where key = 'demo'", false, "xr_app")],
+    ["rename demo away (owner)", () => tx(BARE, "update workspace set key = 'demo-x' where key = 'demo'", false)],
+    ["rename another workspace to platform-audit (owner)", () => tx(BARE, "update workspace set key = 'platform-audit' where key = 'firm'", false)],
+    ["swap demo and platform-audit in one statement (owner)", () => tx(BARE, "update workspace set key = case key when 'demo' then 'platform-audit' else 'demo' end where key in ('demo', 'platform-audit')", false)],
+    ["change the platform-audit row's id (owner)", () => tx(BARE, `update workspace set id = '${randomUUID()}' where key = 'platform-audit'`, false)],
+  ] as const;
+  const notRefused = guarded.filter(([, f]) => !refused(f, GUARD)).map(([n]) => n);
+  ok(`AUD-1a DW7 fail: every move of the rows the rule reads is refused, as the app's connection and as the owner (${guarded.length} tries); nothing changed`, notRefused.length === 0 && wsKeys() === k0, notRefused);
+  // With the demo row moved away, another workspace renamed to demo would make its null-firm lines deletable: refused too.
+  sql(BARE, "insert into workspace (id, key, label) values (gen_random_uuid(), 'aud1a-plain', 'A plain workspace')");
+  ok("AUD-1a DW7 fail: no workspace takes the key demo (renaming a plain workspace to demo is refused, the app's connection)", refused(() => tx(BARE, "update workspace set key = 'demo' where key = 'aud1a-plain'", false, "xr_app"), GUARD));
+  tx(BARE, "update workspace set label = 'Renamed label' where key in ('demo', 'platform-audit')", false, "xr_app");
+  tx(BARE, "update workspace set key = 'aud1a-plain-2' where key = 'aud1a-plain'", false, "xr_app");
+  tx(BARE, "delete from workspace where key = 'aud1a-plain-2'", false, "xr_app");
+  ok("AUD-1a DW7 pass: a label changes on the guarded rows, and a plain workspace is renamed and deleted (the app's connection)",
+    n(BARE, "select count(*) from workspace where key in ('demo', 'platform-audit') and label = 'Renamed label'") === 2 && n(BARE, "select count(*) from workspace where key like 'aud1a-plain%'") === 0);
 
   // ------------------------------------------------------------------------------------------- Part B: the isolated copy
   const call = async (method: string, path: string, body?: unknown, actor = "user-A") => {
