@@ -413,7 +413,8 @@ FLOW_DISK_GB = 7                               # the Mac's disk floor for the Fl
 STUCK_MAX_PRS = 40                             # open approved PRs whose label time is read (one call each)
 STUCK_MERGE_MIN = (30, 60)                     # Stuck now: last merge to main, green to 30 min, red over 60 (P-646)
 STUCK_QUEUE = (15, 30)                         # Stuck now: Actions runs waiting for a machine, red over 30 (P-646)
-STUCK_SESSIONS_FRESH_MIN = 60                  # Stuck now: an empty session list older than this reads amber, not green
+STUCK_SESSIONS_FRESH_MIN = 60
+STUCK_SESSIONS_LABEL = "Sessions stuck (awaiting input, failed, blocked, or idle with work left and no push for 90 min)"  # Lead 73, P-339b; the Lead filters                  # Stuck now: an empty session list older than this reads amber, not green
 STUCK_APPROVED_MIN = 60                        # Stuck now: approved and not merged for over 60 min
 CI_SAMPLE_RUNS = 20                            # CI runs (newest, last 3 h) whose jobs are read for the wait
 LEAD_B_BRANCH = "lead-b-front-office"          # Lead B's branch holding design/lead-b-briefs/ (Lead input lead_b_branch overrides)
@@ -3117,28 +3118,31 @@ def stuck_now(d, sc, ci, li, li_src):
          "text": (f"Actions runs waiting for a machine: {q}" if q is not None else "Actions runs waiting for a machine: not measured"),
          "src": f"GitHub Actions runs with status queued (total_count), as lead-watch's jam line (P-646); green to {STUCK_QUEUE[0]}, red over {STUCK_QUEUE[1]}; " + at}]
     if isinstance(ss, list):
-        names = [f"{x.get('title') or 'untitled'} ({x.get('state') or 'state not given'})" for x in ss if isinstance(x, dict)]
+        names = [f"{x.get('title') or 'untitled'} ({'; '.join(str(v) for v in (x.get('state') or 'state not given', x.get('reason')) if v)})"
+                 for x in ss if isinstance(x, dict)]
         try:
             sa = parse_iso(ss_at) if ss_at else None
             sa = sa if sa and sa.tzinfo else None                  # a time with no zone is not trusted
-        except ValueError:
+        except (ValueError, TypeError, AttributeError):     # not a string, or not a time
             sa = None
         tk = parse_iso(taken) if taken else None
         age = int((tk - sa).total_seconds() // 60) if sa and tk else None
         when = (ist(sa) + (f", {age} min before this data" if age is not None else "")) if sa else "a time not given"
         stale = age is None or age > STUCK_SESSIONS_FRESH_MIN
         lines.append({"key": "sessions", "light": "red" if names else ("amber" if stale else "green"),
-                      "text": (f"Sessions awaiting input or failed: {len(names)}" + (": " + "; ".join(names) if names else "")),
+                      "text": (f"{STUCK_SESSIONS_LABEL}: {len(names)}" + (": " + "; ".join(names) if names else "")),
                       "src": f"per the Lead's check of claude.ai/code at {when} (P-647), Lead-reported; amber when no session is listed but the "
                              f"check is over {STUCK_SESSIONS_FRESH_MIN} min old or undated; " + li_src, "items": names})
     else:
-        lines.append({"key": "sessions", "light": "grey", "text": "Sessions awaiting input or failed: not reported",
+        lines.append({"key": "sessions", "light": "grey", "text": f"{STUCK_SESSIONS_LABEL}: not reported",
                       "src": "the Lead input has no stuck_sessions (the Lead's check of claude.ai/code, P-647)", "items": []})
     ao = sc["approved_old"]
     lines.append({"key": "approved", "light": "grey" if sc["stuck_approved_over_60"] is None else "red" if ao else "green",
                   "text": (f"Approved, not merged for over {STUCK_APPROVED_MIN} min: " + (str(len(ao)) + (": " + "; ".join(f"#{x['number']} ({x['min']} min)" for x in ao[:8]) + (f" and {len(ao) - 8} more" if len(ao) > 8 else "") if ao else ""))
-                           if sc["stuck_approved_over_60"] is not None else f"Approved, not merged for over {STUCK_APPROVED_MIN} min: " + sc["approved_reason"]),
-                  "src": "open PRs labelled review: approved, minutes since the label went on (GitHub issue events); " + at,
+                           if sc["stuck_approved_over_60"] is not None else f"Approved, not merged for over {STUCK_APPROVED_MIN} min: " + sc["approved_reason"])
+                          + (f"; waiting for CI machines ({q} runs queued)" if ao and q is not None and q > STUCK_QUEUE[1] else ""),
+                  "src": "open PRs labelled review: approved, minutes since the label went on (GitHub issue events); the reason 'waiting for CI machines' is added "
+                         f"when the queue line is red (over {STUCK_QUEUE[1]} runs queued; Lead 74, 17 Nov); " + at,
                   "items": [f"#{x['number']} {x['title']} ({x['min']} min)" for x in ao]})
     return {"lines": lines, "light": flow_light(*[x["light"] if x["light"] != "grey" else None for x in lines])}
 
@@ -3244,6 +3248,8 @@ def first_screen(d, r1_qa, li, li_src):
                         "why": "qa/CAPABILITIES.md on main has no Release 1 rows (or was not read)"})
     # Today's proving goal (Lead input today_goal, reported)
     g = (li or {}).get("today_goal") or {}
+    g_text = g if isinstance(g, str) else None              # a goal sent as words, not {proven, by}: shown, not counted
+    g = g if isinstance(g, dict) else {}
     if g.get("proven"):
         short = int(g["proven"]) - len(proven)
         tstate = "done" if short <= 0 else ("at risk" if short <= len(waiting) else "off track")
@@ -3254,7 +3260,8 @@ def first_screen(d, r1_qa, li, li_src):
                            ("" if short <= len(waiting) else ": fewer than needed, so not reachable today")),
                    "plan": g.get("plan"), "class": "reported"}
     else:
-        today_b = {"goal": None, "state": "not set", "why": "no proving goal in the Lead input (today_goal)", "proven": len(proven),
+        today_b = {"goal": None, "state": "not set", "why": (f"the Lead's goal is words, not a number and a time (today_goal: {g_text})" if g_text else
+                                                            "no proving goal in the Lead input (today_goal)"), "proven": len(proven),
                    "waiting": len(waiting), "class": "reported"}
     # Needs you: the founder's open items, plus launch steps he owns that are dated today or earlier (founder, 16 Nov: "Yes, show them")
     ny = []
