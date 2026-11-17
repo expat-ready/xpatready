@@ -17,7 +17,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
-import { normalizeLabel } from "../contracts/programs";
+import { normalizeLabel } from "../contracts/programs.ts";
 import { seedField } from "./seed_library.cjs";
 
 const PORT = Number(process.argv[2] ?? 4637), APIDB = process.argv[3] ?? "xr_studio_runtime_csnk1";

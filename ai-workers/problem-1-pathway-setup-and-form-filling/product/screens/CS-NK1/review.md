@@ -88,3 +88,31 @@ Read: `git diff 91f92691ad..d5b3ee9d37` (the migration, the test, and records). 
 * **Not run here:** full `ci`, the checkpoint load and the three `pypdf`-blocked suites (see above). The builder reports gcore_b2_door, cssd1_no_drift and prisma_schema green.
 
 Verdict: Approve d5b3ee9d3705beeff5cb93d143b3d2fba9e14eab
+
+## Round 3: be057af25bc82ff5028628a20d608dad3a5e12c2 (only the fix commit be057af for the two Devin findings, P-277)
+Read: `git diff d5b3ee9d37..be057af25` (the backfill block, DW4 in the test, records). Ran on a fresh `runtime_csnk1v` (:4641), PostgreSQL 18.3, Node 24.21.
+* **Suite: 18 passed, 0 failed** (28 s). It has the two new DW4 checks, and the NOTICE lists `n4`, `rb`, `yz` on both runs.
+* **Lock order matches the trigger.** `canonical_field_name` has one writer, the AFTER trigger on `canonical_field` (`library.prisma:73`; no direct write in `api/src`, `tools` or seeds).
+  So any session that writes the name table already holds ROW EXCLUSIVE on `canonical_field`, and it takes that lock first. The block takes the same order.
+  Once it has SHARE ROW EXCLUSIVE on `canonical_field`, nothing that writes can hold `canonical_field_name`, so the second LOCK is granted at once. VACUUM can delay it, but it is no cycle.
+  Earlier statements in the migration take no table lock: CREATE OR REPLACE FUNCTION only, and callers never lock functions. Reads (ACCESS SHARE) and FK key-share (ROW SHARE) do not conflict with the backfill's lock.
+* **No deadlock, shown through Prisma, not only psql.** On a probe database I deployed every migration with `prisma migrate deploy`, put the 25 Oct key back, wrote rows under it and deleted the CS-NK1 row from `_prisma_migrations`.
+  I then opened an API-like write transaction and ran `prisma migrate deploy` again. I ran two variants: the first write skips the trigger (a `meaning` update), or the first write fires it (a label update). In both, a later label update in the same transaction then fired the trigger.
+  `pg_locks` showed the deploy waiting (`ShareRowExclusiveLock` not granted, the whole migration file as one query, so one implicit transaction). The writer's second update was granted and committed, and the deploy then applied (`finished_at` set).
+  The writer's row ended on the new key (`nuevonombreñ`, `ersteü`), and the Café pair gave `cafécrèmez` and `''`.
+* **The race fix closes Devin finding 1.** In READ COMMITTED, each statement in the DO block takes a new snapshot after the LOCK. A writer that was running commits first and is seen; a writer that arrives later waits.
+  I also checked a writer whose trigger plan was already warm on the 25 Oct function. It waited on a psql-held migration and, after commit, reserved `späterö`, the new key. So the waiting rename is planned again against the new function, and no stale key lands.
+  The lock has no `lock_timeout`, so a long open write transaction on `canonical_field` holds the deploy, and field writes queue behind it. API transactions are short, so this is a note, not a finding.
+* **Prisma runs the DO block** (`LOCK` and `CREATE TEMP TABLE … ON COMMIT DROP` inside it). The isolated copy's deploy and my two probe deploys applied it. LOCK inside PL/pgSQL needs no explicit BEGIN, so the test's psql run and Prisma's implicit transaction both work.
+* **Fix 2 is right and needed.** Mutation check on the `ya`/`yz` case: after this migration, the d5b3ee9 backfill run a second time moves `yz` from `''` to `differenty`. That breaks "run once more, changes nothing", and the new DW4 check fails on exactly this (`before !== after`).
+  On the brief: a row that was `''` on 25 Oct now stays `''` even if its newest label no longer collides. That still meets DW4 as written, because it is a legacy duplicate and the NOTICE lists it (`own <> ''`). No rule that re-derives `''` rows from the newest label can be idempotent here.
+  On the impact: no `''` rows exist in the demo data (204 and 167 names on the two copies), and the trigger re-keys such a row on its next write. The PR body says "A row already `''` stays `''` on a later run". It could add "including a 25 Oct duplicate on the first run" (wording only).
+* **The NOTICE is correct, but `prisma migrate deploy` does not print it.** I checked this with a real collision on a Prisma deploy: `yz` became `''`, exit 0, no NOTICE in the output.
+  The durable list is the `SELECT … WHERE name_key = ''` line in the migration. The breaker's F5 follow-up already covers showing it to a person. The brief's "lists those rows in a NOTICE" is met.
+* **The new DW4 checks prove the behaviour.** Removing the two LOCK lines lets the rename land within the 500 ms window (`waited` false, FAIL). Removing the `CASE` fails the second-run check, as shown above.
+  Minor test note: the "reads are not held off" check would hang, not fail, if a lock that blocks reads came in (it has no timeout). It is not blocking.
+* **CI on be057af:** `module-cards` is red because of `api/src/front-office/MODULE.md`, which has 42 lines on `origin/main`. This PR does not touch it, so it is not this diff's fault. The rest is green, skipped or neutral.
+* **Journey score: 9/10, carried from round 1** (`journey-test-reviewer-2026-11-17.md`). This diff changes no screen, API or trigger code. The one effect a user can see, a rename during a deploy, I walked at the data level above: it waits, then lands with its own name.
+* **Not run here:** full `ci`, the checkpoint load, and the `pypdf`-blocked suites (as in rounds 1 and 2).
+
+Verdict: Approve be057af25bc82ff5028628a20d608dad3a5e12c2
