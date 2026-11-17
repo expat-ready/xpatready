@@ -1848,3 +1848,10 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 ### Rev 17.6 (13:35 IST 17 Nov): P-685, the Lead marks drafts ready
 * **P-685 (founder, via Lead 77):** the current Lead marks an old draft ready with `tools/pr-ready.sh`, only when the PR has a `Reviewer: Approve <head sha>` line. Drafts are never sent to the founder. Build Lead A sends each draft and its Approve sha to the current Lead, who marks it within 30 minutes. This replaces the "founder presses Ready" line in rev 17.5. Lanes still never toggle themselves.
 * **#2062** is already ready (head 3f7113b6, Approve 3f7113b6 at 06:29 UTC), so it has nothing to send. No PF/FO draft is open now.
+
+### Rev 17.7 (13:40 IST 17 Nov): Lead 77's 13:3x sweep of my lanes
+* **PF-21i:** yes to pushing `claude/runtime-pf0bp`; open it non-draft only after the reviewer's Approve (P-683). Posted on #2012 (comment 6942...); the lane's claude.ai prompt box could not be reached, see below.
+* **PF-6m2 #2045** (queued, head ec1c08f1): four rulings posted (comment 6942420704). Q1 accept the one added audit action. Q2 keep the touch-list slips. Q3 keep `system:signup` now; the rename to `system:sign-up` is a **follow-up row after the move**. Q4 keep the server's invite-time rule; the Owner-into-Owner gap is its own row. **m5/F5** (an invitation still holds a seat after its sender is deactivated or demoted) is a **follow-up row** in `identity/service.ts`, shaped after the move. No push.
+* **FO-2b** (no PR): **parked**, because it is blocked on FO-2 Engage, which isn't built. Nothing posted on #1843. It goes in tonight's list as parked.
+* **#1961 PF-19p** (head bc10b8c2): shard 6 failed only on `check_css1_index` CS-S1 DW4, the check fault #2077 fixed (merged 07:57 UTC). Re-ran only the failed jobs of run 43999867612; the shard re-run tests on today's main, so it carries the fix.
+* **Prompt boxes not reachable:** the built-in browser's claude.ai is signed out, and Build Lead A does not sign in for the founder. Answers are on the PRs instead. Idle cloud lanes need the founder's prompt-box paste or the Lead's own route.
