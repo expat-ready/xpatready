@@ -51,3 +51,10 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-655 | Board rebuilds once a day (09:00 IST) and on the founder's ask. | prose | 17 Nov |
 | P-658 | Enterprise paid, monthly; Pro kept until a week after the move. | prose | 17 Nov |
 | P-659 | Org expat-ready; the repository moves only by the org-move checklist. | prose | 17 Nov |
+
+## Dated rulings, part 2 (moved word for word from RULES.md, 17 Nov 12:4x IST, Lead 76)
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| P-631 | Lockfile lines in a libraries-only PR do not count toward 800; hand-written lines do. | prose (B196) | 16 Nov |
+| P-633 | Gmail stays off until a task needs it; the Lead asks then, naming the task (amends P-620). | prose | 16 Nov |
+| P-634 | Trust reversals always accepted (red shortfall view); credited trust money never stays in operating. | prose | 16 Nov |
