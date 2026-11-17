@@ -4,21 +4,28 @@
 // College's 6 years (Client File Management Regulation 2021-001 s. 7.2, read 16 Nov 2026; Unconfirmed: no counsel) is
 // allowed with a warning and a typed reason, both on the setting's audit line (Build Lead C's ruling). It is a reminder,
 // never a lock: nothing is deleted automatically in Release 1 (BR-7). The firm is always the session's (PF-4's guard),
-// never the request's. KeepPeriods is KeepPeriodPort's real adapter (CS-D6 reads forFirm; part 2 builds check()).
-import { Inject, Injectable } from "@nestjs/common";
+// never the request's. KeepPeriods is KeepPeriodPort's real adapter (CS-D6 reads forFirm; every deleter asks check()).
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { Db } from "../../core.ts";
 import {
-  ACTIVITY_LOG_WORDS, COLLEGE_CITATION, COLLEGE_CLIENT_FILE_YEARS, COLLEGE_WARNING, COLLEGE_WORDS, ClosedClientFilesYears, FIRM_SETTING, KEEP_PERIODS, KeepCheckNotBuilt, NO_COUNSEL,
+  ACTIVITY_LOG_WORDS, COLLEGE_CITATION, COLLEGE_CLIENT_FILE_YEARS, COLLEGE_WARNING, COLLEGE_WORDS, ClosedClientFilesYears, FIRM_SETTING, KEEP_PERIODS, NO_COUNSEL, keepCheck,
   type FirmKeepPeriod, type KeepCheckInput, type KeepCheckResult, type KeepPeriodPort,
 } from "../../../../ports/keep-period.ts";
+import { systemClock, type ClockPort } from "../../../../ports/clock.ts";
+import type { LegalHoldPort } from "../../../../ports/legal-hold.ts";
 import { actorWord, platformAuditWorkspaceId } from "../identity/audit.ts";
 import { problem, type StaffContext } from "../identity/keys.ts";
 import { readSetting, registerSetting, writeSetting } from "../settings.ts";
 
 type Tx = Prisma.TransactionClient;
 export const LEGAL_SETTINGS_KEY = "agent/legal-settings:manage";
+/** AUD-5 part 2: the legal-hold store check() asks first (PF-21b's real adapter is provided under this token when it
+ *  lands); with none provided, check() refuses (NO_HOLD_STORE), so nothing is ever deleted without asking it. */
+export const KEEP_PERIOD_HOLDS = Symbol("KEEP_PERIOD_HOLDS");
+/** The clock check() reads (P-607: times only from the clock port); the system clock when none is provided. */
+export const KEEP_PERIOD_CLOCK = Symbol("KEEP_PERIOD_CLOCK");
 
 export const CLOSED_CLIENT_FILES = registerSetting({
   key: "legal.closed_client_files_years", ownerModule: "platform", changePermission: LEGAL_SETTINGS_KEY,
@@ -71,15 +78,22 @@ function closedFilesView(y: number | null, s: StaffContext) {
 
 @Injectable()
 export class KeepPeriods implements KeepPeriodPort<Tx> {
-  constructor(@Inject(Db) private readonly db: PrismaClient) {}
+  constructor(
+    @Inject(Db) private readonly db: PrismaClient,
+    @Optional() @Inject(KEEP_PERIOD_HOLDS) private readonly holds: LegalHoldPort<Tx> | null = null,
+    @Optional() @Inject(KEEP_PERIOD_CLOCK) private readonly clock: ClockPort = systemClock,
+  ) {}
 
   async forFirm(firmId: string): Promise<FirmKeepPeriod> {
     const years = await readSetting<number | null>(this.db, firmId, CLOSED_CLIENT_FILES.key);
     return years === null ? { closedClientFilesYears: null, source: "not set" } : { closedClientFilesYears: years, source: "firm setting" };
   }
 
-  /** AUD-5 part 2 (after PF-21b). */
-  async check(_tx: Tx, _input: KeepCheckInput): Promise<KeepCheckResult> { throw new KeepCheckNotBuilt(); }
+  /** Every deleter's one question (BR-7): a hold first, inside the caller's transaction, then the floor, then the firm's
+   *  reminder. The caller passes its session or job firm, never a request's. */
+  async check(tx: Tx, input: KeepCheckInput): Promise<KeepCheckResult> {
+    return keepCheck({ holds: this.holds ?? null, clock: this.clock ?? systemClock, firmYears: async (f) => (await this.forFirm(f)).closedClientFilesYears }, tx, input);
+  }
 
   /** GET /api/platform/keep-periods: the table in plain words and the firm's own number (read-only for most staff). */
   async read(s: StaffContext) {
