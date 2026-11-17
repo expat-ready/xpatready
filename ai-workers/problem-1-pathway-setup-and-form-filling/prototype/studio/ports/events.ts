@@ -49,6 +49,12 @@ export const EVENT = {
   LEAD_CLOSED: "lead.closed",
   /** A closed lead was reopened (FO-2; AG-2-80). */
   LEAD_REOPENED: "lead.reopened",
+  /** A lead was engaged: a prospect was made from it (FO-2b for Corporate; contracts §2.1 "lead.engaged = prospect created"). */
+  LEAD_ENGAGED: "lead.engaged",
+  /** A prospect's type changed, Individual ↔ Corporate, before signing (FO-2b; AG-2-76 rule 13). */
+  PROSPECT_TYPE_CHANGED: "prospect.type_changed",
+  /** A prospect was won (contracts §2.6; its subject part is FO-2b's `ProspectWonSubject`, contracts §7 §2.6). */
+  PROSPECT_WON: "prospect.won",
 
   /** A case closed: withdrawn, or closed by staff with a reason (case side, CS-C1a; contract v0.1 §4). */
   CASE_CLOSED: "case.closed",
@@ -135,6 +141,29 @@ export const LeadEventPayload = z.object({
   closeReasonKey: z.string().optional(),
 }).strict();
 export type LeadEventPayload = z.infer<typeof LeadEventPayload>;
+
+/** The payload FO-2b writes for `lead.engaged` and `prospect.type_changed`: ids and facts only (a consumer reads the
+ *  prospect). module_event.subject_id is the prospect's id. */
+export const ProspectEventPayload = z.strictObject({
+  prospectId: Uuid, leadId: Uuid, type: z.enum(["INDIVIDUAL", "CORPORATE"]), stageKey: z.string(),
+  subjectPersonId: Uuid.nullable(), subjectCompanyId: Uuid.nullable(), primaryContactPersonId: Uuid, ownerStaffId: Uuid.nullable(),
+  /** prospect.type_changed only: where it came from (AG-2-76 §9). */
+  fromType: z.enum(["INDIVIDUAL", "CORPORATE"]).optional(), fromStageKey: z.string().optional(),
+});
+export type ProspectEventPayload = z.infer<typeof ProspectEventPayload>;
+
+/** The subject part of `prospect.won` (contracts §7 §2.6, AG-2-77 rule 2): a person, or a company with its name and its
+ *  live contacts with their roles, linked and never copied (rule 7). The case side makes a person or a company client
+ *  from it (FO-8). The rest of the payload (§2.6: won_via, owner, answers…) is the writer's (FO-2 part 3, FO-6). */
+const WonContact = z.strictObject({
+  personId: Uuid, givenNames: z.string().nullable(), familyName: z.string().nullable(), email: z.string().nullable(), phone: z.string().nullable(),
+  roles: z.array(z.enum(["PRIMARY", "SIGNATORY", "HR", "BILLING", "OTHER"])).min(1), primaryContact: z.boolean(),
+});
+export const ProspectWonSubject = z.discriminatedUnion("subject", [
+  z.strictObject({ subject: z.literal("PERSON"), personId: Uuid }),
+  z.strictObject({ subject: z.literal("COMPANY"), company: z.strictObject({ id: Uuid, name: z.string().min(1) }), contacts: z.array(WonContact).min(1) }),
+]);
+export type ProspectWonSubject = z.infer<typeof ProspectWonSubject>;
 
 // CS-C1a (case-side contract v0.1 §4): the case side's close and reopen events, ids and facts only (never the reason's
 // words: a reason is free text and may hold personal data; a consumer reads the case). The firm is the outbox row's

@@ -1,0 +1,5 @@
+NOTICE:  database "xr_studio_qa_fom" does not exist, skipping
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.
+isolated qa_fom on http://localhost:4473 (xr_studio_qa_fom), stops itself in 40 min
