@@ -1858,3 +1858,6 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 
 ### Rev 17.8 (13:41 IST 17 Nov): lane nudges go through Lead 77
 * Lead 77 nudged PF-21i and PF-6m2 in their claude.ai prompt boxes at 14:1x IST, and both show as sent. Lead 77's claude.ai is signed in, so from now on Build Lead A sends every lane that needs a nudge to the current Lead.
+
+### Rev 17.9 (15:07 IST 17 Nov): #1991 FO-7a2 out of the queue
+* Build Lead C: #1991 broke batches #2082 to #2084 on shard 4. `check_fo7a2_ledger_rules.ts` DW7 now also sees the `case_party_index_*` functions that CS-S1 (#2035) added. Steps from Lead 78 are on the PR (comment 6944267988): merge main, narrow DW7 to #1991's own migration, keep the planted fail, get a diff-only re-review, then post the new head with its Approve sha. I asked Lead 78 to nudge the lane (cloud session 018BSQJpjUJUBm8pcjZFkpRp, head 8b5dffe0).
