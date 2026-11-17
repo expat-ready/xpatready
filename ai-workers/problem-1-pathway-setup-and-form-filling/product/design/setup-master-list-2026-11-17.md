@@ -1,6 +1,6 @@
 # Set-up master list: the new operating model (living, kept by the tech lead)
 
-Started 17 Nov 2026, 10:3x IST, by Lead 75, on the founder's asks A152-A153 (10:2x IST, typed): "a huge list of everything" to set up the new operating model, with how each is done and whether it is done. The tech lead updates this file at every change. The founder's page mirrors it.
+Started 17 Nov 2026, 10:3x IST, by Lead 75, on the founder's asks A152-A153 (10:2x IST, typed): "a huge list of everything" to set up the new operating model, with how each is done and whether it is done. The tech lead updates this file at every change. The founder's page mirrors it: https://claude.ai/artifact/EFiykMZBjR2ryKtK6oHYi1
 
 Status words: **Done** (checked by a tool, with the evidence named) · **Doing** (who, since when) · **Next** (ready, not started) · **Needs you** (only the founder can do it) · **Later** (agreed, not today).
 Who: **You** = the founder · **Setup** = the founder setup agent (local_c3e4ea74), which works with you on your clicks · **Lead** = the tech lead · **Builder** = a builder session, one row per PR · **qa** = the qa lane.
@@ -15,7 +15,7 @@ Sources: Lead 74's research (operating model v2, engineering system v1, failure 
 | A2 | Archive ended Lead sessions | `archive_session`; reversible from the Archived list | Lead | **Done** for Leads 65, 66, 67, 68 and 73 (10:3x). **Doing:** Lead 64 refused (still has a Remote Control client: you can archive it from the sidebar). Leads 69, 70 and 72 wait until what hangs off them moves (69 started Build Lead C; 70's notes folder holds Lead 74's research; 72 started CI research). Lead 74 waits for its joining workflow (about 10:45) |
 | A3 | Clean-up of claude.ai cloud sessions | Browser, claude.ai/code: archive finished cloud builders once their PR is merged or closed | Setup | **Done** by Setup at 10:2x, as you said. The Lead re-checks the list at each check |
 | A4 | Disk back above a safe floor | Today 7.7 GB free against a 7 GB floor for starting sessions. Remove: Lead 74's 0.4 GB snapshot once its workflow ends; worktrees of merged rows (board-fix's PR #1913 merged); old test databases; old scratchpads; npm and Playwright caches only after a search shows nothing points into them | Lead | **Next** (target 15 GB or more) |
-| A5 | Board refresh uses too many GitHub calls | Today one rebuild is about 150 REST calls, run on every Lead input; the account's GitHub calls are shared by every lane and are running out | Lead + board session | **Needs you**: one question (how often) |
+| A5 | Board refresh uses too many GitHub calls | Today one rebuild is about 150 REST calls, run on every Lead input; the account's GitHub calls are shared by every lane and are running out | Lead + board session | **Done**: you chose once a day at 09:00 IST plus on ask (P-655, 10:3x); the board session also moves to combined queries |
 | A6 | Two standby Leads | Lead 76 and Lead 77 are idle and ready | Lead | **Done** |
 | A7 | Records to main carry P-654 (#2064's size exception waits on it) | Records PR from a fresh branch off main | Lead | **Next** |
 
