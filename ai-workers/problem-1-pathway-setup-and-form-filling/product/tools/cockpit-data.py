@@ -103,6 +103,7 @@ class GH:
     def __init__(self, offline):
         self.offline = offline
         self.calls = 0
+        self.tally = {}                                     # calls by endpoint shape, for the run note
         self.token = "" if offline else sh(["gh", "auth", "token"]).stdout.strip()
         u = sh(["git", "-C", ROOT, "remote", "get-url", "origin"]).stdout.strip()
         m = re.search(r"github\.com[:/]([^/]+/[^/]+?)(\.git)?$", u)
@@ -121,7 +122,7 @@ class GH:
         err = ""
         for wait in (0, 2, 5):
             time.sleep(wait)
-            self.calls += 1
+            self.count(url)
             r = subprocess.run(cmd, capture_output=True, text=True)
             if r.returncode == 0:
                 if raw:
@@ -136,6 +137,12 @@ class GH:
                 break
         raise RuntimeError(f"GET {url.replace(self.api, '')} failed: {err}")
 
+    def count(self, url):
+        self.calls += 1
+        k = re.sub(r"[?].*$", "", url.replace(self.api, "").replace("https://api.github.com", ""))
+        k = re.sub(r"/[0-9a-f]{40}|/\d+", "/N", k)
+        self.tally[k] = self.tally.get(k, 0) + 1
+
     def get_pages(self, url, max_pages=40):
         """GET every page of a list that pages by the Link header's rel="next" (cursor APIs such as /activity)."""
         url = url if url.startswith("http") else self.api + url
@@ -143,7 +150,7 @@ class GH:
         for _ in range(max_pages):
             if self.offline:
                 raise RuntimeError("offline")
-            self.calls += 1
+            self.count(url)
             r = subprocess.run(["curl", "-sS", "--fail-with-body", "-D", "-", "-H", "Accept: application/vnd.github+json",
                                 "-H", f"Authorization: token {self.token}", url], capture_output=True, text=True)
             if r.returncode:
@@ -161,7 +168,7 @@ class GH:
     def graphql(self, query, variables):
         if self.offline:
             raise RuntimeError("offline")
-        self.calls += 1
+        self.count("graphql")
         body = json.dumps({"query": query, "variables": variables})
         r = subprocess.run(["curl", "-sS", "--fail-with-body", "-X", "POST", "-H", f"Authorization: token {self.token}",
                             "-d", "@-", "https://api.github.com/graphql"], input=body, capture_output=True, text=True)
@@ -926,6 +933,54 @@ def branches_from_activity(activity, alive, since):
     return [x for x in newest.values() if parse_iso(x["pushed_at"]) >= since]
 
 
+PR_SLIM = ("number", "title", "state", "draft", "created_at", "updated_at", "merged_at", "closed_at")
+
+
+def pr_slim(x):
+    return dict({k: x.get(k) for k in PR_SLIM}, labels=[{"name": l["name"]} for l in x.get("labels", [])],
+                head={"ref": x["head"]["ref"], "sha": x["head"]["sha"]}, base={"ref": x["base"]["ref"]})
+
+
+def pr_list(gh, cache):
+    """Every PR, newest created first. Read in full when the cache is missing (or older than 7 days); otherwise the open PRs
+    plus every closed PR updated since the cache's read time less a day (a closed PR changes only with its updated_at)."""
+    path = os.path.join(cache, "prs.json")
+    c = json.load(open(path)) if os.path.exists(path) else {}
+    at = parse_iso(c["read_at"]) if c.get("read_at") else None
+    full = parse_iso(c["full_at"]) if c.get("full_at") else None
+    byn = {int(k): v for k, v in (c.get("prs") or {}).items()}
+    if at is None or full is None or NOW - full > timedelta(days=7):   # a full read once a week at least
+        full = NOW
+        byn, page = {}, 1
+        while page <= 40:
+            d = gh.get(f"/pulls?state=all&sort=created&direction=desc&per_page=100&page={page}")
+            byn.update({x["number"]: pr_slim(x) for x in d})
+            if len(d) < 100:
+                break
+            page += 1
+    else:
+        fresh, page = {}, 1
+        while page <= 10:                                  # open PRs: read again in full
+            d = gh.get(f"/pulls?state=open&per_page=100&page={page}")
+            fresh.update({x["number"]: pr_slim(x) for x in d})
+            if len(d) < 100:
+                break
+            page += 1
+        cut, page = at - timedelta(days=1), 1
+        while page <= 40:                                  # closed PRs updated since the last read
+            d = gh.get(f"/pulls?state=closed&sort=updated&direction=desc&per_page=100&page={page}")
+            fresh.update({x["number"]: pr_slim(x) for x in d if parse_iso(x["updated_at"]) >= cut})
+            if len(d) < 100 or parse_iso(d[-1]["updated_at"]) < cut:
+                break
+            page += 1
+        for n, v in byn.items():                           # cached as open, in neither read (closed and updated before the cut
+            if v.get("state") == "open" and n not in fresh:    # cannot happen; read it alone to be sure)
+                fresh[n] = pr_slim(gh.get(f"/pulls/{n}"))
+        byn.update(fresh)
+    json.dump({"read_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"), "full_at": full.strftime("%Y-%m-%dT%H:%M:%SZ"), "prs": {str(k): v for k, v in byn.items()}}, open(path, "w"))
+    return [byn[n] for n in sorted(byn, reverse=True)]
+
+
 def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     """Download one snapshot of every raw input into <out>/snapshot/ (spec §6 1a). Read-only everywhere."""
     if os.path.isdir(snap):
@@ -985,14 +1040,9 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
                      "state_branch": state_branch, "state_branch_sha": sref, "state_branch_ahead": n2, "state_branch_oldest_unmerged_at": o2,
                      "state_branch_files": f2, "records_lag_rule": "files"}
     wj("meta.json", meta)
-    # every PR (state all)
-    raw, page = [], 1
-    while page <= 40:
-        d = gh.get(f"/pulls?state=all&sort=created&direction=desc&per_page=100&page={page}")
-        raw += d
-        if len(d) < 100:
-            break
-        page += 1
+    # every PR (state all). Lead 75, 17 Nov (fewer REST calls): the list is kept in the cache. A closed PR changes only with its
+    # updated_at, so a run reads the open PRs and the closed PRs updated since the last full read (plus a day), not every page.
+    raw = pr_list(gh, cache)
     ac_path = os.path.join(cache, "appcode.json")
     ac = json.load(open(ac_path)) if os.path.exists(ac_path) else {}
     since = NOW - timedelta(days=21)
@@ -1074,19 +1124,6 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
                                     "runs_in_3h": rg.get("total_count", len(rr)), "runs_sampled": min(len(rr), CI_SAMPLE_RUNS), "job_waits": waits})
     except Exception as e:                                   # offline or the API failed: the box says not measured
         wj("github/ci_queue.json", {"error": str(e)[:200]})
-    # Stuck now (founder 23:3x IST 16 Nov via Lead 70): open PRs labelled `review: approved`, with when the label went on
-    # (the newest such "labeled" event), so the board can name those approved and not merged for over 60 min.
-    try:
-        ap = []
-        for p in [p for p in pulls if p.get("state") == "open" and any((l.get("name") == "review: approved") for l in p.get("labels") or [])][:STUCK_MAX_PRS]:
-            ev = gh.get_pages(f"/issues/{p['number']}/events?per_page=100", max_pages=5)   # every page: the newest label event
-            at = [e["created_at"] for e in ev if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == "review: approved"]
-            ap.append({"number": p["number"], "title": p.get("title"), "labeled_at": max(at) if at else None})
-        wj("github/approved_open.json", ap)
-        if len([p for p in pulls if p.get("state") == "open" and any((l.get("name") == "review: approved") for l in p.get("labels") or [])]) > STUCK_MAX_PRS:
-            ERRORS.append(f"Stuck now: more than {STUCK_MAX_PRS} approved PRs open; the oldest beyond {STUCK_MAX_PRS} were not read")
-    except Exception as e:
-        wj("github/approved_open.json", {"error": str(e)[:200]})
     # branches with a push in the last 24 h (GitHub keeps no push time per branch: the head commit's committed date stands in)
     o, r_ = (gh.repo or "/").split("/")
     # every branch is read (GitHub's ref ordering by commit date proved unreliable for branches: 14 Nov, today's lane branches missing)
@@ -1147,6 +1184,25 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
             od.append({"number": x["number"], "head_committed_at": c["commit"]["committer"]["date"], "ci": ci,
                        "approved_labelled_at": lab[-1] if lab else None})
     wj("github/open_prs_detail.json", od)
+    # Stuck now (founder 23:3x IST 16 Nov via Lead 70): open PRs labelled `review: approved`, with when the label went on
+    # (the newest such "labeled" event), so the board can name those approved and not merged for over 60 min. Lead 75, 17 Nov:
+    # taken from the open-PR GraphQL read above (its label events); the REST events are read only when GraphQL was refused.
+    try:
+        lab_at = {x["number"]: x["approved_labelled_at"] for x in od} if nodes is not None else None
+        appr = [p for p in pulls if p.get("state") == "open" and any((l.get("name") == "review: approved") for l in p.get("labels") or [])]
+        ap = []
+        for p in appr[:STUCK_MAX_PRS]:
+            if lab_at is not None:
+                at = lab_at.get(p["number"])
+            else:
+                ev = gh.get_pages(f"/issues/{p['number']}/events?per_page=100", max_pages=5)   # every page: the newest label event
+                at = max([e["created_at"] for e in ev if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == "review: approved"], default=None)
+            ap.append({"number": p["number"], "title": p.get("title"), "labeled_at": at})
+        wj("github/approved_open.json", ap)
+        if len(appr) > STUCK_MAX_PRS:
+            ERRORS.append(f"Stuck now: more than {STUCK_MAX_PRS} approved PRs open; the oldest beyond {STUCK_MAX_PRS} were not read")
+    except Exception as e:
+        wj("github/approved_open.json", {"error": str(e)[:200]})
     # board v53 (A69, A70): rules caught in the IST day so far (Health item 4). Read from IST midnight; a file is absent when
     # its read failed, so the number reads not measured.
     d0 = datetime.combine(NOW.astimezone(IST).date(), datetime.min.time(), IST).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -4182,6 +4238,13 @@ def main():
     since14 = NOW - timedelta(days=14)
 
     def merged_list():
+        if gh.offline:                                   # offline: not read, so not measured (review M4), as before
+            raise RuntimeError("offline")
+        sp = snap.j("github/pulls.json")                 # Lead 75, 17 Nov: the snapshot's PR list has every merged PR; no REST
+        if sp:
+            return sorted([{"n": x["number"], "title": x["title"], "created": x["created_at"], "merged": x["merged_at"]} for x in sp
+                           if ts(x.get("merged_at")) and ts(x["merged_at"]) >= since14 and not x["head"]["ref"].startswith("mergify/")],
+                          key=lambda m: m["merged"], reverse=True)
         out, page = [], 1
         while page < 30:
             d = gh.get(f"/pulls?state=closed&sort=updated&direction=desc&per_page=100&page={page}")
@@ -4442,6 +4505,15 @@ def main():
 
     # Works per day from main's CAPABILITIES.md history (progress.sh's parse on each day's last version)
     def works_history():
+        w0 = (NOW - timedelta(days=15)).strftime('%Y-%m-%dT%H:%M:%SZ')
+        # Lead 75, 17 Nov (fewer REST calls): the snapshot already lists main's versions of the file for 30 days; use it when it
+        # holds one from before the window (the version in force when the window opens), else read GitHub as before
+        sl = [json.loads(x) for x in (snap.text("git/capabilities_main.jsonl") or "").splitlines() if x.strip()]
+        if sl and any(ts(x["date"]) < ts(w0) for x in sl):
+            cm = sorted((ts(x["date"]), x["sha"]) for x in sl)
+            cm = [c for c in cm if c[0] >= ts(w0)] + [max(c for c in cm if c[0] < ts(w0))]
+            cm.sort()
+            return works_from(cm)
         cm, page = [], 1
         while page <= 10:
             got = gh.get(f"/commits?sha=main&path={REL}/qa/CAPABILITIES.md&since={(NOW - timedelta(days=15)).strftime('%Y-%m-%dT%H:%M:%SZ')}&per_page=100&page={page}")
@@ -4449,9 +4521,10 @@ def main():
             if len(got) < 100:
                 break
             page += 1
-        w0 = (NOW - timedelta(days=15)).strftime('%Y-%m-%dT%H:%M:%SZ')
         cm += gh.get(f"/commits?sha=main&path={REL}/qa/CAPABILITIES.md&until={w0}&per_page=1")   # the version in force when the window opens
-        cm = sorted(((ts(c["commit"]["committer"]["date"]), c["sha"]) for c in cm))
+        return works_from(sorted(((ts(c["commit"]["committer"]["date"]), c["sha"]) for c in cm)))
+
+    def works_from(cm):
         out = {}
         for d in days:
             end = datetime(d.year, d.month, d.day, tzinfo=IST).astimezone(timezone.utc) + timedelta(days=1)
@@ -4464,7 +4537,9 @@ def main():
             if os.path.exists(f):
                 out[d] = json.load(open(f))
                 continue
-            txt = gh.get(f"/contents/{REL}/qa/CAPABILITIES.md?ref={sha}", raw=True)
+            fc = os.path.join(cache, f"cap-{sha}.md")        # the snapshot's copy of that version, when it has one
+            txt = (snap.text(f"git/capabilities_main/{sha}.md") or (open(fc, encoding="utf-8").read() if os.path.exists(fc) else None)
+                   or gh.get(f"/contents/{REL}/qa/CAPABILITIES.md?ref={sha}", raw=True))
             w = sum(x["works"] for x in run_progress(txt, None))
             json.dump(w, open(f, "w"))
             out[d] = w
@@ -4717,6 +4792,9 @@ def main():
         write_history(a.history_file, read_history(snap.file("cockpit/history.jsonl")), comp["history_line"])
     print(f"cockpit-data: wrote {a.out} in {data['run']['seconds']} s, {gh.calls} API calls, {len(ERRORS)} notes; "
           f"health {hl['light']}; trust {comp['trust']['state']}")
+    if os.environ.get("COCKPIT_CALLS"):                  # where the calls went, largest first
+        for k, n in sorted(gh.tally.items(), key=lambda kv: -kv[1]):
+            print(f"  calls: {n:4d} {k}")
     for e in ERRORS:
         print("  note:", e)
 

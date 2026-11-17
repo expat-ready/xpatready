@@ -2215,6 +2215,50 @@ class Flow(unittest.TestCase):
         self.assertEqual(cd.reconcile_compare(c["keys"], t, None)["diffs"][0]["name"], "flow_awaiting")   # a one-off difference is caught
 
 
+class PrListCache(unittest.TestCase):
+    """Lead 75, 17 Nov: the PR list is cached; a run reads the open PRs and the closed PRs updated since the last read."""
+    def pr(self, n, state, upd):
+        return {"number": n, "title": f"t{n}", "state": state, "draft": False, "created_at": "2026-11-01T00:00:00Z", "updated_at": upd,
+                "merged_at": upd if state == "closed" else None, "closed_at": None, "labels": [{"name": "x"}],
+                "head": {"ref": f"b{n}", "sha": "s"}, "base": {"ref": "main"}}
+
+    class FakeGH:
+        def __init__(self, pages):
+            self.pages, self.urls = pages, []
+        def get(self, url, raw=False):
+            self.urls.append(url)
+            for k, v in self.pages.items():
+                if url.startswith(k):
+                    return v
+            raise AssertionError(url)
+
+    def test_full_then_incremental(self):
+        tmp = tempfile.mkdtemp()
+        old_now = cd.NOW
+        try:
+            cd.NOW = datetime(2026, 11, 17, 6, 0, tzinfo=timezone.utc)
+            g = self.FakeGH({"/pulls?state=all": [self.pr(3, "open", "2026-11-16T00:00:00Z"), self.pr(2, "closed", "2026-11-10T00:00:00Z"),
+                                                  self.pr(1, "closed", "2026-11-02T00:00:00Z")]})
+            got = cd.pr_list(g, tmp)
+            self.assertEqual([x["number"] for x in got], [3, 2, 1])
+            self.assertEqual(len(g.urls), 1)                                  # no cache: the full read
+            cd.NOW = datetime(2026, 11, 18, 6, 0, tzinfo=timezone.utc)        # a day later: #3 merged, #4 opened, #2's title edited
+            p2 = dict(self.pr(2, "closed", "2026-11-17T12:00:00Z"), title="new")
+            g = self.FakeGH({"/pulls?state=open": [self.pr(4, "open", "2026-11-18T01:00:00Z")],
+                             "/pulls?state=closed": [self.pr(3, "closed", "2026-11-18T02:00:00Z"), p2, self.pr(1, "closed", "2026-11-02T00:00:00Z")]})
+            got = {x["number"]: x for x in cd.pr_list(g, tmp)}
+            self.assertEqual(sorted(got), [1, 2, 3, 4])
+            self.assertEqual((got[3]["state"], got[2]["title"], got[1]["title"]), ("closed", "new", "t1"))
+            self.assertEqual(len(g.urls), 2)                                  # one page of open PRs, one of closed: not every page
+            self.assertTrue(all(k in got[4] for k in ("labels", "head", "base", "merged_at")))
+            cd.NOW = datetime(2026, 11, 26, 6, 0, tzinfo=timezone.utc)        # over 7 days since the full read: full again
+            g = self.FakeGH({"/pulls?state=all": [self.pr(4, "closed", "2026-11-20T00:00:00Z")]})
+            self.assertEqual([x["number"] for x in cd.pr_list(g, tmp)], [4])
+        finally:
+            cd.NOW = old_now
+            shutil.rmtree(tmp)
+
+
 class StuckNow(unittest.TestCase):
     """A134 (founder 23:3x IST 16 Nov via Lead 70): four lines that say what is stuck right now (FORMULAS.md › Stuck now)."""
     META = {"taken_at": "2026-11-20T12:00:00+05:30", "main_at": "2026-11-20T05:15:00Z"}      # 75 min before taken_at
