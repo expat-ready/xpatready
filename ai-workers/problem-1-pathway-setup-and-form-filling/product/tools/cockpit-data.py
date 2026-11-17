@@ -3246,6 +3246,8 @@ def first_screen(d, r1_qa, li, li_src):
                         "why": "qa/CAPABILITIES.md on main has no Release 1 rows (or was not read)"})
     # Today's proving goal (Lead input today_goal, reported)
     g = (li or {}).get("today_goal") or {}
+    g_text = g if isinstance(g, str) else None              # a goal sent as words, not {proven, by}: shown, not counted
+    g = g if isinstance(g, dict) else {}
     if g.get("proven"):
         short = int(g["proven"]) - len(proven)
         tstate = "done" if short <= 0 else ("at risk" if short <= len(waiting) else "off track")
@@ -3256,7 +3258,8 @@ def first_screen(d, r1_qa, li, li_src):
                            ("" if short <= len(waiting) else ": fewer than needed, so not reachable today")),
                    "plan": g.get("plan"), "class": "reported"}
     else:
-        today_b = {"goal": None, "state": "not set", "why": "no proving goal in the Lead input (today_goal)", "proven": len(proven),
+        today_b = {"goal": None, "state": "not set", "why": (f"the Lead's goal is words, not a number and a time (today_goal: {g_text})" if g_text else
+                                                            "no proving goal in the Lead input (today_goal)"), "proven": len(proven),
                    "waiting": len(waiting), "class": "reported"}
     # Needs you: the founder's open items, plus launch steps he owns that are dated today or earlier (founder, 16 Nov: "Yes, show them")
     ny = []

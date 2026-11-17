@@ -1437,6 +1437,10 @@ class Tooltips(unittest.TestCase):
         self.assertEqual(R["qa_not_built_ids"], [])                                               # no qa test after the merge: Built, awaiting qa
         self.assertEqual((R["days_left"], R["need_per_day"], R["state"]), (13, 0.2, "on track"))  # 3 left in 13 days; 1 proven in 4 days
         self.assertEqual((f["today"]["short"], f["today"]["state"]), (2, "at risk"))
+        # Lead 74's 09:15 input sent today_goal as words: shown as not set with the words, never a crash
+        w = cd.first_screen(d, {2: "Works", 3: "Not built", 1: "Partial"}, {"today_goal": "30 Proven by 08:00 IST 18 Nov"}, "Lead input")["today"]
+        self.assertEqual((w["state"], w["goal"]), ("not set", None))
+        self.assertIn("30 Proven by 08:00 IST 18 Nov", w["why"])
         self.assertEqual([x["id"] for x in f["needs"]["items"]], ["A1", "C5"])                   # dated today; C12 later; C2 not the founder's
         self.assertEqual([x["id"] for x in f["needs"]["later"]], ["C12"])
         self.assertEqual((f["choke"]["stage"], f["choke"]["count"]), ("Built, waiting for qa", 2))
