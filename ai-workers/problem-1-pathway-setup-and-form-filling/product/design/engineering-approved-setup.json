@@ -1,5 +1,5 @@
 {
- "_about": "The approved engineering set-up (CK-1, founder asks A151 and A154, 17 Nov 2026). Owned by the tech lead: a change to the set-up is approved first, then this file gets a new version and a change_log row in the same PR as the change. tools/conformance-check.py compares origin/main against it (lists compare as sets: extra lines allowed, a missing one fails) and prints enforced: yes | no. The ruleset item is read only by the scheduled workflow (the agents' deny list blocks ruleset reads in sessions); 'required': false tolerates no ruleset until the tech lead sets it true after the move (18 Nov).",
+ "_about": "The approved engineering set-up (CK-1, founder asks A151 and A154, 17 Nov 2026). Owned by the tech lead: a change to the set-up is approved first, then this file gets a new version and a change_log row in the same PR as the change. tools/conformance-check.py compares origin/main with it (lists compare as sets: extra lines allowed, a missing one fails) and prints enforced: yes | no.",
  "version": "1.0.0",
  "date": "2026-11-17",
  "owner": "the tech lead",
@@ -7,7 +7,7 @@
   {
    "version": "1.0.0",
    "date": "2026-11-17",
-   "change": "First version: the 75 agent deny lines (39 on main + 36 of T7), the 9 hook entries on main, the three Mergify queues with verdicts first, ci.yml's jobs, gate, triggers and token scopes, the main ruleset (tolerated until the move), Library master versions.",
+   "change": "First version (CK-1 part 1): the 75 agent deny lines (39 on main + 36 of T7), the 9 hook entries on main, the three Mergify queues with verdicts first, max_parallel_checks 3, auto-merge conditions.",
    "approval": "founder 17 Nov: T7 deny lines (P-670, PR #2075), verdicts first (P-664, PR #2073), enforcement checks (A151, A154)"
   }
  ],
@@ -144,11 +144,7 @@
  "mergify": {
   "path": ".mergify.yml",
   "max_parallel_checks": 3,
-  "queue_order": [
-   "verdicts",
-   "product",
-   "records"
-  ],
+  "queue_order": ["verdicts", "product", "records"],
   "queues": {
    "verdicts": {
     "batch_size": 6,
@@ -161,9 +157,7 @@
      "title ~= ^qa:",
      "files ~= qa/CAPABILITIES\\.md$"
     ],
-    "merge_conditions_required": [
-     "check-success = ci"
-    ],
+    "merge_conditions_required": ["check-success = ci"],
     "merge_method": "merge"
    },
    "product": {
@@ -180,92 +174,18 @@
        "-files ~= ^(packages/xfa-engine/|tsconfig\\.base\\.json$|\\.nvmrc$|\\.github/workflows/xfa-engine\\.yml$)"
       ]
      },
-     {
-      "or": [
-       "check-success = queue-fresh",
-       "-files ~= /prototype/"
-      ]
-     }
+     {"or": ["check-success = queue-fresh", "-files ~= /prototype/"]}
     ],
-    "merge_conditions_required": [
-     "check-success = ci"
-    ],
+    "merge_conditions_required": ["check-success = ci"],
     "merge_method": "merge"
    },
    "records": {
     "batch_size": 6,
-    "queue_conditions_required": [
-     "base = main",
-     "-draft",
-     "label = review: approved",
-     "check-success = ci",
-     "label = records"
-    ],
-    "merge_conditions_required": [
-     "check-success = ci"
-    ],
+    "queue_conditions_required": ["base = main", "-draft", "label = review: approved", "check-success = ci", "label = records"],
+    "merge_conditions_required": ["check-success = ci"],
     "merge_method": "merge"
    }
   },
   "auto_merge_conditions": true
- },
- "ci": {
-  "path": ".github/workflows/ci.yml",
-  "workflow_name": "ci",
-  "jobs_required": [
-   "guard",
-   "kind",
-   "shard",
-   "packs",
-   "types",
-   "regression-plan",
-   "regression",
-   "ci"
-  ],
-  "gate_job": "ci",
-  "gate_needs_required": [
-   "kind",
-   "shard",
-   "packs",
-   "types",
-   "regression-plan",
-   "regression"
-  ],
-  "triggers_required": {
-   "pull_request": [
-    "opened",
-    "synchronize",
-    "reopened",
-    "ready_for_review"
-   ]
-  },
-  "triggers_forbidden": [
-   "pull_request_target",
-   "workflow_run"
-  ],
-  "write_scopes_allowed": {
-   "retry-comment": [
-    "pull-requests"
-   ]
-  }
- },
- "ruleset": {
-  "branch": "main",
-  "required": false,
-  "rules_required": [
-   "deletion",
-   "non_fast_forward",
-   "required_status_checks"
-  ],
-  "required_checks": [
-   "ci"
-  ],
-  "note": "No ruleset before the move to the expat-ready organisation (18 Nov 2026 from 09:30 IST): reported 'pending'. The tech lead sets required to true once the ruleset exists; from then a missing rule fails."
- },
- "library": {
-  "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/cockpit/library.json",
-  "version_field": "version",
-  "version_header": "Version",
-  "note": "Each master whose path is in the repository must exist; a master with a 'version' in the registry must carry the same 'Version:' header in its first 40 lines (a JSON master: a top-level 'version'). claude.ai artifacts and local-only paths are reported 'unchecked'."
  }
 }

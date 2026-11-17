@@ -84,9 +84,10 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 22|product/tools/wip-guard.py|s/^MAX_WAITING, MAX_HOURS = 2, 24/MAX_WAITING, MAX_HOURS = 99, 9999/|check-wip-guard.sh
 22 bug|product/tools/wip-guard.py|s/ & open_bugs(root):/ or True:/|check-wip-guard.sh
 23|product/tools/ist-time-guard.py|s/                if not ok:/                if False:/|check-ist-time-guard.sh
-24 deny|product/tools/conformance-check.py|s/    missing = \[x for x in want if x not in have\]/    missing = []/|check-conformance-check.sh
+24 deny|product/tools/conformance-check.py|s/    miss = \[x for x in want if x not in have\]/    miss = []/|check-conformance-check.sh
+24 hooks|product/tools/conformance-check.py|s/"fail" if off else "pass"/"pass"/|check-conformance-check.sh
 24 queue|product/tools/conformance-check.py|s/"pass" if mpc == cfg\["max_parallel_checks"\] else "fail"/"pass"/|check-conformance-check.sh
-24 version|product/tools/conformance-check.py|s/ok = have is not None and have == str(want).lstrip("v")/ok = True/|check-conformance-check.sh'
+24 side|product/tools/conformance-check.py|s/"fail" if side else "pass"/"pass"/|check-conformance-check.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
