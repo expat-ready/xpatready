@@ -47,8 +47,9 @@ try {
   for (const d of before) { psql(T, ["-1", "-f", join(MIG, d, "migration.sql")]); psql(PRE, ["-1", "-f", join(MIG, d, "migration.sql")]); }
   const fnBefore = fns(T);
   psql(T, ["-1", "-f", join(MIG, NEW, "migration.sql")]);
-  for (const d of all.filter((x) => x > NEW)) psql(T, ["-1", "-f", join(MIG, d, "migration.sql")]);
+  // read right after this migration: a later migration's own functions (e.g. CS-S1's case_party_index_*) are not this row's
   const changed = fns(T).filter((f) => !fnBefore.includes(f)).map((f) => f.split(":")[0]).sort();
+  for (const d of all.filter((x) => x > NEW)) psql(T, ["-1", "-f", join(MIG, d, "migration.sql")]);
   ok("FO-7a2 DW7 pass: right after its migration the functions it adds or replaces are all money_ (three of FO-7a's and two of FO-7mv's replaced for rule 2c, seven new)",
     JSON.stringify(changed) === JSON.stringify(["money_credit_note_owed_back()", "money_credit_note_write()", "money_move_batch_owed_back()", "money_move_line_write()", "money_moved_live(uuid,uuid,\"MoneyMoveDirection\")", "money_owed_back(uuid,uuid,boolean)", "money_owed_live(uuid,uuid)", "money_payment_returned_not_cleared()", "money_trust_entry_moves()", "money_trust_entry_write()", "money_trust_paid(uuid,uuid)", "money_write_off_write()"]), changed);
   ok("FO-7a2 DW7 pass: every trigger function runs as PF-12's wall reader (SECURITY DEFINER, owner xr_wall_reader, search_path pinned); the four helpers keep their caller's rights, so called directly they see only the session's firm (review M1, break B-3)",
