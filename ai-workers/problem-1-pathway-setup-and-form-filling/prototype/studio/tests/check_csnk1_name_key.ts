@@ -105,8 +105,10 @@ try {
   }
   ok(`CS-NK1 DW1 pass: on all ${cps.length} assigned code points, in six settings (alone, between letters, before and after Σ, after ΑΣ, between Α and Σ), the key equals normalizeLabel`, bad.length === 0, bad.slice(0, 20));
   await full.query(oldFn.replace("canonical_field_name_key", "csnk1_old_key"));
-  const old = await keys(full, "csnk1_old_key", ["Café-crème name", "Café crème name", "ÑOMBRE", "ñombre"]);
-  ok("CS-NK1 DW1 fail: the 25 Oct key differs from normalizeLabel on the Café and Ñ cases (why it is replaced)", old[0] !== normalizeLabel("Café-crème name") && old[0] !== old[1] && old[2] !== normalizeLabel("ÑOMBRE") && old[2] !== old[3], old);
+  // Punctuation and spaces in each, so the 25 Oct key's difference shows under any database collation (its lower() is
+  // the database's: C leaves Ñ upper case, a UTF-8 libc collation, as CI's, lowers it).
+  const old = await keys(full, "csnk1_old_key", ["Café-crème name", "Café crème name", "ÑOMBRE de-pila", "ñombre de pila"]);
+  ok("CS-NK1 DW1 fail: the 25 Oct key differs from normalizeLabel on the Café and Ñ cases (why it is replaced)", old[0] !== normalizeLabel("Café-crème name") && old[0] !== old[1] && old[2] !== normalizeLabel("ÑOMBRE de-pila") && old[2] !== old[3], old);
 
   // ─────────── DW3: never stricter (the database refuses a pair only when the app makes them equal)
   const PAIRS: [string, string][] = [["किसान", "कसान"], ["é name", "e name"], ["ΟΔΟΣ", "οδοσ"], ["Straße", "Strasse"], ["İstanbul", "Istanbul"], ["ชื่อ", "ชอ"], ["名前", "名"], ["Ⅻ", "XII x"], ["'Σ' x", "ς x"], ["ΑΣ𖺠", "Ας𖺠"]];
