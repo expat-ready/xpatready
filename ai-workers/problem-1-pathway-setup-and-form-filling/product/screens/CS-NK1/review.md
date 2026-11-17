@@ -71,3 +71,20 @@ Verdict: Changes needed
 1. Major: start-of-string final-sigma mismatch (2,526 code points, ASCII included). The database both refuses names the app allows and lets app-equal names in. The DW1 scan misses the before-Σ contexts and its 54 residual is wrong. Fix with a leading space before lower(), widen the scan, list the true residual.
 2. Minor: the migration comment and PR must state the remaining Unicode-17 residual instead of "equal on every code point".
 3. Minor: say in the PR that `pg_unicode_fast` needs PostgreSQL 18 (the brief says PG17+).
+
+## Round 2: d5b3ee9d3705beeff5cb93d143b3d2fba9e14eab (only the new commits d0b8c9308 and d5b3ee9d3, P-277)
+Read: `git diff 91f92691ad..d5b3ee9d37` (the migration, the test, and records). Ran on a fresh `runtime_csnk1r` (:4638), PostgreSQL 18.3, Node 24.21.
+* **Suite: 16 passed, 0 failed.** DW1 now scans 159,865 code points in six settings with no exception list.
+* **Issue 1 (Major) is fixed.** Every Σ is now lowered by Final_Sigma, written out as a lookbehind and lookahead over Node-generated Cased and Case_Ignorable ranges, before `lower()`, so PostgreSQL's own sigma rule never runs.
+  * Nine contexts beyond the suite's six, each over every assigned code point, give 0 differences: `<c><c>`, `e<c>`, `ΑΣ<c>` at the end, `Σ<c>a`, `a'<c>Σ`, `ΑΣ'<c>`, `<c>ΣΣ<c>`, `Α<c>Σ<c>Β`.
+    The one exception is `<c>U+0301` at U+1AEB, which is the named F2 residual.
+  * API, both directions: `ς 1` 200, then `'Σ 1` **200** (was 409), then `'σ 1` 409 "already", because it equals `'Σ 1` under normalizeLabel.
+  * Cost: 5,000 apostrophes then Σ, 5,000 Σ, and 2,000 `'Σ` each take about 23 ms per call including the psql start, so the lookbehind does not blow up.
+* **F2 residual accepted as stated.** It covers 34 Unicode-17 marks that PostgreSQL 18's NFKC does not reorder. PostgreSQL's normalization equates only strings that Unicode 17 also equates, so this can make the database looser (open to a race) but never stricter. It is now named in the migration comment with its code points.
+* **Minors 2 and 3 are fixed:** the comment names the residual and says PostgreSQL 18 is required.
+* **F4 backfill:** it picks the version whose label gives the stored key under either rule, newest first. DW4 covers a retired older version that the trigger wrote last.
+  On my copy, 167 of 167 rows equal normalizeLabel with no empty keys, and running the migration again changed nothing (same hash, no NOTICE).
+* The breaker's F3 (on main) and F5 are outside this row's touch list, so recording them as PR follow-ups is right. The PR's NOTICE list from the demo is empty.
+* **Not run here:** full `ci`, the checkpoint load and the three `pypdf`-blocked suites (see above). The builder reports gcore_b2_door, cssd1_no_drift and prisma_schema green.
+
+Verdict: Approve d5b3ee9d3705beeff5cb93d143b3d2fba9e14eab
