@@ -27,6 +27,7 @@ import { firmScope, notInFirm } from "../../../platform/firm-scope.ts";
 import { CLOSED_DAYS, readSetting, TIME_ZONE } from "../../../platform/settings.ts";
 import { type BookingService, SlotsQuery, wallLabel } from "../service.ts";
 import { computeSlots, localDate, wallToUtc, type Slot } from "../slots.ts";
+import { windowsFor } from "./hours.ts";
 
 type Tx = Prisma.TransactionClient;
 type Row = Awaited<ReturnType<Tx["foConsultationType"]["findFirstOrThrow"]>>;
@@ -209,7 +210,7 @@ export class BookingTypesService {
     // The door's own computation (private to the booking service, read by name so the two can never differ).
     const slots: Slot[] = hosts.length ? await this.booking["slotsFor"](this.db, ctx.firmId, t, from, to) : [];
     const [windows, offs] = hosts.length ? await Promise.all([
-      this.db.foAvailability.findMany({ where: firmScope(ctx.firmId, { staffId: { in: hosts } }) }),
+      windowsFor(this.db, ctx.firmId, t.id, hosts),
       this.db.foTimeOff.findMany({ where: firmScope(ctx.firmId, { staffId: { in: hosts }, startsAt: { lt: new Date(to.getTime() + DAY) }, endsAt: { gt: new Date(from.getTime() - DAY) } }) }),
     ]) : [[], []];
     const group = <T extends { staffId: string }, V>(rows: T[], f: (r: T) => V) => { const m = new Map<string, V[]>(); for (const x of rows) m.set(x.staffId, [...(m.get(x.staffId) ?? []), f(x)]); return m; };

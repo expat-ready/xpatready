@@ -92,8 +92,9 @@ model FoConsultationType {
   createdAt               DateTime              @default(now()) @map("created_at") @db.Timestamptz
   updatedAt               DateTime              @updatedAt @map("updated_at") @db.Timestamptz
 
-  firm     PlatformFirm @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  bookings FoBooking[]
+  firm      PlatformFirm    @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  bookings  FoBooking[]
+  hostSets  FoTypeHostSet[]
 
   /// Among not-deleted rows only (the migration's partial index; Prisma reads it as this unique).
   @@unique([firmId, slug])
@@ -102,24 +103,72 @@ model FoConsultationType {
   @@map("fo_consultation_type")
 }
 
-/// One weekly window of a staff member's bookable hours (AG-4-62 rules 2-4): weekday 0 = Sunday … 6 = Saturday, minutes
-/// since local midnight in the window's own IANA zone, start before end, no two windows of one person overlapping on a
-/// day (exclusion in the migration). A new person's hours are copied from the firm's business hours setting
-/// (api/src/front-office/booking-seed.ts); business hours never limit slots afterwards (AG04-D22).
+/// FO-3a part 1b (AG-4-62 rules 1, 1b, 1c, 4 and §7): a named set of a staff member's hours ("Normal hours", "Evening
+/// calls"), with its own IANA zone. Exactly one set per person is the default (a partial unique index in
+/// 20261117130000_fo3a_hour_sets); a type uses the host's default unless it names another (FoTypeHostSet). Deleting a set
+/// deletes its windows and the types' choices of it (they fall back to the default); the default is never deleted (API).
+model FoAvailabilitySet {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId    String   @map("firm_id") @db.Uuid
+  staffId   String   @map("staff_id") @db.Uuid
+  name      String
+  isDefault Boolean  @default(false) @map("is_default")
+  timeZone  String   @map("time_zone")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  staff    PlatformStaff    @relation(fields: [firmId, staffId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  windows  FoAvailability[]
+  hostSets FoTypeHostSet[]
+
+  @@unique([firmId, id])
+  /// The target of the windows' and the types' (firm_id, staff_id, set_id) keys: a set is always the same person's.
+  @@unique([firmId, staffId, id])
+  /// Partial: WHERE is_default (at most one default per person).
+  @@unique([firmId, staffId, isDefault], map: "fo_availability_set_one_default")
+  @@map("fo_availability_set")
+}
+
+/// One weekly window of a set of hours (AG-4-62 rules 2-4): weekday 0 = Sunday … 6 = Saturday, minutes since local
+/// midnight in the set's IANA zone (kept on each window, one zone per set), start before end, no two windows of one set
+/// overlapping on a day (exclusion in the migration). A window written without a set goes to the person's default set,
+/// made when missing (the database's fo_booking_set_default), so FO-1b's copy of the firm's business hours
+/// (api/src/front-office/booking-seed.ts) still gives a new person their "Normal hours"; business hours never limit
+/// slots afterwards (AG04-D22).
 model FoAvailability {
   id          String   @id @default(uuid()) @db.Uuid
   firmId      String   @map("firm_id") @db.Uuid
   staffId     String   @map("staff_id") @db.Uuid
+  /// Set by the database when not given (the person's default set).
+  setId       String   @default(dbgenerated()) @map("set_id") @db.Uuid
   weekday     Int
   startMinute Int      @map("start_minute")
   endMinute   Int      @map("end_minute")
   timeZone    String   @map("time_zone")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  staff PlatformStaff @relation(fields: [firmId, staffId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  staff PlatformStaff     @relation(fields: [firmId, staffId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  set   FoAvailabilitySet @relation(fields: [firmId, staffId, setId], references: [firmId, staffId, id], onDelete: Cascade, onUpdate: Restrict)
 
   @@index([firmId, staffId, weekday])
+  @@index([firmId, setId])
   @@map("fo_availability")
+}
+
+/// FO-3a part 1b (AG-4-62 rule 1b): the set of hours a booking type uses for one of its hosts. No row = the host's
+/// default set; a deleted set takes its rows with it, so the type falls back to the default.
+model FoTypeHostSet {
+  firmId    String   @map("firm_id") @db.Uuid
+  typeId    String   @map("type_id") @db.Uuid
+  staffId   String   @map("staff_id") @db.Uuid
+  setId     String   @map("set_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  type FoConsultationType @relation(fields: [firmId, typeId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  set  FoAvailabilitySet  @relation(fields: [firmId, staffId, setId], references: [firmId, staffId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([firmId, typeId, staffId])
+  @@map("fo_type_host_set")
 }
 
 /// A staff member's out-of-office period, whole or part days (AG-4-62 rules 5, 8): it removes every slot it overlaps and
