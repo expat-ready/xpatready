@@ -1,0 +1,50 @@
+# Pipeline heartbeat (CK-2, founder asks A151 and A154, 17 Nov 2026): proof, outside every session, that the decided
+# set-up is in force (CK-1, product/tools/conformance-check.py) and that the pipeline keeps moving with nobody watching
+# (product/tools/pipeline-heartbeat.py: no merge, stuck queue, stalled lane, missing nightly; thresholds in
+# product/design/engineering-approved-setup.json › heartbeat). A red run is the alarm: GitHub mails the owner when a
+# scheduled run fails, and the reason is in the job summary. The result is also an artifact (pipeline-heartbeat), which
+# the board reads (CK-3). One small job, read-only token, at most one run at a time (a newer scheduled run waits; GitHub
+# may drop a waiting one, never a running one), 5 minutes at most. GitHub reads: one GraphQL query, three REST GETs
+# (two run lists, main's branch rules). US$0 (public repository).
+name: pipeline-heartbeat
+on:
+  schedule:
+    - cron: "11,41 * * * *"   # every 30 min, off the top of the hour (GitHub delays :00 schedules most)
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: pipeline-heartbeat
+  cancel-in-progress: false
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      OUT: ${{ runner.temp }}/heartbeat
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: PyYAML (conformance-check reads the YAML files)
+        run: pip install --quiet pyyaml==6.0.3
+      - name: set-up conformance (CK-1) on main
+        run: |
+          mkdir -p "$OUT"
+          python3 -I "$P/tools/conformance-check.py" --root . --github --json "$OUT/conformance.json" --md "$GITHUB_STEP_SUMMARY" || true
+      - name: heartbeat (red on any alarm)
+        run: python3 -I "$P/tools/pipeline-heartbeat.py" --conformance "$OUT/conformance.json" --json "$OUT/heartbeat.json" --md "$GITHUB_STEP_SUMMARY"
+      - name: result for the board
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-heartbeat
+          path: ${{ runner.temp }}/heartbeat/
+          retention-days: 3
+          if-no-files-found: warn

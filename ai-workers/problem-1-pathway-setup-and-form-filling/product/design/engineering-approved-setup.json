@@ -1,6 +1,6 @@
 {
  "_about": "The approved engineering set-up (CK-1, founder asks A151 and A154, 17 Nov 2026). Owned by the tech lead: a change to the set-up is approved first, then this file gets a new version and a change_log row in the same PR as the change. tools/conformance-check.py compares origin/main with it (lists compare as sets: extra lines allowed, a missing one fails) and prints enforced: yes | no. The ruleset item is read only by the heartbeat workflow (the agents' deny list blocks ruleset reads in sessions); 'required': false tolerates no ruleset until the tech lead sets it true after the move (18 Nov).",
- "version": "1.1.0",
+ "version": "1.2.0",
  "date": "2026-11-17",
  "owner": "the tech lead",
  "change_log": [
@@ -15,6 +15,12 @@
    "date": "2026-11-17",
    "change": "CK-1 part 2: ci.yml (workflow name, 8 required jobs, the ci gate's 6 needs, pull_request types exactly, no pull_request_target or workflow_run, token write only for retry-comment's comment), the main ruleset (deletion, non-fast-forward, required check ci; pending until required is set after the move), Library master versions.",
    "approval": "founder 17 Nov: enforcement checks (A151, A154)"
+  },
+  {
+   "version": "1.2.0",
+   "date": "2026-11-17",
+   "change": "CK-2 heartbeat: alarm thresholds (no merge 90 min with an approved PR waiting, queue without batch progress 60 min, lane idle 90 min, nightly by 04:00 IST, conformance failing); P95 queue wait 60 and batch wait 15 min reported (the T1 admission trigger); the heartbeat workflow itself (every 30 min, read-only, one job, 5 min, never cancelled) checked here.",
+   "approval": "founder 17 Nov: enforcement checks (A151, A154), thresholds as in the checks brief"
   }
  ],
  "settings": {
@@ -213,5 +219,21 @@
  "library": {
   "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/cockpit/library.json",
   "version_field": "version"
+ },
+ "heartbeat": {
+  "workflow": "pipeline-heartbeat.yml",
+  "every_min": 30,
+  "timeout_min": 5,
+  "no_merge_min": 90,
+  "queue_no_progress_min": 60,
+  "queue_wait_p95_min": 60,
+  "batch_wait_p95_min": 15,
+  "stalled_lane_min": 90,
+  "stalled_lane_max_age_h": 24,
+  "lane_branch_excluded_prefixes": ["mergify/", "dependabot/", "lead/"],
+  "nightly_workflow": "nightly.yml",
+  "nightly_by_ist": "04:00",
+  "approved_label": "review: approved",
+  "batch_branch_prefix": "mergify/merge-queue/"
  }
 }
