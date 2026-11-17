@@ -49,7 +49,7 @@ const uuid = () => crypto.randomUUID(), box = (w: string) => `pf19p.${w}.${uuid(
 const HASH = "a".repeat(64);
 
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
-const NEW = "20261117120000_pf19p_platform_account_mail", ALL = readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort();
+const NEW = "20261117121500_pf19p_platform_account_mail", ALL = readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort();
 const migrate = (d: string) => execFileSync(join(BIN, "psql"), [URL, "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = URL;
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: URL, options: "-c TimeZone=UTC" }) });
