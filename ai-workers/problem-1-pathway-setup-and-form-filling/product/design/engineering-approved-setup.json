@@ -13,7 +13,7 @@
   {
    "version": "1.1.0",
    "date": "2026-11-17",
-   "change": "CK-1 part 2: ci.yml (workflow name, 8 required jobs, the ci gate's 6 needs, pull_request types exactly, no pull_request_target or workflow_run, token write only for retry-comment's comment), the main ruleset (deletion, non-fast-forward, required check ci; pending until required is set after the move), Library master versions.",
+   "change": "CK-1 part 2: ci.yml (workflow name, 8 required jobs, the ci gate's 6 needs, pull_request types exactly, no pull_request_target or workflow_run, token write only for retry-comment's comment), the gate's check name, if: and no continue-on-error, triggers exactly, the main ruleset (deletion, non-fast-forward, required check ci; pending until required_from 20 Nov, then a failure), the heartbeat workflow's shape, Library master versions.",
    "approval": "founder 17 Nov: enforcement checks (A151, A154)"
   }
  ],
@@ -200,6 +200,7 @@
   "jobs_required": ["guard", "kind", "shard", "packs", "types", "regression-plan", "regression", "ci"],
   "gate_job": "ci",
   "gate_needs_required": ["kind", "shard", "packs", "types", "regression-plan", "regression"],
+  "gate_if": "${{ !cancelled() && (!github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/')) }}",
   "trigger_types_exact": {"pull_request": ["opened", "synchronize", "reopened", "ready_for_review"]},
   "triggers_forbidden": ["pull_request_target", "workflow_run"],
   "write_scopes_allowed": {"retry-comment": ["pull-requests"]}
@@ -208,7 +209,8 @@
   "branch": "main",
   "required": false,
   "rules_required": ["deletion", "non_fast_forward", "required_status_checks"],
-  "required_checks": ["ci"]
+  "required_checks": ["ci"],
+  "required_from": "2026-11-20"
  },
  "library": {
   "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/cockpit/library.json",

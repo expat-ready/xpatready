@@ -41,10 +41,10 @@ MANIFEST = {
                                 "merge_conditions_required": ["check-success = ci"]}},
                 "auto_merge_conditions": True},
     "ci": {"path": C, "workflow_name": "ci", "jobs_required": ["guard", "shard", "ci"], "gate_job": "ci",
-           "gate_needs_required": ["shard"], "trigger_types_exact": {"pull_request": ["opened", "synchronize",
+           "gate_needs_required": ["shard"], "gate_if": "${{ !cancelled() }}", "trigger_types_exact": {"pull_request": ["opened", "synchronize",
                                                                                      "ready_for_review"]},
            "triggers_forbidden": ["pull_request_target"], "write_scopes_allowed": {"retry-comment": ["pull-requests"]}},
-    "ruleset": {"branch": "main", "required": False, "required_checks": ["ci"],
+    "ruleset": {"branch": "main", "required": False, "required_checks": ["ci"], "required_from": "2999-01-01",
                 "rules_required": ["deletion", "non_fast_forward", "required_status_checks"]},
     "library": {"path": LIB, "version_field": "version"},
 }
@@ -78,7 +78,7 @@ def good_files():
     ci = {"name": "ci", "on": {"pull_request": {"types": ["opened", "synchronize", "ready_for_review"]}},
           "jobs": {"guard": {"permissions": {"contents": "read"}},
                    "shard": {"permissions": {"contents": "read", "pull-requests": "read"}},
-                   "ci": {"permissions": {"contents": "read"}, "needs": ["shard"]},
+                   "ci": {"permissions": {"contents": "read"}, "needs": ["shard"], "if": "${{ !cancelled() }}"},
                    "retry-comment": {"permissions": {"contents": "read", "pull-requests": "write"}}}}
     library = {"docs": [
         {"name": "Change log", "path": "docs/change-log.md", "status": "living", "version": "1.2"},
@@ -237,11 +237,23 @@ class Conformance(unittest.TestCase):
         r = self.check(edit(C, lambda d: d.update({"name": "checks"})))
         self.assertEqual(status(r, "ci.jobs"), "fail")
 
+    def test_the_gate_check_cannot_move_or_be_weakened(self):
+        for fn in (lambda d: d["jobs"]["ci"].update({"name": "gate"}),               # check "ci" gone from the gate
+                   lambda d: d["jobs"]["guard"].update({"name": "ci"}),              # another job answers as "ci"
+                   lambda d: d["jobs"]["ci"].update({"if": "false"}),                # a skipped gate counts as passed
+                   lambda d: d["jobs"]["shard"].update({"continue-on-error": True}),
+                   lambda d: d["jobs"]["ci"].update({"continue-on-error": True})):
+            self.assertEqual(status(self.check(edit(C, fn)), "ci.gate"), "fail")
+        self.assertEqual(status(self.check(edit(C, lambda d: d["jobs"]["ci"].update({"name": "ci"}))), "ci.gate"),
+                         "pass")
+
     def test_triggers_changed_fails(self):
         for fn in (lambda d: d[True]["pull_request"]["types"].remove("ready_for_review"),
                    lambda d: d[True]["pull_request"]["types"].append("labeled"),   # a label would start a second run
                    lambda d: d[True]["pull_request"].pop("types"),                 # GitHub's default set
-                   lambda d: d[True].update({"pull_request_target": {}})):
+                   lambda d: d[True].update({"pull_request_target": {}}),
+                   lambda d: d[True].update({"push": None}),                                   # a second ci run
+                   lambda d: d[True]["pull_request"].update({"branches-ignore": ["main"]})):
             self.assertEqual(status(self.check(edit(C, fn)), "ci.triggers"), "fail")
 
     def test_write_permission_fails(self):
@@ -250,6 +262,33 @@ class Conformance(unittest.TestCase):
                    lambda d: d.update({"permissions": "write-all"}),
                    lambda d: d["jobs"]["retry-comment"]["permissions"].update({"contents": "write"})):
             self.assertEqual(status(self.check(edit(C, fn)), "ci.permissions"), "fail")
+
+    # -- heartbeat workflow ------------------------------------------------------------------------------------------
+    def test_heartbeat_workflow(self):
+        hb = json.loads(json.dumps(MANIFEST)); hb["heartbeat"] = {"workflow": "hb.yml", "every_min": 30, "timeout_min": 5}
+        W = ".github/workflows/hb.yml"
+        good = {"name": "hb", "on": {"schedule": [{"cron": "11,41 * * * *"}]}, "permissions": {"contents": "read"},
+                "concurrency": {"group": "hb", "cancel-in-progress": False},
+                "jobs": {"beat": {"runs-on": "ubuntu-latest", "timeout-minutes": 5}}}
+        def with_wf(fn=None):
+            def ch(files):
+                d = json.loads(json.dumps(good))
+                if fn:
+                    fn(d)
+                files[W] = dump(d)
+            return ch
+        self.assertEqual(status(self.check(with_wf(), hb), "heartbeat.workflow"), "pass")
+        self.assertEqual([i["id"] for i in self.check()["items"] if i["area"] == "heartbeat"], [])  # not decided yet
+        for fn in (lambda d: d["on"].update({"schedule": [{"cron": "11 * * * *"}]}),       # hourly
+                   lambda d: d.update({"permissions": {"contents": "write"}}),
+                   lambda d: d.update({"concurrency": {"group": "hb", "cancel-in-progress": True}}),
+                   lambda d: d["jobs"]["beat"].update({"timeout-minutes": 30}),
+                   lambda d: d["jobs"]["beat"].update({"timeout-minutes": True}),
+                   lambda d: d["jobs"].update({"second": {"timeout-minutes": 1}})):
+            self.assertEqual(status(self.check(with_wf(fn), hb), "heartbeat.workflow"), "fail")
+        self.assertEqual(status(self.check(lambda f: None, hb), "heartbeat.workflow"), "fail")  # file missing
+        good["on"]["schedule"] = [{"cron": "*/30 * * * *"}]
+        self.assertEqual(status(self.check(with_wf(), hb), "heartbeat.workflow"), "pass")
 
     # -- ruleset -----------------------------------------------------------------------------------------------------
     def test_ruleset_states(self):
@@ -264,6 +303,8 @@ class Conformance(unittest.TestCase):
         self.assertEqual(status(self.check(rules=other), "ruleset.main"), "fail")  # ci not required
         self.assertEqual(status(self.check(rules="could not read"), "ruleset.main"), "fail")
         self.assertEqual(status(self.check(rules={"message": "Not Found"}), "ruleset.main"), "fail")
+        late = json.loads(json.dumps(MANIFEST)); late["ruleset"]["required_from"] = "2026-11-01"
+        self.assertEqual(status(self.check(rules=[], manifest=late), "ruleset.main"), "fail")  # pending has an end
 
     def test_read_rules_reads_one_get_and_fails_closed(self):
         import io, urllib.error
@@ -274,13 +315,13 @@ class Conformance(unittest.TestCase):
         def ok(req, timeout):
             seen.append((req.get_method(), req.full_url)); return Resp(json.dumps(ALL_RULES))
         def bad(req, timeout):
-            raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+            raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, io.BytesIO(b""))
         env = {"GITHUB_REPOSITORY": "o/r", "GITHUB_TOKEN": "t", "GITHUB_API_URL": "https://api.example"}
         old = {k: os.environ.get(k) for k in env}
         os.environ.update(env)
         try:
             self.assertEqual(cc.read_rules(MANIFEST, ok), ALL_RULES)
-            self.assertEqual(seen, [("GET", "https://api.example/repos/o/r/rules/branches/main")])
+            self.assertEqual(seen, [("GET", "https://api.example/repos/o/r/rules/branches/main?per_page=100")])
             self.assertIsInstance(cc.read_rules(MANIFEST, bad), str)
             os.environ.pop("GITHUB_TOKEN")
             self.assertIsInstance(cc.read_rules(MANIFEST, ok), str)
@@ -296,14 +337,20 @@ class Conformance(unittest.TestCase):
             self.assertEqual(status(self.check(lambda f: f.update({rel: text})), iid), "fail")
 
     def test_version_header_forms_and_unregistered_wording(self):
-        for line in ("Version: 1.2", "**Version:** v1.2", "| Version | 1.2 |", "> Version: 1.2.", "_Version_: 1.2"):
+        for line in ("Version: 1.2", "**Version:** v1.2", "| Version | 1.2 |", "> Version: 1.2.", "_Version_: 1.2",
+                     "version: 1.2", "VERSION: 1.2"):
             self.assertEqual(cc.header_version(f"# T\n\n{line}\n"), "1.2", line)
         found = [i for i in self.check()["items"] if i["id"] == "library.Folder"][0]["found"]
         self.assertIn("no version registered", found)
 
-    def test_master_missing_fails(self):
+    def test_master_missing_or_outside_or_bad_version_fails(self):
         r = self.check(lambda f: [f.pop("docs/folder/a.md"), f.pop("docs/one-contract.md")])
         self.assertEqual((status(r, "library.Folder"), status(r, "library.Glob")), ("fail", "fail"))
+        for path in ("", "/etc/hosts", "../outside.md", "docs/../../x"):
+            lib = lambda f, p=path: f.update({LIB: json.dumps({"docs": [{"name": "Bad", "path": p, "status": "living"}]})})
+            self.assertEqual(status(self.check(lib), "library.Bad"), "fail", path)
+        num = lambda f: f.update({LIB: json.dumps({"docs": [{"name": "Num", "path": "docs/setup.json", "version": 2.0}]})})
+        self.assertEqual(status(self.check(num), "library.Num"), "fail")   # a JSON number: 1.10 would read as 1.1
 
     # -- the command -------------------------------------------------------------------------------------------------
     def test_exit_code_counts_failures_and_reads_a_git_ref(self):
