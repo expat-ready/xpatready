@@ -1,0 +1,31 @@
+setup (not through the product: no firm, staff, hours or type screens yet): firm qa-fo3w-6295, one host, type "free"
+PASS  axe clean: list page at 1440 px
+PASS  R1.38 est 1440px: the page states the visitor's zone (Asia/Dubai)
+PASS  R1.38 est 1440px: "Friday 12 March, 19:00 Asia/Dubai time" is offered (10:00 Toronto in the visitor's zone)
+PASS  axe clean: times page at 1440 px
+PASS  R1.38 est 1440px: "You are booked" reads Friday 12 March, 19:00 Asia/Dubai time
+PASS  R1.38 est: stored in UTC (2027-03-12T15:00:00.000Z) with the booker's zone Asia/Dubai
+PASS  R1.40 est: "Add to calendar" gives the invite (200, text/calendar), DTSTART 20270312T150000Z, METHOD:REQUEST
+PASS  R1.40 est: the emailed invite (demo inbox) is the same invite as "Add to calendar" (DTSTAMP aside)
+PASS  R1.38 est: the email body reads "7:00 p.m. (Asia/Dubai)"
+PASS  axe clean: list page at 1024 px
+PASS  R1.38 edt 1024px: the page states the visitor's zone (Asia/Dubai)
+PASS  R1.38 edt 1024px: "Monday 15 March, 18:00 Asia/Dubai time" is offered (10:00 Toronto in the visitor's zone)
+PASS  axe clean: times page at 1024 px
+PASS  R1.38 edt 1024px: "You are booked" reads Monday 15 March, 18:00 Asia/Dubai time
+PASS  R1.38 edt: stored in UTC (2027-03-15T14:00:00.000Z) with the booker's zone Asia/Dubai
+PASS  R1.40 edt: "Add to calendar" gives the invite (200, text/calendar), DTSTART 20270315T140000Z, METHOD:REQUEST
+PASS  R1.40 edt: the emailed invite (demo inbox) is the same invite as "Add to calendar" (DTSTAMP aside)
+PASS  R1.38 edt: the email body reads "6:00 p.m. (Asia/Dubai)"
+PASS  axe clean: list page at 400 px
+PASS  R1.38 edt-400 400px: the page states the visitor's zone (Asia/Dubai)
+PASS  R1.38 edt-400 400px: "Tuesday 16 March, 18:00 Asia/Dubai time" is offered (10:00 Toronto in the visitor's zone)
+PASS  axe clean: times page at 400 px
+PASS  R1.38 edt-400 400px: "You are booked" reads Tuesday 16 March, 18:00 Asia/Dubai time
+PASS  R1.38 edt-400: stored in UTC (2027-03-16T14:00:00.000Z) with the booker's zone Asia/Dubai
+PASS  R1.40 edt-400: "Add to calendar" gives the invite (200, text/calendar), DTSTART 20270316T140000Z, METHOD:REQUEST
+PASS  R1.40 edt-400: the emailed invite (demo inbox) is the same invite as "Add to calendar" (DTSTAMP aside)
+PASS  R1.38 edt-400: the email body reads "6:00 p.m. (Asia/Dubai)"
+NOTE  next step: Reschedule → /book/qa-fo3w-6295/manage#<token> shows: "This page is not available."
+FAIL  next step (map row 42): Reschedule opens a page that can change the booking — "This page is not available."
+27 passed, 1 failed
