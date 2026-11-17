@@ -111,14 +111,7 @@ SKIP="check_catalogue_scale.cjs"
 # whole suite (this list is per suite); its 13 other steps still run nightly, and acceptance/C6.13.test.ts (32 steps)
 # still runs in PR and queue packs. Fix row QA-420 (qa/BUGS.md, runtime): the check waits for the focus move (or the
 # product moves focus only after its re-render), 5 runs green in a row, then off this list in that PR.
-# check_bk5_start_browser.cjs (BK-5 demo start page, runtime) quarantined 17 Nov by the tech lead's ruling on #2021 (Lead 71,
-# P-205): its line "BR-6 pass: Try again (double clicked) runs both calls once and lands on Immigration programs" fails on
-# order and timing in shared shards. On #2021 (no web, route or demo change) it failed 4 of 4 tries with the right calls
-# each time; the automatic quarantine (B122, flaky.mjs) had already dropped it (SUITES_QUARANTINE_AUTO empty in run
-# 43914096576). Bug QA-498 (qa/BUGS.md, Major, open). The quarantine is the whole suite (this list is per suite); the
-# nightly full set still runs it. Remove by 18 Nov or when the QA-498 fix lands: the fix row is QA-498 itself, and its
-# PR takes the name off this list.
-QUARANTINE="check_forms_c36_rule_facts_browser.cjs check_screen01_api.ts check_d1_reset_to_six_browser.cjs check_b78_section_names.ts check_c613_filing_changes_browser.cjs check_bk5_start_browser.cjs"
+QUARANTINE="check_forms_c36_rule_facts_browser.cjs check_screen01_api.ts check_d1_reset_to_six_browser.cjs check_b78_section_names.ts check_c613_filing_changes_browser.cjs"
 # Automatic quarantine (B122): only well-formed entries; anything else is named and ignored, never run blind.
 AUTOQ=" "
 for e in ${SUITES_QUARANTINE_AUTO:-}; do
