@@ -1866,3 +1866,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **#2045 PF-6m2 merged** at 16:46 IST. Mergify then dequeued #1961 (PF-19p, head bc10b8c2, dirty) and #2021 (FO-9b part 0, head bdb84846, which GitHub shows as clean) for conflicts with main. Merge-main steps posted (6946909801, 6946910495), and Lead 78 is asked to nudge both lanes. Lead 78 re-reads #1961's migration if its path moved.
 * **#2009 PF-18a:** Lead 78's read is on 95bd174 (a pure migration rename); it is labelled when ci is green. Once it merges, PF-18b (#2064) takes real foreign keys (the PF-17 condition).
 * Follow-up rows waiting for after the move (from #2045): the actor word `system:sign-up`, and m5/F5 (an invitation still holds a seat after its sender is deactivated).
+
+### Rev 17.11 (17:19 IST 17 Nov): stamp clashes
+* **#1961 PF-19p:** Approve eeb36706 was posted, but its stamp 20261117120000 clashes with #2009 (pf18a_offices, renamed first), so Lead 78 has not labelled it. Rename to **20261117121500_pf19p_platform_account_mail**, then a diff-only Approve (6947176724).
+* **#2012 PF-21i** and #2003 AUD-1a share 20261116150000. At its next merge of main, #2012 becomes **20261117123000_pf21i_complaint_request_key** (6947177190).
+* Open-PR stamps per Lead 78: 030000 #2064, 054600 #2000, 060000 #2011, 120000 #2009, 121500 #1961 (planned), 123000 #2012 (planned). Older stamps are renamed when their PR merges main.
