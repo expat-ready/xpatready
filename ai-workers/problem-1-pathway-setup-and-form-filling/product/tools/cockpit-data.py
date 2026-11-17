@@ -413,7 +413,8 @@ FLOW_DISK_GB = 7                               # the Mac's disk floor for the Fl
 STUCK_MAX_PRS = 40                             # open approved PRs whose label time is read (one call each)
 STUCK_MERGE_MIN = (30, 60)                     # Stuck now: last merge to main, green to 30 min, red over 60 (P-646)
 STUCK_QUEUE = (15, 30)                         # Stuck now: Actions runs waiting for a machine, red over 30 (P-646)
-STUCK_SESSIONS_FRESH_MIN = 60                  # Stuck now: an empty session list older than this reads amber, not green
+STUCK_SESSIONS_FRESH_MIN = 60
+STUCK_SESSIONS_LABEL = "Sessions stuck (awaiting input, failed, blocked, or idle with work left and no push for 90 min)"  # Lead 73, P-339b; the Lead filters                  # Stuck now: an empty session list older than this reads amber, not green
 STUCK_APPROVED_MIN = 60                        # Stuck now: approved and not merged for over 60 min
 CI_SAMPLE_RUNS = 20                            # CI runs (newest, last 3 h) whose jobs are read for the wait
 LEAD_B_BRANCH = "lead-b-front-office"          # Lead B's branch holding design/lead-b-briefs/ (Lead input lead_b_branch overrides)
@@ -3117,22 +3118,23 @@ def stuck_now(d, sc, ci, li, li_src):
          "text": (f"Actions runs waiting for a machine: {q}" if q is not None else "Actions runs waiting for a machine: not measured"),
          "src": f"GitHub Actions runs with status queued (total_count), as lead-watch's jam line (P-646); green to {STUCK_QUEUE[0]}, red over {STUCK_QUEUE[1]}; " + at}]
     if isinstance(ss, list):
-        names = [f"{x.get('title') or 'untitled'} ({x.get('state') or 'state not given'})" for x in ss if isinstance(x, dict)]
+        names = [f"{x.get('title') or 'untitled'} ({'; '.join(str(v) for v in (x.get('state') or 'state not given', x.get('reason')) if v)})"
+                 for x in ss if isinstance(x, dict)]
         try:
             sa = parse_iso(ss_at) if ss_at else None
             sa = sa if sa and sa.tzinfo else None                  # a time with no zone is not trusted
-        except ValueError:
+        except (ValueError, TypeError, AttributeError):     # not a string, or not a time
             sa = None
         tk = parse_iso(taken) if taken else None
         age = int((tk - sa).total_seconds() // 60) if sa and tk else None
         when = (ist(sa) + (f", {age} min before this data" if age is not None else "")) if sa else "a time not given"
         stale = age is None or age > STUCK_SESSIONS_FRESH_MIN
         lines.append({"key": "sessions", "light": "red" if names else ("amber" if stale else "green"),
-                      "text": (f"Sessions awaiting input or failed: {len(names)}" + (": " + "; ".join(names) if names else "")),
+                      "text": (f"{STUCK_SESSIONS_LABEL}: {len(names)}" + (": " + "; ".join(names) if names else "")),
                       "src": f"per the Lead's check of claude.ai/code at {when} (P-647), Lead-reported; amber when no session is listed but the "
                              f"check is over {STUCK_SESSIONS_FRESH_MIN} min old or undated; " + li_src, "items": names})
     else:
-        lines.append({"key": "sessions", "light": "grey", "text": "Sessions awaiting input or failed: not reported",
+        lines.append({"key": "sessions", "light": "grey", "text": f"{STUCK_SESSIONS_LABEL}: not reported",
                       "src": "the Lead input has no stuck_sessions (the Lead's check of claude.ai/code, P-647)", "items": []})
     ao = sc["approved_old"]
     lines.append({"key": "approved", "light": "grey" if sc["stuck_approved_over_60"] is None else "red" if ao else "green",
