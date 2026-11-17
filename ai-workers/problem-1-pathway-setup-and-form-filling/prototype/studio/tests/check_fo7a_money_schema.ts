@@ -114,7 +114,7 @@ try {
     (sql(DEMO, `create index money_tmp_bad on money_invoice (number)`), indexesNotFirmFirst(DEMO) === "money_tmp_bad") && (sql(DEMO, `drop index money_tmp_bad`), indexesNotFirmFirst(DEMO) === ""));
   ok("FO-7a pass: every amount is an integer — every *_minor column is integer, and no money_ column is a float or a decimal",
     sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and column_name like '%\\_minor' and data_type <> 'integer'`) === "0"
-    && sql(DEMO, `select count(*) from information_schema.columns where table_name = any('{${TABLES.join(",")}}') and column_name like '%\\_minor'`) === "10"
+    && sql(DEMO, `select count(*) from information_schema.columns where table_name = any('{${TABLES.join(",")}}') and column_name like '%\\_minor'`) === "11"
     && sql(DEMO, `select count(*) from information_schema.columns where table_name like 'money\\_%' and data_type in ('real', 'double precision', 'numeric', 'money')`) === "0");
   ok("FO-7a pass: every table with an amount carries its currency, as an enum of CAD and USD",
     sql(DEMO, `select coalesce(string_agg(distinct c.table_name, ','), '') from information_schema.columns c where c.table_name like 'money\\_%' and c.column_name like '%\\_minor'
@@ -598,6 +598,9 @@ try {
   const fns = (db: string) => sql(db, `select string_agg(proname, ',' order by proname) from pg_proc where pronamespace = 'public'::regnamespace`).split(",");
   // Later rows' migrations follow this one on main (CS-C1a's case_decision_*, #1818): their own functions are theirs.
   const later = new Set(all.filter((d) => d > NEW).flatMap((d) => [...readFileSync(join(MIG, d, "migration.sql"), "utf8").matchAll(/CREATE (?:OR REPLACE )?FUNCTION\s+(?:public\.)?"?([a-z_][a-z0-9_]*)"?\s*\(/gi)].map((m) => m[1])));
+  // FO-7a2 replaces three of FO-7a's own functions (CREATE OR REPLACE): they are still FO-7a's.
+  const own = new Set([...readFileSync(join(MIG, NEW, "migration.sql"), "utf8").matchAll(/CREATE (?:OR REPLACE )?FUNCTION\s+(?:public\.)?"?([a-z_][a-z0-9_]*)"?\s*\(/gi)].map((m) => m[1]));
+  for (const f of own) later.delete(f);
   const added = fns(DEMO).filter((f) => !fns(BARE).includes(f) && !later.has(f));
   ok("FO-7a pass (rows rev 15.2): every function the migration adds is named money_ (21 of them)", added.length === 21 && added.every((f) => f.startsWith("money_")), added);
 } finally {
