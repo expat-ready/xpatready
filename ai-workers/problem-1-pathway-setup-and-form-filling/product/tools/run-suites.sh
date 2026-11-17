@@ -127,6 +127,14 @@ for e in ${SUITES_QUARANTINE_AUTO:-}; do
     case " $QUARANTINE " in *" $qn "*) ;; *) QUARANTINE="$QUARANTINE $qn"; AUTOQ="$AUTOQ$qn|$qo|$qd|${qr:--} ";; esac
   else echo "SUITES_QUARANTINE_AUTO: ignored the malformed entry \"$e\"" >&2; fi
 done
+# check_forms_qa53.ts (forms, QA-53 firm workspace) quarantined 17 Nov by the tech lead's ruling (Lead 74, P-205): it stops
+# on "TypeError: fetch failed" right after it starts its firm-workspace copy (execFileSync blocks the event loop while the
+# main copy's keep-alive socket waits; Lead 72's root cause on #2035, comment 6935433301). Three hits within about 6 hours on
+# PRs that touch no file it reads: #2035's batch, #2003 shard 7, #2014 shard 3 (run 44004878525), "failed twice" each time,
+# so the automatic quarantine (B122, pass on retry) never catches it. The whole suite; the nightly full set still runs it.
+# Fix row QA-53k (night queue, tests only): start the copy without blocking, 5 runs green in a row, then off this line.
+# Kept on its own line, apart from the static list above, so it never clashes with a PR that edits that list.
+QUARANTINE="$QUARANTINE check_forms_qa53.ts"
 RETRY_MAX="${SUITES_RETRY_MAX:-2}"; [[ "$RETRY_MAX" =~ ^[0-9]+$ ]] || RETRY_MAX=2
 OUT="${SUITES_OUT:-$ROOT/$S/var/suites}"; mkdir -p "$OUT"
 # SUITES_TESTS_DIR (tools/check-flaky.sh only): run the check_* files of a fixture folder instead of studio/tests, and
