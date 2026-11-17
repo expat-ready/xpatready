@@ -1,8 +1,8 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_c9752f73-e3bb-45fe-8df9-5bb52de07118 Lead 75 · 17 Nov 10:2x IST (series 2; took over from Lead 74 (series 2, local_fa783599) at ~560k, P-446)
+current_lead: local_c9752f73-e3bb-45fe-8df9-5bb52de07118 Lead 75 · 17 Nov 10:22 IST (series 2; took over from Lead 74 (series 2, local_fa783599) at ~560k, P-446)
 
-updated: 2026-11-17 10:22 IST by **Lead 74 (series 2, local_fa783599)** at hand-over to Lead 75 (Lead 74 ran 08:39-10:22; cron d459d500 deleted) · weekly about 45% (resets 17 Nov 10:30 IST) · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-653**; P-654 newer, lag 1) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-17 10:2x IST by **Lead 75 (local_c9752f73)** took over at 10:22, check cron ca6fade8 (:23/:53); earlier by **Lead 74 (series 2, local_fa783599)** at hand-over to Lead 75 (Lead 74 ran 08:39-10:22; cron d459d500 deleted) · weekly about 45% (resets 17 Nov 10:30 IST) · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-653**; P-654 newer, lag 1) · this branch: `lead/2026-11-07-lead31`
 
 Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
