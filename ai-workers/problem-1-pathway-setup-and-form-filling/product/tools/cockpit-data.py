@@ -3139,8 +3139,10 @@ def stuck_now(d, sc, ci, li, li_src):
     ao = sc["approved_old"]
     lines.append({"key": "approved", "light": "grey" if sc["stuck_approved_over_60"] is None else "red" if ao else "green",
                   "text": (f"Approved, not merged for over {STUCK_APPROVED_MIN} min: " + (str(len(ao)) + (": " + "; ".join(f"#{x['number']} ({x['min']} min)" for x in ao[:8]) + (f" and {len(ao) - 8} more" if len(ao) > 8 else "") if ao else ""))
-                           if sc["stuck_approved_over_60"] is not None else f"Approved, not merged for over {STUCK_APPROVED_MIN} min: " + sc["approved_reason"]),
-                  "src": "open PRs labelled review: approved, minutes since the label went on (GitHub issue events); " + at,
+                           if sc["stuck_approved_over_60"] is not None else f"Approved, not merged for over {STUCK_APPROVED_MIN} min: " + sc["approved_reason"])
+                          + (f"; waiting for CI machines ({q} runs queued)" if ao and q is not None and q > STUCK_QUEUE[1] else ""),
+                  "src": "open PRs labelled review: approved, minutes since the label went on (GitHub issue events); the reason 'waiting for CI machines' is added "
+                         f"when the queue line is red (over {STUCK_QUEUE[1]} runs queued; Lead 74, 17 Nov); " + at,
                   "items": [f"#{x['number']} {x['title']} ({x['min']} min)" for x in ao]})
     return {"lines": lines, "light": flow_light(*[x["light"] if x["light"] != "grey" else None for x in lines])}
 

@@ -2240,7 +2240,7 @@ class StuckNow(unittest.TestCase):
         self.assertEqual((L["queue"]["text"], L["queue"]["light"]), ("Actions runs waiting for a machine: 31", "red"))   # over 30
         self.assertEqual((L["sessions"]["text"], L["sessions"]["light"]), ("Sessions stuck (awaiting input, failed, blocked, or idle with work left and no push for 90 min): 1: next forms (Awaiting input)", "red"))
         self.assertIn("per the Lead's check of claude.ai/code at 20 Nov 11:30 IST, 30 min before this data", L["sessions"]["src"])
-        self.assertEqual((L["approved"]["text"], L["approved"]["light"]), ("Approved, not merged for over 60 min: 1: #11 (90 min)", "red"))
+        self.assertEqual((L["approved"]["text"], L["approved"]["light"]), ("Approved, not merged for over 60 min: 1: #11 (90 min); waiting for CI machines (31 runs queued)", "red"))   # queue red: the reason added
         ok = self.lines(ci={"queued_runs": 4}, li={"stuck_sessions": [], "stuck_sessions_at": "2026-11-20T06:00:00Z"},
                         meta={"taken_at": "2026-11-20T12:00:00+05:30", "main_at": "2026-11-20T06:20:00Z"}, ap=[])
         self.assertEqual([x["light"] for x in ok.values()], ["green", "green", "green", "green"])
@@ -2259,6 +2259,8 @@ class StuckNow(unittest.TestCase):
                           ["Manitoba read (blocked; Claude in Chrome not connected)", "PF-8r (Awaiting input)"]))
         self.assertIn("a time not given", r["src"])
         self.assertEqual(self.lines(li={"stuck_sessions": [], "stuck_sessions_at": ["x"]})["sessions"]["light"], "amber")
+        # the reason goes only with a red queue line (20 queued is amber: no reason)
+        self.assertEqual(self.lines(ci={"queued_runs": 20})["approved"]["text"], "Approved, not merged for over 60 min: 1: #11 (90 min)")
         # review m4: a merge after the snapshot time reads 0, not -1
         self.assertEqual(cd.stuck_counts({"taken_at": "2026-11-20T12:00:00+05:30", "main_at": "2026-11-20T06:30:30Z"}, [])["stuck_main_gap_min"], 0)
 
