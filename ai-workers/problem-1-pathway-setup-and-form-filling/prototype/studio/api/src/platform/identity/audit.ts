@@ -5,17 +5,15 @@
 // only, so it never deletes a platform line (P-571 (1); PF-3 review m3 / B-6). When AUD-1 adds firm_id, these lines move to
 // AuditPort.record and this file goes. A licence number is never written here (AG-1-30, -31): callers pass field names only.
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { platformAuditWorkspaceId as raceSafeWorkspaceId } from "../audit/audit-event.ts";
 
 type Tx = Prisma.TransactionClient;
 export const PLATFORM_AUDIT_WORKSPACE = "platform-audit";
 
-let cached: string | null = null;
-/** The platform's audit workspace row (made once; never the demo workspace, so never reset). */
+/** The platform's audit workspace row: the race-safe maker of PF-0p (audit-event.ts, review M1; no cache), so two first
+ *  writers in parallel never fail on the unique key (PF-6m break F2). */
 export async function platformAuditWorkspaceId(db: PrismaClient | Tx): Promise<string> {
-  if (cached && (await db.workspace.findUnique({ where: { id: cached }, select: { id: true } }))) return cached;
-  const w = await db.workspace.upsert({ where: { key: PLATFORM_AUDIT_WORKSPACE }, update: {}, create: { key: PLATFORM_AUDIT_WORKSPACE, label: "Platform audit lines (firm staff, roles, settings; never reset)" } });
-  cached = w.id;
-  return w.id;
+  return raceSafeWorkspaceId(db as Tx);
 }
 
 export type AuditLine = { firmId: string; firmKey: string; actor: string; action: string; entityKey: string; summary: string; detail: Record<string, unknown> };
