@@ -19,6 +19,7 @@ import { Corporate } from "../api/src/front-office/sales/corporate/service.ts";
 import { Leads } from "../api/src/front-office/sales/leads.ts";
 import { PublicForms, type SalesPorts } from "../api/src/front-office/sales/public.ts";
 import { auditEvent, platformAuditWorkspaceId } from "../api/src/platform/audit/audit-event.ts";
+import { oneQueryPerCaller, walledPool, withFirm } from "../api/src/platform/firm-scope.ts";
 import { assertEveryRouteDeclared } from "../api/src/platform/identity/guard.ts";
 import { dutiesOf, PLATFORM_ACCESS, type StaffContext } from "../api/src/platform/identity/keys.ts";
 import { ConsentStore } from "../api/src/platform/messages/consent/consent-store.ts";
@@ -60,7 +61,8 @@ try {
   ok("FO-9a fail: an unreadable phone written before it stays without an E.164 value", sql(`select coalesce(phone_e164, 'none') from fo_person where id = '${P1}'`) === "none");
   sql(`update fo_person set phone_e164 = '+19999999999' where id = '${P1}'`);
   ok("FO-9a fail: a writer cannot set phone_e164 by hand (the database keeps it from the phone)", sql(`select coalesce(phone_e164, 'none') from fo_person where id = '${P1}'`) === "none");
-  ok("FO-9a pass: the person-name and company-name trigram indexes and the lower(email) index exist", sql(`select count(*) from pg_indexes where indexname in ('fo_person_name_trgm_idx', 'fo_company_normalised_name_trgm_idx', 'fo_person_firm_id_email_lower_idx', 'fo_person_firm_id_phone_e164_idx')`) === "4");
+  ok("FO-9a pass: the person-name and company-name trigram indexes and the phone index exist; the match functions belong to xr_wall_reader", sql(`select count(*) from pg_indexes where indexname in ('fo_person_name_trgm_idx', 'fo_company_normalised_name_trgm_idx', 'fo_person_firm_id_phone_e164_idx')`) === "3"
+    && sql(`select pg_get_userbyid(proowner) from pg_proc where proname = 'fo_sales_person_matches'`) === "xr_wall_reader");
   for (const d of all.filter((x) => x > NEW)) apply(d);
 
   await seedSampleFirms(db);
@@ -87,7 +89,9 @@ try {
   ok("FO-9a pass: the shared rules: email lower-cased, the name key, the score (exact key 100, name = similarity × 100)",
     normaliseEmail(" Lena@Example.ORG ") === "lena@example.org" && personNameKey(" Lena ", "  Park") === "lena park" && matchScore([{ key: "PHONE" }]) === 100 && matchScore([{ key: "NAME", similarity: 0.75 }]) === 75);
   ok("FO-9a fail: not an email → no key; no reason → score 0", normaliseEmail("lena@") === null && matchScore([]) === 0);
-  ok("FO-9a pass: the name key is the database's (fo_sales_person_name)", sql(`select fo_sales_person_name('  Lena ', ' Park ')`) === personNameKey("  Lena ", " Park "));
+  const names: [string, string][] = [["  Lena ", " Park "], ["José", "García"], ["李", "明"], ["ОЛЬГА", "Петрова"], ["Anne-Marie", "O'Neil"], ["İlkay", "Straße"], ["𝒜da", "Ｌｏｖｅｌａｃｅ"]];
+  const sqlKeys = names.map(([g, f]) => sql(`select fo_sales_name_key('${g.replace(/'/g, "''")}', '${f.replace(/'/g, "''")}')`));
+  ok("FO-9a pass (break B2): the name key is the database's, for Latin, accented, Chinese, Cyrillic and punctuated names", names.every(([g, f], i) => sqlKeys[i] === personNameKey(g, f)), names.map(([g, f], i) => [sqlKeys[i], personNameKey(g, f)]));
 
   // ------------------------------------------------------------------------------------- phone: two spellings, one number
   const lena = await add(R, { givenNames: "Lena", familyName: "Park", email: "lena.park@example.org", phone: "+1 (416) 555-0101" });
@@ -109,6 +113,14 @@ try {
   const lenaSmithSim = Number(sql(`select similarity('lena park', 'lena smith')`));
   ok("FO-9a fail: a different person with the same first name only (Lena Smith) scores below the threshold and is not offered", firstOnly.matches.length === 0 && firstOnly.hidden === 0 && lenaSmithSim < NAME_THRESHOLD, { firstOnly, lenaSmithSim });
   ok("FO-9a fail: the first name alone (\"Lena\") is below the threshold too", (await dup.check(R, { givenNames: "Lena" })).matches.length === 0);
+  // Break B2: on this C-ctype cluster pg_trgm alone made no trigram of a non-ASCII letter (李明 never met 李明).
+  const li = await add(R, { givenNames: "李", familyName: "明", email: "li.ming@example.org" });
+  const olga = await add(R, { givenNames: "Ольга", familyName: "Петрова", email: "olga@example.org" });
+  const jose = await add(R, { givenNames: "José", familyName: "García", email: "jose@example.org" });
+  const nameOnly = async (g: string, f: string) => (await dup.check(R, { givenNames: g, familyName: f })).matches.filter((m) => m.kind === "PERSON").map((m) => m.kind === "PERSON" ? m.personId : "");
+  ok("FO-9a pass (break B2): 李明, ОЛЬГА ПЕТРОВА and Jose Garcia (no accents) find the people stored as 李明, Ольга Петрова and José García",
+    (await nameOnly("李", "明")).includes(li.person.id) && (await nameOnly("ОЛЬГА", "ПЕТРОВА")).includes(olga.person.id) && (await nameOnly("Jose", "Garcia")).includes(jose.person.id));
+  ok("FO-9a fail (break B2): a different Chinese name (王芳) does not find 李明", !(await nameOnly("王", "芳")).includes(li.person.id));
 
   // ------------------------------------------------------------------------------------- a match the viewer may not see is never named
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: ws });
@@ -165,7 +177,7 @@ try {
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: ws });
   const crowd = await dup.check(T, { givenNames: "Wanda", familyName: "Hiddenperson" });
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: ws });
-  ok("FO-9a pass (review m1): with 60 similar names T cannot open, T's own Wanda is still named first", crowd.matches[0]?.kind === "PERSON" && crowd.matches[0].personId === wandaT.person.id && crowd.hidden >= 49, { first: crowd.matches[0], hidden: crowd.hidden });
+  ok("FO-9a pass (review m1): with 60 similar names T cannot open, T's own Wanda is still named first", crowd.matches[0]?.kind === "PERSON" && crowd.matches[0].personId === wandaT.person.id && crowd.hidden === 1, { first: crowd.matches[0], hidden: crowd.hidden });
 
   // Review m2: a number typed the same way at both ends meets, whichever rule gave the stored key.
   const uk = await add(R, { givenNames: "Uma", familyName: "Kent", phone: "+44 (0) 20 7946 0958" });
@@ -205,10 +217,40 @@ try {
   const p95 = times[Math.ceil(0.95 * times.length) - 1];
   ok(`FO-9a pass: 20 checks at once, each against 100 firms of Sample data, answer within STANDARDS §9's 200 ms (p95 ${Math.round(p95)} ms)`, p95 < 200, times.map(Math.round));
   const plan = (q: string) => sql(`begin; select set_config('pg_trgm.similarity_threshold', '0.6', true); explain ${q}; rollback;`);
-  const nameQ = `select id from fo_person where firm_id = '${A}' and fo_sales_person_name(given_names, family_name) % 'lena park'`;
+  const nameQ = `select id from fo_person where firm_id = '${A}' and lower(name_key) % 'lena park'`;
   ok("FO-9a pass: the name match is answered by the firm's trigram index (EXPLAIN, 100 firms of data)", /fo_person_name_trgm_idx/.test(plan(nameQ)), plan(nameQ));
   const noIndex = sql(`begin; drop index fo_person_name_trgm_idx; select set_config('pg_trgm.similarity_threshold', '0.6', true); explain ${nameQ}; rollback;`);
   ok("FO-9a fail: without the trigram index the same match reads the firm's rows one by one (no trigram index in the plan)", !/trgm_idx/.test(noIndex), noIndex);
+
+  // ------------------------------------------------------------------------------------- the app's own path (break B1)
+  // The API reads as xr_app under the firm walls: the same checks through PF-12's walled pool, in R's firm.
+  const walled = new PrismaClient({ adapter: new PrismaPg(walledPool(URL_)) });
+  oneQueryPerCaller(walled);
+  const wdup = new Duplicates(walled);
+  const asR = <T,>(fn: () => Promise<T>) => withFirm(A, fn);
+  const viaApp = await asR(() => wdup.check(R, { phone: "416.555.0101", givenNames: "Lena", familyName: "Park" }));
+  ok("FO-9a pass (break B1): as the app role under the firm walls, the check names Lena (PHONE and NAME)", viaApp.matches.some((m) => m.kind === "PERSON" && m.personId === lena.person.id && m.reasons.some((r) => r.key === "PHONE")), viaApp);
+  const appTimes: number[] = [];
+  await Promise.all(Array.from({ length: 20 }, (_, i) => asR(async () => { const t = performance.now(); await wdup.check(R, { givenNames: "Lena", familyName: `Sample${i}`, email: `p${i}@x.example`, phone: `416 555 ${String(100 + i).padStart(4, "0")}`, companyName: "Pine Bakeries" }); appTimes.push(performance.now() - t); })));
+  appTimes.sort((a, b) => a - b);
+  const appP95 = appTimes[Math.ceil(0.95 * appTimes.length) - 1];
+  ok(`FO-9a pass (break B1): 20 checks at once as the app role, 100 firms of data, within 200 ms (p95 ${Math.round(appP95)} ms)`, appP95 < 200, appTimes.map(Math.round));
+  const asApp = (firm: string | null, q: string) => execFileSync(join(BIN, "psql"), [URL_.replace("xr_studio@", "xr_app@"), "-v", "ON_ERROR_STOP=1", "-q", "-Atc", `begin; ${firm ? `select set_config('app.firm_id', '${firm}', true);` : ""} ${q}; commit;`], { encoding: "utf8" }).split("\n").filter((l) => l && l !== firm).join("\n");
+  const fnQ = (f: string) => `select count(*) from fo_sales_person_matches('${f}', 'lena.park@example.org', '{}', '', '${R.staffId}', true, true, 0.6, 50)`;
+  const B = firm("sample-solo");
+  ok("FO-9a pass: the person match, as xr_app in firm A, finds A's Lena", Number(asApp(A, fnQ(A))) >= 1);
+  ok("FO-9a fail: as xr_app in firm B asking for firm A, or with no firm set, the definer function reads nothing", asApp(B, fnQ(A)) === "0" && asApp(null, fnQ(A)) === "0");
+  await walled.$disconnect();
+
+  // Breaks B3, B7, B8: no count of what one may not open; control marks and over-long text refused; characters counted.
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: ws });
+  const two = await dup.check(T, { givenNames: "Wanda", familyName: "Hiddenperson", email: "lena.park@example.org" });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: ws });
+  ok("FO-9a fail (break B3): many hidden matches read as 1, so a count can never tell one guess from another", two.hidden === 1, two);
+  ok("FO-9a fail (break B7): a null byte or another control mark → 422 at the field, never a database error", (await refusal(() => dup.check(R, { givenNames: "Le\u0000na" })))?.status === 422 && (await refusal(() => dup.check(R, { email: "a@b.c\n" })))?.status === 422);
+  const astral = "𝒜".repeat(60);
+  const astralR = await refusal(() => dup.check(R, { givenNames: astral }));
+  ok("FO-9a pass (break B8): 60 characters outside the basic plane are 60 characters (accepted), 101 are refused", astralR === null && (await refusal(() => dup.check(R, { givenNames: "x".repeat(101) })))?.status === 422, astralR);
 
   // ------------------------------------------------------------------------------------- the route
   const access = Reflect.getMetadata(PLATFORM_ACCESS, DuplicatesController.prototype.check) as { keys?: string[] } | undefined;

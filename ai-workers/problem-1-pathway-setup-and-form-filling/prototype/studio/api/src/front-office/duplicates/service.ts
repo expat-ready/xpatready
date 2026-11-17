@@ -32,34 +32,19 @@ export class Duplicates {
     // the same way at both ends always meets (review m2: "+44 (0) 20 …" is stored by FO-2's rule as +4402…).
     const fo2 = (() => { try { const p = fo2Phone(b.data.phone); return p?.readable ? p.phone : null; } catch { return null; } })();
     const phones = [...new Set([phoneE164(b.data.phone), fo2].filter((x): x is string => !!x))];
-    const phone = phones[0] ?? null;
     const company = b.data.companyName?.trim() ? normaliseCompanyName(b.data.companyName) : "";
-    if (!email && !phone && !name && !company) return unprocessable("Give a name, an email, a phone number or a company name to check.", { body: "Nothing to check." });
+    if (!email && !phones.length && !name && !company) return unprocessable("Give a name, an email, a phone number or a company name to check.", { body: "Nothing to check." });
 
     const vis = await visibilityOf(this.db, ctx);
-    const { people, companies } = await this.db.$transaction(async (tx) => {
-      // The threshold of pg_trgm's % operator for this transaction only, so the trigram indexes answer the name match.
-      await tx.$queryRaw`select set_config('pg_trgm.similarity_threshold', ${String(NAME_THRESHOLD)}, true)`;
-      const people = email || phone || name ? await tx.$queryRaw<PersonRow[]>`
-        select p.id::text, p.given_names, p.family_name,
-               coalesce(lower(p.email) = ${email}::text, false) as by_email, coalesce(p.phone_e164 = any(${phones}::text[]), false) as by_phone,
-               case when ${name}::text <> '' then similarity(fo_sales_person_name(p.given_names, p.family_name), ${name}::text) else 0 end::float8 as sim,
-               exists (select 1 from fo_lead l left join platform_staff s on s.firm_id = l.firm_id and s.id = l.owner_staff_id
-                        where l.firm_id = p.firm_id and l.person_id = p.id
-                          and (${vis.seesAll} or (s.status = 'ACTIVE' and l.owner_staff_id = ${ctx.staffId}::uuid)
-                               or (${vis.seesUnassigned} and (l.owner_staff_id is null or s.status is distinct from 'ACTIVE')))) as seen
-          from fo_person p
-         where p.firm_id = ${ctx.firmId}::uuid
-           and ((${email}::text is not null and lower(p.email) = ${email}::text)
-             or (${phone}::text is not null and p.phone_e164 = any(${phones}::text[]))
-             or (${name}::text <> '' and fo_sales_person_name(p.given_names, p.family_name) % ${name}::text))
-         order by 7 desc, 4 desc, 5 desc, 6 desc, p.created_at, p.id limit 50` : [];
-      const companies = company ? await tx.$queryRaw<CompanyRow[]>`
-        select c.id::text, c.operating_name, similarity(lower(c.normalised_name), ${company}::text)::float8 as sim
-          from fo_company c where c.firm_id = ${ctx.firmId}::uuid and lower(c.normalised_name) % ${company}::text
-         order by 3 desc, c.created_at, c.id limit 50` : [];
-      return { people, companies };
-    });
+    // The match runs in two narrow definer functions of the session's firm (FO-9a's migration; break B1: under the firm
+    // walls PostgreSQL uses no trigram index for the app role's own query). Visibility is part of the person query, so a
+    // caller's own match is never crowded out by records they cannot open.
+    const people = email || phones.length || name ? await this.db.$queryRaw<PersonRow[]>`
+      select id::text, given_names, family_name, by_email, by_phone, sim, seen
+        from fo_sales_person_matches(${ctx.firmId}::uuid, ${email}::text, ${phones}::text[], ${name}::text, ${ctx.staffId}::uuid,
+                                     ${vis.seesAll}, ${vis.seesUnassigned}, ${NAME_THRESHOLD}::real, 50)` : [];
+    const companies = company ? await this.db.$queryRaw<CompanyRow[]>`
+      select id::text, operating_name, sim from fo_sales_company_matches(${ctx.firmId}::uuid, ${company}::text, ${NAME_THRESHOLD}::real, 50)` : [];
 
     const seer: Seer = { see: (o) => vis.seesAll || o === ctx.staffId, seesAll: vis.seesAll, actor: actorOf(ctx) };
     const seenPeople = new Set(people.filter((p) => p.seen).map((p) => p.id));
@@ -80,7 +65,8 @@ export class Duplicates {
         return { kind: "COMPANY" as const, companyId: c.id, name: c.operating_name, score: matchScore(reasons), reasons, useExisting: { companyId: c.id } };
       }),
     ].sort((x, y) => y.score - x.score);
-    const hidden = people.filter((p) => !seenPeople.has(p.id) && personReasons(p).length).length + companies.filter((c) => !seenCompanies.has(c.id) && c.sim >= NAME_THRESHOLD).length;
+    // Only whether a record the caller cannot open matched, never how many (break B3: a count told one guess from two).
+    const hidden = people.some((p) => !seenPeople.has(p.id) && personReasons(p).length) || companies.some((c) => !seenCompanies.has(c.id) && c.sim >= NAME_THRESHOLD) ? 1 : 0;
     return DuplicateCheckOut.parse({ matches: named, hidden, hiddenLine: hidden ? HIDDEN_LINE : null });
   }
 

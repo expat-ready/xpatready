@@ -16,11 +16,16 @@ export function normaliseEmail(v: unknown): string | null {
   return /^[^\s@]+@[^\s@]+\.[^\s@.]+$/.test(e) ? e : null;
 }
 
-/** A person's name as the match compares it (the same as the database's fo_sales_person_name): given and family names,
- *  lower-cased, spaces collapsed. Empty when there is no name. */
+/** A person's name as the match compares it, the same rule as the database's fo_sales_name_key (FO-9a's migration; the
+ *  test pins them equal): decomposed (NFKD) and lower-cased, accents folded (U+0300-036F dropped), every other letter outside a-z and 0-9
+ *  spelled x + its code point in hex (so pg_trgm makes trigrams of any script under a C-ctype cluster), punctuation as a
+ *  space, spaces collapsed. "José García" → "jose garcia"; "李明" → "x674ex660e". Empty when there is no name. */
 export function personNameKey(given: unknown, family: unknown): string {
-  const part = (x: unknown) => (typeof x === "string" ? x.normalize("NFC") : "");
-  return `${part(given)} ${part(family)}`.replace(/\s+/g, " ").trim().toLowerCase();
+  const part = (x: unknown) => (typeof x === "string" ? x : "");
+  const s = `${part(given)} ${part(family)}`.normalize("NFKD").toLowerCase().replace(/[\u0300-\u036f]/g, "");
+  let out = "";
+  for (const ch of s) { const c = ch.codePointAt(0)!; out += /^[a-z0-9]$/.test(ch) ? ch : c > 127 ? `x${c.toString(16)}` : " "; }
+  return out.replace(/ +/g, " ").trim();
 }
 
 /** Why a record matched: an exact email, an exact E.164 phone, or a name at or above the threshold (its similarity). */
@@ -38,10 +43,12 @@ export function matchScore(reasons: MatchReason[]): number {
   return name && name.key === "NAME" ? Math.floor(name.similarity * 100) : 0;
 }
 
+/** One line of text: at most `max` characters (code points, as FO-2's fields count them, break B8), no control mark
+ *  (a null byte would be the database's error, break B7). */
+const line = (max: number) => z.string().refine((v) => [...v].length <= max, `at most ${max} characters.`).refine((v) => !/[\u0000-\u001f\u007f]/.test(v), "one line, no control characters.").nullish();
 /** What is checked: a person's keys, a company's name, or both (Add a lead, Engage, add contact, the arrival path). */
 export const DuplicateCheckIn = z.strictObject({
-  givenNames: z.string().max(100).nullish(), familyName: z.string().max(100).nullish(),
-  email: z.string().max(254).nullish(), phone: z.string().max(40).nullish(), companyName: z.string().max(200).nullish(),
+  givenNames: line(100), familyName: line(100), email: line(254), phone: line(40), companyName: line(200),
 });
 export type DuplicateCheckIn = z.infer<typeof DuplicateCheckIn>;
 
@@ -54,10 +61,11 @@ const CompanyMatch = z.strictObject({
   kind: z.literal("COMPANY"), companyId: z.string().uuid(), name: z.string(), score: z.number().int().min(0).max(100),
   reasons: z.array(MatchReason).min(1), useExisting: z.strictObject({ companyId: z.string().uuid() }),
 });
-/** The answer: named matches (strongest first) and how many more matched records the caller may not open (never named). */
+/** The answer: named matches (strongest first), and whether a record the caller may not open also matched (1 or 0: never
+ *  how many, never named). */
 export const DuplicateCheckOut = z.strictObject({
   matches: z.array(z.discriminatedUnion("kind", [PersonMatch, CompanyMatch])).max(MAX_MATCHES * 2),
-  hidden: z.number().int().min(0),
+  hidden: z.number().int().min(0).max(1),
   hiddenLine: z.string().nullable(),
 });
 export type DuplicateCheckOut = z.infer<typeof DuplicateCheckOut>;
