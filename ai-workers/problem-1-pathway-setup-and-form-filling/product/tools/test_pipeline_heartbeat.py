@@ -15,7 +15,7 @@ HB = {"workflow": "pipeline-heartbeat.yml", "every_min": 30, "timeout_min": 5, "
       "queue_no_progress_min": 60, "queue_wait_p95_min": 60, "batch_wait_p95_min": 15, "stalled_lane_min": 90,
       "stalled_lane_max_age_h": 24, "lane_branch_excluded_prefixes": ["mergify/", "dependabot/", "lead/"],
       "nightly_workflow": "nightly.yml", "nightly_by_ist": "04:00", "approved_label": "review: approved",
-      "batch_branch_prefix": "mergify/merge-queue/", "escalate_after_min": 120}
+      "batch_branch_prefix": "mergify/merge-queue/", "escalate_after_min": 120, "queued_label": "queued"}
 NOW = datetime(2026, 11, 20, 6, 30, tzinfo=timezone.utc)  # 12:00 IST
 LAB = "review: approved"
 
@@ -34,7 +34,7 @@ def base():
     """A healthy pipeline: a merge 20 min ago, a batch checking, one queued PR approved 30 min ago, one active lane,
     tonight's nightly, earlier heartbeats green."""
     return {"now": hb.iso(NOW), "main_merges": [ago(20), ago(70)],
-            "open_prs": [pr(1, labels=[LAB], approved=30), pr(2, updated=15),
+            "open_prs": [pr(1, labels=[LAB, "queued"], approved=30), pr(2, updated=15),
                          pr(3, head="mergify/merge-queue/abc", updated=5, ci=5)],
             "merged_prs": [{"number": 9, "merged_at": ago(20), "approved_at": ago(50)}],
             "batches": [{"number": 8, "created_at": ago(40), "closed_at": ago(20), "first_check_started_at": ago(35),
@@ -104,8 +104,8 @@ class Heartbeat(unittest.TestCase):
 
     def test_stalled_lane_quiet_cases(self):
         for p in (pr(4, updated=100, ci=30),                       # CI activity 30 min ago
-                  pr(4, updated=100, ci_state="PENDING"),          # waiting on CI
-                  pr(4, updated=100, labels=[LAB], approved=100),  # in the queue (queue-stuck's job)
+                  pr(4, updated=100, ci=30, ci_state="PENDING"),   # waiting on CI that moves
+                  pr(4, updated=100, labels=[LAB, "queued"], approved=100),  # in the queue (queue-stuck's job)
                   pr(4, head="lead/2026-11-17-x", updated=100),    # the Lead's records branch
                   pr(4, head="dependabot/npm/x", updated=100),
                   pr(4, updated=60 * 30)):                         # dormant: idle over 24 h, reported only
@@ -113,6 +113,23 @@ class Heartbeat(unittest.TestCase):
             r = self.run_(f)
             self.assertNotIn("stalled-lane", ids(r), p)
         self.assertIn("dormant-lanes", [x["id"] for x in r["report"]])
+
+    def test_red_or_never_posting_ci_is_a_stall_not_the_queue(self):
+        f = base(); f["main_merges"] = [ago(5)]
+        f["open_prs"].append(pr(4, labels=[LAB], approved=300, updated=100, ci=100, ci_state="FAILURE"))
+        f["open_prs"].append(pr(5, updated=300, ci=200, ci_state="PENDING"))   # a status that never posts
+        r = self.run_(f)
+        self.assertEqual(ids(r), ["stalled-lane"])
+        self.assertEqual(r["alarm_state"].keys(), {"stalled-lane #4", "stalled-lane #5"})
+        self.assertEqual(r["counts"]["queued"], 1)
+
+    def test_approved_but_unmergeable_prs_never_fire_queue_alarms(self):
+        f = base(); f["main_merges"] = [ago(300)]; f["open_prs"] = f["open_prs"][1:2]   # nothing queued, quiet night
+        f["open_prs"] += [pr(6, draft=True, labels=[LAB, "queued"], approved=200, updated=20),
+                          pr(7, labels=[LAB], approved=200, updated=20, ci=20, ci_state="PENDING")]   # not queued
+        f["open_total"] = 80   # and a partial read is reported
+        r = self.run_(f)
+        self.assertEqual((ids(r), "partial" in [x["id"] for x in r["report"]]), ([], True))
 
     # nightly --------------------------------------------------------------------------------------------------------
     def test_nightly_missing_after_four_ist(self):
@@ -199,6 +216,12 @@ class Heartbeat(unittest.TestCase):
         self.assertEqual(r[2]["hours_since_last_alarm"], 1.5)
         self.assertEqual(r[4]["longest_green_today_h"], 1.0)
         self.assertIsNone(hb.evaluate(base(), HB)["hours_since_last_alarm"])   # none seen yet
+
+    def test_missed_beats_restart_the_streak(self):
+        r = self.chain((0, base()), (30, base()), (60, base()), (240, base()))
+        self.assertEqual([x["green_streak_h"] for x in r], [0.0, 0.5, 1.0, 0.0])
+        self.assertTrue(r[3]["missed_beats"]); self.assertEqual(r[3]["gap_since_previous_min"], 180)
+        self.assertFalse(r[2]["missed_beats"])
 
     def test_longest_today_restarts_at_ist_midnight(self):
         f = shifted(base(), 690)                                        # 23:30 IST

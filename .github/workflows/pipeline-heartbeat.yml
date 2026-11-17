@@ -10,6 +10,8 @@ on:
 permissions:
   contents: read
   actions: read
+  checks: read
+  pull-requests: read
 concurrency:
   group: pipeline-heartbeat
   cancel-in-progress: false
@@ -19,24 +21,26 @@ jobs:
     timeout-minutes: 5
     env:
       P: ai-workers/problem-1-pathway-setup-and-form-filling/product
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      OUT: ${{ runner.temp }}/heartbeat
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: PyYAML (conformance-check reads the YAML files)
-        run: pip install --quiet pyyaml==6.0.3
+      - run: pip install --quiet pyyaml==6.0.3   # conformance-check reads the YAML files
       - name: set-up conformance (CK-1) on main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p "$OUT"
-          python3 -I "$P/tools/conformance-check.py" --root . --github --json "$OUT/conformance.json" --md "$GITHUB_STEP_SUMMARY" || true
-      - name: heartbeat (red on any alarm)
-        run: python3 -I "$P/tools/pipeline-heartbeat.py" --conformance "$OUT/conformance.json" --json "$OUT/heartbeat.json" --md "$GITHUB_STEP_SUMMARY"
-      - name: result for the board
+          mkdir -p "$RUNNER_TEMP/heartbeat"
+          python3 -I "$P/tools/conformance-check.py" --root . --github --json "$RUNNER_TEMP/heartbeat/conformance.json" --md "$GITHUB_STEP_SUMMARY" || true
+      - name: heartbeat (red on a change, red_rule)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 -I "$P/tools/pipeline-heartbeat.py" --conformance "$RUNNER_TEMP/heartbeat/conformance.json" --json "$RUNNER_TEMP/heartbeat/heartbeat.json" --md "$GITHUB_STEP_SUMMARY"
+      - name: result for the next run and the board
         if: always()
         uses: actions/upload-artifact@v4
         with:

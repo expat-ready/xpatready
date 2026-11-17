@@ -6,7 +6,7 @@ so it comes only on a change (manifest › heartbeat › red_rule): a new alarm,
 (once), conformance failing, or GitHub unreadable. An unchanged open alarm ends green with a "still open" line; the
 state carries over in the previous run's artifact (none readable = every alarm is new). Alarms (manifest thresholds):
   no-merge     no merge to main for over no_merge_min while a PR with the approval label has waited that long;
-  queue-stuck  a queued PR (approved, not a draft) with no merge-queue progress (a batch PR opened, closed or checked,
+  queue-stuck  a queued PR (approved, not a draft, Mergify's queued label) with no merge-queue progress (a batch PR opened, closed or checked,
                or a merge) for over queue_no_progress_min since it was approved;
   stalled-lane an open lane PR idle (no push, comment or CI) over stalled_lane_min and under stalled_lane_max_age_h
                (older: dormant, reported), not waiting on CI and not queued;
@@ -15,9 +15,8 @@ state carries over in the previous run's artifact (none readable = every alarm i
 Report only: P95 queue wait (approval to merge) and P95 batch wait (batch PR opened to ci's first job), last 24 h, over
 queue_wait_p95_min / batch_wait_p95_min: the T1 admission trigger. Window: hours since the last alarm, green streak
 (no open alarm), longest today (IST). Reads: two GraphQL queries; REST (GITHUB_TOKEN): nightly's run list and the
-previous artifact. Read-only, US$0. Exit 1 when the run is red, 0 otherwise.
-  python3 -I product/tools/pipeline-heartbeat.py [--facts FILE | --save-facts FILE] [--conformance FILE] [--json FILE]
-                                                 [--md FILE]      Tests: test_pipeline_heartbeat.py (guard 25).
+previous artifact. Read-only, US$0. Exit 1 when the run is red. Tests: test_pipeline_heartbeat.py (guard 25).
+  python3 -I product/tools/pipeline-heartbeat.py [--facts F | --save-facts F] [--conformance F] [--json F] [--md F]
 """
 import argparse, json, math, os, subprocess, sys, tempfile, time, zipfile
 from datetime import datetime, timedelta, timezone
@@ -32,9 +31,9 @@ ALWAYS_RED = ("conformance", "read-error")
 QUERY = """query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     defaultBranchRef { target { ... on Commit { history(first: 30) { nodes { committedDate parents { totalCount } } } } } }
-    open: pullRequests(states: OPEN, first: 60, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes {
+    open: pullRequests(states: OPEN, first: 60, orderBy: {field: UPDATED_AT, direction: DESC}) { totalCount nodes {
       number isDraft headRefName createdAt updatedAt labels(first: 10) { nodes { name } }
-      timelineItems(itemTypes: [LABELED_EVENT], last: 4) { nodes { ... on LabeledEvent { createdAt label { name } } } }
+      timelineItems(itemTypes: [LABELED_EVENT], last: 10) { nodes { ... on LabeledEvent { createdAt label { name } } } }
       commits(last: 1) { nodes { commit { statusCheckRollup { state } checkSuites(last: 6) { nodes { updatedAt } } } } } } }
   }
 }"""
@@ -42,7 +41,7 @@ QUERY_RECENT = """query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     recent: pullRequests(states: [MERGED, CLOSED], first: 30, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes {
       number headRefName createdAt closedAt mergedAt
-      timelineItems(itemTypes: [LABELED_EVENT], last: 4) { nodes { ... on LabeledEvent { createdAt label { name } } } }
+      timelineItems(itemTypes: [LABELED_EVENT], last: 10) { nodes { ... on LabeledEvent { createdAt label { name } } } }
       commits(last: 1) { nodes { commit { checkSuites(first: 10, filterBy: {appId: 15368}) { nodes { updatedAt
         workflowRun { workflow { name } } checkRuns(first: 1) { nodes { startedAt } } } } } } } } }
   }
@@ -80,7 +79,7 @@ def curl(args, what):
     tok = os.environ.get("GITHUB_TOKEN")
     if not tok:
         raise RuntimeError("GITHUB_TOKEN not set")
-    cmd = ["curl", "-sS", "--fail-with-body", "--max-time", "30", "-H", "@-", "-H", "X-GitHub-Api-Version: 2022-11-28"]
+    cmd = ["curl", "-sS", "--fail-with-body", "--max-time", "25", "-H", "@-", "-H", "X-GitHub-Api-Version: 2022-11-28"]
     for attempt in (1, 2):
         r = subprocess.run(cmd + args, input=f"Authorization: Bearer {tok}\n", capture_output=True, text=True)
         if r.returncode == 0:
@@ -160,7 +159,7 @@ def facts_from(gql, nightly_runs, hb, now, previous=None):
                             "first_check_started_at": None, "last_check_at": p["last_ci_at"] or p["updated_at"]})
     run = lambda r: {"id": r.get("id"), "created_at": r.get("created_at"), "status": r.get("status"),
                      "conclusion": r.get("conclusion"), "event": r.get("event"), "url": r.get("html_url")}
-    return {"now": iso(now), "main_merges": merges, "open_prs": open_prs, "merged_prs": merged, "batches": batches,
+    return {"now": iso(now), "open_total": repo["open"].get("totalCount"), "main_merges": merges, "open_prs": open_prs, "merged_prs": merged, "batches": batches,
             "nightly_runs": [run(r) for r in nightly_runs], "previous": previous}
 
 
@@ -176,7 +175,7 @@ def collect(hb, now, own_id=None):
         if a.get("errors") or not a.get("data"):
             raise RuntimeError(f"GraphQL: {(a.get('errors') or [{}])[0].get('message')}")
         gql["data"]["repository"].update(a["data"]["repository"])
-    nightly = api("GET", f"{API}/repos/{repo}/actions/workflows/{hb['nightly_workflow']}/runs?per_page=5")
+    nightly = api("GET", f"{API}/repos/{repo}/actions/workflows/{hb['nightly_workflow']}/runs?per_page=5&event=schedule")
     return facts_from(gql, nightly["workflow_runs"], hb, now, read_previous(repo, own_id))
 
 
@@ -187,14 +186,16 @@ def evaluate(f, hb, conformance=None):
     last_merge = t(f["main_merges"][0]) if f["main_merges"] else None
     lanes = [p for p in f["open_prs"] if not p["head"].startswith(batch)]
     approved = [p for p in lanes if lab in p["labels"]]
-    queued = [p for p in approved if not p["draft"]]
+    # In the queue = Mergify's queued label (17 Nov: the combined check state of queued PRs reads FAILURE or PENDING
+    # through other checks); an approved PR Mergify did not queue is a lane's to fix (stalled-lane below).
+    queued = [p for p in approved if not p["draft"] and hb["queued_label"] in p["labels"]]
 
-    # no-merge: an approved PR has waited no_merge_min and nothing merged in that time.
-    waits = [p for p in approved if mins(max(filter(None, [t(p["approved_at"]), last_merge]), default=now), now)
+    # no-merge: a queued PR has waited no_merge_min and nothing merged in that time.
+    waits = [p for p in queued if mins(max(filter(None, [t(p["approved_at"]), last_merge]), default=now), now)
              > hb["no_merge_min"]]
     if waits:
         alarms.append({"id": "no-merge", "keys": ["no-merge"], "why": f"no merge to main for over {hb['no_merge_min']} min (last merge "
-                       f"{hm(last_merge)}) while {len(waits)} approved PR(s) wait: "
+                       f"{hm(last_merge)}) while {len(waits)} queued PR(s) wait: "
                        + ", ".join(f"#{p['number']}" for p in waits[:6])})
 
     # queue-stuck: a queued PR with no batch progress since it was approved (or since the last progress).
@@ -208,9 +209,12 @@ def evaluate(f, hb, conformance=None):
                        + ", ".join(f"#{p['number']}" for p in stuck[:6])})
 
     # stalled-lane: no push, comment or CI activity for over stalled_lane_min, not waiting on CI, not in the queue.
+    # Waiting on CI counts only while CI moved in the last 2 x stalled_lane_min (a status that never posts is a stall).
     stalled, dormant = [], 0
     for p in lanes:
-        if p["head"].startswith(ex) or lab in p["labels"] or p["ci_state"] in ("PENDING", "EXPECTED"):
+        ci_idle = mins(t(p["last_ci_at"]), now) if p["last_ci_at"] else 1e9
+        waiting = p["ci_state"] in ("PENDING", "EXPECTED") and ci_idle < 2 * hb["stalled_lane_min"]
+        if p["head"].startswith(ex) or p in queued or waiting:
             continue
         idle = mins(max(filter(None, [t(p["updated_at"]), t(p["last_ci_at"])])), now)
         if idle > hb["stalled_lane_max_age_h"] * 60:
@@ -252,6 +256,9 @@ def evaluate(f, hb, conformance=None):
         report.append({"id": key, "value": None if v is None else round(v, 1), "n": len(xs), "over": bool(v and v > lim),
                        "why": f"P95 {what}: " + ("no sample in 24 h" if v is None else
                                                 f"{v:.0f} min over {len(xs)} (limit {lim}){' — OVER: T1 trigger' if v > lim else ''}")})
+    if (f.get("open_total") or 0) > len(f["open_prs"]):
+        report.append({"id": "partial", "why": f"read the {len(f['open_prs'])} most recently updated of "
+                       f"{f['open_total']} open PRs; older ones were not checked"})
     if dormant:
         report.append({"id": "dormant-lanes", "why": f"{dormant} open lane PR(s) idle over {hb['stalled_lane_max_age_h']} h"})
 
@@ -280,12 +287,15 @@ def decide(alarms, prev, hb, now):
         if a["id"] in ALWAYS_RED:
             red.append(f"{a['id']} (always red)")
     today = now.astimezone(IST).replace(hour=0, minute=0, second=0, microsecond=0)
+    gap = mins(t(p["checked_at"]), now) if p.get("checked_at") else None
+    missed = gap is not None and gap > 2 * hb["every_min"]   # beats nobody saw: the streak restarts (GitHub drops some)
     last_alarm = now if alarms else t(p.get("last_alarm_at"))
-    clear = None if alarms else (t(p.get("clear_since")) or now)
+    clear = None if alarms else (now if missed else (t(p.get("clear_since")) or now))
     best = (p.get("longest_green_today_h") or 0.0) if p.get("day_ist") == str(today.date()) else 0.0
     cur_today = mins(max(clear, today), now) / 60 if clear else 0.0
     return {"red": bool(red), "red_reasons": list(dict.fromkeys(red)), "alarm_state": state,
             "still_open": [k for k in state if k not in fired], "previous_read": prev is not None,
+            "gap_since_previous_min": None if gap is None else round(gap), "missed_beats": missed,
             "last_alarm_at": iso(last_alarm), "clear_since": iso(clear), "day_ist": str(today.date()),
             "hours_since_last_alarm": None if last_alarm is None else round(mins(last_alarm, now) / 60, 1),
             "green_streak_h": round(mins(clear, now) / 60, 1) if clear else 0.0,
@@ -299,6 +309,8 @@ def markdown(res):
     lines.insert(1, f"Run: {'RED: ' + '; '.join(res['red_reasons']) if res['red'] else 'green'}"
                     + ("" if res.get("previous_read") else " (no previous state read: every alarm counts as new)"))
     lines += [f"- ALARM {a['id']}: {a['why']}" for a in res["alarms"]] or ["- no alarm"]
+    if res.get("missed_beats"):
+        lines.append(f"- {res['gap_since_previous_min']} min since the previous heartbeat: beats were missed, streak restarted")
     if res.get("still_open"):
         lines.append(f"- still open (unchanged, no new mail): {', '.join(res['still_open'])}")
     lines += [f"- report {r['id']}: {r['why']}" for r in res["report"]]
@@ -338,7 +350,7 @@ def main(argv=None):
                 with open(a.save_facts, "w", encoding="utf-8") as fh:
                     json.dump(f, fh, indent=1)
         res = evaluate(f, hb, conf)
-    except (LookupError, RuntimeError, KeyError, TypeError, ValueError, OSError) as e:
+    except Exception as e:  # any failure is red and still writes the JSON the board and the next run read
         res = {"check": "pipeline heartbeat (CK-2)", "running": "no", "checked_at": iso(now),
                "checked_at_ist": now.astimezone(IST).strftime("%d %b %H:%M IST"), "report": [],
                "alarms": [{"id": "read-error", "keys": ["read-error"],
