@@ -78,3 +78,7 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-660 | Drain 17 Nov (only near-Proven product PRs and pipeline fixes start), move Wed 18 Nov 09:30 IST, full power after it is verified. | prose | 17 Nov |
 | P-661 | The setup agent acts itself in front of the founder, who types every password, card and approval. | prose | 17 Nov |
 | P-662 | Only Claude, Mergify and Namespace apps on expat-ready. | prose | 17 Nov |
+
+
+## P-635 row (moved word for word from RULES.md by Lead 78, 15:2x IST 17 Nov, to keep RULES under 25 KB)
+| P-635 | Enforcement defaults: overnight, hooks block only irreversible actions and flag the rest; settings lines to the founder in one daily batch; pr-rules required after 2 days with no false failure; under ~1 s per hook call. | prose (plan `design/enforcement-plan-2026-11-16.md`) | 16 Nov |
