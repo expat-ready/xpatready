@@ -7,7 +7,7 @@ Written 17 Nov 00:0x IST by Build Lead C. Row: `product/BACKLOG.md` **AS-2d2**, 
 * **Streams (confirmed, P-653):**
   * Alberta: **Alberta Opportunity Stream**, eligibility only (gates, no score; AS-2e's gates-only stream).
   * Saskatchewan: **SINP International Skilled Worker** (at least 60 of 110 points). Reconcile the first factor's sub-points (75 against the stated 80) from the full grid and cite it.
-  * Manitoba: **MPNP Skilled Worker**, **all values Sample** until its page is read (immigratemanitoba.com refuses automated reads; the next Lead reads it through the founder's Chrome). Swapping in the cited values later is a data-only follow-up.
+  * Manitoba: **MPNP Skilled Worker in Manitoba (SWM)**. The **eligibility rules are cited** from immigratemanitoba.com/mpnp/skilled-worker/swm/eligibility/, read through the founder's Chrome on 17 Nov 12:58 IST (`official-sources/manitoba/README.md`, on main with the next records PR). The **points grid, EOI ranking, fees and language minimums stay Sample** until they are read. Swapping those in later is a data-only follow-up.
   * Sources, quotes and dates are in `build-lead-c-briefs/AS-2-streams-proposal.md`. No other stream is built.
 
 **P-650 (2):** the provincial streams are **assessment only in Release 1**.
