@@ -194,3 +194,38 @@ The diff touches the migration's CHECK (+1/-1) and `check_pf21i_idempotent.ts` (
 **Still open:** the Minors m1, m2 and m3 as listed. No new finding.
 
 Verdict: Approve 7151e4e103016248224237486225ab5f702cf8bb
+
+## Re-review (P-277), 17 Nov: the widened row (Build Lead A, PR comment 6933156196), head feff0c582b796afa7917c3eb793a49efc935cadb
+I read only the PF-21i commit against `origin/main`: `session.ts` +4/-3, `record-drawer.tsx` +4/-2, and `check_pf21s_complaints_browser.ts` +29/-1. The merge of main had no conflict.
+
+**Inside the three bounds:**
+1. `staffApi` gains optional `headers`, spread first (`session.ts:69-71`), so a caller cannot replace `accept`, the token or the content type.
+2. The drawer has one key per opening: a `useRef`, renewed in the open effect, and the same key is sent on every Record in that opening.
+3. The suite's `call` sends a fresh key on POST "".
+
+**The new browser DW is a real fail-first test.** It intercepts the POST, lets it reach the server (`r.fetch()`), then aborts the answer. It checks:
+* one complaint after the lost answer;
+* the second press carries the same key;
+* still one complaint, and the record page opens;
+* a new opening sends a new key.
+
+On the server, the 200 is the "as recorded" answer (M1 fix). So the drawer's `onSuccess` opens the record only for someone who can read it, and anyone else gets the list toast.
+
+**What I ran:**
+* `web` `tsc --noEmit`: exit 0.
+* The browser suite: **not run.** It rewrites the tracked screenshots under `pf-21-complaints/screenshots`, and I was told to change no file. I rely on the builder's isolated-copy result: 68/68, and exit 1 without the drawer/session change.
+* The API code is unchanged since 8ef6abede.
+
+**Minors (Should; neither blocks):**
+* **n1. Lost answer, then an edit, then Record: a dead end in words.**
+  * The drawer keeps the key while the person edits after "Could not record the complaint. Please try again."
+  * The retry gets 422 `IDEMPOTENCY_KEY_REUSED`, and the drawer shows `err.message` (`record-drawer.tsx:74`): "This request key was already used for a different complaint." That is not plain words for a person.
+  * Their only way on (close, reopen, Record) makes a second complaint beside the one already stored.
+  * Not a regression: on `main` the same case made a silent duplicate.
+  * Fix: in the drawer, map that code to "This complaint may already be recorded. Check the list before recording it again." with a link to the list.
+* **n2. `useRef(crypto.randomUUID())` runs on every render and needs a secure context** (`record-drawer.tsx:33`).
+  * On :4400 (localhost) this is fine.
+  * Served over plain http from another host, it would throw while the list page renders, for anyone holding the record key (the drawer is mounted with the page).
+  * `ai-launch.tsx:32` and `bulk-lines.tsx:21` already guard with a fallback: use `useRef<string>()` plus the same guarded helper.
+
+Verdict: Approve feff0c582b796afa7917c3eb793a49efc935cadb
