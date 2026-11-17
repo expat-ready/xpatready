@@ -119,7 +119,7 @@ model Combination {
 /// The six built-in starting roles (samples/person-roles.json) are created with the workspace and kept by Reset
 /// (founder, P-108 note); S6 adds the one Add for new roles. basis: SAMPLE until the immigration expert confirms.
 model PersonRole {
-  id              String    @id @default(uuid()) @db.Uuid
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   workspaceId     String    @map("workspace_id") @db.Uuid
   roleKey         String    @map("role_key")
   label           String
@@ -224,7 +224,7 @@ model LineBatch {
 /// rules' default (engine/sources.ts): where the answer comes from, and the Pre-qualification tick. Nothing is stored
 /// for a fact left as the rules say. Versioned like document requirements (draft, published at release).
 model FactSource {
-  id                String           @id @default(uuid()) @db.Uuid
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   workspaceId       String           @map("workspace_id") @db.Uuid
   combinationId     String           @map("combination_id") @db.Uuid
   /// `${role}|${fact}`
