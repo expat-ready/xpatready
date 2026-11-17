@@ -6,7 +6,7 @@
 
 ## Verdict: R1.77 Partial
 What the row asks for works through the API on the configured checkpoint, with audit lines and the active-case count. It is not Works, for three reasons:
-1. **No screen (new Gap · Major, QA-501).** A staff person cannot record a decision, withdraw, close or reopen a case from any page. Nothing in `web/src` calls these routes:
+1. **No screen (new Gap · Major, QA-502).** A staff person cannot record a decision, withdraw, close or reopen a case from any page. Nothing in `web/src` calls these routes:
    * `POST /api/runtime/cases/:id/decisions`
    * `POST /api/runtime/cases/:id/withdraw`
    * `POST /api/runtime/cases/:id/close`
@@ -22,7 +22,7 @@ What the row asks for works through the API on the configured checkpoint, with a
 | `tests/check_csc1_close.ts` (CS-C1a; needs `--tsconfig api/tsconfig.json`) | 55/55, exit 0 |
 | `tests/check_csc1_count.ts` (CS-C1b) | 40/40, exit 0 |
 | Gate B, C8.2 on the checkpoint | "C8.2.test.ts on the checkpoint: exit 0, 19/19 passed", "Gate B: passed" |
-| qa's `tests/qa/check_r177_case_decision.ts` (new) | **45/46**, exit 1. The one FAIL is the screens Gap (QA-501) |
+| qa's `tests/qa/check_r177_case_decision.ts` (new) | **45/46**, exit 1. The one FAIL is the screens Gap (QA-502) |
 | QA-397 retest | 5/6, exit 1 |
 
 ## What qa's check walks
@@ -48,10 +48,10 @@ The walk runs as the owner, the case manager and the case officer, signed in thr
 * **Active-case count (CS-C1b):** +1 at opening, -1 when every filing has a decision, +1 at reopen, -1 at the new decision, -1 at the withdrawal.
 
 ## Bugs
-* **QA-474 (Gap) closed.** Its asked action is done: the row was shaped (CS-C1, both parts merged), and decision, withdrawal, close and reopen are built with named tests. Whether they get their own C row is question 2 below. What is left is the screen, a different finding (QA-501).
+* **QA-474 (Gap) closed.** Its asked action is done: the row was shaped (CS-C1, both parts merged), and decision, withdrawal, close and reopen are built with named tests. Whether they get their own C row is question 2 below. What is left is the screen, a different finding (QA-502).
 * **QA-397 (Bug · Major) kept**, retested and failing as above.
-* **QA-501 new**, Gap · Major, screens lane: decision, close, reopen and withdraw have no screen.
-* **QA-502 new**, Bug · Minor (CI retry only): `check_bk3_links_browser.cjs` failed its 1st try at 375 px in #2013's merge batch (Cancel left `?open=` in the address), then passed on retry (evidence §6).
+* **QA-502 new**, Gap · Major, screens lane: decision, close, reopen and withdraw have no screen.
+* **QA-503 new**, Bug · Minor (CI retry only): `check_bk3_links_browser.cjs` failed its 1st try at 375 px in #2013's merge batch (Cancel left `?open=` in the address), then passed on retry (evidence §6).
 * **QA-314 raised to Major**: it recurred on #1998's merge batch, and its row's rule says to raise it then (evidence §6).
 * **Minor (test harness, noted here and not logged as a row):** `check_csc1_close.ts` run as its usage line says crashes with "Parameter decorators only work when experimental decorators are enabled". It leaves two scratch databases behind, which qa dropped. Its usage line needs `--tsconfig studio/api/tsconfig.json`.
 
@@ -63,7 +63,7 @@ The walk runs as the owner, the case manager and the case officer, signed in thr
 * **Sample:** outcomes are a Sample list until cited; auto-close is not built; legal points are Unconfirmed: no counsel.
 
 ## For the tech lead
-1. Dispatch `nightly.yml` on main for P-339. Run `capabilities=C8.2`, `data=checkpoint`. Also run the full set, which runs both CS-C1 suites. Even green, R1.77 stays Partial until QA-501 and QA-397 close.
+1. Dispatch `nightly.yml` on main for P-339. Run `capabilities=C8.2`, `data=checkpoint`. Also run the full set, which runs both CS-C1 suites. Even green, R1.77 stays Partial until QA-502 and QA-397 close.
 2. Should decision, close and reopen get their own C row in CAPABILITIES? R1.77 names only C8.2 today.
-3. Is QA-501 (the screen) part of Release 1's bar for row 77?
+3. Is QA-502 (the screen) part of Release 1's bar for row 77?
 4. Do you accept CS-C1b counting active cases by firm key rather than platform firm id until CS-W1?
