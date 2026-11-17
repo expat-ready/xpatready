@@ -20,6 +20,7 @@ import { EVENT } from "../../../../ports/events.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
 import { asBypass, firmScope } from "../firm-scope.ts";
+import { writeMoneyKeysGranted } from "../identity/money-line.ts";
 import { emailOf } from "../identity/service.ts";
 import type { SignUpIdentity } from "./signup-identity.ts";
 
@@ -192,6 +193,8 @@ export class FirmSignUp {
       await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "firm.created", entity: "platform_firm", entityKey: firm.id, summary: "Firm created by self-serve sign-up (setting up)", detail: { status: "PROVISIONING", country: pending.countryCode } });
       const owner = await tx.platformStaff.create({ data: { firmId: firm.id, email: pending.email, displayName: pending.email.split("@")[0], identitySubject: pending.identitySubject } });
       await tx.platformRoleGrant.create({ data: { firmId: firm.id, staffId: owner.id, role: "OWNER", grantedBy: ACTOR, grantedAt: now } });
+      // PF-6m2 (break F4; PF-6b rule (2)): the first Owner's money keys are logged like any other grant, in this transaction.
+      await writeMoneyKeysGranted(tx, { firmId: firm.id, firmKey: firm.key, actor: "system:signup", staffId: owner.id, roles: ["OWNER"] });
       await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.staff.owner_created", entity: "platform_staff", entityKey: owner.id, summary: "The person who signed up is the firm's Owner", detail: { staffId: owner.id } });
       for (const versionId of pending.termsVersionIds) await tx.platformTermsAcceptance.create({ data: { firmId: firm.id, staffId: owner.id, versionId, acceptedAt: pending.termsAcceptedAt } });
       await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.terms.accepted", entity: "platform_terms_acceptance", entityKey: owner.id, summary: "The Owner's acceptance of the current terms recorded", detail: { staffId: owner.id, versions: pending.termsVersionIds.length } });
