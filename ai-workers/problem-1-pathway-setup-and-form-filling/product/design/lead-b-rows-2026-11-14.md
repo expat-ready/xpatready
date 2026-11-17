@@ -1881,3 +1881,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   * **D. Wait for the move:** #2012 c275837d0 (needs the P-423 read and the stamp rename), #2021 63c1b2409 (ci queued, needs the shared-contract read).
   * **No PR:** FO-2b parked. PF-5tv, PF-21s part 4, PF-4dn and QA-498 held by P-663. After the move, the PF-6m2 follow-ups.
 * Asked Lead 79 whether the freeze covers records pushes to lead-b-front-office. Until the answer, records are committed locally only.
+
+### Rev 17.13 (18:39 IST 17 Nov): Lead 79 on the list
+* Records pushes to lead-b-front-office continue (no PR on that branch, so no CI; P-557).
+* Section C (#2064, #2038, #2029, #2014, #2011) gets no labels tonight. Lead 79 labels them after the move is verified, so the drain stays short.
+* Lead 79 checks #2001's missed queue and #1991's head. Section D waits for the move.
