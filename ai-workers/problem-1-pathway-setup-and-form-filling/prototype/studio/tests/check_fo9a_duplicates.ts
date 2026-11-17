@@ -143,6 +143,34 @@ try {
   const coT = await dup.check(T, { companyName: "Pine Bakeries" });
   ok("FO-9a fail: T, who sees none of its prospects, gets the count only for the company", !coT.matches.some((m) => m.kind === "COMPANY") && coT.hidden === 1 && !JSON.stringify(coT).includes(pine.company!.id), coT);
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: ws });
+  // Review M1/m6: a named body is one its consumers accept. Zed is only a contact of Pine Bakery (no lead of his own):
+  // he is counted, never named, so no "use the existing one" can be refused by Add a lead or add contact.
+  const zed = await corp.addContact(R, pine.company!.id, { givenNames: "Zed", familyName: "Contactonly", email: "zed@pinebakery.example", role: "HR" });
+  const zedCheck = await dup.check(R, { email: "zed@pinebakery.example" });
+  ok("FO-9a fail (review M1): a person with no lead the caller sees (a company contact only) is counted, not named", zedCheck.matches.length === 0 && zedCheck.hidden === 1 && zed.contacts.some((c) => c.name === "Zed Contactonly"), zedCheck);
+  const named = (await dup.check(R, { givenNames: "Lena", familyName: "Park", email: "lena.park@example.org" })).matches.filter((m) => m.kind === "PERSON");
+  const accepted = [];
+  for (const m of named) {
+    if (m.kind !== "PERSON") continue;
+    const viaLead = await refusal(() => add(R, { ...m.useExisting }));
+    const viaContact = await refusal(() => corp.addContact(R, pine.company!.id, { ...m.useExisting, role: "OTHER" }));
+    accepted.push(viaLead === null && (viaContact === null || viaContact.body.code === "ALREADY_LINKED"));
+  }
+  ok("FO-9a pass (review M1): every named person's \"use the existing one\" body is accepted by Add a lead and by add contact", named.length >= 1 && accepted.every(Boolean), { named: named.length, accepted });
+
+  // Review m1: the caller's own match is never crowded out by 60 similar names they cannot open.
+  sql(`insert into fo_person (firm_id, given_names, family_name, created_by, updated_at) select '${A}', 'Wanda', 'Hiddenperson', 'test', now() from generate_series(1, 60)`);
+  sql(`insert into fo_lead (firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) select firm_id, id, 'MANUAL', 'Phone call', '${R.staffId}', 'test', now() from fo_person where family_name = 'Hiddenperson'`);
+  const wandaT = await add(T, { givenNames: "Wanda", familyName: "Hiddenperson", email: "wanda.t@example.org", confirmedNew: true });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: ws });
+  const crowd = await dup.check(T, { givenNames: "Wanda", familyName: "Hiddenperson" });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: ws });
+  ok("FO-9a pass (review m1): with 60 similar names T cannot open, T's own Wanda is still named first", crowd.matches[0]?.kind === "PERSON" && crowd.matches[0].personId === wandaT.person.id && crowd.hidden >= 49, { first: crowd.matches[0], hidden: crowd.hidden });
+
+  // Review m2: a number typed the same way at both ends meets, whichever rule gave the stored key.
+  const uk = await add(R, { givenNames: "Uma", familyName: "Kent", phone: "+44 (0) 20 7946 0958" });
+  ok("FO-9a pass (review m2): \"+44 (0) 20 7946 0958\" typed again finds the person stored with it", (await dup.check(R, { phone: "+44 (0) 20 7946 0958" })).matches.some((m) => m.kind === "PERSON" && m.personId === uk.person.id));
+
   ok("FO-9a fail: an empty check → refused at the body (422), and a wrong type → 422", (await refusal(() => dup.check(R, {})))?.status === 422 && (await refusal(() => dup.check(R, { email: 7 })))?.status === 422);
   ok("FO-9a pass: every answer is the shared contract's shape (DuplicateCheckOut)", [byPhone, sameName, tSees, co].every((x) => DuplicateCheckOut.safeParse(x).success));
 
@@ -185,10 +213,6 @@ try {
   // ------------------------------------------------------------------------------------- the route
   const access = Reflect.getMetadata(PLATFORM_ACCESS, DuplicatesController.prototype.check) as { keys?: string[] } | undefined;
   ok("FO-9a pass: the route declares the seeded agent/prospect:show key (a read; PF-4's start-up rule accepts it)", access?.keys?.join() === "agent/prospect:show" && (() => { try { assertEveryRouteDeclared([{ name: "DuplicatesController.check", method: "POST", path: "/api/front-office/duplicates/check", access } as never]); return true; } catch { return false; } })());
-  // Every seeded role holds agent/prospect:show, so a staff member stripped of it stands in: the guard refuses a route
-  // whose declared keys the person lacks (guard.ts, `missing`; PF-4's own tests prove the guard).
-  const stripped = { ...R, keys: R.keys.filter((k) => k !== "agent/prospect:show") };
-  ok("FO-9a fail: a person without agent/prospect:show lacks the route's one key, so PF-4's guard refuses it", (access?.keys ?? []).filter((k) => !stripped.keys.includes(k)).join() === "agent/prospect:show");
 } catch (e) {
   fail++;
   console.log(`FAIL  FO-9a: the check stopped — ${String((e as Error).stack ?? e).slice(0, 1200)}`);
