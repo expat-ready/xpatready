@@ -4,7 +4,8 @@
 // ports/fakes/eligibility.fake.ts; the shared behaviour is ports/contracts/eligibility-port.contract.ts.
 // Pure and repeatable: the same release and facts give the same result. No immigration value lives here (P-577, AGENTS
 // rule 4): outcomes, reasons and scores are shapes, and every number comes from a release. An adapter is bound to one
-// firm by its caller (the session's firm), never by an argument a client can send; another firm's release is not found.
+// workspace (today's demo boundary, never a firm id: contract v0.1 §0) by its caller, never by an argument a client can
+// send; another workspace's release is not found.
 // This folder imports only zod and its own files (contract v0.1 §1 rule 3; tests/check_as1m_eligibility_move.ts).
 import { z } from "zod";
 
@@ -65,8 +66,8 @@ export const EligibilityResult = z.strictObject({
 });
 export type EligibilityResult = z.infer<typeof EligibilityResult>;
 
-/** The typed refusals: an unknown release (or another firm's), and a release with no eligibility rules (BR-10: zero
- *  gates is no result). A malformed input is refused by AssessInput's own ZodError. */
+/** The typed refusals: an unknown release (or another workspace's), and a release with no eligibility rules, or none that applies to
+ *  the persons given (BR-10: zero gates is no result). A malformed input is refused by AssessInput's own ZodError. */
 export class EligibilityRefused extends Error {
   constructor(readonly code: "RELEASE_NOT_FOUND" | "NO_RULES", readonly releaseId: string) {
     super(code === "RELEASE_NOT_FOUND" ? `No such release: ${releaseId}.` : `This release has no eligibility rules yet: ${releaseId}.`);

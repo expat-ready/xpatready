@@ -2,13 +2,13 @@
 // (ports/fakes/eligibility.fake.ts) and by ConfiguratorEligibility (api/src/configurator/eligibility.door.ts) in
 // tests/check_as1m_eligibility_move.ts. The port file's sentences: every answer has the port's shape; the three
 // outcomes; a missing fact gives Possibly eligible with the fact named, never Not eligible; a rule not met gives Not
-// eligible with the rule named; the same input gives the same result; an unknown release, or another firm's, is a typed
+// eligible with the rule named; the same input gives the same result; an unknown release, or another workspace's, is a typed
 // not-found; a malformed input is refused; facts no rule reads change nothing; the result names its release and hash.
 import { z } from "zod";
 import { defineContract, expect, expectRefused } from "./contract.ts";
 import { AssessableRelease, EligibilityRefused, EligibilityResult, RequiredFacts, type AssessInput, type EligibilityPort } from "../eligibility.port.ts";
 
-/** What a contract case may use: the port, the same port bound to another firm, and three fixed profiles (one per
+/** What a contract case may use: the port, the same port bound to another workspace, and three fixed profiles (one per
  *  outcome) on one assessable release. */
 export type EligibilityHarness = {
   port: EligibilityPort;
@@ -85,12 +85,12 @@ export const eligibilityPortContract = defineContract("EligibilityPort", (make: 
     },
   },
   {
-    name: "another firm's adapter does not list, read or assess this firm's release",
+    name: "another workspace's adapter does not list, read or assess this workspace's release",
     async run() {
       const h = await make(), id = h.profiles.likely.release_id;
-      expect(!(await h.other.listAssessable()).some((x) => x.release_id === id), "not listed for the other firm");
-      await expectRefused(() => h.other.requiredFacts(id), "the other firm's requiredFacts", notFound);
-      await expectRefused(() => h.other.assess(h.profiles.likely), "the other firm's assess", notFound);
+      expect(!(await h.other.listAssessable()).some((x) => x.release_id === id), "not listed for the other workspace");
+      await expectRefused(() => h.other.requiredFacts(id), "the other workspace's requiredFacts", notFound);
+      await expectRefused(() => h.other.assess(h.profiles.likely), "the other workspace's assess", notFound);
     },
   },
   {

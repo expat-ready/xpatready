@@ -166,7 +166,8 @@ const ROWS: (ReleaseRow & { workspaceId: string })[] = [
   { workspaceId: W1, id: id(2), combinationId: id(101), version: 2, status: "RELEASED", sha256: "hash-a2", snapshot: snapOf("Sample A", PERSON_GATES) },
   { workspaceId: W1, id: id(3), combinationId: id(102), version: 1, status: "RELEASED", sha256: "hash-b1", snapshot: snapOf("Sample B", [...PERSON_GATES.slice(0, 1), SPOUSE_GATE]) },
   { workspaceId: W1, id: id(4), combinationId: id(103), version: 1, status: "RELEASED", sha256: "hash-c1", snapshot: snapOf("Sample C, no rules", []) },
-  { workspaceId: W2, id: id(5), combinationId: id(104), version: 1, status: "RELEASED", sha256: "hash-d1", snapshot: snapOf("Sample D, other firm", PERSON_GATES) },
+  { workspaceId: W2, id: id(5), combinationId: id(104), version: 1, status: "RELEASED", sha256: "hash-d1", snapshot: snapOf("Sample D, other workspace", PERSON_GATES) },
+  { workspaceId: W1, id: id(6), combinationId: id(105), version: 1, status: "RELEASED", sha256: "hash-e1", snapshot: snapOf("Sample E, spouse only", [SPOUSE_GATE]) },
 ];
 /** The in-memory release table, read through the adapter's own Prisma reader (prismaReleases): the same where clauses. */
 const calls: unknown[] = [];
@@ -222,16 +223,19 @@ const FULL = { "person.passport_number": "SAMPLEP12", "person.criminal_history":
   const unknown = await refusal(() => door().assess({ release_id: id(999), persons: P(FULL) }));
   ok("not-found pass: assess on an unknown release throws EligibilityRefused RELEASE_NOT_FOUND", unknown instanceof EligibilityRefused && unknown.code === "RELEASE_NOT_FOUND" && unknown.releaseId === id(999), String(unknown));
   const other = await refusal(() => door(W2).assess({ release_id: A, persons: P(FULL) }));
-  ok("not-found pass: another firm's release is not found (the reader is bound to the caller's firm)", other instanceof EligibilityRefused && other.code === "RELEASE_NOT_FOUND", String(other));
+  ok("not-found pass: another workspace's release is not found (the reader is bound to the caller's workspace)", other instanceof EligibilityRefused && other.code === "RELEASE_NOT_FOUND", String(other));
   const before = calls.length, bad = await refusal(() => door().requiredFacts("not-a-uuid"));
   ok("not-found pass: a malformed id is not found without a database read", bad instanceof EligibilityRefused && bad.code === "RELEASE_NOT_FOUND" && calls.length === before, String(bad));
   const noRules = await refusal(() => door().assess({ release_id: C, persons: P(FULL) }));
   ok("not-found fail: a release that exists with no rules is a different refusal (NO_RULES), never a result", noRules instanceof EligibilityRefused && noRules.code === "NO_RULES", String(noRules));
+  const spouseOnly = await refusal(() => door().assess({ release_id: id(6), persons: P(FULL) }));
+  const spouseGiven = await door().assess({ release_id: id(6), persons: P(FULL, { "person.language_level": "high" }) });
+  ok("not-found fail (review m2): a release whose only gate is the spouse's, with no spouse given, is NO_RULES, never Likely eligible; with a spouse it reads the gate", spouseOnly instanceof EligibilityRefused && spouseOnly.code === "NO_RULES" && spouseGiven.outcome === "LIKELY_ELIGIBLE", { spouseOnly: String(spouseOnly), spouseGiven });
   const bodyBad = await refusal(() => door().assess({ release_id: id(999), persons: [] } as never));
   ok("not-found fail: a malformed input is a ZodError before the release is looked up", bodyBad instanceof z.ZodError, String(bodyBad));
   const list = await door().listAssessable();
-  ok("list pass: one row per combination with rules, its newest released version; none without rules, none of another firm", JSON.stringify(list.map((x) => [x.name, x.release_id, x.version, x.content_hash])) === JSON.stringify([["Sample A", A, 2, "hash-a2"], ["Sample B", B, 1, "hash-b1"]]), list);
-  ok("list fail: the reader asks only for the firm's RELEASED rows (a superseded release is never listed)", calls.some((c) => JSON.stringify((c as { where: unknown }).where) === JSON.stringify({ workspaceId: W1, status: "RELEASED" })) && !list.some((x) => x.release_id === id(1)), calls[0]);
+  ok("list pass: one row per combination with rules, its newest released version; none without rules, none of another workspace", JSON.stringify(list.map((x) => [x.name, x.release_id, x.version, x.content_hash])) === JSON.stringify([["Sample A", A, 2, "hash-a2"], ["Sample B", B, 1, "hash-b1"], ["Sample E, spouse only", id(6), 1, "hash-e1"]]), list);
+  ok("list fail: the reader asks only for the workspace's RELEASED rows (a superseded release is never listed)", calls.some((c) => JSON.stringify((c as { where: unknown }).where) === JSON.stringify({ workspaceId: W1, status: "RELEASED" })) && !list.some((x) => x.release_id === id(1)), calls[0]);
 }
 
 // ------------------------------------------------------------------ one contract, the fake and the adapter

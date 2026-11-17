@@ -1,5 +1,5 @@
 // AS-1m (R1.106; P-588; case-side contract v0.1 §2.6, §3.2): the configurator's adapter for EligibilityPort. It loads a
-// release snapshot of the caller's firm and runs the pure rules of engine/eligibility/ on it; nothing else. Rules only:
+// release snapshot of the caller's workspace and runs the pure rules of engine/eligibility/ on it; nothing else. Rules only:
 // no model call, no spend (US$0), no write. Imports its module, engine/eligibility/ and ports/ only (§2.6).
 // Roles: a gate is about the principal unless its rule's root is about the spouse (subjectKind SPOUSE); a spouse's gate
 // with no spouse on the application does not apply. Gates saved today are all per person (checkGates), so the spouse's
@@ -15,14 +15,14 @@ import {
 
 /** One release row as the adapter reads it (config_release). */
 export type ReleaseRow = { id: string; combinationId: string; version: number; status: string; sha256: string; snapshot: unknown };
-/** Where the releases come from, already bound to one firm (the caller's session). */
+/** Where the releases come from, already bound to one workspace (the demo boundary, never a firm id: contract v0.1 §0). */
 export type ReleaseReader = { released(): Promise<ReleaseRow[]>; byId(id: string): Promise<ReleaseRow | null> };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SELECT = { id: true, combinationId: true, version: true, status: true, sha256: true, snapshot: true } as const;
 type ReleaseTable = { findMany(a: unknown): Promise<ReleaseRow[]>; findFirst(a: unknown): Promise<ReleaseRow | null> };
 
-/** The firm's releases from the database. A malformed id is no release (never a database error). */
+/** The workspace's releases from the database. A malformed id is no release (never a database error). */
 export function prismaReleases(db: { configRelease: unknown }, workspaceId: string): ReleaseReader {
   const t = db.configRelease as ReleaseTable;
   return {
@@ -78,6 +78,8 @@ export class ConfiguratorEligibility implements EligibilityPort {
     for (const p of q.persons) for (const [fact, value] of Object.entries(p.known)) known.set(kkey(PERSON[p.role], fact), { value, status: "answered", source: "eligibility-port" });
     const has = (role: EligibilityRole) => q.persons.some((p) => p.role === role);
     const read: { role: EligibilityRole; r: GateResult }[] = gates.filter((g) => has(roleOf(g))).map((g) => ({ role: roleOf(g), r: gateResult(s, known, g, PERSON[roleOf(g)]) }));
+    // Review m2: a release whose every gate is the spouse's, with no spouse given, reads no gate: no result (BR-10).
+    if (!read.length) throw new EligibilityRefused("NO_RULES", row.id);
     const { outcome } = outcomeOf(read.map((x) => x.r));
     const reasons: EligibilityReason[] = [], missing: { role: EligibilityRole; key: string }[] = [], seen = new Set<string>();
     for (const { role, r } of read) {

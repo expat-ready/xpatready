@@ -47,7 +47,7 @@ export const SAMPLE_PROFILES = {
 
 const present = (v: unknown) => v !== undefined && v !== null && v !== "";
 
-/** The fake. `releases` replaces the Sample releases (an empty list is "another firm": nothing is found). */
+/** The fake. `releases` replaces the Sample releases (an empty list is "another workspace": nothing is found). */
 export function fakeEligibility(releases: readonly SampleRelease[] = SAMPLE_RELEASES): EligibilityPort {
   const find = (id: string) => { const r = releases.find((x) => x.release_id === id); if (!r) throw new EligibilityRefused("RELEASE_NOT_FOUND", id); return r; };
   return {
