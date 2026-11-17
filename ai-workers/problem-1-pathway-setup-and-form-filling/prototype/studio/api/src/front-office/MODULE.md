@@ -34,3 +34,8 @@ The firm's front office: public booking and retainer agreements, with their file
 - Open a staff route without the platform guard.
 - Let the signing provider email anyone: SigningPort takes no address and no vendor-email option (FO-6, P-563).
 - Store a token's verifier unhashed (it is kept as a SHA-256, `hashVerifier` in tokens.ts).
+
+**Booking settings (FO-3a part 1a).** Kept in a section of its own so the one-line lists above merge by themselves.
+- Entry points: `booking/settings/types.controller.ts` under `/api/front-office`: `GET booking-types`, `GET booking-types/:id`, `GET booking-types/:id/preview?from&to&tz` (key `agent/booking-event-type:list`); `POST booking-types`, `PATCH booking-types/:id` (with `version`), `POST booking-types/:id/duplicate`, `POST booking-types/:id/switch-off|switch-on`, `DELETE booking-types/:id` (soft) (key `…:edit`).
+- Invariant: A deleted booking type (`deletedAt`) is hidden everywhere and never bookable (public door, public list, staff create read `active: true, deletedAt: null`); its bookings stay readable and changeable by id or link; its slug is free again (unique among not-deleted rows). A type edit needs the version read (409 otherwise) and never changes a booking (FO-3a).
+- Tests: `tests/check_fo3a_booking_types.ts`.
