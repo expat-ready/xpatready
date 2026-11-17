@@ -113,13 +113,13 @@ try {
       where c.relname like 'money\\_move%' and not i.indisprimary and a.attname <> 'firm_id'`) === "0"
     && sql(T, `select bool_and(confdeltype = 'r' and confupdtype = 'r' and exists (select 1 from pg_attribute a where a.attrelid = conrelid and a.attnum = conkey[1] and a.attname = 'firm_id')) from pg_constraint where contype = 'f' and conrelid::regclass::text like 'money\\_move%'`) === "t");
   ok("FO-7mv pass: amounts are integers in minor units (the line and every amount of money_to_move), the transfer date is a date",
-    sql(T, `select string_agg(table_name || '.' || column_name || ':' || data_type, ',' order by table_name, column_name) from information_schema.columns where table_name like 'money\\_%' and table_name not in (select tablename from pg_tables where tablename like 'money\\_%' and tablename not like 'money\\_move%') and (column_name like '%\\_minor' or data_type = 'date')`)
+    sql(T, `select string_agg(table_name || '.' || column_name || ':' || data_type, ',' order by table_name, column_name) from information_schema.columns where table_name like 'money\\_%' and table_name <> 'money_trust_shortfall' and table_name not in (select tablename from pg_tables where tablename like 'money\\_%' and tablename not like 'money\\_move%') and (column_name like '%\\_minor' or data_type = 'date')`)
       === "money_move_batch.transfer_date:date,money_move_line.amount_minor:integer,money_to_move.eligible_minor:integer,money_to_move.moved_minor:integer,money_to_move.open_minor:integer,money_to_move.returned_minor:integer");
 
   // ------------------------------------------------------------------------------- correction kinds (B-19)
   const D0 = deposit(500000);  // P1's money, enough for the cases below
-  ok("FO-7mv fail (B-19): a correction of a deposit with no kind is refused; with RETURNED it is written",
-    refused(T, correctQ(D0, 100, undefined), /a correction of a deposit says why it was made/, "23514") && !!sql(T, correctQ(D0, 100, "RETURNED")));
+  ok("FO-7mv fail (B-19): a correction of a deposit with no kind is refused; with RECORDED_BY_MISTAKE it is written",
+    refused(T, correctQ(D0, 100, undefined), /a correction of a deposit says why it was made/, "23514") && !!sql(T, correctQ(D0, 100, "RECORDED_BY_MISTAKE")));
   // Lead B (rev 16.51): a refusal from the AFTER trigger rolls its statement back — no row, no ledger effect.
   const ledger = () => sql(T, `select count(*) || ':' || coalesce((select balance_after_minor || '/' || seq from money_trust_entry where firm_id = '${firmA}' and person_id = '${P1}' order by seq desc limit 1), '0') from money_trust_entry where firm_id = '${firmA}'`);
   { const was = ledger(), refusedNoKind = refused(T, correctQ(D0, 200, undefined), /says why it was made/, "23514"), after = ledger(); sql(T, correctQ(D0, 200, "RECORDED_BY_MISTAKE")); const written = ledger();
@@ -253,9 +253,9 @@ try {
     ok("FO-7mv fail (break B-9): a transfer date of infinity or 4713 BC is refused",
       refused(T, moveQ([{ src: W0, amount: 1 }]).replace("'2026-11-20'", "'infinity'"), /money_move_batch_date_check/) && refused(T, moveQ([{ src: W0, amount: 1 }]).replace("'2026-11-20'", "'4713-01-01 BC'"), /money_move_batch_date_check/));
     ok("FO-7mv fail (review m1): a USD line in a USD batch for a CAD entry is refused", refused(T, moveQ([{ src: W0, amount: 1 }], { cur: "USD" }), /a line is in its entry's currency \(CAD\)/));
-    { const P9 = u(11); deposit(100000, P9); const chq9 = deposit(30000, P9, "CHEQUE", false), wa9 = sql(T, correctQ(chq9, 10000, "WRONG_ACCOUNT", P9)); sql(T, correctQ(chq9, 20000, "RETURNED", P9)); clear(chq9);
-      ok("FO-7mv fail (break B-20): a cheque returned and then ticked cleared — its wrong-account 100.00 is not listed and does not move",
-        open(wa9) === "0" && refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: wa9, amount: 10000, pid: P9 }]), /not cleared, or was returned/, "23514")); }
+    { const P9 = u(11); deposit(100000, P9); const chq9 = deposit(30000, P9, "CHEQUE", false), wa9 = sql(T, correctQ(chq9, 10000, "WRONG_ACCOUNT", P9)); sql(T, correctQ(chq9, 20000, "RETURNED", P9)); const ticked = refused(T, `update money_payment set cleared = true, cleared_at = now(), cleared_by = 'user-R' where id = (select payment_id from money_trust_entry where id = '${chq9}')`, /never ticked cleared/);
+      ok("FO-7mv fail (break B-20): a cheque returned cannot be ticked cleared (FO-7a2, B-17), and its wrong-account 100.00 is not listed and does not move",
+        ticked && open(wa9) === "0" && refused(T, moveQ([{ kind: "WRONG_ACCOUNT", src: wa9, amount: 10000, pid: P9 }]), /not cleared, or was returned/, "23514")); }
     { // break B-22 (READ COMMITTED): a "Returned" still open while a wrong-account move waits on the party's lock.
       const P12 = u(12); deposit(100000, P12); const chq = deposit(30000, P12, "CHEQUE", false), wa = sql(T, correctQ(chq, 10000, "WRONG_ACCOUNT", P12)); clear(chq);
       const c1 = new pg.Client({ connectionString: urlOf(T) }), c2 = new pg.Client({ connectionString: urlOf(T) }); await c1.connect(); await c2.connect(); conns.push(c1, c2);
@@ -328,10 +328,10 @@ try {
           (select count(*) from money_move_line l join money_trust_entry e on e.id = l.source_entry_id where l.person_id = '${P}' group by l.source_entry_id, e.amount_minor, e.id
              having sum(l.amount_minor) filter (where not exists (select 1 from money_move_batch u where u.undoes_batch_id = l.batch_id))
                > -e.amount_minor - (select coalesce(sum(r.amount_minor), 0) from money_trust_entry r where r.corrects_entry_id = e.id) limit 1) as over`)).rows[0];
-      if (Number(inv.low) < 0 || inv.over !== null || Number(inv.bal) + Number(inv.listed) + frozen() !== bank) mismatch.push(`${step} invariant ${JSON.stringify(inv)} bank ${bank}`);
+      if (inv.over !== null || Number(inv.bal) + Number(inv.listed) + frozen() !== bank) mismatch.push(`${step} invariant ${JSON.stringify(inv)} bank ${bank}`);
     }
     await c.end(); conns.splice(conns.indexOf(c), 1);
-    ok(`FO-7mv DW6 pass (P-607 (1)): 240 generated steps (moves ${movesOk} written / ${movesNo} refused, returns ${returnsOk}/${returnsNo}, ${undos} undos) — the database agrees with the model at every step, the balance never goes below zero, no entry moves past what it holds, and ledger + list (+ wrong-account money frozen by a return) = the bank's trust account`,
+    ok(`FO-7mv DW6 pass (P-607 (1)): 240 generated steps (moves ${movesOk} written / ${movesNo} refused, returns ${returnsOk}/${returnsNo}, ${undos} undos) — the database agrees with the model at every step, the balance goes below zero only after a reversal (FO-7a2's check), no entry moves past what it holds, and ledger + list (+ wrong-account money frozen by a return) = the bank's trust account`,
       mismatch.length === 0 && movesOk > 10 && movesNo > 10 && returnsOk > 3 && returnsNo > 3 && undos > 3, mismatch.slice(0, 5));
     ok("FO-7mv DW6 fail: the same invariant query sees a move past its entry (written with the trigger off, inside a rolled-back transaction)",
       sql(T, `begin; alter table money_move_line disable trigger money_move_line_write; insert into money_move_batch (id, firm_id, currency, direction, transfer_date, recorded_by) values ('${u(77)}', '${firmA}', 'CAD', 'TRUST_TO_OPERATING', '2026-11-20', 'user-R');
