@@ -31,4 +31,4 @@
 * The lane touches only this migration, the test and `api/src/client-money/MODULE.md` (one invariant line: "every trust write takes the party lock before the invoice row").
 * No other function changes, and no screen.
 
-**Standard rules:** branch from `origin/main`. One small PR. The PR stays a draft until "Reviewer: Approve <head>", and is then marked ready once. Never push to a ready PR unless it is a fix. Live AI off, US$0, never a priced button (P-175). Questions go on the PR as "Question for the tech lead: …"; Build Lead C answers within 30 minutes. If a site is blocked on the cloud network, write "Not verified: <site> blocked on the cloud network" and go on.
+**Standard rules:** branch from `origin/main`. One small PR. Under P-683, get "Reviewer: Approve <head>" on the branch first, then open the PR as non-draft. Never push to an open PR unless it is a fix. Live AI off, US$0, never a priced button (P-175). Questions go on the PR as "Question for the tech lead: …"; Build Lead C answers within 30 minutes. If a site is blocked on the cloud network, write "Not verified: <site> blocked on the cloud network" and go on.

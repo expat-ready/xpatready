@@ -122,3 +122,5 @@ Merged on main: #2002, #2007, #2016, #2035. #2000 got "Reviewer: Approve 1fb7ca0
 **12:03 IST 17 Nov:** #2042 was dequeued at 11:45 IST with CHECKS_TIMEOUT: `ci` never reported on batch #2067. There is no conflict and no failed shard, so it needs a requeue, which is the Lead's action; I told Lead 76. #2077 fixes `check_css1_index.ts` (drops its own-PR git-diff assertion); the check belongs to my case side.
 
 **13:00 IST 17 Nov:** Manitoba's SWM eligibility page has been read by Lead 76 through the founder's Chrome (`official-sources/manitoba/README.md`). AS-2d2 is updated: its eligibility rules are cited, while the grid, EOI ranking, fees and language minimums stay Sample. No new row starts today (P-660, P-663).
+
+**13:05 IST 17 Nov (Lead 77):** #2042 is back in the queue. **P-683 (founder):** lanes get the reviewer's Approve on the branch first, then open the PR as non-draft. Every brief of mine now says so, replacing Lead 71's draft rule. Open lanes are told on their PRs.
