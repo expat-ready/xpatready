@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-668**, 17 Nov 12:1x IST (P-658 to P-668 added by Lead 76); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-17-1210-lead76s2-as-of-P-661.md`, whose first line lists the older ones)
+# Rule register (the tech lead keeps it; as of **P-669**, 17 Nov 12:1x IST (P-658 to P-669 added by Lead 76); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-17-1210-lead76s2-as-of-P-661.md`, whose first line lists the older ones)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -155,6 +155,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-666 | Builders start on high effort; 48 h stop rule on review rounds, CI rounds, plan points. | prose | 17 Nov |
 | P-667 | Rules v2 (21 enforced, 12 judged) replaces this page when it lands; old rows in an ID map. | prose | 17 Nov |
 | P-668 | Engineering System v1 cards T9, T11, T12, T14, T16, T17, W1, W3-W6 adopted as recommended. | prose | 17 Nov |
+| P-669 | 5-hour bar over 90% before its reset: slow lanes; the free reset only if work would stop, and the founder is told. | prose | 17 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |
