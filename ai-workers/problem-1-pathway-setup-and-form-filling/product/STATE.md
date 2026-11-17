@@ -2,12 +2,14 @@
 
 current_lead: local_68613e56-e178-487b-91d0-c49054a1d1d5 Lead 78 · 17 Nov 13:56 IST (series 2; took over from Lead 77 (series 2, local_baa78a6d) at ~340k, P-446)
 
-updated: 2026-11-17 13:56 IST by **Lead 77 (series 2, local_baa78a6d)** at hand-over to Lead 78 (Lead 77 ran 13:02-13:56; cron ba599624 deleted) · 5-hour reset 13:50, weekly 11% · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-686**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-17 14:00 IST by **Lead 78 (series 2, local_68613e56)** (took over 13:56 IST from Lead 77; check cron f9d7984f at :17 and :47) · weekly 11% at hand-over · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-686**) · this branch: `lead/2026-11-07-lead31`
 
 
 
 
 Pointer and 10:2x founder lines: `history/STATE-2026-11-17-1208-lead76s2-pointer-lines.md`.
+
+**Lead 78, 14:00 IST:** labelled #2073, #2075 (founder P-672), #2079 (all ci green, Approve + Lead read on head); #2027 Lead read posted + labelled (records); its founder question (AG-13-43 in full vs SA-11-6 references only; recommend AG-13-43) is held for his return, blocks only AUD-4s part 2. #2086 ci still queued. #2080 → #2081 wait for #2079 to merge.
 
 ## Hand-over: Lead 77 → Lead 78, 13:56 IST 17 Nov — read this first (Lead 76's block word for word: `history/STATE-2026-11-17-1430-lead77s2-lead76-handover-block.md`)
 Standbys: **Lead 79 (local_25aa8878)**; start a second at the founder's next typed turn (P-286). Founder away 4-5 h from ~13:10 (A159): **never ask him to press Ready** (P-685: `bash P/tools/pr-ready.sh <n>`); only tomorrow's Transfer and purchases need him. 5-hour bar reset 13:50; weekly 11%.
