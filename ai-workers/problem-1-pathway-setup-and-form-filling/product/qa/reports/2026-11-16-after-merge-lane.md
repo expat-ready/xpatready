@@ -49,3 +49,4 @@ Refined 16:1x IST from qa #1950's verdict table (open, stacked on #1929): R1.19 
 | 17 Nov 03:5x | bfac889d7 | none | none | wait |
 | 17 Nov 04:1x | 693369537 | #1998 PF-21s part 3, #2002 CS-C1b, #2025, #2028 (ports), #1999 (qa R1.4; took QA-500 too), #2015, #1990 (records) | none watched | #2006 merged with main again: this lane's FO-4sf finding renumbered QA-500 → QA-501 (#1999's QA-500 is R1.4's) |
 | 17 Nov 04:3x to 06:3x | 693369537 | none (six checks) | none | #2006 waited in the records queue; merged 06:35 IST (QA-493 closed, R1.27 parts missing FO-4b, QA-501) |
+| 17 Nov 06:4x | 6dcff65f5 | #2006 (this lane), #1968 (qa R1.38/R1.40 on the manage page), #2034 (QA-498 quarantine) | none | wait |
