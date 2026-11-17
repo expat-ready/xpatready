@@ -1823,3 +1823,11 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * #2064 adds the body line `Size exception: P-654` only. Lead 74's migration read on 749708be passes (comment 6937825642).
 * **PF-17's binding conditions now cover two things:** (1) a database rule so that only our team's role writes `SUPPORT` rows (breaker m1); (2) foreign keys from the support tables to firm and staff, added after #2009 merges, as back-relation lines under `// back-relation slot: support (PF-18b)`.
 * **New standard rule for every PF/FO brief:** a migration's stamp must differ from every open PR's stamp, not only be later than `main`'s. #2062 and #2064 both used 20261117030000; that was safe only because Prisma orders by full name.
+
+## rev 17.2 (17 Nov 11:10 IST): P-660 (the founder, ~11:1x IST through Lead 75), the move to the expat-ready org on Wed 18 Nov at 09:30 IST
+* Today lanes finish open work and start only near-Proven product PRs and pipeline fixes; no new big rows. The founder's concern: no work done so far may be lost.
+* My three rows waiting on merges:
+  - PF-5tv starts once #2029 merges (small, no migration).
+  - PF-21s part 4 starts only if #2012 merges before ~15:00 IST (the last part of the complaints screen, no schema); otherwise it holds for after the move.
+  - PF-12b part 2 holds for after the move (~650 lines, a migration, identity files, a breaker).
+* Owed to Lead 75 by 20:00 IST (sending at 19:30): every open PF/FO PR of mine, its head, and whether it merges tonight or waits for the move.
