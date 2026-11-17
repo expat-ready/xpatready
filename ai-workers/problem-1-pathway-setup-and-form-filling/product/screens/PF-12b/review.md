@@ -125,3 +125,12 @@ Reviewer: Approve 3d019b01936e4f4c0758ca4257f9237c542769b7
 **Verdict: Approve.**
 
 Reviewer: Approve d69006734c01724f28bdb5173991e6f603c048bd
+
+## Re-review 5: merge of origin/main (`2ddfe62`; parents a7945ac, bcc505afd)
+- **MODULE.md resolution** (`git diff 2ddfe62^2 2ddfe62`): main's Tests line is kept, with its new `check_pf6m_money_line.ts` and `check_pf5t_terms.ts`, and `check_pf12b_bypass_audit.ts` is added. This PR's PF-12b invariant line is kept as reviewed. Nothing else changed.
+- **Main's side** (`git diff a7945ac 2ddfe62 -- ':!*MODULE*'`): 203 files, none of them this PR's. The merged tree differs from main only in this PR's 12 files, and every one of them except MODULE.md is byte-identical to a7945ac.
+- **Runs on the merged tree:** `check_pf12b_bypass_audit` 27/0, `check_case_feed` 39/39. The builder reports pf12_walls 100/0 and pf5 53/0; I did not re-run those.
+
+**Verdict: Approve.**
+
+Reviewer: Approve 2ddfe62fd8e944f8d87dfabe8561035096bb39c2
