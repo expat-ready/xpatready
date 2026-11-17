@@ -20,7 +20,7 @@ Standbys: **Lead 79 (local_25aa8878)**; start a second at the founder's next typ
 3. **Label on green, in order:** #2073, #2075, #2079 → #2080 → #2081 (all ready, approved; #2081 needs the P-423 workflow read already posted; dispatch its first run after merge), then the CK follow-up PR (enforcement-checks lane, after #2081). #2027 AUD-4s concept (Build Lead C): Approve 7197eed on head; needs the Lead's read, then label.
 4. Disk: see the P-688 block; Lead 77's line word for word in `history/STATE-2026-11-17-1430-lead78s2-handover-item4-disk.md`.
 5. **Lanes:** claude.ai signed in in the built-in browser: nudge idle cloud lanes by typing in their prompt box + Return (done 13:4x: AUD-5 part 1, PF-21i, PF-6m2). Build Leads A (local_1520b573) and C (local_d5287293) send lists by 19:30/20:00 and send drafts to the Lead. qa after-merge (local_bb3bf1ad) on the Mac. lead-watch's 30 "branch not on main, no PR" lines are old board/claude branches: for the clean-up stage, not now.
-6. **Tracker** (below) and plan page https://claude.ai/artifact/EYh8cn1M8rTc3Wba3Pp1dP: update each check. Owed tonight: org-move checklist text (still says Team, 60 jobs), P8 inventory, mirror refresh, three screenshot links to the founder before 09:30.
+6. Tracker + plan page each check; owed tonight: mirror refresh, three screenshot links (checklist text and P8 done by Lead 78). Original word for word: `history/STATE-2026-11-17-1505-lead78s2-handover-item6-tracker.md`.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 | # | Ask (IST) | Status |
