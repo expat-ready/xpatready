@@ -1844,3 +1844,7 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 ### Rev 17.5 (13:07 IST 17 Nov): drafts already open are never toggled by us
 * **Lead 77's correction to rev 17.4:** no session or lane marks an open draft ready. The ready toggle is the GraphQL mutation the T7 deny line blocks, and nobody routes around it (P-387). Each such draft goes in the 19:30 list with its Approve sha, and the founder presses Ready unless he allows the mutation himself. This replaces "marked ready once, after their Approve" in rev 17.4.
 * Open PF/FO drafts now: **#2062** (FO-9a part 1, head 3f7113b6), told on the PR not to toggle. #2026 and #1994 are records PRs.
+
+### Rev 17.6 (13:35 IST 17 Nov): P-685, the Lead marks drafts ready
+* **P-685 (founder, via Lead 77):** the current Lead marks an old draft ready with `tools/pr-ready.sh`, only when the PR has a `Reviewer: Approve <head sha>` line. Drafts are never sent to the founder. Build Lead A sends each draft and its Approve sha to the current Lead, who marks it within 30 minutes. This replaces the "founder presses Ready" line in rev 17.5. Lanes still never toggle themselves.
+* **#2062** is already ready (head 3f7113b6, Approve 3f7113b6 at 06:29 UTC), so it has nothing to send. No PF/FO draft is open now.
