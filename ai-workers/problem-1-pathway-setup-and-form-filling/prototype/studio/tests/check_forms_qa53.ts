@@ -19,13 +19,13 @@ const API = join(import.meta.dirname, "..", "api", "src");
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 400)}` : ""}`); };
 const status = async (path: string, actor: string | null) => (await fetch(`http://localhost:${PORT}${path}`, { headers: actor ? { "x-actor": actor } : {} })).status;
-// QA-53k: the firm copy starts and stops without blocking the event loop. execFileSync held the loop for the minute the
+// QA-53k: the firm copy starts and stops without blocking the event loop. execFileSync held the loop about 5.6 s while the
 // copy takes to start, so the main copy's idle keep-alive socket was closed by the server unseen and the next request
 // on it failed with "SocketError: other side closed" (3 hits in 6 h, #2069). spawn lets undici see the close in time.
 const runAsync = (cmd: string, args: string[], timeout: number) => new Promise<void>((resolve, reject) => {
   const c = spawn(cmd, args, { stdio: "ignore", timeout });
   c.on("error", reject);
-  c.on("exit", (code, signal) => (code === 0 ? resolve() : reject(new Error(`${cmd} ${args.slice(1, 3).join(" ")} ended with ${code ?? signal}`))));
+  c.on("exit", (code, signal) => (code === 0 ? resolve() : reject(new Error(`${cmd} ${args.slice(1, 4).join(" ")} ended with ${code ?? signal}`))));
 });
 const sql = (q: string) => execFileSync("/opt/homebrew/opt/postgresql@18/bin/psql", [`postgresql://xr_studio@127.0.0.1:54329/${DB}`, "-Atc", q], { encoding: "utf8" }).trim();
 
