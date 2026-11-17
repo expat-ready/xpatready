@@ -130,3 +130,5 @@ Merged on main: #2002, #2007, #2016, #2035. #2000 got "Reviewer: Approve 1fb7ca0
 **13:38 IST 17 Nov:** #2008 conflicts with main (MODULE.md; Lead 77's 13:3x sweep). Its lane was asked to merge main, get a diff-only re-review and post the new head for the label. AUD-5 part 2 waits until after the move (P-660).
 
 **13:56 IST 17 Nov:** Lead 77 nudged the #2008 lane at 14:1x IST; it may wait for #2045, which is ahead of it in the queue. #2027 gets the Lead's read when ci is green. Lead 78 is now the current Lead.
+
+**14:02 IST 17 Nov (Lead 78):** #2027 was read and labelled at 14:00 IST. AUD-4s part 2 waits on a founder question (AG-13-43 against SA-11-6), which Lead 78 carries. Send Lead 78 the new head and Approve sha for #2000 and #2008.
