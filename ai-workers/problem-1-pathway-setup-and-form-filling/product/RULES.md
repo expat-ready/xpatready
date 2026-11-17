@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-672**, 17 Nov 11:5x IST (P-658 to P-672 added by Lead 76); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-17-1210-lead76s2-as-of-P-661.md`, whose first line lists the older ones)
+# Rule register (the tech lead keeps it; as of **P-677**, 17 Nov 12:17 IST (P-658 to P-677 added by Lead 76); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-17-1217-lead76s2-as-of-P-672.md`, whose first line lists the older ones)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -122,11 +122,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-336 | Records by the Lead alone; STATE one page ≤ 12 KB; DECISIONS appended newest first; records daily and at hand-over; records PRs merge when the queue is empty (P-436 (3)). | script: check-docs.sh (part: STATE 12 KB); CI: records-label.yml | P-612 |
 | P-440 | This page is refreshed at every hand-over and lags DECISIONS by at most 3 rows. | script: check-docs.sh (RULES LAG; test check-rules-lag.sh) | 9 Nov |
 | P-371 | Never cancel a CI run; re-run the failed part alone (P-384); product code only through the queue; check fixes may land ahead on green (P-214). | prose | P-612 |
-| P-616 | A capability with no screen passes gate A by API; map row 99's model choice is launch condition C26. | prose | 15 Nov |
 | P-618 | Outside dependencies in `design/outside-dependencies.md`: start at need − lead time − 2× buffer; 🔴 when due or stuck 48 h; fallback and date on a block. | script: outside-deps-watch.py via lead-watch.sh step 9 (part; `rules/tokens-money-account.md`) | 15 Nov |
-| P-619 | Enforcement steps 3-8 approved; alarms for a stale board (45 min) and outside items. | prose (B193 builds them) | 15 Nov |
-| P-620 | Each Claude account checks the company Gmail connector at start and after a switch; missing → ask the founder. | prose (B193 part 6) | 16 Nov |
-| P-621 | Google only (Gmail, Calendar) for now; Microsoft deferred; ports stay provider-neutral. | prose | 16 Nov |
 | P-622 | Theory of Constraints: finish before starting (WIP per group), hot files split, one full run per change, fewer Leads; gates unchanged. | prose (B193, B194) | 16 Nov |
 | P-623 | WIP: 2 waiting per group or 24 h; stopped builders fix qa bugs first; release Lead orders qa's queue; board leads with qa verdicts a day. | prose (B193, B194) | 16 Nov |
 | P-628 | While the founder is away the Lead decides product questions, records each ruling and its reason for his review. | prose | 16 Nov |
@@ -135,12 +131,11 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-636 | Board words Planned, Built, Proven (+ In progress); only Proven counts as delivered; Refresh on demand. | script: cockpit-data.py (part) | 16 Nov |
 | P-637 | Labels need no founder click: the bot labels on the rules; a Lead-read path also needs "Lead read the diff: <sha>" (B200). | CI: queue-gate.sh label (part) | 16 Nov |
 | P-639 | The board and the Lead's check verify each other: each check acts on the board's Today and Stuck items against their primary source; a mismatch is an ACT fixed the same day. | script: lead-watch.sh (part: ACT lines; B201's tests) | 16 Nov |
-| P-643 | (replaces P-642) No extra usage; lanes run past 96%; at 96% the Lead tells the founder, who resets the account before 98%. | prose | 16 Nov |
 | P-644 | Build 10, prove 10 R1 rows a day (floor 7/7); Lead + Build Leads A, C + Prove Lead; whole parts first; no scope cuts. | prose (plan in design/) | 16 Nov |
 | P-646 | Jam alarms each check (disk, no merge 60 min, CI queue over 30); drafts until Approve; act unasked. | script: lead-watch.sh (1b, 2b) | 16 Nov |
 | P-647 | Each check reads claude.ai/code statuses and acts on waiting lanes; no lane waits on a network change. | prose (built-in browser script) | 16 Nov |
 | P-651 | (with P-648, P-649) CI overflow on the Namespace trial; full tests once, in the merge queue. | prose | 17 Nov |
-| IDX-7 | Dated rulings (P-631, P-633, P-634, P-626, P-627, P-638, P-640, P-645, P-650, P-653, P-655, P-658, P-659) stand as recorded; word for word in `rules/tech-lead.md` › Dated rulings. | prose | 17 Nov |
+| IDX-7 | Dated rulings (P-616, P-619, P-620, P-621, P-643, P-631, P-633, P-634, P-626, P-627, P-638, P-640, P-645, P-650, P-653, P-655, P-658, P-659) stand as recorded; word for word in `rules/tech-lead.md` › Dated rulings. | prose | 17 Nov |
 | IDX-6 | One-time exceptions (P-617, P-652, P-654) stand as recorded; the rows word for word in `rules/tech-lead.md` › One-time exceptions (moved 17 Nov by Lead 76). | prose | 17 Nov |
 | P-657 | GitHub Enterprise bought outright (supersedes P-656 trial, reverses P-652 Team). | prose | 17 Nov |
 | P-660 | Drain 17 Nov (only near-Proven product PRs and pipeline fixes start), move Wed 18 Nov 09:30 IST, full power after it is verified. | prose | 17 Nov |
@@ -155,6 +150,8 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-669 | 5-hour bar over 90% before its reset: slow lanes; the free reset only if work would stop, and the founder is told. | prose | 17 Nov |
 | P-670 | T7: 36 more deny lines (CI cancel, secrets, protection, gh api writes, hook skips, Drive writes) in every copy via #2075. | hook: .claude/settings.json deny | 17 Nov |
 | P-672 | Founder approved #2075 in the Lead's chat; times in records only from the clock (correction). | prose | 17 Nov |
+| P-673 | Cloud environment reads canada.ca for citations; Limited network, no secrets. | prose | 17 Nov |
+| P-674 | Clean-up (with P-675 to P-677): plan now, staged moves after the org move; repo name platform; October files out (tagged); business plan private. | prose | 17 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |
