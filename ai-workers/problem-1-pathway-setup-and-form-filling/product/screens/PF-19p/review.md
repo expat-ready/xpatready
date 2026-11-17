@@ -271,3 +271,21 @@ Verdict: Approve b6dfb62a6517275e6cf6cbf5b15404641cdbb600
 Findings: none.
 
 Verdict: Approve 0596cff9f8e58465e7a480e27d014ea4f1ec1f16
+
+## Re-review (migration stamp 20261117121500 at 5a60a18ff)
+
+17 Nov 2026. Read only `git show -M 5a60a18ff` (and `git diff -M eeb367069 5a60a18ff`, the same three files). I ran `git fetch origin` first; main is at `388e5a6fd`, which is an ancestor of the head. Code not edited.
+
+* **The stamp move is a pure rename.**
+  - The migration was renamed `20261117120000_… => 20261117121500_pf19p_platform_account_mail` at 100% similarity, and the SQL is the same blob as before (`46df418d3`).
+  - Only the two places that name the stamp follow it: the comment at `platform-messages.prisma:302` and the suite's `NEW` constant.
+* **No stale names are left.** `git grep 20261117120000_pf19p 5a60a18ff` finds only this review's own earlier section, which keeps its history as written.
+* **Order and uniqueness:**
+  - `20261117121500` is later than main's newest migration (`20261117004500_css1_case_party_index`) and later than #2009's `20261117120000_pf18a_offices` (#2009's head `95bd1747c`, open).
+  - Of all the remote branches I fetched, only this PR's branch has a `20261117121500` folder.
+  - #2009's migration never mentions `msg_`, `outbox` or `audience`, so either order of landing is safe for PF-19p.
+* **Run:** `check_pf19p_platform_mail` 68/0 at `5a60a18ff`. DW4 says "newest before it: 20261117004500_css1_case_party_index".
+
+Findings: none.
+
+Verdict: Approve 5a60a18ff191e8cf72f11338b3a4915d3df6a205
