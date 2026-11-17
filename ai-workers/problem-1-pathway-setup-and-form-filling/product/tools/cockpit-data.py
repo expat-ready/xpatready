@@ -410,6 +410,11 @@ FLOW_FAIL_PCT = (10, 20)                       # failed merge batches: green und
 FLOW_CI_WAIT_MIN = (10, 30)                    # median job wait for a test machine: green to 10 min, amber to 30
 FLOW_LANES_SHARE = (0.8, 0.5)                  # lanes running ÷ slots: green from 80%, amber from 50%
 FLOW_DISK_GB = 7                               # the Mac's disk floor for the Flow box (P-644)
+STUCK_MAX_PRS = 40                             # open approved PRs whose label time is read (one call each)
+STUCK_MERGE_MIN = (30, 60)                     # Stuck now: last merge to main, green to 30 min, red over 60 (P-646)
+STUCK_QUEUE = (15, 30)                         # Stuck now: Actions runs waiting for a machine, red over 30 (P-646)
+STUCK_SESSIONS_FRESH_MIN = 60                  # Stuck now: an empty session list older than this reads amber, not green
+STUCK_APPROVED_MIN = 60                        # Stuck now: approved and not merged for over 60 min
 CI_SAMPLE_RUNS = 20                            # CI runs (newest, last 3 h) whose jobs are read for the wait
 LEAD_B_BRANCH = "lead-b-front-office"          # Lead B's branch holding design/lead-b-briefs/ (Lead input lead_b_branch overrides)
 IDRE = r"[A-Z][A-Za-z0-9]*-[0-9A-Za-z]+(?:-[0-9A-Za-z]+)*"   # BACKLOG row ids: PF-4b, BK-17, B5-filings, DB-SPLIT, PF-L
@@ -941,7 +946,8 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     rsha = (git_out("rev-parse", "HEAD") or "").strip()
     main_c = gh.get("/commits/main")
     msha = main_c["sha"]
-    meta = {"taken_at": taken, "repo": gh.repo, "main_sha": msha, "records_branch": branch, "records_sha": rsha}
+    meta = {"taken_at": taken, "repo": gh.repo, "main_sha": msha, "records_branch": branch, "records_sha": rsha,
+            "main_at": ((main_c.get("commit") or {}).get("committer") or {}).get("date")}   # Stuck now (A134): the last merge to main
     # records files at records_sha (files/<repo path>)
     for rel in SNAP_FILES:
         t = git_out("show", f"{rsha}:{REL}/{rel}")
@@ -1067,6 +1073,19 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
                                     "runs_in_3h": rg.get("total_count", len(rr)), "runs_sampled": min(len(rr), CI_SAMPLE_RUNS), "job_waits": waits})
     except Exception as e:                                   # offline or the API failed: the box says not measured
         wj("github/ci_queue.json", {"error": str(e)[:200]})
+    # Stuck now (founder 23:3x IST 16 Nov via Lead 70): open PRs labelled `review: approved`, with when the label went on
+    # (the newest such "labeled" event), so the board can name those approved and not merged for over 60 min.
+    try:
+        ap = []
+        for p in [p for p in pulls if p.get("state") == "open" and any((l.get("name") == "review: approved") for l in p.get("labels") or [])][:STUCK_MAX_PRS]:
+            ev = gh.get_pages(f"/issues/{p['number']}/events?per_page=100", max_pages=5)   # every page: the newest label event
+            at = [e["created_at"] for e in ev if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == "review: approved"]
+            ap.append({"number": p["number"], "title": p.get("title"), "labeled_at": max(at) if at else None})
+        wj("github/approved_open.json", ap)
+        if len([p for p in pulls if p.get("state") == "open" and any((l.get("name") == "review: approved") for l in p.get("labels") or [])]) > STUCK_MAX_PRS:
+            ERRORS.append(f"Stuck now: more than {STUCK_MAX_PRS} approved PRs open; the oldest beyond {STUCK_MAX_PRS} were not read")
+    except Exception as e:
+        wj("github/approved_open.json", {"error": str(e)[:200]})
     # branches with a push in the last 24 h (GitHub keeps no push time per branch: the head commit's committed date stands in)
     o, r_ = (gh.repo or "/").split("/")
     # every branch is read (GitHub's ref ordering by commit date proved unreliable for branches: 14 Nov, today's lane branches missing)
@@ -2574,6 +2593,8 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
     flow = flow_counts(flow_rows, r1_qa, {k: change_at[k] for k in r1 if k in change_at}, len(r1), r1_works_since,
                        parse_iso(taken) if taken else now)
     keys.update({k: flow[k] for k in FLOW_KEYS})
+    stuck = stuck_counts(meta, snap.j("github/approved_open.json"))
+    keys.update({k: stuck[k] for k in STUCK_KEYS})
 
     trust = reconcile_compare(keys, reconcile_out, reconcile_note)
     trust["invariants"] = invariants
@@ -2600,7 +2621,7 @@ def compute_board(snap, now, history, reconcile_out=None, reconcile_note=None):
             "capability_table": cap_table, "rules_caught": rules, "behaviour": behaviour, "customer": customer,
             "rows": [{"map": r["map"], "built": r["built"], "built_at": r.get("built_at"), "proven": r["proven"], "ids": r["ids"],
                       "size": r["size"], "qa_tested_at": qa_tested_at.get(r["map"])} for r in rows],
-            "r1_qa": r1_qa, "flow": flow}
+            "r1_qa": r1_qa, "flow": flow, "stuck": stuck}
 
 
 RECON_TOLERANCE_DAYS = {"forecast_p50_date": 1, "forecast_p85_date": 1}
@@ -3057,6 +3078,69 @@ def week_light(n, days_in):
     a = flow_band(n, FLOW_TARGET * days_in, FLOW_FLOOR * days_in, low_good=False)
     b = flow_band(n, FLOW_TARGET * max(1, days_in - 1), FLOW_FLOOR * max(1, days_in - 1), low_good=False)
     return max(a, b, key=order.index)
+
+
+STUCK_KEYS = ("stuck_main_gap_min", "stuck_approved_over_60")
+
+
+def stuck_counts(meta, approved):
+    """Stuck now (founder 23:3x IST 16 Nov via Lead 70; FORMULAS.md › Stuck now): minutes from the last merge to main
+    (main's head commit time) to the snapshot, and the open PRs labelled `review: approved` whose label is over 60 min
+    old at the snapshot. cockpit-reconcile.py recomputes both."""
+    taken, main_at = parse_iso(meta.get("taken_at")), parse_iso(meta.get("main_at"))
+    gap = max(0, int((taken - main_at).total_seconds() // 60)) if taken and main_at else None   # a merge after taken_at reads 0
+    if not isinstance(approved, list):
+        return {"stuck_main_gap_min": gap, "stuck_approved_over_60": None, "approved_old": [],
+                "approved_reason": "not measured: " + ((approved or {}).get("error") if isinstance(approved, dict) else "this snapshot has no approved-PR reading")}
+    old = []
+    for p in approved:
+        la = parse_iso(p.get("labeled_at"))
+        if taken and la and (taken - la).total_seconds() > STUCK_APPROVED_MIN * 60:
+            old.append({"number": p["number"], "title": p.get("title"), "min": int((taken - la).total_seconds() // 60)})
+    old.sort(key=lambda x: -x["min"])
+    return {"stuck_main_gap_min": gap, "stuck_approved_over_60": len(old), "approved_old": old, "approved_reason": None}
+
+
+def stuck_now(d, sc, ci, li, li_src):
+    """The Stuck now box: four lines with lights (Lead 70, 23:3x IST 16 Nov). (a) and (b) are lead-watch's jam numbers
+    (P-646); (c) is the Lead's check of claude.ai/code (P-647), Lead-reported; (d) approved PRs waiting over 60 min."""
+    taken = (d.get("lineage") or {}).get("taken_at")
+    at = f"snapshot {ist(parse_iso(taken)) if taken else 'time not recorded'}"
+    gap = sc["stuck_main_gap_min"]
+    q = ci.get("queued_runs") if isinstance(ci, dict) and not ci.get("error") else None
+    ss, ss_at = (li or {}).get("stuck_sessions"), (li or {}).get("stuck_sessions_at")
+    lines = [
+        {"key": "merge", "light": flow_band(gap, *STUCK_MERGE_MIN) or "grey",
+         "text": (f"Last merge to main: {gap} min ago" if gap is not None else "Last merge to main: not measured"),
+         "src": f"main's newest commit time (GitHub commits/main), as lead-watch's jam line (P-646); green to {STUCK_MERGE_MIN[0]} min, red over {STUCK_MERGE_MIN[1]}; " + at},
+        {"key": "queue", "light": flow_band(q, *STUCK_QUEUE) or "grey",
+         "text": (f"Actions runs waiting for a machine: {q}" if q is not None else "Actions runs waiting for a machine: not measured"),
+         "src": f"GitHub Actions runs with status queued (total_count), as lead-watch's jam line (P-646); green to {STUCK_QUEUE[0]}, red over {STUCK_QUEUE[1]}; " + at}]
+    if isinstance(ss, list):
+        names = [f"{x.get('title') or 'untitled'} ({x.get('state') or 'state not given'})" for x in ss if isinstance(x, dict)]
+        try:
+            sa = parse_iso(ss_at) if ss_at else None
+            sa = sa if sa and sa.tzinfo else None                  # a time with no zone is not trusted
+        except ValueError:
+            sa = None
+        tk = parse_iso(taken) if taken else None
+        age = int((tk - sa).total_seconds() // 60) if sa and tk else None
+        when = (ist(sa) + (f", {age} min before this data" if age is not None else "")) if sa else "a time not given"
+        stale = age is None or age > STUCK_SESSIONS_FRESH_MIN
+        lines.append({"key": "sessions", "light": "red" if names else ("amber" if stale else "green"),
+                      "text": (f"Sessions awaiting input or failed: {len(names)}" + (": " + "; ".join(names) if names else "")),
+                      "src": f"per the Lead's check of claude.ai/code at {when} (P-647), Lead-reported; amber when no session is listed but the "
+                             f"check is over {STUCK_SESSIONS_FRESH_MIN} min old or undated; " + li_src, "items": names})
+    else:
+        lines.append({"key": "sessions", "light": "grey", "text": "Sessions awaiting input or failed: not reported",
+                      "src": "the Lead input has no stuck_sessions (the Lead's check of claude.ai/code, P-647)", "items": []})
+    ao = sc["approved_old"]
+    lines.append({"key": "approved", "light": "grey" if sc["stuck_approved_over_60"] is None else "red" if ao else "green",
+                  "text": (f"Approved, not merged for over {STUCK_APPROVED_MIN} min: " + (str(len(ao)) + (": " + "; ".join(f"#{x['number']} ({x['min']} min)" for x in ao[:8]) + (f" and {len(ao) - 8} more" if len(ao) > 8 else "") if ao else ""))
+                           if sc["stuck_approved_over_60"] is not None else f"Approved, not merged for over {STUCK_APPROVED_MIN} min: " + sc["approved_reason"]),
+                  "src": "open PRs labelled review: approved, minutes since the label went on (GitHub issue events); " + at,
+                  "items": [f"#{x['number']} {x['title']} ({x['min']} min)" for x in ao]})
+    return {"lines": lines, "light": flow_light(*[x["light"] if x["light"] != "grey" else None for x in lines])}
 
 
 def proven_lines(d, fc):
@@ -3619,6 +3703,13 @@ def build_explain(d):
             todo=("nothing for you: the builders finish rows and qa proves the Built ones (current Lead)"),
             behind=[f"Proven: {lb(m)}" for m in R_["proven_ids"]] + [f"Built, waiting for qa: {lb(m)}" for m in R_["waiting_ids"]] +
                    [f"not in qa's file yet: {lb(m)}" for m in R_["unlisted_ids"]])
+        sn_ = fs.get("stuck_now")
+        if sn_:
+            put("first.stucknow", "Stuck now", "Whether work is jammed right now: the last merge to main, test runs waiting for a machine, "
+                "sessions waiting for an answer or failed, and approved pull requests not merged.", now_w,
+                (d.get("reconcile_keys") or {}).get("stuck_approved_over_60"), "approved pull requests waiting over 60 min",
+                " · ".join(x["text"] for x in sn_["lines"]), src="; ".join(f"{x['key']}: {x['src']}" for x in sn_["lines"]), cls="measured",
+                behind=[f"{x['text']} ({x['light']})" for x in sn_["lines"]] + [i for x in sn_["lines"] for i in x.get("items") or []])
         fl_ = d.get("flow")
         if fl_:
             put("first.flow", "Flow", "Which part of the work is going well: building, proving, merging, or the people and machines behind them. "
@@ -4600,6 +4691,7 @@ def main():
     data["first"] = first_screen(data, comp["r1_qa"], li, li_src)
     data["flow"] = flow_box(data, comp["flow"], li, li_src, snap.j("github/ci_queue.json"))
     data["first"]["proven_lines"] = proven_lines(data, comp["flow"])
+    data["first"]["stuck_now"] = stuck_now(data, comp["stuck"], snap.j("github/ci_queue.json"), li, li_src)
     data["explain"] = build_explain(data)
     data["run"] = {"seconds": round(time.time() - T0, 1), "api_calls": gh.calls, "errors": ERRORS}
     os.makedirs(out_dir, exist_ok=True)
