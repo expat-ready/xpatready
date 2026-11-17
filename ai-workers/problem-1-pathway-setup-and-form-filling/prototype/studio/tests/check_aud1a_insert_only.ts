@@ -16,7 +16,7 @@ import { Audit } from "../api/src/core.ts";
 
 const PORT = Number(process.argv[2] ?? 4606), COPY = process.argv[3] ?? "xr_studio_runtime_aud1a";
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261116150000_aud1a_audit_insert_only";
+const NEW = "20261117124500_aud1a_audit_insert_only";
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const BARE = `xr_studio_aud1a_bare_${process.pid}`, EMPTY = `xr_studio_aud1a_empty_${process.pid}`, FORCED = `xr_studio_aud1a_forced_${process.pid}`;
