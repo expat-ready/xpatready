@@ -7,7 +7,11 @@
 --     (firm_id, email): fo_person.email is lower-cased by FO-1a's own check, so equality reads it.
 --   * two narrow definer functions that run the match (break B1, below).
 -- No row changes but the backfilled column; nothing is linked or merged (AG16-44).
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+-- In its own schema, not public: an extension's ~30 functions in public read to other rows' schema checks as functions
+-- their migration added (check_fo7a_money_schema, CI shard 4 on ddd640fd). The match functions name it on their path.
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA extensions;
+GRANT USAGE ON SCHEMA extensions TO xr_data;
 
 ALTER TABLE "fo_person" ADD COLUMN "phone_e164" TEXT;
 ALTER TABLE "fo_person" ADD CONSTRAINT "fo_person_phone_e164_check" CHECK ("phone_e164" IS NULL OR "phone_e164" ~ '^\+[1-9][0-9]{6,14}$');
@@ -52,9 +56,9 @@ CREATE INDEX "fo_person_firm_id_phone_e164_idx" ON "fo_person" ("firm_id", "phon
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 -- (on lower(name_key), which equals it: a plain expression, so Prisma reads no index of its own here and a cascade drop of
 -- the schema stays clean; a SQL function in an index expression broke Prisma's shadow reset, "cache lookup failed")
-CREATE INDEX "fo_person_name_trgm_idx" ON "fo_person" USING gist ("firm_id", lower("name_key") gist_trgm_ops);
+CREATE INDEX "fo_person_name_trgm_idx" ON "fo_person" USING gist ("firm_id", lower("name_key") extensions.gist_trgm_ops);
 -- (on lower(normalised_name), which equals it: an expression, so Prisma's own (firm_id, normalised_name) index stays its own)
-CREATE INDEX "fo_company_normalised_name_trgm_idx" ON "fo_company" USING gist ("firm_id", lower("normalised_name") gist_trgm_ops);
+CREATE INDEX "fo_company_normalised_name_trgm_idx" ON "fo_company" USING gist ("firm_id", lower("normalised_name") extensions.gist_trgm_ops);
 
 -- The match itself (break B1): the API reads as xr_app under row-level security, where PostgreSQL never uses a
 -- non-leakproof operator (pg_trgm's %, similarity) as an index condition, so the app role's own query would read the
@@ -70,7 +74,7 @@ CREATE FUNCTION fo_sales_match_firm(p_firm uuid) RETURNS uuid LANGUAGE sql STABL
 CREATE FUNCTION fo_sales_person_matches(p_firm uuid, p_email text, p_phones text[], p_name text, p_staff uuid,
     p_sees_all boolean, p_sees_unassigned boolean, p_threshold real, p_limit integer)
   RETURNS TABLE (id uuid, given_names text, family_name text, by_email boolean, by_phone boolean, sim float8, seen boolean)
-  LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $fn$
+  LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, extensions, pg_temp AS $fn$
 DECLARE f uuid := fo_sales_match_firm(p_firm);
 BEGIN
   IF f IS NULL THEN RETURN; END IF;
@@ -95,7 +99,7 @@ BEGIN
 END $fn$;
 CREATE FUNCTION fo_sales_company_matches(p_firm uuid, p_name text, p_threshold real, p_limit integer)
   RETURNS TABLE (id uuid, operating_name text, sim float8)
-  LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $fn$
+  LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, public, extensions, pg_temp AS $fn$
 DECLARE f uuid := fo_sales_match_firm(p_firm);
 BEGIN
   IF f IS NULL OR coalesce(p_name, '') = '' THEN RETURN; END IF;

@@ -110,7 +110,7 @@ try {
   ok(`FO-9a pass: a similar full name ("Lena Parke") matches by NAME at or above ${NAME_THRESHOLD}, scored by its similarity`,
     sameName.matches[0]?.kind === "PERSON" && nameReason?.key === "NAME" && nameReason.similarity >= NAME_THRESHOLD && sameName.matches[0].score === Math.floor(nameReason.similarity * 100) && sameName.matches[0].score < 100, sameName);
   const firstOnly = await dup.check(R, { givenNames: "Lena", familyName: "Smith" });
-  const lenaSmithSim = Number(sql(`select similarity('lena park', 'lena smith')`));
+  const lenaSmithSim = Number(sql(`select extensions.similarity('lena park', 'lena smith')`));
   ok("FO-9a fail: a different person with the same first name only (Lena Smith) scores below the threshold and is not offered", firstOnly.matches.length === 0 && firstOnly.hidden === 0 && lenaSmithSim < NAME_THRESHOLD, { firstOnly, lenaSmithSim });
   ok("FO-9a fail: the first name alone (\"Lena\") is below the threshold too", (await dup.check(R, { givenNames: "Lena" })).matches.length === 0);
   // Break B2: on this C-ctype cluster pg_trgm alone made no trigram of a non-ASCII letter (李明 never met 李明).
@@ -224,7 +224,7 @@ try {
   const p95 = times[Math.ceil(0.95 * times.length) - 1];
   ok(`FO-9a pass: 20 checks at once, each against 100 firms of Sample data, answer within STANDARDS §9's 200 ms (p95 ${Math.round(p95)} ms)`, p95 < 200, times.map(Math.round));
   const plan = (q: string) => sql(`begin; select set_config('pg_trgm.similarity_threshold', '0.6', true); explain ${q}; rollback;`);
-  const nameQ = `select id from fo_person where firm_id = '${A}' and lower(name_key) % 'lena park'`;
+  const nameQ = `select id from fo_person where firm_id = '${A}' and lower(name_key) operator(extensions.%) 'lena park'`;
   ok("FO-9a pass: the name match is answered by the firm's trigram index (EXPLAIN, 100 firms of data)", /fo_person_name_trgm_idx/.test(plan(nameQ)), plan(nameQ));
   const noIndex = sql(`begin; drop index fo_person_name_trgm_idx; select set_config('pg_trgm.similarity_threshold', '0.6', true); explain ${nameQ}; rollback;`);
   ok("FO-9a fail: without the trigram index the same match reads the firm's rows one by one (no trigram index in the plan)", !/trgm_idx/.test(noIndex), noIndex);
