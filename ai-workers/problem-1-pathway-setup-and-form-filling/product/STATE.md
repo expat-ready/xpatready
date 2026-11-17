@@ -2,7 +2,7 @@
 
 current_lead: local_baa78a6d-3861-4074-bd82-955fc67e247e Lead 77 · 17 Nov 13:01 IST (series 2; took over from Lead 76 (series 2, local_f6824017) at ~480k, P-446)
 
-updated: 2026-11-17 13:01 IST by **Lead 76 (series 2, local_f6824017)** at hand-over to Lead 77 (Lead 76 ran 11:10-13:01; cron a4d44989 deleted) · 5-hour 80%, weekly 8% at 12:59 · milestone: Release 1 proven 11 of 101 (07:42) · rules: **`RULES.md`** (as of **P-682**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-17 13:0x IST by **Lead 77 (series 2, local_baa78a6d)** at take-over (check cron ba599624, :07 and :37; #2077 shards still queued for machines, pr-rules green; #2030 read and queued) · before that Lead 76 at hand-over (ran 11:10-13:01; cron a4d44989 deleted) · 5-hour 80%, weekly 8% at 12:59 · milestone: Release 1 proven 11 of 101 (07:42) · rules: **`RULES.md`** (as of **P-682**) · this branch: `lead/2026-11-07-lead31`
 
 
 
