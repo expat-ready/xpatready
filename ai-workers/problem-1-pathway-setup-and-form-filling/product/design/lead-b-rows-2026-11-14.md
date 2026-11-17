@@ -1778,3 +1778,10 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * Amendment 9, new: FO-7b builds the operating details write on Getting paid.
 * No conflict with built work: there is no FO-7b PR, and nothing on `main` uses `receivedInto`.
 * Two points went back to Build Lead C: how "Invoice payments go to" sets the default `receivedInto`, and FO-7b's size (P-610).
+
+## rev 16.95 (17 Nov 07:36 IST): FO-7b, no default receivedInto, and a split into part 1 and part 2 (Build Lead C, 535bc7fab)
+* Amendment 10 added to FO-7b.
+  - "Invoice payments go to" only decides whether the pick is asked. With Operating, `receivedInto` is fixed to OPERATING. With Trust first, the pick is required, with no default, and a missing pick gets 400.
+  - Part 1: invoices and the payment route (amendments 1, 3, 6, 8); a missing `receivedInto` counts as OPERATING.
+  - Part 2: the settings writes (amendments 2, 9) and the 400; it starts after part 1.
+* FO-7b is a money row (Build Lead C's); it is not in my night lines. Build Lead C names the two parts on the board.

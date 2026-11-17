@@ -30,6 +30,11 @@ Start only after **FO-7a, PF-12, FO-5, PF-4, PF-4b and PF-14 have merged** (PF-1
 > 7. **Starts when** FO-7ts parts 1–2 are on `main` (it needs the trust answer, the credit ledger and the methods), as well as the rows above.
 > 8. **The payment route takes `receivedInto`** (`OPERATING | TRUST`; FO-7s0 Q2, Build Lead C on #2016). `CARD_TERMINAL` and online `CARD` are `OPERATING` only, and `TRUST` with either answers 400 in plain words. `TRUST` needs the trust answer YES; otherwise 409. Until this lands, Getting paid offers "Operating account" only, and "Trust first" is not shown. Test: a pass and a fail each.
 > 9. **FO-7b builds the operating details write on Getting paid** (FO-7s0 Q1, Build Lead C on #2016), because it owns the email that waits on it. FO-7g part 2 builds the tax fields and due days; FO-7t part 1 builds the trust details block. Owner or Admin with the money key; audited; until the write exists the field is absent (BR-10). Touch list: add the one route and its handler under `api/src/client-money/`. Test: a pass and a fail each.
+> 10. **No default for `receivedInto`, and the row splits in two (Build Lead C, rev 16.95, recorded at 535bc7fab).**
+>    - "Invoice payments go to" (amendment 2) decides only **whether the pick is asked**. With **Operating**, `receivedInto` is fixed to `OPERATING` and no pick shows. With **Trust first**, the payment needs the pick "Where did this money arrive? Operating account · Trust account", with no default. A payment without `receivedInto` gets 400 in plain words. The record says where the money arrived, never a guess (AG-6-69; FO-7s0 `concept-payments.md` line 8).
+>    - **FO-7b part 1: invoices and the payment route** (amendments 1, 3, 6, 8). Until part 2 lands, the route accepts a missing `receivedInto` as `OPERATING`.
+>    - **FO-7b part 2: the settings writes** (amendments 2 and 9), plus the 400 for a missing pick under Trust first, because the setting arrives here. It starts when part 1 is on `main`.
+>    - PR titles name the part exactly: `runtime: FO-7b part 1 — …` and `runtime: FO-7b part 2 — …`.
 
 ---
 You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime FO-7b` and take **one row, FO-7b**, end to end on a fresh branch from `origin/main`, one PR.
