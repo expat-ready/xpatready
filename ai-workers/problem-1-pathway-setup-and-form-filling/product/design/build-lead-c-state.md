@@ -94,3 +94,5 @@ Rows proven or Lead-B-only are not listed. R1.77 finishes on CS-C1b + QA-397; R1
 * **Audit:** 0 waiting (AUD-1a, AUD-1b, AUD-5 part 1 free to start).
 * **Client money:** 0 waiting (FO-7s0 free; FO-7ts part 1 after #1991).
 * **Configurator / assessments (AS-*):** 0 waiting.
+
+**07:2x IST 17 Nov (Lead 72):** #2035 (CS-S1 part 1): Lead read done on fb809ad15. Next steps posted for its cloud lane (comment 6935466207): the reviewer reads only the MODULE.cases.md merge, posts Approve fb809ad15, then ready and label. The qa53 keep-alive fix becomes its own small forms row. #2008: AUD-5 part 2 starts once #2008 merges (draft's Part 2, part 1 decisions, LegalHoldPort fake). #2003: merge origin/main, then ask for the migration read. Lead 72 still to read #2000, #2016 and #1991.
