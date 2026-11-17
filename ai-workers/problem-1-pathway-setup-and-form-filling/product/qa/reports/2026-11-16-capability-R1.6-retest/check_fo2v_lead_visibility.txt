@@ -1,0 +1,17 @@
+NOTICE:  database "xr_studio_fo2v_466" does not exist, skipping
+PASS  FO-2v setup: both Sample firms have a front office
+PASS  FO-2v setup: the six seeded roles
+PASS  FO-2v DW1 pass (QA-477): setting off → every role, the Owner and the Admin included, lists and reads only its own lead, as with retainers
+PASS  FO-2v DW1 fail (QA-477): setting off → the Owner and the Admin cannot read another person's lead (404), the Owner/Admin override is gone
+PASS  FO-2v DW1 pass: setting on → every seeded role holding view.all lists and reads every lead
+PASS  FO-2v DW1 fail: a role without view.all sees only its own, the setting on (and off, above)
+PASS  FO-2v DW3 pass (QA-479): a Case Officer's Take on the Owner's own, never-unassigned lead → 404, the same as GET, no name and no id
+PASS  FO-2v DW3 fail (the real race, AG-2-86 rule 3): an Unassigned lead taken a second earlier by someone else → 409 naming who, with no ownerStaffId
+PASS  FO-2v DW3 pass: the same lead taken more than 10 minutes ago (Sample) → 404, no name
+PASS  FO-2v DW3 pass: a lead moved from one owner to another just now (not from Unassigned) → 404, no name
+PASS  FO-2v DW3 fail (the race through a deactivated owner): their lead, taken a second earlier by someone else → 409 naming who, no ownerStaffId
+PASS  FO-2v DW3 pass (breaker m1): moved owner to owner, the previous owner deactivated afterwards → 404, no name
+PASS  FO-2v DW3 fail (firm B): a take line in firm B's scope naming firm A's lead → 404, firm A's race never reads it
+PASS  FO-2v DW3 pass: with the setting on, a view.all holder who sees the lead hears who has it, with no ownerStaffId
+
+FO-2v lead visibility: 14 passed, 0 failed
