@@ -366,7 +366,7 @@ class TrustAndInvariants(unittest.TestCase):
         t2 = json.loads(json.dumps(theirs))
         plus = lambda n: (date.fromisoformat(k["forecast_p85_date"]) + timedelta(days=n)).isoformat()
         r7 = cd.reconcile_compare(k, theirs, None)
-        self.assertEqual(r7["compared"], 49)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's six + v63's eight + P-636's Proven + P-644's 13 Flow counts
+        self.assertEqual(r7["compared"], 53)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's six + v63's eight + P-636's Proven + P-644's 13 Flow counts + A133's 4
         t2["numbers"]["forecast_p85_date"]["value"] = plus(1)                 # +1 day: agrees
         self.assertEqual(cd.reconcile_compare(k, t2, None)["state"], "agree")
         t2["numbers"]["forecast_p85_date"]["value"] = plus(2)                 # +2 days: disagrees
@@ -951,7 +951,7 @@ class Delivery24h(unittest.TestCase):
             out, note = cd.run_reconcile(d, rec)
             self.assertIsNone(note)
             _, c = run(d, rec=out, note=None)
-            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 49, []))   # 36 + P-644's 13 Flow counts
+            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 53, []))   # 36 + P-644's 13 Flow counts + A133's 4
 
 
 BLP = "files/" + cd.REL + "/BACKLOG.md"
@@ -1409,7 +1409,7 @@ class Tooltips(unittest.TestCase):
         """P-636 (founder 16 Nov): six answers in three words. Proven comes from qa's file on main only, Built = all parts
         merged or qa passed, and every answer has its explanation with what is behind it."""
         f = self.d["first"]
-        self.assertEqual(set(f), {"words", "release", "today", "needs", "stuck", "choke", "health", "rule"})
+        self.assertEqual(set(f), {"words", "release", "today", "needs", "stuck", "choke", "health", "rule", "proven_lines"})   # A133
         self.assertIn("Only Proven counts as delivered", f["words"])
         R = f["release"]
         self.assertEqual(R["planned"], 8)                                    # 8 Build rows in the fixture checklist
@@ -2047,6 +2047,54 @@ class Flow(unittest.TestCase):
         self.assertEqual((f["flow_forecast"], f["flow_forecast_best"], f["flow_forecast_worst"]), ("2026-11-23", "2026-11-22", None))
         self.assertEqual(f["today_counts"], {"rows": 1, "parts": 1, "works": 1})
 
+    def test_today_is_the_ist_day_and_the_week_starts_monday(self):
+        # Lead 70 (A133): Tuesday 17 Nov 12:00 IST. Row 3 (16 Nov 20:00) is in the last 24 h but not today; row 5 (proven
+        # Monday 16 Nov) is in this week but not today
+        f = self.small()
+        self.assertEqual((f["flow_rows_built_today"], f["flow_rows_built_24h"]), (1, 2))
+        self.assertEqual((f["flow_parts_today"], f["flow_works_today"], f["flow_works_week"], f["week_start"]), (1, 1, 2, "2026-11-16"))
+        self.assertEqual((f["built_today_maps"], f["works_today_maps"]), ([1], [1]))
+        b = self.box(f)
+        self.assertEqual((b["Build"]["big"], b["Prove"]["big"]), ("1 row built today", "1 row proven today"))
+        self.assertIn("Last 24 h: 2 rows built, 1 part merged", b["Build"]["lines"])
+
+    def test_three_proven_lines(self):
+        # A133: three plain lines in place of "11 of 10 proven", each with its light
+        f = self.small()
+        d = {"lineage": {"taken_at": "2026-11-17T06:30:00Z"}, "first": {"release": {"target": "2026-11-29", "need_per_day": 0.2}}}
+        L = {x["key"]: x for x in cd.proven_lines(d, f)}
+        self.assertEqual(L["today"]["text"], "Today (IST day): 1 proven of 10 (floor 7, P-644)")
+        self.assertEqual(L["week"]["text"], "This week (Mon to Sun IST): 2 proven of 70")
+        self.assertEqual(L["overall"]["text"], "Overall: 3 of 5 proven; 29 Nov needs about 0.2 a day; at the current pace, all proven about 23 Nov")
+        self.assertEqual((L["today"]["light"], L["week"]["light"], L["overall"]["light"]), ("red", "red", "green"))
+        self.assertIn("for the 2 days so far", L["week"]["src"])                # 10 a day for Mon and Tue: 20 green, 14 amber
+        f2 = dict(f, flow_works_week=8)                                     # Tuesday: under 10 for Monday alone, 7 or more
+        self.assertEqual({x["key"]: x for x in cd.proven_lines(d, f2)}["week"]["light"], "amber")
+        late = dict(f, flow_forecast="2026-12-03")
+        self.assertEqual({x["key"]: x for x in cd.proven_lines(d, late)}["overall"]["light"], "amber")   # up to 7 days after
+        self.assertEqual({x["key"]: x for x in cd.proven_lines(d, dict(f, flow_forecast=None))}["overall"]["light"], "red")
+        nq = dict(f, no_qa=True, flow_works_today=None, flow_works_week=None)
+        self.assertEqual([x["light"] for x in cd.proven_lines(d, nq)], ["grey", "grey", "grey"])
+
+    def test_midnight_monday_and_sunday(self):
+        # review m5: the IST day and the Monday-start week at the edges (both scripts read taken_at the same way)
+        a = self.at
+        rows = [{"map": 1, "built": "2026-11-22", "built_at": a("2026-11-22T23:50"), "qa_tested_at": None},
+                {"map": 2, "built": "2026-11-23", "built_at": a("2026-11-23T00:05"), "qa_tested_at": None}]
+        qa = {1: "Works", 2: "Works"}
+        since = {1: a("2026-11-22T23:50"), 2: a("2026-11-23T00:05")}       # Sunday 23:50, Monday 00:05
+        mon = cd.flow_counts(rows, qa, {}, 2, since, datetime.fromisoformat(a("2026-11-23T00:10").replace("Z", "+00:00")))
+        self.assertEqual((mon["week_start"], mon["flow_works_today"], mon["flow_works_week"], mon["flow_rows_built_today"]), ("2026-11-23", 1, 1, 1))
+        sun = cd.flow_counts(rows[:1], {1: "Works"}, {}, 1, {1: a("2026-11-16T00:00")}, datetime.fromisoformat(a("2026-11-22T23:55").replace("Z", "+00:00")))
+        self.assertEqual((sun["week_start"], sun["flow_works_week"]), ("2026-11-16", 1))   # Monday 16 Nov 00:00 counts
+        sun2 = cd.flow_counts(rows[:1], {1: "Works"}, {}, 1, {1: a("2026-11-15T23:59")}, datetime.fromisoformat(a("2026-11-22T23:55").replace("Z", "+00:00")))
+        self.assertEqual(sun2["flow_works_week"], 0)                         # Sunday 15 Nov 23:59 is last week
+
+    def test_week_light_early_in_the_day(self):
+        # review m1: at 00:10 on Tuesday, 10 proven on Monday is on target, not red
+        self.assertEqual((cd.week_light(10, 2), cd.week_light(8, 2), cd.week_light(6, 2)), ("green", "amber", "red"))
+        self.assertEqual((cd.week_light(10, 1), cd.week_light(60, 7), cd.week_light(None, 3)), ("green", "green", "grey"))
+
     def test_a_day_without_a_part_gives_no_worst_date(self):
         a = self.at
         f = self.small({"A-1": a("2026-11-14T09:00"), "B-1": a("2026-11-16T11:00")})
@@ -2076,14 +2124,14 @@ class Flow(unittest.TestCase):
         self.assertIn("not measured: offline", " ".join(nm["Merge"]["lines"]))
         self.assertIn("Lanes: not measured", " ".join(nm["Resources"]["lines"]))
         g = {k: v for k, v in f.items()}
-        g.update({"flow_rows_built_24h": 10, "flow_works_24h": 11, "flow_prove_lag_h": 30.0})
+        g.update({"flow_rows_built_today": 10, "flow_works_today": 11, "flow_prove_lag_h": 30.0})
         bb = self.box(g)
         self.assertEqual((bb["Build"]["light"], bb["Prove"]["light"]), ("green", "amber"))   # proving on count, but slower than 12 h
-        g.update({"flow_works_24h": 12, "flow_prove_lag_h": None})
+        g.update({"flow_works_today": 12, "flow_prove_lag_h": None})
         self.assertEqual(self.box(g)["Prove"]["light"], "amber")            # review 2 m2: built to proven not measured is not green
         g.update({"flow_prove_lag_h": 12.0, "flow_awaiting_oldest_h": 3.0})
         self.assertEqual(self.box(g)["Prove"]["light"], "green")            # 12 h or less
-        g.update({"flow_rows_built_24h": 7})
+        g.update({"flow_rows_built_today": 7})
         self.assertEqual(self.box(g)["Build"]["light"], "amber")            # the floor
         self.assertEqual(cd.flow_light(None, None), "grey")
         self.assertEqual(cd.flow_light("green", None), "amber")              # never green while a part is not measured (review m4)
@@ -2147,6 +2195,8 @@ class Flow(unittest.TestCase):
         self.assertFalse([x for x in c["trust"]["diffs"] if x["name"].startswith("flow_")], c["trust"]["diffs"])
         for n in cd.FLOW_KEYS:
             self.assertEqual(out["numbers"][n]["value"], k[n], n)
+        # the four IST-day counts, exact (20 Nov is a Friday: the week runs from Monday 16 Nov)
+        self.assertEqual((k["flow_works_today"], k["flow_works_week"]), (1, 2))   # row 8 today; rows 2 (18 Nov) and 8 this week
 
     def test_both_scripts_agree_on_the_fixture(self):
         out, note = cd.run_reconcile(FIX, os.path.join(HERE, "cockpit-reconcile.py"))

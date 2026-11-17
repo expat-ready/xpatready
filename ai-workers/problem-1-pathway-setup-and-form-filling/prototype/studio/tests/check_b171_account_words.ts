@@ -13,11 +13,15 @@
 //      A Visitor visa case is made Ready to file C7.6's own way (readyToFile), then its combination is put on the PR
 //      Portal for this check and put back after.
 // Accounts are set in the copy's data (SQL), as the Forms tab's picker or B169's sample data would. Synthetic people; US$0.
+// BK-21 (QA-397, P-137): a case reads its IRCC account from its pinned release, never the live draft, so setAccount sets
+// the draft and stands in for a release of it: the combination's latest release names the account, its fingerprint and
+// pins refitted together (as check_vv_prepare_store_api.ts does; test scaffolding on this isolated copy, put back after).
 //   zsh studio/tools/isolated.sh forms_b171 4451 start && tsx studio/tests/check_b171_account_words.ts 4451 xr_studio_forms_b171
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { ACCOUNT_WORDS, IRCC_ACCOUNTS } from "../contracts/forms.ts";
+import { snapshotHash } from "../engine/snapshot.ts";
 import { AUTHOR, FIXED, PORT, call, firms, inDays, main, needVisitorVisa, ok, openCase, prepare, readyToFile, sql, yearsAgo } from "../acceptance/lib/m3.ts";
 
 const BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..");
@@ -37,7 +41,18 @@ await main("B171", "every IRCC account in words on the case, the answer sheet an
   ok("setup: spousal sponsorship (fs.spouse) and the Visitor visa are released on the checkpoint", released() && !!fs && !!vv);
   if (!fs || !vv) return;
   const fsBefore = sql(`select coalesce(portal_key, '') from combination where id='${fs}'`) ?? "", vvBefore = sql(`select coalesce(portal_key, '') from combination where id='${vv}'`) ?? "";
-  const setAccount = (id: string, a: string) => sql(`update combination set portal_key=${a ? `'${a}'` : "null"} where id='${id}'`);
+  const relOf = (id: string) => sql(`select id from config_release where combination_id='${id}' and status='RELEASED' order by version desc limit 1`)!;
+  const kept = new Map([fs, vv].map((id) => { const r = relOf(id); return [id, { rel: r, portal: sql(`select coalesce(snapshot->'combination'->>'portal', '') from config_release where id='${r}'`) ?? "", sha: sql(`select sha256 from config_release where id='${r}'`)! }]; }));
+  const pinHash = (rel: string, h: string) => sql(`alter table pack_work_pin disable trigger trg_pack_work_pin_frozen; update pack_work_pin set content_hash='${h}' where config_release_id='${rel}'; alter table pack_work_pin enable trigger trg_pack_work_pin_frozen`);
+  // The snapshot is edited in the database (jsonb_set), never sent whole (a psql argument holds at most 128 KB).
+  const releaseNames = (id: string, a: string, sha?: string) => {
+    const k = kept.get(id)!;
+    sql(`update config_release set snapshot = ${a ? `jsonb_set(snapshot, '{combination,portal}', '"${a}"')` : "snapshot #- '{combination,portal}'"} where id='${k.rel}'`);
+    const h = sha ?? snapshotHash(JSON.parse(sql(`select snapshot::text from config_release where id='${k.rel}'`)!));
+    sql(`update config_release set sha256='${h}' where id='${k.rel}'`); pinHash(k.rel, h);
+  };
+  const setAccount = (id: string, a: string) => { sql(`update combination set portal_key=${a ? `'${a}'` : "null"} where id='${id}'`); releaseNames(id, a); };
+  const putBack = (id: string, live: string) => { sql(`update combination set portal_key=${live ? `'${live}'` : "null"} where id='${id}'`); releaseNames(id, kept.get(id)!.portal, kept.get(id)!.sha); };
   const f = await firms();
   const b = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
   try {
@@ -104,7 +119,7 @@ await main("B171", "every IRCC account in words on the case, the answer sheet an
     ok("B171-8 pass (screen): the recorded submission reads \"· through PR Portal\" (fail on main: the raw key)", /Submitted on\s+[^\n]* · through PR Portal/.test(recorded) && !/PR_PORTAL/.test(recorded), recorded.slice(0, 400));
     await ctx.close();
   } finally {
-    setAccount(fs, fsBefore); setAccount(vv, vvBefore);
+    putBack(fs, fsBefore); putBack(vv, vvBefore);
     await b.close();
   }
 });
