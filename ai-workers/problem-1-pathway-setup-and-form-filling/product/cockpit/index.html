@@ -577,6 +577,10 @@ function rFirst(){
   var F=D.first;if(!F)return '<section><p class="err">The first screen is missing from data.json (first).</p></section>';
   var R=F.release,Td=F.today,N=F.needs,C=F.choke,H=F.health,h='<div class="first">';
   var first=function(s){var i=(s||"").indexOf(". ");return i>0?s.slice(0,i+1):s;},rest=function(s){var i=(s||"").indexOf(". ");return i>0?s.slice(i+2):"";};
+  /* A134 (founder 23:3x IST 16 Nov): one place to see what is stuck right now; four lines, each with its light */
+  var SN=F.stuck_now;
+  if(SN&&SN.lines)h+=fcard("stucknow","Stuck now",'<span class="plines">'+SN.lines.map(function(x){return '<span class="pl">'+dot(x.light)+esc(x.text)+'<span class="vh"> '+esc(FLW[x.light]||x.light)+'</span></span>';}).join("")+'</span>','',
+    SN.lines.map(function(x){return '<div class="srow"><b>'+dot(x.light)+esc(x.text)+'</b><span class="small">'+esc(FLW[x.light]||x.light)+' · Source: '+esc(x.src)+'</span>'+((x.items||[]).length?ul(x.items,12):'')+'</div>';}).join(""),"first.stucknow",SN.light==="red");
   h+=fcard("release","Release 1"+(R.target?" · target "+short(R.target):""),
     (R.stage_counts&&R.proven!=null?STO.map(function(s){return '<span class="stn st-'+STC[s]+'">'+esc(R.stage_counts[s]||0)+' '+STW[s]+'</span>';}).join('<span class="sep">·</span>')+'<span class="small muted"> of '+esc(R.planned)+'</span>':
       nmv(R.planned)+' Planned<span class="sep">→</span>'+nmv(R.built)+' Built<span class="sep">→</span>'+nmv(R.proven)+' Proven'),
