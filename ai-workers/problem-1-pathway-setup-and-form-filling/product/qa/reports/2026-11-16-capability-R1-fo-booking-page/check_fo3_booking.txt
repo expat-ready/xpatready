@@ -1,0 +1,473 @@
+NOTICE:  database "xr_studio_fo3_2464" does not exist, skipping
+{"time":"2026-11-16T08:47:55.608Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 slots pass: 12:00 Monday is offered (inside the host's hours, after the 4 h shortest notice from 08:00)
+PASS  FO-3 slots fail: 11:30 Monday is inside the shortest notice and not offered
+PASS  FO-3 slots fail: no slot ends after the host's 17:00 (16:30 is the last start)
+PASS  FO-3 slots: each slot is labelled in the visitor's zone
+{"time":"2026-11-16T08:47:55.644Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 slots fail: a slot on a firm closed day (28 Oct) is not offered
+PASS  FO-3 slots pass: the next open day (29 Oct) is offered
+{"time":"2026-11-16T08:47:55.661Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 slots pass: a 15-minute interval offers 12:15; fail: the default interval (the meeting's length) does not
+{"time":"2026-11-16T08:47:55.673Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 slots pass: inside a 2-day booking window 27 Oct is offered; fail: 29 Oct (beyond it) is not
+{"time":"2026-11-16T08:47:55.686Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 slots fail: a type whose only host is suspended offers nothing (AG-4-53)
+{"time":"2026-11-16T08:47:55.699Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:55.721Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 slots pass: a type with a suspended host and an active one offers times, and books the active one
+{"time":"2026-11-16T08:47:55.775Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 slots fail: time off (Tue 09:00-12:00) removes 10:00; pass: 13:00 is offered
+PASS  FO-3 DST pass: on 1 Nov 2026 (America/Toronto) 01:30 is offered once, at its first moment (05:30Z)
+PASS  FO-3 DST fail: the second 01:30 (06:30Z) is not offered again
+PASS  FO-3 DST fail: on 8 Mar 2026 the skipped 02:00 and 02:30 are not offered; pass: 03:00 is
+{"time":"2026-11-16T08:47:55.789Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:55.791Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:55.793Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:55.796Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 door: an unknown firm, an unknown slug, an inactive type and a firm on payment hold give the identical 404
+PASS  FO-3 door fail: a firm key with a NUL byte or capitals gives the same identical 404 (break B-7)
+{"time":"2026-11-16T08:47:55.797Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 door pass: a known firm and active type answers its page (no host named)
+{"time":"2026-11-16T08:47:55.815Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:55.861Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 form fail: the consent tick without its wording id → 400
+{"time":"2026-11-16T08:47:55.867Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 form fail: a missing last name → 400
+{"time":"2026-11-16T08:47:55.870Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 form fail: phone mode without a phone → 400
+{"time":"2026-11-16T08:47:55.874Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 form fail: a mode the type does not offer → 400
+{"time":"2026-11-16T08:47:55.877Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 form fail: the honeypot filled → 400
+{"time":"2026-11-16T08:47:55.883Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 form fail: another consent wording than the firm's → 409
+{"time":"2026-11-16T08:47:55.887Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 form fail: a forged form stamp → 400
+{"time":"2026-11-16T08:47:55.891Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:55.918Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 form fail: sent 1 s after the page loaded (minimum fill time) → 400
+{"time":"2026-11-16T08:47:55.924Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:55.928Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:55.932Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 form fail: an invisible-only name, a right-to-left override, U+2028 → 400 (break B-9)
+{"time":"2026-11-16T08:47:55.936Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:55.940Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:55.943Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:55.947Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 form fail: a Hangul filler, RLM, ALM or tag characters → 400 (break B-9 round 2)
+PASS  FO-3 form pass: a name in another script (Arabic, Korean, accented Latin) is taken by the name rule
+{"time":"2026-11-16T08:47:55.951Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 form fail: a zone the database does not take (Etc/GMT0) → 400, never 500 (break B-2)
+{"time":"2026-11-16T08:47:55.954Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:55.958Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 form fail: a start in year 0001 → 400; slots asked from year 0001 → 400 (break B-2)
+{"time":"2026-11-16T08:47:55.961Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 form fail: a line break in a name → 400 (never 500)
+{"time":"2026-11-16T08:47:55.967Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.006Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.054Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 form pass: America/TORONTO is kept in IANA's spelling, America/Toronto (break B-10)
+{"time":"2026-11-16T08:47:56.084Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.132Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.135Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.137Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.140Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.142Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.144Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.147Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.149Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.152Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.154Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.156Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.177Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.194Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.209Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.224Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.243Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.260Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.273Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.287Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.304Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.323Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 door pass: empty posts and stamped forms for a never-offered time from 20 addresses do not use up the firm's limit; a real booking still goes through (break B-3)
+{"time":"2026-11-16T08:47:56.348Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.368Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.396Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.413Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.436Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.453Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 door fail: once the firm's limit (3 here) of real bookings is reached, the next well-formed form → 429
+{"time":"2026-11-16T08:47:56.456Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.476Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.492Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.509Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.525Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.540Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.559Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.580Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.596Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.614Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.630Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.648Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.666Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.688Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.706Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.729Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.749Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.766Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.782Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.798Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.815Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.831Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.849Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.868Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.883Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.900Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.917Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.931Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.947Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.961Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.977Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:56.992Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.006Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.025Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.040Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.056Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.079Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.096Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.112Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.126Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.142Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.156Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.170Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.184Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.198Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.211Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.229Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.244Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.259Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.275Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.300Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.328Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.352Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.378Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.403Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.429Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.454Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.477Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.493Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.509Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.527Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 door pass: 30 addresses reading the page to their own limit never close it for a new visitor (break R2-1); fail: the third read from one of them → 429
+PASS  FO-3 door: the public booking answer names no host, person, prospect or type (contracts §0.6); fail-proof: the row has them
+PASS  FO-3 form pass: phone mode with a phone, consent ticked → booked SCHEDULED
+{"time":"2026-11-16T08:47:57.551Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.551Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.552Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.552Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.552Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.552Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.552Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.552Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.552Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.552Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.552Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.552Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.553Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.553Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.553Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.553Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.553Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.553Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.553Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.553Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.916Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.916Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.916Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.916Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.916Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.916Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.916Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.917Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.917Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.917Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.917Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.917Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.917Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.917Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.917Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.917Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.917Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.917Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.917Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:57.917Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 race: 20 parallel requests for one slot → exactly one booked, 19 answered 409 SLOT_TAKEN
+PASS  FO-3 race: one row in the database for that host and time
+{"time":"2026-11-16T08:47:58.259Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:58.280Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:58.304Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 gaps fail: with 10 min after a 13:00 booking, the host's 13:30 is not offered; pass: 14:00 is
+{"time":"2026-11-16T08:47:58.313Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:58.356Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:58.383Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:58.423Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 first free host: A1 is busy at 13:00 → the team booking goes to A2; pass: at 15:00 the first listed host (A1) takes it
+PASS  FO-3 hours pass: removing the host's Friday hours leaves the Friday booking as it was
+{"time":"2026-11-16T08:47:58.455Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 hours fail: the change took effect for new bookings (no Friday slot for A1 any more)
+{"time":"2026-11-16T08:47:58.467Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 hours: the copy back is refused for a person who still has hours (FO-1b's rule), so Friday stays empty
+{"time":"2026-11-16T08:47:58.479Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:58.512Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 arrival pass: a new email runs the arrival path once, keyed booking:<id>, and makes one lead
+{"time":"2026-11-16T08:47:58.533Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:58.550Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:58.576Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:58.599Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 arrival: a booker with an open prospect makes no new lead (still 1 lead)
+PASS  FO-3 arrival: the prospect moves to Consult once, with the cause "consult booked" (a second booking moves nothing)
+{"time":"2026-11-16T08:47:58.633Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:58.652Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 arrival fail: a person with two open prospects moves neither, and the booking names no prospect
+{"time":"2026-11-16T08:47:58.683Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:58.702Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 arrival fail: a failing arrival path rolls the booking back (nothing saved)
+{"time":"2026-11-16T08:47:58.724Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:58.742Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 audit fail: a forced audit failure rolls the booking back (no booking, no token, no event)
+{"time":"2026-11-16T08:47:58.763Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:58.782Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 audit pass: the booking wrote one audit_event line in its transaction (real interim adapter, platform-audit workspace)
+PASS  FO-3 event: one booking.scheduled outbox row, key <id>:0, ids only (no name or email)
+PASS  FO-3 audit: each booking made so far wrote exactly one booking.scheduled line (main service)
+{"time":"2026-11-16T08:47:58.813Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:58.832Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 mail pass: a throwing mail adapter still saves the booking (SCHEDULED in the database); the email jobs fail, for the runner to retry (FO-3f m3)
+{"time":"2026-11-16T08:47:58.886Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3 mail pass: the booker's confirmation carries a live self-service link to this booking and the time in their zone; fail: it holds no host id
+PASS  FO-3 ics: METHOD:REQUEST, a stable UID, SEQUENCE:0, DTSTART in UTC, CRLF lines
+PASS  FO-3 ics fail: no answer the person typed is inside (no phone; the booker's email only on the attendee line)
+PASS  FO-3 ics: lines fold at 75 octets without splitting a character
+PASS  FO-3 ics: text is escaped (comma, semicolon, newline)
+{"time":"2026-11-16T08:47:58.894Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:58.914Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:58.956Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+{"time":"2026-11-16T08:47:58.961Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3 tokens pass: two live links for one booking both open it
+{"time":"2026-11-16T08:47:58.969Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+{"time":"2026-11-16T08:47:58.984Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3 reschedule: to its own time → no event, no audit line, sequence 0, both links still live, the reminders still waiting
+{"time":"2026-11-16T08:47:58.990Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3 door: the public reschedule answer names no host, person, prospect or type
+{"time":"2026-11-16T08:47:59.035Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+{"time":"2026-11-16T08:47:59.037Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+{"time":"2026-11-16T08:47:59.038Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3 tokens fail: after a reschedule both old links give the identical not-found; pass: the new link works
+{"time":"2026-11-16T08:47:59.043Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3 reschedule pass: a RESCHEDULED booking reschedules again (sequence 2); the host is kept when free
+{"time":"2026-11-16T08:47:59.082Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3 reschedule fail: to a time that is not offered (Sunday) → 409 SLOT_TAKEN with fresh times
+PASS  FO-3 ics: the update keeps the UID and carries SEQUENCE:2
+{"time":"2026-11-16T08:47:59.289Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+{"time":"2026-11-16T08:47:59.289Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3 tokens fail: a malformed token and a right selector with a wrong verifier give the identical not-found
+{"time":"2026-11-16T08:47:59.291Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3 door: the public cancel answer names no host, person, prospect or type
+PASS  FO-3 cancel pass: cancelled by link (sequence 3); METHOD:CANCEL with the same UID
+{"time":"2026-11-16T08:47:59.314Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+{"time":"2026-11-16T08:47:59.315Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 cancel fail: the used link now gives the identical not-found; pass: the freed 14:00 is offered again
+{"time":"2026-11-16T08:47:59.324Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:59.345Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:59.372Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+{"time":"2026-11-16T08:47:59.375Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+{"time":"2026-11-16T08:47:59.381Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3 tokens fail: while the firm is on payment hold its links give the identical not-found and move nothing; pass: back to Active, the link works
+{"time":"2026-11-16T08:47:59.385Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:59.419Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:59.528Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3 limit pass: 4 h 30 min before, the link can still change it
+{"time":"2026-11-16T08:47:59.533Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+{"time":"2026-11-16T08:47:59.538Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+{"time":"2026-11-16T08:47:59.548Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3 limit fail: 3 h before, the page says to reply or call, and a reschedule or cancel is refused 409
+{"time":"2026-11-16T08:47:59.563Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3 tokens fail: after the meeting's end the link gives the identical not-found
+{"time":"2026-11-16T08:47:59.566Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:59.585Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 reminders: 24 h and 1 h reminders and the attendance question are queued on JobPort with sequence keys
+PASS  FO-3 reminders pass: the 24 h reminder is sent at its time
+PASS  FO-3 reminders fail: after a reschedule the old 1 h reminder (09:00) is not sent
+PASS  FO-3 reminders: the moved meeting (Fri 14:00) got its own 24 h reminder (Thu 14:00)
+PASS  FO-3 reminders pass: the new 1 h reminder (13:00) is sent once
+PASS  FO-3 attendance: 30 min after the end the question is shown, not mailed (AG-4-39 rule 2; FO-3m DW6)
+PASS  FO-3 attendance: the question is due on the host's list
+PASS  FO-3 attendance fail: four days later nothing has marked it (still RESCHEDULED, no no-show event)
+PASS  FO-3 attendance pass: a person answers Attended (booking.completed), then changes it to No-show (booking.no_show)
+{"time":"2026-11-16T08:47:59.701Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:59.713Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3 attendance fail: before the meeting has started → 409
+PASS  FO-3 staff fail: creating without agent/booking:create → 403
+PASS  FO-3 staff pass: a staff booking moves the person's only open prospect to Consult with its cause, and names it
+PASS  FO-3 staff fail: a prospect id in the body is refused (400); a person of firm B booked by firm A → 404, nothing saved
+PASS  FO-3 staff fail: a booking id that is not a uuid → 404 (never 500)
+PASS  FO-3 audit fail: a forced audit failure on booking.rescheduled rolls it back (row unchanged, no event)
+PASS  FO-3 audit pass: booking.rescheduled wrote exactly one audit line and one event
+PASS  FO-3 audit fail: a forced audit failure on booking.cancelled rolls it back (row unchanged, no event)
+PASS  FO-3 audit pass: booking.cancelled wrote exactly one audit line and one event
+PASS  FO-3 audit fail: a forced audit failure on booking.completed rolls it back (row unchanged, no event)
+PASS  FO-3 audit pass: booking.completed wrote exactly one audit line and one event
+PASS  FO-3 staff pass: a staff member with the key books for a person (no arrival run, audit actor staff:<id>)
+PASS  FO-3 staff fail: firm B's staff reading, moving or cancelling firm A's booking → 404 (never 403)
+PASS  FO-3 staff fail: firm B cannot book firm A's type (404)
+PASS  FO-3 staff list: without agent/booking:list a person sees only the bookings they host; pass: with it, the firm's
+PASS  FO-3 staff fail: the host without the edit key may not cancel (403)
+PASS  FO-3 staff pass: cancel by staff → CANCELLED, booking.cancelled event
+PASS  FO-3 no money: no booking route or table takes a payment (no amount, card or price field in the answer)
+{"time":"2026-11-16T08:47:59.928Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:59.943Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:47:59.978Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3f m10 pass: a Persian name with U+200C between letters (علی‌رضا) books, and the name is kept as typed; so do a ZWJ after a virama (Devanagari क्‍ष) and a ZWNJ in Hindi
+{"time":"2026-11-16T08:48:00.002Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.028Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.031Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.045Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.048Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.062Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.065Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.080Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.083Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.098Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.103Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.119Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.121Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.137Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3f m10 fail: a joiner at the start or end, beside a space, digit or hyphen, doubled, or alone → 400 (the B-9 rule stays)
+{"time":"2026-11-16T08:48:00.141Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.155Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3f m3 pass: the booking sends nothing itself; it queues one booking.mail job per recipient, keyed booking:<id>:0:mail-person / mail-host, ids only in the payload
+PASS  FO-3f m3 fail: the person's send failed → its job failed (for the runner to retry), the booking stays, the link that send made is voided (only the answer's link is live), the host's email went
+{"time":"2026-11-16T08:48:00.201Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3f m3 pass: the retry (attempt 2) sends the confirmation once, with a live link to the booking; the host is not emailed twice
+{"time":"2026-11-16T08:48:00.207Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.223Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.244Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3f m3 fail: booked emails whose booking moved before they ran are not sent, to the person or the host (the moved ones are), and make no link (review m4)
+PASS  FO-3f m3 pass: the running app's ports name no JobPort and take PF-14's runner; fail: with neither, the booking service refuses to start
+PASS  FO-3f m7 fail: the staff create answer carries no manageToken (nor any token-shaped value), and the transaction issued no link
+{"time":"2026-11-16T08:48:00.316Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3f m7 pass: the person still gets their link by email, and it opens the booking
+PASS  FO-3f m7 fail: a staff move answers no token and issues none in its transaction (the moved email makes the only new link)
+{"time":"2026-11-16T08:48:00.339Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.372Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.397Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3f B-8 fail: the same stamp a second time (another time, another email) → 409 FORM_ALREADY_SENT "This form was already sent. Reload the page to book again."
+{"time":"2026-11-16T08:48:00.399Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.428Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.444Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.461Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.491Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3f B-8 pass: a stamp whose booking was refused (time taken, 409 SLOT_TAKEN) books with the next time picked; a fresh stamp books
+{"time":"2026-11-16T08:48:00.509Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.545Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.545Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.545Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.545Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.545Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.546Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.546Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.546Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.546Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.546Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3f B-8 fail: one stamp sent 10 times at once for 10 free times → exactly one booking, 9 × 409 FORM_ALREADY_SENT
+{"time":"2026-11-16T08:48:00.583Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.625Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.653Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.656Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3f B-8 fail: at exactly 2 h after the page was drawn (the stamp's last valid moment), a used stamp is still refused 409 FORM_ALREADY_SENT; 1 ms later the age rule refuses it 400 (review m1, break F1)
+{"time":"2026-11-16T08:48:00.659Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.675Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:00.976Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3f B-8 pass: the same stamp sent while its first send (for a taken time) is still in flight waits, then books once the first has failed (review m2, break F2)
+PASS  FO-3f B-8 pass: two pages drawn in the same millisecond get two stamps (a random nonce), so two visitors never share one
+{"time":"2026-11-16T08:48:01.303Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.337Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.355Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.373Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.393Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.417Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3f cap pass: a booking refused inside its transaction (time taken) does not use up the cap
+{"time":"2026-11-16T08:48:01.433Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.452Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.471Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.491Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.513Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.531Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.550Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.569Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.590Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.610Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.632Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.649Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.671Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.688Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.708Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.723Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.745Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.765Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.787Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.806Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.825Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.825Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.825Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.825Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.825Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.825Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.825Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.826Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.826Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.826Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.826Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.826Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.827Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.827Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.827Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.827Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.827Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.827Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.827Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.827Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3f cap pass: 20 parallel bookings for 20 free times at cap − 1 (2 of 3) → exactly one success (held by the check-and-hold in the transaction, which counts bookings in flight)
+{"time":"2026-11-16T08:48:01.893Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.914Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.937Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.952Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.973Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:01.991Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:02.008Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:02.309Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3f cap pass: at cap − 1, a booking in flight that then fails (time taken) gives its place back before the next one is checked under the firm's lock, so the next real booking books, not 429 (review m2/m3, break F3)
+PASS  FO-3f cap fail: the other 19 → 429, never a booking past the cap; no advisory lock is left held
+{"time":"2026-11-16T08:48:02.677Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:02.699Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3h DW1 pass: a booking from Asia/Dubai for Tue 17 Nov 10:00 Toronto mails the host "10:00 a.m. (America/Toronto)" in subject and text
+PASS  FO-3h DW1 fail: no host mail states the time only in Asia/Dubai
+PASS  FO-3h DW2: the booker's confirmation reads "7:00 p.m. (Asia/Dubai)" (kept)
+PASS  FO-3h DW5: the .ics start and end are still UTC (20261117T150000Z, 20261117T153000Z), byte-identical to before for the same booking
+{"time":"2026-11-16T08:48:02.740Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:02.761Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:02.795Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+{"time":"2026-11-16T08:48:02.834Z","level":"info","event":"platform_bypass","use":"fo.booking.self-service","method":"none"}
+PASS  FO-3h DW3 pass: after the booker changes zone on reschedule, the host's reschedule and cancel mails read "11:00 a.m. (America/Toronto)"
+PASS  FO-3h DW3 fail: neither host mail states the time in the booker's zone (Asia/Tokyo or Asia/Dubai); the booker's own moved mail stays in Asia/Tokyo
+PASS  FO-3h DW4 (as FO-3m DW6): 30 min after the end no attendance mail goes to the host
+{"time":"2026-11-16T08:48:02.874Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+{"time":"2026-11-16T08:48:02.891Z","level":"info","event":"platform_bypass","use":"fo.booking.public-page","method":"none"}
+PASS  FO-3h hostZone: a firm in America/Regina mails the host "11:00 a.m. (America/Regina)", not the setting's default zone
+PASS  FO-3 http pass: the slots route answers 200 with no person header (open door)
+PASS  FO-3 http fail: unknown firm, unknown slug, inactive type and a bad link → 404 with the identical body
+PASS  FO-3 http fail: past 5 slot reads from one IP in the window (the 404s count too) → 429 (rate limit); pass: the fifth is 200
+PASS  FO-3 http fail: a POST with a half-filled form → 400 with the issues listed, nothing booked
+
+133 passed, 0 failed
