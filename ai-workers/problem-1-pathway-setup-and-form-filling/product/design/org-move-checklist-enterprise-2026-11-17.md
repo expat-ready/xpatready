@@ -307,7 +307,7 @@ All paths start at the enterprise page (github.com > profile photo > Your enterp
    1. P1 to P13 are done:
       - the org `expat-ready` is owned by the enterprise on Enterprise Cloud, billing shows paid with no Actions block (P4 check), and N1 to N9 are recorded with nothing blocking (Enterprise revision);
       - your membership is Public;
-      - the apps are pre-installed, and Merge Queue is off for `xpatready` in the new Mergify org;
+      - the apps are pre-installed (Merge Queue off for `xpatready` in the new Mergify org is set as the first step after C2, because the switch only exists once the repository is in the org, P-662(b); Lead 78 correction);
       - `REVIEWERS` has been read back with your login;
       - the settings file is edited (P7) and the tech lead session restarted;
       - the P8 record is in your private GitHub home;
