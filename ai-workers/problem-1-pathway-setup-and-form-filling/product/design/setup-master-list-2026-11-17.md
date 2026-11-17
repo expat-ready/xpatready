@@ -23,7 +23,7 @@ Sources: Lead 74's research (operating model v2, engineering system v1, failure 
 
 | # | What | Why | Cost | Status |
 |---|---|---|---|---|
-| B1 | GitHub: move the repository into an organization on **Enterprise, bought outright** (500 machines at once) | Machines are the bottleneck | US$21 a seat a month, 0 seats today, monthly; Pro US$4 kept a week past the move | **Done** for the purchase: Enterprise "Expat Ready" active at 10:56 IST (P-657, P-658); Pro kept. **Doing:** the organization inside it (name card) and preparation P1-P13; the move itself the next weekday from about 09:30 IST |
+| B1 | GitHub: move the repository into an organization on **Enterprise, bought outright** (500 machines at once) | Machines are the bottleneck | US$21 a seat a month, 0 seats today, monthly; Pro US$4 kept a week past the move | **Done** for the purchase: Enterprise "Expat Ready" active at 10:56 IST (P-657, P-658); Pro kept. organization **expat-ready** created inside it at 11:05 (P-659), your membership Public. **Doing:** preparation P5 apps, P6 REVIEWERS, P7 settings lines; the move itself the next weekday from about 09:30 IST |
 | B2 | Ruleset on main: required `ci`, no force-push, no deletion | Stops a direct push around the checks | US$0 | **Needs you** (after B1) |
 | B3 | A separate reviewer identity (a machine account or GitHub App) | Today one "Claude" identity both builds and approves; the approval is a comment anyone on the team can write | US$0 | **Needs you** (your account action, P-551) |
 | B4 | Who must approve changes to the pipeline itself (`.github/`, `.mergify.yml`, `.claude/`, gate scripts): you, in two short slots a day | The builder must never control its own judge | about 10-20 min a day of your time | **Needs you** |
@@ -93,3 +93,4 @@ The finding: 143 rules, 112 of them prose and only 11 ever broken visibly; six g
 * 17 Nov 10:4x IST, Lead 75: A4 done (21 GB free); A7 records PR #2071 opened and labelled.
 * 17 Nov 10:4x IST, Lead 75: B1 decided, Enterprise trial first (P-656), then revised to buy outright (P-657); bought 10:56 (P-658).
 * 17 Nov 11:0x IST, Lead 75: E7 done (Engineering System v1 page published).
+* 17 Nov 11:1x IST, Lead 75: org expat-ready created (P-659).
