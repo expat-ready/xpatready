@@ -365,8 +365,8 @@ Founder rulings respected: **P-668 T17: no comment ban** (why-comments stay, P-6
 | Branch | Commit | What | Proof run here |
 |---|---|---|---|
 | `cleanup/stage-0-safety-net` | `e986a1336` | `packages/repo-paths` + `repo-root.sh` (root by AGENTS.md, `REPO_ROOT` override with refusals), `check-pure-move.sh`, `check-stale-paths.sh` + `stale-paths.txt`, `docs/PATHS-MOVED.md`, tests | `check-cleanup-checks.sh` 14/14; `check_repo_paths.ts` 18/18 (against the **old** spend-guard code: the finder gives the same paths) |
-| `cleanup/stage-1-archive-october` (on stage 0) | `86802739a` | 1,083 October files removed, `ai-workers/decisions.md` kept (PRODUCT.md cites it), CLAUDE.md folder line, stale list (23 paths), path map rows | `check-pure-move.sh --delete`: 1,103 D (with 1b), 3 allowed, 0 other; `check-stale-paths.sh` 0 hits; `check-docs.sh` OK |
-| same branch | `afd4d2e2c` (**held**) | 1b: `commercial/` (20 files) removed | only after the private copy is checked (P-677); SHA-256 list in the Lead's notes folder |
+| `cleanup/stage-1-archive-october` (on stage 0) | `86802739a` | 1,083 October files removed, `ai-workers/decisions.md` kept (PRODUCT.md cites it), CLAUDE.md folder line, stale list (23 paths), path map rows | `check-pure-move.sh --delete`: 1,083 D, 3 allowed, 0 other; no `commercial/` change; `check-stale-paths.sh` 0 hits; `check-docs.sh` OK |
+| `cleanup/stage-1b-commercial-held` (on stage 1) | `e218b0381` (**held**) | 1b: `commercial/` (20 files) removed. Stage 1's head `4ef09ef79` restores `commercial/` (an earlier 1b commit `afd4d2e2c` sat on stage 1; undone without a force-push, AGENTS rule 1), so stage 1's PR deletes only the October work | only after the private copy is checked (P-677); SHA-256 list in the Lead's notes folder |
 | `cleanup/stage-2a-root-finder` (on stage 0) | `66be54145` | 33 callers switched: `p2/policy.ts`, `core.ts`, `canada.ts`, `field-format.ts`, `validate.ts`, `sample-validated.ts`, `own-yes-no.ts`, `files.ts`, `scan-logs.ts`, 6 studio tools, 16 product tools (3 hooks), Dockerfile + ignore | `check_repo_paths.ts` 18/18 (ledger = `.tools/p2-ledger`, as before); runtime probe of `core.ts` and `canada.ts` 7/7; typecheck error list **identical** to main's (80 known-environment lines in both); 8 of 10 changed tool tests pass, and `check-isolated-ttl` and `check-comment-run` give **the same results as main** here (they need the demo database or GitHub); `bash -n` on all 15 shell files |
 
 **Stage 2a, Done when (Lead 78, 17 Nov), before its PR opens:** the full suites (`run-suites.sh`, every shard), the Docker build of `studio/Dockerfile` with the image answering `/api/health`, and `start.sh` bringing the app up on :4400 in a scratch copy with `demo-smoke.mjs` passing. All green, each with its run link or log in the PR.
@@ -382,6 +382,7 @@ Founder rulings respected: **P-668 T17: no comment ban** (why-comments stay, P-6
   3. Stage 1, without 1b.
   4. Stage 1b once the private copy is checked.
 - **Stage 2c (new), in an empty window:** the files open PRs edit (`check-docs.sh`, `check-g4-rules.sh`, `check-guards.sh`, `retainers/service.ts`, `seed-sample-firms.ts`, `compose.test.yml`, `restart-api.sh`) and the ~250 tests that count folders switch to the finder, in 2–3 PRs under 800 lines.
+- **Order:** 0 → 2a → 1 → 1b, each PR only on the Lead's word.
 - **Then stages 2b to 8** as in section 3, with `fromStored()` and the live POC data (7.1) added to stage 2b/3.
 - **Stage 7 (the rename)** stays separate (P-675).
 
