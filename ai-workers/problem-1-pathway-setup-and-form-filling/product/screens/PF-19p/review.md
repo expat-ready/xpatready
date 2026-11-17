@@ -222,3 +222,25 @@ None. m-r5 (the 2000-row window) stays accepted as bounded.
 The journey score is unchanged in kind, with error recovery's edge (m-r2) now closed. I did not re-walk it beyond the suite lines above.
 
 Verdict: Approve f0793beb3f87718be3fb30fec0f125849da6332d
+
+## Re-review (merge resolution at b6dfb62a6)
+
+This review reads only the two merges of main since my Approve of `f0793beb3`: `855019a76` and `b6dfb62a6`. I ran `git fetch origin` first; main is at `bcc505afd`, which is an ancestor of `b6dfb62a6`. Code not edited. I did not re-run the suites; the builder reports them all green at `b6dfb62a6` and tsc clean.
+
+* **`api/src/platform/MODULE.md`: correct.**
+  - `git diff origin/main b6dfb62a6` on this file shows only PF-19p's four lines:
+    - the `platformAccount: true` note under PF-19b's `MESSAGES_MAIL` entry point;
+    - the PLATFORM_JOB_QUEUES rule;
+    - the platform account message rule;
+    - `tests/check_pf19p_platform_mail.ts` added to the test list.
+  - Main's PF-5t, PF-6m and PF-5v entries are all kept, and nothing of main's is dropped.
+* **No other PR code changed: the code change is the same one I approved.**
+  - I compared two diffs over `prototype/studio` without MODULE.md:
+    - `git diff origin/main b6dfb62a6`;
+    - `git diff $(git merge-base f0793beb3 origin/main) f0793beb3` (base `fd2dee855`).
+  - They give the same 18 files and the same +632/−66. With the index and hunk-header lines removed, a line-by-line `diff` of the two finds no difference.
+* **Migration order:** `20261116123000_pf19p_platform_account_mail` is still the newest migration on the merged tree, after main's `20261116030000_fo7mv_move_list`. DW4's stamp check still holds.
+
+Findings: none.
+
+Verdict: Approve b6dfb62a6517275e6cf6cbf5b15404641cdbb600
