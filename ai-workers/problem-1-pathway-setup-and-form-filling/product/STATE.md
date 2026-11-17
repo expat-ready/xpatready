@@ -33,14 +33,13 @@ Standbys: **Lead 79 (local_25aa8878)**; start a second at the founder's next typ
 ## Engineering set-up tracker (A160, Lead 77, 13:2x IST 17 Nov; page https://claude.ai/artifact/EYh8cn1M8rTc3Wba3Pp1dP; every Lead updates it at each check, a row leaves only when done or the founder drops it)
 | Workstream | Owner | Next step | Expected (IST) |
 |---|---|---|---|
-| Unblock merges #2077 | Lead | **merged 13:27 (P-684)**; failed parts re-run on #2003, #2011, #2029, #1918 (#2000, #1959 running; #2062 green but a draft: founder presses Ready) | 17 Nov |
 | Enforcement checks #2073, #2075, #2079 → #2080 → #2081 | enforcement-checks (local_f3778712); Lead labels | one at a time on green; first heartbeat run; follow-up PR (3 Minors) after #2081 | CK-1 ~16:00-17:30 17 Nov; CK-2/CK-3 tonight or early 18 Nov |
 | Library masters on main + board rows | Lead; board keeper (local_d01fe726) | records PR to main (carries private-sync.sh, tooling read); fix name "Engineering System v1" vs "Engineering system" | 17 Nov night; board rows 18 Nov |
 | GitHub move to Enterprise org | founder clicks; Lead prepares | fix the checklist text (still says Team, 60 jobs); P8 inventory (REST ≥ 1,000), P9-P13, mirror refresh, drain; 09:30 freeze, Transfer, verify, Mergify setting | 18 Nov 09:30 |
 | Repository clean-up | repo-cleanup (local_7f47aef5); Lead's go | stage 0-1 after the verified move; 2a spend-guard root first, 2b-6 from 19 Nov (P-674) | 18-24 Nov |
 | Founder set-up items | founder-setup (local_c3e4ea74); founder | support message, P8 screenshots, Time Machine/iCloud; later SHA-pinning and CodeQL cards | as convenient; move-day clicks 18 Nov |
 | Backups / private home | Lead | `tools/private-sync.sh` each check; mirror refresh before the freeze; P-677 copies | each check |
-| Decided, waiting (T9, T11, T12, T14, W1, W3, W4 budget yes, W5, rules v2, day-5 re-measure, enforcement-plan §7 four questions) | Lead | after the move and the checks | from ~19-22 Nov |
+| Done #2077 merge and the decided-waiting list (T9, T11, T12, T14, W1, W3-W5, rules v2, day-5, enforcement §7) | Lead | rows word for word in `history/STATE-2026-11-17-1425-lead78s2-tracker-rows-done-and-waiting.md` | from ~19-22 Nov |
 | Item queue `state/items.json` stale since 16 Nov 23:42 | Lead | clear or close the old qa items at the next check | 17 Nov |
 
 ## Start here (next Lead)
