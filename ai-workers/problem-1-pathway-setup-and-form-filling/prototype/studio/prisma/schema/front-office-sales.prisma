@@ -173,6 +173,12 @@ model FoPerson {
   email         String?
   phone         String?
   phoneReadable Boolean  @default(true) @map("phone_readable")
+  /// FO-9a: the phone in E.164 when it is readable, kept by the database (trigger; never written by the app). The
+  /// duplicate match compares it with the typed number normalised by libphonenumber-js. Its lower(email) and trigram name
+  /// indexes are in the migration only (Prisma cannot write them).
+  phoneE164     String?  @map("phone_e164")
+  /// FO-9a: the name as the duplicate match reads it (ports/matching.ts personNameKey), kept by the same trigger.
+  nameKey       String?  @map("name_key")
   language      String?
   timeZone      String?  @map("time_zone")
   createdBy     String   @map("created_by")
@@ -192,6 +198,7 @@ model FoPerson {
   @@unique([firmId, id])
   @@index([firmId, email])
   @@index([firmId, phone])
+  @@index([firmId, phoneE164])
   @@map("fo_person")
 }
 
