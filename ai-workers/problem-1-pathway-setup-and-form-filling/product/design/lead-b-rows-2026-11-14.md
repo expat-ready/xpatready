@@ -1785,3 +1785,7 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - Part 1: invoices and the payment route (amendments 1, 3, 6, 8); a missing `receivedInto` counts as OPERATING.
   - Part 2: the settings writes (amendments 2, 9) and the 400; it starts after part 1.
 * FO-7b is a money row (Build Lead C's); it is not in my night lines. Build Lead C names the two parts on the board.
+
+## rev 16.96 (17 Nov 07:58 IST): founder answers (P-653, through Lead 72)
+* #2044: "Owners invite Case Officers", option (c). The screen as built already matches: for an Owner, Case Officer is pre-ticked; for an Admin, it is hidden and nothing is pre-ticked. The DW line pins that. No permission or data row is needed, and SA-06 and SA-6-29 stay as written.
+* #2014: "Yes, push #2014's fix". The Lead pushes the nightly.yml patch from comment 6927292457 after re-reading it on the current head.
