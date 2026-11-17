@@ -1,6 +1,6 @@
-# Rule register (the tech lead keeps it; as of **P-653**, 17 Nov 08:4x IST (P-652, P-653 added by Lead 73); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-17-0840-lead73s2-as-of-P-651.md`, whose first line lists the older ones)
+# Rule register (the tech lead keeps it; as of **P-657**, 17 Nov 10:5x IST (P-654 to P-657 added by Lead 75); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-17-1050-lead75s2-as-of-P-653.md`, whose first line lists the older ones)
 
-One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced by** names the hook, CI step or script that blocks or fails a break; `prose` = only the reader enforces it (G-4 candidates, bottom); `(part)` = covers part of the rule. IDs: a letter (`P-611b`) = the decision's 2nd row, not its part (2); `IDX-n` = an index of done, product or integration decisions kept in the side file. **Start read**: this page, then the `DECISIONS.md` rows newer than "as of", word for word (P-314, P-440). Long text word for word: side files under `rules/`. `tools/check-docs.sh` fails a row with no enforced-by, a page over 25 KB, or one over 3 rows behind DECISIONS.
+One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
 **Account facts:** GitHub Pro, 40 Actions jobs at once, public repo (Actions minutes free): word for word in `rules/tokens-money-account.md`.
 
@@ -152,6 +152,9 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615). **Enforced 
 | P-650 | Express Entry stays end to end; five provincial streams assessment only in R1. | prose | 17 Nov |
 | P-652 | One-time P-371 exception for #2032's run 43929287134; org move on GitHub Team decided (A137). | prose | 17 Nov |
 | P-653 | Founder's 17 Nov morning answers stand as recorded in DECISIONS (Owner-only Case Officer invites; reversal stays paid, red shortfall; Manitoba Sample until read). | prose | 17 Nov |
+| P-654 | Size exception for #2064 (PF-18b) only; new rows stay under 800 lines. | script: pr-size.sh | 17 Nov |
+| P-655 | Board rebuilds once a day (09:00 IST) and on the founder's ask. | prose | 17 Nov |
+| P-657 | GitHub Enterprise bought outright (supersedes P-656 trial, reverses P-652 Team). | prose | 17 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |
