@@ -13,7 +13,7 @@ Full text of each row (steps, expected, actual, evidence and check): `reports/bu
 
 **QA-315 closed, 16 Nov 21:4x IST (qa, main d66bcfd2d, for the tech lead Lead 69; `reports/2026-11-16-qa315-retest.md`):** C7.2's pack 11/11 on the checkpoint; row in `BUGS-CLOSED.md`. C7.2 and R1.80 now wait only on QA-165 (the Lead's Adobe Validate run on the Mac, P-442).
 
-**R1.77 scored, 17 Nov (qa, main 6933695372a; `reports/2026-11-17-r177/report.md`):** Partial. QA-474 closed (row in `BUGS-CLOSED.md`); QA-397 kept; QA-502 (Gap · Major, no screen) and QA-503 (Minor, CI retry) new (renumbered from 501/502: main took QA-501).
+**R1.77 scored, 17 Nov (qa, main 6933695372a; `reports/2026-11-17-r177/report.md`):** Partial. QA-474 closed (row in `BUGS-CLOSED.md`); QA-397 kept (closed 17 Nov by the after-merge round: BK-21 #2041, `reports/2026-11-17-after-merge.md`); QA-502 (Gap · Major, no screen) and QA-503 (Minor, CI retry) new (renumbered from 501/502: main took QA-501).
 
 | # | Type · Severity | Capability · Req./decision | Found · last seen | What happens (short) | Lane | Status |
 |---|---|---|---|---|---|---|
