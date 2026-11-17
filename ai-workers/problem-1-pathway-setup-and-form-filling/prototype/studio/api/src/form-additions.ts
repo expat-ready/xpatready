@@ -28,12 +28,20 @@ import { render } from "../../engine/render.ts";
 import type { Role } from "../../engine/resolver.ts";
 import { ADDED_TAG, dayWords, frozenHash, KIND_WORDS, kindOf, refusalOf, withAdditions, type AddedKind, type Addition, type Frozen } from "../../engine/runtime/added-forms.ts";
 import { isBarcodeForm, CHANNEL_WORDS, type Channel } from "../../contracts/forms.ts";
+import { AddableDetailQuery, AddableQuery, FormAdditionBody, FormRemovalBody } from "../../contracts/runtime.ts"; // CS-V1 part 2
+import type { z } from "zod";
 import { minorFromAnswers, signersOf } from "../../engine/runtime/signing.ts";
 
 type H = string | undefined;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const short = (id: string) => id.slice(0, 8);
 const problem = (status: number, detail: string, field = "form") => new HttpException({ type: "https://expatready.local/problems/form-addition", title: "Not added", status, detail, errors: [{ field, message: detail }] }, status);
+/** CS-V1 part 2: a body or query value read through its schema; a refusal is this file's 400 naming the field. */
+const parsed = <S extends z.ZodType>(schema: S, input: unknown, field?: string): z.infer<S> => {
+  const r = schema.safeParse(input);
+  if (!r.success) { const i = r.error.issues[0]; throw problem(400, i.message, field ?? (i.path.join(".") || "body")); }
+  return r.data;
+};
 /** C6.17 (BR-10, review of #1262 M2): a filing of an ended stage is history: its forms are neither added nor removed. */
 const stageEnded = (): never => { throw new HttpException({ type: "https://expatready.local/problems/form-addition", title: "Changed since you read it", status: 409, code: "stage_ended",
   detail: "This filing belongs to an earlier stage of the case, which has ended: its forms are kept as they were and can no longer be changed.", errors: [{ field: "filing", message: "An ended stage's filing: read-only." }] }, HttpStatus.CONFLICT); };
@@ -122,9 +130,10 @@ export class FormAdditions {
 
   /** GET …/addable-forms: the library's forms (number or title matching `q`), each addable with its kind, or shown with
    *  why it is not. Coverage is never worked out here (BR-3: only for the form picked). */
-  async addable(actor: Actor, filingId: string, q: unknown, subjectIn: unknown) {
-    const { f, c } = await this.filing(actor, filingId);
-    const who = this.personOn(c, f, subjectIn);
+  async addable(actor: Actor, filingId: string, queryIn: unknown) {
+    const { f, c } = await this.filing(actor, filingId);   // who may read it, and is it there, first (403, 404)
+    const { q, subject } = parsed(AddableQuery, queryIn ?? {}); // only ?q= and ?subject=, each once
+    const who = this.personOn(c, f, subject);
     const words = typeof q === "string" ? q.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 80) : "";
     const lib = (await this.library(c.workspaceId)).filter((x) => x.formKind !== "guide" && x.formKind !== "document" && x.formKind !== "checklist");
     const hit = (x: LibForm) => !words || x.form.toLowerCase().includes(words) || x.form.toLowerCase().replace(/\s+/g, "").includes(words.replace(/\s+/g, "")) || x.title.toLowerCase().includes(words);
@@ -157,9 +166,10 @@ export class FormAdditions {
 
   /** GET …/addable-forms/:form: one form for one person: its coverage on this case (fills), or why it is blank; the
    *  channel and signature it would take. */
-  async detail(actor: Actor, filingId: string, formIn: string, subjectIn: unknown) {
+  async detail(actor: Actor, filingId: string, formIn: string, queryIn: unknown) {
     const { f, c } = await this.filing(actor, filingId);
-    const who = this.personOn(c, f, subjectIn);
+    const { subject } = parsed(AddableDetailQuery, queryIn ?? {}); // only ?subject=, once
+    const who = this.personOn(c, f, subject);
     const x = (await this.library(c.workspaceId, String(formIn ?? ""))).find((l) => l.formKind !== "guide" && l.formKind !== "document" && l.formKind !== "checklist");
     if (!x) fail("No such form in the firm's library.", HttpStatus.NOT_FOUND);
     const j = this.judge(c, who.subject, x!, await this.releaseNow(c));
@@ -188,7 +198,7 @@ export class FormAdditions {
 
   /** POST …/form-additions: add the form for one person on this filing (BR-1 to BR-6, BR-9). */
   async add(actor: Actor, filingId: string, body: unknown) {
-    const b = (body ?? {}) as { form?: unknown; subject?: unknown; channel?: unknown; signature?: unknown; signature_reason?: unknown; reason?: unknown; idempotency_key?: unknown };
+    const b = parsed(FormAdditionBody, body ?? {}); // the checks below keep their words
     if (typeof b.form !== "string" || !b.form.trim()) throw problem(400, "Name the form to add, by its number.");
     const { f, c } = await this.filing(actor, filingId);
     const who = this.personOn(c, f, b.subject);
@@ -253,7 +263,8 @@ export class FormAdditions {
    *  is kept, marked removed. */
   async remove(actor: Actor, id: string, body: unknown) {
     const { a, c } = await this.addition(actor, id, true);
-    const reason = typeof (body as { reason?: unknown })?.reason === "string" ? ((body as { reason: string }).reason).trim().slice(0, 500) : "";
+    const b = parsed(FormRemovalBody, body ?? {});
+    const reason = typeof b.reason === "string" ? b.reason.trim().slice(0, 500) : "";
     if (!reason) throw problem(400, "Say why the form is removed: a removal is recorded with a reason.", "reason");
     await refuseIfRecorded(this.db, (await this.db.filing.findMany({ where: { caseId: c.id, stageId: c.stage.id }, select: { id: true } })).map((x) => x.id), "the list of forms"); // C6.17 (review of #1262 M1)
     if (a.removedAt) throw problem(409, `${a.formKey} was already removed by ${personName(a.removedBy ?? "")} on ${dayWords(a.removedAt.toISOString())}.`);
@@ -304,8 +315,8 @@ function officialPath(name: string | null): string | null {
 @Controller("api/runtime")
 export class FormAdditionsController {
   constructor(@Inject(FormAdditions) private readonly s: FormAdditions) {}
-  @Get("filings/:id/addable-forms") addable(@Headers("x-actor") a: H, @Param("id") id: string, @Query("q") q: unknown, @Query("subject") subject: unknown) { return this.s.addable(actorOf(a), id, q, subject); }
-  @Get("filings/:id/addable-forms/:form") detail(@Headers("x-actor") a: H, @Param("id") id: string, @Param("form") form: string, @Query("subject") subject: unknown) { return this.s.detail(actorOf(a), id, form, subject); }
+  @Get("filings/:id/addable-forms") addable(@Headers("x-actor") a: H, @Param("id") id: string, @Query() q: unknown) { return this.s.addable(actorOf(a), id, q); }
+  @Get("filings/:id/addable-forms/:form") detail(@Headers("x-actor") a: H, @Param("id") id: string, @Param("form") form: string, @Query() q: unknown) { return this.s.detail(actorOf(a), id, form, q); }
   @Post("filings/:id/form-additions") @HttpCode(HttpStatus.CREATED) add(@Headers("x-actor") a: H, @Param("id") id: string, @Body() b: unknown) { return this.s.add(actorOf(a), id, b); }
   @Post("form-additions/:id/remove") @HttpCode(HttpStatus.OK) remove(@Headers("x-actor") a: H, @Param("id") id: string, @Body() b: unknown) { return this.s.remove(actorOf(a), id, b); }
   @Get("form-additions/:id/blank") blank(@Headers("x-actor") a: H, @Param("id") id: string, @Res() res: Response) { return this.s.blank(actorOf(a), id, res); }

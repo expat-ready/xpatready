@@ -724,6 +724,28 @@ def flow_numbers(N, snap, now, today, rows, backlog, app_merged_at, cap_text, mi
     N["flow_forecast_worst"] = num(forecast(min(ids_days), min(works_days)), src + "at the 3 days' lowest rates")
 
 
+# ---------------------------------------------------------------- Stuck now (A134)
+STUCK_NAMES = ("stuck_main_gap_min", "stuck_approved_over_60")
+
+
+def stuck_numbers(N, snap, meta, now):
+    """Written from FORMULAS.md › Stuck now. Last merge to main: whole minutes from meta.main_at to taken_at (floor, at least 0).
+    Approved over 60: entries of github/approved_open.json whose labeled_at is more than 60 minutes before taken_at;
+    no list (missing, or an error object) -> not measured."""
+    m = parse_ts(meta.get("main_at"))
+    N["stuck_main_gap_min"] = num(max(0, int((now - m).total_seconds() // 60)) if m else None,
+                                  "Stuck now: minutes from main's newest commit to taken_at" if m else "not measured: meta.main_at missing")
+    try:
+        ap = snap.json("github/approved_open.json")
+    except (ValueError, OSError):
+        ap = None
+    if not isinstance(ap, list):
+        N["stuck_approved_over_60"] = num(None, "not measured: github/approved_open.json missing or an error")
+        return
+    late = [x.get("number") for x in ap if parse_ts(x.get("labeled_at")) and (now - parse_ts(x["labeled_at"])) > dt.timedelta(minutes=60)]
+    N["stuck_approved_over_60"] = num(len(late), "Stuck now: open PRs labelled review: approved over 60 min before taken_at", detail=late)
+
+
 # ---------------------------------------------------------------- main computation
 def compute(snap):
     meta = snap.json("meta.json")
@@ -1129,6 +1151,7 @@ def compute(snap):
         N["works_today_by_size"] = num({k: sum(1 for m in got if sz.get(m) == k) for k in ("S", "M", "L", "not shaped")},
                                        "sizes of those rows")
     flow_numbers(N, snap, now, today, unique_rows, backlog, app_merged_at, cap_text, missing)
+    stuck_numbers(N, snap, meta, now)
     # capabilities_not_mapped: rows none of whose parts' BACKLOG lines carry a Source: id. A row's text leaves out the
     # column whose header starts "Done when"; a field runs from "Source:" to the next "·" or the cell's end; brackets
     # are removed innermost first until none is left; tokens are runs of letters, digits, "." and "-", trailing "." and "-" cut.
@@ -1302,7 +1325,7 @@ def compute(snap):
              "pct_per_works_row", "rows_done_24h", "rows_needed_per_day",
              "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today", "ci_rule_failures_today",
              "ci_bundle_failures_today", "parts_merged", "parts_total", "founder_asks_day", "rules_changes_day",
-             "target_changes_week", "launch_done", "launch_total", "counsel_open", "r1_proven_qa"] + list(FLOW_NAMES)
+             "target_changes_week", "launch_done", "launch_total", "counsel_open", "r1_proven_qa"] + list(FLOW_NAMES) + list(STUCK_NAMES)
     return {"version": 1,
             "numbers": {k: N[k] for k in order},
             "mc_inputs": {"daily_counts": r1_counts, "remaining_scope": remaining}}
@@ -1415,7 +1438,7 @@ def self_test():
         "pct_per_works_row", "rows_done_24h", "rows_needed_per_day",
         "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today", "ci_rule_failures_today",
         "ci_bundle_failures_today", "parts_merged", "parts_total", "founder_asks_day", "rules_changes_day",
-        "target_changes_week", "launch_done", "launch_total", "counsel_open", "r1_proven_qa"] + list(FLOW_NAMES) + ["daily_counts", "remaining_scope"])
+        "target_changes_week", "launch_done", "launch_total", "counsel_open", "r1_proven_qa"] + list(FLOW_NAMES) + list(STUCK_NAMES) + ["daily_counts", "remaining_scope"])
     # P-602 (4), no log: the span is the whole 24 h to 20 Nov 06:30Z; PF-2's first app merge 19 Nov 20:00Z is inside.
     eq("changes_merged_span", (v["changes_merged_span"], n["changes_merged_span"]["detail"]), (1, ["PF-2"]))
     eq("works_rows_span no history", v["works_rows_span"], None)
