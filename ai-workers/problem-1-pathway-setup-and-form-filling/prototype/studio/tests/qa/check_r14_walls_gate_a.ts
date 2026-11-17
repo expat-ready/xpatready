@@ -67,8 +67,8 @@ const noFirm = as("xr_app", `select count(*) from fo_lead`);
 ok("R1.4 2 (fail case): as xr_app with no app.firm_id, a walled table (fo_lead) reads no row", noFirm === "0" && all > 0, { noFirm, all });
 const withA = as("xr_app", `begin; select set_config('app.firm_id', '${firmA}', true); select count(*) from fo_lead; commit;`).split("\n").filter((l) => /^\d+$/.test(l)).pop();
 ok("R1.4 2: with firm A set, xr_app reads exactly firm A's leads", withA === String(ofA) && ofA < all, { withA, ofA, all });
-const noFirmStaff = as("xr_app", `select count(*) from platform_staff`);
-ok("R1.4 2 (fail case): as xr_app with no firm, platform_staff reads no row", noFirmStaff === "0", noFirmStaff);
+const noFirmStaff = as("xr_app", `select count(*) from platform_staff`), allStaff = Number(owner(`select count(*) from platform_staff`));
+ok("R1.4 2 (fail case): as xr_app with no firm, platform_staff reads no row (the owner sees them all)", noFirmStaff === "0" && allStaff > 0, { noFirmStaff, allStaff });
 
 // 3 the firm comes from the session only
 const viaHeader = await call("GET", `/api/front-office/leads/${bId}`, tA, undefined, { "x-firm-id": firmB, "x-firm-key": "sample-solo" });
@@ -84,7 +84,9 @@ ok("R1.4 3: a lead added with an X-Firm-Id header naming firm B lands in the sig
 const owned = owner(`select count(*) from pg_class c join pg_roles r on r.oid = c.relowner where c.relnamespace = 'public'::regnamespace and r.rolname = 'xr_app'`);
 ok("R1.4 4: xr_app owns no table", owned === "0", owned);
 const serverRoles = owner(`select string_agg(distinct usename, ',') from pg_stat_activity where datname = '${DBNAME}' and pid <> pg_backend_pid() and usename <> 'xr_studio'`);
-ok("R1.4 4: the running server's pooled connections are the app's role (xr_app), never the owner", /\bxr_app\b/.test(serverRoles ?? ""), serverRoles);
+// Only "the server uses xr_app" is checkable here: this check's own connections are the owner's, so the owner's
+// absence from the server's pool cannot be told apart (the pf12 pack proves main.ts refuses to start as the owner).
+ok("R1.4 4: the running server's pooled connections include the app's role (xr_app)", /\bxr_app\b/.test(serverRoles ?? ""), serverRoles);
 
 // 5 the next capability's first step answers for the right firm
 const meA = await call("GET", "/api/platform/me", tA), meB = await call("GET", "/api/platform/me", tB);
@@ -106,6 +108,7 @@ ok("R1.4 7: every walled table but the catalogues and our own registers has a po
 await new Promise((r) => setTimeout(r, 500));
 const logAfter = existsSync(LOG) ? (readFileSync(LOG, "utf8").match(/platform_bypass/g) ?? []).length : -1;
 const auditAfter = Number(owner(`select count(*) from audit_event where action ilike '%bypass%'`));
+ok("R1.4 6: the server log is readable and shows the run's bypass uses (signing in is one)", logAfter >= 0 && logAfter - logBefore > 0, { logBefore, logAfter });
 console.log(`NOTE  R1.4 6: bypass uses during this run: ${logAfter - logBefore} platform_bypass lines in the server log (${LOG.split("/").slice(-2).join("/")}); ${auditAfter - auditBefore} audit_event lines naming a bypass`);
 await db.$disconnect();
 process.exitCode = summary() ? 1 : 0;
