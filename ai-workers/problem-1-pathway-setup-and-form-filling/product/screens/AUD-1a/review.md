@@ -193,3 +193,28 @@ No other path deletes, re-keys or re-ids a workspace. No migration declares a fo
 * **m1 (round 1) closed:** pf0p no longer deletes the `platform-audit` row.
 
 Verdict: Changes needed
+
+---
+
+## Re-review round 4: the diff `7f54d4720..f38dbd391` only (P-277). Head f38dbd39135956a48edaa29e8889ffb2e62aa022
+
+I read the diff. I did not run any suites, as you asked. The builder reports `check_aud1a_insert_only` 40/40 and `check_pf0p_ports` 120/120. d1, s7, pf12 and pf4 are being re-run.
+
+* **M4 closed** (`migration.sql`, `aud_event_workspace_guard`).
+  * DELETE is refused for every row whose key is not `demo` (`IS DISTINCT FROM`, which also covers a null key).
+  * An id change is refused on every row.
+  * The key rules for `demo` and `platform-audit` are unchanged.
+  * So no line of `platform-audit` or of a firm's workspace can be made into a demo line or an orphan. Every orphan the sweep can now meet comes from an old demo row.
+* **The app is unaffected.**
+  * Its only delete is `demo.ts:569` (the demo row).
+  * `core.ts:129` and `audit-event.ts:22` only insert (upsert with `update: {}`; `createMany` with `skipDuplicates`). Neither changes an id or a key.
+  * No migration inserts a workspace row.
+* **DW7.** The two new tries as `xr_app` (delete the `firm` row; change its id) and the new "plain workspace never deleted, even with the setting on" case each fail against round 3's guard. The pass case now asserts a rename and a label change only. That is right.
+* **m7 closed** (`check_pf0p_ports.ts`). The three first-writer cases now run each on its own fresh copy of a migrated template, so `platformAuditWorkspaceId`'s create path is tested again. That includes the ON CONFLICT race from PF-0p's review M1.
+  * The template has no `platform-audit` row: no migration inserts one, and the first case asserts the row is absent after the rollback.
+  * The copies and the template are dropped in `finally`.
+* **Still open, none blocking:** m2, m4 and m5 from round 2 are Build Lead C's call, as recorded. The g1/g2 `demo`→`firm` rename waits for the Lead and is not in this diff. Under this guard it still needs the owner's triggers-off setup.
+
+Reviewer: Approve f38dbd39135956a48edaa29e8889ffb2e62aa022
+
+Verdict: Approve
