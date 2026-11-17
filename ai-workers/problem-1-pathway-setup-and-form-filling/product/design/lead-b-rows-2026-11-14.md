@@ -1789,3 +1789,11 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 ## rev 16.96 (17 Nov 07:58 IST): founder answers (P-653, through Lead 72)
 * #2044: "Owners invite Case Officers", option (c). The screen as built already matches: for an Owner, Case Officer is pre-ticked; for an Admin, it is hidden and nothing is pre-ticked. The DW line pins that. No permission or data row is needed, and SA-06 and SA-6-29 stay as written.
 * #2014: "Yes, push #2014's fix". The Lead pushes the nightly.yml patch from comment 6927292457 after re-reading it on the current head.
+
+## rev 16.97 (17 Nov 08:18 IST): PF-18b on the warm PF-8r lane, yes with conditions (Lead 73 asked)
+* P-526b against #2009 (PF-18a part 1): the only shared file is `api/src/platform/MODULE.md` (one line each; whichever opens second merges main, P-270).
+* Conditions:
+  - No `platform.prisma` edit while #2009 is open. Any back-relations go in only after it merges, under `// back-relation slot: support (PF-18b)`.
+  - The migration stamp is later than `20261116190000_pf18a_offices`, and the release Lead reads it.
+  - The PR stays a draft until Approve.
+* GitHub's REST rate limit ran out for our account at about 08:17 IST. The scan now runs every 300 s and the merge watch every 420 s.
