@@ -1861,3 +1861,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 
 ### Rev 17.9 (15:07 IST 17 Nov): #1991 FO-7a2 out of the queue
 * Build Lead C: #1991 broke batches #2082 to #2084 on shard 4. `check_fo7a2_ledger_rules.ts` DW7 now also sees the `case_party_index_*` functions that CS-S1 (#2035) added. Steps from Lead 78 are on the PR (comment 6944267988): merge main, narrow DW7 to #1991's own migration, keep the planted fail, get a diff-only re-review, then post the new head with its Approve sha. I asked Lead 78 to nudge the lane (cloud session 018BSQJpjUJUBm8pcjZFkpRp, head 8b5dffe0).
+
+### Rev 17.10 (17:06 IST 17 Nov): #2045 merged; #1961 and #2021 dequeued
+* **#2045 PF-6m2 merged** at 16:46 IST. Mergify then dequeued #1961 (PF-19p, head bc10b8c2, dirty) and #2021 (FO-9b part 0, head bdb84846, which GitHub shows as clean) for conflicts with main. Merge-main steps posted (6946909801, 6946910495), and Lead 78 is asked to nudge both lanes. Lead 78 re-reads #1961's migration if its path moved.
+* **#2009 PF-18a:** Lead 78's read is on 95bd174 (a pure migration rename); it is labelled when ci is green. Once it merges, PF-18b (#2064) takes real foreign keys (the PF-17 condition).
+* Follow-up rows waiting for after the move (from #2045): the actor word `system:sign-up`, and m5/F5 (an invitation still holds a seat after its sender is deactivated).
