@@ -38,7 +38,7 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-652 | One-time P-371 exception for #2032's run 43929287134; org move on GitHub Team decided (A137). | prose | 17 Nov |
 | P-654 | Size exception for #2064 (PF-18b) only; new rows stay under 800 lines. | script: pr-size.sh | 17 Nov |
 
-## Dated rulings (moved word for word from RULES.md, 17 Nov 12:1x IST, Lead 76)
+## Dated rulings (moved word for word from RULES.md, 17 Nov 11:5x IST, Lead 76)
 | ID | Rule | Enforced by | As of |
 |---|---|---|---|
 | P-626 | Finish the Partial R1 capabilities first; 10 proven by qa by 08:00 IST 17 Nov. | prose | 16 Nov |
@@ -52,7 +52,7 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-658 | Enterprise paid, monthly; Pro kept until a week after the move. | prose | 17 Nov |
 | P-659 | Org expat-ready; the repository moves only by the org-move checklist. | prose | 17 Nov |
 
-## Dated rulings, part 2 (moved word for word from RULES.md, 17 Nov 12:4x IST, Lead 76)
+## Dated rulings, part 2 (moved word for word from RULES.md, 17 Nov 11:5x IST, Lead 76)
 | ID | Rule | Enforced by | As of |
 |---|---|---|---|
 | P-631 | Lockfile lines in a libraries-only PR do not count toward 800; hand-written lines do. | prose (B196) | 16 Nov |
