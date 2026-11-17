@@ -1,16 +1,11 @@
 -- FO-3a part 1b-i (BACKLOG row FO-3a; brief lead-b-briefs/FO-3a.md "Part 1b", split by its P-610 line; AG-4-62 rules 1,
--- 1b, 1c, 2-8 and §7): named sets of hours. A staff member has one or more sets (one the default), each with its own IANA
--- zone and weekly windows; a booking type may name, per host, which set it uses (absent = the host's default; a deleted
--- set falls back to the default because its row here goes with it).
---   * fo_availability_set: new. Exactly one default per person (a partial unique index); its zone is checked as the
---     windows' zone is; walled by PF-12's policy like every firm table.
---   * fo_availability.set_id: every window belongs to one set of the same person (a composite key, CASCADE: a set's
---     windows go with it). Backfill: one "Normal hours" default set per person who has windows, in their windows' zone
---     (one zone per person was FO-1b's rule), so every slot offered today is offered unchanged. A window written without
---     a set (FO-1b's seed, older suites) goes to the person's default set, made when missing (fo_booking_set_default),
---     so writers that predate sets keep working. The no-overlap and one-zone rules now hold per set (two sets may cover
---     the same hours: "Evening calls" beside "Normal hours"). A window's zone change is copied to its set.
---   * fo_type_host_set: new; which set a type uses for one of its hosts (rule 1b). CASCADE from the set.
+-- 1b, 1c, 2-8, §7): named sets of hours, each with its own IANA zone and weekly windows, one the person's default; a type
+-- may name, per host, which set it uses (fo_type_host_set; none = the default; CASCADE from the set, so a deleted set
+-- falls back to the default). fo_availability.set_id: a window belongs to one set of the same person (composite key,
+-- CASCADE). Backfill: one "Normal hours" default set per person with windows, in their windows' zone (FO-1b had one zone
+-- per person), so every slot offered today is offered unchanged. A window written without a set (FO-1b's seed, older
+-- suites) goes to the default set, made when missing (fo_booking_set_default). No-overlap and one-zone now hold per set
+-- (same names); a window's zone change is copied to its set. Both new tables walled (PF-12).
 -- Rollback: DROP TABLE "fo_type_host_set"; ALTER TABLE "fo_availability" DROP CONSTRAINT "fo_availability_no_overlap",
 --   DROP CONSTRAINT "fo_availability_one_zone", DROP COLUMN "set_id"; restore FO-1b's two exclusions on (firm_id, staff_id);
 --   DROP TABLE "fo_availability_set"; DROP FUNCTION fo_booking_set_default(), fo_booking_set_zone(), fo_booking_set_zone_follow().

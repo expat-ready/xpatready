@@ -1,10 +1,7 @@
-// FO-3a part 1b-i (brief lead-b-briefs/FO-3a.md "Part 1b", split by its P-610 line; AG-4-62 rules 1-8, §7, §8): named
-// sets of hours, a type's set per host and time off, over HTTP behind PF-4's guard on the six roles PF-3 seeds. Cases
-// DW12..DW18 of the brief, the hours half of DW20 and the audit and migration half of DW21, each with a passing and a
-// failing case (part 1b-ii adds the timings cases DW19..DW21 here). A scratch database (every migration; the migration
-// case also a copy of main's schema migrated up), one small Nest app with the settings, staff booking and public
-// controllers, the real interim audit adapter (audit_event), PF-0p's fake clock, jobs and mail and the ArrivalPort fake.
-// No model call (US$0). Dropped at the end.
+// FO-3a part 1b-i (brief lead-b-briefs/FO-3a.md "Part 1b", split by its P-610 line; AG-4-62 rules 1-8, §7, §8): hour
+// sets, a type's set per host and time off, over HTTP behind PF-4's guard on PF-3's six roles: DW12..DW18, the hours half
+// of DW20, the audit and migration half of DW21, a pass and a fail each (1b-ii adds timings here). A scratch database
+// (and a copy of main's schema migrated up), one small Nest app, the real audit adapter, PF-0p's fakes. US$0. Dropped.
 //   tsx studio/tests/check_fo3a_hours_timings.ts
 import "reflect-metadata";
 import { Module } from "@nestjs/common";
