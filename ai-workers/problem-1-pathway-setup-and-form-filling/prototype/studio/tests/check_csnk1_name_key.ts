@@ -2,8 +2,8 @@
 // reserves a shared-field name (canonical_field_name_key, kept by the trigger canonical_field_name_reserve) equals
 // contracts/programs.ts normalizeLabel for every script, so canonical_field_name_unique refuses exactly what the app
 // refuses. A pass and a fail per "Done when" line:
-//   DW1  equality: the key equals normalizeLabel on the brief's corpus and on every assigned code point in five settings
-//        (alone, between letters, before and after a capital sigma, after "ΑΣ"); the 25 Oct key differs on Café and Ñ.
+//   DW1  equality: the key equals normalizeLabel on the brief's corpus and on every assigned code point in six settings
+//        (alone, between letters, before and after a capital sigma, after "ΑΣ", between "Α" and "Σ"); the 25 Oct key differs on Café and Ñ.
 //   DW2  the race: 20 times, two renames at the same moment to "Café-crème …" and "Café crème …" in one group answer one
 //        200 and one 409 "already"; on the 25 Oct key (database "bare"), the same two writes at the same moment both land.
 //   DW3  never stricter: names the app tells apart (one combining mark, a final sigma, ß and ss, İ and i) are all accepted;
@@ -94,16 +94,16 @@ try {
   const want = CORPUS.map(normalizeLabel), got = await keys(full, "canonical_field_name_key", CORPUS);
   const diffs = CORPUS.map((l, i) => [l, got[i], want[i]]).filter(([, g, w]) => g !== w);
   ok("CS-NK1 DW1 pass: on the brief's corpus (ASCII, Café, Ñ, ß, İ, full width, Hindi, Thai, Arabic, CJK, emoji, ZWJ, RLM) the database key equals normalizeLabel", diffs.length === 0, diffs);
-  // Every assigned code point (no surrogates, private use or unassigned) in five settings; the capital sigma ones prove
+  // Every assigned code point (no surrogates, private use or unassigned) in six settings; the capital sigma ones prove
   // the written-out Final_Sigma rule (break report F1: PostgreSQL's own rule differs after punctuation).
   const cps: number[] = []; for (let cp = 1; cp <= 0x10ffff; cp++) if (!/^[\p{Cn}\p{Co}\p{Cs}]$/u.test(String.fromCodePoint(cp))) cps.push(cp);
-  const wraps: [string, (s: string) => string][] = [["alone", (s) => s], ["between letters", (s) => `A${s}b`], ["before Σ", (s) => `${s}Σ x`], ["after Σ", (s) => `Σ${s}`], ["after ΑΣ", (s) => `ΑΣ${s} x`]];
+  const wraps: [string, (s: string) => string][] = [["alone", (s) => s], ["between letters", (s) => `A${s}b`], ["before Σ", (s) => `${s}Σ x`], ["after Σ", (s) => `Σ${s}`], ["after ΑΣ", (s) => `ΑΣ${s} x`], ["between Α and Σ", (s) => `Α${s}Σ x`]];
   const bad: string[] = [];
   for (const [how, w] of wraps) for (let i = 0; i < cps.length; i += 40000) {
     const xs = cps.slice(i, i + 40000).map((cp) => w(String.fromCodePoint(cp))), ks = await keys(full, "canonical_field_name_key", xs);
     ks.forEach((k, j) => { const cp = cps[i + j]; if (k !== normalizeLabel(xs[j])) bad.push(`${how} U+${cp.toString(16).toUpperCase()}: ${k} vs ${normalizeLabel(xs[j])}`); });
   }
-  ok(`CS-NK1 DW1 pass: on all ${cps.length} assigned code points, in five settings (alone, between letters, before and after Σ, after ΑΣ), the key equals normalizeLabel`, bad.length === 0, bad.slice(0, 20));
+  ok(`CS-NK1 DW1 pass: on all ${cps.length} assigned code points, in six settings (alone, between letters, before and after Σ, after ΑΣ, between Α and Σ), the key equals normalizeLabel`, bad.length === 0, bad.slice(0, 20));
   await full.query(oldFn.replace("canonical_field_name_key", "csnk1_old_key"));
   const old = await keys(full, "csnk1_old_key", ["Café-crème name", "Café crème name", "ÑOMBRE", "ñombre"]);
   ok("CS-NK1 DW1 fail: the 25 Oct key differs from normalizeLabel on the Café and Ñ cases (why it is replaced)", old[0] !== normalizeLabel("Café-crème name") && old[0] !== old[1] && old[2] !== normalizeLabel("ÑOMBRE") && old[2] !== old[3], old);

@@ -11,7 +11,11 @@
 -- sigma is lowered before lower() by Unicode's Final_Sigma rule written out (ς after a cased letter (one that is not also case-ignorable, as ICU) and any case-ignorable
 -- ones, unless a cased letter follows after case-ignorable ones; else σ), since PostgreSQL's own rule differs after
 -- punctuation (break report F1). tests/check_csnk1_name_key.ts compares this key with normalizeLabel on every assigned
--- code point in five settings (DW1), so a Node or PostgreSQL upgrade that moves Unicode shows there.
+-- code point in six settings (DW1), so a Node or PostgreSQL upgrade that moves Unicode shows there. One gap is known and
+-- left (break report F2): 34 combining marks new in Unicode 17 (U+1ACF-1ADD, U+1AE0-1AEB, U+10EFA-10EFB, U+1E6E3,
+-- U+1E6E6, U+1E6EE-1E6EF, U+1E6F5) are not yet reordered by PostgreSQL 18's NFKC, so two names that differ only in the
+-- order of one of them next to another mark get two keys here and one in the app: never stricter, only open to a race,
+-- until PostgreSQL takes Unicode 17. Needs PostgreSQL 18 (pg_unicode_fast; the Mac, cloud and CI copies run 18).
 CREATE OR REPLACE FUNCTION canonical_field_name_key(label TEXT) RETURNS TEXT AS $$
   SELECT regexp_replace(regexp_replace(
     lower(translate(regexp_replace(normalize(translate(label, U&'\A7CE\A7D2\A7D4\A7F1\+016EA0\+016EA1\+016EA2\+016EA3\+016EA4\+016EA5\+016EA6\+016EA7\+016EA8\+016EA9\+016EAA\+016EAB\+016EAC\+016EAD\+016EAE\+016EAF\+016EB0\+016EB1\+016EB2\+016EB3\+016EB4\+016EB5\+016EB6\+016EB7\+016EB8', U&'\A7CF\A7D3\A7D5\0073\+016EBB\+016EBC\+016EBD\+016EBE\+016EBF\+016EC0\+016EC1\+016EC2\+016EC3\+016EC4\+016EC5\+016EC6\+016EC7\+016EC8\+016EC9\+016ECA\+016ECB\+016ECC\+016ECD\+016ECE\+016ECF\+016ED0\+016ED1\+016ED2\+016ED3'), NFKC),
