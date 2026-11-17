@@ -20,21 +20,26 @@ export function flagOf(e: unknown, code?: string): RowFlag {
   return { code: code ?? r.code ?? "ROW_REFUSED", detail: r.detail ?? "This row cannot be sent." };
 }
 
+/** A name with nothing to read (spaces, marks or fillers only) is no name (review m3, break 5), as with reasons. */
+const VISIBLE = (s: string) => s.replace(/[\s\p{Z}\p{Cf}\p{M}\u115f\u1160\u3164\uffa0]/gu, "").length > 0;
+
 /** The greeting's name: optional; 1-100 characters after trimming, no control, format or line-break character (it goes
  *  into an email's text, so it can never add a line or a header). */
 function nameOf(v: unknown): string | null {
-  if (v === undefined || v === null || v === "") return null;
+  if (v === undefined || v === null || (typeof v === "string" && !VISIBLE(v) && !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(v))) return null;
   if (typeof v !== "string") return problem(400, "Check the name", "The name is text.", { code: "INVALID_NAME" });
   const t = v.trim();
-  if (!t || [...t].length > 100 || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(v)) return problem(400, "Check the name", "Give the person's name in 1 to 100 characters, on one line.", { code: "INVALID_NAME" });
+  if (!VISIBLE(t) || [...t].length > 100 || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(v)) return problem(400, "Check the name", "Give the person's name in 1 to 100 characters, on one line.", { code: "INVALID_NAME" });
   try { encodeURIComponent(t); } catch { return problem(400, "Check the name", "The name has a broken character. Type it again.", { code: "INVALID_NAME" }); }
   return t;
 }
 
 const OWNER_WORDS = "Invite an Owner on their own: it needs a reason and Confirm it's you.";
+/** Break 3: an inviter who is not an Owner is told the rule that applies to them (the single invite answers OWNER_ONLY). */
+const OWNER_ONLY_WORDS = "Only an Owner gives the Owner role. Ask an Owner to invite this person.";
 
 /** Reads the form's rows: 1-20 rows or 422 ROWS_COUNT; every other problem is a flag on its row. */
-export function batchRowsOf(body: { rows?: unknown }): BatchRow[] {
+export function batchRowsOf(body: { rows?: unknown }, actorIsOwner: boolean): BatchRow[] {
   const rows = body.rows;
   if (!Array.isArray(rows) || rows.length < 1 || rows.length > BATCH_MAX_ROWS)
     return problem(422, "Check the rows", `Send 1 to ${BATCH_MAX_ROWS} people in one form (rows).`, { code: "ROWS_COUNT", maxRows: BATCH_MAX_ROWS });
@@ -45,7 +50,7 @@ export function batchRowsOf(body: { rows?: unknown }): BatchRow[] {
     try { out.name = nameOf(r.name); } catch (e) { out.flags.push(flagOf(e)); }
     try { out.email = emailOf(r.email); } catch (e) { out.flags.push(flagOf(e, "INVALID_EMAIL")); }
     try { out.roles = rolesOf(r.roles); } catch (e) { out.flags.push(flagOf(e, "INVALID_ROLES")); }
-    if (out.roles?.includes("OWNER")) out.flags.push({ code: "OWNER_BY_SINGLE_INVITE", detail: OWNER_WORDS });
+    if (out.roles?.includes("OWNER")) out.flags.push({ code: "OWNER_BY_SINGLE_INVITE", detail: actorIsOwner ? OWNER_WORDS : OWNER_ONLY_WORDS });
     // emailOf keeps one spelling per address (lower case, no spaces or invisible characters), so case and spacing cannot
     // hide a duplicate. Flagged on the second and later rows.
     if (out.email) { if (seen.has(out.email)) out.flags.push({ code: "DUPLICATE_IN_FORM", detail: "This email is already on an earlier row of this form." }); seen.add(out.email); }

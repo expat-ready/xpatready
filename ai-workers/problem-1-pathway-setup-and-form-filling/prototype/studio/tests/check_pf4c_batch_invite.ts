@@ -109,6 +109,22 @@ try {
   const clean = await batch([row("dup@example.com"), row("clean@example.com")]);
   ok("PF-4c DW2 pass: the same form without the flagged rows → all sent (2 invitations)", clean.status === 201 && clean.body.invitations.length === 2 && invites() === before.i + 2, clean.body);
 
+  // ------------------------------------------------ review m2: seats count the rows that would be sent (unflagged ones)
+  seatsLeft(2);
+  before = snap();
+  const flaggedFits = await batch([row("m2.a@example.com"), row("m2.b@example.com"), row("not-an-email")]);
+  ok("PF-4c review m2 pass: 2 clean rows and 1 flagged row with 2 seats left → 422 ROWS_FLAGGED (the flagged row holds no seat), nothing sent",
+    flaggedFits.status === 422 && flaggedFits.body.code === "ROWS_FLAGGED" && flagsOf(flaggedFits.body, 3).join() === "INVALID_EMAIL" && nothingChanged(before), flaggedFits.body);
+  seatsLeft(1);
+  const flaggedOver = await batch([row("m2.a@example.com"), row("m2.b@example.com"), row("not-an-email")]);
+  ok("PF-4c review m2 fail: the same form with 1 seat left → 409 PLAN_LIMIT_REACHED that also lists the flagged row's code, nothing sent",
+    flaggedOver.status === 409 && flaggedOver.body.code === "PLAN_LIMIT_REACHED" && flaggedOver.body.removeCount === 1 && flagsOf(flaggedOver.body, 3).join() === "INVALID_EMAIL" && nothingChanged(before), flaggedOver.body);
+  seatsLeft(2);
+  before = snap();
+  const blankNames = await batch([row("blank.name@example.com", ["CASE_OFFICER"], "   "), row("filler.name@example.com", ["CASE_OFFICER"], "\u3164")]);
+  const blankMail = mail.sent.slice(before.m);
+  ok("PF-4c review m3 pass: a name of spaces or fillers only is no name — sent, with no greeting", blankNames.status === 201 && blankMail.length === 2 && blankMail.every((m) => !/^Hello/.test(m.text)), blankNames.body);
+
   // --------------------------------------------------------------------------- DW3: two at once never pass the limit
   seatsLeft(3);
   const [b1, b2] = await Promise.all([batch([row("race.a1@example.com"), row("race.a2@example.com")]), batch([row("race.b1@example.com"), row("race.b2@example.com")])]);
@@ -128,10 +144,15 @@ try {
     and k.permission_key not in (select permission_key from platform_role_permission where role = 'ADMIN')) order by r.role limit 1`);
   ok("setup: user-O is an Admin, and a starter role holds a key an Admin lacks", toAdmin.status === 200 && !!beyond && !!tAdmin, { toAdmin: toAdmin.body, beyond });
   before = snap();
-  const mixed = await batch([row("owner.row@example.com", ["OWNER"]), row("beyond@example.com", [beyond]), row("not-an-email"), row("fine@example.com", ["READ_ONLY"]), row("badrole@example.com", ["CHIEF"]), row("named@example.com", ["READ_ONLY"], "Line\nBreak")], tAdmin);
+  const mixed = await batch([row("owner.row@example.com", ["OWNER"]), row("beyond@example.com", [beyond]), row("not-an-email", ["READ_ONLY"]), row("fine@example.com", ["READ_ONLY"]), row("badrole@example.com", ["CHIEF"]), row("named@example.com", ["READ_ONLY"], "Line\nBreak")], tAdmin);
   ok("PF-4c DW4 fail: an Owner row → OWNER_BY_SINGLE_INVITE, a role beyond the inviter's keys → ROLE_BEYOND_OWN_KEYS, a malformed email → INVALID_EMAIL, an unknown role → INVALID_ROLES, a name with a line break → INVALID_NAME; every flag listed at once, nothing sent",
     mixed.status === 422 && flagsOf(mixed.body, 1).includes("OWNER_BY_SINGLE_INVITE") && flagsOf(mixed.body, 2).join() === "ROLE_BEYOND_OWN_KEYS" && flagsOf(mixed.body, 3).join() === "INVALID_EMAIL"
     && flagsOf(mixed.body, 4).length === 0 && flagsOf(mixed.body, 5).join() === "INVALID_ROLES" && flagsOf(mixed.body, 6).join() === "INVALID_NAME" && nothingChanged(before), mixed.body);
+  ok("PF-4c break 3 fail: an Admin's Owner row says only an Owner gives the Owner role (the single invite's rule for them)",
+    /^Only an Owner gives the Owner role/.test((mixed.body.rows ?? [])[0]?.flags?.[0]?.detail ?? ""), mixed.body.rows?.[0]);
+  const both = await batch([row(staffEmail, ["CHIEF"]), row("not-an-email", [beyond])], tAdmin);
+  ok("PF-4c review m1 fail: every problem of a row shows at once — a staff email with an unknown role → INVALID_ROLES and ALREADY_STAFF; a bad email with a role beyond the inviter's keys → INVALID_EMAIL and ROLE_BEYOND_OWN_KEYS",
+    both.status === 422 && flagsOf(both.body, 1).sort().join() === "ALREADY_STAFF,INVALID_ROLES" && flagsOf(both.body, 2).sort().join() === "INVALID_EMAIL,ROLE_BEYOND_OWN_KEYS" && nothingChanged(before), both.body);
   const ownerByOwner = await batch([row("owner.row@example.com", ["OWNER"])]);
   ok("PF-4c DW4 fail: no Owner in a batch, even from an Owner (OWNER_BY_SINGLE_INVITE), nothing sent", ownerByOwner.status === 422 && flagsOf(ownerByOwner.body, 1).join() === "OWNER_BY_SINGLE_INVITE" && nothingChanged(before), ownerByOwner.body);
   const ownerSingle = await call(base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email: "owner.single@example.com", roles: ["OWNER"], reason: "a second Owner for cover" } });

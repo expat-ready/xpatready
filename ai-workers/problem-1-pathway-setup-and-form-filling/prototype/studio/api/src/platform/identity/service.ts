@@ -332,6 +332,10 @@ export class PlatformIdentity implements OnModuleInit {
    *  already on the staff, then already invited. Throws the refusal (the batch turns it into the row's flag). */
   private async rowCheck(tx: Tx, actor: StaffContext, email: string, roles: PlatformRole[], reason: string | null) {
     await this.roleRules(actor, null, roles, [], reason, tx);
+    await this.personCheck(tx, actor, email);
+  }
+  /** The person half of rowCheck: already on the staff, then already invited. */
+  private async personCheck(tx: Tx, actor: StaffContext, email: string) {
     if (await tx.platformStaff.findFirst({ where: firmScope(actor.firmId, { email }), select: { id: true } })) problem(409, "Already on your staff", "This person is already on your firm's staff.", { code: "ALREADY_STAFF" });
     const [{ open }] = await tx.$queryRaw<{ open: number }[]>`select count(*)::int as open from platform_invitation where firm_id = ${actor.firmId}::uuid and email = ${email} and accepted_at is null and revoked_at is null and expires_at > now()`;
     if (open) problem(409, "Already invited", "This person already has a pending invitation: resend it instead.", { code: "ALREADY_INVITED" });
@@ -356,12 +360,13 @@ export class PlatformIdentity implements OnModuleInit {
    *  nothing is created. Otherwise one invitation and one audit line per row in the transaction, and one email per row
    *  after the commit (a failed send leaves that invitation pending, emailed: false). No Owner in a batch. */
   async inviteBatch(actor: StaffContext, body: { rows?: unknown }) {
-    const rows = batchRowsOf(body);
+    const rows = batchRowsOf(body, actor.roles.includes("OWNER"));
     const answerRows = () => rows.map((r) => ({ row: r.row, flags: r.flags }));
     const out = await this.inFirm(actor, async (tx) => {
+      // rowCheck's two halves, each run whenever its input is valid, so every problem of a row shows at once (review m1).
       for (const r of rows) {
-        if (!r.email || !r.roles || r.flags.some((f) => f.code === "OWNER_BY_SINGLE_INVITE")) continue;
-        try { await this.rowCheck(tx, actor, r.email, r.roles, null); } catch (e) { r.flags.push(flagOf(e)); }
+        if (r.roles && !r.roles.includes("OWNER")) try { await this.roleRules(actor, null, r.roles, [], null, tx); } catch (e) { r.flags.push(flagOf(e)); }
+        if (r.email && !r.flags.some((f) => f.code === "DUPLICATE_IN_FORM")) try { await this.personCheck(tx, actor, r.email); } catch (e) { r.flags.push(flagOf(e)); }
       }
       const clean = rows.filter((r) => !r.flags.length), flagged = rows.length - clean.length;
       let seats = null;
