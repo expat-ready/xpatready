@@ -2,8 +2,8 @@
 // reserves a shared-field name (canonical_field_name_key, kept by the trigger canonical_field_name_reserve) equals
 // contracts/programs.ts normalizeLabel for every script, so canonical_field_name_unique refuses exactly what the app
 // refuses. A pass and a fail per "Done when" line:
-//   DW1  equality: the key equals normalizeLabel on the brief's corpus and on every assigned code point (alone, between
-//        letters, and after a capital sigma); the 25 Oct key differs on at least the Café and Ñ cases.
+//   DW1  equality: the key equals normalizeLabel on the brief's corpus and on every assigned code point in five settings
+//        (alone, between letters, before and after a capital sigma, after "ΑΣ"); the 25 Oct key differs on Café and Ñ.
 //   DW2  the race: 20 times, two renames at the same moment to "Café-crème …" and "Café crème …" in one group answer one
 //        200 and one 409 "already"; on the 25 Oct key (database "bare"), the same two writes at the same moment both land.
 //   DW3  never stricter: names the app tells apart (one combining mark, a final sigma, ß and ss, İ and i) are all accepted;
@@ -40,7 +40,7 @@ const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++
 // Hindi and Thai with combining marks, Arabic, CJK, emoji, a zero-width joiner and a right-to-left mark. All Sample.
 const CORPUS = ["Given name", "given-name", "  Given   NAME!! ", "Given_name (2)", "Café-crème name", "Café crème name", "CAFÉ CRÈME NAME",
   "ÑOMBRE", "ñombre", "Straße", "STRASSE", "İstanbul", "istanbul", "ＧＩＶＥＮ　ＮＡＭＥ", "किसान", "कसान", "किसान नाम", "ชื่อ", "ชอ", "ชื่อเล่น",
-  "الاسم الأول", "الاسم", "名前", "名 前", "姓名（中文）", "Name 😀", "😀", "a‍b", "ab", "‏name", "name‎", "ΟΔΟΣ", "οδοσ", "ΣΑΣ-Α", "é", "é", "ﬁle", "Ⅻ", "x²"];
+  "الاسم الأول", "الاسم", "名前", "名 前", "姓名（中文）", "Name 😀", "😀", "a‍b", "ab", "‏name", "name‎", "ΟΔΟΣ", "οδοσ", "ΣΑΣ-Α", "'Σ' name", ".Σ. name", "Σ name", "ΑΣ.Β", "Α.Σ", "ΣΣ", "é", "é", "ﬁle", "Ⅻ", "x²"];
 
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const left = spawnSync(bin("psql"), [...PG, "-d", "postgres", "-Atc", "select datname from pg_database where datname like 'xr\\_studio\\_csnk1\\_%'"], { encoding: "utf8" }).stdout ?? "";
@@ -94,29 +94,27 @@ try {
   const want = CORPUS.map(normalizeLabel), got = await keys(full, "canonical_field_name_key", CORPUS);
   const diffs = CORPUS.map((l, i) => [l, got[i], want[i]]).filter(([, g, w]) => g !== w);
   ok("CS-NK1 DW1 pass: on the brief's corpus (ASCII, Café, Ñ, ß, İ, full width, Hindi, Thai, Arabic, CJK, emoji, ZWJ, RLM) the database key equals normalizeLabel", diffs.length === 0, diffs);
-  // Every assigned code point (no surrogates, private use or unassigned), alone, between letters, and after "ΑΣ" (the
-  // final-sigma rule looks at what follows). The one residual: a capital sigma straight after a letter and straight before
-  // one of 54 code points whose casing Unicode 17 changed (Node 24) and PostgreSQL 18 (Unicode 16) does not know yet.
-  const RESIDUAL = new Set([0x295, 0x2e4, 0xa7ce, 0xa7cf, ...Array.from({ length: 0x16eb8 - 0x16ea0 + 1 }, (_, i) => 0x16ea0 + i), ...Array.from({ length: 0x16ed3 - 0x16ebb + 1 }, (_, i) => 0x16ebb + i)]);
+  // Every assigned code point (no surrogates, private use or unassigned) in five settings; the capital sigma ones prove
+  // the written-out Final_Sigma rule (break report F1: PostgreSQL's own rule differs after punctuation).
   const cps: number[] = []; for (let cp = 1; cp <= 0x10ffff; cp++) if (!/^[\p{Cn}\p{Co}\p{Cs}]$/u.test(String.fromCodePoint(cp))) cps.push(cp);
-  const wraps: [string, (s: string) => string][] = [["alone", (s) => s], ["between letters", (s) => `A${s}b`], ["after ΑΣ", (s) => `ΑΣ${s} x`]];
+  const wraps: [string, (s: string) => string][] = [["alone", (s) => s], ["between letters", (s) => `A${s}b`], ["before Σ", (s) => `${s}Σ x`], ["after Σ", (s) => `Σ${s}`], ["after ΑΣ", (s) => `ΑΣ${s} x`]];
   const bad: string[] = [];
   for (const [how, w] of wraps) for (let i = 0; i < cps.length; i += 40000) {
     const xs = cps.slice(i, i + 40000).map((cp) => w(String.fromCodePoint(cp))), ks = await keys(full, "canonical_field_name_key", xs);
-    ks.forEach((k, j) => { const cp = cps[i + j]; if (k !== normalizeLabel(xs[j]) && !(how === "after ΑΣ" && RESIDUAL.has(cp))) bad.push(`${how} U+${cp.toString(16).toUpperCase()}: ${k} vs ${normalizeLabel(xs[j])}`); });
+    ks.forEach((k, j) => { const cp = cps[i + j]; if (k !== normalizeLabel(xs[j])) bad.push(`${how} U+${cp.toString(16).toUpperCase()}: ${k} vs ${normalizeLabel(xs[j])}`); });
   }
-  ok(`CS-NK1 DW1 pass: on all ${cps.length} assigned code points, alone, between letters and after ΑΣ, the key equals normalizeLabel (54 listed final-sigma cases aside)`, bad.length === 0, bad.slice(0, 20));
+  ok(`CS-NK1 DW1 pass: on all ${cps.length} assigned code points, in five settings (alone, between letters, before and after Σ, after ΑΣ), the key equals normalizeLabel`, bad.length === 0, bad.slice(0, 20));
   await full.query(oldFn.replace("canonical_field_name_key", "csnk1_old_key"));
   const old = await keys(full, "csnk1_old_key", ["Café-crème name", "Café crème name", "ÑOMBRE", "ñombre"]);
   ok("CS-NK1 DW1 fail: the 25 Oct key differs from normalizeLabel on the Café and Ñ cases (why it is replaced)", old[0] !== normalizeLabel("Café-crème name") && old[0] !== old[1] && old[2] !== normalizeLabel("ÑOMBRE") && old[2] !== old[3], old);
 
   // ─────────── DW3: never stricter (the database refuses a pair only when the app makes them equal)
-  const PAIRS: [string, string][] = [["किसान", "कसान"], ["é name", "e name"], ["ΟΔΟΣ", "οδοσ"], ["Straße", "Strasse"], ["İstanbul", "Istanbul"], ["ชื่อ", "ชอ"], ["名前", "名"], ["Ⅻ", "XII x"]];
+  const PAIRS: [string, string][] = [["किसान", "कसान"], ["é name", "e name"], ["ΟΔΟΣ", "οδοσ"], ["Straße", "Strasse"], ["İstanbul", "Istanbul"], ["ชื่อ", "ชอ"], ["名前", "名"], ["Ⅻ", "XII x"], ["'Σ' x", "ς x"], ["ΑΣ𖺠", "Ας𖺠"]];
   const pk = await keys(full, "canonical_field_name_key", PAIRS.flat());
   const stricter = PAIRS.filter(([a, b], i) => normalizeLabel(a) !== normalizeLabel(b) && pk[2 * i] === pk[2 * i + 1]);
   ok("CS-NK1 DW3 pass: names the app tells apart (one combining mark, a final sigma, ß and ss, İ and I, Thai marks) get different database keys", stricter.length === 0, stricter);
   const accepted = PAIRS.map(([a, b], i) => { sql(FULL, `${field(WS, `person.csnk1_p${i}a`, a)}; ${field(WS, `person.csnk1_p${i}b`, b)}`); return i; }).length;
-  ok("CS-NK1 DW3 pass: all 16 of those names are accepted in one group (none refused by canonical_field_name_unique)", accepted === PAIRS.length && sql(FULL, `select count(*) from canonical_field_name where canonical_field_key like 'person.csnk1_p%' and name_key <> ''`) === String(2 * PAIRS.length));
+  ok("CS-NK1 DW3 pass: all 20 of those names are accepted in one group (none refused by canonical_field_name_unique)", accepted === PAIRS.length && sql(FULL, `select count(*) from canonical_field_name where canonical_field_key like 'person.csnk1_p%' and name_key <> ''`) === String(2 * PAIRS.length));
   const refusedBy = (q: string) => { try { sql(FULL, q); return ""; } catch (e) { return String((e as { stderr?: string }).stderr ?? e); } };
   const dupe = refusedBy(field(WS, "person.csnk1_dupe", "कि-सान!"));
   ok("CS-NK1 DW3 fail: \"कि-सान!\", equal to \"किसान\" under normalizeLabel, is refused by canonical_field_name_unique (the guard still holds)", /canonical_field_name_unique/.test(dupe), dupe);
@@ -140,6 +138,10 @@ try {
 
   // ─────────── DW4: the backfill (rows written under the 25 Oct key in "bare", then this row's migration)
   sql(BARE, `${field(WS, "person.csnk1_n1", "ÑOMBRE de pila")}; ${field(WS, "person.csnk1_n2", "Given name")}; ${field(WS, "person.csnk1_n3", "Café-crème x")}; ${field(WS, "person.csnk1_n4", "Café crème x")}; ${field(WS, "person.csnk1_n5", "किसान")}`);
+  // Break report F4: an older version retired after a newer draft, so the trigger wrote the older label last; a second
+  // field then takes the newer draft's name, which the 25 Oct key allowed. Neither is a legacy duplicate after the backfill.
+  sql(BARE, `${field(WS, "person.csnk1_r1", "Ålder x").replace("'DRAFT'", "'PUBLISHED'")}; ${field(WS, "person.csnk1_r1", "Ärende x").replace(", 1, 'DRAFT'", ", 2, 'DRAFT'")};
+    update canonical_field set status = 'RETIRED' where canonical_field_key = 'person.csnk1_r1' and version = 1; ${field(WS, "person.csnk1_r2", "ärende x")}`);
   const stale = sql(BARE, `select count(*) from canonical_field_name n join canonical_field c using (workspace_id, canonical_field_key) where c.canonical_field_key like 'person.csnk1_%' and n.name_key <> lower(regexp_replace(c.label, '[^A-Za-z0-9]+', '', 'g'))`);
   ok("CS-NK1 DW4 fail: before this row's migration, the stored keys of the non-ASCII names differ from normalizeLabel", Number(stale) >= 4, stale);
   const first = spawnSync(bin("psql"), [urlOf(BARE), "-X", "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, NEW, "migration.sql")], { encoding: "utf8" });
@@ -147,9 +149,9 @@ try {
   ok("CS-NK1 DW4 pass: the migration applies on rows written under the 25 Oct key, and its NOTICE lists the two legacy duplicates", first.status === 0 && firstListed.length === 2 && firstListed.every((l) => /person\.csnk1_(rb|n4)/.test(l)), { status: first.status, err: first.stderr.slice(-400) });
   for (const l of firstListed) console.log(`      ${l.replace(/^.*?CS-NK1/, "CS-NK1")}`);
   const rows = sql(BARE, `select c.canonical_field_key || '|' || c.label || '|' || n.name_key from canonical_field_name n join canonical_field c using (workspace_id, canonical_field_key) where c.canonical_field_key like 'person.csnk1_%' order by 1`).split("\n").map((l) => l.split("|"));
-  const legacy = new Set(["person.csnk1_rb", "person.csnk1_n4"]);
-  const wrong = rows.filter(([k, label, key]) => key !== (legacy.has(k) ? "" : normalizeLabel(label)));
-  ok("CS-NK1 DW4 pass: after the migration every row's key is normalizeLabel of its label, or '' for the two legacy duplicates (the race pair, Café-crème x)", rows.length === 7 && wrong.length === 0, { rows, wrong });
+  const legacy = new Set(["person.csnk1_rb", "person.csnk1_n4"]), reservedAs: Record<string, string> = { "person.csnk1_r1": "Ålder x" };
+  const wrong = rows.filter(([k, label, key]) => key !== (legacy.has(k) ? "" : normalizeLabel(reservedAs[k] ?? label)));
+  ok("CS-NK1 DW4 pass: after the migration every row's key is normalizeLabel of its label, or '' for the two legacy duplicates (the race pair, Café-crème x); the F4 field keeps the label it was reserved with", rows.filter((r) => r[0] === "person.csnk1_r1").every((r) => r[2] === normalizeLabel("Ålder x")) && new Set(rows.map((r) => r[0])).size === 9 && wrong.length === 0, { rows, wrong });
   const before = sql(BARE, `select string_agg(canonical_field_key || '=' || name_key, ',' order by canonical_field_key) from canonical_field_name`);
   const again = spawnSync(bin("psql"), [urlOf(BARE), "-X", "-v", "ON_ERROR_STOP=1", "-c", `begin; ${backfill.replace(/^\s*--.*$/gm, "")} commit;`], { encoding: "utf8" });
   const after = sql(BARE, `select string_agg(canonical_field_key || '=' || name_key, ',' order by canonical_field_key) from canonical_field_name`);
