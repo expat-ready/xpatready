@@ -1894,3 +1894,7 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 ### Rev 17.15 (19:29 IST 17 Nov): PF-15 claim branch
 * On #2103 (FO-3a 1b-i), the lane claimed PF-15 part 1 (`claim/PF-15-part-1` at main, no work), then stopped because its context was full. Its delete was refused. Ruling: leave the branch, never delete it through another session (P-387), and the Lead decides after the move. PF-15 part 1 is held (B1 freeze, P-663). The lane's notes went into `lead-b-briefs/PF-15.md`.
 * Lead 79 agreed: `claim/PF-15-part-1` stays. It goes on the clean-up list for after the move, where the founder approves branch removals.
+
+### Rev 17.16 (19:50 IST 17 Nov): front-office card over 40 on main; #2109 opened in the freeze
+* **Main breaks `module-cards`:** `api/src/front-office/MODULE.md` is 42 lines after #1918 and #2062 merged (f38c6b09b), so every PR tested on main is red. Fix proposed to Lead 79 (P-214): fold the three "Booking settings (FO-3a part 1a)" bullets into one bullet, 40 lines, no fact cut. Lead 79 decides when it lands and who makes it.
+* **#2109 PF-4dn** (head 1bfea5051) was opened at 19:45 IST, after the B1 freeze (P-692), while P-663 still held the row. Lane told to stop with the PR kept open (comment posted), and Lead 79 told.
