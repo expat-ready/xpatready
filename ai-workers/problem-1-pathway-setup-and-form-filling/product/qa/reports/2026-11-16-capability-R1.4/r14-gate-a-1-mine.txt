@@ -1,0 +1,25 @@
+NOTICE:  database "xr_studio_qa_r14" does not exist, skipping
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.
+isolated qa_r14 on http://localhost:4477 (xr_studio_qa_r14), stops itself in 20 min
+PASS  setup: a staff member of firm A (Owner) and of firm B sign in — {"firmA":"687dc85c-9ea8-416a-9cfc-2552f12e04f9","firmB":"631fd06d-57ab-4d82-88ba-fde046e085a6"}
+PASS  setup: each firm adds a lead through the API — {"b":201,"a":201}
+PASS  R1.4 1: firm B's lead is absent from firm A's list (firm A's own lead is in it) — {"status":200,"n":1}
+PASS  R1.4 1: firm B's lead by id, as firm A, is the plain 404 — 404
+PASS  R1.4 1: a write to firm B's lead, as firm A (take), is 404 and changes nothing (owner and updated_at as before) — {"status":404,"same":true}
+PASS  R1.4 2 (fail case): as xr_app with no app.firm_id, a walled table (fo_lead) reads no row — {"noFirm":"0","all":2}
+PASS  R1.4 2: with firm A set, xr_app reads exactly firm A's leads — {"withA":"1","ofA":1,"all":2}
+PASS  R1.4 2 (fail case): as xr_app with no firm, platform_staff reads no row — "0"
+PASS  R1.4 3: an X-Firm-Id / X-Firm-Key header or a ?firmId= naming firm B never reaches firm B's lead (404) — {"header":404,"query":404}
+PASS  R1.4 3: a body firmId naming firm B is refused or ignored, never lands in firm B — {"status":201,"firm":"A"}
+PASS  R1.4 3: a lead added with an X-Firm-Id header naming firm B lands in the signed-in person's firm A — 201
+PASS  R1.4 4: xr_app owns no table — "0"
+PASS  R1.4 4: the running server's pooled connections are the app's role (xr_app), never the owner — "xr_app"
+PASS  R1.4 5: R1.5's first step (/me after sign-in) answers firm A for firm A's person and firm B for firm B's — {"a":true,"b":true}
+PASS  R1.4 7: every walled table (70) forces row-level security (the 5 catalogues aside) — ""
+PASS  R1.4 7: every walled table but the catalogues and our own registers has a policy firm_id (platform_firm: id) = platform_session_firm() for read and write (the function reads app.firm_id) — []
+NOTE  R1.4 6: bypass uses during this run: 26 platform_bypass lines in the server log (isolated-qa_r14/api.log); 0 audit_event lines naming a bypass
+
+16/16 passed
+stopped qa_r14 (database and files removed; log in var/isolated-logs/qa_r14-api.log)
