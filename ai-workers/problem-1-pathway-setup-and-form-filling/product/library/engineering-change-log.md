@@ -1,5 +1,5 @@
 # Engineering Change Log
-Version: 1.0
+Version: 1.1
 Updated 17 Nov 2026 · owner: the tech lead · status: living master
 
 One row per change to the engineering set-up: when, what, where, who, the approval, how to check it and how to undo it. Newest last. Board Library row: "Engineering change log".
@@ -8,6 +8,7 @@ One row per change to the engineering set-up: when, what, where, who, the approv
 | Version | Date (IST) | Change |
 |---|---|---|
 | 1.0 | 17 Nov 2026 | First master (public-safety review applied), assembled from the engineering set-up change log of 17 Nov 2026 (rows C1-C16) |
+| 1.1 | 17 Nov 2026 | C17 added (private home for backups, P-678). |
 
 **Rules for this log.** Times are IST from the clock. Approvals name the decision row, or "founder card" when no row number was given. Money is shown only as public list prices of plans. Known gaps are tracked privately by the tech lead.
 
@@ -29,6 +30,7 @@ One row per change to the engineering set-up: when, what, where, who, the approv
 | C14 | 17 Nov 11:5x | Dependabot malware alerts on (alerts only, no CI) | the project repository > Settings > Advanced Security | setup agent | T8 (founder card) | Toggle shows On | Toggle off |
 | C15 | 17 Nov 11:5x | Cloud environment network allow-list updated (details tracked privately) | claude.ai cloud environment settings | setup agent | W2 (founder card) | environment settings | Revert the allow-list change |
 | C16 | 17 Nov ~11:5x (open) | Test `check_css1_index.ts`: CS-S1's own-PR diff assertion dropped (it failed every later PR changing api/src) | PR #2077 (head 91719a6) | the tech lead | P-214 check fix (standing) | The suite passes on PRs that change api/src | Revert the PR |
+| C17 | 17 Nov 12:2x | Private repository for notes and backups created in the organization; side notes synced there by `product/tools/private-sync.sh` | the organization (private repository) | Lead 76 | P-678 "Private repo + Mac backup (Recommended)" | the repository is private; the sync prints the pushed commit | archive or delete the private repository (organization settings) |
 
 **Decisions that change how the pipeline runs** (recorded by the tech lead, P-656..P-669):
 * Enterprise instead of Team.

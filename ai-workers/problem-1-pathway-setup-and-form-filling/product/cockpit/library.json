@@ -17,6 +17,6 @@
   {"name": "CI pipeline strategy", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/library/ci-pipeline-strategy.md", "status": "living", "version": "1.0", "feeds": [".github/workflows", ".mergify.yml"]},
   {"name": "Agent failure modes", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/library/agent-failure-modes.md", "status": "living", "version": "1.0", "feeds": [".claude/skills", ".claude/agents", "ai-workers/problem-1-pathway-setup-and-form-filling/product/RULES.md"]},
   {"name": "Engineering System v1", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/library/engineering-system.md", "status": "living", "version": "1.0", "feeds": ["ai-workers/problem-1-pathway-setup-and-form-filling/product/RULES.md", "ai-workers/problem-1-pathway-setup-and-form-filling/product/DECISIONS.md"]},
-  {"name": "Engineering change log", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/library/engineering-change-log.md", "status": "living", "version": "1.0", "feeds": [".github/workflows", ".mergify.yml", ".githooks", ".claude/settings.json", "ai-workers/problem-1-pathway-setup-and-form-filling/product/RULES.md"]}
+  {"name": "Engineering change log", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/library/engineering-change-log.md", "status": "living", "version": "1.1", "feeds": [".github/workflows", ".mergify.yml", ".githooks", ".claude/settings.json", "ai-workers/problem-1-pathway-setup-and-form-filling/product/RULES.md"]}
  ]
 }
