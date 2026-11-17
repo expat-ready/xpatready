@@ -1,17 +1,19 @@
-# Full-power plan: what to club with tonight's move, and what to keep outside (17 Nov 2026)
+# Full-power plan: what to club with the org move, and what to keep outside (17 Nov 2026; review 1 at 16:30 IST)
 
 Written 14:25-15:00 IST 17 Nov (clock: `TZ=Asia/Kolkata date`) by a read-only analyst for the tech lead, on the founder's ask A163 (`STATE.md:32`). Nothing was changed, run or labelled. GitHub reads: 46 REST calls (open PRs and their files) at about 14:30 IST.
 
-**The answer in six lines**
-1. Tonight's move stays **one change you can verify and undo**. Nothing that edits the repository's content merges between the transfer and the restart of the merge queue.
-2. **Before the transfer (A):** 23 items (the transfer included), mostly your enterprise checks N1-N9, the drain, and two switches. About 80 minutes of your clicks tonight in total (A + B), up to about 2 hours if something has to be recreated.
-3. **While the queue is off (B):** only re-pointing, checks E1-E7, and one cheap power move: re-run the red or stale checks of the ~20 approved PRs on 500 machines, so they join the queue the moment it turns on.
-4. **First 24-48 hours (C):** merge the approved backlog first, open new work by queue wait, then clean-up stages 0, 1 and 2a. **They touch 0 of the 44 open PRs.**
-5. **Later (D):** clean-up stages 2b to 8 from 19 Nov, as P-674 decided. Stage 3 (the app) touches 27 of 44 open PRs, stage 6 (the docs) 39 of 44, so they need empty windows, not tonight.
-6. **Dropped (E):** 18 items that were superseded by Enterprise, already done, or duplicates.
+**Review 1 (15:10-16:30 IST 17 Nov, an independent completeness reviewer, P-690):** the sources of the last 76 hours were swept (DECISIONS P-596 to P-690, history 14-17 Nov, Library, design pages, clean-up plan, side notes). 103 items were added (#110-#212, marked "(added in review 1)"), 4 were moved and 21 were fixed. Evidence and sources for every change: `design/full-power-plan-gaps-2026-11-17.md`. The move is now planned for **09:30 IST 18 Nov** (P-689: undrained at 18:30 means wait; nothing had merged since 13:27 at the 15:35 check). Tonight's transfer stays possible only if C1.2 is drained at 18:30, so "tonight" below reads "at the transfer".
+
+**The answer in six lines** (updated in review 1)
+1. The move stays **one change you can verify and undo**, now at **09:30 IST 18 Nov** (tonight only if the queue is drained at 18:30, P-689). Nothing that edits the repository's content merges between the transfer and the restart of the merge queue.
+2. **Before the transfer (A):** 32 items (the transfer included). N1-N9 and the checklist wording fix are already done. Left: the drain, the unpushed-work sweep, the 08:00 Proven report, two switches and a few one-minute answers from you. About 80 minutes of your clicks in total (A + B), up to about 2 hours if something has to be recreated.
+3. **While the queue is off (B):** 15 items: re-pointing (remotes, routines, auto-mode lines), checks E1-E7, and one cheap power move: re-run the red or stale checks of the ~20 approved PRs on 500 machines.
+4. **First 24-48 hours (C):** 63 items: merge the approved backlog first, open new work by queue wait, prove the enforcement checks (CK-1 to CK-3), start the daily ramp checkpoint (P-663), take the dated readings, then clean-up stages 0, 2a and 1 (0 of 44 open PRs touched).
+5. **Later (D):** 77 items: clean-up stages 2b to 8 from 19 Nov (P-674), the CI changes still without a PR (CI-0a, CI-0b, CI-A, Q2, Q6, Q7, F5, F11-F14), the guards and weekly reviews, and the founder's settings, security and outside-account cards.
+6. **Dropped (E):** 25 items that were superseded, already done, or duplicates.
 
 Abbreviations for sources (line numbers on the Lead branch `lead/2026-11-07-lead31` at `11cce9de`, unless marked):
-**CL** `design/org-move-checklist-enterprise-2026-11-17.md` · **CU** `design/repo-cleanup-plan-2026-11-17.md` on `origin/claude/repo-cleanup-plan-05e345` at `7d3cb7174` · **ML** `design/setup-master-list-2026-11-17.md` · **ES** `library/engineering-system.md` · **OP** `library/engineering-operating-model.md` · **CI** `library/ci-pipeline-strategy.md` · **FM** `library/agent-failure-modes.md` · **LOG** `library/engineering-change-log.md` · **EP** `design/enforcement-plan-2026-11-16.md` · **R1** `design/release1-operating-model-2026-11-16.md` · **DV** `design/claude-code-devops-research-2026-11-16.md` · **ST** `STATE.md` · **DEC** `DECISIONS.md` · **GH** the GitHub reads of 14:30 IST (open PRs and `/pulls/<n>/files`).
+**CL** `design/org-move-checklist-enterprise-2026-11-17.md` · **CU** `design/repo-cleanup-plan-2026-11-17.md` on `origin/claude/repo-cleanup-plan-05e345` at `7d3cb7174` (review 1: the branch head is now `d738232e1`; the cited lines still match, §7.3 adds the revised order) · **ML** `design/setup-master-list-2026-11-17.md` · **ES** `library/engineering-system.md` · **OP** `library/engineering-operating-model.md` · **CI** `library/ci-pipeline-strategy.md` · **FM** `library/agent-failure-modes.md` · **LOG** `library/engineering-change-log.md` · **EP** `design/enforcement-plan-2026-11-16.md` · **R1** `design/release1-operating-model-2026-11-16.md` · **DV** `design/claude-code-devops-research-2026-11-16.md` · **ST** `STATE.md` · **DEC** `DECISIONS.md` · **GH** the GitHub reads of 14:30 IST (open PRs and `/pulls/<n>/files`).
 
 Owners: **F** the founder · **TL** the tech lead · **SA** the founder setup agent (works with the founder) · **L** a lane (builder, qa, clean-up agent). Times are estimates unless they come from a source.
 
@@ -23,15 +25,15 @@ Status words: Open · Doing · Done · Unverified (no record found either way).
 
 | # | Item (source ID) | Purpose in plain words | Source | Owner | Status | Est. |
 |---|---|---|---|---|---|---|
-| 1 | N1 enterprise type | Confirm the enterprise uses personal accounts; if managed users, the transfer is impossible (no-go) | CL:171, CL:456 | F (SA) | Open (ST:12 "to founder-setup") | 2 min |
-| 2 | N2-N9 enterprise policies | Read Actions, allowed actions, runners, member privileges, 2FA, IP allow list, tokens, enterprise rulesets; nothing may block us | CL:172-194 | F (SA); TL records | Open | 13 min |
+| 1 | N1 enterprise type | Confirm the enterprise uses personal accounts; if managed users, the transfer is impossible (no-go) | CL:171, CL:456 | F (SA) | **Done** (review 1: ST:12 "N1-N9 all GO"; founder-setup's enterprise-n-checks file: "no blocker found"); moved to E | - |
+| 2 | N2-N9 enterprise policies | Read Actions, allowed actions, runners, member privileges, 2FA, IP allow list, tokens, enterprise rulesets; nothing may block us | CL:172-194 | F (SA); TL records | **Done**, TL records it (review 1, as #1); moved to E | - |
 | 3 | P3a-f org policies | Check the org keeps the defaults (OAuth restrictions, tokens, Actions, fork approval, runner groups, 2FA) | CL:204-217 | F | Unverified | 5 min |
 | 4 | P4 billing check | Enterprise shows paid, no Actions block, budget not blocking | CL:222-224 | F | Open | 3 min |
 | 5 | P5c Mergify plan on the org | Confirm Open Source plan with batches and 3 parallel checks | CL:233-235; DEC:32 (a) | F | Open: the dashboard did not list the org yet (DEC:32) | 5 min |
-| 6 | C1 wording fix for Mergify | C1 asks for "Merge Queue off in the new Mergify org" before the transfer, but that switch exists only after the transfer (DEC:32 (b)); move it to D1 | CL:310 vs DEC:32 | TL | Open | 5 min |
+| 6 | C1 wording fix for Mergify | C1 asks for "Merge Queue off in the new Mergify org" before the transfer, but that switch exists only after the transfer (DEC:32 (b)); move it to D1 | CL:310 vs DEC:32 | TL | **Done** (review 1: CL:310 now carries "Lead 78 correction", commit `8b154f0dc`); moved to E | - |
 | 7 | P7 Lead restart | The Lead session must start after the settings-line edit | CL:246, CL:312; LOG:24 | TL | Likely done: Lead 78 started 13:56 (ST:3), after the 11:48 edit (LOG:24); confirm | 2 min |
-| 8 | P8 record to private home | The settings record must sit in the private home before go | CL:261, CL:313; ST:12 | TL | Open: ST:12 names side notes `local_f6824017…/org-move-p8/`; that folder was empty at 14:2x IST | 5 min |
-| 9 | P8 founder screenshots | App installations, Mergify dashboard, Namespace workspace | CL:256-259; ST:23 | F (SA) | Open ("three screenshot links", ST:23) | 10 min |
+| 8 | P8 record to private home | The settings record must sit in the private home before go | CL:261, CL:313; ST:12 | TL | Doing (review 1: the record exists as founder-setup's `p8-settings-record-2026-11-17.md`; the `org-move-p8/` folder does not exist): copy it to the private home with `private-sync.sh` | 5 min |
+| 9 | P8 founder screenshots | App installations, Mergify dashboard, Namespace workspace | CL:256-259; ST:23 | F (SA) | Likely met (review 1: the P8 record says "Text records instead of screenshots"); the founder confirms in one line | 1 min |
 | 10 | P10 mail list | Tell the founder which mails to expect | CL:269 | TL | Open | 2 min |
 | 11 | P12 owner inventory rerun | Re-check no tracked file and no local copy names the old path, on the newest main | CL:277 | TL | Open (last run 0 files, DEC:6) | 10 min |
 | 12 | Mirror refresh | Refresh `.tools/backup-mirror.git` before the freeze | DEC:34 (3); ST:23, ST:42 | TL | Open | 10 min |
@@ -40,7 +42,7 @@ Status words: Open · Doing · Done · Unverified (no record found either way).
 | 15 | B1 stop new work | No Lead writes, Mac schedules stopped, lanes push and start no row, routines paused | CL:282-287 | TL | Open | 20 min |
 | 16 | B2 queue-gate off | Stops new labels so the queue can drain | CL:288-291 | F | Open | 2 min |
 | 17 | B3 drain | Two reads 6 min apart: 0 batch branches, 0 `queued`, Actions idle; postpone after 3 h | CL:292-302 | TL | Open (GH: 3 batch branches, 13 `queued`) | 2-3 h |
-| 18 | Drain helpers | #2086 by hand on green (P-214); re-run red parts of #2058, #2071, #2085; queued #2073, #2075, #2079, #2027 | ST:19-20 | TL | Doing | 30 min |
+| 18 | Drain helpers | #2086 by hand on green (P-214); re-run red parts of #2058, #2071, #2085; queued #2073, #2075, #2079, #2027 | ST:19-20 | TL | Doing (review 1: #2073, #2075, #2079 labelled 14:00; no merge since 13:27 at the 15:36 GitHub read) | 30 min |
 | 19 | C1.3 `CI_SHARD_RUNNER` empty | Keep jobs on GitHub's machines through the move | CL:316 | F | Open | 2 min |
 | 20 | C1.4 label-guard off | Stop the sweep from removing labels while the association is tested | CL:318 | F | Open | 2 min |
 | 21 | C1.5 REST and status | REST at least 1,000 left; githubstatus green | CL:319 | TL | Open | 1 min |
@@ -67,13 +69,13 @@ Status words: Open · Doing · Done · Unverified (no record found either way).
 | 42 | E15 first scheduled runs | label-guard, queue-gate, nightly 01:53, xfa-engine 02:11 | CL:405 | TL | Open | 10 min |
 | 43 | E16 peak jobs | Peak jobs in progress above 40 on the next busy day | CL:406 | TL | Open | 5 min |
 | 44 | Admission reopens | New capability rows again when P95 queue wait < 60 min and batch wait < 15 min; ceiling about 15 lanes after the move | DEC:31 (P-663); ES:250 | TL | Open | each check |
-| 45 | Prove capacity | qa lanes by journey group so Built becomes Proven | OP:383; R1:42 | TL | Doing | each check |
-| 46 | CK-1 part 2, CK-2 heartbeat | #2080 then #2081 one at a time; CK follow-up PR (3 Minors); #2081 is card T12's heartbeat | ST:20, ST:37; DEC:26 (T12) | TL; L | Open (GH: both unlabelled) | 2 batches |
+| 45 | Prove capacity | qa lanes by journey group so Built becomes Proven; the daily target is the P-663 ramp, not P-644's 10/10 (review 1; see #137) | OP:383; R1:42; DEC:33 (P-663) | TL | Doing | each check |
+| 46 | CK-1 part 2, CK-2 heartbeat | #2080 then #2081 one at a time; CK follow-up PR (3 Minors); #2081 is card T12's heartbeat; the founder already marked both ready (13:11); CK-3 and the first-run checks are #124-#127 (review 1) | ST:20, ST:37; DEC:26 (T12) | TL; L | Open (GH: both unlabelled) | 2 batches |
 | 47 | #2086 follow-up | One PR for its six Minors | ST:19; ST:31 | L | Requested (task_b721b218) | 1 PR |
 | 48 | Backlog rows P-650, P-653 | decision-impact keeps failing until they exist | ST:19 | TL | Open | 15 min |
 | 49 | Library on main + board rows | Masters to main, name fix "Engineering System v1" vs "Engineering system" | ST:38 | TL; board lane | Open (#2085 carries masters, GH) | 1 PR |
 | 50 | Stale item queue | `state/items.json` stale since 16 Nov 23:42 | ST:44 | TL | Open | 10 min |
-| 51 | Hourly pipeline metrics + one batch-failure definition | Numbers to judge full power (queue wait, batch failures, re-runs) | ML:50 (C7); ES:331; FM:546-547 (CR-14 step 1) | TL; L | Open | 1-2 PRs |
+| 51 | Hourly pipeline metrics + one batch-failure definition | Numbers to judge full power (queue wait, batch failures, re-runs) | ML:50 (C7); ES:331; FM:545 (CR-14 step 1; review 1 corrected the line) | TL; L | Open | 1-2 PRs |
 | 52 | +24 h / +48 h readings | Keep a change only if its number improved | ML:66 (D6); ES:319-323 | TL | Open (18-19 Nov 09:00) | 20 min each |
 | 53 | Unattended proof run | 6-7 h with merges flowing, no stall over 40 min, no red main over 1 h | ML:64 (D4) | TL | Later per ML; natural first chance tonight | overnight |
 | 54 | Start-hook output under 1.5 KB | Every session sees the whole start text (today 12,215 characters) | OP:329; ML:55 (C11); ES:329 | L | Unverified | 1 PR |
@@ -82,10 +84,10 @@ Status words: Open · Doing · Done · Unverified (no record found either way).
 | 57 | W3 fail-closed class job | High-risk change classes fail closed; separate queue later | DEC:26 (W3); ES:274 | TL | Decided, waiting | 1 PR |
 | 58 | W1 agent identity canary | Each approval attributable; one canary lane after the verified move, 30-min rollback | DEC:26 (W1); ES:272 | F creates account; TL | Decided, waiting | 30 min F |
 | 59 | T9 queue tuning | Two batch checks at once instead of three, alone for 24 h | DEC:26 (T9); ES:258 | TL | Decided, waiting | 1 PR |
-| 60 | Clean-up stage 0 | Tag, pure-move and stale-path checks, `PATHS-MOVED.md`, one root finder | CU:215 | L (clean-up) | Open | ~150 lines |
+| 60 | Clean-up stage 0 | Tag, pure-move and stale-path checks, `PATHS-MOVED.md`, one root finder | CU:215 | L (clean-up) | Prepared (review 1: branch `cleanup/stage-0-safety-net` at `e986a1336`; PR only on the Lead's word, CU:374) | ~150 lines |
 | 61 | Private copy of `commercial/` | Copy the 20 files to the private home, checked file by file, before stage 1 removes them | DEC:17 (P-677); CU:275 | TL; L | Open | 20 min |
-| 62 | Clean-up stage 1 | Remove ~1,000 October files that nothing reads; tag keeps them | CU:216; DEC:18 (P-676) | L | Open | 1 PR |
-| 63 | Clean-up stage 2a | Spend guard finds the root by a root finder, not by counting folders; ledger test | CU:217, CU:235; ST:40 | L | Open | <800 lines |
+| 62 | Clean-up stage 1 | Remove ~1,000 October files that nothing reads; tag keeps them | CU:216; DEC:18 (P-676) | L | Prepared (review 1: `86802739a`; the branch head `afd4d2e2c` is the held 1b, see #150) | 1 PR |
+| 63 | Clean-up stage 2a | Spend guard finds the root by a root finder, not by counting folders; ledger test | CU:217, CU:235; ST:40 | L | Prepared (review 1: `66be54145`; Done-when #149) | <800 lines |
 | 64 | Clean-up stage 2b | `p2` and `contracts` become packages; ~150 import lines | CU:217 | L | Open | <800 lines |
 | 65 | Clean-up stage 3 | Move the app to `apps/studio` | CU:218 | L | Open | ~2,050 renames |
 | 66 | Clean-up stage 4 | Move official sources, requirements, inventories to `reference/` | CU:219 | L | Open | ~230 renames |
@@ -94,8 +96,8 @@ Status words: Open · Doing · Done · Unverified (no record found either way).
 | 69 | Clean-up stage 7 | README, CODEOWNERS, rename to `expat-ready/platform` | CU:222; DEC:19 (P-675) | L; F (rename) | Open | ~200 lines |
 | 70 | Clean-up stage 8 | Stop the screenshot growth | CU:223 | L | Open | ~100 lines |
 | 71 | Refactor R0-R9 | Fences, folders by module and feature; knip, dependency-cruiser, jscpd report-only first | CU:326-338; DEC:12 (P-682) | L | Open | 3-4 days |
-| 72 | Hook paste U1-U5 / #1865 lines | Wire the built guards in settings | OP:294-300; EP:207; R1:55 | F pastes; TL | Open | 15 min F |
-| 73 | Enforcement rollout steps 1-15 + its four questions | Each guard as its own small PR | EP:208-221, EP:286-290 | L; TL; F (questions) | Decided, waiting (ST:43) | 15 PRs |
+| 72 | Hook paste U1-U5 / #1865 lines | Wire the built guards in settings; precondition F14 or a lead-read-guard exemption (OP:296; review 1, see #170) | OP:294-300; EP:207; R1:55 | F pastes; TL | Open | 15 min F |
+| 73 | Enforcement rollout steps 1-15 | Each guard as its own small PR; the four questions were answered on 16 Nov (P-635, review 1) | EP:208-221, EP:286-290; DEC:60 (P-635) | L; TL | Decided, waiting (ST:43) | 15 PRs |
 | 74 | T11 Lead compaction trial | One Lead a day instead of many hand-overs | DEC:26 (T11); ES:260 | TL | Decided, waiting | 1 day |
 | 75 | T13 Rules v2 page | About 21 enforced rules plus 12 principles; old rows mapped | DEC:27 (P-667); OP:220-240 | TL | Decided, waiting | 1 day |
 | 76 | T14 lint tools (= ML C6) | eslint and pins, report-only first | DEC:26 (T14); ES:263; OP:400 | L | Decided, waiting | 1 PR |
@@ -107,16 +109,16 @@ Status words: Open · Doing · Done · Unverified (no record found either way).
 | 82 | CodeQL | Code scanning, deferred to after the move | DEC:23 (P-671) | F (SA) | Later | 15 min F |
 | 83 | A3 backup owner | Second owner or stored recovery codes | CL:136-143; CL:443 (G10) | F | Open | 5 min |
 | 84 | A5 Pro | Keep Pro a week past a successful move, then decide | CL:149-151; DEC:36 | F | Doing (kept) | 2 min |
-| 85 | R5/E12 Namespace + #2032 | Restore `CI_SHARD_RUNNER` only if overflow is still wanted | CL:391, CL:402, CL:130 | F; TL | Open (GH: #2032 `dequeued`) | 1 card |
+| 85 | R5/E12 Namespace + #2032 | Restore `CI_SHARD_RUNNER` only if overflow is still wanted | CL:391, CL:402, CL:130 | F; TL | Open (GH: #2032 `dequeued`; still open at the 15:36 read; trial end unknown, #123) | 1 card |
 | 86 | DevOps gaps 1-5 | Claude reviewer in GitHub, headless checks, output-trimming hook, per-task cost, sandbox review | DV:49-53 | TL; L | Open | days |
 | 87 | Old branches | ~1,242 remote-tracking refs in the local clone (900 `claude/`); lead-watch's 30 "no PR" lines | ST:22; `git branch -r` | TL | Open | 1 h |
-| 88 | Fresh Lead branch | The Lead branch is 1,944 behind and 1,367 ahead of main; hooks run the branch's scripts | OP:109-115 | TL | Open (option 2 recommended) | 1-3 h |
-| 89 | Founder-side items | Time Machine or iCloud for 1.3 GB (P-678); support contact (P-669); AWS later (ML B11) | DEC:16; DEC:25; ML:36 | F | Open | 10-20 min F |
+| 88 | Fresh Lead branch | The Lead branch is 1,944 behind and 1,367 ahead of main; hooks run the branch's scripts | OP:109-115 | TL | Open (option 2 recommended; a new branch first needs #122, the routines read the night queue from this branch) | 1-3 h |
+| 89 | Founder-side items | Time Machine or iCloud for 1.3 GB (P-678); AWS later (ML B11); the support contact is not needed (A157, review 1, #209) | DEC:16; DEC:25; ML:36 | F | Open | 10-20 min F |
 | 90 | Model and effort into RULES | P-608's update from P-666 | ML:77 (E6); DEC:28 | TL | Open | records PR |
 | 91 | Org rulesets / GitHub's own merge queue | Enterprise-level options now open; none added during the move | CL:278 (P13); CL:130 (S22) | F; TL | Not decided | card |
 | 92 | P1 Support ticket (also ML B12, ES T2 ticket line) | Higher job limit | CL:199; ML:37; ES:251 | F | Not needed | - |
 | 93 | Team plan route (ES T2, CI D1 and §13 step 1, OP §9 item 1) | Buy Team, 60 jobs | ES:251; CI:347, CI:365; OP:394 | F | Superseded | - |
-| 94 | Move timing cards (ES T3; OP §2 11:00-12:00 window) | Move 18 Nov 09:30 or 17 Nov 11:00 | ES:252; OP:83 | F | Superseded | - |
+| 94 | Move timing cards (ES T3; OP §2 11:00-12:00 window) | Move 18 Nov 09:30 or 17 Nov 11:00 | ES:252; OP:85 (review 1 corrected the line) | F | Superseded | - |
 | 95 | Narrow #2032 / unset the variable (CI D3; ES §8 10:30) | Keep long jobs on GitHub's machines | CI:367; ES:327 | TL | Superseded | - |
 | 96 | Devin steps (P5d, D4, E14; DV Devin billing) | Connect Devin to the org | CL:236, CL:367, CL:404; DV:69-71 | F | Dropped | - |
 | 97 | ML B2 ruleset on main | Required `ci`, no force push, no delete | ML:27; OP:395 | F | Done | - |
@@ -125,28 +127,134 @@ Status words: Open · Doing · Done · Unverified (no record found either way).
 | 100 | ML B6 / W2 cloud environment | Limited environment | ML:31; ES:273 | F | Done | - |
 | 101 | ML B7, ML C6 lint | Lint yes and lint check | ML:32, ML:51 | F | Duplicate | - |
 | 102 | ML B9 / T15 plan capacity | Usage and reset | ML:34; ES:264 | F | Done | - |
-| 103 | ML B10 which Library; E2-E5, E8 masters; E1 research into the repo | Library home and masters | ML:35, ML:72-79 | TL | Done | - |
+| 103 | ML B10 which Library; E2-E5, E8 masters; E1 research into the repo | Library home and masters (the weekly re-read and ML's own "Needs you" cells stay: #155, #178) | ML:35, ML:72-79 | TL | Done | - |
 | 104 | ML C10, D5, C2, D1 | Rules v2, compaction, queue settings, machines | ML:46, ML:54, ML:61, ML:65 | TL | Duplicates / done | - |
 | 105 | "Checklist still says Team, 60 jobs" | Fix the checklist text | ST:23, ST:39 | TL | Done | - |
 | 106 | Declined or standing cards: L3, L8, L10, CI D5, D9 | Self-hosted runners, private repo, Build Lead read, ultracode | ES:285, ES:290, ES:292; CI:369, CI:373 | - | Declined or standing | - |
 | 107 | Done prep: P2, P3g, P5 installs, P6, P7 edit, P9 block | Org, public membership, apps, REVIEWERS, settings lines, in-flight block | DEC:35, DEC:32, DEC:33 (12, 13); ST:12 | F; SA; TL | Done | - |
-| 108 | W6 desk settings | Desk stays Fable high | ES:277 | - | No action | - |
-| 109 | ES §8 and OP §2/§9 dated plans for 17 Nov morning | The 09:45-18:00 runbook and the 10:30 agenda | ES:315-345; OP:76-96, OP:388-410 | TL | Superseded | - |
+| 108 | W6 desk settings | Desk stays Fable high; no Fable for specifying lanes until W4's replay, which changes P-608 (3): a records change folded into #90 (review 1) | ES:277; DEC:28 (P-668) | TL | Open (records); moved E → D | records PR |
+| 109 | ES §8 and OP §2/§9 dated plans for 17 Nov morning | The 09:45-18:00 runbook and the 10:30 agenda | ES:315-345; OP:76-96, OP:388-410 | TL | Superseded as timetables; their open actions are #51, #54, #55, #57 and, added in review 1, #129, #134, #135, #156-#176 | - |
+
+
+### 1b. Items added in review 1 (17 Nov 15:10-16:30 IST; sources and quotes in `design/full-power-plan-gaps-2026-11-17.md` §1)
+
+| # | Item (added in review 1) | Source | Owner | Status | Est. | Bucket |
+|---|---|---|---|---|---|---|
+| 110 | Every open PR either finishes or is named in the P9 in-flight block; the Build Leads' open-PR lists are the input (added in review 1) | DEC:36 P-660 "every open PR finishes or is listed in the P9 block"; ST:22 "lists by 19:30/20:00" | TL | Open | 20 min | A |
+| 111 | Sweep for work that exists only locally before the freeze: PF-6 part 2a and FO-2b branches not on GitHub, qa case-side stray branch (added in review 1) | H/STATE-2026-11-17-1405-lead77s2-asks-A159-A161-rows.md:7 "PF-6 part 2a branch not on origin"; FS/step1-claude-ai-cleanup-2026-11-17.md:14 "possible unpushed work" | TL | Open | 20 min | A |
+| 112 | Disk margin for fresh lanes after the move (a standby was blocked below 7 GB) (added in review 1) | H/STATE-2026-11-17-1515-lead78s2-asks-A162-A163-rows.md:5 "blocked by disk 6.6 GB (< 7)" | TL | Open | 10 min | A |
+| 113 | Read false blocks and auto-mode pauses after the deny-line paste, at 16:30 and 20:30 (added in review 1) | DEC:26 P-670 "reads false blocks and auto-mode pauses at 12:30, 16:30 and 20:30 IST"; ES:302 | TL | Open | 10 min each | A |
+| 114 | The 18 Nov 08:00 Proven report against the 13-16 forecast, with slip reasons; the evening forecast re-measure (added in review 1) | ES:339 "Report Proven against 30 and against 13-16, with slip reasons"; R1:59 "The forecast is re-measured each evening" | TL | Open | 20 min | A |
+| 115 | A two-minute going-away checklist for the founder before he leaves tonight (added in review 1) | AS:137 "A 2-minute going-away checklist" | F with TL | Open | 2 min | A |
+| 116 | Accounts register rows for the Enterprise, the org, the Mergify org and Namespace (added in review 1) | AR:22 "every new outside account gets a row here the day it is created" | TL | Open | 10 min | A |
+| 117 | Write the rate-limit facts in STATE (REST stays per user; the GITHUB_TOKEN figure under Enterprise) (added in review 1) | CL:270 "Write down in STATE that rate limits do not grow" | TL | Open | 5 min | A |
+| 118 | Have the rollback steps F1-F4 ready to run, not only the trigger (#14) (added in review 1) | CL:421 "freeze again (B1 to B3, C1);" | TL | Open | 10 min | A |
+| 119 | Answer the Claude app's pending permission update on GitHub (added in review 1) | FS/p8-settings-record-2026-11-17.md:10 "a permission update request is pending" | F (SA) | Open | 2 min | A |
+| 120 | Fix the builder skill and the night queue so PRs open non-draft after Approve (they still say draft) (added in review 1) | SK/next/SKILL.md:25 "gh pr create --draft --base main"; NQ:8 "open the PR as a **draft**"; DEC:13 P-683 | TL; F word | Open | 15 min | C |
+| 121 | Re-point the auto-mode and settings lines that name the old path; drop the old path later (added in review 1) | DC:270 "Re-point after the move (the auto-mode lines name the old path)."; LOG:24 | TL; F pastes | Open | 10 min | B |
+| 122 | Re-point the three lane-starter routines, which read the night queue from the Lead branch (added in review 1) | NQ:3 "read this file from branch `lead/2026-11-07-lead31`" | TL | Open | 5 min | B |
+| 123 | Read the Namespace trial end date and price during the settings compare (added in review 1) | FS/p8-settings-record-2026-11-17.md:27 "No trial end date is shown anywhere we could read" | TL | Open | 5 min | B |
+| 124 | CK-2 heartbeat: dispatch the first run after #2081 merges, confirm one green run and a clean conformance check, read the first two summaries (added in review 1) | SN/local_c3e4ea74-99af-4b49-a4a8-d4c6b6b916db/ck-builder-notes.md:22 "confirm one green run on main"; ST:20 "dispatch its first run after merge" | TL | Open | 15 min | C |
+| 125 | CK-3: two board lines, "enforced: yes/no, last checked", stale after 45 min (added in review 1) | FS/checks-brief.md:20 "Stale over 45 min shows \"unknown (stale)\"" | BK | Open | 1 PR | C |
+| 126 | CK-1's ruleset item flips from "not yet" to checked after the move (added in review 1) | FS/checks-brief.md:6 "tolerate \"not yet\" until move day" | TL | Open | 5 min | C |
+| 127 | Ratify the nightly alarm time (brief 04:00, set 10:00) (added in review 1) | FS/HANDOVER.md:26 "Nightly alarm threshold 10:00 IST (setup agent decision" | TL | Open | 5 min | C |
+| 128 | After #2073 merges, check Mergify shows the `verdicts` queue; mark P-664 enforced (added in review 1) | LOG:27 "Mergify shows a `verdicts` queue"; RU:143 "(.mergify.yml priority owed)" | TL | Open | 5 min | C |
+| 129 | Mergify priority for near-Proven product PRs (added in review 1) | OP:178 "Priority for near-Proven **product** PRs: a `.mergify.yml` PR" | TL; L | Open | 1 PR | C |
+| 130 | Change-log upkeep: version 1.2 for C18-C19; stale rows C11, C12, C16; rows for CK, P-688/P-689 and the transfer (added in review 1) | LOG:11 "C17 added"; FS/engineering-change-log-2026-11-17.md:22 "PR #2077 (head 91719a6)" | TL | Open | 20 min | C |
+| 131 | Next version of the Library masters: mark the Team, 40-job and dated-plan lines superseded; daily refresh (added in review 1) | ES:394 "The next version follows tomorrow's 08:00 report and the move."; ES:340 | TL | Open | 1 h | C |
+| 132 | Update RULES' account facts (still "Pro, 40 jobs") after the move (added in review 1) | RU:5 "GitHub Pro, 40 Actions jobs at once" | TL | Open | 5 min | C |
+| 133 | Retune the routines' CI brake (30 queued runs) for 500 jobs (added in review 1) | NQ:3 "Over 30: reply" | TL | Open | 10 min | C |
+| 134 | Restart the usage log and commit the baseline snapshot script (added in review 1) | ES:326 "Restart the usage log. Commit the baseline snapshot script."; SN/local_9ae95739…/lead74-a149/synthesis.md:387 "stops at 15 Nov 22:04" | TL | Open | 30 min | C |
+| 135 | Set the sessions moved to xhigh back to medium; give every helper an explicit model and effort (added in review 1) | ES:208 "Set them back to medium."; ES:206 | TL | Open | 10 min | A |
+| 136 | T10 builders on high: the 48-hour stop-rule comparison (review rounds, CI rounds, plan points) (added in review 1) | DEC:30 P-666 "stop rule at 48 h comparing review rounds, CI rounds and plan points"; ES:309 | TL | Open | 1 h | C |
+| 137 | P-663 daily checkpoint (Proven against the ramp, reason for a miss, what changes), the resource plan, a priced card if the Claude plan cannot carry it (added in review 1) | DEC:33 "a daily checkpoint (the day's Proven against the ramp" | TL | Open | 20 min a day | C |
+| 138 | Each evening, the day's three biggest time losses with a fix each (added in review 1) | R1:50 "every evening the Lead lists the day's three biggest time losses" | TL | Open | 15 min a day | C |
+| 139 | Measure median Built to Proven before and after halving qa time (due 17 Nov) (added in review 1) | DEC:56 P-640 "median hours Built→Proven before and after ... checked 17 Nov" | TL | Open | 30 min | C |
+| 140 | Check the Lead's start read is 70k tokens or less (19 Nov) (added in review 1) | DEC:81 P-615 "a Lead's start read 70k tokens or less (desk F13, 60%, check 19 Nov)" | TL | Open | 15 min | C |
+| 141 | Outside clocks due 18 Nov: AWS domain reminder or Cloudflare; BoldSign or Signority; Stripe test keys (added in review 1) | OD:7 "remind him when PF-8a's PR opens or on 18 Nov"; OD:14 "decide by 18 Nov"; DEC:78 P-618 "BoldSign -> Signority on 18 Nov" | F; TL card | Open | 15 min F | C |
+| 142 | Anti-stall review (A130): merge records PR #2068, put its 7 decisions to the founder one at a time, then tick A130 (added in review 1) | H/STATE-2026-11-17-1022-lead74s2-lead74-now-block.md:7 "its 7 decisions go to the 10:30 batch"; ST:28 "A130 stall research still owed" | TL; F | Open | 30 min | C |
+| 143 | Release the leaked claim branch `claim/CS-W3-part-0` (added in review 1) | AS:117 "claim/CS-W3-part-0 leaked" | TL | Open | 2 min | C |
+| 144 | Remove the stale "Lead 34" watchdog line; the first standby is the watchdog (added in review 1) | ST:54 "Watchdog: first standby (Lead 34 once Lead 33 tells it)"; AS:105 | TL | Open | 5 min | C |
+| 145 | Records PRs merged twice a day (added in review 1) | ES:229 "merged twice a day"; CI:284 | TL | Open | standing | C |
+| 146 | Fix the top flaky suites and the nightly's three reds (c613 still in the nightly list, b78 timeout) (added in review 1) | CI:129 "fix the top flaky (bk5 start, c95)"; H/STATE-2026-11-17-1255-lead76s2-nightly-and-asks-A137-A149.md:3 "re-measure at tonight's nightly" | L | Open | 1-2 PRs | C |
+| 147 | Dispatch nightly C8.2 + C11.6 once under 20 runs queued; log qa Minors QA-504-506 (added in review 1) | H/STATE-2026-11-17-1435-lead78s2-takeover-note.md:3 "dispatch nightly C8.2 + C11.6 on the checkpoint once under 20 runs queued" | TL | Open | 5 min | C |
+| 148 | The founder approves the clean-up plan (phase 2 needs it) (added in review 1) | CU:3 "plan approval and the Lead's go pending" | F | Open | 2 min | A |
+| 149 | Stage 2a's Done-when before its PR: full suites, Docker image answering `/api/health`, `start.sh` demo smoke (added in review 1) | CU:372 "the Docker build of `studio/Dockerfile` with the image answering `/api/health`" | L | Open | runs | C |
+| 150 | Open the stage 1 PR from `86802739a` only; the branch head `afd4d2e2c` is the held 1b commit (added in review 1) | CU:369 "`afd4d2e2c` (**held**)"; `git log origin/cleanup/stage-1-archive-october` | TL | Open | 2 min | C |
+| 151 | Confirm the Codex/Goose scout still runs before stage 1 removes its launch entries (added in review 1) | CU:109 "Lead to confirm it still runs" | TL | Open | 5 min | C |
+| 152 | Verify the allow rule for scheduled skills and the self-paced loop before the unattended proof run (added in review 1) | GR:116 "Verify the allow rule exists."; GR:117 | TL | Open | 10 min | C |
+| 153 | Check `/model` for "Requires usage credits" before any Fable use outside the desk (added in review 1) | SN/local_9ae95739…/lead74-a149/synthesis.md:383 "Check the `/model` picker for a \"Requires usage credits\" label" | TL | Open | 2 min | C |
+| 154 | Archive Leads 64, 72 and 74 (69 and 70 done 13:5x); delete Lead 74's 0.4 GB snapshot (added in review 1) | ML:15 "Lead 64 refused (still has a Remote Control client"; ML:17 "Lead 74's 0.4 GB snapshot" | TL | Open | 10 min | C |
+| 155 | Bring the master list, outside-dependency and accounts registers up to date (they feed this plan, P-690) (added in review 1) | ML:3 "The tech lead updates this file at every change."; OD:5 "Status (15 Nov 21:5x IST)" | TL | Open | 20 min | C |
+| 156 | CI-0a: `guards` required by path, wider paths, 5 orphan tests (added in review 1) | OP:167 "F6 `guards` required by path, wider paths, 5 orphan tests" | L | Open | 1 PR | D |
+| 157 | CI-0b: drop label-guard's `workflow_run` (added in review 1) | OP:168 "F12 drop label-guard's `workflow_run` (CI-0b)" | L | Open | 1 PR | D |
+| 158 | Read the cause of the startup_failure runs, then fix (added in review 1) | OP:169 "Read the cause first; fix in one lane PR" | L | Open | 1 PR | D |
+| 159 | CI-A: container proof inside `ci` and in the merge batch (added in review 1) | OP:166 "`ci` calls it for code batches (CI-A)"; CI:127 | L | Open | 1 PR | D |
+| 160 | Q2: fast checks first; file-only checks move into `kind` (added in review 1) | CI:140 "Fast checks first"; OP:137 | L | Open | 1 PR | D |
+| 161 | Q6: shards sized to the work left; nightly shard rebalance (added in review 1) | CI:144 "Shards sized to the work left"; SN/local_28bf6046-9c98-4f67-8b04-7f1801873579/ci-speed-audit-2026-11-17.md:71 | L | Open | 1 PR | D |
+| 162 | Q7: gate jobs off the long line (added in review 1) | CI:145 "Gate jobs off the long line" | L | Open | 1 PR | D |
+| 163 | F5: fix pr-rules' false failures, start the 2-day clock, then required (P-635 (3)) (added in review 1) | OP:129 "fix the false failures, start the 2-day clock"; DEC:60 | TL; L | Open | 1 PR | D |
+| 164 | F11: check-docs fails on a future time; remove the unused `m3-guard.sh` (added in review 1) | OP:246 "F11 check-docs fails on a future time"; OP:247 | L | Open | 1 PR | D |
+| 165 | A3 one allow-list door for GitHub writes (curl writes pass the gh deny lines); A7 push before stop; A10 actionlint/zizmor later (added in review 1) | OP:248 "A3 one allow-list door for GitHub writes"; FS/private-out/operating-model-5c-guard-gaps-2026-11-17.md:3 | L | Open | 1-2 PRs | D |
+| 166 | A5 round counter in label-guard; review brief with round caps (3 review, 2 CI-fix) (added in review 1) | OP:147 "A5: round counter in label-guard"; DC:405 "a three-round review cap and a two-round CI-fix cap" | L | Open | 1 PR | D |
+| 167 | A6 touch-list overlap in lane-preflight; migration stamp in pr-rules (added in review 1) | OP:177 "A6: touch-list overlap in lane-preflight" | L | Open | 1 PR | D |
+| 168 | PR-W: pr-open-guard in pre-push; branch-sweep in lead-watch (added in review 1) | OP:127 "PR-W: `pr-open-guard.sh` in pre-push" | L | Open | 1 PR | D |
+| 169 | lead-watch and factory-board judge red from `ci` only; ACT on any failed gh call (added in review 1) | OP:186 "`lead-watch red()` and `factory-board` read `ci` only"; AS:138 | L | Open | 1 PR | D |
+| 170 | F14: measuring scripts and the board move to GraphQL reads (precondition of the hook paste #72) (added in review 1) | OP:170 "Move `app-code-prs.sh` and the board (about 150 REST calls a run) to GraphQL"; DEC:41 P-655 | L | Open | 1 PR | D |
+| 171 | Test tooling: Playwright traces as artifacts; a "route twice" race suite; a screen-text and overflow check, report-only first (added in review 1) | OP:139; OP:138 "Then a \"route twice\" suite"; OP:140 | L | Open | 2-3 PRs | D |
+| 172 | V1 capability index, `/verify`, studio-look; qa skill 8 KB or less; BUGS rows by capability ID (added in review 1) | OP:157 "V1: a generated capability index of about 15 KB"; OP:156 | L; TL | Open | 2 PRs | D |
+| 173 | Fix P-611c and P-312 in the rule-ID map before the next RULES records PR (added in review 1) | OP:226 "Fix before the next records PR" | TL | Open | 15 min | C |
+| 174 | Instruction-file trims PR A and PR C (RULES D12, S6, S12) and the other start-read trims (added in review 1) | OP:108 "Draft instruction PRs A, B, C"; SN/local_9ae95739…/lead74-a142-operating-model/instruction-files-plan.md:171 | TL | Open | 2 PRs | D |
+| 175 | Ultrareview: the 3 free runs only, never `--post`, on the next money, schema or permission PRs (added in review 1) | OP:148 "**the 3 free runs only, never `--post`**" | TL | Open | 3 runs | D |
+| 176 | Routines: a turn cap, a WIP brake, a run log, a starter script; quiet PRs resumed first (added in review 1) | OP:196 "KEEP; add a turn cap"; ES:152; AS:116; AS:136 | TL | Open | 1 PR | D |
+| 177 | Burn guards for unattended nights: a push alert at 85%; trim lanes over 4%/h after 22:00 (added in review 1) | OP:199 "Fallback: a push alert at 85%"; DC:231 "Above 4% an hour after 22:00 the tech lead trims lanes" | TL | Open | standing | C |
+| 178 | Weekly reviews: `/doctor prompt-audit`, any "enforced" rule that broke again, the permission-refusal log and top stall cause, a prompt audit at each model change (added in review 1) | OP:197; ES:310; FM:304 "Log permission refusals and hand over the top stall cause each week"; FM:300 | TL | Open | weekly | D |
+| 179 | Monday "what's new" check (P-611 (3)); next due 23 Nov (added in review 1) | DEC:85 "Every Monday (IST) the Lead or a read-only watcher checks"; GR:143 | TL | Open | 10 min weekly | D |
+| 180 | Score the dated forecasts on their dates: F4 18 Nov, F2 21 Nov, F3 23 Nov, the desk's own; standing against 101 on 29 Nov (added in review 1) | DEC:90 P-606 "F4 18 Nov (nightly parts < 50 min, 70%)"; DEC:99 P-597 "carry a probability and a check date"; ES:311 | TL | Open | 10 min each | C |
+| 181 | Points per Proven and per merged PR against the baseline; a one-day token split by role (added in review 1) | ES:308; OP:368 "One-day token split by role" | TL | Open | 1 h | D |
+| 182 | Compare the talk 1 transcript with the official recording before quoting it (added in review 1) | ES:307 "Compare our talk 1 transcript with the official recording" | TL | Open | 20 min | D |
+| 183 | T16: record #2062 as a departure (0.6 threshold Sample); Manitoba stays Sample (added in review 1) | ES:265 "Record it as a departure from the requirements"; DC:211 | TL | Open | records | D |
+| 184 | T17: amend P-203 (skill overflow to its own file), run consolidate-memory, operating model master in the board Library (added in review 1) | DEC:28 P-668 "T17 amend P-203 (skill overflow to its own file)"; OP:404; OP:406 | TL; F 10 min | Open | 1 records PR | D |
+| 185 | One founder settings card: the one-week deny-instead-of-prompt trial, blockWritesOutsideWorkingDirectories, CLAUDE_CODE_SUBAGENT_EFFORT, the sandbox key, the security update (added in review 1) | ES:273 "A one-week trial of deny-instead-of-prompt"; GR:114-123; DEC:85 P-611 | F | Open | 15 min F | D |
+| 186 | Context diet: measure `/context` first, then rows 1-19 and its five founder questions; settle Drive (needed in required-tools, off in the diet) (added in review 1) | CD:17 "Check this first with `/context`."; CD:182-200; CD:215 | TL; F | Open | 1 h | D |
+| 187 | Enforcement plan items beyond steps 1-15: B197/B198 then their settings lines, hook 18 weekly judgment audit, measures at 3 and 7 days, the daily read of every block, later linters, health owner fields, a conditional health-keeper lane (added in review 1) | EP:10 "need the founder's settings lines once they merge"; EP:197; EP:233 "Compared after 3 days and 7 days"; EP:234; EP:223; EP:267; EP:284 | TL; L | Open | several PRs | D |
+| 188 | Backlog rows still prose in RULES: B193 part 4 WIP script, B194 hot-file split, B198, B200, B201 tests, B199 part 2 fewer test parts (added in review 1) | RU:127-128 "prose (B193, B194)"; RU:130; RU:133; RU:134; R1:23 | L | Open | several PRs | D |
+| 189 | Board owed: per-stage Flow measures as ACT lines (P-646); wait-time targets met or missed (P-619 (8)) (added in review 1) | DEC:50 "Next (owed): the board's per-stage Flow measures"; RE:75 | BK | Open | 1-2 PRs | D |
+| 190 | Cloud-environment domains asked by the FO-7s0 lane (help.clio.com, central.xero.com, help.lawpay.com): the founder's call (added in review 1) | DEC:49 P-647 "help.clio.com, central.xero.com, help.lawpay.com on the cloud environment: the founder's call" | F | Open | 5 min | D |
+| 191 | Supply chain: SHA-pinning card (P-583 steps 8-11), report-only dependency audit, shape SEC-1 (Dependabot alerts) (added in review 1) | DEC:113 P-583 "steps 8-11 by PRs (SHA pinning"; DEC:25 P-671 "Not changed on purpose: SHA pinning"; H/STATE-2026-11-14-1350-lead44s2-old-hand-over-block.md:11 "SEC-1 to shape (Dependabot 28 open, 8 high in the app)" | TL; F | Open | card + rows | D |
+| 192 | Audits from the decision cards: tamper audit of merges since 10 Nov, seeded defects and canaries, a factory manifest, third-party memory hooks, the self-hosted Mac runner on a public repository (added in review 1) | DC:407 "A read-only tamper audit of PRs merged since 10 Nov"; DC:408; DC:409; DC:339; DC:486 | TL; F | Open | days | D |
+| 193 | Registry extras: a property-test library proposal, the founder names CR-11's paths, the INVARIANT tag decision, fix or demote a false block within 2 days (added in review 1) | FM:550; FM:571 "let the founder name the paths he wants to see"; FM:341; FM:519 "fixed or demoted within 2 days" | TL; F | Open | with #78 | D |
+| 194 | Clean-up per-stage protocol: announce the empty window, gate checks (CI, check-docs, board, `start.sh` demo smoke, stale paths), PATHS-MOVED and change-log rows, rebase guide, restart lanes and routine prompts after stage 5, compare job lists (added in review 1) | CU:201 "The Lead announces the window"; CU:202; CU:204; CU:237; CU:236; CU:239; CU:241 | TL; L | Open | each stage | D |
+| 195 | Clean-up stage 2c: seven files open PRs edit and about 250 folder-counting tests, in 2-3 PRs (added in review 1) | CU:384 "the ~250 tests that count folders switch to the finder" | L | Open | 2-3 PRs | D |
+| 196 | `fromStored()` map for stored database paths, plus the live POC data, in stage 2b/3 (added in review 1) | CU:356; CU:385 "with `fromStored()` and the live POC data (7.1)" | L | Open | with #64/#65 | D |
+| 197 | Remove stage 5's old-path stubs after 7 days (added in review 1) | CU:220 "removed in a later PR" | L | Open | 1 PR | D |
+| 198 | Affected-only CI for the modular monolith (added in review 1) | CU:63 "run the tests of the modules a PR touches"; DEC:14 P-682 "affected-only CI" | TL; L | Open | with #71 | D |
+| 199 | Dated founder items: Enterprise first payment 1 Dec; the Ultra price in the spend master; interaction limit renewal about 17 May 2027; outside-account rows OD 2, 3, 5-7 and AR 3-5, 7-9, 12 (added in review 1) | FS/founder-answers-2026-11-17.md:12 "next payment 1 Dec"; SN/local_fa783599…/spend/spend-master.json:10; FS/p8-settings-record-2026-11-17.md:50 "until about 17 May 2027"; OD:8-13; AR:9-18 | F; TL | Open | per item | D |
+| 200 | Private home: pointer README in proof-copy-api, P-677 and §5c copies confirmed in expat-ready/private, daily public mirror refresh (added in review 1) | DEC:17 P-679 "gets a pointer README"; DEC:18 P-678 "moves the private copies named in P-677 and the operating-model §5c there" | TL | Open | 20 min | C |
+| 201 | CI cost follow-ups (decide at #79): Namespace open-source program, `workflowSizeGuideline: small`, caches for dependencies and the database, an nproc measure (added in review 1) | CI:166 "Apply to Namespace's open-source program"; CI:185; SN/local_28bf6046…/ci-capacity-options-2026-11-17.md:77; SN/local_28bf6046…/ci-speed-audit-2026-11-17.md:73 | TL; F | Open | 1 h | D |
+| 202 | Anti-stall fixes still open: away-flag hook, launchd heartbeat with a push test, retire the P-402 local line, items.py ingests lane questions, generated module-card lines, questions without a Lead number, RULES "Enforced by" for five rules (added in review 1) | AS:108; AS:109 "run from a Mac launchd job"; AS:110; AS:112; AS:131; AS:135; AS:151 | TL; F paste | Open | several PRs | D |
+| 203 | Cards 8b and 8c to the founder: re-run a failed shard once and requeue; auto-quarantine a suite that passes only on retry (added in review 1) | AS:133 "Auto-quarantine a suite that passes only on retry twice in 24 h"; AS:134; ES:231 | F | Open | 2 cards | D |
+| 204 | Next-week list from the blank-sheet design: features.json, permission tests, a born-flaky check, auto-revert, graduated autonomy (added in review 1) | SN/local_9ae95739…/lead74-a146/gap-and-migration.md:347 "a born-flaky check, auto-revert" | TL | Open | cards | D |
+| 205 | Hourly wake of stalled cloud lanes by the lane starter (added in review 1) | UR:21 "Hourly wake of stalled cloud lanes" | TL | Open | 1 PR | D |
+| 206 | Backlog rows owed since 15 Nov: FO-2's qa53 decorator-call scan, CS-C1a's two follow-ups (added in review 1) | H/STATE-2026-11-15-1850-lead60s2-check-1840-and-feed-lines.md:5 "Still owed to BACKLOG" | TL | Open | 10 min | D |
+| 207 | A best-in-class design review per module in the Prove Lead's walk (added in review 1) | R1:58 "a best-in-class design review per module is added" | Prove Lead | Open | per module | D |
+| 208 | Spend card on the board (added in review 1) | DEC:15 P-681 "the board card is not built now" | - | Superseded / dropped | - | E |
+| 209 | The Anthropic support message (T15) (added in review 1) | H/STATE-2026-11-17-1255-lead76s2-asks-A155-A157-rows.md:5 "support message not needed" | - | Superseded / dropped | - | E |
+| 210 | Desk 03's pipeline review draft needing a fresh challenge (added in review 1) | H/STATE-2026-11-14-1350-lead44s2-old-hand-over-block.md:11 "desk 03's pipeline review draft 1 needs a fresh challenge" | - | Superseded / dropped | - | E |
+| 211 | Gmail check at every session start (added in review 1) | DEC:63 P-633 "No start-of-session Gmail check" | - | Superseded / dropped | - | E |
+| 212 | 30 Proven by 08:00 18 Nov (added in review 1) | DEC:33 P-663 "Replaces \"30 Proven by 08:00 IST 18 Nov\"" | - | Superseded / dropped | - | E |
 
 ---
 
 ## 2. Classification (each item in exactly one bucket)
 
-### A. Before the transfer tonight (23 items with the transfer)
+### A. Before the transfer (32 items with the transfer; review 1: now by 09:30 IST 18 Nov unless drained at 18:30)
 
 | # | Why here |
 |---|---|
-| 1 | Go / no-go item: a managed-user enterprise refuses the transfer (CL:171) |
-| 2 | An enterprise policy overrides the org and could block Actions or runners (CL:169) |
 | 3 | Org choices are fixed only where the enterprise leaves them; read before anything lands (CL:204) |
 | 4 | C1.1 needs "billing shows paid with no Actions block" (CL:308) |
 | 5 | Best read before the transfer; if the dashboard still cannot list the org, it moves into #27 |
-| 6 | Without it, go / no-go has an item that cannot be met before the transfer (CL:310 vs DEC:32 (b)) |
 | 7 | C1.1 "the tech lead session restarted" (CL:312) |
 | 8 | C1.1 "the P8 record is in your private GitHub home" (CL:313) |
 | 9 | Only possible before: screenshots of the old Mergify org and installations (CL:256-259) |
@@ -163,10 +271,22 @@ Status words: Open · Doing · Done · Unverified (no record found either way).
 | 20 | C1.4 (CL:318) |
 | 21 | C1.5 (CL:319) |
 | 22 | The decision point (CL:306) |
+| 110 | (added in review 1) The founder's condition for the move: no work lost |
+| 111 | (added in review 1) P-557: nothing lives only in a session |
+| 112 | (added in review 1) R4 starts fresh lanes; check before the freeze |
+| 113 | (added in review 1) Dated today; a false block could stop the drain |
+| 114 | (added in review 1) Falls before the 09:30 move |
+| 115 | (added in review 1) He is away and back for the move |
+| 116 | (added in review 1) Overdue since 17 Nov 11:05; part of the move inventory |
+| 117 | (added in review 1) Checklist P11, not in the plan |
+| 118 | (added in review 1) A rollback at night must not be improvised |
+| 119 | (added in review 1) The app must work on the new path (D1) |
+| 135 | (added in review 1) Due 10:30 17 Nov, no record that it was done |
+| 148 | (added in review 1) Ask in tonight's minutes so C is not blocked |
 
-The transfer itself (#23) is the dividing line and counts in A for the founder's minutes; it is listed in B's table only as its first step. Count for A: 22 items plus the transfer.
+The transfer itself (#23) is the dividing line and counts in A for the founder's minutes; it is listed in B's table only as its first step. Count for A: 31 items plus the transfer (review 1: #1, #2 and #6 moved to E as done; #110-#119, #135, #148 added).
 
-### B. Post-transfer, queue still off (12 items, 24-35)
+### B. Post-transfer, queue still off (15 items: 24-35 and 121-123)
 
 | # | Why here |
 |---|---|
@@ -183,10 +303,13 @@ The transfer itself (#23) is the dividing line and counts in A for the founder's
 | 33 | Cheap now: nothing merges, 500 machines idle; each approved PR is ready when R1 opens. Re-runs only, after E4 lifts the write hold (CL:380). Adds nothing to a rollback |
 | 34 | Two minutes while waiting on runs; keeps the clean start clean |
 | 35 | R1 closes the window, only when E1-E7 are green (CL:387) |
+| 121 | (added in review 1) Only possible once the new path exists |
+| 122 | (added in review 1) With D3, before routines are un-paused; also blocks #88 |
+| 123 | (added in review 1) Needed for #85 |
 
-Count for B: 12 items after the transfer (24-35).
+Count for B: 15 items after the transfer (24-35; review 1 added #121-#123).
 
-### C. First 24-48 hours after the queue is back on, in this order (28 items)
+### C. First 24-48 hours after the queue is back on, in this order (63 items)
 
 | Order | # | Why here |
 |---|---|---|
@@ -219,7 +342,47 @@ Count for B: 12 items after the transfer (24-35).
 | 27 | 58 | "Canary lane after the move" with a 30-min rollback (DEC:26) |
 | 28 | 59 | Mergify change, alone for 24 h; re-read its case with 500 machines first (inference: its reason was batch clashes, ES:258) |
 
-### D. Later, once Release 1 work is flowing (28 items)
+Added in review 1 (order: #120 before #38's fresh lanes; #124-#128 right after the first merges; #149-#151 gate #60-#63, whose order is now stage 0 → 2a → 1 → 1b, CU:378-383; the rest as listed):
+
+| # | Why here |
+|---|---|
+| 120 | (added in review 1) Before R4 starts fresh lanes; skill edit at the founder's typed turn |
+| 124 | (added in review 1) Follows #46 |
+| 125 | (added in review 1) The founder's view of enforcement (A154) |
+| 126 | (added in review 1) Only true after the transfer |
+| 127 | (added in review 1) Two values in two files |
+| 128 | (added in review 1) First merges |
+| 129 | (added in review 1) Speeds Proven, a merge-flow fix (P-214) |
+| 130 | (added in review 1) A154: every pipeline change gets a row |
+| 131 | (added in review 1) The masters still recommend Team (ES:251, ES:303) |
+| 132 | (added in review 1) Wrong after R1 |
+| 133 | (added in review 1) After the peak-jobs reading (#43) |
+| 134 | (added in review 1) The +24/+48 h readings (#52) need it |
+| 136 | (added in review 1) Due about 19 Nov 11:30 |
+| 137 | (added in review 1) The ramp starts 19 Nov; only admission is in the plan (#44) |
+| 138 | (added in review 1) Standing since P-644 |
+| 139 | (added in review 1) Overdue |
+| 140 | (added in review 1) Dated 19 Nov |
+| 141 | (added in review 1) Dated 18 Nov; P-618 alarm |
+| 142 | (added in review 1) Still owed; the 10:30 batch did not take them |
+| 143 | (added in review 1) Routines skip a claimed row |
+| 144 | (added in review 1) Wrong text in the start read |
+| 145 | (added in review 1) Fewer records batches in the queue |
+| 146 | (added in review 1) Batch failures cost the most after the move |
+| 147 | (added in review 1) Becomes possible on 500 jobs |
+| 149 | (added in review 1) Gate on #63 |
+| 150 | (added in review 1) A PR from the head would remove `commercial/` before the private copy |
+| 151 | (added in review 1) Before #62 |
+| 152 | (added in review 1) Either can silently stop the 30-min check (#53) |
+| 153 | (added in review 1) P-643: no extra usage |
+| 154 | (added in review 1) Housekeeping and disk |
+| 155 | (added in review 1) ML still shows done items as "Needs you" |
+| 173 | (added in review 1) check-docs would fail the records PR (#49) |
+| 177 | (added in review 1) The first full-power night |
+| 180 | (added in review 1) F4 falls on 18 Nov |
+| 200 | (added in review 1) P-557 hard rule |
+
+### D. Later, once Release 1 work is flowing (77 items)
 
 | # | Why here |
 |---|---|
@@ -251,16 +414,65 @@ Count for B: 12 items after the transfer (24-35).
 | 89 | Not pipeline-critical; the founder's own settings |
 | 90 | Records PR when convenient (DEC:28) |
 | 91 | No ruleset added during the move (CL:278); a card after the queue is steady |
+| 108 | (moved from E in review 1) W6 decided in the P-668 batch: the P-608 (3) records change goes with #90 |
+| 156 | (added in review 1) Later, needs a flowing queue or an empty window: cI-0a: `guards` required by path, wider paths, 5 orphan tests |
+| 157 | (added in review 1) Later, needs a flowing queue or an empty window: cI-0b: drop label-guard's `workflow_run` |
+| 158 | (added in review 1) Later, needs a flowing queue or an empty window: read the cause of the startup_failure runs, then fix |
+| 159 | (added in review 1) Later, needs a flowing queue or an empty window: cI-A: container proof inside `ci` and in the merge batch |
+| 160 | (added in review 1) Later, needs a flowing queue or an empty window: q2: fast checks first; file-only checks move into `kind` |
+| 161 | (added in review 1) Later, needs a flowing queue or an empty window: q6: shards sized to the work left; nightly shard rebalance |
+| 162 | (added in review 1) Later, needs a flowing queue or an empty window: q7: gate jobs off the long line |
+| 163 | (added in review 1) Later, needs a flowing queue or an empty window: f5: fix pr-rules' false failures, start the 2-day clock, then required (P-635 (3)) |
+| 164 | (added in review 1) Later, needs a flowing queue or an empty window: f11: check-docs fails on a future time; remove the unused `m3-guard.sh` |
+| 165 | (added in review 1) Later, needs a flowing queue or an empty window: a3 one allow-list door for GitHub writes (curl writes pass the gh deny lines); A7 push before stop; A10 actionlint/zizmor later |
+| 166 | (added in review 1) Later, needs a flowing queue or an empty window: a5 round counter in label-guard; review brief with round caps (3 review, 2 CI-fix) |
+| 167 | (added in review 1) Later, needs a flowing queue or an empty window: a6 touch-list overlap in lane-preflight; migration stamp in pr-rules |
+| 168 | (added in review 1) Later, needs a flowing queue or an empty window: pR-W: pr-open-guard in pre-push; branch-sweep in lead-watch |
+| 169 | (added in review 1) Later, needs a flowing queue or an empty window: lead-watch and factory-board judge red from `ci` only; ACT on any failed gh call |
+| 170 | (added in review 1) Later, needs a flowing queue or an empty window: f14: measuring scripts and the board move to GraphQL reads (precondition of the hook paste #72) |
+| 171 | (added in review 1) Later, needs a flowing queue or an empty window: test tooling: Playwright traces as artifacts; a "route twice" race suite; a screen-text and overflow check, report-only first |
+| 172 | (added in review 1) Later, needs a flowing queue or an empty window: v1 capability index, `/verify`, studio-look; qa skill 8 KB or less; BUGS rows by capability ID |
+| 174 | (added in review 1) Later, needs a flowing queue or an empty window: instruction-file trims PR A and PR C (RULES D12, S6, S12) and the other start-read trims |
+| 175 | (added in review 1) Later, needs a flowing queue or an empty window: ultrareview: the 3 free runs only, never `--post`, on the next money, schema or permission PRs |
+| 176 | (added in review 1) Later, needs a flowing queue or an empty window: routines: a turn cap, a WIP brake, a run log, a starter script; quiet PRs resumed first |
+| 178 | (added in review 1) Later, needs a flowing queue or an empty window: weekly reviews: `/doctor prompt-audit`, any "enforced" rule that broke again, the permission-refusal log and top stall cause, a prompt audit at each model change |
+| 179 | (added in review 1) Later, needs a flowing queue or an empty window: monday "what's new" check (P-611 (3)); next due 23 Nov |
+| 181 | (added in review 1) Later, needs a flowing queue or an empty window: points per Proven and per merged PR against the baseline; a one-day token split by role |
+| 182 | (added in review 1) Later, needs a flowing queue or an empty window: compare the talk 1 transcript with the official recording before quoting it |
+| 183 | (added in review 1) Later, needs a flowing queue or an empty window: t16: record #2062 as a departure (0.6 threshold Sample); Manitoba stays Sample |
+| 184 | (added in review 1) Later, needs a flowing queue or an empty window: t17: amend P-203 (skill overflow to its own file), run consolidate-memory, operating model master in the board Library |
+| 185 | (added in review 1) Later, needs a flowing queue or an empty window: one founder settings card: the one-week deny-instead-of-prompt trial, blockWritesOutsideWorkingDirectories, CLAUDE_CODE_SUBAGENT_EFFORT, the sandbox key, the security update |
+| 186 | (added in review 1) Later, needs a flowing queue or an empty window: context diet: measure `/context` first, then rows 1-19 and its five founder questions; settle Drive (needed in required-tools, off in the diet) |
+| 187 | (added in review 1) Later, needs a flowing queue or an empty window: enforcement plan items beyond steps 1-15: B197/B198 then their settings lines, hook 18 weekly judgment audit, measures at 3 and 7 days, the daily read of every block, later linters, health owner fields, a conditional health-keeper lane |
+| 188 | (added in review 1) Later, needs a flowing queue or an empty window: backlog rows still prose in RULES: B193 part 4 WIP script, B194 hot-file split, B198, B200, B201 tests, B199 part 2 fewer test parts |
+| 189 | (added in review 1) Later, needs a flowing queue or an empty window: board owed: per-stage Flow measures as ACT lines (P-646); wait-time targets met or missed (P-619 (8)) |
+| 190 | (added in review 1) Later, needs a flowing queue or an empty window: cloud-environment domains asked by the FO-7s0 lane (help.clio.com, central.xero.com, help.lawpay.com): the founder's call |
+| 191 | (added in review 1) Later, needs a flowing queue or an empty window: supply chain: SHA-pinning card (P-583 steps 8-11), report-only dependency audit, shape SEC-1 (Dependabot alerts) |
+| 192 | (added in review 1) Later, needs a flowing queue or an empty window: audits from the decision cards: tamper audit of merges since 10 Nov, seeded defects and canaries, a factory manifest, third-party memory hooks, the self-hosted Mac runner on a public repository |
+| 193 | (added in review 1) Later, needs a flowing queue or an empty window: registry extras: a property-test library proposal, the founder names CR-11's paths, the INVARIANT tag decision, fix or demote a false block within 2 days |
+| 194 | (added in review 1) Later, needs a flowing queue or an empty window: clean-up per-stage protocol: announce the empty window, gate checks (CI, check-docs, board, `start.sh` demo smoke, stale paths), PATHS-MOVED and change-log rows, rebase guide, restart lanes and routine prompts after stage 5, compare job lists |
+| 195 | (added in review 1) Later, needs a flowing queue or an empty window: clean-up stage 2c: seven files open PRs edit and about 250 folder-counting tests, in 2-3 PRs |
+| 196 | (added in review 1) Later, needs a flowing queue or an empty window: `fromStored()` map for stored database paths, plus the live POC data, in stage 2b/3 |
+| 197 | (added in review 1) Later, needs a flowing queue or an empty window: remove stage 5's old-path stubs after 7 days |
+| 198 | (added in review 1) Later, needs a flowing queue or an empty window: affected-only CI for the modular monolith |
+| 199 | (added in review 1) Later, needs a flowing queue or an empty window: dated founder items: Enterprise first payment 1 Dec; the Ultra price in the spend master; interaction limit renewal about 17 May 2027; outside-account rows OD 2, 3, 5-7 and AR 3-5, 7-9, 12 |
+| 201 | (added in review 1) Later, needs a flowing queue or an empty window: cI cost follow-ups (decide at #79): Namespace open-source program, `workflowSizeGuideline: small`, caches for dependencies and the database, an nproc measure |
+| 202 | (added in review 1) Later, needs a flowing queue or an empty window: anti-stall fixes still open: away-flag hook, launchd heartbeat with a push test, retire the P-402 local line, items.py ingests lane questions, generated module-card lines, questions without a Lead number, RULES "Enforced by" for five rules |
+| 203 | (added in review 1) Later, needs a flowing queue or an empty window: cards 8b and 8c to the founder: re-run a failed shard once and requeue; auto-quarantine a suite that passes only on retry |
+| 204 | (added in review 1) Later, needs a flowing queue or an empty window: next-week list from the blank-sheet design: features.json, permission tests, a born-flaky check, auto-revert, graduated autonomy |
+| 205 | (added in review 1) Later, needs a flowing queue or an empty window: hourly wake of stalled cloud lanes by the lane starter |
+| 206 | (added in review 1) Later, needs a flowing queue or an empty window: backlog rows owed since 15 Nov: FO-2's qa53 decorator-call scan, CS-C1a's two follow-ups |
+| 207 | (added in review 1) Later, needs a flowing queue or an empty window: a best-in-class design review per module in the Prove Lead's walk |
 
-Count for D: 28 items (64-91).
+Count for D: 77 items (64-91, 108 and, added in review 1, 156-172, 174-176, 178-179, 181-199, 201-207).
 
-### E. Superseded, duplicate or drop (18 items)
+### E. Superseded, duplicate, done or drop (25 items)
 
 | # | Superseded by / why |
 |---|---|
 | 92 | Enterprise gives 500 jobs (CL:199, DEC:37) |
 | 93 | P-657, P-658: Enterprise bought (DEC:36-37) |
-| 94 | P-688: tonight, 09:30 fallback (DEC:6) |
+| 94 | P-688: tonight, 09:30 fallback (DEC:6); P-689 (review 1): undrained at 18:30 means 09:30 18 Nov |
 | 95 | C1.3 empties the variable; 500 jobs (CL:316) |
 | 96 | P-662: Devin not installed on the org (DEC:32) |
 | 97 | Done: 2 rulesets active (CL:84-86; ST:12) |
@@ -274,19 +486,26 @@ Count for D: 28 items (64-91).
 | 105 | Done: the checklist is the Enterprise revision (CL:3) |
 | 106 | Declined (L3, L8, L10, CI D5) or standing (D9) |
 | 107 | Done (DEC:32-35; ST:12) |
-| 108 | No action (ES:277) |
-| 109 | Overtaken by P-688; their open parts are #51, #54, #55, #57 |
+| 109 | Overtaken by P-688 as timetables; their open parts are #51, #54, #55, #57 and #129, #134, #135, #156-#176 (review 1) |
+| 1 | (moved from A in review 1) Done: N1-N9 all GO (ST:12) |
+| 2 | (moved from A in review 1) Done, as #1 |
+| 6 | (moved from A in review 1) Done: CL:310 corrected (commit `8b154f0dc`) |
+| 208 | (added in review 1) Parked by the founder |
+| 209 | (added in review 1) The founder dropped it (A157) |
+| 210 | (added in review 1) Overtaken by Engineering System v1 (P-668); reviewer's inference |
+| 211 | (added in review 1) P-633 amends P-620 |
+| 212 | (added in review 1) Replaced by the ramp |
 
 ### Counts
 
 | Bucket | Items |
 |---|---|
-| A before the transfer | 23 (1-23, the transfer included) |
-| B queue-off window | 12 (24-35) |
-| C first 24-48 h | 28 |
-| D later | 28 |
-| E superseded / duplicate / drop | 18 |
-| **Total** | **109** |
+| A before the transfer | 32 (3-5, 7-23 with the transfer; 110-119, 135, 148) |
+| B queue-off window | 15 (24-35, 121-123) |
+| C first 24-48 h | 63 |
+| D later | 77 |
+| E superseded / duplicate / done / drop | 25 |
+| **Total** | **212** (109 + 103 added in review 1; 4 moved: #1, #2, #6 A → E, #108 E → D) |
 
 ---
 
@@ -320,13 +539,15 @@ Method notes: counts come from `/pulls/<n>/files` for all 44 PRs (44 calls) and 
 3. **Public repo:** stage 1 must not run before the private copy of `commercial/` is checked (P-677); none of the stages adds team-app specifics if `PATHS-MOVED.md` lists paths only (P-504).
 4. **CI cost:** with 500 machines the cost of stages 0-2a is about three runs (inference); the real cost is queue slots that the ~20 waiting PRs need first.
 
-**So:** stage 0, the `commercial/` copy, stage 1 and stage 2a land in **C**, on 18 Nov, once E8 and E9 have passed and the first batches of the approved backlog have merged (P-674's "stage 0-1 after the verified move; 2a first" holds). Stages 2b to 8 stay in **D**, from 19 Nov, one per empty window, as P-674 decided. The clean-up agent may *open* the stage 0 PR during window B to let its checks run, but it is labelled only after the restart.
+**So:** stage 0, stage 2a, stage 1 without 1b, then 1b once the `commercial/` copy is checked, land in **C**, on 18 Nov, once E8 and E9 have passed and the first batches of the approved backlog have merged (review 1: the clean-up plan's revised order, CU:378-383). Stages 2b, 2c (new, CU:384) and 3 to 8 stay in **D**, from 19 Nov, one per empty window, as P-674 decided. ~~The clean-up agent may *open* the stage 0 PR during window B~~ (review 1: CU:374 says the PRs "open only on the Lead's word, after the move is verified"; no PR before then).
 
 ---
 
-## 4. One timeline for tonight and tomorrow (IST)
+## 4. One timeline for the move (IST; tonight path, with the 09:30 18 Nov re-dating below)
 
 Clock at writing: 14:25 IST. CL's own backward schedule: B1 by about 14:30, B2 by about 15:30, go / no-go about 18:30, transfer about 19:00 (CL:162).
+
+**Review 1 re-dating:** the move is now planned for **09:30 IST 18 Nov** (P-689; no merge since 13:27 at the 15:35 check). Read the rows below as the tonight path, taken only if C1.2 is drained at 18:30. Otherwise the same A-B sequence runs from 09:30 18 Nov: A items by 09:30 (the 08:00 Proven report #114 included), the transfer about 09:30-10:00, B about 10:00-11:30, R1 about 11:30, and C from 18 Nov midday. Added A items fit the evening: #113 (16:30, 20:30 readings), #110-#112 (by 20:00), #115 (before he leaves), #148 and #119 (one minute each).
 
 | Time (IST) | What | Items | Founder minutes |
 |---|---|---|---|
