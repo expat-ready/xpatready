@@ -89,7 +89,7 @@ try {
   ok("FO-9a pass: the shared rules: email lower-cased, the name key, the score (exact key 100, name = similarity × 100)",
     normaliseEmail(" Lena@Example.ORG ") === "lena@example.org" && personNameKey(" Lena ", "  Park") === "lena park" && matchScore([{ key: "PHONE" }]) === 100 && matchScore([{ key: "NAME", similarity: 0.75 }]) === 75);
   ok("FO-9a fail: not an email → no key; no reason → score 0", normaliseEmail("lena@") === null && matchScore([]) === 0);
-  const names: [string, string][] = [["  Lena ", " Park "], ["José", "García"], ["李", "明"], ["ОЛЬГА", "Петрова"], ["Anne-Marie", "O'Neil"], ["İlkay", "Straße"], ["𝒜da", "Ｌｏｖｅｌａｃｅ"]];
+  const names: [string, string][] = [["  Lena ", " Park "], ["José", "García"], ["李", "明"], ["ОЛЬГА", "Петрова"], ["Anne-Marie", "O'Neil"], ["İlkay", "Straße"], ["𝒜da", "Ｌｏｖｅｌａｃｅ"], ["Le\u200bna", "Pa\u00adrk"], ["محمد", "خان"], ["김민수", "\u2028Kim"]];
   const sqlKeys = names.map(([g, f]) => sql(`select fo_sales_name_key('${g.replace(/'/g, "''")}', '${f.replace(/'/g, "''")}')`));
   ok("FO-9a pass (break B2): the name key is the database's, for Latin, accented, Chinese, Cyrillic and punctuated names", names.every(([g, f], i) => sqlKeys[i] === personNameKey(g, f)), names.map(([g, f], i) => [sqlKeys[i], personNameKey(g, f)]));
 
@@ -121,6 +121,13 @@ try {
   ok("FO-9a pass (break B2): 李明, ОЛЬГА ПЕТРОВА and Jose Garcia (no accents) find the people stored as 李明, Ольга Петрова and José García",
     (await nameOnly("李", "明")).includes(li.person.id) && (await nameOnly("ОЛЬГА", "ПЕТРОВА")).includes(olga.person.id) && (await nameOnly("Jose", "Garcia")).includes(jose.person.id));
   ok("FO-9a fail (break B2): a different Chinese name (王芳) does not find 李明", !(await nameOnly("王", "芳")).includes(li.person.id));
+  // Break N1: a non-Latin name matches only exactly (hex digits are shared by unrelated letters), one pass and one fail per script.
+  const khan = await add(R, { givenNames: "محمد", familyName: "خان", email: "m.khan@example.org" });
+  const kim = await add(R, { givenNames: "김민수", familyName: "", email: "kim@example.org" });
+  ok("FO-9a pass (break N1): محمد خان and 김민수 find themselves", (await nameOnly("محمد", "خان")).includes(khan.person.id) && (await nameOnly("김민수", "")).includes(kim.person.id));
+  ok("FO-9a fail (break N1): أحمد خالد is not offered محمد خان, Анна Петрова not Ольга Петрова, 김민준 not 김민수",
+    !(await nameOnly("أحمد", "خالد")).includes(khan.person.id) && !(await nameOnly("Анна", "Петрова")).includes(olga.person.id) && !(await nameOnly("김민준", "")).includes(kim.person.id));
+  ok("FO-9a pass (break N2): a zero-width space or a soft hyphen typed in the name still finds Lena Park", (await nameOnly("Le\u200bna", "Pa\u00adrk")).includes(lena.person.id));
 
   // ------------------------------------------------------------------------------------- a match the viewer may not see is never named
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: ws });
@@ -240,6 +247,7 @@ try {
   const B = firm("sample-solo");
   ok("FO-9a pass: the person match, as xr_app in firm A, finds A's Lena", Number(asApp(A, fnQ(A))) >= 1);
   ok("FO-9a fail: as xr_app in firm B asking for firm A, or with no firm set, the definer function reads nothing", asApp(B, fnQ(A)) === "0" && asApp(null, fnQ(A)) === "0");
+  ok("FO-9a fail (break N3): the owner's login switched to xr_app with no firm set reads nothing either", sql(`begin; set local role xr_app; ${fnQ(A)}; commit;`).split("\n").filter(Boolean).pop() === "0" && sql(fnQ(A)) !== "0");
   await walled.$disconnect();
 
   // Breaks B3, B7, B8: no count of what one may not open; control marks and over-long text refused; characters counted.
@@ -249,6 +257,7 @@ try {
   ok("FO-9a fail (break B3): many hidden matches read as 1, so a count can never tell one guess from another", two.hidden === 1, two);
   ok("FO-9a fail (break B7): a null byte or another control mark → 422 at the field, never a database error", (await refusal(() => dup.check(R, { givenNames: "Le\u0000na" })))?.status === 422 && (await refusal(() => dup.check(R, { email: "a@b.c\n" })))?.status === 422);
   const astral = "𝒜".repeat(60);
+  ok("FO-9a pass (review r2): 60 é typed decomposed (NFD) are 60 characters, as Add a lead counts them", (await refusal(() => dup.check(R, { givenNames: "e\u0301".repeat(60) }))) === null);
   const astralR = await refusal(() => dup.check(R, { givenNames: astral }));
   ok("FO-9a pass (break B8): 60 characters outside the basic plane are 60 characters (accepted), 101 are refused", astralR === null && (await refusal(() => dup.check(R, { givenNames: "x".repeat(101) })))?.status === 422, astralR);
 

@@ -63,3 +63,31 @@ Expected: a 422 naming the field, as FO-2's `text()` refuses control characters.
 - Migration on data: on a copy with 200,000 people (mixed readable, unreadable and empty phones), it applied cleanly in 6.5 s and backfilled 100,000 keys. `tests/check_prisma_schema.ts`: 8/8, with the shadow reset clean.
 - Scores: `Math.floor(round3(sim) × 100)` has no off-by-one from 0.600 to 1.000. A score never exceeds 100. The output always passed `DuplicateCheckOut`. The check wrote no rows.
 - Load errors: 300 concurrent checks all answered 200 (p95 2.4 s), with no pool or transaction-timeout errors.
+
+## Re-check at c3fb16c9
+Fresh isolated copy `fo9abrk` on :4471 at `c3fb16c95`, seeded and loaded as before: 100 firms of Sample data (+2,000 "Mohammed Khan" owned by T), then one big firm of 52k people. "Everyone sees all" off. `tests/check_fo9a_duplicates.ts`: 48/48. `tests/check_prisma_schema.ts`: 8/8. Copy stopped, databases dropped.
+- **B1: fixed for the index; the HTTP budget is still borderline.** As a login `xr_app` session, `fo_sales_person_matches` took 7-8 ms per call at 100 firms and 15-16 ms in the 52k firm, steady over 10 calls in one session (no slower generic plan). Before: 140 ms for a seq scan. 20 checks at once over HTTP, with the test's kind of body ("Lena Sample12"): p95 84-109 ms. With bodies that hit 2,000 people: p95 147-320 ms, 4 of 10 runs over 200 ms. 52k firm: single checks 20-82 ms (was 141-658), 20 at once p95 170-261 ms (was 955), 200-character names p95 222 ms (was 3.2 s). Minor, carried: a name that hits thousands of people still goes past §9's 200 ms when 20 run at once.
+- **B2: fixed for an exact name; it opens N1.** 李明, Ольга Петрова and محمد خان each match themselves (score 100). "Jose Garcia" finds José García (100). `ÉLODIE@EXEMPLE.FR` finds élodie@… . "ООО Ромашка" matches itself (100); "Ромашки" does not (similar non-Latin company names are carried, as stated). JS and SQL keys agreed on 31 tricky names (final sigma, İ/ı, ẞ, ǅ, 𝐀, Ⓐ, fullwidth, emoji, ZWJ, Hangul, Devanagari, ﬁ, Ⅻ).
+- **B3: fixed.** As T, `{email: lena…}` gives 1, and `{email: lena…, Priya Sharma}` also gives 1 (it was 2). The union no longer separates one guess from another. Carried (Minor): still no rate limit, so "does anyone hidden have this email/name?" can be asked without end.
+- **B4: fixed.** Kai (a contact only) is hidden 1 to R, never named, so no refused `useExisting`. The cost: R created Kai and sees him in Pine's contact list, but the check does not name him.
+- **B5: carried, as stated.** `+44 (0)20 7946 0958` now finds Omar (hidden 1 to R). `+44 20 7946 0958` still gives `hidden: 0` against the stored `+4402…`.
+- **B6: fixed.** R's own Mohammed Khan is named, with `hidden: 1`, among 2,000 of T's.
+- **B7: fixed.** `\u0000` in a name or email and `\u0007` give 422.
+- **B8: fixed.** 60 astral characters are accepted; 101 give 422.
+
+**New, opened by the fixes**
+- **N1. Major: the hex key makes different non-Latin names match.** The trigrams come from the hex digits (`x43e…`), not the letters, so all names in one script share most trigrams:
+  - Through the API, R checking "أحمد خالد" (Ahmed Khaled) is offered "محمد خان" (Mohammed Khan) at score 69. Latin spelling: 0.24.
+  - In SQL: "Анна Петрова" ~ "Ольга Петрова" 0.64 (Latin "Anna/Olga Petrova" 0.44); "Анна Петрова" ~ "Олег Петренко" 0.61; 김민수 ~ 김민준 0.71.
+  This is the row's own failing case: a different person who shares only part of the name must score below 0.6. Offering "use the existing one" for the wrong person risks linking a new lead to someone else's record.
+  Ref: `migration.sql:28`, `ports/matching.ts:27`.
+- **N2. Minor: invisible characters now break a match.** Every non-ASCII character becomes x+hex, not only letters. "Lena​" + "Park" gives key `lenax200b park`, similarity 0.5625, no match (it was 0.615 before). "Park­" (soft hyphen) scores 64, and `\u0085` or ` ` between the names gives no match. NBSP and U+3000 are fine (NFKD makes them spaces). FO-2 stores names containing these characters as typed.
+- **N3. Minor: a no-firm session that logs in as the owner reads any firm.** `fo_sales_match_firm` trusts `session_user`'s `rolsuper` (`migration.sql:62-64`). Steps: log in as `xr_studio` (a superuser on these clusters), `set role xr_app`, `app.firm_id` empty. Then `fo_sales_person_matches('<firm B>', 'bea@solo.example', …)` returns B's person (id and name), while a plain `select` as `xr_app` there reads 0 rows. The API logs in as `xr_app` itself (checked in pg_stat_activity), so no API route reaches this. Only a superuser-login process (the jobs runner logs in as `xr_studio`) with no firm set could.
+
+**Held (the definer functions)**
+- Login `xr_app`, no firm: both functions return 0 rows and `fo_sales_match_firm(B)` is null.
+- Session firm A asking for B, or for null: 0 rows.
+- Widening arguments read only firm A: threshold 0 with a null limit returns its 7 rows. Limit -1 and thresholds `NaN` or -1 are refused by PostgreSQL.
+- `CREATE FUNCTION public.normalize` as `xr_app`: permission denied.
+- Trigger: `update … set name_key = 'forged'` is put back to `lena park`. Renaming the given name rekeys it (`lenna park`), and renaming back restores it. Touching another column leaves the key alone.
+- Migration on 200k people: 12.2 s (was 6.5 s; the per-row PL/pgSQL key), with 200,000 name keys and 100,000 phone keys.

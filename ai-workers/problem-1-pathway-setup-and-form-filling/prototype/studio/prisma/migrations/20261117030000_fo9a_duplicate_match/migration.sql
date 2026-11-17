@@ -17,15 +17,19 @@ CREATE FUNCTION fo_sales_phone_e164(phone text, readable boolean) RETURNS text L
 $$;
 -- A person's name as the match reads it (break B2: the cloud and CI clusters have C ctype, where pg_trgm makes no trigram
 -- of a non-ASCII letter, so 李明 never met 李明): decomposed (NFKD) and lower-cased by ICU, accents folded (combining
--- marks U+0300-036F dropped: José → jose), every other letter outside a-z and 0-9 spelled as x + its code point in hex (李 → x674e),
--- punctuation as a space, spaces collapsed. ports/matching.ts personNameKey is the same rule; the test pins them equal.
+-- marks U+0300-036F dropped: José → jose), invisible and format marks dropped (zero-width, soft hyphen, line and
+-- direction marks: break N2), every other character outside a-z and 0-9 spelled as 0 + its code point in hex (李 → 0674e),
+-- punctuation as a space, spaces collapsed. A key with a digit came from such a letter (or a digit): it matches only
+-- exactly, never by trigram, as hex digits are shared by unrelated letters (break N1: أحمد خالد met محمد خان at 0.69).
+-- ports/matching.ts personNameKey is the same rule; the test pins them equal.
 ALTER TABLE "fo_person" ADD COLUMN "name_key" TEXT;
 CREATE FUNCTION fo_sales_name_key(given text, family text) RETURNS text LANGUAGE plpgsql IMMUTABLE SET search_path = pg_catalog AS $fn$
-DECLARE s text := regexp_replace(lower(normalize(coalesce(given, '') || ' ' || coalesce(family, ''), NFKD) COLLATE "und-x-icu"), '[\u0300-\u036f]', '', 'g');
+DECLARE s text := regexp_replace(regexp_replace(lower(normalize(coalesce(given, '') || ' ' || coalesce(family, ''), NFKD) COLLATE "und-x-icu"), '[\u0300-\u036f]', '', 'g'),
+                   '[\u0000-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f-\u1160\u17b4-\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0]', '', 'g');
         out text := ''; ch text;
 BEGIN
   FOREACH ch IN ARRAY regexp_split_to_array(s, '') LOOP
-    out := out || CASE WHEN ch ~ '^[a-z0-9]$' THEN ch WHEN ascii(ch) > 127 THEN 'x' || to_hex(ascii(ch)) ELSE ' ' END;
+    out := out || CASE WHEN ch ~ '^[a-z0-9]$' THEN ch WHEN ascii(ch) > 127 AND ch !~ '^\s$' THEN '0' || to_hex(ascii(ch)) ELSE ' ' END;
   END LOOP;
   RETURN btrim(regexp_replace(out, ' +', ' ', 'g'));
 END $fn$;
@@ -61,7 +65,8 @@ CREATE INDEX "fo_company_normalised_name_trgm_idx" ON "fo_company" USING gist ("
 -- owned lead when the caller sees Unassigned), so a match is named only where Add a lead accepts its person.
 CREATE FUNCTION fo_sales_match_firm(p_firm uuid) RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $fn$ SELECT CASE WHEN platform_session_firm() IS NOT NULL THEN (CASE WHEN platform_session_firm() = p_firm THEN p_firm END)
-                      WHEN (SELECT r.rolsuper FROM pg_roles r WHERE r.rolname = session_user) THEN p_firm END $fn$;
+                      WHEN (SELECT r.rolsuper FROM pg_roles r WHERE r.rolname = session_user) AND current_setting('role') = 'none' THEN p_firm END $fn$;
+-- (a session that switched role, e.g. to xr_app, never names a firm: break N3)
 CREATE FUNCTION fo_sales_person_matches(p_firm uuid, p_email text, p_phones text[], p_name text, p_staff uuid,
     p_sees_all boolean, p_sees_unassigned boolean, p_threshold real, p_limit integer)
   RETURNS TABLE (id uuid, given_names text, family_name text, by_email boolean, by_phone boolean, sim float8, seen boolean)
@@ -73,7 +78,8 @@ BEGIN
   RETURN QUERY
     SELECT p."id", p."given_names", p."family_name",
            coalesce(p."email" = p_email, false), coalesce(p."phone_e164" = ANY (p_phones), false),
-           CASE WHEN coalesce(p_name, '') <> '' THEN similarity(lower(p."name_key"), p_name) ELSE 0 END::float8,
+           CASE WHEN coalesce(p_name, '') = '' THEN 0 WHEN p_name ~ '[0-9]' OR p."name_key" ~ '[0-9]' THEN (lower(p."name_key") = p_name)::int
+                ELSE similarity(lower(p."name_key"), p_name) END::float8,
            EXISTS (SELECT 1 FROM "fo_lead" l LEFT JOIN "platform_staff" s ON s."firm_id" = l."firm_id" AND s."id" = l."owner_staff_id"
                     WHERE l."firm_id" = f AND l."person_id" = p."id"
                       AND (p_sees_all OR (s."status" = 'ACTIVE' AND l."owner_staff_id" = p_staff)
@@ -82,7 +88,8 @@ BEGIN
      WHERE p."firm_id" = f
        AND ((p_email IS NOT NULL AND p."email" = p_email)
          OR (cardinality(p_phones) > 0 AND p."phone_e164" = ANY (p_phones))
-         OR (coalesce(p_name, '') <> '' AND lower(p."name_key") % p_name))
+         OR (coalesce(p_name, '') <> '' AND p_name !~ '[0-9]' AND lower(p."name_key") % p_name AND p."name_key" !~ '[0-9]')
+         OR (coalesce(p_name, '') ~ '[0-9]' AND lower(p."name_key") = p_name))
      ORDER BY 7 DESC, 4 DESC, 5 DESC, 6 DESC, p."created_at", p."id"
      LIMIT p_limit;
 END $fn$;

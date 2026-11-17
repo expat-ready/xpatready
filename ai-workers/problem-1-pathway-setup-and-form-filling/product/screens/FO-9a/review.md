@@ -102,3 +102,77 @@ API only, so the walk was API calls, not a browser:
 * A real HTTP call through Nest with a session cookie (the guard was checked only by its metadata).
 * CI on GitHub.
 * A non-superuser hosted Postgres (m5).
+
+## Re-review at c3fb16c9 (c3fb16c95ae2356a9fb017aad5652af4d471e0f9; diff 28ac4d427..c3fb16c95 only, with break-report B1-B8)
+
+**Verdict: Changes needed** (one Major: N1, the breaker's re-check finding, confirmed independently below; every finding from the first round is closed or carried)
+
+**What I ran:** a detached worktree at c3fb16c9.
+* `check_fo9a_duplicates.ts`: 48/48 (as the app role: p95 64 ms).
+* `check_pf12_walls.ts`: 100/100.
+* `check_prisma_schema.ts`: 8/8.
+* `check_fo2b_corporate.ts`: 61/61.
+* A probe of my own (scratch databases dropped), covering three things:
+  * the name key on 17 more awkward inputs;
+  * a deactivated owner seen through Unassigned;
+  * the plan cache inside the definer function: 12 calls in one xr_app session at 20,000 people in one firm, custom and forced generic.
+
+| Finding | Status at c3fb16c9 | Evidence |
+|---|---|---|
+| M1 / B4, m6 (use the existing one refused) | **closed** | A person is named only when one of their leads is seen. `fo_sales_person_matches` computes this, and it is the same as FO-2's `sees()` with `activeOf`. A contact-only person now sets the flag and is not named. The test says every named body is accepted by Add a lead and by add contact. One edge remains (r1). |
+| m1 / B6 (crowding out) | **closed** | `seen` is ordered first (`ORDER BY 7 DESC`); test "T's own Wanda is still named first". |
+| m2 / B5 (phone key) | **partly; accepted as carried** | The typed number now meets the stored key under both rules. Stored `+44 (0)…` and typed `+44 20…` still miss. This needs FO-2's `phone()` to move to libphonenumber. That is part 2, and the row stays open until it lands. |
+| m3 (empty guard line) | closed | removed |
+| m4 / B1 (walls and index use) | **closed** | The match runs in two definer functions owned by xr_wall_reader, granted only to xr_app (EXECUTE revoked from PUBLIC). They read only the session's firm: under firm B, or with no firm set, as xr_app, they read 0 (tested). The suite times the check through the walled pool. In my plan-cache probe, calls 1-12 took 7-12 ms with no slowdown under a forced generic plan, so plpgsql's plan cache does not hurt. |
+| B2 (C-ctype names) | **closed** | `name_key` is set by the trigger (ICU `lower`, NFKD, marks dropped, hex for anything outside a-z0-9). 0 JS/SQL mismatches on 17 more awkward inputs, among them Greek final sigma, the ﬁ ligature, Hangul, dotless ı, ǅ, Arabic presentation forms, Vietnamese, Roman numerals, circled digits and İ. The test proves 李明 meets 李明. |
+| B3 (the count links details) | **closed** | `hidden` is 0 or 1, and `DuplicateCheckOut` caps it at 1. Combined questions can no longer tell one guess from two. |
+| B7 (null byte) | closed | 422 at the field |
+| B8 (UTF-16 limits) | **mostly; r2** | Astral characters are now counted as characters. NFD text is not (r2). |
+| m5 (backfill under FORCE RLS) | unchanged, note only | `migration.sql` backfill, now with no WHERE clause. It holds on our superuser migration role. |
+
+**New, opened by the B2 fix (Major):**
+* **N1. Different non-Latin names now match each other.**
+  * Where: `migration.sql` (`fo_sales_name_key`) and `ports/matching.ts` `personNameKey`.
+  * Cause: the hex encoding (`x43e…`) makes the trigrams out of hex digits. Letters of one script share their leading digits, so different names in one script share most of their trigrams.
+  * My numbers (pg_trgm on the JS keys):
+
+    | Pair | Similarity |
+    |---|---|
+    | أحمد خالد ~ محمد خان | 0.69 |
+    | Анна Петрова ~ Ольга Петрова | 0.64 |
+    | Анна Петрова ~ Олег Петренко | 0.61 |
+    | 김민수 ~ 김민준 | 0.71 |
+    | the Latin spelling "Anna Petrova ~ Olga Petrova" | 0.44 (not offered) |
+    | 李明 ~ 王芳 | 0.05 |
+
+  * Failure scenario: R adds "Ahmed Khaled" and is offered "Mohammed Khan" (score 69) with "use the existing one". Picking it links the new lead to someone else's record.
+  * That breaks the row's own line ("a different person … scores below the threshold") for Arabic, Cyrillic and Hangul names, which are common for an immigration firm's clients. The test's only non-Latin fail case is 李明 vs 王芳, which happens to score low.
+  * Fix (the builder's choice), with a pass and a fail per script in the test:
+    * (a) treat names with non-ASCII letters as companies are treated: an identical key only, until a real similarity exists; or
+    * (b) give the database a UTF-8 ctype, so pg_trgm reads the letters themselves, and drop the hex encoding;
+    * (c) or any other key under which these pairs score below 0.6.
+
+**Also from the breaker's re-check (Minor, agreed):**
+* **N2.** Zero-width and soft-hyphen characters become `x200b` / `xad` and lower the score. Fold this into the N1 fix: drop Unicode format characters (Cf) from the key.
+* **N3.** `fo_sales_match_firm` lets any superuser *login* name a firm with no session firm set, even after `SET ROLE xr_app`. No API route reaches this (the API logs in as xr_app). Note it for the jobs runner.
+
+**New or residual (Minor, none blocking):**
+* **r1. Deactivated owner: named to an Unassigned viewer, but add contact refuses.**
+  * Where: `corporate/service.ts:209` (FO-2b) passes the raw owner to `sees()`, without FO-2's `activeOf`.
+  * Failure scenario (probe): O owns Gus's lead and is then deactivated; "everyone sees all" is off. T, who has view.all and assign, gets Gus named. Add contact with that body returns **404**; Add a lead accepts it.
+  * The test's "accepted by both" line runs only with active owners and "everyone sees all" on.
+  * Safe: a refusal, no leak. Fix in part 2 (it touches add contact): use `activeOf` there, and add the case to the test.
+* **r2. NFD text is counted unnormalised.**
+  * Where: `ports/matching.ts` `line()` counts `[...v].length` without NFC first. FO-2's `text()` counts after NFC.
+  * Failure scenario: 60 "é" typed as NFD (120 code points) are refused by the check (422) but accepted by Add a lead.
+  * Fix: `[...v.normalize("NFC")].length`.
+* **Note:** a contact-only person reads as "a record you cannot open — ask a manager", even to the person who created them and sees them in the company's contact list. This is safe and follows Add a lead's rule; the wording is the AG-2-78 line, so no change is asked.
+
+**Journey score (reviewer role), updated:**
+* task completed ½ (N1: the wrong person is offered), next step 1, plain words 1, feedback and state 1, error recovery 1, speed 1;
+* correct data ½ (N1, the phone pair carried, r1), trust and sources ½ (the founder's ruling on similar names is still open);
+* accessibility and visual quality N/A.
+
+**6.5 of 8 applicable (8.1/10 scaled), no 0.** Task completed drops to ½ for N1. The open Major blocks regardless.
+
+**Not checked:** CI on GitHub; a real HTTP call through Nest with a session (PF-4's guard is covered by the route metadata and by PF-4's own suites); a hosted Postgres with a non-superuser owner.

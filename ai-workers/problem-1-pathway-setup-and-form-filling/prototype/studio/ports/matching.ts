@@ -18,13 +18,14 @@ export function normaliseEmail(v: unknown): string | null {
 
 /** A person's name as the match compares it, the same rule as the database's fo_sales_name_key (FO-9a's migration; the
  *  test pins them equal): decomposed (NFKD) and lower-cased, accents folded (U+0300-036F dropped), every other letter outside a-z and 0-9
- *  spelled x + its code point in hex (so pg_trgm makes trigrams of any script under a C-ctype cluster), punctuation as a
- *  space, spaces collapsed. "José García" → "jose garcia"; "李明" → "x674ex660e". Empty when there is no name. */
+ *  spelled 0 + its code point in hex, invisible and format marks dropped, punctuation as a space, spaces collapsed.
+ *  "José García" → "jose garcia"; "李明" → "0674e0660e". A key with a digit matches only exactly (hex digits are shared by
+ *  unrelated letters), so pg_trgm compares Latin-letter names only. Empty when there is no name. */
 export function personNameKey(given: unknown, family: unknown): string {
   const part = (x: unknown) => (typeof x === "string" ? x : "");
-  const s = `${part(given)} ${part(family)}`.normalize("NFKD").toLowerCase().replace(/[\u0300-\u036f]/g, "");
+  const s = `${part(given)} ${part(family)}`.normalize("NFKD").toLowerCase().replace(/[\u0300-\u036f]/g, "").replace(/[\u0000-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f-\u1160\u17b4-\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0]/g, "");
   let out = "";
-  for (const ch of s) { const c = ch.codePointAt(0)!; out += /^[a-z0-9]$/.test(ch) ? ch : c > 127 ? `x${c.toString(16)}` : " "; }
+  for (const ch of s) { const c = ch.codePointAt(0)!; out += /^[a-z0-9]$/.test(ch) ? ch : c > 127 && !/^\s$/.test(ch) ? `0${c.toString(16)}` : " "; }
   return out.replace(/ +/g, " ").trim();
 }
 
@@ -45,7 +46,7 @@ export function matchScore(reasons: MatchReason[]): number {
 
 /** One line of text: at most `max` characters (code points, as FO-2's fields count them, break B8), no control mark
  *  (a null byte would be the database's error, break B7). */
-const line = (max: number) => z.string().refine((v) => [...v].length <= max, `at most ${max} characters.`).refine((v) => !/[\u0000-\u001f\u007f]/.test(v), "one line, no control characters.").nullish();
+const line = (max: number) => z.string().refine((v) => [...v.normalize("NFC")].length <= max, `at most ${max} characters.`).refine((v) => !/[\u0000-\u001f\u007f]/.test(v), "one line, no control characters.").nullish();
 /** What is checked: a person's keys, a company's name, or both (Add a lead, Engage, add contact, the arrival path). */
 export const DuplicateCheckIn = z.strictObject({
   givenNames: line(100), familyName: line(100), email: line(254), phone: line(40), companyName: line(200),
