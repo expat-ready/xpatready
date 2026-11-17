@@ -144,3 +144,5 @@ Merged on main: #2002, #2007, #2016, #2035. #2000 got "Reviewer: Approve 1fb7ca0
 **17:3x IST 17 Nov:** #2003 merged main (ddca3abec) and renamed its migration to 20261117124500_aud1a_audit_insert_only (SQL unchanged); head e2947b887 has "Reviewer: Approve e2947b8" (17:31 IST). Sent to Lead 78 for the read and label.
 
 **18:35 IST 17 Nov:** Lead 79 (local_25aa8878) is now current, after Lead 78.
+
+**18:37 IST 17 Nov (Lead 79, P-692, B1 freeze for the org move):** my lanes push no new commits, open no PRs and run no re-runs (renames included) until Lead 79 says the move is verified. #1991 and #2038 get their migration slots after the move. Lead 79 labels #2003 e2947b8 when it is green. The 20:00 IST list still goes to Lead 79.
