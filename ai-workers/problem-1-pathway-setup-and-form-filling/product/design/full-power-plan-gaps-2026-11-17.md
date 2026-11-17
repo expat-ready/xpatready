@@ -1,6 +1,6 @@
 # Full-power plan, review 1: what was missing, what was wrong (17 Nov 2026)
 
-Written 15:10-16:30 IST 17 Nov (clock: `TZ=Asia/Kolkata date`, 15:36 at the GitHub read) by an independent completeness reviewer for the tech lead, on the founder's asks A164-A165 and P-690. The reviewer did not write the plan. Nothing was committed, pushed, labelled or sent. GitHub reads: 4 search calls at 15:3x IST (merged PRs since 12:30 IST: only #2077; open: #2032, #2065, #2080, #2081).
+Written 15:10-15:4x IST 17 Nov (Lead 78 correction: committed 15:45; "16:30" was an estimate) (clock: `TZ=Asia/Kolkata date`, 15:36 at the GitHub read) by an independent completeness reviewer for the tech lead, on the founder's asks A164-A165 and P-690. The reviewer did not write the plan. Nothing was committed, pushed, labelled or sent. GitHub reads: 4 search calls at 15:3x IST (merged PRs since 12:30 IST: only #2077; open: #2032, #2065, #2080, #2081).
 
 **Window:** the founder widened it to the last 76 hours (from about 11:00 IST 14 Nov): DECISIONS P-596 to P-690, history files of 14-17 Nov, the Library, the design pages, the clean-up plan and the side notes. Every item below names a source file and line with a short quote. Nothing is added without one.
 

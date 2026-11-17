@@ -2,7 +2,7 @@
 
 current_lead: local_68613e56-e178-487b-91d0-c49054a1d1d5 Lead 78 · 17 Nov 13:56 IST (series 2; took over from Lead 77 (series 2, local_baa78a6d) at ~340k, P-446)
 
-updated: 2026-11-17 15:35 IST by **Lead 78 (series 2, local_68613e56)** (took over 13:56 IST from Lead 77; check cron f9d7984f at :17 and :47) · weekly 11% at hand-over · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-690**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-17 15:56 IST by **Lead 78 (series 2, local_68613e56)** (took over 13:56 IST from Lead 77; check cron f9d7984f at :17 and :47) · weekly 11% at hand-over · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-690**) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -30,7 +30,7 @@ Standbys: **Lead 79 (local_25aa8878), Lead 80 (local_d018e333)** (P-286). Founde
 
 | A162-A163 | the pipeline choke and agents (answered: CI capacity, one builder); one plan across clean-up and set-up pages (answered: full-power plan) | rows word for word in `history/STATE-2026-11-17-1515-lead78s2-asks-A162-A163-rows.md` |
 | A164 | 15:15 IST 17 Nov (typed): away 2-3 h; keep going; more standbys or Leads if needed; ask for approvals; "make sure that you don't lose any of these steps"; is there a complete action list from the artifacts? | Lead 78: Lead 80 standby started; the full-power plan pinned atop Start here as the one action list; 18:30 go/no-go, likely 09:30 |
-| A165 | 15:2x IST 17 Nov (typed): the full-power plan must cover everything discussed "for the best-in-class operating pipeline", reviewed "multiple times", over the last 76 h (48 h where drift risk), and every agent must know it until complete | Lead 78: P-690 (RULES row + DECISIONS); review 1 by a fresh Opus reviewer running (gaps file + plan edited in place, every item cited); review 2 after it |
+| A165 | 15:2x IST 17 Nov (typed): the full-power plan must cover everything discussed "for the best-in-class operating pipeline", reviewed "multiple times", over the last 76 h (48 h where drift risk), and every agent must know it until complete | Lead 78: P-690 (RULES row + DECISIONS); reviews 1 and 2 done: 223 items (A 32, B 15, C 63, D 88, E 25), review 1 98/103 confirmed, 4 fixed; 11 adopted talk lessons added; **founder call owed: #91 merge only through the queue vs P-214/P-684 hand merges** |
 
 ## Engineering set-up tracker (A160, Lead 77, 13:2x IST 17 Nov; page https://claude.ai/artifact/EYh8cn1M8rTc3Wba3Pp1dP; every Lead updates it at each check, a row leaves only when done or the founder drops it)
 | Workstream | Owner | Next step | Expected (IST) |
