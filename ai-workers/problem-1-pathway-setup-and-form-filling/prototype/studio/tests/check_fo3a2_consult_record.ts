@@ -234,9 +234,9 @@ try {
   await clock.set(at("2026-10-29 17:00"));
   await attend(bText.id, "COMPLETED");
   const emoji = "🙂".repeat(10_000);
-  const textSave = await go("PUT", rec(bText.id), P.OWNER, { notes: emoji, recommended: ["Work permit", "work  permit", "WORK PERMIT", "Que\u0301bec", "Québec", " Translation "] });
-  ok("FO-3a2 text pass: 10,000 characters of emoji save (counted in characters, as the database does); items keep one of each name whatever its case, spacing or accent form",
-    textSave.status === 200 && [...textSave.body.notes].length === 10_000 && textSave.body.recommended.join("|") === "Work permit|Québec|Translation", textSave.body.recommended ?? textSave);
+  const textSave = await go("PUT", rec(bText.id), P.OWNER, { notes: emoji, recommended: ["Work permit", "work  permit", "WORK PERMIT", "Que\u0301bec", "Québec", " Translation ", "اقامت\u200cدائم", "𝒜".repeat(100)] });
+  ok("FO-3a2 text pass: 10,000 characters of emoji save (counted in characters, as the database does); items keep one of each name whatever its case, spacing or accent form; a zero-width non-joiner inside a Persian name is kept; 100 four-byte letters fit",
+    textSave.status === 200 && [...textSave.body.notes].length === 10_000 && textSave.body.recommended.join("|") === `Work permit|Québec|Translation|اقامت\u200cدائم|${"𝒜".repeat(100)}`, textSave.body.recommended ?? textSave);
   const textBad = { nul: await go("PUT", rec(bText.id), P.OWNER, { version: 1, notes: "a\u0000b" }), nulItem: await go("PUT", rec(bText.id), P.OWNER, { version: 1, recommended: ["a\u0000b"] }),
     tooLong: await go("PUT", rec(bText.id), P.OWNER, { version: 1, notes: `${emoji}🙂` }), invisible: await go("PUT", rec(bText.id), P.OWNER, { version: 1, recommended: ["\u200b"] }),
     plain: await (async () => { const r = await fetch(`${base}/api/front-office/bookings/${bText.id}/consult-record`, { method: "PUT", headers: { authorization: `Bearer ${P.OWNER.token}`, "content-type": "text/plain" }, body: "hello" }); return { status: r.status }; })(),
@@ -244,8 +244,11 @@ try {
   const textKept = await db.foConsultRecord.findFirstOrThrow({ where: { bookingId: bText.id } });
   ok("FO-3a2 text fail: a NUL in notes or an item → 400; 10,001 characters → 400; an item of only a zero-width space → 400; a text/plain body → 415; an array → 400; the record is unchanged",
     textBad.nul.status === 400 && textBad.nulItem.status === 400 && textBad.tooLong.status === 400 && textBad.invisible.status === 400 && textBad.plain.status === 415 && textBad.array.status === 400
-      && textKept.version === 1 && textKept.recommended.length === 3, Object.fromEntries(Object.entries(textBad).map(([k, v]) => [k, v.status])));
+      && textKept.version === 1 && textKept.recommended.length === 5, Object.fromEntries(Object.entries(textBad).map(([k, v]) => [k, v.status])));
   const blank = await go("PUT", rec(bText.id), P.OWNER, { version: 1, notes: "   " });
+  const { ConsultRecordRead } = await import("../ports/consult-record.ts");
+  const textRead = await new ConsultRecordService(db, { audit: audit as never }).read(db, A.id, textSave.body.id);
+  ok("FO-3a2 text: the port's own schema accepts what the API saved (lengths in code points on both sides, review n1)", ConsultRecordRead.safeParse(textRead).success, textRead);
   ok("FO-3a2 text: notes of only spaces are stored as none", blank.status === 200 && blank.body.notes === null, blank.body);
 
   // ------------------------------------------------------------------------------------------ DW6: the port contract

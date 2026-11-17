@@ -23,7 +23,8 @@ export const ConsultRecordRead = z.strictObject({
   bookingId: Uuid,
   /** null only for a booking that names no person (none is written that way today). */
   partyRef: PartyRef.nullable(),
-  recommended: z.array(z.string().min(1).max(120)).max(20),
+  /** Each 1-120 characters, counted in code points as the API and the database count them (review n1). */
+  recommended: z.array(z.string().refine((s) => [...s].length >= 1 && [...s].length <= 120, "1 to 120 characters")).max(20),
   quotedFee: QuotedFee.nullable(),
 });
 export type ConsultRecordRead = z.infer<typeof ConsultRecordRead>;

@@ -56,12 +56,12 @@ const forbidden = (key: string) => problem(403, "forbidden", "Not allowed", `Thi
 /** Text as a person typed it: NFC, no NUL or control characters but line breaks and tabs, and its length counted in
  *  characters (code points), as the database counts (break m1, m4). Invisible format marks are dropped before trimming
  *  (break m5), so an item of only a zero-width space is empty. */
-const INVISIBLE = /[\u200b-\u200f\u2060-\u2064\ufeff\u00ad]/g;
+const INVISIBLE = /[\u200b\u200e\u200f\u2060-\u2064\ufeff\u00ad]/g;   // never U+200C/U+200D: part of Persian, Hindi and emoji spelling (review n2)
 const chars = (s: string) => [...s].length;
 const Text = (max: number) => z.string().refine((t) => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(t), "no control characters")
   .transform((t) => t.normalize("NFC")).refine((t) => chars(t) <= max, `at most ${max.toLocaleString("en-CA")} characters`);
 const Item = z.string().refine((t) => !/[\u0000-\u001f\u007f]/.test(t), "no control characters")
-  .transform((t) => t.normalize("NFC").replace(INVISIBLE, "").trim().replace(/\s+/g, " ")).refine((t) => chars(t) >= 1 && chars(t) <= 120, "1 to 120 characters");
+  .transform((t) => t.normalize("NFC").replace(INVISIBLE, "").trim().replace(/\s+/g, " ")).refine((t) => chars(t) <= 120 && /[^\u200c\u200d]/.test(t), "1 to 120 characters");
 export const ConsultBody = z.strictObject({
   timeSpentMinutes: z.number().int().min(1).max(1440).optional(),
   notes: Text(10_000).nullable().optional(),
