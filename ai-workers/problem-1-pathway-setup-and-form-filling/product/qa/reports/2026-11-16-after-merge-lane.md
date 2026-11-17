@@ -51,3 +51,15 @@ Refined 16:1x IST from qa #1950's verdict table (open, stacked on #1929): R1.19 
 | 17 Nov 04:3x to 06:3x | 693369537 | none (six checks) | none | #2006 waited in the records queue; merged 06:35 IST (QA-493 closed, R1.27 parts missing FO-4b, QA-501) |
 | 17 Nov 06:4x | 6dcff65f5 | #2006 (this lane), #1968 (qa R1.38/R1.40 on the manage page), #2034 (QA-498 quarantine) | none | wait |
 | 17 Nov 07:0x | bcc505afd | #1957 PF-5t part 1 (R1.100: new version asks again, acceptances shown), #2040 FO-6 part 2 (signing port), #2048 (qa records) | none: R1.100 still waits on QA-481 (the code reaches no inbox: PF-5v part 2 after PF-19p #1961, unmerged) | wait |
+| 17 Nov 07:2x | bcc505afd | none | none | last check |
+
+## Closing, 17 Nov 07:3x IST (lane stops at 08:00, P-626)
+* **Whole rows proven by this lane: none.** No watched row had all its parts merged during the lane (P-606).
+* **Done:** QA-493 closed (FO-4sf #1962; #2006); R1.27 parts missing FO-4b; QA-484 fixed on main (confirmed; row closed by #1950); **QA-501** new (Minor: the FO-4sf pack is not re-runnable on one database). Lead 69's ask answered on #2006.
+* **What still blocks each watched row, on main bcc505afd:**
+  * R1.6: PF-6 part 2a/2b, J-6 part 2 (qa #2010 holds the retest after PF-6m).
+  * R1.40: J-38 (no PR seen). R1.38: J-38 and FO-3st1.
+  * R1.28: PF-19b part 2 (#1956, dequeued) and FO-2 part 3 (withdraw).
+  * R1.19: PF-5 part 2 (#1959), PF-5s (sign-up page), QA-481 (PF-5v part 2 after PF-19p #1961).
+  * R1.100: QA-481 only (PF-5t part 1 #1957 merged 07:07 IST): retest when PF-5v part 2 lands.
+* **For the next qa lane:** re-run `check_qa_r1_platform_fo_walk.ts` for R1.19/R1.100 when PF-19p and PF-5v part 2 merge; run FO-4sf's pack on fresh copies only until QA-501 is fixed.
