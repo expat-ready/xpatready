@@ -50,7 +50,8 @@ let r = await call("POST", "/demo/load", undefined, AUTHOR);
 ok("C5.5 M1 pass: in the demo workspace the sample load still works (the Visitor visa row is there)", r.status < 300 && !!sql(`select id from combination where combination_key = 'vv.single'`), r.body?.detail ?? r.status);
 const vvDemo = sql(`select id from combination where combination_key = 'vv.single'`);
 ok("C5.5 BR-3 pass (reviewer MJ1): in the demo workspace the Visitor visa's Review and release page shows the Demo release mark", await demoMark(vvDemo));
-sql(`update workspace set key='firm' where key='demo'`);
+// AUD-1a (Lead 78, comment 6946893835): the trail's guard refuses any key change to or from demo, so these renames run as the owner with triggers off on this scratch copy; the app's role can never do this (PF-12).
+sql(`set session_replication_role = replica; update workspace set key='firm' where key='demo'; set session_replication_role = origin`);
 restart("STUDIO_WORKSPACE_KEY=firm");
 const sess = (await call("GET", "/session")).body;
 ok("C5.5 BR-3: the copy runs as the workspace \"firm\", not the demo", sql(`select key from workspace`) === "firm" && sess?.workspace?.key === "firm" && sess.workspace.demo === false, sess?.workspace);
@@ -162,5 +163,5 @@ if (r.status === 201) {
 } else ok("C5.5 BR-9: the real release goes through and its summary names both signed keys", false, r.body);
 } catch (e) { ok("ran to the end", false, (e as Error).message); }
 // Back to the demo workspace, so the copy ends as it started.
-try { sql(`update workspace set key='demo' where key<>'demo'`); restart(); } catch { /* the copy may be gone */ }
+try { sql(`set session_replication_role = replica; update workspace set key='demo' where key<>'demo'; set session_replication_role = origin`); restart(); } catch { /* the copy may be gone */ }
 process.exit(summary() ? 1 : 0);

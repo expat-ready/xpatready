@@ -171,6 +171,7 @@ try {
   ok(`AUD-1a DW7 fail: every move of the rows the rule reads is refused, as the app's connection and as the owner (${guarded.length} tries); nothing changed`, notRefused.length === 0 && wsKeys() === k0, notRefused);
   // With the demo row moved away, another workspace renamed to demo would make its null-firm lines deletable: refused too.
   sql(BARE, "insert into workspace (id, key, label) values (gen_random_uuid(), 'aud1a-plain', 'A plain workspace')");
+  ok("AUD-1a DW7 fail: the app's connection cannot switch the guard off (no session_replication_role for xr_app, PF-12), so the owner-only test setup is no way round it", refused(() => tx(BARE, "set session_replication_role = replica; update workspace set key = 'demo-x' where key = 'demo'", false, "xr_app"), /permission denied|session_replication_role/) && n(BARE, "select count(*) from workspace where key = 'demo'") === 1);
   ok("AUD-1a DW7 fail: no workspace takes the key demo (renaming a plain workspace to demo is refused, the app's connection)", refused(() => tx(BARE, "update workspace set key = 'demo' where key = 'aud1a-plain'", false, "xr_app"), GUARD));
   tx(BARE, "update workspace set label = 'Renamed label' where key in ('demo', 'platform-audit')", false, "xr_app");
   tx(BARE, "update workspace set key = 'aud1a-plain-2' where key = 'aud1a-plain'", false, "xr_app");

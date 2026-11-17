@@ -47,7 +47,8 @@ const submitSignApprove = async (id: string, note: string) => {
 
 try {
   // ------------------------------------------------------------------ setup: Reset, then the fixture sample with "With an LMIA" as Release 1
-  sql(`update workspace set key='demo' where key<>'demo'`); // a run that stopped half-way left it renamed
+  // AUD-1a (Lead 78, comment 6946893835): the trail's guard refuses any key change to or from demo, so these renames run as the owner with triggers off on this scratch copy; the app's role can never do this (PF-12).
+  sql(`set session_replication_role = replica; update workspace set key='demo' where key<>'demo'; set session_replication_role = origin`); // a run that stopped half-way left it renamed
   let r = await call("POST", "/demo/reset", { confirm: "RESET" });
   r = await call("POST", "/demo/load");
   ok("setup: Reset, then the sample inputs loaded (With an LMIA imported as Release 1)", r.status === 201, r.status === 201 ? undefined : r.body);
@@ -240,7 +241,7 @@ try {
   ok("C5.4 Decision 1 pass: the demo seed answers the Sample combination's number with a Sample entry (no citation, not None published), from the sample load; it passes in the demo workspace",
     r.status === 200 && r.body.written === 1 && sampled.state === "sample" && sampled.passes && sampled.entry.cited === null && sampled.entry.none_published === null && sampled.entry.from_sample_load, sampled);
   // The same content in a non-demo workspace: this copy's workspace renamed and the server started with STUDIO_WORKSPACE_KEY=firm.
-  sql(`update workspace set key='firm' where key='demo'`);
+  sql(`set session_replication_role = replica; update workspace set key='firm' where key='demo'; set session_replication_role = origin`);
   restart("STUDIO_WORKSPACE_KEY=firm");
   const sess = (await call("GET", "/session")).body;
   r = await call("POST", `/combinations/${v}/submit`, { note: "G1 check" }, AUTHOR);
@@ -250,12 +251,12 @@ try {
   ok("C5.4 Decision 1 fail: GET reads the Sample entry as not passing outside the demo workspace", s.demo_workspace === false && s.numbers.find((n: { address: string }) => n.address === "min_age").passes === false);
   r = await call("POST", `/combinations/${v}/sources/sample`, undefined, AUTHOR);
   ok("C5.4 Decision 1 fail: the Sample seed is refused outside the demo workspace", r.status === 409, r.body);
-  sql(`update workspace set key='demo' where key='firm'`);
+  sql(`set session_replication_role = replica; update workspace set key='demo' where key='firm'; set session_replication_role = origin`);
   restart();
   const vvDone = await submitSignApprove(v, "G1 check: Sample answer in the demo workspace");
   const vvRel2 = ((await call("GET", "/releases")).body as { combination_id: string; version: number; demo: boolean }[]).find((x) => x.combination_id === v && x.version === 2);
   ok("C5.4 Decision 1 pass: back in the demo workspace the Sample answer passes and the release is a Demo release, its source frozen as Sample",
     vvDone.step === "approve" && vvDone.r.status < 300 && vvRel2?.demo === true && sql(`select count(*) from config_release, jsonb_array_elements(snapshot->'sources') x where combination_id='${v}' and version=2 and (x->>'sample')::boolean`) === "1", { step: vvDone.step, status: vvDone.r.status, rel: vvRel2 });
 } catch (e) { ok("ran to the end", false, (e as Error).message); }
-try { sql(`update workspace set key='demo' where key<>'demo'`); } catch { /* the copy may be gone */ }
+try { sql(`set session_replication_role = replica; update workspace set key='demo' where key<>'demo'; set session_replication_role = origin`); } catch { /* the copy may be gone */ }
 process.exit(summary() ? 1 : 0);
