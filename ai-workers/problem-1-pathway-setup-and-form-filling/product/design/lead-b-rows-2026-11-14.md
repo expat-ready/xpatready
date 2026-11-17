@@ -1831,3 +1831,7 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - PF-21s part 4 starts only if #2012 merges before ~15:00 IST (the last part of the complaints screen, no schema); otherwise it holds for after the move.
   - PF-12b part 2 holds for after the move (~650 lines, a migration, identity files, a breaker).
 * Owed to Lead 75 by 20:00 IST (sending at 19:30): every open PF/FO PR of mine, its head, and whether it merges tonight or waits for the move.
+
+### Rev 17.3 (12:38 IST 17 Nov): #2064 red CI read; P-663 hold
+* **#2064 (PF-18b), head 749708be:** red for about 2 h with no push, and not `check_css1_index` DW4. (1) pr-rules: `pr-size.sh` reads main's DECISIONS.md, and P-654 is only on records PR #2071 (labelled, queued). (2) module-cards: the run came before the body's `Card unchanged:` line. No builder fix. Re-run both failed jobs once #2071 merges; otherwise it waits for the move with head 749708be.
+* **P-663 admission rule tripped** (Lead 76: P95 queue wait 239 min, batch wait 35 min): no new capability row starts. PF-5tv and PF-21s part 4 are held until both waits fall.
