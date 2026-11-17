@@ -207,3 +207,7 @@ On main, `api/src/case-prepare.ts` still reads `combination.portalKey` (lines 16
 ## 6. Screens
 
 A grep of `web/src` for `cases/${…}/(decisions|withdraw|close|reopen)` finds no file. The four routes (`POST /api/runtime/cases/:id/decisions|withdraw|close|reopen`) are API only. The case read (`GET /api/runtime/cases/:id`) gives `status` (OPEN/CLOSED) only: no reason, outcome or decision.
+
+## 6. CI retry sightings rated in this round (quoted from the ci.yml flaky comment, B122 F5)
+* **QA-314** (`check_forms_qa206_name_browser.cjs`): CI run 43958582809, merge-queue batch #2039 holding #1998, commit `f744b08e8`, 2026-11-16T22:03Z. 1st try: "locator.waitFor: Timeout 20000ms exceeded. … waiting for getByText(/The library already holds a section of that name, so this part joins it; nothing new was added/)"; passed on retry. Its row says "raise to Major if it recurs": raised to Major.
+* **QA-502** (`check_bk3_links_browser.cjs`): CI run 43970175916, merge-queue batch #2047 holding #2013, commit `bdf4914b0`, 2026-11-16T23:25Z. 1st try: "FAIL  BK-3 PR 2 375: Cancel closes the dialog and drops ?open from the address — http://localhost:4442/cases?open=8bea504b-a669-4120-b69a-e3551d6e2fde", then "FAIL  BK-3 PR 2 375: a reload after Cancel does not reopen the d…"; the same two steps "PASS" at 1440 px in the same try; passed on retry. Logs: artifact `suite-retries-5` of each run.

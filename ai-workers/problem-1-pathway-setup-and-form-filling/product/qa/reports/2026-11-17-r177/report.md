@@ -48,9 +48,11 @@ The walk runs as the owner, the case manager and the case officer, signed in thr
 * **Active-case count (CS-C1b):** +1 at opening, -1 when every filing has a decision, +1 at reopen, -1 at the new decision, -1 at the withdrawal.
 
 ## Bugs
-* **QA-474 (Gap) closed.** Both of its claims are now false: decision, withdrawal, close and reopen are built, they sit under a shaped row (CS-C1, both parts merged), and they have named tests. What is left is the screen, a different finding (QA-501).
+* **QA-474 (Gap) closed.** Its asked action is done: the row was shaped (CS-C1, both parts merged), and decision, withdrawal, close and reopen are built with named tests. Whether they get their own C row is question 2 below. What is left is the screen, a different finding (QA-501).
 * **QA-397 (Bug · Major) kept**, retested and failing as above.
 * **QA-501 new**, Gap · Major, screens lane: decision, close, reopen and withdraw have no screen.
+* **QA-502 new**, Bug · Minor (CI retry only): `check_bk3_links_browser.cjs` failed its 1st try at 375 px in #2013's merge batch (Cancel left `?open=` in the address), then passed on retry (evidence §6).
+* **QA-314 raised to Major**: it recurred on #1998's merge batch, and its row's rule says to raise it then (evidence §6).
 * **Minor (test harness, noted here and not logged as a row):** `check_csc1_close.ts` run as its usage line says crashes with "Parameter decorators only work when experimental decorators are enabled". It leaves two scratch databases behind, which qa dropped. Its usage line needs `--tsconfig studio/api/tsconfig.json`.
 
 ## Limits
