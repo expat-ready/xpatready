@@ -272,6 +272,25 @@ Reused, not redone: `design/rule-triage-2026-11-16.md` (P-611, B193 part 5) chec
 
 102 of 273 PRs merged 10-17 Nov were records or qa records (48 on 16 Nov alone; GitHub search). They run cheap CI (251 one-shard runs, 1,924 machine-minutes in 7 days [R7]), but each takes a queue slot, gate jobs and Lead turns. **Recommendation:** records twice a day (P-336 already says daily); qa verdicts in the same batch. Cost of the change: none. Quality: none.
 
+### 9e. The talk audit, folded in (Lead 73's workflow, 17 Nov; published at claude.ai/artifact/BQGz8gLd8DYAZwousz2Qeg)
+
+Reused, not redone. It checked 20 claims in the talk "Rethinking Claude Code Best Practices" (AI Engineer write-up, video vlfCjWuv4es) against the Claude Code docs and Anthropic posts: 11 hold as said, 8 hold with a catch the talk skipped, 1 holds only in part, 0 are wrong. It then checked 15 practices against our setup. Where it agrees with this page, its evidence is stronger, because it read the settings files themselves. **It adds or corrects these points:**
+
+| Point | Talk audit's finding (read-only spot checks, 17 Nov) | Effect on this page |
+|---|---|---|
+| Deny rules | Beyond the curl and cancel gaps in 9b, these match no deny rule: `git push --no-verify`, `gh pr merge --admin`, `gh workflow run`, `git reset --hard`, `git clean -fdx`, `git -C`/`git -c` forms. The 5 Drive deny rules name an old connector id, so they match nothing today. The docs say a shell deny rule "isn't a security boundary around the program" | D13's deny item becomes its T1 batch (one settings batch plus one hook that reads the whole command); **the real boundary is a GitHub ruleset on main** (its T5) |
+| Allow rules | `.claude/settings.local.json` on the Mac has 8 narrow allow rules that are settled before the auto-mode classifier runs, one of them `gh pr review *` (a route to approving its own PR); the "never merge by hand" sentence sits in auto mode's allow list, which only holds exceptions | its T2 and T3; add to D13 |
+| Reviewer independence | the builder posts "Reviewer: Approve <sha>" itself under the shared GitHub identity; `queue-gate.yml` line 33 accepts it from any owner, member or collaborator; test, pack and fixture paths are not on the Lead-read list, so a weakened test could merge on green | **a quality gap this page missed.** Its T7 Option B (CI ties review.md to the reviewed commit; the gate accepts Approve only from named logins) and test paths on the Lead-read list, at no cost |
+| Auto-fix | its replies post under the owner's account and could trigger queue-gate's Approve handling and comment-run's /rerun | **auto-fix only after T7**, not just after the comment filter (D13 amended) |
+| Hand-overs | the Lead handed over 11 times in about 27 hours; each new session reads about 72k tokens before its first message | matches 9c (about 44 Leads in 5 days); its T8 is the same trial as D10 |
+| Projects | threads do **not** load the repo's skills, hooks, deny rules or `.mcp.json`; the beta is on Pro, Max and Ultra only, with a waitlist; the main session sees only what threads report back | **Projects cannot replace the Lead today**: our guards would not apply in its threads. 9c's "later trial" stays later |
+| Fable | "Fable is never a default and may bill to usage credits" (Projects and model-configuration docs, as the audit read them); the self-checking claim rests on customer quotes, not a measured figure | **D11 needs a check first:** a Fable Lead must not bill to usage credits under P-643 ("no extra usage"). If it would, run D10 (compaction) alone on Opus 5.5 |
+| Stop hook | `stop-check.sh` took 26.1 s cold against a 20 s timeout, so under load the check never runs; the 6 hooks merged in #1865 are not wired into settings | its T1 batch (Stop timeout about 60 s, wire #1865) |
+| Sandbox | no limit on reading credentials (a test read of `~/.ssh` succeeded); 7 hooks from a third-party memory tool run unsandboxed on every prompt and stop | its T1 (credential deny in both places) and T10 |
+| Stalls | nothing counts classifier refusals as they happen | its T1 refusal log: the "before" measure for step 4 of section 13 |
+
+**Mapping:** D13 = its T1 + T2 + T3 + T6, then T7, then auto-fix (its T11). D10 = its T8. Its T5 (GitHub ruleset on main: require ci, block force-push and deletion, merge only through the queue) is new and belongs **before** everything in section 13 step 4: it is the one guard no session can route around. Its T9 (no ask rules; they become waits when unattended, P-388) agrees with this page.
+
 ---
 
 ## 10. The model split: Fable 5.2 orchestrator, Opus 5.5 workers?
@@ -348,9 +367,9 @@ Every step is reversible, none lowers a gate, and each has one measure taken bef
 | D8 | Lane cap from CI capacity (section 8c) | **Yes**: about 10-12 code lanes today, about 15 on Team | fewer waits | US$0 | none |
 | D9 | Ultracode | **Off as a standing setting; `workflowSizeGuideline: small`; on only for a named, read-only, wide task** | - | 3-8 times the tokens of one session on the tasks that use it (estimate) | none when read-only |
 | D10 | Lead continuity: allow compaction onto STATE for a one-day trial (lifts P-446's "never compacts" for that day) | **Yes, trial** | 1 day; hand-overs from about 9-14 a day toward 1-2 | US$0 (tokens measured) | none: STATE stays the record; revert if items are missed |
-| D11 | Fable 5.2 (high) as the Lead for the same trial day; workers stay Opus 5.5 | **Yes, trial** | 1 day | plan use measured per hour; stop at the P-643 line | none |
+| D11 | Fable 5.2 (high) as the Lead for the same trial day; workers stay Opus 5.5 | **Yes, trial, only if Fable does not bill to usage credits on our plan** (P-643; talk audit 9e); otherwise D10 alone on Opus 5.5 | 1 day | plan use measured per hour; stop at the P-643 line | none |
 | D12 | Rules: about 20 enforced (the 11 broken in 13-16 Nov plus the irreversible guards) and about 12 principles; product rulings out to DECISIONS and module cards; the rest retired to history, word for word | **Yes** | 1 day of Lead work | US$0; saves about 78 check PRs | none: every gate stays; a retired row comes back with a check if it is ever broken |
-| D13 | Close the deny-rule gap (curl writes to the GitHub API, run cancels); shrink the SessionStart output to 1-2 KB; one Limited cloud environment with network secrets; auto mode with `autoMode.environment`; auto-fix on lane PRs after filtering the comment-triggered workflows | **Yes**, in that order | about 1 day | US$0 | better: irreversible actions become refused, not just asked |
+| D13 | The talk audit's T5 first (a GitHub ruleset on main), then its T1-T3 settings batch (deny gaps, the 8 allow rules, auto-mode text, credential limits, Stop timeout, refusal log); shrink the SessionStart output to 1-2 KB; one Limited cloud environment (its T6); then the reviewer-independence fix (its T7 Option B, test paths on the Lead-read list); auto-fix only after T7 (its T11) | **Yes**, in that order | about 1 day | US$0 | better: irreversible actions become refused, not just asked |
 
 ## 15. What was not measured
 
@@ -358,7 +377,7 @@ Every step is reversible, none lowers a gate, and each has one measure taken bef
 * Which PRs were in each batch, so this page cannot split 16 Nov's 21 failed batches into roots and cascades; [MQ]'s method does that and is the right next step for 16-17 Nov.
 * `--direct` replay: 19 red PR checks replayed of 85 (time); 13 of 19 would still go red under `--direct`. A full replay is the evidence a later `--direct` decision needs.
 * Per-lane merge rate (used as an estimate in 8c).
-* Section 9: the value of the roughly 70-90 rules with no break is judged from the triage's break count (13-16 Nov only); a longer window could show a rare but real catch. The anti-stall review (Lead 72) and the talk audit (Lead 73) had not landed when this was written; Lead 73 folds them in.
+* Section 9: the value of the roughly 70-90 rules with no break is judged from the triage's break count (13-16 Nov only); a longer window could show a rare but real catch. The talk audit is folded in (9e). The anti-stall review (Lead 72) had not landed by the cut-off; Lead 74 folds it in.
 * Section 10: Fable 5.2's token cost as the Lead on our plan: not measured (the trial measures it).
 * Blacksmith's 4 vCPU price and whether any provider accepts our account before the org move (Namespace did for the trial, P-649).
 * The cost of each suite's app start inside a shard, and CPU use per shard (logs give suite times only).

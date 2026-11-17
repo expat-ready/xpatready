@@ -181,6 +181,18 @@ ul{margin:6px 0;padding-left:20px}
 </table>
 </div>
 
+<div class="card">
+<h3>Talk audit folded in (Lead 73's check of the Claude Code talk)</h3>
+<p>It found 19 of 20 claims hold and none wrong. It read our settings files directly and adds what this page missed:</p>
+<ul>
+<li><b>The guards that must never break leak.</b> 8 narrow allow rules on the Mac skip the auto-mode classifier; one, <code>gh pr review *</code>, lets a session approve its own PR. <code>--no-verify</code>, <code>gh pr merge --admin</code>, <code>gh workflow run</code> and curl writes to GitHub match no deny rule, and the Drive deny rules point at an old connector. <b>The real boundary is a GitHub ruleset on main</b> (require ci, merge only through the queue). It comes first.</li>
+<li><b>Nobody independent proves "done".</b> The builder posts its own reviewer's Approve under the shared GitHub identity, and test files are not on the tech lead's must-read list. Fix at no cost: CI ties the review file to the reviewed commit, the gate accepts Approve only from named logins, and test paths go on the list. Auto-fix waits for this.</li>
+<li><b>Projects cannot replace the tech lead yet:</b> its threads do not load our hooks or deny rules.</li>
+<li><b>Fable may bill to usage credits.</b> The Fable-Lead trial runs only if it does not (no extra usage, P-643). Otherwise the compaction trial runs alone on Opus 5.5.</li>
+</ul>
+<p class="src">Talk audit (claude.ai/artifact/BQGz8gLd8DYAZwousz2Qeg), decisions T1-T11; mapped in section 9e of the record.</p>
+</div>
+
 <h2>Claude Code features that remove manual work</h2>
 <div class="card scroll">
 <table>
@@ -226,9 +238,9 @@ ul{margin:6px 0;padding-left:20px}
 <tr><td>D8</td><td>Lane cap from CI capacity</td><td class="rec">Yes: ~10-12 code lanes today, ~15 on Team</td><td>shorter waits</td><td>US$0</td><td>none</td></tr>
 <tr><td>D9</td><td>Ultracode</td><td>Off by default; size "small"; on only for a named, wide, read-only task</td><td>no gain on the CI and qa path</td><td>3-8× tokens on those tasks (estimate)</td><td>none if read-only</td></tr>
 <tr><td>D10</td><td>Allow compaction onto STATE for one trial day</td><td class="rec">Yes, trial</td><td>hand-overs 9-14 → 1-2 a day</td><td>US$0</td><td>none; revert if items are missed</td></tr>
-<tr><td>D11</td><td>Fable 5.2 as the Lead that day; workers stay Opus 5.5</td><td class="rec">Yes, trial</td><td>1 day</td><td>plan use measured hourly</td><td>none</td></tr>
+<tr><td>D11</td><td>Fable 5.2 as the Lead that day; workers stay Opus 5.5</td><td class="rec">Yes, trial, only if Fable does not bill to usage credits</td><td>1 day</td><td>plan use measured hourly</td><td>none</td></tr>
 <tr><td>D12</td><td>~20 enforced rules + ~12 principles; rest retired word for word</td><td class="rec">Yes</td><td>1 day of Lead work</td><td>saves ~78 check PRs</td><td>none; every gate stays</td></tr>
-<tr><td>D13</td><td>Deny-rule gap, start-up text, cloud environment, auto mode, auto-fix</td><td class="rec">Yes, in that order</td><td>~1 day</td><td>US$0</td><td>better</td></tr>
+<tr><td>D13</td><td>GitHub ruleset on main first (T5), then the settings batch (T1-T3), start-up text, cloud environment (T6), reviewer independence (T7), then auto-fix</td><td class="rec">Yes, in that order</td><td>~1 day</td><td>US$0</td><td>better</td></tr>
 </table>
 </div>
 
