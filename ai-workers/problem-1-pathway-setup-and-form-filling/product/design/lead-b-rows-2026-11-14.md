@@ -1898,3 +1898,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 ### Rev 17.16 (19:50 IST 17 Nov): front-office card over 40 on main; #2109 opened in the freeze
 * **Main breaks `module-cards`:** `api/src/front-office/MODULE.md` is 42 lines after #1918 and #2062 merged (f38c6b09b), so every PR tested on main is red. Fix proposed to Lead 79 (P-214): fold the three "Booking settings (FO-3a part 1a)" bullets into one bullet, 40 lines, no fact cut. Lead 79 decides when it lands and who makes it.
 * **#2109 PF-4dn** (head 1bfea5051) was opened at 19:45 IST, after the B1 freeze (P-692), while P-663 still held the row. Lane told to stop with the PR kept open (comment posted), and Lead 79 told.
+* Lead 79: the module-cards check skips merge-queue batches, so tonight's drain is not blocked. Lead 79 makes the card fold as the first PR after the move (P-214). #2109 stays open, no pushes, and Lead 79 logs the breach.
