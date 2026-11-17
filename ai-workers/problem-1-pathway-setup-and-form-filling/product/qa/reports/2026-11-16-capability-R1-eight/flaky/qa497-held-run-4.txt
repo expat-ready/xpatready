@@ -1,0 +1,26 @@
+PASS  setup: Reset to the six
+SETUP questions through the people's steps: {"accepted":191,"applied":8,"ownYesNo":3,"byHand":58,"sections":28,"reused":0,"held":12,"approved":185,"placed":154,"refused":[],"retried":[]}
+PASS  C4.11 pass: Visitor visa's question list is still vv.single-ae2133b8a398, so the saved run replays — "prototype/p2/question-lists/vv.single-ae2133b8a398.questions.json"
+PASS  setup: one document line on Study permit — ""
+PASS  setup: every fact Study permit's forms need is asked
+PASS  QA237 fail (P-279): Submit is refused while 1 number has no source entry, in words — "Fix the problems before submitting: 1 number has no source entry. Each is listed on Review and release. First: Form IMM 5707: From age: 18 has no source entry. "
+PASS  setup (P-279): every number the draft publishes has a source answer before Submit — {"written":1,"numbers":12,"held_back":0}
+PASS  setup: before any condition, Study permit holds none and has no Hiding error
+PASS  setup: Visitor visa's saved run proposes conditions on 7 questions; all accepted there and approved by a second person — {"facts":["person.other_given_names","person.other_family_name","person.us_green_card_expiry_date","person.military_service_details","person.national_id_number","person.criminal_history_details","person.us_green_card_number"],"approved":7}
+PASS  C4.11: the whole run spent US$0 (Saved and Rules only) — 0
+PASS  C4.11 pass (QA-237): accepting and approving the proposed conditions leaves Visitor visa's draft with no "Hiding a value a form reads" error — []
+PASS  C4.11 pass (QA-237): Submit refuses nothing for those conditions (the draft stays saveable) — {"status":400,"refusedFor":[]}
+PASS  C4.11 pass (QA-237): instead, each condition Visitor visa's forms read outside it is a warning saying why and how to use it, in words, no field code — ["Condition not used on this combination: the question \"Free-text details of criminal history\" is asked every time here, because IMM 5257 reads its answer whenever the form applies. To use the condition here, make the form or its form fields apply under the 
+PASS  C4.11 pass (QA-237, the guard rail): a held question carries no condition, so nothing a form reads is hidden; the library's condition is kept beside it — ["person.criminal_history_details","person.military_service_details","person.national_id_number","person.other_family_name","person.other_given_names","person.us_green_card_number","person.us_green_card_expiry_date"]
+PASS  C4.11 pass (QA-237): the panel still reads the library's condition for a held question and offers the confirmation — {"target":"person.criminal_history_details","rows":["not_confirmed"]}
+PASS  C4.11 pass (QA-237): once its form field holds the same condition, the question is no longer held and carries the condition again — {"target":"person.criminal_history_details","held":["person.military_service_details","person.national_id_number","person.other_family_name","person.other_given_names","person.us_green_card_number","person.us_green_card_expiry_date"]}
+PASS  C4.11 fail (control): every other held question is still held, so the step above can fail — 6
+PASS  C4.11 setup (QA-239): Study permit reads at least one of the questions Visitor visa conditioned (the bug can show) — ["person.military_service_details","person.national_id_number","person.other_family_name","person.other_given_names","person.us_green_card_number","person.us_green_card_expiry_date"]
+PASS  C4.11 pass (QA-239): the conditions approved on Visitor visa put no Hiding or Unreachable error on Study permit, whose author did nothing — []
+PASS  C4.11 pass (QA-239): Study permit's draft fingerprint is unchanged by another combination's condition — {"before":"974c8293f05a0152304194893ccbd2f2fc1637e85eef7fa52688e94baa96fcc1","now":"974c8293f05a0152304194893ccbd2f2fc1637e85eef7fa52688e94baa96fcc1"}
+PASS  C4.11 pass (B86, BK-16 PR 2): the confirmed IMM 5257 form field puts only its own condition in force on the Study permit, which files IMM 5257 — {"spFiles5257":true,"spConditioned":["person.criminal_history_details"],"target":"person.criminal_history_details"}
+PASS  C4.11 pass (QA-239): Study permit releases after the condition is approved on Visitor visa, 201 — {"status":201,"why":""}
+PASS  C4.11 pass (QA-239): in Study permit's release those questions are asked every time (no condition), so its forms always have the answer — ["person.military_service_details","person.national_id_number","person.other_family_name","person.other_given_names","person.us_green_card_number","person.us_green_card_expiry_date"]
+PASS  C4.11: the run still spent US$0 — 0
+
+23/23 passed
