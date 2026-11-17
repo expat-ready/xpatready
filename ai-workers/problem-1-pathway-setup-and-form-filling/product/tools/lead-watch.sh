@@ -154,6 +154,12 @@ else say "records on main: ${onmain} and the skills match"; fi
 lib=$(python3 "$TOOLS/library-freshness.py" 2>&1); nb=$?
 if [ "$nb" -gt 0 ]; then ACT "library: ${nb} master(s) behind: $(echo "$lib" | grep '^behind' | sed -E 's/^behind +//; s/: .*first [0-9a-f]+ at / since /; s/; refresh.*//' | paste -sd ';' -)"
 else say "library: every living master current"; fi
+# 8b. Set-up conformance (CK-1, founder A151/A154, 17 Nov): origin/main against design/engineering-approved-setup.json
+# (deny lines, hooks, Mergify queues, ci.yml, Library versions); one ACT per failed item. The ruleset is read only by
+# the scheduled heartbeat workflow ("unchecked in sessions"). Git reads only, US$0.
+cf=$(python3 -I "$TOOLS/conformance-check.py" --quiet 2>&1); nf=$?
+if [ "$nf" -gt 0 ]; then while IFS= read -r l; do ACT "set-up: ${l#FAIL }"; done < <(grep '^FAIL' <<<"$cf"); fi
+say "set-up $(tail -1 <<<"$cf")"
 od=$(python3 "$TOOLS/outside-deps-watch.py" 2>&1); echo "$od"; act=$((act + $(grep -c '^ACT' <<<"$od")))   # 9. Outside dependencies (B192, P-618): start window, stuck 48 h, blocked without decision date or fallback
 seen "$od"
 

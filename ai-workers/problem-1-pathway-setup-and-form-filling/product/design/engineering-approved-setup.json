@@ -1,0 +1,271 @@
+{
+ "_about": "The approved engineering set-up (CK-1, founder asks A151 and A154, 17 Nov 2026). Owned by the tech lead: a change to the set-up is approved first, then this file gets a new version and a change_log row in the same PR as the change. tools/conformance-check.py compares origin/main against it (lists compare as sets: extra lines allowed, a missing one fails) and prints enforced: yes | no. The ruleset item is read only by the scheduled workflow (the agents' deny list blocks ruleset reads in sessions); 'required': false tolerates no ruleset until the tech lead sets it true after the move (18 Nov).",
+ "version": "1.0.0",
+ "date": "2026-11-17",
+ "owner": "the tech lead",
+ "change_log": [
+  {
+   "version": "1.0.0",
+   "date": "2026-11-17",
+   "change": "First version: the 75 agent deny lines (39 on main + 36 of T7), the 9 hook entries on main, the three Mergify queues with verdicts first, ci.yml's jobs, gate, triggers and token scopes, the main ruleset (tolerated until the move), Library master versions.",
+   "approval": "founder 17 Nov: T7 deny lines (P-670, PR #2075), verdicts first (P-664, PR #2073), enforcement checks (A151, A154)"
+  }
+ ],
+ "settings": {
+  "path": ".claude/settings.json",
+  "deny_required": [
+   "Bash(git push --force*)",
+   "Bash(git push -f*)",
+   "Bash(git push * --force*)",
+   "Bash(git push * -f*)",
+   "Bash(git push -d*)",
+   "Bash(git push * -d*)",
+   "Bash(git push * --delete*)",
+   "Bash(git push * :*)",
+   "Bash(git -C * push --force*)",
+   "Bash(git -C * push -f*)",
+   "Bash(git -C * push * --force*)",
+   "Bash(git -C * push * -f*)",
+   "Bash(git -C * push -d*)",
+   "Bash(git -C * push * -d*)",
+   "Bash(git -C * push * --delete*)",
+   "Bash(git -C * push * :*)",
+   "Bash(gh issue create*)",
+   "Bash(gh issue edit*)",
+   "Bash(gh issue comment*)",
+   "Bash(gh issue close*)",
+   "Bash(gh repo create*)",
+   "Bash(gh repo edit*)",
+   "Bash(gh repo delete*)",
+   "Bash(gh repo rename*)",
+   "Bash(gh repo archive*)",
+   "Bash(gh release create*)",
+   "Bash(gh release delete*)",
+   "Bash(gh secret*)",
+   "Bash(gh variable set*)",
+   "Bash(gh api -X POST*)",
+   "Bash(gh api -X PUT*)",
+   "Bash(gh api -X PATCH*)",
+   "Bash(gh api -X DELETE*)",
+   "Bash(gh api --method*)",
+   "mcp__550bd2b4-79d5-41e3-b030-655e745a3639__create_file",
+   "mcp__550bd2b4-79d5-41e3-b030-655e745a3639__update_file",
+   "mcp__550bd2b4-79d5-41e3-b030-655e745a3639__copy_file",
+   "mcp__550bd2b4-79d5-41e3-b030-655e745a3639__trash_file",
+   "mcp__550bd2b4-79d5-41e3-b030-655e745a3639__share_file",
+   "Bash(gh run cancel *)",
+   "Bash(*actions/runs/*/cancel*)",
+   "Bash(*actions/runs/*/force-cancel*)",
+   "Bash(gh workflow disable *)",
+   "Bash(*actions/workflows/*/disable*)",
+   "Bash(*actions/secrets*)",
+   "Bash(*actions/permissions*)",
+   "Bash(*actions/variables*-X*)",
+   "Bash(*-X*actions/variables*)",
+   "Bash(*branches/*/protection*)",
+   "Bash(*/rulesets*)",
+   "Bash(*git/refs*-X*)",
+   "Bash(*-X*git/refs*)",
+   "Bash(gh api * -X P*)",
+   "Bash(gh api * -X DELETE*)",
+   "Bash(gh api * --method P*)",
+   "Bash(gh api * --method DELETE*)",
+   "Bash(gh api graphql*mutation*)",
+   "Bash(git push *--no-verify*)",
+   "Bash(git -C * push *--no-verify*)",
+   "Bash(git commit *--no-verify*)",
+   "Bash(git -C * commit *--no-verify*)",
+   "Bash(git -c core.hooksPath*)",
+   "Bash(git -C * -c core.hooksPath*)",
+   "Bash(git config *core.hooksPath*)",
+   "Bash(git -C * config *core.hooksPath*)",
+   "mcp__*__create_file",
+   "mcp__*__update_file",
+   "mcp__*__copy_file",
+   "mcp__*__trash_file",
+   "mcp__*__share_file",
+   "mcp__d0aed261-9b05-4aa6-b869-8e7650c5aab8__create_file",
+   "mcp__d0aed261-9b05-4aa6-b869-8e7650c5aab8__update_file",
+   "mcp__d0aed261-9b05-4aa6-b869-8e7650c5aab8__copy_file",
+   "mcp__d0aed261-9b05-4aa6-b869-8e7650c5aab8__trash_file",
+   "mcp__d0aed261-9b05-4aa6-b869-8e7650c5aab8__share_file"
+  ],
+  "hooks_required": [
+   {
+    "event": "SessionStart",
+    "matcher": null,
+    "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/session-start.sh 2>/dev/null || true"
+   },
+   {
+    "event": "PreToolUse",
+    "matcher": "Bash",
+    "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/merge-guard.sh",
+    "if": "Bash(gh pr merge*)"
+   },
+   {
+    "event": "PreToolUse",
+    "matcher": "Bash",
+    "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/merge-guard.sh",
+    "if": "Bash(gh pr close*)"
+   },
+   {
+    "event": "PreToolUse",
+    "matcher": "Bash",
+    "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/merge-guard.sh",
+    "if": "Bash(gh pr review*)"
+   },
+   {
+    "event": "PreToolUse",
+    "matcher": "(^|__)(start_session|create_session)$",
+    "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lane-preflight.sh --hook"
+   },
+   {
+    "event": "PreToolUse",
+    "matcher": "^(Agent|Task)$",
+    "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/agent-model-guard.sh --hook"
+   },
+   {
+    "event": "PreToolUse",
+    "matcher": "CronCreate",
+    "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-check-guard.sh"
+   },
+   {
+    "event": "Stop",
+    "matcher": null,
+    "command": "bash \"$CLAUDE_PROJECT_DIR\"/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/stop-check.sh"
+   },
+   {
+    "event": "UserPromptSubmit",
+    "matcher": null,
+    "command": "\"$CLAUDE_PROJECT_DIR\"/ai-workers/tools/prompt-log.sh 2>/dev/null || true"
+   }
+  ]
+ },
+ "mergify": {
+  "path": ".mergify.yml",
+  "max_parallel_checks": 3,
+  "queue_order": [
+   "verdicts",
+   "product",
+   "records"
+  ],
+  "queues": {
+   "verdicts": {
+    "batch_size": 6,
+    "queue_conditions_required": [
+     "base = main",
+     "-draft",
+     "label = review: approved",
+     "check-success = ci",
+     "label = records",
+     "title ~= ^qa:",
+     "files ~= qa/CAPABILITIES\\.md$"
+    ],
+    "merge_conditions_required": [
+     "check-success = ci"
+    ],
+    "merge_method": "merge"
+   },
+   "product": {
+    "batch_size": 6,
+    "queue_conditions_required": [
+     "base = main",
+     "-draft",
+     "label = review: approved",
+     "check-success = ci",
+     "-label=records",
+     {
+      "or": [
+       "check-success = xfa-engine",
+       "-files ~= ^(packages/xfa-engine/|tsconfig\\.base\\.json$|\\.nvmrc$|\\.github/workflows/xfa-engine\\.yml$)"
+      ]
+     },
+     {
+      "or": [
+       "check-success = queue-fresh",
+       "-files ~= /prototype/"
+      ]
+     }
+    ],
+    "merge_conditions_required": [
+     "check-success = ci"
+    ],
+    "merge_method": "merge"
+   },
+   "records": {
+    "batch_size": 6,
+    "queue_conditions_required": [
+     "base = main",
+     "-draft",
+     "label = review: approved",
+     "check-success = ci",
+     "label = records"
+    ],
+    "merge_conditions_required": [
+     "check-success = ci"
+    ],
+    "merge_method": "merge"
+   }
+  },
+  "auto_merge_conditions": true
+ },
+ "ci": {
+  "path": ".github/workflows/ci.yml",
+  "workflow_name": "ci",
+  "jobs_required": [
+   "guard",
+   "kind",
+   "shard",
+   "packs",
+   "types",
+   "regression-plan",
+   "regression",
+   "ci"
+  ],
+  "gate_job": "ci",
+  "gate_needs_required": [
+   "kind",
+   "shard",
+   "packs",
+   "types",
+   "regression-plan",
+   "regression"
+  ],
+  "triggers_required": {
+   "pull_request": [
+    "opened",
+    "synchronize",
+    "reopened",
+    "ready_for_review"
+   ]
+  },
+  "triggers_forbidden": [
+   "pull_request_target",
+   "workflow_run"
+  ],
+  "write_scopes_allowed": {
+   "retry-comment": [
+    "pull-requests"
+   ]
+  }
+ },
+ "ruleset": {
+  "branch": "main",
+  "required": false,
+  "rules_required": [
+   "deletion",
+   "non_fast_forward",
+   "required_status_checks"
+  ],
+  "required_checks": [
+   "ci"
+  ],
+  "note": "No ruleset before the move to the expat-ready organisation (18 Nov 2026 from 09:30 IST): reported 'pending'. The tech lead sets required to true once the ruleset exists; from then a missing rule fails."
+ },
+ "library": {
+  "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/cockpit/library.json",
+  "version_field": "version",
+  "version_header": "Version",
+  "note": "Each master whose path is in the repository must exist; a master with a 'version' in the registry must carry the same 'Version:' header in its first 40 lines (a JSON master: a top-level 'version'). claude.ai artifacts and local-only paths are reported 'unchecked'."
+ }
+}
