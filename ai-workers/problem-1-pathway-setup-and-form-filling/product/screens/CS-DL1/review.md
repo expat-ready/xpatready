@@ -157,3 +157,22 @@ Reviewer, fresh Opus 5.5 context, 17 Nov. Head `1fb7ca0986acfaf67b8cb5ccfe7c43b8
 **Journey (re-score on 1fb7ca098): 9.5/10, pass** (`journey-test-reviewer-2026-11-16.md`, round 3 section).
 
 **Verdict: Approve** for `1fb7ca0986acfaf67b8cb5ccfe7c43b81cadbe7f`. There is no open Blocker or Major. Fix m1-m4 or list them in the PR.
+
+## Review round 4 (2048a997e, merge only)
+
+A diff-only re-review (P-277) of `2048a997e4c260e788572dcab5ea439b443f3930`. It is one merge commit, with parents `1fb7ca098` and `origin/main` `780b1552c`. The merge settles GitHub's conflict. I read only what the merge changed in CS-DL1's own files.
+
+* **MODULE.cases.md:** the conflict is resolved correctly. Main's lines are kept: the `case_party_index` rule line, `casePartyIndex (triggers only)` in Tables, `tests/check_css1_index.ts` in Tests, and the "Do not" line "Write `case_party_index` from application code; the triggers keep it." CS-DL1's own lines are also kept: the stage deadline rule line, then `tests/check_csdl1_deadlines.ts` and `tests/check_csdl1_deadlines_browser.ts` after `check_css1_index.ts`. Against main, the file's only changes are CS-DL1's one rule line and its two test names.
+* **Migration move:** the old path `20261116184100_csdl1_firm_calendar/` is gone at the head, and nothing refers to the old stamp or the new stamp by number. The CS-DL1 tests find the migration by its name. The content is byte-identical: `git show 1fb7ca098:<old>/migration.sql | sha256sum` and the new file both give `01d439bdc6cabf11131534a8af5a0b3cc8d1e9eabf88feaca625001c8e3e55e4`. The new stamp `20261117054600` is later than main's newest migration (`20261117004500_css1_case_party_index`) and appears only once. Main has 102 entries in its migrations folder and the head has 103; the one more is this migration. The folder has three repeated stamps (`20261025090000`, `20261031140000`, `20261102010000`). They are already on main, so they are not this PR's. With the content unchanged, the condition in the Lead's P-423 comment 6939843362 holds.
+* **PR diff:** `git diff origin/main...2048a997e --stat` lists 19 files (+502/-108), the same list as at round 3 apart from the migration's stamp. With the stamp normalised and `index` lines dropped, the whole patch matches round 3. The only other differences are the MODULE.cases.md hunk header and its context lines, which now include main's CS-S1 lines. The merge brought none of main's changes into this PR's diff.
+* **Collisions with main's new commits** (`fc0971103..780b1552c`, 33 commits: CS-S1 part 1, B193 part 2b, cockpit, FO-7s0 records, qa records). None of them touches `case-stages.ts`, `stages.tsx`, `contracts/runtime.ts`, `platform/calendar/` or `working-days`, and none mentions `platform_firm_calendar`. The grep found these words only in qa's BUGS/CAPABILITIES text (QA-471, R1.74, which CS-DL1 answers) and in one SQL comment in CS-S1's migration that names `case-stages.ts`. That comment is about where the EMPLOYER party sits, and CS-DL1's `case-stages.ts` and `runtime.ts` changes touch no subject, party or participant line.
+  * CS-S1 adds `case_party_index_*` functions in public, plus a definer function owned by `xr_wall_reader` (`case_party_index_firm_of`). The suites that list public's functions are FO-7a's (it leaves out later migrations' functions by stamp), PF-21's (it measures before later migrations), CS-S1's (it filters by `case_party_index_%` and trgm) and PF-12's (owner, definer and search_path, no fixed count). None of them gives a different answer for `platform_firm_calendar` with the new stamp. The builder's DB run on this head is what confirms this.
+* **Unit suite:** `tsx --tsconfig api/tsconfig.json tests/check_csdl1_deadlines.ts` gives **34/34 passed** at `2048a997e`.
+
+### Could not check
+* The DB and browser suites, and CI, on this head. The builder is re-running them, and I did not start an isolated copy, as asked.
+* The journey was not re-run. A merge that changes no product code leaves the round 3 score of 9.5/10 standing.
+
+The round 3 minors m1-m4 stand as recorded.
+
+**Verdict: Approve** for `2048a997e4c260e788572dcab5ea439b443f3930`. There is no open Blocker or Major. The label still waits on green CI.
