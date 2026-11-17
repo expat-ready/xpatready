@@ -59,7 +59,9 @@ try {
     const r = await post(b.path, '{"a":', token, { "idempotency-key": `pf0bp-${b.path.length}` });
     ok(`PF-0bp DW1 ${notJson(r) ? "pass" : "fail"}: POST ${b.path} with {"a": → 400 application/problem+json BODY_NOT_JSON`, notJson(r), r);
     const v = await post(b.path, "{}", token, { "idempotency-key": `pf0bp-valid-${b.path.length}` });
-    ok(`PF-0bp DW1 pass: the same post with valid JSON reaches its handler (its own answer, not BODY_NOT_JSON, not a 500): POST ${b.path}`, v.status < 500 && v.body?.code !== "BODY_NOT_JSON", v);
+    // Review m2: the handler's own refusal of an empty body (its field check), not any answer under 500.
+    const own = b.path.endsWith("/leads") ? v.status === 422 && v.body?.code === "INVALID" : v.status === 422 && v.body?.code === "COMPLAINT_FIELDS";
+    ok(`PF-0bp DW1 pass: the same post with valid JSON reaches its handler (its own 422 field refusal, not BODY_NOT_JSON): POST ${b.path}`, own, v);
   }
   const anon = await post("/api/front-office/leads", "{not json");
   ok("PF-0bp DW1: a broken body is refused before the guard too (no token: still 400 BODY_NOT_JSON, never a 500)", notJson(anon), anon);
@@ -77,11 +79,16 @@ try {
   ok("PF-0bp DW3 pass: a malformed body holding secret-marker-123 → 400 BODY_NOT_JSON, and neither the answer nor the server's log repeats it",
     notJson(marked) && !marked.text.includes("secret-marker-123") && !log.includes("secret-marker-123"), { answer: marked.text, log: log.slice(logAt).slice(-600) });
   ok("PF-0bp DW3 fail: the answer gives no parser message (no 'Unexpected token', no position)", !/Unexpected|position|JSON at/i.test(marked.text), marked.text);
+  // Review m1: a bare marker is the body the parser quotes whole on main ("Unexpected token 's', "secret-marker-123" is not valid JSON").
+  const bare = await post("/api/front-office/leads", "secret-marker-123", token);
+  await new Promise((r) => setTimeout(r, 300));
+  ok("PF-0bp DW3 pass (bare marker): a body that is only secret-marker-123 → 400 BODY_NOT_JSON; neither the answer nor the log repeats it",
+    notJson(bare) && !bare.text.includes("secret-marker-123") && !log.includes("secret-marker-123"), { answer: bare.text, log: log.slice(logAt).slice(-600) });
 
   // ---------------------------------------------------------------------------------------------------------- DW4
   const after = rows();
   ok("PF-0bp DW4: neither error reached a handler (no lead and no complaint written by the broken, oversized or marked bodies; the valid ones were refused by their handlers)", after === before, { before, after });
-  ok("PF-0bp DW4 fail: no answer above was a 500, and the server logged no 500 for them", ![...broken].length || (!/"status":\s*500|statusCode":\s*500/.test(log.slice(logAt)) && !/Something went wrong on the server/.test([anon, tooBig, formBig, marked].map((x) => x.text).join(""))), log.slice(logAt).slice(-600));
+  ok("PF-0bp DW4 fail: no answer above was a 500, and the server logged no 500 for them", !/"status":\s*500|statusCode":\s*500/.test(log.slice(logAt)) && !/Something went wrong on the server/.test([anon, tooBig, formBig, marked, bare].map((x) => x.text).join("")), log.slice(logAt).slice(-600));
 } finally {
   p.kill("SIGTERM");
   await new Promise((r) => setTimeout(r, 500));
