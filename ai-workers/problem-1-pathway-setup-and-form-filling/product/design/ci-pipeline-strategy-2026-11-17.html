@@ -159,6 +159,59 @@ ul{margin:6px 0;padding-left:20px}
 <p><b>Lane cap:</b> one merged code PR uses about 1,280 machine-minutes. 40 machines carry about 36 code PRs a day (about 10-12 code lanes); Team about 54 (about 15 lanes); Team plus one-check-per-PR about 65 (about 18-20 lanes). When batch waits pass 15 minutes, lanes do review fixes, qa bugs or design, not new PRs.</p>
 </div>
 
+<h2>What gives value, and what does not</h2>
+<div class="kpis">
+  <div class="kpi"><b>11 of 112</b><span>prose rules broken even once, 13-16 Nov (rule triage, P-611)</span></div>
+  <div class="kpi"><b>~44 Leads</b><span>in 5 days (Lead 29 on 12 Nov to Lead 73 today): a hand-over every 2-3 hours (P-446)</span></div>
+  <div class="kpi"><b>12 Majors</b><span>found by qa after review and CI, 13-17 Nov: the independent gates earn their place</span></div>
+  <div class="kpi"><b>11.8 KB</b><span>start-up text pushed into every new session by the SessionStart hook</span></div>
+</div>
+<div class="card scroll">
+<table>
+<tr><th>Piece</th><th>Verdict</th><th>Evidence</th></tr>
+<tr><td>CI gates, reviewer and breaker agents, qa gates A and B</td><td class="rec">Keep</td><td>batch clashes caught (73% of failed batches); 12 qa Majors after review</td></tr>
+<tr><td>Hooks: merge guard, lane preflight, model guard, stop check, cron guard</td><td class="rec">Keep</td><td>guard actions that cannot be undone; cheap</td></tr>
+<tr><td>The 11 rules broken 13-16 Nov, plus about 10 guards on money, secrets, data</td><td class="rec">Keep, enforce by a check</td><td>the breaks themselves</td></tr>
+<tr><td>Roughly 70-90 other rules with no break and no irreversible action</td><td>Merge into ~12 principles; retire the rest word for word</td><td>no break in the record; the docs: shorter instructions are followed better</td></tr>
+<tr><td>98 planned new rule checks</td><td class="no">Build only ~20</td><td>each is a PR in the same full CI line</td></tr>
+<tr><td>Lead hand-over every 2-3 hours</td><td>One-day trial: compaction onto STATE, Fable 5.2 as Lead</td><td>Anthropic names compaction and note files as the long-run methods</td></tr>
+<tr><td>SessionStart output (11.8 KB)</td><td>Shrink to 1-2 KB</td><td>skills already load on demand</td></tr>
+<tr><td>Deny rules</td><td>Keep and close a gap</td><td>writes through <code>curl</code> to the GitHub API, and run cancels, match no deny rule today</td></tr>
+<tr><td>Records PRs (102 of 273 merges in 7 days)</td><td>Twice a day</td><td>48 on 16 Nov alone</td></tr>
+</table>
+</div>
+
+<h2>Claude Code features that remove manual work</h2>
+<div class="card scroll">
+<table>
+<tr><th>Feature</th><th>Use?</th><th>What it removes</th></tr>
+<tr><td>Auto mode, with trusted places written in plain words (<code>autoMode.environment</code>)</td><td class="rec">Yes, for lanes</td><td>prompts that stall unattended lanes; it pauses after 3 blocks in a row, so the watch counts those</td></tr>
+<tr><td>Deny rules (hold in every mode)</td><td class="rec">Yes</td><td>prose "never" rules for irreversible actions</td></tr>
+<tr><td>One cloud environment: limited network, our allowlist, keys as network secrets</td><td class="rec">Yes</td><td>lanes waiting on network changes; keys in env vars</td></tr>
+<tr><td>Auto-fix on PRs (CI failures and review comments)</td><td class="rec">Yes, after one fix</td><td>the Lead waking lanes; but our comment-triggered workflows would start on every reply, so filter them first</td></tr>
+<tr><td>Merge when ready</td><td>Not needed</td><td>Mergify already queues approved PRs</td></tr>
+<tr><td>Projects (orchestrator plus threads)</td><td>Later trial (beta)</td><td>manual Lead hand-overs</td></tr>
+<tr><td>Agent teams</td><td class="no">Not now</td><td>experimental; "significantly more tokens"</td></tr>
+<tr><td>Dynamic workflows / ultracode</td><td>Read-only work only</td><td>about 15 times the tokens of a chat (Anthropic); gains on parallel research, less on dependent coding; CI is our limit</td></tr>
+</table>
+<p class="src">code.claude.com/docs: permission-modes, permissions, best-practices, sandboxing, cloud-environments, claude-code-on-the-web, desktop, claude-projects, agent-teams, workflows, model-config, memory, skills; anthropic.com/engineering: multi-agent-research-system (13 Jun 2025), effective-context-engineering-for-ai-agents (29 Sep 2025), building-effective-agents (19 Dec 2024). Read 17 Nov 2026.</p>
+</div>
+
+<h2>Migration to long unattended runs</h2>
+<div class="card scroll">
+<table>
+<tr><th>Step</th><th>When</th><th>Change</th><th>Before (measured)</th><th>After (to measure)</th></tr>
+<tr><td>1</td><td>today</td><td>GitHub Team; unset the runner variable before #2032</td><td>40/40 busy, 116 queued; PR check 91 min</td><td>jobs start within 5 min</td></tr>
+<tr><td>2</td><td>today</td><td>one PR check per PR after Approve</td><td>57% of PR minutes on re-runs</td><td>under 30%</td></tr>
+<tr><td>3</td><td>today-tomorrow</td><td>fast checks first; container proof in batch; 2 batches at once while failing</td><td>6,555 wasted min a week; QA-449 open</td><td>0; QA-449 closed</td></tr>
+<tr><td>4</td><td>day 2</td><td>deny-rule gap closed; auto mode trust list; one cloud environment</td><td>1 CI cancel; stalls on prompts</td><td>0 cancels; fewer stalls</td></tr>
+<tr><td>5</td><td>day 2</td><td>auto-fix on lane PRs (after the comment filter)</td><td>lanes slept through CI results</td><td>no PR red for over 1 h without a push</td></tr>
+<tr><td>6</td><td>day 3</td><td>Lead trial: compaction plus Fable 5.2</td><td>9-14 Leads a day</td><td>1-2 a day, plan use within the stop line</td></tr>
+<tr><td>7</td><td>day 3-4</td><td>~20 enforced rules + ~12 principles; start-up text 1-2 KB</td><td>131 rows, 25 KB</td><td>under 8 KB</td></tr>
+<tr><td>8</td><td>day 5</td><td>re-measure; then decide paid overflow</td><td>this page</td><td>waits under 15 min with no spend</td></tr>
+</table>
+</div>
+
 <h2>Decisions for the founder</h2>
 <div class="card scroll">
 <table>
@@ -172,6 +225,10 @@ ul{margin:6px 0;padding-left:20px}
 <tr><td>D7</td><td>Finish whole groups first</td><td class="rec">Yes</td><td>5 rows can be proven as soon as their PRs merge</td><td>US$0</td><td>none</td></tr>
 <tr><td>D8</td><td>Lane cap from CI capacity</td><td class="rec">Yes: ~10-12 code lanes today, ~15 on Team</td><td>shorter waits</td><td>US$0</td><td>none</td></tr>
 <tr><td>D9</td><td>Ultracode</td><td>Off by default; size "small"; on only for a named, wide, read-only task</td><td>no gain on the CI and qa path</td><td>3-8× tokens on those tasks (estimate)</td><td>none if read-only</td></tr>
+<tr><td>D10</td><td>Allow compaction onto STATE for one trial day</td><td class="rec">Yes, trial</td><td>hand-overs 9-14 → 1-2 a day</td><td>US$0</td><td>none; revert if items are missed</td></tr>
+<tr><td>D11</td><td>Fable 5.2 as the Lead that day; workers stay Opus 5.5</td><td class="rec">Yes, trial</td><td>1 day</td><td>plan use measured hourly</td><td>none</td></tr>
+<tr><td>D12</td><td>~20 enforced rules + ~12 principles; rest retired word for word</td><td class="rec">Yes</td><td>1 day of Lead work</td><td>saves ~78 check PRs</td><td>none; every gate stays</td></tr>
+<tr><td>D13</td><td>Deny-rule gap, start-up text, cloud environment, auto mode, auto-fix</td><td class="rec">Yes, in that order</td><td>~1 day</td><td>US$0</td><td>better</td></tr>
 </table>
 </div>
 

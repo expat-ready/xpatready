@@ -6,7 +6,7 @@ Research session for the Lead, started at the founder's request (07:4x IST 17 No
 * **[R7]** GitHub Actions API, every run of the `ci` workflow created 10 Nov 05:57 IST to 17 Nov 08:04 IST (2,521 runs), and the jobs and steps of the 1,146 runs that did real work (more than 4 minutes; 11,797 jobs). Pulled 08:04-08:10 IST. Runs still waiting at 08:04 are not in it, so the newest waits are understated.
 * **[LOG]** the suite tables in 724 shard logs: every failed shard job in [R7] plus the 250 newest green merge-batch shards. Statuses as `run-suites.sh` prints them: "failed twice" and "FAIL" (red), "passed on retry" (flaky), "quarantined".
 * **[LIVE]** the API at 08:01-08:03 IST: every job of every queued or running run.
-* **[SIM]** `tools/select-suites.mjs` (it reads files only, runs nothing) replayed in a scratch clone: (a) on the 80 PRs merged to main since 14 Nov, with and without `--direct`; (b) on the heads of 20 PR checks that went red, to see whether `--direct` would still pick a red suite.
+* **[SIM]** `tools/select-suites.mjs` (it reads files only, runs nothing) replayed in a scratch clone: (a) on the 80 PRs merged to main since 14 Nov, with and without `--direct`; (b) on the heads of 19 PR checks that went red, to see whether `--direct` would still pick a red suite.
 * **[MQ]** `design/merge-queue-failures-2026-11-16.md` (B199): the 30 failed batches of 11-15 Nov, each traced to the commit that fixed it. Reused, not redone.
 * **[AUD]** the side note `ci-speed-audit-2026-11-17.md` (300 runs, 16 Nov). Validated below; one claim corrected.
 * **[CAP]** `qa/CAPABILITIES.md` on main bcc505afd (read 07:5x IST); open PRs from the API at 07:5x-08:0x IST.
@@ -19,7 +19,8 @@ Research session for the Lead, started at the founder's request (07:4x IST 17 No
 2. **Where the machine time goes (7 days, 205,500 machine-minutes):** PR checks 55%, merge batches 45% [R7]. **57% of PR-check time is the second and later run of the same PR** (review fixes, merging main, re-runs). **23% of merge batches failed** (61 of 262), and they took 26% of the batch time [R7]. The failures we traced are real defects where two PRs meet, not flaky tests (section 2).
 3. **"Run the full tests only once, in the merge queue" (P-651 (2)) would hurt, not help, if it means no suites on the PR.** 62 of 193 code PRs (32%) had a suite go red on their own PR check [LOG]. Those breaks would move into merge batches. With 6 PRs in a batch, a batch would then hold at least one broken PR about 9 times in 10 (1 − 0.68⁶), and each failed batch costs about 390 machine-minutes and an hour of merge time for every PR in it. Quality would hold (the queue still blocks), but merging would nearly stop. **The quality-safe version is "one PR check per PR, run once, at the end"** (section 5).
 4. **Capacity: move to a GitHub organization on the Team plan (about US$4 a month for one seat; 60 machines at once instead of 40).** It is cheap and quick, and it unblocks the paid overflow providers, which need an organization. Do not let #2032 merge while `vars.CI_SHARD_RUNNER` is set: it is set now (read 08:0x IST) and would move every long job from GitHub's free 40 machines to Namespace's trial limit of 8 (section 6).
-5. **Delivery:** nothing was proven overnight because most merges were a first or middle part of a capability. The five rows nearest to Proven each need one PR that is waiting in the CI line now (section 8). Finish whole groups in journey order, and cap the number of lanes at what CI can carry (section 8c).
+5. **Structure (widened brief, sections 9-13):** only 11 of 112 prose rules were broken even once in 13-16 Nov (rule triage), and the Lead changed about every 2-3 hours (Lead 29 on 12 Nov to Lead 73 today). Keep and enforce about 20 rules, fold the rest into a dozen principles, try compaction plus a Fable 5.2 Lead for one day, and use auto mode, deny rules, a cloud environment and auto-fix to remove the manual waits. Ultracode helps read-only work, not coding, while CI is the constraint.
+6. **Delivery:** nothing was proven overnight because most merges were a first or middle part of a capability. The five rows nearest to Proven each need one PR that is waiting in the CI line now (section 8). Finish whole groups in journey order, and cap the number of lanes at what CI can carry (section 8c).
 
 ---
 
@@ -109,7 +110,7 @@ Suite time on main's `suite-times.tsv` (15 Nov, 498 suites, 339 min) by family: 
 |---|---|---|---|---|
 | Fast checks (rules files, graph, PDFs, gate B, port contracts) | inside shard 1 | **own first job, about 3 min; shards start only when it is green** | 109 attempts failed here while other shards used 6,555 min [R7] | same checks, same order of strictness |
 | Suites the change can affect (`--changed`), on the PR | every push of a ready PR | **once per PR, after the reviewer's Approve** (drafts until then, P-646) | 57% of PR time is 2nd and later runs [R7] | the full PR check still runs on the exact head that is labelled; label-guard refuses a label without it |
-| `--direct` instead of `--changed` on the PR | off (`vars.PR_SUITES` unset) | **not now** | it would run 27% of the suite time [SIM a], but 5 of 20 red PR checks would have gone green and broken in the queue instead [SIM b] (32% × 25% of PRs ≈ 8% leak; at 6 per batch, ~39% of batches would fail, against 23% today) | - |
+| `--direct` instead of `--changed` on the PR | off (`vars.PR_SUITES` unset) | **not now** | it would run 27% of the suite time [SIM a], but 6 of 19 red PR checks would have gone green and broken in the queue instead [SIM b] (32% × 32% of PRs ≈ 10% leak; at 6 per batch, ~47% of batches would fail) | - |
 | Every suite in the merge batch | yes | **stays** | it finds the clashes: 73% of failed batches [MQ], 16 Nov's pf12 and fo3w catches [LOG] | - |
 | Works packs (regression) in the batch | yes | **stays** | caught the only "real break" roots in [MQ] (#1691) | - |
 | Container proof (skeleton.yml) | PR only, skipped on batches | **add to the merge batch** | QA-449 (Major): the container proof never runs on what reaches main; holds R1.16 | a gate added, not removed |
@@ -132,7 +133,7 @@ Ordered by measured gain per unit of risk. "Quality" means: every merge still pa
 | Q6 | **Shards sized to the work left** (kind already counts units) and balance from each night's times | [AUD]: 15 of 43 PR checks used 8 shards under 12 min each; slowest shard ~20% over the mean | none | one CI PR |
 | Q7 | **Gate jobs off the long line** (queue-gate, label-guard, records-label run on a timer and on comments) | small minutes; gate waits up to 61 min [AUD] | none | low |
 
-Not proposed: dropping suites from the PR (section 4: 32% of PRs went red there); `--direct` on PRs (it lets about a quarter of those breaks through); self-hosted machines on this public repository (section 6).
+Not proposed: dropping suites from the PR (section 4: 32% of PRs went red there); `--direct` on PRs (it lets about a third of those breaks through); self-hosted machines on this public repository (section 6).
 
 **Expected result of Q1 + Q2 + Q3:** demand about 205,000 → about 170,000 machine-minutes a week, supply 40 → 60 machines. In the 16 Nov busy hours, use would fall from 35-40 of 40 machines to about 33 of 60, so jobs would start at once again and a PR check and a batch would return to about their week medians (54 and 51 min) or better. These are projections from the measured parts, not measurements; re-measure 48 hours after.
 
@@ -228,7 +229,112 @@ Demand per merged code PR, measured (section 3): about **1,280 machine-minutes**
 
 ---
 
-## 9. Decisions for the founder (each with a recommendation, P-254)
+## 9. Value audit of our structure (widened brief A141, founder 08:2x IST)
+
+**The founder's question:** what gives value, what does not, and what is an unnecessary rule. **The test used here:** a piece of structure earns its place when (a) it caught or prevented something real (a break, an incident, a Major) in the record, or (b) it guards an action that cannot be undone (money, data, security, cancelling CI, pushing to main). Anything else is a cost: tokens read at every start, wait time, hand-offs, and checks to build and keep working. The outside guidance points the same way. Anthropic says to find "the smallest possible set of high-signal tokens", that hard-coded logic in prompts "creates fragility and increases maintenance complexity" (anthropic.com/engineering/effective-context-engineering-for-ai-agents, 29 Sep 2025), and to add complexity "only when it demonstrably improves outcomes" (anthropic.com/engineering/building-effective-agents, 19 Dec 2024). The Claude Code docs say to keep CLAUDE.md under 200 lines, because "longer files consume more context and reduce adherence" (code.claude.com/docs/en/memory.md), and "if Claude keeps ignoring a line… the line belongs in a hook" (code.claude.com/docs/en/best-practices). Their model page adds that Fable "verifies its own work with less prompting" and advises "describe the outcome, not the steps" (code.claude.com/docs/en/model-config.md). All read 17 Nov 2026.
+
+### 9a. The rules register (RULES.md: 131 rows, 25 KB)
+
+Reused, not redone: `design/rule-triage-2026-11-16.md` (P-611, B193 part 5) checked each of the 112 prose rows against the STATE history and DECISIONS of 13-16 Nov. **Only 11 of the 112 rows were broken even once**; 101 had no break. The triage's plan turns 98 of them into new checks (70 small, 26 medium, 2 large).
+
+| Rows | Count | Evidence of value | Recommendation |
+|---|---|---|---|
+| Broken 13-16 Nov: P-302 (times from the clock) 17 breaks, P-606 (finish whole) 6, P-599 (two ready rows, two rounds) 4, P-576 / P-526b (touch lists) 4, P-526 (duplicates) 3, P-423 (Lead reads money/schema diffs) 3, P-557 (always pushed) 2, P-446 (hand-over size) 2, P-610 (PR size) 1, P-371 (never cancel CI) 1 | 11 | the breaks themselves (triage §3) | **Keep, and enforce each by a check or hook** (the triage's checks for these 11; most are small) |
+| Guards on actions that cannot be undone (money, live AI spend, secrets, data, security, `sources/` and `code/`, force-push, merge outside the queue) | about 10 (P-175, P-175b, P-295b, P-312a, P-539, P-583, P-589, P-607 and the push-guard rows) | the cost of a single miss is high even with no break so far | **Keep, enforced** (most already are: push-guard, deny rules, ledger) |
+| Product rulings (what the app does) kept in the register | most `IDX-*` and product rows | they belong to the product, not the pipeline | **Move out** to DECISIONS and the module cards; the app's tests enforce them (the triage itself says this for P-607) |
+| Way-of-working rows with no break and no irreversible action (report formats, check cadence, who asks whom, batching asks, board wording, desk rules) | the rest (roughly 70-90) | none in the record | **Merge into about 12 short principles** (one page) and **retire the rest to history, word for word** (P-188: git keeps them). Do **not** build 70 more checks: each is a PR in the same CI line (section 3: about 1,280 machine-minutes per code PR) and a script to keep alive |
+
+**Impact:** start read falls from about 25 KB of rules to about 6-8 KB (projection). The tooling queue falls from 98 checks to about 20. The quality gates (CI, reviewer, qa gates A and B) are untouched. **Risk:** a retired row turns out to have mattered. **Guard:** each retired row keeps its ID in the ID map (the triage's `rule-id-map` already does this), so a break brings it back with a check.
+
+### 9b. Hooks, skills, agents, settings (on main)
+
+| Piece | What it does | Evidence of value | Cost | Recommendation |
+|---|---|---|---|---|
+| `merge-guard.sh` (PreToolUse Bash) | only the Lead copy merges or labels | P-402; prevents merges outside the queue | runs on each Bash call (fast) | **keep** |
+| `lane-preflight.sh --hook` (session starts) | refuses a lane start with no model/effort line; Mac disk and copy caps | P-605, P-608, P-348e | small | **keep** |
+| `agent-model-guard.sh` (Agent/Task) | reviewers and breakers on Opus | P-303 | small | **keep** |
+| `lead-check-guard.sh` (CronCreate) | checks the Lead's timers | P-388; the 7 Nov unattended stall (a prompt waited 7.4 h) | small | **keep** |
+| `stop-check.sh` (Stop) | builders never edit STATE, RULES, DECISIONS, BACKLOG; qa alone edits CAPABILITIES and BUGS | P-314 | runs each turn end | **keep** |
+| SessionStart hook | prints STATE and pointers into every new session | the "start read" of P-545 | **11.8 KB of context in every session** (this session's own start, 07:52 IST) | **shrink** to a 1-2 KB pointer (current Lead, branch, "read STATE when you need it"); the skills already load on demand |
+| Deny rules (39 in `.claude/settings.json`) | no force-push, no repo edits, no `gh api -X POST/PUT/PATCH/DELETE`, no Drive writes | "deny rules hold in every permission mode, including auto and bypassPermissions" (code.claude.com/docs/en/best-practices) | none | **keep and close a gap**: P-363 routes GitHub calls through `curl` with `gh auth token`, and `curl -X POST` to the GitHub API matches no deny rule. Neither does a run cancel (P-371). Add deny rules for `curl * -X POST|PUT|PATCH|DELETE *api.github.com*` and `gh run cancel*`, or route writes through one audited script |
+| Skills (12, 67 KB in all; lead 10 KB, qa 9.6 KB) | the roles' procedures | they load only when invoked; only their descriptions are always in context (code.claude.com/docs/en/skills.md) | low | **keep**; trim `lead` and `lead-watch` once 9c changes the hand-over |
+| Agents `screen-reviewer`, `screen-breaker` | independent review in a fresh context | review rounds (P-599: 4 PRs went past two rounds); qa still found 12 Majors after review and CI, 13-17 Nov (QA-440 onwards: 10 Gap, 2 Bug) | Opus tokens per PR | **keep** (independent checking is where quality comes from; qa's Majors show review alone is not enough) |
+| `.claude/rules/modules` (14 module cards) | context loaded for one module's paths | module-cards CI | low; path-scoped loading | **keep** |
+
+### 9c. The hand-over layer: the biggest structural cost
+
+* **Measured:** the Lead number went from 29 (12 Nov) to 73 (17 Nov 08:00 IST), **about 44 Leads in 5 days, one every 2-3 hours** (Lead numbers in STATE commit subjects on `lead/2026-11-07-lead31`). The cause is P-446: hand over at the first check after 200k tokens beyond the start read, and never compact.
+* **What each hand-over costs:** a hand-over block, a STATE rewrite kept under 12 KB, items to ack (P-611b), a new start read (about 60 KB with the SessionStart output), and every in-flight session re-pointed. This research session was re-pointed mid-task ("Current Lead is now Lead 73") and received a widened brief through the new Lead. Lost context shows up as re-measurement and re-asking. The record has the 13-16 Nov breaks of P-446 itself (2) and 17 breaks of P-302 (guessed times) by 13 different Leads (triage §3): a rule a new Lead must re-learn every 2-3 hours.
+* **What the guidance says:** compaction ("summarizing its contents, and reinitiating a new context window with the summary") and structured note-taking outside the context window are Anthropic's two named methods for long-horizon work (context-engineering post). Our STATE file already is that note. Context rot (recall falls as context grows) is the real reason for a limit, so a limit stays, but compacting onto STATE is a smaller step than starting a new Lead.
+* **Recommendation:** a one-day trial. The Lead lets Claude Code compact (P-446's "never compacts" lifted for the trial), writes STATE at every check as today, and hands over only at the window's hard edge or a model change. **Measure before and after:** Leads a day (today 9-14), items un-acked at hand-over, guessed-time breaks, and tokens an hour. Keep whichever is better. **Projects** ("one ongoing conversation where Claude coordinates a stream of related work"; threads "share repositories, instructions, and memory"; public beta on Pro, Max and Ultra, code.claude.com/docs/en/claude-projects.md) is the product built for this. It is a beta and its context carry-over is not documented in detail, so it gets a later trial, not a switch.
+
+### 9d. The records layer
+
+102 of 273 PRs merged 10-17 Nov were records or qa records (48 on 16 Nov alone; GitHub search). They run cheap CI (251 one-shard runs, 1,924 machine-minutes in 7 days [R7]), but each takes a queue slot, gate jobs and Lead turns. **Recommendation:** records twice a day (P-336 already says daily); qa verdicts in the same batch. Cost of the change: none. Quality: none.
+
+---
+
+## 10. The model split: Fable 5.2 orchestrator, Opus 5.5 workers?
+
+**Today (P-605, P-608):** Opus 5.5 is the working model at medium effort, high for reviewers, breakers, fresh readers and risky rows; Fable 5.2 only for the strategy desk, challenges and specifying.
+
+**What the evidence says:**
+* Anthropic's own multi-agent research system used a stronger lead with cheaper workers (Opus 4 lead, Sonnet 4 subagents) and beat a single agent by 90.2% on its research eval, at about 15 times the tokens of a chat (anthropic.com/engineering/multi-agent-research-system, 13 Jun 2025).
+* The same post: "most coding tasks involve fewer truly parallelizable tasks than research", and agents "are not yet great at coordinating and delegating to other agents in real time".
+* Claude Code's docs: Fable "verifies its own work with less prompting"; "Opus 5.5 at `medium` matches or exceeds Opus 5 at `high`" (model-config.md). The docs give no orchestrator-versus-worker recommendation beyond `opusplan` (Opus to plan, Sonnet to execute).
+
+**Our case:** the Lead's job is judgement over many inputs (queue, lanes, qa, the founder), with many small tool calls. Workers write code against a brief. A stronger orchestrator fits the shape, and "stronger model, less structure" (the founder's words) is what the docs claim for Fable. What is unknown is the token cost on our weekly plan: the Lead holds the largest context of any session.
+
+**Recommendation:** **trial Fable 5.2 (high) as the Lead for one day, together with the compaction trial in 9c**, with workers unchanged (Opus 5.5 medium; reviewers and breakers high). Measure: weekly-plan percent per hour (today about 2.9%/h with lanes, P-641), Leads a day, decisions the founder had to correct, rows proven a day. Keep it only if rows proven a day rise and plan use stays under the P-643 stop line. Builders stay on Opus: coding is the less parallel, more dependent work where the docs and Anthropic's post see less gain from a heavier setup.
+
+---
+
+## 11. Claude Code features that remove manual work (official docs, read 17 Nov 2026)
+
+| Feature | What the docs say | What it replaces here | Recommendation |
+|---|---|---|---|
+| **Auto mode** | "a second model, the classifier, reviews actions instead of you"; it blocks what "escalates beyond your request", force pushes, production deploys; it "pauses" after 3 blocks in a row or 20 in all; it trusts "your working directory and the remotes" configured at start; trusted infrastructure goes in `autoMode.environment` (permission-modes.md) | prompts that stall lanes while unattended (the 7 Nov incident, 7.4 h) | **use for lanes**, with `autoMode.environment` naming our repository, Namespace and the demo host in plain words; watch the "pauses after 3 blocks" stall in lead-watch |
+| **Deny rules** | evaluated "deny, then ask, then allow"; "an allow rule can't carve an exception out of a deny rule"; hold in every mode (permissions.md, best-practices) | prose "never" rules | **move each irreversible "never" here** (section 9b's curl and cancel gap first) |
+| **Sandbox** | OS-enforced around shell commands; "covers shell commands only"; file tools, MCP and hooks "run outside it" (sandboxing.md) | the Mac copies' file and network limits | **keep on** in every copy; do not count it as a guard on file edits |
+| **Cloud environments** | network None / Limited (package registries, GitHub, listed domains) / Full; environment variables are readable by anyone using the environment; network secrets "stay outside the sandbox" and the proxy attaches them (cloud-environments.md) | P-647's "no lane waits on a network change"; secrets by hand | **one Limited environment** with our allowlist (GitHub, npm, Namespace, canada.ca) and any key as a network secret, never as an env var |
+| **Auto-fix PRs** | "Claude can watch a pull request and automatically respond to CI failures and review comments"; replies can trigger `issue_comment` automation (claude-code-on-the-web.md) | the Lead's "re-run the failed part / wake the lane" loop; lanes that slept through CI (P-557, 2 breaks) | **turn on for lane PRs, after one fix:** our `comment-run.yml` and `queue-gate.yml` start on every `issue_comment`, so each auto-fix reply would start two workflows. Filter them to the slash-command or Approve comments first |
+| **Merge when ready** | "turns on GitHub's auto-merge for the PR"; with a merge queue it does not request a squash (desktop.md) | nothing: Mergify already queues approved PRs by itself (P-637) | **not needed** |
+| **Projects** | public beta; one conversation coordinating threads that share repositories, instructions and memory (claude-projects.md) | manual Lead hand-overs (9c) | **later trial**, after 9c's compaction trial |
+| **Agent teams** | "experimental and disabled by default"; "significantly more tokens than a single session"; no nested teams (agent-teams.md) | - | **not now** |
+| **Headless runs** | `claude -p` with `--max-turns` and a known "what done looks like" before going unattended (best-practices) | hourly routines (P-645) | **use** for routines, with a turn cap |
+
+---
+
+## 12. Dynamic workflows and ultracode: throughput against tokens
+
+* **Cost, from evidence:** agents use about 4 times the tokens of a chat, multi-agent systems about 15 times (Anthropic, multi-agent research post). The Claude Code docs say a workflow run "can use meaningfully more tokens" and give **no throughput figure** (workflows.md). Default limits: 16 agents at once, 1,000 per run.
+* **Gain, from evidence:** +90.2% on research tasks that split into independent parts (same post). For coding, the post expects less gain, because tasks depend on each other and share context.
+* **Our measured constraint:** CI carries about 36 merged code PRs a day today (section 3), and qa proves about 2.5 rows a day (release1-forecast §4). Writing code faster puts more PRs into a full line. **Throughput gain for builders today: none until CI and qa capacity rise.** Where it does help is wide, independent, read-only work: qa evidence reading across many rows, log audits like section 2, module-card audits. There a workflow turns hours of serial reading into minutes, and nothing it does touches shared files.
+* **Recommendation:** as section 7. Ultracode off by default, `workflowSizeGuideline: small`, used by the Lead for named read-only jobs with the size and token estimate stated first. Revisit for qa after Q1-Q3 (section 5) free the CI line: qa proving is the next constraint, and a qa evidence pass per journey group is a good parallel fit.
+
+---
+
+## 13. Target setup for long unattended runs, and the migration order
+
+**Target (each part named above):** 60 machines (GitHub Team) and one PR check per PR · fast checks first, container proof in the batch, every suite and Works pack once in the batch · lanes in one Limited cloud environment with network secrets, auto mode with `autoMode.environment`, deny rules for every irreversible action, auto-fix on their PRs, at most the lane cap of section 8c · one Lead per day (compaction onto STATE; Fable trial) instead of one every 2-3 hours · about 20 enforced rules plus about 12 principles instead of 131 rows · qa gates A and B unchanged, one qa lane per journey group.
+
+| Step | When | Change | Before (measured) | After (target; measure it) |
+|---|---|---|---|---|
+| 1 | today | GitHub Team org (D1); unset `CI_SHARD_RUNNER` before #2032 (D3) | 40/40 busy, 116 queued (08:01 IST); PR check median 91 min, batch 81 (since 16 Nov noon) | jobs start within 5 min in busy hours; PR check and batch at or under the week medians (54 and 51) |
+| 2 | today | one PR check per PR after Approve (D2: drafts until Approve, label-guard refuses an un-approved ready push) | 57% of PR minutes on 2nd and later runs (63,309 a week) | under 30% |
+| 3 | today-tomorrow | fast checks job; container proof in the batch; cascades 3 → 2 while failing over 15% (D6) | 6,555 min a week in shards after a part-1 failure; QA-449 open; 10 of 30 failed batches were cascades | 0; QA-449 closed; cascades halved |
+| 4 | day 2 | deny rules for curl writes and run cancels; `autoMode.environment`; one Limited cloud environment with network secrets | P-371 broken once; prompts stall lanes (7 Nov 7.4 h) | 0 cancels; stalls counted by lead-watch go down |
+| 5 | day 2 | auto-fix on lane PRs, after filtering `comment-run` and `queue-gate` to command comments | lanes slept through CI results (2 breaks, 13-16 Nov) | PRs red for over 1 h with no push: count falls to near 0 |
+| 6 | day 3 | Lead continuity trial: compaction onto STATE, Fable 5.2 high as Lead (D10, D11) | about 9-14 Leads a day; 17 guessed-time breaks 13-16 Nov | 1-2 Leads a day; breaks down; plan use per hour within P-643 |
+| 7 | day 3-4 | rules: about 20 enforced plus about 12 principles; product rulings out to DECISIONS and module cards; SessionStart output to 1-2 KB (D12, D13) | 131 rows, 25 KB, 112 prose; 11.8 KB start output | under 8 KB of rules; start read under 30 KB |
+| 8 | day 5 | re-measure CI (repeat section 2), then decide paid overflow (D4) | this page | waits under 15 min with no spend, or a priced choice to the founder |
+| 9 | after day 5 | Projects trial for the Lead; workflows for qa evidence passes | - | measured against step 6 |
+
+Every step is reversible, none lowers a gate, and each has one measure taken before and after. Steps 1-3 change capacity and CI, steps 4-5 remove manual waits, and steps 6-7 shrink the structure. That order follows the constraint: the CI line first, because nothing else can move faster until it does.
+
+---
+
+## 14. Decisions for the founder (each with a recommendation, P-254)
 
 | # | Decision | Recommendation | Time | Cost | Quality |
 |---|---|---|---|---|---|
@@ -241,12 +347,18 @@ Demand per merged code PR, measured (section 3): about **1,280 machine-minutes**
 | D7 | Delivery order: unjam the approved near-Proven PRs first, then whole journey groups, no new capability while a started one waits (P-606) | **Yes** | the 5 nearest rows can be proven as soon as their PRs merge | US$0 | none |
 | D8 | Lane cap from CI capacity (section 8c) | **Yes**: about 10-12 code lanes today, about 15 on Team | fewer waits | US$0 | none |
 | D9 | Ultracode | **Off as a standing setting; `workflowSizeGuideline: small`; on only for a named, read-only, wide task** | - | 3-8 times the tokens of one session on the tasks that use it (estimate) | none when read-only |
+| D10 | Lead continuity: allow compaction onto STATE for a one-day trial (lifts P-446's "never compacts" for that day) | **Yes, trial** | 1 day; hand-overs from about 9-14 a day toward 1-2 | US$0 (tokens measured) | none: STATE stays the record; revert if items are missed |
+| D11 | Fable 5.2 (high) as the Lead for the same trial day; workers stay Opus 5.5 | **Yes, trial** | 1 day | plan use measured per hour; stop at the P-643 line | none |
+| D12 | Rules: about 20 enforced (the 11 broken in 13-16 Nov plus the irreversible guards) and about 12 principles; product rulings out to DECISIONS and module cards; the rest retired to history, word for word | **Yes** | 1 day of Lead work | US$0; saves about 78 check PRs | none: every gate stays; a retired row comes back with a check if it is ever broken |
+| D13 | Close the deny-rule gap (curl writes to the GitHub API, run cancels); shrink the SessionStart output to 1-2 KB; one Limited cloud environment with network secrets; auto mode with `autoMode.environment`; auto-fix on lane PRs after filtering the comment-triggered workflows | **Yes**, in that order | about 1 day | US$0 | better: irreversible actions become refused, not just asked |
 
-## 10. What was not measured
+## 15. What was not measured
 
 * The jobs of runs still waiting at 08:04 IST (they are not in [R7]), so 17 Nov's waits are understated.
 * Which PRs were in each batch, so this page cannot split 16 Nov's 21 failed batches into roots and cascades; [MQ]'s method does that and is the right next step for 16-17 Nov.
-* `--direct` replay: 20 red PR checks replayed of 85 (time); 15 of 20 would still go red under `--direct`. A full replay is the evidence a later `--direct` decision needs.
+* `--direct` replay: 19 red PR checks replayed of 85 (time); 13 of 19 would still go red under `--direct`. A full replay is the evidence a later `--direct` decision needs.
 * Per-lane merge rate (used as an estimate in 8c).
+* Section 9: the value of the roughly 70-90 rules with no break is judged from the triage's break count (13-16 Nov only); a longer window could show a rare but real catch. The anti-stall review (Lead 72) and the talk audit (Lead 73) had not landed when this was written; Lead 73 folds them in.
+* Section 10: Fable 5.2's token cost as the Lead on our plan: not measured (the trial measures it).
 * Blacksmith's 4 vCPU price and whether any provider accepts our account before the org move (Namespace did for the trial, P-649).
 * The cost of each suite's app start inside a shard, and CPU use per shard (logs give suite times only).
