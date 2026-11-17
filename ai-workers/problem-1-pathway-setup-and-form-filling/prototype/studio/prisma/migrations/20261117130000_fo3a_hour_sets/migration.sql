@@ -64,6 +64,11 @@ ALTER TABLE "fo_availability"
 CREATE FUNCTION fo_booking_set_default() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.set_id IS NULL THEN
+    -- A person not of the firm gets the window's own foreign-key answer (FO-1b's), never a set made for them.
+    IF NOT EXISTS (SELECT 1 FROM "platform_staff" p WHERE p.firm_id = NEW.firm_id AND p.id = NEW.staff_id) THEN
+      RAISE EXCEPTION 'insert or update on table "fo_availability" violates foreign key constraint "fo_availability_firm_id_staff_id_fkey"'
+        USING ERRCODE = 'foreign_key_violation', DETAIL = 'Key (firm_id, staff_id) is not present in table "platform_staff" (checked before a default set is made).';
+    END IF;
     SELECT s.id INTO NEW.set_id FROM "fo_availability_set" s WHERE s.firm_id = NEW.firm_id AND s.staff_id = NEW.staff_id AND s.is_default;
     IF NEW.set_id IS NULL THEN
       INSERT INTO "fo_availability_set" ("firm_id", "staff_id", "name", "is_default", "time_zone") VALUES (NEW.firm_id, NEW.staff_id, 'Normal hours', true, NEW.time_zone)
