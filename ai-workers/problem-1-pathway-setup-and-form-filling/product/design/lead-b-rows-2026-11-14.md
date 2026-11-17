@@ -1889,3 +1889,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 
 ### Rev 17.14 (18:40 IST 17 Nov): #1956 merged
 * **#1956 PF-19b part 2 merged** at 18:39 IST. PF-19e still waits on #1961 and #2029, and nothing starts under P-663 or the B1 freeze, so there is nothing to send now.
+* **#1918 FO-3a part 1a merged** at 18:40 IST. It unblocks FO-3a part 1b and part 2a, which start only after the move is verified and P-663 clears. Lead 79 told.
