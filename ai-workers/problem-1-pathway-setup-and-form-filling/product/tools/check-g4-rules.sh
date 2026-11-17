@@ -74,6 +74,7 @@ ps 900 100 "Size exception: P-999"; ok "(6) an exception that is not a DECISIONS
 ps 3000 0 "" yes; ok "(6) a records-only PR over 800 passes (P-686)" "$([ $r = 0 ] && echo "$out" | grep -q 'records only (P-686)' && echo 1)" "exit $r: $out"
 ps 3000 0 "" no; ok "(6) a PR that is not records only, over 800, still fails" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
 grep -q 'records-only.sh" is-records --files' "$W"; ok "(6) pr-rules.yml asks records-only.sh whether the PR is records only (P-686)" "$([ $? = 0 ] && echo 1)"
+grep -q '\[ "$NF" -lt 3000 \] || {' "$W" && grep -q -- '--jq .changed_files)$' "$W"; ok "(6) pr-rules.yml fails a PR of 3,000 or more files, which GitHub's file list cannot show whole (#2086 m5)" "$([ $? = 0 ] && echo 1)"
 ps 900 100 "Size exception: P-1"; ok "(6) an exception naming a row that is not about size fails" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
 # Held by Lead 58 (15 Nov): the product queue's `check-success = pr-rules` gate waits for a separate small PR after lanes have seen pr-rules for a day (as module-cards, #1817); its test returns with it.
 grep -q 'pr-size.sh" "$CODE" 0' "$W" && grep -q 'contents: read' "$W" && grep -q 'screens|qa' "$W"; ok "(6) pr-rules.yml runs pr-size.sh on code and test lines only (records under screens/ and qa/ not counted), contents: read" "$([ $? = 0 ] && echo 1)"

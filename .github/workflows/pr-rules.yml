@@ -35,6 +35,9 @@ jobs:
         # and product/qa/ are not counted; everything else is.
         run: |
           set -o pipefail   # a failed or partial file list must fail the step, never pass as a small count (Devin review on #1834)
+          # GitHub's file list stops at 3,000 files without an error, so a larger PR cannot be read whole: fail closed (#2086 m5).
+          NF=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}" --jq .changed_files)
+          [ "$NF" -lt 3000 ] || { echo "size: $NF changed files; GitHub lists at most 3,000, so the size and records-only checks cannot read them all"; exit 1; }
           CODE=$(gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
             --jq '.[] | select(.filename | test("/product/(screens|qa)/") | not) | .additions + .deletions' | awk '{s+=$1} END {print s+0}')
           # P-686: a records-only PR (every path, both sides of a rename, a record by records-only.sh) is not size-limited.
