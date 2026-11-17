@@ -129,3 +129,95 @@ Screen dimensions (layout, keyboard, 1024 px, 200 % zoom, menu, look) and the BI
 - An intended user's own walk (stays with the founder).
 
 **Verdict: Block.** To fix: **M1** (version and stale 409) and **M2** (purpose before prospect), each with a fail test. Then fix m1-m4, or list them in the PR.
+
+## Round 2: re-review of `git diff a0bc261c7..6df95cd40` (17 Nov 2026, ~19:40 IST)
+
+Head **6df95cd40da093829ada41cdd4b06b3e46245883**. I read the diff only (P-277). The working tree was at this head and clean.
+
+**Runs:**
+- Suites, each exit 0:
+  - `check_fo3a2_consult_record` **38/38**;
+  - `check_pf12_walls` 100/100;
+  - `check_fo3sr_routes` 29/29;
+  - `check_fo3_booking` 133/133.
+- `module-cards.py tree`: PASS.
+- `graph.mjs --check`: G1, G2, G4 and G5 all 0.
+- PR size: 740 changed lines against main, under P-610's 800.
+
+### Round 1's findings
+- **M1: fixed.**
+  - What changed: a `version` column (with a check that it is at least 1). PUT names the version it read. The check runs under the booking's `FOR UPDATE` lock (`service.ts:131-132`). A stale save, or a "first" save once a record exists, → 409 `STALE_VERSION` naming the current version. The answer carries `version`.
+  - Probe, round 1's scenario:
+    1. The host saves (v1).
+    2. The Case Officer saves CAD 3,500 → v2.
+    3. The host saves naming v1 → **409**. The fee stays 350000.
+  - Races:
+    - 8 parallel first saves → 1×200 and 7×409, with 1 record;
+    - 5 parallel saves naming the same version → 1×200 and 4×409, and the version is now 2.
+  - Tests: `check…` "version pass" and "version fail".
+- **M2: fixed.** The case purpose is read first (`service.ts:81-86`), and the port's doc gives the order. The suite's DW5 fail case is a Case review booking that names a prospect → `client`, `[]`.
+- **m1: fixed.** A prospect booking read with `agent/booking:edit` but no `agent/retainer:draft` → `[]`; with the draft key → `PREPARE_RETAINER`.
+- **m4: fixed.** EUR → "Choose CAD or USD."
+- **m2 and m3:** now questions for Lead B in the PR body. Accepted, since neither is in the brief's DW list.
+- **m5: not cleared, nit only.** G3 still lists both consult-record routes: the graph cannot read the template-literal paths at `check…` (`${bCasePros.id}`). G3 is not gated (119 across the repository). One literal string would do it.
+
+### The breaker's fixes (round 1, m1-m7)
+- Holds:
+  - NFC; control characters refused; lengths counted in code points (10,000 emoji save, 10,001 → 400);
+  - one item per name, case-insensitively and across NFC forms;
+  - blank notes → null;
+  - 415 for text/plain and for no content type, while `application/json; charset=utf-8` → 200;
+  - 400 for a body that is not an object;
+  - the fee check is NULL-safe (a currency with no fee is refused by the database);
+  - the items list must be one-dimensional;
+  - the adapter answers null for a firm id that is not one (`x`, `""`, null).
+- The contract file `ports/contracts/consult-record-port.contract.ts` runs through `runContract` on `PgConsultRecords` and on the fake. An adapter that ignores the firm fails it. Agreed.
+
+### New Minors (neither blocks)
+- **n1. The port's schema counts UTF-16 units; the API and the database count characters.** `ports/consult-record.ts:275` uses `recommended: z.array(z.string().min(1).max(120))`.
+  - Failing scenario (probe):
+    1. An item of 100 × "𝒜" (100 characters, 200 UTF-16 units) saves with 200.
+    2. `PgConsultRecords.read` returns it.
+    3. `ConsultRecordRead.safeParse` of that answer fails ("Too big: expected string to have <=120 characters"). So would `fakeConsultRecords().add`, and any FO-5cr caller that parses with the port's schema.
+  - Fix: count code points in the port schema too, e.g. `.refine((s) => [...s].length <= 120)`.
+- **n2. ZWNJ and ZWJ are stripped from items.** `service.ts` `INVISIBLE` includes U+200C and U+200D, which carry meaning in Persian, Hindi and emoji sequences.
+  - Failing scenario (probe): the item "اقامت‌دائم" (Persian, with a ZWNJ) is saved as "اقامتدائم". The spelling changes, so it no longer matches its "Interested in" name.
+  - Fix: use the invisible marks only for the "is it empty" test, or keep U+200C and U+200D inside the text.
+- **n3 (nit).** The MODULE.md card's invariant line does not yet say that a save names its version (409 `STALE_VERSION`). The card still passes `tree`.
+
+**Journey score, round 2:**
+- Next step → 1 (M2 fixed).
+- Plain words → 1 (m4 fixed).
+- Correct data → ½ (M1 is fixed, but n2 changes the spelling of an item as typed).
+- Total: **7.5 of 8 scorable = 9.4, reported as 9/10**. No criterion is at 0.
+
+**Verdict: Approve 6df95cd40da093829ada41cdd4b06b3e46245883.** No Blocker or Major is open. Fix n1-n3 here, or list them in the PR as follow-ups.
+
+## Round 3: re-review of `git diff 6df95cd40..20bb53fbc` (17 Nov 2026, ~20:00 IST)
+
+Head **20bb53fbc91f78fad7c845013e2ad6ff1e342c6a**; the working tree was at that head.
+
+**Runs:**
+- `check_fo3a2_consult_record`: **39/39**, exit 0.
+- `module-cards.py tree`: PASS. The card is 40 lines.
+- PR size: 744 changed lines against main.
+
+### Round 2's Minors
+- **n1: fixed.** The port's `recommended` items are now counted in code points (`ports/consult-record.ts:26-27`), as the API and the database count them. The new suite case reads a saved record holding 100 × "𝒜" through `read` and checks that `ConsultRecordRead.safeParse` accepts it.
+- **n2: fixed.**
+  - `INVISIBLE` no longer strips U+200C or U+200D (`service.ts:59`).
+  - An item made only of ZWNJ/ZWJ is still refused (`/[^‌‍]/`).
+  - Checked by hand:
+    - "اقامت‌دائم" keeps its ZWNJ;
+    - "👩‍💻" keeps its ZWJ;
+    - "‌" alone → refused;
+    - " ​ " → refused.
+  - The suite case expects the Persian name with its ZWNJ.
+- **n3: fixed.** The card's invariant line now says that a save names the version it read (else 409 `STALE_VERSION`).
+
+### Nit (does not block; no change asked)
+An item of "‌ ‍" (a ZWNJ, a space and a ZWJ) passes the item rule (the space is a character other than the two marks) and the database's `btrim` check. It shows as blank. Nobody types this, and fixing it needs a rule for each script; leave it.
+
+**Journey score, round 3:** correct data → 1 (n2 fixed). Total: **8 of 8 scorable, 10/10**. Accessibility and visual quality stay N/A: there is no UI.
+
+**Verdict: Approve 20bb53fbc91f78fad7c845013e2ad6ff1e342c6a.** No Blocker, Major or Minor is open. m5 (the graph's G3 false gap) and the nit above remain nits.
