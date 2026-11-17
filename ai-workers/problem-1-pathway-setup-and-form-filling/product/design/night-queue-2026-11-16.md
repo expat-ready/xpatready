@@ -16,8 +16,6 @@ Three hourly cloud routines ("lane starter 1-3", at :05, :25 and :45 UTC past ea
 | PF-21b part 1 | runtime | main:lead-b-briefs/PF-21b.md (port only) | — | high, no |
 | PF-Fp part 1 | runtime | lead-b-front-office:lead-b-briefs/P-630-amendments.md PF-Fp row + tech-gate-platform-front-office-2026-11-14.md entry 17 (toPdf port, fake, Gotenberg adapter; the container line comes with PF-8) | — | high, yes; shared port: "Ready for Lead read" |
 | AUD-4s part 1 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/AUD-4s-1.md (concept records, with a fresh challenger) | — | medium, no |
-| CS-W3 part 0 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-W3-0.md (records-only spike on a scratch copy) | — | medium, no |
-| CS-S1 part 1 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-S1-1.md | — ; **skip this row if #2002 (CS-C1b) is merged** (WIP P-623) | high, yes; schema: "Ready for Lead read" |
 | FO-6 | runtime | lead-b-front-office:lead-b-briefs/FO-6.md | — | medium, no |
 | PF-19e | runtime | lead-b-front-office:lead-b-briefs/PF-19e.md | #1956, #1961, #2029 (messages/send/messages.ts) | medium, no |
 | AUD-1b | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/AUD-1b.md | #2003 | high, yes (audit) |
@@ -49,7 +47,14 @@ Three hourly cloud routines ("lane starter 1-3", at :05, :25 and :45 UTC past ea
 | AS-2e | engine | claude/build-lead-c-647b40:build-lead-c-briefs/AS-2e.md (gates-only stream, no score line; migration) | AS-1s and AS-1g merged, then the Lead names the schema baton; never with AS-1c or CS-NK1 | high, no; Lead reads the migration |
 | AS-2d1 | data | claude/build-lead-c-647b40:build-lead-c-briefs/AS-2d1.md (Ontario, BC) | AS-2e merged and the founder's streams card (P-607 (9)) | high, no |
 | AS-2d2 | data | claude/build-lead-c-647b40:build-lead-c-briefs/AS-2d2.md (Alberta, Saskatchewan, Manitoba) | AS-2e merged and the founder's streams card | high, no |
+| QA-53k | forms (tests only) | inline (Lead 72, 07:3x IST 17 Nov, on #2035's root cause, comment 6935433301): `tests/check_forms_qa53.ts` starts its firm copy with `execFileSync` (line ~125), which blocks the event loop while the main copy's keep-alive socket idles out, so the next request gets `SocketError: other side closed`. Fix in the test only: start the copy without blocking (or open a fresh connection for the first request after it); no app code. **Done when** the suite passes 5 runs in a row alone and in shard 1's order, and it comes off the B122 automatic quarantine (owner forms, due back 23 Nov) | — | medium, no |
+| PF-5tv | runtime | lead-b-front-office:lead-b-briefs/PF-5tv.md (one rule for the current terms at sign-up and at the gate: one shared exported read ordered `published_at desc, version desc, id desc`; no migration; evidence #1957 body point 3; Build Lead A, 08:5x IST 17 Nov, added by Lead 74) | #2029 (signup.ts); never beside PF-12b part 2 (skip while an open PR names it) | medium, no |
 
 Chains on shared files run one after another, never side by side (Build Lead A, rev 16.80): booking/service.ts: FO-3a part 1b → FO-3vr → FO-3v; the messages files: PF-19e → PF-13 part 1 → PF-19c → PF-19ad. Sources: Build Lead A rev 16.80 (1671fb76e), Build Lead C 93004803b, 22:2x IST 16 Nov.
 
 Removed 22:3x (Lead 70): CS-V1-2. The CS-V1 lane (#2007) takes it warm after #2007 merges, once Build Lead C confirms the scope.
+
+
+Held 08:4x IST 17 Nov (Lead 73; WIP P-623, Build Lead C 7f471e8b0: the case side has R1.80 and R1.77 waiting for qa since 04:00 IST): CS-W3 part 0 comes back when qa clears one of them. CS-DL1b (part 2 of the started CS-DL1) and CS-NK1 (bug F2 from #2017's breaker) went back into the table at 08:5x (Build Lead C 0e1330cc3: parts of started rows and bug fixes carry on, P-606, P-623). CS-S1 part 1 removed: taken (#2035, in Mergify batch #2061). The rows, word for word:
+| CS-W3 part 0 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-W3-0.md (records-only spike on a scratch copy) | — | medium, no |
+| CS-S1 part 1 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-S1-1.md | — ; **skip this row if #2002 (CS-C1b) is merged** (WIP P-623) | high, yes; schema: "Ready for Lead read" |
