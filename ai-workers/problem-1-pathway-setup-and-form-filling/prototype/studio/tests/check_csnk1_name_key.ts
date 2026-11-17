@@ -142,21 +142,39 @@ try {
   // field then takes the newer draft's name, which the 25 Oct key allowed. Neither is a legacy duplicate after the backfill.
   sql(BARE, `${field(WS, "person.csnk1_r1", "Ålder x").replace("'DRAFT'", "'PUBLISHED'")}; ${field(WS, "person.csnk1_r1", "Ärende x").replace(", 1, 'DRAFT'", ", 2, 'DRAFT'")};
     update canonical_field set status = 'RETIRED' where canonical_field_key = 'person.csnk1_r1' and version = 1; ${field(WS, "person.csnk1_r2", "ärende x")}`);
+  // Devin review on #2101: a collision loser whose reservation came from an older version stays a listed duplicate on a
+  // second run (it is never handed its newest version's name).
+  sql(BARE, `${field(WS, "person.csnk1_ya", "Café crème y")}; ${field(WS, "person.csnk1_yz", "Café-crème y").replace("'DRAFT'", "'PUBLISHED'")}; ${field(WS, "person.csnk1_yz", "Different y").replace(", 1, 'DRAFT'", ", 2, 'DRAFT'")};
+    update canonical_field set status = 'RETIRED' where canonical_field_key = 'person.csnk1_yz' and version = 1`);
   const stale = sql(BARE, `select count(*) from canonical_field_name n join canonical_field c using (workspace_id, canonical_field_key) where c.canonical_field_key like 'person.csnk1_%' and n.name_key <> lower(regexp_replace(c.label, '[^A-Za-z0-9]+', '', 'g'))`);
   ok("CS-NK1 DW4 fail: before this row's migration, the stored keys of the non-ASCII names differ from normalizeLabel", Number(stale) >= 4, stale);
   const first = spawnSync(bin("psql"), [urlOf(BARE), "-X", "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, NEW, "migration.sql")], { encoding: "utf8" });
   const firstListed = first.stderr.match(/CS-NK1 legacy duplicate name[^\n]*/g) ?? [];
-  ok("CS-NK1 DW4 pass: the migration applies on rows written under the 25 Oct key, and its NOTICE lists the two legacy duplicates", first.status === 0 && firstListed.length === 2 && firstListed.every((l) => /person\.csnk1_(rb|n4)/.test(l)), { status: first.status, err: first.stderr.slice(-400) });
+  ok("CS-NK1 DW4 pass: the migration applies on rows written under the 25 Oct key, and its NOTICE lists the three legacy duplicates", first.status === 0 && firstListed.length === 3 && firstListed.every((l) => /person\.csnk1_(rb|n4|yz)/.test(l)), { status: first.status, err: first.stderr.slice(-400) });
   for (const l of firstListed) console.log(`      ${l.replace(/^.*?CS-NK1/, "CS-NK1")}`);
   const rows = sql(BARE, `select c.canonical_field_key || '|' || c.label || '|' || n.name_key from canonical_field_name n join canonical_field c using (workspace_id, canonical_field_key) where c.canonical_field_key like 'person.csnk1_%' order by 1`).split("\n").map((l) => l.split("|"));
-  const legacy = new Set(["person.csnk1_rb", "person.csnk1_n4"]), reservedAs: Record<string, string> = { "person.csnk1_r1": "Ålder x" };
+  const legacy = new Set(["person.csnk1_rb", "person.csnk1_n4", "person.csnk1_yz"]), reservedAs: Record<string, string> = { "person.csnk1_r1": "Ålder x" };
   const wrong = rows.filter(([k, label, key]) => key !== (legacy.has(k) ? "" : normalizeLabel(reservedAs[k] ?? label)));
-  ok("CS-NK1 DW4 pass: after the migration every row's key is normalizeLabel of its label, or '' for the two legacy duplicates (the race pair, Café-crème x); the F4 field keeps the label it was reserved with", rows.filter((r) => r[0] === "person.csnk1_r1").every((r) => r[2] === normalizeLabel("Ålder x")) && new Set(rows.map((r) => r[0])).size === 9 && wrong.length === 0, { rows, wrong });
+  ok("CS-NK1 DW4 pass: after the migration every row's key is normalizeLabel of its label, or '' for the three legacy duplicates (the race pair, Café-crème x, Café-crème y from an older version); the F4 field keeps the label it was reserved with", rows.filter((r) => r[0] === "person.csnk1_r1").every((r) => r[2] === normalizeLabel("Ålder x")) && new Set(rows.map((r) => r[0])).size === 11 && wrong.length === 0, { rows, wrong });
   const before = sql(BARE, `select string_agg(canonical_field_key || '=' || name_key, ',' order by canonical_field_key) from canonical_field_name`);
   const again = spawnSync(bin("psql"), [urlOf(BARE), "-X", "-v", "ON_ERROR_STOP=1", "-c", `begin; ${backfill.replace(/^\s*--.*$/gm, "")} commit;`], { encoding: "utf8" });
   const after = sql(BARE, `select string_agg(canonical_field_key || '=' || name_key, ',' order by canonical_field_key) from canonical_field_name`);
   const listed = (again.stderr.match(/CS-NK1 legacy duplicate name[^\n]*/g) ?? []);
-  ok("CS-NK1 DW4 pass: run once more, the backfill changes nothing and its NOTICE lists the same two legacy duplicates", again.status === 0 && before === after && listed.length === 2 && listed.every((l) => /person\.csnk1_(rb|n4)/.test(l)), { status: again.status, err: again.stderr.slice(-400), listed });
+  ok("CS-NK1 DW4 pass: run once more, the backfill changes nothing and its NOTICE lists the same three legacy duplicates", again.status === 0 && before === after && listed.length === 3 && listed.every((l) => /person\.csnk1_(rb|n4|yz)/.test(l)), { status: again.status, err: again.stderr.slice(-400), listed });
+  // Devin review on #2101: the backfill holds field writes off until it commits, so a rename from an API still running
+  // during the migration waits and then reserves its own new name (never a stale snapshot's).
+  const [m, w] = [new pg.Client({ connectionString: urlOf(BARE) }), new pg.Client({ connectionString: urlOf(BARE) })];
+  await m.connect(); await w.connect();
+  await m.query(`begin; ${backfill.replace(/^\s*--.*$/gm, "")}`);
+  let landed = false;
+  const write = w.query(`update canonical_field set label = 'Nuevo nombre ñ' where canonical_field_key = 'person.csnk1_n1'`).then(() => { landed = true; });
+  await new Promise((r) => setTimeout(r, 500));
+  const waited = !landed;
+  await m.query("commit"); await write;
+  const nk = sql(BARE, `select name_key from canonical_field_name where canonical_field_key = 'person.csnk1_n1'`);
+  ok("CS-NK1 DW4 pass: a rename during the backfill waits for it, then reserves its new name under the new key", waited && landed && nk === normalizeLabel("Nuevo nombre ñ"), { waited, landed, nk });
+  ok("CS-NK1 DW4 pass: the backfill's lock does not stop reads (a read on canonical_field is not held off)", (await m.query(`begin; ${backfill.replace(/^\s*--.*$/gm, "")}`).then(async () => { const r = await w.query("select count(*) from canonical_field"); await m.query("rollback"); return Number(r.rows[0].count) > 0; })));
+  await m.end(); await w.end();
   await full.end(); await bare.end();
 } catch (err) {
   ok("the CS-NK1 check ran", false, (err as Error).message);
