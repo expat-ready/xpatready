@@ -154,6 +154,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-674 | Clean-up (with P-675 to P-677): plan now, staged moves after the org move; repo name platform; October files out (tagged); business plan private. | prose | 17 Nov |
 | P-678 | Private home expat-ready/private (P-679: the only one); side notes synced each check by tools/private-sync.sh; big folders on the Mac's backup. | script: private-sync.sh | 17 Nov |
 | P-680 | Spend master kept private; board card parked (P-681); architecture sized for ~500 capabilities with an AI layer. | prose | 17 Nov |
+| P-682 | Modular monolith: fenced modules, AI behind its own port, outbox events, affected-only CI; split only on a measured trigger. | prose | 17 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |
