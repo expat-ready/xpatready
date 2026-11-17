@@ -139,7 +139,7 @@ try {
   ok("FO-3a2 DW1: GET before any save → 404 NO_RECORD with the booked length to pre-fill", noRecordYet.status === 404 && noRecordYet.body.code === "NO_RECORD" && noRecordYet.body.bookedMinutes === 45, noRecordYet);
 
   // -------------------------------------------------------------------------------------------------- DW2: the fee
-  const cad = await go("PUT", rec(bLead.id), P.OWNER, { timeSpentMinutes: 35, recommended: ["Work permit"], quotedFeeMinor: 15000, quotedFeeCurrency: "CAD" });
+  const cad = await go("PUT", rec(bLead.id), P.OWNER, { version: 1, timeSpentMinutes: 35, recommended: ["Work permit"], quotedFeeMinor: 15000, quotedFeeCurrency: "CAD" });
   ok("FO-3a2 DW2 pass: a fee of 15000 CAD saves (time spent changed to 35)", cad.status === 200 && cad.body.quotedFee?.amountMinor === 15000 && cad.body.quotedFee?.currency === "CAD" && cad.body.timeSpentMinutes === 35, cad);
   const noCur = await go("PUT", rec(bLead.id), P.OWNER, { quotedFeeMinor: 15000 });
   const eur = await go("PUT", rec(bLead.id), P.OWNER, { quotedFeeMinor: 15000, quotedFeeCurrency: "EUR" });
@@ -147,7 +147,7 @@ try {
     await go("PUT", rec(bLead.id), P.OWNER, { timeSpentMinutes: 0 }), await go("PUT", rec(bLead.id), P.OWNER, { recommended: Array.from({ length: 21 }, (_, i) => `Item ${i}`) }), await go("PUT", rec(bLead.id), P.OWNER, { extra: true })];
   const kept = await db.foConsultRecord.findFirstOrThrow({ where: { bookingId: bLead.id } });
   ok(`FO-3a2 DW2 fail: a fee with no currency → 400 "${WORDS.currency}" on quotedFeeCurrency; EUR, -1, 1e12, 0 minutes, 21 items, an unknown field → 400; the saved record is unchanged`,
-    noCur.status === 400 && noCur.body.detail === WORDS.currency && noCur.body.issues?.[0]?.startsWith("quotedFeeCurrency:") && eur.status === 400 && eur.body.issues?.some((i: string) => i.startsWith("quotedFeeCurrency"))
+    noCur.status === 400 && noCur.body.detail === WORDS.currency && noCur.body.issues?.[0]?.startsWith("quotedFeeCurrency:") && eur.status === 400 && eur.body.issues?.includes("quotedFeeCurrency: Choose CAD or USD.")
       && silly.every((x) => x.status === 400) && kept.quotedFeeMinor === 15000 && kept.quotedFeeCurrency === "CAD" && kept.timeSpentMinutes === 35, { noCur, eur, silly: silly.map((x) => x.status), kept });
   const curOnly = await go("PUT", rec(bPros.id), P.OWNER, { quotedFeeCurrency: "USD" });
   ok("FO-3a2 DW2: a pre-filled currency with no amount is dropped, never stored alone (rule 6's pre-fill)", curOnly.status === 200 && curOnly.body.quotedFee === null && (await db.foConsultRecord.findFirstOrThrow({ where: { bookingId: bPros.id } })).quotedFeeCurrency === null, curOnly);
@@ -161,7 +161,7 @@ try {
   ok("FO-3a2 DW2 fail (database): 0 minutes, 21 items, an empty item, a fee without currency, EUR, a second record and another firm's booking are each refused by the database", dbRefusals.length === 0, dbRefusals);
 
   // ------------------------------------------------------------------------------------------------ DW3: who may
-  const co = await go("PUT", rec(bLead.id), P.CASE_OFFICER, { timeSpentMinutes: 40, quotedFeeMinor: 15000, quotedFeeCurrency: "CAD", recommended: ["Work permit"] });
+  const co = await go("PUT", rec(bLead.id), P.CASE_OFFICER, { version: 2, timeSpentMinutes: 40, quotedFeeMinor: 15000, quotedFeeCurrency: "CAD", recommended: ["Work permit"] });
   const host = await go("PUT", rec(bBilling.id), P.BILLING_FINANCE, { notes: "Sample" });
   ok("FO-3a2 DW3 pass: the host saves (Owner on their booking; Billing and finance on the one they host, no key); a Case Officer with agent/booking:edit saves another's",
     first.status === 200 && host.status === 200 && co.status === 200 && co.body.timeSpentMinutes === 40, { co, host });
@@ -173,10 +173,20 @@ try {
       && others.firmB.status === 404 && others.firmBPut.status === 404 && others.nobody.status === 401 && (await db.foConsultRecord.findFirstOrThrow({ where: { bookingId: bLead.id } })).timeSpentMinutes === 40,
     Object.fromEntries(Object.entries(others).map(([k, v]) => [k, v.status])));
 
+  // ------------------------------------------------------------------------- the version (STANDARDS §4; review M1)
+  const stale = await go("PUT", rec(bLead.id), P.OWNER, { version: 1, notes: "from a form read before the Case Officer's save" });
+  const secondFirst = await go("PUT", rec(bLead.id), P.OWNER, { notes: "a second first save" });
+  const afterStale = await db.foConsultRecord.findFirstOrThrow({ where: { bookingId: bLead.id } });
+  ok("FO-3a2 version pass: each save answers the version it wrote (1, 2, 3), and the next save names it",
+    first.body.version === 1 && cad.body.version === 2 && co.body.version === 3 && afterStale.version === 3, { first: first.body.version, cad: cad.body.version, co: co.body.version });
+  ok("FO-3a2 version fail: a save naming an old version, and a first save (no version) when a record exists, → 409 STALE_VERSION naming the current version; the Case Officer's fee is kept",
+    stale.status === 409 && stale.body.code === "STALE_VERSION" && stale.body.version === 3 && secondFirst.status === 409 && secondFirst.body.code === "STALE_VERSION"
+      && afterStale.quotedFeeMinor === 15000 && afterStale.timeSpentMinutes === 40 && afterStale.notes === null, { stale, secondFirst, afterStale });
+
   // ------------------------------------------------------------------------------------------- DW4: later No-show
   const caseRec = await go("PUT", rec(bCase.id), P.OWNER, { notes: "Sample" });
   await attend(bCase.id, "NO_SHOW");
-  const changed = await go("GET", rec(bCase.id), P.OWNER);
+  const changed = await call(base, "GET", `/api/front-office/bookings/${bCase.id}/consult-record`, P.OWNER.token);
   ok(`FO-3a2 DW4 pass: attendance changed to No-show after a save → the record stays and answers attendanceChanged "NO_SHOW" (no next step)`,
     caseRec.status === 200 && changed.status === 200 && changed.body.attendanceChanged === "NO_SHOW" && changed.body.id === caseRec.body.id && changed.body.nextSteps.length === 0 && await records(bCase.id) === 1, changed);
   const editAfter = await go("PUT", rec(bCase.id), P.OWNER, { notes: "changed" });
@@ -186,7 +196,7 @@ try {
 
   // --------------------------------------------------------------------------------------------- DW5: next steps
   const outboxBefore = await db.moduleEvent.count(), mailBefore = mail.sent.length, msgBefore = await db.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM msg_outbox`;
-  const leadSteps = await go("PUT", rec(bLead.id), P.OWNER, { timeSpentMinutes: 40, recommended: ["Work permit"], quotedFeeMinor: 15000, quotedFeeCurrency: "CAD" });   // a PUT replaces the whole record
+  const leadSteps = await go("PUT", rec(bLead.id), P.OWNER, { version: 3, timeSpentMinutes: 40, recommended: ["Work permit"], quotedFeeMinor: 15000, quotedFeeCurrency: "CAD" });   // a PUT replaces the whole record
   const prosSteps = await go("GET", rec(bPros.id), P.OWNER);
   const caseSteps = await go("GET", rec(bCase.id), P.OWNER);
   ok("FO-3a2 DW5 pass: lead → ENGAGE_AND_PREPARE_RETAINER and CLOSE_LEAD; prospect → PREPARE_RETAINER; case → none (party kinds lead, prospect, client)",
@@ -199,6 +209,20 @@ try {
   ok("FO-3a2 DW5 fail: a person without agent/retainer:draft or agent/prospect:lose (Billing and finance, host of their own) gets no step; a save queues no mail, no outbox event and no msg_outbox row",
     !noDraft.some((r) => r.role === "BILLING_FINANCE") && billingSteps.status === 200 && billingSteps.body.nextSteps.length === 0
       && await db.moduleEvent.count() === outboxBefore && mail.sent.length === mailBefore && msgAfter[0].n === msgBefore[0].n, { billingSteps: billingSteps.body, outboxBefore, mailBefore, msgBefore, msgAfter });
+
+  // A Case review booked for the prospect's person links the open prospect too; a case call still offers no retainer (review M2).
+  await clock.set(at("2026-10-26 08:00"));
+  const bCasePros = await make(TC.id, pros, "2026-10-28 09:00");
+  await clock.set(at("2026-10-28 17:00"));
+  await attend(bCasePros.id, "COMPLETED");
+  const casePros = await call(base, "PUT", `/api/front-office/bookings/${bCasePros.id}/consult-record`, P.OWNER.token, {});   // the full path, as the graph reads it
+  ok("FO-3a2 DW5 fail: a Case review booking that also names the person's prospect answers client and no retainer step (the case purpose is read first)",
+    !!bCasePros.prospectId && casePros.status === 200 && casePros.body.partyRef?.kind === "client" && casePros.body.nextSteps.length === 0, { bCasePros, casePros: casePros.body });
+  const svcKeys = new ConsultRecordService(db, { audit: audit as never });
+  const prosNoDraft = await svcKeys.get({ firmId: A.id, staffId: P.CASE_OFFICER.id, keys: ["agent/booking:edit", "agent/booking:list", "agent/prospect:lose"] } as never, bPros.id);
+  const prosDraft = await svcKeys.get({ firmId: A.id, staffId: P.CASE_OFFICER.id, keys: ["agent/booking:edit", "agent/retainer:draft"] } as never, bPros.id);
+  ok("FO-3a2 DW5 fail: on a prospect, a person with agent/booking:edit but no agent/retainer:draft gets no step; with it, PREPARE_RETAINER",
+    prosNoDraft.nextSteps.length === 0 && prosDraft.nextSteps.join() === "PREPARE_RETAINER", { prosNoDraft: prosNoDraft.nextSteps, prosDraft: prosDraft.nextSteps });
 
   // ------------------------------------------------------------------------------------------ DW6: the port contract
   const svc = new ConsultRecordService(db, { audit: audit as never });
@@ -220,7 +244,7 @@ try {
 
   // --------------------------------------------------------------------------------------------- DW7: the audit
   const lines = audit.entries.filter((e) => e.entity === "fo_consult_record");
-  const saves = [first, cad, curOnly, co, host, caseRec, leadSteps].length;
+  const saves = [first, cad, curOnly, co, host, caseRec, leadSteps, casePros].length;
   ok(`FO-3a2 DW7 pass: every save has one audit line with before and after (${saves} saves, ${lines.length} lines; the first "created", later ones "changed")`,
     lines.length === saves && lines[0].action === "booking.consult_record.created" && lines[0].detail.beforeTimeSpentMinutes === null && lines[0].detail.afterTimeSpentMinutes === 45
       && lines.some((l) => l.action === "booking.consult_record.changed" && l.detail.beforeTimeSpentMinutes === 45 && l.detail.afterTimeSpentMinutes === 35 && l.detail.afterQuotedFeeMinor === 15000), lines);

@@ -5,6 +5,7 @@
 --   * minutes 1-1,440 (pre-filled by the API with the booked length, rule 3), notes at most 10,000 characters, at most
 --     20 recommended items of 1-120 characters each, a fee of 0 or more in minor units with its currency, and a
 --     currency only with a fee (rule 6; CAD or USD only by the enum, X-6);
+--   * a version for optimistic saves (STANDARDS §4: a stale save is refused by the API);
 --   * PF-12's wall (forced policy on the session's firm, the firm gate first).
 -- No row is written here. Rollback: DROP TABLE "fo_consult_record"; DROP FUNCTION fo_booking_consult_items_ok(text[]); DROP TYPE "FoConsultCurrency";
 -- CreateEnum
@@ -20,6 +21,7 @@ CREATE TABLE "fo_consult_record" (
     "recommended" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "quoted_fee_minor" INTEGER,
     "quoted_fee_currency" "FoConsultCurrency",
+    "version" INTEGER NOT NULL DEFAULT 1,
     "created_by" TEXT NOT NULL,
     "updated_by" TEXT NOT NULL,
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -37,6 +39,7 @@ ALTER TABLE "fo_consult_record" ADD CONSTRAINT "fo_consult_record_firm_id_bookin
 
 -- The rules Prisma cannot say (AG-4-49 rules 3-6).
 ALTER TABLE "fo_consult_record" ADD CONSTRAINT "fo_consult_record_minutes_check" CHECK ("time_spent_minutes" BETWEEN 1 AND 1440);
+ALTER TABLE "fo_consult_record" ADD CONSTRAINT "fo_consult_record_version_check" CHECK ("version" >= 1);
 ALTER TABLE "fo_consult_record" ADD CONSTRAINT "fo_consult_record_notes_check" CHECK ("notes" IS NULL OR char_length("notes") <= 10000);
 -- At most 20 items, none empty or over 120 characters (a check cannot hold a subquery, so a small immutable function).
 CREATE FUNCTION fo_booking_consult_items_ok(items text[]) RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS $$

@@ -8,10 +8,12 @@
 //   * Time spent defaults to the booked length (rule 3); notes; recommended items (1-120 characters, at most 20, rule 5);
 //     a quoted fee in minor units with its currency, CAD or USD only (rule 6, X-6). A currency sent without an amount is
 //     dropped (the form pre-fills it, rule 6), never stored alone.
+//   * PUT replaces the whole record and names the version it read (STANDARDS §4): a first save names none; a stale
+//     version, or a "first" save when a record exists, is refused 409 STALE_VERSION and changes nothing.
 //   * Attendance changed to No-show later: the record stays and answers attendanceChanged "NO_SHOW" (§12, BR-15); it is
 //     not edited again until the attendance is Attended again.
 //   * nextSteps (AG-4-50, BR-16), worked out by the server for the viewer (STANDARDS §7): lead → ENGAGE_AND_PREPARE_RETAINER,
-//     CLOSE_LEAD; prospect → PREPARE_RETAINER; case → none. A retainer step needs agent/retainer:draft, CLOSE_LEAD needs
+//     CLOSE_LEAD; prospect → PREPARE_RETAINER; case (a Follow-up or Case review type, even with a prospect linked) → none. A retainer step needs agent/retainer:draft, CLOSE_LEAD needs
 //     agent/prospect:lose. Nothing is sent from the record (rule 3): no mail, no event, only the audit line.
 //   * Each save writes one audit line through AuditPort.record(tx, …) with before and after, as facts only (minutes, fee,
 //     currency, item count, whether the notes changed): never the notes' text (rule 9; the audit port takes ids only).
@@ -36,6 +38,8 @@ export const WORDS = {
   cancelled: "A cancelled booking has no consult record.",
   noRecord: "No consult record yet.",
   currency: "Choose a currency for the quoted fee.",
+  currencyKind: "Choose CAD or USD.",
+  stale: "Someone else saved this record. Reload to see their changes.",
   check: "Please check the highlighted details.",
 } as const;
 
@@ -54,18 +58,22 @@ export const ConsultBody = z.strictObject({
   notes: z.string().max(10_000).nullable().optional(),
   recommended: z.array(z.string().trim().min(1).max(120)).max(20).optional(),
   quotedFeeMinor: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
-  quotedFeeCurrency: z.enum(["CAD", "USD"]).nullable().optional(),
+  quotedFeeCurrency: z.enum(["CAD", "USD"], { error: "Choose CAD or USD." }).nullable().optional(),
+  /** The version read (STANDARDS §4): needed to replace a record; a first save names none. */
+  version: z.number().int().min(1).optional(),
 });
 
 type BookingRow = { id: string; firmId: string; staffId: string; personId: string | null; prospectId: string | null; status: string; startsAt: Date; endsAt: Date; type: { purpose: string } };
-type RecordRow = { id: string; bookingId: string; timeSpentMinutes: number; notes: string | null; recommended: string[]; quotedFeeMinor: number | null; quotedFeeCurrency: string | null; createdAt: Date; updatedAt: Date };
+type RecordRow = { id: string; bookingId: string; version: number; timeSpentMinutes: number; notes: string | null; recommended: string[]; quotedFeeMinor: number | null; quotedFeeCurrency: string | null; createdAt: Date; updatedAt: Date };
 const BOOKING_SELECT = { id: true, firmId: true, staffId: true, personId: true, prospectId: true, status: true, startsAt: true, endsAt: true, type: { select: { purpose: true } } } as const;
 
 /** What the record hangs on (ports/consult-record.ts PartyRef): a prospect, a case purpose (client), else a lead. */
 export function partyOf(b: { personId: string | null; prospectId: string | null; type: { purpose: string } }): PartyRef | null {
+  // A case purpose first: staff create links the person's open prospect to every type, and a case call never offers a
+  // retainer (brief DW5; AG-4-49 rule 8; review M2).
+  if (["FOLLOW_UP", "CASE_REVIEW"].includes(b.type.purpose)) return b.personId ? { kind: "client", id: b.personId } : null;
   if (b.prospectId) return { kind: "prospect", id: b.prospectId };
-  if (!b.personId) return null;
-  return ["FOLLOW_UP", "CASE_REVIEW"].includes(b.type.purpose) ? { kind: "client", id: b.personId } : { kind: "lead", id: b.personId };
+  return b.personId ? { kind: "lead", id: b.personId } : null;
 }
 
 /** The next-step buttons for this viewer (AG-4-50; BR-16). */
@@ -107,12 +115,14 @@ export class ConsultRecordService {
       if (b.status === "CANCELLED") throw problem(409, "not-active", "Cancelled", WORDS.cancelled, { code: "CANCELLED" });
       if (b.status !== "COMPLETED") throw problem(409, "not-attended", "Not attended", WORDS.notAttended, { code: "NOT_ATTENDED" });
       const before = await tx.foConsultRecord.findFirst({ where: firmScope(ctx.firmId, { bookingId: b.id }) });
+      // A save from a form read before someone else's save (or a second "first" save) never overwrites it (review M1).
+      if ((before?.version ?? null) !== (v.version ?? null)) throw problem(409, "stale-version", "Changed by someone else", WORDS.stale, { code: "STALE_VERSION", version: before?.version ?? null });
       const data = {
         timeSpentMinutes: v.timeSpentMinutes ?? bookedMinutes(b), notes: v.notes ?? null, recommended: [...new Set(v.recommended ?? [])],
         quotedFeeMinor: fee, quotedFeeCurrency: fee === null ? null : v.quotedFeeCurrency!, updatedBy: actor(ctx),
       };
       const saved = before
-        ? await tx.foConsultRecord.update({ where: { id: before.id }, data })
+        ? await tx.foConsultRecord.update({ where: { id: before.id }, data: { ...data, version: before.version + 1 } })
         : await tx.foConsultRecord.create({ data: { ...data, firmId: ctx.firmId, bookingId: b.id, createdBy: actor(ctx) } });
       await this.ports.audit.record(tx, {
         firmId: ctx.firmId, actor: actor(ctx), action: before ? "booking.consult_record.changed" : "booking.consult_record.created", entity: "fo_consult_record", entityKey: saved.id,
@@ -148,7 +158,7 @@ export class ConsultRecordService {
   private view(ctx: StaffContext, b: BookingRow, r: RecordRow) {
     const party = partyOf(b);
     return {
-      id: r.id, bookingId: r.bookingId, timeSpentMinutes: r.timeSpentMinutes, bookedMinutes: bookedMinutes(b), notes: r.notes, recommended: [...r.recommended],
+      id: r.id, bookingId: r.bookingId, version: r.version, timeSpentMinutes: r.timeSpentMinutes, bookedMinutes: bookedMinutes(b), notes: r.notes, recommended: [...r.recommended],
       quotedFee: r.quotedFeeMinor === null || !r.quotedFeeCurrency ? null : { amountMinor: r.quotedFeeMinor, currency: r.quotedFeeCurrency },
       attendanceChanged: b.status === "NO_SHOW" ? ("NO_SHOW" as const) : null,
       partyRef: party, nextSteps: b.status === "COMPLETED" ? nextStepsFor(party, ctx.keys) : [],

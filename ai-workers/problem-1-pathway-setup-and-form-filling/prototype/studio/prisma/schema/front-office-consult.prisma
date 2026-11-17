@@ -25,6 +25,8 @@ model FoConsultRecord {
   recommended       String[]           @default([])
   quotedFeeMinor    Int?               @map("quoted_fee_minor")
   quotedFeeCurrency FoConsultCurrency? @map("quoted_fee_currency")
+  /// The optimistic-save counter (STANDARDS §4): a save names the version it read; a stale one is refused (409).
+  version           Int                @default(1)
   createdBy         String             @map("created_by")
   updatedBy         String             @map("updated_by")
   createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz

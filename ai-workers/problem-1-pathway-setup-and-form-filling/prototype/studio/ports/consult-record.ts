@@ -7,10 +7,10 @@ import { z } from "zod";
 
 const Uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "a uuid");
 
-/** What the record hangs on, read from its booking (AG-4-49 rule 8):
- *  - `prospect`: the booking names a prospect (its id);
+/** What the record hangs on, read from its booking (AG-4-49 rule 8), in this order:
  *  - `client`: the booking's type is a case purpose, Follow-up or Case review (AG-4-10 rule 3: these belong to a case;
- *    the person's id, as a booking carries no case id yet);
+ *    the person's id, as a booking carries no case id yet), even when the booking also names a prospect;
+ *  - `prospect`: the booking names a prospect (its id);
  *  - `lead`: any other booking (the person's id: the booking names the person, never a lead row; FO-4's Engage panel
  *    finds the person's open lead). */
 export const PartyRef = z.strictObject({ kind: z.enum(["lead", "prospect", "client"]), id: Uuid });
