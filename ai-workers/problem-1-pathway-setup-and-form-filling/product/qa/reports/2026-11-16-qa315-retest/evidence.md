@@ -1,0 +1,35 @@
+# Evidence lines (qa QA-315 retest, 16 Nov 2026, main d66bcfd2d, qa cloud container, isolated copies, live AI off)
+
+Result lines only, quoted word for word (AGENTS rule 1: raw logs are not committed).
+
+## gate-b.mjs, GATE_B_DATA=checkpoint, run 1
+```
+Gate B: the PR names C7.2; claims Works for none (no bug check).
+    C7.2.test.ts on the checkpoint: exit 0, 11/11 passed (144 s: copy 10, Load the configured checkpoint 132, run 2)
+Gate B: passed.
+gate exit 0
+```
+
+## gate-b.mjs, GATE_B_DATA=checkpoint, run 2
+```
+Gate B: the PR names C7.2; claims Works for none (no bug check).
+    C7.2.test.ts on the checkpoint: exit 0, 11/11 passed (137 s: copy 6, Load the configured checkpoint 128, run 2)
+Gate B: passed.
+gate exit 0
+```
+
+## acceptance/C7.2.test.ts run directly on its own checkpoint copy (step lines)
+```
+PASS  C7.2 setup (QA-315): the principal's IMM 5257 is filed as a PDF upload on this case (the officer's choice where the release files it Online), so its copy is one to validate — {"release":"ONLINE","was":"ONLINE","change":{"status":200,"words":""},"now":"PDF_UPLOAD"}
+PASS  C7.2 setup (C7.1, on main): the case's IMM 5257 copy is generated from the release and downloads — {"status":202,"words":""}
+PASS  C7.2 P-46: the upload reports the barcode check: barcodes expected for IMM 5257 (5, as the evidence lane decoded on 23 Oct), decoded, matched — {"agree":0,"slots":0,"words":"0 of the 5 barcodes are in this file: Adobe Reader adds them only when the form's own Validate passes. Open this copy in Adobe Reader, press Validate, save it and send the saved file.","checked":true,"decoded":0,"match
+PASS  C7.2 fail: a copy whose barcodes cannot be read (Validate not pressed, or a page missing) is never ready for filing; the words say to press Validate in Adobe Reader — {"status":201,"validated":{"at":"2026-11-16T16:11:03.017Z","by":"user-O","current":false,"words":"0 of the 5 barcodes are in this file: Adobe Reader adds them only when the form's own Validate passes. Open this copy in Adobe 
+PASS  C7.2 P-171 (1): changing a fact on the form after the upload marks the validated copy out of date and asks for Validate again — {"upload":201,"put":200,"validated":false,"out_of_date":true}
+PASS  C7.2 evidence: a result of the Mac's Adobe run is recorded at studio/evidence/c7-2-adobe-validate/result.json
+PASS  C7.2 evidence: it is a Studio-generated IMM 5257 of a Visitor visa case (not E1's values file), named by its checksum — {"form":"IMM 5257","source":"studio case copy"}
+PASS  C7.2 evidence (P-171): Adobe Reader's Validate succeeded on the first press, with the reader's version (10 or higher, IRCC Help Centre 660) and the message as shown — {"message":"Validation completed successfully. Please print the entire application and sign and date the last page. This page contains bar codes that facilitates data entry of your applicaton.","reader":"26.002.22031"}
+PASS  C7.2 evidence (P-46): every barcode decoded and every slot agrees with the facts written (0 unexplained) — {"decoded":5,"slots":"186/186","unexplained":0}
+PASS  C7.2 evidence: the saved file kept IRCC's certification (no "changed" warning) and the written values read back unchanged
+PASS  C7.2 evidence: the result names the validated file's checksum and the screenshots of the Validate message and the barcode page — {"validated":"0d0b46db3f952a70a8d6915f90cee4ffd9fcc4c4a7bbf7779ac02a1327148c13","screenshots":["vv-paper-imm5257-opened-certified.jpg","vv-paper-imm5257-validate-message.jpg","vv-paper-imm5257-barcode-page.jpg"]}
+11/11 passed
+```
