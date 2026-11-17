@@ -106,6 +106,13 @@ enum MoneyCorrectionKind {
   WRONG_ACCOUNT
 }
 
+/// Credited money that had already moved to operating (FO-7a2 rule 2c, P-634 (2)): refunded to the client, or moved back
+/// to trust. It is never kept in operating.
+enum MoneyOverpaidChoice {
+  OVERPAID_REFUND
+  OVERPAID_TO_TRUST
+}
+
 /// Why an amount must move between the trust and operating bank accounts (AG-6-73 rule 1 (a)-(c); AG-6-73 §7 names them
 /// APPLIED, MISMATCH, FEE_COVER).
 enum MoneyMoveKind {
@@ -269,13 +276,21 @@ model MoneyCreditNote {
   amountMinor Int           @map("amount_minor")
   currency    MoneyCurrency
   reason      String
+  /// FO-7a2 rule 2c: for the credited part paid from trust whose money had already moved to operating, the person's
+  /// choice, the amount it covers and the trust withdrawal it names (all three or none). OVERPAID_TO_TRUST writes the
+  /// return to trust at once and puts an operating → trust line on the To move list.
+  overpaidChoice  MoneyOverpaidChoice? @map("overpaid_choice")
+  overpaidMinor   Int?                 @map("overpaid_minor")
+  overpaidEntryId String?              @map("overpaid_entry_id") @db.Uuid
   createdBy   String        @map("created_by")
   createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
 
-  invoice MoneyInvoice @relation(fields: [firmId, invoiceId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  invoice       MoneyInvoice     @relation(fields: [firmId, invoiceId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  overpaidEntry MoneyTrustEntry? @relation("MoneyCreditNoteOverpaid", fields: [firmId, overpaidEntryId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([firmId, number])
   @@index([firmId, invoiceId])
+  @@index([firmId, overpaidEntryId])
   @@map("money_credit_note")
 }
 
@@ -436,6 +451,7 @@ model MoneyTrustEntry {
   correctedBy  MoneyTrustEntry[]    @relation("MoneyTrustCorrection")
   receipt      MoneyReceipt?
   moveLines    MoneyMoveLine[]
+  overpaidCreditNotes MoneyCreditNote[] @relation("MoneyCreditNoteOverpaid")
 
   @@unique([firmId, id])
   @@unique([firmId, personId, currency, seq])
