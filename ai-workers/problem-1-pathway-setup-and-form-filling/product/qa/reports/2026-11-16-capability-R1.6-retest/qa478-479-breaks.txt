@@ -1,0 +1,9 @@
+PASS  setup: the Owner and a Case Officer sign in
+PASS  QA-478 setup: a pending invitation into Billing/Finance exists — "907ab4d5-4e69-4dc9-b883-020c1dc9f122"
+PASS  QA-478 setup: the invitee accepts and joins as Billing/Finance — {"staffId":"e6f7b0e6-b527-4f90-9af9-8988e7ec9e56","firmKey":"sample-firm","roles":["BILLING_FINANCE"],"handOff":{"kind":"set-password","url":"/sign-in/callback#code=[redacted]"}}
+FAIL  QA-478: the accepted invitation that hands out 12 money keys writes its own money-keys audit line (PF-6b ruling 2 (b), as the role-change door does) — {"moneyKeys":12,"before":0,"after":0}
+PASS  QA-479 setup: the Owner adds a lead and owns it (AG-2-4) — {"id":"8b28bdc8-f07d-4d2f-9127-d1bbe30b0856","number":"L-00001","label":"Lead","state":"OPEN","door":"MANUAL","source":"Phone call (Sample)","sourceDetail":null,"interestedIn":null,"ownerStaffId":"091d48f8-5122-4be7-8c35-4afb04fed8d3","owner":"Representative (
+PASS  QA-479 setup: the Case Officer cannot see another person's lead (GET 404) — {"otherLead":"8b28bdc8-f07d-4d2f-9127-d1bbe30b0856","get":404}
+PASS  QA-479: take on that lead answers the same 404, not a 409 naming its owner (AG-2-86 rule 3) — {"status":404,"code":"NOT_FOUND","detail":"No such lead in your firm."}
+
+6/7 passed
