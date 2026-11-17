@@ -1,0 +1,12 @@
+<claude-code-hint v="1" type="plugin" value="stripe@claude-plugins-official" />
+PASS  R1.6 sweep reads the app's routes (62 under /api/platform and /api/front-office) — 62
+PASS  R1.6 every route declares its access (default deny at start-up) — []
+PASS  R1.6 user-O (Case Officer) and user-R (Owner) sign in; /me lists their keys — {"o":99,"r":233}
+PASS  R1.6 S1: no token on every guarded route (60) → 401 — []
+PASS  R1.6 S2: a Case Officer on every route whose keys they lack (24) → 403, never data — []
+PASS  R1.6 S2: each of those refusals is MISSING_PERMISSION with a sentence of at least five words (Problem Details detail) — []
+PASS  R1.6 S3: the Owner passes the key check on the same routes they hold the keys for (24; not vacuous) — []
+PASS  R1.6 S4: no duty hands out a money key (money comes only with a role that names it) — []
+PASS  R1.6 S4: the Case Officer (no licence record) holds no licence-class key — []
+note: routes declaring a licence-class key in the running app: 0  (PF-6b DW5 proves the NOT_LICENSED refusal on a test route)
+9/9 passed

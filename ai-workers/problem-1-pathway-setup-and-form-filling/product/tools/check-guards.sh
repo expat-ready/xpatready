@@ -89,6 +89,10 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 24 hooks|product/tools/conformance-check.py|s/"fail" if off else "pass"/"pass"/|check-conformance-check.sh
 24 queue|product/tools/conformance-check.py|s/"pass" if mpc == cfg\["max_parallel_checks"\] else "fail"/"pass"/|check-conformance-check.sh
 24 side|product/tools/conformance-check.py|s/"fail" if side else "pass"/"pass"/|check-conformance-check.sh
+24 version|product/tools/conformance-check.py|s/ok = have is not None and have == str(want).lstrip("v")/ok = True/|check-conformance-check.sh
+24 trig|product/tools/conformance-check.py|s/elif sorted(have or \[\]) != sorted(types):/elif False:/|check-conformance-check.sh
+24 beat|product/tools/conformance-check.py|s/    if per_hour \* hb\["every_min"\] < 60:/    if False:/|check-conformance-check.sh
+24 gate|product/tools/conformance-check.py|s/             if n == cfg\["gate_job"\] and k != cfg\["gate_job"\]\]/             if False]/|check-conformance-check.sh
 25 who|product/tools/pr-ready.sh|s/x.get("author_association") in ("OWNER","MEMBER","COLLABORATOR") and //|check-pr-ready-sync.sh
 25 head|product/tools/pr-ready.sh|s/^\[ "\$now" = "\$head" \]/true/|check-pr-ready-sync.sh
 25 argv|product/tools/pr-ready.sh|s/-H @<(printf .Authorization: Bearer %s\\n. "\$T")/-H "Authorization: Bearer $T"/|check-pr-ready-sync.sh
