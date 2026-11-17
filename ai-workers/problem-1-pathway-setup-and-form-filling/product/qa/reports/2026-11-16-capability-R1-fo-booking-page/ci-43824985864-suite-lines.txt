@@ -1,0 +1,8 @@
+Jobs (run 43824985864): kind = success; guard = skipped; types = success; regression-plan = success; shard (4) = success; shard (5) = success; shard (8) = success; shard (6) = success; shard (3) = success; shard (2) = success; shard (7) = success; shard (1) = success; packs = skipped; regression (C6.4,C7.6,C6.11,C6.17,C7.8,C9.2,C1.6,C3.2,C3.10,C3.15,C4.5,C6.2,C11.10,C11.15, 16, 24) = success; regression (C7.3,C4.11,C6.9,C6.16,C7.7,C9.1,C1.5,C2.12,C3.8,C3.14,C4.4,C5.2,C11.8,C11.14, 17, 24) = success; regression (C6.12,C7.10,C6.13,C6.19,C7.9,C9.5,C2.4,C3.4,C3.11,C3.16,C4.6,C11.1,C11.11,C11.16, 16,... = success; regression (C6.18,C1.3,C5.4,C6.14,C7.1,C8.1,C10.1,C2.6,C3.5,C3.12,C4.1,C4.7,C11.3,C11.12,C11.17, ... = success; regression (C6.5,C4.8,C6.3,C6.15,C7.5,C8.3,C10.2,C3.6,C3.13,C4.2,C5.1,C11.7,C11.13, 15, 24) = success; ci = success; retry-comment = success
+job 133159378935 shard (6): 2026-11-16T08:35:59.3531735Z | check_fo3w_booking_browser.ts | PASS | 63 s | 67/67 passed |
+job 133159379046 shard (7): 2026-11-16T08:33:34.0695780Z | check_pf19b_mail.ts | PASS | 4 s | 28 passed, 0 failed |
+check_fo3_booking.ts: not found in any of the 8 shard logs (last 3000 lines each)
+check_fo3pa_public_answers.ts: not found in any of the 8 shard logs (last 3000 lines each)
+check_fo3m_answers.ts: not found in any of the 8 shard logs (last 3000 lines each)
+check_fo3sr_routes.ts: not found in any of the 8 shard logs (last 3000 lines each)
+check_fo3sa_any_time.ts: not found in any of the 8 shard logs (last 3000 lines each)
