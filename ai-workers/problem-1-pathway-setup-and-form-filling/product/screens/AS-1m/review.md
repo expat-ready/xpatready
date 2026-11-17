@@ -65,3 +65,21 @@ Reviewer: Opus, a fresh session that did not build this. Commit **5a5ed9d799d514
 * I did not re-run the C6.9 suites, the b104 checkpoint, the s7/d1 resets, g4, c44 or the gate browsers. These are the builder's evidence, per the hand-off.
 * I did not run full CI on the merge, or `graph.mjs`, because it rewrites qa/GRAPH.md and this review writes only this file.
 * There is no real caller of the port yet (FO-15b, CS-106c).
+
+## Re-review on 7edadd02dd8ebbb3b28a92ad9cb8a87f58a96c74 (P-277: only `git diff 5a5ed9d79 7edadd02d`)
+**Verdict: Approve.** There is no open Blocker, Major or Minor. The diff has 6 files, +25/-18.
+* **m1 closed.** "Firm" became "workspace (the demo boundary, never a firm id: contract v0.1 §0)" in these places:
+  * `ports/eligibility.port.ts:7-8` and its JSDoc on the refusals
+  * `eligibility.door.ts:2`, `:18` and `:25`
+  * the contract's header, harness and case name
+  * the fake's comment
+  * the test names and fixture D
+
+  The code is unchanged: the same `prismaReleases(db, workspaceId)`.
+* **m2 closed.** `eligibility.door.ts:81-82` throws `NO_RULES` when no gate applies to the persons given, before `outcomeOf`. The new fixture E has only the spouse's gate.
+  * New test line: with no spouse the result is NO_RULES; with a spouse it is LIKELY_ELIGIBLE.
+  * The list test now expects E to be listed. That is right: E has rules, they just do not apply without a spouse.
+  * When I deleted the guard line, that test went red (49/50).
+* **Card.** The MODULE.configuration.md invariant now matches decision 3: `assessments.ts` imports the rules directly until CS-106c.
+* **Run on 7edadd02d (a detached worktree):** `check_as1m_eligibility_move.ts` 50/50; `check-port-contracts.mjs` 0 problems.
+* **Wording I let stand.** The refusal text "This release has no eligibility rules yet" is a little broad for the "none applies to these persons" case. The JSDoc names that case, and no person reads this text, so it is not a finding.
