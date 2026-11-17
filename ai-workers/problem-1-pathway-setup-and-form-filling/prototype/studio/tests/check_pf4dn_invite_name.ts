@@ -66,6 +66,9 @@ try {
   const tooLong = await call(tok, "POST", "/platform/staff/invitations", { email: long, roles: ["READ_ONLY"], displayName: "N".repeat(121) });
   ok("PF-4dn DW2 fail: a 121-character name → 400 DISPLAY_NAME_TOO_LONG in plain words, and no invitation stored",
     tooLong.status === 400 && tooLong.body.code === "DISPLAY_NAME_TOO_LONG" && tooLong.body.detail === "The name is at most 120 characters." && invitations(long) === 0, tooLong.body);
+  const sep = `pf4dn-sep-${run}@example.com`;
+  const sepOnly = await call(tok, "POST", "/platform/staff/invitations", { email: sep, roles: ["READ_ONLY"], displayName: "\u2028" });
+  ok("PF-4dn DW2 fail: a name of only a line separator (U+2028) → 400 DISPLAY_NAME_INVALID, never taken as no name", sepOnly.status === 400 && sepOnly.body.code === "DISPLAY_NAME_INVALID" && invitations(sep) === 0, sepOnly.body);
   const bad = await Promise.all([[ctrl, "Client\u0007A"], [nl, "Client\nA"]].map(([email, displayName]) => call(tok, "POST", "/platform/staff/invitations", { email, roles: ["READ_ONLY"], displayName })));
   ok("PF-4dn DW2 fail: a name with a control character (bell) or a line break → 400 DISPLAY_NAME_INVALID, nothing stored",
     bad.every((b) => b.status === 400 && b.body.code === "DISPLAY_NAME_INVALID") && invitations(ctrl) === 0 && invitations(nl) === 0, bad.map((b) => b.body));
@@ -120,7 +123,7 @@ try {
   await p.getByLabel("Email, person 1").fill(s3); await p.getByLabel("Name, person 1 (optional)").fill("Client\u200bD");
   await p.locator("[data-send-invites]").click();
   const nameErr = p.locator('[data-invite-row="1"]').getByText("The name has a line break or an invisible character. Type it again on one line.");
-  await nameErr.waitFor({ timeout: 15_000 }).catch(() => undefined);
+  await nameErr.waitFor({ timeout: 15_000 });   // fails loudly when the feedback never shows (WAY-OF-WORKING, Devin)
   ok("PF-4dn review m1 fail: a refused name shows on the Name field (aria-invalid there, not on Email), nothing stored",
     await nameErr.isVisible() && await p.getByLabel("Name, person 1 (optional)").getAttribute("aria-invalid") === "true" && await p.getByLabel("Email, person 1").getAttribute("aria-invalid") !== "true" && invitations(s3) === 0,
     { nameInvalid: await p.getByLabel("Name, person 1 (optional)").getAttribute("aria-invalid"), emailInvalid: await p.getByLabel("Email, person 1").getAttribute("aria-invalid") });

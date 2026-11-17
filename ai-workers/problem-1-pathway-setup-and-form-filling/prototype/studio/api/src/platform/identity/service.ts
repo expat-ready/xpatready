@@ -76,7 +76,7 @@ export function reasonOf(v: unknown, required: boolean, what = "reason"): string
 /** PF-4dn (AG-1-10): the invitee's name, optional. Trimmed; 1-120 characters; no control, format or line-break character.
  *  Empty or spaces only is no name (accept then uses the part of the email before the @). */
 export function displayNameOf(v: unknown): string | null {
-  if (v === undefined || v === null || (typeof v === "string" && !v.trim() && !/[\p{Cc}\p{Cf}]/u.test(v))) return null;
+  if (v === undefined || v === null || (typeof v === "string" && !v.trim() && !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(v))) return null;   // a line or paragraph separator alone is refused, not "no name" (Devin)
   if (typeof v !== "string") return problem(400, "Check the name", "The name is text.", { code: "DISPLAY_NAME_INVALID" });
   if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(v) || !wellFormed(v)) return problem(400, "Check the name", "The name has a line break or an invisible character. Type it again on one line.", { code: "DISPLAY_NAME_INVALID" });
   const t = v.trim();
