@@ -1,6 +1,6 @@
 {
- "_about": "The approved engineering set-up (CK-1, founder asks A151 and A154, 17 Nov 2026). Owned by the tech lead: a change to the set-up is approved first, then this file gets a new version and a change_log row in the same PR as the change. tools/conformance-check.py compares origin/main with it (lists compare as sets: extra lines allowed, a missing one fails) and prints enforced: yes | no.",
- "version": "1.0.0",
+ "_about": "The approved engineering set-up (CK-1, founder asks A151 and A154, 17 Nov 2026). Owned by the tech lead: a change to the set-up is approved first, then this file gets a new version and a change_log row in the same PR as the change. tools/conformance-check.py compares origin/main with it (lists compare as sets: extra lines allowed, a missing one fails) and prints enforced: yes | no. The ruleset item is read only by the heartbeat workflow (the agents' deny list blocks ruleset reads in sessions); 'required': false tolerates no ruleset until the tech lead sets it true after the move (18 Nov).",
+ "version": "1.1.0",
  "date": "2026-11-17",
  "owner": "the tech lead",
  "change_log": [
@@ -9,6 +9,12 @@
    "date": "2026-11-17",
    "change": "First version (CK-1 part 1): the 75 agent deny lines (39 on main + 36 of T7), the 9 hook entries on main, the three Mergify queues with verdicts first, max_parallel_checks 3, auto-merge conditions.",
    "approval": "founder 17 Nov: T7 deny lines (P-670, PR #2075), verdicts first (P-664, PR #2073), enforcement checks (A151, A154)"
+  },
+  {
+   "version": "1.1.0",
+   "date": "2026-11-17",
+   "change": "CK-1 part 2: ci.yml (workflow name, 8 required jobs, the ci gate's 6 needs, pull_request types exactly, no pull_request_target or workflow_run, token write only for retry-comment's comment), the main ruleset (deletion, non-fast-forward, required check ci; pending until required is set after the move), Library master versions.",
+   "approval": "founder 17 Nov: enforcement checks (A151, A154)"
   }
  ],
  "settings": {
@@ -187,5 +193,25 @@
    }
   },
   "auto_merge_conditions": true
+ },
+ "ci": {
+  "path": ".github/workflows/ci.yml",
+  "workflow_name": "ci",
+  "jobs_required": ["guard", "kind", "shard", "packs", "types", "regression-plan", "regression", "ci"],
+  "gate_job": "ci",
+  "gate_needs_required": ["kind", "shard", "packs", "types", "regression-plan", "regression"],
+  "trigger_types_exact": {"pull_request": ["opened", "synchronize", "reopened", "ready_for_review"]},
+  "triggers_forbidden": ["pull_request_target", "workflow_run"],
+  "write_scopes_allowed": {"retry-comment": ["pull-requests"]}
+ },
+ "ruleset": {
+  "branch": "main",
+  "required": false,
+  "rules_required": ["deletion", "non_fast_forward", "required_status_checks"],
+  "required_checks": ["ci"]
+ },
+ "library": {
+  "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/cockpit/library.json",
+  "version_field": "version"
  }
 }

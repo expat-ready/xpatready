@@ -8,16 +8,25 @@ product/design/engineering-approved-setup.json, read from the same place, item b
             "if" exactly as the manifest has it (absent means absent: an added "if" can stop a hook from firing);
   mergify   .mergify.yml: max_parallel_checks, the queue names in order, each queue's batch_size, merge_method and
             required queue and merge conditions (sets), auto_merge_conditions, and no way round the queues (no
-            pull_request_rules entry with a merge or queue action, no extends:).
+            pull_request_rules entry with a merge or queue action, no extends:);
+  ci        ci.yml: workflow name, the required jobs, the gate job's needs (each defined), the pull_request types
+            exactly (a "labeled" type would start a second run), no forbidden trigger, and token scopes (every job's
+            effective permissions declared, write only where the manifest allows it);
+  ruleset   the rules GitHub applies to main (deletion, non_fast_forward, the required check ci), read only with
+            --github by the heartbeat workflow (CK-2, GITHUB_TOKEN read); elsewhere "unchecked"; no rules while the
+            manifest says required false = "pending" (tolerated until the move);
+  library   each master in cockpit/library.json exists; one with a registry "version" carries the same "Version:"
+            header in its first 40 lines (a JSON master: a top-level "version"); claude.ai artifacts and local-only
+            paths are "unchecked".
 Each item is pass | fail | unchecked | pending with expected vs found; "enforced: yes" when nothing fails.
 Output: one markdown line per item and a summary line; --json FILE (or -) writes the result. checked_at in IST
 (Asia/Kolkata, P-302). Exit code = the number of failed items (at most 100); 101 = nothing was checked.
-Reads only (git or files); no model, no paid service. Part 2 of CK-1 adds ci.yml, the main ruleset and the Library.
-  python3 -I product/tools/conformance-check.py [--ref origin/main | --root DIR] [--manifest PATH] [--json FILE|-]
-                                                [--md FILE] [--quiet]
+Reads only (git or files; --github: one GET of main's branch rules); no model, no paid service.
+  python3 -I product/tools/conformance-check.py [--ref origin/main | --root DIR] [--manifest PATH] [--github]
+                                                [--json FILE|-] [--md FILE] [--quiet]
 Tests: product/tools/test_conformance_check.py (check-conformance-check.sh, guard 24 of check-guards.sh).
 """
-import argparse, json, os, re, subprocess, sys
+import argparse, fnmatch, glob, json, os, re, subprocess, sys, urllib.error, urllib.request
 from datetime import datetime, timedelta, timezone
 
 try:
@@ -54,7 +63,7 @@ class Source:
             return f"folder {self.root}"
         sha = subprocess.run(["git", "rev-parse", "--short", self.ref], capture_output=True, text=True,
                              cwd=self.repo).stdout.strip()
-        return self.ref if sha and self.ref.startswith(sha) else f"{self.ref} {sha}".strip()
+        return self.ref if sha and sha.startswith(self.ref) else f"{self.ref} {sha}".strip()
 
     def read(self, path):
         """The file's text, or None when it is not there."""
@@ -66,6 +75,16 @@ class Source:
                 return f.read()
         r = subprocess.run(["git", "show", f"{self.ref}:{path}"], capture_output=True, text=True, cwd=self.repo)
         return r.stdout if r.returncode == 0 else None
+
+    def matches(self, pattern):
+        """Paths in this state matching a path, a folder or a glob (library.json's pathspecs)."""
+        if self.root:
+            return sorted(os.path.relpath(p, self.root) for p in glob.glob(os.path.join(self.root, pattern)))
+        if not hasattr(self, "_files"):
+            self._files = subprocess.run(["git", "ls-tree", "-r", "--name-only", self.ref], capture_output=True,
+                                         text=True, cwd=self.repo).stdout.splitlines()
+        return [f for f in self._files if f == pattern or f.startswith(pattern.rstrip("/") + "/")
+                or fnmatch.fnmatchcase(f, pattern)]
 
 
 def item(area, iid, status, expected, found, detail=None):
@@ -101,7 +120,7 @@ def hook_desc(h):
             + (f" if {h['if']}" if h.get("if") else "") + f" runs {hook_script(h)}")
 
 
-def check_settings(src, m):
+def check_settings(src, m, rules=None):
     cfg = m["settings"]; want = cfg["deny_required"]
     d, err = parse(src, cfg["path"], json.loads)
     if err:
@@ -136,7 +155,7 @@ def norm_cond(c):
     return re.sub(r"\s*(~=|!=|>=|<=|=|>|<)\s*", r"\1", str(c).strip())
 
 
-def check_mergify(src, m):
+def check_mergify(src, m, rules=None):
     cfg = m["mergify"]
     d, err = parse(src, cfg["path"], yaml.safe_load)
     if err or not isinstance(d, dict):
@@ -180,12 +199,144 @@ def check_mergify(src, m):
     return out
 
 
-CHECKS = (check_settings, check_mergify)
+# ---- ci ------------------------------------------------------------------------------------------------------------
+def write_scopes(perm):
+    """The scopes a permissions value can write: 'write-all' = everything."""
+    if perm == "write-all":
+        return ["*"]
+    return sorted(k for k, v in perm.items() if v == "write") if isinstance(perm, dict) else []
+
+
+def check_ci(src, m, rules=None):
+    cfg = m["ci"]
+    d, err = parse(src, cfg["path"], yaml.safe_load)
+    if err or not isinstance(d, dict):
+        return [item("ci", "ci.file", "fail", f"{cfg['path']} readable", err or "not a mapping")]
+    jobs = d.get("jobs") or {}
+    miss = [j for j in cfg["jobs_required"] if j not in jobs]
+    if d.get("name") != cfg["workflow_name"]:
+        miss.append(f"workflow name {d.get('name')!r} (want {cfg['workflow_name']!r})")
+    out = [item("ci", "ci.jobs", "fail" if miss else "pass", f"workflow {cfg['workflow_name']}: "
+                + ", ".join(cfg["jobs_required"]), f"missing {', '.join(miss)}" if miss else "all present")]
+    needs = (jobs.get(cfg["gate_job"]) or {}).get("needs") or []
+    needs = [needs] if isinstance(needs, str) else needs
+    miss = [j for j in cfg["gate_needs_required"] if j not in needs] + \
+        [f"{j} (needed but not defined)" for j in cfg["gate_needs_required"] if j in needs and j not in jobs]
+    out.append(item("ci", "ci.gate", "fail" if miss else "pass", f"job {cfg['gate_job']} needs "
+                    + ", ".join(cfg["gate_needs_required"]), f"missing {', '.join(miss)}" if miss else "all needed"))
+    on = d.get("on", d.get(True))  # PyYAML reads the key on as True
+    on = {on: None} if isinstance(on, str) else ({k: None for k in on} if isinstance(on, list) else (on or {}))
+    bad = []
+    for trig, types in cfg["trigger_types_exact"].items():
+        have = (on[trig] or {}).get("types") if isinstance(on.get(trig), dict) else None
+        if trig not in on:
+            bad.append(f"no {trig}")
+        elif sorted(have or []) != sorted(types):  # no types = GitHub's default set, never ready_for_review
+            bad.append(f"{trig} types {have or 'default'}")
+    bad += [f"forbidden trigger {t}" for t in cfg["triggers_forbidden"] if t in on]
+    out.append(item("ci", "ci.triggers", "fail" if bad else "pass",
+                    "; ".join(f"{k}: exactly {', '.join(v)}" for k, v in cfg["trigger_types_exact"].items())
+                    + f"; never {', '.join(cfg['triggers_forbidden'])}", "; ".join(bad) or "as approved"))
+    top, allowed, bad = d.get("permissions"), cfg["write_scopes_allowed"], []
+    if top is not None and write_scopes(top):
+        bad.append(f"workflow-level write: {', '.join(write_scopes(top))}")
+    for name, j in jobs.items():
+        perm = j.get("permissions", top) if isinstance(j, dict) else top
+        if perm is None:
+            bad.append(f"job {name} declares no permissions (gets the repository default)")
+        elif [x for x in write_scopes(perm) if x not in allowed.get(name, [])]:
+            bad.append(f"job {name} writes {', '.join(x for x in write_scopes(perm) if x not in allowed.get(name, []))}")
+    out.append(item("ci", "ci.permissions", "fail" if bad else "pass", "read-only token; write only "
+                    + (", ".join(f"{k}: {', '.join(v)}" for k, v in allowed.items()) or "nowhere"),
+                    "; ".join(bad) or "as approved"))
+    return out
+
+
+# ---- ruleset -------------------------------------------------------------------------------------------------------
+NOT_READ = "unchecked (read only by the heartbeat workflow, CK-2, with --github; the agents' deny list blocks it here)"
+
+
+def check_ruleset(src, m, rules=None):
+    """rules: GitHub's list of active rules for the branch; None = not read here; a string = why it could not be read."""
+    cfg = m["ruleset"]; iid = f"ruleset.{cfg['branch']}"
+    exp = f"{', '.join(cfg['rules_required'])}; required check {', '.join(cfg['required_checks'])}"
+    if rules is None:
+        return [item("ruleset", iid, "unchecked", exp, NOT_READ)]
+    if not isinstance(rules, list):
+        return [item("ruleset", iid, "fail", exp, rules if isinstance(rules, str) else f"unexpected answer: {rules}")]
+    if not rules and not cfg["required"]:
+        return [item("ruleset", iid, "pending", exp, "no ruleset on main yet (tolerated until required is set "
+                                                     "after the move)")]
+    types = {r.get("type") for r in rules if isinstance(r, dict)}
+    checks = {c.get("context") for r in rules if isinstance(r, dict) and r.get("type") == "required_status_checks"
+              for c in (r.get("parameters") or {}).get("required_status_checks") or []}
+    miss = [x for x in cfg["rules_required"] if x not in types] + \
+        [f"check {c}" for c in cfg["required_checks"] if c not in checks]
+    return [item("ruleset", iid, "fail" if miss else "pass", exp,
+                 f"missing {', '.join(miss)}" if miss else "all rules active")]
+
+
+def read_rules(m, opener=urllib.request.urlopen):
+    """GitHub's active rules for the branch, read with the workflow's GITHUB_TOKEN (read-only); a string on failure."""
+    repo, tok = os.environ.get("GITHUB_REPOSITORY"), os.environ.get("GITHUB_TOKEN")
+    if not repo or not tok:
+        return "GITHUB_REPOSITORY or GITHUB_TOKEN not set"
+    api = os.environ.get("GITHUB_API_URL", "https://api.github.com")
+    req = urllib.request.Request(f"{api}/repos/{repo}/rules/branches/{m['ruleset']['branch']}",
+                                 headers={"Authorization": f"Bearer {tok}", "Accept": "application/vnd.github+json"})
+    try:
+        with opener(req, timeout=20) as r:
+            return json.load(r)
+    except (urllib.error.URLError, ValueError, OSError) as e:
+        return f"could not read the branch rules ({e})"
+
+
+# ---- library -------------------------------------------------------------------------------------------------------
+VERSION_LINE = re.compile(r"^[\s>#*|_-]*Version[\s*_|]*[:|][\s*_]*v?([0-9][0-9A-Za-z.+-]*)", re.M)
+
+
+def header_version(text):
+    try:
+        d = json.loads(text)
+        if isinstance(d, dict) and "version" in d:
+            return str(d["version"]).lstrip("v")
+    except ValueError:
+        pass
+    mm = VERSION_LINE.search("\n".join(text.splitlines()[:40]))
+    return mm.group(1).rstrip(".") if mm else None
+
+
+def check_library(src, m, rules=None):
+    cfg = m["library"]
+    d, err = parse(src, cfg["path"], json.loads)
+    if err:
+        return [item("library", "library.registry", "fail", f"{cfg['path']} readable", err)]
+    out = []
+    for doc in d.get("docs") or []:
+        name, path, want = doc.get("name", "?"), doc.get("path", ""), doc.get(cfg["version_field"])
+        iid, exp = f"library.{name}", "exists" + (f", Version {want}" if want is not None else "")
+        if path.startswith(("artifact:", "local:")) or "://" in path:
+            out.append(item("library", iid, "unchecked", exp, "not in the repository (claude.ai artifact or local)"))
+            continue
+        hits = src.matches(path)
+        if not hits or want is None:
+            out.append(item("library", iid, "pass" if hits else "fail", exp,
+                            f"exists ({len(hits)} match(es)); no version registered" if hits else f"{path} not found"))
+            continue
+        text = src.read(path) if path in hits else None
+        have = header_version(text) if text is not None else None
+        ok = have is not None and have == str(want).lstrip("v")
+        out.append(item("library", iid, "pass" if ok else "fail", exp, f"Version {have}" if have else
+                        ("no Version header in the first 40 lines" if text is not None else f"{path} is not one file")))
+    return out
+
+
+CHECKS = (check_settings, check_mergify, check_ci, check_ruleset, check_library)
 
 
 # ---- run -----------------------------------------------------------------------------------------------------------
-def run(src, manifest, checks=CHECKS):
-    items = [i for f in checks for i in f(src, manifest)]
+def run(src, manifest, rules=None, checks=CHECKS):
+    items = [i for f in checks for i in f(src, manifest, rules)]
     counts = {s: sum(1 for i in items if i["status"] == s) for s in ("pass", "fail", "pending", "unchecked")}
     checked = counts["pass"] + counts["fail"]
     now = ist_now()
@@ -214,6 +365,7 @@ def main(argv=None):
     g.add_argument("--ref", default="origin/main", help="git ref to read (default origin/main)")
     g.add_argument("--root", help="read a folder instead of a git ref (tests, a checked-out copy)")
     ap.add_argument("--manifest", help="manifest file (default: the one in the same repository state)")
+    ap.add_argument("--github", action="store_true", help="read main's branch rules with GITHUB_TOKEN (the workflow)")
     ap.add_argument("--json", help="write the result as JSON to FILE, or - for stdout")
     ap.add_argument("--md", help="also append the markdown lines to FILE (a job summary)")
     ap.add_argument("--quiet", action="store_true", help="print only failed items and the summary line")
@@ -227,7 +379,7 @@ def main(argv=None):
             manifest, err = parse(src, MANIFEST, json.loads)
             if err:
                 raise RuntimeError(err)
-        res = run(src, manifest)
+        res = run(src, manifest, read_rules(manifest) if a.github else None)
     except (RuntimeError, OSError, ValueError, KeyError, TypeError, AttributeError) as e:
         print(f"conformance-check: nothing was checked ({type(e).__name__}: {e})", file=sys.stderr)
         return 101
