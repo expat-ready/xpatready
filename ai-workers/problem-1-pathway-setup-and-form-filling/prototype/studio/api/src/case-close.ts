@@ -15,34 +15,28 @@ import type { Prisma } from "@prisma/client";
 import { CaseClosedPayload, CaseReopenedPayload, EVENT } from "../../ports/events.ts";
 import { Db } from "./core.ts";
 import { problem, type StaffContext } from "./platform/identity/keys.ts";
+// CS-V1 part 2: the checks and their words live in the schemas now (contracts/runtime.ts).
+import { CaseDecisionBody, CaseReasonBody, CaseWithdrawBody, DECISION_OUTCOMES, NOTE_MAX, REASON_MAX } from "../../contracts/runtime.ts";
+import type { z } from "zod";
+export { DECISION_OUTCOMES, NOTE_MAX, REASON_MAX };
 
 type Tx = Prisma.TransactionClient;
 type B = Record<string, unknown>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** Sample until cited (AG-7-33 rules 3-4: APPROVED, REFUSED, or another value from the pack). */
-export const DECISION_OUTCOMES = ["APPROVED", "REFUSED"] as const;
-export const REASON_MAX = 1000, NOTE_MAX = 2000;
 
 const notFound = (what = "case"): never => problem(404, "Not found", `No such ${what} in your firm.`, { code: "NOT_FOUND" });
 const conflict = (detail: string, code: string): never => problem(409, "Not possible now", detail, { code });
 const invalid = (field: string, detail: string): never => problem(400, "Check the details", detail, { code: "INVALID", fields: { [field]: detail } });
 
-/** Words a person reads: no NUL or other control character but tab and new line (break m1). */
-const BAD_TEXT = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
-/** Spaces and invisible characters only count as empty (break m4). */
-const blank = (t: string) => !t.replace(/[\s\u200B-\u200D\u2060\uFEFF]/g, "");
-function reasonOf(b: B): string {
-  const r = typeof b.reason === "string" ? b.reason.trim() : "";
-  if (BAD_TEXT.test(r)) return invalid("reason", "Plain text only.");
-  if (blank(r)) return problem(400, "A reason is needed", "Give a reason.", { code: "REASON_REQUIRED", fields: { reason: "Give a reason." } });
-  if (r.length > REASON_MAX) return invalid("reason", `At most ${REASON_MAX} characters.`);
-  return r;
-}
-function dateOf(b: B, field: string): Date {
-  const d = b[field];
-  if (typeof d !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(`${d}T00:00:00Z`)) || new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) !== d || d < "1900-01-01" || d > "2200-12-31")
-    return invalid(field, "A real date as YYYY-MM-DD.");
-  return new Date(`${d}T00:00:00Z`);
+/** A body read through its schema (a body that is not an object counts as empty, as before). The first failed check
+ *  answers as it always did: a missing reason is 400 "A reason is needed" (REASON_REQUIRED), any other is "Check the
+ *  details" (INVALID) with the field named. */
+function parsed<S extends z.ZodType>(schema: S, b: unknown): z.infer<S> {
+  const r = schema.safeParse(b && typeof b === "object" && !Array.isArray(b) ? b : {});
+  if (r.success) return r.data;
+  const i = r.error.issues[0], field = String(i.path[0] ?? "body");
+  if ((i as { params?: { code?: string } }).params?.code === "REASON_REQUIRED") return problem(400, "A reason is needed", i.message, { code: "REASON_REQUIRED", fields: { [field]: i.message } });
+  return invalid(field, i.message);
 }
 
 const caseView = (c: { id: string; caseNumber: string; status: string; closedAt: Date | null; closedReason: string | null; closeOutcome: string | null; withdrawnAt: Date | null; withdrawReason: string | null; closedFromStageId: string | null }) =>
@@ -98,12 +92,12 @@ export class CaseClose {
   }
 
   /** AG-7-33: a decision on one filing recorded as submitted (C8.2's filing record). 201 with the row. */
-  async decide(ctx: StaffContext, caseId: string, b: B) {
+  async decide(ctx: StaffContext, caseId: string, b: unknown) {
     return this.run(async (tx) => {
       const { c, firmId } = await this.locked(tx, ctx, caseId);
       // STANDARDS §4: the same key again (a retry after a lost answer) returns the first decision, never a second row.
-      const key = b.idempotencyKey == null ? null : typeof b.idempotencyKey === "string" && /^[A-Za-z0-9._:-]{1,100}$/.test(b.idempotencyKey) ? b.idempotencyKey : invalid("idempotencyKey", "1-100 letters, digits, . _ : -");
-      const { idempotencyKey: _k, ...request } = b;
+      const v = parsed(CaseDecisionBody, b), key = v.idempotencyKey ?? null; // CS-V1 part 2: every check of the body, in zod
+      const { idempotencyKey: _k, ...request } = (b && typeof b === "object" ? b : {}) as B; // the fingerprint reads the body as sent, as before
       const fingerprint = createHash("sha256").update(JSON.stringify([request.filingId, request.outcome, request.decidedOn, request.note ?? null])).digest("hex");
       if (key) {
         const again = await tx.caseDecision.findUnique({ where: { caseId_idempotencyKey: { caseId: c.id, idempotencyKey: key } } });
@@ -111,11 +105,8 @@ export class CaseClose {
         if (again) return { decision: { ...again, decidedOn: again.decidedOn.toISOString().slice(0, 10) }, everyFilingDecided: c.filings.every((f) => f.decisions.length > 0), replayed: true };
       }
       if (c.status !== "OPEN") conflict("This case is closed. Reopen it first.", "CASE_CLOSED");
-      const outcome = typeof b.outcome === "string" ? b.outcome : "";
-      if (!(DECISION_OUTCOMES as readonly string[]).includes(outcome)) invalid("outcome", `One of ${DECISION_OUTCOMES.join(", ")} (Sample list).`);
-      const decidedOn = dateOf(b, "decidedOn");
-      const note = b.note == null || b.note === "" ? null : typeof b.note === "string" && b.note.trim().length <= NOTE_MAX && !BAD_TEXT.test(b.note) ? b.note.trim() || null : invalid("note", `Plain text, at most ${NOTE_MAX} characters.`);
-      const filing = typeof b.filingId === "string" ? c.filings.find((f) => f.id === b.filingId) : undefined;
+      const outcome = v.outcome, decidedOn = v.decidedOn, note = v.note ?? null;
+      const filing = typeof v.filingId === "string" ? c.filings.find((f) => f.id === v.filingId) : undefined;
       if (!filing) return notFound("filing on this case");
       if (!filing.record) conflict("This filing is not recorded as submitted, so it has no decision yet (AG-7-33 rule 2).", "NOT_SUBMITTED");
       const row = await tx.caseDecision.create({ data: { firmId, caseId: c.id, filingId: filing.id, kind: "DECISION", outcome, decidedOn, note, recordedBy: `staff:${ctx.staffId}`, idempotencyKey: key, idempotencyFingerprint: key ? fingerprint : null } });
@@ -127,10 +118,10 @@ export class CaseClose {
   }
 
   /** AG-7-50, BR-10: withdraw the whole case before any decision, with a date and a reason; it closes WITHDRAWN. */
-  async withdraw(ctx: StaffContext, caseId: string, b: B) {
+  async withdraw(ctx: StaffContext, caseId: string, b: unknown) {
     return this.run(async (tx) => {
       const { c, firmId, clientType } = await this.locked(tx, ctx, caseId);
-      const reason = reasonOf(b), on = dateOf(b, "withdrawnOn");
+      const { reason, withdrawnOn: on } = parsed(CaseWithdrawBody, b);
       if (c.status !== "OPEN") conflict("This case is closed. Reopen it first.", "CASE_CLOSED");
       if (c.decisions.length > 0) conflict("A filing has a decision, so the case cannot be withdrawn (AG-7-50 rules 4 and 6). Close it with a reason instead.", "HAS_DECISION");
       const now = new Date(), stage = c.stages[0]?.id ?? null;
@@ -143,10 +134,10 @@ export class CaseClose {
   }
 
   /** AG-7-34 rule 2: staff close a case whose filings all have a decision, with a reason: CLOSED_BY_STAFF. */
-  async close(ctx: StaffContext, caseId: string, b: B) {
+  async close(ctx: StaffContext, caseId: string, b: unknown) {
     return this.run(async (tx) => {
       const { c, firmId, clientType } = await this.locked(tx, ctx, caseId);
-      const reason = reasonOf(b);
+      const { reason } = parsed(CaseReasonBody, b);
       if (c.status !== "OPEN") conflict("This case is already closed.", "CASE_CLOSED");
       if (!c.filings.length || c.filings.some((f) => !f.decisions.length)) conflict("Every filing needs a decision before the case is closed (AG-7-34 rule 2). Before the decision, withdraw the case.", "NOT_DECIDED");
       const now = new Date(), stage = c.stages[0]?.id ?? null;
@@ -159,10 +150,10 @@ export class CaseClose {
 
   /** AG-7-13 rules 2, 3, 7: reopen a closed case with a reason, back at the stage it closed from; the closing fields are
    *  cleared and the audit line keeps their old values. */
-  async reopen(ctx: StaffContext, caseId: string, b: B) {
+  async reopen(ctx: StaffContext, caseId: string, b: unknown) {
     return this.run(async (tx) => {
       const { c, firmId, clientType } = await this.locked(tx, ctx, caseId);
-      const reason = reasonOf(b);
+      const { reason } = parsed(CaseReasonBody, b);
       if (c.status !== "CLOSED" || !c.closeOutcome) conflict("This case is open.", "CASE_OPEN");
       const old = { closedAt: c.closedAt?.toISOString() ?? null, closedReason: c.closedReason, closeOutcome: c.closeOutcome, withdrawnAt: c.withdrawnAt?.toISOString() ?? null, withdrawReason: c.withdrawReason, closedFromStage: c.closedFromStageId };
       const now = new Date(), stage = c.closedFromStageId;
