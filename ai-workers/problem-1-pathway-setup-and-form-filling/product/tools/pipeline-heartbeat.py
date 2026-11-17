@@ -165,6 +165,7 @@ def facts_from(gql, nightly_runs, hb, now, previous=None):
 
 
 RECENT_PAGES = 6   # 30 a page: up to 180 closed PRs and batches, enough for 24 h at 16 Nov's 75 merges plus batches
+PAGING_BUDGET_S = 90   # stop paging (sample "partial") well inside the job's 5 min, so a slow GitHub still writes JSON
 
 
 def collect(hb, now, own_id=None, ctx=None):
@@ -185,7 +186,10 @@ def collect(hb, now, own_id=None, ctx=None):
         return a["data"]["repository"]
     data = gql(QUERY)
     nodes, after, complete = [], None, False   # page the closed PRs back past 24 h, so the P95 sample is whole
+    start = time.monotonic()
     for _ in range(RECENT_PAGES):
+        if nodes and time.monotonic() - start > PAGING_BUDGET_S:
+            break
         page = gql(QUERY_RECENT, after=after)["recent"]
         nodes += page["nodes"]
         old = nodes and t(nodes[-1]["updatedAt"]) < now - timedelta(hours=24)
@@ -278,9 +282,9 @@ def evaluate(f, hb, conformance=None):
                        "why": f"P95 {what}: " + ("no sample in 24 h" if v is None else
                                                 f"{v:.0f} min over {len(xs)} (limit {lim}){' — OVER: T1 trigger' if v > lim else ''}")})
     if f.get("recent_complete") is False:
-        report.append({"id": "partial", "why": f"the P95 sample stops at {RECENT_PAGES * 30} closed PRs, short of 24 h"})
+        report.append({"id": "partial-sample", "why": "the P95 sample stops short of 24 h (page or time limit)"})
     if (f.get("open_total") or 0) > len(f["open_prs"]):
-        report.append({"id": "partial", "why": f"read the {len(f['open_prs'])} most recently updated of "
+        report.append({"id": "partial-open", "why": f"read the {len(f['open_prs'])} most recently updated of "
                        f"{f['open_total']} open PRs; older ones were not checked"})
     if dormant:
         report.append({"id": "dormant-lanes", "why": f"{dormant} open lane PR(s) idle over {hb['stalled_lane_max_age_h']} h"})

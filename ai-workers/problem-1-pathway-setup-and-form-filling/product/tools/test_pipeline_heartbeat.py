@@ -129,7 +129,7 @@ class Heartbeat(unittest.TestCase):
                           pr(7, labels=[LAB], approved=200, updated=20, ci=20, ci_state="PENDING")]   # not queued
         f["open_total"] = 80   # and a partial read is reported
         r = self.run_(f)
-        self.assertEqual((ids(r), "partial" in [x["id"] for x in r["report"]]), ([], True))
+        self.assertEqual((ids(r), "partial-open" in [x["id"] for x in r["report"]]), ([], True))
 
     # nightly --------------------------------------------------------------------------------------------------------
     def test_nightly_missing_after_four_ist(self):
@@ -296,6 +296,13 @@ class Heartbeat(unittest.TestCase):
         self.assertEqual([b["variables"].get("after") for m, u, b in seen if b and "$after" in b["query"]],
                          [None, "c1", "c2"])
         self.assertEqual(ctx["previous"], None)
+        pages = iter([page(1, 60, True), page(2, 600, True)])
+        clock = iter([0, 0, 200, 200])                                     # the second page comes back slowly
+        real_mono = hb.time.monotonic; hb.time.monotonic = lambda: next(clock)
+        self.addCleanup(setattr, hb.time, "monotonic", real_mono)
+        f = hb.collect(HB, NOW)
+        self.assertEqual(([p["number"] for p in f["merged_prs"]], f["recent_complete"]), ([1, 2], False))
+        self.assertIn("partial-sample", [x["id"] for x in hb.evaluate(f, HB)["report"]])
 
     # reading GitHub's answer ----------------------------------------------------------------------------------------
     def test_facts_from_graphql(self):
