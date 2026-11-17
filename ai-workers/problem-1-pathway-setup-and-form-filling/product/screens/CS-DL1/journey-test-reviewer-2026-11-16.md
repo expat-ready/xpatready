@@ -52,3 +52,21 @@ I walked the journeys again through the functions and the new wiring test. The l
 | Error recovery | 1 | 1 | Also no 500 on a refused stored date |
 | All others | as above | unchanged | Task ½ and feedback ½ (M2); next step ½, visual ½, accessibility ½ (no screen yet, Question 2) |
 | **Total** | 7 | **7.5 / 10** | **Fail (below 8; no 0).** The rest is held by the two open Questions, not by code in this diff |
+
+## Re-run on 1fb7ca098 (17 Nov)
+I used my own copy `rev_csdl1` on :4474 (fresh; never :4400, :4471 or :4473). Persona: the case officer (user-O) on firm A's case `CSDL1-ksmh` (study → work, Sample route). The browser part is `check_csdl1_deadlines_browser.ts`, 24/24 twice. The probes were made by hand through the API.
+* **J2, firm closed day on the route:** firm A's closed Mon 8 Mar 2027 shows "Mon 8 Mar 2027 (closed day)" in the strip (`CSDL1-strip-closed-day-1440.png`). Firm B's closed Tue 9 Mar never shows on firm A's case. **Held** (was open).
+* **J4, Missed:** "Sun 1 Nov 2026 (weekend)" shows a red Missed pill in the strip and the panel at 375 and 1440 px. **Held.** By zone: due 2026-11-16, firm A in `Pacific/Kiritimati`, gives `missed:true`. The Toronto default gives `missed:false`.
+* **J5, bad stored calendar values** (zone "Mars/Base", closed days `12`): the defaults apply and the answer is 200. **Held.**
+* **J7, wrong role:** client user-P gets 403 and client user-Q gets 403. Breaker pass 2 found that another firm's officer gets 404. **Held.**
+* **J9, the strip:** the weekday, the mark and Missed are visible. Enter on the current stage opens the panel with the same words, and axe is clean. **Held** (was open).
+
+| Criterion | Was | Now | Why |
+|---|---|---|---|
+| Task completed | ½ | 1 | The firm's own calendar reaches the route (J2) |
+| Next step obvious | ½ | 1 | The strip shows the dated deadline and Missed |
+| Feedback and state | ½ | 1 | Missed is shown; the zone follows the firm (live) |
+| Accessibility and screen sizes | ½ | ½ | Axe clean at 1440/375 and keyboard Enter works, but Missed's meaning is in a hover-only title (review m4), and 1024 px/200 % were not walked |
+| Visual quality | ½ | 1 | Team Pill tones; wraps cleanly at 375 px |
+| Plain words, correct data, error recovery, speed, trust | 1 each | 1 each | Unchanged; speed was not re-timed (one extra single-row call per view) |
+| **Total** | 7.5 | **9.5 / 10** | **Pass (8 or more, no 0).** To raise it: m4 (Missed's meaning in visible or focusable text) |

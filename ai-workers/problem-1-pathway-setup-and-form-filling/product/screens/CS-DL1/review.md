@@ -79,3 +79,81 @@ A live walk of 08ec00e46. The :4471 process started at 16:09, before the 16:29 c
 **Journey (re-score):** 7.5/10, fail. The two low criteria wait on the PR's Questions 1 and 2 (`journey-test-reviewer-2026-11-16.md`, re-run section).
 
 **Verdict: Changes requested** for 08ec00e46. Only M2 is open, pending the tech lead's written ruling on Question 1. The code needs no change for option 2; on that ruling this becomes Approve for 08ec00e46.
+
+## Review round 3 (1fb7ca098)
+Reviewer, fresh Opus 5.5 context, 17 Nov. Head `1fb7ca0986acfaf67b8cb5ccfe7c43b81cadbe7f`. P-277: I read only `git diff 4a1325673..1cfc6ca81 -- prototype` (7 files: the migration, `case-stages.ts`, `contracts/runtime.ts`, `stages.tsx`, the new browser suite, two module cards) and the merge `1fb7ca098`. Rulings read: 6924926243 (Q2), 6925010919 and 6925060605 (Q1 re-ruled: a narrow definer lookup, no bypass use), 6936429814 (records out, P-610). The PR changes 610 lines against main (502 added, 108 removed), so it stays under 800.
+
+**Run.**
+* `check_csdl1_deadlines.ts`: **34/34**.
+* `check_csdl1_deadlines_browser.ts` on my own copy `rev_csdl1` :4474: **24/24**. I ran it again after the shared cluster's 02:57Z stop (the breaker's, not the code) and got **24/24** on a fresh copy.
+* `check_pf12_walls.ts`: **100/100** with the new migration applied.
+* `tsc` for api and web: no error in any changed file.
+* `graph.mjs --check`: G1/G2/G4/G5 = 0.
+* The suite rewrites two committed screenshots in the shared checkout. I restored them with `git checkout`, so the checkout is clean.
+
+### The checks asked for
+1. **Migration compared with PF-12's `platform_web_address_taken`: met.** It has the same shape: `LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp`, `OWNER TO xr_wall_reader`, `REVOKE ALL … FROM PUBLIC`, `GRANT EXECUTE … TO xr_app`. It has a full header and a `Rollback: DROP FUNCTION platform_firm_calendar(text);` line. It returns only three `jsonb` columns, reads the setting keys `platform.time_zone`, `platform.business_hours` and `platform.closed_days` (these match `settings.ts`), and touches no table or row. Its stamp, `20261116184100`, is later than main's newest (`20261116030000_fo7mv_move_list`, origin/main `fc0971103`). The function is not a trigger, so PF-12's trigger-owner guard does not apply (100/100 above).
+2. **`firm-scope.ts` is untouched: met.** `git diff origin/main 1fb7ca098 -- …/firm-scope.ts` is empty, and there is no `BYPASS_USES` entry.
+3. **`caseFirmCalendar` (`case-stages.ts:84-91`): met.**
+   * The key is bound as a parameter (`$queryRaw` template).
+   * No row gives the three defaults.
+   * Each column is parsed by its setting's zod schema. Null or a failed parse gives that setting's default.
+   * Live probes on :4474: a stored zone `"Mars/Base"` reads Toronto, and `closed_days: 12` reads none. Both answer 200.
+   * The key comes only from the reached case. `reach` (`runtime.ts:154`) has already refused another firm's officer and other clients: user-Q gets 403, user-P gets 403.
+   * Note: this silently reads the default where `readSetting` throws on a bad stored value. That is deliberate (never a 500) and stated in the PR. Not a finding.
+4. **Optional contract fields: met.** `weekday?`, `mark?`, `shown?`, `missed?` are added only. `DeadlineShown = Required<…>`, so the server always sets them. The web falls back with `d.shown ?? day(d.due)`.
+5. **The screen (`stages.tsx:36-37`): met.**
+   * The strip and the panel show "Mon 8 Mar 2027 (closed day)" and "Sun 1 Nov 2026 (weekend)" with a red "Missed" pill and the Sample pill.
+   * Screenshots: `screenshots/CSDL1-strip-closed-day-1440.png`, `CSDL1-strip-missed-375.png`, `CSDL1-panel-missed-375.png`.
+   * DW7 checks the 1440 and 375 px widths, axe, no sideways scroll, and Enter opening the panel.
+6. **Each DW passes and fails as named: met, with one gap (m1 below).**
+   * DW8 covers firm A's closed day, never firm B's, and an unknown key giving the defaults.
+   * DW9 checks the catalogue string exactly (owner, `prosecdef`, `proconfig`, result columns, PUBLIC false, xr_app true), that there is no overload, and the odd keys (`''`, SQL-shaped, other letter case, trailing space give 0 rows).
+   * Removing the firm key from `deadlineDay` would fail DW8's pass case. This also closes round 2's n2: the `views()` call is now under test through the API.
+   * Live check that Missed follows the firm's zone: firm A set to `Pacific/Kiritimati`, due 2026-11-16, at about 02:53Z. Kiritimati gives `missed:true`; the Toronto default gives `missed:false`.
+7. **Merge `1fb7ca098` keeps both sides: met.**
+   * `MODULE.cases.md` has main's CS-C1b purpose and invariant and `check_csc1_count.ts`, plus CS-DL1's invariant and both csdl1 suites.
+   * `platform/MODULE.md` has main's PF-5t terms, PF-6m money line and `check_pf6m_money_line.ts`/`check_pf5t_terms.ts`, plus CS-DL1's `calendar/` entry, the definer-lookup sentence and the calendar invariant.
+   * No other prototype file differs from main beyond this PR's own 19.
+8. **Round 2 Minors:** n1 and n3 are closed (`4a1325673`: the orphaned JSDoc is removed, and the catch is narrowed to `RangeError`/`NO_SUCH_DATE`). n2 is closed (point 6). n5 is closed (the body says 34/34 and names the two re-exported names). n4 is harmless and unchanged.
+
+**M2 is closed.** The firm's own calendar now reaches the x-actor route through the ruled lookup, as point 6 shows live.
+
+### Findings (none block)
+* **m1 (Minor, test gap): the lookup's zone and hours keys are not pinned by any test.** On a fresh copy I replaced the function with misspelled `'platform.timezone'` and `'platform.hours'` keys and kept `closed_days`. Result: **24/24 still pass**, because DW9 only asserts firm A's *unset* zone is null and DW8 only uses closed days. A typo or a later key rename would silently put every case back on the Toronto zone. **Fix:** in DW9, set firm A's zone and hours and assert that `platform_firm_calendar('sample-firm')` returns them as stored. This needs no clock. Optionally, add a Missed-by-zone API case.
+* **m2 (Minor): the `deadlineDay` JSDoc is now wrong** (`case-stages.ts:71-74`). It still says an x-actor request "reads no setting, so the settings' defaults apply … never looked up across the wall". It should describe the case's firm key and the definer lookup.
+* **m3 (Minor, agree with breaker pass 2 m1): the lookup also runs on writes.** `views()` runs on `POST …/stages/next` (via `compute`) and on `PUT …/key-details` (via `stage`), not only on GET routes as the comment at `:81` and the first ruling say. The lookup itself is read-only. But if the function is missing (a migration rollback with this code still deployed), the PUT commits and then answers 500. **Fix:** say "roll back the code first" in the rollback line, or correct the comment. A follow-up is enough.
+* **m4 (Minor, agree with breaker m3; BIC-14 Partly → Should): what Missed means lives only in a `title`** on a non-focusable pill (`stages.tsx:37`). The pre-existing Sample pill follows the same pattern.
+* Breaker m2 (the function is bound to a key, not to the session's firm): this is the ruled design, and it is noted for CS-W3 part 1, which removes it. Not a finding here.
+
+### BIC (case-side scope; one changed line in the existing strip)
+* **BIC-10 Met:** the status words are kept.
+* **BIC-14 Partly:** m4.
+* **BIC-18 Met:** "Can't set: … is missing" is kept, and a refused stored date shows no mark and never a 500.
+* **BIC-19 Met:** red is used only for Missed, a missed legal date, with text and shape.
+* **BIC-20 Met at 1440/375:** keyboard Enter opens the panel, axe is clean, and there is no sideways scroll. 1024 px and 200 % zoom were not walked; they are inferred from the 375 px wrap.
+* **BIC-01-09, 11-13, 15-17 N/A:** no questions, documents, forms, signing or review on this line.
+
+### D1–D20 (only what this diff touches)
+* **D1 5:** AG-7-94 r3 words, and Missed by the firm's zone (live).
+* **D2 5:** read-only, nothing written.
+* **D5 5:** no 500 on bad stored values or dates.
+* **D11 5:** Missed is shown.
+* **D12 5 / D14 5:** team `Pill` tones.
+* **D13 4:** m4; 1024 px not walked.
+* **D15 5:** one single-row function call per view (not re-timed this round).
+* **D16 4:** m1.
+* **D17, D20:** simulated only.
+* The rest are unchanged from round 1.
+
+### Could not check
+* The full `ci`.
+* PF-21 ×3, C6.17 migration/acceptance, demo reset, checkpoint load and FO-2 at this head (I relied on the PR's pasted results).
+* A real screen reader.
+* 1024 px / 200 % zoom by hand.
+* An intended user's walk (D17/D20 stay with the founder).
+* The Lead's P-423 read of the migration is still due before the label.
+
+**Journey (re-score on 1fb7ca098): 9.5/10, pass** (`journey-test-reviewer-2026-11-16.md`, round 3 section).
+
+**Verdict: Approve** for `1fb7ca0986acfaf67b8cb5ccfe7c43b81cadbe7f`. There is no open Blocker or Major. Fix m1-m4 or list them in the PR.
