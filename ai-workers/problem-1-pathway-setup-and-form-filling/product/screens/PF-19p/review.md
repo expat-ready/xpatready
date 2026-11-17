@@ -244,3 +244,30 @@ This review reads only the two merges of main since my Approve of `f0793beb3`: `
 Findings: none.
 
 Verdict: Approve b6dfb62a6517275e6cf6cbf5b15404641cdbb600
+
+## Re-review (merge and migration stamp at 0596cff9f)
+
+17 Nov 2026. Read only the two commits since my Approve of `b6dfb62a6` (whose record is `bc10b8c2c`): `b08b4d081`, a merge of origin/main, and `0596cff9f`, which moves the migration stamp. I ran `git fetch origin` first; main is at `388e5a6fd`, which is an ancestor of the head. Code not edited.
+
+* **The stamp move is a pure rename.**
+  - `git show -M 0596cff9f` shows the migration renamed `20261116123000_… => 20261117120000_pf19p_platform_account_mail` at 100% similarity, and the SQL file is the same blob before and after (`46df418d3`).
+  - Nothing else in the commit is code: the schema comment's stamp (`platform-messages.prisma:302`), the suite's `NEW` constant, and DW4's "newest before it" check, which now names `20261117004500_css1_case_party_index`.
+  - The old stamp is gone from the tree, and PF-19p is now the newest migration.
+* **Running PF-19p's migration last is safe.**
+  - Main's two migrations after the old stamp, `20261116030000_fo7mv_move_list` and `20261117004500_css1_case_party_index`, do not mention `msg_`, `outbox`, `audience` or `idempotency`.
+  - In the other direction, PF-19p's SQL does not mention any PF-12, case-side or `fo_move` object.
+  - PF-12's walls (`20261116013000`, which forces row-level security on `msg_outbox`) were already applied before PF-19p, as they were at the old stamp. So the order relative to everything PF-19p relies on is unchanged.
+  - Only a local copy that already applied the old stamp from this branch would need a reset. No shared database has it, because the PR is not merged.
+* **MODULE.md is resolved correctly.** `git diff -U0 origin/main 0596cff9f` shows only PF-19p's four changes:
+  - the `platformAccount: true` note on `MESSAGES_MAIL`;
+  - the PLATFORM_JOB_QUEUES rule;
+  - the platform account message rule;
+  - `check_pf19p_platform_mail.ts` added after main's test list.
+* **The rest of the code is unchanged from my approval.**
+  - I compared two diffs over `prototype/studio` without MODULE.md: `origin/main..0596cff9f` and `fd2dee855..f0793beb3` (the approved change from its merge base).
+  - Both are 18 files with +632/−66. With the `index` and `@@` lines removed, they differ only in the five stamp lines above: two path headers, the schema comment, `NEW`, and the DW4 check.
+* **Run:** `check_pf19p_platform_mail` 68/0 at `0596cff9f`. Its DW4 says "newest before it: 20261117004500_css1_case_party_index", and the checks measured right after its own migration pass. I did not re-run the other suites; the builder reports them all green.
+
+Findings: none.
+
+Verdict: Approve 0596cff9f8e58465e7a480e27d014ea4f1ec1f16
