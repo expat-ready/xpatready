@@ -8,7 +8,7 @@
 // their own (an adult's own link, /api/link/*, and the demo inbox) are a second reviewed list, OWN_GUARD; for each, its
 // own guard is asked here (never data to nobody or to a simulated person). US$0, no model call.
 //   zsh studio/tools/isolated.sh forms_qa53 4459 start && tsx studio/tests/check_forms_qa53.ts 4459 xr_studio_forms_qa53
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { planted, tsFiles } from "./lib/ts-files.ts";
@@ -19,6 +19,14 @@ const API = join(import.meta.dirname, "..", "api", "src");
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 400)}` : ""}`); };
 const status = async (path: string, actor: string | null) => (await fetch(`http://localhost:${PORT}${path}`, { headers: actor ? { "x-actor": actor } : {} })).status;
+// QA-53k: the firm copy starts and stops without blocking the event loop. execFileSync held the loop about 5.6 s while the
+// copy takes to start, so the main copy's idle keep-alive socket was closed by the server unseen and the next request
+// on it failed with "SocketError: other side closed" (3 hits in 6 h, #2069). spawn lets undici see the close in time.
+const runAsync = (cmd: string, args: string[], timeout: number) => new Promise<void>((resolve, reject) => {
+  const c = spawn(cmd, args, { stdio: "ignore", timeout });
+  c.on("error", reject);
+  c.on("exit", (code, signal) => (code === 0 ? resolve() : reject(new Error(`${cmd} ${args.slice(1, 4).join(" ")} ended with ${code ?? signal}`))));
+});
 const sql = (q: string) => execFileSync("/opt/homebrew/opt/postgresql@18/bin/psql", [`postgresql://xr_studio@127.0.0.1:54329/${DB}`, "-Atc", q], { encoding: "utf8" }).trim();
 
 /** Every GET route in api/src (B120: its subfolders too): its full path, and whether the code marks it (on the route or
@@ -123,9 +131,9 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   const firm = await (async () => {
     const name = `${DB.replace(/^xr_studio_/, "")}_firm`.slice(0, 40), port = PORT + 1;
     try {
-      execFileSync("zsh", [join(import.meta.dirname, "..", "tools", "isolated.sh"), name, String(port), "start", "--ttl", "10", "STUDIO_WORKSPACE_KEY=firm"], { stdio: "ignore", timeout: 180_000 });
+      await runAsync("zsh", [join(import.meta.dirname, "..", "tools", "isolated.sh"), name, String(port), "start", "--ttl", "10", "STUDIO_WORKSPACE_KEY=firm"], 180_000);
       return { inbox: (await fetch(`http://localhost:${port}/api/demo/inbox?address=x%40example.com`)).status, platformInbox: (await fetch(`http://localhost:${port}/api/demo/platform-inbox?address=x%40example.com`)).status };
-    } catch (e) { return { error: (e as Error).message.split("\n")[0] }; } finally { try { execFileSync("zsh", [join(import.meta.dirname, "..", "tools", "isolated.sh"), name, String(port), "stop"], { stdio: "ignore", timeout: 120_000 }); } catch { /* reported above */ } }
+    } catch (e) { return { error: (e as Error).message.split("\n")[0] }; } finally { await runAsync("zsh", [join(import.meta.dirname, "..", "tools", "isolated.sh"), name, String(port), "stop"], 120_000).catch(() => { /* reported above */ }); }
   })();
   ok("C6.16 fail: the demo inboxes (the case side's and PF-19b's platform inbox) are not found outside the demo workspace (a firm workspace answers 404)", firm.inbox === 404 && firm.platformInbox === 404, firm);
   const wrong: string[] = [];
