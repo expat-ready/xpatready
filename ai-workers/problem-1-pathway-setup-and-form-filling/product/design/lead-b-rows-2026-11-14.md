@@ -1855,3 +1855,6 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **FO-2b** (no PR): **parked**, because it is blocked on FO-2 Engage, which isn't built. Nothing posted on #1843. It goes in tonight's list as parked.
 * **#1961 PF-19p** (head bc10b8c2): shard 6 failed only on `check_css1_index` CS-S1 DW4, the check fault #2077 fixed (merged 07:57 UTC). Re-ran only the failed jobs of run 43999867612; the shard re-run tests on today's main, so it carries the fix.
 * **Prompt boxes not reachable:** the built-in browser's claude.ai is signed out, and Build Lead A does not sign in for the founder. Answers are on the PRs instead. Idle cloud lanes need the founder's prompt-box paste or the Lead's own route.
+
+### Rev 17.8 (13:41 IST 17 Nov): lane nudges go through Lead 77
+* Lead 77 nudged PF-21i and PF-6m2 in their claude.ai prompt boxes at 14:1x IST, and both show as sent. Lead 77's claude.ai is signed in, so from now on Build Lead A sends every lane that needs a nudge to the current Lead.
