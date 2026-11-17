@@ -77,7 +77,7 @@ Verdicts: **Keep** (stays where it is) · **Move** (`git mv` to the target layou
 | `P1/devin-review/2026-10-30-d1/` | 41 (6 MB) | One outside review's screenshots | No | none | **Archive** |
 | `P1/*.md`, `*.html` at the P1 root (README, CLAUDE.md, one-pager html, truth-review, conflict table, …) | 9 | Oct Solution 1 pages | No (the old one-pager link's builder is archived too) | none | **Archive** (P1's `CLAUDE.md` is folded into the root one) |
 
-**Reference counts (the cost of moving):** the long prefix `ai-workers/problem-1-pathway-setup-and-form-filling` appears **7,258 times in 699 files**. Only about **90 of those files are live** (workflows, hooks, skills, agents, tools, app code, Dockerfile, root rules). The other ~610 are records and are **not rewritten** (section 2.4). The Mac's absolute home path (`/Users/<founder>/…`) appears in 440 files, almost all old records; only `lanes/qa.md` and `lanes/runtime.md` are live (the `.tools` symlink line).
+**Reference counts (the cost of moving):** the long prefix `ai-workers/problem-1-pathway-setup-and-form-filling` appears **7,258 times in 699 files**. Only about **90 of those files are live** (workflows, hooks, skills, agents, tools, app code, Dockerfile, root rules). The other ~610 are records and are **not rewritten** (section 4.3). The Mac's absolute home path (`/Users/<founder>/…`) appears in 440 files, almost all old records; only `lanes/qa.md` and `lanes/runtime.md` are live (the `.tools` symlink line).
 
 ---
 
