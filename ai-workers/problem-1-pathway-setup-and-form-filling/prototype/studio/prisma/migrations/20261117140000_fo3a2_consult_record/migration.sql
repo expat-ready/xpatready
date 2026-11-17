@@ -41,14 +41,15 @@ ALTER TABLE "fo_consult_record" ADD CONSTRAINT "fo_consult_record_firm_id_bookin
 ALTER TABLE "fo_consult_record" ADD CONSTRAINT "fo_consult_record_minutes_check" CHECK ("time_spent_minutes" BETWEEN 1 AND 1440);
 ALTER TABLE "fo_consult_record" ADD CONSTRAINT "fo_consult_record_version_check" CHECK ("version" >= 1);
 ALTER TABLE "fo_consult_record" ADD CONSTRAINT "fo_consult_record_notes_check" CHECK ("notes" IS NULL OR char_length("notes") <= 10000);
--- At most 20 items, none empty or over 120 characters (a check cannot hold a subquery, so a small immutable function).
+-- One dimension (break m3), at most 20 items, none empty or over 120 characters (a check cannot hold a subquery, so a small immutable function).
 CREATE FUNCTION fo_booking_consult_items_ok(items text[]) RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS $$
-  SELECT items IS NOT NULL AND cardinality(items) <= 20
+  SELECT items IS NOT NULL AND coalesce(array_ndims(items), 1) = 1 AND cardinality(items) <= 20
     AND NOT EXISTS (SELECT 1 FROM unnest(items) AS r WHERE r IS NULL OR char_length(btrim(r)) NOT BETWEEN 1 AND 120)
 $$;
 ALTER TABLE "fo_consult_record" ADD CONSTRAINT "fo_consult_record_recommended_check" CHECK (fo_booking_consult_items_ok("recommended"));
 ALTER TABLE "fo_consult_record" ADD CONSTRAINT "fo_consult_record_fee_check" CHECK (
-  ("quoted_fee_minor" IS NULL AND "quoted_fee_currency" IS NULL) OR ("quoted_fee_minor" >= 0 AND "quoted_fee_currency" IS NOT NULL));
+  ("quoted_fee_minor" IS NULL AND "quoted_fee_currency" IS NULL)
+  OR ("quoted_fee_minor" IS NOT NULL AND "quoted_fee_minor" >= 0 AND "quoted_fee_currency" IS NOT NULL));   -- NULL-safe (break m2)
 
 -- PF-12's wall (forced policy on the session's firm, the firm gate first; tests/check_pf12_walls.ts).
 ALTER TABLE "fo_consult_record" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;

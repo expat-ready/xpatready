@@ -16,7 +16,9 @@ import { join } from "node:path";
 import { fakeArrival } from "../ports/arrival.ts";
 import { fakeAudit } from "../ports/audit.ts";
 import { FakeClock } from "../ports/clock.ts";
-import { ConsultRecordRead, fakeConsultRecords, type ConsultRecordPort } from "../ports/consult-record.ts";
+import { fakeConsultRecords, type ConsultRecordPort } from "../ports/consult-record.ts";
+import { consultRecordPortContract, type ConsultRecordHarness } from "../ports/contracts/consult-record-port.contract.ts";
+import { runContract } from "../ports/contracts/contract.ts";
 import { fakeJobs } from "../ports/jobs.ts";
 import { fakeMail } from "../ports/mail.ts";
 
@@ -52,7 +54,7 @@ const { Booking, BOOKING_PORTS } = await import("../api/src/front-office/booking
 const { BookingStaffController } = await import("../api/src/front-office/booking/staff.controller.ts");
 const { ConsultRecordController, ConsultRecords } = await import("../api/src/front-office/booking/consult/controller.ts");
 const { ConsultRecordService, WORDS } = await import("../api/src/front-office/booking/consult/service.ts");
-const { consultRecordPort } = await import("../api/src/front-office/booking/consult/port.ts");
+const { PgConsultRecords } = await import("../api/src/front-office/booking/consult/port.ts");
 const { wallToUtc } = await import("../api/src/front-office/booking/slots.ts");
 const { copyFirmHoursTo } = await import("../api/src/front-office/booking-seed.ts");
 const feature = (await import("../api/src/features/front-office-booking-consult.ts")).default;
@@ -154,11 +156,13 @@ try {
   const dbRefusals: string[] = [];
   for (const [what, q] of [["0 minutes", `UPDATE fo_consult_record SET time_spent_minutes = 0 WHERE id = '${kept.id}'`], ["21 items", `UPDATE fo_consult_record SET recommended = array_fill('x'::text, ARRAY[21]) WHERE id = '${kept.id}'`],
     ["an empty item", `UPDATE fo_consult_record SET recommended = ARRAY[' '] WHERE id = '${kept.id}'`], ["a fee with no currency", `UPDATE fo_consult_record SET quoted_fee_currency = NULL WHERE id = '${kept.id}'`],
-    ["EUR", `UPDATE fo_consult_record SET quoted_fee_currency = 'EUR' WHERE id = '${kept.id}'`], ["a second record for the booking", `INSERT INTO fo_consult_record (id, firm_id, booking_id, time_spent_minutes, created_by, updated_by, updated_at) VALUES (gen_random_uuid(), '${A.id}', '${bLead.id}', 30, 'x', 'x', now())`],
+    ["EUR", `UPDATE fo_consult_record SET quoted_fee_currency = 'EUR' WHERE id = '${kept.id}'`],
+    ["a currency with no fee", `UPDATE fo_consult_record SET quoted_fee_minor = NULL, quoted_fee_currency = 'CAD' WHERE id = '${kept.id}'`],
+    ["a two-dimensional item list", `UPDATE fo_consult_record SET recommended = ARRAY[['a','b'],['c','d']] WHERE id = '${kept.id}'`], ["a second record for the booking", `INSERT INTO fo_consult_record (id, firm_id, booking_id, time_spent_minutes, created_by, updated_by, updated_at) VALUES (gen_random_uuid(), '${A.id}', '${bLead.id}', 30, 'x', 'x', now())`],
     ["another firm's booking", `INSERT INTO fo_consult_record (id, firm_id, booking_id, time_spent_minutes, created_by, updated_by, updated_at) VALUES (gen_random_uuid(), '${B.id}', '${bLead.id}', 30, 'x', 'x', now())`]] as const) {
     try { execFileSync(join(BIN, "psql"), [URL, "-v", "ON_ERROR_STOP=1", "-qc", q], { stdio: ["ignore", "ignore", "pipe"] }); dbRefusals.push(`${what}: accepted`); } catch { /* refused, as it should */ }
   }
-  ok("FO-3a2 DW2 fail (database): 0 minutes, 21 items, an empty item, a fee without currency, EUR, a second record and another firm's booking are each refused by the database", dbRefusals.length === 0, dbRefusals);
+  ok("FO-3a2 DW2 fail (database): 0 minutes, 21 items, an empty item, a fee without currency, EUR, a currency with no fee, a two-dimensional list, a second record and another firm's booking are each refused by the database", dbRefusals.length === 0, dbRefusals);
 
   // ------------------------------------------------------------------------------------------------ DW3: who may
   const co = await go("PUT", rec(bLead.id), P.CASE_OFFICER, { version: 2, timeSpentMinutes: 40, quotedFeeMinor: 15000, quotedFeeCurrency: "CAD", recommended: ["Work permit"] });
@@ -224,32 +228,48 @@ try {
   ok("FO-3a2 DW5 fail: on a prospect, a person with agent/booking:edit but no agent/retainer:draft gets no step; with it, PREPARE_RETAINER",
     prosNoDraft.nextSteps.length === 0 && prosDraft.nextSteps.join() === "PREPARE_RETAINER", { prosNoDraft: prosNoDraft.nextSteps, prosDraft: prosDraft.nextSteps });
 
+  // ---------------------------------------------------------------- text as typed (break m1, m4, m5, m6 of round 1)
+  await clock.set(at("2026-10-26 08:00"));
+  const bText = await make(TO.id, lead, "2026-10-29 09:00");
+  await clock.set(at("2026-10-29 17:00"));
+  await attend(bText.id, "COMPLETED");
+  const emoji = "🙂".repeat(10_000);
+  const textSave = await go("PUT", rec(bText.id), P.OWNER, { notes: emoji, recommended: ["Work permit", "work  permit", "WORK PERMIT", "Que\u0301bec", "Québec", " Translation "] });
+  ok("FO-3a2 text pass: 10,000 characters of emoji save (counted in characters, as the database does); items keep one of each name whatever its case, spacing or accent form",
+    textSave.status === 200 && [...textSave.body.notes].length === 10_000 && textSave.body.recommended.join("|") === "Work permit|Québec|Translation", textSave.body.recommended ?? textSave);
+  const textBad = { nul: await go("PUT", rec(bText.id), P.OWNER, { version: 1, notes: "a\u0000b" }), nulItem: await go("PUT", rec(bText.id), P.OWNER, { version: 1, recommended: ["a\u0000b"] }),
+    tooLong: await go("PUT", rec(bText.id), P.OWNER, { version: 1, notes: `${emoji}🙂` }), invisible: await go("PUT", rec(bText.id), P.OWNER, { version: 1, recommended: ["\u200b"] }),
+    plain: await (async () => { const r = await fetch(`${base}/api/front-office/bookings/${bText.id}/consult-record`, { method: "PUT", headers: { authorization: `Bearer ${P.OWNER.token}`, "content-type": "text/plain" }, body: "hello" }); return { status: r.status }; })(),
+    array: await go("PUT", rec(bText.id), P.OWNER, [] as unknown as object) };
+  const textKept = await db.foConsultRecord.findFirstOrThrow({ where: { bookingId: bText.id } });
+  ok("FO-3a2 text fail: a NUL in notes or an item → 400; 10,001 characters → 400; an item of only a zero-width space → 400; a text/plain body → 415; an array → 400; the record is unchanged",
+    textBad.nul.status === 400 && textBad.nulItem.status === 400 && textBad.tooLong.status === 400 && textBad.invisible.status === 400 && textBad.plain.status === 415 && textBad.array.status === 400
+      && textKept.version === 1 && textKept.recommended.length === 3, Object.fromEntries(Object.entries(textBad).map(([k, v]) => [k, v.status])));
+  const blank = await go("PUT", rec(bText.id), P.OWNER, { version: 1, notes: "   " });
+  ok("FO-3a2 text: notes of only spaces are stored as none", blank.status === 200 && blank.body.notes === null, blank.body);
+
   // ------------------------------------------------------------------------------------------ DW6: the port contract
   const svc = new ConsultRecordService(db, { audit: audit as never });
-  const adapter = consultRecordPort(svc);
-  const fake = fakeConsultRecords();
-  const realRead = await adapter.read(db, A.id, co.body.id);
-  if (realRead) fake.add(A.id, realRead);
-  const contract = async (port: ConsultRecordPort<any>, label: string) => {
-    const mine = await port.read(db, A.id, co.body.id);
-    const shapeOk = ConsultRecordRead.safeParse(mine).success && mine?.bookingId === bLead.id && mine?.partyRef?.kind === "lead" && mine?.quotedFee?.amountMinor === 15000 && mine?.quotedFee?.currency === "CAD" && mine?.recommended.join() === "Work permit";
-    const otherFirm = await port.read(db, B.id, co.body.id), unknown = await port.read(db, A.id, "00000000-0000-4000-8000-000000000000"), notAnId = await port.read(db, A.id, "x");
-    return { label, shapeOk, otherFirm, unknown, notAnId };
-  };
-  const both = [await contract(adapter, "adapter"), await contract(fake, "fake")];
-  ok("FO-3a2 DW6 pass: ConsultRecordPort's contract case passes on the adapter and on the fake (party, items, fee, booking id)", both.every((x) => x.shapeOk), both);
-  ok("FO-3a2 DW6 fail: read for another firm's id, an unknown id or a string that is not an id → null, on both", both.every((x) => x.otherFirm === null && x.unknown === null && x.notAnId === null), both);
-  const inTx = await db.$transaction(async (tx) => adapter.read(tx, A.id, co.body.id));
-  ok("FO-3a2 DW6: the adapter reads inside the caller's transaction", inTx?.recordId === co.body.id, inTx);
+  const adapter = new PgConsultRecords(svc, db);
+  const expected = await adapter.read(db, A.id, co.body.id);
+  ok("FO-3a2 DW6: the adapter reads the Case Officer's record (lead, Work permit, CAD 150.00)", expected?.partyRef?.kind === "lead" && expected?.quotedFee?.amountMinor === 15000 && expected?.recommended.join() === "Work permit", expected);
+  const harness = (port: ConsultRecordPort<any>): ConsultRecordHarness => ({ port, firmId: A.id, otherFirmId: B.id, expected: expected!, inTransaction: (fn) => db.$transaction((tx) => fn(tx)) });
+  const fake = fakeConsultRecords(); fake.add(A.id, expected!);
+  const rr = await runContract(consultRecordPortContract, "PgConsultRecords", () => harness(adapter), ok);
+  const rf = await runContract(consultRecordPortContract, "fakeConsultRecords", () => harness(fake), ok);
+  ok("FO-3a2 DW6 pass: ConsultRecordPort's contract passes on the adapter and on the fake (the same cases)", rr.failed.length === 0 && rf.failed.length === 0 && rr.passed.length === rf.passed.length && rr.passed.length >= 4);
+  const broken: ConsultRecordPort<any> = { read: async (tx, _f, id) => adapter.read(tx, A.id, id) };   // ignores the firm it is asked for
+  const rb = await runContract(consultRecordPortContract, "brokenIgnoresFirm", () => harness(broken), null);
+  ok("FO-3a2 DW6 fail: an adapter that ignores the firm asked for fails the contract (another firm's id would read the record)", rb.failed.length > 0, rb);
 
   // --------------------------------------------------------------------------------------------- DW7: the audit
   const lines = audit.entries.filter((e) => e.entity === "fo_consult_record");
-  const saves = [first, cad, curOnly, co, host, caseRec, leadSteps, casePros].length;
+  const saves = [first, cad, curOnly, co, host, caseRec, leadSteps, casePros, textSave, blank].length;
   ok(`FO-3a2 DW7 pass: every save has one audit line with before and after (${saves} saves, ${lines.length} lines; the first "created", later ones "changed")`,
     lines.length === saves && lines[0].action === "booking.consult_record.created" && lines[0].detail.beforeTimeSpentMinutes === null && lines[0].detail.afterTimeSpentMinutes === 45
       && lines.some((l) => l.action === "booking.consult_record.changed" && l.detail.beforeTimeSpentMinutes === 45 && l.detail.afterTimeSpentMinutes === 35 && l.detail.afterQuotedFeeMinor === 15000), lines);
   ok("FO-3a2 DW7 fail: no refused save wrote a line, and no line holds the notes' text (facts only)",
-    !JSON.stringify(lines).includes("Calgary") && !lines.some((l) => l.entityKey === "") && lines.every((l) => "notesChanged" in l.detail), lines.map((l) => l.detail));
+    !JSON.stringify(lines).includes("Calgary") && !JSON.stringify(lines).includes("🙂") && !lines.some((l) => l.entityKey === "") && lines.every((l) => "notesChanged" in l.detail), lines.map((l) => l.detail));
   const failing = fakeAudit({ failOn: (e) => e.entity === "fo_consult_record" });
   const svcFail = new ConsultRecordService(db, { audit: failing as never });
   let threw = false;

@@ -53,10 +53,19 @@ const forbidden = (key: string) => problem(403, "forbidden", "Not allowed", `Thi
 
 /** The body of a save (strict: an unknown field is refused). A fee over 1,000,000,000 minor units (10 million) is refused
  *  as a technical bound (break: 1e12), not a product choice. */
+/** Text as a person typed it: NFC, no NUL or control characters but line breaks and tabs, and its length counted in
+ *  characters (code points), as the database counts (break m1, m4). Invisible format marks are dropped before trimming
+ *  (break m5), so an item of only a zero-width space is empty. */
+const INVISIBLE = /[\u200b-\u200f\u2060-\u2064\ufeff\u00ad]/g;
+const chars = (s: string) => [...s].length;
+const Text = (max: number) => z.string().refine((t) => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(t), "no control characters")
+  .transform((t) => t.normalize("NFC")).refine((t) => chars(t) <= max, `at most ${max.toLocaleString("en-CA")} characters`);
+const Item = z.string().refine((t) => !/[\u0000-\u001f\u007f]/.test(t), "no control characters")
+  .transform((t) => t.normalize("NFC").replace(INVISIBLE, "").trim().replace(/\s+/g, " ")).refine((t) => chars(t) >= 1 && chars(t) <= 120, "1 to 120 characters");
 export const ConsultBody = z.strictObject({
   timeSpentMinutes: z.number().int().min(1).max(1440).optional(),
-  notes: z.string().max(10_000).nullable().optional(),
-  recommended: z.array(z.string().trim().min(1).max(120)).max(20).optional(),
+  notes: Text(10_000).nullable().optional(),
+  recommended: z.array(Item).max(20).optional(),
   quotedFeeMinor: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
   quotedFeeCurrency: z.enum(["CAD", "USD"], { error: "Choose CAD or USD." }).nullable().optional(),
   /** The version read (STANDARDS §4): needed to replace a record; a first save names none. */
@@ -84,6 +93,8 @@ export function nextStepsFor(party: PartyRef | null, keys: readonly string[]): N
   return [];
 }
 
+/** One item per name, whatever its case (break m5): the first spelling is kept. */
+const oneOfEach = (items: string[]) => { const seen = new Set<string>(); return items.filter((i) => { const k = i.toLocaleLowerCase("en-CA"); return seen.has(k) ? false : (seen.add(k), true); }); };
 const bookedMinutes = (b: BookingRow) => Math.max(1, Math.min(1440, Math.round((b.endsAt.getTime() - b.startsAt.getTime()) / MIN)));
 const actor = (ctx: StaffContext) => `staff:${ctx.staffId}`;
 /** The audit's facts of a record: no text but the currency code. */
@@ -103,7 +114,9 @@ export class ConsultRecordService {
   }
 
   async put(ctx: StaffContext, bookingId: string, body: unknown) {
-    const parsed = ConsultBody.safeParse(body ?? {});
+    // A body that is not a JSON object (none, text/plain, an array) is refused, never read as an empty record (break m6).
+    if (body === null || typeof body !== "object" || Array.isArray(body)) throw problem(400, "consult-refused", NOT_SAVED, "Send the record as a JSON object.");
+    const parsed = ConsultBody.safeParse(body);
     if (!parsed.success) throw problem(400, "consult-refused", NOT_SAVED, WORDS.check, { issues: parsed.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`) });
     const v = parsed.data;
     const fee = v.quotedFeeMinor ?? null;
@@ -118,7 +131,7 @@ export class ConsultRecordService {
       // A save from a form read before someone else's save (or a second "first" save) never overwrites it (review M1).
       if ((before?.version ?? null) !== (v.version ?? null)) throw problem(409, "stale-version", "Changed by someone else", WORDS.stale, { code: "STALE_VERSION", version: before?.version ?? null });
       const data = {
-        timeSpentMinutes: v.timeSpentMinutes ?? bookedMinutes(b), notes: v.notes ?? null, recommended: [...new Set(v.recommended ?? [])],
+        timeSpentMinutes: v.timeSpentMinutes ?? bookedMinutes(b), notes: v.notes?.trim() ? v.notes : null, recommended: oneOfEach(v.recommended ?? []),
         quotedFeeMinor: fee, quotedFeeCurrency: fee === null ? null : v.quotedFeeCurrency!, updatedBy: actor(ctx),
       };
       const saved = before
@@ -136,7 +149,7 @@ export class ConsultRecordService {
 
   /** The adapter's read (ports/consult-record.ts): the firm's record by its id, or null. */
   async read(db: Tx | PrismaClient, firmId: string, recordId: string): Promise<ConsultRecordRead | null> {
-    if (!UUID.test(String(recordId))) return null;
+    if (!UUID.test(String(recordId)) || !UUID.test(String(firmId))) return null;   // never thrown (the contract, break m7)
     const r = await db.foConsultRecord.findFirst({ where: firmScope(firmId, { id: recordId }), include: { booking: { select: BOOKING_SELECT } } });
     if (!r) return null;
     return {
