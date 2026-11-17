@@ -15,7 +15,7 @@ import { runContract } from "../ports/contracts/contract.ts";
 import { officeClockPortContract, type OfficeClockHarness } from "../ports/contracts/office-clock-port.contract.ts";
 import { fakeOfficeClock, type OfficeClockValues } from "../ports/offices.ts";
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261116190000_pf18a_offices";
+const NEW = "20261117120000_pf18a_offices";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const EMPTY = `xr_studio_pf18a_empty_${process.pid}`, DEMO = `xr_studio_pf18a_demo_${process.pid}`, BARE = `xr_studio_pf18a_bare_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
