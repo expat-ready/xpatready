@@ -64,3 +64,21 @@ Diff-only (P-277): `git diff 1d40c5fc3 b160ffe88`. It changes 4 code and evidenc
 No Blocker, Major or Minor open.
 
 Verdict: Approve b160ffe88267683207d3b645d59d8fd9264fa6cb
+
+## Re-review at 1bfea5051
+Diff-only (P-277): `git diff 1798ca865 1bfea5051`. It changes 2 files (+5/-2), and 1798ca865 holds only my review records. I used an isolated copy `pf4dn` on :4574 (never :4400) and stopped it afterwards. That removed its database and files. The working tree is clean.
+
+* **Devin 1 (separator-only name), resolved, and the change is minimal.** The "no name" shortcut in `displayNameOf` (`service.ts:79`) now uses the same character class as the refusal on the next line, `[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]`. Before, `" ".trim()` was empty and the class had no `Zl`/`Zp`, so the input returned null (201, no name). Now the input falls through to the refusal (400 `DISPLAY_NAME_INVALID`). Nothing else in the function changed.
+* **Other blank-looking input: no unexpected change.** I sent each value to the real route on :4574. The name check runs before the seat check, so a `PLAN_LIMIT_REACHED` reply means the name passed.
+  * **Outcome changed, now refused:** U+2028, U+2029 and " U+2028 " give `DISPLAY_NAME_INVALID`. Before the change they were no name. These are the only inputs whose outcome changed.
+  * **Still no name:** spaces only, "" , NBSP U+00A0, ideographic space U+3000 and em space U+2003 all pass the name check. These are all `Zs` characters, which `trim()` removes and the class does not match. So "spaces only is still no name" holds for Unicode spaces too, which matches the doc comment.
+  * **Refused before and after:** U+0085 (Cc, which `trim()` keeps), U+FEFF (Cf), ZWSP U+200B (Cf), tab (Cc) and "Client U+2028 A" all give `DISPLAY_NAME_INVALID`.
+* **Devin 2 (swallowed wait), resolved.** `tests/check_pf4dn_invite_name.ts:126` now lets the `waitFor` timeout throw. The only `.catch` left in the file is `browser.close()` in `finally`, which is fine.
+* **Re-run:** `check_pf4dn_invite_name` passed **15/15** (:4574). The new case passed: U+2028 → 400 `DISPLAY_NAME_INVALID` with 0 invitations stored. The m1 case still gives `{"nameInvalid":"true","emailInvalid":null}`. I did not run a mutation this time. Before the change, the old line returned null for U+2028, which would give 201 and fail the new assertion (`status === 400`).
+* **Note (not a finding):** the screen behaves as before. `invite-panel.tsx:34` sends `displayName` only when `r.name.trim()` is non-empty, and JS `trim()` removes U+2028/U+2029. So a separator pasted alone into the Name field is still sent as no name, and the API's new refusal only applies to direct API callers. This is harmless, because the field looks empty to the person typing. The change is server-side, as Devin's finding asked.
+
+No Blocker, Major or Minor open. The journey score stays 10/10 because the screen is unchanged.
+
+Verdict: Approve 1bfea50519bdf4a5a932e3b3423a27c111096454
+
+1. None open. One note: the screen's own trim still sends a separator-only Name as no name, as before; this is expected and not a defect.
