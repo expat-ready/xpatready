@@ -33,3 +33,5 @@ Firms, staff and sign-in, settings, secrets, jobs, logs, complaints and message 
 - Log a name, email or other personal value; log record ids.
 - Start a second job runner or logger.
 - Add a package outside STANDARDS §1's gate.
+
+**PF-19b part 2 (messages: SES, bounces, one-click unsubscribe).** Entry points: the email adapter by setting (`local`, or SES when PLATFORM_ENVIRONMENT is test/production with PLATFORM_SES_REGION and a verified sender; fails closed without one), `GET|POST /api/public/unsubscribe/:token` (one-click, ConsentPort.withdraw via UNSUBSCRIBE, email marketing only), `POST /api/public/messages/ses-notices` (SNS, signature checked first; outside local only from a configured topic); `GET /api/demo/platform-inbox` also lists the List-Unsubscribe headers. Invariant: email reaches SES only through the SES adapter; CI and lanes use recorded SES answers, never a live send; an SNS notice is read only after its signature verifies. Test: `tests/check_pf19b2_ses.ts`.
