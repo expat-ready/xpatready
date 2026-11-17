@@ -48,3 +48,19 @@ Graph (P-86): `graph.mjs` reports G1 0 · G2 0. GRAPH.md has no PF-4dn entry, so
 A real screen reader, and an intended user's unaided walk (D17, D20 stay with the founder). The accept *page* was walked only up to its hand-off. Accept itself was called directly on the public route, because the local stand-in has no mailbox link click.
 
 Verdict: Approve 1d40c5fc3b0b13e3b3df67f3eacdf195e63f1dce
+
+## Re-review at b160ffe88
+Diff-only (P-277): `git diff 1d40c5fc3 b160ffe88`. It changes 4 code and evidence files (+24/-6, excluding my two reports). Isolated copy `pf4dn` on :4574 (never :4400), stopped afterwards. I rebuilt `web/dist` from the restored code, and the working tree is clean.
+
+* **Finding 1 (m1), resolved.** `invite-panel.tsx:35-39` now sends a refusal whose `problem.code` starts with `DISPLAY_NAME_` to a new `Row.nameError`. The Name `Field` renders it (`:60`), and that `Field` gives the input `aria-invalid` and `aria-describedby` (`controls.tsx:58-59`, `role="alert"`). Typing in the Name field clears it, and every other refusal still goes to Email. The codes match the API (`service.ts:80-83`).
+  * **Re-run:** `check_pf4dn_invite_name` passed 14/14. The new case ("Client​D") gives `{"nameInvalid":"true","emailInvalid":null}`, with the message inside row 1 and 0 invitations stored.
+  * **Mutation:** I restored only the old one-line catch block, and the copy rebuilt the bundle. The run then went **13/14**, and the failing line was the m1 case: `FAIL … {"nameInvalid":null,"emailInvalid":"true"}`. I restored the file with `git checkout`. The test does catch the bug.
+* **Finding 2 (m2), resolved.** `maxLength` is gone, so the API's code-point count (120) is the only limit, and 121+ is refused on the Name field via `DISPLAY_NAME_TOO_LONG`.
+* **Finding 3 (m3), resolved.** The migration comment now calls the check "a backstop for the core of that rule … the API's rule is the stricter one". The comment is accurate, and the SQL is unchanged.
+* **Note 4, resolved.** `invite-name-1440.png` now shows "10 of 20 seats after these invites" with Send enabled and the Name field filled.
+* **Note (not a finding):** a stale Email refusal from an earlier send stays until the email is edited, as before this change. The server checks the name first, so the two messages never come from one response.
+* **Journey score:** my journey report is updated to 10/10. Feedback and Error recovery move from ½ to 1. This rests on the scripted browser walk above, not a new unaided walk.
+
+No Blocker, Major or Minor open.
+
+Verdict: Approve b160ffe88267683207d3b645d59d8fd9264fa6cb

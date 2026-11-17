@@ -45,3 +45,6 @@ To raise it, most valuable first: route `DISPLAY_NAME_*` refusals to the Name fi
 * An intended user's unaided walk (D17/D20 stay with the founder).
 * The emailed link click: the local stand-in has no mailbox. Accept was called on the public route with a known token, the same stand-in the builder's test uses.
 * The screenshots of this walk were kept only in the session scratchpad. They were not committed, because this run writes no files beyond these two reports.
+
+## Re-check at b160ffe88 (diff-only)
+Journey 4 again: I ran `check_pf4dn_invite_name` on :4574 with Name "Client​D" and pressed Send. The message now shows under **Name, person 1 (optional)**. The Name field has `aria-invalid=true` and Email does not, the input is kept and nothing is stored. With the fix reverted, this check fails. `maxLength` is removed, so an 80-emoji paste is no longer cut short and the API's 120-code-point rule is the only limit. Feedback and state: 1. Error recovery: 1. **Total 10/10, Pass.** This re-score rests on the scripted browser check, and I did not walk all of it again. The limits under "Could not test" still apply.
