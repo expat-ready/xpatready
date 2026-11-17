@@ -5,7 +5,7 @@
 --   * minutes 1-1,440 (pre-filled by the API with the booked length, rule 3), notes at most 10,000 characters, at most
 --     20 recommended items of 1-120 characters each, a fee of 0 or more in minor units with its currency, and a
 --     currency only with a fee (rule 6; CAD or USD only by the enum, X-6);
---   * PF-12's wall (forced policy on the session's firm).
+--   * PF-12's wall (forced policy on the session's firm, the firm gate first).
 -- No row is written here. Rollback: DROP TABLE "fo_consult_record"; DROP FUNCTION fo_booking_consult_items_ok(text[]); DROP TYPE "FoConsultCurrency";
 -- CreateEnum
 CREATE TYPE "FoConsultCurrency" AS ENUM ('CAD', 'USD');
@@ -47,6 +47,7 @@ ALTER TABLE "fo_consult_record" ADD CONSTRAINT "fo_consult_record_recommended_ch
 ALTER TABLE "fo_consult_record" ADD CONSTRAINT "fo_consult_record_fee_check" CHECK (
   ("quoted_fee_minor" IS NULL AND "quoted_fee_currency" IS NULL) OR ("quoted_fee_minor" >= 0 AND "quoted_fee_currency" IS NOT NULL));
 
--- PF-12's wall (forced policy on the session's firm; tests/check_pf12_walls.ts).
+-- PF-12's wall (forced policy on the session's firm, the firm gate first; tests/check_pf12_walls.ts).
 ALTER TABLE "fo_consult_record" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
 CREATE POLICY "pf12_firm" ON "fo_consult_record" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
+CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "fo_consult_record" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
