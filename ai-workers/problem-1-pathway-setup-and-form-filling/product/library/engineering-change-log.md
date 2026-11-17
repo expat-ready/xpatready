@@ -1,0 +1,42 @@
+# Engineering Change Log
+Version: 1.0
+Updated 17 Nov 2026 · owner: the tech lead · status: living master
+
+One row per change to the engineering set-up: when, what, where, who, the approval, how to check it and how to undo it. Newest last. Board Library row: "Engineering change log".
+
+## Change log
+| Version | Date (IST) | Change |
+|---|---|---|
+| 1.0 | 17 Nov 2026 | First master (public-safety review applied), assembled from the engineering set-up change log of 17 Nov 2026 (rows C1-C16) |
+
+**Rules for this log.** Times are IST from the clock. Approvals name the decision row, or "founder card" when no row number was given. Money is shown only as public list prices of plans. Known gaps are tracked privately by the tech lead.
+
+| # | When (IST) | Change | Where | Done by (role) | Approval | Check | Undo |
+|---|---|---|---|---|---|---|---|
+| C1 | 17 Nov 10:3x | 22 finished sessions archived (21 cloud, 1 Mac) | claude.ai/code, Claude app | setup agent | founder card | Archived list | Unarchive each (list in the step 1 notes) |
+| C2 | 17 Nov 10:4x | Plan changed: GitHub Enterprise account created for the project (list price) | GitHub account settings | setup agent with the founder | founder cards (P-656..P-661) | Enterprise page | Delete the enterprise while it holds nothing |
+| C3 | 17 Nov 10:5x | Plan changed: paid GitHub Enterprise (list price) | Billing | the founder | P-656..P-660 | Billing overview | Cancel at the end of the cycle |
+| C4 | 17 Nov 11:0x | A pending GitHub Pro downgrade to Free was cancelled; Pro (list price US$4 a month) continues | github.com/settings/billing/licensing | setup agent | founder card | Licensing page shows no pending downgrade | "Downgrade to Free" on the same page |
+| C5 | 17 Nov 11:05 | Project organization created inside the enterprise | the new organization | setup agent | founder card (organization name) | the organization page (plan: enterprise) | Organization settings > Delete (while empty) |
+| C6 | 17 Nov 11:0x | Founder's organization membership set to Public | organization > People | setup agent | checklist item P3g in the approved plan | the organization's public members page | People > visibility Private |
+| C7 | 17 Nov 11:09 | Repository Actions variable REVIEWERS set to the founder's account | the project repository > Settings > Variables | founder | founder card | GET actions/variables/REVIEWERS | Delete the variable |
+| C8 | 17 Nov 11:1x-11:48 | Founder's Mac user settings (`~/.claude/settings.json`, lines 94 and 101): the repository path now names both the old and the new address (once per line) | founder's Mac, user settings | founder (Terminal) | founder card (then a fix script) | grep "moving on 18 Nov 2026" = 2; valid JSON | Restore `~/.claude/settings.json.bak-2026-11-17` |
+| C9 | 17 Nov 11:18 | GitHub Apps installed on the organization (details tracked privately) | organization settings | setup agent | founder card | the organization's app list | Uninstall from the organization settings |
+| C10 | 17 Nov 11:48 | Mac copy `.claude/settings.json`: 36 deny lines added (operating model section 5a), 39 -> 75 | Mac copy (tracked file, unstaged on the tech lead's branch) | founder (Terminal, fix script) | founder card (batch yes as recommended; T7) | deny count 75; all 36 present | Restore `.claude/settings.json.bak-2026-11-17` or remove the lines; revert the settings PR |
+| C11 | 17 Nov ~11:4x (open) | `.mergify.yml`: new first queue `verdicts` (records + title `^qa:` + `qa/CAPABILITIES.md` changed); `product` and `records` unchanged; `check-queue-rules.py` cases | PR #2073 (head 1b2f181), merges on green ci | the tech lead (agent in a scratch clone), independent reviewer Approve | P-664 | `python3 -I product/screens/B119/check-queue-rules.py .mergify.yml` exit 0 (58 passed); Mergify shows a `verdicts` queue | Revert the PR (git revert of its merge commit) |
+| C12 | 17 Nov ~11:5x (open) | `.claude/settings.json` on main: C10's 36 deny lines, byte for byte, for every copy | PR #2075 (head ddd635e1), unlabelled until the founder has seen the diff | the tech lead | P-670 (T7) | deny count 75 in main's file | Revert the PR |
+| C13 | 17 Nov 11:5x | A repository settings change under card T8; details tracked privately by the tech lead | the project repository > Settings | setup agent | T8 (founder card) | tracked privately | tracked privately |
+| C14 | 17 Nov 11:5x | Dependabot malware alerts on (alerts only, no CI) | the project repository > Settings > Advanced Security | setup agent | T8 (founder card) | Toggle shows On | Toggle off |
+| C15 | 17 Nov 11:5x | Cloud environment network allow-list updated (details tracked privately) | claude.ai cloud environment settings | setup agent | W2 (founder card) | environment settings | Revert the allow-list change |
+| C16 | 17 Nov ~11:5x (open) | Test `check_css1_index.ts`: CS-S1's own-PR diff assertion dropped (it failed every later PR changing api/src) | PR #2077 (head 91719a6) | the tech lead | P-214 check fix (standing) | The suite passes on PRs that change api/src | Revert the PR |
+
+**Decisions that change how the pipeline runs** (recorded by the tech lead, P-656..P-669):
+* Enterprise instead of Team.
+* Drain today; move on 18 Nov from 09:30 IST.
+* T1: a ramp target with admission by queue wait.
+* T5: qa verdict records first.
+* T6: one full check after Approve.
+* T10: builders on high effort.
+* T13: rules v2.
+* One batch yes: T9, T11, T12, T14, T16, T17, W1, W3-W6.
+* T15: support contact, with the free reset as backup.
