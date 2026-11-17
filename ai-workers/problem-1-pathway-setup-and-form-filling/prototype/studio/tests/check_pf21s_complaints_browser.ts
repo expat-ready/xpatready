@@ -35,7 +35,7 @@ async function signIn(firmKey: string, email: string): Promise<string> {
   throw new Error(`STOP  local sign-in refused for ${email} (start the copy with PLATFORM_IDENTITY=local): ${b.detail}`);
 }
 const call = async (tok: string, method: string, path: string, body?: unknown) => {
-  const r = await fetch(`${BASE}/api/platform/complaints${path}`, { method, headers: { authorization: `Bearer ${tok}`, ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch(`${BASE}/api/platform/complaints${path}`, { method, headers: { authorization: `Bearer ${tok}`, ...(body ? { "content-type": "application/json" } : {}), ...(method === "POST" && path === "" ? { "idempotency-key": crypto.randomUUID() } : {}) }, body: body ? JSON.stringify(body) : undefined });   // PF-21i: a fresh key per create
   return { status: r.status, body: await r.json().catch(() => null) as unknown };
 };
 const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
@@ -191,6 +191,34 @@ await d.getByRole("button", { name: "Record the complaint" }).dblclick();
 await d.waitForURL(/\/platform\/complaints\/[0-9a-f-]{36}$/, { timeout: 15_000 }); await d.waitForTimeout(800);
 const doubles = ComplaintPage.parse((await call(rTok, "GET", "?view=all&limit=100")).body).items.filter((x) => x.complainantName === `Person Double ${run}`).length;
 ok("PF-21s break M1: a double click on Record the complaint sends one POST and records one complaint", posts() - before === 1 && doubles === 1, { posts: posts() - before, doubles });
+// PF-21i DW (Build Lead A on #2012): a Record whose answer is lost (it reached the server; the browser saw a failure) and
+// pressed again stores one complaint: both presses send the drawer's one Idempotency-Key, the second gets the first's.
+const lost = await newPage(rTok), keys: string[] = [];
+let dropFirst = true;
+await lost.route(/\/api\/platform\/complaints$/, async (r) => {
+  if (r.request().method() !== "POST") return r.continue();
+  keys.push(r.request().headers()["idempotency-key"] ?? "");
+  if (dropFirst) { dropFirst = false; await r.fetch(); return r.abort("connectionreset"); }   // the server records it; the answer never arrives
+  return r.continue();
+});
+await lost.goto(`${BASE}/platform/complaints`); await listed(lost);
+await lost.locator("[data-record-open]").click(); await lost.locator("[data-record-drawer]").waitFor(); await fill(lost, `Person Lost ${run}`);
+const dropped = lost.waitForEvent("requestfailed", { predicate: (r) => r.method() === "POST" && /\/api\/platform\/complaints$/.test(r.url()), timeout: 15_000 });
+await lost.getByRole("button", { name: "Record the complaint" }).click();
+await dropped;
+await lost.locator("[data-record-drawer] button[aria-busy='true']").waitFor({ state: "detached", timeout: 15_000 });
+const afterFirst = ComplaintPage.parse((await call(rTok, "GET", "?view=all&limit=100")).body).items.filter((x) => x.complainantName === `Person Lost ${run}`).length;
+await lost.getByRole("button", { name: "Record the complaint" }).click();
+await lost.waitForURL(/\/platform\/complaints\/[0-9a-f-]{36}$/, { timeout: 15_000 });
+const lostCount = ComplaintPage.parse((await call(rTok, "GET", "?view=all&limit=100")).body).items.filter((x) => x.complainantName === `Person Lost ${run}`).length;
+ok("PF-21i DW (browser) pass: Record pressed again after a lost answer stores one complaint and opens it (both presses carry the drawer's one key)",
+  afterFirst === 1 && lostCount === 1 && keys.length === 2 && !!keys[0] && keys[0] === keys[1], { afterFirst, lostCount, keys });
+// The record page is open; a new opening of the drawer gets a new key:
+await lost.goto(`${BASE}/platform/complaints`); await listed(lost);
+await lost.locator("[data-record-open]").click(); await lost.locator("[data-record-drawer]").waitFor(); await fill(lost, `Person Lost Two ${run}`);
+await lost.getByRole("button", { name: "Record the complaint" }).click();
+await lost.waitForURL(/\/platform\/complaints\/[0-9a-f-]{36}$/, { timeout: 15_000 });
+ok("PF-21i DW (browser) fail→pass: a new opening of the drawer sends a new key (a second complaint is its own, never the first's answer)", keys.length === 3 && !!keys[2] && keys[2] !== keys[0], keys);
 // M2: past one page (`next` set), no chip says "0+"; All reads "100+" (concept G1).
 const m2 = await newPage(rTok);
 await m2.route(/\/api\/platform\/complaints\?view=all$/, async (r) => { const res = await r.fetch(); const b = await res.json(); await r.fulfill({ response: res, json: { ...b, next: "more" } }); });
