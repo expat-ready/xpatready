@@ -167,8 +167,11 @@ jobs:
         run: docker compose -f "$S/deploy/compose.test.yml" build --pull
       - name: restore drill, its pass and its three fail cases (tests/check_pf8r_restore.ts)
         run: |
-          cd "$S" && ./node_modules/.bin/tsx --tsconfig api/tsconfig.json tests/check_pf8r_restore.ts | tee drill.txt
-          st=${PIPESTATUS[0]}
+          cd "$S"
+          # Its exit code, kept (bash -eo pipefail would end the step here on a red drill, before the summary below).
+          st=0
+          ./node_modules/.bin/tsx --tsconfig api/tsconfig.json tests/check_pf8r_restore.ts > drill.txt 2>&1 || st=$?
+          cat drill.txt
           { echo "### Restore drill on $(git rev-parse --short HEAD)"; grep -E '^(PASS|FAIL)  PF-8r|^    restore time|passed$' drill.txt; } >> "$GITHUB_STEP_SUMMARY"
           exit "$st"
       - name: evidence (the drill's evidence files and logs; no row data)
