@@ -11,9 +11,9 @@ import { givable, moneyKeysAdded, moneyLine, roleLine, type Role } from "./contr
 import { CompareRoles, RolePicker } from "./roles";
 import { staffChange } from "./step-up";
 
-type Row = { n: number; name: string; email: string; roles: string[]; error: string | null };
+type Row = { n: number; name: string; email: string; roles: string[]; error: string | null; nameError: string | null };
 /** Case Officer ticked first (AG-1-69) when the inviter may give it; an Admin may not (SA-06: Admin lacks two of its keys). */
-const fresh = (n: number, offered: readonly string[]): Row => ({ n, name: "", email: "", roles: offered.includes("CASE_OFFICER") ? ["CASE_OFFICER"] : [], error: null });
+const fresh = (n: number, offered: readonly string[]): Row => ({ n, name: "", email: "", roles: offered.includes("CASE_OFFICER") ? ["CASE_OFFICER"] : [], error: null, nameError: null });
 
 export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus }: { open: boolean; onOpenChange: (o: boolean) => void; roles: readonly Role[]; me: { roles: string[]; keys: string[] }; seats: { used: number; limit: number }; returnFocus: () => HTMLElement | null }) {
   const offered = givable(roles, me, true);
@@ -32,7 +32,11 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus 
     let sent = 0, unmailed = 0;
     for (const r of rows) {
       try { const a = await staffChange<{ emailed?: boolean }>("/platform/staff/invitations", { email: r.email.trim(), roles: r.roles, ...(r.name.trim() ? { displayName: r.name.trim() } : {}) }); sent++; if (a?.emailed === false) unmailed++; setRows((rs) => rs.filter((x) => x.n !== r.n)); }
-      catch (e) { set(r.n, { error: e instanceof StaffApiError ? e.message : "Could not send this invitation. Please try again." }); }
+      catch (e) {
+        // PF-4dn review m1: a refused name shows on the Name field, every other refusal on the row's Email field.
+        if (e instanceof StaffApiError && /^DISPLAY_NAME_/.test(String((e.problem as { code?: unknown }).code ?? ""))) set(r.n, { nameError: e.message });
+        else set(r.n, { error: e instanceof StaffApiError ? e.message : "Could not send this invitation. Please try again." });
+      }
     }
     setBusy(false);
     await qc.invalidateQueries({ queryKey: ["pf", "staff"] });
@@ -53,8 +57,8 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus 
                 <Input type="email" value={r.email} autoComplete="off" onChange={(e) => set(r.n, { email: e.target.value, error: null })} />
               </Field>
               {/* PF-4dn: after the email, the one required field, which keeps the panel's first focus (PF-6 DW8). */}
-              <div className="mt-3"><Field label={`Name, person ${i + 1} (optional)`}>
-                <Input value={r.name} maxLength={120} autoComplete="off" onChange={(e) => set(r.n, { name: e.target.value, error: null })} data-invite-name />
+              <div className="mt-3"><Field label={`Name, person ${i + 1} (optional)`} error={r.nameError}>
+                <Input value={r.name} autoComplete="off" onChange={(e) => set(r.n, { name: e.target.value, nameError: null })} data-invite-name />
               </Field></div>
               <div className="mt-3"><RolePicker roles={roles} offered={offered} chosen={r.roles} legend="Roles" onChange={(x) => set(r.n, { roles: x, error: null })} /></div>
               <p className="mt-2 text-xs text-text-muted" data-role-line>{r.roles.length ? roleLine(r.roles) : "Choose at least one role."}</p>

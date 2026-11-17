@@ -114,6 +114,16 @@ try {
   ok("PF-4dn DW4 screen: the Name typed on a row reaches the request and is stored; a row without a name sends none",
     sent.find((b) => b.email === s1)?.displayName === "Client B Staff" && sent.find((b) => b.email === s2) !== undefined && !("displayName" in (sent.find((b) => b.email === s2) ?? {}))
     && sql(`select display_name from platform_invitation where email = '${s1}'`) === "Client B Staff" && sql(`select coalesce(display_name, 'NULL') from platform_invitation where email = '${s2}'`) === "NULL", sent);
+  // Review m1: a name the server refuses (an invisible character) shows on the Name field, never under Email.
+  const s3 = `pf4dn-ui3-${run}@example.com`;
+  await p.locator("[data-invite-open]").click(); await p.getByLabel("Email, person 1").waitFor({ timeout: 15_000 });
+  await p.getByLabel("Email, person 1").fill(s3); await p.getByLabel("Name, person 1 (optional)").fill("Client\u200bD");
+  await p.locator("[data-send-invites]").click();
+  const nameErr = p.locator('[data-invite-row="1"]').getByText("The name has a line break or an invisible character. Type it again on one line.");
+  await nameErr.waitFor({ timeout: 15_000 }).catch(() => undefined);
+  ok("PF-4dn review m1 fail: a refused name shows on the Name field (aria-invalid there, not on Email), nothing stored",
+    await nameErr.isVisible() && await p.getByLabel("Name, person 1 (optional)").getAttribute("aria-invalid") === "true" && await p.getByLabel("Email, person 1").getAttribute("aria-invalid") !== "true" && invitations(s3) === 0,
+    { nameInvalid: await p.getByLabel("Name, person 1 (optional)").getAttribute("aria-invalid"), emailInvalid: await p.getByLabel("Email, person 1").getAttribute("aria-invalid") });
   ok("PF-4dn DW4 screen: no page error", errors.length === 0, errors);
 } finally {
   sql(`update platform_plan set seats_limit = ${plan[1]} where id = '${plan[0]}'`);
