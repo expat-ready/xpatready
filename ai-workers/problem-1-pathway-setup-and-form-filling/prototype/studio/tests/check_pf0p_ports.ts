@@ -314,6 +314,42 @@ try {
     ok("adapter fail: when the first writer rolls back, the waiting second still commits its line (one more line, one workspace)", firstFails[0].status === "rejected" && firstFails[1].status === "fulfilled" && lines() === l2 + 1 && sql(`select count(*) from audit_event where entity_key = 'race-d-${K}'`) === "1" && sql(`select count(*) from audit_event where entity_key = 'race-c-${K}'`) === "0", firstFails.map((r) => r.status === "rejected" ? String(r.reason).slice(0, 200) : "ok"));
   } finally { await db2.$disconnect(); }
 
+  // Review round 3 m7: the first writers on a database with no platform-audit row yet (platformAuditWorkspaceId's create
+  // path), each case on its own fresh copy of a migrated template, since that row is never deleted (aud_event_workspace_guard).
+  const TPL = `${DB}_tpl`, fresh: string[] = [];
+  execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", TPL]); execFileSync(join(BIN, "createdb"), [...PG, TPL]);
+  for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(TPL), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
+  const firstCopy = (n: string) => { const name = `${DB}_first_${n}`; execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", name]); execFileSync(join(BIN, "createdb"), [...PG, "-T", TPL, name]); fresh.push(name); return name; };
+  const on = (d: string, q: string) => execFileSync(join(BIN, "psql"), [urlOf(d), "-v", "ON_ERROR_STOP=1", "-q", "-Atc", q], { encoding: "utf8" }).trim();
+  const firstLines = (d: string) => Number(on(d, `select count(*) from audit_event e join workspace w on w.id = e.workspace_id where w.key = '${PLATFORM_AUDIT_WORKSPACE}'`));
+  const firstWs = (d: string) => on(d, `select count(*) from workspace where key = '${PLATFORM_AUDIT_WORKSPACE}'`);
+  const clientOf = (d: string) => new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(d), options: "-c TimeZone=UTC" }) });
+  try {
+    { const d = firstCopy("a"), c = clientOf(d);
+      try {
+        await rejects(() => c.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: "r-13" })); throw new Error("roll back"); }));
+        const gone = firstWs(d) === "0";
+        await c.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: "r-14" })); });
+        ok("adapter pass (fresh database): a rolled-back first line leaves no workspace and no stale id; the next line makes it", gone && firstLines(d) === 1 && firstWs(d) === "1");
+      } finally { await c.$disconnect(); } }
+    { const d = firstCopy("b"), c1 = clientOf(d), c2 = clientOf(d);
+      try {
+        const both = await Promise.allSettled([
+          c1.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: "race-a" })); await pause(800); }, { timeout: 20_000 }),
+          pause(200).then(() => c2.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: "race-b" })); }, { timeout: 20_000 })),
+        ]);
+        ok("adapter pass (fresh database, review M1): two first writers at once both commit, one workspace", both.every((r) => r.status === "fulfilled") && firstLines(d) === 2 && firstWs(d) === "1", both.map((r) => r.status === "rejected" ? String(r.reason).slice(0, 200) : "ok"));
+      } finally { await c1.$disconnect(); await c2.$disconnect(); } }
+    { const d = firstCopy("c"), c1 = clientOf(d), c2 = clientOf(d);
+      try {
+        const firstFails = await Promise.allSettled([
+          c1.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: "race-c" })); await pause(800); throw new Error("first writer rolls back"); }, { timeout: 20_000 }),
+          pause(200).then(() => c2.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: "race-d" })); }, { timeout: 20_000 })),
+        ]);
+        ok("adapter fail (fresh database): when the first writer rolls back, the waiting second still makes the workspace and commits its line", firstFails[0].status === "rejected" && firstFails[1].status === "fulfilled" && firstLines(d) === 1 && firstWs(d) === "1", firstFails.map((r) => r.status === "rejected" ? String(r.reason).slice(0, 200) : "ok"));
+      } finally { await c1.$disconnect(); await c2.$disconnect(); } }
+  } finally { for (const d of [...fresh, TPL]) execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", d]); }
+
   // PF-0c: the interim adapter runs AuditPort's shared contract (lines read back from audit_event by detail.firmId).
   await runContract(auditPortContract, "AuditEventAdapter", () => ({ audit: new AuditEventAdapter(), commit: (fn) => db.$transaction((tx) => fn(tx)), rollback: (fn) => db.$transaction(async (tx) => { await fn(tx); throw new Error("roll back"); }).catch(() => undefined), lines: async (firm, prefix) => (await db.auditEvent.findMany({ where: { workspaceId: (await db.workspace.findUnique({ where: { key: PLATFORM_AUDIT_WORKSPACE } }))?.id ?? "00000000-0000-4000-8000-000000000000", entityKey: { startsWith: prefix }, detail: { path: ["firmId"], equals: firm } }, orderBy: [{ at: "asc" }, { entityKey: "asc" }] })).map((e) => ({ actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey ?? "", summary: e.summary })) }), ok);
 } finally {

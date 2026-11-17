@@ -143,3 +143,53 @@ I did not re-run the suites:
 Reviewer: Approve 1bf3608a6807893e183d02b7b20848ae6020bcf9
 
 Verdict: Approve
+
+---
+
+## Re-review round 3: the diff `fda324948..7f54d4720` only (P-277). Head 7f54d47203ba9b5c29917a327be7ce076202cbea
+
+I read the three files. I did not run any suites, as you asked.
+
+I applied the head's migrations, from `git archive`, to the scratch database `xr_studio_rev_aud1a_r3`, dropped afterwards. I probed `aud_event_workspace_guard` there as `xr_app` and as the owner. The builder reports `check_aud1a_insert_only` 39/39, `check_pf0p_ports` 117/117 and six more suites green.
+
+**What the guard gets right** (`migration.sql:128-147`), all refused in my probes:
+* deleting the `platform-audit` row;
+* changing its id;
+* renaming it;
+* renaming `demo` away and then another workspace to `demo` (the rename-to-demo route is closed);
+* renaming a new row to `platform-audit`;
+* `truncate workspace` as `xr_app` (no grant; row triggers do not fire on TRUNCATE, so the grant is what stops it).
+
+`Demo.wipe`'s delete of `demo` still goes through. DW7's eight tries and its "plain workspace renamed to demo" case fail if the guard is removed. The platform route from Devin's finding is closed.
+
+**What the app does to workspace rows:** nothing beyond these three. A grep of `api/src`, `tools` and `ports`:
+* `demo.ts:569` deletes the demo row (inside `wipe`).
+* `core.ts:129` upserts by key with `update: {}`, so the key and id never change.
+* `audit-event.ts:22` uses `createMany` with `skipDuplicates`.
+
+No other path deletes, re-keys or re-ids a workspace. No migration declares a foreign key to `workspace`, so nothing else stops a delete.
+
+**M4 (Major, new): the same orphan route is still open for every other workspace.**
+* Failure scenario, probed as `xr_app` in one transaction:
+  1. `delete from workspace where key = 'firm'`, or `update workspace set id = gen_random_uuid() where key = 'firm'`
+  2. `set_config('app.audit_sample_reset', 'on', true)`
+  3. `delete from audit_event where workspace_id = <the firm workspace's old id>`
+
+  Result: "deleted 1".
+* That was a configuration line of a non-demo workspace: `firm_id` null, no `detail.firmId`. The `firm` key is a real firm's workspace (P-240; g1/g2 test it).
+* This is exactly the move DW7's pass case asserts is allowed (`check_aud1a_insert_only.ts:174-175`, rename then delete a plain workspace as `xr_app`).
+* It breaks the recorded departure ("nothing else, never a firm's production line") and the brief's DW3b ("a line of an existing non-demo workspace is never removed by the sweep"): deleting or re-iding the row first turns any workspace's lines into sweepable orphans.
+* Fix, in the same function, at no cost to the app (see above):
+  * On DELETE, refuse every row whose key is not `demo`.
+  * On UPDATE, refuse an id change for every row, not only `platform-audit` (line 142).
+  * Rewrite DW7's pass case: a label change is allowed; renaming a plain workspace is still allowed; deleting it is refused.
+* If Lead 78 rules this out of scope, record it word for word as a further departure in the PR body.
+
+**Minors**
+* **m7.** `check_pf0p_ports.ts:296-318`: the race test from PF-0p's earlier review M1 now runs on a row that already exists. So the "two first writers create the `platform-audit` row at once" path (`audit-event.ts:20-23`, ON CONFLICT DO NOTHING) is no longer tested.
+  * Failure scenario: a regression there, such as Prisma's upsert put back, would pass this suite.
+  * Fix: run that race first on a fresh scratch database with no row (pf0p already makes its own database), or on a second scratch database.
+* **g1/g2** (pending the Lead, not in this diff): renaming `demo`→`firm` with `session_replication_role = replica`, as the owner on the suite's own copy, is the right shape. It is the same pattern as fo2v. It is unaffected by the M4 fix.
+* **m1 (round 1) closed:** pf0p no longer deletes the `platform-audit` row.
+
+Verdict: Changes needed

@@ -154,7 +154,7 @@ try {
   // Lead 78's ruling on Devin's finding (comment 6946256175): no role deletes the platform-audit row, changes its id, or
   // moves the key demo or platform-audit onto or off a workspace, so a platform line never looks like a demo or orphan line.
   const wsKeys = () => sql(BARE, "select string_agg(key || '=' || id, ',' order by key) from workspace");
-  const k0 = wsKeys(), GUARD = /never deleted|never takes or gives up the key|keeps its id/;
+  const k0 = wsKeys(), GUARD = /is never deleted|never takes or gives up the key|keeps its id/;
   const guarded = [
     ["delete the platform-audit row (app)", () => tx(BARE, "delete from workspace where key = 'platform-audit'", true, "xr_app")],
     ["delete the platform-audit row (owner)", () => tx(BARE, "delete from workspace where key = 'platform-audit'", true)],
@@ -164,6 +164,8 @@ try {
     ["rename another workspace to platform-audit (owner)", () => tx(BARE, "update workspace set key = 'platform-audit' where key = 'firm'", false)],
     ["swap demo and platform-audit in one statement (owner)", () => tx(BARE, "update workspace set key = case key when 'demo' then 'platform-audit' else 'demo' end where key in ('demo', 'platform-audit')", false)],
     ["change the platform-audit row's id (owner)", () => tx(BARE, `update workspace set id = '${randomUUID()}' where key = 'platform-audit'`, false)],
+    ["delete another firm's workspace row (app; review round 3 M4)", () => tx(BARE, "delete from workspace where key = 'firm'", true, "xr_app")],
+    ["change another workspace's id (app; review round 3 M4)", () => tx(BARE, `update workspace set id = '${randomUUID()}' where key = 'firm'`, true, "xr_app")],
   ] as const;
   const notRefused = guarded.filter(([, f]) => !refused(f, GUARD)).map(([n]) => n);
   ok(`AUD-1a DW7 fail: every move of the rows the rule reads is refused, as the app's connection and as the owner (${guarded.length} tries); nothing changed`, notRefused.length === 0 && wsKeys() === k0, notRefused);
@@ -172,9 +174,9 @@ try {
   ok("AUD-1a DW7 fail: no workspace takes the key demo (renaming a plain workspace to demo is refused, the app's connection)", refused(() => tx(BARE, "update workspace set key = 'demo' where key = 'aud1a-plain'", false, "xr_app"), GUARD));
   tx(BARE, "update workspace set label = 'Renamed label' where key in ('demo', 'platform-audit')", false, "xr_app");
   tx(BARE, "update workspace set key = 'aud1a-plain-2' where key = 'aud1a-plain'", false, "xr_app");
-  tx(BARE, "delete from workspace where key = 'aud1a-plain-2'", false, "xr_app");
-  ok("AUD-1a DW7 pass: a label changes on the guarded rows, and a plain workspace is renamed and deleted (the app's connection)",
-    n(BARE, "select count(*) from workspace where key in ('demo', 'platform-audit') and label = 'Renamed label'") === 2 && n(BARE, "select count(*) from workspace where key like 'aud1a-plain%'") === 0);
+  ok("AUD-1a DW7 fail (review round 3 M4): a plain workspace is never deleted either, even with the setting on (the app's connection)", refused(() => tx(BARE, "delete from workspace where key = 'aud1a-plain-2'", true, "xr_app"), GUARD));
+  ok("AUD-1a DW7 pass: a label changes on the guarded rows, and a plain workspace is renamed (the app's connection)",
+    n(BARE, "select count(*) from workspace where key in ('demo', 'platform-audit') and label = 'Renamed label'") === 2 && n(BARE, "select count(*) from workspace where key = 'aud1a-plain-2'") === 1);
 
   // ------------------------------------------------------------------------------------------- Part B: the isolated copy
   const call = async (method: string, path: string, body?: unknown, actor = "user-A") => {

@@ -120,18 +120,21 @@ BEGIN
 END $fn$;
 CREATE TRIGGER "aud_event_no_truncate" BEFORE TRUNCATE ON "audit_event" FOR EACH STATEMENT EXECUTE FUNCTION aud_event_no_truncate();
 
--- The workspace rows the delete rule reads (Lead 78's ruling on Devin's finding, comment 6946256175): the platform-audit
--- row is never deleted and its id never changes, and no workspace takes or gives up the key demo or platform-audit, for
--- every role (the app's xr_app included; only an owner on a scratch copy can switch triggers off, which xr_app cannot,
--- PF-12). So a platform line can never be made to look like a demo or orphan line. Demo.wipe deleting the demo row and
--- a new demo row being made stay allowed.
+-- The workspace rows the delete rule reads (Lead 78's ruling on Devin's finding, comment 6946256175; review round 3 M4):
+-- only the demo row is ever deleted (Demo.wipe), no row changes its id, and no workspace takes or gives up the key demo or
+-- platform-audit, for every role (the app's xr_app included; only an owner on a scratch copy can switch triggers off,
+-- which xr_app cannot, PF-12). So no line of platform-audit or of a firm's workspace can be made to look like a demo or
+-- a gone workspace's line. A new demo row being made, a label change and renaming a plain workspace stay allowed.
 CREATE FUNCTION aud_event_workspace_guard() RETURNS trigger
   LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp
   AS $fn$
 BEGIN
   IF TG_OP = 'DELETE' THEN
-    IF OLD."key" = 'platform-audit' THEN
-      RAISE EXCEPTION 'the platform audit workspace is never deleted (its lines are the audit trail)' USING ERRCODE = 'insufficient_privilege';
+    -- Only the demo workspace row is ever deleted (Demo.wipe); every other one, platform-audit and a firm's workspace
+    -- alike, stays, so its lines never become a gone workspace's (review round 3, M4).
+    IF OLD."key" IS DISTINCT FROM 'demo' THEN
+      RAISE EXCEPTION 'workspace % is never deleted (its audit lines name it); only the demo workspace is reset', quote_literal(OLD."key")
+        USING ERRCODE = 'insufficient_privilege';
     END IF;
     RETURN OLD;
   END IF;
@@ -139,8 +142,8 @@ BEGIN
     RAISE EXCEPTION 'a workspace never takes or gives up the key % (the audit trail''s delete rule reads it)', quote_literal(CASE WHEN OLD."key" IN ('demo', 'platform-audit') THEN OLD."key" ELSE NEW."key" END)
       USING ERRCODE = 'insufficient_privilege';
   END IF;
-  IF OLD."key" = 'platform-audit' AND NEW."id" IS DISTINCT FROM OLD."id" THEN
-    RAISE EXCEPTION 'the platform audit workspace keeps its id (its lines point at it)' USING ERRCODE = 'insufficient_privilege';
+  IF NEW."id" IS DISTINCT FROM OLD."id" THEN
+    RAISE EXCEPTION 'a workspace keeps its id (its audit lines point at it)' USING ERRCODE = 'insufficient_privilege';
   END IF;
   RETURN NEW;
 END $fn$;
