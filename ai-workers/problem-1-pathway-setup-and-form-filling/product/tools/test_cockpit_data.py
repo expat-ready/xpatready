@@ -3,7 +3,7 @@
 Every expected number below is worked by hand from the fixture snapshot tools/fixtures/cockpit/snapshot/ (taken
 2026-11-20 12:00 IST = 06:30 UTC); the working is written next to each assertion.
 Run: python3 -m unittest product/tools/test_cockpit_data.py   (or: python3 product/tools/test_cockpit_data.py)"""
-import importlib.util, json, os, shutil, subprocess, sys, tempfile, unittest
+import importlib.util, json, os, re, shutil, subprocess, sys, tempfile, unittest
 from datetime import date, datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -366,7 +366,7 @@ class TrustAndInvariants(unittest.TestCase):
         t2 = json.loads(json.dumps(theirs))
         plus = lambda n: (date.fromisoformat(k["forecast_p85_date"]) + timedelta(days=n)).isoformat()
         r7 = cd.reconcile_compare(k, theirs, None)
-        self.assertEqual(r7["compared"], 36)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's six + v63's eight + P-636's Proven
+        self.assertEqual(r7["compared"], 49)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's six + v63's eight + P-636's Proven + P-644's 13 Flow counts
         t2["numbers"]["forecast_p85_date"]["value"] = plus(1)                 # +1 day: agrees
         self.assertEqual(cd.reconcile_compare(k, t2, None)["state"], "agree")
         t2["numbers"]["forecast_p85_date"]["value"] = plus(2)                 # +2 days: disagrees
@@ -951,7 +951,7 @@ class Delivery24h(unittest.TestCase):
             out, note = cd.run_reconcile(d, rec)
             self.assertIsNone(note)
             _, c = run(d, rec=out, note=None)
-            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 36, []))
+            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 49, []))   # 36 + P-644's 13 Flow counts
 
 
 BLP = "files/" + cd.REL + "/BACKLOG.md"
@@ -1361,6 +1361,50 @@ class Tooltips(unittest.TestCase):
         self.assertIn('querySelectorAll("[data-tip],[data-info],[data-nm],[data-items]")', html)
         self.assertEqual(html.count("mineR.map(riskLine)"), 1)              # "Who must act: You" lists Needs you items and your risks
 
+    def test_later_open_part_is_not_merged_p639(self):
+        """P-639 (16 Nov, qa #1950): a merged "PF-5 part 1" is not PF-5 while BACKLOG names a later part of it. Pass
+        case: every named part merged (or one PR for the whole id). Fail case: a later part still open."""
+        bl = ("| PF-5 | api | sign-up | b | c |\nThe trial end moves to PF-5 part 2; invoices are PF-5 parts 3 and 4.\n"
+              "FO-7ts parts 1–2 cover the ledger; FO-7mv (part 1) is the list.\n")
+        self.assertEqual(cd.backlog_parts(bl), {"PF-5": {"2", "3", "4"}, "FO-7ts": {"1", "2"}, "FO-7mv": {"1"}})
+        self.assertEqual(cd.title_part("runtime: PF-5 part 1 — sign-up", "PF-5"), ["1"])
+        self.assertEqual(cd.title_part("runtime: PF-5 parts 1 and 2", "PF-5"), ["1", "2"])
+        self.assertIsNone(cd.title_part("runtime: PF-5 — sign-up", "PF-5"))
+        self.assertIsNone(cd.title_part("runtime: PF-5s part 1", "PF-5"))                          # another id
+        p1 = [("2026-11-15T10:00:00Z", 101, ["1"])]
+        self.assertEqual(cd.merged_when(p1, {"2", "3", "4"}), (None, ["2", "3", "4"]))           # fail: later parts open
+        allp = p1 + [("2026-11-16T10:00:00Z", 102, ["2"]), ("2026-11-16T11:00:00Z", 103, ["3", "4"])]
+        self.assertEqual(cd.merged_when(allp, {"2", "3", "4"}), (("2026-11-16T11:00:00Z", 103), []))  # pass: dated by the last part
+        self.assertEqual(cd.merged_when(p1, set()), (("2026-11-15T10:00:00Z", 101), []))       # pass: no other part named
+        whole = [("2026-11-14T09:00:00Z", 99, None)]
+        self.assertEqual(cd.merged_when(whole, set()), (("2026-11-14T09:00:00Z", 99), []))     # pass: the whole id, no part named
+        self.assertEqual(cd.merged_when(whole, {"2"}), (("2026-11-14T09:00:00Z", 99), []))     # pass: shipped whole, a mentioned part does not hold it
+        self.assertEqual(cd.merged_when(whole + p1, {"2"}), (None, ["2"]))                      # fail: shipped in parts, a whole-id PR does not close part 2
+        # the independent check follows the same rule: map 1 (PF-1, PF-2) is built until PF-2 is only merged as part 1
+        spec = importlib.util.spec_from_file_location("cockpit_reconcile_p639", os.path.join(HERE, "cockpit-reconcile.py"))
+        rc = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rc)
+        P = "files/ai-workers/problem-1-pathway-setup-and-form-filling/product/"
+        base = rc._fixture("2026-11-20T12:00:00+05:30")
+        built = lambda mem: rc.compute(rc.Snapshot(mem=mem))["numbers"]["built_rows"]["value"]
+        self.assertEqual(built(base), 2)
+        pulls = json.loads(base["github/pulls.json"])
+        for p in pulls:
+            if p["number"] in (2, 3):
+                p["title"] = p["title"].replace("PF-2", "PF-2 part 1")
+        bl2 = base[P + "BACKLOG.md"] + "\nPF-2 part 2 is the rest.\n"
+        self.assertEqual(built(dict(base, **{"github/pulls.json": json.dumps(pulls), P + "BACKLOG.md": bl2})), 1)   # fail case
+        pulls.append(dict(pulls[1], number=40, title="runtime: PF-2 part 2 — rest", merged_at="2026-11-19T22:00:00Z"))
+        self.assertEqual(built(dict(base, **{"github/pulls.json": json.dumps(pulls), P + "BACKLOG.md": bl2})), 2)   # pass case
+        whole_only = dict(base, **{P + "BACKLOG.md": bl2})                                     # PF-2 shipped whole, a part 2 mentioned
+        self.assertEqual(built(whole_only), 2)                                                    # pass: shipped whole (PF-4b, FO-3 on 16 Nov)
+
+    def test_part_patterns_agree_in_both_scripts(self):
+        """P-639: the two scripts read parts with the same pattern (they are written apart, so a test keeps them in step)."""
+        src = open(os.path.join(HERE, "cockpit-reconcile.py"), encoding="utf-8").read()
+        rx = re.search(r'part_rx = r"(.+)"', src).group(1)
+        self.assertTrue(cd.PART_MENTION.pattern.endswith(rx))
+
     def test_first_screen_p636(self):
         """P-636 (founder 16 Nov): six answers in three words. Proven comes from qa's file on main only, Built = all parts
         merged or qa passed, and every answer has its explanation with what is behind it."""
@@ -1390,7 +1434,7 @@ class Tooltips(unittest.TestCase):
         R = f["release"]
         self.assertEqual((R["planned"], R["built"], R["proven"], R["waiting"]), (4, 3, 1, 2))   # built 1, 3 by parts + 2 by qa's pass
         self.assertEqual(R["unlisted_ids"], [4])
-        self.assertEqual(R["qa_not_built_ids"], [3])
+        self.assertEqual(R["qa_not_built_ids"], [])                                               # no qa test after the merge: Built, awaiting qa
         self.assertEqual((R["days_left"], R["need_per_day"], R["state"]), (13, 0.2, "on track"))  # 3 left in 13 days; 1 proven in 4 days
         self.assertEqual((f["today"]["short"], f["today"]["state"]), (2, "at risk"))
         self.assertEqual([x["id"] for x in f["needs"]["items"]], ["A1", "C5"])                   # dated today; C12 later; C2 not the founder's
@@ -1399,6 +1443,15 @@ class Tooltips(unittest.TestCase):
         self.assertIsNone(cd.first_screen(d, {}, None, "x")["release"]["proven"])
         st = R["stage"]                                                       # A115: one stage per capability, the furthest first
         self.assertEqual((st["2"], st["1"], st["3"], st["4"]), ("proven", "built", "built", "planned"))
+        # P-639 (Lead 66): qa's verdict decides. Row 3 reads Not built: tested after its last part merged, it is In
+        # progress (qa found it unfinished); merged after qa's last test, it stays Built (awaiting qa).
+        rows_after = [dict(r) for r in d["build_rows"]]
+        rows_after[2].update(built_at="2026-11-15T10:00:00Z", qa_tested_at="2026-11-15T12:00:00Z")
+        f2 = cd.first_screen(dict(d, build_rows=rows_after), {2: "Works", 3: "Not built", 1: "Partial"}, None, "x")["release"]
+        self.assertEqual((f2["stage"]["3"], f2["qa_not_built_ids"], f2["built"]), ("in progress", [3], 2))   # fail case
+        rows_after[2].update(qa_tested_at="2026-11-15T09:00:00Z")
+        f3 = cd.first_screen(dict(d, build_rows=rows_after), {2: "Works", 3: "Not built", 1: "Partial"}, None, "x")["release"]
+        self.assertEqual((f3["stage"]["3"], f3["qa_not_built_ids"], f3["built"]), ("built", [], 3))          # pass case: awaiting qa
         self.assertEqual(sum(R["stage_counts"].values()), R["planned"])
         self.assertEqual(f["needs"]["items"][1]["unblocks"], "the launch gate")                     # no trigger in the case: the gate
         self.assertEqual(cd.nocode("Engage counsel (P-541, founder) before the gate P-589"), "Engage counsel before the gate")
@@ -1951,6 +2004,161 @@ class LeadWatchBoard(unittest.TestCase):
     def test_board_without_first_screen(self):
         self.assertEqual(cd.watch_panels({}), (None, None))
         self.assertEqual(len(cd.watch_lines({})), 1)
+
+
+class Flow(unittest.TestCase):
+    """P-644 (Lead 69, 16 Nov): the Flow box's counts, lights and forecast (FORMULAS.md › Flow)."""
+    IST_ = cd.IST
+
+    def at(self, s):
+        return datetime.fromisoformat(s).replace(tzinfo=self.IST_).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def small(self, parts=None):
+        a = self.at
+        rows = [{"map": 1, "built": "2026-11-17", "built_at": a("2026-11-17T08:00"), "qa_tested_at": a("2026-11-17T10:00")},
+                {"map": 2, "built": "2026-11-15", "built_at": a("2026-11-15T10:00"), "qa_tested_at": a("2026-11-16T09:00")},
+                {"map": 3, "built": "2026-11-16", "built_at": a("2026-11-16T20:00"), "qa_tested_at": a("2026-11-16T10:00")},
+                {"map": 4, "built": None, "built_at": None, "qa_tested_at": a("2026-11-14T10:00")},
+                {"map": 5, "built": "2026-11-14", "built_at": a("2026-11-14T13:00"), "qa_tested_at": a("2026-11-16T13:00")}]
+        qa = {1: "Works", 2: "Partial", 3: "Not built", 4: "Works", 5: "Works"}
+        part_at = parts if parts is not None else {
+            "A-1": a("2026-11-17T09:00"), "B-1": a("2026-11-16T11:00"), "C-1": a("2026-11-15T11:00"),
+            "D-1": a("2026-11-14T11:00"), "E-1": a("2026-11-14T12:00")}
+        since = {1: a("2026-11-17T10:00"), 5: a("2026-11-16T13:00")}       # row 4 was listed already reading Works: no date
+        now = datetime(2026, 11, 17, 6, 30, tzinfo=timezone.utc)           # 12:00 IST
+        return cd.flow_counts(rows, qa, part_at, 10, since, now)
+
+    def test_counts_pass_and_fail_cases(self):
+        f = self.small()
+        self.assertEqual(f["days"], ["2026-11-14", "2026-11-15", "2026-11-16"])
+        self.assertEqual((f["flow_rows_built_24h"], f["flow_rows_built_3d"]), (2, [1, 1, 1]))     # rows 1 and 3 (20:00 the evening before)
+        self.assertEqual(f["built_24h_maps"], [1, 3])
+        self.assertEqual((f["flow_parts_24h"], f["flow_parts_3d"], f["flow_parts_left"]), (1, [2, 1, 1], 5))   # B-1 is 25 h old
+        self.assertEqual((f["flow_works_24h"], f["flow_works_3d"]), (2, [0, 0, 1]))   # row 4 (listed already Works) never counts as new
+        self.assertEqual(f["works_24h_maps"], [1, 5])
+        self.assertEqual(f["flow_prove_lag_h"], 25.0)                       # median of 2 h (row 1) and 48 h (row 5)
+        # fail case: row 2 was tested by qa after its parts merged and reads Partial: In progress, not waiting
+        # pass case: row 3 merged after qa's last test: Built, waiting for qa, 16 h old
+        self.assertEqual((f["waiting"], f["flow_awaiting"], f["flow_awaiting_oldest_h"]), ([3], 1, 16.0))
+        # all 101 proven = the later of: 5 ids left at 4/3 (mean), 2 (best), 1 (worst) a day, plus ceil(25 / 24) = 2 days
+        # from built to proven (23, 22, 24 Nov); and 2 rows not proven at 1/3 (mean), 1 (best), 0 (worst) a day
+        # (23 Nov, 19 Nov, no date). Review M1: proving at qa's own rate, not only building
+        self.assertEqual((f["build_done"], f["prove_done"]), ("2026-11-23", "2026-11-23"))
+        self.assertEqual((f["flow_forecast"], f["flow_forecast_best"], f["flow_forecast_worst"]), ("2026-11-23", "2026-11-22", None))
+        self.assertEqual(f["today_counts"], {"rows": 1, "parts": 1, "works": 1})
+
+    def test_a_day_without_a_part_gives_no_worst_date(self):
+        a = self.at
+        f = self.small({"A-1": a("2026-11-14T09:00"), "B-1": a("2026-11-16T11:00")})
+        self.assertEqual((f["flow_parts_3d"], f["flow_forecast_worst"]), ([1, 0, 1], None))
+        self.assertIsNotNone(f["flow_forecast"])
+        self.assertIsNone(self.small({})["flow_forecast"])                  # no part merged in 3 days: no date
+
+    def box(self, fc, mm=25, fp=5.0, waits=(4, 5, 6), lanes=(18, 20), burn=2.4, disk=12, ci_error=None):
+        d = {"lineage": {"taken_at": "2026-11-17T06:30:00Z"},
+             "pipeline": {"queue_wait_min": {"v": mm, "p90": 70, "src": "flow-measure"}, "change_fail": {"batch_fail": {"v": fp}}},
+             "resources": {"burn_pct_per_h": {"v": burn}, "weekly_pct": {"v": 80}, "disk_free_gb": {"v": disk}}}
+        li = {"lanes_running": lanes[0], "lane_slots": lanes[1]} if lanes else {}
+        ci = {"error": ci_error} if ci_error else {"queued_runs": 3, "runs_sampled": 2, "runs_in_3h": 2,
+                                                  "job_waits": [{"min": w, "still_queued": False} for w in waits]}
+        return {L["name"]: L for L in cd.flow_box(d, fc, li, "Lead input", ci)["lights"]}
+
+    def test_lights_against_their_targets(self):
+        f = self.small()
+        b = self.box(f)
+        self.assertEqual((b["Build"]["light"], b["Prove"]["light"], b["Merge"]["light"], b["Resources"]["light"]), ("red", "red", "green", "green"))
+        self.assertEqual(self.box(f, mm=45)["Merge"]["light"], "amber")     # median over 30 min
+        self.assertEqual(self.box(f, fp=25.0)["Merge"]["light"], "red")     # failed batches 20% or more
+        self.assertEqual(self.box(f, waits=(40, 50))["Merge"]["light"], "red")   # a test machine after 30 min
+        self.assertEqual(self.box(f, disk=5)["Resources"]["light"], "red")  # under P-644's 7 GB floor
+        self.assertEqual(self.box(f, lanes=(12, 20))["Resources"]["light"], "amber")
+        nm = self.box(f, ci_error="offline", lanes=None)
+        self.assertIn("not measured: offline", " ".join(nm["Merge"]["lines"]))
+        self.assertIn("Lanes: not measured", " ".join(nm["Resources"]["lines"]))
+        g = {k: v for k, v in f.items()}
+        g.update({"flow_rows_built_24h": 10, "flow_works_24h": 11, "flow_prove_lag_h": 30.0})
+        bb = self.box(g)
+        self.assertEqual((bb["Build"]["light"], bb["Prove"]["light"]), ("green", "amber"))   # proving on count, but slower than 12 h
+        g.update({"flow_works_24h": 12, "flow_prove_lag_h": None})
+        self.assertEqual(self.box(g)["Prove"]["light"], "amber")            # review 2 m2: built to proven not measured is not green
+        g.update({"flow_prove_lag_h": 12.0, "flow_awaiting_oldest_h": 3.0})
+        self.assertEqual(self.box(g)["Prove"]["light"], "green")            # 12 h or less
+        g.update({"flow_rows_built_24h": 7})
+        self.assertEqual(self.box(g)["Build"]["light"], "amber")            # the floor
+        self.assertEqual(cd.flow_light(None, None), "grey")
+        self.assertEqual(cd.flow_light("green", None), "amber")              # never green while a part is not measured (review m4)
+        self.assertEqual(self.box(f, mm=None)["Merge"]["light"], "amber")
+        self.assertIn("this snapshot has no CI reading", " ".join(cd.flow_box({"lineage": {}}, f, {}, "x", None)["lights"][2]["lines"]))
+
+    def test_forecast_sentence(self):
+        # review 2 m1: the founder reads one plain sentence; the build date has no lag in it; the total is the planned rows
+        fl = cd.flow_box({"lineage": {}}, self.small(), {}, "x", None)["forecast"]
+        self.assertEqual(fl, "All 5 rows proven about 23 Nov. Building: the last part merges about 21 Nov (1.3 parts a day), and rows are "
+                             "proven about 2 days after they are built. Proving: the 2 rows left, at qa's 0.33 rows a day, about 23 Nov. "
+                             "Best 22 Nov; worst no date (a day with nothing merged or proven).")
+
+    def test_forecast_sentence_when_all_done(self):
+        f = self.small()
+        f.update({"flow_parts_left": 0, "to_prove": 0, "flow_forecast": "2026-11-17", "flow_forecast_best": "2026-11-17", "flow_forecast_worst": "2026-11-17"})
+        fl = cd.flow_box({"lineage": {}}, f, {}, "x", None)["forecast"]
+        self.assertIn("Building: every part has merged", fl)
+        self.assertIn("Proving: every row is proven.", fl)
+        g = self.small()
+        g["flow_parts_3d"] = [1, 1, 1]
+        self.assertIn("(1 part a day)", cd.flow_box({"lineage": {}}, g, {}, "x", None)["forecast"])
+
+    def test_no_qa_rows_leaves_build_measured(self):
+        # review m6: with no Release 1 row in qa's file, Prove and the forecast are not measured; Build still is, on both sides
+        out, note = cd.run_reconcile(FIX, os.path.join(HERE, "cockpit-reconcile.py"))
+        _, c = run(FIX, rec=out, note=None)
+        self.assertEqual((c["keys"]["flow_rows_built_24h"], c["keys"]["flow_works_24h"], c["keys"]["flow_forecast"]), (1, None, None))
+        self.assertEqual((out["numbers"]["flow_rows_built_24h"]["value"], out["numbers"]["flow_works_24h"]["value"]), (1, None))
+        drop = snap_with(drop=["files_main/qa/CAPABILITIES.md"])
+        o2, _ = cd.run_reconcile(drop, os.path.join(HERE, "cockpit-reconcile.py"))
+        _, c2 = run(drop, rec=o2, note=None)
+        self.assertFalse([x for x in c2["trust"]["diffs"] if x["name"].startswith("flow_")], c2["trust"]["diffs"])
+
+    def test_qa_history_rules_in_both_scripts(self):
+        # review m7: the history scan, through both scripts. 20 Nov 12:00 IST; days 17, 18, 19 Nov.
+        hdr = "\n## Release 1\n\n| # | Map row: capability | Module | Status | Tested on | Done when |\n|---|---|---|---|---|---|\n"
+        row = lambda n, st: (f"| R1.{n} | {n} Cap |\n" if st is None else f"| **R1.{n}** | {n} Cap | Platform | {st[2:]} | abc | fixture |\n"
+                             if st.startswith("**") else f"| R1.{n} | {n} Cap | Platform | {st} | abc | fixture |\n")
+        base = cd.Snap(FIX).text("files_main/qa/CAPABILITIES.md")
+        v = {"r1v1": ("2026-11-15T03:00:00Z", {1: "Works", 2: "Partial", 7: "Not built", 8: "Partial"}),   # row 1: listed already Works
+             "r1v2": ("2026-11-18T08:00:00Z", {1: "Works", 2: "Works", 7: "Not built", 8: "Works"}),      # rows 2 and 8 Works
+             "r1v3": ("2026-11-19T01:00:00Z", {1: "Works", 2: "Works", 7: "Not built", 8: "**Partial"}),  # row 8 falls back (bold id)
+             "r1v3b": ("2026-11-19T02:00:00Z", {1: "Works", 2: "Works", 8: "Partial"}),                   # row 7 not listed: skipped
+             "r1v3c": ("2026-11-19T03:00:00Z", {1: "Works", 2: "Works", 7: "Not built", 8: None}),       # row 8 short line
+             "r1v4": ("2026-11-20T00:00:00Z", {1: "Works", 2: "Works", 7: "Not built", 8: "Works"}),      # row 8 again: date resets
+             "r1v5": ("2026-11-20T04:00:00Z", {1: "Works", 2: "Works", 7: "Partial (retested)", 8: "Works"})}   # row 7 tested after built
+        files = {"git/capabilities_main.jsonl": "\n".join(json.dumps({"sha": k, "date": d}) for k, (d, _) in v.items()) + "\n"}
+        for k, (_, st) in v.items():
+            files[f"git/capabilities_main/{k}.md"] = base + hdr + "".join(row(n, x) for n, x in st.items())
+        files["files_main/qa/CAPABILITIES.md"] = files["git/capabilities_main/r1v5.md"]
+        d = snap_with(files)
+        out, note = cd.run_reconcile(d, os.path.join(HERE, "cockpit-reconcile.py"))
+        self.assertIsNone(note)
+        _, c = run(d, rec=out, note=None)
+        k = c["keys"]
+        self.assertEqual((k["flow_works_24h"], k["flow_works_3d"]), (1, [0, 1, 0]))      # row 8 (20 Nov 05:30 IST); row 2 on 18 Nov
+        self.assertEqual(k["flow_prove_lag_h"], 22.0)                                    # 2 h (row 2) and 42 h (row 8, from its new date)
+        self.assertEqual((k["flow_awaiting"], k["flow_awaiting_oldest_h"]), (0, None))   # row 7: qa read Partial after its part merged
+        self.assertIsNotNone(k["flow_forecast_best"])
+        self.assertFalse([x for x in c["trust"]["diffs"] if x["name"].startswith("flow_")], c["trust"]["diffs"])
+        for n in cd.FLOW_KEYS:
+            self.assertEqual(out["numbers"][n]["value"], k[n], n)
+
+    def test_both_scripts_agree_on_the_fixture(self):
+        out, note = cd.run_reconcile(FIX, os.path.join(HERE, "cockpit-reconcile.py"))
+        self.assertIsNone(note)
+        _, c = run(FIX, rec=out, note=None)
+        for k in cd.FLOW_KEYS:
+            self.assertIn(k, out["numbers"], k)
+            self.assertIn(k, c["keys"], k)
+        self.assertEqual((c["trust"]["state"], c["trust"]["diffs"]), ("agree", []), c["trust"]["diffs"])
+        t = json.loads(json.dumps(out))
+        t["numbers"]["flow_awaiting"]["value"] = (t["numbers"]["flow_awaiting"]["value"] or 0) + 1
+        self.assertEqual(cd.reconcile_compare(c["keys"], t, None)["diffs"][0]["name"], "flow_awaiting")   # a one-off difference is caught
 
 
 if __name__ == "__main__":
