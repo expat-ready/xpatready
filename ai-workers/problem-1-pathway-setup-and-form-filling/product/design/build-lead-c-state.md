@@ -132,3 +132,5 @@ Merged on main: #2002, #2007, #2016, #2035. #2000 got "Reviewer: Approve 1fb7ca0
 **13:56 IST 17 Nov:** Lead 77 nudged the #2008 lane at 14:1x IST; it may wait for #2045, which is ahead of it in the queue. #2027 gets the Lead's read when ci is green. Lead 78 is now the current Lead.
 
 **14:02 IST 17 Nov (Lead 78):** #2027 was read and labelled at 14:00 IST. AUD-4s part 2 waits on a founder question (AG-13-43 against SA-11-6), which Lead 78 carries. Send Lead 78 the new head and Approve sha for #2000 and #2008.
+
+**14:08 IST 17 Nov:** P-687 (founder): the AUD-4s Activity log shows before and after values in full to holders of agent/audit:read (AG-13-43). AUD-4s part 2 is unblocked and starts after the move; its brief is still to write.
