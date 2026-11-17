@@ -3,9 +3,9 @@
 Written 17 Nov 00:0x IST by Build Lead C. Row: `product/BACKLOG.md` **AS-2d1**, read with **P-650 (2)**. Release 1 row: **R1.107** (map 107).
 **PR title:** `configurator: AS-2d1 — Ontario and British Columbia's streams, cited, assessment only`
 **Model: Opus 5.5, effort: high** (every value cited from the province's own site). Decisions: **P-650 (2)-(3)**, P-607 (9), P-577, P-541, P-170, AGENTS rule 4.
-**Ready when:** **AS-2e is merged and the founder has confirmed the streams** (P-607 (9): one card, 09:00 IST batch, P-613).
-* **Streams, placeholder until the card:** one stream per province (proposed: Ontario Workforce Priority stream and BC Skilled Worker (Skills Immigration)) (ON, BC), as proposed in `build-lead-c-briefs/AS-2-streams-proposal.md`.
-* **The confirmed names replace this line before the start.** Never build a stream the founder has not confirmed.
+**Ready when:** **AS-2e is merged.** The founder confirmed the streams (P-653, 07:5x IST 17 Nov, "As proposed").
+* **Streams (confirmed, P-653):** Ontario: **Ontario Workforce Priority stream** (OINP; the Foreign Worker stream closed on 30 May 2026). British Columbia: **BC PNP Skills Immigration, Skilled Worker** (registration score out of 200, ranking only, no pass mark). Sources, quotes and dates are in `build-lead-c-briefs/AS-2-streams-proposal.md`.
+* No other stream is built.
 
 **P-650 (2):** the provincial streams are **assessment only in Release 1**.
 * Each is released as a combination under `individual.economic.provincial` with gates, a grid and lists, and **no form lines**.
