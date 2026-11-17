@@ -417,3 +417,44 @@ Main's new `files.ts` `LocalFiles` entry (PF-Fd) is kept.
 **Blockers:** none. **Majors:** none. **Minors open:** as in Re-review 7 (the description wording question; name the FO-3w test edit in the PR body).
 
 Verdict: Approve 048511e810bd94903f388abfde92090fd406a2a2
+
+## Re-review 9 at `5f43cb17283b2853693c6901d3e63ad2db9e2ec0` (diff `3037c7cb..5f43cb17`: the card rewrite `c0557bc` + a merge of `main` e758e1568)
+
+**Merge.** It is clean: `git merge-tree` of the parents gives a tree identical to the commit. `3037c7c` is a records commit with no code change from `048511e` (approved in Re-review 8).
+
+**Correction to the request.** Main brought more than new `ports/` files:
+* `api/src/case-count.ts`, `runtime.ts` and `front-office/render/gotenberg.ts`;
+* the platform complaints web pages;
+* qa suites, among them `tests/qa/check_r138_r140_booking_page_walk.ts`. That walk seeds its type through Prisma with slug `free` and the default purpose, so it is compatible with this PR.
+
+Nothing under `booking/` or `prisma/` changed. Against main:
+* `service.ts` is still the three `where` lines;
+* FO-7mv's `20261116030000` is still before our `20261116090000`.
+
+**The card (`api/src/front-office/MODULE.md`): accurate, and complete for this PR. Accepted.**
+* Against main, the diff adds 5 lines at the end and changes none of main's lines. Future one-line edits elsewhere on the card will merge by themselves.
+* Every fact checked against the code at this head:
+  * the routes and their keys match `types.controller.ts` (prefix `api/front-office/booking-types`; list and preview on `agent/booking-event-type:list`, every write on `…:edit`);
+  * the invariant matches the three `where` lines, the soft delete, the partial unique index and the version check;
+  * `foConsultationType` was already on **Tables.** (no new table);
+  * the test is named.
+* The card is 39 lines (the limit is 40, STANDARDS §7).
+* `module-cards.py tree`: PASS (14 cards). `module-cards.py pr`, with this PR's changed files and body: PASS (2 modules touched; api-features "Card unchanged" with a reason).
+* Minor, not blocking: two facts other modules have already tripped on are not on the card. FO-3w's suite hit the first.
+  * the slug `manage` is reserved by a database CHECK;
+  * the public door takes FREE_CONSULT and OTHER.
+
+  Add both to the existing invariant line, so the card stays at 39 lines.
+
+**Suites on the merged tree** (clean worktree, scratch databases on :54329):
+* `check_fo3a_booking_types`: 48/48
+* FO-3: 133/133
+* FO-3pa: 45/45
+* FO-1b: 80/80, migrate diff clean
+
+**Blockers:** none. **Majors:** none. **Minors open:**
+* the description wording question for Lead B (Re-review 2);
+* naming the FO-3w test edit in the PR body (Re-review 7);
+* the two card facts above.
+
+Verdict: Approve 5f43cb17283b2853693c6901d3e63ad2db9e2ec0
