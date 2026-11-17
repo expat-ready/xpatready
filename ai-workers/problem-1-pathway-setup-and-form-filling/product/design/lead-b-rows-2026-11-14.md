@@ -1818,3 +1818,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * Ruling (comment 6937748138): recommend a size exception, not a split. The head is approved whole, the breaker passed it, and a split would cost two reviews and a second migration and leave DW3/DW7 open (P-606). The DECISIONS row (as P-617) is the Lead's. No push until it exists; then only the body line `Size exception: P-NNN`.
 * m1 (a firm-side database writer could insert a `SUPPORT` message) stays open here. The PR body must show the API refuses it today, with a named test.
 * **Binding condition on PF-17 (its brief does not exist yet; whoever shapes it must include this):** once PF-4s gives our team a role, a database rule lets only that role write `SUPPORT` rows in `platform_support_message`. It is a named DW with a fail case: a write as `xr_app` is refused.
+
+## rev 17.1 (17 Nov 09:29 IST): P-654, the size exception for #2064 (Lead 74)
+* #2064 adds the body line `Size exception: P-654` only. Lead 74's migration read on 749708be passes (comment 6937825642).
+* **PF-17's binding conditions now cover two things:** (1) a database rule so that only our team's role writes `SUPPORT` rows (breaker m1); (2) foreign keys from the support tables to firm and staff, added after #2009 merges, as back-relation lines under `// back-relation slot: support (PF-18b)`.
+* **New standard rule for every PF/FO brief:** a migration's stamp must differ from every open PR's stamp, not only be later than `main`'s. #2062 and #2064 both used 20261117030000; that was safe only because Prisma orders by full name.
