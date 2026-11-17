@@ -6,7 +6,7 @@ Measured on `main` at `ceaf13037` (17 Nov, ~13:00 IST). Every number below comes
 
 ---
 
-## 0. The answer in plain words
+## Summary in plain words
 
 **Yes, the names no longer match the work.** The product is a production platform (Release 1, 101 capabilities), but it sits five folders deep in a path that tells the October story:
 
@@ -21,6 +21,63 @@ ai-workers/problem-1-pathway-setup-and-form-filling/product/            ← the 
 - **The repository is 2.3 GB**, mostly screenshots (4,635 PNG files; `product/screens` 562 MB, `product/qa` 352 MB). Moving folders doesn't shrink that, because git history keeps every file. We can stop the growth; shrinking it would mean rewriting history, which AGENTS rule 1 forbids.
 
 **The target is six plain folders at the top:** `apps/` (the app), `packages/` (shared code), `docs/` (rules, product, decisions, records), `reference/` (official sources and requirement snapshots, read-only), `tools/` (scripts, guards, the board), plus GitHub's own `.github/`. It takes **8 small stages**, each one PR, run in quiet windows when the merge queue is empty. Each stage can be undone with a single `git revert`.
+
+---
+
+## 0. Architecture choice (founder asks, ~12:15 and ~12:3x IST: "best in class, most scalable, most fast moving"; size it for ~500 capabilities after Release 1, with AI as its own layer)
+
+### 0.1 What we are sizing for
+- **Today:** one deployable app (`studio`: NestJS api + React web + a pg-boss job worker on one PostgreSQL), ~78k lines of app code in 492 files, 101 Release 1 capabilities, 26 Prisma schema files (one per area), 19 ports already (`ports/*.ts`: audit, billing, events, jobs, mail, messages, files, secret-box, …), 14 module cards checked in CI.
+- **After Release 1:** ~500 capabilities in about 12–15 business areas: platform (identity, firms, tenancy, billing, messages), front office (booking, sales, retainers, signing), case side (cases, documents, checklists, filings), configuration (programs, structure, rules), form library and XFA engine, runtime (questionnaires, filling), client money, audit and compliance, reporting, integrations, client portal, **and AI across all of them**.
+- **Load profile** (Unconfirmed: no measured forecast; a Sample sizing): a B2B tool for immigration firms. Thousands of firms and tens of thousands of users, not millions of requests per second. The heavy parts are AI runs, PDF/XFA work and document reading: slow, bursty jobs that cost money. The core read/write traffic is modest.
+
+### 0.2 The options compared
+
+Scores: ●●● strong, ●● fair, ● weak, for *our* size and team (one founder, AI builder lanes, one reviewer, merge queue).
+
+| Option (source) | Speed of change | Scales to 500 capabilities | Quality / safety | Ops cost | Agent-friendly | When it is right |
+|---|---|---|---|---|---|---|
+| **Classic monolith** (one codebase, no internal fences) | ●●● at first, then ● | ● (Shopify's "big ball of mud" problem, *Deconstructing the Monolith*, 2019) | ● changes leak everywhere | ●●● | ● an agent can't see what it may touch | Early POC only. **This is roughly where `api/src` is today** (151 files in one flat folder, one `@Module`) |
+| **Modular monolith** (one deployable, hard module fences, public contracts; Shopify *Under Deconstruction*, 2020, and its Packwerk tool; K. Grzybek, *Modular Monolith* primer) | ●●● one PR can change a contract and both sides atomically | ●●● Shopify runs one of the largest Rails apps this way | ●●● fences checked in CI; one transaction, one database | ●●● one deploy, one database | ●●● small fenced modules with cards fit AI lanes exactly (P-615) | **Our size now and at 500 capabilities.** Split a module out only on a measured trigger (0.4) |
+| **Service-based** (a handful of coarse domain services sharing one database; Richards & Ford, *Fundamentals of Software Architecture*, 2020, ch. 13) | ●● | ●●● | ●● | ●● 3–6 deploys | ●● | The usual next step **if** two or three areas need separate deploys; the cheap halfway house before microservices |
+| **Microservices** (Lewis & Fowler, *Microservices*, 2014) | ● for a small team: every change crosses repos and contracts (Fowler, *Microservice Premium*, 2015; *MonolithFirst*, 2015) | ●●● per service | ●● distributed failures, eventual consistency | ● many deploys, a service mesh, tracing, on-call | ● an agent has to reason across network contracts and environments | Many independent teams. Cautionary cases: Segment's *Goodbye Microservices* (2018) and Amazon Prime Video's monitoring moving back to one process (2023) |
+| **Hexagonal / ports-and-adapters** (A. Cockburn, 2005) | ●●● | ●●● | ●●● tests swap adapters; vendors swappable | ●●● | ●●● | **Not an alternative but the inside of each module.** Already in use (`ports/`); keep it and make it the rule |
+| **Event-driven between modules** (Fowler, *What do you mean by "Event-Driven"?*, 2017; transactional outbox, C. Richardson, microservices.io) | ●● | ●●● decouples modules in time | ●● needs idempotency and replay | ●● (pg-boss and Postgres are enough; no Kafka) | ●● | **For side effects across modules** (a booking confirmed → a retainer drafted → a message sent). Calls stay synchronous for reads; events for "after this, also do that" |
+| **Cell-based for tenants** (AWS Well-Architected, *Reducing the Scope of Impact with Cell-Based Architecture*, 2023; Slack's cellular move, 2023) | ●● | ●●● blast radius per cell | ●●● a bad deploy or noisy firm hits one cell | ● you run N copies | ●● | **Later, as a deployment topology**, not a code structure: when a large firm, data residency (Canada vs other regions) or a contract requires isolation. The same modular monolith is deployed per cell |
+| **Monorepo** vs **polyrepo** (Potvin & Levenberg, *Why Google Stores Billions of Lines of Code in a Single Repository*, CACM 2016; Nx and Turborepo "affected" builds) | Monorepo ●●●: atomic changes, one CI, one review queue | ●●● with affected-only CI | ●●● one set of rules and guards | ●●● | ●●● an agent sees everything it needs in one checkout | Polyrepo only when separate organisations own the code |
+
+### 0.3 Recommendation: a modular monolith in one monorepo, hexagonal inside each module, events between modules, cells later
+
+1. **One monorepo, one main deployable, several entry points from the same code**: `apps/api` (HTTP), `apps/web` (browser shell), `apps/worker` (jobs: AI runs, PDF/XFA, messages). The worker is the first thing to scale on its own, and it does that without becoming a separate codebase.
+2. **Modules as workspace packages with enforced fences**, one per business area: `modules/platform`, `modules/front-office`, `modules/cases`, `modules/configuration`, `modules/forms` (with `packages/xfa-engine`), `modules/runtime`, `modules/client-money`, `modules/audit`, `modules/ai`, …. Each module owns its `api/`, `web/`, `domain/` (pure rules, the "engine"), its Prisma schema file(s), its `contracts/` (zod types, STANDARDS §1 "zod contracts in a shared package"), its events, its tests and its `MODULE.md` card. Another module may import **only its public `index.ts`**, which a boundary check enforces (0.5).
+3. **AI is its own module and a cross-cutting layer, behind one port.**
+   - **Where AI code lives:** `modules/ai/`, which grows out of today's `rounds.ts` step runner, `cost-gate.ts`, `p2/ledger.ts`, `p2/policy.ts`, `p2/prompt.ts` and `p2/guard.ts`. It holds the model gateway (one door to every provider), prompts as versioned data, the spend caps and shared ledger, the checker round, and the evaluation sets (today's answer keys).
+   - **How modules call it:** through an `AiPort` (`propose(task, inputs, evidence) → proposal`), never a provider SDK directly. The port returns a **proposal** that a person accepts (STANDARDS §3 rule 8), which goes into the one review queue.
+   - **Its own data:** runs, prompts, costs, evaluations and model versions live in its own schema (`ai.prisma`). Other modules keep only the proposal ids they asked for.
+   - **Cost:** every call carries the firm, the module and the capability, and is checked against per-firm and per-capability caps before it runs (P-175).
+   - **Evaluation:** each AI capability ships with an evaluation set and a pass bar. CI runs the fake launcher; scored live runs happen only with a founder Go.
+   - **Tenancy:** a run never sees another firm's data. The firm id comes from the request scope, never from the prompt.
+   - **Why this shape:** it is the "AI gateway" pattern used by platform teams (one gateway for keys, quotas, logging and evals). Because there is one port, the AI module can later run as its own service (the first split candidate) without any module changing.
+4. **Hexagonal inside every module** (already started with `ports/`): vendors such as Stripe, SES, Postgres jobs and the AI providers stay adapters.
+5. **Events between modules for side effects**, through a transactional outbox in PostgreSQL drained by pg-boss (already in the stack, so no new technology). There is a `ports/events.ts` already.
+6. **Trunk-based development with the merge queue we have** (trunkbaseddevelopment.com; DORA, *Accelerate*, 2018: loosely coupled architecture and small batches predict delivery performance), plus **affected-only CI**: run the tests of the modules a PR touches and of modules that depend on them, with the full suite in the queue. This is where the "most fast moving" comes from. Today every PR runs the whole suite, which is part of why the queue jams.
+7. **Cells later**: the same build deployed per region or per large firm when a measured trigger fires (0.4).
+
+### 0.4 When to split something out (measured triggers, not taste)
+| Trigger | Measure | First candidate |
+|---|---|---|
+| Different scaling profile | the worker's queue wait time or CPU stays above target for a week while the api is idle | `apps/worker` gets its own scaling (still the same code) |
+| Fault isolation from a vendor | provider outages or slow responses hurt request latency | `modules/ai` as its own service behind the same `AiPort` |
+| Data residency or contract isolation | a firm or region requires it in writing | cells (deploy per region or firm) |
+| Release cadence clash | a module is blocked by others' merges more than X% of the time (merge-queue data) | that module as a service-based split |
+| Team topology | more than one full team works on one module (Team Topologies, Skelton & Pais, 2019) | split that module |
+
+### 0.5 Boundary tooling (proposed through the STANDARDS §1 gate, not installed)
+- **dependency-cruiser** (MIT, a small library, no framework): rules such as "a module imports only another module's `index.ts`", "no imports of `apps/` from `modules/`" and "no cycles". It is the closest match to Shopify's Packwerk for TypeScript. **Preferred**, because the gate says a small library before a framework.
+- **Nx** `enforce-module-boundaries` and **Turborepo** `--filter=...[origin/main]` give affected builds. Nx is a framework, so it has a bigger upkeep cost. Turborepo is a smaller step for affected-only CI. Decide in the gate record (problem, options, upkeep, licence, when to reconsider).
+- All of them start **report-only** (founder ruling T14) and become blocking only by a later decision.
+
+**Question to the founder (asked once, below):** approve the modular monolith in one monorepo, with AI as its own module behind one port and splits only on the triggers in 0.4?
 
 ---
 
@@ -108,6 +165,8 @@ expat-ready/<repo>/                     ← name: Question 1
 ├── .github/  (workflows, CODEOWNERS)   .claude/  .githooks/  .mergify.yml
 ├── README.md  AGENTS.md  CLAUDE.md  SECURITY.md  LICENSE  .nvmrc  tsconfig.base.json
 ```
+
+**How this grows (section 0.3):** `apps/studio` is the first step. Section 6's refactor stages R3–R7 then split it into `apps/api`, `apps/web`, `apps/worker` and one `modules/<area>/` package per business area (with `modules/ai`). `packages/` keeps libraries that hold no business area (`xfa-engine`, `contracts`).
 
 ### 2.1 Why each choice (a named practice, not taste)
 
@@ -206,9 +265,76 @@ git -c merge.directoryRenames=true rebase origin/main
 2. **October history** (~1,000 files that nothing reads: one-pager drafts, illustrations, checks, problem 2, delivery reset, playbook): recommendation: **remove them from the main tree, with a git tag that keeps them one command away** (P-188: git history is the archive), not copy them into `docs/history/`.
 3. **Business plan in a public repository**: `commercial/` (`plan.docx`, `model.xlsx`, market and funding research) is in a **public** repo. Recommendation: **move it to the founder's private GitHub home** and remove it from this tree. (It stays in public git history: anyone who already cloned the repo has it. Removing it from history would need a rewrite, which rule 1 forbids.)
 
+4. **Architecture** (section 0, asked 17 Nov at the Lead's request): approve the modular monolith in one monorepo, with AI as its own module behind one port?
+
 Answers are recorded below as the founder gives them.
 
 ### Founder's answers
 - Q1 (17 Nov, ~13:4x IST): **"platform (Recommended)"**: rename to `expat-ready/platform` in stage 7, after the org move is checked.
 - Q2: **"Remove + git tag (Recommended)"**: stage 1 removes the October files from the main tree; tag `history/pre-cleanup-2026-11` keeps them.
 - Q3: **"Move to private home (Recommended)"**: `commercial/` is copied to the founder's private GitHub home (the copy is checked file by file), then removed from this tree in stage 1. Old copies remain in public history (no rewrite, rule 1).
+
+---
+
+## 6. Code structure (founder ask, ~12:1x IST: module by module, feature by feature, each with its own notes; read-only review, measured on `ceaf13037`)
+
+Founder rulings respected: **P-668 T17: no comment ban** (why-comments stay, P-615); **T14: linting starts report-only**; **P-674: code moves after the org move, in stages**.
+
+### 6.1 What is there today (measured)
+| Area | Files / lines | How it is organised | Card (P-615) |
+|---|---|---|---|
+| `api/src/` root | **151 files, 31,877 lines, flat** | No folders: configurator, forms, library, cases, AI and demo code side by side (`studio.ts` 1,284 lines, `runtime.ts` 1,065, `proposals.ts` 1,038, `case-prepare.ts` 1,021, …) | 7 cards (`MODULE.ai-runs/cases/configuration/core/demo/forms/library.md`) claim files by **brace-glob filename lists**, not folders |
+| `api/src/platform/` | 66 files | **By feature** (identity, messages, observability, jobs, firms, terms, web-address, …) | 1 card |
+| `api/src/front-office/` | 28 files | **By feature** (booking, sales, retainers, signing) | 1 card |
+| `api/src/features/` | 106 files | **Registration by feature** (P-214), but split by layer from their code: `features/platform-identity.ts` registers code in `platform/identity/`; plus the checkpoint steps (48) | 1 card |
+| `api/src/main.ts` | 249 lines | **The only NestJS `@Module`**: 34 controllers and 50 providers listed by hand, the rest through `features/` | in core |
+| `engine/` | 94 files | Pure rules, flat (53 at the root) + `runtime/` | none |
+| `web/src/` | 181 files | `pages/` (35) and `components/` (52) **by type**; `modules/front-office`, `modules/platform` **by feature** (routes gathered by `import.meta.glob`); `runtime/` | 4 cards |
+| `ports/` | 19 ports | Hexagonal adapters | none |
+| `prisma/schema/` | 26 files | **By area already** (`cases`, `forms`, `front-office-*`, `platform-*`, …) | n/a |
+| Module-card CI | `module-cards.yml` + `module-cards.py` | A PR that touches a module's file must change its card or say `Card unchanged: <reason>`; cards ≤40 lines; every rule links to a card | 14 cards |
+
+**In short:** platform and front office are already organised module by module and feature by feature. The configurator core, which is the oldest and largest part, is a flat folder fenced only by filename lists. Web is half by type (pages, components) and half by feature (modules).
+
+### 6.2 Gaps
+1. **Boundaries are not enforced in code.** The cards say what belongs where, but nothing stops an import. Imports that go the wrong way, from the measured import graph: core → platform 6, core → features 5, core → front-office 1, platform → core 11, front-office → core 4. Imports into another module's internals (not a public `index.ts`): almost all of the 216 features → core and 39 features → platform edges.
+2. **The flat core.** 151 files in one folder: a new builder (or an AI lane) cannot see which files make one capability.
+3. **A feature lives in two places:** `features/platform-x.ts` and `platform/x/`. Feature-by-feature (vertical slice, J. Bogard, *Vertical Slice Architecture*, 2018) means one folder per feature.
+4. **Web by type:** `pages/` and `components/` mix configurator, library and review screens.
+5. **Big files:** 16 production files over 600 lines (largest: `api/src/studio.ts` 1,284; `web/src/runtime/questionnaire.tsx` 1,135; `front-office/booking/service.ts` 932).
+6. **Code still outside the app:** the p2/p5/contracts imports (section 1b, stage 2) and `p5/transforms.ts` ↔ `studio/engine/options.ts` (a loop).
+7. **Two more depth-counting paths** (like `policy.ts`): `check-module-cards.sh` sets `ROOTD` by counting `../../../..`. Stage 0's root finder covers it.
+8. **No card** for `engine/` or `ports/`.
+
+### 6.3 Dead code, duplicates, comments (a measured sample: my own scripts over `git ls-files`, imports resolved with the `@/` alias. A proper tool would find more; see 6.4)
+- **Files nothing imports:** 6 of 492. Of these, `web/src/components/ui/badge.tsx` and `card.tsx` are really unused. The other 4 are loaded on purpose (`modules/*/routes.tsx` by glob; `engine/xfa/run-engine.mjs` as a child process). **Delete candidates: 2 files.**
+- **Exports used nowhere** (the name appears once in the whole app): **20** of 3,374. Examples: `platform/settings.ts` `LANGUAGE`, `CURRENCY`, `REQUIRE_TWO_STEP`; `platform/firm-scope.ts` `ownFirm`, `currentBypass`; `engine/pqr-picks.ts` `matchFact`. Some may be read by tests through other names, so each one is checked before removal.
+- **Exports used only inside their own file:** ~526 more. These are harmless, but the `export` keyword can go so a module's surface is honest. That job belongs to knip, not a hand pass.
+- **Duplicated code:** 3 identical 8-line blocks across files (`change-sets.ts` ↔ `where-used.ts`, 2 blocks; `qd-draft.tsx` ↔ `questionnaires.tsx`, 1). **Very low.**
+- **Comments:** 15,229 of 77,870 non-blank lines (19.6%). Within the usual range for code that records *why* (rule ids, decision rows). Per **P-668 T17 there is no comment ban and no bulk removal**. A reviewer may flag a comment that only restates the code or names a closed bug, case by case.
+- **Verdict:** the code is **not** bloated. Dead code and duplication are small. The real work is **structure**: fences, folders by module and feature, and smaller big files.
+
+### 6.4 Tools proposed (STANDARDS §1 gate: one record each, report-only first, T14; nothing installed)
+| Tool | Gap it closes | Licence / upkeep | Mode |
+|---|---|---|---|
+| **knip** | unused files, exports, dependencies (finds what 6.3 sampled, exactly) | ISC, one config file | report-only CI job, a weekly list |
+| **dependency-cruiser** | module fences and cycles (0.5, 6.2 gap 1) | MIT, one rules file | report-only, then blocking by decision |
+| **jscpd** | duplicate blocks | MIT | report-only, monthly |
+| *(rejected)* **ts-prune** | unused exports | in maintenance mode; its README points to knip | not proposed |
+
+### 6.5 Staged refactor (after the layout stages 0–6 in section 3; same rules: one PR each, pure moves apart from edits, an empty queue for moves, a revert per stage)
+| # | Stage | What | Size | Proof |
+|---|---|---|---|---|
+| R0 | **Measure** | knip + dependency-cruiser + jscpd as one report-only CI job (after the gate records); a baseline file | ~150 lines | job runs, numbers match 6.3 |
+| R1 | **Cards for engine and ports** | 2 new cards; `check-module-cards.sh` root finder | ~80 lines | module-cards CI |
+| R2 | **Fix backward imports** | core → platform/features/front-office (12 edges) inverted through ports or moved | <800 lines, code | full CI |
+| R3 | **Group the flat core by its cards** | `git mv` the 151 files into `configuration/`, `forms/`, `library/`, `cases/`, `ai-runs/`, `demo/`, `core/`, which are exactly the 7 cards' lists; card `paths:` become folder globs | pure move + an import-fix PR | `check-pure-move.sh`; full CI |
+| R4 | **One folder per feature** | each `features/<x>.ts` moves next to its code (`platform/identity/feature.ts`); `registerFeatures` globs `**/feature.ts` | pure move + a ~50-line loader change | start-up registers the same controllers and providers as before (a test compares the lists) |
+| R5 | **Web by module** | `pages/` and `components/` move under `web/src/modules/<area>/`; shared UI stays in `components/ui` | pure move + import fixes | Playwright journeys, axe |
+| R6 | **Modules become packages** | `modules/<area>` with `index.ts` (0.3), app shells in `apps/api`, `apps/web`, `apps/worker`; dependency-cruiser turns blocking (a founder decision) | one module per PR, smallest first (audit, then platform) | affected-only CI shows the right modules |
+| R7 | **AI module** | `rounds.ts`, `cost-gate.ts`, `packages/ai-spend` → `modules/ai` behind `AiPort` | 2–3 PRs | ledger test; fake launcher only |
+| R8 | **Big files, when touched** | split the 16 files over 600 lines when a capability next changes them (boy-scout rule), never in one sweep | per PR | each PR's own tests |
+| R9 | **Dead code** | remove the 2 files and 20 exports (each checked), then knip's list | <300 lines | full CI |
+
+**Cost (estimate):** R0–R5 take ~3–4 working days of agent time and ~3–4 M tokens. R6–R7 are spread over the Release 1 work (one module per quiet window). There are no paid AI runs.
+- Q4 (architecture, 17 Nov): **"Modular monolith (Recommended)"**: one monorepo, fenced modules with contracts, AI as its own module behind one `AiPort`, events between modules, affected-only CI; splits only on the triggers in section 0.4.
