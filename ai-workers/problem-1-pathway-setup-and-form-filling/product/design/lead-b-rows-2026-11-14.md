@@ -1835,3 +1835,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 ### Rev 17.3 (12:38 IST 17 Nov): #2064 red CI read; P-663 hold
 * **#2064 (PF-18b), head 749708be:** red for about 2 h with no push, and not `check_css1_index` DW4. (1) pr-rules: `pr-size.sh` reads main's DECISIONS.md, and P-654 is only on records PR #2071 (labelled, queued). (2) module-cards: the run came before the body's `Card unchanged:` line. No builder fix. Re-run both failed jobs once #2071 merges; otherwise it waits for the move with head 749708be.
 * **P-663 admission rule tripped** (Lead 76: P95 queue wait 239 min, batch wait 35 min): no new capability row starts. PF-5tv and PF-21s part 4 are held until both waits fall.
+
+### Rev 17.4 (13:05 IST 17 Nov): current Lead is Lead 77; P-683
+* The current Lead is **Lead 77** (`local_baa78a6d-3861-4074-bd82-955fc67e247e`).
+* **P-683 (founder, via Lead 77):** a lane gets the reviewer's Approve on the branch first, then opens the PR as non-draft (POST pulls, `draft: false`), so no draft toggle is ever needed. Passed on through the briefs not yet started: PF-4dn, PF-5tv and QA-498 now carry it in place of "keep it a draft". PRs already open as drafts are marked ready once, after their Approve, as before. Every new brief and every start: line carries P-683.
+* The open-PR list (P-660) still goes to Lead 77 at 19:30 IST.

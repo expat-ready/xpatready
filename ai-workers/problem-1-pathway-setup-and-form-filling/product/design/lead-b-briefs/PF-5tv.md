@@ -30,7 +30,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime P
 **Not in scope:** #1957's point 1 (accepting the current privacy notice at invitation acceptance, a PF-4b follow-up). It is a separate row, not this one.
 
 **PR:**
-* Keep it a **draft** until `Reviewer: Approve <head>`, then mark it ready once.
+* **P-683:** get `Reviewer: Approve <head>` on the branch first, then open the PR as non-draft (POST pulls, `draft: false`). Never open it as a draft, never toggle draft.
 * Opus reviewer (P-303); the re-review reads only the diff (P-277).
 * Label `review: approved` only after Approve and green CI (P-385).
 * P-610: about 150 lines.

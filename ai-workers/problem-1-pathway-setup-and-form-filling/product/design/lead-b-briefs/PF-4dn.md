@@ -44,7 +44,7 @@ Today:
 If it passes 800 lines (P-610), split it into part 1 (API) and part 2 (field), and name the split in the PR before building.
 
 **PR:**
-* Keep it a **draft** until `Reviewer: Approve <head>`, then mark it ready once.
+* **P-683:** get `Reviewer: Approve <head>` on the branch first, then open the PR as non-draft (POST pulls, `draft: false`). Never open it as a draft, never toggle draft.
 * Opus reviewer (P-303); the re-review reads only the diff (P-277).
 * Label `review: approved` only after Approve and green CI (P-385).
 
