@@ -63,7 +63,7 @@ How it is reached: the key-detail write paths refuse years outside 1950-2100 (`s
 - **Wall.** No firm is looked up across the wall (but see M2).
 
 # Break pass 2 (1fb7ca098)
-P-278 pass on `platform_firm_calendar` (migration `20261116184100_csdl1_firm_calendar`), `caseFirmCalendar` and the Missed tag. Own copy `brk_csdl1` on :4473; `check_csdl1_deadlines_browser.ts` 24/24. **No Blocker, no Major; 3 Minor.**
+P-278 pass on `platform_firm_calendar` (migration `20261116184100_csdl1_firm_calendar`), `caseFirmCalendar` and the Missed tag. Own copy `brk_csdl1` on :4473; `check_csdl1_deadlines_browser.ts` 24/24. Note: after the probes this breaker stopped the shared cluster on :54329 (`pg_ctl -m fast stop`, about 02:57Z) by mistake; no result depends on a run after that. **No Blocker, no Major; 3 Minor.**
 
 ## Findings
 - **m1 (Minor): the lookup runs on write routes too, and a PUT commits before it.**
@@ -84,12 +84,10 @@ P-278 pass on `platform_firm_calendar` (migration `20261116184100_csdl1_firm_cal
 - **Keys.**
   - `''`, NULL, `x' or '1'='1`, `%`, other letter case and a trailing space each give 0 rows.
   - The app binds the key as a parameter (`$queryRaw` template). Only the three settings keys come back; no other column or firm id.
-- **Hijack.** xr_app temp tables `pg_temp.platform_firm` and `pg_temp.platform_firm_setting` holding planted rows are ignored (pg_temp is last). xr_app has no CREATE on `public` or on the database.
-- **Timing.** Moot, because row count already shows existence (m2).
+- **Hijack.** xr_app temp tables `pg_temp.platform_firm` and `pg_temp.platform_firm_setting` holding planted rows are ignored (pg_temp is last). xr_app has no CREATE on `public` or on the database. Timing is moot, since row count already shows existence (m2).
 - **API, firm A to B.**
   - user-S gets 404 on firm A's case for stages, next and :stage. An unknown actor gets 401, client user-P gets 403, an SQL-shaped id gets 404.
-  - None of these reach another firm's calendar: `x-firm`, `x-firm-key`, `x-forwarded-host`, `?firmKey=`, a Bearer token (403 link-only), two `x-actor` headers (401).
-  - `Host: sample-solo.localhost` → public 404.
+  - None of these reach another firm's calendar: `x-firm`, `x-firm-key`, `x-forwarded-host`, `?firmKey=`, a Bearer token (403 link-only), two `x-actor` headers (401), `Host: sample-solo.localhost` (public 404).
   - PlatformGuard sets no firm on case routes, so the case's stored `firm_key` is the only key used.
 - **Live calendar.**
   - Firm A's 2027-03-08 shows "(closed day)"; firm B's 2027-03-09 does not.
@@ -98,5 +96,4 @@ P-278 pass on `platform_firm_calendar` (migration `20261116184100_csdl1_firm_cal
   - `time_zone`: `"Mars/Olympus"`, `"asia/tokyo"`, `123`, `{}`.
   - `closed_days`: a string, `["2027-02-30"]`, `[null]`, duplicates, an object.
   - `business_hours`: `"x"`, opens after closes.
-- **firm-scope.ts** is identical to main fc0971103, with no `BYPASS_USES` entry.
-- **Keyboard and screen.** Enter opens the stage panel showing weekday, mark and Missed. Axe is clean at 1440 and 375 px, with no sideways scroll.
+- **firm-scope.ts** is identical to main fc0971103 (no `BYPASS_USES` entry). **Keyboard and screen.** Enter opens the stage panel showing weekday, mark and Missed. Axe is clean at 1440 and 375 px, with no sideways scroll.
