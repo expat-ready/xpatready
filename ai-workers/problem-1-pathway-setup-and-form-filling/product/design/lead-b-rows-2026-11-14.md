@@ -1761,3 +1761,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - The PF-21s test helper adds a fresh key, plus a DW line: a double-pressed Record stores one complaint.
 * No open PR touches those files (P-526, checked). Diff-only re-review, then ready once.
 * The label is still on from the earlier head. Flagged to Lead 71 (P-385).
+
+## rev 16.93 (17 Nov 06:43 IST): QA-498q merged (#2034, 06:28 IST)
+* #2021 (FO-9b part 0): its builder was told to run `/rerun failed` on bdb8484 and label on green (comment 6934646054).
+* QA-498, the fix row, is now free in the night queue.
+* #1968 and #2006 merged; both are qa records and unblock none of my rows.
