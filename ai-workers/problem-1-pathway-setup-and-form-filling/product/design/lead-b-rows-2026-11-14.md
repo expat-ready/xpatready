@@ -1806,3 +1806,9 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - Start line sent to Lead 73.
 * No other ready no-wait row of mine is left: PF-21b part 1, PF-Fp part 1 and FO-9b part 0 are built.
 * **PF-5tv**, new (from PF-5t's lane): two terms versions published in the same instant re-ask a firm that has just signed up; the fix is in `firms/signup.ts`. It waits on #2029 (same file). The brief waits for the lane's PR and comment id from Lead 73.
+
+## rev 16.99 (17 Nov 08:40 IST): PF-5tv briefed (#1957 body point 3, breaker m3)
+* Evidence on `main`: `signup.ts` `currentTerms` orders by `publishedAt desc` only, while `terms/service.ts` `current` orders by `published_at desc, version desc`. On a tie the two can disagree, so a firm that has just signed up gets 428.
+* Ruling: one shared exported read, ordered `published_at desc, version desc, id desc`, used by both. No unique key and no migration.
+* Brief: `lead-b-briefs/PF-5tv.md`. It waits on #2029 (`signup.ts`) and never runs beside PF-12b part 2.
+* #1957 point 1 (accept the current privacy notice at invitation acceptance, a PF-4b follow-up) is still unruled. It is noted as a separate row to shape.
