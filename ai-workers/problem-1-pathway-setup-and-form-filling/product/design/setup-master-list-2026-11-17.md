@@ -13,7 +13,7 @@ Sources: Lead 74's research (operating model v2, engineering system v1, failure 
 |---|---|---|---|---|
 | A1 | Every running local session reports to the current Lead | One message to each: "Current Lead is now Lead 75" | Lead | **Done** for Build Lead A, Build Lead C, the board session (they reported at 10:2x) and CI research (message 10:3x). The founder setup agent was asked at 10:3x for its done list |
 | A2 | Archive ended Lead sessions | `archive_session`; reversible from the Archived list | Lead | **Done** for Leads 65, 66, 67, 68 and 73 (10:3x). **Doing:** Lead 64 refused (still has a Remote Control client: you can archive it from the sidebar). Leads 69, 70 and 72 wait until what hangs off them moves (69 started Build Lead C; 70's notes folder holds Lead 74's research; 72 started CI research). Lead 74 waits for its joining workflow (about 10:45) |
-| A3 | Clean-up of claude.ai cloud sessions | Browser, claude.ai/code: archive finished cloud builders once their PR is merged or closed | Setup | **Done** by Setup at 10:2x, as you said. The Lead re-checks the list at each check |
+| A3 | Clean-up of claude.ai cloud sessions | Browser, claude.ai/code: archive finished cloud builders once their PR is merged or closed | Setup | **Done** at 10:32 IST on your "Yes, archive 22": 21 finished cloud lanes plus the Mac CI research session; kept every Lead, standby, Build Lead, the board session, live lanes and the PF-21s part 3 lane (list word for word in side notes `local_fa783599…/founder-setup/step1-claude-ai-cleanup-2026-11-17.md`). The Lead re-checks at each check |
 | A4 | Disk back above a safe floor | Today 7.7 GB free against a 7 GB floor for starting sessions. Remove: Lead 74's 0.4 GB snapshot once its workflow ends; worktrees of merged rows (board-fix's PR #1913 merged); old test databases; old scratchpads; npm and Playwright caches only after a search shows nothing points into them | Lead | **Next** (target 15 GB or more) |
 | A5 | Board refresh uses too many GitHub calls | Today one rebuild is about 150 REST calls, run on every Lead input; the account's GitHub calls are shared by every lane and are running out | Lead + board session | **Done**: you chose once a day at 09:00 IST plus on ask (P-655, 10:3x); the board session also moves to combined queries |
 | A6 | Two standby Leads | Lead 76 and Lead 77 are idle and ready | Lead | **Done** |
@@ -89,3 +89,4 @@ The finding: 143 rules, 112 of them prose and only 11 ever broken visibly; six g
 
 ## Change log
 * 17 Nov 10:3x IST, Lead 75: first version.
+* 17 Nov 10:4x IST, Lead 75: A3 done (Setup); A5 decided (P-655); #2030 (Stuck now card) read and labelled; #2014's failed shard re-run.
