@@ -1,0 +1,85 @@
+// AS-1m (R1.106; P-588, P-577; case-side contract v0.1 §2.6, §3.2): EligibilityPort, the configurator's door to the
+// eligibility rules, for AS-1 on a lead (front office) and for case delivery's case assessment. The rules themselves are
+// in engine/eligibility/ (pure); the adapter is api/src/configurator/eligibility.door.ts; the fake is
+// ports/fakes/eligibility.fake.ts; the shared behaviour is ports/contracts/eligibility-port.contract.ts.
+// Pure and repeatable: the same release and facts give the same result. No immigration value lives here (P-577, AGENTS
+// rule 4): outcomes, reasons and scores are shapes, and every number comes from a release. An adapter is bound to one
+// firm by its caller (the session's firm), never by an argument a client can send; another firm's release is not found.
+// This folder imports only zod and its own files (contract v0.1 §1 rule 3; tests/check_as1m_eligibility_move.ts).
+import { z } from "zod";
+
+/** Whose facts: the principal applicant's, or the spouse's or partner's (a ranking score reads both, §3.2). */
+export const EligibilityRole = z.enum(["principal", "spouse"]);
+export type EligibilityRole = z.infer<typeof EligibilityRole>;
+
+/** The three outcomes. ELIGIBLE_BELOW_CUTOFF stays out of the port while P-236 holds (no draw cut-off is predicted). */
+export const EligibilityOutcome = z.enum(["LIKELY_ELIGIBLE", "POSSIBLY_ELIGIBLE", "NOT_ELIGIBLE"]);
+export type EligibilityOutcome = z.infer<typeof EligibilityOutcome>;
+
+const Id = z.string().min(1).max(200);
+const Key = z.string().min(1).max(200);
+
+/** One release a person can be assessed against: the newest released version of a combination that has rules. */
+export const AssessableRelease = z.strictObject({ combination_id: Id, name: z.string().min(1).max(500), release_id: Id, version: z.number().int().min(1), content_hash: z.string().min(1).max(200) });
+export type AssessableRelease = z.infer<typeof AssessableRelease>;
+
+/** One fact a release's gates (and, from AS-1s, its grids) read, for one role: its canonical answer key, the question's
+ *  words, its value type and, for a list question, the codes it allows (null when any value of its type is allowed). */
+export const RequiredFact = z.strictObject({ role: EligibilityRole, key: Key, wording: z.string().min(1).max(2000), value_type: z.string().max(80).nullable(), allowed_values: z.array(z.string().max(200)).nullable() });
+export type RequiredFact = z.infer<typeof RequiredFact>;
+export const RequiredFacts = z.strictObject({ release_id: Id, facts: z.array(RequiredFact) });
+export type RequiredFacts = z.infer<typeof RequiredFacts>;
+
+/** One person's facts, by canonical answer key. A key with no answer is left out (null or "" count as no answer). */
+export const EligibilityPerson = z.strictObject({ role: EligibilityRole, known: z.record(Key, z.unknown()) });
+export type EligibilityPerson = z.infer<typeof EligibilityPerson>;
+/** One principal, at most one spouse or partner. */
+export const AssessInput = z.strictObject({ release_id: Id, persons: z.array(EligibilityPerson).min(1).max(2) })
+  .refine((x) => x.persons.filter((p) => p.role === "principal").length === 1, { message: "Give exactly one principal applicant.", path: ["persons"] })
+  .refine((x) => x.persons.filter((p) => p.role === "spouse").length <= 1, { message: "Give at most one spouse or partner.", path: ["persons"] });
+export type AssessInput = z.infer<typeof AssessInput>;
+
+/** Why the outcome is what it is: a gate not met (NOT_ELIGIBLE), a gate whose "when not met" is a review
+ *  (POSSIBLY_ELIGIBLE, the representative reviews it), or a fact not answered (POSSIBLY_ELIGIBLE). `ref` is the gate key
+ *  or the fact key; `words` is the gate's label or the question's words. */
+export const EligibilityReason = z.strictObject({ kind: z.enum(["GATE_NOT_MET", "GATE_NEEDS_REVIEW", "FACT_MISSING"]), role: EligibilityRole, ref: Key, words: z.string().min(1).max(2000) });
+export type EligibilityReason = z.infer<typeof EligibilityReason>;
+export const MissingFact = z.strictObject({ role: EligibilityRole, key: Key });
+export type MissingFact = z.infer<typeof MissingFact>;
+
+/** AS-1's score and grid-breakdown types (§2.6). One line per factor of a grid: the points earned (null while its fact
+ *  is missing: shown as "—", never as an earned 0, BR-7), the most it can give, and where the value comes from. Empty
+ *  until AS-1s fills it from a release's grids. */
+export const ScoreLine = z.strictObject({ factor: Key, points: z.number().nullable(), max: z.number().nullable(), source_ref: z.string().max(2000).nullable() });
+export type ScoreLine = z.infer<typeof ScoreLine>;
+export const GridScore = z.strictObject({ grid: Key, total: z.number(), lines: z.array(ScoreLine) });
+export type GridScore = z.infer<typeof GridScore>;
+
+/** Which rules gave the result: the release and its fingerprint, stored with the result (FO-15b, CS-106c). */
+export const RulesVersion = z.strictObject({ release_id: Id, content_hash: z.string().min(1).max(200) });
+export type RulesVersion = z.infer<typeof RulesVersion>;
+
+export const EligibilityResult = z.strictObject({
+  outcome: EligibilityOutcome, reasons: z.array(EligibilityReason), missing_facts: z.array(MissingFact),
+  scores: z.array(GridScore), rules_version: RulesVersion, disclaimer: z.string().min(1).max(4000),
+});
+export type EligibilityResult = z.infer<typeof EligibilityResult>;
+
+/** The typed refusals: an unknown release (or another firm's), and a release with no eligibility rules (BR-10: zero
+ *  gates is no result). A malformed input is refused by AssessInput's own ZodError. */
+export class EligibilityRefused extends Error {
+  constructor(readonly code: "RELEASE_NOT_FOUND" | "NO_RULES", readonly releaseId: string) {
+    super(code === "RELEASE_NOT_FOUND" ? `No such release: ${releaseId}.` : `This release has no eligibility rules yet: ${releaseId}.`);
+    this.name = "EligibilityRefused";
+  }
+}
+export const isNotFound = (e: unknown) => e instanceof EligibilityRefused && e.code === "RELEASE_NOT_FOUND";
+
+export interface EligibilityPort {
+  /** The releases a person can be assessed against, one per combination (its newest released version with rules). */
+  listAssessable(): Promise<AssessableRelease[]>;
+  /** The facts the release's rules read, per role: a spouse's facts appear only when a rule reads them. */
+  requiredFacts(releaseId: string): Promise<RequiredFacts>;
+  /** One assessment. Throws EligibilityRefused for an unknown release or one with no rules, ZodError for a bad input. */
+  assess(input: AssessInput): Promise<EligibilityResult>;
+}
