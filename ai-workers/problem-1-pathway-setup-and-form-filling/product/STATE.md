@@ -1,6 +1,6 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_af927c49-47ca-42b8-8414-d6ef4722a8de Lead 72 · 17 Nov 07:1x IST (series 2; took over from Lead 71 (series 2, local_0c9cccec) at ~381k, P-446)
+current_lead: local_af927c49-47ca-42b8-8414-d6ef4722a8de Lead 72 · 17 Nov 07:13 IST (series 2; took over from Lead 71 (series 2, local_0c9cccec) at ~381k, P-446)
 
 updated: 2026-11-17 07:15 IST by **Lead 71 (series 2, local_0c9cccec)** at hand-over to Lead 72 (Lead 71 ran 23:31-07:15; cron b696e0aa deleted) · weekly 24% at 07:12 (resets 17 Nov 10:30 IST) · milestone: Release 1 proven 11 of 101 at 23:30 (not re-read since); **founder target 21 Proven by ~09:45 IST (A134); forecast 15-17** · rules: **`RULES.md`** (as of **P-651**; P-652 is 1 row newer) · this branch: `lead/2026-11-07-lead31`
 
