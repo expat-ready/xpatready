@@ -23,7 +23,7 @@ Sources: Lead 74's research (operating model v2, engineering system v1, failure 
 
 | # | What | Why | Cost | Status |
 |---|---|---|---|---|
-| B1 | GitHub: move the repository into an organization on **Enterprise, bought outright** (500 machines at once) | Machines are the bottleneck: 68 runs queued at 10:22. A trial would not help: GitHub's trial excludes higher job concurrency | about US$21 a month per seat | **Doing** with Setup in the built-in browser: you decided P-657 (10:4x), you sign in and pay; Setup reads seats, billing period and total first and stops for Team if it is annual, has a seat minimum or is sales-only. Preparation P1-P13 today; the move itself the next weekday from about 09:30 IST |
+| B1 | GitHub: move the repository into an organization on **Enterprise, bought outright** (500 machines at once) | Machines are the bottleneck | US$21 a seat a month, 0 seats today, monthly; Pro US$4 kept a week past the move | **Done** for the purchase: Enterprise "Expat Ready" active at 10:56 IST (P-657, P-658); Pro kept. **Doing:** the organization inside it (name card) and preparation P1-P13; the move itself the next weekday from about 09:30 IST |
 | B2 | Ruleset on main: required `ci`, no force-push, no deletion | Stops a direct push around the checks | US$0 | **Needs you** (after B1) |
 | B3 | A separate reviewer identity (a machine account or GitHub App) | Today one "Claude" identity both builds and approves; the approval is a comment anyone on the team can write | US$0 | **Needs you** (your account action, P-551) |
 | B4 | Who must approve changes to the pipeline itself (`.github/`, `.mergify.yml`, `.claude/`, gate scripts): you, in two short slots a day | The builder must never control its own judge | about 10-20 min a day of your time | **Needs you** |
@@ -75,7 +75,7 @@ The finding: 143 rules, 112 of them prose and only 11 ever broken visibly; six g
 | E4 | **Agent failure modes** and the check that answers each | Research **Done** (Lead 74, a147); Library master **Doing** by Setup |
 | E5 | **Engineering System v1** (the blank-sheet design and the gap from today) | Research **Done** (a146); Library master **Doing** by Setup |
 | E6 | **Model and effort per role** | Research **Done** (a149); goes into RULES as P-608's update **Next** |
-| E7 | The three talks joined into one approach (A145) | **Doing** in Lead 74's workflow; page due about 10:45; the Lead publishes it and sends you the link |
+| E7 | The three talks joined into one approach (A145), with the target system, models per role and the ranked decision cards (T1-T17, W1-W6, L1-L10) | **Done** at 11:0x IST: page https://claude.ai/artifact/4T3qRcNySBR7bdnqjTYn3D (read in full by the Lead; note added that T2 is superseded by P-657). Its cards go to you through Setup, one at a time |
 | E8 | Each document says its version, date and owner, and a change log; the Lead re-reads it weekly | **Next** |
 
 ## F. Product keeps moving meanwhile
@@ -91,4 +91,5 @@ The finding: 143 rules, 112 of them prose and only 11 ever broken visibly; six g
 * 17 Nov 10:3x IST, Lead 75: first version.
 * 17 Nov 10:4x IST, Lead 75: A3 done (Setup); A5 decided (P-655); #2030 (Stuck now card) read and labelled; #2014's failed shard re-run.
 * 17 Nov 10:4x IST, Lead 75: A4 done (21 GB free); A7 records PR #2071 opened and labelled.
-* 17 Nov 10:4x IST, Lead 75: B1 decided, Enterprise trial first (P-656), then revised to buy outright (P-657).
+* 17 Nov 10:4x IST, Lead 75: B1 decided, Enterprise trial first (P-656), then revised to buy outright (P-657); bought 10:56 (P-658).
+* 17 Nov 11:0x IST, Lead 75: E7 done (Engineering System v1 page published).
