@@ -60,6 +60,6 @@ Refined 16:1x IST from qa #1950's verdict table (open, stacked on #1929): R1.19 
   * R1.6: PF-6 part 2a/2b, J-6 part 2 (qa #2010 holds the retest after PF-6m).
   * R1.40: J-38 (no PR seen). R1.38: J-38 and FO-3st1.
   * R1.28: PF-19b part 2 (#1956, dequeued) and FO-2 part 3 (withdraw).
-  * R1.19: PF-5 part 2 (#1959), PF-5s (sign-up page), QA-481 (PF-5v part 2 after PF-19p #1961).
-  * R1.100: QA-481 only (PF-5t part 1 #1957 merged 07:07 IST): retest when PF-5v part 2 lands.
-* **For the next qa lane:** re-run `check_qa_r1_platform_fo_walk.ts` for R1.19/R1.100 when PF-19p and PF-5v part 2 merge; run FO-4sf's pack on fresh copies only until QA-501 is fixed.
+  * R1.19: PF-5 part 2 (#1959), PF-5s (sign-up page), QA-481 (PF-5v part 2 after PF-19p #1961), and J-19 (join and walk: sign-up → trial → first invite; no `j_19.ts` on main).
+  * R1.100: QA-481 (PF-5v part 2) and PF-5t part 2 (the screens: part 1 #1957, merged 07:07 IST, is API only per `screens/PF-5t/review.md`); retest the sign-in and acceptance journey when both land.
+* **For the next qa lane:** re-run `check_qa_r1_platform_fo_walk.ts` for R1.19/R1.100 once their listed parts (J-19, PF-5t part 2 included) merge; run FO-4sf's pack on fresh copies only until QA-501 is fixed.
