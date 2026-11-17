@@ -1,5 +1,5 @@
-// FO-3a part 1b-i (brief lead-b-briefs/FO-3a.md "Part 1b", split by its P-610 line; AG-4-62 rules 1-8, \u00a77, \u00a78; concept
-// fo-3-booking \u00a75 words): a staff member's named sets of hours, their time off, and which set a booking type uses for
+// FO-3a part 1b-i (brief lead-b-briefs/FO-3a.md "Part 1b", split by its P-610 line; AG-4-62 rules 1-8, §7, §8; concept
+// fo-3-booking §5 words): a staff member's named sets of hours, their time off, and which set a booking type uses for
 // each host. Every rule is here; availability.controller.ts declares the keys and passes the body on.
 //   * Sets (rules 1, 1c, 2-4): a name 1-80, one IANA zone (a new set takes the firm's zone: one office per firm until
 //     PF-18a), weekly windows "HH:MM"-"HH:MM" (end after start; no two of one set overlapping on a day). Exactly one is the
@@ -8,15 +8,13 @@
 //     are Mon-Fri (rule 1c: business hours seed a new person's set and never limit slots).
 //   * First read (rule 1, test 3): a person with no set gets "Normal hours" from the firm's business hours (FO-1b's
 //     copyFirmHoursTo), or an empty default set when the firm has no business hours, under the person's lock, so two
-//     first reads make one set. Platform staff creation is not touched. Slot computation writes nothing: a person with no
-//     set simply offers no time, as before.
+//     first reads make one set. Staff creation is untouched; slot computation writes nothing (no set = no time, as before).
 //   * Host set (rule 1b): PUT booking-types/:id/hosts/:staffId/set names one of that host's sets, or null for the
 //     default. A deleted set's choice goes with it (the database's CASCADE), so the type falls back to the default.
 //   * Time off (rules 5, 8): start before end, at most 366 days; it removes every slot it overlaps. Time off's home is
-//     AG-16 My account's out-of-office (AG-4-62 \u00a73, \u00a77); main has no My account, so these routes keep FO-1b's
-//     fo_time_off until AG-16 moves them (named in the PR for Lead B).
-//   * Rule 7: no change here ever moves or cancels a booking (no booking row is written).
-//   * Audit (AG-4-62 \u00a79 "None emitted" for events; one audit line per change): "availability changed" or "time off
+//     AG-16 My account's out-of-office (AG-4-62 §3, §7); main has no My account, so these routes keep FO-1b's
+//     fo_time_off until AG-16 moves them (named in the PR for Lead B). Rule 7: nothing here writes a booking row.
+//   * Audit (AG-4-62 §9 "None emitted" for events; one audit line per change): "availability changed" or "time off
 //     changed", the actor, the person whose hours they are, and the windows before and after (no free text: a set's
 //     name is said only by its length when shaped like an email address, which the audit port refuses).
 import { HttpException } from "@nestjs/common";
