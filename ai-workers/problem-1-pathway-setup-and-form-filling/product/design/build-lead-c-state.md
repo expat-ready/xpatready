@@ -148,3 +148,5 @@ Merged on main: #2002, #2007, #2016, #2035. #2000 got "Reviewer: Approve 1fb7ca0
 **18:37 IST 17 Nov (Lead 79, P-692, B1 freeze for the org move):** my lanes push no new commits, open no PRs and run no re-runs (renames included) until Lead 79 says the move is verified. #1991 and #2038 get their migration slots after the move. Lead 79 labels #2003 e2947b8 when it is green. The 20:00 IST list still goes to Lead 79.
 
 **18:4x IST 17 Nov:** #1991 FO-7a2 merged (18:39 IST, from head 8b5dffe06); #2042 CS-V1 schemas merged earlier (17:54 IST). The client-money baton is free. FO-7ts part 1 then FO-7lk start only after the move is verified (P-660, P-692 freeze), with Lead 79 asked first.
+
+**19:30 IST 17 Nov (P-660 list sent to Lead 79):** tonight if green: #2000 (2048a997e, Approve on head) and #2003 (e2947b887, Approve on head). Wait for move: #2063 (856cebb23, draft, no Approve). #2008 and #2038 have merged, so #2038 needs no slot. Not started until after the move: FO-7ts part 1 then FO-7lk, AUD-5 part 2, AUD-4s part 2, CS-W3 part 0. Asked Lead 79 whether my records pushes pause too. Until the answer, records stay committed locally.
