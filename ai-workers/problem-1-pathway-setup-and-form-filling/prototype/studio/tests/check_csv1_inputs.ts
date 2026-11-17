@@ -6,7 +6,9 @@
 // one taken off without a fix. Then a running copy is asked every route with an id parameter with "not-a-uuid" (and the
 // same with a NUL byte): a malformed id is simply not found (main.ts ProblemErrors), never a 500; the routes that answer
 // 500 today are the reviewed ALLOW_500 list (fixed in CS-V1 PR 2-3b). Named cases DW1-DW3. US$0, no model call.
-//   zsh studio/tools/isolated.sh runtime_csv1 4486 start && tsx studio/tests/check_csv1_inputs.ts 4486
+// CS-V1 part 2: DW4, for each file whose inputs now parse, an oversized value, a wrong type and an unknown field each
+// answer 400 naming the field and store nothing (rows counted before and after); a correct one still answers.
+//   zsh studio/tools/isolated.sh runtime_csv1 4486 start && tsx studio/tests/check_csv1_inputs.ts 4486 xr_studio_runtime_csv1
 import { join } from "node:path";
 import { planted } from "./lib/ts-files.ts";
 import { follows, routes, type Route } from "./lib/routes.ts";
@@ -21,22 +23,7 @@ const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++
  *  goes when its method parses (CS-V1 PR 2: review-rounds/readiness/form-additions; PR 3a: person-link, case-prepare,
  *  sign-steps; PR 3b: runtime.ts). Measured on main by this check (16 Nov); each confirmed by reading its service method. */
 export const ALLOW = new Set([
-  "assessments.ts GET /api/runtime/cases/:id/assessments query(person)",   // Assessments.list: the string compared as is
-  "case-documents.ts GET /api/runtime/cases/:id/proposals query",          // CaseDocuments.proposals: q.subject read by hand
-  "case-documents.ts GET /api/runtime/cases/:id/checks query",             // CaseDocuments.checks: q.subject, q.state by hand
   "case-prepare.ts POST /api/runtime/items/:id/pdf-copy body",             // CasePrepare.pdfCopy: fields read by hand
-  "features/case-close.ts POST /api/runtime/cases/:id/decisions body",     // CaseClose.decide: checked by hand (reasonOf, dateOf), no zod
-  "features/case-close.ts POST /api/runtime/cases/:id/withdraw body",      // CaseClose.withdraw: the same
-  "features/case-close.ts POST /api/runtime/cases/:id/close body",         // CaseClose.close: the same
-  "features/case-close.ts POST /api/runtime/cases/:id/reopen body",        // CaseClose.reopen: the same
-  "fill-case.ts GET /api/runtime/form-copies/:id/file query(original)",    // FillCase.file: only `o === "1"` is read
-  "form-additions.ts GET /api/runtime/filings/:id/addable-forms query(q)", // FormAdditions.addable: q read by hand
-  "form-additions.ts GET /api/runtime/filings/:id/addable-forms query(subject)",
-  "form-additions.ts GET /api/runtime/filings/:id/addable-forms/:form query(subject)", // FormAdditions.detail
-  "form-additions.ts POST /api/runtime/filings/:id/form-additions body",   // FormAdditions.add: `body as {…}`, checked by hand
-  "form-additions.ts POST /api/runtime/form-additions/:id/remove body",    // FormAdditions.remove: reason read by hand
-  "readiness.ts POST /api/runtime/filings/:id/review body",                // FilingReadinessRoutes.review
-  "readiness.ts POST /api/runtime/filings/:id/warnings/:code/pass body",   // FilingReadinessRoutes.pass: `body as {…}`
   "runtime.ts GET /api/runtime/cases query",                               // Runtime.list: take/after/client/q by hand
   "runtime.ts GET /api/runtime/cases/:id/questionnaire query(mode)",       // the handler compares m to "pqr"/"agent"
   "sign-steps.ts POST /api/runtime/items/:id/sign-steps/:key body",        // SignSteps.step
@@ -146,6 +133,108 @@ const fake = [{ route: "POST /api/runtime/x/:id", status: 500 }, { route: "GET /
 ok("CS-V1 DW3 fail: a 500 not on the list fails", judge500(fake, new Set()).unlisted.join() === "POST /api/runtime/x/:id");
 ok("CS-V1 DW3 fail: a listed route that answers 404 now must leave the list", judge500(fake, new Set(["POST /api/runtime/x/:id", "GET /api/runtime/y/:id"])).fixedButListed.join() === "GET /api/runtime/y/:id");
 ok("CS-V1 DW3 pass: a listed 500 passes", (() => { const x = judge500(fake, new Set(["POST /api/runtime/x/:id"])); return !x.unlisted.length && !x.fixedButListed.length; })());
+
+// ---- DW4 (part 2): readiness, form additions, case documents, assessments and the form copy on the running copy, one
+// Visitor visa case (the acceptance helpers' setup); case-close's routes take PF-4's staff sign-in, so its schemas are
+// asked directly here and its route words stay proven by check_csc1_close.ts.
+if (reached) {
+  const m3 = await import("../acceptance/lib/m3.ts");
+  const { spawnSync } = await import("node:child_process");
+  const studio = join(import.meta.dirname, ".."), tsx = join(studio, "node_modules", ".bin", "tsx");
+  const releases = () => Number(m3.sql(`select coalesce(max(r.version), 0) from config_release r join combination c on c.id = r.combination_id where c.combination_key = 'vv.single'`) ?? 0);
+  if (releases() < 1) spawnSync(tsx, ["--tsconfig", join(studio, "api", "tsconfig.json"), join(studio, "tests/runtime/setup_visitor_visa.ts"), String(PORT), m3.DB], { cwd: join(studio, ".."), stdio: "ignore", timeout: 900_000 });
+  ok("DW4 setup: the copy has a Visitor visa release", releases() >= 1, releases());
+  const f = await m3.firms(), officer = f.officer ?? m3.OFFICER, rep = f.rep ?? "user-R";
+  const c = await m3.openCase(m3.needVisitorVisa(), [{ role: "principal", name: "Sample Client V", dob: m3.yearsAgo(40) }], { representative: rep, caseOfficers: [officer] });
+  const subject = c.subjects["Sample Client V"], fid = m3.filingOf((await m3.prepare(c.id, officer)).p, subject)?.id ?? "";
+  ok("DW4 setup: a case with a filing", !!fid, { case: c.id, fid });
+  const rows = () => m3.sql("select (select count(*) from audit_event) || '/' || (select count(*) from filing_review) || '/' || (select count(*) from readiness_pass) || '/' || (select count(*) from filing_form_addition) || '/' || (select count(*) from filing_form_addition where removed_at is not null)");
+  const named = (b: { errors?: { field?: string; message?: string }[]; detail?: string } | undefined, field: string) => (b?.errors ?? []).some((e) => e.field === field || (field === "body" && /Not part of|Not a filter/.test(e.message ?? "")));
+  /** Each bad request answers 400 naming its field and changes no row; the good one is not refused by the schema. */
+  const dw4 = async (file: string, method: string, path: (q: string) => string, actor: string, bad: { why: string; body?: unknown; q?: string; field: string }[], good: { body?: unknown; q?: string; expect: (s: number) => boolean }) => {
+    for (const x of bad) {
+      const before = rows(), r = await m3.call(method, path(x.q ?? ""), x.body, actor), after = rows();
+      ok(`CS-V1 DW4 fail (${file}): ${x.why} answers 400 naming ${x.field}, nothing stored`, r.status === 400 && named(r.body, x.field) && before === after, { status: r.status, body: r.body, before, after });
+    }
+    const r = await m3.call(method, path(good.q ?? ""), good.body, actor);
+    ok(`CS-V1 DW4 pass (${file}): a correct ${method} still answers as before`, good.expect(r.status), { status: r.status, body: r.body });
+    return r;
+  };
+  const big = "x".repeat(6000);
+  await dw4("readiness.ts", "POST", () => `/runtime/filings/${fid}/review`, rep, [
+    { why: "an unknown field", body: { facts_hash: "0".repeat(64), extra: 1 }, field: "body" },
+    { why: "a wrong type (self: \"yes\")", body: { facts_hash: "0".repeat(64), self: "yes" }, field: "self" },
+    { why: "an oversized note", body: { facts_hash: "0".repeat(64), note: big }, field: "note" },
+  ], { body: { facts_hash: "0".repeat(64) }, expect: (s) => s === 409 });   // the schema takes it; the facts it names are stale, as before (409)
+  await dw4("readiness.ts", "POST", () => `/runtime/filings/${fid}/warnings/missing_document/pass`, officer, [
+    { why: "an unknown field", body: { reason: "Passport arrives tomorrow (Sample)", extra: 1 }, field: "body" },
+    { why: "an oversized key", body: { reason: "Passport arrives tomorrow (Sample)", key: "k".repeat(100_001) }, field: "key" },
+  ], { body: { reason: "Passport arrives tomorrow (Sample)" }, expect: (s) => s === 200 || s === 409 });
+  const list = await dw4("form-additions.ts", "GET", (q) => `/runtime/filings/${fid}/addable-forms${q}`, officer, [
+    { why: "q given twice", q: "?q=a&q=b", field: "q" },
+    { why: "an oversized q", q: `?q=${"x".repeat(300)}`, field: "q" },
+    { why: "an unknown filter", q: "?q=&extra=1", field: "body" },
+  ], { q: "?q=", expect: (s) => s === 200 });
+  const form = (list.body?.forms ?? []).find((x: { addable?: boolean; why_not?: unknown }) => x.addable !== false && !x.why_not)?.form;
+  await dw4("form-additions.ts", "GET", (q) => `/runtime/filings/${fid}/addable-forms/${encodeURIComponent(form ?? "")}${q}`, officer, [
+    { why: "an unknown filter", q: `?subject=${subject}&extra=1`, field: "body" },
+    { why: "subject given twice", q: `?subject=${subject}&subject=${subject}`, field: "subject" },
+  ], { q: `?subject=${subject}`, expect: (s) => s === 200 });
+  await dw4("form-additions.ts", "POST", () => `/runtime/filings/${fid}/form-additions`, officer, [
+    { why: "an unknown field", body: { form, extra: 1 }, field: "body" },
+    { why: "a wrong type (channel: 5)", body: { form, channel: 5 }, field: "channel" },
+    { why: "an oversized signature", body: { form, signature: big }, field: "signature" },
+    { why: "an oversized form number", body: { form: big }, field: "form" },
+  ], { body: { form, subject }, expect: (s) => s === 201 || s === 409 || s === 422 });
+  const added = m3.sql(`select id from filing_form_addition where filing_id = '${fid}' and removed_at is null limit 1`);
+  if (added) await dw4("form-additions.ts", "POST", () => `/runtime/form-additions/${added}/remove`, officer, [
+    { why: "an unknown field", body: { reason: "Added by mistake (Sample)", extra: 1 }, field: "body" },
+    { why: "an oversized reason", body: { reason: big }, field: "reason" },
+  ], { body: { reason: "Added by mistake (Sample)" }, expect: (s) => s === 200 });
+  else ok("CS-V1 DW4 (form-additions.ts): a form was added to remove", false, { form });
+  await dw4("case-documents.ts", "GET", (q) => `/runtime/cases/${c.id}/proposals${q}`, officer, [
+    { why: "subject given twice", q: `?subject=${subject}&subject=${subject}`, field: "subject" },
+    { why: "an unknown filter", q: "?other=1", field: "body" },
+  ], { q: `?subject=${subject}`, expect: (s) => s === 200 });
+  await dw4("case-documents.ts", "GET", (q) => `/runtime/cases/${c.id}/checks${q}`, officer, [
+    { why: "a state that is not open or resolved", q: "?state=closed", field: "state" },
+    { why: "an oversized subject", q: `?subject=${"x".repeat(300)}`, field: "subject" },
+  ], { q: "?state=open", expect: (s) => s === 200 });
+  await dw4("assessments.ts", "GET", (q) => `/runtime/cases/${c.id}/assessments${q}`, officer, [
+    { why: "person given twice", q: "?person=a&person=b", field: "person" },
+    { why: "an oversized person", q: `?person=${"x".repeat(300)}`, field: "person" },
+    { why: "an unknown filter", q: "?extra=1", field: "body" },
+  ], { q: "", expect: (s) => s === 200 });
+  await dw4("fill-case.ts", "GET", (q) => `/runtime/form-copies/00000000-0000-4000-8000-000000000000/file${q}`, officer, [
+    { why: "original given twice", q: "?original=1&original=1", field: "original" },
+    { why: "an oversized original", q: `?original=${"1".repeat(50)}`, field: "original" },
+    { why: "an unknown filter", q: "?original=1&extra=1", field: "body" },
+  ], { q: "?original=1", expect: (s) => s === 404 });   // no such copy: the flag passes the schema, the copy is not found, as before
+}
+{ // case-close.ts (CS-C1a): its checks and words, now in zod (contracts/runtime.ts).
+  const { CaseDecisionBody, CaseReasonBody, CaseWithdrawBody } = await import("../contracts/runtime.ts");
+  const first = (r: { success: boolean; error?: { issues: { path: PropertyKey[]; message: string; params?: { code?: string } }[] } }) => r.success ? null : { field: String(r.error!.issues[0].path[0] ?? "body"), message: r.error!.issues[0].message, code: r.error!.issues[0].params?.code };
+  const good = { filingId: "f", outcome: "APPROVED", decidedOn: "2026-11-01", note: " Approved by letter (Sample) " };
+  const g = CaseDecisionBody.safeParse(good);
+  ok("CS-V1 DW4 pass (case-close.ts): a correct decision parses (note trimmed, date read)", g.success && g.data.note === "Approved by letter (Sample)" && g.data.decidedOn instanceof Date && CaseReasonBody.safeParse({ reason: "Client asked (Sample)" }).success && CaseWithdrawBody.safeParse({ reason: "Client asked (Sample)", withdrawnOn: "2026-11-02" }).success);
+  const cases: [string, ReturnType<typeof first>, string, string][] = [
+    ["an unknown field", first(CaseDecisionBody.safeParse({ ...good, extra: 1 })), "body", "Not part of a decision: extra."],
+    ["a wrong type (outcome: 5)", first(CaseDecisionBody.safeParse({ ...good, outcome: 5 })), "outcome", "One of APPROVED, REFUSED (Sample list)."],
+    ["an oversized note", first(CaseDecisionBody.safeParse({ ...good, note: big2() })), "note", "Plain text, at most 2000 characters."],
+    ["an oversized reason", first(CaseReasonBody.safeParse({ reason: big2() })), "reason", "At most 1000 characters."],
+    ["a date that is not real", first(CaseWithdrawBody.safeParse({ reason: "Client asked (Sample)", withdrawnOn: "2026-02-30" })), "withdrawnOn", "A real date as YYYY-MM-DD."],
+  ];
+  for (const [why, got, field, message] of cases) ok(`CS-V1 DW4 fail (case-close.ts): ${why} is refused on ${field} with its words`, got?.field === field && got?.message === message, got);
+  const blankReason = first(CaseReasonBody.safeParse({ reason: " ​ " }));
+  ok("CS-V1 DW4 fail (case-close.ts): a blank reason keeps its own code (REASON_REQUIRED, \"Give a reason.\")", blankReason?.code === "REASON_REQUIRED" && blankReason.message === "Give a reason." && blankReason.field === "reason", blankReason);
+}
+{ // Review of #2042 m2: the review note and the pass reason are capped as the route reads them (trimmed), so a short
+  // text padded with spaces is still taken, as before.
+  const { FilingReviewBody, WarningPassBody } = await import("../contracts/runtime.ts");
+  ok("CS-V1 DW4 pass (readiness.ts): a long warning key (a whole fact list, as readiness builds it) is still taken", WarningPassBody.safeParse({ reason: "Passport arrives tomorrow (Sample)", key: `item|client|${Array.from({ length: 60 }, (_, i) => `person.fact_number_${i}`).join(",")}` }).success);
+  ok("CS-V1 DW4 pass (readiness.ts): a short note or reason padded with spaces is still taken", FilingReviewBody.safeParse({ facts_hash: "0".repeat(64), note: `Fine${" ".repeat(5000)}` }).success && WarningPassBody.safeParse({ reason: `Passport arrives tomorrow${" ".repeat(5000)}` }).success);
+}
+function big2() { return "y".repeat(6000); }
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
