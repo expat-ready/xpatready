@@ -48,7 +48,7 @@ const submitSignApprove = async (id: string, note: string) => {
 try {
   // ------------------------------------------------------------------ setup: Reset, then the fixture sample with "With an LMIA" as Release 1
   // AUD-1a (Lead 78, comment 6946893835): the trail's guard refuses any key change to or from demo, so these renames run as the owner with triggers off on this scratch copy; the app's role can never do this (PF-12).
-  sql(`set session_replication_role = replica; update workspace set key='demo' where key<>'demo'; set session_replication_role = origin`); // a run that stopped half-way left it renamed
+  sql(`set session_replication_role = replica; update workspace set key='demo' where key='firm'; set session_replication_role = origin`); // a run that stopped half-way left it renamed
   let r = await call("POST", "/demo/reset", { confirm: "RESET" });
   r = await call("POST", "/demo/load");
   ok("setup: Reset, then the sample inputs loaded (With an LMIA imported as Release 1)", r.status === 201, r.status === 201 ? undefined : r.body);
@@ -258,5 +258,5 @@ try {
   ok("C5.4 Decision 1 pass: back in the demo workspace the Sample answer passes and the release is a Demo release, its source frozen as Sample",
     vvDone.step === "approve" && vvDone.r.status < 300 && vvRel2?.demo === true && sql(`select count(*) from config_release, jsonb_array_elements(snapshot->'sources') x where combination_id='${v}' and version=2 and (x->>'sample')::boolean`) === "1", { step: vvDone.step, status: vvDone.r.status, rel: vvRel2 });
 } catch (e) { ok("ran to the end", false, (e as Error).message); }
-try { sql(`set session_replication_role = replica; update workspace set key='demo' where key<>'demo'; set session_replication_role = origin`); } catch { /* the copy may be gone */ }
+try { sql(`set session_replication_role = replica; update workspace set key='demo' where key='firm'; set session_replication_role = origin`); } catch { /* the copy may be gone */ }
 process.exit(summary() ? 1 : 0);

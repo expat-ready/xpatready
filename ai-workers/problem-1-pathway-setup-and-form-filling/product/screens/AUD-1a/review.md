@@ -218,3 +218,21 @@ I read the diff. I did not run any suites, as you asked. The builder reports `ch
 Reviewer: Approve f38dbd39135956a48edaa29e8889ffb2e62aa022
 
 Verdict: Approve
+
+---
+
+## Re-review round 5: the diff `b0d9d53e9..3fff30474` only (P-277). Head 3fff30474da51f071819e61e657ddba7a046d4a7
+
+I read the diff. I did not run any suites. The builder reports aud1a 41/41, g1 55/55, bk11 8/8 and g2 27/27.
+
+* **The renames are wrapped, as ruled.** The 8 `update workspace set key=…` statements in g1 (4), bk11 (2) and g2 (2) now run with triggers off, in the same psql command: `set session_replication_role = replica; …; set session_replication_role = origin`.
+  * They run as the owner (`xr_studio`) on each suite's own scratch copy.
+  * There is one comment line per file, and no assertion changed. This follows Lead 78's ruling (comment 6946893835) and is the same pattern as fo2v.
+* **DW7's new fail line is right.** `xr_app` cannot `set session_replication_role` (it is not a superuser and has no SET grant, PF-12). The check also confirms the `demo` row is still there.
+* **Minor m8** (not blocking; the statements are the same as before, only wrapped). The "stopped half-way" recovery in bk11:29/61, g1:50/260 and g2:165 is `where key<>'demo'`, and with triggers off it would also rename a `platform-audit` row on that copy.
+  * Failure scenario: a copy holding `firm` and `platform-audit` fails with a unique-key violation and stops the suite at bk11:29 or g1:50. On a copy whose `demo` row is gone, the statement would quietly turn `platform-audit` into `demo`.
+  * Fix: `where key = 'firm'`.
+
+Reviewer: Approve 3fff30474da51f071819e61e657ddba7a046d4a7
+
+Verdict: Approve

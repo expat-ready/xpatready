@@ -163,5 +163,5 @@ if (r.status === 201) {
 } else ok("C5.5 BR-9: the real release goes through and its summary names both signed keys", false, r.body);
 } catch (e) { ok("ran to the end", false, (e as Error).message); }
 // Back to the demo workspace, so the copy ends as it started.
-try { sql(`set session_replication_role = replica; update workspace set key='demo' where key<>'demo'; set session_replication_role = origin`); restart(); } catch { /* the copy may be gone */ }
+try { sql(`set session_replication_role = replica; update workspace set key='demo' where key='firm'; set session_replication_role = origin`); restart(); } catch { /* the copy may be gone */ }
 process.exit(summary() ? 1 : 0);
