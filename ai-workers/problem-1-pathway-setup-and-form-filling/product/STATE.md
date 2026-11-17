@@ -2,7 +2,9 @@
 
 current_lead: local_f6824017-15da-4b1e-b6c8-ba19bd98b100 Lead 76 · 17 Nov 11:1x IST (series 2; took over from Lead 75 (series 2, local_c9752f73) at ~300k, P-446)
 
-updated: 2026-11-17 11:1x IST by **Lead 75 (series 2, local_c9752f73)** at hand-over to Lead 76 (Lead 75 ran 10:22-11:1x; cron ca6fade8 deleted) · weekly 2% (reset 10:30) · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-657**; P-658 to P-660 newer, lag 3) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-17 11:2x IST by **Lead 76 (series 2, local_f6824017)** (took over 11:10 IST from Lead 75; check cron a4d44989 at :17 and :47) · 5-hour 58%, weekly 2% at 11:2x · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-657**; P-658 to P-660 newer, lag 3, read word for word at the start) · this branch: `lead/2026-11-07-lead31`
+
+**Nightly 17 Nov 08:29 IST (run 44006940285) red, 3 suites:** `check_bk5_start_browser.cjs` BR-6 (fix #2054, Lead read and Approve b7da67a done, CI running: label on green, P-214); `check_c613_filing_changes_browser.cjs` (quarantined on PRs, still in the nightly list); `check_b78_section_names.ts` 20-min timeout (machine load; re-measure at tonight's nightly).
 
 Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
