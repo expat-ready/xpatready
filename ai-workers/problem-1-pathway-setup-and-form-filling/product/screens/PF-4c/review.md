@@ -87,3 +87,51 @@ Noted, not findings for this PR:
 * Lead B's confirmations the brief asks for: the route path, the name not stored, and the touch list widened.
 
 Verdict: Approve 30bf02ccbcf3395160f417395761e40314f5208c
+
+## Re-review at 48ffb93eb
+Reviewer: Opus 5.5, fresh context, 17 Nov 2026. P-277: only the diff `30bf02ccb..48ffb93eb` under `prototype/studio`: `batch-invite.ts`, `service.ts` and the row's test. The other commits add records only. US$0, no model call, :4400 not used. Scratch worktree at `48ffb93eb`, removed afterwards.
+
+* **The journey score stands at 9.5 / 10** (`journey-test-reviewer-2026-11-17.md`). The diff adds no screen and no step, and it removes the two one-submit-at-a-time frictions that cost the half point's worth of retries.
+
+### Runs at 48ffb93eb
+* `check_pf4c_batch_invite.ts`: **24 passed, 0 failed**. This matches the builder's 24/0: 19 old checks plus m1, the two m2 checks, m3 and break 3.
+* `check_pf6m_money_line.ts`: **12 passed, 0 failed**.
+* Each mutation was applied in the worktree and then reverted. Each new test fails when its fix is undone:
+  * **M1, the old loop restored** (skip a row whose email or roles are invalid, `rowCheck` stopping at the first throw): "review m1" FAILs, 23/1. Row 1 shows only `INVALID_ROLES` and row 2 only `INVALID_EMAIL`.
+  * **M2, my earlier mutation B** (seats counted over all rows, `rows` dropped from the 409): both "review m2" checks FAIL, 22/2. My finding 2 is now pinned.
+  * **M3, `nameOf` back to `v === ""` only**: "review m3" FAILs, 23/1 (`INVALID_NAME` on both rows).
+  * **M4, `batchRowsOf(body, true)`**: "break 3" FAILs, 23/1.
+
+### Answers, checked
+* **m1, met.**
+  * `inviteBatch` (`service.ts:367-369`) runs `roleRules` whenever the roles are valid and hold no Owner. It runs `personCheck` whenever the email is valid and the row is not a duplicate in the form. Each result becomes its own flag.
+  * Every refusal is an `HttpException` thrown in JS, so the locked transaction stays usable. `flagOf` still re-throws anything else.
+  * `invite` still calls `rowCheck`, which is now `roleRules` then `personCheck`: the same two checks in the same order, so the single invite's answers are unchanged.
+  * Skipping `personCheck` on a `DUPLICATE_IN_FORM` row is sound, because the first row with that email already carries the staff or invited flag.
+  * An Owner row now also gets `ALREADY_STAFF` / `ALREADY_INVITED`, which it did not get before. This is better.
+* **m2, met.** The two tests cover what I asked for:
+  * 2 clean rows + 1 flagged row with 2 seats left → 422 `ROWS_FLAGGED`;
+  * the same rows with 1 seat left → 409 `PLAN_LIMIT_REACHED` with `removeCount` 1, and `rows` carries row 3's `INVALID_EMAIL`.
+  * In both cases nothing is created.
+* **m3 and breaker 5, met.**
+  * Probed `batchRowsOf` directly, 22 inputs. These are no name: `"   "`, U+3164, U+115F U+1160, U+FFA0, U+3000, NBSP, a lone combining mark, 150 combining marks and 300 spaces.
+  * These keep `INVALID_NAME`: `"\n"`, `" \t "`, U+200B, U+FEFF and U+2028. Each holds a control, format or line-break character, which the header-safe rule refuses.
+  * `"Á"`, `"é"` and `" Ann "` → `"Ann"` are accepted as before.
+  * The test's "no greeting" check is not vacuous. The greeting is the first text of the mail body (`service.ts:326`, `Hello ${name},`), so `^Hello` matches whenever a name is used.
+* **breaker 3, met.**
+  * An Admin's Owner row now reads "Only an Owner gives the Owner role. Ask an Owner to invite this person." An Owner's Owner row keeps "Invite an Owner on their own: it needs a reason and Confirm it's you." Probed both.
+  * The code stays `OWNER_BY_SINGLE_INVITE`, as the brief names it. The words match the single invite's `OWNER_ONLY` rule.
+* **The test edit to the DW4 `mixed` row 3** (`row("not-an-email")` → `row("not-an-email", ["READ_ONLY"])`) is needed, not a weakening. Under m1 the default `CASE_OFFICER` role would now also flag `ROLE_BEYOND_OWN_KEYS` for this Admin inviter. The row still asserts exactly `INVALID_EMAIL`.
+* **m4** is a PR-body fix. It is outside this diff and I did not check it here.
+* **Breakers 4, 6, 7 and 8** go to Lead B, as the builder says. This agrees with my "Noted" list above.
+
+### Nits (not findings; no change asked for this PR)
+* A row with Owner plus another role (for example `["OWNER","BILLING_FINANCE"]` from an Admin) skips `roleRules` entirely. Its `ROLE_BEYOND_OWN_KEYS` would therefore surface only after the Owner role is removed. This is an edge of an edge: the Owner flag already tells the person to take that row out.
+* U+2800 (braille blank) still counts as a name, so the mail would open with `Hello ⠀,`. A leading filler before a real name is kept (`"ㅤ Bob"`). Both are cosmetic only and cannot add a line or a header.
+* The new `VISIBLE` in `batch-invite.ts` is wider than `reasonOf`'s (`service.ts:66`): it also strips marks and Hangul fillers. So "as with reasons" is looser than the code: a reason of fillers only still passes `reasonOf`. That code is from `main` and outside this row.
+
+### Could not check
+* CI on this head.
+* The PF-4 and PF-4b suites were not re-run (they need the isolated :4431 copy). `rowCheck` keeps the same two calls in the same order, and `roleRules` is unchanged.
+
+Verdict: Approve 48ffb93eb26779fc1da8f6c08ad617abe434ebb8
