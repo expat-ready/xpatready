@@ -75,7 +75,7 @@ type Part = { bytes: Uint8Array; type: string; name?: string };
 const raise = async (token: string, fields: Record<string, string>, files: Part[] = []): Promise<Res> => {
   const f = new FormData();
   for (const [k, v] of Object.entries(fields)) f.append(k, v);
-  files.forEach((p, i) => f.append("files", new Blob([p.bytes], { type: p.type }), p.name ?? `file${i + 1}`));
+  files.forEach((p, i) => f.append("files", new Blob([new Uint8Array(p.bytes)], { type: p.type }), p.name ?? `file${i + 1}`));
   const r = await fetch(`${BASE}/api/platform/support/tickets`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: f });
   const text = await r.text(); let b: any = text; try { b = JSON.parse(text); } catch { /* text */ }
   return { status: r.status, body: b };
@@ -159,6 +159,15 @@ try {
   const altered = await call("GET", `/files/${bent}`, as.CASE_OFFICER.token), none = await call("POST", `/tickets/${idg}/files/3/link`, as.CASE_OFFICER.token), notSeen = await call("POST", `/tickets/${idg}/files/1/link`, officer2.token);
   ok("PF-18b DW3 fail: only through a signed link for that person: a colleague's or another firm's use, an altered token, a file it does not have, a ticket not seen are each 404",
     other.status === 404 && bLink.status === 404 && altered.status === 404 && none.status === 404 && notSeen.status === 404, { other: other.status, bLink: bLink.status, altered: altered.status, none: none.status, notSeen: notSeen.status });
+  // Review m3: a link the person was given stops working once they no longer see the ticket (assertKeyVisible, not FileLinks).
+  const adminLink = await call("POST", `/tickets/${idg}/files/1/link`, as.ADMIN.token);
+  const adminBefore = await call("GET", adminLink.body.url, as.ADMIN.token);
+  await db.platformRoleGrant.deleteMany({ where: { staffId: as.ADMIN.id } });
+  await db.platformRoleGrant.create({ data: { firmId: firmA, staffId: as.ADMIN.id, role: "CASE_OFFICER", grantedBy: "seed:pf18b" } });
+  const adminAfter = await call("GET", adminLink.body.url, as.ADMIN.token);
+  await db.platformRoleGrant.deleteMany({ where: { staffId: as.ADMIN.id } });
+  await db.platformRoleGrant.create({ data: { firmId: firmA, staffId: as.ADMIN.id, role: "ADMIN", grantedBy: "seed:pf18b" } });
+  ok("PF-18b DW3 fail (review m3): the Admin's link to a colleague's file downloads, then is 404 once they are no longer Admin (the ticket is re-checked)", adminLink.status === 200 && adminBefore.status === 200 && adminAfter.status === 404, { link: adminLink.status, before: adminBefore.status, after: adminAfter.status });
   const mid = crypto.randomUUID();
   ok("PF-18b DW3 fail (database): a message naming a file in another ticket's folder is refused, even written by the owner role",
     refused(`insert into platform_support_message (id, firm_id, ticket_id, author_kind, author_id, body, file_keys) values ('${mid}', '${firmA}', '${idg}', 'FIRM_STAFF', '${as.CASE_OFFICER.id}', 'x', '{support/${id1}/1}')`, /outside its own ticket's folder/));
