@@ -49,11 +49,12 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus 
           const money = moneyKeysAdded(roles, r.roles), dup = twice(r);
           return (
             <section key={r.n} className="rounded-xl border border-border p-3" aria-label={`Person ${i + 1}`} data-invite-row={i + 1}>
-              <Field label={`Name, person ${i + 1} (optional)`}>
-                <Input value={r.name} maxLength={120} autoComplete="off" onChange={(e) => set(r.n, { name: e.target.value, error: null })} data-invite-name />
-              </Field>
-              <div className="mt-3"><Field label={`Email, person ${i + 1}`} error={dup ? "This email is already on another row." : r.error}>
+              <Field label={`Email, person ${i + 1}`} error={dup ? "This email is already on another row." : r.error}>
                 <Input type="email" value={r.email} autoComplete="off" onChange={(e) => set(r.n, { email: e.target.value, error: null })} />
+              </Field>
+              {/* PF-4dn: after the email, the one required field, which keeps the panel's first focus (PF-6 DW8). */}
+              <div className="mt-3"><Field label={`Name, person ${i + 1} (optional)`}>
+                <Input value={r.name} maxLength={120} autoComplete="off" onChange={(e) => set(r.n, { name: e.target.value, error: null })} data-invite-name />
               </Field></div>
               <div className="mt-3"><RolePicker roles={roles} offered={offered} chosen={r.roles} legend="Roles" onChange={(x) => set(r.n, { roles: x, error: null })} /></div>
               <p className="mt-2 text-xs text-text-muted" data-role-line>{r.roles.length ? roleLine(r.roles) : "Choose at least one role."}</p>
