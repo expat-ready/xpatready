@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FO-7s0 board — Trust</title>
+<!-- FO-7s0 board, Sample data only (firm Maple, Client B, Pine Bakery). Checks: DW4 every figure (.fig) in one currency;
+     DW7 a negative trust figure only inside a labelled reversal shortfall (.shortfall) or a typed bank figure (.bank). ?plant=dw4 / ?plant=dw7 add a bad figure: the check must say FAIL. -->
+<style>
+:root{--bg:#f3f5f9;--card:#fff;--text:#1a2233;--muted:#5b667a;--line:#dde3ec;--brand:#0862C5;--ok:#1d7a46;--warn:#9a5b00;--bad:#b42318;--chip:#eef2f8}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11151c;--card:#1a202b;--text:#e8edf5;--muted:#9aa6b8;--line:#2c3544;--brand:#5aa2ff;--chip:#253044;--warn:#f0b35a}}
+:root[data-theme="dark"]{--bg:#11151c;--card:#1a202b;--text:#e8edf5;--muted:#9aa6b8;--line:#2c3544;--brand:#5aa2ff;--chip:#253044;--warn:#f0b35a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,sans-serif}
+header{display:flex;gap:12px;align-items:center;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line)}header b{color:var(--brand)}
+main{padding:16px;display:grid;gap:16px;max-width:1440px}section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+h1{font-size:18px;margin:0 0 4px}h2{font-size:16px;margin:0 0 8px}small,.m{color:var(--muted)}.row{display:flex;gap:16px;flex-wrap:wrap}.row>*{flex:1 1 280px}
+table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left}td.n{text-align:right}
+.chip{display:inline-block;padding:1px 8px;border-radius:6px;background:var(--chip);font-size:12px}.warn{color:var(--warn)}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;padding:6px 12px}button.p{background:var(--brand);border-color:var(--brand);color:#fff}
+.shortfall{color:var(--bad)}.note{border-left:3px solid var(--warn);padding:6px 10px;background:var(--chip)}output{display:block;font-weight:600}output[data-result=PASS]{color:var(--ok)}output[data-result=FAIL]{color:var(--bad)}
+</style></head><body><header><b>Maple Immigration</b><span class="m">Money · Trust</span></header><main>
+<section class="note"><b>Do you hold client money in a trust account?</b> <button>Yes</button> <button>No</button><br><small>Yes lets you take deposits before the work. No means you bill after the work.</small> <span class="m">(Owner only, while Unanswered)</span></section>
+<div class="row"><section><h1>Client B — Money</h1><table><tr><th></th><th>CAD</th><th>USD</th></tr>
+<tr><td>Billed</td><td class="n fig">CAD 3,616.00</td><td class="n fig">USD 0.00</td></tr><tr><td>Paid</td><td class="n fig">CAD 1,000.00</td><td class="n fig">USD 0.00</td></tr>
+<tr><td>Paid from trust</td><td class="n fig">CAD 960.50</td><td class="n">—</td></tr><tr><td><b>Owed</b></td><td class="n fig"><b>CAD 1,655.50</b></td><td class="n fig">USD 0.00</td></tr>
+<tr><td>Trust held</td><td class="n fig">CAD 169.50</td><td class="n">—</td></tr><tr><td>Credit · Unbilled</td><td class="m">Not tracked yet</td><td class="m">Not tracked yet</td></tr></table>
+<p><button class="p">Pay from trust…</button> <button>Refund to client…</button> <button>Send statement…</button></p></section>
+<section><h2>Trust ledger — Work permit (CAD)</h2><table><tr><th>Date</th><th>Entry</th><th>Ref</th><th>Payer</th><th>Amount</th><th>Balance</th></tr>
+<tr><td>2 Nov</td><td>Received</td><td>DR-0001</td><td>Client B</td><td class="n fig">CAD 1,130.00</td><td class="n fig">CAD 1,130.00</td></tr>
+<tr><td>16 Nov</td><td>Paid to <a href="#">INV-0002</a></td><td>INV-0002</td><td>Client B</td><td class="n fig">CAD 960.50 out</td><td class="n fig">CAD 169.50</td></tr></table></section></div>
+<div class="row"><section><h2>Pay from trust… — INV-0002</h2><p>Available from Client B for this case: <span class="fig">CAD 1,130.00</span> · Balance due: <span class="fig">CAD 960.50</span></p>
+<p>Amount <span class="fig">CAD 960.50</span> <button class="p">Pay from trust</button></p><p class="warn">Refused state: Only CAD 130.00 is available.</p><p class="m">Success state: Paid from trust: CAD 960.50 · Balance due: CAD 0.00</p></section>
+<section><h2>To move</h2><p class="fig">Trust → operating: CAD 960.50 · Operating → trust: CAD 282.50</p>
+<p>☑ Move CAD 960.50 from trust to operating — INV-0002, Client B</p><p>☐ Move CAD 282.50 back to trust — CN-0001, Client B <small>(the only operating → trust line in R1, P-634 (2))</small></p>
+<p>Bank transfer date 20 Nov 2026 <button class="p">I moved these</button></p><small>Past batches: 20 Nov · trust → operating · <span class="fig">CAD 169.50</span> · <button>Undo this batch…</button></small></section></div>
+<section><h2>Monthly check — CAD, after the bounced cheque R-0007</h2><p>Bank's trust balance <span class="fig">CAD 2,169.50</span> · Statement date 30 Nov 2026 · Advanced ▸ In transit <span class="fig">CAD 0.00</span></p>
+<table><tr><td>Case balances <small>(every case and pre-case balance, Client B's shortfall included)</small></td><td class="n fig">CAD 2,169.50</td></tr><tr><td>Waiting to move</td><td class="n fig">CAD 0.00</td></tr><tr><td>Fees not yet covered</td><td class="n fig">CAD 0.00</td></tr><tr><td>In transit</td><td class="n fig">CAD 0.00</td></tr>
+<tr><td><b>Expected bank balance</b></td><td class="n fig"><b>CAD 2,169.50</b></td></tr><tr><td><b>Difference</b></td><td class="n fig"><b>CAD 0.00</b></td></tr></table>
+<p class="shortfall">Shortfalls: Client B — Work permit: <span class="fig">−CAD 1,500.00</span> · Trust shortfall after a reversal</p><small>No operating → trust line covers it in R1 (Not in Release 1 yet: Cover from operating).</small><p><button class="p">Save</button></p></section>
+<section><output id="dw4"></output><output id="dw7"></output></section></main>
+<script>
+const q = new URLSearchParams(location.search).get("plant"), m = document.querySelector("main");
+if (q === "dw4") m.insertAdjacentHTML("afterbegin", '<p class="fig">Total CAD 100.00 + USD 50.00 = 150.00</p>');
+if (q === "dw7") m.insertAdjacentHTML("afterbegin", '<p class="fig">Trust balance −CAD 1,500.00</p>');
+const b4 = [...document.querySelectorAll(".fig")].filter(e => new Set(e.textContent.match(/CAD|USD/g) || []).size !== 1);
+const c = m.cloneNode(true); c.querySelectorAll(".shortfall, .bank").forEach(e => e.remove());
+const b7 = /[−-]\s?(CAD|USD)\s?\d|(CAD|USD)\s?[−-]\d/.test(c.textContent) || [...m.querySelectorAll(".shortfall")].some(e => !/Trust shortfall after a reversal/.test(e.textContent));
+const put = (id, bad, t) => { const o = document.getElementById(id); o.dataset.result = bad ? "FAIL" : "PASS"; o.textContent = t + (bad ? ": FAIL" : ": PASS"); };
+put("dw4", b4.length, "DW4 every figure in one currency"); put("dw7", b7, "DW7 negative trust only in a labelled reversal shortfall");
+</script></body></html>
