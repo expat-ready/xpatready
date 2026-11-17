@@ -34,3 +34,12 @@ No change to the workflow, tools or these rules until **10 Nov 22:30 IST**, exce
 | Notes PRs as a share of merges | 20% or less |
 | Merge batches thrown away | 15% or less (conflicts at most 5 a day) |
 | Weekly plan burn per hour (P-440) | 3% or less |
+
+* P-618 enforced-by cell, moved word for word by Lead 69 (21:4x IST 16 Nov, RULES under 25 KB): script: outside-deps-watch.py, run by lead-watch.sh step 9 (part: start date reached, stuck 48 h, blocked without decision date or fallback; the start-date formula is not checked) (test check-outside-deps-watch.sh)
+
+* P-608 enforced-by cell, word for word: hook: lane-preflight.sh --hook (part: a model and effort line in every start brief); agent-model-guard.sh (part: reviewers and breakers Opus high when a model is named; CI checks the agent files) (moved by Lead 69, 21:4x IST 16 Nov, RULES under 25 KB)
+* P-605 enforced-by cell, word for word: hook: agent-model-guard.sh --hook (part: reviewers and breakers on Opus; the start brief's model line is not checked for Opus 5.5) (moved by Lead 69, 21:4x IST 16 Nov, RULES under 25 KB)
+* P-539 enforced-by cell, word for word: hook: push-guard.sh via .githooks/pre-push; CI: ci.yml push-guard steps (part: sources/, code/, archive/ never pushed) (moved by Lead 69, 21:4x IST 16 Nov, RULES under 25 KB)
+* P-303 enforced-by cell, word for word: hook: agent-model-guard.sh --hook (part: reviewer and breaker on Opus high); CI: pr-rules (agent files) (moved by Lead 69, 21:4x IST 16 Nov, RULES under 25 KB)
+
+* **Account facts every Lead reads (founder, 21:4x IST 16 Nov: "we have a unlimited machines on the GitHub, because we are public ... and I am also in the pro account"):** GitHub personal account on **Pro** (P-282, 2 Nov) = **40 concurrent Actions jobs** (Free would be 20; docs.github.com/en/actions/reference/limits, read 16 Nov); the repository is **public** (P-263), so Actions **minutes cost nothing**; it goes private at the gate before the first real firm's data, on own runners (P-589); nothing of the team's app in git (P-504, P-539). The limit that bites is **40 jobs at once, not minutes**: never propose buying Pro again. (Lead 69, 21:4x IST 16 Nov)
