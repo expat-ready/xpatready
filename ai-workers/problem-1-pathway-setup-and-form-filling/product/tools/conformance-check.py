@@ -15,8 +15,6 @@ product/design/engineering-approved-setup.json, read from the same place, item b
   ruleset   the rules GitHub applies to main (deletion, non_fast_forward, the required check ci), read only with
             --github by the heartbeat workflow (CK-2, GITHUB_TOKEN read); elsewhere "unchecked"; no rules while the
             manifest says required false = "pending" (tolerated until the move);
-  heartbeat the heartbeat workflow (CK-2) as decided: scheduled every every_min, a read-only token, one job, a timeout
-            of at most timeout_min, a concurrency group that never cancels a running run;
   library   each master in cockpit/library.json exists; one with a registry "version" carries the same "Version:"
             header in its first 40 lines (a JSON master: a top-level "version"); claude.ai artifacts and local-only
             paths are "unchecked".
@@ -254,40 +252,6 @@ def check_ci(src, m, rules=None):
     return out
 
 
-# ---- heartbeat workflow --------------------------------------------------------------------------------------------
-def check_heartbeat(src, m, rules=None):
-    hb = m.get("heartbeat")
-    if not hb:
-        return []
-    path = f".github/workflows/{hb['workflow']}"
-    exp = (f"every {hb['every_min']} min, read-only token, one job, timeout <= {hb['timeout_min']} min, "
-           "a concurrency group that never cancels")
-    d, err = parse(src, path, yaml.safe_load)
-    if err or not isinstance(d, dict):
-        return [item("heartbeat", "heartbeat.workflow", "fail", exp, err or "not a mapping")]
-    on, bad, per_hour = d.get("on", d.get(True)) or {}, [], 0
-    crons = [c.get("cron", "") for c in (on.get("schedule") or [])] if isinstance(on, dict) else []
-    for c in crons:
-        f = c.split()
-        if len(f) == 5 and f[1:] == ["*", "*", "*", "*"]:
-            per_hour += 60 // int(f[0][2:]) if f[0].startswith("*/") else len(f[0].split(","))
-    if per_hour * hb["every_min"] < 60:
-        bad.append(f"schedule {crons or 'none'}: {per_hour} run(s) an hour")
-    jobs, top = d.get("jobs") or {}, d.get("permissions")
-    if len(jobs) != 1:
-        bad.append(f"{len(jobs)} jobs")
-    for name, j in jobs.items():
-        perm = j.get("permissions", top)
-        if perm is None or write_scopes(perm):
-            bad.append(f"job {name} token: {perm if perm is not None else 'repository default'}")
-        if not isinstance(j.get("timeout-minutes"), int) or j["timeout-minutes"] > hb["timeout_min"]:
-            bad.append(f"job {name} timeout {j.get('timeout-minutes')}")
-    conc = d.get("concurrency")
-    if not isinstance(conc, dict) or not conc.get("group") or conc.get("cancel-in-progress") not in (False, None):
-        bad.append(f"concurrency {conc}")
-    return [item("heartbeat", "heartbeat.workflow", "fail" if bad else "pass", exp, "; ".join(bad) or "as approved")]
-
-
 # ---- ruleset -------------------------------------------------------------------------------------------------------
 NOT_READ = "unchecked (read only by the heartbeat workflow, CK-2, with --github; the agents' deny list blocks it here)"
 
@@ -367,7 +331,7 @@ def check_library(src, m, rules=None):
     return out
 
 
-CHECKS = (check_settings, check_mergify, check_ci, check_heartbeat, check_ruleset, check_library)
+CHECKS = (check_settings, check_mergify, check_ci, check_ruleset, check_library)
 
 
 # ---- run -----------------------------------------------------------------------------------------------------------

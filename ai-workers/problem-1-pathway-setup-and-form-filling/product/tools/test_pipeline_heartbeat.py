@@ -15,7 +15,7 @@ HB = {"workflow": "pipeline-heartbeat.yml", "every_min": 30, "timeout_min": 5, "
       "queue_no_progress_min": 60, "queue_wait_p95_min": 60, "batch_wait_p95_min": 15, "stalled_lane_min": 90,
       "stalled_lane_max_age_h": 24, "lane_branch_excluded_prefixes": ["mergify/", "dependabot/", "lead/"],
       "nightly_workflow": "nightly.yml", "nightly_by_ist": "04:00", "approved_label": "review: approved",
-      "batch_branch_prefix": "mergify/merge-queue/"}
+      "batch_branch_prefix": "mergify/merge-queue/", "escalate_after_min": 120}
 NOW = datetime(2026, 11, 20, 6, 30, tzinfo=timezone.utc)  # 12:00 IST
 LAB = "review: approved"
 
@@ -39,10 +39,19 @@ def base():
             "merged_prs": [{"number": 9, "merged_at": ago(20), "approved_at": ago(50)}],
             "batches": [{"number": 8, "created_at": ago(40), "closed_at": ago(20), "first_check_started_at": ago(35),
                          "last_check_at": ago(21)}],
-            "heartbeat_runs": [{"id": i, "created_at": ago(30 * i), "status": "completed", "conclusion": "success",
-                                "event": "schedule", "url": None} for i in range(1, 9)],
             "nightly_runs": [{"id": 1, "created_at": hb.iso(datetime(2026, 11, 19, 20, 25, tzinfo=timezone.utc)),
                               "status": "completed", "conclusion": "success", "event": "schedule", "url": None}]}
+
+
+def shifted(f, minutes):
+    """The same facts minutes later: every time moves with the clock, so only what the test changes changes."""
+    f = copy.deepcopy(f); mv = lambda x: hb.iso(hb.t(x) + timedelta(minutes=minutes)) if x else x
+    f["now"], f["main_merges"] = mv(f["now"]), [mv(x) for x in f["main_merges"]]
+    for coll in ("open_prs", "merged_prs", "batches", "nightly_runs"):
+        for x in f[coll]:
+            for k in [k for k in x if k.endswith("_at")]:
+                x[k] = mv(x[k])
+    return f
 
 
 def ids(res):
@@ -117,8 +126,7 @@ class Heartbeat(unittest.TestCase):
     def test_nightly_not_due_before_four_ist(self):
         f = base(); f["nightly_runs"] = []
         f["now"] = hb.iso(datetime(2026, 11, 19, 22, 0, tzinfo=timezone.utc))   # 03:30 IST
-        for k in ("main_merges",):
-            f[k] = [f["now"]]
+        f["main_merges"] = [f["now"]]
         self.assertNotIn("nightly", ids(self.run_(f)))
         f["now"] = hb.iso(datetime(2026, 11, 19, 22, 31, tzinfo=timezone.utc))  # 04:01 IST
         self.assertIn("nightly", ids(self.run_(f)))
@@ -149,29 +157,58 @@ class Heartbeat(unittest.TestCase):
         self.assertEqual(hb.p95([]), None)
         self.assertEqual(hb.p95([3]), 3)
 
-    # the window -----------------------------------------------------------------------------------------------------
-    def test_green_streak_and_hours_since_alarm(self):
-        f = base()
-        f["heartbeat_runs"][3]["conclusion"] = "failure"          # 120 min ago
-        f["heartbeat_runs"][1]["conclusion"] = "cancelled"        # replaced by a newer run: left out
-        r = self.run_(f)
-        self.assertEqual(r["hours_since_last_alarm"], 2.0)
-        self.assertEqual(r["green_streak_h"], 1.5)                 # first green after the red: 90 min ago
-        self.assertEqual(r["longest_green_today_h"], 1.5)          # 240 → 150 min ago and 90 min ago → now: both 1.5 h
-        r = self.run_(f, {"enforced": "no", "items": [{"id": "x", "status": "fail"}]})
-        self.assertEqual((r["green_streak_h"], r["hours_since_last_alarm"]), (0.0, 0.0))
+    # red only on a change -----------------------------------------------------------------------------------------
+    def chain(self, *steps):
+        """Runs one after another, each fed the previous result (the artifact): [(minutes from NOW, facts)] → results."""
+        out, prev = [], None
+        for m, f in steps:
+            f = shifted(f, m); f["previous"] = prev
+            prev = hb.evaluate(f, HB); out.append(prev)
+        return out
 
-    def test_no_red_seen(self):
-        r = self.run_(base())
-        self.assertIsNone(r["hours_since_last_alarm"])
-        self.assertEqual(r["green_streak_h"], 4.0)                 # the oldest run seen: 240 min ago
-        self.assertEqual(r["longest_green_today_h"], 4.0)          # all since 08:00 IST today
+    def stalled(self):
+        f = base(); f["open_prs"].append(pr(4, updated=100, ci=95)); return f
 
-    def test_own_run_is_not_counted_twice(self):
-        f = base(); f["heartbeat_runs"].insert(0, {"id": 77, "created_at": ago(1), "status": "in_progress",
-                                                   "conclusion": None, "event": "schedule", "url": None})
-        r = hb.evaluate(f, HB, None, own_run_id=77)
-        self.assertEqual(r["runs_seen"], 8)
+    def test_new_alarm_red_then_still_open_green_then_escalated_once(self):
+        r = self.chain((0, self.stalled()), (30, self.stalled()), (60, self.stalled()), (130, self.stalled()),
+                       (160, self.stalled()))
+        self.assertEqual([x["red"] for x in r], [True, False, False, True, False])
+        self.assertEqual(r[0]["red_reasons"], ["new: stalled-lane #4"])
+        self.assertEqual(r[1]["still_open"], ["stalled-lane #4"])
+        self.assertTrue(all(x["running"] == "no" for x in r))      # the board still shows the open alarm
+        self.assertIn("open over 120 min", r[3]["red_reasons"][0])
+
+    def test_a_second_stall_is_new_and_a_cleared_one_comes_back_new(self):
+        two = self.stalled(); two["open_prs"].append(pr(5, updated=100, ci=95))
+        r = self.chain((0, self.stalled()), (30, two), (60, base()), (90, self.stalled()))
+        self.assertEqual([x["red"] for x in r], [True, True, False, True])
+        self.assertEqual(r[1]["red_reasons"], ["new: stalled-lane #5"])
+        self.assertEqual(r[2]["alarm_state"], {})
+
+    def test_conformance_and_no_previous_state_are_always_red(self):
+        bad = {"enforced": "no", "items": [{"id": "settings.deny", "status": "fail"}]}
+        f = shifted(base(), 30); f["previous"] = hb.evaluate(base(), HB, bad)
+        r = hb.evaluate(f, HB, bad)
+        self.assertTrue(r["red"]); self.assertEqual(r["red_reasons"], ["conformance (always red)"])
+        r = hb.evaluate(self.stalled(), HB)   # no previous result: every alarm is new
+        self.assertTrue(r["red"]); self.assertFalse(r["previous_read"])
+
+    def test_window_carries_over(self):
+        r = self.chain((0, self.stalled()), (30, base()), (90, base()), (120, self.stalled()), (150, base()))
+        self.assertEqual([x["green_streak_h"] for x in r], [0.0, 0.0, 1.0, 0.0, 0.0])
+        self.assertEqual(r[2]["hours_since_last_alarm"], 1.5)
+        self.assertEqual(r[4]["longest_green_today_h"], 1.0)
+        self.assertIsNone(hb.evaluate(base(), HB)["hours_since_last_alarm"])   # none seen yet
+
+    def test_longest_today_restarts_at_ist_midnight(self):
+        f = shifted(base(), 690)                                        # 23:30 IST
+        first = hb.evaluate(f, HB)
+        g = shifted(f, 60)                                              # 00:30 IST, the next day
+        g["previous"] = dict(first, clear_since=hb.iso(datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)),
+                             longest_green_today_h=11.5)
+        r = hb.evaluate(g, HB)
+        self.assertEqual(r["green_streak_h"], 7.0)
+        self.assertEqual(r["longest_green_today_h"], 0.5)   # the new IST day counts from 00:00
 
     # reading GitHub's answer ----------------------------------------------------------------------------------------
     def test_facts_from_graphql(self):
@@ -202,7 +239,7 @@ class Heartbeat(unittest.TestCase):
                  "timelineItems": {"nodes": []}, "commits": {"nodes": []}}]}}}}
         runs = [{"id": 5, "created_at": ago(30), "status": "completed", "conclusion": "success", "event": "schedule",
                  "html_url": "u"}]
-        f = hb.facts_from(g, runs, [], HB, NOW)
+        f = hb.facts_from(g, runs, HB, NOW, {"alarm_state": {}})
         self.assertEqual(f["main_merges"], [ago(20)])                       # merge commits only
         self.assertEqual(f["open_prs"][0]["approved_at"], ago(40))          # the latest approval label
         self.assertEqual(f["open_prs"][0]["last_ci_at"], ago(45))
@@ -211,32 +248,26 @@ class Heartbeat(unittest.TestCase):
         self.assertEqual(b[8]["first_check_started_at"], ago(50))   # ci's first job, not label-guard's
         self.assertEqual(b[8]["last_check_at"], ago(26))
         self.assertIn(3, b)                                                  # an open batch PR is progress
-        self.assertEqual(f["heartbeat_runs"][0]["url"], "u")
+        self.assertEqual((f["nightly_runs"][0]["url"], f["previous"]), ("u", {"alarm_state": {}}))
         self.assertEqual(self.run_(f)["counts"]["open_prs"], 2)
 
     # the command ----------------------------------------------------------------------------------------------------
     def test_command_exit_codes_and_files(self):
         d = tempfile.mkdtemp(prefix="hb-")
-        man = os.path.join(d, "m.json"); json.dump({"heartbeat": HB}, open(man, "w"))
+        man = os.path.join(d, "m.json")
+        with open(man, "w") as fh:
+            json.dump({"heartbeat": HB}, fh)
         facts = os.path.join(d, "f.json")
-        f = base(); f["now"] = hb.iso(datetime.now(timezone.utc))   # the command uses the clock; facts are relative
-        shift = datetime.now(timezone.utc) - NOW
-        def mv(s):
-            return hb.iso(hb.t(s) + shift) if s else s
-        for k in ("main_merges",):
-            f[k] = [mv(x) for x in f[k]]
-        for coll in ("open_prs", "merged_prs", "batches", "heartbeat_runs", "nightly_runs"):
-            for x in f[coll]:
-                for k, v in list(x.items()):
-                    if k.endswith("_at"):
-                        x[k] = mv(v)
+        f = shifted(base(), (datetime.now(timezone.utc) - NOW).total_seconds() / 60)   # the command uses the clock
         f["nightly_runs"][0]["created_at"] = f["now"]   # whatever the hour, tonight's nightly exists
-        json.dump(f, open(facts, "w"))
+        with open(facts, "w") as fh:
+            json.dump(f, fh)
         cmd = [sys.executable, "-I", os.path.join(HERE, "pipeline-heartbeat.py"), "--manifest", man, "--facts", facts,
                "--json", os.path.join(d, "out.json")]
         p = subprocess.run(cmd, capture_output=True, text=True)
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
-        self.assertEqual(json.load(open(os.path.join(d, "out.json")))["running"], "yes")
+        with open(os.path.join(d, "out.json")) as fh:
+            self.assertEqual(json.load(fh)["running"], "yes")
         conf = os.path.join(d, "missing.json")
         p = subprocess.run(cmd + ["--conformance", conf], capture_output=True, text=True)
         self.assertEqual(p.returncode, 1, p.stdout)   # an unreadable conformance result is an alarm, never green
@@ -250,8 +281,9 @@ class Heartbeat(unittest.TestCase):
         path = os.path.join(HERE, "..", "design", "engineering-approved-setup.json")
         if not os.path.exists(path):
             self.skipTest("no manifest in this copy (check-guards' throwaway copy holds tools/ only)")
-        real = json.load(open(path))["heartbeat"]
-        self.assertEqual(set(HB) - {"note"}, set(real) - {"note"})   # the tool reads exactly these keys
+        with open(path) as fh:
+            real = json.load(fh)["heartbeat"]
+        self.assertEqual(set(HB), set(real) - {"note", "red_rule"})   # the tool reads exactly these keys
         self.assertEqual(ids(hb.evaluate(base(), real)), [])
 
 

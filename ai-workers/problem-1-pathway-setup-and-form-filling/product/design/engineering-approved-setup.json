@@ -19,8 +19,8 @@
   {
    "version": "1.2.0",
    "date": "2026-11-17",
-   "change": "CK-2 heartbeat: alarm thresholds (no merge 90 min with an approved PR waiting, queue without batch progress 60 min, lane idle 90 min, nightly by 04:00 IST, conformance failing); P95 queue wait 60 and batch wait 15 min reported (the T1 admission trigger); the heartbeat workflow itself (every 30 min, read-only, one job, 5 min, never cancelled) checked here.",
-   "approval": "founder 17 Nov: enforcement checks (A151, A154), thresholds as in the checks brief"
+   "change": "CK-2 heartbeat: alarm thresholds (no merge 90 min with an approved PR waiting, queue without batch progress 60 min, lane idle 90 min, nightly by 04:00 IST, conformance failing); P95 queue wait 60 and batch wait 15 min reported (the T1 admission trigger); the heartbeat workflow itself (every 30 min, read-only, one job, 5 min, never cancelled) checked here. Red only on a change (red_rule), so an unchanged stall does not mail every 30 min.",
+   "approval": "founder 17 Nov: enforcement checks (A151, A154), thresholds as in the checks brief; red only on a change: the founder's setup agent, 17 Nov"
   }
  ],
  "settings": {
@@ -234,6 +234,8 @@
   "nightly_workflow": "nightly.yml",
   "nightly_by_ist": "04:00",
   "approved_label": "review: approved",
-  "batch_branch_prefix": "mergify/merge-queue/"
+  "batch_branch_prefix": "mergify/merge-queue/",
+  "escalate_after_min": 120,
+  "red_rule": "A run ends red (GitHub mails the owner) only when an alarm is new, an open alarm passes escalate_after_min (once), the conformance check fails, or GitHub cannot be read. An unchanged open alarm ends green with a 'still open' line and stays in the artifact for the board. State: the previous run's artifact; none readable = every alarm is new."
  }
 }

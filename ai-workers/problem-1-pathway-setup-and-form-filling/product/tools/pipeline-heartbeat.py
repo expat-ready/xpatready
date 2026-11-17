@@ -1,34 +1,33 @@
 #!/usr/bin/env python3
 """Pipeline heartbeat (CK-2, founder asks A151 and A154, 17 Nov 2026): is the pipeline moving with nobody watching?
 
-Run every 30 minutes by .github/workflows/pipeline-heartbeat.yml, outside every session. A failed scheduled run makes
-GitHub mail the repository owner, so that mail is the alarm. The run is red when any alarm fires (the thresholds are
-in design/engineering-approved-setup.json › heartbeat, so they are versioned):
-  no-merge     no merge to main for over no_merge_min while a PR carrying the approval label has waited that long;
+Run every 30 min by .github/workflows/pipeline-heartbeat.yml, outside every session. A red scheduled run mails the owner,
+so it comes only on a change (manifest › heartbeat › red_rule): a new alarm, an open alarm passing escalate_after_min
+(once), conformance failing, or GitHub unreadable. An unchanged open alarm ends green with a "still open" line; the
+state carries over in the previous run's artifact (none readable = every alarm is new). Alarms (manifest thresholds):
+  no-merge     no merge to main for over no_merge_min while a PR with the approval label has waited that long;
   queue-stuck  a queued PR (approved, not a draft) with no merge-queue progress (a batch PR opened, closed or checked,
-               or a merge to main) for over queue_no_progress_min since it was approved;
-  stalled-lane an open lane PR with no push, comment or CI activity for over stalled_lane_min (and under
-               stalled_lane_max_age_h, older ones are dormant) that is not waiting on CI and not in the queue;
-  nightly      after nightly_by_ist IST, no scheduled nightly run created since 00:00 IST today;
-  conformance  the set-up conformance check (CK-1, conformance-check.py) has a failed item;
-  read-error   GitHub could not be read (a heartbeat that cannot see is not green).
-Report only (never red): P95 queue wait (approval label to merge, PRs merged in the last 24 h) over queue_wait_p95_min,
-P95 batch wait (batch PR opened to its first ci job started, last 24 h) over batch_wait_p95_min: the T1 admission trigger.
-It also counts the window the founder asked about: hours since the last red heartbeat, the current green streak and
-the longest green streak today (IST), from this workflow's own earlier runs.
-GitHub reads: two GraphQL queries (merges and open PRs; recent PRs and batches); two REST GETs with the workflow's
-GITHUB_TOKEN (this workflow's and nightly's run lists: GraphQL has no run list by workflow file). Read-only, US$0.
-  python3 -I product/tools/pipeline-heartbeat.py [--facts FILE | --save-facts FILE] [--conformance FILE]
-                                                 [--json FILE] [--md FILE]
-Exit 1 when an alarm fires, 0 when green. Tests: product/tools/test_pipeline_heartbeat.py (check-pipeline-heartbeat.sh).
+               or a merge) for over queue_no_progress_min since it was approved;
+  stalled-lane an open lane PR idle (no push, comment or CI) over stalled_lane_min and under stalled_lane_max_age_h
+               (older: dormant, reported), not waiting on CI and not queued;
+  nightly      after nightly_by_ist IST, no scheduled nightly run since 00:00 IST; conformance: CK-1 has a failed item;
+  read-error   GitHub could not be read (a heartbeat that cannot see is never green).
+Report only: P95 queue wait (approval to merge) and P95 batch wait (batch PR opened to ci's first job), last 24 h, over
+queue_wait_p95_min / batch_wait_p95_min: the T1 admission trigger. Window: hours since the last alarm, green streak
+(no open alarm), longest today (IST). Reads: two GraphQL queries; REST (GITHUB_TOKEN): nightly's run list and the
+previous artifact. Read-only, US$0. Exit 1 when the run is red, 0 otherwise.
+  python3 -I product/tools/pipeline-heartbeat.py [--facts FILE | --save-facts FILE] [--conformance FILE] [--json FILE]
+                                                 [--md FILE]      Tests: test_pipeline_heartbeat.py (guard 25).
 """
-import argparse, json, math, os, subprocess, sys, time
+import argparse, json, math, os, subprocess, sys, tempfile, time, zipfile
 from datetime import datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MANIFEST = os.path.join(HERE, "..", "design", "engineering-approved-setup.json")
 API = os.environ.get("GITHUB_API_URL", "https://api.github.com")
 IST = timezone(timedelta(hours=5, minutes=30))
+ARTIFACT = "pipeline-heartbeat"
+ALWAYS_RED = ("conformance", "read-error")
 
 QUERY = """query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
@@ -75,30 +74,49 @@ def p95(xs):
 
 
 # ---- reading GitHub ------------------------------------------------------------------------------------------------
-def api(method, url, body=None):
-    """One GitHub call through curl (P-363), the token on curl's stdin (-H @-), never on its command line where ps
-    would show it. One retry: GitHub answers a busy GraphQL query with a 502 or a cut-off body now and then."""
+def curl(args, what):
+    """curl with the token on stdin (-H @-), never on its command line where ps would show it (P-363). One retry:
+    GitHub answers a busy GraphQL query with a 502 or a cut-off body now and then. LookupError on a 404."""
     tok = os.environ.get("GITHUB_TOKEN")
     if not tok:
         raise RuntimeError("GITHUB_TOKEN not set")
-    cmd = ["curl", "-sS", "--fail-with-body", "--max-time", "30", "-X", method, "-H", "@-",
-           "-H", "Accept: application/vnd.github+json", "-H", "X-GitHub-Api-Version: 2022-11-28", url]
-    if body is not None:
-        cmd += ["-H", "Content-Type: application/json", "--data-binary", json.dumps(body)]
+    cmd = ["curl", "-sS", "--fail-with-body", "--max-time", "30", "-H", "@-", "-H", "X-GitHub-Api-Version: 2022-11-28"]
     for attempt in (1, 2):
-        r = subprocess.run(cmd, input=f"Authorization: Bearer {tok}\n", capture_output=True, text=True)
+        r = subprocess.run(cmd + args, input=f"Authorization: Bearer {tok}\n", capture_output=True, text=True)
         if r.returncode == 0:
-            try:
-                return json.loads(r.stdout)
-            except ValueError:
-                why = f"not JSON ({len(r.stdout)} bytes)"
-        else:
-            why = (r.stderr.strip() or r.stdout.strip())[:200]
-            if r.returncode == 22 and "404" in why:
-                raise LookupError(f"404 {url}")
+            return r.stdout
+        why = (r.stderr.strip() or r.stdout.strip())[:200]
+        if r.returncode == 22 and "404" in why:
+            raise LookupError(f"404 {what}")
         if attempt == 2:
-            raise RuntimeError(f"{method} {url.split('?')[0]}: {why}")
+            raise RuntimeError(f"{what}: {why}")
         time.sleep(5)
+
+
+def api(method, url, body=None):
+    args = ["-X", method, "-H", "Accept: application/vnd.github+json", url]
+    if body is not None:
+        args += ["-H", "Content-Type: application/json", "--data-binary", json.dumps(body)]
+    out = curl(args, f"{method} {url.split('?')[0]}")
+    try:
+        return json.loads(out)
+    except ValueError:
+        raise RuntimeError(f"{method} {url.split('?')[0]}: not JSON ({len(out)} bytes)")
+
+
+def read_previous(repo, own_id):
+    """The previous run's result (heartbeat.json in its artifact), or None when there is none or it cannot be read."""
+    try:
+        arts = api("GET", f"{API}/repos/{repo}/actions/artifacts?name={ARTIFACT}&per_page=5")["artifacts"]
+        art = next((x for x in arts if not x.get("expired") and (x.get("workflow_run") or {}).get("id") != own_id), None)
+        if art is None:
+            return None
+        with tempfile.TemporaryDirectory() as d:  # the download redirects to storage; curl drops the token there
+            curl(["-L", "-o", os.path.join(d, "a.zip"), art["archive_download_url"]], "artifact download")
+            with zipfile.ZipFile(os.path.join(d, "a.zip")) as z:
+                return json.loads(z.read("heartbeat.json"))
+    except (LookupError, RuntimeError, KeyError, ValueError, OSError, zipfile.BadZipFile):
+        return None
 
 
 def last_label(items, label, before=None):
@@ -107,8 +125,8 @@ def last_label(items, label, before=None):
     return max(ts) if ts else None
 
 
-def facts_from(gql, hb_runs, nightly_runs, hb, now):
-    """The facts the alarms read, from the GraphQL answer and the two run lists (REST shape)."""
+def facts_from(gql, nightly_runs, hb, now, previous=None):
+    """The facts the alarms read, from the GraphQL answer, nightly's run list (REST shape) and the previous result."""
     repo = gql["data"]["repository"]
     hist = repo["defaultBranchRef"]["target"]["history"]["nodes"]
     merges = sorted((n["committedDate"] for n in hist if n["parents"]["totalCount"] > 1), reverse=True)
@@ -143,10 +161,10 @@ def facts_from(gql, hb_runs, nightly_runs, hb, now):
     run = lambda r: {"id": r.get("id"), "created_at": r.get("created_at"), "status": r.get("status"),
                      "conclusion": r.get("conclusion"), "event": r.get("event"), "url": r.get("html_url")}
     return {"now": iso(now), "main_merges": merges, "open_prs": open_prs, "merged_prs": merged, "batches": batches,
-            "heartbeat_runs": [run(r) for r in hb_runs], "nightly_runs": [run(r) for r in nightly_runs]}
+            "nightly_runs": [run(r) for r in nightly_runs], "previous": previous}
 
 
-def collect(hb, now):
+def collect(hb, now, own_id=None):
     repo = os.environ.get("GITHUB_REPOSITORY") or ""
     if "/" not in repo:
         u = subprocess.run(["git", "remote", "get-url", "origin"], capture_output=True, text=True, cwd=HERE).stdout
@@ -158,16 +176,12 @@ def collect(hb, now):
         if a.get("errors") or not a.get("data"):
             raise RuntimeError(f"GraphQL: {(a.get('errors') or [{}])[0].get('message')}")
         gql["data"]["repository"].update(a["data"]["repository"])
-    runs = lambda wf, n: api("GET", f"{API}/repos/{repo}/actions/workflows/{wf}/runs?per_page={n}")["workflow_runs"]
-    try:
-        own = runs(hb["workflow"], 100)
-    except LookupError:  # 404 until the workflow is on main (a run from a session before the merge)
-        own = []
-    return facts_from(gql, own, runs(hb["nightly_workflow"], 5), hb, now)
+    nightly = api("GET", f"{API}/repos/{repo}/actions/workflows/{hb['nightly_workflow']}/runs?per_page=5")
+    return facts_from(gql, nightly["workflow_runs"], hb, now, read_previous(repo, own_id))
 
 
 # ---- the alarms ----------------------------------------------------------------------------------------------------
-def evaluate(f, hb, conformance=None, own_run_id=None):
+def evaluate(f, hb, conformance=None):
     now = t(f["now"]); alarms, report = [], []
     lab, ex, batch = hb["approved_label"], tuple(hb["lane_branch_excluded_prefixes"]), hb["batch_branch_prefix"]
     last_merge = t(f["main_merges"][0]) if f["main_merges"] else None
@@ -179,7 +193,7 @@ def evaluate(f, hb, conformance=None, own_run_id=None):
     waits = [p for p in approved if mins(max(filter(None, [t(p["approved_at"]), last_merge]), default=now), now)
              > hb["no_merge_min"]]
     if waits:
-        alarms.append({"id": "no-merge", "why": f"no merge to main for over {hb['no_merge_min']} min (last merge "
+        alarms.append({"id": "no-merge", "keys": ["no-merge"], "why": f"no merge to main for over {hb['no_merge_min']} min (last merge "
                        f"{hm(last_merge)}) while {len(waits)} approved PR(s) wait: "
                        + ", ".join(f"#{p['number']}" for p in waits[:6])})
 
@@ -189,7 +203,7 @@ def evaluate(f, hb, conformance=None, own_run_id=None):
     stuck = [p for p in queued if mins(max(filter(None, [t(p["approved_at"]), last_prog]), default=now), now)
              > hb["queue_no_progress_min"]]
     if stuck:
-        alarms.append({"id": "queue-stuck", "why": f"{len(stuck)} queued PR(s) with no merge-queue progress for over "
+        alarms.append({"id": "queue-stuck", "keys": [f"queue-stuck #{p['number']}" for p in stuck], "why": f"{len(stuck)} queued PR(s) with no merge-queue progress for over "
                        f"{hb['queue_no_progress_min']} min (last progress {hm(last_prog)}): "
                        + ", ".join(f"#{p['number']}" for p in stuck[:6])})
 
@@ -204,7 +218,7 @@ def evaluate(f, hb, conformance=None, own_run_id=None):
         elif idle > hb["stalled_lane_min"]:
             stalled.append((p, idle))
     if stalled:
-        alarms.append({"id": "stalled-lane", "why": f"{len(stalled)} lane PR(s) with no push, comment or CI for over "
+        alarms.append({"id": "stalled-lane", "keys": [f"stalled-lane #{p['number']}" for p, _ in stalled], "why": f"{len(stalled)} lane PR(s) with no push, comment or CI for over "
                        f"{hb['stalled_lane_min']} min: " + ", ".join(f"#{p['number']} ({int(i)} min)"
                                                                        for p, i in stalled[:6])})
 
@@ -213,7 +227,7 @@ def evaluate(f, hb, conformance=None, own_run_id=None):
     midnight = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
     nights = [r for r in f["nightly_runs"] if r["event"] == "schedule" and t(r["created_at"]) >= midnight]
     if now_ist >= midnight.replace(hour=hh, minute=mm) and not nights:
-        alarms.append({"id": "nightly", "why": f"no scheduled nightly run since 00:00 IST today (due by "
+        alarms.append({"id": "nightly", "keys": [f"nightly {midnight.date()}"], "why": f"no scheduled nightly run since 00:00 IST today (due by "
                        f"{hb['nightly_by_ist']} IST)"})
     elif nights:
         report.append({"id": "nightly", "why": f"nightly {hm(t(nights[0]['created_at']))}: "
@@ -223,7 +237,7 @@ def evaluate(f, hb, conformance=None, own_run_id=None):
     if conformance is not None:
         failed = [i["id"] for i in conformance.get("items", []) if i["status"] == "fail"]
         if failed or conformance.get("enforced") != "yes":
-            alarms.append({"id": "conformance", "why": f"set-up conformance: {len(failed)} item(s) fail: "
+            alarms.append({"id": "conformance", "keys": ["conformance " + ", ".join(sorted(failed))], "why": f"set-up conformance: {len(failed)} item(s) fail: "
                            + ", ".join(failed[:6])})
 
     # report only: the T1 admission trigger
@@ -241,44 +255,52 @@ def evaluate(f, hb, conformance=None, own_run_id=None):
     if dormant:
         report.append({"id": "dormant-lanes", "why": f"{dormant} open lane PR(s) idle over {hb['stalled_lane_max_age_h']} h"})
 
-    green = not alarms
-    window = streaks(f["heartbeat_runs"], now, green, own_run_id)
-    return {"check": "pipeline heartbeat (CK-2)", "running": "yes" if green else "no", "checked_at": iso(now),
+    window = decide(alarms, f.get("previous"), hb, now)
+    return {"check": "pipeline heartbeat (CK-2)", "running": "no" if alarms else "yes", "checked_at": iso(now),
             "checked_at_ist": now_ist.strftime("%d %b %H:%M IST"), "alarms": alarms, "report": report,
             "counts": {"open_prs": len(f["open_prs"]), "approved": len(approved), "queued": len(queued),
                        "last_merge": iso(last_merge)}, **window}
 
 
-def streaks(runs, now, green_now, own_id=None):
-    """Hours since the last red heartbeat, the current green streak and the longest today (IST), from the earlier
-    finished runs of this workflow plus this one. Cancelled or skipped runs (a newer one replaced them) are left out."""
-    seq = [(t(r["created_at"]), r["conclusion"] == "success") for r in runs
-           if r["status"] == "completed" and r["conclusion"] in ("success", "failure") and r.get("id") != own_id]
-    seq = sorted(seq) + [(now, green_now)]
-    reds = [x for x, ok in seq if not ok]
-    since_red = None if not reds else round((now - reds[-1]).total_seconds() / 3600, 1)
-    cur = 0.0
-    if green_now:
-        first = next((x for x, ok in reversed(seq) if not ok), None)
-        start = min((x for x, ok in seq if ok and (first is None or x > first)), default=now)
-        cur = round((now - start).total_seconds() / 3600, 1)
+def decide(alarms, prev, hb, now):
+    """Red only on a change: a new alarm key, an open key passing escalate_after_min (once), or an ALWAYS_RED alarm.
+    The state (each key's first_seen, escalated) and the window (last alarm, clear since, longest clear today in IST)
+    carry over from the previous result; no previous result = every alarm is new and the window starts now."""
+    p, state, red, fired = prev or {}, {}, [], set()
+    old = p.get("alarm_state") or {}
+    for a in alarms:
+        for k in a["keys"]:
+            o = old.get(k) or {}
+            first, esc = t(o.get("first_seen")) or now, bool(o.get("escalated"))
+            if not o:
+                red.append(f"new: {k}"); fired.add(k)
+            elif not esc and mins(first, now) > hb["escalate_after_min"]:
+                esc = True; red.append(f"open over {hb['escalate_after_min']} min: {k}"); fired.add(k)
+            state[k] = {"first_seen": iso(first), "escalated": esc}
+        if a["id"] in ALWAYS_RED:
+            red.append(f"{a['id']} (always red)")
     today = now.astimezone(IST).replace(hour=0, minute=0, second=0, microsecond=0)
-    best, run_start = 0.0, None
-    for x, ok in [(x, ok) for x, ok in seq if x >= today]:
-        if ok:
-            run_start = run_start or x
-            best = max(best, (x - run_start).total_seconds() / 3600)
-        else:
-            run_start = None
-    return {"hours_since_last_alarm": since_red, "green_streak_h": cur, "longest_green_today_h": round(best, 1),
-            "runs_seen": len(seq) - 1, "history_from": iso(seq[0][0]) if len(seq) > 1 else None}
+    last_alarm = now if alarms else t(p.get("last_alarm_at"))
+    clear = None if alarms else (t(p.get("clear_since")) or now)
+    best = (p.get("longest_green_today_h") or 0.0) if p.get("day_ist") == str(today.date()) else 0.0
+    cur_today = mins(max(clear, today), now) / 60 if clear else 0.0
+    return {"red": bool(red), "red_reasons": list(dict.fromkeys(red)), "alarm_state": state,
+            "still_open": [k for k in state if k not in fired], "previous_read": prev is not None,
+            "last_alarm_at": iso(last_alarm), "clear_since": iso(clear), "day_ist": str(today.date()),
+            "hours_since_last_alarm": None if last_alarm is None else round(mins(last_alarm, now) / 60, 1),
+            "green_streak_h": round(mins(clear, now) / 60, 1) if clear else 0.0,
+            "longest_green_today_h": round(max(best, cur_today), 1)}
 
 
 def markdown(res):
     lines = [f"**Pipeline running: {res['running']}** · checked {res['checked_at_ist']} · green streak "
              f"{res['green_streak_h']} h · longest today {res['longest_green_today_h']} h · hours since last alarm "
              f"{res['hours_since_last_alarm'] if res['hours_since_last_alarm'] is not None else 'none seen'}", ""]
+    lines.insert(1, f"Run: {'RED: ' + '; '.join(res['red_reasons']) if res['red'] else 'green'}"
+                    + ("" if res.get("previous_read") else " (no previous state read: every alarm counts as new)"))
     lines += [f"- ALARM {a['id']}: {a['why']}" for a in res["alarms"]] or ["- no alarm"]
+    if res.get("still_open"):
+        lines.append(f"- still open (unchanged, no new mail): {', '.join(res['still_open'])}")
     lines += [f"- report {r['id']}: {r['why']}" for r in res["report"]]
     c = res["counts"]
     lines.append(f"- {c['open_prs']} open PRs, {c['approved']} approved, {c['queued']} queued; last merge to main "
@@ -310,18 +332,20 @@ def main(argv=None):
             with open(a.facts, encoding="utf-8") as fh:
                 f = json.load(fh)
         else:
-            f = collect(hb, now)
+            f = collect(hb, now, int(os.environ["GITHUB_RUN_ID"]) if os.environ.get("GITHUB_RUN_ID", "").isdigit()
+                        else None)
             if a.save_facts:
                 with open(a.save_facts, "w", encoding="utf-8") as fh:
                     json.dump(f, fh, indent=1)
-        own = int(os.environ["GITHUB_RUN_ID"]) if os.environ.get("GITHUB_RUN_ID", "").isdigit() else None
-        res = evaluate(f, hb, conf, own)
+        res = evaluate(f, hb, conf)
     except (LookupError, RuntimeError, KeyError, TypeError, ValueError, OSError) as e:
         res = {"check": "pipeline heartbeat (CK-2)", "running": "no", "checked_at": iso(now),
                "checked_at_ist": now.astimezone(IST).strftime("%d %b %H:%M IST"), "report": [],
-               "alarms": [{"id": "read-error", "why": f"could not read GitHub: {type(e).__name__}: {e}"}],
-               "counts": {"open_prs": 0, "approved": 0, "queued": 0, "last_merge": None},
-               "hours_since_last_alarm": 0.0, "green_streak_h": 0.0, "longest_green_today_h": 0.0, "runs_seen": 0}
+               "alarms": [{"id": "read-error", "keys": ["read-error"],
+                           "why": f"could not read GitHub: {type(e).__name__}: {e}"}],
+               "counts": {"open_prs": 0, "approved": 0, "queued": 0, "last_merge": None}, "red": True,
+               "red_reasons": ["read-error (always red)"], "alarm_state": {}, "still_open": [], "previous_read": False,
+               "hours_since_last_alarm": 0.0, "green_streak_h": 0.0, "longest_green_today_h": 0.0}
     res["conformance"] = None if conf is None else {k: conf.get(k) for k in ("enforced", "counts", "checked",
                                                                               "checked_at", "manifest_version")}
     md = markdown(res)
@@ -332,7 +356,7 @@ def main(argv=None):
     if a.md:
         with open(a.md, "a", encoding="utf-8") as fh:
             fh.write(md + "\n")
-    return 1 if res["alarms"] else 0
+    return 1 if res["red"] else 0
 
 
 if __name__ == "__main__":

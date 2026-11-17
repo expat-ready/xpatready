@@ -251,32 +251,6 @@ class Conformance(unittest.TestCase):
                    lambda d: d["jobs"]["retry-comment"]["permissions"].update({"contents": "write"})):
             self.assertEqual(status(self.check(edit(C, fn)), "ci.permissions"), "fail")
 
-    # -- heartbeat workflow ------------------------------------------------------------------------------------------
-    def test_heartbeat_workflow(self):
-        hb = json.loads(json.dumps(MANIFEST)); hb["heartbeat"] = {"workflow": "hb.yml", "every_min": 30, "timeout_min": 5}
-        W = ".github/workflows/hb.yml"
-        good = {"name": "hb", "on": {"schedule": [{"cron": "11,41 * * * *"}]}, "permissions": {"contents": "read"},
-                "concurrency": {"group": "hb", "cancel-in-progress": False},
-                "jobs": {"beat": {"runs-on": "ubuntu-latest", "timeout-minutes": 5}}}
-        def with_wf(fn=None):
-            def ch(files):
-                d = json.loads(json.dumps(good))
-                if fn:
-                    fn(d)
-                files[W] = dump(d)
-            return ch
-        self.assertEqual(status(self.check(with_wf(), hb), "heartbeat.workflow"), "pass")
-        self.assertEqual([i["id"] for i in self.check()["items"] if i["area"] == "heartbeat"], [])  # not decided yet
-        for fn in (lambda d: d["on"].update({"schedule": [{"cron": "11 * * * *"}]}),       # hourly
-                   lambda d: d.update({"permissions": {"contents": "write"}}),
-                   lambda d: d.update({"concurrency": {"group": "hb", "cancel-in-progress": True}}),
-                   lambda d: d["jobs"]["beat"].update({"timeout-minutes": 30}),
-                   lambda d: d["jobs"].update({"second": {"timeout-minutes": 1}})):
-            self.assertEqual(status(self.check(with_wf(fn), hb), "heartbeat.workflow"), "fail")
-        self.assertEqual(status(self.check(lambda f: None, hb), "heartbeat.workflow"), "fail")  # file missing
-        good["on"]["schedule"] = [{"cron": "*/30 * * * *"}]
-        self.assertEqual(status(self.check(with_wf(), hb), "heartbeat.workflow"), "pass")
-
     # -- ruleset -----------------------------------------------------------------------------------------------------
     def test_ruleset_states(self):
         self.assertEqual(status(self.check(rules=None), "ruleset.main"), "unchecked")

@@ -1,11 +1,7 @@
-# Pipeline heartbeat (CK-2, founder asks A151 and A154, 17 Nov 2026): proof, outside every session, that the decided
-# set-up is in force (CK-1, product/tools/conformance-check.py) and that the pipeline keeps moving with nobody watching
-# (product/tools/pipeline-heartbeat.py: no merge, stuck queue, stalled lane, missing nightly; thresholds in
-# product/design/engineering-approved-setup.json › heartbeat). A red run is the alarm: GitHub mails the owner when a
-# scheduled run fails, and the reason is in the job summary. The result is also an artifact (pipeline-heartbeat), which
-# the board reads (CK-3). One small job, read-only token, at most one run at a time (a newer scheduled run waits; GitHub
-# may drop a waiting one, never a running one), 5 minutes at most. GitHub reads: one GraphQL query, three REST GETs
-# (two run lists, main's branch rules). US$0 (public repository).
+# Pipeline heartbeat (CK-2, founder asks A151 and A154, 17 Nov 2026): outside every session, the set-up is in force
+# (CK-1, conformance-check.py) and the pipeline keeps moving (pipeline-heartbeat.py; thresholds and red_rule in
+# product/design/engineering-approved-setup.json › heartbeat). A red run mails the owner; the reason is in the job
+# summary; the result is the artifact the next run and the board read. One job, read-only, never cancelled, 5 min, US$0.
 name: pipeline-heartbeat
 on:
   schedule:
