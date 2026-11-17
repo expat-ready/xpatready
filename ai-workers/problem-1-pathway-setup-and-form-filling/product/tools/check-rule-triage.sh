@@ -22,8 +22,11 @@ good; run
 ok "a triage whose every old ID is kept, merged or retired with its line passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 good; reg; run
 ok "a kept ID that is no longer a RULES.md row fails, naming it" "$([ $r = 1 ] && echo "$out" | grep -q 'RULE MAP: P-1 is kept but is not a RULES.md row' && echo 1)" "exit $r: $out"
-good; reg '| IDX-6 | Moved rulings (P-1) stand as recorded; word for word in the side file. | prose | 17 Nov |'; run
-ok "a kept ID moved under an IDX row that names it in parentheses passes (P-686)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+good; printf '# Moved\n\n%s\n' "$L1" > "$P/rules/moved-t.md"; reg '| IDX-6 | Moved rulings (P-1) stand as recorded; word for word in `rules/moved-t.md`. | prose | 17 Nov |'; run
+ok "a kept ID moved under an IDX row that names it in parentheses, its row in the named rules/*.md, passes (P-686)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+good; printf '# Moved\n\n%s\n' "$L3" > "$P/rules/moved-t.md"; reg '| IDX-6 | Moved rulings (P-1) stand as recorded; word for word in `rules/moved-t.md`. | prose | 17 Nov |'; run
+ok "an IDX row naming a kept ID whose row is in no named rules/*.md fails (Devin on #2086)" "$([ $r = 1 ] && echo "$out" | grep -q 'RULE MAP: P-1 is kept but is not a RULES.md row' && echo 1)" "exit $r: $out"
+rm -f "$P/rules/moved-t.md"
 good; reg '| IDX-6 | Moved rulings stand as recorded; P-1 is mentioned outside brackets. | prose | 17 Nov |'; run
 ok "an IDX row naming the ID outside parentheses does not count" "$([ $r = 1 ] && echo "$out" | grep -q 'RULE MAP: P-1 is kept but is not a RULES.md row' && echo 1)" "exit $r: $out"
 good; side "$L3"; run
