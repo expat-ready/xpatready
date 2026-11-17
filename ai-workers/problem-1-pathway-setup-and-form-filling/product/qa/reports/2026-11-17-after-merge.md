@@ -5,7 +5,7 @@
 **Scope:** the qa pass before this one was R1.77's score on main 6933695372a (`2026-11-17-r177/report.md`). The after-merge lane (`2026-11-16-after-merge-lane.md`) re-tested only rows whose parts were complete. So this round covers every 17 Nov app-code merge without a verdict.
 
 ## Verdict
-No regression found. **QA-397 (Major) is fixed and closed.** Two new UX Minors: QA-504 and QA-505. No row moves to Works:
+No regression found. **QA-397 (Major) is fixed and closed.** Three new Minors: QA-504 and QA-505 (UX), QA-506 (Gap, no Complaints menu entry). No row moves to Works:
 * C8.2 and C11.6 are no longer held by a bug. They wait only for a pack run on main's head on GitHub's runners (P-339).
 * Every other row touched still has parts missing (P-606), so it gets no verdict.
 
@@ -54,10 +54,10 @@ Lines read from the shard logs, for example: "check_pf6_staff_browser.ts | PASS 
 * The Owner fills it with a non-English name and text, Email and Fees, then double-clicks Record. Underneath: one `plat_complaint` row and one `complaint.record` audit line.
 * The record page shows "Acknowledge by Nov 19, 2026, 5:00 p.m. · 2 business days" (a Sample period), with dates in the firm's zone (`pf21s-record-page.jpg`).
 * Back goes to the list: Open 1, All 1. At 375 px the list fits and its table scrolls inside (`pf21s-list-375.jpg`).
-* **No menu entry reaches Complaints.** `web/src/modules/platform/account-sections.ts` lists only Profile and Team, so a person reaches the page only by typing its address. See the question below.
+* **No menu entry reaches Complaints.** `web/src/modules/platform/account-sections.ts` lists only Profile and Team, so a person reaches the page only by typing its address: **QA-506** (Minor, J-109).
 
 ## Bugs
-0 Blocker · 0 Critical · 0 Major · **2 Minor (new: QA-504, QA-505)** · closed: **QA-397** (Major).
+0 Blocker · 0 Critical · 0 Major · **3 Minor (new: QA-504, QA-505, QA-506)** · closed: **QA-397** (Major).
 
 ## Coverage
 Not measured this round. c8 needs the API server under the tsx CLI, which this sandbox refuses (see limits). The floor is unchanged from the last report.
@@ -71,11 +71,10 @@ The Mac qa sandbox refuses local sockets and `nohup`:
 * The C8.2 and C11.6 packs on the configured checkpoint, on GitHub: not dispatched, so as not to add jobs to a queue of ~70 runs. C8.2 ran on its fixture here.
 * PF-Fp's live Gotenberg step: no container here.
 
-## Questions for the tech lead
-1. **Complaints menu entry:** should J-109 (join and walk for row 109) add the Complaints entry to `account-sections.ts`? Today no menu reaches the page. If J-109 does not own it, I will file a Gap.
-2. **C8.2 and C11.6 to Works:** both now wait only for a GitHub-runner run of their packs on main's head (P-339). Do you want a nightly dispatch (`capabilities=C8.2,C11.6`, `data=checkpoint`) once the queue is short, or should they wait for a batch that selects them?
-3. **Sandbox tooling:** may I make `tools/isolated.sh` start the server with `node --import tsx` and without `nohup` (a P-214 tooling fix), so that sandboxed qa copies can use it unchanged?
+## Questions for the tech lead, answered by Lead 77 (14:1x IST)
+1. Complaints menu entry: log it as a Minor with J-109 as its source; the row owner adds the entry. Logged as **QA-506**.
+2. C8.2 and C11.6 to Works: dispatch nightly C8.2 and C11.6 on the checkpoint once fewer than 20 runs are queued (54 at 14:1x), or after tomorrow's org move. Until then both wait on a P-339 runner run.
+3. Sandbox tooling: no. `tools/isolated.sh` stays as it is (a shared launcher under the Lead's read). Browser checks are left to the GitHub-runner packs and recorded as "waits on P-339 runner run".
 
 ## Suggestions
 * QA-504's fix in `guard.ts` changes the 403 words on every platform page. *Needed for the proof* · *Capability*.
-* A Mac qa sandbox that can launch Chromium, or the founder's OK for the sandbox to allow local sockets for Playwright. *Later* · *Scaffolding*.
