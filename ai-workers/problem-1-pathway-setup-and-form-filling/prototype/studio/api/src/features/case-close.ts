@@ -7,24 +7,22 @@ import { CaseClose } from "../case-close.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../platform/identity/keys.ts";
 
 type R = { platform?: StaffContext };
-type B = Record<string, unknown>;
-const body = (b: unknown): B => (b && typeof b === "object" && !Array.isArray(b) ? (b as B) : {});
 
 @Controller("api/runtime/cases/:id")
 export class CaseCloseController {
   constructor(@Inject(CaseClose) private readonly svc: CaseClose) {}
 
   @Post("decisions") @PermissionKeys("agent/case:record-decision")
-  decide(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.decide(staffOf(r), id, body(b)); }
+  decide(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.decide(staffOf(r), id, b); }
 
   @Post("withdraw") @HttpCode(200) @PermissionKeys("agent/case:record-decision")
-  withdraw(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.withdraw(staffOf(r), id, body(b)); }
+  withdraw(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.withdraw(staffOf(r), id, b); }
 
   @Post("close") @HttpCode(200) @PermissionKeys("agent/case:record-decision")
-  close(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.close(staffOf(r), id, body(b)); }
+  close(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.close(staffOf(r), id, b); }
 
   @Post("reopen") @HttpCode(200) @PermissionKeys("agent/case:reopen")
-  reopen(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.reopen(staffOf(r), id, body(b)); }
+  reopen(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.svc.reopen(staffOf(r), id, b); }
 }
 
 export default { controllers: [CaseCloseController], providers: [CaseClose] } satisfies Feature;
