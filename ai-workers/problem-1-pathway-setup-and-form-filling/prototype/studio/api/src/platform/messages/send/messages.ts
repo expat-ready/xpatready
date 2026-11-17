@@ -27,6 +27,9 @@ export const SEND_QUEUE = "messages.send", SWEEP_QUEUE = "messages.outbox_sweep"
 export const SWEEP_AFTER_MS = 2 * 60_000;
 /** Sample: per firm and kind (lost, held), the rows one sweep queues. */
 export const SWEEP_PER_FIRM = 50;
+/** PF-19b part 2 (break M1): the worker's transaction holds the row while the adapter sends; it must outlive the slowest
+ *  adapter answer (SES: SES_TIMEOUT_MS), else a slow but accepted send rolls back and is sent again. */
+export const DELIVER_TX_MS = 60_000;
 
 /** A channel's sending adapter: it gets the stored message and answers the provider's id (or throws: not sent). */
 export type ChannelAdapter = { provider: string; deliver(tx: Tx, r: Rendered): Promise<{ providerId: string }> };
@@ -122,7 +125,7 @@ export class Messages implements MessagePort<Tx> {
       await tx.msgOutbox.update({ where, data: { state: "SENT", stateReason: null, providerId, sentAt: now, consentId: decision.consentId ?? null } });
       await tx.msgEvent.create({ data: { firmId, outboxId, kind: "SENT", providerEventId: providerId, occurredAt: now, detail: { provider: adapter.provider } } });
       return "sent" as const;
-    });
+    }, { timeout: DELIVER_TX_MS, maxWait: 10_000 });
     // One alert to our team per firm per day: the job key holds the day, so a second held message queues nothing.
     if (alertDay) await this.d.jobs.enqueue(CAP_ALERT_QUEUE, { firmId, day: alertDay }, { key: `msg.cap_alert:${firmId}:${alertDay}`, firmId });
     return out;
