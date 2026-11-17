@@ -1,0 +1,52 @@
+PASS  J-6 setup: both Sample firms and their front office are seeded — []
+PASS  J-6 P1-W2 setup: the Case Officer signs in through the sign-in card (keyboard Enter) and lands on Leads
+PASS  J-6 setup: the Owner, both Case Officers and firm B's Owner each own one lead; one lead is unassigned — {"L":{"R":{"id":"fe2c76f9-fe33-472b-ac50-a207d4b1e969","given":"Rosamwjgbm7t","ok":true,"add":201},"O":{"id":"4e299a3a-c29b-411c-b4b1-89c35557756a","given":"Omarmwjgbm7t","ok":true,"add":201},"O2":{"id":"9babe9f8-a480-410c-ae9c-e2ea87c4ffbf","given":"Oonamwjgb
+PASS  J-6 P1-W1: the Owner's All open lists the Owner's, both Case Officers' and the unassigned lead, not firm B's — {"R":true,"O":true,"O2":true,"B":false,"U":true}
+PASS  J-6 P1-A1 API: the Owner's All open has every firm-A lead and not firm B's — 200
+PASS  J-6 P1-W4: the Owner opens the other Case Officer's lead by its address (the lead's own page) — "Oonamwjgbm7t Sample"
+PASS  J-6 P1-A1 API by URL: firm A's Owner asking for firm B's lead gets 404 — 404
+PASS  J-6 P1-A1 API: the Case Officer's All open has their own lead and no other person's lead [own by role] — ["09c52d73-8bdf-4fea-bb06-62df3a99ef0c","09c52d73-8bdf-4fea-bb06-62df3a99ef0c","09c52d73-8bdf-4fea-bb06-62df3a99ef0c"]
+PASS  J-6 P1-A1 API by URL: the Case Officer asking for the other Case Officer's lead gets 404 and nothing of it [own by role] — 404
+PASS  J-6 P1-A1 API by URL: the Case Officer asking for the Owner's lead gets 404 and nothing of it [own by role] — 404
+PASS  J-6 P1-A1 API by URL: the Case Officer asking for firm B's lead gets 404 and nothing of it [own by role] — 404
+PASS  J-6 P1-A1 API, wrong role by URL: the Case Officer (no view.all, no assign) asking for Unassigned leads gets 403 [own by role] — {"status":403,"body":{"type":"https://expatready.local/problems/missing-permission","title":"Not allowed","status":403,"detail":"Unassigned leads are seen by people who may see all leads or assign them.","message":"Unassigned leads are seen by people who may s
+PASS  J-6 P1-W2 screen: the Case Officer's All open shows their own lead and no other person's [own by role] — {"R":false,"O":true,"O2":false,"B":false,"U":false}
+PASS  J-6 P1-W3 screen by URL: the Case Officer typing the other Case Officer's lead's address gets "Lead not found" and nothing of it [own by role] — "Lead not found"
+PASS  J-6 P1-W3 screen by URL: the Case Officer typing the Owner's lead's address gets "Lead not found" and nothing of it [own by role] — "Lead not found"
+PASS  J-6 P1-W3 screen by URL: the Case Officer typing firm B's lead's address gets "Lead not found" and nothing of it [own by role] — "Lead not found"
+PASS  J-6 P1-W3 screen, wrong role by URL: the Case Officer typing ?view=unassigned gets no Unassigned chip, lands on Mine and sees no unassigned lead [own by role] — {"unassignedChip":0,"pressed":"mine","rows":{"R":false,"O":true,"O2":false,"B":false,"U":false}}
+PASS  J-6 P1-W3: the Case Officer's own lead opens by its address (the lead's own page), with no Assign button (the key they lack) — "Omarmwjgbm7t Sample"
+PASS  J-6 P1-W3 "Lead not found": axe finds no WCAG A/AA violation — []
+PASS  J-6 P1-W2 Leads (Case Officer): axe finds no WCAG A/AA violation — []
+PASS  J-6 P1-W2 Leads at 1024 px: no sideways page scroll
+PASS  J-6 P1-W2 Leads at 400 px: no sideways page scroll
+PASS  J-6 P1-A1 API: the Case Officer's All open has their own lead and no other person's lead [own by setting] — [null,"09c52d73-8bdf-4fea-bb06-62df3a99ef0c",null,"09c52d73-8bdf-4fea-bb06-62df3a99ef0c","09c52d73-8bdf-4fea-bb06-62df3a99ef0c"]
+PASS  J-6 P1-A1 API by URL: the Case Officer asking for the other Case Officer's lead gets 404 and nothing of it [own by setting] — 404
+PASS  J-6 P1-A1 API by URL: the Case Officer asking for the Owner's lead gets 404 and nothing of it [own by setting] — 404
+PASS  J-6 P1-A1 API by URL: the Case Officer asking for firm B's lead gets 404 and nothing of it [own by setting] — 404
+PASS  J-6 P1-W2 screen: the Case Officer's All open shows their own lead and no other person's [own by setting] — {"R":false,"O":true,"O2":false,"B":false,"U":true}
+PASS  J-6 P1-W3 screen by URL: the Case Officer typing the other Case Officer's lead's address gets "Lead not found" and nothing of it [own by setting] — "Lead not found"
+PASS  J-6 P1-W3 screen by URL: the Case Officer typing the Owner's lead's address gets "Lead not found" and nothing of it [own by setting] — "Lead not found"
+PASS  J-6 P1-W3 screen by URL: the Case Officer typing firm B's lead's address gets "Lead not found" and nothing of it [own by setting] — "Lead not found"
+PASS  J-6 P1-NR P1-A1 API: the Case Officer's All open has their own lead and no other person's lead [fails with no own rule] — [null,"54c3e9a5-c231-4e83-8918-fd2c6b494c0e","09c52d73-8bdf-4fea-bb06-62df3a99ef0c","b68233ac-7596-4ad3-9e89-bec924a69585",null,"09c52d73-8bdf-4fea-bb06-62df3a99ef0c","09c52d73-8bdf-4fea-bb06-62df3a99ef0c","b68233ac-7596-4ad3-9e89-bec924a69585"]
+PASS  J-6 P1-NR P1-A1 API by URL: the Case Officer asking for the other Case Officer's lead gets 404 and nothing of it [fails with no own rule] — 200
+PASS  J-6 P1-NR P1-A1 API by URL: the Case Officer asking for the Owner's lead gets 404 and nothing of it [fails with no own rule] — 200
+PASS  J-6 P1-NR P1-W2 screen: the Case Officer's All open shows their own lead and no other person's [fails with no own rule] — {"R":true,"O":true,"O2":true,"B":false,"U":true}
+PASS  J-6 P1-NR P1-W3 screen by URL: the Case Officer typing the other Case Officer's lead's address gets "Lead not found" and nothing of it [fails with no own rule] — "Oonamwjgbm7t Sample"
+PASS  J-6 P1-NR P1-W3 screen by URL: the Case Officer typing the Owner's lead's address gets "Lead not found" and nothing of it [fails with no own rule] — "Rosamwjgbm7t Sample"
+PASS  J-6 P1-NR: with no own rule, firms stay apart (firm B's lead is still 404 and "Lead not found")
+PASS  J-6 P1-A2 GENERAL key fail: a Case Officer (no agent/prospect:assign) assigning a lead by API gets 403 MISSING_PERMISSION — {"status":403,"body":{"type":"https://expatready.local/problems/missing-permission","title":"Not allowed","status":403,"detail":"Your roles do not include the permission this needs (agent/prospect:assign).","message":"Your roles do not include the permission t
+PASS  J-6 P1-A2 GENERAL key pass: the Owner (holds agent/prospect:assign) assigns the other Case Officer's lead to the Case Officer (200) — {"status":200,"body":{"id":"9babe9f8-a480-410c-ae9c-e2ea87c4ffbf","number":"L-00007","label":"Lead","state":"OPEN","door":"MANUAL","source":"Phone call (Sample)","sourceDetail":null,"interestedIn":null,"ownerStaffId":"09c52d73-8bdf-4fea-bb06-62df3a99ef0c","own
+PASS  J-6 P1-A3 GENERAL key fail: a Case Officer (no agent/role:assign) giving any role, here Billing/Finance, gets 403 and nothing is written — 403
+PASS  J-6 P1-A3 MONEY fail: the Owner giving Read-only (no money key) writes the roles line and no money-keys line — {"noMoney":200,"money":0}
+PASS  J-6 P1-A3 MONEY pass: the Owner gives Billing/Finance and it writes its own money-keys audit line (Billing/Finance only, its money keys), beside the roles line — {"bf":200,"line":"{\"roles\": [\"BILLING_FINANCE\"], \"firmId\": \"0c7b23c3-de84-4196-881b-d9a68939b9ad\", \"firmKey\": \"sample-firm\", \"staffId\": \"dab3acb6-9911-46f5-8fa1-bbe8e5e2fbbf\", \"moneyKeys\": [\"agent/billing-report:view\", \"agent/billing:expor
+PASS  J-6 P1-W5 fail: a Case Officer inviting staff by API gets 403 (agent/staff:manage) — 403
+PASS  J-6 P1-W5 pass: the Owner invites a Case Officer (row 5's first step): the invitation is pending — {"status":201,"body":{"id":"bd95b253-eff2-40e5-8beb-4b6c757913f2","email":"j6-invitee-mwjgbm7t@sample-firm.example.com","roles":["CASE_OFFICER"],"status":"PENDING","expiresAt":"2026-11-19T16:02:07.468Z","emailed":true}}
+PASS  J-6: no page error in the browser — []
+PASS  J-6 P1-A4 MONEY (no bundle hands out a money key): PF-6b DW3 passes its pass half and its fail half, and nothing fails — ["PASS  PF-6b DW3 pass: no duty or bundle in keys.ts hands out a MONEY key, so the app start","PASS  PF-6b DW3 fail: a bundle carrying a MONEY key is refused, naming it","PASS  PF-6b DW3 fail: a test bundle that adds a MONEY key to keys.ts stops the app's star
+PASS  J-6 P1-A4 MONEY (its own audit line): PF-6b DW4 passes its pass half and its fail half, and nothing fails — ["PASS  PF-6b DW4 pass: assigning Billing/Finance (with Read-only) writes its own money-keys","PASS  PF-6b DW4 fail: assigning Read-only (no money key) writes no money-keys line"]
+PASS  J-6 P1-A4 LICENCE (403 "Only a licensed consultant can do this" without the licence record): PF-6b DW5 passes its pass half and its fail half, and nothing fails — ["PASS  PF-6b DW5 fail: an unlicensed Case Manager holding agent/case:form-approve gets 403 ","PASS  PF-6b DW5 pass: once their licence record exists, the same person and route answer 2","PASS  PF-6b DW5 fail: a catalogue whose sign-off key was edited to GENER
+PASS  J-6 P1-A4 own versus all (the @OwnOrAll sweep): PF-6b DW6 passes its pass half and its fail half, and nothing fails — ["PASS  PF-6b DW6 pass: RetainersController.read (GET /api/front-office/retainers/:id, agent","PASS  PF-6b DW6 pass: SalesController.list (GET /api/front-office/leads, agent/prospect): ","PASS  PF-6b DW6 pass: SalesController.sources (GET /api/front-office/lea
+PASS  J-6 P1-A4: PF-6b's check exits 0 — []
+
+50/50 passed
