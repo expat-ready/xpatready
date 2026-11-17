@@ -8,8 +8,10 @@
 --   * rules Prisma cannot say, at the end: messages are insert-only (no update, delete or truncate: the database refuses
 --     each); a ticket is never deleted or truncated and only its status (with updated_at) changes; the raiser and a
 --     FIRM_STAFF author are staff of the row's own firm; a message's file keys are at most three and lie in its own
---     ticket's folder (support/<ticket id>/<n>); the page is an app path of at most 300 characters with no query string;
---     a body is 1 to 5,000 characters with text in it.
+--     ticket's folder (support/<ticket id>/<n>, n 1 to 3, each once); the page is an app path of at most 300 characters
+--     (letters, digits and - . _ ~ / %, not starting with //: no query string, no other site, no contact value); a body
+--     is 1 to 5,000 characters with text in it; a CLOSED ticket never changes again and takes no message; updated_at
+--     never goes back.
 --   * PF-12's walls on both tables (forced policy, the firm-first gate); every trigger function runs as xr_wall_reader.
 -- Rollback (in this order): DROP TABLE "platform_support_message", "platform_support_ticket"; DROP FUNCTION
 --   platform_support_ticket_write(), platform_support_message_write(), platform_support_no_truncate(),
@@ -73,7 +75,7 @@ CREATE FUNCTION platform_support_has_text(t text) RETURNS boolean LANGUAGE sql I
 $$;
 
 ALTER TABLE "platform_support_ticket"
-  ADD CONSTRAINT "platform_support_ticket_page" CHECK (char_length(page) BETWEEN 1 AND 300 AND page ~ '^/' AND page !~ '[?#[:cntrl:][:space:]]');
+  ADD CONSTRAINT "platform_support_ticket_page" CHECK (char_length(page) BETWEEN 1 AND 300 AND page ~ '^/[A-Za-z0-9._~/%-]*$' AND page !~ '^//');
 ALTER TABLE "platform_support_message"
   ADD CONSTRAINT "platform_support_message_body" CHECK (char_length(body) BETWEEN 1 AND 5000 AND platform_support_has_text(body)),
   ADD CONSTRAINT "platform_support_message_files" CHECK (file_keys IS NOT NULL AND cardinality(file_keys) <= 3 AND array_position(file_keys, NULL) IS NULL),
@@ -95,6 +97,12 @@ BEGIN
      OR NEW.page IS DISTINCT FROM OLD.page OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'platform_support_ticket: only a ticket''s status changes' USING ERRCODE = 'restrict_violation';
   END IF;
+  IF OLD.status = 'CLOSED' THEN   -- break m2: closed is final
+    RAISE EXCEPTION 'platform_support_ticket: a closed ticket never changes' USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.updated_at < OLD.updated_at THEN
+    RAISE EXCEPTION 'platform_support_ticket: updated_at never goes back' USING ERRCODE = 'check_violation';
+  END IF;
   RETURN NEW;
 END $fn$;
 CREATE TRIGGER "platform_support_ticket_write" BEFORE INSERT OR UPDATE OR DELETE ON "platform_support_ticket" FOR EACH ROW EXECUTE FUNCTION platform_support_ticket_write();
@@ -109,8 +117,14 @@ BEGIN
   IF NEW.author_kind = 'FIRM_STAFF' AND NOT EXISTS (SELECT 1 FROM "platform_staff" s WHERE s.firm_id = NEW.firm_id AND s.id = NEW.author_id::uuid) THEN
     RAISE EXCEPTION 'platform_support_message: the author is not staff of this firm' USING ERRCODE = 'foreign_key_violation';
   END IF;
+  IF EXISTS (SELECT 1 FROM "platform_support_ticket" t WHERE t.firm_id = NEW.firm_id AND t.id = NEW.ticket_id AND t.status = 'CLOSED') THEN   -- break m2
+    RAISE EXCEPTION 'platform_support_message: a closed ticket takes no message' USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.file_keys IS NULL OR cardinality(NEW.file_keys) <> (SELECT count(DISTINCT x) FROM unnest(NEW.file_keys) x) THEN   -- break m9
+    RAISE EXCEPTION 'platform_support_message: file keys are a list of distinct keys' USING ERRCODE = 'check_violation';
+  END IF;
   FOREACH k IN ARRAY NEW.file_keys LOOP
-    IF k !~ ('^support/' || NEW.ticket_id::text || '/[1-9][0-9]*$') THEN
+    IF k !~ ('^support/' || NEW.ticket_id::text || '/[1-3]$') THEN
       RAISE EXCEPTION 'platform_support_message: a file key lies outside its own ticket''s folder' USING ERRCODE = 'check_violation';
     END IF;
   END LOOP;

@@ -223,6 +223,39 @@ try {
   ok("PF-18b (PF-12): both tables are walled (row-level security on and forced, one policy each)", walls === "platform_support_message:truetrue:1,platform_support_ticket:truetrue:1", walls);
   const raiserB = crypto.randomUUID();
   ok("PF-18b fail (database): a ticket raised by firm B's staff under firm A is refused", refused(`insert into platform_support_ticket (id, firm_id, raised_by, page, updated_at) values ('${raiserB}', '${firmA}', '${ownerB.id}', '/cases', now())`, /not staff of this firm/));
+
+  // ---------------------------------------------------------------------------------------------------- the breaker's
+  // M1: a character Node reads as text that the database's platform_support_has_text does not (U+20C1, Unicode 17's
+  // Saudi Riyal sign; PostgreSQL 18 is at Unicode 16): a 422 named at the body, before any file is stored or row written.
+  const tM1 = await tickets(), fM1 = filesStored();
+  const odd = await raise(as.CASE_OFFICER.token, { body: "\u20c1", page: "/cases" }, [{ bytes: PDF, type: "application/pdf" }, { bytes: PDF, type: "application/pdf" }]);
+  const oddMsg = await call("POST", `/tickets/${idg}/messages`, as.CASE_OFFICER.token, { body: "\u20c1" });
+  let oddReply = 0; try { await db.$transaction((tx) => svc.replyAsSupport(tx, { ticketId: idg, body: "\u20c1" })); } catch (e) { oddReply = (e as { getStatus?: () => number }).getStatus?.() ?? -1; }
+  ok("PF-18b break M1 fail: a body the database does not read as text is a 422 at the body (raise, message, reply), never a 500, and nothing is stored or made",
+    odd.status === 422 && /letters, digits or punctuation/.test(odd.body.fields?.body) && oddMsg.status === 422 && oddReply === 422 && (await tickets()) === tM1 && filesStored() === fM1, { odd: [odd.status, odd.body.fields], oddMsg: oddMsg.status, oddReply, tickets: [tM1, await tickets()], files: [fM1, filesStored()] });
+  // m3: an app path only.
+  const pages = await Promise.all(["//evil.example.com/login", "/\\evil.example.com", "/clients/jane@client.example.com/intake", "/x\u202egnp.exe", "/x\u200b"].map((page) => raise(as.CASE_OFFICER.token, { body: "Path check (Sample).", page })));
+  const fine3 = await raise(as.CASE_OFFICER.token, { body: "Path check (Sample).", page: "/cases/abc-1_2.3~x%20y" });
+  ok("PF-18b break m3 fail→pass: another site, a backslash, an email, a direction override and an invisible mark are refused as pages; a plain app path passes",
+    pages.every((r) => r.status === 422 && /an app path/.test(r.body.fields?.page)) && fine3.status === 201, pages.map((r) => r.status));
+  ok("PF-18b break m3 (database): the page CHECK refuses another site and an email too", refused(`insert into platform_support_ticket (id, firm_id, raised_by, page, updated_at) values ('${crypto.randomUUID()}', '${firmA}', '${as.CASE_OFFICER.id}', '//evil.example.com', now())`, /platform_support_ticket_page/)
+    && refused(`insert into platform_support_ticket (id, firm_id, raised_by, page, updated_at) values ('${crypto.randomUUID()}', '${firmA}', '${as.CASE_OFFICER.id}', '/a@b.example.com', now())`, /platform_support_ticket_page/));
+  // m4: the limit counts characters, as the database does.
+  const emoji = await raise(as.CASE_OFFICER.token, { body: "\u{1F600}".repeat(3000), page: "/cases" });
+  const over = await raise(as.CASE_OFFICER.token, { body: "a".repeat(5001), page: "/cases" });
+  ok("PF-18b break m4 pass/fail: 3,000 emoji (3,000 characters) are accepted; 5,001 characters are refused", emoji.status === 201 && over.status === 422 && /at most 5000/.test(over.body.fields?.body), { emoji: emoji.status, over: over.status });
+  // m5: a field named after a built-in property is named in the answer.
+  const proto = await raise(as.CASE_OFFICER.token, { body: "x (Sample).", page: "/cases", toString: "1" });
+  ok("PF-18b break m5 fail: a field named toString is refused and named", proto.status === 422 && proto.body.fields?.toString === "not a field of a support ticket", proto.body);
+  // m2: closed is final in the database too.
+  ok("PF-18b break m2 fail (database): a closed ticket does not reopen, and takes no message, even from the owner role",
+    refused(`update platform_support_ticket set status = 'OPEN' where id = '${t2.body.id}'`, /closed ticket never changes/)
+    && refused(`insert into platform_support_message (id, firm_id, ticket_id, author_kind, author_id, body) values ('${crypto.randomUUID()}', '${firmA}', '${t2.body.id}', 'FIRM_STAFF', '${officer2.id}', 'x')`, /closed ticket takes no message/)
+    && refused(`update platform_support_ticket set updated_at = '1999-01-01' where id = '${id1}'`, /never goes back/));
+  // m9: the database's file-key rule is the app's: 1 to 3, each once.
+  ok("PF-18b break m9 fail (database): a fourth file number and a repeated key are refused",
+    refused(`insert into platform_support_message (id, firm_id, ticket_id, author_kind, author_id, body, file_keys) values ('${crypto.randomUUID()}', '${firmA}', '${idg}', 'FIRM_STAFF', '${as.CASE_OFFICER.id}', 'x', '{support/${idg}/4}')`, /outside its own ticket's folder/)
+    && refused(`insert into platform_support_message (id, firm_id, ticket_id, author_kind, author_id, body, file_keys) values ('${crypto.randomUUID()}', '${firmA}', '${idg}', 'FIRM_STAFF', '${as.CASE_OFFICER.id}', 'x', '{support/${idg}/1,support/${idg}/1}')`, /distinct keys/));
 } finally {
   for (const a of apps) await a.close().catch(() => undefined);
   await db.$disconnect();

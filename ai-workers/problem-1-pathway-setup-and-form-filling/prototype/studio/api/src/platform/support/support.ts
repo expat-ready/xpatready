@@ -60,10 +60,16 @@ const closedRefused = (): never => problem(409, "support-closed", "This ticket i
 const BLANK = new RegExp("[\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u00ad\\u034f\\u061c\\u115f\\u1160\\u1680\\u180e\\u2000-\\u200f\\u2028-\\u202f\\u205f-\\u2064\\u2066-\\u206f\\u2800\\u3000\\u3164\\ufe00-\\ufe0f\\ufeff\\uffa0]", "g");
 const CONTROL = new RegExp("[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f-\\u0084\\u0086-\\u009f]");
 export const hasText = (s: string) => /[\p{L}\p{Nl}\p{P}\p{S}0-9]/u.test(s.replace(BLANK, "")) && !CONTROL.test(s);
-const Body = z.string({ error: "write what you need help with" }).max(BODY_MAX, `at most ${BODY_MAX} characters`).refine(hasText, "write what you need help with, without control characters");
+/** A string's length in characters (code points), as the database's char_length counts it (break m4). */
+const chars = (s: string) => [...s].length;
+const Body = z.string({ error: "write what you need help with" }).refine((s) => chars(s) <= BODY_MAX, `at most ${BODY_MAX} characters`).refine(hasText, "write what you need help with, without control characters");
 /** The app path the ticket was raised from: its query string and fragment are cut off (they can hold a token). */
+/** The app path the ticket was raised from: its query string and fragment are cut off (they can hold a token). An app
+ *  path only (break m3): letters, digits and - . _ ~ / %, not starting with // (another site), no backslash, no @ (a
+ *  contact value), no space, control, direction or invisible mark; the migration's CHECK asks the same. */
+export const APP_PATH = /^\/(?!\/)[A-Za-z0-9._~\/%-]*$/;
 const Page = z.string({ error: "the page is needed" }).transform((p) => p.split(/[?#]/)[0])
-  .refine((p) => p.length >= 1 && p.length <= PAGE_MAX && p.startsWith("/") && !/[\s\p{Cc}]/u.test(p), `an app path starting with /, at most ${PAGE_MAX} characters`);
+  .refine((p) => p.length >= 1 && p.length <= PAGE_MAX && APP_PATH.test(p), `an app path starting with /, at most ${PAGE_MAX} characters`);
 const NO_PRIORITY = "a support ticket has no priority: write what you need in the text";
 const Raise = z.object({ body: Body, page: Page }).strict();
 const Message = z.object({ body: Body }).strict();
@@ -74,13 +80,14 @@ const isUuid = (s: unknown): s is string => UUID_SHAPE.safeParse(s).success;
 function parse<T extends z.ZodType>(schema: T, input: unknown): z.output<T> {
   const r = schema.safeParse(input ?? {});
   if (r.success) return r.data;
-  const fields: Record<string, string> = {};
+  const fields: Record<string, string> = Object.create(null);
+  const set = (k: string, m: string) => { if (!Object.hasOwn(fields, k)) fields[k] = m; };
   for (const i of r.error.issues) {
-    if (i.code === "unrecognized_keys") { for (const k of (i as { keys?: string[] }).keys ?? []) fields[k] ??= k === "priority" ? NO_PRIORITY : "not a field of a support ticket"; continue; }
+    if (i.code === "unrecognized_keys") { for (const k of (i as { keys?: string[] }).keys ?? []) set(k, k === "priority" ? NO_PRIORITY : "not a field of a support ticket"); continue; }
     const k = i.path.length ? i.path.join(".") : "_";
-    fields[k] ??= i.code === "invalid_type" && i.input === undefined ? "this is needed" : i.message;
+    set(k, i.code === "invalid_type" && i.input === undefined ? "this is needed" : i.message);
   }
-  return fieldErrors(fields);
+  return fieldErrors({ ...fields });
 }
 
 /** Why an attachment is refused, in plain words, or null when it may be stored. */
@@ -117,12 +124,19 @@ export class SupportService {
   private allFirm = (ctx: StaffContext) => this.has(ctx, SUPPORT_KEYS.list) && ctx.roles.some((r) => (ALL_FIRM_ROLES as readonly string[]).includes(r));
   private sees = (ctx: StaffContext, t: PlatformSupportTicket) => this.has(ctx, SUPPORT_KEYS.list) && (this.allFirm(ctx) || t.raisedBy === ctx.staffId.toLowerCase());
   private actor = (ctx: StaffContext) => `staff:${ctx.staffId.toLowerCase()}`;
+  /** Break M1: the database's platform_support_has_text is the one judge of a body (Node's Unicode and PostgreSQL's
+   *  differ, and differ again between versions), asked before any file is stored or row written: a 422, never a 500. */
+  private async bodyHasText(db: Tx | PrismaClient, body: string): Promise<void> {
+    const r = await db.$queryRaw<{ ok: boolean }[]>`SELECT platform_support_has_text(${body}) AS ok`;
+    if (!r[0]?.ok) fieldErrors({ body: "write what you need help with in letters, digits or punctuation (some new characters are not read here yet)" });
+  }
 
   /** Raises a ticket (agent/support-ticket:create): checks every file first, stores them, then one transaction; the
    *  email after the commit. */
   async raise(ctx: StaffContext, input: unknown, uploads: Upload[] = []): Promise<TicketView & { emailed: boolean }> {
     if (!this.has(ctx, SUPPORT_KEYS.create)) problem(403, "not-allowed", "Not allowed", "Raising a support ticket needs the permission to raise support tickets.");
     const v = parse(Raise, input);
+    await this.bodyHasText(this.d.db, v.body);
     if (uploads.length > MAX_FILES) fieldErrors({ files: `at most ${MAX_FILES} attachments` });
     const bad: Record<string, string> = {};
     uploads.forEach((f, i) => { const why = attachmentProblem(f); if (why) bad[`files.${i}`] = why; });
@@ -169,6 +183,7 @@ export class SupportService {
   /** The firm's next message (the raiser, or an Owner or Admin): "Waiting on support". */
   async addMessage(ctx: StaffContext, id: string, input: unknown): Promise<TicketView> {
     const v = parse(Message, input);
+    await this.bodyHasText(this.d.db, v.body);
     const seen = await this.visible(ctx, id);
     return this.d.db.$transaction(async (tx) => {
       const t = await this.lock(tx, seen.id, seen.firmId);
@@ -185,6 +200,7 @@ export class SupportService {
    *  transaction; the caller runs on the system plane (no firm scope: our team answers every firm). */
   async replyAsSupport(tx: Tx, input: { ticketId: string; body: string }): Promise<TicketView> {
     const v = parse(z.object({ ticketId: z.string().refine(isUuid, "a ticket id"), body: Body }).strict(), input);
+    await this.bodyHasText(tx, v.body);
     const t = await this.lock(tx, v.ticketId.toLowerCase());
     if (t.status === "CLOSED") closedRefused();
     const m = await tx.platformSupportMessage.create({ data: { firmId: t.firmId, ticketId: t.id, authorKind: "SUPPORT", authorId: "support", body: v.body } });

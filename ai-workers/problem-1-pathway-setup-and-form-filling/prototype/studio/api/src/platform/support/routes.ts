@@ -16,8 +16,9 @@ type R = { platform?: StaffContext };
 type B = Record<string, unknown>;
 type F = { buffer: Buffer; size: number; mimetype?: string }[] | undefined;
 const ups = (fs: F): Upload[] => (fs ?? []).map((f) => ({ bytes: new Uint8Array(f.buffer), size: f.size, contentType: f.mimetype }));
-/** One more file than allowed reaches the service, which names the limit in words (the upload layer's own error would not). */
-const files = () => UseInterceptors(FilesInterceptor("files", MAX_FILES + 1, { limits: { fileSize: 2 * ATTACHMENT_MAX_BYTES, files: MAX_FILES + 1 } }));
+/** One more file than allowed reaches the service, which names the limit in words (the upload layer's own error would not);
+ *  at most 8 form fields of 64 KB each (break m8: a body is 5,000 characters, at most 20 KB). */
+const files = () => UseInterceptors(FilesInterceptor("files", MAX_FILES + 1, { limits: { fileSize: 2 * ATTACHMENT_MAX_BYTES, files: MAX_FILES + 1, fields: 8, fieldSize: 64 * 1024, parts: MAX_FILES + 9 } }));
 
 @Controller("api/platform/support")
 export class SupportController {
