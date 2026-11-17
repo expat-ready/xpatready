@@ -1,0 +1,7 @@
+# qa findings closed on 17 Nov 2026 by the QA-478 retest (moved word for word from `qa/BUGS.md`)
+
+## QA-478 — from `qa/BUGS.md`
+
+Closed 17 Nov 2026 (qa retest, main 388e5a6fd, tree 357315b62): fixed by PF-6m (#1945, merged 16 Nov 22:04 UTC) with PF-6m2 (#2045, merged 17 Nov 11:16 UTC). `tests/qa/check_qa478_479_r16_breaks.ts` 7/7 twice on an isolated copy (never :4400, US$0): an accepted invitation into Billing/Finance (12 MONEY keys) now writes one `platform.staff.money_keys_granted` audit line (before 0, after 1), as the role-change door does. QA-479's line still passes (take answers 404). Evidence: `qa/reports/2026-11-17-retest-QA-478/`.
+
+| QA-478 | Gap · Major (qa, capability R1.6, 16 Nov; J-6 break F3, reproduced by qa) | R1.6 ("money apart") · PF-6b ruling 2 (b) | main ddc6e919c | **An accepted invitation into a money-bearing role writes no money-keys audit line.** Steps: an Owner's invitation into Billing/Finance (12 MONEY keys) is accepted (`POST /api/public/invitations/:token/accept`). Expected: a `platform.staff.money_keys_granted` line, as the role-change door writes (`api/src/platform/identity/service.ts:242`). Actual: only `platform.invitation.accepted`; 0 money lines (`identity/session/service.ts:96` grants the roles with no money check). Check: `tests/qa/check_qa478_479_r16_breaks.ts` (QA-478 line fails today, twice). Evidence: `reports/2026-11-16-capability-R1.6/qa478-479-{1,2}-mine.txt` | runtime, row **PF-6m** (`lead-b-briefs/PF-6m.md`: one money-keys audit helper for the role-change door and the invitation accept) | Open |

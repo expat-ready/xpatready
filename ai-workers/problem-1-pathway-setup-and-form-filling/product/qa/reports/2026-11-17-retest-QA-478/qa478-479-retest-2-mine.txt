@@ -1,0 +1,15 @@
+NOTICE:  database "xr_studio_qa478" does not exist, skipping
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.
+isolated qa478 on http://localhost:4479 (xr_studio_qa478), stops itself in 20 min
+PASS  setup: the Owner and a Case Officer sign in
+PASS  QA-478 setup: a pending invitation into Billing/Finance exists — "c24c31ca-d075-4812-b084-7297209adb8a"
+PASS  QA-478 setup: the invitee accepts and joins as Billing/Finance — {"staffId":"3fbe14ca-5107-4a1f-85ed-ef7408a33ef9","firmKey":"sample-firm","roles":["BILLING_FINANCE"],"handOff":{"kind":"set-password","url":"/sign-in/callback#code=RTIxXSl0weOJfmoOkB79yw_3n6f0RZqQiT7p6GJxFT8"}}
+PASS  QA-478: the accepted invitation that hands out 12 money keys writes its own money-keys audit line (PF-6b ruling 2 (b), as the role-change door does) — {"moneyKeys":12,"before":0,"after":1}
+PASS  QA-479 setup: the Owner adds a lead and owns it (AG-2-4) — {"id":"1478ff5c-6bf8-4487-86dd-349eb0a0ba19","number":"L-00001","label":"Lead","state":"OPEN","door":"MANUAL","source":"Phone call (Sample)","sourceDetail":null,"interestedIn":null,"ownerStaffId":"0d9fbe3b-9f22-4130-9b58-319459c4d456","owner":"Representative (
+PASS  QA-479 setup: the Case Officer cannot see another person's lead (GET 404) — {"otherLead":"1478ff5c-6bf8-4487-86dd-349eb0a0ba19","get":404}
+PASS  QA-479: take on that lead answers the same 404, not a 409 naming its owner (AG-2-86 rule 3) — {"status":404,"code":"NOT_FOUND","detail":"No such lead in your firm."}
+
+7/7 passed
+stopped qa478 (database and files removed; log in var/isolated-logs/qa478-api.log)
