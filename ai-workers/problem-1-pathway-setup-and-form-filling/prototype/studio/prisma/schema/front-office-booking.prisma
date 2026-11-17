@@ -103,10 +103,8 @@ model FoConsultationType {
   @@map("fo_consultation_type")
 }
 
-/// FO-3a part 1b (AG-4-62 rules 1, 1b, 1c, 4 and §7): a named set of a staff member's hours ("Normal hours", "Evening
-/// calls"), with its own IANA zone. Exactly one set per person is the default (a partial unique index in
-/// 20261117130000_fo3a_hour_sets); a type uses the host's default unless it names another (FoTypeHostSet). Deleting a set
-/// deletes its windows and the types' choices of it (they fall back to the default); the default is never deleted (API).
+/// FO-3a part 1b (AG-4-62 rules 1, 1b, 1c, 4, §7): a named set of a person's hours with its own IANA zone; exactly one
+/// default per person (partial unique index); a deleted set takes its windows and the types' choices of it.
 model FoAvailabilitySet {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   firmId    String   @map("firm_id") @db.Uuid
@@ -131,12 +129,9 @@ model FoAvailabilitySet {
   @@map("fo_availability_set")
 }
 
-/// One weekly window of a set of hours (AG-4-62 rules 2-4): weekday 0 = Sunday … 6 = Saturday, minutes since local
-/// midnight in the set's IANA zone (kept on each window, one zone per set), start before end, no two windows of one set
-/// overlapping on a day (exclusion in the migration). A window written without a set goes to the person's default set,
-/// made when missing (the database's fo_booking_set_default), so FO-1b's copy of the firm's business hours
-/// (api/src/front-office/booking-seed.ts) still gives a new person their "Normal hours"; business hours never limit
-/// slots afterwards (AG04-D22).
+/// One weekly window of a set of hours (AG-4-62 rules 2-4): weekday 0 = Sunday … 6, minutes since local midnight in the
+/// set's zone (kept on each window), start before end, no overlap within a set. Written without a set, it goes to the
+/// person's default set, made when missing (fo_booking_set_default); business hours never limit slots (AG04-D22).
 model FoAvailability {
   id          String   @id @default(uuid()) @db.Uuid
   firmId      String   @map("firm_id") @db.Uuid
