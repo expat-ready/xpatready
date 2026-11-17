@@ -273,6 +273,7 @@ Answers are recorded below as the founder gives them.
 - Q1 (17 Nov, ~13:4x IST): **"platform (Recommended)"**: rename to `expat-ready/platform` in stage 7, after the org move is checked.
 - Q2: **"Remove + git tag (Recommended)"**: stage 1 removes the October files from the main tree; tag `history/pre-cleanup-2026-11` keeps them.
 - Q3: **"Move to private home (Recommended)"**: `commercial/` is copied to the founder's private GitHub home (the copy is checked file by file), then removed from this tree in stage 1. Old copies remain in public history (no rewrite, rule 1).
+- Q4 (architecture, 17 Nov): **"Modular monolith (Recommended)"**: one monorepo, fenced modules with contracts, AI as its own module behind one `AiPort`, events between modules, affected-only CI; splits only on the triggers in section 0.4.
 
 ---
 
@@ -337,4 +338,3 @@ Founder rulings respected: **P-668 T17: no comment ban** (why-comments stay, P-6
 | R9 | **Dead code** | remove the 2 files and 20 exports (each checked), then knip's list | <300 lines | full CI |
 
 **Cost (estimate):** R0–R5 take ~3–4 working days of agent time and ~3–4 M tokens. R6–R7 are spread over the Release 1 work (one module per quiet window). There are no paid AI runs.
-- Q4 (architecture, 17 Nov): **"Modular monolith (Recommended)"**: one monorepo, fenced modules with contracts, AI as its own module behind one `AiPort`, events between modules, affected-only CI; splits only on the triggers in section 0.4.
