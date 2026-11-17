@@ -9,15 +9,20 @@ product/design/engineering-approved-setup.json, read from the same place, item b
   mergify   .mergify.yml: max_parallel_checks, the queue names in order, each queue's batch_size, merge_method and
             required queue and merge conditions (sets), auto_merge_conditions, and no way round the queues (no
             pull_request_rules entry with a merge or queue action, no extends:);
-  ci        ci.yml: workflow name, the required jobs, the gate job's needs (each defined), the pull_request types
-            exactly (a "labeled" type would start a second run), no forbidden trigger, and token scopes (every job's
-            effective permissions declared, write only where the manifest allows it);
+  ci        ci.yml: workflow name, the required jobs, the gate: its check name (a job's name:, else its key: what
+            Mergify and the ruleset match) and no other job's, its needs (each defined), its if: exactly, no
+            continue-on-error on it or its needs; the triggers exactly (only pull_request, its types exactly, no
+            branch or path filters); token scopes (every job's effective permissions declared, write only where the
+            manifest allows it);
   ruleset   the rules GitHub applies to main (deletion, non_fast_forward, the required check ci), read only with
             --github by the heartbeat workflow (CK-2, GITHUB_TOKEN read); elsewhere "unchecked"; no rules while the
-            manifest says required false = "pending" (tolerated until the move);
-  library   each master in cockpit/library.json exists; one with a registry "version" carries the same "Version:"
-            header in its first 40 lines (a JSON master: a top-level "version"); claude.ai artifacts and local-only
-            paths are "unchecked".
+            manifest says required false = "pending" until required_from, a failure after it (bypass lists are not
+            visible in this answer);
+  heartbeat the heartbeat workflow (CK-2) as decided: scheduled every every_min, a read-only token, one job, a timeout
+            of at most timeout_min, a concurrency group that never cancels a running run;
+  library   each master in cockpit/library.json exists inside the repository (no empty, absolute or .. path); one
+            with a registry "version" (a string) carries the same "Version:" header in its first 40 lines (any case;
+            a JSON master: a top-level "version"); claude.ai artifacts and local-only paths are "unchecked".
 Each item is pass | fail | unchecked | pending with expected vs found; "enforced: yes" when nothing fails.
 Output: one markdown line per item and a summary line; --json FILE (or -) writes the result. checked_at in IST
 (Asia/Kolkata, P-302). Exit code = the number of failed items (at most 100); 101 = nothing was checked.
@@ -63,7 +68,8 @@ class Source:
             return f"folder {self.root}"
         sha = subprocess.run(["git", "rev-parse", "--short", self.ref], capture_output=True, text=True,
                              cwd=self.repo).stdout.strip()
-        return self.ref if sha and sha.startswith(self.ref) else f"{self.ref} {sha}".strip()
+        same = sha and (sha.startswith(self.ref) or self.ref.startswith(sha))  # a sha given as --ref: print it once
+        return self.ref if same else f"{self.ref} {sha}".strip()
 
     def read(self, path):
         """The file's text, or None when it is not there."""
@@ -79,7 +85,9 @@ class Source:
     def matches(self, pattern):
         """Paths in this state matching a path, a folder or a glob (library.json's pathspecs)."""
         if self.root:
-            return sorted(os.path.relpath(p, self.root) for p in glob.glob(os.path.join(self.root, pattern)))
+            root = os.path.realpath(self.root)
+            hits = (os.path.realpath(p) for p in glob.glob(os.path.join(root, pattern)))
+            return sorted(os.path.relpath(p, root) for p in hits if p.startswith(root + os.sep))
         if not hasattr(self, "_files"):
             self._files = subprocess.run(["git", "ls-tree", "-r", "--name-only", self.ref], capture_output=True,
                                          text=True, cwd=self.repo).stdout.splitlines()
@@ -218,12 +226,24 @@ def check_ci(src, m, rules=None):
         miss.append(f"workflow name {d.get('name')!r} (want {cfg['workflow_name']!r})")
     out = [item("ci", "ci.jobs", "fail" if miss else "pass", f"workflow {cfg['workflow_name']}: "
                 + ", ".join(cfg["jobs_required"]), f"missing {', '.join(miss)}" if miss else "all present")]
-    needs = (jobs.get(cfg["gate_job"]) or {}).get("needs") or []
+    gate = jobs.get(cfg["gate_job"]) or {}
+    needs = gate.get("needs") or []
     needs = [needs] if isinstance(needs, str) else needs
     miss = [j for j in cfg["gate_needs_required"] if j not in needs] + \
         [f"{j} (needed but not defined)" for j in cfg["gate_needs_required"] if j in needs and j not in jobs]
-    out.append(item("ci", "ci.gate", "fail" if miss else "pass", f"job {cfg['gate_job']} needs "
-                    + ", ".join(cfg["gate_needs_required"]), f"missing {', '.join(miss)}" if miss else "all needed"))
+    # Mergify's check-success = ci and the ruleset match the check name: a job's name:, else its key.
+    shown = {k: str(j.get("name", k)) if isinstance(j, dict) else k for k, j in jobs.items()}
+    if cfg["gate_job"] in jobs and shown[cfg["gate_job"]] != cfg["gate_job"]:
+        miss.append(f"gate shows as check {shown[cfg['gate_job']]!r}")
+    miss += [f"job {k} also shows as check {cfg['gate_job']!r}" for k, n in shown.items()
+             if n == cfg["gate_job"] and k != cfg["gate_job"]]
+    if gate.get("if") != cfg["gate_if"]:
+        miss.append(f"gate if: {gate.get('if')!r}")
+    miss += [f"continue-on-error on {k}" for k in [cfg["gate_job"]] + needs
+             if isinstance(jobs.get(k), dict) and jobs[k].get("continue-on-error") not in (None, False)]
+    out.append(item("ci", "ci.gate", "fail" if miss else "pass", f"check {cfg['gate_job']} from job {cfg['gate_job']} "
+                    "only, its if: as approved, no continue-on-error, needs " + ", ".join(cfg["gate_needs_required"]),
+                    "; ".join(miss) if miss else "as approved"))
     on = d.get("on", d.get(True))  # PyYAML reads the key on as True
     on = {on: None} if isinstance(on, str) else ({k: None for k in on} if isinstance(on, list) else (on or {}))
     bad = []
@@ -233,10 +253,13 @@ def check_ci(src, m, rules=None):
             bad.append(f"no {trig}")
         elif sorted(have or []) != sorted(types):  # no types = GitHub's default set, never ready_for_review
             bad.append(f"{trig} types {have or 'default'}")
+        bad += [f"{trig} filter {f}" for f in ("branches", "branches-ignore", "paths", "paths-ignore")
+                if isinstance(on.get(trig), dict) and f in on[trig]]
     bad += [f"forbidden trigger {t}" for t in cfg["triggers_forbidden"] if t in on]
+    bad += [f"extra trigger {t}" for t in on if t not in cfg["trigger_types_exact"] and t not in cfg["triggers_forbidden"]]
     out.append(item("ci", "ci.triggers", "fail" if bad else "pass",
-                    "; ".join(f"{k}: exactly {', '.join(v)}" for k, v in cfg["trigger_types_exact"].items())
-                    + f"; never {', '.join(cfg['triggers_forbidden'])}", "; ".join(bad) or "as approved"))
+                    "only " + "; ".join(f"{k}: exactly {', '.join(v)}, no filters"
+                                        for k, v in cfg["trigger_types_exact"].items()), "; ".join(bad) or "as approved"))
     top, allowed, bad = d.get("permissions"), cfg["write_scopes_allowed"], []
     if top is not None and write_scopes(top):
         bad.append(f"workflow-level write: {', '.join(write_scopes(top))}")
@@ -252,6 +275,41 @@ def check_ci(src, m, rules=None):
     return out
 
 
+# ---- heartbeat workflow --------------------------------------------------------------------------------------------
+def check_heartbeat(src, m, rules=None):
+    hb = m.get("heartbeat")
+    if not hb:
+        return []
+    path = f".github/workflows/{hb['workflow']}"
+    exp = (f"every {hb['every_min']} min, read-only token, one job, timeout <= {hb['timeout_min']} min, "
+           "a concurrency group that never cancels")
+    d, err = parse(src, path, yaml.safe_load)
+    if err or not isinstance(d, dict):
+        return [item("heartbeat", "heartbeat.workflow", "fail", exp, err or "not a mapping")]
+    on, bad, per_hour = d.get("on", d.get(True)) or {}, [], 0
+    crons = [c.get("cron", "") for c in (on.get("schedule") or [])] if isinstance(on, dict) else []
+    for c in crons:
+        f = c.split()
+        if len(f) == 5 and f[1:] == ["*", "*", "*", "*"]:
+            per_hour += 60 // int(f[0][2:]) if f[0].startswith("*/") else len(f[0].split(","))
+    if per_hour * hb["every_min"] < 60:
+        bad.append(f"schedule {crons or 'none'}: {per_hour} run(s) an hour")
+    jobs, top = d.get("jobs") or {}, d.get("permissions")
+    if len(jobs) != 1:
+        bad.append(f"{len(jobs)} jobs")
+    for name, j in jobs.items():
+        perm = j.get("permissions", top)
+        if perm is None or write_scopes(perm):
+            bad.append(f"job {name} token: {perm if perm is not None else 'repository default'}")
+        tm = j.get("timeout-minutes")
+        if isinstance(tm, bool) or not isinstance(tm, int) or tm > hb["timeout_min"]:
+            bad.append(f"job {name} timeout {j.get('timeout-minutes')}")
+    conc = d.get("concurrency")
+    if not isinstance(conc, dict) or not conc.get("group") or conc.get("cancel-in-progress") not in (False, None):
+        bad.append(f"concurrency {conc}")
+    return [item("heartbeat", "heartbeat.workflow", "fail" if bad else "pass", exp, "; ".join(bad) or "as approved")]
+
+
 # ---- ruleset -------------------------------------------------------------------------------------------------------
 NOT_READ = "unchecked (read only by the heartbeat workflow, CK-2, with --github; the agents' deny list blocks it here)"
 
@@ -265,15 +323,17 @@ def check_ruleset(src, m, rules=None):
     if not isinstance(rules, list):
         return [item("ruleset", iid, "fail", exp, rules if isinstance(rules, str) else f"unexpected answer: {rules}")]
     if not rules and not cfg["required"]:
-        return [item("ruleset", iid, "pending", exp, "no ruleset on main yet (tolerated until required is set "
-                                                     "after the move)")]
+        late = ist_now().date().isoformat() >= cfg["required_from"]
+        return [item("ruleset", iid, "fail" if late else "pending", exp, f"no ruleset on main yet ("
+                     + (f"required from {cfg['required_from']}" if late else f"tolerated until {cfg['required_from']}")
+                     + ")")]
     types = {r.get("type") for r in rules if isinstance(r, dict)}
     checks = {c.get("context") for r in rules if isinstance(r, dict) and r.get("type") == "required_status_checks"
               for c in (r.get("parameters") or {}).get("required_status_checks") or []}
     miss = [x for x in cfg["rules_required"] if x not in types] + \
         [f"check {c}" for c in cfg["required_checks"] if c not in checks]
-    return [item("ruleset", iid, "fail" if miss else "pass", exp,
-                 f"missing {', '.join(miss)}" if miss else "all rules active")]
+    return [item("ruleset", iid, "fail" if miss else "pass", exp, f"missing {', '.join(miss)}" if miss else
+                 "all rules active (bypass lists are not in this answer)")]
 
 
 def read_rules(m, opener=urllib.request.urlopen):
@@ -282,17 +342,20 @@ def read_rules(m, opener=urllib.request.urlopen):
     if not repo or not tok:
         return "GITHUB_REPOSITORY or GITHUB_TOKEN not set"
     api = os.environ.get("GITHUB_API_URL", "https://api.github.com")
-    req = urllib.request.Request(f"{api}/repos/{repo}/rules/branches/{m['ruleset']['branch']}",
+    req = urllib.request.Request(f"{api}/repos/{repo}/rules/branches/{m['ruleset']['branch']}?per_page=100",
                                  headers={"Authorization": f"Bearer {tok}", "Accept": "application/vnd.github+json"})
     try:
         with opener(req, timeout=20) as r:
             return json.load(r)
+    except urllib.error.HTTPError as e:
+        e.close()
+        return f"could not read the branch rules (HTTP {e.code})"
     except (urllib.error.URLError, ValueError, OSError) as e:
         return f"could not read the branch rules ({e})"
 
 
 # ---- library -------------------------------------------------------------------------------------------------------
-VERSION_LINE = re.compile(r"^[\s>#*|_-]*Version[\s*_|]*[:|][\s*_]*v?([0-9][0-9A-Za-z.+-]*)", re.M)
+VERSION_LINE = re.compile(r"^[\s>#*|_-]*version[\s*_|]*[:|][\s*_]*v?([0-9][0-9A-Za-z.+-]*)", re.M | re.I)
 
 
 def header_version(text):
@@ -318,6 +381,12 @@ def check_library(src, m, rules=None):
         if path.startswith(("artifact:", "local:")) or "://" in path:
             out.append(item("library", iid, "unchecked", exp, "not in the repository (claude.ai artifact or local)"))
             continue
+        if not path or os.path.isabs(path) or ".." in path.split("/"):
+            out.append(item("library", iid, "fail", exp, f"path {path!r} is not inside the repository"))
+            continue
+        if want is not None and not isinstance(want, str):
+            out.append(item("library", iid, "fail", exp, f"registry version {want!r} is not a string"))
+            continue
         hits = src.matches(path)
         if not hits or want is None:
             out.append(item("library", iid, "pass" if hits else "fail", exp,
@@ -331,7 +400,7 @@ def check_library(src, m, rules=None):
     return out
 
 
-CHECKS = (check_settings, check_mergify, check_ci, check_ruleset, check_library)
+CHECKS = (check_settings, check_mergify, check_ci, check_heartbeat, check_ruleset, check_library)
 
 
 # ---- run -----------------------------------------------------------------------------------------------------------
