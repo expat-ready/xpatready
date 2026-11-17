@@ -1797,3 +1797,12 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   - The migration stamp is later than `20261116190000_pf18a_offices`, and the release Lead reads it.
   - The PR stays a draft until Approve.
 * GitHub's REST rate limit ran out for our account at about 08:17 IST. The scan now runs every 300 s and the merge watch every 420 s.
+
+## rev 16.98 (17 Nov 08:36 IST): PF-21s part 4 waits on #2012; PF-5tv named
+* PF-18b was sent to the PF-8r lane at 08:5x IST with the rev 16.97 conditions, word for word (Lead 73).
+* PF-21s part 4 (DW3, DW4), on the idle part-3 lane: yes, but only once #2012 is on `main`.
+  - #2012 edits `tests/check_pf21s_complaints_browser.ts`, `complaints/record-drawer.tsx` and `platform/session.ts` (rev 16.92). Part 4 shares that test, and its writes go through `staffApi` (P-526).
+  - Its writes send an `Idempotency-Key` through the new `headers`.
+  - Start line sent to Lead 73.
+* No other ready no-wait row of mine is left: PF-21b part 1, PF-Fp part 1 and FO-9b part 0 are built.
+* **PF-5tv**, new (from PF-5t's lane): two terms versions published in the same instant re-ask a firm that has just signed up; the fix is in `firms/signup.ts`. It waits on #2029 (same file). The brief waits for the lane's PR and comment id from Lead 73.
