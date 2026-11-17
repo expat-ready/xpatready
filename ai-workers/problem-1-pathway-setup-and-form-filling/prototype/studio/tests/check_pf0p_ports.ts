@@ -292,9 +292,9 @@ try {
   const K = `${process.pid}`, ws = () => sql(`select count(*) from workspace where key = '${PLATFORM_AUDIT_WORKSPACE}'`);
   const l0 = lines();
   await rejects(() => db.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: `r-13-${K}` })); throw new Error("roll back"); }));
-  const rolledBack = lines() === l0 && sql(`select count(*) from audit_event where entity_key = 'r-13-${K}'`) === "0";
+  const noLine = lines() === l0 && sql(`select count(*) from audit_event where entity_key = 'r-13-${K}'`) === "0";
   await db.$transaction(async (tx) => { await auditEvent.record(tx, entry({ entityKey: `r-14-${K}` })); });
-  ok("adapter pass: a rolled-back line leaves no line; the next line lands (one more line, still one workspace)", rolledBack && lines() === l0 + 1 && ws() === "1");
+  ok("adapter pass: a rolled-back line leaves no line; the next line lands (one more line, still one workspace)", noLine && lines() === l0 + 1 && ws() === "1");
 
   // Review M1: two writers at once both commit, one workspace; then the same with the first rolling back.
   const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
