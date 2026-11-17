@@ -1871,3 +1871,13 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **#1961 PF-19p:** Approve eeb36706 was posted, but its stamp 20261117120000 clashes with #2009 (pf18a_offices, renamed first), so Lead 78 has not labelled it. Rename to **20261117121500_pf19p_platform_account_mail**, then a diff-only Approve (6947176724).
 * **#2012 PF-21i** and #2003 AUD-1a share 20261116150000. At its next merge of main, #2012 becomes **20261117123000_pf21i_complaint_request_key** (6947177190).
 * Open-PR stamps per Lead 78: 030000 #2064, 054600 #2000, 060000 #2011, 120000 #2009, 121500 #1961 (planned), 123000 #2012 (planned). Older stamps are renamed when their PR merges main.
+
+### Rev 17.12 (18:38 IST 17 Nov): B1 freeze (P-692); open-PR list sent to Lead 79
+* **P-692 B1 freeze** (Lead 79): lanes push no commits, open no PRs and run no re-runs until the Lead says the move is verified. Notice posted on #2012, #1991, #2021, #2064, #1961 and #1959.
+* **List sent at 18:38 IST:**
+  * **A. Queued, merge tonight if the queue runs:** #1918 9eb809bdb, #1956 4b49c919f, #2052 b4643db04, #2062 3f7113b6b, #2087 b1778e367, #1991 8b5dffe06 (its head to be checked against adcf9c105).
+  * **B. Labelled, not queued:** #2009 95bd1747c (ci queued), #2001 ba2ac0134 (needs a requeue), #1959 d3a8a74d3 (unstable, waits), #1961 80ac0e72d (no ci on the new head, waits).
+  * **C. Approve, Lead read and green, no label:** #2064 749708beb, #2038 a8e709ecb, #2029 bfa5e31f7, #2014 f5cbdbf87, #2011 7a0335037.
+  * **D. Wait for the move:** #2012 c275837d0 (needs the P-423 read and the stamp rename), #2021 63c1b2409 (ci queued, needs the shared-contract read).
+  * **No PR:** FO-2b parked. PF-5tv, PF-21s part 4, PF-4dn and QA-498 held by P-663. After the move, the PF-6m2 follow-ups.
+* Asked Lead 79 whether the freeze covers records pushes to lead-b-front-office. Until the answer, records are committed locally only.
