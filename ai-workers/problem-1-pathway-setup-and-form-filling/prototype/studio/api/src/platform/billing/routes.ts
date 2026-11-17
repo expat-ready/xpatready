@@ -19,7 +19,7 @@ const HOLD_OPEN = "platform:hold-open";
 /** A route a held firm still reaches (billing, the data download). */
 export const HoldOpen = () => SetMetadata(HOLD_OPEN, true);
 /** PF-4's routes a held person needs to sign in, see who they are and sign out (route templates, exact). */
-const IDENTITY_OPEN = new Set(["api/platform/me", "api/platform/session/local", "api/platform/session/callback", "api/platform/session/sign-out"]);
+const IDENTITY_OPEN = new Set(["api/platform/me", "api/platform/me/terms", "api/platform/me/terms/accept", "api/platform/session/local", "api/platform/session/callback", "api/platform/session/sign-out"]);   // PF-5t's terms: a held person accepts pending terms, then pays (review r10)
 export const HOLD_WORDS = "Your firm's subscription is on hold. Only billing and your data download are open: add a card or pay the open invoice to continue.";
 
 /** Stripe signs the exact bytes it sent: its door gets the raw body (1 MB), before the app's JSON parser. */

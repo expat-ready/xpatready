@@ -39,6 +39,7 @@ import { LocalIdentity } from "../api/src/platform/identity/local.ts";
 import { IDENTITY_PORT, PlatformIdentity } from "../api/src/platform/identity/service.ts";
 import { PlatformGuard } from "../api/src/platform/identity/guard.ts";
 import { PlatformIdentityController } from "../api/src/platform/identity/routes.ts";
+import { PlatformTermsController } from "../api/src/platform/terms/routes.ts"; import { PlatformTerms } from "../api/src/platform/terms/service.ts"; import { TERMS_GATE } from "../api/src/platform/terms/gate.ts";
 import { ACCEPTED, ALREADY, FirmSignUp, PURGE_JOB, TAX_NOTE, type SignUpPorts } from "../api/src/platform/firms/signup.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
@@ -314,15 +315,13 @@ try {
     await db.platformSubscription.create({ data: { firmId: f.id, planId: teamPlan.id, status: "TRIAL", stripeCustomerId: `cus_${k}`, trialEndsAt: TRIAL_END } }); return f.id; };
   const P1 = new Date("2027-01-10T00:00:00Z"), P2 = new Date("2027-03-01T00:00:00Z");
 
-  ok("PF-5 part 2 pass (QA-481): the sign-up stores the trial end, the plan's 14 days from the verification",
-    sql(`select abs(extract(epoch from s.trial_ends_at - f.created_at) - 14 * 86400) < 120 from platform_subscription s join platform_firm f on f.id = s.firm_id where f.id = '${firmId}'`) === "t");
+  ok("PF-5 part 2 pass (QA-481): the sign-up stores the trial end, the plan's 14 days from the verification", sql(`select abs(extract(epoch from s.trial_ends_at - f.created_at) - 14 * 86400) < 120 from platform_subscription s join platform_firm f on f.id = s.firm_id where f.id = '${firmId}'`) === "t");
   const cust1 = co!.input.customerId, done1 = raw("checkout.session.completed", { object: "checkout.session", mode: "subscription", client_reference_id: firmId, customer: cust1, subscription: "sub_t1" });
   const unsigned = await send(done1, null), changed = await send(done1.replace(`"sub_t1"`, `"sub_t9"`), billing.sign(done1));
   ok("PF-5 part 2 fail: an unsigned or changed webhook → 400, nothing stored", unsigned?.status === 400 && changed?.status === 400 && sql(`select count(*) from webhook_receipt`) === "0", [unsigned, changed]);
   billing.subs.set("sub_t1", snap("sub_t1", { customerId: cust1 }));
   await send(done1);
-  ok("PF-5 part 2 pass (A46's weak point): the trial's Checkout completing → Stripe's trial end stored, the firm in TRIAL, no card",
-    subOf(firmId) === `TRIAL ${TRIAL_END.toISOString().slice(0, 16)} ${TRIAL_END.toISOString().slice(0, 10)}` && firmOf(firmId) === "TRIAL" && !billing.subs.get("sub_t1")!.hasCard, subOf(firmId));
+  ok("PF-5 part 2 pass (A46's weak point): the trial's Checkout completing → Stripe's trial end stored, the firm in TRIAL, no card", subOf(firmId) === `TRIAL ${TRIAL_END.toISOString().slice(0, 16)} ${TRIAL_END.toISOString().slice(0, 10)}` && firmOf(firmId) === "TRIAL" && !billing.subs.get("sub_t1")!.hasCard, subOf(firmId));
   const synced = sql(`select count(*) from audit_event where action = 'platform.subscription.synced'`), dup = await hooks.receive(Buffer.from(done1), billing.sign(done1)); await hooks.settled();
   ok("PF-5 part 2 fail: the same event twice → answered, handled once", dup.duplicate === true && sql(`select count(*) from audit_event where action = 'platform.subscription.synced'`) === synced && sql(`select count(*) from webhook_receipt where handled_at is not null`) === "1");
 
@@ -332,13 +331,11 @@ try {
   billing.subs.set("sub_f3", snap("sub_f3")); await send(subEv("sub_f3", "customer.subscription.created"));
   const f3mid = subOf(F3).split(" ")[0];
   billing.subs.set("sub_f3", snap("sub_f3", { status: "active", hasCard: true, periodEnd: P1, latestInvoice: paid("in_f3") })); await send(paidEv("sub_f3"));
-  ok("PF-5 part 2 pass/fail: paid-before-created and created-before-paid both end Active (a later trialing event never moves it back)",
-    subOf(F2).startsWith("ACTIVE") && subOf(F3).startsWith("ACTIVE") && f3mid === "TRIAL" && firmOf(F2) === "ACTIVE" && evs(F2, EVENT.FIRM_ACTIVATED) === 1 && evs(F3, EVENT.FIRM_ACTIVATED) === 1, [subOf(F2), subOf(F3)]);
+  ok("PF-5 part 2 pass/fail: paid-before-created and created-before-paid both end Active (a later trialing event never moves it back)", subOf(F2).startsWith("ACTIVE") && subOf(F3).startsWith("ACTIVE") && f3mid === "TRIAL" && firmOf(F2) === "ACTIVE" && evs(F2, EVENT.FIRM_ACTIVATED) === 1 && evs(F3, EVENT.FIRM_ACTIVATED) === 1, [subOf(F2), subOf(F3)]);
   billing.subs.set("sub_f2", snap("sub_f2", { status: "past_due", hasCard: true, periodEnd: P1, latestInvoice: { id: "in_f2b", status: "open", taxNeedsAddress: false } })); await send(subEv("sub_f2"));
   const overdue = `${subOf(F2).split(" ")[0]}/${firmOf(F2)}`;
   billing.subs.set("sub_f2", snap("sub_f2", { status: "active", hasCard: true, periodEnd: P1, latestInvoice: paid("in_f2b") })); await send(paidEv("sub_f2"));
-  ok("PF-5 part 2 pass/fail: overdue is an indicator (firm stays Active); paid within grace → Active with the billing date unchanged",
-    overdue === "OVERDUE/ACTIVE" && subOf(F2).startsWith("ACTIVE") && subOf(F2).endsWith(P1.toISOString().slice(0, 10)), [overdue, subOf(F2)]);
+  ok("PF-5 part 2 pass/fail: overdue is an indicator (firm stays Active); paid within grace → Active with the billing date unchanged", overdue === "OVERDUE/ACTIVE" && subOf(F2).startsWith("ACTIVE") && subOf(F2).endsWith(P1.toISOString().slice(0, 10)), [overdue, subOf(F2)]);
 
   const F4 = await mkFirm("f4");
   billing.subs.set("sub_f4", snap("sub_f4", { status: "paused" })); await send(subEv("sub_f4", "customer.subscription.paused"));
@@ -423,7 +420,7 @@ try {
 
   // ------------------------------------------------------------------- part 2 over HTTP: the raw-body door and the 402
   await seedSampleFirms(db);
-  @Module({ controllers: [PlatformIdentityController, StripeHookController, BillingController] as never[], providers: [{ provide: Db, useValue: db }, { provide: APP_GUARD, useClass: ConfigReadGuard }, PlatformClock,
+  @Module({ controllers: [PlatformIdentityController, StripeHookController, BillingController, PlatformTermsController] as never[], providers: [{ provide: Db, useValue: db }, { provide: APP_GUARD, useClass: ConfigReadGuard }, PlatformClock, PlatformTerms, { provide: TERMS_GATE, useExisting: PlatformTerms },
     { provide: IDENTITY_PORT, useValue: new LocalIdentity("pf5-part2-check-signing-key-0123456789", () => Date.now()) }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
     { provide: BILLING_PORTS, useValue: bp }, PlatformBillingEvents, PlatformBillingAccount, PaymentHoldGate, { provide: APP_INTERCEPTOR, useExisting: PaymentHoldGate }] as never[] }) class BillingApp {}
   const nest = await NestFactory.create(BillingApp, { logger: false }); stripeRawBody(nest); await nest.listen(0, "127.0.0.1");
@@ -439,6 +436,9 @@ try {
     sql(`update platform_firm set status = 'PAYMENT_HOLD' where key = 'sample-firm'`);
     const held = await open(), words = (await call("GET", "/api/platform/staff/invitations", { token: tR })).body;
     const addrHeld = (await call("PUT", "/api/platform/billing/address", { token: tR, body: JSON.stringify(addr) })).status;
+    const v2 = sql(`insert into platform_terms_version (id, kind, version, url, published_at) values (gen_random_uuid(), 'TERMS_OF_SERVICE', 'sample-held-2', '/terms/2', now() - interval '1 minute') returning id`).split("\n")[0];
+    const termsHeld = [(await call("GET", "/api/platform/billing", { token: tR })).status, (await call("POST", "/api/platform/me/terms/accept", { token: tR, body: JSON.stringify({ versionIds: [v2] }) })).status, (await call("GET", "/api/platform/billing", { token: tR })).status];
+    ok("PF-5 part 2 fail (review r10, PF-5t): a held firm's Owner with new terms is never locked out: 428 on billing, accepts the terms, then billing 200", termsHeld.join() === "428,200,200", termsHeld);
     sql(`update platform_firm set status = 'ACTIVE' where key = 'sample-firm'`);
     ok("PF-5 part 2 pass/fail: a held firm's staff get 402 on other routes and 200 on billing (address too) and their own identity; Active again → 200",
       before.join() === "200,200,200" && held.join() === "402,200,200" && words?.code === "PAYMENT_HOLD" && words.detail === HOLD_WORDS && addrHeld === 200, { before, held, addrHeld });
