@@ -37,6 +37,8 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-617 | Size exception for #1815 only; rows briefed from now stay under 800 lines. | CI: pr-rules size step (pr-size.sh reads the row) | 15 Nov |
 | P-652 | One-time P-371 exception for #2032's run 43929287134; org move on GitHub Team decided (A137). | prose | 17 Nov |
 | P-654 | Size exception for #2064 (PF-18b) only; new rows stay under 800 lines. | script: pr-size.sh | 17 Nov |
+| P-672 | Founder approved #2075 in the Lead's chat; times in records only from the clock (correction). | prose | 17 Nov |
+| P-684 | One-time: #2077 merged by hand when all shards and types were green, without the final ci roll-up (done 13:27). | prose | 17 Nov |
 
 ## Dated rulings (moved word for word from RULES.md, 17 Nov 11:5x IST, Lead 76)
 | ID | Rule | Enforced by | As of |
@@ -67,3 +69,12 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-620 | Each Claude account checks the company Gmail connector at start and after a switch; missing → ask the founder. | prose (B193 part 6) | 16 Nov |
 | P-621 | Google only (Gmail, Calendar) for now; Microsoft deferred; ports stay provider-neutral. | prose | 16 Nov |
 | P-643 | (replaces P-642) No extra usage; lanes run past 96%; at 96% the Lead tells the founder, who resets the account before 98%. | prose | 16 Nov |
+
+
+## Org move (moved word for word from RULES.md, 17 Nov 13:5x IST, Lead 77)
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| P-657 | GitHub Enterprise bought outright (supersedes P-656 trial, reverses P-652 Team). | prose | 17 Nov |
+| P-660 | Drain 17 Nov (only near-Proven product PRs and pipeline fixes start), move Wed 18 Nov 09:30 IST, full power after it is verified. | prose | 17 Nov |
+| P-661 | The setup agent acts itself in front of the founder, who types every password, card and approval. | prose | 17 Nov |
+| P-662 | Only Claude, Mergify and Namespace apps on expat-ready. | prose | 17 Nov |

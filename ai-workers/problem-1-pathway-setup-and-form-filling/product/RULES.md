@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-681**, 17 Nov 12:17 IST (P-658 to P-681 added by Lead 76); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-17-1233-lead76s2-as-of-P-677.md`, whose first line lists the older ones)
+# Rule register (the tech lead keeps it; as of **P-685**, 17 Nov 13:45 IST (P-682 to P-685 added by Lead 77; P-658 to P-681 by Lead 76); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-17-1345-lead77s2-as-of-P-681.md`, whose first line lists the older ones)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -136,11 +136,8 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-647 | Each check reads claude.ai/code statuses and acts on waiting lanes; no lane waits on a network change. | prose (built-in browser script) | 16 Nov |
 | P-651 | (with P-648, P-649) CI overflow on the Namespace trial; full tests once, in the merge queue. | prose | 17 Nov |
 | IDX-7 | Dated rulings (P-616, P-619, P-620, P-621, P-643, P-631, P-633, P-634, P-626, P-627, P-638, P-640, P-645, P-650, P-653, P-655, P-658, P-659) stand as recorded; word for word in `rules/tech-lead.md` › Dated rulings. | prose | 17 Nov |
-| IDX-6 | One-time exceptions (P-617, P-652, P-654) stand as recorded; the rows word for word in `rules/tech-lead.md` › One-time exceptions (moved 17 Nov by Lead 76). | prose | 17 Nov |
-| P-657 | GitHub Enterprise bought outright (supersedes P-656 trial, reverses P-652 Team). | prose | 17 Nov |
-| P-660 | Drain 17 Nov (only near-Proven product PRs and pipeline fixes start), move Wed 18 Nov 09:30 IST, full power after it is verified. | prose | 17 Nov |
-| P-661 | The setup agent acts itself in front of the founder, who types every password, card and approval. | prose | 17 Nov |
-| P-662 | Only Claude, Mergify and Namespace apps on expat-ready. | prose | 17 Nov |
+| IDX-6 | One-time exceptions (P-617, P-652, P-654, P-672, P-684) stand as recorded; the rows word for word in `rules/tech-lead.md` › One-time exceptions (moved 17 Nov by Lead 76). | prose | 17 Nov |
+| IDX-8 | Org move rows (P-657, P-660, P-661, P-662) stand as recorded; word for word in `rules/tech-lead.md` › Org move (moved 17 Nov by Lead 77). | prose | 17 Nov |
 | P-663 | Ramp: 5-7 Proven a day 19-20 Nov, 8-10 21-23 Nov, 10-15 from 24 Nov; no new capability row while P95 queue > 60 min or batch wait > 15 min; daily checkpoint. | prose | 17 Nov |
 | P-664 | qa verdict records PRs go first in the merge queue. | prose (.mergify.yml priority owed) | 17 Nov |
 | P-665 | Fast PR checks, one full check after Approve, every suite once in the batch (CI-B on CI-A). | prose (CI-B owed) | 17 Nov |
@@ -149,11 +146,12 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-668 | Engineering System v1 cards T9, T11, T12, T14, T16, T17, W1, W3-W6 adopted as recommended. | prose | 17 Nov |
 | P-669 | 5-hour bar over 90% before its reset: slow lanes; the free reset only if work would stop, and the founder is told. | prose | 17 Nov |
 | P-670 | T7: 36 more deny lines (CI cancel, secrets, protection, gh api writes, hook skips, Drive writes) in every copy via #2075. | hook: .claude/settings.json deny | 17 Nov |
-| P-672 | Founder approved #2075 in the Lead's chat; times in records only from the clock (correction). | prose | 17 Nov |
 | P-673 | Cloud environment reads canada.ca for citations; Limited network, no secrets. | prose | 17 Nov |
 | P-674 | Clean-up (with P-675 to P-677): plan now, staged moves after the org move; repo name platform; October files out (tagged); business plan private. | prose | 17 Nov |
 | P-678 | Private home expat-ready/private (P-679: the only one); side notes synced each check by tools/private-sync.sh; big folders on the Mac's backup. | script: private-sync.sh | 17 Nov |
 | P-680 | Spend master kept private; board card parked (P-681); architecture sized for ~500 capabilities with an AI layer. | prose | 17 Nov |
+| P-683 | Builders get the reviewer's Approve on the branch first, then open the PR non-draft (amends P-646 "drafts until Approve"). | prose (lane briefs) | 17 Nov |
+| P-685 | Old drafts with a matching Approve are marked ready by the Lead with `tools/pr-ready.sh`, never by the founder (change log C18). | script: tools/pr-ready.sh | 17 Nov |
 | P-682 | Modular monolith: fenced modules, AI behind its own port, outbox events, affected-only CI; split only on a measured trigger. | prose | 17 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
