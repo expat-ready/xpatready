@@ -61,3 +61,42 @@ How it is reached: the key-detail write paths refuse years outside 1950-2100 (`s
 - **Cost.** n=2600 runs in about 72 ms (366 closed days included); n≤100 in under 12 ms.
 - **The move is a move.** The moved code is line for line PF-21's apart from the exports. `acknowledgeBy` and `ACK_BUSINESS_DAYS` stay in `complaints/business-days.ts`. `check_csdl1_deadlines.ts` passes 28/28.
 - **Wall.** No firm is looked up across the wall (but see M2).
+
+# Break pass 2 (1fb7ca098)
+P-278 pass on `platform_firm_calendar` (migration `20261116184100_csdl1_firm_calendar`), `caseFirmCalendar` and the Missed tag. Own copy `brk_csdl1` on :4473; `check_csdl1_deadlines_browser.ts` 24/24. **No Blocker, no Major; 3 Minor.**
+
+## Findings
+- **m1 (Minor): the lookup runs on write routes too, and a PUT commits before it.**
+  - `views()` calls `deadlineDay` on every view (case-stages.ts:115): a one-stage case with no deadline, `POST …/stages/next` (via `compute`, :215) and `PUT …/key-details` (via `this.stage`, :296). The comment at :81 and the ruling say "stage views / GET routes" only.
+  - Repro: `REVOKE EXECUTE ON FUNCTION platform_firm_calendar(text) FROM xr_app`. GET stages, GET next and the one-stage case's GET stages all answer 500. `PUT …/stages/<study>/key-details` answers 500, yet `case_stage.version` went 1→2: the write committed.
+  - The migration's own rollback (`DROP FUNCTION`) with this code still deployed does the same.
+- **m2 (Minor): the function is bound to neither the session's firm nor a case.**
+  - Any xr_app session, under any `app.firm_id`, reads any firm's three settings by key: `SET ROLE xr_app; SELECT * FROM platform_firm_calendar('sample-solo')` → `"Asia/Tokyo" | null | ["2027-03-08","2027-03-09"]`.
+  - Row or no row shows whether a firm key exists, for any status (there is no status filter).
+  - This is within the ruling's key-based design, and no API path passes a key other than the case's own (see Held). It is still a weaker database wall than "own firm only".
+- **m3 (Minor): what Missed means is only in a `title`.** stages.tsx:37 puts "before today in the firm's time zone" in a `title` on a non-focusable span, so keyboard, touch and screen-reader users get only "Missed". "Sun"/"Mon" are read as words. Axe passes, and the 375 px strip and panel wrap cleanly.
+
+## Held
+- **Catalogue.**
+  - Owner `xr_wall_reader` (BYPASSRLS, not superuser, no login); `prosecdef`; STABLE; `search_path=pg_catalog, public, pg_temp`.
+  - ACL is exactly `{xr_wall_reader=X, xr_app=X}`: PUBLIC, xr_data, xr_case_lookup and xr_staff_bypass cannot execute it. No overload.
+  - The stamp is later than main's newest (20261116030000).
+- **Keys.**
+  - `''`, NULL, `x' or '1'='1`, `%`, other letter case and a trailing space each give 0 rows.
+  - The app binds the key as a parameter (`$queryRaw` template). Only the three settings keys come back; no other column or firm id.
+- **Hijack.** xr_app temp tables `pg_temp.platform_firm` and `pg_temp.platform_firm_setting` holding planted rows are ignored (pg_temp is last). xr_app has no CREATE on `public` or on the database.
+- **Timing.** Moot, because row count already shows existence (m2).
+- **API, firm A to B.**
+  - user-S gets 404 on firm A's case for stages, next and :stage. An unknown actor gets 401, client user-P gets 403, an SQL-shaped id gets 404.
+  - None of these reach another firm's calendar: `x-firm`, `x-firm-key`, `x-forwarded-host`, `?firmKey=`, a Bearer token (403 link-only), two `x-actor` headers (401).
+  - `Host: sample-solo.localhost` → public 404.
+  - PlatformGuard sets no firm on case routes, so the case's stored `firm_key` is the only key used.
+- **Live calendar.**
+  - Firm A's 2027-03-08 shows "(closed day)"; firm B's 2027-03-09 does not.
+  - Firm A set to Asia/Tokyo makes 2026-11-16 Missed at 02:55Z; with the Toronto default it is not Missed.
+- **Wrong stored shapes give 200 with defaults, never 500.**
+  - `time_zone`: `"Mars/Olympus"`, `"asia/tokyo"`, `123`, `{}`.
+  - `closed_days`: a string, `["2027-02-30"]`, `[null]`, duplicates, an object.
+  - `business_hours`: `"x"`, opens after closes.
+- **firm-scope.ts** is identical to main fc0971103, with no `BYPASS_USES` entry.
+- **Keyboard and screen.** Enter opens the stage panel showing weekday, mark and Missed. Axe is clean at 1440 and 375 px, with no sideways scroll.
