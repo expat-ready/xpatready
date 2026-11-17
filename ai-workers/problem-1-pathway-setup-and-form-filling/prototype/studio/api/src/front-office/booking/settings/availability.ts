@@ -1,22 +1,8 @@
 // FO-3a part 1b-i (brief lead-b-briefs/FO-3a.md "Part 1b", split by its P-610 line; AG-4-62 rules 1-8, §7, §8; concept
-// fo-3-booking §5 words): a staff member's named sets of hours, their time off, and which set a booking type uses for
-// each host. Every rule is here; availability.controller.ts declares the keys and passes the body on.
-//   * Sets (rules 1, 1c, 2-4): a name 1-80, one IANA zone (a new set takes the firm's zone: one office per firm until
-//     PF-18a), weekly windows "HH:MM"-"HH:MM" (end after start; no two of one set overlapping on a day). Exactly one is the
-//     default; making another the default moves the mark in one transaction; the default (so also the only set) is never
-//     deleted. A set's windows are replaced whole on each save. A Saturday window is offered although business hours
-//     are Mon-Fri (rule 1c: business hours seed a new person's set and never limit slots).
-//   * First read (rule 1, test 3): a person with no set gets "Normal hours" from the firm's business hours (FO-1b's
-//     copyFirmHoursTo), or an empty default set when the firm has no business hours, under the person's lock, so two
-//     first reads make one set. Staff creation is untouched; slot computation writes nothing (no set = no time, as before).
-//   * Host set (rule 1b): PUT booking-types/:id/hosts/:staffId/set names one of that host's sets, or null for the
-//     default. A deleted set's choice goes with it (the database's CASCADE), so the type falls back to the default.
-//   * Time off (rules 5, 8): start before end, at most 366 days; it removes every slot it overlaps. Time off's home is
-//     AG-16 My account's out-of-office (AG-4-62 §3, §7); main has no My account, so these routes keep FO-1b's
-//     fo_time_off until AG-16 moves them (named in the PR for Lead B). Rule 7: nothing here writes a booking row.
-//   * Audit (AG-4-62 §9 "None emitted" for events; one audit line per change): "availability changed" or "time off
-//     changed", the actor, the person whose hours they are, and the windows before and after (no free text: a set's
-//     name is said only by its length when shaped like an email address, which the audit port refuses).
+// fo-3-booking §5 words): a person's named sets of hours (one default, never deleted; windows replaced whole; a version
+// per set, 409 on a stale save), their time off (FO-1b's fo_time_off until AG-16 My account holds it), and which set a
+// type uses per host. A person with no set gets "Normal hours" (the firm's business hours) on the first read, under the
+// person's lock; slot computation writes nothing. Rule 7: nothing here writes a booking row. One audit line per change.
 import { HttpException } from "@nestjs/common";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
@@ -44,6 +30,7 @@ export const HOURS_WORDS = {
   overlap: "These hours overlap.",
   zone: "Choose a time zone such as America/Toronto.",
   deleteDefault: "You cannot delete your default set.",
+  stale: "Someone else changed these hours. Reload to see their changes.",
   unsetDefault: "Make another set the default instead.",
   notHost: "This person is not a host of this type.",
   notTheirSet: "Choose one of this host's sets.",
@@ -64,7 +51,7 @@ const Window = z.strictObject({
 });
 const Windows = z.array(Window).max(42, "At most 42 windows in one set.");
 const SetCreate = z.strictObject({ name: Name, timeZone: Zone.optional(), isDefault: z.boolean().optional(), windows: Windows.optional() });
-const SetPatch = z.strictObject({ name: Name.optional(), timeZone: Zone.optional(), isDefault: z.boolean().optional(), windows: Windows.optional() });
+const SetPatch = z.strictObject({ name: Name.optional(), timeZone: Zone.optional(), isDefault: z.boolean().optional(), windows: Windows.optional(), version: z.number({ error: "Send the version you read." }).int().min(1) });
 const When = z.iso.datetime({ offset: true, error: "Give a time with its offset, e.g. 2026-10-23T12:00:00-04:00." }).transform((v) => new Date(v));
 const TimeOffCreate = z.strictObject({ startsAt: When, endsAt: When });
 const HostSet = z.strictObject({ setId: z.uuid(HOURS_WORDS.notTheirSet).transform((v) => v.toLowerCase()).nullable() });
@@ -99,7 +86,7 @@ function windowsOf(list: z.output<typeof Windows>): W[] {
 type SetRow = Prisma.FoAvailabilitySetGetPayload<{ include: { windows: true } }>;
 const winView = (w: W) => ({ weekday: w.weekday, start: hhmm(w.startMinute), end: hhmm(w.endMinute) });
 const sorted = (ws: W[]) => [...ws].sort((a, b) => a.weekday - b.weekday || a.startMinute - b.startMinute);
-const setView = (s: SetRow) => ({ id: s.id, name: s.name, isDefault: s.isDefault, timeZone: s.timeZone, windows: sorted(s.windows).map(winView), updatedAt: s.updatedAt });
+const setView = (s: SetRow) => ({ id: s.id, name: s.name, isDefault: s.isDefault, timeZone: s.timeZone, windows: sorted(s.windows).map(winView), version: s.version, updatedAt: s.updatedAt });
 const offView = (o: { id: string; staffId: string; startsAt: Date; endsAt: Date; createdBy: string }) => ({ id: o.id, staffId: o.staffId, startsAt: o.startsAt.toISOString(), endsAt: o.endsAt.toISOString(), createdBy: o.createdBy });
 /** "1 09:00-17:00" per window, for the audit's before and after. */
 const auditWindows = (ws: W[]) => sorted(ws).map((w) => `${w.weekday} ${hhmm(w.startMinute)}-${hhmm(w.endMinute)}`);
@@ -127,7 +114,7 @@ export class AvailabilityService {
     return this.db.$transaction(async (tx) => {
       await this.ensureDefault(tx, ctx.firmId, target);
       const timeZone = b.timeZone ?? await readSetting<string>(tx, ctx.firmId, TIME_ZONE.key);   // rule 4: the office's zone (the firm's until PF-18a)
-      if (b.isDefault) await tx.foAvailabilitySet.updateMany({ where: firmScope(ctx.firmId, { staffId: target, isDefault: true }), data: { isDefault: false } });
+      if (b.isDefault) await tx.foAvailabilitySet.updateMany({ where: firmScope(ctx.firmId, { staffId: target, isDefault: true }), data: { isDefault: false, version: { increment: 1 } } });
       const set = await tx.foAvailabilitySet.create({ data: { firmId: firmScope(ctx.firmId).firmId, staffId: target, name: b.name, timeZone, isDefault: b.isDefault ?? false } });
       if (windows.length) await tx.foAvailability.createMany({ data: windows.map((w) => ({ firmId: set.firmId, staffId: target, setId: set.id, timeZone, ...w })) });
       await this.audit(tx, ctx, target, "availability.set_created", "Availability changed: a set of hours was added.", { setId: set.id, name_after: auditName(set.name), timeZone_after: timeZone, isDefault_after: set.isDefault, windows_after: auditWindows(windows) });
@@ -142,10 +129,11 @@ export class AvailabilityService {
     return this.db.$transaction(async (tx) => {
       await this.lockPerson(tx, ctx.firmId, target);
       const before = await this.readSet(tx, ctx.firmId, target, setId);
+      if (before.version !== b.version) throw problem(409, "stale-version", "Changed by someone else", HOURS_WORDS.stale, { code: "STALE_VERSION", version: before.version });
       if (b.isDefault === false && before.isDefault) throw invalid({ isDefault: HOURS_WORDS.unsetDefault });
       const timeZone = b.timeZone ?? before.timeZone;
-      if (b.isDefault && !before.isDefault) await tx.foAvailabilitySet.updateMany({ where: firmScope(ctx.firmId, { staffId: target, isDefault: true }), data: { isDefault: false } });
-      await tx.foAvailabilitySet.update({ where: { id: before.id }, data: { ...(b.name !== undefined ? { name: b.name } : {}), timeZone, ...(b.isDefault ? { isDefault: true } : {}) } });
+      if (b.isDefault && !before.isDefault) await tx.foAvailabilitySet.updateMany({ where: firmScope(ctx.firmId, { staffId: target, isDefault: true }), data: { isDefault: false, version: { increment: 1 } } });
+      await tx.foAvailabilitySet.update({ where: { id: before.id }, data: { ...(b.name !== undefined ? { name: b.name } : {}), timeZone, ...(b.isDefault ? { isDefault: true } : {}), version: { increment: 1 } } });
       if (windows) {
         await tx.foAvailability.deleteMany({ where: firmScope(ctx.firmId, { setId: before.id }) });
         if (windows.length) await tx.foAvailability.createMany({ data: windows.map((w) => ({ firmId: before.firmId, staffId: target, setId: before.id, timeZone, ...w })) });
@@ -180,6 +168,7 @@ export class AvailabilityService {
       const type = await tx.foConsultationType.findFirst({ where: firmScope(ctx.firmId, { id: tid, deletedAt: null }), select: { id: true, hostStaffIds: true } });
       if (!type) return notInFirm("booking type");
       if (!type.hostStaffIds.includes(sid)) throw invalid({ staffId: HOURS_WORDS.notHost });
+      await this.lockPerson(tx, ctx.firmId, sid);   // ordered with a delete of the set (review m1)
       const before = await tx.foTypeHostSet.findFirst({ where: firmScope(ctx.firmId, { typeId: tid, staffId: sid }) });
       if (setId && !(await tx.foAvailabilitySet.count({ where: firmScope(ctx.firmId, { id: setId, staffId: sid }) }))) throw invalid({ setId: HOURS_WORDS.notTheirSet });
       if (setId) await tx.foTypeHostSet.upsert({ where: { firmId_typeId_staffId: { firmId: firmScope(ctx.firmId).firmId, typeId: tid, staffId: sid } }, create: { firmId: firmScope(ctx.firmId).firmId, typeId: tid, staffId: sid, setId }, update: { setId } });
@@ -204,7 +193,7 @@ export class AvailabilityService {
     if (b.endsAt.getTime() - b.startsAt.getTime() > 366 * DAY) throw invalid({ endsAt: HOURS_WORDS.timeOffLength });
     return this.db.$transaction(async (tx) => {
       const row = await tx.foTimeOff.create({ data: { firmId: firmScope(ctx.firmId).firmId, staffId: target, startsAt: b.startsAt, endsAt: b.endsAt, createdBy: `staff:${ctx.staffId}` } });
-      await this.audit(tx, ctx, target, "time_off.added", "Time off changed: added.", { timeOffId: row.id, startsAt_after: row.startsAt.toISOString(), endsAt_after: row.endsAt.toISOString() });
+      await this.audit(tx, ctx, target, "time_off.added", "Availability changed: time off added.", { timeOffId: row.id, startsAt_after: row.startsAt.toISOString(), endsAt_after: row.endsAt.toISOString() });
       return offView(row);
     });
   }
@@ -216,7 +205,7 @@ export class AvailabilityService {
       const row = await tx.foTimeOff.findFirst({ where: firmScope(ctx.firmId, { id: id.toLowerCase(), staffId: target }) });
       if (!row) return notInFirm("time off");
       await tx.foTimeOff.delete({ where: { id: row.id } });
-      await this.audit(tx, ctx, target, "time_off.removed", "Time off changed: removed.", { timeOffId: row.id, startsAt_before: row.startsAt.toISOString(), endsAt_before: row.endsAt.toISOString() });
+      await this.audit(tx, ctx, target, "time_off.removed", "Availability changed: time off removed.", { timeOffId: row.id, startsAt_before: row.startsAt.toISOString(), endsAt_before: row.endsAt.toISOString() });
       return { id: row.id, deleted: true };
     });
   }

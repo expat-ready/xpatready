@@ -104,7 +104,8 @@ try {
     return (r.body.slots as { startsAt: string }[]).map((s) => s.startsAt);
   };
   const has = (list: string[], when: string, zone = TZ) => list.includes(iso(when, zone));
-  const mySets = async (who = P.OWNER) => (await F("GET", "me/availability-sets", who)).body.sets as { id: string; name: string; isDefault: boolean; timeZone: string; windows: { weekday: number; start: string; end: string }[] }[];
+  const mySets = async (who = P.OWNER) => (await F("GET", "me/availability-sets", who)).body.sets as { id: string; name: string; isDefault: boolean; timeZone: string; version: number; windows: { weekday: number; start: string; end: string }[] }[];
+  const patchSet = async (id: string, who: { token: string }, b: Record<string, unknown>) => F("PATCH", `me/availability-sets/${id}`, who, { version: (await mySets(who)).find((x) => x.id === id)?.version ?? 1, ...b });
   const MON_FRI = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, start: "09:00", end: "17:00" }));
   const bookingRows = () => psql(DB, "select string_agg(id || '|' || starts_at || '|' || ends_at || '|' || status || '|' || staff_id || '|' || sequence, ',' order by id) from fo_booking");
   ok("FO-3a 1b routes: the feature file lists the hours controller and its service beside the booking types'",
@@ -114,26 +115,29 @@ try {
 
   // -------------------------------------------------------------------------- DW12: hours and their words (tests 1, 4)
   const own = (await mySets())[0];
-  const monThu = await F("PATCH", `me/availability-sets/${own.id}`, P.OWNER, { windows: [1, 2, 3, 4].map((weekday) => ({ weekday, start: "09:00", end: "16:00" })) });
+  const monThu = await patchSet(own.id, P.OWNER, { windows: [1, 2, 3, 4].map((weekday) => ({ weekday, start: "09:00", end: "16:00" })) });
   const week = await slots(T1.slug, "2026-10-19 00:00", "2026-10-24 00:00");
   ok("FO-3a DW12 pass: hours Mon-Thu 09:00-16:00 save and give no Friday slot (Thu 15:30 offered, Thu 16:00 not)",
     monThu.status === 200 && has(week, "2026-10-22 15:30") && !has(week, "2026-10-22 16:00") && !week.some((s) => s >= iso("2026-10-23 00:00")), [monThu.status, week.slice(-3)]);
   const before12 = JSON.stringify(await mySets());
-  const backwards = await F("PATCH", `me/availability-sets/${own.id}`, P.OWNER, { windows: [{ weekday: 1, start: "14:00", end: "13:00" }] });
-  const overlap = await F("PATCH", `me/availability-sets/${own.id}`, P.OWNER, { windows: [{ weekday: 1, start: "09:00", end: "12:00" }, { weekday: 1, start: "11:00", end: "13:00" }] });
+  const backwards = await patchSet(own.id, P.OWNER, { windows: [{ weekday: 1, start: "14:00", end: "13:00" }] });
+  const overlap = await patchSet(own.id, P.OWNER, { windows: [{ weekday: 1, start: "09:00", end: "12:00" }, { weekday: 1, start: "11:00", end: "13:00" }] });
   ok("FO-3a DW12 fail: a window 14:00-13:00 → 400 \"End must be after start.\" on its field; two overlapping windows on one day → 400 \"These hours overlap.\"; nothing saved",
     backwards.status === 400 && backwards.body.fields?.["windows.0.end"] === "End must be after start." && overlap.status === 400 && overlap.body.fields?.["windows.1"] === "These hours overlap."
     && JSON.stringify(await mySets()) === before12, [backwards.body, overlap.body]);
-  await F("PATCH", `me/availability-sets/${own.id}`, P.OWNER, { windows: MON_FRI });
+  await patchSet(own.id, P.OWNER, { windows: MON_FRI });
+  const stale = await F("PATCH", `me/availability-sets/${own.id}`, P.OWNER, { version: 1, windows: [] });
+  ok("FO-3a 1b-i (review M2) fail: a save with an old version → 409 \"Someone else changed these hours. Reload to see their changes.\", nothing changed",
+    stale.status === 409 && stale.body.detail === "Someone else changed these hours. Reload to see their changes." && (await mySets()).find((x) => x.id === own.id)?.windows.length === 5, stale.body);
 
   // ------------------------------------------------------------------------------ DW13: the first set (rule 1, test 3)
   const first = await mySets(NEW1);
   ok("FO-3a DW13 pass: a new staff member's first read gives one set \"Normal hours\", Mon-Fri 09:00-17:00, default, in the firm's zone",
     first.length === 1 && first[0].name === "Normal hours" && first[0].isDefault && first[0].timeZone === TZ && JSON.stringify(first[0].windows) === JSON.stringify(MON_FRI), first);
-  await Promise.all([mySets(NEW2), mySets(NEW2), mySets(NEW2)]);
+  const race = await Promise.all([1, 2, 3].map(() => F("GET", "me/availability-sets", NEW2)));
   const del = await F("DELETE", `me/availability-sets/${first[0].id}`, NEW1);
   ok("FO-3a DW13 fail: three first reads at once make one set; the only (default) set cannot be deleted (409 \"You cannot delete your default set.\")",
-    psql(DB, `select count(*) from fo_availability_set where staff_id = '${NEW2.id}'`) === "1" && del.status === 409 && del.body.detail === "You cannot delete your default set."
+    race.every((r) => r.status === 200) && psql(DB, `select count(*) from fo_availability_set where staff_id = '${NEW2.id}'`) === "1" && del.status === 409 && del.body.detail === "You cannot delete your default set."
     && (await mySets(NEW1)).length === 1, [del.status, del.body]);
 
   // ------------------------------------------------------------------- DW14: a type's set per host (rule 1b, the test)
@@ -144,12 +148,19 @@ try {
   ok("FO-3a DW14 pass: the type naming \"Evening calls\" offers only Tue 18:00-20:00; a type naming none offers the default set's times",
     evening.status === 201 && chose.status === 200 && JSON.stringify(s2) === JSON.stringify(["18:00", "18:30", "19:00", "19:30"].map((t) => iso(`2026-10-20 ${t}`)))
     && has(s1, "2026-10-20 09:00") && !has(s1, "2026-10-20 18:00"), [chose.body, s2]);
+  const copy = await F("POST", `booking-types/${T2.id}/duplicate`, P.OWNER);
+  const sCopy = await slots(copy.body.slug, "2026-10-19 00:00", "2026-10-24 00:00");
+  const pv = await F("GET", `booking-types/${T2.id}/preview?from=${encodeURIComponent(iso("2026-10-19 00:00"))}&to=${encodeURIComponent(iso("2026-10-24 00:00"))}`, P.OWNER);
+  const warn = await F("POST", "bookings", P.OWNER, { typeId: T2.id, personId: pid, mode: "VIDEO", startsAt: iso("2026-10-20 09:00"), timeZone: TZ });
+  ok("FO-3a DW14 pass (review M1, m4): a duplicate keeps the host's set (same 4 times); the preview and staff warnings read the type's set (only Tuesday has times; Tue 09:00 → OUTSIDE_HOURS)",
+    copy.status === 201 && JSON.stringify(sCopy) === JSON.stringify(s2) && pv.status === 200 && pv.body.days.filter((d: { slots: unknown[] }) => d.slots.length).map((d: { date: string }) => d.date).join() === "2026-10-20"
+    && warn.status === 409 && JSON.stringify(warn.body).includes("OUTSIDE_HOURS"), [copy.status, sCopy.length, warn.status]);
   const notTheirs = await F("PUT", `booking-types/${T2.id}/hosts/${P.OWNER.id}/set`, P.OWNER, { setId: first[0].id });
   const notHost = await F("PUT", `booking-types/${T2.id}/hosts/${NEW1.id}/set`, P.OWNER, { setId: first[0].id });
   const gone = await F("DELETE", `me/availability-sets/${evening.body.id}`, P.OWNER);
   const s2b = await slots(T2.slug, "2026-10-19 00:00", "2026-10-24 00:00");
   ok("FO-3a DW14 fail: another person's set → 400, a person who is not a host → 400; deleting the named set falls back to the default (Tue 09:00 again, no 18:00)",
-    notTheirs.status === 400 && notTheirs.body.fields?.setId && notHost.status === 400 && notHost.body.fields?.staffId && gone.status === 200 && gone.body.typesBackOnDefault === 1
+    notTheirs.status === 400 && notTheirs.body.fields?.setId && notHost.status === 400 && notHost.body.fields?.staffId && gone.status === 200 && gone.body.typesBackOnDefault === 2
     && has(s2b, "2026-10-20 09:00") && !has(s2b, "2026-10-20 18:00") && psql(DB, `select count(*) from fo_type_host_set where type_id = '${T2.id}'`) === "0", [notTheirs.status, notHost.status, gone.body]);
 
   // ---------------------------------------------------------------------------------- DW15: a set's zone (rule 4, Delhi)
@@ -167,7 +178,7 @@ try {
 
   // --------------------------------------------------------------------- DW16: a Saturday outside business hours (rule 1c)
   const cm = (await mySets(P.CASE_MANAGER))[0];
-  await F("PATCH", `me/availability-sets/${cm.id}`, P.CASE_MANAGER, { windows: [...MON_FRI, { weekday: 6, start: "10:00", end: "12:00" }] });
+  await patchSet(cm.id, P.CASE_MANAGER, { windows: [...MON_FRI, { weekday: 6, start: "10:00", end: "12:00" }] });
   const T4 = await makeType("Weekend call", [P.CASE_MANAGER.id]);
   const s4 = await slots(T4.slug, "2026-10-24 00:00", "2026-10-25 00:00");
   ok("FO-3a DW16 pass: Saturday 10:00-12:00 in a set is offered although business hours are Mon-Fri", JSON.stringify(s4) === JSON.stringify(["10:00", "10:30", "11:00", "11:30"].map((t) => iso(`2026-10-24 ${t}`))), s4);
@@ -184,7 +195,8 @@ try {
   const theirs = await F("POST", `staff/${P.CASE_MANAGER.id}/time-off`, P.ADMIN, { startsAt: iso("2026-10-22 09:00"), endsAt: iso("2026-10-22 12:00") });
   ok("FO-3a DW17 pass: time off Fri 12:00-17:00 keeps the morning and drops the afternoon; an Admin enters a colleague's time off over a booked morning (201) and the booking stays",
     booked.status === 201 && off.status === 201 && has(fri, "2026-10-23 11:30") && !fri.some((s) => s >= iso("2026-10-23 12:00")) && theirs.status === 201
-    && (await F("GET", `staff/${P.CASE_MANAGER.id}/time-off`, P.ADMIN)).body.timeOff.length === 1 && bookingRows() === rows0, [booked.status, off.status, theirs.status, fri.slice(-2)]);
+    && (await F("GET", `staff/${P.CASE_MANAGER.id}/time-off`, P.ADMIN)).body.timeOff.length === 1 && bookingRows() === rows0
+    && ((t) => !t.some((x) => x < iso("2026-10-22 12:00")) && has(t, "2026-10-22 12:00"))(await slots(T4.slug, "2026-10-22 00:00", "2026-10-23 00:00")), [booked.status, off.status, theirs.status, fri.slice(-2)]);
   const officer = await F("POST", `staff/${P.CASE_MANAGER.id}/time-off`, P.CASE_OFFICER, { startsAt: iso("2026-10-21 09:00"), endsAt: iso("2026-10-21 12:00") });
   const backOff = await F("POST", "me/time-off", P.OWNER, { startsAt: iso("2026-10-23 12:00"), endsAt: iso("2026-10-23 11:00") });
   const otherFirm = await F("POST", `staff/${P.CASE_MANAGER.id}/time-off`, BO, { startsAt: iso("2026-10-21 09:00"), endsAt: iso("2026-10-21 12:00") });
@@ -192,7 +204,7 @@ try {
     officer.status === 403 && backOff.status === 400 && backOff.body.fields?.endsAt === "End must be after start." && otherFirm.status === 404
     && psql(DB, `select count(*) from fo_time_off where firm_id = '${A.id}'`) === "2", [officer.status, backOff.body, otherFirm.status]);
   // DW18: hours, a type's set and time off changed above and here; every booking row is as it was.
-  await F("PATCH", `me/availability-sets/${cm.id}`, P.CASE_MANAGER, { windows: [{ weekday: 1, start: "13:00", end: "14:00" }] });
+  await patchSet(cm.id, P.CASE_MANAGER, { windows: [{ weekday: 1, start: "13:00", end: "14:00" }] });
   const cmEve = await F("POST", "me/availability-sets", P.CASE_MANAGER, { name: "Late", windows: [{ weekday: 3, start: "19:00", end: "20:00" }] });
   await F("PUT", `booking-types/${T4.id}/hosts/${P.CASE_MANAGER.id}/set`, P.OWNER, { setId: cmEve.body.id });
   await F("DELETE", `staff/${P.CASE_MANAGER.id}/time-off/${theirs.body.id}`, P.ADMIN);
@@ -202,14 +214,15 @@ try {
     s4c.length === 0 && psql(DB, `select status from fo_booking where id = '${booked.body.id ?? booked.body.booking?.id}'`) === "SCHEDULED", [s4c, booked.body]);
 
   // ------------------------------------------------------------------------------- DW20 (hours half): who may change what
-  const offSelf = await F("PATCH", `me/availability-sets/${(await mySets(P.CASE_OFFICER))[0].id}`, P.CASE_OFFICER, { windows: MON_FRI.slice(0, 3) });
-  const roRead = await F("GET", "me/time-off", P.READ_ONLY);
-  ok("FO-3a DW20 pass: a Case Officer edits their own hours (200); a Read-only person reads their own time off (200); an Owner reads a colleague's sets (200)",
-    offSelf.status === 200 && roRead.status === 200 && (await F("GET", `staff/${P.CASE_OFFICER.id}/availability-sets`, P.OWNER)).status === 200, [offSelf.status, roRead.status]);
+  const offSelf = await patchSet((await mySets(P.CASE_OFFICER))[0].id, P.CASE_OFFICER, { windows: MON_FRI.slice(0, 3) });
+  const roRead = await F("GET", "me/time-off", P.READ_ONLY), coSet = (await mySets(P.CASE_OFFICER))[0];
+  const adminEdit = await F("PATCH", `staff/${P.CASE_OFFICER.id}/availability-sets/${coSet.id}`, P.ADMIN, { version: coSet.version, windows: MON_FRI });
+  ok("FO-3a DW20 pass: a Case Officer edits their own hours and an Admin a colleague's (200); a Read-only person reads their own time off (200); an Owner reads a colleague's sets (200)",
+    offSelf.status === 200 && roRead.status === 200 && adminEdit.status === 200 && (await F("GET", `staff/${P.CASE_OFFICER.id}/availability-sets`, P.OWNER)).status === 200, [offSelf.status, roRead.status]);
   const coOther = await F("PATCH", `staff/${P.OWNER.id}/availability-sets/${own.id}`, P.CASE_OFFICER, { windows: [] });
   const cmType = await F("PUT", `booking-types/${T1.id}/hosts/${P.OWNER.id}/set`, P.CASE_MANAGER, { setId: null });
   const bOther = await F("GET", `staff/${P.OWNER.id}/availability-sets`, BO);
-  const crossSet = await F("PATCH", `me/availability-sets/${own.id}`, P.CASE_OFFICER, { name: "Mine now" });
+  const crossSet = await patchSet(own.id, P.CASE_OFFICER, { name: "Mine now" });
   const noSign = await call(base, "GET", "/api/front-office/me/availability-sets");
   ok("FO-3a DW20 fail: a Case Officer editing a colleague's hours → 403, a Case Manager choosing a type's set → 403, firm B's owner on firm A's staff → 404, another person's set id by me → 404, no sign-in → 401",
     coOther.status === 403 && cmType.status === 403 && bOther.status === 404 && crossSet.status === 404 && noSign.status === 401 && (await mySets()).find((s) => s.id === own.id)?.windows.length === 5,
@@ -222,7 +235,7 @@ try {
     /availability\.changed/.test(lines) && /availability\.set_created/.test(lines) && /availability\.set_deleted/.test(lines) && /availability\.type_set_changed/.test(lines) && /time_off\.added/.test(lines) && /time_off\.removed/.test(lines)
     && changed.startsWith(`${P.OWNER.id}|["1 09:00-17:00"`) && changed.includes(`["1 09:00-16:00"`), [lines, changed]);
   const auditRefused = (lines.match(/,/g) ?? []).length + 1;
-  ok("FO-3a DW21 fail: a refused change (the 400s, 403s, 404s and 409 above) wrote no line: exactly the successful changes are there (16)", auditRefused === 16, [auditRefused, lines]);
+  ok("FO-3a DW21 fail: a refused change (the 400s, 403s, 404s and 409 above) wrote no line: exactly the successful changes are there (17)", auditRefused === 17, [auditRefused, lines]);
 
   // -------------------------------------------------------------------- DW21 (migration half): a copy of main's schema
   migrate(OLD, migrations.filter((m) => m < THIS));

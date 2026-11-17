@@ -114,6 +114,8 @@ model FoAvailabilitySet {
   name      String
   isDefault Boolean  @default(false) @map("is_default")
   timeZone  String   @map("time_zone")
+  /// The optimistic-save counter (a stale PATCH → 409).
+  version   Int      @default(1)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 

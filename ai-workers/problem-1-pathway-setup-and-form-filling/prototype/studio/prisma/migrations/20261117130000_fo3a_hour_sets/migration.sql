@@ -17,6 +17,7 @@ CREATE TABLE "fo_availability_set" (
     "name" TEXT NOT NULL,
     "is_default" BOOLEAN NOT NULL DEFAULT false,
     "time_zone" TEXT NOT NULL,
+    "version" INTEGER NOT NULL DEFAULT 1 CHECK ("version" >= 1),
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "fo_availability_set_pkey" PRIMARY KEY ("id"),
@@ -75,13 +76,13 @@ BEGIN
 END $$;
 CREATE TRIGGER fo_availability_set_default BEFORE INSERT ON "fo_availability" FOR EACH ROW EXECUTE FUNCTION fo_booking_set_default();
 
--- A window's zone change is its set's (FO-1b's suites change a person's zone on the windows).
+-- A window's zone is its set's: an insert or a zone change copies it (FO-1b's suites set a person's zone on the windows).
 CREATE FUNCTION fo_booking_set_zone_follow() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   UPDATE "fo_availability_set" SET "time_zone" = NEW.time_zone, "updated_at" = now() WHERE firm_id = NEW.firm_id AND id = NEW.set_id AND time_zone <> NEW.time_zone;
   RETURN NULL;
 END $$;
-CREATE TRIGGER fo_availability_zone_follow AFTER UPDATE OF time_zone ON "fo_availability" FOR EACH ROW EXECUTE FUNCTION fo_booking_set_zone_follow();
+CREATE TRIGGER fo_availability_zone_follow AFTER INSERT OR UPDATE OF time_zone ON "fo_availability" FOR EACH ROW EXECUTE FUNCTION fo_booking_set_zone_follow();
 
 CREATE FUNCTION fo_booking_set_zone() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN

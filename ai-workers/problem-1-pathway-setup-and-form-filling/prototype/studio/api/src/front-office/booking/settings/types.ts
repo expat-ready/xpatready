@@ -271,6 +271,8 @@ export class BookingTypesService {
           await slugLock(tx, ctx.firmId);   // one slug choice at a time per firm, so parallel creates of one name all succeed (break M1)
           const slug = asked ?? await this.freeSlug(tx, ctx.firmId, slugOf(String(data.name)));
           const row = await tx.foConsultationType.create({ data: { ...data, firmId: firmScope(ctx.firmId).firmId, slug, createdByStaffId: ctx.staffId } });
+          // A copy keeps the source's set of hours per host, a child row (AG-4-9 rule 3; FO-3a 1b-i review M1).
+          if (fromId) await tx.foTypeHostSet.createMany({ data: (await tx.foTypeHostSet.findMany({ where: firmScope(ctx.firmId, { typeId: fromId }) })).map((h) => ({ firmId: h.firmId, typeId: row.id, staffId: h.staffId, setId: h.setId })) });
           await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action, entity: "fo_consultation_type", entityKey: row.id, summary,
             detail: { ...diff(null, row), ...(fromId ? { copiedFrom: fromId } : {}) } });
           return row;
