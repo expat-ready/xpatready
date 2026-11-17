@@ -134,3 +134,5 @@ Merged on main: #2002, #2007, #2016, #2035. #2000 got "Reviewer: Approve 1fb7ca0
 **14:02 IST 17 Nov (Lead 78):** #2027 was read and labelled at 14:00 IST. AUD-4s part 2 waits on a founder question (AG-13-43 against SA-11-6), which Lead 78 carries. Send Lead 78 the new head and Approve sha for #2000 and #2008.
 
 **14:08 IST 17 Nov:** P-687 (founder): the AUD-4s Activity log shows before and after values in full to holders of agent/audit:read (AG-13-43). AUD-4s part 2 is unblocked and starts after the move; its brief is still to write.
+
+**15:06 IST 17 Nov:** #1991 FO-7a2 is out of the queue. Its DW7 check (the migration's functions are all money_) saw #2035's case_party_index_* functions and broke batches #2082-#2084. The steps are on the PR (6944267988): merge main, narrow DW7 to its own migration's functions, re-review, new head to Lead 78. Lead B was asked to wake the lane.
