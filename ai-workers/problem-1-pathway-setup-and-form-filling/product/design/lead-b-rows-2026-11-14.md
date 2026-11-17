@@ -1766,3 +1766,15 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * #2021 (FO-9b part 0): its builder was told to run `/rerun failed` on bdb8484 and label on green (comment 6934646054).
 * QA-498, the fix row, is now free in the night queue.
 * #1968 and #2006 merged; both are qa records and unblock none of my rows.
+
+## rev 16.94 (17 Nov 07:35 IST): FO-7b amended to match FO-7s0 Q1, Q2 and Q5 (Build Lead C on #2016, comment 6935644111)
+* Amendment 1 is rewritten.
+  - Extra money received into operating, in every trust state, offers "Refund · Keep as credit" (`KEPT`).
+  - Only money received into trust becomes a trust `RECEIPT`.
+  - A card overpayment goes to operating as extra, by the same path.
+  - FO-7b stores the waiting state that G24 (FO-7q's read) lists.
+  - A neither test is added: trust YES plus extra into operating gives no trust `RECEIPT`.
+* Amendment 8, new: the payment route takes `receivedInto` (`OPERATING | TRUST`; card is operating only; `TRUST` needs the trust answer YES).
+* Amendment 9, new: FO-7b builds the operating details write on Getting paid.
+* No conflict with built work: there is no FO-7b PR, and nothing on `main` uses `receivedInto`.
+* Two points went back to Build Lead C: how "Invoice payments go to" sets the default `receivedInto`, and FO-7b's size (P-610).

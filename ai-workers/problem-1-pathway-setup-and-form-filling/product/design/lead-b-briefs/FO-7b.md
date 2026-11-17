@@ -3,11 +3,13 @@
 Start only after **FO-7a, PF-12, FO-5, PF-4, PF-4b and PF-14 have merged** (PF-12: no money route before the `money_*` walls, P-584 (10)) (FO-5 brings the retainer fee rows, `DocumentRenderPort` and `FilesPort`; PF-4b brings `MailPort`; PF-14 brings `JobPort` and the fake clock). Money lane: FO-7a → FO-7b → FO-7c ∥ FO-7t → FO-7p, with FO-7r after FO-7b and FO-7t (P-576, rev 13). No schema change. Paste into a new cloud session on the repository (default branch `main`):
 
 > **Amendments, revs 16.33–16.41 (16 Nov, Lead B; money rules agreed by the release Lead on #1878, #1879, #1883). Where they differ from the text below, these win:**
-> 1. **An overpayment is never refused** (AG-6-21 r2–r3, §13; MS-D11(5); AG-6-76 r4).
->    - With the trust answer YES, the extra goes to the case's trust balance as a `RECEIPT`.
->    - With trust off, the recording asks "Refund · Keep as credit" and a person chooses. "Keep as credit" writes FO-7ts's credit ledger (`KEPT`).
+> 1. **An overpayment is never refused** (AG-6-21 r2–r3, §13; MS-D11(5); AG-6-76 r4). *Rewritten rev 16.94 to match FO-7s0 Q5, ruled by Build Lead C on #2016 (comment 6935644111); the old "trust YES → trust RECEIPT" rule is withdrawn.*
+>    - **Extra received into operating, in every trust state:** the recording offers "Refund · Keep as credit" and a person chooses. "Keep as credit" writes FO-7ts's credit ledger (`KEPT`). Until a person chooses, the extra stays waiting, never silently moved.
+>    - **Only money received into trust becomes a trust deposit** (a `RECEIPT` on the case's trust balance). `main` makes a deposit only from a payment received into trust (the FO-7a migration). An extra never moves from operating to trust by itself.
+>    - **A card payment** (always operating) that pays more than is owed is recorded in operating as extra, through the same record path, so the same choice applies. If the card webhook belongs to another row, that row calls this path and does not write its own rule.
 >    - When two payments arrive at once, the second becomes extra, noted "Paid twice?".
->    - Test: a pass and a fail each.
+>    - The read that lists waiting extras is G24, FO-7q's (Build Lead C's). FO-7b only stores the waiting state that read needs: the payment, the amount, the case and party, and `receivedInto`.
+>    - Test: a pass and a fail each, plus a **neither**: extra into operating with the trust answer YES still offers Refund · Keep as credit, and makes no trust `RECEIPT`.
 > 2. **"Invoice payments go to"** (AG-6-69): the rule and the setting route are here.
 >    - Owner only, by a role check. Offered only when the trust answer is YES. It applies to payments recorded after the change. Audited.
 >    - It uses FO-7ts's `invoice_payments_go_to` field. Its screen is FO-7s2's.
@@ -26,6 +28,8 @@ Start only after **FO-7a, PF-12, FO-5, PF-4, PF-4b and PF-14 have merged** (PF-1
 >    - The touch list's `api/src/client-money/port.ts` becomes the adapter, plus a new `ports/client-money.ts`.
 > 6. **Recorded-by-hand methods** (AG-6-19 r1): `BANK_TRANSFER | WIRE | CHEQUE | CASH | E_TRANSFER | CARD_TERMINAL | OTHER`. FO-7ts adds the two new ones. `CARD` is online only.
 > 7. **Starts when** FO-7ts parts 1–2 are on `main` (it needs the trust answer, the credit ledger and the methods), as well as the rows above.
+> 8. **The payment route takes `receivedInto`** (`OPERATING | TRUST`; FO-7s0 Q2, Build Lead C on #2016). `CARD_TERMINAL` and online `CARD` are `OPERATING` only, and `TRUST` with either answers 400 in plain words. `TRUST` needs the trust answer YES; otherwise 409. Until this lands, Getting paid offers "Operating account" only, and "Trust first" is not shown. Test: a pass and a fail each.
+> 9. **FO-7b builds the operating details write on Getting paid** (FO-7s0 Q1, Build Lead C on #2016), because it owns the email that waits on it. FO-7g part 2 builds the tax fields and due days; FO-7t part 1 builds the trust details block. Owner or Admin with the money key; audited; until the write exists the field is absent (BR-10). Touch list: add the one route and its handler under `api/src/client-money/`. Test: a pass and a fail each.
 
 ---
 You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime FO-7b` and take **one row, FO-7b**, end to end on a fresh branch from `origin/main`, one PR.
