@@ -96,3 +96,5 @@ Rows proven or Lead-B-only are not listed. R1.77 finishes on CS-C1b + QA-397; R1
 * **Configurator / assessments (AS-*):** 0 waiting.
 
 **07:2x IST 17 Nov (Lead 72):** #2035 (CS-S1 part 1): Lead read done on fb809ad15. Next steps posted for its cloud lane (comment 6935466207): the reviewer reads only the MODULE.cases.md merge, posts Approve fb809ad15, then ready and label. The qa53 keep-alive fix becomes its own small forms row. #2008: AUD-5 part 2 starts once #2008 merges (draft's Part 2, part 1 decisions, LegalHoldPort fake). #2003: merge origin/main, then ask for the migration read. Lead 72 still to read #2000, #2016 and #1991.
+
+**07:34 IST 17 Nov:** #2016 (FO-7s0): Lead 72's read is done, the label is on, and it is in the queue. I ruled Q1-Q5 as recommended (comment 6935644111). FO-7v is refreshed for Q4. Lead B is asked to amend FO-7b amendment 1 for Q5. Q6 (the invoice stays paid, against AG-6-75 r3) is on the founder's 09:00 list, as are the streams card, Manitoba and the #2031 close.
