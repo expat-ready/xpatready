@@ -50,7 +50,8 @@ ok "pr-ready: a push while the comments are read (head moved) is refused" "$([ $
 rm -f "$FX/pull2.json"
 
 # private-sync: HOME and TMPDIR in the throwaway folder; the real remote URL is rewritten to a local bare repository.
-unset GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM; export HOME="$T/home"; NOTES="$HOME/Library/Application Support/Claude/side-session-notes"; mkdir -p "$NOTES" "$T/tmp"
+unset GIT_CONFIG_SYSTEM XDG_CONFIG_HOME; export HOME="$T/home" GIT_CONFIG_GLOBAL="$T/home/.gitconfig";   # never the real git config (review m3)
+ NOTES="$HOME/Library/Application Support/Claude/side-session-notes"; mkdir -p "$NOTES" "$T/tmp"
 git init -q --bare "$T/bare.git"; git -C "$T" init -q seed; git -C "$T/seed" -c user.email=t@t -c user.name=t commit -q --allow-empty -m seed
 git -C "$T/seed" push -q "$T/bare.git" HEAD:main 2>/dev/null; git -C "$T/bare.git" symbolic-ref HEAD refs/heads/main
 git config --global url."$T/bare.git".insteadOf https://github.com/expat-ready/private.git
