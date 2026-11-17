@@ -265,7 +265,32 @@ Re-review 4 verdict: Approve (head `40f6f14de`), superseded below
 
 The Minors n2–n6 stand as above.
 
-Verdict: Approve (head `bef00cb6e`)
+Re-review 5 verdict: Approve (head `bef00cb6e`), superseded below
+* Blockers: none.
+* Majors: none.
+* Minors: n2–n6.
+
+## Re-review 6 at `3a3e11f17` (a merge only, P-277)
+
+**The merge** (origin/main `bcc505afd`, made because of a conflict, P-270; asked for by Lead 72).
+* `api/src/platform/MODULE.md` takes main's file whole. Against `origin/main` it is **+2 lines**: one new last paragraph, "PF-19b part 2 (messages: SES, bounces, one-click unsubscribe)", holding this row's entry points, its one invariant and its test.
+  * Main's Entry points, Invariants and Tests lines (PF-5t, PF-6m and the rest) are untouched.
+  * The paragraph is accurate for this head: SES fails closed without a verified sender, SNS notices outside local come only from a configured topic, and the demo inbox lists the headers.
+  * **Agree:** a separate paragraph stops the shared-line clashes.
+* This row's code is **unchanged** from `7df5dfb2c`: `git diff --stat` on `messages/*`, `features/platform-messages.ts`, `features/platform-staff-read.ts`, `check_pf19b2_ses.ts` and `check_forms_qa53.ts` is empty.
+* What main brought in:
+  * PF-5t's terms gate in `identity/guard.ts`: staff routes only. The public doors are not under it, and the walk passes.
+  * `FilesPort.delete` / tombstones (PF-Fd): additive, and nothing on this path calls it.
+  * Seeding and other modules.
+* The row is +747 −12 on `studio/` against main, under P-610's cap.
+
+**What I ran on the merged head:**
+* `check_pf19b2_ses` **44/44**.
+* The `--app` walk on my copy `rvpf19b2d` on :4437: **6/6**. Stopped and dropped afterwards.
+
+The Minors n2–n6 stand as above. n4 also covers the PR body naming the card paragraph, if the builder wants to.
+
+Verdict: Approve (head `3a3e11f17`)
 * Blockers: none.
 * Majors: none.
 * Minors: n2–n6.
