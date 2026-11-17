@@ -44,8 +44,8 @@ export class Duplicates {
              or (${name}::text <> '' and fo_sales_person_name(p.given_names, p.family_name) % ${name}::text))
          order by 4 desc, 5 desc, 6 desc, p.created_at, p.id limit 50` : [];
       const companies = company ? await tx.$queryRaw<CompanyRow[]>`
-        select c.id::text, c.operating_name, similarity(c.normalised_name, ${company}::text)::float8 as sim
-          from fo_company c where c.firm_id = ${ctx.firmId}::uuid and c.normalised_name % ${company}::text
+        select c.id::text, c.operating_name, similarity(lower(c.normalised_name), ${company}::text)::float8 as sim
+          from fo_company c where c.firm_id = ${ctx.firmId}::uuid and lower(c.normalised_name) % ${company}::text
          order by 3 desc, c.created_at, c.id limit 50` : [];
       return { people, companies };
     });
