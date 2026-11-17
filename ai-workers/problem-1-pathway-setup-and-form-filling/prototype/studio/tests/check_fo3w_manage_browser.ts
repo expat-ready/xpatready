@@ -4,8 +4,8 @@
 //   * the isolated copy (the real app: its build and its routes) for the route order, through the real router (Q1..Q3);
 //   * a server this test holds, on the copy's database: FO-3's real public controller and service, the same web build, a clock the test sets (J-P7's
 //     "3 h before", J-P8's "expired"), the mail fake (the email's own link is opened) and no minimum fill time (bookings go through the public API).
-// Seeds firm `maple` (Sample) with a phone; a type stored with the slug `manage` stands in for a row from before FO-3a 1a's reserved word (#1918 refuses
-// saving it: its check_fo3a_booking_types.ts DW2). US$0, no model.
+// Seeds firm `maple` (Sample) with a phone and a type named "Manage" (slug `manage-2`): since FO-3a 1a (#1918) the database refuses the
+// slug `manage` itself (check fo_consultation_type_slug_reserved; its check_fo3a_booking_types.ts DW2, DW11), so no type can stand at that address. US$0, no model.
 //   zsh studio/tools/isolated.sh screens_fo3wm 4533 start && tsx studio/tests/check_fo3w_manage_browser.ts 4533 xr_studio_screens_fo3wm
 import "reflect-metadata";
 import { Module } from "@nestjs/common";
@@ -50,8 +50,11 @@ const type = (slug: string, name: string, extra: Record<string, unknown> = {}) =
 await type("free-consultation", "Free consultation");
 await type("no-cancel", "Reschedule only", { allowCancel: false });
 await type("no-change", "Fixed call", { allowCancel: false, allowReschedule: false });
-await type("manage", "Stored before the reserved word");   // stands in for a row FO-3a 1a would refuse (#1918)
-ok("FO-3w part 2 setup: firm maple with a phone, one host Mon-Fri 09-17 Toronto, four types (one with the slug manage)", true);
+await type("manage-2", "Manage");   // a type named Manage gets manage-2 (FO-3a 1a, #1918, DW2)
+let manageRefused = false;
+try { await type("manage", "Stored under the reserved word"); } catch (e) { manageRefused = /fo_consultation_type_slug_reserved/.test(String(e)); }
+ok("FO-3w part 2 setup: firm maple with a phone, one host Mon-Fri 09-17 Toronto, four types (one named Manage, slug manage-2)", true);
+ok("FO-3w QA-496 reserved slug fail side: the database refuses a type stored under the slug manage (FO-3a 1a)", manageRefused);
 
 class SetClock extends FakeClock { shift = 0; override now() { return new Date(Date.now() + this.shift); } async to(d: Date) { this.shift = d.getTime() - Date.now(); } }
 const clock = new SetClock(), mail = fakeMail({ clock }), jobs = fakeJobs(clock);
@@ -114,7 +117,7 @@ try {
     const t = await mainText(p);
     ok("FO-3w QA-496 route order pass: on the real app /book/maple/manage#<token> opens the manage page (not \"This page is not available.\")", (await p.locator('[data-public-state="manage"]').count()) === 1 && t.includes("Your booking: Tuesday 12 January, 19:00 Asia/Dubai time, with Maple Immigration."), t);
     await open(p, `http://localhost:${COPY}/book/maple/manage`);
-    ok("FO-3w QA-496 reserved slug: with a type stored under the slug manage, /book/maple/manage is still the manage page (no token → the bad-link text), never that type", (await mainText(p)) === BAD && !(await mainText(p)).includes("Stored before the reserved word"), await mainText(p));
+    ok("FO-3w QA-496 reserved slug: with a type named Manage (slug manage-2), /book/maple/manage is still the manage page (no token → the bad-link text), never that type", (await mainText(p)) === BAD && !(await mainText(p)).includes("Choose a time"), await mainText(p));
     await open(p, `http://localhost:${COPY}/book/maple/free-consultation`);
     ok("FO-3w QA-496 fail side: a type's own address still opens its type page", (await p.getByRole("heading", { name: "Choose a time" }).count()) === 1);
     await ctx.close();
