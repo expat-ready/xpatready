@@ -1840,3 +1840,7 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * The current Lead is **Lead 77** (`local_baa78a6d-3861-4074-bd82-955fc67e247e`).
 * **P-683 (founder, via Lead 77):** a lane gets the reviewer's Approve on the branch first, then opens the PR as non-draft (POST pulls, `draft: false`), so no draft toggle is ever needed. Passed on through the briefs not yet started: PF-4dn, PF-5tv and QA-498 now carry it in place of "keep it a draft". PRs already open as drafts are marked ready once, after their Approve, as before. Every new brief and every start: line carries P-683.
 * The open-PR list (P-660) still goes to Lead 77 at 19:30 IST.
+
+### Rev 17.5 (13:07 IST 17 Nov): drafts already open are never toggled by us
+* **Lead 77's correction to rev 17.4:** no session or lane marks an open draft ready. The ready toggle is the GraphQL mutation the T7 deny line blocks, and nobody routes around it (P-387). Each such draft goes in the 19:30 list with its Approve sha, and the founder presses Ready unless he allows the mutation himself. This replaces "marked ready once, after their Approve" in rev 17.4.
+* Open PF/FO drafts now: **#2062** (FO-9a part 1, head 3f7113b6), told on the PR not to toggle. #2026 and #1994 are records PRs.
