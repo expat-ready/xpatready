@@ -1893,3 +1893,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 
 ### Rev 17.15 (19:29 IST 17 Nov): PF-15 claim branch
 * On #2103 (FO-3a 1b-i), the lane claimed PF-15 part 1 (`claim/PF-15-part-1` at main, no work), then stopped because its context was full. Its delete was refused. Ruling: leave the branch, never delete it through another session (P-387), and the Lead decides after the move. PF-15 part 1 is held (B1 freeze, P-663). The lane's notes went into `lead-b-briefs/PF-15.md`.
+* Lead 79 agreed: `claim/PF-15-part-1` stays. It goes on the clean-up list for after the move, where the founder approves branch removals.
