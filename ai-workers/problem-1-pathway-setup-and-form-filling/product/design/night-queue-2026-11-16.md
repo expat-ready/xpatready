@@ -16,14 +16,10 @@ Three hourly cloud routines ("lane starter 1-3", at :05, :25 and :45 UTC past ea
 | PF-21b part 1 | runtime | main:lead-b-briefs/PF-21b.md (port only) | — | high, no |
 | PF-Fp part 1 | runtime | lead-b-front-office:lead-b-briefs/P-630-amendments.md PF-Fp row + tech-gate-platform-front-office-2026-11-14.md entry 17 (toPdf port, fake, Gotenberg adapter; the container line comes with PF-8) | — | high, yes; shared port: "Ready for Lead read" |
 | AUD-4s part 1 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/AUD-4s-1.md (concept records, with a fresh challenger) | — | medium, no |
-| CS-W3 part 0 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-W3-0.md (records-only spike on a scratch copy) | — | medium, no |
-| CS-S1 part 1 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-S1-1.md | — ; **skip this row if #2002 (CS-C1b) is merged** (WIP P-623) | high, yes; schema: "Ready for Lead read" |
 | FO-6 | runtime | lead-b-front-office:lead-b-briefs/FO-6.md | — | medium, no |
 | PF-19e | runtime | lead-b-front-office:lead-b-briefs/PF-19e.md | #1956, #1961, #2029 (messages/send/messages.ts) | medium, no |
 | AUD-1b | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/AUD-1b.md | #2003 | high, yes (audit) |
-| CS-DL1b | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-DL1b.md | #2000 | medium, no |
 | PF-12b part 2 | runtime | lead-b-front-office:lead-b-briefs/PF-12b.md (the 7 own-firm doors move to narrow xr_wall_reader definer lookups); never beside PF-4c part 1, PF-6m2, PF-4pc or PF-4s (skip while an open PR names one) | PF-12b part 1 | high, yes; migration: "Ready for Lead read" |
-| CS-NK1 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-NK1.md (commit ac54fe014; bug F2 from #2017's breaker) | #2017 (one builder at a time on the schema, P-438b) | high, yes; schema: "Ready for Lead read" |
 | AUD-1c part 1 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/AUD-1c-1.md (may run beside AUD-1b) | #2003 | high, yes; schema: "Ready for Lead read" |
 | PF-6 part 2a | runtime | lead-b-front-office:lead-b-briefs/PF-6p2.md | #1945 merged 03:37 IST: free now (touch lists checked by Build Lead A; PF-4c part 1 merges main on a MODULE.md conflict, P-270) | high, yes |
 | PF-6m2 | runtime | lead-b-front-office:lead-b-briefs/PF-6m2.md | #1945 merged 03:37 IST: free now (touch lists checked by Build Lead A; PF-4c part 1 merges main on a MODULE.md conflict, P-270) | high, yes |
@@ -54,3 +50,10 @@ Three hourly cloud routines ("lane starter 1-3", at :05, :25 and :45 UTC past ea
 Chains on shared files run one after another, never side by side (Build Lead A, rev 16.80): booking/service.ts: FO-3a part 1b → FO-3vr → FO-3v; the messages files: PF-19e → PF-13 part 1 → PF-19c → PF-19ad. Sources: Build Lead A rev 16.80 (1671fb76e), Build Lead C 93004803b, 22:2x IST 16 Nov.
 
 Removed 22:3x (Lead 70): CS-V1-2. The CS-V1 lane (#2007) takes it warm after #2007 merges, once Build Lead C confirms the scope.
+
+
+Held 08:4x IST 17 Nov (Lead 73; WIP P-623, Build Lead C 7f471e8b0: the case side has R1.80 and R1.77 waiting for qa since 04:00 IST): CS-W3 part 0, CS-DL1b and CS-NK1 come back when qa clears one of them. CS-S1 part 1 removed: taken (#2035, in Mergify batch #2061). The rows, word for word:
+| CS-W3 part 0 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-W3-0.md (records-only spike on a scratch copy) | — | medium, no |
+| CS-S1 part 1 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-S1-1.md | — ; **skip this row if #2002 (CS-C1b) is merged** (WIP P-623) | high, yes; schema: "Ready for Lead read" |
+| CS-DL1b | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-DL1b.md | #2000 | medium, no |
+| CS-NK1 | runtime | claude/build-lead-c-647b40:build-lead-c-briefs/CS-NK1.md (commit ac54fe014; bug F2 from #2017's breaker) | #2017 (one builder at a time on the schema, P-438b) | high, yes; schema: "Ready for Lead read" |
