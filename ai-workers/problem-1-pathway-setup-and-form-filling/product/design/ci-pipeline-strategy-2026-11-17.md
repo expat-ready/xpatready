@@ -6,7 +6,7 @@ Research session for the Lead, started at the founder's request (07:4x IST 17 No
 * **[R7]** GitHub Actions API, every run of the `ci` workflow created 10 Nov 05:57 IST to 17 Nov 08:04 IST (2,521 runs), and the jobs and steps of the 1,146 runs that did real work (more than 4 minutes; 11,797 jobs). Pulled 08:04-08:10 IST. Runs still waiting at 08:04 are not in it, so the newest waits are understated.
 * **[LOG]** the suite tables in 724 shard logs: every failed shard job in [R7] plus the 250 newest green merge-batch shards. Statuses as `run-suites.sh` prints them: "failed twice" and "FAIL" (red), "passed on retry" (flaky), "quarantined".
 * **[LIVE]** the API at 08:01-08:03 IST: every job of every queued or running run.
-* **[SIM]** `tools/select-suites.mjs` (it reads files only, runs nothing) replayed in a scratch clone: (a) on the 80 PRs merged to main since 14 Nov, with and without `--direct`; (b) on the heads of 19 PR checks that went red, to see whether `--direct` would still pick a red suite.
+* **[SIM]** `tools/select-suites.mjs` (it reads files only, runs nothing) replayed in a scratch clone: (a) on the 80 PRs merged to main since 14 Nov, with and without `--direct`; (b) on the heads of 20 PR checks that went red, to see whether `--direct` would still pick a red suite.
 * **[MQ]** `design/merge-queue-failures-2026-11-16.md` (B199): the 30 failed batches of 11-15 Nov, each traced to the commit that fixed it. Reused, not redone.
 * **[AUD]** the side note `ci-speed-audit-2026-11-17.md` (300 runs, 16 Nov). Validated below; one claim corrected.
 * **[CAP]** `qa/CAPABILITIES.md` on main bcc505afd (read 07:5x IST); open PRs from the API at 07:5x-08:0x IST.
@@ -109,7 +109,7 @@ Suite time on main's `suite-times.tsv` (15 Nov, 498 suites, 339 min) by family: 
 |---|---|---|---|---|
 | Fast checks (rules files, graph, PDFs, gate B, port contracts) | inside shard 1 | **own first job, about 3 min; shards start only when it is green** | 109 attempts failed here while other shards used 6,555 min [R7] | same checks, same order of strictness |
 | Suites the change can affect (`--changed`), on the PR | every push of a ready PR | **once per PR, after the reviewer's Approve** (drafts until then, P-646) | 57% of PR time is 2nd and later runs [R7] | the full PR check still runs on the exact head that is labelled; label-guard refuses a label without it |
-| `--direct` instead of `--changed` on the PR | off (`vars.PR_SUITES` unset) | **not now** | it would run 27% of the suite time [SIM a], but 6 of 19 red PR checks would have gone green and broken in the queue instead [SIM b] (32% × 32% of PRs ≈ 10% leak; at 6 per batch, ~47% of batches would fail) | - |
+| `--direct` instead of `--changed` on the PR | off (`vars.PR_SUITES` unset) | **not now** | it would run 27% of the suite time [SIM a], but 5 of 20 red PR checks would have gone green and broken in the queue instead [SIM b] (32% × 25% of PRs ≈ 8% leak; at 6 per batch, ~39% of batches would fail, against 23% today) | - |
 | Every suite in the merge batch | yes | **stays** | it finds the clashes: 73% of failed batches [MQ], 16 Nov's pf12 and fo3w catches [LOG] | - |
 | Works packs (regression) in the batch | yes | **stays** | caught the only "real break" roots in [MQ] (#1691) | - |
 | Container proof (skeleton.yml) | PR only, skipped on batches | **add to the merge batch** | QA-449 (Major): the container proof never runs on what reaches main; holds R1.16 | a gate added, not removed |
@@ -132,7 +132,7 @@ Ordered by measured gain per unit of risk. "Quality" means: every merge still pa
 | Q6 | **Shards sized to the work left** (kind already counts units) and balance from each night's times | [AUD]: 15 of 43 PR checks used 8 shards under 12 min each; slowest shard ~20% over the mean | none | one CI PR |
 | Q7 | **Gate jobs off the long line** (queue-gate, label-guard, records-label run on a timer and on comments) | small minutes; gate waits up to 61 min [AUD] | none | low |
 
-Not proposed: dropping suites from the PR (section 4: 32% of PRs went red there); `--direct` on PRs (it lets about a third of those breaks through); self-hosted machines on this public repository (section 6).
+Not proposed: dropping suites from the PR (section 4: 32% of PRs went red there); `--direct` on PRs (it lets about a quarter of those breaks through); self-hosted machines on this public repository (section 6).
 
 **Expected result of Q1 + Q2 + Q3:** demand about 205,000 → about 170,000 machine-minutes a week, supply 40 → 60 machines. In the 16 Nov busy hours, use would fall from 35-40 of 40 machines to about 33 of 60, so jobs would start at once again and a PR check and a batch would return to about their week medians (54 and 51 min) or better. These are projections from the measured parts, not measurements; re-measure 48 hours after.
 
@@ -246,7 +246,7 @@ Demand per merged code PR, measured (section 3): about **1,280 machine-minutes**
 
 * The jobs of runs still waiting at 08:04 IST (they are not in [R7]), so 17 Nov's waits are understated.
 * Which PRs were in each batch, so this page cannot split 16 Nov's 21 failed batches into roots and cascades; [MQ]'s method does that and is the right next step for 16-17 Nov.
-* `--direct` replay: 19 red PR checks replayed of 85 (time); 13 of 19 would still go red under `--direct`. A full replay is the evidence a later `--direct` decision needs.
+* `--direct` replay: 20 red PR checks replayed of 85 (time); 15 of 20 would still go red under `--direct`. A full replay is the evidence a later `--direct` decision needs.
 * Per-lane merge rate (used as an estimate in 8c).
 * Blacksmith's 4 vCPU price and whether any provider accepts our account before the org move (Namespace did for the trial, P-649).
 * The cost of each suite's app start inside a shard, and CPU use per shard (logs give suite times only).

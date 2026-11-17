@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CI Pipeline Strategy</title>
+<style>
+:root{
+  --bg:#f7f7f5; --card:#ffffff; --ink:#1d1f23; --muted:#5d636d; --line:#dcdfe4;
+  --accent:#2f5bd3; --good:#1f7a4d; --warn:#a96400; --bad:#b3261e;
+  --chip:#eef1f6; --today:#fff4e8; --prop:#eaf6ef; --keep:#eef1f6;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15171a; --card:#1e2125; --ink:#e8eaed; --muted:#a2a8b2; --line:#33383f;
+    --accent:#8fb0ff; --good:#6fcf97; --warn:#f2b45a; --bad:#ff8a80;
+    --chip:#2a2e34; --today:#3a2c1c; --prop:#1d3328; --keep:#2a2e34;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15171a; --card:#1e2125; --ink:#e8eaed; --muted:#a2a8b2; --line:#33383f;
+  --accent:#8fb0ff; --good:#6fcf97; --warn:#f2b45a; --bad:#ff8a80;
+  --chip:#2a2e34; --today:#3a2c1c; --prop:#1d3328; --keep:#2a2e34;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+main{max-width:1080px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:26px;margin:0 0 4px}
+h2{font-size:19px;margin:32px 0 10px}
+h3{font-size:15px;margin:0 0 6px}
+p{margin:6px 0}
+.sub{color:var(--muted);font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:10px 0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.kpi b{display:block;font-size:22px}
+.kpi span{color:var(--muted);font-size:12px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.two{grid-template-columns:1fr}}
+.lane{border-radius:10px;padding:12px;border:1px solid var(--line)}
+.lane.today{background:var(--today)} .lane.prop{background:var(--prop)}
+.step{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13.5px}
+.step .t{font-weight:600}
+.step .m{color:var(--muted);font-size:12px}
+.arrow{text-align:center;color:var(--muted);font-size:13px;line-height:1}
+.tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;background:var(--chip);color:var(--muted);margin-left:4px}
+.tag.cut{color:var(--good)} .tag.add{color:var(--accent)} .tag.keep{color:var(--muted)} .tag.risk{color:var(--bad)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{border-bottom:1px solid var(--line);padding:7px 6px;text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:12.5px}
+.scroll{overflow-x:auto}
+.bar{height:10px;border-radius:5px;background:var(--chip);overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+.src{color:var(--muted);font-size:11.5px}
+.rec{color:var(--good);font-weight:600}
+.no{color:var(--bad);font-weight:600}
+ul{margin:6px 0;padding-left:20px}
+</style>
+</head>
+<body>
+<main>
+<h1>CI pipeline and delivery strategy</h1>
+<p class="sub">Measured 17 Nov 2026, 07:52-08:35 IST, read-only research for the tech lead at the founder's request. Sources: GitHub Actions API (2,521 ci runs, 11,797 jobs, 10-17 Nov), 724 test logs, official pricing pages and Claude Code docs read 17 Nov. Full record: <code>product/design/ci-pipeline-strategy-2026-11-17.md</code> on branch <code>research/ci-pipeline-2026-11-17</code>.</p>
+
+<h2>Why CI is jammed, in four numbers</h2>
+<div class="kpis">
+  <div class="kpi"><b>40 / 116</b><span>machines running / jobs queued at 08:01 IST; GitHub Pro allows 40 at once; none on Namespace</span></div>
+  <div class="kpi"><b>91 min</b><span>PR check, push to result, median since 16 Nov noon (week: 54)</span></div>
+  <div class="kpi"><b>57%</b><span>of PR-check machine time is the 2nd or later run of the same PR</span></div>
+  <div class="kpi"><b>23%</b><span>of merge batches failed (61 of 262); traced failures are real clashes, not flaky tests</span></div>
+</div>
+<p class="src">Sources: GitHub API live read 08:01-08:03 IST; runs and jobs 10-17 Nov; merge-queue-failures-2026-11-16.md (30 batches traced to their fix: clash 73%, flaky 13%, real break 10%, lost machine 3%).</p>
+
+<div class="card">
+<h3>Where the 205,461 machine-minutes of the last 7 days went</h3>
+<div class="bar" role="img" aria-label="PR checks 55 percent, merge batches 45 percent">
+  <i style="width:24%;background:#d9a35a" title="PR first runs"></i>
+  <i style="width:31%;background:var(--warn)" title="PR re-runs on the same branch"></i>
+  <i style="width:12%;background:var(--bad)" title="failed batches"></i>
+  <i style="width:33%;background:var(--accent)" title="green batches"></i>
+</div>
+<p class="sub">PR checks 113,733 (55%): first runs ~50,000, later runs on the same PR ~63,000 · merge batches 91,728 (45%): failed 23,600, green ~68,000. 16 Nov alone used 45,500 of the 57,600 a 40-machine day can give, and the machines were 35+ busy in 12 of 24 hours.</p>
+</div>
+
+<h2>The pipeline: today and proposed</h2>
+<div class="two">
+  <div class="lane today">
+    <h3>Today</h3>
+    <div class="step"><span class="t">Builder lane</span> writes code and tests<div class="m">its own tests in its copy</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="t">Reviewer (Opus) · breaker for money, schema, permissions</span><div class="m">often after CI has already run</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="t">PR check, on every push of a ready PR</span><div class="m">kind · 8 shards (rules checks inside shard 1, then suites this change can affect) 30 min median · packs 12 min · types 3 min · 2.8 runs per PR on average</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="t">Label on Approve + green → queue gate</span><div class="m">small gate jobs wait in the same line as 40-minute shards</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="t">Merge batch (up to 6 PRs, 3 checked at once)</span><div class="m">every suite (8 shards, 39 min) · every Works pack (5 jobs, 15 min) · 51 min median; one failure also fails the 2 batches behind it</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="t">Main → nightly full set · qa gate B (pack on main) · gate A walk</span><div class="m">container proof never runs on a batch (QA-449)</div></div>
+  </div>
+  <div class="lane prop">
+    <h3>Proposed (no gate removed)</h3>
+    <div class="step"><span class="t">Builder lane</span> writes code and tests <span class="tag keep">same</span></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="t">Reviewer Approve first, PR stays draft</span> <span class="tag cut">cuts re-runs</span><div class="m">drafts run only the push guard (P-646 enforced)</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="t">Fast checks job, ~3 min</span> <span class="tag add">new order</span><div class="m">rules files, graph, PDFs, gate B; shards start only if green</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="t">One PR check per PR, on the approved head</span> <span class="tag keep">same suites</span><div class="m">the same "suites this change can affect" set, run once; a red result means a fix and a diff-only re-review</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="t">Merge batch: every suite + every Works pack</span> <span class="tag keep">stays</span> <span class="tag add">+ container proof</span><div class="m">2 batches at once while failures are above 15%; shards sized to the work left</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="t">Main → nightly full set · qa gates B and A</span> <span class="tag keep">same</span><div class="m">on 60 machines (GitHub Team) instead of 40</div></div>
+  </div>
+</div>
+
+<div class="card">
+<h3>Why quality does not drop</h3>
+<ul>
+<li>Every merge still passes <b>every suite and every Works pack on the combined code</b> before it lands. That is where the real catches happen: 73% of failed batches were two PRs clashing, which a PR check cannot see.</li>
+<li>The PR check keeps the same suites. It runs once on the approved head instead of on every push.</li>
+<li>One gate is <b>added</b>: the container proof in the batch (closes QA-449, unblocks R1.16).</li>
+<li><span class="no">Not proposed:</span> running no suites on the PR. 62 of 193 code PRs (32%) went red on their own PR check. Without that check, nearly 9 batches in 10 would hold a broken PR. Quality would hold, but merging would nearly stop.</li>
+<li><span class="no">Not proposed:</span> the cheaper "direct" PR selection. It runs 27% of the suite time, but in a replay 5 of 20 red PR checks would have gone green and broken in the queue instead.</li>
+</ul>
+</div>
+
+<h2>Tests by module</h2>
+<div class="card scroll">
+<table>
+<tr><th>Module (suite family)</th><th>Suite time</th><th>Red on PR</th><th>Red in batch</th><th>Flaky</th><th>Keep where</th></tr>
+<tr><td>Configurator and case side (c, qa, b, bk, forms, …)</td><td>~320 of 339 min</td><td>114</td><td>30</td><td>15</td><td>PR (affected) + every batch</td></tr>
+<tr><td>Platform (pf)</td><td>~3 min</td><td>7</td><td>7</td><td>0</td><td>PR + every batch (wall guard caught 5 batches on 16 Nov)</td></tr>
+<tr><td>Front office (fo)</td><td>~1 min</td><td>3</td><td>11</td><td>0</td><td>PR + every batch (schema clashes)</td></tr>
+<tr><td>Others (runtime, case, vv, …)</td><td>rest</td><td>34</td><td>0</td><td>2</td><td>PR (affected) + every batch</td></tr>
+</table>
+<p class="src">Red = failed twice or failed (no retry) in 724 shard logs, 10-17 Nov. Flaky = passed only on retry. Suite time from tools/suite-times.tsv on main (15 Nov). 11 suites are quarantined and run nightly.</p>
+</div>
+
+<h2>Machines</h2>
+<div class="card scroll">
+<table>
+<tr><th>Option</th><th>Machines at once</th><th>Monthly cost if bought for merge batches only (~393,000 min)</th><th>Verdict</th></tr>
+<tr><td>GitHub Team organization</td><td>60</td><td>~US$4 (1 seat)</td><td class="rec">Yes, today</td></tr>
+<tr><td>Namespace trial (#2032)</td><td>8</td><td>free 30 days, then ~US$2,360</td><td>Unset the variable before #2032 merges</td></tr>
+<tr><td>Namespace Business</td><td>40</td><td>~US$2,250</td><td>Decide in 48 h, with fresh numbers</td></tr>
+<tr><td>Blacksmith (needs an organization)</td><td>no limit</td><td>~US$1,570 at 2 vCPU; 4 vCPU price not shown</td><td>Possible after the org move</td></tr>
+<tr><td>GitHub larger runners</td><td>1,000</td><td>~US$4,720</td><td>Too expensive</td></tr>
+<tr><td>Own server (VPS)</td><td>~2 per server</td><td>~€1,180 for 20 jobs</td><td class="no">No while the repo is public</td></tr>
+</table>
+<p class="src">github.com/pricing; docs.github.com/en/actions/reference/limits; docs.github.com/en/billing/reference/actions-runner-pricing; namespace.so/pricing; blacksmith.sh/pricing and docs.blacksmith.sh; hetzner.com/cloud; docs.github.com/en/actions/reference/security/secure-use. All read 17 Nov 2026. Any spend over US$10 is the founder's decision.</p>
+</div>
+
+<h2>Delivery: why nothing was proven overnight</h2>
+<div class="card">
+<p>101 Release 1 rows: <b>11 Proven, 26 Partial, 64 Not built</b> (qa/CAPABILITIES.md, 07:5x IST). The 21 overnight merges were mostly first or middle parts. A row counts only when every part is on main and qa proves it.</p>
+<p><b>Nearest to Proven, each waiting in the CI line now:</b> R1.4 walls audit (#2029) · R1.49 consent gate (#1956, #1961) · R1.80 forms per applicant (#2013, then QA-165) · R1.37 booking page (#1918) · R1.16 automated testing (one CI change: the container proof in the batch).</p>
+<p><b>Order:</b> unjam those first → then whole journey groups, one group per lane: Messages → Sign-up → Permissions → Booking → Leads → Retainer and money → Platform records → case-side gaps. No new capability while a started one waits (P-606).</p>
+<p><b>Lane cap:</b> one merged code PR uses about 1,280 machine-minutes. 40 machines carry about 36 code PRs a day (about 10-12 code lanes); Team about 54 (about 15 lanes); Team plus one-check-per-PR about 65 (about 18-20 lanes). When batch waits pass 15 minutes, lanes do review fixes, qa bugs or design, not new PRs.</p>
+</div>
+
+<h2>Decisions for the founder</h2>
+<div class="card scroll">
+<table>
+<tr><th>#</th><th>Decision</th><th>Recommendation</th><th>Time</th><th>Cost</th><th>Quality</th></tr>
+<tr><td>D1</td><td>GitHub organization on Team</td><td class="rec">Yes, today (09:00 step)</td><td>~1 h + checklist</td><td>~US$4/month</td><td>none</td></tr>
+<tr><td>D2</td><td>Meaning of "full tests once" (P-651)</td><td class="rec">One PR check per PR after Approve + every suite once in the batch</td><td>saves ~30,000 machine-min a week (up to 63,000)</td><td>US$0</td><td>none</td></tr>
+<tr><td>D3</td><td>#2032 with the runner variable set</td><td class="rec">Unset the variable first, or narrow #2032</td><td>avoids 40 → 8 machines</td><td>US$0</td><td>none</td></tr>
+<tr><td>D4</td><td>Paid overflow</td><td>Not yet; decide in 48 h; apply to Namespace's open-source program</td><td>-</td><td>US$1,600-2,400/month if bought</td><td>none</td></tr>
+<tr><td>D5</td><td>Own server</td><td class="no">No while public</td><td>-</td><td>-</td><td>security risk</td></tr>
+<tr><td>D6</td><td>Fast checks first · container proof in batch · 2 batches at once while failing</td><td class="rec">Yes, one small CI PR each</td><td>small</td><td>US$0</td><td>container proof raises it</td></tr>
+<tr><td>D7</td><td>Finish whole groups first</td><td class="rec">Yes</td><td>5 rows can be proven as soon as their PRs merge</td><td>US$0</td><td>none</td></tr>
+<tr><td>D8</td><td>Lane cap from CI capacity</td><td class="rec">Yes: ~10-12 code lanes today, ~15 on Team</td><td>shorter waits</td><td>US$0</td><td>none</td></tr>
+<tr><td>D9</td><td>Ultracode</td><td>Off by default; size "small"; on only for a named, wide, read-only task</td><td>no gain on the CI and qa path</td><td>3-8× tokens on those tasks (estimate)</td><td>none if read-only</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>Ultracode, in plain words</h3>
+<p>A Claude Code setting (<code>/effort ultracode</code>; settings key <code>ultracode</code>) that lets Claude split a big task into a script of many helper agents running at once. The official docs say a run "can use meaningfully more tokens" (code.claude.com/docs/en/workflows.md, read 17 Nov 2026). Our limits are CI machines, qa proof and the weekly plan, not how fast code is written. So it stays off for builders, and is used only by the Lead for wide read-only work, such as re-reading many rows' evidence.</p>
+</div>
+
+<p class="src">Not measured: jobs of runs still waiting at 08:04 IST; roots versus cascades in the 16-17 Nov failed batches; the "direct" replay covers 20 of 85 red PR checks; the merge rate per lane (estimated); Blacksmith's 4 vCPU price.</p>
+</main>
+</body>
+</html>
