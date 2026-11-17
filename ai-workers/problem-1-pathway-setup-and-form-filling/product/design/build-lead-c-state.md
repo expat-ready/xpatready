@@ -126,3 +126,5 @@ Merged on main: #2002, #2007, #2016, #2035. #2000 got "Reviewer: Approve 1fb7ca0
 **13:05 IST 17 Nov (Lead 77):** #2042 is back in the queue. **P-683 (founder):** lanes get the reviewer's Approve on the branch first, then open the PR as non-draft. Every brief of mine now says so, replacing Lead 71's draft rule. Open lanes are told on their PRs.
 
 **13:36 IST 17 Nov:** P-685: the Lead marks old drafts ready with `tools/pr-ready.sh`, but only with a 'Reviewer: Approve <head>' line; I send the Lead the PR and its Approve sha, never route a draft to the founder. #2077 merged at 13:27 IST. #2027 was approved at 7197eed81 and is ready; I asked for the label, and it may now merge tonight. #2063 is a draft with no Approve.
+
+**13:38 IST 17 Nov:** #2008 conflicts with main (MODULE.md; Lead 77's 13:3x sweep). Its lane was asked to merge main, get a diff-only re-review and post the new head for the label. AUD-5 part 2 waits until after the move (P-660).
