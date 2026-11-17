@@ -1812,3 +1812,9 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * Ruling: one shared exported read, ordered `published_at desc, version desc, id desc`, used by both. No unique key and no migration.
 * Brief: `lead-b-briefs/PF-5tv.md`. It waits on #2029 (`signup.ts`) and never runs beside PF-12b part 2.
 * #1957 point 1 (accept the current privacy notice at invitation acceptance, a PF-4b follow-up) is still unruled. It is noted as a separate row to shape.
+
+## rev 17.0 (17 Nov 09:25 IST): #2064 PF-18b, a size exception recommended; m1 carried to PF-17
+* #2064 comment 6937701957: head 749708be is 1,002 changed lines. 839 are code and tests; 163 are review records. The brief estimated ~550, and the growth is the breaker's and reviewer's fixes, each with a fail test.
+* Ruling (comment 6937748138): recommend a size exception, not a split. The head is approved whole, the breaker passed it, and a split would cost two reviews and a second migration and leave DW3/DW7 open (P-606). The DECISIONS row (as P-617) is the Lead's. No push until it exists; then only the body line `Size exception: P-NNN`.
+* m1 (a firm-side database writer could insert a `SUPPORT` message) stays open here. The PR body must show the API refuses it today, with a named test.
+* **Binding condition on PF-17 (its brief does not exist yet; whoever shapes it must include this):** once PF-4s gives our team a role, a database rule lets only that role write `SUPPORT` rows in `platform_support_message`. It is a named DW with a fail case: a write as `xr_app` is refused.
