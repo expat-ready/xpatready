@@ -233,6 +233,70 @@ class Heartbeat(unittest.TestCase):
         self.assertEqual(r["green_streak_h"], 7.0)
         self.assertEqual(r["longest_green_today_h"], 0.5)   # the new IST day counts from 00:00
 
+    # follow-ups of #2081: a read error keeps the window; read_previous; the P95 sample paged ---------------------
+    def test_a_read_error_keeps_the_alarm_state_and_todays_best(self):
+        r = self.chain((0, base()), (60, base()), (90, self.stalled()))      # an hour green, then a stall (mailed)
+        prev = dict(r[-1], longest_green_today_h=3.0)
+        err = hb.carry_on_error(prev, NOW + timedelta(minutes=120))
+        self.assertEqual((err["red"], err["longest_green_today_h"]), (True, 3.0))
+        self.assertIn("stalled-lane #4", err["alarm_state"])
+        f = shifted(self.stalled(), 150); f["previous"] = dict(err, checked_at=hb.iso(NOW + timedelta(minutes=120)))
+        nxt = hb.evaluate(f, HB)
+        self.assertFalse(nxt["red"])                                  # the stall is not new again after the error
+        self.assertEqual(nxt["still_open"], ["stalled-lane #4"])
+        self.assertEqual(nxt["hours_since_last_alarm"], 0.0)          # it is still open
+        self.assertEqual(hb.carry_on_error(None, NOW)["alarm_state"].keys(), {"read-error"})
+
+    def fake(self, answers):
+        """Stand-ins for api() and curl(): answers maps a URL fragment to a value (or a function of the request)."""
+        seen, real = [], (hb.api, hb.curl)
+        def api(method, url, body=None):
+            seen.append((method, url, body))
+            for frag, v in answers.items():
+                if frag in url or (body and frag in body["query"]):
+                    return v(body) if callable(v) else v
+            raise LookupError(url)
+        def curl(args, what):
+            seen.append(("curl", args[-1], None)); answers["download"](args[args.index("-o") + 1])
+        hb.api, hb.curl = api, curl
+        self.addCleanup(lambda: setattr(hb, "api", real[0]) or setattr(hb, "curl", real[1]))
+        return seen
+
+    def test_read_previous_takes_the_newest_artifact_not_this_runs(self):
+        import zipfile
+        def download(path):
+            with zipfile.ZipFile(path, "w") as z:
+                z.writestr("heartbeat.json", json.dumps({"alarm_state": {"x": {}}}))
+        arts = {"artifacts": [{"workflow_run": {"id": 9}, "expired": False, "archive_download_url": "u/own"},
+                              {"workflow_run": {"id": 8}, "expired": True, "archive_download_url": "u/old"},
+                              {"workflow_run": {"id": 7}, "expired": False, "archive_download_url": "u/prev"}]}
+        seen = self.fake({"actions/artifacts?name=pipeline-heartbeat": arts, "download": download})
+        self.assertEqual(hb.read_previous("o/r", 9), {"alarm_state": {"x": {}}})
+        self.assertEqual(seen[-1][:2], ("curl", "u/prev"))
+        self.fake({"actions/artifacts": {"artifacts": []}, "download": download})
+        self.assertIsNone(hb.read_previous("o/r", 9))              # first run: nothing yet
+        self.fake({"actions/artifacts": arts, "download": lambda path: open(path, "w").close()})
+        self.assertIsNone(hb.read_previous("o/r", 9))              # a broken zip is no state, never a crash
+
+    def test_the_p95_sample_pages_back_past_24_hours(self):
+        def page(n, age, more):
+            return {"data": {"repository": {"recent": {"pageInfo": {"hasNextPage": more, "endCursor": f"c{n}"},
+                "nodes": [{"number": n, "headRefName": "claude/x", "createdAt": ago(age + 60), "closedAt": ago(age),
+                           "mergedAt": ago(age), "updatedAt": ago(age), "timelineItems": {"nodes": []},
+                           "commits": {"nodes": []}}]}}}}
+        pages = iter([page(1, 60, True), page(2, 600, True), page(3, 1500, True), page(4, 1600, True)])
+        main = {"data": {"repository": {"defaultBranchRef": {"target": {"history": {"nodes": []}}},
+                                        "open": {"totalCount": 0, "nodes": []}}}}
+        seen = self.fake({"actions/artifacts": {"artifacts": []}, "download": None, "nightly.yml": {"workflow_runs": []},
+                          "$after": lambda body: next(pages), "defaultBranchRef": main})
+        os.environ["GITHUB_REPOSITORY"] = "o/r"; self.addCleanup(os.environ.pop, "GITHUB_REPOSITORY")
+        f = hb.collect(HB, NOW, None, ctx := {})
+        self.assertEqual([p["number"] for p in f["merged_prs"]], [1, 2, 3])   # page 3 reaches past 24 h: stop
+        self.assertTrue(f["recent_complete"])
+        self.assertEqual([b["variables"].get("after") for m, u, b in seen if b and "$after" in b["query"]],
+                         [None, "c1", "c2"])
+        self.assertEqual(ctx["previous"], None)
+
     # reading GitHub's answer ----------------------------------------------------------------------------------------
     def test_facts_from_graphql(self):
         lab = lambda m, n=LAB: {"createdAt": ago(m), "label": {"name": n}}
