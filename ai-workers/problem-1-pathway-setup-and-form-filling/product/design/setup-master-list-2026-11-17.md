@@ -23,7 +23,7 @@ Sources: Lead 74's research (operating model v2, engineering system v1, failure 
 
 | # | What | Why | Cost | Status |
 |---|---|---|---|---|
-| B1 | GitHub: move the repository into an organization; **Team** (60 machines at once) or **Enterprise** (500) | Machines are the bottleneck: 68 runs queued at 10:22, nothing but records merged since 07:59 | US$4 or about US$21 a month | **Needs you.** P-652 chose Team; the org-move checklist says preparation P1-P13 can start now, the move itself is a no-go until the queue drains (2-3 h) |
+| B1 | GitHub: move the repository into an organization on **Enterprise, trial first** (500 machines at once) | Machines are the bottleneck: 68 runs queued at 10:22 | US$0 in the 30-day trial, then about US$21 a month | **Done** (decision P-656, 10:3x: "Enterprise, trial first"; Setup checks the trial's job limit, seats and billing term first, else Team). Preparation P1-P13 **Doing** today; the move itself is the next weekday from about 09:30 IST |
 | B2 | Ruleset on main: required `ci`, no force-push, no deletion | Stops a direct push around the checks | US$0 | **Needs you** (after B1) |
 | B3 | A separate reviewer identity (a machine account or GitHub App) | Today one "Claude" identity both builds and approves; the approval is a comment anyone on the team can write | US$0 | **Needs you** (your account action, P-551) |
 | B4 | Who must approve changes to the pipeline itself (`.github/`, `.mergify.yml`, `.claude/`, gate scripts): you, in two short slots a day | The builder must never control its own judge | about 10-20 min a day of your time | **Needs you** |
@@ -91,3 +91,4 @@ The finding: 143 rules, 112 of them prose and only 11 ever broken visibly; six g
 * 17 Nov 10:3x IST, Lead 75: first version.
 * 17 Nov 10:4x IST, Lead 75: A3 done (Setup); A5 decided (P-655); #2030 (Stuck now card) read and labelled; #2014's failed shard re-run.
 * 17 Nov 10:4x IST, Lead 75: A4 done (21 GB free); A7 records PR #2071 opened and labelled.
+* 17 Nov 10:4x IST, Lead 75: B1 decided, Enterprise trial first (P-656).
