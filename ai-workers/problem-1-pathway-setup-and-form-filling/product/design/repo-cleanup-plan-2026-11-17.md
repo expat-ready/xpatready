@@ -369,6 +369,10 @@ Founder rulings respected: **P-668 T17: no comment ban** (why-comments stay, P-6
 | same branch | `afd4d2e2c` (**held**) | 1b: `commercial/` (20 files) removed | only after the private copy is checked (P-677); SHA-256 list in the Lead's notes folder |
 | `cleanup/stage-2a-root-finder` (on stage 0) | `66be54145` | 33 callers switched: `p2/policy.ts`, `core.ts`, `canada.ts`, `field-format.ts`, `validate.ts`, `sample-validated.ts`, `own-yes-no.ts`, `files.ts`, `scan-logs.ts`, 6 studio tools, 16 product tools (3 hooks), Dockerfile + ignore | `check_repo_paths.ts` 18/18 (ledger = `.tools/p2-ledger`, as before); runtime probe of `core.ts` and `canada.ts` 7/7; typecheck error list **identical** to main's (80 known-environment lines in both); 8 of 10 changed tool tests pass, and `check-isolated-ttl` and `check-comment-run` give **the same results as main** here (they need the demo database or GitHub); `bash -n` on all 15 shell files |
 
+**Stage 2a, Done when (Lead 78, 17 Nov), before its PR opens:** the full suites (`run-suites.sh`, every shard), the Docker build of `studio/Dockerfile` with the image answering `/api/health`, and `start.sh` bringing the app up on :4400 in a scratch copy with `demo-smoke.mjs` passing. All green, each with its run link or log in the PR.
+
+**PRs for stages 0, 1 and 2a** open only on the Lead's word, after the move is verified, the queue is back on and the first merges are through on 18 Nov (full-power plan §C). **1b stays held** until the private copy matches the SHA-256 list file by file (P-677).
+
 **Not run here (CI or the Lead):** the full suites, the Docker build, `start.sh` on :4400 with the demo smoke test (the demo database is not running in this copy, and the main copy is never used for tests).
 
 ### 7.3 Revised order (Lead 78, P-688, P-674)
