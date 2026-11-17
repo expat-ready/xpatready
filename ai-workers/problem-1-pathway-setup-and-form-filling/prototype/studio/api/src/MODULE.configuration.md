@@ -19,7 +19,7 @@ Program structure, combinations and their setup: rules, questions, sources, chec
 - A fact a rule reads and the library lacks is worked out from library dates where it can be (B102), or proposed with its line (B82).
 - A form's role applies only when a second person approves (P-319).
 - A reason is kept only for the case officer on a fact that is not their own (P-155 (3)).
-- Other modules reach the eligibility rules only through `EligibilityPort`; `engine/eligibility/` never reaches `engine/runtime/` (contract v0.1 §2.6, AS-1m).
+- `engine/eligibility/` never reaches `engine/runtime/`; new callers reach the rules through `EligibilityPort` (`assessments.ts` imports them directly until CS-106c) (contract v0.1 §2.6, AS-1m).
 
 **Tables.** libraryChange, combination, canonicalField, programDef, factSource, govFormDef, draftingJob, proposalItem, formFieldMap, sourceEntry, logicalSection, derivedField, auditEvent.
 **Tests.** `tests/check_b102_worked_out.ts`, `tests/check_b52_own_yes_no.ts`, `tests/check_b78_section_names.ts`, `tests/check_b124_rests_on.ts`, `tests/check_sh3_resolver.ts`, `tests/check_as1m_eligibility_move.ts`.
