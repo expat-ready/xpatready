@@ -2,8 +2,9 @@
 # The test of module-cards.py (P-615 (3)): each fixture change must pass or fail as named. Run by
 # .github/workflows/module-cards.yml before the PR's own check. US$0, no network.
 #   bash product/tools/check-module-cards.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-root.sh"; _RR="$(repo_root)" || exit 2  # stage 2a: the root from AGENTS.md
 set -u
-TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"
+TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$_RR"
 S=ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
 T=$(mktemp -d "${TMPDIR:-/tmp}/cards.XXXXXXXX") && [ -d "$T" ] || { echo "no temp dir: nothing was checked"; exit 2; }
 trap 'rm -rf "$T"' EXIT

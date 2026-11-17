@@ -3,6 +3,7 @@
 # (the night's two failed starts at 4.7 and 3.7 GB, a load of 17, four copies), and its PreToolUse hook on start_session,
 # fed the hook's JSON as Claude Code does. US$0.
 #   bash product/tools/check-lane-preflight.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-root.sh"; _RR="$(repo_root)" || exit 2  # stage 2a: the root from AGENTS.md
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
 command -v jq >/dev/null || { echo "jq is missing; nothing was checked"; exit 2; }
@@ -27,7 +28,7 @@ hook "$(gb 37)" 3 "" x local; ok "hook: a Mac start at 3.7 GB is denied with the
 hook "$(gb 37)" 3 "" x cloud; ok "hook: a cloud start is not checked" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "$out"
 hook "$(gb 150)" 3 "" x ""; ok "hook: a Mac start with room passes" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "$out"
 hook "$(gb 150)" 3 "" x cloud "Row X-1. Done when: check-x.sh exits 0"; ok "hook: a cloud brief with no model and effort line or Duplicate check is denied (G-4 (7))" "$(echo "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | test("model and effort") and test("Duplicate check"))' >/dev/null && echo 1)" "$out"
-ROOTD="$(cd "$TOOLS/../../../.." && pwd)"
+ROOTD="$_RR"
 jq -e '[.hooks.PreToolUse[] | select(.matcher | test("start_session")) | .hooks[].command | select(test("lane-preflight.sh --hook"))] | length == 1' "$ROOTD/.claude/settings.json" >/dev/null
 ok "settings.json runs the preflight hook on start_session" "$([ $? = 0 ] && echo 1)"
 grep -q 'lane-preflight.sh' "$ROOTD/.claude/skills/lead/SKILL.md"; ok "skill lead runs lane-preflight.sh before start_session" "$([ $? = 0 ] && echo 1)"

@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { tail, claims, expand, openBugs, blockers, runPlan, stepsVerdict, packsOf, whereOf, placeOf, IN_CHECKPOINT, dataOf, dataMap, dataFor, dataForPack, notTested, modeOf, touchedPacks, diffSet, batchRecheck, checkpointTrigger, checkpointRows, packsReachedBy, packVerdict, part1, stepsPrinted, stepsUnprinted, packSteps, unprintedReason } from "./gate-b.mjs";
 
-const HERE = dirname(fileURLToPath(import.meta.url)), ACC = resolve(HERE, "../acceptance"), P = resolve(HERE, "../../../product");
+const HERE = dirname(fileURLToPath(import.meta.url)), ACC = resolve(HERE, "../acceptance"), P = (await import("../../../../../packages/repo-paths/index.ts")).repoPath("product"); // stage 2a
 /** A fixture pack whose run truly uses no server (only an engine run line), for the gate's no-server rules (B125, B131). */
 const NO_SERVER = { id: "C99.9", file: "C99.9.test.ts", text: "// Fixture pack (check-gate-b.mjs only): its documented run uses no server.\n//   tsx studio/acceptance/C99.9.test.ts --engine\nconsole.log(\"fixture\");\n" };
 let pass = 0, fail = 0;

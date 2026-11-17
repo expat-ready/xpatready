@@ -2,11 +2,13 @@
 // these constants; a run record cannot widen them. Changing a value here needs the founder's decision.
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import { repoPath, ROOT } from "../../../../packages/repo-paths/index.ts";
 
-export const PROTOTYPE = join(import.meta.dirname, "..");
-export const ROOT = join(PROTOTYPE, "..", "..", "..");
-export const SOLUTION = join(PROTOTYPE, "..");
-export const OFFICIAL = join(SOLUTION, "official-sources", "ircc");
+// Found from the repository root (AGENTS.md), never by counting folder levels: a move changes one LAYOUT line (stage 2a).
+export { ROOT };
+export const PROTOTYPE = repoPath("prototype");
+export const SOLUTION = repoPath("solution");
+export const OFFICIAL = repoPath("official", "ircc");
 export const INVENTORY = join(PROTOTYPE, "p1", "inventory");
 export const KEY_FILE = join(ROOT, ".tools", "solution-1-prototype", "secrets", "anthropic.env");
 /** Spend ledger for the whole experiment: kept in the project (evidence, backed up), append-only. The

@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { officialUrl } from "../../engine/canada.ts";
+import { repoPath } from "../../../../../../packages/repo-paths/index.ts";
 
 export type CanadaCode = "host" | "status" | "redirect" | "size" | "type" | "timeout" | "network" | "not_in_fixtures";
 /** A refusal or failure of the port, with a message a person can act on (shown as is). */
@@ -22,8 +23,7 @@ export interface CanadaSource { get(url: string, want: "html" | "pdf"): Promise<
 
 export const MAX_BYTES = 25 * 1024 * 1024;
 export const USER_AGENT = "ExpatReady-ProductStudio/0.1";
-const SOLUTION = join(import.meta.dirname, "..", "..", "..", "..");
-export const OFFICIAL_ROOT = join(SOLUTION, "official-sources", "ircc");
+export const OFFICIAL_ROOT = repoPath("official", "ircc");
 const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`;
 const secs = (ms: number) => ms >= 1000 ? `${Math.round(ms / 1000)} s` : `${ms} ms`;

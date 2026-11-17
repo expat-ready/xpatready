@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ALLOW_DEFAULT = join(HERE, "route-has-screen-allow.txt");
-const STUDIO_DEFAULT = join(HERE, "..", "..", "prototype", "studio");
+const STUDIO_DEFAULT = (await import("../../../../packages/repo-paths/index.ts")).repoPath("studio"); // stage 2a
 const MUTATING = ["POST", "PUT", "PATCH", "DELETE"];
 
 const walk = (dir, out = []) => {

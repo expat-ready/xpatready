@@ -10,7 +10,7 @@
 # database is checked again just before it is dropped, and dropped without --force, so one that came back into use in
 # between is skipped. Mac and Linux (bash 3.2). Test: product/tools/check-test-dbs.sh. US$0.
 set -u
-STUDIO="$(cd "$(dirname "$0")/.." && pwd)"; ROOT="$(cd "$STUDIO/../../../.." && pwd)"
+STUDIO="$(cd "$(dirname "$0")/.." && pwd)"; ROOT="${REPO_ROOT:-$(d="$STUDIO"; while [ ! -f "$d/AGENTS.md" ] && [ "$d" != / ]; do d="$(dirname "$d")"; done; echo "$d")}"   # stage 2a: the root from AGENTS.md
 export PATH="$ROOT/.tools/node-v24.21.0/bin:/opt/homebrew/opt/postgresql@18/bin:$PATH"
 PGARGS=(-h 127.0.0.1 -p "${PRUNE_PGPORT:-54329}" -U xr_studio)
 # Exactly nothing or --yes (#745 review M2: "--yes xr_studio_x" must not drop every stale database).

@@ -3,6 +3,7 @@
 // with plain tsx, as the checkpoint (api/src/demo.ts FORM_SETUP) and the route (api/src/own-question.ts) do.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { repoPath } from "../../../../../../packages/repo-paths/index.ts";
 
 export type Box = { data_path?: string; heading?: string | null; caption?: string | null; options?: [string, string][] };
 /** The form's printed question for a Yes/No box (P-170: never words that are not its question): the reading's heading
@@ -42,7 +43,7 @@ function savedTextHas(officialFile: string | null | undefined, w: string): boole
   const stem = /([^/]+)\.pdf$/i.exec(officialFile ?? "")?.[1];
   if (!stem || !/^[\w-]+$/.test(stem)) return false;
   let text: string;
-  try { text = readFileSync(join(import.meta.dirname, "..", "..", "..", "expected", "source-text", `${stem}.xfa-template.txt`), "utf8"); } catch { return false; }
+  try { text = readFileSync(repoPath("prototype", "expected", "source-text", `${stem}.xfa-template.txt`), "utf8"); } catch { return false; }
   const body = norm(text.split("\n").slice(1).join(" ")); // the first line is the file's own header, not the form's words
   return body.includes(norm(w));
 }

@@ -6,9 +6,10 @@
 // shown as "read from the form, not checked here" so nothing is silently claimed.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { repoPath } from "../../../../../packages/repo-paths/index.ts";
 import type { DependentList } from "../../p5/transforms.ts";
 
-const SOLUTION = join(import.meta.dirname, "..", "..", "..");
+const SOLUTION = repoPath("solution");
 
 /** A context a check may need: the address's country for a postal code, the other date for an order rule. */
 export type FormatContext = { country?: string | null; otherDate?: string | null; today?: Date };

@@ -5,6 +5,7 @@ import { lineSet, setWords, type SnapSet } from "./document-sets.ts";
 import { Ajv } from "ajv";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { repoPath } from "../../../../../packages/repo-paths/index.ts";
 import { canonical, CALCULATIONS, validatePredicate } from "../../contracts/rules.ts";
 import type { Snapshot } from "./snapshot.ts";
 import { askedChoiceProblems, channelProblems, fingerprintLine, type Accepts } from "./channels.ts";
@@ -22,7 +23,7 @@ import { bareCond, conditionConflicts, HELD_OPENING, readsWhen, withHeldConditio
 import { sourceChanges } from "./source-register.ts"; // G1 BR-9: the "Source" lines only; the gate stays out of validate()
 
 // C-11: a field map's form field list, read once per file (paths are relative to the Solution 1 folder, as in fill.ts).
-const SOLUTION = join(import.meta.dirname, "..", "..", "..");
+const SOLUTION = repoPath("solution");
 const inventories = new Map<string, { data_path?: string; caption?: string; ui?: string }[] | null>();
 const inventoryFields = (file: string) => {
   if (!inventories.has(file)) { try { inventories.set(file, JSON.parse(readFileSync(join(SOLUTION, file), "utf8")).fields ?? null); } catch { inventories.set(file, null); } }

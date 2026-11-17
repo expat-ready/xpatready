@@ -3,8 +3,9 @@
 # Each case commits into a throwaway git repository and runs the guard on that commit; the real repository is never
 # touched. Run by check-guards.sh (with --mutate: the allow-list check switched off, this test must fail). US$0, no network.
 #   bash product/tools/check-push-guard-fixtures.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-root.sh"; _RR="$(repo_root)" || exit 2  # stage 2a: the root from AGENTS.md
 set -u
-TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"
+TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$_RR"
 G="$TOOLS/push-guard.sh"
 LIST='packages/xfa-engine/fixtures/synthetic/synthetic-form.pdf
 packages/xfa-engine/src/__tests__/fixtures/aesv2-cleartext-metadata.pdf

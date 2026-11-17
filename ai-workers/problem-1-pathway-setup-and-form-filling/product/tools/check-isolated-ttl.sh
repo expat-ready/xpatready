@@ -4,6 +4,7 @@
 # minute shortened to a second (ISOLATED_TTL_UNIT=1): a copy stops itself at its --ttl, a stop or a new start ends the
 # old timer, start refuses a 5th copy, and the qa and next skills start and stop a copy in the same command. Needs zsh.
 #   bash product/tools/check-isolated-ttl.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-root.sh"; _RR="$(repo_root)" || exit 2  # stage 2a: the root from AGENTS.md
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
 command -v zsh >/dev/null || { echo "zsh is missing; nothing was checked"; exit 2; }
@@ -78,7 +79,7 @@ for c in "qa_x 4420" "qa_y 4431" "qa_z 4452" "qa_d 4474"; do iso $c stop; done
 iso ttl 4475 start; ok "the names ttl and logs are refused (folders of var/)" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
 iso qa_e 4475 start --ttl 0; ok "--ttl 0 is refused (every copy stops itself)" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
 
-SK="$(cd "$TOOLS/../../../.." && pwd)/.claude/skills"
+SK="$_RR/.claude/skills"
 for s in qa next; do grep -qE "isolated\.sh [^\`]* start [^\`]*&& trap [^\`]*isolated\.sh [^\`]* stop" "$SK/$s/SKILL.md"
   ok "skill $s starts and stops its copy in the same command" "$([ $? = 0 ] && echo 1)" "no 'start ... && trap ... stop' in $s"; done
 finish

@@ -11,9 +11,10 @@
 #      nightly.yml on main with exactly the parsed inputs, re-runs only a finished failed ci run's failed jobs, replies
 #      with the run or the reason, and never echoes the comment. US$0, no network.
 #   bash product/tools/check-comment-run.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-root.sh"; _RR="$(repo_root)" || exit 2  # stage 2a: the root from AGENTS.md
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
-WF="$(cd "$TOOLS/../../../.." && pwd)/.github/workflows/comment-run.yml"
+WF="$_RR/.github/workflows/comment-run.yml"
 [ -f "$WF" ] || { echo "no $WF: nothing was checked"; exit 2; }
 W=$(mktemp -d "${TMPDIR:-/tmp}/crun.XXXXXXXX") && [ -d "$W" ] || { echo "no temp dir: nothing was checked"; exit 2; }; trap 'rm -rf "$W"' EXIT
 

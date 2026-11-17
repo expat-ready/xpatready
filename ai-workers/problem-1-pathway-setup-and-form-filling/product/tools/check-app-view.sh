@@ -4,6 +4,7 @@
 # lead-watch.sh) gives one ACT per flag and "not read in N min" past 35 min; lead-check-guard.sh's Stop mode refuses a
 # stale check turn and passes a fresh one, another turn or another copy. Clock and lane are faked. US$0, no network.
 #   bash product/tools/check-app-view.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-root.sh"; _RR="$(repo_root)" || exit 2  # stage 2a: the root from AGENTS.md
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
 command -v jq >/dev/null && command -v node >/dev/null || { echo "jq or node is missing; nothing was checked"; exit 2; }
@@ -51,6 +52,6 @@ r=$(stop lead $((NOW + 60 * 60)) "where are we?"); ok "another turn of the Lead 
 r=$(stop screens $((NOW + 60 * 60)) "$C"); ok "a builder's copy is never blocked" "$([ "$r" = pass ] && echo 1)" "got $r"
 r=$(stop lead $((NOW + 60 * 60)) "Lead check (run lead-watch; read STATE Start here)"); ok "a check prompt wrapped in other words is still a check turn" "$([ "$r" = block ] && echo 1)" "got $r"
 grep -q 'app-view-check.sh' "$TOOLS/lead-watch.sh"; ok "lead-watch.sh runs app-view-check.sh and counts its ACT lines" "$([ $? = 0 ] && echo 1)"
-git -C "$TOOLS" check-ignore -q "$PRODREL/state/app-view-latest.txt" 2>/dev/null || git -C "$(cd "$TOOLS/../../../.." && pwd)" check-ignore -q "$PRODREL/state/app-view-latest.txt"
+git -C "$TOOLS" check-ignore -q "$PRODREL/state/app-view-latest.txt" 2>/dev/null || git -C "$_RR" check-ignore -q "$PRODREL/state/app-view-latest.txt"
 ok "state/app-view-latest.txt is gitignored" "$([ $? = 0 ] && echo 1)"
 finish

@@ -19,12 +19,13 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { CanadaError, LiveCanada, OFFICIAL_ROOT, type Fetched, type FixtureIndex, type FixtureItem } from "../api/src/canada.ts";
+import { repoPath } from "../../../../../packages/repo-paths/index.ts";
 import { parseFormPage, parseFormsIndex, textFingerprint, type IndexRow } from "../engine/canada.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), PROTOTYPE = join(STUDIO, ".."), SOLUTION = join(PROTOTYPE, "..");
 const OFFICIAL = OFFICIAL_ROOT, PAGES = join(OFFICIAL, "canada", "pages"), INDEX = join(OFFICIAL, "canada", "index.json");
 const MANIFEST = join(OFFICIAL, "manifest.json"), INVENTORY = join(PROTOTYPE, "p1", "inventory"), SOURCE_TEXT = join(PROTOTYPE, "p1", "source_text.py");
-const VENV_PY = join(SOLUTION, "..", "..", ".tools", "solution-1-prototype", ".venv", "bin", "python");
+const VENV_PY = repoPath("tools", "solution-1-prototype", ".venv", "bin", "python");
 const BASE = "https://www.canada.ca/en/immigration-refugees-citizenship/services/";
 const FORMS_INDEX = `${BASE}application/application-forms-guides.html`;
 const APPROVAL = "P-123 recorded download";

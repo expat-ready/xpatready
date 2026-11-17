@@ -21,7 +21,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(HERE, "..", "..", "..", "..");
+const { ROOT } = await import("../../../../packages/repo-paths/index.ts"); // stage 2a: the root from AGENTS.md
 const WORKFLOWS = join(ROOT, ".github", "workflows");
 const HINT = "bash -e passes over a failed command before the last && of a list, so a later green line hides it: put one command per line (P-376 (3))";
 
