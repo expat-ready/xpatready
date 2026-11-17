@@ -20,22 +20,12 @@ Founder **back**, on Remote Control (no session starts over it, P-486b). Standby
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 | # | Ask (IST) | Status |
 |---|---|---|
-| S10, A1-A4, A6, A8-A13, A18-A23, A25-A27, A29, A30, A32, A33, A35, A36, A44, A45, A47, A48 | done, answered or standing | pointer rows word for word in `history/STATE-2026-11-14-0910-lead41s2-founder-asks-pointer-rows.md` |
-| A5, A7, A24, A28, A31, A34, A37-A43 | earlier asks | done or superseded (Lead 52, 15 Nov; nothing waits on him); row word for word in `history/STATE-2026-11-15-1045-lead53s2-founder-asks-A5-A43-row.md` |
-| A49-A67 | 14 Nov asks (map, architecture, board A61-A64, private copy, cockpit, Library, PRD, gap scan A65, speed A66, delivery per token A67) | decided or in progress; pointer rows word for word in `history/STATE-2026-11-15-0935-lead51s2-founder-asks-pointer-rows-A49-A67.md` |
-
-| A68-A89 | 15 Nov asks (A89: six founder-start steps, in progress under "Needs you") | rows word for word in `history/STATE-2026-11-16-0950-lead64s2-asks-A68-A89-rows.md` |
-
-| A90-A105 | 15-16 Nov evening and night asks | answered or in progress; rows word for word in `history/STATE-2026-11-16-0925-lead64s2-asks-A90-A105-rows.md` |
-| A106-A111 | 16 Nov morning asks (clean-up, research, app view, context diet) | done or answered; rows word for word in `history/STATE-2026-11-16-1100-lead64s2-asks-A106-A111.md` |
-| A112-A114 | 16 Nov morning: board speed and taps; records path (every 3 h); waits on the Lead (answer all each check, report the oldest) | answered, standing; rows word for word in `history/STATE-2026-11-16-1100-lead65s2-asks-A112-A114-rows.md` |
-| A115-A120 | 16 Nov late morning: board audit (A115), Devin and Claude Code practice (A116), board-reading check (A117, B201), board and check verify each other (A118, P-639), known failures each check (A119, B202), standing approval to start lanes while away (A120) | answered or in progress; rows word for word in `history/STATE-2026-11-16-1450-lead67s2-asks-A115-A120-rows.md` |
-| A121-A136 | 16 Nov 17:41 IST to 17 Nov 00:2x asks (status, enforcement, standbys, 21-22 Proven target A134, more CI machines A136) | answered or standing; A130 stall research still owed; rows word for word in `history/STATE-2026-11-17-0750-lead72s2-asks-A121-A136-pointer-rows.md` |
+| S10-A136 | 10 Nov to 17 Nov 00:2x asks | done, answered, standing or superseded (A130 stall research still owed); the pointer rows word for word in `history/STATE-2026-11-17-0858-lead74s2-asks-pointer-rows-S10-A136.md` |
 | A137-A141 | 17 Nov 00:2x-08:2x asks (more speed A137; CI gaps A138; full list and decisions one by one A139; talk audit A140; autonomous best-in-class pipeline A141) | research page v2 published 08:4x (D1-D13); talk audit pending from Lead 73's workflow; rows word for word in `history/STATE-2026-11-17-0855-lead74s2-asks-A137-A141-rows.md` |
 
 | A142 | 08:5x IST 17 Nov (typed): use the tokens before the 10:30 IST weekly reset to "baseline and finalize entire pipeline, entire rules, .md files", and all the checks; after 10:30 sit together for GitHub, buying CI, PR review, qa machines or testing tools; then the Lead takes it on; **30 Proven by tomorrow morning** (18 Nov) | Lead 74 workflow (baseline, target, critic) running; joint session 10:30 |
 | A143 | 08:5x IST 17 Nov (typed): a second talk (agents' environment: deterministic checks over prose, verification, codebase as input): learn only what official documents support, never copy | in the A142 workflow |
-| A145 | 09:0x IST 17 Nov (typed): both talks (A140 and A143) in one final approach: what we picked and from which talk, what we dropped and why, what we do beyond them, what neither captured that we should; nothing missed; **the Lead reminds him to check it** | combine Lead 73's A140 audit with the A143 verdicts once both land; first item on the 10:30 agenda; reminder cron |
+| A145 | 08:5x IST 17 Nov (typed): both talks (A140 and A143) in one final approach: what we picked and from which talk, what we dropped and why, what we do beyond them, what neither captured that we should; nothing missed; **the Lead reminds him to check it** | combine Lead 73's A140 audit with the A143 verdicts once both land; first item on the 10:30 agenda; reminder cron |
 | A144 | 08:5x IST 17 Nov (typed): the pipeline document is a living Library master, kept refreshed; no day-2-to-5 plan: "Can we do it right away and then measure it?"; best in class end to end (coding, test, qa, CI, merge, main) and for long unattended runs (find problems, maintain, optimize) | Lead 74 workflow wf_64371f56-be4 (8:5x-~09:4x): every step placed today; page and 10:30 agenda |
 
 ## Start here (next Lead)
