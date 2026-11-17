@@ -61,7 +61,7 @@ try {
     sql(PRE, `select pg_get_constraintdef(oid) from pg_constraint where conname = 'money_trust_entry_balance_check'`).includes("balance_after_minor >= 0) AND (seq >= 1"));
 
   const firmA = sql(T, `insert into platform_firm (id, key, operating_name, country_code, contact_email, updated_at) values (gen_random_uuid(), 'firm-a2', 'A2', 'CA', 'office@firm-a2.example.com', now()) returning id`);
-  sql(T, `insert into money_payment_settings (firm_id, updated_by, updated_at, trust_enabled) values ('${firmA}', 'user-O', now(), true)`);
+  sql(T, `insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${firmA}', 'user-O', now()); update money_payment_settings set trust_answer = 'YES', trust_answered_by = 'user-O' where firm_id = '${firmA}'`);
   let n = 0; const key = () => `key-fo7a2-${String(++n).padStart(6, "0")}`;
   const invoice = (total: number, pid: string) => { const id = randomUUID();
     sql(T, `insert into money_invoice (id, firm_id, person_id, currency, due_date, created_by, updated_at) values ('${id}', '${firmA}', '${pid}', 'CAD', '2026-12-15', 'user-R', now());
