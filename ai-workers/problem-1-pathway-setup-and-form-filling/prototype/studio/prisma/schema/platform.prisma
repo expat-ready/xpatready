@@ -322,6 +322,8 @@ model PlatformInvitation {
   expiresAt  DateTime       @map("expires_at") @db.Timestamptz
   acceptedAt DateTime?      @map("accepted_at") @db.Timestamptz
   revokedAt  DateTime?      @map("revoked_at") @db.Timestamptz
+  /// PF-4dn: the name the inviter typed (1-120 characters, trimmed); accept uses it, else the email's part before the @.
+  displayName String?       @map("display_name")
 
   firm PlatformFirm @relation(fields: [firmId], references: [id], onDelete: Restrict)
 

@@ -30,7 +30,7 @@ const INVITE_KEY = "agent/staff:manage";
 /** The Accept page's words (BR-4), fixed. */
 export const INVITE_WORDS = { expired: (firm: string) => `This invitation has expired. Ask ${firm} to send a new one.`, notValid: "This invitation is no longer valid." };
 
-type InvRow = { id: string; firm_id: string; email: string; roles: PlatformRole[]; invited_by: string; accepted_at: Date | null; revoked_at: Date | null; expired: boolean; firm_name: string; firm_key: string };
+type InvRow = { id: string; firm_id: string; email: string; display_name: string | null; roles: PlatformRole[]; invited_by: string; accepted_at: Date | null; revoked_at: Date | null; expired: boolean; firm_name: string; firm_key: string };
 
 @Injectable()
 export class PlatformSession {
@@ -70,9 +70,9 @@ export class PlatformSession {
     if (typeof token !== "string" || !TOKEN.test(token)) return null;
     const hash = createHash("sha256").update(token).digest("hex");
     const rows = lock
-      ? await tx.$queryRaw<InvRow[]>`select i.id, i.firm_id, i.email, i.roles::text[] as roles, i.invited_by, i.accepted_at, i.revoked_at, (i.expires_at <= now()) as expired, f.operating_name as firm_name, f.key as firm_key
+      ? await tx.$queryRaw<InvRow[]>`select i.id, i.firm_id, i.email, i.display_name, i.roles::text[] as roles, i.invited_by, i.accepted_at, i.revoked_at, (i.expires_at <= now()) as expired, f.operating_name as firm_name, f.key as firm_key
           from platform_invitation i join platform_firm f on f.id = i.firm_id where i.token_hash = ${hash} for update of i`
-      : await tx.$queryRaw<InvRow[]>`select i.id, i.firm_id, i.email, i.roles::text[] as roles, i.invited_by, i.accepted_at, i.revoked_at, (i.expires_at <= now()) as expired, f.operating_name as firm_name, f.key as firm_key
+      : await tx.$queryRaw<InvRow[]>`select i.id, i.firm_id, i.email, i.display_name, i.roles::text[] as roles, i.invited_by, i.accepted_at, i.revoked_at, (i.expires_at <= now()) as expired, f.operating_name as firm_name, f.key as firm_key
           from platform_invitation i join platform_firm f on f.id = i.firm_id where i.token_hash = ${hash}`;
     return rows[0] ?? null;
   }
@@ -112,7 +112,8 @@ export class PlatformSession {
       if (await tx.platformStaff.findFirst({ where: firmScope(inv.firm_id, { email: inv.email }), select: { id: true } })) problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state: "NOT_VALID" });
       // One sign-in account is one firm's staff member (identity_subject is unique): the invitee, who holds the link, is told plainly.
       if (await tx.platformStaff.findFirst({ where: { email: inv.email }, select: { id: true } })) problem(409, "Use another email", `This email already signs in to another firm. Ask ${inv.firm_name} to invite another address.`, { code: "EMAIL_IN_ANOTHER_FIRM" });
-      const staff = await tx.platformStaff.create({ data: { firmId: inv.firm_id, email: inv.email, displayName: inv.email.split("@")[0].slice(0, 100), status: "ACTIVE" } });
+      // PF-4dn: the name the inviter typed, else the part of the email before the @ (as before).
+      const staff = await tx.platformStaff.create({ data: { firmId: inv.firm_id, email: inv.email, displayName: inv.display_name ?? inv.email.split("@")[0].slice(0, 100), status: "ACTIVE" } });
       for (const role of inv.roles) await tx.platformRoleGrant.create({ data: { firmId: inv.firm_id, staffId: staff.id, role, grantedBy: inv.invited_by } });
       // PF-6m (QA-478; PF-6b ruling 2 (b)): money keys given by an invitation write the same line as the role-change door,
       // by the inviter (as the grant rows record), before the provider call so a refusal rolls it back too.

@@ -73,6 +73,16 @@ export function reasonOf(v: unknown, required: boolean, what = "reason"): string
   if ([...t].length > 200) return problem(400, "Shorten the reason", `The ${what} is at most 200 characters.`, { code: "REASON_TOO_LONG" });
   return t;
 }
+/** PF-4dn (AG-1-10): the invitee's name, optional. Trimmed; 1-120 characters; no control, format or line-break character.
+ *  Empty or spaces only is no name (accept then uses the part of the email before the @). */
+export function displayNameOf(v: unknown): string | null {
+  if (v === undefined || v === null || (typeof v === "string" && !v.trim() && !/[\p{Cc}\p{Cf}]/u.test(v))) return null;
+  if (typeof v !== "string") return problem(400, "Check the name", "The name is text.", { code: "DISPLAY_NAME_INVALID" });
+  if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(v) || !wellFormed(v)) return problem(400, "Check the name", "The name has a line break or an invisible character. Type it again on one line.", { code: "DISPLAY_NAME_INVALID" });
+  const t = v.trim();
+  if ([...t].length > 120) return problem(400, "Shorten the name", "The name is at most 120 characters.", { code: "DISPLAY_NAME_TOO_LONG" });
+  return t;
+}
 const textOf = (v: unknown, what: string) => {
   if (typeof v !== "string" || !v.trim() || [...v.trim()].length > 100 || /[\p{Cc}\p{Cf}]/u.test(v) || !wellFormed(v)) return problem(400, "Check the licence record", `Give the ${what} (1 to 100 characters).`, { code: "CREDENTIAL_INVALID" });
   return v.trim();
@@ -309,10 +319,10 @@ export class PlatformIdentity implements OnModuleInit {
 
   /** Inserts an invitation measured from the database's clock (72 hours from now()); the token is kept only as a hash and
    *  is not returned (contracts §7: no token returned by a route; PF-4b's MailPort sends the link). */
-  private async insertInvitation(tx: Tx, firmId: string, email: string, roles: PlatformRole[], by: string) {
+  private async insertInvitation(tx: Tx, firmId: string, email: string, roles: PlatformRole[], by: string, displayName: string | null = null) {
     const { token, hash } = PlatformIdentity.token();
-    const [row] = await tx.$queryRaw<{ id: string; expires_at: Date; created_at: Date }[]>`insert into platform_invitation (id, firm_id, email, roles, token_hash, invited_by, expires_at)
-      values (gen_random_uuid(), ${firmId}::uuid, ${email}, ${roles}::"PlatformRole"[], ${hash}, ${by}, now() + interval '72 hours') returning id, expires_at, created_at`;
+    const [row] = await tx.$queryRaw<{ id: string; expires_at: Date; created_at: Date }[]>`insert into platform_invitation (id, firm_id, email, roles, token_hash, invited_by, expires_at, display_name)
+      values (gen_random_uuid(), ${firmId}::uuid, ${email}, ${roles}::"PlatformRole"[], ${hash}, ${by}, now() + interval '72 hours', ${displayName}) returning id, expires_at, created_at`;
     return { ...row, token };
   }
 
@@ -341,12 +351,12 @@ export class PlatformIdentity implements OnModuleInit {
     if (open) problem(409, "Already invited", "This person already has a pending invitation: resend it instead.", { code: "ALREADY_INVITED" });
   }
 
-  async invite(actor: StaffContext, body: { email?: unknown; roles?: unknown; reason?: unknown }) {
-    const email = emailOf(body.email), roles = rolesOf(body.roles), reason = reasonOf(body.reason, false);
+  async invite(actor: StaffContext, body: { email?: unknown; roles?: unknown; reason?: unknown; displayName?: unknown }) {
+    const email = emailOf(body.email), roles = rolesOf(body.roles), reason = reasonOf(body.reason, false), displayName = displayNameOf(body.displayName);
     const out = await this.inFirm(actor, async (tx) => {
       await this.rowCheck(tx, actor, email, roles, reason);
       await this.seatCheck(tx, actor.firmId);
-      const row = await this.insertInvitation(tx, actor.firmId, email, roles, actorWord(actor.staffId));
+      const row = await this.insertInvitation(tx, actor.firmId, email, roles, actorWord(actor.staffId), displayName);
       await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${roles.join(", ")}; 72 hours)`, detail: { invitationId: row.id, roles, reason } });
       return { id: row.id, email, roles, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token };
     });
@@ -415,7 +425,7 @@ export class PlatformIdentity implements OnModuleInit {
       await this.roleRules(actor, null, old.roles, [], reason, tx);
       await tx.$executeRaw`update platform_invitation set revoked_at = now() where id = ${old.id}::uuid`;
       await this.seatCheck(tx, actor.firmId);
-      const row = await this.insertInvitation(tx, actor.firmId, old.email, old.roles, actorWord(actor.staffId));
+      const row = await this.insertInvitation(tx, actor.firmId, old.email, old.roles, actorWord(actor.staffId), old.displayName);   // PF-4dn: the name goes with the new link
       await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.resent", entityKey: row.id, summary: "an invitation was sent again; the old link no longer works", detail: { invitationId: row.id, replaces: old.id, roles: old.roles } });
       return { id: row.id, replaces: old.id, email: old.email, roles: old.roles, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token };
     });
