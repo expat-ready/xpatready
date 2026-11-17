@@ -5,9 +5,9 @@ current_lead: local_f6824017-15da-4b1e-b6c8-ba19bd98b100 Lead 76 · 17 Nov 11:1x
 updated: 2026-11-17 11:2x IST by **Lead 76 (series 2, local_f6824017)** (took over 11:10 IST from Lead 75; check cron a4d44989 at :17 and :47) · 5-hour 58%, weekly 2% at 11:2x · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-657**; P-658 to P-660 newer, lag 3, read word for word at the start) · this branch: `lead/2026-11-07-lead31`
 
 
-Older pointer lines: `history/STATE-2026-11-13-2245-lead37s2-old-pointer-lines.md`.
 
-**Founder at the Mac / Remote Control, typing.** He said at 10:2x: Lead 74 was over context and not following the rules; agents do the work themselves ("usually agent logs into the cloud.ai and he archives for me ... He do everything").
+
+Pointer and 10:2x founder lines: `history/STATE-2026-11-17-1208-lead76s2-pointer-lines.md`.
 
 ## Hand-over: Lead 75 → Lead 76, 11:1x IST 17 Nov — read this first (Lead 74's block word for word: `history/STATE-2026-11-17-1120-lead75s2-lead74-handover-block.md`)
 Standbys: **Lead 77 (local_baa78a6d)**, then **Lead 78 (local_68613e56)**, started 12:07 by Lead 76 (P-286). **Founder setup agent (local_c3e4ea74)** walks him through his cards; it sends you each answer word for word and you record it (P-656 to P-660 so far).
