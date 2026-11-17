@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-657**, 17 Nov 10:5x IST (P-654 to P-657 added by Lead 75); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-17-1050-lead75s2-as-of-P-653.md`, whose first line lists the older ones)
+# Rule register (the tech lead keeps it; as of **P-661**, 17 Nov 11:4x IST (P-658 to P-661 added by Lead 76); earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-17-1140-lead76s2-as-of-P-657.md`, whose first line lists the older ones)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -123,7 +123,6 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-440 | This page is refreshed at every hand-over and lags DECISIONS by at most 3 rows. | script: check-docs.sh (RULES LAG; test check-rules-lag.sh) | 9 Nov |
 | P-371 | Never cancel a CI run; re-run the failed part alone (P-384); product code only through the queue; check fixes may land ahead on green (P-214). | prose | P-612 |
 | P-616 | A capability with no screen passes gate A by API; map row 99's model choice is launch condition C26. | prose | 15 Nov |
-| P-617 | Size exception for #1815 only; rows briefed from now stay under 800 lines. | CI: pr-rules size step (pr-size.sh reads the row) | 15 Nov |
 | P-618 | Outside dependencies in `design/outside-dependencies.md`: start at need − lead time − 2× buffer; 🔴 when due or stuck 48 h; fallback and date on a block. | script: outside-deps-watch.py via lead-watch.sh step 9 (part; `rules/tokens-money-account.md`) | 15 Nov |
 | P-619 | Enforcement steps 3-8 approved; alarms for a stale board (45 min) and outside items. | prose (B193 builds them) | 15 Nov |
 | P-620 | Each Claude account checks the company Gmail connector at start and after a switch; missing → ask the founder. | prose (B193 part 6) | 16 Nov |
@@ -150,11 +149,14 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-647 | Each check reads claude.ai/code statuses and acts on waiting lanes; no lane waits on a network change. | prose (built-in browser script) | 16 Nov |
 | P-651 | (with P-648, P-649) CI overflow on the Namespace trial; full tests once, in the merge queue. | prose | 17 Nov |
 | P-650 | Express Entry stays end to end; five provincial streams assessment only in R1. | prose | 17 Nov |
-| P-652 | One-time P-371 exception for #2032's run 43929287134; org move on GitHub Team decided (A137). | prose | 17 Nov |
 | P-653 | Founder's 17 Nov morning answers stand as recorded in DECISIONS (Owner-only Case Officer invites; reversal stays paid, red shortfall; Manitoba Sample until read). | prose | 17 Nov |
-| P-654 | Size exception for #2064 (PF-18b) only; new rows stay under 800 lines. | script: pr-size.sh | 17 Nov |
 | P-655 | Board rebuilds once a day (09:00 IST) and on the founder's ask. | prose | 17 Nov |
+| IDX-6 | One-time exceptions (P-617, P-652, P-654) stand as recorded; the rows word for word in `rules/tech-lead.md` › One-time exceptions (moved 17 Nov by Lead 76). | prose | 17 Nov |
 | P-657 | GitHub Enterprise bought outright (supersedes P-656 trial, reverses P-652 Team). | prose | 17 Nov |
+| P-658 | Enterprise paid, monthly; Pro kept until a week after the move. | prose | 17 Nov |
+| P-659 | Org expat-ready; the repository moves only by the org-move checklist. | prose | 17 Nov |
+| P-660 | Drain 17 Nov (only near-Proven product PRs and pipeline fixes start), move Wed 18 Nov 09:30 IST, full power after it is verified. | prose | 17 Nov |
+| P-661 | The setup agent acts itself in front of the founder, who types every password, card and approval. | prose | 17 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |

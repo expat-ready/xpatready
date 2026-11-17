@@ -29,3 +29,11 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | Merge batches thrown away | 15% or less (conflicts at most 5 a day) |
 | Weekly plan burn per hour (P-440) | 3% or less |
 
+
+
+## One-time exceptions (moved word for word from RULES.md, 17 Nov 11:4x IST, Lead 76)
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| P-617 | Size exception for #1815 only; rows briefed from now stay under 800 lines. | CI: pr-rules size step (pr-size.sh reads the row) | 15 Nov |
+| P-652 | One-time P-371 exception for #2032's run 43929287134; org move on GitHub Team decided (A137). | prose | 17 Nov |
+| P-654 | Size exception for #2064 (PF-18b) only; new rows stay under 800 lines. | script: pr-size.sh | 17 Nov |
