@@ -1,6 +1,6 @@
 # Repository clean-up plan — 17 Nov 2026 (A155, phase 1: plan only)
 
-Author: the repository clean-up agent (Opus 5.5, P-608), reporting to the tech lead. Status: **draft for the founder's approval**. Nothing has moved yet. Phase 2 (doing the moves) starts only after (a) the founder approves this plan, (b) the move into the `expat-ready` organisation is done and checked (Wed 18 Nov 09:30 IST, P-660), and (c) the Lead says go.
+Author: the repository clean-up agent (Opus 5.5, P-608), reporting to the tech lead. Status: **founder answered Q1–Q3 on 17 Nov; plan approval and the Lead's go pending**. Nothing has moved yet. Phase 2 (doing the moves) starts only after (a) the founder approves this plan, (b) the move into the `expat-ready` organisation is done and checked (Wed 18 Nov 09:30 IST, P-660), and (c) the Lead says go.
 
 Measured on `main` at `ceaf13037` (17 Nov, ~13:00 IST). Every number below comes from `git ls-files`, `git grep` or the GitHub API on that commit.
 
@@ -209,6 +209,6 @@ git -c merge.directoryRenames=true rebase origin/main
 Answers are recorded below as the founder gives them.
 
 ### Founder's answers
-- Q1: _pending_
-- Q2: _pending_
-- Q3: _pending_
+- Q1 (17 Nov, ~13:4x IST): **"platform (Recommended)"**: rename to `expat-ready/platform` in stage 7, after the org move is checked.
+- Q2: **"Remove + git tag (Recommended)"**: stage 1 removes the October files from the main tree; tag `history/pre-cleanup-2026-11` keeps them.
+- Q3: **"Move to private home (Recommended)"**: `commercial/` is copied to the founder's private GitHub home (the copy is checked file by file), then removed from this tree in stage 1. Old copies remain in public history (no rewrite, rule 1).
