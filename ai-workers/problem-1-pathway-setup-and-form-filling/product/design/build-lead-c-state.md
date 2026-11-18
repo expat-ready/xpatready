@@ -224,3 +224,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
 * 03:23 IST 19 Nov: #2167 (CS-K1 part 1) labelled by Lead 83. Current Lead is now Lead 84 (local_f88c32b8).
 * 03:24 IST 19 Nov: #2000 head 15e7fe389 and #2124 head 85b92f81a each have a matching diff-only Approve; sent to Lead 84 for the relabel. The #2169 size question is with Lead 84.
 * 03:26 IST 19 Nov (Lead 84): P-711 is the size exception for #2169 only. #2169 head a96fcc866 adds only review.md over f954a886f, which is Approved; the lane re-posts the Approve on the exact head and adds the P-711 line. The start.sh sign-in change becomes its own one-line PR, with Lead 84 reading the diff.
+* 03:27 IST 19 Nov (Lead 84): #2000 labelled at 15e7fe389; #2124 already labelled and queued at 85b92f81a. Labelled now: #2000, #2106, #2124, #2167. #2169 waits for an Approve on its head.
