@@ -15,6 +15,8 @@ import { FIRM_KEY, forbidden, problem, unauthorized, type StaffContext } from ".
 import { PlatformClock } from "../port.ts";
 import { PlatformIdentity } from "../service.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./mail.ts";
+import { ensureMessagesFirm } from "../../messages/consent/messages-firm.ts";
+import { MailSuppressed, SYSTEM_LIMIT_WORDS, SystemMailLimited, suppressedWords } from "../../messages/send/system-mail.ts";
 import { IDENTITY_ADMIN_PORT, LocalIdentityAdmin, type IdentityAdminPort } from "./provider.ts";
 import { requireStepUp } from "./step-up.ts";
 
@@ -178,8 +180,21 @@ export class PlatformSession {
 
   /** POST /api/platform/staff/:id/reset-two-step (question 3 decided: recovery by an Owner or Admin after their own
    *  step-up; OWASP "Resetting MFA"): nobody resets their own; an Owner's only by an Owner; the person's sessions end, they
-   *  are emailed through MailPort, and they set up the second step again at their next sign-in. */
+   *  are emailed through MailPort, and they set up the second step again at their next sign-in. PF-19e: a suppressed
+   *  address → 409 with the sentence and an audit line, nothing reset; over the per-address hourly limit → 429. */
   async resetTwoStep(actor: StaffContext, id: string) {
+    // The notice is sent inside the reset's transaction, which holds the firm's row lock; a firm's first message makes its
+    // msg_firm row, whose key check would wait on that lock (PF-19e: found by DW3), so the row is made first.
+    await this.db.$transaction((tx) => ensureMessagesFirm(tx, actor.firmId));
+    try { return await this.resetTwoStepOnce(actor, id); } catch (e) {
+      if (e instanceof SystemMailLimited) problem(429, "Too many emails", SYSTEM_LIMIT_WORDS, { code: "EMAIL_LIMIT" });
+      if (!(e instanceof MailSuppressed)) throw e;
+      const staffId = id.toLowerCase();
+      await this.inFirm(actor, (tx) => this.audit(tx, actor, "platform.staff.email_suppressed", staffId, "a two-step reset was not done: the person's address is on the firm's suppression list", { staffId, mail: "identity.two_step_reset" }));
+      return problem(409, "Email not sent", suppressedWords(e.address), { code: "EMAIL_SUPPRESSED" });
+    }
+  }
+  private async resetTwoStepOnce(actor: StaffContext, id: string) {
     return this.inFirm(actor, async (tx) => {
       const t = await this.target(tx, actor.firmId, id);
       if (!actor.roles.includes("OWNER") && !actor.roles.includes("ADMIN")) forbidden("Only an Owner or Admin resets a person's two-step sign-in.", "OWNER_OR_ADMIN_ONLY");

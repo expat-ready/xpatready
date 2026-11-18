@@ -1,6 +1,6 @@
 // PF-19b part 1 (row 48's `local` adapter; stand-in SI-20 for real delivery): GET /api/demo/platform-inbox?address= lists
 // the messages the local adapter marked SENT to one address, newest first, with subject and body from the stored rendered
-// file (PF-19p: platform account messages, no firm, by address as firm ones) and its attachments (a text file, such as a booking's invite.ics, with its text: qa #1855) and, part 2, the List-Unsubscribe headers an SES email would carry. Demo workspace only (404 elsewhere); a client's persona, by id or persona name, never opens a mailbox (403; break m1).
+// file (PF-19p: platform account messages, no firm, by address as firm ones) and its attachments (a text file, such as a booking's invite.ics, with its text: qa #1855) and, part 2, the List-Unsubscribe headers an SES email would carry. PF-19e: a sealed (TRANSACTIONAL) body is opened here for the demo reader only; one that will not open is left out. Demo workspace only (404 elsewhere); a client's persona, by id or persona name, never opens a mailbox (403; break m1).
 import { Controller, Get, Headers, HttpStatus, Inject, Query } from "@nestjs/common";
 import { LINK_WORDS } from "../../../../contracts/person-link.ts";
 import { normaliseAddress } from "../../../../ports/consent.ts";
@@ -9,6 +9,8 @@ import type { Rendered } from "../../../../ports/messages.ts";
 import { Db, fail, isDemoWorkspace, OpenRead, RUNTIME_ACTORS } from "../../core.ts";
 import { LOCAL_PROVIDER } from "./channels/email/local.ts";
 import { unsubscribeHeaders, type UnsubscribeTokens } from "./channels/email/unsubscribe.ts";
+import type { SecretBoxPort } from "../../../../ports/secret-box.ts";
+import { messageBodyBox, openStoredBody } from "./send/body-seal.ts";
 import { fileKeyOf, filesSpaceOf } from "./send/messages.ts";
 import { asBypass } from "../firm-scope.ts";
 
@@ -18,7 +20,7 @@ export const INBOX_TEXT_MAX = 64 * 1024;
 
 /** Made by the feature's factory (api/src/features/platform-messages.ts) with the messages' own FilesPort. */
 export class PlatformInbox {
-  constructor(private readonly db: Db, private readonly files: FilesPort, private readonly demo: () => boolean = isDemoWorkspace, private readonly unsub?: { tokens: UnsubscribeTokens; publicBase: string }) {}
+  constructor(private readonly db: Db, private readonly files: FilesPort, private readonly demo: () => boolean = isDemoWorkspace, private readonly unsub?: { tokens: UnsubscribeTokens; publicBase: string }, private readonly box?: SecretBoxPort) {}
 
   async list(address: H, xActor: H) {
     if (!this.demo()) fail("Not found.", HttpStatus.NOT_FOUND);
@@ -36,7 +38,8 @@ export class PlatformInbox {
     for (const r of rows) {
       const f = await this.files.get(filesSpaceOf(r.firmId), fileKeyOf(r.firmId, r.id));
       if (!f) continue;
-      const m = JSON.parse(new TextDecoder().decode(f.bytes)) as Rendered;
+      let m: Rendered;
+      try { m = openStoredBody(this.box ?? messageBodyBox(), filesSpaceOf(r.firmId), r.id, f.bytes); } catch { continue; }
       const attachments = [];
       for (const k of m.attachments) {
         const a = await this.files.get(filesSpaceOf(r.firmId), k);

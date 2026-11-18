@@ -331,11 +331,12 @@ try {
   await jobs.runDue();
   const row13 = await db.msgOutbox.findUniqueOrThrow({ where: { id: m13.messageId } });
   ok("DW13 pass: staff and system mail sent through MailPort lands in the outbox as TRANSACTIONAL and is sent", row13.class === "TRANSACTIONAL" && row13.address === x13 && row13.state === "SENT", row13);
-  // Held (review M1, question to Lead B): the outbox stores every body (Lead B's ruling), and staff mail carries invitation
-  // tokens and codes PF-4b never stores; until a ruling on such bodies, the app keeps PF-4b's LocalMail for MAIL_PORT.
+  // Held (review M1) until PF-19e's ruling: the outbox now stores a TRANSACTIONAL body sealed (PF-19e), so the app's
+  // MAIL_PORT is the one send path (SYSTEM_MAIL, MessagesMail with system: true; tests/check_pf19e_sealed_bodies.ts).
   const staffRead = (await import("../api/src/features/platform-staff-read.ts")).default, { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts");
+  const { SYSTEM_MAIL } = await import("../api/src/features/platform-messages.ts");
   const bound = (staffRead.providers as { provide?: unknown; useExisting?: unknown; useFactory?: unknown }[]).find((p) => p.provide === MAIL_PORT);
-  ok("DW13 held (review M1): the app's MAIL_PORT stays PF-4b's own adapter, so no invitation token or code is stored in the outbox until Lead B rules", !!bound?.useFactory && bound?.useExisting === undefined, bound);
+  ok("DW13 (PF-19e): the app's MAIL_PORT is the one send path (SYSTEM_MAIL), no longer PF-4b's in-memory adapter", bound?.useExisting === SYSTEM_MAIL && !bound?.useFactory, bound);
   const refused13 = await mail.send({ firmId: firmA, to: box("dw13s"), replyTo: "no-reply@expatready.example", class: "SERVICE", subject: "Reminder", text: "x" }).then(() => "sent", (e: Error) => e.name);
   ok("DW13 fail: a service email without its person is refused, nothing in the outbox", refused13 === "MessageRefused" && (await db.msgOutbox.count({ where: { address: { contains: "dw13s" } } })) === 0, refused13);
 
