@@ -8,6 +8,7 @@ import { LicencePage } from "./account/licence-page";
 import { SecurityPage } from "./account/security-page";
 import { AcceptPage } from "./staff/accept-page";
 import { LicencesPage } from "./staff/licences-page";
+import { TermsAcceptancesPage } from "./terms/acceptances-page";
 
 export const routes: ModuleRoute[] = [
   { path: "/sign-in/callback", element: <CallbackPage /> },
@@ -18,4 +19,5 @@ export const routes: ModuleRoute[] = [
   { path: "/platform/licences", element: <LicencesPage /> },   // PF-6 part 2b
   { path: "/platform/security", element: <SecurityPage /> },   // PF-6 part 2b
   { path: "/invitation", element: <AcceptPage /> },   // PF-6 part 2b (public: the invitation email's link)
+  { path: "/platform/terms", element: <TermsAcceptancesPage /> },   // PF-5t part 2
 ];
