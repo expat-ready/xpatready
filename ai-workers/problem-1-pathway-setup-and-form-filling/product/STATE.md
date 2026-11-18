@@ -31,6 +31,7 @@ Standbys: **Lead 83 (local_191538a9)**, then **Lead 84 (local_f88c32b8)** (P-286
 
 | A137-A165 | 17 Nov asks (speed, CI, talks, Library, clean-up, change log, tracker, disk, pipeline choke, full-power plan) | done or answered; rows word for word in `history/STATE-2026-11-18-1340-lead80s2-asks-pointer-rows-A137-A165.md` |
 | A166-A168 | approvals and clean-up; CI research; speed vs 40 jobs (A166 doing; A167, A168 answered: P-693, P-695) | rows word for word in `history/STATE-2026-11-18-1850-lead80s2-asks-A166-A168-rows.md` |
+| A172 | 00:3x 19 Nov (typed): "My Magellan research is completed. What's our progress on that?" (no 'Magellan' anywhere: read as the AWS research) | answered 00:3x; ask pending: file the free AWS quota request (160 vCPU) and Activate application? Then founder question queued: should a held firm reach support (#1959 n6; Lead recommends yes, a recorded departure from SA-4-25) |
 | A169-A171 | 18 Nov asks (plan sheet, clean-up, end-to-end review; full power after the review; evaluation) | A169/A170 doing, A171 done (P-702 evaluation 21 Nov); rows word for word in `history/STATE-2026-11-19-0005-lead82s2-updated-line-and-asks-A169-A171.md` |
 
 ## Engineering set-up tracker (A160)
