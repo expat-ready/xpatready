@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { ACCOUNT_SECTIONS, visibleSections } from "./account-sections";
 import { endSession, staffApi, StaffApiError, useLocalSignIn, useMe, useSessionEnd, useStaffToken } from "./session";
 import { SignedInElsewhere } from "./signed-in-elsewhere";
+import { TermsPage, useTermsPending } from "./terms/terms-gate";
 
 /** FO-4's sign-in card (moved here from sales-frame.tsx): PF-4's local stand-in until the provider's sign-in pages. */
 export function SignInCard({ failed, focus, embedded }: { failed?: string | null; /** Moves focus to the card when it appears in place of a page (break m6). */ focus?: boolean;
@@ -84,6 +85,7 @@ export function PlatformFrame({ crumbs = [], back = null, children }: { crumbs?:
     finally { setLeaving(false); }
   };
   const who = token ? me.data : undefined;
+  const pending = useTermsPending(token, !!who);   // PF-5t part 2: terms to accept (428 TERMS_PENDING) replace the page
   const refused = me.error instanceof StaffApiError ? me.error.message : me.error ? "Could not check who is signed in." : null;
   return (
     <Frame area="outside" title={who ? who.firmKey : "Your firm"} home="/account"
@@ -92,8 +94,9 @@ export function PlatformFrame({ crumbs = [], back = null, children }: { crumbs?:
       <Place crumbs={crumbs} back={back} />
       {!token ? (because === "SIGNED_IN_ELSEWHERE" ? <SignedInElsewhere /> : <SignInCard focus={had.current} />)
         : me.isError && !who ? <SignInCard failed={refused} />
-          : !who ? <p role="status" className="text-sm text-text-muted" data-loading>Checking who is signed in…</p>
-            : <MeCtx.Provider value={who}><AccountMenu me={who} small />{children}</MeCtx.Provider>}
+          : !who || !pending.checked ? <p role="status" className="text-sm text-text-muted" data-loading>Checking who is signed in…</p>
+            : <><div hidden={!!pending.terms}><MeCtx.Provider value={who}><AccountMenu me={who} small />{children}</MeCtx.Provider></div>
+              {pending.terms ? <TermsPage token={token} terms={pending.terms} signOut={() => void signOut()} leaving={leaving} /> : null}</>}
     </Frame>
   );
 }
