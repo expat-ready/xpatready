@@ -29,6 +29,18 @@ import { draftSourceProblems } from "./source-register.ts";
 import { Forms } from "./forms.ts";
 import { FormLibrary } from "./form-library.ts";
 import { releaseFillTrials } from "./fill-trials.ts"; // BK-11: each form's fill trial in the release
+import { fillCaseFirmIds, forgetFirmIds, whyNot } from "./firms.ts";
+import { asBypass } from "./platform/firm-scope.ts";
+import { sampleSeedDecision } from "./platform/identity/sample-seed.ts";
+import { seedSampleFirms } from "./platform/seed-sample-firms.ts";
+/** CS-W1: PF-3's Sample seed (adds only what is missing) on the demo's bypass use (it writes both Sample firms' platform
+ *  rows), then the cases' platform firm. Never in a production configuration (sampleSeedDecision's refusal; breaker m1). */
+const seedSampleFirmsAsDemo = async (db: Db) => {
+  if (!sampleSeedDecision({ ...process.env, PLATFORM_SAMPLE_SEED: "on" }).run) return;
+  await asBypass("platform.demo.reset", () => seedSampleFirms(db));
+  // One case written past the database's rules must not block a reset or a load (breaker R2-m3): said in the log, in its words.
+  await fillCaseFirmIds(db).catch((e) => console.warn(`demo: could not fill the cases' platform firm (CS-W1): ${whyNot(e)}`));
+};
 export { BY_HAND_REASON, RELEASE, SAMPLES } from "./features/checkpoint/_constants.ts";
 
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
@@ -434,6 +446,7 @@ export class Demo implements OnModuleInit {
    *  nothing and times nothing itself: a step's refusal stops the load as before ("Loading stopped after: …"). */
   private async loadConfigured(actor: Actor, workspaceId: string, t0: number, log: string[]) {
     if (!this.steps.length) throw new Error("the configured checkpoint has no steps (Demo.onModuleInit did not read api/src/features/checkpoint)"); // review m7
+    await seedSampleFirmsAsDemo(this.db);   // CS-W1 part 1: the checkpoint's cases find their platform firm (PF-3's idempotent seed)
     const ctx = { actor, workspaceId, t0, log, db: this.db, audit: this.audit, result: {}, story: this.storyAsked ? "finished" : undefined,
       get: <T>(cls: new (...a: never[]) => T) => this.moduleRef.get(cls, { strict: false }), settled: (id: string) => this.settled(id) } as CheckpointContext;
     // Before anything is written, a step may swap an official file in the six's load (row 17's IMM 5476 2021).
@@ -536,6 +549,7 @@ export class Demo implements OnModuleInit {
 
   /** Reset's work, once the one-at-a-time claim is held (by reset, or by resetToSix for its whole run). */
   private async wipe(actor: Actor) {
+    await seedSampleFirmsAsDemo(this.db); forgetFirmIds();   // CS-W1 part 1: both Sample firms exist in platform_firm before and after a reset (PF-3's idempotent seed, PF-12's demo bypass)
     const workspaceId = await this.ws.id();
     if (this.story.state !== "running") this.story = { state: "idle" }; // C10.2: a reset forgets the last story's result
     this.ai.forgetQueue(); // queued AI steps of this workspace must not start; running ones find their rows gone and stop
