@@ -287,3 +287,30 @@ Reviewer: Approve 3d507a2ed16da4fbd749984a98a1dd4b5fd0e047
 **Open:** no Blocker, no Major, no new Minor. Earlier open items stand as recorded in round 3.
 
 Verdict: Approve cdaa0fab2d250605d87c5913393197ec24def2ee (pending CodeQL closing the alert on this sha)
+
+## Round 7 (third main merge, diff-only), 19 Nov 2026, head 85b92f81afeb627faaa1d034dce0a841006c7e36
+
+Reviewer: Opus, high effort, diff only. The tech lead approved the merge of main 34c5e1e99, card only. No suite was run in the review; the builder's numbers are below.
+
+* **Merge.** `85b92f81^1` is cdaa0fab (round 6) and `^2` is main 34c5e1e99.
+  * Only `api/src/platform/MODULE.md` was resolved by hand. It holds main's card, AUD-1b's one rule line, and `tests/check_aud1b_adapter.ts` at the end of the existing Tests line.
+  * The card is 40 lines, and no card in the tree is over 40.
+* **The change against main.** `git diff 34c5e1e99 85b92f81` has the same 15 files as `git diff 2c9231ab cdaa0fab`, +663/−27. The hunks match in 14 files. The card differs only in context, where main's `check_pff4_file_type.ts` now appears.
+* **Main's audit writers since 2c9231ab.**
+  * FO-13i `identity.checked` (`front-office/compliance/identity/service.ts`) uses `firmId: ctx.firmId` and `staff:${ctx.staffId}` from `req.platform`, in a FIRM_STAFF-only route. A failed write is not swallowed: it gives a 500 and a rollback.
+  * `retainer.sent` changed its summary and detail only.
+  * There is no new direct `auditEvent.create` and no migration on `audit_event`.
+  * Nothing would be refused at runtime, and no line is written without a firm.
+* **Builder's evidence on 85b92f81:**
+
+  | Check | Result |
+  |---|---|
+  | `check_aud1b_adapter` | 33/33 |
+  | `check_pf0p_ports` | 122/122 |
+  | `check_case_feed` | 39/39 |
+  | Port contracts | 0 problems (21 ports) |
+  | Module cards | PASS (15 cards) |
+
+* **Findings.** No Blocker or Major, and no new Minor. Behaviour is identical to round 6, so the journey score of 9/10, Pass, stands.
+
+Reviewer: Approve 85b92f81afeb627faaa1d034dce0a841006c7e36
