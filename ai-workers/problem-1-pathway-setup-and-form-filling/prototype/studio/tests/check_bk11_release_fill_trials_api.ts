@@ -26,7 +26,8 @@ const formsWithTrial = new Set(readTrials().map((t) => t.form));
 const same = (a: unknown, b: unknown) => JSON.stringify(a, (_k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort()) : v)) === JSON.stringify(b, (_k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort()) : v));
 
 try {
-  sql(`update workspace set key='demo' where key<>'demo'`); // a run that stopped half-way left it renamed
+  // AUD-1a (Lead 78, comment 6946893835): the trail's guard refuses any key change to or from demo, so these renames run as the owner with triggers off on this scratch copy; the app's role can never do this (PF-12).
+  sql(`set session_replication_role = replica; update workspace set key='demo' where key='firm'; set session_replication_role = origin`); // a run that stopped half-way left it renamed
   await call("POST", "/demo/reset", { confirm: "RESET" });
   const l = await call("POST", "/demo/load", {});
   ok("setup: Reset, then the suites' fixture loaded (one combination imported as Release 1)", l.status < 300, l.status < 300 ? undefined : l.body);
@@ -58,5 +59,5 @@ try {
   rel = await releasesOf(wp);
   ok("BK-11 fail: a release row without fill_trials (made before BK-11) reads null, not a list of \"not yet\"", rel.find((x) => x.version === 1)?.fill_trials === null && Array.isArray(rel.find((x) => x.version === 2)?.fill_trials));
 } catch (e) { ok("ran to the end", false, (e as Error).message); }
-try { sql(`update workspace set key='demo' where key<>'demo'`); } catch { /* the copy may be gone */ }
+try { sql(`set session_replication_role = replica; update workspace set key='demo' where key='firm'; set session_replication_role = origin`); } catch { /* the copy may be gone */ }
 process.exit(summary() ? 1 : 0);
