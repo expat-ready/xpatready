@@ -85,3 +85,36 @@ The lead page is front office, not a case-side screen, so §6 scope is partial a
 **Verdict: Block**. To fix: M1 (map `stateReason` to plain words). m1-m3 should be fixed in the same pass, since they are small. m4-m7 are records and questions for the PR.
 
 Reviewer: Changes requested
+
+---
+
+## Re-review (diff only, P-277): `git diff 9c5207100..b7eb6a357`, head `b7eb6a357a8585b970121d737e69c7d494461c98`
+
+**What I ran:**
+* `check_pf19b3_delivery` **24/0**, which includes part 2's suite unchanged.
+* `check_pf19b3_panel_browser` **24/24**, on my own isolated copy (`rv_pf19b3`, :4541, stopped afterwards; the builder's PNGs restored).
+
+**Each earlier finding:**
+* **M1: fixed.**
+  * `contract.ts` `reasonWords()` covers every reason that can be stored:
+    * the consent gate: `SUPPRESSED: <SuppressionReason>` (all five enum values: HARD_BOUNCE, COMPLAINT, UNSUBSCRIBE, STOP, STAFF), and `NO_CONSENT`/`WITHDRAWN: <Purpose>`;
+    * the worker and notices: hard bounce, complaint, daily limit, content changed, send failed (and its "try n of m" form).
+  * An unknown code shows nothing.
+  * An unknown state now reads "Unknown", not the raw code.
+  * Screenshot at 1440 px, my run: "Not sent: an earlier email to this address bounced" and "The address does not exist or refuses email".
+  * The new DW6 fail checks that no code text appears. It would fail if the map were removed.
+* **m1: fixed.** Focus moves to the first older message, which is `tabIndex=-1`, through `requestAnimationFrame` after `fetchNextPage`. Tested: focused index 50, and the button is gone.
+* **m2: fixed.** A Try again button (`variant="outline" size="sm"`, both exist) calls `refetch`. Tested with an aborted request, then recovery.
+* **m3: fixed.**
+  * The cursor id now uses the strict UUID pattern.
+  * The date must parse, be from the year 2000 on, and round-trip through `toISOString`, which refuses Feb 30.
+  * Five bad cursors, including year 0000, are tested → 400.
+* **Breaker m2: fixed.** The query key is now under `["pf", …]`, which `session.ts` `STAFF_KEYS` removes at sign-out and sign-in.
+* **Breaker m4:** the box now says "Every email to this person, from any of their leads." This matches the person read rule.
+* **m4-m7:** recorded as questions 3, 6, 7, 9 and 10 in `notes.md`. They are for Lead B on the PR, not code defects in this row. The PR body still needs the two `Card unchanged:` lines (question 7) before module-cards passes.
+
+**New in the diff (Minor, cosmetic, no change asked):** a suppressed row repeats its state word: the pill says "Not sent" and the reason starts "Not sent: …".
+
+No Blocker or Major is open.
+
+Reviewer: Approve b7eb6a357a8585b970121d737e69c7d494461c98
