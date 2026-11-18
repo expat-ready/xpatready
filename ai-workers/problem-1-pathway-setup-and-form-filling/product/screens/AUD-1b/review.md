@@ -139,3 +139,23 @@ Verdict: Changes needed
 * Fail test: a handler registered on `PgBossJobs` directly, run inside a firm-A `requestScope` for a firm-B job, must see context firm B. A firm-A entry must be refused.
 
 Verdict: Changes needed
+
+## Round 3 (18 Nov 2026), head c74cb084378ce6e417d81d3f28fcbadfe34b07e2
+**Read:** only `git diff 62cd1a625..c74cb0843 -- …/prototype/studio`, which touches `tests/check_aud1b_adapter.ts` alone. No product code changed since round 2.
+**Run:** `check_aud1b_adapter.ts` at the head gives **33 passed, 0 failed**. Mutations ran in a scratch worktree at the head:
+* Dropping `.toLowerCase()` at `audit-event.ts:45` turns **DW6 pass** red (500 on the upper-case own-firm entry). Restored, it is green. **Major R2-1 closed.**
+* Reverting `context.ts:30` to `scope?.firmId() ?? jobFirm` turns **DW2 fail (review minor 2)** red: the context says firm A inside the firm-B job. **Minor 2 closed.**
+* The new DW2 case uses the real `PgBossJobs`. Its handler is registered and the runner started inside a firm-A `requestScope`, so pg-boss's worker inherits that scope. That is exactly the leak the fix guards against. The runner is stopped in `finally` and the scratch database is dropped as before.
+
+**Open:** no Blocker and no Major.
+* Minor 4 (`req.platform` re-read) is left by design, which I agree with; note it for PF-4s.
+* Minor 5 (decision 1's departure, the PF-4s actor word and mapping, the web-address `change()` follow-up) goes in the PR body. It is checked when the PR opens.
+
+**Not run here:**
+* the full `ci`;
+* `check_pf23_observability.ts` and AUD-1a Part B (both default to the builder's ports 4487 and 4606);
+* `check-port-contracts.mjs` and the module-card check.
+
+These stay with the builder's regression run and CI on this sha (P-385).
+
+Verdict: Approve c74cb084378ce6e417d81d3f28fcbadfe34b07e2
