@@ -29,7 +29,7 @@ import { draftSourceProblems } from "./source-register.ts";
 import { Forms } from "./forms.ts";
 import { FormLibrary } from "./form-library.ts";
 import { releaseFillTrials } from "./fill-trials.ts"; // BK-11: each form's fill trial in the release
-import { fillCaseFirmIds, forgetFirmIds } from "./firms.ts";
+import { fillCaseFirmIds, forgetFirmIds, whyNot } from "./firms.ts";
 import { asBypass } from "./platform/firm-scope.ts";
 import { sampleSeedDecision } from "./platform/identity/sample-seed.ts";
 import { seedSampleFirms } from "./platform/seed-sample-firms.ts";
@@ -38,7 +38,8 @@ import { seedSampleFirms } from "./platform/seed-sample-firms.ts";
 const seedSampleFirmsAsDemo = async (db: Db) => {
   if (!sampleSeedDecision({ ...process.env, PLATFORM_SAMPLE_SEED: "on" }).run) return;
   await asBypass("platform.demo.reset", () => seedSampleFirms(db));
-  await fillCaseFirmIds(db);
+  // One case written past the database's rules must not block a reset or a load (breaker R2-m3): said in the log, in its words.
+  await fillCaseFirmIds(db).catch((e) => console.warn(`demo: could not fill the cases' platform firm (CS-W1): ${whyNot(e)}`));
 };
 export { BY_HAND_REASON, RELEASE, SAMPLES } from "./features/checkpoint/_constants.ts";
 

@@ -70,6 +70,7 @@ END $$;
 CREATE SCHEMA IF NOT EXISTS case_lookup;
 REVOKE ALL ON SCHEMA case_lookup FROM PUBLIC;
 GRANT USAGE, CREATE ON SCHEMA case_lookup TO xr_case_lookup;
+GRANT USAGE ON SCHEMA public TO xr_case_lookup;   -- the table it reads; never PUBLIC's default alone (breaker R2-m1)
 GRANT USAGE ON SCHEMA case_lookup TO xr_data;
 -- The minimum the lookup reads, and the one policy that lets its owner read past PF-12's forced wall (one line on Lead B's
 -- table: their OK in the PR). PF-12's own policy is unchanged; policies are permissive, so this adds rows for this role only.

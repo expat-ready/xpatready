@@ -29,6 +29,8 @@ export async function firmIdOfActor(db: Raw, a: Actor): Promise<string | null> {
   return f ? firmIdByKey(db, f.key) : null;
 }
 export const forgetFirmIds = () => firmIds.clear();
+/** A database refusal's own words (the message's last line names the rule), short. */
+export const whyNot = (e: unknown) => String((e as Error)?.message ?? e).trim().split("\n").filter(Boolean).slice(-1)[0]?.slice(0, 300) ?? "unknown";
 /** CS-W1 (breaker M1): fills the firm id of every case, stage and counter still without one whose key now has a platform
  *  firm (case_firm_backfill(), the migration's own backfill); a second run changes nothing. Run after each Sample seed:
  *  at start (main.ts) and by the demo (demo.ts). Returns the number of rows filled. */
@@ -42,7 +44,13 @@ export async function fillCaseFirmIdsOnStart(url = process.env.DATABASE_URL ?? "
   const { PrismaPg } = await import("@prisma/adapter-pg");
   const { PrismaClient } = await import("@prisma/client");
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: url, options: "-c TimeZone=UTC" }) });
-  try { const n = await fillCaseFirmIds(db); if (n) console.warn(`cases: filled the platform firm of ${n} case, stage and counter row(s) (CS-W1)`); }
-  catch (e) { console.warn(`cases: could not fill the cases' platform firm at start (CS-W1): ${(e as Error).message.split("\n")[0]}`); }
+  try {
+    // Bounded (breaker R2-m2): a row held by another session never holds up the start for more than a few seconds.
+    const n = await db.$transaction(async (tx) => {
+      await tx.$executeRaw`select set_config('lock_timeout', '5s', true), set_config('statement_timeout', '60s', true)`;
+      return fillCaseFirmIds(tx);
+    });
+    if (n) console.warn(`cases: filled the platform firm of ${n} case, stage and counter row(s) (CS-W1)`);
+  } catch (e) { console.warn(`cases: could not fill the cases' platform firm at start (CS-W1); the next start or demo reset tries again: ${whyNot(e)}`); }
   finally { await db.$disconnect(); }
 }

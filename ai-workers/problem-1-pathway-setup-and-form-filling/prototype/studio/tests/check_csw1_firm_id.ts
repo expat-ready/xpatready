@@ -136,6 +136,8 @@ try {
     sql(`select string_agg(table_name || '.' || column_name || ':' || privilege_type, ',' order by column_name) from information_schema.column_privileges where grantee = '${R}'`) === "platform_firm.id:SELECT,platform_firm.key:SELECT");
   ok("CS-W1 DW10 fail: CREATE on case_lookup only, never on public",
     sql(`select has_schema_privilege('${R}', 'public', 'CREATE')::text || has_schema_privilege('${R}', 'case_lookup', 'CREATE')::text`) === "falsetrue");
+  ok("CS-W1 DW10 pass (breaker R2-m1): its USAGE on public is its own grant, not only PUBLIC's default (a re-made public schema keeps the lookup working)",
+    sql(`select count(*) from pg_namespace n, aclexplode(n.nspacl) a where n.nspname = 'public' and a.grantee = '${R}'::regrole and a.privilege_type = 'USAGE'`) === "1");
   ok("CS-W1 DW10 fail: the app's SET ROLE xr_case_lookup is refused", /permission denied to set role "xr_case_lookup"/.test(err(`set role ${R}`, "xr_app")));
   const roles = readFileSync(join(MIG, NEW, "migration.sql"), "utf8").match(/DO \$\$[\s\S]*?END \$\$;/)![0];
   sql(roles);

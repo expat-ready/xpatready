@@ -74,3 +74,26 @@ PR #2125, branch `claude/charming-wright-8rc7y7`, commit d59865563f8d263b472f68b
 * **Not applicable to this row** (no screen or upload in part 1): keyboard use, 1024 px and 200 % zoom, hostile uploads, and reload or back mid-action.
 
 Breaker: fail
+
+## Round 2: head 2cbe299c60d1ac2ebd41a624e9a3b3d38a64989a
+
+Code diff since round 1: `case_firm_backfill()` in the migration, `fillCaseFirmIds` / `fillCaseFirmIdsOnStart` (`firms.ts`), the demo seed refused in production (`demo.ts:35-42`), the start-up fill beside the seed (`main.ts:235`), the lookup `CREATE OR REPLACE`. Round 1's `Breaker: fail` above stays as written; this round replaces the verdict. Copies `br_csw1` :4498, `br_csw1_m2` :4497, `br_csw1_m3` :4496 and scratch `xr_studio_br_csw1_c1` are stopped and dropped; scratch output stays under `/tmp/claude-0/` (round 1's two empty `.err` files in the repository were mine, now removed).
+
+**Round 1, re-checked.**
+* **M1 fixed.** Same reproduction on 2cbe299 (pre-migration rows of three keys, `platform_firm` empty, `isolated.sh restart`): after start every case, stage and counter of both Sample keys carries its firm; `ghost-firm` stays null; the log says "filled … 6 … row(s)". A second start fills 0 and logs nothing.
+* **m1 fixed for production.** `sampleSeedDecision` refuses `PLATFORM_ENVIRONMENT=production` (with or without `PLATFORM_SAMPLE_SEED=off`). `local` and `test` seed. As the demo forces the setting on, `PLATFORM_SAMPLE_SEED=off` still seeds on the demo paths, which is now intended.
+* **m3 fixed.** `check_csw1_firm_id.ts` 46/46 covers `firmIdByKey`, `firmIdOfActor` and the fills (it needs `--tsconfig api/tsconfig.json`, which `run-suites.sh:129` passes).
+* **m2 closed** as the coordinator's intended behaviour.
+
+**New findings (all Minor).**
+* **R2-m1: the lookup's owner has no `USAGE` on `public`, so the lookup needs PUBLIC's default grant.** Steps: on `xr_studio_br_csw1_c1` run `prisma migrate deploy`, then `drop schema public cascade; create schema public` (the reset that the `CREATE OR REPLACE` comment names, `migration.sql:79-80`), then `migrate deploy` again. Every migration applies and the function survives, owned by xr_case_lookup. But as xr_app `select case_lookup.case_firm_id_of_key('x')`, and so every `runtime_case` insert, fails with `permission denied for schema public`. A recreated `public` grants only `xr_studio=UC` and `xr_data=U`, and xr_case_lookup is not in xr_data. A database that hardens `public` (`REVOKE USAGE … FROM PUBLIC`) is in the same state. Grant `USAGE ON SCHEMA public` to xr_case_lookup; DW10 assumes USAGE anyway. No repository path runs the API on such a database today; raise it to Major if production revokes PUBLIC's USAGE on `public`.
+* **R2-m2: the start-up fill can wait without limit.** Steps: hold `select … from runtime_case where firm_key='sample-solo' for update` for 75 s in another session, with that case still unfilled, then `isolated.sh br_csw1_m3 4496 restart`. The API listened only once the lock was released (log: "Product Studio on …" at 14:22:13, 76 s after start). A failure is caught, but a wait is not: the fill has no `lock_timeout` or `statement_timeout`.
+* **R2-m3: one invalid case in any workspace stops the whole fill, and the demo then names the wrong cause.** Steps: insert, in replica mode, an unfilled `sample-firm` case in a non-demo workspace whose only stage is NOT_STARTED, so `trg_case_stage_current` refuses the stage update. Results:
+  * at start the API still starts, but the log line gives no reason ("could not fill … at start (CS-W1): ");
+  * `POST /api/demo/reset` answers 409 "This case moved to its next stage…", and Reset to the six and the configured load stop the same way, because `seedSampleFirmsAsDemo` runs before the wipe and is not caught;
+  * the demo is blocked by another workspace's row, which the demo reset now writes (it fills the null `firm_id` of every workspace's cases).
+  * Such a row needs a write past the database's own rules (replica mode), so this is Minor.
+
+**Held in round 2:** `check_prisma_schema` 8/8, `check_pf12_walls` 100/100, `check_c617_stages_migration` 23/23. `case_firm_backfill` is INVOKER with its `search_path` pinned, is named `case_firm_*`, and has no PUBLIC EXECUTE. It updates only empty rows, it never fires `trg_runtime_case_number_fixed` or `trg_runtime_case_stage` (both are `UPDATE OF` other columns), and `runtime_case_stage_forward` allows the `firm_id` change. After a reset of `public`, the migration re-applies cleanly.
+
+Breaker: pass
