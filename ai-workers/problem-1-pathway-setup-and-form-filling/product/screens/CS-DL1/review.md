@@ -176,3 +176,46 @@ A diff-only re-review (P-277) of `2048a997e4c260e788572dcab5ea439b443f3930`. It 
 The round 3 minors m1-m4 stand as recorded.
 
 **Verdict: Approve** for `2048a997e4c260e788572dcab5ea439b443f3930`. There is no open Blocker or Major. The label still waits on green CI.
+
+## Review round 5 (64ab036a5, merge and actor word)
+
+A diff-only re-review (P-277) of `64ab036a5d99e6df2488ea12060847248700f80b`. It has two commits on top of the approved `2048a997e`:
+* `37bb48d9a`, a merge with parents `2048a997e` and `origin/main` `9cea7c02d`. That is current main, 273 commits after round 4's base `780b1552c`.
+* `64ab036a5`, a one-line test change.
+
+* **platform/MODULE.md:** the conflict is resolved correctly. Against main, the head changes only CS-DL1's four items:
+  * the `calendar/` Purpose entry, with `complaints/ (its acknowledge-by period, over calendar/)`;
+  * the `platform_firm_calendar` definer sentence in the PF-12 invariant;
+  * the one-firm-calendar invariant;
+  * `tests/check_csdl1_deadlines.ts` in Tests.
+
+  All of main's new lines are kept:
+  * `keep-period/` and `settings/offices/` in Purpose;
+  * PF-4c `staff/invitations/batch`, AUD-5 `keep-periods` and PF-18a `offices`/`OFFICE_CLOCK`/`zoneForProvince` in Entry points;
+  * the AUD-1a append-only wording, the PF-6m2 money-line and inviter invariant, and the PF-18a office invariant;
+  * `platformOffice` and `platformStaffOffice` in Tables;
+  * `check_pf4c_batch_invite`, `check_pf6m2_invite_recheck`, `check_aud5_keep_periods` and `check_pf18a_offices` in Tests;
+  * the PF-19b part 2 paragraph.
+* **Migration rename:** `20261117054600_csdl1_firm_calendar` is gone and `20261118194500_csdl1_firm_calendar` is the only csdl1 migration. Both files hash to `01d439bdc6cabf11131534a8af5a0b3cc8d1e9eabf88feaca625001c8e3e55e4`, so the SQL is byte-identical and the Lead's earlier read still holds. The stamp is later than main's newest migration (`20261117124500_aud1a_audit_insert_only`), and also later than every stamp on the fetched open branches: #2106's `20261117133000_fo7ts_money_settings` and the newest, `20261118140000_fo13i_identity_check_key`. It appears once. Main has 107 entries and the head has 108. The only repeated stamps are the three old ones already on main. Nothing refers to any of the stamps by number.
+* **Actor word:** `writeSetting` writes `audit_event.actor = by`. AUD-1a's `aud_event_actor_type` maps `^seed:[A-Za-z0-9][A-Za-z0-9._:/-]*$` to SEED. So `seed:csdl1` is typed, while the old `check:csdl1` would have been refused by `aud_event_fill`. The new word matches main's own convention for test setting writers (`seed:pf21b`, `seed:PF-19a`, `seed:FO-2-test`). It is the only audit write in CS-DL1's diff. The other actor words in CS-DL1's files are listed user-X ids: the browser suite's `x-actor` headers are `AUTHOR` = `user-A` and `OFFICER` = `user-O`, from `acceptance/lib/m3.ts`. `by: "u"` in the unit suite is a key-detail value passed to a pure function, not an audit line. `case-stages.ts`, `working-days.ts`, the complaints move and the migration write no audit line.
+* **PR diff:** `git diff origin/main...64ab036a5 --stat` lists the same 19 files as round 4 (+502/-108). With `index` lines dropped and the old stamp mapped to the new one, the patch matches round 4 except in two places: the MODULE.md context lines, which now include main's lines, and the one `seed:csdl1` line. None of main's changes leaked into the PR.
+* **Collisions** (`780b1552c..9cea7c02d`):
+  * Of CS-DL1's files, main's new commits touch only `platform/MODULE.md` (settled above) and `contracts/runtime.ts`. The `contracts/runtime.ts` change is 3 CS-V1 part 2 commits that append strict schemas at the end of the file. The file auto-merged cleanly: against main, the head differs only by CS-DL1's `deadline` hunk at line 407, and CS-V1 does not touch `CaseStageView`.
+  * None of main's new commits touches `case-stages.ts`, `stages.tsx`, `platform/calendar/`, `working-days` or `business-days.ts`, and none mentions `platform_firm_calendar`.
+  * Main added no new importer of `complaints/business-days.ts`. The head's importers (`complaints.ts`, `check_pf21_complaints.ts`, `check_pf21v_views.ts`, `check_csdl1_deadlines.ts`) use `acknowledgeBy` or the kept re-exports.
+  * PF-18a's `settings/offices/` reads the firm settings through `settings.ts` directly, not through `calendar/`.
+* **PF-18a (offices) on main, not in scope:** this does not block the PR.
+  * On main a case carries no office: no office column is in the case schema.
+  * PF-18a's invariant keeps a one-office firm on the firm's own zone, hours and closed days, and when a second office is added, the first office is written from those settings. So `platform_firm_calendar` gives the right calendar for every one-office firm, which includes both Sample firms.
+  * For a multi-office firm, the weekday mark and the Missed day are read against the firm's own (first-office) calendar. The date itself is never moved (AG-7-94).
+  * The builder has asked the tech lead to carry the office choice in CS-DL1 part 2. That is the right place: a case needs an office before it can be read.
+* **Unit suite:** `tsx --tsconfig api/tsconfig.json tests/check_csdl1_deadlines.ts` gives **34/34 passed** at `64ab036a5`.
+
+### Could not check
+* CI and the PR's mergeable state: GitHub's API is not enabled for this session.
+* The DB, browser, PF-12, PF-21, PF-18a and acceptance suites at this head. As asked, I did not start an isolated copy, and I relied on the builder's pasted results for 64ab036a. In particular, I could not run myself that the browser suite's `seed:csdl1` write passes AUD-1a's insert trigger on a migrated copy (the builder reports csdl1 34/34 and the browser run on a fresh copy).
+* The journey was not re-run. Only a merge and a test actor word changed, so round 3's 9.5/10 stands.
+
+The round 3 minors m1-m4 stand as recorded.
+
+**Verdict: Approve** for `64ab036a5d99e6df2488ea12060847248700f80b`. There is no open Blocker or Major. The label still waits on green CI for this head.
