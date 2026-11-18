@@ -37,10 +37,11 @@ QUERY = """query($owner: String!, $name: String!) {
       commits(last: 1) { nodes { commit { statusCheckRollup { state } checkSuites(last: 6) { nodes { updatedAt } } } } } } }
   }
 }"""
-QUERY_RECENT = """query($owner: String!, $name: String!) {
+QUERY_RECENT = """query($owner: String!, $name: String!, $after: String) {
   repository(owner: $owner, name: $name) {
-    recent: pullRequests(states: [MERGED, CLOSED], first: 30, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes {
-      number headRefName createdAt closedAt mergedAt
+    recent: pullRequests(states: [MERGED, CLOSED], first: 30, after: $after, orderBy: {field: UPDATED_AT, direction: DESC}) {
+      pageInfo { hasNextPage endCursor } nodes {
+      number headRefName createdAt closedAt mergedAt updatedAt
       timelineItems(itemTypes: [LABELED_EVENT], last: 10) { nodes { ... on LabeledEvent { createdAt label { name } } } }
       commits(last: 1) { nodes { commit { checkSuites(first: 10, filterBy: {appId: 15368}) { nodes { updatedAt
         workflowRun { workflow { name } } checkRuns(first: 1) { nodes { startedAt } } } } } } } } }
@@ -163,20 +164,44 @@ def facts_from(gql, nightly_runs, hb, now, previous=None):
             "nightly_runs": [run(r) for r in nightly_runs], "previous": previous}
 
 
-def collect(hb, now, own_id=None):
+RECENT_PAGES = 6   # 30 a page: up to 180 closed PRs and batches, enough for 24 h at 16 Nov's 75 merges plus batches
+PAGING_BUDGET_S = 90   # stop paging (sample "partial") well inside the job's 5 min, so a slow GitHub still writes JSON
+
+
+def collect(hb, now, own_id=None, ctx=None):
+    """The facts from GitHub. The previous result is read first and kept in ctx, so a read error later in this run
+    can still carry the alarm state and the window forward (main)."""
     repo = os.environ.get("GITHUB_REPOSITORY") or ""
     if "/" not in repo:
         u = subprocess.run(["git", "remote", "get-url", "origin"], capture_output=True, text=True, cwd=HERE).stdout
         repo = u.strip().rstrip("/").removesuffix(".git").split("github.com")[-1].lstrip(":/")
     owner, name = repo.split("/", 1)
-    gql = {"data": {"repository": {}}}
-    for q in (QUERY, QUERY_RECENT):  # two small queries: one big one hit GitHub's resource limit (17 Nov)
-        a = api("POST", f"{API}/graphql", {"query": q, "variables": {"owner": owner, "name": name}})
+    ctx = {} if ctx is None else ctx
+    ctx["previous"] = read_previous(repo, own_id)
+
+    def gql(q, **v):  # two small queries, not one: one big one hit GitHub's resource limit (17 Nov)
+        a = api("POST", f"{API}/graphql", {"query": q, "variables": {"owner": owner, "name": name, **v}})
         if a.get("errors") or not a.get("data"):
             raise RuntimeError(f"GraphQL: {(a.get('errors') or [{}])[0].get('message')}")
-        gql["data"]["repository"].update(a["data"]["repository"])
+        return a["data"]["repository"]
+    data = gql(QUERY)
+    nodes, after, complete = [], None, False   # page the closed PRs back past 24 h, so the P95 sample is whole
+    start = time.monotonic()
+    for _ in range(RECENT_PAGES):
+        if nodes and time.monotonic() - start > PAGING_BUDGET_S:
+            break
+        page = gql(QUERY_RECENT, after=after)["recent"]
+        nodes += page["nodes"]
+        old = nodes and t(nodes[-1]["updatedAt"]) < now - timedelta(hours=24)
+        if old or not page["pageInfo"]["hasNextPage"]:
+            complete = True
+            break
+        after = page["pageInfo"]["endCursor"]
+    data["recent"] = {"nodes": nodes}
     nightly = api("GET", f"{API}/repos/{repo}/actions/workflows/{hb['nightly_workflow']}/runs?per_page=5&event=schedule")
-    return facts_from(gql, nightly["workflow_runs"], hb, now, read_previous(repo, own_id))
+    f = facts_from({"data": {"repository": data}}, nightly["workflow_runs"], hb, now, ctx["previous"])
+    f["recent_complete"] = complete
+    return f
 
 
 # ---- the alarms ----------------------------------------------------------------------------------------------------
@@ -256,8 +281,10 @@ def evaluate(f, hb, conformance=None):
         report.append({"id": key, "value": None if v is None else round(v, 1), "n": len(xs), "over": bool(v and v > lim),
                        "why": f"P95 {what}: " + ("no sample in 24 h" if v is None else
                                                 f"{v:.0f} min over {len(xs)} (limit {lim}){' — OVER: T1 trigger' if v > lim else ''}")})
+    if f.get("recent_complete") is False:
+        report.append({"id": "partial-sample", "why": "the P95 sample stops short of 24 h (page or time limit)"})
     if (f.get("open_total") or 0) > len(f["open_prs"]):
-        report.append({"id": "partial", "why": f"read the {len(f['open_prs'])} most recently updated of "
+        report.append({"id": "partial-open", "why": f"read the {len(f['open_prs'])} most recently updated of "
                        f"{f['open_total']} open PRs; older ones were not checked"})
     if dormant:
         report.append({"id": "dormant-lanes", "why": f"{dormant} open lane PR(s) idle over {hb['stalled_lane_max_age_h']} h"})
@@ -302,6 +329,20 @@ def decide(alarms, prev, hb, now):
             "longest_green_today_h": round(max(best, cur_today), 1)}
 
 
+def carry_on_error(prev, now):
+    """A read-error run keeps the previous alarm state (open alarms stay open, not new next time) and today's longest
+    streak; it is itself an alarm, so the streak stops and hours since the last alarm is 0."""
+    p = prev or {}
+    state = dict(p.get("alarm_state") or {})
+    state.setdefault("read-error", {"first_seen": iso(now), "escalated": False})
+    day = str(now.astimezone(IST).date())
+    return {"red": True, "red_reasons": ["read-error (always red)"], "alarm_state": state,
+            "still_open": [k for k in state if k != "read-error"], "previous_read": prev is not None,
+            "gap_since_previous_min": None, "missed_beats": False, "last_alarm_at": iso(now), "clear_since": None,
+            "day_ist": day, "hours_since_last_alarm": 0.0, "green_streak_h": 0.0,
+            "longest_green_today_h": (p.get("longest_green_today_h") or 0.0) if p.get("day_ist") == day else 0.0}
+
+
 def markdown(res):
     lines = [f"**Pipeline running: {res['running']}** · checked {res['checked_at_ist']} · green streak "
              f"{res['green_streak_h']} h · longest today {res['longest_green_today_h']} h · hours since last alarm "
@@ -338,14 +379,15 @@ def main(argv=None):
                 conf = json.load(fh)
         except (OSError, ValueError) as e:
             conf = {"enforced": "no", "items": [{"id": f"conformance result unreadable ({e})", "status": "fail"}]}
-    now = datetime.now(timezone.utc)
+    now, ctx = datetime.now(timezone.utc), {}
     try:
         if a.facts:
             with open(a.facts, encoding="utf-8") as fh:
                 f = json.load(fh)
+            ctx["previous"] = f.get("previous")
         else:
             f = collect(hb, now, int(os.environ["GITHUB_RUN_ID"]) if os.environ.get("GITHUB_RUN_ID", "").isdigit()
-                        else None)
+                        else None, ctx)
             if a.save_facts:
                 with open(a.save_facts, "w", encoding="utf-8") as fh:
                     json.dump(f, fh, indent=1)
@@ -355,9 +397,8 @@ def main(argv=None):
                "checked_at_ist": now.astimezone(IST).strftime("%d %b %H:%M IST"), "report": [],
                "alarms": [{"id": "read-error", "keys": ["read-error"],
                            "why": f"could not read GitHub: {type(e).__name__}: {e}"}],
-               "counts": {"open_prs": 0, "approved": 0, "queued": 0, "last_merge": None}, "red": True,
-               "red_reasons": ["read-error (always red)"], "alarm_state": {}, "still_open": [], "previous_read": False,
-               "hours_since_last_alarm": 0.0, "green_streak_h": 0.0, "longest_green_today_h": 0.0}
+               "counts": {"open_prs": 0, "approved": 0, "queued": 0, "last_merge": None},
+               **carry_on_error(ctx.get("previous"), now)}
     res["conformance"] = None if conf is None else {k: conf.get(k) for k in ("enforced", "counts", "checked",
                                                                               "checked_at", "manifest_version")}
     md = markdown(res)
