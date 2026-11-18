@@ -62,8 +62,8 @@ Status words: Open · Doing · Done · Unverified (no record found either way).
 | 33 | Pre-warm the backlog | After E4/E6 pass, re-run the red or stale `ci` parts of the ~20 approved PRs, so each can join when the queue opens (re-run only, never cancel, P-384) | Proposal (inference) from CL:300, ST:31 | TL | Open | 15 min + CI |
 | 34 | Local copy hygiene | Untracked `ids.txt`, `q.txt`, `repos.txt`, `.claude/settings.json.bak-2026-11-17` at the main copy's root: keep out of git | git status at session start | TL | Open | 2 min |
 | 35 | R1 queue on | Switch Merge Queue and Merge Protections on in the new Mergify org | CL:387 | F | Open | 3 min |
-| 36 | E8, E9 | A records PR and a product PR merge through the queue | CL:398-399 | TL | Open | 1-2 h |
-| 37 | R3 Lead writes back | Labels, records PRs, hourly and daily records | CL:389 | TL | Open | 5 min |
+| 36 | E8, E9 | A records PR and a product PR merge through the queue | CL:398-399 | TL | **Doing 13:3x 18 Nov: #2113 queued (records), batch #2115 running (#2003, #2011, #2014)** | 1-2 h |
+| 37 | R3 Lead writes back | Labels, records PRs, hourly and daily records | CL:389 | TL | **Done 13:2x 18 Nov (Lead 80: #2117, #2081, #2000 labelled; records pushed)** | 5 min |
 | 38 | R4 + E10 lanes and routines | Un-pause routines, "Run now" one, start fresh lanes on the new path | CL:390, CL:400 | TL | Open | 30 min |
 | 39 | R6 record the move | Records PR with the move; clear the in-flight block | CL:392 | TL | Open | 15 min |
 | 40 | E11 Mac runner | demo-update picked up by `xr-mac-light`, or the founder re-registers it | CL:401 | TL; F if needed | Open | 0-20 min F |
