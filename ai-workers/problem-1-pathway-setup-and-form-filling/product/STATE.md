@@ -25,6 +25,7 @@ Standby left: **Lead 81 (local_bd570ff6)**; start a second standby at the founde
 
 | A137-A165 | 17 Nov asks (speed, CI, talks, Library, clean-up, change log, tracker, disk, pipeline choke, full-power plan) | done or answered; rows word for word in `history/STATE-2026-11-18-1340-lead80s2-asks-pointer-rows-A137-A165.md` |
 | A166-A168 | approvals and clean-up; CI research; speed vs 40 jobs (A166 doing; A167, A168 answered: P-693, P-695) | rows word for word in `history/STATE-2026-11-18-1850-lead80s2-asks-A166-A168-rows.md` |
+| A170 | 18:5x 18 Nov (typed): "go full power once the end-to-end review is back"; confirm the clean-up plan (folder reorganisation, strategy); why more machines first, then not | doing (Lead 80): full power waits on the review (running); clean-up stage 0 given the Lead's word 18:5x (founder's OK in the clean-up session opens its PR); machines: Lead 80 undercounted (newest 100 runs only), owned |
 | A169 | 18:4x 18 Nov (typed), plus mid-turn: "until unless this sheet is completed, we should not be silently missing it" (done: `tools/plan-watch.py` in check-docs and lead-watch, P-690 enforced); clean up finished lane sessions on claude.ai and disk; end-to-end review (duplicates, gaps, dependency graph) of all Not built and Partial rows before going full power, then build smart; CI capacity now; tonight's pipeline challenge and parallel work until the ticket is solved | doing (Lead 80) |
 
 ## Engineering set-up tracker (A160)
