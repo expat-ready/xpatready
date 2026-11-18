@@ -305,14 +305,13 @@ process.exit(0);
   ok("QA-366: when what the batch adds cannot be worked out (a head not found), every named row runs again but Works (fail closed)", [...e.run.keys()].join() === "C8.3" && /could not be worked out/.test(e.why.get("C8.3")), e);
   const f = batchRecheck([{ n: 4, caps: caps(), touched: new Map([T("C7.5"), T("C8.3")]) }], (id) => st[id]);
   ok("QA-366: a row nobody named never runs, whatever the batch touches (an unrelated red Partial refuses nothing; D2, STATE F15)", f.run.size === 0, f);
-  // P-651 (2), GATE_B_ONCE: the PR heads ran no pack, so every named row runs (touched null, the reason given), and a
-  // Works row goes to the protected set only when none of its packs is held (P-488: a held one still runs here).
-  const held = { "C6.9": ["C6.9.test.ts"] }, heldOf = (id) => held[id] ?? [];
-  const g = batchRecheck([{ n: 5, caps: caps(["C8.3", [2]], ["C6.9", null], ["C1.1", null]), touched: null, why: "P-651: its PR's head ran no pack" }], (id) => st[id] ?? "Works", heldOf);
-  ok("P-651: in ONCE every named Partial row runs with its steps and the given reason; a held Works row runs too; an unheld Works row is left to the protected set",
-    [...g.run].map(([k, v]) => `${k}=${v}`).join() === "C8.3=2,C6.9=null" && g.works.join() === "C1.1" && /^#5: P-651/.test(g.why.get("C8.3")), g);
+  // P-651 (2), GATE_B_ONCE: the PR heads ran no pack, so every named row runs, with its steps and the reason given,
+  // Works rows too (part 1 ran them at the head: a pack the PR adds, a held pack; review of #2151, B1).
+  const g = batchRecheck([{ n: 5, caps: caps(["C8.3", [2]], ["C6.9", null]), touched: null, why: "P-651: its PR's head ran no pack" }], (id) => st[id], true);
+  ok("P-651: in ONCE every named row runs with its PR's steps and the given reason, a Works row too (none left to the protected set)",
+    [...g.run].map(([k, v]) => `${k}=${v}`).join() === "C8.3=2,C6.9=null" && g.works.length === 0 && /^#5: P-651/.test(g.why.get("C8.3")), g);
   const h = batchRecheck([{ n: 6, caps: caps(["C6.9", null]), touched: null }], (id) => st[id]);
-  ok("P-651: without heldOf (ONCE off) a held Works row is still left to the protected set, as before", h.run.size === 0 && h.works.join() === "C6.9", h); }
+  ok("P-651: with ONCE off a named Works row is still left to the protected set, as before", h.run.size === 0 && h.works.join() === "C6.9", h); }
 
 // The command itself: skips, refusal and pass (packs off; the real BUGS.md is not read, so the cases stay true).
 const T = mkdtempSync(join(tmpdir(), "gate-b-")), bf = join(T, "BUGS.md"); writeFileSync(bf, BUGS);
@@ -426,6 +425,20 @@ ok("command: an unknown option exits 2", r.code === 2, r);
     const o3 = run(["--title", "merge queue: embarking #1396", "--diff-groups", "5"], { ...Q, GATE_B_ONCE: "1", RANGE: `${M1435}..${M1396}` });
     let o3g = null; try { o3g = JSON.parse(o3.out.split("\n").find((l) => l.startsWith("[")) ?? ""); } catch { /* reported below */ }
     ok("P-651: in ONCE --diff-groups on a real batch prints its groups as JSON (exit 0), minus the rows job regression runs", o3.code === 0 && Array.isArray(o3g) && /left to the protected set \(job regression/.test(o3.out), o3);
+    // Review of #2151 (B1, M1) on #1620 (merge 4cdd5925b): it added C6.2-application-type.test.ts and
+    // C7.1-application-type.test.ts for C6.2 and C7.1, both Works and unheld at its base; job "regression" knows only the
+    // base's packs, so a new pack must run in job "packs" (unnamed) or in gate B's batch run (named, with its steps).
+    const M1620 = "4cdd5925b68ec3a62d54dfab362a7db89a070225";
+    if (have(M1620)) {
+      const rr = git("rev-parse", `${M1620}^1`).stdout.trim(), R1620 = { ...Q, GATE_B_ONCE: "1", RANGE: `${rr}..${M1620}` };
+      prs([{ n: 1620, title: "forms: application type", body: "" }]);
+      const b1 = run(["--title", "merge queue: embarking #1620", "--diff-groups", "5"], R1620), g1 = JSON.parse(b1.out.split("\n").find((l) => l.startsWith("[")) ?? "null");
+      ok("#2151 B1: in ONCE a Works row whose pack a batch member adds (C6.2, C7.1 in #1620) runs in job packs, never left to regression", b1.code === 0 && g1?.length === 1 && g1[0].caps === "C6.2 C7.1" && /left to the protected set/.test(b1.out), b1);
+      prs([{ n: 1620, title: "forms: application type", body: "Capabilities: C7.1, C6.2 (steps 1-2)" }]);
+      const b2 = run(["--title", "merge queue: embarking #1620", "--diff-groups", "5"], R1620), b3 = run(["--title", "merge queue: embarking #1620"], R1620);
+      ok("#2151 M1: rows a member's PR names leave its packs by diff (part 1 runs them with their steps, never whole)", b2.code === 0 && b2.out.split("\n").find((l) => l.startsWith("[")) === "[]", b2);
+      ok("#2151 B1: in ONCE the batch's gate B runs those named Works rows, C6.2 with its steps", b3.code === 0 && /P-651: the batch runs the rows its PRs name/.test(b3.out) && /C6\.2 \(steps 1, 2\)/.test(b3.out) && /C7\.1-application-type\.test\.ts/.test(b3.out), b3);
+    } else console.log("SKIP  #2151 review replays: #1620's merge is not in this copy");
     prs([P1396]);
     const q6 = run(["--title", "merge queue: embarking #1396"], { ...Q, RANGE: "" });
     ok("QA-366: a batch without RANGE could not run (exit 2), never a silent pass", q6.code === 2 && /needs RANGE/.test(q6.out), q6);

@@ -7,11 +7,10 @@
 #             records-label.yml, not here (P-214 fix, 7 Nov: no job of this workflow runs the PR's code with a write token).
 #   * records (boards, guards, settings, other workflows): the fast checks on one machine (push guard, rules files,
 #             decision impact, graph P-86, official PDFs P-31, explicit-any count, the tools' own checks); no suites.
-#   * code    (the app, its suites or their tools; select-suites.mjs decides): the fast checks on the first part, and
-#             the studio suites on the parallel parts (job "shard", run-suites.sh --shard i/n, each a fresh copy):
-#               - a builder's PR: only the suites its change can affect (run-suites.sh --changed);
-#               - a merge-queue batch: every suite but the quarantined ones (--skip-quarantined), once per change.
-#             Both retry a failed suite once (B122, P-376 (8), run-suites.sh --retry): "passed on retry" or "failed
+#   * code    (the app, its suites or their tools; select-suites.mjs decides): the fast checks (job "fast") and, on a
+#             merge-queue batch only (P-651 (2), below), the studio suites on the parallel parts (job "shard",
+#             run-suites.sh --shard i/n, each a fresh copy): every suite but the quarantined ones (--skip-quarantined),
+#             once per change; a builder's PR runs no suite. A batch retries a failed suite once (B122, P-376 (8), run-suites.sh --retry): "passed on retry" or "failed
 #             twice" in the summary, a record uploaded as suite-retries-<part>; a suite that passed only on retry in 2
 #             runs in 7 days is quarantined for every part (tools/flaky.mjs in job "kind"). The nightly never retries.
 #             F5 (founder 6 Nov): a suite named or titled race, concurrent, parallel or upsert, or on the quarantine
@@ -24,8 +23,9 @@
 #   push guard, rules files, tools' own checks, gate B part 1 with --no-packs) and job "types"; the full test set (the
 #   suites on the parts, the packs by diff, the protected regression set, gate B's named packs) runs once, on the
 #   merge-queue batch, which every merge passes (no gate lowered, P-614). Main is tested by the nightly full set (no push
-#   trigger: P-85). Gate B on the batch (GATE_B_ONCE, gate-b.mjs): every row a batch PR names runs, the held ones too
-#   (P-488), and job "packs" runs the batch's packs by diff. Records, PR or batch: job "fast" alone; no part.
+#   trigger: P-85). Gate B on the batch (GATE_B_ONCE, gate-b.mjs): every row a batch PR names runs with its steps, Works
+#   and held rows too (P-488), and job "packs" runs each member's packs by diff minus the rows its PR names. Records, PR
+#   or batch: job "fast" alone; no part.
 # Switches (repository variables, gh variable set NAME --body VALUE):
 # Type check (P-291, the outsider audit of 29 Oct): job "types", tsc --noEmit for api and web (tools/typecheck.mjs; fails
 #   only on an error not in typecheck-known.txt), on its own machine beside the parts for records and code, so it adds
@@ -48,13 +48,9 @@
 #   (2) A ready head's check is never cancelled: a newer push waits for it (workflow concurrency below; only a
 #       waiting run is replaced, before it starts, at no machine cost). Parts never stop each other (fail-fast off), so a
 #       red part is re-run alone: "Re-run failed jobs" on the run's page, or gh run rerun <run-id> --failed.
-#   (3) Results are remembered (tools/ci-memory.mjs): a PR run records which suites passed; a later run of the same PR
-#       on the same base skips each suite that passed at an earlier head whose changes since choose none of it
-#       (select-suites.mjs's full rules: a shared file, the lockfile or this file chooses everything; the smoke set
-#       always runs again), and once any app file changed only suites that start no server, browser or database are
-#       remembered. A head already green on this base with the same title and body (ready again, a reopen) reports
-#       that verdict; a red head is always tested again.
-#       The merge queue and the nightly full run never use memory: they run their full sets as before.
+#   (3) Results are remembered (tools/ci-memory.mjs): a head already green on this base with the same title and body
+#       (ready again, a reopen) reports that verdict; a red head is always tested again. (Suites remembered green per
+#       PR are gone with P-651 (2): a PR runs no suite; git has them.) The merge queue and the nightly never use memory.
 #   (4) Records out of the product queue: a records-only PR (tools/records-only.sh, the one definition) is labelled
 #       "records" by records-label.yml (pull_request_target, main's code only; moved out of job "kind" 7 Nov), and the
 #       label comes off when the change stops being records only. Mergify's "records" queue
@@ -95,7 +91,7 @@ jobs:
     # actions: read for the PR's earlier runs (memory). Read-only (P-214 fix, 7 Nov): this job runs the PR's own scripts
     # (change-kind.sh, flaky.mjs, ci-memory.mjs, run-suites.sh), so it never holds a write token; the "records" label is
     # set by .github/workflows/records-label.yml, which runs only main's code (product/tools/check-write-token.sh).
-    permissions: { contents: read, actions: read }
+    permissions: { contents: read, actions: read, pull-requests: read }   # pull-requests: a batch's PR bodies (gate-b.mjs, step d)
     outputs:
       autoq: ${{ steps.q.outputs.autoq }}
       kind: ${{ steps.k.outputs.kind }}
@@ -164,10 +160,11 @@ jobs:
         with: { node-version-file: .nvmrc }
       - id: d
         name: packs this batch touches (D2 on the batch, P-651 (2); gate-b.mjs --diff-groups 5; run by job "packs")
-        # A pack the batch changes (its row if built) and every Works row whose pack reads a changed file, minus the
-        # named capabilities and the rows job "regression" runs whole (GATE_B_ONCE), in at most 5 groups. Reads files only.
+        # For each member merge: a pack it changes or adds (its row if built) and every Works row whose pack reads a
+        # changed file, minus the rows its own PR names (job "fast" runs them, with their steps) and the Works rows only
+        # read (job "regression" runs them); in at most 5 groups (GATE_B_ONCE). Reads files and the batch PRs' bodies.
         if: steps.k.outputs.kind == 'code' && steps.k.outputs.queue == 'true'
-        env: { KIND: code, QUEUE: "true", GATE_B_ONCE: "1", PR_TITLE: "${{ github.event.pull_request.title }}", PR_BODY: "${{ github.event.pull_request.body }}" }
+        env: { KIND: code, QUEUE: "true", GATE_B_ONCE: "1", GITHUB_TOKEN: "${{ github.token }}", PR_TITLE: "${{ github.event.pull_request.title }}", PR_BODY: "${{ github.event.pull_request.body }}" }
         run: |
           g=$(node "$S/tools/gate-b.mjs" --diff-groups 5) || exit 1
           [[ "$g" == \[* ]] || { echo "gate-b.mjs --diff-groups printed no JSON: $g"; exit 1; }
@@ -319,18 +316,12 @@ jobs:
       QUEUE: ${{ needs.kind.outputs.queue }}
       N: ${{ needs.kind.outputs.n }}
       SUITES_QUARANTINE_AUTO: ${{ needs.kind.outputs.autoq }}
-      GREEN: ${{ needs.kind.outputs.green }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - name: the test merge on main (D6, tools/pr-base.sh; kind's main in its own attempt, today's main on a re-run)
-        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha }}", KBASE: "${{ needs.kind.outputs.base }}", KATTEMPT: "${{ needs.kind.outputs.battempt }}" }
+      - name: the batch's base at run time (D6, tools/pr-base.sh queue; a batch keeps GitHub's merge)
         run: |
-          if [ "$QUEUE" = true ]; then range=$(bash "$P/tools/pr-base.sh" queue)
-          else pin=""; [ "$KATTEMPT" = "$GITHUB_RUN_ATTEMPT" ] && pin="$KBASE"; range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" $pin); fi || exit 1
-          # A re-run attempt (no pin) keeps kind's remembered suites (GREEN): run-suites.sh deals the parts after
-          # --skip-green, so dropping it would re-deal and the re-run part might not hold the suite that failed. Those
-          # suites were not run in attempt 1 either; the merge queue runs every suite on the batch's main.
+          range=$(bash "$P/tools/pr-base.sh" queue) || exit 1
           echo "RANGE=$range" >> "$GITHUB_ENV"; echo "tested: $range"
       - uses: actions/setup-node@v4
         with:
@@ -344,12 +335,8 @@ jobs:
         run: cd "$S" && ./node_modules/.bin/playwright install chromium
       - name: studio suites, part ${{ matrix.shard }} of ${{ needs.kind.outputs.n }} (run-suites.sh --demo --retry --shard; US$0 model spend)
         if: env.KIND == 'code'
-        env: { PR_SUITES: "${{ vars.PR_SUITES }}" }
         run: |
-          if [ "$QUEUE" = true ]; then sel=(--skip-quarantined); else sel=(--changed "$RANGE"); [ "$PR_SUITES" = direct ] && sel+=(--direct)
-            # P-371 (3): suites remembered green on this base with unchanged inputs (never in the merge queue).
-            if [ -n "$GREEN" ]; then printf '%s\n' "$GREEN" > "$RUNNER_TEMP/green.tsv"; sel+=(--skip-green "$RUNNER_TEMP/green.tsv"); fi; fi
-          bash "$P/tools/run-suites.sh" --demo --retry "${sel[@]}" --shard "${{ matrix.shard }}/$N" | tee suites.md
+          bash "$P/tools/run-suites.sh" --demo --retry --skip-quarantined --shard "${{ matrix.shard }}/$N" | tee suites.md
           exit ${PIPESTATUS[0]}
       - name: no personal data in logs (PF-23, Doc-1 release gate; every server log this part's suites wrote; a few seconds)
         # SA-11 BR-16, SA-11-37: the servers above log through PF-23's redacting logger; this reads every copy's api.log
@@ -364,20 +351,6 @@ jobs:
       - name: summary
         if: always() && env.KIND == 'code'
         run: '[ -f suites.md ] && cat suites.md >> "$GITHUB_STEP_SUMMARY" || true'
-      - name: remember this part's green suites (P-371 (3); pull requests only, never a batch)
-        if: always() && env.KIND == 'code' && env.QUEUE != 'true'
-        run: |
-          mkdir -p memory; [ -f suites.md ] || exit 0
-          node "$P/tools/ci-memory.mjs" record --suites suites.md --base "$(git rev-parse HEAD^1)" --head "$(git rev-parse HEAD^2)" \
-            --run "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" --out "memory/shard-${{ matrix.shard }}-a$GITHUB_RUN_ATTEMPT.tsv"
-      - name: upload the memory
-        if: always() && env.KIND == 'code' && env.QUEUE != 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: memory-s${{ matrix.shard }}-a${{ github.run_attempt }}
-          path: memory/
-          retention-days: 7
-          if-no-files-found: ignore
       - name: logs (only when something failed)
         if: failure() && env.KIND == 'code'
         uses: actions/upload-artifact@v4
