@@ -2026,3 +2026,6 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   * #1961 and #2012 also conflict with #2157 PF-19r part 1 (`send/mail.ts`, `messages.ts`, `complaints.ts`), so each keeps both sides.
   * #2029 and #1959 conflict only in their module card. #1959's red ci is `kind` failing on the merge conflict.
 * **#2130:** be291544f has an Approve after a hand-merged module card. It goes to Lead 84 to relabel.
+* **Relabelled by Lead 84:** #2130 be291544f, #2029 268b0867d (sent), #1959 c2d231333, #2012 208c1eb59 (a2b89df34's prisma change is only the doc comment naming the stamp) and #2103 c1607c3a6.
+* **Correction (Lead 84):** #2103's c1607c3a6 also carries the held fix: `BookingTypesService.get` returns each host's set, read under firmScope. The head's Approve covers it.
+* Waiting: #2102 and #1961.
