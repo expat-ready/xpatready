@@ -316,7 +316,7 @@ export function packVerdict(id, steps, status, out) {
 function cleanEnv() {
   const env = { ...process.env };
   for (const k of Object.keys(env)) if (/_LIVE$/.test(k) || k === "ANTHROPIC_API_KEY") delete env[k];   // US$0, live AI off
-  const node = (await import("../../../../../packages/repo-paths/index.ts")).repoPath("tools", "node-v24.21.0", "bin"); // stage 2a
+  const node = resolve(P, "../../../.tools/node-v24.21.0/bin");
   if (existsSync(node)) env.PATH = `${node}:/opt/homebrew/opt/postgresql@18/bin:${env.PATH}`;
   return env;
 }
