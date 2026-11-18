@@ -10,7 +10,7 @@
 // Nest's decorators are applied as calls (identity/keys.ts says why).
 import { Injectable } from "@nestjs/common";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync, linkSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { FileKey, FileKeyTaken, FilePut, sha256Hex, type FilesPort, type StoredFile } from "../../../ports/files.ts";
 import { FirmId } from "../../../ports/audit.ts";
@@ -84,6 +84,26 @@ export class LocalFiles implements FilesPort {
     renameSync(tmp, `${path}.meta`);
     try { unlinkSync(path); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return { deleted: false }; throw e; }   // review m1: another process won
     return { deleted: true };
+  }
+
+  /** PF-15 (SA-3-40): the bytes of the firm's live files (a key with its `.meta` and no tombstone); a retired key, a
+   *  `.tmp` left by a crash and the `.meta` files themselves do not count. Symlinks are not followed. */
+  async usedBytes(firmId: string): Promise<number> {
+    const firmDir = join(this.root, FirmId.parse(firmId).toLowerCase());
+    let total = 0;
+    const walk = (dir: string) => {
+      let names: string[];
+      try { names = readdirSync(dir); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return; throw e; }
+      for (const name of names) {
+        const p = join(dir, name), st = lstatSync(p);
+        if (st.isDirectory()) { walk(p); continue; }
+        if (!st.isFile() || /\.(meta|tmp)$/.test(name)) continue;
+        const m = this.meta(p);
+        if (m && !m.deletedAt) total += st.size;
+      }
+    };
+    walk(firmDir);
+    return total;
   }
 
   private meta(path: string): Meta | null {
