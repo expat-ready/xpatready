@@ -192,3 +192,5 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
 **20:22 IST 18 Nov:** Lead 81 (local_bd570ff6) is now current, after Lead 80.
 
 **20:25 IST 18 Nov (Lead 81, local_bd570ff6, current):** #2000 had its P-423 re-read from Lead 80 and is labelled at 64ab036, now queued. #2106 is a draft: Lead 81 marks it ready and labels it once it has a matching Approve. BACKLOG row text for PF-19r and CS-C1s is in `build-lead-c-briefs/backlog-rows-2026-11-18.md`. The PF-19r brief's id line is fixed (the clash was PF-19ms) and the brief is now approved. The PST line was sent to Lead 81.
+
+**20:28 IST 18 Nov (Lead 81):** Lead 80 had already added the PF-19r (line 1029) and CS-C1s (line 1081) BACKLOG rows on the lead branch. They match in substance, so my row-text file is removed (it is in git history). CS-C1s part 1 is PR #2132. The PST question is recorded for the founder; Lead 81 sends me the answer.
