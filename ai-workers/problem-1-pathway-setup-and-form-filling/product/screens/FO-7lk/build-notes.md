@@ -3,7 +3,7 @@
 Brief: `product/design/build-lead-c-briefs/FO-7lk.md` (on `claude/build-lead-c-647b40` at a7014c0bb). Branched from #2106's head 8a34b34e5 (overlapped chain, Lead 81); merged #2106's finished head facc5231 in on Lead 82's order (23:4x IST). Builder: cloud lane, 18 Nov.
 
 ## What changed
-* One migration, functions only: `prisma/migrations/20261118180000_fo7lk_trust_lock/migration.sql` (stamp to be re-stamped later than `main`'s newest before the PR opens, P-600).
+* One migration, functions only: `prisma/migrations/20261118210000_fo7lk_trust_lock/migration.sql` (stamp to be re-stamped later than `main`'s newest before the PR opens, P-600).
   * New `money_trust_lock(firm, party, currency)` (`CREATE OR REPLACE`; currency typed `"MoneyCurrency"`, not `text` as the brief wrote, so a wrong value is refused rather than locking a different key): the only place the key `'money_trust:' || firm || ':' || party || ':' || currency` is written.
   * The four call sites moved to it: `money_issued_invoice` (FO-7a), `money_trust_entry_write`, `money_move_batch_owed_back`, `money_move_line_write` (FO-7a2). Each is its earlier text with only the lock line changed; the test proves it by turning the helper call back into the inline key and comparing with the database before FO-7lk.
   * `money_credit_note_write`: for `OVERPAID_TO_TRUST` naming a withdrawal to this invoice, reads its party and currency and takes its lock before `money_issued_invoice` touches the invoice row. An entry the checks refuse takes no lock (round 1 Minor / B-1).
@@ -28,3 +28,7 @@ Brief: `product/design/build-lead-c-briefs/FO-7lk.md` (on `claude/build-lead-c-6
 * **Nit:** the helper's currency type is noted above.
 * The helper is now `CREATE OR REPLACE` (the money migrations' rule, FO-7ts DW10).
 * After the merge of facc5231: `check_fo7lk_lock_order.ts` 16/0, `check_fo7a2_ledger_rules.ts` 35/0, `check_fo7a_money_schema.ts` 122/0, `check_fo7mv_move_list.ts` 45/0, `check_fo7ts_money_settings.ts` 46/0, `check_prisma_schema.ts` 8/0, `check_pf12_walls.ts` 100/0.
+
+## After #2106's round 1 (1ed3d3af)
+* #2106 re-stamped its two steps to `20261118200000` and `20261118200100`, so FO-7lk is re-stamped after them, to `20261118210000_fo7lk_trust_lock` (P-600). It will be re-stamped again on top of `main` when its PR opens.
+* Merged 1ed3d3af. Results: `check_fo7lk_lock_order.ts` 16/0, `check_fo7ts_money_settings.ts` 47/0, `check_fo7a2_ledger_rules.ts` 35/0, `check_fo7a_money_schema.ts` 122/0, `check_fo7mv_move_list.ts` 45/0, `check_prisma_schema.ts` 8/0, `check_pf12_walls.ts` 100/0.
