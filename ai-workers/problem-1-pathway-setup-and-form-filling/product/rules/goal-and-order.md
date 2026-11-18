@@ -104,3 +104,5 @@ Moved word for word from RULES.md by Lead 73, 08:4x IST 17 Nov (25 KB limit; IDX
 ## Full rows moved word for word from RULES.md by Lead 80, 16:4x IST 18 Nov (RULES.md under 25 KB, P-611)
 
 | P-606 | Finish whole: each Done when names its test; no new capability while a started one has parts missing (amended P-613 (1)); qa scores when all parts merged. | CI: pr-rules brief-check.sh (part: Done when names its test; not yet a required check) | 15 Nov |
+
+| IDX-7 | Dated rulings (P-616, P-619, P-620, P-621, P-643, P-631, P-633, P-634, P-626, P-627, P-638, P-640, P-645, P-650, P-653, P-655, P-658, P-659) stand as recorded; word for word in `rules/tech-lead.md` › Dated rulings. | prose | 17 Nov |  (moved word for word by Lead 80, 19:1x IST 18 Nov)
