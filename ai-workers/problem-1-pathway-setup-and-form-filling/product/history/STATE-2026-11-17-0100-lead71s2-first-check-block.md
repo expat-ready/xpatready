@@ -1,0 +1,7 @@
+# STATE block moved word for word by Lead 71 (series 2), 01:00 IST 17 Nov
+
+## Lead 71 first check, 23:3x-23:5x IST 16 Nov
+* **CI jam, measured 23:37:** 104 runs queued (oldest 18:53 IST), only 2 ci runs in progress (~11 jobs) against the 40-job account limit; tiny module-cards runs also wait, so runners are scarce, not our job mix alone (cause beyond the 16-job ci run not yet found; GitHub status: all operational). Nothing merged since 21:32. Asked Build Lead C and Lead B (6) by message: PRs without Approve on the current head go back to draft; no pushes to ready PRs except fixes.
+* **label-guard and records-label startup_failure (16:42-18:00 UTC):** a GitHub scheduled brownout of the default `pull_request_target` protection for public repositories ("ask an administrator to explicitly allow pull_request_target in an applicable Actions event policy"). The window ended 23:30 IST; GitHub will make it the default later, so the repo setting is a founder ask (settings, P-387).
+* Acked qa-2026-11-16-R1.4 (#1999). #2011: Lead read a785f98 already, waits on ci (no ci job started). #2012: Lead read the diff cbf6bebd3 posted, waits on ci. #2000, #2003, #2008, #2016: row-owner questions sent to Build Lead C with the Lead's view (#2016: P-634 wins; #2000: add stages.tsx, P-606). Still open: #1865 P-423 hooks read, #1957, #1994 quiet, records PR to main (queue jammed), network sites ask (hand-over item 1, not checked).
+

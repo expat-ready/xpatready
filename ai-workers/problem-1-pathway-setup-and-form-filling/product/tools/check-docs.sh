@@ -70,6 +70,8 @@ m, r, sf = sys.argv[1:4]; mn = os.path.basename(m)
 rid = lambda l: (lambda c: c[1].strip() if len(c) > 2 else "")(l.split("|"))
 pat = re.compile(r"^\| [A-Z]+-[0-9A-Za-z.]+ \|")
 reg = {rid(l) for l in open(r).read().split("\n") if pat.match(l)}
+# P-686: a rule moved into rules/*.md under an index row is present when the IDX row names it in parentheses.
+reg |= {i for l in open(r).read().split("\n") if l.startswith("| IDX-") for g in re.findall(r"\(([^)]*)\)", l) for i in re.findall(r"\bP-[0-9]+[a-z]?\b", g)}
 side = {}
 if os.path.exists(sf):
     for l in open(sf).read().split("\n"):

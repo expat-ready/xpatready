@@ -586,7 +586,8 @@ def monte_carlo(counts, remaining, today, seed=MC_SEED, runs=MC_RUNS, cap=MC_CAP
 # ---------------------------------------------------------------- Flow box (P-644)
 FLOW_NAMES = ("flow_rows_built_24h", "flow_rows_built_3d", "flow_parts_24h", "flow_parts_3d", "flow_parts_left",
               "flow_works_24h", "flow_works_3d", "flow_prove_lag_h", "flow_awaiting", "flow_awaiting_oldest_h",
-              "flow_forecast", "flow_forecast_best", "flow_forecast_worst")
+              "flow_forecast", "flow_forecast_best", "flow_forecast_worst",
+              "flow_rows_built_today", "flow_parts_today", "flow_works_today", "flow_works_week")
 
 
 def flow_numbers(N, snap, now, today, rows, backlog, app_merged_at, cap_text, missing):
@@ -637,10 +638,15 @@ def flow_numbers(N, snap, now, today, rows, backlog, app_merged_at, cap_text, mi
     ids_days = count_days(id_at)
     N["flow_parts_3d"] = num(ids_days, src + "Release 1 ids merged on each of the 3 days")
     N["flow_parts_left"] = num(left, src + "Release 1 ids not merged (%d ids)" % len(ids))
+    # Lead 70 (A133): today = the IST calendar day of taken_at; the week = Monday to that day, IST
+    on_day = lambda xs, d: len([t for t in xs if ist_day(t) == d])
+    monday = today - dt.timedelta(days=today.weekday())
+    N["flow_rows_built_today"] = num(on_day(built_at.values(), today), src + "rows whose last part merged today (IST)")
+    N["flow_parts_today"] = num(on_day(id_at, today), src + "Release 1 ids merged today (IST)")
     caps_now = {int(k[3:]): v[1] for k, v in parse_capabilities(cap_text).items() if re.fullmatch(r"R1\.\d+", k)} if cap_text else {}
     mine = {m for m, _ in maps}
     prove_keys = ("flow_works_24h", "flow_works_3d", "flow_prove_lag_h", "flow_awaiting", "flow_awaiting_oldest_h",
-                  "flow_forecast", "flow_forecast_best", "flow_forecast_worst")
+                  "flow_forecast", "flow_forecast_best", "flow_forecast_worst", "flow_works_today", "flow_works_week")
     if not (mine & set(caps_now)):
         for k in prove_keys:
             N[k] = num(None, "not measured: qa's file has no Release 1 row of the checklist")
@@ -707,12 +713,37 @@ def flow_numbers(N, snap, now, today, rows, backlog, app_merged_at, cap_text, mi
     N["flow_works_24h"] = num(window(since.values()), src + "rows whose run of Works began in the 24 h",
                               detail=sorted(m for m, t in since.items() if cut < t <= now))
     N["flow_works_3d"] = num(works_days, src + "rows proven on each of the 3 days")
+    N["flow_works_today"] = num(on_day(since.values(), today), src + "rows whose run of Works began today (IST)")
+    N["flow_works_week"] = num(len([t for t in since.values() if monday <= ist_day(t) <= today]),
+                               src + "rows whose run of Works began this week, Monday %s to today (IST)" % monday.isoformat())
     N["flow_prove_lag_h"] = num(lag_h, src + "median built -> works hours, n=%d" % len(hrs))
     N["flow_awaiting"] = num(len(waiting), src + "built, waiting for qa", detail=waiting)
     N["flow_awaiting_oldest_h"] = num(round(max(old), 1) if old else None, src + "oldest waiting row's hours since built")
     N["flow_forecast"] = num(forecast(sum(ids_days) / 3, sum(works_days) / 3), src + "at the 3 days' mean rates")
     N["flow_forecast_best"] = num(forecast(max(ids_days), max(works_days)), src + "at the 3 days' highest rates")
     N["flow_forecast_worst"] = num(forecast(min(ids_days), min(works_days)), src + "at the 3 days' lowest rates")
+
+
+# ---------------------------------------------------------------- Stuck now (A134)
+STUCK_NAMES = ("stuck_main_gap_min", "stuck_approved_over_60")
+
+
+def stuck_numbers(N, snap, meta, now):
+    """Written from FORMULAS.md › Stuck now. Last merge to main: whole minutes from meta.main_at to taken_at (floor, at least 0).
+    Approved over 60: entries of github/approved_open.json whose labeled_at is more than 60 minutes before taken_at;
+    no list (missing, or an error object) -> not measured."""
+    m = parse_ts(meta.get("main_at"))
+    N["stuck_main_gap_min"] = num(max(0, int((now - m).total_seconds() // 60)) if m else None,
+                                  "Stuck now: minutes from main's newest commit to taken_at" if m else "not measured: meta.main_at missing")
+    try:
+        ap = snap.json("github/approved_open.json")
+    except (ValueError, OSError):
+        ap = None
+    if not isinstance(ap, list):
+        N["stuck_approved_over_60"] = num(None, "not measured: github/approved_open.json missing or an error")
+        return
+    late = [x.get("number") for x in ap if parse_ts(x.get("labeled_at")) and (now - parse_ts(x["labeled_at"])) > dt.timedelta(minutes=60)]
+    N["stuck_approved_over_60"] = num(len(late), "Stuck now: open PRs labelled review: approved over 60 min before taken_at", detail=late)
 
 
 # ---------------------------------------------------------------- main computation
@@ -1120,6 +1151,7 @@ def compute(snap):
         N["works_today_by_size"] = num({k: sum(1 for m in got if sz.get(m) == k) for k in ("S", "M", "L", "not shaped")},
                                        "sizes of those rows")
     flow_numbers(N, snap, now, today, unique_rows, backlog, app_merged_at, cap_text, missing)
+    stuck_numbers(N, snap, meta, now)
     # capabilities_not_mapped: rows none of whose parts' BACKLOG lines carry a Source: id. A row's text leaves out the
     # column whose header starts "Done when"; a field runs from "Source:" to the next "·" or the cell's end; brackets
     # are removed innermost first until none is left; tokens are runs of letters, digits, "." and "-", trailing "." and "-" cut.
@@ -1293,7 +1325,7 @@ def compute(snap):
              "pct_per_works_row", "rows_done_24h", "rows_needed_per_day",
              "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today", "ci_rule_failures_today",
              "ci_bundle_failures_today", "parts_merged", "parts_total", "founder_asks_day", "rules_changes_day",
-             "target_changes_week", "launch_done", "launch_total", "counsel_open", "r1_proven_qa"] + list(FLOW_NAMES)
+             "target_changes_week", "launch_done", "launch_total", "counsel_open", "r1_proven_qa"] + list(FLOW_NAMES) + list(STUCK_NAMES)
     return {"version": 1,
             "numbers": {k: N[k] for k in order},
             "mc_inputs": {"daily_counts": r1_counts, "remaining_scope": remaining}}
@@ -1406,7 +1438,7 @@ def self_test():
         "pct_per_works_row", "rows_done_24h", "rows_needed_per_day",
         "works_today", "works_today_by_size", "capabilities_not_mapped", "label_guard_removals_today", "ci_rule_failures_today",
         "ci_bundle_failures_today", "parts_merged", "parts_total", "founder_asks_day", "rules_changes_day",
-        "target_changes_week", "launch_done", "launch_total", "counsel_open", "r1_proven_qa"] + list(FLOW_NAMES) + ["daily_counts", "remaining_scope"])
+        "target_changes_week", "launch_done", "launch_total", "counsel_open", "r1_proven_qa"] + list(FLOW_NAMES) + list(STUCK_NAMES) + ["daily_counts", "remaining_scope"])
     # P-602 (4), no log: the span is the whole 24 h to 20 Nov 06:30Z; PF-2's first app merge 19 Nov 20:00Z is inside.
     eq("changes_merged_span", (v["changes_merged_span"], n["changes_merged_span"]["detail"]), (1, ["PF-2"]))
     eq("works_rows_span no history", v["works_rows_span"], None)

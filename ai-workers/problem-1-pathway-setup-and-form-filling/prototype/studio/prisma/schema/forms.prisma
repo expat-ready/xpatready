@@ -76,7 +76,7 @@ model GovFormDef {
 /// IRCC_ACCOUNTS, or ANY: every account). Basis AI_SAMPLE · PERSON_SAMPLE · SAMPLE_FIXTURE · FOUNDER_SAMPLE · EXPERT,
 /// with IRCC's line it was read from (P-170: page, quote, date read), or null where none was found.
 model FormEditionAccept {
-  id            String          @id @default(uuid()) @db.Uuid
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   workspaceId   String          @map("workspace_id") @db.Uuid
   formEditionId String          @map("form_edition_id") @db.Uuid
   account       String

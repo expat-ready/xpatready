@@ -7,16 +7,10 @@ import { INVISIBLE, LONE } from "../contracts/runtime.ts";
 import { checkCondition } from "./validate.ts";
 import { OUTCOME_WORDS } from "../contracts/case-check-words.ts";
 
-/** `whenNotMet` (P-230 (1), BACKLOG R4): what a gate not met means, as data. Absent: Not eligible (the default).
- *  "needs_review": the representative reviews it, so the result is Possibly eligible, never Not eligible (the background
- *  question: rehabilitation, record suspension and a temporary resident permit exist). Stored only when set, so the
- *  releases made before it keep their fingerprints. */
-export type WhenNotMet = "not_eligible" | "needs_review";
-export type Gate = { key: string; label: string; condition: Record<string, unknown>; whenNotMet?: "needs_review" };
-/** What the combination row stores (combination.eligibility). `disclaimer` null: the Sample default goes into the release. */
-export type StoredEligibility = { gates: Gate[]; judgement: string[]; disclaimer: string | null; version: number; by: string; at: string };
-/** What a release carries (snapshot.eligibility), frozen with it. */
-export type SnapshotEligibility = { gates: Gate[]; judgement: string[]; disclaimer: string };
+// AS-1m: the gate types and gateFacts live in engine/eligibility/gates.ts; re-exported here for their callers.
+import { gateFacts, type Gate, type SnapshotEligibility, type StoredEligibility, type WhenNotMet } from "./eligibility/gates.ts";
+export { gateFacts };
+export type { Gate, SnapshotEligibility, StoredEligibility, WhenNotMet };
 export type FieldError = { field: string; message: string };
 
 /** BR-6 default, Sample (ASSUMPTIONS C8; Unconfirmed: no counsel). Q1 taken as recommended: the disclaimer lives on the
@@ -192,11 +186,6 @@ export function snapshotEligibility(stored: unknown): SnapshotEligibility | unde
   const e = stored as Partial<StoredEligibility> | null | undefined;
   if (!e || (!(e.gates ?? []).length && !(e.judgement ?? []).length)) return undefined;
   return { gates: (e.gates ?? []).map((g) => ({ key: g.key, label: g.label, condition: g.condition, ...(g.whenNotMet === "needs_review" ? { whenNotMet: g.whenNotMet } : {}) })), judgement: [...(e.judgement ?? [])], disclaimer: e.disclaimer ?? DEFAULT_DISCLAIMER };
-}
-
-/** The facts a set of gates reads, in gate order, once each. */
-export function gateFacts(e: Pick<SnapshotEligibility, "gates"> | undefined): string[] {
-  return [...new Set((e?.gates ?? []).flatMap((g) => [...JSON.stringify(g.condition).matchAll(/"field":"([^"]+)"/g)].map((m) => m[1])))];
 }
 
 /** BR-5 (and BR-2 again at release, since the library may have changed): a gate's rule is still valid, and every fact
