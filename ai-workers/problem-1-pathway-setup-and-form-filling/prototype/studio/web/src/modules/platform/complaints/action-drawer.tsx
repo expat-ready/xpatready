@@ -22,8 +22,10 @@ const LABEL: Record<string, string> = { at: "When", note: "Note", outcome: "Outc
 const PATH: Record<Action, string> = { acknowledge: "acknowledge", step: "steps", note: "steps", response: "response-sent", close: "close", handler: "handler" };
 const noteRequired = (a: Action) => a === "step" || a === "note" || a === "close";
 
-export function ActionDrawer({ action, onAct, onClose, complaint, zone, handlerId, onLost, returnFocus }: {
+export function ActionDrawer({ action, onAct, onClose, complaint, dates, zone, handlerId, onLost, returnFocus }: {
   action: Action | null; onAct: (a: Action) => void; onClose: () => void; complaint: string; zone: string; handlerId: string; onLost: () => void; returnFocus: () => HTMLElement | null;
+  /** The recorded dates an act must not come before (the service's own order checks). */
+  dates: { receivedAt: string; acknowledgedAt: string | null; responseSentAt: string | null };
 }) {
   const me = usePlatformStaff();
   const qc = useQueryClient(), toast = useToast();
@@ -57,9 +59,13 @@ export function ActionDrawer({ action, onAct, onClose, complaint, zone, handlerI
   const save = useMutation({
     mutationFn: async () => {
       const note = f.note.trim();
-      // The default left as it is sends this instant, not the minute it was cut to: a complaint received seconds ago
-      // would otherwise refuse its own default (break m1), and the repeated hour of a clock change keeps its instant (m7a).
-      const at = f.at === start.current ? new Date().toISOString() : f.at ? zonedToIso(f.at, zone) : "";
+      // The default left as it is sends the minute it was cut to (slack for a browser clock ahead of the server's, review
+      // R1), but never before the recorded date the act must follow: a complaint received seconds ago takes its own
+      // default (break m1).
+      const floor = [dates.receivedAt, ...(a === "response" || a === "close" ? [dates.acknowledgedAt] : []), ...(a === "close" ? [dates.responseSentAt] : [])]
+        .filter((x): x is string => !!x).reduce((x, y) => (y > x ? y : x));
+      const cut = f.at ? zonedToIso(f.at, zone) : "";
+      const at = f.at === start.current && cut && cut < floor ? floor : cut;
       const body: Record<string, unknown> =
         a === "handler" ? { handlerStaffId: f.handlerStaffId || undefined, ...(note ? { note } : {}) }
         : a === "step" || a === "note" ? { kind: a === "note" ? "NOTE" : "STEP", note, ...(f.at && f.at !== start.current ? { at } : {}) }

@@ -41,3 +41,14 @@ Each act writes one event and one audit line, in order, by the signed-in staff m
 
 ## Could not test
 A real screen reader. A visible-browser walk (headless only here). An intended user's unaided walk (D17 and D20 stay with the founder). The read-key-only person (no seeded role, part 3 m6). The React StrictMode dev build (r1's pattern, by reading only).
+
+## Re-score at c72deb527 (18 Nov 2026, about 19:55 IST)
+I re-walked J5 on my own rebuilt copy (:4573). The page behind a 409 is now true, and "Add it as a note" carries the text. J2b now fills Close. A new probe of the J1 acts with the browser clock shifted by `page.clock.setSystemTime`: at +300 ms, +1.5 s and +5 s the untouched default on acknowledge and close is refused with "When: this date is in the future" (review R1).
+| Criterion | Score | Change |
+|---|---|---|
+| Task completed | ½ | was 1: with the clock ahead, the filled button's act fails until the person edits a date they never touched |
+| Next step obvious | 1 | was ½: J2b fills Close; after a 409 the bar moves on |
+| Feedback and state | ½ | unchanged score, new reason: "in the future" on an untouched default is wrong feedback (M1's stale page is fixed) |
+| Error recovery | 1 | was ½: the record re-reads, and the note is carried over |
+| Other six | 1 each | unchanged |
+| **Total** | **9 / 10** | **Pass** (no 0). Raise it by fixing R1 |

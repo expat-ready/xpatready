@@ -68,9 +68,9 @@ export function otherActions(c: Detail): Action[] {
   const all: Action[] = [...(c.acknowledgedAt ? [] : ["acknowledge" as const]), "step", "note", ...(c.responseSentAt ? [] : ["response" as const]), "close"];
   return all.filter((a) => a !== nextAction(c));
 }
-/** BR-3: change handler, both keys and open only (the server still decides). */
 /** Every act this person may take on this complaint now (a restored panel for any other act is not opened, break m3). */
 export const allowedActions = (me: Me, c: Detail): Action[] => (c.status === "CLOSED" ? ["note"] : [nextAction(c), ...otherActions(c), ...(canChangeHandler(me, c) ? ["handler" as const] : [])]);
+/** BR-3: change handler, both keys and open only (the server still decides). */
 export const canChangeHandler = (me: Me, c: { status: string }) => c.status === "OPEN" && has(me, KEY.record) && has(me, KEY.read);
 export const OVERDUE_TIP = "Open and not acknowledged by its date. Once acknowledged, a complaint is not shown as overdue.";
 export const HOW = "Record each complaint when it arrives. The handler acknowledges it, adds handling steps, records when the response was sent and closes it with an outcome. Everything stays on the record. A complaint is overdue only while it is not acknowledged by its date; once acknowledged it shows as Open however long it waits. The 2-business-day acknowledgement period and the lists of channels, topics and outcomes are Sample until the College's by-laws are read. Unconfirmed: no counsel.";

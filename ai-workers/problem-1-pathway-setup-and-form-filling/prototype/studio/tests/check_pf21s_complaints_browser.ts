@@ -301,6 +301,16 @@ ok("PF-21s review M1 fail: acknowledged elsewhere, the page moves on to Add a ha
 // Review m1: response sent without a step: the filled button is Close (steps are never required).
 await actOpen(w3, "response"); await saved(w3, "response");
 ok("PF-21s review m1: acknowledged and answered with no step, the filled button is Close with an outcome", (await nextOf(w3)) === "close" && (await acts(w3)).includes("step"), await acts(w3));
+// Review R1: a browser clock 2 seconds ahead of the server's still saves the untouched default (cut to the minute,
+// never before receipt): the acknowledgement and the close. Not started in a minute's first seconds, where the cut
+// minute is the one now beginning.
+const skew = await record(rTok, `Person Skew ${run}`, R.id, ago(1));
+while (new Date().getSeconds() < 4 || new Date().getSeconds() > 50) await new Promise((r) => setTimeout(r, 500));
+const sk = await newPage(rTok);
+await opened(sk, skew); await sk.clock.setSystemTime(Date.now() + 2_000);
+await actOpen(sk, "acknowledge"); await saved(sk, "acknowledge");
+await actOpen(sk, "close"); await sk.getByLabel("Resolved").check(); await sk.getByRole("textbox", { name: /^Note/ }).fill("Sample."); await saved(sk, "close");
+ok("PF-21s review R1: with the browser's clock 2 s ahead, the default dates of the acknowledgement and the close are accepted", JSON.stringify(await eventsOf(sk)) === JSON.stringify(["CLOSED", "ACKNOWLEDGED", "RECEIVED"]), await eventsOf(sk));
 // Break m1: a complaint received seconds ago takes its acknowledgement at the default date (not cut to before receipt).
 const secs = await record(rTok, `Person Seconds ${run}`, R.id, new Date(Date.now() - 2_000).toISOString());
 await opened(w3, secs); await actOpen(w3, "acknowledge"); await saved(w3, "acknowledge");
@@ -308,7 +318,10 @@ ok("PF-21s break m1: received 2 seconds ago, the default date of the acknowledge
 // Break m5a: Escape from a quiet act's panel returns focus to that act's button.
 await w3.locator('[data-act="close"]').focus(); await w3.keyboard.press("Enter"); await panel(w3, "close").waitFor();
 await w3.keyboard.press("Escape"); await panel(w3, "close").waitFor({ state: "detached", timeout: 10_000 });
-ok("PF-21s break m5a: Escape from Close with an outcome returns focus to its own button, not the filled one", (await w3.evaluate(() => document.activeElement?.getAttribute("data-act"))) === "close");
+// Radix returns focus a tick after the panel goes: wait up to 3 s for it to land on the close button, then judge.
+const m5aBack = await w3.waitForFunction(() => document.activeElement?.getAttribute("data-act") === "close", undefined, { timeout: 3_000 }).then(() => true, () => false);
+const m5aFocus = await w3.evaluate(() => document.activeElement?.getAttribute("data-act") ?? document.activeElement?.outerHTML.slice(0, 80));
+ok("PF-21s break m5a: Escape from Close with an outcome returns focus to its own button, not the filled one", m5aBack && m5aFocus === "close", m5aFocus);
 // Break m2a: answered before any acknowledgement, the filled button is Close; the acknowledgement stays a quiet act.
 const early = await record(rTok, `Person Early ${run}`, R.id, ago(2));
 await call(rTok, "POST", `/${early}/response-sent`, { at: ago(1) });
