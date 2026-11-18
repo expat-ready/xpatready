@@ -164,7 +164,7 @@ try {
     onPlant.BA.deadlocks >= 1 && onPlant.AB.barriers === RUNS && onPlant.BA.barriers === RUNS, onPlant);
   // Not a FAIL line either way: #1991's text already takes the invoice party's lock inside money_issued_invoice before the
   // invoice row (FO-7a review round 3, B-14), the same key as the withdrawal's party. The PR body states the count.
-  ok(`FO-7lk fail (planted, the rollback applied): #1991's text under the same harness — ${backDeadlocks} deadlock(s) in ${2 * RUNS} runs; recorded, not counted as proof (brief: "If it never deadlocks there, say so")`,
+  ok(`FO-7lk note (not a fail case): #1991's text (the rollback applied) under the same harness — ${backDeadlocks} deadlock(s) in ${2 * RUNS} runs, recorded, not counted as proof (brief: "If it never deadlocks there, say so"); this line checks only that the harness ran there (barriers met, balances right)`,
     onBack.AB.barriers === RUNS && onBack.BA.barriers === RUNS && onBack.AB.balancesRight + onBack.BA.balancesRight === 2 * RUNS, onBack);
 
   // ------------------------------------------------------------------------------------------- neither: no new waits
@@ -196,6 +196,29 @@ try {
     lt.refund === lb.refund && lt.plain === lb.plain && lt.refund === "party" && lt.plain === "party", { lt, lb });
   ok("FO-7lk pass: Move back to trust holds one advisory lock, the withdrawal party's (the same key it took inside money_issued_invoice before; now taken first, by the credit note itself)",
     lt.toTrust === "party" && lb.toTrust === "party", { lt, lb });
+  {
+    // B-1 (review and break on 9f30e673): a move-back naming another party's withdrawal is refused and, while its
+    // transaction is open, holds no lock of that other party (no new two-party order).
+    const P = randomUUID(), X = randomUUID(), inv = randomUUID(), invX = randomUUID(), payX = randomUUID();
+    last(T, `insert into money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by, cleared) values ('${payX}', '${firmT}', 'E_TRANSFER', 10000, 'CAD', 'TRUST', now(), 'key-fo7lk-b1-${payX.slice(0, 8)}', 'user-R', true);
+      insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, payment_id, created_by) values ('${firmT}', '${X}', 'DEPOSIT', 10000, 'CAD', '${payX}', 'user-R');
+      insert into money_invoice (id, firm_id, person_id, currency, due_date, created_by, updated_at) values ('${inv}', '${firmT}', '${P}', 'CAD', '2026-12-15', 'user-R', now()), ('${invX}', '${firmT}', '${X}', 'CAD', '2026-12-15', 'user-R', now());
+      insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, currency) values ('${firmT}', '${inv}', 1, 'FEE', 'Work permit application', 1, 10000, 10000, 'CAD'), ('${firmT}', '${invX}', 1, 'FEE', 'Work permit application', 1, 10000, 10000, 'CAD');
+      update money_invoice set issued_at = now(), issued_by = 'user-R' where id in ('${inv}', '${invX}')`);
+    const wX = sql(T, `insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, invoice_id, created_by) values ('${firmT}', '${X}', 'WITHDRAWAL_TO_INVOICE', -10000, 'CAD', '${invX}', 'user-R') returning id`);
+    const g = new pg.Client({ connectionString: urlOf(T) }), c = new pg.Client({ connectionString: urlOf(T) }); await g.connect(); await c.connect();
+    try {
+      // The gate holds P's lock, so the credit note waits inside money_issued_invoice; then see which keys it holds.
+      await g.query("begin"); await g.query(`select money_trust_lock($1, $2, 'CAD')`, [firmT, P]);
+      const cpid = (await c.query("select pg_backend_pid() p")).rows[0].p;
+      const pc = c.query(`insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, "full", reason, created_by, overpaid_choice, overpaid_minor, overpaid_entry_id) values ('${firmT}', '${inv}', 5000, 'CAD', false, 'Service cancelled', 'user-R', 'OVERPAID_TO_TRUST', 5000, '${wX}')`).then(() => "ok", (e: { code?: string; message?: string }) => `${e.code} ${e.message}`);
+      for (let i = 0; i < 400 && (await g.query("select wait_event_type w from pg_stat_activity where pid = $1", [cpid])).rows[0]?.w !== "Lock"; i++) await sleep(5);
+      const held = (await g.query(`select count(*)::int n from pg_locks where locktype = 'advisory' and granted and pid = $1`, [cpid])).rows[0].n;
+      await g.query("commit"); const out = await pc;
+      ok("FO-7lk pass (B-1): a move-back naming another party's withdrawal holds none of that party's locks while it waits, and is then refused in the ledger's words",
+        held === 0 && /names a trust application to this invoice/.test(out), { held, out });
+    } finally { await g.query("rollback").catch(() => {}); await g.end(); await c.end(); }
+  }
   ok("FO-7lk pass: the MODULE card carries the invariant line",
     readFileSync(join(STUDIO, "api", "src", "client-money", "MODULE.md"), "utf8").includes("every trust write takes the party lock before the invoice row"));
 } finally {

@@ -65,7 +65,8 @@ enum MoneyLineKind {
 }
 
 /// How a payment was made (row FO-7a; AG-6-19 rule 1; FO-7ts part 1 adds BANK_TRANSFER and CARD_TERMINAL). CARD is the
-/// online card payment only.
+/// online card payment only. Neither CARD nor CARD_TERMINAL is ever received into trust (money_payment_card_not_trust;
+/// CARD_TERMINAL from FO-7ts part 1's second step, Lead 80 on #2106; P-567 (3)).
 enum MoneyPaymentMethod {
   CARD
   E_TRANSFER

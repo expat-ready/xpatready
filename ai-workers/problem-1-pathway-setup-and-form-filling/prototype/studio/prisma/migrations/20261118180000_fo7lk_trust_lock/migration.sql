@@ -10,7 +10,7 @@
 
 -- The party's trust lock (one per firm, party and currency), held to the end of the transaction. A null party takes
 -- none (pg_advisory_xact_lock is strict), as the inline key did. Keeps its caller's rights, as FO-7a2's helpers do.
-CREATE FUNCTION money_trust_lock(f uuid, party uuid, cur "MoneyCurrency") RETURNS void LANGUAGE sql VOLATILE SET search_path = pg_catalog, public, pg_temp AS
+CREATE OR REPLACE FUNCTION money_trust_lock(f uuid, party uuid, cur "MoneyCurrency") RETURNS void LANGUAGE sql VOLATILE SET search_path = pg_catalog, public, pg_temp AS
   $$ SELECT pg_advisory_xact_lock(hashtextextended('money_trust:' || f || ':' || party || ':' || cur, 0)) $$;
 
 -- FO-7a's, its lock line only.
@@ -167,10 +167,13 @@ BEGIN
   END IF;
   -- FO-7lk: "Move back to trust" writes a trust entry for the withdrawal's party (money_credit_note_owed_back, after the
   -- insert). Take that party's lock now, before money_issued_invoice touches the invoice row, so this path keeps the
-  -- order a withdrawal to the invoice keeps: the party's lock first, the invoice row second (no 40P01).
+  -- order a withdrawal to the invoice keeps: the party's lock first, the invoice row second (no 40P01). Only for a
+  -- withdrawal to this invoice (so of the invoice's party): an entry the checks below refuse takes no lock of another
+  -- party (review and break B-1 on 9f30e673: that would be a new two-party order).
   IF NEW.overpaid_choice = 'OVERPAID_TO_TRUST' THEN
-    SELECT coalesce(e.person_id, e.company_id) AS party, e.currency INTO w FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND e.id = NEW.overpaid_entry_id;
-    IF FOUND THEN PERFORM money_trust_lock(NEW.firm_id, w.party, w.currency); END IF;  -- a missing entry is refused below
+    SELECT coalesce(e.person_id, e.company_id) AS party, e.currency INTO w FROM "money_trust_entry" e
+      WHERE e.firm_id = NEW.firm_id AND e.id = NEW.overpaid_entry_id AND e.kind = 'WITHDRAWAL_TO_INVOICE' AND e.invoice_id = NEW.invoice_id;
+    IF FOUND THEN PERFORM money_trust_lock(NEW.firm_id, w.party, w.currency); END IF;  -- anything else is refused below
   END IF;
   open_amount := money_issued_invoice(NEW.firm_id, NEW.invoice_id, NEW.currency, 'money_credit_note');
   -- Trust paid and not returned, less what earlier "Refund to the client" choices already freed (refunded from operating).
