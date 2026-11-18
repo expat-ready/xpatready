@@ -4,21 +4,14 @@
 --   * the pre-case → case pair: MOVE_TO_CASE, − on the party with no case (at most its pre-case balance, refused at zero
 --     or below), + on a case naming the − (moved_from_entry_id), one + per −, both in one transaction (checked at commit);
 --     the party's balance is unchanged and nothing leaves trust. The case's currency and client are the move route's.
---   * the credit ledger money_credit_entry: per holder (the case, or the party with no case) and currency; KEPT from a
---     payment into operating on an invoice, never more than its payments paid over it; APPLIED to an invoice of the
---     same holder and currency, draft or issued, never more than is due on it; REFUNDED with a reason; REVERSED undoes
---     a KEPT or APPLIED entry, never more than it; the balance never goes below zero. Credit is not trust (P-634 does
---     not touch it). Insert-only; behind PF-12's walls.
+--   * the credit ledger money_credit_entry, per holder (the case, or the party) and currency: KEPT, APPLIED, REFUNDED,
+--     REVERSED, never below zero, insert-only, behind PF-12's walls. Credit is not trust (P-634 does not touch it).
 --   * one lock order: both take the party lock first (money_trust_lock, FO-7lk), then any invoice row.
--- Replaces money_trust_entry_write (FO-7a2's text after FO-7lk, changed only for the pair). New: money_invoice_due,
--- money_trust_entry_move_paired, money_credit_entry_write, and (break on 692ea4be) money_credit_kept_holds,
--- money_invoice_credit and five new triggers that keep the credit rules true after later writes: on money_credit_entry,
--- money_refund, money_trust_entry, money_invoice_line and money_invoice. No existing function of another row is edited.
--- Rollback: rollback.sql in this folder (Prisma reads only migration.sql). The enum value MOVE_TO_CASE stays (PostgreSQL
---   cannot drop one).
+-- Replaces money_trust_entry_write (FO-7a2's text after FO-7lk, changed only for the pair); every other function is new,
+-- with five new triggers keeping the credit rules after later writes. No other row's function is edited.
+-- Rollback: rollback.sql in this folder (Prisma reads only migration.sql); the enum value MOVE_TO_CASE stays.
 
--- Prisma's DDL (prisma migrate diff). MOVE_TO_CASE is usable only after this transaction commits, so nothing below
--- names it but function bodies (read when they run) and checks comparing the kind as text.
+-- Prisma's DDL. MOVE_TO_CASE is usable only after this commits: only function bodies and text compares name it below.
 CREATE TYPE "MoneyCreditKind" AS ENUM ('KEPT', 'APPLIED', 'REFUNDED', 'REVERSED');
 ALTER TYPE "MoneyTrustEntryKind" ADD VALUE IF NOT EXISTS 'MOVE_TO_CASE';  -- IF NOT EXISTS: re-run after the rollback (break R2)
 ALTER TABLE "money_trust_entry" ADD COLUMN     "moved_from_entry_id" UUID;
@@ -338,12 +331,8 @@ END $$;
 CREATE TRIGGER money_credit_entry_write BEFORE INSERT ON "money_credit_entry" FOR EACH ROW EXECUTE FUNCTION money_credit_entry_write();
 
 -- ------------------------------------------------------------------------------- kept and applied credit stay true
--- Break on 692ea4be (B4-B8): the credit rules hold after every later write, not only when the credit entry is written.
--- Credit kept from an invoice's payments stays paid over by at least that much, and never more than the payments less
--- their refunds (B4 a refund, B5 a credit application reversed, B6 trust returned, B7 a draft's lines). Credit applied to
--- a draft is never more than its lines less credit notes and the write-off (B7). An invoice holding credit keeps its
--- party, case and currency (B8). Each writer below takes the invoice's party lock before the invoice row, or (draft
--- lines) only the row a credit writer takes after the party lock, so the one lock order holds.
+-- Break B4-B8 on 692ea4be: the credit rules hold after later writes too (a refund, a reversal, trust returned, a draft's
+-- lines, the invoice's holder). Each writer takes the party lock before the invoice row, or (draft lines) only the row.
 CREATE OR REPLACE FUNCTION money_credit_kept_holds(f uuid, inv uuid, what text) RETURNS void LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE kept bigint; due bigint;
 BEGIN
@@ -403,8 +392,7 @@ BEGIN
 END $$;
 CREATE TRIGGER money_trust_entry_credit_kept AFTER INSERT ON "money_trust_entry" FOR EACH ROW WHEN (NEW.kind = 'CORRECTION' AND NEW.amount_minor > 0) EXECUTE FUNCTION money_trust_entry_credit_kept();
 
--- B7: a draft's lines never fall below the credit applied to it, nor make kept credit untrue. The line writer already
--- holds the invoice row (FOR SHARE); a credit writer takes the party lock, then waits for that row, then reads the lines.
+-- B7: a draft's lines never fall below the credit applied to it (the line writer holds the invoice row FOR SHARE).
 CREATE OR REPLACE FUNCTION money_invoice_line_credit() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE f uuid; inv uuid; applied bigint;
 BEGIN

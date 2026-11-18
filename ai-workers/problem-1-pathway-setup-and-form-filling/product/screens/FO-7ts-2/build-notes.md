@@ -23,3 +23,20 @@ Brief: `product/design/build-lead-c-briefs/FO-7ts-2.md` (on `claude/build-lead-c
 ## Checks run (cloud, PostgreSQL 18.3)
 * (on FO-7lk c5d1bccd, with #2106 ae7cc15f) `check_fo7ts_money_settings.ts` 89/0 · `check_fo7lk_lock_order.ts` 16/0 (unchanged) · `check_fo7a2_ledger_rules.ts` 35/0 · `check_fo7a_money_schema.ts` 122/0 (unchanged) · `check_fo7mv_move_list.ts` 45/0 · `check_prisma_schema.ts` 8/0.
 * No live AI, no Stripe, US$0. No screen, no route.
+
+## Breaker round 1 on 692ea4be: fail (2 Blockers, 4 Majors), and the fixes
+The breaker's report is in the session scratchpad; it will be copied here with the round 2 verdict. The move pair held against every attack. The credit ledger's rules held only when a credit entry was written, not after later writes. **Fixed:** the five new triggers below keep each rule true after every later write. Each is a trigger of this row's own; no other row's function is edited.
+* **B5 (Blocker): credit from nothing.** Reversing an application re-opened its invoice while credit was kept from that invoice's payments. Fixed by `money_credit_entry_holds`: the reversal is refused while the kept credit relies on the overpayment.
+* **B8 (Blocker): applied credit did not pin the draft.** The draft's party, case or currency could be changed after credit was applied. Fixed by `money_invoice_credit_pinned`: an invoice holding credit keeps its party, case and currency.
+* **B7 (Major): a draft's lines could fall below the credit applied to it.** Fixed by `money_invoice_line_credit`.
+* **B4 (Major): a refund of the payment that credit was kept from.** The same money was both refunded and kept as credit. Fixed by `money_refund_credit_kept`, which takes the party lock, then the invoice row, then checks.
+* **B6 (Major): trust returned from a withdrawal re-opened an invoice whose overpayment was kept.** Fixed by `money_trust_entry_credit_kept`.
+* **R1 (Major): the rollback dropped credit entries.** It now refuses while any exist.
+* **R2: re-applying after the rollback failed.** Fixed with `ADD VALUE IF NOT EXISTS`.
+* **Note: credit could be kept from an uncleared cheque.** That is now refused.
+* **Left for the tech lead:**
+  * B13 (a trust withdrawal on an invoice already paid by credit; the same holds today for operating payments, a Code s. 32 reading);
+  * B15 (a transaction that saves a draft line and then applies credit can deadlock; FO-7a's line writer takes no party lock);
+  * B11b (any party on a case may refund the case's credit: a route rule).
+* **Size (P-610):** the rollback now runs FO-7lk's migration again, all `CREATE OR REPLACE`, instead of copying `money_trust_entry_write`'s text. That keeps the row at 799 changed lines of code and tests.
+* **Checks:** `check_fo7ts_money_settings.ts` 97/0 (a case for each finding), `check_fo7lk_lock_order.ts` 16/0, `check_fo7a2_ledger_rules.ts` 35/0, `check_fo7a_money_schema.ts` 122/0, `check_fo7mv_move_list.ts` 45/0, `check_prisma_schema.ts` 8/0.

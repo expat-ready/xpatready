@@ -488,7 +488,7 @@ try {
   }
   // ------------------------------------------------------------------------------- the rollback note, on the empty copy
   ok("FO-7ts part 2 rollback fail (break R1 on 692ea4be): over a database holding moves or credit entries the rollback refuses and changes nothing",
-    refused(T, readFileSync(join(MIG, NEW2, "rollback.sql"), "utf8"), /cannot be rolled back silently/) && sql(T, `select count(*) > 0 from money_credit_entry`) === "t");
+    (() => { try { psql(T, ["-1", "-f", join(MIG, NEW2, "rollback.sql")]); return false; } catch (e) { return /cannot be rolled back silently/.test(String((e as { stderr?: string }).stderr ?? e)); } })() && sql(T, `select count(*) > 0 from money_credit_entry`) === "t");
   psql(EMPTY, ["-1", "-f", join(MIG, NEW2, "rollback.sql")]);
   ok("FO-7ts part 2 rollback: rollback.sql restores money_trust_entry_write exactly as FO-7lk left it and money_trust_entry's checks as before, and drops the credit ledger",
     sql(EMPTY, `select md5(prosrc) from pg_proc where proname = 'money_trust_entry_write'`) === entryBefore && checksOf(EMPTY) === checksBefore
