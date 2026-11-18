@@ -165,14 +165,22 @@ try {
   await s.signUp({ ...form, email: staffA, formStamp: p2.formStamp }, "10.12.0.5"); await s.settled();
   ok("PF-12b DW4 pass: a sign-up with firm A's staff email (the lookup read A's staff) writes A's line before the 'already have an account' email", lines("platform.firms.signup").split(",").includes(`${A}:1`), lines("platform.firms.signup"));
 
+  // Re-review 8, M1: the demo's Sample seed (demo.ts, on "platform.demo.reset") crosses firms too: one line per Sample firm.
+  const seedBefore = lines("platform.demo.reset"), totalBefore = total();
+  await asBypass("platform.demo.reset", () => seedSampleFirms(db));
+  const seedAfter = lines("platform.demo.reset");
+  await seedSampleFirms(db);   // outside a bypass use: no line
+  ok("PF-12b DW1 pass (re-review 8 M1): the demo's Sample seed on its bypass use writes one line per Sample firm; the same seed outside a bypass use writes none",
+    seedAfter === [A, B].sort().map((f) => `${f}:${Number(seedBefore.split(",").find((x) => x.startsWith(f))?.split(":")[1] ?? 0) + 1}`).join(",") && total() === totalBefore + 2, { seedBefore, seedAfter, totalBefore, total: total() });
+
   // ---------------------------------------------------------------------------------------------------------- DW7
   const before7 = total();
   await inRequest({ method: "GET", path: "/api/public/forms/abc" }, () => asBypass("fo.sales.web-form", () => db.foWebForm.findMany({ take: 1 })));
   await asJob("platform.signup.purge", () => s.purgeExpired());
   ok("PF-12b DW7 pass: an own-firm door (the web form's lookup) and the purge (no firm) add no line", total() === before7, { before7, after: total() });
-  const expected = { "job:messages.outbox_sweep": 2, "platform.demo.reset": 4, "platform.demo.inbox": 2, "platform.firms.signup": 2, "platform.web-address.catch-up": 2 };
+  const expected = { "job:messages.outbox_sweep": 2, "platform.demo.reset": 6, "platform.demo.inbox": 2, "platform.firms.signup": 2, "platform.web-address.catch-up": 2 };
   const byUse = Object.fromEntries(sql(`select detail->>'use' || '=' || count(*) from audit_event where action = 'platform.bypass' group by detail->>'use' order by 1`).split("\n").filter(Boolean).map((l) => l.split("=")).map(([k, v]) => [k, Number(v)]));
-  ok("PF-12b DW7 pass: QA-499's count equals the uses × firms touched (sweep 2, reset 2 × 2, inbox 2, sign-up 2, catch-up 2), no door among them", JSON.stringify(byUse) === JSON.stringify(Object.fromEntries(Object.entries(expected).sort())) && !DOORS.some((d) => d in byUse), byUse);
+  ok("PF-12b DW7 pass: QA-499's count equals the uses × firms touched (sweep 2, reset 2 × 2 + the demo seed 2, inbox 2, sign-up 2, catch-up 2), no door among them", JSON.stringify(byUse) === JSON.stringify(Object.fromEntries(Object.entries(expected).sort())) && !DOORS.some((d) => d in byUse), byUse);
 } finally {
   for (const c of clients) await c.$disconnect().catch(() => {});
   for (const p of pools) await p.end().catch(() => {});
