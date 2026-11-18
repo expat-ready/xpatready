@@ -108,3 +108,9 @@ Moved word for word from RULES.md by Lead 73, 08:4x IST 17 Nov (25 KB limit; IDX
 | IDX-7 | Dated rulings (P-616, P-619, P-620, P-621, P-643, P-631, P-633, P-634, P-626, P-627, P-638, P-640, P-645, P-650, P-653, P-655, P-658, P-659) stand as recorded; word for word in `rules/tech-lead.md` › Dated rulings. | prose | 17 Nov |  (moved word for word by Lead 80, 19:1x IST 18 Nov)
 
 | IDX-5 | Product and Release 1 scope rulings stand as recorded (read the row when its capability is touched; P-624, P-625, P-629, P-630 moved there 17 Nov); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 15 Nov |  (moved word for word by Lead 80, 19:0x IST 18 Nov)
+
+Moved word for word from RULES.md by Lead 81, 22:1x IST 18 Nov (25 KB limit; P-698, P-700 process rulings, P-701 product ruling, P-702 one-time evaluation):
+| P-698 | A part that finishes a started Partial counts as finishing work under P-663; PF-12b holds the bypass audit line; PF-F3 port lands before AWS. | prose | 18 Nov |
+| P-700 | qa walks run on GitHub's machines with recordings (item #224); the Mac keeps 1-2 exploratory qa sessions; a reviewed recorded walk counts as gate A. | prose | 18 Nov |
+| P-701 | Release 1 invoices charge GST/HST only (no PST, RST or Quebec); Unconfirmed: no accountant or counsel. | prose | 18 Nov |
+| P-702 | 21 Nov: an independent Opus reviewer evaluates the adopted changes (plan #181), 14-17 Nov vs 19-21 Nov on measured numbers; keep, fix or drop each. | prose | 18 Nov |
