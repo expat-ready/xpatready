@@ -49,11 +49,23 @@ export const EVENT = {
   LEAD_CLOSED: "lead.closed",
   /** A closed lead was reopened (FO-2; AG-2-80). */
   LEAD_REOPENED: "lead.reopened",
+  /** A lead was engaged: a prospect was made from it (FO-2b for Corporate; contracts §2.1 "lead.engaged = prospect created"). */
+  LEAD_ENGAGED: "lead.engaged",
+  /** A prospect's type changed, Individual ↔ Corporate, before signing (FO-2b; AG-2-76 rule 13). */
+  PROSPECT_TYPE_CHANGED: "prospect.type_changed",
+  /** A prospect was won (contracts §2.6; its subject part is FO-2b's `ProspectWonSubject`, contracts §7 §2.6). */
+  PROSPECT_WON: "prospect.won",
 
   /** A case closed: withdrawn, or closed by staff with a reason (case side, CS-C1a; contract v0.1 §4). */
   CASE_CLOSED: "case.closed",
   /** A closed case was reopened with a reason, back at the stage it closed from (case side, CS-C1a; AG-7-13). */
   CASE_REOPENED: "case.reopened",
+
+  /** Two front-office persons or companies were merged (front office, FO-9b; AG-2-16; contract v0.1 §3.3, §7). Written
+   *  last in the merge's transaction, the caller's when the case side merges a client. */
+  PERSON_MERGED: "person.merged",
+  /** A front-office merge was undone (front office, FO-9b). */
+  PERSON_UNMERGED: "person.unmerged",
 } as const;
 export type EventName = (typeof EVENT)[keyof typeof EVENT];
 
@@ -130,6 +142,29 @@ export const LeadEventPayload = z.object({
 }).strict();
 export type LeadEventPayload = z.infer<typeof LeadEventPayload>;
 
+/** The payload FO-2b writes for `lead.engaged` and `prospect.type_changed`: ids and facts only (a consumer reads the
+ *  prospect). module_event.subject_id is the prospect's id. */
+export const ProspectEventPayload = z.strictObject({
+  prospectId: Uuid, leadId: Uuid, type: z.enum(["INDIVIDUAL", "CORPORATE"]), stageKey: z.string(),
+  subjectPersonId: Uuid.nullable(), subjectCompanyId: Uuid.nullable(), primaryContactPersonId: Uuid, ownerStaffId: Uuid.nullable(),
+  /** prospect.type_changed only: where it came from (AG-2-76 §9). */
+  fromType: z.enum(["INDIVIDUAL", "CORPORATE"]).optional(), fromStageKey: z.string().optional(),
+});
+export type ProspectEventPayload = z.infer<typeof ProspectEventPayload>;
+
+/** The subject part of `prospect.won` (contracts §7 §2.6, AG-2-77 rule 2): a person, or a company with its name and its
+ *  live contacts with their roles, linked and never copied (rule 7). The case side makes a person or a company client
+ *  from it (FO-8). The rest of the payload (§2.6: won_via, owner, answers…) is the writer's (FO-2 part 3, FO-6). */
+const WonContact = z.strictObject({
+  personId: Uuid, givenNames: z.string().nullable(), familyName: z.string().nullable(), email: z.string().nullable(), phone: z.string().nullable(),
+  roles: z.array(z.enum(["PRIMARY", "SIGNATORY", "HR", "BILLING", "OTHER"])).min(1), primaryContact: z.boolean(),
+});
+export const ProspectWonSubject = z.discriminatedUnion("subject", [
+  z.strictObject({ subject: z.literal("PERSON"), personId: Uuid }),
+  z.strictObject({ subject: z.literal("COMPANY"), company: z.strictObject({ id: Uuid, name: z.string().min(1) }), contacts: z.array(WonContact).min(1) }),
+]);
+export type ProspectWonSubject = z.infer<typeof ProspectWonSubject>;
+
 // CS-C1a (case-side contract v0.1 §4): the case side's close and reopen events, ids and facts only (never the reason's
 // words: a reason is free text and may hold personal data; a consumer reads the case). The firm is the outbox row's
 // firm_id and module_event.subject_id is the case id. clientId stays null until CS-K1 gives every case a client.
@@ -148,3 +183,13 @@ export const CaseReopenedPayload = z.strictObject({
   reopenedAt: z.iso.datetime({ offset: true }),
 });
 export type CaseReopenedPayload = z.infer<typeof CaseReopenedPayload>;
+
+// FO-9b part 0: the person merge events, ids only (never a name, email or phone; a consumer reads the records). The firm
+// is the outbox row's firm_id and module_event.subject_id is the survivor's id. `mergeRef` is PersonMergePort's merge_ref.
+export const PersonMergePayload = z.strictObject({ mergeRef: Uuid, kind: z.enum(["PERSON", "COMPANY"]), survivorId: Uuid, loserId: Uuid });
+export type PersonMergePayload = z.infer<typeof PersonMergePayload>;
+/** What a consumer of `person.merged` or `person.unmerged` needs: the outbox row's type and firm, and the payload. */
+export const PersonMerged = z.strictObject({ type: z.literal(EVENT.PERSON_MERGED), firmId: Uuid, payload: PersonMergePayload });
+export type PersonMerged = z.infer<typeof PersonMerged>;
+export const PersonUnmerged = z.strictObject({ type: z.literal(EVENT.PERSON_UNMERGED), firmId: Uuid, payload: PersonMergePayload });
+export type PersonUnmerged = z.infer<typeof PersonUnmerged>;

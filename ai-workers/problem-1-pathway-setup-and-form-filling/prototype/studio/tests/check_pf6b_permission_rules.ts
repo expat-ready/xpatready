@@ -197,7 +197,7 @@ try {
   const X1 = (await svc.draft(ctx(R), prospect(600, R), { templateId: tpl.id, representativeStaffId: T })).id;
   const X2 = (await svc.draft(ctx(O), prospect(610, O), { templateId: tpl.id, representativeStaffId: T })).id;
   sql(`delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key = 'agent/prospect:view.all'`);
-  const setAll = async (on: boolean) => writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: on, by: "check", workspaceId: await platformAuditWorkspaceId(db) });
+  const setAll = async (on: boolean) => writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: on, by: "system:check", workspaceId: await platformAuditWorkspaceId(db) });
   const sees = async (f: () => Promise<unknown>) => { try { return !!(await f()); } catch (e) { if ((e as { getStatus?: () => number }).getStatus?.() === 404) return false; throw e; } };
   /** The expected own/all table: who sees which record, with the firm setting on and off. */
   const EXPECT: Record<"on" | "off", Record<string, string[]>> = {

@@ -1,0 +1,9 @@
+PASS  setup: the Owner and a Case Officer sign in
+PASS  O1 the Case Officer adds a lead and owns it — {"id":"e5c07999-514f-4630-802b-ca4085e25220","number":"L-00002","label":"Lead","state":"OPEN","door":"MANUAL","source":"Phone call (Sample)","sourceDetail":null,"interestedIn":null,"ownerStaffId":"0207261a-f868-4b3d-abfa-ec53ad79a117","owner":"Case officer (Sa
+PASS  O2 setting off: the Owner's GET of the Case Officer's lead is 404, nothing of it (QA-477; Lead B's one rule) — {"status":404}
+PASS  O2 setting off: the Owner's list does not hold it — {"status":200,"has":false}
+PASS  O3 setting off: the Case Officer still reads their own lead — 200
+PASS  O4 setting on: the Owner (view.all) reads the lead (the check is not vacuous) — 200
+PASS  O4 setting on: the Owner's list holds it — {"status":200,"has":true}
+
+7/7 passed

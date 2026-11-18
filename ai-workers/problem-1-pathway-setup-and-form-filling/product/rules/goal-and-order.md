@@ -84,3 +84,18 @@ Folded into IDX-2 by Lead 65 at 11:08 IST 16 Nov (one-time directions; rows word
 | P-547 | The document system is approved with seven folds (its check never reds a product PR). | prose | 13 Nov |
 | P-583 | GitHub's free safety settings on in the checked order; the founder clicks, the Lead guides and verifies. | prose | 14 Nov |
 | P-589 | A private backup now; cut CI minutes first (B190); private at the gate before real firm data (P-590: option C). | prose | 14 Nov |
+
+Folded into IDX-2 by Lead 65 at 11:17 IST 16 Nov (process directions; rows word for word; IDX-2 as it was):
+| IDX-2 | One-time or time-boxed directions, done or standing (with P-547 document system, P-583 GitHub safety settings, P-589 private backup); the list and rows word for word in `rules/goal-and-order.md` › Index lists. | prose | 16 Nov |
+| P-508 | Never leave a question card open when the founder may leave (cron fires only when idle); reference folder `reference/` (P-509). | prose | 13 Nov |
+| P-512 | Questions go in the end-of-turn box (cards only while the founder types); expert facts revalidated on canada.ca (see P-541). | prose | 13 Nov |
+| P-514 | The Lead and the desk talk directly; each check looks at the desk's track file; the founder never relays. | prose (lead-watch skill) | 13 Nov |
+| P-566 | Firm sign-up is the standard self-serve SaaS flow; questions best practice settles are decided by the Leads with evidence. | prose | 14 Nov |
+| P-580 | The Lead fills vendor forms while the founder watches; the founder types every password, code and card detail. | prose | 14 Nov |
+| P-592 | `MVP-CHECKLIST.md` is the one tracking page for Release 1. | prose | 14 Nov |
+
+Moved word for word from RULES.md by Lead 73, 08:4x IST 17 Nov (25 KB limit; IDX-5 product and integration rulings):
+| P-624 | Virus scan by AWS GuardDuty for S3 behind ScanPort, after a ca-central-1 console check. | prose | 16 Nov |
+| P-625 | Staging on AWS's own address until a domain is needed; base domain is a setting; no second host. | prose | 16 Nov |
+| P-629 | PF-13 branding adds favicon, banner and an 80-character tagline; emails and PDFs keep logo, name and footer. | prose | 16 Nov |
+| P-630 | The Lead chooses build or adopt through the STANDARDS §1 gate; templates on React Email, Gotenberg with conditions. | prose | 16 Nov |
