@@ -500,15 +500,21 @@ export class Retainers {
     if (r.status !== "DRAFT") conflict("Only a draft is sent. Edit it to make a new version first.", "NOT_DRAFT");
     const page = await this.read(ctx, id);   // its blockers include the representative's eligibility now (B-4)
     if (Object.keys(page.blockers).length) unprocessable(Object.values(page.blockers).join(" "), page.blockers, { code: "SEND_BLOCKED" });
+    // FO-13i (Code SOR/2022-128 s. 24(2)(a): "seeking corroboration of the information if possible", current to
+    // 2026-10-19, read 16 Nov 2026 by Lead B): a signer with no identity check is a warning on the answer and the audit
+    // line, never a block. Unconfirmed: no counsel.
+    const signer = r.signerPersonId ? await this.db.foPerson.findFirst({ where: { firmId: ctx.firmId, id: r.signerPersonId }, select: { id: true, givenNames: true, familyName: true } }) : null;
+    const noCheck = !!signer && (await this.db.foIdentityCheck.count({ where: { firmId: ctx.firmId, personId: signer.id } })) === 0;
+    const warnings = noCheck ? [`No identity check is recorded for ${nameOf(signer!) || "the signer"}.`] : [];
     await this.tx(async (tx) => {
       const now = new Date(this.clock.now());
       const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: "DRAFT", currentVersion: r.currentVersion }, data: { status: "SENT" } });
       if (n.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
       await tx.foRetainerVersion.updateMany({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion }, data: { sentAt: now } });
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.sent", r.id, `Sent (version ${r.currentVersion})`, { retainerId: r.id, version: r.currentVersion }), entity: "fo_retainer" });
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.sent", r.id, `Sent (version ${r.currentVersion})${noCheck ? "; warning: no identity check is recorded for the signer" : ""}`, { retainerId: r.id, version: r.currentVersion, ...(noCheck ? { warning: "NO_IDENTITY_CHECK", signerPersonId: signer!.id } : {}) }), entity: "fo_retainer" });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_SENT, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: r.currentVersion });
     });
-    return this.read(ctx, id);
+    return { ...(await this.read(ctx, id)), warnings };
   }
 
   /** Withdraw (BR-10; AG-5-34): a reason 1-200, from Sent, Viewed or Client signed; the request ends. */
