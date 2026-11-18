@@ -92,3 +92,24 @@ Breaker, 18 Nov. Scope: `git diff origin/claude/runtime-pf15-limits..4c4e0f3d3` 
 - **Concurrency.** Two `change()` calls at once serialise with no lost update.
 - **`checkDowngrade`.** An inactive, unknown or empty target is refused. Storage rounds up (5120 MiB + 1 B gives 5121, reduce 1).
 - **Existing checks.** `check_pf15_cases.ts` 32/0, `check_pf12_walls.ts` 100/0.
+
+## Part 2 re-break (ec04e138b)
+Breaker, 18 Nov. Same method: a fresh scratch database (removed afterwards) and a psql/tsx harness in `studio/var/` (removed). `check_pf15_cases.ts` 51/0, `check_pf12_walls.ts` 100/0, `check_pf15_limits.ts` 67/0.
+
+**B1 fixed.** In firm B's session (`xr_app`), INSERT and SELECT on `platform_limit_change` both give "permission denied". Under `SET ROLE xr_staff_bypass`, `approved_at` and `created_at` given as `now() - 10 years` are overwritten with the database time, and firm A's date stays more than 29 days ahead. Caveat (PF-12's model, not this row): `xr_app` may still `SET ROLE xr_staff_bypass`.
+**M1 fixed for UPDATE.** `UPDATE platform_plan SET seats_limit` as `xr_app`, and under `SET ROLE xr_staff_bypass`, gives "seats_limit changes only through platform_limit_change". A change row still writes it.
+**M2 partly fixed.** `-infinity` and `infinity` anchors fall back to `created_at` (3.8 ms, no loop), and an anchor of 4713 BC takes 0.7 ms. The new month jump matches the plain loop in 64 128 anchor/target pairs, with no date before the target. Still open: firm A's own session sets `current_period_end='9999-12-31'` (finite), and the lowering stores `effective_at` 9999-12-31, so A keeps 25600 MB for ever. The root cause is N1. A cap such as "at most target + 1 month" would close it here.
+**M3 fixed.** With the first Owner's send failing, `change()` returns `notices {sent:1, failed:[<owner id>]}` and the other Owner is emailed. `sendNotices(changeId)` then sends the missing one, and a second call sends nothing new (2 emails in total). A mail port that always throws gives `failed` with both ids, and the change is kept. Residual: the failed ids live only in the return value (no outbox, no job), so PF-17's route has to show them. Also, `sent` counts de-duplicated re-sends.
+**m1 fixed.** Two parallel `change()` calls stamp 18:16:30.253Z and then .340Z, in lock order. Firm A reads 150 on day 1. "Kept" is now the highest value before any pending lowering: 10→5, then raise to 200, then →20 reads 200 until the second date and 20 after it.
+**m2 fixed.** Anchor 2025-01-31 03:00Z gives 2026-12-31 03:00Z in both UTC and America/Vancouver sessions.
+**m3 fixed for a new subscription row.** A firm that leaves and re-subscribes reads 10. Two residuals:
+- A firm session can move `plan_id` on its live row away and back: it still reads 150 (N1 again).
+- A TRIAL row replaced by a new ACTIVE row after the approval loses its kept value (reads 10). No conversion code on main does this today; the trial-conversion work must update the row in place.
+**m4 not changed.** After seats go 5→2, `limitOf` gives 5 until the renewal, while `platform_plan.seats_limit` (read by `staff-read/service.ts:29-34`) is 2. In my view it need not block this PR, because no route can lower a limit before PF-4s/PF-17. It must be fixed (the page reading `limitOf`) before the change route ships, otherwise Owners see "N of 2 seats" and think they are over. Put it as a line on that row.
+**m5 fixed.** `checkDowngrade` for firm A inside `withFirm(B)` gives 404 "No such firm". Firm A's own scope, an upper-case id in either place, and the bypass all still answer (seats 3 > 1).
+**m6 fixed.** Pending lowering plus no limit row gives `limit U, has_row false`, which `limitOf` reads as 0.
+**m7 fixed** (SELECT is denied to `xr_app`). **m8 fixed:** the rollback text names all four functions and the seats trigger.
+
+**New:**
+- **N1 (Major; outside this diff: grants from PF-3/PF-12, for the Lead).** Firm B's session can `INSERT INTO platform_plan (… 'mine', seats_limit 10000)` and `UPDATE platform_subscription SET plan_id = <mine>` on its own row. `platform_entitlement_limit` then gives 10000 seats. The same writable row lets a firm set its own renewal date (M2's residual) and move plans (m3's residual). The new seats trigger covers only UPDATE.
+- No other new break was found.

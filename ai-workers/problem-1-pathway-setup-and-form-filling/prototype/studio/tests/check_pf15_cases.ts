@@ -161,6 +161,10 @@ try {
     const t = Date.now(), inf = await changes.change(ours, { plan: "pf15-b30", metric: "storage_mb", value: 50, reason: "Sample infinite anchor" });
     const e = Date.parse(inf.firms[0]?.effectiveAt ?? "");
     ok("PF-15 DW9 fail (break M2): a -infinity renewal date neither hangs the change nor keeps the old value for ever (a date within 31 days after the 30)", Date.now() - t < 10_000 && e >= Date.parse(inf.approvedAt) + 30 * DAY && e <= Date.parse(inf.approvedAt) + 62 * DAY, inf.firms);
+    sql(`update platform_subscription set current_period_end = '9999-12-31' where firm_id = '${FIRM_B}' and status <> 'ENDED'`);
+    const far = await changes.change(ours, { plan: "pf15-b30", metric: "storage_mb", value: 45, reason: "Sample far anchor" });
+    const fe = Date.parse(far.firms[0]?.effectiveAt ?? "");
+    ok("PF-15 DW9 fail (break re-check M2): a far-future renewal date (9999-12-31) is capped at a month after the 30 days, never for ever", fe <= Date.parse(far.approvedAt) + 30 * DAY + 32 * DAY && fe >= Date.parse(far.approvedAt) + 30 * DAY, far.firms);
     // Break m2: the date is the same whatever the session's time zone (31 Oct 05:00 UTC is 30 Oct in Vancouver; the
     // trigger works in UTC, so +2 months is 31 Dec 05:00 UTC, not 30 Dec local).
     sql(`update platform_subscription set current_period_end = '2026-10-31 05:00:00+00' where firm_id = '${FIRM_B}' and status <> 'ENDED'`);

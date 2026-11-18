@@ -109,6 +109,9 @@ BEGIN
     n := greatest(0, (extract(year FROM age(target, anchor)) * 12 + extract(month FROM age(target, anchor)))::int - 1);
     at := anchor + n * interval '1 month';
     WHILE at < target LOOP n := n + 1; at := anchor + n * interval '1 month'; END LOOP;
+    -- Monthly renewals: the first one on or after the target is at most a month after it, whatever date the row holds
+    -- (break re-check M2: a far-future current_period_end never keeps the old value for ever).
+    at := least(at, target + interval '1 month');
     at := date_trunc('milliseconds', at + interval '999 microseconds');   -- whole milliseconds, rounded up (the app's clock has no finer)
     INSERT INTO platform_limit_change_firm (change_id, firm_id, effective_at) VALUES (NEW.id, s.firm_id, at);
   END LOOP;
