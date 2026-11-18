@@ -64,7 +64,7 @@ ALTER FUNCTION platform_storage_over_kept() OWNER TO xr_wall_reader;
 
 -- The one limit read (review M1): a firm named by id or key, from any scope (the case side has no platform firm in
 -- scope), so it crosses the walls in one narrow definer function: the firm's live plan, its limit on one metric, and
--- whether its storage is hard (over since p_hard_since, not back under). Owned by xr_wall_reader, callable by xr_app only.
+-- whether its storage is hard (over since p_hard_since, not back under). Owned by xr_wall_reader, callable by xr_app and xr_staff_bypass.
 CREATE FUNCTION platform_entitlement_limit(p_firm text, p_metric text, p_hard_since timestamptz)
   RETURNS TABLE (firm_id uuid, plan_code text, plan_name text, seats integer, limit_value integer, has_row boolean, storage_hard boolean)
   LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
@@ -78,7 +78,7 @@ CREATE FUNCTION platform_entitlement_limit(p_firm text, p_metric text, p_hard_si
           ORDER BY (f.id::text = lower(p_firm)) DESC LIMIT 1 $fn$;
 ALTER FUNCTION platform_entitlement_limit(text, text, timestamptz) OWNER TO xr_wall_reader;
 REVOKE ALL ON FUNCTION platform_entitlement_limit(text, text, timestamptz) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION platform_entitlement_limit(text, text, timestamptz) TO xr_app;
+GRANT EXECUTE ON FUNCTION platform_entitlement_limit(text, text, timestamptz) TO xr_app, xr_staff_bypass;   -- the bypass role: a suite or tool (direct mode)
 
 -- ------------------------------------------------------------------------------------------------- Sample limits
 INSERT INTO "platform_plan_limit" ("plan_id", "metric", "limit_value")
