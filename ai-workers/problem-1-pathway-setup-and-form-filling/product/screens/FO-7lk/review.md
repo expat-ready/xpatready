@@ -4,7 +4,7 @@ Reviewed: branch `claude/trusting-fermat-ejsqdh`, head **9f30e673**, diff `8a34b
 
 ## What I ran (PostgreSQL 18.3 at 127.0.0.1:54329, cloud)
 * `check_fo7lk_lock_order.ts` **15/0**, twice (shared tree, and a clean `git archive 9f30e673` export). Both times the rollback text (#1991's) gave 0 deadlocks in 40 runs and the planted wrong order gave 20 of 20 (B then A).
-* `check_fo7a2_ledger_rules.ts` 35/0 · `check_fo7a_money_schema.ts` 122/0 · `check_fo7mv_move_list.ts` 45/0 · `check_fo7ts_money_settings.ts` **44/0 on the clean export**. In the shared tree DW10 failed once, because another session switched that tree to `claude/trusting-fermat-ejsqdh-fo7ts2` mid-review and left uncommitted `client-money.prisma` and `20261118220000_fo7ts_ledgers/` changes there. That failure comes from the other session's files, not from this commit.
+* `check_fo7a2_ledger_rules.ts` 35/0 · `check_fo7a_money_schema.ts` 122/0 · `check_fo7mv_move_list.ts` 45/0 · `check_fo7ts_money_settings.ts` **44/0 on the clean export**. In the shared tree DW10 failed once, because another session switched that tree to `claude/trusting-fermat-ejsqdh-fo7ts2` mid-review and left uncommitted `client-money.prisma` and `20261118190000_fo7ts_ledgers/` changes there. That failure comes from the other session's files, not from this commit.
 * `check_prisma_schema.ts` 8/0. `prisma migrate deploy` on an empty database applies every migration, including FO-7lk with `rollback.sql` in its folder.
 * My own checks in scratch databases (pre-FO-7lk, all migrations, all migrations + rollback; dropped afterwards):
   * I compared every public function's `pg_proc` attributes (prosecdef, owner, proconfig, volatility, strictness, parallel, cost, ACL, language), plus md5 of `prosrc` and of `pg_get_functiondef`.

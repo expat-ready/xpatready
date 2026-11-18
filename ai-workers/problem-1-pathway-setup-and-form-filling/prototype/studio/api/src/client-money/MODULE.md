@@ -19,7 +19,7 @@ The firm's client money: invoices, payments, refunds, receipts, the trust ledger
 - A move to a case is a pair that nets to zero; credit is per holder and never below zero (FO-7ts part 2: `MOVE_TO_CASE`, `money_credit_entry`).
 - Every table is behind PF-12's walls; every trigger function runs as `xr_wall_reader` (PF-12).
 
-**Tables.** moneyPaymentSettings, moneyPaymentAccount, moneyNumberSeries, moneyInvoice, moneyInvoiceLine, moneyCreditNote, moneyPayment, moneyRefund, moneyReceipt, moneyTrustRequest, moneyTrustEntry, moneyWriteOff, moneyMoveBatch, moneyMoveLine.
+**Tables.** moneyPaymentSettings, moneyPaymentAccount, moneyNumberSeries, moneyInvoice, moneyInvoiceLine, moneyCreditNote, moneyPayment, moneyRefund, moneyReceipt, moneyTrustRequest, moneyTrustEntry, moneyWriteOff, moneyMoveBatch, moneyMoveLine, moneyCreditEntry.
 **Tests.** `tests/check_fo7a_money_schema.ts`, `tests/check_fo7mv_move_list.ts`, `tests/check_fo7a2_ledger_rules.ts`, `tests/check_pf12_walls.ts`.
 
 **Do not.**

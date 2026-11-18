@@ -40,3 +40,19 @@ The breaker's report is in the session scratchpad; it will be copied here with t
   * B11b (any party on a case may refund the case's credit: a route rule).
 * **Size (P-610):** the rollback now runs FO-7lk's migration again, all `CREATE OR REPLACE`, instead of copying `money_trust_entry_write`'s text. That keeps the row at 799 changed lines of code and tests.
 * **Checks:** `check_fo7ts_money_settings.ts` 97/0 (a case for each finding), `check_fo7lk_lock_order.ts` 16/0, `check_fo7a2_ledger_rules.ts` 35/0, `check_fo7a_money_schema.ts` 122/0, `check_fo7mv_move_list.ts` 45/0, `check_prisma_schema.ts` 8/0.
+
+## Reviewer round 1 on 692ea4be: changes requested, and the fixes
+* **M1, size:** now 799 changed lines.
+* **m1:** the same as breaker B4/B6, fixed above.
+* **m2:** APPLIED now requires the invoice's own party as well as its case and currency.
+* **m3:** DW13's planted case sets a lock timeout, so a lost lock fails instead of hanging.
+* **m4:** the per-payment KEPT cap now has its own case.
+* **m5:** FO-7lk's `review.md` is restored; a merge had changed a stamp inside another reviewer's record.
+* **m6:** the same as R1, fixed above.
+* **n4:** the commit-time trigger now fires only for a move.
+* **n5:** the MODULE card's Tables line names `moneyCreditEntry`.
+* **Recorded, not changed:**
+  * n1: a draft edited down after credit is applied stays overpaid by credit; for the Apply-credit route.
+  * n2 and n3: test wording.
+  * n6: the same-transaction check's 2^32 gap.
+* `check_fo7ts_money_settings.ts` 98/0.

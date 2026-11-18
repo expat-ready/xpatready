@@ -405,7 +405,7 @@ try {
     // The wrong order, by hand: the invoice row first, then the party's lock, against a credit writer → PostgreSQL's 40P01.
     const ca = new pg.Client({ connectionString: urlOf(T) }), cb = new pg.Client({ connectionString: urlOf(T) }); await ca.connect(); await cb.connect(); conns.push(ca, cb);
     sql(T, ce(P, "REVERSED", 1000, { rev: sql(T, `select id from money_credit_entry where person_id = '${P}' and kind = 'APPLIED' order by seq limit 1`), reason: "Applied in error" }));
-    await ca.query("set deadlock_timeout = '200ms'"); await cb.query("set deadlock_timeout = '200ms'");
+    for (const c of [ca, cb]) await c.query("set deadlock_timeout = '200ms'; set lock_timeout = '10s'");  // a lost lock fails, never hangs (review m3)
     const bpid = (await cb.query("select pg_backend_pid() p")).rows[0].p;
     await ca.query("begin"); await ca.query(`update money_invoice set updated_at = now() where id = '${I2}'`);
     const pb = cb.query(ce(P, "APPLIED", -500, { inv: I2 })).then(() => "ok", (e: { code?: string }) => e.code ?? "error");
@@ -484,6 +484,7 @@ try {
       refused(T, `update money_invoice set person_id = '${randomUUID()}' where id = '${D}'`, /holds credit .*never change/, "23514")
       && refused(T, `update money_invoice set case_id = '${C2}' where id = '${D}'`, /never change/) && refused(T, `update money_invoice set currency = 'USD' where id = '${D}'`, /never change/));
     const chqInv = inv(R, 10000), chq = last(T, `insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by, cleared) values ('${F}', '${chqInv}', 'CHEQUE', 15000, 'CAD', 'OPERATING', now(), '${key()}', 'user-R', false) returning id`);
+    const I2p = inv(R, 100000), q1 = paid(I2p, 110000), q2 = paid(I2p, 10000); ok("FO-7ts fail (review m4): credit kept from one payment is never more than that payment (150.00 from a 100.00 payment), though the invoice is over by 200.00", refused(T, ce(R, "KEPT", 15000, { pay: q2 }), /never more than the payment, less its refunds/) && !!q1);
     ok("FO-7ts fail (break note on 692ea4be): credit is never kept from an uncleared cheque", refused(T, ce(R, "KEPT", 5000, { pay: chq }), /not cleared yet/, "23514"));
   }
   // ------------------------------------------------------------------------------- the rollback note, on the empty copy

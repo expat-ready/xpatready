@@ -218,7 +218,7 @@ BEGIN
   RETURN NULL;
 END $$;
 CREATE CONSTRAINT TRIGGER money_trust_entry_move_paired AFTER INSERT ON "money_trust_entry" DEFERRABLE INITIALLY DEFERRED
-  FOR EACH ROW WHEN (NEW.moved_from_entry_id IS NULL AND NEW.amount_minor < 0 AND NEW.case_id IS NULL) EXECUTE FUNCTION money_trust_entry_move_paired();
+  FOR EACH ROW WHEN (NEW.kind::text = 'MOVE_TO_CASE' AND NEW.moved_from_entry_id IS NULL) EXECUTE FUNCTION money_trust_entry_move_paired();
 
 -- ------------------------------------------------------------------------------------------------ the credit ledger
 ALTER TABLE "money_credit_entry"
@@ -289,8 +289,7 @@ BEGIN
     -- AG-6-21 rule 5: to an invoice of the same holder and currency, draft or issued, at most what is due on it.
     UPDATE "money_invoice" x SET updated_at = now() WHERE x.firm_id = NEW.firm_id AND x.id = NEW.invoice_id RETURNING x.person_id, x.company_id, x.case_id, x.currency INTO i;
     IF NOT FOUND THEN PERFORM money_missing('money_credit_entry', 'invoice', NEW.invoice_id); END IF;
-    IF i.currency <> NEW.currency OR (NEW.case_id IS NOT NULL AND i.case_id IS DISTINCT FROM NEW.case_id)
-       OR (NEW.case_id IS NULL AND (i.case_id IS NOT NULL OR (i.person_id, i.company_id) IS DISTINCT FROM (NEW.person_id, NEW.company_id))) THEN
+    IF (i.currency, i.case_id, i.person_id, i.company_id) IS DISTINCT FROM (NEW.currency, NEW.case_id, NEW.person_id, NEW.company_id) THEN  -- and its party (review m2)
       RAISE EXCEPTION 'money_credit_entry: credit pays only an invoice of its holder (the same case, or the same party with no case) and currency' USING ERRCODE = 'check_violation';
     END IF;
     due := money_invoice_due(NEW.firm_id, NEW.invoice_id);
