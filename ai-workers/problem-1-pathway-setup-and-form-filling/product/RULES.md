@@ -157,7 +157,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-686 | Records PRs skip the 800-line limit; tooling rows exempt; IDX-moved rules count (#2086). | script: pr-size.sh, decision-impact.sh, check-docs.sh | 17 Nov |
 | P-682 | Modular monolith: fenced modules, AI behind its own port, outbox events, affected-only CI; split only on a measured trigger. | prose | 17 Nov |
 | P-691 | Emergency hand merge stays on Enterprise: only a pipeline/CI fix while the queue itself is broken, after green ci and a review, logged in the change log. | prose (ruleset bypass; library/engineering-change-log.md) | 17 Nov |
-| P-693 | Enterprise hosted compute is Multi-cloud (Azure plus AWS); no Support ticket at that point (founder A167). | setting (enterprise Actions policy; change log C26) | 18 Nov |
+| P-693 | Enterprise hosted compute is Multi-cloud (Azure plus AWS); no Support ticket at that point (founder A167). | prose (enterprise setting; change log C26) | 18 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
 | ID | Rule | Enforced by | As of |
