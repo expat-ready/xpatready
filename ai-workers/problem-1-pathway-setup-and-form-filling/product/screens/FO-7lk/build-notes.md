@@ -1,12 +1,12 @@
 # FO-7lk build notes — one lock order for "Move back to trust"
 
-Brief: `product/design/build-lead-c-briefs/FO-7lk.md` (on `claude/build-lead-c-647b40` at a7014c0bb). Branched from #2106's head 8a34b34e5 (overlapped chain, Lead 81). Builder: cloud lane, 18 Nov.
+Brief: `product/design/build-lead-c-briefs/FO-7lk.md` (on `claude/build-lead-c-647b40` at a7014c0bb). Branched from #2106's head 8a34b34e5 (overlapped chain, Lead 81); merged #2106's finished head facc5231 in on Lead 82's order (23:4x IST). Builder: cloud lane, 18 Nov.
 
 ## What changed
 * One migration, functions only: `prisma/migrations/20261118180000_fo7lk_trust_lock/migration.sql` (stamp to be re-stamped later than `main`'s newest before the PR opens, P-600).
-  * New `money_trust_lock(firm, party, currency)`: the only place the key `'money_trust:' || firm || ':' || party || ':' || currency` is written.
+  * New `money_trust_lock(firm, party, currency)` (`CREATE OR REPLACE`; currency typed `"MoneyCurrency"`, not `text` as the brief wrote, so a wrong value is refused rather than locking a different key): the only place the key `'money_trust:' || firm || ':' || party || ':' || currency` is written.
   * The four call sites moved to it: `money_issued_invoice` (FO-7a), `money_trust_entry_write`, `money_move_batch_owed_back`, `money_move_line_write` (FO-7a2). Each is its earlier text with only the lock line changed; the test proves it by turning the helper call back into the inline key and comparing with the database before FO-7lk.
-  * `money_credit_note_write`: for `OVERPAID_TO_TRUST`, reads the withdrawal's party and currency and takes its lock before `money_issued_invoice` touches the invoice row.
+  * `money_credit_note_write`: for `OVERPAID_TO_TRUST` naming a withdrawal to this invoice, reads its party and currency and takes its lock before `money_issued_invoice` touches the invoice row. An entry the checks refuse takes no lock (round 1 Minor / B-1).
 * `rollback.sql` in the same folder (Prisma reads only `migration.sql`): restores the five functions' text exactly and drops the helper; the test applies it and compares every public function with the database before FO-7lk.
 * `api/src/client-money/MODULE.md`: one invariant line.
 * `tests/check_fo7lk_lock_order.ts`: 15 checks.
@@ -20,3 +20,11 @@ Brief: `product/design/build-lead-c-briefs/FO-7lk.md` (on `claude/build-lead-c-6
 ## Checks run (this branch, cloud, PostgreSQL 18.3)
 * `check_fo7lk_lock_order.ts` 15/0 · `check_fo7a2_ledger_rules.ts` 35/0 · `check_fo7a_money_schema.ts` 122/0 · `check_fo7mv_move_list.ts` 45/0 · `check_fo7ts_money_settings.ts` 44/0 · `check_pf12_walls.ts` 100/0 · `check_prisma_schema.ts` 8/0; `prisma migrate deploy` applies cleanly with `rollback.sql` in the folder.
 * No live AI, no Stripe, US$0. No screen.
+
+## Round 1 (reviewer Approve 9f30e673, breaker pass 9f30e673) and the fixes after it
+* **Minor / B-1 (both):** the early lock was taken for whatever entry the credit note named, before the check that it is a withdrawal to this invoice; a refused move-back naming another party's withdrawal held that party's lock, a new two-party order (the breaker made a valid undo fail with 40P01 10 of 10 times). **Fixed:** the read takes only a withdrawal to this invoice; a new check proves a refused move-back holds no lock of the other party while it waits (it holds one on 9f30e673).
+* **Nit:** the "#1991's text" line is now named a note, not a fail case: it checks only that the harness ran there.
+* **Nit:** the new order is proven by the text checks (the function bodies, the one key) and by the B-1 check; it cannot be proven by a deadlock on #1991's text, which had none.
+* **Nit:** the helper's currency type is noted above.
+* The helper is now `CREATE OR REPLACE` (the money migrations' rule, FO-7ts DW10).
+* After the merge of facc5231: `check_fo7lk_lock_order.ts` 16/0, `check_fo7a2_ledger_rules.ts` 35/0, `check_fo7a_money_schema.ts` 122/0, `check_fo7mv_move_list.ts` 45/0, `check_fo7ts_money_settings.ts` 46/0, `check_prisma_schema.ts` 8/0, `check_pf12_walls.ts` 100/0.
