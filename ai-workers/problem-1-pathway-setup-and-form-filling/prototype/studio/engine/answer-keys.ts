@@ -13,7 +13,7 @@ import type { BoxRow } from "./render.ts";
 import { content, snapshotHash, type Snapshot } from "./snapshot.ts";
 import { caseView, knownOf, type Answer, type GroupAnswer, type Participant, type Row } from "./runtime/case.ts";
 import { formCoverage, markNothingRecorded, type GatePlacement } from "./runtime/forms.ts";
-import { assess, type GateState, type Outcome } from "./runtime/eligibility.ts";
+import { assess, type GateState, type Outcome } from "./eligibility/assess.ts";
 
 export const ITEM_KINDS = ["field_map", "rule_set", "scoring"] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
