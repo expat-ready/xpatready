@@ -134,3 +134,53 @@ Verdict: Block
   * Fix: make the `msg_firm` row when the firm is made, or before the reset takes its lock.
 
 Verdict: Approve c0e2ffcf215328b43c80b277c851ae930ea44bd2
+
+---
+
+## Re-review 2 (P-277): the merge of main (#2157, PF-19r part 1) and the amendment (rev 17.31), head `bf91eacc976851c805812aaa68277d4af402ffbc`
+
+### What I read and ran
+* Read: the amendment (brief lines 38-50 on `lead-b-front-office`), `git show 7d7099973 --cc` (the conflict files), `git diff 7d7099973 bf91eacc9`, and the two test files against `756a79992`.
+* The branch is now at `f51508aa6`. Its only change after `bf91eacc9` is `pr-draft.md` (notes), so the code is the same.
+* At this code, all 0 failed:
+
+  | Suite | Result |
+  |---|---|
+  | PF-19e | 41/0 |
+  | PF-19r | 28/0 |
+  | PF-19p | 68/0 (alone) |
+  | PF-18b | 41/0 |
+
+* My reset storm script (MAIL_PORT on the app's own pool), no 500:
+  * 12 at once: 200 and 429 only;
+  * 30 at once: 10×200 and 20×429 in 370 ms.
+
+### The builder's decisions
+1. **PF-19r's `sendIn`/`ready`/`held`/`mailIn`/`mailReady` API kept, `sendInTransaction` dropped: agreed.** One API on `main` is right.
+   * PF-19p's platform branch (`sendPlatform`, `asBypass("platform.account.mail")`) is intact.
+   * The `system` sender is folded into `write`, and `held` is false for system mail.
+   * `capHolds` leaves `system:` rows out of "ahead" (`messages.ts`, the `NOT LIKE` clause). This matches the worker, which neither holds nor counts them.
+   * `sendIn` still writes in the caller's transaction with no second connection, so the closed M1 stays closed.
+2. **Reset: agreed, with one point for Lead B.**
+   * `mailReady` runs before the lock. It makes the firm's `msg_firm` row first, so it also **closes my n1** (the first-message lock cycle). PF-19r's DW3 check, the firm's first message with a concurrent email, covers it.
+   * `systemMailBlocked` runs under the lock: suppressed gives 409 plus the audit line, the limit gives 429, nothing is reset.
+   * The notice goes through `mailIn` in the reset's transaction and is dispatched after the commit.
+   * The race catch maps `SystemMailLimited` to 429 and `MailSuppressed` to 409 plus the audit line. Any other `MessageRefused` gives 409 `NOTICE_NOT_SENT`, which is PF-19r's behaviour.
+   * **Wording:** the reset now answers in Lead B's PF-19r question 4 words, not PF-19e item 4's "We couldn't send email to <address>…". Both are Lead B's, and the PF-19r ruling is the newer one, so taking it is reasonable. The amendment does not mention the sentence, so state the choice in the PR for Lead B to confirm. This is a note, not a finding. MODULE.md records the split (invitation sentence, reset `NOTICE_NOT_SENT`).
+3. **PF-18b support tickets on `MESSAGES_MAIL`: agreed.** A ticket to our support inbox is not account or security mail. Under `SYSTEM_MAIL` it would meet the 5-an-hour limit to one address and skip the cap. `MESSAGES_MAIL` is exactly what `MAIL_PORT` was on `main`, so nothing changes for support.
+4. **check_pf19r_senders: agreed.** Each item matches the amendment or PF-19e's own rules.
+   * The binding is `SYSTEM_MAIL`.
+   * DW2 is now 409 with no invitation, no seat and no row (PF-19e item 4 and the closed m1).
+   * The code emails go through `MAIL_PORT`. `handleCustomEmail` has no deployed caller on `main` yet, so this is the test's wiring only; the deployed function must bind the system sender when it is built.
+   * There is a sealed-at-rest check per sender: invitation, reset notice, code email, and the reminder's TRANSACTIONAL fallback.
+   * DW5 is now the exemption: invitations, the reset and a code all send at the cap, the counter stays at 50, and a SERVICE email is held and then sent by the sweep. The held invitation and `NOTICE_HELD_DAILY_LIMIT` are gone from the system path, as the amendment says.
+5. **`messageBodyBox(keys?)`: agreed.** A given ring returns a fresh box and the app's cached box is untouched; only tests pass one. SecretBoxPort's shared contract now runs through it (PF-0c).
+
+### The PF-19p sweep flake
+PF-19p passed alone here. Nothing in this PR touches the platform sweep, and I found no code cause in this diff. One timing-dependent spot worth a look in PF-19p's own row: the test drives `sweep()` with a FakeClock, but `msg_outbox.created_at` and `updated_at` default to the database's real clock on create. With 20 suites in parallel, real time between steps grows, so the due and order comparisons can see different values. Logging the failing row's `updated_at` and `state_reason` on the next red run would tell. Not a finding for PF-19e.
+
+### Findings
+* None new. The earlier M1, m1, m2, m4 and n1 are closed.
+* m3 (the hourly limit counted per firm) is still open as the question for the tech lead, and does not block.
+
+Verdict: Approve bf91eacc976851c805812aaa68277d4af402ffbc
