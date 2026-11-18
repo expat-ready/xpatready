@@ -136,7 +136,8 @@ jobs:
           queue=false; [[ "$HEAD_REF" == mergify/* && "$PR_AUTHOR" == "mergify[bot]" ]] && queue=true
           n="${SHARDS_VAR:-8}"; [[ "$n" =~ ^[1-9]$ ]] || n=8
           # P-651 (2): the parts run only on a batch of code; the fast checks are job "fast" (records and code).
-          shards="[]"; [ "$kind" = code ] && [ "$queue" = true ] && shards="[$(seq -s, 1 "$n")]"
+          shards="[]"
+          if [ "$kind" = code ] && [ "$queue" = true ]; then shards="[$(seq -s, 1 "$n")]"; fi
           { echo "kind=$kind"; echo "shards=$shards"; echo "n=$n"; echo "queue=$queue"; } >> "$GITHUB_OUTPUT"
           case "$kind" in
             notes) why="Notes only: check-docs.sh and decision-impact.sh (and the push guard); no suites, no app build.";;
@@ -586,16 +587,27 @@ jobs:
       - name: the parts' result
         if: env.MODE != 'same' && (env.KIND != 'notes')
         run: |
-          echo "parts: ${{ needs.shard.result }} · planned: ${{ needs.kind.outputs.shards }}"
-          if [ "${{ needs.kind.outputs.queue }}" = true ] && [ "$KIND" = code ]; then [ "${{ needs.shard.result }}" = success ]
-          else [ "${{ needs.shard.result }}" = skipped ] && [ '${{ needs.kind.outputs.shards }}' = '[]' ]; fi
+          r="${{ needs.shard.result }}"; planned='${{ needs.kind.outputs.shards }}'
+          echo "parts: $r · planned: $planned"
+          if [ "${{ needs.kind.outputs.queue }}" = true ] && [ "$KIND" = code ]; then
+            [ "$r" = success ]
+          else
+            [ "$r" = skipped ]
+            [ "$planned" = '[]' ]
+          fi
       - name: the packs this change touches (D2, job "packs"; merge-queue batches of code, P-651 (2))
         if: env.MODE != 'same' && (env.KIND != 'notes')
         run: |
-          echo "packs by diff: ${{ needs.packs.result }} · groups: ${{ needs.kind.outputs.dpacks }}"
+          r="${{ needs.packs.result }}"; groups='${{ needs.kind.outputs.dpacks }}'
+          echo "packs by diff: $r · groups: $groups"
           if [ "${{ needs.kind.outputs.queue }}" = true ] && [ "$KIND" = code ]; then
-            [ "${{ needs.packs.result }}" = success ] || { [ "${{ needs.packs.result }}" = skipped ] && [ '${{ needs.kind.outputs.dpacks }}' = '[]' ]; }
-          else [ "${{ needs.packs.result }}" = skipped ]; fi
+            if [ "$r" != success ]; then
+              [ "$r" = skipped ]
+              [ "$groups" = '[]' ]
+            fi
+          else
+            [ "$r" = skipped ]
+          fi
       - name: the protected regression set's result (merge-queue batches of code, P-320 (b))
         if: env.MODE != 'same' && (needs.kind.outputs.queue == 'true' && env.KIND == 'code')
         run: |
