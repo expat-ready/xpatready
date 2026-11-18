@@ -214,14 +214,15 @@ try {
   // Break m2 first: O's address is at the hourly limit and then suppressed → 409, not the limit's 429.
   await db.$transaction((tx) => consent.suppress(tx, { firmId: FIRM, channel: "EMAIL", address: oEmail, reason: "HARD_BOUNCE", by: "system:pf19e" }));
   const supAtLimit = await call(base, "POST", `/api/platform/staff/${O}/reset-two-step`, { token: tR });
-  ok("PF-19e DW4 fail (break m2): a suppressed address already at the hourly limit → 409 with the sentence (not 429)", supAtLimit.status === 409 && supAtLimit.body.code === "EMAIL_SUPPRESSED", supAtLimit);
+  ok("PF-19e DW4 fail (break m2): a suppressed address already at the hourly limit → 409 (not 429)", supAtLimit.status === 409 && supAtLimit.body.code === "NOTICE_NOT_SENT", supAtLimit);
   sql(`update msg_outbox set created_at = created_at - interval '2 hours'`);   // the hour starts again
   const supLinesBefore = Number(sql(`select count(*) from audit_event where action = 'platform.staff.email_suppressed' and entity_key = '${O}'`));   // audit lines are never deleted (AUD-1a)
   const sessionsBefore = sql(`select count(*) from platform_session_revocation where staff_id = '${O}'`);
   const sup = await call(base, "POST", `/api/platform/staff/${O}/reset-two-step`, { token: tR });
   const supLine = sql(`select count(*) from audit_event where action = 'platform.staff.email_suppressed' and entity_key = '${O}'`);
   ok("PF-19e DW4 fail: a two-step reset to a suppressed address → 409 with the sentence, never 500",
-    sup.status === 409 && sup.body.code === "EMAIL_SUPPRESSED" && sup.body.detail === suppressedWords(oEmail) && sup.body.detail === `We couldn't send email to ${oEmail}. Ask your firm's Owner or Admin to check it.`, sup);
+    // A reset answers in Lead B's words of PF-19r question 4 (NOTICE_NOT_SENT: how to clear it); an invitation in PF-19e's sentence (below).
+    sup.status === 409 && sup.body.code === "NOTICE_NOT_SENT" && /^Update this person's email address first/.test(sup.body.detail ?? "") && /not reset/.test(sup.body.detail ?? ""), sup);
   ok("PF-19e DW4 fail: it writes one audit line (no address in it), resets nothing, and the address stays suppressed",
     Number(supLine) === supLinesBefore + 1 && !sql(`select summary || detail::text from audit_event where action = 'platform.staff.email_suppressed'`).includes(oEmail)
     && sql(`select count(*) from platform_session_revocation where staff_id = '${O}'`) === sessionsBefore && sql(`select count(*) from msg_suppression where firm_id = '${FIRM}' and address = '${oEmail}'`) === "1", { supLine, sessionsBefore });

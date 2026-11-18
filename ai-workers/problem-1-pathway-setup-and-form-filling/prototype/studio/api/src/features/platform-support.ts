@@ -1,21 +1,23 @@
 // PF-18b (AG-16-63): support tickets (api/src/platform/support/): their routes and SupportService. The ports the running
 // app gives the service: the database; FO-5's local FilesPort and its signed links; audit real (PF-0p's AuditPort over
-// audit_event); mail the app's MAIL_PORT (PF-4b's LocalMail, the demo inbox) when one is provided, else PF-0p's fakeMail
-// (kept in memory, nothing leaves the machine). The support inbox is a Sample address (SUPPORT_INBOX).
+// audit_event); mail the app's MAIL_PORT (since PF-19r MailPort over MessagePort, MESSAGES_MAIL: the outbox, the gate and
+// the daily cap; read back at GET /api/demo/platform-inbox). The support inbox is a Sample address (SUPPORT_INBOX).
+// PF-19e: bound to MESSAGES_MAIL itself, since MAIL_PORT became the platform's account and security sender (SYSTEM_MAIL:
+// exempt from the cap, 5 an hour per address), which a ticket to our own inbox is not.
 import type { Feature } from "../features.ts";
 import { Db } from "../core.ts";
-import { fakeMail, type MailPort } from "../../../ports/mail.ts";
+import type { MailPort } from "../../../ports/mail.ts";
 import { FileLinks, LocalFiles } from "../front-office/files.ts";
 import { auditEvent } from "../platform/audit/audit-event.ts";
-import { MAIL_PORT } from "../platform/identity/session/mail.ts";
 import { SupportController } from "../platform/support/routes.ts";
 import { SupportService } from "../platform/support/support.ts";
+import { MESSAGES_MAIL } from "./platform-messages.ts";
 
 export default {
   controllers: [SupportController],
   providers: [
     LocalFiles, FileLinks,
-    { provide: SupportService, useFactory: (db: Db, files: LocalFiles, mail?: MailPort) => new SupportService({ db, files, audit: auditEvent, mail: mail ?? fakeMail() }),
-      inject: [Db, LocalFiles, { token: MAIL_PORT, optional: true }] },
+    { provide: SupportService, useFactory: (db: Db, files: LocalFiles, mail: MailPort) => new SupportService({ db, files, audit: auditEvent, mail }),
+      inject: [Db, LocalFiles, MESSAGES_MAIL] },
   ],
 } satisfies Feature;

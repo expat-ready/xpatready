@@ -22,6 +22,8 @@ import { IdentityRefused, PlatformClock, identityConfig, type IdentityPort } fro
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./session/mail.ts";
 import { MailSuppressed, SYSTEM_LIMIT_WORDS, SystemMailLimited, suppressedWords, systemMailBlocked } from "../messages/send/system-mail.ts";
 import { requireStepUp } from "./session/step-up.ts";
+import { heldOf } from "../messages/send/mail.ts";
+import { HELD_DAILY_LIMIT } from "../../../../ports/messages.ts";
 
 type Tx = Prisma.TransactionClient;
 export const IDENTITY_PORT = Symbol("IdentityPort");
@@ -317,31 +319,35 @@ export class PlatformIdentity implements OnModuleInit {
     return { ...row, token };
   }
 
-  /** PF-4b: the invitation email, after the commit (a rolled-back invite sends nothing). The plain token is only in the
-   *  email's link, never stored or logged; a failed send leaves the invitation pending (resend sends a new link).
-   *  PF-19e: the link is stored only in the sealed body; a suppressed address writes an audit line and answers
-   *  "SUPPRESSED", the per-address hourly limit "LIMITED" (the single invite and resend turn them into 409 and 429). */
-  private async emailInvitation(actor: StaffContext, to: string, token: string, name: string | null = null, invitationId: string | null = null): Promise<boolean | "SUPPRESSED" | "LIMITED"> {
-    if (!this.mail) return false;
+  /** PF-4b: the invitation email, after the commit (a rolled-back invite sends nothing). The plain token is never in a
+   *  table or a log line; it is in the email's link, which since PF-19r is the rendered message MessagePort keeps under
+   *  msg/<firm>/outbox/ until it is sent, sealed since PF-19e. A failed send leaves the invitation pending (resend sends
+   *  a new link). `emailHeld`: the firm's daily cap holds it until the next day (never for the app's system mail,
+   *  PF-19e). PF-19e: a suppressed address writes an audit line and answers refused "SUPPRESSED", the per-address hourly
+   *  limit "LIMITED" (the single invite and resend turn them into 409 and 429). */
+  private async emailInvitation(actor: StaffContext, to: string, token: string, name: string | null = null, invitationId: string | null = null): Promise<{ emailed: boolean; emailHeld?: typeof HELD_DAILY_LIMIT; refused?: "SUPPRESSED" | "LIMITED" }> {
+    if (!this.mail) return { emailed: false };
     try {
       const firm = await this.db.platformFirm.findUnique({ where: { id: actor.firmId }, select: { operatingName: true } });
-      await this.mail.send({ firmId: actor.firmId, to, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.invitation", subject: `You are invited to join ${firm?.operatingName ?? "your firm"}`.replace(/[\r\n]+/g, " ").slice(0, 200),
+      const sent = await this.mail.send({ firmId: actor.firmId, to, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.invitation", subject: `You are invited to join ${firm?.operatingName ?? "your firm"}`.replace(/[\r\n]+/g, " ").slice(0, 200),
         text: `${name ? `Hello ${name},\n\n` : ""}You are invited to join ${firm?.operatingName ?? "a firm"} on Expat Ready.\nOpen your invitation: /invitation#t=${token}\nIt works for 72 hours. If you did not expect this, ignore this email.` });
-      return true;
+      return heldOf(sent) ? { emailed: true, emailHeld: HELD_DAILY_LIMIT } : { emailed: true };
     } catch (e) {
-      if (e instanceof SystemMailLimited) return "LIMITED";
-      if (!(e instanceof MailSuppressed)) return false;
+      if (e instanceof SystemMailLimited) return { emailed: false, refused: "LIMITED" };
+      if (!(e instanceof MailSuppressed)) return { emailed: false };
       // The line names the invitation, never the address (personal data stays out of the summary).
       await this.inFirm(actor, (tx) => auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.email_suppressed", entityKey: invitationId ?? "unknown", summary: "an invitation email was not sent: the address is on the firm's suppression list", detail: { invitationId, mail: "identity.invitation" } })).catch(() => undefined);
-      return "SUPPRESSED";
+      return { emailed: false, refused: "SUPPRESSED" };
     }
   }
 
-  /** PF-19e: the single invite's and resend's answer when the email was refused (the invitation stays pending). */
-  private static mailed(emailed: boolean | "SUPPRESSED" | "LIMITED", to: string, invitationId: string): boolean {
-    if (emailed === "SUPPRESSED") problem(409, "Email not sent", suppressedWords(to), { code: "EMAIL_SUPPRESSED", invitationId });
-    if (emailed === "LIMITED") problem(429, "Too many emails", SYSTEM_LIMIT_WORDS, { code: "EMAIL_LIMIT", invitationId });
-    return emailed;
+  /** PF-19e: the single invite's and resend's answer when the email was refused after the commit (a race with the check
+   *  before it: the invitation stays pending). */
+  private static mailed(r: { emailed: boolean; emailHeld?: typeof HELD_DAILY_LIMIT; refused?: "SUPPRESSED" | "LIMITED" }, to: string, invitationId: string) {
+    if (r.refused === "SUPPRESSED") problem(409, "Email not sent", suppressedWords(to), { code: "EMAIL_SUPPRESSED", invitationId });
+    if (r.refused === "LIMITED") problem(429, "Too many emails", SYSTEM_LIMIT_WORDS, { code: "EMAIL_LIMIT", invitationId });
+    const { refused: _r, ...answer } = r;
+    return answer;
   }
 
   /** One person's invitation checks, shared by the single invite and every row of the batch (PF-4c): the role rules, then
@@ -370,7 +376,7 @@ export class PlatformIdentity implements OnModuleInit {
     });
     if ("blocked" in out) return this.refuseMail(actor, out.blocked, email, null);
     const { token, ...answer } = out;
-    return { ...answer, emailed: PlatformIdentity.mailed(await this.emailInvitation(actor, email, token, null, answer.id), email, answer.id) };
+    return { ...answer, ...PlatformIdentity.mailed(await this.emailInvitation(actor, email, token, null, answer.id), email, answer.id) };
   }
 
   /** PF-19e (break M3, m1): an address the invitation email would be refused for is refused before anything is written,
@@ -415,8 +421,10 @@ export class PlatformIdentity implements OnModuleInit {
       return { made, seats: seats! };
     });
     const invitations = [];
-    for (const { token, name, ...m } of out.made) invitations.push({ ...m, emailed: (await this.emailInvitation(actor, m.email, token, name, m.id)) === true });
-    return { invitations, seatsLimit: out.seats.seatsLimit, seatsUsed: out.seats.afterInvites };
+    for (const { token, name, ...m } of out.made) { const { refused: _r, ...e } = await this.emailInvitation(actor, m.email, token, name, m.id); invitations.push({ ...m, ...e }); }
+    // PF-19r (DW5): the rows the daily cap holds, by their form row (they go out with the next day's first sends).
+    const held = invitations.filter((i) => i.emailHeld).map((i) => i.row);
+    return { invitations, seatsLimit: out.seats.seatsLimit, seatsUsed: out.seats.afterInvites, ...(held.length ? { heldRows: held } : {}) };
   }
 
   async invitations(actor: StaffContext) {
@@ -454,7 +462,7 @@ export class PlatformIdentity implements OnModuleInit {
     });
     if ("blocked" in out) return this.refuseMail(actor, out.blocked, out.email, out.id);
     const { token, ...answer } = out;
-    return { ...answer, emailed: PlatformIdentity.mailed(await this.emailInvitation(actor, answer.email, token, null, answer.id), answer.email, answer.id) };
+    return { ...answer, ...PlatformIdentity.mailed(await this.emailInvitation(actor, answer.email, token, null, answer.id), answer.email, answer.id) };
   }
 
   async revoke(actor: StaffContext, id: string) {

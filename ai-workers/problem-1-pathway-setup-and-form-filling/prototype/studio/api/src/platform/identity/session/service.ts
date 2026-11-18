@@ -6,8 +6,10 @@ import type { PlatformRole, Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { EVENT, StaffJoinedPayload } from "../../../../../ports/events.ts";
 import type { MailPort } from "../../../../../ports/mail.ts";
+import { MessageRefused } from "../../../../../ports/messages.ts";
 import { Db } from "../../../core.ts";
 import { auditEvent } from "../../audit/audit-event.ts";
+import { mailIn, mailReady } from "../../messages/send/mail.ts";
 import { asBypass, firmScope, notInFirm } from "../../firm-scope.ts";
 import { actorWord } from "../audit.ts";
 import { writeMoneyKeysGranted } from "../money-line.ts";
@@ -15,8 +17,7 @@ import { FIRM_KEY, forbidden, problem, unauthorized, type StaffContext } from ".
 import { PlatformClock } from "../port.ts";
 import { PlatformIdentity } from "../service.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./mail.ts";
-import { canSendInTransaction } from "../../messages/send/mail.ts";
-import { MailSuppressed, SYSTEM_LIMIT_WORDS, SystemMailLimited, suppressedWords, systemMailBlocked } from "../../messages/send/system-mail.ts";
+import { MailSuppressed, SYSTEM_LIMIT_WORDS, SystemMailLimited, systemMailBlocked } from "../../messages/send/system-mail.ts";
 import { IDENTITY_ADMIN_PORT, LocalIdentityAdmin, type IdentityAdminPort } from "./provider.ts";
 import { requireStepUp } from "./step-up.ts";
 
@@ -183,40 +184,45 @@ export class PlatformSession {
    *  are emailed through MailPort, and they set up the second step again at their next sign-in. PF-19e: a suppressed
    *  address → 409 with the sentence and an audit line, nothing reset; over the per-address hourly limit → 429. */
   async resetTwoStep(actor: StaffContext, id: string) {
-    // PF-19e (review and break M1): the notice goes through the one send path. Sent by MailPort.send while this
-    // transaction held the firm's row lock, it took a second connection (a burst of resets emptied the pool: 500s).
-    // So: under the lock, the checks, then the mail check (a suppressed address → 409 with an audit line, over the hourly
-    // limit → 429, nothing reset), then the notice is written in this same transaction (MessagesMail.sendInTransaction),
-    // queued after the commit. A refused notice still rolls the reset back (PF-4b), and a provider refusal rolls the
-    // notice back, so nobody is told of a reset that did not happen. A MailPort without it (a test's fake) sends as before.
-    const queued: (() => Promise<void>)[] = [];
+    // PF-19r: the notice is written into the outbox inside the reset's transaction (it holds the firm's row lock, and
+    // takes no second connection: PF-19e review M1) and sent after the commit; msg_firm is made before the lock (break m1).
+    // PF-19e: under the lock, the mail check first (systemMailBlocked): a suppressed address → 409 NOTICE_NOT_SENT in
+    // Lead B's words (PF-19r question 4) with an audit line, over the per-address hourly limit → 429; nothing is reset.
+    // A refused notice still rolls the reset back (PF-4b); a provider refusal rolls the notice back.
+    let dispatch = async () => {};
+    await mailReady(this.mail, actor.firmId);   // before the firm's row lock (break m1)
     const out = await this.inFirm(actor, async (tx) => {
       const t = await this.resetChecks(tx, actor, id);
-      const blocked = canSendInTransaction(this.mail) ? await systemMailBlocked(tx, actor.firmId, t.email) : null;
+      const blocked = await systemMailBlocked(tx, actor.firmId, t.email);
       if (blocked === "SUPPRESSED") await this.audit(tx, actor, "platform.staff.email_suppressed", t.id, "a two-step reset was not done: the person's address is on the firm's suppression list", { staffId: t.id, mail: "identity.two_step_reset" });
-      if (blocked) return { blocked, email: t.email };
+      if (blocked) return { blocked };
       await this.endSessions(tx, actor, t.id, "two-step-reset");
       await this.audit(tx, actor, "platform.staff.two_step_reset", t.id, "a staff member's two-step sign-in was reset by an Owner or Admin; their sessions ended", { staffId: t.id });
-      const notice = { firmId: actor.firmId, to: t.email, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL" as const, templateKey: "identity.two_step_reset", subject: "Your two-step sign-in was reset",
-        text: "An Owner or Admin of your firm reset your two-step sign-in. The next time you sign in, you set it up again. If you did not ask for this, tell your firm's Owner at once." };
-      // The out-of-band notice before the provider: a mail failure changes nothing at the provider (the transaction rolls back).
-      if (canSendInTransaction(this.mail)) queued.push((await this.mail.sendInTransaction(tx, notice)).dispatch);
-      else await this.mail.send(notice);
+      // The out-of-band notice first: a mail failure changes nothing at the provider (the transaction rolls back).
+      const sent = await mailIn(this.mail, tx, { firmId: actor.firmId, to: t.email, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.two_step_reset", subject: "Your two-step sign-in was reset",
+        person: { kind: "STAFF", id: t.id }, text: "An Owner or Admin of your firm reset your two-step sign-in. The next time you sign in, you set it up again. If you did not ask for this, tell your firm's Owner at once." });
+      dispatch = sent.dispatch;
+      // A security notice is never left for tomorrow (PF-19r break M1). The app's system mail is never held (PF-19e:
+      // exempt from the cap); a MailPort that is not the system sender can still be.
+      if (sent.held) problem(409, "Daily email limit reached", "Your firm has sent its email limit for today, so the notice to this person could not go now and their two-step sign-in was not reset. Try again tomorrow.", { code: "NOTICE_HELD_DAILY_LIMIT" });
       await this.admin.resetTwoStep({ staffId: t.id, subject: t.identitySubject, email: t.email });
       return { staffId: t.id };
     }).catch(async (e: unknown) => {
-      // A race with the mail check (the address suppressed, or the hour filled, in between): the same answers.
-      if (e instanceof SystemMailLimited) return { blocked: "LIMITED" as const, email: "" };
-      if (!(e instanceof MailSuppressed)) throw e;
-      const staffId = id.toLowerCase();
-      await this.inFirm(actor, (tx) => this.audit(tx, actor, "platform.staff.email_suppressed", staffId, "a two-step reset was not done: the person's address is on the firm's suppression list", { staffId, mail: "identity.two_step_reset" }));
-      return { blocked: "SUPPRESSED" as const, email: e.address };
+      // A race with the mail check (suppressed, or the hour filled, in between), or another refusal: the same answers.
+      if (e instanceof SystemMailLimited) return { blocked: "LIMITED" as const };
+      if (e instanceof MailSuppressed) {
+        const staffId = id.toLowerCase();
+        await this.inFirm(actor, (tx) => this.audit(tx, actor, "platform.staff.email_suppressed", staffId, "a two-step reset was not done: the person's address is on the firm's suppression list", { staffId, mail: "identity.two_step_reset" }));
+        return { blocked: "SUPPRESSED" as const };
+      }
+      if (e instanceof MessageRefused) return { blocked: "SUPPRESSED" as const };
+      throw e;
     });
     if ("blocked" in out) {
       if (out.blocked === "LIMITED") problem(429, "Too many emails", SYSTEM_LIMIT_WORDS, { code: "EMAIL_LIMIT" });
-      problem(409, "Email not sent", suppressedWords(out.email), { code: "EMAIL_SUPPRESSED" });
+      problem(409, "Notice not sent", "Update this person's email address first; we can't send them the reset notice (their address does not take email from the firm, for example after a bounce), so their two-step sign-in was not reset.", { code: "NOTICE_NOT_SENT" });
     }
-    for (const d of queued) await d();
+    await dispatch();
     return { staffId: out.staffId, twoStep: { method: null }, notified: true };
   }
   /** Who may reset whom (question 3 decided), under the firm's row lock. */

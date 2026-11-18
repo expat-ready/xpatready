@@ -1,6 +1,8 @@
 // PF-4b (contracts §1.2, §7): staff reads, web session, invitation acceptance. The provider's admin side follows
 // PLATFORM_IDENTITY: local → the stand-in; otherwise the Cognito admin adapter (it refuses, saying why, until PF-4bc).
-// PF-19e: staff and system mail goes through the one send path (SYSTEM_MAIL: MessagesMail, sealed bodies, no daily cap).
+// PF-19r: MAIL_PORT is the app's MailPort over MessagePort (MESSAGES_MAIL, features/platform-messages.ts), so the
+// invitation and the two-step reset notice get the one layout, the firm's sender name, the consent gate and the daily cap.
+// PF-19e: bound to SYSTEM_MAIL (MessagesMail with system: true): sealed bodies, exempt from the daily cap, 5 an hour per address.
 import type { Feature } from "../features.ts";
 import { PlatformClock, identityConfig } from "../platform/identity/port.ts";
 import { MAIL_PORT } from "../platform/identity/session/mail.ts";

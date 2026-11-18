@@ -13,18 +13,24 @@
 // PF-19e: with `system: true` (the app's MAIL_PORT: invitations, reset notices) a firm's email is the platform's own
 // account and security mail (Messages.sendSystem: no daily cap, a per-address hourly limit, SystemMailLimited). On either
 // path a suppressed address throws MailSuppressed (its address a field, never in the message).
+// PF-19r: `sendIn` writes a firm's email in the caller's transaction (dispatch after its commit), `ready` makes the
+// firm's msg_firm row before a caller takes the firm's row lock, and `held` says the firm's daily cap will hold it (never
+// for system mail, which the cap does not hold: PF-19e).
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { FilesPort } from "../../../../../ports/files.ts";
 import { normaliseAddress } from "../../../../../ports/consent.ts";
 import type { z } from "zod";
 import { MailMessage, type FirmMail, type MailPort } from "../../../../../ports/mail.ts";
-import { MessageRefused, MessageSend, PlatformAccountSend, type MessagePort } from "../../../../../ports/messages.ts";
+import { MessageRefused, MessageSend, PlatformAccountSend, type MessagePort, type SendResult } from "../../../../../ports/messages.ts";
 import { asBypass, firmScope } from "../../firm-scope.ts";
+import { ensureMessagesFirm } from "../consent/messages-firm.ts";
+import { Messages } from "./messages.ts";
 import { MailSuppressed } from "./system-mail.ts";
 
 /** Messages' own system sender (PF-19e), not part of MessagePort. */
 type SystemSender = { sendSystem(tx: Prisma.TransactionClient, input: MessageSend): ReturnType<MessagePort<Prisma.TransactionClient>["send"]> };
+type Written = SendResult & { held: boolean };
 
 /** The key a mailed attachment is stored under (never under msg/, which MessagePort keeps for rendered messages). */
 /** Each attachment has its own folder (its place in the email), so two names that clean alike never collide; a name the
@@ -34,56 +40,55 @@ export const attachmentKeyOf = (mailId: string, n: number, filename: string) => 
   return `mail/${mailId}/${n}/${/\.(meta|tmp)$/.test(clean) ? `${clean}-` : clean}`;
 };
 
-/** PF-19e: a MailPort that can also write a firm's TRANSACTIONAL email inside the caller's transaction (the outbox row
- *  commits or rolls back with the caller's change; `dispatch` after the commit). PlatformSession's reset uses it. */
-export type InTransactionMail = { sendInTransaction(tx: Prisma.TransactionClient, message: MailMessage): Promise<{ messageId: string; dispatch(): Promise<void> }> };
-export const canSendInTransaction = (m: MailPort): m is MailPort & InTransactionMail => typeof (m as Partial<InTransactionMail>).sendInTransaction === "function";
-
-export class MessagesMail implements MailPort, InTransactionMail {
+export class MessagesMail implements MailPort {
   constructor(private readonly d: { db: PrismaClient; messages: MessagePort<Prisma.TransactionClient> & Partial<SystemSender>; files: FilesPort; log?: (line: string) => void; system?: boolean }) {}
 
-  async send(message: MailMessage): Promise<{ messageId: string }> {
+  /** `held`: written and QUEUED, but the firm's daily cap holds it until the next day (PF-19r: the caller says so). */
+  async send(message: MailMessage): Promise<{ messageId: string; held: boolean }> {
     const m = MailMessage.parse(message);
+    if (!("firmId" in m)) return { messageId: await this.sendPlatform(m), held: false };
+    const sent = await this.write(m, (put) => this.d.db.$transaction(put));
+    await sent.dispatch();
+    return { messageId: sent.messageId, held: sent.held };
+  }
+
+  /** The firm's messages row (msg_firm), made and committed before a caller takes the firm's row lock: a firm's first
+   *  message inserts it, and its key waits on platform_firm, so a caller holding that lock and another sender of the
+   *  same firm would wait on each other (PF-19r break m1, Postgres 40P01). */
+  async ready(firmIdIn: string): Promise<void> {
+    const { firmId } = firmScope(firmIdIn);
+    await this.d.db.$transaction((tx) => ensureMessagesFirm(tx, firmId));
+  }
+
+  /** PF-19r: the same email written inside the caller's own transaction (a refusal rolls the caller's change back, and a
+   *  rolled-back change sends nothing); the caller runs `dispatch` after its commit. For a caller that holds a row lock
+   *  the outbox also takes (the firm's row, on a firm's first message), so its email never waits on its own lock and never
+   *  takes a second connection (PF-19e review M1). A firm's email only. */
+  async sendIn(tx: Prisma.TransactionClient, message: MailMessage): Promise<{ messageId: string; held: boolean; dispatch: () => Promise<void> }> {
+    const m = MailMessage.parse(message);
+    if (!("firmId" in m)) throw new MessageRefused("not sent: in a caller's transaction, only a firm's email");
+    return this.write(m, (put) => put(tx));
+  }
+
+  /** PF-19p: a platform account email (no firm, From "ExpatReady"), its own transaction as the system role. */
+  private async sendPlatform(m: z.output<typeof MailMessage>): Promise<string> {
+    try { normaliseAddress("EMAIL", m.to); } catch { throw new MessageRefused("not sent: the address is not a valid email address"); }
+    const checked = PlatformAccountSend.safeParse({
+      platformAccount: true, channel: "EMAIL", class: "TRANSACTIONAL", address: m.to,
+      content: { subject: m.subject, text: m.text, ...(m.html ? { html: m.html } : {}) }, idempotencyKey: `mail:${m.idempotencyKey ?? randomUUID()}`,
+    });
+    if (!checked.success) throw new MessageRefused(`not sent: ${checked.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
+    // PF-12: the row has no firm, so it is written as the system role (BYPASS_USES "platform.account.mail").
+    const r = await asBypass("platform.account.mail", () => this.d.db.$transaction((tx) => this.d.messages.send(tx, checked.data)));
+    await this.d.messages.dispatch(null, [r.outboxId]).catch((e: unknown) => this.d.log?.(`messages: dispatch of ${r.outboxId} failed (${e instanceof Error ? e.name : "error"}); the sweep sends it`));
+    return r.outboxId;
+  }
+
+  private async write(m: z.output<typeof FirmMail>, inTx: (put: (tx: Prisma.TransactionClient) => Promise<Written>) => Promise<Written>) {
     // MessagePort's gate judges a service or marketing message by its person's consent: the caller names the person.
     if (m.class !== "TRANSACTIONAL" && !m.person) throw new MessageRefused(`a ${m.class.toLowerCase()} email names its person (MailMessage.person)`);
     const mailId = randomUUID();
     try { normaliseAddress("EMAIL", m.to); } catch { throw new MessageRefused("not sent: the address is not a valid email address"); }
-    if (!("firmId" in m)) {   // PF-19p: a platform account email
-      const checked = PlatformAccountSend.safeParse({
-        platformAccount: true, channel: "EMAIL", class: "TRANSACTIONAL", address: m.to,
-        content: { subject: m.subject, text: m.text, ...(m.html ? { html: m.html } : {}) }, idempotencyKey: `mail:${m.idempotencyKey ?? mailId}`,
-      });
-      if (!checked.success) throw new MessageRefused(`not sent: ${checked.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
-      // PF-12: the row has no firm, so it is written as the system role (BYPASS_USES "platform.account.mail").
-      const r = await asBypass("platform.account.mail", () => this.d.db.$transaction((tx) => this.d.messages.send(tx, checked.data)));
-      await this.d.messages.dispatch(null, [r.outboxId]).catch((e: unknown) => this.d.log?.(`messages: dispatch of ${r.outboxId} failed (${e instanceof Error ? e.name : "error"}); the sweep sends it`));
-      return { messageId: r.outboxId };
-    }
-    const { firmId, input, write } = this.firmMail(m, mailId);
-    const keys: string[] = [];
-    for (const [n, a] of (m.attachments ?? []).entries()) keys.push((await this.d.files.put(firmId, attachmentKeyOf(mailId, n, a.filename), a.bytes, a.contentType)).key);
-    const r = await this.d.db.$transaction((tx) => write(tx, { ...input, attachments: keys }));
-    this.refused(r, m.to);
-    // Committed: the worker or the sweep sends it. A dispatch failure here must not make the caller send it again.
-    await this.dispatch(firmId, r.outboxId);
-    return { messageId: r.outboxId };
-  }
-
-  /** PF-19e: a firm's TRANSACTIONAL email with no attachment, written in the caller's transaction (no second connection,
-   *  no second transaction): refused or suppressed → it throws, and the caller's change rolls back with the row. */
-  async sendInTransaction(tx: Prisma.TransactionClient, message: MailMessage): Promise<{ messageId: string; dispatch(): Promise<void> }> {
-    const m = MailMessage.parse(message);
-    if (!("firmId" in m) || m.class !== "TRANSACTIONAL" || m.attachments?.length) throw new MessageRefused("not sent: in a transaction, only a firm's TRANSACTIONAL email with no attachment");
-    try { normaliseAddress("EMAIL", m.to); } catch { throw new MessageRefused("not sent: the address is not a valid email address"); }
-    const { firmId, input, write } = this.firmMail(m, randomUUID());
-    const r = await write(tx, { ...input, attachments: [] });
-    this.refused(r, m.to);
-    return { messageId: r.outboxId, dispatch: () => this.dispatch(firmId, r.outboxId) };
-  }
-
-  /** A firm email's MessagePort input, checked (before any file is stored: review m5), and the writer: sendSystem for the
-   *  system sender (PF-19e), else send. */
-  private firmMail(m: z.output<typeof FirmMail>, mailId: string) {
     const { firmId } = firmScope(m.firmId);
     const input = {
       firmId, ...(m.person ? { person: m.person } : {}), channel: "EMAIL" as const, class: m.class, address: m.to,
@@ -91,19 +96,39 @@ export class MessagesMail implements MailPort, InTransactionMail {
     };
     // (Above: an address MailPort's schema takes and the channel does not (`a@b-.example`) is refused without quoting the
     // address, since a job runner keeps the error text: break M2.)
+    // Checked before any file is stored (review m5): a message MessagePort refuses leaves nothing behind.
     const checked = MessageSend.safeParse(input);
     if (!checked.success) throw new MessageRefused(`not sent: ${checked.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
     const system = this.d.system ? this.d.messages.sendSystem?.bind(this.d.messages) : undefined;
     if (this.d.system && (!system || m.class !== "TRANSACTIONAL")) throw new MessageRefused("not sent: system mail is TRANSACTIONAL, through Messages.sendSystem");
-    const write = (tx: Prisma.TransactionClient, i: MessageSend) => (system ? system(tx, i) : this.d.messages.send(tx, i));
-    return { firmId, input, write };
-  }
-  /** Not sent and never will be (a repeated key may answer a row already SENT: that is a success). */
-  private refused(r: { state: string; reason: string | null }, to: string) {
-    if (r.state === "SUPPRESSED") throw new MailSuppressed(normaliseAddress("EMAIL", to), r.reason);
+    const keys: string[] = [];
+    for (const [n, a] of (m.attachments ?? []).entries()) keys.push((await this.d.files.put(firmId, attachmentKeyOf(mailId, n, a.filename), a.bytes, a.contentType)).key);
+    const messages = this.d.messages;
+    const r = await inTx(async (tx) => {
+      const sent = system ? await system(tx, { ...input, attachments: keys }) : await messages.send(tx, { ...input, attachments: keys });
+      // PF-19e: system mail is never held by the firm's cap (the worker exempts it), so it is never reported held.
+      return { ...sent, held: !system && sent.state === "QUEUED" && messages instanceof Messages && (await messages.capHolds(tx, firmId, sent.outboxId)) };
+    });
+    // Not sent and never will be (a repeated key may answer a row already SENT: that is a success).
+    if (r.state === "SUPPRESSED") throw new MailSuppressed(normaliseAddress("EMAIL", m.to), r.reason);
     if (r.state === "FAILED" || r.state === "BOUNCED") throw new MessageRefused(`not sent: ${r.reason ?? r.state}`);
+    // Committed: the worker or the sweep sends it. A dispatch failure here must not make the caller send it again.
+    const dispatch = () => this.d.messages.dispatch(firmId, [r.outboxId]).catch((e: unknown) => this.d.log?.(`messages: dispatch of ${r.outboxId} failed (${e instanceof Error ? e.name : "error"}); the sweep sends it`));
+    return { messageId: r.outboxId, held: r.held, dispatch };
   }
-  private dispatch(firmId: string, outboxId: string) {
-    return this.d.messages.dispatch(firmId, [outboxId]).catch((e: unknown) => this.d.log?.(`messages: dispatch of ${outboxId} failed (${e instanceof Error ? e.name : "error"}); the sweep sends it`));
-  }
+}
+
+/** PF-19r: an email written in the caller's transaction when its MailPort can (MessagesMail.sendIn), else sent at once
+ *  (a test's LocalMail or fakeMail). The caller runs the answer after its commit. */
+export async function mailIn(mail: MailPort, tx: Prisma.TransactionClient, message: MailMessage): Promise<{ held: boolean; dispatch: () => Promise<void> }> {
+  if (mail instanceof MessagesMail) { const r = await mail.sendIn(tx, message); return { held: r.held, dispatch: r.dispatch }; }
+  return { held: heldOf(await mail.send(message)), dispatch: async () => {} };
+}
+
+/** Whether a MailPort answer says the daily cap holds the email (only MessagesMail's answers can). */
+export const heldOf = (answer: unknown): boolean => typeof answer === "object" && answer !== null && (answer as { held?: unknown }).held === true;
+
+/** Before a caller takes its firm's row lock (MessagesMail.ready; nothing for a test's MailPort). */
+export async function mailReady(mail: MailPort | undefined, firmId: string): Promise<void> {
+  if (mail instanceof MessagesMail) await mail.ready(firmId);
 }

@@ -160,6 +160,20 @@ export class Messages implements MessagePort<Tx> {
     return { outboxId: id, state: "QUEUED", reason: null, repeated: false };
   }
 
+  /** PF-19r (break M1, M2): whether this QUEUED row will be held by the firm's daily cap when the worker reaches it: the
+   *  day's sent count plus the firm's QUEUED rows written up to it (held ones included) is over the cap. The worker still
+   *  decides (this only lets a caller say so now: "held by the daily limit", never "sent"). */
+  async capHolds(txIn: Tx, firmIdIn: string, outboxId: string): Promise<boolean> {
+    const tx = inTransaction(txIn), { firmId } = firmScope(firmIdIn);
+    const firm = await tx.platformFirm.findUniqueOrThrow({ where: { id: firmId }, select: { status: true } });
+    const day = dayIn(await readSetting<string>(tx, firmId, TIME_ZONE.key), this.clock.now()), cap = DAILY_CAP[firm.status === "ACTIVE" ? "ACTIVE" : "TRIAL"];
+    const [{ sent }] = await tx.$queryRaw<{ sent: number }[]>`SELECT COALESCE(MAX("sent"), 0)::int AS sent FROM "msg_send_counter" WHERE "firm_id" = ${firmId}::uuid AND "day" = ${day}::date`;
+    const [{ ahead }] = await tx.$queryRaw<{ ahead: number }[]>`SELECT count(*)::int AS ahead FROM "msg_outbox" o, "msg_outbox" me
+      WHERE me."firm_id" = ${firmId}::uuid AND me."id" = ${outboxId}::uuid AND o."firm_id" = me."firm_id" AND o."state" = 'QUEUED' AND (o."created_at", o."id") <= (me."created_at", me."id")
+        AND (o."idempotency_key" IS NULL OR o."idempotency_key" NOT LIKE ${`${SYSTEM_KEY_PREFIX}%`})`;   // PF-19e: system mail is never held, nor ahead in the queue
+    return sent + ahead > cap;
+  }
+
   async dispatch(firmIdIn: string | null, outboxIds: string[]): Promise<void> {
     if (firmIdIn === null) {   // PF-19p: platform account rows, one platform job each (no firm)
       for (const id of outboxIds) await this.d.jobs.enqueue(SEND_QUEUE, { outboxId: id, platform: true }, { key: platformJobKey(id, 0), platform: true });
