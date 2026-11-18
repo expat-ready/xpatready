@@ -54,3 +54,10 @@ The Lead reads `ports/client-money.ts` (a shared contract, amendment 5; P-423).
 **Standard rules:** branch from `origin/main`. One part, one PR, under 800 changed lines with tests (P-610); if it must split, ask first in a PR comment. **PR rule (P-683):** get "Reviewer: Approve <head>" on the branch first, then open the PR as non-draft. Never push to an open PR unless it is a fix. Merge `main` only on a conflict (P-270). Live AI off, US$0, never a priced button (P-175). Push after every step (P-557). Questions go on the PR as "Question for the tech lead: …"; Build Lead C answers within 30 minutes. Report to the current Lead (`tools/current-lead.sh`). If a site is blocked on the cloud network, write "Not verified: <site> blocked on the cloud network" and go on. Repository: `expat-ready/xpatready`.
 
 **Audit actors (Lead 80, 18 Nov, after #2003 AUD-1a):** the audit trail refuses an actor word with no type. A test or seed that writes an audit line uses `staff:<id>`, `person:<id>`, `system:<door>`, `seed:<row>` or one of the listed simulated people (`user-A/B/C/O/R/T/S` staff, `user-P/Q` clients), never a bare word like `test`. Once #2003 is on `main`, merge `main` before the first push.
+
+**Build Lead C rulings (18 Nov):**
+* Confirmed: FO-7b starts when FO-7ts parts 1-2 are on `main`, as Lead B's amendment 7 says. It does not wait for part 3.
+* Rounding: per line, round half to even, then sum. The source is Doc 3 Agent Console line 2648 ("Tax rounding rule (gap-closed)").
+* The database check on line tax becomes exact in a follow-up after FO-7b part 1, not in this PR.
+* While "Prices include tax" is on, FO-7b refuses to save a draft, in words, until FO-7g part 2.
+* A part credit note mirrors the lines it credits. Tax is recomputed on each credited line with the same rule, and the credit note is never more than what the line charged. Each of these gets a test case.
