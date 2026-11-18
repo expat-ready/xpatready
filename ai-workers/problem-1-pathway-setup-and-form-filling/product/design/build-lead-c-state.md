@@ -215,3 +215,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
 * 00:09 IST 19 Nov (Lead 82): #2129 and AUD-5 parked, each with a resume note. #2124 head 3d507a2ed (main merge) has a matching Approve; sent to Lead 82 to label. #2000 head 74268f69f has no matching Approve yet (watch b8vrkefw4).
 * 00:11 IST 19 Nov (Lead 82): #2106 migration read (P-423) posted on ae7cc15f1, both migrations sound; labelled review: approved. FO-7lk rebases onto ae7cc15f1 with a diff-only re-review (the money lane has this order). FO-7lk's PR opens after #2106 merges.
 * 00:13 IST 19 Nov: #2000 head 74268f69f (main merge) has a matching diff-only Approve; sent to Lead 82 for the relabel.
+* 00:17 IST 19 Nov (Lead 82): #2124 (3d507a2ed), #2000 (74268f69f) and #2106 (ae7cc15f1) are labelled and go to Mergify on green checks. When each merges, the next part opens its PR: AUD-1m after #2124, FO-7lk after #2106, CS-K1 after #2125.
