@@ -314,3 +314,31 @@ Reviewer: Opus, high effort, diff only. The tech lead approved the merge of main
 * **Findings.** No Blocker or Major, and no new Minor. Behaviour is identical to round 6, so the journey score of 9/10, Pass, stands.
 
 Reviewer: Approve 85b92f81afeb627faaa1d034dce0a841006c7e36
+
+## Round 8 (fourth main merge, diff-only), 19 Nov 2026, head b3b0b2a03b90f0abe6736b3a6fba18fb1876d684
+
+Reviewer: Opus, high effort, diff only, no suites run. The tech lead (Lead 84) OK'd the push.
+
+* **Merge.** Plain merge of main 9d440b2f (after #2157) into 85b92f81.
+  * One conflicting hunk: the platform card's Tests line. The resolution keeps main's line (`check_pf19r_senders.ts`) and adds `check_aud1b_adapter.ts`. The card is 40 lines.
+  * `git diff 9d440b2f b3b0b2a0` is the same 15 files, +663/−27. Its only difference from round 7 is the Tests line's context.
+* **Main's audit writers since 34c5e1e99.**
+  * FO-2 part 3 (`front-office/sales/prospects.ts`): every line has `firmId: ctx.firmId` and `staff:${ctx.staffId}` from `req.platform`, so it matches AUD-1b's actor and firm exactly.
+  * #2157 (PF-19r part 1) writes no audit line. The complaint reminder still writes `SYSTEM_ACTOR` in a job with the job's own firm.
+  * No new direct `auditEvent.create`.
+  * Nothing would be refused, and no line is written without a firm.
+* **Builder's evidence on b3b0b2a0:**
+
+  | Check | Result |
+  |---|---|
+  | `check_aud1b_adapter` | 33/33 |
+  | `check_pf0p_ports` | 122/122 |
+  | `check_case_feed` | 39/39 |
+  | `check_fo2p3_prospects` | 44/44 |
+  | `check_pf19r_senders` | 24/24 |
+  | Port contracts | 0 problems |
+  | Module cards | PASS |
+
+* **Findings.** None (no Blocker, Major or Minor).
+
+Reviewer: Approve b3b0b2a03b90f0abe6736b3a6fba18fb1876d684
