@@ -54,3 +54,40 @@ The Mac's :4400 database (whether it holds the Sample platform firms; Minor 1's 
 **Fix list (do not label `d59865563`):** Major 1. Minor 1-3 are recommended in the same round.
 
 Verdict: Changes requested
+
+## Round 2 (diff only, P-608): `d59865563..3ab906b8dab5cd6aacec19b998c0a6f137950ab9`
+
+**Scope:** `git diff d59865563..3ab906b8d -- …/prototype/studio`, which touches `migration.sql`, `firms.ts`, `demo.ts`, `main.ts` and `check_csw1_firm_id.ts`. The checkout was clean at `3ab906b8d` and stayed at that head throughout. Copies: `rv_csw1`, `rv_csw1b`, `rv_csw1m` and `pf4` on :4438/:4439. All are stopped and their databases dropped. Every suite ran with `--tsconfig api/tsconfig.json`.
+
+| Check on `3ab906b8d` | Result |
+|---|---|
+| `check_csw1_firm_id` | 47/47 |
+| `check_prisma_schema` | 8/8: the shadow re-apply after a `public`-only reset now passes |
+| By hand: migrate, `drop schema public cascade; create schema public`, migrate again; then the lookup as `xr_app` | applied; lookup works |
+| `check_pf12_walls`, `check_pf3_platform_schema`, `check_c617_stages_migration`, `check_d1_reset_to_six`, `check_pf4_identity` | 100, 75, 23, 25, 119: all pass |
+| Kept data: configured checkpoint + 10 openings; CS-W1 rolled back; Sample firms absent at migrate, present before the API restarts (`isolated.sh … restart`) | after migrate 11/11 cases and 15/15 stages null. After the start: 0 null, all ids match. The log line reads "filled … 28 case, stage and counter row(s)". The fill is one transaction, so the deferred stage checks held |
+| The start-up fill with every case row locked by another session for 40 s | the start finished in 9 s; logged "could not fill … lock timeout"; the server serves; the demo reset afterwards gave 201 |
+
+**Round-1 findings:**
+* **Major 1: fixed.** `migration.sql` now uses `CREATE OR REPLACE FUNCTION case_lookup.case_firm_id_of_key`. `case_firm_backfill()` is in `public`, so a `public` reset drops it with everything else. `check_prisma_schema` is the failing-when-removed test.
+* **Minor 1: fixed.** `case_firm_backfill()` is SECURITY INVOKER, has `search_path` pinned, and fills only rows that are empty and whose key now resolves. EXECUTE goes to `xr_data` only. It runs in three places:
+  * in the migration;
+  * at start, on the seed's own line in `main.ts`, through `fillCaseFirmIdsOnStart` (lock 5 s, statement 60 s, never stops the start);
+  * in `demo.ts` after the seed (a failure is logged, never blocks).
+  The test covers it at DW1 (0, then 3 rows once the firm exists, then 0 again) and at DW5 (a reset fills an empty case; the start-up fill does too).
+* **Minor 2: fixed.** `firmIdByKey` and `firmIdOfActor` are tested as `xr_app` through Prisma, with pass and fail cases. The DW5 reset line now fails if the demo's seed+fill is removed: the other workspace's row is written past the triggers after start, so only the reset's fill can fill it. The `loadConfigured` call shares the same `seedSampleFirmsAsDemo` function, which that line tests.
+* **Minor 3: not changed; deferral accepted.** No later migration exists today, and the builder records in the PR that part 2 moves the DW1 read.
+
+**New in this diff, judged (no finding):**
+* `GRANT USAGE ON SCHEMA public TO xr_case_lookup` gives no CREATE: DW10's "never on public" still passes.
+* The demo seed now refuses production (`sampleSeedDecision`), on top of reset and load refusing outside the demo workspace.
+* `fillCaseFirmIdsOnStart` runs on every start, production included. It only copies ids from real `platform_firm` rows, as the migration does. That is derived data, so I accept it.
+* The reset's fill also fills empty rows of other workspaces. This writes no Sample row and deletes nothing, and the brief's rule is about deleting another workspace's cases, so I accept it.
+
+**Minor (round 2), Should, not blocking:** `migration.sql`'s rollback header does not list `REVOKE USAGE ON SCHEMA public FROM xr_case_lookup` for the new grant. My rollback runs added it by hand. If it is left out, only a harmless USAGE grant remains. Add it to the rollback line when part 2 next touches this header, or now.
+
+**Still open, outside the code:** Lead B's OK on the `platform_firm` policy, the column grant and the reuse of `platform.demo.reset`, as the brief requires. Green full CI on this head (the PR is still a draft).
+
+**Journey score (round 2): 10/10, pass.** "Correct data" goes from ½ to 1: rows filled after a later seed (kept-data run above). Everything else as in round 1.
+
+Verdict: Approve (head 3ab906b8dab5cd6aacec19b998c0a6f137950ab9)

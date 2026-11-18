@@ -27,7 +27,7 @@
 -- Rollback (in this order): DROP TRIGGER case_firm_from_key ON runtime_case; DROP TRIGGER case_firm_from_key ON
 --   firm_case_counter; DROP TRIGGER case_firm_fill ON case_stage; DROP FUNCTION case_firm_from_key(), case_firm_fill(), case_firm_backfill();
 --   DROP POLICY case_lookup_read ON platform_firm; DROP FUNCTION case_lookup.case_firm_id_of_key(text); REVOKE SELECT (id, key)
---   ON platform_firm FROM xr_case_lookup; DROP SCHEMA case_lookup; DROP INDEX runtime_case_firm_id_created_at_idx,
+--   ON platform_firm FROM xr_case_lookup; REVOKE USAGE ON SCHEMA public FROM xr_case_lookup; DROP SCHEMA case_lookup; DROP INDEX runtime_case_firm_id_created_at_idx,
 --   case_stage_firm_id_case_id_idx, firm_case_counter_firm_id_year_idx; ALTER TABLE runtime_case, case_stage,
 --   firm_case_counter DROP COLUMN firm_id; then delete this folder's row from _prisma_migrations. The role xr_case_lookup
 --   stays (PF-12's; it may own CS-W3's functions). Nothing is lost: firm_id is derived from firm_key.
