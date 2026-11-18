@@ -98,8 +98,11 @@ const withEnd = (b: Uint8Array, at: number, put: (v: DataView) => void) => { con
 ok("PF-F4: a directory said to start past the end record is refused as damaged",
   refused(detect(withEnd(office, 0, (v) => v.setUint32(16, office.length, true))), "DAMAGED"));
 ok("PF-F4: a ZIP64 entry count (0xffff) is refused as damaged", refused(detect(withEnd(office, 0, (v) => v.setUint16(10, 0xffff, true))), "DAMAGED"));
-ok("PF-F4: more than 5,000 entries is refused as damaged, without reading them",
-  refused(detect(withEnd(office, 0, (v) => v.setUint16(10, 5001, true))), "DAMAGED"));
+const many = zip([{ name: "[Content_Types].xml", data: bytes("<Types/>") }, ...Array.from({ length: 5000 }, (_, i) => ({ name: `word/p${i}.xml`, data: new Uint8Array() }))]);
+ok("PF-F4: a real ZIP of 5,001 entries is refused as damaged (the cap), one of 5,000 is read",
+  refused(detect(many), "DAMAGED") && detect(zip([{ name: "[Content_Types].xml", data: bytes("<Types/>") }, ...Array.from({ length: 4999 }, (_, i) => ({ name: `word/p${i}.xml`, data: new Uint8Array() }))])).ok);
+ok("PF-F4: a directory size running past the end record is refused as damaged (entries themselves in bounds)",
+  refused(detect(withEnd(office, 0, (v) => v.setUint32(12, 0xfffffff0, true))), "DAMAGED"));
 ok("PF-F4: a directory entry without its signature is refused as damaged",
   (() => { const c = new Uint8Array(office); const cd = new DataView(c.buffer).getUint32(c.length - 6, true); c[cd] = 0; return refused(detect(c), "DAMAGED"); })());
 ok("PF-F4: an entry count above what the directory holds is refused as damaged", refused(detect(withEnd(office, 0, (v) => v.setUint16(10, 3, true))), "DAMAGED"));
