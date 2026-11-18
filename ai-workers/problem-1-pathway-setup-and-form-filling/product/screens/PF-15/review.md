@@ -181,3 +181,48 @@ None.
 
 Reviewer: Changes requested
 Fix list for 4c4e0f3d3: M1, M2, M3, M4 (M4 by code or by a recorded Lead decision), M5. m1 and m3-m6 are optional; m1 and m4 are one-liners.
+
+## Part 2 re-review (ec04e138b)
+Diff `4c4e0f3d3..ec04e138b` only (P-277), with the PF-15 reports left out: the migration, `limit-changes.ts`, `limits.ts` and `check_pf15_cases.ts`.
+* **Suites at ec04e138b:** pf15_cases 51/0, pf15_limits 67/0, pf12_walls 100/0, pf3_platform_schema 75/0, pf4c 24/0. `tsc -p api/tsconfig.json` reports 0 errors.
+* **Probes:** a scratch database with every migration, run as xr_studio, as xr_app in firm A's session, and as xr_app under `SET ROLE xr_staff_bypass`. Then mutation runs on a scratch copy. Both were removed afterwards.
+
+### Earlier findings
+* **M1 fixed.** The read now keeps the highest `old_value` over all pending lowerings (a null among them means Unlimited), then `greatest()` with today's value.
+  * My earlier sequence (150→100, raise to 200, then 200→50 with a later renewal) now reads 200 at +1 day, 200 at +45 days and 50 at +51 days.
+  * A lowering from Unlimited reads Unlimited, then 7.
+  * A firm that left the plan and came back on a new subscription row reads today's value (`approved_at >= since`).
+* **M2 fixed, with two small gaps.** Mutations now caught:
+  * a kept value overriding a raise;
+  * min instead of max;
+  * the `since` filter dropped;
+  * the seats guard off.
+  * The two gaps are m8 and m9 below.
+* **M3 fixed.** A raise writes `plan.limit.raised` once per firm live on the plan (tested). A plan with no live firm has only the change row as its record. The PR states this, and AuditPort needs a firm id, so this is acceptable.
+* **M4: open as a "Question for the tech lead"**, recommending a separate small item. This is the resolution my finding allowed. No PR is open yet, so I could not see its body: the label step must check that the question is in it.
+* **M5 fixed.**
+  * xr_app in a firm session: INSERT and SELECT on `platform_limit_change` are denied, and a direct `seats_limit` update is refused. A same-value update still passes.
+  * Under `SET ROLE xr_staff_bypass`: a direct seats update is refused, and a change row works.
+  * A caller's `approved_at` of 2020 is replaced by `clock_timestamp()` after the plan lock.
+  * Two changes at once: the second waited, and its `old_value` is the first change's `new_value`, in `approved_at` order.
+  * The seats guard uses `session_user` or the `role` setting with `pg_trigger_depth() = 1`. Suites that write `seats_limit` connect as xr_studio, so they are unaffected.
+* **m1 fixed:** the rollback note lists all four functions, the trigger and the owner step.
+* **m3 fixed:** SELECT is revoked from the app.
+* **m4 fixed:** `sendNotices` catches each send, lists failures, and is re-sendable under one idempotency key per change and Owner. Tested with mail down, then up.
+* **m5 fixed:** per-metric words; the seats sentence is still SA-4-56's exactly.
+* **m6 documented.** **m7 open** with Lead B (renewal question), as agreed.
+* **The breaker's M2 and m2 hold.**
+  * The renewal start (beginning near the target) matched the naive month loop on 200,000 random anchor and target pairs in UTC, month ends included: 0 mismatches.
+  * Infinite dates fall back to `created_at`, and the functions pin `TimeZone = 'UTC'`.
+* **`checkDowngrade`** now refuses a firm other than the session's (tested).
+
+### New minors (not blocking)
+* m8. The tests do not pin null dominance in a mixed set.
+  * Removing `bool_or(old_value IS NULL)` leaves 51/0, because `max` over {null} is already null.
+  * Fix: one case with Unlimited→100 and then 100→50 both pending. It must read Unlimited; without the rule it reads 100.
+* m9. The "30 days to the second" test does not hit exact equality.
+  * `approved_at` carries microseconds, so `WHILE at <= target` also passes. The code (`<`) is right; only the test name overstates.
+  * Likewise, the parallel-changes test goes through the service, which takes the plan lock itself, so removing the trigger's own `FOR UPDATE` passes. My direct race at the role level held with the lock.
+
+Reviewer: Approve ec04e138b8895c26b0306d8aead54f9f8d189daa
+(One condition at the label step: the PR body carries M4's "Question for the tech lead". m8 and m9 are optional.)
