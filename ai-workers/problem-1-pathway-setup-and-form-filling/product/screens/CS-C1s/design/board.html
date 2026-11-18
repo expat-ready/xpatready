@@ -79,7 +79,7 @@ textarea{min-height:72px;resize:vertical}
     <div class="row"><div class="what"><h3>Client B · Visitor visa (IMM 5257)</h3>
       <div class="small muted">Submitted on 2 Nov 2026 · application V123456789 (Sample)</div>
       <div class="small" style="margin-top:3px"><span class="pill ok">Approved</span> <span class="pill sample" title="Sample words. The decision words come from the programme's pack; they become final once cited from an official IRCC source.">Sample</span> decided 16 Nov 2026 · “Visa counterfoil received.” · <a href="#">1 earlier decision</a></div>
-      <ul class="history"><li>Refused (Sample) · decided 15 Nov 2026 · recorded by Representative on 15 Nov, corrected on 16 Nov</li></ul></div>
+      <ul class="history"><li>Refused (Sample) · decided 15 Nov 2026 · recorded by Representative on 15 Nov 2026</li></ul></div>
       <button class="btn ghost">Correct the decision…</button></div>
     <div class="row"><div class="what"><h3>Client D · Visitor visa (IMM 5257)</h3>
       <div class="small muted">Submitted on 2 Nov 2026 · no decision yet</div></div>
@@ -105,7 +105,7 @@ textarea{min-height:72px;resize:vertical}
 <div class="frame" id="b3">
   <div class="casehead"><h1><span>C-2026-00031</span><span class="pill closed">Closed</span><span class="pill info">Visitor visa · Release 3</span></h1>
   <p class="muted small" style="margin:4px 0 0">Client: <b style="color:var(--text)">Client B</b> · <a href="#">Client B's cases</a></p>
-  <div class="endline">Closed by staff on 18 Nov 2026 · Decision: Approved <span class="pill sample">Sample</span>, Refused <span class="pill sample">Sample</span> · Reason: Both decisions received; the client has no further steps with the firm.</div></div>
+  <div class="endline">Closed by staff <span class="pill sample">Sample</span> on 18 Nov 2026 · Decision: Approved <span class="pill sample">Sample</span>, Refused <span class="pill sample">Sample</span> · Reason: Both decisions received; the client has no further steps with the firm.</div></div>
   <section class="panel" aria-labelledby="d3">
     <header><h2 id="d3">Decision and closing</h2><p>This case is closed. Reopen it with a reason to record or correct a decision.</p><span class="who">Signed in as <b>Representative</b> (firm staff)</span></header>
     <div class="row"><div class="what"><h3>Client B · Visitor visa (IMM 5257)</h3><div class="small"><span class="pill ok">Approved</span> <span class="pill sample">Sample</span> decided 16 Nov 2026</div></div></div>
@@ -120,10 +120,11 @@ textarea{min-height:72px;resize:vertical}
   <section class="panel" aria-labelledby="d4">
     <header><h2 id="d4">Decision and closing</h2><p>Record IRCC's decision on each submitted filing, then close the case. Before any decision, the case can be withdrawn.</p><span class="who">Signed in as <b>Representative</b> (firm staff)</span></header>
     <div class="row"><div class="what"><h3>Client A · Visitor visa (IMM 5257)</h3><div class="small muted">Not submitted yet. Decisions are recorded once a filing is recorded as submitted, above.</div></div></div>
+    <div class="row"><div class="what"><h3>Client A · Study permit <span class="pill">Earlier stage: Preparation</span></h3><div class="small muted">Not submitted yet</div></div></div>
     <div class="foot"><p>The client no longer goes ahead? Withdraw the case before any decision.</p><button class="btn">Withdraw the case…</button></div>
   </section>
   <div class="casehead" style="margin-top:18px"><h1><span>C-2026-00027</span><span class="pill closed">Withdrawn</span></h1>
-  <div class="endline">Withdrawn on 15 Nov 2026 (recorded 18 Nov 2026) · Reason: Client no longer needs the visa.</div></div>
+  <div class="endline">Withdrawn <span class="pill sample">Sample</span> on 15 Nov 2026 (recorded 18 Nov 2026) · Reason: Client no longer needs the visa.</div></div>
 </div>
 
 <!-- 5 -->
@@ -139,7 +140,7 @@ textarea{min-height:72px;resize:vertical}
 
   <div class="dialog" role="dialog" aria-labelledby="t2"><div class="t"><h2 id="t2">Close the case</h2><p>A closed case takes no more decisions until someone reopens it.</p></div>
     <div class="b">
-      <div class="notice danger" role="alert"><b>Not possible now</b>Every filing needs a decision before the case is closed (AG-7-34 rule 2). Before the decision, withdraw the case.</div>
+      <div class="notice danger" role="alert"><b>Not possible now</b>Every filing needs a decision before the case is closed. Before any decision, withdraw the case.</div>
       <div><label for="rs">Reason</label><textarea id="rs">Client moved to another firm.</textarea><div class="hint">29 / 1000</div></div>
     </div>
     <div class="f"><button class="btn ghost">Cancel</button><button class="btn primary">Close the case</button></div></div>
@@ -150,15 +151,17 @@ textarea{min-height:72px;resize:vertical}
 </div></div>
 
 <!-- 6 -->
-<p class="board-title"><b>6 · Who may act</b>: no staff session; signed in without the key; reading fails.</p>
+<p class="board-title"><b>6 · Who may act</b>: no staff session (the sign-in sits in the panel; the rows replace it when signed in); signed in without the key; another firm.</p>
 <div class="frame" id="b6">
   <section class="panel" aria-labelledby="d6a"><header><h2 id="d6a">Decision and closing</h2><p>Record IRCC's decision on each submitted filing, then close the case.</p></header>
-    <div class="foot"><p>Sign in as firm staff to see and record decisions. The Acting as person does not record decisions.</p><button class="btn">Sign in…</button></div></section>
+    <div class="foot" style="display:block"><p style="margin-bottom:10px">Sign in as firm staff to see and record decisions. The Acting as person does not record decisions.</p>
+      <h3>Sign in to your firm</h3><p class="small muted" style="margin:2px 0 8px">The local stand-in sign-in until the firm sign-in screens are built.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end"><div><label for="fk">Firm key</label><input id="fk" class="input" style="width:200px"></div><div><label for="em">Work email</label><input id="em" class="input" style="width:240px"></div><button class="btn primary">Sign in</button></div></div></section>
   <section class="panel" aria-labelledby="d6b"><header><h2 id="d6b">Decision and closing</h2><p>Record IRCC's decision on each submitted filing, then close the case.</p><span class="who">Signed in as <b>Case officer</b> (firm staff)</span></header>
     <div class="row"><div class="what"><h3>Client B · Visitor visa (IMM 5257)</h3><div class="small muted">Submitted on 2 Nov 2026 · no decision yet</div></div></div>
     <div class="foot"><p>Your role does not record decisions. An Owner, Admin or Case manager can.</p></div></section>
   <section class="panel" aria-labelledby="d6c"><header><h2 id="d6c">Decision and closing</h2></header>
-    <div class="foot" style="display:block"><div class="notice danger"><b>The decisions could not be loaded</b>No such case in your firm.</div></div></section>
+    <div class="foot" style="display:block"><div class="notice danger"><b>The decisions could not be loaded</b>This case is not in Sample Firm, the firm you are signed in to.</div></div></section>
 </div>
 
 <!-- 7 -->
