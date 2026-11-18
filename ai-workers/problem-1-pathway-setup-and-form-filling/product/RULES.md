@@ -19,7 +19,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | IDX-2 | One-time or standing process directions (with P-508, P-512, P-514, P-547, P-566, P-580, P-583, P-589, P-592); the list and rows word for word in `rules/goal-and-order.md` › Index lists. | prose | 16 Nov |
 | P-473 | UX style: calm work app, plain second-person client questions with "Why we ask", quiet surfaces, no motion library. | prose | 11 Nov |
 | P-558 | Two Leads: Lead B holds platform and front office in fenced modules; the release Lead holds release, Bake, case side, join, DB-SPLIT, firm walls, shared records (P-559). | prose | 13 Nov |
-| IDX-5 | Product and Release 1 scope rulings stand as recorded (read the row when its capability is touched; P-624, P-625, P-629, P-630 moved there 17 Nov); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 15 Nov |
+| IDX-5 | Product and Release 1 scope rulings stand as recorded; list in `rules/goal-and-order.md`. | prose | 15 Nov |
 | IDX-4 | Product rulings stand in their DECISIONS rows (read one when its capability is touched); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 14 Nov |
 | P-488 | Gate B on a PR runs the REGRESSION-HELD checkpoint packs; records never claim Works that an open Major contradicts. | CI: ci.yml gate B (part) | 12 Nov |
 | F-12Nov | Every change is judged on value against cost; no over-engineering; never compromise compliance, money or quality (founder, 12 Nov). | prose | 12 Nov |
@@ -152,11 +152,12 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-674 | Clean-up (with P-675 to P-677): plan now, staged moves after the org move; repo name platform; October files out (tagged); business plan private. | prose | 17 Nov |
 | P-678 | Private home expat-ready/private (P-679: the only one); side notes synced each check by tools/private-sync.sh; big folders on the Mac's backup. | script: private-sync.sh | 17 Nov |
 | P-680 | Spend master kept private; board card parked (P-681); architecture sized for ~500 capabilities with an AI layer. | prose | 17 Nov |
-| P-683 | Approve on the branch first, then open the PR non-draft (amends P-646). | prose (lane briefs) | 17 Nov |
+| P-683 | Approve on the branch first, then open the PR non-draft. Full row: `rules/builders-and-qa.md`. | prose | 17 Nov |
 | P-685 | Old drafts with a matching Approve: the Lead runs `tools/pr-ready.sh`, never the founder. | script: tools/pr-ready.sh | 17 Nov |
 | P-686 | Records PRs skip the 800-line limit; tooling rows exempt; IDX-moved rules count (#2086). | script: pr-size.sh, decision-impact.sh, check-docs.sh | 17 Nov |
 | P-682 | Modular monolith: fenced modules, AI behind its own port, outbox events, affected-only CI; split only on a measured trigger. | prose | 17 Nov |
 | P-691 | Emergency hand merge stays on Enterprise: only a pipeline/CI fix while the queue itself is broken, after green ci and a review, logged in the change log. | prose (ruleset bypass; library/engineering-change-log.md) | 17 Nov |
+| P-699 | Agents build, review, test and label; when a tool path is stuck, the Lead does the step in the signed-in browser (safety rules still apply). | prose | 18 Nov |
 | P-696 | Stay on Enterprise; move back (F3) only if the overnight median job wait is over 30 min (amends P-695). | prose | 18 Nov |
 | P-698 | A part that finishes a started Partial counts as finishing work under P-663; PF-12b holds the bypass audit line; PF-F3 port lands before AWS. | prose | 18 Nov |
 | P-693 | Enterprise hosted compute is Multi-cloud (Azure plus AWS); no Support ticket at that point (founder A167). | prose (enterprise setting; change log C26) | 18 Nov |

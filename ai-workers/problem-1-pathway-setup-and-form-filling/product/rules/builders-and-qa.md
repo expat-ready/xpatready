@@ -18,3 +18,5 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 ## Full rows moved word for word from RULES.md by Lead 80, 16:4x IST 18 Nov (RULES.md under 25 KB, P-611)
 
 | P-385 | Label review: approved only on a `Reviewer: Approve <exact head sha>` comment and green CI; builders label, qa labels paid-result PRs (P-277, P-275). | CI: label-guard.yml, label-guard.sh, label-sweep.sh (tests check-label-guard.sh, check-label-sweep.sh) | P-612 |
+
+| P-683 | Approve on the branch first, then open the PR non-draft (amends P-646). | prose (lane briefs) | 17 Nov |  (moved word for word by Lead 80, 19:0x IST 18 Nov)
