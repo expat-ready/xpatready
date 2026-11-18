@@ -159,3 +159,34 @@ Verdict: Changes needed
 These stay with the builder's regression run and CI on this sha (P-385).
 
 Verdict: Approve c74cb084378ce6e417d81d3f28fcbadfe34b07e2
+
+## Round 4 (main merge, diff-only), head 1b2defdba37db673d790159c2f22ad4da7b28804
+This round covers the merge `1b2defdb` alone. Its parents are `4b74beb` (round 3's approved `c74cb084` plus review records only) and `origin/main` `628742f0`. It is a plain merge, with no rebase.
+
+**1. Conflict and diff against main.**
+* `git diff origin/main 1b2defdb` touches the same 15 files as AUD-1b's own diff (`git diff 15c75cd 4b74beb`, where `15c75cd` is the merge base). Both are 660 insertions and 27 deletions.
+* With index and hunk headers stripped, the two patches differ only in the `MODULE.md` context lines. Main's Tables line now has `platformOffice, platformStaffOffice`, and its Tests line has `check_pf18a_offices.ts`. No AUD-1b code line changed, and no main line is dropped.
+* `git show --cc` shows one combined hunk. Tables is main's line. Tests is main's line with `tests/check_aud1b_adapter.ts` appended. The AUD-1b invariant line is still there.
+* The card is **39 lines**, so it is within the 40-line limit.
+* PF-18a's Purpose, Entry points and Invariant lines from main are all present.
+
+**2. New audit writers from main.** Main changed 16 files under `prototype/` since the base. The only new audit writer is `api/src/platform/settings/offices/service.ts`. It calls AuditPort 4 times, wired with `auditEvent` in `features/platform-settings-personal.ts`. Main adds no direct `tx.auditEvent.create`. `clock.ts`, `ports/offices.ts`, the contract, the migration and `check_qa507` write no audit line, and the migration adds no trigger on `audit_event`. Each AUD-1b rule holds:
+* **Firm.** It is `firmScope(a.firmId).firmId`, where `a = staffOf(req)` is the guard's `req.platform`. That is the same source `hook.ts` `firmOf` gives `context.ts`, so the request's firm always equals the line's firm. `firmScope` lowercases, and the adapter lowercases both sides.
+* **Actor.** It is `` `staff:${a.staffId}` `` (`service.ts:62`). `hook.ts` `auditOf` builds `` `staff:${req.platform.staffId}` `` from the same field, so the two match exactly. The type is FIRM_STAFF.
+* **Case and our staff.** No `caseId` is passed. No `ourStaff` request exists on main.
+* **Rollback.** Every call is inside the change's `$transaction` after the row write, so a refused line rolls the office change back.
+* **`setStaffOffice`.** It has no route yet (PF-18s). Its callers in `check_pf18a_offices.ts` run outside any request scope, so the context is undefined and the line is written with the entry's own firm. That is still allowed. When PF-18s routes it, the same `staffOf` source keeps it valid.
+
+So nothing from main would be refused at runtime, and no line is written without a firm.
+
+**3. Evidence (the builder's run on the merged head in the cloud copy; I did not run any suite, because they share the database):**
+* `check_aud1b_adapter.ts`: 33 passed, 0 failed.
+* `check_pf18a_offices.ts`: 87 passed, 0 failed. It includes the zone-change line asserting `detail.firmId === firmA` through the AUD-1b adapter.
+
+The wider suite and CI on this sha stay with the builder and CI (P-385).
+
+**Journey test:** not re-run, because the merge changes no screen or route of AUD-1b's. The one journey score stays **9 / 10, Pass**, from `journey-test-reviewer-2026-11-18.md`.
+
+**Open:** no Blocker and no Major. Minors 4 and 5 from round 3 are unchanged; they go in the PR body.
+
+Verdict: Approve 1b2defdba37db673d790159c2f22ad4da7b28804
