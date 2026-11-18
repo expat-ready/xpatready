@@ -99,7 +99,7 @@ try {
   const mailBinding = providerOf(staffFeature, MAIL_PORT), messagesMail = providerOf(messagesFeature, MESSAGES_MAIL);
   ok("setup: platform-staff-read binds MAIL_PORT to the app's MESSAGES_MAIL (useExisting), not to LocalMail", mailBinding?.useExisting === MESSAGES_MAIL && mailBinding.useFactory === undefined, mailBinding);
   const { nest, base } = await appWith([mailBinding, messagesMail]);
-  const signIn = async (actorId: string) => { const r = await call(base, "POST", "/api/platform/session/local", { body: { firmKey: "sample-firm", actorId, secondStep: true } }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.token as string; };
+  const signIn = async (actorId: string, firmKey = "sample-firm") => { const r = await call(base, "POST", "/api/platform/session/local", { body: { firmKey, actorId, secondStep: true } }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.token as string; };
   let tR = await signIn("user-R");
 
   // ----------------------------------------------------------------------- DW1 an invitation through the one sending path
@@ -157,6 +157,20 @@ try {
   const codeRefused = await rejects(() => handleCustomEmail({ triggerSource: "CustomEmailSender_ForgotPassword", request: { code: "enc", userAttributes: { email: "dw3.code.gone@example.com" } } }, { decrypt: async () => "552211", mail: appMail, firmOf: async () => firmA.id }));
   ok("DW3 fail (sender 3): a code email to a suppressed address is refused (nothing sent) and the refusal never quotes the code", codeRefused?.name === "MessageRefused" && !codeRefused.message.includes("552211") && (await inbox.list("dw3.code.gone@example.com", undefined)).messages.length === 0, codeRefused?.message);
 
+  // A reset as firm B's very first message, while another email of firm B is written at the same moment (break m1): the
+  // reset makes the firm's messages row before it takes the firm's row lock, so neither waits on the other.
+  const firmB = await db.platformFirm.findUniqueOrThrow({ where: { key: "sample-solo" } });
+  const noMsgFirm = sql(`select count(*) from msg_firm where firm_id = '${firmB.id}'`) === "0";
+  const B2 = await db.platformStaff.create({ data: { firmId: firmB.id, email: "dw3.b.officer@example.com", displayName: "Sample Officer B", actorId: "pf19r-b2", status: "ACTIVE" } });
+  await db.platformRoleGrant.create({ data: { firmId: firmB.id, staffId: B2.id, role: "CASE_OFFICER", grantedBy: "seed:pf19r" } });
+  const tS = await signIn("user-S", "sample-solo");
+  const [resetB, otherB] = await Promise.all([
+    call(base, "POST", `/api/platform/staff/${B2.id}/reset-two-step`, { token: tS }),
+    appMail.send({ firmId: firmB.id, to: "dw3.b.other@example.com", replyTo: "no-reply@expatready.example", class: "TRANSACTIONAL", subject: "Hello", text: "x" }).then(() => "sent", (e: Error) => e.message),
+  ]);
+  ok("DW3 pass (break m1): a reset as the firm's first message, with another of the firm's emails at the same moment: both go through, no lock wait or deadlock",
+    noMsgFirm && resetB.status === 200 && otherB === "sent" && (await rowsTo("dw3.b.officer@example.com")).length === 1, { noMsgFirm, resetB: resetB.body, otherB });
+
   // ----------------------------------------------------------------------- DW4 the complaint acknowledgement reminder
   const ports = (complaintsFeature.runtimeComplaintPorts as (m: unknown) => { mail: unknown })(appMail);
   const cBinding = providerOf(complaintsFeature.default, complaintsFeature.COMPLAINT_PORTS);
@@ -182,8 +196,18 @@ try {
   await db.msgSuppression.create({ data: { firmId: firmA.id, channel: "EMAIL", address: tEmail, reason: "HARD_BOUNCE", createdBy: "seed:pf19r" } });
   const c4b = await complaint(T);
   const e4b = await rejects(() => svc.runAckReminder({ firmId: firmA.id, complaintId: c4b }));
-  ok("DW4 fail: a reminder nobody can be sent (the handler's address is suppressed) rolls back: no REMINDER_SENT event, no outbox row, the job tries again",
-    e4b?.name === "MessageRefused" && (await db.platComplaintEvent.count({ where: { complaintId: c4b, kind: "REMINDER_SENT" } })) === 0 && (await db.msgOutbox.count({ where: { idempotencyKey: { contains: c4b } } })) === 0, e4b?.message);
+  const r4b = await db.msgOutbox.findMany({ where: { idempotencyKey: { contains: c4b } } }), ev4b = await db.platComplaintEvent.findFirst({ where: { complaintId: c4b, kind: "REMINDER_SENT" } });
+  ok("DW4 pass (break m3): a handler whose address is suppressed is skipped (SUPPRESSED row kept) and the firm's Owners and Admins get it instead; the event counts only who was reached",
+    e4b === null && r4b.some((r) => r.subjectId === T && r.state === "SUPPRESSED") && r4b.some((r) => r.subjectId !== T && r.state === "QUEUED") && (ev4b?.detail as { sentTo?: string; recipients?: number })?.sentTo === "owners_admins"
+    && (ev4b?.detail as { recipients?: number }).recipients === r4b.filter((r) => r.state === "QUEUED").length, { e: e4b?.message, r4b, ev4b });
+  // Nobody reachable: every Owner and Admin and the firm's contact suppressed too → rolled back, the job tries again.
+  const everyone = [...new Set([...(await db.platformStaff.findMany({ where: { firmId: firmA.id } })).map((x) => x.email), firmA.contactEmail.toLowerCase()])];
+  await db.msgSuppression.createMany({ data: everyone.filter((x) => x !== tEmail).map((address) => ({ firmId: firmA.id, channel: "EMAIL" as const, address, reason: "HARD_BOUNCE" as const, createdBy: "seed:pf19r" })) });
+  const c4n = await complaint(T);
+  const e4n = await rejects(() => svc.runAckReminder({ firmId: firmA.id, complaintId: c4n }));
+  ok("DW4 fail: a reminder nobody can be sent rolls back: no REMINDER_SENT event, no outbox row, the job tries again",
+    e4n?.name === "MessageRefused" && (await db.platComplaintEvent.count({ where: { complaintId: c4n, kind: "REMINDER_SENT" } })) === 0 && (await db.msgOutbox.count({ where: { idempotencyKey: { contains: c4n } } })) === 0, e4n?.message);
+  await db.msgSuppression.deleteMany({ where: { address: { in: everyone.filter((x) => x !== tEmail) } } });
   await db.msgSuppression.deleteMany({ where: { address: tEmail } });
   // The handler no longer active: each active Owner and Admin, each a SERVICE email for their own STAFF record.
   const c4c = await complaint(T);
@@ -215,8 +239,16 @@ try {
   ok("DW5 pass: on a trial firm the 50th email of the day is sent and the 51st is held: QUEUED with the reason \"daily limit\", nothing in the inbox, one alert",
     sentSoFar > 0 && b5.status === 201 && f50?.state === "SENT" && f51?.state === "QUEUED" && f51.stateReason === HELD_DAILY_LIMIT && (await inbox.list("dw5.fiftyfirst@example.com", undefined)).messages.length === 0 && alerts.raised.some((a) => a.kind === "send_cap_reached"), { b5: b5.body, f50, f51, alerts: alerts.raised });
   const held = await db.msgOutbox.findMany({ where: { firmId: firmA.id, state: "QUEUED", stateReason: HELD_DAILY_LIMIT }, select: { address: true } });
-  ok("DW5 pass: the held invitation is reported as held (the outbox lists it by its \"daily limit\" reason) while the batch's answer counts it as queued, not as not sent",
-    held.length === 1 && held[0].address === "dw5.fiftyfirst@example.com" && (b5.body.invitations ?? b5.body.rows ?? []).every((x: { emailed?: boolean }) => x.emailed !== false), { held, b5: b5.body });
+  const rowOf = (e: string) => (b5.body.invitations ?? []).find((x: { email: string }) => x.email === e);
+  ok("DW5 pass: the batch's answer reports the held row: heldRows [2], and row 2 says emailHeld \"daily limit\" (row 1 does not); the outbox holds exactly that one",
+    held.length === 1 && held[0].address === "dw5.fiftyfirst@example.com" && JSON.stringify(b5.body.heldRows) === "[2]" && rowOf("dw5.fiftyfirst@example.com")?.emailHeld === HELD_DAILY_LIMIT && rowOf("dw5.fiftieth@example.com")?.emailHeld === undefined, { held, b5: b5.body });
+  // The two-step reset notice at the cap (break M1): never left for tomorrow, so nothing is reset.
+  const resetsAtCap = resets();
+  const capped = await call(base, "POST", `/api/platform/staff/${T}/reset-two-step`, { token: tR });
+  ok("DW5 fail (break M1): a two-step reset whose notice the daily limit would hold is refused in words (409 NOTICE_HELD_DAILY_LIMIT): no audit line, no outbox row kept",
+    capped.status === 409 && capped.body.code === "NOTICE_HELD_DAILY_LIMIT" && /not reset/.test(capped.body.detail ?? "") && resets() === resetsAtCap && (await rowsTo(tEmail)).filter((r) => r.state === "QUEUED").length === 0, capped.body);
+  const codeHeld = await handleCustomEmail({ triggerSource: "CustomEmailSender_ForgotPassword", request: { code: "enc", userAttributes: { email: tEmail } } }, { decrypt: async () => "118833", mail: appMail, firmOf: async () => firmA.id });
+  ok("DW5 fail (break m5): a sign-in code the daily limit holds is not reported as sent", codeHeld.sent === false && /daily email limit/.test(codeHeld.reason ?? ""), codeHeld);
   await db.platformFirm.update({ where: { id: firmA.id }, data: { status: "ACTIVE" } });
   await run();
   // Fail: the same 51st email on an active firm (cap 2,000) is sent by the sweep that picks held rows up again.

@@ -9,7 +9,7 @@ import type { MailPort } from "../../../../../ports/mail.ts";
 import { MessageRefused } from "../../../../../ports/messages.ts";
 import { Db } from "../../../core.ts";
 import { auditEvent } from "../../audit/audit-event.ts";
-import { mailIn } from "../../messages/send/mail.ts";
+import { mailIn, mailReady } from "../../messages/send/mail.ts";
 import { asBypass, firmScope, notInFirm } from "../../firm-scope.ts";
 import { actorWord } from "../audit.ts";
 import { writeMoneyKeysGranted } from "../money-line.ts";
@@ -183,6 +183,7 @@ export class PlatformSession {
    *  are emailed through MailPort, and they set up the second step again at their next sign-in. */
   async resetTwoStep(actor: StaffContext, id: string) {
     let dispatch = async () => {};
+    await mailReady(this.mail, actor.firmId);   // before the firm's row lock (break m1)
     const out = await this.inFirm(actor, async (tx) => {
       const t = await this.target(tx, actor.firmId, id);
       if (!actor.roles.includes("OWNER") && !actor.roles.includes("ADMIN")) forbidden("Only an Owner or Admin resets a person's two-step sign-in.", "OWNER_OR_ADMIN_ONLY");
@@ -194,13 +195,16 @@ export class PlatformSession {
       await this.audit(tx, actor, "platform.staff.two_step_reset", t.id, "a staff member's two-step sign-in was reset by an Owner or Admin; their sessions ended", { staffId: t.id });
       // The out-of-band notice first: a mail failure changes nothing at the provider (the transaction rolls back). PF-19r:
       // written into the outbox inside this transaction (it holds the firm's row lock), sent after the commit.
+      let held = false;
       try {
-        dispatch = await mailIn(this.mail, tx, { firmId: actor.firmId, to: t.email, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.two_step_reset", subject: "Your two-step sign-in was reset",
-          person: { kind: "STAFF", id: t.id }, text: "An Owner or Admin of your firm reset your two-step sign-in. The next time you sign in, you set it up again. If you did not ask for this, tell your firm's Owner at once." });
+        ({ dispatch, held } = await mailIn(this.mail, tx, { firmId: actor.firmId, to: t.email, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.two_step_reset", subject: "Your two-step sign-in was reset",
+          person: { kind: "STAFF", id: t.id }, text: "An Owner or Admin of your firm reset your two-step sign-in. The next time you sign in, you set it up again. If you did not ask for this, tell your firm's Owner at once." }));
       } catch (e) {
-        if (e instanceof MessageRefused) problem(409, "Notice not sent", "The notice to this person could not be emailed, so their two-step sign-in was not reset. Check their email address.", { code: "NOTICE_NOT_SENT" });
+        if (e instanceof MessageRefused) problem(409, "Notice not sent", "The notice to this person could not be emailed (their address does not take email from the firm, for example after a bounce), so their two-step sign-in was not reset.", { code: "NOTICE_NOT_SENT" });
         throw e;
       }
+      // A security notice is never left for tomorrow (break M1): the firm's daily email limit holds it, so nothing changes.
+      if (held) problem(409, "Daily email limit reached", "Your firm has sent its email limit for today, so the notice to this person could not go now and their two-step sign-in was not reset. Try again tomorrow.", { code: "NOTICE_HELD_DAILY_LIMIT" });
       await this.admin.resetTwoStep({ staffId: t.id, subject: t.identitySubject, email: t.email });
       return { staffId: t.id, twoStep: { method: null }, notified: true };
     });
