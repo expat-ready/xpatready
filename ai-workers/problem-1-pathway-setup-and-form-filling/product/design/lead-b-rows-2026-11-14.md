@@ -1992,3 +1992,11 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **PARK:** PF-18bk, PF-5s part 1, #2029 PF-12b part 1, #2001 PF-24w, #2038 FO-6 part 1. Their PRs stay open, and the briefs stay as they are.
 * Merged since rev 17.31: #2134 PF-21s part 4 (00:05) and #2135 PF-5t part 2 (00:06).
 * **Lead 82 agreed the sort.** It typed "continue" into #1961 and #2012, and the re-stamps are clear of every open PR. PF-18bk already had its PR open with the reviewer running, so it finishes to its Approve, where its brief ends, and then parks. #2029, #2001 and #2038 stay open as they are.
+
+## Rev 17.33 (19 Nov 00:22 IST)
+* **All of tonight's swept PRs are labelled again** after new Approves on merged-main heads:
+  * #2130 ee2755ff8, #2128 501f3420e, #1959 e8f8d069b and #2011 bbdc669e7;
+  * #2102 0258702bd (`20261118150000`) and #2103 3e0bc800d (`20261118143000`);
+  * #1961 506e69c16 (`20261118160000`) and #2012 a7db51a90 (`20261118163000`).
+* Lead 82's P-423 reads passed on #2011, #2102, #2103, #1961 and #2012.
+* The overlap lanes on #1961 and #2103 branched from older heads. Under the overlap rule they merge the new tips in before they open their PRs.
