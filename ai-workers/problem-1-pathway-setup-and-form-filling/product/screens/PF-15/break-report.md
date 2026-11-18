@@ -58,3 +58,37 @@ A retry of a retired key is refused either way. While hard, the answer names the
 - **PF-12 walls.** Firm B's scope reads nothing of A's (`limitOf` gives null and 0). Under `xr_app`, an update to another firm's mark changes 0 rows. The daily job lists firms through the bypass and measures each firm in its own `withFirm`. `tests/check_pf12_walls.ts` on this head: 100 passed, 0 failed. `check_pf3_platform_schema.ts`: 75 passed, 0 failed. `check_pf15_limits.ts`: 69 passed, 0 failed.
 - **Migration.** `xr_app` gets permission denied for INSERT, UPDATE, DELETE and TRUNCATE on `platform_plan_limit`. On `platform_storage_over`, delete (as the app, as the bypass and as the owner), truncate (as the owner) and moving a mark to another firm are all refused by the trigger. Negative `limit_value`, `limit_mb` and `used_bytes` are refused by CHECK constraints. Migration diff is clean.
 - **Retries.** A retry of a stored key while hard goes through, and an old file still reads (the PR's DW2). A retry with other bytes still gets `FileKeyTaken`.
+
+## Part 2 break (4c4e0f3d3)
+Breaker, 18 Nov. Scope: `git diff origin/claude/runtime-pf15-limits..4c4e0f3d3` (schema, triggers, `platform_entitlement_limit`, `PlanLimitChanges.change`, `checkDowngrade`); no screen. How: three scratch databases on :54329 (every migration plus `seedSampleFirms`), psql as `xr_app` with `app.firm_id` set and no bypass, and a tsx harness in `studio/var/` driving the services. The databases and the harness have been removed; only this file was changed.
+
+**B1 (Blocker): any firm session can change any plan's limit, backdate it, and leave no audit line.** `xr_data` keeps INSERT on `platform_limit_change` (migration.sql:105-107); the CHECK tests only the shape (`:51-54`), and the triggers trust `approved_at` and `approved_by`. In firm B's session, `INSERT … (metric 'ACTIVE_INDIVIDUAL_CASES', new_value NULL, approved_by 'staff:nobody', approved_at now())` on `solo` gave 25 → Unlimited at once. The same insert on `team` with `new_value 0` and `approved_at now() - interval '10 years'` stored firm A's `effective_at` as its `created_at` (already past), so firm A read 0 at once. Neither insert wrote an audit line or sent a notice. Expected: only the staff crossing can insert (the trigger refuses when `platform_session_firm()` is set or the role is not the bypass role), and `approved_at` is the database clock.
+
+**M1 (Major): seats still change with no record.** In firm B's session as `xr_app`, `UPDATE platform_plan SET seats_limit = 1 WHERE code='team'` gives `UPDATE 1`: no change row, no 30 days, no audit line. This goes against "Its insert is the ONLY way a limit changes" (migration.sql:4-6). Part 1a revoked writes on `platform_plan_limit` only.
+
+**M2 (Major): a subscription date of `-infinity` hangs every lowering of the plan and blocks sign-ups to it.** Firm A's own session runs `UPDATE platform_subscription SET current_period_end='-infinity'` (`UPDATE 1`). A lowering on `team` then loops forever in `WHILE at < target` (migration.sql:96-98); only `statement_timeout` stopped it. While it ran, the plan's `FOR UPDATE` lock (`:72`) blocked any firm's `INSERT INTO platform_subscription` on `team` (timed out after 3 s). With `'infinity'`, `effective_at` is infinity, so that firm keeps its old value for ever. An `approved_at` of `'infinity'` failed with "timestamp out of range" after 1.5 s. Expected: non-finite anchors and approval times are refused, and the loop is capped.
+
+**M3 (Major): one failed email loses every notice after it** (limit-changes.ts:73-78, an unguarded loop). Setup: two firms on `team` (2 Owners), `fakeMail({ failOn })` on the first Owner, then corporate cases lowered to 2. The change commits, but `change()` throws a raw Error (a 500 to the caller), and 0 of the 2 Owners are emailed. A retry gets 409 `LIMIT_UNCHANGED`, so the notice never goes out. Expected: each send is guarded and retried or put in an outbox, and the call returns the committed change.
+
+**m1 (Minor): a firm loses its kept value before its date.** The clock is read before the plan lock (limit-changes.ts:50), and the oldest pending lowering is picked by `approved_at` (migration.sql:136). A clock returning .050Z and then .010Z, with two `change()` calls in parallel (150→10, then 10→5), made firm A read **10** on 1 Dec instead of 150 (the SQL repro is the same). Equal `approved_at` and `created_at` in one transaction leave the order undefined.
+
+**m2 (Minor): the effective date depends on the session's TimeZone** (the functions pin only `search_path`). For anchor 2026-01-31 03:00Z and approval 2027-01-15, UTC gives 2027-02-28 03:00Z and Vancouver gives 2027-03-01 03:00Z. The tests pin UTC; `api/src/core.ts` does not, and this server's default is America/Toronto.
+
+**m3 (Minor): a firm that leaves and comes back keeps the old value.** Firm A, with 150→10 pending, moved to `firm`, then took a new `team` subscription on 2 Dec, and read 150 on 3 Dec. A firm joining fresh reads 10. The `kept` step (migration.sql:133-136) matches firm and plan, not the subscription.
+
+**m4 (Minor): the staff page shows the new seat limit at once.** A seats lowering writes `platform_plan.seats_limit` at approval, and `staff-read/service.ts:29-34` reads that column directly. The page shows "N of 1 seats used" while `limitOf` still allows 5 until the renewal.
+
+**m5 (Minor): `checkDowngrade` says nothing is over when the firm id does not match the session.** Called in `withFirm(B)` for firm A against `solo` on the walled pool, it returns `conflicts: []`, although firm A has 3 staff against 1 seat. `seatsUsed` reads 0 through RLS, and the case count follows the client, not `firmId` (limits.ts:86-88).
+
+**m6 (Minor, migration-only): Unlimited when a limit row is missing.** With `team`'s `STORAGE_MB` row deleted (as superuser), a firm with a pending lowering reads Unlimited with `has_row` true (migration.sql:141,143). Without the pending lowering it reads 0.
+
+**m7 (Minor):** every firm session can SELECT all of `platform_limit_change`: every plan's history, the reasons and `approved_by` staff ids. A "catalogue" by design, but the free-text reason leaks. **m8 (Minor):** the rollback text (migration.sql:14-15) leaves out `platform_limit_change_firms()`.
+
+**What held:**
+- **Reading another firm.** The definer returns no row for another firm by upper-case id, key, `%` or NULL. A crafted metric (`SEATS' OR 1=1 --`) or a NULL metric reads nothing extra. A `pg_temp.platform_session_firm()` shadow and a temp `platform_plan` table had no effect. The caveat is PF-12's own model: clearing `app.firm_id` reads firm B.
+- **Writes.** INSERT into firm rows, and UPDATE, DELETE or TRUNCATE on either table, are refused for `xr_app`. Forged `old_value` and `lowered` are overwritten. Seats NULL or 0 and a lowercase metric are refused.
+- **Value sequences.** 150→10, →100, →5 reads 150, then 100, then 5 on the right dates. U→3 stays Unlimited until the renewal.
+- **Renewal dates.** 31 Jan and 31 Mar anchors give 28 Feb. A late joiner gets the new value, and a move to another plan drops the pending one.
+- **Concurrency.** Two `change()` calls at once serialise with no lost update.
+- **`checkDowngrade`.** An inactive, unknown or empty target is refused. Storage rounds up (5120 MiB + 1 B gives 5121, reduce 1).
+- **Existing checks.** `check_pf15_cases.ts` 32/0, `check_pf12_walls.ts` 100/0.
