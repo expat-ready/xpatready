@@ -2019,3 +2019,10 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **Merged:** #2127 PF-6 part 2b (04:00), #2140 FO-2 part 3 (04:15) and #2157 PF-19r part 1 (04:15). After #2157, PF-19e merges main in and seals PF-19r's senders (the PF-19e.md amendment).
 * **Sales chain:** FO-2 part 4 went to the warm FO-2 part 3 cloud lane (Lead 84, P-341). FO-4 part 2a needs a new session at the founder's next typed turn; it is in STATE.
 * **All four relabelled by Lead 84:** #2102, #2103, #1961 and #2130. The `xr_staff_bypass` grant on #2130 is accepted.
+
+## Rev 17.37 (19 Nov 04:29 IST)
+* **After the 04:00-04:15 merges** (main's newest migration is now `20261118200100_fo7ts`), I posted steps (comments 6994110431 to 6994112231):
+  * **P-600 re-stamps:** #2103 → `20261118220000_fo3a_hour_sets`; #2102 → `20261118223000_fo3a2_consult_record` (its 150000 also clashed with open #2129); #1961 → `20261118230000_pf19p_platform_account_mail`; #2012 → `20261118233000_pf21i_complaint_request_key`. I checked all open migration PRs: none uses these.
+  * #1961 and #2012 also conflict with #2157 PF-19r part 1 (`send/mail.ts`, `messages.ts`, `complaints.ts`), so each keeps both sides.
+  * #2029 and #1959 conflict only in their module card. #1959's red ci is `kind` failing on the merge conflict.
+* **#2130:** be291544f has an Approve after a hand-merged module card. It goes to Lead 84 to relabel.
