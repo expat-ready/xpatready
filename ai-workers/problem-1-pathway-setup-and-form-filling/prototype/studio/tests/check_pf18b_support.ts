@@ -47,6 +47,7 @@ const { fakeMail } = await import("../ports/mail.ts");
 const { fakeFiles } = await import("../ports/files.ts");
 const { fakeStaff } = await import("../ports/staff.ts");
 const feature = (await import("../api/src/features/platform-support.ts")).default;
+const { MESSAGES_MAIL } = await import("../api/src/features/platform-messages.ts");   // PF-19e: the feature's mail is MESSAGES_MAIL
 
 let mailFails = false;
 const mail = fakeMail({ failOn: () => mailFails });
@@ -55,7 +56,7 @@ const apps: { close(): Promise<void> }[] = [];
 const local = new LocalIdentity("pf18b-check-signing-key-0123456789abcdef", () => Date.now());
 async function makeApp() {
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, PlatformClock, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
-    { provide: MAIL_PORT, useValue: mail }, ...feature.providers];
+    { provide: MAIL_PORT, useValue: mail }, { provide: MESSAGES_MAIL, useValue: mail }, ...feature.providers];
   @Module({ controllers: feature.controllers as never[], providers: providers as never[] }) class TestApp {}
   const app = await NestFactory.create(TestApp, { logger: false });
   await app.listen(0, "127.0.0.1"); apps.push(app);

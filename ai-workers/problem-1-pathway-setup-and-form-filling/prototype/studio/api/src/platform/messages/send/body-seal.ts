@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import type { Rendered } from "../../../../../ports/messages.ts";
 import { SecretRefused, type SecretBoxPort, type SecretOwner } from "../../../../../ports/secret-box.ts";
 import { STUDIO } from "../../../core.ts";
-import { platformConfig } from "../../config/settings.ts";
+import { platformConfig, type SecretBoxKeys } from "../../config/settings.ts";
 import { Secret } from "../../config/secret.ts";
 import { aesGcmSecretBox } from "../../secret-box/aes-gcm.ts";
 
@@ -69,7 +69,8 @@ let appBox: SecretBoxPort | null = null;
  * production always seal with it). On a local server with no key ring (the Mac, a lane copy), a local-only key kept in
  * studio/var (git-ignored), made once, so queued and sent bodies still open after a restart. Never a real key.
  */
-export function messageBodyBox(): SecretBoxPort {
+export function messageBodyBox(keys?: SecretBoxKeys): SecretBoxPort {
+  if (keys) return aesGcmSecretBox(keys);   // a given key ring (tests: SecretBoxPort's shared contract runs through here)
   if (appBox) return appBox;
   const config = platformConfig();
   if (config.secretBox) return (appBox = aesGcmSecretBox(config.secretBox));

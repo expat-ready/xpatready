@@ -70,6 +70,8 @@ const { fileKeyOf, Messages, UNOPENED } = await import("../api/src/platform/mess
 const { BODY_PURPOSE, isSealedBody, openStoredBody } = await import("../api/src/platform/messages/send/body-seal.ts");
 const { SYSTEM_PER_ADDRESS_HOUR, suppressedWords } = await import("../api/src/platform/messages/send/system-mail.ts");
 const { aesGcmSecretBox } = await import("../api/src/platform/secret-box/aes-gcm.ts");
+const { secretBoxPortContract } = await import("../ports/contracts/secret-box-port.contract.ts");
+const { messageBodyBox } = await import("../api/src/platform/messages/send/body-seal.ts");
 const { Secret } = await import("../api/src/platform/config/secret.ts");
 const { LocalFiles } = await import("../api/src/front-office/files.ts");
 
@@ -243,6 +245,9 @@ try {
     send: async (m) => { const r = await systemMail.send(m); await run(); return r; },
     inbox: async (a) => { try { return (await inbox.list(a, undefined)).messages.map((x) => ({ text: x.body })); } catch { return []; } },
   }), ok);
+  // PF-0c: the message-body box runs SecretBoxPort's shared contract (one generated key per version, as PF-24's run).
+  const K = [randomBytes(32).toString("base64"), randomBytes(32).toString("base64")];
+  await runContract(secretBoxPortContract, "messageBodyBox", ({ current, held }) => messageBodyBox({ current, keys: new Map(held.map((v) => [v, new Secret(`pf19e contract v${v}`, K[v - 1])])) }), ok);
   const tokens = [link?.[1]].filter((t): t is string => !!t), holds = (lines: string[]) => lines.filter((l) => tokens.some((t) => l.includes(t)) || /#t=[A-Za-z0-9_-]{20,}/.test(l));
   ok("PF-19e DW5 pass: no log line in the run holds a token (every line written, and the send path's log, scanned)", tokens.length === 1 && holds(written).length === 0 && holds(logs).length === 0, holds(written).slice(0, 2));
   ok("PF-19e DW5 fail: the scan finds a token in a line that holds one", holds([`a line with /invitation#t=${tokens[0]}`]).length === 1);
