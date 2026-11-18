@@ -18,16 +18,9 @@ const PRISMA = join(STUDIO, "node_modules", ".bin", "prisma"), SCHEMA = join(STU
 const url = new URL(process.env.DATABASE_URL ?? "postgresql://xr_studio@127.0.0.1:54329/xr_studio_demo");
 const pg = ["-h", url.hostname, "-p", url.port || "5432", "-U", decodeURIComponent(url.username)];
 const SHADOW = `xr_studio_b121_${process.pid}`, WORK = join(STUDIO, "var", `schema-check-${process.pid}`);
-// Drift on main at 4e26fb229 (6 Nov), one line per difference "table: change" as prisma migrate diff names them.
-// Finding for the tech lead (B121's PR): the migrations still create canonical_field_name, which the schema no longer
-// has; four tables get their id default from the database in the migrations and from Prisma in the schema.
-const KNOWN = new Set([
-  "removed table canonical_field_name",
-  "fact_source: id default changed from database gen_random_uuid() to none",
-  "form_edition_accept: id default changed from database gen_random_uuid() to none",
-  "person_role: id default changed from database gen_random_uuid() to none",
-  "validated_copy: id default changed from database gen_random_uuid() to none",
-]);
+// Drift on main at 4e26fb229 (6 Nov): canonical_field_name missing from the schema and four id defaults from Prisma, not
+// the database. CS-SD1 fixed all five in the schema text (tests/check_cssd1_no_drift.ts), so none is known now.
+const KNOWN = new Set<string>([]);
 
 let pass = 0, fail = 0;
 const ok = (name: string, c: boolean, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${String(detail).slice(0, 400)}` : ""}`); };

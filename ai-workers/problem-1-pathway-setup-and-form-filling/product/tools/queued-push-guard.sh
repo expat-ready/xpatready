@@ -33,14 +33,18 @@ case "$tool" in
         case "${w[$i]}" in -C) i=$((i + 1)); case "${w[$i]}" in /*) d=${w[$i]};; *) d="$d/${w[$i]}";; esac;; -c) i=$((i + 1));; -*) ;; *) i=${#w[@]};; esac
         i=$((i + 1)); done
       [ $i -lt ${#w[@]} ] || continue
-      pos=(); i=$((i + 1))
+      pos=(); bulk=""; i=$((i + 1))
       while [ $i -lt ${#w[@]} ]; do   # push's options that take a value are skipped with it
-        case "${w[$i]}" in -o|--push-option|--repo|--receive-pack|--exec) i=$((i + 1));; -*) ;; *) pos+=("${w[$i]}");; esac
+        case "${w[$i]}" in -o|--push-option|--repo|--receive-pack|--exec) i=$((i + 1));; --all|--branches|--mirror) bulk=all;; --tags) bulk=${bulk:-tags};; -*) ;; *) pos+=("${w[$i]}");; esac
         i=$((i + 1)); done
       cur=$(git -C "$d" branch --show-current 2>/dev/null)
-      if [ "${#pos[@]}" -le 1 ]; then branches="$branches $cur"
+      if [ "$bulk" = all ]; then branches="$branches $(git -C "$d" for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null | tr '\n' ' ')"   # every local branch (bot finding)
+      elif [ "${#pos[@]}" -le 1 ] && [ "$bulk" = tags ]; then :   # tags only: no branch is updated
+      elif [ "${#pos[@]}" -le 1 ]; then branches="$branches $cur"
       else for r in "${pos[@]:1}"; do x=${r##*:}; x=${x#+}; x=${x#refs/heads/}; [ "$x" = HEAD ] && x=$cur; branches="$branches $x"; done; fi
-    done <<< "$(printf '%s\n' "$cmd" | tr ';&|' '\n\n\n')" ;;
+    done <<< "$(printf '%s\n' "$cmd" | python3 -I -c 'import re,sys; t=sys.stdin.read()
+# a ; & | inside quotes is text (a commit message), not a command separator
+print(re.sub(r"(\x27[^\x27]*\x27|\"[^\"]*\")", lambda m: re.sub(r"[;&|]", " ", m.group(0)), t), end="")' | tr ';&|' '\n\n\n')" ;;
 esac
 [ -n "$repo" ] && [ "$repo" != / ] && export GH_REPO="$repo"
 [ -n "$cwd" ] && cd "$cwd" 2>/dev/null
