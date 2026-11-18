@@ -13,6 +13,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { call, sql as copySql } from "../acceptance/lib/m3.ts";
 import { recorder } from "./runtime/api.ts";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@prisma/client";
 
 const { ok, summary } = recorder();
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261118090000_csw1_firm_id";
@@ -97,12 +99,12 @@ try {
     sql(`begin; select set_config('app.firm_id', '', true); ${caseRow(u(38), "sample-firm")}; rollback;`).split("\n").pop() === F1);
 
   // ---------------------------------------------------------------- DW7: names, rights of the functions
-  ok("CS-W1 DW7 pass: every function the migration adds is named case_firm_*", added.length === 3 && added.every((p) => /^(public|case_lookup)\.case_firm_/.test(p)), added);
+  ok("CS-W1 DW7 pass: every function the migration adds is named case_firm_*", added.length === 4 && added.every((p) => /^(public|case_lookup)\.case_firm_/.test(p)), added);
   const defs = sql(`select string_agg(n.nspname || '.' || p.proname || ':' || p.prosecdef || ':' || coalesce(array_to_string(p.proconfig, ';'), ''), ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where p.proname like 'case_firm%'`);
   ok("CS-W1 DW7 pass: the lookup is the only definer, its search_path pinned with pg_temp last",
     defs.includes("case_lookup.case_firm_id_of_key:true:search_path=pg_catalog, public, case_lookup, pg_temp"), defs);
   ok("CS-W1 DW7 fail: no trigger function of the migration runs as definer (contract §8 condition 3)",
-    /public\.case_firm_fill:false:/.test(defs) && /public\.case_firm_from_key:false:/.test(defs)
+    /public\.case_firm_fill:false:/.test(defs) && /public\.case_firm_from_key:false:/.test(defs) && /public\.case_firm_backfill:false:/.test(defs)
     && sql(`select count(*) from pg_trigger t join pg_proc p on p.oid = t.tgfoid where not t.tgisinternal and p.proname like 'case_firm%' and p.prosecdef`) === "0"
     && sql(`select string_agg(c.relname || '.' || t.tgname, ',' order by c.relname, t.tgname) from pg_trigger t join pg_class c on c.oid = t.tgrelid join pg_proc p on p.oid = t.tgfoid where not t.tgisinternal and p.proname like 'case_firm%'`) === "case_stage.case_firm_fill,firm_case_counter.case_firm_from_key,runtime_case.case_firm_from_key", defs);
   ok("CS-W1 DW7: the migration's own text says how to roll back", /Rollback \(in this order\)/.test(readFileSync(join(MIG, NEW, "migration.sql"), "utf8")));
@@ -138,6 +140,25 @@ try {
   const roles = readFileSync(join(MIG, NEW, "migration.sql"), "utf8").match(/DO \$\$[\s\S]*?END \$\$;/)![0];
   sql(roles);
   ok("CS-W1 DW10 pass: running the migration's role block where the role already exists changes nothing", roleState() === r0, [r0, roleState()]);
+
+  // ---------------------------------------------------------------- the code's lookups, as the API (xr_app) through Prisma (breaker m3)
+  const app = new PrismaClient({ adapter: new PrismaPg({ connectionString: url("xr_app"), options: "-c TimeZone=UTC" }) });
+  try {
+    const { firmIdByKey, firmIdOfActor, fillCaseFirmIds, forgetFirmIds } = await import("../api/src/firms.ts");
+    forgetFirmIds();
+    ok("CS-W1 firms.ts pass: firmIdByKey and firmIdOfActor give the platform firm id (user-S: sample-solo; user-O: sample-firm)",
+      (await firmIdByKey(app, "sample-solo")) === F2 && (await firmIdOfActor(app, { id: "user-S" } as never)) === F2 && (await firmIdOfActor(app, { id: "user-O" } as never)) === F1);
+    ok("CS-W1 firms.ts fail: a key with no platform firm, and a person in no firm (user-A, a configuration author), give null",
+      (await firmIdByKey(app, "ghost-firm")) === null && (await firmIdOfActor(app, { id: "user-A" } as never)) === null);
+
+    // ---------------------------------------------------------------- DW1 (breaker M1): a database whose firms come after the migration
+    ok("CS-W1 DW1 fail (breaker M1): before its platform firm exists, the backfill fills nothing for that key", (await fillCaseFirmIds(app)) === 0 && firmOf("runtime_case").startsWith("ghost-firm=null"));
+    sql(`set session_replication_role = replica; insert into platform_firm (id, key, operating_name, country_code, contact_email, updated_at) values ('${u(8)}', 'ghost-firm', 'Ghost', 'CA', 'a@ghost.example.com', now())`);
+    const filled = await fillCaseFirmIds(app);
+    ok("CS-W1 DW1 pass (breaker M1): once the firm exists (the seed after the migration), the backfill run by the API fills that key's case, stage and counter",
+      filled === 3 && [firmOf("runtime_case"), firmOf("case_stage"), firmOf("firm_case_counter")].every((x) => x.startsWith(`ghost-firm=${u(8)},`)), [filled, firmOf("runtime_case")]);
+    ok("CS-W1 DW1 pass: a second run changes nothing, and the firm id already found is not looked up again", (await fillCaseFirmIds(app)) === 0 && (await firmIdByKey(app, "ghost-firm")) === u(8));
+  } finally { await app.$disconnect(); }
 } finally {
   execFileSync(join(BIN, "dropdb"), [...pg, "--if-exists", "--force", DB]);
 }
@@ -158,6 +179,12 @@ const reset = await call("POST", "/demo/reset", { confirm: "RESET" }, "user-A");
 const demoWs = copySql(`select id from workspace where key = 'demo'`);
 ok("CS-W1 DW5 pass: the demo reset deletes the demo workspace's cases of both firms, and both Sample firms are still there",
   reset.status < 300 && copySql(`select count(*) from runtime_case where workspace_id = '${demoWs}'`) === "0" && firmsOn() === "sample-firm,sample-solo", [reset.status, reset.body?.detail]);
-ok("CS-W1 DW5 fail: the reset never touches a case of another workspace", copySql(`select firm_key from runtime_case where id = '${OTHER_CASE}'`) === "sample-firm");
+ok("CS-W1 DW5 fail: the reset never deletes a case of another workspace", copySql(`select firm_key from runtime_case where id = '${OTHER_CASE}'`) === "sample-firm");
+ok("CS-W1 DW5 pass (breaker M1): a case left without its firm (made before the seed) gets it when the demo seeds (reset)",
+  copySql(`select (c.firm_id = f.id)::text from runtime_case c join platform_firm f on f.key = c.firm_key where c.id = '${OTHER_CASE}'`) === "true");
+copySql(`update runtime_case set firm_id = null where id = '${OTHER_CASE}'`);
+await (await import("../api/src/firms.ts")).fillCaseFirmIdsOnStart(`postgresql://xr_studio@127.0.0.1:54329/${process.argv[3] ?? "xr_studio_accept"}`);
+ok("CS-W1 DW5 pass (breaker M1): the start-up fill (main.ts, after the start-up seed) fills it too",
+  copySql(`select (c.firm_id = f.id)::text from runtime_case c join platform_firm f on f.key = c.firm_key where c.id = '${OTHER_CASE}'`) === "true");
 copySql(`set session_replication_role = replica; delete from runtime_case where id = '${OTHER_CASE}'; delete from combination where id = '${u(79)}'; delete from workspace where id = '${OTHER}'`);
 process.exit(summary() ? 1 : 0);

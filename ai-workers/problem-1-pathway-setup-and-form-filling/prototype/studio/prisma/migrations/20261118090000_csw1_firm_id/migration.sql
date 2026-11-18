@@ -20,11 +20,12 @@
 --     shared function. A null firm_id is filled from the parent row's firm_id; a different one is refused. Used here on
 --     case_stage (parent runtime_case by case_id).
 --   * every trigger function is SECURITY INVOKER (contract §8 condition 3); the lookup is the only definer.
---   * backfill: every case, stage and counter whose key has a platform firm gets that firm's id. The Sample firms are made
---     by PF-3's seed (the API at start with PLATFORM_SAMPLE_SEED=on, and the demo reset), never by SQL here.
+--   * backfill (case_firm_backfill(), INVOKER): every case, stage and counter whose key has a platform firm gets that firm's
+--     id. The Sample firms are made by PF-3's seed (the API at start with PLATFORM_SAMPLE_SEED=on, and the demo reset),
+--     never by SQL here, so the API runs the backfill again after each seed.
 --   * part 2 (its own folder): NOT NULL, the four unique rules re-keyed, the update guards, the code switch.
 -- Rollback (in this order): DROP TRIGGER case_firm_from_key ON runtime_case; DROP TRIGGER case_firm_from_key ON
---   firm_case_counter; DROP TRIGGER case_firm_fill ON case_stage; DROP FUNCTION case_firm_from_key(), case_firm_fill();
+--   firm_case_counter; DROP TRIGGER case_firm_fill ON case_stage; DROP FUNCTION case_firm_from_key(), case_firm_fill(), case_firm_backfill();
 --   DROP POLICY case_lookup_read ON platform_firm; DROP FUNCTION case_lookup.case_firm_id_of_key(text); REVOKE SELECT (id, key)
 --   ON platform_firm FROM xr_case_lookup; DROP SCHEMA case_lookup; DROP INDEX runtime_case_firm_id_created_at_idx,
 --   case_stage_firm_id_case_id_idx, firm_case_counter_firm_id_year_idx; ALTER TABLE runtime_case, case_stage,
@@ -112,7 +113,24 @@ BEGIN
 END $fn$;
 CREATE TRIGGER case_firm_fill BEFORE INSERT ON "case_stage" FOR EACH ROW EXECUTE FUNCTION case_firm_fill('runtime_case', 'case_id');
 
--- Backfill: what resolves (a key with no platform firm stays null until the seed runs; part 2 refuses then, naming it).
-UPDATE "runtime_case" SET "firm_id" = case_lookup.case_firm_id_of_key("firm_key") WHERE "firm_id" IS NULL;
-UPDATE "case_stage" s SET "firm_id" = c."firm_id" FROM "runtime_case" c WHERE c."id" = s."case_id" AND s."firm_id" IS NULL AND c."firm_id" IS NOT NULL;
-UPDATE "firm_case_counter" SET "firm_id" = case_lookup.case_firm_id_of_key("firm_key") WHERE "firm_id" IS NULL;
+-- Backfill: what resolves, only rows still empty. One function, because on a database that already holds cases the Sample
+-- firms are made after this migration (start.sh migrates, then the API seeds), so the API runs it again right after its
+-- seed at start (main.ts) and after the demo's seed (demo.ts); a second run changes nothing (breaker M1). Returns the
+-- number of rows filled. A key with no platform firm stays null; part 2 refuses then, naming it.
+CREATE FUNCTION case_firm_backfill() RETURNS integer LANGUAGE plpgsql SECURITY INVOKER
+  SET search_path = pg_catalog, public, pg_temp AS $fn$
+DECLARE a integer; b integer; c integer;
+BEGIN
+  UPDATE runtime_case SET firm_id = case_lookup.case_firm_id_of_key(firm_key)
+   WHERE firm_id IS NULL AND case_lookup.case_firm_id_of_key(firm_key) IS NOT NULL;
+  GET DIAGNOSTICS a = ROW_COUNT;
+  UPDATE case_stage s SET firm_id = k.firm_id FROM runtime_case k WHERE k.id = s.case_id AND s.firm_id IS NULL AND k.firm_id IS NOT NULL;
+  GET DIAGNOSTICS b = ROW_COUNT;
+  UPDATE firm_case_counter SET firm_id = case_lookup.case_firm_id_of_key(firm_key)
+   WHERE firm_id IS NULL AND case_lookup.case_firm_id_of_key(firm_key) IS NOT NULL;
+  GET DIAGNOSTICS c = ROW_COUNT;
+  RETURN a + b + c;
+END $fn$;
+REVOKE ALL ON FUNCTION case_firm_backfill() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION case_firm_backfill() TO xr_data;
+SELECT case_firm_backfill();

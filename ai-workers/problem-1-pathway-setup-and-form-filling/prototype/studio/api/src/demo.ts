@@ -29,11 +29,17 @@ import { draftSourceProblems } from "./source-register.ts";
 import { Forms } from "./forms.ts";
 import { FormLibrary } from "./form-library.ts";
 import { releaseFillTrials } from "./fill-trials.ts"; // BK-11: each form's fill trial in the release
-import { forgetFirmIds } from "./firms.ts";
+import { fillCaseFirmIds, forgetFirmIds } from "./firms.ts";
 import { asBypass } from "./platform/firm-scope.ts";
+import { sampleSeedDecision } from "./platform/identity/sample-seed.ts";
 import { seedSampleFirms } from "./platform/seed-sample-firms.ts";
-/** CS-W1: PF-3's Sample seed (adds only what is missing) on the demo's bypass use (it writes both Sample firms' platform rows). */
-const seedSampleFirmsAsDemo = (db: Db) => asBypass("platform.demo.reset", () => seedSampleFirms(db));
+/** CS-W1: PF-3's Sample seed (adds only what is missing) on the demo's bypass use (it writes both Sample firms' platform
+ *  rows), then the cases' platform firm. Never in a production configuration (sampleSeedDecision's refusal; breaker m1). */
+const seedSampleFirmsAsDemo = async (db: Db) => {
+  if (!sampleSeedDecision({ ...process.env, PLATFORM_SAMPLE_SEED: "on" }).run) return;
+  await asBypass("platform.demo.reset", () => seedSampleFirms(db));
+  await fillCaseFirmIds(db);
+};
 export { BY_HAND_REASON, RELEASE, SAMPLES } from "./features/checkpoint/_constants.ts";
 
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");

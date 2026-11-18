@@ -233,6 +233,7 @@ async function main() {
   // P-214: a new feature registers itself in api/src/features/<feature>.ts, not in the @Module list above.
   await registerFeatures(AppModule);
   await (await import("./platform/identity/sample-seed.ts")).seedSampleOnStart();   // P-571 (2), PF-4: PF-3's Sample seed after migrations, only with PLATFORM_SAMPLE_SEED=on (default off; never in production)
+  await (await import("./firms.ts")).fillCaseFirmIdsOnStart();   // CS-W1 (breaker M1): the cases made before the seed get their platform firm
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: ["error", "warn"] });
   (await import("./platform/observability/hook.ts")).observe(app); // PF-23: one JSON logger with redaction, request lines and metrics (NFR5-14, BR-16)
   (await import("./front-office/sales/public.ts")).publicFormBodyLimit(app);   // FO-2 (AG-2-49 rule 2): the web form's 32 KB, before the app-wide parser (Lead B's OK on #1813; the release holder's asked)
