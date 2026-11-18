@@ -1991,3 +1991,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **Revive:** #1961 PF-19p and #2012 PF-21i, both bases for Wave 1. They are re-stamped for P-600: #1961 → `20261118160000_pf19p_platform_account_mail`, #2012 → `20261118163000_pf21i_complaint_request_key` (comments 6987979738 and 6987980226).
 * **PARK:** PF-18bk, PF-5s part 1, #2029 PF-12b part 1, #2001 PF-24w, #2038 FO-6 part 1. Their PRs stay open, and the briefs stay as they are.
 * Merged since rev 17.31: #2134 PF-21s part 4 (00:05) and #2135 PF-5t part 2 (00:06).
+* **Lead 82 agreed the sort.** It typed "continue" into #1961 and #2012, and the re-stamps are clear of every open PR. PF-18bk already had its PR open with the reviewer running, so it finishes to its Approve, where its brief ends, and then parks. #2029, #2001 and #2038 stay open as they are.
