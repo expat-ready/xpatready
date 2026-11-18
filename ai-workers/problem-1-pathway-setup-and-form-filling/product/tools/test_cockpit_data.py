@@ -1409,7 +1409,7 @@ class Tooltips(unittest.TestCase):
         """P-636 (founder 16 Nov): six answers in three words. Proven comes from qa's file on main only, Built = all parts
         merged or qa passed, and every answer has its explanation with what is behind it."""
         f = self.d["first"]
-        self.assertEqual(set(f), {"words", "release", "today", "needs", "stuck", "choke", "health", "rule", "proven_lines", "stuck_now"})   # A133, A134
+        self.assertEqual(set(f), {"words", "release", "today", "needs", "stuck", "choke", "health", "rule", "proven_lines", "stuck_now", "enforced"})   # A133, A134, CK-3
         self.assertIn("Only Proven counts as delivered", f["words"])
         R = f["release"]
         self.assertEqual(R["planned"], 8)                                    # 8 Build rows in the fixture checklist
@@ -2222,6 +2222,55 @@ class Flow(unittest.TestCase):
         self.assertEqual(cd.reconcile_compare(c["keys"], t, None)["diffs"][0]["name"], "flow_awaiting")   # a one-off difference is caught
 
 
+class Enforced(unittest.TestCase):
+    """CK-3 (founder A151, A154; checks brief): two lines; machines write them; a heartbeat over 45 min old is never yes."""
+    T = "2026-11-18T07:00:00Z"
+    CONF = {"enforced": "yes", "checked_at": "2026-11-18T12:25:00+05:30", "counts": {"pass": 31, "fail": 0, "pending": 0, "unchecked": 4},
+            "checked": 31, "manifest_version": "1.1.0", "items": [], "ref": "abc123456789"}
+
+    def lines(self, conf=None, hb=None):
+        return {x["key"]: x for x in cd.enforcement_lines({"lineage": {"taken_at": self.T}}, conf, hb)["lines"]}
+
+    def run_(self, at, concl="success"):
+        return {"id": 9, "conclusion": concl, "created_at": at, "updated_at": at, "html_url": "https://github.com/o/r/actions/runs/9"}
+
+    def test_not_measured(self):
+        L = self.lines({"error": "the set-up check is not on main yet"}, {"error": "the heartbeat workflow is not on main yet"})
+        self.assertEqual([(x["light"], x["text"]) for x in L.values()],
+                         [("grey", "Set-up enforced: not measured"), ("grey", "Pipeline running: not measured")])
+        self.assertIn("not on main yet", L["pipeline"]["src"])
+        nothing = self.lines(dict(self.CONF, checked=0, enforced="yes"), None)["setup"]       # nothing checked is not yes
+        self.assertEqual((nothing["light"], nothing["text"]), ("grey", "Set-up enforced: not measured"))
+        self.assertEqual(self.lines("garbage", "garbage")["setup"]["light"], "grey")      # wrong types never crash
+
+    def test_setup_from_board_run(self):
+        L = self.lines(self.CONF, {"error": "x"})
+        self.assertEqual((L["setup"]["light"], L["setup"]["text"]), ("green", "Set-up enforced: yes · last checked 12:25 IST (31 of 31 items)"))
+        bad = dict(self.CONF, enforced="no", counts={"pass": 29, "fail": 2}, items=[{"area": "ci", "id": "ci.gate", "status": "fail", "expected": "ci", "found": "none"}])
+        b = self.lines(bad, None)["setup"]
+        self.assertEqual((b["light"], b["text"][:22]), ("red", "Set-up enforced: no · "))
+        self.assertEqual(b["items"], ["ci ci.gate: fail (expected ci, found none)"])
+        old = self.lines(dict(self.CONF, checked_at="2026-11-18T10:00:00+05:30"), None)["setup"]       # 120 min old: stale
+        self.assertEqual((old["light"], old["text"][:33]), ("amber", "Set-up enforced: unknown (stale) "))
+
+    def test_pipeline(self):
+        hb = {"run": self.run_("2026-11-18T06:40:00Z"), "heartbeat": {"running": "yes", "green_streak_h": 6.5, "alarms": []},
+              "conformance": dict(self.CONF, checked_at="2026-11-18T12:10:00+05:30", checked=33, counts={"pass": 33, "fail": 0})}
+        L = self.lines(self.CONF, hb)
+        self.assertEqual((L["pipeline"]["light"], L["pipeline"]["text"]), ("green", "Pipeline running: yes · last heartbeat 12:10 IST · green streak 6.5 h"))
+        self.assertEqual(L["setup"]["text"], "Set-up enforced: yes · last checked 12:10 IST (33 of 33 items)")   # the heartbeat's own check first
+        self.assertEqual(L["setup"]["link"], "https://github.com/o/r/actions/runs/9")
+        red = self.lines(None, {"run": self.run_("2026-11-18T06:40:00Z", "failure"),
+                                "heartbeat": {"running": "no", "alarms": [{"id": "A1", "why": "no merge for 95 min"}]}})["pipeline"]
+        self.assertEqual((red["light"], red["text"], red["items"]), ("red", "Pipeline running: no · last heartbeat 12:10 IST", ["A1: no merge for 95 min"]))
+        only = self.lines(None, {"run": self.run_("2026-11-18T06:40:00Z"), "artifact_error": "download failed"})["pipeline"]
+        self.assertEqual(only["light"], "green")                                        # the run's result alone
+        self.assertIn("from the run's result only", only["src"])
+        stale = self.lines(self.CONF, dict(hb, run=self.run_("2026-11-18T06:00:00Z")))   # 60 min old
+        self.assertEqual((stale["pipeline"]["light"], stale["pipeline"]["text"]), ("amber", "Pipeline running: unknown (stale) · last heartbeat 11:30 IST"))
+        self.assertEqual(stale["setup"]["text"], "Set-up enforced: yes · last checked 12:25 IST (31 of 31 items)")   # stale heartbeat: the board's own check
+
+
 class PrListCache(unittest.TestCase):
     """Lead 75, 17 Nov: the PR list is cached; a run reads the open PRs and the closed PRs updated since the last read."""
     def pr(self, n, state, upd):
@@ -2248,6 +2297,8 @@ class PrListCache(unittest.TestCase):
         self.assertEqual([x["number"] for x in cd.pr_list(g, tmp)], [1])
         self.assertTrue(any("cache unreadable" in e for e in cd.ERRORS[n0:]))
         self.assertEqual(sorted(os.listdir(tmp)), ["prs.json"])
+        open(os.path.join(tmp, "prs.json"), "w").write('[1, 2]')                       # parses but is not an object
+        self.assertEqual([x["number"] for x in cd.pr_list(g, tmp)], [1])
         del cd.ERRORS[n0:]
 
     def test_full_then_incremental(self):
