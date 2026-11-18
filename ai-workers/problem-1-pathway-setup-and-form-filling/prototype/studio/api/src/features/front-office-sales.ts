@@ -1,5 +1,8 @@
 // FO-2: leads and the public web form. Audit: PF-0p's interim AuditPort (AUD-1 not on main); consent: PF-19a's store.
+// FO-1p: FO_PERSON_PORT, the front office's FoPersonPort for the case side (CS-K1 part 2), bound here.
+import { FO_PERSON_PORT } from "../../../ports/fo-person.ts";
 import type { Feature } from "../features.ts";
+import { foPersonPort } from "../front-office/people/fo-person-port.ts";
 import { Leads } from "../front-office/sales/leads.ts";
 import { PublicForms, PublicFormsController, SALES_PORTS, type SalesPorts } from "../front-office/sales/public.ts";
 import { SalesController } from "../front-office/sales/routes.ts";
@@ -7,4 +10,5 @@ import { auditEvent } from "../platform/audit/audit-event.ts";
 import { consentStore } from "../platform/messages/consent/index.ts";
 
 const ports = (): SalesPorts => ({ audit: auditEvent, consent: consentStore, publicOrigin: process.env.STUDIO_PUBLIC_URL ?? `http://localhost:${process.env.STUDIO_PORT ?? 4400}` });
-export default { controllers: [PublicFormsController, SalesController], providers: [PublicForms, Leads, { provide: SALES_PORTS, useFactory: ports }] } satisfies Feature;
+export default { controllers: [PublicFormsController, SalesController], providers: [PublicForms, Leads, { provide: SALES_PORTS, useFactory: ports },
+  { provide: FO_PERSON_PORT, useValue: foPersonPort }] } satisfies Feature;
