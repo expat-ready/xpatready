@@ -13,6 +13,8 @@ import { ledgerDirFrom, OFFICIAL, PROTOTYPE, ROOT as POLICY_ROOT, sharedLedgerDi
 import { recorder } from "./runtime/api.ts";
 
 const { ok, summary } = recorder();
+// ROOT is worked out when the package loads, so a REPO_ROOT from the caller would decide every check below: refuse it.
+ok("REPO_ROOT is not set for this test (unset it and run again)", !process.env.REPO_ROOT, process.env.REPO_ROOT);
 const threw = (f: () => unknown, re: RegExp) => { try { f(); return false; } catch (e) { return re.test(String(e)); } };
 
 // The finder, on a scratch tree: root/AGENTS.md and a file five levels down.
@@ -29,6 +31,8 @@ try {
   ok("REPO_ROOT relative: refused", threw(() => findRoot(deep, { REPO_ROOT: "a/b" }), /absolute/));
   ok("REPO_ROOT with ..: refused", threw(() => findRoot(deep, { REPO_ROOT: `${t}/a/..` }), /absolute/));
   ok("REPO_ROOT without the marker: refused", threw(() => findRoot(deep, { REPO_ROOT: deep }), /no AGENTS\.md/));
+  ok("REPO_ROOT on a folder named AGENTS.md: refused", threw(() => findRoot(deep, { REPO_ROOT: join(t, "a") }), /no AGENTS\.md file/));
+  ok("REPO_ROOT with a trailing slash is the same root", findRoot("/", { REPO_ROOT: `${t}/` }) === t);
 } finally { rmSync(t, { recursive: true, force: true }); }
 
 // This checkout: the root is git's top level (a lane copy finds its own copy, never the main one).

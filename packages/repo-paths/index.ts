@@ -7,18 +7,21 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 /** The file that marks the repository root (only the root has one; the Docker image copies it too). */
 export const MARKER = "AGENTS.md";
 
+const isMarker = (dir: string): boolean => existsSync(join(dir, MARKER)) && statSync(join(dir, MARKER)).isFile();
+
 /** The nearest folder at or above `from` that holds MARKER. REPO_ROOT, when set, wins: it must be an absolute path
  *  that holds MARKER (a build or image that keeps the code somewhere else). Throws rather than guess. */
 export function findRoot(from: string, env: NodeJS.ProcessEnv = process.env): string {
-  const set = env.REPO_ROOT?.trim();
-  if (set) {
-    if (!isAbsolute(set) || resolve(set) !== set) throw new Error(`REPO_ROOT must be an absolute path without . or .. parts (got ${set})`);
-    if (!existsSync(join(set, MARKER))) throw new Error(`REPO_ROOT has no ${MARKER}: ${set}`);
+  const given = env.REPO_ROOT?.trim();
+  if (given) {
+    const set = given.length > 1 ? given.replace(/\/+$/, "") || "/" : given; // a trailing slash is the same folder
+    if (!isAbsolute(set) || resolve(set) !== set) throw new Error(`REPO_ROOT must be an absolute path without . or .. parts (got ${given})`);
+    if (!isMarker(set)) throw new Error(`REPO_ROOT has no ${MARKER} file: ${given}`);
     return set;
   }
   let dir = resolve(from);
   for (;;) {
-    if (existsSync(join(dir, MARKER)) && statSync(join(dir, MARKER)).isFile()) return dir;
+    if (isMarker(dir)) return dir;
     const up = dirname(dir);
     if (up === dir) throw new Error(`no ${MARKER} at or above ${from}: set REPO_ROOT`);
     dir = up;

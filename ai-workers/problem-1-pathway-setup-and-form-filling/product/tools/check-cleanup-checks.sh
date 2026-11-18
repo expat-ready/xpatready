@@ -4,6 +4,7 @@
 # git copy under $TMPDIR, never in this repository. US$0, no network.
 #   bash product/tools/check-cleanup-checks.sh
 set -u
+unset REPO_ROOT   # a REPO_ROOT from the caller would point the cases at another copy
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/guard-test-lib.sh"
 T=$(mktemp -d "${TMPDIR:-/tmp}/cleanup-checks.XXXXXXXX") && [ -d "$T" ] || { echo "no temp dir: nothing was checked"; exit 2; }
 trap 'rm -rf "$T"' EXIT
@@ -32,6 +33,13 @@ fresh 6
 ok "no change at all is no proof (exit 1)" "$([ "$(run --move --base main)" = 1 ] && grep -q 'nothing to check' "$T/out" && echo 1 || echo 0)" "$(cat "$T/out")"
 ok "no mode is bad use (exit 2)" "$([ "$(run --base main)" = 2 ] && echo 1 || echo 0)" "$(cat "$T/out")"
 ok "an unknown base is bad use (exit 2)" "$([ "$(run --move --base nope)" = 2 ] && echo 1 || echo 0)" "$(cat "$T/out")"
+ok "--base with no value is bad use (exit 2)" "$([ "$(run --move --base)" = 2 ] && echo 1 || echo 0)" "$(cat "$T/out")"
+ok "--allow with no value is bad use (exit 2)" "$([ "$(run --move --allow)" = 2 ] && echo 1 || echo 0)" "$(cat "$T/out")"
+fresh 7; printf '#!/bin/sh\n' > "$R/a/t.sh"; git -C "$R" add -A; git -C "$R" commit -qm t; git -C "$R" branch -f main
+git -C "$R" mv a/t.sh a/u.sh; chmod +x "$R/a/u.sh"; git -C "$R" add -A; git -C "$R" commit -qm mv
+ok "a rename that also sets the exec bit fails --move" "$([ "$(run --move --base main)" = 1 ] && grep -q 'NOT PURE: R100 mode 100644->100755' "$T/out" && echo 1 || echo 0)" "$(cat "$T/out")"
+fresh 8; git -C "$R" rm -rq a; NA=$(printf 'caf\303\251.md'); printf 'n\n' > "$R/$NA"; git -C "$R" add -A; git -C "$R" commit -qm rm
+ok "--allow matches a non-ASCII file name as written" "$([ "$(run --delete --base main --allow "$NA")" = 0 ] && echo 1 || echo 0)" "$(cat "$T/out")"
 
 # Stale paths: a copy of the tools in a throwaway repository with one live file and one record.
 S="$T/s"; P1=ai-workers/problem-1-pathway-setup-and-form-filling; mkdir -p "$S/$P1/product/tools" "$S/$P1/product/qa" "$S/.github"
@@ -47,4 +55,15 @@ ok "... and the record naming it is not read" "$(grep -q 'qa/r.md' "$T/out" && e
 echo "run: bash new/place/tool.sh" > "$S/.github/ci.yml"; git -C "$S" add -A
 ok "once the live file names the new path, it passes" "$([ "$(st)" = 0 ] && echo 1 || echo 0)" "$(cat "$T/out")"
 ok "a missing list is bad use (exit 2)" "$([ "$(st --list "$T/none.txt")" = 2 ] && echo 1 || echo 0)" "$(cat "$T/out")"
+ok "--list with no value is bad use (exit 2)" "$([ "$(st --list)" = 2 ] && echo 1 || echo 0)" "$(cat "$T/out")"
+echo "run: bash old/place/tool.sh" > "$S/.github/ci.yml"; git -C "$S" add -A
+printf '  old/place/\n' > "$T/indented.txt"
+ok "a listed path with leading spaces still hits" "$([ "$(st --list "$T/indented.txt")" = 1 ] && echo 1 || echo 0)" "$(cat "$T/out")"
+mkdir -p "$T/ng/.github"; echo root > "$T/ng/AGENTS.md"; echo "run: bash old/place/tool.sh" > "$T/ng/.github/ci.yml"
+ok "a root that is no git copy is bad use, never a pass (exit 2)" "$([ "$(REPO_ROOT="$T/ng" st)" = 2 ] && echo 1 || echo 0)" "$(cat "$T/out")"
+ok "a relative REPO_ROOT is refused (exit 2)" "$([ "$(REPO_ROOT=ng st)" = 2 ] && grep -q 'absolute' "$T/out" && echo 1 || echo 0)" "$(cat "$T/out")"
+ok "a REPO_ROOT with .. is refused (exit 2)" "$([ "$(REPO_ROOT="$S/a/.." st)" = 2 ] && echo 1 || echo 0)" "$(cat "$T/out")"
+mkdir -p "$T/nomark"
+ok "a REPO_ROOT without AGENTS.md is refused (exit 2)" "$([ "$(REPO_ROOT="$T/nomark" st)" = 2 ] && echo 1 || echo 0)" "$(cat "$T/out")"
+ok "a REPO_ROOT with a trailing slash is the same root" "$([ "$(REPO_ROOT="$S/" st)" = 1 ] && grep -q 'STALE (old/place/): .github/ci.yml:1' "$T/out" && echo 1 || echo 0)" "$(cat "$T/out")"
 finish
