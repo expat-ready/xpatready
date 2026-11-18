@@ -1,0 +1,19 @@
+{
+  "_note": "PF-18a part 1 (AG-1-74 rule 2, AG16-55): the pack list that pre-fills a new office's time zone from the province or territory of its address. One IANA zone name per province and territory. Source: the IANA time zone database, release 2026e, file zone1970.tab (the CA rows), read 16 Nov 2026 from this machine's tzdata package (/usr/share/zoneinfo/zone1970.tab, '# version 2026e' in tzdata.zi). A province or territory that zone1970.tab gives one zone ('comments' quote its words) takes that zone. Where it spans several zones (British Columbia, Ontario, Nunavut, Northwest Territories, Quebec, Saskatchewan, Newfoundland and Labrador, Nova Scotia, Yukon) the pre-fill is the zone zone1970.tab marks as covering 'most areas' or, with no such words, the zone of the largest city: that choice is ours (Sample choice, not a source rule), and the field stays editable (AG-1-74 rule 2). Codes are Canada Post's two-letter province and territory symbols.",
+  "source": { "database": "IANA time zone database", "release": "2026e", "file": "zone1970.tab", "read": "2026-11-16" },
+  "provinces": {
+    "AB": { "zone": "America/Edmonton", "zone1970": "CST - AB, BC(E), NT(E), SK(W)", "choice": "source" },
+    "BC": { "zone": "America/Vancouver", "zone1970": "MST - BC (most areas)", "choice": "ours: 'most areas' (also America/Edmonton, America/Dawson_Creek, America/Fort_Nelson, America/Phoenix for Creston)" },
+    "MB": { "zone": "America/Winnipeg", "zone1970": "EST - Manitoba, ON (northwest)", "choice": "source" },
+    "NB": { "zone": "America/Moncton", "zone1970": "Atlantic - New Brunswick", "choice": "source" },
+    "NL": { "zone": "America/St_Johns", "zone1970": "Newfoundland, Labrador (SE)", "choice": "ours: largest city, St. John's (also America/Goose_Bay for most of Labrador)" },
+    "NS": { "zone": "America/Halifax", "zone1970": "Atlantic - NS (most areas), PE", "choice": "ours: 'most areas' (also America/Glace_Bay for Cape Breton)" },
+    "NT": { "zone": "America/Edmonton", "zone1970": "CST - AB, BC(E), NT(E), SK(W)", "choice": "ours: largest city, Yellowknife, in NT (east) (also America/Inuvik for NT west)" },
+    "NU": { "zone": "America/Iqaluit", "zone1970": "Eastern - NU (most areas)", "choice": "ours: 'most areas' (also America/Rankin_Inlet, America/Resolute, America/Cambridge_Bay, America/Panama for Coral Harbour)" },
+    "ON": { "zone": "America/Toronto", "zone1970": "Eastern - ON & QC (most areas)", "choice": "ours: 'most areas' (also America/Winnipeg for the northwest, America/Panama for Atikokan)" },
+    "PE": { "zone": "America/Halifax", "zone1970": "Atlantic - NS (most areas), PE", "choice": "source" },
+    "QC": { "zone": "America/Toronto", "zone1970": "Eastern - ON & QC (most areas)", "choice": "ours: 'most areas' (also America/Puerto_Rico for the Lower North Shore)" },
+    "SK": { "zone": "America/Regina", "zone1970": "CST - SK (most areas)", "choice": "ours: 'most areas' (also America/Swift_Current, America/Edmonton for the west)" },
+    "YT": { "zone": "America/Whitehorse", "zone1970": "MST - Yukon (east)", "choice": "ours: largest city, Whitehorse (also America/Dawson for the west)" }
+  }
+}
