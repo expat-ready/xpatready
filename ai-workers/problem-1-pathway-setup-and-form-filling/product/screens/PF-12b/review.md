@@ -178,3 +178,18 @@ Reviewer: Approve 43db8c6654e212f95eeb606078091565fe403b53
 Not re-run by me: the builder's suites (pf12b 27/0, pf12_walls 100/0).
 
 **Verdict: Block.** Fix M1. The rest of the merge is clean.
+
+### Re-review 8, fix: `6411124..43abda2` (diff only)
+- **M1: fixed.** `seedSampleFirms` now calls `touchFirm(tx, firm.id)` (`seed-sample-firms.ts:79`) for each Sample firm, after the firm is found or created and before its staff, grants and credentials.
+  - The call is in the seed's one transaction. A failed line throws `BypassNotRecorded` and rolls back the seed.
+  - Outside a bypass use, `touchFirm` returns at once (`firm-scope.ts:190`), so the start-up seed, the script and the suites write no line.
+- **Test.** The new DW1 check (`check_pf12b_bypass_audit.ts:168-174`) seeds on `platform.demo.reset` and expects +1 line per Sample firm and +2 in total. It then seeds directly and expects no line. DW7's reset count goes from 4 to 6 to match. Nothing else changed.
+- **Every call site** (`git grep -n 'asBypass(\|asJob(' 43abda2 -- api/src`):
+  - The per-firm uses all touch their firms: sign-up, demo reset (now both sites), demo inbox, catch-up, and the outbox sweep through `asJob`.
+  - The rest are the seven `none:` own-firm doors and the two `none:` jobs.
+  - Main adds no other call site. m2 (catch-up's `assignIn`) stays the accepted known limit.
+- Not re-run by me: the builder reports pf12b 28/0, pf12_walls 100/0, pf3_platform_schema 75/0, and tsc clean. csw1_firm_id and aud1a are left to CI.
+
+**Verdict: Approve.** No open Blocker or Major.
+
+Reviewer: Approve 43abda2758e9cb02ba6bf74a8475addaafbcb3cc
