@@ -2239,6 +2239,17 @@ class PrListCache(unittest.TestCase):
                     return v
             raise AssertionError(url)
 
+    def test_bad_cache_reads_in_full(self):
+        # review #2113: a cut or bad cache file reads the list in full with a note, never stops the run; no .tmp is left behind
+        tmp = tempfile.mkdtemp()
+        open(os.path.join(tmp, "prs.json"), "w").write('{"read_at": "2026-11-1')
+        n0 = len(cd.ERRORS)
+        g = self.FakeGH({"/pulls?state=all": [self.pr(1, "open", "2026-11-16T00:00:00Z")]})
+        self.assertEqual([x["number"] for x in cd.pr_list(g, tmp)], [1])
+        self.assertTrue(any("cache unreadable" in e for e in cd.ERRORS[n0:]))
+        self.assertEqual(sorted(os.listdir(tmp)), ["prs.json"])
+        del cd.ERRORS[n0:]
+
     def test_full_then_incremental(self):
         tmp = tempfile.mkdtemp()
         old_now = cd.NOW

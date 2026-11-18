@@ -945,7 +945,11 @@ def pr_list(gh, cache):
     """Every PR, newest created first. Read in full when the cache is missing (or older than 7 days); otherwise the open PRs
     plus every closed PR updated since the cache's read time less a day (a closed PR changes only with its updated_at)."""
     path = os.path.join(cache, "prs.json")
-    c = json.load(open(path)) if os.path.exists(path) else {}
+    try:
+        c = json.load(open(path)) if os.path.exists(path) else {}
+    except (OSError, ValueError) as e:                     # a cut or bad cache file: read in full, never stop the run
+        ERRORS.append(f"PR list cache unreadable ({str(e)[:60]}); read in full")
+        c = {}
     at = parse_iso(c["read_at"]) if c.get("read_at") else None
     full = parse_iso(c["full_at"]) if c.get("full_at") else None
     byn = {int(k): v for k, v in (c.get("prs") or {}).items()}
@@ -975,9 +979,15 @@ def pr_list(gh, cache):
             page += 1
         for n, v in byn.items():                           # cached as open, in neither read (closed and updated before the cut
             if v.get("state") == "open" and n not in fresh:    # cannot happen; read it alone to be sure)
-                fresh[n] = pr_slim(gh.get(f"/pulls/{n}"))
+                try:
+                    fresh[n] = pr_slim(gh.get(f"/pulls/{n}"))
+                except Exception as e:                     # one PR's read never stops the run: keep the cached entry
+                    ERRORS.append(f"PR #{n}: read failed ({str(e)[:60]}); cached entry kept")
         byn.update(fresh)
-    json.dump({"read_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"), "full_at": full.strftime("%Y-%m-%dT%H:%M:%SZ"), "prs": {str(k): v for k, v in byn.items()}}, open(path, "w"))
+    tmp = path + ".tmp"                                    # written whole, then moved into place: a killed run leaves the old file
+    with open(tmp, "w") as f:
+        json.dump({"read_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"), "full_at": full.strftime("%Y-%m-%dT%H:%M:%SZ"), "prs": {str(k): v for k, v in byn.items()}}, f)
+    os.replace(tmp, path)
     return [byn[n] for n in sorted(byn, reverse=True)]
 
 
@@ -1064,6 +1074,7 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
             for res in ex.map(run_chunk, [need[i::8] for i in range(8) if need[i::8]]):
                 ac.update({str(k): v for k, v in res.items()})
         gh.calls += len(need)
+        gh.tally["app-code-prs.sh (one per PR)"] = gh.tally.get("app-code-prs.sh (one per PR)", 0) + len(need)
         json.dump(ac, open(ac_path, "w"))
     pulls = [{"number": x["number"], "title": x["title"], "state": x["state"], "draft": bool(x.get("draft")),
               "created_at": x["created_at"], "merged_at": x.get("merged_at"), "closed_at": x.get("closed_at"),
@@ -1188,13 +1199,13 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     # (the newest such "labeled" event), so the board can name those approved and not merged for over 60 min. Lead 75, 17 Nov:
     # taken from the open-PR GraphQL read above (its label events); the REST events are read only when GraphQL was refused.
     try:
-        lab_at = {x["number"]: x["approved_labelled_at"] for x in od} if nodes is not None else None
+        lab_at = {x["number"]: x["approved_labelled_at"] for x in od}      # GraphQL or REST: od holds every open PR it read
         appr = [p for p in pulls if p.get("state") == "open" and any((l.get("name") == "review: approved") for l in p.get("labels") or [])]
         ap = []
         for p in appr[:STUCK_MAX_PRS]:
-            if lab_at is not None:
-                at = lab_at.get(p["number"])
-            else:
+            if p["number"] in lab_at:
+                at = lab_at[p["number"]]
+            else:                                          # not in od (GraphQL reads the first 100 open PRs): REST events
                 ev = gh.get_pages(f"/issues/{p['number']}/events?per_page=100", max_pages=5)   # every page: the newest label event
                 at = max([e["created_at"] for e in ev if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == "review: approved"], default=None)
             ap.append({"number": p["number"], "title": p.get("title"), "labeled_at": at})
@@ -4287,6 +4298,7 @@ def main():
             for res in ex.map(run_chunk, chunks):
                 ac.update({str(k): v for k, v in res.items()})
         gh.calls += len(todo)
+        gh.tally["app-code-prs.sh (one per PR)"] = gh.tally.get("app-code-prs.sh (one per PR)", 0) + len(todo)
         json.dump(ac, open(ac_path, "w"))
     unclassified = sum(1 for m in merged if str(m["n"]) not in ac)
 
