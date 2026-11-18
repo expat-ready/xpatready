@@ -225,11 +225,17 @@ try {
   ok("FO-7ts DW11 pass: a trust request's hash is unique per firm too (unused in R1)",
     sql(T, `update money_trust_request set pay_link_token_hash = '${h1}' where id = '${r2}' returning 1`) === "1"
     && refused(T, `update money_trust_request set pay_link_token_hash = '${h1}' where id = '${unsent}'`, /money_trust_request_pay_link_token_hash/, "23505"));
-  const draftU = randomUUID(); sql(T, `insert into money_invoice (id, firm_id, person_id, currency, due_date, created_by, updated_at, unsigned_retainer_confirmed_by, unsigned_retainer_confirmed_at) values ('${draftU}', '${firmD}', '${P2}', 'CAD', '2026-12-15', 'user-R', now(), '${u(77)}', now());
+  const draftU = randomUUID(); sql(T, `insert into money_invoice (id, firm_id, person_id, currency, due_date, created_by, updated_at, unsigned_retainer_confirmed_by, unsigned_retainer_confirmed_at) values ('${draftU}', '${firmD}', '${P2}', 'CAD', '2026-12-15', 'user-R', now(), '${u(77)}', '1999-01-01');
     insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, currency) values ('${firmD}', '${draftU}', 1, 'FEE', 'Consultation', 1, 5000, 5000, 'CAD')`);
-  ok("FO-7ts (AG-6-42 §7) fail: an unsigned-retainer confirmation with who and no when is refused; once issued it is fixed",
-    refused(T, `update money_invoice set unsigned_retainer_confirmed_at = null where id = '${draftU}'`, /money_invoice_unsigned_retainer_check/, "23514")
-    && (sql(T, `update money_invoice set issued_at = now(), issued_by = 'user-R' where id = '${draftU}'`), refused(T, `update money_invoice set unsigned_retainer_confirmed_by = '${u(78)}' where id = '${draftU}'`, /issued invoices can't be edited/)));
+  const confirmedAt = () => sql(T, `select coalesce((unsigned_retainer_confirmed_at > now() - interval '1 minute' and unsigned_retainer_confirmed_at <= now())::text, 'null') from money_invoice where id = '${draftU}'`);
+  ok("FO-7ts (AG-6-42 §7; Lead 82 on #2106, F3) pass: the confirmation's time is the database's — a typed 1999 on insert is not stored; a new who on the draft takes a new database time",
+    confirmedAt() === "true" && sql(T, `update money_invoice set unsigned_retainer_confirmed_by = '${u(79)}', unsigned_retainer_confirmed_at = '2099-01-01' where id = '${draftU}' returning (unsigned_retainer_confirmed_at < '2099-01-01')`) === "t");
+  ok("FO-7ts (F3) fail: a typed time alone (1999, 2099 or none) is refused on the draft, and the stored time is unchanged",
+    refused(T, `update money_invoice set unsigned_retainer_confirmed_at = '2099-01-01' where id = '${draftU}'`, /is the database's, and changes only with who confirmed it/, "23514")
+    && refused(T, `update money_invoice set unsigned_retainer_confirmed_at = '1999-01-01' where id = '${draftU}'`, /changes only with who confirmed it/)
+    && refused(T, `update money_invoice set unsigned_retainer_confirmed_at = null where id = '${draftU}'`, /changes only with who confirmed it/) && confirmedAt() === "true");
+  ok("FO-7ts (AG-6-42 §7) fail: once issued the confirmation is fixed",
+    (sql(T, `update money_invoice set issued_at = now(), issued_by = 'user-R' where id = '${draftU}'`), refused(T, `update money_invoice set unsigned_retainer_confirmed_by = '${u(78)}' where id = '${draftU}'`, /issued invoices can't be edited/)));
 
   // --------------------------------------------------------------------------------------- DW19: payment methods
   ok("FO-7ts DW19 pass: a BANK_TRANSFER payment into trust (trust YES) is accepted with its deposit", last(T, depositQ(firmD, 2500, "BANK_TRANSFER")) === "2500");

@@ -12,7 +12,8 @@
 --   * a trust request's retainer_version_id: one deposit request per version (partial unique), fixed once sent;
 --   * pay_link_token_hash on an invoice and a trust request: a SHA-256 in hex, never a raw token, unique per firm; it
 --     may change on an issued invoice (a new link replaces the old one);
---   * an invoice's unsigned_retainer_confirmed_by / _at (AG-6-42 §7): both or neither, fixed once issued.
+--   * an invoice's unsigned_retainer_confirmed_by / _at (AG-6-42 §7): both or neither, the time the database's (Lead 82's
+--     ruling on #2106, break F3: who and when on money records are audit facts, never caller input), fixed once issued.
 -- A firm row with trust_enabled = true stops the migration (Lead B rev 16.37 (1)): only test databases can hold one.
 -- Rollback: ALTER TABLE money_payment_settings ADD trust_enabled boolean NOT NULL DEFAULT false (true where trust_answer
 --   = 'YES'), ADD tax_rates jsonb NOT NULL DEFAULT '[]' with FO-7a's money_tax_rates_ok and its check; DROP TRIGGER
@@ -183,7 +184,8 @@ BEGIN
   RETURN NEW;
 END $$;
 
--- FO-7a's invoice rules, with the unsigned-retainer confirmation fixed once issued; the link hash stays changeable.
+-- FO-7a's invoice rules, with the unsigned-retainer confirmation fixed once issued and its time the database's; the link
+-- hash stays changeable.
 CREATE OR REPLACE FUNCTION money_invoice_write() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE wrong integer; total bigint;
 BEGIN
@@ -198,6 +200,8 @@ BEGIN
       RAISE EXCEPTION 'money_invoice: an invoice is written as a draft (no number, not issued); its number is the database''s' USING ERRCODE = 'check_violation';
     END IF;
     NEW.created_at := now();
+    -- A typed confirmation time is never kept: the database's clock, when who is written (F3).
+    NEW.unsigned_retainer_confirmed_at := CASE WHEN NEW.unsigned_retainer_confirmed_by IS NULL THEN NULL ELSE now() END;
     RETURN NEW;
   END IF;
   IF NEW.firm_id IS DISTINCT FROM OLD.firm_id THEN
@@ -209,6 +213,12 @@ BEGIN
       RAISE EXCEPTION 'money_invoice: issued invoices can''t be edited — use a credit note (% is fixed)', OLD.number USING ERRCODE = 'check_violation';
     END IF;
     RETURN NEW;
+  END IF;
+  -- On a draft: the confirmation's time follows its who (the database's clock), and never changes alone (F3).
+  IF NEW.unsigned_retainer_confirmed_by IS DISTINCT FROM OLD.unsigned_retainer_confirmed_by THEN
+    NEW.unsigned_retainer_confirmed_at := CASE WHEN NEW.unsigned_retainer_confirmed_by IS NULL THEN NULL ELSE now() END;
+  ELSIF NEW.unsigned_retainer_confirmed_at IS DISTINCT FROM OLD.unsigned_retainer_confirmed_at THEN
+    RAISE EXCEPTION 'money_invoice: when invoicing on an unsigned retainer was confirmed is the database''s, and changes only with who confirmed it' USING ERRCODE = 'check_violation';
   END IF;
   IF NEW.number IS DISTINCT FROM OLD.number OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'money_invoice: the number and the times are the database''s' USING ERRCODE = 'check_violation';
