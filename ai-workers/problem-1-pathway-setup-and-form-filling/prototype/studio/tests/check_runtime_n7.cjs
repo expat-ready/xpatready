@@ -98,7 +98,7 @@ const PDF = path.join(ROOT, "official-sources", "ircc", "forms", "imm5476e.pdf")
     step("C11.9 DV-bb-9 pass: the proposer withdraws their own open change", r.status === 201 && r.body?.status === "WITHDRAWN" && sql(`select count(*) from audit_event where action='withdrawn' and entity_key='${key}'`) === "1", r.body?.status ?? r.body);
 
     // Review Major 1 / break B2: the same rule for a new shared field on the same route.
-    const ws = sql("select id from workspace limit 1");
+    const ws = sql("select id from workspace where key <> 'platform-audit' limit 1");
     const fid = sql(`insert into library_change (id, workspace_id, kind, key, label, action, reason, status, proposed_by) values (gen_random_uuid(), '${ws}', 'field', 'person.n7_check_field', 'N7 check field', 'ADD', 'Check only', 'WAITING', 'user-C') returning id`).split("\n")[0];
     r = await api(`/library/changes/${fid}/withdraw`, { method: "POST", data: { note: "Not mine, but I try." } });
     step("DV-bb-9 fail (new field): an author cannot withdraw another person's new field (403); it stays waiting", r.status === 403 && /Content reviewer proposed this one/.test(r.body?.detail ?? "") && sql(`select status from library_change where id='${fid}'`) === "WAITING", r.body?.detail ?? r.body);
