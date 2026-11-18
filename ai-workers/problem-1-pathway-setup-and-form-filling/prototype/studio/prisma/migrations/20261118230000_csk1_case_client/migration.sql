@@ -116,13 +116,15 @@ CREATE FUNCTION case_client_kind_of(combination uuid) RETURNS text LANGUAGE sql 
   SELECT CASE WHEN (SELECT client_type FROM up WHERE node_kind = 'PATHWAY' ORDER BY depth LIMIT 1) = 'CORPORATE' THEN 'COMPANY' ELSE 'PERSON' END
 $fn$;
 
--- A case written without a client gets its own (named after the case; the opening names it after the principal).
+-- A case written without a client gets its own (named after the case; the opening names it after the principal). The
+-- client takes its key's platform firm, never the case's firm_id as given (nor the session's default): a case whose given
+-- firm id is wrong is then refused by CS-W1's own case_firm_from_key, which fires after this one, in its own words.
 CREATE FUNCTION case_client_for_case() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
   SET search_path = pg_catalog, public, pg_temp AS $fn$
 BEGIN
   IF NEW.client_id IS NULL THEN
     INSERT INTO case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, created_by)
-    VALUES (gen_random_uuid(), NEW.workspace_id, NEW.firm_key, NEW.firm_id, case_client_next_number(NEW.workspace_id, NEW.firm_key),
+    VALUES (gen_random_uuid(), NEW.workspace_id, NEW.firm_key, case_lookup.case_firm_id_of_key(NEW.firm_key), case_client_next_number(NEW.workspace_id, NEW.firm_key),
             left('Client of ' || coalesce(NEW.case_number, NEW.reference, 'a case'), 200), case_client_kind_of(NEW.combination_id),
             coalesce(NEW.created_by, 'system:case_client_for_case'))
     RETURNING id INTO NEW.client_id;
