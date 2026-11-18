@@ -54,8 +54,8 @@ export class PlanLimitChanges {
       let row: { id: string; old: number | null; lowered: boolean };
       try {
         row = (await tx.$queryRaw<{ id: string; old: number | null; lowered: boolean }[]>`
-          INSERT INTO platform_limit_change (plan_id, metric, new_value, reason, approved_by, approved_at)
-          VALUES (${planRow.id}::uuid, ${COLUMN[metric]}, ${value}, ${reason}, ${actor}, ${at}::timestamptz) RETURNING id::text AS id, old_value AS old, lowered`)[0];
+          INSERT INTO platform_limit_change (id, plan_id, metric, new_value, reason, approved_by, approved_at)
+          VALUES (gen_random_uuid(), ${planRow.id}::uuid, ${COLUMN[metric]}, ${value}, ${reason}, ${actor}, ${at}::timestamptz) RETURNING id::text AS id, old_value AS old, lowered`)[0];
       } catch (e) {
         if (/the limit is already/.test(String(e))) problem(409, "LIMIT_UNCHANGED", "Nothing to change", `${planRow.name} already allows ${shown(value)} ${WORD[metric]}.`);
         throw e;

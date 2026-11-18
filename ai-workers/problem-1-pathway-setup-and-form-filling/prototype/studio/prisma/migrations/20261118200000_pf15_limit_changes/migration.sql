@@ -18,7 +18,7 @@
 --   stay as written (the change rows hold each old value).
 
 CREATE TABLE "platform_limit_change" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "id" UUID NOT NULL,
     "plan_id" UUID NOT NULL,
     "metric" TEXT NOT NULL,
     "old_value" INTEGER,
