@@ -58,3 +58,22 @@ N/A, all 20: §6 covers case-side screens. Complaints is a firm (platform) scree
 Verdict: Changes requested
 1. Major M1: regenerate and commit the J-109 screenshots from a run on the real wiring (see above).
 2. minor m1-m5 as listed (Should; not blocking on their own).
+
+## Re-review R2 (P-277, diff only): `git diff 648daeea9 62b4bcd95`
+Read: the `j_109.ts` changes (+12/-10), the 9 regenerated screenshots, and `break-report.md`. The app code has no change in this range (only the test and records). The committed `review.md` and journey report are mine, unaltered.
+* **M1, fixed.**
+  * `w2-acknowledge-by-1440.png` now reads "1 business day late". That matches the system clock on 18 Nov; the earlier shot showed FakeClock's 24 Nov.
+  * `w4-closed-1440.png` now shows "Reminder sent to acknowledge · The system", so the real pg-boss worker ran it.
+  * The close times (12:03 / 1:03 p.m.) are after the earlier fake-wired run.
+* **m1, fixed.** The line that could not fail on its own is gone. The cancel check is now "DW1 fail" (`j_109.ts:129`): created, then acknowledged, then `cancelled`. Every case still has a pass and a fail line.
+* **m2, fixed.** The run line (`:121`) now needs pg-boss `completed` and exactly one `REMINDER_SENT` event. A skipped run would fail it.
+* **m3, fixed.** W2 reads only the "Acknowledge by" fact (`:133`), with no page-text fallback. A missing fact throws, the run exits non-zero, and no FAIL line is printed. That is acceptable.
+* **m4, fixed.** The port is now 4436, in the runtime range 4430-4439.
+* **m5.** It goes in the PR body (I can't check that from the diff).
+* **Breaker m2 (wait raised to 120 s), accepted.** The longer wait only allows for a backlog; the pass condition is unchanged and still strict.
+* **On the fakes, the new lines still fail.** With `fakeJobs` there is no row, so DW1 pass, run and fail all fail (3 lines). With FakeClock at 24 Nov, five minutes ahead is accepted, so DW2 fail fails (1 line). The swaps are still proven real.
+* **Rerun.** I ran the `62b4bcd95` walk from a scratchpad copy (imports pointed at the same code; screenshots kept in the scratchpad, so the committed shots are untouched). Copy `j109rr` on :4436, twice on the same copy: **26 passed, 0 failed** both times, about 7.6 s each.
+* **Breaker's M1 is out of J-109, so it does not block this row.** The finding: a Read-only person chosen as handler can see, acknowledge and close the complaint (`complaints.ts:188-192`, `:323-326`). That bug sits in PF-21v/w, which this row may not change (the brief says to stop and ask). W3 as briefed still holds for a Read-only person who is not the handler. The question to the tech lead needs a tracked row (BUGS or PF-21v/w), so it is not lost when this merges.
+* **Breaker's other findings.** Its m3 (the "Reminder sent" wording while mail is `fakeMail`) is allowed by the brief and named in the header. Its m1, m4 and m5 belong to existing parts. No new issue in this diff.
+
+Verdict: Approve 62b4bcd95aeb8c69e519e37444905b8230103993
