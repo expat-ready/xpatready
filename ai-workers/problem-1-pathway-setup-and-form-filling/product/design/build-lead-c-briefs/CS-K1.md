@@ -1,6 +1,6 @@
 # Brief: CS-K1, the case's firm id and client record (cloud builder lane; row owner Build Lead C)
 
-Written 18 Nov by Build Lead C. **Draft until Build Lead C approves it.** The specification is the draft `product/design/briefs/CS-K1.md` on `main` (16 Nov, case-side shaping lane), part 1; where this page differs, this page wins. BACKLOG row **CS-K1** (`product/BACKLOG.md` line 1079 on `main` 15c75cd52). Release 1 row **R1.72** (map 72, "Case with applicants, representative, pinned release"); it sits on the internal critical path AUD-1b → CS-W1 → **CS-K1** → FO-8 → CS-98r (end-to-end review of 18 Nov, line 552).
+Written 18 Nov by Build Lead C. **Approved for building** (Build Lead C, 18 Nov 23:1x IST, with the rulings below). The specification is the draft `product/design/briefs/CS-K1.md` on `main` (16 Nov, case-side shaping lane), part 1; where this page differs, this page wins. BACKLOG row **CS-K1** (`product/BACKLOG.md` line 1079 on `main` 15c75cd52). Release 1 row **R1.72** (map 72, "Case with applicants, representative, pinned release"); it sits on the internal critical path AUD-1b → CS-W1 → **CS-K1** → FO-8 → CS-98r (end-to-end review of 18 Nov, line 552).
 **PR title:** `runtime: CS-K1 part 1 — the client record and a client on every case`
 **Model:** Opus 5.5, effort high (schema, a backfill on every case, a hook in `createCase`).
 
@@ -74,3 +74,5 @@ No screen.
 * `ensureForClient(tx, {firmId, actor, displayName, …, prospectId?})` → `{foPersonId}`;
 * `ensureCompanyForClient(tx, {firmId, actor, name, prospectId?})` → `{foCompanyId}`.
 A COMPANY client gets an `fo_company`. The caller makes the link only once: call only while `case_client.fo_person_id` and `fo_company_id` are null, in the same transaction. No auto-link by email; FO-8 passes `prospectId`. CS-K1 part 2 (brief to write) follows FO-1p and CS-K1 part 1.
+
+**Overlapped chain (Lead 81, the founder's "start doing it", 18 Nov 22:5x IST; this replaces "Ready when" and "branch from `origin/main`" above):** branch from #2125's head (CS-W1 part 1, `claude/charming-wright-8rc7y7`, 216aa33e6), not from `main`. Build, test and get "Reviewer: Approve <head>" on the branch. Open the PR only after #2125 merges; then merge `main` into it (P-270), re-stamp the migration later than `main`'s newest with a slot from the current Lead (P-600), and get a diff-only Approve on the new head. The rulings below (18 Nov) stand: `case.closed`/`case.reopened` carry `client_id`; `employer-cases.ts` is off the touch list unless needed.

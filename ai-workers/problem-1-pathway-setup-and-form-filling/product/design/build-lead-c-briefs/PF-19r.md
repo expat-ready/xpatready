@@ -89,3 +89,5 @@ No other sender: `git grep -nE "nodemailer|createTransport|sendMail|mail\??\.sen
 * The id is **PF-19r**, because PF-19ms is taken (BACKLOG line 1028, the mailbox screens). The current Lead adds the BACKLOG row.
 * Demo inbox: keep `demo_message` as a copy written after MessagePort accepts the send. No move to the platform inbox in this row.
 * PF-19p is in flight on the same message files, so part 1 starts only after PF-19p merges, and the two parts run one after the other.
+
+**Overlapped chain (Lead 81, the founder's "start doing it", 18 Nov 22:5x IST; this replaces "Ready when" and "branch from `origin/main`" above):** PF-19p (#1961) is merged, so PF-19r branches from `origin/main` as written. J-48 branches from this row's approved head.
