@@ -242,6 +242,9 @@ try {
 
   // Review M1: the same adapter on the walled pool (xr_app), as the API runs it: the case side's key with no platform
   // scope, the platform side's id in the firm's scope, the storage mark in a job's withFirm; and the shared contract.
+  const direct = new Db();   // direct mode first (a suite or tool): the bypass role, as check_fo13i's app runs
+  ok("PF-15 pass: on the bypass role (direct mode) the definer function answers too", (await new PgEntitlements(direct).limitOf("sample-solo", "active_individual_cases")).limit === 25);
+  await direct.$disconnect();
   const walls = await import("../api/src/platform/firm-scope.ts");
   walls.wallUnscopedQueries();
   const walled = new Db();

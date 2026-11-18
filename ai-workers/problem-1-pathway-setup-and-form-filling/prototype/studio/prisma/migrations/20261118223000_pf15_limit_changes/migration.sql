@@ -20,7 +20,7 @@
 --   DROP TRIGGER "platform_plan_seats_by_change" ON "platform_plan"; DROP FUNCTION platform_limit_change_apply(),
 --   platform_limit_change_firms(), platform_limit_change_kept(), platform_plan_seats_by_change(),
 --   platform_entitlement_limit(text, text, timestamptz, timestamptz);
---   re-run the CREATE FUNCTION platform_entitlement_limit(text, text, timestamptz) block of 20261118100000_pf15_plan_limits
+--   re-run the CREATE FUNCTION platform_entitlement_limit(text, text, timestamptz) block of 20261118213000_pf15_plan_limits
 --   with its OWNER, REVOKE and GRANT lines; delete this folder's row from _prisma_migrations. Limit values a change wrote
 --   stay as written (the change rows hold each old value).
 
@@ -180,4 +180,4 @@ CREATE FUNCTION platform_entitlement_limit(p_firm text, p_metric text, p_hard_si
           FROM cur $fn$;
 ALTER FUNCTION platform_entitlement_limit(text, text, timestamptz, timestamptz) OWNER TO xr_wall_reader;
 REVOKE ALL ON FUNCTION platform_entitlement_limit(text, text, timestamptz, timestamptz) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION platform_entitlement_limit(text, text, timestamptz, timestamptz) TO xr_app;
+GRANT EXECUTE ON FUNCTION platform_entitlement_limit(text, text, timestamptz, timestamptz) TO xr_app, xr_staff_bypass;   -- as part 1a: the bypass role reads it too (direct mode)

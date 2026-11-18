@@ -1,5 +1,5 @@
 // platform-entitlements.prisma — plan limits and the storage-over mark (PF-15; SA-3-4, SA-3-39, SA-3-40). Owner: Lead B.
-// Seats stay on platform_plan.seats_limit. Rules and Sample rows: migration 20261118100000_pf15_plan_limits. Read and
+// Seats stay on platform_plan.seats_limit. Rules and Sample rows: migration 20261118213000_pf15_plan_limits. Read and
 // written only through api/src/platform/entitlements/.
 
 /// The metrics a plan limits besides seats. Modes are fixed (SA-3-39): cases hard, storage warn.
