@@ -1,0 +1,26 @@
+# PF-19b part 3: delivery state and the staff message list (draft notes, before the PR)
+
+Row: PF-19b part 3 (R1.48; needed by J-48). Brief: `design/lead-b-briefs/PF-19b3.md` on `lead-b-front-office` (c5bf956f9), overlapped start (row 4 of `overlap-starts-2026-11-18.md`). Base: `claude/funny-edison-0xod9n` (#1961, 2aa433a4e). The PR opens only after #1961 merges and main is merged in (P-270).
+
+## What it does, in product terms
+* Each email a firm sends now shows whether it was **Sent, Delivered or Bounced**, from the email provider's delivery notices. A delivery notice never undoes a bounce or a failure.
+* On the demo copy (no real email provider) every email gets a test delivery notice by itself, and the Sample bounce addresses bounce. A bounced address gets nothing more.
+* Staff see a **Messages** box on a lead's page listing that lead's emails: what each was, to whom (masked: `m…@example.com`), from whom (the firm's name), its state in words and when each step happened. The email's words are never shown or sent to the screen.
+* Only people who may see the lead see its messages; anyone else, and another firm, get "not found".
+
+## Done when (P-606) and the tests
+| Line | Test | Result on this branch |
+|---|---|---|
+| DW1-DW5 | `tests/check_pf19b3_delivery.ts` | 24 passed, 0 failed (includes PF-19b part 2's suite, 44/0, unchanged) |
+| DW4, DW5 on the running copy, DW6 | `tests/check_pf19b3_panel_browser.ts` (isolated copy, `PLATFORM_IDENTITY=local`) | 20/20 passed; screenshots in `screenshots/` at 375, 1024, 1440 px |
+
+## Duplicate check (P-526)
+Searched `main` (`git grep DELIVERED` under `api/src`: only the type and the unsubscribe page's state filter), open PRs (none names PF-19b; #1961 is PF-19p), `BACKLOG.md` (PF-19r moves senders, not state): none.
+
+## Questions for the tech lead (Lead B), to post on the PR
+1. **One line outside the touch list, on PF-19e's list:** `api/src/platform/messages/demo-inbox.ts` lists `state: "SENT"` only. With the demo's test events every local email becomes DELIVERED within a worker cycle, so without a change the demo inbox (and every walk that reads it: sign-up, booking mail, unsubscribe) would go empty. I changed that one filter to `SENT` or `DELIVERED`. PF-19e also edits this file (open on read); the two edits are on different lines. Recommendation: keep it here; if PF-19e merges first, I merge main and keep both.
+2. **The lead page edit is two lines** (the import and the mount), not one.
+3. **Purpose:** the outbox stores no purpose. The read gives the template key when the row has one, else the head of its sending key (`booking` for MailPort's `mail:booking:…`), else null (the panel says "Message"). MailPort messages (booking mail) carry no template key today (`mail.ts` drops it); storing it would need `mail.ts`, PF-19e's area. Recommendation: a later row.
+4. **Case parties:** no staff case read on the platform side yet. The rule used: `agent/case:show` plus the party being a participant of a case whose `firm_key` is the viewer's firm. No case-team narrowing (none exists for platform staff). Build Lead C's case-page row may tighten it.
+5. **@OwnOrAll:** the route is not marked `@OwnOrAll("agent/prospect")` because the sweep (`check_pf6b_permission_rules.ts`, not on the touch list) fails a marked route with no entry. The own-or-all rule is applied in the service and tested (DW5).
+6. `api/src/front-office/MODULE.md` is 42 lines on the base (module-cards fails before this change); not touched here.
