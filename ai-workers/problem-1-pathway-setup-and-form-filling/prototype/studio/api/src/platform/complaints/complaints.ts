@@ -22,8 +22,10 @@ import type { ClockPort } from "../../../../ports/clock.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
 import { ComplaintClosed, ComplaintReceived, EVENT } from "../../../../ports/events.ts";
+import { MessageRefused } from "../../../../ports/messages.ts";
 import type { StaffContext } from "../../../../ports/staff.ts";
 import { firmScope } from "../firm-scope.ts";
+import { mailIn } from "../messages/send/mail.ts";
 import { readSetting, TIME_ZONE } from "../settings.ts";
 import { BusinessDayTally, businessDaysBetween, readFirmCalendar, type FirmCalendar } from "../calendar/working-days.ts";
 import { acknowledgeBy } from "./business-days.ts";
@@ -400,34 +402,54 @@ export class ComplaintsService {
    *  them is active either (never a reminder to nobody). The mail names no complainant and no summary (the handler
    *  opens the record) and gives the date in the firm's zone. It is sent inside the run's transaction, after the
    *  REMINDER_SENT event and its audit line: a failed send rolls them back and the job runs again (at least once,
-   *  never recorded as sent when it was not; a commit that fails after a send can repeat the mail). */
+   *  never recorded as sent when it was not). PF-19r: through MessagePort (MessagesMail), each email is written into
+   *  the outbox in the same transaction and sent after the commit, so a rolled-back run sends nothing. A SERVICE email
+   *  names its person: the handler or each Owner and Admin (STAFF); a tier nobody in can be reached falls to the next. The firm's contact address is the firm's, not a
+   *  person's: that last-resort reminder goes as TRANSACTIONAL (a duty the firm cannot opt out of; question to the tech
+   *  lead on the PF-19r PR). */
   async runAckReminder(payload: unknown): Promise<"sent" | "skipped"> {
     const p = z.object({ firmId: uuid, complaintId: uuid }).safeParse(payload);
     if (!p.success) return "skipped";
     const { firmId, complaintId } = p.data;
-    return this.commit(async (tx) => {
+    return this.commit(async (tx, after) => {
       await tx.$queryRaw`SELECT id FROM "plat_complaint" WHERE firm_id = ${firmId}::uuid AND id = ${complaintId}::uuid FOR UPDATE`;
       const c = await tx.platComplaint.findFirst({ where: firmScope(firmId, { id: complaintId }) });
       if (!c || c.status === "CLOSED" || c.acknowledgedAt) return "skipped" as const;
       if (await tx.platComplaintEvent.findFirst({ where: firmScope(firmId, { complaintId, kind: "REMINDER_SENT" as const }), select: { id: true } })) return "skipped" as const;
-      const handler = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: c.handlerStaffId, status: "ACTIVE" as const }), select: { email: true } });
-      const admins = handler ? [] : (await tx.platformStaff.findMany({
-        where: firmScope(firmId, { status: "ACTIVE" as const, grants: { some: { role: { in: ["OWNER", "ADMIN"] as ("OWNER" | "ADMIN")[] }, endedAt: null } } }), select: { email: true }, orderBy: { email: "asc" },
-      })).map((s) => s.email);
+      const handler = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: c.handlerStaffId, status: "ACTIVE" as const }), select: { id: true, email: true } });
+      const admins = await tx.platformStaff.findMany({
+        where: firmScope(firmId, { status: "ACTIVE" as const, grants: { some: { role: { in: ["OWNER", "ADMIN"] as ("OWNER" | "ADMIN")[] }, endedAt: null } } }), select: { id: true, email: true }, orderBy: { email: "asc" },
+      });
       const firm = await tx.platformFirm.findFirstOrThrow({ where: { id: firmScope(firmId).firmId }, select: { contactEmail: true } });
-      const sentTo: "handler" | "owners_admins" | "firm_contact" = handler ? "handler" : admins.length ? "owners_admins" : "firm_contact";
-      const to = handler ? [handler.email] : admins.length ? admins : [firm.contactEmail];
       const zone = await readSetting<string>(tx, firmId, TIME_ZONE.key);
       const due = new Intl.DateTimeFormat("en-CA", { timeZone: zone, dateStyle: "long", timeStyle: "short" }).format(c.acknowledgeBy);
       const now = this.d.clock.now();
-      await tx.platComplaintEvent.create({ data: { firmId, complaintId, kind: "REMINDER_SENT", at: now, actor: SYSTEM_ACTOR, detail: { handlerStaffId: c.handlerStaffId, sentTo, recipients: to.length } } });
+      type Tier = { sentTo: "handler" | "owners_admins" | "firm_contact"; to: { address: string; staffId: string | null }[]; text: string };
+      const reach = handler ? "cannot be reached by email" : "is no longer active";
+      const tiers: Tier[] = [
+        ...(handler ? [{ sentTo: "handler" as const, to: [{ address: handler.email, staffId: handler.id }], text: `A complaint you handle was due to be acknowledged by ${due} (${zone}). Open it in Complaints (reference ${complaintId}) and record the acknowledgement.` }] : []),
+        { sentTo: "owners_admins", to: admins.filter((a) => a.id !== handler?.id).map((a) => ({ address: a.email, staffId: a.id })), text: `A complaint was due to be acknowledged by ${due} (${zone}), and its handler ${reach}. Open it in Complaints (reference ${complaintId}), choose a new handler if needed and record the acknowledgement.` },
+        { sentTo: "firm_contact", to: [{ address: firm.contactEmail, staffId: null }], text: `A complaint was due to be acknowledged by ${due} (${zone}), and neither its handler nor an Owner or Admin can be reached. Open it in Complaints (reference ${complaintId}), choose a new handler and record the acknowledgement.` },
+      ];
+      // Tier by tier (PF-19r, break m3): the handler, else each active Owner and Admin, else the firm's contact address.
+      // An address the firm's suppression list holds is skipped; for these emails (SERVICE and TRANSACTIONAL email) that
+      // is the only thing the consent gate refuses (ports/consent.ts decide). The first tier that reaches anyone is
+      // recorded; then the event and its audit line, then the emails, in that order, so a run that rolls back sends nothing
+      // (and a refused send, e.g. an address suppressed meanwhile, rolls the run back and the job tries again).
+      const all = tiers.flatMap((t) => t.to.map((r) => r.address.toLowerCase()));
+      const suppressed = new Set((await tx.msgSuppression.findMany({ where: firmScope(firmId, { channel: "EMAIL" as const, address: { in: all } }), select: { address: true } })).map((x) => x.address));
+      const used = tiers.map((t) => ({ ...t, to: t.to.filter((r) => !suppressed.has(r.address.toLowerCase())) })).find((t) => t.to.length);
+      if (!used) throw new MessageRefused("not sent: no handler, Owner, Admin or firm contact address takes email (each is suppressed)");
+      const recipients = used.to.length, sentTo = used.sentTo;
+      await tx.platComplaintEvent.create({ data: { firmId, complaintId, kind: "REMINDER_SENT", at: now, actor: SYSTEM_ACTOR, detail: { handlerStaffId: c.handlerStaffId, sentTo, recipients } } });
       await this.d.audit.record(tx, { firmId, actor: SYSTEM_ACTOR, action: "complaint.reminder", entity: "plat_complaint", entityKey: complaintId,
-        summary: sentTo === "handler" ? "Acknowledgement reminder sent to the handler" : sentTo === "owners_admins" ? "Acknowledgement reminder sent to the firm's Owners and Admins (the handler is not active)" : "Acknowledgement reminder sent to the firm's contact address (no active handler, Owner or Admin)",
-        detail: { complaintId, handlerStaffId: c.handlerStaffId, sentTo, recipients: to.length } });
-      const text = handler
-        ? `A complaint you handle was due to be acknowledged by ${due} (${zone}). Open it in Complaints (reference ${complaintId}) and record the acknowledgement.`
-        : `A complaint was due to be acknowledged by ${due} (${zone}), and its handler is no longer active. Open it in Complaints (reference ${complaintId}), choose a new handler and record the acknowledgement.`;
-      for (const address of to) await this.d.mail.send({ firmId, to: address, replyTo: firm.contactEmail, subject: "A complaint is waiting for its acknowledgement", text, class: "SERVICE", templateKey: "platform.complaint.ack_reminder" });
+        summary: sentTo === "handler" ? "Acknowledgement reminder sent to the handler" : sentTo === "owners_admins" ? `Acknowledgement reminder sent to the firm's Owners and Admins (the handler ${reach})` : "Acknowledgement reminder sent to the firm's contact address (no handler, Owner or Admin could be reached)",
+        detail: { complaintId, handlerStaffId: c.handlerStaffId, sentTo, recipients } });
+      for (const r of used.to) after.push((await mailIn(this.d.mail, tx, {
+        firmId, to: r.address, replyTo: firm.contactEmail, subject: "A complaint is waiting for its acknowledgement", text: used.text, templateKey: "platform.complaint.ack_reminder",
+        ...(r.staffId ? { class: "SERVICE" as const, person: { kind: "STAFF" as const, id: r.staffId } } : { class: "TRANSACTIONAL" as const }),
+        idempotencyKey: `complaint.ack_reminder:${complaintId}:${r.staffId ?? "firm-contact"}`,
+      })).dispatch);
       return "sent" as const;
     });
   }
