@@ -1,0 +1,203 @@
+// AUD-1b (map row 8, R1.8 part 2; SA-11-2, AG-13-40, SA-11 BR-3; P-607 (3) fail-closed; case-side contract §2.5): every
+// audit line written through AuditPort carries its firm, its actor type and its request's or job's correlation id, read
+// from PF-23's request scope (hook.ts's middleware, the guard's req.platform) and a job's scope; a failed line rolls the
+// change back with one audit_write_failed alert and no retry; a line never lands on another firm's trail. DW1-DW7, a pass
+// and a fail each. A scratch database (every migration, PF-3's Sample firms) and a small Nest app built from PF-4's own
+// session classes, the guard and PF-23's request middleware, plus one probe route that records through the adapter in a
+// transaction across awaits. No browser, no model call (US$0). The scratch database is dropped at the end.
+//   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_aud1b_adapter.ts
+import "reflect-metadata";
+import { Body, Controller, HttpCode, Inject, Module, Post, Req } from "@nestjs/common";
+import { APP_GUARD, NestFactory } from "@nestjs/core";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@prisma/client";
+import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fakeAlerts } from "../ports/alert.ts";
+import { fakeAudit } from "../ports/audit.ts";
+import { fakeMail } from "../ports/mail.ts";
+import { runContract } from "../ports/contracts/contract.ts";
+import { auditPortContract } from "../ports/contracts/audit-port.contract.ts";
+
+const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
+const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
+const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
+const DB = `xr_studio_aud1b_scratch_${process.pid}`;
+const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
+const sql = (q: string) => execFileSync(join(BIN, "psql"), [urlOf(DB), "-X", "-v", "ON_ERROR_STOP=1", "-q", "-Atc", q], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+
+let pass = 0, fail = 0;
+const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 500)}` : ""}`); };
+const rejects = async (f: () => Promise<unknown>, test: (e: unknown) => boolean = () => true) => { try { await f(); return false; } catch (e) { return test(e); } };
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+type Res = { status: number; body: any; requestId: string | null };
+const call = async (base: string, method: string, path: string, o: { token?: string; body?: unknown; requestId?: string } = {}): Promise<Res> => {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (o.token) headers.authorization = `Bearer ${o.token}`;
+  if (o.requestId !== undefined) headers["x-request-id"] = o.requestId;
+  const r = await fetch(`${base}${path}`, { method, headers, body: o.body === undefined ? undefined : JSON.stringify(o.body) });
+  const text = await r.text(); let body: any = text; try { body = JSON.parse(text); } catch { /* text */ }
+  return { status: r.status, body, requestId: r.headers.get("x-request-id") };
+};
+
+execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
+for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
+process.env.DATABASE_URL = urlOf(DB);
+for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED", "PLATFORM_LOCAL_SECRET"]) delete process.env[k];
+
+const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
+const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
+const { PlatformClock } = await import("../api/src/platform/identity/port.ts");
+const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
+const { IDENTITY_PORT, PlatformIdentity } = await import("../api/src/platform/identity/service.ts");
+const { PlatformGuard } = await import("../api/src/platform/identity/guard.ts");
+const { PlatformIdentityController } = await import("../api/src/platform/identity/routes.ts");
+const { AnyStaff, staffOf } = await import("../api/src/platform/identity/keys.ts");
+const { actorWord } = await import("../api/src/platform/identity/audit.ts");
+const { IDENTITY_ADMIN_PORT, LocalIdentityAdmin } = await import("../api/src/platform/identity/session/provider.ts");
+const { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts");
+const { PlatformSession } = await import("../api/src/platform/identity/session/service.ts");
+const { PlatformSessionController } = await import("../api/src/platform/identity/session/routes.ts");
+const { AuditEventAdapter, AuditRefused, auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
+const { auditContext } = await import("../api/src/platform/audit/context.ts");
+const { requestMiddleware, auditOf } = await import("../api/src/platform/observability/hook.ts");
+const { requestScope } = await import("../api/src/platform/observability/log.ts");
+const { useAlerts } = await import("../api/src/platform/observability/alerts.ts");
+const { observed } = await import("../api/src/platform/jobs/platform-jobs.ts");
+const { withFirm } = await import("../api/src/platform/firm-scope.ts");
+
+const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
+const clock = new (class extends PlatformClock { t = Date.now(); override now() { return this.t; } })();
+const local = new LocalIdentity("aud1b-check-signing-key-0123456789abcdef", () => clock.now());
+const alerts = fakeAlerts(); const restoreAlerts = useAlerts(alerts);
+const failed = () => alerts.raised.filter((a) => a.kind === "audit_write_failed");
+
+/** The probe: a change (a moduleEvent-free row: a workspace) and its audit line in one transaction, across awaits. The
+ *  body may name another firm (DW6) or a key the forced-failure trigger refuses (DW4). */
+@Controller("api/platform/aud1b-probe")
+class ProbeController {
+  constructor(@Inject(Db) private readonly dbx: InstanceType<typeof Db>) {}
+  @Post() @HttpCode(200) @AnyStaff("AUD-1b's check: one change and its audit line")
+  async probe(@Req() r: any, @Body() b: { key: string; firmId?: string; waitMs?: number; change?: boolean }) {
+    const s = staffOf(r);
+    await pause(b.waitMs ?? 0);
+    return withFirm(s.firmId, () => (this.dbx as unknown as PrismaClient).$transaction(async (tx) => {
+      if (b.change) await tx.workspace.create({ data: { key: `aud1b-${b.key}`, label: "AUD-1b check change" } });
+      await pause(b.waitMs ?? 0);
+      await auditEvent.record(tx, { firmId: b.firmId ?? s.firmId, actor: actorWord(s.staffId), action: "platform.check.probe", entity: "platform_staff", entityKey: b.key, summary: "AUD-1b check line." });
+      return { ok: true };
+    }, { timeout: 20_000 }));
+  }
+}
+
+let app: { close(): Promise<void> } | null = null;
+try {
+  const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
+    { provide: IDENTITY_ADMIN_PORT, useValue: new LocalIdentityAdmin(() => clock.now()) }, { provide: MAIL_PORT, useValue: fakeMail() }, PlatformSession];
+  @Module({ controllers: [PlatformIdentityController, PlatformSessionController, ProbeController] as never[], providers: providers as never[] }) class TestApp {}
+  const nest = await NestFactory.create(TestApp, { logger: false });
+  nest.use(requestMiddleware());   // PF-23's middleware, as observe() adds it in main.ts
+  await nest.listen(0, "127.0.0.1"); app = nest;
+  const base = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}`;
+
+  await seedSampleFirms(db);
+  const staff = async (actorId: string) => db.platformStaff.findFirstOrThrow({ where: { actorId }, select: { id: true, firmId: true, firm: { select: { key: true } } } });
+  const R = await staff("user-R"), S = await staff("user-S");
+  const FIRM_A = R.firmId, FIRM_B = S.firmId;
+  const signIn = async (actorId: string, firmKey: string) => { const r = await call(base, "POST", "/api/platform/session/local", { body: { firmKey, actorId, secondStep: true } }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.token as string; };
+  const row = (where: string) => sql(`select coalesce(firm_id::text,'') || '|' || actor_type || '|' || coalesce(correlation_id,'') || '|' || actor from audit_event where ${where} order by at desc limit 1`);
+  ok("setup: two firms (A, B), each with a staff member", FIRM_A !== FIRM_B && R.firm.key && S.firm.key, { FIRM_A, FIRM_B });
+
+  // ------------------------------------------------------------------------- DW1: a PF route's line, from the request
+  const tR = await signIn("user-R", R.firm.key);
+  const out = await call(base, "POST", "/api/platform/session/sign-out", { token: tR, requestId: "aud1b-dw1-given.1" });
+  ok("AUD-1b DW1 pass: PF-4's sign-out line has firm_id, actor_type FIRM_STAFF and the request's own X-Request-Id as its correlation id",
+    out.status === 200 && out.requestId === "aud1b-dw1-given.1" && row(`action = 'platform.staff.signed_out' and entity_key = '${R.id}'`) === `${FIRM_A}|FIRM_STAFF|aud1b-dw1-given.1|staff:${R.id}`, [out.status, row(`action = 'platform.staff.signed_out'`)]);
+  clock.t += 1000;
+  const tR2 = await signIn("user-R", R.firm.key);
+  const bad = await call(base, "POST", "/api/platform/session/sign-out", { token: tR2, requestId: "Client A <a@example.com>" });
+  const badRow = row(`action = 'platform.staff.signed_out' and entity_key = '${R.id}'`);
+  ok("AUD-1b DW1 fail: a malformed X-Request-Id is replaced, never stored: the line carries the new id the answer sent back",
+    bad.status === 200 && !!bad.requestId && bad.requestId !== "Client A <a@example.com>" && badRow === `${FIRM_A}|FIRM_STAFF|${bad.requestId}|staff:${R.id}` && sql(`select count(*) from audit_event where correlation_id like '%example.com%'`) === "0", [bad.requestId, badRow]);
+
+  // ------------------------------------------------------------------------- DW2: a job's line; a line outside any scope
+  const jobKey = "aud1b-dw2-job-1";
+  const runJob = observed("aud1b-check", async (j) => {
+    await pause(5);
+    await db.$transaction((tx) => auditEvent.record(tx, { firmId: j.firmId!, actor: "system:aud1b-check", action: "platform.check.job", entity: "platform_staff", entityKey: jobKey, summary: "AUD-1b job line." }));
+  });
+  await runJob({ name: "aud1b-check", key: jobKey, firmId: FIRM_B, payload: {}, runAt: new Date(clock.now()), attempt: 1 });
+  let jobCtx: unknown;
+  await observed("aud1b-check", async () => { jobCtx = auditContext(); })({ name: "aud1b-check", key: "aud1b-dw2-ctx", firmId: FIRM_B, payload: {}, runAt: new Date(clock.now()), attempt: 1 });
+  ok("AUD-1b DW2 pass: a job's line has actor_type SYSTEM, the job's firm and the job's correlation id (job:<key>); the job's context says SYSTEM",
+    row(`entity_key = '${jobKey}'`) === `${FIRM_B}|SYSTEM|job:${jobKey}|system:aud1b-check` && (jobCtx as any)?.actorType === "SYSTEM" && (jobCtx as any)?.firmId === FIRM_B, [row(`entity_key = '${jobKey}'`), jobCtx]);
+  const jobOther = await rejects(() => observed("aud1b-check", async () => { await db.$transaction((tx) => auditEvent.record(tx, { firmId: FIRM_A, actor: "system:aud1b-check", action: "platform.check.job", entity: "platform_staff", entityKey: "aud1b-dw2-other", summary: "AUD-1b job line." })); })({ name: "aud1b-check", key: "aud1b-dw2-other", firmId: FIRM_B, payload: {}, runAt: new Date(clock.now()), attempt: 1 }), (e) => e instanceof AuditRefused);
+  await db.$transaction((tx) => auditEvent.record(tx, { firmId: FIRM_A, actor: "seed:aud1b-check", action: "platform.check.seed", entity: "platform_staff", entityKey: "aud1b-dw2-none", summary: "AUD-1b line outside any scope." }));
+  ok("AUD-1b DW2 fail: a line outside any request or job has no correlation id and its actor word's type (seed: → SEED); a job's entry for another firm is refused",
+    auditContext() === undefined && row(`entity_key = 'aud1b-dw2-none'`) === `${FIRM_A}|SEED||seed:aud1b-check` && jobOther && sql(`select count(*) from audit_event where entity_key = 'aud1b-dw2-other'`) === "0", row(`entity_key = 'aud1b-dw2-none'`));
+
+  // ------------------------------------------------------------------------- DW3: a scope marked ours
+  const ours = { platform: { staffId: R.id, firmId: FIRM_A, ourStaff: true } }, theirs = { platform: { staffId: R.id, firmId: FIRM_A } };
+  const inScope = <T>(req: typeof ours | typeof theirs, fn: () => T) => requestScope.run({ correlationId: "aud1b-dw3", firmId: () => FIRM_A, audit: () => auditOf(req) }, fn);
+  const ctxOurs = inScope(ours, () => auditContext()), ctxTheirs = inScope(theirs, () => auditContext());
+  ok("AUD-1b DW3 pass: a scope a guard marks as ours gives OUR_STAFF (entered directly; PF-4s's guard is not on main); a firm's staff gives FIRM_STAFF",
+    ctxOurs?.actorType === "OUR_STAFF" && ctxOurs.actor === `staff:${R.id}` && ctxOurs.firmId === FIRM_A && ctxOurs.correlationId === "aud1b-dw3" && ctxTheirs?.actorType === "FIRM_STAFF", { ctxOurs, ctxTheirs });
+  const oursRefused = await inScope(ours, () => rejects(() => db.$transaction((tx) => auditEvent.record(tx, { firmId: FIRM_A, actor: `staff:${R.id}`, action: "platform.check.ours", entity: "platform_staff", entityKey: "aud1b-dw3", summary: "AUD-1b ours." })), (e) => e instanceof AuditRefused && /acts as OUR_STAFF/.test((e as Error).message)));
+  ok("AUD-1b DW3 fail: our staff's line is never written as FIRM_STAFF: until PF-4s gives our staff an actor word, the adapter refuses it and writes nothing",
+    oursRefused && sql(`select count(*) from audit_event where entity_key = 'aud1b-dw3'`) === "0");
+
+  // ------------------------------------------------------------------------- DW4: a forced audit failure, fail-closed
+  sql(`create sequence aud1b_tries; create function aud1b_force() returns trigger language plpgsql as $$ begin perform nextval('aud1b_tries'); raise exception 'aud1b forced audit failure'; end $$;
+       create trigger aud1b_force before insert on audit_event for each row when (new.entity_key like 'aud1b-dw4%') execute function aud1b_force();`);
+  const tS = await signIn("user-S", S.firm.key);
+  const f0 = failed().length, ws0 = sql("select count(*) from workspace");
+  const forced = await call(base, "POST", "/api/platform/aud1b-probe", { token: tS, body: { key: "aud1b-dw4", change: true }, requestId: "aud1b-dw4-req" });
+  const tries = sql("select last_value || ':' || is_called from aud1b_tries");
+  const alarm = failed().slice(f0);
+  ok("AUD-1b DW4 pass: a forced failure of the adapter's own write rolls the change back (no workspace row) and the request fails",
+    forced.status >= 500 && sql("select count(*) from workspace") === ws0 && sql("select count(*) from workspace where key = 'aud1b-aud1b-dw4'") === "0" && sql("select count(*) from audit_event where entity_key like 'aud1b-dw4%'") === "0", forced);
+  ok("AUD-1b DW4 fail: exactly one audit_write_failed alert, ids only (firm, entity, key), and no retry (the write was tried once)",
+    alarm.length === 1 && alarm[0].detail.firmId === FIRM_B && alarm[0].detail.entity === "platform_staff" && alarm[0].detail.entityKey === "aud1b-dw4" && Object.keys(alarm[0].detail).sort().join() === "entity,entityKey,firmId,rule" && tries === "1:true", { alarm, tries });
+  sql("drop trigger aud1b_force on audit_event; drop function aud1b_force(); drop sequence aud1b_tries;");
+
+  // ------------------------------------------------------------------------- DW5: 100 interleaved requests, two firms
+  const tokens = { A: await signIn("user-R", R.firm.key), B: tS };
+  const N = 100, reqs = Array.from({ length: N }, (_, i) => ({ i, firm: i % 2 ? "B" : "A", rid: `aud1b-dw5-${i}`, wait: (i * 7) % 23 }));
+  const answers = await Promise.all(reqs.map((q) => call(base, "POST", "/api/platform/aud1b-probe", { token: tokens[q.firm as "A" | "B"], body: { key: `aud1b-dw5-${q.i}`, waitMs: q.wait }, requestId: q.rid })));
+  const got = new Map(sql(`select entity_key || '|' || firm_id || '|' || coalesce(correlation_id,'') from audit_event where entity_key like 'aud1b-dw5-%'`).split("\n").filter(Boolean).map((l) => { const [k, f, c] = l.split("|"); return [k, { f, c }]; }));
+  const swapped = reqs.filter((q) => { const g = got.get(`aud1b-dw5-${q.i}`); return !g || g.c !== q.rid || g.f !== (q.firm === "A" ? FIRM_A : FIRM_B); });
+  ok(`AUD-1b DW5 pass: ${N} interleaved requests (own X-Request-Id each, two firms, awaits inside and outside the transaction) give ${N} lines, each with its own correlation id and firm`,
+    answers.every((a) => a.status === 200) && got.size === N && swapped.length === 0, { statuses: [...new Set(answers.map((a) => a.status))], size: got.size, swapped: swapped.slice(0, 5) });
+  ok("AUD-1b DW5 fail: no correlation id is on two lines, and none is on a line of the other firm",
+    Number(sql(`select count(distinct correlation_id) from audit_event where entity_key like 'aud1b-dw5-%'`)) === N && sql(`select count(*) from audit_event where entity_key like 'aud1b-dw5-%' and ((substring(entity_key from 11)::int % 2 = 0) <> (firm_id = '${FIRM_A}'))`) === "0");
+
+  // ------------------------------------------------------------------------- DW6: an entry for another firm
+  const f6 = failed().length, ws6 = sql("select count(*) from workspace");
+  const other = await call(base, "POST", "/api/platform/aud1b-probe", { token: tokens.A, body: { key: "aud1b-dw6", firmId: FIRM_B, change: true } });
+  ok("AUD-1b DW6 fail: an entry whose firm differs from the request's firm is refused: the request fails, nothing is written, the change rolls back, one alert",
+    other.status >= 500 && sql("select count(*) from audit_event where entity_key = 'aud1b-dw6'") === "0" && sql("select count(*) from workspace") === ws6 && failed().length === f6 + 1 && failed().at(-1)!.detail.entityKey === "aud1b-dw6", other);
+  const own = await call(base, "POST", "/api/platform/aud1b-probe", { token: tokens.A, body: { key: "aud1b-dw6-own", firmId: FIRM_A.toUpperCase(), change: true } });
+  ok("AUD-1b DW6 pass: the same entry naming the request's own firm (any letter case) is written, lower-cased, with its change",
+    own.status === 200 && row(`entity_key = 'aud1b-dw6-own'`).startsWith(`${FIRM_A}|FIRM_STAFF|`) && sql("select count(*) from workspace where key = 'aud1b-aud1b-dw6-own'") === "1", own);
+
+  // ------------------------------------------------------------------------- DW7: the port's contract, caseId included
+  const CASE = "0c0c0c0c-0000-4000-8000-0000000000c3";
+  await runContract(auditPortContract, "fakeAudit", () => { const a = fakeAudit(); return { audit: a, commit: (fn) => a.transaction(fn), rollback: (fn) => a.transaction(async (tx) => { await fn(tx); throw new Error("roll back"); }).catch(() => undefined), lines: async (firm, prefix) => a.entries.filter((e) => e.firmId.toLowerCase() === firm && e.entityKey.startsWith(prefix)) }; }, ok);
+  await runContract(auditPortContract, "AuditEventAdapter", () => ({ audit: new AuditEventAdapter(), commit: (fn) => db.$transaction((tx) => fn(tx)), rollback: (fn) => db.$transaction(async (tx) => { await fn(tx); throw new Error("roll back"); }).catch(() => undefined),
+    lines: async (firm, prefix) => (await db.auditEvent.findMany({ where: { firmId: firm, entityKey: { startsWith: prefix } }, orderBy: [{ at: "asc" }, { entityKey: "asc" }] })).map((e) => ({ actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey ?? "", summary: e.summary, caseId: e.caseId })) }), ok);
+  await db.$transaction((tx) => auditEvent.record(tx, { firmId: FIRM_A, actor: "system:aud1b-check", action: "platform.check.case", entity: "platform_staff", entityKey: "aud1b-dw7", summary: "AUD-1b case line.", caseId: CASE }));
+  ok("AUD-1b DW7 pass: the adapter keeps the entry's caseId in case_id and the firm in both firm_id and detail.firmId",
+    sql(`select case_id || '|' || firm_id || '|' || (detail->>'firmId') from audit_event where entity_key = 'aud1b-dw7'`) === `${CASE}|${FIRM_A}|${FIRM_A}`);
+  ok("AUD-1b DW7 fail: a caseId that is not a uuid is refused and writes nothing",
+    await rejects(() => db.$transaction((tx) => auditEvent.record(tx, { firmId: FIRM_A, actor: "system:aud1b-check", action: "platform.check.case", entity: "platform_staff", entityKey: "aud1b-dw7-bad", summary: "AUD-1b case line.", caseId: "case-1" }))) && sql("select count(*) from audit_event where entity_key = 'aud1b-dw7-bad'") === "0");
+} catch (e) {
+  fail++; console.log(`FAIL  the check stopped: ${(e as Error).stack ?? e}`);
+} finally {
+  useAlerts(restoreAlerts);
+  await app?.close(); await db.$disconnect();
+  execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]);
+}
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);
