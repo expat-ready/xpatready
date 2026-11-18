@@ -119,6 +119,7 @@ else:
     if not co or co[0].get("with", {}).get("ref") != "main" or co[0]["with"].get("persist-credentials") is not False: out.append("sweep does not check out main without a kept token")
     runs = " ".join(str(s.get("run", "")) for s in j["steps"])
     if "label-sweep.sh" not in runs or "pr/" in runs or "head" in runs: out.append("sweep's run: " + runs)
+    if "workflow_dispatch" not in on or "workflow_dispatch" not in j.get("if", ""): out.append("the sweep cannot be run by hand (workflow_dispatch, Lead 84 19 Nov)")
 g = d["jobs"]["guard"].get("if", "")
 if "github.event.pull_request" not in g: out.append("the guard job's if changed: " + g)
 if "github.event.label.name == 'queued'" not in g: out.append("the guard does not run when Mergify puts queued on: " + g)
