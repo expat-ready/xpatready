@@ -123,3 +123,19 @@ None.
 * **Journey score:** now 9.5/10. Correct data and accessibility now score 1 each (m6 matches Team's accepted pattern). Feedback stays at ½ for the text loading line (m7).
 
 **Verdict: Approve** for commit 242065067b9cb5ebf220ecd847ab3aa303fe02d1.
+
+## Re-review of the merge of `main` (1210f0771, parents f598b6ed3 and b403d310d), 18 Nov 2026
+**Verdict: Approve for commit 1210f0771af0e3993e7e5cf52019152a860b5607.** I read the resolution only (P-277).
+* **The two conflicts are a plain union:**
+  - `account-sections.ts` keeps part 2b's Licence, Licences and Security entries and adds PF-5t's Terms entry (`agent/settings:list`).
+  - `routes.tsx` keeps part 2b's four imports and routes and adds PF-5t's import and `/platform/terms` route.
+  - Nothing is dropped, reordered or duplicated, and no path is used twice.
+* **The merge changes nothing else in part 2b:**
+  - `git diff b403d310d 1210f0771` is exactly part 2b's 10 studio files.
+  - The merge leaves part 2b's own files unchanged (`f598b6ed3..1210f0771` on them is empty).
+  - The studio tree at `f598b6ed3` is the same as `242065067`, the commit approved above.
+* **Tests:** part 2b's tests do not depend on the new Terms entry. DW7 checks only that no Licences or Security entry shows for the Case Officer.
+* **Not re-run by me:** I took the coordinator's runs on the merge as reported: PF-6 staff 90/90, PF-5t 35/35, PF-6a 52/52, PF-1 module routes 28/28, web `tsc` clean.
+* **Before the label:** CI's full run on this head, including J-6's P1-A4 lines, as noted above.
+
+**Verdict: Approve** for commit 1210f0771af0e3993e7e5cf52019152a860b5607.
