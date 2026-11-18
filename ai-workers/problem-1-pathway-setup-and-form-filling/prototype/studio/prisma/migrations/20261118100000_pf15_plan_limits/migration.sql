@@ -6,7 +6,9 @@
 --     corporate cases, storage in MB). limit_value null = Unlimited, 0 = none allowed (SA-3-4); never negative. Seats keep
 --     their one home, platform_plan.seats_limit (several suites set it directly). The app reads this table and never
 --     writes it (writes are revoked from xr_data): the limits change only by a migration until PF-15 part 2's route for
---     our team (SA-3-43, SA-3-62). A plan with no row for a metric is read as 0 by the service (fail closed).
+--     our team (SA-3-43, SA-3-62). A plan with no row for a metric is read as 0 by the service (fail closed). A plan's
+--     limits go with the plan (ON DELETE CASCADE: they are part of it; PF-3's own check deletes the plans). A catalogue,
+--     outside PF-12's walls like platform_plan (tests/check_pf12_walls.ts CATALOGUES).
 --   * platform_storage_over (a firm table, PF-12's wall): the firm's storage-over mark (SA-3-40): first_over_at,
 --     alerted_at (once per episode), back_under_at, and the bytes and limit last measured. A row is never deleted (a
 --     trigger refuses delete and truncate) and never moves firm.
@@ -44,7 +46,7 @@ CREATE TABLE "platform_storage_over" (
 );
 
 -- AddForeignKey
-ALTER TABLE "platform_plan_limit" ADD CONSTRAINT "platform_plan_limit_plan_id_fkey" FOREIGN KEY ("plan_id") REFERENCES "platform_plan"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+ALTER TABLE "platform_plan_limit" ADD CONSTRAINT "platform_plan_limit_plan_id_fkey" FOREIGN KEY ("plan_id") REFERENCES "platform_plan"("id") ON DELETE CASCADE ON UPDATE RESTRICT;
 
 -- AddForeignKey
 ALTER TABLE "platform_storage_over" ADD CONSTRAINT "platform_storage_over_firm_id_fkey" FOREIGN KEY ("firm_id") REFERENCES "platform_firm"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;

@@ -17,14 +17,14 @@ enum PlatformLimitMetric {
 
 /// One plan's limit on one metric (no firm_id: the plan catalogue). `limitValue` null = Unlimited, 0 = none allowed
 /// (SA-3-4). A plan with no row for a metric is read as 0 (fail closed, never Unlimited). Values are Sample until the
-/// founder sets them.
+/// founder sets them. A plan's limits go with the plan (cascade): they are part of it.
 model PlatformPlanLimit {
   planId     String              @map("plan_id") @db.Uuid
   metric     PlatformLimitMetric
   limitValue Int?                @map("limit_value")
   updatedAt  DateTime            @default(now()) @map("updated_at") @db.Timestamptz
 
-  plan PlatformPlan @relation(fields: [planId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  plan PlatformPlan @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Restrict)
 
   @@id([planId, metric])
   @@map("platform_plan_limit")
