@@ -14,7 +14,9 @@ const isMarker = (dir: string): boolean => existsSync(join(dir, MARKER)) && stat
 export function findRoot(from: string, env: NodeJS.ProcessEnv = process.env): string {
   const given = env.REPO_ROOT?.trim();
   if (given) {
-    const set = given.length > 1 ? given.replace(/\/+$/, "") || "/" : given; // a trailing slash is the same folder
+    let end = given.length; // a trailing slash is the same folder (a loop, not a regular expression: CodeQL js/polynomial-redos)
+    while (end > 1 && given[end - 1] === "/") end--;
+    const set = given.slice(0, end);
     if (!isAbsolute(set) || resolve(set) !== set) throw new Error(`REPO_ROOT must be an absolute path without . or .. parts (got ${given})`);
     if (!isMarker(set)) throw new Error(`REPO_ROOT has no ${MARKER} file: ${given}`);
     return set;
