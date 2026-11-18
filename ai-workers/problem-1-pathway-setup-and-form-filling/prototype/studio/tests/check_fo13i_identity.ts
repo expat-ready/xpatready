@@ -13,7 +13,7 @@ import { mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
-const NEW = "20261117060000_fo13i_identity_check_key", KEY = "agent/identity-check:record";
+const NEW = "20261118140000_fo13i_identity_check_key", KEY = "agent/identity-check:record";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_fo13i_${process.pid}`, URL = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
 const WORK = join(STUDIO, "var", `fo13i-check-${process.pid}`);
@@ -74,7 +74,7 @@ try {
 
   const A = sql(`select id from platform_firm where key='sample-firm'`), B = sql(`select id from platform_firm where key='sample-solo'`);
   const sid = (actor: string) => sql(`select id from platform_staff where actor_id='${actor}'`);
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "seed:fo13i", workspaceId: await platformAuditWorkspaceId(db as never) });
   const local = new LocalIdentity("fo13i-check-signing-key-0123456789abcdef", () => Date.now());
   const token = (staffId: string) => local.issue(staffId, { authTimeMs: Date.now() - 60_000, secondStep: true });
   const staff = async (firmId: string, name: string, role: string) => {
