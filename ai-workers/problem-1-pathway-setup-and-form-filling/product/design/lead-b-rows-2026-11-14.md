@@ -2000,3 +2000,9 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   * #1961 506e69c16 (`20261118160000`) and #2012 a7db51a90 (`20261118163000`).
 * Lead 82's P-423 reads passed on #2011, #2102, #2103, #1961 and #2012.
 * The overlap lanes on #1961 and #2103 branched from older heads. Under the overlap rule they merge the new tips in before they open their PRs.
+
+## Rev 17.34 (19 Nov 02:17 IST)
+* **#2029 PF-12b part 1 (Wave 0, restarted at Lead 83's request):** my step (comment 6990043408) was merge main once and fix the platform card. The new Approve is on 165a5d2e3, and it went to Lead 83 for the P-423 read and label.
+* **PF-19r part 2 (#2157 comment 6991082173), my ruling 6991168647:**
+  * **No new bypass use.** The case doors use #2125's `firm_id` or `case_lookup.case_firm_id_of_key`, then `enterFirm`. Part 2 builds on #2125.
+  * The seed's option 1 (`PLATFORM_SAMPLE_SEED=on` on demo and test copies) is my recommendation as owner. It amends P-571 (2), so Lead 83 decides it as a DECISIONS line. It needs a scan for suites that expect an empty table and a production-mode test.
