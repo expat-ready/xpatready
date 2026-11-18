@@ -11,6 +11,7 @@ import { z } from "zod";
 import type { CaseCountPort } from "../../../../ports/case-count.ts";
 import { EntitlementMetric, STORAGE_HARD_AFTER_DAYS, type EntitlementPort, type EntitlementResult } from "../../../../ports/entitlement.ts";
 import type { FilesPort } from "../../../../ports/files.ts";
+import { currentFirm, firmScope, notInFirm } from "../firm-scope.ts";
 
 /** A Prisma client or the caller's transaction. */
 export type LimitsClient = PrismaClient | Prisma.TransactionClient;
@@ -66,7 +67,13 @@ export async function seatsUsed(client: LimitsClient, firmId: string): Promise<n
   return used;
 }
 
-const WORD: Record<EntitlementMetric, string> = { seats: "staff", active_individual_cases: "active individual cases", active_corporate_cases: "active corporate cases", storage_mb: "MB of storage" };
+/** SA-4-56's sentence per metric (its seats example word for word; cases close or are withdrawn, storage is documents). */
+const SAY: Record<EntitlementMetric, (used: number, plan: string, limit: number, reduce: number) => string> = {
+  seats: (u, p, l, r) => `You have ${u} staff; ${p} allows ${l}. Remove ${r} staff or choose a larger plan.`,
+  active_individual_cases: (u, p, l, r) => `You have ${u} active individual cases; ${p} allows ${l}. Close or withdraw ${r} of them or choose a larger plan.`,
+  active_corporate_cases: (u, p, l, r) => `You have ${u} active corporate cases; ${p} allows ${l}. Close or withdraw ${r} of them or choose a larger plan.`,
+  storage_mb: (u, p, l, r) => `Your documents take ${u} MB; ${p} allows ${l} MB. Remove ${r} MB of documents or choose a larger plan.`,
+};
 export type DowngradeConflict = { metric: EntitlementMetric; used: number; limit: number; reduce: number; words: string };
 export type DowngradeCheck = { targetPlan: string; conflicts: DowngradeConflict[]; features: string[]; featuresNote: string };
 /** Why `features` is empty (SA-3-58's second half): main has no plan feature list; PF-17 brings it and PF-15 then checks it. */
@@ -74,11 +81,13 @@ export const FEATURES_NOTE = "Not checked yet: there is no plan feature list (it
 
 /** SA-3-58, SA-4-56: every limit the firm's usage is over on `targetPlan` (usage, the target's limit, the amount to
  *  reduce, and the words "You have 8 staff; Starter allows 3. Remove 5 staff or choose a larger plan."), over all four
- *  metrics, read in `client` (the caller's transaction). The usage is the platform's own for seats and storage and the
+ *  metrics, read in `client` (the caller's transaction). `cases` must be bound to the same firm (the caller binds it). The usage is the platform's own for seats and storage and the
  *  case side's CaseCountPort for cases (bound to the firm by the caller). The target's limits are its current ones (null:
  *  Unlimited; no row: 0). Feature conflicts wait on PF-17's feature list (FEATURES_NOTE). It books nothing (part 1b). */
 export async function checkDowngrade(client: LimitsClient, deps: { files: Pick<FilesPort, "usedBytes">; cases: CaseCountPort }, firmId: string, targetPlan: string): Promise<DowngradeCheck> {
   z.string().min(1).max(64).parse(targetPlan);
+  const scoped = currentFirm();
+  if (scoped && scoped !== firmScope(firmId).firmId) notInFirm("firm");   // another firm's usage would read as 0 behind the walls (break m5)
   const t = (await client.$queryRaw<{ id: string; name: string; seats: number }[]>`SELECT "id"::text AS id, "name", "seats_limit" AS seats FROM "platform_plan" WHERE "code" = ${targetPlan} AND "active"`)[0];
   if (!t) throw new HttpException({ type: "https://expatready.local/problems/not-found", title: "Not found", status: 404, code: "PLAN_NOT_FOUND", detail: "No such plan." }, HttpStatus.NOT_FOUND);
   const rows = await client.$queryRaw<{ metric: string; value: number | null }[]>`SELECT "metric"::text AS metric, "limit_value" AS value FROM "platform_plan_limit" WHERE "plan_id" = ${t.id}::uuid`;
@@ -91,6 +100,6 @@ export async function checkDowngrade(client: LimitsClient, deps: { files: Pick<F
     ["storage_mb", mbOf(await deps.files.usedBytes(firmId)), of("STORAGE_MB")],
   ];
   const conflicts = usage.filter(([, used, limit]) => limit !== null && used > limit).map(([metric, used, limit]) => ({ metric, used, limit: limit!, reduce: used - limit!,
-    words: `You have ${used} ${WORD[metric]}; ${t.name} allows ${limit}. Remove ${used - limit!} ${WORD[metric]} or choose a larger plan.` }));
+    words: SAY[metric](used, t.name, limit!, used - limit!) }));
   return { targetPlan, conflicts, features: [], featuresNote: FEATURES_NOTE };
 }
