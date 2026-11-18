@@ -160,3 +160,5 @@ Merged on main: #2002, #2007, #2016, #2035. #2000 got "Reviewer: Approve 1fb7ca0
 **12:50 IST 18 Nov:** Lead 80 (local_d018e333) is now current, after Lead 79.
 
 **12:52 IST 18 Nov (Lead 80):** took my list onto its checks and does the PR steps. #2003 is in Mergify batch #2115. #2000 gets its label on green. #2000 and #2012 get migration slots at their next merge of main. AUD-5 part 2 goes to the AUD-5 part 1 cloud lane at Lead 80's next check.
+
+**15:54 IST 18 Nov (stall sent to Lead 80):** nothing has merged to main since #2008 (about 21:45 IST 17 Nov). Mergify batch #2115 (#2003, #2014, #2011; built 12:46 IST) is still open after 3 hours; asked Lead 80 to check its CI and the Mergify/runner wiring after the org move. #2003 is at fdf4c6d84 (Approve fdf4c6d); #2000 is at 2048a997e (Approve), waiting for its label; #2106 is at 8a34b34e5.
