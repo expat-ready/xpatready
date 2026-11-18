@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-702**, 18 Nov 22:1x IST; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-18-2215-lead81s2-as-of-P-698.md`, whose first line lists the older ones)
+# Rule register (the tech lead keeps it; as of **P-706**, 19 Nov 00:1x IST; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-19-0015-lead82s2-as-of-P-702.md`, whose first line lists the older ones)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -19,7 +19,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | IDX-2 | One-time or standing process directions (with P-508, P-512, P-514, P-547, P-566, P-580, P-583, P-589, P-592); the list and rows word for word in `rules/goal-and-order.md` › Index lists. | prose | 16 Nov |
 | P-473 | UX style: calm work app, plain second-person client questions with "Why we ask", quiet surfaces, no motion library. | prose | 11 Nov |
 | P-558 | Two Leads: Lead B holds platform and front office in fenced modules; the release Lead holds release, Bake, case side, join, DB-SPLIT, firm walls, shared records (P-559). | prose | 13 Nov |
-| IDX-5 | Product and Release 1 scope rulings stand as recorded (+P-698, P-700 to P-702); list in `rules/goal-and-order.md`. | prose | 15 Nov |
+| IDX-5 | Product and Release 1 scope rulings stand as recorded (+P-698, P-700 to P-702, P-704); list in `rules/goal-and-order.md`. | prose | 15 Nov |
 | IDX-4 | Product rulings stand in their DECISIONS rows (read one when its capability is touched); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 14 Nov |
 | P-488 | Gate B on a PR runs the REGRESSION-HELD checkpoint packs; records never claim Works that an open Major contradicts. | CI: ci.yml gate B (part) | 12 Nov |
 | F-12Nov | Every change is judged on value against cost; no over-engineering; never compromise compliance, money or quality (founder, 12 Nov). | prose | 12 Nov |
@@ -158,7 +158,10 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-682 | Modular monolith: fenced modules, AI behind its own port, outbox events, affected-only CI; split only on a measured trigger. | prose | 17 Nov |
 | P-691 | Emergency hand merge stays on Enterprise: only a pipeline/CI fix while the queue itself is broken, after green ci and a review, logged in the change log. | prose (ruleset bypass; library/engineering-change-log.md) | 17 Nov |
 | P-699 | Agents build, review, test and label; when a tool path is stuck, the Lead does the step in the signed-in browser (safety rules still apply). | prose | 18 Nov |
-| P-696 | Stay on Enterprise; move back (F3) only if the overnight median job wait is over 30 min (amends P-695). | prose | 18 Nov |
+| P-696 | ~~Stay on Enterprise; move back (F3) only if the overnight median job wait is over 30 min (amends P-695).~~ Superseded by P-705: no move back to Pro; waits still measured each check. | prose | 18 Nov |
+| P-703 | Every measure, analysis and report is about product features (app-code PRs, product rows), never records or tooling (restates P-500, P-501). | prose; lead-watch.sh app-code merges | 18 Nov |
+| P-704 | One big merge batch tonight only (#2152, product batch_size 13); reverted to 6 on 19 Nov by its own Lead PR and manifest row. | config (Mergify) | 18 Nov |
+| P-706 | Outbox files may hold links and codes on demo and test copies until PF-19e seals them; PF-19e is on main before any copy with real people. | prose | 19 Nov |
 | P-693 | Enterprise hosted compute is Multi-cloud (Azure plus AWS); no Support ticket at that point (founder A167). | prose (enterprise setting; change log C26) | 18 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
