@@ -9,6 +9,11 @@
 //   * the demo inbox by address (stand-in SI-20 for the team's email sending, AG-10): demo workspace only, 404 elsewhere.
 // Tokens (32 random bytes) and codes (6 digits) are kept only as sha256; history names the masked address only, never a
 // token, a code or a typed name. Every change and its history line are written in one transaction.
+// PF-19r part 2 (gap G4, R1.47, R1.49): each link and code email goes through MessagePort (the one layout, the consent
+// gate, the outbox and the daily cap), written in the change's own transaction and dispatched after the commit, for the
+// case's platform firm (runtime_case.firm_id, CS-W1). demo_message keeps a copy, written only after MessagePort answers
+// QUEUED (Build Lead C's ruling), so the demo inbox and its delete-when-the-link-dies rule stay as they are. A gate
+// refusal (a suppressed address) changes nothing and says so; a case whose firm has no platform firm sends nothing.
 import { Body, Controller, Delete, Get, Headers, HttpCode, HttpException, HttpStatus, Inject, Injectable, Ip, Param, Post, Put, Query, UseGuards, type CanActivate, type ExecutionContext } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
@@ -18,7 +23,11 @@ import { caseName, MINOR } from "../../contracts/runtime.ts";
 import { KeepPrivate, LINK_RULES, LINK_WORDS, LinkCode, LinkToken, SendLink, TakeBack, type LinkOpened, type LinkSession, type PeoplePrivacy, type PersonLinkState, type PersonPrivacy } from "../../contracts/person-link.ts";
 import { caseView, OWN_LINK } from "../../engine/runtime/case.ts";
 import { adultCheck, codeCheck, deadWords, ownerOf, linkState, maskAddress, normalAddress, normalCode, officerWords, overLimit, principalLinkWords, progressOf, resendKind, sendRefusal, serverTries, wrongWords, type LinkRow } from "../../engine/runtime/privacy.ts";
+import type { MessagePort, MessageSend } from "../../ports/messages.ts";
 import { actorOf, CaseRead, Db, fail, isDemoWorkspace, OpenRead, RUNTIME_ACTORS, Workspace, type Actor } from "./core.ts";
+import { MESSAGE_PORT } from "./features/platform-messages.ts";
+import { firmIdByKey } from "./firms.ts";
+import { enterFirm } from "./platform/firm-scope.ts";
 import { Runtime, type Reached, type Writer } from "./runtime.ts";
 
 type H = string | undefined;
@@ -63,7 +72,35 @@ const rowOf = (l: LinkRec, newer?: Date | null): LinkRow => ({ sentAt: l.sentAt,
 
 @Injectable()
 export class PersonLinks {
-  constructor(@Inject(Db) private readonly db: Db, @Inject(Runtime) private readonly r: Runtime, @Inject(Workspace) private readonly ws: Workspace) {}
+  constructor(@Inject(Db) private readonly db: Db, @Inject(Runtime) private readonly r: Runtime, @Inject(Workspace) private readonly ws: Workspace,
+    @Inject(MESSAGE_PORT) private readonly msg: MessagePort<Tx>) {}
+
+  /** PF-19r: the case's platform firm (CS-W1's firm_id, else the narrow lookup by its key), and this request runs as it,
+   *  so the outbox (behind PF-12's walls) takes the write. None: refused in words, nothing written. */
+  private async sendingFirm(c: { firmId: string | null; firmKey: string }): Promise<string> {
+    const firmId = c.firmId ?? (await firmIdByKey(this.db, c.firmKey));
+    if (!firmId) problem(409, "Not possible now", "This firm cannot send email yet: it has no account on the platform. Nothing was sent.", { code: "FIRM_CANNOT_SEND" });
+    enterFirm(firmId!);
+    return firmId!;
+  }
+
+  /** PF-19r: one link or code email into the outbox, in the caller's transaction (TRANSACTIONAL, for the person on the
+   *  case). The gate refuses a suppressed address: the caller's change rolls back and the answer says so. The idempotency
+   *  key is built from the link's own ids, never from the token or the code. Answers whether this call wrote a new row
+   *  (false: the same key was sent before, so no second demo copy either). */
+  private async mail(tx: Tx, firmId: string, subjectId: string, m: { address: string; subject: string; body: string; key: string }, outbox: string[]): Promise<boolean> {
+    const input: MessageSend = { firmId, person: { kind: "CASE_PARTY", id: subjectId }, channel: "EMAIL", class: "TRANSACTIONAL", address: m.address, content: { subject: m.subject, text: m.body }, idempotencyKey: m.key };
+    const r = await this.msg.send(tx, input);
+    if (r.state === "SUPPRESSED" || r.state === "FAILED" || r.state === "BOUNCED") problem(409, "Not sent", "Not sent: this address does not take email from the firm. Nothing was changed.", { code: "ADDRESS_NOT_SENT" });
+    if (r.repeated) return false;
+    outbox.push(r.outboxId);
+    return true;
+  }
+
+  /** After the commit: the worker sends the outbox rows (a failure here is left to the sweep, never sent twice). */
+  private async dispatch(firmId: string, outbox: string[]) {
+    if (outbox.length) await this.msg.dispatch(firmId, outbox).catch((e: unknown) => console.warn(`person-link: dispatch failed (${e instanceof Error ? e.name : "error"}); the sweep sends it`));
+  }
 
   private personOf(c: Reached, subjectId: string) {
     const p = c.participants.find((x) => x.subjectId === subjectId && x.role !== "case");
@@ -138,10 +175,11 @@ export class PersonLinks {
     const earlier = await replay();
     if (earlier) return earlier;
     const token = randomBytes(32).toString("base64url"), id = randomUUID(), masked = maskAddress(address!);
-    let again = false;
+    const firmId = await this.sendingFirm(c);
+    let again = false, outbox: string[] = [];
     try {
       await inTx(this.db, async (tx) => {
-        again = false;
+        again = false; outbox = [];
         // One send at a time per case (break m1: two people are never given one address at the same moment), then per person.
         await tx.$queryRaw`SELECT id FROM runtime_case WHERE id = ${c.id}::uuid FOR NO KEY UPDATE`;
         await tx.$queryRaw`SELECT id FROM case_participant WHERE subject_id = ${subjectId}::uuid FOR UPDATE`;
@@ -165,7 +203,8 @@ export class PersonLinks {
           again = true;
           // The first email is the firm's own; only a copy sent again within the minute holds the next one back.
           if (sent.length > 1 && now.getTime() - email!.createdAt.getTime() < RESEND_GAP_MS) return;
-          await tx.demoMessage.create({ data: { workspaceId: c.workspaceId, linkId: open.id, address: open.address, kind: "link", subject: email!.subject, body: email!.body, expiresAt: open.expiresAt } });
+          if (await this.mail(tx, firmId, subjectId, { address: open.address, subject: email!.subject, body: email!.body, key: `case.link:${open.id}:again:${sent.length}` }, outbox))
+            await tx.demoMessage.create({ data: { workspaceId: c.workspaceId, linkId: open.id, address: open.address, kind: "link", subject: email!.subject, body: email!.body, expiresAt: open.expiresAt } });
           await audit(tx, c.workspaceId, actor.id, "resent", subjectId, `${actor.name} sent the same link again to the ${roleWords(p.role)} on case ${short(c.id)}, to ${open.addressMasked} (address given by ${nameOf(open.addressGivenBy)}); it still works`);
           return;
         }
@@ -174,14 +213,17 @@ export class PersonLinks {
         if (open) await this.kill(tx, open.id, "superseded", actor.id, null, now);
         await tx.personLink.create({ data: { id, workspaceId: c.workspaceId, caseId: c.id, subjectId, address: address!, addressMasked: masked, addressGivenBy: givenBy, tokenHash: sha(token), sentBy: actor.id, sentAt: now, expiresAt: new Date(now.getTime() + LINK_RULES.linkDays * DAY), sendKey: b.idempotencyKey ?? null } });
         if (open) await tx.personLink.update({ where: { id: open.id }, data: { supersededById: id } });
-        await tx.demoMessage.create({ data: { workspaceId: c.workspaceId, linkId: id, address: address!, kind: "link", subject: "Answer your own questions for your application (Sample)",
-          body: `You were asked to answer your own questions for an application a firm is handling.\nOpen your link: ${LINK_PATH}${token}\nOpening it sends nothing: press "Send me a code" there. It works for ${LINK_RULES.linkDays} days.`, expiresAt: new Date(now.getTime() + LINK_RULES.linkDays * DAY) } });
+        const subject = "Answer your own questions for your application (Sample)",
+          text = `You were asked to answer your own questions for an application a firm is handling.\nOpen your link: ${LINK_PATH}${token}\nOpening it sends nothing: press "Send me a code" there. It works for ${LINK_RULES.linkDays} days.`;
+        if (await this.mail(tx, firmId, subjectId, { address: address!, subject, body: text, key: `case.link:${id}` }, outbox))
+          await tx.demoMessage.create({ data: { workspaceId: c.workspaceId, linkId: id, address: address!, kind: "link", subject, body: text, expiresAt: new Date(now.getTime() + LINK_RULES.linkDays * DAY) } });
         await audit(tx, c.workspaceId, actor.id, open ? "resent" : "sent", subjectId, `${actor.name} ${open ? "sent a new link (the earlier one no longer works)" : "sent a link"} to the ${roleWords(p.role)} on case ${short(c.id)}, to ${masked} (address given by ${nameOf(givenBy)})`);
       });
     } catch (e) {
       if (e instanceof HttpException && e.getStatus() === 409 && b.idempotencyKey) { const same = await replay(); if (same) return same; }
       throw e;
     }
+    await this.dispatch(firmId, outbox);
     return { ...(await this.lineOf(actor, caseId, subjectId)), created: !again };
   }
 
@@ -278,13 +320,19 @@ export class PersonLinks {
     const over = overLimit({ kind: "code_sent", sentToAddress: Number(n.c) });
     if (over) problem(429, "Too many", over);
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0"), expires = new Date(now.getTime() + LINK_RULES.codeMinutes * 60_000);
+    const firmId = await this.sendingFirm((await this.db.case.findUniqueOrThrow({ where: { id: l.caseId }, select: { firmId: true, firmKey: true } })));
+    let outbox: string[] = [];
     await inTx(this.db, async (tx) => {
+      outbox = [];
       const ok = await tx.personLink.updateMany({ where: { id: l.id, voidedAt: null }, data: { codeHash: sha(code), codeExpiresAt: expires } });
       if (!ok.count) problem(410, "This link no longer works", "This link stopped working a moment ago. Ask whoever sent it for a new one.");
       await tx.demoMessage.deleteMany({ where: { linkId: l.id, kind: "code" } });
-      await tx.demoMessage.create({ data: { workspaceId: l.workspaceId, linkId: l.id, address: l.address, kind: "code", subject: "Your code (Sample)", body: `Your code is ${code.slice(0, 3)} ${code.slice(3)}. It works for ${LINK_RULES.codeMinutes} minutes. If you did not ask for it, you can ignore this email.`, expiresAt: expires } });
+      const subject = "Your code (Sample)", text = `Your code is ${code.slice(0, 3)} ${code.slice(3)}. It works for ${LINK_RULES.codeMinutes} minutes. If you did not ask for it, you can ignore this email.`;
+      if (await this.mail(tx, firmId, l.subjectId, { address: l.address, subject, body: text, key: `case.link:${l.id}:code:${expires.getTime()}` }, outbox))
+        await tx.demoMessage.create({ data: { workspaceId: l.workspaceId, linkId: l.id, address: l.address, kind: "code", subject, body: text, expiresAt: expires } });
       await audit(tx, l.workspaceId, `person:${l.subjectId}`, "code sent", l.subjectId, `A code was sent to ${l.addressMasked} for the link on case ${short(l.caseId)}`);
     });
+    await this.dispatch(firmId, outbox);
     await this.db.$executeRaw`delete from person_link_try where at < now() - interval '1 hour'`;
     return { sent: true, email_masked: l.addressMasked, expires_at: expires.toISOString() };
   }
