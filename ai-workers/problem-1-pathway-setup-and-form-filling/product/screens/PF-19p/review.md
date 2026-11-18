@@ -332,3 +332,31 @@ The migration stamp is unchanged. `20261117121500_pf19p_platform_account_mail` i
 * **Note (not a finding):** under SES, a platform email's From address is the SES-verified sender, and `platform.account_mail_from` is only its Reply-To (the local adapter uses it as From). This is main's fail-closed design for every sender, and it is consistent with PF-19p. A platform address that bounces is not suppressed, as the landing note says.
 
 Verdict: Approve b64ca62a0e165a2050c8a33433ceb69dd5fdb34b
+
+## Re-review (merge and stamp 20261118160000 at fe9a276f0)
+
+18 Nov 2026. Read only the merge `e653ead51`'s resolution and `git show -M fe9a276f0`. I ran `git fetch origin` first; main is at `7dcef1e76`, which is an ancestor of the head. Code not edited.
+
+* **`api/src/platform/MODULE.md`: correct, and every fact is kept.**
+  - `git diff -U0 origin/main fe9a276f0` shows only PF-19p's lines:
+    - the `platformAccount: true` note on `MESSAGES_MAIL`, with main's PF-4c, AUD-5, PF-18a and PF-18b entry points kept;
+    - one invariant bullet;
+    - `check_pf19p_platform_mail.ts` added after main's list, which now ends with `check_pf18a_offices.ts` and `check_pf18b_support.ts`.
+  - The one bullet is exactly "A platform account message …" followed by "Every job names its firm …", each identical to its bullet at `b64ca62a0`. I checked this by comparing the strings, not by eye.
+  - The card is 40 lines.
+* **The stamp move is a pure rename.**
+  - The migration was renamed `20261117121500_… => 20261118160000_pf19p_platform_account_mail` at 100% similarity, and the SQL is the same blob as before (`46df418d3`).
+  - The only other changes are the stamp in the schema comment, the suite's `NEW` constant, and DW4's "newest before it" check, which now names `20261118073000_pf18b_support`.
+  - No other file in the tree names an older PF-19p stamp; only this review's earlier sections do.
+* **Running PF-19p's migration last is safe.**
+  - Main's migrations after `20261117121500` are `20261117124500_aud1a_audit_insert_only` (on `audit_event` and `workspace` only) and `20261118073000_pf18b_support` (on `platform_support_ticket` and `platform_support_message`).
+  - Neither mentions `msg_`, `outbox`, `audience` or `idempotency`, and neither loops over every table. Neither depends on PF-19p's columns.
+* **`20261118160000` is unique.** Of the fetched remote branches, only this PR's branch has that folder.
+* **The rest of the code is unchanged from my approval.**
+  - I compared the changed lines of each file in `origin/main..fe9a276f0` with my approved `39c1203cd..b64ca62a0`. Both cover 21 files (+641/−73 now, +642/−73 then).
+  - Every file matches except four. MODULE.md is shorter by the one joined bullet. The migration differs only in its folder name. The schema comment and the suite differ only in the three stamp lines.
+* **Run:** `check_pf19p_platform_mail` 68/0 at `fe9a276f0`. DW4 says "newest before it: 20261118073000_pf18b_support". I did not re-run the other suites; the builder reports them all at exit 0, and tsc clean.
+
+Findings: none new. m-r6 (no committed SES or bounce test for a platform row) stays open as a Minor.
+
+Verdict: Approve fe9a276f0bdcbac034a08802e09be24850d2dc1d

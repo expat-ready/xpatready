@@ -1,0 +1,1 @@
+- PF-5t part 2 (PR on branch claude/screens-pf5t-terms): a person whose terms changed sees one page, "We've updated our <kind>.", with each version's link, I accept and Sign out, and carries on at the same address; an Owner (and anyone with agent/settings:list) reads Settings → Terms: who accepted which version, and when. Wording Sample. Unconfirmed: no counsel.

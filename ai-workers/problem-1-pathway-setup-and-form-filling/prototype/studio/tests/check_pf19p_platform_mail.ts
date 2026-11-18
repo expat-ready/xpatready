@@ -49,7 +49,7 @@ const uuid = () => crypto.randomUUID(), box = (w: string) => `pf19p.${w}.${uuid(
 const HASH = "a".repeat(64);
 
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
-const NEW = "20261117121500_pf19p_platform_account_mail", ALL = readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort();
+const NEW = "20261118160000_pf19p_platform_account_mail", ALL = readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort();
 const migrate = (d: string) => execFileSync(join(BIN, "psql"), [URL, "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = URL;
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: URL, options: "-c TimeZone=UTC" }) });
@@ -59,7 +59,7 @@ try {
   // PF-19p's migration, checked right after it, then every later one.
   const before = ALL.filter((d) => d < NEW);
   ok(`DW4 pass: the migration has its own stamp, later than every one before it and unique (newest before it: ${before.at(-1)})`,
-    ALL.includes(NEW) && ALL.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1 && before.at(-1)! >= "20261117004500_css1_case_party_index");
+    ALL.includes(NEW) && ALL.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1 && before.at(-1)! >= "20261118073000_pf18b_support");
   for (const d of before) migrate(d);
   await seedSampleFirms(db);
   const oldFirm = sql(`select id from platform_firm where key='sample-firm'`), oldId = uuid();

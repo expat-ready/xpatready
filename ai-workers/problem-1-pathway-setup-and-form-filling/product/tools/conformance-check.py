@@ -291,7 +291,12 @@ def check_heartbeat(src, m, rules=None):
     for c in crons:
         f = c.split()
         if len(f) == 5 and f[1:] == ["*", "*", "*", "*"]:
-            per_hour += 60 // int(f[0][2:]) if f[0].startswith("*/") else len(f[0].split(","))
+            try:   # minute field: "*" (60 an hour), "*/n", or a list such as "11,41"; anything else counts 0
+                per_hour += 60 if f[0] == "*" else 60 // int(f[0][2:]) if f[0].startswith("*/") else len(f[0].split(","))
+            except (ValueError, ZeroDivisionError):
+                bad.append(f"cron {c!r} not understood")
+    envs = [("workflow", d.get("env"))] + [(f"job {k}", j.get("env")) for k, j in (d.get("jobs") or {}).items()]
+    bad += [f"{w} env uses runner. (GitHub refuses the file: no run, no mail)" for w, e in envs if "runner." in str(e)]
     if per_hour * hb["every_min"] < 60:
         bad.append(f"schedule {crons or 'none'}: {per_hour} run(s) an hour")
     jobs, top = d.get("jobs") or {}, d.get("permissions")

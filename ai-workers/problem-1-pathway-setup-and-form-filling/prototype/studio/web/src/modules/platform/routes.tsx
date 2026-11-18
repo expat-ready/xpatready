@@ -4,10 +4,12 @@ import { AccountPage } from "./account-page";
 import { CallbackPage } from "./callback-page";
 import { complaintRoutes } from "./complaints/routes";
 import { TeamPage } from "./staff/team-page";
+import { TermsAcceptancesPage } from "./terms/acceptances-page";
 
 export const routes: ModuleRoute[] = [
   { path: "/sign-in/callback", element: <CallbackPage /> },
   { path: "/account", element: <AccountPage /> },
   ...complaintRoutes,
   { path: "/platform/team", element: <TeamPage /> },   // PF-6 part 2a
+  { path: "/platform/terms", element: <TermsAcceptancesPage /> },   // PF-5t part 2
 ];
