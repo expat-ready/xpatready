@@ -13,7 +13,7 @@ import pg from "pg";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
 const NEW = "20261116030000_fo7mv_move_list", FO7A = "20261115042334_fo7a_client_money_tables";
-const FO7TS = "20261117133000_fo7ts_money_settings";
+const FO7TS = "20261118200000_fo7ts_money_settings";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const T = `xr_studio_fo7mv_t_${process.pid}`, BAD = `xr_studio_fo7mv_bad_${process.pid}`, EMPTY = `xr_studio_fo7mv_empty_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;

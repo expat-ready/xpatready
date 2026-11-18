@@ -25,6 +25,10 @@
 DO $map$
 DECLARE f uuid;
 BEGIN
+  -- No writer between this read and the ALTER below (break F2 on facc5231: a trust_enabled = true committed in between
+  -- was mapped silently), and a role that does not bypass the walls fails here instead of reading no rows (review Nit 2).
+  LOCK TABLE "money_payment_settings" IN SHARE ROW EXCLUSIVE MODE;
+  PERFORM set_config('row_security', 'off', true);
   SELECT s.firm_id INTO f FROM "money_payment_settings" s WHERE s.trust_enabled ORDER BY s.firm_id LIMIT 1;
   IF FOUND THEN
     RAISE EXCEPTION 'FO-7ts: firm % has trust_enabled = true, which has no three-state answer: set the trust answer by hand, then rerun', f
@@ -85,6 +89,13 @@ ALTER TABLE "money_invoice"
 -- operating, with no who or when.
 CREATE OR REPLACE FUNCTION money_trust_answer_move() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  -- Break F1 on facc5231: deleting an answered row and inserting it again would bring the answer back to unanswered.
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.trust_answer <> 'UNANSWERED' THEN
+      RAISE EXCEPTION 'money_payment_settings: an answered firm''s settings are never removed (the trust answer never goes back to unanswered)' USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN OLD;
+  END IF;
   IF TG_OP = 'INSERT' THEN
     IF NEW.trust_answer <> 'UNANSWERED' OR num_nonnulls(NEW.trust_answered_by, NEW.trust_answered_at) > 0
        OR NEW.invoice_payments_go_to <> 'OPERATING' OR num_nonnulls(NEW.invoice_payments_changed_by, NEW.invoice_payments_changed_at) > 0 THEN
@@ -107,7 +118,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
-CREATE TRIGGER money_trust_answer_move BEFORE INSERT OR UPDATE ON "money_payment_settings" FOR EACH ROW EXECUTE FUNCTION money_trust_answer_move();
+CREATE TRIGGER money_trust_answer_move BEFORE INSERT OR UPDATE OR DELETE ON "money_payment_settings" FOR EACH ROW EXECUTE FUNCTION money_trust_answer_move();
 
 -- Trust is on only once the Owner says Yes (AG-6-59 rules 4-5: until answered the firm behaves as trust off). As in
 -- FO-7a, withdrawals, refunds to the client and corrections of money already held stay possible in any state (rule 6).
