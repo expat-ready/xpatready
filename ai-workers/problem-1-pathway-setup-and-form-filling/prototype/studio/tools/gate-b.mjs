@@ -74,6 +74,13 @@
 //   PR with evidence scripts joins the product queue) never ran gate B, so its named rows are not re-checked. A PR's run
 //   base is not in git, so the branch point stands in for it. It never runs a row nobody named, so an unrelated red
 //   Partial still refuses nothing (D2's rule above, STATE F15). Review of #1476 (Majors 1, 2).
+//   ONCE (P-651 (2), founder 17 Nov: the full test set runs once, on the merge-queue batch; CI sets GATE_B_ONCE=1): a pull
+//   request's head runs only part 1 (--no-packs), so the batch runs what its PRs' heads used to: (a) every row a batch PR
+//   names runs (not only those QA-366 finds touched), except a Works row with no pack held in REGRESSION-HELD.md, which
+//   the protected set (job "regression") runs in the same batch; a held Works row a PR names still runs here (P-488:
+//   gate B runs the held checkpoint packs); (b) --diff-groups also works on a batch (its RANGE), giving D2's set by diff
+//   minus the rows job "regression" runs whole: a Works row reached by reading, and a Works row whose pack the batch
+//   changes when none of its packs is held. Unset, both behave as before.
 //   NOT TESTED (B131, founder 7 Nov ~15:20 IST, P-405; re-test 42357755876 went green on C3.16, C11.5 with no pack and on
 //   C6.5 with no server): a named capability with no acceptance pack to run, or a pack that runs "on no demo data (its run
 //   uses no server)" or "fixture only", ran no test on the data asked for. Each prints "NOT TESTED: <cap> has no
@@ -556,12 +563,13 @@ function diffCaps(range) {
  *  statusOf: the base's status. A named row runs again when its pack is touched (every named row when touched is null),
  *  unless it is Works (the protected set runs it in the same batch). Two PRs naming one row: the union of their steps,
  *  the whole pack when either names it without steps. Returns { run: id → steps | null, why: id → text, works: [ids] }. */
-export function batchRecheck(prs, statusOf) {
+export function batchRecheck(prs, statusOf, heldOf = null) {
   const run = new Map(), why = new Map(), works = new Set();
   for (const pr of prs) for (const [id, steps] of pr.caps) {
-    const t = pr.touched ? pr.touched.get(id) : { files: [], why: "its merge is not in the batch's history, so what the batch adds could not be worked out: it runs" };
+    const t = pr.touched ? pr.touched.get(id) : { files: [], why: pr.why ?? "its merge is not in the batch's history, so what the batch adds could not be worked out: it runs" };
     if (!t) continue;
-    if (WORKS.test(statusOf(id) ?? "")) { works.add(id); continue; }
+    // ONCE (P-651): heldOf(id) names the row's held packs; a held Works row runs here, as it did on its PR (P-488).
+    if (WORKS.test(statusOf(id) ?? "") && !(heldOf && heldOf(id).length)) { works.add(id); continue; }
     run.set(id, run.has(id) && (run.get(id) === null || steps === null) ? null : steps === null ? null : [...new Set([...(run.get(id) ?? []), ...steps])]);
     why.set(id, `${why.has(id) ? `${why.get(id)}; ` : ""}#${pr.n}${t.files.length ? ` ${t.files.join(", ")}` : ""}: ${t.why.slice(0, 160)}`);
   }
@@ -656,12 +664,13 @@ async function main(argv) {
     else throw new Error(`unknown option ${a}`);
   }
   const say = (s) => { console.log(s); if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, s + "\n"); };
-  // --diff-groups prints only JSON: a batch or a change that is not code has no packs by diff.
-  if (opt.diffGroups && (opt.queue || opt.kind !== "code")) { console.log("[]"); return 0; }
+  const once = Boolean(process.env.GATE_B_ONCE);   // P-651 (2): the packs run once, on the batch
+  // --diff-groups prints only JSON: a change that is not code, or a batch outside ONCE, has no packs by diff.
+  if (opt.diffGroups && ((opt.queue && !once) || opt.kind !== "code")) { console.log("[]"); return 0; }
   if (opt.kind === "notes" || opt.kind === "records") { say(`Gate B: skipped (${opt.kind} change).`); return 0; }
   const bugs = openBugs(bugsText(opt));
   let cl = claims(opt.title, opt.body);
-  if (opt.queue) {   // the batch: part 1 again for each PR, as it reads now
+  if (opt.queue && !opt.diffGroups) {   // the batch: part 1 again for each PR, as it reads now
     const reasons = [], prs = await batchPrs(opt.title);
     for (const pr of prs) for (const r of part1(claims(pr.title, pr.body), bugs)) reasons.push(`#${pr.n}: ${r}`);
     if (reasons.length) { say("Gate B refuses the batch:"); for (const r of reasons) say(`  * ${r}`); return 1; }
@@ -675,26 +684,33 @@ async function main(argv) {
       if (!caps.size) continue;
       const t = batchTouched(pr, members, base);
       if (t.skip) { say(`  #${pr.n} names ${[...caps.keys()].join(", ")}, not re-checked: ${t.skip}`); continue; }
+      if (once) { input.push({ n: pr.n, caps, touched: null, why: "P-651: its PR's head ran no pack, so every row it names runs here" }); continue; }
       input.push({ n: pr.n, caps, touched: t.touched && checkpointRows(t.touched, t.checkpoint, sc.ids(), sc.dataOf) });   // (4a)
     }
-    const { run, why, works } = batchRecheck(input, sc.statusOf);
+    const { run, why, works } = batchRecheck(input, sc.statusOf, once ? (id) => sc.heldOf(id, packsOf(id)) : null);
     if (works.length) say(`  named Works rows the protected set runs in this batch: ${works.join(", ")}`);
-    if (!run.size) { say("  QA-366: no named row's pack reads a file this batch adds to its PR's own run; their packs ran on their own PRs."); return 0; }
-    say(`Gate B, QA-366: the batch adds files these named rows' packs read, so they run again: ${[...run.keys()].map((id) => `${id} (${why.get(id)})`).join("; ")}.`);
+    if (!run.size) { say(once ? "  P-651: no named row to run here (none named, or every one is a Works row the protected set runs)." : "  QA-366: no named row's pack reads a file this batch adds to its PR's own run; their packs ran on their own PRs."); return 0; }
+    say(once ? `Gate B, P-651: the batch runs the rows its PRs name (their heads ran no pack): ${[...run.keys()].map((id) => `${id} (${why.get(id)})`).join("; ")}.`
+      : `Gate B, QA-366: the batch adds files these named rows' packs read, so they run again: ${[...run.keys()].map((id) => `${id} (${why.get(id)})`).join("; ")}.`);
     cl = { caps: run, works: new Set(), fixes: new Set(), unread: [] };
     if (!process.env.GATE_B_DATA && !process.env.GATE_B_DATA_OF) process.env.GATE_B_DATA_OF = [...run.keys()].map((id) => `${id}=${sc.dataOf(id)}`).join(" ");
   }
   // D2: on a pull request, the capabilities the change touches (diffSet) are tested too; every one on its scoring data.
   const range = process.env.RANGE ?? "", onPr = !opt.queue && /^[0-9a-f]{7,40}\.\.[0-9a-f]{7,40}$/.test(range);
-  if (opt.diffGroups && !onPr) { console.log("[]"); return 0; }   // no pull-request range: nothing by diff
-  const byDiff = onPr && (opt.diffGroups || !process.env.GATE_B_NO_DIFF), scoreIt = onPr && !process.env.GATE_B_DATA && !process.env.GATE_B_DATA_OF;
+  // ONCE on a batch: its RANGE is read even when it cannot be (could not run, exit 2, never a silent []).
+  const batchDiff = opt.queue && once && Boolean(opt.diffGroups);
+  if (opt.diffGroups && !onPr && !batchDiff) { console.log("[]"); return 0; }   // no pull-request range: nothing by diff
+  const byDiff = (onPr || batchDiff) && (opt.diffGroups || !process.env.GATE_B_NO_DIFF), scoreIt = onPr && !process.env.GATE_B_DATA && !process.env.GATE_B_DATA_OF;
   if (byDiff || (scoreIt && cl.caps.size)) {   // the base's statuses, data and holds only when something needs them
     const { baseScoring, groupsOf } = await import("./works-set.mjs"), sc = baseScoring();
     if (byDiff) {
       const { touched, deleted, checkpoint } = diffCaps(range), { run, listed } = diffSet(checkpointRows(touched, checkpoint, sc.ids(), sc.dataOf), sc.statusOf);
-      const fresh = run.filter((r) => !cl.caps.has(r.id));
+      // ONCE on a batch: job "regression" runs every Works row whole but its held packs, so those rows are left to it.
+      const toRegression = (r) => batchDiff && WORKS.test(sc.statusOf(r.id) ?? "") && (!r.direct || !sc.heldOf(r.id, packsOf(r.id)).length);
+      const fresh = run.filter((r) => !cl.caps.has(r.id) && !toRegression(r));
       const note = (s) => (opt.diffGroups ? console.error(s) : console.log(s), process.env.GITHUB_STEP_SUMMARY && appendFileSync(process.env.GITHUB_STEP_SUMMARY, s + "\n"));
       if (fresh.length) note(`Gate B by diff (D2): the change touches ${fresh.map((r) => `${r.id} on the ${sc.dataOf(r.id)} (${r.direct ? "its pack changed" : "Works; its pack reads a changed file"}: ${r.why})`).join("; ")}.`);
+      if (batchDiff && run.some(toRegression)) note(`  by diff, left to the protected set (job regression runs it in this batch): ${run.filter(toRegression).map((r) => r.id).join(", ")}`);
       if (listed.length) note(`  by diff, not run (a Partial row whose pack only reads a changed file, or not built; name it with its green steps to run it): ${listed.join(", ")}`);
       if (deleted.length) note(`  pack deleted at the head: ${deleted.join(", ")} (the merge queue refuses a deleted Works pack)`);
       if (opt.diffGroups) {

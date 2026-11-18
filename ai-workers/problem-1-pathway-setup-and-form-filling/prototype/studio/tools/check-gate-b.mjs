@@ -304,13 +304,21 @@ process.exit(0);
   const e = batchRecheck([{ n: 3, caps: caps(["C8.3", null], ["C6.9", null]), touched: null }], (id) => st[id]);
   ok("QA-366: when what the batch adds cannot be worked out (a head not found), every named row runs again but Works (fail closed)", [...e.run.keys()].join() === "C8.3" && /could not be worked out/.test(e.why.get("C8.3")), e);
   const f = batchRecheck([{ n: 4, caps: caps(), touched: new Map([T("C7.5"), T("C8.3")]) }], (id) => st[id]);
-  ok("QA-366: a row nobody named never runs, whatever the batch touches (an unrelated red Partial refuses nothing; D2, STATE F15)", f.run.size === 0, f); }
+  ok("QA-366: a row nobody named never runs, whatever the batch touches (an unrelated red Partial refuses nothing; D2, STATE F15)", f.run.size === 0, f);
+  // P-651 (2), GATE_B_ONCE: the PR heads ran no pack, so every named row runs (touched null, the reason given), and a
+  // Works row goes to the protected set only when none of its packs is held (P-488: a held one still runs here).
+  const held = { "C6.9": ["C6.9.test.ts"] }, heldOf = (id) => held[id] ?? [];
+  const g = batchRecheck([{ n: 5, caps: caps(["C8.3", [2]], ["C6.9", null], ["C1.1", null]), touched: null, why: "P-651: its PR's head ran no pack" }], (id) => st[id] ?? "Works", heldOf);
+  ok("P-651: in ONCE every named Partial row runs with its steps and the given reason; a held Works row runs too; an unheld Works row is left to the protected set",
+    [...g.run].map(([k, v]) => `${k}=${v}`).join() === "C8.3=2,C6.9=null" && g.works.join() === "C1.1" && /^#5: P-651/.test(g.why.get("C8.3")), g);
+  const h = batchRecheck([{ n: 6, caps: caps(["C6.9", null]), touched: null }], (id) => st[id]);
+  ok("P-651: without heldOf (ONCE off) a held Works row is still left to the protected set, as before", h.run.size === 0 && h.works.join() === "C6.9", h); }
 
 // The command itself: skips, refusal and pass (packs off; the real BUGS.md is not read, so the cases stay true).
 const T = mkdtempSync(join(tmpdir(), "gate-b-")), bf = join(T, "BUGS.md"); writeFileSync(bf, BUGS);
 // Each command case starts from a clean CI environment: the job's own QUEUE, KIND, RANGE, PR_* and GITHUB_* values
 // (a merge-queue batch sets QUEUE=true, a records PR KIND=records) would otherwise change what the gate does (#826).
-const CLEAN = { GATE_B_BATCH_PRS: "", GITHUB_STEP_SUMMARY: "", PR_TITLE: "", PR_BODY: "", QUEUE: "", KIND: "code", RANGE: "", GITHUB_TOKEN: "", GATE_B_PORT: "", GATE_B_NAME: "", GATE_B_JOBS: "", GATE_B_SKIP_PACKS: "", GITHUB_EVENT_NAME: "", GATE_B_DATA: "six", GATE_B_DATA_OF: "", GATE_B_RESULTS: "", GATE_B_NO_DIFF: "" };
+const CLEAN = { GATE_B_BATCH_PRS: "", GITHUB_STEP_SUMMARY: "", PR_TITLE: "", PR_BODY: "", QUEUE: "", KIND: "code", RANGE: "", GITHUB_TOKEN: "", GATE_B_PORT: "", GATE_B_NAME: "", GATE_B_JOBS: "", GATE_B_SKIP_PACKS: "", GITHUB_EVENT_NAME: "", GATE_B_DATA: "six", GATE_B_DATA_OF: "", GATE_B_RESULTS: "", GATE_B_NO_DIFF: "", GATE_B_ONCE: "" };
 const run = (args, env = {}) => { const r = spawnSync(process.execPath, [join(HERE, "gate-b.mjs"), "--bugs", bf, "--no-packs", ...args], { encoding: "utf8", env: { ...process.env, ...CLEAN, ...env } }); return { code: r.status, out: r.stdout + r.stderr }; };
 let r = run(["--title", "forms: C11.13 reason", "--body", "Claims Works: C11.13"]);
 const r3a = run(["--title", "forms: x", "--body", "## Claims Works (as built)\n- C11.13"]), r3b = run(["--title", "forms: x", "--body", "## Claims Works (as built)\n- C11.13\n\nFixes: QA-192"]);
@@ -374,6 +382,8 @@ ok("command: an unknown option exits 2", r.code === 2, r);
   ok("D2: GATE_B_NO_DIFF (works-set's runs) never reads the diff: no capability named, skipped", b.code === 0 && /skipped \(the PR names no capability/.test(b.out), b);
   const g0 = run(["--title", "x", "--diff-groups", "5"], { RANGE: "" }), gq = run(["--title", "x", "--diff-groups", "5"], { RANGE: "0000000..1111111", QUEUE: "true" }), gn = run(["--title", "x", "--diff-groups", "5", "--kind", "records"], { RANGE: "0000000..1111111" });
   ok("D2: --diff-groups prints only [] with no pull-request range, for a batch and for a change that is not code", [g0, gq, gn].every((x) => x.code === 0 && x.out.trim() === "[]"), [g0, gq, gn]);
+  const go = run(["--title", "x", "--diff-groups", "5"], { RANGE: "0000000..1111111", QUEUE: "true", GATE_B_ONCE: "1" }), gr = run(["--title", "x", "--diff-groups", "5"], { RANGE: "", QUEUE: "true", GATE_B_ONCE: "1" });
+  ok("P-651: in ONCE --diff-groups on a batch reads the batch's range: one it cannot read, or none, is could-not-run (exit 2), never []", [go, gr].every((x) => x.code === 2 && !/^\[/.test(x.out.trim())), [go, gr]);
   const gb = run(["--title", "x", "--diff-groups", "5"], { RANGE: "0000000..1111111" });
   ok("D2: --diff-groups with a range it cannot read is could-not-run (exit 2), never []", gb.code === 2 && !/^\[/.test(gb.out.trim()), gb);
   const q = run(["--title", "Merge queue: embarking #1 together"], { RANGE: "0000000..1111111", QUEUE: "true" });
@@ -406,6 +416,16 @@ ok("command: an unknown option exits 2", r.code === 2, r);
     prs([{ n: 1396, title: "lead: paid result", body: "" }]);
     const q5 = run(["--title", "merge queue: embarking #1396"], { ...Q, RANGE: `${M1435}..${M1396}` });
     ok("QA-366: a batch whose PRs name no capability runs nothing again", q5.code === 0 && /no named row's pack reads a file/.test(q5.out) && !/packs:/.test(q5.out), q5);
+    // P-651 (2), ONCE: the same batches with the PR heads running no pack.
+    prs([P1396]);
+    const o1 = run(["--title", "merge queue: embarking #1396"], { ...Q, GATE_B_ONCE: "1", RANGE: `${M1435}..${M1396}` });
+    ok("P-651: in ONCE the batch of #1396 runs C7.5, with #1396's steps, because its head ran no pack", o1.code === 0 && /P-651: the batch runs the rows its PRs name .*C7\.5 \(#1396: P-651/.test(o1.out) && /packs: C7\.5\.test\.ts$/m.test(o1.out) && /steps 1, 2, 3/.test(o1.out), o1);
+    prs([{ n: 1459, title: "qa: capability C8.3 after #1440", body: "" }]);
+    const o2 = run(["--title", "merge queue: embarking #1459"], { ...Q, GATE_B_ONCE: "1", RANGE: `${B1459}..${M1459}` });
+    ok("P-651: in ONCE a records PR's named rows are still not re-checked (its gate B never ran)", o2.code === 0 && /#1459 names C8\.3, not re-checked: its own change is records/.test(o2.out) && !/packs:/.test(o2.out), o2);
+    const o3 = run(["--title", "merge queue: embarking #1396", "--diff-groups", "5"], { ...Q, GATE_B_ONCE: "1", RANGE: `${M1435}..${M1396}` });
+    let o3g = null; try { o3g = JSON.parse(o3.out.split("\n").find((l) => l.startsWith("[")) ?? ""); } catch { /* reported below */ }
+    ok("P-651: in ONCE --diff-groups on a real batch prints its groups as JSON (exit 0), minus the rows job regression runs", o3.code === 0 && Array.isArray(o3g) && /left to the protected set \(job regression/.test(o3.out), o3);
     prs([P1396]);
     const q6 = run(["--title", "merge queue: embarking #1396"], { ...Q, RANGE: "" });
     ok("QA-366: a batch without RANGE could not run (exit 2), never a silent pass", q6.code === 2 && /needs RANGE/.test(q6.out), q6);

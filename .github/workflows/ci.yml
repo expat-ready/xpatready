@@ -20,6 +20,12 @@
 #             comes from its own job, retry-comment, the only one with pull-requests: write: it runs the base commit's
 #             flaky.mjs on the parts' artifacts, so the write token never meets the PR's own code (npm install, suites).
 #             US$0 model spend: every suite replays saved runs.
+# Run tests once (P-651 (2), founder 17 Nov; started 18 Nov): a builder's PR runs only the fast checks (job "fast": the
+#   push guard, rules files, tools' own checks, gate B part 1 with --no-packs) and job "types"; the full test set (the
+#   suites on the parts, the packs by diff, the protected regression set, gate B's named packs) runs once, on the
+#   merge-queue batch, which every merge passes (no gate lowered, P-614). Main is tested by the nightly full set (no push
+#   trigger: P-85). Gate B on the batch (GATE_B_ONCE, gate-b.mjs): every row a batch PR names runs, the held ones too
+#   (P-488), and job "packs" runs the batch's packs by diff. Records, PR or batch: job "fast" alone; no part.
 # Switches (repository variables, gh variable set NAME --body VALUE):
 # Type check (P-291, the outsider audit of 29 Oct): job "types", tsc --noEmit for api and web (tools/typecheck.mjs; fails
 #   only on an error not in typecheck-known.txt), on its own machine beside the parts for records and code, so it adds
@@ -129,12 +135,13 @@ jobs:
           # A batch only when Mergify opened it (gate B break M2): a builder's branch named mergify/* stays a pull request.
           queue=false; [[ "$HEAD_REF" == mergify/* && "$PR_AUTHOR" == "mergify[bot]" ]] && queue=true
           n="${SHARDS_VAR:-8}"; [[ "$n" =~ ^[1-9]$ ]] || n=8
-          case "$kind" in code) shards="[$(seq -s, 1 "$n")]";; records) shards="[1]";; *) shards="[]";; esac
+          # P-651 (2): the parts run only on a batch of code; the fast checks are job "fast" (records and code).
+          shards="[]"; [ "$kind" = code ] && [ "$queue" = true ] && shards="[$(seq -s, 1 "$n")]"
           { echo "kind=$kind"; echo "shards=$shards"; echo "n=$n"; echo "queue=$queue"; } >> "$GITHUB_OUTPUT"
           case "$kind" in
             notes) why="Notes only: check-docs.sh and decision-impact.sh (and the push guard); no suites, no app build.";;
             records) why="Records, no code: the fast checks on one machine; no suites.";;
-            *) [ "$queue" = true ] && why="Code, merge-queue batch: every suite but the quarantined ones, on $n parts." || why="Code, pull request: only the suites this change can affect, on $n parts (the full set runs in the merge queue).";;
+            *) [ "$queue" = true ] && why="Code, merge-queue batch: every suite but the quarantined ones on $n parts, the packs by diff and the protected set." || why="Code, pull request: the fast checks and the type check only (P-651 (2): the suites and packs run once, in the merge queue).";;
           esac
           echo "**$kind** · $why" | tee -a "$GITHUB_STEP_SUMMARY"
       - id: q
@@ -142,7 +149,7 @@ jobs:
         # Worked out once here, so every part deals and skips the same suites. A failure of the API never fails the
         # check: no automatic quarantine this run, said in the summary. It reads all 9 parts' records (SHARDS may have
         # been higher in the last 14 days; review round 2, minor 2).
-        if: steps.k.outputs.kind == 'code'
+        if: steps.k.outputs.kind == 'code' && steps.k.outputs.queue == 'true'
         timeout-minutes: 3
         continue-on-error: true
         env: { GITHUB_TOKEN: "${{ github.token }}" }
@@ -152,14 +159,14 @@ jobs:
           echo "autoq=$q" >> "$GITHUB_OUTPUT"
           [ -z "$q" ] || { echo "**Quarantined automatically (B122):**"; sed 's/^/- /' flaky.err; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-node@v4
-        if: steps.k.outputs.kind == 'code' && steps.k.outputs.queue != 'true'
+        if: steps.k.outputs.kind == 'code' && steps.k.outputs.queue == 'true'
         with: { node-version-file: .nvmrc }
       - id: d
-        name: packs this change touches (D2, gate-b.mjs --diff-groups 5; run by job "packs")
-        # A pack the PR changes (its row if built) and every Works row whose pack reads a changed file, minus the named
-        # capabilities (part 1 runs those), in at most 5 groups. Reads files only: no packages, no server.
-        if: steps.k.outputs.kind == 'code' && steps.k.outputs.queue != 'true'
-        env: { KIND: code, PR_TITLE: "${{ github.event.pull_request.title }}", PR_BODY: "${{ github.event.pull_request.body }}" }
+        name: packs this batch touches (D2 on the batch, P-651 (2); gate-b.mjs --diff-groups 5; run by job "packs")
+        # A pack the batch changes (its row if built) and every Works row whose pack reads a changed file, minus the
+        # named capabilities and the rows job "regression" runs whole (GATE_B_ONCE), in at most 5 groups. Reads files only.
+        if: steps.k.outputs.kind == 'code' && steps.k.outputs.queue == 'true'
+        env: { KIND: code, QUEUE: "true", GATE_B_ONCE: "1", PR_TITLE: "${{ github.event.pull_request.title }}", PR_BODY: "${{ github.event.pull_request.body }}" }
         run: |
           g=$(node "$S/tools/gate-b.mjs" --diff-groups 5) || exit 1
           [[ "$g" == \[* ]] || { echo "gate-b.mjs --diff-groups printed no JSON: $g"; exit 1; }
@@ -195,20 +202,104 @@ jobs:
             if [ -n "$verdict" ]; then
               mode=same; echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
               echo "**Already green:** this head on this base, with this title and body, passed in run ${verdict#* } ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/${verdict#* }); nothing re-runs." >> "$GITHUB_STEP_SUMMARY"
-            elif [ "$KIND" = code ]; then
-              node "$P/tools/ci-memory.mjs" reuse --dir "$M" --base "$mbase" --head "$mhead" --tested HEAD > "$RUNNER_TEMP/green.tsv"
-              g=$(grep -c . "$RUNNER_TEMP/green.tsv" || true)
-              { echo "green<<CI_MEMORY_EOF"; cat "$RUNNER_TEMP/green.tsv"; echo "CI_MEMORY_EOF"; } >> "$GITHUB_OUTPUT"
-              sel=(--changed "$RANGE"); [ "$PR_SUITES" = direct ] && sel+=(--direct)
-              left=$(CI=1 bash "$P/tools/run-suites.sh" --list "${sel[@]}" --skip-green "$RUNNER_TEMP/green.tsv" | grep -c . || true)
-              k=$(( left < N ? left : N )); [ "$k" -ge 1 ] || k=1   # part 1 always runs: the fast checks and gate B
-              { echo "shards=[$(seq -s, 1 "$k")]"; echo "n=$k"; } >> "$GITHUB_OUTPUT"
-              echo "**Memory:** $g suites remembered green on this base with unchanged inputs; $left units left to run, on $k parts." >> "$GITHUB_STEP_SUMMARY"
             fi
+            # P-651 (2): a PR's head runs no suite, so no green suite is remembered (git has the reuse step).
           fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
+  fast:
+    # P-651 (2): the fast checks, once a run, for records and code (was part 1 of job "shard"): on a builder's PR they and
+    # job "types" are the whole check; on a merge-queue batch they run beside the parts, and gate B there also runs the
+    # rows the batch's PRs name (GATE_B_ONCE). One GitHub machine.
+    needs: kind
+    if: ${{ needs.kind.outputs.kind != 'notes' && needs.kind.outputs.mode != 'same' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ needs.kind.outputs.queue == 'true' && 90 || 45 }} # a batch's gate B runs packs (as job "packs"); a PR's runs none; cloud-setup.sh's apt wait can take ~7 min (types: 30)
+    permissions: { contents: read, pull-requests: read }
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+      S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
+      KIND: ${{ needs.kind.outputs.kind }}
+      QUEUE: ${{ needs.kind.outputs.queue }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: the test merge on main (D6, tools/pr-base.sh; kind's main in its own attempt, today's main on a re-run)
+        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha }}", KBASE: "${{ needs.kind.outputs.base }}", KATTEMPT: "${{ needs.kind.outputs.battempt }}" }
+        run: |
+          if [ "$QUEUE" = true ]; then range=$(bash "$P/tools/pr-base.sh" queue)
+          else pin=""; [ "$KATTEMPT" = "$GITHUB_RUN_ATTEMPT" ] && pin="$KBASE"; range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" $pin); fi || exit 1
+          echo "RANGE=$range" >> "$GITHUB_ENV"; echo "tested: $range"
+      - name: push guard (excluded paths, PDFs, secrets, personal names)
+        run: |
+          chmod +x "$P/tools/push-guard.sh"
+          "$P/tools/push-guard.sh" "$RANGE"
+      - name: every route a pack's set-up calls has a screen (tools/route-has-screen.mjs, under a second)
+        # Founder 5 Nov (P-348; QA-234): green packs hid dead ends, because a pack's set-up calls routes and a person has
+        # only screens. A mutating route acceptance/lib/ calls needs a caller in web/src or a reasoned line in
+        # tools/route-has-screen-allow.txt. The self-test first proves a new route with neither fails.
+        run: node "$P/tools/route-has-screen.mjs" --self-test && node "$P/tools/route-has-screen.mjs"
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
+      - name: set up like a cloud session (cloud-setup.sh; the database check-test-dbs.sh and a batch's gate B packs need)
+        run: bash "$P/tools/cloud-setup.sh"
+      - name: test databases are cleaned up (check-test-dbs.sh; needs the database cloud-setup.sh started)
+        run: bash "$P/tools/check-test-dbs.sh"
+      - name: rules files, decision impact, graph, official PDFs, explicit-any count, the tools' own checks, && lists
+        run: |
+          # One command per line: bash -e passes over a failed command before the last && of a list (P-376 (3), ci-and-lists.mjs).
+          bash "$P/tools/check-docs.sh"
+          bash "$P/tools/decision-impact.sh"
+          node "$P/tools/graph.mjs" --check
+          python3 ai-workers/problem-1-pathway-setup-and-form-filling/official-sources/fetch_official_sources.py
+          node "$S/tools/count-any.mjs" --against "${RANGE%%..*}"
+          bash "$P/tools/check-select-suites.sh"
+          bash "$P/tools/check-merge-guard.sh"
+          bash "$P/tools/check-lane-bind.sh"
+          bash "$P/tools/check-new-machine.sh"   # B168: the any-Mac setup script's own logic
+          node "$P/tools/ci-and-lists.mjs"
+          node "$P/tools/ci-and-lists.mjs" --self-test
+          node "$P/tools/suite-exit.mjs" --self-test   # B160: a suite whose last step is a bare summary() can never fail
+          node "$P/tools/suite-exit.mjs"
+          bash "$P/tools/check-flaky.sh"
+          bash "$P/tools/check-write-token.sh"
+          bash "$P/tools/pr-base.sh" --self-test
+          node "$S/tools/check-gate-b.mjs"
+          node "$S/tools/check-works-set.mjs"
+      - name: every port's fake and real adapters run one shared contract (studio/tools/check-port-contracts.mjs, timed)
+        # PF-0c (P-606 (8)): a port in studio/ports/ (or identity/port.ts) with a real adapter has
+        # ports/contracts/<port>.contract.ts, and every adapter of it, fakes included, calls it in its own test file. The
+        # self-test first proves a port with a real adapter and no contract fails (DW1); the guard fails over 10 s (DW4).
+        run: |
+          node "$S/tools/check-port-contracts.mjs" --self-test
+          start=$(date +%s%N)
+          node "$S/tools/check-port-contracts.mjs"
+          echo "PF-0c DW4: the port-contract guard took $(( ($(date +%s%N) - start) / 1000000 )) ms (limit 10000)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Playwright's own Chromium (a batch's gate B runs packs)
+        if: env.KIND == 'code' && env.QUEUE == 'true'
+        run: cd "$S" && ./node_modules/.bin/playwright install chromium
+      - name: gate B, the claimed capabilities' open bugs and acceptance packs (studio/tools/gate-b.mjs)
+        # P-214, founder 4 Nov: a code PR's "Claims Works: C<n.n>" capabilities have no open Major or worse in qa/BUGS.md
+        # unless it names the bug it fixes; the named capabilities' acceptance packs pass (on the six where the pack's
+        # run allows, else "fixture only"). Title and body come in as environment values, never pasted into the script.
+        # D2 (P-416, 8 Nov): the named capabilities run here, each on its scoring data (works-set.mjs); the ones the change
+        # touches run in job "packs" (GATE_B_NO_DIFF here).
+        # P-651 (2): on a PR only its part 1 (the bug check, --no-packs); on a batch every row its PRs name runs, the
+        # held ones too (GATE_B_ONCE; P-488), and its packs by diff run in job "packs".
+        if: env.KIND == 'code'
+        env: { PR_TITLE: "${{ github.event.pull_request.title }}", PR_BODY: "${{ github.event.pull_request.body }}", GITHUB_TOKEN: "${{ github.token }}", GATE_B_NO_DIFF: "1", GATE_B_ONCE: "1" }
+        run: |
+          if [ "$QUEUE" = true ]; then node "$S/tools/gate-b.mjs"; else node "$S/tools/gate-b.mjs" --no-packs; fi
+      - name: no personal data in logs (PF-23; the server logs a batch's gate B packs wrote; a few seconds)
+        if: ${{ !cancelled() && env.KIND == 'code' && env.QUEUE == 'true' }}
+        run: |
+          cd "$S"
+          ./node_modules/.bin/tsx api/src/platform/observability/scan-logs.ts --self-test
+          ./node_modules/.bin/tsx api/src/platform/observability/scan-logs.ts
   shard:
-    # Records and code, on GitHub's machines.
+    # P-651 (2): the suites, on a merge-queue batch of code only (a PR's head runs none), on GitHub's machines.
     needs: kind
     if: ${{ needs.kind.outputs.shards != '[]' }}
     runs-on: ubuntu-latest
@@ -240,17 +331,6 @@ jobs:
           # --skip-green, so dropping it would re-deal and the re-run part might not hold the suite that failed. Those
           # suites were not run in attempt 1 either; the merge queue runs every suite on the batch's main.
           echo "RANGE=$range" >> "$GITHUB_ENV"; echo "tested: $range"
-      - name: push guard (part 1 only; excluded paths, PDFs, secrets, personal names)
-        if: matrix.shard == 1
-        run: |
-          chmod +x "$P/tools/push-guard.sh"
-          "$P/tools/push-guard.sh" "$RANGE"
-      - name: every route a pack's set-up calls has a screen (part 1 only; tools/route-has-screen.mjs, under a second)
-        # Founder 5 Nov (P-348; QA-234): green packs hid dead ends, because a pack's set-up calls routes and a person has
-        # only screens. A mutating route acceptance/lib/ calls needs a caller in web/src or a reasoned line in
-        # tools/route-has-screen-allow.txt. The self-test first proves a new route with neither fails.
-        if: matrix.shard == 1
-        run: node "$P/tools/route-has-screen.mjs" --self-test && node "$P/tools/route-has-screen.mjs"
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -258,53 +338,9 @@ jobs:
           cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
       - name: set up like a cloud session (cloud-setup.sh; it also builds the web app the browser suites need)
         run: bash "$P/tools/cloud-setup.sh"
-      - name: test databases are cleaned up (check-test-dbs.sh, part 1 only; needs the database cloud-setup.sh started)
-        if: matrix.shard == 1
-        run: bash "$P/tools/check-test-dbs.sh"
-      - name: rules files, decision impact, graph, official PDFs, explicit-any count, the tools' own checks, && lists (part 1 only)
-        if: matrix.shard == 1
-        run: |
-          # One command per line: bash -e passes over a failed command before the last && of a list (P-376 (3), ci-and-lists.mjs).
-          bash "$P/tools/check-docs.sh"
-          bash "$P/tools/decision-impact.sh"
-          node "$P/tools/graph.mjs" --check
-          python3 ai-workers/problem-1-pathway-setup-and-form-filling/official-sources/fetch_official_sources.py
-          node "$S/tools/count-any.mjs" --against "${RANGE%%..*}"
-          bash "$P/tools/check-select-suites.sh"
-          bash "$P/tools/check-merge-guard.sh"
-          bash "$P/tools/check-lane-bind.sh"
-          bash "$P/tools/check-new-machine.sh"   # B168: the any-Mac setup script's own logic
-          node "$P/tools/ci-and-lists.mjs"
-          node "$P/tools/ci-and-lists.mjs" --self-test
-          node "$P/tools/suite-exit.mjs" --self-test   # B160: a suite whose last step is a bare summary() can never fail
-          node "$P/tools/suite-exit.mjs"
-          bash "$P/tools/check-flaky.sh"
-          bash "$P/tools/check-write-token.sh"
-          bash "$P/tools/pr-base.sh" --self-test
-          node "$S/tools/check-gate-b.mjs"
-          node "$S/tools/check-works-set.mjs"
-      - name: every port's fake and real adapters run one shared contract (part 1 only; studio/tools/check-port-contracts.mjs, timed)
-        # PF-0c (P-606 (8)): a port in studio/ports/ (or identity/port.ts) with a real adapter has
-        # ports/contracts/<port>.contract.ts, and every adapter of it, fakes included, calls it in its own test file. The
-        # self-test first proves a port with a real adapter and no contract fails (DW1); the guard fails over 10 s (DW4).
-        if: matrix.shard == 1
-        run: |
-          node "$S/tools/check-port-contracts.mjs" --self-test
-          start=$(date +%s%N)
-          node "$S/tools/check-port-contracts.mjs"
-          echo "PF-0c DW4: the port-contract guard took $(( ($(date +%s%N) - start) / 1000000 )) ms (limit 10000)" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Playwright's own Chromium
         if: env.KIND == 'code'
         run: cd "$S" && ./node_modules/.bin/playwright install chromium
-      - name: gate B, the claimed capabilities' open bugs and acceptance packs (part 1 only; studio/tools/gate-b.mjs)
-        # P-214, founder 4 Nov: a code PR's "Claims Works: C<n.n>" capabilities have no open Major or worse in qa/BUGS.md
-        # unless it names the bug it fixes; the named capabilities' acceptance packs pass (on the six where the pack's
-        # run allows, else "fixture only"). Title and body come in as environment values, never pasted into the script.
-        # D2 (P-416, 8 Nov): the named capabilities run here, each on its scoring data (works-set.mjs); the ones the change
-        # touches run in job "packs" (GATE_B_NO_DIFF here).
-        if: matrix.shard == 1 && env.KIND == 'code'
-        env: { PR_TITLE: "${{ github.event.pull_request.title }}", PR_BODY: "${{ github.event.pull_request.body }}", GITHUB_TOKEN: "${{ github.token }}", GATE_B_NO_DIFF: "1" }
-        run: node "$S/tools/gate-b.mjs"
       - name: studio suites, part ${{ matrix.shard }} of ${{ needs.kind.outputs.n }} (run-suites.sh --demo --retry --shard; US$0 model spend)
         if: env.KIND == 'code'
         env: { PR_SUITES: "${{ vars.PR_SUITES }}" }
@@ -365,6 +401,7 @@ jobs:
   packs:
     # D2 (P-416, 8 Nov; review of #1337): the packs this change touches (kind's gate-b.mjs --diff-groups 5), one machine a
     # group, gate B's 3 slots, each row on its scoring data; a red group is run once more (a flaky pack is retried once).
+    # P-651 (2): on a merge-queue batch of code only (kind works the set out on the batch's range; a PR's head runs none).
     needs: kind
     if: ${{ needs.kind.outputs.mode != 'same' && needs.kind.outputs.dpacks != '' && needs.kind.outputs.dpacks != '[]' }}
     runs-on: ubuntu-latest
@@ -380,12 +417,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - name: the test merge on kind's main (D6, tools/pr-base.sh; always pinned, so the plan, its data and holds match the tree)
+      - name: the batch's base (D6, tools/pr-base.sh queue; a batch keeps GitHub's merge); a PR's test merge stays pinned to kind's main
         # Devin on #1337: "Re-run failed jobs" keeps kind's plan, so this job keeps kind's base too; "Re-run all jobs"
         # re-plans on today's main.
-        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha }}", KBASE: "${{ needs.kind.outputs.base }}" }
+        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha }}", KBASE: "${{ needs.kind.outputs.base }}", QUEUE: "${{ needs.kind.outputs.queue }}" }
         run: |
-          range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$KBASE") || exit 1
+          if [ "$QUEUE" = true ]; then range=$(bash "$P/tools/pr-base.sh" queue); else range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$KBASE"); fi || exit 1
           echo "RANGE=$range" >> "$GITHUB_ENV"; echo "tested: $range"
       - uses: actions/setup-node@v4
         with:
@@ -495,8 +532,9 @@ jobs:
         run: node "$S/tools/works-set.mjs" --pool "$CAPS"
   ci:
     # The one check Mergify reads. Notes: the two notes checks here, on a GitHub machine. Records and code: only reports
-    # the parts' result (the Mac path is gone, D1).
-    needs: [kind, shard, packs, types, regression-plan, regression]
+    # the jobs' results (the Mac path is gone, D1). P-651 (2): a PR's head is green on fast + types with the parts and
+    # packs skipped on purpose; a batch of code needs the parts, its packs by diff and the protected set as well.
+    needs: [kind, fast, shard, packs, types, regression-plan, regression]
     if: "${{ !cancelled() && (!github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/')) }}"
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -539,16 +577,25 @@ jobs:
         if: env.MODE != 'same' && (env.KIND != 'notes')
         run: |
           echo "types: ${{ needs.types.result }}"; [ "${{ needs.types.result }}" = success ]
-      # ---- records and code: the parts' result
+      # ---- records and code: the fast checks' result (P-651 (2), job "fast")
+      - name: the fast checks' result
+        if: env.MODE != 'same' && (env.KIND != 'notes')
+        run: |
+          echo "fast: ${{ needs.fast.result }}"; [ "${{ needs.fast.result }}" = success ]
+      # ---- the parts' result: a batch of code needs them green; elsewhere none was planned, so the job is skipped
       - name: the parts' result
         if: env.MODE != 'same' && (env.KIND != 'notes')
         run: |
-          echo "parts: ${{ needs.shard.result }}"; [ "${{ needs.shard.result }}" = success ]
-      - name: the packs this change touches (D2, job "packs"; pull requests of code)
-        if: env.MODE != 'same' && (needs.kind.outputs.queue != 'true' && env.KIND == 'code')
+          echo "parts: ${{ needs.shard.result }} · planned: ${{ needs.kind.outputs.shards }}"
+          if [ "${{ needs.kind.outputs.queue }}" = true ] && [ "$KIND" = code ]; then [ "${{ needs.shard.result }}" = success ]
+          else [ "${{ needs.shard.result }}" = skipped ] && [ '${{ needs.kind.outputs.shards }}' = '[]' ]; fi
+      - name: the packs this change touches (D2, job "packs"; merge-queue batches of code, P-651 (2))
+        if: env.MODE != 'same' && (env.KIND != 'notes')
         run: |
           echo "packs by diff: ${{ needs.packs.result }} · groups: ${{ needs.kind.outputs.dpacks }}"
-          [ "${{ needs.packs.result }}" = success ] || { [ "${{ needs.packs.result }}" = skipped ] && [ '${{ needs.kind.outputs.dpacks }}' = '[]' ]; }
+          if [ "${{ needs.kind.outputs.queue }}" = true ] && [ "$KIND" = code ]; then
+            [ "${{ needs.packs.result }}" = success ] || { [ "${{ needs.packs.result }}" = skipped ] && [ '${{ needs.kind.outputs.dpacks }}' = '[]' ]; }
+          else [ "${{ needs.packs.result }}" = skipped ]; fi
       - name: the protected regression set's result (merge-queue batches of code, P-320 (b))
         if: env.MODE != 'same' && (needs.kind.outputs.queue == 'true' && env.KIND == 'code')
         run: |
@@ -580,7 +627,8 @@ jobs:
     # PR's code, only the base commit's tools/flaky.mjs on the parts' artifacts, with no token kept by checkout. Not a
     # check Mergify reads, and continue-on-error: it never holds a merge or turns a run red.
     needs: [kind, shard, ci]
-    if: ${{ always() && needs.kind.outputs.kind == 'code' }}
+    # P-651 (2): only a batch runs suites, so only a batch can have a pass on retry.
+    if: ${{ always() && needs.kind.outputs.kind == 'code' && needs.kind.outputs.queue == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     continue-on-error: true
