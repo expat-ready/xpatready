@@ -126,7 +126,8 @@ export class CaseClose {
       case: { id: c.id, caseNumber: c.caseNumber, status: c.status, closeOutcome: c.closeOutcome, closedAt: c.closedAt?.toISOString() ?? null, closedReason: c.closedReason,
         withdrawnAt: c.withdrawnAt?.toISOString() ?? null, withdrawnOn: c.closeOutcome === "WITHDRAWN" && withdrawal ? day(withdrawal.decidedOn) : null, withdrawReason: c.withdrawReason,
         closedFromStage: stageOf(c.closedFromStageId), currentStage: current ? { id: current.id, label: current.staffName } : null,
-        decision: !open && c.closeOutcome === "CLOSED_BY_STAFF" && ruled[0] ? ruled[0].outcome : null },
+        // Break M1: each active filing's latest decision (never an inactive filing's), as the panel's rows show them.
+        decisions: !open && c.closeOutcome === "CLOSED_BY_STAFF" ? filings.filter((f) => f.latest).map((f) => ({ person: f.person, outcome: f.latest!.outcome })) : [] },
       filings, outcomes: [...DECISION_OUTCOMES], sample: true,
       can: {
         decide: open ? filings.filter((f) => f.submitted).map((f) => f.id) : [],

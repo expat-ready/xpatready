@@ -62,7 +62,7 @@ const call = async (method: string, path: string, token?: string, body?: unknown
 try {
   await seedSampleFirms(db);
   const FA = (await db.platformFirm.findUniqueOrThrow({ where: { key: "sample-firm" } })).id;
-  const staff = async (tag: string, role: string | null) => {
+  const staff = async (tag: string, role: "CASE_MANAGER" | "CASE_OFFICER" | null) => {
     const s = await db.platformStaff.create({ data: { firmId: FA, actorId: `csc1s-${tag}`, email: `csc1s-${tag}@sample.invalid`, displayName: `Sample ${tag}` } });
     if (role) await db.platformRoleGrant.create({ data: { firmId: FA, staffId: s.id, role, grantedBy: "seed:csc1s" } });
     return s;
@@ -154,13 +154,21 @@ try {
   r = await read(b.id);
   ok("CS-C1s DS1 pass (BR-5): closed, the read gives the closing fields (outcome, date, reason, the stage it closed from, the decision) and can: reopen only",
     r.body.case.status === "CLOSED" && r.body.case.closeOutcome === "CLOSED_BY_STAFF" && !!r.body.case.closedAt && r.body.case.closedReason === "Visa approved; file complete (Sample)"
-    && r.body.case.closedFromStage?.id === b.s2 && r.body.case.decision === "APPROVED" && JSON.stringify(r.body.can) === JSON.stringify({ decide: [], withdraw: false, close: false, reopen: true }), [r.body.case, r.body.can]);
+    && r.body.case.closedFromStage?.id === b.s2 && r.body.case.decisions.map((d: any) => d.outcome).join() === "APPROVED,APPROVED" && JSON.stringify(r.body.can) === JSON.stringify({ decide: [], withdraw: false, close: false, reopen: true }), [r.body.case, r.body.can]);
   r = await decide(b.id, b.filings[0]);
   ok("CS-C1s DS1 fail (BR-5 parity): closed, can.decide is empty, and the POST refuses (409 CASE_CLOSED)", r.status === 409 && r.body.code === "CASE_CLOSED", [r.status, r.body.code]);
   r = await call("POST", P(b.id, "reopen"), TM, { reason: "IRCC reconsideration (Sample)" });
   ok("CS-C1s DS1 pass (BR-6 parity): can.reopen true, and the POST reopens (200)", r.status === 200, r.status);
   r = await read(b.id);
   ok("CS-C1s DS1 pass (BR-6): reopened, the closing fields are empty and the case is at the same stage", r.body.case.status === "OPEN" && r.body.case.closeOutcome === null && r.body.case.closedReason === null && r.body.case.currentStage.id === b.s2 && r.body.can.reopen === false, r.body.case);
+  // Break M1: the header's decisions are each active filing's latest, never an inactive filing's.
+  const m = newCase({ filings: 2, submitted: 2 });
+  await decide(m.id, m.filings[0], { outcome: "APPROVED" }); await decide(m.id, m.filings[1], { outcome: "REFUSED" });
+  sql(`set session_replication_role = replica; update filing set active = false where id = '${m.filings[1]}'`);
+  r = await call("POST", P(m.id, "close"), TM, { reason: "Done (Sample)" });
+  r = await read(m.id);
+  ok("CS-C1s DS1 fail (break M1): a decision on a filing no longer active is not the case's decision: only the active filing's Approved",
+    r.body.case.status === "CLOSED" && JSON.stringify(r.body.case.decisions.map((d: any) => d.outcome)) === '["APPROVED"]' && r.body.filings.length === 1, r.body.case);
   // Withdrawal: the newest WITHDRAWAL row's date.
   const c = newCase({ filings: 1 });
   r = await call("POST", P(c.id, "withdraw"), TM, { reason: "First withdrawal (Sample)", withdrawnOn: "2026-11-12" });
@@ -168,7 +176,7 @@ try {
   r = await call("POST", P(c.id, "withdraw"), TM, { reason: "Client withdrew again (Sample)", withdrawnOn: "2026-11-15" });
   r = await read(c.id);
   ok("CS-C1s DS1 pass (BR-4): withdrawn twice, the read gives the newest withdrawal's date and reason, outcome WITHDRAWN, no decision",
-    r.body.case.closeOutcome === "WITHDRAWN" && r.body.case.withdrawnOn === "2026-11-15" && r.body.case.withdrawReason === "Client withdrew again (Sample)" && r.body.case.decision === null && r.body.filings[0].latest === null, r.body.case);
+    r.body.case.closeOutcome === "WITHDRAWN" && r.body.case.withdrawnOn === "2026-11-15" && r.body.case.withdrawReason === "Client withdrew again (Sample)" && r.body.case.decisions.length === 0 && r.body.filings[0].latest === null, r.body.case);
   // Another firm's case, an unknown id and a malformed id: 404 with the same words.
   const other = await Promise.all([read(a.id, TB), read(randomUUID()), read("not-a-uuid")]);
   ok("CS-C1s DS1 fail (BR-7): another firm's staff, an unknown id and a malformed id: 404 with the same words, nothing of the case",

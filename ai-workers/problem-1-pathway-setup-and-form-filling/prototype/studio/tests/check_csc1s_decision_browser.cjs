@@ -39,7 +39,8 @@ const OWNER = "representative@sample-firm.example.com", OFFICER = "user-o@sample
     ok("setup: the configured checkpoint loads", l.status < 300, l.status);
   }
   const vv = sql("select id from combination where combination_key = 'vv.single'");
-  const ownerToken = await signIn(OWNER), officerToken = await signIn(OFFICER);
+  let ownerToken = await signIn(OWNER);
+  const officerToken = await signIn(OFFICER);
   ok("setup: the representative (Owner, Case manager) and the case officer sign in as firm staff (local stand-in)", !!ownerToken && !!officerToken, { ownerToken: !!ownerToken, officerToken: !!officerToken });
   let n = 0;
   const openCase = async (name, submitted) => {
@@ -108,7 +109,7 @@ const OWNER = "representative@sample-firm.example.com", OFFICER = "user-o@sample
         /Record a decision: Sample Client CSC1S A/.test(await dialog.innerText()) && (await dialog.locator("[data-outcome-choice]").count()) === 2 && (await dialog.locator("[data-sample-mark]").count()) === 2 && (await dialog.locator("[data-act-date]").inputValue()) === "");
       await dialog.getByRole("button", { name: "Record the decision" }).click();
       await dialog.locator("[role=alert]").first().waitFor();
-      ok("DS5 fail: Record with no outcome and no date names both fields, nothing recorded", /Choose the outcome\./.test(await dialog.innerText()) && /A real date as YYYY-MM-DD\./.test(await dialog.innerText()) && sql(`select count(*) from case_decision where case_id = '${A.id}'`) === "0");
+      ok("DS5 fail: Record with no outcome and no date names both fields, nothing recorded", /Choose the outcome\./.test(await dialog.innerText()) && /Give the date\./.test(await dialog.innerText()) && sql(`select count(*) from case_decision where case_id = '${A.id}'`) === "0");
       await axe("the Record a decision dialog with its errors", "[role=dialog]");
       await dialog.locator("[data-outcome-choice='APPROVED']").check();
       await dialog.locator("[data-act-date]").fill("2026-11-16");
@@ -194,6 +195,29 @@ const OWNER = "representative@sample-firm.example.com", OFFICER = "user-o@sample
         (await dialog.locator("[data-act-refusal]").innerText()) === "Every filing needs a decision before the case is closed. Before any decision, withdraw the case." && sql(`select status from runtime_case where id = '${R.id}'`) === "OPEN");
       await shot("9-refusal");
       await dialog.getByRole("button", { name: "Cancel" }).click(); await dialog.waitFor({ state: "detached" });
+    }
+
+    // ---- break M2: the staff session ends while a dialog is open: the panel says so, nothing recorded --------------------
+    if (firstRun) {
+      const T2 = await signIn(OWNER);
+      await p.evaluate(([t]) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_000_000 })), [T2]);
+      await openCasePage(R.id);
+      await panel.locator("[data-act='close']").click(); await dialog.waitFor();
+      await dialog.locator("[data-act-text]").fill("Session test (Sample).");
+      const out = await api("POST", "/platform/session/sign-out", undefined, { token: T2 });
+      await dialog.getByRole("button", { name: "Close the case" }).click();
+      await panel.locator("[data-decision-session-lost]").waitFor({ timeout: 15000 });
+      ok("DS5 fail (break M2): the session ended elsewhere while Close was open: the panel says \"Close the case was not sent: nothing was recorded\" and offers the sign-in",
+        out.status < 300 && /^Close the case was not sent: nothing was recorded\./.test(await panel.locator("[data-decision-session-lost]").innerText()) && (await panel.locator("[data-sign-in-card]").count()) === 1 && sql(`select status from runtime_case where id = '${R.id}'`) === "OPEN", out.status);
+      await axe("the panel after the session ended", "[data-case-decision]");
+      await panel.getByLabel("Firm key").fill("sample-firm"); await panel.getByLabel("Work email").fill(OWNER);
+      await panel.getByRole("button", { name: "Sign in" }).click();
+      await dialog.locator("[data-act-restored]").waitFor({ timeout: 30000 });
+      ok("DS5 pass (review M2): signed in again, Close the case opens again with the reason typed before; nothing sent yet",
+        (await dialog.locator("[data-act-text]").inputValue()) === "Session test (Sample)." && sql(`select status from runtime_case where id = '${R.id}'`) === "OPEN");
+      await dialog.getByRole("button", { name: "Cancel" }).click(); await dialog.waitFor({ state: "detached" });
+      // One session per person: the sign-in above ended the earlier one, so the walk goes on with the new one.
+      ownerToken = await p.evaluate(() => JSON.parse(sessionStorage.getItem("xr-staff-session")).token);
     }
 
     // ---- DS4: withdraw case B (no decision) with a reason and a date ------------------------------------------------------

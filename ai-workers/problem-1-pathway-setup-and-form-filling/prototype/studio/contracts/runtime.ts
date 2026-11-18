@@ -551,7 +551,7 @@ const Day = z.string(), Stage = z.object({ id: z.string(), label: z.string() });
 const Decision = z.object({ id: z.string(), outcome: z.string(), decidedOn: Day, note: z.string().nullable(), recordedAt: z.string(), recordedBy: z.object({ staffId: z.string(), name: z.string().nullable() }) });
 export const CaseDecisionsView = z.object({
   case: z.object({ id: z.string(), caseNumber: z.string(), status: z.string(), closeOutcome: z.string().nullable(), closedAt: z.string().nullable(), closedReason: z.string().nullable(),
-    withdrawnAt: z.string().nullable(), withdrawnOn: Day.nullable(), withdrawReason: z.string().nullable(), closedFromStage: Stage.nullable(), currentStage: Stage.nullable(), decision: z.string().nullable() }),
+    withdrawnAt: z.string().nullable(), withdrawnOn: Day.nullable(), withdrawReason: z.string().nullable(), closedFromStage: Stage.nullable(), currentStage: Stage.nullable(), decisions: z.array(z.object({ person: z.string().nullable(), outcome: z.string() })) }),
   filings: z.array(z.object({ id: z.string(), person: z.string().nullable(), stage: Stage, current: z.boolean(), submitted: z.boolean(), submittedOn: Day.nullable(), latest: Decision.nullable(), earlier: z.array(Decision) })),
   outcomes: z.array(z.string()), sample: z.literal(true),
   can: z.object({ decide: z.array(z.string()), withdraw: z.boolean(), close: z.boolean(), reopen: z.boolean() }),
