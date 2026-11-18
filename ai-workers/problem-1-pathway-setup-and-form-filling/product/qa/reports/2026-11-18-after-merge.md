@@ -20,13 +20,13 @@
 * Run **44256761591** (workflow_dispatch, `capabilities: C8.2 C11.6`, `data: checkpoint`, head 39c1203cd):
   * C8.2: "C8.2.test.ts on the checkpoint: exit 0, 19/19 passed" (job 134640396986);
   * C11.6: "C11.6.test.ts on the checkpoint: exit 0, 14/14 passed" (job 134640397274).
-* Still needed (RULES.md P-339, P-348c; `rules/works.md`):
-  * an independent re-run (P-290);
-  * a fresh Opus reader's verdict, by a reader that ran nothing (P-303, P-432);
-  * a gate A walk by screens to the next capability's first step (P-348c). The last walk was 11 Nov on 68a7b59d1, before BK-21 changed this path.
+* The rest of the Works rule (RULES.md P-339, P-348c; `rules/works.md`), all met on 18 Nov:
+  * independent re-run (P-290): **44260362078**, C8.2 19/19 (job 134668185255) and C11.6 14/14 (job 134668185047) on the checkpoint, head 39c1203cd;
+  * fresh Opus reader that ran nothing (P-303, P-432): WORKS for both (`reader-verdict-c82-c116.txt`);
+  * gate A walk by screens to the next capability's first step (P-348c): PASS for both (below).
 * `REGRESSION-DATA.md` got their "checkpoint" lines with the Works verdict.
 
-No regression found. **Two new findings:** QA-507 (Bug · Minor) and QA-508 (Conflict · Minor: R1.58's text is out of date). No other row moves: each still has parts missing (P-606).
+No regression found. **Three new findings, all Minor:** QA-507 (Bug), QA-508 (Conflict: R1.58's text out of date; closed on Lead 80's ruling) and QA-509 (UX). Apart from C8.2 and C11.6, no row moves to Works: each still has parts missing (P-606).
 
 | Merge (UTC 17 Nov) | What | Row | Underneath (here twice · CI) | Like a person | Row now |
 |---|---|---|---|---|---|
@@ -97,10 +97,13 @@ Not measured this round: c8 needs the API server under the tsx CLI, which this s
 * **The invitation accept refusal (PF-6m2)** has no screen to walk; the builder's note says the Accept page still shows such an invitation as valid until accept is pressed.
 
 ## Questions for the tech lead
-1. **QA-508:** R1.58's text says trust "never goes below zero"; P-634 and the founder's P-653 (2) say a reversal may take it below zero, shown red. Please rewrite R1.58's text to match.
-2. **C8.2 and C11.6:** both are green on the checkpoint (run 44256761591). Who runs the independent re-run and the fresh Opus reader, and shall qa walk gate A on a copy loaded with the configured checkpoint next?
-3. **R1.20:** the row says a 1-50 row invite "accepts the good rows and names each bad row's reason". PF-4c (backlog, AG-1-69) takes 1-20 rows and sends nothing while any row is flagged. Which one holds?
-4. **qa #2088:** its records are merged into this PR, so #2088 can be closed. Close it, or shall I?
+1. **P-653 (2) supersedes P-607 (1):** Lead 80 ruled this in a message to the qa session on 18 Nov (~13:0x IST), and it closes QA-508. No DECISIONS.md row records it yet; please add one (qa does not write DECISIONS.md).
+2. **qa #2088:** its records are in #2117. Closing it was refused by the tech lead's permission check, so it waits for the founder.
+
+Answered this round by Lead 80 (18 Nov): R1.58's Done when (given word for word; QA-508 closed); qa runs the re-run, the fresh reader and gate A for C8.2 and C11.6 (done); R1.20 is scored against PF-4c as shaped.
+
+## Question for the founder (through the tech lead)
+* **R1.20:** the row says a 1-50 row invite "accepts the good rows and names each bad row's reason". PF-4c as shaped takes 1-20 rows and sends nothing while any row is flagged, and AG-1-69 gives no row count and no partial rule. Which one holds?
 
 ## Suggestions
 * QA-507's fix: map the parser's 415 errors (`charset.unsupported`, `encoding.unsupported`) in `ProblemErrors` to a 415 problem answer in words. *Later* · *Capability*.
