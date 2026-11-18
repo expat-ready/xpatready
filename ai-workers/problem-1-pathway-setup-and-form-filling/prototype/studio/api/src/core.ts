@@ -144,16 +144,15 @@ export class Workspace {
 const TYPED_WORD: Readonly<Record<string, string>> = { system: "system:studio", rules: "system:rules" };
 /** The word a reader shows for a stored actor: a mapped word reads as its bare word, as before AUD-1m. */
 export const actorWordOf = (actor: string) => Object.keys(TYPED_WORD).find((k) => TYPED_WORD[k] === actor) ?? actor;
-const UUID_IN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-/** AUD-1m: the case a line is about, as a full id, parsed as case-feed.ts's caseOf reads it (the "case" entity keyed by
- *  the case id, else the first "case <8>" in its words); the full id is the uuid in its key (or detail.case) that starts
- *  with those 8 characters. Never guessed: no uuid that agrees, no case id (the trail has no foreign key, SA-11 BR-8). */
-export function caseIdOf(entity: string, entityKey: string | null, summary: string, detail?: unknown): string | undefined {
+/** AUD-1m: the case a line is about, as a full id. Its 8 characters are read as case-feed.ts's caseOf reads them (the
+ *  "case" entity keyed by the case id, else the first "case <8>" in its words); the full id is the one case of the
+ *  line's workspace whose id starts with them, read in the caller's transaction (one indexed range on the primary key).
+ *  None, or more than one, gives no case id: never guessed (the trail has no foreign key, SA-11 BR-8). */
+export async function caseIdOf(db: Pick<Db, "case">, workspaceId: string, entity: string, entityKey: string | null, summary: string): Promise<string | undefined> {
   const short = caseOf({ entity, entityKey, summary });
-  if (!short) return undefined;
-  const fromDetail = detail && typeof detail === "object" && typeof (detail as { case?: unknown }).case === "string" ? (detail as { case: string }).case : null;
-  for (const v of [entityKey, fromDetail]) { const id = v ? UUID_IN.exec(v)?.[0].toLowerCase() : undefined; if (id?.startsWith(short)) return id; }
-  return undefined;
+  if (!short || !/^[0-9a-f]{8}$/.test(short) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(workspaceId)) return undefined;
+  const found = await db.case.findMany({ where: { workspaceId, id: { gte: `${short}-0000-0000-0000-000000000000`, lte: `${short}-ffff-ffff-ffff-ffffffffffff` } }, select: { id: true }, take: 2 });
+  return found.length === 1 ? found[0].id.toLowerCase() : undefined;
 }
 
 @Injectable()
@@ -163,9 +162,9 @@ export class Audit {
   constructor(@Inject(Db) private readonly db: Db) {}
   /** combinationId: the configuration row an edit belongs to (review derives every draft author from these events).
    *  AUD-1m: the signature is unchanged; the line goes through AuditPort (platform/audit/audit-event.ts) as a CaseEntry,
-   *  with the request's or job's firm, correlation and actor type, and its case id when its entity or key names one. */
+   *  with the request's or job's firm, correlation and actor type, and its case id when its entity or words name one. */
   async log(workspaceId: string, actor: string, action: string, entity: string, entityKey: string | null, summary: string, detail?: unknown, combinationId?: string) {
-    const words = summary.slice(0, 600), caseId = caseIdOf(entity, entityKey, words, detail);
+    const words = summary.slice(0, 600), caseId = await caseIdOf(this.db, workspaceId, entity, entityKey, words);
     await auditEvent.record(this.db as unknown as Prisma.TransactionClient, {
       workspaceId, actor: TYPED_WORD[actor] ?? actor, action, entity, entityKey, summary: words, combinationId: combinationId ?? null,
       ...(detail === undefined ? {} : { detail }), ...(caseId ? { caseId } : {}),

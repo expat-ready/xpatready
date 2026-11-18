@@ -63,7 +63,8 @@ execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = urlOf(DB);
 
-const { Audit, caseIdOf, actorWordOf } = await import("../api/src/core.ts");
+const { Audit, actorWordOf } = await import("../api/src/core.ts");
+const { peopleNames } = await import("../api/src/studio.ts");
 const { AuditRefused } = await import("../api/src/platform/audit/audit-event.ts");
 const { requestScope } = await import("../api/src/platform/observability/log.ts");
 const { useAlerts } = await import("../api/src/platform/observability/alerts.ts");
@@ -83,18 +84,31 @@ try {
   const ws = (await db.workspace.create({ data: { key: "demo", label: "AUD-1m check" } })).id;
   const firm = (await db.platformFirm.findFirst({ select: { id: true } }))?.id ?? "3f1c0000-0000-4000-8000-00000000f1a1";
   const CASE = "3185450e-1111-4222-8333-444455556666", OTHER = "9a1b2c3d-1111-4222-8333-444455556666";
+  const TWIN_A = "7e7e7e7e-1111-4222-8333-0000000000a1", TWIN_B = "7e7e7e7e-2222-4222-8333-0000000000b2", ELSEWHERE = "5e5e5e5e-1111-4222-8333-444455556666", NO_CASE = "4d4d4d4d-1111-4222-8333-444455556666";
 
-  // CW3: a case action's line carries its case id.
+  // CW3: a case action's line carries its case id: real callers' shapes (runtime.ts, fill-case.ts, sections) name the
+  // case only in their words ("on case 3185450e"); the case is the one of the line's workspace with that prefix.
+  const ws2 = (await db.workspace.create({ data: { key: "aud1m-other", label: "AUD-1m check, another workspace" } })).id;
+  const COMBO = "0b0b0b0b-0000-4000-8000-00000000c0b0";
+  let cases = 0;
+  // A bare case row (the check needs only its id and workspace): the scratch database's own superuser inserts it with
+  // foreign keys off for that one transaction (no combination or release behind it).
+  const newCase = (id: string, workspaceId = ws) => db.$transaction([db.$executeRawUnsafe("SET LOCAL session_replication_role = replica"),
+    db.case.create({ data: { id, workspaceId, combinationId: COMBO, caseNumber: `C-2026-${String(++cases).padStart(5, "0")}`, clientActorId: "user-P", createdBy: "user-O" } as never })]);
+  await newCase(CASE); await newCase(TWIN_A); await newCase(TWIN_B); await newCase(ELSEWHERE, ws2);
   await audit.log(ws, "user-O", "opened", "case", CASE, `Case officer opened case ${CASE.slice(0, 8)}`);
-  await audit.log(ws, "user-O", "answered", "case fact", `cw3-${CASE}`, `Case officer answered x on case ${CASE.slice(0, 8)}`);
-  await audit.log(ws, "user-O", "added", "row", "cw3-detail", `Case officer added a row on case ${CASE.slice(0, 8)}`, { case: CASE });
-  const opened = await lineOf(CASE), keyed = await lineOf(`cw3-${CASE}`), detailed = await lineOf("cw3-detail");
-  ok("AUD-1m CW3 pass: a case action's line carries its case id (the case entity's key; a case entity's key or detail.case that agrees with its words)", opened?.caseId === CASE && keyed?.caseId === CASE && detailed?.caseId === CASE, [opened?.caseId, keyed?.caseId, detailed?.caseId]);
-  await audit.log(ws, "user-A", "updated", "form", "IMM5257", "Configuration author changed IMM 5257");
-  await audit.log(ws, "user-O", "answered", "case fact", `cw3-${OTHER}`, `Case officer answered x on case ${CASE.slice(0, 8)}`);
-  await audit.log(ws, "user-O", "opened", "case", "not-a-uuid", `x opened case ${CASE.slice(0, 8)}`);
-  const cfg = await lineOf("IMM5257"), clash = await lineOf(`cw3-${OTHER}`), bad = await lineOf("not-a-uuid");
-  ok("AUD-1m CW3 fail: a line naming no case, a key whose uuid disagrees with its words, or a non-uuid case key carries no case id (never guessed)", !!cfg && cfg.caseId === null && !!clash && clash.caseId === null && !!bad && bad.caseId === null && caseIdOf("case", null, "x") === undefined, [cfg?.caseId, clash?.caseId, bad?.caseId]);
+  await audit.log(ws, "user-O", "answered", "case fact", "person.name", `Case officer answered person.name on case ${CASE.slice(0, 8)} (Agent view)`);
+  await audit.log(ws, "user-O", "generated", "form copy", "IMM5257", `Copy 1a2b3c4d of IMM5257 on case ${CASE.slice(0, 8)} generated: 12 form fields written`);
+  await audit.log(ws, "user-O", "entered", "section", "s-1", `Case officer marked the section entered on Case ${CASE.slice(0, 8).toUpperCase()}`);
+  const real = await db.auditEvent.findMany({ where: { workspaceId: ws, entityKey: { in: [CASE, "person.name", "IMM5257", "s-1"] } }, select: { entity: true, caseId: true } });
+  ok("AUD-1m CW3 pass: a case action's line carries its case id (the case entity's key; a case fact, a form copy and a section named only in their words)", real.length === 4 && real.every((l) => l.caseId === CASE), real);
+  await audit.log(ws, "user-A", "updated", "form", "IMM5257-cfg", "Configuration author changed IMM 5257");
+  await audit.log(ws, "user-O", "answered", "case fact", "cw3-twin", `x on case ${TWIN_A.slice(0, 8)}`);
+  await audit.log(ws, "user-O", "answered", "case fact", "cw3-elsewhere", `x on case ${ELSEWHERE.slice(0, 8)}`);
+  await audit.log(ws, "user-O", "answered", "case fact", "cw3-none", `x on case ${NO_CASE.slice(0, 8)}`);
+  await audit.log(ws, "user-O", "opened", "case", "not-a-uuid", "x opened a case");
+  const nulls = await db.auditEvent.findMany({ where: { entityKey: { in: ["IMM5257-cfg", "cw3-twin", "cw3-elsewhere", "cw3-none", "not-a-uuid"] } }, select: { entityKey: true, caseId: true } });
+  ok("AUD-1m CW3 fail: no case id for a line naming no case, two cases sharing the 8 characters, another workspace's case, no such case, or a key that is no case (never guessed)", nulls.length === 5 && nulls.every((l) => l.caseId === null), nulls);
 
   // CW4: a line written with tx disappears when that transaction rolls back.
   await db.$transaction(async (tx) => { await new Audit(tx as never).log(ws, "user-O", "added", "row", "cw4-commit", `Case officer added a row on case ${CASE.slice(0, 8)}`); });
@@ -112,6 +126,11 @@ try {
     && job?.firmId === firm && job.correlationId?.startsWith("job:") && job.actor === "system:rules" && job.actorType === "SYSTEM"
     && none?.actorType === "CLIENT", [req, job, none].map((l) => l && { firm: l.firmId, corr: l.correlationId, actor: l.actor, type: l.actorType }));
   ok("AUD-1m CW5 fail: outside any request or job the line has no firm and no correlation id (until CS-W1), and the bare words read as before", none?.firmId === null && none.correlationId === null && actorWordOf("system:rules") === "rules" && actorWordOf("system:studio") === "system" && actorWordOf("user-O") === "user-O");
+  // The readers that name a stored actor read a mapped word as before: the activity feed's who, and "The studio" in the
+  // three history lists (their source names actorWordOf, so reverting one turns this red).
+  const readers = ["form-uses.ts", "library-items.ts", "lifecycle.ts"].map((f) => readFileSync(join(API, f), "utf8").includes('actorWordOf(r.actor) === "system" ? "The studio"'));
+  ok("AUD-1m CW5 pass: the activity feed reads system:rules as rules and system:studio as system; the three history lists read system:studio as The studio",
+    peopleNames("system:rules") === "rules" && peopleNames("system:studio") === "system" && peopleNames("user-O,system:rules") === "Case officer, rules" && readers.every(Boolean), { who: peopleNames("system:rules"), readers });
 
   // CW6: fail-closed in a signed-in request and in our staff's; an untyped word is refused; one alert, ids only.
   const before = failed().length, n0 = await db.auditEvent.count();
@@ -120,7 +139,7 @@ try {
   ok("AUD-1m CW6 pass: in a signed-in request a case line by the request's own actor is written, FIRM_STAFF with its firm", (await lineOf("cw6-own"))?.firmId === firm);
   const refusedOther = await rejects(() => inRequest(signedIn, () => audit.log(ws, "user-O", "answered", "case fact", "cw6-other", "x")), (e) => e instanceof AuditRefused);
   const refusedOurs = await rejects(() => inRequest({ id: "cw6-2", firm, who: () => ({ actor: "staff:cw6-ours", actorType: "OUR_STAFF" as const }) }, () => audit.log(ws, "staff:cw6-ours", "answered", "case fact", "cw6-ours", "x")), (e) => e instanceof AuditRefused);
-  const refusedWord = await rejects(() => audit.log(ws, "test", "answered", "case fact", "cw6-word", "x"));
+  const refusedWord = await rejects(() => audit.log(ws, "test", "answered", "case fact", "cw6-word", "x"), (e) => e instanceof AuditRefused && /actor word 'test' has no actor type/.test((e as Error).message));
   const refusedArea = await rejects(() => audit.log(ws, "user-O", "answered", "platform_staff", "cw6-area", "x"));
   const alertsNow = failed().slice(before), d = alertsNow[0]?.detail as Record<string, unknown> | undefined;
   ok("AUD-1m CW6 fail: another actor in a signed-in request, our staff's request, a bare word and an area entity are refused, nothing written, one alert each with ids only",
@@ -130,7 +149,7 @@ try {
   // CW7: the firm's case feed reads the same lines as before (case-feed.ts's rule on the stored lines).
   const own = new Set([CASE.slice(0, 8)]), lines = await db.auditEvent.findMany({ where: { workspaceId: ws } });
   const read = (k: string) => { const l = lines.find((x) => x.entityKey === k); return !!l && firmMayRead(l, own); };
-  ok("AUD-1m CW7 pass: the firm's own case lines and the configuration line are read by its feed", read(CASE) && read(`cw3-${CASE}`) && read("cw3-detail") && read("IMM5257") && read("cw4-commit"));
+  ok("AUD-1m CW7 pass: the firm's own case lines and the configuration line are read by its feed", read(CASE) && read("person.name") && read("IMM5257") && read("IMM5257-cfg") && read("cw4-commit"));
   ok("AUD-1m CW7 fail: another firm's case line is not read, and no line lands in the platform's own workspace", !firmMayRead({ entity: "case fact", entityKey: "k", summary: `x on case ${OTHER.slice(0, 8)}` }, own)
     && !(await db.workspace.findUnique({ where: { key: "platform-audit" } })));
 } catch (e) {

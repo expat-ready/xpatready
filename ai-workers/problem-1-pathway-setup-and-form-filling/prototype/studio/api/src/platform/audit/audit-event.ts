@@ -10,7 +10,7 @@
 // so the caller's transaction rolls the change back. One try: inside PostgreSQL a failed statement aborts the
 // transaction, so a retry there could never succeed.
 import type { Prisma } from "@prisma/client";
-import { AuditEntry, CaseEntry, isCaseEntry, type AuditPort } from "../../../../ports/audit.ts";
+import { AuditEntry, CaseActor, CaseEntry, isCaseEntry, type AuditPort } from "../../../../ports/audit.ts";
 import { writeAuditWithAlarm } from "../observability/alerts.ts";
 import { actorTypeOfWord, auditContext } from "./context.ts";
 
@@ -69,6 +69,9 @@ export class AuditEventAdapter implements AuditPort<Tx> {
     await writeAuditWithAlarm(async () => {
       const ctx = auditContext();
       if (ctx?.firmId) ids.firmId = ctx.firmId;
+      // An actor word with no type is refused in the insert trigger's own words (AUD-1a, BR-3: never inferred), naming it.
+      const word = (entry as { actor?: unknown })?.actor;
+      if (!CaseActor.safeParse(word).success) throw new AuditRefused(`audit line refused: the actor word '${String(word).replace(/'/g, "''").slice(0, 200)}' has no actor type (staff:<id>, person:<id>, system:<door>, seed:<row> or a simulated person's id)`);
       const e = CaseEntry.parse(entry);
       if (ctx?.actorType === "OUR_STAFF") throw new AuditRefused(`audit line refused: this request is our staff's (OUR_STAFF), which has no actor word until PF-4s`);
       if (ctx?.actor && e.actor !== ctx.actor) throw new AuditRefused(`audit line refused: the line names ${e.actor}, but this request is ${ctx.actor}'s`);

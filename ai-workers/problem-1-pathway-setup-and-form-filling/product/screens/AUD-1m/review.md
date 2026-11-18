@@ -1,0 +1,60 @@
+# AUD-1m part 1 review (reviewer, 18 Nov 2026), commit c6e9c6326f066cb2803f55b2cdf8648ec782f001
+
+**Scope:** runtime row, no screen. Diff `1b2defdb..c6e9c632` (871c9465 = AUD-1b's review record, not reviewed). Spec: Build Lead C's brief `build-lead-c-briefs/AUD-1m.md` @a7014c0bb, Part 1 and its "Done when". Context read: AUD-1a migration, `platform/audit/`, `case-feed.ts`, `hook.ts`, `identity/guard.ts`.
+**Skill verdict:** Rework (one Blocker, two Majors). Journey score **9.5 / 10** (pass): `journey-test-reviewer-2026-11-18.md`.
+
+## What I ran (own worktree at c6e9c632; Postgres 127.0.0.1:54329; isolated copy `rv_aud1m` on :4438, runtime lane range, never :4400)
+* `check_aud1m_case_writes.ts` **16 / 0**; `check_case_feed.ts` **42 / 42**; `check_aud1b_adapter.ts` **33 / 0**; `check_pf0p_ports.ts` **122 / 0**; `check_aud5_keep_periods.ts` **57 / 0**.
+* **`check_aud1a_insert_only.ts 4438 xr_studio_rv_aud1m`: 40 passed, 1 failed** (Part A and Part B, demo reset included). The failing case is DW5 fail (line 104). At base 1b2defdb, with only `core.ts` swapped back, the same case passes (Major 1).
+* typecheck: no new errors (15 known; the api run needs `--max-old-space-size=6144` here). Port contracts: 0 problems. count-any: 416 (baseline 433). `graph.mjs --check`: exit 0. Module cards: pass.
+* Demo: on :4438, Load the finished story wrote about 3,700 lines through `Audit.log` with none refused. As the case officer, Generate a copy wrote `form copy` queued/generated lines. Each line had the request's correlation id, FIRM_STAFF and a null firm.
+
+## Mutations (P-606; one change each, then the named suite)
+| Rule removed | Red |
+|---|---|
+| CaseEntry's area-entity refine | CW2 fail ×2, CW6 fail |
+| CaseActor accepts any word | CW2 fail |
+| fake keeps case lines apart | CW2 pass, CW2 fail |
+| caseIdOf's 8-character agreement | CW3 fail |
+| caseId not passed / detail.case not read | CW3 pass |
+| tx ignored (the first Audit's db used) | CW4 fail |
+| firm from context → null | CW5 pass, CW6 pass |
+| correlation id → null | CW5 pass |
+| OUR_STAFF refusal / exact-actor refusal / alarm bypassed | CW6 fail (each) |
+| `TYPED_WORD` mapping removed | the run aborts in CW5 (CaseActor refuses `rules`) |
+| `actorWordOf` made the identity | CW5 fail |
+| the new CLIENT / FIRM_STAFF branches of `actorTypeOfWord` | the run aborts through the trigger (no case names it) |
+| adapter routing by `isCaseEntry` | the run aborts in CW3 |
+| case line into `platform-audit` | CW7 pass, CW7 fail |
+| sweep's case-line rule; case line read as port line | check_case_feed's AUD-1m fail; AUD-1m pass and fail |
+| one more direct `auditEvent.create` | CW1 pass |
+| **the four reader edits (`actorWordOf` in form-uses, library-items, lifecycle, peopleNames)** | **nothing fails** (minor 2) |
+
+## Fail-closed survey (223 `Audit.log` calls; `req.platform` is set only on PLATFORM_ACCESS routes)
+* Actors passed: `actor.id` (211), `w.id` (a simulated id or `person:<subject>`), `author.id`, `x.createdBy`, `opts.recompare.id`, the finder's `by` (`"system"`), and `"rules"` (findings.ts:86, review-runs.ts:161). Every one is a CaseActor word or one of the two mapped words. The AUD-1a trigger already refused anything else.
+* No case-side `Audit.log` runs inside a platform-guarded request or a firm job today. Case-close's keyed routes still write `auditEvent.create` directly (part 2). So the exact-actor and OUR_STAFF refusals refuse no current caller, and every case line has a null firm. The demo reset's delete rule still holds (AUD-1a Part B green).
+* My shape probe compared head against base on a scratch database. `detail: null`, `{}`, arrays and Dates still write. Three shapes are newly refused: an empty `action`, an `entityKey` over 2,000 characters, and an `undefined` key (`entityKey` is typed). No caller on main passes any of them. A non-uuid workspace or combination id was already refused by the database. The `entity` is now stored trimmed.
+* Transactions: `new Audit(tx)` writes in the caller's transaction (CW4). The injected `Audit` writes on the client, as before. `audit_event` has no RLS, so the walled `Db` changes nothing.
+* Alerts: one `audit_write_failed` per refusal, with ids only (`alertIds`). The firm comes from the context only (CW6).
+* Display: the activity feed's Who column reads as before for the reviewer and the firm staff (screenshots below). `system:rules` and `system:studio` display as `rules` and `system`. The feed JSON now also carries `correlationId` (an id, not personal data).
+
+## Issues (ranked)
+1. **Blocker (Must): a symlink to a local folder is committed.** `prototype/studio/node_modules` (mode 120000, target `/home/user/xpatready/…/studio/node_modules`) was added in 278d7393. `.gitignore`'s `node_modules/` matches directories only, and the push guard did not catch it. On any clone with a real `node_modules` (the Mac's main copy, the :4400 demo update), checkout replaces or conflicts with the installed folder and leaves a link that points nowhere. AGENTS.md rule 1 forbids committing local tools. **Fix:** `git rm --cached` the link in a new commit (no history rewrite) and add `prototype/studio/node_modules` (without the trailing slash) to `.gitignore`.
+2. **Major (Must): AUD-1a's suite no longer passes unchanged** (a "Done when" item). DW5 fail (`check_aud1a_insert_only.ts:103-105`) expects an unknown word to be refused "naming the word" (`actor word 'alice' has no actor type`). CaseEntry's zod error (`audit-event.ts:72`) now refuses it first, with a generic message. **Fix:** in `recordCase`, before `CaseEntry.parse`, refuse a word CaseActor does not accept with `AuditRefused("audit line refused: the actor word '<w>' has no actor type (staff:<id>, person:<id>, system:<door>, seed:<row> or a simulated person's id)")`, the trigger's own words. Keep the one alert. Then run AUD-1a in full (Part B on an isolated copy).
+3. **Major (Must): "A case action's line carries its case_id" holds only for lines that already hold the full uuid.** `caseIdOf` (`core.ts:151-155`) needs the uuid in the key or `detail.case`. In the finished story, 11 of 613 case-naming lines got a `case_id`: `case fact` 0/368, `section` 0/94, `form copy` 0/62, `item` 0/28, `group` 0/23, `sign step` 0/6 (only `case`, `person` and some `filing` lines). My Generate a copy walk wrote "on case 4289e220" with a null `case_id`. CW3 pass uses keys no real caller writes (`cw3-${CASE}`). The brief says "parsed the same way case-feed.ts parses it today", and `caseOf` reads the words. **Fix:** when `caseOf` gives 8 characters and no uuid agrees, look the case up in the same workspace with the line's own `db`/`tx`, in one indexed range query (`id between '<8>-0000-0000-0000-000000000000' and '<8>-ffff-ffff-ffff-ffffffffffff'`). Exactly one match sets `case_id`; zero or several leave it null (never guessed). Add CW3 cases shaped like real callers (`form copy`, key `IMM 5257`, words "on case <8>"; two cases sharing 8 characters → null). If the tech lead rules otherwise, record that ruling in the PR body.
+4. **Minor (Should): touch list.** The brief names "one line in `api/src/core` MODULE card". The builder changed `platform/MODULE.md` instead, and `MODULE.core.md` is unchanged. The edits to `audit-event.ts`, `context.ts` and the four readers are outside the touch list. List them in the PR body for the release holder's OK.
+5. **Minor (Should, P-606): the reader mapping has no test.** Reverting `actorWordOf` in `form-uses.ts:45`, `library-items.ts:124`, `lifecycle.ts:222` or `studio.ts` `peopleNames` turns nothing red. Add a CW case: write a `"system"` line through `Audit.log`, check that `formUses` history shows "The studio", and that `peopleNames("system:rules")` gives `rules`.
+6. **Minor (Should): the count.** CW1 leaves 30 writes in 22 files; the brief says 25 in 20. Three of them are platform writes (`platform/identity/audit.ts` ×2, `platform/settings.ts` ×1) that part 2's "20 files" do not cover. As written, the final grep ("only the adapter") can never pass after part 2. Put it in the PR body as "Question for the tech lead", with the 27 case-side writes named.
+7. **Minor (PR body): forward notes.** (a) Name the two mapped bare words and their callers, as the brief asks: finder.ts:550 `system` → `system:studio`, and findings.ts:86 and review-runs.ts:161 `rules` → `system:rules`. (b) Once CS-W1 puts the actor on case routes, the rules' resolve-on-read lines inside a staff request will be refused by the exact-actor rule, and so would the reads. Name this for CS-W1. (c) `fakeAudit`'s `failOn` never applies to case lines, so a test cannot force a case-line failure through the fake.
+
+## D1–D20 (runtime row; screens unchanged)
+D1 Requirement fit 3 (issues 2 and 3) · D2 Data integrity 3 (case_id gap) · D3, D4, D7, D10, D14, D18 N/A · D5 Stability 4 (fail-closed, tx rollback CW4, demo reset green) · D6 Governance 4 (actor type and correlation on every case line) · D8, D9, D11, D12 4 (the activity and case pages are as before; screenshots) · D13 4 (axe 0 at 1440 and 1024; 400 px with no sideways scroll) · D15 4 (activity in 0.75–0.85 s) · D16 Testability 3 (issue 5; one case uses synthetic keys) · D17, D20 simulated only · D19 3 (the line exists; its case link does not, for most actions).
+
+## BIC scorecard (EXPERIENCE §6)
+BIC-01 to BIC-20: N/A. This row changes no case-side screen. The case page (Generate a copy at 1440 and 1024) and the firm feed read as before.
+
+## Could not check
+The builder's 185-suite case-side run (not run here, as asked) and full `ci`. A real screen reader. Real browser zoom at 200 %. The "same lines as before" check against a base-commit demo side by side; the feed filter is unchanged code, and CW7 covers the stored lines.
+Screenshots (scratchpad): `/tmp/claude-0/-home-user-xpatready/638253a0-8bdc-51bf-9031-692e99a4266c/scratchpad/shots/`.
+
+**Verdict: Block.** Fix 1 (Blocker), 2 and 3 (Major). Then re-review only the new commits.
