@@ -208,8 +208,9 @@ try {
   const times = p1.messages.map((m) => Date.parse(m.createdAt));
   ok("DW5 pass: 51 messages → a page of 50, newest first, and a next page of 1 (no repeats)",
     p1.messages.length === PAGE && !!p1.nextCursor && p2.messages.length === 1 && p2.nextCursor === null && times.every((t, i) => i === 0 || t <= times[i - 1]) && !p1.messages.some((m) => m.id === p2.messages[0].id), { n1: p1.messages.length, n2: p2.messages.length });
-  const badCursor = await status(staff.list(officer, { subjectKind: "FO_PERSON", subjectId: many.id, cursor: "x" }));
-  ok("DW5 fail: a cursor that is not one we gave → 400", badCursor.startsWith("400:"), badCursor);
+  const cursors = ["x", `2026-13-45T25:61:61.000Z_${uuid()}`, "2026-11-18T10:00:00.000Z_------------------------------------", `2026-02-30T10:00:00.000Z_${uuid()}`];
+  const bads = await Promise.all(cursors.map((cursor) => status(staff.list(officer, { subjectKind: "FO_PERSON", subjectId: many.id, cursor }))));
+  ok("DW5 fail: a cursor that is not one we gave (text, an impossible date, an all-dash id) → 400, never 500 (review m3)", bads.every((b) => String(b).startsWith("400:")), bads);
 } finally {
   connectLocalNotices(null);
   await db.$disconnect();

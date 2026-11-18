@@ -16,7 +16,7 @@ export const PAGE = 50;
 export const SUBJECT_KINDS = ["LEAD", "FO_PERSON", "CASE_PARTY"] as const;
 type SubjectKind = (typeof SUBJECT_KINDS)[number];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const CURSOR = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)_([0-9a-f-]{36})$/i;
+const CURSOR = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 /** The one answer for a subject that is not there for this person (another firm's, not theirs to see, or no key). */
 export const NOT_FOUND = "No such record in your firm.";
 const notFound = (): never => problem(404, "Not found", NOT_FOUND, { code: "NOT_FOUND" });
@@ -65,7 +65,7 @@ export class StaffMessages {
     const kind = SUBJECT_KINDS.find((k) => k === q.subjectKind);
     if (!kind || typeof q.subjectId !== "string" || !UUID.test(q.subjectId)) return notFound();
     const c = q.cursor === undefined ? null : CURSOR.exec(q.cursor);
-    if (q.cursor !== undefined && !c) return problem(400, "Check the page", "cursor: the nextCursor of the page before.", { code: "BAD_CURSOR" });
+    if (q.cursor !== undefined && (!c || Number.isNaN(Date.parse(c[1])) || new Date(c[1]).toISOString() !== c[1].toUpperCase())) return problem(400, "Check the page", "cursor: the nextCursor of the page before.", { code: "BAD_CURSOR" });
     const s = await this.subject(ctx, kind, q.subjectId.toLowerCase());
     const before = c ? { OR: [{ createdAt: { lt: new Date(c[1]) } }, { createdAt: new Date(c[1]), id: { lt: c[2].toLowerCase() } }] } : {};
     const [rows, firm] = await Promise.all([

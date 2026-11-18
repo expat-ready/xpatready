@@ -78,13 +78,16 @@ ok("DW4 pass (the running copy): its own worker sends a lead's email with the lo
 ok("DW4 pass (the running copy): a Sample bounce address reads BOUNCED and the address is suppressed", stateOf(forBounce.outboxId) === "BOUNCED"
   && sql(`select count(*) from msg_suppression where firm_id = '${A}' and address = '${bounceTo}' and reason = 'HARD_BOUNCE'`) === "1");
 ok("DW4 fail (the running copy): a message the copy did not send (no test event) stays SENT", stateOf(sentHere.outboxId) === "SENT");
+// The next email to the bounced address is stopped by the gate (SUPPRESSED, reason "SUPPRESSED: HARD_BOUNCE"): the panel words it (review M1).
+const afterBounce = await write(bounceTo, "Third try (Sample)");
+ok("DW4 pass (the running copy): the next send to the bounced address is suppressed", afterBounce.state === "SUPPRESSED" && afterBounce.reason === "SUPPRESSED: HARD_BOUNCE", afterBounce);
 
 // DW5 on the running copy: the real route and the platform guard.
 const api = (tok: string | null, path: string) => fetch(`${BASE}/api${path}`, { headers: tok ? { authorization: `Bearer ${tok}` } : {} });
 const q = `/platform/messages?subjectKind=LEAD&subjectId=${leadId}`;
 const mine = await api(tokens.O, q), mineBody = await mine.text();
-ok("DW5 pass (route): the lead's owner gets its three messages; no body text and no full address in the answer",
-  mine.status === 200 && (JSON.parse(mineBody) as { messages: unknown[] }).messages.length === 3 && !mineBody.includes(`BODY-${run}`) && !mineBody.includes(addr) && !mineBody.includes("Booked (Sample)"), { status: mine.status, body: mineBody.slice(0, 300) });
+ok("DW5 pass (route): the lead's owner gets its four messages; no body text and no full address in the answer",
+  mine.status === 200 && (JSON.parse(mineBody) as { messages: unknown[] }).messages.length === 4 && !mineBody.includes(`BODY-${run}`) && !mineBody.includes(addr) && !mineBody.includes("Booked (Sample)"), { status: mine.status, body: mineBody.slice(0, 300) });
 const roR = await api(tokens.RO, q), fbR = await api(tokens.FB, q), none = await api(null, q);
 const words = async (r: Response) => `${r.status}:${((await r.json()) as { detail?: string }).detail}`;
 const roW = await words(roR), fbW = await words(fbR);
@@ -110,13 +113,15 @@ try {
   await panel(p).locator("[data-message]").first().waitFor({ timeout: 30_000 }).catch(() => undefined);
   ok("DW6 pass (keyboard only): Tab reaches the lead in the Leads list and Enter opens its page with the Messages panel", reached && (await panel(p).count()) === 1 && p.url().endsWith(leadId));
   const stateWords = await panel(p).locator("[data-state-word]").allInnerTexts();
-  ok("DW6 pass: the panel shows Sent, Delivered and Bounced as words, one per message", ["Sent", "Delivered", "Bounced"].every((w) => stateWords.includes(w)) && stateWords.length === 3, stateWords);
+  ok("DW6 pass: the panel shows Sent, Delivered, Bounced and Not sent as words, one per message", ["Sent", "Delivered", "Bounced", "Not sent"].every((w) => stateWords.includes(w)) && stateWords.length === 4, stateWords);
   const text = await panel(p).innerText();
   ok("DW6 pass: each message names its channel, the masked address, its class, the from-name and what happened with times",
     text.includes(`Email to m…@example.com`) && text.includes("Transactional") && text.includes(`from ${sql(`select operating_name from platform_firm where id = '${A}'`)}`) && /Delivered [A-Z][a-z]{2} \d{1,2}, \d{4}/.test(text) && text.includes("Bounced"), text.slice(0, 500));
+  ok("DW6 fail (review M1): a stored reason shows in plain words, never as a code (Not sent: an earlier email to this address bounced; hard bounce in words)",
+    text.includes("Not sent: an earlier email to this address bounced") && text.includes("The address does not exist or refuses email") && !/SUPPRESSED|HARD_BOUNCE|NO_CONSENT|hard bounce/.test(text), text.slice(0, 800));
   ok("DW6 fail: the page shows no body text and no full address of any message", !(await p.content()).includes(`BODY-${run}`) && !text.includes(addr) && !text.includes(bounceTo));
   // The state is never colour alone: the word is in the pill's own text.
-  ok("DW6 pass: each state pill carries its word (never colour alone)", (await panel(p).locator("[data-state] [data-state-word]").count()) === 3);
+  ok("DW6 pass: each state pill carries its word (never colour alone)", (await panel(p).locator("[data-state] [data-state-word]").count()) === 4);
   for (const w of [1440, 1024, 375]) {
     await p.setViewportSize({ width: w, height: 900 }); await p.waitForTimeout(150);
     ok(`DW6 pass (${w} px): no sideways page scroll`, await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
@@ -126,6 +131,30 @@ try {
   }
   const full = await new AxeBuilder({ page: p }).withTags(TAGS).analyze();
   ok("DW6 pass: axe finds no WCAG A/AA violation on the whole lead page with the panel", full.violations.length === 0, full.violations.map((v) => `${v.id}: ${v.nodes[0]?.target?.join(" ")}`).join(" | ") || undefined);
+  // Review m1: 51 messages on a second lead; "Show older messages" by keyboard puts focus on the first older message.
+  const p51 = sql(`insert into fo_person (firm_id, given_names, family_name, created_by, updated_at) values ('${A}', 'Paged${run}', 'Sample', 'seed:pf19b3', now()) returning id`);
+  const lead51 = sql(`insert into fo_lead (firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values ('${A}', '${p51}', 'MANUAL', 'Phone (Sample)', '${O.id}', 'seed:pf19b3', now()) returning id`);
+  for (let i = 0; i < 51; i++) await db.$transaction((t) => here.send(t, { firmId: A, person: { kind: "FO_PERSON", id: p51 }, channel: "EMAIL", class: "TRANSACTIONAL", address: `paged${i}.${run}@example.com`, content: { subject: "Paged (Sample)", text: "x" }, idempotencyKey: randomUUID() }));
+  await p.setViewportSize({ width: 1440, height: 900 });
+  await p.goto(`${BASE}/front-office/leads/${lead51}`); await panel(p).locator("[data-message]").first().waitFor({ timeout: 30_000 });
+  const firstPage = await panel(p).locator("[data-message]").count();
+  await p.getByRole("button", { name: "Show older messages" }).focus(); await p.keyboard.press("Enter");
+  await p.waitForFunction(() => document.querySelectorAll("[data-messages-panel] [data-message]").length === 51, null, { timeout: 15_000 }).catch(() => undefined);
+  await p.waitForTimeout(200);
+  const focused = await p.evaluate(() => { const a = document.activeElement; return a?.matches("[data-message]") ? [...document.querySelectorAll("[data-messages-panel] [data-message]")].indexOf(a) : -1; });
+  ok("DW6 pass (review m1): 50 shown, then Show older messages by keyboard loads the 51st and focus moves to it (not the top of the page)",
+    firstPage === 50 && (await panel(p).locator("[data-message]").count()) === 51 && focused === 50 && (await p.getByRole("button", { name: "Show older messages" }).count()) === 0, { firstPage, focused });
+  // Review m2: a failed load offers Try again, which loads the messages once the network is back.
+  const e = await pageAs(tokens.O);
+  let blocked = true;
+  await e.route("**/api/platform/messages?**", (rt) => (blocked ? rt.abort("failed") : rt.continue()));
+  await e.goto(`${BASE}/front-office/leads/${leadId}`);
+  await e.getByRole("button", { name: "Try again" }).waitFor({ timeout: 30_000 }).catch(() => undefined);
+  const offered = (await e.getByRole("button", { name: "Try again" }).count()) === 1;
+  blocked = false; if (offered) await e.getByRole("button", { name: "Try again" }).click();
+  await panel(e).locator("[data-message]").first().waitFor({ timeout: 15_000 }).catch(() => undefined);
+  ok("DW6 fail→pass (review m2): a failed load says so with a Try again button; Try again then shows the messages", offered && (await panel(e).locator("[data-message]").count()) === 4);
+  errors.splice(0, errors.length, ...errors.filter((x) => !/Failed to fetch|NetworkError/.test(x)));
   const r = await pageAs(tokens.RO);
   await r.goto(`${BASE}/front-office/leads/${leadId}`); await r.getByRole("heading", { name: "Lead not found" }).waitFor({ timeout: 30_000 }).catch(() => undefined);
   ok("DW6 fail: a Read-only person who may not see the lead reads Lead not found, with no Messages panel", (await r.getByRole("heading", { name: "Lead not found" }).count()) === 1 && (await panel(r).count()) === 0);

@@ -11,8 +11,8 @@ Row: PF-19b part 3 (R1.48; needed by J-48). Brief: `design/lead-b-briefs/PF-19b3
 ## Done when (P-606) and the tests
 | Line | Test | Result on this branch |
 |---|---|---|
-| DW1-DW5 | `tests/check_pf19b3_delivery.ts` | 24 passed, 0 failed (includes PF-19b part 2's suite, 44/0, unchanged) |
-| DW4, DW5 on the running copy, DW6 | `tests/check_pf19b3_panel_browser.ts` (isolated copy, `PLATFORM_IDENTITY=local`) | 20/20 passed; screenshots in `screenshots/` at 375, 1024, 1440 px |
+| DW1-DW5 | `tests/check_pf19b3_delivery.ts` | 24 passed, 0 failed (after the review fixes too) (includes PF-19b part 2's suite, 44/0, unchanged) |
+| DW4, DW5 on the running copy, DW6 | `tests/check_pf19b3_panel_browser.ts` (isolated copy, `PLATFORM_IDENTITY=local`) | 24/24 passed after the review fixes (M1 reasons in words, m1 focus, m2 Try again; m3 cursors 400 in the delivery suite); screenshots in `screenshots/` at 375, 1024, 1440 px |
 
 ## Duplicate check (P-526)
 Searched `main` (`git grep DELIVERED` under `api/src`: only the type and the unsubscribe page's state filter), open PRs (none names PF-19b; #1961 is PF-19p), `BACKLOG.md` (PF-19r moves senders, not state): none.
@@ -23,4 +23,6 @@ Searched `main` (`git grep DELIVERED` under `api/src`: only the type and the uns
 3. **Purpose:** the outbox stores no purpose. The read gives the template key when the row has one, else the head of its sending key (`booking` for MailPort's `mail:booking:…`), else null (the panel says "Message"). MailPort messages (booking mail) carry no template key today (`mail.ts` drops it); storing it would need `mail.ts`, PF-19e's area. Recommendation: a later row.
 4. **Case parties:** no staff case read on the platform side yet. The rule used: `agent/case:show` plus the party being a participant of a case whose `firm_key` is the viewer's firm. No case-team narrowing (none exists for platform staff). Build Lead C's case-page row may tighten it.
 5. **@OwnOrAll:** the route is not marked `@OwnOrAll("agent/prospect")` because the sweep (`check_pf6b_permission_rules.ts`, not on the touch list) fails a marked route with no entry. The own-or-all rule is applied in the service and tested (DW5).
-6. `api/src/front-office/MODULE.md` is 42 lines on the base (module-cards fails before this change); not touched here.
+6. **@OwnOrAll sweep entry (review m5):** asking for `GET /api/platform/messages` to get a sweep entry in `check_pf6b_permission_rules.ts` (its own row), then the marker.
+7. **PR body (review m5):** `Card unchanged:` lines for the `api-features` and `web-shell` cards (one line each: a provider/controller line and a two-line mount, no entry point of theirs changes).
+8. `api/src/front-office/MODULE.md` is 42 lines on the base (module-cards fails before this change); not touched here.
