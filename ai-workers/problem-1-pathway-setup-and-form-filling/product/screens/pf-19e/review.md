@@ -85,3 +85,52 @@ Reviewer (P-303, Opus, did not build it), 18 Nov 2026. Head `86e3063995c76e0ed0b
 Verdict: Block
 * M1: no second connection inside the reset's firm lock; the reset's email exists only if the reset commits; add a concurrent-reset test on the app's own `Db`.
 * Minors m1-m4 do not block on their own. m1 and m3 need Lead B's word; m2 needs a line in MODULE.md or the runbook.
+
+---
+
+## Re-review (P-277): diff `86e306399..c0e2ffcf2` only, head `c0e2ffcf215328b43c80b277c851ae930ea44bd2`
+
+### What I ran at this head
+* PF-19e: **34 passed, 0 failed**.
+* My reset storm script (MAIL_PORT on the app's own `Db` pool), all 200 or 429 with **no 500**:
+  * 12 at once: 200 and 429 only;
+  * 30 at once: 10×200 and 20×429 in 373 ms (5 per person).
+* **Mutation:** I forced the reset back onto the separate-transaction `mail.send` (`if (canSendInTransaction(…)) queued.push` changed to `if (false)`). The suite went red, 4 FAIL, including the new storm check (14×500) and the first-email check. I then restored the file with `git checkout` and the tree is clean. The new test proves the fix.
+* Other suites, 0 failed:
+  * PF-4b 55;
+  * PF-4c 24;
+  * PF-19b-mail 29;
+  * PF-12 100;
+  * PF-4 part A 110/111. Its one FAIL is part B, which needs a copy on :4541, outside my ports, so I did not start one.
+
+### Findings, one by one
+* **M1: closed.**
+  * The reset now writes its notice in its own locked transaction (`identity/session/service.ts`, `resetTwoStep`, through `MessagesMail.sendInTransaction` and then `Messages.sendSystem(tx)`).
+  * There is no second connection, and the dispatch happens after the commit.
+  * A provider refusal (`admin.resetTwoStep` after the write) rolls back the outbox row, so nobody is told of a reset that did not happen.
+  * The checks happen under the lock, suppression first: the 409 commits its audit line with nothing reset, and the 429 changes nothing.
+  * A race between the check and the write is handled in the `.catch`, which gives the same answers and rethrows anything else.
+  * The `ensureMessagesFirm` pre-step is gone. The firm's first `msg_firm` insert now runs in the transaction that holds the firm lock itself, so it does not wait.
+* **m1: closed.**
+  * Invite and resend call `systemMailBlocked` under the firm lock, before any insert or revoke. A suppressed address gives 409 with an audit line (entity "none" when no invitation exists) and no invitation or seat. The limit gives 429, and the last link stays valid (tested, including that it still accepts).
+  * The batch is unchanged: per-row `emailed:false`, which I accepted in the first review.
+* **m2: closed.** MODULE.md now says outbox bodies are not a SealedValueStore and the outbox must be drained before a key is retired.
+* **m3: open, does not block.** The per-firm limit stays, as a question for the tech lead.
+* **m4: closed.**
+  * Nest's logger is on (`["error","warn"]`), so its lines are scanned.
+  * Multi-part bodies are tested: 3 or more parts open whole, and reordered, dropped or repeated parts are refused.
+  * The 429 case now asserts that no extra reset audit line was written.
+* **Also checked:** with suppression checked first, a suppressed address that is also over the limit gets the 409, never the 429 (`sendSystem` acts only on LIMITED). PF-12: `systemMailBlocked` names `firm_id` through `firmScope` and runs in the request's firm. Nothing in this diff logs, audits or answers with a body, and no address enters an audit line.
+
+### New, Minor (does not block)
+* **n1: a once-per-firm lock cycle on the firm's very first `msg_firm` row.**
+  * Where: `messages/send/messages.ts:114`, through `consent/messages-firm.ts`.
+  * How it happens, with the firm's first-ever messages written at the same moment:
+    1. A reset holds the firm's `FOR UPDATE`.
+    2. Another transaction that does not take the firm lock (an invitation email after its commit, a booking email, a consent write) inserts the `msg_firm` row. Its foreign-key check waits for the reset's lock.
+    3. The reset's own `INSERT … ON CONFLICT DO NOTHING` on the same key waits for that uncommitted row.
+  * Result: PostgreSQL detects a deadlock (40P01) after about 1 s and aborts one of the two transactions. The user sees either one 500 on the reset, or `emailed:false` on the invite (which can be resent).
+  * I reasoned this from the code; I did not reproduce it. The window is tens of milliseconds and comes once in a firm's life, so it does not block.
+  * Fix: make the `msg_firm` row when the firm is made, or before the reset takes its lock.
+
+Verdict: Approve c0e2ffcf215328b43c80b277c851ae930ea44bd2
