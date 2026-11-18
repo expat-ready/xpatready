@@ -215,11 +215,12 @@ try {
       await g.query("begin"); await g.query(`select money_trust_lock($1, $2, 'CAD')`, [firmT, P]);
       const cpid = (await c.query("select pg_backend_pid() p")).rows[0].p;
       const pc = c.query(`insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, "full", reason, created_by, overpaid_choice, overpaid_minor, overpaid_entry_id) values ('${firmT}', '${inv}', 5000, 'CAD', false, 'Service cancelled', 'user-R', 'OVERPAID_TO_TRUST', 5000, '${wX}')`).then(() => "ok", (e: { code?: string; message?: string }) => `${e.code} ${e.message}`);
-      for (let i = 0; i < 400 && (await g.query("select wait_event_type w from pg_stat_activity where pid = $1", [cpid])).rows[0]?.w !== "Lock"; i++) await sleep(5);
+      let waited = "";
+      for (let i = 0; i < 400 && (waited = (await g.query("select wait_event_type w from pg_stat_activity where pid = $1", [cpid])).rows[0]?.w ?? "") !== "Lock"; i++) await sleep(5);
       const held = (await g.query(`select count(*)::int n from pg_locks where locktype = 'advisory' and granted and pid = $1`, [cpid])).rows[0].n;
       await g.query("commit"); const out = await pc;
       ok("FO-7lk pass (B-1): a move-back naming another party's withdrawal holds none of that party's locks while it waits, and is then refused in the ledger's words",
-        held === 0 && /names a trust application to this invoice/.test(out), { held, out });
+        waited === "Lock" && held === 0 && /names a trust application to this invoice/.test(out), { waited, held, out });
     } finally { await g.query("rollback").catch(() => {}); await g.end(); await c.end(); }
   }
   ok("FO-7lk pass: the MODULE card carries the invariant line",
