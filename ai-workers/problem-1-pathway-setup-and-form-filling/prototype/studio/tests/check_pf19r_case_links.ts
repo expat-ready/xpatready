@@ -133,6 +133,17 @@ const until = async (f: () => Promise<boolean> | boolean, ms = 30_000) => { cons
   ok("DW10 fail: a case firm key with no platform firm → refused in words (409 FIRM_CANNOT_SEND), nothing written: no link, no outbox row, no demo copy",
     noFirm.status === 409 && noFirm.body?.code === "FIRM_CANNOT_SEND" && /cannot send email yet/.test(noFirm.body?.detail ?? "") && sql(`select count(*) from person_link where subject_id = '${k4.S}'`) === "0" && outboxTo(E).length === 0 && (await inbox(E)).length === 0, noFirm.body);
   ok("DW10 pass: a case of a platform firm sends (DW7's case, firm sample-firm)", r7.length === 1 && r7[0].firm_id === firmA);
+  // Break B3: a case whose firm_id names another firm than its key's (sample-solo on a sample-firm case) sends nothing.
+  const firmB = sql(`select id from platform_firm where key = 'sample-solo'`), k6 = await newCase("dw10b"), H = `partner.h.${run}@example.com`;
+  sql(`update runtime_case set firm_id = '${firmB}' where id = '${k6.id}'`);
+  const crossed = await call("POST", `/runtime/cases/${k6.id}/people/${k6.S}/link`, { address: H }, "user-P");
+  ok("DW10 fail (break B3): a case whose firm_id names another firm than its firm key's is refused; nothing is sent as the other firm",
+    crossed.status === 409 && crossed.body?.code === "FIRM_CANNOT_SEND" && outboxTo(H).length === 0 && sql(`select count(*) from msg_outbox where firm_id = '${firmB}' and address = '${H}'`) === "0", crossed.body);
+  // Break B4, B9: an address the sending path would refuse or rewrite is a field error in words, never a 500.
+  const k7 = await newCase("dw7b");
+  const odd = await Promise.all([`jos\u00e9.${run}@example.com`, `x.${run}@ex_ample.com`, `\uff58.${run}@example.com`].map((a) => call("POST", `/runtime/cases/${k7.id}/people/${k7.S}/link`, { address: a }, "user-P")));
+  ok("DW7 fail (break B4, B9): an accented, underscored or full-width address is refused on its field (400, in words), never a 500, and nothing is written",
+    odd.every((r) => r.status === 400 && /plain letters/.test(JSON.stringify(r.body))) && sql(`select count(*) from person_link where subject_id = '${k7.S}'`) === "0", odd.map((r) => [r.status, r.body?.detail]));
 
   // ------------------------------------------------------------------ DW11 no token or code anywhere it should not be
   const secrets = new Set<string>();

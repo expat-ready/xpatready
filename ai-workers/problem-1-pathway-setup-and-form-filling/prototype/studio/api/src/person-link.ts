@@ -23,6 +23,7 @@ import { caseName, MINOR } from "../../contracts/runtime.ts";
 import { KeepPrivate, LINK_RULES, LINK_WORDS, LinkCode, LinkToken, SendLink, TakeBack, type LinkOpened, type LinkSession, type PeoplePrivacy, type PersonLinkState, type PersonPrivacy } from "../../contracts/person-link.ts";
 import { caseView, OWN_LINK } from "../../engine/runtime/case.ts";
 import { adultCheck, codeCheck, deadWords, ownerOf, linkState, maskAddress, normalAddress, normalCode, officerWords, overLimit, principalLinkWords, progressOf, resendKind, sendRefusal, serverTries, wrongWords, type LinkRow } from "../../engine/runtime/privacy.ts";
+import { normaliseAddress } from "../../ports/consent.ts";
 import type { MessagePort, MessageSend } from "../../ports/messages.ts";
 import { actorOf, CaseRead, Db, fail, isDemoWorkspace, OpenRead, RUNTIME_ACTORS, Workspace, type Actor } from "./core.ts";
 import { MESSAGE_PORT } from "./features/platform-messages.ts";
@@ -40,6 +41,8 @@ const RESEND_GAP_MS = 60_000;
 const isStaff = (a: Actor) => (a.duties as readonly string[]).includes("case");
 const nameOf = (id: string) => (id.startsWith("person:") ? "the person on their own link" : RUNTIME_ACTORS.find((a) => a.id === id)?.name ?? "someone at the firm");
 const roleWords = (role: string) => role.replace(/_/g, " ");
+/** The address as the sending path takes it, or null (PF-19r, break B4). */
+const sendable = (a: string): string | null => { try { return normaliseAddress("EMAIL", a); } catch { return null; } };
 /** Where a link opens: the token only in the fragment, which browsers never send to a server (challenge m1). */
 export const LINK_PATH = "/link#t=";
 function parse<S extends z.ZodType>(schema: S, input: unknown): z.infer<S> {
@@ -78,8 +81,9 @@ export class PersonLinks {
   /** PF-19r: the case's platform firm (CS-W1's firm_id, else the narrow lookup by its key), and this request runs as it,
    *  so the outbox (behind PF-12's walls) takes the write. None: refused in words, nothing written. */
   private async sendingFirm(c: { firmId: string | null; firmKey: string }): Promise<string> {
-    const firmId = c.firmId ?? (await firmIdByKey(this.db, c.firmKey));
-    if (!firmId) problem(409, "Not possible now", "This firm cannot send email yet: it has no account on the platform. Nothing was sent.", { code: "FIRM_CANNOT_SEND" });
+    // The firm key decides (break B3): a firm_id that names another firm than the key's is refused, as case-close.ts does.
+    const firmId = await firmIdByKey(this.db, c.firmKey);
+    if (!firmId || (c.firmId && c.firmId.toLowerCase() !== firmId.toLowerCase())) problem(409, "Not possible now", "This firm cannot send email yet: it has no account on the platform. Nothing was sent.", { code: "FIRM_CANNOT_SEND" });
     enterFirm(firmId!);
     return firmId!;
   }
@@ -89,6 +93,7 @@ export class PersonLinks {
    *  key is built from the link's own ids, never from the token or the code. Answers whether this call wrote a new row
    *  (false: the same key was sent before, so no second demo copy either). */
   private async mail(tx: Tx, firmId: string, subjectId: string, m: { address: string; subject: string; body: string; key: string }, outbox: string[]): Promise<boolean> {
+    if (sendable(m.address) !== m.address) problem(409, "Not sent", "Not sent: this address cannot take email. Nothing was changed.", { code: "ADDRESS_NOT_SENT" });
     const input: MessageSend = { firmId, person: { kind: "CASE_PARTY", id: subjectId }, channel: "EMAIL", class: "TRANSACTIONAL", address: m.address, content: { subject: m.subject, text: m.body }, idempotencyKey: m.key };
     const r = await this.msg.send(tx, input);
     if (r.state === "SUPPRESSED" || r.state === "FAILED" || r.state === "BOUNCED") problem(409, "Not sent", "Not sent: this address does not take email from the firm. Nothing was changed.", { code: "ADDRESS_NOT_SENT" });
@@ -165,6 +170,9 @@ export class PersonLinks {
     if (!typed) fieldError("address", "Enter their email address.");
     const address = normalAddress(typed!);
     if (!address) fieldError("address", "Enter an email address like name@example.com.");
+    // Break B4, B9: only an address the sending path takes as it is (plain letters, no full-width forms), else it would
+    // fail as a bare 500 or be sent to another spelling than the one stored and shown.
+    if (sendable(address!) !== address) fieldError("address", "Enter an email address like name@example.com, in plain letters (no accents or special characters).");
     if (!isDemoWorkspace()) problem(409, "Not possible now", "Sending email is not built in this workspace: the demo workspace's inbox stands in for it (stand-in SI-20). Nothing was sent.");
     const replay = async () => {
       const same = b.idempotencyKey ? await this.db.personLink.findFirst({ where: { caseId: c.id, sendKey: b.idempotencyKey } }) : null;
