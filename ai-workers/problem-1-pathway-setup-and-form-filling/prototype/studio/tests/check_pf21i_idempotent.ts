@@ -15,7 +15,7 @@ import { join } from "node:path";
 import type { JobHandler, JobPort } from "../ports/jobs.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
-const NEW = "20261118163000_pf21i_complaint_request_key";
+const NEW = "20261118233000_pf21i_complaint_request_key";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_pf21i_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
