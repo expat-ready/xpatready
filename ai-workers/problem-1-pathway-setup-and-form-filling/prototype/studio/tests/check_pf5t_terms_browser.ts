@@ -12,6 +12,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
+import { ACCOUNT_SECTIONS, visibleSections } from "../web/src/modules/platform/account-sections.ts";
 import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 const PORT = Number(process.argv[2] ?? 4544), DBNAME = process.argv[3] ?? "xr_studio_screens_pf5tui";
@@ -123,9 +124,17 @@ await axe("PF-5t DW7 Settings → Terms (1440)", p); await noSideways("PF-5t DW7
   if (ok403.status === 403) {
     await op.locator("[data-terms-refused]").waitFor({ timeout: 20_000 });
     ok("PF-5t part 2 fail: a Case Officer opening Settings → Terms by its address sees the server's refusal, and has no Terms entry", (await op.locator("[data-terms-refused]").innerText()) === ok403.body.detail && (await op.locator('[data-account-section="/platform/terms"]').count()) === 0, ok403.body);
-  } else ok("PF-5t part 2 fail: a Case Officer may list acceptances (agent/settings:list), so the entry shows", ok403.status === 200 && (await op.locator('[data-account-section="/platform/terms"]').count()) > 0);
+  } else {
+    // On the Sample roles a Case Officer holds agent/settings:list (part 1's key): the list and its entry show.
+    await op.locator("[data-acceptance], [data-terms-empty]").first().waitFor({ timeout: 20_000 });
+    ok("PF-5t part 2 pass: a Case Officer, who holds agent/settings:list, sees the Terms entry and the same list", ok403.status === 200 && (await op.locator('nav[aria-label="My account"] [data-account-section="/platform/terms"]').count()) === 1
+      && (await op.locator("[data-acceptance]").count()) === Math.min(ok403.body.acceptances.length, 50), ok403.status);
+  }
   await op.context().close();
 }
+
+ok("PF-5t part 2 fail: the Terms entry is hidden from a person without agent/settings:list, shown with it", !visibleSections(ACCOUNT_SECTIONS, ["agent/staff:manage"]).some((x) => x.path === "/platform/terms")
+  && visibleSections(ACCOUNT_SECTIONS, ["agent/settings:list"]).some((x) => x.path === "/platform/terms" && x.label === "Terms"));
 
 // ------------------------------------------------------- a version published while signed in asks at the next move (428)
 const pn2 = publish("PRIVACY_NOTICE");
