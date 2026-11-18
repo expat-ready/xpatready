@@ -6,6 +6,7 @@
 #                                 description) launched with another model or an effort under high is denied. A launch
 #                                 with no model inherits the agent file's (checked above) or the caller's: not detectable.
 # Env: AGENTS_DIR. Test: check-g4-rules.sh.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-root.sh"; _RR="$(repo_root)"  # stage 2a: the root from AGENTS.md
 set -u
 if [ "${1:-}" = --hook ]; then
   in=$(cat); who=$(echo "$in" | jq -r '[.tool_input.subagent_type, .tool_input.description] | map(. // "") | join(" ")')
@@ -18,7 +19,7 @@ if [ "${1:-}" = --hook ]; then
     '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
   exit 0
 fi
-D="${AGENTS_DIR:-$(cd "$(dirname "$0")/../../../.." && pwd)/.claude/agents}"; bad=0; n=0
+D="${AGENTS_DIR:-$_RR/.claude/agents}"; bad=0; n=0
 for f in "$D"/*reviewer*.md "$D"/*breaker*.md; do
   [ -f "$f" ] || continue; n=$((n + 1)); fm=$(awk 'NR == 1 && /^---$/ {o = 1; next} o && /^---$/ {exit} o' "$f")
   echo "$fm" | grep -qE '^model:[[:space:]]*opus' || { echo "REFUSED: $(basename "$f") has no \"model: opus\" (P-608 (2))"; bad=1; }

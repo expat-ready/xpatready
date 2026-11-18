@@ -3,6 +3,7 @@
 # zero or two current_lead lines; current-lead.sh prints the line from the freshest STATE.md (a lead/* branch newer than
 # main wins); the next, qa and lead skills say when to message it. Throwaway copies only, US$0.
 #   bash product/tools/check-current-lead.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-root.sh"; _RR="$(repo_root)" || exit 2  # stage 2a: the root from AGENTS.md
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
 T=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$T" ] || { echo "no temp dir: nothing was checked"; exit 2; }; trap 'rm -rf "$T"' EXIT
@@ -66,7 +67,7 @@ git -C "$T/mlane" fetch -q origin; out=$(bash "$MC" 2>/dev/null); r=$?
 ok "the newest lead branch with two or more lines fails check-docs and says so" "$([ $r = 1 ] && echo "$out" | grep -qE 'it read: current-lead: refs/remotes/origin/lead/y has [2-9] current_lead lines' && echo 1)" "exit $r: $out"
 
 # The skills carry the rule (guard 1's text half): lanes message the Lead after each step; the Lead's hand-over moves the line first.
-SK="$(cd "$TOOLS/../../../.." && pwd)/.claude/skills"
+SK="$_RR/.claude/skills"
 for s in next qa; do grep -q 'current-lead.sh' "$SK/$s/SKILL.md" && grep -q 'SendMessage' "$SK/$s/SKILL.md"; ok "skill $s reports each step to the current Lead" "$([ $? = 0 ] && echo 1)" "no current-lead.sh + SendMessage in $s"; done
 grep -q 'current_lead:` first' "$SK/lead/SKILL.md"; ok "skill lead's hand-over updates current_lead first" "$([ $? = 0 ] && echo 1)" "no 'current_lead:\` first' in lead"
 finish

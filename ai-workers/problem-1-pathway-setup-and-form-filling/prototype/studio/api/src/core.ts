@@ -9,12 +9,15 @@ import { oneQueryPerCaller, walledPool } from "./platform/firm-scope.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export const STUDIO = join(import.meta.dirname, "..", "..");
-export const PROTOTYPE = join(STUDIO, "..");
-export const SOLUTION = join(PROTOTYPE, "..");
-export const ROOT = join(SOLUTION, "..", "..");
-export const OFFICIAL = join(SOLUTION, "official-sources", "ircc");
-export const PY = join(ROOT, ".tools", "solution-1-prototype", ".venv", "bin", "python");
+import { repoPath, ROOT } from "../../../../../../packages/repo-paths/index.ts";
+
+// Found from the repository root (AGENTS.md), never by counting folder levels: a move changes one LAYOUT line (stage 2a).
+export { ROOT };
+export const STUDIO = repoPath("studio");
+export const PROTOTYPE = repoPath("prototype");
+export const SOLUTION = repoPath("solution");
+export const OFFICIAL = repoPath("official", "ircc");
+export const PY = repoPath("tools", "solution-1-prototype", ".venv", "bin", "python");
 export const NODE = process.execPath;
 export const DATABASE_URL = process.env.DATABASE_URL ?? "postgresql://xr_studio@127.0.0.1:54329/xr_studio_demo";
 /** The demo workspace's key: the one workspace where Sample content passes, released as a Demo release (P-240, G3). */

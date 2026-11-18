@@ -22,7 +22,7 @@
 set -euo pipefail
 STUDIO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROTO="$(cd "$STUDIO/.." && pwd)"
-ROOT="$(cd "$STUDIO/../../../.." && pwd)"
+ROOT="${REPO_ROOT:-$(d="$STUDIO"; while [ ! -f "$d/AGENTS.md" ] && [ "$d" != / ]; do d="$(dirname "$d")"; done; echo "$d")}"   # stage 2a: the root from AGENTS.md
 TOOLS="$ROOT/.tools/solution-1-prototype"
 PORT="${STUDIO_PORT:-4400}"; PGPORT="${STUDIO_PGPORT:-54329}"
 PGDATA_DIR="${STUDIO_PGDATA:-$TOOLS/pg18-data}"

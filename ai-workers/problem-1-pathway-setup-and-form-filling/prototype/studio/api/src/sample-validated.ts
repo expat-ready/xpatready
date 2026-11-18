@@ -19,11 +19,12 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import type { Db } from "./core.ts";
+import { repoPath, ROOT } from "../../../../../../packages/repo-paths/index.ts";
 
 // core.ts's STUDIO and ROOT, worked out here so this file loads without core.ts's NestJS decorators: the acceptance
 // pack reads it through gate B's tsx, which runs without the API's tsconfig (#1156 shard 1: "Parameter decorators only
 // work when experimental decorators are enabled"). The type import above is erased, so core.ts is never loaded here.
-const STUDIO = join(import.meta.dirname, "..", ".."), ROOT = join(STUDIO, "..", "..", "..", "..");
+const STUDIO = repoPath("studio");
 
 export const VALIDATED_FILE = "samples/validated-imm5257.json";
 /** C10.2 (Lead 37, 9 Nov; P-349 row 12b's method): the read-back of the finished story's Paper IMM 5257 copy, validated in

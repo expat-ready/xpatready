@@ -14,8 +14,9 @@ import { existsSync, linkSync, lstatSync, mkdirSync, readFileSync, realpathSync,
 import { dirname, join, resolve } from "node:path";
 import { FileKey, FileKeyTaken, FilePut, sha256Hex, type FilesPort, type StoredFile } from "../../../ports/files.ts";
 import { FirmId } from "../../../ports/audit.ts";
+import { repoPath } from "../../../../../../../packages/repo-paths/index.ts";
 
-const STUDIO = resolve(import.meta.dirname, "..", "..", "..");
+const STUDIO = repoPath("studio"); // stage 2a: the root from AGENTS.md
 /** Sample: how long a download link works (BR-15 "short-lived links"). */
 export const LINK_SECONDS = 5 * 60;
 

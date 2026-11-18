@@ -3,10 +3,11 @@
 # skills, agents, settings, decisions, the backlog), (2) rules files pass check-docs, (3) explicit any in live code does
 # not rise (skipped when studio packages are not installed). Uncommitted or unpushed work is a note, never a block:
 # the pull request is the record (no state file to update on every reply).
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-root.sh"; _RR="$(repo_root)"  # stage 2a: the root from AGENTS.md
 input=$(cat); [ "$(printf '%s' "$input" | jq -r '.stop_hook_active // false' 2>/dev/null)" = "true" ] && exit 0
 # The session's own copy comes from the hook input (in builder sessions $CLAUDE_PROJECT_DIR is the main copy).
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
-ROOT=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
+ROOT=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || ROOT="$_RR"
 cd "$ROOT" || exit 0
 PH=ai-workers/problem-1-pathway-setup-and-form-filling/product; APP=ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
 reasons=""; notes=""

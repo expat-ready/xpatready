@@ -1,8 +1,9 @@
 #!/bin/bash
 # SessionStart hook (P-189): tell the session which copy it is in, its one command, and the one-page state.
 # The session's own copy comes from the hook input (in lane sessions $CLAUDE_PROJECT_DIR is the main copy).
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-root.sh"; _RR="$(repo_root)"  # stage 2a: the root from AGENTS.md
 input=$(cat 2>/dev/null); cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
-ROOT=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
+ROOT=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || ROOT="$_RR"
 PH="$ROOT/ai-workers/problem-1-pathway-setup-and-form-filling/product"
 cd "$ROOT" || exit 0; LANE=$(bash "$PH/tools/lane.sh" whoami 2>/dev/null)
 # P-87: the pre-push hook refuses pushes to main; switch it on in every copy (GitHub cannot lock main on this plan).

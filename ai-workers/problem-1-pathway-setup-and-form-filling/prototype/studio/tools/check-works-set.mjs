@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { rows, protectedSet, held, notRun, dataRows, verdictData, scoringData, groupsOf, poolVerdicts } from "./works-set.mjs";
 import { packsOf } from "./gate-b.mjs";
 
-const HERE = dirname(fileURLToPath(import.meta.url)), P = resolve(HERE, "../../../product");
+const HERE = dirname(fileURLToPath(import.meta.url)), P = (await import("../../../../../packages/repo-paths/index.ts")).repoPath("product"); // stage 2a
 let pass = 0, fail = 0;
 const ok = (name, c, detail) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail)}` : ""}`); };
 // Rows in CAPABILITIES.md's own shape. C11.13, C3.2 and C11.12 (two packs) have packs today; C1.1 has none.

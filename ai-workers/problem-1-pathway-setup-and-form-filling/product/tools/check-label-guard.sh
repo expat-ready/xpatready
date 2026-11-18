@@ -4,6 +4,7 @@
 # #1052's (a new fix commit, Approve only on the old head) loses the label; an Approve naming the new head, a GitHub
 # review on it, or a pure merge of main touching none of the PR's files keeps it. US$0, no network.
 #   bash product/tools/check-label-guard.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-root.sh"; _RR="$(repo_root)" || exit 2  # stage 2a: the root from AGENTS.md
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
 command -v jq >/dev/null || { echo "jq is missing; nothing was checked"; exit 2; }
@@ -112,7 +113,7 @@ guard "" "$c2" "$label" "$(cm "Reviewer: Approve $c2")"
 ok "F4: the label added to a head with its Approve stays" "$(kept)" "$out / $log"
 guard "" "$pure" "$label" "$(cm "Reviewer: Approve $c1")"
 ok "F4: the label added on a pure merge of main over an approved commit stays" "$(kept)" "$out / $log"
-W="$(cd "$TOOLS/../../../.." && pwd)/.github/workflows/label-guard.yml"
+W="$_RR/.github/workflows/label-guard.yml"
 grep -q 'pull_request_target' "$W" && grep -q 'synchronize' "$W" && grep -q 'tools/label-guard.sh' "$W"
 ok "the workflow runs main's label-guard.sh on every push (pull_request_target, synchronize)" "$([ $? = 0 ] && echo 1)" "$W"
 # F4 in the workflow: which events run the guard, and what AFTER it gets, read the way GitHub reads them. The job's if:

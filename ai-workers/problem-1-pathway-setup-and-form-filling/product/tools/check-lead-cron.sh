@@ -2,6 +2,7 @@
 # Guard 8 (founder, 6 Nov ~03:00 IST): the 30-minute check's prompt is not stale. Feeds lead-check-guard.sh the hook's
 # JSON as Claude Code does, from a throwaway copy whose lane.sh answers FAKE_LANE. US$0.
 #   bash product/tools/check-lead-cron.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-root.sh"; _RR="$(repo_root)" || exit 2  # stage 2a: the root from AGENTS.md
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
 command -v jq >/dev/null || { echo "jq is missing; nothing was checked"; exit 2; }
@@ -23,7 +24,7 @@ r=$(guard lead true 'run lead-heartbeat; also label #1128'); ok "... but not wit
 r=$(guard qa true 'every hour: re-run my walk'); ok "a lane's own recurring job not naming lead-watch passes" "$([ "$r" = allow ] && echo 1)" "got $r"
 out=$(jq -n --arg d "$T/copy" '{tool_input:{prompt:"run lead-watch and check #1052"}, cwd:$d}' | FAKE_LANE=lead bash "$G")
 ok "the refusal gives the one line to use" "$(echo "$out" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("run lead-watch; read STATE Start here")' >/dev/null && echo 1)" "$out"
-ROOTD="$(cd "$TOOLS/../../../.." && pwd)"
+ROOTD="$_RR"
 jq -e '[.hooks.PreToolUse[] | select(.matcher == "CronCreate") | .hooks[].command | select(test("lead-check-guard.sh"))] | length == 1' "$ROOTD/.claude/settings.json" >/dev/null
 ok "settings.json runs the guard on CronCreate" "$([ $? = 0 ] && echo 1)"
 grep -q 'Its prompt is exactly `run lead-watch; read STATE Start here`' "$ROOTD/.claude/skills/lead/SKILL.md" && ! grep -q "Put the active rules in the 30-minute check's prompt" "$ROOTD/.claude/skills/lead/SKILL.md"

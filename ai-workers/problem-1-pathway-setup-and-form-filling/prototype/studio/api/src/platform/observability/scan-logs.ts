@@ -12,8 +12,9 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, w
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { repoPath } from "../../../../../../../../packages/repo-paths/index.ts";
 
-const STUDIO = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const STUDIO = repoPath("studio"); // stage 2a: the root from AGENTS.md
 
 /** Made-up personal values PF-23's test sends through a request, an error and a job; none may reach a log. */
 export const CANARIES = {

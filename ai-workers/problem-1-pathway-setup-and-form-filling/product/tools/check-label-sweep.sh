@@ -4,6 +4,7 @@
 # on a schedule and after ci, from main's copy. The shapes are GitHub's own (#1216's events, 7 Nov: the records label by
 # github-actions[bot] type Bot, review: approved by the owner, type User). US$0, no network.
 #   bash product/tools/check-label-sweep.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-root.sh"; _RR="$(repo_root)" || exit 2  # stage 2a: the root from AGENTS.md
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
 command -v jq >/dev/null || { echo "jq is missing; nothing was checked"; exit 2; }
@@ -101,7 +102,7 @@ ev labeled "review: approved" github-actions[bot] Bot | evs > "$T/fx/events-19-p
 ok "B134 (review m1, breaker M2): an event list longer than the page cap counts as padded: the label comes off" "$([ $r = 0 ] && grep -qx 'DELETE 19' <<< "$log" && grep -q 'more than 2 pages' <<< "$out" && echo 1)" "exit $r: $out / $log"
 
 # 10. Wiring: label-guard.yml's job sweep runs on a schedule and after ci, from main, checks out no PR, holds the token.
-W="$(cd "$TOOLS/../../../.." && pwd)/.github/workflows/label-guard.yml"
+W="$_RR/.github/workflows/label-guard.yml"
 wire=$(python3 -I - "$W" <<'PY' 2>&1
 import sys, yaml
 d = yaml.safe_load(open(sys.argv[1])); on = d.get(True, d.get("on")); out = []

@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(HERE, "..", "..", "..", "..");
+const { ROOT } = await import("../../../../packages/repo-paths/index.ts"); // stage 2a: the root from AGENTS.md
 const P = "ai-workers/problem-1-pathway-setup-and-form-filling";
 const DIRS = [`${P}/prototype/studio/tests`, `${P}/prototype/studio/acceptance`, `${P}/prototype/tests`];
 const BARE = /^\s*(?:await\s+)?(?:[\w$]+\.)?summary\(\)\s*;?\s*(?:\/\/.*)?$/;   // summary() or rec.summary()
