@@ -136,8 +136,8 @@ try {
   await db.msgSuppression.create({ data: { firmId: firmA.id, channel: "EMAIL", address: tEmail, reason: "COMPLAINT", createdBy: "seed:pf19r" } });
   const resets = () => Number(sql(`select count(*) from audit_event where action = 'platform.staff.two_step_reset'`)), before3 = resets();
   const refused3 = await call(base, "POST", `/api/platform/staff/${T}/reset-two-step`, { token: tR });
-  ok("DW3 fail: a notice the gate refuses (the person's address is suppressed) rolls the reset back: 409 NOTICE_NOT_SENT in words, no audit line, the provider not reset, no outbox row kept",
-    refused3.status === 409 && refused3.body.code === "NOTICE_NOT_SENT" && /not reset/.test(refused3.body.detail ?? "") && resets() === before3
+  ok("DW3 fail: a notice the gate refuses (the person's address is suppressed) rolls the reset back: 409 NOTICE_NOT_SENT in words that say how to clear it (Lead B, question 4), no audit line, the provider not reset, no outbox row kept",
+    refused3.status === 409 && refused3.body.code === "NOTICE_NOT_SENT" && /not reset/.test(refused3.body.detail ?? "") && /^Update this person's email address first/.test(refused3.body.detail ?? "") && resets() === before3
     && (await admin.twoStep({ staffId: T, subject: null, email: "" })).method === "TOTP" && (await rowsTo(tEmail)).length === 0, refused3.body);
   await db.msgSuppression.deleteMany({ where: { address: tEmail } });
   const reset3 = await call(base, "POST", `/api/platform/staff/${T}/reset-two-step`, { token: tR });

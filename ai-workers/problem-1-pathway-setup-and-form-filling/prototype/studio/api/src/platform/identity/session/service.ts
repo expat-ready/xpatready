@@ -200,7 +200,7 @@ export class PlatformSession {
         ({ dispatch, held } = await mailIn(this.mail, tx, { firmId: actor.firmId, to: t.email, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.two_step_reset", subject: "Your two-step sign-in was reset",
           person: { kind: "STAFF", id: t.id }, text: "An Owner or Admin of your firm reset your two-step sign-in. The next time you sign in, you set it up again. If you did not ask for this, tell your firm's Owner at once." }));
       } catch (e) {
-        if (e instanceof MessageRefused) problem(409, "Notice not sent", "The notice to this person could not be emailed (their address does not take email from the firm, for example after a bounce), so their two-step sign-in was not reset.", { code: "NOTICE_NOT_SENT" });
+        if (e instanceof MessageRefused) problem(409, "Notice not sent", "Update this person's email address first; we can't send them the reset notice (their address does not take email from the firm, for example after a bounce), so their two-step sign-in was not reset.", { code: "NOTICE_NOT_SENT" });
         throw e;
       }
       // A security notice is never left for tomorrow (break M1): the firm's daily email limit holds it, so nothing changes.
