@@ -1941,3 +1941,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 ## Rev 17.23 (18 Nov 21:51 IST)
 * **#2130 PF-15 part 1a:** new Approve on 3e02affa2 (21:48 IST), which merges main cee72284f. Lead 81 labelled it, and its P-423 migration read is OK. Its two minors go to part 2 in `PF-15.md`: a cross-firm test of the definer function, and the case of several live subscriptions.
 * queue-gate now runs on the Mac (#2145, 21:50 IST), so queue-fresh follows green CI within seconds.
+
+## Rev 17.24 (18 Nov 22:10 IST)
+* **Lane sweep for Lead 81:** PF-15 part 1 (now #2130), FO-2 part 3 (#2140), PF-5t part 2 (#2135) and PF-21s part 4 (#2134) are done and queued. PF-5 part 2 (#1959) needed the Lead's P-423 read. PF-5s part 1 stays parked behind PF-5v part 2, PF-19e and #1961.
+* **#1959 PF-5 part 2:** Lead 81's P-423 read is OK, and it is labelled on b8af607b8. Its two minors are in `PF-5.md`: the Stripe call inside the lock, and P-701's GST/HST-only tax registrations for live Stripe.
+* P-699: the Lead does the browser steps. Any "continue" to a cloud lane goes to the current Lead to type.
