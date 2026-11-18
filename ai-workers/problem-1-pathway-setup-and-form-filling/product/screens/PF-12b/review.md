@@ -134,3 +134,21 @@ Reviewer: Approve d69006734c01724f28bdb5173991e6f603c048bd
 **Verdict: Approve.**
 
 Reviewer: Approve 2ddfe62fd8e944f8d87dfabe8561035096bb39c2
+
+## Re-review 6: second merge of origin/main (`ca2382c`; parents bfa5e31, 39c1203cd; local, not pushed)
+Conflict resolutions, read from `git diff ca2382c^2 ca2382c`:
+- **`firms/signup.ts`.** Main's `writeMoneyKeysGranted` import (`:23`) and its call in the creating transaction (`:200`) are untouched. The PR adds only the touch import and its three touches: the new firm's at `:195`, in the same transaction.
+- **`identity/demo-reset.ts`.** The PR's one transaction per firm, with its line first, now uses main's `SAMPLE_SETTING_VALUES` seed value (AUD-5) exactly as main computes it, through `writeSetting(tx, …)`. Main's `writeSetting` still runs on a transaction it is given (`settings.ts:140`).
+- **`tests/check_pf5_signup_billing.ts`.** The expected list holds both `platform.bypass` and main's `platform.staff.money_keys_granted`.
+- **`MODULE.md`.** Main's Tests line plus `check_pf12b_bypass_audit.ts`, and the PF-12b invariant as reviewed.
+
+Against bfa5e31, six of this PR's files changed:
+- the four resolved above;
+- `messages/demo-inbox.ts` and `messages/send/messages.ts`, which merged cleanly. Their changes are line-for-line main's own (bcc505afd..39c1203cd: PF-19b part 2's unsubscribe headers and `DELIVER_TX_MS`). Nothing of this PR in them changed.
+Every other file of this PR is unchanged.
+
+Runs on the merged tree: `check_pf12b_bypass_audit` 27/0, `check_pf5_signup_billing` 53/0, `check_aud5_keep_periods` 57/0. I did not re-run the builder's other suites.
+
+**Verdict: Approve.**
+
+Reviewer: Approve ca2382c5fd3f9939553a9403161a08881fe54b15
