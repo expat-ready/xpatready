@@ -73,4 +73,27 @@ D1 4 (J-A1..A5 behave as the concept says; 24:00 gap) · D2 4 (server-side rules
 
 To fix before Approve: M1, M2. The Minors can be fixed now or listed with a follow-up row.
 
-Verdict: Changes requested
+Round 1 result (ea002db43): Changes requested.
+
+## Re-review (round 2) of 5da71ac08: diff only (P-277)
+I reviewed `git diff ea002db43..5da71ac08 -- prototype/studio`, which touches `availability-page.tsx` (+68/-23) and the test (+43). The copy at :4571 serves this build. The suite re-ran **53/53**. I also ran my own probe again by keyboard, with dialogs both dismissed and accepted.
+
+| Round 1 | Now | Evidence |
+|---|---|---|
+| **M1** focus lost | **Fixed** | Add time off → From (`autoFocus`). Save time off, Cancel and Remove → "Add time off" (the `backTo` effect, page:262-264). Add a set and Delete → the set's title (`focusNext`, page:117-119). Remove hours → that day's "Add hours". Each move has a named `break M3` case. |
+| **M2** unsaved hours dropped | **Fixed** | Make default, choosing another set, Add a set and changing Viewing now ask "Discard your unsaved changes?". These are the house guard's words, and `controls.tsx:77` also uses `window.confirm`. A reload is covered by `beforeunload`. If dismissed, the edit stays and the default is unchanged (probe: Saturday row kept, default still Normal hours). Cases: `break M1 fail/pass`. |
+| m1 refused Remove silent | **Fixed** | Shows "Not removed: No such time off. The list shows what is saved now." and the list refreshes; axe is clean (`break M2 fail`). |
+| m2 `windows` error swallowed | **Fixed** | With 49 windows, "Not saved: At most 42 windows in one set." shows (page:212). |
+| m4 zone logic untested | **Fixed** | J-A4's Admin browser runs in Asia/Dubai, so reading time off in the browser's zone would fail the midnight-to-midnight Toronto case. |
+| m3, m5, m6, m7 | **Left, with reasons** (build notes, Round 1) | All Minor. The 24:00 limit belongs to the browser's time field. The BIC-13 summary, the BIC-14 tooltips and the extra strings stay open for Lead B. The graph gap is in the tool. |
+
+Duplicate set names and editing a deactivated colleague by URL belong to FO-3a's API (`availability.ts` `target()`). They are raised as a question for the tech lead and Lead B and are not this row's touch list. I agree.
+
+New, Minor only:
+* **n1.** Unsaved hours are still dropped, with no prompt, by in-app navigation: the "Profile" menu link or the "My account" crumb. In the probe, the page went to `/account` with no question. `beforeunload` covers only a reload or a closed tab. Fix: guard the router's navigation (a blocker), or list it with m5.
+* **n2.** After a refused Remove the row disappears on refresh, and focus falls to `<body>`. `back()` runs only on success (page:281). Fix: call `back()` in the `catch` as well.
+* **n3.** `unsaved` and `focusNext` are module-level singletons (page:26, 31). This is safe while one editor is mounted, which is the case today, but fragile. A ref passed through `Hours` would be cleaner.
+
+Journey score re-scored at this commit: **9.5/10**. Next step obvious, error recovery, and accessibility and screen sizes each rise to 1. Feedback and state stays at ½ because of n1 and the missing BIC-13 summary. No Blocker or Major is open.
+
+Verdict: Approve

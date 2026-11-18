@@ -37,3 +37,9 @@ Not changed here (with reason):
 * **A deactivated colleague opened by `?staff=<id>` can be edited** (breaker m11, reviewer context): the picker does not offer them; the server's `target()` accepts any staff of the firm. FO-3a question, same as above.
 * A window ending 24:00 shows a blank end (the browser's time field stops at 23:59); a part-day start inside the spring-forward hour is moved by an hour; past time off is saved but not listed (the server lists only future rows); no error summary over the hours (BIC-13); a dozen helper strings are not in concept §5 (hints, "Not saved", "Not removed", "Keep <zone>"). Minors, listed for the reviewer's re-review.
 * Graph G3 shows the availability routes as not linked to the page (paths built at run time): a tooling gap, not this row's.
+
+## Round 2 (diff-only re-review, 18 Nov): Reviewer: Approve 5da71ac089209c53e2a6adfba83e7f11211de828
+Journey 9.5/10. New Minors left for later (listed so nothing is silent): n1 leaving by the Profile link or the breadcrumb with unsaved hours does not ask; n2 after a refused Remove focus falls to the page; n3 the unsaved/focus flags are module-level (one editor per page today).
+
+## Next step (overlap rule)
+Waiting for #2103 (FO-3a 1b-i) to merge. Then: `git merge --no-edit origin/main` once, re-run the FO-3st2 suite and the touched suites, a diff-only re-review on the new head, PR opened non-draft with `Reviewer: Approve <head>` in a comment; no label by this lane. No migration in this row (no stamp needed). Question for the tech lead to post on the PR: duplicate set names and editing a deactivated colleague by URL (FO-3a's API).
