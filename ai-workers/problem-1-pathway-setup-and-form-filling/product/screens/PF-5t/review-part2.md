@@ -1,9 +1,48 @@
 # PF-5t part 2 review: the terms page and Settings → Terms (PR #2135)
 
-Reviewed commit `379f2c0ff9df280df05551af02696cc7b5e9fc9d` (branch `claude/screens-pf5t-terms`; `git rev-parse HEAD` matched). The brief is `lead-b-briefs/wave1-terms.md` plus `PF-5t.md` "Part 2, screens" (branch `lead-b-front-office`). This row has no `concept.md`, so the brief is the concept. Also read: `STANDARDS.md`, `EXPERIENCE.md`, `QUALITY.md`, `PRODUCT.md` §3–§4. Reviewer: Opus, independent (I did not build it). Wording and versions are Sample. **Unconfirmed: no counsel.**
+First reviewed at `379f2c0ff9df280df05551af02696cc7b5e9fc9d`, re-reviewed at `374dfc799bc01998929c0544a4cda34a379f035b` (branch `claude/screens-pf5t-terms`; `git rev-parse HEAD` matched). The brief is `lead-b-briefs/wave1-terms.md` plus `PF-5t.md` "Part 2, screens" (branch `lead-b-front-office`). This row has no `concept.md`, so the brief is the concept. Also read: `STANDARDS.md`, `EXPERIENCE.md`, `QUALITY.md`, `PRODUCT.md` §3–§4. Reviewer: Opus, independent (I did not build it). Wording and versions are Sample. **Unconfirmed: no counsel.**
 
-**Verdict: Ship after fixes.** One Major: the headline trigger "on a 428 answer" has no test. The code itself behaves correctly in every journey I walked.
+**Current verdict (re-review at `374dfc799bc01998929c0544a4cda34a379f035b`): Ship. Approve.** At 379f2c0 the verdict was Ship after fixes (Block on M1), kept below.
 
+## Re-review (P-277, diff only): `379f2c0..374dfc799bc01998929c0544a4cda34a379f035b`
+I read only the diff, plus the breaker's `break-report-part2.md`. Code changes are in `terms-gate.tsx`, `frame.tsx` (the 428 branch), `contract.ts`, `acceptances-page.tsx` and the pack. Nothing in `api/`.
+
+**Result: M1 fixed. The breaker's M1 and M2 are fixed. No new Blocker or Major.**
+* **Pack:** 35/35, exit 0, run twice on my own copy `rev_pf5t` on :4546, which I stopped afterwards. I restored the screenshots the pack overwrites.
+* **Mutation check:** I rebuilt `web/dist` for each change, ran the pack, then reverted. The tree is clean.
+  * The 428 listener off (`terms-gate.tsx:24`): the pack times out at the new Show-more step. **M1 fixed.**
+  * The data put back on a 428 off (`:31`): the two break-M2 checks fail (Invite still open with the typed email; Send then makes it). **Breaker M2 fixed.**
+  * The loop guards off together, both the `status === "success"` check (`:24`) and the settled ref (`:39`): the no-loop check fails with 144 calls, then 254. **Breaker M1 fixed.**
+  * Either loop guard off on its own: the pack passes. Each guard alone stops the loop, so they are defence in depth.
+* **My own walk on the new code:**
+  * **Complaints:** an Owner types into Record a complaint, a privacy notice is published, and they press Save. The terms page shows, and Escape does not close it. After I accept, the drawer is still open with the typed name and summary, and Save again records exactly 1 row.
+  * **Focus** after accepting returns to the page's `h1` ("Complaints"); after an error it goes to the notice.
+  * **Long content:** a 250-character version no longer causes a sideways scroll at 375 or 1024.
+  * **axe:** clean on the terms page.
+  * **Requests:** 7 API calls from sign-in through the hidden page while pending. No loop.
+* **Minors from my first review:**
+  * Fixed: m2 (focus), m3 (overflow-wrap), m4 ("Their own"), m5 (our own words for TERMS_NOT_CURRENT).
+  * m1 part fixed: Settings → Terms is now checked at 375 and 1024. The 400 stale-version path and its new words are still not in the pack.
+  * m6 (dates) stays a follow-up.
+
+**New Minors from the diff (Should; fix here or list as follow-ups):**
+* r1: the terms page is now a full-screen modal (`terms-gate.tsx:80`, `bg-surface`, `inset-0`). It hides the frame's header: the logo, the firm, who is signed in, and the header's Sign out (`terms-page-owner-1440.png`).
+  * The brief says "the frame shows one page instead of the content", and EXPERIENCE §1 asks for the shell.
+  * This was disclosed, the card's own Sign out works, and the content is right.
+  * Fix: start the overlay below the header, or show the logo, firm and person's name in the modal.
+* r2: when `GET /me/terms` itself fails, a later 428 puts the page's last data back with no message (`:31`).
+  * Walked: Team was loaded, the terms check was forced to 500, a version was published, then a menu click. Team shows its old rows, with no terms page and no 428 words. Before this change the page said "Please accept the updated terms to continue."
+  * Fix: put data back only while the terms query's status is success, the same guard as `again` (`:24`).
+* r3: a panel the 428 refused keeps that notice after accepting. Walked: the complaint drawer still shows "There is a problem: Please accept the updated terms to continue." after I accept succeeds, with focus on it. Save then works. Clear or reset the refused notice after accepting.
+
+**Journey score at this head: 9.5/10 (pass).**
+* Accessibility and screen sizes rises to 1 (focus and overflow fixed).
+* Feedback and state drops to ½ (r3).
+* `journey-test-reviewer-2026-11-18.md` stays as scored at 379f2c0.
+
+**Verdict at 374dfc799bc01998929c0544a4cda34a379f035b: Approve.** No open Blocker or Major.
+
+## First review at 379f2c0 (kept for the record)
 ## What I ran (own isolated copy `rev_pf5t` on :4546, `PLATFORM_IDENTITY=local`; stopped afterwards)
 * `check_pf5t_terms_browser.ts 4546 xr_studio_rev_pf5t`: **25/25, exit 0**, run twice (8.7 s each), plus a third run after my mutations were reverted. The pack overwrites the committed screenshots, so I restored them with `git checkout` each time.
 * `tsc --noEmit -p web/tsconfig.json`: exit 0.
@@ -80,4 +119,4 @@ These are account screens, not case screens, so §6 does not formally apply. I s
 * Not a finding (P-26, touch list), but worth telling Lead B: `SalesFrame` (`front-office/sales/sales-frame.tsx`) has no terms branch. A pending person on Leads sees only the 428 words.
 * The full CI is not run yet, because the PR is a draft.
 
-**Verdict: Block.** Fix M1. The Minors are Should items: fix them here or list them as follow-ups.
+First-review verdict at 379f2c0: Block. Fix M1 (now fixed: see the re-review above). The Minors are Should items: fix them here or list them as follow-ups.
