@@ -81,3 +81,11 @@ The breaker's report is in the session scratchpad; it will be copied here with t
   * N6: a full credit note or a write-off on an invoice that credit already paid, the same class as B13.
   * L5: a draft that ever held credit stays pinned and can't be deleted, even after a full reversal.
 * `check_fo7ts_money_settings.ts` 103/0 · `check_fo7a_money_schema.ts` 122/0 (unchanged).
+
+## Breaker round 3 on 5397b60b (fail: N11), fixed
+* **N11 (Major): the N4 line lock deadlocked with a draft's line save.** APPLIED took the draft's row and then its lines, while FO-7a's line writer takes the line and then the row.
+* **Fixed:** APPLIED now share-locks the lines first, then updates the row, in the line writer's order.
+* **New check:** the breaker's three-session repro (a header save holds the draft; credit applied and a line save queue behind it). Both finish now. With the old order it gets 40P01 in 3 of 3 runs.
+* N9 and N4 stay fixed: the breaker ran 300 rounds and the line races at RC and RR.
+* `check_fo7ts_money_settings.ts` 104/0 · `check_fo7a_money_schema.ts` 122/0 (unchanged).
+* **Size:** the tech lead chose a size exception (19 Nov). The PR body names the DECISIONS row once it is added.

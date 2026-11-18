@@ -498,6 +498,17 @@ try {
     sql(T, `update money_invoice_line set unit_amount_minor = 5000, amount_minor = 5000 where invoice_id = '${Dn}'`);
     const stale = await cn.query(ce(R, "APPLIED", -20000, { inv: Dn })).then(() => "ok", (e: { code?: string }) => e.code); await cn.query("rollback"); await cn.end(); conns.splice(conns.indexOf(cn), 1);
     ok("FO-7ts fail (break N4): at REPEATABLE READ, applying 200.00 to a draft whose line was cut to 50.00 after the snapshot is refused (40001), never accepted", stale === "40001", stale);
+    {  // break N11: a header save holds the draft; credit applied and a line save queue behind it; neither gets 40P01
+      const Dd = inv(R, 30000, { draft: true }), [t1, t2, t3] = [0, 1, 2].map(() => new pg.Client({ connectionString: urlOf(T) }));
+      for (const c of [t1, t2, t3]) { await c.connect(); conns.push(c); }
+      const waitLock = async (c: pg.Client) => { const pid = (c as unknown as { processID: number }).processID; for (let i = 0; i < 400; i++) { if ((await t3.query("select wait_event_type w from pg_stat_activity where pid = $1", [pid])).rows[0]?.w === "Lock") return; await new Promise((r) => setTimeout(r, 5)); } };
+      await t3.query("begin"); await t3.query(`update money_invoice set due_date = '2026-12-20' where id = '${Dd}'`);
+      const r1 = t1.query(ce(R, "APPLIED", -1000, { inv: Dd })).then(() => "ok", (e: { code?: string }) => e.code); await waitLock(t1);
+      const r2 = t2.query(`update money_invoice_line set unit_amount_minor = 29000, amount_minor = 29000 where invoice_id = '${Dd}'`).then(() => "ok", (e: { code?: string }) => e.code); await waitLock(t2);
+      await t3.query("commit"); const out = [await r1, await r2];
+      for (const c of [t1, t2, t3]) { await c.end(); conns.splice(conns.indexOf(c), 1); }
+      ok("FO-7ts pass (break N11): a header save, then credit applied and a line save queued behind it on one draft — both finish, no 40P01", out.every((x) => x === "ok"), out);
+    }
     const chqInv = inv(R, 10000), chq = last(T, `insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by, cleared) values ('${F}', '${chqInv}', 'CHEQUE', 15000, 'CAD', 'OPERATING', now(), '${key()}', 'user-R', false) returning id`);
     const I2p = inv(R, 100000), q1 = paid(I2p, 110000), q2 = paid(I2p, 10000); ok("FO-7ts fail (review m4): credit kept from one payment is never more than that payment (150.00 from a 100.00 payment), though the invoice is over by 200.00", refused(T, ce(R, "KEPT", 15000, { pay: q2 }), /never more than the payment, less its refunds/) && !!q1);
     ok("FO-7ts fail (break note on 692ea4be): credit is never kept from an uncleared cheque", refused(T, ce(R, "KEPT", 5000, { pay: chq }), /not cleared yet/, "23514"));
