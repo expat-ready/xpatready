@@ -104,4 +104,12 @@ Round 2 result (5da71ac08): Approve.
 - **Fresh copy :4581 at 5ff1d61b7 (started, then stopped):** the suite passed **53/53**. I also ran a live gate probe: a new Case Officer with a newer Sample privacy notice published got 428 from the hours API, and the terms page showed. After "I accept", the address stayed `/account/availability`, "Normal hours" Default with "Times in America/Toronto" and the time off loaded, and there was no "Could not load" and no page error. The menu reads Profile · Availability · Terms (Case Officer) and Profile · Availability · Team · Terms (Admin).
 - Round-2 Minors n1-n3 and the left-open m3, m5, m6 and m7 are unchanged. Nothing new found.
 
+Round 3 result (5ff1d61b7): Approve.
+
+## Re-review (round 4) of 1995b5edf: base moved again, diff only
+- **This row's code is unchanged.** `git diff 5ff1d61b7..1995b5edf` over `web/src` and the test is empty. The three-dot stat against the base branch (now at 0f634c6cc) lists the same row files plus records.
+- **Nothing in the merge reaches this screen.** It changes no availability or slots route, no identity guard, no staff list and no terms gate. Its API-side changes are `platform/files/file-type.ts`, `ports/events.ts`, a cases `firm_id` migration and `tools/isolated.sh`.
+- **Suite re-run by the reviewer** on a fresh copy at :4581 at 1995b5edf (started, then stopped): **53/53**. The builder's other suite results in build-notes are taken as recorded.
+- Minors n1-n3, m3, m5, m6 and m7 are unchanged. Nothing new found.
+
 Verdict: Approve
