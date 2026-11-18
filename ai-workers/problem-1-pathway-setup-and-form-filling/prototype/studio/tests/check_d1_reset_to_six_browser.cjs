@@ -26,7 +26,7 @@ const post = (p, body) => fetch(`${BASE}/api${p}`, { method: "POST", headers: { 
   // A configured start: the suites' fixture (a release, library fields, a Super visa that is not one of the six).
   await post("/demo/reset", { confirm: "RESET" });
   if ((await post("/demo/load", {})) >= 300) { console.error("STOP  the fixture did not load"); process.exit(2); }
-  const oldWs = sql(`select id from workspace limit 1`);
+  const oldWs = sql(`select id from workspace where key <> 'platform-audit' limit 1`);
   const b = await chromium.launch({ channel: "chrome", headless: true });
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
   const p = await ctx.newPage(); const errs = [];
@@ -84,7 +84,7 @@ const post = (p, body) => fetch(`${BASE}/api${p}`, { method: "POST", headers: { 
   await widths("d1-01-reset-to-six-dialog", true);
   await p.keyboard.press("Escape");
   await dialog().waitFor({ state: "detached" });
-  step("D1 fail: Escape (cancel) changes nothing: the same workspace, the Super visa still there", sql(`select id from workspace limit 1`) === oldWs && n(`select count(*) from combination where label='Super visa'`) === 1);
+  step("D1 fail: Escape (cancel) changes nothing: the same workspace, the Super visa still there", sql(`select id from workspace where key <> 'platform-audit' limit 1`) === oldWs && n(`select count(*) from combination where label='Super visa'`) === 1);
 
   // A failure midway (D1 review 2): the words stay in the dialog, and the screen behind reads the emptied state again.
   const superBefore = await p.getByText("Super visa").count();
@@ -118,7 +118,7 @@ const post = (p, body) => fetch(`${BASE}/api${p}`, { method: "POST", headers: { 
   await go.dblclick();
   await dialog().getByText("Reset to the six: done").waitFor({ timeout: 400000 });
   const shown = Number(await p.locator('[data-count="Combinations"]').innerText());
-  const ws = sql(`select id from workspace limit 1`);
+  const ws = sql(`select id from workspace where key <> 'platform-audit' limit 1`);
   step("D1: one request for a double click: one reset in the copy's log, no error shown", resets() - r0 === 1 && !(await p.locator("[data-toaster] .border-l-danger").count()), resets() - r0);
   step("C10.1 (P-226): after it, the old configuration is gone: no Super visa, no release, no library field", ws !== oldWs && n(`select count(*) from combination where label='Super visa'`) === 0 && n(`select count(*) from config_release`) === 0 && n(`select count(*) from canonical_field`) === 0);
   step("C11.7 (P-226): the result shows exactly the six, and the saved AI answers' proposals waiting", shown === 6 && n(`select count(*) from combination where workspace_id='${ws}'`) === 6 && Number(await p.locator('[data-count="AI proposals waiting for review"]').innerText()) === n(`select count(*) from proposal_item where status='waiting' and origin='ai'`) && n(`select count(*) from proposal_item where status='waiting' and origin='ai'`) > 0);
