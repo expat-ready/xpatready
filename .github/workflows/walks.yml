@@ -41,8 +41,13 @@ jobs:
       matrix: ${{ steps.p.outputs.matrix }}
       sha: ${{ steps.p.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
-        with: { ref: "${{ github.event.pull_request.head.sha || github.sha }}" }
+      # A dispatch walks the ref it was started on (plain checkout); only a pull_request run, which holds no write
+      # token and no cache, checks out the PR's head (CodeQL cache poisoning, #2133).
+      - if: github.event_name != 'pull_request'
+        uses: actions/checkout@v4
+      - if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with: { ref: "${{ github.event.pull_request.head.sha }}" }
       - id: p
         name: which journeys (the input, checked; else every j_*.ts), plus the failing fixture
         env:
@@ -79,8 +84,11 @@ jobs:
       S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
       SHA: ${{ needs.plan.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
-        with: { ref: "${{ needs.plan.outputs.sha }}" }
+      - if: github.event_name != 'pull_request'
+        uses: actions/checkout@v4
+      - if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with: { ref: "${{ github.event.pull_request.head.sha }}" }
       # No npm cache (CodeQL cache poisoning, #2133): a dispatch runs in the default branch's cache scope on any ref's
       # code, so it neither reads nor writes a cache; cloud-setup.sh installs from the lockfile.
       - uses: actions/setup-node@v4
