@@ -39,6 +39,37 @@ export const word = (list: Record<string, string>, code: string | null) => (code
 
 export const NOT_FOUND = "We can't find this complaint. It may not exist, or it may not be one you can see.";
 export const READ_ONLY = "You can see this complaint but not change it: only its handler, an Owner or an Admin can.";
+/** §5 Refused: the panel's title; the server's own words follow it. */
+export const FORBIDDEN = "You can't change this complaint. Ask an Owner or Admin.";
+export const CLOSED_REFUSED = "This complaint is closed. It was closed while you were working; add it as a note instead.";
+
+/** PF-21s part 4: the acts on a complaint, each one panel (concept §4 "Record page", "Drawers"). */
+export type Action = "acknowledge" | "step" | "note" | "response" | "close" | "handler";
+export const ACTION: Record<Action, { title: string; submit: string; done: string; description: string }> = {
+  acknowledge: { title: "Record the acknowledgement", submit: "Record the acknowledgement", done: "Acknowledgement recorded.", description: "When the firm told the person it received their complaint. Recorded once." },
+  step: { title: "Add a handling step", submit: "Add the step", done: "Handling step added.", description: "Something done to handle the complaint. It goes on the record and is never deleted." },
+  note: { title: "Add a note", submit: "Add the note", done: "Note added.", description: "Something to keep on the record. It changes nothing else." },
+  response: { title: "Record the response sent", submit: "Record the response", done: "Response recorded.", description: "When the firm sent its response to the person. Recorded once." },
+  close: { title: "Close with an outcome", submit: "Close the complaint", done: "Complaint closed.", description: "A closed complaint is kept as it is; notes can still be added." },
+  handler: { title: "Change handler", submit: "Change handler", done: "Handler changed.", description: "The new handler sees it and is reminded if it is not acknowledged by its date." },
+};
+/** The one filled button by status (concept §4): not acknowledged → acknowledge; no step → a step; no response →
+ *  response sent; else close. A closed complaint takes a note only. */
+export function nextAction(c: Detail): Action {
+  if (c.status === "CLOSED") return "note";
+  if (!c.acknowledgedAt) return "acknowledge";
+  if (!c.events.some((e) => e.kind === "STEP")) return "step";
+  if (!c.responseSentAt) return "response";
+  return "close";
+}
+/** The quiet secondary acts the service still allows while open, without the one filled. */
+export function otherActions(c: Detail): Action[] {
+  if (c.status === "CLOSED") return [];
+  const all: Action[] = ["step", "note", ...(c.responseSentAt ? [] : ["response" as const]), "close"];
+  return all.filter((a) => a !== nextAction(c));
+}
+/** BR-3: change handler, both keys and open only (the server still decides). */
+export const canChangeHandler = (me: Me, c: { status: string }) => c.status === "OPEN" && has(me, KEY.record) && has(me, KEY.read);
 export const OVERDUE_TIP = "Open and not acknowledged by its date. Once acknowledged, a complaint is not shown as overdue.";
 export const HOW = "Record each complaint when it arrives. The handler acknowledges it, adds handling steps, records when the response was sent and closes it with an outcome. Everything stays on the record. A complaint is overdue only while it is not acknowledged by its date; once acknowledged it shows as Open however long it waits. The 2-business-day acknowledgement period and the lists of channels, topics and outcomes are Sample until the College's by-laws are read. Unconfirmed: no counsel.";
 
