@@ -1,6 +1,6 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_bd570ff6-6fd5-430b-b1d9-b170426333cd Lead 81 · 18 Nov 20:2x IST (series 2; took over from Lead 80 (series 2, local_d018e333) at ~690k, P-446)
+current_lead: local_f86fdc68-c7c5-4d45-8b65-dd86c449f783 Lead 82 · 18 Nov 23:1x IST (series 2; took over from Lead 81 (series 2, local_bd570ff6) at ~480k, P-446)
 
 updated: 2026-11-18 20:2x IST: **Lead 81 (local_bd570ff6) took over 20:23 IST, check cron 58014a84 at :17 and :47**; earlier: 12:5x IST by **Lead 79 (series 2, local_25aa8878)**; **Lead 80 (local_d018e333) took over 12:50 IST, check cron 52e0f97a at :17 and :47** · **ORG MOVE DONE 12:31 IST: expat-ready/xpatready**; E1-E6, C4, D1, D2 pass; queue-gate and label-guard back on (the Lead in the browser, founder "Yes, you click"); Merge Queue on; B1 freeze lifted 12:4x; CI_SHARD_RUNNER absent until E12/R5 · **in flight:** the first org batch #2115 (#2003, #2011, #2014); #2113 records (E8); #2114 the front-office card fix (hand merge on green, P-214); #2081 heartbeat (read posted, label on green, then dispatch once); 8 cloud lanes merging main · **next:** AUD-5 part 2 to the AUD-5 part 1 lane; clean-up stage 0 PR waits for the founder's OK in its own session; the b78 night-run hang; #2109, #2106; change-log numbering (enforcement-checks' C18 for #2080 → next free number) · earlier lines word for word in `history/STATE-2026-11-1*-lead79s2-updated-line-*.md` (the newest `history/STATE-2026-11-18-1250-lead79s2-updated-line-after-move.md`) · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-690**) · this branch: `lead/2026-11-07-lead31`
 
@@ -9,24 +9,15 @@ updated: 2026-11-18 20:2x IST: **Lead 81 (local_bd570ff6) took over 20:23 IST, c
 
 Pointer and 10:2x founder lines: `history/STATE-2026-11-17-1208-lead76s2-pointer-lines.md`.
 
-## Hand-over: Lead 80 → Lead 81, 20:2x IST 18 Nov (read this first; Lead 79's block word for word in `history/STATE-2026-11-18-2025-lead80s2-handover-79-80-block.md`)
-Standby left: **Lead 82 (local_f86fdc68)**; start a second standby at the founder's next typed turn (P-286). Weekly plan 49% at 20:19. Lead 80 ran 12:50-20:2x IST, handed over at ~690k (P-446).
-1. **Pipeline:** org move done; CI recovered from 18:00 (median job wait 5 min at 20:19; 86 runs queued, 10 running); limit page 31/180; Support ticket #5023043 Open, Normal. **Founder question open:** keep Normal (Lead's recommendation) or ask GitHub to raise to High (his words relayed by founder-setup: "change it to high pripotruty"). P-696: move back at 10:00 IST 19 Nov only if the overnight median job wait is over 30 min: measure at each check.
-2. **Target P-697: Release 1 Proven +20 on 19 Nov (11 → 31).** Review `design/release1-end-to-end-review-2026-11-18.md`, rulings P-698. Wave 1 cloud builders: CS-W1 #2125, PF-15 part 1a #2130, PF-6 part 2b #2127, PF-F4 #2128, FO-3a (held: waits #2102), FO-2 part 3, PF-21s part 4, PF-5t part 2, CS-C1s part 1 #2132, #224 recorded walks #2133 (P-700), FO-1p (started by browser, P-699), AUD-1b is #2124 (night-queue lane; a duplicate session stood down). qa: qa local_bb3bf1ad runs gate A walks for qa-2/3/4 (their sandboxes can't start copies) until #2137 (pg_isready fix, labelled on the founder's word) merges; qa-4 local_ff10dee7 scores wave 1 rows as they merge.
-3. Lead 80's labelled-queue list of 20:19 (now stale): word for word in `history/STATE-2026-11-18-2210-lead81s2-handover-item3-queue-list.md`.
-
-
-Lead 81's 20:5x check, Lead 80's plan position and CI-recovered lines: word for word in `history/STATE-2026-11-18-2100-lead81s2-check-plan-ci-lines.md`.
-
-Hand-over item 6 (rules learned 18 Nov) and the CI investigation pointer: word for word in `history/STATE-2026-11-18-2135-lead81s2-handover-item6-ci-lines.md`.
-
-#2145 done and CI-RUN part 2 in flight (cloud task_bc4ca0c7, P-651): word for word in `history/STATE-2026-11-18-2300-lead81s2-2145-cirun-lines.md`.
-
-**Overlap starts (Lead 81, 23:1x 18 Nov, founder "Yes, go"):** 10 cloud sessions requested: PF-15 part 2 (task_3ac7d547), FO-3st2 (task_33a9c3ba), PF-19e (task_bab945f3), PF-19b part 3 (task_c431da30), J-109 (task_a27f0c66), CS-K1 part 1 (task_63b163fa), CS-C1s part 2 (task_dbcf61b2), AUD-1m with #2124's merge (task_a1b310f4), #2129 merge (task_6f42a231), money FO-7lk then FO-7ts part 2 (task_ba56ea39). Cards (app cap of 10): PF-6b (task_d55fe841), PF-19r (task_c7aa104d). #2152 Approve 03ac386 (batch 13, P-704): label only when #2148-#2150 are done and no product batch waits. GitHub research: likely trial-era limit (180) still on; Support lifts it. Merged 23:08: #2138 FO-1p, #2135 PF-5t part 2, #2134 PF-21s part 4 (product) with #2137, #2133, #2085, #2141; qa walks them. **Owed by the Lead now: QA-165 Adobe Validate for R1.80** (P-442, procedure `history/lead4-adobe-validate-c102-2026-11-10.md`). **P-705: no move back to Pro** (P-696's 10:00 trigger dropped); paid-runner research running for the founder.
-
-Tonight's push line (22:5x): word for word in `history/STATE-2026-11-18-2320-lead81s2-tonights-push-line.md`.
-
-Hand-over items 4-5: word for word in `history/STATE-2026-11-18-2325-lead81s2-handover-items-4-5.md`.
+## Hand-over: Lead 81 → Lead 82, 23:18 IST 18 Nov (read this first; Lead 80's block word for word in `history/STATE-2026-11-18-2340-lead81s2-handover-80-81-block.md`)
+Standby left: **Lead 83 (local_191538a9)**; start a second standby at the founder's next typed turn (P-286). Weekly plan 54% at 23:1x. Lead 81 ran 20:23-23:18, handed over at ~480k.
+1. **First task, the founder's choice (23:1x): "Research AWS more first"** before any paid runners. Check in his logged-in AWS console (built-in browser, read-only): the account's credits and Free-plan status; EC2 vCPU quotas for on-demand and spot in ca-central-1 (about 160 vCPU needed for ~40 four-vCPU jobs; default quotas are often far lower, and an increase request takes time); spot capacity; RunsOn's licence (from €300/yr) and 15-day trial; AWS Activate Founders ($1,000 for self-funded startups). Then one recommendation to the founder (AskUserQuestion) with cost a day and extra Proven rows. Background: `design/ci-runners-research-2026-11-18.md` (Blacksmith ~$56-121/day, Ubicloud cheaper, Greptile no benefit, GitHub Support can lift the trial-era 180 cap to 500). P-705: no move back to Pro.
+2. **#2152 (one big batch, P-704, batch 13, Approve 03ac386)**: label it only when batches #2150 and #2153 are done and no product batch waits (a config change resets PRs queued behind it). Revert to 6 on 19 Nov with its own manifest row.
+3. **#2151 "run tests once" (CI-RUN part 2)**: the Lead's P-423 read of the .github diff when its Approve lands, then label.
+4. **QA-165** (Adobe Validate for R1.80, P-442): procedure `history/lead4-adobe-validate-c102-2026-11-10.md`, on an isolated copy.
+5. **12 cloud builders running** (overlap starts, see the 23:1x line below); reads and labels as their Approves arrive. Lead B (local_1520b573) and Build Lead C (local_d5287293) own them; cloud lanes don't wake on messages, so type into claude.ai/code in the browser (P-699). qa-4 (local_ff10dee7) scores FO/CS rows on merge; qa after-merge (local_bb3bf1ad) walks PF/AUD rows.
+6. **Owed reads (P-423):** #2124 and #2129 after their main merge and diff-only Approve (sessions started for both). #2103 after its fixes.
+7. **Rules learned tonight:** P-703 (measure product only), app view enforced in lead-watch.sh (`tools/app-view.js`, ACT after 35 min), P-701, P-702 (evaluation 21 Nov), P-704, P-705.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 **For the founder (open):** (a) R1.20 vs PF-4c invite rule; (b) close #2088. (f) leftover test servers: `lsof -ti tcp:4473,4474,4475,4477 -sTCP:LISTEN | xargs kill` in his Terminal (sandbox can't signal them). Owed row: isolated.sh `stop` should keep the copy's timer when it cannot kill the server (qa, 23:2x). Done: (c) Lead 83 standby, (d) P-701, (e) ticket High asked. Full line word for word in `history/STATE-2026-11-18-2212-lead81s2-for-founder-line.md`.
