@@ -12,7 +12,7 @@ import { EntitlementMetric, STORAGE_HARD_AFTER_DAYS, type EntitlementPort, type 
 
 /** A Prisma client or the caller's transaction. */
 export type LimitsClient = PrismaClient | Prisma.TransactionClient;
-const DAY_MS = 86_400_000, MIB = 1024 * 1024, UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DAY_MS = 86_400_000, MIB = 1024 * 1024;
 /** The storage usage in whole MB, rounded up: one byte over the limit is over it. */
 export const mbOf = (bytes: number) => Math.ceil(bytes / MIB);
 const COLUMN: Record<EntitlementMetric, string> = { seats: "SEATS", active_individual_cases: "ACTIVE_INDIVIDUAL_CASES", active_corporate_cases: "ACTIVE_CORPORATE_CASES", storage_mb: "STORAGE_MB" };
@@ -22,40 +22,28 @@ export type PlanLimit = { firmId: string | null; planCode: string | null; planNa
 export class PgEntitlements implements EntitlementPort {
   constructor(private readonly client: LimitsClient, private readonly now: () => number = Date.now) {}
 
-  /** The firm's limit on `metric` on its live plan (null: Unlimited). */
-  async limitOf(firm: string, metric: EntitlementMetric): Promise<PlanLimit> {
+  /** The firm's limit on `metric` on its live plan (null: Unlimited), and whether its storage is hard (SA-3-40: over for
+   *  14 days and not back under). One definer function reads it across PF-12's walls (review M1: the case side names
+   *  the firm by key with no platform scope); an id wins over a key shaped like one. */
+  async limitOf(firm: string, metric: EntitlementMetric): Promise<PlanLimit & { storageHard: boolean }> {
     z.string().min(1).max(200).parse(firm); EntitlementMetric.parse(metric);
-    const byId = UUID.test(firm) ? firm.toLowerCase() : null;
-    const rows = await this.client.$queryRaw<{ firmId: string; code: string | null; name: string | null; seats: number | null; value: number | null; hasRow: boolean }[]>`
-      SELECT f."id"::text AS "firmId", p."code", p."name", p."seats_limit" AS seats, l."limit_value" AS value, (l."plan_id" IS NOT NULL) AS "hasRow"
-      FROM "platform_firm" f
-      LEFT JOIN "platform_subscription" s ON s."firm_id" = f."id" AND s."status" <> 'ENDED'
-      LEFT JOIN "platform_plan" p ON p."id" = s."plan_id"
-      LEFT JOIN "platform_plan_limit" l ON l."plan_id" = p."id" AND l."metric"::text = ${COLUMN[metric]}
-      WHERE f."id" = ${byId}::uuid OR f."key" = ${firm}
-      ORDER BY (f."id" = ${byId}::uuid) DESC NULLS LAST LIMIT 1`;   // an id wins over a key shaped like one (break m3)
+    const rows = await this.client.$queryRaw<{ firmId: string; code: string | null; name: string | null; seats: number | null; value: number | null; hasRow: boolean; hard: boolean }[]>`
+      SELECT firm_id::text AS "firmId", plan_code AS code, plan_name AS name, seats, limit_value AS value, has_row AS "hasRow", storage_hard AS hard
+      FROM platform_entitlement_limit(${firm}, ${COLUMN[metric]}, ${new Date(this.now() - STORAGE_HARD_AFTER_DAYS * DAY_MS)}::timestamptz)`;
     const r = rows[0];
-    if (!r || r.code === null) return { firmId: r?.firmId ?? null, planCode: null, planName: null, limit: 0 };   // no live plan: none allowed
+    if (!r || r.code === null) return { firmId: r?.firmId ?? null, planCode: null, planName: null, limit: 0, storageHard: r?.hard ?? false };   // no live plan: none allowed
     const limit = metric === "seats" ? (r.seats ?? 0) : r.hasRow ? r.value : 0;   // no row: 0, never Unlimited
-    return { firmId: r.firmId, planCode: r.code, planName: r.name, limit };
-  }
-
-  /** SA-3-40: the firm's storage limit is hard once it has been over for 14 days without being back under. */
-  async storageHard(firmId: string): Promise<boolean> {
-    const rows = await this.client.$queryRaw<{ hard: boolean }[]>`
-      SELECT ("back_under_at" IS NULL AND "first_over_at" <= ${new Date(this.now() - STORAGE_HARD_AFTER_DAYS * DAY_MS)}::timestamptz) AS hard
-      FROM "platform_storage_over" WHERE "firm_id" = ${firmId}::uuid`;
-    return rows[0]?.hard === true;
+    return { firmId: r.firmId, planCode: r.code, planName: r.name, limit, storageHard: r.hard };
   }
 
   async check(firm: string, metric: EntitlementMetric, used?: number): Promise<EntitlementResult> {
     if (used === undefined) throw new TypeError("PgEntitlements.check: `used` is the caller's own count (the port never reads a usage)");
     z.number().int().min(0).parse(used);
-    const { firmId, limit } = await this.limitOf(firm, metric);
+    const { firmId, limit, storageHard } = await this.limitOf(firm, metric);
     if (limit === null) return { allowed: true };
     if (metric === "storage_mb") {
       if (!firmId) return { allowed: false, metric, limit, used };   // a firm this scope cannot read: fail closed (break m2)
-      if (used <= limit || !(await this.storageHard(firmId))) return { allowed: true };
+      if (used <= limit || !storageHard) return { allowed: true };
     } else if (used < limit) return { allowed: true };
     return { allowed: false, metric, limit, used };
   }

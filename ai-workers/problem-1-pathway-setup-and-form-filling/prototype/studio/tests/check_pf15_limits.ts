@@ -240,6 +240,23 @@ try {
   }
   sql(`update platform_plan_limit set limit_value = 25600 where ${STORAGE_A}`);
 
+  // Review M1: the same adapter on the walled pool (xr_app), as the API runs it: the case side's key with no platform
+  // scope, the platform side's id in the firm's scope, the storage mark in a job's withFirm; and the shared contract.
+  const walls = await import("../api/src/platform/firm-scope.ts");
+  walls.wallUnscopedQueries();
+  const walled = new Db();
+  try {
+    const caseSide = await new PgEntitlements(walled).limitOf("sample-solo", "active_individual_cases");
+    ok("PF-15 pass (review M1): walled, no platform scope, the case side's firm key reads its plan's limit (25 Sample cases)", caseSide.limit === 25 && caseSide.planCode === "solo", caseSide);
+    ok("PF-15 pass (review M1): walled, the 1st case is allowed and the 26th refused by key", (await new PgEntitlements(walled).check("sample-solo", "active_individual_cases", 0)).allowed && !(await new PgEntitlements(walled).check("sample-solo", "active_individual_cases", 25)).allowed);
+    ok("PF-15 fail (review M1): walled, the app still reads no firm table directly with no scope", (await walled.platformFirm.findMany({ select: { id: true } })).length === 0);
+    sql(`update platform_storage_over set first_over_at = now() - interval '20 days', back_under_at = null where firm_id = '${FIRM_A}'`); sql(`update platform_plan_limit set limit_value = 0 where ${STORAGE_A}`);
+    ok("PF-15 pass (review M1): walled, in firm A's scope its storage reads hard (the mark behind the wall)", await walls.withFirm(FIRM_A, async () => (await new PgEntitlements(walled, () => Date.now()).check(FIRM_A, "storage_mb", 1)).allowed === false));
+    const m = await walls.withFirm(FIRM_A, () => new StorageWatch({ db: walled, files: new LocalFiles(join(WORK, "store")), mail, now: () => Date.now() }).measure(FIRM_A));
+    ok("PF-15 pass (review M1): walled, a measure in the firm's scope keeps its mark", m.over && m.mark === "kept", m);
+    sql(`update platform_plan_limit set limit_value = 25600 where ${STORAGE_A}`);
+    await runContract(entitlementPortContract, "PgEntitlements", async (limits, hard) => ({ ...(await realHarness(limits, hard)), port: new PgEntitlements(walled, () => Date.now()) }), (n, c, d) => ok(`${n} (walled)`, c, d));
+  } finally { await walled.$disconnect(); }
 } catch (e) {
   fail++; console.log(`FAIL  PF-15: the check stopped — ${String((e as Error)?.stack ?? e).slice(0, 800)}`);
 } finally {

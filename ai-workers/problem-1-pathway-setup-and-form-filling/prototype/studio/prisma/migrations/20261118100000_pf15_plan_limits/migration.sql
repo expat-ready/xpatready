@@ -8,7 +8,7 @@
 -- Every function carries the platform_ prefix (rows rev 15.2).
 -- Rollback (as the migration's owner; on a role that is not superuser, first ALTER FUNCTION platform_storage_over_kept()
 --   OWNER TO CURRENT_USER, since PF-12's pattern gives it to xr_wall_reader): DROP TABLE "platform_storage_over", "platform_plan_limit"; DROP TYPE "platform_limit_metric"; DROP FUNCTION
---   platform_storage_over_kept(); delete this folder's row from _prisma_migrations. No other table holds a reference to
+--   platform_storage_over_kept(), platform_entitlement_limit(text, text, timestamptz); delete this folder's row from _prisma_migrations. No other table holds a reference to
 --   either table, so nothing else changes.
 
 CREATE TYPE "platform_limit_metric" AS ENUM ('ACTIVE_INDIVIDUAL_CASES', 'ACTIVE_CORPORATE_CASES', 'STORAGE_MB');
@@ -61,6 +61,24 @@ CREATE POLICY "pf12_firm" ON "platform_storage_over" USING ("firm_id" = platform
 CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "platform_storage_over" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
 ALTER FUNCTION platform_storage_over_kept() SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp;
 ALTER FUNCTION platform_storage_over_kept() OWNER TO xr_wall_reader;
+
+-- The one limit read (review M1): a firm named by id or key, from any scope (the case side has no platform firm in
+-- scope), so it crosses the walls in one narrow definer function: the firm's live plan, its limit on one metric, and
+-- whether its storage is hard (over since p_hard_since, not back under). Owned by xr_wall_reader, callable by xr_app only.
+CREATE FUNCTION platform_entitlement_limit(p_firm text, p_metric text, p_hard_since timestamptz)
+  RETURNS TABLE (firm_id uuid, plan_code text, plan_name text, seats integer, limit_value integer, has_row boolean, storage_hard boolean)
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
+  AS $fn$ SELECT f.id, p.code, p.name, p.seats_limit, l.limit_value, l.plan_id IS NOT NULL,
+            COALESCE((SELECT o.back_under_at IS NULL AND o.first_over_at <= p_hard_since FROM platform_storage_over o WHERE o.firm_id = f.id), false)
+          FROM platform_firm f
+          LEFT JOIN platform_subscription s ON s.firm_id = f.id AND s.status <> 'ENDED'
+          LEFT JOIN platform_plan p ON p.id = s.plan_id
+          LEFT JOIN platform_plan_limit l ON l.plan_id = p.id AND l.metric::text = p_metric
+          WHERE f.id::text = lower(p_firm) OR f.key = p_firm
+          ORDER BY (f.id::text = lower(p_firm)) DESC LIMIT 1 $fn$;
+ALTER FUNCTION platform_entitlement_limit(text, text, timestamptz) OWNER TO xr_wall_reader;
+REVOKE ALL ON FUNCTION platform_entitlement_limit(text, text, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION platform_entitlement_limit(text, text, timestamptz) TO xr_app;
 
 -- ------------------------------------------------------------------------------------------------- Sample limits
 INSERT INTO "platform_plan_limit" ("plan_id", "metric", "limit_value")

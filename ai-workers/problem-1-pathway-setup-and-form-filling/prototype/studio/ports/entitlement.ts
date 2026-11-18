@@ -4,7 +4,8 @@
 // not on main. PF-15 owns this file: it builds the plan table and the real adapter; this row builds neither. The
 // default binding is the allow-all fake (contract v0.1 §6): with no limit configured nothing is refused.
 // `used` is the caller's own count, read in the caller's transaction (P-588 (3): an opening counts inside its own
-// transaction, so two openings at the same moment cannot both pass); without it an adapter reads the usage itself.
+// transaction, so two openings at the same moment cannot both pass); the real adapter refuses a check without it (it
+// never reads a usage; review m3), the fake allows.
 // A limit is the number of items allowed (SA-3-4): adding one more is allowed while `used` is below it. `firm`: the
 // caller's name for the firm: the case side passes its firm key (runtime_case.firm_key) until CS-W1, since the
 // case-opening route has no staff session and platform_firm sits behind PF-12's walls. This folder imports only zod.
