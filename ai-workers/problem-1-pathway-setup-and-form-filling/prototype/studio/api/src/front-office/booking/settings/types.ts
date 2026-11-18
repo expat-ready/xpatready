@@ -165,7 +165,9 @@ export class BookingTypesService {
 
   async get(ctx: StaffContext, id: string) {
     const t = await this.find(this.db, ctx.firmId, id);
-    return { ...view(t), futureBookings: await this.futureBookings(this.db, ctx.firmId, t.id) };
+    // Each host's chosen set of hours, null = the host's default (FO-3a 1b-i; Devin review on #2103).
+    const chosen = new Map((await this.db.foTypeHostSet.findMany({ where: firmScope(ctx.firmId, { typeId: t.id }) })).map((h) => [h.staffId, h.setId]));
+    return { ...view(t), futureBookings: await this.futureBookings(this.db, ctx.firmId, t.id), hostSets: t.hostStaffIds.map((staffId) => ({ staffId, setId: chosen.get(staffId) ?? null })) };
   }
 
   async create(ctx: StaffContext, body: unknown) {

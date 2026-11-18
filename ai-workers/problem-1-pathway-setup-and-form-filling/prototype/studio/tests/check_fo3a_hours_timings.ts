@@ -21,7 +21,7 @@ const BREW = "/opt/homebrew/opt/postgresql@18/bin", bin = (n: string) => (exists
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_fo3a1b_${process.pid}`, OLD = `xr_studio_fo3a1b_old_${process.pid}`;
 const urlOf = (d: string) => `postgresql://xr_studio@127.0.0.1:54329/${d}`, URL = urlOf(DB);
-const TZ = "America/Toronto", THIS = "20261118143000_fo3a_hour_sets";
+const TZ = "America/Toronto", THIS = "20261118220000_fo3a_hour_sets";
 
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 600)}` : ""}`); };
@@ -155,6 +155,10 @@ try {
   ok("FO-3a DW14 pass (review M1, m4): a duplicate keeps the host's set (same 4 times); the preview and staff warnings read the type's set (only Tuesday has times; Tue 09:00 → OUTSIDE_HOURS)",
     copy.status === 201 && JSON.stringify(sCopy) === JSON.stringify(s2) && pv.status === 200 && pv.body.days.filter((d: { slots: unknown[] }) => d.slots.length).map((d: { date: string }) => d.date).join() === "2026-10-20"
     && warn.status === 409 && JSON.stringify(warn.body).includes("OUTSIDE_HOURS"), [copy.status, sCopy.length, warn.status]);
+  const readBack = async () => (await F("GET", `booking-types/${T2.id}`, P.CASE_MANAGER)).body.hostSets;
+  const [chosenRead, cleared, clearedRead] = [await readBack(), await F("PUT", `booking-types/${T2.id}/hosts/${P.OWNER.id}/set`, P.OWNER, { setId: null }), await readBack()];
+  await F("PUT", `booking-types/${T2.id}/hosts/${P.OWNER.id}/set`, P.OWNER, { setId: evening.body.id });
+  ok("FO-3a DW14 pass (Devin, #2103): the type's read names each host's chosen set; cleared, it reads null (the default)", JSON.stringify(chosenRead) === JSON.stringify([{ staffId: P.OWNER.id, setId: evening.body.id }]) && cleared.body.usesDefault === true && JSON.stringify(clearedRead) === JSON.stringify([{ staffId: P.OWNER.id, setId: null }]), [chosenRead, clearedRead]);
   const notTheirs = await F("PUT", `booking-types/${T2.id}/hosts/${P.OWNER.id}/set`, P.OWNER, { setId: first[0].id });
   const notHost = await F("PUT", `booking-types/${T2.id}/hosts/${NEW1.id}/set`, P.OWNER, { setId: first[0].id });
   const gone = await F("DELETE", `me/availability-sets/${evening.body.id}`, P.OWNER);
@@ -235,7 +239,7 @@ try {
     /availability\.changed/.test(lines) && /availability\.set_created/.test(lines) && /availability\.set_deleted/.test(lines) && /availability\.type_set_changed/.test(lines) && /time_off\.added/.test(lines) && /time_off\.removed/.test(lines)
     && changed.startsWith(`${P.OWNER.id}|["1 09:00-17:00"`) && changed.includes(`["1 09:00-16:00"`), [lines, changed]);
   const auditRefused = (lines.match(/,/g) ?? []).length + 1;
-  ok("FO-3a DW21 fail: a refused change (the 400s, 403s, 404s and 409 above) wrote no line: exactly the successful changes are there (17)", auditRefused === 17, [auditRefused, lines]);
+  ok("FO-3a DW21 fail: a refused change (the 400s, 403s, 404s and 409 above) wrote no line: exactly the successful changes are there (19)", auditRefused === 19, [auditRefused, lines]);
 
   // -------------------------------------------------------------------- DW21 (migration half): a copy of main's schema
   migrate(OLD, migrations.filter((m) => m < THIS));
