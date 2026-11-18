@@ -284,6 +284,8 @@ class Conformance(unittest.TestCase):
                    lambda d: d.update({"concurrency": {"group": "hb", "cancel-in-progress": True}}),
                    lambda d: d["jobs"]["beat"].update({"timeout-minutes": 30}),
                    lambda d: d["jobs"]["beat"].update({"timeout-minutes": True}),
+                   lambda d: d["on"].update({"schedule": [{"cron": "*/0 * * * *"}]}),       # not a crash
+                   lambda d: d["jobs"]["beat"].update({"env": {"OUT": "${{ runner.temp }}/x"}}),   # an invalid file
                    lambda d: d["jobs"].update({"second": {"timeout-minutes": 1}})):
             self.assertEqual(status(self.check(with_wf(fn), hb), "heartbeat.workflow"), "fail")
         self.assertEqual(status(self.check(lambda f: None, hb), "heartbeat.workflow"), "fail")  # file missing
