@@ -6,7 +6,7 @@
 // carries on. Any other value stops the start-up with its name. The one line that calls this is in main.ts.
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import { seedSampleFirms, type SeedResult } from "../seed-sample-firms.ts";
+import { seedSampleFirms, seedSampleSettings, type SeedResult } from "../seed-sample-firms.ts";
 import { loadPlatformConfig, platformConfig, type PlatformConfig } from "../config/settings.ts";
 
 export type SeedDecision = { run: boolean; why: string };
@@ -23,8 +23,11 @@ export function sampleSeedDecision(env: NodeJS.ProcessEnv = process.env): SeedDe
   return { run: true, why: `PLATFORM_SAMPLE_SEED=on (${environment})` };
 }
 
+/** PF-3's seed, then AUD-5's Sample setting values (6 years for closed client files, Sample). */
+const seedFirmsAndValues = async (db: PrismaClient): Promise<SeedResult> => { const r = await seedSampleFirms(db); await seedSampleSettings(db); return r; };
+
 /** Runs the Sample seed when the configuration asks for it; returns what it did (null when it did not run). */
-export async function seedSampleOnStart(env: NodeJS.ProcessEnv = process.env, seed: (db: PrismaClient) => Promise<SeedResult> = seedSampleFirms): Promise<SeedResult | null> {
+export async function seedSampleOnStart(env: NodeJS.ProcessEnv = process.env, seed: (db: PrismaClient) => Promise<SeedResult> = seedFirmsAndValues): Promise<SeedResult | null> {
   const d = sampleSeedDecision(env);
   if (!d.run) { if (d.why.startsWith("refused")) console.warn(`platform: Sample seed ${d.why}`); return null; }
   const url = configOf(env).databaseUrl.reveal();   // the demo database locally, as core.ts DATABASE_URL

@@ -37,7 +37,10 @@ jobs:
           set -o pipefail   # a failed or partial file list must fail the step, never pass as a small count (Devin review on #1834)
           CODE=$(gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
             --jq '.[] | select(.filename | test("/product/(screens|qa)/") | not) | .additions + .deletions' | awk '{s+=$1} END {print s+0}')
-          printf '%s\n' "$BODY" | bash "$T/pr-size.sh" "$CODE" 0
+          # P-686: a records-only PR (every path, both sides of a rename, a record by records-only.sh) is not size-limited.
+          REC=$(gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)' | bash "$T/records-only.sh" is-records --files) || REC=no
+          printf '%s\n' "$BODY" | bash "$T/pr-size.sh" "$CODE" 0 "$REC"
       - name: reviewer and breaker agents on Opus high
         if: "${{ !cancelled() }}"
         run: bash "$T/agent-model-guard.sh"

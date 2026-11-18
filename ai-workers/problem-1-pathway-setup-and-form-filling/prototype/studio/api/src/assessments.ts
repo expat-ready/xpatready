@@ -1,6 +1,6 @@
 // C6.9 parts 2 and 3 (M3-D, concept screens/C6.9/concept.md BR-7, BR-8, BR-13…BR-17; stand-in SI-1): eligibility runs,
 // and an officer's override and review beside a run (part 3; any staff of the firm, P-229 (2)).
-// A run reads one travelling person's answers against the case's pinned release's gates (engine/runtime/eligibility.ts)
+// A run reads one travelling person's answers against the case's pinned release's gates (engine/eligibility/assess.ts)
 // and is stored once, frozen (table assessment; a trigger refuses any UPDATE). Out of date is worked out on every read.
 // Staff of the case's firm only (Runtime.reach "officer"): a client gets 403, another firm's case 404. Rules only: no
 // model call, no spend ledger row (US$0). Answer values never go into audit text (STANDARDS §5). Registered in
@@ -12,8 +12,8 @@ import { AssessmentListQuery, AssessmentOverrideBody, AssessmentReviewBody, Asse
 import { CASE_CHECK_SHORT, outcomeWord } from "../../contracts/case-check-words.ts";
 import { problemFromZod } from "../../contracts/programs.ts";
 import { checkValue, knownOf } from "../../engine/runtime/case.ts";
-import { assess, DISCLAIMER_LOCALE, inputsOf, nowOf, outOfDate, STAND_IN, withUnconfirmedNow, type Input, type ProgramResult } from "../../engine/runtime/eligibility.ts";
-import type { SnapshotEligibility } from "../../engine/eligibility-gates.ts";
+import { assess, DISCLAIMER_LOCALE, inputsOf, nowOf, outOfDate, STAND_IN, withUnconfirmedNow, type Input, type ProgramResult } from "../../engine/eligibility/assess.ts";
+import type { SnapshotEligibility } from "../../engine/eligibility/gates.ts";
 import { actorOf, Audit, CaseRead, Db, fail, type Actor } from "./core.ts";
 import { Runtime, type Reached } from "./runtime.ts";
 import { firmOfActor } from "./firms.ts";
