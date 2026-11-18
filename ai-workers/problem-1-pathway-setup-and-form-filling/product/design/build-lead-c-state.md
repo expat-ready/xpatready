@@ -174,3 +174,9 @@ Merged on main: #2002, #2007, #2016, #2035. #2000 got "Reviewer: Approve 1fb7ca0
 * Money: FO-7ts parts 2-3, FO-7b (QA-482 per-line rounding), FO-7g (official tax-rate source).
 * Case: CS-K1 (after CS-W1), CS-C1s (new screen row for G3/QA-502).
 Three drafting agents are running, one per lane. I check each draft before committing.
+
+**19:12 IST 18 Nov:** wave 1 briefs done and sent to Lead 80 (7763a67c2):
+* Messages: PF-19r (was PF-19ms, an id already taken), J-48, J-49.
+* Money: FO-7ts-2, FO-7ts-3, FO-7b, FO-7g.
+* Case: CS-K1, CS-C1s.
+For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery state) and a FoPersonPort row; PF-19ad is not built. For the founder: no PST in Release 1 (Unconfirmed: no accountant or counsel).
