@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { tail, claims, expand, openBugs, blockers, runPlan, stepsVerdict, packsOf, whereOf, placeOf, IN_CHECKPOINT, dataOf, dataMap, dataFor, dataForPack, notTested, modeOf, touchedPacks, diffSet, batchRecheck, checkpointTrigger, checkpointRows, packsReachedBy, packVerdict, part1, stepsPrinted, stepsUnprinted, packSteps, unprintedReason } from "./gate-b.mjs";
+import { tail, claims, expand, openBugs, blockers, runPlan, stepsVerdict, packsOf, whereOf, placeOf, IN_CHECKPOINT, dataOf, dataMap, dataFor, dataForPack, notTested, modeOf, touchedPacks, diffSet, batchRecheck, checkpointTrigger, checkpointRows, packsReachedBy, memberNumber, packVerdict, part1, stepsPrinted, stepsUnprinted, packSteps, unprintedReason } from "./gate-b.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url)), ACC = resolve(HERE, "../acceptance"), P = resolve(HERE, "../../../product");
 /** A fixture pack whose run truly uses no server (only an engine run line), for the gate's no-server rules (B125, B131). */
@@ -304,13 +304,22 @@ process.exit(0);
   const e = batchRecheck([{ n: 3, caps: caps(["C8.3", null], ["C6.9", null]), touched: null }], (id) => st[id]);
   ok("QA-366: when what the batch adds cannot be worked out (a head not found), every named row runs again but Works (fail closed)", [...e.run.keys()].join() === "C8.3" && /could not be worked out/.test(e.why.get("C8.3")), e);
   const f = batchRecheck([{ n: 4, caps: caps(), touched: new Map([T("C7.5"), T("C8.3")]) }], (id) => st[id]);
-  ok("QA-366: a row nobody named never runs, whatever the batch touches (an unrelated red Partial refuses nothing; D2, STATE F15)", f.run.size === 0, f); }
+  ok("QA-366: a row nobody named never runs, whatever the batch touches (an unrelated red Partial refuses nothing; D2, STATE F15)", f.run.size === 0, f);
+  // P-651 (2), GATE_B_ONCE: the PR heads ran no pack, so every named row runs, with its steps and the reason given,
+  // Works rows too (part 1 ran them at the head: a pack the PR adds, a held pack; review of #2151, B1).
+  const g = batchRecheck([{ n: 5, caps: caps(["C8.3", [2]], ["C6.9", null]), touched: null, why: "P-651: its PR's head ran no pack" }], (id) => st[id], true);
+  ok("P-651: in ONCE every named row runs with its PR's steps and the given reason, a Works row too (none left to the protected set)",
+    [...g.run].map(([k, v]) => `${k}=${v}`).join() === "C8.3=2,C6.9=null" && g.works.length === 0 && /^#5: P-651/.test(g.why.get("C8.3")), g);
+  const h = batchRecheck([{ n: 6, caps: caps(["C6.9", null]), touched: null }], (id) => st[id]);
+  ok("P-651: with ONCE off a named Works row is still left to the protected set, as before", h.run.size === 0 && h.works.join() === "C6.9", h);
+  const nums = ["Merge pull request #1620 from owner/branch", "Merge of PR 2138", "Merge branch 'main'", "Merge of PRs"].map(memberNumber);
+  ok("#2151 round 2: a member's number from main's \"Merge pull request #N\" and from Mergify's batch branches' \"Merge of PR N\"; none from other merges", nums.join() === "1620,2138,,", nums); }
 
 // The command itself: skips, refusal and pass (packs off; the real BUGS.md is not read, so the cases stay true).
 const T = mkdtempSync(join(tmpdir(), "gate-b-")), bf = join(T, "BUGS.md"); writeFileSync(bf, BUGS);
 // Each command case starts from a clean CI environment: the job's own QUEUE, KIND, RANGE, PR_* and GITHUB_* values
 // (a merge-queue batch sets QUEUE=true, a records PR KIND=records) would otherwise change what the gate does (#826).
-const CLEAN = { GATE_B_BATCH_PRS: "", GITHUB_STEP_SUMMARY: "", PR_TITLE: "", PR_BODY: "", QUEUE: "", KIND: "code", RANGE: "", GITHUB_TOKEN: "", GATE_B_PORT: "", GATE_B_NAME: "", GATE_B_JOBS: "", GATE_B_SKIP_PACKS: "", GITHUB_EVENT_NAME: "", GATE_B_DATA: "six", GATE_B_DATA_OF: "", GATE_B_RESULTS: "", GATE_B_NO_DIFF: "" };
+const CLEAN = { GATE_B_BATCH_PRS: "", GITHUB_STEP_SUMMARY: "", PR_TITLE: "", PR_BODY: "", QUEUE: "", KIND: "code", RANGE: "", GITHUB_TOKEN: "", GATE_B_PORT: "", GATE_B_NAME: "", GATE_B_JOBS: "", GATE_B_SKIP_PACKS: "", GITHUB_EVENT_NAME: "", GATE_B_DATA: "six", GATE_B_DATA_OF: "", GATE_B_RESULTS: "", GATE_B_NO_DIFF: "", GATE_B_ONCE: "" };
 const run = (args, env = {}) => { const r = spawnSync(process.execPath, [join(HERE, "gate-b.mjs"), "--bugs", bf, "--no-packs", ...args], { encoding: "utf8", env: { ...process.env, ...CLEAN, ...env } }); return { code: r.status, out: r.stdout + r.stderr }; };
 let r = run(["--title", "forms: C11.13 reason", "--body", "Claims Works: C11.13"]);
 const r3a = run(["--title", "forms: x", "--body", "## Claims Works (as built)\n- C11.13"]), r3b = run(["--title", "forms: x", "--body", "## Claims Works (as built)\n- C11.13\n\nFixes: QA-192"]);
@@ -374,6 +383,8 @@ ok("command: an unknown option exits 2", r.code === 2, r);
   ok("D2: GATE_B_NO_DIFF (works-set's runs) never reads the diff: no capability named, skipped", b.code === 0 && /skipped \(the PR names no capability/.test(b.out), b);
   const g0 = run(["--title", "x", "--diff-groups", "5"], { RANGE: "" }), gq = run(["--title", "x", "--diff-groups", "5"], { RANGE: "0000000..1111111", QUEUE: "true" }), gn = run(["--title", "x", "--diff-groups", "5", "--kind", "records"], { RANGE: "0000000..1111111" });
   ok("D2: --diff-groups prints only [] with no pull-request range, for a batch and for a change that is not code", [g0, gq, gn].every((x) => x.code === 0 && x.out.trim() === "[]"), [g0, gq, gn]);
+  const go = run(["--title", "x", "--diff-groups", "5"], { RANGE: "0000000..1111111", QUEUE: "true", GATE_B_ONCE: "1" }), gr = run(["--title", "x", "--diff-groups", "5"], { RANGE: "", QUEUE: "true", GATE_B_ONCE: "1" });
+  ok("P-651: in ONCE --diff-groups on a batch reads the batch's range: one it cannot read, or none, is could-not-run (exit 2), never []", [go, gr].every((x) => x.code === 2 && !/^\[/.test(x.out.trim())), [go, gr]);
   const gb = run(["--title", "x", "--diff-groups", "5"], { RANGE: "0000000..1111111" });
   ok("D2: --diff-groups with a range it cannot read is could-not-run (exit 2), never []", gb.code === 2 && !/^\[/.test(gb.out.trim()), gb);
   const q = run(["--title", "Merge queue: embarking #1 together"], { RANGE: "0000000..1111111", QUEUE: "true" });
@@ -406,6 +417,40 @@ ok("command: an unknown option exits 2", r.code === 2, r);
     prs([{ n: 1396, title: "lead: paid result", body: "" }]);
     const q5 = run(["--title", "merge queue: embarking #1396"], { ...Q, RANGE: `${M1435}..${M1396}` });
     ok("QA-366: a batch whose PRs name no capability runs nothing again", q5.code === 0 && /no named row's pack reads a file/.test(q5.out) && !/packs:/.test(q5.out), q5);
+    // P-651 (2), ONCE: the same batches with the PR heads running no pack.
+    prs([P1396]);
+    const o1 = run(["--title", "merge queue: embarking #1396"], { ...Q, GATE_B_ONCE: "1", RANGE: `${M1435}..${M1396}` });
+    ok("P-651: in ONCE the batch of #1396 runs C7.5, with #1396's steps, because its head ran no pack", o1.code === 0 && /P-651: the batch runs the rows its PRs name .*C7\.5 \(#1396: P-651/.test(o1.out) && /packs: C7\.5\.test\.ts$/m.test(o1.out) && /steps 1, 2, 3/.test(o1.out), o1);
+    prs([{ n: 1459, title: "qa: capability C8.3 after #1440", body: "" }]);
+    const o2 = run(["--title", "merge queue: embarking #1459"], { ...Q, GATE_B_ONCE: "1", RANGE: `${B1459}..${M1459}` });
+    ok("P-651: in ONCE a records PR's named rows are still not re-checked (its gate B never ran)", o2.code === 0 && /#1459 names C8\.3, not re-checked: its own change is records/.test(o2.out) && !/packs:/.test(o2.out), o2);
+    { const tree = git("rev-parse", `${M1459}^{tree}`).stdout.trim(), p1 = git("rev-parse", `${M1459}^1`).stdout.trim(), p2 = git("rev-parse", `${M1459}^2`).stdout.trim();
+      const mq = spawnSync("git", ["commit-tree", tree, "-p", p1, "-p", p2, "-m", "Merge of PR 1459"], { cwd: HERE, encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } }).stdout.trim();
+      const o2m = run(["--title", "merge queue: embarking #1459"], { ...Q, GATE_B_ONCE: "1", RANGE: `${B1459}..${mq}` });
+      ok("#2151 round 2: under Mergify's subject \"Merge of PR 1459\" the records PR's named rows are still not re-checked", o2m.code === 0 && /#1459 names C8\.3, not re-checked: its own change is records/.test(o2m.out) && !/packs:/.test(o2m.out), o2m); }
+    const o3 = run(["--title", "merge queue: embarking #1396", "--diff-groups", "5"], { ...Q, GATE_B_ONCE: "1", RANGE: `${M1435}..${M1396}` });
+    let o3g = null; try { o3g = JSON.parse(o3.out.split("\n").find((l) => l.startsWith("[")) ?? ""); } catch { /* reported below */ }
+    ok("P-651: in ONCE --diff-groups on a real batch prints its groups as JSON (exit 0), minus the rows job regression runs", o3.code === 0 && Array.isArray(o3g) && /left to the protected set \(job regression/.test(o3.out), o3);
+    // Review of #2151 (B1, M1) on #1620 (merge 4cdd5925b): it added C6.2-application-type.test.ts and
+    // C7.1-application-type.test.ts for C6.2 and C7.1, both Works and unheld at its base; job "regression" knows only the
+    // base's packs, so a new pack must run in job "packs" (unnamed) or in gate B's batch run (named, with its steps).
+    const M1620 = "4cdd5925b68ec3a62d54dfab362a7db89a070225";
+    if (have(M1620)) {
+      const rr = git("rev-parse", `${M1620}^1`).stdout.trim(), R1620 = { ...Q, GATE_B_ONCE: "1", RANGE: `${rr}..${M1620}` };
+      prs([{ n: 1620, title: "forms: application type", body: "" }]);
+      const b1 = run(["--title", "merge queue: embarking #1620", "--diff-groups", "5"], R1620), g1 = JSON.parse(b1.out.split("\n").find((l) => l.startsWith("[")) ?? "null");
+      ok("#2151 B1: in ONCE a Works row whose pack a batch member adds (C6.2, C7.1 in #1620) runs in job packs, never left to regression", b1.code === 0 && g1?.length === 1 && g1[0].caps === "C6.2 C7.1" && /left to the protected set/.test(b1.out), b1);
+      prs([{ n: 1620, title: "forms: application type", body: "Capabilities: C7.1, C6.2 (steps 1-2)" }]);
+      const b2 = run(["--title", "merge queue: embarking #1620", "--diff-groups", "5"], R1620), b3 = run(["--title", "merge queue: embarking #1620"], R1620);
+      ok("#2151 M1: rows a member's PR names leave its packs by diff (part 1 runs them with their steps, never whole)", b2.code === 0 && b2.out.split("\n").find((l) => l.startsWith("[")) === "[]", b2);
+      ok("#2151 B1: in ONCE the batch's gate B runs those named Works rows, C6.2 with its steps", b3.code === 0 && /P-651: the batch runs the rows its PRs name/.test(b3.out) && /C6\.2 \(steps 1, 2\)/.test(b3.out) && /C7\.1-application-type\.test\.ts/.test(b3.out), b3);
+      // Round 2: the same merge as Mergify's batch branches write it ("Merge of PR N", no "#"; a dangling commit with
+      // #1620's tree and parents, as the P-486 case above builds its base).
+      const tree = git("rev-parse", `${M1620}^{tree}`).stdout.trim(), p2 = git("rev-parse", `${M1620}^2`).stdout.trim();
+      const mq = spawnSync("git", ["commit-tree", tree, "-p", rr, "-p", p2, "-m", "Merge of PR 1620"], { cwd: HERE, encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } }).stdout.trim();
+      const b4 = run(["--title", "merge queue: embarking #1620", "--diff-groups", "5"], { ...R1620, RANGE: `${rr}..${mq}` });
+      ok("#2151 round 2 (M1 on a real batch): under Mergify's subject \"Merge of PR 1620\" the rows #1620 names still leave its packs by diff", /^[0-9a-f]{40}$/.test(mq) && b4.code === 0 && b4.out.split("\n").find((l) => l.startsWith("[")) === "[]", b4);
+    } else console.log("SKIP  #2151 review replays: #1620's merge is not in this copy");
     prs([P1396]);
     const q6 = run(["--title", "merge queue: embarking #1396"], { ...Q, RANGE: "" });
     ok("QA-366: a batch without RANGE could not run (exit 2), never a silent pass", q6.code === 2 && /needs RANGE/.test(q6.out), q6);

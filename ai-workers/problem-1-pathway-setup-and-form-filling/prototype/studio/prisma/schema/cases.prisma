@@ -28,6 +28,10 @@ model Case {
   /// C6.11 (BR-20, SI-9): the Sample firm whose staff work this case (samples/firms.json); staff of another firm reach
   /// none of its cases. Cases opened before C6.11 belong to the Sample firm.
   firmKey        String   @default("sample-firm") @map("firm_key")
+  /// CS-W1 (contract §8 step 1, P-575, P-588 (4)): the platform firm (platform_firm.id) of firm_key, filled by the database
+  /// (trigger case_firm_from_key; the default reads the session's firm). Nullable until CS-W1 part 2; no Prisma relation
+  /// (platform.prisma is Lead B's file): the trigger refuses an id that is not the key's platform firm.
+  firmId         String?  @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   /// CS-C1a (AG-7-34, AG-7-50, AG-7-13): status moves OPEN → CLOSED → OPEN only (a check in the migration). A closed case
   /// has its closing fields and an open one none: a reopen clears them, and its audit line keeps the old values.
   closedAt       DateTime? @map("closed_at") @db.Timestamptz
@@ -78,6 +82,7 @@ model Case {
   @@unique([workspaceId, firmKey, reference])
   @@unique([workspaceId, firmKey, caseNumber])
   @@index([workspaceId, createdAt])
+  @@index([firmId, createdAt])
   @@map("runtime_case")
 }
 
@@ -87,10 +92,13 @@ model Case {
 model FirmCaseCounter {
   workspaceId String @map("workspace_id") @db.Uuid
   firmKey     String @map("firm_key")
+  /// CS-W1: the platform firm of firm_key (trigger case_firm_from_key); nullable until part 2.
+  firmId      String? @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   year        Int
   nextValue   Int    @map("next_value")
 
   @@id([workspaceId, firmKey, year])
+  @@index([firmId, year])
   @@map("firm_case_counter")
 }
 
@@ -174,6 +182,8 @@ model CaseStage {
   workspaceId          String    @map("workspace_id") @db.Uuid
   caseId               String    @map("case_id") @db.Uuid
   firmKey              String    @map("firm_key")
+  /// CS-W1: the case's firm (trigger case_firm_fill from runtime_case; a different one is refused); nullable until part 2.
+  firmId               String?   @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
   ord                  Int
   stageKey             String    @map("stage_key")
   staffName            String    @map("staff_name")
@@ -211,6 +221,7 @@ model CaseStage {
   @@unique([caseId, ord])
   @@unique([caseId, combinationId])
   @@index([workspaceId, caseId])
+  @@index([firmId, caseId])
   @@map("case_stage")
 }
 
