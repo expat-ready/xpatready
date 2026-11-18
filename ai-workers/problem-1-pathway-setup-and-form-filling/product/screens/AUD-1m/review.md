@@ -58,3 +58,29 @@ The builder's 185-suite case-side run (not run here, as asked) and full `ci`. A 
 Screenshots (scratchpad): `/tmp/claude-0/-home-user-xpatready/638253a0-8bdc-51bf-9031-692e99a4266c/scratchpad/shots/`.
 
 **Verdict: Block.** Fix 1 (Blocker), 2 and 3 (Major). Then re-review only the new commits.
+
+## Round 2 (diff-only `c6e9c632..602f892d`, head 602f892d63f2856a322c367276125cb59cb96ec5)
+Own worktree at 602f892d; isolated copy `rv_aud1m` on :4438 (stopped afterwards). Not run: the builder's 185-suite run and full `ci`.
+* **B1 fixed.** The link is deleted in 602f892d. `.gitignore` gains a bare `node_modules` line, and `git check-ignore` confirms it now matches a link (`.gitignore:4`). The link stays in 278d7393's history, which is right: no rewrite.
+* **M2 fixed.** `recordCase` refuses a word CaseActor does not accept with an `AuditRefused` in the trigger's words, before `CaseEntry.parse`, inside the alarm, so the one alert stays. **`check_aud1a_insert_only.ts 4438 xr_studio_rv_aud1m`: 41 passed, 0 failed** (Part A and Part B). Reverting the refusal, or changing its words, turns CW6 fail red.
+* **M3 fixed.** `caseIdOf` takes caseOf's 8 characters and looks the case up in the line's workspace, in the caller's client or tx, with a primary-key range and `take: 2`. Exactly one match gives the case id. Checks on the finished story run on :4438:
+  * **609 of 613 case-naming lines carry a `case_id`**: case fact 368/368, section 94/94, form copy 62/62, item, group, sign step and the rest in full.
+  * The 4 without are direct `auditEvent.create` writes (`moved_release` and 3 filing `reviewed`), which part 2 moves.
+  * Every stored `case_id` agrees with the 8 characters in its words (0 disagree).
+  * `runtime_case` has no RLS under PF-12, so the walled `Db` reads it.
+  * The two `detail.case` callers (readiness.ts:152, :174) also name the case in their words, so dropping the `detail.case` path loses nothing.
+  * `opened` is logged after its transaction commits (runtime.ts:343).
+* **M3 mutations:** each change turns a CW3 case red.
+
+  | Change | Red |
+  |---|---|
+  | lookup removed | CW3 pass |
+  | first of two twins taken | CW3 fail |
+  | workspace filter dropped | CW3 fail |
+  | range widened | CW3 pass |
+* **m4 fixed:** the line is on the core card, plus its Tests line, and `platform/MODULE.md` is back to base. **m5 fixed:** reverting `actorWordOf` in form-uses.ts or in `peopleNames` turns CW5 red. m6 and m7 are for the PR body, as the builder says.
+* **Re-run here:** check_aud1m 17/17, check_case_feed 42/42, check_aud1b 33/0, typecheck no new errors (15 known), port contracts 0 problems, count-any 416, module cards pass, `graph --check` exit 0. Activity answers 200 for the reviewer and firm staff in under 20 ms, and 403 for the client, as before.
+* **Minor, not blocking (Should):** the case lookup runs in `Audit.log` before `auditEvent.record`, so it is outside `writeAuditWithAlarm`. If that read fails, the error still propagates (fail-closed in a tx) but raises no `audit_write_failed` alert. Move the lookup into the adapter's write callback, or name it in the PR body.
+* Journey score, round 2: **10 / 10**. "Correct data" rises to 1: 609 of 613 case lines now carry their case, and the 4 left are part 2's.
+
+**Verdict: Approve** (no open Blocker or Major) for 602f892d63f2856a322c367276125cb59cb96ec5. The PR body must carry m6 (as "Question for the tech lead"), m7 and the minor above.
