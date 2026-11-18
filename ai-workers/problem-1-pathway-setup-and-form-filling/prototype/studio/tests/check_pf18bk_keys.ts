@@ -8,7 +8,8 @@
 //   DW3  deleting a staff row or a firm a ticket or message points to is refused (RESTRICT: restrict_violation, 23001,
 //        naming the key; ON UPDATE too), nothing is cascaded; without the key the staff delete goes through.
 //   DW4  the migration applies cleanly on a copy with PF-3's Sample seed and tickets on it; on a copy with one planted
-//        orphan ticket it stops with its message and changes nothing (no key, the rows as they were, the orphan kept).
+//        orphan ticket it stops with its message and changes nothing (no key, the rows as they were, the orphan kept);
+//        with its check blinded, the failing raiser key takes the firm key added before it away too (all or nothing).
 //   DW5  PF-18b's trigger functions and policies are byte-identical before and after; the schema folder diffs to the
 //        migrated database with nothing in the support tables; a schema copy without the raiser relation names its key.
 // Two scratch databases (every migration before this one, PF-3's Sample seed) and a scratch folder for Prisma's config.
@@ -104,6 +105,13 @@ try {
     stopped.status !== 0 && /PF-18bk stopped, nothing changed: 0 support ticket\(s\) without their firm, 1 without a raiser/.test(stopped.stderr), stopped.stderr);
   ok("DW4 fail: and changes nothing: no key added, the tickets as they were, the orphan kept",
     keysOn(ORPHAN) === 0 && osql("select string_agg(id::text || ':' || raised_by::text || ':' || status::text, ',' order by id) from platform_support_ticket") === oBefore && osql(`select count(*) from platform_support_ticket where id = '${orphanId}'`) === "1");
+  // All or nothing (break 1): with the check blinded (a scratch copy of the file), the raiser key fails on the orphan and
+  // the firm key, added just before it, goes too: one statement, so no half-applied migration that cannot be re-run.
+  const blind = join(WORK, "blind.sql");
+  writeFileSync(blind, readFileSync(ownSql, "utf8").replace("IF no_firm + no_raiser + msg_no_firm > 0 THEN", "IF false THEN"));
+  const half = applyFile(ORPHAN, blind);
+  ok("DW4 fail: with the check blinded, the orphan stops the raiser key and no key at all is left behind (one statement)",
+    half.status !== 0 && /platform_support_ticket_firm_id_raised_by_fkey/.test(half.stderr) && keysOn(ORPHAN) === 0, { status: half.status, err: half.stderr, keys: keysOn(ORPHAN) });
 
   // ------------------------------------------------------------------------------------------------- DW1: unknown firm
   const ghost = crypto.randomUUID();

@@ -8,16 +8,22 @@
 --   * author_id is text ('support' or a staff uuid) and takes no key: platform_support_message_write keeps proving a
 --     FIRM_STAFF author. No trigger, function or check changes: the raiser's EXISTS check stays too (PF-18b's suite names
 --     its message; the key refuses the same row with the same code, foreign_key_violation, tests/check_pf18bk_keys.ts DW2).
--- Before any key: every existing ticket has its firm and its raiser in that firm, and every message its firm; otherwise
--- the migration stops with the counts and changes nothing. It never deletes or edits a row.
+-- One statement (a DO block), so it is all or nothing: prisma migrate deploy wraps no transaction, and a key that failed
+-- after another was added would leave the migration half done and not re-runnable (break 1). It first locks the four
+-- tables (no firm, staff, ticket or message can change between the check and the keys), then checks that every ticket
+-- has its firm and its raiser in that firm and every message its firm; otherwise it stops with the counts and changes
+-- nothing. It never deletes or edits a row. The counts see every row because migrations run as the database owner
+-- (xr_studio, a superuser, as every migration here): a role under FORCE ROW LEVEL SECURITY would count none, and then
+-- ADD CONSTRAINT (which reads every row) still refuses the orphan, with PostgreSQL's own message (break 2).
 -- Rollback: ALTER TABLE "platform_support_message" DROP CONSTRAINT "platform_support_message_firm_id_fkey";
 --   ALTER TABLE "platform_support_ticket" DROP CONSTRAINT "platform_support_ticket_firm_id_raised_by_fkey",
 --   DROP CONSTRAINT "platform_support_ticket_firm_id_fkey"; delete this folder's row from _prisma_migrations.
 
--- ------------------------------------------------------------------------------------------- every row has its firm and raiser
+-- ------------------------------------------------------------------------------------------- check, then the three keys
 DO $pf18bk$
 DECLARE no_firm bigint; no_raiser bigint; msg_no_firm bigint;
 BEGIN
+  LOCK TABLE "platform_firm", "platform_staff", "platform_support_ticket", "platform_support_message" IN SHARE ROW EXCLUSIVE MODE;
   SELECT count(*) INTO no_firm FROM "platform_support_ticket" t
     WHERE NOT EXISTS (SELECT 1 FROM "platform_firm" f WHERE f.id = t.firm_id);
   SELECT count(*) INTO no_raiser FROM "platform_support_ticket" t
@@ -27,16 +33,16 @@ BEGIN
   IF no_firm + no_raiser + msg_no_firm > 0 THEN
     RAISE EXCEPTION 'PF-18bk stopped, nothing changed: % support ticket(s) without their firm, % without a raiser on that firm''s staff, % support message(s) without their firm', no_firm, no_raiser, msg_no_firm
       USING ERRCODE = 'foreign_key_violation',
-            HINT = 'Find them with the three NOT EXISTS queries at the top of this migration, give each row its firm and raiser (never delete a support record), then deploy again.';
+            HINT = 'Find them with the three NOT EXISTS queries in this migration and take each to the tech lead: never delete a support record. A ticket''s firm and raiser are fixed by platform_support_ticket_write, so a repair is the database owner''s, with that trigger disabled for the one row. Then deploy again.';
   END IF;
+
+  -- AddForeignKey
+  ALTER TABLE "platform_support_ticket" ADD CONSTRAINT "platform_support_ticket_firm_id_fkey" FOREIGN KEY ("firm_id") REFERENCES "platform_firm"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+  -- AddForeignKey
+  ALTER TABLE "platform_support_ticket" ADD CONSTRAINT "platform_support_ticket_firm_id_raised_by_fkey" FOREIGN KEY ("firm_id", "raised_by") REFERENCES "platform_staff"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+  -- AddForeignKey
+  ALTER TABLE "platform_support_message" ADD CONSTRAINT "platform_support_message_firm_id_fkey" FOREIGN KEY ("firm_id") REFERENCES "platform_firm"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 END
 $pf18bk$;
-
--- AddForeignKey
-ALTER TABLE "platform_support_ticket" ADD CONSTRAINT "platform_support_ticket_firm_id_fkey" FOREIGN KEY ("firm_id") REFERENCES "platform_firm"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
--- AddForeignKey
-ALTER TABLE "platform_support_ticket" ADD CONSTRAINT "platform_support_ticket_firm_id_raised_by_fkey" FOREIGN KEY ("firm_id", "raised_by") REFERENCES "platform_staff"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-
--- AddForeignKey
-ALTER TABLE "platform_support_message" ADD CONSTRAINT "platform_support_message_firm_id_fkey" FOREIGN KEY ("firm_id") REFERENCES "platform_firm"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
