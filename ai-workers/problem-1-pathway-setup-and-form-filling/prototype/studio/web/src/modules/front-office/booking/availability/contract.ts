@@ -29,7 +29,10 @@ export function wallIso(day: string, minute: number, zone: string): string {
 /** The day after "YYYY-MM-DD". */
 export const nextDay = (day: string) => new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 const fmt = (at: string, zone: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("en-GB", { timeZone: zone, ...o }).format(new Date(at));
-const dayOf = (at: string, zone: string) => fmt(at, zone, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+const dayOf = (at: string, zone: string) => {   // "Mon 26 Oct 2026" (en-GB's own form has a comma after the weekday)
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: zone, weekday: "short", day: "numeric", month: "short", year: "numeric" }).formatToParts(new Date(at)).map((x) => [x.type, x.value]));
+  return `${p.weekday} ${p.day} ${p.month} ${p.year}`;
+};
 const timeOf = (at: string, zone: string) => fmt(at, zone, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 /** "Mon 26 Oct 2026 (whole day)", "Mon 26 Oct 2026 – Wed 28 Oct 2026 (whole days)" or "Fri 23 Oct 2026 12:00 – 17:00". */
 export function offWords(o: TimeOff, zone: string): string {

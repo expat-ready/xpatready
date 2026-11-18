@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { PlatformFrame, usePlatformStaff } from "@/modules/platform/frame";
 import { staffApi, StaffApiError, useStaffToken } from "@/modules/platform/session";
 import { StaffList } from "@/modules/platform/staff/contract";
-import { allZones, realZone } from "../../booking-public/time";
+import { allZones } from "../../booking-public/time";
 import { base, CONFIGURE, HourSet, HourSets, nextDay, offWords, TimeOffList, wallIso, WEEK, type HourSet as Set } from "./contract";
 
 const NO_HOURS = "You offer no times on the booking page. Staff can still book you, with a warning.";
@@ -99,6 +99,14 @@ function WeekEditor({ set, path, onSaved, onDeleted, reload }: { set: Set; path:
   const [errors, setErrors] = React.useState<Record<string, string>>({}), [problem, setProblem] = React.useState<{ text: string; stale: boolean } | null>(null);
   const [saved, setSaved] = React.useState(false), [busy, setBusy] = React.useState<"save" | "default" | "delete" | null>(null), [confirm, setConfirm] = React.useState(false);
   const sent = React.useRef<{ day: number; key: number }[]>([]);
+  // A busy button is disabled, which drops the keyboard's place: focus comes back here after each answer.
+  const saveButton = React.useRef<HTMLButtonElement>(null), heading = React.useRef<HTMLHeadingElement>(null);
+  const was = React.useRef(busy);
+  React.useEffect(() => {   // once the button is enabled again (after the commit), never while it is still disabled
+    if (busy === null && was.current === "save") saveButton.current?.focus();
+    if (busy === null && was.current === "default") heading.current?.focus();
+    was.current = busy;
+  }, [busy]);
   React.useEffect(() => { setDraft(draftOf(set)); setZone(set.timeZone); setErrors({}); setProblem(null); setZoning(false); }, [set.id, set.version]);   // eslint-disable-line react-hooks/exhaustive-deps -- a new answer resets the editor
   const zones = React.useMemo(allZones, []);
   const edit = (day: number, f: (rows: Row[]) => Row[]) => { setDraft((d) => ({ ...d, [day]: f(d[day] ?? []) })); setSaved(false); };
@@ -110,7 +118,7 @@ function WeekEditor({ set, path, onSaved, onDeleted, reload }: { set: Set; path:
     setBusy("save"); setErrors({}); setProblem(null); setSaved(false);
     const list = WEEK.flatMap(({ day }) => (draft[day] ?? []).map((r) => ({ day, key: r.key, w: { weekday: day, start: r.start, end: r.end } })));
     sent.current = list.map(({ day, key }) => ({ day, key }));
-    const z = realZone(zone) ?? zone.trim();
+    const z = zone.trim();   // as typed: the browser's Intl would turn Asia/Kolkata into Asia/Calcutta; the server checks the name
     try { onSaved(HourSet.parse(await staffApi(`${path}/availability-sets/${set.id}`, { method: "PATCH", json: { windows: list.map((x) => x.w), timeZone: z, version: set.version } }))); setSaved(true); }
     catch (x) { refused(x); } finally { setBusy(null); }
   };
@@ -130,7 +138,7 @@ function WeekEditor({ set, path, onSaved, onDeleted, reload }: { set: Set; path:
   return (
     <section aria-labelledby="fo3st2-set" className="min-w-0 flex-1" data-week-editor>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="fo3st2-set" className="text-base font-semibold [overflow-wrap:anywhere]">{set.name}</h2>
+        <h2 id="fo3st2-set" ref={heading} tabIndex={-1} className="text-base font-semibold outline-none [overflow-wrap:anywhere]">{set.name}</h2>
         <div className="flex flex-wrap gap-2">
           {set.isDefault ? null : <Button variant="outline" size="sm" busy={busy === "default"} onClick={() => void makeDefault()}>Make default</Button>}
           {set.isDefault ? null : <Button variant="ghost" size="sm" onClick={() => setConfirm(true)}>Delete set</Button>}
@@ -183,7 +191,7 @@ function WeekEditor({ set, path, onSaved, onDeleted, reload }: { set: Set; path:
         <Notice tone="danger" className="mt-3" title="Not saved" action={problem.stale ? <Button size="sm" variant="outline" onClick={reload}>Reload</Button> : undefined}>{problem.text}</Notice>
       ) : null}
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <Button busy={busy === "save"} onClick={() => void save()}>Save hours</Button>
+        <Button ref={saveButton} busy={busy === "save"} onClick={() => void save()}>Save hours</Button>
         <p role="status" className="text-sm text-text-muted" data-saved>{saved ? <>Saved. {NOT_MOVED}</> : NOT_MOVED}</p>
       </div>
       <Dialog open={confirm} onOpenChange={setConfirm} title="Delete set" description={`Delete ${set.name}? Types that use it switch to your default set.`}
