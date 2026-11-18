@@ -145,6 +145,12 @@ const Resolve = z.object({
 });
 /** Letters that print as nothing (break m3: Hangul fillers, the braille blank, a soft hyphen): no reason is made of them. */
 const BLANK_LETTERS = /[\u00ad\u115f\u1160\u2800\u3164\uffa0]/g;
+/** CS-V1 part 2: the queries of GET /runtime/cases/:id/proposals and /checks, each value given once, as text (the
+ *  words of the oneValue check they replace). */
+const oneText = (key: string) => z.string({ error: `Give ${key} once.` }).max(100, `Keep ${key} to 100 characters.`).optional();
+const queryOnly = (keys: string) => ({ error: (i: { code: string; keys?: string[] }) => i.code === "unrecognized_keys" ? `Not a filter here: ${(i.keys ?? []).join(", ")} (only ${keys}).` : "Give the filters as a query." });
+const ProposalsQuery = z.strictObject({ subject: oneText("subject") }, queryOnly("subject"));
+const ChecksQuery = z.strictObject({ subject: oneText("subject"), state: oneText("state").refine((s) => s === undefined || s === "open" || s === "resolved", "state is open or resolved.") }, queryOnly("subject, state"));
 const Checked = z.object({ document: z.string({ message: "Name the document it was checked against." }).regex(UUID, "Name the document it was checked against.") });
 function parse<S extends z.ZodType>(schema: S, input: unknown): z.infer<S> {
   const r = schema.safeParse(input ?? {});
@@ -505,10 +511,10 @@ export class CaseDocuments {
   }
 
   /** GET /runtime/cases/:id/proposals?subject=: the person's (or every person's) read values and reviews. */
-  async proposals(actor: Actor, caseId: string, q: { subject?: unknown }) {
+  async proposals(actor: Actor, caseId: string, qIn: unknown) {
     const c = await this.r.reach(actor, caseId, "officer");
-    oneValue(q, "subject");
-    const subjects = q.subject ? [this.person(c, q.subject as string).subjectId] : c.participants.map((p) => p.subjectId);
+    const q = parse(ProposalsQuery, qIn);
+    const subjects = q.subject ? [this.person(c, q.subject).subjectId] : c.participants.map((p) => p.subjectId);
     const all = await Promise.all(subjects.map((s) => this.shown(c, s)));
     return { proposals: all.flatMap((x) => x.proposals), reviews: all.flatMap((x) => x.reviews), unreadable: all.flatMap((x) => x.unreadable) };
   }
@@ -597,11 +603,10 @@ export class CaseDocuments {
   }
 
   /** GET /runtime/cases/:id/checks?subject=&state=: typed-versus-document checks (staff). */
-  async checks(actor: Actor, caseId: string, q: { subject?: unknown; state?: unknown }) {
+  async checks(actor: Actor, caseId: string, qIn: unknown) {
     const c = await this.r.reach(actor, caseId, "officer");
-    oneValue(q, "subject"); oneValue(q, "state");
-    if (q.state !== undefined && q.state !== "open" && q.state !== "resolved") fail("state is open or resolved.");
-    const subject = q.subject ? this.person(c, q.subject as string).subjectId : undefined;
+    const q = parse(ChecksQuery, qIn);
+    const subject = q.subject ? this.person(c, q.subject).subjectId : undefined;
     const rows = await this.db.answerCheck.findMany({ where: { caseId: c.id, ...(subject ? { subjectId: subject } : {}), ...(q.state === "open" || q.state === "resolved" ? { state: q.state } : {}) }, orderBy: [{ openedAt: "asc" }, { id: "asc" }] });
     const answers = rows.length ? await this.db.clientCanonicalAnswer.findMany({ where: { subjectId: { in: [...new Set(rows.map((x) => x.subjectId))] }, canonicalFieldKey: { in: [...new Set(rows.map((x) => x.fact))] }, rowKey: null, supersededById: null }, select: { id: true, subjectId: true, canonicalFieldKey: true, valueJson: true } }) : [];
     const s = this.r.snapshotOf(c);
@@ -703,7 +708,6 @@ export class CaseDocuments {
 }
 
 /** Break m1: a query value given twice is refused in words, never read as a list. */
-const oneValue = (q: Record<string, unknown>, key: string) => { if (q[key] !== undefined && typeof q[key] !== "string") fail(`Give ${key} once.`); };
 const nameOf = (id: string | null) => { if (!id) return "someone"; try { return actorOf(id).name; } catch { return id; } };
 
 @CaseRead()
@@ -714,7 +718,7 @@ export class CaseDocumentsController {
   upload(@Headers("x-actor") a: H, @Param("id") id: string, @UploadedFiles() files: Upload[], @Body() b: unknown) { return this.x.upload(actorOf(a), id, files, b); }
   @Post("cases/:id/sections/:s/fill-from-documents/plan") @HttpCode(200) plan(@Headers("x-actor") a: H, @Param("id") id: string, @Param("s") s: string, @Body() b: unknown) { return this.x.plan(actorOf(a), id, s, b); }
   @Post("cases/:id/sections/:s/fill-from-documents") @HttpCode(200) fill(@Headers("x-actor") a: H, @Param("id") id: string, @Param("s") s: string, @Body() b: unknown) { return this.x.fill(actorOf(a), id, s, b); }
-  @Get("cases/:id/proposals") proposals(@Headers("x-actor") a: H, @Param("id") id: string, @Query() q: { subject?: unknown }) { return this.x.proposals(actorOf(a), id, q); }
+  @Get("cases/:id/proposals") proposals(@Headers("x-actor") a: H, @Param("id") id: string, @Query() q: unknown) { return this.x.proposals(actorOf(a), id, q); }
   @Post("cases/:id/documents/:doc/confirm-and-use") @HttpCode(200) confirm(@Headers("x-actor") a: H, @Param("id") id: string, @Param("doc") d: string, @Body() b: unknown) { return this.x.confirmAndUse(actorOf(a), id, d, b); }
   @Get("documents/:id/file") async file(@Headers("x-actor") a: H, @Param("id") id: string, @Res() res: Response) {
     const f = await this.x.file(actorOf(a), id);
@@ -722,7 +726,7 @@ export class CaseDocumentsController {
     res.setHeader("content-type", f.media); res.setHeader("x-content-type-options", "nosniff"); res.setHeader("content-security-policy", "default-src 'none'; sandbox");
     res.setHeader("cache-control", "private, no-store"); res.setHeader("content-disposition", `inline; filename*=UTF-8''${encodeURIComponent(f.name)}`); res.end(f.bytes);
   }
-  @Get("cases/:id/checks") checks(@Headers("x-actor") a: H, @Param("id") id: string, @Query() q: { subject?: unknown; state?: unknown }) { return this.x.checks(actorOf(a), id, q); }
+  @Get("cases/:id/checks") checks(@Headers("x-actor") a: H, @Param("id") id: string, @Query() q: unknown) { return this.x.checks(actorOf(a), id, q); }
   @Post("checks/:id/resolve") @HttpCode(200) resolve(@Headers("x-actor") a: H, @Param("id") id: string, @Body() b: unknown) { return this.x.resolve(actorOf(a), id, b); }
   @Post("cases/:id/answers/:subject/:fact/checked-against-document") @HttpCode(200) checked(@Headers("x-actor") a: H, @Param("id") id: string, @Param("subject") s: string, @Param("fact") f: string, @Body() b: unknown) { return this.x.checkedAgainst(actorOf(a), id, s, f, b); }
 }
