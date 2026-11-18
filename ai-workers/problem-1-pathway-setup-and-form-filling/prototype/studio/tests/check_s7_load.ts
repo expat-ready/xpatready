@@ -55,7 +55,7 @@ const sampleOk = (f: Parameters<typeof trailsOf>[0]) => { const t = trailsOf(f);
   const ledgerBefore = ledger();
   const l = await call("POST", "/demo/load", { sample: "six" });
   if (l.status >= 300) { console.error("STOP  the six did not load", l.body); process.exit(2); }
-  const ws = sql(`select id from workspace limit 1`);
+  const ws = sql(`select id from workspace where key <> 'platform-audit' limit 1`);
   const combos = sql(`select label from combination where workspace_id='${ws}' order by label`).split("\n");
   ok("C11.7: Load sample makes six combinations, five Retail and one Corporate", combos.length === 6 && l.body.combinations.length === 6 && n(`select count(*) from program_def where workspace_id='${ws}' and node_kind='PATHWAY'`) === 3, combos);
   ok("C11.7: the combinations' trails are P-112's names", SIX.every((t) => l.body.combinations.some((c: any) => t.endsWith(c.label))), l.body.combinations.map((c: any) => c.label));
