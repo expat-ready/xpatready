@@ -43,11 +43,11 @@ queue_rules:
       - check-success = ci
     merge_method: merge
   - name: product
-    # One-time exception (founder "Yes, one big batch", 22:4x IST 18 Nov; Lead 81): batches of up to 20 instead of 6, so the
-    # ~20 labelled PRs share one full test run (~18 jobs) instead of three (~54) while GitHub gives us ~50 jobs at once.
+    # One-time exception (founder "Yes, one big batch", 22:4x IST 18 Nov; Lead 81): batches of up to 13 instead of 6 (P-704), so
+    # most of the ~20 labelled PRs share one full test run (~18 jobs) instead of three (~54); 13 splits in 2 rounds (20 needs 3) while GitHub gives us ~50 jobs at once.
     # Every PR still passes every test before it lands (P-614). A failing batch is split as before. Back to 6 on 19 Nov
     # after the night's batches land (the Lead's revert PR; engineering-approved-setup.json moves with it).
-    batch_size: 20
+    batch_size: 13
     # F6 (founder 6 Nov, "Yes, apply all seven"): a 24-hour trial of 5 min (was 2 min), so batches fill; review 7 Nov
     # ~21:00 IST: kept if PRs per batch rises (baseline 1.6) and approved-to-merged median does not get worse.
     batch_max_wait_time: 5 min

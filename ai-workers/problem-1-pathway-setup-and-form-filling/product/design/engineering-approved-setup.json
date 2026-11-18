@@ -1,7 +1,7 @@
 {
  "_about": "The approved engineering set-up (CK-1, founder asks A151 and A154, 17 Nov 2026). Owned by the tech lead: a change to the set-up is approved first, then this file gets a new version and a change_log row in the same PR as the change. tools/conformance-check.py compares origin/main with it (lists compare as sets: extra lines allowed, a missing one fails) and prints enforced: yes | no. The ruleset item is read only by the heartbeat workflow (the agents' deny list blocks ruleset reads in sessions); 'required': false tolerates no ruleset until the tech lead sets it true after the move (18 Nov).",
- "version": "1.2.0",
- "date": "2026-11-17",
+ "version": "1.2.1",
+ "date": "2026-11-18",
  "owner": "the tech lead",
  "change_log": [
   {
@@ -21,6 +21,12 @@
    "date": "2026-11-17",
    "change": "CK-2 heartbeat: alarm thresholds (no merge 90 min with an approved PR waiting, queue without batch progress 60 min, lane idle 90 min, nightly by 10:00 IST (see heartbeat.note), conformance failing); P95 queue wait 60 and batch wait 15 min reported (the T1 admission trigger); the heartbeat workflow itself (every 30 min, read-only, one job, 5 min, never cancelled) checked here. Red only on a change (red_rule), so an unchanged stall does not mail every 30 min.",
    "approval": "founder 17 Nov: enforcement checks (A151, A154), thresholds as in the checks brief; red only on a change: the founder's setup agent, 17 Nov; nightly by 10:00 IST: setup agent (the brief's author), 17 Nov 12:5x IST, evidence: nightly start times 14-17 Nov"
+  },
+  {
+   "version": "1.2.1",
+   "date": "2026-11-18",
+   "change": "Product queue batch_size 6 to 13 for one night (one big batch: most of ~20 labelled PRs share one full test run while GitHub runs ~50 jobs at once); verdicts and records stay 6; max_parallel_checks stays 3. Reverted to 6 on 19 Nov with its own row.",
+   "approval": "founder 18 Nov 22:4x IST: \"Yes, one big batch\" (P-704, Lead 81)"
   }
  ],
  "settings": {
@@ -173,7 +179,7 @@
     "merge_method": "merge"
    },
    "product": {
-    "batch_size": 20,
+    "batch_size": 13,
     "queue_conditions_required": [
      "base = main",
      "-draft",
