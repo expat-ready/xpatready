@@ -16,17 +16,17 @@
 * This round also carries yesterday's records (qa #2088, which is not merged and now conflicts with main) into one PR.
 
 ## Verdict
-**C8.2 and C11.6: green on the checkpoint on main's head on GitHub's runners, but not yet Works.** Both stay Partial: the first part of the Works rule is met, the other three are not.
+**C8.2 and C11.6: Works (updated 16:3x IST).** At first both stayed Partial: only the first part of the Works rule was met. The re-run, the fresh reader and gate A then came in; see "Gate A walks for C8.2 and C11.6" below.
 * Run **44256761591** (workflow_dispatch, `capabilities: C8.2 C11.6`, `data: checkpoint`, head 39c1203cd):
   * C8.2: "C8.2.test.ts on the checkpoint: exit 0, 19/19 passed" (job 134640396986);
   * C11.6: "C11.6.test.ts on the checkpoint: exit 0, 14/14 passed" (job 134640397274).
-* Still needed (RULES.md P-339, P-348c; `rules/works.md`):
-  * an independent re-run (P-290);
-  * a fresh Opus reader's verdict, by a reader that ran nothing (P-303, P-432);
-  * a gate A walk by screens to the next capability's first step (P-348c). The last walk was 11 Nov on 68a7b59d1, before BK-21 changed this path.
-* `REGRESSION-DATA.md` gets their "checkpoint" lines with the Works verdict, not before.
+* The rest of the Works rule (RULES.md P-339, P-348c; `rules/works.md`), all met on 18 Nov:
+  * independent re-run (P-290): **44260362078**, C8.2 19/19 (job 134668185255) and C11.6 14/14 (job 134668185047) on the checkpoint, head 39c1203cd;
+  * fresh Opus reader that ran nothing (P-303, P-432): WORKS for both (`reader-verdict-c82-c116.txt`);
+  * gate A walk by screens to the next capability's first step (P-348c): PASS for both (below).
+* `REGRESSION-DATA.md` got their "checkpoint" lines with the Works verdict.
 
-No regression found. **Two new findings:** QA-507 (Bug · Minor) and QA-508 (Conflict · Minor: R1.58's text is out of date). No other row moves: each still has parts missing (P-606).
+No regression found. **Three new findings, all Minor:** QA-507 (Bug), QA-508 (Conflict: R1.58's text out of date; closed on Lead 80's ruling) and QA-509 (UX). Apart from C8.2 and C11.6, no row moves to Works: each still has parts missing (P-606).
 
 | Merge (UTC 17 Nov) | What | Row | Underneath (here twice · CI) | Like a person | Row now |
 |---|---|---|---|---|---|
@@ -68,8 +68,24 @@ No regression found. **Two new findings:** QA-507 (Bug · Minor) and QA-508 (Con
 So the parser's 415 errors fall through `ProblemErrors` to the generic 500: **QA-507**. `tests/qa/check_qa507_body_charset.ts` fails 2/4 twice (B1 and B2 fail; the B3 broken-JSON control and the B4 no-leak check pass): `qa507-check-runs.txt`.
 
 ## Bugs
-0 Blocker · 0 Critical · 0 Major · **2 Minor (new: QA-507, QA-508)** · closed: none. Carried from qa #2088: QA-504, QA-505, QA-506 (Minors), and QA-397 closed.
+0 Blocker · 0 Critical · 0 Major · **3 Minor (new: QA-507, QA-508, QA-509)** · closed: **QA-508** (Lead 80's ruling). Carried from qa #2088: QA-504, QA-505, QA-506 (Minors), and QA-397 closed.
 * **QA-508:** FO-7a2 #1991 builds P-634 (1): a reversal is always accepted, even below zero, and the party shows red in `money_trust_shortfall`. The founder chose that on 17 Nov in P-653 (2), after P-607 (1) (15 Nov, "Never negative"). R1.58's text still says "never goes below zero (fail case)", so the row cannot be scored as written. The tech lead rewrites the row text; qa does not change a requirement.
+
+## Gate A walks for C8.2 and C11.6 (Lead 80's brief, 13:0x-13:2x IST)
+Copies of main 39c1203cd loaded with the configured checkpoint (reset, then `sample: configured`, 87 s and 89 s). Independent re-run 44260362078, dispatched at 13:07 IST, ran after a long wait for GitHub runners (1-2 hosted jobs at a time since the move): C11.6 14/14 (job 134668185047) and C8.2 19/19 (job 134668185255) on the checkpoint, head 39c1203cd, "Gate B: passed". A fresh Opus reader at high effort that ran nothing then gave **C8.2: WORKS · C11.6: WORKS** (16:3x IST). **Both rows move to Works**; `REGRESSION-DATA.md` gets their checkpoint lines, and `works-set.mjs` now counts 98 Works capabilities.
+* **C11.6, PASS.** The checkpoint's Sample case C-2026-00001, as the Case officer, under "How each form is filed":
+  * IMM 5476 (IRCC accepts only PDF upload) greys the other ways with the Form library's line (`gatea-c116-5476-only-pdf.jpg`).
+  * Paper without a reason is refused on the field, quoting IRCC (`gatea-c116-paper-needs-reason.jpg`).
+  * With a reason, a double click saved one change for Client A's IMM 5257 only, with one audit line; the partner's copy and the combination's line are unchanged (`gatea-c116-paper-saved.jpg`).
+  * Next capability, C7.1: Prepare application now shows the Paper steps (validate in Adobe with the barcode page, print, sign in pen), and "Generate a new copy" wrote 66 form fields, read back and checked (`gatea-c116-next-c71-prepare.jpg`). Its "File missing" label came from the export living under `/tmp`, which links to `/private/tmp`: the file existed, so this is set-up, not product.
+* **C8.2, PASS.** A Visitor visa case taken to Ready to file by the pack's own helpers (not under test), then Record the submission on screen as the Case officer:
+  * an empty application number is refused on the field (`gatea-c82-number-required.jpg`);
+  * tomorrow's date is refused on the field (`gatea-c82-future-date.jpg`);
+  * a double click records once: 2 `filing_record` rows and one audit line (`gatea-c82-recorded.jpg`, `gatea-database.txt`);
+  * afterwards every Change channel and Add a form is off with its reason. Send for review lists both filings as closed and offers "Send 0 filings".
+  * Next capability, C9.2: changing Client A's consent answer opens "1 task after filing: Filed with an earlier value … Re-sign it, or tell IRCC of the change", and the record is unchanged (`gatea-c82-next-c92-task.jpg`).
+* **QA-509 (UX · Minor):** on the submitted case, `/cases/<id>/questionnaire` says "Next: Client A answers this questionnaire." while the case page says nothing more is asked (`qa509-questionnaire-next-step.jpg`).
+* **R1.58:** Lead 80 ruled that P-653 (2) supersedes P-607 (1) and gave the row's new Done when, which is now in the row; QA-508 is closed. **R1.20:** scored against PF-4c as shaped (1-20 rows, nothing sent while any row is flagged); the founder's question stays open.
 
 ## Coverage
 Not measured this round: c8 needs the API server under the tsx CLI, which this sandbox refuses. The floor is unchanged.
@@ -81,10 +97,13 @@ Not measured this round: c8 needs the API server under the tsx CLI, which this s
 * **The invitation accept refusal (PF-6m2)** has no screen to walk; the builder's note says the Accept page still shows such an invitation as valid until accept is pressed.
 
 ## Questions for the tech lead
-1. **QA-508:** R1.58's text says trust "never goes below zero"; P-634 and the founder's P-653 (2) say a reversal may take it below zero, shown red. Please rewrite R1.58's text to match.
-2. **C8.2 and C11.6:** both are green on the checkpoint (run 44256761591). Who runs the independent re-run and the fresh Opus reader, and shall qa walk gate A on a copy loaded with the configured checkpoint next?
-3. **R1.20:** the row says a 1-50 row invite "accepts the good rows and names each bad row's reason". PF-4c (backlog, AG-1-69) takes 1-20 rows and sends nothing while any row is flagged. Which one holds?
-4. **qa #2088:** its records are merged into this PR, so #2088 can be closed. Close it, or shall I?
+1. **P-653 (2) supersedes P-607 (1):** Lead 80 ruled this in a message to the qa session on 18 Nov (~13:0x IST), and it closes QA-508. No DECISIONS.md row records it yet; please add one (qa does not write DECISIONS.md).
+2. **qa #2088:** its records are in #2117. Closing it was refused by the tech lead's permission check, so it waits for the founder.
+
+Answered this round by Lead 80 (18 Nov): R1.58's Done when (given word for word; QA-508 closed); qa runs the re-run, the fresh reader and gate A for C8.2 and C11.6 (done); R1.20 is scored against PF-4c as shaped.
+
+## Question for the founder (through the tech lead)
+* **R1.20:** the row says a 1-50 row invite "accepts the good rows and names each bad row's reason". PF-4c as shaped takes 1-20 rows and sends nothing while any row is flagged, and AG-1-69 gives no row count and no partial rule. Which one holds?
 
 ## Suggestions
 * QA-507's fix: map the parser's 415 errors (`charset.unsupported`, `encoding.unsupported`) in `ProblemErrors` to a 415 problem answer in words. *Later* · *Capability*.
