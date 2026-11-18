@@ -7,9 +7,10 @@
 // Rules Prisma cannot say are platform_support_ triggers and checks in the migration 20261118073000_pf18b_support: messages
 // are insert-only (no update, delete or truncate); a ticket is never deleted and only its status changes; the raiser and a
 // staff author are staff of the ticket's own firm; a message's file keys lie in its own ticket's folder only.
-// No Prisma relation to PlatformFirm or PlatformStaff yet: platform.prisma takes no edit while #2009 is open (tech lead's
-// condition, P-526b); the migration's trigger proves the firm and the person instead. Once #2009 merges, the foreign keys
-// and their back-relations go under "// back-relation slot: support (PF-18b)" in platform.prisma, named in the PR.
+// PF-18bk (migration 20261119000000_pf18bk_support_keys): the real foreign keys, all RESTRICT. A ticket's firm_id →
+// platform_firm; its (firm_id, raised_by) → platform_staff(firm_id, id), so the raiser is staff of the ticket's own firm;
+// a message's firm_id → platform_firm. author_id is text ('support' or a staff uuid) and takes no key: the trigger proves
+// a FIRM_STAFF author. The triggers stay as PF-18b made them (the raiser check too: PF-18b's suite names its message).
 
 /// Where the ticket stands (AG-16-63 "status including Waiting on firm"): OPEN when raised; WAITING_ON_FIRM after our
 /// reply; WAITING_ON_SUPPORT after the firm's next message; CLOSED (no row of this one closes a ticket yet: PF-17's).
@@ -31,13 +32,15 @@ enum PlatformSupportAuthorKind {
 model PlatformSupportTicket {
   id        String                      @id @default(uuid()) @db.Uuid
   firmId    String                      @map("firm_id") @db.Uuid
-  /// The staff member who raised it (staff of firm_id: the migration's trigger checks it).
+  /// The staff member who raised it: staff of firm_id (the (firm_id, raised_by) key, PF-18bk; the trigger too).
   raisedBy  String                      @map("raised_by") @db.Uuid
   page      String
   status    PlatformSupportTicketStatus @default(OPEN)
   createdAt DateTime                    @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime                    @updatedAt @map("updated_at") @db.Timestamptz
 
+  firm     PlatformFirm             @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  raiser   PlatformStaff            @relation(fields: [firmId, raisedBy], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
   messages PlatformSupportMessage[]
 
   @@unique([firmId, id])
@@ -59,6 +62,7 @@ model PlatformSupportMessage {
   fileKeys   String[]                  @default([]) @map("file_keys")
   createdAt  DateTime                  @default(now()) @map("created_at") @db.Timestamptz
 
+  firm   PlatformFirm          @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   ticket PlatformSupportTicket @relation(fields: [firmId, ticketId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([firmId, ticketId, createdAt])
