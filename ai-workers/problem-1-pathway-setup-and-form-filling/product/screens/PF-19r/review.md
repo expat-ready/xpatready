@@ -1,6 +1,6 @@
 # Review: PF-19r part 1, staff and system mail through MessagePort (runtime row, no UI)
 
-**Verdict: Approve** for `b471711f4e8c3f1786aaeb81ce61578cf2aa1da1` (Round 2, at the end; in the skill's words: Ship).
+**Verdict: Approve** for `07f5e8ba0bcab86834eb45f61bad3204c74ec458` (Round 3, at the end; in the skill's words: Ship). Round 2 approved `b471711f`.
 * Round 1 verdict, for `74bd2a0474304c622a67cb6685e8969881eff1cf`: Block (Ship after fixes). Diff `origin/main...74bd2a04`, on `claude/runtime-pf19r-senders`.
 * Reviewer: Opus, fresh context, did not build it. 18 Nov 2026.
 * Brief: PF-19r (Build Lead C, approved), Part 1, DW1-DW6, touch list, rulings.
@@ -127,3 +127,21 @@ N/A: a staff and system runtime row with no case-side screen (`EXPERIENCE.md` §
 * **r2-m3** `email-sender.ts:41-43`: a held code email still goes out the next day, when its code has likely expired. It is reported `sent:false`, which is right. Information only.
 * **Accepted and listed in the PR (breaker):** m2, two resets pressed at once give two notices, both real resets with their audit lines. m4, latent, a provider slower than 5 s.
 * **No screen in this row:** the invite panel's toast does not show `emailHeld` or `heldRows` yet. That is for the screens lane, not a finding here.
+
+## Round 3: 07f5e8ba0bcab86834eb45f61bad3204c74ec458 (the merge 0c960a480 and commit 07f5e8ba only)
+**Verdict: Approve.** No Blocker or Major is open.
+* **Lead B's answer** (PR comment 6987664663 on #2157): keep the binding; PF-19e seals later, with demo and test copies only until then. That settles the M1 ruling.
+* **Merge 0c960a480:** correct.
+  * The merge differs from `origin/main` (its second parent) in exactly the PR's own 18 files. Nothing else from `main` was changed or lost.
+  * `MODULE.md` keeps main's PF-18b blocks: Purpose `support/`, the support entry points, the tables, and `check_pf18b_support.ts`.
+  * It re-applies only this PR's two additions: the `MESSAGES_MAIL` sentence and `tests/check_pf19r_senders.ts`.
+* **`session/service.ts:203`:** the NOTICE_NOT_SENT words now say how to clear it ("Update this person's email address first; …"), as Lead B asked. The DW3 fail case asserts the new opening.
+* **`features/platform-support.ts`:** `MAIL_PORT` is now required, with no `fakeMail()` fallback, and the comment is corrected. This is right.
+  * The app always binds `MAIL_PORT`.
+  * The only suite that builds this feature is `check_pf18b_support.ts`, and it provides `MAIL_PORT`.
+  * DW6 needs the change.
+  * The ticket email (`support/support.ts:161-166`) is sent after its transaction commits, so there is no lock wait. It carries ids and the page only, never the body. A failure still answers `emailed:false`.
+* **What I ran:** `check_pf19r_senders.ts` **24 passed, 0 failed**; `check_pf18b_support.ts` **41 passed, 0 failed**.
+
+**New Minor (does not block)**
+* **r3-m1** `support/support.ts:160-166`: the ticket notice to our own support inbox now goes as the firm, with the firm's sender name and layout, and counts against that firm's daily cap. When the cap holds it, the answer still says `emailed:true`: support's own code does not read `held` (`heldOf`). The ticket itself is saved, and the console shows it. **Fix (later, PF-18b's owner):** report `held`, or send the notice as the platform's own mail (PF-19p's platform account messages).
