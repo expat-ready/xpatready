@@ -9,3 +9,23 @@ export const STAND_IN = { id: "SI-9", words: "Today: one Sample firm and one Sam
 /** The firm a staff member works in (case people only; configuration people and clients have none). */
 export const firmOfActor = (a: Actor) => firmOf(FIRMS, a.id);
 export const firmByKey = (key: string) => FIRMS.find((f) => f.key === key) ?? null;
+
+// CS-W1 (contract §8 step 1, P-588 (4)): a firm key's platform firm id, through the database's one narrow lookup
+// (case_lookup.case_firm_id_of_key, migration 20261118090000_csw1_firm_id), which reads past PF-12's wall on platform_firm
+// and returns nothing but the id. Kept per process once found (a firm's id never changes); a key with no platform firm yet
+// is not kept, so the next call finds it once the Sample seed has run. The demo reset clears it (forgetFirmIds).
+type Raw = { $queryRaw<T>(q: TemplateStringsArray, ...v: unknown[]): Promise<T> };
+const firmIds = new Map<string, string>();
+export async function firmIdByKey(db: Raw, key: string): Promise<string | null> {
+  const known = firmIds.get(key);
+  if (known) return known;
+  const [row] = await db.$queryRaw<{ id: string | null }[]>`select case_lookup.case_firm_id_of_key(${key})::text as id`;
+  if (row?.id) firmIds.set(key, row.id);
+  return row?.id ?? null;
+}
+/** The platform firm id of the firm a staff member works in (null: no firm, or none registered for its key). */
+export async function firmIdOfActor(db: Raw, a: Actor): Promise<string | null> {
+  const f = firmOfActor(a);
+  return f ? firmIdByKey(db, f.key) : null;
+}
+export const forgetFirmIds = () => firmIds.clear();
