@@ -98,3 +98,12 @@ The breaker's report is in the session scratchpad; it will be copied here with t
 * **n-d:** the refund-order check now runs in a fixed order, instead of depending on timing.
 * **Size:** 824 at 5397b60b, as CI counts it. The final count is in the PR body.
 * `check_fo7ts_money_settings.ts` 105/0.
+
+## Round 4 on c3bb10de: Reviewer Approve (Minor m-f); Breaker fail (N12, the same issue), fixed
+* **N12 / m-f: the REPEATABLE READ line lock came before the draft row.** An editor saving the header and then a line in one transaction got 40P01 against an apply.
+* **Fixed:** the row comes first, then the line lock, taken above READ COMMITTED only (`NOT IN ('read committed', 'read uncommitted')`, n-e) and with NOWAIT. It now sits just before the due read. This is the reviewer's tested move and the breaker's `_alt`.
+* **New check:** the editor's save commits and the stale apply gets 40001. On c3bb10de it gets 40P01.
+* The migration header now names the line lock in the lock order (n-f).
+* **N13 (Minor), recorded:** at REPEATABLE READ an apply racing a line edit that then rolls back gets 55P03 where waiting would succeed. busy.ts retries 55P03, and no app code runs money writes above READ COMMITTED.
+* Build notes for round 3 said "with the lock always taken, it gets 40P01". That holds for a waiting lock; with NOWAIT and no guard it gets 55P03. Both fail the check.
+* `check_fo7ts_money_settings.ts` 106/0.

@@ -287,15 +287,15 @@ BEGIN
     END IF;
   ELSIF NEW.kind = 'APPLIED' THEN
     -- AG-6-21 rule 5: to an invoice of the same holder and currency, draft or issued, at most what is due on it.
-    -- Above READ COMMITTED a stale line read must fail (break N4: 40001): share the lines first, the line writer's order,
-    -- and never wait for them (NOWAIT: 55P03, never 40P01; N11, review M3). At READ COMMITTED each read is fresh.
-    IF current_setting('transaction_isolation') <> 'read committed' THEN
-      PERFORM 1 FROM "money_invoice_line" l WHERE l.firm_id = NEW.firm_id AND l.invoice_id = NEW.invoice_id FOR SHARE NOWAIT;
-    END IF;
     UPDATE "money_invoice" x SET updated_at = now() WHERE x.firm_id = NEW.firm_id AND x.id = NEW.invoice_id RETURNING x.person_id, x.company_id, x.case_id, x.currency INTO i;
     IF NOT FOUND THEN PERFORM money_missing('money_credit_entry', 'invoice', NEW.invoice_id); END IF;
     IF (i.currency, i.case_id, i.person_id, i.company_id) IS DISTINCT FROM (NEW.currency, NEW.case_id, NEW.person_id, NEW.company_id) THEN  -- and its party (review m2)
       RAISE EXCEPTION 'money_credit_entry: credit pays only an invoice of its holder (the same case, or the same party with no case) and currency' USING ERRCODE = 'check_violation';
+    END IF;
+    -- Above READ COMMITTED a stale line read must fail (break N4: 40001): after the row, share the lines without waiting
+    -- (55P03; never 40P01: break N11, N12, review M3, m-f). At READ COMMITTED each read is already fresh.
+    IF current_setting('transaction_isolation') NOT IN ('read committed', 'read uncommitted') THEN
+      PERFORM 1 FROM "money_invoice_line" l WHERE l.firm_id = NEW.firm_id AND l.invoice_id = NEW.invoice_id FOR SHARE NOWAIT;
     END IF;
     due := money_invoice_due(NEW.firm_id, NEW.invoice_id);
     IF -NEW.amount_minor > due THEN
@@ -336,7 +336,8 @@ CREATE TRIGGER money_credit_entry_write BEFORE INSERT ON "money_credit_entry" FO
 
 -- ------------------------------------------------------------------------------- kept and applied credit stay true
 -- Break B4-B8 on 692ea4be: the credit rules hold after later writes too (a refund, a reversal, trust returned, a draft's
--- lines, the invoice's holder). Each writer takes the party lock before the invoice row, or (draft lines) only the row.
+-- lines, the invoice's holder). Each writer takes the party lock before the invoice row, or (draft lines) only the row;
+-- applied credit shares a draft's lines after its row, without waiting, and only above READ COMMITTED (review n-f).
 CREATE OR REPLACE FUNCTION money_credit_kept_holds(f uuid, inv uuid, what text) RETURNS void LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE kept bigint; due bigint;
 BEGIN
