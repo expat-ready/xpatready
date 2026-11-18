@@ -56,3 +56,5 @@ No route, no screen, no `ports/` change. "Never pre-ticked" and the pick's audit
 **Audit actors (Lead 80, 18 Nov, after #2003 AUD-1a):** the audit trail refuses an actor word with no type. A test or seed that writes an audit line uses `staff:<id>`, `person:<id>`, `system:<door>`, `seed:<row>` or one of the listed simulated people (`user-A/B/C/O/R/T/S` staff, `user-P/Q` clients), never a bare word like `test`. Once #2003 is on `main`, merge `main` before the first push.
 
 **Build Lead C ruling (18 Nov):** a trust refund also refuses `CARD_TERMINAL` until FO-7c (card payments) is built. Card refunds belong to FO-7c. The refusal is in words and has a test case.
+
+**P-701 (founder, 20:29 IST 18 Nov, "Yes, GST/HST only"):** Release 1 invoices charge GST/HST only, at the CRA rates cited with page, quote and date (P-170). No PST, RST or QST. Unconfirmed: no accountant or counsel.

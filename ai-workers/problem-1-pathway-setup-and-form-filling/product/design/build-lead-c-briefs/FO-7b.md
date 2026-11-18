@@ -61,3 +61,5 @@ The Lead reads `ports/client-money.ts` (a shared contract, amendment 5; P-423).
 * The database check on line tax becomes exact in a follow-up after FO-7b part 1, not in this PR.
 * While "Prices include tax" is on, FO-7b refuses to save a draft, in words, until FO-7g part 2.
 * A part credit note mirrors the lines it credits. Tax is recomputed on each credited line with the same rule, and the credit note is never more than what the line charged. Each of these gets a test case.
+
+**P-701 (founder, 20:29 IST 18 Nov, "Yes, GST/HST only"):** Release 1 invoices charge GST/HST only, at the CRA rates cited with page, quote and date (P-170). No PST, RST or QST. Unconfirmed: no accountant or counsel.

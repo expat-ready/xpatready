@@ -87,3 +87,5 @@ No schema, no migration, no screen, no `ports/` change.
 **Audit actors (Lead 80, 18 Nov, after #2003 AUD-1a):** the audit trail refuses an actor word with no type. A test or seed that writes an audit line uses `staff:<id>`, `person:<id>`, `system:<door>`, `seed:<row>` or one of the listed simulated people (`user-A/B/C/O/R/T/S` staff, `user-P/Q` clients), never a bare word like `test`. Once #2003 is on `main`, merge `main` before the first push.
 
 **Build Lead C ruling (18 Nov):** no PST, RST or QST in Release 1. BC, MB and SK bulletins exclude immigration services, and Quebec is out (P-568). This reading is **Unconfirmed: no accountant, no counsel**. It goes to the founder through the current Lead before FO-7g merges.
+
+**P-701 (founder, 20:29 IST 18 Nov, "Yes, GST/HST only"):** Release 1 invoices charge GST/HST only, at the CRA rates cited with page, quote and date (P-170). No PST, RST or QST. Unconfirmed: no accountant or counsel.
