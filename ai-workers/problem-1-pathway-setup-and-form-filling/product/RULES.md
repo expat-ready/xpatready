@@ -32,7 +32,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-521 | The Lead orchestrates; only the Lead writes records; big desk items get a fresh Opus reviewer's verdict. | hook: stop-check.sh (part: lane edits to records) | 13 Nov |
 | P-530 | Founder blockers are pushed: a red "Waiting on the founder" line atop STATE, a push notification, re-sent each check after 30 min. | prose | 13 Nov |
 | P-532 | The Lead is the founder's single contact and owns every session; hand-over lists each lane's last message and whom it waits on. | script: handover.sh (part) | 13 Nov |
-| P-539 | This repository stays public; integration and strategy content goes only to private notes. | hook: push-guard.sh via .githooks/pre-push; CI: ci.yml push-guard steps (part; `rules/tokens-money-account.md`) | 13 Nov |
+| P-539 | Repository stays public; integration and strategy content only private; full row `rules/tech-lead.md`. | hook: push-guard.sh via .githooks/pre-push; CI: ci.yml push-guard steps (part; `rules/tokens-money-account.md`) | 13 Nov |
 | P-542 | No product row waits on pipeline, tooling or integration work. | prose | 13 Nov |
 | P-551 | No new account, key or purchase by anyone but the founder; named people for on call, support and breach before the first customer. | prose | 13 Nov |
 | P-553 | Launch on our own build; open-source parts only through STANDARDS §1 (P-563 stands). | prose | 13 Nov |
@@ -40,9 +40,9 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-576 | Order of work: critical features, then builder speed (contracts, ports with fakes, schema first); never two lanes on one busy file. | prose | 14 Nov |
 | P-582 | Every item left out of the first build is a BACKLOG X-row, added in the same change. | prose | 14 Nov |
 | P-587 | From public repositories only gold-class code, judged at the STANDARDS §1 gate. | prose | 14 Nov |
-| P-593 | The board is the one door with a Library: one master per document, a page is a view (P-594: "Release 1 (production grade)"). | script: library-freshness.py (part: a master behind its feeds is listed) | 14 Nov |
+| P-593 | The board is the one door with a Library of masters; full row `rules/tech-lead.md`. | script: library-freshness.py (part: a master behind its feeds is listed) | 14 Nov |
 | P-595 | Every Release 1 backlog row carries a Source:; a shaped row with no source should fail CI (no such step found 15 Nov). | prose | 14 Nov |
-| P-596 | Every board number carries source, sha, time and class; missing data shows "not measured"; the data is validated and reconciled. | script: cockpit-data.py, cockpit-reconcile.py; CI: cockpit-tests.yml | 14 Nov |
+| P-596 | Every board number carries its source, sha and time; full row `rules/tech-lead.md`. | script: cockpit-data.py, cockpit-reconcile.py; CI: cockpit-tests.yml | 14 Nov |
 | P-597 | The strategy desk runs on Fable 5.2 at high effort, set after the start, with five rules. | prose | 14 Nov |
 | P-599 | Ready rows at least two per lane; first-time green; at most two review rounds; day-3 check 17 Nov (date per P-609). | prose | 14 Nov |
 | P-600 | Schema rows run in parallel, each with its own file and migration folder, additive, a later stamp; the Lead reads the migration before the label (P-601). | prose | 14 Nov |
@@ -101,11 +101,11 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | ID | Rule | Enforced by | As of |
 |---|---|---|---|
 | P-478 | Every report opens with "Needs you" then "Decide when you can"; every founder action is also a card; any spend is red with US$. | prose | P-612 |
-| P-591 | One cockpit built from script data, refreshed each check, its link opening every report; a fresh reviewer weekly; never duplicate work. | script: cockpit-data.py; CI: cockpit-tests.yml (part: data) | 14 Nov |
+| P-591 | One cockpit from script data, refreshed each check; full row `rules/tech-lead.md`. | script: cockpit-data.py; CI: cockpit-tests.yml (part: data) | 14 Nov |
 | P-486 | "Decide when you can" is the Lead's (research, decide, record, implement); to the founder: money, a lower bar, a day or more, permissions, security, unsettled immigration facts. | prose | 11 Nov |
 | P-486b | Lane briefs: context limit ~400k tokens; confirm the sent bubble; sessions are not started over Remote Control. | prose | 11 Nov |
 | P-384 | The founder gives product direction only; the Lead owns the pipeline, paid runs included. | hook: merge-guard.sh (part: only the Lead copy merges, closes or reviews) | 7 Nov |
-| P-402 | Standing approvals: label on Approve and green, own records PRs, requeue, retarget, draft toggle, re-run failed parts, dispatch nightly (P-410, P-434). | hook: merge-guard.sh (part: only the Lead copy merges) | P-612 |
+| P-402 | Standing approvals (label, records PRs, requeue, retarget); full row `rules/tech-lead.md`. | hook: merge-guard.sh (part: only the Lead copy merges) | P-612 |
 | P-423 | The Lead reads the diff before labelling money, permissions, schema, a migration, .github/ or .mergify.yml. | prose | P-612 |
 | P-294 | Product questions that decisions, canada.ca or best practice settle are ruled by the Lead and recorded. | prose | P-612 |
 | P-390 | Preference questions go to the founder one at a time with a recommendation, listed in STATE; while away, proceed when reversible. | prose | P-612 |
@@ -119,7 +119,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-388 | No prompt-waiting call while the founder is away; no hand-over with an in-process subagent running (P-409). | prose | P-612 |
 | F-7Nov | Never run guard or test suites in the main copy: use a scratch clone. | prose | 7 Nov |
 | P-363 | GitHub through curl with `gh auth token`. | prose | P-612 |
-| P-387 | .claude/settings.json stays as on main; only the founder widens permissions; a refused write is never rerouted through a lane or split. | hook: stop-check.sh (part: lane edits); sandbox denies settings writes | 7 Nov |
+| P-387 | settings.json stays as on main; only the founder widens permissions; full row `rules/tech-lead.md`. | hook: stop-check.sh (part: lane edits); sandbox denies settings writes | 7 Nov |
 | P-302 | Times only from `TZ=Asia/Kolkata date`. | prose (check-docs.sh warns on STATE times, never fails) | P-612 |
 | P-336 | Records by the Lead alone; STATE ≤ 12 KB; DECISIONS appended. Full row: `rules/tech-lead.md`. | script: check-docs.sh | P-612 |
 | P-440 | This page is refreshed at every hand-over and lags DECISIONS by at most 3 rows. | script: check-docs.sh (RULES LAG; test check-rules-lag.sh) | 9 Nov |
@@ -156,12 +156,12 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-685 | Old drafts with a matching Approve: the Lead runs `tools/pr-ready.sh`, never the founder. | script: tools/pr-ready.sh | 17 Nov |
 | P-686 | Records PRs skip the 800-line limit; tooling rows exempt; IDX-moved rules count (#2086). | script: pr-size.sh, decision-impact.sh, check-docs.sh | 17 Nov |
 | P-682 | Modular monolith: fenced modules, AI behind its own port, outbox events, affected-only CI; split only on a measured trigger. | prose | 17 Nov |
-| P-691 | Emergency hand merge stays on Enterprise: only a pipeline/CI fix while the queue itself is broken, after green ci and a review, logged in the change log. | prose (ruleset bypass; library/engineering-change-log.md) | 17 Nov |
+| P-691 | Emergency hand merge stays: only a pipeline/CI fix while the queue is broken; full row `rules/tech-lead.md`. | prose (ruleset bypass; library/engineering-change-log.md) | 17 Nov |
 | P-699 | Agents build, review, test and label; when a tool path is stuck, the Lead does the step in the signed-in browser (safety rules still apply). | prose | 18 Nov |
-| P-696 | ~~Stay on Enterprise; move back (F3) only if the overnight median job wait is over 30 min (amends P-695).~~ Superseded by P-705: no move back to Pro; waits still measured each check. | prose | 18 Nov |
-| P-703 | Every measure, analysis and report is about product features (app-code PRs, product rows), never records or tooling (restates P-500, P-501). | prose; lead-watch.sh app-code merges | 18 Nov |
-| P-704 | One big merge batch tonight only (#2152, product batch_size 13); reverted to 6 on 19 Nov by its own Lead PR and manifest row. | config (Mergify) | 18 Nov |
-| P-706 | Outbox files may hold links and codes on demo and test copies until PF-19e seals them; PF-19e is on main before any copy with real people. | prose | 19 Nov |
+| P-705 | No move back to Pro (supersedes P-696's rollback); waits measured each check. | prose | 18 Nov |
+| P-703 | Measures and reports count product features only (app-code PRs, product rows), never records or tooling. | script: lead-watch.sh | 18 Nov |
+| P-704 | One big batch once (#2152, batch_size 13); back to 6 on 19 Nov by its own PR. | prose | 18 Nov |
+| P-706 | Demo/test outbox files may hold links and codes until PF-19e seals them; PF-19e lands before real people. | prose | 19 Nov |
 | P-693 | Enterprise hosted compute is Multi-cloud (Azure plus AWS); no Support ticket at that point (founder A167). | prose (enterprise setting; change log C26) | 18 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
