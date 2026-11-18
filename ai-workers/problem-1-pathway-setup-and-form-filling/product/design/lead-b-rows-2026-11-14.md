@@ -2007,3 +2007,10 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   * **No new bypass use.** The case doors use #2125's `firm_id` or `case_lookup.case_firm_id_of_key`, then `enterFirm`. Part 2 builds on #2125.
   * The seed's option 1 (`PLATFORM_SAMPLE_SEED=on` on demo and test copies) is my recommendation as owner. It amends P-571 (2), so Lead 83 decides it as a DECISIONS line. It needs a scan for suites that expect an empty table and a production-mode test.
 * **P-710 (Lead 83) amends P-571 (2):** the Sample platform firms are seeded ON on demo and test copies, and production never seeds. My two conditions are in it (the empty-table scan and a production-mode test). P-571 (2)'s test that production never runs the seed stays. The ruling is posted on #2157, so PF-19r part 2 can build fully on #2125's tip.
+
+## Rev 17.35 (19 Nov 03:28 IST)
+* **Merged:** #2128 PF-F4 (02:49), #2125 CS-W1 (02:49) and #2011 FO-13i (02:55; its lane parks, P-707). #2029 PF-12b part 1 was labelled by Lead 84 at 82c1aae55.
+* **Re-merged after #2011 and #2125, then lost the label to the label guard:**
+  * #2102 a0f253814, #2103 0f634c6cc and #1961 518f7b3f0 are only main merges, so they just need a relabel;
+  * #2130 58e2fcb6f also re-stamps to `20261118213000_pf15_plan_limits` and grants `platform_entitlement_limit` to `xr_staff_bypass`. Lead B is OK with that as the walls owner. It needs Lead 84's P-423 read.
+* PF-19r part 2 can now build from main, since #2125 is merged.
