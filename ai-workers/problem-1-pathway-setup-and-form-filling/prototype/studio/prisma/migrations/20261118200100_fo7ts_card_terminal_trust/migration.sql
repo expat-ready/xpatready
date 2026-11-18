@@ -2,7 +2,7 @@
 -- "card terminal is Operating only"; P-567 (3) "card only for invoiced fees into the operating account", legal reading
 -- Unconfirmed: no counsel): a card terminal payment is never received into trust, at the database as well as at FO-7b's
 -- route (defence in depth). FO-7a's money_payment_card_not_trust is widened from CARD to CARD and CARD_TERMINAL.
--- A step of its own: CARD_TERMINAL was added by the step before (20261117133000_fo7ts_money_settings), and a new enum
+-- A step of its own: CARD_TERMINAL was added by the step before (20261118200000_fo7ts_money_settings), and a new enum
 -- value is usable only after the transaction that added it commits.
 -- Rollback: put back FO-7a's check, CHECK ("method" <> 'CARD' OR "received_into" = 'OPERATING'), and delete this
 --   folder's row from _prisma_migrations.
@@ -12,9 +12,10 @@
 DO $$
 DECLARE p uuid;
 BEGIN
+  PERFORM set_config('row_security', 'off', true);  -- a role that does not bypass the walls fails here (review Nit 2)
   SELECT x.id INTO p FROM "money_payment" x WHERE x.method = 'CARD_TERMINAL' AND x.received_into <> 'OPERATING' ORDER BY x.id LIMIT 1;
   IF FOUND THEN
-    RAISE EXCEPTION 'FO-7ts: payment % is a card terminal payment received into trust; card money goes to operating only: correct it by hand, then rerun', p USING ERRCODE = 'check_violation';
+    RAISE EXCEPTION 'FO-7ts: payment % is a card terminal payment received into trust; card money goes to operating only, and payments are never changed or removed: ask the tech lead (a reviewed one-off), then rerun', p USING ERRCODE = 'check_violation';
   END IF;
 END $$;
 

@@ -13,7 +13,7 @@ import { join } from "node:path";
 import pg from "pg";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261117133000_fo7ts_money_settings", STEP2 = "20261117133100_fo7ts_card_terminal_trust", FO7A2 = "20261116133000_fo7a2_ledger_rules";
+const NEW = "20261118200000_fo7ts_money_settings", STEP2 = "20261118200100_fo7ts_card_terminal_trust", FO7A2 = "20261116133000_fo7a2_ledger_rules";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const T = `xr_studio_fo7ts_t_${process.pid}`, BAD = `xr_studio_fo7ts_bad_${process.pid}`, EMPTY = `xr_studio_fo7ts_empty_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
@@ -140,6 +140,9 @@ try {
   ok("FO-7ts DW1 fail: YES → UNANSWERED (and NO → UNANSWERED) is refused by the trigger",
     refused(T, `update money_payment_settings set trust_answer = 'UNANSWERED', trust_answered_by = null, trust_answered_at = null where firm_id = '${firmB}'`, /never goes back to unanswered/, "23514")
     && (sql(T, `update money_payment_settings set trust_answer = 'NO', trust_answered_by = 'user-O' where firm_id = '${firmB}' returning 1`), refused(T, `update money_payment_settings set trust_answer = 'UNANSWERED' where firm_id = '${firmB}'`, /never goes back to unanswered/)));
+  ok("FO-7ts DW1 fail (break F1 on facc5231): an answered firm's settings row is never deleted (delete and insert again would bring back UNANSWERED); pass: an unanswered row with no money may be",
+    refused(T, `delete from money_payment_settings where firm_id = '${firmB}'`, /an answered firm's settings are never removed/, "23514")
+    && (() => { const f = firm(T, "firm-ts-del"); sql(T, settingsQ(f)); return sql(T, `delete from money_payment_settings where firm_id = '${f}' returning 1`) === "1"; })());
 
   // ---------------------------------------------------------------------------------- DW2: trust is on at YES only
   let n = 0; const key = () => `key-fo7ts-${String(++n).padStart(6, "0")}`;
