@@ -1,0 +1,122 @@
+# Recorded gate A walks (P-700, founder 18 Nov; #224): qa's walk by screens to the next capability's first step (gate A,
+# P-339, P-348c; the gate itself is unchanged) runs on GitHub's machines with a recording anyone can replay, instead of
+# a qa session walking an isolated copy on the Mac (cap 4 copies). The Mac keeps 1-2 hands-on exploratory qa sessions.
+# Merge-flow tooling (P-214): no gate reads this workflow's result; Mergify's required check is still ci's job "ci".
+#   * Start (qa or the Lead): Actions › walks › Run workflow, journeys "j_6 j_9" (ids or numbers, space-separated, up to
+#     20; empty = every studio/tests/journeys/j_*.ts), ref = the branch to walk (main for gate A on main), or
+#     gh workflow run walks.yml --ref main -f journeys="j_6 j_9". A pull request that changes this file or
+#     tests/journeys/ runs every journey on its head by itself.
+#   * One job a journey, all at once (fail-fast off): the app starts as the packs job starts it (cloud-setup.sh, then
+#     the journey header's own isolated.sh line: own database, own port, never :4400), the journey runs in Playwright's
+#     Chromium with video, trace and a screenshot per step (tests/journeys/walk.mjs + record.ts), and its recording is
+#     uploaded whatever the verdict, as walk-<journey>-<head sha> (README.md inside says how to replay; kept 30 days).
+#   * Self-test, every run: the fixture tests/journeys/fixtures/j_0_fails.ts fails on purpose; its job proves the walk
+#     step fails and the recording is still uploaded (tests/check_journey_recording.ts checks the same on a machine and
+#     checks this file's shape).
+# Safety: read-only token; the input reaches the shell only through env and is checked against a fixed pattern.
+name: walks
+on:
+  workflow_dispatch:
+    inputs:
+      journeys:
+        description: "Journeys to walk: ids or numbers, space-separated (j_6 j_9); empty = every j_*.ts"
+        required: false
+        default: ""
+  pull_request:
+    paths:
+      - .github/workflows/walks.yml
+      - ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/journeys/**
+      - ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_journey_recording.ts
+permissions: { contents: read }
+concurrency:
+  group: walks-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.p.outputs.matrix }}
+      sha: ${{ steps.p.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ github.event.pull_request.head.sha || github.sha }}" }
+      - id: p
+        name: which journeys (the input, checked; else every j_*.ts), plus the failing fixture
+        env:
+          WANT: ${{ github.event.inputs.journeys }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          J: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/journeys
+        run: |
+          export LC_ALL=C
+          [ "${#WANT}" -le 200 ] || { echo "journeys: at most 200 characters"; exit 1; }
+          if [ -z "${WANT// /}" ]; then ids=$(ls "$J" | sed -n 's/^\(j_[0-9][0-9]*\)\.ts$/\1/p' | sort -V)
+          else ids=""; for w in $WANT; do
+            [[ "$w" =~ ^(j_)?([1-9][0-9]{0,2})$ ]] || { echo "journeys: '$w' is not j_<n> or <n>"; exit 1; }
+            id="j_${BASH_REMATCH[2]}"; [ -f "$J/$id.ts" ] || { echo "journeys: no $J/$id.ts"; exit 1; }
+            ids="$ids $id"; done
+            ids=$(printf '%s\n' $ids | sort -uV)
+          fi
+          [ "$(printf '%s\n' $ids | grep -c .)" -le 20 ] || { echo "journeys: at most 20"; exit 1; }
+          m=$(for id in $ids; do printf '{"name":"%s","file":"%s","expect":"pass"},' "$id" "$id"; done)
+          m="[${m}{\"name\":\"j_0_fails\",\"file\":\"$J/fixtures/j_0_fails.ts\",\"expect\":\"fail\"}]"
+          echo "matrix=$m" >> "$GITHUB_OUTPUT"; echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "walks at $SHA: $m" | tee -a "$GITHUB_STEP_SUMMARY"
+  walk:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        j: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    name: walk ${{ matrix.j.name }}${{ matrix.j.expect == 'fail' && ' (self-test, fails on purpose)' || '' }}
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+      S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
+      SHA: ${{ needs.plan.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ needs.plan.outputs.sha }}" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
+      - name: set up like a cloud session (cloud-setup.sh, as the packs job; it also builds the web app the walk needs)
+        run: bash "$P/tools/cloud-setup.sh"
+      - name: Playwright's own Chromium (as the packs job)
+        run: cd "$S" && ./node_modules/.bin/playwright install chromium
+      - id: w
+        name: walk ${{ matrix.j.name }} on its own copy, recorded (walk.mjs; live AI off, US$0)
+        continue-on-error: ${{ matrix.j.expect == 'fail' }}
+        env: { FILE: "${{ matrix.j.file }}", GITHUB_SHA: "${{ needs.plan.outputs.sha }}" }
+        run: |
+          node "$S/tests/journeys/walk.mjs" "$FILE" "$RUNNER_TEMP/walk"
+      - name: the copy's server log beside the recording
+        if: always()
+        run: cp "$S"/var/isolated-logs/*-api.log "$RUNNER_TEMP/walk/" 2>/dev/null || true
+      - id: up
+        name: upload the recording, whatever the verdict
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: walk-${{ matrix.j.name }}-${{ needs.plan.outputs.sha }}
+          path: ${{ runner.temp }}/walk
+          if-no-files-found: error
+          retention-days: 30
+      - name: summary (verdict, video, trace, step screenshots)
+        if: always()
+        env: { NAME: "${{ matrix.j.name }}" }
+        run: |
+          f="$RUNNER_TEMP/walk/walk.json"; [ -f "$f" ] || { echo "no walk.json" >> "$GITHUB_STEP_SUMMARY"; exit 0; }
+          node -e 'const v=require(process.argv[1]); console.log(`### ${v.journey} at ${v.sha.slice(0,9)}: exit ${v.exit}, ${v.pass} PASS, ${v.fail} FAIL, ${v.held} HELD\n${v.video.length} video, ${v.traces.length} trace, ${v.steps} step screenshots, ${v.journeyShots} journey screenshots (artifact walk-${process.env.NAME}-${v.sha})\n${v.failed.map((l)=>"* "+l).join("\n")}`)' "$f" >> "$GITHUB_STEP_SUMMARY"
+      - name: self-test — the failing fixture failed its walk step and its recording (video, trace, steps) was uploaded
+        if: always() && matrix.j.expect == 'fail'
+        env: { OUTCOME: "${{ steps.w.outcome }}", ART: "${{ steps.up.outputs.artifact-id }}" }
+        run: |
+          echo "walk step: $OUTCOME; artifact id: ${ART:-none}"
+          [ "$OUTCOME" = failure ] || { echo "FAIL: the failing fixture's walk step did not fail"; exit 1; }
+          [ -n "$ART" ] || { echo "FAIL: the failing fixture's recording was not uploaded"; exit 1; }
+          w="$RUNNER_TEMP/walk"; ls "$w"/video/*.webm "$w"/trace-1.zip "$w"/steps/002-fail-*.png
+          echo "PASS: a failing journey fails its walk step and still uploads its recording"
