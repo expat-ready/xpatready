@@ -78,4 +78,22 @@ Size: 569 lines, against about 350 in the brief. The extra lines are dense tests
 * A seed with released combinations under xr_app. The scratch database has none, but the configuration tables are not walled.
 * A founder or user walk: D17/D20 are N/A for a port.
 
-Verdict: Approve 6f65706d0d6073f79cc39758f042de59e22eea33
+## Re-review (diff 6f65706d0..00883c41b)
+I re-reviewed only the diff, at 00883c41b. `tests/check_fo1p_person_port.ts`: **35 passed, 0 failed**. The diff touches only the port, the contract, the adapter, the test and the `qa/built` line, plus these two review files (unchanged). No other suite's inputs change. The port guard passes inside the suite.
+
+Each finding is closed by a test that fails without the fix. I re-checked by mutation myself, and reverted each change:
+* **m1, closed.** `setup()` now does two things. It reads `platformFirm` under `ownFirm` before seeding: a firm that is unknown or walled away is `FoPersonNotFound(NO_FRONT_OFFICE)`. It then checks the setup row after the seed: a DELETED or ABANDONED firm, which FO-1a seeds none for, gets the same error.
+  * The fake's `closeFirm` matches this, and the new contract case `firmThatLeft` runs on both.
+  * Without the post-seed check, the contract case fails (33/35). Without the platform-firm check, the walled-firm check fails (34/35).
+  * Note, not a finding: the fake cannot know platform firms, so it still accepts an unknown firm as a "firm without setup". That is the DW5 hook, and it is documented.
+* **m2, closed.** FO-2's text rule is copied into the port: one line, no control, direction or tag marks (NUL included), a letter or digit, and a phone of at most 40 characters.
+  * An optional part with no word is empty, as in FO-2's `text()`.
+  * Company `hasWord` now uses `\p{Alphabetic}\p{Nd}`, which is ICU `[[:alnum:]]`, so "²" is refused before the database.
+  * The regex literals are plain escapes now. Seven new refusals are in the contract.
+* **m3, closed.** The new test shows a 500 ms `lock_timeout` while the caller's transaction is open, and that the update runs after commit and after a plain read (the control). Without `for share` it fails (34/35).
+* **m4, closed.** `fo_sales_person_matches … where by_email` must return exactly the two ids. The staff check is asserted as `hidden === 1`, with no person named. The builder's reason for not using a seeing-all actor (`seen` needs a lead) matches FO-9a's service (service.ts:69).
+* **m5, closed as documented.** A note at `fakeFoPerson` names the differing forms and how to pass the adapter's `phoneE164`.
+
+No new Blocker, Major or Minor.
+
+Verdict: Approve 00883c41bd1f0c1b30d410706cd6c459d13d82a5
