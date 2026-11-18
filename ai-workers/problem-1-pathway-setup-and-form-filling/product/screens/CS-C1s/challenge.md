@@ -82,18 +82,18 @@ Written by the concept's author (screens lane) on 18 Nov; Build Lead C reviews i
 * **M5** accepted, screen side: §5 gives the screen's own words for each refusal code and drops the rule numbers. The API text stays as it is, since the brief keeps the four actions unchanged.
 * **M6** accepted: it is concept question 3, for Build Lead C to confirm before part 2.
 * **Minors:**
-  * m1: the close words now carry the Sample mark as the brief says, with no silent deviation. Challenge question 2 stays open for the tech lead.
+  * m1: the close words now carry the Sample mark as the brief says, with no silent deviation. Challenge question 2 is answered by the brief, which labels the close outcomes Sample.
   * m2: moved to the out-of-scope list.
   * m3: "recorded by" shows the staff name.
   * m4: the withdrawal date comes from the newest withdrawal row.
   * m5: with no session, the header shows the Pill only.
   * m6: the 404 words name the firm.
-  * m7: the 428 state is drawn.
+  * m7: the 428 state is specified in §4 (in words; not a board frame).
   * m8: the panel keeps a fixed-height skeleton while loading.
   * m9: DS2 uses a staff member with no roles.
   * m10: DS3 is named as the screen's proof.
   * m11: the touch list now has `contracts/runtime.ts` and `frame.tsx`.
-  * m12: the words are aligned with the board.
+  * m12: the no-session words are aligned between concept and board, and no longer name the demo-only Acting as switch (review minor 2).
 
 ## Agreement
 
