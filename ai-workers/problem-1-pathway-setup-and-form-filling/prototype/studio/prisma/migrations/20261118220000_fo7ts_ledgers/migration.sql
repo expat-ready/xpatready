@@ -11,14 +11,16 @@
 --     not touch it). Insert-only; behind PF-12's walls.
 --   * one lock order: both take the party lock first (money_trust_lock, FO-7lk), then any invoice row.
 -- Replaces money_trust_entry_write (FO-7a2's text after FO-7lk, changed only for the pair). New: money_invoice_due,
--- money_trust_entry_move_paired, money_credit_entry_write.
+-- money_trust_entry_move_paired, money_credit_entry_write, and (break on 692ea4be) money_credit_kept_holds,
+-- money_invoice_credit and five new triggers that keep the credit rules true after later writes: on money_credit_entry,
+-- money_refund, money_trust_entry, money_invoice_line and money_invoice. No existing function of another row is edited.
 -- Rollback: rollback.sql in this folder (Prisma reads only migration.sql). The enum value MOVE_TO_CASE stays (PostgreSQL
 --   cannot drop one).
 
 -- Prisma's DDL (prisma migrate diff). MOVE_TO_CASE is usable only after this transaction commits, so nothing below
 -- names it but function bodies (read when they run) and checks comparing the kind as text.
 CREATE TYPE "MoneyCreditKind" AS ENUM ('KEPT', 'APPLIED', 'REFUNDED', 'REVERSED');
-ALTER TYPE "MoneyTrustEntryKind" ADD VALUE 'MOVE_TO_CASE';
+ALTER TYPE "MoneyTrustEntryKind" ADD VALUE IF NOT EXISTS 'MOVE_TO_CASE';  -- IF NOT EXISTS: re-run after the rollback (break R2)
 ALTER TABLE "money_trust_entry" ADD COLUMN     "moved_from_entry_id" UUID;
 CREATE TABLE "money_credit_entry" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
@@ -263,10 +265,13 @@ BEGIN
   PERFORM money_trust_lock(NEW.firm_id, coalesce(NEW.person_id, NEW.company_id), NEW.currency);
   IF NEW.kind = 'KEPT' THEN
     -- AG-6-21 rules 2-3: what a payment paid over its invoice may be kept for the invoice's holder.
-    SELECT p.amount_minor, p.currency, p.received_into, p.invoice_id INTO d FROM "money_payment" p WHERE p.firm_id = NEW.firm_id AND p.id = NEW.payment_id;
+    SELECT p.amount_minor, p.currency, p.received_into, p.invoice_id, p.cleared INTO d FROM "money_payment" p WHERE p.firm_id = NEW.firm_id AND p.id = NEW.payment_id;
     IF NOT FOUND THEN PERFORM money_missing('money_credit_entry', 'payment', NEW.payment_id); END IF;
     IF d.received_into <> 'OPERATING' OR d.invoice_id IS NULL THEN
       RAISE EXCEPTION 'money_credit_entry: credit is kept from a payment into operating on an invoice (money in trust stays in the trust ledger)' USING ERRCODE = 'check_violation';
+    END IF;
+    IF NOT d.cleared THEN
+      RAISE EXCEPTION 'money_credit_entry: credit is kept only from money that arrived (this cheque is not cleared yet)' USING ERRCODE = 'check_violation';
     END IF;
     IF d.currency <> NEW.currency THEN
       RAISE EXCEPTION 'money_credit_entry: credit is in its payment''s currency (%)', d.currency USING ERRCODE = 'check_violation';
@@ -332,6 +337,100 @@ BEGIN
 END $$;
 CREATE TRIGGER money_credit_entry_write BEFORE INSERT ON "money_credit_entry" FOR EACH ROW EXECUTE FUNCTION money_credit_entry_write();
 
+-- ------------------------------------------------------------------------------- kept and applied credit stay true
+-- Break on 692ea4be (B4-B8): the credit rules hold after every later write, not only when the credit entry is written.
+-- Credit kept from an invoice's payments stays paid over by at least that much, and never more than the payments less
+-- their refunds (B4 a refund, B5 a credit application reversed, B6 trust returned, B7 a draft's lines). Credit applied to
+-- a draft is never more than its lines less credit notes and the write-off (B7). An invoice holding credit keeps its
+-- party, case and currency (B8). Each writer below takes the invoice's party lock before the invoice row, or (draft
+-- lines) only the row a credit writer takes after the party lock, so the one lock order holds.
+CREATE OR REPLACE FUNCTION money_credit_kept_holds(f uuid, inv uuid, what text) RETURNS void LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE kept bigint; due bigint;
+BEGIN
+  SELECT coalesce(sum(k.amount_minor + coalesce((SELECT sum(r.amount_minor) FROM "money_credit_entry" r WHERE r.firm_id = k.firm_id AND r.reverses_entry_id = k.id), 0)), 0)
+    INTO kept FROM "money_credit_entry" k JOIN "money_payment" p ON p.firm_id = k.firm_id AND p.id = k.payment_id WHERE k.firm_id = f AND k.kind = 'KEPT' AND p.invoice_id = inv;
+  IF kept <= 0 THEN RETURN; END IF;
+  due := money_invoice_due(f, inv);
+  IF kept > greatest(-due, 0) THEN
+    RAISE EXCEPTION '%: % of what was paid on this invoice is held as credit, so the invoice must stay paid over by that much (now %): reverse the kept credit first',
+      what, to_char(kept / 100.0, 'FM999,999,990.00'), to_char(-due / 100.0, 'FM999,999,990.00') USING ERRCODE = 'check_violation';
+  END IF;
+  IF EXISTS (SELECT 1 FROM "money_payment" p WHERE p.firm_id = f AND p.invoice_id = inv
+      AND p.amount_minor - coalesce((SELECT sum(r.amount_minor) FROM "money_refund" r WHERE r.firm_id = p.firm_id AND r.payment_id = p.id), 0)
+        < coalesce((SELECT sum(k.amount_minor + coalesce((SELECT sum(r.amount_minor) FROM "money_credit_entry" r WHERE r.firm_id = k.firm_id AND r.reverses_entry_id = k.id), 0))
+                     FROM "money_credit_entry" k WHERE k.firm_id = p.firm_id AND k.kind = 'KEPT' AND k.payment_id = p.id), 0)) THEN
+    RAISE EXCEPTION '%: credit kept from a payment is never more than the payment less its refunds: reverse the kept credit first', what USING ERRCODE = 'check_violation';
+  END IF;
+END $$;
+
+-- The credit held on an invoice, kept from its payments or applied to it, net of reversals.
+CREATE OR REPLACE FUNCTION money_invoice_credit(f uuid, inv uuid, k "MoneyCreditKind") RETURNS bigint LANGUAGE sql STABLE SET search_path = pg_catalog, public, pg_temp AS
+  $$ SELECT coalesce(sum(e.amount_minor + coalesce((SELECT sum(r.amount_minor) FROM "money_credit_entry" r WHERE r.firm_id = e.firm_id AND r.reverses_entry_id = e.id), 0)), 0)
+       FROM "money_credit_entry" e LEFT JOIN "money_payment" p ON p.firm_id = e.firm_id AND p.id = e.payment_id
+      WHERE e.firm_id = f AND e.kind = k AND (e.invoice_id = inv OR p.invoice_id = inv) $$;
+
+-- B5: reversing an application re-opens its invoice; credit kept from that invoice's payments must still be paid over.
+CREATE OR REPLACE FUNCTION money_credit_entry_holds() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE inv uuid;
+BEGIN
+  SELECT r.invoice_id INTO inv FROM "money_credit_entry" r WHERE r.firm_id = NEW.firm_id AND r.id = NEW.reverses_entry_id AND r.kind = 'APPLIED';
+  IF inv IS NOT NULL THEN PERFORM money_credit_kept_holds(NEW.firm_id, inv, 'money_credit_entry'); END IF;
+  RETURN NULL;
+END $$;
+CREATE TRIGGER money_credit_entry_holds AFTER INSERT ON "money_credit_entry" FOR EACH ROW WHEN (NEW.kind = 'REVERSED') EXECUTE FUNCTION money_credit_entry_holds();
+
+-- B4: a refund of an operating payment on an invoice (the invoice's party lock, then its row, then the check).
+CREATE OR REPLACE FUNCTION money_refund_credit_kept() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE i record;
+BEGIN
+  SELECT x.id, coalesce(x.person_id, x.company_id) AS party, x.currency INTO i FROM "money_payment" p JOIN "money_invoice" x ON x.firm_id = p.firm_id AND x.id = p.invoice_id
+   WHERE p.firm_id = NEW.firm_id AND p.id = NEW.payment_id AND p.received_into = 'OPERATING';
+  IF NOT FOUND THEN RETURN NULL; END IF;
+  PERFORM money_trust_lock(NEW.firm_id, i.party, i.currency);
+  UPDATE "money_invoice" x SET updated_at = now() WHERE x.firm_id = NEW.firm_id AND x.id = i.id;
+  PERFORM money_credit_kept_holds(NEW.firm_id, i.id, 'money_refund');
+  RETURN NULL;
+END $$;
+CREATE TRIGGER money_refund_credit_kept AFTER INSERT ON "money_refund" FOR EACH ROW EXECUTE FUNCTION money_refund_credit_kept();
+
+-- B6: money returned to trust from a withdrawal re-opens its invoice (the entry already holds the party lock).
+CREATE OR REPLACE FUNCTION money_trust_entry_credit_kept() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE inv uuid;
+BEGIN
+  SELECT w.invoice_id INTO inv FROM "money_trust_entry" w WHERE w.firm_id = NEW.firm_id AND w.id = NEW.corrects_entry_id AND w.kind = 'WITHDRAWAL_TO_INVOICE';
+  IF inv IS NOT NULL THEN PERFORM money_credit_kept_holds(NEW.firm_id, inv, 'money_trust_entry'); END IF;
+  RETURN NULL;
+END $$;
+CREATE TRIGGER money_trust_entry_credit_kept AFTER INSERT ON "money_trust_entry" FOR EACH ROW WHEN (NEW.kind = 'CORRECTION' AND NEW.amount_minor > 0) EXECUTE FUNCTION money_trust_entry_credit_kept();
+
+-- B7: a draft's lines never fall below the credit applied to it, nor make kept credit untrue. The line writer already
+-- holds the invoice row (FOR SHARE); a credit writer takes the party lock, then waits for that row, then reads the lines.
+CREATE OR REPLACE FUNCTION money_invoice_line_credit() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE f uuid; inv uuid; applied bigint;
+BEGIN
+  IF TG_OP = 'DELETE' THEN f := OLD.firm_id; inv := OLD.invoice_id; ELSE f := NEW.firm_id; inv := NEW.invoice_id; END IF;
+  applied := -money_invoice_credit(f, inv, 'APPLIED');
+  IF applied > 0 AND money_invoice_total(f, inv) - (SELECT coalesce(sum(c.amount_minor), 0) FROM "money_credit_note" c WHERE c.firm_id = f AND c.invoice_id = inv)
+       - (SELECT coalesce(sum(w.amount_minor), 0) FROM "money_write_off" w WHERE w.firm_id = f AND w.invoice_id = inv) < applied THEN
+    RAISE EXCEPTION 'money_invoice_line: % of credit is applied to this draft, more than its lines would leave: reverse that credit first', to_char(applied / 100.0, 'FM999,999,990.00') USING ERRCODE = 'check_violation';
+  END IF;
+  PERFORM money_credit_kept_holds(f, inv, 'money_invoice_line');
+  RETURN NULL;
+END $$;
+CREATE TRIGGER money_invoice_line_credit AFTER INSERT OR UPDATE OR DELETE ON "money_invoice_line" FOR EACH ROW EXECUTE FUNCTION money_invoice_line_credit();
+
+-- B8: an invoice that holds credit keeps its holder and currency (AG-6-21 rule 5 holds after the credit is written).
+CREATE OR REPLACE FUNCTION money_invoice_credit_pinned() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF (NEW.person_id, NEW.company_id, NEW.case_id, NEW.currency) IS DISTINCT FROM (OLD.person_id, OLD.company_id, OLD.case_id, OLD.currency)
+     AND EXISTS (SELECT 1 FROM "money_credit_entry" e LEFT JOIN "money_payment" p ON p.firm_id = e.firm_id AND p.id = e.payment_id
+                  WHERE e.firm_id = OLD.firm_id AND (e.invoice_id = OLD.id OR p.invoice_id = OLD.id)) THEN
+    RAISE EXCEPTION 'money_invoice: this invoice holds credit (applied to it or kept from its payments), so its party, case and currency never change' USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER money_invoice_credit_pinned BEFORE UPDATE ON "money_invoice" FOR EACH ROW EXECUTE FUNCTION money_invoice_credit_pinned();
+
 -- ------------------------------------------------------------------------------------------- PF-12's walls (#1910)
 ALTER TABLE "money_credit_entry" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
 CREATE POLICY "pf12_firm" ON "money_credit_entry" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
@@ -339,7 +438,8 @@ CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "money_credit_entr
 DO $readers$
 DECLARE f text;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['money_trust_entry_write()', 'money_trust_entry_move_paired()', 'money_credit_entry_write()'] LOOP
+  FOREACH f IN ARRAY ARRAY['money_trust_entry_write()', 'money_trust_entry_move_paired()', 'money_credit_entry_write()', 'money_credit_entry_holds()',
+                           'money_refund_credit_kept()', 'money_trust_entry_credit_kept()', 'money_invoice_line_credit()', 'money_invoice_credit_pinned()'] LOOP
     EXECUTE format('ALTER FUNCTION %s SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp', f);
     EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
   END LOOP;

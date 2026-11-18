@@ -109,11 +109,11 @@ try {
   const checksBefore = checksOf(T);
   psql(T, ["-1", "-f", join(MIG, NEW2, "migration.sql")]);
   const added2 = fns(T).filter((f) => !fnBefore2.includes(f)), gone2 = fnBefore2.filter((f) => !fns(T).includes(f)), text2 = readFileSync(join(MIG, NEW2, "migration.sql"), "utf8");
-  ok("FO-7ts DW10 pass (part 2): right after its own migration it adds money_credit_entry_write, money_invoice_due and money_trust_entry_move_paired, drops none, replaces money_trust_entry_write, and every function it writes is money_ and CREATE OR REPLACE",
-    JSON.stringify(added2) === JSON.stringify(["money_credit_entry_write", "money_invoice_due", "money_trust_entry_move_paired"]) && gone2.length === 0 && written(text2).length === 4 && badFns(written(text2)).length === 0
+  ok("FO-7ts DW10 pass (part 2): right after its own migration it adds the credit and move functions (ten, with the five that keep the credit rules after later writes), drops none, replaces money_trust_entry_write, and every function it writes is money_ and CREATE OR REPLACE",
+    JSON.stringify(added2) === JSON.stringify(["money_credit_entry_holds", "money_credit_entry_write", "money_credit_kept_holds", "money_invoice_credit", "money_invoice_credit_pinned", "money_invoice_due", "money_invoice_line_credit", "money_refund_credit_kept", "money_trust_entry_credit_kept", "money_trust_entry_move_paired"]) && gone2.length === 0 && written(text2).length === 11 && badFns(written(text2)).length === 0
     && sql(T, `select md5(prosrc) from pg_proc where proname = 'money_trust_entry_write'`) !== entryBefore, { added2, gone2, w: written(text2) });
   ok("FO-7ts DW10 pass (part 2): its trigger functions run as PF-12's wall reader; money_invoice_due keeps its caller's rights",
-    sql(T, `select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader' and array_to_string(p.proconfig, ',') like 'search_path=%') from pg_proc p where p.proname in ('money_trust_entry_write', 'money_trust_entry_move_paired', 'money_credit_entry_write')`) === "t"
+    sql(T, `select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader' and array_to_string(p.proconfig, ',') like 'search_path=%') from pg_proc p where p.proname in ('money_trust_entry_write', 'money_trust_entry_move_paired', 'money_credit_entry_write', 'money_credit_entry_holds', 'money_refund_credit_kept', 'money_trust_entry_credit_kept', 'money_invoice_line_credit', 'money_invoice_credit_pinned')`) === "t"
     && sql(T, `select prosecdef from pg_proc where proname = 'money_invoice_due'`) === "f");
   for (const d of all.filter((x) => x > NEW2)) psql(T, ["-1", "-f", join(MIG, d, "migration.sql")]);
   for (const d of all) psql(EMPTY, ["-1", "-f", join(MIG, d, "migration.sql")]);
@@ -456,12 +456,45 @@ try {
       appRefused(firmE, ce(u(601), "REFUNDED", -1, { reason: "x" }), /row-level security/) && sql(T, `select count(*) from pg_policy where polrelid = 'money_credit_entry'::regclass and polname = 'pf12_firm'`) === "1"
       && sql(T, `select relforcerowsecurity from pg_class where relname = 'money_credit_entry'`) === "t");
   }
+
+  // ------------------------------------------------- the credit rules after later writes (break on 692ea4be, B4-B8)
+  {
+    const refundQ = (pay: string, amount: number) => `insert into money_refund (firm_id, payment_id, amount_minor, currency, reason, route, idempotency_key, created_by) values ('${F}', '${pay}', ${amount}, 'CAD', 'Paid back', 'OFFLINE', '${key()}', 'user-R') returning amount_minor`;
+    // B5: 300.00 applied to a 1,000.00 invoice, then 1,000.00 paid and 300.00 of it kept; reversing the application is refused.
+    const P = randomUUID(), I0 = inv(P, 50000), p0 = paid(I0, 80000); sql(T, ce(P, "KEPT", 30000, { pay: p0 }));
+    const I = inv(P, 100000), a = sql(T, ce(P, "APPLIED", -30000, { inv: I })), pI = paid(I, 100000); sql(T, ce(P, "KEPT", 30000, { pay: pI }));
+    ok("FO-7ts break B5 fail: with 300.00 kept from an invoice's payments, reversing 300.00 of credit applied to it is refused (no credit from nothing); credit stays 300.00",
+      refused(T, ce(P, "REVERSED", 30000, { rev: a, reason: "Applied in error" }), /held as credit, so the invoice must stay paid over/, "23514") && credit(P) === "30000");
+    // B4: a refund of the payment the credit was kept from.
+    ok("FO-7ts break B4 fail: a refund of 300.00 from the payment that 300.00 was kept from is refused; pass: once the kept credit is reversed, the refund is accepted",
+      refused(T, refundQ(pI, 30000), /held as credit|never more than the payment less its refunds/, "23514")
+      && (sql(T, ce(P, "REVERSED", -30000, { rev: sql(T, `select id from money_credit_entry where payment_id = '${pI}'`), reason: "Refunded instead" })), sql(T, refundQ(pI, 30000)) === "30000"));
+    // B6: trust returned from a withdrawal re-opens an invoice whose overpayment was kept.
+    const Q = randomUUID(); dep(Q, 150000); const IQ = inv(Q, 150000), w = sql(T, te(Q, "WITHDRAWAL_TO_INVOICE", -150000, { inv: IQ })), pQ = paid(IQ, 20000); sql(T, ce(Q, "KEPT", 20000, { pay: pQ }));
+    ok("FO-7ts break B6 fail: returning the 1,500.00 to trust from the withdrawal that paid the invoice is refused while 200.00 of its overpayment is kept as credit",
+      refused(T, te(Q, "CORRECTION", 150000, { corrects: w, reason: "Returned to trust" }), /held as credit, so the invoice must stay paid over/, "23514"));
+    // B7: a draft's lines never fall below the credit applied to it.
+    const R = randomUUID(), IR = inv(R, 100000), pR = paid(IR, 120000); sql(T, ce(R, "KEPT", 20000, { pay: pR }));
+    const D = inv(R, 30000, { draft: true }); sql(T, ce(R, "APPLIED", -20000, { inv: D }));
+    ok("FO-7ts break B7 fail: with 200.00 applied to a 300.00 draft, cutting its line to 50.00 or deleting it is refused; pass: cutting it to 200.00 is accepted",
+      refused(T, `update money_invoice_line set unit_amount_minor = 5000, amount_minor = 5000 where invoice_id = '${D}'`, /credit is applied to this draft, more than its lines would leave/, "23514")
+      && refused(T, `delete from money_invoice_line where invoice_id = '${D}'`, /more than its lines would leave/)
+      && sql(T, `update money_invoice_line set unit_amount_minor = 20000, amount_minor = 20000 where invoice_id = '${D}' returning amount_minor`) === "20000");
+    ok("FO-7ts break B8 fail: a draft holding applied credit keeps its party, case and currency; an issued invoice with kept credit too",
+      refused(T, `update money_invoice set person_id = '${randomUUID()}' where id = '${D}'`, /holds credit .*never change/, "23514")
+      && refused(T, `update money_invoice set case_id = '${C2}' where id = '${D}'`, /never change/) && refused(T, `update money_invoice set currency = 'USD' where id = '${D}'`, /never change/));
+    const chqInv = inv(R, 10000), chq = last(T, `insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by, cleared) values ('${F}', '${chqInv}', 'CHEQUE', 15000, 'CAD', 'OPERATING', now(), '${key()}', 'user-R', false) returning id`);
+    ok("FO-7ts fail (break note on 692ea4be): credit is never kept from an uncleared cheque", refused(T, ce(R, "KEPT", 5000, { pay: chq }), /not cleared yet/, "23514"));
+  }
   // ------------------------------------------------------------------------------- the rollback note, on the empty copy
+  ok("FO-7ts part 2 rollback fail (break R1 on 692ea4be): over a database holding moves or credit entries the rollback refuses and changes nothing",
+    refused(T, readFileSync(join(MIG, NEW2, "rollback.sql"), "utf8"), /cannot be rolled back silently/) && sql(T, `select count(*) > 0 from money_credit_entry`) === "t");
   psql(EMPTY, ["-1", "-f", join(MIG, NEW2, "rollback.sql")]);
   ok("FO-7ts part 2 rollback: rollback.sql restores money_trust_entry_write exactly as FO-7lk left it and money_trust_entry's checks as before, and drops the credit ledger",
     sql(EMPTY, `select md5(prosrc) from pg_proc where proname = 'money_trust_entry_write'`) === entryBefore && checksOf(EMPTY) === checksBefore
     && sql(EMPTY, `select count(*) from pg_class where relname = 'money_credit_entry'`) === "0" && sql(EMPTY, `select count(*) from pg_proc where proname in ('money_credit_entry_write', 'money_invoice_due', 'money_trust_entry_move_paired')`) === "0",
     { e: sql(EMPTY, `select md5(prosrc) from pg_proc where proname = 'money_trust_entry_write'`), entryBefore, c: checksOf(EMPTY) === checksBefore });
+  ok("FO-7ts part 2 pass (break R2): after the rollback the migration runs again", (psql(EMPTY, ["-1", "-f", join(MIG, NEW2, "migration.sql")]), sql(EMPTY, `select count(*) from pg_class where relname = 'money_credit_entry'`) === "1"));
 } finally {
   for (const c of conns) await c.end().catch(() => undefined);
   for (const db of [T, BAD, EMPTY]) { try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", db]); } catch { /* best effort */ } }

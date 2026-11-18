@@ -8,8 +8,17 @@ BEGIN
   IF EXISTS (SELECT 1 FROM "money_trust_entry" WHERE "kind"::text = 'MOVE_TO_CASE') THEN
     RAISE EXCEPTION 'FO-7ts part 2 rollback: moves to a case are recorded; they cannot be rolled back silently';
   END IF;
+  IF EXISTS (SELECT 1 FROM "money_credit_entry") THEN  -- break R1 on 692ea4be: never drop a client's credit
+    RAISE EXCEPTION 'FO-7ts part 2 rollback: credit entries are recorded; they cannot be rolled back silently';
+  END IF;
 END $$;
+DROP TRIGGER money_refund_credit_kept ON "money_refund";
+DROP TRIGGER money_trust_entry_credit_kept ON "money_trust_entry";
+DROP TRIGGER money_invoice_line_credit ON "money_invoice_line";
+DROP TRIGGER money_invoice_credit_pinned ON "money_invoice";
+DROP FUNCTION money_refund_credit_kept(), money_trust_entry_credit_kept(), money_invoice_line_credit(), money_invoice_credit_pinned();
 DROP TABLE "money_credit_entry";
+DROP FUNCTION money_credit_entry_holds(), money_credit_kept_holds(uuid, uuid, text), money_invoice_credit(uuid, uuid, "MoneyCreditKind");
 DROP FUNCTION money_credit_entry_write(), money_invoice_due(uuid, uuid);
 DROP TYPE "MoneyCreditKind";
 DROP TRIGGER money_trust_entry_move_paired ON "money_trust_entry";
