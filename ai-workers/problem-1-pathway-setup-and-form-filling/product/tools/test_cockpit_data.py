@@ -1441,6 +1441,13 @@ class Tooltips(unittest.TestCase):
         w = cd.first_screen(d, {2: "Works", 3: "Not built", 1: "Partial"}, {"today_goal": "30 Proven by 08:00 IST 18 Nov"}, "Lead input")["today"]
         self.assertEqual((w["state"], w["goal"]), ("not set", None))
         self.assertIn("30 Proven by 08:00 IST 18 Nov", w["why"])
+        # review #2099: a number, a list, or a dict whose proven is words: not set with what was sent, never a crash
+        for tg, shown in ((30, "30"), (["30"], "['30']"), ({"proven": "30 by 08:00"}, "30 by 08:00"), ({"proven": True}, "True")):
+            w = cd.first_screen(d, {2: "Works", 3: "Not built", 1: "Partial"}, {"today_goal": tg}, "Lead input")["today"]
+            self.assertEqual((w["state"], w["goal"]), ("not set", None), tg)
+            self.assertIn(shown, w["why"], tg)
+        w = cd.first_screen(d, {2: "Works", 3: "Not built", 1: "Partial"}, {"today_goal": {"proven": "3", "by": "2026-11-17T08:00:00+05:30"}}, "Lead input")["today"]
+        self.assertEqual(w["goal"], 3)                                                         # a number sent as digits still counts
         self.assertEqual([x["id"] for x in f["needs"]["items"]], ["A1", "C5"])                   # dated today; C12 later; C2 not the founder's
         self.assertEqual([x["id"] for x in f["needs"]["later"]], ["C12"])
         self.assertEqual((f["choke"]["stage"], f["choke"]["count"]), ("Built, waiting for qa", 2))
@@ -2215,6 +2222,61 @@ class Flow(unittest.TestCase):
         self.assertEqual(cd.reconcile_compare(c["keys"], t, None)["diffs"][0]["name"], "flow_awaiting")   # a one-off difference is caught
 
 
+class PrListCache(unittest.TestCase):
+    """Lead 75, 17 Nov: the PR list is cached; a run reads the open PRs and the closed PRs updated since the last read."""
+    def pr(self, n, state, upd):
+        return {"number": n, "title": f"t{n}", "state": state, "draft": False, "created_at": "2026-11-01T00:00:00Z", "updated_at": upd,
+                "merged_at": upd if state == "closed" else None, "closed_at": None, "labels": [{"name": "x"}],
+                "head": {"ref": f"b{n}", "sha": "s"}, "base": {"ref": "main"}}
+
+    class FakeGH:
+        def __init__(self, pages):
+            self.pages, self.urls = pages, []
+        def get(self, url, raw=False):
+            self.urls.append(url)
+            for k, v in self.pages.items():
+                if url.startswith(k):
+                    return v
+            raise AssertionError(url)
+
+    def test_bad_cache_reads_in_full(self):
+        # review #2113: a cut or bad cache file reads the list in full with a note, never stops the run; no .tmp is left behind
+        tmp = tempfile.mkdtemp()
+        open(os.path.join(tmp, "prs.json"), "w").write('{"read_at": "2026-11-1')
+        n0 = len(cd.ERRORS)
+        g = self.FakeGH({"/pulls?state=all": [self.pr(1, "open", "2026-11-16T00:00:00Z")]})
+        self.assertEqual([x["number"] for x in cd.pr_list(g, tmp)], [1])
+        self.assertTrue(any("cache unreadable" in e for e in cd.ERRORS[n0:]))
+        self.assertEqual(sorted(os.listdir(tmp)), ["prs.json"])
+        del cd.ERRORS[n0:]
+
+    def test_full_then_incremental(self):
+        tmp = tempfile.mkdtemp()
+        old_now = cd.NOW
+        try:
+            cd.NOW = datetime(2026, 11, 17, 6, 0, tzinfo=timezone.utc)
+            g = self.FakeGH({"/pulls?state=all": [self.pr(3, "open", "2026-11-16T00:00:00Z"), self.pr(2, "closed", "2026-11-10T00:00:00Z"),
+                                                  self.pr(1, "closed", "2026-11-02T00:00:00Z")]})
+            got = cd.pr_list(g, tmp)
+            self.assertEqual([x["number"] for x in got], [3, 2, 1])
+            self.assertEqual(len(g.urls), 1)                                  # no cache: the full read
+            cd.NOW = datetime(2026, 11, 18, 6, 0, tzinfo=timezone.utc)        # a day later: #3 merged, #4 opened, #2's title edited
+            p2 = dict(self.pr(2, "closed", "2026-11-17T12:00:00Z"), title="new")
+            g = self.FakeGH({"/pulls?state=open": [self.pr(4, "open", "2026-11-18T01:00:00Z")],
+                             "/pulls?state=closed": [self.pr(3, "closed", "2026-11-18T02:00:00Z"), p2, self.pr(1, "closed", "2026-11-02T00:00:00Z")]})
+            got = {x["number"]: x for x in cd.pr_list(g, tmp)}
+            self.assertEqual(sorted(got), [1, 2, 3, 4])
+            self.assertEqual((got[3]["state"], got[2]["title"], got[1]["title"]), ("closed", "new", "t1"))
+            self.assertEqual(len(g.urls), 2)                                  # one page of open PRs, one of closed: not every page
+            self.assertTrue(all(k in got[4] for k in ("labels", "head", "base", "merged_at")))
+            cd.NOW = datetime(2026, 11, 26, 6, 0, tzinfo=timezone.utc)        # over 7 days since the full read: full again
+            g = self.FakeGH({"/pulls?state=all": [self.pr(4, "closed", "2026-11-20T00:00:00Z")]})
+            self.assertEqual([x["number"] for x in cd.pr_list(g, tmp)], [4])
+        finally:
+            cd.NOW = old_now
+            shutil.rmtree(tmp)
+
+
 class StuckNow(unittest.TestCase):
     """A134 (founder 23:3x IST 16 Nov via Lead 70): four lines that say what is stuck right now (FORMULAS.md › Stuck now)."""
     META = {"taken_at": "2026-11-20T12:00:00+05:30", "main_at": "2026-11-20T05:15:00Z"}      # 75 min before taken_at
@@ -2247,6 +2309,12 @@ class StuckNow(unittest.TestCase):
         nm = self.lines()
         self.assertEqual((nm["queue"]["light"], nm["sessions"]["light"], nm["sessions"]["text"]), ("grey", "grey", "Sessions stuck (awaiting input, failed, blocked, or idle with work left and no push for 90 min): not reported"))
         self.assertEqual(self.lines(ci={"queued_runs": 20})["queue"]["light"], "amber")
+        # review #2099: a red queue adds no reason when no approved PR is over 60 min, or when the approved reading is missing
+        none_old = self.lines(ci={"queued_runs": 31}, ap=[])["approved"]
+        self.assertNotIn("waiting for CI machines", none_old["text"])
+        miss = self.lines(ci={"queued_runs": 31}, ap={"error": "offline"})["approved"]
+        self.assertEqual(miss["light"], "grey")
+        self.assertNotIn("waiting for CI machines", miss["text"])
         # review m2, m3: an empty list from an old check, or with a time that has no zone or does not parse, is amber, never green
         for at in ("2026-11-20T04:00:00Z", "2026-11-20T11:00:00", "23:40 IST", "2026-11-20T11:20:00+05:30"):
             got = self.lines(li={"stuck_sessions": [], "stuck_sessions_at": at})["sessions"]["light"]
@@ -2255,8 +2323,8 @@ class StuckNow(unittest.TestCase):
         r = self.lines(li={"stuck_sessions": [{"title": "Manitoba read", "state": "blocked", "reason": "Claude in Chrome not connected"}, {"title": "PF-8r", "state": "Awaiting input"}],
                            "stuck_sessions_at": 1763358000})["sessions"]
         self.assertEqual((r["text"], r["light"], r["items"]), ("Sessions stuck (awaiting input, failed, blocked, or idle with work left and no push for 90 min): 2: "
-                          "Manitoba read (blocked; Claude in Chrome not connected); PF-8r (Awaiting input)", "red",
-                          ["Manitoba read (blocked; Claude in Chrome not connected)", "PF-8r (Awaiting input)"]))
+                          "Manitoba read (blocked: Claude in Chrome not connected); PF-8r (Awaiting input)", "red",
+                          ["Manitoba read (blocked: Claude in Chrome not connected)", "PF-8r (Awaiting input)"]))
         self.assertIn("a time not given", r["src"])
         self.assertEqual(self.lines(li={"stuck_sessions": [], "stuck_sessions_at": ["x"]})["sessions"]["light"], "amber")
         # the reason goes only with a red queue line (20 queued is amber: no reason)
