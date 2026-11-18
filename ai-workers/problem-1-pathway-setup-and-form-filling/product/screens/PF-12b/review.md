@@ -152,3 +152,13 @@ Runs on the merged tree: `check_pf12b_bypass_audit` 27/0, `check_pf5_signup_bill
 **Verdict: Approve.**
 
 Reviewer: Approve ca2382c5fd3f9939553a9403161a08881fe54b15
+
+## Re-review 7: third merge of origin/main (`43db8c6`; parents d1ea8a4, 4c47c1bad)
+- **This PR's files.** Of its 12 files, only `MODULE.md` changed against d1ea8a4.
+- **MODULE.md against main** (`git diff 43db8c6^2 43db8c6`), compared word by word: there are exactly two insertions, the PF-12b invariant sentence and `tests/check_pf12b_bypass_audit.ts` on the Tests line. Main's new Tables and Tests entries are kept. The card is 39 lines.
+- **Main's side.** It adds no new `asBypass(`/`asJob(` call (merge base..4c47c1bad), and all 14 `BYPASS_USES` entries carry `audit`.
+- **Run on the merged tree:** `check_pf12b_bypass_audit` 27/0. I did not re-run the builder's other suites.
+
+**Verdict: Approve.**
+
+Reviewer: Approve 43db8c6654e212f95eeb606078091565fe403b53
