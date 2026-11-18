@@ -41,7 +41,7 @@ export function AccountPage() {
   return (
     <PlatformFrame crumbs={[{ label: "Profile" }]}>
       <h1 className="mb-1 text-xl font-semibold">Profile</h1>
-      <p className="mb-4 text-sm text-text-muted">Your own account, as your firm holds it. Changing your licence or two-step sign-in comes next.</p>
+      <p className="mb-4 text-sm text-text-muted">Your own account, as your firm holds it. Change your licence under Licence.</p>
       <Profile />
     </PlatformFrame>
   );
