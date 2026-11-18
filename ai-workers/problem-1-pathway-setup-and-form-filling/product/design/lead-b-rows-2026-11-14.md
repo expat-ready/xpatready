@@ -1912,3 +1912,14 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 
 ### Rev 17.18 (16:5x IST 18 Nov)
 * **#2011 FO-13i** (branch `claude/compassionate-einstein-jl1bgi`, head 935afda4b, labelled by Lead 79): batch #2115 (#2003 + #2014 + #2011) failed on shard 3 in `check_fo13i_identity.ts`, because #2003 (AUD-1a) refuses an audit actor with no type, and FO-13i's test writes the actor `test`. Lead 80's comment 6977133616 gives the lane its steps: once #2003 is on main, merge main (P-270), give the test's actor a type from AUD-1a's list, run the suite, get an Approve on the new head, then label. Lead B confirmed to Lead 80 that this is its row. When the new Approve is posted, Lead B sends the sha to Lead 80. #2003 is still open (16:53 IST).
+
+### Rev 17.19 (19:xx IST 18 Nov): Wave 1 start sheets (Lead 80, P-697, P-698)
+* **Three start sheets:** `lead-b-briefs/wave1-sales.md` (FO-2 parts 3-5, FO-4 parts 2a, 2b and 3, FO-4b, J-27), `wave1-registers.md` (PF-21s part 4, J-109) and `wave1-terms.md` (PF-5t part 2, PF-5v part 2). Each has its Done when, a duplicate check and a touch list.
+* **Corrections to the ask:**
+  * PF-21s part 4 needs no new concept (#1821 covers it);
+  * PF-5t part 2 waits only on part 1 and PF-6 part 1, both on `main`;
+  * PF-5v part 2 waits on PF-19p (#1961) and PF-19e, not on PF-5 part 2;
+  * J-109 W2 is the 2-business-day acknowledge-by date, not 30 days (rev 16.28);
+  * J-109 starts after PF-21i (#2012).
+* **Sales:** FO-2b's `pipelines/:type/board` is reused for the Individual board, and FO-6's `prospect.won` is the only signature Won path.
+* **#2102 FO-3a question** (comment 6980059020): part 2b and part 1b-ii cannot start while #2102 and #2103 are open. The recommendation is accepted, and the builder holds. Whether that builder takes FO-2 part 3 is Lead 80's call (P-663).
