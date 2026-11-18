@@ -29,7 +29,7 @@ Tonight's push line (22:5x): word for word in `history/STATE-2026-11-18-2320-lea
 Hand-over items 4-5: word for word in `history/STATE-2026-11-18-2325-lead81s2-handover-items-4-5.md`.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
-**For the founder (open):** (a) R1.20 vs PF-4c invite rule; (b) close #2088. Done: (c) Lead 83 standby, (d) P-701, (e) ticket High asked. Full line word for word in `history/STATE-2026-11-18-2212-lead81s2-for-founder-line.md`.
+**For the founder (open):** (a) R1.20 vs PF-4c invite rule; (b) close #2088. (f) leftover test servers: `lsof -ti tcp:4473,4474,4475,4477 -sTCP:LISTEN | xargs kill` in his Terminal (sandbox can't signal them). Owed row: isolated.sh `stop` should keep the copy's timer when it cannot kill the server (qa, 23:2x). Done: (c) Lead 83 standby, (d) P-701, (e) ticket High asked. Full line word for word in `history/STATE-2026-11-18-2212-lead81s2-for-founder-line.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
 | S10-A136 | 10 Nov to 17 Nov 00:2x asks | done, answered, standing or superseded (A130 stall research still owed); the pointer rows word for word in `history/STATE-2026-11-17-0858-lead74s2-asks-pointer-rows-S10-A136.md` |
