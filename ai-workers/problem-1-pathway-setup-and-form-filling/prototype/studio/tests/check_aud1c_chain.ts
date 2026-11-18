@@ -131,6 +131,8 @@ try {
   const rowNoType = (await bare.query<Row>(`${LINE_SQL} where id = $1`, [noType])).rows[0];
   ok("AUD-1c DW3 fail: the same line hashed with no actor_type (as a hash taken before aud_event_fill would be) does not match",
     !entryHash(rowNoType.prev_hash, { ...asLine(rowNoType), actorType: null as unknown as string }).equals(rowNoType.entry_hash) && entryHash(rowNoType.prev_hash, asLine(rowNoType)).equals(rowNoType.entry_hash));
+  ok("AUD-1c DW3 fail (breaker minor 4): a line at infinity or before year 1 is refused (the canonical at has no era)",
+    ["'infinity'", "'-infinity'", "'2026-01-01 00:00:00+00 BC'"].every((at) => /aud_event_at_finite/.test(err(() => sql(BARE, line(W_FIRM, "system:check", { at }), "xr_app")))));
   const rowMicro = (await bare.query<Row>(`${LINE_SQL} where id = $1`, [micro])).rows[0];
   ok("AUD-1c DW3 fail: the microsecond line hashed with at cut to milliseconds (a JS Date) does not match", !entryHash(rowMicro.prev_hash, { ...asLine(rowMicro), at: "2026-11-18T10:00:00.123Z" }).equals(rowMicro.entry_hash) && entryHash(rowMicro.prev_hash, asLine(rowMicro)).equals(rowMicro.entry_hash));
 
@@ -194,6 +196,24 @@ try {
   const restarted = sql(BARE, `select string_agg(action || '|' || actor || '|' || seq || '|' || (prev_hash = '\\x${ZERO_HASH.toString("hex")}'::bytea), ',') from audit_event where chain_key = 'sample:${W_DEMO}'`);
   ok(`AUD-1c DW4 pass: the reset's delete (${demoN} demo lines) restarts the sample chain with one chain.restarted line (actor system, seq 1, linked to zero) and it verifies`,
     demoN === 7 && restarted === "chain.restarted|system|1|true" && (await verify(bare, `sample:${W_DEMO}`)).ok, restarted);
+  // Breaker Major 1: a demo write in flight while the reset deletes. The writer holds the demo chain's lock; the reset's
+  // delete waits for it at the restart, then removes the line that committed meanwhile, and the chain restarts clean.
+  for (let i = 0; i < 4; i++) sql(BARE, line(W_DEMO, "user-A"), "xr_app");
+  const writer = await client(BARE, "xr_app"), resetter = await client(BARE, "xr_app");
+  await writer.query("begin");
+  await writer.query("insert into audit_event (id, workspace_id, actor, action, entity, summary) values ($1, $2, 'user-A', 'check', 'aud1c', 'Sample line in flight')", [randomUUID(), W_DEMO]);
+  const t0 = Date.now();
+  const resetting = resetter.query(`begin; select set_config('app.audit_sample_reset', 'on', true); delete from audit_event where workspace_id = '${W_DEMO}'; commit`);
+  await new Promise((r) => setTimeout(r, 400));
+  await writer.query("commit");
+  await resetting;
+  const raced = sql(BARE, `select string_agg(seq || ':' || action, ',' order by seq) from audit_event where chain_key = 'sample:${W_DEMO}'`);
+  ok(`AUD-1c DW4 pass (breaker Major 1): a reset racing a demo write waits for it (${Date.now() - t0} ms), removes the line that committed meanwhile, and the chain restarts with one line that verifies`,
+    raced === "1:chain.restarted" && (await verify(bare, `sample:${W_DEMO}`)).ok && Date.now() - t0 >= 400, raced);
+  for (let i = 0; i < 3; i++) sql(BARE, line(W_DEMO, "user-A"), "xr_app");
+  sql(BARE, `begin; select set_config('app.audit_sample_reset', 'on', true); delete from audit_event where chain_key = 'sample:${W_DEMO}' and seq = 3; commit`, "xr_app");
+  ok("AUD-1c DW4 fail: deleting one line that is not a chain's start (lines 1..M) is no reset: nothing else is removed and no restart line is written",
+    sql(BARE, `select string_agg(seq || ':' || action, ',' order by seq) from audit_event where chain_key = 'sample:${W_DEMO}'`) === "1:chain.restarted,2:check,4:check");
   const firmsAfter = await nonSample(bare);
   ok("AUD-1c DW4 pass: every firm chain and the platform chain are unchanged by it (every line's seq and hash the same, no line added) and still verify",
     firmsAfter.size === firmsBefore.size && [...firmsBefore].every(([k, h]) => firmsAfter.get(k) === h) && (await inOrder([F1, F2, F3, "platform"], (k) => verify(bare, k))).every((v) => v.ok));

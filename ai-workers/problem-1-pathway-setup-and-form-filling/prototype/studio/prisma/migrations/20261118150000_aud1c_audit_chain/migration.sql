@@ -11,6 +11,8 @@
 -- Order: the columns (nullable); the canonical form; the back-fill, oldest first per chain, with AUD-1a's
 -- aud_event_no_change switched off for this step only and on again before the migration ends; NOT NULL and the
 -- unique (chain_key, seq); the insert trigger and the reset restart; the checker's table (part 2 writes it).
+-- A later BEFORE INSERT trigger on audit_event must sort before aud_event_zchain, or it changes a line after it is hashed
+-- (the checker then reports the chain broken).
 -- Down (by hand): drop aud_event_zchain, aud_event_chain_restart and their functions, aud_event_canonical,
 -- aud_chain_field, the unique index, the four columns, aud_chain_check and the enum AuditChainStatus.
 
@@ -70,7 +72,10 @@ ALTER TABLE "audit_event" ENABLE TRIGGER "aud_event_no_change";
 
 ALTER TABLE "audit_event" ALTER COLUMN "chain_key" SET NOT NULL, ALTER COLUMN "seq" SET NOT NULL,
   ALTER COLUMN "prev_hash" SET NOT NULL, ALTER COLUMN "entry_hash" SET NOT NULL,
-  ADD CONSTRAINT "aud_event_chain_hash_len" CHECK (octet_length("prev_hash") = 32 AND octet_length("entry_hash") = 32 AND "seq" >= 1);
+  ADD CONSTRAINT "aud_event_chain_hash_len" CHECK (octet_length("prev_hash") = 32 AND octet_length("entry_hash") = 32 AND "seq" >= 1),
+  -- The canonical `at` is UTC text with no era: a line's time is finite and AD (breaker minor 4: BC and ±infinity
+  -- would print alike).
+  ADD CONSTRAINT "aud_event_at_finite" CHECK (isfinite("at") AND "at" >= '0001-01-01 00:00:00+00');
 
 -- CreateIndex
 CREATE UNIQUE INDEX "audit_event_chain_key_seq_key" ON "audit_event"("chain_key", "seq");
@@ -96,20 +101,26 @@ END $fn$;
 ALTER FUNCTION aud_event_zchain() OWNER TO xr_wall_reader;
 CREATE TRIGGER "aud_event_zchain" BEFORE INSERT ON "audit_event" FOR EACH ROW EXECUTE FUNCTION aud_event_zchain();
 
--- Reset restart: when a DELETE (only ever the demo reset's, AUD-1a) empties a `sample:` chain whose workspace still
--- exists, one `chain.restarted` line (actor system, Sample) starts it again at seq 1, so demo.ts needs no edit. A chain
--- whose workspace is gone (the reset deletes the demo workspace row next; its orphan sweep then removes that line)
--- simply ends: the new demo workspace has its own chain.
+-- Reset restart: when a DELETE (only ever the demo reset's, AUD-1a) removes a `sample:` chain's lines 1..M (a reset,
+-- not a single line), it takes that chain's lock, so a demo write still in flight finishes first (breaker Major 1: a
+-- line committed after the delete's snapshot would otherwise survive at seq M+1 and link to a deleted line), removes
+-- any line of that chain that committed in the meantime (Sample lines the same reset may remove; AUD-1a's rule applies,
+-- so a line it refuses fails the whole reset), and, when the chain's workspace still exists, writes one
+-- `chain.restarted` line (actor system, Sample) at seq 1. demo.ts needs no edit. A chain whose workspace is gone (the
+-- reset deletes the demo workspace row next; its orphan sweep then removes that line) simply ends: the new demo
+-- workspace has its own chain.
 CREATE FUNCTION aud_event_chain_restart() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $fn$
 DECLARE r record;
 BEGIN
-  FOR r IN SELECT DISTINCT o."chain_key", o."workspace_id" FROM gone o WHERE o."chain_key" LIKE 'sample:%' ORDER BY 1 LOOP
-    IF NOT EXISTS (SELECT 1 FROM "audit_event" e WHERE e."chain_key" = r."chain_key")
-       AND EXISTS (SELECT 1 FROM "workspace" w WHERE w."id" = r."workspace_id") THEN
+  FOR r IN SELECT o."chain_key", min(o."workspace_id"::text)::uuid AS ws FROM gone o WHERE o."chain_key" LIKE 'sample:%'
+             GROUP BY o."chain_key" HAVING min(o."seq") = 1 AND max(o."seq") = count(*) ORDER BY 1 LOOP
+    PERFORM pg_advisory_xact_lock(1096107075, hashtext(r."chain_key"));
+    DELETE FROM "audit_event" e WHERE e."chain_key" = r."chain_key";
+    IF EXISTS (SELECT 1 FROM "workspace" w WHERE w."id" = r.ws) THEN
       INSERT INTO "audit_event" ("id", "workspace_id", "actor", "action", "entity", "summary")
-        VALUES (gen_random_uuid(), r."workspace_id", 'system', 'chain.restarted', 'audit chain',
+        VALUES (gen_random_uuid(), r.ws, 'system', 'chain.restarted', 'audit chain',
                 'The demo reset removed this Sample workspace''s audit lines; its audit chain starts again here (Sample)');
     END IF;
   END LOOP;
