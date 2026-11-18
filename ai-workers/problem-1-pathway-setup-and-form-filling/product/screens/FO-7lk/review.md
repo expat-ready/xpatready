@@ -65,3 +65,49 @@ What FO-7lk adds is the single key and the explicit order. It closes no live dea
 **Journey test: not scored.** There is no screen and no user journey (database-only row by the brief), so the journey-test criteria (UI words, accessibility, screen sizes) have nothing to score. Its "break it" pass ran at the database level instead: concurrency both orders, wrong-party entry, mixed kinds in one session, rollback. Findings 1-4 are the result.
 
 Reviewer: Approve 9f30e673
+
+---
+
+# Round 2 (diff-only, 9f30e673 → 19d39511d)
+
+# FO-7lk review, round 2 (diff-only, P-277): one lock order for "Move back to trust"
+
+Reviewed: branch `claude/trusting-fermat-ejsqdh`, from my Approve head **9f30e673** to the new head **19d39511d**. I read only FO-7lk's own files. Reviewer: Opus, did not build it. Database-only row (no screen).
+
+## Scope confirmed
+* `git diff 1ed3d3af 19d39511d --stat`: 7 files, all FO-7lk's: `migration.sql`, `rollback.sql` (both in `20261118210000_fo7lk_trust_lock/`), `check_fo7lk_lock_order.ts`, `MODULE.md` (+1, the invariant line), `build-notes.md`, `review.md`, `break-report.md`. Nothing else differs from #2106's head.
+* From 9f30e673 the FO-7lk diff is 4 files (+53/−12). `MODULE.md` did not change after round 1. Commits: cd4d06d0c (fixes), 2cd4d9cd1 (test reads text after its own migration), 19d39511d (merge 1ed3d3af and re-stamp).
+* #2106's two earlier migrations (`20261118200000`, `20261118200100`) redefine `money_trust_answer_move`, `money_trust_on`, `money_trust_request_write` and `money_invoice_write`. None of these is one of FO-7lk's five functions, and neither migration holds `money_trust:` or `pg_advisory`. So FO-7lk's copied bodies revert nothing of #2106's. The test's "each of the five is FO-7a's or FO-7a2's text exactly" check passes against the pre-FO-7lk database, which includes #2106.
+
+## Claimed changes: each one checked
+* **Round-1 Minor / B-1: fixed.** The early `SELECT … INTO w` (migration.sql:174-175) now adds `e.kind = 'WITHDRAWAL_TO_INVOICE' AND e.invoice_id = NEW.invoice_id`.
+  * That is the same condition as the refusal at :187, so an entry the checks refuse takes no lock.
+  * An entry that passes is the invoice's own party and currency (FO-7a2's rule), so the key is the one `money_issued_invoice` takes next. Valid move-backs keep their behaviour.
+  * The firm filter is unchanged.
+* **New regression check: it works.** On 19d39511d it passes (`held 0`, refused 23514 in the ledger's words).
+  * I put 9f30e673's `migration.sql` text into the re-stamped folder and re-ran it. Exactly that check failed, 15/1: `{"held":1,"out":"23514 money_credit_note: a refund or move-back choice names a trust application to this invoice"}`.
+* **Helper `CREATE OR REPLACE`: done** (:13). The rollback still drops it.
+* **The #1991 line is renamed a note: done** (test:170). Its title now says it checks only that the harness ran.
+* **The test reads function text right after its own migration: done** (test:45-50). `t`, `back` and `plant` take only FO-7lk, `back` then takes the rollback, the text is read, and only after that do `t` and `plant` take later migrations (`> NEW`). Today there are none.
+* **Re-stamp 20261118180000 → 20261118210000: done.** The folder was renamed (similarity 97%/99%). The rollback's usage comment and the test's `NEW` were updated. The stamp check reports the newest before it as `20261118200100_fo7ts_card_terminal_trust`.
+* **Build notes:** they record the fixes, the currency-type note (round-1 Nit 4), the order-proof note (Nit 3) and the merge. The counts match my runs.
+
+## What I ran
+Detached worktree at 19d39511d, PostgreSQL 18.3 at 127.0.0.1:54329.
+* `check_fo7lk_lock_order.ts` **16/0**. #1991's text: 0 deadlocks in 40 runs. Planted order: 20 of 20 (B then A).
+* The same check with 9f30e673's migration text: **15/1**, only the B-1 check failing (above).
+* `check_fo7a2_ledger_rules.ts` **35/0** · `check_fo7ts_money_settings.ts` **47/0** · `check_prisma_schema.ts` **8/0**.
+* I removed the worktree, and my scratch databases were dropped. The `xr_studio_fo7lk_break2_*` databases still present are another session's (the breaker's), not mine.
+
+## Findings
+1. **Nit: the B-1 check doesn't assert that it reached the wait.** test:217 polls up to 400×5 ms for `wait_event_type = 'Lock'` and then counts held advisory locks. It doesn't check that the wait was reached. If the credit note ever finished or failed before waiting, `held` would be counted on an idle connection: 0, a pass that proves nothing.
+   * On the current text it does wait (in `money_issued_invoice`, on the gate's P lock), and it fails on 9f30e673, so the check tells the two apart today.
+   * Suggest recording the wait state and adding `waited === "Lock"` to the assertion.
+
+No Blocker, Major or Minor. Round 1's Minor and the breaker's B-1 are closed, and so are Nits 2, 3 and 4.
+
+**Journey test: not scored.** As in round 1, there is no screen and no user journey (database-only by the brief), so the journey-test criteria have nothing to score.
+
+**Verdict: Approve** (no open Blocker or Major). Only the Nit above is open, and it is optional.
+
+Reviewer: Approve 19d39511d
