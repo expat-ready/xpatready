@@ -162,3 +162,19 @@ Reviewer: Approve ca2382c5fd3f9939553a9403161a08881fe54b15
 **Verdict: Approve.**
 
 Reviewer: Approve 43db8c6654e212f95eeb606078091565fe403b53
+
+## Re-review 8: fourth merge of origin/main (`6411124`; parents 165a5d2, 34c5e1e99; local, not pushed)
+- **MODULE.md against main** (`git diff 6411124^2 6411124`): only two insertions, the PF-12b invariant sentence and `tests/check_pf12b_bypass_audit.ts` after `check_pf12_walls.ts`. Main's new Purpose entry (`files/file-type.ts`, PF-F4) and its `check_pff4_file_type.ts` test are kept. The card is 39 lines. `module-cards.py tree` passes (15 cards).
+- **This PR's files against 165a5d2.** Of its 12 files, only `MODULE.md` changed. Those changes are line-for-line main's own (4c47c1bad..34c5e1e99).
+- **Main's side: the builder's "no new asBypass use" is wrong.** Main (CS-W1, 4c47c1bad..34c5e1e99) adds a new call site, `api/src/demo.ts:40`: `asBypass("platform.demo.reset", () => seedSampleFirms(db))`. It runs on every configured load (`:449`) and every reset (`:552`). It adds no new `BYPASS_USES` entry, and all 14 entries carry `audit`.
+
+**M1 (Major, from the merge).** This new call site crosses firms with no `platform.bypass` line.
+- `platform.demo.reset` is `audit: "per-firm"` (`firm-scope.ts:117`). `seedSampleFirms` (`platform/seed-sample-firms.ts:52`, `:124`) reads both Sample firms and writes their missing platform rows and settings, but never calls `touchFirm`.
+- The configured load gets no line at all. On reset, `resetSampleFirmSettings`'s lines (`:590`) come later and in other transactions. That is work without its line, the unsafe direction.
+- So in the merged tree, the invariant this PR adds to the card ("Every bypass use writes `platform.bypass` to the touched firm's trail, or is refused") is false.
+- This is the accepted m1 limit, now real at a call site. m1 was accepted when every per-firm call site touched its firms.
+- **Fix:** touch each Sample firm in the seed's transaction (`touchFirm(tx, firm.id)` in `seedSampleFirms`, or a per-firm touch in `seedSampleFirmsAsDemo`). Then add a DW1-style check that a configured load writes one line per Sample firm. If the Lead decides otherwise, the alternative is to record this site in the PR as a named exception and narrow the card's sentence to match.
+
+Not re-run by me: the builder's suites (pf12b 27/0, pf12_walls 100/0).
+
+**Verdict: Block.** Fix M1. The rest of the merge is clean.
