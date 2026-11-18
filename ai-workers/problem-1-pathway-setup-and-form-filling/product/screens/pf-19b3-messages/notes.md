@@ -30,3 +30,4 @@ Searched `main` (`git grep DELIVERED` under `api/src`: only the type and the uns
 10. **Person, not lead (break m4):** the lead page lists the person's messages (the outbox keys on the person), so two leads of one person show the same list; it matches the person read rule. The box now says "Every email to this person, from any of their leads." Recommendation: keep.
 
 Break report (`break-report.md`): Major B1 and Minors m6, m7 fixed in ed67de0b9; m1 (year 0000 cursor) and m2 (cache key under "pf", cleared at sign-out) fixed after it; m3, m4 and m5 are questions 9, 10 and 3 above.
+11. **Case firm id (CS-W1):** cases now carry a nullable `firm_id` (csw1) beside `firm_key`. The case-party rule still uses `firm_key`, since `firm_id` can be empty. When CS-W1 part 2 makes it required, `staff-routes.ts` should switch to `case: { firmId: ctx.firmId }` (the case side's row).

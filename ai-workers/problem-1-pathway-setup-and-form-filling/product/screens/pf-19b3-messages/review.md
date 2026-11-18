@@ -138,3 +138,24 @@ This head merges #1961's new tip (506e69c16: main merged in, migration re-stampe
 No Blocker or Major is open. The earlier Minors and questions stand as recorded (notes.md items 3, 6, 7, 9, 10). The PR body still needs the `Card unchanged:` lines.
 
 Reviewer: Approve 56ab67c649bd810bd44b8d431c059cf73b44bb2c
+
+---
+
+## Re-review of the second merge (diff only, P-277): `git diff 518f7b3f0 5d4b527a5`, head `5d4b527a5aa96a41ba476d04ea3c4724d23103e1`
+
+This head merges #1961's tip 518f7b3f0 (main 34c5e1e99 merged in, including `20261118090000_csw1_firm_id`) into 88c1d3d80.
+
+* **The diff holds only PF-19b part 3, unchanged.**
+  * The diff touches 18 files, none under `prisma/`.
+  * Every part-3 code file, both tests, the notes, the break report, the journey file and the screenshots have the same blob as at 56ab67c64 (and so as at the approved b7eb6a357).
+  * Only `review.md` (records) and `api/src/platform/MODULE.md` differ.
+* **The MODULE.md resolution is clean.** A word diff against 518f7b3f0 shows exactly three additions: the part-3 entry point, the two part-3 tests, and the part-3 line in the PF-19b part 2 block. The card is 40 lines, and `module-cards.py tree` passes.
+* **The case-party rule is still right after CS-W1 part 1.** The rule is `staff-routes.ts:59`: `caseParticipant` → `case.firmKey = ctx.firmKey`.
+  * csw1 adds a nullable `firm_id` to `runtime_case`, filled from `firm_key` by trigger and backfill. It keeps `firm_key` (P-559 (4)) and adds no row-level security to `runtime_case`.
+  * So `firm_key` is still the case side's firm key, and reading `firmId` now would miss rows whose `firm_id` is still null. The outbox read stays firm-scoped by `ctx.firmId` either way, so no other firm's messages can show.
+  * Note for CS-W1 part 2 (NOT NULL plus "the code switch"): this line should move to `case: { firmId: ctx.firmId }` there. That is the case side's row, not a finding here.
+* **Run in the merge worktree:** `check_pf19b3_delivery` passes 24/0, including part 2's suite. The browser suite runs the same blobs, and the coordinator's run on 5d4b527a5 is 24/24.
+
+No Blocker or Major is open. The earlier Minors and questions stand as recorded (notes.md items 3, 6, 7, 9, 10). The PR body still needs the `Card unchanged:` lines.
+
+Reviewer: Approve 5d4b527a5aa96a41ba476d04ea3c4724d23103e1
