@@ -95,6 +95,19 @@ ok("CS-DL1 DW4 pass (wiring): in firm A's scope the view reads A's zone and clos
 ok("CS-DL1 DW4 fail (wiring): with no firm in scope nothing is read across the wall: the defaults (Toronto, no closed days), so today is Sun 7 Mar and Mon 8 Mar carries no mark",
   none.today === "2027-03-07" && none.cal.zone === "America/Toronto" && none.cal.closedDays.length === 0 && showDeadline(due("2027-03-08"), none.cal, none.today)?.mark === null, none);
 
+// DW8 (unit): the case's own firm's calendar through the lookup platform_firm_calendar(firm key), a stand-in for the
+// database answering firm A's key only. A key the database does not know gives the defaults, never another firm's
+// calendar; a stored value that no longer fits its setting reads that setting's default.
+const lookup = (row: Record<string, unknown> | null) => ({ $queryRaw: async (_s: TemplateStringsArray, key: string) => (key === "sample-firm" && row ? [row] : []) }) as unknown as Parameters<typeof deadlineDay>[0];
+const known = await deadlineDay(lookup({ time_zone: "Asia/Tokyo", business_hours: null, closed_days: ["2027-03-08"] }), clock, "sample-firm");
+ok("CS-DL1 DW8 pass (unit): the case's firm key finds its zone and closed days; an unset hours setting reads the default (Mon-Fri)",
+  known.cal.zone === "Asia/Tokyo" && known.cal.closedDays.join() === "2027-03-08" && known.cal.hours.length === 5 && known.today === "2027-03-08", known);
+const unknown = await deadlineDay(lookup({ time_zone: "Asia/Tokyo", business_hours: null, closed_days: ["2027-03-08"] }), clock, "no-such-firm");
+ok("CS-DL1 DW8 fail (unit): a firm key the database does not know gives the defaults (Toronto, no closed days), never another firm's calendar",
+  unknown.cal.zone === "America/Toronto" && unknown.cal.closedDays.length === 0 && unknown.today === "2027-03-07", unknown);
+const bad = await deadlineDay(lookup({ time_zone: "Mars/Olympus", business_hours: "x", closed_days: ["2027-02-30"] }), clock, "sample-firm");
+ok("CS-DL1 DW8 fail (unit): stored values that no longer fit their settings read the defaults, never a 500", bad.cal.zone === "America/Toronto" && bad.cal.hours.length === 5 && bad.cal.closedDays.length === 0, bad);
+
 // ---------------------------------------------------------------- DW5 PF-21's clock after the move
 ok("CS-DL1 DW5 pass: complaints/business-days.ts gives PF-21v's count from calendar/ (one function, not a copy) and nothing else moved",
   complaintDays.businessDaysBetween === businessDaysBetween && complaintDays.BusinessDayTally === BusinessDayTally && !("localDate" in complaintDays) && !("zonedInstant" in complaintDays) && !("businessClose" in complaintDays));

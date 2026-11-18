@@ -39,18 +39,17 @@ const load = reset.status < 300 ? await post("/demo/load", { sample: "configured
 ok("setup: the configured checkpoint loads its Sample route (fails, never skips, when it is missing)", load.status < 300 && Number(sql("select count(*) from route") ?? 0) >= 1, { load: load.status });
 if (load.status >= 300) process.exit(1);
 
-// The Sample firms (PF-1's seed) and their test calendars. First only firm B (sample-solo), closed Mon 8 and Tue 9 Mar
-// 2027, in Tokyo: the officer's firm A (sample-firm) has no platform firm yet ("cannot be found"; a firm's key never
-// changes, so this is the only honest way to lose it). Then firm A, closed Mon 8 Mar 2027.
+// The Sample firms (PF-1's seed; a fresh copy seeds them at start since CS-W1) and their test calendars: firm B
+// (sample-solo) closed Mon 8 and Tue 9 Mar 2027, in Tokyo; the officer's firm A (sample-firm) has no calendar setting
+// until DW8 gives it Mon 8 Mar 2027. A firm that cannot be found is the unit suite's (check_csdl1_deadlines.ts, DW8).
 process.env.DATABASE_URL = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
 const { Db } = await import("../api/src/core.ts");
-const { readSampleFirms, seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
+const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
 const { platformAuditWorkspaceId } = await import("../api/src/platform/identity/audit.ts");
 const { CLOSED_DAYS, TIME_ZONE, writeSetting } = await import("../api/src/platform/settings.ts");
 const db = new Db();
 const idOf = async (key: string) => (await db.platformFirm.findUnique({ where: { key }, select: { id: true } }))?.id ?? null;
-ok("setup: a fresh copy holds no platform firm A yet", (await idOf("sample-firm")) === null);
-await seedSampleFirms(db, readSampleFirms().filter((f) => f.key === "sample-solo"));
+await seedSampleFirms(db);
 const W = await platformAuditWorkspaceId(db as never);
 const set = (firmId: string, key: string, value: unknown) => writeSetting(db, { firmId, key, value, by: "seed:csdl1", workspaceId: W });
 const B = (await idOf("sample-solo"))!;
@@ -87,9 +86,8 @@ try {
 
   // ---------------------------------------------------------------- DW8 the case's own firm's calendar
   setDate(caseId, "2027-03-08");
-  const lost = await current(caseId);
-  ok("CS-DL1 DW8 fail: a case whose platform firm cannot be found gets the defaults (no closed days), never another firm's calendar (firm B is closed that day)", lost?.shown === "Mon 8 Mar 2027" && lost.mark === null, lost);
-  await seedSampleFirms(db);
+  const bare = await current(caseId);
+  ok("CS-DL1 DW8 fail: firm A with no calendar setting gets the defaults (no closed days), never another firm's calendar (firm B is closed that day)", bare?.shown === "Mon 8 Mar 2027" && bare.mark === null, bare);
   const A = (await idOf("sample-firm"))!;
   await set(A, CLOSED_DAYS.key, ["2027-03-08"]);
   const closed = await current(caseId);
