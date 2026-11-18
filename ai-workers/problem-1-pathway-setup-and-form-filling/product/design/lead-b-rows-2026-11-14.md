@@ -2014,3 +2014,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   * #2102 a0f253814, #2103 0f634c6cc and #1961 518f7b3f0 are only main merges, so they just need a relabel;
   * #2130 58e2fcb6f also re-stamps to `20261118213000_pf15_plan_limits` and grants `platform_entitlement_limit` to `xr_staff_bypass`. Lead B is OK with that as the walls owner. It needs Lead 84's P-423 read.
 * PF-19r part 2 can now build from main, since #2125 is merged.
+
+## Rev 17.36 (19 Nov 04:16 IST)
+* **Merged:** #2127 PF-6 part 2b (04:00), #2140 FO-2 part 3 (04:15) and #2157 PF-19r part 1 (04:15). After #2157, PF-19e merges main in and seals PF-19r's senders (the PF-19e.md amendment).
+* **Sales chain:** FO-2 part 4 went to the warm FO-2 part 3 cloud lane (Lead 84, P-341). FO-4 part 2a needs a new session at the founder's next typed turn; it is in STATE.
+* **All four relabelled by Lead 84:** #2102, #2103, #1961 and #2130. The `xr_staff_bypass` grant on #2130 is accepted.
