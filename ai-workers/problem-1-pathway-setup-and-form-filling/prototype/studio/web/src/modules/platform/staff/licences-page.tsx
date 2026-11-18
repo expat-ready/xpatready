@@ -52,7 +52,7 @@ function Body() {
       {without.length ? <section aria-labelledby="no-licence"><h2 id="no-licence" className="mb-2 text-base font-semibold">No licence recorded</h2>
         <ul className="flex flex-col gap-2">{without.map((s) => <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2" data-no-licence={s.id}>
           <span className="text-sm [overflow-wrap:anywhere]">{s.displayName}</span>
-          <Button variant="outline" size="sm" aria-label={`Add a licence for ${s.displayName}`} onClick={open({ staffId: s.id, name: s.displayName, start: null })} data-licence-add>Add licence</Button></li>)}</ul></section> : null}
+          <Button variant="outline" size="sm" aria-label={`Add licence for ${s.displayName}`} onClick={open({ staffId: s.id, name: s.displayName, start: null })} data-licence-add>Add licence</Button></li>)}</ul></section> : null}
       <Panel open={!!editing} onOpenChange={(o) => { if (!o) setEditing(null); }} title={editing ? `Licence: ${editing.name}` : "Licence"} returnFocus={() => opener.current}>
         {editing ? <LicenceForm key={editing.staffId} start={editing.start} save={save} onCancel={() => setEditing(null)} /> : null}
       </Panel>
