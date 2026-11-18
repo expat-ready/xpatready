@@ -99,6 +99,24 @@ try {
   ok("FO-2p4 DW1 fail (rule 5): the person's CLOSED lead gets no first response", firstResponse(caraClosed) === "||");
   const onClosed = await act.logCall(R, { kind: "lead", id: caraClosed }, { outcome: "BUSY" });
   ok("FO-2p4 DW1 fail (review M1): a call logged on a CLOSED lead is saved but sets no first response on it", onClosed.firstResponse === false && firstResponse(caraClosed) === "||" && count("fo_call", `lead_id = '${caraClosed}'`) === 1);
+  // Review R1: the answer names only leads the caller may see. With "everyone sees all" off, O's call on O's lead also
+  // answers R's lead of the same person: set, but counted, never named.
+  const eve = await lead("Eve", O);
+  const eveR = sql(`insert into fo_lead (firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values ('${A}', '${eve.person.id}', 'MANUAL', 'Referral', '${R.staffId}', 'test', now()) returning id`).split("\n")[0];
+  await seesAll(false);
+  const oc = await act.logCall(O, { kind: "lead", id: eve.id }, { outcome: "CONNECTED" });
+  const oSees = await refusal(() => leads.read(O, eveR));
+  await seesAll(true);
+  ok("FO-2p4 DW1 fail (review R1): a lead the caller cannot see is answered but never named: its id is not in the answer, only counted",
+    oSees?.status === 404 && oc.firstResponseFor.join() === eve.id && oc.firstResponseOthers === 1 && !JSON.stringify(oc).includes(eveR) && firstResponse(eveR).includes("|CALL|"), oc);
+  ok("FO-2p4 DW1 pass (review R1): the audit line keeps every lead it answered", count("audit_event", `action = 'call.logged' and entity_key = '${eve.id}' and detail->'firstResponseLeadIds' ? '${eveR}'`) === 1);
+  // Review R2: a backdated call never answers a lead that arrived after it.
+  const fay = await lead("Fay");
+  sql(`update fo_lead set arrived_at = now() - interval '2 days' where id = '${fay.id}'`);
+  const fayLater = sql(`insert into fo_lead (firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values ('${A}', '${fay.person.id}', 'MANUAL', 'Referral', '${R.staffId}', 'test', now()) returning id`).split("\n")[0];
+  const back = await act.logCall(R, { kind: "lead", id: fay.id }, { outcome: "CONNECTED", when: new Date(Date.now() - 86_400_000).toISOString() });
+  ok("FO-2p4 DW1 fail (review R2): a call dated yesterday answers the lead that had arrived (2 days ago), not the one that arrived today",
+    back.firstResponseFor.join() === fay.id && firstResponse(fay.id).includes("|CALL|") && firstResponse(fayLater) === "||", { back, later: firstResponse(fayLater) });
   // Two first calls at once on two leads of one person (locks in id order): no deadlock, each lead answered once.
   const dee = await lead("Dee");
   const deeLead2 = sql(`insert into fo_lead (firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values ('${A}', '${dee.person.id}', 'MANUAL', 'Referral', '${R.staffId}', 'test', now()) returning id`).split("\n")[0];

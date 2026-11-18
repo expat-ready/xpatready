@@ -57,7 +57,10 @@ export class Activity {
       const owner = context.owner_staff_id ? await tx.platformStaff.findFirst({ where: firmScope(ctx.firmId, { id: context.owner_staff_id }), select: { status: true } }) : null;
       if (!sees(vis, ctx, owner?.status === "ACTIVE" ? context.owner_staff_id : null)) return notFound("lead");
     }
-    const unanswered = leads.filter((l) => l.person_id === personId && l.state === "OPEN" && l.first_response_at === null).map((l) => l.id);
+    // The person's OPEN leads with no first response, each with whether the caller may see it (review R1: only those are named).
+    const owners = new Map((await tx.platformStaff.findMany({ where: firmScope(ctx.firmId, { id: { in: leads.map((l) => l.owner_staff_id).filter((o): o is string => !!o) } }), select: { id: true, status: true } })).map((x) => [x.id, x.status]));
+    const unanswered = leads.filter((l) => l.person_id === personId && l.state === "OPEN" && l.first_response_at === null)
+      .map((l) => ({ id: l.id, arrivedAt: l.arrived_at, seen: sees(vis, ctx, l.owner_staff_id && owners.get(l.owner_staff_id) === "ACTIVE" ? l.owner_staff_id : null) }));
     const t: Target = prospect
       ? { leadId: context.id, prospectId: prospect.id, personId, number: prospect.number, entity: "fo_prospect", arrivedAt: context.arrived_at }
       : { leadId: context.id, prospectId: null, personId: context.person_id, number: context.number, entity: "fo_lead", arrivedAt: context.arrived_at };
@@ -66,8 +69,9 @@ export class Activity {
 
   /** Log a call (AG-2-37a): direction IN or OUT, one of the seven outcomes, `when` (ISO 8601 with its offset; defaults
    *  to now; never in the future, never before the lead arrived), optional seconds and notes. The call is the first
-   *  response of every OPEN lead of the person that has none (rule 5): an ENGAGED or CLOSED lead, or one already
-   *  answered, keeps what it has. The answer names those leads (`firstResponseFor`). The stage never moves (rule 7). */
+   *  response of every OPEN lead of the person that has none and had arrived by then (rule 5, review R2): an ENGAGED or
+   *  CLOSED lead, or one already answered, keeps what it has. The answer names those the caller may see
+   *  (`firstResponseFor`) and counts the rest (`firstResponseOthers`). The stage never moves (rule 7). */
   async logCall(ctx: StaffContext, s: Subject, b: Record<string, unknown>) {
     const direction = (DIRECTIONS as readonly unknown[]).includes(b.direction ?? "OUT") ? ((b.direction ?? "OUT") as FoCallDirection) : bad("direction: IN or OUT.", "direction");
     const outcome = (OUTCOMES as readonly unknown[]).includes(b.outcome) ? (b.outcome as FoCallOutcome) : bad(`outcome: one of ${OUTCOMES.join(", ")}.`, "outcome");
@@ -78,9 +82,12 @@ export class Activity {
     const seconds = b.seconds === undefined || b.seconds === null ? 0 : Number.isInteger(b.seconds) && (b.seconds as number) >= 0 && (b.seconds as number) <= 86_400 ? (b.seconds as number) : bad("seconds: a whole number from 0 to 86400.", "seconds");
     const notes = text(b.notes, { field: "notes", what: "Notes", max: 5000, multiline: true });
     return this.db.$transaction(async (tx) => {
-      const { t, unanswered } = await this.locked(tx, ctx, s);
+      const { t, unanswered: open } = await this.locked(tx, ctx, s);
       // Never before the lead arrived (review m1: a first response before arrival makes the open minutes negative).
       if (when.getTime() < t.arrivedAt.getTime() - 60_000) bad("when: the call cannot be before the lead arrived.", "when");
+      // Only leads that had arrived by the call's time (review R2): a backdated call never answers a later lead.
+      const answered = open.filter((l) => l.arrivedAt.getTime() <= when.getTime() + 60_000);
+      const unanswered = answered.map((l) => l.id);
       const call = await tx.foCall.create({ data: { firmId: ctx.firmId, personId: t.personId, leadId: t.prospectId ? null : t.leadId, prospectId: t.prospectId, direction, outcome, seconds, notes, startedAt: when, byActor: actorOf(ctx) } });
       if (unanswered.length) {
         const n = await tx.foLead.updateMany({ where: firmScope(ctx.firmId, { id: { in: unanswered }, state: "OPEN" as const, firstResponseAt: null }), data: { firstResponseAt: when, firstResponseBy: actorOf(ctx), firstResponseKind: "CALL" } });
@@ -92,7 +99,9 @@ export class Activity {
         summary: `Staff ${ctx.staffId} logged a${direction === "IN" ? "n incoming" : "n outgoing"} call (${outcome}) on ${t.number}${unanswered.length ? `; the first response of ${unanswered.length} open lead${unanswered.length === 1 ? "" : "s"}` : ""}.`,
         detail: { callId: call.id, direction, outcome, seconds, startedAt: when.toISOString(), firstResponse: first, firstResponseLeadIds: unanswered.slice(0, 50), leadId: t.leadId },
       });
-      return { id: call.id, direction, outcome, seconds, notes, startedAt: when, firstResponse: first, firstResponseFor: unanswered };
+      // The answer names only leads the caller may see (review R1, AG-2-64); others are a count. The audit line keeps all ids.
+      const seen = answered.filter((l) => l.seen).map((l) => l.id);
+      return { id: call.id, direction, outcome, seconds, notes, startedAt: when, firstResponse: first, firstResponseFor: seen, firstResponseOthers: unanswered.length - seen.length };
     });
   }
 

@@ -76,3 +76,16 @@ D1 3 (M1, a rule-5 gap) · D2 3 (closed lead gets a first response) · D3 4 (reu
 **Verdict: Changes needed** (Block) for 7f7da9e486b71124b5519b1368cde85c1dc44bf9.
 * To fix: M1. Set nothing on a CLOSED lead; set every OPEN lead of the person, or record that part for Lead B; add the pass and fail tests.
 * Fix the Minors or list them in the PR. m1, m3 and m4 are the most valuable.
+
+## Re-review 2d55dcbba (diff only: `git diff 7f7da9e48..2d55dcbba42ade3aea3c73aedba70141b48b02b1`)
+**Ran:** `check_fo2p4_calls_timeline` 27/0, plus an in-process probe on a scratch database (scratchpad only, dropped).
+**Closed:**
+* **M1** is done as rule 5 says. Locks: the prospect, then every lead of the person in id order; the lead path rechecks the person under the lock. Only OPEN leads with none are set, and the count is checked. The tests cover two OPEN leads, the CLOSED lead, a call on a CLOSED lead, a prospect call and four concurrent first calls. No lead-then-prospect path exists, so no deadlock.
+* **m1, m2, m4, m5, m6** are fixed and tested; **m8, m11, m13** are fixed or listed in `sales/README.md`. I accept the reasons for leaving m3, m7, m9's HTTP part, m10 (to check on the PR body) and m12.
+**New, from the fix:**
+* **R1 (Major). `firstResponseFor` names a lead the caller cannot see** (`calls.ts:95`). The answer lists every lead the call answered, but visibility is checked only for the lead in context.
+  * *Failing scenario (probe):* "everyone sees all" is off; Case Officer O owns L2 and R owns L1, same person. `GET leads/L1` as O answers 404, yet O's call on L2 answers `firstResponseFor: [L2, L1]`.
+  * This breaks the one visibility rule (AG-2-64; FO-2v; FO-9a names a record only to a caller who may open it; FO-2p3's m2). *Fix:* return only the ids the caller `sees()`, the rest as a count (the audit line may keep all); test it with the setting off.
+* **R2 (Minor). A backdated call answers a lead that arrived after it** (`calls.ts:60`, the `unanswered` filter; the arrival check at `calls.ts:83` reads only the context lead). *Probe:* L1 arrived 2 days ago, L2 today; a call on L1 dated yesterday sets L2's first response a day before L2 arrived (m1 again). *Fix:* count a lead only when `arrived_at <= when + 60 s`.
+
+**Verdict: Changes needed** (Block) for 2d55dcbba42ade3aea3c73aedba70141b48b02b1. To fix: R1; fix R2 in the same push. A re-review of that diff only is enough.
