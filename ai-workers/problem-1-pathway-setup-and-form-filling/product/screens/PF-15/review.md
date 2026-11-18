@@ -97,3 +97,9 @@ Fix list for d8dc7be: B1, B2 (both appear fixed in 5fc5064: re-review that head'
   * m5 and the Unlimited-seats question are with Lead B; m6 is noted.
 
 Verdict: Approve 078c0d6fa44e288844e53dfd527d1eedc61a4eaa
+
+## Re-review: merge of main, 3f15a6be6fbd459830273e02aa8aab3284c9e38f (`git show --remerge-diff`)
+* Hand resolution: `platform.prisma` keeps both `PlatformFirm` slots (entitlements, offices). `platform/MODULE.md` is main's card plus PF-15's lines in Purpose, Entry points, Tables and Tests; it is 38 lines. No other PF-15 file is touched by main's 72 files, and the PF-15 migration stamp is still the newest.
+* Suites at this head (after `prisma generate`): pf15_limits 67/0, pf12_walls 100/0, pf3 75/0, pf18a_offices 87/0, pf4c 24/0, fo5_retainers 248/0, cssd1_no_drift 17/0 (own copy on :4434); typecheck reports no new errors.
+
+Verdict: Approve 3f15a6be6fbd459830273e02aa8aab3284c9e38f
