@@ -2,6 +2,37 @@
 
 ## Part 4 review (1a2e0b232)
 
+### Re-review c72deb527..e865fa38b (18 Nov 2026, about 20:05 IST; P-277: the diff only)
+Reviewer (the same fresh agent) · commit `e865fa38befc380453b2b520b854939b595711ed` · I rebuilt `web/dist` from this commit and ran my own `review_pf21s` copy on :4573 (never :4400; stopped afterwards). Suite: `check_pf21s_complaints_browser.ts 4573 xr_studio_review_pf21s` gave **114/114, exit 0**; I restored the rewritten screenshots with `git checkout`. Web `tsc --noEmit` exit 0. The diff covers `action-drawer.tsx:25-28,62-68`, `record-page.tsx:82` (`dates={c}`), `contract.ts:71-73` and two suite hunks.
+
+**Verdict: Approve** for `e865fa38b`: no open Blocker or Major. Journey score **9.5/10**, a pass.
+
+**R1: fixed. I re-ran my clock probe.**
+* With the browser clock shifted by `page.clock.setSystemTime`, the untouched default on acknowledge and close saved at **+0 ms, +300 ms, +1.5 s, +5 s and +20 s** (it was refused from +300 ms at `c72deb527`).
+* The DB shows the minute cut (`14:30:00.000`).
+* Break m1 holds through the floor: received at `14:29:42.810`, then acknowledged at `14:29:42.810`, exactly the floor.
+* The floor follows the service's order checks:
+  * acknowledge: received;
+  * response: received or acknowledged, whichever is later;
+  * close: the latest of all three.
+  * The floor is a server-recorded date, so it is never later than the server's clock.
+* ISO strings from the server and from `zonedToIso` share one format (`…Z` with milliseconds), so the string comparison is sound.
+* The remaining exposure is a clock ahead by more than the seconds already gone in the current minute. The old code had the same exposure, and it is negligible.
+
+**The new suite case:**
+* It runs on its own page, waits outside a minute's first 4 s and last 10 s, then saves both acts.
+* It would fail on `c72deb527`: the instant would be 2 s in the future, so `saved()` times out and stops the suite.
+* The m5a change waits for focus and then judges inside `ok()`, so nothing is swallowed. The old assertion is not weakened.
+
+**Nit fixed:** the BR-3 comment is back above `canChangeHandler`.
+
+**New Minor (follow-up, does not block)**
+* `action-drawer.tsx:66-68` with `contract.ts:100-108`: going back to the minute cut also undoes breaker m7a's instant. On a fall-back day, during the second pass of the repeated hour, the untouched default is read as the first pass, an hour early. Checked: `nowLocal` at 06:30Z on 1 Nov 2026 gives Toronto "01:30", and `zonedToIso` turns that into 05:30Z. The save is accepted, because the time is earlier rather than in the future, but it is recorded an hour off. This affects one hour a year, at night. The fix is to keep the instant when it is earlier than the server-safe cut, or to compare the cut with `Date.now()` and keep the second occurrence. List it with breaker m7a.
+
+**Still open as follow-ups (agreed, none blocks):** breaker m6 (browser Back drops a panel without asking), breaker m7b and my m4 (the server's words in `api/`), my m2(a) (StrictMode, dev only), my m3 (links in the error summary).
+
+Reviewer: Approve e865fa38befc380453b2b520b854939b595711ed
+
 ### Re-review 1a2e0b232..c72deb527 (18 Nov 2026, about 19:55 IST; P-277: the diff only)
 Reviewer (the same fresh agent) · commit `c72deb52761aff842b311c612d61b9ec8a3ce9c0` · I rebuilt `web/dist` from this commit and ran my own `review_pf21s` copy on :4573 (never :4400). Suite: `check_pf21s_complaints_browser.ts 4573 xr_studio_review_pf21s` gave **113/113, exit 0**, and I restored the rewritten screenshots with `git checkout`. Web `tsc --noEmit` exit 0. The diff covers `action-drawer.tsx`, `contract.ts`, `record-page.tsx` and 11 new suite checks.
 

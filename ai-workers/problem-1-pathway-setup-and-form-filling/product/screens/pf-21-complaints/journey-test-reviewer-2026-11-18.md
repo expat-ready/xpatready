@@ -52,3 +52,13 @@ I re-walked J5 on my own rebuilt copy (:4573). The page behind a 409 is now true
 | Error recovery | 1 | was ½: the record re-reads, and the note is carried over |
 | Other six | 1 each | unchanged |
 | **Total** | **9 / 10** | **Pass** (no 0). Raise it by fixing R1 |
+
+## Re-score at e865fa38b (18 Nov 2026, about 20:05 IST)
+Clock probe re-run on my rebuilt copy (:4573): the untouched default on acknowledge and close saves at +0 ms, +300 ms, +1.5 s, +5 s and +20 s (review R1 fixed).
+| Criterion | Score | Change |
+|---|---|---|
+| Task completed | 1 | was ½: the filled button's act saves with the default whatever the browser clock |
+| Feedback and state | 1 | was ½: no false "in the future" on an untouched field; the page is true after a refusal |
+| Error recovery | ½ | was 1: breaker m6 (browser Back drops a panel's typed text without asking), now known and listed as a follow-up |
+| Other seven | 1 each | unchanged |
+| **Total** | **9.5 / 10** | **Pass** (no 0). Raise it with breaker m6 |
