@@ -21,5 +21,8 @@ export const kindWords = (kind: string) => KIND[kind] ?? kind.toLowerCase().repl
 export const kindLabel = (kind: string) => { const w = kindWords(kind); return w.charAt(0).toUpperCase() + w.slice(1); };
 /** "terms of service", "terms of service and privacy notice", "a, b and c". */
 export const listWords = (kinds: string[]) => (kinds.length < 2 ? kinds.join("") : `${kinds.slice(0, -1).join(", ")} and ${kinds[kinds.length - 1]}`);
-/** Only an http(s) link is shown as a link (a stored url is data, never script). */
-export const safeUrl = (url: string) => { try { const u = new URL(url, window.location.origin); return u.protocol === "https:" || u.protocol === "http:" ? u.href : null; } catch { return null; } };
+/** Only an https link, or a path on this site (never "//host", break m2), is shown as a link: a stored url is data. */
+export const safeUrl = (url: string) => {
+  if (/^\/(?![/\\])./.test(url)) return url;
+  try { const u = new URL(url); return u.protocol === "https:" ? u.href : null; } catch { return null; }
+};

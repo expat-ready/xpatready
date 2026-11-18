@@ -93,8 +93,8 @@ export function PlatformFrame({ crumbs = [], back = null, children }: { crumbs?:
       {!token ? (because === "SIGNED_IN_ELSEWHERE" ? <SignedInElsewhere /> : <SignInCard focus={had.current} />)
         : me.isError && !who ? <SignInCard failed={refused} />
           : !who || !pending.checked ? <p role="status" className="text-sm text-text-muted" data-loading>Checking who is signed in…</p>
-            : pending.terms ? <TermsPage token={token} terms={pending.terms} signOut={() => void signOut()} leaving={leaving} />
-            : <MeCtx.Provider value={who}><AccountMenu me={who} small />{children}</MeCtx.Provider>}
+            : <><div hidden={!!pending.terms}><MeCtx.Provider value={who}><AccountMenu me={who} small />{children}</MeCtx.Provider></div>
+              {pending.terms ? <TermsPage token={token} terms={pending.terms} signOut={() => void signOut()} leaving={leaving} /> : null}</>}
     </Frame>
   );
 }

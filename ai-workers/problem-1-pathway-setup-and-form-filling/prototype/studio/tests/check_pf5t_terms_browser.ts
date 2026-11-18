@@ -56,6 +56,8 @@ const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `${name
 const termsPage = (p: Page) => p.locator("[data-terms-page]").waitFor({ timeout: 20_000 });
 const items = (p: Page) => p.locator("[data-terms-item]").evaluateAll((els) => els.map((e) => e.getAttribute("data-terms-item")).sort());
 
+const plan = sql(`select p.id || '|' || p.seats_limit from platform_subscription s join platform_plan p on p.id = s.plan_id join platform_firm f on f.id = s.firm_id where f.key = 'sample-firm' and s.status <> 'ENDED' limit 1`).split("|");
+sql(`update platform_plan set seats_limit = ${Number(plan[1]) + 10} where id = '${plan[0]}'`);   // lent for Invite people, given back in the finally
 try {
 const pn1 = publish("PRIVACY_NOTICE"), tos1 = publish("TERMS_OF_SERVICE");
 
@@ -160,6 +162,29 @@ ok("PF-5t DW6 pass (review M1): a version published while on Settings → Terms 
 await p.locator("[data-terms-accept]").click(); await p.locator("[data-acceptance]").first().waitFor({ timeout: 20_000 });
 ok("PF-5t DW6 pass: after I accept, Settings → Terms shows again at the same address, its refused page asked again", accepted(R.id, pn3) && p.url() === at && (await p.locator("[data-terms-page]").count()) === 0);
 await p.unroute((u) => u.pathname === "/api/platform/terms/acceptances" && !u.searchParams.has("cursor"));
+// ------------------------- break M2: what the person typed is kept when a 428 brings the terms page in the middle of an action
+const E = `pf5t-${run}@example.com`;
+await p.locator('nav[aria-label="My account"] [data-account-section="/platform/team"]').click(); await p.locator("[data-seat-line]").waitFor({ timeout: 20_000 });
+await p.locator("[data-invite-open]").click(); await p.getByLabel("Email, person 1").fill(E);
+const pn5 = publish("PRIVACY_NOTICE");
+await p.locator("[data-send-invites]").click(); await termsPage(p);
+await p.locator("[data-terms-accept]").click(); await p.locator("[data-terms-page]").waitFor({ state: "detached", timeout: 20_000 });
+ok("PF-5t DW6 pass (break M2): after I accept, Invite people is still open with the email typed before", accepted(R.id, pn5) && (await p.getByLabel("Email, person 1").inputValue()) === E && (await p.getByLabel("Email, person 1").isVisible()));
+await p.locator("[data-send-invites]").click();
+for (let i = 0; i < 100 && sql(`select count(*) from platform_invitation where email = '${E}'`) === "0"; i++) await p.waitForTimeout(100);
+ok("PF-5t DW6 pass (break M2): sending it again then makes the invitation", sql(`select count(*) from platform_invitation where email = '${E}'`) === "1");
+await p.keyboard.press("Escape"); await p.keyboard.press("Escape");
+
+// -------------------------------------------------- break M1: GET /me/terms failing while terms are pending never loops
+{
+  const pn6 = publish("PRIVACY_NOTICE"); void pn6;
+  const lp = await newPage(1440, rTok); let calls = 0;
+  await lp.route("**/api/platform/me/terms", (rt) => { calls++; return rt.fulfill({ status: 500, json: { title: "Broken", detail: "Something went wrong on our side. Please try again." } }); });
+  await lp.goto(`${BASE}/platform/team`); await lp.waitForTimeout(3000);
+  const first = calls; await lp.waitForTimeout(2000);
+  ok("PF-5t DW6 fail (break M1): with GET /me/terms failing and terms pending, the page asks it a few times at most and stops (no loop)", first <= 5 && calls === first && (await lp.locator("[data-team-refused]").count()) === 1, { first, calls });
+  await lp.context().close();
+}
 const pn4 = publish("PRIVACY_NOTICE");
 await p.locator('nav[aria-label="My account"] [data-account-section="/account"]').click(); await termsPage(p);
 
@@ -169,6 +194,7 @@ ok("PF-5t DW9 pass: Sign out on the terms page ends the session (the sign-in car
 ok("PF-5t DW9 fail: signing out accepted nothing", !accepted(R.id, pn4));
 ok("PF-5t: no page error in any browser", errors.length === 0, errors);
 } finally {
+  sql(`update platform_plan set seats_limit = ${Number(plan[1])} where id = '${plan[0]}'`);
   // Every Sample person accepts this run's privacy notices and each firm's Owner its firm terms, so the copy (and a rerun) is not left asking (the table is insert-only).
   sql(`insert into platform_terms_acceptance (id, firm_id, staff_id, version_id, accepted_at) select gen_random_uuid(), s.firm_id, s.id, v.id, now() from platform_staff s cross join platform_terms_version v where v.version like 'pf5t-ui-${run}-%' and v.kind = 'PRIVACY_NOTICE' on conflict do nothing`);
   sql(`insert into platform_terms_acceptance (id, firm_id, staff_id, version_id, accepted_at) select distinct on (g.firm_id, v.id) gen_random_uuid(), g.firm_id, g.staff_id, v.id, now() from platform_role_grant g cross join platform_terms_version v where g.role = 'OWNER' and g.ended_at is null and v.version like 'pf5t-ui-${run}-%' and v.kind <> 'PRIVACY_NOTICE' and not exists (select 1 from platform_terms_acceptance a where a.firm_id = g.firm_id and a.version_id = v.id) on conflict do nothing`);
