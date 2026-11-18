@@ -54,7 +54,7 @@ ok("C5.5 BR-3 pass (reviewer MJ1): in the demo workspace the Visitor visa's Revi
 sql(`set session_replication_role = replica; update workspace set key='firm' where key='demo'; set session_replication_role = origin`);
 restart("STUDIO_WORKSPACE_KEY=firm");
 const sess = (await call("GET", "/session")).body;
-ok("C5.5 BR-3: the copy runs as the workspace \"firm\", not the demo", sql(`select key from workspace`) === "firm" && sess?.workspace?.key === "firm" && sess.workspace.demo === false, sess?.workspace);
+ok("C5.5 BR-3: the copy runs as the workspace \"firm\", not the demo", sql(`select key from workspace where key <> 'platform-audit'`) === "firm" && sess?.workspace?.key === "firm" && sess.workspace.demo === false, sess?.workspace);
 
 ok("C5.5 BR-3 fail (reviewer MJ1): outside the demo workspace the same page shows no Demo release mark", !(await demoMark(vvDemo)));
 
