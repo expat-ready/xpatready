@@ -46,3 +46,6 @@ Waiting for #2103 (FO-3a 1b-i) to merge. Then: `git merge --no-edit origin/main`
 
 ## Base moved (18 Nov 19:2x UTC): #2103's new tip 3e0bc800d merged in (it merged main and restamped its migration to 20261118143000; it is now labelled)
 Clean merge; this row's diff against the base is unchanged (only its own files). Re-run on fresh copies of the merged branch: FO-3st2 53/53, check_pf1_module_routes 28/28, check_pf6a_frame_browser 52/52 (the menu now also has Terms), check_fo3w_booking_browser 67/67; all exit 0.
+
+## Base moved again (18 Nov 21:5x UTC): #2103's tip 0f634c6cc (it merged main again; it left the queue) merged in
+Clean merge; no staff-frame, session or booking-settings file changed in it. Re-run on fresh copies: FO-3st2 53/53, check_pf1_module_routes 28/28, check_pf6a_frame_browser 52/52, check_fo3w_booking_browser 67/67; all exit 0.
