@@ -119,3 +119,24 @@ The diff changes `case-close.ts` (1 line), `contracts/runtime.ts` (the `decision
 Reviewer: Approve cc35af513c2d112bb058144d3e6f23be30fd77b0
 
 **Verdict: Approve** (no open Blocker or Major at cc35af51).
+
+## Re-review f954a886 (merge of main, diff only)
+Diff only (P-270). Since cc35af51 there are two commits: 763081bd (this review record, records only) and the merge of origin/main, f954a886. No copy was started and :4400 was not used; web/dist was not rebuilt; US$0.
+* **This row's files did not change.** `git diff cc35af51 f954a886` is empty for `api/src/case-close.ts`, `api/src/features/case-close.ts`, `contracts/runtime.ts`, `web/src/runtime/case-decision.tsx`, `web/src/runtime/cases.tsx`, `web/src/runtime/MODULE.md`, `tests/check_csc1s_view.ts` and `tests/check_csc1s_decision_browser.cjs`. Only three files near this row changed: `MODULE.cases.md` (+2/-1), `frame.tsx` (+5/-2) and `cases.prisma` (+11). All of them came from main.
+* **The conflict resolution is correct.** The merge base's Tests line had neither test. Main (f954a886^2) added `check_csw1_firm_id.ts`, and this branch added `check_csc1s_view.ts`. The merged line keeps main's order and has both, once each (`git diff f954a886^2 f954a886` shows only this row's two card edits: the Entry points `GET cases/:id/decisions` and the Tests line). Main's new CS-W1 invariant line is kept as written. Both test files exist, and the studio tree has no conflict markers.
+* **`frame.tsx` (PF-5t part 2 terms gate).**
+  * `SignInCard`'s signature and its `embedded` path are unchanged. Only `PlatformFrame` changed: it now waits for `useTermsPending` and shows `TermsPage` instead of the page.
+  * The case page does not render `PlatformFrame`. `case-decision.tsx:17,123` imports and renders `SignInCard embedded` only. So the gate and its query-cache subscriptions (`terms-gate.tsx:21-35`) are not mounted on `/cases/:id`.
+  * The panel still handles the server's 428 itself (`case-decision.tsx:137`, "Accept the terms first" with a link to My account), and on `/account` the new gate now shows the terms page. Main brought no server change to terms or the guard (no `api/src/platform/terms` or guard file in the merge's stat), so the 428 behaviour this row was approved against is unchanged.
+* **`cases.prisma` and migration `20261118090000_csw1_firm_id` (CS-W1 part 1).**
+  * They add a nullable `firm_id` on `runtime_case`, `case_stage` and `firm_case_counter`. The triggers run BEFORE INSERT only. This row's close and reopen are UPDATEs on `runtime_case`, and `case_decision` has no new trigger, so none of this row's writes meets the new triggers.
+  * Opening a case (the tests' setup) now fills `firm_id` from the key, or leaves it null when the key has no platform firm. Part 1 never refuses that insert, so the DS1 case "a case whose firm key names no platform firm is 404 too" still holds (it passes, below).
+  * Identity checks still compare `firm_key` until CS-W1 part 2. That part will need to switch `CaseClose.view` and the four POSTs. This is noted for CS-W1 part 2 and is not a gap in this row.
+* **Nothing on main calls this row's routes or edits the case header.** The merge's stat has no file under `web/src/runtime/`, `web/src/components/` or `contracts/`, and no `case-close.ts` or `api/src/runtime.ts`. A grep of the API at f954a886 for the decisions route outside `case-close.ts` and the card finds nothing. The new `main.ts` start step (`fillCaseFirmIdsOnStart`) and the `firms.ts` helpers do not touch decisions or closing.
+* **Reran:** `check_csc1s_view.ts` on f954a886 against PostgreSQL :54329: **26 passed, 0 failed**. I did not rerun the browser check (the builder reports 52/52 on f954a886), because it needs a built copy, and this diff changes no file it serves for this row. I also did not rerun the type check (the builder reports no new errors).
+* **Journey score:** carried, **10/10**. The merge changes nothing a user of this panel sees or does. I did not walk the page again; the score stands on the cc35af51 walk plus the unchanged files above.
+* **Not checked:** full `ci` on the merge; main's own new checks (`check_csw1_firm_id.ts`, `check_pf5t_terms_browser.ts`), which main's CI covers; a walk of a signed-in staff member with pending terms on `/cases/:id`. That last one is code-read only: the 428 notice shown is the one approved earlier.
+
+Reviewer: Approve f954a886fedb79009c1bc30efc4140d504fb01a2
+
+**Verdict: Approve** (no open Blocker or Major at f954a886; the merge brings in nothing that breaks this row).
