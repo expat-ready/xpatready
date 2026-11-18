@@ -96,3 +96,30 @@ None.
 **To fix before Approve:** MJ-1 (read the record again before the PUT on Licences and My account; a DW6 and a DW7 fail line) and MJ-2 (focus after the My account save and after Add licence; DW8 checks). The Minors are the builder's call. Re-review reads only the diff (P-277).
 
 **Verdict: Changes needed** for commit 165c91fd6bdd02b72166f2ebb4ca2a6c9f37b024.
+
+## Re-review (P-277: only the diff 165c91fd6..242065067 under `prototype/studio`), 18 Nov 2026
+**Verdict: Approve for commit 242065067b9cb5ebf220ecd847ab3aa303fe02d1.** No Blocker or Major is open. On a fresh copy (`rev_pf6c`, :4593) the suite gives **90/90** and PF-6a gives **52/52** (`account-page.tsx` changed). I walked each fix myself at 1440 px.
+* **MJ-1 closed.**
+  - My original steps, on Licences: the Case Officer saves `B-…`, then the Owner's older panel saves. Nothing is saved, and the words are "Someone else changed this licence since you opened it. Nothing was saved; the form now shows the record as it is."
+  - The form and the table cell both show `B-…`. The next Save, with an edit, goes through.
+  - The other way round (a manager saves while My account is open) behaves the same.
+  - Mutation check: with the Licences re-read removed, the suite stops at the DW6 conflict step. It goes red as an aborted run (a `waitFor` timeout), not as a counted FAIL line.
+  - The window between the re-read and the PUT remains, as in part 2a. The server precondition stays a PF-4 matter.
+* **MJ-2 closed.**
+  - My account: after Save, focus is on Save; after Enter in the number field, it stays in the field.
+  - Licences: after Add licence and Save, focus is on that person's new Change button. After Change and Save, it is on that row's Change button.
+* **m1 closed.** A second link opened in the same tab shows the second invitation, the address is clean, and Continue accepts that one (`rev-h2-…`).
+* **m2 closed.** The leak check now reads `var/isolated-<name>/api.log`. That is the path both the usage line and CI (`run-suites.sh` through `isolated.sh`) use, so it holds on CI. The label no longer claims an email check.
+* **m3 closed.** Escape, Cancel and the X each ask "Discard the licence you typed?":
+  - Dismiss keeps the panel open; accept closes it and focus returns to Change.
+  - An untouched panel closes without asking.
+* **m4 closed** ("On (authenticator app)"). **m5 closed:** the link in Profile's sentence opens `/account/licence`.
+* **The breaker's fixes:**
+  - m4: a Save with nothing changed sends no PUT, and the note reads "Nothing to save: the licence is as it was."
+  - m8: an invitation to an email held by another firm gives a 409 at accept. The page ends the link with the server's words, and no Continue is left. axe is clean.
+* **m6 and m7 stay open as Minors,** as the builder states: the 375 px table matches Team's, and skeletons are a house-wide pattern.
+* **Nit:** the body of `load` in accept-page.tsx:47-60 is not indented one level in.
+* **DW9:** as before, J-6's P1-A4 lines could not be proven in this environment. CI's full run must show them green before the label.
+* **Journey score:** now 9.5/10. Correct data and accessibility now score 1 each (m6 matches Team's accepted pattern). Feedback stays at ½ for the text loading line (m7).
+
+**Verdict: Approve** for commit 242065067b9cb5ebf220ecd847ab3aa303fe02d1.
