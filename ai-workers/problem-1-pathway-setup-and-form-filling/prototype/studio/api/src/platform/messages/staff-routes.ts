@@ -65,7 +65,7 @@ export class StaffMessages {
     const kind = SUBJECT_KINDS.find((k) => k === q.subjectKind);
     if (!kind || typeof q.subjectId !== "string" || !UUID.test(q.subjectId)) return notFound();
     const c = q.cursor === undefined ? null : CURSOR.exec(q.cursor);
-    if (q.cursor !== undefined && (!c || Number.isNaN(Date.parse(c[1])) || new Date(c[1]).toISOString() !== c[1].toUpperCase())) return problem(400, "Check the page", "cursor: the nextCursor of the page before.", { code: "BAD_CURSOR" });
+    if (q.cursor !== undefined && (!c || Number.isNaN(Date.parse(c[1])) || Number(c[1].slice(0, 4)) < 2000 || new Date(c[1]).toISOString() !== c[1].toUpperCase())) return problem(400, "Check the page", "cursor: the nextCursor of the page before.", { code: "BAD_CURSOR" });
     const s = await this.subject(ctx, kind, q.subjectId.toLowerCase());
     const before = c ? { OR: [{ createdAt: { lt: new Date(c[1]) } }, { createdAt: new Date(c[1]), id: { lt: c[2].toLowerCase() } }] } : {};
     const [rows, firm] = await Promise.all([

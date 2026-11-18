@@ -26,3 +26,7 @@ Searched `main` (`git grep DELIVERED` under `api/src`: only the type and the uns
 6. **@OwnOrAll sweep entry (review m5):** asking for `GET /api/platform/messages` to get a sweep entry in `check_pf6b_permission_rules.ts` (its own row), then the marker.
 7. **PR body (review m5):** `Card unchanged:` lines for the `api-features` and `web-shell` cards (one line each: a provider/controller line and a two-line mount, no entry point of theirs changes).
 8. `api/src/front-office/MODULE.md` is 42 lines on the base (module-cards fails before this change); not touched here.
+9. **From-name (break m3):** the read gives the firm's current operating name; after a rename, old messages read the new name. The name each email was sent with is only in its stored rendered file, which PF-19e seals (only the worker and the demo inbox open it). R1.48's from-name clause is J-48's to prove (brief, "Not in this part"). Recommendation: store `from_name` on the outbox row in a later row (a schema change), not by opening the file here.
+10. **Person, not lead (break m4):** the lead page lists the person's messages (the outbox keys on the person), so two leads of one person show the same list; it matches the person read rule. The box now says "Every email to this person, from any of their leads." Recommendation: keep.
+
+Break report (`break-report.md`): Major B1 and Minors m6, m7 fixed in ed67de0b9; m1 (year 0000 cursor) and m2 (cache key under "pf", cleared at sign-out) fixed after it; m3, m4 and m5 are questions 9, 10 and 3 above.

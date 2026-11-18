@@ -33,7 +33,7 @@ function Row({ m, focusRef }: { m: Message; focusRef?: React.Ref<HTMLLIElement> 
 
 export function MessagesPanel({ subject }: { subject: Subject }) {
   const q = useInfiniteQuery({
-    queryKey: ["platform", "messages", subject.kind, subject.id], retry: false, initialPageParam: null as string | null,
+    queryKey: ["pf", "messages", subject.kind, subject.id] /* under "pf": sign-out and sign-in clear it (break m2) */, retry: false, initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) => MessagePage.parse(await staffApi(`/platform/messages?subjectKind=${subject.kind}&subjectId=${encodeURIComponent(subject.id)}${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""}`)),
     getNextPageParam: (last) => last.nextCursor,
   });
@@ -44,6 +44,7 @@ export function MessagesPanel({ subject }: { subject: Subject }) {
   return (
     <section aria-labelledby="pf-messages" data-messages-panel className="rounded-xl border border-border bg-surface-raised p-4">
       <h2 id="pf-messages" className="text-sm font-semibold">Messages</h2>
+      {subject.kind === "CASE_PARTY" ? null : <p className="text-xs text-text-muted">Every email to this person, from any of their leads.</p>}
       {q.isPending ? <p role="status" className="mt-2 text-sm text-text-muted">Loading the messages…</p>
         : q.isError ? (
           <div role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-sm text-text-danger">
