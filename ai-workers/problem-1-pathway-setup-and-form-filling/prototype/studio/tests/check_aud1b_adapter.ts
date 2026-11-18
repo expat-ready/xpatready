@@ -83,10 +83,13 @@ class ProbeController {
   @Post() @HttpCode(200) @AnyStaff("AUD-1b's check: one change and its audit line")
   async probe(@Req() r: any, @Body() b: { key: string; firmId?: string; waitMs?: number; change?: boolean; actor?: string }) {
     const s = staffOf(r);
-    await pause(b.waitMs ?? 0);
+    // CodeQL (resource exhaustion): the probe waits only the test's own small number (at most 250 ms); anything else, none.
+    const asked = Number(b.waitMs);
+    const waitMs = asked > 0 && asked <= 250 ? asked : 0;
+    await pause(waitMs);
     return withFirm(s.firmId, () => (this.dbx as unknown as PrismaClient).$transaction(async (tx) => {
       if (b.change) await tx.workspace.create({ data: { key: `aud1b-${b.key}`, label: "AUD-1b check change" } });
-      await pause(b.waitMs ?? 0);
+      await pause(waitMs);
       await auditEvent.record(tx, { firmId: b.firmId ?? s.firmId, actor: b.actor ?? actorWord(s.staffId), action: "platform.check.probe", entity: "platform_staff", entityKey: b.key, summary: "AUD-1b check line." });
       return { ok: true };
     }, { timeout: 20_000 }));
