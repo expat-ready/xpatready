@@ -115,7 +115,8 @@ try {
   ok("J-109 DW1 pass: the acknowledgement reminder is a row in pg-boss's table (PlatformJobs), due at the acknowledge-by instant",
     r1.length === 1 && r1[0].start_after.getTime() === due.getTime(), { r1, due });
   let ran = r1[0]?.state;
-  for (let i = 0; i < 60 && ran !== "completed"; i++) { await new Promise((r) => setTimeout(r, 1_000)); ran = (await reminder(id))[0]?.state; }
+  // Break m2: PF-14 polls about one job per 2 s, so a reused copy with a backlog needs longer than a fresh one (up to 2 min here).
+  for (let i = 0; i < 120 && ran !== "completed"; i++) { await new Promise((r) => setTimeout(r, 1_000)); ran = (await reminder(id))[0]?.state; }
   const sent = await db.platComplaintEvent.count({ where: { firmId: firm.id, complaintId: id, kind: "REMINDER_SENT" } });
   ok("J-109 DW1: already past its date, the reminder is run by the app's pg-boss worker (completed, and its Reminder sent event is on the record; an in-memory runner runs nothing)", ran === "completed" && sent === 1, { ran, sent });
 
