@@ -19,10 +19,11 @@ type Req = { method: string; path?: string; baseUrl?: string; headers: Record<st
 type Res = { statusCode: number; writableFinished?: boolean; setHeader(name: string, value: string): unknown; on(event: "finish" | "close", fn: () => void): unknown };
 
 const ID = /^[A-Za-z0-9_.:-]{1,128}$/;
-/** The caller's request id when it is a plain id that redaction leaves as it is; otherwise a new one. */
+/** The caller's request id when it is a plain id that redaction leaves as it is; otherwise a new one. A caller never
+ *  takes a job's form (`job:…`, observability/jobs.ts), so a request's lines never pass for a job's (AUD-1b, breaker m1). */
 export function correlationOf(header: string | string[] | undefined): string {
   const h = Array.isArray(header) ? header[0] : header;
-  return typeof h === "string" && ID.test(h) && redactText(h) === h ? h : randomUUID();
+  return typeof h === "string" && ID.test(h) && !/^job:/i.test(h) && redactText(h) === h ? h : randomUUID();
 }
 
 /** The route pattern a request matched ("/api/combinations/:id"), "unmatched" for an /api path no route took, "web"

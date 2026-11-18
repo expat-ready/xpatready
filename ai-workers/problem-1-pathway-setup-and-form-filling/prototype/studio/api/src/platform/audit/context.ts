@@ -26,7 +26,8 @@ export function auditContext(): AuditContext | undefined {
   if (!scope && jobFirm === undefined) return undefined;
   const inJob = jobFirm !== undefined || (scope?.correlationId.startsWith("job:") ?? false);
   const who = scope?.audit?.();
-  const firmId = scope?.firmId() ?? jobFirm ?? undefined;
+  // Inside a job the job's own firm wins over any request scope it was started from (breaker m2).
+  const firmId = jobFirm !== undefined ? jobFirm ?? undefined : scope?.firmId();
   const ctx: AuditContext = {};
   if (firmId) ctx.firmId = firmId.toLowerCase();
   if (who) { ctx.actor = who.actor; ctx.actorType = who.actorType; if (who.supportSessionId) ctx.supportSessionId = who.supportSessionId; }

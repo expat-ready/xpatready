@@ -36,18 +36,26 @@ const idOf = (v: unknown) => (typeof v === "string" ? v : undefined);
 export class AuditEventAdapter implements AuditPort<Tx> {
   async record(tx: Tx, entry: AuditEntry): Promise<void> {
     const raw = (entry ?? {}) as Partial<Record<"firmId" | "entity" | "entityKey", unknown>>;
+    // The alarm's ids (read by writeAuditWithAlarm after a failure): the firm is the request's or job's own when it has one,
+    // so a refused line for another firm never spends that other firm's alert (breaker m4).
+    const ids = { firmId: idOf(raw.firmId), entity: idOf(raw.entity), entityKey: idOf(raw.entityKey) };
     await writeAuditWithAlarm(async () => {
-      const e = AuditEntry.parse(entry), firmId = e.firmId.toLowerCase(), ctx = auditContext();
+      const ctx = auditContext();
+      if (ctx?.firmId) ids.firmId = ctx.firmId;
+      const e = AuditEntry.parse(entry), firmId = e.firmId.toLowerCase();
       if (ctx?.firmId && ctx.firmId !== firmId) throw new AuditRefused(`audit line refused: the line names firm ${firmId}, but this request or job acts for firm ${ctx.firmId} (a line never lands on another firm's trail)`);
       const actorType = actorTypeOfWord(e.actor);
-      // OUR_STAFF has no actor word yet (PF-4s): a line is never written with a type its actor did not act as.
-      if (ctx?.actor === e.actor && ctx.actorType && ctx.actorType !== actorType) throw new AuditRefused(`audit line refused: ${e.actor} acts as ${ctx.actorType} in this request, but its word is ${actorType}`);
+      // OUR_STAFF has no actor word yet (PF-4s): in a request our staff make, no line is written at all, so none is ever
+      // written as FIRM_STAFF or under another word (breaker M1). In a firm staff request, a staff word is the request's
+      // own person only; a system: or seed: word (a door's or a job's own step inside the request) keeps its own type.
+      if (ctx?.actorType === "OUR_STAFF") throw new AuditRefused(`audit line refused: this request is our staff's (OUR_STAFF), which has no actor word until PF-4s`);
+      if (ctx?.actor && actorType === "FIRM_STAFF" && e.actor.toLowerCase() !== ctx.actor.toLowerCase()) throw new AuditRefused(`audit line refused: the line names ${e.actor}, but this request is ${ctx.actor}'s`);
       const workspaceId = await platformAuditWorkspaceId(tx);
       await tx.auditEvent.create({
         data: { workspaceId, firmId, caseId: e.caseId?.toLowerCase() ?? null, actorType, correlationId: ctx?.correlationId ?? null, supportSessionId: ctx?.supportSessionId ?? null,
           actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey, summary: e.summary, detail: { ...e.detail, firmId } as Prisma.InputJsonValue },
       });
-    }, { firmId: idOf(raw.firmId), entity: idOf(raw.entity), entityKey: idOf(raw.entityKey) }, { attempts: 1 });
+    }, ids, { attempts: 1 });
   }
 }
 

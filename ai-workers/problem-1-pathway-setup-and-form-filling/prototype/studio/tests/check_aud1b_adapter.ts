@@ -80,13 +80,13 @@ const failed = () => alerts.raised.filter((a) => a.kind === "audit_write_failed"
 class ProbeController {
   constructor(@Inject(Db) private readonly dbx: InstanceType<typeof Db>) {}
   @Post() @HttpCode(200) @AnyStaff("AUD-1b's check: one change and its audit line")
-  async probe(@Req() r: any, @Body() b: { key: string; firmId?: string; waitMs?: number; change?: boolean }) {
+  async probe(@Req() r: any, @Body() b: { key: string; firmId?: string; waitMs?: number; change?: boolean; actor?: string }) {
     const s = staffOf(r);
     await pause(b.waitMs ?? 0);
     return withFirm(s.firmId, () => (this.dbx as unknown as PrismaClient).$transaction(async (tx) => {
       if (b.change) await tx.workspace.create({ data: { key: `aud1b-${b.key}`, label: "AUD-1b check change" } });
       await pause(b.waitMs ?? 0);
-      await auditEvent.record(tx, { firmId: b.firmId ?? s.firmId, actor: actorWord(s.staffId), action: "platform.check.probe", entity: "platform_staff", entityKey: b.key, summary: "AUD-1b check line." });
+      await auditEvent.record(tx, { firmId: b.firmId ?? s.firmId, actor: b.actor ?? actorWord(s.staffId), action: "platform.check.probe", entity: "platform_staff", entityKey: b.key, summary: "AUD-1b check line." });
       return { ok: true };
     }, { timeout: 20_000 }));
   }
@@ -122,6 +122,12 @@ try {
   ok("AUD-1b DW1 fail: a malformed X-Request-Id is replaced, never stored: the line carries the new id the answer sent back",
     bad.status === 200 && !!bad.requestId && bad.requestId !== "Client A <a@example.com>" && badRow === `${FIRM_A}|FIRM_STAFF|${bad.requestId}|staff:${R.id}` && sql(`select count(*) from audit_event where correlation_id like '%example.com%'`) === "0", [bad.requestId, badRow]);
 
+  clock.t += 1000;
+  const tR3 = await signIn("user-R", R.firm.key);
+  const forged = await call(base, "POST", "/api/platform/session/sign-out", { token: tR3, requestId: "job:aud1b-forged" });
+  ok("AUD-1b DW1 fail (breaker m1): a caller's X-Request-Id in a job's form (job:…) is replaced, so a request's line never passes for a job's",
+    forged.status === 200 && forged.requestId !== "job:aud1b-forged" && sql("select count(*) from audit_event where correlation_id ilike 'job:aud1b-forged'") === "0", forged.requestId);
+
   // ------------------------------------------------------------------------- DW2: a job's line; a line outside any scope
   const jobKey = "aud1b-dw2-job-1";
   const runJob = observed("aud1b-check", async (j) => {
@@ -144,9 +150,10 @@ try {
   const ctxOurs = inScope(ours, () => auditContext()), ctxTheirs = inScope(theirs, () => auditContext());
   ok("AUD-1b DW3 pass: a scope a guard marks as ours gives OUR_STAFF (entered directly; PF-4s's guard is not on main); a firm's staff gives FIRM_STAFF",
     ctxOurs?.actorType === "OUR_STAFF" && ctxOurs.actor === `staff:${R.id}` && ctxOurs.firmId === FIRM_A && ctxOurs.correlationId === "aud1b-dw3" && ctxTheirs?.actorType === "FIRM_STAFF", { ctxOurs, ctxTheirs });
-  const oursRefused = await inScope(ours, () => rejects(() => db.$transaction((tx) => auditEvent.record(tx, { firmId: FIRM_A, actor: `staff:${R.id}`, action: "platform.check.ours", entity: "platform_staff", entityKey: "aud1b-dw3", summary: "AUD-1b ours." })), (e) => e instanceof AuditRefused && /acts as OUR_STAFF/.test((e as Error).message)));
-  ok("AUD-1b DW3 fail: our staff's line is never written as FIRM_STAFF: until PF-4s gives our staff an actor word, the adapter refuses it and writes nothing",
-    oursRefused && sql(`select count(*) from audit_event where entity_key = 'aud1b-dw3'`) === "0");
+  const oursWrite = (actor: string, key: string) => inScope(ours, () => rejects(() => db.$transaction((tx) => auditEvent.record(tx, { firmId: FIRM_A, actor, action: "platform.check.ours", entity: "platform_staff", entityKey: key, summary: "AUD-1b ours." })), (e) => e instanceof AuditRefused && /OUR_STAFF/.test((e as Error).message)));
+  const oursRefused = [await oursWrite(`staff:${R.id}`, "aud1b-dw3"), await oursWrite(`staff:${R.id.toUpperCase()}`, "aud1b-dw3-upper"), await oursWrite("system:support", "aud1b-dw3-system"), await oursWrite(`staff:${S.id}`, "aud1b-dw3-other")];
+  ok("AUD-1b DW3 fail: our staff's line is never written as FIRM_STAFF or under another word: until PF-4s gives our staff an actor word, every line in their request is refused (own id, upper case, system:, another staff member; breaker M1)",
+    oursRefused.every(Boolean) && sql(`select count(*) from audit_event where entity_key like 'aud1b-dw3%'`) === "0", oursRefused);
 
   // ------------------------------------------------------------------------- DW4: a forced audit failure, fail-closed
   sql(`create sequence aud1b_tries; create function aud1b_force() returns trigger language plpgsql as $$ begin perform nextval('aud1b_tries'); raise exception 'aud1b forced audit failure'; end $$;
@@ -177,7 +184,13 @@ try {
   const f6 = failed().length, ws6 = sql("select count(*) from workspace");
   const other = await call(base, "POST", "/api/platform/aud1b-probe", { token: tokens.A, body: { key: "aud1b-dw6", firmId: FIRM_B, change: true } });
   ok("AUD-1b DW6 fail: an entry whose firm differs from the request's firm is refused: the request fails, nothing is written, the change rolls back, one alert",
-    other.status >= 500 && sql("select count(*) from audit_event where entity_key = 'aud1b-dw6'") === "0" && sql("select count(*) from workspace") === ws6 && failed().length === f6 + 1 && failed().at(-1)!.detail.entityKey === "aud1b-dw6", other);
+    other.status >= 500 && sql("select count(*) from audit_event where entity_key = 'aud1b-dw6'") === "0" && sql("select count(*) from workspace") === ws6 && failed().length === f6 + 1 && failed().at(-1)!.detail.entityKey === "aud1b-dw6" && failed().at(-1)!.detail.firmId === FIRM_A, [other, failed().at(-1)]);
+  const otherStaff = await call(base, "POST", "/api/platform/aud1b-probe", { token: tokens.A, body: { key: "aud1b-dw6-staff", actor: `staff:${S.id}`, change: true } });
+  ok("AUD-1b DW6 fail (breaker M1): in a firm staff request, a line naming another staff member is refused and the change rolls back",
+    otherStaff.status >= 500 && sql("select count(*) from audit_event where entity_key = 'aud1b-dw6-staff'") === "0" && sql("select count(*) from workspace where key = 'aud1b-aud1b-dw6-staff'") === "0", otherStaff);
+  const sys = await call(base, "POST", "/api/platform/aud1b-probe", { token: tokens.A, body: { key: "aud1b-dw6-system", actor: "system:aud1b-door" }, requestId: "aud1b-dw6-sys" });
+  ok("AUD-1b DW6 pass: a system: step inside a staff request keeps its own type (SYSTEM) and the request's correlation id",
+    sys.status === 200 && row(`entity_key = 'aud1b-dw6-system'`) === `${FIRM_A}|SYSTEM|aud1b-dw6-sys|system:aud1b-door`, row(`entity_key = 'aud1b-dw6-system'`));
   const own = await call(base, "POST", "/api/platform/aud1b-probe", { token: tokens.A, body: { key: "aud1b-dw6-own", firmId: FIRM_A.toUpperCase(), change: true } });
   ok("AUD-1b DW6 pass: the same entry naming the request's own firm (any letter case) is written, lower-cased, with its change",
     own.status === 200 && row(`entity_key = 'aud1b-dw6-own'`).startsWith(`${FIRM_A}|FIRM_STAFF|`) && sql("select count(*) from workspace where key = 'aud1b-aud1b-dw6-own'") === "1", own);
