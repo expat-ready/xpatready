@@ -375,6 +375,13 @@ Founder rulings respected: **P-668 T17: no comment ban** (why-comments stay, P-6
 
 **Not run here (CI or the Lead):** the full suites, the Docker build, `start.sh` on :4400 with the demo smoke test (the demo database is not running in this copy, and the main copy is never used for tests).
 
+### 7.4 Branches for removal (the founder's OK needed; nothing removed yet)
+| Branch | Tip | Why it can go | Check |
+|---|---|---|---|
+| `claim/PF-15-part-1` | `cef47b7d0` | Empty claim branch: no commit of its own (its tip is a merge already on main) | `git merge-base --is-ancestor origin/claim/PF-15-part-1 origin/main` exits 0 (18 Nov) |
+
+Removal only on the founder's OK, one branch at a time, after the check above is run again.
+
 ### 7.3 Revised order (Lead 78, P-688, P-674)
 - **18 Nov, after the move is verified and the first merges land:**
   1. Stage 0. The tag `history/pre-cleanup-2026-11` is made on main right after stage 0 merges.
