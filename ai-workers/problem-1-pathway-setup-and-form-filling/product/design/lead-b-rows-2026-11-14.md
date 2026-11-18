@@ -1981,3 +1981,13 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   * The PR also needs to merge main in.
 * `PF-19e.md` is amended: it seals all of PF-19r's transactional senders, updates PF-19r's DW5, and holds the real-people gate.
 * Owed by the current Lead: the PF-19e BACKLOG row and the DECISIONS line (outbox file holds links and codes until PF-19e).
+
+## Rev 17.32 (19 Nov 00:08 IST): P-707 sort (finish to Proven first; park the rest, nothing lost)
+* **KEEP:**
+  * PF-15 part 2, FO-3st2, J-109.
+  * **PF-19e**: PF-5v part 2 needs it, and it is PF-19r's real-people gate.
+  * **PF-19b part 3**: J-48 needs it.
+  * The PRs being merged: #2130, #2128, #1959, #2102, #2103, #2140, #2127, and #2011 (park after it merges).
+* **Revive:** #1961 PF-19p and #2012 PF-21i, both bases for Wave 1. They are re-stamped for P-600: #1961 → `20261118160000_pf19p_platform_account_mail`, #2012 → `20261118163000_pf21i_complaint_request_key` (comments 6987979738 and 6987980226).
+* **PARK:** PF-18bk, PF-5s part 1, #2029 PF-12b part 1, #2001 PF-24w, #2038 FO-6 part 1. Their PRs stay open, and the briefs stay as they are.
+* Merged since rev 17.31: #2134 PF-21s part 4 (00:05) and #2135 PF-5t part 2 (00:06).
