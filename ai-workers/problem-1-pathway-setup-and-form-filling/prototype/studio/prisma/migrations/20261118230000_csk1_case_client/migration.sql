@@ -49,7 +49,9 @@ CREATE TABLE "case_client" (
 
     CONSTRAINT "case_client_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "case_client_display_name_check" CHECK (
-      char_length("display_name") BETWEEN 1 AND 200 AND "display_name" = btrim("display_name") AND "display_name" !~ '[[:cntrl:]]'),
+      char_length("display_name") BETWEEN 1 AND 200 AND "display_name" = btrim("display_name") AND "display_name" !~ '[[:cntrl:]]'
+      -- the contract's invisible characters (contracts/runtime.ts INVISIBLE), and a name of spaces alone (breaker 2a)
+      AND "display_name" !~ '[\u200b\u200e\u200f\u2028-\u202e\u2066-\u2069\ufeff]' AND "display_name" ~ '[^[:space:]\u00a0\u2000-\u200a\u3000]'),
     CONSTRAINT "case_client_display_kind_check" CHECK ("display_kind" IN ('PERSON', 'COMPANY')),
     CONSTRAINT "case_client_one_front_office_check" CHECK (num_nonnulls("fo_person_id", "fo_company_id") <= 1),
     CONSTRAINT "case_client_number_check" CHECK ("client_number" >= 1)
@@ -151,7 +153,8 @@ DECLARE k record; nm text; cid uuid;
 BEGIN
   FOR k IN SELECT id, workspace_id, firm_key, firm_id, combination_id, case_number, created_by FROM runtime_case
             WHERE client_id IS NULL ORDER BY workspace_id, firm_key, created_at, id LOOP
-    SELECT coalesce(nullif(btrim(regexp_replace(pp.display_name, '[[:cntrl:]]+', ' ', 'g')), ''), nullif(btrim(regexp_replace(s.label, '[[:cntrl:]]+', ' ', 'g')), ''))
+    SELECT coalesce(nullif(btrim(regexp_replace(regexp_replace(pp.display_name, '[\u200b\u200e\u200f\u2028-\u202e\u2066-\u2069\ufeff]+', '', 'g'), '[[:cntrl:][:space:]\u00a0\u2000-\u200a\u3000]+', ' ', 'g')), ''),
+                    nullif(btrim(regexp_replace(regexp_replace(s.label, '[\u200b\u200e\u200f\u2028-\u202e\u2066-\u2069\ufeff]+', '', 'g'), '[[:cntrl:][:space:]\u00a0\u2000-\u200a\u3000]+', ' ', 'g')), ''))
       INTO nm FROM case_participant cp JOIN answer_subject s ON s.id = cp.subject_id LEFT JOIN party_profile pp ON pp.party_id = s.party_id
      WHERE cp.case_id = k.id AND cp.role = 'principal' ORDER BY cp."order", cp.id LIMIT 1;
     nm := btrim(left(coalesce(nm, 'Client of ' || k.case_number), 200));

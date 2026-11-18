@@ -9,10 +9,12 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { Db, Workspace } from "./core.ts";
 import { problem, type StaffContext } from "./platform/identity/keys.ts";
+import { INVISIBLE } from "../../contracts/runtime.ts";
 
 type Tx = Prisma.TransactionClient;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const PAGE = 50;
+const INVISIBLE_G = new RegExp(INVISIBLE.source, "g");
 
 /** "Client code" (AG-7-75 §7): CL- and the firm's running number, five digits (CL-00001); more past 99999. */
 export const clientCode = (n: number) => `CL-${String(n).padStart(5, "0")}`;
@@ -57,10 +59,13 @@ export class Clients {
     const firmKey = await this.firm(ctx);
     const p = Math.max(1, Math.min(10_000, Number.parseInt(typeof page === "string" ? page : "1", 10) || 1));
     if (!firmKey) return { clients: [], page: p, page_size: PAGE, total: 0 };
-    const q = typeof query === "string" ? query.trim().slice(0, 200) : "";
+    // Review m3, breaker 7a/7b: control and invisible characters dropped (a NUL was a 500), LIKE's wildcards and escape
+    // taken literally (a "%" matched every client of the firm).
+    const q = typeof query === "string" ? query.replace(INVISIBLE_G, "").replace(/[\t\n\r]/g, " ").trim().slice(0, 200) : "";
+    const like = q.replace(/[\\%_]/g, (c) => `\\${c}`);
     const code = /^(?:cl-?)?0*(\d{1,9})$/i.exec(q);
     const where: Prisma.CaseClientWhereInput = { workspaceId: await this.ws.id(), firmKey,
-      ...(q ? { OR: [{ displayName: { contains: q, mode: "insensitive" } }, ...(code ? [{ clientNumber: Number(code[1]) }] : [])] } : {}) };
+      ...(q ? { OR: [{ displayName: { contains: like, mode: "insensitive" } }, ...(code ? [{ clientNumber: Number(code[1]) }] : [])] } : {}) };
     const [rows, total] = await Promise.all([
       this.db.caseClient.findMany({ where, orderBy: [{ clientNumber: "desc" }], skip: (p - 1) * PAGE, take: PAGE }),
       this.db.caseClient.count({ where }),

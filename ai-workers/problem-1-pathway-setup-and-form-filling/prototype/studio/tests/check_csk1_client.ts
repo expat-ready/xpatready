@@ -120,8 +120,8 @@ try {
   ok("CS-K1 DW6 fail: both front-office ids set → refused by the database", /case_client_one_front_office_check/.test(rolled(client({ n: 9003, person: u(501), company: u(502) }))));
   ok("CS-K1 DW6 fail: the same prospect_id twice in one firm → refused", /case_client_workspace_id_firm_key_prospect_id_key/.test(rolled(`${client({ n: 9004, prospect: u(503) })}; ${client({ n: 9005, prospect: u(503) })}`)));
   ok("CS-K1 DW6 pass: the same prospect_id in two firms → allowed", rolled(`${client({ n: 9006, prospect: u(503) })}; ${client({ key: "sample-solo", n: 9006, prospect: u(503) })}`) === "");
-  ok("CS-K1 DW6 fail: an empty, padded, too long or control-character name, a kind outside PERSON | COMPANY, a number twice in one firm → refused",
-    ["''", "' Sample'", `'${"x".repeat(201)}'`, "'Sample' || chr(10) || 'Two'"].every((nm) => /case_client_display_name_check/.test(rolled(client({ n: 9007, name: nm }))))
+  ok("CS-K1 DW6 fail: an empty, padded, too long, control- or invisible-character or spaces-only name (breaker 2a), a kind outside PERSON | COMPANY, a number twice in one firm → refused",
+    ["''", "' Sample'", `'${"x".repeat(201)}'`, "'Sample' || chr(10) || 'Two'", "chr(160)", "'Sample' || chr(8203)", "'Sample' || chr(8238) || 'Two'", "chr(12288)"].every((nm) => /case_client_display_name_check/.test(rolled(client({ n: 9007, name: nm }))))
     && /case_client_display_kind_check/.test(rolled(client({ n: 9008 }).replace("'PERSON'", "'GROUP'")))
     && /case_client_workspace_id_firm_key_client_number_key/.test(rolled(client({ n: 1 }))));
   ok("CS-K1 DW6: no foreign key from case_client into the front office's tables (contract §1 rule 4)",
@@ -314,6 +314,11 @@ try {
   ok("CS-K1 DW5 pass: firm A's client is unchanged after firm B's tries", row() === r0);
   const noToken = await Promise.all([call(BASE, "GET", `/api/runtime/clients`), call(BASE, "GET", `/api/runtime/clients/${aId}`), call(BASE, "GET", `/api/runtime/clients/${aId}`, { actor: "user-O" })]);
   ok("CS-K1 DW5 fail: the read routes need a staff session (PF-4's guard): no token, or x-actor alone → 401", noToken.every((r) => r.status === 401), noToken.map((r) => r.status));
+  const aAll = await call(BASE, "GET", `/api/runtime/clients`, { token: TA });
+  const odd = await Promise.all(["%25", "_", "%00", "%5C", "Sample%00Client"].map((x) => call(BASE, "GET", `/api/runtime/clients?query=${x}`, { token: TA })));
+  ok("CS-K1 DW5 fail (review m3, breaker 7a/7b): a search for %, _, a backslash is 200 and matches no client (never all of them); a NUL is dropped (alone: the same as no search, the firm's own list; never a 500)",
+    odd.every((r) => r.status === 200) && [0, 1, 3, 4].every((i) => odd[i].body?.total === 0)
+    && odd[2].body?.total === (aAll.body?.total ?? -1) && odd[2].body?.total > 0, odd.map((r) => [r.status, r.body?.total]));
   const bad = await Promise.all(["not-an-id", randomUUID(), "%27%20or%201=1"].map((x) => call(BASE, "GET", `/api/runtime/clients/${x}`, { token: TA })));
   ok("CS-K1 DW5 fail: a malformed or unknown id → 404 for firm A too", bad.every((r) => r.status === 404), bad.map((r) => r.status));
   const caseRead = await call(BASE, "GET", `/api/runtime/cases/${again.body?.id}`, { actor: "user-O" });
