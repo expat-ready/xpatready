@@ -18,7 +18,7 @@ Standby left: **Lead 81 (local_bd570ff6)**; start a second standby at the founde
 5. **Habits learned** (browser first for GitHub and claude.ai reads, times from `TZ=Asia/Kolkata date`, archiving a Lead archives its side sessions, delete directories not contents): word for word in `history/STATE-2026-11-18-1305-lead80s2-handover-habits-line.md`.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
-**For the founder at his next typed turn (Lead 80, 13:2x 18 Nov):** (a) R1.20 vs PF-4c: a 1-50 row invite that keeps the good rows, or PF-4c's 1-20 rows with nothing sent while any row is flagged (AG-1-69 gives no count; qa scores PF-4c meanwhile). (b) Close #2088 (superseded by #2117; the Lead's close was refused). (c) A second standby Lead (P-286). Owed: R1.58 text per P-653 (2) (QA-508), once qa names the file.
+**For the founder at his next typed turn (Lead 80, 13:2x 18 Nov):** (a) R1.20 vs PF-4c: a 1-50 row invite that keeps the good rows, or PF-4c's 1-20 rows with nothing sent while any row is flagged (AG-1-69 gives no count; qa scores PF-4c meanwhile). (b) Close #2088 (superseded by #2117; the Lead's close was refused). (c) A second standby Lead (P-286). QA-508 ruled: qa puts the Lead's R1.58 text into CAPABILITIES.md (its file) in its next records PR.
 | # | Ask (IST) | Status |
 |---|---|---|
 | S10-A136 | 10 Nov to 17 Nov 00:2x asks | done, answered, standing or superseded (A130 stall research still owed); the pointer rows word for word in `history/STATE-2026-11-17-0858-lead74s2-asks-pointer-rows-S10-A136.md` |
