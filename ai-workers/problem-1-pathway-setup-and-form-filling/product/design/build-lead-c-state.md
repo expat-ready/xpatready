@@ -168,3 +168,9 @@ Merged on main: #2002, #2007, #2016, #2035. #2000 got "Reviewer: Approve 1fb7ca0
 **16:54 IST 18 Nov (Lead 80):** batch #2115 failed on shard 3: #2011's FO-13i test writes actor `test`, which #2003 now refuses. #2003 re-checks alone in #2119. My open PRs are clear: #2000 uses `user-A`/`user-O`, #2106 writes no audit lines (`user-R` in fo7a_money_schema is mapped), #2063 is records. Typed-actor line added to briefs AUD-1b, CS-DL1b, FO-7lk, AUD-5-2, CS-NK1.
 
 **18:23 IST 18 Nov (Lead 80):** CodeQL high alert on #2003, `check_aud1a_insert_only.ts:107` (`.replace` swaps only the first newline). It is test code, so #2003 is not held. The one-line `replaceAll` fix is in the AUD-1b brief.
+
+**19:01 IST 18 Nov (Lead 80, wave 1, P-697 target +20 Proven on 19 Nov, rulings P-698):** CS-W1 started in the cloud. Lead 80's start of AUD-1b was refused by the permission check and waits for the founder. Shaping asked, ready for Lead 80's next founder-typed turn:
+* Messages: PF-19ms (new row for G4/QA-495), J-48, J-49.
+* Money: FO-7ts parts 2-3, FO-7b (QA-482 per-line rounding), FO-7g (official tax-rate source).
+* Case: CS-K1 (after CS-W1), CS-C1s (new screen row for G3/QA-502).
+Three drafting agents are running, one per lane. I check each draft before committing.
