@@ -97,7 +97,7 @@ model Case {
 /// CS-K1 part 1 (contract §5, §0.3; P-588 (2); AG-7-75 §7): the case side's client record. One per client of a firm; a
 /// directly opened case makes one, FO-8 (prospect.won) will pass one. People stay per case (Party). The front office's
 /// person or company id is stored, never linked by a foreign key (contract §1 rule 4; part 2 fills it through FO-1p).
-/// The firm is the case's: firm_key as on runtime_case, firm_id its platform firm (filled by CS-W1's case_firm_from_key;
+/// The firm is the case's: firm_key as on runtime_case, firm_id its platform firm (filled by case_client_firm_from_key through CS-W1's lookup;
 /// nullable until CS-W1 part 2, as on runtime_case). Text and kind checks are in the migration.
 model CaseClient {
   id           String   @id @default(uuid()) @db.Uuid

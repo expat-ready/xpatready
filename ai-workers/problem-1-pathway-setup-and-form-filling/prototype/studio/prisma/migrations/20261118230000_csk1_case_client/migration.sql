@@ -2,7 +2,7 @@
 -- case-side contract v0.1 §5, §0.3, §3.4; P-588 (2), P-560; AG-7-75 §7): the case side's client record, and a client on
 -- every case. Owner: the release Lead (case side), area file cases.prisma. Every function is case_client_*.
 --   * case_client: one row per client of a firm. Its firm is the case's: firm_key (as runtime_case) and firm_id, filled by
---     CS-W1's own trigger case_firm_from_key (nullable until CS-W1 part 2, as on runtime_case). client_number per firm
+--     its own trigger case_client_firm_from_key through CS-W1's lookup (nullable until CS-W1 part 2, as on runtime_case). client_number per firm
 --     from case_client_counter (case_client_next_number(), in the same transaction: never shared, never reused, a
 --     rolled-back opening gives it back). display_name 1-200 characters, trimmed, no control characters; display_kind
 --     PERSON | COMPANY; fo_person_id and fo_company_id at most one set; prospect_id unique per firm when given. No foreign
@@ -23,7 +23,7 @@
 -- Rollback (in this order): DROP TRIGGER case_client_for_case ON runtime_case; DROP TRIGGER case_client_follow_firm ON
 --   runtime_case; ALTER TABLE runtime_case DROP CONSTRAINT runtime_case_client_id_workspace_id_firm_key_fkey, DROP
 --   CONSTRAINT runtime_case_client_id_firm_id_fkey, DROP COLUMN client_id; DROP TABLE case_client, case_client_counter;
---   DROP FUNCTION case_client_for_case(), case_client_follow_firm(), case_client_next_number(uuid, text),
+--   DROP FUNCTION case_client_for_case(), case_client_follow_firm(), case_client_firm_from_key(), case_client_next_number(uuid, text),
 --   case_client_kind_of(uuid); then delete this folder's row from _prisma_migrations. Lost: the client numbers and names
 --   (no other table reads them in part 1).
 
@@ -82,8 +82,19 @@ CREATE UNIQUE INDEX "case_client_workspace_id_firm_key_prospect_id_key" ON "case
 -- CreateIndex
 CREATE INDEX "runtime_case_client_id_idx" ON "runtime_case"("client_id");
 
--- A client's firm id is its key's platform firm (CS-W1's fill, reused: it reads NEW.firm_key and NEW.firm_id only).
-CREATE TRIGGER case_firm_from_key BEFORE INSERT ON "case_client" FOR EACH ROW EXECUTE FUNCTION case_firm_from_key();
+-- A client's firm id is its key's platform firm, by CS-W1's one lookup (its own function, so CS-W1's triggers stay its own):
+-- a null firm_id is filled; one that is not the key's platform firm is refused in plain words.
+CREATE FUNCTION case_client_firm_from_key() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+  SET search_path = pg_catalog, public, pg_temp AS $fn$
+DECLARE f uuid := case_lookup.case_firm_id_of_key(NEW.firm_key);
+BEGIN
+  IF NEW.firm_id IS NULL THEN NEW.firm_id := f;
+  ELSIF NEW.firm_id IS DISTINCT FROM f THEN
+    RAISE EXCEPTION 'case_client_firm_from_key: the firm id given is not the platform firm of key "%"', NEW.firm_key USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $fn$;
+CREATE TRIGGER case_client_firm_from_key BEFORE INSERT ON "case_client" FOR EACH ROW EXECUTE FUNCTION case_client_firm_from_key();
 
 -- A firm's next client number, inside the caller's transaction (an upsert: two at once wait on the row).
 CREATE FUNCTION case_client_next_number(ws uuid, key text) RETURNS integer LANGUAGE sql SECURITY INVOKER

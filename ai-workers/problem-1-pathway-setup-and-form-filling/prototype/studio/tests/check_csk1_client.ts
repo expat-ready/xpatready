@@ -128,7 +128,7 @@ try {
     sql(`select count(*) from pg_constraint where conrelid = 'case_client'::regclass and contype = 'f'`) === "0");
 
   // DW8: names, the diff
-  ok("CS-K1 DW8 pass: every function the migration adds is named case_client_*", added.length === 4 && added.every((p) => p.startsWith("case_client_")) && !/CREATE (OR REPLACE )?FUNCTION (?!case_client_)/.test(text), added);
+  ok("CS-K1 DW8 pass: every function the migration adds is named case_client_*", added.length === 5 && added.every((p) => p.startsWith("case_client_")) && !/CREATE (OR REPLACE )?FUNCTION (?!case_client_)/.test(text), added);
   ok("CS-K1 DW8 fail: no function of the migration runs as definer, and its text says how to roll back",
     sql(`select count(*) from pg_proc where proname like 'case_client%' and prosecdef`) === "0" && /Rollback \(in this order\)/.test(text));
   {
@@ -150,8 +150,8 @@ try {
     /runtime_case_client_id_(workspace_id_firm_key|firm_id)_fkey/.test(rolled(`update runtime_case set client_id = '${soloClient}' where id = '${u(101)}'`)));
   ok("CS-K1 DW8a fail: a forced mismatch, the client's firm_id set to the other firm, is refused by the foreign key",
     /runtime_case_client_id_firm_id_fkey/.test(rolled(`update case_client set firm_id = '${F2}' where id = '${firmClient}'`)));
-  ok("CS-K1 DW8a fail: a client row whose firm_id is not its key's platform firm is refused (CS-W1's fill on case_client)",
-    /case_firm_from_key: the firm id given is not the platform firm of key "sample-firm" \(case_client\)/.test(rolled(client({ n: 9009 }).replace("prospect_id, created_by)", "prospect_id, created_by, firm_id)").replace("'user-O')", `'user-O', '${F2}')`))));
+  ok("CS-K1 DW8a fail: a client row whose firm_id is not its key's platform firm is refused (case_client_firm_from_key, by CS-W1's lookup)",
+    /case_client_firm_from_key: the firm id given is not the platform firm of key "sample-firm"/.test(rolled(client({ n: 9009 }).replace("prospect_id, created_by)", "prospect_id, created_by, firm_id)").replace("'user-O')", `'user-O', '${F2}')`))));
   // The key with no platform firm: CS-W1's backfill later fills the case; its client follows (case_client_follow_firm).
   const ghost = () => sql(`select coalesce(c.firm_id::text, 'null') || '|' || coalesce(k.firm_id::text, 'null') from runtime_case c join case_client k on k.id = c.client_id where c.id = '${u(104)}'`);
   const g0 = ghost();
