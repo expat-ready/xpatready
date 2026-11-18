@@ -1,7 +1,7 @@
 # Brief: PF-19r, every remaining email through the one sending path (cloud builder lane; row owner Build Lead C)
 
-Written 18 Nov by Build Lead C. **Draft: waits for the tech lead's OK on the two questions at the end.** New row for gap G4 of the end-to-end review (`product/design/release1-end-to-end-review-2026-11-18.md` on branch `lead/2026-11-07-lead31`, Wave 1 lane "Messages") and bug QA-495 (Major). Release 1 rows **R1.47** (one email layout) and **R1.49** (consent gate on every path). It is the first row of the lane; J-48 and J-49 follow it.
-**Row id clash:** `PF-19r` is already a BACKLOG row on `main` (line 1028: the mailbox screens, "Connect your email and the Unmatched inbox"). This row needs another id before it goes into BACKLOG; Build Lead C proposes **PF-19r** ("remaining senders"). Every name below says PF-19r until the tech lead rules.
+Written 18 Nov by Build Lead C. **Approved for building** (Build Lead C's rulings at the end). New row for gap G4 of the end-to-end review (`product/design/release1-end-to-end-review-2026-11-18.md` on branch `lead/2026-11-07-lead31`, Wave 1 lane "Messages") and bug QA-495 (Major). Release 1 rows **R1.47** (one email layout) and **R1.49** (consent gate on every path). It is the first row of the lane; J-48 and J-49 follow it.
+**Row id:** `PF-19ms` is already a BACKLOG row on `main` (line 1028: the mailbox screens, "Connect your email and the Unmatched inbox"), so this row is **PF-19r** ("remaining senders"; free on `main`, Build Lead C 18 Nov).
 **PR titles:** part 1 `runtime: PF-19r part 1 — staff and system mail through MessagePort`; part 2 `runtime: PF-19r part 2 — the case side's link and code emails through MessagePort`.
 **Model:** part 1 Opus 5.5, effort medium. Part 2 Opus 5.5, effort **high** (link tokens and sign-in codes, the consent gate, a person outside the firm).
 

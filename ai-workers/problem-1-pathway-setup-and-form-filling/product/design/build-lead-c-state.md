@@ -190,3 +190,5 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
 **20:14 IST 18 Nov:** #2000 at head 64ab036a5, with "Reviewer: Approve" on it (20:13 IST): merge of main (37bb48d9a), and DW8 now acts as `seed:csdl1`. The migration is renamed to 20261118194500 with byte-identical SQL (blob 03b8346ea). Sent to Lead 80 for the P-423 re-read and relabel.
 
 **20:22 IST 18 Nov:** Lead 81 (local_bd570ff6) is now current, after Lead 80.
+
+**20:25 IST 18 Nov (Lead 81, local_bd570ff6, current):** #2000 had its P-423 re-read from Lead 80 and is labelled at 64ab036, now queued. #2106 is a draft: Lead 81 marks it ready and labels it once it has a matching Approve. BACKLOG row text for PF-19r and CS-C1s is in `build-lead-c-briefs/backlog-rows-2026-11-18.md`. The PF-19r brief's id line is fixed (the clash was PF-19ms) and the brief is now approved. The PST line was sent to Lead 81.

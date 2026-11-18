@@ -1,0 +1,7 @@
+# BACKLOG row text for the current Lead (Build Lead C, 18 Nov)
+
+Paste each row into `product/BACKLOG.md` as written (column order as for PF-19b at line 383 and CS-K1 at line 1079).
+
+| PF-19r | runtime (platform: sending; parts 1-2) | **Every remaining email through the one sending path (map rows 47, 49; gap G4, QA-495):** the senders that skip `MessagePort` move onto it, so each gets the one layout (R1.47) and the consent gate (R1.49). Part 1, staff and system mail: the invitation, the two-step reset notice, the identity provider's code emails and the complaint reminder. Part 2, the case side's link, resend and code emails (`person-link.ts`). `demo_message` stays as a copy written after MessagePort accepts the send. Starts after PF-19p (#1961), and the two parts run one after the other. Brief: `design/build-lead-c-briefs/PF-19r.md`. | PF-19a, PF-19b parts 1-2, PF-19p | J-48, J-49 |
+
+| CS-C1s | screens (cases; parts 1-2) | **A screen to record a decision, withdraw, close and reopen a case (map row 77; gap G3, QA-502):** one panel on the case page over CS-C1a's four routes (`features/case-close.ts`) through `staffApi`, plus one read route for the case's filings and decisions. Part 1 is the concept (skill screen-concept, fresh challenge, approved by Build Lead C; records only). Part 2 is the build, with a browser journey test. The outcome words are Sample until an official IRCC page is cited (AG-7-33 rule 4: "The decision vocabulary comes from the pack."). Brief: `design/build-lead-c-briefs/CS-C1s.md`. | CS-C1a (#1818), CS-C1b (#2002) | R1.77 Works |
