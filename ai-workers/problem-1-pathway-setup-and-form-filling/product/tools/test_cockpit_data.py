@@ -366,7 +366,7 @@ class TrustAndInvariants(unittest.TestCase):
         t2 = json.loads(json.dumps(theirs))
         plus = lambda n: (date.fromisoformat(k["forecast_p85_date"]) + timedelta(days=n)).isoformat()
         r7 = cd.reconcile_compare(k, theirs, None)
-        self.assertEqual(r7["compared"], 49)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's six + v63's eight + P-636's Proven + P-644's 13 Flow counts
+        self.assertEqual(r7["compared"], 55)                                  # R7: the contract's 11 numbers + mc_inputs' two + P-602's eight + v53's six + v63's eight + P-636's Proven + P-644's 13 Flow counts + A133's 4
         t2["numbers"]["forecast_p85_date"]["value"] = plus(1)                 # +1 day: agrees
         self.assertEqual(cd.reconcile_compare(k, t2, None)["state"], "agree")
         t2["numbers"]["forecast_p85_date"]["value"] = plus(2)                 # +2 days: disagrees
@@ -951,7 +951,7 @@ class Delivery24h(unittest.TestCase):
             out, note = cd.run_reconcile(d, rec)
             self.assertIsNone(note)
             _, c = run(d, rec=out, note=None)
-            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 49, []))   # 36 + P-644's 13 Flow counts
+            self.assertEqual((c["trust"]["state"], c["trust"]["compared"], c["trust"]["diffs"]), ("agree", 55, []))   # 36 + P-644's 13 Flow counts + A133's 4 + A134's 2
 
 
 BLP = "files/" + cd.REL + "/BACKLOG.md"
@@ -1409,7 +1409,7 @@ class Tooltips(unittest.TestCase):
         """P-636 (founder 16 Nov): six answers in three words. Proven comes from qa's file on main only, Built = all parts
         merged or qa passed, and every answer has its explanation with what is behind it."""
         f = self.d["first"]
-        self.assertEqual(set(f), {"words", "release", "today", "needs", "stuck", "choke", "health", "rule"})
+        self.assertEqual(set(f), {"words", "release", "today", "needs", "stuck", "choke", "health", "rule", "proven_lines", "stuck_now"})   # A133, A134
         self.assertIn("Only Proven counts as delivered", f["words"])
         R = f["release"]
         self.assertEqual(R["planned"], 8)                                    # 8 Build rows in the fixture checklist
@@ -1437,6 +1437,10 @@ class Tooltips(unittest.TestCase):
         self.assertEqual(R["qa_not_built_ids"], [])                                               # no qa test after the merge: Built, awaiting qa
         self.assertEqual((R["days_left"], R["need_per_day"], R["state"]), (13, 0.2, "on track"))  # 3 left in 13 days; 1 proven in 4 days
         self.assertEqual((f["today"]["short"], f["today"]["state"]), (2, "at risk"))
+        # Lead 74's 09:15 input sent today_goal as words: shown as not set with the words, never a crash
+        w = cd.first_screen(d, {2: "Works", 3: "Not built", 1: "Partial"}, {"today_goal": "30 Proven by 08:00 IST 18 Nov"}, "Lead input")["today"]
+        self.assertEqual((w["state"], w["goal"]), ("not set", None))
+        self.assertIn("30 Proven by 08:00 IST 18 Nov", w["why"])
         self.assertEqual([x["id"] for x in f["needs"]["items"]], ["A1", "C5"])                   # dated today; C12 later; C2 not the founder's
         self.assertEqual([x["id"] for x in f["needs"]["later"]], ["C12"])
         self.assertEqual((f["choke"]["stage"], f["choke"]["count"]), ("Built, waiting for qa", 2))
@@ -2047,6 +2051,54 @@ class Flow(unittest.TestCase):
         self.assertEqual((f["flow_forecast"], f["flow_forecast_best"], f["flow_forecast_worst"]), ("2026-11-23", "2026-11-22", None))
         self.assertEqual(f["today_counts"], {"rows": 1, "parts": 1, "works": 1})
 
+    def test_today_is_the_ist_day_and_the_week_starts_monday(self):
+        # Lead 70 (A133): Tuesday 17 Nov 12:00 IST. Row 3 (16 Nov 20:00) is in the last 24 h but not today; row 5 (proven
+        # Monday 16 Nov) is in this week but not today
+        f = self.small()
+        self.assertEqual((f["flow_rows_built_today"], f["flow_rows_built_24h"]), (1, 2))
+        self.assertEqual((f["flow_parts_today"], f["flow_works_today"], f["flow_works_week"], f["week_start"]), (1, 1, 2, "2026-11-16"))
+        self.assertEqual((f["built_today_maps"], f["works_today_maps"]), ([1], [1]))
+        b = self.box(f)
+        self.assertEqual((b["Build"]["big"], b["Prove"]["big"]), ("1 row built today", "1 row proven today"))
+        self.assertIn("Last 24 h: 2 rows built, 1 part merged", b["Build"]["lines"])
+
+    def test_three_proven_lines(self):
+        # A133: three plain lines in place of "11 of 10 proven", each with its light
+        f = self.small()
+        d = {"lineage": {"taken_at": "2026-11-17T06:30:00Z"}, "first": {"release": {"target": "2026-11-29", "need_per_day": 0.2}}}
+        L = {x["key"]: x for x in cd.proven_lines(d, f)}
+        self.assertEqual(L["today"]["text"], "Today (IST day): 1 proven of 10 (floor 7, P-644)")
+        self.assertEqual(L["week"]["text"], "This week (Mon to Sun IST): 2 proven of 70")
+        self.assertEqual(L["overall"]["text"], "Overall: 3 of 5 proven; 29 Nov needs about 0.2 a day; at the current pace, all proven about 23 Nov")
+        self.assertEqual((L["today"]["light"], L["week"]["light"], L["overall"]["light"]), ("red", "red", "green"))
+        self.assertIn("for the 2 days so far", L["week"]["src"])                # 10 a day for Mon and Tue: 20 green, 14 amber
+        f2 = dict(f, flow_works_week=8)                                     # Tuesday: under 10 for Monday alone, 7 or more
+        self.assertEqual({x["key"]: x for x in cd.proven_lines(d, f2)}["week"]["light"], "amber")
+        late = dict(f, flow_forecast="2026-12-03")
+        self.assertEqual({x["key"]: x for x in cd.proven_lines(d, late)}["overall"]["light"], "amber")   # up to 7 days after
+        self.assertEqual({x["key"]: x for x in cd.proven_lines(d, dict(f, flow_forecast=None))}["overall"]["light"], "red")
+        nq = dict(f, no_qa=True, flow_works_today=None, flow_works_week=None)
+        self.assertEqual([x["light"] for x in cd.proven_lines(d, nq)], ["grey", "grey", "grey"])
+
+    def test_midnight_monday_and_sunday(self):
+        # review m5: the IST day and the Monday-start week at the edges (both scripts read taken_at the same way)
+        a = self.at
+        rows = [{"map": 1, "built": "2026-11-22", "built_at": a("2026-11-22T23:50"), "qa_tested_at": None},
+                {"map": 2, "built": "2026-11-23", "built_at": a("2026-11-23T00:05"), "qa_tested_at": None}]
+        qa = {1: "Works", 2: "Works"}
+        since = {1: a("2026-11-22T23:50"), 2: a("2026-11-23T00:05")}       # Sunday 23:50, Monday 00:05
+        mon = cd.flow_counts(rows, qa, {}, 2, since, datetime.fromisoformat(a("2026-11-23T00:10").replace("Z", "+00:00")))
+        self.assertEqual((mon["week_start"], mon["flow_works_today"], mon["flow_works_week"], mon["flow_rows_built_today"]), ("2026-11-23", 1, 1, 1))
+        sun = cd.flow_counts(rows[:1], {1: "Works"}, {}, 1, {1: a("2026-11-16T00:00")}, datetime.fromisoformat(a("2026-11-22T23:55").replace("Z", "+00:00")))
+        self.assertEqual((sun["week_start"], sun["flow_works_week"]), ("2026-11-16", 1))   # Monday 16 Nov 00:00 counts
+        sun2 = cd.flow_counts(rows[:1], {1: "Works"}, {}, 1, {1: a("2026-11-15T23:59")}, datetime.fromisoformat(a("2026-11-22T23:55").replace("Z", "+00:00")))
+        self.assertEqual(sun2["flow_works_week"], 0)                         # Sunday 15 Nov 23:59 is last week
+
+    def test_week_light_early_in_the_day(self):
+        # review m1: at 00:10 on Tuesday, 10 proven on Monday is on target, not red
+        self.assertEqual((cd.week_light(10, 2), cd.week_light(8, 2), cd.week_light(6, 2)), ("green", "amber", "red"))
+        self.assertEqual((cd.week_light(10, 1), cd.week_light(60, 7), cd.week_light(None, 3)), ("green", "green", "grey"))
+
     def test_a_day_without_a_part_gives_no_worst_date(self):
         a = self.at
         f = self.small({"A-1": a("2026-11-14T09:00"), "B-1": a("2026-11-16T11:00")})
@@ -2076,14 +2128,14 @@ class Flow(unittest.TestCase):
         self.assertIn("not measured: offline", " ".join(nm["Merge"]["lines"]))
         self.assertIn("Lanes: not measured", " ".join(nm["Resources"]["lines"]))
         g = {k: v for k, v in f.items()}
-        g.update({"flow_rows_built_24h": 10, "flow_works_24h": 11, "flow_prove_lag_h": 30.0})
+        g.update({"flow_rows_built_today": 10, "flow_works_today": 11, "flow_prove_lag_h": 30.0})
         bb = self.box(g)
         self.assertEqual((bb["Build"]["light"], bb["Prove"]["light"]), ("green", "amber"))   # proving on count, but slower than 12 h
-        g.update({"flow_works_24h": 12, "flow_prove_lag_h": None})
+        g.update({"flow_works_today": 12, "flow_prove_lag_h": None})
         self.assertEqual(self.box(g)["Prove"]["light"], "amber")            # review 2 m2: built to proven not measured is not green
         g.update({"flow_prove_lag_h": 12.0, "flow_awaiting_oldest_h": 3.0})
         self.assertEqual(self.box(g)["Prove"]["light"], "green")            # 12 h or less
-        g.update({"flow_rows_built_24h": 7})
+        g.update({"flow_rows_built_today": 7})
         self.assertEqual(self.box(g)["Build"]["light"], "amber")            # the floor
         self.assertEqual(cd.flow_light(None, None), "grey")
         self.assertEqual(cd.flow_light("green", None), "amber")              # never green while a part is not measured (review m4)
@@ -2147,6 +2199,8 @@ class Flow(unittest.TestCase):
         self.assertFalse([x for x in c["trust"]["diffs"] if x["name"].startswith("flow_")], c["trust"]["diffs"])
         for n in cd.FLOW_KEYS:
             self.assertEqual(out["numbers"][n]["value"], k[n], n)
+        # the four IST-day counts, exact (20 Nov is a Friday: the week runs from Monday 16 Nov)
+        self.assertEqual((k["flow_works_today"], k["flow_works_week"]), (1, 2))   # row 8 today; rows 2 (18 Nov) and 8 this week
 
     def test_both_scripts_agree_on_the_fixture(self):
         out, note = cd.run_reconcile(FIX, os.path.join(HERE, "cockpit-reconcile.py"))
@@ -2159,6 +2213,74 @@ class Flow(unittest.TestCase):
         t = json.loads(json.dumps(out))
         t["numbers"]["flow_awaiting"]["value"] = (t["numbers"]["flow_awaiting"]["value"] or 0) + 1
         self.assertEqual(cd.reconcile_compare(c["keys"], t, None)["diffs"][0]["name"], "flow_awaiting")   # a one-off difference is caught
+
+
+class StuckNow(unittest.TestCase):
+    """A134 (founder 23:3x IST 16 Nov via Lead 70): four lines that say what is stuck right now (FORMULAS.md › Stuck now)."""
+    META = {"taken_at": "2026-11-20T12:00:00+05:30", "main_at": "2026-11-20T05:15:00Z"}      # 75 min before taken_at
+    AP = [{"number": 11, "title": "a", "labeled_at": "2026-11-20T05:00:00Z"},                   # 90 min: over 60
+          {"number": 12, "title": "b", "labeled_at": "2026-11-20T05:45:00Z"},                   # 45 min: not yet
+          {"number": 13, "title": "c", "labeled_at": None}]                                     # no label event: not counted
+
+    def test_counts(self):
+        c = cd.stuck_counts(self.META, self.AP)
+        self.assertEqual((c["stuck_main_gap_min"], c["stuck_approved_over_60"]), (75, 1))
+        self.assertEqual(c["approved_old"], [{"number": 11, "title": "a", "min": 90}])
+        n = cd.stuck_counts({"taken_at": self.META["taken_at"]}, {"error": "offline"})
+        self.assertEqual((n["stuck_main_gap_min"], n["stuck_approved_over_60"], n["approved_reason"]), (None, None, "not measured: offline"))
+
+    def lines(self, ci=None, li=None, meta=None, ap=None):
+        sc = cd.stuck_counts(meta or self.META, self.AP if ap is None else ap)
+        return {x["key"]: x for x in cd.stuck_now({"lineage": {"taken_at": "2026-11-20T06:30:00Z"}}, sc, ci, li or {}, "Lead input")["lines"]}
+
+    def test_lines_and_lights(self):
+        L = self.lines(ci={"queued_runs": 31}, li={"stuck_sessions": [{"title": "next forms", "state": "Awaiting input"}], "stuck_sessions_at": "2026-11-20T06:00:00Z"})
+        self.assertEqual(list(L), ["merge", "queue", "sessions", "approved"])                  # four lines, in the asked order
+        self.assertEqual((L["merge"]["text"], L["merge"]["light"]), ("Last merge to main: 75 min ago", "red"))   # over 60
+        self.assertEqual((L["queue"]["text"], L["queue"]["light"]), ("Actions runs waiting for a machine: 31", "red"))   # over 30
+        self.assertEqual((L["sessions"]["text"], L["sessions"]["light"]), ("Sessions stuck (awaiting input, failed, blocked, or idle with work left and no push for 90 min): 1: next forms (Awaiting input)", "red"))
+        self.assertIn("per the Lead's check of claude.ai/code at 20 Nov 11:30 IST, 30 min before this data", L["sessions"]["src"])
+        self.assertEqual((L["approved"]["text"], L["approved"]["light"]), ("Approved, not merged for over 60 min: 1: #11 (90 min); waiting for CI machines (31 runs queued)", "red"))   # queue red: the reason added
+        ok = self.lines(ci={"queued_runs": 4}, li={"stuck_sessions": [], "stuck_sessions_at": "2026-11-20T06:00:00Z"},
+                        meta={"taken_at": "2026-11-20T12:00:00+05:30", "main_at": "2026-11-20T06:20:00Z"}, ap=[])
+        self.assertEqual([x["light"] for x in ok.values()], ["green", "green", "green", "green"])
+        nm = self.lines()
+        self.assertEqual((nm["queue"]["light"], nm["sessions"]["light"], nm["sessions"]["text"]), ("grey", "grey", "Sessions stuck (awaiting input, failed, blocked, or idle with work left and no push for 90 min): not reported"))
+        self.assertEqual(self.lines(ci={"queued_runs": 20})["queue"]["light"], "amber")
+        # review m2, m3: an empty list from an old check, or with a time that has no zone or does not parse, is amber, never green
+        for at in ("2026-11-20T04:00:00Z", "2026-11-20T11:00:00", "23:40 IST", "2026-11-20T11:20:00+05:30"):
+            got = self.lines(li={"stuck_sessions": [], "stuck_sessions_at": at})["sessions"]["light"]
+            self.assertEqual(got, "green" if at.endswith("+05:30") else "amber", at)
+        # Lead 73: each listed session shows its reason after its state; a time that is not a string is amber, never an error
+        r = self.lines(li={"stuck_sessions": [{"title": "Manitoba read", "state": "blocked", "reason": "Claude in Chrome not connected"}, {"title": "PF-8r", "state": "Awaiting input"}],
+                           "stuck_sessions_at": 1763358000})["sessions"]
+        self.assertEqual((r["text"], r["light"], r["items"]), ("Sessions stuck (awaiting input, failed, blocked, or idle with work left and no push for 90 min): 2: "
+                          "Manitoba read (blocked; Claude in Chrome not connected); PF-8r (Awaiting input)", "red",
+                          ["Manitoba read (blocked; Claude in Chrome not connected)", "PF-8r (Awaiting input)"]))
+        self.assertIn("a time not given", r["src"])
+        self.assertEqual(self.lines(li={"stuck_sessions": [], "stuck_sessions_at": ["x"]})["sessions"]["light"], "amber")
+        # the reason goes only with a red queue line (20 queued is amber: no reason)
+        self.assertEqual(self.lines(ci={"queued_runs": 20})["approved"]["text"], "Approved, not merged for over 60 min: 1: #11 (90 min)")
+        # review m4: a merge after the snapshot time reads 0, not -1
+        self.assertEqual(cd.stuck_counts({"taken_at": "2026-11-20T12:00:00+05:30", "main_at": "2026-11-20T06:30:30Z"}, [])["stuck_main_gap_min"], 0)
+
+    def test_both_scripts_agree(self):
+        meta = json.loads(cd.Snap(FIX).text("meta.json"))
+        meta["main_at"] = "2026-11-20T05:15:00Z"
+        d = snap_with({"meta.json": meta, "github/approved_open.json": self.AP})
+        out, note = cd.run_reconcile(d, os.path.join(HERE, "cockpit-reconcile.py"))
+        self.assertIsNone(note)
+        _, c = run(d, rec=out, note=None)
+        self.assertEqual((c["keys"]["stuck_main_gap_min"], c["keys"]["stuck_approved_over_60"]), (75, 1))
+        self.assertEqual((out["numbers"]["stuck_main_gap_min"]["value"], out["numbers"]["stuck_approved_over_60"]["value"]), (75, 1))
+        self.assertFalse([x for x in c["trust"]["diffs"] if x["name"].startswith("stuck_")], c["trust"]["diffs"])
+        # review m6: no main_at and an error object, end to end: not measured on both sides, no difference
+        d2 = snap_with({"github/approved_open.json": {"error": "offline"}})
+        o2, _ = cd.run_reconcile(d2, os.path.join(HERE, "cockpit-reconcile.py"))
+        _, c2 = run(d2, rec=o2, note=None)
+        self.assertEqual((c2["keys"]["stuck_main_gap_min"], c2["keys"]["stuck_approved_over_60"]), (None, None))
+        self.assertEqual((o2["numbers"]["stuck_main_gap_min"]["value"], o2["numbers"]["stuck_approved_over_60"]["value"]), (None, None))
+        self.assertFalse([x for x in c2["trust"]["diffs"] if x["name"].startswith("stuck_")], c2["trust"]["diffs"])
 
 
 if __name__ == "__main__":
