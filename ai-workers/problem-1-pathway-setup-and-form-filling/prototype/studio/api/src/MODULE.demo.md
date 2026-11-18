@@ -17,9 +17,10 @@ Demo scaffolding: the configured checkpoint, the Sample case and the finished st
 - "No code change" for a new sample: data only, engine and API code untouched (P-449, P-452).
 - The read-back is never simulated; it waits for a person (P-46, P-171).
 - The audit trail is insert-only at the database: Reset deletes the demo workspace's Sample lines only inside its own transaction setting, never a platform line (AUD-1a, P-571 (1)).
+- Reset and the configured load first make both Sample firms exist (PF-3's idempotent seed on the `platform.demo.reset` bypass use; never in a production configuration), then fill the cases' platform firm id (CS-W1).
 
 **Tables.** combination, programDef, sourceAttachment, auditEvent, combinationForm, packVersion, configRelease, sampleProfile, sampleFact, formEdition.
-**Tests.** `tests/check_b104_checkpoint.ts`, `tests/check_b104_stage_one.ts`, `tests/check_bk12_sample_case.ts`, `tests/check_c102_story_validated_match.ts`, `tests/check_forms_demo.ts`.
+**Tests.** `tests/check_b104_checkpoint.ts`, `tests/check_b104_stage_one.ts`, `tests/check_bk12_sample_case.ts`, `tests/check_c102_story_validated_match.ts`, `tests/check_forms_demo.ts`, `tests/check_csw1_firm_id.ts`.
 
 **Do not.**
 - Offer a demo control on a product screen, or treat Sample as a release.
