@@ -1,8 +1,8 @@
 # AUD-1m part 1: build notes (resume here, P-557)
 
-**Where it is (18 Nov, about 00:4x IST on 19 Nov):**
+**Where it is (19 Nov, about 04:4x IST):**
 * Branch `claude/admiring-mendel-weh2i4`, built on AUD-1b's head (#2124, branch `claude/runtime-aud1b`).
-* The reviewer (Opus, high effort) approved round 2 on 602f892d. Since then the branch has gained one test-line change (c10f8ead, C7.5) and records.
+* The reviewer (Opus, high effort) approved round 2 on 602f892d, and round 3 on 6145111e: the C7.5 test line (c10f8ead) and the merge of #2124's head b3b0b2a0 (a60fe6a9; a merge, not a rebase, per AGENTS.md rule 1 and P-270).
 * **Next step:**
   1. Wait for #2124 to merge (labelled `review: approved` by the tech lead).
   2. Merge `origin/main` in once (P-270).
@@ -71,4 +71,6 @@
 * **CS-W1:** once a case route signs in through the platform guard, AUD-1b's exact-actor rule refuses case lines in a staff request under another word. That includes the rules' resolve-on-read `system:rules` lines.
 * **The case lookup** in `Audit.log` runs before the port's alarm wrapper (reviewer round 2, minor). A failed read still throws, and a transaction rolls back, but it raises no `audit_write_failed` alert.
 * **`fakeAudit`'s `failOn`** does not apply to case lines.
+* **CS-W1 part 2:** `runtime_case.firm_id` exists since CS-W1 part 1. A case line's firm still comes from the request or job only, as the brief says. Once the case walls set the request's firm, it is filled from there; taking it from the case row would go beyond this brief.
+* **Part 2 (reviewer round 3):** three direct writes store the bare word `system`: `lifecycle.ts:566`, `library-items.ts:174` and `platform/settings.ts`. `check_pf4_identity.ts:481` and `:544` read `actor = 'system'`. When part 2 moves these writes to the port, they need the same mapping, and those two test reads need the change c10f8ead made.
 * **Case detail** stays the case side's own JSON. The ids-only floor applies to platform lines only, as before.

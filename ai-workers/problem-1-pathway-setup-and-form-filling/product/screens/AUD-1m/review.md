@@ -84,3 +84,28 @@ Own worktree at 602f892d; isolated copy `rv_aud1m` on :4438 (stopped afterwards)
 * Journey score, round 2: **10 / 10**. "Correct data" rises to 1: 609 of 613 case lines now carry their case, and the 4 left are part 2's.
 
 **Verdict: Approve** (no open Blocker or Major) for 602f892d63f2856a322c367276125cb59cb96ec5. The PR body must carry m6 (as "Question for the tech lead"), m7 and the minor above.
+
+## Round 3 (diff-only `602f892d..6145111e`, head 6145111e7a6bac6fae19c8436a03f9a7f2f661ef)
+Own worktree at 6145111e (removed afterwards). Not run here: the copy-based suites (AUD-1a, C7.5, CS-W1). The builder reports them green.
+* **The merge holds.** Excluding `.md` files, the c75 test and the old link, `git diff b3b0b2a0 6145111e` and round 2's approved `git diff 1b2defdb 602f892d` are **byte-identical** once the index lines are dropped. `git diff origin/claude/runtime-aud1b 6145111e` is part 1, the c75 line, and the records (AUD-1b review, AUD-1m build notes, this file).
+* **The one conflict is resolved right.** `MODULE.core.md` keeps main's CS-W1 line and adds the Audit.log line, and its Tests line names both `check_csw1_firm_id.ts` and `check_aud1m_case_writes.ts`.
+* **c10f8ead is right.** C7.5's m8 check read the stored word `rules`, and the mapping now stores `system:rules`. Asking the tech lead in the PR body is right, because the brief asks both "mapped" and "every case suite unchanged". I recommend keeping the mapping. (My round-1 grep missed this SQL read: my miss.)
+* **The CS-W1 part 1 interaction holds.**
+  * `runtime_case` still has no row-level security: no migration at 6145111e enables it on `runtime_case`, `case_stage` or `audit_event`. So `caseIdOf`'s read through the walled `Db` still sees the workspace's cases.
+  * CW3's bare inserts run with `session_replication_role = replica`, so `case_firm_from_key` does not fire, and `firm_id`'s default (`app.firm_id`, unset) leaves it null. CW3 does not read `firm_id`.
+  * Taking a case line's firm from `runtime_case.firm_id` would go beyond the brief ("request context, null otherwise, until the walls"). Naming it as a note for CS-W1 part 2 is the right call, not a finding here.
+* **Main's new direct writes leave CW1's list unchanged.** Per-file `auditEvent.create` counts under `api/src` are identical at 602f892d and 6145111e (30 in 22). The new main writes since then are platform `AuditEntry` writes (FO-1p `fo_person`/`fo_company`, PF-18b support), with `firmId` and no `workspaceId`, so the case path does not take them.
+* **Re-run in my worktree:** check_aud1m 17/17, check_case_feed 42/42. Each of these changes turns its named case red:
+
+  | Change | Red |
+  |---|---|
+  | M3 lookup removed | CW3 pass |
+  | twin cases accepted | CW3 fail |
+  | workspace filter dropped | CW3 fail |
+  | M2 word refusal removed | CW6 fail |
+  | one new direct write | CW1 pass |
+* **Note for part 2 (not a finding here):**
+  * `lifecycle.ts:566` and `library-items.ts:174` write the bare `system` with `auditEvent.create`, and `platform/settings.ts` does too (`check_pf4_identity.ts:481` and `:544` read `actor = 'system'`). Moving them to `AuditPort.record` needs the same mapping, or CaseActor refuses them. Those suites' reads then follow, as c10f8ead did.
+  * The round-2 minor (the case lookup sits outside the alarm) and m6/m7 stay for the PR body.
+
+**Verdict: Approve** (no open Blocker or Major) for 6145111e7a6bac6fae19c8436a03f9a7f2f661ef.
