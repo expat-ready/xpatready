@@ -19,7 +19,7 @@ Final version, 17 Nov 2026, 09:25 IST. This revises the draft against two critiq
 5. New blocker check: a repository cannot be transferred into an enterprise with managed users (EMU) from outside it, and managed users cannot create public repositories [S6, S29]. N1 confirms the enterprise uses personal accounts.
 6. New enterprise policy checks N2 to N9 (Actions, allowed actions, runners, repository creation and transfer, 2FA, IP allow list, tokens and apps, enterprise rulesets). An enterprise policy, once set, overrides the organization's choice.
 7. Every enterprise policy that affects this move is either off by default or, by the documented default, leaves the choice to the organization; the founder confirms each on screen because the enterprise is new and its screens were not read here.
-8. Timing: the window is tonight, not a later weekday morning. Working back from 18:30 IST, the freeze (B2) has to start by about 15:30 IST for the 2 to 3 hour drain, and B1 by about 14:30 IST (A9).
+8. Timing: the window is tonight, not a later weekday morning. Working back from 18:30 IST, the freeze (B1) has to start by about 15:30 IST (B2 is at the go) for the 2 to 3 hour drain, and B1 by about 14:30 IST (A9).
 9. The Support ticket (P1) is no longer needed for capacity; it stays optional.
 10. Risk G9 (small gain) is replaced: the gain is large (40 to 500). The biggest risks are unchanged: the author association on the founder's Approve (G3) and the drain finishing in time (B3).
 
@@ -65,7 +65,7 @@ Why no-go:
 When it could happen:
 - **Today:** only if P1 to P13 are done and the freeze starts by about 10:30 IST, with you free until about 17:30 IST.
 - **Otherwise:** the next weekday, starting about 09:30 IST.
-- (Enterprise revision) **Tonight (the plan now):** transfer at about 19:00 IST, go / no-go at about 18:30 IST. That needs P2 to P13 and N1 to N9 done, B1 by about 14:30 IST and B2 (freeze) by about 15:30 IST, and you free until about 23:00 IST. If the drain is not done by 18:30 IST, postpone (B3).
+- (Enterprise revision) **Tonight (the plan now):** transfer at about 19:00 IST, go / no-go at about 18:30 IST. That needs P2 to P13 and N1 to N9 done, B1 by about 14:30 IST and B1 (freeze) by about 15:30 IST; B2 at the go, and you free until about 23:00 IST. If the drain is not done by 18:30 IST, postpone (B3).
 
 ## What this revision read (17 Nov, 09:00 to 09:20 IST)
 
@@ -154,12 +154,12 @@ When it could happen:
    - Cost: none extra. A private repository in an Enterprise org adds seats only for members, and only you are a member [S4]. Nothing runs Actions there. (Enterprise revision)
    - Alternative: keep it on the personal account. Then you set `BACKUP_REPO` and `BACKUP_DST` somewhere lasting on the Mac, such as your shell profile. A one-off `export` is lost, and the tools would fall back to a path that does not exist.
 7. **Guard workflows during the window.** Recommendation:
-   - turn queue-gate off from B2 (the freeze) until E7;
+   - turn queue-gate off from the go (B2, just before C1.3, C1.4 and C2) until E7;
    - turn label-guard off from C1 (after the drain, just before Transfer) until E7 passes.
 
    These are Actions settings, not edits to `.github` files, so no PR is needed. label-guard stays on during the drain because it still guards the merges Mergify makes.
 8. **Rollback trigger.** Agree it now: if E3 (Mac push), E5 (lane push) or E8 (a records batch merges) is not green within 90 minutes of C2, start F3. A full rollback is itself a freeze of 3 to 5 hours.
-9. **Window.** (Enterprise revision) Tonight: go / no-go about 18:30 IST, transfer about 19:00 IST. Working back: drain 2 to 3 hours (B3), so B2 by about 15:30 IST, and B1 at least 1 hour before C1, so by about 14:30 IST at the latest. You need to be free from about 15:30 to 23:00 IST. The night runs (01:53 and 02:11 IST) then run after the move, on `expat-ready/xpatready`, and E15 checks them. The two lines below are the reviewed default for a later day.
+9. **Window.** (Enterprise revision) Tonight: go / no-go about 18:30 IST, transfer about 19:00 IST. Working back: drain 2 to 3 hours (B3), so B1 by about 15:30 IST, and B1 at least 1 hour before C1, so by about 14:30 IST at the latest. You need to be free from about 15:30 to 23:00 IST. The night runs (01:53 and 02:11 IST) then run after the move, on `expat-ready/xpatready`, and E15 checks them. The two lines below are the reviewed default for a later day.
    - A weekday when you are free for 6 to 7 hours from about 09:30 IST.
    - After the night runs (01:53 and 02:11 IST). These can start 3 to 4 hours late [S27], so wait until about 07:30 IST.
    - The go/no-go items in C1 are measurable. If any fails, postpone a day.
@@ -285,7 +285,9 @@ All paths start at the enterprise page (github.com > profile photo > Your enterp
    - **Cloud lanes:** tell each lane to push all its work and start no new row. Confirm by each lane's last push, because idle cloud lanes may not read messages.
    - **Hourly cloud routines:** pause them in claude.ai/code [V8].
    - **Devin:** pause it if it writes to PRs (unverified that it does).
-2. **[founder] Turn off queue-gate.** Path: Actions > queue-gate > ⋯ > Disable workflow.
+2. **[founder, at the tech lead's go, not before] Turn off queue-gate.** Path: Actions > queue-gate > ⋯ > Disable workflow. (B2 timing fix, Lead 79 ruling (c), 17 Nov ~18:4x IST; applied by Lead 80, 18 Nov)
+   - Keep it ON through the drain (B3). It also posts the `queue-fresh` status that Mergify's product queue needs for app code; turning it off early strands PRs that are labelled but not yet queued and stalls the drain. The B1 freeze already stops new Approves.
+   - At the go, the founder does B2, C1.3 and C1.4 back to back, then C2.
    - It runs on Approve comments, on every finished `ci` run of a PR, on push to main, on labelled and unlabelled events, and at :37 and :07 IST (`queue-gate.yml:14-26`). Turning it off stops new labels.
    - Runs already going finish: never cancel (P-371).
    - label-guard stays on (A7).
@@ -299,7 +301,7 @@ All paths start at the enterprise page (github.com > profile photo > Your enterp
 
    **Expect 2 to 3 hours.** About 100 jobs are queued and 40 are running. Shard jobs take 32 to 56 minutes (limit 75, `ci.yml:215`). Packs and regression take up to 90 minutes (`ci.yml:371`, `:468`). Each running batch needs one full `ci`.
 
-   If the repository is not drained within 3 hours of B2, postpone: the founder turns queue-gate back on, and the tech lead lifts the B1 holds.
+   If the repository is not drained within 3 hours of B1, postpone: the tech lead lifts the B1 holds (queue-gate is still on).
 
 ## C. Go / no-go and the transfer
 
@@ -315,7 +317,7 @@ All paths start at the enterprise page (github.com > profile photo > Your enterp
    2. B3 shows the repository drained in two reads at least 6 minutes apart.
    3. **[founder]** `CI_SHARD_RUNNER` is set to empty, with its value kept in the P8 record. Jobs then fall back to `ubuntu-latest` (#2032's title says that unset behaves as today). R5 restores it.
       - Why: if #2032 is batched before Namespace covers the org's repository, its long jobs wait up to 24 hours for a runner and hold the 3 batch slots (critic's reading; not rechecked).
-   4. **[founder]** label-guard is disabled (A7): Actions > label-guard > ⋯ > Disable workflow.
+   4. **[founder]** B2 is done (queue-gate disabled), then label-guard is disabled (A7): Actions > label-guard > ⋯ > Disable workflow.
    5. REST has at least 1,000 calls left, and githubstatus.com is all green.
    6. You are free for at least 4 more hours, and the rollback trigger (A8) is agreed.
 
@@ -455,7 +457,7 @@ All paths start at the enterprise page (github.com > profile photo > Your enterp
 | G22 | **Public membership** shows the founder's login on the org's People page | founder | Accepted trade-off (P3g); his login is public today as the repository owner |
 | G23 | (Enterprise revision) **Managed-user enterprise.** If "Expat Ready" uses managed users, the transfer is refused and the repository could not stay public [S6, S29] | founder | N1 before B1; NO-GO if managed users |
 | G24 | (Enterprise revision) **An enterprise policy blocks Actions, runners or the transfer** (N2 to N9) | founder | N1 to N9 read and recorded before B1 |
-| G25 | (Enterprise revision) **Tonight's window is tight**: B2 by about 15:30 IST for an 18:30 IST go / no-go | tech lead | A9; postpone a day if B3 is not drained by 18:30 IST |
+| G25 | (Enterprise revision) **Tonight's window is tight**: B1 by about 15:30 IST for an 18:30 IST go / no-go | tech lead | A9; postpone a day if B3 is not drained by 18:30 IST |
 
 ## Critic points not taken
 
