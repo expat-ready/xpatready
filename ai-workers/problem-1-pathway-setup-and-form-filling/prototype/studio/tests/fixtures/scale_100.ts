@@ -32,7 +32,7 @@ const q = (s: string) => s.replace(/'/g, "''");
 (async () => {
   const t0 = Date.now();
   await call("POST", "/demo/load");
-  const ws = sql("select id from workspace limit 1");
+  const ws = sql("select id from workspace where key <> 'platform-audit' limit 1");
   const pathwayKey = Object.fromEntries(sql(`select client_type||'|'||program_node_key from program_def where workspace_id='${ws}' and node_kind='PATHWAY'`).split("\n").filter(Boolean).map((l) => l.split("|") as [string, string]));
   const formDef = new Map(sql(`select form_key||'|'||id from gov_form_def where workspace_id='${ws}'`).split("\n").filter(Boolean).map((l) => l.split("|") as [string, string]));
   const rows: { id: string; key: string; n: number }[] = [];
