@@ -146,7 +146,7 @@ const GUIDE_ANSWER = { checks: [guideCheck, crossCheck], unresolved: [] };
   ok("QA-196 fail: IMM 5257's form check is refused in plain words while the form fields it reads are not mapped to shared fields, and nothing is written", r.status === 409 && /not mapped to a shared field yet/.test(said(r)) && /field page first/.test(said(r)) && /Have you ever committed, been arrested/.test(said(r)) && !/form1\[0\]|BackgroundInfo3/.test(said(r)) && Number(sql("select count(*) from check_def")) === before && sql(`select status from proposal_item where id='${formCheck?.id}'`) === "waiting", said(r));
   // The edition's field map maps the two form fields (as an applied field-map draft leaves them), first without saying
   // how the yes/no box's printed choices are held on the shared field.
-  const ed = sql(`select id from form_edition where edition_label='IMM 5257 (09-2023)'`), ws = sql("select id from workspace limit 1");
+  const ed = sql(`select id from form_edition where edition_label='IMM 5257 (09-2023)'`), ws = sql("select id from workspace where key <> 'platform-audit' limit 1");
   const OFFENCE = "person.criminal_offence_declared", OFFENCE_DETAILS = "person.criminal_offence_details";
   for (const [p, key] of [[CHOICE, OFFENCE], [DETAILS, OFFENCE_DETAILS]]) sql(`insert into form_field_map (id, workspace_id, form_edition_id, data_path, outcome, canonical_field_key, version, status, origin, updated_by) values (gen_random_uuid(), '${ws}', '${ed}', '${p}', 'mapped', '${key}', 1, 'DRAFT', 'HUMAN', 'user-A')`);
   r = await decide([formCheck?.id], "accept");

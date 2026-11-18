@@ -20,10 +20,11 @@ The API's start-up, shared providers and the configuration service. Read this be
 - A JSON body over 5 MB is refused in words before any route (P-179).
 - Busy errors (40P01, 55P03, P2034) mean nothing was written; try again (`busy.ts`).
 - `Db` connects as `xr_app`, which owns no table, through PF-12's walled pool: each query runs as its caller's firm (`platform/firm-scope.ts`), and Prisma's same-tick merge of `findUnique` calls is off outside a transaction (`oneQueryPerCaller`) (PF-12).
+- A case's platform firm id comes from the database's one lookup (`firms.ts` `firmIdByKey`, `firmIdOfActor`); at start, right after the Sample seed, the cases still without one are filled (`fillCaseFirmIdsOnStart`, time-bounded, never stops the start) (CS-W1).
 - `ConfigReadGuard` leaves `/api/platform/*`, `/api/front-office/*` and `/api/runtime/*` routes that declare `@PermissionKeys` (exact case) to PF-4's guard; any other Bearer is 403 link-only (Lead 58, #1818).
 
 **Tables.** combination, programDef, canonicalField, configRelease, reviewSubmission, sectionQuestion, documentRequirement, predicate, auditEvent, combinationForm, formFieldMap.
-**Tests.** `tests/check_features_registry.ts`, `tests/check_pf0p_ports.ts`, `tests/check_f8_empty_release.ts`, `tests/check_bk4a.ts`.
+**Tests.** `tests/check_features_registry.ts`, `tests/check_pf0p_ports.ts`, `tests/check_f8_empty_release.ts`, `tests/check_bk4a.ts`, `tests/check_csw1_firm_id.ts`.
 
 **Do not.**
 - Add a provider to `main.ts`'s `@Module` list for a new feature.

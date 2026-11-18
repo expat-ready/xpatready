@@ -360,3 +360,32 @@ Verdict: Approve b64ca62a0e165a2050c8a33433ceb69dd5fdb34b
 Findings: none new. m-r6 (no committed SES or bounce test for a platform row) stays open as a Minor.
 
 Verdict: Approve fe9a276f0bdcbac034a08802e09be24850d2dc1d
+
+## Re-review (merge of main 34c5e1e99 at 1dddeeed9)
+
+18 Nov 2026. Diff-only (P-277): I read only the merge `1dddeeed9`'s resolution and compared the PR's changed lines with my approval at `fe9a276f0`. Code not edited.
+
+* **Main.** I ran `git fetch origin` first. The merged main `34c5e1e99` is an ancestor of the head. Since then, main has moved on to `fa7588061`, which is not in the head. The commits in `34c5e1e99..fa7588061` are records only: the qa Wave 0 report, `qa/CAPABILITIES.md`, and the CS-C1s concept, challenge and board. They change nothing under `prototype/studio` and add no migration. `git merge-tree origin/main 1dddeeed9` merges cleanly, so I see no need for another merge before this lands.
+* **`api/src/platform/MODULE.md`: correct, and every fact is kept.**
+  - `git diff -U0 origin/main 1dddeeed9` shows only PF-19p's three lines:
+    - the `platformAccount: true` note on `MESSAGES_MAIL`;
+    - the one invariant bullet;
+    - `tests/check_pf19p_platform_mail.ts` added after main's list, which now ends with `tests/check_pff4_file_type.ts`.
+  - Main's own **Tests.** line at `34c5e1e99` is a strict prefix of the merged line. The card is 40 lines.
+* **The rest of the code is unchanged from my approval.**
+  - The diff `origin/main..1dddeeed9` and the diff `7dcef1e76..fe9a276f0` (the merge-base) cover the same 21 files under `prototype/studio`.
+  - For 20 of them the +/− lines are byte-identical. I checked this by hashing each file's `-U0` lines, not by eye. They include the migration, the schema, the ports, contracts, sender and job runner, and both suites.
+  - The 21st, MODULE.md, differs only on the `−` side of the **Tests.** line, because main now lists `check_pff4_file_type.ts`. Its `+` lines are identical.
+  - Outside the studio, the PR adds only PF-19p's own records (`break-report.md`, the journey-test report, this file).
+* **Running PF-19p's migration last is still safe.**
+  - Main added two migrations after `20261118073000_pf18b_support`:
+    - `20261118090000_csw1_firm_id`: `firm_id` on `runtime_case`, `case_stage` and `firm_case_counter`, the `case_lookup` schema and role, and one read policy on `platform_firm`. Its one `DO` block loops over three fixed role statements, not over tables.
+    - `20261118140000_fo13i_identity_check_key`: two `INSERT`s of permission rows.
+  - Neither names `msg_outbox`, `audience`, `idempotency` or any column PF-19p adds. Neither walks every table.
+  - `20261118160000` is later than main's newest (`20261118140000`).
+* **The stamp is unique.** Three fetched remote branches carry a `20261118160000_` folder: this PR's branch, `claude/intelligent-mayer-ymi4sl` (PF-19b part 3) and `claude/modest-faraday-0k9dsj` (PF-19e). All three are this same PF-19p migration with the same SQL blob, `46df418d3`, so the other two are branches built on PF-19p. No other migration uses the stamp.
+* **Run:** `check_pf19p_platform_mail` 68/0 (exit 0) at `1dddeeed9`. DW4 now says "newest before it: 20261118140000_fo13i_identity_check_key". I did not re-run the other suites. The builder reports them all at exit 0 at `1dddeeed9`, with tsc clean.
+
+Findings: none. m-r6 (the SES send-and-bounce test) went to a follow-up row on the tech lead's decision; I have not reopened it here.
+
+Verdict: Approve 1dddeeed90f1ccdf2be34ecacca02ad50d4edb68
