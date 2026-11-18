@@ -6,6 +6,7 @@ export const ACCOUNT_SECTIONS: AccountSection[] = [
   { label: "Profile", path: "/account", key: null },
   { label: "Availability", path: "/account/availability", key: null },   // FO-3st2: own hours need no key (AG-4-62 §8)
   { label: "Team", path: "/platform/team", key: "agent/staff:manage" },   // PF-6 part 2a
+  { label: "Terms", path: "/platform/terms", key: "agent/settings:list" },   // PF-5t part 2
 ];
 
 /** The entries this person sees: those with no key, or whose key they hold. */

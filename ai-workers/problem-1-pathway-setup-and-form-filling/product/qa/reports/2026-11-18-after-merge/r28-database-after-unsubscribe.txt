@@ -1,0 +1,23 @@
+qa after-merge 18 Nov, copy qa_r28 of main 39c1203cd on :4473 (database xr_studio_qa_r28, dropped after the walk).
+Read with psql after the double click on Unsubscribe; subject_id = the walk's person (from the scratch walk script's state file).
+
+select channel, purpose, withdrawn_at is not null as withdrawn, withdrawn_via from msg_consent where subject_id=<person> order by 1,2
+ channel  |  purpose  | withdrawn | withdrawn_via
+----------+-----------+-----------+---------------
+ EMAIL    | MARKETING | t         | UNSUBSCRIBE
+ WHATSAPP | SERVICE   | f         |
+ WHATSAPP | MARKETING | f         |
+(3 rows)
+
+select channel, purpose, via, withdrawn_by from msg_consent_withdrawal where subject_id=<person>
+ channel |  purpose  |     via     |                      withdrawn_by
+---------+-----------+-------------+---------------------------------------------------------
+ EMAIL   | MARKETING | UNSUBSCRIBE | system:unsubscribe:795f0e78-e54f-43ef-8679-fa61e5e2fe21
+(1 row)
+
+select action, entity, summary from audit_event where at > now() - interval '30 minutes' order by at
+ (12 lines of consent.wording.published / consent.recorded: two seed runs of the walk script, three consents each), then:
+ consent.withdrawn         | msg_consent_withdrawal | Consent withdrawn: email marketing, by unsubscribe (1 live record ended).
+(13 rows; one consent.withdrawn line for the double click)
+
+Opening the used link again (GET, browser pane): HTTP 404, page "This page is not available. Check the address, or contact the firm that sent it to you."

@@ -21,7 +21,7 @@ const BREW = "/opt/homebrew/opt/postgresql@18/bin", bin = (n: string) => (exists
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_fo3a1b_${process.pid}`, OLD = `xr_studio_fo3a1b_old_${process.pid}`;
 const urlOf = (d: string) => `postgresql://xr_studio@127.0.0.1:54329/${d}`, URL = urlOf(DB);
-const TZ = "America/Toronto", THIS = "20261117130000_fo3a_hour_sets";
+const TZ = "America/Toronto", THIS = "20261118143000_fo3a_hour_sets";
 
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 600)}` : ""}`); };
@@ -105,7 +105,7 @@ try {
   };
   const has = (list: string[], when: string, zone = TZ) => list.includes(iso(when, zone));
   const mySets = async (who = P.OWNER) => (await F("GET", "me/availability-sets", who)).body.sets as { id: string; name: string; isDefault: boolean; timeZone: string; version: number; windows: { weekday: number; start: string; end: string }[] }[];
-  const patchSet = async (id: string, who: { token: string }, b: Record<string, unknown>) => F("PATCH", `me/availability-sets/${id}`, who, { version: (await mySets(who)).find((x) => x.id === id)?.version ?? 1, ...b });
+  const patchSet = async (id: string, who: { id: string; token: string }, b: Record<string, unknown>) => F("PATCH", `me/availability-sets/${id}`, who, { version: (await mySets(who)).find((x) => x.id === id)?.version ?? 1, ...b });
   const MON_FRI = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, start: "09:00", end: "17:00" }));
   const bookingRows = () => psql(DB, "select string_agg(id || '|' || starts_at || '|' || ends_at || '|' || status || '|' || staff_id || '|' || sequence, ',' order by id) from fo_booking");
   ok("FO-3a 1b routes: the feature file lists the hours controller and its service beside the booking types'",

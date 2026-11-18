@@ -2,7 +2,6 @@
 // a combination and any known facts, to the questionnaire, document checklist, forms and form coverage. Nothing here
 // names a form, box, document or question; every screen that shows these reads this output. Conditions use the
 // team's closed operator vocabulary through contracts/rules.ts (deterministic; no AI call per answer).
-import { CALCULATIONS, evaluate, type PredicateNode, type Truth } from "../../contracts/rules.ts";
 import type { Snapshot } from "./snapshot.ts";
 import { documentFacts, SIGNED_SCAN } from "./sources.ts";
 import { lineOf } from "./channels.ts";
@@ -12,10 +11,11 @@ import { NEVER_ASKED, NotWorkedOut } from "./not-worked-out.ts";
 
 // SH3 (P-258): who a line, a condition, a box and a signature are about comes from the one resolver (engine/resolver.ts,
 // contract contracts/resolver.ts); its functions are re-exported here for their callers.
-import { aboutOf, conditionSubjects, factsOf, formSigners, isFilingFact, kkey, lineHolders, peopleFor, signsForOthers, subjectsFor, type Known, type Person } from "./resolver.ts";
+import { aboutOf, conditionSubjects, formSigners, isFilingFact, kkey, lineHolders, peopleFor, signsForOthers, subjectsFor, type Known, type Person } from "./resolver.ts";
 import { FILING, PRINCIPAL_CHILDREN_WHEN, ROLE } from "../contracts/resolver.ts";
 import { isListRelation, listBoxWords, relativeOf } from "./runtime/relatives.ts";
 import { comparedFacts } from "./runtime/compared.ts";
+import { evalCondition, type Cond } from "./eligibility/condition.ts";
 export { aboutOf, conditionSubjects, formSigners, kkey, lineHolders, peopleFor, signsForOthers, subjectsFor };
 export type { Known, Person, Role } from "./resolver.ts";
 
@@ -32,15 +32,9 @@ export function lineCondition(s: Snapshot, known: Known, people: Person[], holde
   return open ? { applies: "cannot_tell", missing: open.missing, about: open.about } : { applies: false, missing: [] };
 }
 
-export type Cond = { applies: Truth; missing: string[] };
-export function evalCondition(s: Snapshot, known: Known, tree: any, about: string): Cond {
-  if (!tree) return { applies: true, missing: [] };
-  const { subjectKind: _k, ...node } = tree;
-  const text = JSON.stringify(node);
-  const derived = (s.derived_fields ?? []).filter((d: any) => d.executable && CALCULATIONS[d.calculation] && text.includes(`"${d.id}"`));
-  try { const e = evaluate(node as PredicateNode, factsOf(known, about), derived); return { applies: e.result, missing: e.missing }; }
-  catch (e) { return { applies: "cannot_tell", missing: [`(not executable: ${(e as Error).message.slice(0, 80)})`] }; }
-}
+// AS-1m (contract v0.1 §2.6): evalCondition and Cond live in engine/eligibility/condition.ts; re-exported here so their
+// callers do not change.
+export { evalCondition, type Cond };
 
 
 export type Coverage = "confirmed fact" | "answered on screen" | "document reading" | "client question" | "client profile" | "staff working view" | "unresolved"
