@@ -1,6 +1,6 @@
 # PF-19e: PR draft (overlapped on PF-19p #1961; the PR opens only after #1961 merges)
 
-**State (18 Nov, about 00:2x IST on 19 Nov):** built on `claude/modest-faraday-0k9dsj` from `claude/funny-edison-0xod9n` at 2aa433a4e. The reviewer gave Approve at c0e2ffcf2 after one diff-only round. The breaker ran once. Waiting for #1961 to merge.
+**State (19 Nov, about 00:5x IST):** built on `claude/modest-faraday-0k9dsj`. The reviewer gave Approve at c0e2ffcf2 (one diff-only round). #1961 moved to 506e69c16 (main merged in, migration re-stamped) and waits in the merge queue with `review: approved`. Its tip is merged in here at b47628b41: MODULE.md conflict resolved, PF-19e kept within the 40-line card limit. At e0638ca73 the test counts audit lines instead of deleting one, because main's AUD-1a makes them append-only. All suites passed again at e0638ca73: PF-19e 34, PF-4b 57, PF-4 119, PF-4c 24, PF-6m 12, PF-6m2 19, PF-6r 17, PF-5t 42, PF-5v 7, PF-12 100, PF-19a 94, PF-19b 42, PF-19b2 44, PF-19b mail 29, PF-19p 68, PF-24 84; graph exit 0; any 417 → 417. The diff-only re-review of 66b72f509..HEAD waits until main is merged in after #1961, so one re-review covers both.
 
 **Next steps:**
 1. `git fetch origin main && git merge --no-edit origin/main` (P-270).
