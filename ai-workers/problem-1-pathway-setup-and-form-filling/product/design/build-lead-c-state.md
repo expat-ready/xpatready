@@ -158,3 +158,5 @@ Merged on main: #2002, #2007, #2016, #2035. #2000 got "Reviewer: Approve 1fb7ca0
 **12:46 IST 18 Nov (Lead 79):** AUD-5 part 2 is approved to start. Lead 79 sends `AUD-5-2.md` (d53415ff1) to the free "AUD-5 part 1" cloud lane at the next check: Opus 5.5 high, reviewer plus breaker. It counts as started only after its first push (P-326).
 
 **12:50 IST 18 Nov:** Lead 80 (local_d018e333) is now current, after Lead 79.
+
+**12:52 IST 18 Nov (Lead 80):** took my list onto its checks and does the PR steps. #2003 is in Mergify batch #2115. #2000 gets its label on green. #2000 and #2012 get migration slots at their next merge of main. AUD-5 part 2 goes to the AUD-5 part 1 cloud lane at Lead 80's next check.
