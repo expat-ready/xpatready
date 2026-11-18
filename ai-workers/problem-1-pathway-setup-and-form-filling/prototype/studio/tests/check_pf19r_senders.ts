@@ -186,7 +186,7 @@ try {
   const c4 = await complaint(T);
   const sent4 = await svc.runAckReminder({ firmId: firmA.id, complaintId: c4 });
   await run();
-  const r4 = (await rowsTo(tEmail)).filter((r) => r.idempotencyKey.includes(c4));
+  const r4 = (await rowsTo(tEmail)).filter((r) => (r.idempotencyKey ?? "").includes(c4));
   ok("DW4 pass: the reminder reaches the handler through MessagePort: SERVICE for the STAFF person (the handler), SENT, one REMINDER_SENT event",
     sent4 === "sent" && r4.length === 1 && r4[0].class === "SERVICE" && r4[0].subjectKind === "STAFF" && r4[0].subjectId === T && r4[0].state === "SENT"
     && (await db.platComplaintEvent.count({ where: { complaintId: c4, kind: "REMINDER_SENT" } })) === 1, r4);
