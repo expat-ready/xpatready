@@ -85,3 +85,45 @@ This row has no screen. The browser walk, the journey score, D1–D20 and the BI
 Verdict: Changes needed
 1. Major — finding 1: the reset vs in-flight demo write fragment, with a named DW4 concurrency case.
 2. minors 2–7 (fix or record in the PR); 8 goes to part 2.
+
+## Round 2 (P-277: only `git diff 26af1802f..60560e816 -- ':!*.md'`)
+Reviewer: the same independent Opus 5.5. Commit reviewed: **60560e81617c72cf75d03deef900debf06188ea0**. 3 files, +51/−18: migration.sql, canonical.ts (vector only) and check_aud1c_chain.ts. This row has no screen, so the journey score and D1–D20 are still N/A.
+
+### What I ran (on :4617 and a scratch database `xr_studio_rev2probe`, since dropped; never :4400)
+* `check_aud1c_chain.ts 4617 xr_studio_rev2_aud1c`: **33 passed, 0 failed** (27 s). The racing-writer case waited 423 ms.
+* **Race, head against mutants** (my own harness: 3 demo lines, a writer holding an uncommitted 4th line, the reset's delete, the writer commits 300 ms later):
+
+  | Version | Chain left |
+  |---|---|
+  | head | `1:chain.restarted` (prev = zero) |
+  | inner DELETE removed | `5:inflight, 6:chain.restarted` (prev ≠ zero), the round-1 fragment |
+  | the trigger's lock removed | `4:inflight, 5:chain.restarted`, the fragment again |
+
+  DW4's race case asserts exactly `1:chain.restarted`, so it catches both mutants. Removing the `HAVING` makes the "seq 3 delete is no reset" case fail.
+* **Orphan sweep**: one sweep-shaped delete over two gone workspaces' chains while a writer was in flight on one. Both chains ended empty. A later writer on that gone workspace starts a valid chain of one line (seq 1, prev zero), which the next sweep removes. No fragment.
+* **Recursion**: the inner DELETE fires the statement trigger once more. Its `gone` holds only lines with seq above M, so `min(seq) = 1` fails and it does nothing. Depth is 2. One delete across 30 chains took 5 ms.
+* **Deadlock**: a writer inserts its audit line, then updates a `route` row that the reset has already deleted. PostgreSQL detects the deadlock at about 1,007 ms and makes the reset the victim. The reset rolls back fully (demo.ts returns 500), the writer commits, and the chain stays intact. **This is not new.** 26af1802f's restart INSERT took the same lock at the same point through `aud_event_zchain`, and I measured the same 40P01 at 1,008 ms. Inside the reset's own transaction the lock is re-entrant, and no other statement there writes another chain, so the reset cannot deadlock with itself.
+* **A real firm's demo line committed meanwhile**: the inner DELETE is refused by AUD-1a, so the whole reset fails (as the comment says). This is fail-closed; on 26af1802f it was a silent fragment.
+* **Non-sample chains**: the loop only takes `chain_key LIKE 'sample:%'`. The trigger always sets keys, as a firm uuid, `platform` or `sample:`, so no firm or platform chain can match. DW4's "firm chains unchanged" check still holds.
+
+### Round 1, item by item
+1. **Major 1: closed.** The trigger takes the lock, which waits for the in-flight writer, then runs a fresh READ COMMITTED snapshot DELETE, then restarts. This removes the fragment both in the reset and in the sweep. The named DW4 race case is added.
+2. m2: handled (migration.sql:50-51, plus a DW3 case). The residual is noted under new finding 3.
+3. m3: handled. The real reset now asserts `=== "1:reset"`. Choice (2) still needs its line in the PR body.
+4. m4: handled. The vector has `\u001f`/`\u001F`, and DW2 passes.
+5. m5: handled. `aud_event_at_finite` (migration.sql:79) refuses infinity, -infinity and BC, and the test checks all three. A back-filled row that violates it fails the migration loudly.
+6. m6, m7, m8 and item 9: the caller said these are recorded in the PR as notes. I could not read the PR (GraphQL is refused here), so this is not checked.
+
+### New findings (none Blocker or Major)
+1. minor: **a delete of a sample chain's start removes the whole chain, not only the lines that "committed in the meantime"** (migration.sql:105-112 comment, :119-121). `HAVING min(seq) = 1 AND max(seq) = count(*)` also matches a prefix delete. On my probe:
+   * deleting seq 1..2 of 5 also removed lines 3-5, which the statement could see and did not name;
+   * deleting seq 1 alone removed the whole chain.
+
+   In both cases the chain restarted as `1:chain.restarted`. AUD-1a still checks every row, and only the reset setting allows any delete. The reset and the sweep always delete whole workspaces, so main never takes this path. The result is still a chain that verifies. But the comment, the test name ("a single-line delete is no reset") and the PR describe a narrower rule than the code has. Fix: correct the comment to say "a delete that removes a sample chain's start ends that whole chain", and add the seq-1 case to DW4. Or record it in the PR.
+2. minor: **the fix assumes READ COMMITTED.** Under REPEATABLE READ, the inner DELETE cannot see the writer's line that committed after the snapshot. My probe left `1:chain.restarted, 5:inflight` with prev ≠ zero, the fragment again. Both real paths are READ COMMITTED: demo.ts's `$transaction` sets no isolation, and the cluster default is `read committed`. So this is latent. Fix: a fail-closed guard in `aud_event_chain_restart` (raise unless `current_setting('transaction_isolation') = 'read committed'`), or one sentence in the comment and the PR.
+3. note: `aud_chain_key_of` checks the firm by `firm_id` only. AUD-1a's delete rule also reads `detail->>'firmId'`, and both list `('sample-firm', 'sample-solo')`, so they are two copies to keep in step. A gone workspace's line with a null `firm_id` and a real firm in `detail` lands on `sample:` but cannot be deleted. The sweep's single statement then fails as a whole, and demo.ts swallows the error. This is not new in this diff and is unreachable on main: the adapter's detail-only lines use the platform-audit workspace, which is never deleted.
+
+### Could not check
+Full CI on this sha. The PR body (notes m3, m6-m9 and the deviations). `check_s7_reset` and `check_d1_reset_to_six` on this sha (the forms library is not in this clone, as in round 1).
+
+Verdict: Approve 60560e81617c72cf75d03deef900debf06188ea0
