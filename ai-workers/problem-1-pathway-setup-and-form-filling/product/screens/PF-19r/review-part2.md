@@ -55,4 +55,35 @@ The person then holds an email whose code is not the one stored. Typing it count
 * The case suites (C6.16 pack, browser privacy, qa359, forms_qa53): the builder is running them.
 * A visible-browser walk of the link page (no screen change), and an intended user's walk (D17/D20 stay with the founder).
 
-**Verdict: Block.** Fix before Approve: M1 (the Resend key and a third-Resend case in DW9), M2 (a unique code key), M3 (the suite's usage line or its own setup). m1 should be fixed in the same push.
+**Round 1 verdict (`ed070da4`): Block.** Fix before Approve: M1 (the Resend key and a third-Resend case in DW9), M2 (a unique code key), M3 (the suite's usage line or its own setup). m1 should be fixed in the same push.
+
+## Round 2: diff-only re-review of `07accb19be4118aabafaa20aff02d038515a3693`
+**Scope:** `git diff ed070da4 07accb19`, which covers `person-link.ts` (+18/-3) and the suite (+49/-4), plus the breaker's `break-report-part2.md`.
+**Run:** a fresh isolated copy `rev_pf19r2` on :4438, started with the usage line alone: no separate setup step, and the suite released the Visitor visa itself. `check_pf19r_case_links.ts` gave **21 passed, 0 failed**. I then ran my round-1 break scripts again on the same copy. Copy stopped.
+
+**Closed:**
+* **M1 (break B1, B4):** the key is now `again:<newest demo copy's id>` (`person-link.ts:214`).
+  * Four Resends, each more than a minute apart, gave 4 distinct `again:` keys, 2 to 5 demo copies, and 2 to 5 "resent" lines: each Resend has its own email, copy and history line.
+  * A Resend to a suppressed address then answered 409 ADDRESS_NOT_SENT. The copies and audit stayed as they were (5 and 9).
+  * A true retry still repeats safely: the same newest copy gives the same key. DW9 now covers Resends 3 and 4 and the suppressed Resend.
+* **M2 (break B2):** each press gets its own `randomUUID()` (`:332`, `:341`), never the code.
+  * Six runs of 3 parallel presses: 3 outbox rows per run, including the runs where two presses shared a millisecond (`07.124Z` twice, `08.441Z` twice). Exactly 1 demo code copy each time.
+  * The new DW8 case shows the code the person holds is accepted. That follows from the code: the link row lock orders the presses, and the last commit writes the hash and the only remaining copy.
+* **M3:** the usage line now matches the pattern at `run-suites.sh:351`. I checked it with bash: `name=runtime_pf19r port=4430 args=[ 4430 xr_studio_runtime_pf19r]`. The suite's own setup mirrors `check_c1112_prepare_api.ts:24`.
+* **m1:** DW11's fail case now plants a token in the real log text and also requires a clean scan of the unplanted log.
+* **Break B3:**
+  * `sendingFirm` (`:83-89`) now takes the firm from the key, as `case-close.ts` does. A `firm_id` that names another firm gets 409 (new DW10 case). `firm_id` null still sends as the key's firm (my B3: sample-firm). A solo case still sends as sample-solo (my B2).
+  * The refusal words for a mismatched `firm_id` say "no account on the platform". That is imprecise for this database-only state, but nothing is sent, so it is not a finding.
+* **Break B4, B9:** `sendable()` (`:45`) checks an address against MessagePort's own normaliser. Both normalisers lower-case, so ordinary mixed-case input is not refused.
+  * On send, an address that normaliser would refuse or rewrite is a 400 field error in words.
+  * In `mail()`, a stored address of that kind is a 409, never a 500 (new DW7 case).
+
+**Left open, as the builder will list them in the PR (not blocking this row):**
+* **B5 and B6:** the trial daily cap can hold a link or code that was already answered as sent. Neither can happen on the demo or in production today: both Sample firms are ACTIVE (cap 2000), and outside the demo workspace the case side sends nothing (`person-link.ts:176`, `:324`).
+  * Not verified: whether PF-19e's exemption covers these emails. Lead B's ruling on #2157 (item 3) says "transactional staff mail" (an invitation, a two-step reset). The case side's link and code are TRANSACTIONAL to a CASE_PARTY. The PR should ask PF-19e's owner to name them, or a held code will still expire before it is sent.
+* **B7:** a link taken back after its email is queued still sends. **B8:** the orphan rendered file holds the token. Both are PF-19b's worker and `Messages.send`, and PF-19e's sealing.
+* **B10:** key-less parallel new-link sends. The screen always sends a key.
+
+No new Blocker or Major in the round-2 diff. I did not run the full `ci` run or the case suites (the builder's).
+
+**Verdict: Approve** for `07accb19be4118aabafaa20aff02d038515a3693`.
