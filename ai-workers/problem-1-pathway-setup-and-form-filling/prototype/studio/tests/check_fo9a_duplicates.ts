@@ -78,7 +78,7 @@ try {
   };
   const R = ctxOf("user-R"), T = ctxOf("user-T"), SOLO = ctxOf("user-S");
   const ws = await platformAuditWorkspaceId(db as never);
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: ws });
   const consent = new ConsentStore(auditEvent);
   let clock = Date.parse("2026-11-17T10:00:00Z");
   const ports: SalesPorts = { audit: auditEvent, consent, now: () => clock, publicOrigin: "http://localhost:4400", formKey: Buffer.from("fo9a-test-stamp-key (Sample, not a secret)") };
@@ -130,7 +130,7 @@ try {
   ok("FO-9a pass (break N2): a zero-width space or a soft hyphen typed in the name still finds Lena Park", (await nameOnly("Le\u200bna", "Pa\u00adrk")).includes(lena.person.id));
 
   // ------------------------------------------------------------------------------------- a match the viewer may not see is never named
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: ws });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: ws });
   const tSees = await dup.check(T, { email: "lena.park@example.org", givenNames: "Lena", familyName: "Park" });
   ok("FO-9a fail: with \"everyone sees all\" off, T's check on R's Lena names no one: a count and the line only, no id",
     tSees.matches.length === 0 && tSees.hidden === 1 && tSees.hiddenLine === HIDDEN_LINE && !JSON.stringify(tSees).includes(lena.person.id) && !JSON.stringify(tSees).includes("Park"), tSees);
@@ -138,7 +138,7 @@ try {
   ok("FO-9a pass: R, who owns Lena's lead, sees her named, with no hidden count", rSees.matches.length === 1 && rSees.matches[0].kind === "PERSON" && rSees.matches[0].name === "Lena Park" && rSees.hidden === 0);
   await add(T, { givenNames: "Omar", familyName: "Haddad", email: "omar@example.org" });
   ok("FO-9a pass: T's own lead's person is named to T", (await dup.check(T, { email: "omar@example.org" })).matches[0]?.kind === "PERSON");
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: ws });
   ok("FO-9a fail: firm B's staff never see firm A's people, not even as a count (matching stays inside the firm)", JSON.stringify(await dup.check(SOLO, { email: "lena.park@example.org" })) === JSON.stringify({ matches: [], hidden: 0, hiddenLine: null }));
 
   // ------------------------------------------------------------------------------------- use the existing one
@@ -158,10 +158,10 @@ try {
   const pine = await corp.engage(R, (await add(R, { givenNames: "Ana", email: "ana@pinebakery.example" })).id, { companyName: "Pine Bakery Ltd" });
   const co = await dup.check(R, { companyName: "Pine Bakeries" });
   ok("FO-9a pass: a similar company name (\"Pine Bakeries\") offers Pine Bakery Ltd with its companyId to use", co.matches.some((m) => m.kind === "COMPANY" && m.companyId === pine.company!.id && m.useExisting.companyId === pine.company!.id && m.score >= NAME_THRESHOLD * 100), co);
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: ws });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: ws });
   const coT = await dup.check(T, { companyName: "Pine Bakeries" });
   ok("FO-9a fail: T, who sees none of its prospects, gets the count only for the company", !coT.matches.some((m) => m.kind === "COMPANY") && coT.hidden === 1 && !JSON.stringify(coT).includes(pine.company!.id), coT);
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: ws });
   // Review M1/m6: a named body is one its consumers accept. Zed is only a contact of Pine Bakery (no lead of his own):
   // he is counted, never named, so no "use the existing one" can be refused by Add a lead or add contact.
   const zed = await corp.addContact(R, pine.company!.id, { givenNames: "Zed", familyName: "Contactonly", email: "zed@pinebakery.example", role: "HR" });
@@ -181,9 +181,9 @@ try {
   sql(`insert into fo_person (firm_id, given_names, family_name, created_by, updated_at) select '${A}', 'Wanda', 'Hiddenperson', 'test', now() from generate_series(1, 60)`);
   sql(`insert into fo_lead (firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) select firm_id, id, 'MANUAL', 'Phone call', '${R.staffId}', 'test', now() from fo_person where family_name = 'Hiddenperson'`);
   const wandaT = await add(T, { givenNames: "Wanda", familyName: "Hiddenperson", email: "wanda.t@example.org", confirmedNew: true });
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: ws });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: ws });
   const crowd = await dup.check(T, { givenNames: "Wanda", familyName: "Hiddenperson" });
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: ws });
   ok("FO-9a pass (review m1): with 60 similar names T cannot open, T's own Wanda is still named first", crowd.matches[0]?.kind === "PERSON" && crowd.matches[0].personId === wandaT.person.id && crowd.hidden === 1, { first: crowd.matches[0], hidden: crowd.hidden });
 
   // Review m2: a number typed the same way at both ends meets, whichever rule gave the stored key.
@@ -251,9 +251,9 @@ try {
   await walled.$disconnect();
 
   // Breaks B3, B7, B8: no count of what one may not open; control marks and over-long text refused; characters counted.
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: ws });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: ws });
   const two = await dup.check(T, { givenNames: "Wanda", familyName: "Hiddenperson", email: "lena.park@example.org" });
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: ws });
   ok("FO-9a fail (break B3): many hidden matches read as 1, so a count can never tell one guess from another", two.hidden === 1, two);
   ok("FO-9a fail (break B7): a null byte or another control mark → 422 at the field, never a database error", (await refusal(() => dup.check(R, { givenNames: "Le\u0000na" })))?.status === 422 && (await refusal(() => dup.check(R, { email: "a@b.c\n" })))?.status === 422);
   const astral = "𝒜".repeat(60);

@@ -198,7 +198,7 @@ function pdf(title: string, text: string) {
   sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, combination_id) select gen_random_uuid(), workspace_id, 'user-B', 'updated', 'combination', combination_key, 'test edit', id from combination where id='${ss.combinationId}'`);
   r = await call("POST", "/pack/release", { expectedChanges: d.changes }, "user-B");
   ok("BR-14 fail: someone who changed the draft cannot release it (self-approval refused)", r.status === 403 && /different person/.test(r.body.title), r.body.detail);
-  sql(`begin; select set_config('app.audit_sample_reset', 'on', true); delete from audit_event where summary='test edit'; commit`);   // AUD-1a: a demo line, removed as the demo reset may (the setting)
+  sql(`delete from audit_event where summary='test edit'`);
   // The submitter cannot release either: the submission is recorded as the approver persona's for this one try.
   sql(`update review_submission set submitted_by='user-B' where combination_id='${ss.combinationId}' and status='SUBMITTED'`);
   const asB = (await call("GET", "/draft", undefined, "user-B")).body;
@@ -219,7 +219,7 @@ function pdf(title: string, text: string) {
   // B78 (BR-8 reads the one list Preview and a case show): for the Not ready lines, a release that asks each person nothing,
   // the state BR-8 refuses. Its placements come back after them; the touched audit time makes the catalogue read it again.
   const realPlacements = sql(`select snapshot->'placements' from config_release where combination_id = '${ss.combinationId}' order by version desc limit 1`);
-  const placementsOfRelease = (json: string) => { sql(`update config_release set snapshot = jsonb_set(snapshot, '{placements}', '${json.replace(/'/g, "''")}'::jsonb) where combination_id = '${ss.combinationId}' and version = (select max(version) from config_release where combination_id = '${ss.combinationId}')`); sql(`set session_replication_role = replica; update audit_event set at = now() where id = (select id from audit_event order by at desc limit 1); set session_replication_role = origin`) /* AUD-1a: insert-only trail; owner on the scratch copy, triggers off (the app's role can never do this) */; };
+  const placementsOfRelease = (json: string) => { sql(`update config_release set snapshot = jsonb_set(snapshot, '{placements}', '${json.replace(/'/g, "''")}'::jsonb) where combination_id = '${ss.combinationId}' and version = (select max(version) from config_release where combination_id = '${ss.combinationId}')`); sql(`update audit_event set at = now() where id = (select id from audit_event order by at desc limit 1)`); };
   placementsOfRelease("[]");
   ss = await leaf("individual.work_permits.open.spouse_student");
   ok("BR-8 fail: released but not startable is Not ready, with each missing item", ss.status === "NOT_READY" && ss.release.pack === 2 && ss.missing.some((m: any) => m.code === "role_without_questions"), ss.missing.map((m: any) => m.text));

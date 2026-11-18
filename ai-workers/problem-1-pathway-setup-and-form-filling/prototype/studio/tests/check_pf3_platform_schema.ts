@@ -184,10 +184,10 @@ try {
     saved.changed && await readSetting(db, firmA, "platform.currency") === "USD" && await readSetting(db, firmB, "platform.currency") === "CAD" && audits() === "1"
     && sql(DEMO, `select actor || '|' || entity_key || '|' || (detail->>'from') || '|' || (detail->>'to') from audit_event where entity = 'platform_firm_setting'`) === `user-R|${firmA}:platform.currency|CAD|USD`);
   // A forced audit failure: the database refuses this one actor's audit line (a trigger of this check's own).
-  sql(DEMO, `create function pf3_force_audit_fail() returns trigger language plpgsql as $$ begin if new.actor = 'system:force-audit-failure' then raise exception 'pf3 forced audit failure'; end if; return new; end $$;
+  sql(DEMO, `create function pf3_force_audit_fail() returns trigger language plpgsql as $$ begin if new.actor = 'force-audit-failure' then raise exception 'pf3 forced audit failure'; end if; return new; end $$;
     create trigger pf3_force_audit_fail before insert on audit_event for each row execute function pf3_force_audit_fail()`);
   ok("PF-3 fail: a forced audit failure rolls the setting change back (one transaction)",
-    await throwsLike(() => writeSetting(db, { firmId: firmA, key: "platform.currency", value: "CAD", by: "system:force-audit-failure", workspaceId: WS }), (e) => /pf3 forced audit failure/.test(String(e)))
+    await throwsLike(() => writeSetting(db, { firmId: firmA, key: "platform.currency", value: "CAD", by: "force-audit-failure", workspaceId: WS }), (e) => /pf3 forced audit failure/.test(String(e)))
     && await readSetting(db, firmA, "platform.currency") === "USD" && audits() === "1");
   await db.$transaction(async (tx) => { await writeSetting(tx, { firmId: firmB, key: "platform.language", value: "fr", by: "user-S", workspaceId: WS }); });
   ok("PF-3 pass: inside a caller's transaction the change and its audit line are written together", await readSetting(db, firmB, "platform.language") === "fr" && audits() === "2");

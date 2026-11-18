@@ -60,7 +60,7 @@ try {
   };
   const R = ctxOf("user-R"), T = ctxOf("user-T"), SOLO = ctxOf("user-S");
   const ws = await platformAuditWorkspaceId(db as never);
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: ws });
 
   const ports: SalesPorts = { audit: auditEvent, consent: new ConsentStore(auditEvent), publicOrigin: "http://localhost:4400" };
   const leads = new Leads(db, ports), corp = new Corporate(db, ports);
@@ -189,17 +189,17 @@ try {
     && [p1.id, p2.id, p3.id].every((x) => on(corpBoard).includes(x)) && corpBoard.stages.flatMap((s) => s.prospects).every((p) => p.type === "CORPORATE") && corpBoard.stages.find((s) => s.key === "RETAINER_SIGNED")!.prospects.some((p) => p.id === p1.id), corpBoard.stages.map((s) => s.key));
   ok("FO-2b fail: the Individual board shows no Corporate prospect, and the Corporate board no Individual one", !on(indBoard).some((x) => [p1.id, p2.id, p3.id].includes(x)) && on(indBoard).includes(iv) && !on(corpBoard).includes(iv) && indBoard.stages.flatMap((s) => s.prospects).every((p) => p.type === "INDIVIDUAL"));
   ok("FO-2b fail: a pipeline that is not Individual or Corporate → 422", (await refusal(() => corp.board(R, "PARTNER")))?.status === 422);
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: ws });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: ws });
   const tBoard = await corp.board(T, "CORPORATE");
   ok("FO-2b fail: with \"everyone sees all\" off, another person's board holds none of R's prospects, and R's prospect reads 404 to them", !on(tBoard).length && (await refusal(() => corp.read(T, p2.id)))?.status === 404 && (await refusal(() => corp.contacts(T, p1.company!.id)))?.status === 404);
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: ws });
   ok("FO-2b fail: firm B's staff reading firm A's prospect or company → 404", (await refusal(() => corp.read(SOLO, p2.id)))?.status === 404 && (await refusal(() => corp.addContact(SOLO, p1.company!.id, { personId: lena.person.id, role: "HR" })))?.status === 404);
 
   // ------------------------------------------------------------------------------------- Make primary never touches a hidden prospect (review M2)
   const xa = await lead("Xena"), ya = await lead("Yuri", T);
   const px = await corp.engage(R, xa.id, { companyName: "Hidden Hollow Ltd" });
   const py = await corp.engage(T, ya.id, { companyId: px.company!.id });
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: ws });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: ws });
   const yLink = py.contacts.find((c) => c.personId === ya.person.id)!;
   const hidden = await refusal(() => corp.changeRole(T, yLink.id, { role: "PRIMARY" }));
   ok("FO-2b fail (review M2): with \"everyone sees all\" off, T's Make primary that would repoint R's prospect → 409 HIDDEN_PROSPECTS, naming no prospect; nothing changed",
@@ -207,14 +207,14 @@ try {
   const endHidden = await refusal(() => corp.endContact(R, yLink.id));
   ok("FO-2b fail (review m2): R ending Yuri's only link (the primary contact of T's prospect, unseen with the setting off) → 409 PRIMARY_NEEDED that never names T's prospect",
     endHidden?.body.code === "PRIMARY_NEEDED" && !JSON.stringify(endHidden.body).includes(py.number) && count("fo_company_contact", `id = '${yLink.id}' and valid_to is null`) === 1, endHidden);
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: ws });
   const made2 = await corp.changeRole(R, yLink.id, { role: "PRIMARY" });
   ok("FO-2b pass (review M2): a Make primary by someone who sees both prospects repoints R's prospect with its own audit line and lists it on the role line",
     made2.contacts.find((c) => c.role === "PRIMARY")?.personId === ya.person.id && sql(`select primary_contact_person_id from fo_prospect where id = '${px.id}'`) === ya.person.id
       && audits(px.id, "prospect.primary_contact_changed") === 1 && count("audit_event", `action = 'company_contact.role_changed' and detail->'repointedProspectIds' ? '${px.id}'`) === 1, made2.contacts);
 
   // Devin: no hidden company or person through a pick (setting off: T sees only T's own prospects).
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: ws });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: ws });
   const zed = await lead("Zed", T);
   const pickHidden = await refusal(() => corp.engage(T, zed.id, { companyId: p3.company!.id }));
   const tOffers = await corp.match(T, "Pine Bakery Ltd");
@@ -224,7 +224,7 @@ try {
   ok("FO-2b fail (Devin): T cannot add a person T may not see (R's Lena) as a contact by id → 404, no link", hiddenPerson?.status === 404 && count("fo_company_contact", `company_id = '${py.company!.id}' and person_id = '${lena.person.id}'`) === 0, hiddenPerson);
   const tSees = await corp.addContact(T, py.company!.id, { personId: zed.person.id, role: "HR" });
   ok("FO-2b pass: T may add a person whose lead T sees", tSees.contacts.some((c) => c.personId === zed.person.id && c.role === "HR"));
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: ws });
 
   // Devin: a Make primary over more than 50 prospects still writes its lines (each prospect its own; the list capped, the count whole).
   const engaged = sql(`select id from fo_stage where firm_id = '${A}' and pipeline = 'CORPORATE' and key = 'ENGAGED'`);

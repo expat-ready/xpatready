@@ -82,7 +82,7 @@ try {
   const firmA = (await db.platformFirm.findFirstOrThrow({ where: { key: "sample-firm" } })).id;
   const firmB = (await db.platformFirm.findFirstOrThrow({ where: { key: "sample-solo" } })).id;
   const W = await platformAuditWorkspaceId(db as never);
-  const set = (firmId: string, key: string, value: unknown) => writeSetting(db, { firmId, key, value, by: "system:check-pf21v", workspaceId: W });
+  const set = (firmId: string, key: string, value: unknown) => writeSetting(db, { firmId, key, value, by: "check:pf21v", workspaceId: W });
   const ROLES = ["OWNER", "ADMIN", "CASE_MANAGER", "CASE_OFFICER", "BILLING_FINANCE", "READ_ONLY"] as const;
   type Role = (typeof ROLES)[number];
   const person = async (firmId: string, name: string, role: Role | null, status: "ACTIVE" | "SUSPENDED" | "DEACTIVATED" = "ACTIVE") => {

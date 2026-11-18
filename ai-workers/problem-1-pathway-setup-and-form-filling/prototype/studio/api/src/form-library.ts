@@ -278,8 +278,7 @@ export class FormLibrary {
     });
     // Two people proposing at once both pass the check above: the earlier stays, the later is refused (form_accepts pattern).
     const first = await this.db.libraryChange.findFirst({ where: { workspaceId, kind: "form_role", key: code, status: "WAITING" }, orderBy: [{ proposedAt: "asc" }, { id: "asc" }] });
-    // AUD-1a (AG-13-41): its audit line stays; one reversing line says it was withdrawn at once, in the same transaction.
-    if (first && first.id !== c.id) { await this.db.$transaction([this.db.libraryChange.delete({ where: { id: c.id } }), this.db.auditEvent.create({ data: { workspaceId, actor: actor.id, action: "withdrawn", entity: "form", entityKey: code, summary: `${actor.name} withdrew ${label} at once: another change to this form already waits`.slice(0, 600), detail: { change: c.id } } })]); throw problem(409, "Already waiting", `A change to ${code}'s role already waits for a second person on To review.`); }
+    if (first && first.id !== c.id) { await this.db.$transaction([this.db.auditEvent.deleteMany({ where: { workspaceId, entity: "form", entityKey: code, action: "proposed", detail: { path: ["change"], equals: c.id } } }), this.db.libraryChange.delete({ where: { id: c.id } })]); throw problem(409, "Already waiting", `A change to ${code}'s role already waits for a second person on To review.`); }
     return { id: c.id, status: c.status, label, waits: "A second person approves it on To review; it then goes out with each combination's next release, which the immigration expert signs off." };
   }
 
