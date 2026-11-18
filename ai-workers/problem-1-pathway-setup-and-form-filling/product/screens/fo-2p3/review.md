@@ -56,3 +56,39 @@ D1 4 (rules map, M2 contract gap) · D2 3 (no bad data under race, but wrong ans
 No screen exists (the score's a11y and visual criteria are N/A). I did not run the full `run-suites.sh --changed` or CI. m7 is inferred from the pattern I proved in M1, not run.
 
 **Verdict: Block.** To fix: M1 (lock the prospect alone, plus a concurrency test with a pass and a fail), M2 (payloads per §2.1/§2.6, or the deviation recorded for Lead B). Fix the Minors or list them in the PR.
+
+## Re-review 773fd8cf2 (diff only: `d09490d99..773fd8cf22fac41c7f3720679cc48e882ea2a869`)
+Verdict: Approve, for head 773fd8cf22fac41c7f3720679cc48e882ea2a869.
+
+### What I ran (this head)
+* `check_fo2p3_prospects` 44/0. FO-2 113/0, FO-2b 61/0, PF-6b 31/0, FO-2v 14/0.
+* My scratchpad race probe again:
+  * two moves on one version → 200 and **409 STALE** "Representative (Sample) moved this to Qualified. Reload it."
+  * two Converts at once → 200 and **409 ALREADY_WON**, one `prospect.won`.
+  * a move, then Mark lost without a version → both saved (correct: Lost's version is optional).
+  * `from=0000-01-01` → 400.
+* `tsc --noEmit` ran out of memory on this machine, so I could not check types. CI will.
+
+### My findings
+* **M1: closed.** `locked()` locks `fo_prospect` alone, then reads the stage under the lock (`prospects.ts` `locked`). The new tests have a pass and a fail: four moves on one version give one saved and three STALE, three Converts give one and two ALREADY_WON.
+* **M2: closed.**
+  * `ProspectWonPayload` now carries every §2.6 field. Fields the front office does not hold are null, never guessed: `person.current_residence_country`, `sealed_retainer_sha256`, and the retainer and representative unless one is signed. The FO-2b subject part sits beside them.
+  * The answers and consents are read inside the transaction and firm-scoped. Consents are ids only.
+  * `ProspectMovePayload` gains `cause`.
+  * `prospect.unconverted` matches the BACKLOG FO-2 row's event list. Its difference from AG-2-47's `prospect.convert-undone` goes to Lead B as a PR question, which is acceptable: it is not silent.
+  * The DW4 test reads the payload keys.
+* **Minors:**
+  * m1 (year bounds 1900-2999): fixed and tested.
+  * m2 (second Engage): fixed. It names and counts only visible prospects, and an unseen one is "a prospect" (existence only).
+  * m3 (version): now a count of this prospect's own moves. Moves are add-only, so the count only grows and an old version can never come back. Tested.
+  * m4 (totals): now over live ACTIVE stages only.
+  * m6 (README): reworded.
+  * m7 (FO-6 `winProspect`): out of this diff; the builder raises it with the Lead as a follow-up row.
+  * m8 (shared files): the PR must list `ports/events.ts` and the `corporate/service.ts` hook under "Shared-file lines" and ask Lead B. That is a PR-body task, not code.
+
+### Left open (Minor, do not block)
+* **r1.** The DW5 "no Corporate prospect on the Individual board" line now checks each row's type. But this suite never puts a Corporate prospect in the database, so removing the board's type filter would not fail it. FO-2b's suite covers the rule ("a Corporate prospect is never on the Individual board"). Engaging one Corporate prospect here would make the line real.
+* **r2.** No test covers m2's message for a person who cannot see the earlier prospect.
+* **r3.** `prospect.won` now carries the person's name, email and phone as §2.6 requires (personal data in `module_event`). That follows the contract. Retention and erasure of outbox rows is the platform's (outside this row).
+
+**Verdict: Approve** (no open Blocker or Major) for 773fd8cf22fac41c7f3720679cc48e882ea2a869. List r1-r3 and m7 in the PR.
