@@ -60,7 +60,7 @@ Each write has one audit line (`AuditPort.record(tx, …)`, with a **typed actor
 **Done when** (`tests/check_fo2p3_prospects.ts`, a pass and a fail each):
 * `FO-2p3 DW1`: Engage makes a prospect, and a second Engage makes a second one that says so.
 * `FO-2p3 DW2`: a move with a cause is saved and audited; a stale version → 409; a move into WON → 422.
-* `FO-2p3 DW3`: Lost without a reason → 400. A reason from the lead list (not the prospect list) → 400.
+* `FO-2p3 DW3`: Lost without a reason → 422 with `fields.reasonId`. A reason from the lead list (not the prospect list) → 422 (the PF-28 status rule).
 * `FO-2p3 DW4`: Convert, then Undo, works while the client is empty. After a signed retainer, Undo → 409.
 * `FO-2p3 DW5`: board totals in CAD and USD are shown apart.
 * `FO-2p3 DW6`: the leads filters for owner and date narrow inside the visibility. Firm A never sees firm B's rows.
