@@ -382,6 +382,10 @@ Founder rulings respected: **P-668 T17: no comment ban** (why-comments stay, P-6
 
 Removal only on the founder's OK, one branch at a time, after the check above is run again.
 
+### 7.5 Stage 0 review notes for later stages (Opus reviewer, PR #2123, head `018b92ba7`, 18 Nov)
+1. **Before the first stage that lists a path:** `check-stale-paths.sh` reads all of `prototype/`. That includes about 937 record and stored-data files: hand-over notes, `*-manifest*.sha256`, `evidence-lane/**`, `contracts/fixtures/*.json` and `env/README.md`. Many name `official-sources/`. Exclude those record types, or list the live code folders one by one (studio, p1–p5 code, tests, package.json, tsconfig.json). Records keep their facts (P-188); a stage never rewrites a record to pass this check.
+2. **Small:** a REPO_ROOT pointing at a subfolder with its own AGENTS.md is accepted, so the check then reads only that subfolder. Compare the root with `git rev-parse --show-toplevel`. Today only the root has an AGENTS.md.
+
 ### 7.3 Revised order (Lead 78, P-688, P-674)
 - **18 Nov, after the move is verified and the first merges land:**
   1. Stage 0. The tag `history/pre-cleanup-2026-11` is made on main right after stage 0 merges.
