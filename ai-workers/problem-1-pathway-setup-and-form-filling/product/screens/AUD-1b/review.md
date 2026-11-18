@@ -252,3 +252,38 @@ What I did: read code and ran git only. I ran no test suite, server or browser (
 * **n3 (Note).** PF-18b's suite calls `SupportService` outside any request scope, so no test runs AUD-1b's actor and firm checks on the support routes. By reading, they pass (see 2). This is not a gap in AUD-1b's own tests: `check_aud1b_adapter` covers those checks.
 
 Reviewer: Approve 3d507a2ed16da4fbd749984a98a1dd4b5fd0e047
+
+
+## Round 6 (CodeQL fix, diff-only), 18 Nov 2026, local commit cdaa0fab2d250605d87c5913393197ec24def2ee
+**Scope:** only `git show cdaa0fab` (parent 3d507a2ed16da4fbd749984a98a1dd4b5fd0e047, approved in round 5) and a scan of `git diff origin/main cdaa0fab` for timers. As asked, I ran no suite and edited no code. Rounds 4 and 5 are not recorded in this file; they live with the PR.
+
+**1. Test-only, and the suite's behaviour is unchanged.**
+* The commit touches one file, `prototype/studio/tests/check_aud1b_adapter.ts`: 5 lines added, 2 removed, all in `ProbeController.probe`. No product code changes.
+* Before the fix, both awaits used `pause(b.waitMs ?? 0)`. Now they use `pause(waitMs)`, where `asked = Number(b.waitMs)` and `waitMs = asked > 0 && asked <= 250 ? asked : 0`.
+* DW5 is the only caller that sends `waitMs`. It sends `(i * 7) % 23`, so 0 to 22.
+  * 1 to 22 pass through unchanged.
+  * 0 gives 0, as before.
+* Every other probe call (DW6 and the actor cases) sends no `waitMs`. `Number(undefined)` is NaN, which fails both comparisons and gives 0, the same as `undefined ?? 0` did.
+* `pause(0)` is still `setTimeout(r, 0)`. Each request still yields to the event loop before the transaction and inside it.
+* So DW5's 100 requests still interleave across awaits on both sides of `$transaction`. That is what makes its own-correlation and own-firm assertions meaningful. The delays DW5 relies on are exactly the same, so the builder's 33/33 is the expected result.
+
+**2. Will CodeQL accept the guard as a sanitizer?** Very likely yes, but I could not run CodeQL here.
+* `js/resource-exhaustion` (`ResourceExhaustionCustomizations.qll`) has an upper-bound barrier guard. In a relational comparison taken as true, it treats the lesser operand as sanitized.
+* `asked <= 250` puts `asked` on the lesser side. The ternary's true branch is reached only through the `&&` true edge, so that use of `asked` sits behind the guard.
+* `asked` is a single-assignment `const`, so the barrier applies to the SSA use in the ternary. The false branch is the constant 0.
+* `Number(...)` is a taint step for this query, so the unguarded form would still have been flagged. The guard, not the conversion, is what clears it.
+* An explicit comparison is the safer choice than `Math.min`, which CodeQL does not reliably model as a barrier for this query.
+* Confirmation is the CodeQL run on this sha after push: the alert on line 33 must close with no new one. If it stays open, raise it in the PR rather than dismissing it.
+
+**3. Other user-controlled timers in the PR diff: none.**
+* Every added `setTimeout`, `pause(…)` and `timeout:` in `git diff origin/main cdaa0fab` is in `tests/check_aud1b_adapter.ts`:
+  * the `pause` helper itself;
+  * the two probe awaits, now bounded;
+  * `pause(5)` and `pause(250)` in the DW2 job loop, both constants;
+  * `$transaction(…, { timeout: 20_000 })`, a constant.
+* The product files in the diff (`audit-event.ts`, `context.ts`, `hook.ts`, `log.ts`, `settings.ts`, `identity/audit.ts`, `ports/…`) add no timers.
+* The `setTimeout`/`setImmediate` mentions in `break-report.md` and earlier rounds of this file describe the breaker's scratch script, which is not in the repo.
+
+**Open:** no Blocker, no Major, no new Minor. Earlier open items stand as recorded in round 3.
+
+Verdict: Approve cdaa0fab2d250605d87c5913393197ec24def2ee (pending CodeQL closing the alert on this sha)
