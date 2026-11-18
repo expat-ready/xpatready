@@ -21,5 +21,5 @@ Brief: `product/design/build-lead-c-briefs/FO-7ts-2.md` (on `claude/build-lead-c
 * **Known order exception:** `money_invoice_line_write` (FO-7a) share-locks a draft invoice row and takes no party lock; a single transaction that edits a draft's lines and then applies credit to it takes the invoice row first. No writer in the code does both; the DW13 check lists it.
 
 ## Checks run (cloud, PostgreSQL 18.3)
-* (after the re-stamp to `20261118220000`, on FO-7lk 19d39511d) `check_fo7ts_money_settings.ts` 87/0 · `check_fo7lk_lock_order.ts` 16/0 (unchanged) · `check_fo7a2_ledger_rules.ts` 35/0 · `check_fo7a_money_schema.ts` 122/0 (unchanged) · `check_fo7mv_move_list.ts` 45/0 · `check_prisma_schema.ts` 8/0.
+* (on FO-7lk c5d1bccd, with #2106 ae7cc15f) `check_fo7ts_money_settings.ts` 89/0 · `check_fo7lk_lock_order.ts` 16/0 (unchanged) · `check_fo7a2_ledger_rules.ts` 35/0 · `check_fo7a_money_schema.ts` 122/0 (unchanged) · `check_fo7mv_move_list.ts` 45/0 · `check_prisma_schema.ts` 8/0.
 * No live AI, no Stripe, US$0. No screen, no route.
