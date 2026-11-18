@@ -1,16 +1,16 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_191538a9-6d63-4bec-80e1-0147a06307c2 Lead 83 · 19 Nov 01:3x IST (series 2; took over from Lead 82 (series 2, local_f86fdc68) at 52% context, P-446)
+current_lead: local_191538a9-6d63-4bec-80e1-0147a06307c2 Lead 83 · 19 Nov 01:2x IST (series 2; took over from Lead 82 (series 2, local_f86fdc68) at 52% context, P-446)
 
-updated: 2026-11-19 01:3x IST: **Lead 82 handed over to Lead 83 (local_191538a9); Lead 82 check cron 7dec7be8 deleted**; earlier 2026-11-19 00:0x IST: **Lead 82 (local_f86fdc68) took over 23:22 IST 18 Nov, check cron 7dec7be8 at :17 and :47** · the full earlier line (Lead 79-81, org move, in flight, next) word for word in `history/STATE-2026-11-19-0005-lead82s2-updated-line-and-asks-A169-A171.md` · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-702**; P-703-P-705 newer) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-19 01:2x IST: **Lead 82 handed over to Lead 83 (local_191538a9); Lead 82 check cron 7dec7be8 deleted**; earlier 2026-11-19 00:0x IST: **Lead 82 (local_f86fdc68) took over 23:22 IST 18 Nov, check cron 7dec7be8 at :17 and :47** · the full earlier line (Lead 79-81, org move, in flight, next) word for word in `history/STATE-2026-11-19-0005-lead82s2-updated-line-and-asks-A169-A171.md` · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-702**; P-703-P-705 newer) · this branch: `lead/2026-11-07-lead31`
 
 
 
 
 Pointer and 10:2x founder lines: `history/STATE-2026-11-17-1208-lead76s2-pointer-lines.md`.
 
-## Hand-over: Lead 82 → Lead 83, 01:3x IST 19 Nov (read this first; Lead 81→82 block and Lead 82's night items word for word in `history/STATE-2026-11-19-0135-lead82s2-handover-81-82-block.md`)
-Standbys: **Lead 84 (local_f88c32b8)**, then **Lead 85 (local_26804e40)** (P-286). Weekly plan 66% at 01:3x (52% at 23:22; ~16%/h spike 23:2x-23:5x, ~3%/h after the P-707 parks). Lead 82 ran 23:22-01:3x, handed over at 52% context. Founder asleep from ~01:4x; keep-awake runs in his Terminal tab "keep awake overnight" (caffeinate -dimsu; he stops it with Ctrl-C).
+## Hand-over: Lead 82 → Lead 83, 01:2x IST 19 Nov (read this first; Lead 81→82 block and Lead 82's night items word for word in `history/STATE-2026-11-19-0135-lead82s2-handover-81-82-block.md`)
+Standbys: **Lead 84 (local_f88c32b8)**, then **Lead 85 (local_26804e40)** (P-286). Weekly plan 66% at 01:2x (52% at 23:22; ~16%/h spike 23:2x-23:5x, ~3%/h after the P-707 parks). Lead 82 ran 23:22-01:2x, handed over at 52% context. Founder asleep from ~01:4x; keep-awake runs in his Terminal tab "keep awake overnight" (caffeinate -dimsu; he stops it with Ctrl-C).
 1. **P-707 (founder 00:2x): finish to Proven first.** Only Wave 1 lanes (`design/release1-end-to-end-review-2026-11-18.md`) and lanes merging approved PRs keep working; parked with resume notes: #2129 AUD-1c, AUD-5 part 1, PF-5s part 1 (and idle #2029 #2001 #2038). Restart a parked lane = one message naming its note.
 2. **Queue (01:1x):** no product merge since #2064 at 23:33 IST. Labelled on matching Approves after Lead 82's P-423 reads: #2130, #2128 (queued), #1959, #2011, #2102, #2103, #2106 (money, both migrations read), #2000, #2124, #1961, #2012. Each re-runs ci on its head, then queues. #2140 and #2127 wait on fresh checks. #2124 showed "red after approval" at 00:55: read its failing part first. Approves arrive via Lead B (local_1520b573) and Build Lead C (local_d5287293); verify head = Approve sha, read schema/money/permission diffs, then label.
 3. **Cloud lanes don't wake on messages:** type into claude.ai/code in the built-in browser (find sessions with its Search; the sidebar shows ~20). Money lane "Money · FO-7lk then FO-7ts part 2" rebases FO-7lk onto #2106's ae7cc15f1. PF-18bk (support keys) runs to its Approve, then ends.
