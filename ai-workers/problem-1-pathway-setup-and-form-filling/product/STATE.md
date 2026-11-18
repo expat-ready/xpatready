@@ -22,11 +22,9 @@ Standby left: **Lead 81 (local_bd570ff6)**; start a second standby at the founde
 | # | Ask (IST) | Status |
 |---|---|---|
 | S10-A136 | 10 Nov to 17 Nov 00:2x asks | done, answered, standing or superseded (A130 stall research still owed); the pointer rows word for word in `history/STATE-2026-11-17-0858-lead74s2-asks-pointer-rows-S10-A136.md` |
-| A137-A161 | 17 Nov asks (speed, CI gaps, talks, Library, engineering system, clean-up, change log, away, tracker, disk) | rows word for word in `history/STATE-2026-11-17-1420-lead78s2-asks-pointer-rows-A137-A161.md` |
 
-| A162-A163 | the pipeline choke and agents (answered: CI capacity, one builder); one plan across clean-up and set-up pages (answered: full-power plan) | rows word for word in `history/STATE-2026-11-17-1515-lead78s2-asks-A162-A163-rows.md` |
+| A137-A165 | 17 Nov asks (speed, CI, talks, Library, clean-up, change log, tracker, disk, pipeline choke, full-power plan) | done or answered; rows word for word in `history/STATE-2026-11-18-1340-lead80s2-asks-pointer-rows-A137-A165.md` |
 | A166 | 12:5x 18 Nov (typed to Lead 79, relayed word for word): "Now all approvals keep going on, and you also clean up everything, right? There's a lot of lanes open and do the clean up the desk and everything, and keep going on as per the plan as we decided the sequence. And you have your own plan or decision log, something like that, to register or something." | in progress (Lead 80): approvals and labels without waiting; archive finished lanes after an unpushed-work check; full-power plan in order; asks here, decisions in DECISIONS.md |
-| A164-A165 | away 2-3 h; the full-power plan must cover 76 h of talks, CI and set-up, reviewed twice, known to every agent | done: P-690, 223 items after two reviews; #91 decided P-691 (keep emergency hand merge); rows in `history/STATE-2026-11-17-1600-lead78s2-asks-A164-A165-rows.md` |
 
 ## Engineering set-up tracker (A160, Lead 77, 13:2x IST 17 Nov; page https://claude.ai/artifact/EYh8cn1M8rTc3Wba3Pp1dP; every Lead updates it at each check, a row leaves only when done or the founder drops it)
 | Workstream | Owner | Next step | Expected (IST) |
@@ -42,6 +40,7 @@ Standby left: **Lead 81 (local_bd570ff6)**; start a second standby at the founde
 
 ## Start here (next Lead)
 Earlier pointer lines (Lead 60 evening, Lead 61 decide and night, Lead 63 owed (still open: #1865 hooks read, records PR to main, PF-12/FO-7b reads, LegalHoldPort before PF-21b part 1, nightly BR-6 read), morning questions): word for word in `history/STATE-2026-11-16-2217-lead70s2-start-here-pointer-lines.md`.
+🟥 **CI capacity (Lead 80 check 13:2x):** since 12:30 IST only 1-3 GitHub-hosted jobs run at once (71 queued), on paid Enterprise Cloud; evidence in the notes folder `lead80-ci-capacity-2026-11-18.md`; founder-setup drafts a Support ticket for the founder; plan #43 (is 500 real) answered NO so far.
 **Plan position (Lead 80, 13:3x 18 Nov):** bucket B done except #29/#121/#122/#123; bucket C: #36 doing, #37 done; next #38 routines, #39 move records PR, #40 demo runner, #41 backup line, #42 night runs.
 🟥 **One action list (A164): `design/full-power-plan-2026-11-17.md`** (223 items from every set-up page after two independent reviews, buckets A-E; P-690) is the master for the move and the operating model; every Lead works it in order and ticks items there; nothing leaves it unless done or the founder drops it.
 🟥 **Hard rule P-557 (AGENTS.md rule 10): always committed, always resumable**: push at every step; this page says what is true, in flight and next, updated with every change of state. **Private home (P-678): github.com/expat-ready/private**; `tools/private-sync.sh` pushes every session's side notes there; run it at each check. Owed: the founder's Time Machine or iCloud for sources/, code/, archive/ (1.3 GB); daily public mirror refresh; P-677 business plan and §5c private copies.
