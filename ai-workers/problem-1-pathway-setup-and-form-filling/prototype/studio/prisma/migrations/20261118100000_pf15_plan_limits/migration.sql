@@ -1,28 +1,18 @@
--- migration · PF-15 part 1a (BACKLOG PF-15; brief design/lead-b-briefs/PF-15.md; SA-3-4, SA-3-5, SA-3-39, SA-3-40):
--- plan limits besides seats, and each firm's storage-over mark. Schema: prisma/schema/platform-entitlements.prisma, and
--- one back-relation each on platform_plan and platform_firm (PF-15's slot lines in platform.prisma; no column there
--- changes). Additive only: one enum, two new tables, their rules and Sample rows; no existing table, column or row changes.
---   * platform_plan_limit (the plan catalogue, no firm_id): one row per plan and metric (active individual cases, active
---     corporate cases, storage in MB). limit_value null = Unlimited, 0 = none allowed (SA-3-4); never negative. Seats keep
---     their one home, platform_plan.seats_limit (several suites set it directly). The app reads this table and never
---     writes it (writes are revoked from xr_data): the limits change only by a migration until PF-15 part 2's route for
---     our team (SA-3-43, SA-3-62). A plan with no row for a metric is read as 0 by the service (fail closed). A plan's
---     limits go with the plan (ON DELETE CASCADE: they are part of it; PF-3's own check deletes the plans). A catalogue,
---     outside PF-12's walls like platform_plan (tests/check_pf12_walls.ts CATALOGUES).
---   * platform_storage_over (a firm table, PF-12's wall): the firm's storage-over mark (SA-3-40): first_over_at,
---     alerted_at (once per episode), back_under_at, and the bytes and limit last measured. A row is never deleted (a
---     trigger refuses delete and truncate) and never moves firm.
---   * data: every plan that exists now gets its three rows, Sample values (the founder sets the real ones later):
---     solo 25 / 5 cases, 5 120 MB; team 150 / 30, 25 600 MB; firm 600 / 120, 102 400 MB; any other plan 0 (fail closed).
+-- migration · PF-15 part 1a (brief design/lead-b-briefs/PF-15.md; SA-3-4, SA-3-39, SA-3-40). Schema:
+-- prisma/schema/platform-entitlements.prisma (+ two back-relations in platform.prisma). Additive only.
+--   * platform_plan_limit: a catalogue (no firm_id, outside PF-12's walls like platform_plan), one row per plan and metric;
+--     null = Unlimited, 0 = none, never negative; read by the app, never written by it (writes revoked from xr_data);
+--     goes with its plan (cascade). Seats stay on platform_plan.seats_limit.
+--   * platform_storage_over: a firm's storage-over mark (PF-12's wall); never deleted, never moves firm.
+--   * Sample rows for every plan: solo 25 / 5 cases, 5 120 MB; team 150 / 30, 25 600 MB; firm 600 / 120, 102 400 MB; else 0.
 -- Every function carries the platform_ prefix (rows rev 15.2).
--- Rollback: DROP TABLE "platform_storage_over", "platform_plan_limit"; DROP TYPE "platform_limit_metric"; DROP FUNCTION
+-- Rollback (as the migration's owner; on a role that is not superuser, first ALTER FUNCTION platform_storage_over_kept()
+--   OWNER TO CURRENT_USER, since PF-12's pattern gives it to xr_wall_reader): DROP TABLE "platform_storage_over", "platform_plan_limit"; DROP TYPE "platform_limit_metric"; DROP FUNCTION
 --   platform_storage_over_kept(); delete this folder's row from _prisma_migrations. No other table holds a reference to
 --   either table, so nothing else changes.
 
--- CreateEnum
 CREATE TYPE "platform_limit_metric" AS ENUM ('ACTIVE_INDIVIDUAL_CASES', 'ACTIVE_CORPORATE_CASES', 'STORAGE_MB');
 
--- CreateTable
 CREATE TABLE "platform_plan_limit" (
     "plan_id" UUID NOT NULL,
     "metric" "platform_limit_metric" NOT NULL,
@@ -32,7 +22,6 @@ CREATE TABLE "platform_plan_limit" (
     CONSTRAINT "platform_plan_limit_pkey" PRIMARY KEY ("plan_id","metric")
 );
 
--- CreateTable
 CREATE TABLE "platform_storage_over" (
     "firm_id" UUID NOT NULL,
     "first_over_at" TIMESTAMPTZ NOT NULL,
@@ -45,10 +34,8 @@ CREATE TABLE "platform_storage_over" (
     CONSTRAINT "platform_storage_over_pkey" PRIMARY KEY ("firm_id")
 );
 
--- AddForeignKey
 ALTER TABLE "platform_plan_limit" ADD CONSTRAINT "platform_plan_limit_plan_id_fkey" FOREIGN KEY ("plan_id") REFERENCES "platform_plan"("id") ON DELETE CASCADE ON UPDATE RESTRICT;
 
--- AddForeignKey
 ALTER TABLE "platform_storage_over" ADD CONSTRAINT "platform_storage_over_firm_id_fkey" FOREIGN KEY ("firm_id") REFERENCES "platform_firm"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- ------------------------------------------------------------------------------------------ rules Prisma cannot say

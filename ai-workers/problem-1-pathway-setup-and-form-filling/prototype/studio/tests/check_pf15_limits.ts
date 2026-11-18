@@ -1,17 +1,9 @@
-// PF-15 part 1a (BACKLOG PF-15; brief design/lead-b-briefs/PF-15.md; SA-3-4, SA-3-5, SA-3-39, SA-3-40, SA-3-58, SA-4-56):
-// plan limits through EntitlementPort's real adapter (PgEntitlements), seats and storage in force on the real paths. A
-// pass and a fail per Done when line of part 1a:
-//   DW1 the seat limit on the real invite route (at the limit → 409 PLAN_LIMIT_REACHED naming seats and the limit; one
-//       below → 201; no live subscription refuses; a plan with no row for a metric reads as 0; null and 0 on the contract) ·
-//   DW2 storage on the retainer upload (EntitledFiles): over on day 1 → allowed, one team-inbox email and one email per
-//       Owner, none again on day 2; day 15 (fake clock) → a new upload 409, an old file still reads, a retry of a stored
-//       key still works; back under (the daily job, fake clock) → allowed, the mark cleared; a new episode alerts again ·
-//   DW3 checkDowngrade returns { seats, used 8, limit 3, reduce 5 } with SA-4-56's sentence; a plan that fits → none ·
-//   DW6 two invitations at the same moment at the last seat → one 201, one 409 ·
-//   DW7 FilesPort.usedBytes (fake and LocalFiles: the shared contract's PF-15 case; a deleted key does not count).
-// Plus the shared EntitlementPort contract on the fake and on PgEntitlements, and the migration's own rules.
-// A scratch database (every migration, the Sample firms) and a Nest app of PF-4's classes with the local stand-in, a test
-// clock and the fake MailPort; a scratch file folder. No server, no browser, no model call (US$0). Both are removed.
+// PF-15 part 1a (brief design/lead-b-briefs/PF-15.md; SA-3-4, SA-3-5, SA-3-39, SA-3-40): plan limits through
+// EntitlementPort's real adapter, a pass and a fail per Done when line: DW1 seats on the real invite route · DW2 storage on
+// the retainer upload (warn on day 1 with its emails once, hard on day 15, back under by the daily job; break M1, m2, m4)
+// · DW6 the last seat at the same moment · DW7 usedBytes · the EntitlementPort contract on the fake and PgEntitlements ·
+// the migration's rules. A scratch database and file folder (both removed), PF-4's classes in a Nest app with the local
+// stand-in, a fake clock and fake mail. No server, no browser, no model call (US$0).
 //   tsx studio/tests/check_pf15_limits.ts
 import "reflect-metadata";
 import { Module } from "@nestjs/common";
@@ -26,7 +18,6 @@ import { runContract } from "../ports/contracts/contract.ts";
 import { entitlementPortContract } from "../ports/contracts/entitlement-port.contract.ts";
 import { filesPortContract } from "../ports/contracts/files-port.contract.ts";
 import { fakeEntitlements, type EntitlementMetric } from "../ports/entitlement.ts";
-import { fakeFiles } from "../ports/files.ts";
 import { fakeJobs } from "../ports/jobs.ts";
 import { fakeMail } from "../ports/mail.ts";
 
@@ -63,7 +54,7 @@ const { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts
 const { LocalFiles } = await import("../api/src/front-office/files.ts");
 const { Retainers } = await import("../api/src/front-office/retainers/service.ts");
 const { buildDocx } = await import("../api/src/front-office/retainers/docx.ts");
-const { PgEntitlements, checkDowngrade } = await import("../api/src/platform/entitlements/limits.ts");
+const { PgEntitlements } = await import("../api/src/platform/entitlements/limits.ts");
 const { EntitledFiles, StorageWatch, STORAGE_DAILY_QUEUE } = await import("../api/src/platform/entitlements/storage.ts");
 const { TEAM_INBOX_SAMPLE } = await import("../api/src/platform/config/settings.ts");
 
@@ -159,8 +150,7 @@ try {
   ok("PF-15 DW6 fail: with two seats left both pass (the lock serialises, it does not refuse)", two.every((r) => r.status === 201), two.map((r) => r.status));
 
   // ------------------------------------------------------------------------------------------- DW7: usedBytes
-  await runContract(filesPortContract, "fakeFiles", () => fakeFiles(), ok);
-  await runContract(filesPortContract, "LocalFiles", () => new LocalFiles(join(WORK, "contract", crypto.randomUUID())), ok);
+  await runContract(filesPortContract, "LocalFiles", () => new LocalFiles(join(WORK, "contract", crypto.randomUUID())), ok);   // fakeFiles: check_pf0p_ports.ts
   {
     const lf = new LocalFiles(join(WORK, "crash"));
     await lf.put(FIRM_A, "a/b.txt", new TextEncoder().encode("1234"), "text/plain");
@@ -221,27 +211,35 @@ try {
   ok("PF-15 DW2 fail: the new episode starts its own 14 days: an upload the next day is allowed", (await problemOf(() => svc.uploadTemplate(R, { name: "New episode" }, docx(17)))) === null);
   ok("PF-15 DW2 pass: every mark change is audited (over, alerted, back under, over, alerted)", audit() === "storage.over,storage.alerted,storage.back_under,storage.over,storage.alerted", audit());
   ok("PF-15 DW2 fail: a storage mark is never deleted", refused(`delete from platform_storage_over where firm_id = '${FIRM_A}'`, /never removed/));
+  // Break M1: a failing email never undoes the mark (the 14 days still run); a later measure sends the rest, once.
+  {
+    let down = true;
+    const flaky = fakeMail({ failOn: (m) => down && m.templateKey === "platform.storage_over_limit" });
+    const wB = new StorageWatch({ db, files: new LocalFiles(join(WORK, "store")), mail: flaky, now: () => clock.now() });
+    sql(`update platform_plan_limit set limit_value = 0 where metric = 'STORAGE_MB' and plan_id = (select id from platform_plan where code = 'solo')`);
+    await new LocalFiles(join(WORK, "store")).put(FIRM_B, "b/one.txt", new TextEncoder().encode("firm B's bytes"), "text/plain");
+    const markB = () => sql(`select extract(epoch from first_over_at)::text || ':' || (alerted_at is not null)::text || ':' || (back_under_at is null)::text from platform_storage_over where firm_id = '${FIRM_B}'`);
+    const failed = await problemOf(() => wB.measure(FIRM_B)), m1 = markB();
+    await problemOf(() => wB.measure(FIRM_B));   // a second try (the clock stays: the daily job's own watch has working mail)
+    ok("PF-15 DW2 fail (break M1): an Owner email that fails leaves the mark set and its first day unchanged; a second try starts no new episode and sends the team inbox nothing more", failed !== null && m1.endsWith(":false:true") && markB() === m1 && flaky.sent.filter((m) => m.to === TEAM_INBOX_SAMPLE).length === 1, { m1, now: markB(), team: flaky.sent.length });
+    down = false;
+    const again = await wB.measure(FIRM_B);
+    ok("PF-15 DW2 pass (break M1): once mail works, the next measure sends the Owner email and marks the episode alerted, once", again.alerted && markB().endsWith(":true:true") && flaky.sent.filter((m) => m.templateKey === "platform.storage_over_limit").length >= 1 && !(await wB.measure(FIRM_B)).alerted, { again, mark: markB() });
+    sql(`update platform_plan_limit set limit_value = 5120 where metric = 'STORAGE_MB' and plan_id = (select id from platform_plan where code = 'solo')`);
+  }
+  // Break m2 and m4: a firm the adapter cannot read fails closed for storage too; a retired key keeps its own refusal.
+  ok("PF-15 DW2 fail (break m2): storage for a firm the adapter cannot find is refused, never allowed", (await new PgEntitlements(db).check("no-such-firm", "storage_mb", 0)).allowed === false);
+  {
+    sql(`update platform_plan_limit set limit_value = 0 where ${STORAGE_A}`); sql(`update platform_storage_over set first_over_at = now() - interval '20 days', back_under_at = null where firm_id = '${FIRM_A}'`);
+    const kept = await db.foRetainerTemplate.findFirst({ where: { firmId: FIRM_A, name: "Day two" } });
+    const bytes = (await store.get(FIRM_A, kept!.fileKey))!.bytes;
+    await store.delete(FIRM_A, kept!.fileKey);
+    const e = await problemOf(() => store.put(FIRM_A, kept!.fileKey, bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")).catch((x) => x);
+    ok("PF-15 DW2 fail (break m4): while hard, a retired key is refused as FileKeyTaken (not the plan limit)", e?.status === 0 && /already holds other content/.test(String(e.body.error)), e);
+    sql(`update platform_plan_limit set limit_value = 25600 where ${STORAGE_A}`);
+  }
   sql(`update platform_plan_limit set limit_value = 25600 where ${STORAGE_A}`);
 
-  // ------------------------------------------------------------------------------------- DW3: checkDowngrade's return
-  tR = await signIn("user-R");   // the fake clock moved 16 days: a fresh session
-  clearInvites(); seats(100);
-  while (used() < 8) { const r = await invite(); if (r.status !== 201) throw new Error(`invite: ${JSON.stringify(r)}`); }
-  const extra = used() - 8;
-  if (extra > 0) throw new Error(`firm A has ${used()} people before any invitation; DW3 needs 8`);
-  sql(`insert into platform_plan (id, code, name, seats_limit) values (gen_random_uuid(), 'starter-pf15', 'Starter (Sample)', 3)`);
-  sql(`insert into platform_plan_limit (plan_id, metric, limit_value) select id, 'STORAGE_MB', 25600 from platform_plan where code = 'starter-pf15'`);
-  const files = new LocalFiles(join(WORK, "store"));
-  const down = await checkDowngrade(db, files, FIRM_A, "starter-pf15");
-  ok("PF-15 DW3 fail: 8 staff to a 3-seat plan → { seats, used 8, limit 3, reduce 5 } with SA-4-56's sentence; features empty and said so",
-    down.conflicts.length === 1 && down.conflicts[0].metric === "seats" && down.conflicts[0].used === 8 && down.conflicts[0].limit === 3 && down.conflicts[0].reduce === 5
-    && down.conflicts[0].words === "You have 8 staff; Starter (Sample) allows 3. Remove 5 staff or choose a larger plan." && down.features.length === 0 && /no feature conflict/.test(down.featuresNote), down);
-  const fits = await checkDowngrade(db, files, FIRM_A, "firm");
-  ok("PF-15 DW3 pass: to a plan that fits (20 seats) → no conflict", fits.conflicts.length === 0, fits);
-  sql(`update platform_plan_limit set limit_value = 0 where metric = 'STORAGE_MB' and plan_id = (select id from platform_plan where code = 'starter-pf15')`);
-  const both = await checkDowngrade(db, files, FIRM_A, "starter-pf15");
-  ok("PF-15 DW3 fail: storage over the target's limit is a conflict too (every conflict at once)", both.conflicts.map((c) => c.metric).join() === "seats,storage_mb" && both.conflicts[1].reduce === both.conflicts[1].used, both);
-  ok("PF-15 DW3 fail: an unknown target plan → 404", (await problemOf(() => checkDowngrade(db, files, FIRM_A, "no-such-plan")))?.status === 404);
 } catch (e) {
   fail++; console.log(`FAIL  PF-15: the check stopped — ${String((e as Error)?.stack ?? e).slice(0, 800)}`);
 } finally {

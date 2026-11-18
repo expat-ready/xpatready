@@ -1,12 +1,8 @@
-// platform-entitlements.prisma — plan limits and the storage-over mark (PF-15). Owner: Lead B (platform).
-// PF-15 part 1a (SA-3-39, SA-3-40, SA-3-4, SA-3-5): its own file (P-600 (1)); platform_plan and platform_firm get one
-// back-relation each in platform.prisma, on PF-15's slot lines. The seats limit keeps its one home, platform_plan.seats_limit
-// (several suites set it directly; lane note on #2103): this table holds the other three metrics. Rules Prisma cannot say
-// (the value range, the Sample rows for every plan) are in the migration 20261118100000_pf15_plan_limits. Read and written
-// only through api/src/platform/entitlements/.
+// platform-entitlements.prisma — plan limits and the storage-over mark (PF-15; SA-3-4, SA-3-39, SA-3-40). Owner: Lead B.
+// Seats stay on platform_plan.seats_limit. Rules and Sample rows: migration 20261118100000_pf15_plan_limits. Read and
+// written only through api/src/platform/entitlements/.
 
-/// The metrics a plan limits besides seats (seats: platform_plan.seats_limit). Modes are fixed (SA-3-39): both case
-/// metrics hard, storage warn (hard for that firm 14 days after it first went over, SA-3-40). A plan has no mode setting.
+/// The metrics a plan limits besides seats. Modes are fixed (SA-3-39): cases hard, storage warn.
 enum PlatformLimitMetric {
   ACTIVE_INDIVIDUAL_CASES
   ACTIVE_CORPORATE_CASES
@@ -15,9 +11,7 @@ enum PlatformLimitMetric {
   @@map("platform_limit_metric")
 }
 
-/// One plan's limit on one metric (no firm_id: the plan catalogue). `limitValue` null = Unlimited, 0 = none allowed
-/// (SA-3-4). A plan with no row for a metric is read as 0 (fail closed, never Unlimited). Values are Sample until the
-/// founder sets them. A plan's limits go with the plan (cascade): they are part of it.
+/// One plan's limit on one metric (a catalogue). null = Unlimited, 0 = none; no row reads as 0. Sample values.
 model PlatformPlanLimit {
   planId     String              @map("plan_id") @db.Uuid
   metric     PlatformLimitMetric
@@ -30,10 +24,7 @@ model PlatformPlanLimit {
   @@map("platform_plan_limit")
 }
 
-/// A firm's storage-over mark (SA-3-40): set when its storage first goes over its plan's limit, `alertedAt` once the
-/// team inbox and the Owner were told (once per episode), `backUnderAt` when it is back under. A new episode (over again
-/// after being back under) starts again from its own `firstOverAt`. Hard for the firm while `backUnderAt` is null and
-/// `firstOverAt` is 14 days or more ago. Nothing is ever deleted or locked by it.
+/// A firm's storage-over mark (SA-3-40): hard while back_under_at is null and first_over_at is 14 days or more ago.
 model PlatformStorageOver {
   firmId      String    @id @map("firm_id") @db.Uuid
   firstOverAt DateTime  @map("first_over_at") @db.Timestamptz

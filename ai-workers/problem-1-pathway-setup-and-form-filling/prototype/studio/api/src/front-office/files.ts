@@ -95,7 +95,8 @@ export class LocalFiles implements FilesPort {
       let names: string[];
       try { names = readdirSync(dir); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return; throw e; }
       for (const name of names) {
-        const p = join(dir, name), st = lstatSync(p);
+        const p = join(dir, name), st = (() => { try { return lstatSync(p); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return null; throw e; } })();   // another process's .tmp may go (break m1)
+        if (!st) continue;
         if (st.isDirectory()) { walk(p); continue; }
         if (!st.isFile() || /\.(meta|tmp)$/.test(name)) continue;
         const m = this.meta(p);
@@ -105,6 +106,9 @@ export class LocalFiles implements FilesPort {
     walk(firmDir);
     return total;
   }
+
+  /** PF-15: the key was ever written for the firm (live or retired): a put of it is a retry or a FileKeyTaken. */
+  protected known(firmId: string, key: string): boolean { return this.meta(this.pathOf(firmId, key)) !== null; }
 
   private meta(path: string): Meta | null {
     try { return JSON.parse(readFileSync(`${path}.meta`, "utf8")) as Meta; } catch { return null; }
