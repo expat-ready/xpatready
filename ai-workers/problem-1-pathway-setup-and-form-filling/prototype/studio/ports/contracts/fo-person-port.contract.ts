@@ -3,9 +3,10 @@
 // FO-8 rely on (Lead B's brief, DW1-DW6): a new person or company with the given fields, created_by the typed actor, one
 // audit line of ids only; nothing left by a rolled-back transaction; no automatic link to a same-email person (BR-2); a
 // prospect's own party returned with no new row, and a prospect of the other kind refused; another firm's prospect "not
-// found" with nothing written; a firm with no sales setup row gets one, once; an input of the wrong shape refused.
+// found" with nothing written; a firm with no sales setup row gets one, once, and one that left gets none ("not found");
+// an input of the wrong shape refused, with FO-2's text rule (AG-2-49 rule 5).
 import { defineContract, expect, expectRefused } from "./contract.ts";
-import { FO_PERSON_ACTION, FoPersonInvalidInput, FoPersonKindMismatch, FoPersonNotFound, type FoPersonPort } from "../fo-person.ts";
+import { FO_PERSON_ACTION, FoPersonInvalidInput, FoPersonKindMismatch, FoPersonNotFound, NO_FRONT_OFFICE, type FoPersonPort } from "../fo-person.ts";
 
 /** A person row as the contract reads it back. */
 export type PersonRow = { firmId: string; givenNames: string | null; familyName: string | null; email: string | null; phone: string | null; phoneReadable: boolean; createdBy: string };
@@ -21,6 +22,8 @@ export type FoPersonHarness = {
   tx<T>(fn: (tx: unknown) => Promise<T>, firmId?: string): Promise<T>;
   /** A new firm with no front-office sales setup row yet (DW5). */
   firmWithoutSetup(): Promise<string>;
+  /** A firm with no setup row that left (DELETED): FO-1a seeds no front office for it. */
+  firmThatLeft(): Promise<string>;
   /** A committed person of `firmId` with this email (DW2). */
   seedPerson(firmId: string, email: string): Promise<string>;
   /** A committed won prospect of `firmId` of `type`, with its subject person (INDIVIDUAL) or company (CORPORATE). */
@@ -54,10 +57,10 @@ export const foPersonPortContract = defineContract("FoPersonPort", (make: () => 
     },
   },
   {
-    name: "DW1: with only a display name it is kept as given names; an unreadable phone is kept as typed with phone_readable false (never refused)",
+    name: "DW1: with only a display name it is kept as given names (a name part without a letter or digit is empty, as FO-2); an unreadable phone is kept as typed with phone_readable false (never refused)",
     async run() {
       const h = await make();
-      const { foPersonId } = await h.tx((t) => h.port.ensureForClient(t, { firmId: h.firmId, actor: h.actor, displayName: "  Client B  ", phone: "555-01 ext" }));
+      const { foPersonId } = await h.tx((t) => h.port.ensureForClient(t, { firmId: h.firmId, actor: h.actor, displayName: "  Client B  ", givenNames: "--", familyName: " ", phone: "555-01 ext" }));
       const p = await h.readPerson(foPersonId);
       expect(p?.givenNames === "Client B" && p.familyName === null && p.email === null, "the display name as given names", p);
       expect(p?.phone === "555-01 ext" && p.phoneReadable === false, "the unreadable phone kept and flagged", p);
@@ -144,7 +147,18 @@ export const foPersonPortContract = defineContract("FoPersonPort", (make: () => 
     },
   },
   {
-    name: "fail: an input of the wrong shape (an untyped actor, a blank name, an email that is no address, a company name with no letter or digit) is FoPersonInvalidInput (400) and nothing is written",
+    name: "fail (review m1): a firm that left (DELETED, no sales setup row) gets no front office: FoPersonNotFound for a person and a company, and nothing is written",
+    async run() {
+      const h = await make(), f = await h.firmThatLeft(), lines = (await h.auditLines()).length;
+      const gone = (e: unknown) => e instanceof FoPersonNotFound && e.message === NO_FRONT_OFFICE;
+      await expectRefused(() => h.tx((t) => h.port.ensureForClient(t, { firmId: f, actor: h.actor, displayName: "Client J" }), f), "a person in a firm that left", gone);
+      await expectRefused(() => h.tx((t) => h.port.ensureCompanyForClient(t, { firmId: f, actor: h.actor, name: "Client J Co" }), f), "a company in a firm that left", gone);
+      const n = await h.counts(f);
+      expect(n.persons === 0 && n.companies === 0 && n.setups === 0 && (await h.auditLines()).length === lines, "nothing written", n);
+    },
+  },
+  {
+    name: "fail: an input of the wrong shape (an untyped actor, a blank name, an email that is no address, a company name with no letter or digit, and FO-2's text rule: a line break, a control or direction mark, a phone over 40) is FoPersonInvalidInput (400) and nothing is written",
     async run() {
       const h = await make(), before = await h.counts(h.firmId);
       const tryPerson = (a: Record<string, unknown>) => h.tx((t) => h.port.ensureForClient(t, { firmId: h.firmId, actor: h.actor, displayName: "Client H", ...a } as never));
@@ -153,7 +167,15 @@ export const foPersonPortContract = defineContract("FoPersonPort", (make: () => 
       await expectRefused(() => tryPerson({ displayName: "   " }), "a blank display name", refusedAs(FoPersonInvalidInput));
       await expectRefused(() => tryPerson({ email: "not an email" }), "an email that is no address", refusedAs(FoPersonInvalidInput));
       await expectRefused(() => tryPerson({ firmId: "firm-a" }), "a firm id that is no id", refusedAs(FoPersonInvalidInput));
+      // FO-2's text rule (review m2): one line, no control or direction marks, a letter or digit, a phone at most 40.
+      await expectRefused(() => tryPerson({ displayName: "Client\nH" }), "a display name over two lines", refusedAs(FoPersonInvalidInput));
+      await expectRefused(() => tryPerson({ displayName: "--" }), "a display name with no letter or digit", refusedAs(FoPersonInvalidInput));
+      await expectRefused(() => tryPerson({ familyName: `H${String.fromCharCode(0)}` }), "a NUL in a name", refusedAs(FoPersonInvalidInput));
+      await expectRefused(() => tryPerson({ givenNames: `Client${String.fromCharCode(0x202e)}H` }), "a direction mark in a name", refusedAs(FoPersonInvalidInput));
+      await expectRefused(() => tryPerson({ phone: "1".repeat(41) }), "a phone over 40 characters", refusedAs(FoPersonInvalidInput));
+      await expectRefused(() => tryPerson({ email: `h${String.fromCharCode(1)}@example.com` }), "a control mark in an email", refusedAs(FoPersonInvalidInput));
       await expectRefused(() => h.tx((t) => h.port.ensureCompanyForClient(t, { firmId: h.firmId, actor: h.actor, name: " -- " })), "a company name with no letter or digit", refusedAs(FoPersonInvalidInput));
+      await expectRefused(() => h.tx((t) => h.port.ensureCompanyForClient(t, { firmId: h.firmId, actor: h.actor, name: "²" })), "a company name whose only digit the database does not count (²)", refusedAs(FoPersonInvalidInput));
       expect(JSON.stringify(await h.counts(h.firmId)) === JSON.stringify(before), "nothing written");
     },
   },

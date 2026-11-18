@@ -7,9 +7,9 @@
 import type { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { AuditPort } from "../../../../ports/audit.ts";
-import { FO_PERSON_ACTION, FoPersonKindMismatch, FoPersonNotFound, keepPhone, nameParts, parseCompanyInput, parsePersonInput, prospectIdOrMiss, type EnsureCompanyForClientInput, type EnsureForClientInput, type FoPersonPort } from "../../../../ports/fo-person.ts";
+import { FO_PERSON_ACTION, FoPersonKindMismatch, FoPersonNotFound, keepPhone, NO_FRONT_OFFICE, nameParts, parseCompanyInput, parsePersonInput, prospectIdOrMiss, type EnsureCompanyForClientInput, type EnsureForClientInput, type FoPersonPort } from "../../../../ports/fo-person.ts";
 import { auditEvent } from "../../platform/audit/audit-event.ts";
-import { firmScope } from "../../platform/firm-scope.ts";
+import { firmScope, ownFirm } from "../../platform/firm-scope.ts";
 import { phoneE164 } from "../duplicates/phone.ts";
 import { seedFirmFrontOffice } from "../firm-seed.ts";
 import { normaliseCompanyName } from "../sales/corporate/match.ts";
@@ -52,10 +52,15 @@ export class PrismaFoPerson implements FoPersonPort<Tx> {
     return (want === "INDIVIDUAL" ? p.person : p.company)!;   // fo_prospect_subject_check: the type's subject is set
   }
 
-  /** FO-1a's seed, once, when the firm has no sales setup row yet (it makes the row and the firm's front office). */
+  /** FO-1a's seed, once, when the firm has no sales setup row yet (it makes the row and the firm's front office). A firm
+   *  this transaction cannot see (unknown, or walled to another firm), or one FO-1a seeds none for (DELETED, ABANDONED),
+   *  is FoPersonNotFound, never a database error. */
   private async setup(tx: Tx, firmId: string): Promise<void> {
-    if (await tx.foSalesSetup.findFirst({ where: firmScope(firmId), select: { firmId: true } })) return;
+    const has = async () => !!(await tx.foSalesSetup.findFirst({ where: firmScope(firmId), select: { firmId: true } }));
+    if (await has()) return;
+    if (!(await tx.platformFirm.findFirst({ where: ownFirm(firmId), select: { id: true } }))) throw new FoPersonNotFound(NO_FRONT_OFFICE);
     await seedFirmFrontOffice(tx, firmId);
+    if (!(await has())) throw new FoPersonNotFound(NO_FRONT_OFFICE);
   }
 }
 
