@@ -105,3 +105,13 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-593 | The board is the one door with a Library: one master per document, a page is a view (P-594: "Release 1 (production grade)"). | script: library-freshness.py (part: a master behind its feeds is listed) | 14 Nov |
 | P-596 | Every board number carries source, sha, time and class; missing data shows "not measured"; the data is validated and reconciled. | script: cockpit-data.py, cockpit-reconcile.py; CI: cockpit-tests.yml | 14 Nov |
 | P-591 | One cockpit built from script data, refreshed each check, its link opening every report; a fresh reviewer weekly; never duplicate work. | script: cockpit-data.py; CI: cockpit-tests.yml (part: data) | 14 Nov |
+
+## Night of 18-19 Nov (moved word for word from RULES.md, 19 Nov 02:1x IST, Lead 83)
+| P-705 | No move back to Pro (supersedes P-696's rollback); waits measured each check. | prose | 18 Nov |
+| P-703 | Measures and reports count product features only (app-code PRs, product rows), never records or tooling. | script: lead-watch.sh | 18 Nov |
+| P-704 | One big batch once (#2152, batch_size 13); back to 6 on 19 Nov by its own PR (Lead 83 left #2152 unmerged, 19 Nov: machines were not the limit). | prose | 18 Nov |
+| P-706 | Demo/test outbox files may hold links and codes until PF-19e seals them; PF-19e lands before real people. | prose | 19 Nov |
+| P-707 | Finish to Proven first: only Wave 1 lanes and lanes merging approved PRs work; the rest park with resume notes, never wasted. | prose | 19 Nov |
+| P-708 | #2151 "run tests once" hand-merged on green ahead of the queue (founder); a PR runs fast + types, the full set runs once per batch. | script: ci.yml | 19 Nov |
+| P-709 | Night: Lead and standbys label any PR with `Reviewer: Approve <head>` after the Lead's reads, by API or github.com in the browser; idle cloud lanes restarted in claude.ai/code; no spend over caps, no gate lowered. | prose | 19 Nov |
+| P-710 | Sample platform firms seeded ON on demo and test copies; production never seeds (test that no Sample firm exists in production mode). | prose | 19 Nov |
