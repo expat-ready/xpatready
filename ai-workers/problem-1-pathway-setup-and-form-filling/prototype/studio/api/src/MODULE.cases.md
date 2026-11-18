@@ -7,7 +7,7 @@ The runtime: a client's case on a released combination, from answers to a record
 
 **Purpose.** `runtime.ts` creates and reads cases, people and answers; `case-count.ts` the firm's active-case count (`CaseCountPort`, `ports/case-count.ts`) for the plan limits (`EntitlementPort`, `ports/entitlement.ts`: PF-15's, the allow-all fake bound until PF-15); `case-*.ts` stages, checklist, documents, filings, changes and the Prepare view; `fill-case.ts` the case's forms; `readiness*.ts` Ready to file; `review-rounds.ts`/`review-runs.ts` the representative's review; `sign-steps.ts` signed PDFs; `submission*.ts` recording the submission; `person-link.ts` adult privacy and links; `release-update.ts` adopting a newer release; `stage-scope.ts`/`routes-data.ts` multi-stage cases.
 **Owner area.** runtime lane, with screens for B138, B144 (Unconfirmed: no lane map in code).
-**Entry points.** all under `/api/runtime`: `GET|POST cases`, `GET cases/:id/stages`, `GET cases/:id/checklist`, `POST cases/:id/documents`, `GET cases/:id/prepare`, `GET cases/:id/forms`, `POST filings/:id/ready`, `POST cases/:id/reviews`, `POST items/:id/sign-steps/:key`, `PATCH groups/:gid/record`, `GET|POST cases/:id/release-update`; behind PF-4's guard (staff session and keys, not `x-actor`): `POST cases/:id/{decisions,withdraw,close,reopen}` (`case-close.ts`, CS-C1a).
+**Entry points.** all under `/api/runtime`: `GET|POST cases`, `GET cases/:id/stages`, `GET cases/:id/checklist`, `POST cases/:id/documents`, `GET cases/:id/prepare`, `GET cases/:id/forms`, `POST filings/:id/ready`, `POST cases/:id/reviews`, `POST items/:id/sign-steps/:key`, `PATCH groups/:gid/record`, `GET|POST cases/:id/release-update`; behind PF-4's guard (staff session and keys, not `x-actor`): `POST cases/:id/{decisions,withdraw,close,reopen}` (`case-close.ts`, CS-C1a) and `GET cases/:id/decisions` (`CaseClose.view`, key `agent/case:show`: the case page's decision and closing read, its `can` made from the same state checks, CS-C1s).
 
 **Invariants (set by).**
 - A case is pinned to its release; every read uses the pinned release, never the newest (P-67, STANDARDS §3.7).
@@ -24,7 +24,7 @@ The runtime: a client's case on a released combination, from answers to a record
 - `case_party_index` (area file `case-search.prisma`, CS-S1 part 1) holds one row per participant, kept only by database triggers on the answer, profile and participant tables. No answer-write site writes it. A relative is never indexed, and neither is an employer without a name. A row's id is stable per person. Its firm comes from the case (contract v0.1 §3.1; AG-7-88).
 
 **Tables.** case, caseParticipant, caseTeamMember, clientCanonicalAnswer, filing, filingItem, formInstance, caseDocument, answerCheck, reviewRoundFiling, reviewFinding, personLink, caseDecision, casePartyIndex (triggers only), moduleEvent, auditEvent.
-**Tests.** `tests/check_c76_readiness.ts`, `tests/check_c65_document_rules.ts`, `tests/check_m3s4_never_waivable.ts`, `tests/check_c95_release_update.ts`, `tests/check_c81_signing.ts`, `tests/check_a24_case_number_api.ts`, `tests/check_csc1_close.ts`, `tests/check_csc1_count.ts`, `tests/check_css1_index.ts`.
+**Tests.** `tests/check_c76_readiness.ts`, `tests/check_c65_document_rules.ts`, `tests/check_m3s4_never_waivable.ts`, `tests/check_c95_release_update.ts`, `tests/check_c81_signing.ts`, `tests/check_a24_case_number_api.ts`, `tests/check_csc1_close.ts`, `tests/check_csc1_count.ts`, `tests/check_csc1s_view.ts`, `tests/check_css1_index.ts`.
 
 **Do not.**
 - Read the newest release from a case route.

@@ -92,7 +92,7 @@ export function CaseDecisionPanel({ caseId }: { caseId: string }) {
     <section aria-labelledby="case-decision-h" className="rounded-xl border border-border bg-surface-raised" data-case-decision>
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3">
         <h2 id="case-decision-h" ref={heading} tabIndex={-1} className="text-base font-semibold outline-none">Decision and closing</h2>
-        <p className="min-w-0 flex-1 text-[13px] text-text-muted">Record IRCC's decision on each submitted filing, then close the case. Before any decision, the case can be withdrawn.</p>
+        <p className="min-w-0 basis-full text-[13px] text-text-muted sm:basis-0 sm:flex-1">Record IRCC's decision on each submitted filing, then close the case. Before any decision, the case can be withdrawn.</p>
         {me.data ? <span className="text-[13px] text-text-muted" title="Decisions use your firm staff sign-in." data-decision-signed-in>Signed in as <span className="font-medium text-text">{me.data.displayName}</span> (firm staff)</span> : null}
       </header>
       {!token ? (
