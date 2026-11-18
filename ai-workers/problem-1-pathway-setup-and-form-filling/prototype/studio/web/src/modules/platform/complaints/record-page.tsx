@@ -71,7 +71,7 @@ function RecordBody({ id }: { id: string }) {
       {c.status === "CLOSED" ? <Notice tone="info" title={`Closed on ${c.closedAt ? day(c.closedAt, zone) : "—"} · outcome: ${word(OUTCOME, c.outcome)}`}>A closed complaint is kept as it is; add a note if something more happens. <span className="text-[11px]">Outcomes are a Sample list.</span></Notice> : null}
       {c.status === "OPEN" && !canAct(me, c) ? <p className="text-sm text-text-muted" data-read-only>{READ_ONLY}</p> : null}
       {canAct(me, c) ? <NextStep c={c} me={me} onAct={setAct} primary={primary} /> : null}
-      {canAct(me, c) ? <ActionDrawer action={act} onClose={() => setAct(null)} complaint={c.id} zone={zone} handlerId={c.handlerStaffId} onLost={() => { setAct(null); setLost(true); }} returnFocus={() => primary.current ?? heading.current} /> : null}
+      {canAct(me, c) ? <ActionDrawer action={act} onAct={setAct} onClose={() => setAct(null)} complaint={c.id} zone={zone} handlerId={c.handlerStaffId} onLost={() => { setAct(null); setLost(true); }} returnFocus={() => primary.current ?? heading.current} /> : null}
       <div className="grid gap-4 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
         <section aria-labelledby="pf-facts" className="rounded-xl border border-border bg-surface-raised px-4 py-3">
           <h2 id="pf-facts" className="text-sm font-semibold">Facts</h2>

@@ -53,14 +53,14 @@ export const ACTION: Record<Action, { title: string; submit: string; done: strin
   close: { title: "Close with an outcome", submit: "Close the complaint", done: "Complaint closed.", description: "A closed complaint is kept as it is; notes can still be added." },
   handler: { title: "Change handler", submit: "Change handler", done: "Handler changed.", description: "The new handler sees it and is reminded if it is not acknowledged by its date." },
 };
-/** The one filled button by status (concept §4): not acknowledged → acknowledge; no step → a step; no response →
- *  response sent; else close. A closed complaint takes a note only. */
+/** The one filled button by status (concept §4): not acknowledged → acknowledge; response sent → close (steps are
+ *  never required, §1; review m1); no step → a step; else response sent. A closed complaint takes a note only. */
 export function nextAction(c: Detail): Action {
   if (c.status === "CLOSED") return "note";
   if (!c.acknowledgedAt) return "acknowledge";
+  if (c.responseSentAt) return "close";
   if (!c.events.some((e) => e.kind === "STEP")) return "step";
-  if (!c.responseSentAt) return "response";
-  return "close";
+  return "response";
 }
 /** The quiet secondary acts the service still allows while open, without the one filled. */
 export function otherActions(c: Detail): Action[] {

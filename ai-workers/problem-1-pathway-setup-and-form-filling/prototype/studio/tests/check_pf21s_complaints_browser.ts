@@ -281,6 +281,26 @@ await call(rTok, "POST", `/${race}/close`, { outcome: "WITHDRAWN", at: new Date(
 await submitOf(w3).click(); await w3.getByText("This complaint is closed. It was closed while you were working").waitFor({ timeout: 10_000 });
 ok("PF-21s refused: a 409 shows the concept's words and the server's in the panel, not a toast alone, and the note typed is kept",
   (await w3.locator("[data-action-error]").innerText()).includes("add a note instead") && (await w3.getByRole("textbox", { name: /^Note/ }).inputValue()) === "Sample.");
+// Review M1: after the 409 the page behind the panel is read again: Closed, with Add a note as its only act; the note
+// typed for the refused step is carried into Add a note and saved there.
+await w3.locator('[data-status="Closed"]').waitFor({ timeout: 10_000 });
+ok("PF-21s review M1 pass: after a 409 for a closed complaint the page shows Closed with only Add a note, without a reload", JSON.stringify(await acts(w3)) === JSON.stringify(["note"]), await acts(w3));
+await w3.locator("[data-carry-note]").click(); await panel(w3, "note").waitFor({ timeout: 10_000 });
+ok("PF-21s review M1: Add it as a note carries the typed text into the note panel, which does not claim the session ended", (await w3.getByRole("textbox", { name: /^Note/ }).inputValue()) === "Sample." && (await w3.getByText("Your session ended").count()) === 0);
+await saved(w3, "note");
+ok("PF-21s review M1: the carried note is on the closed complaint's timeline", (await eventsOf(w3))[0] === "NOTE");
+// Review M1 fail case: acknowledged in another tab while the panel is open: the 409's words show, and after Cancel the
+// filled button has moved on (no second "Record the acknowledgement" that would only be refused again).
+const twice = await record(rTok, `Person Twice ${run}`, R.id, ago(1));
+await opened(w3, twice); await actOpen(w3, "acknowledge");
+await call(rTok, "POST", `/${twice}/acknowledge`, { at: new Date(Date.now() - 60_000).toISOString() });
+await submitOf(w3).click(); await w3.getByText("Already acknowledged").waitFor({ timeout: 10_000 });
+await w3.locator('[data-next-step="step"]').waitFor({ timeout: 10_000 });
+await w3.getByRole("button", { name: "Cancel" }).click(); await panel(w3, "acknowledge").waitFor({ state: "detached", timeout: 10_000 });
+ok("PF-21s review M1 fail: acknowledged elsewhere, the page moves on to Add a handling step and offers no acknowledgement act", (await nextOf(w3)) === "step" && !(await acts(w3)).includes("acknowledge") && (await eventsOf(w3))[0] === "ACKNOWLEDGED");
+// Review m1: response sent without a step: the filled button is Close (steps are never required).
+await actOpen(w3, "response"); await saved(w3, "response");
+ok("PF-21s review m1: acknowledged and answered with no step, the filled button is Close with an outcome", (await nextOf(w3)) === "close" && (await acts(w3)).includes("step"), await acts(w3));
 // Closed straight after receipt as Withdrawn, from the quiet act (no acknowledgement, no step).
 const quick = await record(rTok, `Person Quick ${run}`, R.id, ago(0.02));
 await opened(w3, quick); await actOpen(w3, "close"); await w3.getByLabel("Withdrawn").check(); await w3.getByRole("textbox", { name: /^Note/ }).fill("Withdrawn the same day (Sample).");

@@ -16,14 +16,14 @@ import { ACTION, type Action, CLOSED_REFUSED, Complaint, FORBIDDEN, Handlers, no
 type Form = { at: string; note: string; outcome: string; handlerStaffId: string };
 /** What the person typed, kept in this tab's memory while the panel is open (never stored): a session that ends
  *  mid-panel unmounts the page, and signing in again as the same person on the same complaint brings it back. */
-let kept: { staffId: string; complaintId: string; action: Action; form: Form } | null = null;
+let kept: { staffId: string; complaintId: string; action: Action; form: Form; carried?: boolean } | null = null;
 export const keptAction = (staffId: string, complaintId: string): Action | null => (kept?.staffId === staffId && kept.complaintId === complaintId ? kept.action : null);
 const LABEL: Record<string, string> = { at: "When", note: "Note", outcome: "Outcome", handlerStaffId: "New handler", kind: "Kind" };
 const PATH: Record<Action, string> = { acknowledge: "acknowledge", step: "steps", note: "steps", response: "response-sent", close: "close", handler: "handler" };
 const noteRequired = (a: Action) => a === "step" || a === "note" || a === "close";
 
-export function ActionDrawer({ action, onClose, complaint, zone, handlerId, onLost, returnFocus }: {
-  action: Action | null; onClose: () => void; complaint: string; zone: string; handlerId: string; onLost: () => void; returnFocus: () => HTMLElement | null;
+export function ActionDrawer({ action, onAct, onClose, complaint, zone, handlerId, onLost, returnFocus }: {
+  action: Action | null; onAct: (a: Action) => void; onClose: () => void; complaint: string; zone: string; handlerId: string; onLost: () => void; returnFocus: () => HTMLElement | null;
 }) {
   const me = usePlatformStaff();
   const qc = useQueryClient(), toast = useToast();
@@ -35,7 +35,7 @@ export function ActionDrawer({ action, onClose, complaint, zone, handlerId, onLo
   const [f, setF] = React.useState<Form>(blank);
   const [restored, setRestored] = React.useState(false);
   const start = React.useRef("");   // the default date, so a step left at it sends none
-  const touched = React.useRef(false), sending = React.useRef(false), summary = React.useRef<HTMLDivElement>(null);
+  const touched = React.useRef(false), sending = React.useRef(false), summary = React.useRef<HTMLDivElement>(null), notice = React.useRef<HTMLDivElement>(null);
   // Leaving the page while still signed in drops the draft; only an ended session keeps it for the next sign-in.
   React.useEffect(() => () => { if (staffToken()) kept = null; }, []);
   React.useEffect(() => {
@@ -44,7 +44,9 @@ export function ActionDrawer({ action, onClose, complaint, zone, handlerId, onLo
     const back = kept && kept.staffId === me.staffId && kept.complaintId === complaint && kept.action === action ? kept.form : null;
     if (!back) kept = null;   // another person's, complaint's or act's draft is never shown
     const fresh = blank(); start.current = fresh.at;
-    setF(back ?? fresh); setRestored(!!back); touched.current = !!back; save.reset();
+    // A note carried over from an act refused as closed keeps its text but is not a restored session.
+    setF(back ? { ...fresh, ...back, at: kept?.carried ? fresh.at : back.at } : fresh); setRestored(!!back && !kept?.carried); touched.current = !!back; save.reset();
+    if (back && !kept?.carried) setTimeout(() => notice.current?.focus(), 0);   // review m2: the restored notice is announced
   }, [action]);   // eslint-disable-line react-hooks/exhaustive-deps -- a fresh form each time it opens
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     touched.current = true; const v = e.target.value;
@@ -65,6 +67,9 @@ export function ActionDrawer({ action, onClose, complaint, zone, handlerId, onLo
     onSettled: () => { sending.current = false; },
     onError: (e) => {
       if (e instanceof StaffApiError && e.status === 404) { kept = null; qc.removeQueries({ queryKey: ["pf", "complaints", "one", complaint] }); onLost(); return; }
+      // Review M1: a 409 or 403 means the page is out of date (acknowledged, answered, closed or handed over elsewhere):
+      // the record behind the panel is read again, so its next step and acts are true when the panel closes.
+      if (e instanceof StaffApiError && (e.status === 409 || e.status === 403)) void qc.invalidateQueries({ queryKey: ["pf", "complaints"] });
       setTimeout(() => summary.current?.focus(), 0);
     },
     onSuccess: () => {
@@ -82,15 +87,17 @@ export function ActionDrawer({ action, onClose, complaint, zone, handlerId, onLo
     : err.status === 409 && err.problem.code === "COMPLAINT_CLOSED" ? { title: CLOSED_REFUSED, text: err.message }
     : { title: err.problem.title ?? "There is a problem", text: err.message }
     : null;
+  const closedNow = err?.status === 409 && err.problem.code === "COMPLAINT_CLOSED";
   const choices = (handlers.data ?? []).filter((h) => h.id !== handlerId);
   const id = `pf-complaint-${a}`;
   return (
     <Panel open={open} onOpenChange={(o) => { if (!o) onClose(); }} title={ACTION[a].title} description={ACTION[a].description} returnFocus={returnFocus} confirmClose={discard}
       footer={<><Button variant="ghost" onClick={() => { if (discard()) onClose(); }}>Cancel</Button><Button type="submit" form={id} busy={save.isPending}>{ACTION[a].submit}</Button></>}>
       <form id={id} noValidate className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); if (sending.current) return; sending.current = true; save.mutate(); }} data-action-drawer={a}>
-        {restored ? <Notice tone="info" title="Your session ended">We kept what you typed. It was not saved yet: check it and save it.</Notice> : null}
+        {restored ? <div ref={notice} tabIndex={-1} role="status" className="outline-none"><Notice tone="info" title="Your session ended">We kept what you typed. It was not saved yet: check it and save it.</Notice></div> : null}
         <div ref={summary} tabIndex={-1} className="outline-none" data-action-error>
-          {refused ? <Notice tone="danger" title={refused.title}>{refused.text}</Notice>
+          {refused ? <Notice tone="danger" title={refused.title} action={closedNow && a !== "note" && f.note.trim()
+              ? <Button size="sm" variant="secondary" onClick={() => { kept = { staffId: me.staffId, complaintId: complaint, action: "note", form: f, carried: true }; touched.current = false; onAct("note"); }} data-carry-note>Add it as a note</Button> : undefined}>{refused.text}</Notice>
             : err ? <Notice tone="danger" title="There is a problem"><ul className="list-disc pl-4">{Object.entries(fields).map(([k, v]) => <li key={k}>{LABEL[k] ?? k}: {v}</li>)}</ul></Notice>
             : save.error && !(save.error instanceof StaffApiError) ? <Notice tone="danger" title="There is a problem">Could not save. Please try again.</Notice> : null}
         </div>
