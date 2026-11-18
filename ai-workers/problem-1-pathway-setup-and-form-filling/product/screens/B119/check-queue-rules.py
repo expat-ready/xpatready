@@ -7,7 +7,9 @@ Records never block code, by one route (Lead 21's ruling on #1147, 6 Nov): CI la
 became the one "product" queue). This script evaluates the
 queue_conditions the way Mergify does (the first queue, in file order, whose conditions all hold; on a list such as
 label, "attr=x" holds when any item equals x and "-attr=x" when none does) on fixed PRs, and checks the rules every
-queue keeps (base main, the review label, green ci, refusing drafts, records last). Each fixed PR lists its files;
+queue keeps (base main, the review label, green ci, refusing drafts, records last). P-664 (founder 17 Nov, "Yes,
+verdicts first (Recommended)"): a queue "verdicts", listed first, takes only qa verdict records (label "records", title
+starting "qa:", qa/CAPABILITIES.md changed); every other record still goes to "records", last. Each fixed PR lists its files;
 its label comes from records-only.sh is-records and must agree with the case's expected label (so the definition and
 the cases cannot drift apart), and the label name the queues use must be the one records-only.sh prints. A missing
 records-only.sh fails the check. Then it breaks the configuration on purpose and expects each
@@ -81,10 +83,10 @@ def _is_records(files):
 
 
 def case(what, files, record, want, title="evidence: something", labels=("review: approved",), checks=("ci",),
-         draft=False, base="main"):
+         draft=False, base="main", head="claude/keen-maxwell-x1"):
     return {"what": what, "record": record, "want": want,
             "pr": {"files": list(files), "title": title, "label": list(labels), "check-success": list(checks),
-                   "draft": draft, "base": base}}
+                   "draft": draft, "base": base, "head": head}}
 
 
 A = f"{P}/prototype/studio"
@@ -95,6 +97,14 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("a screen's notes and its HTML board", [f"{R}/screens/12/build-notes.md", f"{R}/screens/12/board.html"], True, "records"),
     case("the history folder", [f"{R}/history/lead20-handover.md", f"{R}/history/old/STATE-2026-11-05.txt"], True, "records"),
     case("the way of working (a record under product/)", [f"{R}/WAY-OF-WORKING.md"], True, "records"),
+    # P-664: qa verdict records first; only those.
+    case("a qa verdict (qa: title, CAPABILITIES.md): verdicts", [f"{R}/qa/CAPABILITIES.md", f"{R}/qa/BUGS.md"], True, "verdicts", "qa: capability R1 — R1.9 Works", head="claude/tender-einstein-wpko9j"),
+    case("a qa verdict on a claude/qa- branch: verdicts", [f"{R}/qa/CAPABILITIES.md"], True, "verdicts", "qa: capability R1 re-score", head="claude/qa-r1-rescore-1115"),
+    case("qa records without CAPABILITIES.md: records", [f"{R}/qa/BUGS.md", f"{R}/qa/runs/out.txt"], True, "records", "qa: after-merge lane log", head="claude/confident-allen-dt0td1"),
+    case("non-qa records touching CAPABILITIES.md: records", [f"{R}/qa/CAPABILITIES.md", f"{R}/STATE.md"], True, "records", "lead: records 17 Nov", head="lead/2026-11-17-records"),
+    case("a qa: title on code touching CAPABILITIES.md: product", [f"{R}/qa/CAPABILITIES.md", f"{A}/web/src/App.tsx"], False, "product", "qa: fix and verdict", checks=F),
+    case("a qa verdict draft: no queue", [f"{R}/qa/CAPABILITIES.md"], True, None, "qa: capability x", draft=True),
+    case("a qa verdict without the review label: no queue", [f"{R}/qa/CAPABILITIES.md"], True, None, "qa: capability x", labels=()),
     case("an M3 title on records only still goes to records", [f"{R}/qa/CAPABILITIES.md"], True, "records", "M3 qa: C7.3 scored"),
     case("records plus one app file: product", [f"{R}/STATE.md", f"{A}/api/src/core.ts"], False, "product", checks=F),
     case("records plus one app file, M3 title: product (no title routing)", [f"{R}/qa/built/C7.3.md", f"{A}/web/src/App.tsx"], False, "product", "forms: C7.3 — x", checks=F),
@@ -142,8 +152,9 @@ def problems(cfg, have_script):
     out = []
     qs = cfg.get("queue_rules", [])
     names = [q.get("name") for q in qs]
-    if names != ["product", "records"]:
-        out.append(f"queue order is {names}: want product, records (the first listed has the highest priority; records last)")
+    if names != ["verdicts", "product", "records"]:
+        out.append(f"queue order is {names}: want verdicts, product, records (the first listed has the highest priority; "
+                   "qa verdicts first (P-664), records last)")
     for q in qs:
         conds = [c.replace(" ", "") for c in q.get("queue_conditions", []) if isinstance(c, str)]
         for need in ("base = main", "label = review: approved", "check-success = ci"):
@@ -152,9 +163,15 @@ def problems(cfg, have_script):
         if "check-success = ci" not in [c.strip() for c in q.get("merge_conditions", []) if isinstance(c, str)]:
             out.append(f"queue {q.get('name')}: merge_conditions lack 'check-success = ci' (the batch is tested)")
         # Each queue carries its own label guard, not only by being listed after the others (defence in depth).
-        want = "label=records" if q.get("name") == "records" else "-label=records"
+        want = "label=records" if q.get("name") in ("records", "verdicts") else "-label=records"
         if want not in conds:
             out.append(f"queue {q.get('name')}: queue_conditions lack {want!r}")
+        if q.get("name") == "verdicts":   # P-664: only qa verdict records go first
+            for need in ("title~=^qa:", r"files~=qa/CAPABILITIES\.md$"):
+                if need not in conds:
+                    out.append(f"queue verdicts: queue_conditions lack {need!r} (only qa verdict records go first)")
+            if q.get("allow_checks_interruption"):
+                out.append("queue verdicts: allow_checks_interruption set (a verdict must not restart a running batch)")
         if "-draft" not in conds:   # every queue refuses drafts (P-371 (1)); records alone before D1
             out.append(f"queue {q.get('name')}: queue_conditions lack '-draft'")
     for c in CASES:
@@ -192,6 +209,15 @@ def mutations(cfg):
         for q in c["queue_rules"]:
             q["queue_conditions"] = [x for x in q["queue_conditions"] if not (isinstance(x, dict) and "xfa-engine" in str(x))]
         return c
+    def interrupt(c):
+        c = copy.deepcopy(c)
+        for q in c["queue_rules"]:
+            if q["name"] == "verdicts": q["allow_checks_interruption"] = True
+        return c
+    def swap01(c):
+        c = copy.deepcopy(c); c["queue_rules"][0], c["queue_rules"][1] = c["queue_rules"][1], c["queue_rules"][0]; return c
+    def no_verdicts(c):
+        c = copy.deepcopy(c); c["queue_rules"] = [q for q in c["queue_rules"] if q["name"] != "verdicts"]; return c
     return [
         ("product lets records in (-label=records removed)", drop("product", lambda x: x == "-label=records")),
         ("records lets unlabelled PRs in (label = records removed)", drop("records", lambda x: x == "label=records")),
@@ -207,6 +233,13 @@ def mutations(cfg):
         ("records listed first (higher priority than product)", reorder(cfg)),
         ("no records queue", no_records(cfg)),
         ("product drops the xfa-engine gate", no_xfa(cfg)),
+        ("verdicts drops label = records (P-664)", drop("verdicts", lambda x: x == "label=records")),
+        ("verdicts drops the qa: title condition (P-664)", drop("verdicts", lambda x: x.startswith("title"))),
+        ("verdicts drops the CAPABILITIES.md condition (P-664)", drop("verdicts", lambda x: x.startswith("files"))),
+        ("verdicts accepts drafts (P-664)", drop("verdicts", lambda x: x == "-draft")),
+        ("verdicts interrupts running checks (P-664)", interrupt(cfg)),
+        ("verdicts listed after product (P-664)", swap01(cfg)),
+        ("no verdicts queue (P-664)", no_verdicts(cfg)),
     ]
 
 
@@ -230,7 +263,7 @@ def main():
     rest = [x for x in found if not any(x.startswith(c["what"] + ":") for c in CASES)]
     for x in rest: failed += 1; print(f"FAIL  {x}")
     if not rest:
-        passed += 1; print("PASS  order product, records; every queue keeps base main, the review label and green ci; the label guards; every queue refuses drafts")
+        passed += 1; print("PASS  order verdicts, product, records; verdicts only qa verdict records; every queue keeps base main, the review label and green ci; the label guards; every queue refuses drafts")
     for what, broken in mutations(cfg):   # caught = the break adds a problem the real configuration does not have
         if set(problems(broken, have)) - set(found): passed += 1; print(f"PASS  caught: {what}")
         else: failed += 1; print(f"FAIL  not caught: {what}")

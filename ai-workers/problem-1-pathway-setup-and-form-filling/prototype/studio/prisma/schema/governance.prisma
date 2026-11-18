@@ -76,25 +76,6 @@ model ReviewSignoff {
   @@map("review_signoff")
 }
 
-model AuditEvent {
-  id          String   @id @default(uuid()) @db.Uuid
-  workspaceId String   @map("workspace_id") @db.Uuid
-  at          DateTime @default(now()) @db.Timestamptz
-  actor       String
-  action      String
-  entity      String
-  entityKey   String?  @map("entity_key")
-  summary     String
-  detail      Json?
-  /// The configuration row an edit belongs to (finding 2 of the 21 Oct grounding audit): review uses these events to
-  /// know every author of a draft, including edits that leave no draft row (people, section selection, removals).
-  combinationId String?  @map("combination_id") @db.Uuid
-
-  @@index([workspaceId, at])
-  @@index([combinationId, at])
-  @@map("audit_event")
-}
-
 /// G-CORE (P-253, concept screens/G-CORE-guarded-change/concept.md v2): one change set per guarded change to a shared
 /// library item, by a person or the AI. It records the items, what the fixed rules check found, the review tier, the
 /// preview's fingerprint and who made it; the second-person review stays on library_change / field_merge (linked here).

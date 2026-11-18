@@ -1,0 +1,18 @@
+qa gate A walk, 18 Nov 13:0x-13:2x IST, main 39c1203cd, configured checkpoint (Demo › Load the configured checkpoint: reset 0 rows, then "configured", ok, 87.2 s and 89.0 s).
+
+C11.6, copy qa_gatea :4474 (dropped), case C-2026-00001 (the checkpoint's Sample case), as the Case officer:
+audit_event after "Change channel" → Paper with a reason, saved by a double click (one line):
+ changed | item | Case officer changed how IMM 5257 is filed for the principal applicant on case 8f42d031: from PDF upload to Paper (reason given)
+No other line for the item; the combination's form line was not changed (no "form line" line after 13:09:50, the checkpoint load).
+
+C8.2, copy qa_gateb :4475 (dropped). Case d2ae900e opened and taken to Ready to file by the pack's own helpers (acceptance/C8.2.test.ts lines up to C8.2-2: "C8.2-1 fail ... 409", "C8.2-2 pass: both filings reach Ready to file"), then recorded on screen by the Case officer with a double click:
+select application_number, our_reference, portal, prepared_by, reviewed_by, recorded_by from filing_record where case_id=<case>
+ V300000101 | ACC-mwlthbxd-e1y0-1 | APR_PORTAL | user-O | user-R | user-O
+ V300000102 | ACC-mwlthbxd-e1y0-2 | APR_PORTAL | user-O | user-R | user-O
+(2 rows; count 2)
+filing_person_record UCI: 1111-1111 (1 row; the spouse's UCI left empty, shown as "none given · Add…")
+audit_event: one line "recorded | submission group | On case d2ae900e (ACC-mwlthbxd-e1y0): Case officer recorded the submission of 2 filings to IRCC"
+
+C9.2 first step (the next capability): Client A's answer "consents to be contacted" changed No → Yes after submission:
+case_task: 1 row, kind after_filing_change, filing ff69c8b7…, "Filed with an earlier value: Sample Client A's answer to … changed after Sample Client A's IMM 5257 was filed on November 18, 2026. Re-sign it, or tell IRCC of the change (Unconfirmed: no counsel)."
+filing_record afterwards: V300000101, V300000102 (unchanged).
