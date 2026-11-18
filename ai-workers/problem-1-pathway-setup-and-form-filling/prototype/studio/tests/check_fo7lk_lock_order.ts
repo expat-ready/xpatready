@@ -42,9 +42,12 @@ try {
     all.includes(NEW) && before.includes(FO7A2) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1);
   for (const d of before) for (const db of dbs) psql(db, ["-1", "-f", join(MIG, d, "migration.sql")]);
   const pre = texts(PRE);
-  for (const d of all.filter((x) => x >= NEW)) for (const db of [T, BACK, PLANT]) psql(db, ["-1", "-f", join(MIG, d, "migration.sql")]);
+  // Read right after this migration (as FO-7a2's check does): a later migration's own changes are not this row's. "back"
+  // stops at FO-7lk plus its rollback (#1991's text); "t" and "plant" then take every later migration.
+  for (const db of [T, BACK, PLANT]) psql(db, ["-1", "-f", join(MIG, NEW, "migration.sql")]);
   psql(BACK, ["-1", "-f", join(MIG, NEW, "rollback.sql")]);
   const t = texts(T), back = texts(BACK);
+  for (const d of all.filter((x) => x > NEW)) for (const db of [T, PLANT]) psql(db, ["-1", "-f", join(MIG, d, "migration.sql")]);
 
   const changed = Object.keys(t).filter((k) => t[k] !== pre[k]).sort();
   ok("FO-7lk pass: the migration adds money_trust_lock and replaces only the four lock call sites and money_credit_note_write (functions only)",
