@@ -109,7 +109,8 @@ export class Prospects {
     const seenEarlier = out.earlier.filter((e) => see(e.ownerStaffId)).map((e) => e.number);
     return {
       ...(await this.read(ctx, out.id)), again: out.earlier.length > 0,
-      ...(out.earlier.length ? { message: `This lead already had ${out.earlier.length === 1 ? "a prospect" : `${out.earlier.length} prospects`}${seenEarlier.length ? ` (${seenEarlier.join(", ")})` : ""}. This is another one.` } : {}),
+      // Names and counts only the earlier prospects the person may see (review m2); an unseen one is "a prospect", uncounted.
+      ...(out.earlier.length ? { message: `This lead already had ${seenEarlier.length ? `${seenEarlier.length === 1 ? "prospect" : "prospects"} ${seenEarlier.join(", ")}` : "a prospect"}. This is another one.` } : {}),
     };
   }
 
@@ -208,7 +209,7 @@ export class Prospects {
       if (to.id === p.stage_id) return conflict(`This prospect is already in ${to.label}.`, "SAME_STAGE");
       await this.moveRow(tx, ctx, p, last?.toStageId ?? null, to.id, "PERSON", {});
       await this.audit(tx, ctx, EVENT.PROSPECT_STAGE_MOVED, p.id, `Staff ${ctx.staffId} moved ${p.number} from ${p.key} to ${to.key}.`, { fromStageKey: p.key, toStageKey: to.key, cause: "PERSON" });
-      await this.event(tx, ctx.firmId, EVENT.PROSPECT_STAGE_MOVED, p.id, ProspectMovePayload.parse({ prospectId: p.id, leadId: p.lead_id, type: p.type, fromStageKey: p.key, stageKey: to.key, ownerStaffId: p.owner_staff_id }));
+      await this.event(tx, ctx.firmId, EVENT.PROSPECT_STAGE_MOVED, p.id, ProspectMovePayload.parse({ prospectId: p.id, leadId: p.lead_id, type: p.type, fromStageKey: p.key, stageKey: to.key, ownerStaffId: p.owner_staff_id, cause: "PERSON" }));
     });
     return this.read(ctx, pid);
   }
@@ -229,7 +230,7 @@ export class Prospects {
       const to = await tx.foStage.findFirstOrThrow({ where: firmScope(ctx.firmId, { pipeline: p.type, kind: "LOST" as const }) });
       await this.moveRow(tx, ctx, p, last?.toStageId ?? null, to.id, "PERSON", { lostReasonId: reason.id, lostReasonKind: "PROSPECT_LOST", lostNote: note });
       await this.audit(tx, ctx, EVENT.PROSPECT_LOST, p.id, `Staff ${ctx.staffId} marked ${p.number} lost (${reason.key}).`, { fromStageKey: p.key, reasonKey: reason.key, withNote: note !== null });
-      await this.event(tx, ctx.firmId, EVENT.PROSPECT_LOST, p.id, ProspectMovePayload.parse({ prospectId: p.id, leadId: p.lead_id, type: p.type, fromStageKey: p.key, stageKey: to.key, ownerStaffId: p.owner_staff_id, lostReasonKey: reason.key }));
+      await this.event(tx, ctx.firmId, EVENT.PROSPECT_LOST, p.id, ProspectMovePayload.parse({ prospectId: p.id, leadId: p.lead_id, type: p.type, fromStageKey: p.key, stageKey: to.key, ownerStaffId: p.owner_staff_id, cause: "PERSON", lostReasonKey: reason.key }));
     });
     return this.read(ctx, pid);
   }
@@ -248,10 +249,31 @@ export class Prospects {
       const signed = await this.signedRetainer(tx, ctx.firmId, p.id);
       await this.moveRow(tx, ctx, p, last?.toStageId ?? null, to.id, "CONVERT", { wonVia: "CONVERTED", wonAt: new Date() });
       await this.audit(tx, ctx, EVENT.PROSPECT_WON, p.id, `Staff ${ctx.staffId} converted ${p.number} to a client${signed ? "" : " (retainer not signed)"}.`, { wonVia: "CONVERTED", fromStageKey: p.key, retainerSigned: signed });
-      const subject = await wonSubjectOf(tx, ctx.firmId, p.id);
-      await this.event(tx, ctx.firmId, EVENT.PROSPECT_WON, p.id, ProspectWonPayload.parse({ prospectId: p.id, leadId: p.lead_id, type: p.type, fromStageKey: p.key, wonVia: "CONVERTED", ownerStaffId: p.owner_staff_id, retainerSigned: signed, subject }));
+      await this.event(tx, ctx.firmId, EVENT.PROSPECT_WON, p.id, await this.wonPayload(tx, ctx, p, signed));
     });
     return this.read(ctx, pid);
+  }
+
+  /** `prospect.won` as contracts §2.6 lists it (P-559 (4)): the answers are the person's (the subject, or a company's
+   *  primary contact), the consents are theirs (ids only), the retainer and its representative only when one is signed. */
+  private async wonPayload(tx: Tx, ctx: StaffContext, p: Locked, signed: boolean) {
+    const personId = p.subject_person_id ?? p.primary_contact_person_id;
+    const [person, lead, consents, retainer, subject] = await Promise.all([
+      tx.foPerson.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: personId }), select: { givenNames: true, familyName: true, email: true, phone: true, phoneE164: true } }),
+      tx.foLead.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: p.lead_id }), select: { interestedIn: { select: { id: true, label: true, combinationId: true } } } }),
+      tx.msgConsent.findMany({ where: { firmId: ctx.firmId, subjectKind: "FO_PERSON", subjectId: personId }, select: { id: true }, orderBy: { id: "asc" } }),
+      signed ? tx.foRetainer.findFirst({ where: firmScope(ctx.firmId, { prospectId: p.id, kind: "RETAINER" as const, status: { in: [...SIGNED] } }), select: { id: true, representativeStaffId: true }, orderBy: { createdAt: "desc" } }) : null,
+      wonSubjectOf(tx, ctx.firmId, p.id),
+    ]);
+    const rep = retainer?.representativeStaffId ? await tx.platformStaff.findFirst({ where: firmScope(ctx.firmId, { id: retainer.representativeStaffId }), select: { id: true, actorId: true } }) : null;
+    return ProspectWonPayload.parse({
+      firm_id: ctx.firmId, firm_key: ctx.firmKey, prospect_id: p.id, lead_id: p.lead_id, won_via: "CONVERTED",
+      retainer_id: retainer?.id ?? null, representative_staff_id: rep?.id ?? null, representative_actor_id: rep?.actorId ?? null, owner_staff_id: p.owner_staff_id,
+      interested_in: lead.interestedIn ? { serviceId: lead.interestedIn.id, label: lead.interestedIn.label, combinationId: lead.interestedIn.combinationId } : null,
+      answers: { "person.given_names": person.givenNames, "person.family_name": person.familyName, "person.email": person.email, "person.phone_number": person.phoneE164 ?? person.phone, "person.current_residence_country": null },
+      consent_ids: consents.map((c) => c.id), sealed_retainer_sha256: null,
+      type: p.type, fromStageKey: p.key, retainerSigned: signed, subject,
+    });
   }
 
   /** Undo convert (AG-2-47 rules 18-19; BR-11): only a prospect won by Convert, only while the client is empty, with a
@@ -273,7 +295,7 @@ export class Prospects {
       await this.moveRow(tx, ctx, p, last?.toStageId ?? null, to.id, "PERSON", { wonVia: null, wonAt: null });
       await tx.foNote.create({ data: { firmId: ctx.firmId, personId: p.subject_person_id ?? p.primary_contact_person_id, prospectId: p.id, visibility: "INTERNAL", text: `Convert undone: ${why}`, byActor: actorOf(ctx) } });
       await this.audit(tx, ctx, EVENT.PROSPECT_UNCONVERTED, p.id, `Staff ${ctx.staffId} undid the Convert of ${p.number}; back in ${to.key}.`, { toStageKey: to.key, earlierStage: before !== null });
-      await this.event(tx, ctx.firmId, EVENT.PROSPECT_UNCONVERTED, p.id, ProspectMovePayload.parse({ prospectId: p.id, leadId: p.lead_id, type: p.type, fromStageKey: p.key, stageKey: to.key, ownerStaffId: p.owner_staff_id }));
+      await this.event(tx, ctx.firmId, EVENT.PROSPECT_UNCONVERTED, p.id, ProspectMovePayload.parse({ prospectId: p.id, leadId: p.lead_id, type: p.type, fromStageKey: p.key, stageKey: to.key, ownerStaffId: p.owner_staff_id, cause: "PERSON" }));
     });
     return this.read(ctx, pid);
   }

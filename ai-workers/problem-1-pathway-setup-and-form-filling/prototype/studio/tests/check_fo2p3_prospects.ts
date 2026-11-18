@@ -99,7 +99,7 @@ try {
   ok("FO-2p3 DW2 pass: a person's move with its cause is saved (stage, a PERSON move from Engaged), audited once, and in the outbox; the version moves on",
     moved.stage.key === "QUALIFIED" && moved.version !== v0 && count("fo_stage_move", `prospect_id = '${p1.id}' and cause = 'PERSON' and from_stage_id = '${stage("ENGAGED")}' and to_stage_id = '${stage("QUALIFIED")}'`) === 1
       && audits(p1.id, EVENT.PROSPECT_STAGE_MOVED) === 1 && count("audit_event", `entity_key = '${p1.id}' and action = '${EVENT.PROSPECT_STAGE_MOVED}' and actor = 'staff:${R.staffId}'`) === 1
-      && count("module_event", `subject_id = '${p1.id}' and type = '${EVENT.PROSPECT_STAGE_MOVED}' and payload->>'fromStageKey' = 'ENGAGED' and payload->>'stageKey' = 'QUALIFIED'`) === 1, moved);
+      && count("module_event", `subject_id = '${p1.id}' and type = '${EVENT.PROSPECT_STAGE_MOVED}' and payload->>'fromStageKey' = 'ENGAGED' and payload->>'stageKey' = 'QUALIFIED' and payload->>'cause' = 'PERSON'`) === 1, moved);
   const back = await pros.move(R, p1.id, { stageId: stage("ENGAGED"), version: moved.version });
   ok("FO-2p3 DW2 pass: back to an earlier open stage is a move too (AG-2-26 rule 1)", back.stage.key === "ENGAGED" && count("fo_stage_move", `prospect_id = '${p1.id}'`) === 3);
   const stale = await refusal(() => pros.move(T, p1.id, { stageId: stage("CONSULT"), version: v0 }));
@@ -142,8 +142,13 @@ try {
   ok("FO-2p3 DW3 pass: Mark lost with a prospect reason (the system's Duplicate one may be chosen) → the LOST stage with the reason and note; audited; prospect.lost with the key, never the note",
     lost.stage.kind === "LOST" && lost.lostReason?.key === "DUPLICATE_PROSPECT" && lost.lostNote === "Two Engage clicks" && audits(p1b.id, EVENT.PROSPECT_LOST) === 1
       && count("module_event", `subject_id = '${p1b.id}' and type = '${EVENT.PROSPECT_LOST}' and payload->>'lostReasonKey' = 'DUPLICATE_PROSPECT' and payload::text not like '%Two Engage%'`) === 1, lost);
+  // Mark lost from NURTURE (AG-2-44 rule 4): parked by hand here (Park, AG-2-45, is not built), then lost.
+  const parked = await pros.engage(R, (await lead("Pia")).id), nur = stage("NURTURE");
+  sql(`begin; update fo_prospect set stage_id = '${nur}' where id = '${parked.id}'; insert into fo_stage_move (firm_id, prospect_id, from_stage_id, to_stage_id, cause, by_actor) values ('${A}', '${parked.id}', '${stage("ENGAGED")}', '${nur}', 'PERSON', 'test'); commit`);
+  const fromNurture = await pros.lost(R, parked.id, { reasonId: reason("PROSPECT_LOST", "NOT_READY") });
+  ok("FO-2p3 DW3 pass: a parked (NURTURE) prospect can be marked lost", fromNurture.stage.kind === "LOST" && fromNurture.lostReason?.key === "NOT_READY", fromNurture);
   const listed = await pros.list(R, {}), lostList = await pros.list(R, { stage: "LOST" });
-  ok("FO-2p3 DW3 pass: the default list leaves a lost prospect out; the Lost filter lists it", !listed.some((p) => p.id === p1b.id) && listed.some((p) => p.id === p1.id) && lostList.length === 1 && lostList[0].id === p1b.id && lostList[0].lostReason?.key === "DUPLICATE_PROSPECT", { listed: listed.length, lostList });
+  ok("FO-2p3 DW3 pass: the default list leaves a lost prospect out; the Lost filter lists it", !listed.some((p) => p.id === p1b.id) && listed.some((p) => p.id === p1.id) && lostList.length === 2 && lostList.some((x) => x.id === p1b.id && x.lostReason?.key === "DUPLICATE_PROSPECT"), { listed: listed.length, lostList });
   const lostMove = await refusal(() => pros.move(R, p1b.id, { stageId: stage("CONSULT"), version: lost.version }));
   const lostAgain = await refusal(() => pros.lost(R, p1b.id, { reasonId: reason("PROSPECT_LOST", "PRICE") }));
   ok("FO-2p3 DW3 fail: a lost prospect does not move and is not lost twice (409)", lostMove?.status === 409 && lostAgain?.status === 409, { lostMove, lostAgain });
@@ -155,7 +160,10 @@ try {
   ok("FO-2p3 DW4 pass: Convert to client → WON, wonVia CONVERTED, the \"Retainer not signed\" warning; one CONVERT move into WON; prospect.won with the PERSON subject",
     conv.stage.kind === "WON" && conv.wonVia === "CONVERTED" && conv.wonAt !== null && conv.warning === NOT_SIGNED && conv.retainerSigned === false
       && count("fo_stage_move", `prospect_id = '${p1.id}' and cause = 'CONVERT'`) === 1 && audits(p1.id, EVENT.PROSPECT_WON) === 1
-      && count("module_event", `subject_id = '${p1.id}' and type = '${EVENT.PROSPECT_WON}' and payload->>'wonVia' = 'CONVERTED' and payload->'subject'->>'subject' = 'PERSON' and payload->>'retainerSigned' = 'false'`) === 1, conv);
+      && count("module_event", `subject_id = '${p1.id}' and type = '${EVENT.PROSPECT_WON}' and payload->>'won_via' = 'CONVERTED' and payload->'subject'->>'subject' = 'PERSON' and payload->>'retainerSigned' = 'false'
+        and payload->>'firm_key' = 'sample-firm' and payload->>'firm_id' = '${A}' and payload->>'lead_id' = '${ana.id}' and payload->'answers'->>'person.given_names' = 'Ana'
+        and payload->'answers'->>'person.email' like 'ana%@example.com' and payload->'answers'->'person.current_residence_country' = 'null'::jsonb and payload->>'retainer_id' is null
+        and jsonb_typeof(payload->'consent_ids') = 'array'`) === 1, sql(`select payload from module_event where subject_id = '${p1.id}' and type = '${EVENT.PROSPECT_WON}'`));
   const twice = await refusal(() => pros.convert(R, p1.id, {}));
   ok("FO-2p3 DW4 fail: Convert twice → 409 ALREADY_WON, no second prospect.won", twice?.status === 409 && twice.body.code === "ALREADY_WON" && events(p1.id, EVENT.PROSPECT_WON) === 1, twice);
   const wonMove = await refusal(() => pros.move(R, p1.id, { stageId: stage("CONSULT"), version: conv.version }));
@@ -193,7 +201,7 @@ try {
       && JSON.stringify(engaged.totals) === JSON.stringify([{ currency: "CAD", valueCents: 400000, count: 2 }, { currency: "USD", valueCents: 99900, count: 1 }])
       && JSON.stringify(consult.totals.map((t) => [t.currency, t.valueCents])) === JSON.stringify([["USD", 500]]) && engaged.prospects.some((p) => p.id === pb.id), board.totals);
   ok("FO-2p3 DW5 fail: no total ever adds CAD to USD (no line of 500400 or 500900), and a Corporate prospect is not on the Individual board",
-    ![...board.totals, ...board.stages.flatMap((s) => s.totals)].some((t) => t.valueCents === 500400 || t.valueCents === 499900 || t.valueCents === 400500) && board.stages.every((s) => s.prospects.every((p) => p.id !== undefined)));
+    ![...board.totals, ...board.stages.flatMap((s) => s.totals)].some((t) => t.valueCents === 500400 || t.valueCents === 499900 || t.valueCents === 400500) && board.stages.every((s) => s.prospects.every((p) => (p as { type?: string }).type === "INDIVIDUAL")) && board.stages.some((s) => s.prospects.length > 0));
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: ws });
   const ownBoard = await corp.board(T, "INDIVIDUAL") as unknown as { totals: { currency: string; valueCents: number }[] };
   await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: ws });

@@ -163,6 +163,8 @@ export type ProspectEventPayload = z.infer<typeof ProspectEventPayload>;
 export const ProspectMovePayload = z.strictObject({
   prospectId: Uuid, leadId: Uuid, type: z.enum(["INDIVIDUAL", "CORPORATE"]), fromStageKey: z.string(), stageKey: z.string(),
   ownerStaffId: Uuid.nullable(),
+  /** Why it moved (contracts §2.1 "with cause"; fo_stage_move.cause): PERSON for a person's move, Mark lost and Undo convert. */
+  cause: z.enum(["PERSON", "BOOKING", "RETAINER_SENT", "RETAINER_EXECUTED", "SIGNED_OFFLINE", "CONVERT", "CHANGE_TYPE"]),
   /** prospect.lost only: the reason's key (AG-2-44 rule 2). */
   lostReasonKey: z.string().optional(),
 });
@@ -180,12 +182,20 @@ export const ProspectWonSubject = z.discriminatedUnion("subject", [
   z.strictObject({ subject: z.literal("COMPANY"), company: z.strictObject({ id: Uuid, name: z.string().min(1) }), contacts: z.array(WonContact).min(1) }),
 ]);
 export type ProspectWonSubject = z.infer<typeof ProspectWonSubject>;
-/** The payload of `prospect.won` written by Convert to client (FO-2 part 3; contracts §2.6; AG-2-47 rule 16): how it was
- *  won, whether a retainer is signed (false → "Retainer not signed"), and the subject part. */
+/** The payload of `prospect.won` (contracts §2.6, P-559 (4); written by Convert in FO-2 part 3, AG-2-47 rule 16): the
+ *  contract's fields, with FO-2b's subject part beside them. The person's facts travel as canonical answer keys; a field
+ *  the front office does not hold is null (`person.current_residence_country` is not stored yet), never guessed. */
 export const ProspectWonPayload = z.strictObject({
-  prospectId: Uuid, leadId: Uuid, type: z.enum(["INDIVIDUAL", "CORPORATE"]), fromStageKey: z.string(),
-  wonVia: z.enum(["E_SIGNED", "SIGNED_OFFLINE", "CONVERTED"]), ownerStaffId: Uuid.nullable(), retainerSigned: z.boolean(),
-  subject: ProspectWonSubject,
+  firm_id: Uuid, firm_key: z.string().min(1), prospect_id: Uuid, lead_id: Uuid, won_via: z.enum(["E_SIGNED", "SIGNED_OFFLINE", "CONVERTED"]),
+  retainer_id: Uuid.nullable(), representative_staff_id: Uuid.nullable(), representative_actor_id: z.string().nullable(), owner_staff_id: Uuid.nullable(),
+  interested_in: z.strictObject({ serviceId: Uuid, label: z.string(), combinationId: Uuid.nullable() }).nullable(),
+  answers: z.strictObject({
+    "person.given_names": z.string().nullable(), "person.family_name": z.string().nullable(), "person.email": z.string().nullable(),
+    "person.phone_number": z.string().nullable(), "person.current_residence_country": z.string().nullable(),
+  }),
+  consent_ids: z.array(Uuid), sealed_retainer_sha256: z.string().nullable(),
+  /** FO-2 part 3 additions: the type, where it was won from, whether a retainer is signed ("Retainer not signed"), and FO-2b's subject part. */
+  type: z.enum(["INDIVIDUAL", "CORPORATE"]), fromStageKey: z.string(), retainerSigned: z.boolean(), subject: ProspectWonSubject,
 });
 export type ProspectWonPayload = z.infer<typeof ProspectWonPayload>;
 
