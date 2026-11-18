@@ -137,7 +137,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-646 | Jam alarms each check (disk, no merge 60 min, CI queue over 30); drafts until Approve; act unasked. | script: lead-watch.sh (1b, 2b) | 16 Nov |
 | P-647 | Each check reads claude.ai/code statuses and acts on waiting lanes; no lane waits on a network change. | prose (built-in browser script) | 16 Nov |
 | P-651 | (with P-648, P-649) CI overflow on the Namespace trial; full tests once, in the merge queue. | prose | 17 Nov |
-| IDX-7 | Dated rulings stand as recorded; the list word for word in `rules/goal-and-order.md`. | prose | 15 Nov |
+| IDX-7 | Dated rulings (P-616, P-619, P-620, P-621 and the rest) stand as recorded; the list word for word in `rules/goal-and-order.md`. | prose | 15 Nov |
 | IDX-6 | One-time exceptions (P-617, P-652, P-654, P-672, P-684, P-711 size #2169 in DECISIONS) stand as recorded; the rows word for word in `rules/tech-lead.md` › One-time exceptions (moved 17 Nov by Lead 76). | prose | 17 Nov |
 | IDX-8 | Org move rows (P-657, P-660, P-661, P-662) stand as recorded; word for word in `rules/tech-lead.md` › Org move (moved 17 Nov by Lead 77). | prose | 17 Nov |
 | P-663 | Ramp: 5-7 Proven a day 19-20 Nov, 8-10 21-23 Nov, 10-15 from 24 Nov; no new capability row while P95 queue > 60 min or batch wait > 15 min; daily checkpoint. | prose | 17 Nov |
