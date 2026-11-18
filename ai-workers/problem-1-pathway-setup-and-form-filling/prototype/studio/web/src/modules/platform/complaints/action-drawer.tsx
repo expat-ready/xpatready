@@ -16,7 +16,7 @@ import { ACTION, type Action, CLOSED_REFUSED, Complaint, FORBIDDEN, Handlers, no
 type Form = { at: string; note: string; outcome: string; handlerStaffId: string };
 /** What the person typed, kept in this tab's memory while the panel is open (never stored): a session that ends
  *  mid-panel unmounts the page, and signing in again as the same person on the same complaint brings it back. */
-let kept: { staffId: string; complaintId: string; action: Action; form: Form; carried?: boolean } | null = null;
+let kept: { staffId: string; complaintId: string; action: Action; form: Form; start?: string; carried?: boolean } | null = null;
 export const keptAction = (staffId: string, complaintId: string): Action | null => (kept?.staffId === staffId && kept.complaintId === complaintId ? kept.action : null);
 const LABEL: Record<string, string> = { at: "When", note: "Note", outcome: "Outcome", handlerStaffId: "New handler", kind: "Kind" };
 const PATH: Record<Action, string> = { acknowledge: "acknowledge", step: "steps", note: "steps", response: "response-sent", close: "close", handler: "handler" };
@@ -43,23 +43,26 @@ export function ActionDrawer({ action, onAct, onClose, complaint, zone, handlerI
     setShown(action);
     const back = kept && kept.staffId === me.staffId && kept.complaintId === complaint && kept.action === action ? kept.form : null;
     if (!back) kept = null;   // another person's, complaint's or act's draft is never shown
-    const fresh = blank(); start.current = fresh.at;
+    // A restored step keeps the default it was opened with, so an untouched date still sends none (break m4).
+    const fresh = blank(); start.current = back && !kept?.carried && kept?.start ? kept.start : fresh.at;
     // A note carried over from an act refused as closed keeps its text but is not a restored session.
     setF(back ? { ...fresh, ...back, at: kept?.carried ? fresh.at : back.at } : fresh); setRestored(!!back && !kept?.carried); touched.current = !!back; save.reset();
     if (back && !kept?.carried) setTimeout(() => notice.current?.focus(), 0);   // review m2: the restored notice is announced
   }, [action]);   // eslint-disable-line react-hooks/exhaustive-deps -- a fresh form each time it opens
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     touched.current = true; const v = e.target.value;
-    setF((x) => { const next = { ...x, [k]: v }; kept = { staffId: me.staffId, complaintId: complaint, action: a, form: next }; return next; });
+    setF((x) => { const next = { ...x, [k]: v }; kept = { staffId: me.staffId, complaintId: complaint, action: a, form: next, start: start.current }; return next; });
   };
   const discard = () => { if (touched.current && !window.confirm(`Discard what you typed for "${ACTION[a].title}"?`)) return false; kept = null; return true; };
   const save = useMutation({
     mutationFn: async () => {
       const note = f.note.trim();
-      const at = f.at ? zonedToIso(f.at, zone) : "";
+      // The default left as it is sends this instant, not the minute it was cut to: a complaint received seconds ago
+      // would otherwise refuse its own default (break m1), and the repeated hour of a clock change keeps its instant (m7a).
+      const at = f.at === start.current ? new Date().toISOString() : f.at ? zonedToIso(f.at, zone) : "";
       const body: Record<string, unknown> =
         a === "handler" ? { handlerStaffId: f.handlerStaffId || undefined, ...(note ? { note } : {}) }
-        : a === "step" || a === "note" ? { kind: a === "note" ? "NOTE" : "STEP", note, ...(f.at !== start.current ? { at } : {}) }
+        : a === "step" || a === "note" ? { kind: a === "note" ? "NOTE" : "STEP", note, ...(f.at && f.at !== start.current ? { at } : {}) }
         : a === "close" ? { outcome: f.outcome || undefined, at, note }
         : { at, ...(note ? { note } : {}) };
       return Complaint.parse(await staffApi(`/platform/complaints/${encodeURIComponent(complaint)}/${PATH[a]}`, { method: "POST", json: body }));
@@ -69,7 +72,8 @@ export function ActionDrawer({ action, onAct, onClose, complaint, zone, handlerI
       if (e instanceof StaffApiError && e.status === 404) { kept = null; qc.removeQueries({ queryKey: ["pf", "complaints", "one", complaint] }); onLost(); return; }
       // Review M1: a 409 or 403 means the page is out of date (acknowledged, answered, closed or handed over elsewhere):
       // the record behind the panel is read again, so its next step and acts are true when the panel closes.
-      if (e instanceof StaffApiError && (e.status === 409 || e.status === 403)) void qc.invalidateQueries({ queryKey: ["pf", "complaints"] });
+      // Any refusal can come from a change made elsewhere ("this person already handles it" is a 422), so every one does (break M1).
+      if (e instanceof StaffApiError) void qc.invalidateQueries({ queryKey: ["pf", "complaints"] });
       setTimeout(() => summary.current?.focus(), 0);
     },
     onSuccess: () => {
