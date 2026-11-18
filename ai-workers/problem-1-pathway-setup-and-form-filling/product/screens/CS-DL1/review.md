@@ -250,3 +250,37 @@ This is a diff-only re-review (P-277). `74268f69f` is a single merge commit, wit
 The round 3 minors m1-m4 stand as recorded.
 
 **Verdict: Approve** for `74268f69fc064c997ef9f9b529b8726dfd39d317`. There is no open Blocker or Major. The label still waits on green CI for this head.
+
+## Review round 7 (6f3471227, merge only)
+
+This is a diff-only re-review (P-277) of `6f3471227a2eff6d0bed70555a9d73e48ead54d9`. It is one merge of origin/main `34c5e1e99` into `74268f69f`, which round 6 approved. I read it from the local checkout because it was not yet pushed.
+
+* **Module cards:** both conflict resolutions keep main's lines and every CS-DL1 line. `git diff 34c5e1e99 6f3471227` on the two cards shows CS-DL1's additions only.
+  * `MODULE.cases.md` keeps CS-W1 part 1's firm-id invariant (`firm_id` beside `firm_key`, `case_firm_from_key`, `case_firm_fill`, `case_lookup.case_firm_id_of_key`, `firmIdByKey`) and `tests/check_csw1_firm_id.ts`. It keeps CS-DL1's deadline invariant and its two csdl1 tests. The card is 36 lines.
+  * `platform/MODULE.md` keeps PF-F4's `files/file-type.ts` purpose clause and `tests/check_pff4_file_type.ts`. It keeps CS-DL1's `calendar/` clause, `complaints/` over `calendar/`, the `platform_firm_calendar` wall line, the one-calendar invariant and `tests/check_csdl1_deadlines.ts`. The card is 40 lines, at the limit and not over it.
+  * `module-cards.py tree` gives PASS: 15 cards, tree checked.
+* **The PR's own changes are unchanged.** I compared `git diff 2c9231ab4 74268f69f` with `git diff 34c5e1e99 6f3471227`, each without the two cards and without `index` lines. They are byte-identical.
+* **Migration:** `20261118194500_csdl1_firm_calendar/migration.sql` is unchanged. Its sha256 is still `01d439bdc6cabf11131534a8af5a0b3cc8d1e9eabf88feaca625001c8e3e55e4`.
+  * Its stamp is later than main's newest migration, `20261118140000_fo13i_identity_check_key`. It is also later than `20261118090000_csw1_firm_id`.
+  * The stamp is unique. The only repeated stamps (20261025090000, 20261031140000, 20261102010000) are main's own.
+* **`git diff origin/main...6f3471227 --stat`:** 19 files, +502/-108. They are CS-DL1's own files only, the same list as round 6. Nothing of main's leaked in. The merge base is now `34c5e1e99`, and `git merge-tree origin/main 6f3471227` merges cleanly.
+* **Collisions:** none. I checked main's commits from the old base `2c9231ab4` to `34c5e1e99`:
+  * No commit touches `case-stages.ts`, `web/src/runtime/stages.tsx`, `contracts/runtime.ts`, `platform/calendar/`, `complaints/business-days.ts`, `complaints.ts`, `leads.ts`, `open-minutes.ts` or the csdl1 tests.
+  * No commit mentions `platform_firm_calendar`.
+* **CS-W1 part 1 does not change how CS-DL1 reaches a case's firm.**
+  * CS-W1 part 1 adds a nullable `firm_id` beside `firm_key` on `runtime_case`, `case_stage` and `firm_case_counter`. The database fills it.
+  * `firm_key` stays on the case. The identity comparisons stay on `firm_key` until CS-W1 part 2.
+  * So `deadlineDay(…, c.firmKey)` and `caseFirmCalendar(firmKey)` still get the same key.
+  * CS-W1's lookup `case_lookup.case_firm_id_of_key` maps a key to a firm the same way `platform_firm_calendar` does (`platform_firm.key = $1`), so the two cannot disagree on which firm a case belongs to.
+  * On the walls, CS-W1 adds a separate owner `xr_case_lookup` and one role-only policy `case_lookup_read` on `platform_firm` for that role. It does not touch PF-12's own policy, `platform_firm_setting`, `xr_wall_reader` or `xr_app`'s grants, so the definer function's reads are unaffected.
+  * Follow-up, not a finding: when CS-W1 part 2 or CS-W3 part 1 moves cases to `firm_id`, `platform_firm_calendar(firm key)` should move too. The migration already names CS-W3 part 1 as its replacement.
+* **Unit suite:** `tsx --tsconfig api/tsconfig.json tests/check_csdl1_deadlines.ts` gives **34/34 passed** at `6f3471227` on the shared database.
+
+### Could not check
+* CI for this head, which was not pushed when I reviewed it.
+* The builder's other suites, which were still running. As asked, I did not start an isolated copy.
+* The journey was not re-run, because only a merge changed. Round 3's 9.5/10 stands.
+
+The round 3 minors m1-m4 stand as recorded.
+
+**Verdict: Approve** for `6f3471227a2eff6d0bed70555a9d73e48ead54d9`. There is no open Blocker or Major. The label still waits on green CI for this head, once it is pushed.
