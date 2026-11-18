@@ -118,3 +118,23 @@ Reviewer: Changes requested
 No Blocker or Major is open.
 
 Reviewer: Approve b7eb6a357a8585b970121d737e69c7d494461c98
+
+---
+
+## Re-review of the merge (diff only, P-277): `git diff 506e69c16 56ab67c64`, head `56ab67c649bd810bd44b8d431c059cf73b44bb2c`
+
+This head merges #1961's new tip (506e69c16: main merged in, migration re-stamped) into 077d99d09.
+
+* **The diff holds only PF-19b part 3, and every file is unchanged from what I approved.**
+  * The diff touches 18 files, none under `prisma/`.
+  * I compared each file's blob at 56ab67c64 with b7eb6a357 (approved above): the same for every part-3 code file, both tests, the notes, the break report, the journey file and the screenshots.
+  * Only two files differ: `review.md` (records only) and `api/src/platform/MODULE.md`.
+* **The MODULE.md resolution is clean.**
+  * A word diff against #1961's tip shows exactly three additions: the part-3 entry point, the two part-3 tests, and the part-3 line in the PF-19b part 2 block.
+  * Nothing of #1961's text is lost.
+  * The card is 40 lines, and `module-cards.py tree` passes.
+* **Run in the merge worktree:** `check_pf19b3_delivery` passes 24/0, including part 2's suite. I did not repeat the browser suite: its inputs are the same blobs that passed 24/24 at b7eb6a357, and the coordinator's run on 56ab67c64 is 24/24.
+
+No Blocker or Major is open. The earlier Minors and questions stand as recorded (notes.md items 3, 6, 7, 9, 10). The PR body still needs the `Card unchanged:` lines.
+
+Reviewer: Approve 56ab67c649bd810bd44b8d431c059cf73b44bb2c
