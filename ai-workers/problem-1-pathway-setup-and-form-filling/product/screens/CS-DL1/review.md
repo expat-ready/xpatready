@@ -284,3 +284,41 @@ This is a diff-only re-review (P-277) of `6f3471227a2eff6d0bed70555a9d73e48ead54
 The round 3 minors m1-m4 stand as recorded.
 
 **Verdict: Approve** for `6f3471227a2eff6d0bed70555a9d73e48ead54d9`. There is no open Blocker or Major. The label still waits on green CI for this head, once it is pushed.
+
+## Review round 8 (15e7fe389, test-only)
+
+This is a diff-only re-review (P-277) of `git diff 6f3471227 15e7fe389`. It has one commit, and that commit's only parent is `6f3471227`.
+
+* **Scope:** two files changed, both tests: `tests/check_csdl1_deadlines.ts` (+13) and `tests/check_csdl1_deadlines_browser.ts` (+7/-9).
+  * Nothing outside `tests/` changed, so no product code moved.
+  * The migration `20261118194500_csdl1_firm_calendar/migration.sql` is untouched. Its sha256 is still `01d439bd…3e55e4`.
+* **Why the change is right:** CS-W1 part 1 now seeds both Sample firms when a fresh copy starts.
+  * That broke the old setup step, "a fresh copy holds no platform firm A yet".
+  * It also hollowed out the old browser case "a case whose platform firm cannot be found". Firm A existed; it just had no settings.
+  * `seedSampleFirms(db)` is idempotent. Neither the seed nor the demo reset writes a calendar setting (`SAMPLE_SETTING_VALUES` holds only `legal.closed_client_files_years`). So firm A really has no calendar setting until DW8 sets one.
+* **Unit suite:** `tsx --tsconfig api/tsconfig.json tests/check_csdl1_deadlines.ts` gives **37/37 passed** at `15e7fe389`. That is round 7's 34 plus the three new DW8 cases.
+* **Mutations:** each run in a scratch copy of `prototype/`; the copy was restored to 37/37 afterwards.
+
+| Mutation | Result |
+|---|---|
+| M1a: the stand-in `$queryRaw` returns firm A's row for any key (the database answers an unknown key with another firm's row) | "DW8 fail (unit): a firm key the database does not know…" FAILs (zone Asia/Tokyo). 36/37 |
+| M1b: product `caseFirmCalendar` falls back to `platform_firm_calendar('sample-firm')` when the key finds no row | The same case FAILs. 36/37 |
+| M2: drop the schema check in `caseFirmCalendar`'s `read` (return the stored value whenever it is not null) | The suite stops with `RangeError: Invalid time zone specified: Mars/Olympus` and exits 1, so the mutation is caught. This is the "500" the case's name rules out. |
+| M2b: a narrower version that drops the schema check for `closed_days` only | "DW8 fail (unit): stored values that no longer fit…" FAILs. 36/37, exit 1 |
+| M3: `caseFirmCalendar` always reads firm B (`platform_firm_calendar('sample-solo')`) | The unit suite's "DW8 pass (unit)" FAILs (36/37). In the browser check, firm B's Mon 8 Mar closed day is set before the firm-A case runs (line 55). So the case's `bare.mark === null` would get "closed day" and FAIL. That is from reading the code: as asked, I did not run the browser check. |
+
+* **Is DW8 coverage still as strong? Yes.** "A case whose platform firm cannot be found" is still proved, now in two parts that each run against what they claim:
+  * DW9 in the browser check, against the real database, already proves the function returns no row for unknown keys: empty, SQL in the key, `SAMPLE-FIRM`, `sample-firm ` with a trailing space.
+  * The new unit DW8 proves that no row gives the defaults, never another firm's calendar.
+  * The browser's DW8 pass case already proves the wiring that sends the case's own `firmKey` to `caseFirmCalendar`.
+  * Before, the browser check ran one direct end-to-end case for a missing firm. Now the proof is put together from these pieces. I find that just as sound, and more honest than the old case, which passed only by coincidence once CS-W1 seeded firm A.
+  * The browser's new fail case, firm A with no setting while firm B is closed that day, is a real cross-firm check and not a coincidence.
+* **New minor (m5, the comment only):** the browser check's header (lines 4-5) still says DW8 proves "a case whose firm cannot be found gets the defaults". Line 44 and the unit suite now hold that case. Fix the header when convenient. This does not block.
+
+### Could not check
+* The browser check at this head (the builder is running it on an isolated copy) and CI for this head (not pushed yet).
+* The journey was not re-run: this commit changes only tests. Round 3's 9.5/10 stands.
+
+The round 3 minors m1-m4 stand as recorded.
+
+**Verdict: Approve** for `15e7fe3896cbf71a225d9c764b93459c2e4dc2b7`. There is no open Blocker or Major. The label still waits on green CI and the builder's browser check passing at this head.
