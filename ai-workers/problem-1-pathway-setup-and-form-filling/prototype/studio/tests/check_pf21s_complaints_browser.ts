@@ -246,7 +246,7 @@ ok("PF-21s DW3: after the acknowledgement the filled button is Add a handling st
 await actOpen(w3, "step");
 await submitOf(w3).click(); await w3.locator('[data-action-drawer="step"] [role=alert]').first().waitFor({ timeout: 10_000 });
 ok("PF-21s DW3 fail: a step without its note is refused with the field error, and the panel stays open", (await w3.locator('[data-action-error]').innerText()).includes("Note") && (await panel(w3, "step").count()) === 1);
-await w3.getByLabel("Note").fill("Called the person to hear the details (Sample).");
+await w3.getByRole("textbox", { name: /^Note/ }).fill("Called the person to hear the details (Sample).");
 await saved(w3, "step");
 ok("PF-21s DW3: the step is on the timeline and the filled button is Record the response sent", (await eventsOf(w3))[0] === "STEP" && (await nextOf(w3)) === "response");
 await actOpen(w3, "response");
@@ -262,13 +262,13 @@ ok("PF-21s DW3: the response is on the timeline and the filled button is Close w
 await actOpen(w3, "close");
 await submitOf(w3).click(); await w3.locator('[data-action-drawer="close"] [role=alert]').first().waitFor({ timeout: 10_000 });
 ok("PF-21s DW3 fail: closing without an outcome or a note shows both field errors", /Outcome/.test(await w3.locator("[data-action-error]").innerText()) && /Note/.test(await w3.locator("[data-action-error]").innerText()));
-await w3.getByLabel("Resolved").check(); await w3.getByLabel("Note").fill("Fee refunded; the person agreed (Sample).");
+await w3.getByLabel("Resolved").check(); await w3.getByRole("textbox", { name: /^Note/ }).fill("Fee refunded; the person agreed (Sample).");
 await saved(w3, "close");
 ok("PF-21s DW3 pass: closed with an outcome, the page says Closed with the outcome, the timeline ends with Closed", (await w3.locator('[data-status="Closed"]').count()) === 1 && (await w3.getByText(/outcome: Resolved/).count()) === 1 && (await eventsOf(w3))[0] === "CLOSED");
 // DW7: a closed complaint has no action buttons (Add a note only, the concept's "closed → none, Add a note only").
 ok("PF-21s DW7 pass: a closed complaint shows no act but Add a note, and no Change handler", JSON.stringify(await acts(w3)) === JSON.stringify(["note"])
   && (await w3.getByRole("button", { name: /Record the acknowledgement|Add a handling step|Record the response sent|Close with an outcome|Change handler/ }).count()) === 0, await acts(w3));
-await actOpen(w3, "note"); await w3.getByLabel("Note").fill("The person wrote to thank the firm (Sample).");
+await actOpen(w3, "note"); await w3.getByRole("textbox", { name: /^Note/ }).fill("The person wrote to thank the firm (Sample).");
 await saved(w3, "note");
 ok("PF-21s DW7: a note on a closed complaint is kept on its timeline, and it stays closed", (await eventsOf(w3))[0] === "NOTE" && (await w3.locator('[data-status="Closed"]').count()) === 1);
 await axe("PF-21s record page, closed with the note act (1440)", w3);
@@ -276,14 +276,14 @@ const shutAgain = await call(rTok, "POST", `/${walk}/close`, { outcome: "UPHELD"
 ok("PF-21s DW7 fail: the server still refuses to close a closed complaint (409)", shutAgain.status === 409, shutAgain.status);
 // A 409 shows in the page: the complaint is closed by someone else while the panel is open.
 const race = await record(rTok, `Person Race ${run}`, R.id, ago(1));
-await opened(w3, race); await actOpen(w3, "step"); await w3.getByLabel("Note").fill("Sample.");
+await opened(w3, race); await actOpen(w3, "step"); await w3.getByRole("textbox", { name: /^Note/ }).fill("Sample.");
 await call(rTok, "POST", `/${race}/close`, { outcome: "WITHDRAWN", at: new Date().toISOString(), note: "Withdrawn (Sample)." });
 await submitOf(w3).click(); await w3.getByText("This complaint is closed. It was closed while you were working").waitFor({ timeout: 10_000 });
 ok("PF-21s refused: a 409 shows the concept's words and the server's in the panel, not a toast alone, and the note typed is kept",
-  (await w3.locator("[data-action-error]").innerText()).includes("add a note instead") && (await w3.getByLabel("Note").inputValue()) === "Sample.");
+  (await w3.locator("[data-action-error]").innerText()).includes("add a note instead") && (await w3.getByRole("textbox", { name: /^Note/ }).inputValue()) === "Sample.");
 // Closed straight after receipt as Withdrawn, from the quiet act (no acknowledgement, no step).
 const quick = await record(rTok, `Person Quick ${run}`, R.id, ago(0.02));
-await opened(w3, quick); await actOpen(w3, "close"); await w3.getByLabel("Withdrawn").check(); await w3.getByLabel("Note").fill("Withdrawn the same day (Sample).");
+await opened(w3, quick); await actOpen(w3, "close"); await w3.getByLabel("Withdrawn").check(); await w3.getByRole("textbox", { name: /^Note/ }).fill("Withdrawn the same day (Sample).");
 await saved(w3, "close");
 ok("PF-21s DW3: a complaint closes straight after receipt as Withdrawn from the quiet Close act", (await w3.getByText(/outcome: Withdrawn/).count()) === 1 && JSON.stringify(await eventsOf(w3)) === JSON.stringify(["CLOSED", "RECEIVED"]));
 
@@ -292,38 +292,40 @@ const kb = await record(rTok, `Person Keys ${run}`, R.id, ago(1));
 await opened(k, kb);
 await k.locator('[data-act="acknowledge"]').focus(); await k.keyboard.press("Enter"); await panel(k, "acknowledge").waitFor();
 ok("PF-21s keyboard: Enter on the filled button opens its panel on its first field", (await k.evaluate(() => (document.activeElement as HTMLInputElement | null)?.type)) === "datetime-local");
-for (let i = 0; i < 6 && (await k.evaluate(() => document.activeElement?.textContent?.trim())) !== "Record the acknowledgement"; i++) await k.keyboard.press("Tab");
+for (let i = 0; i < 20 && (await k.evaluate(() => document.activeElement?.textContent?.trim())) !== "Record the acknowledgement"; i++) await k.keyboard.press("Tab");
 await k.keyboard.press("Enter"); await panel(k, "acknowledge").waitFor({ state: "detached", timeout: 15_000 });
 await k.waitForFunction(() => document.querySelector("[data-next-step]")?.getAttribute("data-next-step") === "step", undefined, { timeout: 15_000 });
 ok("PF-21s keyboard: the acknowledgement is saved by Tab and Enter alone, and focus lands on the next filled button", (await k.evaluate(() => document.activeElement?.getAttribute("data-act"))) === "step");
 
 // DW4: Change handler hidden for a Case Manager on their own complaint; shown for the Owner, picker from GET /handlers.
+const t4Tok = await signIn("sample-firm", T.email);   // a session of its own: the break M3 checks ended T's earlier ones
 const moved = await record(rTok, `Person Moved ${run}`, T.id, ago(1));
-const tw = await newPage(tTok);
+const tw = await newPage(t4Tok);
 await opened(tw, moved);
 ok("PF-21s DW4 pass: a Case Manager on their own complaint has the acts but no Change handler", (await acts(tw)).includes("acknowledge") && !(await acts(tw)).includes("handler"), await acts(tw));
-const forced = await call(tTok, "POST", `/${moved}/handler`, { handlerStaffId: R.id });
+const forced = await call(t4Tok, "POST", `/${moved}/handler`, { handlerStaffId: R.id });
 ok("PF-21s DW4 fail: a forced POST /:id/handler as the Case Manager is refused (403)", forced.status === 403, forced.status);
 // Forced through the page: /me answers with the read key too, so the link shows; the server's 403 shows in the panel.
-const tf = await newPage(tTok);
+const tf = await newPage(t4Tok);
 await tf.route(/\/api\/platform\/me$/, async (r) => { const res = await r.fetch(); const b = await res.json() as { keys: string[] }; await r.fulfill({ response: res, json: { ...b, keys: [...b.keys, "agent/complaint:read"] } }); });
 await opened(tf, moved); await actOpen(tf, "handler");
 await tf.getByLabel("New handler").selectOption(R.id); await submitOf(tf).click();
 await tf.getByText(FORBIDDEN).waitFor({ timeout: 10_000 });
-ok("PF-21s DW4 fail: forced in the page, the server's 403 shows in the panel with its own words", (await tf.locator("[data-action-error]").innerText()).includes("needs the permissions to read and record complaints") && (await panel(tf, "handler").count()) === 1);
+const refusedText = await tf.locator("[data-action-error]").innerText(), serverWords = (forced.body as { detail?: string }).detail ?? "";
+ok("PF-21s DW4 fail: forced in the page, the server's 403 shows in the panel with its own words", !!serverWords && refusedText.includes(serverWords) && (await panel(tf, "handler").count()) === 1, { refusedText, serverWords });
 await axe("PF-21s change handler refused (1440)", tf); await shot(tf, "action-handler-refused-1440");
 // The Owner sees Change handler; its picker is GET /handlers' active staff, without the present handler.
 const ow = await newPage(rTok);
 await opened(ow, moved); await actOpen(ow, "handler");
 const active = (await call(rTok, "GET", "/handlers")).body as { items: { id: string }[] };
-await ow.locator('[data-action-drawer="handler"] select option[value]:not([value=""])').first().waitFor({ timeout: 10_000 });
+await ow.locator('[data-action-drawer="handler"] select option[value]:not([value=""])').first().waitFor({ state: "attached", timeout: 10_000 });
 const offered = await ow.locator('[data-action-drawer="handler"] select option').evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value).filter(Boolean));
 const inactive = sql(`select count(*) from platform_staff where firm_id = (select firm_id from platform_staff where id = '${R.id}') and status <> 'ACTIVE' and id in (${offered.map((x) => `'${x}'`).join(",") || "''"})`);
 ok("PF-21s DW4 pass: the Owner's picker lists GET /handlers' active staff, without the present handler, and no inactive one",
   JSON.stringify(offered) === JSON.stringify(active.items.map((x) => x.id).filter((x) => x !== T.id)) && inactive === "0", { offered: offered.length, active: active.items.length, inactive });
 await axe("PF-21s change handler panel (1440)", ow);
 // DW8: the old handler's open panel, after the handler is changed, saves to the not-found words; nothing of it stays.
-await actOpen(tw, "step"); await tw.getByLabel("Note").fill("Sample step.");
+await actOpen(tw, "step"); await tw.getByRole("textbox", { name: /^Note/ }).fill("Sample step.");
 await ow.getByLabel("New handler").selectOption(O.id); await saved(ow, "handler");
 ok("PF-21s DW4: the Owner's change is on the timeline with both names", (await eventsOf(ow))[0] === "HANDLER_CHANGED" && (await ow.getByText(`From ${T.name} to ${O.name}.`).count()) === 1 && (await ow.locator("[data-handler]").innerText()) === O.name);
 await submitOf(tw).click(); await tw.locator("[data-not-found]").waitFor({ timeout: 15_000 });
@@ -336,14 +338,14 @@ ok("PF-21s DW8: the old handler's step was never recorded", !(await eventsOf(ow)
 // Break M3 for an act: the session ends while a panel holds a typed step; after signing in again it is back, unsaved.
 const keep = await record(rTok, `Person Keep Act ${run}`, T.id, ago(1));
 const m4 = await newPage(await signIn("sample-firm", T.email));
-await opened(m4, keep); await actOpen(m4, "step"); await m4.getByLabel("Note").fill(`Kept step ${run}`);
+await opened(m4, keep); await actOpen(m4, "step"); await m4.getByRole("textbox", { name: /^Note/ }).fill(`Kept step ${run}`);
 await signIn("sample-firm", T.email);
 await submitOf(m4).click(); await m4.locator("[data-signed-in-elsewhere]").waitFor({ timeout: 15_000 });
 await m4.getByRole("button", { name: "Sign in again here" }).click();
 await m4.getByLabel("Firm key").fill("sample-firm"); await m4.getByLabel("Work email").fill(T.email); await m4.getByRole("button", { name: "Sign in" }).click();
 const backAct = await panel(m4, "step").waitFor({ timeout: 15_000 }).then(() => true, () => false);
 ok("PF-21s break M3 (acts): after the session ends mid-panel and the person signs in again, the step panel is back with the note and says it was not saved",
-  backAct && (await m4.getByLabel("Note").inputValue()) === `Kept step ${run}` && (await m4.getByText("not saved yet").count()) === 1);
+  backAct && (await m4.getByRole("textbox", { name: /^Note/ }).inputValue()) === `Kept step ${run}` && (await m4.getByText("not saved yet").count()) === 1);
 ok("PF-21s break M3 (acts) fail: nothing was recorded while the session was ended", !(((await call(rTok, "GET", `/${keep}`)).body as { events: { kind: string }[] }).events.some((e) => e.kind === "STEP")));
 for (const wd of [375, 1024]) {
   const p = await newPage(rTok, wd);
