@@ -16,7 +16,7 @@
 * This round also carries yesterday's records (qa #2088, which is not merged and now conflicts with main) into one PR.
 
 ## Verdict
-**C8.2 and C11.6: green on the checkpoint on main's head on GitHub's runners, but not yet Works.** Both stay Partial: the first part of the Works rule is met, the other three are not.
+**C8.2 and C11.6: Works (updated 16:3x IST).** At first both stayed Partial: only the first part of the Works rule was met. The re-run, the fresh reader and gate A then came in; see "Gate A walks for C8.2 and C11.6" below.
 * Run **44256761591** (workflow_dispatch, `capabilities: C8.2 C11.6`, `data: checkpoint`, head 39c1203cd):
   * C8.2: "C8.2.test.ts on the checkpoint: exit 0, 19/19 passed" (job 134640396986);
   * C11.6: "C11.6.test.ts on the checkpoint: exit 0, 14/14 passed" (job 134640397274).
@@ -24,7 +24,7 @@
   * an independent re-run (P-290);
   * a fresh Opus reader's verdict, by a reader that ran nothing (P-303, P-432);
   * a gate A walk by screens to the next capability's first step (P-348c). The last walk was 11 Nov on 68a7b59d1, before BK-21 changed this path.
-* `REGRESSION-DATA.md` gets their "checkpoint" lines with the Works verdict, not before.
+* `REGRESSION-DATA.md` got their "checkpoint" lines with the Works verdict.
 
 No regression found. **Two new findings:** QA-507 (Bug · Minor) and QA-508 (Conflict · Minor: R1.58's text is out of date). No other row moves: each still has parts missing (P-606).
 
@@ -72,7 +72,7 @@ So the parser's 415 errors fall through `ProblemErrors` to the generic 500: **QA
 * **QA-508:** FO-7a2 #1991 builds P-634 (1): a reversal is always accepted, even below zero, and the party shows red in `money_trust_shortfall`. The founder chose that on 17 Nov in P-653 (2), after P-607 (1) (15 Nov, "Never negative"). R1.58's text still says "never goes below zero (fail case)", so the row cannot be scored as written. The tech lead rewrites the row text; qa does not change a requirement.
 
 ## Gate A walks for C8.2 and C11.6 (Lead 80's brief, 13:0x-13:2x IST)
-Copies of main 39c1203cd loaded with the configured checkpoint (reset, then `sample: configured`, 87 s and 89 s). Independent re-run 44260362078 was dispatched at 13:07 IST; at 14:42 its two pack jobs still waited for GitHub runners (1-2 hosted jobs at a time since the move). The fresh reader waits for it.
+Copies of main 39c1203cd loaded with the configured checkpoint (reset, then `sample: configured`, 87 s and 89 s). Independent re-run 44260362078, dispatched at 13:07 IST, ran after a long wait for GitHub runners (1-2 hosted jobs at a time since the move): C11.6 14/14 (job 134668185047) and C8.2 19/19 (job 134668185255) on the checkpoint, head 39c1203cd, "Gate B: passed". A fresh Opus reader at high effort that ran nothing then gave **C8.2: WORKS · C11.6: WORKS** (16:3x IST). **Both rows move to Works**; `REGRESSION-DATA.md` gets their checkpoint lines, and `works-set.mjs` now counts 98 Works capabilities.
 * **C11.6, PASS.** The checkpoint's Sample case C-2026-00001, as the Case officer, under "How each form is filed":
   * IMM 5476 (IRCC accepts only PDF upload) greys the other ways with the Form library's line (`gatea-c116-5476-only-pdf.jpg`).
   * Paper without a reason is refused on the field, quoting IRCC (`gatea-c116-paper-needs-reason.jpg`).
