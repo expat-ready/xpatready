@@ -193,3 +193,14 @@ Not re-run by me: the builder's suites (pf12b 27/0, pf12_walls 100/0).
 **Verdict: Approve.** No open Blocker or Major.
 
 Reviewer: Approve 43abda2758e9cb02ba6bf74a8475addaafbcb3cc
+
+## Re-review 9: fifth merge of origin/main (`7f2b05b`; parents 82c1aae, 9d440b2f4; local, not pushed; diff only, P-277)
+- **Base.** 82c1aae is 43abda2 (last Approve) plus review records only (`git diff --stat 43abda2 82c1aae`: `review.md`).
+- **MODULE.md against main** (`git diff 7f2b05b^2 7f2b05b`): only two changes, the PF-12b invariant sentence and `tests/check_pf12b_bypass_audit.ts` after `check_pf12_walls.ts`. Main's PF-19r Entry-points text (`MAIL_PORT` senders, `MessagesMail.sendIn`) and its `check_pf19r_senders.ts` test are kept. The card is 39 lines; `module-cards.py tree` passes (15 cards). No conflict markers left.
+- **This PR's 13 files against 82c1aae.** Only `MODULE.md` (main's two lines) and `messages.ts` changed. The `messages.ts` change is main's `capHolds` (PF-19r) alone: firm-scoped through `firmScope(firmIdIn)` in the caller's transaction, no bypass. `firm-scope.ts` and `BYPASS_USES` are unchanged.
+- **Call sites** (`git grep -n 'asBypass(\|asJob('` under `api/src`, 82c1aae against 7f2b05b): identical in content. Only line numbers moved, in `identity/service.ts` (+2) and `identity/session/service.ts` (+2). Main's diff under `api/src` adds or removes no line with `asBypass`, `asJob`, `BYPASS_USES` or `touchFirm`. So every per-firm site still touches its firms, and the card's sentence holds.
+- Not re-run by me: the builder reports pf12b_bypass_audit 28/0, pf12_walls 100/0, pf19b_sending 40/0 on the merged tree. pf19r_senders and the rest are left to CI.
+
+**Verdict: Approve.** No open Blocker or Major.
+
+Reviewer: Approve 7f2b05bce1ef5b243bde3ee0a1e5cc8cbf03c606
