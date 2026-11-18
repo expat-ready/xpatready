@@ -16,6 +16,7 @@ say "time  $(TZ=Asia/Kolkata date '+%d %b %H:%M IST')"
 # 0. Stall guard (founder, 7 Nov, P-388): the previous check must have run. Lead 24 stalled ~7.4 h on one prompt and no
 # check fired. Checks run every 30 min; a gap over 40 min (30 + 10 grace, P-389) means a check was missed: tell the
 # founder at once. The standby's lead-heartbeat.sh reads the same stamp while this Lead is stuck.
+if [ "${1:-}" = "app-view-read" ]; then mkdir -p "$STATE_DIR"; { date +%s; echo "${2:-read}"; } > "$STATE_DIR/app-view-read"; echo "app view read recorded"; exit 0; fi
 stamp="$STATE_DIR/last-check"; now=$(date +%s)
 if [ -s "$stamp" ]; then last=$(cat "$stamp"); gap=$(( (now - last) / 60 ))
   [ "$gap" -gt 40 ] && ACT "previous check ran ${gap} min ago ($(TZ=Asia/Kolkata date -r "$last" '+%d %b %H:%M IST' 2>/dev/null || TZ=Asia/Kolkata date -d "@$last" '+%d %b %H:%M IST')): checks were missed; tell the founder at once (P-388, P-389)"
@@ -169,5 +170,15 @@ else say "library: every living master current"; fi
 while IFS= read -r l; do
   case "$l" in MISS*) ACT "SLE ${l#MISS  }";; due*|wait*) say "sle   ${l#* }";; ok*) say "sle   every wait-time target met";; esac
 done < <(python3 -I "$TOOLS/sle-watch.py" 2>/dev/null)
+
+# 10. App view (P-339b, founder 22:1x IST 18 Nov: "if they don't report, then there was a backup decision ... use the
+# browser"): cloud lanes never report back and GitHub shows nothing while one waits on a question or has failed, so each
+# check reads claude.ai/code in the built-in browser with tools/app-view.js, acts on every Waiting, Failed or quiet lane,
+# then records the read with `bash tools/lead-watch.sh app-view-read "<one-line summary>"`. A read older than 35 min is an ACT.
+av="$STATE_DIR/app-view-read"
+if [ -s "$av" ]; then avt=$(head -1 "$av"); avg=$(( (now - avt) / 60 ))
+  if [ "$avg" -gt 35 ]; then ACT "app view not read for ${avg} min (P-339b): read claude.ai/code with tools/app-view.js in the built-in browser, act on Waiting/Failed/quiet lanes, then run lead-watch.sh app-view-read"
+  else say "app   read ${avg} min ago: $(sed -n 2p "$av")"; fi
+else ACT "app view never recorded (P-339b): read claude.ai/code with tools/app-view.js in the built-in browser, then run lead-watch.sh app-view-read"; fi
 
 exit "$act"
