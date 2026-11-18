@@ -1,8 +1,10 @@
-// FO-7ts part 1 (brief product/design/briefs/FO-7ts.md with Build Lead C's FO-7ts-1.md; Lead B rev 16.33, 16.35 (b), 16.36,
+// FO-7ts parts 1 and 2 (brief product/design/briefs/FO-7ts.md with Build Lead C's FO-7ts-1.md; Lead B rev 16.33, 16.35 (b), 16.36,
 // 16.37, 16.41; AG-6-59 §6-§8 rules 4-6, AG-6-4 §7 §13 rules 5-7, AG-6-19 rule 1, AG-6-69 rule 3 §7, AG-6-61 rules 7, 10
 // §7, AG-6-14 rule 3, AG-6-42 §7; P-567 (3), P-568 (1), P-600; legal reading Unconfirmed: no counsel): the money settings
 // and request columns in the database. DW1-DW4, DW9-DW11, DW19-DW20 of the brief, each passing and failing as named; one
-// race on real connections (READ COMMITTED). Three scratch databases: "t" gets every migration, with rows written before
+// race on real connections (READ COMMITTED). Part 2 (build-lead-c-briefs/FO-7ts-2.md; AG-6-60 rules 2-5, 9, AG-6-21
+// rules 2-3, 5, AG-6-23 rules 1, 4; P-634): the pre-case → case pair and the credit ledger, DW5-DW8, DW10, DW12-DW14 and
+// DW21-DW24, races at READ COMMITTED and REPEATABLE READ. Three scratch databases: "t" gets every migration, with rows written before
 // this one (the cases run here); "bad" stops before it with a firm saying trust_enabled = true (the migration must
 // refuse); "empty" gets every migration. No server, no browser, no model call, no Stripe call (US$0). All are dropped.
 //   tsx studio/tests/check_fo7ts_money_settings.ts
@@ -13,7 +15,7 @@ import { join } from "node:path";
 import pg from "pg";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261117133000_fo7ts_money_settings", FO7A2 = "20261116133000_fo7a2_ledger_rules";
+const NEW = "20261117133000_fo7ts_money_settings", NEW2 = "20261118190000_fo7ts_ledgers", FO7LK = "20261118180000_fo7lk_trust_lock", FO7A2 = "20261116133000_fo7a2_ledger_rules";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const T = `xr_studio_fo7ts_t_${process.pid}`, BAD = `xr_studio_fo7ts_bad_${process.pid}`, EMPTY = `xr_studio_fo7ts_empty_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
@@ -43,12 +45,12 @@ const fns = (db: string) => sql(db, `select coalesce(string_agg(proname, ',' ord
 const written = (text: string) => [...text.matchAll(/CREATE\s+(OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?"?([a-z_][a-z0-9_]*)"?\s*\(/gi)].map((m) => ({ name: m[2], replace: !!m[1] }));
 const badFns = (list: { name: string; replace: boolean }[]) => list.filter((f) => !f.name.startsWith("money_") || !f.replace).map((f) => f.name);
 const conns: pg.Client[] = [];
-async function race(stmts: string[], iso = "read committed"): Promise<{ ok: boolean; code?: string }[]> {
+async function race(stmts: string[], iso = "read committed"): Promise<{ ok: boolean; code?: string; message?: string }[]> {
   const cs = await Promise.all(stmts.map(async () => { const c = new pg.Client({ connectionString: urlOf(T) }); await c.connect(); conns.push(c); return c; }));
   for (const c of cs) { await c.query(`begin isolation level ${iso}`); await c.query("select 1 from money_trust_request limit 1"); }
   const out = await Promise.all(cs.map(async (c, i) => {
     try { await c.query(stmts[i]); await c.query("commit"); return { ok: true }; }
-    catch (e) { await c.query("rollback").catch(() => undefined); return { ok: false, code: (e as { code?: string }).code }; }
+    catch (e) { await c.query("rollback").catch(() => undefined); return { ok: false, code: (e as { code?: string }).code, message: (e as { message?: string }).message }; }
   }));
   for (const c of cs) { await c.end(); conns.splice(conns.indexOf(c), 1); }
   return out;
@@ -92,7 +94,23 @@ try {
   ok("FO-7ts DW10 pass: the replaced and new trigger functions run as PF-12's wall reader (SECURITY DEFINER, owner xr_wall_reader, search_path pinned); money_trust_on keeps its caller's rights",
     sql(T, `select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader' and array_to_string(p.proconfig, ',') like 'search_path=%') from pg_proc p where p.proname in ('money_trust_answer_move', 'money_trust_request_write', 'money_invoice_write')`) === "t"
     && sql(T, `select prosecdef from pg_proc where proname = 'money_trust_on'`) === "f");
-  for (const d of all.filter((x) => x > NEW)) psql(T, ["-1", "-f", join(MIG, d, "migration.sql")]);
+  for (const d of all.filter((x) => x > NEW && x < NEW2)) psql(T, ["-1", "-f", join(MIG, d, "migration.sql")]);
+  // ------------------------------------------------------------------------- DW10, part 2: its own migration
+  const before2 = all.filter((d) => d < NEW2);
+  ok(`FO-7ts DW10 pass (part 2): the migration has its own stamp, later than every migration before it (newest before it: ${before2.at(-1)}), FO-7lk's included (P-600)`,
+    all.includes(NEW2) && before2.includes(FO7LK) && before2.includes(NEW) && all.filter((d) => d.slice(0, 14) === NEW2.slice(0, 14)).length === 1);
+  const fnBefore2 = fns(T), entryBefore = sql(T, `select md5(prosrc) from pg_proc where proname = 'money_trust_entry_write'`);
+  const checksOf = (db: string) => sql(db, `select string_agg(conname || '=' || pg_get_constraintdef(oid), '|' order by conname) from pg_constraint where conrelid = 'money_trust_entry'::regclass`);
+  const checksBefore = checksOf(T);
+  psql(T, ["-1", "-f", join(MIG, NEW2, "migration.sql")]);
+  const added2 = fns(T).filter((f) => !fnBefore2.includes(f)), gone2 = fnBefore2.filter((f) => !fns(T).includes(f)), text2 = readFileSync(join(MIG, NEW2, "migration.sql"), "utf8");
+  ok("FO-7ts DW10 pass (part 2): right after its own migration it adds money_credit_entry_write, money_invoice_due and money_trust_entry_move_paired, drops none, replaces money_trust_entry_write, and every function it writes is money_ and CREATE OR REPLACE",
+    JSON.stringify(added2) === JSON.stringify(["money_credit_entry_write", "money_invoice_due", "money_trust_entry_move_paired"]) && gone2.length === 0 && written(text2).length === 4 && badFns(written(text2)).length === 0
+    && sql(T, `select md5(prosrc) from pg_proc where proname = 'money_trust_entry_write'`) !== entryBefore, { added2, gone2, w: written(text2) });
+  ok("FO-7ts DW10 pass (part 2): its trigger functions run as PF-12's wall reader; money_invoice_due keeps its caller's rights",
+    sql(T, `select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader' and array_to_string(p.proconfig, ',') like 'search_path=%') from pg_proc p where p.proname in ('money_trust_entry_write', 'money_trust_entry_move_paired', 'money_credit_entry_write')`) === "t"
+    && sql(T, `select prosecdef from pg_proc where proname = 'money_invoice_due'`) === "f");
+  for (const d of all.filter((x) => x > NEW2)) psql(T, ["-1", "-f", join(MIG, d, "migration.sql")]);
   for (const d of all) psql(EMPTY, ["-1", "-f", join(MIG, d, "migration.sql")]);
   ok("FO-7ts DW10 pass: migrate diff names no money table or type, on the copy with rows and on the empty one", moneyDiff(T).length === 0 && moneyDiff(EMPTY).length === 0, [moneyDiff(T), moneyDiff(EMPTY)]);
 
@@ -223,6 +241,210 @@ try {
   ok("FO-7ts DW20 fail: who changed it and when do not change without the setting; a new row cannot start as TRUST_FIRST",
     refused(T, `update money_payment_settings set invoice_payments_changed_at = '2001-01-01' where firm_id = '${firmD}'`, /change only with it/)
     && refused(T, `insert into money_payment_settings (firm_id, updated_by, updated_at, invoice_payments_go_to) values ('${firmC}', 'user-O', now(), 'TRUST_FIRST')`, /invoice payments into operating/));
+
+  // ========================================================================================= part 2 (firm D, trust YES)
+  const F = firmD, C1 = u(901), C2 = u(902);
+  type E = { pay?: string; inv?: string; corrects?: string; ck?: string; reason?: string; kase?: string | null; from?: string; id?: string; cur?: string };
+  const te = (pid: string, kind: string, amount: number, x: E = {}) =>
+    `insert into money_trust_entry (id, firm_id, person_id, kind, amount_minor, currency, payment_id, invoice_id, corrects_entry_id, correction_kind, reason, case_id, moved_from_entry_id, created_by) values ('${x.id ?? randomUUID()}', '${F}', '${pid}', '${kind}', ${amount}, '${x.cur ?? "CAD"}', ${x.pay ? `'${x.pay}'` : "null"}, ${x.inv ? `'${x.inv}'` : "null"}, ${x.corrects ? `'${x.corrects}'` : "null"}, ${x.ck ? `'${x.ck}'` : "null"}, ${x.reason ? `'${x.reason}'` : "null"}, ${x.kase ? `'${x.kase}'` : "null"}, ${x.from ? `'${x.from}'` : "null"}, 'user-R') returning id`;
+  const dep = (pid: string, amount: number, o: { method?: string; kase?: string; cleared?: boolean } = {}) => { const p = randomUUID();
+    return last(T, `insert into money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by, cleared) values ('${p}', '${F}', '${o.method ?? "E_TRANSFER"}', ${amount}, 'CAD', 'TRUST', now(), '${key()}', 'user-R', ${o.cleared ?? true}); ${te(pid, "DEPOSIT", amount, { pay: p, kase: o.kase })}`); };
+  // The pair as one transaction: − then + naming it (ids chosen here).
+  const pairQ = (pid: string, amount: number, kase = C1, o: { plusPid?: string; plusAmount?: number; plusCur?: string } = {}) => { const m = randomUUID();
+    return `begin; ${te(pid, "MOVE_TO_CASE", -amount, { id: m })}; ${te(o.plusPid ?? pid, "MOVE_TO_CASE", o.plusAmount ?? amount, { kase, from: m, cur: o.plusCur })}; commit;`; };
+  const sums = (pid: string) => sql(T, `select coalesce(sum(amount_minor) filter (where case_id is null), 0) || ':' || coalesce(sum(amount_minor) filter (where case_id = '${C1}'), 0) || ':' || coalesce((select balance_after_minor from money_trust_entry where firm_id = '${F}' and person_id = '${pid}' order by seq desc limit 1), 0) from money_trust_entry where firm_id = '${F}' and person_id = '${pid}'`);
+  const shortfalls = () => sql(T, `select coalesce(string_agg(person_id || '=' || balance_minor, ',' order by person_id), '') from money_trust_shortfall where firm_id = '${F}'`);
+
+  // ------------------------------------------------------------------------------------ DW5: move to a case (AG-6-60)
+  {
+    const P = u(501); dep(P, 15000);
+    ok("FO-7ts DW5 fail: with CAD 150.00 held before a case, a move of 151.00 is refused, naming what is available", refused(T, pairQ(P, 15100), /a move to a case takes only what is held before a case: Only CAD 150\.00 is available/, "23514"));
+    sql(T, pairQ(P, 15000));
+    ok("FO-7ts DW5 pass (AG-6-60's test): CAD 150.00 moved to a case leaves pre-case 0.00, the case 150.00 and the party's balance unchanged, one entry on each side",
+      sums(P) === "0:15000:15000" && sql(T, `select string_agg(amount_minor || '@' || coalesce(case_id::text, '-'), ',' order by seq) from money_trust_entry where person_id = '${P}' and kind = 'MOVE_TO_CASE'`) === `-15000@-,15000@${C1}`);
+  }
+  // ---------------------------------------------------------------------------------------------- DW6: the pairing
+  {
+    const P = u(502), Q = u(503); dep(P, 50000); dep(Q, 50000);
+    const m = randomUUID();
+    ok("FO-7ts DW6 fail: a − half with no + half is refused at commit", refused(T, `begin; ${te(P, "MOVE_TO_CASE", -1000, { id: m })}; commit;`, /a move to a case is a pair/, "23514"));
+    ok("FO-7ts DW6 fail: a + half naming another party's − half, another currency, or a different amount is refused",
+      refused(T, pairQ(P, 1000, C1, { plusPid: Q }), /on the − half's party and currency, with the opposite amount \(1000\)/)
+      && refused(T, pairQ(P, 1000, C1, { plusCur: "USD" }), /on the − half's party and currency/) && refused(T, pairQ(P, 1000, C1, { plusAmount: 999 }), /with the opposite amount/));
+    const mOld = randomUUID(); sql(T, `begin; ${te(P, "MOVE_TO_CASE", -1000, { id: mOld })}; ${te(P, "MOVE_TO_CASE", 1000, { kase: C1, from: mOld })}; commit;`);
+    ok("FO-7ts DW6 fail: a + half naming a − half from an earlier transaction is refused; a second + half on one − half is refused (one + per −)",
+      refused(T, `begin; ${te(P, "MOVE_TO_CASE", 1000, { kase: C2, from: mOld })}; commit;`, /is written in the transaction that wrote its − half/)
+      && refused(T, (() => { const x = randomUUID(); return `begin; ${te(P, "MOVE_TO_CASE", -1000, { id: x })}; ${te(P, "MOVE_TO_CASE", 1000, { kase: C1, from: x })}; ${te(P, "MOVE_TO_CASE", 1000, { kase: C2, from: x })}; commit;`; })(), /money_trust_entry_firm_id_moved_from_entry_id_key/, "23505"));
+    ok("FO-7ts DW6 fail: a + half naming a deposit, a − half on a case, a + half with no case, and moved_from on another kind are refused",
+      refused(T, `begin; ${te(P, "MOVE_TO_CASE", 1000, { kase: C1, from: sql(T, `select id from money_trust_entry where person_id = '${P}' and kind = 'DEPOSIT'`) })}; commit;`, /names the − half of a move, not a DEPOSIT/)
+      && refused(T, `begin; ${te(P, "MOVE_TO_CASE", -1000, { kase: C1 })}; commit;`, /money_trust_entry_move_check/)
+      && refused(T, (() => { const x = randomUUID(); return `begin; ${te(P, "MOVE_TO_CASE", -1000, { id: x })}; ${te(P, "MOVE_TO_CASE", 1000, { from: x })}; commit;`; })(), /money_trust_entry_move_check/)
+      && refused(T, te(P, "REFUND_TO_CLIENT", -100, { reason: "Returned", from: mOld }), /money_trust_entry_move_check/));
+    ok("FO-7ts DW6 pass: the pairs left P's balance where its deposits put it (500.00), nothing pending", sums(P).endsWith(":50000"));
+  }
+  // ------------------------------------------------------------------------------------------ DW7: one at a time
+  for (const iso of ["read committed", "repeatable read"]) {
+    const P = randomUUID(); dep(P, 15000);
+    const mk = () => { const m = randomUUID(); return `${te(P, "MOVE_TO_CASE", -15000, { id: m })}; ${te(P, "MOVE_TO_CASE", 15000, { kase: C1, from: m })}`; };
+    const r = await race([mk(), mk()], iso);
+    ok(`FO-7ts DW7 pass (${iso}): two connections each moving CAD 150.00 of one 150.00 pre-case balance — one commits, the other is refused`,
+      r.filter((x) => x.ok).length === 1 && r.some((x) => !x.ok && ["23514", "23505", "40001"].includes(x.code ?? "")) && sums(P) === "0:15000:15000", { r, s: sums(P) });
+  }
+  // ------------------------------------------------------------------------------------- DW8: not a way out (P-603)
+  {
+    const P = u(504), d = dep(P, 20000); const m = randomUUID();
+    sql(T, `begin; ${te(P, "MOVE_TO_CASE", -5000, { id: m })}; ${te(P, "MOVE_TO_CASE", 5000, { kase: C1, from: m })}; commit;`);
+    const plus = sql(T, `select id from money_trust_entry where moved_from_entry_id = '${m}'`);
+    ok("FO-7ts DW8 fail: a correction naming either half of a move is refused (money leaves trust only by a withdrawal or a refund, P-603)",
+      refused(T, te(P, "CORRECTION", 5000, { corrects: m, reason: "Move undone" }), /a correction names a withdrawal .* or a deposit .*, never a MOVE_TO_CASE/, "23514")
+      && refused(T, te(P, "CORRECTION", -5000, { corrects: plus, reason: "Move undone" }), /never a MOVE_TO_CASE/));
+    ok("FO-7ts DW8 pass: a correction naming a deposit is still accepted", !!sql(T, te(P, "CORRECTION", -1000, { corrects: d, ck: "RECORDED_BY_MISTAKE", reason: "Typed twice" })));
+  }
+  // ------------------------------------------------------------------------- DW21: outflow only from what is held
+  {
+    const P = u(505); const chq = dep(P, 5000, { method: "CHEQUE", cleared: false });
+    sql(T, te(P, "REFUND_TO_CLIENT", -5000, { reason: "Returned unused money" })); sql(T, te(P, "CORRECTION", -5000, { corrects: chq, ck: "RETURNED", reason: "Cheque bounced" }));
+    const view = shortfalls();
+    ok("FO-7ts DW21 fail (P-634): pre-case CAD −50.00 after a returned cheque — a move of 1.00 to a case is refused, and money_trust_shortfall still lists the party at −50.00",
+      refused(T, pairQ(P, 100), /Only CAD 0\.00 is available/, "23514") && view.includes(`${P}=-5000`) && shortfalls() === view);
+    const R = u(506); dep(R, 15000);
+    ok("FO-7ts DW21 pass: with pre-case CAD 150.00 the pair is accepted and the shortfall view is unchanged", (sql(T, pairQ(R, 15000)), shortfalls() === view && sums(R) === "0:15000:15000"));
+    // Build Lead C's ruling: a pair may run while the party's case is below zero (it puts held money where the shortfall is).
+    const S = u(507); const c2 = dep(S, 5000, { method: "CHEQUE", cleared: false, kase: C1 });
+    sql(T, te(S, "REFUND_TO_CLIENT", -5000, { reason: "Returned unused money", kase: C1 })); sql(T, te(S, "CORRECTION", -5000, { corrects: c2, ck: "RETURNED", reason: "Cheque bounced", kase: C1 })); dep(S, 15000);
+    ok("FO-7ts DW21 pass (Build Lead C's ruling): with the case at −50.00 and 150.00 held before a case, moving 150.00 to the case is accepted: the case 100.00, the party 100.00, no shortfall left",
+      (sql(T, pairQ(S, 15000)), sums(S) === "0:10000:10000" && !shortfalls().includes(S)), sums(S));
+  }
+  // ------------------------------------------------------------------------------------ DW22: not on the To move list
+  {
+    const P = u(508); dep(P, 3000); sql(T, pairQ(P, 3000));
+    const ids = sql(T, `select string_agg(id::text, ',') from money_trust_entry where person_id = '${P}' and kind = 'MOVE_TO_CASE'`).split(",");
+    const plus = sql(T, `select id from money_trust_entry where person_id = '${P}' and kind = 'MOVE_TO_CASE' and amount_minor > 0`); const b = randomUUID();
+    ok("FO-7ts DW22 pass: after a pair, money_to_move has no line for either half", sql(T, `select count(*) from money_to_move where source_entry_id in ('${ids.join("','")}')`) === "0");
+    ok("FO-7ts DW22 fail: a hand-made move line naming the + half is refused by money_move_line_write",
+      refused(T, `begin; insert into money_move_batch (id, firm_id, currency, direction, transfer_date, recorded_by) values ('${b}', '${F}', 'CAD', 'TRUST_TO_OPERATING', '2026-11-20', 'user-R'); insert into money_move_line (firm_id, batch_id, kind, direction, currency, amount_minor, source_entry_id) values ('${F}', '${b}', 'TRUST_APPLIED', 'TRUST_TO_OPERATING', 'CAD', 3000, '${plus}'); commit;`, /a trust application moves a withdrawal to an invoice/));
+  }
+
+  // ============================================================================================ the credit ledger
+  type CE = { pay?: string; inv?: string; rev?: string; reason?: string; kase?: string | null; pid?: string; id?: string };
+  const ce = (pid: string, kind: string, amount: number, x: CE = {}) =>
+    `insert into money_credit_entry (id, firm_id, person_id, case_id, kind, amount_minor, currency, payment_id, invoice_id, reverses_entry_id, reason, created_by) values ('${x.id ?? randomUUID()}', '${F}', '${pid}', ${x.kase ? `'${x.kase}'` : "null"}, '${kind}', ${amount}, 'CAD', ${x.pay ? `'${x.pay}'` : "null"}, ${x.inv ? `'${x.inv}'` : "null"}, ${x.rev ? `'${x.rev}'` : "null"}, ${x.reason ? `'${x.reason}'` : "null"}, 'user-R') returning id`;
+  const inv = (pid: string, total: number, o: { kase?: string; draft?: boolean } = {}) => { const id = randomUUID();
+    sql(T, `insert into money_invoice (id, firm_id, person_id, case_id, currency, due_date, created_by, updated_at) values ('${id}', '${F}', '${pid}', ${o.kase ? `'${o.kase}'` : "null"}, 'CAD', '2026-12-15', 'user-R', now());
+      insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, currency) values ('${F}', '${id}', 1, 'FEE', 'Work permit application', 1, ${total}, ${total}, 'CAD');
+      ${o.draft ? "select 1" : `update money_invoice set issued_at = now(), issued_by = 'user-R' where id = '${id}'`}`); return id; };
+  const paid = (invId: string, amount: number) => last(T, `insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) values ('${F}', '${invId}', 'E_TRANSFER', ${amount}, 'CAD', 'OPERATING', now(), '${key()}', 'user-R') returning id`);
+  const credit = (pid: string, kase: string | null = null) => sql(T, `select coalesce((select balance_after_minor from money_credit_entry where firm_id = '${F}' and ${kase ? `case_id = '${kase}'` : `case_id is null and person_id = '${pid}'`} order by seq desc limit 1), 0)`);
+  // -------------------------------------------------------------------------- DW12: credit (AG-6-21's example)
+  {
+    const P = u(601), I1 = inv(P, 150000), pay = paid(I1, 170000);
+    ok("FO-7ts DW12 fail: keeping CAD 201.00 from a CAD 1,700.00 payment on a CAD 1,500.00 invoice is refused, naming 200.00",
+      refused(T, ce(P, "KEPT", 20100, { pay }), /only CAD 200\.00|only 200\.00 CAD was paid over this invoice/, "23514"));
+    ok("FO-7ts DW12 pass: 150.00 kept → the holder's credit 150.00; fail: 60.00 more on that payment is refused (210.00 > 200.00); 50.00 → 200.00",
+      (sql(T, ce(P, "KEPT", 15000, { pay })), credit(P) === "15000") && refused(T, ce(P, "KEPT", 6000, { pay }), /only 50\.00 CAD was paid over this invoice/) && (sql(T, ce(P, "KEPT", 5000, { pay })), credit(P) === "20000"));
+    const D = inv(P, 30000, { draft: true });
+    ok("FO-7ts DW12 pass: applying 200.00 to a draft of the same holder leaves 0.00; fail: 1.00 more is refused", (sql(T, ce(P, "APPLIED", -20000, { inv: D })), credit(P) === "0") && refused(T, ce(P, "APPLIED", -100, { inv: D }), /Only CAD 0\.00 of credit is available/, "23514"));
+    const P2c = u(602), Ia = inv(P2c, 10000, { kase: C1 }), payA = paid(Ia, 15000); sql(T, ce(P2c, "KEPT", 5000, { pay: payA, kase: C1 }));
+    ok("FO-7ts DW12 fail: credit held on one case does not pay an invoice of another case of the same party, nor one with no case; keeping it for the party when the invoice is the case's is refused",
+      refused(T, ce(P2c, "APPLIED", -1000, { kase: C1, inv: inv(P2c, 5000, { kase: C2, draft: true }) }), /credit pays only an invoice of its holder/)
+      && refused(T, ce(P2c, "APPLIED", -1000, { kase: C1, inv: inv(P2c, 5000, { draft: true }) }), /credit pays only an invoice of its holder/)
+      && refused(T, ce(P2c, "KEPT", 100, { pay: payA }), /kept for its invoice's holder/));
+    ok("FO-7ts DW12 fail: a refund of credit with no reason is refused; with one it is accepted; credit is never kept from money in trust",
+      refused(T, ce(P2c, "REFUNDED", -1000, { kase: C1 }), /money_credit_entry_reason_check/) && !!sql(T, ce(P2c, "REFUNDED", -1000, { kase: C1, reason: "Paid back by e-Transfer" }))
+      && refused(T, ce(P2c, "KEPT", 100, { pay: sql(T, `select payment_id from money_trust_entry where kind = 'DEPOSIT' and person_id = '${u(501)}'`) }), /kept from a payment into operating on an invoice/));
+    ok("FO-7ts DW12 fail: an applied amount over what is due on the invoice is refused", refused(T, ce(P2c, "APPLIED", -4000, { kase: C1, inv: inv(P2c, 3000, { kase: C1, draft: true }) }), /more than is due on the invoice \(30\.00 CAD\)/));
+    ok("FO-7ts DW12 fail: credit entries are never changed or removed",
+      refused(T, `update money_credit_entry set amount_minor = 1 where person_id = '${P}'`, /rows are never changed or removed/, "42501") && refused(T, `delete from money_credit_entry where person_id = '${P}'`, /rows are never changed or removed/, "42501"));
+  }
+  // ---------------------------------------------------------------------------------------- DW14: credit reversed
+  {
+    const P = u(603), I = inv(P, 100000), pay = paid(I, 120000), k = sql(T, ce(P, "KEPT", 20000, { pay }));
+    ok("FO-7ts DW14 fail: a REVERSED of 201.00 against a KEPT 200.00 is refused; a reversal with the KEPT's own sign is refused",
+      refused(T, ce(P, "REVERSED", -20100, { rev: k, reason: "Payment reversed" }), /never undoes more than it/) && refused(T, ce(P, "REVERSED", 100, { rev: k, reason: "Payment reversed" }), /opposite sign/));
+    ok("FO-7ts DW14 pass: a REVERSED of the KEPT 200.00 leaves 0.00", (sql(T, ce(P, "REVERSED", -20000, { rev: k, reason: "Payment reversed" })), credit(P) === "0"));
+    const P3 = u(604), I3 = inv(P3, 100000), pay3 = paid(I3, 120000), k3 = sql(T, ce(P3, "KEPT", 20000, { pay: pay3 })), D3 = inv(P3, 50000);
+    const a3 = sql(T, ce(P3, "APPLIED", -20000, { inv: D3 })); const due = () => sql(T, `select money_invoice_due('${F}', '${D3}')`);
+    const dueApplied = due();
+    ok("FO-7ts DW14 fail (Lead 61, 5c): with the 200.00 applied, reversing the KEPT first is refused (credit never goes below zero)", refused(T, ce(P3, "REVERSED", -20000, { rev: k3, reason: "Payment reversed" }), /Only CAD 0\.00 of credit is available/));
+    ok("FO-7ts DW14 pass: REVERSED of the APPLIED (+200.00), then of the KEPT (−200.00) → 0.00, and the invoice is open again by 200.00",
+      (sql(T, ce(P3, "REVERSED", 20000, { rev: a3, reason: "Payment reversed" })), sql(T, ce(P3, "REVERSED", -20000, { rev: k3, reason: "Payment reversed" })), credit(P3) === "0")
+      && Number(due()) - Number(dueApplied) === 20000 && dueApplied === "30000", { dueApplied, now: due() });
+  }
+  // ------------------------------------------------------------------------- DW13: the credit lock and one lock order
+  for (const iso of ["read committed", "repeatable read"]) {
+    const P = randomUUID(), I = inv(P, 100000), pay = paid(I, 120000); sql(T, ce(P, "KEPT", 20000, { pay }));
+    const D1 = inv(P, 30000, { draft: true }), D2 = inv(P, 30000, { draft: true });
+    const r = await race([ce(P, "APPLIED", -20000, { inv: D1 }), ce(P, "APPLIED", -20000, { inv: D2 })], iso);
+    ok(`FO-7ts DW13 pass (${iso}): two connections each applying CAD 200.00 of one 200.00 credit — one commits, the other is refused`,
+      r.filter((x) => x.ok).length === 1 && r.some((x) => !x.ok && ["23514", "23505", "40001"].includes(x.code ?? "")) && credit(P) === "0", r);
+  }
+  {
+    // One order: a credit application and a trust withdrawal on one party and invoice at once run in turn and both finish.
+    const P = randomUUID(); dep(P, 50000); const I = inv(P, 50000), pay = paid(I, 60000); sql(T, ce(P, "KEPT", 10000, { pay }));
+    const I2 = inv(P, 40000), outs: { ok: boolean; code?: string }[] = [];
+    for (let i = 0; i < 10; i++) outs.push(...await race([ce(P, "APPLIED", -1000, { inv: I2 }), te(P, "WITHDRAWAL_TO_INVOICE", -1000, { inv: I2 })]));
+    ok("FO-7ts DW13 pass: 10 rounds of a credit application and a trust withdrawal on one party and one invoice at once — all 20 finish, no 40P01",
+      outs.every((x) => x.ok) && credit(P) === "0", outs.filter((x) => !x.ok));
+    // The wrong order, by hand: the invoice row first, then the party's lock, against a credit writer → PostgreSQL's 40P01.
+    const ca = new pg.Client({ connectionString: urlOf(T) }), cb = new pg.Client({ connectionString: urlOf(T) }); await ca.connect(); await cb.connect(); conns.push(ca, cb);
+    sql(T, ce(P, "REVERSED", 1000, { rev: sql(T, `select id from money_credit_entry where person_id = '${P}' and kind = 'APPLIED' order by seq limit 1`), reason: "Applied in error" }));
+    await ca.query("set deadlock_timeout = '200ms'"); await cb.query("set deadlock_timeout = '200ms'");
+    const bpid = (await cb.query("select pg_backend_pid() p")).rows[0].p;
+    await ca.query("begin"); await ca.query(`update money_invoice set updated_at = now() where id = '${I2}'`);
+    const pb = cb.query(ce(P, "APPLIED", -500, { inv: I2 })).then(() => "ok", (e: { code?: string }) => e.code ?? "error");
+    for (let i = 0; i < 400 && (await ca.query(`select wait_event_type w from pg_stat_activity where pid = ${bpid}`)).rows[0]?.w !== "Lock"; i++) await new Promise((r) => setTimeout(r, 5));
+    const pa = ca.query(`select money_trust_lock('${F}', '${P}', 'CAD')`).then(() => "ok", (e: { code?: string }) => e.code ?? "error");
+    const [ra, rb] = await Promise.all([pa, pb]); await ca.query("rollback").catch(() => undefined);
+    for (const c of [ca, cb]) { await c.end(); conns.splice(conns.indexOf(c), 1); }
+    ok("FO-7ts DW13 fail (planted wrong order): the invoice row first, then the party's lock, against a credit writer → one side gets 40P01", ra === "40P01" || rb === "40P01", { ra, rb });
+    // No writer in the code takes that order: every function that touches an invoice row and takes the party's lock takes
+    // the lock first; those that take none touch it through money_issued_invoice (which locks first), run after a trust
+    // entry's own lock (money_trust_entry_moves, an AFTER trigger), or edit a draft's lines (no party lock at all).
+    const order = sql(T, `select string_agg(proname || ':' || position('money_trust_lock(' in prosrc) || ':' || least(nullif(position('UPDATE "money_invoice"' in prosrc), 0), nullif(position('money_issued_invoice(' in prosrc), 0), nullif(position('FOR SHARE' in prosrc), 0)), ',' order by proname)
+      from pg_proc where pronamespace = 'public'::regnamespace and proname <> 'money_issued_invoice' and (prosrc like '%UPDATE "money_invoice"%' or prosrc like '%money_issued_invoice(%' or (prosrc like '%"money_invoice"%' and prosrc like '%FOR SHARE%'))`).split(",");
+    const wrong = order.map((x) => x.split(":")).filter(([name, lock, touch]) => Number(lock) === 0
+      ? !["money_trust_entry_moves", "money_invoice_line_write", "money_write_off_write"].includes(name) : Number(lock) > Number(touch));
+    ok("FO-7ts DW13 fail → pass: no function in the database touches an invoice row before the party's lock", wrong.length === 0 && order.length >= 6, order);
+  }
+  // ---------------------------------------------------------------------------------------- DW23: one lock key
+  {
+    const P = randomUUID(), Q = randomUUID(); dep(P, 20000); dep(Q, 20000);
+    const I = inv(P, 10000), pay = paid(I, 15000), IQ = inv(Q, 10000), payQ = paid(IQ, 15000);
+    const g = new pg.Client({ connectionString: urlOf(T) }), c = new pg.Client({ connectionString: urlOf(T) }); await g.connect(); await c.connect(); conns.push(g, c);
+    const cpid = (await c.query("select pg_backend_pid() p")).rows[0].p;
+    const pay990 = randomUUID();
+    await g.query("begin"); await g.query(`insert into money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) values ('${pay990}', '${F}', 'E_TRANSFER', 100, 'CAD', 'TRUST', now(), '${key()}', 'user-R'); ${te(P, "DEPOSIT", 100, { pay: pay990 })}`);
+    const waits = async () => { for (let i = 0; i < 200; i++) { if ((await g.query(`select wait_event_type w from pg_stat_activity where pid = ${cpid}`)).rows[0]?.w === "Lock") return true; await new Promise((r) => setTimeout(r, 5)); } return false; };
+    const pOther = await c.query(ce(Q, "KEPT", 5000, { pay: payQ })).then(() => true, () => false);
+    const pc = c.query(ce(P, "KEPT", 5000, { pay })); const waited = await waits();
+    const lockSeen = sql(T, `select count(*) from pg_locks l where l.locktype = 'advisory' and l.pid = ${cpid} and not l.granted`);
+    await g.query("commit"); await pc;
+    const m = randomUUID(); const pm = c.query("begin").then(() => c.query(`${te(P, "MOVE_TO_CASE", -100, { id: m })}`)).then(() => c.query(`${te(P, "MOVE_TO_CASE", 100, { kase: C1, from: m })}`)).then(() => c.query("commit"));
+    await pm;
+    for (const x of [g, c]) { await x.end(); conns.splice(conns.indexOf(x), 1); }
+    ok("FO-7ts DW23 pass: with a deposit's transaction held open on party P, a credit write on P waits for the same advisory lock (seen in pg_locks); one on another party does not",
+      pOther && waited && lockSeen === "1" && credit(P) === "5000", { pOther, waited, lockSeen });
+    ok("FO-7ts DW23 pass: the credit trigger and the move pair take the lock through money_trust_lock (one key text, FO-7lk)",
+      sql(T, `select string_agg(proname, ',' order by proname) from pg_proc where proname in ('money_credit_entry_write', 'money_trust_entry_write') and prosrc like '%money_trust_lock(%'`) === "money_credit_entry_write,money_trust_entry_write"
+      && sql(T, `select string_agg(proname, ',' order by proname) from pg_proc where prosrc like '%''money_trust:''%'`) === "money_trust_lock");
+  }
+  // --------------------------------------------------------------------------------------------- DW24: PF-12's walls
+  {
+    const firmE = firm(T, "firm-ts-w"); sql(T, `${settingsQ(firmE)}; update money_payment_settings set trust_answer = 'YES', trust_answered_by = 'user-O' where firm_id = '${firmE}'`);
+    const app = (f: string, q: string) => execFileSync(join(BIN, "psql"), [`postgresql://xr_app@127.0.0.1:54329/${T}`, "-v", "ON_ERROR_STOP=1", "-q", "-Atc", `select set_config('app.firm_id', '${f}', false) is null; ${q}`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim().split("\n").at(-1);
+    const appRefused = (f: string, q: string, re: RegExp) => { try { app(f, q); return false; } catch (e) { return re.test(String((e as { stderr?: string }).stderr ?? e)); } };
+    ok("FO-7ts DW24 fail: firm E's session reads no money_credit_entry row of firm D; pass: firm D's session reads its own",
+      app(firmE, `select count(*) from money_credit_entry where firm_id = '${F}'`) === "0" && Number(app(F, `select count(*) from money_credit_entry`)) > 0);
+    ok("FO-7ts DW24 fail: firm E's session inserting a credit entry naming firm D is refused by the wall",
+      appRefused(firmE, ce(u(601), "REFUNDED", -1, { reason: "x" }), /row-level security/) && sql(T, `select count(*) from pg_policy where polrelid = 'money_credit_entry'::regclass and polname = 'pf12_firm'`) === "1"
+      && sql(T, `select relforcerowsecurity from pg_class where relname = 'money_credit_entry'`) === "t");
+  }
+  // ------------------------------------------------------------------------------- the rollback note, on the empty copy
+  psql(EMPTY, ["-1", "-f", join(MIG, NEW2, "rollback.sql")]);
+  ok("FO-7ts part 2 rollback: rollback.sql restores money_trust_entry_write exactly as FO-7lk left it and money_trust_entry's checks as before, and drops the credit ledger",
+    sql(EMPTY, `select md5(prosrc) from pg_proc where proname = 'money_trust_entry_write'`) === entryBefore && checksOf(EMPTY) === checksBefore
+    && sql(EMPTY, `select count(*) from pg_class where relname = 'money_credit_entry'`) === "0" && sql(EMPTY, `select count(*) from pg_proc where proname in ('money_credit_entry_write', 'money_invoice_due', 'money_trust_entry_move_paired')`) === "0",
+    { e: sql(EMPTY, `select md5(prosrc) from pg_proc where proname = 'money_trust_entry_write'`), entryBefore, c: checksOf(EMPTY) === checksBefore });
 } finally {
   for (const c of conns) await c.end().catch(() => undefined);
   for (const db of [T, BAD, EMPTY]) { try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", db]); } catch { /* best effort */ } }
