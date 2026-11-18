@@ -89,3 +89,21 @@ A real screen reader; an intended user's unaided walk (D17, D20); CI on this hea
 
 Verdict: Approve (2d6ba02891761a0297136a67fdf89829ccee4baf)
 * Blockers: none. Majors: none. Minors: m1–m3, which can be fixed in this PR or a follow-up.
+
+## Re-review: 9ad163a4f (fixes for m1–m3)
+Read: `git diff 2d6ba0289 9ad163a4f -- j_6.ts qa/built/J-6-part2.md`. The commit also carries this file (as written above) and 12 regenerated screenshots.
+* **Runs (copy `rev_j6` on :4594):**
+  - A fresh copy: **63/63**. The same kept copy with `HEADED=1 xvfb-run -a`: **63/63**.
+  - In the database afterwards, the 4 new people are `DEACTIVATED`; only the second Case Officer that part 1 keeps is `ACTIVE`, and `seats_limit` is 5.
+* **m1, fixed.** Step 1 compares each role's Compare roles group counts with `GET /api/platform/roles`. It read `OWNER [16,16,3,3] … BILLING_FINANCE [12,12,0,0] … READ_ONLY [0,0,0,0]`, and it requires 6 roles, Billing and finance at 12 money and Case Manager at 3 licence.
+  - Mutation: `roles.tsx` shows no licence actions. Step 1 **fails** (Owner `[16,16,0,3]`). The web code was restored and rebuilt.
+* **m2, fixed.** The loan, the leavers and the give-back are in `try/finally`, and the new "J-6 part 2 clean-up" line checks that each deactivate answers 200 and the seat limit is back.
+  - Mutation: a `throw` before W1 step 4. The run exits 1, the clean-up line still passes (`[200,200]`), both new people are `DEACTIVATED` and `seats_limit` is 5. `j_6.ts` was restored.
+  - The value given back is still the one read at the start of the run. With the `finally`, only a killed process can now leave it inflated, which is acceptable.
+* **m3, fixed.** The comment at `j_6.ts:204` and `qa/built/J-6-part2.md` say the screenshots show the lent seat figure.
+* **`qa/built/J-6-part2.md`:** its claims match my runs: the walk lines, 52/62 under mutation, and 63/63 twice.
+* **No new findings.** Two style points, not findings: the `try` body is not indented, and `left.every` passes when there are no leavers (but the step 3 and DW1 lines fail first in that case).
+* Screenshots my runs overwrote are restored; only this section is new.
+
+Verdict: Approve (9ad163a4f55558915050eb14252a7bb63219359c)
+* Blockers: none. Majors: none. Minors: none open (m1–m3 fixed and checked by mutation).
