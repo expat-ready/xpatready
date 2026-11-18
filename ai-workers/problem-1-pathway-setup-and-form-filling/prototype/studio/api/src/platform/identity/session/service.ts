@@ -6,8 +6,10 @@ import type { PlatformRole, Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { EVENT, StaffJoinedPayload } from "../../../../../ports/events.ts";
 import type { MailPort } from "../../../../../ports/mail.ts";
+import { MessageRefused } from "../../../../../ports/messages.ts";
 import { Db } from "../../../core.ts";
 import { auditEvent } from "../../audit/audit-event.ts";
+import { mailIn } from "../../messages/send/mail.ts";
 import { asBypass, firmScope, notInFirm } from "../../firm-scope.ts";
 import { actorWord } from "../audit.ts";
 import { writeMoneyKeysGranted } from "../money-line.ts";
@@ -180,7 +182,8 @@ export class PlatformSession {
    *  step-up; OWASP "Resetting MFA"): nobody resets their own; an Owner's only by an Owner; the person's sessions end, they
    *  are emailed through MailPort, and they set up the second step again at their next sign-in. */
   async resetTwoStep(actor: StaffContext, id: string) {
-    return this.inFirm(actor, async (tx) => {
+    let dispatch = async () => {};
+    const out = await this.inFirm(actor, async (tx) => {
       const t = await this.target(tx, actor.firmId, id);
       if (!actor.roles.includes("OWNER") && !actor.roles.includes("ADMIN")) forbidden("Only an Owner or Admin resets a person's two-step sign-in.", "OWNER_OR_ADMIN_ONLY");
       if (t.id === actor.staffId) forbidden("Nobody resets their own two-step sign-in. Ask another Owner or Admin.", "OWN_TWO_STEP");
@@ -189,11 +192,19 @@ export class PlatformSession {
       requireStepUp(actor, this.clock.now(), "Resetting a person's two-step sign-in");
       await this.endSessions(tx, actor, t.id, "two-step-reset");
       await this.audit(tx, actor, "platform.staff.two_step_reset", t.id, "a staff member's two-step sign-in was reset by an Owner or Admin; their sessions ended", { staffId: t.id });
-      // The out-of-band notice first: a mail failure changes nothing at the provider (the transaction rolls back).
-      await this.mail.send({ firmId: actor.firmId, to: t.email, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.two_step_reset", subject: "Your two-step sign-in was reset",
-        text: "An Owner or Admin of your firm reset your two-step sign-in. The next time you sign in, you set it up again. If you did not ask for this, tell your firm's Owner at once." });
+      // The out-of-band notice first: a mail failure changes nothing at the provider (the transaction rolls back). PF-19r:
+      // written into the outbox inside this transaction (it holds the firm's row lock), sent after the commit.
+      try {
+        dispatch = await mailIn(this.mail, tx, { firmId: actor.firmId, to: t.email, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.two_step_reset", subject: "Your two-step sign-in was reset",
+          person: { kind: "STAFF", id: t.id }, text: "An Owner or Admin of your firm reset your two-step sign-in. The next time you sign in, you set it up again. If you did not ask for this, tell your firm's Owner at once." });
+      } catch (e) {
+        if (e instanceof MessageRefused) problem(409, "Notice not sent", "The notice to this person could not be emailed, so their two-step sign-in was not reset. Check their email address.", { code: "NOTICE_NOT_SENT" });
+        throw e;
+      }
       await this.admin.resetTwoStep({ staffId: t.id, subject: t.identitySubject, email: t.email });
       return { staffId: t.id, twoStep: { method: null }, notified: true };
     });
+    await dispatch();
+    return out;
   }
 }

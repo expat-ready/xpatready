@@ -13,7 +13,7 @@ import { randomUUID } from "node:crypto";
 import type { FilesPort } from "../../../../../ports/files.ts";
 import { normaliseAddress } from "../../../../../ports/consent.ts";
 import { MailMessage, type MailPort } from "../../../../../ports/mail.ts";
-import { MessageRefused, MessageSend, type MessagePort } from "../../../../../ports/messages.ts";
+import { MessageRefused, MessageSend, type MessagePort, type SendResult } from "../../../../../ports/messages.ts";
 import { firmScope } from "../../firm-scope.ts";
 
 /** The key a mailed attachment is stored under (never under msg/, which MessagePort keeps for rendered messages). */
@@ -28,6 +28,19 @@ export class MessagesMail implements MailPort {
   constructor(private readonly d: { db: PrismaClient; messages: MessagePort<Prisma.TransactionClient>; files: FilesPort; log?: (line: string) => void }) {}
 
   async send(message: MailMessage): Promise<{ messageId: string }> {
+    const sent = await this.write(message, (put) => this.d.db.$transaction(put));
+    await sent.dispatch();
+    return { messageId: sent.messageId };
+  }
+
+  /** PF-19r: the same email written inside the caller's own transaction (a refusal rolls the caller's change back, and a
+   *  rolled-back change sends nothing); the caller runs `dispatch` after its commit. For a caller that holds a row lock
+   *  the outbox also takes (the firm's row, on a firm's first message), so its email never waits on its own lock. */
+  async sendIn(tx: Prisma.TransactionClient, message: MailMessage): Promise<{ messageId: string; dispatch: () => Promise<void> }> {
+    return this.write(message, (put) => put(tx));
+  }
+
+  private async write(message: MailMessage, inTx: (put: (tx: Prisma.TransactionClient) => Promise<SendResult>) => Promise<SendResult>) {
     const m = MailMessage.parse(message);
     // MessagePort's gate judges a service or marketing message by its person's consent: the caller names the person.
     if (m.class !== "TRANSACTIONAL" && !m.person) throw new MessageRefused(`a ${m.class.toLowerCase()} email names its person (MailMessage.person)`);
@@ -44,11 +57,19 @@ export class MessagesMail implements MailPort {
     if (!checked.success) throw new MessageRefused(`not sent: ${checked.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
     const keys: string[] = [];
     for (const [n, a] of (m.attachments ?? []).entries()) keys.push((await this.d.files.put(firmId, attachmentKeyOf(mailId, n, a.filename), a.bytes, a.contentType)).key);
-    const r = await this.d.db.$transaction((tx) => this.d.messages.send(tx, { ...input, attachments: keys }));
+    const r = await inTx((tx) => this.d.messages.send(tx, { ...input, attachments: keys }));
     // Not sent and never will be (a repeated key may answer a row already SENT: that is a success).
     if (r.state === "SUPPRESSED" || r.state === "FAILED" || r.state === "BOUNCED") throw new MessageRefused(`not sent: ${r.reason ?? r.state}`);
     // Committed: the worker or the sweep sends it. A dispatch failure here must not make the caller send it again.
-    await this.d.messages.dispatch(firmId, [r.outboxId]).catch((e: unknown) => this.d.log?.(`messages: dispatch of ${r.outboxId} failed (${e instanceof Error ? e.name : "error"}); the sweep sends it`));
-    return { messageId: r.outboxId };
+    const dispatch = () => this.d.messages.dispatch(firmId, [r.outboxId]).catch((e: unknown) => this.d.log?.(`messages: dispatch of ${r.outboxId} failed (${e instanceof Error ? e.name : "error"}); the sweep sends it`));
+    return { messageId: r.outboxId, dispatch };
   }
+}
+
+/** PF-19r: an email written in the caller's transaction when its MailPort can (MessagesMail.sendIn), else sent at once
+ *  (a test's LocalMail or fakeMail). The caller runs the answer after its commit. */
+export async function mailIn(mail: MailPort, tx: Prisma.TransactionClient, message: MailMessage): Promise<() => Promise<void>> {
+  if (mail instanceof MessagesMail) return (await mail.sendIn(tx, message)).dispatch;
+  await mail.send(message);
+  return async () => {};
 }
