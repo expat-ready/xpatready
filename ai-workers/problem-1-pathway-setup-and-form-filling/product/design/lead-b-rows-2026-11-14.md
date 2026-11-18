@@ -1965,3 +1965,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 ## Rev 17.29 (18 Nov 23:38 IST)
 * **#2064 PF-18b merged at 23:37 IST** (2c9231ab4). Its follow-up brief is `lead-b-briefs/PF-18bk.md`: real foreign keys from the support tickets to firm and staff (`(firm_id, raised_by)` → `platform_staff(firm_id, id)`) and from the messages to firm. All are RESTRICT. The message author stays guarded by the trigger (text, no key), and the triggers stay. It starts from main now and is about 150 lines. It takes these keys out of PF-17.
 * **PF-18s:** `lead-b-briefs/PF-18s.md` now holds its owed lines: the office placement route (rev 16.78) and a double-send guard on the Help & support reply. The guard comes from qa's pass of #2064: the reply route has no idempotency key, so the screen must guard as #1998's M1 does. It is proved with a pass test and a fail test.
+
+## Rev 17.30 (18 Nov 23:52 IST)
+* **Queue blocker (Lead 82):** six of my PRs went dirty against main and were dropped from the merge queue: #2130, #2128, #1959, #2102, #2011, and #2103 (not labelled yet). Each conflicts only in its module card. I posted a merge-main step on each (comments 6987590851 to 6987593112).
+* **P-600 re-stamps:** PF-18b's `20261118073000` is now main's newest migration, so #2102's `20261117140000` and #2103's `20261117130000` are earlier than it. They are renamed to **`20261118150000_fo3a2_consult_record`** and **`20261118143000_fo3a_hour_sets`**. This supersedes my 6982230626 and 6982231047 "keep stamp" steps.
+* Cloud session ids went to Lead 82 so it can type "continue" (P-699).
