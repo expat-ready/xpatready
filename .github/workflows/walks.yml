@@ -11,8 +11,9 @@
 #     Chromium with video, trace and a screenshot per step (tests/journeys/walk.mjs + record.ts), and its recording is
 #     uploaded whatever the verdict, as walk-<journey>-<head sha> (README.md inside says how to replay; kept 30 days).
 #   * No cache: a dispatch on any ref writes nothing the default branch reads (CodeQL cache poisoning).
-#   * Self-test, every run: the fixture tests/journeys/fixtures/j_0_fails.ts fails on purpose; its job proves the walk
-#     step fails and the recording is still uploaded (tests/check_journey_recording.ts checks the same on a machine and
+#   * Self-test, every run: the fixtures tests/journeys/fixtures/j_0_fails.ts (a FAIL, then exit 1) and j_0_throws.ts
+#     (a crash: a click on a button that is not there) fail on purpose; each job proves the walk step fails and the
+#     recording is still uploaded (tests/check_journey_recording.ts checks the same on a machine and
 #     checks this file's shape).
 # Safety: read-only token; the input reaches the shell only through env and is checked against a fixed pattern.
 name: walks
@@ -49,7 +50,7 @@ jobs:
           SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           J: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/journeys
         run: |
-          export LC_ALL=C
+          export LC_ALL=C; set -f   # no glob expansion of the input (review of #2133: "*" must not list files)
           [ "${#WANT}" -le 200 ] || { echo "journeys: at most 200 characters"; exit 1; }
           if [ -z "${WANT// /}" ]; then ids=$(ls "$J" | sed -n 's/^\(j_[0-9][0-9]*\)\.ts$/\1/p' | sort -V)
           else ids=""; for w in $WANT; do
@@ -60,7 +61,8 @@ jobs:
           fi
           [ "$(printf '%s\n' $ids | grep -c .)" -le 20 ] || { echo "journeys: at most 20"; exit 1; }
           m=$(for id in $ids; do printf '{"name":"%s","file":"%s","expect":"pass"},' "$id" "$id"; done)
-          m="[${m}{\"name\":\"j_0_fails\",\"file\":\"$J/fixtures/j_0_fails.ts\",\"expect\":\"fail\"}]"
+          for f in j_0_fails j_0_throws; do m="${m}{\"name\":\"$f\",\"file\":\"$J/fixtures/$f.ts\",\"expect\":\"fail\"},"; done
+          m="[${m%,}]"
           echo "matrix=$m" >> "$GITHUB_OUTPUT"; echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "walks at $SHA: $m" | tee -a "$GITHUB_STEP_SUMMARY"
   walk:
@@ -91,7 +93,7 @@ jobs:
       - id: w
         name: walk ${{ matrix.j.name }} on its own copy, recorded (walk.mjs; live AI off, US$0)
         continue-on-error: ${{ matrix.j.expect == 'fail' }}
-        env: { FILE: "${{ matrix.j.file }}", GITHUB_SHA: "${{ needs.plan.outputs.sha }}" }
+        env: { FILE: "${{ matrix.j.file }}", WALK_SHA: "${{ needs.plan.outputs.sha }}" }
         run: |
           node "$S/tests/journeys/walk.mjs" "$FILE" "$RUNNER_TEMP/walk"
       - name: the copy's server log beside the recording
@@ -105,6 +107,7 @@ jobs:
           name: walk-${{ matrix.j.name }}-${{ needs.plan.outputs.sha }}
           path: ${{ runner.temp }}/walk
           if-no-files-found: error
+          overwrite: true   # "Re-run failed jobs" uploads under the same name
           retention-days: 30
       - name: summary (verdict, video, trace, step screenshots)
         if: always()
@@ -119,5 +122,5 @@ jobs:
           echo "walk step: $OUTCOME; artifact id: ${ART:-none}"
           [ "$OUTCOME" = failure ] || { echo "FAIL: the failing fixture's walk step did not fail"; exit 1; }
           [ -n "$ART" ] || { echo "FAIL: the failing fixture's recording was not uploaded"; exit 1; }
-          w="$RUNNER_TEMP/walk"; ls "$w"/video/*.webm "$w"/trace-1.zip "$w"/steps/002-fail-*.png
+          w="$RUNNER_TEMP/walk"; ls "$w"/video/*.webm "$w"/trace-1.zip "$w"/steps/001-*.png
           echo "PASS: a failing journey fails its walk step and still uploads its recording"

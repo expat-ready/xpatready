@@ -18,8 +18,9 @@ let traces = 0, shots = 0;
 const realLog = console.log.bind(console), realExit = process.exit.bind(process), realFetch = globalThis.fetch.bind(globalThis);
 
 async function finishContext(ctx: BrowserContext) {
+  if (!live.has(ctx)) return;
+  await Promise.allSettled(pending.splice(0));   // queued step screenshots first, while the context is still open
   if (!live.delete(ctx)) return;
-  await Promise.allSettled(pending.splice(0));
   await ctx.tracing.stop({ path: join(OUT!, `trace-${++traces}.zip`) }).catch((e) => realLog(`record: trace ${traces} not saved: ${e.message}`));
 }
 function record(browser: Browser): Browser {
@@ -51,7 +52,11 @@ if (process.env.WALK_BOARD === "1") board = (async () => {
 const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
 let calls: string[] = [];
 
+// After the journey's first exit (process.exit, a crash, SIGTERM) nothing more counts: no step is printed or recorded,
+// and a fetch never settles, so code still running after process.exit cannot add steps or change the exit code.
+let exiting: number | null = null;
 globalThis.fetch = async (input, init) => {
+  if (exiting !== null) return new Promise<Response>(() => undefined);
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url, method = init?.method ?? (input instanceof Request ? input.method : "GET");
   const r = await realFetch(input, init).catch((e) => { calls.push(`${method} ${url} → ${e.message}`); throw e; });
   appendFileSync(join(OUT, "requests.jsonl"), JSON.stringify({ at: new Date().toISOString(), method, url, status: r.status }) + "\n");
@@ -59,13 +64,17 @@ globalThis.fetch = async (input, init) => {
   return r;
 };
 
+let queue: Promise<unknown> = Promise.resolve();
 console.log = (...args: unknown[]) => {
+  if (exiting !== null) return;
   realLog(...args);
   const line = args.map(String).join(" "), m = line.match(/^(PASS|FAIL|HELD)\s+(.*)$/);
   if (!m) return;
   const n = ++shots, slug = m[2].slice(0, 60).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, ""), base = `${String(n).padStart(3, "0")}-${m[1].toLowerCase()}-${slug}`;
   const shotsOf: string[] = [], made = calls; calls = [];
-  const step = (async () => {
+  // One step after another, so a step's screenshot is taken before the next step's (the journey itself runs on: a
+  // shot shows the page a moment after its line, never a later step's work done in this queue).
+  const step = queue = queue.then(async () => {
     if (board) {
       const p = await board;
       rows.push(`<li style="margin:6px 0;color:${m[1] === "PASS" ? "#14532d" : "#991b1b"}"><b>${m[1]}</b> ${esc(m[2].slice(0, 400))}${made.length ? `<ul style="color:#444;font-size:13px">${made.map((c) => `<li>${esc(c.slice(0, 200))}</li>`).join("")}</ul>` : ""}</li>`);
@@ -78,7 +87,7 @@ console.log = (...args: unknown[]) => {
       await p.screenshot({ path: join(OUT!, "steps", f) }).then(() => shotsOf.push(f), (e) => realLog(`record: no screenshot for step ${n}: ${e.message}`));
     }
     appendFileSync(join(OUT!, "steps.jsonl"), JSON.stringify({ n, verdict: m[1], step: m[2].slice(0, 400), screenshots: shotsOf, requests: made }) + "\n");
-  })();
+  });
   pending.push(step);
 };
 
@@ -90,5 +99,16 @@ const finish = () => finishing ??= (async () => {
   await boardBrowser?.close().catch(() => undefined);
   clearTimeout(stop);
 })();
-process.exit = ((code?: number) => { finish().then(() => realExit(code ?? process.exitCode ?? 0)); }) as typeof process.exit;
-process.on("beforeExit", () => { if (!finishing) void finish(); });
+// Every way out finishes the recording first (review of #2133, M1, M2): process.exit, an uncaught error or rejection
+// (a Playwright timeout, a rethrow from finally), SIGTERM (walk.mjs's timeout), and the natural end. The first one wins.
+const leave = (code: number) => {
+  if (exiting !== null) return;
+  exiting = code;
+  finish().then(() => realExit(code));
+};
+process.exit = ((code?: number | string | null) => { leave(Number(code ?? process.exitCode ?? 0) || 0); }) as typeof process.exit;
+const crash = (e: unknown) => { if (exiting === null) { console.error("record: the journey crashed:", e); leave(1); } };
+process.on("uncaughtException", crash);
+process.on("unhandledRejection", crash);
+process.on("SIGTERM", () => { if (exiting === null) { console.error("record: stopped (SIGTERM)"); leave(143); } });
+process.on("beforeExit", () => leave(Number(process.exitCode ?? 0) || 0));
