@@ -1899,3 +1899,11 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **Main breaks `module-cards`:** `api/src/front-office/MODULE.md` is 42 lines after #1918 and #2062 merged (f38c6b09b), so every PR tested on main is red. Fix proposed to Lead 79 (P-214): fold the three "Booking settings (FO-3a part 1a)" bullets into one bullet, 40 lines, no fact cut. Lead 79 decides when it lands and who makes it.
 * **#2109 PF-4dn** (head 1bfea5051) was opened at 19:45 IST, after the B1 freeze (P-692), while P-663 still held the row. Lane told to stop with the PR kept open (comment posted), and Lead 79 told.
 * Lead 79: the module-cards check skips merge-queue batches, so tonight's drain is not blocked. Lead 79 makes the card fold as the first PR after the move (P-214). #2109 stays open, no pushes, and Lead 79 logs the breach.
+
+### Rev 17.17 (12:41 IST 18 Nov): org move verified, freeze lifted
+* **Lead 79:** the repository is now `expat-ready/xpatready`, and the B1 freeze is lifted from 13:0x IST. P-663 still holds new capability rows. #2109 waits for Lead 79's read.
+* **Merged in the drain:** #1991 FO-7a2 (at 8b5dffe06), #2021 FO-9b part 0, #2052 PF-4c part 1, #2062 FO-9a part 1, #2087 PF-0bp. Earlier: #1956, #1918.
+* **Ready for Lead 79's label:** #2014 PF-8r (f5cbdbf87, everything on the head). #2011 FO-13i (Approve 935afda4b, ci green) still needs Lead 79's P-423 re-read of its third main merge.
+* **Conflicting with main, merge-main steps posted:** #2064, #2038, #2029, #2009, #2001, #1961, #1959, and #2012 (stamp to 20261117123000_pf21i_complaint_request_key). Lead 79 asked to nudge the cloud lanes.
+* **Origin URL:** `.git/config` is shared and outside this session's sandbox, so it still names the old org (which redirects). Records push to `https://github.com/expat-ready/xpatready.git` by name.
+* **After P-663 clears:** FO-3a part 1b and part 2a (#1918 merged); PF-15 part 1 (its gates are met, and its claim branch is on the clean-up list); the PF-6m2 follow-ups.
