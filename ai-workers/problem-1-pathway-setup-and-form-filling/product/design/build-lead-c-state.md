@@ -197,3 +197,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
 
 **20:29 IST 18 Nov (Lead 81):** the founder answered "Yes, GST/HST only" at 20:29 IST; recorded as P-701. Quoted in FO-7g, FO-7b and FO-7ts-3.
 * 22:05 IST 18 Nov: Lead 81 asked about CS-W1 (#2125). It is running; head 216aa33e6 (round 4 Major fixed) still needs a reviewer Approve (the last Approve is on 25d1427c8). Lead 81 reads the migration (P-423) and Lead B's platform_firm grant question. Told Lead 81 that 'Prove Lead' is qa's, not mine.
+* 22:25 IST 18 Nov: Lead 81 read the #2125 (CS-W1 part 1) migration (P-423): OK, labelled on 216aa33e6. Lead B's platform_firm policy and grant: accepted (a NOLOGIN role that owns only the lookup). 'Prove Lead' is Lead 81's (qa). Next: CS-K1 part 1 starts once #2125 merges (in series on cases.prisma).
