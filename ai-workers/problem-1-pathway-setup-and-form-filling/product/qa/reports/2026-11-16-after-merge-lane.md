@@ -48,3 +48,18 @@ Refined 16:1x IST from qa #1950's verdict table (open, stacked on #1929): R1.19 
 | 17 Nov 03:4x | bfac889d7 | #1945 PF-6m (R1.6 part), #1950 (qa records: QA-484 closed there), #2007, #1989, #1997, #1865 | R1.6: covered by qa #2010 (parts missing PF-6 part 2a/2b, J-6 part 2), not duplicated | #2006 dequeued (conflict with #1950 in CAPABILITIES.md): main merged in, R1.27 note kept on main's row |
 | 17 Nov 03:5x | bfac889d7 | none | none | wait |
 | 17 Nov 04:1x | 693369537 | #1998 PF-21s part 3, #2002 CS-C1b, #2025, #2028 (ports), #1999 (qa R1.4; took QA-500 too), #2015, #1990 (records) | none watched | #2006 merged with main again: this lane's FO-4sf finding renumbered QA-500 → QA-501 (#1999's QA-500 is R1.4's) |
+| 17 Nov 04:3x to 06:3x | 693369537 | none (six checks) | none | #2006 waited in the records queue; merged 06:35 IST (QA-493 closed, R1.27 parts missing FO-4b, QA-501) |
+| 17 Nov 06:4x | 6dcff65f5 | #2006 (this lane), #1968 (qa R1.38/R1.40 on the manage page), #2034 (QA-498 quarantine) | none | wait |
+| 17 Nov 07:0x | bcc505afd | #1957 PF-5t part 1 (R1.100: new version asks again, acceptances shown), #2040 FO-6 part 2 (signing port), #2048 (qa records) | none: R1.100 still waits on QA-481 (the code reaches no inbox: PF-5v part 2 after PF-19p #1961, unmerged) | wait |
+| 17 Nov 07:2x | bcc505afd | none | none | last check |
+
+## Closing, 17 Nov 07:3x IST (lane stops at 08:00, P-626)
+* **Whole rows proven by this lane: none.** No watched row had all its parts merged during the lane (P-606).
+* **Done:** QA-493 closed (FO-4sf #1962; #2006); R1.27 parts missing FO-4b; QA-484 fixed on main (confirmed; row closed by #1950); **QA-501** new (Minor: the FO-4sf pack is not re-runnable on one database). Lead 69's ask answered on #2006.
+* **What still blocks each watched row, on main bcc505afd:**
+  * R1.6: PF-6 part 2a/2b, J-6 part 2 (qa #2010 holds the retest after PF-6m).
+  * R1.40: J-38 (no PR seen). R1.38: J-38 and FO-3st1.
+  * R1.28: PF-19b part 2 (#1956, dequeued) and FO-2 part 3 (withdraw).
+  * R1.19: PF-5 part 2 (#1959), PF-5s (sign-up page), QA-481 (PF-5v part 2 after PF-19p #1961), and J-19 (join and walk: sign-up → trial → first invite; no `j_19.ts` on main).
+  * R1.100: QA-481 (PF-5v part 2) and PF-5t part 2 (the screens: part 1 #1957, merged 07:07 IST, is API only per `screens/PF-5t/review.md`); retest the sign-in and acceptance journey when both land.
+* **For the next qa lane:** re-run `check_qa_r1_platform_fo_walk.ts` for R1.19/R1.100 once their listed parts (J-19, PF-5t part 2 included) merge; run FO-4sf's pack on fresh copies only until QA-501 is fixed.

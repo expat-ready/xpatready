@@ -32,6 +32,10 @@ for c in "git -C $T/copy push" "cd $T/copy && git push" "cd $T && cd copy; git p
   r=$(CWD="$T/other" guard "$c"); ok "from another folder, a push to the queued branch is refused: $c" "$([ "$r" = deny ] && echo 1)" "got $r"; done
 for c in 'git push' "git -C $T/other push origin HEAD" 'git push origin *'; do
   r=$(CWD="$T/other" guard "$c"); ok "from another folder, passes: $c" "$([ "$r" = allow ] && echo 1)" "got $r"; done
+git -C "$T/other" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init && git -C "$T/other" branch lane/x
+r=$(CWD="$T/other" guard 'git push origin --all'); ok "a bulk push (--all) checks every local branch, not only the current one (bot finding)" "$([ "$r" = deny ] && echo 1)" "got $r"
+r=$(guard 'git push origin --tags'); ok "a tags-only push updates no branch and passes" "$([ "$r" = allow ] && echo 1)" "got $r"
+r=$(guard "git commit -qm 'stop; git push later'"); ok "a ; inside a quoted commit message is not a second command" "$([ "$r" = allow ] && echo 1)" "got $r"
 r=$(guard '{"owner":"o","repo":"r","pullNumber":12}' mcp__github__update_pull_request_branch); ok "the GitHub MCP branch update of the queued PR is refused" "$([ "$r" = deny ] && echo 1)" "got $r"
 r=$(guard '{"owner":"o","repo":"r","pullNumber":13}' mcp__github__update_pull_request_branch); ok "... and of a PR not queued passes" "$([ "$r" = allow ] && echo 1)" "got $r"
 r=$(guard '{"owner":"o","repo":"r","branch":"lane/x","files":[]}' mcp__github__push_files); ok "the GitHub MCP push_files to the queued branch is refused" "$([ "$r" = deny ] && echo 1)" "got $r"

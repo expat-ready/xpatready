@@ -117,7 +117,8 @@ function knownKeys(): Set<string> {
 /** Dotted names that are not structure keys: shared facts ("person.date_of_birth"), a check's field paths
  *  ("expected.people", "uci.subject", "cited.quote"), the resolver's "holder.spouse", a fee line's "exempt.under_age", and file names. */
 // "firm" and "fees" head FO-5's retainer placeholder names ({firm.name}, {fees.total}): fields of a document, no program.
-const NOT_KEYS = new Set(["case", "person", "relationship", "expected", "holder", "exempt", "uci", "cited", "firm", "fees"]);
+// "legal" heads AUD-5's firm setting key (legal.closed_client_files_years, the settings registry's module.name form): no program.
+const NOT_KEYS = new Set(["case", "person", "relationship", "expected", "holder", "exempt", "uci", "cited", "firm", "fees", "legal"]);
 const FILE_ENDINGS = new Set(["json", "ts", "tsx", "js", "mjs", "cjs", "pdf", "md", "txt", "csv", "html", "py", "xml", "sql", "png"]);
 /** A program by name, in a name or a string. Roles (spouse, child) are not programs; neither are the abbreviations
  *  fact-name.ts upper-cases (LMIA, TRV), which name facts of any program. */
@@ -257,6 +258,9 @@ const cases: [string, string, Kind][] = [
   ["a slice guard's words", `return { why: "Signing is not derived yet for this combination." };`, "slice"],
 ];
 for (const [what, src, kind] of cases) ok(`fail: ${what} is caught (${src})`, caught(src, kind).length === 1, scan([{ file: "x.ts", src }], known));
+// AUD-5 part 1: a firm setting key headed "legal" is a setting, no program; a five-letter head that is not on the list still is.
+ok("pass: a firm setting key headed \"legal\" is not taken for a combination (legal.closed_client_files_years)", caught(`const k = "legal.closed_client_files_years";`, "key").length === 0);
+ok("fail: another unknown five-letter head is still caught (lexus.open)", caught(`const k = "lexus.open";`, "key").length === 1);
 
 const caughtIn = (file: string, src: string) => judge(scan([...engine, { file, src }], known), entries).unexpected.filter((h) => h.file === file);
 ok("fail: a key in a new API file is caught (P-452)", caughtIn("api/src/new-thing.ts", `if (c.combination_key === "fs.spouse") charge();`).length === 1);
