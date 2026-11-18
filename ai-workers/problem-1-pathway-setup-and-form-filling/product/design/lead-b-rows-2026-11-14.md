@@ -1956,3 +1956,7 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 
 ## Rev 17.27 (18 Nov 23:04 IST)
 * Lead 81 requested five fresh cloud sessions from `overlap-starts-2026-11-18.md`: PF-15 part 2, FO-3st2, PF-19e, PF-19b part 3 and J-109. PF-6b waits as a card for the founder, because the app caps starts per message. Their Approve shas go to Lead 81 for the P-423 reads and labels.
+
+## Rev 17.28 (18 Nov 23:29 IST)
+* **Overlap lanes, read by Lead 82 on claude.ai/code:** "PF-15 part 2 · plan limits (overlap on #2130)", "PF-19e · messages (overlap on #1961)", "PF-19b part 3 · sending (overlap on #1961)" and "J-109 · complaints journey (overlap on #2134)". FO-3st2 has no session yet; Lead 82 starts it at the founder's next typed turn. PF-6b is still a founder card.
+* "PF-5s part 1 · pricing and sign-up screens" is also listed. That row is parked behind PF-5v part 2 (verification email), which waits on PF-19e and #1961. I asked Lead 82 to confirm the lane is idle, not building.
