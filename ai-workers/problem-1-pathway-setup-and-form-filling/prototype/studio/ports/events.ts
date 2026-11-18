@@ -29,6 +29,9 @@ export const EVENT = {
   COMPLAINT_RECEIVED: "complaint.received",
   /** A complaint was closed with its outcome (platform register, PF-21; FO-13k rev 12). */
   COMPLAINT_CLOSED: "complaint.closed",
+  /** A firm's staff member raised a support ticket to us (platform, PF-18b; AG-16-63). The name is SA-10's domain event
+   *  (04-Doc-2-SuperAdmin-Console.md: "support.ticket_created"), which our console (PF-17) consumes. */
+  SUPPORT_TICKET_RAISED: "support.ticket_created",
   /** A retainer or consultation agreement was drafted from a template (front office, FO-5; contracts §2.3). */
   RETAINER_DRAFTED: "retainer.drafted",
   /** A retainer passed its send check and was sent (front office, FO-5; FO-6 adds the signing request; contracts §2.3). */
@@ -41,6 +44,8 @@ export const EVENT = {
    *  the ended version, `reason` UPDATED). FO-6 cancels the signing request on it. */
   RETAINER_REQUEST_ENDED: "retainer.request_ended",
 
+  /** A client identity check was recorded (front office, FO-13i; Code s. 24(2)(a)). Ids, the method and the detail names only. */
+  IDENTITY_CHECKED: "identity.checked",
   /** A lead arrived: by the web form or added by hand (front office, FO-2; AG-2-84). */
   LEAD_CREATED: "lead.created",
   /** A lead got an owner: Take it or Assign to (FO-2; AG-2-13c, AG-2-86). */
@@ -127,6 +132,16 @@ export const RetainerEventPayload = z.object({
 }).strict();
 export type RetainerEventPayload = z.infer<typeof RetainerEventPayload>;
 
+/** The payload FO-13i writes for `identity.checked`: ids, the method and the names of the corroborated details only
+ *  (never the document's number, its last 4 characters, its type or country, the copy's key or a link; a consumer reads
+ *  the check). The firm is the outbox row's firm_id; module_event.subject_id is the check's id. */
+export const IdentityCheckedPayload = z.strictObject({
+  checkId: Uuid, personId: Uuid, checkedBy: Uuid,
+  method: z.enum(["IN_PERSON", "VIDEO", "DOCUMENT_COPY", "OTHER"]),
+  details: z.array(z.enum(["NAME", "HOME_ADDRESS", "PHONE", "EMAIL", "BUSINESS_DETAILS"])).min(1).max(5),
+  copyKept: z.boolean(),
+});
+export type IdentityCheckedPayload = z.infer<typeof IdentityCheckedPayload>;
 /** The payload FO-2 writes for every lead.* event: ids and facts only (no name, email or phone; a consumer reads the lead
  *  itself). The firm is the outbox row's firm_id; module_event.subject_id is the lead's id. */
 export const LeadEventPayload = z.object({
@@ -193,3 +208,11 @@ export const PersonMerged = z.strictObject({ type: z.literal(EVENT.PERSON_MERGED
 export type PersonMerged = z.infer<typeof PersonMerged>;
 export const PersonUnmerged = z.strictObject({ type: z.literal(EVENT.PERSON_UNMERGED), firmId: Uuid, payload: PersonMergePayload });
 export type PersonUnmerged = z.infer<typeof PersonUnmerged>;
+
+// PF-18b (AG-16-63): a support ticket raised, ids only (never the ticket's words, its page or a file: a consumer reads the
+// ticket). The firm is the outbox row's firm_id and module_event.subject_id is the ticket id.
+export const SupportTicketRaised = z.strictObject({
+  type: z.literal(EVENT.SUPPORT_TICKET_RAISED), firmId: Uuid, ticketId: Uuid, raisedBy: Uuid, files: z.number().int().min(0).max(3),
+  createdAt: z.iso.datetime({ offset: true }),
+});
+export type SupportTicketRaised = z.infer<typeof SupportTicketRaised>;
