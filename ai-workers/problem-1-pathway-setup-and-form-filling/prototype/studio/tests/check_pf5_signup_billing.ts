@@ -185,7 +185,7 @@ try {
     !!made?.checkoutUrl && co?.paymentMethodCollection === "if_required" && co.missingPaymentMethod === "pause" && co.input.trialDays === 14 && co.input.priceId === "price_teamMonthly" && co.input.firmId === firmId
     && sql(`select status::text || ':' || coalesce(stripe_customer_id, '-') from platform_subscription where firm_id = '${firmId}'`) === `TRIAL:${co.input.customerId}`, { made, co });
   ok("PF-5 pass: each change has its audit line in its transaction, and firm.created is in the outbox once (written last)",
-    sql(`select string_agg(action, ',' order by action) from audit_event where detail->>'firmId' = '${firmId}'`) === "firm.created,platform.staff.owner_created,platform.subscription.created,platform.subscription.customer_linked,platform.terms.accepted"
+    sql(`select string_agg(action, ',' order by action) from audit_event where detail->>'firmId' = '${firmId}'`) === "firm.created,platform.staff.money_keys_granted,platform.staff.owner_created,platform.subscription.created,platform.subscription.customer_linked,platform.terms.accepted"
     && sql(`select count(*) from module_event where firm_id = '${firmId}' and type = '${EVENT.FIRM_CREATED}'`) === "1");
   const again = await problemOf(() => s.verify({ token, code }, "10.0.1.5"));
   ok("PF-5 fail: a verification link used twice → 404", again?.status === 404, again);
