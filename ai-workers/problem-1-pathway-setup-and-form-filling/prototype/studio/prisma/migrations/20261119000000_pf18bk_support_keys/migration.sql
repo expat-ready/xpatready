@@ -8,13 +8,13 @@
 --   * author_id is text ('support' or a staff uuid) and takes no key: platform_support_message_write keeps proving a
 --     FIRM_STAFF author. No trigger, function or check changes: the raiser's EXISTS check stays too (PF-18b's suite names
 --     its message; the key refuses the same row with the same code, foreign_key_violation, tests/check_pf18bk_keys.ts DW2).
--- One statement (a DO block), so it is all or nothing: prisma migrate deploy wraps no transaction, and a key that failed
--- after another was added would leave the migration half done and not re-runnable (break 1). It first locks the four
--- tables (no firm, staff, ticket or message can change between the check and the keys), then checks that every ticket
--- has its firm and its raiser in that firm and every message its firm; otherwise it stops with the counts and changes
--- nothing. It never deletes or edits a row. The counts see every row because migrations run as the database owner
--- (xr_studio, a superuser, as every migration here): a role under FORCE ROW LEVEL SECURITY would count none, and then
--- ADD CONSTRAINT (which reads every row) still refuses the orphan, with PostgreSQL's own message (break 2).
+-- One statement (a DO block), so it is all or nothing however it is run (psql -f wraps nothing; a key that failed after
+-- another was added must never leave the folder half done). It first checks that the runner sees every row: the database
+-- owner with BYPASSRLS or a superuser (xr_studio, as every migration here; PF-12's own migration needs it too). Under
+-- FORCE ROW LEVEL SECURITY anyone else would count no orphan, and ADD CONSTRAINT would validate blind as well (review
+-- m1). Then it locks the four tables (no firm, staff, ticket or message changes between the check and the keys), checks
+-- that every ticket has its firm and its raiser in that firm and every message its firm, and otherwise stops with the
+-- counts and changes nothing. It never deletes or edits a row.
 -- Rollback: ALTER TABLE "platform_support_message" DROP CONSTRAINT "platform_support_message_firm_id_fkey";
 --   ALTER TABLE "platform_support_ticket" DROP CONSTRAINT "platform_support_ticket_firm_id_raised_by_fkey",
 --   DROP CONSTRAINT "platform_support_ticket_firm_id_fkey"; delete this folder's row from _prisma_migrations.
@@ -23,6 +23,10 @@
 DO $pf18bk$
 DECLARE no_firm bigint; no_raiser bigint; msg_no_firm bigint;
 BEGIN
+  IF NOT (SELECT r.rolsuper OR r.rolbypassrls FROM pg_roles r WHERE r.rolname = current_user) THEN
+    RAISE EXCEPTION 'PF-18bk stopped, nothing changed: % cannot see every support row (row level security); run migrations as the database owner', current_user
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
   LOCK TABLE "platform_firm", "platform_staff", "platform_support_ticket", "platform_support_message" IN SHARE ROW EXCLUSIVE MODE;
   SELECT count(*) INTO no_firm FROM "platform_support_ticket" t
     WHERE NOT EXISTS (SELECT 1 FROM "platform_firm" f WHERE f.id = t.firm_id);
@@ -33,7 +37,7 @@ BEGIN
   IF no_firm + no_raiser + msg_no_firm > 0 THEN
     RAISE EXCEPTION 'PF-18bk stopped, nothing changed: % support ticket(s) without their firm, % without a raiser on that firm''s staff, % support message(s) without their firm', no_firm, no_raiser, msg_no_firm
       USING ERRCODE = 'foreign_key_violation',
-            HINT = 'Find them with the three NOT EXISTS queries in this migration and take each to the tech lead: never delete a support record. A ticket''s firm and raiser are fixed by platform_support_ticket_write, so a repair is the database owner''s, with that trigger disabled for the one row. Then deploy again.';
+            HINT = 'Find them with the three NOT EXISTS queries in this migration and take each to the tech lead: never delete a support record. A ticket''s firm and raiser are fixed by platform_support_ticket_write, so a repair is the database owner''s, with that trigger disabled for the one row. Then mark the failed attempt rolled back (prisma migrate resolve --rolled-back 20261119000000_pf18bk_support_keys) and deploy again.';
   END IF;
 
   -- AddForeignKey

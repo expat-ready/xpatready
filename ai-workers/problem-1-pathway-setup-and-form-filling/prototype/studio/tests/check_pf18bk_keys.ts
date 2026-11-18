@@ -9,7 +9,9 @@
 //        naming the key; ON UPDATE too), nothing is cascaded; without the key the staff delete goes through.
 //   DW4  the migration applies cleanly on a copy with PF-3's Sample seed and tickets on it; on a copy with one planted
 //        orphan ticket it stops with its message and changes nothing (no key, the rows as they were, the orphan kept);
-//        with its check blinded, the failing raiser key takes the firm key added before it away too (all or nothing).
+//        with its check blinded, the failing raiser key takes the firm key added before it away too (all or nothing); a
+//        runner row level security would blind is stopped first. (Through psql -f; prisma migrate deploy also records a
+//        failed _prisma_migrations row, which the stop message's hint names how to clear.)
 //   DW5  PF-18b's trigger functions and policies are byte-identical before and after; the schema folder diffs to the
 //        migrated database with nothing in the support tables; a schema copy without the raiser relation names its key.
 // Two scratch databases (every migration before this one, PF-3's Sample seed) and a scratch folder for Prisma's config.
@@ -105,6 +107,10 @@ try {
     stopped.status !== 0 && /PF-18bk stopped, nothing changed: 0 support ticket\(s\) without their firm, 1 without a raiser/.test(stopped.stderr), stopped.stderr);
   ok("DW4 fail: and changes nothing: no key added, the tickets as they were, the orphan kept",
     keysOn(ORPHAN) === 0 && osql("select string_agg(id::text || ':' || raised_by::text || ':' || status::text, ',' order by id) from platform_support_ticket") === oBefore && osql(`select count(*) from platform_support_ticket where id = '${orphanId}'`) === "1");
+  // A runner that row level security would blind (xr_app: no BYPASSRLS, not a superuser) is stopped before it counts.
+  const blindRole = spawnSync(bin("psql"), [urlOf(ORPHAN), "-X", "-q", "-v", "ON_ERROR_STOP=1", "-c", "set role xr_app", "-f", ownSql], { encoding: "utf8" });
+  ok("DW4 fail: run as a role row level security would blind, it stops with its own message and adds no key",
+    blindRole.status !== 0 && /PF-18bk stopped, nothing changed: xr_app cannot see every support row/.test(blindRole.stderr) && keysOn(ORPHAN) === 0, blindRole.stderr);
   // All or nothing (break 1): with the check blinded (a scratch copy of the file), the raiser key fails on the orphan and
   // the firm key, added just before it, goes too: one statement, so no half-applied migration that cannot be re-run.
   const blind = join(WORK, "blind.sql");
@@ -119,7 +125,9 @@ try {
   ok("DW1 pass: a ticket for a firm that does not exist is refused by a key with every user trigger off (23503)",
     byKey(off1, "platform_support_ticket_firm_id_fkey", "platform_support_ticket_firm_id_raised_by_fkey"), off1.err);
   const on1 = attempt(ticketSql(crypto.randomUUID(), ghost, staffA.id));
-  ok("DW1 pass: and refused with the triggers on", on1.refused, on1.err);
+  ok("DW1 pass: and refused with the triggers on (23503)", on1.refused && /ERROR: {2}23503:/.test(on1.err), on1.err);
+  const firmKeyOnly = attempt(triggersOff(`alter table platform_support_ticket drop constraint platform_support_ticket_firm_id_raised_by_fkey`, ticketSql(crypto.randomUUID(), ghost, staffA.id)));
+  ok("DW1 pass: the ticket's firm key alone (triggers off, composite key dropped, rolled back) refuses it (23503)", byKey(firmKeyOnly, "platform_support_ticket_firm_id_fkey"), firmKeyOnly.err);
   const offM = attempt(triggersOff(messageSql(ghost, t1, staffA.id)));
   ok("DW1 pass: a message for a firm that does not exist is refused by a key with the triggers off (23503)",
     byKey(offM, "platform_support_message_firm_id_fkey", "platform_support_message_firm_id_ticket_id_fkey"), offM.err);
