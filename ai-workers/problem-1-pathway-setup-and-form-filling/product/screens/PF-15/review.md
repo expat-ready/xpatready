@@ -224,5 +224,18 @@ Diff `4c4e0f3d3..ec04e138b` only (P-277), with the PF-15 reports left out: the m
   * `approved_at` carries microseconds, so `WHILE at <= target` also passes. The code (`<`) is right; only the test name overstates.
   * Likewise, the parallel-changes test goes through the service, which takes the plan lock itself, so removing the trigger's own `FOR UPDATE` passes. My direct race at the role level held with the lock.
 
-Reviewer: Approve ec04e138b8895c26b0306d8aead54f9f8d189daa
-(One condition at the label step: the PR body carries M4's "Question for the tech lead". m8 and m9 are optional.)
+(ec04e138b on its own was ready for Approve. The verdict below is on the commit above it.)
+
+### And 89ff016f1 (`git diff ec04e138b..89ff016f1`, the PF-15 reports left out)
+* **The change:** one line in `platform_limit_change_firms`, `at := least(at, target + interval '1 month')`, plus one test.
+  * It means a far-future anchor (the breaker's re-check: a firm's row set to `current_period_end = 9999-12-31`) can no longer keep the old value for ever.
+  * It is applied before the millisecond rounding, and honest anchors at or before target + 1 month are unchanged.
+* **Suites at 89ff016f1:** pf15_cases 52/0, pf15_limits 67/0, pf12_walls 100/0, pf3_platform_schema 75/0.
+* **New minor m10 (with m7's renewal question to Lead B):** the cap also overrides a *genuine* later anchor.
+  * A trial ending more than 60 days after approval (trials may run to 90 days), or a yearly period end, gets the lowering at approval + about 60 days.
+  * That is before the firm's real first renewal.
+  * This is consistent with the "monthly from the anchor" assumption already marked Unconfirmed, so it is not blocking. Name it in the same question.
+  * Note: a firm session can write its own `current_period_end`. That is the root of the breaker's case, but it lies outside this diff.
+
+Reviewer: Approve 89ff016f145e10227ae1dddde6cea41de4b0f59b
+(One condition at the label step: the PR body carries M4's "Question for the tech lead". m8, m9 and m10 are optional.)

@@ -148,6 +148,9 @@ try {
   // From Unlimited: a lowering from null keeps Unlimited until the renewal.
   await changes.change(ours, { plan: "team", metric: "active_corporate_cases", value: 3, reason: "Sample lower from Unlimited" });
   ok("PF-15 DW9 pass (review M2): lowering from Unlimited keeps Unlimited until the renewal, then 3", (await at(eff - 60_000).limitOf(FIRM_A, "active_corporate_cases")).limit === null && (await at(eff).limitOf(FIRM_A, "active_corporate_cases")).limit === 3);
+  // Review m8: Unlimited among the pending old values wins (corporate is pending from Unlimited; lower it once more).
+  await changes.change(ours, { plan: "team", metric: "active_corporate_cases", value: 2, reason: "Sample second lowering after Unlimited" });
+  ok("PF-15 DW9 pass (review m8): two lowerings pending, the older from Unlimited (null → 3 → 2): the firm keeps Unlimited until the renewal, then 2", (await at(eff - 60_000).limitOf(FIRM_A, "active_corporate_cases")).limit === null && (await at(eff).limitOf(FIRM_A, "active_corporate_cases")).limit === 2);
   // The boundary: a firm whose renewal is exactly 30 days after approval moves then, not a month later.
   {
     const p30 = sql(`insert into platform_plan (id, code, name, seats_limit) values (gen_random_uuid(), 'pf15-b30', 'Boundary (Sample)', 9) returning id`).split("\n")[0];
