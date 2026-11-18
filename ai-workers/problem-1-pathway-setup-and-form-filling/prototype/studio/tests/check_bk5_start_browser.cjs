@@ -192,8 +192,14 @@ const LONG = 400000;
   await p.waitForURL(`${BASE}/`, { timeout: LONG });
   const door2Secs = (Date.now() - t0) / 1000;
   const done2 = await toastText(/Pathways released, ready to walk: loaded in/);
+  // QA-498: the done toast is an urgent update, while React Router 7 renders the navigation to "/" inside startTransition,
+  // so the toast (and the URL) can show before Immigration programs has rendered; a busy shard widens that gap. The
+  // heading is awaited (web-first, as Playwright's expect().toHaveCount), then counted: still exactly one, still strict.
+  const programsH1 = p.getByRole("heading", { level: 1, name: /Immigration programs/ });
+  const landed = await programsH1.waitFor({ timeout: 30000 }).then(() => true, () => false);
   const sent3 = posts.slice(p3).filter((x) => x.startsWith("/api/demo"));
-  step("BR-6 pass: Try again (double clicked) runs both calls once and lands on Immigration programs", JSON.stringify(sent3) === JSON.stringify(["/api/demo/reset", "/api/demo/load"]) && await p.getByRole("heading", { level: 1, name: /Immigration programs/ }).count() === 1, sent3);
+  const h1s = await p.locator("h1").allInnerTexts();
+  step("BR-6 pass: Try again (double clicked) runs both calls once and lands on Immigration programs", JSON.stringify(sent3) === JSON.stringify(["/api/demo/reset", "/api/demo/load"]) && landed && await programsH1.count() === 1, { sent3, url: new URL(p.url()).pathname, h1s });
   step("BR-1 pass: the done notice gives the measured seconds and the kept-files check, and the next step", /loaded in \d+ s\. Kept files checked unchanged\. Pick the pathway to change, then Review and release\./.test(done2), done2);
   console.log(`INFO  door 2 end to end (reset + configured load): ${door2Secs.toFixed(1)} s`);
   await shot("bk5-09-door2-landed-1440");

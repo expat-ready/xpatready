@@ -262,9 +262,9 @@ try {
   ok(`CS-S1 DW4 fail (breaker round 2): the backfill's path (no lock) takes none (${lk0})`, lk0 === "0", lk0);
 
   // ------------------------------------------------------------------------------------------------ DW4: sites, relatives, ids
-  const base = spawnSync("git", ["merge-base", "HEAD", "origin/main"], { cwd: STUDIO, encoding: "utf8" }).stdout.trim();
-  const stat = base ? spawnSync("git", ["diff", "--stat", base, "--", ":(glob)api/src/**/*.ts"], { cwd: STUDIO, encoding: "utf8" }).stdout.trim() : "(no origin/main)";
-  ok(`CS-S1 DW4 pass: the answer-write sites are unchanged (git diff --stat of api/src's code against origin/main is empty; the module card is not code)`, base !== "" && stat === "", stat);
+  // The "answer-write sites unchanged" assertion (git diff of api/src against origin/main is empty) was CS-S1's own PR
+  // proof; after its merge it failed every later PR that changes any api/src file (#2003, #2029, 17 Nov), so it is dropped
+  // (tech lead, P-214 check fix); every other DW4 case below is unchanged.
   const before4 = sql(FULL, "select count(*) from case_party_index");
   const R = person(FULL, w, null, null, "Profile Name (Sample)", P.party);
   answer(FULL, w, R, "person.given_names", "Parent"); answer(FULL, w, R, "person.family_name", "Dupont");

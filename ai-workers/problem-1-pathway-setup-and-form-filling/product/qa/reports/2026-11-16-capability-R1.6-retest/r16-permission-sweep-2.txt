@@ -1,0 +1,16 @@
+PASS  R1.6 setup: the Sample firms and their front office are seeded — []
+PASS  R1.6 routes: every declared key is read (literal or a known constant) — []
+PASS  R1.6 routes: the source declares guarded routes to sweep — {"all":70,"guarded":62}
+PASS  R1.6 deny by default: every handler on a guarded path declares its access — []
+PASS  R1.6 deny by default: with no token every keys or any-staff route answers 401 — []
+PASS  R1.6 setup: the Sample firm has several staff members to sweep with — ["user-O","user-R","user-T"]
+PASS  R1.6 keys exactly, user-O (CASE_OFFICER, 99 keys): refused where a key is missing, let through where held — {"refused":24,"allowed":11,"wrong":[]}
+PASS  R1.6 keys exactly, user-R (OWNER+CASE_MANAGER, 233 keys): refused where a key is missing, let through where held — {"refused":0,"allowed":19,"wrong":[]}
+PASS  R1.6 keys exactly, user-T (CASE_MANAGER, 146 keys): refused where a key is missing, let through where held — {"refused":19,"allowed":12,"wrong":[]}
+PASS  R1.6 money apart: the catalogue has MONEY keys to check — 16
+PASS  R1.6 money apart: the Case Officer starter role holds exactly SA-06's four draft and read money keys, no issuing, payment, refund or trust key — ["agent/expense:create","agent/invoice:create","agent/invoice:list","agent/invoice:show"]
+PASS  R1.6 money apart: no read-only starter role carries a MONEY key — []
+PASS  R1.6 money apart: no route asks for a MONEY key together with a general one — []
+NOTE  R1.6 licence apart: 3 LICENCE keys in the catalogue; routes on main naming one: none (proven only by PF-6b DW5's test route)
+
+13/13 passed
