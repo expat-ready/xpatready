@@ -19,6 +19,7 @@ import { actorOf, Audit, CaseRead, Db, fail, need, RUNTIME_ACTORS, Workspace, ty
 import { sameValue } from "./document-values.ts";
 import { refuseIfCaseRecorded } from "./submission-record.ts"; // C8.2: a recorded case keeps its people
 import { firmByKey, firmOfActor, STAND_IN } from "./firms.ts";
+import { clientCode, clientLineOf, clientOfFirm, newClient } from "./clients.ts";
 import { aiLive } from "./sources.ts";
 import { FIRM_RECORD, openingTeam, REPRESENTATIVE, representativeAnswers, USES_REPRESENTATIVE, type Member } from "../../engine/runtime/team.ts";
 import { employerLinkOffer } from "../../engine/runtime/employer.ts";
@@ -295,6 +296,7 @@ export class Runtime {
     let id: string;
     const REPLAYED = "replayed";   // CS-C1b review M1: the transaction found the key's case and wrote nothing
     let stagesWritten: { stages: number; doneBefore: number } = { stages: 1, doneBefore: 0 };
+    let madeClient: { id: string; code: string } | null = null;   // CS-K1: a client made by this opening (none when one was given)
     try {
       id = await this.db.$transaction(async (tx) => {
         // CS-C1b (SA-3-4, SA-3-39, SA-3-47; P-588 (3); contract §7): the plan limit, checked in this transaction before
@@ -308,11 +310,17 @@ export class Runtime {
         const limit = await this.entitlements.check(firm!.key, group === "corporate" ? "active_corporate_cases" : "active_individual_cases", used);
         if (!limit.allowed) throw new HttpException({ type: "https://expatready.local/problems/plan-limit", title: "Plan limit reached", status: 409, code: "PLAN_LIMIT_REACHED", metric: limit.metric, limit: limit.limit, used: limit.used,
           detail: `Your firm's plan allows ${limit.limit} active ${group} case${limit.limit === 1 ? "" : "s"} and ${limit.used} ${limit.used === 1 ? "is" : "are"} active, so this case was not opened. Nothing was created. A case stops counting once every filing has a decision or it is withdrawn.` }, HttpStatus.CONFLICT);
+        // CS-K1 (contract §5, P-588 (2)): the case's client, after the limit check and before the case row. Given, it is a
+        // client of the opener's firm (else 404, nothing written); not given, a new one named after the principal. A refused
+        // opening rolls it back with everything else.
+        const made = b.clientId ? null : await newClient(tx, { workspaceId, firmKey: firm!.key, combinationId: b.combinationId, displayName: b.principal.displayName, createdBy: actor.id });
+        const clientId = made?.id ?? (await clientOfFirm(tx, { workspaceId, firmKey: firm!.key, id: b.clientId }))?.id ?? fail("No such client.", HttpStatus.NOT_FOUND);
+        madeClient = made ? { id: made.id, code: clientCode(made.clientNumber) } : null;
         const party = await tx.party.create({ data: { workspaceId, profile: { create: { workspaceId, displayName: b.principal.displayName } } } });
         // A24-1 (P-492, CS-7, AG-7-3): the firm's next case number for this year, taken in this transaction: an opening
         // made at the same moment waits on the counter row and gets the next one; a refused opening gives its number back.
         const [{ n: caseNumber }] = await tx.$queryRaw<{ n: string }[]>`SELECT runtime_next_case_number(${workspaceId}::uuid, ${firm!.key}, now()) AS n`;
-        const c = await tx.case.create({ data: { workspaceId, firmKey: firm!.key, combinationId: b.combinationId, caseNumber, reference: b.reference ?? null, clientActorId: client!.id, createdBy: actor.id, idempotencyKey: b.idempotencyKey ?? null, idempotencyFingerprint: b.idempotencyKey ? fingerprint : null } });
+        const c = await tx.case.create({ data: { workspaceId, firmKey: firm!.key, combinationId: b.combinationId, caseNumber, reference: b.reference ?? null, clientActorId: client!.id, clientId, createdBy: actor.id, idempotencyKey: b.idempotencyKey ?? null, idempotencyFingerprint: b.idempotencyKey ? fingerprint : null } });
         const caseSubject = await tx.answerSubject.create({ data: { workspaceId, partyId: party.id, subjectKind: "case", label: "The application" } });
         const principal = await tx.answerSubject.create({ data: { workspaceId, partyId: party.id, subjectKind: "principal", label: b.principal.displayName } });
         await tx.caseParticipant.createMany({ data: [{ workspaceId, caseId: c.id, subjectId: caseSubject.id, role: "case", order: 0 }, { workspaceId, caseId: c.id, subjectId: principal.id, role: "principal", order: 1 }] });
@@ -341,6 +349,9 @@ export class Runtime {
       fail(b.reference ? "A case with this reference already exists; give the new case its own reference." : "The case could not be given its case number, so nothing was created. Ask the Lead.", HttpStatus.CONFLICT);
     }
     await this.audit.log(workspaceId, actor.id, "opened", "case", id!, `${actor.name} opened case ${short(id!)} on "${combination!.label}" released version ${release!.version} (${release!.sha256.slice(0, 12)}); representative of record ${nameIn(firm!, representative)}, case officers ${officers.map((o) => nameIn(firm!, o)).join(", ")}${stagesWritten.stages > 1 ? `; a stage of a route (${stagesWritten.stages} stages, ${stagesWritten.doneBefore} done before we started)` : ""}`, undefined, b.combinationId);
+    // CS-K1 (Lead 61, comment 6900282370 on #1867): a directly opened case's new client writes an audit line, no client.created.
+    const mc = madeClient as { id: string; code: string } | null;   // set inside the transaction (TS cannot see it)
+    if (mc) await this.audit.log(workspaceId, actor.id, "added", "case client", mc.id, `${actor.name} opened case ${short(id!)} for a new client, ${mc.code}`);
     return { ...(await this.get(actor, id!)), created: true };
   }
 
@@ -352,6 +363,8 @@ export class Runtime {
     const snapshot = this.snapshotOf(c), roleOfRelease = new Map(linesOf(snapshot).map((p) => [p.role, roleWords(p)]));
     const coFiling = new Set(linesOf(snapshot).filter((p) => p.filingMode === "co_files").map((p) => p.role));
     return { id: c.id, ...(team ? { team } : {}), case_number: c.caseNumber, reference: c.reference, status: c.status, combination_id: c.combinationId, client: c.clientActorId,
+      // CS-K1: the case's client record (`client` stays the simulated login that answers, as the screens read it).
+      client_record: await clientLineOf(this.db, c.clientId),
       pin: { release_version: pin.release.version, sha256: pin.contentHash, pinned_at: pin.pinnedAt, revision: pin.revision },
       // G13 (QA-140): the release in the studio's own words.
       release: { label: releaseLabel(pin.release), version: pin.release.version, release: pin.release.packVersion?.version ?? pin.release.version },
