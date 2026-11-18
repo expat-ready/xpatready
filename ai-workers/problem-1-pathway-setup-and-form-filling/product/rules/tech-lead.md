@@ -82,3 +82,12 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 
 ## P-635 row (moved word for word from RULES.md by Lead 78, 15:2x IST 17 Nov, to keep RULES under 25 KB)
 | P-635 | Enforcement defaults: overnight, hooks block only irreversible actions and flag the rest; settings lines to the founder in one daily batch; pr-rules required after 2 days with no false failure; under ~1 s per hook call. | prose (plan `design/enforcement-plan-2026-11-16.md`) | 16 Nov |
+
+
+## Full rows moved word for word from RULES.md by Lead 80, 16:4x IST 18 Nov (RULES.md under 25 KB, P-611)
+
+| P-618 | Outside dependencies in `design/outside-dependencies.md`: start at need − lead time − 2× buffer; 🔴 when due or stuck 48 h; fallback and date on a block. | script: outside-deps-watch.py via lead-watch.sh step 9 (part; `rules/tokens-money-account.md`) | 15 Nov |
+| F-6Nov | Checks every 30 min, prompt exactly `run lead-watch; read STATE Start here`; row details in STATE, never in the prompt. | hook: lead-check-guard.sh (CronCreate); script: lead-heartbeat.sh (tests check-lead-cron.sh, check-lead-heartbeat.sh) | 6 Nov |
+| P-336 | Records by the Lead alone; STATE one page ≤ 12 KB; DECISIONS appended newest first; records daily and at hand-over; records PRs merge when the queue is empty (P-436 (3)). | script: check-docs.sh (part: STATE 12 KB); CI: records-label.yml | P-612 |
+
+| P-611b | One queue for reports, questions, blockers and approvals with owner, ack, timeout (45 min ACT, 90 min founder); no hand-over with an un-acked item. | script: items.py, lead-queue.sh, handover.sh (tests check-items.sh, check-handover.sh) | 15 Nov |  (moved word for word by Lead 80, 16:4x IST 18 Nov)

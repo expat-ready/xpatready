@@ -99,3 +99,8 @@ Moved word for word from RULES.md by Lead 73, 08:4x IST 17 Nov (25 KB limit; IDX
 | P-625 | Staging on AWS's own address until a domain is needed; base domain is a setting; no second host. | prose | 16 Nov |
 | P-629 | PF-13 branding adds favicon, banner and an 80-character tagline; emails and PDFs keep logo, name and footer. | prose | 16 Nov |
 | P-630 | The Lead chooses build or adopt through the STANDARDS §1 gate; templates on React Email, Gotenberg with conditions. | prose | 16 Nov |
+
+
+## Full rows moved word for word from RULES.md by Lead 80, 16:4x IST 18 Nov (RULES.md under 25 KB, P-611)
+
+| P-606 | Finish whole: each Done when names its test; no new capability while a started one has parts missing (amended P-613 (1)); qa scores when all parts merged. | CI: pr-rules brief-check.sh (part: Done when names its test; not yet a required check) | 15 Nov |
