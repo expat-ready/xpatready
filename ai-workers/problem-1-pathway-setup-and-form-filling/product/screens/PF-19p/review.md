@@ -289,3 +289,46 @@ Verdict: Approve 0596cff9f8e58465e7a480e27d014ea4f1ec1f16
 Findings: none.
 
 Verdict: Approve 5a60a18ff191e8cf72f11338b3a4915d3df6a205
+
+## Re-review (merge with PF-19b part 2 at b64ca62a0)
+
+18 Nov 2026. Read only `git show --cc b64ca62a0` and `git diff origin/main b64ca62a0 -- prototype/studio`. I ran `git fetch origin` first; main is at `39c1203cd`, which is an ancestor of the head. Code not edited.
+
+### Main's PF-19b part 2 is kept
+I compared the changed lines of each file in `origin/main..b64ca62a0` with my approved change (`388e5a6fd..5a60a18ff`). Fifteen of the 21 files match line for line. The other six differ only in how the two sides were joined:
+* **`features/platform-messages.ts`:** main's `appChannels(emailAdapter(config, { files, tokens, publicBase }))`, plus PF-19p's `log`. Main's controllers and providers (`MessagesPublicController`, `Unsubscribe`, `SesNotices`, the inbox's unsubscribe headers) are untouched.
+* **`messages/demo-inbox.ts`:**
+  - main's `headers: unsubscribeHeaders(…)` and its import;
+  - PF-19p's `audience` and `filesSpaceOf`;
+  - the header comment, which joins both sides' wording.
+* **`send/messages.ts`:** main's `DELIVER_TX_MS` (still the firm `deliver`'s timeout) and PF-19p's constants. The only change from what I approved is `PLATFORM_DELIVER_TX_MS = DELIVER_TX_MS`, which is the same 60 s with one source.
+* **`platform/MODULE.md`:** main's PF-4c and AUD-5 entries and its test list, plus PF-19p's MESSAGES_MAIL note, its two rules and `check_pf19p_platform_mail.ts`.
+* **`ses.ts` and `unsubscribe.ts`:** the second-to-land edits below.
+
+The migration stamp is unchanged. `20261117121500_pf19p_platform_account_mail` is still the newest, after main's `20261117030000_fo9a_duplicate_match`.
+
+### The two PF-19b edits
+* **`channels/email/unsubscribe.ts:211`:** `unsubscribeHeaders` returns `{}` when `firmId === null`.
+  - A platform row is always TRANSACTIONAL (the port's union and the DB CHECK), so it already got `{}`. The new clause makes `tokens.mint` type-safe and adds a second guard.
+  - Can a platform row reach unsubscribe code with a firm? No. It gets no List-Unsubscribe link, so no token is ever minted for it. `Unsubscribe.find` also selects only MARKETING and SERVICE rows under `firmScope`, so a NULL-firm row can never match.
+* **`channels/email/ses.ts:45, :53-54`:**
+  - attachments are read from `filesSpaceOf(r.firmId)`;
+  - the `firm` tag and `X-Expatready-Ref` become `"platform"` for a message with no firm.
+  - Does this break bounce parsing for firm mail? No. In `bounces.ts:86-90` the reference header must match `uuid/uuid`, and the firm then goes through `firmScope`. A firm message still carries its own firm uuid in both places.
+  - For a platform message, `"platform/<id>"` does not match the reference regex, and the `"platform"` tag fails `firmScope`. So the notice answers "ignored" before any query, as the PR's landing note says.
+* **Probe** (deleted; the real `sesEmail` with recorded SES answers, as in `check_pf19b2_ses`, and the real `SesNotices` with a signed notice):
+  - a platform message is sent with tags `firm=platform, outbox=<id>`, `X-Expatready-Ref: platform/<id>`, no List-Unsubscribe header, From `ExpatReady <the verified sender>`, and Reply-To `no-reply@expatready.com`;
+  - a bounce notice found by its tag, and one found by its reference header alone, both answer `ignored`, with 0 database calls.
+
+### Run (at b64ca62a0)
+`check_pf19p_platform_mail` 68/0, `check_pf19b2_ses` 44/0, `check_pf19b_sending` 42/0. I did not re-run the others; the builder reports them all at exit 0, and tsc clean.
+
+### Findings
+**Blocker / Major:** none.
+
+**Minor**
+* **m-r6 (STANDARDS:48): no committed test runs a platform row through the SES adapter or its bounce notice.** If `ses.ts:53-54` or `unsubscribe.ts:211` were removed or changed, no suite would fail. With `?? "platform"` removed, tsc would still catch the null tag, but a wrong `filesSpaceOf` would not be caught. My probe shows the behaviour is right today.
+  - Fix: add two lines to `check_pf19p_platform_mail` (or `check_pf19b2_ses`): a platform row through `sesEmail` with recorded answers (tags and headers), and its signed bounce notice answering `ignored`.
+* **Note (not a finding):** under SES, a platform email's From address is the SES-verified sender, and `platform.account_mail_from` is only its Reply-To (the local adapter uses it as From). This is main's fail-closed design for every sender, and it is consistent with PF-19p. A platform address that bounces is not suppressed, as the landing note says.
+
+Verdict: Approve b64ca62a0e165a2050c8a33433ceb69dd5fdb34b
