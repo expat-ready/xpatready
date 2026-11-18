@@ -3,7 +3,8 @@
 // production-mode check (a production configuration never seeds the Sample firms). All through the product's API on an
 // isolated copy (the Sample platform firms are seeded there, P-710), the outbox and the copy's log read with SQL and from
 // disk. Needs Visitor visa released on the copy (tests/runtime/setup_visitor_visa.ts). No model call, US$0.
-//   zsh studio/tools/isolated.sh runtime_pf19r 4430 start && tsx studio/tests/runtime/setup_visitor_visa.ts 4430 xr_studio_runtime_pf19r && tsx studio/tests/check_pf19r_case_links.ts 4430 xr_studio_runtime_pf19r
+// The check releases the Visitor visa itself (setup_visitor_visa.ts) when its copy has none.
+//   zsh studio/tools/isolated.sh runtime_pf19r 4430 start && tsx studio/tests/check_pf19r_case_links.ts 4430 xr_studio_runtime_pf19r
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -34,8 +35,13 @@ const outboxTo = (address: string): Row[] => JSON.parse(sql(`select coalesce(jso
 const until = async (f: () => Promise<boolean> | boolean, ms = 30_000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await f()) return true; await new Promise((r) => setTimeout(r, 500)); } return false; };
 
 (async () => {
-  const vv = ((await call("GET", "/runtime/openable")).body ?? []).find((r: { combination: string; startable: boolean }) => /Visitor visa/.test(r.combination) && r.startable);
-  if (!vv) { console.error("STOP  Visitor visa is not released on this copy"); process.exit(2); }
+  const openable = async () => ((await call("GET", "/runtime/openable")).body ?? []).find((r: { combination: string; startable: boolean }) => /Visitor visa/.test(r.combination) && r.startable);
+  let vv = await openable();
+  if (!vv) {   // review M3: the merge queue starts the copy and runs this file alone
+    execFileSync(join(STUDIO, "node_modules", ".bin", "tsx"), ["--tsconfig", join(STUDIO, "api", "tsconfig.json"), join(STUDIO, "tests", "runtime", "setup_visitor_visa.ts"), PORT, DBNAME], { stdio: ["ignore", "ignore", "inherit"], timeout: 600_000 });
+    vv = await openable();
+  }
+  if (!vv) { console.error("STOP  Visitor visa could not be released on this copy"); process.exit(2); }
   const firmA = sql(`select id from platform_firm where key = 'sample-firm'`);
   ok("setup (P-710): this test copy has the Sample platform firms (seeded on demo and test copies)", /^[0-9a-f-]{36}$/.test(firmA), firmA);
   const run = Date.now().toString(36);
@@ -80,6 +86,16 @@ const until = async (f: () => Promise<boolean> | boolean, ms = 30_000) => { cons
     && sql(`select code_hash from person_link where subject_id = '${k1.S}' and voided_at is null`) === hash0, codeRefused.body);
   sql(`delete from msg_suppression where address = '${A}'`);
 
+  // Review M2: three presses at once: each that answers "sent" wrote its own outbox row, and the code in the demo inbox is the one in force.
+  const k5 = await newCase("dw8p"), F = `partner.f.${run}@example.com`;
+  await call("POST", `/runtime/cases/${k5.id}/people/${k5.S}/link`, { address: F }, "user-P");
+  const tF = tokenIn(await inbox(F));
+  const presses = await Promise.all([1, 2, 3].map(() => call("POST", "/link/code/send", { token: tF }, null)));
+  const sentOk = presses.filter((p) => p.status < 300).length, codeRows = outboxTo(F).filter((r) => r.key.includes(":code:"));
+  const shown = codeIn(await inbox(F)), entered = await call("POST", "/link/code", { token: tF, code: shown }, null);
+  ok("DW8 pass (review M2): presses at the same moment never share a key: one outbox row per press that answered sent, and the code the person holds is the one in force",
+    sentOk >= 1 && codeRows.length === sentOk && new Set(codeRows.map((r) => r.key)).size === codeRows.length && entered.status < 300, { sentOk, codeRows: codeRows.length, entered: entered.status });
+
   // ------------------------------------------------------------------ DW9 the same send twice
   const k3 = await newCase("dw9"), C = `partner.c.${run}@example.com`, key = `pf19r-${run}`;
   const once = await call("POST", `/runtime/cases/${k3.id}/people/${k3.S}/link`, { address: C, idempotencyKey: key }, "user-P");
@@ -96,6 +112,19 @@ const until = async (f: () => Promise<boolean> | boolean, ms = 30_000) => { cons
   const dRows = outboxTo(D), dLinks = (await inbox(D)).filter((m) => m.kind === "link").length;
   ok("DW9 fail (break m3 kept): Client A's Resend of the firm's link sends it once more, and pressed again within a minute sends nothing more (outbox and demo inbox agree)",
     again1.status < 300 && again2.status < 300 && dRows.length === 2 && dLinks === 2 && dRows[1].key.includes(":again:"), { a1: again1.status, a2: again2.status, dRows, dLinks });
+  // Review M1: every later Resend (each more than a minute after the last) is its own email, never a repeat of a key.
+  const resent = () => Number(sql(`select count(*) from audit_event where action = 'resent' and entity_key = '${k3.S}'`));
+  for (const n of [3, 4]) {
+    sql(`update demo_message set created_at = created_at - interval '2 minutes' where address = '${D}'`);
+    const before = resent(), r = await call("POST", `/runtime/cases/${k3.id}/people/${k3.S}/link`, {}, "user-P");
+    ok(`DW9 pass (review M1): Resend no. ${n} a minute later writes its own outbox row and demo copy, matching its history line`, r.status < 300 && outboxTo(D).length === n && (await inbox(D)).filter((m) => m.kind === "link").length === n && resent() === before + 1, { status: r.status, rows: outboxTo(D).length });
+  }
+  sql(`update demo_message set created_at = created_at - interval '2 minutes' where address = '${D}'`);
+  sql(`insert into msg_suppression (id, firm_id, channel, address, reason, created_by) values (gen_random_uuid(), '${firmA}', 'EMAIL', '${D}', 'COMPLAINT', 'seed:pf19r')`);
+  const resentBefore = resent(), blocked = await call("POST", `/runtime/cases/${k3.id}/people/${k3.S}/link`, {}, "user-P");
+  ok("DW9 fail (review M1): a later Resend to a suppressed address is refused (409 \"Not sent\"), with no history line and no copy",
+    blocked.status === 409 && blocked.body?.code === "ADDRESS_NOT_SENT" && resent() === resentBefore && outboxTo(D).length === 4, blocked.body);
+  sql(`delete from msg_suppression where address = '${D}'`);
 
   // ------------------------------------------------------------------ DW10 a case whose firm has no platform firm
   const k4 = await newCase("dw10"), E = `partner.e.${run}@example.com`;
@@ -117,7 +146,8 @@ const until = async (f: () => Promise<boolean> | boolean, ms = 30_000) => { cons
   const leaks = [...secrets].filter((x) => logText.includes(x) || auditText.includes(x) || outboxText.includes(x) || answers.includes(x));
   ok("DW11 pass: no link token or code in the copy's log lines, any audit line, any outbox key or reason, or any answer or refusal text (only the email itself holds them)",
     secrets.size >= 4 && logs.length > 0 && leaks.length === 0, { secrets: secrets.size, logs, leaks: leaks.map((x) => x.slice(0, 6)) });
-  ok("DW11 fail: the same scan finds a token planted in a line (the scan is not blind)", [...secrets].slice(0, 1).every((x) => `audit: ${x}`.includes(x)));
+  const planted = [...secrets][0]!, scan = (text: string) => [...secrets].filter((x) => text.includes(x));
+  ok("DW11 fail (review m1): the same scan, run on the copy's real log with a token planted in one line, finds it (the scan is not blind)", scan(`${logText}\n{"event":"planted","detail":"${planted}"}`).includes(planted) && scan(logText).length === 0);
 
   // ------------------------------------------------------------------ DW12 demo copies only after a QUEUED answer
   const src = readFileSync(join(STUDIO, "api", "src", "person-link.ts"), "utf8").split("\n");

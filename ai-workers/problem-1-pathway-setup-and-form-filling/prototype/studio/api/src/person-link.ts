@@ -203,7 +203,7 @@ export class PersonLinks {
           again = true;
           // The first email is the firm's own; only a copy sent again within the minute holds the next one back.
           if (sent.length > 1 && now.getTime() - email!.createdAt.getTime() < RESEND_GAP_MS) return;
-          if (await this.mail(tx, firmId, subjectId, { address: open.address, subject: email!.subject, body: email!.body, key: `case.link:${open.id}:again:${sent.length}` }, outbox))
+          if (await this.mail(tx, firmId, subjectId, { address: open.address, subject: email!.subject, body: email!.body, key: `case.link:${open.id}:again:${email!.id}` }, outbox))
             await tx.demoMessage.create({ data: { workspaceId: c.workspaceId, linkId: open.id, address: open.address, kind: "link", subject: email!.subject, body: email!.body, expiresAt: open.expiresAt } });
           await audit(tx, c.workspaceId, actor.id, "resent", subjectId, `${actor.name} sent the same link again to the ${roleWords(p.role)} on case ${short(c.id)}, to ${open.addressMasked} (address given by ${nameOf(open.addressGivenBy)}); it still works`);
           return;
@@ -320,6 +320,8 @@ export class PersonLinks {
     const over = overLimit({ kind: "code_sent", sentToAddress: Number(n.c) });
     if (over) problem(429, "Too many", over);
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0"), expires = new Date(now.getTime() + LINK_RULES.codeMinutes * 60_000);
+    // Each press is its own email (review M2: two presses in one millisecond shared a key): a fresh id, never the code.
+    const codeSendId = randomUUID();
     const firmId = await this.sendingFirm((await this.db.case.findUniqueOrThrow({ where: { id: l.caseId }, select: { firmId: true, firmKey: true } })));
     let outbox: string[] = [];
     await inTx(this.db, async (tx) => {
@@ -328,7 +330,7 @@ export class PersonLinks {
       if (!ok.count) problem(410, "This link no longer works", "This link stopped working a moment ago. Ask whoever sent it for a new one.");
       await tx.demoMessage.deleteMany({ where: { linkId: l.id, kind: "code" } });
       const subject = "Your code (Sample)", text = `Your code is ${code.slice(0, 3)} ${code.slice(3)}. It works for ${LINK_RULES.codeMinutes} minutes. If you did not ask for it, you can ignore this email.`;
-      if (await this.mail(tx, firmId, l.subjectId, { address: l.address, subject, body: text, key: `case.link:${l.id}:code:${expires.getTime()}` }, outbox))
+      if (await this.mail(tx, firmId, l.subjectId, { address: l.address, subject, body: text, key: `case.link:${l.id}:code:${codeSendId}` }, outbox))
         await tx.demoMessage.create({ data: { workspaceId: l.workspaceId, linkId: l.id, address: l.address, kind: "code", subject, body: text, expiresAt: expires } });
       await audit(tx, l.workspaceId, `person:${l.subjectId}`, "code sent", l.subjectId, `A code was sent to ${l.addressMasked} for the link on case ${short(l.caseId)}`);
     });
