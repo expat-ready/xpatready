@@ -103,6 +103,7 @@ class GH:
     def __init__(self, offline):
         self.offline = offline
         self.calls = 0
+        self.tally = {}                                     # calls by endpoint shape, for the run note
         self.token = "" if offline else sh(["gh", "auth", "token"]).stdout.strip()
         u = sh(["git", "-C", ROOT, "remote", "get-url", "origin"]).stdout.strip()
         m = re.search(r"github\.com[:/]([^/]+/[^/]+?)(\.git)?$", u)
@@ -117,11 +118,12 @@ class GH:
             raise RuntimeError("offline")
         url = url if url.startswith("http") else self.api + url
         acc = "application/vnd.github.raw" if raw else "application/vnd.github+json"
-        cmd = ["curl", "-sS", "--fail-with-body", "-H", f"Accept: {acc}", "-H", f"Authorization: token {self.token}", url]
+        # -L: a moved repository's reads follow GitHub's redirect (the org move, 18 Nov)
+        cmd = ["curl", "-sSL", "--fail-with-body", "-H", f"Accept: {acc}", "-H", f"Authorization: token {self.token}", url]
         err = ""
         for wait in (0, 2, 5):
             time.sleep(wait)
-            self.calls += 1
+            self.count(url)
             r = subprocess.run(cmd, capture_output=True, text=True)
             if r.returncode == 0:
                 if raw:
@@ -136,6 +138,12 @@ class GH:
                 break
         raise RuntimeError(f"GET {url.replace(self.api, '')} failed: {err}")
 
+    def count(self, url):
+        self.calls += 1
+        k = re.sub(r"[?].*$", "", url.replace(self.api, "").replace("https://api.github.com", ""))
+        k = re.sub(r"/[0-9a-f]{40}|/\d+", "/N", k)
+        self.tally[k] = self.tally.get(k, 0) + 1
+
     def get_pages(self, url, max_pages=40):
         """GET every page of a list that pages by the Link header's rel="next" (cursor APIs such as /activity)."""
         url = url if url.startswith("http") else self.api + url
@@ -143,13 +151,13 @@ class GH:
         for _ in range(max_pages):
             if self.offline:
                 raise RuntimeError("offline")
-            self.calls += 1
-            r = subprocess.run(["curl", "-sS", "--fail-with-body", "-D", "-", "-H", "Accept: application/vnd.github+json",
+            self.count(url)
+            r = subprocess.run(["curl", "-sSL", "--fail-with-body", "-D", "-", "-H", "Accept: application/vnd.github+json",
                                 "-H", f"Authorization: token {self.token}", url], capture_output=True, text=True)
             if r.returncode:
                 raise RuntimeError(f"GET {url.replace(self.api, '')} failed: {(r.stdout[-200:] + ' ' + r.stderr[:200]).strip()}")
             head, _, body = r.stdout.partition("\n\n")          # text mode: curl's \r\n arrive as \n
-            while head.startswith("HTTP/") and body.startswith("HTTP/"):          # a 100-continue or proxy preamble
+            while head.startswith("HTTP/") and body.startswith("HTTP/"):          # a 100-continue, proxy preamble or followed redirect (-L)
                 head, _, body = body.partition("\n\n")
             out += json.loads(body)
             m = re.search(r'<([^>]+)>;\s*rel="next"', head)
@@ -161,7 +169,7 @@ class GH:
     def graphql(self, query, variables):
         if self.offline:
             raise RuntimeError("offline")
-        self.calls += 1
+        self.count("graphql")
         body = json.dumps({"query": query, "variables": variables})
         r = subprocess.run(["curl", "-sS", "--fail-with-body", "-X", "POST", "-H", f"Authorization: token {self.token}",
                             "-d", "@-", "https://api.github.com/graphql"], input=body, capture_output=True, text=True)
@@ -414,6 +422,7 @@ STUCK_MAX_PRS = 40                             # open approved PRs whose label t
 STUCK_MERGE_MIN = (30, 60)                     # Stuck now: last merge to main, green to 30 min, red over 60 (P-646)
 STUCK_QUEUE = (15, 30)                         # Stuck now: Actions runs waiting for a machine, red over 30 (P-646)
 STUCK_SESSIONS_FRESH_MIN = 60                  # Stuck now: an empty session list older than this reads amber, not green
+STUCK_SESSIONS_LABEL = "Sessions stuck (awaiting input, failed, blocked, or idle with work left and no push for 90 min)"  # Lead 73, P-339b; the Lead filters
 STUCK_APPROVED_MIN = 60                        # Stuck now: approved and not merged for over 60 min
 CI_SAMPLE_RUNS = 20                            # CI runs (newest, last 3 h) whose jobs are read for the wait
 LEAD_B_BRANCH = "lead-b-front-office"          # Lead B's branch holding design/lead-b-briefs/ (Lead input lead_b_branch overrides)
@@ -925,11 +934,226 @@ def branches_from_activity(activity, alive, since):
     return [x for x in newest.values() if parse_iso(x["pushed_at"]) >= since]
 
 
+PR_SLIM = ("number", "title", "state", "draft", "created_at", "updated_at", "merged_at", "closed_at")
+
+
+def pr_slim(x):
+    return dict({k: x.get(k) for k in PR_SLIM}, labels=[{"name": l["name"]} for l in x.get("labels", [])],
+                head={"ref": x["head"]["ref"], "sha": x["head"]["sha"]}, base={"ref": x["base"]["ref"]})
+
+
+def pr_list(gh, cache):
+    """Every PR, newest created first. Read in full when the cache is missing (or older than 7 days); otherwise the open PRs
+    plus every closed PR updated since the cache's read time less a day (a closed PR changes only with its updated_at)."""
+    path = os.path.join(cache, "prs.json")
+    try:
+        c = json.load(open(path)) if os.path.exists(path) else {}
+        if not isinstance(c, dict):
+            raise ValueError("not an object")
+    except (OSError, ValueError) as e:                     # a cut or bad cache file: read in full, never stop the run
+        ERRORS.append(f"PR list cache unreadable ({str(e)[:60]}); read in full")
+        c = {}
+    at = parse_iso(c["read_at"]) if c.get("read_at") else None
+    full = parse_iso(c["full_at"]) if c.get("full_at") else None
+    byn = {int(k): v for k, v in (c.get("prs") or {}).items()}
+    if at is None or full is None or NOW - full > timedelta(days=7):   # a full read once a week at least
+        full = NOW
+        byn, page = {}, 1
+        while page <= 40:
+            d = gh.get(f"/pulls?state=all&sort=created&direction=desc&per_page=100&page={page}")
+            byn.update({x["number"]: pr_slim(x) for x in d})
+            if len(d) < 100:
+                break
+            page += 1
+    else:
+        fresh, page = {}, 1
+        while page <= 10:                                  # open PRs: read again in full
+            d = gh.get(f"/pulls?state=open&per_page=100&page={page}")
+            fresh.update({x["number"]: pr_slim(x) for x in d})
+            if len(d) < 100:
+                break
+            page += 1
+        cut, page = at - timedelta(days=1), 1
+        while page <= 40:                                  # closed PRs updated since the last read
+            d = gh.get(f"/pulls?state=closed&sort=updated&direction=desc&per_page=100&page={page}")
+            fresh.update({x["number"]: pr_slim(x) for x in d if parse_iso(x["updated_at"]) >= cut})
+            if len(d) < 100 or parse_iso(d[-1]["updated_at"]) < cut:
+                break
+            page += 1
+        for n, v in byn.items():                           # cached as open, in neither read (closed and updated before the cut
+            if v.get("state") == "open" and n not in fresh:    # cannot happen; read it alone to be sure)
+                try:
+                    fresh[n] = pr_slim(gh.get(f"/pulls/{n}"))
+                except Exception as e:                     # one PR's read never stops the run: keep the cached entry
+                    ERRORS.append(f"PR #{n}: read failed ({str(e)[:60]}); cached entry kept")
+        byn.update(fresh)
+    tmp = path + ".tmp"                                    # written whole, then moved into place: a killed run leaves the old file
+    with open(tmp, "w") as f:
+        json.dump({"read_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"), "full_at": full.strftime("%Y-%m-%dT%H:%M:%SZ"), "prs": {str(k): v for k, v in byn.items()}}, f)
+    os.replace(tmp, path)
+    return [byn[n] for n in sorted(byn, reverse=True)]
+
+
+CONFORMANCE_TOOL = f"{REL}/tools/conformance-check.py"
+HEARTBEAT_WF = "pipeline-heartbeat.yml"
+ENFORCE_STALE_MIN = 45                         # CK-3: a heartbeat or check older than this is "unknown (stale)", never yes
+
+
+def conformance_read(ref):
+    """CK-1's own tool, as on main, run read-only on main (exit code = failures; 101 = nothing checked)."""
+    if not ref:
+        return {"error": "main's commit is not in this copy"}
+    code = git_out("show", f"{ref}:{CONFORMANCE_TOOL}")
+    if code is None:
+        return {"error": "the set-up check is not on main yet"}
+    with tempfile.TemporaryDirectory() as td:
+        tool = os.path.join(td, "conformance-check.py")
+        open(tool, "w").write(code)
+        jf = os.path.join(td, "out.json")
+        gd = (git_out("rev-parse", "--absolute-git-dir") or "").strip()      # the tool finds its repository from its own folder:
+        env = dict(os.environ, GIT_DIR=gd, GIT_WORK_TREE=ROOT) if gd else None  # point it at this copy's
+        r = sh([sys.executable, "-I", tool, "--ref", ref, "--json", jf, "--quiet"], cwd=ROOT, timeout=120, env=env)
+        try:
+            out = json.load(open(jf)) if os.path.exists(jf) else None
+        except ValueError:
+            out = None
+    if not isinstance(out, dict):
+        return {"error": f"the set-up check gave no result (exit {r.returncode}): {(r.stderr or r.stdout)[:160]}"}
+    return dict(out, exit=r.returncode, ref=ref, source_kind="board run")
+
+
+def heartbeat_read(gh):
+    """CK-2: the heartbeat workflow's newest finished run on main and, when it is fresh, its artifact (heartbeat.json,
+    conformance.json). One call when stale or missing; three calls and one download when fresh."""
+    try:
+        runs = gh.get(f"/actions/workflows/{HEARTBEAT_WF}/runs?branch=main&status=completed&per_page=1")
+    except RuntimeError as e:
+        return {"error": "the heartbeat workflow is not on main yet" if "404" in str(e) or "Not Found" in str(e) else str(e)[:160]}
+    r = (runs.get("workflow_runs") or [None])[0]
+    if not r:
+        return {"error": "the heartbeat workflow has not finished a run yet"}
+    out = {"run": {k: r.get(k) for k in ("id", "conclusion", "created_at", "updated_at", "html_url")}}
+    try:
+        at = _aware(parse_iso(r.get("updated_at") or r.get("created_at")))
+    except (ValueError, TypeError, AttributeError):
+        at = None
+    if at and NOW - at <= timedelta(minutes=ENFORCE_STALE_MIN):
+        try:
+            arts = gh.get(f"/actions/runs/{r['id']}/artifacts?per_page=20").get("artifacts") or []
+            a = next((x for x in arts if x.get("name") == "pipeline-heartbeat" and not x.get("expired")), None)
+            if a:
+                import io, zipfile
+                gh.count(a["archive_download_url"])
+                z = subprocess.run(["curl", "-sSL", "--fail", "-H", f"Authorization: token {gh.token}", a["archive_download_url"]],
+                                   capture_output=True, timeout=60)
+                if z.returncode:
+                    raise RuntimeError(f"artifact download failed: {z.stderr[:120]!r}")
+                zf = zipfile.ZipFile(io.BytesIO(z.stdout))
+                for n in ("heartbeat.json", "conformance.json"):
+                    if n in zf.namelist():
+                        out[n.split(".")[0]] = json.loads(zf.read(n))
+            else:
+                out["artifact_error"] = "the run has no pipeline-heartbeat artifact"
+        except Exception as e:                       # the run's result still counts; only the detail is missing
+            out["artifact_error"] = str(e)[:160]
+    return out
+
+
+def enforcement_lines(d, conf, hb):
+    """CK-3 lines; an odd field in an input gives two grey "not measured" lines with a run note, never a stopped build."""
+    try:
+        return _enforcement_lines(d, conf, hb)
+    except Exception as e:                      # review #2141: one bad artifact field must not stop the board
+        ERRORS.append(f"enforced: {type(e).__name__}: {str(e)[:200]}")
+        why = f"the reading could not be used ({type(e).__name__}); see the run notes"
+        return {"lines": [{"key": "setup", "light": "grey", "text": "Set-up enforced: not measured", "src": f"tools/conformance-check.py (CK-1): {why}", "items": [], "link": None},
+                          {"key": "pipeline", "light": "grey", "text": "Pipeline running: not measured", "src": f"the {HEARTBEAT_WF} workflow (CK-2): {why}", "items": [], "link": None}],
+                "light": "grey"}
+
+
+def _aware(t):
+    """A time with no zone is not a time here (it cannot be compared with the snapshot)."""
+    return t if isinstance(t, datetime) and t.tzinfo else None
+
+
+def _check_at(c):
+    try:
+        return _aware(parse_iso(c.get("checked_at"))) if isinstance(c, dict) and c.get("checked_at") else None
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def _enforcement_lines(d, conf, hb):
+    """CK-3 (checks brief): two lines near the top. Set-up enforced (CK-1), from the heartbeat's own check when that is fresh,
+    else from the check this run made on main; pipeline running (CK-2), from the newest finished heartbeat run. Machines
+    write the status; a heartbeat over 45 min old is "unknown (stale)", never yes (FORMULAS.md › Enforced)."""
+    taken = parse_iso((d.get("lineage") or {}).get("taken_at")) if (d.get("lineage") or {}).get("taken_at") else NOW
+    hb = hb if isinstance(hb, dict) else {}
+    run = hb.get("run") if isinstance(hb.get("run"), dict) else {}
+    try:
+        r_at = _aware(parse_iso(run.get("updated_at") or run.get("created_at"))) if run else None
+    except (ValueError, TypeError, AttributeError):
+        r_at = None
+    fresh = bool(r_at) and (taken - r_at) <= timedelta(minutes=ENFORCE_STALE_MIN)
+    hm = lambda t: t.astimezone(IST).strftime("%H:%M IST") if t else "time not given"
+    # set-up
+    c, csrc = None, None
+    hc = hb.get("conformance") if fresh else None
+    hc_at = _check_at(hc)
+    hc_fresh = bool(hc_at) and (taken - hc_at) <= timedelta(minutes=ENFORCE_STALE_MIN)
+    board_ok = isinstance(conf, dict) and not conf.get("error")
+    if isinstance(hc, dict) and hc.get("enforced") in ("yes", "no") and (hc_fresh or not board_ok):   # review #2141: a stale one gives way
+        c, csrc = hc, f"the heartbeat run's own set-up check ({run.get('html_url') or 'run link not given'})"
+    elif board_ok:
+        c, csrc = conf, f"tools/conformance-check.py from main, run by this board build on {str(conf.get('ref') or 'main')[:9]}"
+    counts = (c or {}).get("counts") if isinstance((c or {}).get("counts"), dict) else {}
+    checked = (c or {}).get("checked")
+    if c and isinstance(checked, int) and checked > 0 and c.get("enforced") in ("yes", "no"):
+        cat = _check_at(c)
+        cstale = not cat or (taken - cat) > timedelta(minutes=ENFORCE_STALE_MIN)
+        word = "unknown (stale)" if cstale else c["enforced"]
+        setup = {"key": "setup", "light": "amber" if cstale else ("green" if c["enforced"] == "yes" else "red"),
+                 "text": f"Set-up enforced: {word} · last checked {hm(cat)} ({counts.get('pass', 0)} of {checked} items)",
+                 "src": f"{csrc}; manifest {c.get('manifest_version') or 'version not given'}; pass of pass+fail, pending and unchecked items not counted "
+                        f"({counts.get('pending', 0)} pending, {counts.get('unchecked', 0)} unchecked); stale over {ENFORCE_STALE_MIN} min",
+                 "items": [f"{x.get('area')} {x.get('id')}: {x.get('status')} (expected {x.get('expected')}, found {x.get('found')})"
+                           for x in (c.get("items") or []) if isinstance(x, dict) and x.get("status") == "fail"][:12],
+                 "link": run.get("html_url") if csrc.startswith("the heartbeat") else None}
+    else:
+        why = (conf or {}).get("error") if isinstance(conf, dict) and conf.get("error") else "nothing checked yet"
+        setup = {"key": "setup", "light": "grey", "text": "Set-up enforced: not measured", "src": f"tools/conformance-check.py (CK-1): {why}", "items": [], "link": None}
+    # pipeline
+    h = hb.get("heartbeat") if fresh and isinstance(hb.get("heartbeat"), dict) else {}
+    if not run:
+        pipe = {"key": "pipeline", "light": "grey", "text": "Pipeline running: not measured",
+                "src": f"the {HEARTBEAT_WF} workflow (CK-2): {hb.get('error') or 'no run read'}", "items": [], "link": None}
+    elif not fresh:
+        pipe = {"key": "pipeline", "light": "amber", "text": f"Pipeline running: unknown (stale) · last heartbeat {hm(r_at)}",
+                "src": f"the newest finished {HEARTBEAT_WF} run on main is over {ENFORCE_STALE_MIN} min old (it runs every 30 min); never shown as yes when stale",
+                "items": [], "link": run.get("html_url")}
+    else:
+        # review #2141: a successful run does not mean running (an unchanged open alarm ends green); only heartbeat.json's
+        # own word says yes. Without it, a failed run reads no and anything else reads unknown.
+        word = h.get("running") if h.get("running") in ("yes", "no") else ("no" if run.get("conclusion") == "failure" else None)
+        gs = h.get("green_streak_h")
+        alarms = [f"{a.get('id')}: {a.get('why')}" for a in (h.get("alarms") or []) if isinstance(a, dict)] if isinstance(h.get("alarms"), list) else []
+        pipe = {"key": "pipeline", "light": {"yes": "green", "no": "red"}.get(word, "amber"),
+                "text": f"Pipeline running: {word or 'unknown'} · last heartbeat {hm(r_at)}" +
+                        (f" · green streak {gs} h" if word == "yes" and isinstance(gs, (int, float)) and not isinstance(gs, bool) else ""),
+                "src": f"the newest finished {HEARTBEAT_WF} run on main ({run.get('conclusion')})" +
+                       ("; its heartbeat.json" if h.get("running") in ("yes", "no") else
+                        f"; heartbeat.json not read ({hb.get('artifact_error') or 'no artifact'}), so " +
+                        ("no from the failed run" if word == "no" else "unknown: a successful run alone does not prove the pipeline runs")),
+                "items": alarms[:12], "link": run.get("html_url")}
+    lines = [setup, pipe]
+    return {"lines": lines, "light": flow_light(*[x["light"] if x["light"] != "grey" else None for x in lines])}
+
+
 def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     """Download one snapshot of every raw input into <out>/snapshot/ (spec §6 1a). Read-only everywhere."""
     if os.path.isdir(snap):
         shutil.rmtree(snap)
-    for d in ("github", "files", "files_main/qa", "git/capabilities_main"):
+    for d in ("github", "files", "files_main/qa", "git/capabilities_main", "enforcement"):
         os.makedirs(os.path.join(snap, d), exist_ok=True)
 
     def wj(rel, obj):
@@ -984,14 +1208,12 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
                      "state_branch": state_branch, "state_branch_sha": sref, "state_branch_ahead": n2, "state_branch_oldest_unmerged_at": o2,
                      "state_branch_files": f2, "records_lag_rule": "files"}
     wj("meta.json", meta)
-    # every PR (state all)
-    raw, page = [], 1
-    while page <= 40:
-        d = gh.get(f"/pulls?state=all&sort=created&direction=desc&per_page=100&page={page}")
-        raw += d
-        if len(d) < 100:
-            break
-        page += 1
+    # CK-3 (founder A151, A154; checks brief): the set-up check (CK-1) run on main here, and the newest pipeline heartbeat (CK-2)
+    wj("enforcement/conformance.json", safe("set-up check", lambda: conformance_read(msha if main_local else main_ref), {"error": "not run"}))
+    wj("enforcement/heartbeat.json", safe("pipeline heartbeat", lambda: heartbeat_read(gh), {"error": "not read"}))
+    # every PR (state all). Lead 75, 17 Nov (fewer REST calls): the list is kept in the cache. A closed PR changes only with its
+    # updated_at, so a run reads the open PRs and the closed PRs updated since the last full read (plus a day), not every page.
+    raw = pr_list(gh, cache)
     ac_path = os.path.join(cache, "appcode.json")
     ac = json.load(open(ac_path)) if os.path.exists(ac_path) else {}
     since = NOW - timedelta(days=21)
@@ -1013,6 +1235,7 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
             for res in ex.map(run_chunk, [need[i::8] for i in range(8) if need[i::8]]):
                 ac.update({str(k): v for k, v in res.items()})
         gh.calls += len(need)
+        gh.tally["app-code-prs.sh (one per PR)"] = gh.tally.get("app-code-prs.sh (one per PR)", 0) + len(need)
         json.dump(ac, open(ac_path, "w"))
     pulls = [{"number": x["number"], "title": x["title"], "state": x["state"], "draft": bool(x.get("draft")),
               "created_at": x["created_at"], "merged_at": x.get("merged_at"), "closed_at": x.get("closed_at"),
@@ -1073,19 +1296,6 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
                                     "runs_in_3h": rg.get("total_count", len(rr)), "runs_sampled": min(len(rr), CI_SAMPLE_RUNS), "job_waits": waits})
     except Exception as e:                                   # offline or the API failed: the box says not measured
         wj("github/ci_queue.json", {"error": str(e)[:200]})
-    # Stuck now (founder 23:3x IST 16 Nov via Lead 70): open PRs labelled `review: approved`, with when the label went on
-    # (the newest such "labeled" event), so the board can name those approved and not merged for over 60 min.
-    try:
-        ap = []
-        for p in [p for p in pulls if p.get("state") == "open" and any((l.get("name") == "review: approved") for l in p.get("labels") or [])][:STUCK_MAX_PRS]:
-            ev = gh.get_pages(f"/issues/{p['number']}/events?per_page=100", max_pages=5)   # every page: the newest label event
-            at = [e["created_at"] for e in ev if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == "review: approved"]
-            ap.append({"number": p["number"], "title": p.get("title"), "labeled_at": max(at) if at else None})
-        wj("github/approved_open.json", ap)
-        if len([p for p in pulls if p.get("state") == "open" and any((l.get("name") == "review: approved") for l in p.get("labels") or [])]) > STUCK_MAX_PRS:
-            ERRORS.append(f"Stuck now: more than {STUCK_MAX_PRS} approved PRs open; the oldest beyond {STUCK_MAX_PRS} were not read")
-    except Exception as e:
-        wj("github/approved_open.json", {"error": str(e)[:200]})
     # branches with a push in the last 24 h (GitHub keeps no push time per branch: the head commit's committed date stands in)
     o, r_ = (gh.repo or "/").split("/")
     # every branch is read (GitHub's ref ordering by commit date proved unreliable for branches: 14 Nov, today's lane branches missing)
@@ -1146,6 +1356,25 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
             od.append({"number": x["number"], "head_committed_at": c["commit"]["committer"]["date"], "ci": ci,
                        "approved_labelled_at": lab[-1] if lab else None})
     wj("github/open_prs_detail.json", od)
+    # Stuck now (founder 23:3x IST 16 Nov via Lead 70): open PRs labelled `review: approved`, with when the label went on
+    # (the newest such "labeled" event), so the board can name those approved and not merged for over 60 min. Lead 75, 17 Nov:
+    # taken from the open-PR GraphQL read above (its label events); the REST events are read only when GraphQL was refused.
+    try:
+        lab_at = {x["number"]: x["approved_labelled_at"] for x in od}      # GraphQL or REST: od holds every open PR it read
+        appr = [p for p in pulls if p.get("state") == "open" and any((l.get("name") == "review: approved") for l in p.get("labels") or [])]
+        ap = []
+        for p in appr[:STUCK_MAX_PRS]:
+            if p["number"] in lab_at:
+                at = lab_at[p["number"]]
+            else:                                          # not in od (GraphQL reads the first 100 open PRs): REST events
+                ev = gh.get_pages(f"/issues/{p['number']}/events?per_page=100", max_pages=5)   # every page: the newest label event
+                at = max([e["created_at"] for e in ev if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == "review: approved"], default=None)
+            ap.append({"number": p["number"], "title": p.get("title"), "labeled_at": at})
+        wj("github/approved_open.json", ap)
+        if len(appr) > STUCK_MAX_PRS:
+            ERRORS.append(f"Stuck now: more than {STUCK_MAX_PRS} approved PRs open; the oldest beyond {STUCK_MAX_PRS} were not read")
+    except Exception as e:
+        wj("github/approved_open.json", {"error": str(e)[:200]})
     # board v53 (A69, A70): rules caught in the IST day so far (Health item 4). Read from IST midnight; a file is absent when
     # its read failed, so the number reads not measured.
     d0 = datetime.combine(NOW.astimezone(IST).date(), datetime.min.time(), IST).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -3117,28 +3346,31 @@ def stuck_now(d, sc, ci, li, li_src):
          "text": (f"Actions runs waiting for a machine: {q}" if q is not None else "Actions runs waiting for a machine: not measured"),
          "src": f"GitHub Actions runs with status queued (total_count), as lead-watch's jam line (P-646); green to {STUCK_QUEUE[0]}, red over {STUCK_QUEUE[1]}; " + at}]
     if isinstance(ss, list):
-        names = [f"{x.get('title') or 'untitled'} ({x.get('state') or 'state not given'})" for x in ss if isinstance(x, dict)]
+        names = [f"{x.get('title') or 'untitled'} ({': '.join(str(v) for v in (x.get('state') or 'state not given', x.get('reason')) if v)})"
+                 for x in ss if isinstance(x, dict)]
         try:
             sa = parse_iso(ss_at) if ss_at else None
             sa = sa if sa and sa.tzinfo else None                  # a time with no zone is not trusted
-        except ValueError:
+        except (ValueError, TypeError, AttributeError):     # not a string, or not a time
             sa = None
         tk = parse_iso(taken) if taken else None
         age = int((tk - sa).total_seconds() // 60) if sa and tk else None
         when = (ist(sa) + (f", {age} min before this data" if age is not None else "")) if sa else "a time not given"
         stale = age is None or age > STUCK_SESSIONS_FRESH_MIN
         lines.append({"key": "sessions", "light": "red" if names else ("amber" if stale else "green"),
-                      "text": (f"Sessions awaiting input or failed: {len(names)}" + (": " + "; ".join(names) if names else "")),
+                      "text": (f"{STUCK_SESSIONS_LABEL}: {len(names)}" + (": " + "; ".join(names) if names else "")),
                       "src": f"per the Lead's check of claude.ai/code at {when} (P-647), Lead-reported; amber when no session is listed but the "
                              f"check is over {STUCK_SESSIONS_FRESH_MIN} min old or undated; " + li_src, "items": names})
     else:
-        lines.append({"key": "sessions", "light": "grey", "text": "Sessions awaiting input or failed: not reported",
+        lines.append({"key": "sessions", "light": "grey", "text": f"{STUCK_SESSIONS_LABEL}: not reported",
                       "src": "the Lead input has no stuck_sessions (the Lead's check of claude.ai/code, P-647)", "items": []})
     ao = sc["approved_old"]
     lines.append({"key": "approved", "light": "grey" if sc["stuck_approved_over_60"] is None else "red" if ao else "green",
                   "text": (f"Approved, not merged for over {STUCK_APPROVED_MIN} min: " + (str(len(ao)) + (": " + "; ".join(f"#{x['number']} ({x['min']} min)" for x in ao[:8]) + (f" and {len(ao) - 8} more" if len(ao) > 8 else "") if ao else ""))
-                           if sc["stuck_approved_over_60"] is not None else f"Approved, not merged for over {STUCK_APPROVED_MIN} min: " + sc["approved_reason"]),
-                  "src": "open PRs labelled review: approved, minutes since the label went on (GitHub issue events); " + at,
+                           if sc["stuck_approved_over_60"] is not None else f"Approved, not merged for over {STUCK_APPROVED_MIN} min: " + sc["approved_reason"])
+                          + (f"; waiting for CI machines ({q} runs queued)" if ao and q is not None and q > STUCK_QUEUE[1] else ""),
+                  "src": "open PRs labelled review: approved, minutes since the label went on (GitHub issue events); the reason 'waiting for CI machines' is added "
+                         f"when the queue line is red (over {STUCK_QUEUE[1]} runs queued; Lead 74, 17 Nov); " + at,
                   "items": [f"#{x['number']} {x['title']} ({x['min']} min)" for x in ao]})
     return {"lines": lines, "light": flow_light(*[x["light"] if x["light"] != "grey" else None for x in lines])}
 
@@ -3244,6 +3476,11 @@ def first_screen(d, r1_qa, li, li_src):
                         "why": "qa/CAPABILITIES.md on main has no Release 1 rows (or was not read)"})
     # Today's proving goal (Lead input today_goal, reported)
     g = (li or {}).get("today_goal") or {}
+    g_text = None                                           # a goal not sent as {proven: number, by}: shown, not counted
+    if not isinstance(g, dict):
+        g_text, g = str(g), {}
+    elif g.get("proven") is not None and (isinstance(g["proven"], bool) or not str(g["proven"]).strip().isdigit()):
+        g_text, g = str(g.get("proven")), {}
     if g.get("proven"):
         short = int(g["proven"]) - len(proven)
         tstate = "done" if short <= 0 else ("at risk" if short <= len(waiting) else "off track")
@@ -3254,7 +3491,8 @@ def first_screen(d, r1_qa, li, li_src):
                            ("" if short <= len(waiting) else ": fewer than needed, so not reachable today")),
                    "plan": g.get("plan"), "class": "reported"}
     else:
-        today_b = {"goal": None, "state": "not set", "why": "no proving goal in the Lead input (today_goal)", "proven": len(proven),
+        today_b = {"goal": None, "state": "not set", "why": (f"the Lead's goal is not a number and a time (today_goal: {g_text})" if g_text else
+                                                            "no proving goal in the Lead input (today_goal)"), "proven": len(proven),
                    "waiting": len(waiting), "class": "reported"}
     # Needs you: the founder's open items, plus launch steps he owns that are dated today or earlier (founder, 16 Nov: "Yes, show them")
     ny = []
@@ -3710,6 +3948,13 @@ def build_explain(d):
                 (d.get("reconcile_keys") or {}).get("stuck_approved_over_60"), "approved pull requests waiting over 60 min",
                 " · ".join(x["text"] for x in sn_["lines"]), src="; ".join(f"{x['key']}: {x['src']}" for x in sn_["lines"]), cls="measured",
                 behind=[f"{x['text']} ({x['light']})" for x in sn_["lines"]] + [i for x in sn_["lines"] for i in x.get("items") or []])
+        en_ = fs.get("enforced")
+        if en_:
+            put("first.enforced", "Enforced", "Whether the engineering set-up the Lead approved is in force (the set-up check, CK-1) and whether the "
+                "pipeline is running (the heartbeat that runs every 30 min outside every session, CK-2). Machines write both; "
+                "a heartbeat over 45 min old shows as unknown, never yes.", now_w, None, "",
+                " · ".join(x["text"] for x in en_["lines"]), src="; ".join(f"{x['key']}: {x['src']}" for x in en_["lines"]), cls="measured",
+                behind=[f"{x['text']} ({x['light']})" for x in en_["lines"]] + [i for x in en_["lines"] for i in x.get("items") or []])
         fl_ = d.get("flow")
         if fl_:
             put("first.flow", "Flow", "Which part of the work is going well: building, proving, merging, or the people and machines behind them. "
@@ -4175,6 +4420,13 @@ def main():
     since14 = NOW - timedelta(days=14)
 
     def merged_list():
+        if gh.offline:                                   # offline: not read, so not measured (review M4), as before
+            raise RuntimeError("offline")
+        sp = snap.j("github/pulls.json")                 # Lead 75, 17 Nov: the snapshot's PR list has every merged PR; no REST
+        if sp:
+            return sorted([{"n": x["number"], "title": x["title"], "created": x["created_at"], "merged": x["merged_at"]} for x in sp
+                           if ts(x.get("merged_at")) and ts(x["merged_at"]) >= since14 and not x["head"]["ref"].startswith("mergify/")],
+                          key=lambda m: m["merged"], reverse=True)
         out, page = [], 1
         while page < 30:
             d = gh.get(f"/pulls?state=closed&sort=updated&direction=desc&per_page=100&page={page}")
@@ -4214,6 +4466,7 @@ def main():
             for res in ex.map(run_chunk, chunks):
                 ac.update({str(k): v for k, v in res.items()})
         gh.calls += len(todo)
+        gh.tally["app-code-prs.sh (one per PR)"] = gh.tally.get("app-code-prs.sh (one per PR)", 0) + len(todo)
         json.dump(ac, open(ac_path, "w"))
     unclassified = sum(1 for m in merged if str(m["n"]) not in ac)
 
@@ -4435,6 +4688,15 @@ def main():
 
     # Works per day from main's CAPABILITIES.md history (progress.sh's parse on each day's last version)
     def works_history():
+        w0 = (NOW - timedelta(days=15)).strftime('%Y-%m-%dT%H:%M:%SZ')
+        # Lead 75, 17 Nov (fewer REST calls): the snapshot already lists main's versions of the file for 30 days; use it when it
+        # holds one from before the window (the version in force when the window opens), else read GitHub as before
+        sl = [json.loads(x) for x in (snap.text("git/capabilities_main.jsonl") or "").splitlines() if x.strip()]
+        if sl and any(ts(x["date"]) < ts(w0) for x in sl):
+            cm = sorted((ts(x["date"]), x["sha"]) for x in sl)
+            cm = [c for c in cm if c[0] >= ts(w0)] + [max(c for c in cm if c[0] < ts(w0))]
+            cm.sort()
+            return works_from(cm)
         cm, page = [], 1
         while page <= 10:
             got = gh.get(f"/commits?sha=main&path={REL}/qa/CAPABILITIES.md&since={(NOW - timedelta(days=15)).strftime('%Y-%m-%dT%H:%M:%SZ')}&per_page=100&page={page}")
@@ -4442,9 +4704,10 @@ def main():
             if len(got) < 100:
                 break
             page += 1
-        w0 = (NOW - timedelta(days=15)).strftime('%Y-%m-%dT%H:%M:%SZ')
         cm += gh.get(f"/commits?sha=main&path={REL}/qa/CAPABILITIES.md&until={w0}&per_page=1")   # the version in force when the window opens
-        cm = sorted(((ts(c["commit"]["committer"]["date"]), c["sha"]) for c in cm))
+        return works_from(sorted(((ts(c["commit"]["committer"]["date"]), c["sha"]) for c in cm)))
+
+    def works_from(cm):
         out = {}
         for d in days:
             end = datetime(d.year, d.month, d.day, tzinfo=IST).astimezone(timezone.utc) + timedelta(days=1)
@@ -4457,7 +4720,9 @@ def main():
             if os.path.exists(f):
                 out[d] = json.load(open(f))
                 continue
-            txt = gh.get(f"/contents/{REL}/qa/CAPABILITIES.md?ref={sha}", raw=True)
+            fc = os.path.join(cache, f"cap-{sha}.md")        # the snapshot's copy of that version, when it has one
+            txt = (snap.text(f"git/capabilities_main/{sha}.md") or (open(fc, encoding="utf-8").read() if os.path.exists(fc) else None)
+                   or gh.get(f"/contents/{REL}/qa/CAPABILITIES.md?ref={sha}", raw=True))
             w = sum(x["works"] for x in run_progress(txt, None))
             json.dump(w, open(f, "w"))
             out[d] = w
@@ -4692,6 +4957,7 @@ def main():
     data["flow"] = flow_box(data, comp["flow"], li, li_src, snap.j("github/ci_queue.json"))
     data["first"]["proven_lines"] = proven_lines(data, comp["flow"])
     data["first"]["stuck_now"] = stuck_now(data, comp["stuck"], snap.j("github/ci_queue.json"), li, li_src)
+    data["first"]["enforced"] = enforcement_lines(data, snap.j("enforcement/conformance.json"), snap.j("enforcement/heartbeat.json"))
     data["explain"] = build_explain(data)
     data["run"] = {"seconds": round(time.time() - T0, 1), "api_calls": gh.calls, "errors": ERRORS}
     os.makedirs(out_dir, exist_ok=True)
@@ -4710,6 +4976,9 @@ def main():
         write_history(a.history_file, read_history(snap.file("cockpit/history.jsonl")), comp["history_line"])
     print(f"cockpit-data: wrote {a.out} in {data['run']['seconds']} s, {gh.calls} API calls, {len(ERRORS)} notes; "
           f"health {hl['light']}; trust {comp['trust']['state']}")
+    if os.environ.get("COCKPIT_CALLS"):                  # where the calls went, largest first
+        for k, n in sorted(gh.tally.items(), key=lambda kv: -kv[1]):
+            print(f"  calls: {n:4d} {k}")
     for e in ERRORS:
         print("  note:", e)
 

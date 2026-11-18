@@ -204,8 +204,11 @@ class ProblemErrors implements ExceptionFilter {
       const detail = typeof body === "object" ? (Array.isArray(body.message) ? body.message.join("; ") : body.message ?? e.message) : String(body);
       return send(status, status === 403 ? "Not allowed" : status === 404 ? "Not found" : status === 409 ? "Conflict" : "Request refused", detail, typeof body === "object" && body.existingId ? { existingId: body.existingId } : {});
     }
+    // PF-0bp (STANDARDS §6): a body the JSON parser cannot read is refused before any route, as a problem answer (it was a
+    // 500). The parser's own message quotes the bad text, so neither the answer nor the log repeats it.
+    if (e?.type === "entity.parse.failed" || (e?.status === 400 && e?.expose === true && typeof e?.type === "string" && e.type.startsWith("entity."))) return send(400, "Request refused", "The request body is not valid JSON. Nothing was saved or started.", { code: "BODY_NOT_JSON" });
     // P-179 break m6: a JSON body over the 5 MB limit is refused by the body parser before any route: say so (it was a 500).
-    if (e?.type === "entity.too.large" || e?.status === 413) return send(413, "Too large", "This request is larger than the 5 MB the server takes. Nothing was saved or started.");
+    if (e?.type === "entity.too.large" || e?.status === 413) return send(413, "Too large", "This request is larger than the 5 MB the server takes. Nothing was saved or started.", { code: "BODY_TOO_LARGE" });
     // C4.2 (QA-125, QA-13): plain words, never "the database": a duplicate is someone else's save at the same moment, or the thing exists already.
     if (e?.code === "P2002") return send(409, "Already exists", "This already exists, or someone else saved the same thing at the same moment. Reload to see the current state.");
     // A malformed id (not a UUID, or with a NUL byte) is simply not found (review #4, break m5); so is a stored file that
@@ -229,11 +232,14 @@ async function main() {
   const port = Number(process.env.STUDIO_PORT ?? 4400);
   // P-214: a new feature registers itself in api/src/features/<feature>.ts, not in the @Module list above.
   await registerFeatures(AppModule);
-  await (await import("./platform/identity/sample-seed.ts")).seedSampleOnStart();   // P-571 (2), PF-4: PF-3's Sample seed after migrations, only with PLATFORM_SAMPLE_SEED=on (default off; never in production)
+  await (await import("./platform/identity/sample-seed.ts")).seedSampleOnStart(); await (await import("./firms.ts")).fillCaseFirmIdsOnStart();   // P-571 (2), PF-4: PF-3's Sample seed after migrations, only with PLATFORM_SAMPLE_SEED=on (default off; never in production); CS-W1 (breaker M1): then the cases made before the seed get their platform firm
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: ["error", "warn"] });
   (await import("./platform/observability/hook.ts")).observe(app); // PF-23: one JSON logger with redaction, request lines and metrics (NFR5-14, BR-16)
   (await import("./front-office/sales/public.ts")).publicFormBodyLimit(app);   // FO-2 (AG-2-49 rule 2): the web form's 32 KB, before the app-wide parser (Lead B's OK on #1813; the release holder's asked)
   app.useBodyParser("json", { limit: "5mb" });
+  // PF-0bp: Nest turns the parser's SyntaxError into a 400 that quotes the bad text (routes-resolver mapExternalException);
+  // pass on only its type, so ProblemErrors answers BODY_NOT_JSON and nothing of the body is repeated.
+  app.use((err: { type?: string } | undefined, _req: unknown, _res: unknown, next: (e?: unknown) => void) => next(err?.type === "entity.parse.failed" ? { type: "entity.parse.failed", status: 400, expose: true } : err));
   app.useGlobalFilters(new ProblemErrors());
   const web = join(STUDIO, "web", "dist");
   if (existsSync(web)) {
