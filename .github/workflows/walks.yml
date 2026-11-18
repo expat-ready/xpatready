@@ -5,7 +5,7 @@
 #   * Start (qa or the Lead): Actions › walks › Run workflow, journeys "j_6 j_9" (ids or numbers, space-separated, up to
 #     20; empty = every studio/tests/journeys/j_*.ts), ref = the branch to walk (main for gate A on main), or
 #     gh workflow run walks.yml --ref main -f journeys="j_6 j_9". A pull request that changes this file or
-#     tests/journeys/ runs every journey on its head by itself.
+#     tests/journeys/ runs every journey on its head by itself, once it is ready (never a draft or a mergify/* batch).
 #   * One job a journey, all at once (fail-fast off): the app starts as the packs job starts it (cloud-setup.sh, then
 #     the journey header's own isolated.sh line: own database, own port, never :4400), the journey runs in Playwright's
 #     Chromium with video, trace and a screenshot per step (tests/journeys/walk.mjs + record.ts), and its recording is
@@ -25,6 +25,7 @@ on:
         required: false
         default: ""
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - .github/workflows/walks.yml
       - ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/journeys/**
@@ -35,6 +36,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   plan:
+    # Never on a draft or a merge-queue batch (Lead 81 on #2133, review m9): no gate reads walks, each PR's head is
+    # walked when it is ready, and batches re-run ci only. walk needs plan, so it is skipped too.
+    if: ${{ github.event_name == 'workflow_dispatch' || (!github.event.pull_request.draft && !startsWith(github.event.pull_request.head.ref, 'mergify/')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
