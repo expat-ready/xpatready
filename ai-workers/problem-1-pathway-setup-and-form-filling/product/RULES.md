@@ -132,7 +132,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-635 | Enforcement defaults (overnight hooks, daily settings batch, pr-rules timing, hook speed): row word for word in `rules/tech-lead.md`. | prose | 16 Nov |
 | P-636 | Board words Planned, Built, Proven (+ In progress); only Proven counts as delivered; Refresh on demand. | script: cockpit-data.py (part) | 16 Nov |
 | P-637 | Labels need no founder click: the bot labels on the rules; a Lead-read path also needs "Lead read the diff: <sha>" (B200). | CI: queue-gate.sh label (part) | 16 Nov |
-| P-639 | The board and the Lead's check verify each other. Full row: `rules/tech-lead.md`. | script (part) | 16 Nov |
+| P-639 | The board and the Lead's check verify each other. Full row: `rules/tech-lead.md`. | prose (part script; see full row) | 16 Nov |
 | P-644 | Build 10, prove 10 R1 rows a day (floor 7/7); Lead + Build Leads A, C + Prove Lead; whole parts first; no scope cuts. | prose (plan in design/) | 16 Nov |
 | P-646 | Jam alarms each check (disk, no merge 60 min, CI queue over 30); drafts until Approve; act unasked. | script: lead-watch.sh (1b, 2b) | 16 Nov |
 | P-647 | Each check reads claude.ai/code statuses and acts on waiting lanes; no lane waits on a network change. | prose (built-in browser script) | 16 Nov |
