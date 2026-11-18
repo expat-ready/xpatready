@@ -41,3 +41,19 @@ Every firm boundary I tried: SQL, the opening body, the list, the read, and the 
 2a invisible-character names reach the database by backfill or SQL. 7a a NUL in `query` gives 500. 7b `%`/`_` act as wildcards. 7c case-insensitive search is ASCII-only (ctype C). 1a the backfill time grows faster than the case count. 15 replica bypasses the keys. 16a/16b firm-fill windows that need a runtime platform firm or a forced write. 19 `client_record` versus the brief's `client`.
 
 Breaker: Pass 48abcd4e5
+
+## Re-check 9bab80a24 (diff-only: 48abcd4e5..9bab80a24, the fixes for 2a, 7a, 7b)
+Setup: scratch databases `xr_studio_csk1_brk_{d,e}` (migrations, old-shape fixtures, then this migration), and a fresh copy `csk1_brk` on :4661 with the in-process PF-4 app. All dropped or stopped afterwards; no code changed, nothing committed.
+
+| # | What I did | Expected | Actual | Grade |
+|---|---|---|---|---|
+| R1 | Is there a name the API accepts but the new database check refuses (that would be a 500 at opening)? I opened 25 cases through the API with odd principal names: Hangul filler, Braille blank, soft hyphens, ZWNJ/ZWJ, word joiner, U+180E, variation selectors, U+1D173 pairs; `a`+NBSP/U+3000/U+2000/U+202F/U+1680+`b`; an emoji ZWJ family; `%`, `_`, `\`; CJK; 120 characters | 201 or 400, never 500 | Every one is 201 or 400; no 500. The API trims with JS `trim`, which covers every space the check refuses, and it refuses the same invisible set (`contracts/runtime.ts:22`), so every name it accepts passes the check | held |
+| R2 | The new check, probed directly by code point (inside a name and alone) | Refuses the contract's invisible set, and names of spaces only | Refused: C1 controls, U+200B, U+2028, U+FEFF anywhere; names of only NBSP, U+2000-200A or U+3000. Accepted: the characters in R1 | held |
+| R3 | Backfill names that clean down to nothing: profile `ZWSP ZWSP RLO` with label `FEFF NBSP U+3000`; profile `U+0085 U+2029 U+2028`; 199 x + ZWSP + ` y`; the 48abcd4e5 fixtures | Falls back to the label, else "Client of …", never empty | Both empty → "Client of C-2026-00017". U+0085 name → the label. 199 x… → 199 characters, trimmed. NBSP-only → label. RLO/ZWSP removed ("Badevil"). 0 cases without a client | held |
+| R4 | Backfill of a profile named `U+202F U+202F`, or `a` + Hangul fillers | — | Stored as is: a name of two narrow no-break spaces. The check and the backfill miss U+202F, U+205F and U+1680; `[[:space:]]` is ASCII-only under ctype C. Only a backfill or direct SQL can store this; the API trims it away. Hangul or Braille fillers pass both the API and the database: the contract's invisible set never listed them | Minor (carried) |
+| R5 | Search escapes: `%`, `_`, `\`, `50%`, `50\%`, `e_U`, `%Ltd`, `\ B`, `\\`, `%%`, `cl-%`, `CL-0000_` | Literal matches | `%` → only "Sample 50% Ltd"; `_` → only "Sample_Under Score"; `\` → only "Sample \ Back"; `%Ltd`, `50\%`, `\\`, `%%`, `cl-%`, `CL-0000_` → 0. No wildcard leaks through | held |
+| R6 | Search with NUL and invisible characters: `\0`, `\0%`, `x\0y`, tab+`%`+tab, a lone ZWSP, RLO+`50%`; 199 `a` + an emoji cut at character 200 | 200, never 500 | All 200. `\0` or ZWSP alone → the firm's full list (no search, as documented). `x\0y` → searches `xy`. The cut emoji (half a surrogate pair) → 200, 0 hits | held |
+| R7 | The row's suite on a fresh copy at 9bab80a24 | Exits 0 | 51/51 passed, `migrate diff` empty | held |
+| R7a | The same suite on a copy that already holds clients named with `%` or `_` (my R1 data) | Passes | The new 7a/7b case fails (`%` → 1, `_` → 1). It assumes no client of the firm contains those characters. This is a fixture assumption, not a product fault (R5 shows the search is right) | Minor (test) |
+
+Breaker: Pass 9bab80a24
