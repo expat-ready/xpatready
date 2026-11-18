@@ -118,7 +118,8 @@ class GH:
             raise RuntimeError("offline")
         url = url if url.startswith("http") else self.api + url
         acc = "application/vnd.github.raw" if raw else "application/vnd.github+json"
-        cmd = ["curl", "-sS", "--fail-with-body", "-H", f"Accept: {acc}", "-H", f"Authorization: token {self.token}", url]
+        # -L: a moved repository's reads follow GitHub's redirect (the org move, 18 Nov)
+        cmd = ["curl", "-sSL", "--fail-with-body", "-H", f"Accept: {acc}", "-H", f"Authorization: token {self.token}", url]
         err = ""
         for wait in (0, 2, 5):
             time.sleep(wait)
