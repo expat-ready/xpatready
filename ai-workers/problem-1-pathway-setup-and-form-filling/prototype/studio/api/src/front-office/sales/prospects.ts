@@ -26,11 +26,12 @@ const bad = (detail: string, field: string, code = "INVALID") => problem(400, "C
 const nameOf = (p: { givenNames: string | null; familyName: string | null }) => [p.givenNames, p.familyName].filter(Boolean).join(" ") || "(no name)";
 type Locked = { id: string; number: string; type: FoPipeline; lead_id: string; owner_staff_id: string | null; stage_id: string; kind: FoStageKind; key: string; label: string; won_via: string | null; subject_person_id: string | null; subject_company_id: string | null; primary_contact_person_id: string };
 
-/** A date filter's day (`YYYY-MM-DD`, in the firm's zone), or null; anything else → 400 at the field. */
+/** A date filter's day (`YYYY-MM-DD`, years 1900 to 2999, in the firm's zone), or null; anything else → 400 at the field
+ *  (break m2: year 0000 or 9999 reached the database and answered 500). */
 export function dayOf(v: unknown, field: string): string | null {
   if (v === undefined || v === null || v === "") return null;
   const s = String(v);
-  return DAY.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s) ? s : bad(`${field}: a date as YYYY-MM-DD.`, field);
+  return DAY.test(s) && s >= "1900-01-01" && s <= "2999-12-31" && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s) ? s : bad(`${field}: a date as YYYY-MM-DD.`, field);
 }
 
 /** The time range from `from` to `to` (both days included, in the firm's zone), worked out by the database, or null. */
@@ -68,10 +69,14 @@ export class Prospects {
     return tx.moduleEvent.create({ data: { firmId, type, subjectId, payload: payload as Prisma.InputJsonValue } });
   }
 
-  /** A prospect's version: the order number of its latest stage move (every stage change writes one, FO-1a's chain). */
+  /** A prospect's version: how many stage moves it has (every stage change writes one and moves are never removed, FO-1a's
+   *  chain); per prospect, so it says nothing about other prospects or firms (break m1). */
   private async versionOf(db: Tx | PrismaClient, firmId: string, prospectId: string) {
-    const m = await db.foStageMove.findFirst({ where: firmScope(firmId, { prospectId }), orderBy: { seq: "desc" }, select: { seq: true, toStageId: true, fromStageId: true, cause: true } });
-    return { version: m ? String(m.seq) : "0", last: m };
+    const [m, n] = await Promise.all([
+      db.foStageMove.findFirst({ where: firmScope(firmId, { prospectId }), orderBy: { seq: "desc" }, select: { toStageId: true, fromStageId: true, cause: true } }),
+      db.foStageMove.count({ where: firmScope(firmId, { prospectId }) }),
+    ]);
+    return { version: String(n), last: m };
   }
 
   /** Engage (Individual) (AG-2-75 rules 1, 5, 9, 12; BR-7): an open or engaged lead the person sees; every request makes a
@@ -155,11 +160,14 @@ export class Prospects {
 
   /** The prospect under its row lock with its stage, seen again (404 otherwise); a version given must be the current one. */
   private async locked(tx: Tx, ctx: StaffContext, id: string, version: unknown, see: (o: string | null) => boolean) {
-    const [p] = await tx.$queryRaw<Locked[]>`
-      select p.id::text, p.number, p.type, p.lead_id::text, p.owner_staff_id::text, p.stage_id::text, s.kind, s.key, s.label, p.won_via::text,
+    // The row lock first, on the prospect alone, then its stage (break M1): a join re-checked after a waiting lock no longer
+    // matches once the other change moved the stage, and the loser would hear 404 instead of the stale-version 409.
+    const [row] = await tx.$queryRaw<Omit<Locked, "kind" | "key" | "label">[]>`
+      select p.id::text, p.number, p.type, p.lead_id::text, p.owner_staff_id::text, p.stage_id::text, p.won_via::text,
              p.subject_person_id::text, p.subject_company_id::text, p.primary_contact_person_id::text
-        from fo_prospect p join fo_stage s on s.firm_id = p.firm_id and s.id = p.stage_id
-       where p.firm_id = ${ctx.firmId}::uuid and p.id = ${id}::uuid for update of p`;
+        from fo_prospect p where p.firm_id = ${ctx.firmId}::uuid and p.id = ${id}::uuid for update`;
+    const st = row ? await tx.foStage.findFirst({ where: firmScope(ctx.firmId, { id: row.stage_id }), select: { kind: true, key: true, label: true } }) : null;
+    const p: Locked | null = row && st ? { ...row, ...st } : null;
     if (!p || !see(p.owner_staff_id)) return notFound("prospect");
     const v = await this.versionOf(tx, ctx.firmId, id);
     if (version !== undefined && version !== null && String(version) !== v.version) {

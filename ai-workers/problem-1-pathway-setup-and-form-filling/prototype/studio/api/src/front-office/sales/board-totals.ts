@@ -3,13 +3,13 @@ import type { FoPipeline, PrismaClient } from "@prisma/client";
 import { firmScope } from "../../platform/firm-scope.ts";
 import type { Tx } from "./common.ts";
 
-/** The board's money (R1.31): per stage and over the open (ACTIVE) stages, the sum of the prospects' values of each
+/** The board's money (R1.31): per stage and over the open (ACTIVE) stages the board shows (live ones: break m6), the sum of the prospects' values of each
  *  currency, never added across currencies; counted in the database over the prospects the person sees (`ownerOnly`:
  *  their own, when they do not see all; FO-2b's board passes its own visibility). */
 export async function boardTotals(db: Tx | PrismaClient, firmId: string, type: FoPipeline, ownerOnly: string | null) {
   type Line = { currency: string; valueCents: number; count: number };
   const rows = await db.foProspect.groupBy({ by: ["stageId", "currency"], where: firmScope(firmId, { type, valueCents: { not: null }, ...(ownerOnly ? { ownerStaffId: ownerOnly } : {}) }), _sum: { valueCents: true }, _count: { _all: true }, orderBy: [{ stageId: "asc" }, { currency: "asc" }] });
-  const open = new Set((await db.foStage.findMany({ where: firmScope(firmId, { pipeline: type, kind: "ACTIVE" as const }), select: { id: true } })).map((s) => s.id));
+  const open = new Set((await db.foStage.findMany({ where: firmScope(firmId, { pipeline: type, kind: "ACTIVE" as const, active: true }), select: { id: true } })).map((s) => s.id));
   const byStage = new Map<string, Line[]>(), openTotals = new Map<string, Line>();
   for (const r of rows) {
     const line = { currency: r.currency, valueCents: r._sum.valueCents ?? 0, count: r._count._all };

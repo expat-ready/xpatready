@@ -115,6 +115,14 @@ try {
   const sysCause = await refusal(() => pros.move(R, p1.id, { stageId: stage("CONSULT"), cause: "BOOKING", version: back.version }));
   ok("FO-2p3 DW2 fail: into LOST (Mark lost), NURTURE (Park), another pipeline's stage, no version or a system cause → 422, nothing moved",
     toLost?.body.code === "USE_MARK_LOST" && toNurture?.body.code === "USE_PARK" && otherPipe?.status === 422 && noVersion?.status === 422 && sysCause?.status === 422 && count("fo_stage_move", `prospect_id = '${p1.id}'`) === 3, { toLost, toNurture, otherPipe, noVersion, sysCause });
+  // Break M1: four moves at once with the same version → one saved, the others 409 STALE (never 404).
+  const racer = await pros.engage(R, (await lead("Rae")).id);
+  const race = await Promise.all(["QUALIFIED", "CONSULT", "PROPOSAL", "RETAINER_SENT"].map((k) => refusal(() => pros.move(R, racer.id, { stageId: stage(k), version: racer.version }))));
+  ok("FO-2p3 DW2 fail (break M1): four moves at once on the same version → one saved, three 409 STALE, none 404",
+    race.filter((x) => x === null).length === 1 && race.filter((x) => x?.status === 409 && x.body.code === "STALE").length === 3 && count("fo_stage_move", `prospect_id = '${racer.id}'`) === 2, race.map((x) => x?.status ?? 200));
+  const convRace = await Promise.all([0, 1, 2].map(() => refusal(() => pros.convert(R, racer.id, {}))));
+  ok("FO-2p3 DW4 fail (break M1): three Converts at once → one, the others 409 ALREADY_WON", convRace.filter((x) => x === null).length === 1 && convRace.filter((x) => x?.body.code === "ALREADY_WON").length === 2, convRace.map((x) => x?.status ?? 200));
+  ok("FO-2p3 pass (break m1): a version counts this prospect's own moves only", (await pros.read(R, racer.id)).version === "3");
   const failing = new Prospects(db, { ...ports, audit: fakeAudit({ failOn: () => true }) });
   const forced = await refusal(() => failing.move(R, p1.id, { stageId: stage("CONSULT"), version: back.version }));
   ok("FO-2p3 DW2 fail: a forced audit failure rolls the move back (stage, move and event unchanged)",
@@ -211,7 +219,8 @@ try {
   ok("FO-2p3 DW6 fail: firm B never sees firm A's leads or prospects, and naming firm A's staff as owner → 400",
     !bLeads.some((l) => [tia.id, eli.id, fay.id].includes(l.id)) && !bPros.some((p) => p.id === p1.id) && bOwner?.status === 400 && bOwner.body.code === "UNKNOWN_OWNER", { bOwner });
   const badDay = await refusal(() => leads.list(R, "all", undefined, { from: "2026-13-01" })), backwards = await refusal(() => leads.list(R, "all", undefined, { from: "2026-11-02", to: "2026-11-01" }));
-  ok("FO-2p3 DW6 fail: a date that is not a day, or from after to → 400", badDay?.status === 400 && backwards?.status === 400, { badDay, backwards });
+  const year0 = await refusal(() => leads.list(R, "all", undefined, { from: "0000-01-01" })), year9 = await refusal(() => pros.list(R, { to: "9999-12-31" }));
+  ok("FO-2p3 DW6 fail: a date that is not a day, from after to, or a year outside 1900-2999 (break m2: was 500) → 400", badDay?.status === 400 && backwards?.status === 400 && year0?.status === 400 && year9?.status === 400, { badDay, backwards, year0, year9 });
   ok("FO-2p3 DW6 pass: the prospects list filters by owner and engaged day too", (await pros.list(R, { owner: T.staffId })).every((p) => p.ownerStaffId === T.staffId) && (await pros.list(R, { from: "2000-01-01", to: "2000-01-02" })).length === 0);
   const readB = await refusal(() => pros.read(SOLO, p1.id));
   ok("FO-2p3 DW6 fail: firm B reading firm A's prospect → 404", readB?.status === 404, readB);
