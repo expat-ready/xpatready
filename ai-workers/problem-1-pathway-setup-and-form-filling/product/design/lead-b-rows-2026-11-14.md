@@ -2006,3 +2006,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **PF-19r part 2 (#2157 comment 6991082173), my ruling 6991168647:**
   * **No new bypass use.** The case doors use #2125's `firm_id` or `case_lookup.case_firm_id_of_key`, then `enterFirm`. Part 2 builds on #2125.
   * The seed's option 1 (`PLATFORM_SAMPLE_SEED=on` on demo and test copies) is my recommendation as owner. It amends P-571 (2), so Lead 83 decides it as a DECISIONS line. It needs a scan for suites that expect an empty table and a production-mode test.
+* **P-710 (Lead 83) amends P-571 (2):** the Sample platform firms are seeded ON on demo and test copies, and production never seeds. My two conditions are in it (the empty-table scan and a production-mode test). P-571 (2)'s test that production never runs the seed stays. The ruling is posted on #2157, so PF-19r part 2 can build fully on #2125's tip.
