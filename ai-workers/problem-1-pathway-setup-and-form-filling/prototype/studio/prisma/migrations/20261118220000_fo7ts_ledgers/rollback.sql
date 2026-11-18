@@ -1,6 +1,6 @@
 -- FO-7ts part 2 rollback (not a migration: Prisma reads only migration.sql). Run in one transaction, before any
 -- MOVE_TO_CASE entry or credit entry exists that must be kept (it refuses otherwise):
---   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261118190000_fo7ts_ledgers/rollback.sql
+--   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261118220000_fo7ts_ledgers/rollback.sql
 -- Restores money_trust_entry_write exactly as FO-7lk left it, the two checks as FO-7a2 wrote them, and drops the rest.
 -- The enum value MOVE_TO_CASE stays (PostgreSQL cannot drop one). Then delete this folder's row from _prisma_migrations.
 DO $$

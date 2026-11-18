@@ -1,7 +1,7 @@
 -- FO-7lk rollback (not a migration: Prisma reads only migration.sql). Restores FO-7a's money_issued_invoice and FO-7a2's
 -- money_trust_entry_write, money_credit_note_write, money_move_batch_owed_back and money_move_line_write exactly as
 -- they were before FO-7lk, then drops money_trust_lock. Run in one transaction:
---   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261118180000_fo7lk_trust_lock/rollback.sql
+--   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261118210000_fo7lk_trust_lock/rollback.sql
 -- tests/check_fo7lk_lock_order.ts runs it and compares each function's text with the database before FO-7lk.
 
 -- The four lock lines back to the inline key: each function's own definition, with only that call replaced (its owner,

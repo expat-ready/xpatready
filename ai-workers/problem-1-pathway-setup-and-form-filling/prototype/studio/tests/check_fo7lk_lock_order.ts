@@ -14,7 +14,7 @@ import { join } from "node:path";
 import pg from "pg";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
-const NEW = "20261118180000_fo7lk_trust_lock", FO7A2 = "20261116133000_fo7a2_ledger_rules";
+const NEW = "20261118210000_fo7lk_trust_lock", FO7A2 = "20261116133000_fo7a2_ledger_rules";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const T = `xr_studio_fo7lk_t_${process.pid}`, PRE = `xr_studio_fo7lk_pre_${process.pid}`, BACK = `xr_studio_fo7lk_back_${process.pid}`, PLANT = `xr_studio_fo7lk_plant_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;

@@ -36,7 +36,8 @@
 //   <stamp>_fo7ts_money_settings): the three-state trust answer (UNANSWERED → YES | NO, YES ⇄ NO, a trigger; trust is
 //   on only at YES) replaces trust_enabled; tax registration (needs a tax number), the QST number and "Prices include
 //   tax" replace the firm's rate list; "Invoice payments go to" with who and when; BANK_TRANSFER and CARD_TERMINAL;
-//   one deposit request per retainer version; a hashed pay link per document; the unsigned-retainer confirmation.
+//   one deposit request per retainer version; a hashed pay link per document; the unsigned-retainer confirmation; and,
+//   in a second step (<stamp>_fo7ts_card_terminal_trust, Lead 80 on #2106), CARD_TERMINAL is never received into trust.
 // * FO-7ts part 2 (AG-6-60 rules 2-5, 9, AG-6-21 rules 2-3, 5 §7, AG-6-23 rules 1, 4; P-634; migration
 //   <stamp>_fo7ts_ledgers): a pre-case → case move is a MOVE_TO_CASE pair on one party that nets to zero, written in one
 //   transaction, at most the pre-case balance; money_credit_entry, the credit ledger per holder (a case, or the party)
@@ -183,7 +184,8 @@ model MoneyPaymentSettings {
   operatingDetails String?       @map("operating_details")
   trustDetails     String?       @map("trust_details")
   taxNumber        String?       @map("tax_number")
-  /// Registered for tax needs a tax number (a check); not registered → no tax lines, no tax number (AG-6-4 rule 5).
+  /// Registered for tax needs a tax number (a check). Not registered means no tax lines (AG-6-4 rule 5: FO-7g's route); the
+/// database does not refuse a tax number kept while not registered (break F6 on facc5231).
   taxRegistered    Boolean       @default(false) @map("tax_registered")
   /// Stored, unused in R1: no Quebec (P-568 (1)).
   qstNumber        String?       @map("qst_number")

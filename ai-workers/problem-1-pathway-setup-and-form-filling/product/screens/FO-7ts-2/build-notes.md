@@ -3,7 +3,7 @@
 Brief: `product/design/build-lead-c-briefs/FO-7ts-2.md` (on `claude/build-lead-c-647b40` at a7014c0bb) over Part 2 of `product/design/briefs/FO-7ts.md`. Branch `claude/trusting-fermat-ejsqdh-fo7ts2`, from FO-7lk's branch (which carries #2106's finished head facc5231). Cloud builder lane, 18 Nov. No PR yet: it opens only after #2106 and FO-7lk merge (never two money PRs open).
 
 ## What changed
-* Migration `20261118190000_fo7ts_ledgers` (re-stamp later than `main`'s newest before the PR, P-600), with `rollback.sql` (restores FO-7lk's `money_trust_entry_write` text exactly and money_trust_entry's checks; checked by the test).
+* Migration `20261118220000_fo7ts_ledgers` (re-stamp later than `main`'s newest before the PR, P-600), with `rollback.sql` (restores FO-7lk's `money_trust_entry_write` text exactly and money_trust_entry's checks; checked by the test).
   * **The pair:** `MOVE_TO_CASE`; `moved_from_entry_id` (composite key to the same table, RESTRICT; unique, so one + per −). `money_trust_entry_write` (FO-7lk's text, changed only for the pair): under the party lock the − half (no case) takes at most the pre-case balance and is refused at zero or below (P-634: an outflow from what is held); the + half (on a case) names a − half written in the same transaction, same party and currency, opposite amount. A deferred constraint trigger refuses a − with no + at commit. The − half may show a running balance below zero only when the party's case is short (Build Lead C's ruling: a pair may run while the case is below zero); the + half brings it back, so the pair never takes the party below zero.
   * The new enum value cannot be used in the transaction that adds it, so the checks compare the kind as text.
   * **The credit ledger** `money_credit_entry`: holder = the case, or the party with no case; kinds KEPT / APPLIED / REFUNDED / REVERSED with signs, links and reasons as the brief; seq and balance per holder and currency (partial unique indexes), never below zero; insert-only; PF-12's wall (forced policy, gate trigger, trigger functions as `xr_wall_reader`). Party lock first (`money_trust_lock`), then any invoice row.
@@ -21,5 +21,5 @@ Brief: `product/design/build-lead-c-briefs/FO-7ts-2.md` (on `claude/build-lead-c
 * **Known order exception:** `money_invoice_line_write` (FO-7a) share-locks a draft invoice row and takes no party lock; a single transaction that edits a draft's lines and then applies credit to it takes the invoice row first. No writer in the code does both; the DW13 check lists it.
 
 ## Checks run (cloud, PostgreSQL 18.3)
-* `check_fo7ts_money_settings.ts` 86/0 · `check_fo7lk_lock_order.ts` 16/0 (unchanged) · `check_fo7a2_ledger_rules.ts` 35/0 · `check_fo7a_money_schema.ts` 122/0 (unchanged) · `check_fo7mv_move_list.ts` 45/0 · `check_prisma_schema.ts` 8/0.
+* (after the re-stamp to `20261118220000`, on FO-7lk 19d39511d) `check_fo7ts_money_settings.ts` 87/0 · `check_fo7lk_lock_order.ts` 16/0 (unchanged) · `check_fo7a2_ledger_rules.ts` 35/0 · `check_fo7a_money_schema.ts` 122/0 (unchanged) · `check_fo7mv_move_list.ts` 45/0 · `check_prisma_schema.ts` 8/0.
 * No live AI, no Stripe, US$0. No screen, no route.
