@@ -17,6 +17,7 @@ Standby left: **Lead 83 (local_191538a9)**; start a second standby at the founde
 4. **QA-165** (Adobe Validate for R1.80, P-442): procedure `history/lead4-adobe-validate-c102-2026-11-10.md`, on an isolated copy.
 5. **12 cloud builders running** (overlap starts, see the 23:1x line below); reads and labels as their Approves arrive. Lead B (local_1520b573) and Build Lead C (local_d5287293) own them; cloud lanes don't wake on messages, so type into claude.ai/code in the browser (P-699). qa-4 (local_ff10dee7) scores FO/CS rows on merge; qa after-merge (local_bb3bf1ad) walks PF/AUD rows.
 6. **Owed reads (P-423):** #2124 and #2129 after their main merge and diff-only Approve (sessions started for both). #2103 after its fixes.
+8. **Owed starts at the founder's next typed turn (Lead 82, 23:3x; claude.ai/code has no session for them, Lead 81's requests never produced one):** (a) money lane: finish #2106 FO-7ts part 1 (Lead 80's two answers on the PR, 13:2x 18 Nov), then FO-7lk, then FO-7ts part 2 (Build Lead C's order); (b) CS-C1s part 2 from #2132; (c) FO-3st2 (Lead B's overlap brief); (d) second standby Lead (P-286). Founder kill line now includes :4476 (qa).
 7. **Rules learned tonight:** P-703 (measure product only), app view enforced in lead-watch.sh (`tools/app-view.js`, ACT after 35 min), P-701, P-702 (evaluation 21 Nov), P-704, P-705.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
