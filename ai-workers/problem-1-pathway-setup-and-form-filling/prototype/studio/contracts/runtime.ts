@@ -43,6 +43,13 @@ const LIKE_CASE_NUMBER = /^\s*c\s*-\s*\d+\s*-\s*\d+\s*$/i;
 export type CaseListRow = { id: string; case_number: string; reference: string | null; combination: string; status: string; created_at: Date | string;
   client: string; client_name: string | null; filings: number; people?: { label: string; role: string }[] };
 
+/** CS-K1: GET /api/runtime/clients?query=&page= (clients.ts). The search text is cleaned there (control and invisible
+ *  characters dropped, LIKE's wildcards taken literally); a page is a whole number from 1. */
+export const ClientListQuery = z.object({
+  query: z.string({ message: "Search by a name or a client code." }).max(400, "Keep the search to 200 characters.").optional(),
+  page: z.string({ message: "A page is a whole number from 1." }).regex(/^\d{1,5}$/, "A page is a whole number from 1.").optional(),
+});
+
 export const NewCase = z.object({
   combinationId: z.string({ message: "Choose a released combination." }).uuid("Choose a released combination."),
   /** The firm's own reference, optional since A24-1 (CS-7): every case gets a case number at opening. Given, it keeps

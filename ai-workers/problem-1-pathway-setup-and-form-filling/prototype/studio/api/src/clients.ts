@@ -9,7 +9,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { Db, Workspace } from "./core.ts";
 import { problem, type StaffContext } from "./platform/identity/keys.ts";
-import { INVISIBLE } from "../../contracts/runtime.ts";
+import { ClientListQuery, INVISIBLE } from "../../contracts/runtime.ts";
 
 type Tx = Prisma.TransactionClient;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -55,9 +55,13 @@ export class Clients {
   }
 
   /** GET /api/runtime/clients?query=&page=: the firm's clients by name or client code, 50 a page, newest number first. */
-  async list(ctx: StaffContext, query: unknown, page: unknown) {
+  async list(ctx: StaffContext, input: unknown) {
+    // CS-V1 (STANDARDS §6): the query is read through its schema (contracts/runtime.ts ClientListQuery).
+    const r = ClientListQuery.safeParse(input ?? {});
+    if (!r.success) { const i = r.error.issues[0], field = String(i.path[0] ?? "query"); return problem(400, "Check the details", i.message, { code: "INVALID", fields: { [field]: i.message } }); }
+    const { query, page } = r.data;
     const firmKey = await this.firm(ctx);
-    const p = Math.max(1, Math.min(10_000, Number.parseInt(typeof page === "string" ? page : "1", 10) || 1));
+    const p = Math.max(1, Math.min(10_000, Number.parseInt(page ?? "1", 10) || 1));
     if (!firmKey) return { clients: [], page: p, page_size: PAGE, total: 0 };
     // Review m3, breaker 7a/7b: control and invisible characters dropped (a NUL was a 500), LIKE's wildcards and escape
     // taken literally (a "%" matched every client of the firm).
