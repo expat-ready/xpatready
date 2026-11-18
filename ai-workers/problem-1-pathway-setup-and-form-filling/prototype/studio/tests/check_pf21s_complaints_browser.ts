@@ -1,6 +1,7 @@
 // PF-21s part 3 (concept screens/pf-21-complaints §6 qa journeys; brief lead-b-briefs/PF-21s.md rev 16.75): the
 // complaints list, the record drawer and the read-only record page in a real browser against PF-21w's and PF-21v's real
-// routes on the local stand-in (no fake API): DW1, DW2, DW5, DW6 (DW3, DW4 are part 4), each with a pass and a fail;
+// routes on the local stand-in (no fake API): DW1, DW2, DW5, DW6, and part 4's acts DW3, DW4, DW7, DW8 (start sheet
+// lead-b-briefs/wave1-registers.md), each with a pass and a fail;
 // the drawer's field errors and its two endings; keyboard-only; axe-core (WCAG 2.2 AA) on every state; no sideways page
 // scroll and screenshots at 375, 1024, 1440 px. Seeds through the API (the Sample firms' staff). US$0.
 //   zsh studio/tools/isolated.sh screens_pf21s 4571 start PLATFORM_IDENTITY=local && tsx studio/tests/check_pf21s_complaints_browser.ts 4571 xr_studio_screens_pf21s
@@ -12,7 +13,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
-import { Complaint, Page as ComplaintPage, zonedToIso } from "../web/src/modules/platform/complaints/contract.ts";
+import { Complaint, nowLocal, Page as ComplaintPage, zonedToIso } from "../web/src/modules/platform/complaints/contract.ts";
 import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 const PORT = Number(process.argv[2] ?? 4571), DBNAME = process.argv[3] ?? "xr_studio_screens_pf21s";
@@ -238,6 +239,206 @@ await m3.getByLabel("Firm key").fill("sample-firm"); await m3.getByLabel("Work e
 const back = await m3.locator("[data-record-drawer]").waitFor({ timeout: 15_000 }).then(() => true, () => false);
 ok("PF-21s break M3: after the session ends mid-drawer and the person signs in again, the drawer is back with what they typed and says it was not recorded",
   back && (await m3.getByLabel("Their name").inputValue()) === `Person Kept ${run}` && (await m3.getByText("not recorded yet").count()) === 1);
+
+// ------------------------------------------------------------------------------- part 4: DW3, DW4, DW7, DW8 (actions)
+const FORBIDDEN = "You can't change this complaint. Ask an Owner or Admin.";
+const opened = async (p: Page, id: string) => { await p.goto(`${BASE}/platform/complaints/${id}`); await p.locator(`[data-complaint="${id}"]`).waitFor({ timeout: 20_000 }); };
+const nextOf = (p: Page) => p.locator("[data-next-step]").getAttribute("data-next-step");
+const eventsOf = (p: Page) => p.locator("[data-event]").evaluateAll((els) => els.map((e) => e.getAttribute("data-event")));
+const panel = (p: Page, act: string) => p.locator(`[data-action-drawer="${act}"]`);
+const actOpen = async (p: Page, act: string) => { await p.locator(`[data-act="${act}"]`).click(); await panel(p, act).waitFor({ timeout: 10_000 }); };
+const submitOf = (p: Page) => p.locator('[role="dialog"] button[type="submit"]');
+/** Submit the open panel and wait until it is gone and the timeline holds one more event. */
+const saved = async (p: Page, act: string) => { const n = (await eventsOf(p)).length; await submitOf(p).click(); await panel(p, act).waitFor({ state: "detached", timeout: 15_000 });
+  await p.waitForFunction((k) => document.querySelectorAll("[data-event]").length > k, n, { timeout: 15_000 }); };
+const acts = (p: Page) => p.locator("[data-act]").evaluateAll((els) => els.map((e) => e.getAttribute("data-act")));
+const postsTo = (suffix: string) => calls.filter((x) => x.startsWith("POST /api/platform/complaints/") && x.endsWith(suffix)).length;
+
+// DW3: the one filled button walks acknowledge → step → response sent → close; a double click posts once; the timeline refreshes.
+const walk = await record(rTok, `Person Walk ${run}`, R.id, ago(1));
+const w3 = await newPage(rTok);
+await opened(w3, walk);
+const zone = (await call(rTok, "GET", `/${walk}`)).body as { firmTimeZone: string };
+ok("PF-21s DW3: a new complaint's one filled button is Record the acknowledgement, with step, note, response and close beside it", (await nextOf(w3)) === "acknowledge"
+  && JSON.stringify(await acts(w3)) === JSON.stringify(["acknowledge", "step", "note", "response", "close", "handler"]), await acts(w3));
+await axe("PF-21s record page with the next-step bar (1440)", w3); await shot(w3, "record-next-step-1440");
+await actOpen(w3, "acknowledge");
+await axe("PF-21s acknowledgement panel (1440)", w3); await shot(w3, "action-acknowledge-1440");
+const ackBefore = postsTo("/acknowledge"), evBefore = (await eventsOf(w3)).length;
+await submitOf(w3).dblclick();
+await panel(w3, "acknowledge").waitFor({ state: "detached", timeout: 15_000 });
+await w3.waitForFunction((k) => document.querySelectorAll("[data-event]").length > k, evBefore, { timeout: 15_000 }); await w3.waitForTimeout(500);
+const ackEvents = (await eventsOf(w3)).filter((x) => x === "ACKNOWLEDGED").length;
+ok("PF-21s DW3 pass: a double click on Record the acknowledgement sends one POST, and the timeline shows it at the top", postsTo("/acknowledge") - ackBefore === 1 && ackEvents === 1 && (await eventsOf(w3))[0] === "ACKNOWLEDGED", { posts: postsTo("/acknowledge") - ackBefore, ackEvents });
+ok("PF-21s DW3: after the acknowledgement the filled button is Add a handling step, and the panel returned focus to it", (await nextOf(w3)) === "step" && (await w3.evaluate(() => document.activeElement?.getAttribute("data-act"))) === "step");
+await actOpen(w3, "step");
+await submitOf(w3).click(); await w3.locator('[data-action-drawer="step"] [role=alert]').first().waitFor({ timeout: 10_000 });
+ok("PF-21s DW3 fail: a step without its note is refused with the field error, and the panel stays open", (await w3.locator('[data-action-error]').innerText()).includes("Note") && (await panel(w3, "step").count()) === 1);
+await w3.getByRole("textbox", { name: /^Note/ }).fill("Called the person to hear the details (Sample).");
+await saved(w3, "step");
+ok("PF-21s DW3: the step is on the timeline and the filled button is Record the response sent", (await eventsOf(w3))[0] === "STEP" && (await nextOf(w3)) === "response");
+await actOpen(w3, "response");
+await w3.getByLabel(/^When/).fill(nowLocal(zone.firmTimeZone, new Date(Date.now() - 2 * 3_600_000)));   // after receipt, before the acknowledgement
+const resBefore = postsTo("/response-sent");
+await submitOf(w3).click(); await w3.locator('[data-action-drawer="response"] [role=alert]').first().waitFor({ timeout: 10_000 });
+ok("PF-21s DW3 fail: a response dated before the acknowledgement shows the server's field error on When, and what was typed is kept",
+  (await w3.locator('[data-action-drawer="response"]').innerText()).includes("the response comes after the acknowledgement") && postsTo("/response-sent") - resBefore === 1 && (await w3.getByLabel(/^When/).inputValue()) !== "");
+await axe("PF-21s response panel with a field error (1440)", w3); await shot(w3, "action-response-error-1440");
+await w3.getByLabel(/^When/).fill(nowLocal(zone.firmTimeZone));
+await saved(w3, "response");
+ok("PF-21s DW3: the response is on the timeline and the filled button is Close with an outcome, with no response act left", (await eventsOf(w3))[0] === "RESPONSE_SENT" && (await nextOf(w3)) === "close" && !(await acts(w3)).includes("response"));
+await actOpen(w3, "close");
+await submitOf(w3).click(); await w3.locator('[data-action-drawer="close"] [role=alert]').first().waitFor({ timeout: 10_000 });
+ok("PF-21s DW3 fail: closing without an outcome or a note shows both field errors", /Outcome/.test(await w3.locator("[data-action-error]").innerText()) && /Note/.test(await w3.locator("[data-action-error]").innerText()));
+await w3.getByLabel("Resolved").check(); await w3.getByRole("textbox", { name: /^Note/ }).fill("Fee refunded; the person agreed (Sample).");
+await saved(w3, "close");
+ok("PF-21s DW3 pass: closed with an outcome, the page says Closed with the outcome, the timeline ends with Closed", (await w3.locator('[data-status="Closed"]').count()) === 1 && (await w3.getByText(/outcome: Resolved/).count()) === 1 && (await eventsOf(w3))[0] === "CLOSED");
+// DW7: a closed complaint has no action buttons (Add a note only, the concept's "closed → none, Add a note only").
+ok("PF-21s DW7 pass: a closed complaint shows no act but Add a note, and no Change handler", JSON.stringify(await acts(w3)) === JSON.stringify(["note"])
+  && (await w3.getByRole("button", { name: /Record the acknowledgement|Add a handling step|Record the response sent|Close with an outcome|Change handler/ }).count()) === 0, await acts(w3));
+await actOpen(w3, "note"); await w3.getByRole("textbox", { name: /^Note/ }).fill("The person wrote to thank the firm (Sample).");
+await saved(w3, "note");
+ok("PF-21s DW7: a note on a closed complaint is kept on its timeline, and it stays closed", (await eventsOf(w3))[0] === "NOTE" && (await w3.locator('[data-status="Closed"]').count()) === 1);
+await axe("PF-21s record page, closed with the note act (1440)", w3);
+const shutAgain = await call(rTok, "POST", `/${walk}/close`, { outcome: "UPHELD", at: new Date().toISOString(), note: "Again." });
+ok("PF-21s DW7 fail: the server still refuses to close a closed complaint (409)", shutAgain.status === 409, shutAgain.status);
+// A 409 shows in the page: the complaint is closed by someone else while the panel is open.
+const race = await record(rTok, `Person Race ${run}`, R.id, ago(1));
+await opened(w3, race); await actOpen(w3, "step"); await w3.getByRole("textbox", { name: /^Note/ }).fill("Sample.");
+await call(rTok, "POST", `/${race}/close`, { outcome: "WITHDRAWN", at: new Date().toISOString(), note: "Withdrawn (Sample)." });
+await submitOf(w3).click(); await w3.getByText("This complaint is closed. It was closed while you were working").waitFor({ timeout: 10_000 });
+ok("PF-21s refused: a 409 shows the concept's words and the server's in the panel, not a toast alone, and the note typed is kept",
+  (await w3.locator("[data-action-error]").innerText()).includes("add a note instead") && (await w3.getByRole("textbox", { name: /^Note/ }).inputValue()) === "Sample.");
+// Review M1: after the 409 the page behind the panel is read again: Closed, with Add a note as its only act; the note
+// typed for the refused step is carried into Add a note and saved there.
+await w3.locator('[data-status="Closed"]').waitFor({ timeout: 10_000 });
+ok("PF-21s review M1 pass: after a 409 for a closed complaint the page shows Closed with only Add a note, without a reload", JSON.stringify(await acts(w3)) === JSON.stringify(["note"]), await acts(w3));
+await w3.locator("[data-carry-note]").click(); await panel(w3, "note").waitFor({ timeout: 10_000 });
+ok("PF-21s review M1: Add it as a note carries the typed text into the note panel, which does not claim the session ended", (await w3.getByRole("textbox", { name: /^Note/ }).inputValue()) === "Sample." && (await w3.getByText("Your session ended").count()) === 0);
+await saved(w3, "note");
+ok("PF-21s review M1: the carried note is on the closed complaint's timeline", (await eventsOf(w3))[0] === "NOTE");
+// Review M1 fail case: acknowledged in another tab while the panel is open: the 409's words show, and after Cancel the
+// filled button has moved on (no second "Record the acknowledgement" that would only be refused again).
+const twice = await record(rTok, `Person Twice ${run}`, R.id, ago(1));
+await opened(w3, twice); await actOpen(w3, "acknowledge");
+await call(rTok, "POST", `/${twice}/acknowledge`, { at: new Date(Date.now() - 60_000).toISOString() });
+await submitOf(w3).click(); await w3.getByText("Already acknowledged").waitFor({ timeout: 10_000 });
+await w3.locator('[data-next-step="step"]').waitFor({ timeout: 10_000 });
+await w3.getByRole("button", { name: "Cancel" }).click(); await panel(w3, "acknowledge").waitFor({ state: "detached", timeout: 10_000 });
+ok("PF-21s review M1 fail: acknowledged elsewhere, the page moves on to Add a handling step and offers no acknowledgement act", (await nextOf(w3)) === "step" && !(await acts(w3)).includes("acknowledge") && (await eventsOf(w3))[0] === "ACKNOWLEDGED");
+// Review m1: response sent without a step: the filled button is Close (steps are never required).
+await actOpen(w3, "response"); await saved(w3, "response");
+ok("PF-21s review m1: acknowledged and answered with no step, the filled button is Close with an outcome", (await nextOf(w3)) === "close" && (await acts(w3)).includes("step"), await acts(w3));
+// Review R1: a browser clock 2 seconds ahead of the server's still saves the untouched default (cut to the minute,
+// never before receipt): the acknowledgement and the close. Not started in a minute's first seconds, where the cut
+// minute is the one now beginning.
+const skew = await record(rTok, `Person Skew ${run}`, R.id, ago(1));
+while (new Date().getSeconds() < 4 || new Date().getSeconds() > 50) await new Promise((r) => setTimeout(r, 500));
+const sk = await newPage(rTok);
+await opened(sk, skew); await sk.clock.setSystemTime(Date.now() + 2_000);
+await actOpen(sk, "acknowledge"); await saved(sk, "acknowledge");
+await actOpen(sk, "close"); await sk.getByLabel("Resolved").check(); await sk.getByRole("textbox", { name: /^Note/ }).fill("Sample."); await saved(sk, "close");
+ok("PF-21s review R1: with the browser's clock 2 s ahead, the default dates of the acknowledgement and the close are accepted", JSON.stringify(await eventsOf(sk)) === JSON.stringify(["CLOSED", "ACKNOWLEDGED", "RECEIVED"]), await eventsOf(sk));
+// Break m1: a complaint received seconds ago takes its acknowledgement at the default date (not cut to before receipt).
+const secs = await record(rTok, `Person Seconds ${run}`, R.id, new Date(Date.now() - 2_000).toISOString());
+await opened(w3, secs); await actOpen(w3, "acknowledge"); await saved(w3, "acknowledge");
+ok("PF-21s break m1: received 2 seconds ago, the default date of the acknowledgement is accepted", (await eventsOf(w3))[0] === "ACKNOWLEDGED");
+// Break m5a: Escape from a quiet act's panel returns focus to that act's button.
+await w3.locator('[data-act="close"]').focus(); await w3.keyboard.press("Enter"); await panel(w3, "close").waitFor();
+await w3.keyboard.press("Escape"); await panel(w3, "close").waitFor({ state: "detached", timeout: 10_000 });
+// Radix returns focus a tick after the panel goes: wait up to 3 s for it to land on the close button, then judge.
+const m5aBack = await w3.waitForFunction(() => document.activeElement?.getAttribute("data-act") === "close", undefined, { timeout: 3_000 }).then(() => true, () => false);
+const m5aFocus = await w3.evaluate(() => document.activeElement?.getAttribute("data-act") ?? document.activeElement?.outerHTML.slice(0, 80));
+ok("PF-21s break m5a: Escape from Close with an outcome returns focus to its own button, not the filled one", m5aBack && m5aFocus === "close", m5aFocus);
+// Break m2a: answered before any acknowledgement, the filled button is Close; the acknowledgement stays a quiet act.
+const early = await record(rTok, `Person Early ${run}`, R.id, ago(2));
+await call(rTok, "POST", `/${early}/response-sent`, { at: ago(1) });
+await opened(w3, early);
+ok("PF-21s break m2a pass: response sent before any acknowledgement, the filled button is Close with an outcome", (await nextOf(w3)) === "close" && (await acts(w3)).includes("acknowledge"), await acts(w3));
+ok("PF-21s break m2a fail: the filled button is not Record the acknowledgement, whose default date the service refuses", (await w3.locator('[data-next-step="acknowledge"]').count()) === 0);
+// Closed straight after receipt as Withdrawn, from the quiet act (no acknowledgement, no step).
+const quick = await record(rTok, `Person Quick ${run}`, R.id, ago(0.02));
+await opened(w3, quick); await actOpen(w3, "close"); await w3.getByLabel("Withdrawn").check(); await w3.getByRole("textbox", { name: /^Note/ }).fill("Withdrawn the same day (Sample).");
+await saved(w3, "close");
+ok("PF-21s DW3: a complaint closes straight after receipt as Withdrawn from the quiet Close act", (await w3.getByText(/outcome: Withdrawn/).count()) === 1 && JSON.stringify(await eventsOf(w3)) === JSON.stringify(["CLOSED", "RECEIVED"]));
+
+// Keyboard only: from the record page's filled button through the panel to the saved acknowledgement.
+const kb = await record(rTok, `Person Keys ${run}`, R.id, ago(1));
+await opened(k, kb);
+await k.locator('[data-act="acknowledge"]').focus(); await k.keyboard.press("Enter"); await panel(k, "acknowledge").waitFor();
+ok("PF-21s keyboard: Enter on the filled button opens its panel on its first field", (await k.evaluate(() => (document.activeElement as HTMLInputElement | null)?.type)) === "datetime-local");
+for (let i = 0; i < 20 && (await k.evaluate(() => document.activeElement?.textContent?.trim())) !== "Record the acknowledgement"; i++) await k.keyboard.press("Tab");
+await k.keyboard.press("Enter"); await panel(k, "acknowledge").waitFor({ state: "detached", timeout: 15_000 });
+await k.waitForFunction(() => document.querySelector("[data-next-step]")?.getAttribute("data-next-step") === "step", undefined, { timeout: 15_000 });
+ok("PF-21s keyboard: the acknowledgement is saved by Tab and Enter alone, and focus lands on the next filled button", (await k.evaluate(() => document.activeElement?.getAttribute("data-act"))) === "step");
+
+// DW4: Change handler hidden for a Case Manager on their own complaint; shown for the Owner, picker from GET /handlers.
+const t4Tok = await signIn("sample-firm", T.email);   // a session of its own: the break M3 checks ended T's earlier ones
+const moved = await record(rTok, `Person Moved ${run}`, T.id, ago(1));
+const tw = await newPage(t4Tok);
+await opened(tw, moved);
+ok("PF-21s DW4 pass: a Case Manager on their own complaint has the acts but no Change handler", (await acts(tw)).includes("acknowledge") && !(await acts(tw)).includes("handler"), await acts(tw));
+const forced = await call(t4Tok, "POST", `/${moved}/handler`, { handlerStaffId: R.id });
+ok("PF-21s DW4 fail: a forced POST /:id/handler as the Case Manager is refused (403)", forced.status === 403, forced.status);
+// Forced through the page: /me answers with the read key too, so the link shows; the server's 403 shows in the panel.
+const tf = await newPage(t4Tok);
+await tf.route(/\/api\/platform\/me$/, async (r) => { const res = await r.fetch(); const b = await res.json() as { keys: string[] }; await r.fulfill({ response: res, json: { ...b, keys: [...b.keys, "agent/complaint:read"] } }); });
+await opened(tf, moved); await actOpen(tf, "handler");
+await tf.getByLabel("New handler").selectOption(R.id); await submitOf(tf).click();
+await tf.getByText(FORBIDDEN).waitFor({ timeout: 10_000 });
+const refusedText = await tf.locator("[data-action-error]").innerText(), serverWords = (forced.body as { detail?: string }).detail ?? "";
+ok("PF-21s DW4 fail: forced in the page, the server's 403 shows in the panel with its own words", !!serverWords && refusedText.includes(serverWords) && (await panel(tf, "handler").count()) === 1, { refusedText, serverWords });
+await axe("PF-21s change handler refused (1440)", tf); await shot(tf, "action-handler-refused-1440");
+// The Owner sees Change handler; its picker is GET /handlers' active staff, without the present handler.
+const ow = await newPage(rTok);
+await opened(ow, moved); await actOpen(ow, "handler");
+const active = (await call(rTok, "GET", "/handlers")).body as { items: { id: string }[] };
+await ow.locator('[data-action-drawer="handler"] select option[value]:not([value=""])').first().waitFor({ state: "attached", timeout: 10_000 });
+const offered = await ow.locator('[data-action-drawer="handler"] select option').evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value).filter(Boolean));
+const inactive = sql(`select count(*) from platform_staff where firm_id = (select firm_id from platform_staff where id = '${R.id}') and status <> 'ACTIVE' and id in (${offered.map((x) => `'${x}'`).join(",") || "''"})`);
+ok("PF-21s DW4 pass: the Owner's picker lists GET /handlers' active staff, without the present handler, and no inactive one",
+  JSON.stringify(offered) === JSON.stringify(active.items.map((x) => x.id).filter((x) => x !== T.id)) && inactive === "0", { offered: offered.length, active: active.items.length, inactive });
+await axe("PF-21s change handler panel (1440)", ow);
+// DW8: the old handler's open panel, after the handler is changed, saves to the not-found words; nothing of it stays.
+await actOpen(tw, "step"); await tw.getByRole("textbox", { name: /^Note/ }).fill("Sample step.");
+await ow.getByLabel("New handler").selectOption(O.id); await saved(ow, "handler");
+ok("PF-21s DW4: the Owner's change is on the timeline with both names", (await eventsOf(ow))[0] === "HANDLER_CHANGED" && (await ow.getByText(`From ${T.name} to ${O.name}.`).count()) === 1 && (await ow.locator("[data-handler]").innerText()) === O.name);
+await submitOf(tw).click(); await tw.locator("[data-not-found]").waitFor({ timeout: 15_000 });
+const lostWords = await tw.locator("[data-not-found]").innerText();
+ok("PF-21s DW8 pass: the old handler's save shows Not found with part 3's DW5 words, word for word", lostWords === words[0], { lostWords });
+ok("PF-21s break m5b: focus lands on the not-found heading, not on the page body", (await tw.evaluate(() => document.activeElement?.tagName)) === "H1");
+ok("PF-21s DW8 fail: nothing of the complaint stays on their screen, and Back to Complaints is offered", (await tw.getByText(`Person Moved ${run}`).count()) === 0 && (await tw.locator("[data-complaint]").count()) === 0 && (await tw.getByRole("link", { name: "Back to Complaints" }).count()) >= 1);
+await opened(ow, moved);
+ok("PF-21s DW8: the old handler's step was never recorded", !(await eventsOf(ow)).includes("STEP"));
+
+// Break M3 for an act: the session ends while a panel holds a typed step; after signing in again it is back, unsaved.
+const keep = await record(rTok, `Person Keep Act ${run}`, T.id, ago(1));
+const m4 = await newPage(await signIn("sample-firm", T.email));
+await opened(m4, keep); await actOpen(m4, "step"); await m4.getByRole("textbox", { name: /^Note/ }).fill(`Kept step ${run}`);
+await signIn("sample-firm", T.email);
+await submitOf(m4).click(); await m4.locator("[data-signed-in-elsewhere]").waitFor({ timeout: 15_000 });
+await m4.getByRole("button", { name: "Sign in again here" }).click();
+await m4.getByLabel("Firm key").fill("sample-firm"); await m4.getByLabel("Work email").fill(T.email); await m4.getByRole("button", { name: "Sign in" }).click();
+const backAct = await panel(m4, "step").waitFor({ timeout: 15_000 }).then(() => true, () => false);
+ok("PF-21s break M3 (acts): after the session ends mid-panel and the person signs in again, the step panel is back with the note and says it was not saved",
+  backAct && (await m4.getByRole("textbox", { name: /^Note/ }).inputValue()) === `Kept step ${run}` && (await m4.getByText("not saved yet").count()) === 1);
+ok("PF-21s break M3 (acts) fail: nothing was recorded while the session was ended", !(((await call(rTok, "GET", `/${keep}`)).body as { events: { kind: string }[] }).events.some((e) => e.kind === "STEP")));
+// Break m3: a Close panel kept across an ended session is not reopened once the complaint was closed meanwhile.
+const gone = await record(rTok, `Person Gone ${run}`, T.id, ago(1));
+const m5 = await newPage(await signIn("sample-firm", T.email));
+await opened(m5, gone); await actOpen(m5, "close"); await m5.getByLabel("Resolved").check(); await m5.getByRole("textbox", { name: /^Note/ }).fill("Sample.");
+await signIn("sample-firm", T.email);
+await submitOf(m5).click(); await m5.locator("[data-signed-in-elsewhere]").waitFor({ timeout: 15_000 });
+await call(rTok, "POST", `/${gone}/close`, { outcome: "WITHDRAWN", at: new Date().toISOString(), note: "Withdrawn (Sample)." });
+await m5.getByRole("button", { name: "Sign in again here" }).click();
+await m5.getByLabel("Firm key").fill("sample-firm"); await m5.getByLabel("Work email").fill(T.email); await m5.getByRole("button", { name: "Sign in" }).click();
+await m5.locator('[data-status="Closed"]').waitFor({ timeout: 15_000 }); await m5.waitForTimeout(500);
+ok("PF-21s break m3: closed while the session was ended, the restored Close panel is not opened; only Add a note is offered", (await panel(m5, "close").count()) === 0 && JSON.stringify(await acts(m5)) === JSON.stringify(["note"]));
+for (const wd of [375, 1024]) {
+  const p = await newPage(rTok, wd);
+  await opened(p, kb); await actOpen(p, "step");
+  await axe(`PF-21s step panel (${wd} px)`, p); await noSideways(`PF-21s step panel (${wd} px)`, p); await shot(p, `action-step-${wd}`);
+}
 
 // ------------------------------------------------------------------------------------------- empty, read-only, widths
 const oTok = await signIn("sample-firm", O.email), c = await newPage(oTok);
