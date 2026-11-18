@@ -219,3 +219,34 @@ A diff-only re-review (P-277) of `64ab036a5d99e6df2488ea12060847248700f80b`. It 
 The round 3 minors m1-m4 stand as recorded.
 
 **Verdict: Approve** for `64ab036a5d99e6df2488ea12060847248700f80b`. There is no open Blocker or Major. The label still waits on green CI for this head.
+
+## Review round 6 (74268f69f, merge only)
+This is a diff-only re-review (P-277). `74268f69f` is a single merge commit, with parents `64ab036a5` (approved in round 5) and `2c9231ab4` (origin/main at the time). Lead 82 asked to keep both sides and keep the stamp 20261118194500.
+
+* **`platform/MODULE.md` resolution:** correct. Main's PF-18b lines are all kept:
+  * the Purpose entry for `support/` (PF-18b);
+  * the PF-18b entry points (`/api/platform/support` routes, `SupportService.replyAsSupport`);
+  * the support-message invariant;
+  * the `platformSupportTicket` and `platformSupportMessage` tables;
+  * `tests/check_pf18b_support.ts`.
+
+  Every CS-DL1 line is kept too: `calendar/` with `readFirmCalendar` (CS-DL1), `complaints/` over `calendar/`, and `tests/check_csdl1_deadlines.ts`.
+* **The PR's own changes are unchanged.** `git diff 9cea7c02 64ab036a5` and `git diff 2c9231ab 74268f69f`, each without `platform/MODULE.md`, are byte-identical. The merge changed nothing of CS-DL1 except the card.
+* **Migration:** `prisma/migrations/20261118194500_csdl1_firm_calendar/migration.sql` is unchanged. Its sha256 is `01d439bdc6cabf11131534a8af5a0b3cc8d1e9eabf88feaca625001c8e3e55e4` at both heads.
+  * Its stamp is later than main's newest migration, `20261118073000_pf18b_support`.
+  * The stamp is unique. The only repeated stamps (20261025090000, 20261031140000, 20261102010000) were already on main and are not this PR's.
+* **`git diff origin/main...74268f69f --stat`:** 19 files, +502/-108. They are CS-DL1's own files only: 6 screenshots, `MODULE.cases.md`, `case-stages.ts`, `leads.ts`, `open-minutes.ts`, `platform/MODULE.md`, `calendar/working-days.ts`, `business-days.ts`, `complaints.ts`, `contracts/runtime.ts`, the migration, the two csdl1 tests and `stages.tsx`. Nothing of main's leaked in.
+* **Collisions:** none. I checked main's commits from the old merge base `9cea7c02` to the current origin/main `7dcef1e76`:
+  * No commit touches `case-stages.ts`, `web/src/runtime/stages.tsx`, `contracts/runtime.ts`, `platform/calendar/`, `complaints/business-days.ts`, `complaints.ts`, `leads.ts`, `open-minutes.ts` or `MODULE.cases.md`.
+  * No commit adds or removes `platform_firm_calendar` or `platformFirmCalendar`. Main has no such table.
+* **Main has moved since the merge:** origin/main is now at `7dcef1e76` (#2123, cleanup stage 0). That change adds only tooling, `docs/PATHS-MOVED.md`, `packages/repo-paths/` and `tests/check_repo_paths.ts`, with no migration and none of CS-DL1's files. `git merge-tree origin/main 74268f69f` merges cleanly. The stale-paths list on main has no entries yet.
+* **Unit suite:** `tsx --tsconfig api/tsconfig.json tests/check_csdl1_deadlines.ts` gives **34/34 passed** at `74268f69f`.
+
+### Could not check
+* CI for this head.
+* The other suites the builder lists (PF-12, PF-21/21w/21v, FO-2, CSS-1, PF-18a/18b, DW7-DW9, acceptance, demo reset, checkpoint). As asked, I did not start an isolated copy, and I relied on the builder's results.
+* The journey was not re-run, because only a merge changed. Round 3's 9.5/10 stands.
+
+The round 3 minors m1-m4 stand as recorded.
+
+**Verdict: Approve** for `74268f69fc064c997ef9f9b529b8726dfd39d317`. There is no open Blocker or Major. The label still waits on green CI for this head.
