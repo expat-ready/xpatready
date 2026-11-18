@@ -55,6 +55,12 @@ export const EVENT = {
   PROSPECT_TYPE_CHANGED: "prospect.type_changed",
   /** A prospect was won (contracts §2.6; its subject part is FO-2b's `ProspectWonSubject`, contracts §7 §2.6). */
   PROSPECT_WON: "prospect.won",
+  /** A person moved a prospect between open stages (FO-2 part 3; AG-2-26 rule 10). */
+  PROSPECT_STAGE_MOVED: "prospect.stage_moved",
+  /** A prospect was marked lost with a reason (FO-2 part 3; AG-2-44). */
+  PROSPECT_LOST: "prospect.lost",
+  /** A Convert to client was undone while the client was empty (FO-2 part 3; AG-2-47 rule 18). */
+  PROSPECT_UNCONVERTED: "prospect.unconverted",
 
   /** A case closed: withdrawn, or closed by staff with a reason (case side, CS-C1a; contract v0.1 §4). */
   CASE_CLOSED: "case.closed",
@@ -152,6 +158,16 @@ export const ProspectEventPayload = z.strictObject({
 });
 export type ProspectEventPayload = z.infer<typeof ProspectEventPayload>;
 
+/** The payload FO-2 part 3 writes for `prospect.stage_moved`, `prospect.lost` and `prospect.unconverted`: ids and keys
+ *  only (never a note or a reason's words). module_event.subject_id is the prospect's id. */
+export const ProspectMovePayload = z.strictObject({
+  prospectId: Uuid, leadId: Uuid, type: z.enum(["INDIVIDUAL", "CORPORATE"]), fromStageKey: z.string(), stageKey: z.string(),
+  ownerStaffId: Uuid.nullable(),
+  /** prospect.lost only: the reason's key (AG-2-44 rule 2). */
+  lostReasonKey: z.string().optional(),
+});
+export type ProspectMovePayload = z.infer<typeof ProspectMovePayload>;
+
 /** The subject part of `prospect.won` (contracts §7 §2.6, AG-2-77 rule 2): a person, or a company with its name and its
  *  live contacts with their roles, linked and never copied (rule 7). The case side makes a person or a company client
  *  from it (FO-8). The rest of the payload (§2.6: won_via, owner, answers…) is the writer's (FO-2 part 3, FO-6). */
@@ -164,6 +180,14 @@ export const ProspectWonSubject = z.discriminatedUnion("subject", [
   z.strictObject({ subject: z.literal("COMPANY"), company: z.strictObject({ id: Uuid, name: z.string().min(1) }), contacts: z.array(WonContact).min(1) }),
 ]);
 export type ProspectWonSubject = z.infer<typeof ProspectWonSubject>;
+/** The payload of `prospect.won` written by Convert to client (FO-2 part 3; contracts §2.6; AG-2-47 rule 16): how it was
+ *  won, whether a retainer is signed (false → "Retainer not signed"), and the subject part. */
+export const ProspectWonPayload = z.strictObject({
+  prospectId: Uuid, leadId: Uuid, type: z.enum(["INDIVIDUAL", "CORPORATE"]), fromStageKey: z.string(),
+  wonVia: z.enum(["E_SIGNED", "SIGNED_OFFLINE", "CONVERTED"]), ownerStaffId: Uuid.nullable(), retainerSigned: z.boolean(),
+  subject: ProspectWonSubject,
+});
+export type ProspectWonPayload = z.infer<typeof ProspectWonPayload>;
 
 // CS-C1a (case-side contract v0.1 §4): the case side's close and reopen events, ids and facts only (never the reason's
 // words: a reason is free text and may hold personal data; a consumer reads the case). The firm is the outbox row's
