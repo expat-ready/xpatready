@@ -144,7 +144,7 @@ try {
   ok("PF-4 fail: a stand-in token that says the second step was not done is refused by the guard", half.status === 401 && half.body.code === "TWO_STEP_REQUIRED", half);
   ok("PF-4 pass: the firm switch \"Require two-step sign-in for all staff\" reads on, and it cannot be turned off (fixed, not a choice)",
     await readSetting(db, FIRM_A, "platform.require_two_step") === true
-    && await throwsLike(() => writeSetting(db, { firmId: FIRM_A, key: "platform.require_two_step", value: false, by: "check", workspaceId: randomUUID() }), (e) => e instanceof SettingRefused));
+    && await throwsLike(() => writeSetting(db, { firmId: FIRM_A, key: "platform.require_two_step", value: false, by: "system:check", workspaceId: randomUUID() }), (e) => e instanceof SettingRefused));
 
   // ---------------------------------------------------------------------- user-R: a Case Manager with a licence
   let tR = await tokenOf("user-R");
@@ -456,7 +456,7 @@ try {
   ok("PF-4 fail: the scan finds a planted number (it is not blind)", leaks(`something ${NUMBER} something`).length === 1);
 
   // ----------------------------------------------------------------- settings: PF-3 review m4, m10; demo reset B-6
-  const zone = async (v: string) => writeSetting(db, { firmId: FIRM_A, key: "platform.time_zone", value: v, by: "check", workspaceId: await platformAuditWorkspaceId(db) }).then(() => true, () => false);
+  const zone = async (v: string) => writeSetting(db, { firmId: FIRM_A, key: "platform.time_zone", value: v, by: "system:check", workspaceId: await platformAuditWorkspaceId(db) }).then(() => true, () => false);
   ok("PF-4 fail (PF-3 review m10; PF-4 review m6): a time zone in other capitals is refused (America/TORONTO, AMERICA/Toronto, Asia/KOLKATA, Asia/KolKata, ETC/GMT+5)",
     !(await zone("America/TORONTO")) && !(await zone("AMERICA/Toronto")) && !(await zone("Asia/KOLKATA")) && !(await zone("Asia/KolKata")) && !(await zone("ETC/GMT+5")));
   ok("PF-4 pass (m10): IANA's own spellings are accepted (America/Toronto, Asia/Kolkata, Europe/Kyiv, Etc/GMT+5, America/Port-au-Prince, Asia/Ho_Chi_Minh, UTC)",
@@ -473,7 +473,7 @@ try {
   // platform step. (Part B runs the real reset on the copy.)
   const demoWs = await db.workspace.upsert({ where: { key: "demo" }, update: {}, create: { key: "demo", label: "demo (check)" } });
   await db.auditEvent.create({ data: { workspaceId: demoWs.id, actor: "user-A", action: "check", entity: "demo workspace", summary: "a demo line" } });
-  await db.auditEvent.deleteMany({ where: { workspaceId: demoWs.id } });
+  await db.$transaction(async (tx) => { await tx.$executeRaw`select set_config('app.audit_sample_reset', 'on', true)`; await tx.auditEvent.deleteMany({ where: { workspaceId: demoWs.id } }); });   // AUD-1a: as Demo.wipe, with the reset setting
   const reset = await resetSampleFirmSettings(db);
   ok("PF-4 pass (P-571 (1)): the reset returns the Sample firms' settings to their seed values through the settings write path (a value already at its seed value is left alone)",
     reset.changed.length >= 2 && await readSetting(db, FIRM_A, "platform.language") === "en" && await readSetting(db, FIRM_B, "platform.currency") === "CAD" && await readSetting(db, FIRM_A, "platform.time_zone") === "America/Toronto", reset);
