@@ -1937,3 +1937,7 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 
 ## Rev 17.22 (18 Nov 21:38 IST)
 * **#2130 PF-15 part 1a:** after #2009 (PF-18a) merged, the PR conflicted in `platform.prisma` and the platform module card. My ruling (comment 6984138054): merge main, keep both sides, keep the stamp `20261118100000` (later than main's newest `20261117124500`, distinct from the open PRs), re-run the suites, then a fresh Approve and the label.
+
+## Rev 17.23 (18 Nov 21:51 IST)
+* **#2130 PF-15 part 1a:** new Approve on 3e02affa2 (21:48 IST), which merges main cee72284f. Lead 81 labelled it, and its P-423 migration read is OK. Its two minors go to part 2 in `PF-15.md`: a cross-firm test of the definer function, and the case of several live subscriptions.
+* queue-gate now runs on the Mac (#2145, 21:50 IST), so queue-fresh follows green CI within seconds.
