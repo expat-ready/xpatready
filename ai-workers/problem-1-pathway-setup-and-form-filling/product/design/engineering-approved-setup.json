@@ -173,7 +173,7 @@
     "merge_method": "merge"
    },
    "product": {
-    "batch_size": 6,
+    "batch_size": 20,
     "queue_conditions_required": [
      "base = main",
      "-draft",
