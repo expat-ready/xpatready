@@ -576,6 +576,9 @@ export function batchRecheck(prs, statusOf, once = false) {
   }
   return { run, why, works: [...works] };
 }
+/** A member merge's PR number: main's "Merge pull request #N from …" and Mergify's batch branches' "Merge of PR N"
+ *  (review of #2151, round 2: the batch branches carry no "#", so every member read as unnumbered); else null. */
+export const memberNumber = (subject) => { const m = subject.match(/#(\d+)|\bPR (\d+)\b/); return m ? m[1] ?? m[2] : null; };
 /** QA-366 in CI: the batch's members from git (review of #1476, Major 2): the first-parent merges <base>..<head>, each
  *  { n (its "#N"), merge, head (second parent), files (what that merge added) }. */
 function batchMembers(base, head) {
@@ -583,7 +586,7 @@ function batchMembers(base, head) {
   if (r.status !== 0) throw new Error(`git log ${base}..${head} failed: ${r.stderr.trim()}`);
   return r.stdout.split("\n").filter(Boolean).map((l) => {
     const [shas, subject = ""] = l.split("\t"), [merge, p1, p2] = shas.split(" ");
-    return { n: subject.match(/#(\d+)/)?.[1] ?? null, merge, head: p2, files: changedFiles(p1, merge) };
+    return { n: memberNumber(subject), merge, head: p2, files: changedFiles(p1, merge) };
   });
 }
 /** QA-366: one batch PR's re-check input, or a reason it has none. members: batchMembers; base: the batch's base.

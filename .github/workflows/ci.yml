@@ -33,8 +33,8 @@
 #   SHARDS=<1..9>        the number of parallel parts (default 8: pipeline row 2, 10 Nov, measured in its PR; was 4,
 #                        and the repository variable SHARDS is 6 since 9 Nov, which overrides this default until it
 #                        is deleted or set to 8; I1 measured before changing it: see its PR);
-#   PR_SUITES=direct     a builder's PR runs only the suites that import or name its files, never everything
-#                        (select-suites.mjs --direct); the queue still runs every suite;
+#   PR_SUITES=direct     idle since P-651 (2) (a builder's PR runs no suite; it was select-suites.mjs --direct); it
+#                        still enters the memory verdict's context, so changing it re-tests a head; the queue runs every suite;
 #   (BATCH_RUNNER / PR_RUNNER = mac, the founder's Mac, are gone: D1, P-416, 8 Nov; off since 4 Nov. git has them.)
 # Base at run time (D6, P-416, founder 8 Nov): every job of a pull request rebuilds the test merge on origin/main as the
 #   job finds it (tools/pr-base.sh) and reads RANGE = "$(git merge-base origin/main HEAD)..<head>", never the event's

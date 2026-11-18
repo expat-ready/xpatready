@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { tail, claims, expand, openBugs, blockers, runPlan, stepsVerdict, packsOf, whereOf, placeOf, IN_CHECKPOINT, dataOf, dataMap, dataFor, dataForPack, notTested, modeOf, touchedPacks, diffSet, batchRecheck, checkpointTrigger, checkpointRows, packsReachedBy, packVerdict, part1, stepsPrinted, stepsUnprinted, packSteps, unprintedReason } from "./gate-b.mjs";
+import { tail, claims, expand, openBugs, blockers, runPlan, stepsVerdict, packsOf, whereOf, placeOf, IN_CHECKPOINT, dataOf, dataMap, dataFor, dataForPack, notTested, modeOf, touchedPacks, diffSet, batchRecheck, checkpointTrigger, checkpointRows, packsReachedBy, memberNumber, packVerdict, part1, stepsPrinted, stepsUnprinted, packSteps, unprintedReason } from "./gate-b.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url)), ACC = resolve(HERE, "../acceptance"), P = resolve(HERE, "../../../product");
 /** A fixture pack whose run truly uses no server (only an engine run line), for the gate's no-server rules (B125, B131). */
@@ -311,7 +311,9 @@ process.exit(0);
   ok("P-651: in ONCE every named row runs with its PR's steps and the given reason, a Works row too (none left to the protected set)",
     [...g.run].map(([k, v]) => `${k}=${v}`).join() === "C8.3=2,C6.9=null" && g.works.length === 0 && /^#5: P-651/.test(g.why.get("C8.3")), g);
   const h = batchRecheck([{ n: 6, caps: caps(["C6.9", null]), touched: null }], (id) => st[id]);
-  ok("P-651: with ONCE off a named Works row is still left to the protected set, as before", h.run.size === 0 && h.works.join() === "C6.9", h); }
+  ok("P-651: with ONCE off a named Works row is still left to the protected set, as before", h.run.size === 0 && h.works.join() === "C6.9", h);
+  const nums = ["Merge pull request #1620 from owner/branch", "Merge of PR 2138", "Merge branch 'main'", "Merge of PRs"].map(memberNumber);
+  ok("#2151 round 2: a member's number from main's \"Merge pull request #N\" and from Mergify's batch branches' \"Merge of PR N\"; none from other merges", nums.join() === "1620,2138,,", nums); }
 
 // The command itself: skips, refusal and pass (packs off; the real BUGS.md is not read, so the cases stay true).
 const T = mkdtempSync(join(tmpdir(), "gate-b-")), bf = join(T, "BUGS.md"); writeFileSync(bf, BUGS);
@@ -422,6 +424,10 @@ ok("command: an unknown option exits 2", r.code === 2, r);
     prs([{ n: 1459, title: "qa: capability C8.3 after #1440", body: "" }]);
     const o2 = run(["--title", "merge queue: embarking #1459"], { ...Q, GATE_B_ONCE: "1", RANGE: `${B1459}..${M1459}` });
     ok("P-651: in ONCE a records PR's named rows are still not re-checked (its gate B never ran)", o2.code === 0 && /#1459 names C8\.3, not re-checked: its own change is records/.test(o2.out) && !/packs:/.test(o2.out), o2);
+    { const tree = git("rev-parse", `${M1459}^{tree}`).stdout.trim(), p1 = git("rev-parse", `${M1459}^1`).stdout.trim(), p2 = git("rev-parse", `${M1459}^2`).stdout.trim();
+      const mq = spawnSync("git", ["commit-tree", tree, "-p", p1, "-p", p2, "-m", "Merge of PR 1459"], { cwd: HERE, encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } }).stdout.trim();
+      const o2m = run(["--title", "merge queue: embarking #1459"], { ...Q, GATE_B_ONCE: "1", RANGE: `${B1459}..${mq}` });
+      ok("#2151 round 2: under Mergify's subject \"Merge of PR 1459\" the records PR's named rows are still not re-checked", o2m.code === 0 && /#1459 names C8\.3, not re-checked: its own change is records/.test(o2m.out) && !/packs:/.test(o2m.out), o2m); }
     const o3 = run(["--title", "merge queue: embarking #1396", "--diff-groups", "5"], { ...Q, GATE_B_ONCE: "1", RANGE: `${M1435}..${M1396}` });
     let o3g = null; try { o3g = JSON.parse(o3.out.split("\n").find((l) => l.startsWith("[")) ?? ""); } catch { /* reported below */ }
     ok("P-651: in ONCE --diff-groups on a real batch prints its groups as JSON (exit 0), minus the rows job regression runs", o3.code === 0 && Array.isArray(o3g) && /left to the protected set \(job regression/.test(o3.out), o3);
@@ -438,6 +444,12 @@ ok("command: an unknown option exits 2", r.code === 2, r);
       const b2 = run(["--title", "merge queue: embarking #1620", "--diff-groups", "5"], R1620), b3 = run(["--title", "merge queue: embarking #1620"], R1620);
       ok("#2151 M1: rows a member's PR names leave its packs by diff (part 1 runs them with their steps, never whole)", b2.code === 0 && b2.out.split("\n").find((l) => l.startsWith("[")) === "[]", b2);
       ok("#2151 B1: in ONCE the batch's gate B runs those named Works rows, C6.2 with its steps", b3.code === 0 && /P-651: the batch runs the rows its PRs name/.test(b3.out) && /C6\.2 \(steps 1, 2\)/.test(b3.out) && /C7\.1-application-type\.test\.ts/.test(b3.out), b3);
+      // Round 2: the same merge as Mergify's batch branches write it ("Merge of PR N", no "#"; a dangling commit with
+      // #1620's tree and parents, as the P-486 case above builds its base).
+      const tree = git("rev-parse", `${M1620}^{tree}`).stdout.trim(), p2 = git("rev-parse", `${M1620}^2`).stdout.trim();
+      const mq = spawnSync("git", ["commit-tree", tree, "-p", rr, "-p", p2, "-m", "Merge of PR 1620"], { cwd: HERE, encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } }).stdout.trim();
+      const b4 = run(["--title", "merge queue: embarking #1620", "--diff-groups", "5"], { ...R1620, RANGE: `${rr}..${mq}` });
+      ok("#2151 round 2 (M1 on a real batch): under Mergify's subject \"Merge of PR 1620\" the rows #1620 names still leave its packs by diff", /^[0-9a-f]{40}$/.test(mq) && b4.code === 0 && b4.out.split("\n").find((l) => l.startsWith("[")) === "[]", b4);
     } else console.log("SKIP  #2151 review replays: #1620's merge is not in this copy");
     prs([P1396]);
     const q6 = run(["--title", "merge queue: embarking #1396"], { ...Q, RANGE: "" });
