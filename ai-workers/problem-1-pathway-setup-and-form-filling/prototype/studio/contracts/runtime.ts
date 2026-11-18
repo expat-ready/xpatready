@@ -544,6 +544,19 @@ export const CaseDecisionBody = z.strictObject({
 export const CaseWithdrawBody = z.strictObject({ reason: caseReason, withdrawnOn: caseDate }, notHere("a withdrawal"));
 /** POST /runtime/cases/:id/close and /reopen: a reason. */
 export const CaseReasonBody = z.strictObject({ reason: caseReason }, notHere("this request"));
+/** GET /runtime/cases/:id/decisions (CS-C1s): the case's decision and closing, for the case page's panel. Outcome words
+ *  are Sample (`sample: true`) until cited from an official IRCC source (AG-7-33 rule 4). `can` is the case's state only;
+ *  whether the person holds the key comes from /platform/me. */
+const Day = z.string(), Stage = z.object({ id: z.string(), label: z.string() });
+const Decision = z.object({ id: z.string(), outcome: z.string(), decidedOn: Day, note: z.string().nullable(), recordedAt: z.string(), recordedBy: z.object({ staffId: z.string(), name: z.string().nullable() }) });
+export const CaseDecisionsView = z.object({
+  case: z.object({ id: z.string(), caseNumber: z.string(), status: z.string(), closeOutcome: z.string().nullable(), closedAt: z.string().nullable(), closedReason: z.string().nullable(),
+    withdrawnAt: z.string().nullable(), withdrawnOn: Day.nullable(), withdrawReason: z.string().nullable(), closedFromStage: Stage.nullable(), currentStage: Stage.nullable(), decision: z.string().nullable() }),
+  filings: z.array(z.object({ id: z.string(), person: z.string().nullable(), stage: Stage, current: z.boolean(), submitted: z.boolean(), submittedOn: Day.nullable(), latest: Decision.nullable(), earlier: z.array(Decision) })),
+  outcomes: z.array(z.string()), sample: z.literal(true),
+  can: z.object({ decide: z.array(z.string()), withdraw: z.boolean(), close: z.boolean(), reopen: z.boolean() }),
+});
+export type CaseDecisionsView = z.infer<typeof CaseDecisionsView>;
 export const AddableQuery = z.strictObject({ q: AddableSearch, subject: AddableSubject }, onlyFilters("q, subject"));
 export const AddableDetailQuery = z.strictObject({ subject: AddableSubject }, onlyFilters("subject"));
 export const CopyFileQuery = z.strictObject({ original: CopyFileOriginal }, onlyFilters("original"));
