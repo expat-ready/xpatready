@@ -89,3 +89,11 @@ D1 3 (M1, a rule-5 gap) · D2 3 (closed lead gets a first response) · D3 4 (reu
 * **R2 (Minor). A backdated call answers a lead that arrived after it** (`calls.ts:60`, the `unanswered` filter; the arrival check at `calls.ts:83` reads only the context lead). *Probe:* L1 arrived 2 days ago, L2 today; a call on L1 dated yesterday sets L2's first response a day before L2 arrived (m1 again). *Fix:* count a lead only when `arrived_at <= when + 60 s`.
 
 **Verdict: Changes needed** (Block) for 2d55dcbba42ade3aea3c73aedba70141b48b02b1. To fix: R1; fix R2 in the same push. A re-review of that diff only is enough.
+
+## Re-review e80b65af4 (diff only: `git diff 2d55dcbba..e80b65af483a47c38bd140870f2e2bae9f8d415f`)
+**Ran:** `check_fo2p4_calls_timeline` 30/0, PF-6b 33/0, FO-2 113/0, and my R1/R2 probe again on a scratch database (dropped).
+* **R1 closed.** O's call names only O's lead; R's lead, which O reads as 404, is counted in `firstResponseOthers` and its id is not in the answer. Seeing uses the leads read's rule (active owner); the audit line keeps all ids.
+* **R2 closed.** A call on the older lead dated yesterday answers that lead only; the lead that arrived today keeps none. `first` and the audit line use the filtered set. README states both.
+* Nothing new found. Open Minors stay as listed above (m3, m7, m9's HTTP part, m10 on the PR body, m12).
+
+**Verdict: Approve** (no open Blocker or Major) for e80b65af483a47c38bd140870f2e2bae9f8d415f.
