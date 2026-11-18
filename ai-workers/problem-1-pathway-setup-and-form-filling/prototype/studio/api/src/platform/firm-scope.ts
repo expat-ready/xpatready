@@ -102,6 +102,8 @@ export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonl
   "platform.web-address.catch-up": { why: "at start, every firm with no web address yet gets one (PF-25)", routes: [], outside: true },
   "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i], direct: true },
   "platform.firms.signup": { why: "the sign-up door makes a firm that does not exist yet, checking the email across every firm (PF-5)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], direct: true },
+  "platform.billing.stripe-webhook": { why: "Stripe's event names a customer or subscription, not our firm: the door finds the firm, then updates it as that firm (PF-5 part 2)", routes: [/^POST \/api\/hooks\/stripe$/i], direct: true },
+  "job:platform.billing.webhook_sweep": { why: "Stripe events whose handling did not finish, every firm's (PF-5 part 2)", routes: [], outside: true },
   "job:platform.signup.purge": { why: "pending sign-ups past their 24 hours are deleted (PF-5; no firm yet)", routes: [], outside: true },
   "job:messages.outbox_sweep": { why: "the outbox sweep picks up every firm's stuck rows, each firm its own share (PF-19b)", routes: [], outside: true },
   "job:platform.secret_box.reencrypt": { why: "the secret store re-encrypts every firm's secrets under the new key (PF-24)", routes: [], outside: true },
