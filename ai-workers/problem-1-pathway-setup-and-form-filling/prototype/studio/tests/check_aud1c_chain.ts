@@ -95,6 +95,7 @@ try {
   const SAMPLE_FIRM = sql(BARE, `insert into platform_firm (id, key, operating_name, country_code, contact_email, updated_at) values (gen_random_uuid(), 'sample-firm', 'Sample firm', 'CA', 'sample@example.com', now()) on conflict (key) do update set key = excluded.key returning id`);
   pre.push(line(W_DEMO, "user-O", { firm_id: `'${SAMPLE_FIRM}'`, at: "'2026-11-10 10:00:03+00'" }));
   pre.push(line(W_GONE, "user-A", { at: "'2026-11-10 09:00:00+00'" }));
+  pre.push(line(W_GONE, "staff:aud1c", { firm_id: `'${F1}'`, at: "'2026-11-09 06:00:00+00'" }));   // review m2: a real firm's line under a gone workspace stays on its firm's chain
   // Platform-audit lines: two with the firm column (as AUD-1b will write them), two with the firm in detail only (as the
   // adapter writes them on main: AUD-1a's back-fill filled firm_id once, so these stay on the platform chain until AUD-1b).
   for (let i = 0; i < 4; i++) pre.push(line(W_PLAT, "system:check", { at: "'2026-11-11 08:00:00+00'", detail: `'{"firmId": "${i % 2 ? F1 : F2}", "i": ${i}}'`, ...(i < 2 ? { firm_id: `'${i % 2 ? F1 : F2}'` } : {}) }));
@@ -110,9 +111,9 @@ try {
   const keys0 = await chains(bare), checks0 = await inOrder(keys0, (async (k) => [k, await verify(bare, k)] as const));
   ok(`AUD-1c DW3 pass: after the migration every existing line (${countBefore}) is chained and every chain verifies with canonical.ts (${keys0.length} chains)`,
     n(BARE, "select count(*) from audit_event where seq is null or entry_hash is null") === 0 && n(BARE, "select count(*) from audit_event") === countBefore && checks0.every(([, v]) => v.ok), checks0);
-  ok("AUD-1c DW3 pass: the chains follow the rule — demo lines (a Sample firm's too) and a gone workspace's on sample:<workspace>, firm lines on their firm, the rest (a firm only in detail too) on platform",
+  ok("AUD-1c DW3 pass: the chains follow the rule — demo lines (a Sample firm's too) and a gone workspace's null-firm line on sample:<workspace>, a real firm's line under a gone workspace on its firm, firm lines on their firm, the rest (a firm only in detail too) on platform",
     JSON.stringify(keys0) === JSON.stringify([F1, F2, "platform", `sample:${W_DEMO}`, `sample:${W_GONE}`].sort())
-    && n(BARE, `select count(*) from audit_event where chain_key = 'sample:${W_DEMO}'`) === 7 && n(BARE, `select count(*) from audit_event where chain_key = '${F1}'`) === 4 && n(BARE, "select count(*) from audit_event where chain_key = 'platform'") === 5, keys0);
+    && n(BARE, `select count(*) from audit_event where chain_key = 'sample:${W_DEMO}'`) === 7 && n(BARE, `select count(*) from audit_event where chain_key = '${F1}'`) === 5 && n(BARE, "select count(*) from audit_event where chain_key = 'platform'") === 5, keys0);
   ok("AUD-1c DW3 pass: the back-fill went oldest first (at, then id) in each chain",
     n(BARE, `select count(*) from (select seq, row_number() over (partition by chain_key order by at, id) rn from audit_event) x where seq <> rn`) === 0);
   ok("AUD-1c DW3 pass: aud_event_no_change is enabled again after the migration; an UPDATE is still refused (owner and app)",
@@ -127,7 +128,7 @@ try {
   sql(BARE, line(W_FIRM, "system:check", { id: `'${micro}'`, firm_id: `'${F1}'`, at: "'2026-11-18 10:00:00.123456+00'" }), "xr_app");
   const v1 = await verify(bare, F1);
   ok("AUD-1c DW3 pass: a line written with no actor_type and one with microseconds in at both verify (the hash covers the filled type and the full microseconds)",
-    v1.ok && v1.n === 6 && sql(BARE, `select actor_type from audit_event where id = '${noType}'`) === "FIRM_STAFF" && sql(BARE, `select to_char(at at time zone 'UTC', 'US') from audit_event where id = '${micro}'`) === "123456", v1);
+    v1.ok && v1.n === 7 && sql(BARE, `select actor_type from audit_event where id = '${noType}'`) === "FIRM_STAFF" && sql(BARE, `select to_char(at at time zone 'UTC', 'US') from audit_event where id = '${micro}'`) === "123456", v1);
   const rowNoType = (await bare.query<Row>(`${LINE_SQL} where id = $1`, [noType])).rows[0];
   ok("AUD-1c DW3 fail: the same line hashed with no actor_type (as a hash taken before aud_event_fill would be) does not match",
     !entryHash(rowNoType.prev_hash, { ...asLine(rowNoType), actorType: null as unknown as string }).equals(rowNoType.entry_hash) && entryHash(rowNoType.prev_hash, asLine(rowNoType)).equals(rowNoType.entry_hash));
@@ -217,8 +218,8 @@ try {
   const firmsAfter = await nonSample(bare);
   ok("AUD-1c DW4 pass: every firm chain and the platform chain are unchanged by it (every line's seq and hash the same, no line added) and still verify",
     firmsAfter.size === firmsBefore.size && [...firmsBefore].every(([k, h]) => firmsAfter.get(k) === h) && (await inOrder([F1, F2, F3, "platform"], (k) => verify(bare, k))).every((v) => v.ok));
-  sql(BARE, `begin; select set_config('app.audit_sample_reset', 'on', true); delete from audit_event where workspace_id = '${W_GONE}'; commit`, "xr_app");
-  ok("AUD-1c DW4 fail: emptying the chain of a workspace that no longer exists writes no restart line (the chain simply ends; nothing is left behind for the orphan sweep)", n(BARE, `select count(*) from audit_event where chain_key = 'sample:${W_GONE}'`) === 0);
+  sql(BARE, `begin; select set_config('app.audit_sample_reset', 'on', true); delete from audit_event where chain_key = 'sample:${W_GONE}'; commit`, "xr_app");
+  ok("AUD-1c DW4 fail: emptying the chain of a workspace that no longer exists writes no restart line (the chain simply ends; nothing is left behind for the orphan sweep)", n(BARE, `select count(*) from audit_event where chain_key = 'sample:${W_GONE}'`) === 0 && n(BARE, `select count(*) from audit_event where workspace_id = '${W_GONE}' and chain_key = '${F1}'`) === 1);
 
   // migrate diff: empty for the trail on the empty and the demo-data copies.
   for (const d of all) psql(urlOf(EMPTY), ["-f", join(MIG, d, "migration.sql")]);
@@ -245,7 +246,7 @@ try {
   ok(`AUD-1c DW4 pass (the real reset): the loaded demo's chain (${demoLines} lines) verified before; after POST /demo/reset every firm chain and the platform chain keep each line as it was (${keep.size} lines) and every chain verifies`,
     R.status < 300 && vDemo.ok && demoLines > 50 && [...keep].every(([k, h]) => keptAfter.get(k) === h) && vAll.every(([, v]) => v.ok), { status: R.status, vDemo, bad: vAll.filter(([, v]) => !v.ok) });
   ok("AUD-1c DW4 pass (the real reset): the old demo chain is gone with its workspace (its restart line swept as an orphan), and the new demo workspace's chain starts at seq 1 with the reset's own line",
-    n(COPY, `select count(*) from audit_event where chain_key = 'sample:${demoWs}'`) === 0 && newWs !== demoWs && sql(COPY, `select string_agg(seq || ':' || action, ',' order by seq) from audit_event where chain_key = 'sample:${newWs}'`).startsWith("1:"));
+    n(COPY, `select count(*) from audit_event where chain_key = 'sample:${demoWs}'`) === 0 && newWs !== demoWs && sql(COPY, `select string_agg(seq || ':' || action, ',' order by seq) from audit_event where chain_key = 'sample:${newWs}'`) === "1:reset");
   ok("AUD-1c DW4 fail (the real reset): the platform chain's lines written before it were not cut (the newest of them is still there, at its seq, with its hash)", [...keep.keys()].filter((k) => k.startsWith("platform#")).length >= 3 && [...keep.keys()].every((k) => keptAfter.has(k)));
 } catch (e) {
   if (String((e as Error).message) !== "setup") ok("AUD-1c: the check ran to the end", false, String((e as Error).stack ?? e).slice(0, 600));

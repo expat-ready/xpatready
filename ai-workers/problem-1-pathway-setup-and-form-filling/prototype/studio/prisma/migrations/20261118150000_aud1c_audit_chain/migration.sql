@@ -4,7 +4,7 @@
 -- 1, 2, 3… per chain with no gap. Altering or removing a line breaks every later hash (part 2's checker finds it).
 --
 -- Chains: `sample:<workspace id>` for a line of the demo workspace (whatever its firm_id) or of a workspace that no
--- longer exists (the lines AUD-1a lets the demo reset delete), else the line's firm_id, else `platform`. So a reset
+-- longer exists whose firm is none or a Sample firm's (the lines AUD-1a lets the demo reset delete; review m2), else the line's firm_id, else `platform`. So a reset
 -- never cuts a firm's or the platform's chain (P-571 (1)). AUD-4 reads a firm's log by firm_id, not by chain_key.
 -- No pgcrypto: sha256(bytea) is built into PostgreSQL 11 and later (no new extension, STANDARDS §1).
 --
@@ -47,7 +47,8 @@ CREATE FUNCTION aud_event_canonical(e "audit_event") RETURNS text
 CREATE FUNCTION aud_chain_key_of(workspace_id uuid, firm_id uuid) RETURNS text
   LANGUAGE sql STABLE SET search_path = pg_catalog, public, pg_temp
   AS $fn$ SELECT CASE
-    WHEN NOT EXISTS (SELECT 1 FROM "workspace" w WHERE w."id" = workspace_id)
+    WHEN (NOT EXISTS (SELECT 1 FROM "workspace" w WHERE w."id" = workspace_id)
+          AND (firm_id IS NULL OR EXISTS (SELECT 1 FROM "platform_firm" f WHERE f."id" = firm_id AND f."key" IN ('sample-firm', 'sample-solo'))))
       OR EXISTS (SELECT 1 FROM "workspace" w WHERE w."id" = workspace_id AND w."key" = 'demo') THEN 'sample:' || workspace_id::text
     WHEN firm_id IS NOT NULL THEN firm_id::text
     ELSE 'platform' END $fn$;
