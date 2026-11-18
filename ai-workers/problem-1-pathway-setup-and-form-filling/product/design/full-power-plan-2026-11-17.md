@@ -261,6 +261,7 @@ Status words: Open · Doing · Done · Unverified (no record found either way).
 | 221 | Outer loop that finds and files, never fixes: a nightly read-only `/qa explore` once batch failures are under 15%, each finding with a failing reproducer, fixes through the normal gates (added in review 2) | TV:130 "A nightly read-only `/qa explore` once batch failures are under 15%"; OP:371 | TL; qa | Open (when batch failures < 15%) | 1 routine | D |
 | 222 | Reviewer, breaker and qa sessions get read-only tokens; a secret scope per stage; secrets only as cloud network secrets (added in review 2) | TV:131 "reviewer, breaker and qa sessions get read-only tokens" | TL; F | Open (with #58) | card | D |
 | 223 | Property and race tests where the money is: fast-check (pinned in #76), a model-based money property test in class C1, race tests for 2-3 flows (added in review 2) | TV:125 "a model-based money property test in class C1; race tests for 2-3 flows"; OP:367 | L | Open (after #76) | 1-2 PRs | D |
+| 224 | qa walks recorded in CI (added by Lead 80, 18 Nov, founder ask on best-in-class qa speed): gate A journeys replayed as Playwright runs on GitHub's machines with video, trace and screenshots as artifacts, one job per capability, so 4+ qa lanes review recordings in parallel instead of each walking an isolated copy on the Mac (cap 4 copies) | founder 18 Nov 19:2x IST: "for QA, are we completely best in class resource available now? ... is it the best in class possible for our required speed?" | TL; qa | Open | 1-2 PRs | D |
 
 ---
 
