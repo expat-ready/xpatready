@@ -56,7 +56,7 @@ const check = (items: unknown[], actor: string | null = "user-A") => call("POST"
   ok("G-CORE BR-4 pass: renaming a field a released combination uses needs a second person (P-266), in words", r.body?.tier?.tier === "second_person" && /second person/.test(r.body.tier.words) && r.body.tier.why.some((w: string) => /P-266/.test(w)), r.body?.tier);
   // Review m10: a field no release carries (the sample releases every field, so one draft field is added for the test).
   const unused = "person.gcore_draft_only";
-  sql(`insert into canonical_field (id, workspace_id, canonical_field_key, version, status, meaning, value_type, data_type, scope, subject_kind, origin, updated_by, label, label_checked) select gen_random_uuid(), id, '${unused}', 1, 'DRAFT', 'G-CORE test field (Sample)', 'text', 'STRING', 'CLIENT_LEVEL', 'PERSON', 'HUMAN', 'user-A', 'G-CORE draft field', true from workspace limit 1`);
+  sql(`insert into canonical_field (id, workspace_id, canonical_field_key, version, status, meaning, value_type, data_type, scope, subject_kind, origin, updated_by, label, label_checked) select gen_random_uuid(), id, '${unused}', 1, 'DRAFT', 'G-CORE test field (Sample)', 'text', 'STRING', 'CLIENT_LEVEL', 'PERSON', 'HUMAN', 'user-A', 'G-CORE draft field', true from workspace where key <> 'platform-audit' limit 1`);
   const u2 = await check([{ action: "rename", kind: "field", key: unused, name: `Renamed ${Date.now().toString(36)} (Sample)` }]);
   ok("G-CORE BR-4 pass: renaming a field no release carries is direct and logged (P-96)", u2.body?.ok === true && u2.body?.tier?.tier === "direct" && u2.body.preview[0].releases.length === 0, u2.body);
   // ─────────── The fingerprint (BR-3: a changed preview is a new fingerprint)
