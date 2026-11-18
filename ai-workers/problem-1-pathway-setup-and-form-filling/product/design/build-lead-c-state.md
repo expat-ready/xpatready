@@ -217,3 +217,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
 * 00:13 IST 19 Nov: #2000 head 74268f69f (main merge) has a matching diff-only Approve; sent to Lead 82 for the relabel.
 * 00:17 IST 19 Nov (Lead 82): #2124 (3d507a2ed), #2000 (74268f69f) and #2106 (ae7cc15f1) are labelled and go to Mergify on green checks. When each merges, the next part opens its PR: AUD-1m after #2124, FO-7lk after #2106, CS-K1 after #2125.
 * 01:22 IST 19 Nov: current Lead is now Lead 83 (local_191538a9), from 01:2x IST.
+* 02:50 IST 19 Nov (Lead 83): #2125 CS-W1 part 1 merged (main 34c5e1e99). CS-K1 part 1 (`claude/amazing-cerf-wgea9w`, 695aeec36; breaker passed 9bab80a24; migration 20261118230000) merges main, gets a diff-only Approve, then opens its PR. Lead 83 types the continue line; the PR needs the P-423 read.
