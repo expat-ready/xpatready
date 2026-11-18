@@ -73,3 +73,20 @@ Reviewer: Approve 48abcd4e5
 **Verdict: Approve**
 
 Reviewer: Approve 9bab80a24
+
+## Re-review 479f23131 (merge of main)
+* **Merge:** 479f23131 has parents 695aeec36 (the branch: since 9bab80a24 only the review and break records, no code) and 34c5e1e99 (main, with #2125). I compared the row's diff against main, `git diff 34c5e1e99 479f23131 -- …/studio`, line for line with the reviewed `216aa33e6..9bab80a24` diff (`cmp` of the +/- lines): **identical**, 12 files, +719 / -10. The merge changed none of this row's lines.
+* **Migration order:** main brings in `20261117120000_pf18a_offices`, `20261118073000_pf18b_support` and `20261118140000_fo13i_identity_check_key`. All three are earlier than `20261118230000_csk1_case_client`, which is still the newest and unique. None of them touches `runtime_case`, `case_client`, CS-W1's case triggers, `case_lookup` or the default privileges. The only privilege change is PF-18a's column-level UPDATE on `platform_staff_office`.
+* **New case writers:**
+  * No line main added calls `case.create`, `createCase`, `/api/runtime/cases` or `clientId`. `runtime.ts:323` is still the only `tx.case.create`. The callers of `createCase` are the same as before (`runtime.ts:1058`, `sample-case.ts:64`).
+  * One new test writes `runtime_case` directly: `tests/check_pf18a_offices.ts:83-84`, a replica-role fixture inserted before PF-18a's migration, which later migrations then run over. CS-K1's backfill gives that case a client. I ran it on 479f23131: **87 passed, 0 failed**.
+* **Main's ports:** `ports/events.ts` adds only `support.ticket_created` and `identity.checked`. `CaseClosedPayload`/`CaseReopenedPayload` still take `clientId: Uuid.nullable()`, which holds the case's client id. Main's new `ports/fo-person.ts` (FO-1p) is part 2's port; no part-1 code uses it.
+* **Paths:** `docs/PATHS-MOVED.md` has no moved rows yet, and the merge renames nothing. The suite's usage line (`check_csk1_client.ts:12`) is in the form `product/tools/run-suites.sh` expects for an isolated suite, so the merge queue will pick it up.
+* **Re-run by me on 479f23131** (fresh `csk1_rev` copy on :4651, stopped and dropped afterwards): `check_csk1_client.ts` 51/51, `check_csw1_firm_id.ts` 47/47, `check_pf18a_offices.ts` 87/0. I did not run the typecheck or the module-cards tree check myself; you report both passing.
+* **Size:** the P-610 count against main is unchanged at 729 lines of code and tests.
+* **Still open for the PR body:** m1 (`Card unchanged:` for `api-features`), m4, m5 and m6, as you said.
+* No new finding. No Blocker, no Major.
+
+**Verdict: Approve**
+
+Reviewer: Approve 479f23131
