@@ -21,6 +21,13 @@ const why = (e: unknown) => (e instanceof StaffApiError ? e.message : "Something
 type Row = { key: number; start: string; end: string };
 type Draft = Record<number, Row[]>;
 let keys = 0;
+/** Break M1: the week editor's unsaved edits. Leaving them (another set, Make default, another colleague, a reload)
+ *  asks first, in the house Dialog guard's words. */
+const unsaved = { current: false };
+const DISCARD = "Discard your unsaved changes?";
+const mayLeave = () => !unsaved.current || window.confirm(DISCARD);
+/** Break M3: the place the keyboard goes once the next answer is drawn ("heading": the set's title). */
+const focusNext = { current: null as null | "heading" };
 /** "Add hours": 09:00-17:00 on an empty day, else the hour after the day's last window (an editable starting value). */
 function nextWindow(rows: Row[]): { start: string; end: string } {
   const last = rows.at(-1)?.end;
@@ -46,7 +53,7 @@ function Viewing({ staffId, onChange }: { staffId: string | null; onChange: (id:
   return (
     <div className="w-full sm:w-72" data-viewing>
       <Field label="Viewing" hint={list.isError ? why(list.error) : "Choose a colleague to set their hours and time off."}>
-        <Select value={staffId ?? ""} onChange={(e) => onChange(e.target.value || null)} title="Choose a colleague">
+        <Select value={staffId ?? ""} onChange={(e) => { if (mayLeave()) { unsaved.current = false; onChange(e.target.value || null); } else e.target.value = staffId ?? ""; }} title="Choose a colleague">
           <option value="">{me.displayName} (you)</option>
           {people.map((p) => <option key={p.id} value={p.id}>{p.displayName}</option>)}
           {staffId && !people.some((p) => p.id === staffId) ? <option value={staffId}>Another colleague</option> : null}
@@ -62,7 +69,7 @@ function SetList({ sets, chosen, onChoose, onAdd }: { sets: Set[]; chosen: strin
       <ul className="flex flex-col gap-1">
         {sets.map((s) => (
           <li key={s.id}>
-            <button type="button" onClick={() => onChoose(s.id)} aria-current={s.id === chosen ? "true" : undefined} data-set={s.name}
+            <button type="button" onClick={() => { if (s.id !== chosen && mayLeave()) { unsaved.current = false; onChoose(s.id); } }} aria-current={s.id === chosen ? "true" : undefined} data-set={s.name}
               className={cn("flex min-h-10 w-full items-center justify-between gap-2 rounded-lg px-3 text-left text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", s.id === chosen ? "bg-primary/10 font-medium text-text-link" : "hover:bg-text/5")}>
               <span className="min-w-0 [overflow-wrap:anywhere]">{s.name}</span>
               {s.isDefault ? <span className="rounded-full border border-border px-2 text-xs text-text" data-default>Default</span> : null}
@@ -107,11 +114,24 @@ function WeekEditor({ set, path, onSaved, onDeleted, reload }: { set: Set; path:
     if (busy === null && was.current === "default") heading.current?.focus();
     was.current = busy;
   }, [busy]);
-  React.useEffect(() => { setDraft(draftOf(set)); setZone(set.timeZone); setErrors({}); setProblem(null); setZoning(false); }, [set.id, set.version]);   // eslint-disable-line react-hooks/exhaustive-deps -- a new answer resets the editor
-  const zones = React.useMemo(allZones, []);
+  React.useEffect(() => {
+    setDraft(draftOf(set)); setZone(set.timeZone); setErrors({}); setProblem(null); setZoning(false);
+    if (focusNext.current === "heading") { focusNext.current = null; heading.current?.focus(); }
+  }, [set.id, set.version]);   // eslint-disable-line react-hooks/exhaustive-deps -- a new answer resets the editor
+  const flat = (d: Draft) => JSON.stringify(WEEK.map(({ day }) => (d[day] ?? []).map((r) => [r.start, r.end])));
+  const dirty = flat(draft) !== flat(draftOf(set)) || zone.trim() !== set.timeZone;
+  React.useEffect(() => { unsaved.current = dirty; }, [dirty]);
+  React.useEffect(() => () => { unsaved.current = false; }, []);
+  React.useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+  // The browser lists some zones by their old names (Asia/Calcutta): the current spellings are offered too (break m6).
+  const zones = React.useMemo(() => [...new globalThis.Set([...allZones(), "Asia/Kolkata", "Asia/Kathmandu", "Asia/Ho_Chi_Minh", "Europe/Kyiv", "America/Nuuk"])].sort(), []);
   const edit = (day: number, f: (rows: Row[]) => Row[]) => { setDraft((d) => ({ ...d, [day]: f(d[day] ?? []) })); setSaved(false); };
   const refused = (x: unknown) => {
-    if (x instanceof StaffApiError) { setErrors(x.problem.fields ?? {}); setProblem({ text: x.message, stale: x.status === 409 && x.problem.code === "STALE_VERSION" }); }
+    if (x instanceof StaffApiError) { setErrors(x.problem.fields ?? {}); setProblem({ text: x.message, stale: (x.status === 409 && x.problem.code === "STALE_VERSION") || x.status === 404 }); }
     else setProblem({ text: why(x), stale: false });
   };
   const save = async () => {
@@ -123,13 +143,14 @@ function WeekEditor({ set, path, onSaved, onDeleted, reload }: { set: Set; path:
     catch (x) { refused(x); } finally { setBusy(null); }
   };
   const makeDefault = async () => {
+    if (!mayLeave()) return;
     setBusy("default"); setProblem(null);
     try { onSaved(HourSet.parse(await staffApi(`${path}/availability-sets/${set.id}`, { method: "PATCH", json: { isDefault: true, version: set.version } }))); }
     catch (x) { refused(x); } finally { setBusy(null); }
   };
   const remove = async () => {
     setBusy("delete");
-    try { await staffApi(`${path}/availability-sets/${set.id}`, { method: "DELETE" }); setConfirm(false); onDeleted(); }
+    try { await staffApi(`${path}/availability-sets/${set.id}`, { method: "DELETE" }); unsaved.current = false; focusNext.current = "heading"; setConfirm(false); onDeleted(); }
     catch (x) { setConfirm(false); refused(x); } finally { setBusy(null); }
   };
   /** The server's field error for a row: `windows.<i>.end` ("End must be after start.") or `windows.<i>` ("These hours overlap."). */
@@ -154,6 +175,7 @@ function WeekEditor({ set, path, onSaved, onDeleted, reload }: { set: Set; path:
             <Input value={zone} list="fo3st2-zones" onChange={(e) => { setZone(e.target.value); setSaved(false); }} autoComplete="off" />
           </Field>
           <datalist id="fo3st2-zones">{zones.map((z) => <option key={z} value={z} />)}</datalist>
+          <Button variant="link" size="sm" className="mt-1 px-0" onClick={() => { setZone(set.timeZone); setZoning(false); setErrors(({ timeZone: _, ...rest }) => rest); }}>Keep {set.timeZone}</Button>
         </div>
       ) : zoneError ? <p role="alert" className="mt-1 text-xs text-text-danger">{zoneError}</p> : null}
       <ul className="mt-3 divide-y divide-border rounded-lg border border-border" aria-label={`Weekly hours of ${set.name}`}>
@@ -174,21 +196,21 @@ function WeekEditor({ set, path, onSaved, onDeleted, reload }: { set: Set; path:
                         <span aria-hidden>–</span>
                         <Input type="time" aria-label={`${name} hours ${i + 1}: end`} className="w-32" value={r.end} aria-invalid={err ? true : undefined} aria-describedby={err ? `fo3st2-err-${r.key}` : undefined}
                           onChange={(e) => edit(day, (rs) => rs.map((x) => (x.key === r.key ? { ...x, end: e.target.value } : x)))} />
-                        <Button variant="ghost" size="sm" aria-label={`Remove hours: ${name} ${i + 1}`} onClick={() => edit(day, (rs) => rs.filter((x) => x.key !== r.key))}>Remove hours</Button>
+                        <Button variant="ghost" size="sm" aria-label={`Remove hours: ${name} ${i + 1}`} onClick={(e) => { const li = e.currentTarget.closest("li"); edit(day, (rs) => rs.filter((x) => x.key !== r.key)); requestAnimationFrame(() => li?.querySelector<HTMLElement>("[data-add-hours]")?.focus()); }}>Remove hours</Button>
                       </div>
                       {err ? <p id={`fo3st2-err-${r.key}`} role="alert" className="mt-1 text-xs text-text-danger" data-field-error>{err}</p> : null}
                     </div>
                   );
                 })}
-                <Button variant="outline" size="sm" className="self-start" aria-label={`Add hours: ${name}`}
+                <Button variant="outline" size="sm" className="self-start" data-add-hours aria-label={`Add hours: ${name}`}
                   onClick={() => edit(day, (rs) => [...rs, { key: ++keys, ...nextWindow(rs) }])}>Add hours</Button>
               </div>
             </li>
           );
         })}
       </ul>
-      {problem && !Object.keys(errors).some((k) => k.startsWith("windows") || k === "timeZone") ? (
-        <Notice tone="danger" className="mt-3" title="Not saved" action={problem.stale ? <Button size="sm" variant="outline" onClick={reload}>Reload</Button> : undefined}>{problem.text}</Notice>
+      {problem && !Object.keys(errors).some((k) => /^windows\.\d+/.test(k) || k === "timeZone") ? (
+        <Notice tone="danger" className="mt-3" title="Not saved" action={problem.stale ? <Button size="sm" variant="outline" onClick={() => { unsaved.current = false; reload(); }}>Reload (your edits here are dropped)</Button> : undefined}>{errors.windows ?? problem.text}</Notice>
       ) : null}
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button ref={saveButton} busy={busy === "save"} onClick={() => void save()}>Save hours</Button>
@@ -217,10 +239,10 @@ function Hours({ path, staffId }: { path: string; staffId: string | null }) {
     <>
       {def && def.windows.length === 0 ? <Notice tone="warn" className="mb-3" title="No hours">{NO_HOURS}</Notice> : null}
       <div className="flex flex-col gap-4 md:flex-row">
-        <SetList sets={sets} chosen={set?.id ?? ""} onChoose={setChosen} onAdd={() => setAdding(true)} />
-        {set ? <WeekEditor set={set} path={path} reload={() => void refresh()} onSaved={(s) => { setChosen(s.id); void refresh(); }} onDeleted={() => { setChosen(null); void refresh(); }} /> : null}
+        <SetList sets={sets} chosen={set?.id ?? ""} onChoose={setChosen} onAdd={() => { if (mayLeave()) setAdding(true); }} />
+        {set ? <WeekEditor set={set} path={path} reload={() => void refresh()} onSaved={(s) => { unsaved.current = false; setChosen(s.id); void refresh(); }} onDeleted={() => { setChosen(null); void refresh(); }} /> : null}
       </div>
-      <AddSet open={adding} onOpenChange={setAdding} path={path} onAdded={(s) => { setChosen(s.id); void refresh(); }} />
+      <AddSet open={adding} onOpenChange={setAdding} path={path} onAdded={(s) => { unsaved.current = false; focusNext.current = "heading"; setChosen(s.id); void refresh(); }} />
       <TimeOffSection path={path} staffId={staffId} zone={def?.timeZone ?? "UTC"} />
     </>
   );
@@ -234,7 +256,12 @@ function TimeOffSection({ path, staffId, zone }: { path: string; staffId: string
   const [errors, setErrors] = React.useState<Record<string, string>>({}), [problem, setProblem] = React.useState<string | null>(null), [busy, setBusy] = React.useState<string | null>(null);
   const [done, setDone] = React.useState<string | null>(null);
   const addButton = React.useRef<HTMLButtonElement>(null);
-  const reset = () => { setFrom(""); setTo(""); setErrors({}); setProblem(null); };
+  const reset = () => { setFrom(""); setTo(""); setWhole(true); setErrors({}); setProblem(null); };
+  const [rowProblem, setRowProblem] = React.useState<string | null>(null);
+  // Break M3: when the form closes (saved or cancelled) or a row goes, the keyboard goes back to "Add time off".
+  const [backTo, setBackTo] = React.useState(0);
+  const back = () => setBackTo((n) => n + 1);
+  React.useEffect(() => { if (backTo) addButton.current?.focus(); }, [backTo]);   // after the commit that shows the button again
   const refresh = () => qc.invalidateQueries({ queryKey: ["fo", "availability", "time-off"] });
   const instant = (v: string, end: boolean) => {
     if (!v) return v;
@@ -245,13 +272,13 @@ function TimeOffSection({ path, staffId, zone }: { path: string; staffId: string
     e.preventDefault(); setBusy("save"); setErrors({}); setProblem(null); setDone(null);
     try {
       await staffApi(`${path}/time-off`, { method: "POST", json: { startsAt: instant(from, false), endsAt: instant(to || (whole ? from : ""), true) } });
-      setOpen(false); reset(); setDone(`Time off saved. ${NOT_MOVED}`); void refresh(); addButton.current?.focus();
+      setOpen(false); reset(); setDone(`Time off saved. ${NOT_MOVED}`); void refresh(); back();
     } catch (x) { if (x instanceof StaffApiError && x.problem.fields) setErrors(x.problem.fields); setProblem(why(x)); } finally { setBusy(null); }
   };
   const remove = async (id: string) => {
-    setBusy(id); setDone(null);
-    try { await staffApi(`${path}/time-off/${id}`, { method: "DELETE" }); setDone("Time off removed."); void refresh(); }
-    catch (x) { setProblem(why(x)); } finally { setBusy(null); }
+    setBusy(id); setDone(null); setRowProblem(null);
+    try { await staffApi(`${path}/time-off/${id}`, { method: "DELETE" }); setDone("Time off removed."); back(); }
+    catch (x) { setRowProblem(why(x)); } finally { setBusy(null); void refresh(); }
   };
   const list = q.data?.timeOff;
   return (
@@ -264,13 +291,14 @@ function TimeOffSection({ path, staffId, zone }: { path: string; staffId: string
       {open ? (
         <form onSubmit={save} className="mt-3 flex max-w-md flex-col gap-3 rounded-lg border border-border p-4" aria-label="Add time off" data-time-off-form>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={whole} onChange={(e) => { setWhole(e.target.checked); setFrom(""); setTo(""); }} className="size-4" /> Whole day</label>
-          <Field label="From" error={errors.startsAt ?? null}><Input type={whole ? "date" : "datetime-local"} value={from} onChange={(e) => setFrom(e.target.value)} required /></Field>
+          <Field label="From" error={errors.startsAt ?? null}><Input type={whole ? "date" : "datetime-local"} value={from} onChange={(e) => setFrom(e.target.value)} required autoFocus /></Field>
           <Field label="To" hint={whole ? "The last day off. Leave it empty for one day." : undefined} error={errors.endsAt ?? null}><Input type={whole ? "date" : "datetime-local"} value={to} onChange={(e) => setTo(e.target.value)} required={!whole} /></Field>
           {problem && !errors.startsAt && !errors.endsAt ? <Notice tone="danger" title="Not saved">{problem}</Notice> : null}
-          <div className="flex gap-2"><Button type="submit" busy={busy === "save"}>Save time off</Button><Button type="button" variant="ghost" onClick={() => { setOpen(false); reset(); }}>Cancel</Button></div>
+          <div className="flex gap-2"><Button type="submit" busy={busy === "save"}>Save time off</Button><Button type="button" variant="ghost" onClick={() => { setOpen(false); reset(); back(); }}>Cancel</Button></div>
         </form>
       ) : null}
       <p role="status" className="mt-2 text-sm text-text-muted" data-time-off-status>{done ?? ""}</p>
+      {rowProblem ? <Notice tone="danger" className="mt-2" title="Not removed">{rowProblem} The list shows what is saved now.</Notice> : null}
       {q.isError ? <Notice tone="danger" title="Could not load the time off">{why(q.error)}</Notice>
         : !list ? <Loading what="Loading time off…" />
           : list.length === 0 ? <p className="mt-2 text-sm text-text-muted" data-empty-time-off>No time off planned.</p>

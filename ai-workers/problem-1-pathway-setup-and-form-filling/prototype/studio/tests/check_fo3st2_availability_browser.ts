@@ -69,8 +69,8 @@ async function slots(day: string, next: string): Promise<{ list: string[]; formS
 
 const browser: Browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
 const errors: string[] = [];
-async function open(tok: string, path = "/account/availability", width = 1440): Promise<Page> {
-  const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: "light", reducedMotion: "reduce", timezoneId: TZ });
+async function open(tok: string, path = "/account/availability", width = 1440, zone = TZ): Promise<Page> {
+  const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: "light", reducedMotion: "reduce", timezoneId: zone });
   await ctx.addInitScript((t) => { if (!sessionStorage.getItem("xr-staff-session")) sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })); }, tok);
   const p = await ctx.newPage(); p.on("pageerror", (e) => errors.push(String(e)));
   await p.goto(`${BASE}${path}`); await p.locator("[data-week-editor]").waitFor({ timeout: 30_000 });
@@ -84,6 +84,8 @@ const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `fo3st2
 const day = (p: Page, name: string) => p.locator(`[data-day="${name}"]`);
 const times = async (p: Page, name: string) => (await day(p, name).locator('input[type="time"]').evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))).join(",");
 const chooseSet = async (p: Page, name: string) => { await p.locator(`[data-set="${name}"]`).click(); await p.locator("#fo3st2-set", { hasText: name }).waitFor(); };
+/** Where the keyboard is: the focused element's label, id or text. */
+const focused = (p: Page) => p.evaluate(() => { const a = document.activeElement as HTMLElement | null; return a ? a.getAttribute("aria-label") ?? (a.id || null) ?? a.textContent?.trim() ?? a.tagName : null; });
 const setsOf = async (tok: string, path = "/front-office/me") => (await call(tok, "GET", `${path}/availability-sets`)).body.sets as { id: string; name: string; isDefault: boolean; timeZone: string; windows: { weekday: number; start: string; end: string }[] }[];
 
 try {
@@ -131,6 +133,8 @@ try {
   await pf.getByRole("button", { name: "Add a set" }).click();
   await pf.getByLabel("Set name").fill("Evening calls"); await pf.getByRole("dialog").getByRole("button", { name: "Add a set" }).click();
   await pf.locator("#fo3st2-set", { hasText: "Evening calls" }).waitFor({ timeout: 10_000 });
+  await pf.waitForFunction(() => document.activeElement?.id === "fo3st2-set", null, { timeout: 5_000 }).catch(() => null);
+  ok("FO-3st2 break M3: after \"Add a set\" the keyboard is on the new set's title", (await focused(pf)) === "fo3st2-set", await focused(pf));
   for (const d of ["Tuesday", "Thursday"]) {
     await pf.getByRole("button", { name: `Add hours: ${d}` }).click();
     await day(pf, d).getByLabel(`${d} hours 1: start`).fill("18:00"); await day(pf, d).getByLabel(`${d} hours 1: end`).fill("20:00");
@@ -166,9 +170,25 @@ try {
   await pf.getByRole("button", { name: "Delete set" }).click(); await pf.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
   await pf.locator('[data-set="Delhi hours"]').waitFor({ state: "detached", timeout: 10_000 });
   ok("FO-3st2 J-A5: Delete removes the set", !(await setsOf(fTok)).some((s) => s.name === "Delhi hours"));
+  await pf.waitForFunction(() => document.activeElement?.id === "fo3st2-set", null, { timeout: 5_000 }).catch(() => null);
+  ok("FO-3st2 break M3: after Delete the keyboard is on the default set's title, not the page", (await focused(pf)) === "fo3st2-set" && (await pf.locator("#fo3st2-set").innerText()) === "Evening calls", await focused(pf));
+
+  // ------------------------------------------------------------------------------------------- break M1 (unsaved)
+  await chooseSet(pf, "Normal hours");
+  await day(pf, "Wednesday").getByLabel("Wednesday hours 1: end").fill("11:45");
+  let asked = "";
+  pf.once("dialog", (d) => { asked = d.message(); void d.dismiss(); });
+  await pf.getByRole("button", { name: "Make default" }).click(); await pf.waitForTimeout(500);
+  ok("FO-3st2 break M1 fail: Make default with unsaved hours asks first; Keep editing leaves the edit and the default as they were", asked === "Discard your unsaved changes?" && (await day(pf, "Wednesday").getByLabel("Wednesday hours 1: end").inputValue()) === "11:45" && (await setsOf(fTok)).find((x) => x.isDefault)?.name === "Evening calls", asked);
+  asked = ""; pf.once("dialog", (d) => { asked = d.message(); void d.dismiss(); });
+  await pf.locator('[data-set="Evening calls"]').click(); await pf.waitForTimeout(300);
+  ok("FO-3st2 break M1 fail: choosing another set with unsaved hours asks first; dismissed, the editor stays on Normal hours with the edit", asked === "Discard your unsaved changes?" && (await pf.locator("#fo3st2-set").innerText()) === "Normal hours" && (await day(pf, "Wednesday").getByLabel("Wednesday hours 1: end").inputValue()) === "11:45");
+  pf.once("dialog", (d) => void d.accept());
+  await pf.locator('[data-set="Evening calls"]').click(); await pf.locator("#fo3st2-set", { hasText: "Evening calls" }).waitFor({ timeout: 5_000 });
+  ok("FO-3st2 break M1 pass: discarding moves on and saves nothing (Normal hours' Wednesday still 17:00)", (await setsOf(fTok)).find((x) => x.name === "Normal hours")!.windows.some((w) => w.weekday === 3 && w.end === "17:00"));
 
   // ------------------------------------------------------------------------------------------------------ J-A4
-  const pa = await open(aTok);
+  const pa = await open(aTok, "/account/availability", 1440, "Asia/Dubai");   // the browser's zone is not the set's (review m4)
   const picker = pa.getByLabel("Viewing");
   const offered = await picker.locator("option").allInnerTexts();
   ok("FO-3st2 J-A4: an Admin sees \"Viewing\"; active colleagues only (a deactivated one is not offered)", offered.includes(F.displayName) && !offered.includes(gone.displayName) && /\(you\)$/.test(offered[0]), offered);
@@ -176,9 +196,12 @@ try {
   await pa.locator('[data-set="Evening calls"]').waitFor({ timeout: 15_000 });
   ok("FO-3st2 J-A4: picking Client F shows her sets (Evening calls the default) and her address in the URL", new URL(pa.url()).searchParams.get("staff") === F.id && (await pa.locator('[data-set="Evening calls"] [data-default]').count()) === 1);
   await pa.getByRole("button", { name: "Add time off" }).click();
+  ok("FO-3st2 break M3: \"Add time off\" puts the keyboard on From", (await pa.evaluate(() => (document.activeElement as HTMLInputElement | null)?.type)) === "date" && (await pa.getByLabel("From").evaluate((e) => e === document.activeElement)));
   await pa.getByLabel("From").fill(MON);
   await pa.getByRole("button", { name: "Save time off" }).click();
   await pa.locator("[data-time-off-row]").first().waitFor({ timeout: 10_000 });
+  await pa.waitForFunction(() => document.activeElement?.textContent?.trim() === "Add time off", null, { timeout: 5_000 }).catch(() => null);
+  ok("FO-3st2 break M3: after \"Save time off\" the keyboard is on \"Add time off\"", (await focused(pa)) === "Add time off", await focused(pa));
   const off = (await call(aTok, "GET", `/front-office/staff/${F.id}/time-off`)).body.timeOff as { startsAt: string; endsAt: string }[];
   const bk = await call(aTok, "GET", `/front-office/bookings/${bookingId}`);
   const bkWhen = bk.body?.startsAt ?? bk.body?.booking?.startsAt;
@@ -195,6 +218,16 @@ try {
   await pa.locator("[data-time-off-form]").getByText("End must be after start.").waitFor({ timeout: 10_000 });
   ok("FO-3st2 J-A4 fail: time off ending before it starts shows \"End must be after start.\" on To, nothing saved", ((await call(aTok, "GET", `/front-office/staff/${F.id}/time-off`)).body.timeOff as unknown[]).length === 1);
   await pa.getByRole("button", { name: "Cancel" }).click();
+  await pa.waitForFunction(() => document.activeElement?.textContent?.trim() === "Add time off", null, { timeout: 5_000 }).catch(() => null);
+  ok("FO-3st2 break M3: Cancel puts the keyboard back on \"Add time off\"", (await focused(pa)) === "Add time off", await focused(pa));
+  // Break M2: a Remove the server refuses (the row was removed elsewhere) says so, and the list shows what is saved.
+  const extra = await call(aTok, "POST", `/front-office/staff/${F.id}/time-off`, { startsAt: at(WED, "00:00").toISOString(), endsAt: at(dayOf(new Date(at(WED, "12:00").getTime() + 86_400_000)), "00:00").toISOString() });
+  await pa.reload(); await pa.locator("[data-time-off-row]").nth(1).waitFor({ timeout: 10_000 });
+  await call(aTok, "DELETE", `/front-office/staff/${F.id}/time-off/${extra.body.id}`);
+  await pa.locator("[data-time-off-row]").nth(1).getByRole("button", { name: /Remove/ }).click();
+  await pa.getByText("Not removed").waitFor({ timeout: 10_000 }).catch(() => null);
+  await pa.waitForFunction(() => document.querySelectorAll("[data-time-off-row]").length === 1, null, { timeout: 10_000 }).catch(() => null);
+  ok("FO-3st2 break M2 fail: a Remove the server refuses shows its message (\"Not removed\"), and the list then shows only what is saved", (await pa.getByText("Not removed").count()) === 1 && (await pa.locator("[data-time-off-row]").count()) === 1, await pa.locator("[data-time-off]").innerText());
   // A Case Manager: no picker; a colleague's address shows their own page; the server refuses a colleague's time off.
   const pt = await open(tTok, `/account/availability?staff=${F.id}`);
   const tRefused = await call(tTok, "POST", `/front-office/staff/${F.id}/time-off`, { startsAt: at(MON, "00:00").toISOString(), endsAt: at(TUE, "00:00").toISOString() });
@@ -206,11 +239,15 @@ try {
   await pf.reload(); await pf.locator("[data-week-editor]").waitFor();
   await chooseSet(pf, "Evening calls");
   for (const d of ["Tuesday", "Thursday"]) await pf.getByRole("button", { name: `Remove hours: ${d} 1` }).click();
+  await pf.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Add hours: Thursday", null, { timeout: 5_000 }).catch(() => null);
+  ok("FO-3st2 break M3: \"Remove hours\" puts the keyboard on that day's \"Add hours\"", (await focused(pf)) === "Add hours: Thursday", await focused(pf));
   await pf.getByRole("button", { name: "Save hours" }).click();
   await pf.getByText(NO_HOURS).waitFor({ timeout: 10_000 });
   ok("FO-3st2 DW6 pass: a default set with no hours shows \"You offer no times on the booking page. Staff can still book you, with a warning.\"", (await pf.getByText(NO_HOURS).count()) === 1 && (await day(pf, "Tuesday").innerText()).includes("Unavailable"));
   await pf.locator("[data-time-off-row]").getByRole("button", { name: /Remove/ }).click();
   await pf.locator("[data-empty-time-off]").waitFor({ timeout: 10_000 });
+  await pf.waitForFunction(() => document.activeElement?.textContent?.trim() === "Add time off", null, { timeout: 5_000 }).catch(() => null);
+  ok("FO-3st2 break M3: after a time off Remove the keyboard is on \"Add time off\"", (await focused(pf)) === "Add time off", await focused(pf));
   ok("FO-3st2 DW6 pass: with no time off the section says \"No time off planned.\"", (await pf.locator("[data-empty-time-off]").innerText()) === "No time off planned.");
   ok("FO-3st2 DW6 fail: with hours in the default set the no-hours text is absent (Normal hours made default again)", await (async () => { await chooseSet(pf, "Normal hours"); await pf.getByRole("button", { name: "Make default" }).click(); await pf.getByText(NO_HOURS).waitFor({ state: "detached", timeout: 10_000 }); return true; })());
   await axe("FO-3st2 DW6 empty states (1440)", pf); await shot(pf, "empty-states-1440");

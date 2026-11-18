@@ -1,0 +1,76 @@
+# FO-3st2 review: My account → Availability and Time off (reviewer, Opus 5.5, 18 Nov)
+
+Reviewed commit **ea002db43** (`claude/screens-fo3st2`), diff `origin/claude/runtime-fo3a1b...ea002db43` only (the later commits a9a6664e7 and ff43b8403 add build notes and screenshots, no code). Live copy :4571 (`xr_studio_screens_fo3st2`, PLATFORM_IDENTITY=local), Chromium headless, US$0, live AI off. Builder's check re-run: **42/42**. My own probes covered keyboard-only, two tabs, more than 42 windows, a 24:00 end, the DST day, multi-day and part-day time off, a set in Asia/Kolkata, `?staff=` with a deactivated person, an unknown id and a wrong role, long and non-English names, double click, 1024 px at 200 %, and axe with the form open and with an error. Journey score: **8/10** (`journey-test-reviewer-2026-11-18.md`).
+
+## Done when, line by line (brief FO-3st2)
+| Line | Named cases | Proven? |
+|---|---|---|
+| J-A1 (rule 1) | `J-A1 pass` x3, `J-A1 fail` x2 | Yes. One "Normal hours" set marked Default, Mon-Fri 09:00-17:00, "Times in America/Toronto", no Delete set, server 409 "You cannot delete your default set.", no picker for a Case Officer |
+| J-A2 (rules 1a, 1b) | `J-A2 fail`, `J-A2 pass` | Yes. Saving a second set leaves the slots alone; making it default gives Tue 18:00-19:30 only, read from the public slots route |
+| J-A3 (rule 2) | `J-A3 fail` x2, `J-A3 pass` | Yes. The server's words show on the window, the database is unchanged, the field has aria-invalid |
+| J-A4 (rule 8) | `J-A4 pass` x2, `J-A4 fail` x3 | Yes. The test uses the Monday a week ahead because 26 Oct is past; this is reasoned in the build notes. Midnight-to-midnight instants checked; the booking is unchanged; a Case Manager gets no picker and a 403 |
+| J-A5 (rule 4) | `J-A5 fail`, `J-A5 pass` | Yes. "Mars/Olympus" is refused on the field; Asia/Kolkata is kept as typed |
+| DW6 | `DW6 pass/fail`, keyboard, axe, widths | **Partly.** Empty states, skeletons, axe and the 375/1024/1440 widths are proven. The keyboard case covers only Add hours and Save hours. Time off by keyboard is not covered, and it drops focus (M1) |
+
+Rule-removal spot checks (read through the code): removing the `may &&` gate (page:296), the picker gate (page:305), `nextDay` (page:241) or the `sent` index map (page:136) each makes a named case fail. Removing the zone from `wallIso` (computing instants in the browser's zone) passes every case, because the browser runs in the firm's zone (tests:23, 73). See m4. The live behaviour is correct: with a Kolkata default set, a whole day on 3 May 2027 is stored as 2027-05-02T18:30Z..2027-05-03T18:30Z from a Toronto browser, and the DST weekend 12-14 Mar 2027 is stored as 05:00Z..04:00Z.
+
+## Findings
+**Blocker:** none.
+
+**M1 (Major). Keyboard focus is lost to `<body>` after six time-off and set actions** (EXPERIENCE §2.12 [M]; WCAG 2.4.3; the brief asks for focus to be kept). The probe pressed Enter on each of these: "Add time off", "Save time off", "Remove", "Cancel" in the time-off form, "Add a set" in the dialog, and "Delete" in the confirm. After each one, `document.activeElement` was BODY.
+- `availability-page.tsx:248`: `addButton.current?.focus()` runs before the "Add time off" button is mounted again (page:261 renders it only when `!open`), so the ref is null.
+- page:253 (Remove), page:261 (opening the form), page:270 (Cancel), page:132 (Delete set) and page:83 (Add a set) remove or hide the focused control and move focus nowhere.
+- Failing scenario: Tab to "Add time off", Enter, type a date, Tab to "Save time off", Enter. Focus is now on the page body, and a screen-reader user hears nothing after "Time off saved."
+- Fix: focus "Add time off" or the new row in an effect after the commit, the same way `was`/`busy` is handled at page:104-109. Focus the From field when the form opens. After Delete, focus the set heading. Add a keyboard case for time off to DW6.
+
+**M2 (Major). Unsaved hours are thrown away by "Make default" or by choosing another set** (QUALITY D5 "no edit lost"; EXPERIENCE §4 states).
+- `makeDefault` (page:125-128) sends only `isDefault`. The new version then resets the draft (page:110). Choosing another set in the list (page:220) resets it the same way. Neither gives a warning.
+- Failing scenario (J-A2's natural order): Add a set "Weekend", Add hours: Saturday 09:00-17:00, then click "Make default" without "Save hours". Weekend becomes the default with **no hours**, Saturday shows "Unavailable", and the person's booking page offers no times. In the probe, Saturday rows went from 1 to 0. A typed Monday end of 12:00 is also lost when you switch to another set and back.
+- Fix: while the draft differs from the set, send the draft with `isDefault: true` in the same PATCH (the server accepts both), or disable Make default with the hint "Save hours first", and keep the draft or ask before switching sets.
+
+**m1 (Minor). A refused "Remove" of time off is silent.** page:254 calls `setProblem`, but the Notice is rendered only inside the open form (page:269). Scenario: remove the row in tab 1, then click Remove in tab 2. The server answers 404, the row stays and no message shows (probe "R").
+
+**m2 (Minor). The server's `windows` answer is swallowed.** page:190 hides the Notice when any field key starts with `windows`, and `errorOf` (page:136) reads only `windows.<i>.*`. Scenario: add 7 windows on each day (49 in all) and click Save hours. The 400 "At most 42 windows in one set." shows nowhere; there is no "Saved." and no error (probe "B2").
+
+**m3 (Minor). A window ending at 24:00 cannot be shown or entered.** `type="time"` (page:172-176) cannot hold 24:00, which the server accepts (availability.ts:41; rule 1c "any time"). A set saved with Sat 20:00-24:00 shows a blank end field, and typing 00:00 gives "End must be after start." The draft still keeps 24:00, so no data is lost.
+
+**m4 (Minor). The time-off zone logic has no failing test.** Both browser contexts use `timezoneId: TZ`, the firm's zone (tests:73, 218). Fix: run J-A4's Admin context in another zone (for example Asia/Tokyo), or add a whole-day case under a Kolkata default.
+
+**m5 (Minor). Concept §4c BIC-13 and BIC-14 are only partly met.**
+- BIC-13: hour errors show on the field but in no summary; page:190 suppresses the Notice.
+- BIC-14: the zone line's tooltip is a `title` on a `<span>` (page:148), so keyboard users cannot reach it. The "Default" chip has no tooltip (page:68).
+
+**m6 (Minor). Strings outside concept §5, which lists "every string".**
+- New strings: "No hours", "Not saved", "Saved.", "Time off saved.", "Time off removed.", "Could not load the hours", "Another colleague", "Time zone" and its hint, the Add-a-set description, the Viewing hint, the time-off zone line and the To hint.
+- The no-hours text says "You offer…" even while an Admin is viewing a colleague.
+- Empty From/To are stopped by the browser's native `required` message (page:267-268), not by the server's.
+- Fix: add these strings to the concept through Lead B, or drop them.
+
+**m7 (Minor). Graph and retrofit gaps.** graph.json has `testedBy: []` for all 14 availability routes, and the page is not linked to them: `base()` builds the paths and the test's `call()` uses template strings. The routes are reached, but the graph cannot see it. No retrofit mapping is recorded for the team's `availability-schedules-page.tsx` (AG-4-62 §3).
+
+Context only, not this row's: opening `?staff=<deactivated id>` loads and allows editing that person's hours, labelled "Another colleague", because the server's `target()` ignores status. Duplicate set names such as "Normal hours" twice are also accepted (FO-3a).
+
+## Scores (D17, D20 simulated only)
+D1 4 (J-A1..A5 behave as the concept says; 24:00 gap) · D2 4 (server-side rules; 409 with Reload works across two tabs; a double click makes one set) · D3 4 (shared controls, time helpers and the PF-6 staff list reused) · D4 N/A · D5 **3** (M2, m1) · D6 4 (every change audited by FO-3a) · D7 N/A (no AI) · D8 4 (My account › Availability; menu entry) · D9 4 (one primary per panel; the M2 trap) · D10 4 (plain words; m6) · D11 **3** (m1, m2, no summary) · D12 4 (team tokens; matches settings.html) · D13 **3** (axe clean at every state; 375/1024 and 200 % with no sideways scroll; M1) · D14 4 · D15 5 (first view 274 ms; one request per list) · D16 4 (pass and fail per line; m4) · D17 simulated only · D18 4 (zone shown on the hours and on time off) · D19 not yet evidenced (J-41's walk) · D20 simulated only.
+
+## BIC (concept §4c's choice)
+| Id | Score | Evidence |
+|---|---|---|
+| BIC-01, 02, 03, 05-10, 12, 15-17 | N/A | Concept §4c: no facts, documents or applications |
+| BIC-04 | Met | No optional inputs here; bad values are refused at the field (J-A3, J-A5) |
+| BIC-11 | Met | One primary per panel: Save hours; Save time off inside its form (r-1440, 1024 screenshots) |
+| BIC-13 | Partly | Errors on the field, but no summary (m5) |
+| BIC-14 | Partly | Zone tooltip on a span; Default chip has none (m5) |
+| BIC-18 | Partly | Empty states, skeletons and saved state are drawn; a failed Remove and a swallowed 400 show nothing (m1, m2) |
+| BIC-19 | Met | One h1 and two h2; three type sizes; red only for errors (r-1440, r-1024) |
+| BIC-20 | Partly | Keyboard path exists, but focus is lost (M1); 200 % at 1024 has no sideways scroll |
+
+## Could not check
+- A real screen reader; a headed browser walk (I used headless Playwright plus screenshots).
+- An intended user's unaided walk (D17, D20 stay with the founder).
+- CI on the PR, which is not opened yet (the build notes say it opens after #2103).
+- `MODULE.md` "Card unchanged" is accepted as stated.
+
+To fix before Approve: M1, M2. The Minors can be fixed now or listed with a follow-up row.
+
+Verdict: Changes requested

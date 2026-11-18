@@ -24,3 +24,16 @@ Dates: the Monday at least a week ahead (the requirement's "Mon 26 Oct" is in th
 * `graph.mjs --check` exit 0; `count-any` 417 = base 417.
 * Size: ~620 changed lines (under 800).
 * Card unchanged: web/src/MODULE.md (no entry point, invariant or test list change: a module page through routes.tsx and one ACCOUNT_SECTIONS entry).
+
+## Round 1: reviewer (Changes requested, journey 8/10) and breaker (0 Blockers, 4 Majors), on ea002db43
+Fixed, each with a fail test in the suite (now 53/53):
+* **Unsaved hours lost** (reviewer M2, breaker M1): Make default, choosing another set, Add a set, another colleague under Viewing, and a reload now ask "Discard your unsaved changes?" (the house Dialog guard's words); dismissed, the edit stays. Tests `break M1 fail/pass`.
+* **Keyboard focus dropped** (reviewer M1, breaker M3): after Add a set and Delete → the set's title; Add time off → From; Save time off, Cancel, Remove → "Add time off"; Remove hours → that day's "Add hours". Tests `break M3`.
+* **A refused time-off Remove showed nothing** (reviewer m1, breaker M2): "Not removed" with the server's message, and the list refreshes. Test `break M2 fail`.
+* A set-wide error ("At most 42 windows in one set.") shows in the notice; a set deleted in another tab offers Reload, which says it drops the edits here; "Change zone" has "Keep <zone>"; "Whole day" resets when the form reopens; Asia/Kolkata and other current spellings are in the zone suggestions; the Admin's browser runs in Asia/Dubai in J-A4, so time off read in the browser's zone would fail (review m4).
+
+Not changed here (with reason):
+* **Duplicate set names accepted** (breaker M4): FO-3a part 1b's API (availability.ts), not this row's touch list. Question for the tech lead / Lead B: unique name per person (case- and space-insensitive) in FO-3a, or accepted?
+* **A deactivated colleague opened by `?staff=<id>` can be edited** (breaker m11, reviewer context): the picker does not offer them; the server's `target()` accepts any staff of the firm. FO-3a question, same as above.
+* A window ending 24:00 shows a blank end (the browser's time field stops at 23:59); a part-day start inside the spring-forward hour is moved by an hour; past time off is saved but not listed (the server lists only future rows); no error summary over the hours (BIC-13); a dozen helper strings are not in concept §5 (hints, "Not saved", "Not removed", "Keep <zone>"). Minors, listed for the reviewer's re-review.
+* Graph G3 shows the availability routes as not linked to the page (paths built at run time): a tooling gap, not this row's.
