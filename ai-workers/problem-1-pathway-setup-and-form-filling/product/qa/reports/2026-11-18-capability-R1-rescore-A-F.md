@@ -5,7 +5,7 @@
 **Duplicate check.** Read each row on `origin/claude/qa-after-merge-1118b` (fb2e6d5f8, PR #2121, queued): none of these 30 rows is scored there after 14 Nov (R1.13 15 Nov, R1.37 15 Nov). This branch is stacked on #2121 because several of these rows sit next to rows #2121 changes (R1.26 beside R1.100, R1.43 beside R1.42, R1.50 beside R1.49, R1.108 beside R1.98).
 
 ## Verdict
-**No row reaches Works; none could (P-606):** every one of the 30 still has parts not merged. 17 rows move from Not built to **Partial** or keep Partial with fresh evidence; 13 are **Not built (re-confirmed)**. No Works claim, so no reader or gate A was owed; the walks below are evidence for the parts that did merge.
+**No row reaches Works; none could (P-606):** every one of the 30 still has parts not merged. 10 rows move from Not built to **Partial**, 2 Partial rows (R1.13, R1.37) are refreshed, and 18 are **Not built (re-confirmed)**. No Works claim, so no reader or gate A was owed; the walks below are evidence for the parts that did merge.
 
 | Row | Was | Now | Parts merged (checked) | Parts missing |
 |---|---|---|---|---|
