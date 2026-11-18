@@ -57,7 +57,7 @@ export function CaseStatusPill({ caseId, status }: { caseId: string; status: str
   const q = useCaseDecisions(caseId);
   const s = q.data?.case.status ?? status;
   if (s === "OPEN") return <Pill>Open</Pill>;
-  return <Pill tone="neutral" className="font-semibold" data-case-status-pill>{q.data?.case.closeOutcome === "WITHDRAWN" ? "Withdrawn" : "Closed"}</Pill>;
+  return <span className="inline-flex" data-case-status-pill><Pill tone="neutral" className="font-semibold">{q.data?.case.closeOutcome === "WITHDRAWN" ? "Withdrawn" : "Closed"}</Pill></span>;
 }
 
 /** The case header's closing line (closed only): how and when the case ended, with its reason. */
@@ -129,7 +129,7 @@ function Body({ v, mayDecide, mayReopen, open }: { v: View; mayDecide: boolean; 
       )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3" data-decision-foot>
         {closed ? (
-          <p className="min-w-0 flex-1 text-[13px] text-text-muted">{v.case.closeOutcome === "WITHDRAWN" ? "The case is withdrawn." : "The case is closed."}{v.case.closedFromStage ? ` Reopened, it goes back to ${v.case.closedFromStage.label}.` : ""}
+          <p className="min-w-0 flex-1 text-[13px] text-text-muted">{v.case.closeOutcome === "WITHDRAWN" ? "The case is withdrawn." : "The case is closed."}{v.case.closedFromStage ? ` Reopening returns it to ${v.case.closedFromStage.label}.` : ""}
             {!mayReopen && v.can.reopen ? <span data-decision-no-key> An Owner or Case manager can reopen this case.</span> : null}</p>
         ) : !mayDecide ? (
           <p className="min-w-0 flex-1 text-[13px] text-text-muted" data-decision-no-key>Your role does not record decisions. An Owner, Admin or Case manager can.</p>
