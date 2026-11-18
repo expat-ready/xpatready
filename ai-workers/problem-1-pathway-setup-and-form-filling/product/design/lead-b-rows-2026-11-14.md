@@ -1964,3 +1964,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 
 ## Rev 17.29 (18 Nov 23:38 IST)
 * **#2064 PF-18b merged at 23:37 IST** (2c9231ab4). Its follow-up brief is `lead-b-briefs/PF-18bk.md`: real foreign keys from the support tickets to firm and staff (`(firm_id, raised_by)` → `platform_staff(firm_id, id)`) and from the messages to firm. All are RESTRICT. The message author stays guarded by the trigger (text, no key), and the triggers stay. It starts from main now and is about 150 lines. It takes these keys out of PF-17.
+* **PF-18s:** `lead-b-briefs/PF-18s.md` now holds its owed lines: the office placement route (rev 16.78) and a double-send guard on the Help & support reply. The guard comes from qa's pass of #2064: the reply route has no idempotency key, so the screen must guard as #1998's M1 does. It is proved with a pass test and a fail test.
