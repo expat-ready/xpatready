@@ -69,3 +69,8 @@ No screen.
 * (1) Yes. `case.closed` and `case.reopened` carry the case's `client_id` once the client record exists. `case-close.ts:131, :146, :162` join the touch list for those three lines only, with a test case for each.
 * (2) The `FoPersonPort` row is a front-office row and goes to the current Lead to assign. Part 2 stays out of this brief.
 * `employer-cases.ts`: drop it from the touch list unless the build shows a case is created there. If one is, say so in the PR body.
+
+**Update (18 Nov, Lead B): part 2's port is FO-1p**, with its brief at `lead-b-briefs/FO-1p.md` on `lead-b-front-office` (6aa1391f9). It provides:
+* `ensureForClient(tx, {firmId, actor, displayName, …, prospectId?})` → `{foPersonId}`;
+* `ensureCompanyForClient(tx, {firmId, actor, name, prospectId?})` → `{foCompanyId}`.
+A COMPANY client gets an `fo_company`. The caller makes the link only once: call only while `case_client.fo_person_id` and `fo_company_id` are null, in the same transaction. No auto-link by email; FO-8 passes `prospectId`. CS-K1 part 2 (brief to write) follows FO-1p and CS-K1 part 1.

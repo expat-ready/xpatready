@@ -182,3 +182,5 @@ Three drafting agents are running, one per lane. I check each draft before commi
 For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery state) and a FoPersonPort row; PF-19ad is not built. For the founder: no PST in Release 1 (Unconfirmed: no accountant or counsel).
 
 **19:13 IST 18 Nov (Lead 80):** CS-C1s part 1 (concept) started in the cloud. Its approval is mine once its challenge is done. Lead 80 adds the PF-19r and CS-C1s BACKLOG rows at the next check. Lead B is asked to own PF-19b part 3 and the FoPersonPort row. FO-7g part 1 (GST/HST only, no PST) goes to the founder as a question. The rest start as their predecessors merge.
+
+**19:30 IST 18 Nov (Lead B):** PF-19b part 3 (`lead-b-briefs/PF-19b3.md`, after PF-19p #1961) and FO-1p FoPersonPort (`lead-b-briefs/FO-1p.md`, can start now), both on `lead-b-front-office` 6aa1391f9. Added to J-48 and CS-K1. Mine to shape: CS-K1 part 2 (after FO-1p and CS-K1 part 1), and the case-page MessagesPanel mount (after PF-19b part 3).
