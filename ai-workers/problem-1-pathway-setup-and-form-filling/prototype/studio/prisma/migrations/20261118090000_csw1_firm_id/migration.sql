@@ -75,8 +75,9 @@ GRANT USAGE ON SCHEMA case_lookup TO xr_data;
 GRANT SELECT (id, key) ON platform_firm TO xr_case_lookup;
 CREATE POLICY case_lookup_read ON platform_firm FOR SELECT TO xr_case_lookup USING (true);
 
--- One key's platform firm id; null when no platform firm has that key. Nothing else is returned.
-CREATE FUNCTION case_lookup.case_firm_id_of_key(key text) RETURNS uuid
+-- One key's platform firm id; null when no platform firm has that key. Nothing else is returned. OR REPLACE: a reset that
+-- drops only public (Prisma's shadow database, prisma migrate reset) keeps the case_lookup schema and this function.
+CREATE OR REPLACE FUNCTION case_lookup.case_firm_id_of_key(key text) RETURNS uuid
   LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, case_lookup, pg_temp
   AS $fn$ SELECT f.id FROM public.platform_firm f WHERE f.key = $1 $fn$;
 ALTER FUNCTION case_lookup.case_firm_id_of_key(text) OWNER TO xr_case_lookup;
