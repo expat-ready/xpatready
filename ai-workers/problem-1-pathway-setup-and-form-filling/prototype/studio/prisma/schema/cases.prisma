@@ -42,6 +42,10 @@ model Case {
   withdrawReason String?   @map("withdraw_reason")
   /// The stage current when the case closed: a reopen returns to it (AG-7-13 rule 3).
   closedFromStageId String? @map("closed_from_stage") @db.Uuid
+  /// CS-K1 part 1 (contract §5, P-588 (2)): the case's client, a case_client of the same workspace and firm; never unfilled
+  /// (NOT NULL since the backfill in the same migration). Given at opening, or made then (clients.ts); a case written
+  /// straight to the table without one gets one from the database (trigger case_client_for_case).
+  clientId          String    @map("client_id") @db.Uuid
 
   /// A case keeps its combination: deleting a combination with cases is refused (reset deletes cases first).
   combination  Combination       @relation(fields: [combinationId], references: [id], onDelete: Restrict)
@@ -75,6 +79,9 @@ model Case {
   reviewChecks      ReviewCheck[]       // C8.3
   decisions         CaseDecision[]      // CS-C1a
   closedFromStage   CaseStage?          @relation("CaseClosedFromStage", fields: [closedFromStageId], references: [id], onDelete: NoAction)
+  /// CS-K1: firm-matched by the key (always) and by the platform firm id (once both are filled: CS-W1 part 1 leaves it null).
+  client            CaseClient          @relation("CaseClient", fields: [clientId, workspaceId, firmKey], references: [id, workspaceId, firmKey], onDelete: Restrict, onUpdate: Restrict)
+  clientOfFirm      CaseClient?         @relation("CaseClientFirm", fields: [clientId, firmId], references: [id, firmId], onDelete: Restrict, onUpdate: Restrict)
 
   /// C6.11 break M2, M3: a reference and an idempotency key are unique within a firm, so one firm neither collides with
   /// nor learns of another firm's cases.
@@ -83,7 +90,58 @@ model Case {
   @@unique([workspaceId, firmKey, caseNumber])
   @@index([workspaceId, createdAt])
   @@index([firmId, createdAt])
+  @@index([clientId])
   @@map("runtime_case")
+}
+
+/// CS-K1 part 1 (contract §5, §0.3; P-588 (2); AG-7-75 §7): the case side's client record. One per client of a firm; a
+/// directly opened case makes one, FO-8 (prospect.won) will pass one. People stay per case (Party). The front office's
+/// person or company id is stored, never linked by a foreign key (contract §1 rule 4; part 2 fills it through FO-1p).
+/// The firm is the case's: firm_key as on runtime_case, firm_id its platform firm (filled by case_client_firm_from_key through CS-W1's lookup;
+/// nullable until CS-W1 part 2, as on runtime_case). Text and kind checks are in the migration.
+model CaseClient {
+  id           String   @id @default(uuid()) @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  firmKey      String   @map("firm_key")
+  firmId       String?  @default(dbgenerated("(NULLIF(current_setting('app.firm_id'::text, true), ''::text))::uuid")) @map("firm_id") @db.Uuid
+  /// Per firm, from case_client_counter by case_client_next_number() in the same transaction; never reused. Shown as
+  /// "Client code" CL-00001 (clients.ts clientCode).
+  clientNumber Int      @map("client_number")
+  /// 1-200 characters, trimmed, no control characters (a check in the migration).
+  displayName  String   @map("display_name")
+  /// PERSON · COMPANY (COMPANY when the case's Pathway is CORPORATE, Lead 60's ruling 4 on #1818).
+  displayKind  String   @map("display_kind")
+  /// The front office's fo_person or fo_company (at most one set, a check); no foreign key (contract §1 rule 4).
+  foPersonId   String?  @map("fo_person_id") @db.Uuid
+  foCompanyId  String?  @map("fo_company_id") @db.Uuid
+  /// The won prospect (FO-8): unique within the firm when present, so prospect.won makes one client however often it comes.
+  prospectId   String?  @map("prospect_id") @db.Uuid
+  /// The staff member who owns the file: null until FO-8 sets it from the won prospect's owner.
+  fileOwner    String?  @map("file_owner")
+  contact      Json?
+  createdBy    String   @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  cases       Case[] @relation("CaseClient")
+  casesOfFirm Case[] @relation("CaseClientFirm")
+
+  @@unique([id, workspaceId, firmKey])
+  @@unique([id, firmId])
+  @@unique([workspaceId, firmKey, clientNumber])
+  @@unique([workspaceId, firmKey, prospectId])
+  @@index([firmId, clientNumber])
+  @@map("case_client")
+}
+
+/// CS-K1: a firm's next client number. Only case_client_next_number() writes it, inside the transaction that makes the
+/// client: two at once wait on the row and never share a number; a rolled-back opening gives its number back (no gap).
+model CaseClientCounter {
+  workspaceId String @map("workspace_id") @db.Uuid
+  firmKey     String @map("firm_key")
+  nextValue   Int    @map("next_value")
+
+  @@id([workspaceId, firmKey])
+  @@map("case_client_counter")
 }
 
 /// A24-1 (P-492, CS-7): a firm's next case number for one year (the year in the firm's zone, America/Toronto). Only
