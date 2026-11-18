@@ -367,18 +367,21 @@ BEGIN
 END $$;
 CREATE TRIGGER money_credit_entry_holds AFTER INSERT ON "money_credit_entry" FOR EACH ROW WHEN (NEW.kind = 'REVERSED') EXECUTE FUNCTION money_credit_entry_holds();
 
--- B4: a refund of an operating payment on an invoice (the invoice's party lock, then its row, then the check).
+-- B4: a refund of an operating payment on an invoice: the invoice's party lock and row BEFORE FO-7a's money_refund_write
+-- locks the payment row ("credit" sorts before "write"; review M2 on 736346af: 40P01 otherwise), the check AFTER.
 CREATE OR REPLACE FUNCTION money_refund_credit_kept() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE i record;
 BEGIN
   SELECT x.id, coalesce(x.person_id, x.company_id) AS party, x.currency INTO i FROM "money_payment" p JOIN "money_invoice" x ON x.firm_id = p.firm_id AND x.id = p.invoice_id
    WHERE p.firm_id = NEW.firm_id AND p.id = NEW.payment_id AND p.received_into = 'OPERATING';
-  IF NOT FOUND THEN RETURN NULL; END IF;
-  PERFORM money_trust_lock(NEW.firm_id, i.party, i.currency);
-  UPDATE "money_invoice" x SET updated_at = now() WHERE x.firm_id = NEW.firm_id AND x.id = i.id;
-  PERFORM money_credit_kept_holds(NEW.firm_id, i.id, 'money_refund');
-  RETURN NULL;
+  IF NOT FOUND THEN RETURN NEW; END IF;
+  IF TG_WHEN = 'BEFORE' THEN
+    PERFORM money_trust_lock(NEW.firm_id, i.party, i.currency);
+    UPDATE "money_invoice" x SET updated_at = now() WHERE x.firm_id = NEW.firm_id AND x.id = i.id;
+  ELSE PERFORM money_credit_kept_holds(NEW.firm_id, i.id, 'money_refund'); END IF;
+  RETURN NEW;
 END $$;
+CREATE TRIGGER money_refund_credit_lock BEFORE INSERT ON "money_refund" FOR EACH ROW EXECUTE FUNCTION money_refund_credit_kept();
 CREATE TRIGGER money_refund_credit_kept AFTER INSERT ON "money_refund" FOR EACH ROW EXECUTE FUNCTION money_refund_credit_kept();
 
 -- B6: money returned to trust from a withdrawal re-opens its invoice (the entry already holds the party lock).

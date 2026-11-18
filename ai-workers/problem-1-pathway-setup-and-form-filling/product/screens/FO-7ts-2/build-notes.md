@@ -56,3 +56,16 @@ The breaker's report is in the session scratchpad; it will be copied here with t
   * n2 and n3: test wording.
   * n6: the same-transaction check's 2^32 gap.
 * `check_fo7ts_money_settings.ts` 98/0.
+
+## Reviewer round 2 on 736346af: changes requested, and the fixes
+* **M2, fixed: the refund trigger took the party lock after the payment row (40P01).** The party lock and the invoice row are now taken in a BEFORE trigger, `money_refund_credit_lock`, which runs before FO-7a's `money_refund_write` locks the payment row. The check stays AFTER.
+  * New check: one transaction refunds payments A then B while another refunds B, and both finish.
+  * With the old trigger, that check gets 40P01.
+* **m-b:** the rollback's credit refusal is now proven on its own. The test removes the moves inside a transaction that is rolled back, so only the credit rows remain.
+* **m-c:** a test that applied credit pays only an invoice of the holder's own party.
+* **m-d:** a test for the per-payment rule. A 50.00 refund of the payment that 50.00 was kept from is refused.
+* **Nit:** B8's test now also covers an issued invoice.
+* **m-e, recorded for the Apply-credit route row:** at REPEATABLE READ, a cut to a draft's line can commit before an older-snapshot APPLIED is accepted.
+* **Nits, recorded for the draft-editor route:** a delete-then-insert save on a credit-holding draft is refused. Re-running FO-7lk's migration in the rollback is exact only while no later migration edits FO-7lk's functions.
+* **M1, size:** 815 changed lines as CI counts them (`MODULE.md` included). This needs a size exception from the tech lead, asked for.
+* `check_fo7ts_money_settings.ts` 101/0.

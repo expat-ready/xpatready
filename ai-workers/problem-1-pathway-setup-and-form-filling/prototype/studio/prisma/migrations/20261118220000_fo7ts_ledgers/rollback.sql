@@ -13,6 +13,7 @@ BEGIN
   END IF;
 END $$;
 DROP TRIGGER money_refund_credit_kept ON "money_refund";
+DROP TRIGGER money_refund_credit_lock ON "money_refund";
 DROP TRIGGER money_trust_entry_credit_kept ON "money_trust_entry";
 DROP TRIGGER money_invoice_line_credit ON "money_invoice_line";
 DROP TRIGGER money_invoice_credit_pinned ON "money_invoice";

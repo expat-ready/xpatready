@@ -482,14 +482,23 @@ try {
       && sql(T, `update money_invoice_line set unit_amount_minor = 20000, amount_minor = 20000 where invoice_id = '${D}' returning amount_minor`) === "20000");
     ok("FO-7ts break B8 fail: a draft holding applied credit keeps its party, case and currency; an issued invoice with kept credit too",
       refused(T, `update money_invoice set person_id = '${randomUUID()}' where id = '${D}'`, /holds credit .*never change/, "23514")
-      && refused(T, `update money_invoice set case_id = '${C2}' where id = '${D}'`, /never change/) && refused(T, `update money_invoice set currency = 'USD' where id = '${D}'`, /never change/));
+      && refused(T, `update money_invoice set case_id = '${C2}' where id = '${D}'`, /never change/) && refused(T, `update money_invoice set currency = 'USD' where id = '${D}'`, /never change/)
+      && refused(T, `update money_invoice set person_id = '${randomUUID()}' where id = '${IR}'`, /holds credit .*never change/));
+    const Iq = inv(R, 10000), big = paid(Iq, 20000), small = paid(Iq, 5000); sql(T, ce(R, "KEPT", 5000, { pay: small }));  // review m-d: the per-payment rule
+    ok("FO-7ts fail (review m-d): refunding the 50.00 payment that 50.00 was kept from is refused, though the invoice stays over by 100.00", refused(T, refundQ(small, 5000), /never more than the payment less its refunds/, "23514") && !!big);
+    ok("FO-7ts fail (review m-c): credit held on a case pays only an invoice of the holder's own party", refused(T, ce(randomUUID(), "APPLIED", -100, { kase: C1, inv: inv(u(602), 5000, { kase: C1, draft: true }) }), /pays only an invoice of its holder/));
+    const Ix = inv(R, 100000), ra = paid(Ix, 1000), rb = paid(Ix, 1000);  // review M2: refunds on one party's invoice in two orders never deadlock
+    const rr = await race([`${refundQ(ra, 100)}; ${refundQ(rb, 100)}`, refundQ(rb, 100)]);
+    ok("FO-7ts pass (review M2): one transaction refunding payments A then B while another refunds B both finish (the party lock is taken before the payment row)", rr.every((x) => x.ok), rr);
     const chqInv = inv(R, 10000), chq = last(T, `insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by, cleared) values ('${F}', '${chqInv}', 'CHEQUE', 15000, 'CAD', 'OPERATING', now(), '${key()}', 'user-R', false) returning id`);
     const I2p = inv(R, 100000), q1 = paid(I2p, 110000), q2 = paid(I2p, 10000); ok("FO-7ts fail (review m4): credit kept from one payment is never more than that payment (150.00 from a 100.00 payment), though the invoice is over by 200.00", refused(T, ce(R, "KEPT", 15000, { pay: q2 }), /never more than the payment, less its refunds/) && !!q1);
     ok("FO-7ts fail (break note on 692ea4be): credit is never kept from an uncleared cheque", refused(T, ce(R, "KEPT", 5000, { pay: chq }), /not cleared yet/, "23514"));
   }
   // ------------------------------------------------------------------------------- the rollback note, on the empty copy
   ok("FO-7ts part 2 rollback fail (break R1 on 692ea4be): over a database holding moves or credit entries the rollback refuses and changes nothing",
-    (() => { try { psql(T, ["-1", "-f", join(MIG, NEW2, "rollback.sql")]); return false; } catch (e) { return /cannot be rolled back silently/.test(String((e as { stderr?: string }).stderr ?? e)); } })() && sql(T, `select count(*) > 0 from money_credit_entry`) === "t");
+    (() => { try { psql(T, ["-1", "-c", "set session_replication_role = replica; delete from money_trust_entry where kind::text = 'MOVE_TO_CASE'", "-f", join(MIG, NEW2, "rollback.sql")]); return false; }
+      catch (e) { return /credit entries are recorded; they cannot be rolled back silently/.test(String((e as { stderr?: string }).stderr ?? e)); } })()  // review m-b: credit alone, no moves (in one rolled-back transaction)
+    && sql(T, `select (select count(*) > 0 from money_credit_entry) and (select count(*) > 0 from money_trust_entry where kind::text = 'MOVE_TO_CASE')`) === "t");
   psql(EMPTY, ["-1", "-f", join(MIG, NEW2, "rollback.sql")]);
   ok("FO-7ts part 2 rollback: rollback.sql restores money_trust_entry_write exactly as FO-7lk left it and money_trust_entry's checks as before, and drops the credit ledger",
     sql(EMPTY, `select md5(prosrc) from pg_proc where proname = 'money_trust_entry_write'`) === entryBefore && checksOf(EMPTY) === checksBefore
