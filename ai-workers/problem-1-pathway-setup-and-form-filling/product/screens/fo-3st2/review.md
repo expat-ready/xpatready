@@ -96,4 +96,12 @@ New, Minor only:
 
 Journey score re-scored at this commit: **9.5/10**. Next step obvious, error recovery, and accessibility and screen sizes each rise to 1. Feedback and state stays at ½ because of n1 and the missing BIC-13 summary. No Blocker or Major is open.
 
+Round 2 result (5da71ac08): Approve.
+
+## Re-review (round 3) of 5ff1d61b7: base moved, diff only
+- **This row's own code is unchanged.** `git diff 5da71ac08..5ff1d61b7` over `front-office/`, `account-sections.ts` and the test differs by one line only: main's `{ label: "Terms", … key: "agent/settings:list" }` (PF-5t part 2), added after "Availability" in `account-sections.ts`. The page, the contract, the routes line and the test are byte-identical. `git diff origin/claude/runtime-fo3a1b...5ff1d61b7 --stat` lists the same row files as before, plus records (the base is now 3e0bc800d).
+- **What the merge brings that touches this screen:** `PlatformFrame` now waits for the terms check and draws the terms page over a hidden, still-mounted page (`frame.tsx`, `terms/terms-gate.tsx`). Accepting the terms invalidates the `["fo"]` and `["pf"]` queries, and this screen's keys (`["fo","availability",…]` and `["pf","staff","list"]`) fall under both.
+- **Fresh copy :4581 at 5ff1d61b7 (started, then stopped):** the suite passed **53/53**. I also ran a live gate probe: a new Case Officer with a newer Sample privacy notice published got 428 from the hours API, and the terms page showed. After "I accept", the address stayed `/account/availability`, "Normal hours" Default with "Times in America/Toronto" and the time off loaded, and there was no "Could not load" and no page error. The menu reads Profile · Availability · Terms (Case Officer) and Profile · Availability · Team · Terms (Admin).
+- Round-2 Minors n1-n3 and the left-open m3, m5, m6 and m7 are unchanged. Nothing new found.
+
 Verdict: Approve
