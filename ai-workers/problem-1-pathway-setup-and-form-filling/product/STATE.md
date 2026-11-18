@@ -20,7 +20,7 @@ Standby left: **Lead 82 (local_f86fdc68)**; start a second standby at the founde
 
 Lead 81's 20:5x check, Lead 80's plan position and CI-recovered lines: word for word in `history/STATE-2026-11-18-2100-lead81s2-check-plan-ci-lines.md`.
 
-**In flight (Lead 81, 21:3x 18 Nov): #2145** queue-gate on the Mac runner xr-mac (founder "Yes, build it"; independent Opus Approve 2c6c65a0d, comment 6984101570; labelled). Hand merge on green ci (P-691), log C29 (done), then check runner_name on the next queue-gate runs. Reviewer minors: watch that xr-mac is online and how long gate runs wait to start at every check (m2); GATE_RUNNER must be JSON (m3); confirm the fork-PR approval setting "Require approval for all external contributors" (m4, the founder's settings page).
+**Done (Lead 81, 21:50 IST 18 Nov): #2145 hand-merged (628742f00, P-691)**: the first queue-gate run after it started on xr-mac 3 s after its event; was: queue-gate on the Mac runner xr-mac (founder "Yes, build it"; independent Opus Approve 2c6c65a0d, comment 6984101570; labelled). Hand merge on green ci (P-691), log C29 (done), then check runner_name on the next queue-gate runs. Reviewer minors: watch that xr-mac is online and how long gate runs wait to start at every check (m2); GATE_RUNNER must be JSON (m3); confirm the fork-PR approval setting "Require approval for all external contributors" (m4, the founder's settings page).
 
 Hand-over item 6 (rules learned 18 Nov) and the CI investigation pointer: word for word in `history/STATE-2026-11-18-2135-lead81s2-handover-item6-ci-lines.md`.
 
