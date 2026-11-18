@@ -58,7 +58,7 @@ const until = async (f: () => Promise<boolean> | boolean, ms = 30_000) => { cons
     sent.status < 300 && r7.length === 1 && r7[0].class === "TRANSACTIONAL" && r7[0].subject_kind === "CASE_PARTY" && r7[0].subject_id === k1.S && r7[0].firm_id === caseFirm && caseFirm === firmA
     && !!p7 && /Sent by Sample/.test(p7.html) && p7.from.startsWith("Sample") && !!tokenIn(d7) && r7[0].key === `case.link:${sql(`select id from person_link where subject_id = '${k1.S}' and voided_at is null`)}`, { status: sent.status, r7, p7: p7?.from });
   const G = `gone.${run}@example.com`;
-  sql(`insert into msg_suppression (firm_id, channel, address, reason, created_by) values ('${firmA}', 'EMAIL', '${G}', 'HARD_BOUNCE', 'seed:pf19r')`);
+  sql(`insert into msg_suppression (id, firm_id, channel, address, reason, created_by) values (gen_random_uuid(), '${firmA}', 'EMAIL', '${G}', 'HARD_BOUNCE', 'seed:pf19r')`);
   const k2 = await newCase("dw7f");
   const refused = await call("POST", `/runtime/cases/${k2.id}/people/${k2.S}/link`, { address: G }, "user-P");
   ok("DW7 fail: a send the gate refuses rolls back: 409 in words, no outbox row, no demo copy, no link made",
@@ -72,7 +72,7 @@ const until = async (f: () => Promise<boolean> | boolean, ms = 30_000) => { cons
   const code = codeIn(await inbox(A));
   ok("DW8 pass: \"Send me a code\" goes through MessagePort (a second outbox row for the person, keyed by the link and the code's time, never the code)",
     codeSend.status < 300 && codeRow.length === 1 && codeRow[0].subject_id === k1.S && /^\d{6}$/.test(code) && !codeRow[0].key.includes(code) && !codeRow[0].key.includes(tA), { codeSend: codeSend.body, codeRow });
-  sql(`insert into msg_suppression (firm_id, channel, address, reason, created_by) values ('${firmA}', 'EMAIL', '${A}', 'COMPLAINT', 'seed:pf19r')`);
+  sql(`insert into msg_suppression (id, firm_id, channel, address, reason, created_by) values (gen_random_uuid(), '${firmA}', 'EMAIL', '${A}', 'COMPLAINT', 'seed:pf19r')`);
   const codes0 = (await inbox(A)).filter((m) => m.kind === "code").length, hash0 = sql(`select code_hash from person_link where subject_id = '${k1.S}' and voided_at is null`);
   const codeRefused = await call("POST", "/link/code/send", { token: tA }, null);
   ok("DW8 fail: a code to a suppressed address is not sent and the page is told so (409 \"Not sent: …\"); the code in force is unchanged",
@@ -111,7 +111,7 @@ const until = async (f: () => Promise<boolean> | boolean, ms = 30_000) => { cons
   const vardir = [join(STUDIO, "var", "isolated", DBNAME.replace(/^xr_studio_/, "")), join(STUDIO, "var", `isolated-${DBNAME.replace(/^xr_studio_/, "")}`)].find(existsSync);
   const logs = [vardir ? join(vardir, "api.log") : "", ...(existsSync(join(STUDIO, "var", "isolated-logs")) ? readdirSync(join(STUDIO, "var", "isolated-logs")).filter((f) => f.includes(DBNAME.replace(/^xr_studio_/, ""))).map((f) => join(STUDIO, "var", "isolated-logs", f)) : [])].filter((f) => f && existsSync(f));
   const logText = logs.map((f) => readFileSync(f, "utf8")).join("\n");
-  const auditText = sql(`select coalesce(string_agg(summary || ' ' || coalesce(detail::text, ''), ' '), '') from audit_event where created_at > now() - interval '1 hour'`);
+  const auditText = sql(`select coalesce(string_agg(summary || ' ' || coalesce(detail::text, ''), ' '), '') from audit_event where at > now() - interval '1 hour'`);
   const outboxText = sql(`select coalesce(string_agg(idempotency_key || ' ' || coalesce(state_reason, ''), ' '), '') from msg_outbox`);
   const answers = seen.filter((t) => !t.includes('"messages"')).join("\n");   // every answer except the demo inbox listings themselves
   const leaks = [...secrets].filter((x) => logText.includes(x) || auditText.includes(x) || outboxText.includes(x) || answers.includes(x));
@@ -131,11 +131,10 @@ const until = async (f: () => Promise<boolean> | boolean, ms = 30_000) => { cons
   execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", scratch]); execFileSync(join(BIN, "createdb"), [...PG, scratch]);
   try {
     for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(scratch), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
-    process.env.DATABASE_URL = urlOf(scratch);
     const { seedSampleOnStart } = await import("../api/src/platform/identity/sample-seed.ts");
-    await seedSampleOnStart({ PLATFORM_SAMPLE_SEED: "on", PLATFORM_ENVIRONMENT: "production" });
+    await seedSampleOnStart({ DATABASE_URL: urlOf(scratch), PLATFORM_SAMPLE_SEED: "on", PLATFORM_ENVIRONMENT: "production" });
     ok("P-710 fail: a production configuration, even with PLATFORM_SAMPLE_SEED=on, leaves no Sample firm", sql(`select count(*) from platform_firm`, scratch) === "0");
-    await seedSampleOnStart({ PLATFORM_SAMPLE_SEED: "on" });
+    await seedSampleOnStart({ DATABASE_URL: urlOf(scratch), PLATFORM_SAMPLE_SEED: "on" });   // the seed takes its database from this env (never the demo)
     ok("P-710 pass: the same seed outside production makes the Sample firms (the test copy's setting)", sql(`select count(*) from platform_firm where key in ('sample-firm', 'sample-solo')`, scratch) === "2");
   } finally { try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", scratch]); } catch { /* left */ } }
 
