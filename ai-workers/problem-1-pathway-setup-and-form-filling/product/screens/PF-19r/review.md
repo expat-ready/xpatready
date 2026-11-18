@@ -1,10 +1,10 @@
 # Review: PF-19r part 1, staff and system mail through MessagePort (runtime row, no UI)
 
-**Verdict: Block** (in the screen-review skill's words: Ship after fixes)
-* Commit reviewed: `74bd2a0474304c622a67cb6685e8969881eff1cf` on `claude/runtime-pf19r-senders`, diff `origin/main...74bd2a04`.
+**Verdict: Approve** for `b471711f4e8c3f1786aaeb81ce61578cf2aa1da1` (Round 2, at the end; in the skill's words: Ship).
+* Round 1 verdict, for `74bd2a0474304c622a67cb6685e8969881eff1cf`: Block (Ship after fixes). Diff `origin/main...74bd2a04`, on `claude/runtime-pf19r-senders`.
 * Reviewer: Opus, fresh context, did not build it. 18 Nov 2026.
 * Brief: PF-19r (Build Lead C, approved), Part 1, DW1-DW6, touch list, rulings.
-* Journey score: **7/10, below the pass**. See `journey-test-reviewer-2026-11-18.md`.
+* Journey score: Round 1 **7/10** (fail); Round 2 **9/10** (pass). See `journey-test-reviewer-2026-11-18.md`.
 
 ## What I ran
 * `tests/check_pf19r_senders.ts` at the reviewed app code: **20 passed, 0 failed**, 6.5 s.
@@ -89,3 +89,41 @@ N/A: a staff and system runtime row with no case-side screen (`EXPERIENCE.md` §
 * Cognito and SES on a real account.
 * A real screen reader, and the browser panels (no UI change in this diff).
 * The other suites, which the builder runs.
+
+## Round 2: b471711f4e8c3f1786aaeb81ce61578cf2aa1da1 (diff only: `git diff 74bd2a04 b471711f`)
+**Verdict: Approve.** No Blocker or Major is open.
+* **What I ran:**
+  * `check_pf19r_senders.ts` at b471711f: **24 passed, 0 failed**.
+  * `check_pf21w_routes.ts`: **83 passed, 0 failed** on its own scratch database.
+  * A fresh isolated copy `pf19r_rev2` on :4438, where I walked J4 and J7 again (journey report, Round 2). It is stopped and dropped.
+* **M1: closed as a review finding. The ruling stays open, and it is the tech lead's.**
+  * `challenge.md` (committed) sets out both rulings, three options and a recommendation. The question goes in the PR as "Question for the tech lead".
+  * The `emailInvitation` comment (`identity/service.ts:321-324`) now says the truth: the token is in the rendered outbox file, unsealed.
+  * The approved brief orders this binding (Part 1, DW1). Following it with the conflict disclosed meets "never deviate silently".
+  * **Note for the coordinator:** an Approve merges the PR by itself, before the answer. If the tech lead wants choice 2 or 3 first, hold the label. Choice 3 is a one-line revert of `platform-staff-read.ts:18`.
+  * **Small correction to `challenge.md`:** PF-19e has no BACKLOG row, but its brief exists at `lead-b-front-office:…/design/lead-b-briefs/PF-19e.md`. The lead can schedule it as written.
+* **M2: fixed.**
+  * `Messages.capHolds` (`send/messages.ts:90-101`) adds today's sent count to the firm's QUEUED rows up to and including this one, and compares that with `DAILY_CAP`.
+  * Invitations answer `emailHeld: "daily limit"`, and the batch answer adds `heldRows`. Live: row 1 SENT, row 2 `QUEUED | daily limit`, `heldRows [2]`.
+  * A reset whose notice would be held gets 409 NOTICE_HELD_DAILY_LIMIT in words, with no audit line, no outbox row and no reset (live).
+  * A held code email answers `sent:false` with a reason.
+* **M3: fixed.** `pf21w` now imports after its `DATABASE_URL` line (83 passed, 0 failed). My Round 1 "actor_id" stop came from that order: that run used this container's own `xr_studio_demo` database (never the Mac's :4400), and it may have left rows there.
+* **m1 fixed:** `recipients` counts only the tier reached.
+* **m2 fixed:** the words name an address that does not take email (live J4).
+* **m3 fixed:**
+  * `mailReady` (`session/service.ts:186`) commits `msg_firm` before `inFirm` takes the firm lock.
+  * The new DW3 case runs a reset as firm B's first message, at the same moment as another firm-B email: both 200, no wait.
+  * I checked the ordering against a complaint run that inserts `msg_firm` at the same time: no cycle, because `mailReady` commits before the lock.
+* **m4 and m5:** to be named in the PR body. They are not in the commit, so I cannot check them here.
+* **Breaker m3, the reminder fallback:** now handler, then Owners and Admins, then the firm's contact, picked from `msg_suppression`. The order is still event, audit, then mail. A refused send still rolls back. Tested pass and fail.
+
+**New Minor (none blocks)**
+* **r2-m1** `send/messages.ts:90-101`: `capHolds` is a prediction.
+  * It counts every QUEUED row of the firm, including rows the worker has not reached yet. My first Round 2 walk, seconds after the copy started, saw both rows reported held while the J4 notice was still QUEUED.
+  * A row that later ends SUPPRESSED or FAILED makes it pessimistic: a reset can be refused "try again tomorrow" when there was room.
+  * Sends committed between the prediction and the worker make it optimistic: `notified:true` while the notice is held (a narrow race).
+  * Both are acceptable for a prediction the worker overrides. Worth one line in the PR.
+* **r2-m2** `complaints.ts:441-447`: the tier choice reads `msg_suppression` directly instead of asking `ConsentPort.allows`. It matches `decide()` today (`ports/consent.ts`: for SERVICE and TRANSACTIONAL email only suppression refuses). If the gate gains a rule later, such a recipient would roll the run back on every try with no fallback, though it would still never be sent to. **Fix (later):** ask `consent.allows(tx, …)` per recipient.
+* **r2-m3** `email-sender.ts:41-43`: a held code email still goes out the next day, when its code has likely expired. It is reported `sent:false`, which is right. Information only.
+* **Accepted and listed in the PR (breaker):** m2, two resets pressed at once give two notices, both real resets with their audit lines. m4, latent, a provider slower than 5 s.
+* **No screen in this row:** the invite panel's toast does not show `emailHeld` or `heldRows` yet. That is for the screens lane, not a finding here.

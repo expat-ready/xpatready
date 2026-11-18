@@ -78,3 +78,28 @@
 * A real mailbox, Cognito or SES.
 * The complaint reminder through the live job runner.
 * An intended user's unaided walk: D17 and D20 stay with the founder.
+
+## Round 2: b471711f4e8c3f1786aaeb81ce61578cf2aa1da1
+Fresh isolated copy `pf19r_rev2` on :4438, with `PLATFORM_IDENTITY=local` and the Sample seed. It is stopped and dropped. The suite gave 24 passed, 0 failed.
+* **J4 again (suppressed reset):** 409 NOTICE_NOT_SENT, "...their address does not take email from the firm, for example after a bounce..." No reset. **Held.**
+* **J7 again (trial firm at 49):**
+  * The batch of 2 answers row 1 `emailed:true`, and row 2 `emailHeld:"daily limit"` with `heldRows [2]`. The outbox matches: row 1 SENT, row 2 `QUEUED | daily limit`.
+  * The reset at the cap gives 409 NOTICE_HELD_DAILY_LIMIT, "...was not reset. Try again tomorrow." No audit line, no outbox row.
+  * **Held.**
+  * A first try right after the copy started reported both rows held, because the earlier notice was still QUEUED. The prediction is pessimistic, not wrong (review r2-m1).
+* **J8 again (tokens):** 0 token hits in api.log. The token is still unsealed in the outbox file; the tech lead rules on that (`challenge.md`).
+
+| Criterion | R1 | R2 | Evidence (R2) |
+|---|---|---|---|
+| Task completed | 1 | 1 | J1 and J2 unchanged (suite DW1, DW3). |
+| Next step obvious | ½ | 1 | Held rows are named, and the reset says "Try again tomorrow". |
+| Plain words | ½ | 1 | J4's words fit a bounce. |
+| Feedback and state | ½ | 1 | `emailHeld`, `heldRows`, NOTICE_HELD_DAILY_LIMIT, `sent:false`. |
+| Correct data | ½ | 1 | `recipients` counts only who is reached. Outbox and answers agree (J7). |
+| Error recovery | 1 | 1 | A held reset changes nothing and can be done again. The reminder falls back by tier. |
+| Accessibility and screen sizes | ½ | ½ | No UI changed and none was walked. |
+| Speed | 1 | 1 | Unchanged. |
+| Visual quality | 1 | 1 | Unchanged. |
+| Trust and sources | ½ | ½ | Tokens and codes are still unsealed at rest until the ruling (disclosed). |
+
+**Round 2 score: 9/10. Pass** (8 or more, no criterion at 0). To raise it: seal transactional bodies (PF-19e, or whichever choice the tech lead rules), and walk the screens once they show `emailHeld`.
