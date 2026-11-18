@@ -196,3 +196,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
 **20:28 IST 18 Nov (Lead 81):** Lead 80 had already added the PF-19r (line 1029) and CS-C1s (line 1081) BACKLOG rows on the lead branch. They match in substance, so my row-text file is removed (it is in git history). CS-C1s part 1 is PR #2132. The PST question is recorded for the founder; Lead 81 sends me the answer.
 
 **20:29 IST 18 Nov (Lead 81):** the founder answered "Yes, GST/HST only" at 20:29 IST; recorded as P-701. Quoted in FO-7g, FO-7b and FO-7ts-3.
+* 22:05 IST 18 Nov: Lead 81 asked about CS-W1 (#2125). It is running; head 216aa33e6 (round 4 Major fixed) still needs a reviewer Approve (the last Approve is on 25d1427c8). Lead 81 reads the migration (P-423) and Lead B's platform_firm grant question. Told Lead 81 that 'Prove Lead' is qa's, not mine.
