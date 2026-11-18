@@ -43,3 +43,28 @@ Fix inside the touch list: before the PUT, read the record again (`GET /platform
 Screenshots are in the breaker's scratchpad and not committed: other-firm.png, lic-panel-375.png, long-375.png, session-end.png.
 
 Verdict: Changes needed
+
+## Re-break at 242065067 (only the diff 165c91fd6..242065067), 18 Nov 2026
+I ran a fresh copy, `brk_pf6b` on :4598, from a fresh build of 242065067. The reviewer's copy had taken :4593, so I moved; I stopped mine when done. I ran Playwright Chromium and checked the results with psql. No screenshot in the repository was written.
+
+**M1 closed.** Licences panel and My account → Licence each take a fresh GET before the PUT.
+* A record changed after the form opened: nothing is saved. The panel shows "Someone else changed this licence since you opened it. Nothing was saved; …" and the form now shows the current record.
+* A record deleted after the form opened is also caught. The form empties to the "Add" state, and on My account the line under the heading changes to "No licence recorded…".
+* Retry: re-entering values after the conflict saves them, through a PUT that creates the record again. Focus returns to the row's Change button.
+* Repeated conflicts: two conflicts in a row in the same open panel are each caught, and the next save goes through. My account also catches a conflict that follows its own successful save.
+* Saving the shown values unchanged right after a conflict says "Nothing to save" and writes no audit row.
+* No other route was harmed: the conflict check is in the web layer only.
+
+**m10 (Minor, server matter): the window between the re-read and the PUT remains.** Steps: open the same record in tabs A and B. In A, hold the PUT for 2 s after its GET passes; in the meantime B saves `GAP-B`. Happened: A's PUT lands and the record reads `GAP-A`, with no warning. Clicking Save in both tabs at the same moment, with no hold, also saves both: the last write (`SIM-B`) wins and neither tab is warned. This window is the same one the part 2a re-review accepted for roles. Only a server precondition closes it (a version or `If-Match` on `PUT staff/:id/credential` and `PUT me/account`), which is a PF-4 matter. Nothing in the touch list can close it.
+
+**m4 partly open (Minor): a change made only of spaces still counts as a change.** Steps: on My account, add a trailing space to the stored number (`TRIM` → `TRIM `) and Save. On Licences, add a leading space instead. Happened: a PUT is sent, a `credential_saved` audit row is written with `fieldsChanged: []`, and the toast says "saved". The server trims, so nothing changed. The input then keeps showing `TRIM `. Fix: compare trimmed values when computing `dirty` (`licence-form.tsx`, `const dirty`), and save the trimmed values as the new `base`.
+
+**The other fixes hold.**
+* m5: after Add licence, focus lands on the new row's Change button.
+* m6: a typed panel asks "Discard the licence you typed?" on Escape. After a conflict reset, with nothing typed, it closes without asking.
+* m8: a 409 ("This email already signs in to another firm. Ask Sample immigration firm to invite another address.") now shows as the closed state, with no Continue.
+* The new hashchange handling on the Accept page holds. Changing to a revoked link's hash shows "no longer valid", and changing back to a valid one shows the valid state. The token leaves the address each time. A hash change while Continue was in flight still finished the first link's accept (one staff row) and the hand-off.
+
+The not-changed items (m1, m2, m3, m7, m9) were not re-judged: the PR gives their reasons.
+
+Verdict for 242065067b9cb5ebf220ecd847ab3aa303fe02d1: Approve (no Blocker or Major open; m10 is the server's, m4's remainder is Minor)
