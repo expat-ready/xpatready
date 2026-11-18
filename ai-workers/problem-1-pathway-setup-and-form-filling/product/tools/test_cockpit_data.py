@@ -1409,7 +1409,7 @@ class Tooltips(unittest.TestCase):
         """P-636 (founder 16 Nov): six answers in three words. Proven comes from qa's file on main only, Built = all parts
         merged or qa passed, and every answer has its explanation with what is behind it."""
         f = self.d["first"]
-        self.assertEqual(set(f), {"words", "release", "today", "needs", "stuck", "choke", "health", "rule", "proven_lines", "stuck_now"})   # A133, A134
+        self.assertEqual(set(f), {"words", "release", "today", "needs", "stuck", "choke", "health", "rule", "proven_lines", "stuck_now", "enforced"})   # A133, A134, CK-3
         self.assertIn("Only Proven counts as delivered", f["words"])
         R = f["release"]
         self.assertEqual(R["planned"], 8)                                    # 8 Build rows in the fixture checklist
@@ -2222,6 +2222,112 @@ class Flow(unittest.TestCase):
         self.assertEqual(cd.reconcile_compare(c["keys"], t, None)["diffs"][0]["name"], "flow_awaiting")   # a one-off difference is caught
 
 
+class Enforced(unittest.TestCase):
+    """CK-3 (founder A151, A154; checks brief): two lines; machines write them; a heartbeat over 45 min old is never yes."""
+    T = "2026-11-18T07:00:00Z"
+    CONF = {"enforced": "yes", "checked_at": "2026-11-18T12:25:00+05:30", "counts": {"pass": 31, "fail": 0, "pending": 0, "unchecked": 4},
+            "checked": 31, "manifest_version": "1.1.0", "items": [], "ref": "abc123456789"}
+
+    def lines(self, conf=None, hb=None):
+        return {x["key"]: x for x in cd.enforcement_lines({"lineage": {"taken_at": self.T}}, conf, hb)["lines"]}
+
+    def run_(self, at, concl="success"):
+        return {"id": 9, "conclusion": concl, "created_at": at, "updated_at": at, "html_url": "https://github.com/o/r/actions/runs/9"}
+
+    def test_not_measured(self):
+        L = self.lines({"error": "the set-up check is not on main yet"}, {"error": "the heartbeat workflow is not on main yet"})
+        self.assertEqual([(x["light"], x["text"]) for x in L.values()],
+                         [("grey", "Set-up enforced: not measured"), ("grey", "Pipeline running: not measured")])
+        self.assertIn("not on main yet", L["pipeline"]["src"])
+        nothing = self.lines(dict(self.CONF, checked=0, enforced="yes"), None)["setup"]       # nothing checked is not yes
+        self.assertEqual((nothing["light"], nothing["text"]), ("grey", "Set-up enforced: not measured"))
+        self.assertEqual(self.lines("garbage", "garbage")["setup"]["light"], "grey")      # wrong types never crash
+
+    def test_setup_from_board_run(self):
+        L = self.lines(self.CONF, {"error": "x"})
+        self.assertEqual((L["setup"]["light"], L["setup"]["text"]), ("green", "Set-up enforced: yes · last checked 12:25 IST (31 of 31 items)"))
+        bad = dict(self.CONF, enforced="no", counts={"pass": 29, "fail": 2}, items=[{"area": "ci", "id": "ci.gate", "status": "fail", "expected": "ci", "found": "none"}])
+        b = self.lines(bad, None)["setup"]
+        self.assertEqual((b["light"], b["text"][:22]), ("red", "Set-up enforced: no · "))
+        self.assertEqual(b["items"], ["ci ci.gate: fail (expected ci, found none)"])
+        old = self.lines(dict(self.CONF, checked_at="2026-11-18T10:00:00+05:30"), None)["setup"]       # 120 min old: stale
+        self.assertEqual((old["light"], old["text"][:33]), ("amber", "Set-up enforced: unknown (stale) "))
+
+    def test_pipeline(self):
+        hb = {"run": self.run_("2026-11-18T06:40:00Z"), "heartbeat": {"running": "yes", "green_streak_h": 6.5, "alarms": []},
+              "conformance": dict(self.CONF, checked_at="2026-11-18T12:10:00+05:30", checked=33, counts={"pass": 33, "fail": 0})}
+        L = self.lines(self.CONF, hb)
+        self.assertEqual((L["pipeline"]["light"], L["pipeline"]["text"]), ("green", "Pipeline running: yes · last heartbeat 12:10 IST · green streak 6.5 h"))
+        self.assertEqual(L["setup"]["text"], "Set-up enforced: yes · last checked 12:10 IST (33 of 33 items)")   # the heartbeat's own check first
+        self.assertEqual(L["setup"]["link"], "https://github.com/o/r/actions/runs/9")
+        red = self.lines(None, {"run": self.run_("2026-11-18T06:40:00Z", "failure"),
+                                "heartbeat": {"running": "no", "alarms": [{"id": "A1", "why": "no merge for 95 min"}]}})["pipeline"]
+        self.assertEqual((red["light"], red["text"], red["items"]), ("red", "Pipeline running: no · last heartbeat 12:10 IST", ["A1: no merge for 95 min"]))
+        # review #2141: a successful run alone is never yes (an unchanged open alarm ends green); a failed one is no
+        only = self.lines(None, {"run": self.run_("2026-11-18T06:40:00Z"), "artifact_error": "download failed"})["pipeline"]
+        self.assertEqual((only["light"], only["text"]), ("amber", "Pipeline running: unknown · last heartbeat 12:10 IST"))
+        self.assertIn("download failed", only["src"])
+        self.assertIn("does not prove", only["src"])
+        failed = self.lines(None, {"run": self.run_("2026-11-18T06:40:00Z", "failure")})["pipeline"]
+        self.assertEqual((failed["light"], failed["text"]), ("red", "Pipeline running: no · last heartbeat 12:10 IST"))
+        no_hb = self.lines(None, {"run": self.run_("2026-11-18T06:40:00Z"), "heartbeat": {"running": "no", "green_streak_h": 3}})["pipeline"]
+        self.assertEqual((no_hb["light"], no_hb["text"]), ("red", "Pipeline running: no · last heartbeat 12:10 IST"))   # no streak on a no
+        stale = self.lines(self.CONF, dict(hb, run=self.run_("2026-11-18T06:00:00Z")))   # 60 min old
+        self.assertEqual((stale["pipeline"]["light"], stale["pipeline"]["text"]), ("amber", "Pipeline running: unknown (stale) · last heartbeat 11:30 IST"))
+        self.assertEqual(stale["setup"]["text"], "Set-up enforced: yes · last checked 12:25 IST (31 of 31 items)")   # stale heartbeat: the board's own check
+
+
+    def test_edge_and_odd_inputs(self):
+        edge = self.lines(None, {"run": self.run_("2026-11-18T06:15:00Z"), "heartbeat": {"running": "yes"}})["pipeline"]   # exactly 45 min: fresh
+        self.assertEqual(edge["light"], "green")
+        past = self.lines(None, {"run": self.run_("2026-11-18T06:14:00Z"), "heartbeat": {"running": "yes"}})["pipeline"]   # 46 min: stale
+        self.assertEqual(past["light"], "amber")
+        # the heartbeat's own check is stale though its run is fresh: the board's own fresh check is shown
+        hb = {"run": self.run_("2026-11-18T06:16:00Z"), "heartbeat": {"running": "yes"},
+              "conformance": dict(self.CONF, checked_at="2026-11-18T11:43:00+05:30")}
+        s = self.lines(self.CONF, hb)["setup"]
+        self.assertEqual((s["light"], s["text"]), ("green", "Set-up enforced: yes · last checked 12:25 IST (31 of 31 items)"))
+        n0 = len(cd.ERRORS)
+        for conf, h in [(dict(self.CONF, counts=[1]), None), (dict(self.CONF, checked_at="2026-11-18T12:25:00"), None),
+                        (None, {"run": "x"}), (None, {"run": self.run_("not a time")}),
+                        (None, {"run": self.run_("2026-11-18T06:40:00Z"), "heartbeat": {"running": "yes", "alarms": "x"}})]:
+            out = cd.enforcement_lines({"lineage": {"taken_at": self.T}}, conf, h)     # never a crash
+            self.assertEqual(len(out["lines"]), 2)
+        naive = self.lines(dict(self.CONF, checked_at="2026-11-18T12:25:00"), None)["setup"]   # a time with no zone is stale, never yes
+        self.assertEqual(naive["light"], "amber")
+        del cd.ERRORS[n0:]
+
+    def test_crash_gives_grey_lines(self):
+        n0 = len(cd.ERRORS)
+        out = cd.enforcement_lines({"lineage": {"taken_at": 5}}, self.CONF, None)          # a taken_at that is not a time
+        self.assertEqual([(x["light"], x["text"]) for x in out["lines"]], [("grey", "Set-up enforced: not measured"), ("grey", "Pipeline running: not measured")])
+        self.assertTrue(any(e.startswith("enforced:") for e in cd.ERRORS[n0:]))
+        del cd.ERRORS[n0:]
+
+    class GH:
+        def __init__(self, runs=None, err=None, arts=None):
+            self.runs, self.err, self.arts, self.urls, self.token = runs, err, arts, [], "t"
+        def get(self, url, raw=False):
+            self.urls.append(url)
+            if self.err:
+                raise RuntimeError(self.err)
+            return {"workflow_runs": self.runs} if "/workflows/" in url else {"artifacts": self.arts or []}
+        def count(self, url):
+            self.urls.append(url)
+
+    def test_heartbeat_read(self):
+        self.assertEqual(cd.heartbeat_read(self.GH(err="GET x failed: 404 Not Found"))["error"], "the heartbeat workflow is not on main yet")
+        self.assertEqual(cd.heartbeat_read(self.GH(runs=[]))["error"], "the heartbeat workflow has not finished a run yet")
+        old = (cd.NOW - timedelta(minutes=60)).isoformat()
+        g = self.GH(runs=[self.run_(old)])
+        out = cd.heartbeat_read(g)
+        self.assertEqual((out["run"]["id"], len(g.urls)), (9, 1))                          # stale: no artifact read
+        new = (cd.NOW - timedelta(minutes=5)).isoformat()
+        g = self.GH(runs=[self.run_(new)], arts=[{"name": "pipeline-heartbeat", "expired": True, "archive_download_url": "u"}])
+        self.assertEqual(cd.heartbeat_read(g)["artifact_error"], "the run has no pipeline-heartbeat artifact")   # expired counts as none
+        self.assertEqual(cd.heartbeat_read(self.GH(runs=[self.run_("not a time")]))["run"]["id"], 9)          # odd time: no crash, no download
+
+
 class PrListCache(unittest.TestCase):
     """Lead 75, 17 Nov: the PR list is cached; a run reads the open PRs and the closed PRs updated since the last read."""
     def pr(self, n, state, upd):
@@ -2248,6 +2354,8 @@ class PrListCache(unittest.TestCase):
         self.assertEqual([x["number"] for x in cd.pr_list(g, tmp)], [1])
         self.assertTrue(any("cache unreadable" in e for e in cd.ERRORS[n0:]))
         self.assertEqual(sorted(os.listdir(tmp)), ["prs.json"])
+        open(os.path.join(tmp, "prs.json"), "w").write('[1, 2]')                       # parses but is not an object
+        self.assertEqual([x["number"] for x in cd.pr_list(g, tmp)], [1])
         del cd.ERRORS[n0:]
 
     def test_full_then_incremental(self):
