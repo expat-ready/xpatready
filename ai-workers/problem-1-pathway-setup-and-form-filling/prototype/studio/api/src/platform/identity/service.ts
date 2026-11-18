@@ -21,6 +21,8 @@ import { writeMoneyKeysGranted } from "./money-line.ts";
 import { IdentityRefused, PlatformClock, identityConfig, type IdentityPort } from "./port.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./session/mail.ts";
 import { requireStepUp } from "./session/step-up.ts";
+import { heldOf } from "../messages/send/mail.ts";
+import { HELD_DAILY_LIMIT } from "../../../../ports/messages.ts";
 
 type Tx = Prisma.TransactionClient;
 export const IDENTITY_PORT = Symbol("IdentityPort");
@@ -316,16 +318,18 @@ export class PlatformIdentity implements OnModuleInit {
     return { ...row, token };
   }
 
-  /** PF-4b: the invitation email, after the commit (a rolled-back invite sends nothing). The plain token is only in the
-   *  email's link, never stored or logged; a failed send leaves the invitation pending (resend sends a new link). */
-  private async emailInvitation(actor: StaffContext, to: string, token: string, name: string | null = null): Promise<boolean> {
-    if (!this.mail) return false;
+  /** PF-4b: the invitation email, after the commit (a rolled-back invite sends nothing). The plain token is never in a
+   *  table or a log line; it is in the email's link, which since PF-19r is the rendered message MessagePort keeps under
+   *  msg/<firm>/outbox/ until it is sent (unsealed: question to the tech lead on the PF-19r PR). A failed send leaves the
+   *  invitation pending (resend sends a new link). `emailHeld`: the firm's daily cap holds it until the next day. */
+  private async emailInvitation(actor: StaffContext, to: string, token: string, name: string | null = null): Promise<{ emailed: boolean; emailHeld?: typeof HELD_DAILY_LIMIT }> {
+    if (!this.mail) return { emailed: false };
     try {
       const firm = await this.db.platformFirm.findUnique({ where: { id: actor.firmId }, select: { operatingName: true } });
-      await this.mail.send({ firmId: actor.firmId, to, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.invitation", subject: `You are invited to join ${firm?.operatingName ?? "your firm"}`.replace(/[\r\n]+/g, " ").slice(0, 200),
+      const sent = await this.mail.send({ firmId: actor.firmId, to, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.invitation", subject: `You are invited to join ${firm?.operatingName ?? "your firm"}`.replace(/[\r\n]+/g, " ").slice(0, 200),
         text: `${name ? `Hello ${name},\n\n` : ""}You are invited to join ${firm?.operatingName ?? "a firm"} on Expat Ready.\nOpen your invitation: /invitation#t=${token}\nIt works for 72 hours. If you did not expect this, ignore this email.` });
-      return true;
-    } catch { return false; }
+      return heldOf(sent) ? { emailed: true, emailHeld: HELD_DAILY_LIMIT } : { emailed: true };
+    } catch { return { emailed: false }; }
   }
 
   /** One person's invitation checks, shared by the single invite and every row of the batch (PF-4c): the role rules, then
@@ -351,7 +355,7 @@ export class PlatformIdentity implements OnModuleInit {
       return { id: row.id, email, roles, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token };
     });
     const { token, ...answer } = out;
-    return { ...answer, emailed: await this.emailInvitation(actor, email, token) };
+    return { ...answer, ...(await this.emailInvitation(actor, email, token)) };
   }
 
   /** PF-4c part 1 (AG-1-69): one form of 1-20 rows in one locked transaction (the firm's row lock takes two batches, or a
@@ -384,8 +388,10 @@ export class PlatformIdentity implements OnModuleInit {
       return { made, seats: seats! };
     });
     const invitations = [];
-    for (const { token, name, ...m } of out.made) invitations.push({ ...m, emailed: await this.emailInvitation(actor, m.email, token, name) });
-    return { invitations, seatsLimit: out.seats.seatsLimit, seatsUsed: out.seats.afterInvites };
+    for (const { token, name, ...m } of out.made) invitations.push({ ...m, ...(await this.emailInvitation(actor, m.email, token, name)) });
+    // PF-19r (DW5): the rows the daily cap holds, by their form row (they go out with the next day's first sends).
+    const held = invitations.filter((i) => i.emailHeld).map((i) => i.row);
+    return { invitations, seatsLimit: out.seats.seatsLimit, seatsUsed: out.seats.afterInvites, ...(held.length ? { heldRows: held } : {}) };
   }
 
   async invitations(actor: StaffContext) {
@@ -420,7 +426,7 @@ export class PlatformIdentity implements OnModuleInit {
       return { id: row.id, replaces: old.id, email: old.email, roles: old.roles, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token };
     });
     const { token, ...answer } = out;
-    return { ...answer, emailed: await this.emailInvitation(actor, answer.email, token) };
+    return { ...answer, ...(await this.emailInvitation(actor, answer.email, token)) };
   }
 
   async revoke(actor: StaffContext, id: string) {
