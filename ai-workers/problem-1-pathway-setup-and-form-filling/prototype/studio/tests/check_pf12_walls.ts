@@ -166,8 +166,10 @@ try {
   await seedSampleFirms(seedDb);
   await seedSampleFirmsFrontOffice(seedDb);
   const tables = familyTables(DEMO), counts = Object.fromEntries(tables.map((t) => [t, count(DEMO, t)]));
-  for (const d of all.filter((d) => d >= NEW)) psql(urlOf(DEMO), ["-f", join(MIG, d, "migration.sql")]);
+  // PF-12's own migration first, checked alone: a later row may add rows of its own (FO-13i's key, review M2).
+  psql(urlOf(DEMO), ["-f", join(MIG, NEW, "migration.sql")]);
   ok("PF-12 pass: the migration applies on the demo-data copy and changes no row (owner's counts the same on every family table)", tables.every((t) => count(DEMO, t) === counts[t]) && Object.values(counts).reduce((a, b) => a + b, 0) > 0, tables.filter((t) => count(DEMO, t) !== counts[t]));
+  for (const d of all.filter((d) => d > NEW)) psql(urlOf(DEMO), ["-f", join(MIG, d, "migration.sql")]);
   const firms = sql(DEMO, "select id from platform_firm order by key").split("\n").filter(Boolean);
   const [A, B] = firms;
   // Rows for families the seed leaves empty: one per firm, written as the owner.
