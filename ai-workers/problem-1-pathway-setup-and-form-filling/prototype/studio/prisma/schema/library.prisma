@@ -69,6 +69,22 @@ model CanonicalField {
   @@map("canonical_field")
 }
 
+// CS-SD1: the name reservation table that migration 20261025100000_field_name_unique built (one shared-field name per
+// group in a workspace). Its only writer is the trigger canonical_field_name_reserve on canonical_field; its partial
+// unique index canonical_field_name_unique (WHERE name_key <> '') raises the 23505 that api/src/rename-door.ts answers
+// as 409 "already exists". Stated here only so the schema matches the migrations (no drift); @@ignore keeps it out of
+// Prisma Client, so the app never reads or writes it directly. Never drop the table or the index.
+model CanonicalFieldName {
+  workspaceId       String @map("workspace_id") @db.Uuid
+  canonicalFieldKey String @map("canonical_field_key")
+  groupKey          String @map("group_key")
+  nameKey           String @map("name_key")
+
+  @@id([workspaceId, canonicalFieldKey])
+  @@map("canonical_field_name")
+  @@ignore
+}
+
 /// F1 (challenge point 3): one list of values a choice field can take, mirroring the team's EnumSet. Each form field's
 /// own codes map to these values per channel (FormFieldMap.optionMap).
 model AnswerList {

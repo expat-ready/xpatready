@@ -1,0 +1,1 @@
+SKIP  R1.6 walk: /platform/team shows no "Team" heading on this commit; PF-6 part 2a (Team, Invite people, the Person panel) is not on main. Parts missing: PF-6 part 2a, J-6 part 2.

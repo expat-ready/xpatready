@@ -8,7 +8,7 @@
 // their own (an adult's own link, /api/link/*, and the demo inbox) are a second reviewed list, OWN_GUARD; for each, its
 // own guard is asked here (never data to nobody or to a simulated person). US$0, no model call.
 //   zsh studio/tools/isolated.sh forms_qa53 4459 start && tsx studio/tests/check_forms_qa53.ts 4459 xr_studio_forms_qa53
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { planted, tsFiles } from "./lib/ts-files.ts";
@@ -19,6 +19,14 @@ const API = join(import.meta.dirname, "..", "api", "src");
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 400)}` : ""}`); };
 const status = async (path: string, actor: string | null) => (await fetch(`http://localhost:${PORT}${path}`, { headers: actor ? { "x-actor": actor } : {} })).status;
+// QA-53k: the firm copy starts and stops without blocking the event loop. execFileSync held the loop about 5.6 s while the
+// copy takes to start, so the main copy's idle keep-alive socket was closed by the server unseen and the next request
+// on it failed with "SocketError: other side closed" (3 hits in 6 h, #2069). spawn lets undici see the close in time.
+const runAsync = (cmd: string, args: string[], timeout: number) => new Promise<void>((resolve, reject) => {
+  const c = spawn(cmd, args, { stdio: "ignore", timeout });
+  c.on("error", reject);
+  c.on("exit", (code, signal) => (code === 0 ? resolve() : reject(new Error(`${cmd} ${args.slice(1, 4).join(" ")} ended with ${code ?? signal}`))));
+});
 const sql = (q: string) => execFileSync("/opt/homebrew/opt/postgresql@18/bin/psql", [`postgresql://xr_studio@127.0.0.1:54329/${DB}`, "-Atc", q], { encoding: "utf8" }).trim();
 
 /** Every GET route in api/src (B120: its subfolders too): its full path, and whether the code marks it (on the route or
@@ -48,9 +56,10 @@ const REVIEWED: Record<string, "case" | "open"> = {
   "/api/public/forms/:token": "open", // FO-2: a firm's public enquiry form (contracts §0.6): its words and a fresh stamp only
   "/api/public/invitations/:token": "open", // PF-4b: an invitation's state (its 256-bit token is the key)
   "/api/public/plans": "open", // PF-5: the public pricing page (contracts §0.6): plans, prices and terms, no firm or person data
+  "/api/public/unsubscribe/:token": "open", // PF-19b part 2: the one-click unsubscribe page (its sealed token is the key; changes nothing)
 };
 /** FO-2: public doors that take a write from anyone (contracts §0.6): no person to name; an unknown token answers 404. */
-const PUBLIC_WRITES = ["/api/public/forms/:token/submissions", "/api/public/invitations/:token/accept"];   // PF-4b: accept answers 410 to an unknown token (asked in its own suite)
+const PUBLIC_WRITES = ["/api/public/forms/:token/submissions", "/api/public/invitations/:token/accept", "/api/public/messages/ses-notices", "/api/public/unsubscribe/:token"];   // PF-19b part 2: one-click unsubscribe (unknown token 404) and SNS notices (signature checked first, else 400; asked in check_pf19b2_ses.ts)   // PF-4b: accept answers 410 to an unknown token (asked in its own suite)
 /** PF-5 (contracts §0.6): the public sign-up doors name nobody by design (no account exists yet); each is asked below:
  *  an empty body is refused (400) or the door is shut on a copy without sign-up set up (503), never a 2xx. */
 const PUBLIC_DOOR_WRITES = ["/api/public/signup", "/api/public/signup/verify", "/api/hooks/stripe"];   // PF-5 part 2: Stripe's webhook (signature first: 400, or 503 not set up)
@@ -122,9 +131,9 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   const firm = await (async () => {
     const name = `${DB.replace(/^xr_studio_/, "")}_firm`.slice(0, 40), port = PORT + 1;
     try {
-      execFileSync("zsh", [join(import.meta.dirname, "..", "tools", "isolated.sh"), name, String(port), "start", "--ttl", "10", "STUDIO_WORKSPACE_KEY=firm"], { stdio: "ignore", timeout: 180_000 });
+      await runAsync("zsh", [join(import.meta.dirname, "..", "tools", "isolated.sh"), name, String(port), "start", "--ttl", "10", "STUDIO_WORKSPACE_KEY=firm"], 180_000);
       return { inbox: (await fetch(`http://localhost:${port}/api/demo/inbox?address=x%40example.com`)).status, platformInbox: (await fetch(`http://localhost:${port}/api/demo/platform-inbox?address=x%40example.com`)).status };
-    } catch (e) { return { error: (e as Error).message.split("\n")[0] }; } finally { try { execFileSync("zsh", [join(import.meta.dirname, "..", "tools", "isolated.sh"), name, String(port), "stop"], { stdio: "ignore", timeout: 120_000 }); } catch { /* reported above */ } }
+    } catch (e) { return { error: (e as Error).message.split("\n")[0] }; } finally { await runAsync("zsh", [join(import.meta.dirname, "..", "tools", "isolated.sh"), name, String(port), "stop"], 120_000).catch(() => { /* reported above */ }); }
   })();
   ok("C6.16 fail: the demo inboxes (the case side's and PF-19b's platform inbox) are not found outside the demo workspace (a firm workspace answers 404)", firm.inbox === 404 && firm.platformInbox === 404, firm);
   const wrong: string[] = [];
