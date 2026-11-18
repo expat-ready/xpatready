@@ -59,3 +59,17 @@ Full `ci` on the head (that is the PR's CI, after #2125 merges and the stamp is 
 **Verdict: Approve**
 
 Reviewer: Approve 48abcd4e5
+
+## Re-review 9bab80a24 (diff only: `git diff 48abcd4e5..9bab80a24 -- …/prototype`)
+* **m3, breaker 7a/7b: closed.** `clients.ts:62-68` now drops the contract's `INVISIBLE` set (NUL included) from the search, turns tabs and line breaks into spaces, and escapes `\ % _` before Prisma `contains`, which passes LIKE wildcards through as written. A new test case shows `%`, `_`, `\` and `Sample<NUL>Client` each answer 200 and match nothing. A lone NUL is dropped and answers 200 with the firm's own full list, not a 500.
+* **Breaker 2a: closed.** `case_client_display_name_check` now also refuses the contract's invisible characters (U+200B, U+200E, U+200F, U+2028-U+202E, U+2066-U+2069, U+FEFF) and names made of spaces only (ASCII, NBSP, U+2000-U+200A, U+3000). This is the same set as `contracts/runtime.ts:22` beyond `[[:cntrl:]]`. The backfill removes those characters and folds runs of space and control characters into one space before naming, so a name it cannot clean falls back to the label or the case number. The opening cannot hit the check: `principal.displayName` already passes `clean`, and JS `trim` removes every space the check refuses. The test adds NBSP, ZWSP, RLO and U+3000 names, all refused.
+* **m2: closed.** `MODULE.cases.md` says the fill trigger is for fixtures and restores only and that application code always passes a client.
+* **m1: partly closed.** `MODULE.demo.md` Tables now names caseClient and caseClientCounter. `module-cards.py pr` on `216aa33e6..9bab80a24` still flags `api-features` (`features/clients.ts`; that card lists no feature files). It needs a one-line `Card unchanged: a new feature file, the registration seam is unchanged` in the PR body. The only other FAIL is the 42-line `front-office/MODULE.md`, which is already on base and not this row's.
+* **m4, m5, m6:** to go in the PR body, as you said. Nothing in the code changed for them.
+* **Re-run by me on 9bab80a24** (fresh `csk1_rev` copy on :4651, stopped afterwards): `check_csk1_client.ts` 51/51, `check_csw1_firm_id.ts` 47/47, `check_prisma_schema.ts` 8/0.
+* **Size:** the P-610 count (pr-rules.yml leaves out `product/screens/`) is 729 changed lines of code and tests against 216aa33e6, under 800.
+* No new finding. No Blocker, no Major.
+
+**Verdict: Approve**
+
+Reviewer: Approve 9bab80a24
