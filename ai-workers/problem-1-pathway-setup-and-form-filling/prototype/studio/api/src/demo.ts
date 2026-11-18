@@ -543,6 +543,7 @@ export class Demo implements OnModuleInit {
     const t0 = Date.now();
     const ws = { workspaceId };
     await this.db.$transaction(async (tx) => {
+      await tx.$executeRaw`select set_config('app.audit_sample_reset', 'on', true)`; // AUD-1a: the one path that may delete audit lines (the demo workspace's Sample lines; local to this transaction)
       // Children first; every table is scoped to the demo workspace id.
       await tx.case.deleteMany({ where: ws }); await tx.party.deleteMany({ where: ws }); // runtime lane (R1): cases (with their pins and participants), then people with their answers and rows
       await tx.firmCaseCounter.deleteMany({ where: ws }); // A24-1 (CS-7): every case went, so numbering starts again at 00001
@@ -592,7 +593,9 @@ export class Demo implements OnModuleInit {
     for (let pass = 0, left = tables; pass < 4 && left.length; pass++) {
       const blocked: string[] = [];
       for (const t of left) {
-        try { await this.db.$executeRawUnsafe(`DELETE FROM "${t.replace(/"/g, "")}" x WHERE NOT EXISTS (SELECT 1 FROM workspace w WHERE w.id = x.workspace_id)`); }
+        const del = `DELETE FROM "${t.replace(/"/g, "")}" x WHERE NOT EXISTS (SELECT 1 FROM workspace w WHERE w.id = x.workspace_id)`;
+        // AUD-1a: audit lines are insert-only; the sweep's delete of a gone workspace's lines runs in its own transaction with the reset setting.
+        try { if (t === "audit_event") await this.db.$transaction(async (tx) => { await tx.$executeRaw`select set_config('app.audit_sample_reset', 'on', true)`; await tx.$executeRawUnsafe(del); }); else await this.db.$executeRawUnsafe(del); }
         catch { blocked.push(t); } // still pointed at by an orphan row elsewhere: tried again on the next pass
       }
       left = blocked;
