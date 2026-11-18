@@ -190,3 +190,65 @@ The wider suite and CI on this sha stay with the builder and CI (P-385).
 **Open:** no Blocker and no Major. Minors 4 and 5 from round 3 are unchanged; they go in the PR body.
 
 Verdict: Approve 1b2defdba37db673d790159c2f22ad4da7b28804
+
+
+## Round 5 (second main merge, diff-only), 18 Nov 2026, head 3d507a2ed16da4fbd749984a98a1dd4b5fd0e047
+
+Round 4 (commit 871c9465, on another branch) approved the first main merge 1b2defdb. Main then moved from 628742f0 to 2c9231ab (PF-18b support tickets, FO-1p FoPersonPort, PF-21s, PF-5t screens, journey recording) and conflicted again. 3d507a2e is a plain merge: parent 1 is 1b2defdb, parent 2 is origin/main 2c9231ab, the merge base is 2c9231ab. No rebase.
+
+What I did: read code and ran git only. I ran no test suite, server or browser (another long run shares this machine). The suite results below are the builder's, from this copy, on 3d507a2e.
+
+**1. The merge is still exactly AUD-1b's change.**
+* `git diff --stat origin/main 3d507a2e` gives the same 15 files at +660/−27 as round 4's `git diff 1b2defdb^2 1b2defdb`.
+* I diffed the two patches with their `index` lines removed. The only difference is in `api/src/platform/MODULE.md`: one hunk header moves (`-26` becomes `-27`), and the context lines are main's new ones.
+* `MODULE.md` keeps both sides:
+  * Tables has main's `platformSupportTicket, platformSupportMessage`.
+  * Tests has main's `tests/check_pf18b_support.ts`, followed by AUD-1b's `tests/check_aud1b_adapter.ts`.
+  * AUD-1b's one rule line stays.
+  * The card is 40 lines, at the limit and not over it.
+* No other file differs from what round 4 approved.
+
+**2. How main's new audit writers interact with AUD-1b.**
+* **No new line without a firm.** Since 628742f0, main added five `record(tx, …)` callers: three in `support.ts`, and two each in `fo-person-port.ts` and in `fakeFoPerson`. All of them go through `AuditEntry`, which requires `firmId`. Main added no new raw `tx.auditEvent.create`; the raw writers are the same files as before.
+* **PF-18b `raise` / `addMessage`** (`POST /api/platform/support/tickets[/:id/messages]`, behind PF-4's guard). This is a signed-in FIRM_STAFF request, so the adapter applies two checks:
+  * **Firm.** The line's firm is `firmScope(ctx.firmId)` for raise, and the ticket's firm for addMessage. `visible()` reads the ticket under `firmScope(ctx.firmId)`, so in both cases it is the request's firm. Both sides are lower-cased before they are compared, so this passes.
+  * **Actor.** The line's actor is `staff:${ctx.staffId.toLowerCase()}`. The request's actor is `staff:${req.platform.staffId}` (hook.ts `auditOf`). `staffId` is `PlatformStaff.id`, a `@db.Uuid` that Prisma returns in lower case, so the two words are identical and this passes.
+  * Nothing on this path is refused at runtime. OUR_STAFF cannot occur: `ourStaff: true` is not set anywhere on main.
+* **PF-18b `replyAsSupport`** writes `system:support` with the ticket's firm. It has no route and no caller on main, so it is not refused today. When PF-17's console wires it under `/api/system` after PF-4s, AUD-1b as written will refuse it in one of two ways:
+  * every line in an OUR_STAFF request is refused;
+  * a signed-in request whose actor is not `system:support` is refused.
+
+  That is the fail-closed rule the founder recorded (P-607 (3), "until PF-4s"), not a regression. See n1.
+* **FO-1p `FoPersonPort`.** It is bound as `FO_PERSON_PORT` in `features/front-office-sales.ts`, but nothing on main injects or calls it. Only `tests/check_fo1p_person_port.ts` and the port contract use it. Its caller will be the case side's case opening (CS-K1 part 2, not on main). The firm is the caller's `a.firmId` and the actor is the caller's `a.actor`. No path runs it at runtime today, so nothing is refused. When CS-K1 calls it:
+  * in a PF-4-guarded request, `a.firmId` must be the request's firm, and `a.actor` must be exactly that request's `staff:<id>`;
+  * a `system:` actor, such as the test's `system:cs-k1.backfill`, is allowed only in a job or outside a signed-in request;
+  * a case-side request that is not under PF-4's guard (no `req.platform`) carries only its correlation id, and nothing is refused.
+
+  See n2.
+* **Types.**
+  * `AuditPort` is unchanged by AUD-1b. `AuditEntry` gains only an optional `caseId`, which is additive.
+  * `SupportDeps.audit: AuditPort<Tx>` and `PrismaFoPerson(audit: AuditPort<Tx> = auditEvent)` take the adapter as it is.
+  * `fakeFoPerson` takes `AuditPort<unknown> & { discard? }`, and `fakeAudit` fits it.
+  * The tests' throwing stand-ins (`{ async record() { throw … } }`, PF-18b's `boom as never`) fit structurally.
+  * The builder's port-contract run shows 0 problems over 21 ports, FoPersonPort included.
+
+**3. Evidence on 3d507a2e (the builder's run, this cloud copy).**
+
+| Suite | Result |
+|---|---|
+| check_aud1b_adapter | 33/33 |
+| check_pf18b_support | 41/41 (after `prisma generate` for main's new tables) |
+| check_fo1p_person_port | 35/35 |
+| check_pf0p_ports | 122/122 |
+| check_case_feed | 39/39 (sweeps the new callers: `platform_support_ticket`, `fo_person`, `fo_company` are all area entities) |
+| check_pf18a_offices | 87/87 |
+| port contracts | 0 problems (21 ports) |
+
+**Journey score.** This round changes no screen or journey. The one journey score for this check is still round 1's: **9 / 10, Pass** (`journey-test-reviewer-2026-11-18.md`).
+
+**Issues.** No Blocker and no Major. These notes are for later rows, not for this PR:
+* **n1 (Note, for PF-4s / PF-17).** `replyAsSupport`'s `system:support` line will be refused under the OUR_STAFF rule, and under the exact-actor rule, once a console route calls it. Whoever wires that route has to give our staff an actor word, which is PF-4s's job.
+* **n2 (Note, for CS-K1 part 2).** In a signed-in request, FoPersonPort's `a.actor` must be the request's own `staff:<id>`, and `a.firmId` must be the request's firm. The CS-K1 builder should pass `staff:<request staff id>`, not a `system:` word, in that path.
+* **n3 (Note).** PF-18b's suite calls `SupportService` outside any request scope, so no test runs AUD-1b's actor and firm checks on the support routes. By reading, they pass (see 2). This is not a gap in AUD-1b's own tests: `check_aud1b_adapter` covers those checks.
+
+Reviewer: Approve 3d507a2ed16da4fbd749984a98a1dd4b5fd0e047
