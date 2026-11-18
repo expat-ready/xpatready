@@ -79,3 +79,21 @@ Reviewer (Opus, fresh context, did not build it). Commit reviewed: **d8dc7be198a
 
 Verdict: Block
 Fix list for d8dc7be: B1, B2 (both appear fixed in 5fc5064: re-review that head's diff), M1. The m-items are optional before merge, except that m1 is a one-line fail-closed fix.
+
+## Re-review: 078c0d6fa44e288844e53dfd527d1eedc61a4eaa (P-277: diff d8dc7be..078c0d6 only)
+* **Suites at 078c0d6 (clone at that head, clean tree):** pf15_limits 67/0, pf12_walls 100/0, pf3_platform_schema 75/0, pf4c 24/0, pf6m2 19/0, fo5_retainers 248/0, pffd 24/0. **B1 fixed:** `LATER_CATALOGUES` in `check_pf12_walls.ts:34`. **B2 fixed:** `ON DELETE CASCADE` on `platform_plan_limit_plan_id_fkey`, mirrored in the Prisma schema.
+* **M1 fixed:** PgEntitlements reads only through `platform_entitlement_limit` (a definer function owned by xr_wall_reader, EXECUTE granted to xr_app; PUBLIC revoked). The new walled cases (`new Db()` after `wallUnscopedQueries()`) cover the case-side key with no scope (25 Sample cases, the 26th refused), firm-scope storage hard, a measure in `withFirm`, the shared contract on xr_app, and a direct no-scope read still returning 0.
+* **m1 fixed:** `limits.ts` refuses storage for a firm it cannot find (test "no-such-firm"). **m3 fixed:** the port comment now matches the adapter.
+* **m4 fixed:** the mark commits first; the emails go after it; `alertedAt` is set by a conditional `updateMany` on the same `first_over_at`, so a failed email retries next time without starting a new episode. Two measures racing past the lock both send, with the same keys, and MailPort's contract (`ports/mail.ts:33-35`) sends one email per firm and key. Sound.
+* **Also checked:** the `known()` guard keeps FileKeyTaken for a retired key while hard; `usedBytes` skips a file removed meanwhile; an id wins over a key shaped like a uuid (`ORDER BY` in the function); the rollback names the new function and the owner step.
+* **DW3 moved to part 1b** (806 > 800 lines). This departs from the brief's 1a split, but it is disclosed in the PR as a Question for Lead B. It is not a finding.
+* **New Minor m7: the definer function reads another firm's row from inside a firm's session.**
+  * Where: migration `platform_entitlement_limit`, `WHERE f.id::text = lower(p_firm) OR f.key = p_firm`.
+  * Probe, as xr_app with `app.firm_id` = firm A: `platform_entitlement_limit('sample-solo', 'STORAGE_MB', now())` returns firm B's id, `solo`, `Solo (Sample)`, 5120 and its storage-hard flag. PF-12's precedent (`platform_web_address_taken`) returns a boolean and no firm id.
+  * No route passes a caller-chosen firm (callers pass `ctx.firmId` or the case record's key), so it is reachable only through another bug.
+  * Fix: add `AND (platform_session_firm() IS NULL OR f.id = platform_session_firm())`. The case side keeps working because it has no session firm.
+* **Still open, not blocking:**
+  * m2: the two type URLs are already on main (CS-C1b's `plan-limit`, identity's `plan-limit-reached`), so this PR need not settle them. The "Settings, Billing" upgrade path still names no screen.
+  * m5 and the Unlimited-seats question are with Lead B; m6 is noted.
+
+Verdict: Approve 078c0d6fa44e288844e53dfd527d1eedc61a4eaa
