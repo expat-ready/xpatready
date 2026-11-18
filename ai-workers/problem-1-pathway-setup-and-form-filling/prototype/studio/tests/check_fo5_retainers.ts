@@ -485,7 +485,7 @@ try {
   ok("FO-5 pass: with a SIGNATORY contact the signer is chosen for the person (BR-4)", c3.signerPersonId === CS && c3.warnings.length === 0);
 
   // Visibility: "everyone sees all" off → the owner and the retainer's representative read it; another case officer does not.
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: await platformAuditWorkspaceId(db as never) });
   const PV = u(806); person(PV, "Private Client", "p@example.com");
   const PROSV = prospect(PV, R.staffId);
   const v = await svc.draft(R, PROSV, { templateId: tplA.id, representativeStaffId: T.staffId });
@@ -669,7 +669,7 @@ try {
   // ===================================================================================== FO-5f: retainer hardening
   // Row FO-5f (rows rev 16.8; FO-5 part 2's Minors, #1777 comments 6883913744, 6884091038, 6884260179). Each numbered
   // item has a pass and a fail test, named after its code.
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });   // two staff on one retainer
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: await platformAuditWorkspaceId(db as never) });   // two staff on one retainer
   const reqEnded = (id: string) => events(EVENT.RETAINER_REQUEST_ENDED, id);
   const payloadOf = (type: string, id: string) => sql(API, `select coalesce(string_agg(payload::text, '|' order by seq), '') from module_event where type = '${type}' and subject_id = '${id}'`);
   const newClient = (n: number, name: string) => { const p = u(7000 + n); person(p, name, `c${n}@example.com`); return prospect(p, R.staffId); };
@@ -822,7 +822,7 @@ try {
   // Item 11 (B-26): a refused download says "No such file".
   const r11 = await svc.draft(R, newClient(11, "File Client"), { templateId: tplA.id, representativeStaffId: T.staffId });   // user-T represents: user-R sees it only as the owner
   const k11 = await svc.fileKey(R, r11.id, {});
-  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "system:test", workspaceId: await platformAuditWorkspaceId(db as never) });
   sql(API, `update fo_prospect set owner_staff_id = '${O.staffId}' where id = (select prospect_id from fo_retainer where id = '${r11.id}')`);
   ok("FO-5f fail (B-26): after access is lost the download is refused as \"No such file in your firm.\", never naming a retainer",
     await fails(() => svc.assertFileVisible(R, k11), 404, /No such file in your firm\./) && !(await fails(() => svc.assertFileVisible(R, k11), 404, /retainer/)));

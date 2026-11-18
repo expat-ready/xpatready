@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24, 17 Nov) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
+# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
 # with its test. --mutate also proves each test fails without its guard: in a throwaway copy of the tools, the guard is
 # switched off by one edit and its test must go red. Run by .github/workflows/guards.yml. US$0, no network.
 #   bash product/tools/check-guards.sh [--mutate]
 set -u
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
-TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh"
+TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh"
 bad=0
 for t in $TESTS; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
   [ $r = 0 ] || { bad=1; grep '^FAIL' "${TMPDIR:-/tmp}/guard-$$.log" | sed 's/^/      /'; }; done
@@ -87,7 +87,20 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 24 deny|product/tools/conformance-check.py|s/    miss = \[x for x in want if x not in have\]/    miss = []/|check-conformance-check.sh
 24 hooks|product/tools/conformance-check.py|s/"fail" if off else "pass"/"pass"/|check-conformance-check.sh
 24 queue|product/tools/conformance-check.py|s/"pass" if mpc == cfg\["max_parallel_checks"\] else "fail"/"pass"/|check-conformance-check.sh
-24 side|product/tools/conformance-check.py|s/"fail" if side else "pass"/"pass"/|check-conformance-check.sh'
+24 side|product/tools/conformance-check.py|s/"fail" if side else "pass"/"pass"/|check-conformance-check.sh
+24 version|product/tools/conformance-check.py|s/ok = have is not None and have == str(want).lstrip("v")/ok = True/|check-conformance-check.sh
+24 trig|product/tools/conformance-check.py|s/elif sorted(have or \[\]) != sorted(types):/elif False:/|check-conformance-check.sh
+24 beat|product/tools/conformance-check.py|s/    if per_hour \* hb\["every_min"\] < 60:/    if False:/|check-conformance-check.sh
+24 gate|product/tools/conformance-check.py|s/             if n == cfg\["gate_job"\] and k != cfg\["gate_job"\]\]/             if False]/|check-conformance-check.sh
+25 merge|product/tools/pipeline-heartbeat.py|s/             > hb\["no_merge_min"\]\]/             > 99999]/|check-pipeline-heartbeat.sh
+25 queue|product/tools/pipeline-heartbeat.py|s/             > hb\["queue_no_progress_min"\]\]/             > 99999]/|check-pipeline-heartbeat.sh
+25 lane|product/tools/pipeline-heartbeat.py|s/        elif idle > hb\["stalled_lane_min"\]:/        elif False:/|check-pipeline-heartbeat.sh
+25 nightly|product/tools/pipeline-heartbeat.py|s/ and not nights:/ and False:/|check-pipeline-heartbeat.sh
+25 conf|product/tools/pipeline-heartbeat.py|s/        if failed or conformance.get("enforced") != "yes":/        if False:/|check-pipeline-heartbeat.sh
+25 new|product/tools/pipeline-heartbeat.py|s/            if not o:/            if False:/|check-pipeline-heartbeat.sh
+25 escalate|product/tools/pipeline-heartbeat.py|s/            elif not esc and mins(first, now) > hb\["escalate_after_min"\]:/            elif False:/|check-pipeline-heartbeat.sh
+25 carry|product/tools/pipeline-heartbeat.py|s/    state = dict(p.get("alarm_state") or {})/    state = {}/|check-pipeline-heartbeat.sh
+25 pages|product/tools/pipeline-heartbeat.py|s/        if old or not page\["pageInfo"\]\["hasNextPage"\]:/        if True:/|check-pipeline-heartbeat.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
