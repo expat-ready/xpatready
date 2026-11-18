@@ -1,5 +1,6 @@
-// PF-4b (rows rev 14): MailPort's `local` adapter for staff and system email (the port is PF-0p's, ports/mail.ts).
-// In memory (newest 200) until PF-19b routes it through MessagePort (Lead B ruling 3: demo_message needs a person link).
+// PF-4b (rows rev 14): MailPort's in-memory adapter for staff and system email (the port is PF-0p's, ports/mail.ts).
+// Tests only, since PF-19r: the running app binds MAIL_PORT to MessagesMail (MailPort over MessagePort); a test that
+// builds its own providers may still give this one (newest 200 kept).
 // It checks each email exactly as the port's fake does, and never writes a body to a log line.
 import { MailMessage, type MailPort, type SentMail } from "../../../../../ports/mail.ts";
 

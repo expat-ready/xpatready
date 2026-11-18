@@ -66,6 +66,12 @@ export const EVENT = {
   PROSPECT_TYPE_CHANGED: "prospect.type_changed",
   /** A prospect was won (contracts §2.6; its subject part is FO-2b's `ProspectWonSubject`, contracts §7 §2.6). */
   PROSPECT_WON: "prospect.won",
+  /** A person moved a prospect between open stages (FO-2 part 3; AG-2-26 rule 10). */
+  PROSPECT_STAGE_MOVED: "prospect.stage_moved",
+  /** A prospect was marked lost with a reason (FO-2 part 3; AG-2-44). */
+  PROSPECT_LOST: "prospect.lost",
+  /** A Convert to client was undone while the client was empty (FO-2 part 3; AG-2-47 rule 18). */
+  PROSPECT_UNCONVERTED: "prospect.unconverted",
 
   /** A case closed: withdrawn, or closed by staff with a reason (case side, CS-C1a; contract v0.1 §4). */
   CASE_CLOSED: "case.closed",
@@ -173,6 +179,18 @@ export const ProspectEventPayload = z.strictObject({
 });
 export type ProspectEventPayload = z.infer<typeof ProspectEventPayload>;
 
+/** The payload FO-2 part 3 writes for `prospect.stage_moved`, `prospect.lost` and `prospect.unconverted`: ids and keys
+ *  only (never a note or a reason's words). module_event.subject_id is the prospect's id. */
+export const ProspectMovePayload = z.strictObject({
+  prospectId: Uuid, leadId: Uuid, type: z.enum(["INDIVIDUAL", "CORPORATE"]), fromStageKey: z.string(), stageKey: z.string(),
+  ownerStaffId: Uuid.nullable(),
+  /** Why it moved (contracts §2.1 "with cause"; fo_stage_move.cause): PERSON for a person's move, Mark lost and Undo convert. */
+  cause: z.enum(["PERSON", "BOOKING", "RETAINER_SENT", "RETAINER_EXECUTED", "SIGNED_OFFLINE", "CONVERT", "CHANGE_TYPE"]),
+  /** prospect.lost only: the reason's key (AG-2-44 rule 2). */
+  lostReasonKey: z.string().optional(),
+});
+export type ProspectMovePayload = z.infer<typeof ProspectMovePayload>;
+
 /** The subject part of `prospect.won` (contracts §7 §2.6, AG-2-77 rule 2): a person, or a company with its name and its
  *  live contacts with their roles, linked and never copied (rule 7). The case side makes a person or a company client
  *  from it (FO-8). The rest of the payload (§2.6: won_via, owner, answers…) is the writer's (FO-2 part 3, FO-6). */
@@ -185,6 +203,22 @@ export const ProspectWonSubject = z.discriminatedUnion("subject", [
   z.strictObject({ subject: z.literal("COMPANY"), company: z.strictObject({ id: Uuid, name: z.string().min(1) }), contacts: z.array(WonContact).min(1) }),
 ]);
 export type ProspectWonSubject = z.infer<typeof ProspectWonSubject>;
+/** The payload of `prospect.won` (contracts §2.6, P-559 (4); written by Convert in FO-2 part 3, AG-2-47 rule 16): the
+ *  contract's fields, with FO-2b's subject part beside them. The person's facts travel as canonical answer keys; a field
+ *  the front office does not hold is null (`person.current_residence_country` is not stored yet), never guessed. */
+export const ProspectWonPayload = z.strictObject({
+  firm_id: Uuid, firm_key: z.string().min(1), prospect_id: Uuid, lead_id: Uuid, won_via: z.enum(["E_SIGNED", "SIGNED_OFFLINE", "CONVERTED"]),
+  retainer_id: Uuid.nullable(), representative_staff_id: Uuid.nullable(), representative_actor_id: z.string().nullable(), owner_staff_id: Uuid.nullable(),
+  interested_in: z.strictObject({ serviceId: Uuid, label: z.string(), combinationId: Uuid.nullable() }).nullable(),
+  answers: z.strictObject({
+    "person.given_names": z.string().nullable(), "person.family_name": z.string().nullable(), "person.email": z.string().nullable(),
+    "person.phone_number": z.string().nullable(), "person.current_residence_country": z.string().nullable(),
+  }),
+  consent_ids: z.array(Uuid), sealed_retainer_sha256: z.string().nullable(),
+  /** FO-2 part 3 additions: the type, where it was won from, whether a retainer is signed ("Retainer not signed"), and FO-2b's subject part. */
+  type: z.enum(["INDIVIDUAL", "CORPORATE"]), fromStageKey: z.string(), retainerSigned: z.boolean(), subject: ProspectWonSubject,
+});
+export type ProspectWonPayload = z.infer<typeof ProspectWonPayload>;
 
 // CS-C1a (case-side contract v0.1 §4): the case side's close and reopen events, ids and facts only (never the reason's
 // words: a reason is free text and may hold personal data; a consumer reads the case). The firm is the outbox row's

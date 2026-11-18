@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decision and closing</title>
+<!-- CS-C1s part 1 board (concept.md §4). Self-contained; team tokens copied from web/src/styles/tokens.css as in
+     screens/pf-21-complaints/design/layout.html. All data is Sample. Not a build file. -->
+<style>
+:root{
+  --primary:#0862c5;--surface:#f7f7f7;--raised:#ffffff;--text:#2d2d2d;--muted:#737373;--link:#054e9c;
+  --border:#d9d9d9;--border-strong:#bfbfbf;--warn-t:#663200;--warn-bg:#fff3e0;--danger:#dc2626;--danger-t:#991b1b;
+  --danger-bg:#fef2f2;--ok-t:#0f5c2e;--ok-bg:#e8f5ec;--info-t:#054e9c;--info-bg:#e6f0fb;--ring:#0862c580;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--surface:#151515;--raised:#1f1f1f;--text:#ececec;--muted:#a3a3a3;--link:#7fb3ee;--border:#3a3a3a;--border-strong:#555;--warn-bg:#3a2a10;--warn-t:#ffcf8a;--danger-bg:#3a1515;--danger-t:#ffb4b4;--ok-bg:#12301d;--ok-t:#9fe0b4;--info-bg:#132840;--info-t:#9cc8f5}}
+:root[data-theme="dark"]{--surface:#151515;--raised:#1f1f1f;--text:#ececec;--muted:#a3a3a3;--link:#7fb3ee;--border:#3a3a3a;--border-strong:#555;--warn-bg:#3a2a10;--warn-t:#ffcf8a;--danger-bg:#3a1515;--danger-t:#ffb4b4;--ok-bg:#12301d;--ok-t:#9fe0b4;--info-bg:#132840;--info-t:#9cc8f5}
+*{box-sizing:border-box}
+body{margin:0;background:var(--surface);color:var(--text);font:14px/1.45 "Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+h1,h2,h3{margin:0}h1{font-size:24px}h2{font-size:16px}h3{font-size:14px}
+a{color:var(--link)}
+:focus-visible{outline:3px solid var(--ring);outline-offset:2px}
+.board-title{max-width:1100px;margin:32px auto 8px;padding:0 16px;font-size:13px;color:var(--muted)}
+.board-title b{color:var(--text)}
+.frame{max-width:1100px;margin:0 auto 24px;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;padding:16px}
+.frame.phone{max-width:375px}
+.casehead{margin-bottom:14px}
+.casehead h1{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.muted{color:var(--muted)}.small{font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:500;background:#eee;color:#333;border:1px solid transparent}
+.pill.ok{background:var(--ok-bg);color:var(--ok-t)}.pill.info{background:var(--info-bg);color:var(--info-t)}
+.pill.closed{background:#eceff3;color:#334}.pill.sample{background:var(--warn-bg);color:var(--warn-t);font-size:11px;padding:0 7px}
+.endline{margin-top:6px;padding:8px 10px;border-left:3px solid var(--border-strong);background:var(--raised);font-size:14px;overflow-wrap:anywhere}
+.panel{background:var(--raised);border:1px solid var(--border);border-radius:12px;margin-bottom:12px}
+.panel>header{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)}
+.panel>header p{flex:1;min-width:220px;margin:0;font-size:13px;color:var(--muted)}
+.who{font-size:13px;color:var(--muted)}.who b{color:var(--text);font-weight:500}
+.ghostpanel{opacity:.55}
+.row{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)}
+.row .what{flex:1;min-width:240px}
+.row .what h3{overflow-wrap:anywhere}
+.foot{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:12px 16px}
+.foot p{margin:0;flex:1;min-width:220px;font-size:13px;color:var(--muted)}
+.btn{font:inherit;font-size:13px;border-radius:6px;padding:6px 12px;border:1px solid var(--border-strong);background:var(--raised);color:var(--text);min-height:32px;cursor:pointer}
+.btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+.btn.ghost{border-color:transparent;background:none;color:var(--link)}
+.dialogs{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.dialog{width:520px;max-width:100%;background:var(--raised);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 24px #0002}
+.dialog .t{padding:14px 18px 4px}.dialog .t p{margin:4px 0 0;font-size:13px;color:var(--muted)}
+.dialog .b{padding:10px 18px;display:flex;flex-direction:column;gap:12px}
+.dialog .f{display:flex;justify-content:space-between;gap:8px;padding:12px 18px;border-top:1px solid var(--border)}
+label{font-weight:500;font-size:13px;display:block;margin-bottom:4px}
+.input,textarea{font:inherit;width:100%;border:1px solid var(--border-strong);border-radius:6px;padding:7px 9px;background:var(--raised);color:var(--text)}
+textarea{min-height:72px;resize:vertical}
+.hint{font-size:12px;color:var(--muted);margin-top:3px}
+.err{font-size:12px;color:var(--danger-t);margin-top:3px}
+.input.bad,textarea.bad{border-color:var(--danger)}
+.radios{display:flex;gap:16px}.radios span{display:inline-flex;gap:6px;align-items:center}
+.notice{border-radius:8px;padding:10px 12px;font-size:13px;border:1px solid var(--border)}
+.notice.danger{background:var(--danger-bg);border-color:#f3c2c2;color:var(--danger-t)}
+.notice b{display:block;margin-bottom:2px}
+.history{margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--muted)}
+.note{max-width:1100px;margin:0 auto;padding:0 16px;font-size:12px;color:var(--muted)}
+@media (max-width:520px){.row .btn,.foot .btn{width:100%}}
+</style>
+</head>
+<body>
+
+<p class="note">CS-C1s board · Sample data (Client B, case C-2026-00031) · the existing panels above and below are shown faded. Outcome words carry the Sample mark until cited (concept §5).</p>
+
+<!-- 1 -->
+<p class="board-title"><b>1 · Open case, one filing decided, one not yet</b>: Record a decision on the second; no Close yet (every filing needs a decision); Withdraw is not offered (a filing has a decision).</p>
+<div class="frame" id="b1">
+  <div class="casehead"><h1><span>C-2026-00031</span><span class="pill">Open</span><span class="pill info">Visitor visa · Release 3</span></h1>
+  <p class="muted small" style="margin:4px 0 0">Client: <b style="color:var(--text)">Client B</b> · <a href="#">Client B's cases</a></p></div>
+  <div class="panel ghostpanel"><header><h2>Submission to IRCC</h2><p>Record what IRCC acknowledged, once per submission. A recorded submission is read-only.</p></header></div>
+  <section class="panel" aria-labelledby="d1">
+    <header><h2 id="d1">Decision and closing</h2><p>Record IRCC's decision on each submitted filing, then close the case. Before any decision, the case can be withdrawn.</p>
+      <span class="who" title="Decisions use your firm staff sign-in.">Signed in as <b>Representative</b> (firm staff)</span></header>
+    <div class="row"><div class="what"><h3>Client B · Visitor visa (IMM 5257)</h3>
+      <div class="small muted">Submitted on 2 Nov 2026</div>
+      <div class="small" style="margin-top:3px"><span class="pill ok">Approved</span> <span class="pill sample" title="Sample words. The decision words come from the programme's pack; they become final once cited from an official IRCC source.">Sample</span> decided 16 Nov 2026 · “Visa counterfoil received.” · <a href="#">1 earlier decision</a></div>
+      <ul class="history"><li>Refused (Sample) · decided 15 Nov 2026 · recorded by Representative on 15 Nov 2026</li></ul></div>
+      <button class="btn ghost">Correct the decision…</button></div>
+    <div class="row"><div class="what"><h3>Client D · Visitor visa (IMM 5257)</h3>
+      <div class="small muted">Submitted on 2 Nov 2026 · no decision yet</div></div>
+      <button class="btn">Record a decision…</button></div>
+    <div class="foot"><p>Close the case once every filing has a decision: 1 of 2 decided.</p></div>
+  </section>
+  <div class="panel ghostpanel"><header><h2>People on this case</h2></header></div>
+</div>
+
+<!-- 2 -->
+<p class="board-title"><b>2 · Every filing decided</b>: the one filled button is Close the case.</p>
+<div class="frame" id="b2">
+  <section class="panel" aria-labelledby="d2">
+    <header><h2 id="d2">Decision and closing</h2><p>Record IRCC's decision on each submitted filing, then close the case. Before any decision, the case can be withdrawn.</p><span class="who">Signed in as <b>Representative</b> (firm staff)</span></header>
+    <div class="row"><div class="what"><h3>Client B · Visitor visa (IMM 5257)</h3><div class="small"><span class="pill ok">Approved</span> <span class="pill sample">Sample</span> decided 16 Nov 2026</div></div><button class="btn ghost">Correct the decision…</button></div>
+    <div class="row"><div class="what"><h3>Client D · Visitor visa (IMM 5257)</h3><div class="small"><span class="pill">Refused</span> <span class="pill sample">Sample</span> decided 17 Nov 2026 · “Purpose of visit not shown.”</div></div><button class="btn ghost">Correct the decision…</button></div>
+    <div class="foot"><p>Every filing has a decision. Close the case with a reason when nothing more is needed.</p><button class="btn primary">Close the case…</button></div>
+  </section>
+</div>
+
+<!-- 3 -->
+<p class="board-title"><b>3 · Closed by staff</b>: header line names how, when, the decision and the reason; the one filled button is Reopen.</p>
+<div class="frame" id="b3">
+  <div class="casehead"><h1><span>C-2026-00031</span><span class="pill closed">Closed</span><span class="pill info">Visitor visa · Release 3</span></h1>
+  <p class="muted small" style="margin:4px 0 0">Client: <b style="color:var(--text)">Client B</b> · <a href="#">Client B's cases</a></p>
+  <div class="endline">Closed by staff <span class="pill sample">Sample</span> on 18 Nov 2026 · Decision: Approved <span class="pill sample">Sample</span>, Refused <span class="pill sample">Sample</span> · Reason: Both decisions received; the client has no further steps with the firm.</div></div>
+  <section class="panel" aria-labelledby="d3">
+    <header><h2 id="d3">Decision and closing</h2><p>This case is closed. Reopen it with a reason to record or correct a decision.</p><span class="who">Signed in as <b>Representative</b> (firm staff)</span></header>
+    <div class="row"><div class="what"><h3>Client B · Visitor visa (IMM 5257)</h3><div class="small"><span class="pill ok">Approved</span> <span class="pill sample">Sample</span> decided 16 Nov 2026</div></div></div>
+    <div class="row"><div class="what"><h3>Client D · Visitor visa (IMM 5257)</h3><div class="small"><span class="pill">Refused</span> <span class="pill sample">Sample</span> decided 17 Nov 2026</div></div></div>
+    <div class="foot"><p>Reopening returns the case to the stage it closed from: Decision.</p><button class="btn primary">Reopen the case…</button></div>
+  </section>
+</div>
+
+<!-- 4 -->
+<p class="board-title"><b>4 · Before any decision, and withdrawn</b>: left, open with nothing decided (Withdraw is a quiet action); right, the header after a withdrawal.</p>
+<div class="frame" id="b4">
+  <section class="panel" aria-labelledby="d4">
+    <header><h2 id="d4">Decision and closing</h2><p>Record IRCC's decision on each submitted filing, then close the case. Before any decision, the case can be withdrawn.</p><span class="who">Signed in as <b>Representative</b> (firm staff)</span></header>
+    <div class="row"><div class="what"><h3>Client A · Visitor visa (IMM 5257)</h3><div class="small muted">Not submitted yet. Decisions are recorded once a filing is recorded as submitted, above.</div></div></div>
+    <div class="row"><div class="what"><h3>Client A · Study permit <span class="pill">Earlier stage: Preparation</span></h3><div class="small muted">Not submitted yet</div></div></div>
+    <div class="foot"><p>Close the case once every filing has a decision: 0 of 2 decided. Not submitted yet: Client A · Visitor visa, Client A · Study permit. The client no longer goes ahead? Withdraw the case before any decision.</p><button class="btn">Withdraw the case…</button></div>
+  </section>
+  <div class="casehead" style="margin-top:18px"><h1><span>C-2026-00027</span><span class="pill closed">Withdrawn</span></h1>
+  <div class="endline">Withdrawn <span class="pill sample">Sample</span> on 15 Nov 2026 (recorded 18 Nov 2026) · Reason: Client no longer needs the visa.</div></div>
+</div>
+
+<!-- 5 -->
+<p class="board-title"><b>5 · Dialogs</b>: Record a decision (a field error), Close the case (the API's refusal in its own words), Reopen.</p>
+<div class="frame" id="b5"><div class="dialogs">
+  <div class="dialog" role="dialog" aria-labelledby="t1"><div class="t"><h2 id="t1">Record a decision: Client D · Visitor visa</h2><p>IRCC's decision on this filing, as written on the letter.</p></div>
+    <div class="b">
+      <div><label>Outcome</label><div class="radios"><span><input type="radio" name="o" checked> Approved <span class="pill sample">Sample</span></span><span><input type="radio" name="o"> Refused <span class="pill sample">Sample</span></span></div></div>
+      <div><label for="dd">Decision date</label><input id="dd" class="input bad" type="text" value="" placeholder="YYYY-MM-DD"><div class="err">A real date as YYYY-MM-DD.</div><div class="hint">The date on IRCC's letter, not today's.</div></div>
+      <div><label for="nt">Note (optional)</label><textarea id="nt">Visa counterfoil received.</textarea><div class="hint">26 / 2000</div></div>
+    </div>
+    <div class="f"><button class="btn ghost">Cancel</button><button class="btn primary">Record the decision</button></div></div>
+
+  <div class="dialog" role="dialog" aria-labelledby="t2"><div class="t"><h2 id="t2">Close the case</h2><p>A closed case takes no more decisions until someone reopens it.</p></div>
+    <div class="b">
+      <div class="notice danger" role="alert"><b>Not possible now</b>Every filing needs a decision before the case is closed. Before any decision, withdraw the case.</div>
+      <div><label for="rs">Reason</label><textarea id="rs">Client moved to another firm.</textarea><div class="hint">29 / 1000</div></div>
+    </div>
+    <div class="f"><button class="btn ghost">Cancel</button><button class="btn primary">Close the case</button></div></div>
+
+  <div class="dialog" role="dialog" aria-labelledby="t3"><div class="t"><h2 id="t3">Reopen the case</h2><p>The case goes back to Decision. Its history is kept; the closing reason stays in the audit trail.</p></div>
+    <div class="b"><div><label for="rr">Reason</label><textarea id="rr" class="bad"></textarea><div class="err">Give a reason.</div></div></div>
+    <div class="f"><button class="btn ghost">Cancel</button><button class="btn primary">Reopen the case</button></div></div>
+</div></div>
+
+<!-- 6 -->
+<p class="board-title"><b>6 · Who may act</b>: no staff session (the sign-in sits in the panel; the rows replace it when signed in); signed in without the key; another firm.</p>
+<div class="frame" id="b6">
+  <section class="panel" aria-labelledby="d6a"><header><h2 id="d6a">Decision and closing</h2><p>Record IRCC's decision on each submitted filing, then close the case.</p></header>
+    <div class="foot" style="display:block"><p style="margin-bottom:10px">Sign in as firm staff to see and record decisions.</p>
+      <h3>Sign in to your firm</h3><p class="small muted" style="margin:2px 0 8px">These pages are for your firm's staff. This is the local stand-in sign-in until the firm sign-in screens are built.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end"><div><label for="fk">Firm key</label><input id="fk" class="input" style="width:200px"></div><div><label for="em">Work email</label><input id="em" class="input" style="width:240px"></div><button class="btn primary">Sign in</button></div></div></section>
+  <section class="panel" aria-labelledby="d6b"><header><h2 id="d6b">Decision and closing</h2><p>Record IRCC's decision on each submitted filing, then close the case.</p><span class="who">Signed in as <b>Case officer</b> (firm staff)</span></header>
+    <div class="row"><div class="what"><h3>Client B · Visitor visa (IMM 5257)</h3><div class="small muted">Submitted on 2 Nov 2026 · no decision yet</div></div></div>
+    <div class="foot"><p>Your role does not record decisions. An Owner, Admin or Case manager can.</p></div></section>
+  <section class="panel" aria-labelledby="d6c"><header><h2 id="d6c">Decision and closing</h2></header>
+    <div class="foot" style="display:block"><div class="notice danger"><b>The decisions could not be loaded</b>This case is not in Sample immigration firm, the firm you are signed in to.</div></div></section>
+</div>
+
+<!-- 7 -->
+<p class="board-title"><b>7 · 375 px</b>: rows stack, buttons full width, the header line wraps.</p>
+<div class="frame phone" id="b7">
+  <div class="casehead"><h1 style="font-size:20px"><span>C-2026-00031</span><span class="pill">Open</span></h1></div>
+  <section class="panel" aria-labelledby="d7"><header><h2 id="d7">Decision and closing</h2><p>Record IRCC's decision on each submitted filing, then close the case.</p><span class="who">Signed in as <b>Representative</b></span></header>
+    <div class="row"><div class="what"><h3>Client D · Visitor visa (IMM 5257)</h3><div class="small muted">Submitted on 2 Nov 2026 · no decision yet</div></div><button class="btn">Record a decision…</button></div>
+    <div class="foot"><p>Close the case once every filing has a decision: 0 of 1 decided.</p><button class="btn">Withdraw the case…</button></div></section>
+</div>
+</body>
+</html>

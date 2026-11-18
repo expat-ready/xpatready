@@ -13,6 +13,7 @@ import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platf
 import { arrive, possibleMatch } from "./arrival.ts";
 import { actorOf, conflict, email, notFound, phone, sees, text, unprocessable, UUID, visibilityOf, written, type Tx, type Visibility } from "./common.ts";
 import { openMinutesIn, openWindows } from "./open-minutes.ts";
+import { dayRange, ownerAsked } from "./prospects.ts";
 import { SALES_PORTS, type SalesPorts } from "./public.ts";
 
 export const VIEWS = ["unassigned", "mine", "all", "closed"] as const;
@@ -40,7 +41,7 @@ export class Leads {
 
   /** Unassigned leads (open, no active owner, oldest first), Mine, All open, Closed; each open row with the time it has
    *  waited in the firm's open hours (BR-4, AG-2-13c rule 6), worked out here. */
-  async list(ctx: StaffContext, view: unknown, source?: unknown) {
+  async list(ctx: StaffContext, view: unknown, source?: unknown, f: { owner?: unknown; from?: unknown; to?: unknown } = {}) {
     const v = (VIEWS as readonly string[]).includes(String(view ?? "all")) ? (String(view ?? "all") as View) : unprocessable("Choose a view: unassigned, mine, all or closed.", { view: "Unknown view." });
     const vis = await visibilityOf(this.db, ctx);
     if (v === "unassigned" && !vis.seesUnassigned) return forbidden("Unassigned leads are seen by people who may see all leads or assign them.", "MISSING_PERMISSION");
@@ -52,13 +53,15 @@ export class Leads {
       const allowed = await this.sourcesSeen(ctx, vis, inactive), bad = asked.filter((x) => !allowed.includes(x));
       if (bad.length) return problem(400, "Check the filter", `Unknown source: ${bad.join(", ").slice(0, 200)}. Choose from: ${allowed.join(", ").slice(0, 500) || "no source yet"}.`, { code: "UNKNOWN_SOURCE", allowed });
     }
+    // FO-2 part 3: the owner (a staff member of the firm) and the arrival day (in the firm's zone) narrow inside the visibility, as the source does.
+    const owner = await ownerAsked(this.db, ctx.firmId, f.owner), arrived = await dayRange(this.db, ctx.firmId, f.from, f.to);
     const state: FoLeadState = v === "closed" ? "CLOSED" : "OPEN";
     const where = v === "unassigned" ? { state, OR: [{ ownerStaffId: null }, { ownerStaffId: { in: inactive } }] }
       : v === "mine" ? { state, ownerStaffId: ctx.staffId }
       : { state, ...this.seenWhere(ctx, vis, inactive) };   // in the query, before the page cap (review m5)
     const rows = await this.db.foLead.findMany({
       // The source filter narrows inside the visibility, never widens it (FO-4sf).
-      where: firmScope(ctx.firmId, asked.length ? { AND: [where, { source: { in: asked } }] } : where), orderBy: v === "unassigned" ? [{ arrivedAt: "asc" }, { id: "asc" }] : [{ arrivedAt: "desc" }, { id: "asc" }], take: 500,
+      where: firmScope(ctx.firmId, { AND: [where, asked.length ? { source: { in: asked } } : {}, owner ? { ownerStaffId: owner } : {}, arrived ? { arrivedAt: arrived } : {}] }), orderBy: v === "unassigned" ? [{ arrivedAt: "asc" }, { id: "asc" }] : [{ arrivedAt: "desc" }, { id: "asc" }], take: 500,
       include: { person: { select: { givenNames: true, familyName: true, phoneReadable: true } }, interestedIn: { select: { label: true } } },
     });
     const unowned = (o: string | null) => o === null || inactive.includes(o);
