@@ -13,7 +13,7 @@ import { join } from "node:path";
 import pg from "pg";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261117133000_fo7ts_money_settings", FO7A2 = "20261116133000_fo7a2_ledger_rules";
+const NEW = "20261117133000_fo7ts_money_settings", STEP2 = "20261117133100_fo7ts_card_terminal_trust", FO7A2 = "20261116133000_fo7a2_ledger_rules";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const T = `xr_studio_fo7ts_t_${process.pid}`, BAD = `xr_studio_fo7ts_bad_${process.pid}`, EMPTY = `xr_studio_fo7ts_empty_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
@@ -92,6 +92,11 @@ try {
   ok("FO-7ts DW10 pass: the replaced and new trigger functions run as PF-12's wall reader (SECURITY DEFINER, owner xr_wall_reader, search_path pinned); money_trust_on keeps its caller's rights",
     sql(T, `select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader' and array_to_string(p.proconfig, ',') like 'search_path=%') from pg_proc p where p.proname in ('money_trust_answer_move', 'money_trust_request_write', 'money_invoice_write')`) === "t"
     && sql(T, `select prosecdef from pg_proc where proname = 'money_trust_on'`) === "f");
+  // Step 2 (Lead 80 on #2106): a migration of its own, right after the first, changing one check and no function.
+  ok("FO-7ts DW10 pass (step 2): the card-terminal step has its own stamp, right after the first step's, and adds or replaces no function",
+    all.indexOf(STEP2) === all.indexOf(NEW) + 1 && all.filter((d) => d.slice(0, 14) === STEP2.slice(0, 14)).length === 1
+    && written(readFileSync(join(MIG, STEP2, "migration.sql"), "utf8")).length === 0);
+  const cardBefore = sql(T, `select pg_get_constraintdef(oid) from pg_constraint where conname = 'money_payment_card_not_trust'`);
   for (const d of all.filter((x) => x > NEW)) psql(T, ["-1", "-f", join(MIG, d, "migration.sql")]);
   for (const d of all) psql(EMPTY, ["-1", "-f", join(MIG, d, "migration.sql")]);
   ok("FO-7ts DW10 pass: migrate diff names no money table or type, on the copy with rows and on the empty one", moneyDiff(T).length === 0 && moneyDiff(EMPTY).length === 0, [moneyDiff(T), moneyDiff(EMPTY)]);
@@ -211,6 +216,9 @@ try {
   ok("FO-7ts DW19 pass: a stored E_TRANSFER payment reads back unchanged, and CARD_TERMINAL into operating is accepted",
     sql(T, `select method from money_payment where id = '${eTransfer}'`) === "E_TRANSFER"
     && sql(T, `insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) values ('${firmD}', '${inv2.id}', 'CARD_TERMINAL', 1000, 'CAD', 'OPERATING', now(), '${key()}', 'user-R') returning method`) === "CARD_TERMINAL");
+  ok("FO-7ts DW19 fail (Lead 80 on #2106; P-567 (3)): a CARD_TERMINAL payment into trust is refused by the database (money_payment_card_not_trust, now CARD and CARD_TERMINAL); before step 2 the check named CARD only",
+    refused(T, `insert into money_payment (firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) values ('${firmD}', 'CARD_TERMINAL', 1000, 'CAD', 'TRUST', now(), '${key()}', 'user-R')`, /money_payment_card_not_trust/, "23514")
+    && !cardBefore.includes("CARD_TERMINAL") && sql(T, `select pg_get_constraintdef(oid) from pg_constraint where conname = 'money_payment_card_not_trust'`).includes("CARD_TERMINAL"));
   ok("FO-7ts DW19 fail: a method outside the list is refused", refused(T, `insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) values ('${firmD}', '${inv2.id}', 'BITCOIN', 1000, 'CAD', 'OPERATING', now(), '${key()}', 'user-R')`, /invalid input value for enum "MoneyPaymentMethod"/, "22P02"));
   ok("FO-7ts DW19 pass: the list is exactly AG-6-19 rule 1's seven plus CARD (online only), none removed or renamed",
     sql(T, `select string_agg(enumlabel, ',' order by enumsortorder) from pg_enum where enumtypid = '"MoneyPaymentMethod"'::regtype`) === "CARD,E_TRANSFER,CHEQUE,WIRE,CASH,OTHER,BANK_TRANSFER,CARD_TERMINAL");
