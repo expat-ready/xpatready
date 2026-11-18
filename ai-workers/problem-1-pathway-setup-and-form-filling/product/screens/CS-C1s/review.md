@@ -91,3 +91,31 @@ Reviewer: Changes requested fa22d256
 **Verdict: Block**. Fix before the `review: approved` label:
 1. M1: the header's "Decision:" from the active filings only, and one outcome per filing or none when they differ (`case-close.ts:116,129`), with DS1 cases.
 2. M2: a 401 while a dialog is open keeps the dialog (or says so in the panel) and keeps what was typed (`case-decision.tsx:101,106`), with a DS5 case.
+
+## Re-review cc35af51 (diff only: `git diff fa22d256..cc35af513c2d112bb058144d3e6f23be30fd77b0`)
+The diff changes `case-close.ts` (1 line), `contracts/runtime.ts` (the `decisions` shape), `case-decision.tsx`, both CS-C1s tests, the build notes and the screenshots. It also commits `break-report.md` and my review as I wrote it. Copy `rev` on :4492 only, built from cc35af51 (not rebuilt), stopped after use; US$0.
+* **Reran:** `check_csc1s_view.ts` **26/26**; `check_csc1s_decision_browser.cjs` **52/52**, including "break M2" and "review M2".
+* **Rule-removal check on the M1 fix:** I put back the header's decisions from every filing's rows (the old behaviour). The check fails exactly the "break M1" case (25 pass, 1 fail). I restored the file; `git status` is clean.
+* **M1: closed.** `case.decisions` is now each *active* filing's latest decision (`case-close.ts:129-130`). The header reads "Decision: X" when they agree and "Decisions: X for A, Y for B" when they differ.
+  * Walk, one filing: "Closed by staff (Sample) on 18 Nov 2026 · Decision: Approved (Sample) · Reason: …".
+  * Two different outcomes: walked with the read's answer replaced in the browser, because the copy turns a second filing added in SQL inactive. The line reads "Decisions: Approved (Sample) for Reviewer Client M, Refused (Sample) for <Arabic name> Spouse" (screenshot `rr-m1-header-1024`). Both names are isolated with `<bdi>`. No sideways scroll at 1024 or 375 px.
+* **M2: closed.** I repeated my earlier walk: Record a decision with an outcome, a date and a note, then the same person signed in elsewhere, then I sent it.
+  * The panel says "Record a decision: Reviewer Client M · Visitor visa was not sent: nothing was recorded. You signed in on another device. Sign in again: what you typed is kept and opens again." It is a `role=status` notice; axe is clean; 0 rows were written.
+  * After the inline sign-in, the dialog opens again with Approved, 2026-11-16 and the note, plus "What you typed is kept. Nothing was sent yet." Sending it records 1 row.
+  * The next dialog opens empty.
+* **My Minors:**
+  * m1 closed: focus goes to the "Decision and closing" heading after the sign-in.
+  * m2 closed: `Tip` with `focusable`; the Sample tooltip opens on keyboard focus.
+  * m3 closed: the counter stays visible beside an error, and the empty-date message is "Give the date.".
+  * m4 answered: the four POSTs are literal calls. The graph reads `api(...)` only, so it misses every `staffApi` caller in the app; that is a tool follow-up, accepted.
+* **Breaker's minors:** m3 (no firm key in the 404), m4 (403 words, `/me` read again) and m6 (`<bdi>`) are fixed. m1, m2, m5 and m7 are held as follow-ups and named in the build notes: they are outside this row's touch list (CS-C1's older checks), or concept §4's session-dependent header.
+* **New, Minor (Should):**
+  * The note counter's `aria-live="polite"` (`case-decision.tsx:268`) announces after every keystroke. Announce it near the limit only, or link it through `aria-describedby`.
+  * No browser case for the mixed "Decisions: … for …" line. DS1 checks the API's array only.
+  * If the person who signs in again lacks the key, the reopened dialog sends and gets the 403 words, which the server enforces. It is acceptable, but not tested.
+* **Journey score, re-scored:** correct data 1, error recovery 1, accessibility and screen sizes 1 → **10/10**, pass.
+* **Not checked:** the token-expiry path (`TOKEN_EXPIRED`), seen in the code only; the regression suites (the builder ran them on fa22d256, and this diff touches only this row's files); full `ci`.
+
+Reviewer: Approve cc35af513c2d112bb058144d3e6f23be30fd77b0
+
+**Verdict: Approve** (no open Blocker or Major at cc35af51).
