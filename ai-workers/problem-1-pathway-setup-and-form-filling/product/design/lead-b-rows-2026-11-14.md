@@ -1909,3 +1909,6 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **After P-663 clears:** FO-3a part 1b and part 2a (#1918 merged); PF-15 part 1 (its gates are met, and its claim branch is on the clean-up list); the PF-6m2 follow-ups.
 * Lead 79 labelled #2014 and #2011 (re-read posted on #2011), and nudged all 8 lanes to merge main. The card fix is #2114 (40 lines), merged by hand on green ci.
 * Records push through `origin`: the old URL redirects to the new org. Pushing by the new URL fails the push guard, which then has no remote refs and scans all history.
+
+### Rev 17.18 (16:5x IST 18 Nov)
+* **#2011 FO-13i** (branch `claude/compassionate-einstein-jl1bgi`, head 935afda4b, labelled by Lead 79): batch #2115 (#2003 + #2014 + #2011) failed on shard 3 in `check_fo13i_identity.ts`, because #2003 (AUD-1a) refuses an audit actor with no type, and FO-13i's test writes the actor `test`. Lead 80's comment 6977133616 gives the lane its steps: once #2003 is on main, merge main (P-270), give the test's actor a type from AUD-1a's list, run the suite, get an Approve on the new head, then label. Lead B confirmed to Lead 80 that this is its row. When the new Approve is posted, Lead B sends the sha to Lead 80. #2003 is still open (16:53 IST).
