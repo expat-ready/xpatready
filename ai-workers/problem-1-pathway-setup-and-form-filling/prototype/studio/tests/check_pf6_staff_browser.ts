@@ -7,7 +7,7 @@ import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
@@ -279,6 +279,16 @@ await lp.locator("[data-licence-number]").fill(LIC); await lp.locator("[data-lic
 for (let i = 0; i < 100 && sql(`select count(*) from platform_staff_credential where staff_id = '${O.id}'`) === "0"; i++) await lp.waitForTimeout(100);
 const toastO = await lp.getByText("Your licence record was saved.").innerText({ timeout: 10_000 }).catch(() => "");
 ok("PF-6 DW7 pass: Save keeps the own licence (type, body, number) and the toast says so without the number", sql(`select representative_type || '|' || licensing_body || '|' || licence_number from platform_staff_credential where staff_id = '${O.id}'`) === `College member (CICC)|College of Immigration and Citizenship Consultants|${LIC}` && toastO.length > 0 && !toastO.includes(LIC));
+ok("PF-6 DW8 keyboard (review MJ-2): after Save the focus stays on Save (the form is not rebuilt)", await lp.evaluate(() => document.activeElement?.hasAttribute("data-licence-save") ?? false));
+const putsO = () => posts(lp, /\/me\/account$/).length, putsBefore = putsO();
+await lp.locator("[data-licence-save]").click(); await lp.locator("[data-licence-note]").waitFor({ timeout: 10_000 });
+ok("PF-6 DW7 fail (break m4): Save with nothing changed sends nothing and says so", putsO() === putsBefore && (await lp.locator("[data-licence-note]").innerText()) === "Nothing to save: the licence is as it was.");
+// Review MJ-1 / break M1: a form opened before someone else's save does not undo it.
+await staffCall(oTok, "PUT", "/platform/me/account", { licence: { representativeType: "Notary (Chambre des notaires du Québec)", licensingBody: "Chambre des notaires du Québec", licenceNumber: LIC2 } });
+await lp.locator("[data-licence-number]").fill(`${LIC}-OLD`); await lp.locator("[data-licence-save]").click(); await lp.locator("[data-licence-error]").waitFor({ timeout: 10_000 });
+ok("PF-6 DW7 fail (conflict): saving from an older read saves nothing, says someone else changed it, and shows the record as it is", (await lp.locator("[data-licence-error]").innerText()).startsWith("Someone else changed this licence") && sql(`select licence_number from platform_staff_credential where staff_id = '${O.id}'`) === LIC2 && (await lp.locator("[data-licence-number]").inputValue()) === LIC2);
+await staffCall(oTok, "PUT", "/platform/me/account", { licence: { representativeType: "College member (CICC)", licensingBody: "College of Immigration and Citizenship Consultants", licenceNumber: LIC } });
+await lp.reload(); await lp.locator("[data-licence-form]").waitFor({ timeout: 20_000 });
 await lp.locator("[data-licence-type]").selectOption("Lawyer (law society)");
 const lawBodies = await lp.locator("[data-licence-body] option").allInnerTexts();
 ok("PF-6 DW7 pass: a lawyer is offered the law societies only (marked Sample until read), not the College", !lawBodies.some((b) => b.startsWith("College")) && lawBodies.some((b) => b === "Law Society of Ontario (Sample)"), lawBodies);
@@ -302,17 +312,33 @@ ok("PF-6 DW6/BR-8 fail: a Case Officer's crafted change of another's licence is 
 await rp.goto(`${BASE}/platform/licences`); await rp.locator(`[data-licence-row="${O.id}"]`).waitFor({ timeout: 20_000 });
 ok("PF-6 DW6/BR-8 pass: the Owner's Licences shows the Case Officer's record with the number in full", (await rp.locator(`[data-licence-row="${O.id}"] [data-licence-number-cell]`).innerText()) === LIC);
 await rp.locator(`[data-licence-row="${O.id}"] [data-licence-change]`).click(); await rp.locator("[data-licence-form]").waitFor();
+// Review MJ-1 / break M1: another tab saves first; this panel's save changes nothing and shows the newer record.
+await staffCall(oTok, "PUT", "/platform/me/account", { licence: { representativeType: "College member (CICC)", licensingBody: "College of Immigration and Citizenship Consultants", licenceNumber: `${LIC}-NEW` } });
+await rp.locator("[data-licence-number]").fill(LIC2); await rp.locator("[data-licence-save]").click(); await rp.locator("[data-licence-error]").waitFor({ timeout: 10_000 });
+ok("PF-6 DW6 fail (conflict): the Owner's panel opened before the person's own save changes nothing and shows the newer number", (await rp.locator("[data-licence-error]").innerText()).startsWith("Someone else changed this licence") && sql(`select licence_number from platform_staff_credential where staff_id = '${O.id}'`) === `${LIC}-NEW` && (await rp.locator("[data-licence-number]").inputValue()) === `${LIC}-NEW`);
 await rp.locator("[data-licence-number]").fill(LIC2); await rp.locator("[data-licence-save]").click();
 for (let i = 0; i < 100 && !sql(`select licence_number from platform_staff_credential where staff_id = '${O.id}'`).includes(LIC2); i++) await rp.waitForTimeout(100);
 const toastR = await rp.getByText(`The licence record for ${O.name} was saved.`).innerText({ timeout: 10_000 }).catch(() => "");
 ok("PF-6 DW6/BR-8 pass: the Owner changes another's licence in the panel; the toast names the person, not the number", sql(`select licence_number from platform_staff_credential where staff_id = '${O.id}'`) === LIC2 && toastR.length > 0 && !toastR.includes(LIC2));
 const aId = staffOf(`email = '${A}'`).id;
 ok("PF-6 DW6 pass: a person with no record is listed with Add licence", (await rp.locator(`[data-no-licence="${aId}"] [data-licence-add]`).count()) === 1);
+await rp.locator(`[data-no-licence="${aId}"] [data-licence-add]`).click(); await rp.locator("[data-licence-form]").waitFor();
+await rp.locator("[data-licence-type]").selectOption("College member (CICC)"); await rp.locator("[data-licence-number]").fill(`${LIC}-A`); await rp.locator("[data-licence-save]").click();
+await rp.locator(`[data-licence-row="${aId}"]`).waitFor({ timeout: 10_000 }); await rp.waitForTimeout(300);
+ok("PF-6 DW8 keyboard (review MJ-2): after Add licence and Save, focus is on that person's new Change button, not the page", await rp.evaluate((id) => !!document.activeElement?.closest(`[data-licence-row="${id}"]`) && document.activeElement?.hasAttribute("data-licence-change"), aId));
+await rp.locator(`[data-licence-row="${aId}"] [data-licence-change]`).click(); await rp.locator("[data-licence-number]").fill("typed, not saved");
+let asked = false; rp.once("dialog", (d) => { asked = d.message() === "Discard the licence you typed?"; });
+await rp.keyboard.press("Escape"); await rp.waitForTimeout(300);
+ok("PF-6 DW6 fail (break m6): closing the panel with typed changes asks first", asked);
 await axe("PF-6 DW8 Licences (1440)", rp); await shot(rp, "licences-1440");
 for (const w of [375, 1024]) { const v = await newPage(w, await apiSignIn(R.email)); await v.goto(`${BASE}/platform/licences`); await v.locator(`[data-licence-row="${O.id}"]`).waitFor({ timeout: 20_000 }); await axe(`PF-6 DW8 Licences (${w} px)`, v); await noSideways(`PF-6 DW8 Licences (${w} px)`, v); await shot(v, `licences-${w}`); }
 const leaks = [LIC, LIC2].map((n) => sql(`select (select count(*) from audit_event a where a::text like '%${n}%') + (select count(*) from module_event m where m::text like '%${n}%') + (select count(*) from msg_outbox o where o::text like '%${n}%')`));
 const inUrl = seen.some((x) => x.path.includes(LIC) || x.path.includes(LIC2));
-ok("PF-6 DW6/BR-8 fail: neither number is in an audit line, an event, an outbox email or any request's address", leaks.every((n) => n === "0") && !inUrl, { leaks, inUrl });
+// The copy's own API log (tools/isolated.sh writes var/isolated-<name>/api.log); staff mail is held in the API's memory,
+// which no saving path here reaches (a licence save sends no mail), so the stored rows and the log are what can be read.
+const LOG = join(STUDIO, "var", `isolated-${DBNAME.replace(/^xr_studio_/, "")}`, "api.log");
+const log = existsSync(LOG) ? readFileSync(LOG, "utf8") : null;
+ok("PF-6 DW6/BR-8 fail: neither number is in an audit line, an event, an outbox row, the API log or any request's address", leaks.every((n) => n === "0") && !inUrl && log !== null && !log.includes(LIC) && !log.includes(LIC2), { leaks, inUrl, log: log === null ? `no log at ${LOG}` : "read" });
 ok("PF-6: no page error in any browser", errors.length === 0, errors);
 } finally {
   limit(Number(plan[1]));

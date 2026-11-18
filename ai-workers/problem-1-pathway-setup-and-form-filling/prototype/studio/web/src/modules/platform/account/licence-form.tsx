@@ -15,6 +15,13 @@ const TYPES = BODIES.types, ALL = BODIES.bodies;
 /** The bodies that fit a type (a College member: the College; a lawyer or paralegal: a law society; a notary: the Chambre). */
 export const bodiesFor = (type: string) => { const t = TYPES.find((x) => x.label === type); return t ? ALL.filter((b) => t.bodies.includes(b.kind)) : ALL; };
 const bodyLabel = (b: (typeof ALL)[number]) => (b.status === "Sample" ? `${b.name} (Sample)` : b.name);
+type Fields = { representativeType: string; licensingBody: string; licenceNumber: string };
+const fieldsOf = (l: Licence | null): Fields => ({ representativeType: l?.representativeType ?? "", licensingBody: l?.licensingBody ?? "", licenceNumber: l?.licenceNumber ?? "" });
+/** Two reads of one record say the same (no record on both counts as the same). */
+export const sameLicence = (a: Licence | null, b: Licence | null) => JSON.stringify(fieldsOf(a)) === JSON.stringify(fieldsOf(b)) && !a === !b;
+export const CONFLICT_WORDS = "Someone else changed this licence since you opened it. Nothing was saved; the form now shows the record as it is.";
+/** Thrown by a save whose fresh read differs from what the form opened with (concept §4 "conflict (reload)"; review MJ-1). */
+export class LicenceConflict extends Error { constructor(readonly now: Licence | null) { super(CONFLICT_WORDS); } }
 
 /** An earlier record whose words are not in the list (e.g. the Sample seed's "rcic") stays choosable as recorded. */
 function options(list: readonly string[], current: string, labelOf: (v: string) => string = (v) => v) {
@@ -22,17 +29,33 @@ function options(list: readonly string[], current: string, labelOf: (v: string) 
   return vals.map((v) => <option key={v} value={v}>{list.includes(v) ? labelOf(v) : `${v} (as recorded)`}</option>);
 }
 
-export function LicenceForm({ start, save, onCancel, saveLabel = "Save licence" }: { start: Licence | null; save: (l: { representativeType: string; licensingBody: string; licenceNumber: string }) => Promise<void>; onCancel?: () => void; saveLabel?: string }) {
+export function LicenceForm({ start, save, onCancel, onDirty, saveLabel = "Save licence" }: { start: Licence | null; save: (l: Fields) => Promise<void>; onCancel?: () => void; /** Whether the fields differ from the record (to ask before discarding them). */ onDirty?: (dirty: boolean) => void; saveLabel?: string }) {
+  // The record the form was opened with: a save compares the fresh read against it; a conflict replaces it.
+  const [base, setBase] = React.useState<Licence | null>(start);
   const [type, setType] = React.useState(start?.representativeType ?? "");
   const [body, setBody] = React.useState(start?.licensingBody ?? "");
   const [number, setNumber] = React.useState(start?.licenceNumber ?? "");
-  const [error, setError] = React.useState<string | null>(null), [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null), [note, setNote] = React.useState<string | null>(null), [busy, setBusy] = React.useState(false);
+  const saveButton = React.useRef<HTMLButtonElement>(null);
+  const now: Fields = { representativeType: type, licensingBody: body, licenceNumber: number };
+  const dirty = JSON.stringify(now) !== JSON.stringify(fieldsOf(base));
+  React.useEffect(() => { onDirty?.(dirty); }, [dirty]);   // eslint-disable-line react-hooks/exhaustive-deps -- reports changes only
   const fits = bodiesFor(type).map((b) => b.name);
   const pickType = (t: string) => { setType(t); const f = bodiesFor(t); if (f.length === 1) setBody(f[0].name); else if (!f.some((b) => b.name === body)) setBody(""); };
   const send = async (e: React.FormEvent) => {
-    e.preventDefault(); setBusy(true); setError(null);
-    try { await save({ representativeType: type, licensingBody: body, licenceNumber: number }); }
-    catch (x) { setError(x instanceof StaffApiError ? x.message : "Could not save. Please try again."); } finally { setBusy(false); }
+    e.preventDefault(); setError(null); setNote(null);
+    // No change: nothing is sent (no "changed" audit line for an unchanged record; break m4).
+    if (base && !dirty) { setNote("Nothing to save: the licence is as it was."); return; }
+    setBusy(true);
+    try { await save(now); setBase({ ...now }); }
+    catch (x) {
+      if (x instanceof LicenceConflict) { const f = fieldsOf(x.now); setBase(x.now); setType(f.representativeType); setBody(f.licensingBody); setNumber(f.licenceNumber); }
+      setError(x instanceof StaffApiError || x instanceof LicenceConflict ? x.message : "Could not save. Please try again.");
+    } finally {
+      setBusy(false);
+      // The busy button is disabled while saving, which drops focus to the page; it goes back to Save (review MJ-2).
+      requestAnimationFrame(() => { if (document.activeElement === document.body) saveButton.current?.focus(); });
+    }
   };
   const label = (n: string) => bodyLabel(ALL.find((b) => b.name === n)!);
   return (
@@ -44,7 +67,8 @@ export function LicenceForm({ start, save, onCancel, saveLabel = "Save licence" 
       <Field label="Licence number" hint={HINT}><Input value={number} maxLength={100} autoComplete="off" spellCheck={false} onChange={(e) => setNumber(e.target.value)} required data-licence-number /></Field>
       <p className="text-xs text-text-muted">The types and the College and the Chambre are from IRCC's IMM 5476 page; a law society marked Sample is not yet read from its own site.</p>
       {error ? <Notice tone="danger" title="Not saved"><span data-licence-error>{error}</span></Notice> : null}
-      <div className="flex gap-2"><Button type="submit" busy={busy} data-licence-save>{saveLabel}</Button>{onCancel ? <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button> : null}</div>
+      {note ? <p role="status" className="text-sm text-text-muted" data-licence-note>{note}</p> : null}
+      <div className="flex gap-2"><Button ref={saveButton} type="submit" busy={busy} data-licence-save>{saveLabel}</Button>{onCancel ? <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button> : null}</div>
     </form>
   );
 }

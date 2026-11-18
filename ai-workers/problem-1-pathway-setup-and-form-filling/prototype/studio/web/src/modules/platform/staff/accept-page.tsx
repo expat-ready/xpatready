@@ -43,8 +43,13 @@ export function AcceptPage() {
   const navigate = useNavigate();
   const token = React.useRef<string | null>(null);
   React.useEffect(() => {
-    token.current = takeToken();
+    // A second invitation link opened in this tab changes only the part after "#": it is read too (review m1).
+    const load = () => {
+    const had = token.current, t = takeToken();
+    if (t === had && had) return;
+    token.current = t; setError(null);
     if (!token.current) { setView({ step: "closed", words: NO_LINK }); return; }
+    setView({ step: "loading" });
     void (async () => {
       try {
         const { res, data } = await call(token.current!);
@@ -53,6 +58,10 @@ export function AcceptPage() {
         else setView({ step: "closed", words: s?.success && "words" in s.data ? s.data.words : problemOf(data, res.status).detail ?? NOT_VALID });
       } catch { setView({ step: "closed", words: "Could not reach the server. Open the link from your email again." }); }
     })();
+    };
+    load();
+    window.addEventListener("hashchange", load);
+    return () => window.removeEventListener("hashchange", load);
   }, []);
   const accept = async () => {
     if (!token.current || busy) return;
@@ -62,7 +71,8 @@ export function AcceptPage() {
       const url = (data as { handOff?: { url?: unknown } })?.handOff?.url;
       if (res.ok && typeof url === "string" && url.startsWith("/")) { held = null; navigate(url, { replace: true }); return; }
       const words = problemOf(data, res.status).detail ?? NOT_VALID;
-      if (res.status === 410) setView({ step: "closed", words }); else setError(words);
+      // A refusal (410 used or expired; 409 the email signs in to another firm) ends this link: no Continue that cannot work (break m8).
+      if (res.status >= 400 && res.status < 500) setView({ step: "closed", words }); else setError(words);
     } catch { setError("Could not reach the server. Please try again."); } finally { setBusy(false); }
   };
   return (
