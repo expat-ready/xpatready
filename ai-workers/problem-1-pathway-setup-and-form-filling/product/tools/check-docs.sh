@@ -65,6 +65,8 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
       [ -f "$PH/$ref" ] || [ -f "$ROOT/$ref" ] || [ -f "$(dirname "$f")/$ref" ] || [ -f "$PH/domain/$ref" ] || [ -f "$PH/../$ref" ] || echo "MISSING LINK in ${f#$ROOT/}: $ref"
     done
   done
+  # P-690 (founder, 18 Nov A169): the full-power plan is the one action list; no item may disappear silently. Test: check-plan-watch.sh.
+  python3 "$PH/tools/plan-watch.py"
 } | sort -u > "$out"
 # Times are read, not guessed (6 Nov): a warning, never a failure, when STATE's "updated: YYYY-MM-DD HH:MM IST" is more
 # than 30 minutes from the time it was committed (now, while STATE.md has uncommitted changes). Test: check-state-page.sh.
