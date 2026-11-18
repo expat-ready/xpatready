@@ -15,6 +15,9 @@ import { userIn } from "../../engine/runtime/team.ts";
 import { actorOf, Audit, Db, fail, Workspace, type Actor } from "./core.ts";
 import { newestPin } from "./stage-scope.ts"; // C6.17
 import { firmOfActor } from "./firms.ts";
+import { FilingReviewBody, WarningPassBody } from "../../contracts/runtime.ts"; // CS-V1 part 2
+import { problemFromZod } from "../../contracts/programs.ts";
+import type { z } from "zod";
 import { Runtime } from "./runtime.ts";
 import { CasePrepare } from "./case-prepare.ts";
 import { busyWords } from "./busy.ts";
@@ -25,6 +28,12 @@ import { authorsFor, behindOf, preparersOf } from "../../engine/runtime/preparer
 type H = string | undefined;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const problem = (status: number, title: string, detail: string, extra: Record<string, unknown> = {}): never => { throw new HttpException({ type: "https://expatready.local/problems/readiness", title, status, detail, ...extra }, status); };
+/** CS-V1 part 2: a body read through its schema; a refusal is this file's 400 with the field named. */
+const parsed = <S extends z.ZodType>(schema: S, body: unknown): z.infer<S> => {
+  const r = schema.safeParse(body ?? {});
+  if (!r.success) { const p = problemFromZod(r.error); return problem(400, p.title, p.detail, { errors: p.errors }); }
+  return r.data;
+};
 
 @Injectable()
 export class FilingReadinessRoutes {
@@ -55,7 +64,7 @@ export class FilingReadinessRoutes {
     const everyone = await this.db.caseTeamMember.findMany({ where: { caseId: c.id } });
     const rep = everyone.find((m) => m.role === "LEAD_REPRESENTATIVE" && !m.endedAt)?.userId ?? null;
     if (!rep || rep !== actor.id) fail("Only the representative of record reviews this filing (P-155). A case officer prepares it; the representative reviews it.", HttpStatus.FORBIDDEN);
-    const b = (body ?? {}) as { note?: unknown; self?: unknown; facts_hash?: unknown; pin_revision?: unknown };
+    const b = parsed(FilingReviewBody, body); // CS-V1 part 2: strict; the checks below keep their words
     // C9.5 (break m10): a review sent from a screen read before the case moved to another release is refused (the screen
     // sends the pin revision it read); the representative reviews what the case files now.
     // Breaker R2-m4 (round 2): once the case has moved, the screen always sends the revision it read; a review without it is refused.
@@ -121,7 +130,7 @@ export class FilingReadinessRoutes {
     const { f, c } = await this.filing(actor, id);
     const no = cannotPass(code);
     if (no) fail(no, (WARN_CODES as readonly string[]).includes(code) || (BLOCK_CODES as readonly string[]).includes(code) ? HttpStatus.CONFLICT : HttpStatus.NOT_FOUND);
-    const b = (body ?? {}) as { reason?: unknown; key?: unknown };
+    const b = parsed(WarningPassBody, body); // CS-V1 part 2: strict; the checks below keep their words
     const why = passProblem(b.reason);
     if (why) problem(400, "Some details need fixing", why, { errors: [{ field: "reason", message: why }] });
     // Break B4 on #861: a key, when sent, is one line's key as text; anything else is refused, never read as "every line".

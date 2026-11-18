@@ -27,6 +27,7 @@ const tR = (await call("POST", "/api/platform/session/local", undefined, { firmK
 const email = `qa477.${randomUUID().slice(0, 8)}@example.com`;
 const inv = await call("POST", "/api/platform/staff/invitations", tR, { email, roles: ["BILLING_FINANCE"] });
 check("Q1 the Owner invites a new person as Billing/Finance (201)", inv.status === 201, inv);
+if (inv.status !== 201) { console.log(`${pass}/${pass + fail} passed (stopped: no invitation; on a kept copy the plan's seat limit can refuse it: use a fresh copy)`); process.exit(1); }
 // The invitation email goes through MAIL_PORT's in-memory fake (not the demo inbox), and only the token's hash is kept,
 // so qa sets a known token on the real row the route wrote (the way PF-4b's own suite seeds one) and accepts it.
 const token = randomBytes(32).toString("base64url");
@@ -38,7 +39,7 @@ check("Q2 the invitee accepts (200) and is a staff member with Billing/Finance",
 const moneyKeys = staffId ? sql(`select string_agg(distinct rp.permission_key, ',') from platform_role_grant g join platform_role_permission rp on rp.role = g.role where g.staff_id = '${staffId}'`).split(",").filter((k) => classOf(k) === "MONEY") : [];
 check("Q2 the accepted role carries money-class keys", moneyKeys.length > 0, moneyKeys.length);
 const lines = staffId ? Number(sql(`select count(*) from audit_event where action = 'platform.staff.money_keys_granted' and (entity_key = '${staffId}' or detail::text like '%${staffId}%')`)) : -1;
-check("Q3 a money-keys audit line names the new person (PF-6b ruling 2 (b)) — fails today (#1929's QA-478 (money line))", lines >= 1, { lines });
+check("Q3 a money-keys audit line names the new person (PF-6b ruling 2 (b)) (#1929's QA-478; fixed by PF-6m #1945)", lines >= 1, { lines });
 
 console.log(`${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);

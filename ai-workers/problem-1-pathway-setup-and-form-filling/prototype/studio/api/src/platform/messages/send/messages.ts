@@ -35,12 +35,15 @@ export const SEND_QUEUE = "messages.send", SWEEP_QUEUE = "messages.outbox_sweep"
 export const SWEEP_AFTER_MS = 2 * 60_000;
 /** Sample: per firm and kind (lost, held), the rows one sweep queues. */
 export const SWEEP_PER_FIRM = 50;
+/** PF-19b part 2 (break M1): the worker's transaction holds the row while the adapter sends; it must outlive the slowest
+ *  adapter answer (SES: SES_TIMEOUT_MS), else a slow but accepted send rolls back and is sent again. */
+export const DELIVER_TX_MS = 60_000;
 /** Sample (PF-19p, break F1): sends of one platform account row before it is FAILED "send failed". The firm path's retries
  *  are JobPort's; a platform row has no job, so it counts its own tries in state_reason ("send failed: try n of N"). */
 export const PLATFORM_SEND_TRIES = 5;
 /** How long one platform send's transaction may hold its row lock while the adapter answers (a provider call; review m6:
  *  Prisma's 5 s default would roll back a send the provider had accepted, and the next try would send it again). */
-export const PLATFORM_DELIVER_TX_MS = 60_000;
+export const PLATFORM_DELIVER_TX_MS = DELIVER_TX_MS;
 /** The wait before the sweep queues a platform row's next try: SWEEP_AFTER_MS, doubled after each counted failed try (2, 4,
  *  8, 16 minutes). With pg-boss the runner's own retries (its retry policy) usually make tries 2 to 4 first; the sweep
  *  then queues what is left, and the 5th counted failure ends the row FAILED (review m-r3). */
@@ -170,7 +173,7 @@ export class Messages implements MessagePort<Tx> {
       await tx.msgOutbox.update({ where, data: { state: "SENT", stateReason: null, providerId, sentAt: now, consentId: decision.consentId ?? null } });
       await tx.msgEvent.create({ data: { firmId, outboxId, kind: "SENT", providerEventId: providerId, occurredAt: now, detail: { provider: adapter.provider } } });
       return "sent" as const;
-    });
+    }, { timeout: DELIVER_TX_MS, maxWait: 10_000 });
     // One alert to our team per firm per day: the job key holds the day, so a second held message queues nothing.
     if (alertDay) await this.d.jobs.enqueue(CAP_ALERT_QUEUE, { firmId, day: alertDay }, { key: `msg.cap_alert:${firmId}:${alertDay}`, firmId });
     return out;

@@ -1,6 +1,6 @@
 // C6.9 parts 2 and 3 (M3-D, concept screens/C6.9/concept.md BR-7, BR-8, BR-13…BR-17; stand-in SI-1): eligibility runs,
 // and an officer's override and review beside a run (part 3; any staff of the firm, P-229 (2)).
-// A run reads one travelling person's answers against the case's pinned release's gates (engine/runtime/eligibility.ts)
+// A run reads one travelling person's answers against the case's pinned release's gates (engine/eligibility/assess.ts)
 // and is stored once, frozen (table assessment; a trigger refuses any UPDATE). Out of date is worked out on every read.
 // Staff of the case's firm only (Runtime.reach "officer"): a client gets 403, another firm's case 404. Rules only: no
 // model call, no spend ledger row (US$0). Answer values never go into audit text (STANDARDS §5). Registered in
@@ -8,12 +8,12 @@
 import { Body, Controller, Get, Headers, HttpCode, HttpException, HttpStatus, Inject, Injectable, Param, Post, Query } from "@nestjs/common";
 import type { Assessment as Row, AssessmentOverride, AssessmentReview } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { AssessmentOverrideBody, AssessmentReviewBody, AssessmentRunBody } from "../../contracts/eligibility.ts";
+import { AssessmentListQuery, AssessmentOverrideBody, AssessmentReviewBody, AssessmentRunBody } from "../../contracts/eligibility.ts";
 import { CASE_CHECK_SHORT, outcomeWord } from "../../contracts/case-check-words.ts";
 import { problemFromZod } from "../../contracts/programs.ts";
 import { checkValue, knownOf } from "../../engine/runtime/case.ts";
-import { assess, DISCLAIMER_LOCALE, inputsOf, nowOf, outOfDate, STAND_IN, withUnconfirmedNow, type Input, type ProgramResult } from "../../engine/runtime/eligibility.ts";
-import type { SnapshotEligibility } from "../../engine/eligibility-gates.ts";
+import { assess, DISCLAIMER_LOCALE, inputsOf, nowOf, outOfDate, STAND_IN, withUnconfirmedNow, type Input, type ProgramResult } from "../../engine/eligibility/assess.ts";
+import type { SnapshotEligibility } from "../../engine/eligibility/gates.ts";
 import { actorOf, Audit, CaseRead, Db, fail, type Actor } from "./core.ts";
 import { Runtime, type Reached } from "./runtime.ts";
 import { firmOfActor } from "./firms.ts";
@@ -90,8 +90,11 @@ export class Assessments {
 
   /** GET the list (BR-13): every run on the case, or one person's, newest first; out of date worked out now. Two
    *  queries for the runs (with their overrides and review) and one read of today's answers. */
-  async list(actor: Actor, caseId: string, person?: string) {
+  async list(actor: Actor, caseId: string, queryIn: unknown = {}) {
     const c = await this.r.reach(actor, caseId, "officer");
+    const one = AssessmentListQuery.safeParse(queryIn ?? {}); // CS-V1 part 2: only ?person=, given once, as text
+    if (!one.success) fieldError(String(one.error.issues[0].path[0] ?? "body"), one.error.issues[0].message);
+    const person = one.data!.person;
     if (person !== undefined) { if (!c.participants.some((p) => p.subjectId === person && p.role !== "case")) fieldError("person", "That person is not on this case."); }
     const rows = await this.db.assessment.findMany({ where: { caseId: c.id, configReleaseId: { in: c.pins.map((p) => p.configReleaseId) }, ...(person ? { subjectId: person } : {}) }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], include: { overrides: { orderBy: { createdAt: "asc" } }, review: true } });
     const { known } = await this.knownNow(c);
@@ -194,7 +197,7 @@ export class Assessments {
 export class AssessmentsController {
   constructor(@Inject(Assessments) private readonly x: Assessments) {}
   @Post("cases/:id/assessments") run(@Headers("x-actor") a: H, @Param("id") id: string, @Body() b: unknown) { return this.x.run(actorOf(a), id, b); }
-  @Get("cases/:id/assessments") list(@Headers("x-actor") a: H, @Param("id") id: string, @Query("person") person?: string) { return this.x.list(actorOf(a), id, person); }
+  @Get("cases/:id/assessments") list(@Headers("x-actor") a: H, @Param("id") id: string, @Query() q: unknown) { return this.x.list(actorOf(a), id, q); }
   @Get("assessments/:aid") one(@Headers("x-actor") a: H, @Param("aid") aid: string) { return this.x.one(actorOf(a), aid); }
   @Post("assessments/:aid/override") override(@Headers("x-actor") a: H, @Param("aid") aid: string, @Body() b: unknown) { return this.x.override(actorOf(a), aid, b); }
   @Post("assessments/:aid/review") @HttpCode(200) review(@Headers("x-actor") a: H, @Param("aid") aid: string, @Body() b: unknown) { return this.x.review(actorOf(a), aid, b); }
