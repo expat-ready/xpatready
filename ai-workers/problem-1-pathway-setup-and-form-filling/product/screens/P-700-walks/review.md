@@ -1,6 +1,6 @@
-# Review: PR #2133, recorded gate A walks (P-700) at d09c8f6cd
+# Review: PR #2133, recorded gate A walks (P-700); round 1 at d09c8f6cd (Block), round 2 at ba7ac696b
 
-Reviewer: Opus, fresh context, did not build it. Merge-flow tooling (P-214), not a screen, so the screen-review parts that need a screen (D1-D20, the BIC table, 1024 px / 200 % zoom, PRODUCT.md menu words) are **N/A**. What I judged: correctness, security, robustness, the PR body's Done when, P-700's requirements and WAY-OF-WORKING / STANDARDS rules.
+Reviewed by Opus, fresh context, did not build it. Merge-flow tooling (P-214), not a screen, so the screen-review parts that need a screen (D1-D20, the BIC table, 1024 px / 200 % zoom, PRODUCT.md menu words) are **N/A**. What I judged: correctness, security, robustness, the PR body's Done when, P-700's requirements and WAY-OF-WORKING / STANDARDS rules.
 Evidence: the diff `origin/main..d09c8f6cd` (6 files); `tsx studio/tests/check_journey_recording.ts` here, 10/10 PASS in 1.7 s (video not judged here: pre-installed Chromium); the plan step's shell run locally with 9 inputs; `copyOf()` run on j_6, j_9, the fixture and 3 variants; three scratch journeys (crash, exit mid-run, no exit) walked through `walk.mjs`. They had no app and no copy; j_6 and j_9 were not started. The PR's `walks` run 44318409310 is still **queued**, and its ci run was the draft guard only.
 
 ## What holds
@@ -44,18 +44,47 @@ Evidence: the diff `origin/main..d09c8f6cd` (6 files); `tsx studio/tests/check_j
 8. **walks.yml:55: `for w in $WANT` expands globs.** Input `*` is answered with "'AGENTS.md' is not j_<n>". It is harmless but confusing. Fix: `set -f` first.
 9. **walks.yml:26-30: drafts and merge-queue batches.** P-371 (WAY-OF-WORKING.md:46) says a draft push runs only the guard. This workflow walks every journey on every draft push that touches its paths, and on `mergify/*` batch PRs too. The PR discloses this and asks the tech lead, so it is not silent. Recommendation: follow P-371 as written, with `types: [opened, synchronize, reopened, ready_for_review]` plus `if: !github.event.pull_request.draft && !startsWith(github.event.pull_request.head.ref, 'mergify/')` on `plan`, unless the tech lead records otherwise.
 
-## Journey score (journey-test skill, reviewer role): 6.5 / 10, below the pass mark of 8
-Report: `screens/P-700-walks/journey-test-reviewer-2026-11-18.md`. The low points are error recovery, correct data and feedback (Majors 1-3, Minors 1 and 3).
+Round 1 verdict: Block, for Majors 1-3.
 
-## Could not check
-* The CI run: walks run 44318409310 is queued, so I have no artifacts, no video and no job times.
-* `check_journey_recording.ts` in ci: the PR is a draft, so only the guard ran.
-* The video: this machine's Chromium records none.
-* Dispatch from a cloud lane: 403, P-439.
-* The GITHUB_SHA override (Minor 1) is stated from GitHub's documented rule, not observed.
+## Round 2: diff-only, `d09c8f6cd..ba7ac696b` (b0deb8b85, a8b10a6ec, ba7ac696b)
+Evidence:
+* `check_journey_recording.ts`: 17 passed, 0 failed, run twice here (6.9 s).
+* My round-1 scratch journeys, walked again: crash gives exit 1 with trace-1.zip; exit mid-walk followed by Playwright clicks gives **exit 2, 1 PASS**, with the trace kept.
+* SIGTERM sent to `tsx --import record.ts` (scratch `hang.ts`): tsx 4.23 passes it on, and record.ts answers with exit 143, trace-1.zip and the step screenshot.
+* CI: walks run 44320843067 on ba7ac696b is pending; the earlier runs were cancelled by newer pushes.
 
-Reviewer: Block
-1. Major: record.ts:93-94, handle uncaughtException / unhandledRejection / SIGTERM so that `finish()` always runs, plus a crashing fixture in the check and the matrix.
-2. Major: record.ts:93, after `process.exit` stop recording steps and keep the requested exit code, plus a test.
-3. Major: walk.mjs:19, never `rm -rf` a non-empty out-dir that is not an earlier walk.
-4. Minors 1-9 above: fix them or record them as a follow-up row; they do not block.
+**Round-1 findings, all closed:**
+* **M1 closed.** record.ts:102-114 adds `uncaughtException`, `unhandledRejection` and `SIGTERM` handlers, and the first way out wins. The fixture j_0_throws is checked as R3 and runs in the matrix with `expect: fail`.
+* **M2 closed.** After the first exit, `console.log` is silent and `fetch` never settles. Later Playwright errors are swallowed by `crash`, which ignores everything once exiting. R4 checks it, and my click-after-exit scratch confirms it.
+* **M3 closed.** walk.mjs:20 refuses a non-empty folder that holds no walk.json and leaves it untouched (R5); an earlier walk's folder is reused.
+* **Minors closed:**
+  * m1: `WALK_SHA`.
+  * m2: `continue-on-error` occurs once, and the self-test step's `if` and both `|| exit 1` lines are asserted.
+  * m3: the output streams, with TERM, then KILL 2 min later.
+  * m4: shots are queued one after another, and finishContext waits for them before tracing stops.
+  * m5: R6 refuses a `j_<n>.ts` with no copy line.
+  * m6: `tried` makes stop run after any start attempt.
+  * m7: `overwrite: true`.
+  * m8: `set -f`.
+  * m9 is open, for the tech lead, as the PR asks.
+* **CodeQL commits are right.**
+  * No npm cache, plus a shape check: walks.yml no longer reads or writes a cache from a dispatch on any ref.
+  * ba7ac696b: a dispatch does a plain checkout, which is `github.ref` at `github.sha`, equal to plan's `sha` output, so the artifact name, WALK_SHA and the tree all agree. A `pull_request` run checks out the PR head with a read-only token and no cache.
+
+**New Minors** (they do not block; fix in this PR or as a follow-up row):
+1. **record.ts:77-90: a failed queued step poisons the queue and is reported as a journey crash.** The causes: `await board` rejects (board launch failed), the board `evaluate` fails, or `appendFileSync` fails. Each later `queue.then` then rejects, and the unhandled rejection reaches `crash`, so the walk exits 1 with "the journey crashed" when the fault was the recorder's. Fix: `queue = queue.then(fn).catch((e) => realLog(\`record: step ${n} not recorded: ${e.message}\`))`.
+2. **record.ts:20-23: two closes of the same context at once.** For example, the journey's own `ctx.close` while `finish()` is closing it. Both pass `live.has`; the second returns early and calls the real close while the first is still in `tracing.stop`, so the trace can be lost. Fix: keep one finishing promise for each context (a `Map<BrowserContext, Promise>`) and return it.
+3. **walk.mjs:53-54: stdout and stderr chunks go into one `log` array.** A stdout line split across two chunks, with a stderr chunk between them, is miscounted. This is rare, since a pipe chunk is up to 64 KB. Fix: keep two buffers and count PASS/FAIL from stdout plus stderr, each joined separately.
+4. **walks.yml:133: the self-test now checks `steps/001-*.png` for both fixtures.** In CI, j_0_fails' failed-step shot (`002-fail-*`) is no longer checked; R1 still checks it on a machine. Fix: add `expect_shot` to the matrix entry, or `ls` the `002-fail` shot when `matrix.j.name == 'j_0_fails'`.
+5. **check_journey_recording.ts:52: R6 writes `tests/journeys/j_999.ts` into the tracked folder** and removes it in `finally`. A kill between the write and the remove leaves a file that walks.yml would pick up. Fix: write the temporary journey under a `mkdtemp` folder and give walk.mjs a way to treat it as "of this folder" (for example `WALK_JOURNEYS_DIR`), or accept the risk as is.
+
+## Journey score (journey-test skill, reviewer role), round 2: 8.5 / 10, which passes (8 or more, no 0)
+Report: `screens/P-700-walks/journey-test-reviewer-2026-11-18.md`; it holds round 1 (6.5) and round 2.
+
+## Could not check (round 2)
+* The walks run on ba7ac696b: CI has not walked it yet. So the Done-when lines about green j_6 and j_9 jobs, their artifacts, the **video** and both self-test jobs are not shown yet. The video has been observed nowhere.
+* That is a Done-when line to confirm on the run, not a code finding. The tech lead labels only after that run is green.
+* j_6 and j_9 themselves: not started, as instructed.
+* Dispatch: 403 from a cloud lane.
+
+Reviewer: Approve ba7ac696b09762cf70fdf1d9cc4acbe433f9d1e7

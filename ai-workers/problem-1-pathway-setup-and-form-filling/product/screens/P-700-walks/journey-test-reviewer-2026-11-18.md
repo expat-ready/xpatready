@@ -61,3 +61,35 @@ I could not walk it on GitHub: run 44318409310 is still queued, and a cloud lane
 * A real dispatch.
 * j_6 and j_9 themselves (not started, as instructed).
 * D17/D20 do not apply: this is tooling, with no intended-user walk.
+
+## Round 2: head ba7ac696b, the same journeys walked again here
+| # | Journey | Round 2 result |
+|---|---|---|
+| 1 | Main (check_journey_recording.ts) | 17/17 PASS, run twice |
+| 4 | Crash (`throw.ts`) | exit 1, trace-1.zip and the step shot kept: **fixed** |
+| 5 | Exit mid-walk, then Playwright clicks (`exitmid.ts`) | exit 2, 1 PASS, trace kept: **fixed** |
+| 8 | Out-dir is not a walk's | refused with exit 2, files untouched (R5): **fixed** |
+| new | SIGTERM to tsx with record.ts (`hang.ts`) | exit 143, trace and step shot kept |
+
+| Criterion | R1 | R2 | Evidence (round 2) |
+|---|---|---|---|
+| Task completed | ½ | 1 | Every exit path keeps the trace (R3, R4, SIGTERM test) |
+| Next step obvious | 1 | 1 | Unchanged |
+| Plain words | 1 | 1 | The new refusals are plain ("is not empty and holds no earlier walk") |
+| Feedback and state | ½ | 1 | Output streams into the log as it happens |
+| Correct data | ½ | 1 | Nothing after an exit counts; WALK_SHA is the head sha |
+| Error recovery | ½ | 1 | Crash, exit and TERM all finish the recording; the out-dir guard |
+| Accessibility and screen sizes | ½ | ½ | Unchanged (not a screen; 1440 x 900 recordings) |
+| Speed | ½ | ½ | The check takes 6.9 s; CI job times still unknown |
+| Visual quality | ½ | ½ | The video is still not seen anywhere |
+| Trust and sources | 1 | 1 | Unchanged |
+| **Total** | **6.5** | **8.5 / 10** | **Pass** (8 or more, no criterion at 0) |
+
+Left open in round 2 (Minors, review.md):
+* a recorder fault is reported as a journey crash;
+* two closes of the same context at once;
+* stdout and stderr chunks are mixed in one log;
+* the CI self-test no longer checks `002-fail`;
+* R6's temporary j_999.ts sits in the tracked folder.
+
+Not tested: walks run 44320843067 on ba7ac696b, which is pending; the video.

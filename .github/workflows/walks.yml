@@ -125,10 +125,11 @@ jobs:
           node -e 'const v=require(process.argv[1]); console.log(`### ${v.journey} at ${v.sha.slice(0,9)}: exit ${v.exit}, ${v.pass} PASS, ${v.fail} FAIL, ${v.held} HELD\n${v.video.length} video, ${v.traces.length} trace, ${v.steps} step screenshots, ${v.journeyShots} journey screenshots (artifact walk-${process.env.NAME}-${v.sha})\n${v.failed.map((l)=>"* "+l).join("\n")}`)' "$f" >> "$GITHUB_STEP_SUMMARY"
       - name: self-test — the failing fixture failed its walk step and its recording (video, trace, steps) was uploaded
         if: always() && matrix.j.expect == 'fail'
-        env: { OUTCOME: "${{ steps.w.outcome }}", ART: "${{ steps.up.outputs.artifact-id }}" }
+        env: { OUTCOME: "${{ steps.w.outcome }}", ART: "${{ steps.up.outputs.artifact-id }}", NAME: "${{ matrix.j.name }}" }
         run: |
           echo "walk step: $OUTCOME; artifact id: ${ART:-none}"
           [ "$OUTCOME" = failure ] || { echo "FAIL: the failing fixture's walk step did not fail"; exit 1; }
           [ -n "$ART" ] || { echo "FAIL: the failing fixture's recording was not uploaded"; exit 1; }
           w="$RUNNER_TEMP/walk"; ls "$w"/video/*.webm "$w"/trace-1.zip "$w"/steps/001-*.png
+          if [ "$NAME" = j_0_fails ]; then ls "$w"/steps/002-fail-*.png; fi   # the failed step's own screenshot
           echo "PASS: a failing journey fails its walk step and still uploads its recording"

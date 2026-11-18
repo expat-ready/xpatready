@@ -17,11 +17,17 @@ const live = new Set<BrowserContext>(), pending: Promise<unknown>[] = [];
 let traces = 0, shots = 0;
 const realLog = console.log.bind(console), realExit = process.exit.bind(process), realFetch = globalThis.fetch.bind(globalThis);
 
-async function finishContext(ctx: BrowserContext) {
-  if (!live.has(ctx)) return;
-  await Promise.allSettled(pending.splice(0));   // queued step screenshots first, while the context is still open
-  if (!live.delete(ctx)) return;
-  await ctx.tracing.stop({ path: join(OUT!, `trace-${++traces}.zip`) }).catch((e) => realLog(`record: trace ${traces} not saved: ${e.message}`));
+// One finishing per context: a second close at the same time (the journey's own while finish() closes it) waits for
+// the first, so the context never closes while its trace is still being written.
+const finishing = new Map<BrowserContext, Promise<void>>();
+function finishContext(ctx: BrowserContext): Promise<void> {
+  if (!live.has(ctx)) return finishing.get(ctx) ?? Promise.resolve();
+  if (!finishing.has(ctx)) finishing.set(ctx, (async () => {
+    await Promise.allSettled(pending.splice(0));   // queued step screenshots first, while the context is still open
+    live.delete(ctx);
+    await ctx.tracing.stop({ path: join(OUT!, `trace-${++traces}.zip`) }).catch((e) => realLog(`record: trace ${traces} not saved: ${e.message}`));
+  })());
+  return finishing.get(ctx)!;
 }
 function record(browser: Browser): Browser {
   const close = browser.close.bind(browser), newContext = browser.newContext.bind(browser);
@@ -87,12 +93,12 @@ console.log = (...args: unknown[]) => {
       await p.screenshot({ path: join(OUT!, "steps", f) }).then(() => shotsOf.push(f), (e) => realLog(`record: no screenshot for step ${n}: ${e.message}`));
     }
     appendFileSync(join(OUT!, "steps.jsonl"), JSON.stringify({ n, verdict: m[1], step: m[2].slice(0, 400), screenshots: shotsOf, requests: made }) + "\n");
-  });
+  }).catch((e) => realLog(`record: step ${n} not recorded: ${e.message}`));   // a recorder fault never blocks later steps
   pending.push(step);
 };
 
-let finishing: Promise<void> | null = null;
-const finish = () => finishing ??= (async () => {
+let done: Promise<void> | null = null;
+const finish = () => done ??= (async () => {
   const stop = setTimeout(() => { realLog("record: recording not finished in 90 s; exiting"); realExit(3); }, 90_000);
   await Promise.allSettled(pending.splice(0));
   for (const c of [...live]) await c.close().catch(() => undefined);

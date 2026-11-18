@@ -49,7 +49,8 @@ const rk = walkTo(join(J, "fixtures", "j_0_fails.ts"), keep);
 ok("P-700 R5: an out-dir with other files and no walk.json is refused (exit 2) and left as it was", rk.status === 2 && existsSync(join(keep, "precious.txt")) && readdirSync(keep).length === 1, { status: rk.status, files: readdirSync(keep) });
 ok("P-700 R5: an earlier walk's folder is cleared and reused (R1's folder, walked again)", walkTo(join(J, "fixtures", "j_0_fails.ts"), out).status === 1 && read(out)?.fail === 1);
 // R6 (review m5): a journey of tests/journeys/ whose header has no start line walk.mjs can read is refused, not run bare.
-const bare = join(J, "j_999.ts");
+const bare = join(J, "j_999.ts");   // in the journeys folder (the rule is about it); a leftover from a killed run is removed first
+rmSync(bare, { force: true });
 try {
   writeFileSync(bare, "// a journey with no copy line\nconsole.log('PASS  J-999 W1: must not run');\n");
   const rb = walkTo(bare, mkdtempSync(join(tmpdir(), "walk-check-b-")));
