@@ -43,3 +43,6 @@ Journey 9.5/10. New Minors left for later (listed so nothing is silent): n1 leav
 
 ## Next step (overlap rule)
 Waiting for #2103 (FO-3a 1b-i) to merge. Then: `git merge --no-edit origin/main` once, re-run the FO-3st2 suite and the touched suites, a diff-only re-review on the new head, PR opened non-draft with `Reviewer: Approve <head>` in a comment; no label by this lane. No migration in this row (no stamp needed). Question for the tech lead to post on the PR: duplicate set names and editing a deactivated colleague by URL (FO-3a's API).
+
+## Base moved (18 Nov 19:2x UTC): #2103's new tip 3e0bc800d merged in (it merged main and restamped its migration to 20261118143000; it is now labelled)
+Clean merge; this row's diff against the base is unchanged (only its own files). Re-run on fresh copies of the merged branch: FO-3st2 53/53, check_pf1_module_routes 28/28, check_pf6a_frame_browser 52/52 (the menu now also has Terms), check_fo3w_booking_browser 67/67; all exit 0.
