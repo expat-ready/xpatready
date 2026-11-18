@@ -67,7 +67,10 @@ if [[ "$ACTION" == "stop" ]]; then
   rm -rf "$VARDIR"
   echo "stopped $NAME (database and files removed$log)"; exit 0
 fi
-pg_ctl -D "$ROOT/.tools/solution-1-prototype/pg18-data" status >/dev/null 2>&1 || { echo "start the demo database first (studio/start.sh)"; exit 1; }
+# The demo database must be up. pg_isready connects over TCP, so it also works inside a sandbox that cannot see the
+# server's process (18 Nov: pg_ctl status failed in sandboxed qa sessions, so gate A could not run there); pg_ctl stays
+# as the fallback for a copy without pg_isready on the PATH.
+pg_isready -q -h 127.0.0.1 -p 54329 2>/dev/null || pg_ctl -D "$ROOT/.tools/solution-1-prototype/pg18-data" status >/dev/null 2>&1 || { echo "start the demo database first (studio/start.sh)"; exit 1; }
 if [[ "$ACTION" == "start" ]]; then dropdb -h 127.0.0.1 -p 54329 -U xr_studio --if-exists "$DB"; createdb -h 127.0.0.1 -p 54329 -U xr_studio "$DB"; rm -rf "$VARDIR"; fi
 mkdir -p "$VARDIR"
 cd "$STUDIO"
