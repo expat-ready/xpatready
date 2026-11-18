@@ -92,3 +92,50 @@ I checked every `auditEvent.record(`, `ports.audit.record(` and `this.audit.reco
 * 5e1180d9f (it says it fixes Major 1 and minors 1–3; Major 2 is not in its list).
 
 Verdict: Changes needed
+
+## Round 2 (18 Nov 2026), head 62cd1a62541c4277eb12ca7246411eaf405f9036
+**Read:** only `git diff dac6a7a08..62cd1a625 -- …/prototype/studio` (P-277): `audit-event.ts`, `context.ts`, `hook.ts`, `check_aud1b_adapter.ts`. The records commits touch only `screens/AUD-1b/`.
+**Run:** `check_aud1b_adapter.ts` at the head gives **31 passed, 0 failed**. Mutations ran in a scratch worktree at the head, one change each.
+
+| Rule removed or reverted | Result |
+|---|---|
+| `{ attempts: 1 }` → `{ attempts: 3, retryMs: 1 }` | DW4 fail (review M2) goes red: `tries4: 3`. **Major 2 closed.** |
+| the exact-actor check | DW6 fail (review M1) goes red. **Major 1 closed.** |
+| the OUR_STAFF refusal | DW3 fail goes red |
+| `job:` refused in `correlationOf` | DW1 fail (breaker m1) goes red. **Minor 1 closed.** |
+| the alarm's firm = the context's | DW6 fail (alert under firm A) goes red. **Minor 3 closed.** |
+| **the entry's firm lower-cased** (`audit-event.ts:45`) | **31 / 31: nothing fails** (Major R2-1) |
+| **the job's firm wins** (`context.ts:30`, back to `scope?.firmId() ?? jobFirm`) | **31 / 31: nothing fails** (Minor 2 stays open) |
+
+**Callers re-checked against the exact-actor rule** (`e.actor !== ctx.actor` refused in a signed-in request):
+* Every staff-path writer on `main` passes the request's own word:
+  * sales and corporate use `actorOf(ctx)`;
+  * booking uses `staffActor(ctx)`;
+  * retainers and web-address `change` use `staff:${ctx.staffId}`;
+  * complaints use `staff:${ctx.staffId.toLowerCase()}` (staff ids come from the database in lower case);
+  * session and terms use `actorWord(staffOf(r).staffId)`;
+  * manual lead arrival and its consent line use `actorOf(ctx)`.
+* `system:` writers are public doors, webhooks or jobs, with no actor in the context.
+* None is refused.
+* No other test sends a `job:` X-Request-Id. `check_pf23_observability.ts` uses `job:` only inside a job's own scope. I did not run it: it defaults to port 4487, the builder's.
+
+**Round 1's remaining minors:**
+* **Minor 4: agree to leave by design.** `firmId` is lazy like PF-23's own, and only `guard.ts` writes `req.platform`. Keep it as a PF-4s note.
+* **Minor 5: PR body.** Check it when the PR opens.
+
+### Issues, round 2
+**Major R2-1 (Must): DW6 lost its pass case, so the firm's lower-casing is untested.**
+* Where: `tests/check_aud1b_adapter.ts`, about line 197. Commit d0a2311d8 replaced the `own` probe ("DW6 pass: the same entry naming the request's own firm (any letter case) is written, lower-cased, with its change") with the wrong-actor probe. DW6 now has fails only.
+* Why it matters: the brief and P-606 ask for "a pass and a fail each", and the done-when says "DW1-DW7 each passing and failing as named". Dropping `.toLowerCase()` at `audit-event.ts:45` now passes the whole suite. Before, DW6 pass caught it.
+  * With the lower-casing gone, a request entry whose firm id is upper case would be refused, because the context's firm is lower case.
+  * Outside a context, it would keep the upper case in `detail.firmId`, which the PF-0c, PF-4b and PF-19a readers match by value.
+* Fix: put the three lines back next to the new probe:
+  * call the probe with token A, `firmId: FIRM_A.toUpperCase()` and `change: true`;
+  * expect 200, a line `FIRM_A|FIRM_STAFF|…` and the workspace row present.
+* Fail test: removing `.toLowerCase()` must turn it red.
+
+**Minor 2 (Should, still open): nothing tests that the job's own firm wins inside a job.**
+* Where: `context.ts:30`. The breaker's m2 fix is correct, but reverting it fails no test.
+* Fail test: a handler registered on `PgBossJobs` directly, run inside a firm-A `requestScope` for a firm-B job, must see context firm B. A firm-A entry must be refused.
+
+Verdict: Changes needed

@@ -66,6 +66,7 @@ const { requestMiddleware, auditOf } = await import("../api/src/platform/observa
 const { requestScope } = await import("../api/src/platform/observability/log.ts");
 const { useAlerts } = await import("../api/src/platform/observability/alerts.ts");
 const { observed } = await import("../api/src/platform/jobs/platform-jobs.ts");
+const { PgBossJobs } = await import("../api/src/platform/jobs/pgboss-jobs.ts");
 const { withFirm } = await import("../api/src/platform/firm-scope.ts");
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
@@ -144,6 +145,26 @@ try {
   ok("AUD-1b DW2 fail: a line outside any request or job has no correlation id and its actor word's type (seed: → SEED); a job's entry for another firm is refused",
     auditContext() === undefined && row(`entity_key = 'aud1b-dw2-none'`) === `${FIRM_A}|SEED||seed:aud1b-check` && jobOther && sql(`select count(*) from audit_event where entity_key = 'aud1b-dw2-other'`) === "0", row(`entity_key = 'aud1b-dw2-none'`));
 
+  // Review round 2 minor 2 (breaker m2): a handler on the real pg-boss runner, registered and started inside a firm A
+  // request scope, runs a firm B job: the job's own firm wins, so a firm A entry is refused and a firm B one is written.
+  const boss = new PgBossJobs({ connectionString: urlOf(DB), pollingIntervalSeconds: 0.5 });
+  const seen: { ctx?: unknown; refusedA?: boolean; wroteB?: boolean } = {};
+  try {
+    await requestScope.run({ correlationId: "aud1b-dw2-request", firmId: () => FIRM_A }, async () => {
+      await boss.handle("aud1b.dw2", async (j) => {
+        seen.ctx = auditContext();
+        const line = (firmId: string, key: string) => db.$transaction((tx) => auditEvent.record(tx, { firmId, actor: "system:aud1b-boss", action: "platform.check.job", entity: "platform_staff", entityKey: key, summary: "AUD-1b pg-boss line." }));
+        seen.refusedA = await rejects(() => line(FIRM_A, "aud1b-dw2-boss-a"), (e) => e instanceof AuditRefused);
+        await line(j.firmId!, "aud1b-dw2-boss-b"); seen.wroteB = true;
+      });
+      await boss.start();
+      await boss.enqueue("aud1b.dw2", {}, { key: "aud1b-dw2-boss", firmId: FIRM_B });
+    });
+    for (let i = 0; i < 60 && seen.wroteB === undefined; i++) await pause(250);
+  } finally { await boss.stop(); }
+  ok("AUD-1b DW2 fail (review minor 2): inside a pg-boss job started from a firm A request, the job's firm B wins: a firm A entry is refused, the firm B line is written",
+    seen.wroteB === true && seen.refusedA === true && (seen.ctx as any)?.firmId === FIRM_B && (seen.ctx as any)?.actorType === "SYSTEM" && sql("select count(*) from audit_event where entity_key = 'aud1b-dw2-boss-a'") === "0" && row(`entity_key = 'aud1b-dw2-boss-b'`).startsWith(`${FIRM_B}|SYSTEM|`), seen);
+
   // ------------------------------------------------------------------------- DW3: a scope marked ours
   const ours = { platform: { staffId: R.id, firmId: FIRM_A, ourStaff: true } }, theirs = { platform: { staffId: R.id, firmId: FIRM_A } };
   const inScope = <T>(req: typeof ours | typeof theirs, fn: () => T) => requestScope.run({ correlationId: "aud1b-dw3", firmId: () => FIRM_A, audit: () => auditOf(req) }, fn);
@@ -199,6 +220,10 @@ try {
   const wrong = await Promise.all(words.map((actor, i) => call(base, "POST", "/api/platform/aud1b-probe", { token: tokens.A, body: { key: `aud1b-dw6-actor-${i}`, actor, change: true } })));
   ok("AUD-1b DW6 fail (review M1, breaker M1): in a signed-in request, a line naming any actor but the request's own (another staff member, its own id in upper case, system:, seed:) is refused; nothing written, the changes roll back",
     wrong.every((w) => w.status >= 500) && sql("select count(*) from audit_event where entity_key like 'aud1b-dw6-actor-%'") === "0" && sql("select count(*) from workspace where key like 'aud1b-aud1b-dw6-actor-%'") === "0", wrong.map((w) => w.status));
+
+  const own = await call(base, "POST", "/api/platform/aud1b-probe", { token: tokens.A, body: { key: "aud1b-dw6-own", firmId: FIRM_A.toUpperCase(), change: true } });
+  ok("AUD-1b DW6 pass: the same entry naming the request's own firm (any letter case) is written, lower-cased, with its change",
+    own.status === 200 && row(`entity_key = 'aud1b-dw6-own'`).startsWith(`${FIRM_A}|FIRM_STAFF|`) && sql("select count(*) from workspace where key = 'aud1b-aud1b-dw6-own'") === "1", own);
 
   // ------------------------------------------------------------------------- DW7: the port's contract, caseId included
   const CASE = "0c0c0c0c-0000-4000-8000-0000000000c3";
