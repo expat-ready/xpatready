@@ -9,15 +9,16 @@
 // The swaps (DW): complaints' jobs are PF-14's PlatformJobs (pg-boss) and its clock the system's, both already wired on
 // main in api/src/features/platform-complaints.ts (PF-21w, PF-23w), so this row changes no wiring; the tests show each
 // is real by what only the real port does. Mail stays PF-0p's fakeMail (in memory) until the sending adapter lands.
-//   DW1: the reminder is a waiting row in pg-boss's table, due at the acknowledge-by instant; the acknowledgement
-//        cancels it there (an in-memory runner leaves no row);
+//   DW1: the reminder is a row in pg-boss's table, due at the acknowledge-by instant; already past due, the app's worker
+//        runs it (Reminder sent on the record); one not yet due waits and its acknowledgement cancels it (an in-memory
+//        runner leaves no row and runs nothing);
 //   DW2: the service reads the system clock: a time received a minute ago (by this machine's clock) is accepted and one
 //        five minutes ahead is refused (a fake clock fixed at another instant accepts or refuses the other way).
 // The received date is fixed (Thu 12 Nov 2026, firm time) and Fri 13 Nov is made a closed day, so W2's date is the same
 // on any run after it; the server's clock is the system's (that is DW2), so the walk fixes the date, not the clock.
 // Setup writes Sample rows straight to the copy's database: the Read-only person and the closed day (restored at the end).
 // Run from prototype/ (US$0, no model call; HEADED=1 for a visible browser):
-//   zsh studio/tools/isolated.sh j109 4573 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j109 4573 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_109.ts j109 4573
+//   zsh studio/tools/isolated.sh j109 4436 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j109 4436 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_109.ts j109 4436
 import "reflect-metadata";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -31,7 +32,7 @@ import { ACK_REMINDER_JOB, ackReminderKey } from "../../api/src/platform/complai
 import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE, writeSetting } from "../../api/src/platform/settings.ts";
 import { dayTime, nowLocal } from "../../web/src/modules/platform/complaints/contract.ts";
 
-const [NAME, PORT] = [process.argv[2] ?? "j109", Number(process.argv[3] ?? 4573)];
+const [NAME, PORT] = [process.argv[2] ?? "j109", Number(process.argv[3] ?? 4436)];
 const BASE = `http://127.0.0.1:${PORT}`, DB_URL = `postgresql://xr_studio@127.0.0.1:54329/xr_studio_${NAME}`;
 const SHOTS = join(import.meta.dirname, "..", "..", "..", "..", "product", "screens", "J-109"); mkdirSync(SHOTS, { recursive: true });
 const NOT_FOUND = "We can't find this complaint. It may not exist, or it may not be one you can see.";
@@ -111,12 +112,12 @@ try {
 
   // ---------------------------------------------------------------------------------------------------------- DW1
   const r1 = await reminder(id);
-  ok("J-109 DW1 pass: the acknowledgement reminder is a waiting row in pg-boss's table (PlatformJobs), due at the acknowledge-by instant",
+  ok("J-109 DW1 pass: the acknowledgement reminder is a row in pg-boss's table (PlatformJobs), due at the acknowledge-by instant",
     r1.length === 1 && r1[0].start_after.getTime() === due.getTime(), { r1, due });
   let ran = r1[0]?.state;
   for (let i = 0; i < 60 && ran !== "completed"; i++) { await new Promise((r) => setTimeout(r, 1_000)); ran = (await reminder(id))[0]?.state; }
-  ok("J-109 DW1: already past its date, the reminder is run by the app's pg-boss worker (completed; an in-memory runner runs nothing)", ran === "completed", ran);
-  ok("J-109 DW1 fail: no other reminder row was queued for the refused repeat (one row per complaint)", (await db.$queryRawUnsafe<{ n: number }[]>(`select count(*)::int as n from platform_jobs.job where name = $1 and data->>'key' = $2`, ACK_REMINDER_JOB, ackReminderKey(id)))[0].n === 1);
+  const sent = await db.platComplaintEvent.count({ where: { firmId: firm.id, complaintId: id, kind: "REMINDER_SENT" } });
+  ok("J-109 DW1: already past its date, the reminder is run by the app's pg-boss worker (completed, and its Reminder sent event is on the record; an in-memory runner runs nothing)", ran === "completed" && sent === 1, { ran, sent });
 
   // ---------------------------------------------------------------------------------------------------------- DW2
   const nearNow = (ms: number) => ({ subjectKind: "OTHER_PERSON", complainantName: `Person Clock ${run} ${ms}`, receivedAt: new Date(Date.now() + ms).toISOString(), channel: "PHONE", category: "SERVICE", summary: "Clock check (Sample).", handlerStaffId: R.id });
@@ -124,11 +125,11 @@ try {
   ok("J-109 DW2 pass: the service reads the system clock: received a minute ago by this machine's clock is recorded", past.status === 201, past);
   const fresh = past.body?.id as string, waiting = await reminder(fresh);
   const acked = await api(rTok, "POST", `/${fresh}/acknowledge`, { at: new Date().toISOString() });
-  ok("J-109 DW1: a complaint not yet due waits in pg-boss, and its acknowledgement cancels it there (it never runs)", waiting[0]?.state === "created" && acked.status === 200 && (await reminder(fresh))[0]?.state === "cancelled", { waiting, acked: acked.status, after: await reminder(fresh) });
+  ok("J-109 DW1 fail: a complaint not yet due waits in pg-boss and is not run; its acknowledgement cancels it there (it never runs)", waiting[0]?.state === "created" && acked.status === 200 && (await reminder(fresh))[0]?.state === "cancelled", { waiting, acked: acked.status, after: await reminder(fresh) });
   ok("J-109 DW2 fail: received five minutes ahead of this machine's clock is refused as in the future", ahead.status === 422 && JSON.stringify(ahead.body).includes("this date is in the future"), ahead);
 
   // ----------------------------------------------------------------------------------------------------------- W2
-  const ackFact = await t.locator("dt", { hasText: "Acknowledge by" }).locator("xpath=following-sibling::dd[1]").innerText().catch(async () => await t.locator("body").innerText());
+  const ackFact = await t.locator("dt", { hasText: "Acknowledge by" }).locator("xpath=following-sibling::dd[1]").innerText({ timeout: 10_000 });
   ok("J-109 W2 pass: the record page shows the acknowledge-by date: 2 business days after 12 Nov, skipping closed Fri 13 Nov (Tue 17 Nov, close of business)",
     row.acknowledgeBy.getTime() === due.getTime() && ackFact.includes(dayTime(due.toISOString(), cal.zone)) && due.getTime() === zonedInstant("2026-11-17", "17:00", cal.zone).getTime(), { ackFact, due, stored: row.acknowledgeBy });
   ok("J-109 W2 fail: it is not the date without the closed day (Mon 16 Nov)", dueOpen.getTime() !== due.getTime() && !ackFact.includes(dayTime(dueOpen.toISOString(), cal.zone)), { dueOpen, ackFact });
