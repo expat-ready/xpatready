@@ -10,6 +10,7 @@
 #     the journey header's own isolated.sh line: own database, own port, never :4400), the journey runs in Playwright's
 #     Chromium with video, trace and a screenshot per step (tests/journeys/walk.mjs + record.ts), and its recording is
 #     uploaded whatever the verdict, as walk-<journey>-<head sha> (README.md inside says how to replay; kept 30 days).
+#   * No cache: a dispatch on any ref writes nothing the default branch reads (CodeQL cache poisoning).
 #   * Self-test, every run: the fixture tests/journeys/fixtures/j_0_fails.ts fails on purpose; its job proves the walk
 #     step fails and the recording is still uploaded (tests/check_journey_recording.ts checks the same on a machine and
 #     checks this file's shape).
@@ -78,11 +79,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { ref: "${{ needs.plan.outputs.sha }}" }
+      # No npm cache (CodeQL cache poisoning, #2133): a dispatch runs in the default branch's cache scope on any ref's
+      # code, so it neither reads nor writes a cache; cloud-setup.sh installs from the lockfile.
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
       - name: set up like a cloud session (cloud-setup.sh, as the packs job; it also builds the web app the walk needs)
         run: bash "$P/tools/cloud-setup.sh"
       - name: Playwright's own Chromium (as the packs job)

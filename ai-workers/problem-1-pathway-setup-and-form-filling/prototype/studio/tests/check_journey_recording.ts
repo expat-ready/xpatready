@@ -42,6 +42,8 @@ ok("P-700 R2: the self-test step fails its job unless the fixture's walk failed 
   /steps\.w\.outcome/.test(y) && /steps\.up\.outputs\.artifact-id/.test(y) && /expect\\?":\\?"fail/.test(y) && /fail-fast: false/.test(y));
 ok("P-700 R2: the app starts only through the journey's isolated.sh line (walk.mjs), never :4400 or a second way",
   !/start\.sh|:4400|npm run (dev|start)/.test(y.replace(/^#.*$/gm, "")) && /isolated\.sh/.test(readFileSync(join(J, "walk.mjs"), "utf8")));
+ok("P-700 R2: no npm or actions cache (a dispatch on any ref must not write a cache the default branch reads; CodeQL, #2133)",
+  !/^\s*(cache|cache-dependency-path):|actions\/cache@/m.test(y.replace(/^\s*#.*$/gm, "")));
 
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
