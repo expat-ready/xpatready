@@ -17,7 +17,8 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { FilesPort } from "../../../../../ports/files.ts";
 import { normaliseAddress } from "../../../../../ports/consent.ts";
-import { MailMessage, type MailPort } from "../../../../../ports/mail.ts";
+import type { z } from "zod";
+import { MailMessage, type FirmMail, type MailPort } from "../../../../../ports/mail.ts";
 import { MessageRefused, MessageSend, PlatformAccountSend, type MessagePort } from "../../../../../ports/messages.ts";
 import { asBypass, firmScope } from "../../firm-scope.ts";
 import { MailSuppressed } from "./system-mail.ts";
@@ -33,7 +34,12 @@ export const attachmentKeyOf = (mailId: string, n: number, filename: string) => 
   return `mail/${mailId}/${n}/${/\.(meta|tmp)$/.test(clean) ? `${clean}-` : clean}`;
 };
 
-export class MessagesMail implements MailPort {
+/** PF-19e: a MailPort that can also write a firm's TRANSACTIONAL email inside the caller's transaction (the outbox row
+ *  commits or rolls back with the caller's change; `dispatch` after the commit). PlatformSession's reset uses it. */
+export type InTransactionMail = { sendInTransaction(tx: Prisma.TransactionClient, message: MailMessage): Promise<{ messageId: string; dispatch(): Promise<void> }> };
+export const canSendInTransaction = (m: MailPort): m is MailPort & InTransactionMail => typeof (m as Partial<InTransactionMail>).sendInTransaction === "function";
+
+export class MessagesMail implements MailPort, InTransactionMail {
   constructor(private readonly d: { db: PrismaClient; messages: MessagePort<Prisma.TransactionClient> & Partial<SystemSender>; files: FilesPort; log?: (line: string) => void; system?: boolean }) {}
 
   async send(message: MailMessage): Promise<{ messageId: string }> {
@@ -53,6 +59,31 @@ export class MessagesMail implements MailPort {
       await this.d.messages.dispatch(null, [r.outboxId]).catch((e: unknown) => this.d.log?.(`messages: dispatch of ${r.outboxId} failed (${e instanceof Error ? e.name : "error"}); the sweep sends it`));
       return { messageId: r.outboxId };
     }
+    const { firmId, input, write } = this.firmMail(m, mailId);
+    const keys: string[] = [];
+    for (const [n, a] of (m.attachments ?? []).entries()) keys.push((await this.d.files.put(firmId, attachmentKeyOf(mailId, n, a.filename), a.bytes, a.contentType)).key);
+    const r = await this.d.db.$transaction((tx) => write(tx, { ...input, attachments: keys }));
+    this.refused(r, m.to);
+    // Committed: the worker or the sweep sends it. A dispatch failure here must not make the caller send it again.
+    await this.dispatch(firmId, r.outboxId);
+    return { messageId: r.outboxId };
+  }
+
+  /** PF-19e: a firm's TRANSACTIONAL email with no attachment, written in the caller's transaction (no second connection,
+   *  no second transaction): refused or suppressed → it throws, and the caller's change rolls back with the row. */
+  async sendInTransaction(tx: Prisma.TransactionClient, message: MailMessage): Promise<{ messageId: string; dispatch(): Promise<void> }> {
+    const m = MailMessage.parse(message);
+    if (!("firmId" in m) || m.class !== "TRANSACTIONAL" || m.attachments?.length) throw new MessageRefused("not sent: in a transaction, only a firm's TRANSACTIONAL email with no attachment");
+    try { normaliseAddress("EMAIL", m.to); } catch { throw new MessageRefused("not sent: the address is not a valid email address"); }
+    const { firmId, input, write } = this.firmMail(m, randomUUID());
+    const r = await write(tx, { ...input, attachments: [] });
+    this.refused(r, m.to);
+    return { messageId: r.outboxId, dispatch: () => this.dispatch(firmId, r.outboxId) };
+  }
+
+  /** A firm email's MessagePort input, checked (before any file is stored: review m5), and the writer: sendSystem for the
+   *  system sender (PF-19e), else send. */
+  private firmMail(m: z.output<typeof FirmMail>, mailId: string) {
     const { firmId } = firmScope(m.firmId);
     const input = {
       firmId, ...(m.person ? { person: m.person } : {}), channel: "EMAIL" as const, class: m.class, address: m.to,
@@ -60,19 +91,19 @@ export class MessagesMail implements MailPort {
     };
     // (Above: an address MailPort's schema takes and the channel does not (`a@b-.example`) is refused without quoting the
     // address, since a job runner keeps the error text: break M2.)
-    // Checked before any file is stored (review m5): a message MessagePort refuses leaves nothing behind.
     const checked = MessageSend.safeParse(input);
     if (!checked.success) throw new MessageRefused(`not sent: ${checked.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
     const system = this.d.system ? this.d.messages.sendSystem?.bind(this.d.messages) : undefined;
     if (this.d.system && (!system || m.class !== "TRANSACTIONAL")) throw new MessageRefused("not sent: system mail is TRANSACTIONAL, through Messages.sendSystem");
-    const keys: string[] = [];
-    for (const [n, a] of (m.attachments ?? []).entries()) keys.push((await this.d.files.put(firmId, attachmentKeyOf(mailId, n, a.filename), a.bytes, a.contentType)).key);
-    const r = await this.d.db.$transaction((tx) => (system ? system(tx, { ...input, attachments: keys }) : this.d.messages.send(tx, { ...input, attachments: keys })));
-    // Not sent and never will be (a repeated key may answer a row already SENT: that is a success).
-    if (r.state === "SUPPRESSED") throw new MailSuppressed(normaliseAddress("EMAIL", m.to), r.reason);
+    const write = (tx: Prisma.TransactionClient, i: MessageSend) => (system ? system(tx, i) : this.d.messages.send(tx, i));
+    return { firmId, input, write };
+  }
+  /** Not sent and never will be (a repeated key may answer a row already SENT: that is a success). */
+  private refused(r: { state: string; reason: string | null }, to: string) {
+    if (r.state === "SUPPRESSED") throw new MailSuppressed(normaliseAddress("EMAIL", to), r.reason);
     if (r.state === "FAILED" || r.state === "BOUNCED") throw new MessageRefused(`not sent: ${r.reason ?? r.state}`);
-    // Committed: the worker or the sweep sends it. A dispatch failure here must not make the caller send it again.
-    await this.d.messages.dispatch(firmId, [r.outboxId]).catch((e: unknown) => this.d.log?.(`messages: dispatch of ${r.outboxId} failed (${e instanceof Error ? e.name : "error"}); the sweep sends it`));
-    return { messageId: r.outboxId };
+  }
+  private dispatch(firmId: string, outboxId: string) {
+    return this.d.messages.dispatch(firmId, [outboxId]).catch((e: unknown) => this.d.log?.(`messages: dispatch of ${outboxId} failed (${e instanceof Error ? e.name : "error"}); the sweep sends it`));
   }
 }

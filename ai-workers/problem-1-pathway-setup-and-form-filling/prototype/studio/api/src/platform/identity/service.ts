@@ -20,7 +20,7 @@ import { LocalIdentity } from "./local.ts";
 import { writeMoneyKeysGranted } from "./money-line.ts";
 import { IdentityRefused, PlatformClock, identityConfig, type IdentityPort } from "./port.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./session/mail.ts";
-import { MailSuppressed, SYSTEM_LIMIT_WORDS, SystemMailLimited, suppressedWords } from "../messages/send/system-mail.ts";
+import { MailSuppressed, SYSTEM_LIMIT_WORDS, SystemMailLimited, suppressedWords, systemMailBlocked } from "../messages/send/system-mail.ts";
 import { requireStepUp } from "./session/step-up.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -362,12 +362,27 @@ export class PlatformIdentity implements OnModuleInit {
     const out = await this.inFirm(actor, async (tx) => {
       await this.rowCheck(tx, actor, email, roles, reason);
       await this.seatCheck(tx, actor.firmId);
+      const blocked = await this.mailBlocked(tx, actor.firmId, email);
+      if (blocked) return { blocked };
       const row = await this.insertInvitation(tx, actor.firmId, email, roles, actorWord(actor.staffId));
       await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${roles.join(", ")}; 72 hours)`, detail: { invitationId: row.id, roles, reason } });
       return { id: row.id, email, roles, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token };
     });
+    if ("blocked" in out) return this.refuseMail(actor, out.blocked, email, null);
     const { token, ...answer } = out;
     return { ...answer, emailed: PlatformIdentity.mailed(await this.emailInvitation(actor, email, token, null, answer.id), email, answer.id) };
+  }
+
+  /** PF-19e (break M3, m1): an address the invitation email would be refused for is refused before anything is written,
+   *  so a single invite or a resend never leaves an unsent invitation or revokes the link that works. The send path checks
+   *  again when it sends (a race between the two ends in the after-commit answer, mailed()). Only with a mail port. */
+  private mailBlocked(tx: Tx, firmId: string, email: string) {
+    return this.mail ? systemMailBlocked(tx, firmId, email) : Promise.resolve(null);
+  }
+  private async refuseMail(actor: StaffContext, blocked: "SUPPRESSED" | "LIMITED", to: string, invitationId: string | null): Promise<never> {
+    if (blocked === "LIMITED") problem(429, "Too many emails", SYSTEM_LIMIT_WORDS, { code: "EMAIL_LIMIT" });
+    await this.inFirm(actor, (tx) => auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.email_suppressed", entityKey: invitationId ?? "none", summary: `an invitation email was refused: the address is on the firm's suppression list (${invitationId ? "the invitation was not changed" : "no invitation was made"})`, detail: { invitationId, mail: "identity.invitation" } }));
+    return problem(409, "Email not sent", suppressedWords(to), { code: "EMAIL_SUPPRESSED", ...(invitationId ? { invitationId } : {}) });
   }
 
   /** PF-4c part 1 (AG-1-69): one form of 1-20 rows in one locked transaction (the firm's row lock takes two batches, or a
@@ -429,12 +444,15 @@ export class PlatformIdentity implements OnModuleInit {
       // Break M2: resending gives the invitation's roles again, so the same rules as inviting apply (an Admin cannot resend
       // an Owner invitation, nor one with a role holding keys it lacks).
       await this.roleRules(actor, null, old.roles, [], reason, tx);
+      const blocked = await this.mailBlocked(tx, actor.firmId, old.email);
+      if (blocked) return { blocked, email: old.email, id: old.id };
       await tx.$executeRaw`update platform_invitation set revoked_at = now() where id = ${old.id}::uuid`;
       await this.seatCheck(tx, actor.firmId);
       const row = await this.insertInvitation(tx, actor.firmId, old.email, old.roles, actorWord(actor.staffId));
       await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.resent", entityKey: row.id, summary: "an invitation was sent again; the old link no longer works", detail: { invitationId: row.id, replaces: old.id, roles: old.roles } });
       return { id: row.id, replaces: old.id, email: old.email, roles: old.roles, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token };
     });
+    if ("blocked" in out) return this.refuseMail(actor, out.blocked, out.email, out.id);
     const { token, ...answer } = out;
     return { ...answer, emailed: PlatformIdentity.mailed(await this.emailInvitation(actor, answer.email, token, null, answer.id), answer.email, answer.id) };
   }

@@ -82,7 +82,9 @@ const logs: string[] = [];
 const consent = new ConsentStore(auditEvent, msgClock);
 const messages = new Messages({ db, consent, files, jobs, alerts: () => alerts, channels: channelsOf([["EMAIL", localEmail]]), clock: msgClock, box, log: (l) => logs.push(l) });
 await messages.register();
-const systemMail = new MessagesMail({ db, messages, files, system: true, log: (l) => logs.push(l) });
+// The app's MAIL_PORT runs on the app's own walled pool (Db), as in the app: set once the Nest app is made (break M1's storm).
+const mailDeps = { db: db as PrismaClient, messages, files, system: true, log: (l: string) => logs.push(l) };
+const systemMail = new MessagesMail(mailDeps);
 const inbox = new PlatformInbox(db as never, files, () => true, undefined, box);
 const run = async () => { await jobs.runDue(); await jobs.runDue(); };
 
@@ -91,7 +93,9 @@ try {
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: new LocalIdentity("pf19e-check-signing-key-0123456789abcdef", () => clock.now()) }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
     { provide: IDENTITY_ADMIN_PORT, useValue: new LocalIdentityAdmin(() => clock.now()) }, { provide: MAIL_PORT, useValue: systemMail }, PlatformSession];
   @Module({ controllers: [PlatformIdentityController, PlatformSessionController, PublicInvitationController] as never[], providers: providers as never[] }) class TestApp {}
-  const nest = await NestFactory.create(TestApp, { logger: false }); await nest.listen(0, "127.0.0.1"); app = nest;
+  // Nest's own error lines are written, so DW5 scans them too (review m4).
+  const nest = await NestFactory.create(TestApp, { logger: ["error", "warn"] }); await nest.listen(0, "127.0.0.1"); app = nest;
+  mailDeps.db = nest.get(Db);
   const base = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}`;
 
   await seedSampleFirms(db);
@@ -143,6 +147,13 @@ try {
   await db.msgOutbox.update({ where: { id: moved.outboxId }, data: { renderedHash: await sha256Hex(invBytes) } });
   const movedOut = await messages.deliver(OTHER, moved.outboxId), movedRow = await db.msgOutbox.findUniqueOrThrow({ where: { id: moved.outboxId } });
   ok("PF-19e DW1 fail: a sealed body moved into another firm's outbox (its hash set to match) is never sent: FAILED \"body could not be opened\"", movedOut === "failed" && movedRow.state === "FAILED" && movedRow.stateReason === UNOPENED, movedRow);
+  // Review m4: a body over one part (a long notice) is cut into sealed parts; reordered or dropped parts never open.
+  const long = await db.$transaction((tx) => messages.send(tx, { firmId: OTHER, channel: "EMAIL", class: "TRANSACTIONAL", address: "pf19e.long@example.com", content: { subject: "Long", text: "Your code is 654321. ".repeat(900) }, idempotencyKey: randomUUID() }));
+  const longBytes = await raw(OTHER, long.outboxId), longParts = (JSON.parse(new TextDecoder().decode(longBytes)) as { parts: string[] }).parts;
+  const asFile = (parts: string[]) => new TextEncoder().encode(JSON.stringify({ sealed: "msgseal1", parts }));
+  ok("PF-19e DW1 pass: a long body is sealed in several parts and opens whole", longParts.length >= 3 && openStoredBody(box, OTHER, long.outboxId, longBytes).text.startsWith("Your code is 654321."), longParts.length);
+  ok("PF-19e DW1 fail: its parts reordered, one dropped, or one repeated never open",
+    [[longParts[1], longParts[0], ...longParts.slice(2)], longParts.slice(0, -1), [longParts[0], ...longParts]].every((ps) => refusedWith(() => openStoredBody(box, OTHER, long.outboxId, asFile(ps))) instanceof SecretRefused));
   ok("PF-19e DW1 fail: no log line of the worker carries the body", !logs.some((l) => l.includes("#t=") || l.includes("invited to join")), logs);
   void BODY_PURPOSE;
 
@@ -173,15 +184,39 @@ try {
   const sixth = await call(base, "POST", `/api/platform/staff/${O}/reset-two-step`, { token: tR });
   ok("PF-19e DW3 pass: five reset emails in an hour to one address are sent", resets.length === 5 && resets.every((s) => s === 200) && (await rowsTo(oEmail)).length === 5, resets);
   ok("PF-19e DW3 fail: the sixth reset email in an hour to that address → 429 with a plain sentence, nothing reset, no sixth email",
-    sixth.status === 429 && sixth.body.code === "EMAIL_LIMIT" && /Too many account emails went to this address in the last hour/.test(sixth.body.detail) && (await rowsTo(oEmail)).length === 5, sixth);
+    sixth.status === 429 && sql(`select count(*) from audit_event where action = 'platform.staff.two_step_reset' and entity_key = '${O}'`) === String(SYSTEM_PER_ADDRESS_HOUR) && sixth.body.code === "EMAIL_LIMIT" && /Too many account emails went to this address in the last hour/.test(sixth.body.detail) && (await rowsTo(oEmail)).length === 5, sixth);
   const firmOwn = await db.$transaction((tx) => messages.send(tx, { firmId: FIRM, channel: "EMAIL", class: "TRANSACTIONAL", address: oEmail, content: { subject: "Receipt", text: "A receipt." }, idempotencyKey: randomUUID() }));
   ok("PF-19e DW3 pass: the firm's own email to the same address is not stopped by the platform's limit (it meets the cap instead)", firmOwn.state === "QUEUED", firmOwn);
   const claim = await (async () => { try { await db.$transaction((tx) => messages.send(tx, { firmId: FIRM, channel: "EMAIL", class: "TRANSACTIONAL", address: "x@example.com", content: { subject: "S", text: "T" }, idempotencyKey: "system:mine" })); return null; } catch (e) { return e; } })();
   ok("PF-19e DW3 fail: a firm's own message cannot claim the exemption with a system: key (refused)", claim instanceof Error && /platform's own/.test(String(claim)), String(claim));
+  // Break M1: a storm of parallel resets to one person answers 200 or 429 only (never 500), and the limit holds.
+  const T = sql(`select id from platform_staff where actor_id = 'user-T'`), tEmail = sql(`select email from platform_staff where id = '${T}'`);
+  const storm = await Promise.all(Array.from({ length: 25 }, () => call(base, "POST", `/api/platform/staff/${T}/reset-two-step`, { token: tR })));
+  const codes = storm.map((r) => r.status);
+  ok("PF-19e DW3 fail (break M1): 25 parallel resets to one person → only 200 and 429, never a 500; exactly 5 emails to the address",
+    codes.every((c) => c === 200 || c === 429) && codes.filter((c) => c === 200).length === SYSTEM_PER_ADDRESS_HOUR && (await rowsTo(tEmail)).length === SYSTEM_PER_ADDRESS_HOUR, codes);
+  // Break M3: a resend refused by the limit changes nothing: the link the person last got still works.
+  const rInv = await call(base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email: "pf19e.resend@example.com", roles: ["READ_ONLY"] } });
+  let lastId = rInv.body.id as string;
+  for (let i = 2; i <= SYSTEM_PER_ADDRESS_HOUR; i++) lastId = (await call(base, "POST", `/api/platform/staff/invitations/${lastId}/resend`, { token: tR, body: {} })).body.id;
+  const sixthResend = await call(base, "POST", `/api/platform/staff/invitations/${lastId}/resend`, { token: tR, body: {} });
+  await run();
+  // The link of the invitation still pending: the one whose token hashes to its stored hash (the emails share a send time).
+  const lastHash = sql(`select token_hash from platform_invitation where id = '${lastId}'`), { createHash } = await import("node:crypto");
+  const lastLink = (await inbox.list("pf19e.resend@example.com", undefined)).messages.map((m) => /\/invitation#t=([A-Za-z0-9_-]{43})/.exec(m.body)?.[1]).find((t) => !!t && createHash("sha256").update(t).digest("hex") === lastHash);
+  ok("PF-19e DW3 fail (break M3): the sixth resend in an hour → 429, and the invitation the person last got stays pending (not revoked, nothing new made)",
+    sixthResend.status === 429 && sixthResend.body.code === "EMAIL_LIMIT" && sql(`select count(*) from platform_invitation where email = 'pf19e.resend@example.com' and revoked_at is null`) === "1"
+    && sql(`select revoked_at is null from platform_invitation where id = '${lastId}'`) === "t", { sixthResend, lastId });
+  const lastAccept = lastLink ? await call(base, "POST", `/api/public/invitations/${lastLink}/accept`) : { status: 0 };
+  ok("PF-19e DW3 pass (break M3): that last link still accepts", lastAccept.status === 200, lastAccept);
 
   // ------------------------------------------------------------------------------------------ DW4 a suppressed address
-  sql(`update msg_outbox set created_at = created_at - interval '2 hours' where address = '${oEmail}'`);   // the hour starts again
+  // Break m2 first: O's address is at the hourly limit and then suppressed → 409, not the limit's 429.
   await db.$transaction((tx) => consent.suppress(tx, { firmId: FIRM, channel: "EMAIL", address: oEmail, reason: "HARD_BOUNCE", by: "system:pf19e" }));
+  const supAtLimit = await call(base, "POST", `/api/platform/staff/${O}/reset-two-step`, { token: tR });
+  ok("PF-19e DW4 fail (break m2): a suppressed address already at the hourly limit → 409 with the sentence (not 429)", supAtLimit.status === 409 && supAtLimit.body.code === "EMAIL_SUPPRESSED", supAtLimit);
+  sql(`update msg_outbox set created_at = created_at - interval '2 hours'`);   // the hour starts again
+  sql(`delete from audit_event where action = 'platform.staff.email_suppressed'`);
   const sessionsBefore = sql(`select count(*) from platform_session_revocation where staff_id = '${O}'`);
   const sup = await call(base, "POST", `/api/platform/staff/${O}/reset-two-step`, { token: tR });
   const supLine = sql(`select count(*) from audit_event where action = 'platform.staff.email_suppressed' and entity_key = '${O}'`);
@@ -192,8 +227,9 @@ try {
     && sql(`select count(*) from platform_session_revocation where staff_id = '${O}'`) === sessionsBefore && sql(`select count(*) from msg_suppression where firm_id = '${FIRM}' and address = '${oEmail}'`) === "1", { supLine, sessionsBefore });
   await db.$transaction((tx) => consent.suppress(tx, { firmId: FIRM, channel: "EMAIL", address: "pf19e.bounced@example.com", reason: "COMPLAINT", by: "system:pf19e" }));
   const supInv = await call(base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email: "pf19e.bounced@example.com", roles: ["READ_ONLY"] } });
-  ok("PF-19e DW4 fail: an invitation to a suppressed address → 409 with the sentence and an audit line (the invitation stays pending)",
-    supInv.status === 409 && supInv.body.detail === suppressedWords("pf19e.bounced@example.com") && sql(`select count(*) from audit_event where action = 'platform.invitation.email_suppressed' and entity_key = '${supInv.body.invitationId}'`) === "1", supInv);
+  ok("PF-19e DW4 fail: an invitation to a suppressed address → 409 with the sentence and an audit line, and no invitation is made (break m1: no seat taken)",
+    supInv.status === 409 && supInv.body.detail === suppressedWords("pf19e.bounced@example.com") && sql(`select count(*) from audit_event where action = 'platform.invitation.email_suppressed'`) === "1"
+    && sql(`select count(*) from platform_invitation where email = 'pf19e.bounced@example.com'`) === "0", supInv);
   const R2 = sql(`select id from platform_staff where firm_id = '${FIRM}' and status = 'ACTIVE' and id not in ('${R}', '${O}') and email <> '${oEmail}' limit 1`);
   const fine = await call(base, "POST", `/api/platform/staff/${R2}/reset-two-step`, { token: tR });
   ok("PF-19e DW4 pass: a reset to an address that is not suppressed is done (200)", fine.status === 200 && fine.body.notified === true, fine);

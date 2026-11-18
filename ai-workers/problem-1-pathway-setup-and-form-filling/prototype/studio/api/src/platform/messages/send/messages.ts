@@ -32,7 +32,7 @@ import { ACCOUNT_MAIL_FROM, readSetting, TIME_ZONE } from "../../settings.ts";
 import { ensureMessagesFirm } from "../consent/messages-firm.ts";
 import type { SecretBoxPort } from "../../../../../ports/secret-box.ts";
 import { messageBodyBox, openStoredBody, storedBody } from "./body-seal.ts";
-import { SYSTEM_KEY_PREFIX, SYSTEM_PER_ADDRESS_HOUR, SystemMailLimited } from "./system-mail.ts";
+import { SYSTEM_KEY_PREFIX, SystemMailLimited, systemMailBlocked } from "./system-mail.ts";
 
 type Tx = Prisma.TransactionClient;
 /** Queue names start "messages." (a short dotted head reads as a program key to B164's guard). */
@@ -100,11 +100,8 @@ export class Messages implements MessagePort<Tx> {
     const { firmId } = firmScope(m.firmId), address = normaliseAddress(m.channel, m.address);
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`msg_outbox:system:${firmId}:${address}`}))`;
     const had = await tx.msgOutbox.findFirst({ where: firmScope(firmId, { idempotencyKey: m.idempotencyKey }), select: { id: true } });
-    if (!had) {
-      const [{ n }] = await tx.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM "msg_outbox" WHERE "firm_id" = ${firmId}::uuid AND "address" = ${address}
-        AND "idempotency_key" LIKE ${`${SYSTEM_KEY_PREFIX}%`} AND "state" <> 'SUPPRESSED' AND "created_at" > now() - interval '1 hour'`;
-      if (n >= SYSTEM_PER_ADDRESS_HOUR) throw new SystemMailLimited();
-    }
+    // A suppressed address is written SUPPRESSED (the caller's 409), never refused by the limit (break m2).
+    if (!had && (await systemMailBlocked(tx, firmId, address)) === "LIMITED") throw new SystemMailLimited();
     return this.write(tx, m);
   }
 

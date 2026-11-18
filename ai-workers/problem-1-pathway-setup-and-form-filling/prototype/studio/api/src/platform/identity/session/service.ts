@@ -15,8 +15,8 @@ import { FIRM_KEY, forbidden, problem, unauthorized, type StaffContext } from ".
 import { PlatformClock } from "../port.ts";
 import { PlatformIdentity } from "../service.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./mail.ts";
-import { ensureMessagesFirm } from "../../messages/consent/messages-firm.ts";
-import { MailSuppressed, SYSTEM_LIMIT_WORDS, SystemMailLimited, suppressedWords } from "../../messages/send/system-mail.ts";
+import { canSendInTransaction } from "../../messages/send/mail.ts";
+import { MailSuppressed, SYSTEM_LIMIT_WORDS, SystemMailLimited, suppressedWords, systemMailBlocked } from "../../messages/send/system-mail.ts";
 import { IDENTITY_ADMIN_PORT, LocalIdentityAdmin, type IdentityAdminPort } from "./provider.ts";
 import { requireStepUp } from "./step-up.ts";
 
@@ -183,32 +183,50 @@ export class PlatformSession {
    *  are emailed through MailPort, and they set up the second step again at their next sign-in. PF-19e: a suppressed
    *  address → 409 with the sentence and an audit line, nothing reset; over the per-address hourly limit → 429. */
   async resetTwoStep(actor: StaffContext, id: string) {
-    // The notice is sent inside the reset's transaction, which holds the firm's row lock; a firm's first message makes its
-    // msg_firm row, whose key check would wait on that lock (PF-19e: found by DW3), so the row is made first.
-    await this.db.$transaction((tx) => ensureMessagesFirm(tx, actor.firmId));
-    try { return await this.resetTwoStepOnce(actor, id); } catch (e) {
-      if (e instanceof SystemMailLimited) problem(429, "Too many emails", SYSTEM_LIMIT_WORDS, { code: "EMAIL_LIMIT" });
+    // PF-19e (review and break M1): the notice goes through the one send path. Sent by MailPort.send while this
+    // transaction held the firm's row lock, it took a second connection (a burst of resets emptied the pool: 500s).
+    // So: under the lock, the checks, then the mail check (a suppressed address → 409 with an audit line, over the hourly
+    // limit → 429, nothing reset), then the notice is written in this same transaction (MessagesMail.sendInTransaction),
+    // queued after the commit. A refused notice still rolls the reset back (PF-4b), and a provider refusal rolls the
+    // notice back, so nobody is told of a reset that did not happen. A MailPort without it (a test's fake) sends as before.
+    const queued: (() => Promise<void>)[] = [];
+    const out = await this.inFirm(actor, async (tx) => {
+      const t = await this.resetChecks(tx, actor, id);
+      const blocked = canSendInTransaction(this.mail) ? await systemMailBlocked(tx, actor.firmId, t.email) : null;
+      if (blocked === "SUPPRESSED") await this.audit(tx, actor, "platform.staff.email_suppressed", t.id, "a two-step reset was not done: the person's address is on the firm's suppression list", { staffId: t.id, mail: "identity.two_step_reset" });
+      if (blocked) return { blocked, email: t.email };
+      await this.endSessions(tx, actor, t.id, "two-step-reset");
+      await this.audit(tx, actor, "platform.staff.two_step_reset", t.id, "a staff member's two-step sign-in was reset by an Owner or Admin; their sessions ended", { staffId: t.id });
+      const notice = { firmId: actor.firmId, to: t.email, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL" as const, templateKey: "identity.two_step_reset", subject: "Your two-step sign-in was reset",
+        text: "An Owner or Admin of your firm reset your two-step sign-in. The next time you sign in, you set it up again. If you did not ask for this, tell your firm's Owner at once." };
+      // The out-of-band notice before the provider: a mail failure changes nothing at the provider (the transaction rolls back).
+      if (canSendInTransaction(this.mail)) queued.push((await this.mail.sendInTransaction(tx, notice)).dispatch);
+      else await this.mail.send(notice);
+      await this.admin.resetTwoStep({ staffId: t.id, subject: t.identitySubject, email: t.email });
+      return { staffId: t.id };
+    }).catch(async (e: unknown) => {
+      // A race with the mail check (the address suppressed, or the hour filled, in between): the same answers.
+      if (e instanceof SystemMailLimited) return { blocked: "LIMITED" as const, email: "" };
       if (!(e instanceof MailSuppressed)) throw e;
       const staffId = id.toLowerCase();
       await this.inFirm(actor, (tx) => this.audit(tx, actor, "platform.staff.email_suppressed", staffId, "a two-step reset was not done: the person's address is on the firm's suppression list", { staffId, mail: "identity.two_step_reset" }));
-      return problem(409, "Email not sent", suppressedWords(e.address), { code: "EMAIL_SUPPRESSED" });
-    }
-  }
-  private async resetTwoStepOnce(actor: StaffContext, id: string) {
-    return this.inFirm(actor, async (tx) => {
-      const t = await this.target(tx, actor.firmId, id);
-      if (!actor.roles.includes("OWNER") && !actor.roles.includes("ADMIN")) forbidden("Only an Owner or Admin resets a person's two-step sign-in.", "OWNER_OR_ADMIN_ONLY");
-      if (t.id === actor.staffId) forbidden("Nobody resets their own two-step sign-in. Ask another Owner or Admin.", "OWN_TWO_STEP");
-      if (t.grants.some((g) => g.role === "OWNER") && !actor.roles.includes("OWNER")) forbidden("Only an Owner resets an Owner's two-step sign-in.", "OWNER_ONLY");
-      if (t.status === "DEACTIVATED") problem(409, "Deactivated", "This person is deactivated: reactivate them first.", { code: "STAFF_NOT_ACTIVE" });
-      requireStepUp(actor, this.clock.now(), "Resetting a person's two-step sign-in");
-      await this.endSessions(tx, actor, t.id, "two-step-reset");
-      await this.audit(tx, actor, "platform.staff.two_step_reset", t.id, "a staff member's two-step sign-in was reset by an Owner or Admin; their sessions ended", { staffId: t.id });
-      // The out-of-band notice first: a mail failure changes nothing at the provider (the transaction rolls back).
-      await this.mail.send({ firmId: actor.firmId, to: t.email, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.two_step_reset", subject: "Your two-step sign-in was reset",
-        text: "An Owner or Admin of your firm reset your two-step sign-in. The next time you sign in, you set it up again. If you did not ask for this, tell your firm's Owner at once." });
-      await this.admin.resetTwoStep({ staffId: t.id, subject: t.identitySubject, email: t.email });
-      return { staffId: t.id, twoStep: { method: null }, notified: true };
+      return { blocked: "SUPPRESSED" as const, email: e.address };
     });
+    if ("blocked" in out) {
+      if (out.blocked === "LIMITED") problem(429, "Too many emails", SYSTEM_LIMIT_WORDS, { code: "EMAIL_LIMIT" });
+      problem(409, "Email not sent", suppressedWords(out.email), { code: "EMAIL_SUPPRESSED" });
+    }
+    for (const d of queued) await d();
+    return { staffId: out.staffId, twoStep: { method: null }, notified: true };
+  }
+  /** Who may reset whom (question 3 decided), under the firm's row lock. */
+  private async resetChecks(tx: Tx, actor: StaffContext, id: string) {
+    const t = await this.target(tx, actor.firmId, id);
+    if (!actor.roles.includes("OWNER") && !actor.roles.includes("ADMIN")) forbidden("Only an Owner or Admin resets a person's two-step sign-in.", "OWNER_OR_ADMIN_ONLY");
+    if (t.id === actor.staffId) forbidden("Nobody resets their own two-step sign-in. Ask another Owner or Admin.", "OWN_TWO_STEP");
+    if (t.grants.some((g) => g.role === "OWNER") && !actor.roles.includes("OWNER")) forbidden("Only an Owner resets an Owner's two-step sign-in.", "OWNER_ONLY");
+    if (t.status === "DEACTIVATED") problem(409, "Deactivated", "This person is deactivated: reactivate them first.", { code: "STAFF_NOT_ACTIVE" });
+    requireStepUp(actor, this.clock.now(), "Resetting a person's two-step sign-in");
+    return t;
   }
 }
