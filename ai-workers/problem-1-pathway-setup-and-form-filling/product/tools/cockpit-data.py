@@ -152,12 +152,12 @@ class GH:
             if self.offline:
                 raise RuntimeError("offline")
             self.count(url)
-            r = subprocess.run(["curl", "-sS", "--fail-with-body", "-D", "-", "-H", "Accept: application/vnd.github+json",
+            r = subprocess.run(["curl", "-sSL", "--fail-with-body", "-D", "-", "-H", "Accept: application/vnd.github+json",
                                 "-H", f"Authorization: token {self.token}", url], capture_output=True, text=True)
             if r.returncode:
                 raise RuntimeError(f"GET {url.replace(self.api, '')} failed: {(r.stdout[-200:] + ' ' + r.stderr[:200]).strip()}")
             head, _, body = r.stdout.partition("\n\n")          # text mode: curl's \r\n arrive as \n
-            while head.startswith("HTTP/") and body.startswith("HTTP/"):          # a 100-continue or proxy preamble
+            while head.startswith("HTTP/") and body.startswith("HTTP/"):          # a 100-continue, proxy preamble or followed redirect (-L)
                 head, _, body = body.partition("\n\n")
             out += json.loads(body)
             m = re.search(r'<([^>]+)>;\s*rel="next"', head)
@@ -1033,7 +1033,10 @@ def heartbeat_read(gh):
     if not r:
         return {"error": "the heartbeat workflow has not finished a run yet"}
     out = {"run": {k: r.get(k) for k in ("id", "conclusion", "created_at", "updated_at", "html_url")}}
-    at = parse_iso(r.get("updated_at") or r.get("created_at"))
+    try:
+        at = _aware(parse_iso(r.get("updated_at") or r.get("created_at")))
+    except (ValueError, TypeError, AttributeError):
+        at = None
     if at and NOW - at <= timedelta(minutes=ENFORCE_STALE_MIN):
         try:
             arts = gh.get(f"/actions/runs/{r['id']}/artifacts?per_page=20").get("artifacts") or []
@@ -1057,29 +1060,56 @@ def heartbeat_read(gh):
 
 
 def enforcement_lines(d, conf, hb):
+    """CK-3 lines; an odd field in an input gives two grey "not measured" lines with a run note, never a stopped build."""
+    try:
+        return _enforcement_lines(d, conf, hb)
+    except Exception as e:                      # review #2141: one bad artifact field must not stop the board
+        ERRORS.append(f"enforced: {type(e).__name__}: {str(e)[:200]}")
+        why = f"the reading could not be used ({type(e).__name__}); see the run notes"
+        return {"lines": [{"key": "setup", "light": "grey", "text": "Set-up enforced: not measured", "src": f"tools/conformance-check.py (CK-1): {why}", "items": [], "link": None},
+                          {"key": "pipeline", "light": "grey", "text": "Pipeline running: not measured", "src": f"the {HEARTBEAT_WF} workflow (CK-2): {why}", "items": [], "link": None}],
+                "light": "grey"}
+
+
+def _aware(t):
+    """A time with no zone is not a time here (it cannot be compared with the snapshot)."""
+    return t if isinstance(t, datetime) and t.tzinfo else None
+
+
+def _check_at(c):
+    try:
+        return _aware(parse_iso(c.get("checked_at"))) if isinstance(c, dict) and c.get("checked_at") else None
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def _enforcement_lines(d, conf, hb):
     """CK-3 (checks brief): two lines near the top. Set-up enforced (CK-1), from the heartbeat's own check when that is fresh,
     else from the check this run made on main; pipeline running (CK-2), from the newest finished heartbeat run. Machines
     write the status; a heartbeat over 45 min old is "unknown (stale)", never yes (FORMULAS.md › Enforced)."""
     taken = parse_iso((d.get("lineage") or {}).get("taken_at")) if (d.get("lineage") or {}).get("taken_at") else NOW
     hb = hb if isinstance(hb, dict) else {}
-    run = hb.get("run") or {}
-    r_at = parse_iso(run.get("updated_at") or run.get("created_at")) if run else None
+    run = hb.get("run") if isinstance(hb.get("run"), dict) else {}
+    try:
+        r_at = _aware(parse_iso(run.get("updated_at") or run.get("created_at"))) if run else None
+    except (ValueError, TypeError, AttributeError):
+        r_at = None
     fresh = bool(r_at) and (taken - r_at) <= timedelta(minutes=ENFORCE_STALE_MIN)
     hm = lambda t: t.astimezone(IST).strftime("%H:%M IST") if t else "time not given"
     # set-up
     c, csrc = None, None
     hc = hb.get("conformance") if fresh else None
-    if isinstance(hc, dict) and hc.get("enforced") in ("yes", "no"):
+    hc_at = _check_at(hc)
+    hc_fresh = bool(hc_at) and (taken - hc_at) <= timedelta(minutes=ENFORCE_STALE_MIN)
+    board_ok = isinstance(conf, dict) and not conf.get("error")
+    if isinstance(hc, dict) and hc.get("enforced") in ("yes", "no") and (hc_fresh or not board_ok):   # review #2141: a stale one gives way
         c, csrc = hc, f"the heartbeat run's own set-up check ({run.get('html_url') or 'run link not given'})"
-    elif isinstance(conf, dict) and not conf.get("error"):
+    elif board_ok:
         c, csrc = conf, f"tools/conformance-check.py from main, run by this board build on {str(conf.get('ref') or 'main')[:9]}"
-    counts = (c or {}).get("counts") or {}
+    counts = (c or {}).get("counts") if isinstance((c or {}).get("counts"), dict) else {}
     checked = (c or {}).get("checked")
     if c and isinstance(checked, int) and checked > 0 and c.get("enforced") in ("yes", "no"):
-        try:
-            cat = parse_iso(c.get("checked_at"))
-        except (ValueError, TypeError, AttributeError):
-            cat = None
+        cat = _check_at(c)
         cstale = not cat or (taken - cat) > timedelta(minutes=ENFORCE_STALE_MIN)
         word = "unknown (stale)" if cstale else c["enforced"]
         setup = {"key": "setup", "light": "amber" if cstale else ("green" if c["enforced"] == "yes" else "red"),
@@ -1102,14 +1132,18 @@ def enforcement_lines(d, conf, hb):
                 "src": f"the newest finished {HEARTBEAT_WF} run on main is over {ENFORCE_STALE_MIN} min old (it runs every 30 min); never shown as yes when stale",
                 "items": [], "link": run.get("html_url")}
     else:
-        yes = (h.get("running") == "yes") if h.get("running") in ("yes", "no") else run.get("conclusion") == "success"
+        # review #2141: a successful run does not mean running (an unchanged open alarm ends green); only heartbeat.json's
+        # own word says yes. Without it, a failed run reads no and anything else reads unknown.
+        word = h.get("running") if h.get("running") in ("yes", "no") else ("no" if run.get("conclusion") == "failure" else None)
         gs = h.get("green_streak_h")
-        alarms = [f"{a.get('id')}: {a.get('why')}" for a in (h.get("alarms") or []) if isinstance(a, dict)]
-        pipe = {"key": "pipeline", "light": "green" if yes else "red",
-                "text": f"Pipeline running: {'yes' if yes else 'no'} · last heartbeat {hm(r_at)}" +
-                        (f" · green streak {gs} h" if isinstance(gs, (int, float)) else ""),
+        alarms = [f"{a.get('id')}: {a.get('why')}" for a in (h.get("alarms") or []) if isinstance(a, dict)] if isinstance(h.get("alarms"), list) else []
+        pipe = {"key": "pipeline", "light": {"yes": "green", "no": "red"}.get(word, "amber"),
+                "text": f"Pipeline running: {word or 'unknown'} · last heartbeat {hm(r_at)}" +
+                        (f" · green streak {gs} h" if word == "yes" and isinstance(gs, (int, float)) and not isinstance(gs, bool) else ""),
                 "src": f"the newest finished {HEARTBEAT_WF} run on main ({run.get('conclusion')})" +
-                       ("; its heartbeat.json" if h else f"; heartbeat.json not read ({hb.get('artifact_error') or 'no artifact'}), so from the run's result only"),
+                       ("; its heartbeat.json" if h.get("running") in ("yes", "no") else
+                        f"; heartbeat.json not read ({hb.get('artifact_error') or 'no artifact'}), so " +
+                        ("no from the failed run" if word == "no" else "unknown: a successful run alone does not prove the pipeline runs")),
                 "items": alarms[:12], "link": run.get("html_url")}
     lines = [setup, pipe]
     return {"lines": lines, "light": flow_light(*[x["light"] if x["light"] != "grey" else None for x in lines])}
