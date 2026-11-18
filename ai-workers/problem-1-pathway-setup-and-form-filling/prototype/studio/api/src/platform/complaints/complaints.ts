@@ -436,28 +436,25 @@ export class ComplaintsService {
         { sentTo: "owners_admins", to: admins.filter((a) => a.id !== handler?.id).map((a) => ({ address: a.email, staffId: a.id })), text: `A complaint was due to be acknowledged by ${due} (${zone}), and its handler ${reach}. Open it in Complaints (reference ${complaintId}), choose a new handler if needed and record the acknowledgement.` },
         { sentTo: "firm_contact", to: [{ address: firm.contactEmail, staffId: null }], text: `A complaint was due to be acknowledged by ${due} (${zone}), and neither its handler nor an Owner or Admin can be reached. Open it in Complaints (reference ${complaintId}), choose a new handler and record the acknowledgement.` },
       ];
-      // Tier by tier (PF-19r, break m3): the handler, else each active Owner and Admin, else the firm's contact address. A
-      // recipient the gate refuses (a suppressed address) is skipped and its SUPPRESSED row kept; the first tier that
-      // reaches anyone is the one recorded. When nobody can be reached, the run rolls back and the job tries again.
-      let refused: Error | null = null, used: Tier | null = null;
-      for (const tier of tiers) {
-        for (const r of tier.to) {
-          try {
-            after.push((await mailIn(this.d.mail, tx, {
-              firmId, to: r.address, replyTo: firm.contactEmail, subject: "A complaint is waiting for its acknowledgement", text: tier.text, templateKey: "platform.complaint.ack_reminder",
-              ...(r.staffId ? { class: "SERVICE" as const, person: { kind: "STAFF" as const, id: r.staffId } } : { class: "TRANSACTIONAL" as const }),
-              idempotencyKey: `complaint.ack_reminder:${complaintId}:${r.staffId ?? "firm-contact"}`,
-            })).dispatch);
-          } catch (e) { if (!(e instanceof MessageRefused)) throw e; refused = e; }
-        }
-        if (after.length) { used = tier; break; }
-      }
-      if (!used) throw refused ?? new MessageRefused("not sent: nobody to remind");
-      const recipients = after.length, sentTo = used.sentTo;
+      // Tier by tier (PF-19r, break m3): the handler, else each active Owner and Admin, else the firm's contact address.
+      // An address the firm's suppression list holds is skipped; for these emails (SERVICE and TRANSACTIONAL email) that
+      // is the only thing the consent gate refuses (ports/consent.ts decide). The first tier that reaches anyone is
+      // recorded; then the event and its audit line, then the emails, in that order, so a run that rolls back sends nothing
+      // (and a refused send, e.g. an address suppressed meanwhile, rolls the run back and the job tries again).
+      const all = tiers.flatMap((t) => t.to.map((r) => r.address.toLowerCase()));
+      const suppressed = new Set((await tx.msgSuppression.findMany({ where: firmScope(firmId, { channel: "EMAIL" as const, address: { in: all } }), select: { address: true } })).map((x) => x.address));
+      const used = tiers.map((t) => ({ ...t, to: t.to.filter((r) => !suppressed.has(r.address.toLowerCase())) })).find((t) => t.to.length);
+      if (!used) throw new MessageRefused("not sent: no handler, Owner, Admin or firm contact address takes email (each is suppressed)");
+      const recipients = used.to.length, sentTo = used.sentTo;
       await tx.platComplaintEvent.create({ data: { firmId, complaintId, kind: "REMINDER_SENT", at: now, actor: SYSTEM_ACTOR, detail: { handlerStaffId: c.handlerStaffId, sentTo, recipients } } });
       await this.d.audit.record(tx, { firmId, actor: SYSTEM_ACTOR, action: "complaint.reminder", entity: "plat_complaint", entityKey: complaintId,
         summary: sentTo === "handler" ? "Acknowledgement reminder sent to the handler" : sentTo === "owners_admins" ? `Acknowledgement reminder sent to the firm's Owners and Admins (the handler ${reach})` : "Acknowledgement reminder sent to the firm's contact address (no handler, Owner or Admin could be reached)",
         detail: { complaintId, handlerStaffId: c.handlerStaffId, sentTo, recipients } });
+      for (const r of used.to) after.push((await mailIn(this.d.mail, tx, {
+        firmId, to: r.address, replyTo: firm.contactEmail, subject: "A complaint is waiting for its acknowledgement", text: used.text, templateKey: "platform.complaint.ack_reminder",
+        ...(r.staffId ? { class: "SERVICE" as const, person: { kind: "STAFF" as const, id: r.staffId } } : { class: "TRANSACTIONAL" as const }),
+        idempotencyKey: `complaint.ack_reminder:${complaintId}:${r.staffId ?? "firm-contact"}`,
+      })).dispatch);
       return "sent" as const;
     });
   }

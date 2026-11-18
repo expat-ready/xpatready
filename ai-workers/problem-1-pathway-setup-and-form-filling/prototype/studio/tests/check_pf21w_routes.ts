@@ -3,8 +3,6 @@
 // on the six seeded roles (one staff member per role in the Sample firm, plus firm B's Owner and an inactive person).
 // One scratch database (every migration, PF-3's Sample seed) and a Nest app built from the feature's own classes
 // (features/platform-complaints.ts) beside PF-4's (the guard, the local stand-in's tokens), the audit port real, the job
-const { MESSAGES_MAIL } = await import("../api/src/features/platform-messages.ts");   // PF-19r: the complaints feature mails through it (in memory here)
-const { fakeMail } = await import("../ports/mail.ts");
 // runner a recorder. No server of the app, no browser, no model call (US$0). The database is dropped at the end.
 //   tsx studio/tests/check_pf21w_routes.ts
 import "reflect-metadata";
@@ -40,6 +38,8 @@ const { ACK_REMINDER_JOB } = await import("../api/src/platform/complaints/compla
 const { EVENT } = await import("../ports/events.ts");
 const { ComplaintJobs } = await import("../api/src/features/platform-complaints.ts");
 const feature = (await import("../api/src/features/platform-complaints.ts")).default;
+const { MESSAGES_MAIL } = await import("../api/src/features/platform-messages.ts");   // PF-19r: the complaints feature mails through it (in memory here)
+const { fakeMail } = await import("../ports/mail.ts");
 
 /** A job runner that records what it is given (the reminder's runs are PF-21's suite's). */
 const recorder = () => {

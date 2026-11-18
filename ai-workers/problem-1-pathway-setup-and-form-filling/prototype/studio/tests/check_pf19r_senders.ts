@@ -197,8 +197,8 @@ try {
   const c4b = await complaint(T);
   const e4b = await rejects(() => svc.runAckReminder({ firmId: firmA.id, complaintId: c4b }));
   const r4b = await db.msgOutbox.findMany({ where: { idempotencyKey: { contains: c4b } } }), ev4b = await db.platComplaintEvent.findFirst({ where: { complaintId: c4b, kind: "REMINDER_SENT" } });
-  ok("DW4 pass (break m3): a handler whose address is suppressed is skipped (SUPPRESSED row kept) and the firm's Owners and Admins get it instead; the event counts only who was reached",
-    e4b === null && r4b.some((r) => r.subjectId === T && r.state === "SUPPRESSED") && r4b.some((r) => r.subjectId !== T && r.state === "QUEUED") && (ev4b?.detail as { sentTo?: string; recipients?: number })?.sentTo === "owners_admins"
+  ok("DW4 pass (break m3): a handler whose address is suppressed is skipped (nothing written for them) and the firm's Owners and Admins get it instead; the event counts only who was reached",
+    e4b === null && !r4b.some((r) => r.subjectId === T) && r4b.length > 0 && r4b.every((r) => r.subjectId !== T && r.state === "QUEUED") && (ev4b?.detail as { sentTo?: string; recipients?: number })?.sentTo === "owners_admins"
     && (ev4b?.detail as { recipients?: number }).recipients === r4b.filter((r) => r.state === "QUEUED").length, { e: e4b?.message, r4b, ev4b });
   // Nobody reachable: every Owner and Admin and the firm's contact suppressed too → rolled back, the job tries again.
   const everyone = [...new Set([...(await db.platformStaff.findMany({ where: { firmId: firmA.id } })).map((x) => x.email), firmA.contactEmail.toLowerCase()])];
