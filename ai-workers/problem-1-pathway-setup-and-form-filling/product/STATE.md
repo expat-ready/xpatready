@@ -20,11 +20,11 @@ Standby left: **Lead 82 (local_f86fdc68)**; start a second standby at the founde
 
 Lead 81's 20:5x check, Lead 80's plan position and CI-recovered lines: word for word in `history/STATE-2026-11-18-2100-lead81s2-check-plan-ci-lines.md`.
 
-**Done (Lead 81, 21:50 IST 18 Nov): #2145 hand-merged (628742f00, P-691)**: the first queue-gate run after it started on xr-mac 3 s after its event; was: queue-gate on the Mac runner xr-mac (founder "Yes, build it"; independent Opus Approve 2c6c65a0d, comment 6984101570; labelled). Hand merge on green ci (P-691), log C29 (done), then check runner_name on the next queue-gate runs. Reviewer minors: watch that xr-mac is online and how long gate runs wait to start at every check (m2); GATE_RUNNER must be JSON (m3); confirm the fork-PR approval setting "Require approval for all external contributors" (m4, the founder's settings page).
-
 Hand-over item 6 (rules learned 18 Nov) and the CI investigation pointer: word for word in `history/STATE-2026-11-18-2135-lead81s2-handover-item6-ci-lines.md`.
 
-**In flight (Lead 81, 22:0x 18 Nov): CI-RUN part 2 "run tests once" (P-651 (2))**, a cloud builder (task_bc4ca0c7) started on the founder's "Yes, start it": PR heads run only the fast checks, and the full set runs on Mergify batches and main. The Lead does the P-423 read of the .github diff. Ticket #5023043: no GitHub reply at 22:0x (read in the browser). Namespace is not the fix (trial 8 jobs, P-651).
+**Tonight's push (Lead 81, 22:5x 18 Nov; founder "start doing it"):** #2152 one big product batch (merge after #2148-#2150 finish and the review approves; revert to 6 on 19 Nov); sub-leads overlap chained parts; qa-4 scores rows on merge, qa after-merge walks the PF-* rows; P-703 product-only measures. Morning estimate: 8-12 product PRs merged, Proven 11 -> 13-16.
+
+#2145 done and CI-RUN part 2 in flight (cloud task_bc4ca0c7, P-651): word for word in `history/STATE-2026-11-18-2300-lead81s2-2145-cirun-lines.md`.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 **For the founder (open):** (a) R1.20 vs PF-4c invite rule; (b) close #2088. Done: (c) Lead 83 standby, (d) P-701, (e) ticket High asked. Full line word for word in `history/STATE-2026-11-18-2212-lead81s2-for-founder-line.md`.
