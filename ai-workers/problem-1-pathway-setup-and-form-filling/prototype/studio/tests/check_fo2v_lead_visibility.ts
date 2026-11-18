@@ -48,7 +48,7 @@ try {
   const A = sql(`select id from platform_firm where key = 'sample-firm'`);
   const ports: SalesPorts = { audit: auditEvent, consent: new ConsentStore(auditEvent), now: () => Date.now(), publicOrigin: "http://localhost:4400", formKey: Buffer.from("fo2v-test-stamp-key (Sample, not a secret)") };
   const leads = new Leads(db, ports);
-  const setAll = async (on: boolean) => writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: on, by: "test", workspaceId: await platformAuditWorkspaceId(db as never) });
+  const setAll = async (on: boolean) => writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: on, by: "system:test", workspaceId: await platformAuditWorkspaceId(db as never) });
 
   // One staff member per seeded role (the six starter roles), each owning one open lead; one Unassigned lead.
   const ROLES = sql(`select string_agg(distinct role::text, ',' order by role::text) from platform_role_permission`).split(",");
@@ -98,11 +98,12 @@ try {
   const late = await refusal(() => leads.take(officer.c, race));
   ok("FO-2v DW3 fail (the real race, AG-2-86 rule 3): an Unassigned lead taken a second earlier by someone else → 409 naming who, with no ownerStaffId",
     late?.status === 409 && late.body.detail === "CASE_MANAGER (Sample) already has this lead." && late.body.code === "ALREADY_TAKEN" && !("ownerStaffId" in late.body) && !JSON.stringify(late.body).includes(manager.c.staffId), late);
-  sql(`update audit_event set at = at - interval '11 minutes' where entity = 'fo_lead' and entity_key = '${race}' and action = 'lead.taken'`);
+  // AUD-1a: the trail is insert-only, so back-dating runs as the owner with triggers off on this scratch copy (FO-1a/PF-12 setup pattern); the app's role can never do this.
+  sql(`set session_replication_role = replica; update audit_event set at = at - interval '11 minutes' where entity = 'fo_lead' and entity_key = '${race}' and action = 'lead.taken'; set session_replication_role = origin`);
   ok("FO-2v DW3 pass: the same lead taken more than 10 minutes ago (Sample) → 404, no name", (await refusal(() => leads.take(officer.c, race)))?.status === 404);
   const moved = lead(null);
   await leads.take(manager.c, moved);
-  sql(`update audit_event set at = at - interval '11 minutes' where entity = 'fo_lead' and entity_key = '${moved}' and action = 'lead.taken'`);
+  sql(`set session_replication_role = replica; update audit_event set at = at - interval '11 minutes' where entity = 'fo_lead' and entity_key = '${moved}' and action = 'lead.taken'; set session_replication_role = origin`);
   await leads.assign(manager.c, moved, { staffId: owner.c.staffId, expectedOwnerStaffId: manager.c.staffId });   // owner to owner, just now
   ok("FO-2v DW3 pass: a lead moved from one owner to another just now (not from Unassigned) → 404, no name", (await refusal(() => leads.take(officer.c, moved)))?.status === 404);
   // Lead B rev 16.55 condition 2 "or a deactivated person": a deactivated owner's lead is Unassigned (AG-2-13c rule 6),
@@ -124,7 +125,7 @@ try {
   // Lead B rev 16.55 condition 3 (review Major 1): a race line in firm B's scope with firm A's lead id is never read.
   const B = sql(`select id from platform_firm where key = 'sample-solo'`), ws = await platformAuditWorkspaceId(db as never);
   const forged = owner.own;
-  sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, detail) values (gen_random_uuid(), '${ws}', 'test', 'lead.taken', 'fo_lead', '${forged}', 'forged', '{"firmId": "${B}", "previousOwnerStaffId": null, "fromUnassigned": true}')`);
+  sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, detail) values (gen_random_uuid(), '${ws}', 'system:test', 'lead.taken', 'fo_lead', '${forged}', 'forged', '{"firmId": "${B}", "previousOwnerStaffId": null, "fromUnassigned": true}')`);
   const fb = await refusal(() => leads.take(officer.c, forged));
   ok("FO-2v DW3 fail (firm B): a take line in firm B's scope naming firm A's lead → 404, firm A's race never reads it", fb?.status === 404 && !JSON.stringify(fb.body).includes("already has"), fb);
   await setAll(true);
