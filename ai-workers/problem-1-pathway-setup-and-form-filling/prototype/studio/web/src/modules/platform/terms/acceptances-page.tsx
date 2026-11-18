@@ -29,7 +29,7 @@ function List() {
                 <td className="[overflow-wrap:anywhere]">{a.staffName}</td>
                 <td>{kindLabel(a.kind)}</td>
                 <td>{href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-text-link underline">{a.version}<span className="sr-only"> (opens in a new tab)</span></a> : a.version}</td>
-                <td>{a.forFirm ? "The firm" : "Themself"}</td>
+                <td>{a.forFirm ? "The firm" : "Their own"}</td>
                 <td><time dateTime={a.acceptedAt}>{new Date(a.acceptedAt).toLocaleString()}</time></td>
               </tr>
             );
@@ -47,7 +47,7 @@ export function TermsAcceptancesPage() {
   return (
     <PlatformFrame crumbs={[{ label: "Terms" }]}>
       <h1 className="mb-1 text-xl font-semibold">Terms</h1>
-      <p className="mb-4 text-sm text-text-muted">Who accepted which version of our terms, and when. An Owner accepts the terms of service and data processing terms for the firm; each person accepts the privacy notice for themself.</p>
+      <p className="mb-4 text-sm text-text-muted">Who accepted which version of our terms, and when. An Owner accepts the terms of service and data processing terms for the firm; each person accepts the privacy notice as their own.</p>
       <List />
     </PlatformFrame>
   );

@@ -38,7 +38,11 @@ export function TermsPage({ token, terms, signOut, leaving }: { token: string | 
       const r = MyTerms.parse(await staffApi("/platform/me/terms/accept", { method: "POST", json: { versionIds: terms.pending.map((t) => t.id) } }));
       qc.setQueryData(KEY(token), r);
       // The page's own answers that were refused with 428 are asked again (nothing else moves: the same address).
-      if (r.pending.length === 0) for (const queryKey of [["fo"], ["pf"]]) await qc.invalidateQueries({ queryKey, predicate: (x) => x.queryKey[2] !== "terms" });
+      if (r.pending.length === 0) {
+        // The returned page takes the focus on its heading (WCAG 2.4.3; review m2), once it has drawn.
+        requestAnimationFrame(() => { const h = document.querySelector<HTMLElement>("main h1"); if (h) { if (!h.hasAttribute("tabindex")) h.tabIndex = -1; h.focus(); } });
+        for (const queryKey of [["fo"], ["pf"]]) await qc.invalidateQueries({ queryKey, predicate: (x) => x.queryKey[2] !== "terms" });
+      }
     } catch (e) {
       setError(e instanceof StaffApiError ? e.message : "Could not save your acceptance. Please try again.");
       if (e instanceof StaffApiError && e.status === 400) void qc.invalidateQueries({ queryKey: KEY(token) });   // not current any more: show the versions now current
@@ -52,7 +56,7 @@ export function TermsPage({ token, terms, signOut, leaving }: { token: string | 
         {terms.pending.map((t) => {
           const href = safeUrl(t.url);
           return (
-            <li key={t.id} className="rounded-lg border border-border p-3 text-sm" data-terms-item={t.kind}>
+            <li key={t.id} className="rounded-lg border border-border p-3 text-sm [overflow-wrap:anywhere]" data-terms-item={t.kind}>
               <span className="font-medium">{kindLabel(t.kind)}</span>{" · version "}{t.version}
               <span className="text-text-muted">{" · published "}{new Date(t.publishedAt).toLocaleDateString()}</span>
               <span className="block">{href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-text-link underline outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">Read the {kindWords(t.kind)} (opens in a new tab)</a> : <span className="text-text-muted">The link to this text is not available.</span>}</span>

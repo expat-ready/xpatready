@@ -118,6 +118,10 @@ const mine = listed.filter((a) => a.versionId === pn1 || a.versionId === tos1);
 ok("PF-5t part 2 pass: Settings → Terms shows who accepted which version and when, as the API lists it (the Owner's two, the Case Officer's one)", mine.length === 3 && (await p.locator("[data-acceptance]").count()) === Math.min(listed.length, 50)
   && (await p.locator(`[data-acceptance="${mine[0].id}"]`).innerText()).includes(mine[0].staffName), mine);
 await axe("PF-5t DW7 Settings → Terms (1440)", p); await noSideways("PF-5t DW7 Settings → Terms (1440)", p); await shot(p, "terms-acceptances-1440");
+for (const w of [375, 1024]) {   // review m1
+  const v = await newPage(w, rTok); await v.goto(`${BASE}/platform/terms`); await v.locator("[data-acceptance]").first().waitFor({ timeout: 20_000 });
+  await axe(`PF-5t DW7 Settings → Terms (${w} px)`, v); await noSideways(`PF-5t DW7 Settings → Terms (${w} px)`, v); await shot(v, `terms-acceptances-${w}`); await v.context().close();
+}
 {
   const ok403 = await call(oTok, "/platform/terms/acceptances");
   const op = await newPage(1440, oTok); await op.goto(`${BASE}/platform/terms`);
@@ -140,11 +144,29 @@ ok("PF-5t part 2 fail: the Terms entry is hidden from a person without agent/set
 const pn2 = publish("PRIVACY_NOTICE");
 await p.locator('nav[aria-label="My account"] [data-account-section="/account"]').click(); await termsPage(p);
 ok("PF-5t DW6 pass: a privacy notice published while the Owner is signed in shows the terms page at their next click", JSON.stringify(await items(p)) === '["PRIVACY_NOTICE"]' && !accepted(R.id, pn2));
+await p.locator("[data-terms-accept]").click(); await p.locator("[data-account]").waitFor({ timeout: 20_000 });
+ok("PF-5t DW7 (review m2): after I accept, the focus moves to the returned page's heading", accepted(R.id, pn2) && (await p.evaluate(() => document.activeElement?.tagName === "H1" && document.activeElement.textContent === "Profile")));
+
+// ------------------------------- review M1: a 428 from a call inside the page (no move) brings the terms page at once
+// The first page of acceptances is given a next page (route rewrite), so "Show more" calls the server without a move.
+await p.route((u) => u.pathname === "/api/platform/terms/acceptances" && !u.searchParams.has("cursor"), async (rt) => {
+  const res = await rt.fetch(), json = await res.json() as { nextCursor: string | null; acceptances: { id: string }[] };
+  await rt.fulfill({ response: res, json: { ...json, nextCursor: json.acceptances[json.acceptances.length - 1].id } });
+});
+await p.locator('nav[aria-label="My account"] [data-account-section="/platform/terms"]').click(); await p.locator("[data-terms-more]").waitFor({ timeout: 20_000 });
+const pn3 = publish("PRIVACY_NOTICE");
+const at = p.url(); await p.locator("[data-terms-more]").click(); await termsPage(p);
+ok("PF-5t DW6 pass (review M1): a version published while on Settings → Terms shows the terms page when Show more answers 428, with no move", p.url() === at && JSON.stringify(await items(p)) === '["PRIVACY_NOTICE"]');
+await p.locator("[data-terms-accept]").click(); await p.locator("[data-acceptance]").first().waitFor({ timeout: 20_000 });
+ok("PF-5t DW6 pass: after I accept, Settings → Terms shows again at the same address, its refused page asked again", accepted(R.id, pn3) && p.url() === at && (await p.locator("[data-terms-page]").count()) === 0);
+await p.unroute((u) => u.pathname === "/api/platform/terms/acceptances" && !u.searchParams.has("cursor"));
+const pn4 = publish("PRIVACY_NOTICE");
+await p.locator('nav[aria-label="My account"] [data-account-section="/account"]').click(); await termsPage(p);
 
 // ------------------------------------------------------------------------- DW9: Sign out from the terms page while pending
 await p.locator("[data-terms-sign-out]").click(); await p.getByRole("heading", { name: "Sign in to your firm" }).waitFor({ timeout: 15_000 });
 ok("PF-5t DW9 pass: Sign out on the terms page ends the session (the sign-in card shows; the old token answers 401)", (await call(rTok, "/platform/me")).status === 401);
-ok("PF-5t DW9 fail: signing out accepted nothing", !accepted(R.id, pn2));
+ok("PF-5t DW9 fail: signing out accepted nothing", !accepted(R.id, pn4));
 ok("PF-5t: no page error in any browser", errors.length === 0, errors);
 } finally {
   // Every Sample person accepts this run's privacy notices and each firm's Owner its firm terms, so the copy (and a rerun) is not left asking (the table is insert-only).
