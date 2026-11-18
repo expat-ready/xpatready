@@ -10,7 +10,7 @@
 // so the caller's transaction rolls the change back. One try: inside PostgreSQL a failed statement aborts the
 // transaction, so a retry there could never succeed.
 import type { Prisma } from "@prisma/client";
-import { AuditEntry, type AuditPort } from "../../../../ports/audit.ts";
+import { AuditEntry, CaseEntry, isCaseEntry, type AuditPort } from "../../../../ports/audit.ts";
 import { writeAuditWithAlarm } from "../observability/alerts.ts";
 import { actorTypeOfWord, auditContext } from "./context.ts";
 
@@ -34,7 +34,8 @@ export class AuditRefused extends Error { constructor(m: string) { super(m); thi
 const idOf = (v: unknown) => (typeof v === "string" ? v : undefined);
 
 export class AuditEventAdapter implements AuditPort<Tx> {
-  async record(tx: Tx, entry: AuditEntry): Promise<void> {
+  async record(tx: Tx, entry: AuditEntry | CaseEntry): Promise<void> {
+    if (isCaseEntry(entry)) return this.recordCase(tx, entry);
     const raw = (entry ?? {}) as Partial<Record<"firmId" | "entity" | "entityKey", unknown>>;
     // The alarm's ids (read by writeAuditWithAlarm after a failure): the firm is the request's or job's own when it has one,
     // so a refused line for another firm never spends that other firm's alert (breaker m4).
@@ -54,6 +55,27 @@ export class AuditEventAdapter implements AuditPort<Tx> {
       await tx.auditEvent.create({
         data: { workspaceId, firmId, caseId: e.caseId?.toLowerCase() ?? null, actorType, correlationId: ctx?.correlationId ?? null, supportSessionId: ctx?.supportSessionId ?? null,
           actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey, summary: e.summary, detail: { ...e.detail, firmId } as Prisma.InputJsonValue },
+      });
+    }, ids, { attempts: 1 });
+  }
+
+  /** AUD-1m: one case-side or configuration line (core.ts's Audit.log), with the same rules: its workspace is the caller's
+   *  (the demo workspace's lines stay the demo reset's, P-571 (1)); its firm is the request's or job's, null outside both
+   *  (until CS-W1 the case routes name none); no line in a request our staff make, and in a signed-in request only the
+   *  request's own actor; one alert with ids only and the error thrown on any failure, one try. */
+  private async recordCase(tx: Tx, entry: CaseEntry): Promise<void> {
+    const raw = (entry ?? {}) as Partial<Record<"entity" | "entityKey", unknown>>;
+    const ids = { firmId: undefined as string | undefined, entity: idOf(raw.entity), entityKey: idOf(raw.entityKey) ?? undefined };
+    await writeAuditWithAlarm(async () => {
+      const ctx = auditContext();
+      if (ctx?.firmId) ids.firmId = ctx.firmId;
+      const e = CaseEntry.parse(entry);
+      if (ctx?.actorType === "OUR_STAFF") throw new AuditRefused(`audit line refused: this request is our staff's (OUR_STAFF), which has no actor word until PF-4s`);
+      if (ctx?.actor && e.actor !== ctx.actor) throw new AuditRefused(`audit line refused: the line names ${e.actor}, but this request is ${ctx.actor}'s`);
+      await tx.auditEvent.create({
+        data: { workspaceId: e.workspaceId, firmId: ctx?.firmId ?? null, caseId: e.caseId?.toLowerCase() ?? null, actorType: actorTypeOfWord(e.actor), correlationId: ctx?.correlationId ?? null,
+          supportSessionId: ctx?.supportSessionId ?? null, actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey, summary: e.summary,
+          detail: e.detail === undefined ? undefined : (e.detail as Prisma.InputJsonValue), combinationId: e.combinationId ?? null },
       });
     }, ids, { attempts: 1 });
   }
