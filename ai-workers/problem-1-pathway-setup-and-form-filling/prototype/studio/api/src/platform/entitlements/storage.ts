@@ -70,13 +70,14 @@ export class StorageWatch {
   }
 
   /** The day-one emails (SA-3-40): the team inbox, and the "Storage over limit" email to each Owner (SA-05 Appendix B.4;
-   *  Sample words: the template has no text on main). One key per episode and recipient, so a retry sends once. */
+   *  Sample words). One key per episode and recipient. The team inbox (ours, no firm person): transactional, as PF-18b's
+   *  support inbox; each Owner's: a service email naming them (PF-19r). */
   private async alert(firmId: string, firstOverAt: Date, firmKey: string, owners: { id: string; email: string }[], usedBytes: number, limitMb: number, planName: string | null) {
     const mail = this.d.mail!, episode = firstOverAt.toISOString(), hardAt = `${new Date(firstOverAt.getTime() + STORAGE_HARD_AFTER_DAYS * DAY_MS).toISOString().slice(0, 16).replace("T", " ")} UTC`;
-    await mail.send({ firmId, to: this.d.teamInbox ?? TEAM_INBOX_SAMPLE, replyTo: SYSTEM_REPLY_TO, class: "SERVICE", templateKey: "platform.storage_over_team", idempotencyKey: `storage-over:${episode}:team`,
+    await mail.send({ firmId, to: this.d.teamInbox ?? TEAM_INBOX_SAMPLE, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "platform.storage_over_team", idempotencyKey: `storage-over:${episode}:team`,
       subject: `Firm over its storage limit: ${firmKey}`,
       text: `Firm ${firmKey} uses ${mbOf(usedBytes)} MB of storage; its plan (${planName ?? "none"}) allows ${limitMb} MB. From ${hardAt} its new uploads are refused until it is back under or on a larger plan (SA-3-40). Nothing is deleted.` });
-    for (const o of owners) await mail.send({ firmId, to: o.email, replyTo: SYSTEM_REPLY_TO, class: "SERVICE", templateKey: "platform.storage_over_limit", idempotencyKey: `storage-over:${episode}:owner:${o.id}`,
+    for (const o of owners) await mail.send({ firmId, to: o.email, replyTo: SYSTEM_REPLY_TO, class: "SERVICE", person: { kind: "STAFF", id: o.id }, templateKey: "platform.storage_over_limit", idempotencyKey: `storage-over:${episode}:owner:${o.id}`,
       subject: "Storage over limit",
       text: `Your firm's documents now take ${mbOf(usedBytes)} MB; your plan (${planName ?? "none"}) allows ${limitMb} MB.\n\nUploads keep working until ${hardAt}. From then, new uploads are refused until your firm is back under the limit or on a plan with a larger limit. Nothing is deleted, and every document you have keeps working.\n\nTo stay under, remove documents you no longer need, or change the plan in Settings, Billing.` });
   }

@@ -221,10 +221,23 @@ try {
     const markB = () => sql(`select extract(epoch from first_over_at)::text || ':' || (alerted_at is not null)::text || ':' || (back_under_at is null)::text from platform_storage_over where firm_id = '${FIRM_B}'`);
     const failed = await problemOf(() => wB.measure(FIRM_B)), m1 = markB();
     await problemOf(() => wB.measure(FIRM_B));   // a second try (the clock stays: the daily job's own watch has working mail)
-    ok("PF-15 DW2 fail (break M1): an Owner email that fails leaves the mark set and its first day unchanged; a second try starts no new episode and sends the team inbox nothing more", failed !== null && m1.endsWith(":false:true") && markB() === m1 && flaky.sent.filter((m) => m.to === TEAM_INBOX_SAMPLE).length === 1, { m1, now: markB(), team: flaky.sent.length });
+    ok("PF-15 DW2 fail (break M1): an Owner email that fails leaves the mark set and its first day unchanged; a second try starts no new episode and sends the team inbox nothing more", failed !== null && m1.endsWith(":false:true") && markB() === m1 && flaky.sent.filter((m) => m.to === TEAM_INBOX_SAMPLE).length === 1, { failed, m1, now: markB(), sent: flaky.sent.length });
     down = false;
     const again = await wB.measure(FIRM_B);
     ok("PF-15 DW2 pass (break M1): once mail works, the next measure sends the Owner email and marks the episode alerted, once", again.alerted && markB().endsWith(":true:true") && flaky.sent.filter((m) => m.templateKey === "platform.storage_over_limit").length >= 1 && !(await wB.measure(FIRM_B)).alerted, { again, mark: markB() });
+    sql(`update platform_plan_limit set limit_value = 5120 where metric = 'STORAGE_MB' and plan_id = (select id from platform_plan where code = 'solo')`);
+  }
+  // Review (merge 4): the day-one emails through the real MessagesMail (its PF-19r rules run before the MessagePort).
+  {
+    const { MessagesMail } = await import("../api/src/platform/messages/send/mail.ts");
+    const got: { class: string; person?: { kind: string; id: string }; address: string }[] = [];
+    const rec = { send: async (_tx: unknown, m: { class: string; person?: { kind: string; id: string }; address: string }) => { got.push(m); return { outboxId: crypto.randomUUID(), state: "QUEUED" }; }, dispatch: async () => {} };
+    const real = new MessagesMail({ db, messages: rec as never, files: new LocalFiles(join(WORK, "mm")) });
+    sql(`update platform_plan_limit set limit_value = 0 where metric = 'STORAGE_MB' and plan_id = (select id from platform_plan where code = 'solo')`);
+    sql(`update platform_storage_over set back_under_at = first_over_at where firm_id = '${FIRM_B}'`);
+    const r = await new StorageWatch({ db, files: new LocalFiles(join(WORK, "store")), mail: real, now: () => clock.now() }).measure(FIRM_B), ownersB = got.filter((m) => m.class === "SERVICE");
+    ok("PF-15 DW2 pass (review, PF-19r): through the real MessagesMail the team inbox gets a transactional email and each Owner a service email naming them (STAFF); the episode is alerted",
+      r.alerted && got.some((m) => m.class === "TRANSACTIONAL" && m.address === TEAM_INBOX_SAMPLE) && ownersB.length >= 1 && ownersB.every((m) => m.person?.kind === "STAFF" && !!m.person.id), { r, got });
     sql(`update platform_plan_limit set limit_value = 5120 where metric = 'STORAGE_MB' and plan_id = (select id from platform_plan where code = 'solo')`);
   }
   // Break m2 and m4: a firm the adapter cannot read fails closed for storage too; a retired key keeps its own refusal.

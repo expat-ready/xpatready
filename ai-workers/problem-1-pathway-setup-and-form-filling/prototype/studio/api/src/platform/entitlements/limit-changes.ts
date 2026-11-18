@@ -77,7 +77,7 @@ export class PlanLimitChanges {
 
   /** The "Live-plan removal notice" to every active Owner of each firm a lowering reaches (SA-3-43), after the commit. One
    *  idempotency key per change and Owner, so calling it again (a retry after a failed send) sends each once. A failed
-   *  send never stops the others: it is listed by Owner id. */
+   *  send never stops the others: it is listed by Owner id. A service email naming the Owner (PF-19r). */
   async sendNotices(changeId: string): Promise<{ sent: number; failed: string[] }> {
     if (!this.d.mail) return { sent: 0, failed: [] };
     const rows = await asBypass("platform.entitlements.limit-change", () => this.d.db.$queryRaw<{ firmId: string; id: string; email: string; effectiveAt: Date; planName: string; metric: string; old: number | null; value: number | null }[]>`
@@ -90,7 +90,7 @@ export class PlanLimitChanges {
     for (const o of rows) {
       const m = (Object.keys(COLUMN) as EntitlementMetric[]).find((k) => COLUMN[k] === o.metric)!;
       try {
-        await this.d.mail.send({ firmId: o.firmId, to: o.email, replyTo: SYSTEM_REPLY_TO, class: "SERVICE", templateKey: "platform.live_plan_removal_notice", idempotencyKey: `limit-change:${changeId}:owner:${o.id}`,
+        await this.d.mail.send({ firmId: o.firmId, to: o.email, replyTo: SYSTEM_REPLY_TO, class: "SERVICE", person: { kind: "STAFF", id: o.id }, templateKey: "platform.live_plan_removal_notice", idempotencyKey: `limit-change:${changeId}:owner:${o.id}`,
           subject: "Live-plan removal notice",
           text: `Your plan (${o.planName}) will allow ${shown(o.value)} ${WORD[m]} instead of ${shown(o.old)}, from your renewal on ${o.effectiveAt.toISOString().slice(0, 10)}.\n\nUntil then nothing changes. From then, if your firm is over the new limit, everything it has keeps working and nothing is deleted; new ones are refused until it is back under or on a larger plan.` });
         out.sent++;
