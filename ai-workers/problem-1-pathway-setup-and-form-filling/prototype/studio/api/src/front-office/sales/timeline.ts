@@ -39,22 +39,25 @@ export class Timeline {
       this.db.$queryRaw<{ id: string; at: Date; actor: string; action: string; summary: string }[]>`
         select id::text, at, actor, action, summary from audit_event
          where workspace_id = ${ws}::uuid and detail->>'firmId' = ${ctx.firmId.toLowerCase()} and entity = ${entity} and entity_key = ${subjectId}
+           and action not in ('call.logged', 'note.added')
          order by at desc, id limit ${MAX_LINES + 1}`,
       this.db.moduleEvent.findMany({ where: { firmId: ctx.firmId, subjectId }, select: { id: true, type: true, occurredAt: true }, orderBy: { seq: "desc" }, take: MAX_LINES + 1 }),
       this.db.foCall.findMany({ where: firmScope(ctx.firmId, own), orderBy: [{ startedAt: "desc" }, { id: "asc" }], take: MAX_LINES + 1 }),
       this.db.foNote.findMany({ where: firmScope(ctx.firmId, own), orderBy: [{ createdAt: "desc" }, { id: "asc" }], take: MAX_LINES + 1 }),
     ]);
-    // A call's or note's own audit line is the CALL or NOTE line below, never a second line (the row says more).
-    const shown = audit.filter((a) => a.action !== "call.logged" && a.action !== "note.added");
-    const audited = new Set(audit.map((a) => a.action));
+    // A call's or note's own audit line is the CALL or NOTE line below, never a second line: left out in the query, so
+    // the cap counts only lines shown (review m5). An outbox event is left out only when an audit line of the same name
+    // was written with it (within 2 s: the same transaction), never just because the name occurs (review m4).
+    const shown = audit;
+    const audited = (type: string, at: Date) => audit.some((a) => a.action === type && Math.abs(a.at.getTime() - at.getTime()) <= 2000);
     const staffIds = [...new Set([...audit.map((a) => a.actor), ...calls.map((c) => c.byActor), ...notes.map((n) => n.byActor)].filter((a) => a.startsWith("staff:")).map((a) => a.slice(6)))];
     const names = new Map((await this.db.platformStaff.findMany({ where: firmScope(ctx.firmId, { id: { in: staffIds } }), select: { id: true, displayName: true } })).map((s) => [`staff:${s.id}`, s.displayName]));
     const nameOf = (actor: string | null) => (actor ? names.get(actor) ?? (actor.startsWith("system:") ? "The system" : null) : null);
     const all: TimelineLine[] = [
       ...shown.map((a) => ({ at: a.at.toISOString(), kind: "AUDIT" as const, type: a.action, actor: a.actor, actorName: nameOf(a.actor), summary: a.summary, refId: a.id })),
-      ...events.filter((e) => !audited.has(e.type)).map((e) => ({ at: e.occurredAt.toISOString(), kind: "EVENT" as const, type: e.type, actor: null, actorName: null, summary: e.type, refId: e.id })),
+      ...events.filter((e) => !audited(e.type, e.occurredAt)).map((e) => ({ at: e.occurredAt.toISOString(), kind: "EVENT" as const, type: e.type, actor: null, actorName: null, summary: e.type, refId: e.id })),
       ...calls.map((c) => ({ at: c.startedAt.toISOString(), kind: "CALL" as const, type: "call", actor: c.byActor, actorName: nameOf(c.byActor),
-        summary: `${c.direction === "IN" ? "Incoming" : "Outgoing"} call: ${OUTCOME_WORDS[c.outcome] ?? c.outcome}${c.seconds ? ` (${Math.round(c.seconds / 60)} min)` : ""}${c.notes ? `. ${c.notes}` : ""}`, refId: c.id })),
+        summary: `${c.direction === "IN" ? "Incoming" : "Outgoing"} call: ${OUTCOME_WORDS[c.outcome] ?? c.outcome}${c.seconds ? (c.seconds < 60 ? ` (${c.seconds} s)` : ` (${Math.round(c.seconds / 60)} min)`) : ""}${c.notes ? `. ${c.notes}` : ""}`, refId: c.id })),
       ...notes.map((n) => ({ at: n.createdAt.toISOString(), kind: "NOTE" as const, type: "note", actor: n.byActor, actorName: nameOf(n.byActor), summary: n.text, refId: n.id })),
     ].map((x) => TimelineLine.parse(x));
     // Oldest first; at the same moment an audit line comes before the call or note it records.

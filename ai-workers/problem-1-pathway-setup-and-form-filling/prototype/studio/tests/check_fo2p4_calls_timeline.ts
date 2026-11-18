@@ -70,21 +70,42 @@ try {
 
   // ------------------------------------------------------------------------------------- DW1: the first response
   const ana = await lead("Ana");
-  const at1 = "2026-11-18T09:15:00.000Z";
+  const at1 = new Date(Date.now() - 30_000).toISOString().replace(/\.\d+Z$/, ".000Z");   // edited: 30 s ago, after the arrival
+  const at1s = at1.slice(0, 19);
   const c1 = await act.logCall(R, { kind: "lead", id: ana.id }, { direction: "OUT", outcome: "NO_ANSWER", when: at1 });
   ok("FO-2p4 DW1 pass: the first logged call sets the lead's first response once: its time (the edited `when`), kind CALL, who",
-    c1.firstResponse === true && firstResponse(ana.id) === `2026-11-18T09:15:00|CALL|staff:${R.staffId}` && count("fo_call", `lead_id = '${ana.id}' and outcome = 'NO_ANSWER'`) === 1, firstResponse(ana.id));
-  const c2 = await act.logCall(T, { kind: "lead", id: ana.id }, { direction: "IN", outcome: "CONNECTED", seconds: 300, notes: "Wants a study permit." });
-  ok("FO-2p4 DW1 fail: a second call does not change the first response", c2.firstResponse === false && firstResponse(ana.id) === `2026-11-18T09:15:00|CALL|staff:${R.staffId}` && count("fo_call", `lead_id = '${ana.id}'`) === 2, firstResponse(ana.id));
+    c1.firstResponse === true && firstResponse(ana.id) === `${at1s}|CALL|staff:${R.staffId}` && count("fo_call", `lead_id = '${ana.id}' and outcome = 'NO_ANSWER'`) === 1, firstResponse(ana.id));
+  const c2 = await act.logCall(T, { kind: "lead", id: ana.id }, { direction: "IN", outcome: "CONNECTED", seconds: 20, notes: "Wants a study permit." });
+  ok("FO-2p4 DW1 fail: a second call does not change the first response", c2.firstResponse === false && firstResponse(ana.id) === `${at1s}|CALL|staff:${R.staffId}` && count("fo_call", `lead_id = '${ana.id}'`) === 2, firstResponse(ana.id));
   const noWhen = await act.logCall(R, { kind: "lead", id: (await lead("Ben")).id }, { outcome: "BUSY" });
   ok("FO-2p4 DW1 pass: `when` defaults to now and the direction to OUT", noWhen.direction === "OUT" && Math.abs(noWhen.startedAt.getTime() - Date.now()) < 60_000);
   const bob = await lead("Bob");
   const badOutcome = await refusal(() => act.logCall(R, { kind: "lead", id: bob.id }, { outcome: "HUNG_UP" }));
   const future = await refusal(() => act.logCall(R, { kind: "lead", id: bob.id }, { outcome: "CONNECTED", when: new Date(Date.now() + 3_600_000).toISOString() }));
   const badSecs = await refusal(() => act.logCall(R, { kind: "lead", id: bob.id }, { outcome: "CONNECTED", seconds: -5 }));
-  ok("FO-2p4 DW1 fail: an outcome not among the seven, a call in the future or negative seconds → 422 at the field; nothing saved, no first response",
-    badOutcome?.status === 422 && (badOutcome.body.fields as Record<string, string>)?.outcome !== undefined && future?.status === 422 && badSecs?.status === 422
-      && count("fo_call", `lead_id = '${bob.id}'`) === 0 && firstResponse(bob.id) === "||", { badOutcome, future, badSecs });
+  const noOffset = await refusal(() => act.logCall(R, { kind: "lead", id: bob.id }, { outcome: "CONNECTED", when: "2026-11-18 09:15" }));
+  const beforeArrival = await refusal(() => act.logCall(R, { kind: "lead", id: bob.id }, { outcome: "CONNECTED", when: "2005-01-01T09:00:00Z" }));
+  ok("FO-2p4 DW1 fail: an outcome not among the seven, a call in the future, negative seconds, a time without its offset (review m2) or before the lead arrived (review m1) → 422 at the field; nothing saved, no first response",
+    badOutcome?.status === 422 && (badOutcome.body.fields as Record<string, string>)?.outcome !== undefined && future?.status === 422 && badSecs?.status === 422 && noOffset?.status === 422 && beforeArrival?.status === 422
+      && count("fo_call", `lead_id = '${bob.id}'`) === 0 && firstResponse(bob.id) === "||", { badOutcome, future, badSecs, noOffset, beforeArrival });
+  // AG-2-37a rule 5 (review M1): every OPEN lead of the person that has none gets it; never a CLOSED one.
+  const cara = await lead("Cara");
+  const caraLead2 = sql(`insert into fo_lead (firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values ('${A}', '${cara.person.id}', 'MANUAL', 'Referral', '${R.staffId}', 'test', now()) returning id`).split("\n")[0];
+  const caraClosed = sql(`insert into fo_lead (firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values ('${A}', '${cara.person.id}', 'MANUAL', 'Event', '${R.staffId}', 'test', now()) returning id`).split("\n")[0];
+  await leads.close(R, caraClosed, { reasonId: sql(`select id from fo_reason where firm_id = '${A}' and kind = 'LEAD_CLOSE' and key = 'NOT_INTERESTED'`) });
+  const cc = await act.logCall(R, { kind: "lead", id: cara.id }, { outcome: "CONNECTED" });
+  ok("FO-2p4 DW1 pass (rule 5): one call is the first response of both OPEN leads of the person, and says which",
+    cc.firstResponse === true && cc.firstResponseFor.length === 2 && cc.firstResponseFor.includes(caraLead2) && firstResponse(caraLead2).includes("|CALL|") && firstResponse(cara.id).includes("|CALL|"), cc);
+  ok("FO-2p4 DW1 fail (rule 5): the person's CLOSED lead gets no first response", firstResponse(caraClosed) === "||");
+  const onClosed = await act.logCall(R, { kind: "lead", id: caraClosed }, { outcome: "BUSY" });
+  ok("FO-2p4 DW1 fail (review M1): a call logged on a CLOSED lead is saved but sets no first response on it", onClosed.firstResponse === false && firstResponse(caraClosed) === "||" && count("fo_call", `lead_id = '${caraClosed}'`) === 1);
+  // Two first calls at once on two leads of one person (locks in id order): no deadlock, each lead answered once.
+  const dee = await lead("Dee");
+  const deeLead2 = sql(`insert into fo_lead (firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values ('${A}', '${dee.person.id}', 'MANUAL', 'Referral', '${R.staffId}', 'test', now()) returning id`).split("\n")[0];
+  const race = await Promise.all([dee.id, deeLead2, dee.id, deeLead2].map((id) => refusal(() => act.logCall(R, { kind: "lead", id }, { outcome: "NO_ANSWER" }))));
+  ok("FO-2p4 DW1 fail (race): four first calls at once on two leads of one person all save, no deadlock, and each lead's first response is set once",
+    race.every((x) => x === null) && count("fo_call", `person_id = '${dee.person.id}'`) === 4 && count("audit_event", `action = 'call.logged' and detail->>'firstResponse' = 'true' and detail->>'leadId' in ('${dee.id}', '${deeLead2}')`) === 1
+      && firstResponse(dee.id).includes("|CALL|") && firstResponse(dee.id) === firstResponse(deeLead2), race);
   const failing = new Activity(db, { ...ports, audit: fakeAudit({ failOn: () => true }) });
   const forced = await refusal(() => failing.logCall(R, { kind: "lead", id: bob.id }, { outcome: "CONNECTED" }));
   ok("FO-2p4 DW1 fail: a forced audit failure rolls the call and the first response back", forced !== null && count("fo_call", `lead_id = '${bob.id}'`) === 0 && firstResponse(bob.id) === "||", forced);
@@ -95,13 +116,15 @@ try {
   const cleo = await lead("Cleo");
   const p = await pros.engage(R, cleo.id);
   const moves = count("fo_stage_move", `prospect_id = '${p.id}'`);
-  const pc = await act.logCall(R, { kind: "prospect", id: p.id }, { outcome: "CONNECTED", when: "2026-11-18T10:00:00Z" });
+  const pc = await act.logCall(R, { kind: "prospect", id: p.id }, { outcome: "CONNECTED", when: new Date(Date.now() - 1000).toISOString() });
   const after = await pros.read(R, p.id);
   ok("FO-2p4 DW2 pass: a call on a prospect is saved on the prospect and leaves its stage, version and moves unchanged (AG-2-26 rule 7)",
     count("fo_call", `prospect_id = '${p.id}'`) === 1 && after.stage.key === p.stage.key && after.version === p.version && count("fo_stage_move", `prospect_id = '${p.id}'`) === moves, after);
-  ok("FO-2p4 DW2 pass: a prospect's first call is its lead's first response when the lead had none (BR-6: a lead fact)", pc.firstResponse === true && firstResponse(cleo.id).startsWith("2026-11-18T10:00:00|CALL"));
-  await act.logCall(R, { kind: "prospect", id: p.id }, { outcome: "BUSY" });
-  ok("FO-2p4 DW2 fail: a second call on the prospect moves nothing and keeps the first response", count("fo_stage_move", `prospect_id = '${p.id}'`) === moves && firstResponse(cleo.id).startsWith("2026-11-18T10:00:00|CALL") && (await pros.read(R, p.id)).stage.key === p.stage.key);
+  ok("FO-2p4 DW2 fail (rule 5): a call on the prospect sets no first response on its ENGAGED lead (only OPEN leads get one)", pc.firstResponse === false && firstResponse(cleo.id) === "||", firstResponse(cleo.id));
+  const cleoOpen = sql(`insert into fo_lead (firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values ('${A}', '${cleo.person.id}', 'MANUAL', 'Referral', '${R.staffId}', 'test', now()) returning id`).split("\n")[0];
+  const pc2 = await act.logCall(R, { kind: "prospect", id: p.id }, { outcome: "BUSY" });
+  ok("FO-2p4 DW2 pass (rule 5, whatever screen): a call logged on the prospect is the first response of the person's OPEN lead, and still moves nothing",
+    pc2.firstResponseFor.join() === cleoOpen && firstResponse(cleoOpen).includes("|CALL|") && count("fo_stage_move", `prospect_id = '${p.id}'`) === moves && (await pros.read(R, p.id)).stage.key === p.stage.key, pc2);
 
   // ------------------------------------------------------------------------------------- DW3: the timeline
   const dan = await lead("Dan");
@@ -119,10 +142,11 @@ try {
       && t.lines.filter((l) => l.kind !== "AUDIT" || l.type === EVENT.LEAD_TAKEN).every((l) => l.actorName !== null), t.lines);
   ok("FO-2p4 DW3 fail: no line twice: an event with its own audit line and a call's or note's audit line are not repeated",
     !t.lines.some((l) => l.kind === "EVENT") && !t.lines.some((l) => l.type === "call.logged" || l.type === "note.added") && count("module_event", `subject_id = '${dan.id}'`) >= 2);
+  const anaT = await tl.lead(R, ana.id);
+  ok("FO-2p4 DW3 pass (review m6): a short call reads in seconds, never \"(0 min)\"", anaT.lines.some((l) => l.summary === "Incoming call: connected (20 s). Wants a study permit."), anaT.lines.map((l) => l.summary));
   const pt = await tl.prospect(R, p.id);
-  // The first prospect call was logged as made at 10:00 UTC (an edited `when`), so it sits by that time, before the Engage line.
   ok("FO-2p4 DW3 pass: the prospect's timeline lists its engage and its two calls, each by when it happened", pt.lines.map((l) => l.kind === "AUDIT" ? l.type : l.kind).sort().join() === ["CALL", "CALL", EVENT.LEAD_ENGAGED].sort().join()
-    && pt.lines[0].kind === "CALL" && pt.lines[0].at === "2026-11-18T10:00:00.000Z" && pt.lines.every((l, i, a) => i === 0 || a[i - 1].at <= l.at), pt.lines.map((l) => `${l.kind}:${l.type}@${l.at}`));
+    && pt.lines.every((l, i, a) => i === 0 || a[i - 1].at <= l.at), pt.lines.map((l) => `${l.kind}:${l.type}@${l.at}`));
   const emptyNote = await refusal(() => act.addNote(R, { kind: "lead", id: dan.id }, { text: "   " }));
   const clientNote = await refusal(() => act.addNote(R, { kind: "lead", id: dan.id }, { text: "Hello", visibility: "CLIENT_VISIBLE" }));
   ok("FO-2p4 DW3 fail: an empty note, or one marked for the client, → 422; nothing saved", emptyNote?.status === 422 && clientNote?.status === 422 && count("fo_note", `lead_id = '${dan.id}'`) === 1, { emptyNote, clientNote });
