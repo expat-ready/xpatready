@@ -22,9 +22,11 @@ Lead 81's 20:5x check, Lead 80's plan position and CI-recovered lines: word for 
 
 Hand-over item 6 (rules learned 18 Nov) and the CI investigation pointer: word for word in `history/STATE-2026-11-18-2135-lead81s2-handover-item6-ci-lines.md`.
 
-**Tonight's push (Lead 81, 22:5x 18 Nov; founder "start doing it"):** #2152 one big product batch (merge after #2148-#2150 finish and the review approves; revert to 6 on 19 Nov); sub-leads overlap chained parts; qa-4 scores rows on merge, qa after-merge walks the PF-* rows; P-703 product-only measures. Morning estimate: 8-12 product PRs merged, Proven 11 -> 13-16.
-
 #2145 done and CI-RUN part 2 in flight (cloud task_bc4ca0c7, P-651): word for word in `history/STATE-2026-11-18-2300-lead81s2-2145-cirun-lines.md`.
+
+**Overlap starts (Lead 81, 23:1x 18 Nov, founder "Yes, go"):** 10 cloud sessions requested: PF-15 part 2 (task_3ac7d547), FO-3st2 (task_33a9c3ba), PF-19e (task_bab945f3), PF-19b part 3 (task_c431da30), J-109 (task_a27f0c66), CS-K1 part 1 (task_63b163fa), CS-C1s part 2 (task_dbcf61b2), AUD-1m with #2124's merge (task_a1b310f4), #2129 merge (task_6f42a231), money FO-7lk then FO-7ts part 2 (task_ba56ea39). Cards (app cap of 10): PF-6b (task_d55fe841), PF-19r (task_c7aa104d). #2152 Approve 03ac386 (batch 13, P-704): label only when #2148-#2150 are done and no product batch waits. GitHub research: likely trial-era limit (180) still on; Support lifts it; options to the founder.
+
+Tonight's push line (22:5x): word for word in `history/STATE-2026-11-18-2320-lead81s2-tonights-push-line.md`.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 **For the founder (open):** (a) R1.20 vs PF-4c invite rule; (b) close #2088. Done: (c) Lead 83 standby, (d) P-701, (e) ticket High asked. Full line word for word in `history/STATE-2026-11-18-2212-lead81s2-for-founder-line.md`.
