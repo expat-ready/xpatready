@@ -313,7 +313,7 @@ export class Runtime {
         // CS-K1 (contract §5, P-588 (2)): the case's client, after the limit check and before the case row. Given, it is a
         // client of the opener's firm (else 404, nothing written); not given, a new one named after the principal. A refused
         // opening rolls it back with everything else.
-        const made = b.clientId ? null : await newClient(tx, { workspaceId, firmKey: firm!.key, combinationId: b.combinationId, displayName: b.principal.displayName, createdBy: actor.id });
+        const made = b.clientId !== undefined ? null : await newClient(tx, { workspaceId, firmKey: firm!.key, combinationId: b.combinationId, displayName: b.principal.displayName, createdBy: actor.id });
         const clientId = made?.id ?? (await clientOfFirm(tx, { workspaceId, firmKey: firm!.key, id: b.clientId }))?.id ?? fail("No such client.", HttpStatus.NOT_FOUND);
         madeClient = made ? { id: made.id, code: clientCode(made.clientNumber) } : null;
         const party = await tx.party.create({ data: { workspaceId, profile: { create: { workspaceId, displayName: b.principal.displayName } } } });
