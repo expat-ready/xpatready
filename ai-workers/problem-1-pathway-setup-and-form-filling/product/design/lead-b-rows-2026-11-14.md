@@ -1970,3 +1970,14 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **Queue blocker (Lead 82):** six of my PRs went dirty against main and were dropped from the merge queue: #2130, #2128, #1959, #2102, #2011, and #2103 (not labelled yet). Each conflicts only in its module card. I posted a merge-main step on each (comments 6987590851 to 6987593112).
 * **P-600 re-stamps:** PF-18b's `20261118073000` is now main's newest migration, so #2102's `20261117140000` and #2103's `20261117130000` are earlier than it. They are renamed to **`20261118150000_fo3a2_consult_record`** and **`20261118143000_fo3a_hour_sets`**. This supersedes my 6982230626 and 6982231047 "keep stamp" steps.
 * Cloud session ids went to Lead 82 so it can type "continue" (P-699).
+
+## Rev 17.31 (18 Nov 23:55 IST)
+* **#2157 PF-19r part 1 (Build Lead C's row):** my answers to its five questions (comment 6987664663).
+  * The binding to `MESSAGES_MAIL` stays now. Rev 16.64 is amended, not reversed: sealing stays in PF-19e, whose lane is running on #1961.
+  * An unsealed token in the demo outbox file is OK on demo and test copies only. PF-19e must land before any copy with real people.
+  * The reminder's last resort goes out as TRANSACTIONAL with no person.
+  * The held-invitation case needs no follow-up, because PF-19e's cap exemption ends it.
+  * A reset to a suppressed address stays a 409, with an "update the address first" sentence.
+  * The PR also needs to merge main in.
+* `PF-19e.md` is amended: it seals all of PF-19r's transactional senders, updates PF-19r's DW5, and holds the real-people gate.
+* Owed by the current Lead: the PF-19e BACKLOG row and the DECISIONS line (outbox file holds links and codes until PF-19e).
