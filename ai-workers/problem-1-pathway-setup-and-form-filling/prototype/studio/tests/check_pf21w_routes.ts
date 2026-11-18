@@ -3,6 +3,8 @@
 // on the six seeded roles (one staff member per role in the Sample firm, plus firm B's Owner and an inactive person).
 // One scratch database (every migration, PF-3's Sample seed) and a Nest app built from the feature's own classes
 // (features/platform-complaints.ts) beside PF-4's (the guard, the local stand-in's tokens), the audit port real, the job
+const { MESSAGES_MAIL } = await import("../api/src/features/platform-messages.ts");   // PF-19r: the complaints feature mails through it (in memory here)
+const { fakeMail } = await import("../ports/mail.ts");
 // runner a recorder. No server of the app, no browser, no model call (US$0). The database is dropped at the end.
 //   tsx studio/tests/check_pf21w_routes.ts
 import "reflect-metadata";
@@ -56,7 +58,7 @@ const apps: { close(): Promise<void> }[] = [];
 const local = new LocalIdentity("pf21w-check-signing-key-0123456789abcdef", () => Date.now());
 async function makeApp(jobs: JobPort) {
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, PlatformClock, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
-    { provide: PlatformJobs, useValue: jobs }, ...feature.providers];
+    { provide: MESSAGES_MAIL, useValue: fakeMail() }, { provide: PlatformJobs, useValue: jobs }, ...feature.providers];
   @Module({ controllers: feature.controllers as never[], providers: providers as never[] }) class TestApp {}
   const app = await NestFactory.create(TestApp, { logger: false });
   await app.listen(0, "127.0.0.1"); apps.push(app);
