@@ -91,7 +91,7 @@ model PlatComplaint {
   closedAt           DateTime?                @map("closed_at") @db.Timestamptz
   recordedBy         String                   @map("recorded_by")
   /// PF-21i: the Idempotency-Key the complaint was recorded with (1-255 visible ASCII), unique per firm by a partial
-  /// unique index in SQL (WHERE request_key IS NOT NULL; migration 20261116150000_pf21i_complaint_request_key); empty
+  /// unique index in SQL (WHERE request_key IS NOT NULL; migration 20261117123000_pf21i_complaint_request_key); empty
   /// for complaints recorded before PF-21i. Set once, never changed (trigger).
   requestKey         String?                  @map("request_key")
   /// PF-21i: SHA-256 (hex) of the canonical request body (keys sorted): the same key with another body is refused.
