@@ -6,7 +6,8 @@
 --     the party's balance is unchanged and nothing leaves trust. The case's currency and client are the move route's.
 --   * the credit ledger money_credit_entry, per holder (the case, or the party) and currency: KEPT, APPLIED, REFUNDED,
 --     REVERSED, never below zero, insert-only, behind PF-12's walls. Credit is not trust (P-634 does not touch it).
---   * one lock order: both take the party lock first (money_trust_lock, FO-7lk), then any invoice row.
+--   * one lock order: both take the party lock first (money_trust_lock, FO-7lk), then any invoice row, then (applied
+--     credit, above READ COMMITTED only, NOWAIT) the draft's lines (review n-f).
 -- Replaces money_trust_entry_write (FO-7a2's text after FO-7lk, changed only for the pair); every other function is new,
 -- with five new triggers keeping the credit rules after later writes. No other row's function is edited.
 -- Rollback: rollback.sql in this folder (Prisma reads only migration.sql); the enum value MOVE_TO_CASE stays.

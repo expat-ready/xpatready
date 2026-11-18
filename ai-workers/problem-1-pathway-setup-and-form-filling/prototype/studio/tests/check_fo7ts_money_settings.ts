@@ -523,6 +523,16 @@ try {
       for (const c of [t1, t2]) { await c.end(); conns.splice(conns.indexOf(c), 1); }
       ok("FO-7ts pass (review M3): header save then credit applied in one transaction, with a line save waiting between — both finish at READ COMMITTED, no 40P01", out.every((x) => x === "ok"), out);
     }
+    {  // review n-g: the same shape at REPEATABLE READ — the apply never waits on the line (NOWAIT, 55P03), never 40P01
+      const Dd = inv(R, 30000, { draft: true }), [t1, t2] = [0, 1].map(() => new pg.Client({ connectionString: urlOf(T) }));
+      for (const c of [t1, t2]) { await c.connect(); conns.push(c); }
+      await t1.query("begin isolation level repeatable read"); await t1.query(`update money_invoice set due_date = '2026-12-20' where id = '${Dd}'`);
+      const r2 = t2.query(`update money_invoice_line set unit_amount_minor = 29000, amount_minor = 29000 where invoice_id = '${Dd}'`).then(() => "ok", (e: { code?: string }) => e.code);
+      for (let i = 0; i < 400 && (await t1.query("select wait_event_type w from pg_stat_activity where pid = $1", [(t2 as unknown as { processID: number }).processID])).rows[0]?.w !== "Lock"; i++) await new Promise((r) => setTimeout(r, 5));
+      const r1 = await t1.query(ce(R, "APPLIED", -1000, { inv: Dd })).then(() => "ok", (e: { code?: string }) => e.code); await t1.query("rollback"); const out = [r1, await r2];
+      for (const c of [t1, t2]) { await c.end(); conns.splice(conns.indexOf(c), 1); }
+      ok("FO-7ts pass (review n-g): the same at REPEATABLE READ — the apply is refused at once (55P03), the line save then commits, no 40P01", out[0] === "55P03" && out[1] === "ok", out);
+    }
     {  // break N12, review m-f: an editor saves the header, credit is applied at REPEATABLE READ, then the editor saves a line
       const Dd = inv(R, 30000, { draft: true }), [ed, ap] = [0, 1].map(() => new pg.Client({ connectionString: urlOf(T) }));
       for (const c of [ed, ap]) { await c.connect(); conns.push(c); }

@@ -104,6 +104,12 @@ The breaker's report is in the session scratchpad; it will be copied here with t
 * **Fixed:** the row comes first, then the line lock, taken above READ COMMITTED only (`NOT IN ('read committed', 'read uncommitted')`, n-e) and with NOWAIT. It now sits just before the due read. This is the reviewer's tested move and the breaker's `_alt`.
 * **New check:** the editor's save commits and the stale apply gets 40001. On c3bb10de it gets 40P01.
 * The migration header now names the line lock in the lock order (n-f).
-* **N13 (Minor), recorded:** at REPEATABLE READ an apply racing a line edit that then rolls back gets 55P03 where waiting would succeed. busy.ts retries 55P03, and no app code runs money writes above READ COMMITTED.
+* **N13 (Minor), closed in round 5:** the breaker found the rolled-back line edit case now waits and commits; 55P03 remains only where a line writer already waits behind the apply's own transaction (there waiting would deadlock). Correction (breaker N14): `api/src/busy.ts` only labels 40P01 and 55P03 as "Busy, try again" for X2b's bulk apply; nothing retries them, and no money writer uses it. The route that applies credit must answer 55P03 itself.
 * Build notes for round 3 said "with the lock always taken, it gets 40P01". That holds for a waiting lock; with NOWAIT and no guard it gets 55P03. Both fail the check.
 * `check_fo7ts_money_settings.ts` 106/0.
+
+## Round 5 on b5202cc1: Reviewer Approve, Breaker pass; three notes folded in before the PR
+* **n-f:** the migration's first lock-order line now names the draft line lock.
+* **n-g:** a REPEATABLE READ copy of the M3 check. The apply is refused at once (55P03) and the line save then commits. Without NOWAIT it would deadlock.
+* **N14:** the `busy.ts` line above is corrected.
+* **Seen by the breaker, not counted:** credit applied to two drafts in one transaction can deadlock with an editor saving the same two drafts in the opposite order. It happens the same way without this row, and no route touches two invoices yet. This is for the Apply-credit route row.
