@@ -488,7 +488,11 @@ try {
     ok("FO-7ts fail (review m-d): refunding the 50.00 payment that 50.00 was kept from is refused, though the invoice stays over by 100.00", refused(T, refundQ(small, 5000), /never more than the payment less its refunds/, "23514") && !!big);
     ok("FO-7ts fail (review m-c): credit held on a case pays only an invoice of the holder's own party", refused(T, ce(randomUUID(), "APPLIED", -100, { kase: C1, inv: inv(u(602), 5000, { kase: C1, draft: true }) }), /pays only an invoice of its holder/));
     const Ix = inv(R, 100000), ra = paid(Ix, 1000), rb = paid(Ix, 1000);  // review M2: refunds on one party's invoice in two orders never deadlock
-    const rr = await race([`${refundQ(ra, 100)}; ${refundQ(rb, 100)}`, refundQ(rb, 100)]);
+    const [u1, u2] = [0, 1].map(() => new pg.Client({ connectionString: urlOf(T) })); for (const c of [u1, u2]) { await c.connect(); conns.push(c); }  // review n-d: a fixed order
+    await u1.query("begin"); await u1.query(refundQ(ra, 100)); const w2 = u2.query(refundQ(rb, 100)).then(() => ({ ok: true }), (e: { code?: string }) => ({ ok: false, code: e.code }));
+    for (let i = 0; i < 400 && (await u1.query("select wait_event_type w from pg_stat_activity where pid = $1", [(u2 as unknown as { processID: number }).processID])).rows[0]?.w !== "Lock"; i++) await new Promise((r) => setTimeout(r, 5));
+    const w1 = await u1.query(refundQ(rb, 100)).then(() => u1.query("commit")).then(() => ({ ok: true }), (e: { code?: string }) => ({ ok: false, code: e.code })); const rr = [w1, await w2];
+    for (const c of [u1, u2]) { await c.end(); conns.splice(conns.indexOf(c), 1); }
     ok("FO-7ts pass (review M2): one transaction refunding payments A then B while another refunds B both finish (the party lock is taken before the payment row)", rr.every((x) => x.ok), rr);
     const kr: { ok: boolean; code?: string }[] = [];  // break N9: a kept credit and a refund of one payment, started together, never deadlock
     for (let i = 0; i < 10; i++) { const Ik = inv(R, 10000), pk = paid(Ik, 15000); kr.push(...await race([ce(R, "KEPT", 3000, { pay: pk }), refundQ(pk, 1000)])); }
@@ -508,6 +512,16 @@ try {
       await t3.query("commit"); const out = [await r1, await r2];
       for (const c of [t1, t2, t3]) { await c.end(); conns.splice(conns.indexOf(c), 1); }
       ok("FO-7ts pass (break N11): a header save, then credit applied and a line save queued behind it on one draft — both finish, no 40P01", out.every((x) => x === "ok"), out);
+    }
+    {  // review M3 (D2): one transaction saves the draft's header, a line save waits on it, then the same transaction applies credit
+      const Dd = inv(R, 30000, { draft: true }), [t1, t2] = [0, 1].map(() => new pg.Client({ connectionString: urlOf(T) }));
+      for (const c of [t1, t2]) { await c.connect(); conns.push(c); }
+      await t1.query("begin"); await t1.query(`update money_invoice set due_date = '2026-12-20' where id = '${Dd}'`);
+      const r2 = t2.query(`update money_invoice_line set unit_amount_minor = 29000, amount_minor = 29000 where invoice_id = '${Dd}'`).then(() => "ok", (e: { code?: string }) => e.code);
+      for (let i = 0; i < 400 && (await t1.query("select wait_event_type w from pg_stat_activity where pid = $1", [(t2 as unknown as { processID: number }).processID])).rows[0]?.w !== "Lock"; i++) await new Promise((r) => setTimeout(r, 5));
+      const r1 = await t1.query(ce(R, "APPLIED", -1000, { inv: Dd })).then(() => t1.query("commit")).then(() => "ok", (e: { code?: string }) => e.code); const out = [r1, await r2];
+      for (const c of [t1, t2]) { await c.end(); conns.splice(conns.indexOf(c), 1); }
+      ok("FO-7ts pass (review M3): header save then credit applied in one transaction, with a line save waiting between — both finish at READ COMMITTED, no 40P01", out.every((x) => x === "ok"), out);
     }
     const chqInv = inv(R, 10000), chq = last(T, `insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by, cleared) values ('${F}', '${chqInv}', 'CHEQUE', 15000, 'CAD', 'OPERATING', now(), '${key()}', 'user-R', false) returning id`);
     const I2p = inv(R, 100000), q1 = paid(I2p, 110000), q2 = paid(I2p, 10000); ok("FO-7ts fail (review m4): credit kept from one payment is never more than that payment (150.00 from a 100.00 payment), though the invoice is over by 200.00", refused(T, ce(R, "KEPT", 15000, { pay: q2 }), /never more than the payment, less its refunds/) && !!q1);

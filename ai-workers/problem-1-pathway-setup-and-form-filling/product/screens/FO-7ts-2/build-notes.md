@@ -89,3 +89,12 @@ The breaker's report is in the session scratchpad; it will be copied here with t
 * N9 and N4 stay fixed: the breaker ran 300 rounds and the line races at RC and RR.
 * `check_fo7ts_money_settings.ts` 104/0 · `check_fo7a_money_schema.ts` 122/0 (unchanged).
 * **Size:** the tech lead chose a size exception (19 Nov). The PR body names the DECISIONS row once it is added.
+
+## Reviewer round 3 on 5397b60b (changes requested: M3, the same as N11), fixed
+* **M3: the N4 line lock went invoice row → draft lines, against FO-7a's line writer.**
+  * The reorder in db1162d1 fixed N11, but not D2: a transaction that already holds the draft's row from an earlier save, then applies credit while a line save waits.
+  * **Fixed, with the reviewer's tested sketch:** the line lock is taken only above READ COMMITTED, where a stale read must fail, and with `NOWAIT`, so the result is 55P03, never 40P01. At READ COMMITTED every read is fresh, which already refuses N4.
+  * **New check:** D2 at READ COMMITTED. Both finish; with the lock always taken, it gets 40P01.
+* **n-d:** the refund-order check now runs in a fixed order, instead of depending on timing.
+* **Size:** 824 at 5397b60b, as CI counts it. The final count is in the PR body.
+* `check_fo7ts_money_settings.ts` 105/0.

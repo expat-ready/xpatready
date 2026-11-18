@@ -287,8 +287,11 @@ BEGIN
     END IF;
   ELSIF NEW.kind = 'APPLIED' THEN
     -- AG-6-21 rule 5: to an invoice of the same holder and currency, draft or issued, at most what is due on it.
-    -- The draft's lines (share), then its row: the line writer's order (break N4: a stale line read fails, 40001; N11: 40P01).
-    PERFORM 1 FROM "money_invoice_line" l WHERE l.firm_id = NEW.firm_id AND l.invoice_id = NEW.invoice_id FOR SHARE;
+    -- Above READ COMMITTED a stale line read must fail (break N4: 40001): share the lines first, the line writer's order,
+    -- and never wait for them (NOWAIT: 55P03, never 40P01; N11, review M3). At READ COMMITTED each read is fresh.
+    IF current_setting('transaction_isolation') <> 'read committed' THEN
+      PERFORM 1 FROM "money_invoice_line" l WHERE l.firm_id = NEW.firm_id AND l.invoice_id = NEW.invoice_id FOR SHARE NOWAIT;
+    END IF;
     UPDATE "money_invoice" x SET updated_at = now() WHERE x.firm_id = NEW.firm_id AND x.id = NEW.invoice_id RETURNING x.person_id, x.company_id, x.case_id, x.currency INTO i;
     IF NOT FOUND THEN PERFORM money_missing('money_credit_entry', 'invoice', NEW.invoice_id); END IF;
     IF (i.currency, i.case_id, i.person_id, i.company_id) IS DISTINCT FROM (NEW.currency, NEW.case_id, NEW.person_id, NEW.company_id) THEN  -- and its party (review m2)
