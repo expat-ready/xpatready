@@ -80,8 +80,9 @@ function zipNames(b: Uint8Array): ZipRead {
   for (let at = b.length - 22; at >= floor; at--) if (b[at] === 0x50 && b[at + 1] === 0x4b && b[at + 2] === 5 && b[at + 3] === 6) { eocd = at; break; }
   if (eocd < 0) return { damaged: true };
   const count = u16le(b, eocd + 10), cdSize = u32le(b, eocd + 12), cdAt = u32le(b, eocd + 16);
-  // ZIP64 markers or a directory outside the file: not something an office program writes for a file under 25 MB.
-  if (count === 0xffff || cdAt === 0xffffffff || count > ZIP_MAX_ENTRIES || cdAt + cdSize > eocd) return { damaged: true };
+  // Over 5,000 entries (this also refuses ZIP64's 0xffff count) or a directory outside the file (also ZIP64's 0xffffffff
+  // offset): not something an office program writes for a file under 25 MB.
+  if (count > ZIP_MAX_ENTRIES || cdAt + cdSize > eocd) return { damaged: true };
   const names: string[] = [];
   for (let at = cdAt, i = 0; i < count; i++) {
     if (at + 46 > eocd || u32le(b, at) !== 0x02014b50) return { damaged: true };

@@ -94,18 +94,18 @@ ok("PF-F4: a ZIP with word/ but no [Content_Types].xml is a plain ZIP, not Word"
 ok("PF-F4: a ZIP cut before its end record is refused as damaged", refused(detect(plainZip.subarray(0, plainZip.length - 30)), "DAMAGED"));
 const office = zip([{ name: "[Content_Types].xml", data: bytes("<Types/>") }, { name: "word/document.xml", data: bytes("<w/>") }]);
 ok("PF-F4: the hand-built office ZIP below is Word (the base for the damaged cases)", detect(office).ok);
-const withEnd = (b: Uint8Array, at: number, put: (v: DataView) => void) => { const c = new Uint8Array(b); put(new DataView(c.buffer, c.length - 22)); void at; return c; };
+const withEnd = (b: Uint8Array, put: (v: DataView) => void) => { const c = new Uint8Array(b); put(new DataView(c.buffer, c.length - 22)); return c; };
 ok("PF-F4: a directory said to start past the end record is refused as damaged",
-  refused(detect(withEnd(office, 0, (v) => v.setUint32(16, office.length, true))), "DAMAGED"));
-ok("PF-F4: a ZIP64 entry count (0xffff) is refused as damaged", refused(detect(withEnd(office, 0, (v) => v.setUint16(10, 0xffff, true))), "DAMAGED"));
+  refused(detect(withEnd(office, (v) => v.setUint32(16, office.length, true))), "DAMAGED"));
+ok("PF-F4: a ZIP64 entry count (0xffff) is refused as damaged (by the 5,000-entry cap)", refused(detect(withEnd(office, (v) => v.setUint16(10, 0xffff, true))), "DAMAGED"));
 const many = zip([{ name: "[Content_Types].xml", data: bytes("<Types/>") }, ...Array.from({ length: 5000 }, (_, i) => ({ name: `word/p${i}.xml`, data: new Uint8Array() }))]);
 ok("PF-F4: a real ZIP of 5,001 entries is refused as damaged (the cap), one of 5,000 is read",
   refused(detect(many), "DAMAGED") && detect(zip([{ name: "[Content_Types].xml", data: bytes("<Types/>") }, ...Array.from({ length: 4999 }, (_, i) => ({ name: `word/p${i}.xml`, data: new Uint8Array() }))])).ok);
 ok("PF-F4: a directory size running past the end record is refused as damaged (entries themselves in bounds)",
-  refused(detect(withEnd(office, 0, (v) => v.setUint32(12, 0xfffffff0, true))), "DAMAGED"));
+  refused(detect(withEnd(office, (v) => v.setUint32(12, 0xfffffff0, true))), "DAMAGED"));
 ok("PF-F4: a directory entry without its signature is refused as damaged",
   (() => { const c = new Uint8Array(office); const cd = new DataView(c.buffer).getUint32(c.length - 6, true); c[cd] = 0; return refused(detect(c), "DAMAGED"); })());
-ok("PF-F4: an entry count above what the directory holds is refused as damaged", refused(detect(withEnd(office, 0, (v) => v.setUint16(10, 3, true))), "DAMAGED"));
+ok("PF-F4: an entry count above what the directory holds is refused as damaged", refused(detect(withEnd(office, (v) => v.setUint16(10, 3, true))), "DAMAGED"));
 
 // ---- size limits: declared at creation, actual at the end ----------------------------------------------------------
 const doc25 = padTo(pdf(), 25 * MB), img10 = padTo(fx("sample.jpg"), 10 * MB);
@@ -141,7 +141,10 @@ ok("PF-F4: fill bytes between markers are skipped (FF FF FF C0 still finds the f
   (() => { const b = sof(65000, 65000); const c = new Uint8Array([...b.subarray(0, 8), 0xff, 0xff, ...b.subarray(8)]); return refused(detect(c), "TOO_MANY_PIXELS"); })());
 // A Huffman table (C4) is not a frame header: read as one, its bytes would declare 0xFFFF x 0xFFFF.
 const dhtFirst = new Uint8Array([0xff, 0xd8, 0xff, 0xc4, 0, 7, 0, 0xff, 0xff, 0xff, 0xff, ...sof(100, 100).subarray(8)]);
-ok("PF-F4: DHT (C4), JPG (C8) and DAC (CC) markers are not read as frame headers", (() => { const r = detect(dhtFirst); return r.ok && r.pixels === 10000; })());
+const notFrame = (m: number) => { const c = new Uint8Array(dhtFirst); c[3] = m; const r = detect(c); return r.ok && r.pixels === 10000; };
+ok("PF-F4: DHT (C4), JPG (C8) and DAC (CC) markers are not read as frame headers", notFrame(0xc4) && notFrame(0xc8) && notFrame(0xcc));
+ok("PF-F4: restart markers (D0-D7) before the frame header carry no length and are stepped over",
+  (() => { const b = sof(65000, 65000); return refused(detect(new Uint8Array([0xff, 0xd8, 0xff, 0xd0, 0xff, 0xd7, ...b.subarray(2)])), "TOO_MANY_PIXELS"); })());
 ok("PF-F4: a JPEG with no frame header before its scan is refused as damaged", refused(detect(new Uint8Array([0xff, 0xd8, 0xff, 0xda, 0, 2, 0xff, 0xd9])), "DAMAGED"));
 const rRen = checkFile({ bytes: fx("sample.jpg"), name: "passport.pdf", mediaType: "application/pdf" }, ALL_KINDS);
 ok("PF-F4: a JPEG renamed passport.pdf is stored as image/jpeg named passport.jpg, marked corrected", rRen.ok && rRen.mediaType === "image/jpeg" && rRen.name === "passport.jpg" && rRen.corrected, rRen);
@@ -181,9 +184,10 @@ ok("PF-F4: the same door accepts a PNG", checkFile({ bytes: fx("sample.png"), na
 ok("PF-F4: the refusal at the full door lists all seven types", rExe.ok === false && rExe.message.includes("Allowed here: PDF, JPEG, PNG, HEIC, TIFF, Word and Excel."), rExe);
 ok("PF-F4: a one-type door says it plainly", (() => { const r = checkFile({ bytes: exe }, ["pdf"]); return !r.ok && r.message.endsWith(`Allowed here: PDF. ${NOTHING_STORED}`); })());
 ok("PF-F4: a door with no kinds is a programming error, not a silent accept", (() => { try { checkFile({ bytes: pdf() }, []); return false; } catch { return true; } })());
-const big = padTo(fx("sample.jpg"), 25 * MB);
+// FF D8 FF then 25 MB of FF fill: walking it takes 70-550 ms, the size refusal under 1 ms; 10 ms tells the order apart.
+const big = new Uint8Array(25 * MB).fill(0xff); big[1] = 0xd8;
 const t2 = performance.now(); const rBig = checkFile({ bytes: big, name: "a.jpg" }, ALL_KINDS); const ms2 = performance.now() - t2;
-ok(`PF-F4: a 25 MB JPEG is refused on its size before any whole-file walk (${ms2.toFixed(1)} ms, under 50)`, refused(rBig, "TOO_LARGE") && ms2 < 50, { ms2, rBig });
+ok(`PF-F4: a 25 MB JPEG is refused on its size before any whole-file walk (${ms2.toFixed(1)} ms, under 10)`, refused(rBig, "TOO_LARGE") && ms2 < 10, { ms2, rBig });
 const hostile = bytes("%PDF-1.7\n" + "/#4a#53".repeat(Math.floor((9 * MB) / 7)));   // the scan's worst case, 9 MB
 const t3 = performance.now(); const rHost = checkFile({ bytes: hostile }, images); const ms3 = performance.now() - t3;
 ok(`PF-F4: a 9 MB hostile PDF at an images-only door is refused before its whole-file scan (${ms3.toFixed(1)} ms, under 50)`, refused(rHost, "NOT_ALLOWED_TYPE") && ms3 < 50, { ms3 });

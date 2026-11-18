@@ -54,3 +54,38 @@ D1 4: every row line is built, but one acceptance test does not run from git (B1
 A HEIC decode (no HEVC decoder here); how real Office handles the crafted ZIPs (m5 comes from the OPC spec, not a run); CI's shards (skipped on the draft; `module-cards` fails on `main`'s 42-line front-office card, not this PR's).
 
 **Verdict: Block** (B1 open), for commit 183238e06. Fix B1; m1–m6 are Should.
+
+## Round 2 (18 Nov 2026): commit cf6a01593 (diff `183238e06..cf6a01593`, 2 commits)
+**Ran.**
+* A clean `git worktree` of cf6a01593 has 10 fixtures and no `plain.zip`. `npx tsx tests/check_pff4_file_type.ts` gives **77 passed, 0 failed, exit 0**, twice. Its 40 refusals all end "Nothing was stored."
+* I repeated the round 1 probes on the new code.
+* I ran 31 new mutation probes (scratch copy); 22 fail the suite.
+
+**Round 1 items**
+* **B1 closed.** The ZIPs are built in the test (`test:87-88`), and `make_fixtures.py` no longer writes one.
+* **m1 closed.** Each of these now fails when its rule is removed:
+  * the 5,000-entry cap, `cdAt + cdSize > eocd`, the CD signature and lower-casing;
+  * `xl/macrosheets/`, `vbaData.xml`, and the office-not-Word/Excel and `mimetype` cases;
+  * the fill byte and the C4 exclusion;
+  * `#xx` decoding (escaped names alone), NUL, the bidi strip, trailing dots, the code-point cut and the own-extension rule;
+  * octet-stream, the declared-type disagreement, and sniff-before-scan at the door.
+* **m2 closed for this row.** `checkFile` runs sniff, then the door, then the size, then `inspect` (`file-type.ts:131`, `:158`, `:237`).
+  * A 25 MB JPEG of `FF` fill is now refused in 0.3 ms (it was 550 ms).
+  * Residual: an allowed hostile 25 MB `/#4a#53` PDF still takes **1.7 s**. It is going to PF-F2 in the PR (run the check off the request path), and I accept that.
+* **m3 closed.** `passport.exe.` → `passport.jpg`; `file.pdf.` → `file.pdf`; `a.pdf . . ` → `a.pdf`. A long name is cut by code points.
+* **m4 closed.** `photo.JPG`, `photo.jpeg` and `photo.jpg` sent as octet-stream all stay `corrected: false`, and `cv.pdf.JPG` with JPEG bytes → `cv.JPG`.
+* **m5 closed.** `xl/Macrosheets/` → MACROS. `/OpenAction\0` and `/S/Launch\0` are flagged.
+* **m6 closed.** pptx and odt → NOT_ALLOWED_TYPE. The `:214` comment now matches the code.
+
+**New, Minor (Should), none blocking**
+* **n1** `test:184-186` claims to show "refused on its size before any whole-file walk". It still passes when `inspect` is moved before the size check, because `padTo(sample.jpg)` has its SOF at byte 20, so the walk is instant either way. *Fix:* build the 25 MB JPEG as `FF D8 FF` + 25 MB of `FF` fill. With the order reversed it takes about 550 ms and fails the 50 ms bound.
+* **n2** `file-type.ts:84`: `count === 0xffff` and `cdAt === 0xffffffff` are never the deciding check. The cap (`count > 5000`) and the bounds check (`cdAt + cdSize > eocd`) already refuse both. So `test:100` ("ZIP64 entry count") passes with the ZIP64 test removed, which contradicts the PR's "each fails with its rule removed". *Fix:* drop the two markers and say in the comment that the cap and the bounds cover ZIP64, or keep them and relabel `test:100` as covered by the cap. Not tested: C8/CC (only C4 is), and RST/no-length markers before a SOF.
+* **n3** `test:97` `withEnd(b, at, put)`: `at` is unused (`void at`), which is dead code under STANDARDS §7. *Fix:* drop the parameter.
+
+**D-scores changed:** D1 5 · D15 4 (the residual PDF scan goes to PF-F2) · D16 4 (n1, n2).
+
+**Test-pack coverage, re-scored:** **9/10**, no criterion at 0, a pass. Clean checkout 0 → 1; hostile ZIP, hostile JPEG, run time and names each ½ → 1. Mutation sensitivity stays ½ (n1, n2), and real samples stay ½ (HEIC decode unverified).
+
+**Still open, outside this row:** the AG-9-2 mismatch-versus-correct question is with the tech lead in the PR. TIFF and HEIC pixel counts are not read.
+
+**Verdict: Approve** (no open Blocker or Major), for commit cf6a01593ac7df2f6170697440bdbf19d0718a03. n1–n3 are Should.
