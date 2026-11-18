@@ -1946,3 +1946,6 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **Lane sweep for Lead 81:** PF-15 part 1 (now #2130), FO-2 part 3 (#2140), PF-5t part 2 (#2135) and PF-21s part 4 (#2134) are done and queued. PF-5 part 2 (#1959) needed the Lead's P-423 read. PF-5s part 1 stays parked behind PF-5v part 2, PF-19e and #1961.
 * **#1959 PF-5 part 2:** Lead 81's P-423 read is OK, and it is labelled on b8af607b8. Its two minors are in `PF-5.md`: the Stripe call inside the lock, and P-701's GST/HST-only tax registrations for live Stripe.
 * P-699: the Lead does the browser steps. Any "continue" to a cloud lane goes to the current Lead to type.
+
+## Rev 17.25 (18 Nov 22:26 IST)
+* **#2125 CS-W1 (Build Lead C's row):** I gave the owner's OK to its one line on `platform_firm` (comment 6985430234): `GRANT SELECT (id, key)` plus the role-only policy `case_lookup_read` for `xr_case_lookup` (NOLOGIN, NOBYPASSRLS), which owns only the definer lookup. I also checked the stamp `20261118090000` (P-600). Notes: keep the role's only member the migration user, and never widen the column grant.
