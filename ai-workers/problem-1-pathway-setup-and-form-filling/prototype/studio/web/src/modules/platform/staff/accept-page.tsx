@@ -6,7 +6,7 @@
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
-import { Frame } from "@/components/frame";
+import { Frame, useWhere } from "@/components/frame";
 import { Button, Notice } from "@/components/ui/controls";
 import { problemOf } from "@/modules/front-office/sales/contract";
 
@@ -33,6 +33,9 @@ async function call(token: string, accept = false) {
   const data: unknown = text ? (() => { try { return JSON.parse(text); } catch { return text; } })() : null;
   return { res, data };
 }
+
+/** The place line names this page (the outside frame's default is the client's "Your questions"). */
+function Place() { useWhere([{ label: "Invitation" }], null); return null; }
 
 export function AcceptPage() {
   const [view, setView] = React.useState<View>({ step: "loading" });
@@ -64,13 +67,14 @@ export function AcceptPage() {
   };
   return (
     <Frame area="outside" title="Invitation">
+      <Place />
       <section aria-labelledby="accept-h" className="mx-auto mt-6 max-w-md rounded-xl border border-border bg-surface-raised p-6 shadow-sm" data-accept={view.step}>
         <h1 id="accept-h" className="text-lg font-semibold">Join your firm on Expat Ready</h1>
         {view.step === "loading" ? <p role="status" className="mt-2 text-sm text-text-muted">Checking your invitation…</p>
           : view.step === "closed" ? <Notice tone="warn" title="This link cannot be used" className="mt-3"><span data-accept-words>{view.words}</span></Notice>
             : <>
-              <dl className="mt-3 text-sm"><div className="flex gap-2"><dt className="text-text-muted">Firm</dt><dd data-accept-firm className="[overflow-wrap:anywhere]">{view.firmName}</dd></div>
-                <div className="flex gap-2"><dt className="text-text-muted">Your email</dt><dd data-accept-email className="[overflow-wrap:anywhere]">{view.email}</dd></div></dl>
+              <dl className="mt-3 flex flex-col gap-2 text-sm"><div><dt className="text-text-muted">Firm</dt><dd data-accept-firm className="[overflow-wrap:anywhere]">{view.firmName}</dd></div>
+                <div><dt className="text-text-muted">Your email</dt><dd data-accept-email className="[overflow-wrap:anywhere]">{view.email}</dd></div></dl>
               {error ? <Notice tone="danger" title="Not done" className="mt-3"><span data-accept-error>{error}</span></Notice> : null}
               <Button className="mt-4" busy={busy} onClick={() => void accept()} data-accept-continue>{view.next}</Button>
             </>}
