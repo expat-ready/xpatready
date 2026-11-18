@@ -490,6 +490,14 @@ try {
     const Ix = inv(R, 100000), ra = paid(Ix, 1000), rb = paid(Ix, 1000);  // review M2: refunds on one party's invoice in two orders never deadlock
     const rr = await race([`${refundQ(ra, 100)}; ${refundQ(rb, 100)}`, refundQ(rb, 100)]);
     ok("FO-7ts pass (review M2): one transaction refunding payments A then B while another refunds B both finish (the party lock is taken before the payment row)", rr.every((x) => x.ok), rr);
+    const kr: { ok: boolean; code?: string }[] = [];  // break N9: a kept credit and a refund of one payment, started together, never deadlock
+    for (let i = 0; i < 10; i++) { const Ik = inv(R, 10000), pk = paid(Ik, 15000); kr.push(...await race([ce(R, "KEPT", 3000, { pay: pk }), refundQ(pk, 1000)])); }
+    ok("FO-7ts pass (break N9): 10 rounds of a KEPT and a refund of the same payment at once all finish, no 40P01", kr.every((x) => x.ok || x.code !== "40P01") && kr.filter((x) => x.ok).length === 20, kr.filter((x) => !x.ok));
+    const Dn = inv(R, 30000, { draft: true }), cn = new pg.Client({ connectionString: urlOf(T) }); await cn.connect(); conns.push(cn);  // break N4, at REPEATABLE READ
+    await cn.query("begin isolation level repeatable read"); await cn.query("select count(*) from money_credit_entry");
+    sql(T, `update money_invoice_line set unit_amount_minor = 5000, amount_minor = 5000 where invoice_id = '${Dn}'`);
+    const stale = await cn.query(ce(R, "APPLIED", -20000, { inv: Dn })).then(() => "ok", (e: { code?: string }) => e.code); await cn.query("rollback"); await cn.end(); conns.splice(conns.indexOf(cn), 1);
+    ok("FO-7ts fail (break N4): at REPEATABLE READ, applying 200.00 to a draft whose line was cut to 50.00 after the snapshot is refused (40001), never accepted", stale === "40001", stale);
     const chqInv = inv(R, 10000), chq = last(T, `insert into money_payment (firm_id, invoice_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by, cleared) values ('${F}', '${chqInv}', 'CHEQUE', 15000, 'CAD', 'OPERATING', now(), '${key()}', 'user-R', false) returning id`);
     const I2p = inv(R, 100000), q1 = paid(I2p, 110000), q2 = paid(I2p, 10000); ok("FO-7ts fail (review m4): credit kept from one payment is never more than that payment (150.00 from a 100.00 payment), though the invoice is over by 200.00", refused(T, ce(R, "KEPT", 15000, { pay: q2 }), /never more than the payment, less its refunds/) && !!q1);
     ok("FO-7ts fail (break note on 692ea4be): credit is never kept from an uncleared cheque", refused(T, ce(R, "KEPT", 5000, { pay: chq }), /not cleared yet/, "23514"));

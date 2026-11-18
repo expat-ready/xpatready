@@ -69,3 +69,15 @@ The breaker's report is in the session scratchpad; it will be copied here with t
 * **Nits, recorded for the draft-editor route:** a delete-then-insert save on a credit-holding draft is refused. Re-running FO-7lk's migration in the rollback is exact only while no later migration edits FO-7lk's functions.
 * **M1, size:** 815 changed lines as CI counts them (`MODULE.md` included). This needs a size exception from the tech lead, asked for.
 * `check_fo7ts_money_settings.ts` 101/0.
+
+## Breaker round 2 on 736346af (fail: N9, N4), and FO-7a's two-refund check
+* **N9 (Major), fixed in 7728d948 and adjusted here: refunds deadlocked.** The refund's party lock is BEFORE FO-7a's `money_refund_write`, and the invoice row and the check are AFTER.
+  * Moving the invoice row out of the BEFORE trigger keeps FO-7a's own check unchanged. Its two-refund race at REPEATABLE READ is still refused by the refund ordinal (23505), as `check_fo7a_money_schema.ts` expects. With the invoice row in BEFORE, that check got 40001 and failed.
+  * New check: 10 rounds of a KEPT and a refund of the same payment at once all finish, with no 40P01.
+* **N4 (Major), fixed: B7 at REPEATABLE READ.** APPLIED now share-locks the draft's lines before it reads what is due, so a line cut committed after its snapshot is refused (40001).
+  * New check, which fails without the lock.
+  * This also closes the reviewer's m-e.
+* **Recorded for the tech lead, not changed:**
+  * N6: a full credit note or a write-off on an invoice that credit already paid, the same class as B13.
+  * L5: a draft that ever held credit stays pinned and can't be deleted, even after a full reversal.
+* `check_fo7ts_money_settings.ts` 103/0 · `check_fo7a_money_schema.ts` 122/0 (unchanged).
