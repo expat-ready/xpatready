@@ -249,3 +249,21 @@ m5, m7 (the case-route 402: list it in the PR as an unmet Done-when line), m8, m
 I agree with the breaker's new Minor r4: in an outage, the sweep pages once per failing receipt, because `entityKey` is the receipt id and so the 5-minute repeat key never merges the alerts. Raise the alert per queue, or once per sweep with a count. List it in the PR beside n5. It does not block.
 
 Verdict: Approve 2ac62cf73cac91ca1062798658f27143a9c5f251
+
+## Round 5 (diff-only, 4b8a3301): merge of origin/main only (P-270), head `4b8a33018cea3667bf14f07d97d73b97a1565a5c`
+
+Approved before this: `a26c677f`, an earlier merge of main whose approval is not written in this file (round 4 is the last one here). The new head has parents `a26c677f` and `9cea7c02`, which is origin/main now. The merge base is `39c1203c`.
+
+1. **Only main's changes came in.** `git diff a26c677f 4b8a3301 -- ':!*/platform/MODULE.md'` is byte-identical to `git diff 39c1203c origin/main` over the same paths (`cmp`). Both diffs touch the same files, MODULE.md included. `git diff origin/main 4b8a3301 --stat` lists this PR's 18 files, 1209+/26-.
+2. **The card keeps both sides.** It is 39 lines with no conflict markers. Against main it adds only this PR's billing Purpose tail, the PF-5 part 2 entry points and keys, the hold invariant, and platformPlan, platformSubscription and webhookReceipt in Tables. Main's PF-18a lines (Purpose, entry points, invariant, platformOffice and platformStaffOffice, check_pf18a_offices) and its AUD-1a audit invariant are kept word for word. `check-module-cards.sh` exits 0.
+3. **No bad interaction.**
+   * **Hold.** `PaymentHoldGate` is an `APP_INTERCEPTOR`, so it also covers `OfficesController` from main's new `platform-settings-personal` feature. The offices route templates are not in `IDENTITY_OPEN` and are not `@HoldOpen`. Run on the merged tree: a scratch copy of check_pf5_signup_billing with `OfficesController` added to its Nest app. Unheld: `GET /api/platform/offices` 200, `PATCH /offices/x` 404, `POST /offices {}` 400. Held: all three 402. 85/85, which is the 84 plus this one.
+   * **Unchanged by main.** Main does not touch `BYPASS_USES`, main.ts or platform-firms.ts. The PR's two new bypass uses and the `stripeRawBody` mount are as approved.
+   * **AUD-1a (audit lines insert-only).** This PR's code and check only read `audit_event` and never delete from it. check_aud1a_insert_only gave 41/41 against an isolated copy of the merged app on :4436 (runtime ports), so the app boots with both features. The api log had no errors, and the copy was stopped.
+   * **Other checks.** check_pf18a_offices 87/87 and check_pf0p_ports 120/120 (main changed it) pass.
+
+Nothing new is found. The open Minors from rounds 1 to 4 are unchanged.
+
+**Journey score: 8/10, unchanged.** The merge changes no behaviour of this PR.
+
+Verdict: Approve 4b8a33018cea3667bf14f07d97d73b97a1565a5c
