@@ -2,7 +2,7 @@
 
 current_lead: local_f88c32b8-fe32-40cd-aa61-606aaf9b8b67 Lead 84 · 19 Nov 03:2x IST (series 2; took over from Lead 83 (series 2, local_191538a9) at ~340k, P-446)
 
-updated: 2026-11-19 03:2x IST: **Lead 83 handed over to Lead 84 (local_f88c32b8); Lead 83 check cron 41df67b9 deleted**; earlier 01:2x: **Lead 83 (local_191538a9) took over 01:22 IST**; **Lead 82 handed over to Lead 83; Lead 82 check cron 7dec7be8 deleted**; earlier 2026-11-19 00:0x IST: **Lead 82 (local_f86fdc68) took over 23:22 IST 18 Nov, check cron 7dec7be8 at :17 and :47** · the full earlier line (Lead 79-81, org move, in flight, next) word for word in `history/STATE-2026-11-19-0005-lead82s2-updated-line-and-asks-A169-A171.md` · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-710**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-19 03:3x IST: **Lead 84 (local_f88c32b8) took over 03:23 IST, check cron 4fb8b9ff at :17 and :47; P-711 (#2169 size exception)**; earlier 03:2x: **Lead 83 handed over to Lead 84 (local_f88c32b8); Lead 83 check cron 41df67b9 deleted**; earlier 01:2x: **Lead 83 (local_191538a9) took over 01:22 IST**; **Lead 82 handed over to Lead 83; Lead 82 check cron 7dec7be8 deleted**; earlier 2026-11-19 00:0x IST: **Lead 82 (local_f86fdc68) took over 23:22 IST 18 Nov, check cron 7dec7be8 at :17 and :47** · the full earlier line (Lead 79-81, org move, in flight, next) word for word in `history/STATE-2026-11-19-0005-lead82s2-updated-line-and-asks-A169-A171.md` · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-710**) · this branch: `lead/2026-11-07-lead31`
 
 
 
