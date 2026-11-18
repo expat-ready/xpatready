@@ -52,7 +52,7 @@ const idOf = async (key: string) => (await db.platformFirm.findUnique({ where: {
 ok("setup: a fresh copy holds no platform firm A yet", (await idOf("sample-firm")) === null);
 await seedSampleFirms(db, readSampleFirms().filter((f) => f.key === "sample-solo"));
 const W = await platformAuditWorkspaceId(db as never);
-const set = (firmId: string, key: string, value: unknown) => writeSetting(db, { firmId, key, value, by: "check:csdl1", workspaceId: W });
+const set = (firmId: string, key: string, value: unknown) => writeSetting(db, { firmId, key, value, by: "seed:csdl1", workspaceId: W });
 const B = (await idOf("sample-solo"))!;
 await set(B, CLOSED_DAYS.key, ["2027-03-08", "2027-03-09"]); await set(B, TIME_ZONE.key, "Asia/Tokyo");
 
