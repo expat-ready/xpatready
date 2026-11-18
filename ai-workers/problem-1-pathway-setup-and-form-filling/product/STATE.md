@@ -28,16 +28,8 @@ Standby left: **Lead 81 (local_bd570ff6)**; start a second standby at the founde
 | A168 | 17:4x 18 Nov (typed): remove the labelling wait; speed vs the 40-job account; go back or wait; Support time; others; why us | answered 17:5x: ci job wait median 0.1 min before vs 66 min after (p90 209), merges 22/68/61/44 a day 14-17 Nov vs 0 today; Support ~8 h (marketing page), not guaranteed; Lead PRs get an Opus reviewer's Approve so the founder is not needed |
 | A166 | 12:5x 18 Nov (typed to Lead 79, relayed word for word): "Now all approvals keep going on, and you also clean up everything, right? There's a lot of lanes open and do the clean up the desk and everything, and keep going on as per the plan as we decided the sequence. And you have your own plan or decision log, something like that, to register or something." | in progress (Lead 80): approvals and labels without waiting; archive finished lanes after an unpushed-work check; full-power plan in order; asks here, decisions in DECISIONS.md |
 
-## Engineering set-up tracker (A160, Lead 77, 13:2x IST 17 Nov; page https://claude.ai/artifact/EYh8cn1M8rTc3Wba3Pp1dP; every Lead updates it at each check, a row leaves only when done or the founder drops it)
-| Workstream | Owner | Next step | Expected (IST) |
-|---|---|---|---|
-| Enforcement checks #2073, #2075, #2079 → #2080 → #2081 | enforcement-checks (local_f3778712); Lead labels | one at a time on green; first heartbeat run; follow-up PR (3 Minors) after #2081 | CK-1 ~16:00-17:30 17 Nov; CK-2/CK-3 tonight or early 18 Nov |
-| Library masters on main + board rows | Lead; board keeper (local_d01fe726) | records PR to main (carries private-sync.sh, tooling read); fix name "Engineering System v1" vs "Engineering system" | 17 Nov night; board rows 18 Nov |
-| GitHub move to Enterprise org | founder clicks; Lead prepares | fix the checklist text (still says Team, 60 jobs); P8 inventory (REST ≥ 1,000), P9-P13, mirror refresh, drain; 09:30 freeze, Transfer, verify, Mergify setting | 18 Nov 09:30 |
-| Repository clean-up | repo-cleanup (local_7f47aef5); Lead's go | branches pushed 14:5x (cleanup/stage-0, stage-1 (1b commercial/ held, P-677), stage-2a); PRs only on the Lead's word after the move and first merges; 2b-8 + new 2c from 19 Nov (P-674) | 18-24 Nov |
-| Founder set-up items | founder-setup (local_c3e4ea74); founder | support message, P8 screenshots, Time Machine/iCloud; later SHA-pinning and CodeQL cards | as convenient; move-day clicks 18 Nov |
-| Backups / private home | Lead | `tools/private-sync.sh` each check; mirror refresh before the freeze; P-677 copies | each check |
-| Done #2077 and the decided-waiting list; stale item queue | Lead | rows word for word in `history/STATE-2026-11-18-1350-lead80s2-tracker-rows-2077-and-items.md` | 19-22 Nov |
+## Engineering set-up tracker (A160)
+Page https://claude.ai/artifact/EYh8cn1M8rTc3Wba3Pp1dP; the table word for word in `history/STATE-2026-11-18-1755-lead80s2-engineering-setup-tracker.md`; the one action list is `design/full-power-plan-2026-11-17.md` (P-690).
 
 ## Start here (next Lead)
 Earlier pointer lines (Lead 60 evening, Lead 61 decide and night, Lead 63 owed (still open: #1865 hooks read, records PR to main, PF-12/FO-7b reads, LegalHoldPort before PF-21b part 1, nightly BR-6 read), morning questions): word for word in `history/STATE-2026-11-16-2217-lead70s2-start-here-pointer-lines.md`.
