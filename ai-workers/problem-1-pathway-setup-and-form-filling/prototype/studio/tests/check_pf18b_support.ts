@@ -17,7 +17,7 @@ const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "mi
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_pf18b_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
-const OWN = "20261117030000_pf18b_support";
+const OWN = "20261118073000_pf18b_support";
 
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 500)}` : ""}`); };
@@ -179,6 +179,13 @@ try {
     && refused(`update platform_support_ticket set page = '/x' where id = '${id1}'`, /only a ticket's status changes/));
   const pr = await raise(as.CASE_OFFICER.token, { body: "Urgent (Sample).", page: "/cases", priority: "HIGH" });
   ok("PF-18b DW4 fail: a priority in the request is refused (422, named), and no ticket is made", pr.status === 422 && /no priority/.test(pr.body.fields?.priority) && !JSON.stringify(pr.body).includes('"id"'), pr.body);
+  // Breaker m1 (Build Lead A's condition): no firm route writes a SUPPORT message: the author is the service's, never the request's.
+  const forgeRaise = await raise(as.CASE_OFFICER.token, { body: "Forged (Sample).", page: "/cases", authorKind: "SUPPORT", authorId: "support" });
+  const forgeMsg = await call("POST", `/tickets/${id1}/messages`, as.OWNER.token, { body: "Forged reply (Sample).", authorKind: "SUPPORT", authorId: "support" });
+  const supportRows = Number(psql(`select count(*) from platform_support_message where author_kind = 'SUPPORT'`));
+  ok("PF-18b break m1 fail: firm staff sending authorKind SUPPORT (on a raise and on a message) are refused (422, both fields named), and no SUPPORT message is written",
+    forgeRaise.status === 422 && /not a field/.test(forgeRaise.body.fields?.authorKind) && /not a field/.test(forgeRaise.body.fields?.authorId)
+    && forgeMsg.status === 422 && /not a field/.test(forgeMsg.body.fields?.authorKind) && supportRows === 0, { forgeRaise: [forgeRaise.status, forgeRaise.body.fields], forgeMsg: [forgeMsg.status, forgeMsg.body.fields], supportRows });
   const answers = [t1, mine, one, lo, ar, good].map((r) => JSON.stringify(r.body)).join(" ");
   const cols = psql("select string_agg(column_name, ',') from information_schema.columns where table_name like 'platform_support_%'");
   ok("PF-18b DW4 pass: no answer and no column carries a priority", !/priority/i.test(answers) && !/priority/i.test(cols), cols);

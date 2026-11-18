@@ -4,7 +4,7 @@
 // agent/support-ticket:list "own tickets for all; all firm tickets for Owner and Admin"). One text box plus up to three
 // attachments, the page the "?" was pressed on, no priority field (AG-16-63). Our team's reply screen is PF-17's; this row
 // keeps the service method it will call (replyAsSupport). Platform rows carry no workspace_id: the demo reset leaves them.
-// Rules Prisma cannot say are platform_support_ triggers and checks in the migration 20261117030000_pf18b_support: messages
+// Rules Prisma cannot say are platform_support_ triggers and checks in the migration 20261118073000_pf18b_support: messages
 // are insert-only (no update, delete or truncate); a ticket is never deleted and only its status changes; the raiser and a
 // staff author are staff of the ticket's own firm; a message's file keys lie in its own ticket's folder only.
 // No Prisma relation to PlatformFirm or PlatformStaff yet: platform.prisma takes no edit while #2009 is open (tech lead's
