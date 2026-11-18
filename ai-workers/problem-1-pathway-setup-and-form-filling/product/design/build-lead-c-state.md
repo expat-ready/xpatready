@@ -166,3 +166,5 @@ Merged on main: #2002, #2007, #2016, #2035. #2000 got "Reviewer: Approve 1fb7ca0
 **15:55 IST 18 Nov (Lead 80):** the stall is GitHub's hosted-job limit since the move: 1-6 jobs at once, 59 queued. Mergify and the runners are wired to expat-ready, and batch #2115 is running. Multi-cloud was set at 13:4x; the founder has a Support ticket open. #2000 has had its label since 13:3x and is queued. No re-pushes of heads, because each one adds jobs. My records branch has no PR, so its pushes start no CI.
 
 **16:54 IST 18 Nov (Lead 80):** batch #2115 failed on shard 3: #2011's FO-13i test writes actor `test`, which #2003 now refuses. #2003 re-checks alone in #2119. My open PRs are clear: #2000 uses `user-A`/`user-O`, #2106 writes no audit lines (`user-R` in fo7a_money_schema is mapped), #2063 is records. Typed-actor line added to briefs AUD-1b, CS-DL1b, FO-7lk, AUD-5-2, CS-NK1.
+
+**18:23 IST 18 Nov (Lead 80):** CodeQL high alert on #2003, `check_aud1a_insert_only.ts:107` (`.replace` swaps only the first newline). It is test code, so #2003 is not held. The one-line `replaceAll` fix is in the AUD-1b brief.
