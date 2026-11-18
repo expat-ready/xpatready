@@ -147,8 +147,9 @@ ok("PF-5t DW9 pass: Sign out on the terms page ends the session (the sign-in car
 ok("PF-5t DW9 fail: signing out accepted nothing", !accepted(R.id, pn2));
 ok("PF-5t: no page error in any browser", errors.length === 0, errors);
 } finally {
-  // Every Sample person accepts this run's versions, so the copy (and a rerun) is not left asking (the table is insert-only).
-  sql(`insert into platform_terms_acceptance (id, firm_id, staff_id, version_id, accepted_at) select gen_random_uuid(), s.firm_id, s.id, v.id, now() from platform_staff s cross join platform_terms_version v where v.version like 'pf5t-ui-${run}-%' on conflict do nothing`);
+  // Every Sample person accepts this run's privacy notices and each firm's Owner its firm terms, so the copy (and a rerun) is not left asking (the table is insert-only).
+  sql(`insert into platform_terms_acceptance (id, firm_id, staff_id, version_id, accepted_at) select gen_random_uuid(), s.firm_id, s.id, v.id, now() from platform_staff s cross join platform_terms_version v where v.version like 'pf5t-ui-${run}-%' and v.kind = 'PRIVACY_NOTICE' on conflict do nothing`);
+  sql(`insert into platform_terms_acceptance (id, firm_id, staff_id, version_id, accepted_at) select distinct on (g.firm_id, v.id) gen_random_uuid(), g.firm_id, g.staff_id, v.id, now() from platform_role_grant g cross join platform_terms_version v where g.role = 'OWNER' and g.ended_at is null and v.version like 'pf5t-ui-${run}-%' and v.kind <> 'PRIVACY_NOTICE' and not exists (select 1 from platform_terms_acceptance a where a.firm_id = g.firm_id and a.version_id = v.id) on conflict do nothing`);
   await browser.close(); await db.$disconnect();
 }
 process.exit(summary() ? 1 : 0);

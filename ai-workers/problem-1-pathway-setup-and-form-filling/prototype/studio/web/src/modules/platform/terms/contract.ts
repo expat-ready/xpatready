@@ -17,6 +17,8 @@ export type Acceptances = z.infer<typeof Acceptances>;
 /** A stored kind in plain words (EXPERIENCE §5). An unknown kind still reads as words. */
 const KIND: Record<string, string> = { TERMS_OF_SERVICE: "terms of service", PRIVACY_NOTICE: "privacy notice", DATA_PROCESSING: "data processing terms" };
 export const kindWords = (kind: string) => KIND[kind] ?? kind.toLowerCase().replace(/_/g, " ");
+/** "Privacy notice": the kind at the start of a line. */
+export const kindLabel = (kind: string) => { const w = kindWords(kind); return w.charAt(0).toUpperCase() + w.slice(1); };
 /** "terms of service", "terms of service and privacy notice", "a, b and c". */
 export const listWords = (kinds: string[]) => (kinds.length < 2 ? kinds.join("") : `${kinds.slice(0, -1).join(", ")} and ${kinds[kinds.length - 1]}`);
 /** Only an http(s) link is shown as a link (a stored url is data, never script). */

@@ -7,7 +7,7 @@ import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Notice } from "@/components/ui/controls";
 import { staffApi, StaffApiError } from "../session";
-import { kindWords, listWords, MyTerms, safeUrl } from "./contract";
+import { kindLabel, kindWords, listWords, MyTerms, safeUrl } from "./contract";
 
 const KEY = (token: string | null) => ["fo", "me", "terms", token] as const;   // under ["fo", "me"]: the frame re-checks it on every move
 
@@ -53,7 +53,7 @@ export function TermsPage({ token, terms, signOut, leaving }: { token: string | 
           const href = safeUrl(t.url);
           return (
             <li key={t.id} className="rounded-lg border border-border p-3 text-sm" data-terms-item={t.kind}>
-              <span className="font-medium first-letter:uppercase">{kindWords(t.kind)}</span>{" · version "}{t.version}
+              <span className="font-medium">{kindLabel(t.kind)}</span>{" · version "}{t.version}
               <span className="text-text-muted">{" · published "}{new Date(t.publishedAt).toLocaleDateString()}</span>
               <span className="block">{href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-text-link underline outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">Read the {kindWords(t.kind)} (opens in a new tab)</a> : <span className="text-text-muted">The link to this text is not available.</span>}</span>
             </li>

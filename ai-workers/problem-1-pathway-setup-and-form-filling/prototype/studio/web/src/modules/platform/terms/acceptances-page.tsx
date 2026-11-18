@@ -6,7 +6,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Button, Notice, Table } from "@/components/ui/controls";
 import { PlatformFrame } from "../frame";
 import { staffApi, StaffApiError, useStaffToken } from "../session";
-import { Acceptances, kindWords, safeUrl } from "./contract";
+import { Acceptances, kindLabel, safeUrl } from "./contract";
 
 function List() {
   const token = useStaffToken();
@@ -27,7 +27,7 @@ function List() {
             return (
               <tr key={a.id} data-acceptance={a.id}>
                 <td className="[overflow-wrap:anywhere]">{a.staffName}</td>
-                <td className="first-letter:uppercase">{kindWords(a.kind)}</td>
+                <td>{kindLabel(a.kind)}</td>
                 <td>{href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-text-link underline">{a.version}<span className="sr-only"> (opens in a new tab)</span></a> : a.version}</td>
                 <td>{a.forFirm ? "The firm" : "Themself"}</td>
                 <td><time dateTime={a.acceptedAt}>{new Date(a.acceptedAt).toLocaleString()}</time></td>
