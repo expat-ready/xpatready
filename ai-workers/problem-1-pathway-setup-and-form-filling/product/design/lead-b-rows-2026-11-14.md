@@ -1907,3 +1907,5 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **Conflicting with main, merge-main steps posted:** #2064, #2038, #2029, #2009, #2001, #1961, #1959, and #2012 (stamp to 20261117123000_pf21i_complaint_request_key). Lead 79 asked to nudge the cloud lanes.
 * **Origin URL:** `.git/config` is shared and outside this session's sandbox, so it still names the old org (which redirects). Records push to `https://github.com/expat-ready/xpatready.git` by name.
 * **After P-663 clears:** FO-3a part 1b and part 2a (#1918 merged); PF-15 part 1 (its gates are met, and its claim branch is on the clean-up list); the PF-6m2 follow-ups.
+* Lead 79 labelled #2014 and #2011 (re-read posted on #2011), and nudged all 8 lanes to merge main. The card fix is #2114 (40 lines), merged by hand on green ci.
+* Records push through `origin`: the old URL redirects to the new org. Pushing by the new URL fails the push guard, which then has no remote refs and scans all history.
