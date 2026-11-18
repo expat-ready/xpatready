@@ -46,10 +46,10 @@ export class AuditEventAdapter implements AuditPort<Tx> {
       if (ctx?.firmId && ctx.firmId !== firmId) throw new AuditRefused(`audit line refused: the line names firm ${firmId}, but this request or job acts for firm ${ctx.firmId} (a line never lands on another firm's trail)`);
       const actorType = actorTypeOfWord(e.actor);
       // OUR_STAFF has no actor word yet (PF-4s): in a request our staff make, no line is written at all, so none is ever
-      // written as FIRM_STAFF or under another word (breaker M1). In a firm staff request, a staff word is the request's
-      // own person only; a system: or seed: word (a door's or a job's own step inside the request) keeps its own type.
+      // written as FIRM_STAFF or under another word (breaker M1). In a signed-in request the line's actor is the request's
+      // own, exactly: never another person, a system: or a seed: word (review M1; no caller on main writes one there).
       if (ctx?.actorType === "OUR_STAFF") throw new AuditRefused(`audit line refused: this request is our staff's (OUR_STAFF), which has no actor word until PF-4s`);
-      if (ctx?.actor && actorType === "FIRM_STAFF" && e.actor.toLowerCase() !== ctx.actor.toLowerCase()) throw new AuditRefused(`audit line refused: the line names ${e.actor}, but this request is ${ctx.actor}'s`);
+      if (ctx?.actor && e.actor !== ctx.actor) throw new AuditRefused(`audit line refused: the line names ${e.actor}, but this request is ${ctx.actor}'s`);
       const workspaceId = await platformAuditWorkspaceId(tx);
       await tx.auditEvent.create({
         data: { workspaceId, firmId, caseId: e.caseId?.toLowerCase() ?? null, actorType, correlationId: ctx?.correlationId ?? null, supportSessionId: ctx?.supportSessionId ?? null,

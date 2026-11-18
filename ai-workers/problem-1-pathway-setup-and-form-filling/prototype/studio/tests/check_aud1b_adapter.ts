@@ -167,6 +167,16 @@ try {
     forced.status >= 500 && sql("select count(*) from workspace") === ws0 && sql("select count(*) from workspace where key = 'aud1b-aud1b-dw4'") === "0" && sql("select count(*) from audit_event where entity_key like 'aud1b-dw4%'") === "0", forced);
   ok("AUD-1b DW4 fail: exactly one audit_write_failed alert, ids only (firm, entity, key), and no retry (the write was tried once)",
     alarm.length === 1 && alarm[0].detail.firmId === FIRM_B && alarm[0].detail.entity === "platform_staff" && alarm[0].detail.entityKey === "aud1b-dw4" && Object.keys(alarm[0].detail).sort().join() === "entity,entityKey,firmId,rule" && tries === "1:true", { alarm, tries });
+  // Review M2: count the adapter's own inserts through a proxy on the transaction (inside PostgreSQL a second try would
+  // fail before the trigger, so the sequence alone cannot show it).
+  let creates = 0, tries4 = 0; const f4 = failed().length;
+  await rejects(() => db.$transaction(async (tx) => {
+    // Each try starts with the platform-audit workspace read (platformAuditWorkspaceId), then the insert: count both.
+    const spy = new Proxy(tx, { get: (o, k) => { if (k === "workspace") tries4++; return k === "auditEvent" ? new Proxy(o.auditEvent, { get: (ae, m) => m === "create" ? (...a: unknown[]) => { creates++; return (ae.create as (...x: unknown[]) => unknown)(...a); } : (ae as any)[m] }) : (o as any)[k]; } });
+    await auditEvent.record(spy as typeof tx, { firmId: FIRM_B, actor: "system:aud1b-check", action: "platform.check.forced", entity: "platform_staff", entityKey: "aud1b-dw4-count", summary: "AUD-1b forced line." });
+  }));
+  ok("AUD-1b DW4 fail (review M2): the adapter tries a failing line exactly once (one workspace read, one insert: no retry), with one more alert",
+    creates === 1 && tries4 === 1 && failed().length === f4 + 1, { creates, tries4, alerts: failed().length - f4 });
   sql("drop trigger aud1b_force on audit_event; drop function aud1b_force(); drop sequence aud1b_tries;");
 
   // ------------------------------------------------------------------------- DW5: 100 interleaved requests, two firms
@@ -185,15 +195,10 @@ try {
   const other = await call(base, "POST", "/api/platform/aud1b-probe", { token: tokens.A, body: { key: "aud1b-dw6", firmId: FIRM_B, change: true } });
   ok("AUD-1b DW6 fail: an entry whose firm differs from the request's firm is refused: the request fails, nothing is written, the change rolls back, one alert",
     other.status >= 500 && sql("select count(*) from audit_event where entity_key = 'aud1b-dw6'") === "0" && sql("select count(*) from workspace") === ws6 && failed().length === f6 + 1 && failed().at(-1)!.detail.entityKey === "aud1b-dw6" && failed().at(-1)!.detail.firmId === FIRM_A, [other, failed().at(-1)]);
-  const otherStaff = await call(base, "POST", "/api/platform/aud1b-probe", { token: tokens.A, body: { key: "aud1b-dw6-staff", actor: `staff:${S.id}`, change: true } });
-  ok("AUD-1b DW6 fail (breaker M1): in a firm staff request, a line naming another staff member is refused and the change rolls back",
-    otherStaff.status >= 500 && sql("select count(*) from audit_event where entity_key = 'aud1b-dw6-staff'") === "0" && sql("select count(*) from workspace where key = 'aud1b-aud1b-dw6-staff'") === "0", otherStaff);
-  const sys = await call(base, "POST", "/api/platform/aud1b-probe", { token: tokens.A, body: { key: "aud1b-dw6-system", actor: "system:aud1b-door" }, requestId: "aud1b-dw6-sys" });
-  ok("AUD-1b DW6 pass: a system: step inside a staff request keeps its own type (SYSTEM) and the request's correlation id",
-    sys.status === 200 && row(`entity_key = 'aud1b-dw6-system'`) === `${FIRM_A}|SYSTEM|aud1b-dw6-sys|system:aud1b-door`, row(`entity_key = 'aud1b-dw6-system'`));
-  const own = await call(base, "POST", "/api/platform/aud1b-probe", { token: tokens.A, body: { key: "aud1b-dw6-own", firmId: FIRM_A.toUpperCase(), change: true } });
-  ok("AUD-1b DW6 pass: the same entry naming the request's own firm (any letter case) is written, lower-cased, with its change",
-    own.status === 200 && row(`entity_key = 'aud1b-dw6-own'`).startsWith(`${FIRM_A}|FIRM_STAFF|`) && sql("select count(*) from workspace where key = 'aud1b-aud1b-dw6-own'") === "1", own);
+  const words = [`staff:${S.id}`, `staff:${R.id.toUpperCase()}`, "system:aud1b-door", "seed:aud1b-row"];
+  const wrong = await Promise.all(words.map((actor, i) => call(base, "POST", "/api/platform/aud1b-probe", { token: tokens.A, body: { key: `aud1b-dw6-actor-${i}`, actor, change: true } })));
+  ok("AUD-1b DW6 fail (review M1, breaker M1): in a signed-in request, a line naming any actor but the request's own (another staff member, its own id in upper case, system:, seed:) is refused; nothing written, the changes roll back",
+    wrong.every((w) => w.status >= 500) && sql("select count(*) from audit_event where entity_key like 'aud1b-dw6-actor-%'") === "0" && sql("select count(*) from workspace where key like 'aud1b-aud1b-dw6-actor-%'") === "0", wrong.map((w) => w.status));
 
   // ------------------------------------------------------------------------- DW7: the port's contract, caseId included
   const CASE = "0c0c0c0c-0000-4000-8000-0000000000c3";
