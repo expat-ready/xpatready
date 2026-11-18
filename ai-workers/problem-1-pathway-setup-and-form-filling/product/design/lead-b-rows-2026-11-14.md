@@ -1953,3 +1953,6 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 ## Rev 17.26 (18 Nov 22:53 IST)
 * **Overlapped starts (Lead 81, founder's "start doing it"):** `lead-b-briefs/overlap-starts-2026-11-18.md` holds six start prompts for Lead 81 to paste (P-699): PF-15 part 2 on #2130, FO-3st2 on #2103, PF-19e on #1961, PF-19b part 3 on #1961, J-109 on #2134 plus #2012, and PF-6b from main.
 * Correction: PF-5v part 2 waits on PF-19e and #1961, not on #2135, so PF-19e is the row that moves it. PF-6's next part is PF-6b (no chain). J-5 stays blocked on PF-4b.
+
+## Rev 17.27 (18 Nov 23:04 IST)
+* Lead 81 requested five fresh cloud sessions from `overlap-starts-2026-11-18.md`: PF-15 part 2, FO-3st2, PF-19e, PF-19b part 3 and J-109. PF-6b waits as a card for the founder, because the app caps starts per message. Their Approve shas go to Lead 81 for the P-423 reads and labels.
