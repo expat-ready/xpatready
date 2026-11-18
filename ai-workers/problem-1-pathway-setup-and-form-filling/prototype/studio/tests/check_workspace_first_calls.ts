@@ -26,7 +26,7 @@ for (let round = 1; round <= ROUNDS; round++) {
   const refused = said.filter((x) => x.status === 409 || x.status >= 500);
   ok(`round ${round} pass: on an empty database the sample load and 24 first calls at once all answer; none 409 "Already in progress or already exists" or 500`, refused.length === 0, refused);
   ok(`round ${round} pass: the sample load answers 201`, said[0].status === 201, said[0]);
-  ok(`round ${round} fail-guard: one workspace and its six starting person roles, never two`, sql("select count(*) from workspace") === "1" && sql("select count(*) from person_role where built_in") === "6", { workspaces: sql("select count(*) from workspace"), roles: sql("select count(*) from person_role where built_in") });
+  ok(`round ${round} fail-guard: one workspace and its six starting person roles, never two`, sql("select count(*) from workspace where key <> 'platform-audit'") === "1" && sql("select count(*) from person_role where built_in") === "6", { workspaces: sql("select count(*) from workspace where key <> 'platform-audit'"), roles: sql("select count(*) from person_role where built_in") });
 }
 console.log(`\n${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);
