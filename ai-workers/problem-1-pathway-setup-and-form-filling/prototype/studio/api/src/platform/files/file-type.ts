@@ -117,43 +117,59 @@ const ACTIVE_NAMES = new Map([["JavaScript", "JavaScript"], ["JS", "JavaScript"]
  *  compressed object streams are not seen: the flag is a hint, the safe viewer (CS-D5) is the control. */
 function activeContentOf(b: Uint8Array): string[] {
   const text = new TextDecoder("latin1").decode(b), found = new Set<string>();
-  for (const m of text.matchAll(/\/([^\s/[\]<>(){}%]{1,40})/g)) {
+  for (const m of text.matchAll(/\/([^\s\0/[\]<>(){}%]{1,40})/g)) {
     const name = m[1].includes("#") ? m[1].replace(/#([0-9a-fA-F]{2})/g, (_, h: string) => String.fromCharCode(parseInt(h, 16))) : m[1];
     const hit = ACTIVE_NAMES.get(name); if (hit) found.add(hit);
   }
   return [...found].sort();
 }
 
-/** The file's type from its own bytes (AG-9-2, AG-9-2a). Refusals here list every platform kind; `checkFile` narrows to the door. */
-export function detect(bytes: Uint8Array, allowed: readonly FileKind[] = ALL_KINDS): Detected | Refused {
-  const b = bytes, ok = (kind: FileKind, extra: Partial<Detected> = {}): Detected =>
-    ({ ok: true, kind, mediaType: KINDS[kind].mediaType, extension: KINDS[kind].extension, activeContent: [], ...extra });
+const ok = (kind: FileKind, extra: Partial<Detected> = {}): Detected =>
+  ({ ok: true, kind, mediaType: KINDS[kind].mediaType, extension: KINDS[kind].extension, activeContent: [], ...extra });
+
+/** Step 1, cheap: the kind from the file's signature (and a ZIP's directory). No whole-file scan. */
+function sniff(b: Uint8Array, allowed: readonly FileKind[]): Detected | Refused {
   if (b.length === 0) return refuse("EMPTY", "This file is empty.", allowed);
-  let found: Detected | null = null;
-  if (ascii(b, 0, 5) === "%PDF-") found = ok("pdf", { activeContent: activeContentOf(b) });
-  else if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) found = ok("jpeg");
-  else if (ascii(b, 0, 8) === "\x89PNG\r\n\x1a\n") found = ok("png");
-  else if (ascii(b, 0, 4) === "II*\0" || ascii(b, 0, 4) === "MM\0*") found = ok("tiff");
-  else if (isHeic(b)) found = ok("heic");
-  else if (ascii(b, 0, 4) === "PK\x03\x04" || ascii(b, 0, 4) === "PK\x05\x06") {
+  if (ascii(b, 0, 5) === "%PDF-") return ok("pdf");
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return ok("jpeg");
+  if (ascii(b, 0, 8) === "\x89PNG\r\n\x1a\n") return ok("png");
+  if (ascii(b, 0, 4) === "II*\0" || ascii(b, 0, 4) === "MM\0*") return ok("tiff");
+  if (isHeic(b)) return ok("heic");
+  if (ascii(b, 0, 4) === "PK\x03\x04" || ascii(b, 0, 4) === "PK\x05\x06") {
     const z = zipNames(b);
     if ("damaged" in z) return refuse("DAMAGED", "This file could not be read: it may be damaged.", allowed);
-    const has = (p: (n: string) => boolean) => z.names.some(p);
-    const office = has((n) => n === "[Content_Types].xml");
+    // OPC part names are case-insensitive (ECMA-376 part 2), so every comparison is on the lower-cased name.
+    const names = z.names.map((n) => n.toLowerCase()), has = (p: (n: string) => boolean) => names.some(p);
+    const office = has((n) => n === "[content_types].xml");
     const word = office && has((n) => n.startsWith("word/")), excel = office && has((n) => n.startsWith("xl/"));
     if (word || excel) {
-      if (has((n) => /(^|\/)vbaProject\.bin$/i.test(n) || n.startsWith("xl/macrosheets/") || /(^|\/)vbaData\.xml$/i.test(n)))
+      if (has((n) => /(^|\/)vbaproject\.bin$/.test(n) || n.startsWith("xl/macrosheets/") || /(^|\/)vbadata\.xml$/.test(n)))
         return refuse("MACROS", "Files with macros (.docm, .xlsm) are not accepted: save it as a plain Word or Excel file.", allowed);
-      found = ok(word ? "word" : "excel");
-    } else return refuse("ZIP", "Upload the files inside one by one.", allowed);
+      return ok(word ? "word" : "excel");
+    }
+    // Another office or packaged format (PowerPoint, OpenDocument, EPUB) is a type we do not take, not a folder of files.
+    if (office || has((n) => n === "mimetype")) return refuse("NOT_ALLOWED_TYPE", "This type of file is not accepted.", allowed);
+    return refuse("ZIP", "Upload the files inside one by one.", allowed);
   }
-  if (!found) return refuse("NOT_ALLOWED_TYPE", "This type of file is not accepted.", allowed);
+  return refuse("NOT_ALLOWED_TYPE", "This type of file is not accepted.", allowed);
+}
+
+/** Step 2, after the door and size checks: image header dimensions and the PDF's active names (whole-file scan). */
+function inspect(found: Detected, b: Uint8Array, allowed: readonly FileKind[]): Detected | Refused {
+  if (found.kind === "pdf") return { ...found, activeContent: activeContentOf(b) };
   const pixels = pixelsOf(found.kind, b);
   if ((found.kind === "png" || found.kind === "jpeg") && pixels === null)
     return refuse("DAMAGED", "This image could not be read: it may be damaged.", allowed);
   if (pixels !== null && pixels > MAX_IMAGE_PIXELS)
     return refuse("TOO_MANY_PIXELS", `This image is too large to open safely (${Math.round(pixels / 1e5) / 10} megapixels; the limit is ${MAX_IMAGE_PIXELS / 1e6}).`, allowed);
   return pixels === null ? found : { ...found, pixels };
+}
+
+/** The file's type from its own bytes (AG-9-2, AG-9-2a), with the image and PDF checks. Refusals here list every
+ *  platform kind; `checkFile` narrows to the door and checks the size before the whole-file scans. */
+export function detect(bytes: Uint8Array, allowed: readonly FileKind[] = ALL_KINDS): Detected | Refused {
+  const found = sniff(bytes, allowed);
+  return found.ok ? inspect(found, bytes, allowed) : found;
 }
 
 // ---- names and declared types ------------------------------------------------------------------------------------
@@ -165,13 +181,21 @@ const EXT_KIND: Record<string, FileKind> = { pdf: "pdf", jpg: "jpeg", jpeg: "jpe
 const MEDIA_KIND: Record<string, FileKind> = Object.fromEntries([
   ...Object.entries(KINDS).map(([k, v]) => [v.mediaType, k]), ["image/jpg", "jpeg"], ["image/pjpeg", "jpeg"], ["image/heif", "heic"]]);
 
-/** The last path part, control and markup characters removed, every known extension stripped from the end (a double
- *  extension is cleaned: passport.pdf.exe), then the bytes' extension. Never empty. */
+const extOf = (n: string) => /\.([A-Za-z0-9]{1,5})$/.exec(n)?.[1]?.toLowerCase();
+/** The last path part; control, markup and invisible or direction characters removed; trailing dots and spaces dropped
+ *  (Windows drops them too: "passport.exe." is "passport.exe"). */
+const cleanBase = (name: string | undefined) => String(name ?? "").split(/[\\/]/).pop()!
+  .replace(/[\u0000-\u001f\u007f<>"*?:|]/g, "").replace(/[​-‏‪-‮⁦-⁩﻿]/g, "").replace(/[.\s]+$/, "").trim();
+
+/** Every known extension stripped from the end (a double extension is cleaned: passport.pdf.exe), then the person's own
+ *  extension when it already names the bytes' kind (IMG_0001.JPG stays), else the bytes' extension. Never empty. */
 export function correctedName(name: string | undefined, kind: FileKind): string {
-  let base = String(name ?? "").split(/[\\/]/).pop()!.replace(/[\u0000-\u001f\u007f<>"*?:|]/g, "").replace(/[​-‏‪-‮⁦-⁩﻿]/g, "").trim();
-  for (let m; (m = /\.([A-Za-z0-9]{1,5})\s*$/.exec(base)) && KNOWN_EXT.has(m[1].toLowerCase());) base = base.slice(0, m.index).trimEnd();
-  base = base.replace(/^\.+|\.+$/g, "").slice(0, 190) || "document";
-  return `${base}.${KINDS[kind].extension}`;
+  const original = cleanBase(name), own = extOf(original);
+  let base = original;
+  for (let e; (e = extOf(base)) && KNOWN_EXT.has(e);) base = base.slice(0, -(e.length + 1)).replace(/[.\s]+$/, "");
+  base = Array.from(base.replace(/^\.+/, "")).slice(0, 190).join("") || "document";
+  const ext = own && EXT_KIND[own] === kind ? original.slice(-own.length) : KINDS[kind].extension;
+  return `${base}.${ext}`;
 }
 
 const kindOfClaim = (declared?: { name?: string; mediaType?: string }): FileKind | null => {
@@ -188,7 +212,7 @@ const tooLarge = (size: number, cls: SizeClass, allowed: readonly FileKind[]) =>
   refuse("TOO_LARGE", `This file is ${mbText(size)}; the limit for ${cls}s is ${MAX_BYTES[cls] / MB} MB.`, allowed);
 
 /** At creation (PF-F2's upload opens): the declared size against the declared type's limit, or, when the claim names
- *  no allowed type, the door's largest limit (the bytes decide the type at the end, so a claim alone never refuses). */
+ *  no allowed type, the door's largest limit. The claim only picks which limit applies; the bytes decide the type at the end. */
 export function checkDeclared(declared: { size: number; name?: string; mediaType?: string }, allowed: readonly FileKind[]): { ok: true } | Refused {
   if (!allowed.length) throw new Error("checkDeclared: a door allows at least one kind");
   if (!Number.isSafeInteger(declared.size) || declared.size < 0) return refuse("DAMAGED", "The file's size could not be read.", allowed);
@@ -204,14 +228,18 @@ export function checkFile(file: { bytes: Uint8Array; name?: string; mediaType?: 
   if (!allowed.length) throw new Error("checkFile: a door allows at least one kind");
   const size = file.bytes.length;
   if (size > limitOf(allowed)) return tooLarge(size, limitOf(allowed) === MAX_BYTES.document ? "document" : "image", allowed);
-  const d = detect(file.bytes, allowed);
-  if (!d.ok) return d;
+  const s = sniff(file.bytes, allowed);
+  if (!s.ok) return s;
+  const d = s;
   if (!allowed.includes(d.kind)) return refuse("NOT_ALLOWED_TYPE", `This file is ${/^[AEIOUH]/.test(KINDS[d.kind].words) ? "an" : "a"} ${KINDS[d.kind].words} file, which this upload does not accept.`, allowed);
   const cls = KINDS[d.kind].size;
   if (size > MAX_BYTES[cls]) return tooLarge(size, cls, allowed);
-  const cleaned = String(file.name ?? "").split(/[\\/]/).pop()!.trim();
-  const name = correctedName(file.name, d.kind);
-  const claimed = file.mediaType?.toLowerCase().split(";")[0].trim();
-  const corrected = name !== cleaned || (!!claimed && MEDIA_KIND[claimed] !== d.kind);
-  return { ok: true, kind: d.kind, mediaType: d.mediaType, size, name, corrected, activeContent: d.activeContent, flags: d.activeContent.length ? [SCRIPTS_FLAG] : [] };
+  const i = inspect(d, file.bytes, allowed);
+  if (!i.ok) return i;
+  const name = correctedName(file.name, i.kind);
+  // Corrected only when the name or a known declared type disagreed with the bytes; an unknown claim
+  // (application/octet-stream, none) is no disagreement.
+  const claimed = MEDIA_KIND[file.mediaType?.toLowerCase().split(";")[0].trim() ?? ""];
+  const corrected = name !== cleanBase(file.name) || (!!claimed && claimed !== i.kind);
+  return { ok: true, kind: i.kind, mediaType: i.mediaType, size, name, corrected, activeContent: i.activeContent, flags: i.activeContent.length ? [SCRIPTS_FLAG] : [] };
 }

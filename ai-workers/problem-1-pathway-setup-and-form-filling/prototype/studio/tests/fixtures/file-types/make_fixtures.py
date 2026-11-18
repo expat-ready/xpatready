@@ -1,7 +1,7 @@
 """PF-F4 fixtures: one real, small sample of each allowed upload type, plus the refusal cases that need real files.
 Re-run by hand only (the files are committed): python3 -I studio/tests/fixtures/file-types/make_fixtures.py
-Needs Pillow (JPEG, PNG, TIFF) and ffmpeg with libx265 (the HEIC's HEVC frame); the HEIC container, the Word and Excel
-files and the ZIPs are written here with the standard library. No PDF is committed (push guard, P-82): the test builds
+Needs Pillow (JPEG, PNG, TIFF) and ffmpeg with libx265 (the HEIC's HEVC frame); the HEIC container and the Word and Excel
+files are written here with the standard library. No PDF is committed (push guard, P-82): the test builds
 its plain PDF in code and reads a committed IRCC form for the scripts flag. Every value is Sample test data."""
 import io, os, struct, subprocess, sys, tempfile, zipfile, zlib
 from PIL import Image
@@ -68,7 +68,5 @@ out("sample.docx", ooxml("word/document.xml", W, DOC))
 out("sample.xlsx", ooxml("xl/workbook.xml", X, WB))
 out("macro.docm", ooxml("word/document.xml", "application/vnd.ms-word.document.macroEnabled.main+xml", DOC, macro=True))
 out("macro.xlsm", ooxml("xl/workbook.xml", "application/vnd.ms-excel.sheet.macroEnabled.main+xml", WB, macro=True))
-b = io.BytesIO()
-with zipfile.ZipFile(b, "w") as z: z.writestr("passport.jpg", pil("JPEG")); z.writestr("letter.txt", "Sample")
-out("plain.zip", b.getvalue())
+# No plain ZIP here: the root .gitignore keeps *.zip out of git, so the test builds its ZIPs in code.
 print("written to", HERE)
