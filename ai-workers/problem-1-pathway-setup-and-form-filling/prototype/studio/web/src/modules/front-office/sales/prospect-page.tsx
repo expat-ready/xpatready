@@ -4,7 +4,7 @@
 // only for a Convert with no signed retainer, with a reason; the server also refuses once the client is no longer
 // empty). Each button follows its permission key and the stage. Log a call, notes and the timeline are part 2b.
 import * as React from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Dialog, Field, Notice, Panel, Pill, Select, Textarea } from "@/components/ui/controls";
 import { useToast } from "@/lib/api";
@@ -46,6 +46,15 @@ function ProspectBody({ id }: { id: string }) {
     },
     onSettled: () => { lock.free(); return qc.invalidateQueries({ queryKey: ["fo", "prospects"] }); },
   });
+  // A card dropped on the board's "Lost" lands here with ?lost=1 (FO-4 part 2a-ii): the loss flow opens once, for a
+  // person who may mark it lost and a prospect still being worked; the mark leaves the address.
+  const [params, setParams] = useSearchParams();
+  const asked = params.get("lost") === "1", data = one.data;
+  React.useEffect(() => {
+    if (!asked || !data) return;
+    if (can(me, KEY.lose) && (data.stage.kind === "ACTIVE" || data.stage.kind === "NURTURE")) setOpen("lost");
+    setParams({}, { replace: true });
+  }, [asked, data, me, setParams]);
   if (one.isPending) return <Loading label="Loading the prospect" rows={2} />;
   if (one.isError) {
     const gone = one.error instanceof StaffApiError && one.error.status === 404;
