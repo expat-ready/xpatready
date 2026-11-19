@@ -66,3 +66,13 @@ Scope: only `git diff b160758..974a940`. Two files changed. `tests/check_fo2w_wo
 * I re-ran it myself: `check_fo2w_won_event` 19 passed, 0 failed (W4c pass and fail both PASS). The source is unchanged since b160758, so my earlier runs of the other suites, J-31, typecheck and module-cards still hold.
 
 **Verdict: Approve** (no open Blocker or Major).
+
+## Re-review at cfd83b050948fd4732fd02092e9e777b923749a7
+Scope: the merge `5b3662ef8` (origin/main into the branch) and `cfd83b0` (a test-only change). Why the change: #2321 left the merge queue because W5 also found FO-8's consumer `api/src/case-clients/prospect-won.ts` (from #2255). That file only reads `prospect.won` from the outbox and never writes one.
+* **The merge only brings in main.** `git diff origin/main...HEAD` lists only FO-2w's five files. `prospects.ts`, `retainers/service.ts` and `MODULE.rows/FO-2w.md` are unchanged since 974a940 (empty diff), so my earlier code review still holds.
+* **The test change is what was asked for and nothing more.** W5's grep now covers only `api/src/front-office` and only `*.ts` files. It still expects exactly `retainers/service.ts` and `sales/prospects.ts`, and its check name now says it is about the front office's emitters. The mutant file is written after the grep runs, so the grep never sees it.
+* **The narrowed grep still catches a new emitter.** I ran the same grep on a copy of `front-office` in the scratchpad. As is, it lists the two files. Adding `booking/rogue.ts` with `EVENT.PROSPECT_WON` lists three; adding `sales/rogue2.ts` with the literal `"prospect.won"` lists three. Either way the list no longer equals the expected two, so W5 fails.
+* **m7 (note): what W5 no longer covers.** A `prospect.won` raised outside the front office (for example in `case-clients/`) no longer fails W5. The row file still says "Nothing else raises prospect.won". This is Lead B's scoping choice, and the brief's "Done when" only asks that removing Signed offline's call fails the suite, which the W5 mutant still proves. Not blocking. A possible later fix: check the writes (`moduleEvent.create` with `PROSPECT_WON`) across all of `api/src`.
+* I re-ran `check_fo2w_won_event` myself: 19 passed, 0 failed (both W5 checks PASS). I did not re-run check_fo8_prospect_won 43/43, check_fo2p3 44/0 or check_fo5_retainers 248/0 at this head: those are the builder's figures. FO-2w's source is unchanged since my earlier runs.
+
+**Verdict: Approve** (no open Blocker or Major).
