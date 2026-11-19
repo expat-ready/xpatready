@@ -74,3 +74,45 @@ What would raise it: m1 and m3 (correct data, proof of the race), then axe plus 
 The skills say to write `product/screens/NN/review.md` and a journey-test file. The calling agent's rules for this check say to edit no repository file and to write only this scratchpad file. I followed the caller, so the journey-test report is the section above.
 
 **Verdict: Approve** (no open Blocker or Major) for 48b350a4f8c0b031b35d5090a04c095fcc7f8159 only. The PR head after FO-2 part 3b, with W4b made real, needs a fresh review.
+
+## Re-review: 6567e1b75a29212d7edfb3d856e58d34233e0514 (diff 48b350a4f..HEAD only, P-277)
+Read: fd9ce2081 (m1-m5, m7) and 6567e1b75 (W4b real). Run in a scratch worktree (the main copy is shared), node_modules linked
+from the main copy; copy `rj37` on :4447 only, server cwd checked to be the worktree. Web built with vite first each time.
+
+| Run | Code | Result | Time |
+|---|---|---|---|
+| R1 | HEAD + #2196 (origin/claude/runtime-arrival-port) | 9 PASS, 0 FAIL | 30 s |
+| R2 | HEAD + #2196, fresh copy | 9 PASS, 0 FAIL | ~30 s |
+| F1 | HEAD alone (`arrival: fakeArrival()`) | 8 PASS, 1 FAIL (W4b only) | 2 min 27 s |
+
+**Minors closed.** m1: both clicks in one `Promise.all`; the winner varies (R1: B won), one booked, one refused, one row. m2: `body` read.
+m3: one SCHEDULED row with the host (start and person not asserted, but W5 checks the start on the manage page: enough).
+m4: exact subject, 8 s settle before the loser's inbox. m5: manage page shows the slot's own time; bad link gives "This link is
+no longer valid." m7: shots in `screens/J-37/screenshots` (each run rewrites them: what the brief asks, as j_6). m6, m8 stay open.
+
+**The clock seam (judged).** Honest: named in the header (`j_37.ts:9-12`), the code comment and the PASS line. Minimal: one
+`UPDATE … set start_after = now()` on one pg-boss row, picked by id from this booking's own keys, after the restart and `ready
+200`. Confined: `db` is `xr_studio_<NAME>`; with NAME `demo` the `isolated.sh restart` call throws first, so the seam never runs
+there. Proves the real path: R1's api.log shows a second "Product Studio on :4447" at 02:58:21, then `booking.reminder …
+reminder-1h outcome done` at 02:58:23 in the new process, then `messages.send`; `msg_outbox` holds a SERVICE row, SENT, `local:`,
+key `mail:booking:<id>:0:reminder-1h`. On F1 the same job ran to `completed` in the restarted app, and no outbox row was written:
+`contactOf` found no one. The seam moves only the due time. The pass comes from the ArrivalPort (P-606 met).
+
+**No reminder queued (same-hour slot).** The type's notice defaults to 240 min, so the first public slot is at least 4 h out
+and the 1 h reminder is always queued. If none is queued, `queued.length >= 1 && !!due` gives FAIL and exit 1. It is never a
+silent pass, but it fails late (after the restart and a 120 s poll) and the line does not name the cause.
+
+**Findings.** No Blocker. No Major.
+* **Minor n1** (`j_37.ts:56, 100, 114`): the queued-reminder guard rests on the schema default, not on the walk's own set-up.
+  Fix: set `minNoticeMinutes: 240` on the Sample type. Fail at once with "no reminder queued" when `queued` is empty.
+* **Minor n2** (`j_37.ts:101`): `isolated.sh … restart` is called without `--ttl`, so the copy's self-stop goes from 30 to the
+  60 min default (`isolated.sh:94-100`). Fix: pass the caller's `--ttl`.
+* **Merge condition (not a finding):** W4b passes only with #2196. This PR's CI is red on W4b until #2196 is on `main`. Label
+  only after #2196 merges and CI on this head is green.
+
+Journey score (reviewer role, re-scored on R1/R2/F1): task completed 1 (W1-W5 and W4b real) · next step 1 · plain words 1 ·
+feedback 1 · correct data 1 (one row, SCHEDULED, host; outbox rows checked) · error recovery 1 · accessibility and sizes ½
+(1440 only, no axe) · speed 1 · visual 1 (w3, w5 shots) · trust 1 = **9.5 / 10**, pass. Not checked: graph.mjs (diff-only
+re-review), a real screen reader, D17/D20 (founder).
+
+**Verdict: Approve** (no open Blocker or Major) for 6567e1b75a29212d7edfb3d856e58d34233e0514, after #2196 is on `main`.
