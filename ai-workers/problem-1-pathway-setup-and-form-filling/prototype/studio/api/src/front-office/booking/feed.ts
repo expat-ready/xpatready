@@ -79,7 +79,7 @@ export class BookingFeed {
     const [T, H, P, R] = [by(types), by(hosts), by(people), by(prospects)];
     // Owners count only while active (BR-4); a lead or prospect is named only to a viewer who may open it (break F3).
     const owners = uniq([...leads, ...prospects].map((x) => x.ownerStaffId));
-    const active = new Set((await pieces(owners, (part) => this.db.platformStaff.findMany({ where: firmScope(f, { id: { in: part }, status: "ACTIVE" }), select: { id: true } }))).map((s) => s.id));
+    const active = new Set((await pieces(owners, (part) => this.db.platformStaff.findMany({ where: firmScope(f, { id: { in: part }, status: "ACTIVE" as const }), select: { id: true } }))).map((s) => s.id));
     const opens = (o: string | null) => sees(vis, ctx, o && active.has(o) ? o : null);
     const leadOf = new Map<string, (typeof leads)[number]>();
     // The person's newest lead the viewer may open, an open one (not CLOSED, not ENGAGED) before any other.
