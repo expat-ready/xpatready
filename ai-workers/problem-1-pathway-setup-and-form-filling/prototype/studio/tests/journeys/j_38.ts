@@ -168,6 +168,7 @@ try {
   // The host opens the staff calendar (FO-3st1) from a browser in a third zone, Europe/London, so a time shown in the
   // browser's zone would read 15:00 (or 14:00 in summer) and fail: the screen shows the office zone and names it.
   const signIn = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: key, email: hostEmail, secondStep: true }) });
+  if (!signIn.ok) throw new Error(`W6: the host's sign-in was refused (${signIn.status}): start the copy with PLATFORM_IDENTITY=local, as the header's line does`);
   const { token } = await signIn.json() as { token: string };
   const staffCtx = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: "Europe/London", locale: "en-GB", colorScheme: "light", reducedMotion: "reduce" });
   await staffCtx.addInitScript((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })), token);
@@ -185,8 +186,10 @@ try {
   await shot(sp, "W6-2-staff-detail"); await axe(sp, "W6 the booking's detail");
   ok(`J-38 W6: the detail reads 10:00–10:30 ${FIRM_ZONE} and ${pad(dubaiHour)}:00 for the booker (${BOOKER_ZONE}), the same moment as both mails`,
     whenSaid.includes(`10:00–10:30 ${FIRM_ZONE}`) && whenSaid.includes(`${pad(dubaiHour)}:00 for Ana Sample (${BOOKER_ZONE})`), whenSaid);
-  const londonHour = utcHour;   // London is UTC in winter, UTC+1 in summer, when Toronto is UTC-4: 14:00 + 1 = 15:00
-  ok("J-38 W6: the staff screen states no time in the browser's own zone (Europe/London)", !whenSaid.includes("Europe/London") && !whenSaid.includes(`${pad(season === "EST" ? londonHour : londonHour + 1)}:00`) && !zoneSaid.includes("Europe/London"), whenSaid);
+  // London's own hour for that moment, from its own offset (the weeks when only one of the two countries has changed
+  // its clocks included; review m2).
+  const londonHour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", hourCycle: "h23" }).format(start));
+  ok("J-38 W6: the staff screen states no time in the browser's own zone (Europe/London)", !whenSaid.includes("Europe/London") && !whenSaid.includes(`${pad(londonHour)}:00`) && !zoneSaid.includes("Europe/London"), { whenSaid, londonHour });
   await staffCtx.close();
 
   // ---------------------------------------------------------------------------------------------- W4: the .ics
