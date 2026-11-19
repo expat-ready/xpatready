@@ -167,9 +167,9 @@ try {
   // ------------------------------------------------------------- W5: the suite catches a Signed offline without the helper
   const src = readFileSync(SERVICE, "utf8");
   const callAt = src.indexOf("prospectWon = (await winProspect(");
-  ok("FO-2w W5 pass: Signed offline calls winProspect, and prospect.won is named only in the helper's file and Signed offline's audit line",
+  ok("FO-2w W5 pass: Signed offline calls winProspect, and in the front office (the emitters; the case side's consumer is FO-8's) prospect.won is named only in the helper's file and Signed offline's audit line",
     callAt > src.indexOf("async signedOffline(") && src.indexOf("async signedOffline(") > 0
-      && execFileSync("grep", ["-rlE", "EVENT\\.PROSPECT_WON|\"prospect\\.won\"", join(STUDIO, "api", "src")], { encoding: "utf8" }).trim().split("\n").map((f) => f.slice(STUDIO.length + 1)).sort().join(",")
+      && execFileSync("grep", ["-rlE", "--include=*.ts", "EVENT\\.PROSPECT_WON|\"prospect\\.won\"", join(STUDIO, "api", "src", "front-office")], { encoding: "utf8" }).trim().split("\n").map((f) => f.slice(STUDIO.length + 1)).sort().join(",")
         === ["api/src/front-office/retainers/service.ts", "api/src/front-office/sales/prospects.ts"].join(","));
   // The mutant: the same service with the helper call taken out (prospectWon stays false), run on a fresh prospect.
   const end = src.indexOf("!== null;", callAt) + "!== null;".length;
