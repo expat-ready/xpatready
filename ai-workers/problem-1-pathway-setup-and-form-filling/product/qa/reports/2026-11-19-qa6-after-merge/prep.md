@@ -22,3 +22,5 @@ qa 6 (fresh Mac qa lane after the account switch), branch `claude/qa-6-after-mer
 * #2000 head 093d9829b: 31 PR checks green, not yet in a batch. #2214 head ee835cc53: module-cards failed (jobs 135324426439, 135324314780; MODULE.library.md not updated, P-615 (3)). Sent to Lead 90.
 * Founder's choice (12:0x IST, via Lead 90): the Lead starts walks.yml runs for qa lanes; qa sends one line (item, journey, pack run or independent re-run) and gets the run id. qa 6 asks only for walks on main after an item's last part merges; the refused branch rehearsal is not re-requested.
 * Disk rule (Lead 90, 12:0x IST): one scratch clone, one node_modules, one test database, 3 GB at most. qa 6 scratch: 8.9 MB.
+* **Lead 91** (local_d2a979e6-f888-4a43-b02f-763424a049d1) took over from Lead 90 (~12:3x IST): walk requests and verdict lines go there.
+* P-733 (founder, 12:28 IST): once #2233 is on main, proof is automatic at an item's last merge; qa walks items touching money, permissions, firm walls, schema or IRCC forms (R1.80 IRCC forms; R1.8 permissions and schema) and samples the rest daily. Until #2233 merges, prove as before.
