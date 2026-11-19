@@ -44,6 +44,8 @@ No open technical questions on PF/FO PRs at 11:46 IST (scan with Lead B (6)'s ex
 
 **15:47 IST: reports now go to Lead 94** (`local_8d88d9c8-bb18-4895-af87-797aa32c61bf`; Lead 93 handed over at 15:46 IST, P-446). Since 15:28: #2262 (J-109) opened; #2262 and #2252 hit the tsc heap crash (comment 7006086992; #2250 queued); #2029's merge fix is at 9d81e06a4, approved; #1961 has a new head, 9a1a5ab86, and needs a re-Approve.
 
+**15:48 IST, everything Lead B (7) owns (after a context compaction; nothing lost):** PRs watched: #2029, #1959, #2196, #1961, #2240, #2207, #2243, #2251, #2252, #2262. Branches watched: claude/intelligent-mayer-ymi4sl, claude/screens-fo3st2, claude/screens-fo4p2a-resume. Triggers: see the hand-over file's list. Briefs owed: FO-5b (R1.53) and PF-21c (R1.86). BACKLOG lines owed when Build Lead C's R1.72 chain calls: FO-2w, FO-5rp, FO-2u (shaped in `lead-b-briefs/lane-order-P733-2026-11-19.md`). Open technical questions: none (#2252's answered in 7006086992; #2029's fix in 7005749630). Unconfirmed: PF-19b part 3's lane (due 13:30).
+
 ## START HERE: hand-over Lead B (5) → Lead B (6), written 15 Nov 13:24 IST before the account switch (Lead 55's ask)
 
 **Lead B (5):** session titled "Lead B (5) · 15 Nov 10:02 IST" (transcript `af59e652…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`.
