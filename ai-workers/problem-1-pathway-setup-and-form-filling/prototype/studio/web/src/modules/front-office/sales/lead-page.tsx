@@ -2,10 +2,14 @@
 // The header says Lead (a lead has no stage, type or value, BR-1); the possible-match line names only a person the viewer
 // may see (BR-2, worded by FO-2); the right rail holds Take it. The timeline, Log a call, Add a note, Engage, Close and
 // Reopen come with FO-2 part 2. A lead the viewer may not see reads as not found, like another firm's (AG-2-94 rule 16).
-import { Link, useLocation, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { Button, Notice, Pill } from "@/components/ui/controls";
-import { can, KEY, Lead, READ_ONLY_REASON, words } from "./contract";
+// FO-4 part 2a (BR-7, AG-2-75): Engage (Individual), a right panel saying what it does; every Engage makes a prospect,
+// and a second one says so. Corporate Engage is FO-4c's.
+import * as React from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, Notice, Panel, Pill } from "@/components/ui/controls";
+import { useToast } from "@/lib/api";
+import { can, KEY, Lead, Prospect, READ_ONLY_REASON, words } from "./contract";
 import { Loading } from "./loading";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
@@ -18,6 +22,12 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 function LeadBody({ id }: { id: string }) {
   const me = useStaff();
   const take = useTakeIt();
+  const go = useNavigate(), toast = useToast(), qc = useQueryClient();
+  const [engaging, setEngaging] = React.useState(false);
+  const engage = useMutation({
+    mutationFn: async () => Prospect.parse(await staffApi(`/front-office/leads/${id}/engage`, { method: "POST" })),
+    onSuccess: (p) => { toast.push({ tone: "ok", text: p.message ?? `Prospect ${p.number} started in ${p.stage.label}.` }); void qc.invalidateQueries({ queryKey: ["fo"] }); go(`/front-office/prospects/${p.id}`); },
+  });
   const lead = useQuery({ queryKey: ["fo", "leads", "one", id], retry: false, queryFn: async () => Lead.parse(await staffApi(`/front-office/leads/${encodeURIComponent(id)}`)) });
   if (lead.isPending) return <Loading label="Loading the lead" rows={2} />;
   if (lead.isError) {
@@ -34,6 +44,7 @@ function LeadBody({ id }: { id: string }) {
   const name = [l.person.givenNames, l.person.familyName].filter(Boolean).join(" ") || "(no name)";
   const ownerActive = l.ownerStaffId !== null && !(l.owner ?? "").startsWith("(Inactive) ");
   const mayTake = can(me, KEY.edit) && l.state === "OPEN" && !ownerActive;
+  const mayEngage = can(me, KEY.edit) && l.state !== "CLOSED";
   const attribution = Object.entries(l.attribution ?? {}).filter(([k, v]) => k in ATTRIBUTION && typeof v === "string");
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4">
@@ -74,8 +85,15 @@ function LeadBody({ id }: { id: string }) {
           </div>
           {mayTake ? <Button busy={take.isPending} onClick={() => take.mutate(l)}>Take it</Button>
             : !can(me, KEY.edit) && l.state === "OPEN" && !ownerActive ? <p data-why-no-take className="text-xs text-text-muted">{READ_ONLY_REASON}</p> : null}
+          {mayEngage ? <Button variant={mayTake ? "outline" : "default"} onClick={() => { engage.reset(); setEngaging(true); }}>Engage</Button> : null}
         </aside>
       </div>
+      <Panel open={engaging} onOpenChange={setEngaging} title="Engage" description={`${name}, ${l.number}`}
+        footer={<><Button variant="ghost" onClick={() => setEngaging(false)}>Cancel</Button><Button busy={engage.isPending} onClick={() => engage.mutate()}>Engage as Individual</Button></>}>
+        {engage.isError ? <Notice tone="danger" className="mb-3" title={engage.error instanceof StaffApiError ? engage.error.message : "Could not engage the lead. Please try again."} /> : null}
+        <p className="text-sm">Starts a prospect on the Individual pipeline in Engaged. {ownerActive ? `${l.owner} stays its owner` : "You become its owner"}. Nothing is sent to {name}.</p>
+        {l.state === "ENGAGED" ? <p className="mt-2 text-sm text-text-muted" data-engaged-already>This lead is already engaged: this starts another prospect for it.</p> : null}
+      </Panel>
     </div>
   );
 }

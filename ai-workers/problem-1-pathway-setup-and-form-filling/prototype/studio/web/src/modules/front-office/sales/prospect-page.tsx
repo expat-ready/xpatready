@@ -1,0 +1,129 @@
+// FO-4 part 2a (concept r2 §4 screens 4-5; BR-8, BR-9, BR-10, BR-11; AG-2-26, AG-2-44, AG-2-47): one prospect. Its
+// stage, value and owner; "Move to…" (never Won); Mark lost (a right panel: a reason from the firm's prospect list is
+// required); Convert to client (a yes/no with AG-02's warning while no retainer is signed) and Undo convert (offered
+// only for a Convert with no signed retainer, with a reason; the server also refuses once the client is no longer
+// empty). Each button follows its permission key and the stage. Log a call, notes and the timeline are part 2b.
+import * as React from "react";
+import { Link, useParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, Dialog, Field, Notice, Panel, Pill, Select, Textarea } from "@/components/ui/controls";
+import { useToast } from "@/lib/api";
+import { Board, can, KEY, LostReasons, money, Prospect } from "./contract";
+import { Loading } from "./loading";
+import { MoveMenu, STALE_NOTE, useMove, useOwners } from "./prospect-actions";
+import { SalesFrame, useStaff } from "./sales-frame";
+import { staffApi, StaffApiError } from "./session";
+import { arrivedLabel } from "./time";
+/** AG-2-47 rule 16's words, shown before Convert while no retainer is signed (the same text the server answers with). */
+const NOT_SIGNED = "Retainer not signed. Work can start. Invoices will warn you, and the case will show a warning.";
+type Act = "lost" | "convert" | "undo";
+const DONE: Record<Act, (p: Prospect) => string> = { lost: (p) => `${p.number} is marked lost.`, convert: (p) => `${p.number} is now a client.`, undo: (p) => `Convert undone. ${p.number} is back in ${p.stage.label}.` };
+function ProspectBody({ id }: { id: string }) {
+  const me = useStaff(), owners = useOwners(), move = useMove(), toast = useToast(), qc = useQueryClient();
+  const key = ["fo", "prospects", "one", id];
+  const one = useQuery({ queryKey: key, retry: false, queryFn: async () => Prospect.parse(await staffApi(`/front-office/prospects/${encodeURIComponent(id)}`)) });
+  const board = useQuery({ queryKey: ["fo", "prospects", "board"], queryFn: async () => Board.parse(await staffApi("/front-office/pipelines/INDIVIDUAL/board")) });
+  const [open, setOpen] = React.useState<Act | null>(null);
+  const [reasonId, setReasonId] = React.useState(""), [text, setText] = React.useState(""), [error, setError] = React.useState<{ field: string | null; text: string } | null>(null);
+  const reasons = useQuery({ enabled: open === "lost", queryKey: ["fo", "lost-reasons"], queryFn: async () => LostReasons.parse(await staffApi("/front-office/prospects/lost-reasons")) });
+  const start = (a: Act | null) => { setOpen(a); setReasonId(""); setText(""); setError(null); };
+  const act = useMutation({
+    mutationFn: async (a: Act) => {
+      const version = one.data!.version, path = `/front-office/prospects/${id}/${a === "lost" ? "lost" : a === "convert" ? "convert" : "undo-convert"}`;
+      const json = a === "lost" ? { reasonId, note: text.trim() || undefined, version } : a === "convert" ? { version } : { reason: text, version };
+      return { a, p: Prospect.parse(await staffApi(path, { method: "POST", json })) };
+    },
+    onSuccess: ({ a, p }) => { qc.setQueryData(key, p); start(null); toast.push({ tone: "ok", text: DONE[a](p) }); },
+    onError: (e, a) => {
+      const stale = e instanceof StaffApiError && e.problem.code === "STALE";
+      const field = e instanceof StaffApiError ? (e.field("reasonId") ? "reasonId" : e.field("reason") ? "reason" : null) : null;
+      // A refusal that is about a field stays on the field, with what was typed kept (BIC-13); any other closes the
+      // panel only when the prospect changed under it (stale), since the rows are read again either way.
+      setError({ field, text: !(e instanceof StaffApiError) ? "Could not save. Please try again." : stale ? `${e.message.replace(/ Reload it\.$/, "")} ${STALE_NOTE}` : field === "reasonId" && a === "lost" ? "Choose why it was lost." : e.message });
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["fo", "prospects"] }),
+  });
+  if (one.isPending) return <Loading label="Loading the prospect" rows={2} />;
+  if (one.isError) {
+    const gone = one.error instanceof StaffApiError && one.error.status === 404;
+    return (
+      <section className="mx-auto max-w-xl rounded-xl border border-border bg-surface-raised p-6">
+        <h1 className="text-lg font-semibold">{gone ? "Prospect not found" : "Could not load the prospect"}</h1>
+        <p className="mt-1 text-sm text-text-muted">{gone ? "There is no such prospect in your firm, or it is not one you may see." : one.error instanceof StaffApiError ? one.error.message : "Please try again."}</p>
+        <Link to="/front-office/pipeline" className="mt-3 inline-block text-sm text-text-link hover:underline">Back to Pipeline</Link>
+      </section>
+    );
+  }
+  const p = one.data, name = p.company?.name ?? p.person?.name ?? "(no name)";
+  const working = p.stage.kind === "ACTIVE" || p.stage.kind === "NURTURE";
+  const mayLose = can(me, KEY.lose) && working, mayConvert = can(me, KEY.convert) && working;
+  const mayUndo = can(me, KEY.convert) && p.stage.kind === "WON" && p.wonVia === "CONVERTED" && !p.retainerSigned;
+  const mayMove = can(me, KEY.edit) && p.stage.kind === "ACTIVE";
+  const submit = (a: Act) => (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (a === "lost" && !reasonId) return setError({ field: "reasonId", text: "Choose why it was lost." });
+    if (a === "undo" && !text.trim()) return setError({ field: "reason", text: "Say why the Convert is undone." });
+    setError(null); act.mutate(a);
+  };
+  const general = error && !error.field ? <Notice tone="danger" title={error.text} className="mb-3" /> : null;
+  const row = (label: string, value: React.ReactNode) => <div className="grid grid-cols-[8rem_1fr] gap-2 py-1.5 text-sm"><dt className="text-text-muted">{label}</dt><dd className="min-w-0 [overflow-wrap:anywhere]">{value}</dd></div>;
+  return (
+    <div className="mx-auto flex max-w-6xl flex-col gap-4">
+      <header className="flex flex-wrap items-center gap-2">
+        <h1 className="text-2xl font-semibold text-text [overflow-wrap:anywhere]">{name}</h1>
+        <Pill tone="info">Prospect</Pill>
+        <Pill tone={p.stage.kind === "WON" ? "ok" : "neutral"}><span data-stage-now>{p.stage.label}</span></Pill>
+        <span className="text-sm text-text-muted">{p.number}</span>
+      </header>
+      {p.warning ? <Notice tone="warn" title={p.warning} /> : null}
+      <div className="grid gap-4 lg:grid-cols-[1fr_18rem]">
+        <section aria-labelledby="fo-prospect" className="rounded-xl border border-border bg-surface-raised p-4">
+          <h2 id="fo-prospect" className="text-sm font-semibold">Prospect</h2>
+          <dl className="mt-2">
+            {row("From lead", <Link to={`/front-office/leads/${p.leadId}`} className="text-text-link hover:underline">{p.leadNumber}</Link>)}
+            {row("Value", p.valueCents === null ? <span className="text-text-muted">Not set</span> : money(p.valueCents, p.currency))}
+            {row("Engaged", arrivedLabel(p.engagedAt))}
+            {owners.oneUser ? null : row("Owner", <span data-owner>{owners.name(p.ownerStaffId)}</span>)}
+            {p.stage.kind === "WON" ? row("Won by", p.wonVia === "CONVERTED" ? "Convert to client" : "A signed retainer") : null}
+            {p.lostReason ? row("Why lost", <span data-lost-reason>{p.lostReason.label}{p.lostNote ? ` · ${p.lostNote}` : ""}</span>) : null}
+          </dl>
+        </section>
+        <aside aria-label="Actions" className="flex flex-col items-stretch gap-2 rounded-xl border border-border bg-surface-raised p-4">
+          {mayMove ? <MoveMenu prospect={{ id: p.id, number: p.number, name }} from={p.stage.id} stages={board.data?.stages ?? []} version={p.version} move={move} /> : null}
+          {mayConvert ? <Button onClick={() => start("convert")}>Convert to client</Button> : null}
+          {mayLose ? <Button variant="outline" onClick={() => start("lost")}>Mark lost</Button> : null}
+          {mayUndo ? <Button variant="outline" onClick={() => start("undo")}>Undo convert</Button> : null}
+          {!mayMove && !mayConvert && !mayLose && !mayUndo ? <p data-no-actions className="text-xs text-text-muted">{p.stage.kind === "LOST" ? "A lost prospect does not move. To work with this person again, engage the lead again." : p.stage.kind === "WON" ? (p.wonVia === "CONVERTED" && !p.retainerSigned ? "Undoing a Convert needs a role that may convert prospects." : "This prospect is a client. A signed retainer cannot be undone here.") : "You can read this prospect. Changing it needs a role that works prospects: ask your firm's Owner or Admin."}</p> : null}
+        </aside>
+      </div>
+      <Panel open={open === "lost"} onOpenChange={(o) => start(o ? "lost" : null)} title="Mark lost" description={`${name}, ${p.number}. It leaves the board and is found in the List under Stage: Lost.`}
+        footer={<><Button variant="ghost" onClick={() => start(null)}>Cancel</Button><Button busy={act.isPending} onClick={submit("lost")}>Mark lost</Button></>}>
+        <form onSubmit={submit("lost")} className="flex flex-col gap-4">
+          {general}
+          {reasons.isError ? <Notice tone="danger" title="Could not load the reasons." action={<Button variant="link" size="sm" onClick={() => reasons.refetch()}>Try again</Button>} /> : null}
+          <Field label="Why was it lost?" error={error?.field === "reasonId" ? error.text : null}>
+            <Select value={reasonId} onChange={(e) => { setReasonId(e.target.value); setError(null); }}><option value="">{reasons.isPending ? "Loading…" : "Choose a reason"}</option>{(reasons.data ?? []).map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</Select>
+          </Field>
+          <Field label="Note (optional)" hint="Only your firm sees it."><Textarea rows={3} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)} /></Field>
+        </form>
+      </Panel>
+      <Dialog open={open === "convert"} onOpenChange={(o) => start(o ? "convert" : null)} title={`Convert ${name} to a client?`} description={`${p.number} moves to Won. Only this prospect changes.`}
+        footer={<><Button variant="ghost" onClick={() => start(null)}>No, keep as prospect</Button><Button busy={act.isPending} onClick={submit("convert")}>Yes, convert to client</Button></>}>
+        {general}
+        {p.retainerSigned ? <p className="text-sm">The retainer is signed.</p> : <Notice tone="warn" title={NOT_SIGNED} />}
+      </Dialog>
+      <Dialog open={open === "undo"} onOpenChange={(o) => start(o ? "undo" : null)} title={`Undo the Convert of ${name}?`} description={`${p.number} goes back to the stage it was in. Possible only while the client has no case, invoice or signed retainer.`}
+        footer={<><Button variant="ghost" onClick={() => start(null)}>No, keep as client</Button><Button busy={act.isPending} onClick={submit("undo")}>Yes, undo convert</Button></>}>
+        <form onSubmit={submit("undo")}>
+          {general}
+          <Field label="Why is it undone?" hint="Kept as an internal note on the prospect." error={error?.field === "reason" ? error.text : null}><Textarea rows={3} maxLength={2000} value={text} onChange={(e) => { setText(e.target.value); setError(null); }} /></Field>
+        </form>
+      </Dialog>
+    </div>
+  );
+}
+export function ProspectPage() {
+  const { id = "" } = useParams();
+  const back = { to: "/front-office/pipeline", label: "Pipeline" };
+  return <SalesFrame crumbs={[{ label: "Pipeline", to: back.to }, { label: "Prospect" }]} back={back}><ProspectBody id={id} /></SalesFrame>;
+}
