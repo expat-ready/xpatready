@@ -606,6 +606,6 @@ export const CaseListQuery = z.strictObject({
   q: z.string({ error: "Search with one text." }).max(1000, "Search with at most 80 characters.").refine((v) => v.trim().length <= 80, "Search with at most 80 characters.").optional(),
 }, onlyFilters("take, after, client, q"));
 /** GET /runtime/cases/:id/questionnaire (runtime.ts): agent is the Agent view, pqr the people's questions, sqr (or
- *  client, or none) the client's questionnaire, as the route reads them. */
+ *  client, or none) the Client questionnaire, as the route reads them. */
 export const QUESTIONNAIRE_MODES = ["agent", "pqr", "sqr", "client"] as const;
-export const QuestionnaireQuery = z.strictObject({ mode: z.enum(QUESTIONNAIRE_MODES, { error: "mode is agent, pqr, sqr or client (or leave it out for the client's questionnaire)." }).optional() }, onlyFilters("mode"));
+export const QuestionnaireQuery = z.strictObject({ mode: z.enum(QUESTIONNAIRE_MODES, { error: "mode is agent, pqr, sqr or client (or leave it out for the Client questionnaire)." }).optional() }, onlyFilters("mode"));

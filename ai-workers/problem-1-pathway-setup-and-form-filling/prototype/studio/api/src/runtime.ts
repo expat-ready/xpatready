@@ -564,7 +564,7 @@ export class Runtime {
   }
 
   /** GET /runtime/cases/:id/questionnaire (CS-V1 part 3): ?mode= once, one of its words; pqr, the Agent view, or the
-   *  client's questionnaire (sqr, client or none), as before. */
+   *  Client questionnaire (sqr, client or none), as before. */
   async questionnaire(actor: Actor, caseId: string, queryIn: unknown) {
     const { mode } = parse(QuestionnaireQuery, queryIn ?? {});
     return mode === "pqr" ? this.pqr(actor, caseId) : this.view(actor, caseId, mode === "agent" ? "agent" : "sqr");
