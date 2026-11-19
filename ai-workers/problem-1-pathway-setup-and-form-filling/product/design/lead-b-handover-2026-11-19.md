@@ -53,3 +53,27 @@ For the next Lead B session. Read `lead-b-state.md` and the last revs (17.30-17.
 * **Proof PRs to open after their parts:** J-109 after #2012; J-37 after #2196.
 * **From ~13:30:** the J2 and J4 lane plans (`lead-b-briefs/J2-lane-plan-2026-11-19.md`, `J4-lane-plan-2026-11-19.md`). The briefs are ready: PF-16, PF-4c part 1b, FO-13s, the FO-9a phone edit. The BACKLOG rows for FO-13i p2, FO-13s p1 and the FO-9a phone edit are asked of the Lead. The Stripe test account for J-19 is asked of the founder.
 * **My scratch watches in $TMPDIR stop with this session.** Restart them: merges on #2195 #2029 #2196 #2012 #2102 #2103 #1961 #2181 #1959; Approves on #1959 and #2196; the J-109 PR on `claude/vibrant-meitner-3t1yfe` and the PF-19b3 PR on `claude/intelligent-mayer-ymi4sl`; and the question scan (`lead-b-tools/scan-pr-questions-gql.py`).
+
+## Lead B (7) hand-over (19 Nov 13:4x IST) — the next Lead B starts here
+* **Session:** Lead B (7), worktree `elegant-sinoussi-bab4cf`, branch `lead-b-front-office` (push `git push origin HEAD:refs/heads/lead-b-front-office`). **Current Lead: Lead 92** (`local_9e102072-cfa3-44e7-b027-32b06363cdb5`). Leads 90 and 91 have ended.
+* **Rules now:** P-733 (nearest to done first, one lane per item, PRs near 800 lines, the J-test in the last PR, automatic proof, a full run only before a relabel after a failed batch, every failing suite named), P-734 (P-733 runs to the evening of 22 Nov; guard ENF-733 reads the focus list), P-735 (FO-13i part 2's expiry is the firm's own rule; never cite s. 24(2)(a)), P-736 (R1.30's drag: native HTML5, no library).
+* **The focus list is `lead-b-briefs/lane-order-P733-2026-11-19.md`.** Keep it current: it feeds ENF-733.
+* **Running cloud lanes (new account, started 12:43):**
+  * FO-3st2 (R1.41): #2243 (labelled) → FO-3a part 1c (M4 unique set names with a migration, m11 deactivated target 404; row FO-3a1c) → part 2 J-41.
+  * FO-4 part 2a (R1.30/31): #2251 (`Completes: R1.31`) → FO-4 part 2a-ii drag (row FO-4p2aii sent to Lead 92; P-736) → `Completes: R1.30`.
+  * J-38 (R1.40): no push seen yet.
+* **Labelled and in the queue (13:4x):** #2029 R1.4, #2012 R1.109, #1961 PF-19p, #2102, #2181, #2224, #2196 (relabelled after batch #2236; fix 942f6895e), #2240 (card-tool fix). Batches #2245 and #2246 died on tsc heap (pipeline, not ours); Lead 92 is landing an 8 GB fix and requeues them.
+* **Triggers to report to Lead 92 in one line:**
+  * #2012 merged → the J-109 PR opens (branch `claude/vibrant-meitner-3t1yfe`);
+  * #2196 → J-37 and J-28 (`J-rows.md` §J-28, R1.28's own walk);
+  * #2029 → #1959's lane (merge main, ruling 7000777630), then Lead 92 reads and labels;
+  * #2181 → FO-9a phone part (R1.33);
+  * #1959 → PF-5s part 1 with J-19 (R1.19 + R1.89);
+  * #2243 → FO-3a part 1c;
+  * #2251 → FO-4 part 2a-ii.
+  * PF-19b part 3, then J-48 (R1.48): due from 13:30; Lead 92 starts it.
+* **Card-tool bug:** `MODULE.rows/*.md` names paths without backticks until #2240 is on main.
+* **Rows Lead 92 still owes:** FO-4p2aii and FO-2bp (sent 13:4x). FO-3a1c is in #2241.
+* **Briefs owed by me (two-part items, after the one-part lanes run):** FO-5b (R1.53), PF-21c (R1.86).
+* **Watches (`$TMPDIR` scratchpad; they die with the session):** `watch.py` / `watch.sh` (PRs above plus #2243 and #2251; branches; exits on any change except pending CI and branch pushes) and `scan.sh` (`lead-b-tools/scan-pr-questions-gql.py` with an exclusion list). Re-create them the same way.
+* **Lessons:** `mktemp` fails in this sandbox, so use the scratchpad. zsh `${=…}`/`${…%%…}` parsing trips the safety check, so use Python for loops that post. Run only one watcher at a time (two share a state file). Read a batch's failing job log yourself before asking for a relabel. Times only from `TZ=Asia/Kolkata date`: I wrote ahead-of-time stamps three times and fixed each.
