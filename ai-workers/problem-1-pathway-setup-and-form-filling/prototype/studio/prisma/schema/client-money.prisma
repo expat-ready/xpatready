@@ -32,6 +32,12 @@
 //   money_to_move (a view, no stored status). A move never exceeds what its source still holds; money returned to trust
 //   while it is moved is refused until the move is undone; only a wrong-account correction of a deposit licenses a
 //   wrong-account move. The routes are FO-7t's.
+// * FO-7ts part 1 (AG-6-59 §6-§8, AG-6-4 §7 §13, AG-6-19 rule 1, AG-6-69 §7, AG-6-61 rule 7 §7, AG-6-42 §7; migration
+//   <stamp>_fo7ts_money_settings): the three-state trust answer (UNANSWERED → YES | NO, YES ⇄ NO, a trigger; trust is
+//   on only at YES) replaces trust_enabled; tax registration (needs a tax number), the QST number and "Prices include
+//   tax" replace the firm's rate list; "Invoice payments go to" with who and when; BANK_TRANSFER and CARD_TERMINAL;
+//   one deposit request per retainer version; a hashed pay link per document; the unsigned-retainer confirmation; and,
+//   in a second step (<stamp>_fo7ts_card_terminal_trust, Lead 80 on #2106), CARD_TERMINAL is never received into trust.
 
 /// The two currencies a firm may bill in (AG-6-46 rule 3; X-6). Never converted, never added together.
 enum MoneyCurrency {
@@ -55,7 +61,9 @@ enum MoneyLineKind {
   GOVERNMENT_FEE
 }
 
-/// How a payment was made (row FO-7a; AG-6-19 rule 1).
+/// How a payment was made (row FO-7a; AG-6-19 rule 1; FO-7ts part 1 adds BANK_TRANSFER and CARD_TERMINAL). CARD is the
+/// online card payment only. Neither CARD nor CARD_TERMINAL is ever received into trust (money_payment_card_not_trust;
+/// CARD_TERMINAL from FO-7ts part 1's second step, Lead 80 on #2106; P-567 (3)).
 enum MoneyPaymentMethod {
   CARD
   E_TRANSFER
@@ -63,6 +71,22 @@ enum MoneyPaymentMethod {
   WIRE
   CASH
   OTHER
+  BANK_TRANSFER
+  CARD_TERMINAL
+}
+
+/// The Owner's answer to "Do you hold client money in a trust account?" (AG-6-59 §6-§7; FO-7ts part 1): a firm starts
+/// UNANSWERED and behaves as trust off until YES; YES and NO may change, never back to UNANSWERED (a trigger).
+enum MoneyTrustAnswer {
+  UNANSWERED
+  YES
+  NO
+}
+
+/// "Invoice payments go to" (AG-6-69 rule 3, §7; FO-7ts part 1): its rule and route are FO-7b's.
+enum MoneyInvoicePaymentsGoTo {
+  OPERATING
+  TRUST_FIRST
 }
 
 /// The account the money actually reached (AG-6-69). Card money goes to OPERATING only: card into trust waits
@@ -134,18 +158,28 @@ enum MoneySeriesKind {
   TRUST_REQUEST
 }
 
-/// A firm's money settings (AG-6-59, AG-6-71, AG-6-4/-45, AG-6-46): the operating and trust payment-details blocks
-/// printed on invoices and trust requests, the tax number and the firm's tax rates, the trust answer (off until the
-/// Owner says Yes) and the default due period. The firm anchor of this module: one row per firm.
+/// A firm's money settings (AG-6-59, AG-6-71, AG-6-4/-45, AG-6-46, AG-6-69): the operating and trust payment-details
+/// blocks printed on invoices and trust requests, tax registration and numbers (rates are ExpatReady data, never the
+/// firm's: AG-6-4 §13), the trust answer with who and when (trust off until YES), "Invoice payments go to" with who
+/// and when, and the default due period. The firm anchor of this module: one row per firm.
 model MoneyPaymentSettings {
   firmId           String        @id @map("firm_id") @db.Uuid
   operatingDetails String?       @map("operating_details")
   trustDetails     String?       @map("trust_details")
   taxNumber        String?       @map("tax_number")
-  /// The firm's tax rates: a JSON list of { "name": "HST", "ratePpm": 130000 } (parts per million, so Quebec's QST 9.975 % is
-  /// 99750 exactly; Sample until the firm sets them).
-  taxRates         Json          @default("[]") @map("tax_rates")
-  trustEnabled     Boolean       @default(false) @map("trust_enabled")
+  /// Registered for tax needs a tax number (a check). Not registered means no tax lines (AG-6-4 rule 5: FO-7g's route); the
+/// database does not refuse a tax number kept while not registered (break F6 on facc5231).
+  taxRegistered    Boolean       @default(false) @map("tax_registered")
+  /// Stored, unused in R1: no Quebec (P-568 (1)).
+  qstNumber        String?       @map("qst_number")
+  pricesIncludeTax Boolean       @default(false) @map("prices_include_tax")
+  /// Who answered is the caller's (the route checks the Owner); when is the database's.
+  trustAnswer      MoneyTrustAnswer @default(UNANSWERED) @map("trust_answer")
+  trustAnsweredBy  String?          @map("trust_answered_by")
+  trustAnsweredAt  DateTime?        @map("trust_answered_at") @db.Timestamptz
+  invoicePaymentsGoTo      MoneyInvoicePaymentsGoTo @default(OPERATING) @map("invoice_payments_go_to")
+  invoicePaymentsChangedBy String?                  @map("invoice_payments_changed_by")
+  invoicePaymentsChangedAt DateTime?                @map("invoice_payments_changed_at") @db.Timestamptz
   defaultCurrency  MoneyCurrency @default(CAD) @map("default_currency")
   dueInDays        Int           @default(14) @map("due_in_days")
   updatedBy        String        @map("updated_by")
@@ -221,6 +255,12 @@ model MoneyInvoice {
   createdBy String        @map("created_by")
   createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  /// The no-login pay link's SHA-256 in hex, never the token (AG-6-14 rule 3; FO-7ts part 1): unique per firm (a
+  /// partial index, in SQL); it may change on an issued invoice (a new link replaces the old one).
+  payLinkTokenHash            String?   @map("pay_link_token_hash")
+  /// Staff invoiced on an unsigned retainer (AG-6-42 §7: a warning, never a block): both or neither; fixed once issued.
+  unsignedRetainerConfirmedBy String?   @map("unsigned_retainer_confirmed_by") @db.Uuid
+  unsignedRetainerConfirmedAt DateTime? @map("unsigned_retainer_confirmed_at") @db.Timestamptz
 
   settings     MoneyPaymentSettings @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   lines        MoneyInvoiceLine[]
@@ -404,6 +444,11 @@ model MoneyTrustRequest {
   cancelledBy  String?       @map("cancelled_by")
   cancelReason String?       @map("cancel_reason")
   updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  /// The front office's retainer version a deposit request is for (AG-6-61 rule 7, §7): one request per version (a
+  /// partial unique index, in SQL; a cancelled request keeps it); fixed once sent. No key across the module wall.
+  retainerVersionId String?    @map("retainer_version_id") @db.Uuid
+  /// As on an invoice; unused in R1: no pay link on a trust request (P-567 (3)).
+  payLinkTokenHash  String?    @map("pay_link_token_hash")
 
   settings     MoneyPaymentSettings @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   payments     MoneyPayment[]

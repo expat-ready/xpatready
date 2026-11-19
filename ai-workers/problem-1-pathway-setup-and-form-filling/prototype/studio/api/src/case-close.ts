@@ -175,7 +175,7 @@ export class CaseClose {
       const row = await tx.caseDecision.create({ data: { firmId, caseId: c.id, filingId: null, kind: "WITHDRAWAL", outcome: "WITHDRAWN", decidedOn: on, note: reason, recordedBy: `staff:${ctx.staffId}` } });
       const after = await tx.case.update({ where: { id: c.id }, data: { status: "CLOSED", closedAt: now, closedReason: reason, closeOutcome: "WITHDRAWN", withdrawnAt: now, withdrawReason: reason, closedFromStageId: stage } });
       await this.audit(tx, ctx, c, "case.withdrawn", "Withdrawn with a reason; the case is closed", { decisionId: row.id, withdrawnOn: on.toISOString().slice(0, 10), reason, closedFromStage: stage });
-      await this.closedEvent(tx, firmId, { caseId: c.id, clientId: null, clientType, reason: "WITHDRAWAL", outcome: "WITHDRAWN", closedAt: now.toISOString() });
+      await this.closedEvent(tx, firmId, { caseId: c.id, clientId: c.clientId, clientType, reason: "WITHDRAWAL", outcome: "WITHDRAWN", closedAt: now.toISOString() });
       return { case: caseView(after), withdrawal: { id: row.id, decidedOn: on.toISOString().slice(0, 10) } };
     });
   }
@@ -190,7 +190,7 @@ export class CaseClose {
       const now = new Date(), stage = c.stages[0]?.id ?? null;
       const after = await tx.case.update({ where: { id: c.id }, data: { status: "CLOSED", closedAt: now, closedReason: reason, closeOutcome: "CLOSED_BY_STAFF", closedFromStageId: stage } });
       await this.audit(tx, ctx, c, "case.closed", "Closed by staff with a reason", { closeOutcome: "CLOSED_BY_STAFF", reason, closedFromStage: stage });
-      await this.closedEvent(tx, firmId, { caseId: c.id, clientId: null, clientType, reason: "DECISION", outcome: "CLOSED_BY_STAFF", closedAt: now.toISOString() });
+      await this.closedEvent(tx, firmId, { caseId: c.id, clientId: c.clientId, clientType, reason: "DECISION", outcome: "CLOSED_BY_STAFF", closedAt: now.toISOString() });
       return { case: caseView(after) };
     });
   }
@@ -206,7 +206,7 @@ export class CaseClose {
       const now = new Date(), stage = c.closedFromStageId;
       const after = await tx.case.update({ where: { id: c.id }, data: { status: "OPEN", closedAt: null, closedReason: null, closeOutcome: null, withdrawnAt: null, withdrawReason: null, closedFromStageId: null } });
       await this.audit(tx, ctx, c, "case.reopened", "Reopened with a reason", { reason, ...old });
-      await tx.moduleEvent.create({ data: { firmId, type: EVENT.CASE_REOPENED, subjectId: c.id, payload: CaseReopenedPayload.parse({ caseId: c.id, clientId: null, clientType, stageId: stage, previousOutcome: c.closeOutcome, reopenedAt: now.toISOString() }) } });
+      await tx.moduleEvent.create({ data: { firmId, type: EVENT.CASE_REOPENED, subjectId: c.id, payload: CaseReopenedPayload.parse({ caseId: c.id, clientId: c.clientId, clientType, stageId: stage, previousOutcome: c.closeOutcome, reopenedAt: now.toISOString() }) } });
       return { case: caseView(after), stageId: stage, currentStageId: c.stages[0]?.id ?? null };
     });
   }
