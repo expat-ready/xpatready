@@ -43,8 +43,8 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-582 | Every item left out of the first build is a BACKLOG X-row, added in the same change. | prose | 14 Nov |
 | P-587 | From public repositories only gold-class code, judged at the STANDARDS §1 gate. | prose | 14 Nov |
 | P-593 | The board is the one door with a Library of masters; full row `rules/tech-lead.md`. | script: library-freshness.py (part: a master behind its feeds is listed) | 14 Nov |
-| IDX-13 | P-595 (every R1 row has a Source:) and P-596 (board numbers carry source, sha, time) stand: word for word in `rules/goal-and-order.md`. | script: cockpit-data.py | 19 Nov |
-| IDX-12 | P-597 (desk on Fable), P-599 (two ready rows per lane), P-613 (Plan C lanes), P-614 (target kept, same measures) stand: word for word in `rules/goal-and-order.md`. | prose | 19 Nov |
+| IDX-13 | (P-595 every R1 row has a Source:; P-596 board numbers carry source, sha, time) stand: word for word in `rules/goal-and-order.md`. | script: cockpit-data.py | 19 Nov |
+| IDX-12 | (P-597 desk on Fable; P-599 two ready rows per lane; P-613 Plan C lanes; P-614 target kept, same measures) stand: word for word in `rules/goal-and-order.md`. | prose | 19 Nov |
 | P-600 | Schema rows run in parallel, each with its own file and migration folder, additive, a later stamp; the Lead reads the migration before the label (P-601). | prose | 14 Nov |
 | P-604 | Builders and qa read only the requirement text trace-requirements.py --brief prints. | prose | 15 Nov |
 | P-605 | Opus 5.5 is the working model; Fable 5.2 only for the desk and challenges; no model switch mid-session. | hook: agent-model-guard.sh --hook (part; `rules/tokens-money-account.md`) | 15 Nov |
@@ -55,7 +55,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-611b | One queue for reports, questions, blockers, approvals (owner, ack, timeout); no hand-over with an un-acked item. Full row: `rules/tech-lead.md`. | script: items.py | 15 Nov |
 | P-609 | Release 1 = all 101 together, committed date 29 Nov; under 50% at the 17 Nov check, options to the founder at once. | prose | 15 Nov |
 | P-615 | Environment as memory: this register (start read ≤ 70k tokens), module cards checked by CI, why-comments, three behaviour numbers; no memory agent. | script: check-docs.sh (part: register, 25 KB) | 15 Nov |
-| IDX-11 | P-608 (model and effort at every start) stands: word for word in `rules/goal-and-order.md`; P-725 overrides it for the new account's Lead. | hook: lane-preflight.sh | 19 Nov |
+| IDX-11 | (P-608: model and effort at every start) stands: word for word in `rules/goal-and-order.md`; P-725 overrides it for the new account's Lead. | hook: lane-preflight.sh | 19 Nov |
 | P-557 | Always committed, always resumable: push every step; STATE says what is true, in flight and next (AGENTS rule 10). | prose | 13 Nov |
 | P-694 | A hand-recorded payment's reversal may take trust below zero, shown red (supersedes P-607 (1)); no other outflow does. | prose (R1.58) | 18 Nov |
 
@@ -136,7 +136,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-647 | Each check reads claude.ai/code statuses and acts on waiting lanes; no lane waits on a network change. | prose (built-in browser script) | 16 Nov |
 | P-651 | (with P-648, P-649) CI overflow on the Namespace trial; full tests once, in the merge queue. | prose | 17 Nov |
 | IDX-7 | Dated rulings (P-616, P-619, P-620, P-621 and the rest) stand as recorded; the list word for word in `rules/goal-and-order.md`. | prose | 15 Nov |
-| IDX-10 | Rows IDX-6 (one-time exceptions) and P-539 (public repo, private strategy) stand: word for word in `rules/goal-and-order.md` (Lead 87, 19 Nov). | prose | 19 Nov |
+| IDX-10 | Rows (IDX-6 one-time exceptions, P-617 and others; P-539 public repo, private strategy) stand: word for word in `rules/goal-and-order.md` (Lead 87, 19 Nov). | prose | 19 Nov |
 | IDX-8 | Org move rows (P-657, P-660, P-661, P-662) stand as recorded; word for word in `rules/tech-lead.md` › Org move (moved 17 Nov by Lead 77). | prose | 17 Nov |
 | P-663 | Ramp targets by date and the stop on new rows while the queue is slow: row in `rules/tech-lead.md` › Moved 19 Nov. | prose | 17 Nov |
 | P-664 | qa verdict records PRs go first in the merge queue. | prose (.mergify.yml priority owed) | 17 Nov |
