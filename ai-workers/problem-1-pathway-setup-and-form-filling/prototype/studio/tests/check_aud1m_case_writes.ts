@@ -31,17 +31,16 @@ function directWrites(tree: Record<string, string>): Record<string, number> {
   for (const [f, text] of Object.entries(tree)) { const n = text.split("auditEvent.create").length - 1; if (n && f !== ADAPTER) out[f] = n; }
   return out;
 }
-/** What parts 1 and 2a leave (part 2b moves the rest to AuditPort.record, one line each). Part 1 removed core.ts's own;
- *  part 2a the case, document and person writes (case-close, case-prepare, document-providers/-sets/-supplies,
- *  earlier-facts, employer-link, person-link, readiness, section-background). */
+/** What parts 1, 2a and 2b leave: the platform's 3 (PF-0a, part 2c: AuditEntry refuses writeSetting's untyped actors and
+ *  nested detail today). Part 1 removed core.ts's own; part 2a the case, document and person writes; part 2b the form,
+ *  library, review and lifecycle writes (each now Audit.log through AuditPort, in the caller's transaction). */
 const LEFT: Record<string, number> = {
-  "form-library.ts": 2, "forms-demo.ts": 1, "library-changes.ts": 1, "library-items.ts": 2, "lifecycle.ts": 3, "must-verify.ts": 2, "official-pages.ts": 1,
-  "platform/identity/audit.ts": 2, "platform/settings.ts": 1, "release-update.ts": 1, "review-rounds.ts": 2, "review-stamp.ts": 1,
+  "platform/identity/audit.ts": 2, "platform/settings.ts": 1,
 };
 const same = (a: Record<string, number>, b: Record<string, number>) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
 const tree = Object.fromEntries(files(API).map((f) => [relative(API, f), readFileSync(f, "utf8")]));
 const left = directWrites(tree), total = Object.values(left).reduce((a, b) => a + b, 0);
-ok(`AUD-1m CW1 pass: the direct auditEvent.create writes left are exactly the list parts 1 and 2a leave (${total} in ${Object.keys(left).length} files; core.ts's Audit.log has none)`, same(left, LEFT) && !left["core.ts"], left);
+ok(`AUD-1m CW1 pass: the direct auditEvent.create writes left are exactly the list parts 1, 2a and 2b leave (${total} in ${Object.keys(left).length} files; core.ts's Audit.log has none)`, same(left, LEFT) && !left["core.ts"], left);
 ok("AUD-1m CW1 fail: one new direct write (or core.ts's own back) is caught", !same(directWrites({ ...tree, "new-thing.ts": "await tx.auditEvent.create({ data })" }), LEFT) && !same(directWrites({ ...tree, "core.ts": `${tree["core.ts"]}\nthis.db.auditEvent.create({})` }), LEFT));
 
 // ------------------------------------------------------------------- CW2: the two entries never pass for each other (no DB)
