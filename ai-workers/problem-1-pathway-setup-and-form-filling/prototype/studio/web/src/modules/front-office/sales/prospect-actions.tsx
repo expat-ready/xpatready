@@ -2,6 +2,7 @@
 // screen share. "Move to…" is the app's own dropdown (keyboard and mouse; no drag library, STANDARDS §1) and offers only
 // the open stages: Won is never offered (it comes from a signature or Convert to client), Lost is Mark lost's. A move
 // names the version the screen read; when someone moved the prospect first, nothing changes and the rows are read again.
+import * as React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/controls";
@@ -16,12 +17,33 @@ export function useOwners() {
   const me = useStaff();
   const a = useQuery({ queryKey: ["fo", "assignees"], queryFn: async () => Assignees.parse(await staffApi("/front-office/leads/assignees")) }).data;
   const name = (id: string | null) => id === null ? "Nobody" : a?.assignees.find((x) => x.staffId === id)?.displayName ?? (id === me.staffId ? me.displayName : "A colleague");
-  return { oneUser: a?.oneUser ?? false, choices: a?.assignees ?? [], name };
+  // Until the answer is in (or when it fails) no owner is shown: a one-user firm never sees an owner flash by (break m8).
+  return { oneUser: a?.oneUser ?? true, choices: a?.assignees ?? [], name };
+}
+/** One request at a time (review M1): a second click before the first answer is dropped, also before React has drawn
+ *  the button as busy. `take()` is true for the click that may send; `free()` when the answer is in. */
+export function useLock() {
+  const busy = React.useRef(false);
+  return React.useMemo(() => ({ take: () => (busy.current ? false : (busy.current = true)), free: () => { busy.current = false; } }), []);
+}
+/** Where focus goes when a panel, a dialog or a move is over (review M2, WCAG 2.4.3): `mark()` remembers the button in
+ *  use; `back()` returns to it, or to `selector` when given, or to the page's heading when that button is gone. */
+export function useReturnFocus() {
+  const from = React.useRef<HTMLElement | null>(null);
+  return React.useMemo(() => ({
+    mark: () => { from.current = document.activeElement as HTMLElement | null; },
+    back: (selector?: string) => setTimeout(() => {
+      const h = document.querySelector<HTMLElement>("main h1") ?? document.querySelector<HTMLElement>("h1");
+      const el = (selector ? document.querySelector<HTMLElement>(selector) : null) ?? (from.current?.isConnected && !(from.current as HTMLButtonElement).disabled ? from.current : null);
+      if (!el) h?.setAttribute("tabindex", "-1");
+      (el ?? h)?.focus();
+    }, 60),
+  }), []);
 }
 export const STALE_NOTE = "Nothing was changed. The page shows where it is now.";
 export function useMove() {
   const qc = useQueryClient();
-  const toast = useToast();
+  const toast = useToast(), focus = useReturnFocus();
   return useMutation({
     mutationFn: async (v: { id: string; number: string; from: string; to: StageRef; version?: string }) => {
       // The board and the list carry no version, so the prospect is read first: a stage other than the one shown
@@ -33,7 +55,8 @@ export function useMove() {
     onSuccess: (p) => toast.push({ tone: "ok", text: `${p.number} is now in ${p.stage.label}.` }),
     onError: (e) => toast.push({ tone: "danger", text: !(e instanceof StaffApiError) ? "Could not move the prospect. Please try again." : e.problem.code === "STALE" ? `${e.message.replace(/ Reload it\.$/, "")} ${STALE_NOTE}` : e.message }),
     // Moved or refused, everything shown about prospects is read again, so the screen is never left stale.
-    onSettled: () => qc.invalidateQueries({ queryKey: ["fo", "prospects"] }),
+    // The card or row is drawn again in its new place: focus follows it to the same prospect's "Move to…".
+    onSettled: async (_r, _e, v) => { await qc.invalidateQueries({ queryKey: ["fo", "prospects"] }); focus.back(`[data-move="${v.number}"]`); },
   });
 }
 const ITEM = "flex min-h-9 cursor-pointer items-center rounded-md px-2 text-sm outline-none data-[highlighted]:bg-text/5";

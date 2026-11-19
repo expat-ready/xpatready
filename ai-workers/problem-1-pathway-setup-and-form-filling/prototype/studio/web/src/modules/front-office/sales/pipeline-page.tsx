@@ -7,7 +7,7 @@
 import * as React from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Field, Input, Pill, Select, Table } from "@/components/ui/controls";
+import { Button, Field, Input, Notice, Pill, Select, Table } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { Board, can, KEY, money, ProspectRows, type Money } from "./contract";
 import { Loading } from "./loading";
@@ -34,9 +34,12 @@ function BoardView() {
   if (board.isError) return <Failed error={board.error} retry={() => board.refetch()} what="the board" />;
   const stages = board.data.stages.filter((s) => s.kind !== "LOST");
   const value = new Map((rows.data ?? []).map((r) => [r.id, r]));
+  const drawn = board.data.stages.reduce((n, s) => n + s.prospects.length, 0);
   if (!stages.some((s) => s.prospects.length)) return <p data-empty className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">No prospects yet. Engage a lead to start one.</p>;
   return (
     <>
+      {/* The board route answers at most 1,000 prospects, oldest first (break M1): past that the screen says so. */}
+      {drawn >= 1000 ? <Notice tone="warn" title="The board shows your first 1,000 prospects.">Newer ones are not drawn here. Find them in the List, by stage, owner or date.</Notice> : null}
       <p className="text-sm text-text-muted" data-open-totals>Open prospects by value: <Totals lines={board.data.totals} none="no values yet" /></p>
       <div role="region" aria-label="Pipeline board" tabIndex={0} data-board className="flex gap-3 overflow-x-auto rounded-xl pb-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
         {stages.map((s) => {
@@ -86,10 +89,13 @@ function ListView() {
         <Field label="Engaged to"><Input type="date" value={f.to} min={f.from || undefined} onChange={(e) => set("to", e.target.value)} /></Field>
         {qs ? <Button variant="link" size="sm" data-clear onClick={() => setParams(new URLSearchParams({ view: "list" }), { replace: true })}>Clear filters</Button> : null}
       </div>
+      {board.isError ? <Failed error={board.error} retry={() => board.refetch()} what="the stages (the Stage filter and Move to… need them)" /> : null}
       {rows.isPending ? <Loading label="Loading prospects" />
         : rows.isError ? <Failed error={rows.error} retry={() => rows.refetch()} what="the prospects" />
           : !rows.data.length ? <p data-empty role="status" className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">{qs ? (lost ? "No lost prospects match these filters." : "No prospects match these filters.") : "No prospects yet. Engage a lead to start one."}</p>
             : (
+              <>
+              {rows.data.length >= 500 ? <Notice tone="warn" title="Showing the newest 500 prospects.">Narrow the list by stage, owner or date to see the rest.</Notice> : null}
               <Table label={lost ? "Lost prospects" : "Prospects"} head={["Prospect", "Stage", ...(owners.oneUser ? [] : ["Owner"]), "Value", "Engaged", lost ? "Why lost" : ""]}>
                 {rows.data.map((p) => (
                   <tr key={p.id} data-prospect-row={p.number}>
@@ -102,6 +108,7 @@ function ListView() {
                   </tr>
                 ))}
               </Table>
+              </>
             )}
     </>
   );

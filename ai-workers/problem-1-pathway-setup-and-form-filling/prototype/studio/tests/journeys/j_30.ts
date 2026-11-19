@@ -119,11 +119,14 @@ await owner.goto(`${BASE}/front-office/leads/${ana.id}`);
 await owner.getByRole("button", { name: "Engage", exact: true }).focus(); await owner.keyboard.press("Enter");
 await owner.getByText("Nothing is sent to").waitFor();
 await shot(owner, "engage-panel-1440");
-await owner.getByRole("button", { name: "Engage as Individual" }).focus(); await owner.keyboard.press("Enter");
+await owner.keyboard.press("Escape");
+const backOnEngage = await owner.waitForFunction(() => document.activeElement?.textContent === "Engage", null, { timeout: 5_000 }).then(() => true, () => false);
+await owner.keyboard.press("Enter"); await owner.getByText("Nothing is sent to").waitFor();
+await owner.getByRole("button", { name: "Engage as Individual" }).dblclick();   // a double click sends one request (review M1)
 await owner.waitForURL(/\/front-office\/prospects\//);
 await owner.locator("[data-stage-now]").waitFor();
 const anaId = owner.url().split("/").pop()!, anaRow = sql(`select number || '|' || owner_staff_id from fo_prospect where id = '${anaId}'`).split("|");
-ok("J-30 W2 DW8 pass: Engage (keyboard only) makes one prospect in Engaged, owned by the lead's owner, and opens it", await owner.locator("[data-stage-now]").innerText() === "Engaged" && anaRow[1] === R.id && sql(`select count(*) from fo_prospect where lead_id = '${ana.id}'`) === "1", anaRow);
+ok("J-30 W2 DW8 pass: Engage makes one prospect in Engaged (a double click too), owned by the lead's owner, and opens it; Escape had returned focus to Engage", backOnEngage && await owner.locator("[data-stage-now]").innerText() === "Engaged" && anaRow[1] === R.id && sql(`select count(*) from fo_prospect where lead_id = '${ana.id}'`) === "1", anaRow);
 await owner.goto(`${BASE}/front-office/leads/${ana.id}`);
 await owner.getByRole("button", { name: "Engage", exact: true }).click();
 const warned = await owner.locator("[data-engaged-already]").isVisible();
@@ -149,7 +152,7 @@ const focused = () => owner.evaluate(() => document.activeElement?.textContent ?
 for (let i = 0; i < 6 && await focused() !== "Consult"; i++) await owner.keyboard.press("ArrowDown");   // opened by Enter, the first item has focus
 await owner.keyboard.press("Enter");
 await inStage("CONSULT", anaRow[0]).waitFor();
-ok("J-30 W3 DW9 pass: chosen by keyboard only (Enter, ArrowDown, Enter), the card is in Consult and one PERSON move is recorded", sql(`select s.key || '|' || m.cause from fo_stage_move m join fo_stage s on s.id = m.to_stage_id where m.prospect_id = '${anaId}' order by m.seq desc limit 1`) === "CONSULT|PERSON");
+ok("J-30 W3 DW9 pass: chosen by keyboard only (Enter, ArrowDown, Enter), the card is in Consult, one PERSON move is recorded, and focus is on that card's Move to… again", await owner.waitForFunction((n) => document.activeElement?.getAttribute("data-move") === n, anaRow[0], { timeout: 5_000 }).then(() => true, () => false) && sql(`select s.key || '|' || m.cause from fo_stage_move m join fo_stage s on s.id = m.to_stage_id where m.prospect_id = '${anaId}' order by m.seq desc limit 1`) === "CONSULT|PERSON");
 // A stale move: the Case Officer moves it first; the Owner's board still shows Consult.
 const seen = (await api(tok.O, "GET", `/prospects/${anaId}`)).body as { version: string };
 await api(tok.O, "POST", `/prospects/${anaId}/move`, { stageId: stage("PROPOSAL").id, cause: "PERSON", version: seen.version });
@@ -257,8 +260,15 @@ try {
   await reader.goto(`${BASE}/front-office/pipeline?view=list`); await reader.locator(`[data-prospect-row="${ben1.number}"]`).waitFor();
   ok("J-30 W6 BR-10 fail: the same person's List has no Move to… on any row", await reader.getByRole("button", { name: /Move to…/ }).count() === 0);
 } finally { for (const k of had) sql(`insert into platform_role_permission (role, permission_key) values ('CASE_OFFICER', '${k}') on conflict do nothing`); }
-const other = await api(tok.R, "GET", `/prospects/${randomUUID()}`);
-ok("J-30 fail: an unknown prospect is not found (404), and firm B's board shows none of this run's prospects", other.status === 404 && sql(`select count(*) from fo_prospect where firm_id = '${B}' and lead_id in ('${ana.id}', '${cyd.id}', '${many.id}')`) === "0");
+// The other firm (one user): its Owner cannot open firm A's prospect, its board holds none of this run's cards, and
+// it shows no owner anywhere (BR-10, X-4).
+const S = staff("user-S"), sTok = ((await (await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-solo", email: S.email, secondStep: true }) })).json()) as { token: string }).token;
+const solo = await pageAs(sTok), sLead = sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${B}', 'Solo${run}', 'Sample', 'j30.solo.${run}@example.org', 'test', now()) returning id`);
+const sProspect = (await api(sTok, "POST", `/leads/${sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values (gen_random_uuid(), '${B}', '${sLead}', 'MANUAL', 'Phone call', '${S.id}', 'test', now()) returning id`)}/engage`)).body as { number: string };
+await solo.goto(`${BASE}/front-office/pipeline`); await solo.locator(`[data-card="${sProspect.number}"]`).waitFor();
+const soloText = await solo.locator("[data-board]").innerText(), other = await api(sTok, "GET", `/prospects/${anaId}`);
+ok("J-30 fail: firm B's Owner gets 404 for firm A's prospect, firm B's board shows none of this run's firm A cards, and (one user) no owner on its card or in its List", other.status === 404 && !soloText.includes(`Ana${run}`) && !soloText.includes(`Many${run}`) && !soloText.includes(S.name)
+  && await solo.goto(`${BASE}/front-office/pipeline?view=list`).then(() => solo.locator("[data-prospect-row]").first().waitFor()).then(async () => await solo.getByLabel("Owner").count() === 0 && await solo.locator("[data-owner]").count() === 0), other.status);
 
 await browser.close(); await db.$disconnect();
 process.exit(summary() ? 1 : 0);

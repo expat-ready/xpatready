@@ -10,7 +10,7 @@ import { Button, Dialog, Field, Notice, Panel, Pill, Select, Textarea } from "@/
 import { useToast } from "@/lib/api";
 import { Board, can, KEY, LostReasons, money, Prospect } from "./contract";
 import { Loading } from "./loading";
-import { MoveMenu, STALE_NOTE, useMove, useOwners } from "./prospect-actions";
+import { MoveMenu, STALE_NOTE, useLock, useMove, useOwners, useReturnFocus } from "./prospect-actions";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { arrivedLabel } from "./time";
@@ -26,7 +26,8 @@ function ProspectBody({ id }: { id: string }) {
   const [open, setOpen] = React.useState<Act | null>(null);
   const [reasonId, setReasonId] = React.useState(""), [text, setText] = React.useState(""), [error, setError] = React.useState<{ field: string | null; text: string } | null>(null);
   const reasons = useQuery({ enabled: open === "lost", queryKey: ["fo", "lost-reasons"], queryFn: async () => LostReasons.parse(await staffApi("/front-office/prospects/lost-reasons")) });
-  const start = (a: Act | null) => { setOpen(a); setReasonId(""); setText(""); setError(null); };
+  const lock = useLock(), focus = useReturnFocus();
+  const start = (a: Act | null) => { if (a) focus.mark(); else if (open) focus.back(); setOpen(a); setReasonId(""); setText(""); setError(null); };
   const act = useMutation({
     mutationFn: async (a: Act) => {
       const version = one.data!.version, path = `/front-office/prospects/${id}/${a === "lost" ? "lost" : a === "convert" ? "convert" : "undo-convert"}`;
@@ -36,12 +37,14 @@ function ProspectBody({ id }: { id: string }) {
     onSuccess: ({ a, p }) => { qc.setQueryData(key, p); start(null); toast.push({ tone: "ok", text: DONE[a](p) }); },
     onError: (e, a) => {
       const stale = e instanceof StaffApiError && e.problem.code === "STALE";
+      // Someone acted first (stale, or it is already lost or won): the panel closes, since its action no longer applies.
+      if (e instanceof StaffApiError && ["STALE", "TERMINAL", "ALREADY_WON", "NOT_WON"].includes(e.problem.code ?? "")) { start(null); toast.push({ tone: "danger", text: stale ? `${e.message.replace(/ Reload it\.$/, "")} ${STALE_NOTE}` : e.message }); return; }
       const field = e instanceof StaffApiError ? (e.field("reasonId") ? "reasonId" : e.field("reason") ? "reason" : null) : null;
-      // A refusal that is about a field stays on the field, with what was typed kept (BIC-13); any other closes the
-      // panel only when the prospect changed under it (stale), since the rows are read again either way.
-      setError({ field, text: !(e instanceof StaffApiError) ? "Could not save. Please try again." : stale ? `${e.message.replace(/ Reload it\.$/, "")} ${STALE_NOTE}` : field === "reasonId" && a === "lost" ? "Choose why it was lost." : e.message });
+      // A refusal about a field stays on the field, with what was typed kept (BIC-13); any other is said at the top of
+      // the panel; the prospect is read again either way.
+      setError({ field, text: !(e instanceof StaffApiError) ? "Could not save. Please try again." : field === "reasonId" && a === "lost" ? "Choose why it was lost." : e.message });
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["fo", "prospects"] }),
+    onSettled: () => { lock.free(); return qc.invalidateQueries({ queryKey: ["fo", "prospects"] }); },
   });
   if (one.isPending) return <Loading label="Loading the prospect" rows={2} />;
   if (one.isError) {
@@ -58,11 +61,12 @@ function ProspectBody({ id }: { id: string }) {
   const working = p.stage.kind === "ACTIVE" || p.stage.kind === "NURTURE";
   const mayLose = can(me, KEY.lose) && working, mayConvert = can(me, KEY.convert) && working;
   const mayUndo = can(me, KEY.convert) && p.stage.kind === "WON" && p.wonVia === "CONVERTED" && !p.retainerSigned;
-  const mayMove = can(me, KEY.edit) && p.stage.kind === "ACTIVE";
+  const mayMove = can(me, KEY.edit) && p.stage.kind === "ACTIVE" && p.type === "INDIVIDUAL";   // the stages read here are the Individual board's (Corporate: FO-4c)
   const submit = (a: Act) => (e?: React.FormEvent) => {
     e?.preventDefault();
     if (a === "lost" && !reasonId) return setError({ field: "reasonId", text: "Choose why it was lost." });
     if (a === "undo" && !text.trim()) return setError({ field: "reason", text: "Say why the Convert is undone." });
+    if (!lock.take()) return;
     setError(null); act.mutate(a);
   };
   const general = error && !error.field ? <Notice tone="danger" title={error.text} className="mb-3" /> : null;

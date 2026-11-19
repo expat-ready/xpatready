@@ -11,6 +11,7 @@ import { Button, Notice, Panel, Pill } from "@/components/ui/controls";
 import { useToast } from "@/lib/api";
 import { can, KEY, Lead, Prospect, READ_ONLY_REASON, words } from "./contract";
 import { Loading } from "./loading";
+import { useLock, useReturnFocus } from "./prospect-actions";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { useTakeIt } from "./take-it";
@@ -23,10 +24,12 @@ function LeadBody({ id }: { id: string }) {
   const me = useStaff();
   const take = useTakeIt();
   const go = useNavigate(), toast = useToast(), qc = useQueryClient();
-  const [engaging, setEngaging] = React.useState(false);
+  const [engaging, setEngaging] = React.useState(false), lock = useLock(), focus = useReturnFocus();
+  const panel = (o: boolean) => { if (o) { focus.mark(); engage.reset(); } else focus.back(); setEngaging(o); };
   const engage = useMutation({
     mutationFn: async () => Prospect.parse(await staffApi(`/front-office/leads/${id}/engage`, { method: "POST" })),
     onSuccess: (p) => { toast.push({ tone: "ok", text: p.message ?? `Prospect ${p.number} started in ${p.stage.label}.` }); void qc.invalidateQueries({ queryKey: ["fo"] }); go(`/front-office/prospects/${p.id}`); },
+    onSettled: () => lock.free(),
   });
   const lead = useQuery({ queryKey: ["fo", "leads", "one", id], retry: false, queryFn: async () => Lead.parse(await staffApi(`/front-office/leads/${encodeURIComponent(id)}`)) });
   if (lead.isPending) return <Loading label="Loading the lead" rows={2} />;
@@ -85,11 +88,11 @@ function LeadBody({ id }: { id: string }) {
           </div>
           {mayTake ? <Button busy={take.isPending} onClick={() => take.mutate(l)}>Take it</Button>
             : !can(me, KEY.edit) && l.state === "OPEN" && !ownerActive ? <p data-why-no-take className="text-xs text-text-muted">{READ_ONLY_REASON}</p> : null}
-          {mayEngage ? <Button variant={mayTake ? "outline" : "default"} onClick={() => { engage.reset(); setEngaging(true); }}>Engage</Button> : null}
+          {mayEngage ? <Button variant={mayTake ? "outline" : "default"} onClick={() => panel(true)}>Engage</Button> : null}
         </aside>
       </div>
-      <Panel open={engaging} onOpenChange={setEngaging} title="Engage" description={`${name}, ${l.number}`}
-        footer={<><Button variant="ghost" onClick={() => setEngaging(false)}>Cancel</Button><Button busy={engage.isPending} onClick={() => engage.mutate()}>Engage as Individual</Button></>}>
+      <Panel open={engaging} onOpenChange={panel} title="Engage" description={`${name}, ${l.number}`}
+        footer={<><Button variant="ghost" onClick={() => panel(false)}>Cancel</Button><Button busy={engage.isPending} onClick={() => { if (lock.take()) engage.mutate(); }}>Engage as Individual</Button></>}>
         {engage.isError ? <Notice tone="danger" className="mb-3" title={engage.error instanceof StaffApiError ? engage.error.message : "Could not engage the lead. Please try again."} /> : null}
         <p className="text-sm">Starts a prospect on the Individual pipeline in Engaged. {ownerActive ? `${l.owner} stays its owner` : "You become its owner"}. Nothing is sent to {name}.</p>
         {l.state === "ENGAGED" ? <p className="mt-2 text-sm text-text-muted" data-engaged-already>This lead is already engaged: this starts another prospect for it.</p> : null}
