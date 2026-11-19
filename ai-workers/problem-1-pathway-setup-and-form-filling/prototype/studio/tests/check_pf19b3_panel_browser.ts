@@ -162,4 +162,4 @@ try {
 } finally {
   await browser.close(); await db.$disconnect();
 }
-process.exit(summary() ? 0 : 1);
+process.exit(summary() ? 1 : 0);
