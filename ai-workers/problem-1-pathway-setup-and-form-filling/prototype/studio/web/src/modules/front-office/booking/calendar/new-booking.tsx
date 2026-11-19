@@ -8,10 +8,24 @@ import { Button, Dialog, Field, Input, Notice, Select } from "@/components/ui/co
 import { useLeads } from "@/modules/front-office/sales/leads-page";
 import { Lead } from "@/modules/front-office/sales/contract";
 import { usePlatformStaff } from "@/modules/platform/frame";
-import { staffApi, StaffApiError } from "@/modules/platform/session";
+import { problemOf } from "@/modules/front-office/sales/contract";
+import { endSession, staffApi, StaffApiError, staffToken } from "@/modules/platform/session";
 import { Assignees, BookingTypes, hhmm, longWhen, MODE_WORDS, Preview, TYPES_KEY, wallToIso, Warnings } from "./contract";
 
 type Warn = { code: string; label: string };
+class NeedsAnyway extends Error { constructor(readonly warnings: Warn[]) { super("Book anyway?"); } }
+/** A booking write that keeps FO-3sa's 409 answer whole (`staffApi`'s Problem keeps only the common fields): its
+ *  warnings become "Book anyway?"; any other refusal is a StaffApiError, and a 401 ends the session as staffApi does. */
+export async function bookingWrite(path: string, json: unknown): Promise<unknown> {
+  const token = staffToken();
+  const res = await fetch(`/api${path}`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(json) });
+  const data: unknown = await res.json().catch(() => null);
+  if (res.ok) return data;
+  const w = Warnings.safeParse(data);
+  if (res.status === 409 && w.success) throw new NeedsAnyway(w.data.warnings);
+  if (res.status === 401 && staffToken() === token) endSession(problemOf(data, 401).code ?? "NOT_SIGNED_IN");
+  throw new StaffApiError(res.status, problemOf(data, res.status));
+}
 /** One write with FO-3sa's "Book anyway?" step: the first answer's warnings are shown; Book anyway resends with them. */
 export function useBookAnyway(send: (extra: { bookAnyway?: boolean; acceptedWarnings?: string[] }) => Promise<unknown>, done: () => void) {
   const qc = useQueryClient();
@@ -26,8 +40,7 @@ export function useBookAnyway(send: (extra: { bookAnyway?: boolean; acceptedWarn
       await qc.invalidateQueries({ queryKey: ["fo", "bookings"] });
       done();
     } catch (e) {
-      const w = e instanceof StaffApiError ? Warnings.safeParse(e.problem) : null;
-      if (w?.success) setWarnings(w.data.warnings);
+      if (e instanceof NeedsAnyway) setWarnings(e.warnings);
       else setError(e instanceof StaffApiError && e.status === 403 ? "You do not have permission to do this. Ask an Owner or Admin." : e instanceof Error ? e.message : "Not saved. Please try again.");
     } finally { setBusy(false); }
   };
@@ -85,7 +98,7 @@ export function NewBookingDialog({ zone, onClose }: { zone: string; onClose: () 
   const found = (leads.data ?? []).filter((l) => !needle || l.name.toLowerCase().includes(needle) || l.number.toLowerCase().includes(needle)).slice(0, 20);
   const person = lead.data?.person;
   const name = person ? [person.givenNames, person.familyName].filter(Boolean).join(" ") : "";
-  const write = useBookAnyway((extra) => staffApi("/front-office/bookings", { method: "POST", json: { typeId: type!.id, personId: person!.id, mode, startsAt: at, timeZone: zone, ...(hostId ? { hostStaffId: hostId } : {}), ...extra } }), onClose);
+  const write = useBookAnyway((extra) => bookingWrite("/front-office/bookings", { typeId: type!.id, personId: person!.id, mode, startsAt: at, timeZone: zone, ...(hostId ? { hostStaffId: hostId } : {}), ...extra }), onClose);
   const ready = !!person && !!type && !!mode && !!at && !!zone;
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }} title="New booking" guard

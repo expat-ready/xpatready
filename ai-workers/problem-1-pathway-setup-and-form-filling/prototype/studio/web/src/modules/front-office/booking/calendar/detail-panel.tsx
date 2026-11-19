@@ -8,7 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Dialog, Notice, Panel, Pill } from "@/components/ui/controls";
 import { staffApi, StaffApiError } from "@/modules/platform/session";
 import { FeedItem, hhmm, longWhen, MODE_WORDS, personOf, STATUS } from "./contract";
-import { TimeChooser, useBookAnyway } from "./new-booking";
+import { bookingWrite, TimeChooser, useBookAnyway } from "./new-booking";
 
 /** "Attended" / "No-show": one click, by a person; it can be changed later (AG-4-39 rules 3-5). */
 export function AttendanceButtons({ booking }: { booking: FeedItem }) {
@@ -76,7 +76,7 @@ export function BookingPanel({ id, onClose }: { id: string; onClose: () => void 
 
 function MoveDialog({ b, onClose }: { b: FeedItem; onClose: () => void }) {
   const [at, setAt] = React.useState<string | null>(null);
-  const write = useBookAnyway((extra) => staffApi(`/front-office/bookings/${b.id}/reschedule`, { method: "POST", json: { startsAt: at, ...extra } }), onClose);
+  const write = useBookAnyway((extra) => bookingWrite(`/front-office/bookings/${b.id}/reschedule`, { startsAt: at, ...extra }), onClose);
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }} title="Move this booking" description={`Free times for ${b.host.name}`}
       footer={<><Button variant="outline" onClick={onClose}>Close</Button><Button disabled={!at || write.asking} busy={write.busy && !write.asking} onClick={() => void write.go(false)} data-move>Move</Button></>}>

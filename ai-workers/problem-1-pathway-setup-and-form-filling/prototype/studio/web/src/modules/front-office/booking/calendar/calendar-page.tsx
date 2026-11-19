@@ -130,7 +130,8 @@ function Block({ b, zone, open }: { b: FeedItem; zone: string; open: (b: FeedIte
     <button type="button" onClick={() => open(b)} data-block={b.id} title={`${personOf(b)} · ${b.type.name} · Host: ${b.host.name} · ${hhmm(b.startsAt, zone)} ${zone} · ${hhmm(b.startsAt, b.bookerTimeZone)} for ${personOf(b)} (${b.bookerTimeZone})`}
       className={cn("min-w-0 flex-1 basis-0 truncate rounded border-l-[3px] px-1.5 py-0.5 text-left text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
         b.status === "COMPLETED" ? "border-ok bg-ok/12" : b.status === "NO_SHOW" ? "border-text-muted bg-surface" : "border-primary bg-primary/10")}>
-      <span className="font-medium">{hhmm(b.startsAt, zone)} {personOf(b)}</span> · {b.type.name}{s.label !== "Scheduled" ? ` · ${s.label}` : ""}
+      {/* The row names the hour: the person first, the minutes only when not on the hour (three blocks share a cell). */}
+      <span className="font-medium">{hhmm(b.startsAt, zone).endsWith(":00") ? "" : `${hhmm(b.startsAt, zone)} `}{personOf(b)}</span> · {b.type.name}{s.label !== "Scheduled" ? ` · ${s.label}` : ""}
     </button>
   );
 }
