@@ -256,3 +256,12 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
 * 07:57 IST 19 Nov: **#2175 FO-7lk merged by 07:56 IST.** FO-7ts part 2 (`claude/trusting-fermat-ejsqdh-fo7ts2`, f713709d7; migration 20261118220000_fo7ts_ledgers) needs main merged in and is +984 lines, over 800. Lead 86 asked to type: merge main, size exception or split, diff-only Approve plus breaker, open the PR; then the P-423 read.
 * 08:03 IST 19 Nov (Lead 86): the money lane has its steps and asks for a P-610 exception on FO-7ts part 2 (876 lines by CI count). #2000 has conflicts again: steps sent to the CS-DL1 lane (idle), and Lead 86 asked to type them. #2197 relabelled by hand.
 * 08:13 IST 19 Nov: #2000 head 956beae7a (main merge) has a matching Approve; migration unchanged; sent to Lead 86 for the relabel.
+* 08:15 IST 19 Nov: **P-719 (founder, "Adopt it now"): finish by capability.** A lane owns one R1 item's whole chain (every part, then its J-row, then qa's proof). About 4 items each. Next item: fewest parts left, nothing waiting outside. A new item starts only when one reaches Proven. #2000 was read and labelled.
+  * In flight, sent to Lead 86:
+    1. R1.77: #2169 → J-77; CS-C1s part 2 lane.
+    2. R1.74: #2000 → CS-DL1b → J-74; CS-DL1 lane.
+    3. R1.105: #2197 → J-105; waits on Lead B's PF-11c and PF-5.
+    4. R1.8: #2124 → AUD-1m parts 1, 2a, 2b → J-8; AUD-1m lane.
+    5. R1.59: FO-7ts parts 2-3 → FO-7b → FO-7g → J-59; money lane.
+  * Recommended keeping all 5, with no new item until two reach Proven, or holding R1.59 if exactly 4. No J-rows exist yet; I write each when its last code part is queued.
+  * Out of flight: R1.72, R1.10, R1.3, and R1.47/48 (asked Lead 86 whether this is Lead B's).
