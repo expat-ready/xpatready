@@ -25,7 +25,11 @@ Fresh Opus reader (high effort, read only, ran nothing; ~85% confident): Partial
 ## Findings
 0 Blocker · 0 Critical · 2 Major · 0 Minor. New: **QA-530** (Gap, Major: no way to set a prospect's value or currency; the reader said Critical, qa keeps Major because nothing gives a wrong result: a part is missing), **QA-531** (Gap, Major: e-signature door not built, Signed offline API only; row-parts question).
 
-## Questions for the Lead
+## Rulings since (19 Nov, Lead B (7) for Lead 95)
+- **QA-531 is out of R1.31's scope (P-741):** Convert by screen and Signed offline by API prove the stage rule. FO-6 and FO-5s prove their doors in their own J-tests.
+- **QA-530 stays in R1.31:** its fix is FO-2pv (PATCH prospects/:id {value, currency}, a Value row, J-31 through the screen), now building. R1.31 is re-proved together with R1.30 after it merges, and `tests/qa/check_r131_gate_a_value.ts` should then pass.
+
+## Questions for the Lead (answered above)
 1. QA-531: should row 31's parts name FO-5's retainer screens and FO-6, or should the founder narrow the Done when for Release 1? Not settled here.
 2. QA-530: which part owns the value field? It is in AG-2-2, and no FO-4 row names it.
 
