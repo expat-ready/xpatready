@@ -398,11 +398,14 @@ const offered = await ow.locator('[data-action-drawer="handler"] select option')
 const inactive = sql(`select count(*) from platform_staff where firm_id = (select firm_id from platform_staff where id = '${R.id}') and status <> 'ACTIVE' and id in (${offered.map((x) => `'${x}'`).join(",") || "''"})`);
 ok("PF-21s DW4 pass: the Owner's picker lists GET /handlers' active staff, without the present handler, and no inactive one",
   JSON.stringify(offered) === JSON.stringify(active.items.map((x) => x.id).filter((x) => x !== T.id)) && inactive === "0", { offered: offered.length, active: active.items.length, inactive });
+ok("PF-21j fail: the picker does not offer the Case Officer (no agent/complaint:record)", !offered.includes(O.id), offered);
 await axe("PF-21s change handler panel (1440)", ow);
 // DW8: the old handler's open panel, after the handler is changed, saves to the not-found words; nothing of it stays.
 await actOpen(tw, "step"); await tw.getByRole("textbox", { name: /^Note/ }).fill("Sample step.");
-await ow.getByLabel("New handler").selectOption(O.id); await saved(ow, "handler");
-ok("PF-21s DW4: the Owner's change is on the timeline with both names", (await eventsOf(ow))[0] === "HANDLER_CHANGED" && (await ow.getByText(`From ${T.name} to ${O.name}.`).count()) === 1 && (await ow.locator("[data-handler]").innerText()) === O.name);
+// PF-21j: the new handler must be someone who may record complaints; the Case Officer (O) is no longer offered, so the
+// Owner (R) takes it over.
+await ow.getByLabel("New handler").selectOption(R.id); await saved(ow, "handler");
+ok("PF-21s DW4: the Owner's change is on the timeline with both names", (await eventsOf(ow))[0] === "HANDLER_CHANGED" && (await ow.getByText(`From ${T.name} to ${R.name}.`).count()) === 1 && (await ow.locator("[data-handler]").innerText()) === R.name);
 await submitOf(tw).click(); await tw.locator("[data-not-found]").waitFor({ timeout: 15_000 });
 const lostWords = await tw.locator("[data-not-found]").innerText();
 ok("PF-21s DW8 pass: the old handler's save shows Not found with part 3's DW5 words, word for word", lostWords === words[0], { lostWords });
