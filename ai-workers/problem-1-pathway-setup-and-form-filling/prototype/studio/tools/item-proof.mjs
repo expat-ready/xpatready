@@ -95,7 +95,7 @@ export function verdict({ item, plan: pl, results, sha, pr, runId, runUrl, artif
 }
 
 const readVerdicts = (dir) => (existsSync(dir) ? readdirSync(dir) : []).filter((f) => /^R1\.\d+-[0-9a-f]{7,40}\.json$/.test(f)).map((f) => JSON.parse(readFileSync(join(dir, f), "utf8")));
-const md = (s) => String(s ?? "").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+const md = (s) => String(s ?? "").replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 
 /** The one PR comment for all verdicts of a run. */
 export function comment(vs, saved = "") {
