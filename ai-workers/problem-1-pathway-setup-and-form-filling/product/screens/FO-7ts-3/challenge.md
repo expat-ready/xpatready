@@ -2,7 +2,14 @@
 
 The brief is `build-lead-c-briefs/FO-7ts-3.md` on `claude/build-lead-c-647b40`. Every point below is also a "Question for the tech lead" on the PR. Evidence is in `review.md`, `break-report.md` and `tests/check_fo7ts_money_settings.ts`. Nothing below was settled silently.
 
-## Needs a ruling before Approve
+## Rulings (Lead 96, 19 Nov; Build Lead C may overrule 2 or 3 in a PR comment, otherwise they stand)
+* **Ruling 1, lock order: yes, in this PR.** `money_credit_note_write` and `money_move_batch_owed_back` now take the parties smaller id first, as part 3 does: the credit note takes both locks, and the undo locks every party it touches before any invoice row.
+  * **Race tests.** Each has one race test of 100 races with 0 deadlocks. With FO-7lk's text put back, the same tests give 41 and 78 deadlocks.
+  * **Reads.** The reviewer re-reads that diff and the breaker re-checks the races.
+* **Ruling 2.** DW28 and DW30 move to FO-7t part 2.
+* **Ruling 3.** DW29 goes to a follow-up on the next PR on `client-money.prisma`. The design below is its starting point.
+
+## Asked before these rulings (kept as the record)
 
 ### 1. The two-lock order with FO-7lk's `money_credit_note_write` (review Major 1, break m1). For the tech lead.
 * **Why a pick holds two locks.** A pick holds the payer's lock and the invoice party's lock, because FO-7lk's `money_issued_invoice` takes the latter. This part takes both, smaller id first. That cures the crossing-picks deadlock: DW26 passes, and without the fix it fails, confirmed by mutation.

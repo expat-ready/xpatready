@@ -2,8 +2,8 @@
 -- transaction, before any part 3 fact exists that must be kept (it refuses otherwise; Taxable on an issued invoice is
 -- what issuing chose with no party treatment, so it may go):
 --   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261119170000_fo7ts_part3/rollback.sql
--- Restores money_trust_entry_write exactly as FO-7ts part 2 left it and money_invoice_write exactly as FO-7ts part 1
--- left it (each read from its own migration's text, PF-12's reader settings set again), and drops the rest. Then
+-- Restores money_trust_entry_write exactly as FO-7ts part 2 left it, money_invoice_write exactly as FO-7ts part 1
+-- left it, and money_credit_note_write and money_move_batch_owed_back exactly as FO-7lk left them (each read from its own migration's text, PF-12's reader settings set again), and drops the rest. Then
 -- delete this folder's row from _prisma_migrations.
 DO $$
 BEGIN
@@ -17,19 +17,25 @@ BEGIN
 END $$;
 \set tew `sed -n '/^CREATE OR REPLACE FUNCTION money_trust_entry_write()/,/^END \$\$;/p' prisma/migrations/20261119080000_fo7ts_ledgers/migration.sql`
 \set iw `sed -n '/^CREATE OR REPLACE FUNCTION money_invoice_write()/,/^END \$\$;/p' prisma/migrations/20261118200000_fo7ts_money_settings/migration.sql`
+\set cnw `sed -n '/^CREATE OR REPLACE FUNCTION money_credit_note_write()/,/^END \$\$;/p' prisma/migrations/20261118210000_fo7lk_trust_lock/migration.sql`
+\set mbob `sed -n '/^CREATE OR REPLACE FUNCTION money_move_batch_owed_back()/,/^END \$\$;/p' prisma/migrations/20261118210000_fo7lk_trust_lock/migration.sql`
 :tew
 :iw
+:cnw
+:mbob
 DO $restored$
 BEGIN  -- run from another folder, sed reads nothing: refuse (the transaction undoes everything) rather than drop columns in use
   IF (SELECT prosrc FROM pg_proc WHERE proname = 'money_trust_entry_write') LIKE '%picked_other_funds%'
-     OR (SELECT prosrc FROM pg_proc WHERE proname = 'money_invoice_write') LIKE '%tax_treatment%' THEN
+     OR (SELECT prosrc FROM pg_proc WHERE proname = 'money_invoice_write') LIKE '%tax_treatment%'
+     OR (SELECT prosrc FROM pg_proc WHERE proname IN ('money_credit_note_write')) LIKE '%inv_party%'
+     OR (SELECT prosrc FROM pg_proc WHERE proname IN ('money_move_batch_owed_back')) LIKE '%FO-7ts part 3%' THEN
     RAISE EXCEPTION 'FO-7ts part 3 rollback: the earlier function texts were not read; run it from the studio folder';
   END IF;
 END $restored$;
 DO $readers$
 DECLARE f text;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['money_trust_entry_write()', 'money_invoice_write()'] LOOP
+  FOREACH f IN ARRAY ARRAY['money_trust_entry_write()', 'money_invoice_write()', 'money_credit_note_write()', 'money_move_batch_owed_back()'] LOOP
     EXECUTE format('ALTER FUNCTION %s SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp', f);
     EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
   END LOOP;

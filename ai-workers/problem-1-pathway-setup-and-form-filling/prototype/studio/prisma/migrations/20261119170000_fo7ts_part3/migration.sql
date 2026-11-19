@@ -7,8 +7,9 @@
 --   * the same-case pick: another payer's money pays an invoice only as a pick by the writer, with a reason, at the
 --     database's time, on one and the same non-null case, never more than the payer holds on that case;
 --   * the newest-issued index money_invoice (firm_id, issued_at DESC, id).
--- Replaces money_trust_entry_write (FO-7ts part 2's text, changed only as above) and money_invoice_write (FO-7ts part 1's
--- text, plus the treatment); no other function is edited or added.
+-- Replaces money_trust_entry_write (FO-7ts part 2's text, changed only as above), money_invoice_write (FO-7ts part 1's
+-- text, plus the treatment), and, by Lead 96's ruling, FO-7lk's money_credit_note_write and money_move_batch_owed_back
+-- (the two party locks smaller id first, as a pick takes them); no other function is edited or added.
 -- Rollback: rollback.sql in this folder (Prisma reads only migration.sql).
 
 -- Trust refunds recorded before this part carry no method or date; they are never filled in silently.
@@ -379,11 +380,114 @@ BEGIN
   RETURN NEW;
 END $$;
 
+-- ------------------------------------------- FO-7lk's two other two-party writers: one lock order (Lead 96's ruling)
+-- A pick holds two party locks, smaller id first (above). money_credit_note_write ("Move back to trust": the withdrawal's
+-- party, then money_issued_invoice's invoice party) and money_move_batch_owed_back (an undo: each line's party, then its
+-- invoice row) took them the other way, and a "Move back to trust" credit note racing a pick deadlocked (40P01; review
+-- Major 1, break m1). Both are FO-7lk's text, changed only to take the parties smaller id first.
+CREATE OR REPLACE FUNCTION money_credit_note_write() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE open_amount bigint; trust bigint; w record; freed bigint := 0; whole bigint; inv_party uuid; inv_cur "MoneyCurrency";
+BEGIN
+  IF NEW.number IS NOT NULL THEN
+    RAISE EXCEPTION 'money_credit_note: the number is the database''s' USING ERRCODE = 'check_violation';
+  END IF;
+  IF num_nonnulls(NEW.overpaid_choice, NEW.overpaid_entry_id, NEW.overpaid_minor) NOT IN (0, 3) THEN
+    RAISE EXCEPTION 'money_credit_note: a refund or move-back choice carries its amount and its trust application, all three (money_credit_note_overpaid_check)' USING ERRCODE = 'check_violation';
+  END IF;
+  -- FO-7lk: "Move back to trust" writes a trust entry for the withdrawal's party (money_credit_note_owed_back, after the
+  -- insert). Take that party's lock now, before money_issued_invoice touches the invoice row, so this path keeps the
+  -- order a withdrawal to the invoice keeps: the party's lock first, the invoice row second (no 40P01). Only for a
+  -- withdrawal to this invoice (so of the invoice's party): an entry the checks below refuse takes no lock of another
+  -- party (review and break B-1 on 9f30e673: that would be a new two-party order).
+  IF NEW.overpaid_choice = 'OVERPAID_TO_TRUST' THEN
+    SELECT coalesce(e.person_id, e.company_id) AS party, e.currency INTO w FROM "money_trust_entry" e
+      WHERE e.firm_id = NEW.firm_id AND e.id = NEW.overpaid_entry_id AND e.kind = 'WITHDRAWAL_TO_INVOICE' AND e.invoice_id = NEW.invoice_id;
+    IF FOUND THEN
+      -- FO-7ts part 3 (Lead 96's ruling): a pick makes the withdrawal's party another than the invoice's, and
+      -- money_issued_invoice takes the invoice party's lock, so the two are taken smaller id first, as a pick takes them.
+      SELECT coalesce(i.person_id, i.company_id), i.currency INTO inv_party, inv_cur FROM "money_invoice" i WHERE i.firm_id = NEW.firm_id AND i.id = NEW.invoice_id;
+      IF inv_party < w.party THEN PERFORM money_trust_lock(NEW.firm_id, inv_party, inv_cur); END IF;
+      PERFORM money_trust_lock(NEW.firm_id, w.party, w.currency);
+    END IF;  -- anything else is refused below
+  END IF;
+  open_amount := money_issued_invoice(NEW.firm_id, NEW.invoice_id, NEW.currency, 'money_credit_note');
+  -- Trust paid and not returned, less what earlier "Refund to the client" choices already freed (refunded from operating).
+  trust := money_trust_paid(NEW.firm_id, NEW.invoice_id) - (SELECT coalesce(sum(c.overpaid_minor), 0) FROM "money_credit_note" c
+    WHERE c.firm_id = NEW.firm_id AND c.invoice_id = NEW.invoice_id AND c.overpaid_choice = 'OVERPAID_REFUND');
+  -- Rule 2c (P-634 (2)): trust money of this invoice that already moved to operating is freed for the credit note only
+  -- with the person's choice, "Refund to the client" or "Move back to trust", never kept in operating; at most what moved
+  -- and no earlier choice covers.
+  IF NEW.overpaid_entry_id IS NOT NULL THEN
+    SELECT e.kind, e.invoice_id INTO w FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND e.id = NEW.overpaid_entry_id;
+    IF NOT FOUND THEN PERFORM money_missing('money_credit_note', 'trust entry', NEW.overpaid_entry_id); END IF;
+    IF w.kind IS DISTINCT FROM 'WITHDRAWAL_TO_INVOICE' OR w.invoice_id IS DISTINCT FROM NEW.invoice_id THEN
+      RAISE EXCEPTION 'money_credit_note: a refund or move-back choice names a trust application to this invoice' USING ERRCODE = 'check_violation';
+    END IF;
+    freed := money_moved_live(NEW.firm_id, NEW.overpaid_entry_id, 'TRUST_TO_OPERATING') - money_owed_back(NEW.firm_id, NEW.overpaid_entry_id, false);
+    IF NEW.overpaid_minor > freed THEN
+      RAISE EXCEPTION 'money_credit_note: only % % of that trust application has moved to operating and has no refund or move-back choice yet', to_char(greatest(freed, 0) / 100.0, 'FM999,999,990.00'), NEW.currency USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.overpaid_minor > NEW.amount_minor - (open_amount - greatest(trust, 0)) THEN
+      RAISE EXCEPTION 'money_credit_note: a refund or move-back choice covers only the part of this credit note that trust paid and that has moved (at most % %)',
+        to_char(greatest(NEW.amount_minor - (open_amount - greatest(trust, 0)), 0) / 100.0, 'FM999,999,990.00'), NEW.currency USING ERRCODE = 'check_violation';
+    END IF;
+    trust := trust - NEW.overpaid_minor;
+  END IF;
+  trust := greatest(trust, 0);
+  IF NEW.amount_minor > open_amount - trust THEN
+    IF NEW.amount_minor <= open_amount THEN
+      RAISE EXCEPTION 'money_credit_note: % % of this invoice was paid from trust: return % % to trust first (a correction naming the withdrawal, AG-6-48 rule 4), then credit it; for money already moved to operating, choose Refund to the client or Move back to trust (OVERPAID_REFUND, OVERPAID_TO_TRUST)',
+        to_char(trust / 100.0, 'FM999,999,990.00'), NEW.currency, to_char((NEW.amount_minor - (open_amount - trust)) / 100.0, 'FM999,999,990.00'), NEW.currency USING ERRCODE = 'check_violation';
+    END IF;
+    RAISE EXCEPTION 'money_credit_note: % is more than is left to credit on the invoice (%)', NEW.amount_minor, open_amount - trust USING ERRCODE = 'check_violation';
+  END IF;
+  -- A full credit note cancels all that is left (AG-6-48 rule 2), trust-paid part included: that part is returned (or
+  -- chosen) first (Devin review on #1991: a "full" credit of only the unpaid part).
+  whole := open_amount;
+  open_amount := open_amount - trust;
+  IF NEW."full" AND NEW.amount_minor <> whole THEN
+    RAISE EXCEPTION 'money_credit_note: a full credit note credits all that is left (%)', whole USING ERRCODE = 'check_violation';
+  END IF;
+  NEW.number := money_take_number(NEW.firm_id, 'CREDIT_NOTE');
+  NEW.created_at := now();
+  RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION money_move_batch_owed_back() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE l record; p record;
+BEGIN
+  IF NEW.undoes_batch_id IS NULL OR EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = NEW.firm_id AND u.undoes_batch_id = NEW.undoes_batch_id) THEN
+    RETURN NEW;  -- not an undo, or already undone (FO-7mv's unique index refuses the second)
+  END IF;
+  -- FO-7ts part 3 (Lead 96's ruling): with a pick a line's party (the payer) is another than its invoice's, so every
+  -- party the undo touches, the lines' and their invoices', is locked first, in one order (smaller id first), before
+  -- any invoice row.
+  FOR p IN SELECT DISTINCT q.party, q.currency FROM (
+             SELECT coalesce(x.person_id, x.company_id) AS party, x.currency FROM "money_move_line" x
+               WHERE x.firm_id = NEW.firm_id AND x.batch_id = NEW.undoes_batch_id AND x.direction = 'TRUST_TO_OPERATING' AND x.kind = 'TRUST_APPLIED'
+             UNION SELECT coalesce(i.person_id, i.company_id), i.currency FROM "money_move_line" x JOIN "money_invoice" i ON i.firm_id = x.firm_id AND i.id = x.invoice_id
+               WHERE x.firm_id = NEW.firm_id AND x.batch_id = NEW.undoes_batch_id AND x.direction = 'TRUST_TO_OPERATING' AND x.kind = 'TRUST_APPLIED') q
+            WHERE q.party IS NOT NULL ORDER BY q.party, q.currency LOOP
+    PERFORM money_trust_lock(NEW.firm_id, p.party, p.currency);
+  END LOOP;
+  FOR l IN SELECT x.source_entry_id, x.currency, coalesce(x.person_id, x.company_id) AS party, x.invoice_id, sum(x.amount_minor) AS amount
+             FROM "money_move_line" x WHERE x.firm_id = NEW.firm_id AND x.batch_id = NEW.undoes_batch_id AND x.direction = 'TRUST_TO_OPERATING' AND x.kind = 'TRUST_APPLIED'
+            GROUP BY 1, 2, 3, 4 ORDER BY 3, 1 LOOP
+    UPDATE "money_invoice" i SET updated_at = now() WHERE i.firm_id = NEW.firm_id AND i.id = l.invoice_id;
+    IF money_owed_back(NEW.firm_id, l.source_entry_id, false) > 0
+       AND money_moved_live(NEW.firm_id, l.source_entry_id, 'TRUST_TO_OPERATING') - l.amount < money_owed_back(NEW.firm_id, l.source_entry_id, false) THEN
+      RAISE EXCEPTION 'money_move_batch: a credit note''s refund or move-back choice covers this move, so it is never undone (record the money''s way back instead)' USING ERRCODE = 'check_violation';
+    END IF;
+  END LOOP;
+  RETURN NEW;
+END $$;
+
+
 -- PF-12: CREATE OR REPLACE keeps the owner but resets these settings, so they are set again.
 DO $readers$
 DECLARE f text;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['money_trust_entry_write()', 'money_invoice_write()'] LOOP
+  FOREACH f IN ARRAY ARRAY['money_trust_entry_write()', 'money_invoice_write()', 'money_credit_note_write()', 'money_move_batch_owed_back()'] LOOP
     EXECUTE format('ALTER FUNCTION %s SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp', f);
     EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
   END LOOP;
