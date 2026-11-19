@@ -43,6 +43,9 @@ case_ "none: no batches at all" "^constraint: none" 0 "$(FX "" "")"
 case_ "order: machines before test parts, the other listed" "^ACT   constraint: machines ;; also over its line: test parts" 1 "$(FX "$(run 1 success 9 50)" "$FAST")"
 case_ "order: test parts before faulty PRs (19 Nov)" "^ACT   constraint: test parts ;; also over its line: faulty PRs reach batches" 1 "$(FX "$(run 1 failure 0.1 60),$(run 2 failure 0.1 43)" "$SLOW")"
 case_ "merged title: members read" "run 5: #2241 #2208" 1 "$(FX "$(run 5 failure 0.1 20 'merge queue: merged #2241, #2208: records: P-1'),$(run 6 failure 0.1 20)" "$FAST")"
+case_ "page full: said" "^warn  constraint: a GitHub page came back full" 0 "$(FX "$(run 1 success 0.1 20)" "$FAST" | sed 's/^{/{"page_full":true,/')"
+printf '{"now":"2026-11-19T13:00:00Z","hours":3,"runs":[{"id":1}],"merged":[]}' > "$T/odd.json"; out=$(python3 -I "$TOOLS/constraint.py" --facts "$T/odd.json" 2>&1)
+case "$out" in "ACT   constraint: unreadable"*) echo "PASS odd data: an ACT, no traceback";; *) echo "FAIL odd data :: $out"; fail=$((fail+1));; esac
 printf 'not json' > "$T/bad.json"; out=$(python3 -I "$TOOLS/constraint.py" --facts "$T/bad.json"); rc=$?
 case "$out" in "ACT   constraint: unreadable"*) [ $rc = 1 ] && echo "PASS unreadable: an ACT, never a pass" || { echo "FAIL unreadable exit $rc"; fail=$((fail+1)); };;
   *) echo "FAIL unreadable :: $out"; fail=$((fail+1));; esac

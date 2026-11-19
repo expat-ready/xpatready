@@ -26,7 +26,8 @@ def repo():
     if os.environ.get("GITHUB_REPOSITORY"): return os.environ["GITHUB_REPOSITORY"]
     u = subprocess.run(["git", "remote", "get-url", "origin"], capture_output=True, text=True).stdout.strip()
     m = re.search(r"github\.com[:/]([^/]+/[^/]+?)(\.git)?$", u) or re.search(r"/git/([^/]+/[^/.]+)", u)
-    return m.group(1) if m else sys.exit("constraint: origin is not a github.com URL")
+    if not m: raise OSError("origin is not a github.com URL")
+    return m.group(1)
 
 def token():
     if os.environ.get("GITHUB_TOKEN"): return os.environ["GITHUB_TOKEN"]
@@ -45,7 +46,8 @@ def fetch(hours):
     R, tok, now = repo(), token(), datetime.now(timezone.utc)
     since = (now - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
     runs = get(f"repos/{R}/actions/workflows/ci.yml/runs?per_page=100&created=%3E%3D{since}", tok)["workflow_runs"]
-    runs = [r for r in runs if r["head_branch"].startswith("mergify/merge-queue/")][:MAX_RUNS]
+    full = len(runs) == 100   # one page only: said, never silently cut
+    runs = [r for r in runs if (r.get("head_branch") or "").startswith("mergify/merge-queue/")][:MAX_RUNS]
     q = urllib.parse.quote(f"repo:{R} is:pr is:merged merged:>={since}")
     merged = get(f"search/issues?q={q}&per_page={MAX_PRS}", tok)["items"][:MAX_PRS]
     with ThreadPoolExecutor(8) as ex:
@@ -54,7 +56,8 @@ def fetch(hours):
     def approved(evs, merged_at):
         ts = [e["created_at"] for e in evs if e["event"] == "labeled" and e.get("label", {}).get("name") == LABEL and e["created_at"] <= merged_at]
         return max(ts) if ts else None
-    return {"now": now.isoformat(), "hours": hours,
+    full = full or any(len(e) == 100 for e in events)
+    return {"now": now.isoformat(), "hours": hours, "page_full": full,
             "runs": [{k: r[k] for k in ("id", "display_title", "status", "conclusion", "run_started_at", "updated_at")} |
                      {"jobs": [{k: j[k] for k in ("name", "created_at", "started_at", "completed_at")} |
                                {"suite_min": next((mins(s["started_at"], s["completed_at"]) for s in j.get("steps") or []
@@ -92,6 +95,7 @@ def report(F):
         if hits[1:]: out.append("      also over its line: " + "; ".join(f"{n} ({m})" for n, m, _ in hits[1:]))
     else:
         out.append(f"constraint: none — wait {f(w[0])}, part {f(p[0])}, {len(failed)} failed, approved to merged {f(m_a2m)} — no change")
+    if F.get("page_full"): out.append("warn  constraint: a GitHub page came back full (100): older runs or label events may be missing")
     return out
 
 def main():
@@ -99,10 +103,12 @@ def main():
     a = a.parse_args()
     try:
         F = json.load(open(a.facts)) if a.facts else fetch(a.hours)
-    except (OSError, ValueError, KeyError, TimeoutError) as e:
+        out = report(F)
+    except Exception as e:   # anything unreadable is an ACT, never a silent pass or a bare traceback
         print(f"ACT   constraint: unreadable — {str(e)[:160]} — read GitHub, then measure again (P-738: never guessed)"); return 1
-    if a.save_facts: json.dump(F, open(a.save_facts, "w"), indent=1)
-    out = report(F); print("\n".join(out)); return sum(l.startswith("ACT") for l in out)
+    if a.save_facts:
+        with open(a.save_facts, "w") as fh: json.dump(F, fh, indent=1)
+    print("\n".join(out)); return sum(l.startswith("ACT") for l in out)
 
 if __name__ == "__main__":
     sys.exit(main())
