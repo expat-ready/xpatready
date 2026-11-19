@@ -3,6 +3,7 @@
 # Read-only. Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
 # Exit code = number of ACT lines (0 = nothing to act on). Skill: .claude/skills/lead-watch.
 # Usage: bash product/tools/lead-watch.sh [minutes since last check, default 30]
+#        bash product/tools/lead-watch.sh context-read "<name pct, ...>"   (records the session-context read, step 13)
 set -uo pipefail
 SINCE="${1:-30}"
 # gh through gh.sh: on a TLS failure the same reads go through curl with gh auth token (P-363; founder, 6 Nov).
@@ -13,6 +14,9 @@ act=0; say() { echo "$1"; echo "$1" >> "$SEEN"; }; ACT() { act=$((act+1)); echo 
 SEEN="$STATE_DIR/seen.$$"; : > "$SEEN"; seen() { printf '%s\n' "$1" >> "$SEEN"; }; trap 'rm -f "$SEEN"' EXIT   # B202: lines step 12 reuses
 
 say "time  $(TZ=Asia/Kolkata date '+%d %b %H:%M IST')"
+
+# context-read "<name pct, ...>" records step 13's read and exits, before the stall-guard stamp is touched.
+if [ "${1:-}" = "context-read" ]; then mkdir -p "$STATE_DIR"; { date +%s; echo "${2:-read}"; } > "$STATE_DIR/context-read"; echo "context read recorded"; exit 0; fi
 
 # 0. Stall guard (founder, 7 Nov, P-388): the previous check must have run. Lead 24 stalled ~7.4 h on one prompt and no
 # check fired. Checks run every 30 min; a gap over 40 min (30 + 10 grace, P-389) means a check was missed: tell the
@@ -200,5 +204,15 @@ print(json.dumps({"now": datetime.now(timezone.utc).isoformat(), "files": {"RULE
   "seen": open(E["KF_SEEN"]).read().splitlines()}))' > "$STATE_DIR/known-facts.json"
 kf=$(python3 -I "$TOOLS/known-failures.py" --facts "$STATE_DIR/known-facts.json" 2>&1); echo "$kf"; act=$((act + $(grep -c '^ACT' <<<"$kf")))
 
+
+# 13. Context of every running Mac session (P-565 (2), founder A193 19 Nov 08:2x IST: "Is it not enforced?"; a builder
+# reached 62% unseen). Only get_usage can read another session's context, so each check runs get_usage on every running
+# Mac session (list_sessions), asks for a hand-over at 45% and replaces at 50%, then records the read with
+# `bash tools/lead-watch.sh context-read "<name pct, ...>"`. A read older than 35 min is an ACT.
+now=$(date +%s); cr="$STATE_DIR/context-read"
+if [ -s "$cr" ]; then crt=$(head -1 "$cr"); crg=$(( (now - crt) / 60 ))
+  if [ "$crg" -gt 35 ]; then ACT "session context not read for ${crg} min (P-565 (2)): get_usage on every running Mac session; 45% hand-over, 50% replace; then lead-watch.sh context-read"
+  else say "ctx   read ${crg} min ago: $(sed -n 2p "$cr")"; fi
+else ACT "session context never recorded (P-565 (2)): get_usage on every running Mac session; 45% hand-over, 50% replace; then lead-watch.sh context-read"; fi
 
 exit "$act"
