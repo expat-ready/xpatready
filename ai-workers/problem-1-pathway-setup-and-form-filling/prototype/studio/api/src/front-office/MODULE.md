@@ -27,6 +27,7 @@ The firm's front office: public booking and retainer agreements, with their file
 
 **Tables.** foLead, foPerson, foArrivalReceipt, foLeadAttribution, foNote, foReason, foService, msgConsent (through ConsentPort), foBooking, foBookingToken, foAvailability, foConsultationType, foCompany, foCompanyContact, foStageMove, foProspect, foRetainer, foRetainerTemplate, foRetainerVersion, foSalesSetup, foStage, foWebForm, foIdentityCheck, platformFirm, platformStaff, moduleEvent.
 **Tests.** `tests/check_fo2_leads_prospects.ts`, `tests/check_fo2p3_prospects.ts`, `tests/check_fo9a_duplicates.ts`, `tests/check_fo2b_corporate.ts`, `tests/check_fo2v_lead_visibility.ts`, `tests/check_fo4sf_source_filter.ts`, `tests/check_fo3_booking.ts`, `tests/check_fo3sr_routes.ts`, `tests/check_fo3m_answers.ts`, `tests/check_fo3sa_any_time.ts`, `tests/check_fo3pa_public_answers.ts`, `tests/check_fo5_retainers.ts`, `tests/check_fo1a_sales_schema.ts`, `tests/check_fo1b_booking_schema.ts`, `tests/check_fo13_compliance_schema.ts`, `tests/check_fo13i_identity.ts`, `tests/check_fo1p_person_port.ts`.
+**Row lists (P-712).** Never hand-edit this card's frozen `Tests.`, `Tables.` or `Entry points.` line: put your row's items in `MODULE.rows/<ROW>.md` next to it (one file per row; `module-cards.py` fails the PR otherwise).
 
 **Do not.**
 - Serve a file without a checked short-lived link, or from another firm's folder.
