@@ -2108,3 +2108,10 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   6. a free slot.
 * **Build Lead C:** R1.76's note routes are FO-2 part 4 (#2181, queued, red only on main's card until #2195). R1.72's FO-8 is BACKLOG's "case side, release Lead" and not built; its FO side (FO-1p) is merged.
 * **PF-16 brief** (`lead-b-briefs/PF-16.md`): the BACKLOG row is the spec, split into 2 parts (part 1 plan changes and trial controls, part 2 billing emails through `MESSAGES_MAIL` as TRANSACTIONAL). It starts after #1959 merges; `checkDowngrade` for cases waits on PF-15 part 2.
+
+## Rev 17.46 (19 Nov 10:52 IST)
+* **The J2 plan is approved** (Lead 87). **P-727** answers D4: 1-50 rows, every valid row invited at once, each flagged row listed with its reason, nothing flagged sent.
+  * P-727 is quoted in `PF-15.md` (part 2 also) and in `PF-4c.md`, now on this branch from main.
+  * The `PF-4c.md` amendment adds a new **PF-4c part 1b, "send the good rows"**, because #2052 sends nothing while any row is flagged. Over-limit rows are flagged `OVER_SEAT_LIMIT` in row order.
+  * R1.20's chain is now PF-15 p2 → PF-4c p1b → PF-4c p2 → the invite screen.
+* **J-19's Stripe walk:** no Stripe test account or keys are configured anywhere I can see. #1959 runs on BillingPort's fake and recorded Stripe answers and reads `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` from the environment, with no values committed. The founder creates the account (P-551).
