@@ -33,6 +33,7 @@ want PASS "card unchanged in bold, CRLF"                        "$S/api/src/runt
 fi
 # The tree: a copy of the rules and cards, then broken on purpose.
 mk() {   # one copy of the rules, cards and sources, then a fresh duplicate per fixture (fast)
+  [ -n "${R0:-}" ] && [ ! -d "$T/r0" ] && cp -R "$R0" "$T/r0"   # a mutant run reuses its parent's copy
   [ -d "$T/r0" ] || { rm -rf "$T/r0"; mkdir -p "$T/r0"; ( cd "$ROOTD" && git ls-files -co --exclude-standard .claude/rules/modules "$S/api/src" "$S/web/src" | grep -E '(^\.claude/rules/modules/|/MODULE[^/]*\.md$|/MODULE[^/]*\.rows/[^/]+$|\.tsx?$)' | while read -r f; do mkdir -p "$T/r0/$(dirname "$f")"; cp -P "$f" "$T/r0/$f"; done ); git -C "$T/r0" init -q; git -C "$T/r0" add -A; }
   rm -rf "$T/r"; cp -R "$T/r0" "$T/r"; }
 tree() { n=$((n+1)); ( cd "$T/r" && ROOT="$T/r" run tree ); r=$?; got=$(case $r in 0) echo PASS;; 99) echo CRASH;; *) echo FAIL;; esac)
@@ -56,6 +57,8 @@ mk; frag FO-3a.md 'Tests: `tests/check_missing.ts`\n'; tree FAIL "a fragment nam
 mk; frag FO-3a.md 'Notes: anything\n'; tree FAIL "a fragment line that is not Tests:, Tables: or Entry points:"
 mk; frag FO-3a.md 'Tables: a\nTables: b\nTables: c\nTables: d\nTables: e\nTables: f\nTables: g\n'; tree FAIL "a fragment over 6 lines"
 mk; frag fo-3a.md 'Tables: a\n'; tree FAIL "a fragment not named after its row"
+mk; frag FO-3b.md 'Entry points: `booking/settings/types.controller.ts`\n'; tree PASS "a fragment path relative to the card's folder, as cards write them (review M2)"
+mk; mkdir -p "$T/r/$FO/MODULE.rows/sub"; echo 'Tables: x' > "$T/r/$FO/MODULE.rows/sub/FO-1.md"; git -C "$T/r" add -A; tree FAIL "a file in a subfolder of a .rows/ folder"
 mk; mkdir -p "$T/r/$S/api/src/MODULE.nope.rows"; echo 'Tables: x' > "$T/r/$S/api/src/MODULE.nope.rows/FO-1.md"; git -C "$T/r" add -A; tree FAIL "a fragment with no card"
 # The frozen lines, against BASE = a commit of the copy (the workflow passes HEAD^1, the base of GitHub's test merge).
 gc() { git -C "$T/r" -c user.name=t -c user.email=t@t commit -qm "$1"; }
@@ -69,14 +72,18 @@ mk; gc base; ed 's/^\(\*\*Tables\.\*\*\) [^,]*, /\1 /'; prb PASS "a frozen Table
 mk; gc base; ed 's/^\(\*\*Purpose\.\*\* \)/\1Also new prose. /'; prb PASS "the card's prose changes" "$C"
 mk; frag FO-9z.md 'Tests: `tests/check_fold.ts`\n'; gc base; ed 's/^\(\*\*Tests\.\*\* .*\)$/\1, `tests\/check_fold.ts`/'; git -C "$T/r" rm -q "$FO/MODULE.rows/FO-9z.md"
 prb PASS "the Lead folds a row fragment into the frozen line" "$C $FO/MODULE.rows/FO-9z.md"
+mk; frag FO-9y.md 'Tables: foFolded\n'; gc base; ed 's/^\(\*\*Tables\.\*\* .*\)\.$/\1, foFolded./'; git -C "$T/r" rm -q "$FO/MODULE.rows/FO-9y.md"
+prb PASS "a fold into Tables, before its final period (review M1)" "$C $FO/MODULE.rows/FO-9y.md"
+mk; gc base; ed 's/^\(\*\*Tables\.\*\* .*\), [^,]*\.$/\1./'; prb PASS "Tables loses its last item (the period moves; review M1)" "$C"
+mk; gc base; ed 's/^\(\*\*Tables\.\*\* .*\)\.$/\1, foNew./'; prb FAIL "Tables gains an item before its final period" "$C"
 W="$ROOTD/.github/workflows/module-cards.yml"; n=$((n+1))
-if grep -q 'BASE: HEAD^1' "$W"; then echo "PASS  module-cards.yml gives the pr step BASE (the frozen lines are checked)"; else echo "FAIL  module-cards.yml: no BASE: HEAD^1 for the pr step, so frozen lines go unchecked"; bad=1; fi
+if python3 -c 'import sys, yaml; d = yaml.safe_load(open(sys.argv[1])); st = [s for s in d["jobs"]["module-cards"]["steps"] if "module-cards.py pr" in s.get("run", "")]; sys.exit(0 if st and st[0].get("env", {}).get("BASE") == "HEAD^1" else 1)' "$W" 2>/dev/null; then echo "PASS  module-cards.yml gives the pr step BASE (the frozen lines are checked)"; else echo "FAIL  module-cards.yml: no BASE: HEAD^1 for the pr step, so frozen lines go unchecked"; bad=1; fi
 # Mutants: each edit switches one P-712 rule off in a copy of module-cards.py; the fixtures above must then fail.
 if [ -z "${MUTANT:-}" ]; then
   while IFS='|' read -r name edit; do
     cp "$TOOLS/module-cards.py" "$T/mut.py"; sed -i.bak "$edit" "$T/mut.py"; rm -f "$T/mut.py.bak"; n=$((n+1))
     if cmp -s "$T/mut.py" "$TOOLS/module-cards.py"; then echo "FAIL  mutant $name: the edit changed nothing"; bad=1
-    elif MC="$T/mut.py" MUTANT=1 bash "$0" > "$T/mut.log" 2>&1; then echo "FAIL  mutant $name: every fixture still passes"; bad=1
+    elif MC="$T/mut.py" MUTANT=1 R0="$T/r0" bash "$0" > "$T/mut.log" 2>&1; then echo "FAIL  mutant $name: every fixture still passes"; bad=1
     else echo "PASS  mutant $name → caught ($(grep -m1 '^FAIL' "$T/mut.log" | cut -c7-90))"; fi
   done <<'MUT'
 frag|s/ and mods\[n\]\[0\] not in fragments\]/]/

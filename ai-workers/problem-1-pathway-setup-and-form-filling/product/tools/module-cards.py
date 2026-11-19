@@ -20,7 +20,12 @@ SRC = (STUDIO + "api/src/", STUDIO + "web/src/")
 MAX_LINES = 40
 FROZEN = ("Tests", "Tables", "Entry points")
 FRAG_MAX = 6
-NEVER = "never hand-edit a card's frozen lists (Tests., Tables., Entry points.); add your row's fragment <card>.rows/<ROW>.md (P-712)"
+NEVER = "never hand-edit a card's frozen lists (Tests., Tables., Entry points.); add your row's fragment {rows}<ROW>.md (P-712)"
+
+
+def words(text):
+    """The words of a list line; a word's trailing sentence punctuation is no part of it (review M1)."""
+    return {w.rstrip(".:,;") for w in re.findall(r"[\w./:@-]+", text)} - {""}
 
 
 def braces(p):
@@ -86,7 +91,7 @@ def frozen_words(text):
     for label in FROZEN:
         m = re.search(r"^\*\*" + re.escape(label) + r"\.\*\*(.*)$", text, re.M)
         if m:
-            out[label] = set(re.findall(r"[\w./:@-]+", m.group(1)))
+            out[label] = words(m.group(1))
     return out
 
 
@@ -109,8 +114,8 @@ def check_fragment(f):
         if not re.match(r"(?:" + "|".join(FROZEN) + r"):\s+\S", l):
             bad.append(f"{f}: line {l[:40]!r} does not start with Tests:, Tables: or Entry points:")
         for p in re.findall(r"`([^`\s]+/[^`\s]+\.\w+)`", l):
-            if not any(os.path.exists(os.path.join(ROOT, b, p)) for b in ("", STUDIO)):
-                bad.append(f"{f}: names {p}, which does not exist")
+            if not any(os.path.exists(os.path.join(ROOT, b, p)) for b in ("", STUDIO, os.path.dirname(card))):
+                bad.append(f"{f}: names {p}, which exists neither from the card's folder, the studio nor the repository root")
     return bad
 
 
@@ -122,6 +127,8 @@ def tree():
         if fragment_card(f):
             bad += check_fragment(f)
             continue
+        if re.search(r"/MODULE(?:\.[\w-]+)?\.rows/", f):
+            bad.append(f"{f}: a row fragment sits directly in its .rows/ folder, not in a subfolder"); continue
         if f.startswith(SRC) and re.match(r"MODULE(\.[\w-]+)?\.md\Z", os.path.basename(f)) and f not in linked:
             bad.append(f"{f}: a card no rule in {RULES}/ links to")
         o = owners(f, mods)
@@ -161,11 +168,11 @@ def pr(changed, body):
             folded = set()
             rows = subprocess.run(["git", "-C", ROOT, "ls-tree", "--name-only", base, c[:-3] + ".rows/"], capture_output=True, text=True).stdout.split()
             for r in rows:
-                folded |= set(re.findall(r"[\w./:@-]+", git_show(base, r) or ""))
-            for label, words in now.items():
-                new = sorted(words - frozen_words(old).get(label, set()) - folded)
+                folded |= words(git_show(base, r) or "")
+            for label, have in now.items():
+                new = sorted(have - frozen_words(old).get(label, set()) - folded)
                 if new:
-                    bad.append(f"{c}: its frozen `{label}.` line gains {', '.join(new[:4])}{' …' if len(new) > 4 else ''}: {NEVER}")
+                    bad.append(f"{c}: its frozen `{label}.` line gains {', '.join(new[:4])}{' …' if len(new) > 4 else ''}: {NEVER.format(rows=c[:-3] + '.rows/')}")
     for n in missing:
         print(f"module {n}: {len(touched[n])} file(s) changed ({touched[n][0]} …), card {mods[n][0]} not")
     for f in unclaimed:
