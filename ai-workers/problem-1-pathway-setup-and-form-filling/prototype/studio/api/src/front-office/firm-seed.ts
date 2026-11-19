@@ -122,7 +122,6 @@ export async function seedFirmFrontOffice(tx: Prisma.TransactionClient, firmId: 
     data: (await releasedCombinations(tx)).map((c, i) => ({ firmId: id, label: c.label, combinationId: c.id, sortOrder: i + 1, createdBy: actor })),
     skipDuplicates: true,
   });
-  await ensureBookingWording(tx, id, actor);
   await tx.foSalesSetup.update({ where: { firmId: id }, data: { seededAt: new Date(), seededBy: actor } });
   return { firmId: id, seeded: true, stages: stages.count, reasons: reasons.count, webForms, services: services.count };
 }
@@ -132,7 +131,10 @@ export async function seedFirmFrontOffice(tx: Prisma.TransactionClient, firmId: 
  *  sentence asks for marketing mail in AG-4-19 rule 3's form ("Yes, … may email me news and updates"; "the address above"
  *  is the form's email box, so the tick never shares the box's label word), since a tick
  *  on it is recorded as marketing consent (AG-2-84 rule 10: express only). Published through ConsentPort, so it has the
- *  usual `consent.wording.published` audit line; checked again under publishWording's own lock. Returns whether it made it. */
+ *  usual `consent.wording.published` audit line; checked again under publishWording's own lock. Run in a transaction of
+ *  its own after the seed (onFirmCreated, seedSampleFirmsFrontOffice) and by the booking page's read, never inside
+ *  seedFirmFrontOffice: a failed wording write must never undo a firm's stages and reasons (batch #2236, PF-12's demo
+ *  copy seeds on an older schema). Returns whether it made it. */
 export const SAMPLE_BOOKING_WORDING = "Yes, the firm may send me news and updates at the address above. I can stop at any time. (Sample wording)";
 export async function ensureBookingWording(tx: Prisma.TransactionClient, firmId: string, actor = SEED_ACTOR, consent: ConsentPort<Prisma.TransactionClient> = new ConsentStore(auditEvent)): Promise<boolean> {
   const id = firmScope(firmId).firmId, where = firmScope(id, { channel: "EMAIL" as const, purpose: "MARKETING" as const });
@@ -148,7 +150,9 @@ export async function ensureBookingWording(tx: Prisma.TransactionClient, firmId:
  *  office. Any other event type is ignored. At least once is safe: a repeat changes nothing. */
 export async function onFirmCreated(db: PrismaClient, event: { type: string; firmId: string }): Promise<FirmSeedResult | null> {
   if (event.type !== EVENT.FIRM_CREATED) return null;   // the shared events contract (ports/events.ts) names it
-  return db.$transaction((tx) => seedFirmFrontOffice(tx, event.firmId));
+  const seeded = await db.$transaction((tx) => seedFirmFrontOffice(tx, event.firmId));
+  await db.$transaction((tx) => ensureBookingWording(tx, event.firmId));   // its own transaction: see ensureBookingWording
+  return seeded;
 }
 
 /** Catch-up over the outbox: every firm with a `firm.created` event and no seeded front office (so a missed or failed
@@ -176,6 +180,7 @@ export async function seedSampleFirmsFrontOffice(db: PrismaClient): Promise<{ re
   const results: FirmSeedResult[] = [], failed: { firmId: string; error: string }[] = [];
   for (const f of firms) {
     try { results.push(await db.$transaction((tx) => seedFirmFrontOffice(tx, f.id))); } catch (e) { failed.push({ firmId: f.id, error: String(e).slice(0, 300) }); }
+    try { await db.$transaction((tx) => ensureBookingWording(tx, f.id)); } catch (e) { failed.push({ firmId: f.id, error: `booking wording: ${String(e).slice(0, 280)}` }); }
   }
   return { results, missing: SAMPLE_FIRM_KEYS.filter((k) => !firms.some((f) => f.key === k)), failed };
 }
