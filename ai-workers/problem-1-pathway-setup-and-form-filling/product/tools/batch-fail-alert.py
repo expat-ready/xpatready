@@ -6,7 +6,9 @@
 # "<suite> failed (exit N): its FAIL lines" group in the job log) and the most likely PR: the one member whose changed
 # files reach the failing suite (select-suites.mjs --direct, the same graph that picks a PR's suites), or "unclear".
 # One comment per failed run (a hidden marker with the run id; a re-run of the workflow posts nothing new); no label is
-# touched. Run by .github/workflows/batch-fail-alert.yml from main's copy (no PR code runs; GET plus one comment POST).
+# touched (a second failing attempt of the same run, by "Re-run failed jobs", keeps its id and posts nothing new). The
+# reach graph is main's: a member's new files reach little, so a FAIL line naming the file, or the member changing the
+# suite itself, are read first. Only mergify[bot]'s batch PRs count (as ci.yml). Run by .github/workflows/batch-fail-alert.yml from main's copy (no PR code runs; GET plus one comment POST).
 #   python3 -I product/tools/batch-fail-alert.py --run <ci run id> [--dry-run]
 # Auth: GITHUB_TOKEN (passed to curl on stdin, never on its command line). Test: test_batch_fail_alert.py (fixtures).
 import argparse, importlib.util, json, os, re, subprocess, sys, tempfile
@@ -23,7 +25,8 @@ MAX_LINES = 12
 
 def curl(method, path, body=None):
     tok = os.environ.get("GITHUB_TOKEN", "")
-    args = ["curl", "-sSL", "--fail", "--retry", "2", "--max-time", "60", "-X", method, "-H", "@-", "-H", "Accept: application/vnd.github+json"]
+    retry = ["--retry", "2"] if method == "GET" else []   # a timed-out POST may still have posted: never twice
+    args = ["curl", "-sSL", "--fail", *retry, "--max-time", "60", "-X", method, "-H", "@-", "-H", "Accept: application/vnd.github+json"]
     data = None
     if body is not None:
         f = tempfile.NamedTemporaryFile("w", delete=False, suffix=".json"); json.dump(body, f); f.close(); data = f.name
@@ -51,7 +54,8 @@ def batch_members(pr):
 
 def clean(line):
     line = TS.sub("", line.rstrip("\r\n"))
-    return line.replace("```", "'''")   # a log line never closes the comment's code block
+    line = line.replace("```", "'''")   # a log line never closes the comment's code block
+    return line if len(line) <= 500 else line[:500] + " …"   # a JSON dump never pushes the 60000 cut into a block
 
 def failed_suites(log):
     """{suite: (exit, [FAIL/STOP lines])} from run-suites.sh's groups; suites in the table or the retries line with no
@@ -87,7 +91,12 @@ def covers(files, root=None):
     if r.returncode != 0: raise RuntimeError(f"select-suites.mjs: exit {r.returncode}: {r.stderr.strip()[:200]}")
     return dict(l.split("\t", 1) for l in r.stdout.splitlines() if "\t" in l and not l.startswith("ALL\t"))
 
-WEAK = re.compile(r"^(smoke|reads every file in \S+)$|^every browser suite")
+WEAK = re.compile(r"^(smoke|reads every file in \S+|runtime R1 suites run together.*)$|^every browser suite")
+
+def blanket(why):
+    """Weak only when every reason select-suites.mjs joined ("a; b (+N more)") is a blanket rule."""
+    parts = [x.strip() for x in re.sub(r" \(\+\d+ more\)$", "", why).split("; ")]
+    return all(WEAK.search(x) for x in parts if x)
 
 def named_in(lines, files):
     """A changed file the FAIL lines name by its folder and name ("runtime/case-decision.tsx"): the strongest link."""
@@ -102,7 +111,7 @@ def tier(suite, files, reach, lines=()):
     if any(os.path.basename(f) == suite for f in files): return 1
     why = reach.get(suite)
     if why is None: return None
-    if WEAK.search(why): return 3
+    if blanket(why): return 3
     if "(direct)" in why or "imported by the suite" in why or re.search(r"(^|; )names ", why): return 1
     return 2
 
@@ -134,7 +143,7 @@ def comment(run, batch, members, jobs, calls):
         out += [f"- `{s}`: " + (f"#{p} ({w})" if p else f"unclear ({w})") for s, (p, w) in calls.items()]
     out.append("")
     for j in jobs:
-        out.append(f"- **{j['name']}** failed" + (": " + ", ".join(f"`{s}` (exit {e})" for s, (e, _) in j["suites"].items()) if j["suites"] else ""))
+        out.append(f"- **`{j['name'].replace('`', "'")}`** failed" + (": " + ", ".join(f"`{s}` (exit {e})" for s, (e, _) in j["suites"].items()) if j["suites"] else ""))
         for s, (_, lines) in j["suites"].items():
             if lines: out += ["", f"  `{s}`:", "  ```", *("  " + l for l in lines), "  ```"]
         if not j["suites"] and j["errors"]:
@@ -151,6 +160,8 @@ def run_alert(api, run_id, root=None, cover=covers, dry=False):
     prs = run.get("pull_requests") or api.get(f"pulls?head={owner}:{run['head_branch']}&state=all&per_page=5") or []
     if not prs: return [], f"run {run_id}: no batch PR for {run['head_branch']}"
     batch = api.get(f"pulls/{prs[0]['number']}")
+    if (batch.get("user") or {}).get("login") != "mergify[bot]":   # as ci.yml's PR_AUTHOR check (gate B break M2)
+        return [], f"#{batch.get('number')}: not opened by mergify[bot]: nothing to post"
     members = batch_members(batch)
     if not members: return [], f"batch #{batch['number']}: no member PR in its title or metadata"
     jobs = []

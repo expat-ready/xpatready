@@ -36,7 +36,7 @@ class FakeApi:
 def fixture(members_files, title="checking #2196 + #2197 together on main (abc1234)", types=False):
     d = {"actions/runs/77": {"id": 77, "conclusion": "failure", "head_branch": "mergify/merge-queue/abc", "created_at": "2026-11-19T09:00:00Z",
                              "html_url": "https://github.com/x/runs/77", "pull_requests": [{"number": 2200}]},
-         "pulls/2200": {"number": 2200, "title": f"merge queue: {title}", "body": ""},
+         "pulls/2200": {"number": 2200, "user": {"login": "mergify[bot]"}, "title": f"merge queue: {title}", "body": ""},
          "actions/runs/77/jobs": {"jobs": [{"id": 1, "name": "shard (3)", "conclusion": "failure"},
                                            {"id": 2, "name": "types", "conclusion": "failure" if types else "success"},
                                            {"id": 3, "name": "ci", "conclusion": "failure"}]},
@@ -62,7 +62,7 @@ class Alert(unittest.TestCase):
             "",
             "**Most likely:** #2197 (`check_fo7a_money_schema.ts`: it changed the suite or a file the suite imports or names).",
             "",
-            "- **shard (3)** failed: `check_fo7a_money_schema.ts` (exit 1)",
+            "- **`shard (3)`** failed: `check_fo7a_money_schema.ts` (exit 1)",
             "",
             "  `check_fo7a_money_schema.ts`:",
             "  ```",
@@ -72,7 +72,7 @@ class Alert(unittest.TestCase):
         ])
         self.assertTrue(body.startswith(want), body)
         self.assertNotIn("from the tail", body)        # only the group's FAIL lines, not the tail's
-        self.assertNotIn("**ci**", body)               # the summary job is not a failing suite
+        self.assertNotIn("`ci`**", body)               # the summary job is not a failing suite
 
     def test_no_repeats_for_one_run(self):
         api = FakeApi(fixture({2196: ["a"], 2197: ["b"]}))
@@ -89,6 +89,22 @@ class Alert(unittest.TestCase):
         blanket = {"x.ts": {"check_fo7a_money_schema.ts": "smoke"}}
         _, body = bfa.run_alert(FakeApi(fixture({2196: ["x.ts"], 2197: ["y.ts"]})), 77, cover=stub(blanket))
         self.assertIn("unclear (#2196 reaches it only through a blanket rule", body)   # a blanket rule alone never names a PR
+
+    def test_joined_blanket_reasons_never_name_a_pr(self):
+        # select-suites.mjs joins reasons with "; " and adds "(+N more)" (review of #2234, Minor 1)
+        for why in ("reads every file in api/src; smoke", "smoke; every browser suite: x (+2 more)", "runtime R1 suites run together (one copy, in order)"):
+            r = {"x.ts": {"check_fo7a_money_schema.ts": why}}
+            _, body = bfa.run_alert(FakeApi(fixture({2196: ["x.ts"], 2197: ["y.ts"]})), 77, cover=stub(r))
+            self.assertIn("unclear (#2196 reaches it only through a blanket rule", body, why)
+        self.assertEqual(bfa.tier("s.ts", ["x.ts"], {"s.ts": "smoke; imports x.ts (direct)"}), 1)
+
+    def test_only_mergify_batches(self):
+        d = fixture({2196: ["a"]}); d["pulls/2200"]["user"] = {"login": "someone"}; api = FakeApi(d)
+        posted, msg = bfa.run_alert(api, 77, cover=stub({}))
+        self.assertEqual((posted, api.posts), ([], [])); self.assertIn("not opened by mergify[bot]", msg)
+
+    def test_long_fail_line_is_cut(self):
+        self.assertLessEqual(len(bfa.clean("FAIL  " + "x" * 5000)), 502)
 
     def test_changed_suite_file_wins(self):
         r = {"z.ts": {"check_fo7a_money_schema.ts": "uses z.ts"}}
@@ -117,7 +133,7 @@ class Alert(unittest.TestCase):
         d["pulls/2200"]["body"] = "```yaml\npull_requests:\n  - number: 2301\n```"
         _, body = bfa.run_alert(FakeApi(d), 77, cover=stub({}))
         self.assertIn("holds #2301.", body)
-        self.assertIn("- **types** failed", body); self.assertIn("error: web/src/x.tsx(3,1): error TS2304", body)
+        self.assertIn("- **`types`** failed", body); self.assertIn("error: web/src/x.tsx(3,1): error TS2304", body)
 
     def test_not_a_batch_or_not_failed(self):
         for change in ({"conclusion": "success"}, {"head_branch": "claude/x"}):
