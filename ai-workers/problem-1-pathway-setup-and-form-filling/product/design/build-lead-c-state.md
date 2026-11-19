@@ -408,3 +408,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
   * The "Open a case?" screen row is in Lead 96's next records PR.
 * 00:44 IST 20 Nov: **Current Lead is now Lead 97 (local_d04f3736)**, per Lead 96. Triggers and questions go there. Re-sent to Lead 97 the open ask: start a fresh Opus lane for QA-520 (brief `build-lead-c-briefs/QA-520.md`).
 * 01:0x IST 20 Nov: QA-520 brief gets **Item** and **Duplicate check** lines (Lead 97's ask; Done when was already there). #2327 (qa) holds check_qa520: widen it on main if merged first. Lead 97 starts the lane at the founder's next typed turn (P-348e).
+* 02:50 IST 20 Nov: **Current Lead is now Lead 98 (local_b18084c0)**, per Lead 97. Open with them: the QA-520 lane from brief f05e14725, and merge reports for #2321, #2307 and #2339.
