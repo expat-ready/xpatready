@@ -16,7 +16,7 @@
 #            P-371); the re-run's green sets "success". A queued PR is left success: its batch is built on today's main.
 #            After 3 attempts it is success (the batch checks it). An unlabelled PR is "pending": the verdict is made
 #            when the label goes on (label() decides it before labelling; a person's label starts a run), so a label
-#            never meets an old success (review M2). Every 30 minutes the labelled PRs are judged again (a refused re-run).
+#            never meets an old success (review M2). Every 30 minutes the labelled PRs are judged again (a refused re-run), or by hand (workflow_dispatch).
 #   eligible — exit 0 when `label` would label this PR now (the label aside); used by label-sweep.sh.
 #   event  — reads GITHUB_EVENT_NAME / GITHUB_EVENT_PATH and runs the above for the PR(s) concerned.
 # Env: GH_TOKEN, REPO (owner/name), PR (label, fresh, eligible); REVIEWERS; API (default https://api.github.com);
@@ -128,7 +128,7 @@ event() {
       PR=$(jq -r .issue.number "$e"); TRIGGER=approve both || rc=$?;;
     workflow_run) for n in $(jq -r '.workflow_run.pull_requests[].number' "$e"); do PR=$n; both || rc=$?; done;;   # a fork PR has none: no queue-fresh (fails closed)
     pull_request_target) PR=$(jq -r .pull_request.number "$e"); fresh || rc=$?;;
-    push|schedule) local ns; ns=$(pages "repos/$REPO/issues?state=open&labels=review%3A%20approved") || { echo "queue-gate: cannot list the labelled PRs"; return 2; }
+    push|schedule|workflow_dispatch) local ns; ns=$(pages "repos/$REPO/issues?state=open&labels=review%3A%20approved") || { echo "queue-gate: cannot list the labelled PRs"; return 2; }
       for n in $(echo "$ns" | jq -r '.[] | select(.pull_request) | .number'); do PR=$n; fresh || rc=$?; done;;
     *) echo "queue-gate: event ${GITHUB_EVENT_NAME:-none} is not handled"; return 2;;
   esac; return $rc; }
