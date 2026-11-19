@@ -51,8 +51,8 @@ try {
 
   const n0 = cases();
   const eleventh = await open();
-  ok("DW1 fail: the 11th active individual case → 409 PLAN_LIMIT_REACHED with the metric, the limit and the usage", eleventh.status === 409 && eleventh.body?.code === "PLAN_LIMIT_REACHED"
-    && eleventh.body?.metric === "active_individual_cases" && eleventh.body?.limit === 10 && eleventh.body?.used === 10 && /plan allows 10 active individual cases/.test(eleventh.body?.detail ?? ""), [eleventh.status, eleventh.body]);
+  ok("DW1 fail: the 11th active individual case → 409 PLAN_LIMIT_REACHED with the metric, the limit, the usage and the upgrade path (SA-3-5)", eleventh.status === 409 && eleventh.body?.code === "PLAN_LIMIT_REACHED"
+    && eleventh.body?.metric === "active_individual_cases" && eleventh.body?.limit === 10 && eleventh.body?.used === 10 && /plan allows 10 active individual cases/.test(eleventh.body?.detail ?? "") && /Settings, Billing/.test(eleventh.body?.upgradePath ?? ""), [eleventh.status, eleventh.body]);
   ok("DW1 fail: the refused opening wrote no case", cases() === n0, [n0, cases()]);
 
   // DW2: one case withdrawn (and so closed; a case with no decision cannot be closed otherwise, AG-7-34) stops counting, so the next opening passes, and the one after is refused again.
