@@ -245,3 +245,7 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
   * My last part only: AUD-5 part 2 (R1.105; PF-11c and PF-5 are Lead B's).
   * Does not finish: #2000 (CS-DL1b is the last part, after it), #2124 and AUD-1m part 1 (R1.8), #2167 (R1.72), the money lane (R1.59), CS-V1 PR 2 (R1.10), CS-W3 part 0, PF-19r (J-48 and J-49 finish).
   * Proposed: let the four approved queued PRs merge; park the rest with resume notes.
+* 07:16 IST 19 Nov (Lead 85, ruling on P-716): keep a lane if its R1 item can reach Proven within 3 parts and waits on nothing outside; park the rest with resume notes.
+  * KEEP: #2169; CS-DL1b after #2000; AUD-5 part 2; AUD-1m; the money lane; CS-V1 PR 2; PF-19r, then J-48.
+  * PARK: the CS-K1 part 1 lane (part 2 waits on FoPersonPort and FO-8); the CS-W1 lane after CS-W3 part 0; J-49 (waits on PF-19ad).
+  * #2000, #2124, #2167 and #2175 merge as they are.
