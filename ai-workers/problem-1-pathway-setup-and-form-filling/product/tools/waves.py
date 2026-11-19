@@ -252,7 +252,7 @@ def main(argv):
                 bad.append(f"{i} is in wave {wave[i][0]}")
         if bad:
             print(f"OUTSIDE WAVE: {'; '.join(bad)}; lane starts are open for waves {', '.join(map(str, sorted(ok)))} only "
-                  f"(active wave {active}, and the next; wave 0 = Proven, fixes) (P-745: at most 8 items building, one wave "
+                  f"(active wave {active}, the waves below it finishing, the next one; wave 0 = Proven, fixes) (P-745: at most 8 items building, one wave "
                   "built while the previous is proved). Brief an item of an open wave, or the Lead changes design/waves.tsv with a DECISIONS row first.")
             return 1
         return 0
