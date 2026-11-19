@@ -8,7 +8,7 @@ import type { LibraryChange, Origin, Prisma } from "@prisma/client";
 import type { Use, UsesView } from "../../contracts/structure.ts";
 import { WHY } from "../../contracts/lifecycle.ts";
 import { normalizeLabel } from "../../contracts/programs.ts";
-import { ACTORS, type Db } from "./core.ts";
+import { ACTORS, actorWordOf, type Db } from "./core.ts";
 import { current } from "../../engine/where-used.ts";
 import { combinationTrails, documentTypeUseKinds, itemCombinations, itemReleases } from "./where-used.ts";
 
@@ -121,7 +121,7 @@ export async function itemUses(db: Db, workspaceId: string, kind: ItemKind, key:
   const stopsRetire = stops.filter((u) => !u.retireOk);
   // P-116 amended (pack 3): the author's own draft, never released, used nowhere, is deleted at once, with Undo.
   const immediate = !merged && !pending && !st.released && !released.length && !stops.length && !!actorId && (versions as Version[]).every((r) => r.status === "DRAFT" && r.updatedBy === actorId);
-  const history = (await db.auditEvent.findMany({ where: { workspaceId, entityKey: key, combinationId: null }, orderBy: { at: "desc" }, take: 10, select: { at: true, actor: true, summary: true } })).map((r) => ({ at: r.at.toISOString(), by: nameOf(r.actor) ?? (r.actor === "system" ? "The studio" : r.actor), what: r.summary }));
+  const history = (await db.auditEvent.findMany({ where: { workspaceId, entityKey: key, combinationId: null }, orderBy: { at: "desc" }, take: 10, select: { at: true, actor: true, summary: true } })).map((r) => ({ at: r.at.toISOString(), by: nameOf(r.actor) ?? (actorWordOf(r.actor) === "system" ? "The studio" : r.actor), what: r.summary }));
   return { key, label: name, trail: [name], retired: st.retired, released: st.released || released.length > 0, uses,
     can: {
       delete: p ?? (st.retired ? WHY.retiredNoDelete : st.released || released.length ? WHY.released : stops.length ? WHY.usedByDelete(stops[0].label) : null),
