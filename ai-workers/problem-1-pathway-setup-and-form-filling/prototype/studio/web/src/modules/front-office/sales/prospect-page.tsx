@@ -137,7 +137,7 @@ function ProspectBody({ id }: { id: string }) {
           <Field label="Note (optional)" hint="Only your firm sees it."><Textarea rows={3} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)} /></Field>
         </form>
       </Panel>
-      <Panel open={open === "value"} onOpenChange={(o) => start(o ? "value" : null)} title="Value" description={`${name}, ${p.number}. What this prospect may be worth to the firm. It counts in the board's totals of its own currency; amounts are never converted.`}
+      <Panel open={open === "value"} onOpenChange={(o) => start(o ? "value" : null)} title="Set the value" description={`${name}, ${p.number}. What this prospect may be worth to the firm. It counts in the board's totals of its own currency; amounts are never converted.`}
         footer={<><Button variant="ghost" onClick={() => start(null)}>Cancel</Button><Button busy={act.isPending} onClick={submit("value")}>Save value</Button></>}>
         <form onSubmit={submit("value")} className="flex flex-col gap-4">
           {general}
