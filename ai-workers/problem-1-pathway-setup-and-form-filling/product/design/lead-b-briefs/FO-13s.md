@@ -21,3 +21,6 @@ Written 19 Nov 11:23 IST by Lead B (6). **R1.108 (the conflict check) is not in 
 * **Size:** under 800 lines with the J-test. Split the J-test into its own PR only if it is over.
 
 **Order:** Part A, then Part B (B shows A's error). Then qa proves R1.110 (P-722).
+
+## Hold on FO-13i part 2's expiry rule (Lead B (7), 19 Nov 13:0x IST)
+QA-510's 422 (an identity document expired before the firm's today) is **Unconfirmed: no counsel**. Nobody has read SOR/2022-128 s. 24 for "expired", "valid" or "current". Lead 92 gets the section read from laws-lois, with the quote and date, **before FO-13i part 2 is built**. If the text sets a different test (for example a grace period or particular document types), the 422 follows the text. The BACKLOG row FO-13i2 carries `Source: P-579` until then.
