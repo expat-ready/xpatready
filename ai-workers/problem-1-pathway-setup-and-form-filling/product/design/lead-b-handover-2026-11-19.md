@@ -125,3 +125,9 @@ CS-C1r (reopen skips the case limit) is Build Lead C's. Main's V2 red was fixed 
 * **#2001 PF-24w:** a new lane at the founder's next typed turn; low priority (R1.15 waits on the AWS account).
 * **#2322 FO-3st1 part 1** (R1.38): ruled (comment 7015934908). Follow-ups FO-3sa-h, FO-2z and FO-3st1-d are in the focus list.
 * **#2304** labelled 22:28; **#1961** re-stamped by Lead 96 (18341ccbb).
+
+### Update 23:58 IST: full runs (P-731)
+* Cloud lanes cannot start a full run: their slash commands arrive mangled as "·/·r·un full", so comment-run.yml never fires. **The Lead posts `/run full`** from its account; send it the PR and head.
+* The founder approved switching off "full run on every PR" (P-733 (4), the FULL_RUN_FROM variable) until 22 Nov 20:00 IST. Once it is set, only PRs that failed a batch need `/run full`.
+* Full runs started by the Lead: #2268, #2302 and #2308 (earlier); #2323, #2109 and #2322 (23:58).
+* Waiting: #1961 is held by the Lead until #2341 merges. #2029 is green and labelled, in the queue. #2315 (PF-21j) is in queue batches #2352/#2354.
