@@ -2083,3 +2083,12 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **Main's platform card is over its limit:** `api/src/platform/MODULE.md` has been 41 lines (limit 40) since #2124 (AUD-1b), so `module-cards` is red for every PR that touches api/src (#2181 asked, comment 6999149071).
   * My ruling (6999190860): join the "Do not." lines 37-38 into one line, which gives 40 lines with no fact dropped.
   * It went to Lead 87 as a P-214 CI fix, because I don't open PRs. P-712's card fix may cover it.
+
+## Rev 17.43 (19 Nov 10:27 IST): P-721 proof sprint (5 items until 4 are Proven)
+* **My items:**
+  * **R1.19** (#1959): it waits for #2195 to fold the platform card, then merges main once (fragment `MODULE.rows/PF-5p2.md`, no card line). This is top priority.
+  * **R1.4** (#2029): Approve 5500148d3. The walls owner's check is OK (15 uses, each with an `audit` field). It goes to Lead 87 for the P-423 read.
+  * **R1.109** (#2012): Approve 2973a8f9b, then J-109.
+  * **R1.28 + R1.37** (#2196 queued, FO-2 part 3b): then J-37 on #2011's lane.
+* **Paused:** R1.41 (FO-3st2 starts no new part; #2103 still merges). R1.48 (PF-19b part 3, then J-48) continues.
+* **Re-merges sent:** #2012 2973a8f9b and #1961 c27308ea1, both main-merge-only.
