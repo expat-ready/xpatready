@@ -111,12 +111,17 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("an M3 title on code: product", [f"{A}/web/src/App.tsx"], False, "product", "M3 runtime: C7.5 — x", checks=F),
     case("app code alone: product", [f"{A}/api/src/demo.ts"], False, "product", "runtime: C4.11 — x", checks=F),
     case("a qa script (.cjs) is not a record", [f"{R}/qa/walks/x/walk.cjs"], False, "product"),
-    case("a tool under product/tools/, even a .md", [f"{R}/tools/README.md"], False, "product"),
+    case("a tool under product/tools/, even a .md: pipeline (P-717 (a))", [f"{R}/tools/README.md"], False, "pipeline"),
     case("this row's checker (.py under screens/)", [f"{R}/screens/B119/check-queue-rules.py"], False, "product"),
     case("a JSON file under screens/", [f"{R}/screens/12/fixture.json"], False, "product"),
-    case("the merge queue file itself", [".mergify.yml"], False, "product"),
-    case("a workflow", [".github/workflows/ci.yml"], False, "product"),
-    case("a skill", [".claude/skills/next/SKILL.md"], False, "product"),
+    case("the merge queue file itself: pipeline (P-717 (a))", [".mergify.yml"], False, "pipeline"),
+    case("a workflow: pipeline (P-717 (a))", [".github/workflows/ci.yml"], False, "pipeline"),
+    case("a skill: pipeline (P-717 (a))", [".claude/skills/next/SKILL.md"], False, "pipeline"),
+    case("agent rules and a git hook: pipeline", ["AGENTS.md", "CLAUDE.md", ".githooks/pre-push"], False, "pipeline"),
+    case("a workflow plus app code: product (one non-pipeline file is enough)", [".github/workflows/ci.yml", f"{A}/api/src/core.ts"], False, "product", checks=F),
+    case("a tool plus a record: product, not pipeline or records", [f"{R}/tools/x.sh", f"{R}/STATE.md"], False, "product"),
+    case("a look-alike pipeline path: tools/ outside product/", [f"{A}/tools/gate-b.mjs"], False, "product", checks=F),
+    case("pipeline work without the review label: no queue", [".github/workflows/ci.yml"], False, None, labels=()),
     case("a look-alike name: STATE.md.bak", [f"{R}/STATE.md.bak"], False, "product"),
     case("a look-alike place: STATE.md outside product/", [f"{A}/STATE.md"], False, "product", checks=F),
     case("records without the review label: no queue", [f"{R}/STATE.md"], True, None, labels=()),
@@ -152,9 +157,9 @@ def problems(cfg, have_script):
     out = []
     qs = cfg.get("queue_rules", [])
     names = [q.get("name") for q in qs]
-    if names != ["verdicts", "product", "records"]:
-        out.append(f"queue order is {names}: want verdicts, product, records (the first listed has the highest priority; "
-                   "qa verdicts first (P-664), records last)")
+    if names != ["verdicts", "product", "pipeline", "records"]:
+        out.append(f"queue order is {names}: want verdicts, product, pipeline, records (the first listed has the highest "
+                   "priority; qa verdicts first (P-664), pipeline after product (P-717 (a)), records last)")
     for q in qs:
         conds = [c.replace(" ", "") for c in q.get("queue_conditions", []) if isinstance(c, str)]
         for need in ("base = main", "label = review: approved", "check-success = ci"):
@@ -216,6 +221,8 @@ def mutations(cfg):
         return c
     def swap01(c):
         c = copy.deepcopy(c); c["queue_rules"][0], c["queue_rules"][1] = c["queue_rules"][1], c["queue_rules"][0]; return c
+    def swap12(c):
+        c = copy.deepcopy(c); c["queue_rules"][1], c["queue_rules"][2] = c["queue_rules"][2], c["queue_rules"][1]; return c
     def no_verdicts(c):
         c = copy.deepcopy(c); c["queue_rules"] = [q for q in c["queue_rules"] if q["name"] != "verdicts"]; return c
     return [
@@ -238,6 +245,10 @@ def mutations(cfg):
         ("verdicts drops the CAPABILITIES.md condition (P-664)", drop("verdicts", lambda x: x.startswith("files"))),
         ("verdicts accepts drafts (P-664)", drop("verdicts", lambda x: x == "-draft")),
         ("verdicts interrupts running checks (P-664)", interrupt(cfg)),
+        ("product takes pipeline-only PRs (P-717 (a))", drop("product", lambda x: x.startswith("files~="))),
+        ("pipeline takes PRs with app code (P-717 (a))", drop("pipeline", lambda x: x.startswith("-files~=^(?!"))),
+        ("pipeline skips green ci", drop("pipeline", lambda x: x.startswith("check-success"))),
+        ("pipeline listed before product (P-717 (a))", swap12(cfg)),
         ("verdicts listed after product (P-664)", swap01(cfg)),
         ("no verdicts queue (P-664)", no_verdicts(cfg)),
     ]
