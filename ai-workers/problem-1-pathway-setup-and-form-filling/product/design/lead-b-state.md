@@ -58,6 +58,8 @@ No open technical questions on PF/FO PRs at 11:46 IST (scan with Lead B (6)'s ex
 
 **21:26 IST: reports now go to Lead 96** (`local_3500a818-e30d-4095-b95c-f9b2b9d819ff`). Since 21:1x: #2315 (PF-21j, QA-517) is open and approved on 73a3d4e63, waiting for the Lead's permissions read and label; #1961 needs fixer A's re-stamp after 20261119081500; #2308 ruled "apply" (AG-2-64 r3); #2304 gets a third diff-only look; PF-4kt is shaped and parked (BACKLOG).
 
+**21:39 IST (Lead 96):** J-28 #2281 and J-37 #2284 merged 21:38 (R1.28, R1.37 built). qa split now: **qa 7 holds R1.28, R1.4, R1.33, R1.41, R1.109; qa 9 holds R1.37, R1.40, R1.31+R1.30**; each slots new items by parts left (P-733). #2315 (PF-21j) labelled 21:36. #2304 has a CodeQL false positive in its test (comment 7014713831; fix by building the body without replace).
+
 ## START HERE: hand-over Lead B (5) → Lead B (6), written 15 Nov 13:24 IST before the account switch (Lead 55's ask)
 
 **Lead B (5):** session titled "Lead B (5) · 15 Nov 10:02 IST" (transcript `af59e652…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`.
