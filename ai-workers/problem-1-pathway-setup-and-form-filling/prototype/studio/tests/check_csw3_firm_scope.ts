@@ -203,7 +203,10 @@ async function api() {
   // DW3: the simulated client.
   const pOwn = await call("GET", `/runtime/cases/${k1.id}`, undefined, "user-P"), pOther = await call("GET", `/runtime/cases/${k2.id}`, undefined, "user-P");
   const pNoCase = await call("GET", "/runtime/openable", undefined, "user-P");
-  ok("CS-W3 DW3 pass: the client reaches their own case with the walls on, and a route with no case in its path is not refused for their one firm", pOwn.status === 200 && pNoCase.status === 200, { own: pOwn.status, noCase: pNoCase.status });
+  // GET /runtime/openable refuses a client in its handler today (403, no case duty); the door must pass it through for
+  // their one firm, so the answer is that handler's 403, never the door's 409 or NO_FIRM (the 409 is asserted below).
+  ok("CS-W3 DW3 pass: the client reaches their own case with the walls on, and a route with no case in its path passes the door for their one firm (the handler's own answer, as today)",
+    pOwn.status === 200 && pNoCase.status === 403 && !["CLIENT_IN_TWO_FIRMS", "NO_FIRM"].includes(pNoCase.body?.code), { own: pOwn.status, noCase: pNoCase.status, code: pNoCase.body?.code });
   ok("CS-W3 DW3 fail: another person's case is still 404", pOther.status === 404, pOther.status);
 
   // DW2 and DW9: a link and its session, with the walls on.
