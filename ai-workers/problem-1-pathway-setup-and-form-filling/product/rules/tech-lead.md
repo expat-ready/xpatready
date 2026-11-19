@@ -37,6 +37,8 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-617 | Size exception for #1815 only; rows briefed from now stay under 800 lines. | CI: pr-rules size step (pr-size.sh reads the row) | 15 Nov |
 | P-652 | One-time P-371 exception for #2032's run 43929287134; org move on GitHub Team decided (A137). | prose | 17 Nov |
 | P-654 | Size exception for #2064 (PF-18b) only; new rows stay under 800 lines. | script: pr-size.sh | 17 Nov |
+| P-672 | Founder approved #2075 in the Lead's chat; times in records only from the clock (correction). | prose | 17 Nov |
+| P-684 | One-time: #2077 merged by hand when all shards and types were green, without the final ci roll-up (done 13:27). | prose | 17 Nov |
 
 ## Dated rulings (moved word for word from RULES.md, 17 Nov 11:5x IST, Lead 76)
 | ID | Rule | Enforced by | As of |
@@ -67,3 +69,49 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-620 | Each Claude account checks the company Gmail connector at start and after a switch; missing → ask the founder. | prose (B193 part 6) | 16 Nov |
 | P-621 | Google only (Gmail, Calendar) for now; Microsoft deferred; ports stay provider-neutral. | prose | 16 Nov |
 | P-643 | (replaces P-642) No extra usage; lanes run past 96%; at 96% the Lead tells the founder, who resets the account before 98%. | prose | 16 Nov |
+
+
+## Org move (moved word for word from RULES.md, 17 Nov 13:5x IST, Lead 77)
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| P-657 | GitHub Enterprise bought outright (supersedes P-656 trial, reverses P-652 Team). | prose | 17 Nov |
+| P-660 | Drain 17 Nov (only near-Proven product PRs and pipeline fixes start), move Wed 18 Nov 09:30 IST, full power after it is verified. | prose | 17 Nov |
+| P-661 | The setup agent acts itself in front of the founder, who types every password, card and approval. | prose | 17 Nov |
+| P-662 | Only Claude, Mergify and Namespace apps on expat-ready. | prose | 17 Nov |
+
+
+## P-635 row (moved word for word from RULES.md by Lead 78, 15:2x IST 17 Nov, to keep RULES under 25 KB)
+| P-635 | Enforcement defaults: overnight, hooks block only irreversible actions and flag the rest; settings lines to the founder in one daily batch; pr-rules required after 2 days with no false failure; under ~1 s per hook call. | prose (plan `design/enforcement-plan-2026-11-16.md`) | 16 Nov |
+
+
+## Full rows moved word for word from RULES.md by Lead 80, 16:4x IST 18 Nov (RULES.md under 25 KB, P-611)
+
+| P-618 | Outside dependencies in `design/outside-dependencies.md`: start at need − lead time − 2× buffer; 🔴 when due or stuck 48 h; fallback and date on a block. | script: outside-deps-watch.py via lead-watch.sh step 9 (part; `rules/tokens-money-account.md`) | 15 Nov |
+| F-6Nov | Checks every 30 min, prompt exactly `run lead-watch; read STATE Start here`; row details in STATE, never in the prompt. | hook: lead-check-guard.sh (CronCreate); script: lead-heartbeat.sh (tests check-lead-cron.sh, check-lead-heartbeat.sh) | 6 Nov |
+| P-336 | Records by the Lead alone; STATE one page ≤ 12 KB; DECISIONS appended newest first; records daily and at hand-over; records PRs merge when the queue is empty (P-436 (3)). | script: check-docs.sh (part: STATE 12 KB); CI: records-label.yml | P-612 |
+
+| P-611b | One queue for reports, questions, blockers and approvals with owner, ack, timeout (45 min ACT, 90 min founder); no hand-over with an un-acked item. | script: items.py, lead-queue.sh, handover.sh (tests check-items.sh, check-handover.sh) | 15 Nov |  (moved word for word by Lead 80, 16:4x IST 18 Nov)
+
+| P-639 | The board and the Lead's check verify each other: each check acts on the board's Today and Stuck items against their primary source; a mismatch is an ACT fixed the same day. | script: lead-watch.sh (part: ACT lines; B201's tests) | 16 Nov |  (moved word for word by Lead 80, 19:1x IST 18 Nov)
+
+| P-418 | Pick order each check: red on main, merged work awaiting qa, blockers freeing several rows, Partials in journey order, drafted rows, new work; warm rows to the lane with the context (P-348, P-413). | prose (lead-watch skill) | P-612 |  (moved word for word by Lead 80, 19:1x IST 18 Nov)
+
+
+## Rows moved word for word from RULES.md by Lead 82, 19 Nov 00:2x IST (size limit, P-611)
+| P-539 | This repository stays public; integration and strategy content goes only to private notes. | hook: push-guard.sh via .githooks/pre-push; CI: ci.yml push-guard steps (part; `rules/tokens-money-account.md`) | 13 Nov |
+| P-402 | Standing approvals: label on Approve and green, own records PRs, requeue, retarget, draft toggle, re-run failed parts, dispatch nightly (P-410, P-434). | hook: merge-guard.sh (part: only the Lead copy merges) | P-612 |
+| P-387 | .claude/settings.json stays as on main; only the founder widens permissions; a refused write is never rerouted through a lane or split. | hook: stop-check.sh (part: lane edits); sandbox denies settings writes | 7 Nov |
+| P-691 | Emergency hand merge stays on Enterprise: only a pipeline/CI fix while the queue itself is broken, after green ci and a review, logged in the change log. | prose (ruleset bypass; library/engineering-change-log.md) | 17 Nov |
+| P-593 | The board is the one door with a Library: one master per document, a page is a view (P-594: "Release 1 (production grade)"). | script: library-freshness.py (part: a master behind its feeds is listed) | 14 Nov |
+| P-596 | Every board number carries source, sha, time and class; missing data shows "not measured"; the data is validated and reconciled. | script: cockpit-data.py, cockpit-reconcile.py; CI: cockpit-tests.yml | 14 Nov |
+| P-591 | One cockpit built from script data, refreshed each check, its link opening every report; a fresh reviewer weekly; never duplicate work. | script: cockpit-data.py; CI: cockpit-tests.yml (part: data) | 14 Nov |
+
+## Night of 18-19 Nov (moved word for word from RULES.md, 19 Nov 02:1x IST, Lead 83)
+| P-705 | No move back to Pro (supersedes P-696's rollback); waits measured each check. | prose | 18 Nov |
+| P-703 | Measures and reports count product features only (app-code PRs, product rows), never records or tooling. | script: lead-watch.sh | 18 Nov |
+| P-704 | One big batch once (#2152, batch_size 13); back to 6 on 19 Nov by its own PR (Lead 83 left #2152 unmerged, 19 Nov: machines were not the limit). | prose | 18 Nov |
+| P-706 | Demo/test outbox files may hold links and codes until PF-19e seals them; PF-19e lands before real people. | prose | 19 Nov |
+| P-707 | Finish to Proven first: only Wave 1 lanes and lanes merging approved PRs work; the rest park with resume notes, never wasted. | prose | 19 Nov |
+| P-708 | #2151 "run tests once" hand-merged on green ahead of the queue (founder); a PR runs fast + types, the full set runs once per batch. | script: ci.yml | 19 Nov |
+| P-709 | Night: Lead and standbys label any PR with `Reviewer: Approve <head>` after the Lead's reads, by API or github.com in the browser; idle cloud lanes restarted in claude.ai/code; no spend over caps, no gate lowered. | prose | 19 Nov |
+| P-710 | Sample platform firms seeded ON on demo and test copies; production never seeds (test that no Sample firm exists in production mode). | prose | 19 Nov |
