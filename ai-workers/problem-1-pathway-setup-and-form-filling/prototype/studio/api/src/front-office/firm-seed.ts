@@ -129,10 +129,11 @@ export async function seedFirmFrontOffice(tx: Prisma.TransactionClient, firmId: 
 
 /** The booking tick's Sample wording (FO-2 part 3b, Lead B's ruling on #2196): version 1 of the firm's EMAIL marketing
  *  wording, only when the firm has no EMAIL marketing wording at all, so the firm's own wording is never replaced. The
- *  sentence asks for marketing email in AG-4-19 rule 3's own form ("Yes, … may email me news and updates"), since a tick
+ *  sentence asks for marketing mail in AG-4-19 rule 3's form ("Yes, … may email me news and updates"; "the address above"
+ *  is the form's email box, so the tick never shares the box's label word), since a tick
  *  on it is recorded as marketing consent (AG-2-84 rule 10: express only). Published through ConsentPort, so it has the
  *  usual `consent.wording.published` audit line; checked again under publishWording's own lock. Returns whether it made it. */
-export const SAMPLE_BOOKING_WORDING = "Yes, the firm may email me news and updates. I can stop at any time. (Sample wording)";
+export const SAMPLE_BOOKING_WORDING = "Yes, the firm may send me news and updates at the address above. I can stop at any time. (Sample wording)";
 export async function ensureBookingWording(tx: Prisma.TransactionClient, firmId: string, actor = SEED_ACTOR, consent: ConsentPort<Prisma.TransactionClient> = new ConsentStore(auditEvent)): Promise<boolean> {
   const id = firmScope(firmId).firmId, where = firmScope(id, { channel: "EMAIL" as const, purpose: "MARKETING" as const });
   if (await tx.msgConsentWording.findFirst({ where, select: { id: true } })) return false;
