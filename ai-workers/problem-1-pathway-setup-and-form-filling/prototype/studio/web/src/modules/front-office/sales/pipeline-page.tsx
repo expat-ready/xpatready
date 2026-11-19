@@ -62,7 +62,7 @@ function BoardView() {
           const shown = s.prospects.slice(0, more[s.id] ?? PAGE), left = s.prospects.length - shown.length;
           return (
             <section key={s.id} aria-labelledby={`fo-stage-${s.key}`} data-stage={s.key} className={`flex w-72 shrink-0 flex-col gap-2 rounded-xl border border-border bg-surface p-3${ring(s.id)}`}
-              {...target(s.id, () => move.mutate({ id: drag!.id, number: drag!.number, from: drag!.from, to: s }))}>
+              {...(s.kind === "ACTIVE" || s.kind === "WON" ? target(s.id, () => move.mutate({ id: drag!.id, number: drag!.number, from: drag!.from, to: s })) : {})}>   {/* Won takes the drop so the server's refusal is said; Nurture (Park) takes none */}
               <header>
                 <h2 id={`fo-stage-${s.key}`} className="flex items-center justify-between gap-2 text-sm font-semibold">{s.label}<span data-count className="text-xs font-normal text-text-muted">{s.prospects.length}</span></h2>
                 <p className="mt-0.5 text-xs text-text-muted"><Totals lines={s.totals} none="No values" /></p>
@@ -73,7 +73,9 @@ function BoardView() {
                   return (
                     <li key={p.id} data-card={p.number} className={`rounded-lg border border-border bg-surface-raised p-3${mayDrag && s.kind === "ACTIVE" ? " cursor-grab active:cursor-grabbing" : ""}${drag?.id === p.id ? " opacity-50" : ""}`}
                       draggable={mayDrag && s.kind === "ACTIVE"} onDragEnd={() => { setDrag(null); setOver(null); }}
-                      onDragStart={(e) => { e.dataTransfer.setData("text/plain", p.number); e.dataTransfer.effectAllowed = "move"; setDrag({ id: p.id, number: p.number, from: s.id }); }}>
+                      // A browser drags a link by itself, so the name could start a drag on a card that is not draggable (review
+                      // M1): such a drag is stopped here, for a reader and for a Won card alike.
+                      onDragStart={(e) => { if (!(mayDrag && s.kind === "ACTIVE")) return e.preventDefault(); e.dataTransfer.setData("text/plain", p.number); e.dataTransfer.effectAllowed = "move"; setDrag({ id: p.id, number: p.number, from: s.id }); }}>
                       <Link to={`/front-office/prospects/${p.id}`} className="text-sm font-medium text-text-link hover:underline [overflow-wrap:anywhere]">{p.name}</Link>
                       <p className="mt-0.5 text-xs text-text-muted">{p.number}{owners.oneUser ? "" : ` · ${owners.name(p.ownerStaffId)}`}{v && v.valueCents !== null ? ` · ${money(v.valueCents, v.currency)}` : ""}</p>
                       {can(me, KEY.edit) && s.kind === "ACTIVE" ? <div className="mt-2 flex justify-end"><MoveMenu prospect={p} from={s.id} stages={stages} move={move} /></div> : null}
@@ -87,7 +89,7 @@ function BoardView() {
         })}
         {/* Lost has no column (lost prospects are in the List): this is only where a card is dropped to mark it lost. */}
         {mayDrag && can(me, KEY.lose) && lost ? (
-          <section aria-label="Drop here to mark a prospect lost" data-drop-lost className={`flex w-56 shrink-0 flex-col gap-1 rounded-xl border border-dashed border-border p-3 text-sm text-text-muted${ring(lost.id)}`}
+          <section data-drop-lost className={`flex w-56 shrink-0 flex-col gap-1 rounded-xl border border-dashed border-border p-3 text-sm text-text-muted${ring(lost.id)}`}
             {...target(lost.id, () => go(`/front-office/prospects/${drag!.id}?lost=1`))}>
             <h2 className="text-sm font-semibold text-text">{lost.label}</h2>
             <p className="text-xs">Drop a card here to mark it lost. You are asked why first; nothing moves until you save.</p>

@@ -175,10 +175,10 @@ const moves = (id: string) => sql(`select count(*) from fo_stage_move where pros
 // A real mouse path: press on the card, move, bring the target column into view (a person drags to the board's edge and
 // the browser scrolls it; here the board is scrolled), move onto it, release. Playwright's own dragTo scrolls before the
 // drag starts and then picks up whatever card is under the pointer, so it is not used.
-const dragTo = async (pg: Page, num: string, to: string) => {
+const dragTo = async (pg: Page, num: string, to: string, grab = "") => {
   const card = pg.locator(`[data-card="${num}"]`), target = pg.locator(to);
-  await card.scrollIntoViewIfNeeded(); const c = (await card.boundingBox())!;
-  await pg.mouse.move(c.x + 30, c.y + 12); await pg.mouse.down(); await pg.mouse.move(c.x + 45, c.y + 20, { steps: 4 });
+  await card.scrollIntoViewIfNeeded(); const c = (await (grab ? card.locator(grab).first() : card).boundingBox())!;
+  await pg.mouse.move(c.x + (grab ? 8 : 30), c.y + (grab ? c.height / 2 : 12)); await pg.mouse.down(); await pg.mouse.move(c.x + 45, c.y + 20, { steps: 4 });
   await target.evaluate((e) => e.scrollIntoView({ inline: "center", block: "nearest" })); const t = (await target.boundingBox())!;
   await pg.mouse.move(t.x + t.width / 2, t.y + 60, { steps: 8 }); await pg.mouse.up();
 };
@@ -282,6 +282,9 @@ const cydNow = sql(`select s.kind || '|' || coalesce(p.won_via::text, '') || '|'
 await owner.goto(`${BASE}/front-office/prospects/${cyd1.id}`); await owner.locator("[data-stage-now]", { hasText: "Won – client" }).waitFor();
 ok("J-30 W6 pass (R1.31): Signed offline wins the prospect (Won, not by Convert, not a person's move); its screen says \"A signed retainer\" and offers no Undo convert", off.status === 200 && cydNow[0] === "WON" && cydNow[1] !== "CONVERTED" && cydNow[2] !== "PERSON" && await owner.getByText("A signed retainer", { exact: true }).isVisible() && await owner.getByRole("button", { name: "Undo convert" }).count() === 0, [off.status, cydNow]);
 await owner.goto(`${BASE}/front-office/pipeline`); await inStage("RETAINER_SIGNED", anaRow[0]).waitFor();
+let wonSent = 0; const count = (r: { method(): string; url(): string }) => { if (r.method() === "POST" && r.url().includes("/move")) wonSent++; };
+owner.on("request", count); await dragTo(owner, anaRow[0], '[data-stage="QUALIFIED"]', "a"); await owner.waitForTimeout(800); owner.off("request", count);
+ok("J-30 W3d fail: a Won card cannot be dragged, not even by its name (no move request, the card stays in Won)", wonSent === 0 && await inStage("RETAINER_SIGNED", anaRow[0]).isVisible(), wonSent);
 ok("J-30 W6 end: the walk ends at the won prospect in the board's Won column, with no \"Move to…\" on it (the case side's first step starts from here)", await inStage("RETAINER_SIGNED", anaRow[0]).getByRole("button").count() === 0);
 await shot(owner, "board-won-1440");
 // BR-10: a person whose role may read but not work prospects sees no button (the Case Officer's keys are put back after).
@@ -297,8 +300,11 @@ try {
   await reader.goto(`${BASE}/front-office/pipeline?view=list`); await reader.locator(`[data-prospect-row="${ben1.number}"]`).waitFor();
   await reader.goto(`${BASE}/front-office/pipeline`); await reader.locator('[data-stage="ENGAGED"] [data-card]').first().waitFor();
   const firstCard = await reader.locator('[data-stage="ENGAGED"] [data-card]').first().getAttribute("data-card"), cardId = sql(`select id from fo_prospect where number = '${firstCard}' and firm_id = '${A}'`), was = moves(cardId);
-  await dragTo(reader, firstCard!, '[data-stage="CONSULT"]');
-  ok("J-30 W3d fail (BR-10): without agent/prospect:edit no card can be dragged (not draggable, no Lost drop place, no hint), and a drag attempt moves nothing", await reader.locator('[data-card][draggable="true"]').count() === 0 && await reader.locator("[data-drop-lost], [data-drag-hint]").count() === 0 && stageOf(cardId) === "ENGAGED" && moves(cardId) === was);
+  // Both by the card and by its name (a link, which a browser drags by itself: review M1): no request may leave.
+  let sent = 0; reader.on("request", (r) => { if (r.method() === "POST" && r.url().includes("/move")) sent++; });
+  await dragTo(reader, firstCard!, '[data-stage="CONSULT"]'); await dragTo(reader, firstCard!, '[data-stage="CONSULT"]', "a");
+  await reader.waitForTimeout(800);
+  ok("J-30 W3d fail (BR-10): without agent/prospect:edit no card can be dragged, by the card or by its name: not draggable, no Lost drop place, no hint, no move request sent, no card faded, nothing moved", sent === 0 && await reader.locator('[data-card][draggable="true"]').count() === 0 && await reader.locator("[data-drop-lost], [data-drag-hint], [data-card].opacity-50").count() === 0 && stageOf(cardId) === "ENGAGED" && moves(cardId) === was, sent);
   await reader.goto(`${BASE}/front-office/pipeline?view=list`); await reader.locator(`[data-prospect-row="${ben1.number}"]`).waitFor();
   ok("J-30 W6 BR-10 fail: the same person's List has no Move to… on any row", await reader.getByRole("button", { name: /Move to…/ }).count() === 0);
 } finally { for (const k of had) sql(`insert into platform_role_permission (role, permission_key) values ('CASE_OFFICER', '${k}') on conflict do nothing`); }
