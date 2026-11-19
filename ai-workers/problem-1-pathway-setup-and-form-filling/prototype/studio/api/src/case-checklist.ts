@@ -15,7 +15,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { HttpException } from "@nestjs/common";
 import { problemFromZod } from "../../contracts/programs.ts";
-import { ChangeProviders, MAX_DOCUMENT_BYTES, MAX_DOCUMENT_MB, NOT_APPLICABLE_FROM, NotApplicable, REQUEST_FROM, SeenVersion, STATE_WORDS, UPLOAD_FROM, WAIVE_FROM, Waive, type LineState, type StoredDocument } from "../../contracts/documents.ts";
+import { ChangeProviders, MAX_DOCUMENT_BYTES, NOT_APPLICABLE_FROM, NotApplicable, REQUEST_FROM, SeenVersion, STATE_WORDS, UPLOAD_FROM, WAIVE_FROM, Waive, type LineState, type StoredDocument } from "../../contracts/documents.ts";
 import { candidatesOf, caseChecklist, chosenProviders, mayProvide, roleWords, type PersonLine } from "../../engine/runtime/case-checklist.ts";
 import { fmtDate, onFileFrom } from "../../engine/runtime/stages.ts";
 import { readSpec } from "./routes-data.ts";
@@ -56,11 +56,10 @@ const REFUSAL_STATUS: Record<RefusalReason, HttpStatus> = { TOO_LARGE: HttpStatu
  *  comes from the file's own bytes; a refusal is in PF-F4's words (they end "Nothing was stored.") with the status its
  *  reason calls for. Answers the stored name (corrected when it disagreed with the bytes), the type, the file's
  *  extension on disk and, for a PDF with active content, PF-F4's flag in words for the audit line. The doors keep their
- *  own 20 MB limit (C6.4 break m5, also the multipart limit), which is under PF-F4's 25 MB for documents. */
+ *  own 20 MB limit (C6.4 break m5), which is under PF-F4's 25 MB for documents: the multipart limit on each route
+ *  refuses a larger file before this runs. */
 export function checkedCaseFile(f: Upload): Checked & { extension: string; flagWords: string } {
-  const bytes = f.buffer!;
-  if (bytes.length > MAX_DOCUMENT_BYTES) fail(`The file is larger than ${MAX_DOCUMENT_MB} MB. Nothing was stored.`, HttpStatus.PAYLOAD_TOO_LARGE);
-  const r = checkFile({ bytes, name: utf8Name(f.originalname), mediaType: f.mimetype }, CASE_FILE_KINDS);
+  const r = checkFile({ bytes: f.buffer!, name: utf8Name(f.originalname), mediaType: f.mimetype }, CASE_FILE_KINDS);
   if (!r.ok) return fail(r.message, REFUSAL_STATUS[r.reason]);
   return { ...r, extension: KINDS[r.kind].extension, flagWords: r.flags.includes(SCRIPTS_FLAG) ? `; ${SCRIPTS_FLAG}` : "" };
 }

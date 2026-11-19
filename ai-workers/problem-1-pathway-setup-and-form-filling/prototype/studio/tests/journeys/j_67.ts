@@ -2,7 +2,7 @@
 // doors, a checklist line's and the person's document with no line, judge a file by PF-F4's one check (`checkFile`,
 // api/src/platform/files/file-type.ts), walked on an isolated copy of the running app (its own database and port, never
 // :4400) on the Visitor visa of acceptance pack 4, on screen at 1440 px and through the API.
-//   DW1: both doors call `checkFile` (read in the code, and by what they refuse and correct); the same judge fails on a
+//   DW1: both doors call `checkFile` (shown by what they refuse and correct, which only that check does); the same judge fails on a
 //        stand-in door that skips the check (it lets a GIF named passport.png through) and on the old check (contracts'
 //        `mediaOf`, which takes a PNG cut off after its signature and never corrects a name);
 //   DW2: a refusal stores nothing (no row, no file, no audit line) through each door; the same judge fails after a
@@ -83,13 +83,6 @@ const stored = () => ({
 const same = (a: object, b: object) => JSON.stringify(a) === JSON.stringify(b);
 
 // ------------------------------------------------------------------------------------------------ DW1, DW2 (API)
-// DW1 in the code: each door's upload goes through the one shared call, which calls PF-F4's checkFile; the old check is gone from both files.
-const src = (f: string) => readFileSync(join(STUDIO, "api", "src", f), "utf8");
-const checklistSrc = src("case-checklist.ts"), documentsSrc = src("case-documents.ts");
-const uploadOf = (s: string) => s.slice(s.indexOf("async upload("), s.indexOf("\n  }\n", s.indexOf("async upload(")));
-ok("J-67 DW1 (code): both doors' upload() call checkedCaseFile, which calls PF-F4's checkFile; neither file reads mediaOf any more",
-  /checkedCaseFile\(f\[0\]\)/.test(uploadOf(checklistSrc)) && /checkedCaseFile\(f\[0\]\)/.test(uploadOf(documentsSrc)) && /function checkedCaseFile[\s\S]{0,400}checkFile\(\{ bytes/.test(checklistSrc) && !/mediaOf/.test(checklistSrc + documentsSrc));
-
 /** DW1's judge of one door: it refuses a GIF named passport.png and a PNG cut off after its signature, and stores a JPEG
  *  named passport.png as a JPEG under a .jpg name. Only a door that calls checkFile does all three. */
 const judge1 = async (d: Door) => {
@@ -129,7 +122,9 @@ try {
   const refusedOnScreen = async (f: File, words: RegExp) => {
     const before = stored(), was = await lineOf(first.id);
     await choose(f);
-    await error.filter({ hasText: words }).waitFor({ timeout: 60_000 });
+    // Words that never come are a FAIL line with what the line says instead, and the walk goes on.
+    const came = await error.filter({ hasText: words }).waitFor({ timeout: 60_000 }).then(() => true, () => false);
+    if (!came) return { ok: false, said: (await error.count()) ? await error.textContent() : "no words on the line", before, after: stored() };
     const said = (await error.textContent()) ?? "", now = await lineOf(first.id);
     return { ok: words.test(said) && said.endsWith(NOTHING_STORED) && same(before, stored()) && now.state === was.state && now.documents.length === was.documents.length && (await row.getAttribute("data-state")) === was.state, said, before, after: stored() };
   };
@@ -173,6 +168,8 @@ try {
   await line2.filter({ hasText: "IMG_0001.JPG" }).waitFor({ timeout: 30_000 });
   const wide = await page.evaluate(() => { const p = document.querySelector("[data-documents-panel]")!; return p.scrollWidth > p.clientWidth + 1 || p.getBoundingClientRect().right > window.innerWidth + 1; });
   ok("J-67 W7: at 1024 px the Documents panel fits the page (nothing cut off sideways)", !wide);
+  const axe1024 = await new AxeBuilder({ page }).include("[data-documents-panel]").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
+  ok("J-67 W7: axe finds no WCAG A/AA violation on the Documents panel at 1024 px", axe1024.violations.length === 0, axe1024.violations.map((v) => v.id));
   await shot("W7-client-file-on-line", 1024);
 } finally {
   await browser.close();
