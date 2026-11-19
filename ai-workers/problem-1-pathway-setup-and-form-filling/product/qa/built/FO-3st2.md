@@ -5,4 +5,4 @@ FO-3st2 (screen; map row 41's screen, J-41 walks it): My account → Availabilit
 * Time off below: whole day (From, To = last day, empty for one day) or From/To date and time, in the default set's zone; "Save time off", "Remove"; empty "No time off planned."; a booking inside time off is never moved.
 * "Viewing" (Choose a colleague) only for a person with `agent/booking-event-type:configure-availability` (Owner, Admin): active colleagues from the Team list; `?staff=<id>` in the address. Anyone else sees only their own, even with `?staff=` in the address; the server refuses a colleague's (403).
 * No hours in the default set: "You offer no times on the booking page. Staff can still book you, with a warning." Loading skeletons while the answers come.
-* Test: `tests/check_fo3st2_availability_browser.ts` (42 checks; real app, local stand-in sign-in; axe, keyboard, 375/1024/1440).
+* Test: `tests/check_fo3st2_availability_browser.ts` (53 checks; real app, local stand-in sign-in; axe, keyboard, 375/1024/1440).

@@ -131,3 +131,13 @@ Round 5 result (c7481a33a): Approve.
 - The open Minors (n1-n3, m3, m5, m6, m7) are unchanged. Nothing new found.
 
 Verdict: Approve
+
+## Re-review (round 7, 19 Nov) of part 1's head 3cabaebe50408c0ddb809c3a26305f15e961d6c3 (#2243): the P-610 split, diff only, read-only on the tree
+- **The row's own code is unchanged since the Approve on 36dc2484c.** `git diff 36dc2484c 3cabaebe5` is empty for `booking/availability/`, the suite, `front-office/routes.tsx` and `platform/account-sections.ts`. Against `claude/screens-fo3st2` the PR's 15 files differ only in the build notes' new "Resumed 19 Nov" section.
+- **Nothing main changed underneath reaches the screen or its suite.** 36dc2484c → 3cabaebe5 changes 21 studio files: AUD-5 part 2's keep-period check, csw3 spike fixtures and one line on each module card. None is in the booking API, `session.ts`, `frame.tsx`, the terms gate, the local sign-in, the identity guard, the schema or the seed. The availability and time-off answers (`setView`, `offView`, the two lists) match `contract.ts`'s shapes; the route paths match.
+- **The PR is what it says:** 15 files, 760 insertions and 1 deletion; every code file is on the brief's touch list.
+- Minors: `qa/built/FO-3st2.md` said "42 checks" (the suite reports 53; corrected in part 2); the notes' "1,008 lines" is 1,008 insertions. The open Minors (n1-n3, m3, m5, m6, m7) are unchanged.
+- **The split, for the tech lead:** sound, not a quality risk. The brief's split was conditional on the screen passing 800 lines, and it is 688; part 1 carries every Done-when line. The one cost: until part 2 merges, part 1's review trail is only on this branch and the PR thread.
+- Not run by the reviewer: the five suites (the builder's runs on that head: FO-3st2 53/53, pf1 28/28, pf6a 52/52, fo3w 67/67, pf6 staff 90/90, all exit 0). No journey score this round (no app started); the last is 9.5/10.
+
+Verdict: Approve (`Reviewer: Approve 3cabaebe50408c0ddb809c3a26305f15e961d6c3`, posted on #2243)
