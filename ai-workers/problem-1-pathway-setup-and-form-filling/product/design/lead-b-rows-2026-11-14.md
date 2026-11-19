@@ -2115,3 +2115,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   * The `PF-4c.md` amendment adds a new **PF-4c part 1b, "send the good rows"**, because #2052 sends nothing while any row is flagged. Over-limit rows are flagged `OVER_SEAT_LIMIT` in row order.
   * R1.20's chain is now PF-15 p2 → PF-4c p1b → PF-4c p2 → the invite screen.
 * **J-19's Stripe walk:** no Stripe test account or keys are configured anywhere I can see. #1959 runs on BillingPort's fake and recorded Stripe answers and reads `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` from the environment, with no values committed. The founder creates the account (P-551).
+
+## Rev 17.47 (19 Nov 11:02 IST)
+* **Batch #2221 failed** on `check_pf19b_mail` (`page.consent` null). The cause is **#2196**: the real PrismaArrival returns the firm's real booking wording, where the fake gave a Sample one.
+  * Ruling (7000698257): `seedFirmFrontOffice` creates the firm's Sample booking consent wording once when the firm has none, and never overwrites the firm's own. Then re-run on main + #2196 + #1961 and get a diff-only Approve.
+  * #1961 is cleared (7000698553).

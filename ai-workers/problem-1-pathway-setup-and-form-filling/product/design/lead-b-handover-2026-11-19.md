@@ -33,3 +33,4 @@ For the next Lead B session. Read `lead-b-state.md` and the last revs (17.30-17.
 * **J-19's Stripe walk:** no test account or keys exist. Lead 87 asks the founder (P-551).
 * **The next Lead B starts fresh from this file** on the new account (A196), or at 50% context. Keep this file current at each step.
 * The BACKLOG row PF-4c1b is added by Lead 87 on lead31. The Stripe test-mode account is asked of the founder: only J-19's live walk waits on it, not J2's other items. Keys go only into the demo copy's environment.
+* 11:02 IST: batch #2221 failed because of #2196 (Sample consent wording seed ruled, comment 7000698257). #1961 is cleared.
