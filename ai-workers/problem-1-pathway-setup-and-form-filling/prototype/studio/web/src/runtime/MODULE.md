@@ -7,7 +7,7 @@ The case screens: the case officer's cases, the client's questionnaire and the f
 
 **Purpose.** `cases.tsx` routes `/cases/*` (case list, one case, the client's questionnaire, phone first); `questionnaire.tsx`, `answer-sheet.tsx` answers; `checklist.tsx`, `documents-drawer.tsx` documents; `eligibility.tsx`, `readiness.tsx`, `review.tsx`, `representative-review.tsx`, `sign-steps.tsx`, `submission.tsx` the filing steps; `stages.tsx` multi-stage cases; `privacy.tsx`, `link-page.tsx` adult privacy and links; `release-update.tsx`, `out-of-date.tsx` newer releases.
 **Owner area.** runtime lane (Unconfirmed: no lane map in code).
-**Entry points.** routes `/cases/*` and `/link` (`App.tsx`); API calls through `@/lib/api` to `/api/runtime/*` (card api-cases).
+**Entry points.** routes `/cases/*` and `/link` (`App.tsx`); API calls through `@/lib/api` to `/api/runtime/*` (card api-cases); `case-decision.tsx` (Decision and closing, the header's closing line, CS-C1s) calls its four acts and its read through `staffApi`, the firm staff sign-in, never the simulated person.
 
 **Invariants (set by).**
 - The server decides what each person may do; a screen only shows (STANDARDS §6, `lib/api.ts`).
@@ -20,7 +20,7 @@ The case screens: the case officer's cases, the client's questionnaire and the f
 - Drawers, never modals, on the eligibility page.
 
 **Tables.** none directly (web).
-**Tests.** `tests/check_bk4a.ts`, `tests/check_bk4b_handoffs.ts`, `tests/check_a24_2_case_list_browser.ts`, `tests/check_c83_review_browser.cjs`, `tests/check_c81_sign_browser.ts`, `tests/check_m3s4_never_waivable.ts`.
+**Tests.** `tests/check_bk4a.ts`, `tests/check_bk4b_handoffs.ts`, `tests/check_a24_2_case_list_browser.ts`, `tests/check_c83_review_browser.cjs`, `tests/check_c81_sign_browser.ts`, `tests/check_m3s4_never_waivable.ts`, `tests/check_csc1s_decision_browser.cjs`.
 
 **Do not.**
 - Decide a permission, a stamp or readiness in the browser; ask the server.
