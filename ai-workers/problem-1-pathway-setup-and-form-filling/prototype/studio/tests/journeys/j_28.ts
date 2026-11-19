@@ -17,7 +17,7 @@
 //      reason kept, nothing in the inbox); the same send before the unsubscribe was allowed and delivered.
 // What the brief words differently, and why (raised on the PR): the web form has one consent tick, so W1's "another
 // purpose unticked" is read as "no row for any other purpose"; the booking tick records the same purpose as the web form
-// (EMAIL MARKETING, FO-2 part 3b's Sample wording), so W3's "the booking purpose stays granted" is walked with the purpose
+// (EMAIL MARKETING: the firm's newest wording of that purpose, arrival-port.ts), so W3's "the booking purpose stays granted" is walked with the purpose
 // that is really other, WhatsApp opt-in (WHATSAPP SERVICE), which no public door records yet: it is written as a staff
 // record through ConsentPort (a fixture, Sample). A marketing mail has no product door either: it is written through
 // MessagePort with the local adapter into the copy's own database and files, as check_pf19b2_ses.ts --app does, and the
@@ -68,9 +68,11 @@ const consent = new ConsentStore(auditEvent);
 const run = Date.now().toString(36), key = `j28-${run}`;
 const firm = await db.platformFirm.create({ data: { key, operatingName: "Sample J-28 firm", countryCode: "CA", status: "ACTIVE", contactEmail: `office-${run}@j28-firm.example` } });
 await db.$transaction((tx) => seedFirmFrontOffice(tx, firm.id, "seed:J-28-test"));
-await db.$transaction((tx) => ensureBookingWording(tx, firm.id, "seed:J-28-test"));   // version 1: the booking tick's Sample wording
+await db.$transaction((tx) => ensureBookingWording(tx, firm.id, "seed:J-28-test"));   // version 1 (Sample); the web form pins its own version below
 const formWording = await db.$transaction((tx) => consent.publishWording(tx, { firmId: firm.id, channel: "EMAIL", purpose: "MARKETING", locale: "en-CA", text: `Yes, Sample J-28 firm may email me news and offers. I can stop at any time. (Sample wording ${run})`, by: "seed:J-28-test" }));
 const formText = sql(`select text from msg_consent_wording where id = '${formWording.id}'`);
+// The booking tick shows the firm's newest EMAIL MARKETING wording, not the web form's pinned one: a newer version.
+const bookingWording = await db.$transaction((tx) => consent.publishWording(tx, { firmId: firm.id, channel: "EMAIL", purpose: "MARKETING", locale: "en-CA", text: `Yes, Sample J-28 firm may email me news about consultations. I can stop at any time. (Sample booking wording ${run})`, by: "seed:J-28-test" }));
 const waWording = await db.$transaction((tx) => consent.publishWording(tx, { firmId: firm.id, channel: "WHATSAPP", purpose: "SERVICE", locale: "en-CA", text: "Yes, the firm may message me about my enquiry on WhatsApp. (Sample wording)", by: "seed:J-28-test" }));
 const token = randomBytes(24).toString("base64url");
 sql(`update fo_web_form set enabled = true, public_token = '${token}', consent_wording_version_id = '${formWording.id}', updated_by = 'seed:J-28-test', updated_at = now() where firm_id = '${firm.id}'`);
@@ -136,7 +138,6 @@ const book = async (p: Page, who: typeof visitor, tick: boolean, shotAs?: string
   const words = await p.locator("label:has(input[type=checkbox]) span").innerText();
   if (tick) await p.getByRole("checkbox").check();
   if (shotAs) await look(p, `${shotAs}-2-details`, "the booking details form");
-  await p.waitForTimeout(3_500);   // the form refuses a booking sent sooner than a person can fill it
   await p.getByRole("button", { name: "Book this time" }).click();
   await p.locator('[data-public-state="booked"], [data-summary], [role="alert"]').first().waitFor({ timeout: 20_000 });
   const booked = (await p.locator("main").innerText()).includes("You are booked");
@@ -172,8 +173,8 @@ try {
   const b = personOf(visitor.email, 1), bRows = rowsOf(b);
   const shownBooking = sql(`select id from msg_consent_wording where firm_id = '${firm.id}' and channel = 'EMAIL' and purpose = 'MARKETING' and text = $q$${b1.words}$q$`);
   ok("J-28 W2: the same visitor (same email) books on the booking page with the booking tick, and is booked", b1.booked, b1);
-  ok("J-28 W2 pass: underneath, one BOOKING_FORM consent row for that purpose (EMAIL MARKETING), with the wording the page showed, recorded by the booking page, live",
-    bRows.length === 1 && shownBooking !== "" && bRows[0] === `EMAIL|MARKETING|BOOKING_FORM|${shownBooking}|system:booking-page|true`, { bRows, shownBooking, words: b1.words });
+  ok("J-28 W2 pass: underneath, one BOOKING_FORM consent row for that purpose (EMAIL MARKETING), with the wording the page showed (the firm's newest, not the web form's), recorded by the booking page, live",
+    bRows.length === 1 && shownBooking === bookingWording.id && shownBooking !== formWording.id && bRows[0] === `EMAIL|MARKETING|BOOKING_FORM|${shownBooking}|system:booking-page|true`, { bRows, shownBooking, words: b1.words });
   ok("J-28 W2: the booking's person is a new record flagged as a possible match of the web-form visitor, never linked (AG-2-84)",
     b !== "" && b !== v && sql(`select count(*) from fo_lead where person_id = '${b}' and possible_match_person_id = '${v}'`) === "1");
   ok("J-28 W2: the web form's row is untouched by the booking (still one row, live)", JSON.stringify(rowsOf(v)) === JSON.stringify(vRows));
@@ -238,7 +239,8 @@ try {
   const gate = await allowed(v, "EMAIL", visitor.email);
   ok("J-28 W5 pass: a marketing send to the withdrawn purpose is blocked by the gate: SUPPRESSED, its reason kept (no live EMAIL MARKETING consent)",
     blocked.state === "SUPPRESSED" && /MARKETING/.test(blocked.reason ?? "") && !gate.allowed && sql(`select state || '|' || state_reason from msg_outbox where id = '${blocked.outboxId}'`) === `SUPPRESSED|${blocked.reason}`, { blocked, gate });
-  ok("J-28 W5 pass: nothing new reaches the visitor's inbox (still the one mail sent before the unsubscribe)", (await inbox(visitor.email)).filter((m) => m.class === "MARKETING").length === 1);
+  await messages.deliver(firm.id, blocked.outboxId);   // the worker is asked to send it: it sends only a QUEUED row
+  ok("J-28 W5 pass: asked to deliver, the blocked send still reaches nothing: the visitor's inbox holds only the one mail sent before the unsubscribe, and the row stays SUPPRESSED", sql(`select state from msg_outbox where id = '${blocked.outboxId}'`) === "SUPPRESSED" && (await inbox(visitor.email)).filter((m) => m.class === "MARKETING").length === 1);
   ok("J-28: no error in the browser", errors.length === 0, errors);
 } catch (e) {
   ok(`J-28: the walk stopped — ${String((e as Error).stack ?? e).slice(0, 800)}`, false);
