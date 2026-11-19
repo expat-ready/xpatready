@@ -389,3 +389,45 @@ Verdict: Approve fe9a276f0bdcbac034a08802e09be24850d2dc1d
 Findings: none. m-r6 (the SES send-and-bounce test) went to a follow-up row on the tech lead's decision; I have not reopened it here.
 
 Verdict: Approve 1dddeeed90f1ccdf2be34ecacca02ad50d4edb68
+
+## Re-review (merge with PF-19r part 1 and stamp 20261119003000 at 8966877d9)
+
+19 Nov 2026. Diff-only (P-277). I read only two commits on top of my record `518f7b3f0`: the merge `f7f22a59c` (origin/main with #2157, PF-19r part 1) and the re-stamp `8966877d9`. I did not edit any code.
+
+* **Main.** I ran `git fetch origin` first. Main is at `9d440b2f4`, which is the merge's second parent and an ancestor of the head. Main has not moved since.
+* **`send/mail.ts`: the resolution is correct.**
+  - **Firm mail keeps #2157's behaviour.** `write`'s firm branch (`mail.ts:77-98`) is main's, line for line, with two exceptions, both from my approved change: the address check now comes before the branch (`:65`), and one comment is moved. It still parses with `MessageSend` before any file is stored. The attachments, `messages.send`, and `capHolds` all run inside `inTx` (`:90-93`). The refusal on SUPPRESSED, FAILED or BOUNCED is kept, and dispatch still happens after the commit.
+  - **The platform branch (`:66-76`) is correct.**
+    - It writes through `inTx`, and the platform result is always `held: false`. It never reads a firm row and never calls `capHolds`.
+    - Its `dispatch` calls `messages.dispatch(null, …)` and is only returned. `send` awaits it after `$transaction` resolves (`:39`), and `sendIn`'s caller runs it after its own commit.
+    - `send` puts its own transaction under `asBypass("platform.account.mail")` only when `platformAccount === true` (`:38-39`). That raw check and `write`'s parsed `!("firmId" in m)` pick the same side, because `MailMessage` is a strict discriminated union on `platformAccount` (`ports/mail.ts:40-48`). A firm email therefore never runs under the bypass, and an email that has both a firm and the flag is refused by the parse before any transaction opens.
+* **`send/messages.ts`: correct.** #2157's `capHolds` (`:120`) is unchanged. PF-19p's `sendPlatform` (`:133`) and null-firm `dispatch` (`:146`) are unchanged too: their changed lines are byte-identical to my approval at `1dddeeed9`.
+* **`sendIn` and `mailIn` with a platform message.** Today no caller on main passes one.
+  - #2157's three senders all name `firmId: actor.firmId` or `firmId`, so none takes the platform path:
+    - the staff invitation: `identity/service.ts:329`, `send`;
+    - the two-step reset notice: `identity/session/service.ts:200`, `mailIn`;
+    - the complaint reminder: `complaints/complaints.ts:453`, `mailIn`.
+  - The other `mail.send` callers name a firm as well: booking, sign-up's "already have an account", the email sender and support.
+  - A future caller that forgets the bypass use fails closed. DW3 shows the wall refuses the NULL-firm insert with 42501. The need is noted at `mail.ts:58`; PF-5v part 2 is the first such caller.
+* **MODULE.md.** `git diff -U0 origin/main 8966877d9` shows only PF-19p's three changes:
+  - the `platformAccount: true` note, appended after main's `sendIn` note in the `MESSAGES_MAIL` entry;
+  - the invariant bullet;
+  - `tests/check_pf19p_platform_mail.ts` after main's `check_pff4_file_type.ts`.
+  All of main's text is kept. The card is 40 lines, and `module-cards.py tree` passes (15 cards).
+* **The rest of the PR is unchanged from my approval.** I compared each file's `-U0` +/− lines in `origin/main..8966877d9` with those in `34c5e1e99..1dddeeed9`. The two diffs cover the same files, apart from the migration folder's rename. Only these differ:
+  - mail.ts: the resolution above;
+  - MODULE.md: main's lines on the − side;
+  - the stamp lines: the schema comment in `platform-messages.prisma`, and the suite's `NEW` and DW4's newest-before check (now `20261118200100_fo7ts_card_terminal_trust`).
+  messages.ts and every other file are identical.
+* **The rename.** `git show -M 8966877d9` shows a 100% rename, and the SQL at `1dddeeed9` and at `8966877d9` is byte-identical.
+  - `20261119003000` is later than main's newest, `20261118200100_fo7ts_card_terminal_trust`.
+  - No fetched remote branch other than this PR's has a `20261119003000_` folder.
+  - Main's migrations after `20261118140000` are `20261118200000_fo7ts_money_settings` and `20261118200100_fo7ts_card_terminal_trust`. Neither names `msg_`, `outbox`, `audience` or `idempotency`. Their `DO` blocks lock and read `money_payment_settings` or `money_payment`, and the one loop goes over three named functions, not over tables.
+* **Run (at `8966877d9`).** Both exit 0:
+  - `check_pf19p_platform_mail`: 68/0. DW4 says "newest before it: 20261118200100_fo7ts_card_terminal_trust".
+  - `check_pf19r_senders`: 24/0.
+  I did not re-run the other suites. The builder reports them all at exit 0, with tsc clean.
+
+Findings: none (no Blocker, Major or Minor). m-r6 (the SES send-and-bounce test) stays a follow-up row; I have not reopened it.
+
+Verdict: Approve 8966877d977c261253b050f3cded69016d386c7c
