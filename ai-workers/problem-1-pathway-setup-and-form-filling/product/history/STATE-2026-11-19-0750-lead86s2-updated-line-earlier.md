@@ -13,3 +13,7 @@ earlier 07:3x: **Lead 85 handed over to Lead 86 (local_bb67266d); Lead 85 check 
 ## Moved 08:3x IST 19 Nov (Lead 86), word for word (08:0x-08:2x lines)
 
 **P-715 #2207 (Mergify parallel by module scope, batch 2, pipeline and money and migrations capacity 1) read and labelled after #2200; CK builder watches 48 h, undo mode: serial**; **A192 → P-719 finish by capability (founder 08:1x, "Adopt it now"); RULES as of P-719**; **R1.6 Proven 08:06 (qa; walks runs 44444740569 and 44444754316 success on main c600f2150, checked by Lead 86): Release 1 proven 12 of 101; reader gaps (a) no live licence-class route key, (b) keyless route stops start-up vs "403" line: rows owed after the freeze**; earlier 08:0x check line (labels #2197/#2199, #2198 replaced after #2173, conflicts, money lane) word for word in the same history file
+
+## Moved 09:0x IST 19 Nov (Lead 86), word for word (08:3x line)
+
+08:3x IST (true clock 08:39; Lead 86's 08:4x-08:5x labels above and in commits were ahead): **qa 2 took over 08:38 (old qa stopping); queue: batch #2201 (#2130 #2124 #2167 #2176 #2173) ci shards running since 08:01, merge ~09:00; #2202 and #2206 stacked; guards on #2201 failed check-isolated-ttl.sh (flaky, not a merge condition); worktrees friendly-feynman and unruffled-cannon removed by the founder, disk 9.6 GB**; 
