@@ -8,7 +8,7 @@
 # (upstream first: more shards on starved machines would make it worse):
 #   machines (job wait > 5 min) › test parts (longest part > 30 min) › faulty PRs reach batches (>= 2 failed batches)
 #   › queue capacity (approved-to-merged > 60 min, nothing failing). Others over their line are listed after it.
-# GitHub unreadable = an ACT, never a silent pass. GET only, US$0; every call times out at 8 s and none starts after 40 s.
+# GitHub unreadable = an ACT, never a silent pass. GET only, US$0; every call times out at 8 s, is tried twice, and none starts after 40 s.
 # Usage: python3 -I product/tools/constraint.py [--hours 3] [--facts F | --save-facts F]   Test: check-constraint.sh
 import argparse, json, os, re, statistics, subprocess, sys, time, urllib.parse
 from concurrent.futures import ThreadPoolExecutor
@@ -34,7 +34,13 @@ def token():
     try: return subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=5).stdout.strip()
     except (OSError, subprocess.SubprocessError): return ""
 
-def get(path, tok):
+def get(path, tok, tries=2):   # one retry: a single slow call (curl 28, seen 19 Nov 18:37 IST) must not blank the check
+    try: return get1(path, tok)
+    except OSError:
+        if tries < 2: raise
+        return get(path, tok, 1)
+
+def get1(path, tok):
     if time.time() - T0 > 40: raise TimeoutError(f"40 s budget spent before {path}")
     # The token reaches curl on stdin (-H @-), never on its command line, where ps would show it.
     r = subprocess.run(["curl", "-sSL", "--fail", "--max-time", "8", "-H", "@-", "-H", "Accept: application/vnd.github+json",
