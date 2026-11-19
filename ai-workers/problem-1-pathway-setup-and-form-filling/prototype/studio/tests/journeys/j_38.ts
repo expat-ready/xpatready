@@ -16,8 +16,10 @@
 //       higher SEQUENCE again. (W6 is #2326's staff time-zone step for R1.38.)
 // W7 and W8 go through the staff API (POST /api/front-office/bookings/:id/reschedule and /cancel), signed in by the
 // local sign-in stand-in, because no staff booking screen is on main yet. The demo inbox has no screen either (stand-in
-// SI-20): each invite is read back by opening the host's inbox address in the browser; the page then shows each mail's
-// subject and its invite, as the browser received them, for the screenshot (headers, links and their tokens left out).
+// SI-20): the host's W7 and W8 judgments read the host's inbox in the browser (its address opened in the page); the page
+// then shows each mail's subject and invite for the screenshot. The picture leaves headers and links out; the walk's
+// trace still holds the raw answer, with the unsubscribe link's token (Sample address, a copy dropped at stop), as W5's
+// trace holds the booker's link.
 // The day is the first one the page offers 10:00 Toronto on, at least 26 hours ahead, so the test never goes stale. In
 // Toronto's winter (EST, UTC-5) that is 15:00 UTC and 7:00 p.m. in Dubai, as the brief words it; in summer (EDT, UTC-4)
 // it is 14:00 UTC and 6:00 p.m. What is expected is worked out here with plain UTC sums (Dubai is UTC+4 all year), never
@@ -210,13 +212,13 @@ try {
     const r = await fetch(`${BASE}/api/front-office/bookings/${row?.id}${path}`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body ?? {}) });
     return { status: r.status, body: await r.json().catch(() => null) as Record<string, unknown> | null };
   };
-  /** The host's inbox opened in the browser (the inbox's own JSON answer; it has no screen), read back there, and shown
-   *  as each mail's subject and invite for the screenshot. */
-  const inboxInBrowser = async (name: string, title: string) => {
+  /** The host's inbox opened in the browser (the inbox's own JSON answer; it has no screen), read there (oldest first) and
+   *  shown as each mail's subject and invite for the screenshot. What the browser read is what is judged. */
+  const inboxInBrowser = async (name: string, title: string): Promise<Mail[]> => {
     const p = await ctx.newPage();
     await p.goto(`${BASE}/api/demo/platform-inbox?address=${encodeURIComponent(hostEmail)}`);
     const mails = await p.evaluate((t) => {
-      let list: { subject: string; attachments: { filename: string; text: string | null }[] }[] = [];
+      let list: { subject: string; body: string; attachments: { filename: string; content_type: string; text: string | null }[] }[] = [];
       try { list = (JSON.parse(document.body.innerText) as { messages: typeof list }).messages.slice().reverse(); } catch { /* shown as none */ }
       document.body.innerHTML = "";
       const h = document.createElement("h1"); h.textContent = t; h.style.font = "600 20px sans-serif"; document.body.append(h);
@@ -224,7 +226,7 @@ try {
         const s = document.createElement("h2"); s.textContent = m.subject; s.style.font = "600 15px sans-serif"; document.body.append(s);
         const pre = document.createElement("pre"); pre.textContent = m.attachments.find((a) => a.filename.endsWith(".ics"))?.text ?? "(no invite)"; pre.style.font = "12px monospace"; document.body.append(pre);
       }
-      return list.length;
+      return list.map((m) => ({ subject: m.subject, body: m.body, attachments: m.attachments.map((a) => ({ filename: a.filename, content_type: a.content_type, text: a.text })) }));
     }, title);
     await p.screenshot({ path: join(SHOTS, `${name}-1440.png`), fullPage: true });
     await p.close();
@@ -240,8 +242,7 @@ try {
   const after7 = await db.foBooking.findUnique({ where: { id: row!.id }, select: { startsAt: true, sequence: true, status: true } });
   ok(`J-38 W7: staff move the booking to ${new Date(moved).toISOString()} (11:00 Toronto); underneath it is at the new time with a higher sequence`, mv.status === 200 && after7?.startsAt.getTime() === moved && (after7?.sequence ?? 0) > (row?.sequence ?? 0), { status: mv.status, after7 });
   const [b7, h7] = [await inbox(bookerEmail, 2), await inbox(hostEmail, 2)];   // both moved mails are in before the cancel (a mail whose booking changed again before it ran is dropped)
-  const hb7n = await inboxInBrowser("W7-inbox-moved", "The host's demo inbox, read in the browser after the move");
-  const hb7 = h7;
+  const hb7 = await inboxInBrowser("W7-inbox-moved", "The host's demo inbox, read in the browser after the move");
   const movedTime = { booker: `${new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", dateStyle: "full" }).format(moved)} at ${clock12(movedDubai, 0)} (${BOOKER_ZONE})`, host: `${new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", dateStyle: "full" }).format(moved)} at 11:00 a.m. (${FIRM_ZONE})` };
   for (const [who, list] of [["booker", b7], ["host", hb7]] as const) {
     const [first, second] = [list[0], list[1]], i = icsAt(second);
@@ -250,16 +251,17 @@ try {
       { mails: list.map((m) => m.subject), method: i.method, uid: i.uid === uid, seq: [seqOf(first), seqOf(second)], start: i.start && new Date(i.start).toISOString() });
     ok(`J-38 W7: the ${who}'s moved mail names the new time in its own zone ("${movedTime[who]}")`, plain(`${second?.subject}\n${second?.body}`).includes(movedTime[who]), plain(second?.subject ?? "").slice(0, 160));
   }
-  ok("J-38 W7: the host's inbox read in the browser holds the same two mails", hb7n === 2 && h7.length === 2, [hb7n, h7.length]);
+  const sameMails = (a: Mail[], b: Mail[]) => a.length === b.length && a.every((m, i) => m.subject === b[i].subject && m.attachments.find((x) => x.filename.endsWith(".ics"))?.text === b[i].attachments.find((x) => x.filename.endsWith(".ics"))?.text);
+  ok("J-38 W7: the host's inbox read in the browser is the inbox's own answer (same subjects and invites as read by the API)", sameMails(hb7, h7), [hb7.map((m) => m.subject), h7.map((m) => m.subject)]);
 
   // W8: staff cancel it.
   const cx = await staff("/cancel");
   const after8 = await db.foBooking.findUnique({ where: { id: row!.id }, select: { status: true, sequence: true } });
   ok("J-38 W8: staff cancel the booking; underneath it is CANCELLED with a higher sequence again", cx.status === 200 && after8?.status === "CANCELLED" && (after8?.sequence ?? 0) > (after7?.sequence ?? 0), { status: cx.status, after8 });
   const b8 = await inbox(bookerEmail, 3);
-  const hb8 = await inbox(hostEmail, 3);
-  const hb8n = await inboxInBrowser("W8-inbox-cancelled", "The host's demo inbox, read in the browser after the cancel");
-  ok("J-38 W8: the host's inbox read in the browser holds the same three mails", hb8n === 3, hb8n);
+  const h8 = await inbox(hostEmail, 3);
+  const hb8 = await inboxInBrowser("W8-inbox-cancelled", "The host's demo inbox, read in the browser after the cancel");
+  ok("J-38 W8: the host's inbox read in the browser is the inbox's own answer (same subjects and invites as read by the API)", sameMails(hb8, h8), [hb8.map((m) => m.subject), h8.map((m) => m.subject)]);
   for (const [who, list] of [["booker", b8], ["host", hb8]] as const) {
     const [prev, last] = [list[1], list[2]], i = icsAt(last);
     ok(`J-38 W8: the ${who}'s inbox gets the cancel invite: METHOD:CANCEL, STATUS:CANCELLED, the same UID, a higher SEQUENCE than the move's`,
