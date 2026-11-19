@@ -2,7 +2,9 @@
 # Every brief and every PR body (P-611, row G-4 (3); P-526, P-606): a "Done when" that names how it is proved (a test,
 # a check, an exit code), and a "Duplicate check:" line. With --brief (a lane start, G-4 (7), P-608) also one line
 # naming the model and the effort, e.g. "Model: Opus 5.5, effort: medium"; a start brief that names no backlog row
-# ("Row X-1", "/next screens B124") needs only that line. Reads the text on stdin; exit 1 with what is
+# ("Row X-1", "/next screens B124") needs only that line. A start brief that names a row or an R1 item also needs a line
+# "Item: R1.x" (several: "Item: R1.4, R1.8") or "Item: none (tooling|qa|records)", and each item must be in a wave open
+# for lane starts (waves.py allow; B204, P-745), else "OUTSIDE WAVE: ...". Reads the text on stdin; exit 1 with what is
 # missing. Used by lane-preflight.sh --hook (briefs) and .github/workflows/pr-rules.yml (PR bodies). Test: check-g4-rules.sh.
 set -u
 txt=$(tr -d '\r'); bad=""
@@ -19,5 +21,21 @@ if [ "${1:-}" = --brief ]; then
   printf '%s\n' "$txt" | grep -iE '(opus|fable|sonnet|haiku)' | grep -qiE 'effort[ :=*]*(low|medium|high|xhigh|max)|(low|medium|high|xhigh|max)[ -]effort' \
     || bad="$bad no model and effort line (one line naming both, e.g. \"Model: Opus 5.5, effort: medium\", P-608);"
 fi
-[ -z "$bad" ] && exit 0
-echo "MISSING:${bad%;}."; exit 1
+wave=""
+if [ "${1:-}" = --brief ] && { [ "$row" = 1 ] || printf '%s\n' "$txt" | grep -qE '(^|[^A-Za-z0-9.])R1\.[0-9]'; }; then
+  # B204 (P-745, founder 20 Nov: "enforceable and ... followed mandatory by the agents through the hooks"): what the lane is for.
+  item=$(printf '%s\n' "$txt" | grep -m1 -E '^[[:space:]*>-]*Item:' | sed -E 's/^[[:space:]*>-]*Item:[[:space:]*]*//; s/[[:space:]*.]*$//')
+  if [ -z "$item" ]; then bad="$bad no \"Item:\" line (\"Item: R1.x\", or \"Item: none (tooling)\", \"(qa)\" or \"(records)\"; B204, P-745);"
+  elif printf '%s' "$item" | grep -qiE '^none \((tooling|qa|records)\)$'; then
+    # a builder command builds an item: "none" there would skip the wave check
+    printf '%s\n' "$txt" | grep -qE '/next (screens|forms|runtime|evidence)' \
+      && bad="$bad \"Item: $item\" on a /next screens, forms, runtime or evidence start (a builder start names its R1 item; B204);"
+  elif printf '%s' "$item" | grep -qE '^R1\.[0-9]+([[:space:]]*,[[:space:]]*R1\.[0-9]+)*$'; then
+    # fail closed: a waves.py that cannot run refuses the start, with its own words
+    wave=$(python3 -I "$(dirname "$0")/waves.py" allow $(printf '%s' "$item" | tr ',' ' ') 2>&1) && wave="" || wave=${wave:-"OUTSIDE WAVE: waves.py could not run, so the item was not checked."}
+  else bad="$bad an \"Item:\" line that is neither R1 items (\"Item: R1.4, R1.8\") nor \"none (tooling|qa|records)\" (got: $item);"; fi
+fi
+[ -z "$bad$wave" ] && exit 0
+[ -n "$bad" ] && echo "MISSING:${bad%;}."
+[ -n "$wave" ] && echo "$wave"
+exit 1

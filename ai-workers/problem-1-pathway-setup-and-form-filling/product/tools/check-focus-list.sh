@@ -106,7 +106,7 @@ ok "no focus list: a builder brief is refused, with the path it looked at" "$([ 
 fc "$M Run /next runtime ENF-733." "$T/none.md"
 ok "no focus list: a tooling brief still passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 # The hook, fed the JSON Claude Code sends on start_session and create_session (lane-preflight.sh --hook).
-G4=$'\nDuplicate check: searched BACKLOG; none\nDone when: check-x.sh exits 0'
+G4=$'\nItem: none (records)\nDuplicate check: searched BACKLOG; none\nDone when: check-x.sh exits 0'   # the Item line passes brief-check (B204, tested in check-lane-preflight.sh), so the focus list is what is tested here
 hook() { out=$(jq -n --arg n "$1" --arg p "$2$G4" '{tool_name:$n, tool_input:{target:"cloud", prompt:$p}}' | FOCUS_LIST="$T/focus-list.md" FOCUS_BACKLOG_DIR="$T" bash "$TOOLS/lane-preflight.sh" --hook 2>&1); r=$?; }
 hook start_session "Row CS-NT1. $M R1.76 notes, part 1."
 ok "hook: a start for an off-list item is denied with the reason and the list's path" "$(echo "$out" | jq -e --arg f "$T/focus-list.md" '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | test("CS-NT1") and test("P-733") and contains($f))' >/dev/null 2>&1 && echo 1)" "$out"
