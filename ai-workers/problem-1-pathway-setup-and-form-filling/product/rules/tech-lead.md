@@ -115,3 +115,8 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-708 | #2151 "run tests once" hand-merged on green ahead of the queue (founder); a PR runs fast + types, the full set runs once per batch. | script: ci.yml | 19 Nov |
 | P-709 | Night: Lead and standbys label any PR with `Reviewer: Approve <head>` after the Lead's reads, by API or github.com in the browser; idle cloud lanes restarted in claude.ai/code; no spend over caps, no gate lowered. | prose | 19 Nov |
 | P-710 | Sample platform firms seeded ON on demo and test copies; production never seeds (test that no Sample firm exists in production mode). | prose | 19 Nov |
+
+## Morning of 19 Nov (moved word for word by Lead 84, 06:4x IST)
+| P-712 | Module cards: the shared Tables/Tests lines are generated or one file per row; no PR hand-edits a shared card line; skills say so. | prose (tooling PR owed) | 19 Nov |
+| P-713 | Build in parallel through warm lanes (P-341) on disjoint touch lists; parallel building does not slow proving. | prose | 19 Nov |
+| P-714 | Account switch plan: forecast each check; 94% tell the founder; 96% lanes push and stop, RESUME pushed; 97% the founder switches. | prose | 19 Nov |
