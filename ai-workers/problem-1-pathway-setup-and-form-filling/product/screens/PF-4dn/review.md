@@ -98,3 +98,14 @@ Verdict: Block 8803e771841276028feb71d05681d6eec3611475
 
 1. Major: re-stamp the migration later than main's newest (P-600 (d)) and re-run CI.
 2. Minor: retake `pf-6-staff/screenshots/invite-people-1440.png` from the merged head (it is missing main's Licence, Licences and Security navigation).
+
+## Re-review at 8cb024a69, 19 Nov
+Diff-only: `git diff 8803e7718 8cb024a69`. Both earlier findings are resolved, and nothing new is open.
+
+* **Major 1 resolved.** The migration folder was renamed to `20261119173000_pf4dn_invitation_display_name` with byte-identical SQL. It is later than `origin/main`'s newest, `20261119144500_csnk1_field_name_key`. Line 19 of this file is updated.
+* **Minor 2 resolved.** `invite-people-1440.png` now shows the Name field and the full navigation (Profile, Licence, Availability, Team, Licences, Security, Terms).
+* **Merge of main (f23a4c1f0):** main's newer commits touch none of PF-4dn's files, and no new migration touches `platform_invitation`. PF-4dn's changed lines match the 8803e7718 merge exactly.
+* **Re-run:** `check_pf4dn_invite_name` passed **15/15** on a fresh copy `pf4dnrv` on :4595, which I stopped afterwards. The newest applied migration is `20261119173000_pf4dn…`, and none failed.
+* **Journey score:** stays 10/10.
+
+Verdict: Approve 8cb024a69212b0e041c865d908cc290d06a7a922
