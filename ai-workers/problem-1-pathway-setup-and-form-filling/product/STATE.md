@@ -1,6 +1,6 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_019a74ed-6dba-4a9c-9188-04a3e34bda5a Lead 87 · 19 Nov 09:1x IST (series 2; took over from Lead 86 (series 2, local_bb67266d) at ~430k, P-446)
+current_lead: local_3eea0506-288c-4b7e-8c3e-5343fafb6212 Lead 90 · 19 Nov 11:37 IST (series 2; new account, Fable 5.2 medium auto, P-725; took over from Lead 87 (series 2, local_019a74ed))
 
 updated: 2026-11-19 10:5x IST: Lead 87; P-721 to P-727 today (proof sprint, per-item proof, drain to ~13:30, two-journey factory, Fable Lead on the new account, two tracks, bulk invite); the full line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1124-lead87s2-updated-line.md` · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-730**) · this branch: `lead/2026-11-07-lead31`
 
@@ -46,5 +46,5 @@ Earlier Start here lines (19 Nov target P-697, Drafts P-685): word for word in `
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
-**Series 2 (P-433):** current = `current_lead:`; the Leads-in-order line word for word in `history/STATE-2026-11-16-2052-lead69s2-check-notes-asks-A121-A122-leads-line.md`; since then: Lead 68 (local_adb435f1) → Lead 69 (local_28bf6046) → Lead 70 (local_9ae95739) → Lead 71 (local_0c9cccec) → Lead 72 (local_af927c49) → Lead 73 (local_9b98cea4) → Lead 74 (local_fa783599) → Lead 75 (local_c9752f73) → Lead 76 (local_f6824017) → Lead 77 (local_baa78a6d) → Lead 78 (local_68613e56) → Lead 79 (local_25aa8878) → Lead 80 (local_d018e333) → Lead 81 (local_bd570ff6) → Lead 82 (local_f86fdc68) → Lead 83 (local_191538a9) → Lead 84 (local_f88c32b8) → Lead 85 (local_26804e40) → Lead 86 (local_bb67266d) → **Lead 87 (local_019a74ed)**; standby Lead 88 (local_ae7ef2c3).
+**Series 2 (P-433):** current = `current_lead:`; the Leads-in-order line word for word in `history/STATE-2026-11-16-2052-lead69s2-check-notes-asks-A121-A122-leads-line.md`; since then: Lead 68 (local_adb435f1) → Lead 69 (local_28bf6046) → Lead 70 (local_9ae95739) → Lead 71 (local_0c9cccec) → Lead 72 (local_af927c49) → Lead 73 (local_9b98cea4) → Lead 74 (local_fa783599) → Lead 75 (local_c9752f73) → Lead 76 (local_f6824017) → Lead 77 (local_baa78a6d) → Lead 78 (local_68613e56) → Lead 79 (local_25aa8878) → Lead 80 (local_d018e333) → Lead 81 (local_bd570ff6) → Lead 82 (local_f86fdc68) → Lead 83 (local_191538a9) → Lead 84 (local_f88c32b8) → Lead 85 (local_26804e40) → Lead 86 (local_bb67266d) → Lead 87 (local_019a74ed) → **Lead 90 (local_3eea0506, new account)**; Leads 88 (local_ae7ef2c3) and 89 were old-account standbys that never ran.
 **Series 1: Leads 1 to 41, before 9 Nov 17:48 IST**, never renamed or renumbered: the full list, word for word, is in `history/STATE-2026-11-09-2130-lead2s2.md` ("Leads, in order").
