@@ -97,3 +97,34 @@ Reviewer: Request changes 8d259c4f88c8cd95e0e06e4c4ba574100f831933
 2. Major 2: `{ kind: "case-stage", id: stageId }` with `"case-stage"` appended to `NOTIFICATION_ITEM_KIND`, or Build Lead C's written ruling.
 
 The Minors are expected in the same fix commit where cheap (m1, m2, m7 at least). Re-review reads only the new commits (P-277).
+
+## Round 2: aea1c9082366829c7d30a52ff2fb12dcba3893fe (diff 8d259c4f8..aea1c90 only, P-277)
+Commits c5cce6e74 and aea1c9082. The code diff covers `plan.ts`, `reminders.ts`, `features/case-deadlines.ts`, one line of `ports/notifications.ts`, the card, the suite and J-74.
+
+**What I ran on aea1c90**
+* Suite on a clean `git archive`: **64/64**.
+* J-74 on an isolated copy (:4474): **14/14**. Its log has `case_deadlines_waiting` once.
+* Probe B again under the walls (xr_app pool, sweep with no scope, handler in `withFirm`). With closed days changed from 5 and 8 Mar to 4, 5 and 8 Mar after arming, the sweep queued new keys for 23 Feb, 2 Mar and 3 Mar. Those told one person each, and the old 24 Feb, 3 Mar and 4 Mar jobs told nobody.
+* `pgboss-jobs.ts:287` gives the handler the envelope key, so `job.key` in the app is the key we set.
+
+**Findings**
+* **Major 1: closed.**
+  * The key now carries the planned minute (`plan.ts`).
+  * The handler works out the plan again under today's calendar and fires only on `want.key === job.key` and a day not passed (`reminders.ts` runReminder).
+  * `stillToCome` keeps the planned key when it moves `at` to now, so a reminder due earlier today still matches.
+  * The new DW11 M1 and M2 lines have real fails: the round 1 handler's day comparison would fire on 25 Feb, 4 Mar and 14:00Z.
+* **Major 2: closed.** The item is `{ kind: "case-stage", id: stageId }`, and `"case-stage"` is appended to `NOTIFICATION_ITEM_KIND`. That changes one line by adding, without reordering. CS-N1, CS-NT1 and CS-T1 merge `main` on a conflict; say so in the PR.
+* **m1: closed.** Log events are `case_deadlines_*`; the waiting line is logged once per process.
+* **m2: closed.** The DW8 fail line also requires six notifications in all.
+* **m3, m4, m5, m6, m8 and m9: left as recorded Minors.** I accept them for the PR body. m3 rests on the port's rule (AG-7-39 r2). m9 is part 1's `readFirmCalendar`.
+* **m7: open until the PR body has the line.** It must contain `Card unchanged: <reason>` for `api/src/features/MODULE.md`.
+* **r2-m1 (new, Minor; for Build Lead C):** a closure entered **on the reminder's own day**, after the re-planned earlier day has passed, drops that reminder.
+  * Probe C: the firm closes Thu 4 Mar at 08:00 Toronto on 4 Mar. Nothing reaches anyone on 3 or 4 Mar; the 25 Feb and 8 Mar reminders do fire. The same happens to the on-the-day reminder when the deadline day itself is closed that morning.
+  * This follows the brief's rule "a reminder whose day has passed never fires late", so it is not a gap against the brief. It does trade against "Duplicate beats a miss" (AG16-60).
+  * Fix: record it in the card and the PR. If Build Lead C prefers no miss, fire the old job when the re-planned day has passed and the old job's day is today.
+
+**Journey score round 2: 8/10, Pass** (`journey-test-reviewer-2026-11-19.md`, round 2).
+
+No Blocker or Major is open.
+
+Reviewer: Approve aea1c9082366829c7d30a52ff2fb12dcba3893fe

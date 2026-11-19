@@ -49,3 +49,10 @@ Reviewer, 19 Nov 2026, exact head 8d259c4f88c8cd95e0e06e4c4ba574100f831933. Skil
 * A real screen reader, and an intended user's unaided walk (D17 and D20 stay with the founder).
 * PF-14's real pg-boss runner end to end, and PF-18n's adapter, which is not on `main`.
 * 1024 px and 200 % zoom: this part adds no screen.
+
+## Round 2: aea1c9082366829c7d30a52ff2fb12dcba3893fe (re-score; diff 8d259c4f8..aea1c90 only)
+* **J-74 again: 14/14** on an isolated copy (:4474) of aea1c90. The start-up log has `case_deadlines_waiting` once.
+* **Suite: 64/64** on a clean archive of aea1c90. My walled probe B passes: after a closed day is added, the earlier plan's jobs tell nobody and the re-planned ones fire once each.
+* **Journey 7 now holds** for changes made ahead of time: a closed day or a zone set after arming moves the reminders. One gap is left, which follows the brief's never-late rule: a closure entered on the day itself, after the re-planned earlier day has passed, drops that reminder (probe C; review r2-m1).
+* **Correct data ½ → 1** (Majors 1 and 2 fixed). **Task completed ½ → 1.** Error recovery stays ½: log names are fixed, but stale skips and skipped consume failures leave no trace for the officer.
+* **Score: 8/10.** Every other criterion keeps its round 1 score. **Verdict: Pass (8/10, no criterion at 0).**
