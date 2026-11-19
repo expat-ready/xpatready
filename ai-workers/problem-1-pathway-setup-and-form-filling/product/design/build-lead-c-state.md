@@ -17,7 +17,7 @@ PRs = pull requests per the drafts (P-610). "Ready" = every wait in the draft is
 | R1.77 | Submission number, UCI; decide, close, reopen | **CS-C1b (1, #2002)**; **BK-21** (fixes QA-397) | — | both | BK-21: the Lead names the `case-prepare.ts` holder |
 | R1.74 | Deadlines that remind; working days | **CS-DL1a, CS-DL1b (2)** | — | CS-DL1a | b after a |
 | R1.68 | Preview for staff review | CS-D5 (2) | — | no | CS-D1 parts 1-2 (which wait on PF-F rail) |
-| R1.10 | Checking every input | **CS-V1 PR 1, 2, 3a, 3b (4)** | PF-28 | PR 1 | PR 3a/3b: Bake tag (P-499), CS-D1b, CS-K1, CS-NT1 p1, CS-W1 |
+| R1.10 | Checking every input | **CS-V1 PR 3a, 3b (2)** (PR 1 #2007 and PR 2 #2042 merged) | PF-28 | PR 1 | PR 3a/3b: Bake tag (P-499), CS-D1b, CS-K1, CS-NT1 p1, CS-W1 |
 | R1.70 | Expiry, translation, notarisation flags | CS-D7c (1), CS-D7 (2) | — | no | Bake tag, `library.prisma` baton, two Lead answers |
 | R1.69 | Read log, fingerprint, keep period | CS-D6 (3) | — | no | CS-D1, CS-D5, AUD-5 |
 | R1.72 | Case with applicants, representative | CS-K1 (2) | FO-8 | no | CS-C1b (createCase series); part 2: FoPersonPort |
@@ -252,3 +252,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
 * 07:17 IST 19 Nov (Lead 85 agreed): park messages sent to the CS-K1 part 1 lane and the CS-W1 lane (after CS-W3 part 0). Idle cloud lanes may not wake. Watching #2000; when it merges I tell Lead 85, who gives the CS-DL1b line.
 * 07:32 IST 19 Nov: current Lead is now Lead 86 (local_bb67266d).
 * 07:33 IST 19 Nov: status to Lead 86. **AUD-5 part 2 was built twice:** #2194 (1c9e952b9, code only) and #2197 (be65d001d, with the breaker report); both Approved. Recommended labelling #2197 and leaving #2194 open as superseded. PF-19r merged (#2157); J-48 waits on Lead B's PF-19b part 3. CS-V1 PR 2 lane is idle with no push seen.
+* 07:35 IST 19 Nov (Lead 86): #2197 stays (labelled); #2194 is marked superseded and left open. AUD-5 lanes told to stop or park. **My error:** CS-V1 part 2 was already merged (#2042, 17 Nov); my R1.10 table row was stale, now fixed. The 'CS-V1 PR 2' lane is told to stop and park, and Lead 86 is told not to type its brief. J-48 starts after Lead B's PF-19b part 3 lands.
