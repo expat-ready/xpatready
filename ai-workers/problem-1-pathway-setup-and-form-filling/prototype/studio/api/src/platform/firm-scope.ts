@@ -105,6 +105,7 @@ export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonl
   "platform.billing.stripe-webhook": { why: "Stripe's event names a customer or subscription, not our firm: the door finds the firm, then updates it as that firm (PF-5 part 2)", routes: [/^POST \/api\/hooks\/stripe$/i], direct: true },
   "job:platform.billing.webhook_sweep": { why: "Stripe events whose handling did not finish, every firm's (PF-5 part 2)", routes: [], outside: true },
   "job:platform.signup.purge": { why: "pending sign-ups past their 24 hours are deleted (PF-5; no firm yet)", routes: [], outside: true },
+  "job:platform.entitlements.storage_daily": { why: "the daily storage measure lists every firm, then measures each in its own firm scope (PF-15, SA-3-40)", routes: [], outside: true },
   "job:messages.outbox_sweep": { why: "the outbox sweep picks up every firm's stuck rows, each firm its own share (PF-19b)", routes: [], outside: true },
   "job:platform.secret_box.reencrypt": { why: "the secret store re-encrypts every firm's secrets under the new key (PF-24)", routes: [], outside: true },
   "platform.demo.reset": { why: "the demo reset puts every Sample firm's settings back (P-571 (1)); demo routes, and the reset tools outside a request", routes: [/^POST \/api\/demo\//i], outside: true },
