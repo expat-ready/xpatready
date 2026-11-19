@@ -117,3 +117,11 @@ CS-C1r (reopen skips the case limit) is Build Lead C's. Main's V2 red was fixed 
 
 ### Scratch watches (scratchpad of this session; gone with it)
 `watch.sh` (PRs 2029 1959 1961 2268 2302 2315 2304 2308 2307 2323; branches incl. the PF-19b part 3 branch) and `scan.sh` (question scan with an exclusion list). The next Lead B re-creates them: one GraphQL call per 240 s; report a state, head, Approve-on-head or label change, and CI only when it becomes SUCCESS or FAILURE.
+
+### Update 22:37 IST (Lead 96's quiet-PR sweep)
+* **#2158 PF-18bk:** re-stamped by Lead 96 (folder 20261119170000_pf18bk_support_keys, SQL unchanged, head a5a2a8e68). Its migration HINT still names the old folder; a cosmetic follow-up. Lead 96 reads and labels.
+* **#2038 FO-6 part 1:** given to Card-conflict fixer B (merge main, P-712 card move to `MODULE.rows/FO-6.md`, check the stamp). FO-6 is a Further item, so it waits behind nearer items (P-733).
+* **#2109 PF-4dn** (part of R1.20) goes to the R1.20 lane after #2307 merges: P-712 card move, take the branch's png.
+* **#2001 PF-24w:** a new lane at the founder's next typed turn; low priority (R1.15 waits on the AWS account).
+* **#2322 FO-3st1 part 1** (R1.38): ruled (comment 7015934908). Follow-ups FO-3sa-h, FO-2z and FO-3st1-d are in the focus list.
+* **#2304** labelled 22:28; **#1961** re-stamped by Lead 96 (18341ccbb).
