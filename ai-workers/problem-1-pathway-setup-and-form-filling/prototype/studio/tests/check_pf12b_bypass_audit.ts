@@ -20,7 +20,7 @@ import { fakeFiles } from "../ports/files.ts";
 import { fakeJobs } from "../ports/jobs.ts";
 import { fakeMail } from "../ports/mail.ts";
 import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
-import { appDatabaseUrl, asBypass, asJob, BYPASS_USES, BypassNotRecorded, BypassRefused, FirmScopeError, inRequest, onBypassAudit, touchFirm, WalledPool } from "../api/src/platform/firm-scope.ts";
+import { appDatabaseUrl, asBypass, asJob, BYPASS_USES, BypassNotRecorded, BypassRefused, FirmScopeError, inRequest, onBypassAudit, touchFirm, touchingAudit, WalledPool } from "../api/src/platform/firm-scope.ts";
 import { FirmSignUp, type SignUpPorts } from "../api/src/platform/firms/signup.ts";
 import { LocalSignUp } from "../api/src/platform/firms/signup-identity.ts";
 import { resetSampleFirmSettings } from "../api/src/platform/identity/demo-reset.ts";
@@ -105,6 +105,16 @@ try {
   await touchFirm({}, A);   // outside a bypass use: nothing crossed a wall
   onBypassAudit(was0);
   ok("PF-12b DW1 pass: one line per firm and transaction (a second touch of the same firm adds none); outside a bypass use touchFirm writes nothing", rec.entries.length === 2 && rec.entries.map((e) => e.firmId).join(",") === `${A},${B}`, rec.entries);
+
+  // AUD-1m beside PF-12b: AuditPort also takes a case-side line (a workspace, no firm). The wrapping port cannot name a
+  // firm for it, so on a bypass use it is refused before the inner port sees it; a firm's line still gets its touch.
+  const inner = fakeAudit(), wrapped = touchingAudit(inner), wasT = onBypassAudit(fakeAudit());
+  const caseLine = { workspaceId: "0b12b000-0000-4000-8000-0000000000c5", actor: "system:studio", action: "answered", entity: "case", entityKey: null, summary: "Sample case line" };
+  const caseErr = await errOf(() => asBypass("platform.demo.reset", () => wrapped.record({}, caseLine)));
+  await wrapped.record({}, caseLine);   // outside a bypass use: passes through
+  await asBypass("platform.demo.reset", () => wrapped.record({}, { firmId: A, actor: "system:test", action: "platform.setting.change", entity: "platform_firm_setting", entityKey: "platform.language", summary: "Sample firm line" }));
+  onBypassAudit(wasT);
+  ok("PF-12b fail (AUD-1m's case line): the wrapping port refuses a case-side line on a bypass use (it names no firm to write the line for), passes it through outside one, and still passes a firm's line", caseErr instanceof FirmScopeError && inner.caseEntries.length === 1 && inner.entries.length === 1 && inner.entries[0]?.firmId === A, { caseErr: String(caseErr), cases: inner.caseEntries.length, entries: inner.entries.length });
 
   // Break M1, M2, m3, m4 (the breaker's report, screens/PF-12b/break-report.md).
   const nested = await errOf(() => inRequest(inboxRoute, () => asBypass("platform.demo.inbox", () => asBypass("platform.identity.authenticate", () => db.platformStaff.findMany()))));
