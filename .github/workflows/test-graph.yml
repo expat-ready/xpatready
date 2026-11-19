@@ -59,6 +59,7 @@ jobs:
         run: cd "$S" && ./node_modules/.bin/playwright install chromium
       - name: the boot baseline, part 1 only (a copy started, asked isolated.sh's one readiness request, stopped)
         if: matrix.shard == 1
+        continue-on-error: true   # a failed baseline never costs part 1's suites; the join then warns (no boot functions)
         timeout-minutes: 10
         run: |
           mkdir -p "$RUNNER_TEMP/cov/__boot__"
@@ -67,10 +68,11 @@ jobs:
       - name: every studio suite under coverage, part ${{ matrix.shard }} of ${{ env.N }} (verdicts are not judged here)
         timeout-minutes: 75
         run: SUITES_COVERAGE="$RUNNER_TEMP/cov" bash "$P/tools/run-suites.sh" --demo --shard "${{ matrix.shard }}/$N" | tee suites.md || true
-      - name: collect (also after a timeout: the suites that ran still count)
+      - name: "collect (also after a timeout, the suites that ran still count)"
         if: always()
         run: |
           zsh "$S/stop.sh" >/dev/null 2>&1 || true   # the demo API (check_studio_browser.cjs under --demo) writes its coverage on stop
+          for i in $(seq 1 30); do curl -sf -o /dev/null http://localhost:4400/api/session || break; sleep 1; done; sleep 2   # stop.sh does not wait
           python3 -I "$P/tools/test-graph.py" collect "$RUNNER_TEMP/cov" --out "suites-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v4
         if: always()

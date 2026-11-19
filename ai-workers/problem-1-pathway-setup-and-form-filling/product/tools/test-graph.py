@@ -11,7 +11,8 @@ never hand-kept. Each suite runs under V8's own coverage (run-suites.sh with SUI
 "Exercised" (not merely loaded): a function of the file other than the module wrapper (index 0; index 1 too when it is
 nameless and holds every later function, esbuild's CommonJS wrapper) and the transpiler's helpers (__name, __export,
 __copyProps, __toCommonJS, the export getter `get`, keepNames' <static_initializer>) ran. In a server process (one that
-loaded api/src/main.ts) a function counts only when it ran more often than in the boot baseline: `__boot__`, a copy
+loaded api/src/main.ts) a function counts only when it ran more often than the boot baseline times the suite's number
+of server processes (each copy boots once; a retry's copy too): `__boot__`, a copy
 started and stopped after isolated.sh's one readiness request (test-graph.yml). The suite's own process is never reduced.
 Measured 20 Nov: with no baseline one API suite "exercised" 392 files, every module, through route registration alone.
 The baseline's functions are kept in graph.json (`boot`): every server suite runs them, so a change to such a file
@@ -66,13 +67,14 @@ def collect(covdir, top):
     for d in sorted(os.listdir(covdir)):
         if not (d.startswith("check_") or d == "__boot__") or not os.path.isdir(os.path.join(covdir, d)):
             continue   # only suites' folders and the boot baseline
-        files = {}   # file -> {"total", "suite": {fn: count}, "server": {fn: count}}
+        files, servers = {}, 0   # file -> {"total", "suite": {fn: count}, "server": {fn: count}}; server processes
         for j in sorted(glob.glob(os.path.join(covdir, d, "*.json"))):
             try:
                 res = json.load(open(j, encoding="utf-8")).get("result", [])
             except (OSError, ValueError):
                 continue   # a process killed mid-write leaves a partial file: skip it, never guess
             kind = "server" if d == "__boot__" or any(rel(r.get("url", ""), top) == MAIN for r in res) else "suite"
+            servers += kind == "server"
             for r in res:
                 p = rel(r.get("url", ""), top)
                 if not p or not p.startswith(APP) or "/node_modules/" in p:
@@ -82,10 +84,10 @@ def collect(covdir, top):
                 e["total"] = max(e["total"], len(fs))
                 for fn in fs:
                     c = fn["ranges"][0].get("count", 0) if fn["ranges"] else 0
-                    if c > 0:   # processes of one kind add up (a suite that starts its copy twice counts boot twice: over, never under)
+                    if c > 0:   # processes of one kind add up; the baseline is multiplied by the server processes (join)
                         k = f"{fn.get('functionName') or ''}@{fn['ranges'][0]['startOffset']}"
                         e[kind][k] = e[kind].get(k, 0) + c
-        out[d] = dict(sorted(files.items()))
+        out[d] = {"servers": servers, "files": dict(sorted(files.items()))}
     return out
 
 
@@ -131,11 +133,12 @@ def capabilities(top):
 
 
 def join(parts, top, commit=""):
-    raw = {}
+    raw, nserv = {}, {}
     for p in parts:
-        for s, fs in json.load(open(p, encoding="utf-8")).items():
+        for s, part in json.load(open(p, encoding="utf-8")).items():
             dst = raw.setdefault(s, {})   # every suite is kept, even one with no app file (review M2: then unmapped)
-            for f, v in fs.items():   # one suite in two parts (never expected): the larger count of each function
+            nserv[s] = max(nserv.get(s, 0), part["servers"])
+            for f, v in part["files"].items():   # one suite in two parts (never expected): the larger count of each function
                 e = dst.setdefault(f, {"total": 0, "suite": {}, "server": {}})
                 e["total"] = max(e["total"], v["total"])
                 for kind in ("suite", "server"):
@@ -145,12 +148,12 @@ def join(parts, top, commit=""):
     base = {f: v["server"] for f, v in (boot or {}).items()}
     suites, server = {}, {}
     for s, fs in raw.items():
-        suites[s] = {f: [len(set(v["suite"]) | {k for k, c in v["server"].items() if c > base.get(f, {}).get(k, 0)}), v["total"]] for f, v in fs.items()}
+        suites[s] = {f: [len(set(v["suite"]) | {k for k, c in v["server"].items() if c > base.get(f, {}).get(k, 0) * max(nserv[s], 1)}), v["total"]] for f, v in fs.items()}
         server[s] = any(v["server"] for v in fs.values())
     module = cards(top)
     caps, r1suites = capabilities(top)
     g = {"schema": 1, "generated": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-         "commit": commit, "boot_baseline": boot is not None,
+         "commit": commit, "boot_baseline": bool(base and any(base.values())),   # an empty __boot__ is no baseline
          "boot": {f: sorted(v) for f, v in sorted(base.items()) if v}, "suites": {}, "files": {}, "modules": {}, "capabilities": {}, "unmapped": []}
     for s, fs in sorted(suites.items()):
         src = source(s, top)
