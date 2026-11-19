@@ -76,3 +76,9 @@ was not on `main` at `21cc0c640`: `front-office/retainers/service.ts` still writ
   zod parse), `check-mergify-scopes.sh` and `module-cards.py` (a new folder must be claimed), `pr-rules` (the PR body
   needs a line starting "Duplicate check:" and a "Done when").
 * Watch: CS-NT1 also wants `runtime.ts` and `cases.prisma`.
+
+## State at 20 Nov 04:4x IST (23:1x UTC 19 Nov), runtime lane on `claude/awesome-allen-4pfgcj`
+* Built: CS-K1 part 2 and J-72. Reviewer **Approve 40639a2de** (Opus; diff-only re-reviews after 2 Majors; `review.md`); breaker found 4 Majors at 17b41633f, F1-F3 fixed, F4 with the tech lead (#2255 comment 7020701579).
+* Waiting: **#2321 (FO-2w) not on main** (open, unchanged since 19 Nov 18:42 UTC, no labels). No PR opened yet (order ruled by Lead 95).
+* Next when #2321 merges: `git merge --no-edit origin/main` once; `check_csk1_client` and `tests/journeys/j_72.ts` on fresh copies (J-72 a second time: done-when asks exit 0 twice); diff-only Approve; open the PR ready with `screens/CS-K1/PR-BODY-part-2.md` (the PR title in the brief); post `Reviewer: Approve <head>`; "Question for the tech lead: migration read" before the label.
+* J-72 runs: `PROSPECT_WON_POLL_MS=500`, copy started with `PLATFORM_IDENTITY=local PROSPECT_WON_POLL_MS=500`.
