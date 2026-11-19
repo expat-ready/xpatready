@@ -67,7 +67,7 @@ try {
   for (const d of before) psql(DEMO, ["-f", join(MIG, d, "migration.sql")]);
   sql(DEMO, `set session_replication_role = replica;
     insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, firm_key, case_number) values ('${u(10)}', '${u(1)}', '${u(2)}', 'user-P', 'user-O', 'sample-firm', 'C-2026-00001');
-    insert into audit_event (id, workspace_id, actor, action, entity, summary) values (gen_random_uuid(), '${u(1)}', 'user-R', 'case.open', 'runtime_case', 'Sample');`);
+    insert into audit_event (id, workspace_id, actor, actor_type, action, entity, summary) values (gen_random_uuid(), '${u(1)}', 'user-R', 'FIRM_STAFF', 'case.open', 'runtime_case', 'Sample');`);
   const pre = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DEMO), options: "-c TimeZone=UTC" }) }); dbs.push(pre);
   await seedSampleFirms(pre);
   await pre.$disconnect();
