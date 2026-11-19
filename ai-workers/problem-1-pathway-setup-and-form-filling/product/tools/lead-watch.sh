@@ -17,6 +17,7 @@ say "time  $(TZ=Asia/Kolkata date '+%d %b %H:%M IST')"
 # 0. Stall guard (founder, 7 Nov, P-388): the previous check must have run. Lead 24 stalled ~7.4 h on one prompt and no
 # check fired. Checks run every 30 min; a gap over 40 min (30 + 10 grace, P-389) means a check was missed: tell the
 # founder at once. The standby's lead-heartbeat.sh reads the same stamp while this Lead is stuck.
+if [ "${1:-}" = "context-read" ]; then mkdir -p "$STATE_DIR"; { date +%s; echo "${2:-read}"; } > "$STATE_DIR/context-read"; echo "context read recorded"; exit 0; fi
 stamp="$STATE_DIR/last-check"; now=$(date +%s)
 if [ -s "$stamp" ]; then last=$(cat "$stamp"); gap=$(( (now - last) / 60 ))
   [ "$gap" -gt 40 ] && ACT "previous check ran ${gap} min ago ($(TZ=Asia/Kolkata date -r "$last" '+%d %b %H:%M IST' 2>/dev/null || TZ=Asia/Kolkata date -d "@$last" '+%d %b %H:%M IST')): checks were missed; tell the founder at once (P-388, P-389)"
@@ -200,5 +201,15 @@ print(json.dumps({"now": datetime.now(timezone.utc).isoformat(), "files": {"RULE
   "seen": open(E["KF_SEEN"]).read().splitlines()}))' > "$STATE_DIR/known-facts.json"
 kf=$(python3 -I "$TOOLS/known-failures.py" --facts "$STATE_DIR/known-facts.json" 2>&1); echo "$kf"; act=$((act + $(grep -c '^ACT' <<<"$kf")))
 
+
+# 13. Context of every running Mac session (P-565 (2), founder A193 19 Nov 08:2x IST: "Is it not enforced?"; a builder
+# reached 62% unseen). Only get_usage can read another session's context, so each check runs get_usage on every running
+# Mac session (list_sessions), asks for a hand-over at 45% and replaces at 50%, then records the read with
+# `bash tools/lead-watch.sh context-read "<name pct, ...>"`. A read older than 35 min is an ACT.
+now=$(date +%s); cr="$STATE_DIR/context-read"
+if [ -s "$cr" ]; then crt=$(head -1 "$cr"); crg=$(( (now - crt) / 60 ))
+  if [ "$crg" -gt 35 ]; then ACT "session context not read for ${crg} min (P-565 (2)): get_usage on every running Mac session; 45% hand-over, 50% replace; then lead-watch.sh context-read"
+  else say "ctx   read ${crg} min ago: $(sed -n 2p "$cr")"; fi
+else ACT "session context never recorded (P-565 (2)): get_usage on every running Mac session; 45% hand-over, 50% replace; then lead-watch.sh context-read"; fi
 
 exit "$act"
