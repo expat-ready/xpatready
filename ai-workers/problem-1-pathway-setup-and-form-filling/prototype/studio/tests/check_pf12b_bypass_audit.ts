@@ -147,7 +147,7 @@ try {
   const wasN = onBypassAudit(fakeAudit({ failOn: (e) => e.action === "platform.bypass" && e.firmId === B }));
   const held = await new PlanLimitChanges({ db, audit: auditEvent, mail: heldMail }).sendNotices(changed.changeId);
   onBypassAudit(wasN);
-  ok("PF-12b DW2 fail (PF-15's limit change): at notice time a firm whose line cannot be written is sent nothing and its Owners are listed as failed; the other firm's Owners are told, and nothing is thrown (the change is already committed)", ownersB >= 1 && held.failed.length === ownersB && held.sent >= 1 && heldMail.sent.length === held.sent && heldMail.sent.every((m) => m.firmId === A), { held, ownersB, to: heldMail.sent.map((m) => m.firmId) });
+  ok("PF-12b DW2 fail (PF-15's limit change): at notice time a firm whose line cannot be written is sent nothing and its Owners are listed as failed; the other firm's Owners are told, and nothing is thrown (the change is already committed)", ownersB >= 1 && held.failed.length === ownersB && held.sent >= 1 && heldMail.sent.length === held.sent && heldMail.sent.every((m) => "firmId" in m && m.firmId === A), { held, ownersB, to: heldMail.sent.map((m) => ("firmId" in m ? m.firmId : "platform account")) });
   const noticeMail = fakeMail({ clock });
   const told = await new PlanLimitChanges({ db, audit: auditEvent, mail: noticeMail }).sendNotices(changed.changeId);
   ok("PF-12b DW1 pass (PF-15's limit change): sending the notices reads both firms' Owners, so each firm gets one more line", told.sent >= 2 && told.failed.length === 0 && lines(LC) === [A, B].sort().map((f) => `${f}:2`).join(","), { told, lines: lines(LC) });
