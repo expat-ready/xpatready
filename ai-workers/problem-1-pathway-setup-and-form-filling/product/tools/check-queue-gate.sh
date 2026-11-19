@@ -346,7 +346,7 @@ txt=open(sys.argv[3]).read()
 if len(re.findall(r"GATE_B_NOT_TESTED: \"\$\{\{ github.event_name == .workflow_dispatch. && .warn. \|\| .. \}\}\"", txt)) != 3: bad.append("ci.yml: gate B must warn, not fail, on NOT TESTED in a full run (kind, fast, packs), as in a batch")
 if re.search(r"^ *cache: npm *$", txt, re.M): bad.append("ci.yml: a full run (a run of main) must not save to the cache of main")
 kb=[s for s in c["jobs"]["kind"]["steps"] if s.get("id") == "b"][0]
-if "vars.REVIEWERS" not in str(kb["env"].get("REVIEWERS")) or "reviewer:" not in kb["run"] or kb["run"].find("reviewer:") > kb["run"].find("pr-base.sh"): bad.append("ci.yml: a full run must check for a reviewed head before the PR code is merged in")
+if "vars.REVIEWERS" not in str(kb["env"].get("REVIEWERS")) or "reviewer:" not in kb["run"] or kb["run"].find("reviewer:") > kb["run"].find("pr-base.sh") or not re.search(r"grep -qx .\[1-9\]\[0-9\]\*. <<< \"\$ok\" \|\| \{[^}]*exit 1; \}", kb["run"]): bad.append("ci.yml: a full run must check for a reviewed head before the PR code is merged in")
 if set(ins) != {"pr", "head"}: bad.append("ci.yml workflow_dispatch inputs are not pr and head: %s" % list(ins))
 if "format('"'"'full-run PR #{0} {1}'"'"', inputs.pr, inputs.head)" not in str(c.get("run-name")): bad.append("ci.yml does not name a full run by its inputs")
 print("; ".join(bad) or "ok")' "$W" "${W%/*}/label-guard.yml" "${W%/*}/ci.yml" 2>&1)

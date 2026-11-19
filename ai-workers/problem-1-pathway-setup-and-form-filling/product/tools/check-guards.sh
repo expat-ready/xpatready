@@ -95,7 +95,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 full fromwho|product/tools/queue-gate.sh|s/\('\[.\[\] . \)select(.user.login as \$l . \$who . index(\$l)) . \(select(.author_association == "OWNER"\)/\1\2/|check-queue-gate.sh
 15 full nottested|../../.github/workflows/ci.yml|s/, FULL_PR: "\${{ inputs.pr }}", GATE_B_NOT_TESTED: "[^"]*" }/, FULL_PR: "${{ inputs.pr }}" }/|check-queue-gate.sh
 15 batch only|product/tools/queue-gate.sh|s/(map(select(. != "ci")) . if length > 0 then . else empty end) \/\/ ./map(select(. != "ci"))/|check-queue-gate.sh
-15 batch unread|product/tools/queue-gate.sh|s/names=\$(failing "\$rid"); \[ -n "\$names" \] .. {[^}]*}/names=$(failing "$rid")/|check-queue-gate.sh
+15 batch unread|product/tools/queue-gate.sh|s/names=\$(failing "\$rid" all . sort -u); \[ -n "\$names" \] .. {[^}]*}/names=$(failing "$rid" all)/|check-queue-gate.sh
 15 batch body|product/tools/queue-gate.sh|s/ + \[(.body \/\/ "") . scan(.*tonumber\]\() . index(\$n))\)/\1/|check-queue-gate.sh
 15 batch pages|product/tools/queue-gate.sh|s/'length < 100 or any(.\[\]; .number <= \$n)'/'true'/|check-queue-gate.sh
 15 full from|product/tools/queue-gate.sh|s/ \&\& \[\[ "\$at" < "\$FULL_FROM" \]\] \&\& return 0/ \&\& return 0/|check-queue-gate.sh
