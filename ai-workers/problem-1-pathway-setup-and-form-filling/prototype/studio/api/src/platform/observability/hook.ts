@@ -11,18 +11,19 @@
 import { randomUUID } from "node:crypto";
 import { format } from "node:util";
 import type { INestApplication } from "@nestjs/common";
-import { JsonLog, requestScope, stdSink, useLog, type Level, type Sink } from "./log.ts";
+import { JsonLog, requestScope, stdSink, useLog, type AuditScope, type Level, type Sink } from "./log.ts";
 import { requestLine } from "./metrics.ts";
 import { logText, redact, redactText, safeError } from "./redact.ts";
 
-type Req = { method: string; path?: string; baseUrl?: string; headers: Record<string, string | string[] | undefined>; route?: { path?: unknown }; platform?: { firmId?: unknown } };
+type Req = { method: string; path?: string; baseUrl?: string; headers: Record<string, string | string[] | undefined>; route?: { path?: unknown }; platform?: { firmId?: unknown; staffId?: unknown; ourStaff?: unknown; supportSessionId?: unknown } };
 type Res = { statusCode: number; writableFinished?: boolean; setHeader(name: string, value: string): unknown; on(event: "finish" | "close", fn: () => void): unknown };
 
 const ID = /^[A-Za-z0-9_.:-]{1,128}$/;
-/** The caller's request id when it is a plain id that redaction leaves as it is; otherwise a new one. */
+/** The caller's request id when it is a plain id that redaction leaves as it is; otherwise a new one. A caller never
+ *  takes a job's form (`job:…`, observability/jobs.ts), so a request's lines never pass for a job's (AUD-1b, breaker m1). */
 export function correlationOf(header: string | string[] | undefined): string {
   const h = Array.isArray(header) ? header[0] : header;
-  return typeof h === "string" && ID.test(h) && redactText(h) === h ? h : randomUUID();
+  return typeof h === "string" && ID.test(h) && !/^job:/i.test(h) && redactText(h) === h ? h : randomUUID();
 }
 
 /** The route pattern a request matched ("/api/combinations/:id"), "unmatched" for an /api path no route took, "web"
@@ -36,6 +37,16 @@ export function routeOf(req: Req): string {
 
 const firmOf = (req: Req): string | undefined => { const f = req.platform?.firmId; return typeof f === "string" && ID.test(f) ? f : undefined; };
 
+const ACTOR_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/, UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** AUD-1b: who the request acts as, from the guard's StaffContext (PF-4's req.platform): a staff member of a firm is
+ *  FIRM_STAFF; a request a later guard marks `ourStaff: true` (PF-4s, not on main) is OUR_STAFF. No staff, no actor. */
+export function auditOf(req: Pick<Req, "platform">): AuditScope | undefined {
+  const p = req.platform, s = p?.staffId;
+  if (typeof s !== "string" || !ACTOR_ID.test(s)) return undefined;
+  const support = typeof p?.supportSessionId === "string" && UUID.test(p.supportSessionId) ? { supportSessionId: p.supportSessionId.toLowerCase() } : {};
+  return { actor: `staff:${s}`, actorType: p?.ourStaff === true ? "OUR_STAFF" : "FIRM_STAFF", ...support };
+}
+
 export function requestMiddleware() {
   return (req: Req, res: Res, next: () => void) => {
     const t0 = performance.now(), correlationId = correlationOf(req.headers["x-request-id"]);
@@ -44,7 +55,7 @@ export function requestMiddleware() {
     // A connection closed before the answer was sent is "aborted", status 499 (review m8), never counted as a success.
     const end = () => { if (done) return; done = true; const aborted = res.writableFinished === false; requestLine({ method: req.method, route: routeOf(req), status: aborted ? 499 : res.statusCode, durationMs: performance.now() - t0, correlationId, firmId: firmOf(req), aborted }); };
     res.on("finish", end); res.on("close", end);
-    requestScope.run({ correlationId, firmId: () => firmOf(req) }, next);
+    requestScope.run({ correlationId, firmId: () => firmOf(req), audit: () => auditOf(req) }, next);
   };
 }
 
