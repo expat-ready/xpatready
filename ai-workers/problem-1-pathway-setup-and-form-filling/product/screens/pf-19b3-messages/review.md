@@ -159,3 +159,28 @@ This head merges #1961's tip 518f7b3f0 (main 34c5e1e99 merged in, including `202
 No Blocker or Major is open. The earlier Minors and questions stand as recorded (notes.md items 3, 6, 7, 9, 10). The PR body still needs the `Card unchanged:` lines.
 
 Reviewer: Approve 5d4b527a5aa96a41ba476d04ea3c4724d23103e1
+
+---
+
+## Re-review of the third merge (diff only, P-277): `git diff 88d03c665 5890bcc2f`, head `5890bcc2febd45f1eeafb7e78c9935868da65af2`
+
+The merge is 028672c52: #1961's tip 88d03c665 (main with PF-19r part 1 #2157, plus the PF-19p stamp `20261119003000`) into a05d64183. 5890bcc2f then adds the re-rendered screenshots.
+
+* **The diff holds only PF-19b part 3.**
+  * The diff touches 18 files, none under `prisma/`.
+  * Every part-3 code file and both tests have the same blob as at 5d4b527a5 (and so as at the approved b7eb6a357). The break report and the journey file are unchanged too.
+  * What differs:
+    * `review.md`;
+    * `notes.md` (one added line, item 11, recording the CS-W1 note from my last read);
+    * the three screenshots (re-rendered; the 1440 px one shows the same panel and words as before);
+    * `api/src/platform/MODULE.md`.
+* **The MODULE.md resolution is clean.** A word diff against 88d03c665 shows exactly the three part-3 additions (entry point, two tests, the part-3 line in the part 2 block). The card is 40 lines, and `module-cards.py tree` passes.
+* **PF-19r part 1 (send/mail.ts, send/messages.ts) does not touch part 3's path.**
+  * **The local adapter's test events still wait for the worker's commit.** The worker's `deliver()` is unchanged: it locks the row `FOR UPDATE` first, stops unless the row is QUEUED, and calls `adapter.deliver(tx, …)` inside that transaction. So the local test event still waits on the commit.
+  * **MailPort purposes are unchanged.** The new `sendIn`/`mailIn` path writes in the caller's transaction and dispatches after its commit, so the worker and the test event are the same. The new `capHolds()` reads only and counts QUEUED rows, so DELIVERED and BOUNCED do not affect it. MailPort still stores `idempotencyKey: mail:<key>` and still drops `templateKey`, so `purposeOf()` gives the same purposes (notes item 3 stands).
+  * **The demo-inbox filter line is unchanged** (same blob). No new app code reads outbox state: the only `SENT` filters are the unsubscribe page (which already takes DELIVERED and BOUNCED), the demo inbox and part 3's own lines.
+* **Run on this head:** `check_pf19b3_delivery` passes 24/0, including part 2's suite. The DW4 MailPort booking email still reaches DELIVERED after the merged send path. The browser suite runs the same blobs, and the coordinator's run on 028672c52 is 24/24.
+
+No Blocker or Major is open. The earlier Minors and questions stand (notes.md items 3, 6, 7, 9, 10, 11). The PR body still needs the `Card unchanged:` lines.
+
+Reviewer: Approve 5890bcc2febd45f1eeafb7e78c9935868da65af2
