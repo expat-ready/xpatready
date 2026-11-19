@@ -42,3 +42,14 @@ For the next Lead B session. Read `lead-b-state.md` and the last revs (17.30-17.
 * **Briefs owed by me before 13:30:** FO-13s (with QA-510) and the FO-9a phone-part amendment.
 * **P-728:** each new item's J-test goes in the same PR as its last part.
 * 11:23 IST: both owed briefs are written: `FO-13s.md` (R1.110: FO-13i part 2 for QA-510, then the Identity panel with J-110) and the `FO-9a.md` amendment (R1.33: the staff phone edit with J-33). R1.108 is out of flight (FO-13c waits on FO-9a and CS-S1b).
+
+## Final state at the account switch (11:33 IST 19 Nov)
+* **The account switch is now.** The next current Lead is **Lead 90** on the new account; its session id is not known yet. It reads STATE "Hand-over: Lead 87 → the new-account Lead (Lead 90)" on `lead/2026-11-07-lead31`. Send your first report to it once you know its id.
+* **Waiting on merges:**
+  * **#2195** folds the platform card, which unblocks module-cards everywhere;
+  * **#2029** (R1.4, labelled) next. After it, #1959's lane follows comment 7000777630 (audit fields on 2 bypass uses), then Lead 90 reads and labels it;
+  * **#2196** needs the wording-seed fix (comment 7000698257), then an Approve;
+  * #2012, #2102, #2103, #1961 and #2181 are labelled or queued.
+* **Proof PRs to open after their parts:** J-109 after #2012; J-37 after #2196.
+* **From ~13:30:** the J2 and J4 lane plans (`lead-b-briefs/J2-lane-plan-2026-11-19.md`, `J4-lane-plan-2026-11-19.md`). The briefs are ready: PF-16, PF-4c part 1b, FO-13s, the FO-9a phone edit. The BACKLOG rows for FO-13i p2, FO-13s p1 and the FO-9a phone edit are asked of the Lead. The Stripe test account for J-19 is asked of the founder.
+* **My scratch watches in $TMPDIR stop with this session.** Restart them: merges on #2195 #2029 #2196 #2012 #2102 #2103 #1961 #2181 #1959; Approves on #1959 and #2196; the J-109 PR on `claude/vibrant-meitner-3t1yfe` and the PF-19b3 PR on `claude/intelligent-mayer-ymi4sl`; and the question scan (`lead-b-tools/scan-pr-questions-gql.py`).
