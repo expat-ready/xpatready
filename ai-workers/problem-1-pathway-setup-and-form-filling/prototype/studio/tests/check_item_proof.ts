@@ -1,0 +1,98 @@
+// P-728 (3), P-729 (1): the automatic proof at an item's last merge (.github/workflows/item-proof.yml, tools/item-proof.mjs).
+// Fixture PR bodies (tests/fixtures/item-proof/): one that completes R1.77 (detected), one that does not (an example in
+// a fence is no claim), one with unreadable lines (refused, never guessed); the plan read from a fixture row (packs from
+// its C ids, suites its Done when names, the journey j_<n>.ts); a PASS and a FAIL verdict's shape (a missing journey,
+// pack or result line is FAIL, P-405); the comment and the founder's page; the secret scan (a planted key is caught, by
+// shape and by an env value, never printed); the video size fitting 800 x 800; and the workflow's shape.
+// No server, no database; US$0. Run from prototype/:
+//   tsx studio/tests/check_item_proof.ts
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { detect, plan, verdict, comment, page, scan, scanText } from "../tools/item-proof.mjs";
+import { videoSize } from "./journeys/video-size.ts";
+
+const F = join(import.meta.dirname, "fixtures", "item-proof"), TOOL = join(import.meta.dirname, "..", "tools", "item-proof.mjs");
+const ROOT = join(import.meta.dirname, "..", "..", "..", "..", "..");
+let pass = 0, fail = 0;
+const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 600)}` : ""}`); };
+const body = (f: string) => readFileSync(join(F, f), "utf8");
+
+// D: detection from the PR body.
+const d1 = detect(body("body-completes.md")), d2 = detect(body("body-none.md")), d3 = detect(body("body-bad.md"));
+ok("D1 a body with \"Completes: R1.77\" completes R1.77", JSON.stringify(d1) === JSON.stringify({ items: ["R1.77"], bad: [] }), d1);
+ok("D2 a body with no Completes line (only a fenced example) completes nothing", d2.items.length === 0 && d2.bad.length === 0, d2);
+ok("D3 a bold list line with two items is read; a line with other words is refused, not guessed", JSON.stringify(d3.items) === '["R1.77","R1.78"]' && d3.bad.length === 1 && /R1\.80/.test(d3.bad[0]), d3);
+ok("D4 \"Completes: R1.77 and R1.6.\" reads both, sorted by number", JSON.stringify(detect("Completes: R1.77 and R1.6.").items) === '["R1.6","R1.77"]');
+ok("D5 \"Completes: C8.2\" and \"Completes:\" alone are refused", detect("Completes: C8.2").bad.length === 1 && detect("Completes:").bad.length === 1);
+const cli = (args: string[], input?: string) => spawnSync("node", [TOOL, ...args], { encoding: "utf8", input });
+const c1 = cli(["detect", "--body-file", join(F, "body-completes.md")]), c3 = cli(["detect"], body("body-bad.md"));
+ok("D6 the CLI (pr-rules, the detect job): exit 0 and JSON on a good body; exit 1 naming the line on a bad one", c1.status === 0 && JSON.parse(c1.stdout).items[0] === "R1.77" && c3.status === 1 && /R1\.80/.test(c3.stderr), [c1.status, c3.status, c3.stderr]);
+
+// P: the plan from the item's row.
+const caps = body("caps.md"), p77 = plan("R1.77", caps), p6 = plan("R1.6", caps), p3 = plan("R1.3", caps), p9 = plan("R1.9", caps);
+ok("P1 R1.77: the C8.2 pack, the suite its Done when names, a named file that is not a suite apart, journey j_77.ts", p77.found && JSON.stringify(p77.packs) === '["C8.2"]' && JSON.stringify(p77.suites) === '["check_item_proof.ts"]' && JSON.stringify(p77.suitesMissing) === '["check_not_a_suite.ts"]' && p77.journey === "tests/journeys/j_77.ts", p77);
+ok("P2 R1.6: no pack or suite named; its journey j_6.ts exists on this tree", p6.found && !p6.packs.length && !p6.suites.length && p6.journeyExists, p6);
+ok("P3 a C id with no acceptance pack is listed as missing", JSON.stringify(p3.packsMissing) === '["C99.99"]', p3);
+ok("P4 an item with no row is not found; a bad id throws", !p9.found && (() => { try { plan("C8.2", caps); return false; } catch { return true; } })());
+
+// V: verdict shape, PASS and FAIL.
+const base = { sha: "a".repeat(40), pr: 2200, runId: 123, runUrl: "https://example.test/run/123", artifactUrl: "https://example.test/art/9", repo: "o/r", at: "2026-11-19T10:00:00Z" };
+const p6ok = { ...p6, journeyExists: true };
+const vPass = verdict({ item: "R1.6", plan: p6ok, results: [{ kind: "journey", name: p6.journey, exit: 0 }, { kind: "scan", name: "no key", exit: 0 }], ...base });
+const keys = ["item", "name", "pr", "sha", "run_id", "run_url", "at", "overall", "why", "suites", "video", "trace", "file", "repo", "note"];
+ok("V1 PASS: every key, the video link, no trace, file product/qa/verdicts/auto/R1.6-<sha>.json", vPass.overall === "PASS" && keys.every((k) => k in vPass) && vPass.video === base.artifactUrl && vPass.trace === null && vPass.file === `product/qa/verdicts/auto/R1.6-${base.sha}.json` && vPass.run_id === "123", vPass);
+const vFail = verdict({ item: "R1.77", plan: p77, results: [{ kind: "pack", name: "C8.2", exit: 0 }, { kind: "suite", name: "check_item_proof.ts", exit: 1 }], ...base });
+const res = (n: string) => vFail.suites.find((s: { name: string }) => s.name === n)?.result;
+ok("V2 FAIL: a red suite, a named non-suite and a missing journey each FAIL; the green pack passes; the link is the trace", vFail.overall === "FAIL" && res("C8.2") === "pass" && res("check_item_proof.ts") === "fail" && res("check_not_a_suite.ts") === "fail" && res("tests/journeys/j_77.ts") === "fail" && vFail.video === null && vFail.trace === base.artifactUrl, vFail);
+const vNoRun = verdict({ item: "R1.6", plan: p6ok, results: [], ...base });
+ok("V3 a planned run with no result line is \"not run\" and FAIL (P-405)", vNoRun.overall === "FAIL" && vNoRun.suites[0].result === "not run");
+const vScan = verdict({ item: "R1.6", plan: p6ok, results: [{ kind: "journey", name: p6.journey, exit: 0 }, { kind: "scan", name: "no key", exit: 1 }], ...base });
+ok("V4 a secret found in the recording fails the verdict", vScan.overall === "FAIL" && vScan.video === null);
+ok("V5 an item with no row fails; never a Works word in the verdict", verdict({ item: "R1.9", plan: p9, results: [], ...base }).overall === "FAIL" && !/"Works"/.test(JSON.stringify(vPass)));
+
+// C, G: the comment and the founder's page.
+const cm = comment([vPass, vFail], "Verdict file(s): saved");
+ok("C1 one comment names both items, each run, the video and the trace, and says it never marks Works", /R1\.6 PASS, R1\.77 FAIL/.test(cm) && cm.includes(base.runUrl) && /Video of the journey: https:\/\/example\.test\/art\/9/.test(cm) && /Trace and step screenshots/.test(cm) && /never marks Works/.test(cm), cm);
+const older = { ...vFail, item: "R1.6", at: "2026-11-18T00:00:00Z" };
+const pg = page([older, vPass, vFail], "2026-11-19T11:00Z");
+ok("G1 the page lists the proven journey with its video (newest verdict per item wins) and the latest FAIL", /## Passed \(1\)/.test(pg) && /\| R1\.6 .*\[watch\]\(https:\/\/example\.test\/art\/9\)/.test(pg) && /## Latest verdict FAIL \(1\)/.test(pg) && /\| R1\.77 /.test(pg), pg);
+const dir = mkdtempSync(join(tmpdir(), "item-proof-"));
+writeFileSync(join(dir, `R1.6-${base.sha}.json`), JSON.stringify(vPass)); writeFileSync(join(dir, `R1.77-${base.sha}.json`), JSON.stringify(vFail));
+const pr = cli(["page", "--dir", dir]);
+ok("G2 the CLI writes README.md in the verdicts folder", pr.status === 0 && existsSync(join(dir, "README.md")) && /\[watch\]/.test(readFileSync(join(dir, "README.md"), "utf8")), pr.stderr);
+
+// S: the secret scan over what would be uploaded.
+const w = mkdtempSync(join(tmpdir(), "item-proof-walk-")); mkdirSync(join(w, "steps"));
+writeFileSync(join(w, "walk.log"), "PASS  Sample client Client A saved\n"); writeFileSync(join(w, "steps", "001.png"), "sk-ant-api03-" + "x".repeat(40));
+ok("S1 a clean recording passes (pictures are not read as text)", scan(w, {}).length === 0);
+writeFileSync(join(w, "requests.jsonl"), `{"url":"http://localhost:4436/api?k=sk-ant-api03-${"Q".repeat(40)}"}\n`);
+const hits = scan(w, {});
+ok("S2 an Anthropic-shaped key in a request log is found, naming the file, never the value", hits.length === 1 && hits[0].file === "requests.jsonl" && !JSON.stringify(hits).includes("QQQQ"), hits);
+const planted = "abcd".repeat(4);   // built here, so no secret-shaped literal is in git (the push guard)
+ok("S3 the value of a secret-like variable is found; a short or ordinary one is not", scanText(`v=${planted}`, { MY_API_TOKEN: planted }).length === 1 && scanText("x=abc", { A_TOKEN: "abc", HOME: `/root/${planted}` }).length === 0);
+const zipOk = spawnSync("zip", ["-q", join(w, "trace-1.zip"), join(w, "requests.jsonl")]).status === 0;
+if (zipOk) { spawnSync("rm", [join(w, "requests.jsonl")]); ok("S4 a key inside a trace zip is found", scan(w, {}).some((h) => h.file === "trace-1.zip")); }
+else console.log("NOTE  S4 skipped: no zip command on this machine (CI's ubuntu has zip and unzip)");
+const sc = cli(["scan", w]);
+ok("S5 the CLI exits 1 on a hit", sc.status === 1 && /FAIL  secret check/.test(sc.stdout), sc.stdout);
+
+// R: the video size.
+ok("R1 a 1440 x 900 page records an 800 x 500 video; a small one is kept; a tall one fits 800 high", JSON.stringify(videoSize({ width: 1440, height: 900 })) === '{"width":800,"height":500}' && JSON.stringify(videoSize({ width: 640, height: 480 })) === '{"width":640,"height":480}' && videoSize({ width: 390, height: 844 }).height <= 800);
+const rec = readFileSync(join(import.meta.dirname, "journeys", "record.ts"), "utf8");
+ok("R2 record.ts records every context's video through videoSize", /recordVideo: \{ dir: join\(OUT!, "video"\), size: videoSize\(/.test(rec));
+
+// W: the workflow's shape.
+const wf = readFileSync(join(ROOT, ".github", "workflows", "item-proof.yml"), "utf8");
+ok("W1 it starts when a PR to main closes (merged only) and by hand with a PR number", /pull_request_target:\s*\n\s*types: \[closed\]\s*\n\s*branches: \[main\]/.test(wf) && /github\.event\.pull_request\.merged == true/.test(wf) && /workflow_dispatch:/.test(wf));
+ok("W2 the prove job checks out only main's merge commit, read-only, no credentials kept", /ref: "\$\{\{ needs\.detect\.outputs\.sha \}\}", fetch-depth: 0, persist-credentials: false/.test(wf) && /prove:[\s\S]*?permissions: \{ contents: read \}/.test(wf) && !/head\.sha|head\.ref/.test(wf));
+ok("W3 packs by works-set --run, suites by run-suites --only, the journey by walk.mjs, the scan before the upload", /works-set\.mjs" --run/.test(wf) && /run-suites\.sh" --demo --only/.test(wf) && /walk\.mjs/.test(wf) && wf.indexOf("item-proof.mjs\" scan") < wf.indexOf("upload-artifact"));
+ok("W4 the recording is kept 90 days, named proof-<item>-<sha>", /name: proof-\$\{\{ matrix\.item \}\}-\$\{\{ needs\.detect\.outputs\.sha \}\}\s*\n\s*path: [^\n]+\n\s*retention-days: 90/.test(wf));
+ok("W5 verdicts go to the branch auto-verdicts, never main; one comment; CAPABILITIES.md never written", /BRANCH: auto-verdicts/.test(wf) && !/push[^\n]*\bmain\b/.test(wf) && (wf.match(/issues\/\$PR\/comments/g) ?? []).length === 1 && !/CAPABILITIES\.md"?\s*$/m.test(wf.replace(/^#.*$/gm, "")));
+ok("W6 no secret is read; the PR body reaches the shell only through env", !/secrets\./.test(wf) && !/run:[^\n]*github\.event\.pull_request\.body/.test(wf));
+const prr = readFileSync(join(ROOT, ".github", "workflows", "pr-rules.yml"), "utf8");
+ok("W7 pr-rules checks the Completes line with item-proof.mjs detect", /item-proof\.mjs detect/.test(prr));
+
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);
