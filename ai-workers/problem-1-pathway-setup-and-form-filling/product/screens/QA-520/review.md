@@ -47,3 +47,15 @@ BIC-13 **Partly**: on the field, with what and how to fix, except the pixel case
 * `graph.mjs`: it rewrites `qa/GRAPH.md`, which is outside my write scope.
 * C7.8 and full CI.
 * A real screen reader.
+
+## Re-review: `fdfe32ffd`, diff only (P-277)
+Diff reviewed: `git diff 29c0b58bf fdfe32ffd -- …/prototype/studio`. It changes `api/src/submission.ts` (+8/−1) and qa520 (+12). The `bomb.png` fixture is already on main (69 bytes). Copy used: :4481, restarted at 20:01. Its live answers match the new code, and `git diff fdfe32ffd -- api/src` is empty.
+* **Major 1: fixed.** The fee receipt now throws the file check's refusal through `fileRefused`, whose body carries `message: detail`. `main.ts`'s 413 filter therefore sees PF-F4's words (`fromFileCheck`) and leaves them alone. My 200-byte, 20000×20000 PNG now gets 413 "This image is too large to open safely (400 megapixels; the limit is 89.5). Allowed here: PDF, JPEG and PNG. Nothing was stored.", with `errors[{field:"file"}]`. The header-only PDF still gets 400 in PF-F4's words.
+* **Minor 1: fixed.** A 503 now has `type …/unavailable`, the title "Try again" and no field errors. Both screens (`submission.tsx` field and notice) show the message itself, so nothing on screen depends on `errors`.
+* **Minor 2: partly fixed, accepted.** qa520 adds a too-many-pixels case at both doors: 413, PF-F4's words, not "larger than", nothing stored, and `errors[file]` at the fee receipt. The new case fails on 29c0b58bf because the old words were "larger than 20 MB". The 503 path stays untested at these two doors. It is the shared `checkedCaseFile`, already covered by check_csd1t, so this is acceptable.
+* **Minor 3: left as is, accepted.** The order is unchanged from main, and nothing is written either way.
+* My run: qa520 **18/18**, exit 0. The builder reports check_c82_record_api 71/71 and C8.2 19/19, which I did not re-run.
+
+No open Blocker or Major. Journey criteria "plain words" and "error recovery" rise to 1, so the journey score is now **10/10**.
+
+**Verdict: Approve** `fdfe32ffdd55e9f5e8eec5ed5c1ef4edd6d233be`.
