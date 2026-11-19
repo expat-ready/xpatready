@@ -7,7 +7,7 @@ import { EVENT, LeadEventPayload, type EventName } from "../../../../ports/event
 import { Db } from "../../core.ts";
 import { platformAuditWorkspaceId } from "../../platform/audit/audit-event.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
-import type { FirmCalendar } from "../../platform/complaints/business-days.ts";
+import type { FirmCalendar } from "../../platform/calendar/working-days.ts";
 import { forbidden, problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts";
 import { arrive, possibleMatch } from "./arrival.ts";
