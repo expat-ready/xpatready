@@ -478,11 +478,11 @@ try {
   ok("PF-4 pass (P-571 (1)): the reset returns the Sample firms' settings to their seed values through the settings write path (a value already at its seed value is left alone)",
     reset.changed.length >= 2 && await readSetting(db, FIRM_A, "platform.language") === "en" && await readSetting(db, FIRM_B, "platform.currency") === "CAD" && await readSetting(db, FIRM_A, "platform.time_zone") === "America/Toronto", reset);
   ok("PF-4 pass (B-6): each reset change has one audit line (actor system, reason \"demo reset\"), and no platform line was deleted",
-    Number(sql(DB, `select count(*) from audit_event where entity = 'platform_firm_setting' and actor = 'system' and detail->>'reason' = 'demo reset'`)) === reset.changed.length && platformLines() === linesBefore + reset.changed.length);
+    Number(sql(DB, `select count(*) from audit_event where entity = 'platform_firm_setting' and actor = 'system:demo-reset' and detail->>'reason' = 'demo reset'`)) === reset.changed.length && platformLines() === linesBefore + reset.changed.length);
   // The fail test: every stored setting value has its trail — the newest audit line of each firm and key says it was set
   // to exactly the stored value.
   const untrailed = sql(DB, `select coalesce(string_agg(s.key, ','), '') from platform_firm_setting s where not exists (select 1 from audit_event a where a.entity = 'platform_firm_setting' and a.entity_key = s.firm_id || ':' || s.key
-    and a.detail->'to' = s.value and a.at = (select max(b.at) from audit_event b where b.entity = 'platform_firm_setting' and b.entity_key = a.entity_key))`);
+    and coalesce(a.detail->'to', (select string_agg(p, '' order by n) from jsonb_array_elements_text(a.detail->'toJson') with ordinality as t(p, n))::jsonb) = s.value and a.at = (select max(b.at) from audit_event b where b.entity = 'platform_firm_setting' and b.entity_key = a.entity_key))`);
   ok("PF-4 fail (B-6): after the reset no setting value is without its trail (each value's newest audit line names it)", untrailed === "", untrailed);
   ok("PF-4 fail (B-6): a second reset changes nothing and writes no line", (await resetSampleFirmSettings(db)).changed.length === 0 && platformLines() === linesBefore + reset.changed.length);
 
@@ -541,12 +541,12 @@ else {
     const firmA = copy(`select id from platform_firm where key = 'sample-firm'`);
     await ws2(copyDb, { firmId: firmA, key: "platform.language", value: "fr", by: "staff:check", workspaceId: await platformAuditWorkspaceId(copyDb) });
     const linesBefore = Number(copy(`select count(*) from audit_event where entity in ('platform_firm_setting','platform_staff','platform_invitation')`));
-    const systemBefore = Number(copy(`select count(*) from audit_event where actor = 'system' and detail->>'reason' = 'demo reset'`));
+    const systemBefore = Number(copy(`select count(*) from audit_event where actor = 'system:demo-reset' and detail->>'reason' = 'demo reset'`));
     const r = await call(BASE, "POST", "/api/demo/reset", { actor: "user-A", body: { confirm: "RESET" } });
     const linesAfter = Number(copy(`select count(*) from audit_event where entity in ('platform_firm_setting','platform_staff','platform_invitation')`));
     ok("PF-4 pass (P-571 (1), B-6): the real demo reset keeps every platform audit line, returns the setting to its seed value and leaves one line (system, \"demo reset\")",
       r.status < 300 && linesAfter === linesBefore + 1 && copy(`select value::text from platform_firm_setting where firm_id = '${firmA}' and key = 'platform.language'`) === `"en"`
-      && Number(copy(`select count(*) from audit_event where actor = 'system' and detail->>'reason' = 'demo reset'`)) === systemBefore + 1, { status: r.status, linesBefore, linesAfter });
+      && Number(copy(`select count(*) from audit_event where actor = 'system:demo-reset' and detail->>'reason' = 'demo reset'`)) === systemBefore + 1, { status: r.status, linesBefore, linesAfter });
   } finally { await copyDb.$disconnect(); }
 }
 
