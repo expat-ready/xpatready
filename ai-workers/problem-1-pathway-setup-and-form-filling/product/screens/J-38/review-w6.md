@@ -43,4 +43,16 @@ Notes for FO-3st1 (#2322's own review, not findings here). The zone line reads "
 
 Not tested: a walk in a visible browser (HEADED=1 is qa's gate A), a real screen reader, a run on a date across the change (m3), and an intended user's unaided walk (D17 and D20 stay with the founder). Journey report: `screens/J-38/journey-test-reviewer-w6-2026-11-19.md`.
 
-Reviewer: Approve 4c953751b625561c3d9dc466053a63207fb25f69
+First review's verdict, at 4c953751b625561c3d9dc466053a63207fb25f69: Approve.
+
+## Re-review, head 138885b92 (19 Nov 2026)
+The new head changes `tests/journeys/j_38.ts` (+5 −2) and commits this file and the journey report. I read `git diff 4c953751b..138885b92 -- '*.ts'`.
+- **m2 fixed** (`j_38.ts:189-192`). London's hour now comes from `Intl` (Europe/London) for the moment walked, not from the season. I checked the formula in Node: 15 for 2026-11-23T15:00Z, **14 for 2027-03-15T14:00Z** (Toronto is on EDT and London still on GMT, the case m2 named), 15 for 2027-04-15T14:00Z, and 14 for 2026-10-26T14:00Z. The failing line now prints `londonHour` as well.
+- **m4 fixed** (`:171`). A refused sign-in now throws straight away, before the response is read. On a copy started **without** `PLATFORM_IDENTITY=local` (:4448), the walk stopped after 16 s with "W6: the host's sign-in was refused (403): start the copy with PLATFORM_IDENTITY=local, as the header's line does", exit 1. It no longer waits 30 s for the grid with no reason given.
+- **Run** on a fresh copy with the header's flags (`j38r` on :4448): **27/27**, exit 0. W6 reads `londonHour: 15`, the 10:00 row and "Mon 23 November 10:00–10:30 America/Toronto · 19:00 for Ana Sample (Asia/Dubai)", and W5 is still the last step. The rest of the diff touches no W6 line the mutant relied on, so that earlier result still holds.
+- **m1 and m3 left, as the builder says.** m1 (sign-in by API) is Minor and is J-30's and J-109's practice too. m3 (no run of the staff screen across a daylight-saving change) goes to the tech lead as the question of whether this PR's "Completes: R1.38" holds. Neither blocks.
+- The tracked screenshots my runs rewrote are restored, and `git status` was clean before this section was added.
+
+Journey score unchanged at **9 / 10, pass**. Error recovery stays at ½: the refused sign-in now explains itself, but W6 still has no error path a person would walk.
+
+Reviewer: Approve 138885b92629084f38faa6568730f8ffc6ec1e6e
