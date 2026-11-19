@@ -159,3 +159,186 @@ Verdict: Changes needed
 These stay with the builder's regression run and CI on this sha (P-385).
 
 Verdict: Approve c74cb084378ce6e417d81d3f28fcbadfe34b07e2
+
+## Round 4 (main merge, diff-only), head 1b2defdba37db673d790159c2f22ad4da7b28804
+This round covers the merge `1b2defdb` alone. Its parents are `4b74beb` (round 3's approved `c74cb084` plus review records only) and `origin/main` `628742f0`. It is a plain merge, with no rebase.
+
+**1. Conflict and diff against main.**
+* `git diff origin/main 1b2defdb` touches the same 15 files as AUD-1b's own diff (`git diff 15c75cd 4b74beb`, where `15c75cd` is the merge base). Both are 660 insertions and 27 deletions.
+* With index and hunk headers stripped, the two patches differ only in the `MODULE.md` context lines. Main's Tables line now has `platformOffice, platformStaffOffice`, and its Tests line has `check_pf18a_offices.ts`. No AUD-1b code line changed, and no main line is dropped.
+* `git show --cc` shows one combined hunk. Tables is main's line. Tests is main's line with `tests/check_aud1b_adapter.ts` appended. The AUD-1b invariant line is still there.
+* The card is **39 lines**, so it is within the 40-line limit.
+* PF-18a's Purpose, Entry points and Invariant lines from main are all present.
+
+**2. New audit writers from main.** Main changed 16 files under `prototype/` since the base. The only new audit writer is `api/src/platform/settings/offices/service.ts`. It calls AuditPort 4 times, wired with `auditEvent` in `features/platform-settings-personal.ts`. Main adds no direct `tx.auditEvent.create`. `clock.ts`, `ports/offices.ts`, the contract, the migration and `check_qa507` write no audit line, and the migration adds no trigger on `audit_event`. Each AUD-1b rule holds:
+* **Firm.** It is `firmScope(a.firmId).firmId`, where `a = staffOf(req)` is the guard's `req.platform`. That is the same source `hook.ts` `firmOf` gives `context.ts`, so the request's firm always equals the line's firm. `firmScope` lowercases, and the adapter lowercases both sides.
+* **Actor.** It is `` `staff:${a.staffId}` `` (`service.ts:62`). `hook.ts` `auditOf` builds `` `staff:${req.platform.staffId}` `` from the same field, so the two match exactly. The type is FIRM_STAFF.
+* **Case and our staff.** No `caseId` is passed. No `ourStaff` request exists on main.
+* **Rollback.** Every call is inside the change's `$transaction` after the row write, so a refused line rolls the office change back.
+* **`setStaffOffice`.** It has no route yet (PF-18s). Its callers in `check_pf18a_offices.ts` run outside any request scope, so the context is undefined and the line is written with the entry's own firm. That is still allowed. When PF-18s routes it, the same `staffOf` source keeps it valid.
+
+So nothing from main would be refused at runtime, and no line is written without a firm.
+
+**3. Evidence (the builder's run on the merged head in the cloud copy; I did not run any suite, because they share the database):**
+* `check_aud1b_adapter.ts`: 33 passed, 0 failed.
+* `check_pf18a_offices.ts`: 87 passed, 0 failed. It includes the zone-change line asserting `detail.firmId === firmA` through the AUD-1b adapter.
+
+The wider suite and CI on this sha stay with the builder and CI (P-385).
+
+**Journey test:** not re-run, because the merge changes no screen or route of AUD-1b's. The one journey score stays **9 / 10, Pass**, from `journey-test-reviewer-2026-11-18.md`.
+
+**Open:** no Blocker and no Major. Minors 4 and 5 from round 3 are unchanged; they go in the PR body.
+
+Verdict: Approve 1b2defdba37db673d790159c2f22ad4da7b28804
+
+
+## Round 5 (second main merge, diff-only), 18 Nov 2026, head 3d507a2ed16da4fbd749984a98a1dd4b5fd0e047
+
+Round 4 (commit 871c9465, on another branch) approved the first main merge 1b2defdb. Main then moved from 628742f0 to 2c9231ab (PF-18b support tickets, FO-1p FoPersonPort, PF-21s, PF-5t screens, journey recording) and conflicted again. 3d507a2e is a plain merge: parent 1 is 1b2defdb, parent 2 is origin/main 2c9231ab, the merge base is 2c9231ab. No rebase.
+
+What I did: read code and ran git only. I ran no test suite, server or browser (another long run shares this machine). The suite results below are the builder's, from this copy, on 3d507a2e.
+
+**1. The merge is still exactly AUD-1b's change.**
+* `git diff --stat origin/main 3d507a2e` gives the same 15 files at +660/−27 as round 4's `git diff 1b2defdb^2 1b2defdb`.
+* I diffed the two patches with their `index` lines removed. The only difference is in `api/src/platform/MODULE.md`: one hunk header moves (`-26` becomes `-27`), and the context lines are main's new ones.
+* `MODULE.md` keeps both sides:
+  * Tables has main's `platformSupportTicket, platformSupportMessage`.
+  * Tests has main's `tests/check_pf18b_support.ts`, followed by AUD-1b's `tests/check_aud1b_adapter.ts`.
+  * AUD-1b's one rule line stays.
+  * The card is 40 lines, at the limit and not over it.
+* No other file differs from what round 4 approved.
+
+**2. How main's new audit writers interact with AUD-1b.**
+* **No new line without a firm.** Since 628742f0, main added five `record(tx, …)` callers: three in `support.ts`, and two each in `fo-person-port.ts` and in `fakeFoPerson`. All of them go through `AuditEntry`, which requires `firmId`. Main added no new raw `tx.auditEvent.create`; the raw writers are the same files as before.
+* **PF-18b `raise` / `addMessage`** (`POST /api/platform/support/tickets[/:id/messages]`, behind PF-4's guard). This is a signed-in FIRM_STAFF request, so the adapter applies two checks:
+  * **Firm.** The line's firm is `firmScope(ctx.firmId)` for raise, and the ticket's firm for addMessage. `visible()` reads the ticket under `firmScope(ctx.firmId)`, so in both cases it is the request's firm. Both sides are lower-cased before they are compared, so this passes.
+  * **Actor.** The line's actor is `staff:${ctx.staffId.toLowerCase()}`. The request's actor is `staff:${req.platform.staffId}` (hook.ts `auditOf`). `staffId` is `PlatformStaff.id`, a `@db.Uuid` that Prisma returns in lower case, so the two words are identical and this passes.
+  * Nothing on this path is refused at runtime. OUR_STAFF cannot occur: `ourStaff: true` is not set anywhere on main.
+* **PF-18b `replyAsSupport`** writes `system:support` with the ticket's firm. It has no route and no caller on main, so it is not refused today. When PF-17's console wires it under `/api/system` after PF-4s, AUD-1b as written will refuse it in one of two ways:
+  * every line in an OUR_STAFF request is refused;
+  * a signed-in request whose actor is not `system:support` is refused.
+
+  That is the fail-closed rule the founder recorded (P-607 (3), "until PF-4s"), not a regression. See n1.
+* **FO-1p `FoPersonPort`.** It is bound as `FO_PERSON_PORT` in `features/front-office-sales.ts`, but nothing on main injects or calls it. Only `tests/check_fo1p_person_port.ts` and the port contract use it. Its caller will be the case side's case opening (CS-K1 part 2, not on main). The firm is the caller's `a.firmId` and the actor is the caller's `a.actor`. No path runs it at runtime today, so nothing is refused. When CS-K1 calls it:
+  * in a PF-4-guarded request, `a.firmId` must be the request's firm, and `a.actor` must be exactly that request's `staff:<id>`;
+  * a `system:` actor, such as the test's `system:cs-k1.backfill`, is allowed only in a job or outside a signed-in request;
+  * a case-side request that is not under PF-4's guard (no `req.platform`) carries only its correlation id, and nothing is refused.
+
+  See n2.
+* **Types.**
+  * `AuditPort` is unchanged by AUD-1b. `AuditEntry` gains only an optional `caseId`, which is additive.
+  * `SupportDeps.audit: AuditPort<Tx>` and `PrismaFoPerson(audit: AuditPort<Tx> = auditEvent)` take the adapter as it is.
+  * `fakeFoPerson` takes `AuditPort<unknown> & { discard? }`, and `fakeAudit` fits it.
+  * The tests' throwing stand-ins (`{ async record() { throw … } }`, PF-18b's `boom as never`) fit structurally.
+  * The builder's port-contract run shows 0 problems over 21 ports, FoPersonPort included.
+
+**3. Evidence on 3d507a2e (the builder's run, this cloud copy).**
+
+| Suite | Result |
+|---|---|
+| check_aud1b_adapter | 33/33 |
+| check_pf18b_support | 41/41 (after `prisma generate` for main's new tables) |
+| check_fo1p_person_port | 35/35 |
+| check_pf0p_ports | 122/122 |
+| check_case_feed | 39/39 (sweeps the new callers: `platform_support_ticket`, `fo_person`, `fo_company` are all area entities) |
+| check_pf18a_offices | 87/87 |
+| port contracts | 0 problems (21 ports) |
+
+**Journey score.** This round changes no screen or journey. The one journey score for this check is still round 1's: **9 / 10, Pass** (`journey-test-reviewer-2026-11-18.md`).
+
+**Issues.** No Blocker and no Major. These notes are for later rows, not for this PR:
+* **n1 (Note, for PF-4s / PF-17).** `replyAsSupport`'s `system:support` line will be refused under the OUR_STAFF rule, and under the exact-actor rule, once a console route calls it. Whoever wires that route has to give our staff an actor word, which is PF-4s's job.
+* **n2 (Note, for CS-K1 part 2).** In a signed-in request, FoPersonPort's `a.actor` must be the request's own `staff:<id>`, and `a.firmId` must be the request's firm. The CS-K1 builder should pass `staff:<request staff id>`, not a `system:` word, in that path.
+* **n3 (Note).** PF-18b's suite calls `SupportService` outside any request scope, so no test runs AUD-1b's actor and firm checks on the support routes. By reading, they pass (see 2). This is not a gap in AUD-1b's own tests: `check_aud1b_adapter` covers those checks.
+
+Reviewer: Approve 3d507a2ed16da4fbd749984a98a1dd4b5fd0e047
+
+
+## Round 6 (CodeQL fix, diff-only), 18 Nov 2026, local commit cdaa0fab2d250605d87c5913393197ec24def2ee
+**Scope:** only `git show cdaa0fab` (parent 3d507a2ed16da4fbd749984a98a1dd4b5fd0e047, approved in round 5) and a scan of `git diff origin/main cdaa0fab` for timers. As asked, I ran no suite and edited no code. Rounds 4 and 5 are not recorded in this file; they live with the PR.
+
+**1. Test-only, and the suite's behaviour is unchanged.**
+* The commit touches one file, `prototype/studio/tests/check_aud1b_adapter.ts`: 5 lines added, 2 removed, all in `ProbeController.probe`. No product code changes.
+* Before the fix, both awaits used `pause(b.waitMs ?? 0)`. Now they use `pause(waitMs)`, where `asked = Number(b.waitMs)` and `waitMs = asked > 0 && asked <= 250 ? asked : 0`.
+* DW5 is the only caller that sends `waitMs`. It sends `(i * 7) % 23`, so 0 to 22.
+  * 1 to 22 pass through unchanged.
+  * 0 gives 0, as before.
+* Every other probe call (DW6 and the actor cases) sends no `waitMs`. `Number(undefined)` is NaN, which fails both comparisons and gives 0, the same as `undefined ?? 0` did.
+* `pause(0)` is still `setTimeout(r, 0)`. Each request still yields to the event loop before the transaction and inside it.
+* So DW5's 100 requests still interleave across awaits on both sides of `$transaction`. That is what makes its own-correlation and own-firm assertions meaningful. The delays DW5 relies on are exactly the same, so the builder's 33/33 is the expected result.
+
+**2. Will CodeQL accept the guard as a sanitizer?** Very likely yes, but I could not run CodeQL here.
+* `js/resource-exhaustion` (`ResourceExhaustionCustomizations.qll`) has an upper-bound barrier guard. In a relational comparison taken as true, it treats the lesser operand as sanitized.
+* `asked <= 250` puts `asked` on the lesser side. The ternary's true branch is reached only through the `&&` true edge, so that use of `asked` sits behind the guard.
+* `asked` is a single-assignment `const`, so the barrier applies to the SSA use in the ternary. The false branch is the constant 0.
+* `Number(...)` is a taint step for this query, so the unguarded form would still have been flagged. The guard, not the conversion, is what clears it.
+* An explicit comparison is the safer choice than `Math.min`, which CodeQL does not reliably model as a barrier for this query.
+* Confirmation is the CodeQL run on this sha after push: the alert on line 33 must close with no new one. If it stays open, raise it in the PR rather than dismissing it.
+
+**3. Other user-controlled timers in the PR diff: none.**
+* Every added `setTimeout`, `pause(…)` and `timeout:` in `git diff origin/main cdaa0fab` is in `tests/check_aud1b_adapter.ts`:
+  * the `pause` helper itself;
+  * the two probe awaits, now bounded;
+  * `pause(5)` and `pause(250)` in the DW2 job loop, both constants;
+  * `$transaction(…, { timeout: 20_000 })`, a constant.
+* The product files in the diff (`audit-event.ts`, `context.ts`, `hook.ts`, `log.ts`, `settings.ts`, `identity/audit.ts`, `ports/…`) add no timers.
+* The `setTimeout`/`setImmediate` mentions in `break-report.md` and earlier rounds of this file describe the breaker's scratch script, which is not in the repo.
+
+**Open:** no Blocker, no Major, no new Minor. Earlier open items stand as recorded in round 3.
+
+Verdict: Approve cdaa0fab2d250605d87c5913393197ec24def2ee (pending CodeQL closing the alert on this sha)
+
+## Round 7 (third main merge, diff-only), 19 Nov 2026, head 85b92f81afeb627faaa1d034dce0a841006c7e36
+
+Reviewer: Opus, high effort, diff only. The tech lead approved the merge of main 34c5e1e99, card only. No suite was run in the review; the builder's numbers are below.
+
+* **Merge.** `85b92f81^1` is cdaa0fab (round 6) and `^2` is main 34c5e1e99.
+  * Only `api/src/platform/MODULE.md` was resolved by hand. It holds main's card, AUD-1b's one rule line, and `tests/check_aud1b_adapter.ts` at the end of the existing Tests line.
+  * The card is 40 lines, and no card in the tree is over 40.
+* **The change against main.** `git diff 34c5e1e99 85b92f81` has the same 15 files as `git diff 2c9231ab cdaa0fab`, +663/−27. The hunks match in 14 files. The card differs only in context, where main's `check_pff4_file_type.ts` now appears.
+* **Main's audit writers since 2c9231ab.**
+  * FO-13i `identity.checked` (`front-office/compliance/identity/service.ts`) uses `firmId: ctx.firmId` and `staff:${ctx.staffId}` from `req.platform`, in a FIRM_STAFF-only route. A failed write is not swallowed: it gives a 500 and a rollback.
+  * `retainer.sent` changed its summary and detail only.
+  * There is no new direct `auditEvent.create` and no migration on `audit_event`.
+  * Nothing would be refused at runtime, and no line is written without a firm.
+* **Builder's evidence on 85b92f81:**
+
+  | Check | Result |
+  |---|---|
+  | `check_aud1b_adapter` | 33/33 |
+  | `check_pf0p_ports` | 122/122 |
+  | `check_case_feed` | 39/39 |
+  | Port contracts | 0 problems (21 ports) |
+  | Module cards | PASS (15 cards) |
+
+* **Findings.** No Blocker or Major, and no new Minor. Behaviour is identical to round 6, so the journey score of 9/10, Pass, stands.
+
+Reviewer: Approve 85b92f81afeb627faaa1d034dce0a841006c7e36
+
+## Round 8 (fourth main merge, diff-only), 19 Nov 2026, head b3b0b2a03b90f0abe6736b3a6fba18fb1876d684
+
+Reviewer: Opus, high effort, diff only, no suites run. The tech lead (Lead 84) OK'd the push.
+
+* **Merge.** Plain merge of main 9d440b2f (after #2157) into 85b92f81.
+  * One conflicting hunk: the platform card's Tests line. The resolution keeps main's line (`check_pf19r_senders.ts`) and adds `check_aud1b_adapter.ts`. The card is 40 lines.
+  * `git diff 9d440b2f b3b0b2a0` is the same 15 files, +663/−27. Its only difference from round 7 is the Tests line's context.
+* **Main's audit writers since 34c5e1e99.**
+  * FO-2 part 3 (`front-office/sales/prospects.ts`): every line has `firmId: ctx.firmId` and `staff:${ctx.staffId}` from `req.platform`, so it matches AUD-1b's actor and firm exactly.
+  * #2157 (PF-19r part 1) writes no audit line. The complaint reminder still writes `SYSTEM_ACTOR` in a job with the job's own firm.
+  * No new direct `auditEvent.create`.
+  * Nothing would be refused, and no line is written without a firm.
+* **Builder's evidence on b3b0b2a0:**
+
+  | Check | Result |
+  |---|---|
+  | `check_aud1b_adapter` | 33/33 |
+  | `check_pf0p_ports` | 122/122 |
+  | `check_case_feed` | 39/39 |
+  | `check_fo2p3_prospects` | 44/44 |
+  | `check_pf19r_senders` | 24/24 |
+  | Port contracts | 0 problems |
+  | Module cards | PASS |
+
+* **Findings.** None (no Blocker, Major or Minor).
+
+Reviewer: Approve b3b0b2a03b90f0abe6736b3a6fba18fb1876d684
